@@ -34,6 +34,7 @@ import { parseLecture } from "../domain.js";
 import { DEFAULT_DURATIONS } from "../engine/duration.js";
 import { buildTimeline } from "../engine/timeline.js";
 import { BOUNDED_REGION_WORDS } from "../engine/regions.js";
+import { readIllustrationManifest } from "../illustrations/types.js";
 import banshoManifest from "../manifest.js";
 import { describeStep, toAddress } from "../viewer/address.js";
 import {
@@ -43,7 +44,11 @@ import {
 } from "../viewer/board-check.js";
 import { BOARD_BASE_CSS } from "../viewer/board-css.js";
 import { buildViewerContext, type BoardMoment } from "../viewer/context.js";
-import { readSkillFile as read, referenceFiles } from "./vocabulary.js";
+import {
+  LOCKED_ILLUSTRATION_PROMPT,
+  readSkillFile as read,
+  referenceFiles,
+} from "./vocabulary.js";
 
 /** Discovered, never listed — see `vocabulary.ts::referenceFiles`. */
 const REFERENCES = referenceFiles();
@@ -115,6 +120,24 @@ describe("T7 — the skill teaches explaining, not rendering", () => {
     // section, so the next author who needs room has to cut, which is the
     // only thing that keeps this number meaningful.
     //
+    // 524 → 548 (I2, 2026-08-13): derived the same way. The change measures
+    // +25 / −4 against 523, landing at 544 — the tier policy is 21 lines of
+    // it, the references row 1, and the deletion is the now-false "images
+    // draw nothing" half of a boundary bullet. The gate sits 4 above what
+    // landed, as the last raise did.
+    //
+    // Why this raise is earned and not merely tolerated: the requirement it
+    // serves is 「没有额外的认知负担」, and the ONLY way an agent carries
+    // nothing extra while writing is if the expensive decision was already
+    // made — in the design, per figure, with all the paying done in one
+    // batch before the first board step. A backend with no `Workflow` tool
+    // (Codex, Kimi) reads nothing but this prose, so a policy that lives
+    // only in `workflows/plan-lecture.js` does not exist for them. Depth —
+    // the fixed look, the command, the sidecar, the failure modes — went to
+    // `references/illustrations.md`; what stayed is the rule, the batch and
+    // the no-key outcome, which are the three an author must have in front
+    // of them at the design table.
+    //
     // Why the raise is earned rather than tolerated: every other section
     // here teaches a gesture the board can perform. This one is the only
     // one that governs what gets written AT ALL, and it exists because a
@@ -124,7 +147,7 @@ describe("T7 — the skill teaches explaining, not rendering", () => {
     // writing. Depth went to `references/lecture-plan.md`; what stayed is
     // what an author must have in front of them at the first keystroke.
     const lines = read("SKILL.md").split("\n").length;
-    expect(lines).toBeLessThan(524);
+    expect(lines).toBeLessThan(548);
     for (const f of REFERENCES) {
       const text = read(`references/${f}`);
       expect(text.split("\n").length, `${f} too thin`).toBeGreaterThan(30);
@@ -354,6 +377,228 @@ describe("T7 — the skill teaches explaining, not rendering", () => {
     // author, and the session would be holding a lecture it did not write.
     expect(script).toContain("plan.md");
     expect(script).toMatch(/Do not write \\`board\.md\\`/);
+  });
+
+  // ── I2: the figure the board cannot draw ────────────────────────────────
+  //
+  // The governing requirement is the user's, verbatim: 「这样 agent 在整个板书
+  // 过程中，就没有任何额外的认知负担了」 — while WRITING, the agent must carry
+  // nothing extra. That is only mechanically true if two things hold: the
+  // choice is made at PLAN time (not at the moment a picture is wanted), and
+  // the paying, slow half runs in ONE batch before the first board step. A
+  // policy that says "consider generating an illustration" satisfies neither
+  // and would pass any test that merely greps for the feature.
+
+  const illustrations = () => read("references/illustrations.md");
+
+  /** The shared generator, read as the source of truth for its own flags. */
+  const generatorScript = readFileSync(
+    join(import.meta.dir, "..", "..", "_shared", "scripts", "generate_image.mjs"),
+    "utf8",
+  );
+
+  test("the tier rule is in SKILL.md's own prose, where a workflow-less backend reads it", () => {
+    // Codex and Kimi get no `Workflow` tool. A strategy that lives only in
+    // `workflows/plan-lecture.js` does not exist for them — the same iron
+    // rule the planning move already answers to.
+    const skill = read("SKILL.md");
+    const section = skill.slice(
+      skill.indexOf("## Before the first word"),
+      skill.indexOf("## The six moves"),
+    );
+    // Both tiers named as tiers, and the test that sorts them — stated so it
+    // can be applied without judgement agony.
+    expect(section).toMatch(/tier 1/i);
+    expect(section).toMatch(/tier 2/i);
+    expect(section).toMatch(/`chart`/);
+    expect(section).toMatch(/`graph`/);
+    expect(section).toMatch(/hand[- ]drawing/i);
+    // Decided in the design file, per figure, before any board step.
+    expect(section).toMatch(/`plan\.md`/);
+  });
+
+  test("tier 2 is batched right after the plan and never mid-lecture — in prose, in the reference, in the plan craft and in the workflow", () => {
+    // The batching IS the load-bearing half. Each picture is real money and
+    // the better part of a minute; ordered mid-lecture it turns a live talk
+    // into a queue, and the agent is holding the order instead of the
+    // argument. Four surfaces say it because four surfaces can be reached
+    // separately — and the workflow is the only one that can enforce it.
+    const workflow = readFileSync(
+      join(import.meta.dir, "..", "workflows", "plan-lecture.js"),
+      "utf8",
+    );
+    for (const [name, text] of [
+      ["SKILL.md", read("SKILL.md")],
+      ["references/illustrations.md", illustrations()],
+      ["references/lecture-plan.md", read("references/lecture-plan.md")],
+      ["workflows/plan-lecture.js", workflow],
+    ] as const) {
+      expect(text, `${name}: one batch, after the plan`).toMatch(
+        /one batch|ONE batch|single batch/,
+      );
+      expect(text, `${name}: never mid-lecture`).toMatch(
+        /never mid-(lecture|writing)|not mid-(lecture|writing)/i,
+      );
+    }
+  });
+
+  test("the plan marks every figure's tier — the decision cannot be deferred to writing time", () => {
+    const workflow = readFileSync(
+      join(import.meta.dir, "..", "workflows", "plan-lecture.js"),
+      "utf8",
+    );
+    // The design table is where a figure gets its tier, so the shape the
+    // workflow dictates and the craft the reference teaches both carry it.
+    expect(read("references/lecture-plan.md")).toMatch(/tier ?1/i);
+    expect(read("references/lecture-plan.md")).toMatch(/tier ?2/i);
+    expect(workflow).toMatch(/tier ?1/i);
+    expect(workflow).toMatch(/tier ?2/i);
+    // …and the critique stage checks the tiers rather than only the mediums,
+    // because a figure silently promoted to tier 2 is the expensive mistake.
+    const critique = workflow.slice(workflow.indexOf("phase('Critique')"));
+    expect(critique).toMatch(/tier/i);
+    // The workflow still produces the design and stops (charter, pinned
+    // above): batching is an instruction to the SESSION, not a stage that
+    // spends money inside the planner.
+    expect(workflow).not.toMatch(/generate_image\.mjs[^\n]*await|await[^\n]*generate_image/);
+  });
+
+  test("the locked look is quoted verbatim and the agent fills the SUBJECT only", () => {
+    const doc = illustrations();
+    // One text, two copies (skill + fixture), pinned equal — the same
+    // discipline as the motto. The fixture copy is also what the word-purity
+    // gate strips, so a drifted prompt fails there too.
+    expect(doc).toContain(LOCKED_ILLUSTRATION_PROMPT);
+    // Said as a rule, not merely shown: no style words, no colours, no
+    // "blackboard", no "chalk" — the subject and nothing else.
+    expect(doc).toMatch(/subject only|only the subject/i);
+    // A right/wrong pair, because "fill in the subject" reads as satisfied
+    // by an agent that also re-states the style it was just given.
+    expect(doc).toMatch(/^.*\bwrong\b.*$/im);
+    expect(doc).toMatch(/^.*\bright\b.*$/im);
+    // Why no lettering — both halves. The unreliability is the lesser one.
+    expect(doc).toMatch(/no text labels/i);
+    expect(doc).toMatch(/wrong hand|the board writes|written by the board/i);
+  });
+
+  test("the command in the reference is the command the shared script accepts", () => {
+    const doc = illustrations();
+    // The prompt is POSITIONAL. A `--prompt` flag does not exist, and a
+    // documented command that invents one fails on its first run — the
+    // narration `--language` lesson, one script over.
+    expect(doc).toContain("generate_image.mjs");
+    expect(doc).not.toMatch(/--prompt\b/);
+    expect(generatorScript).not.toMatch(/^\s*prompt:\s*\{\s*type:/m);
+    // Path convention shared with narration, so either page can be copied.
+    expect(doc).toContain("{SKILL_PATH}/scripts/generate_image.mjs");
+    // Every flag the doc hands the agent must be one the script parses.
+    const documentedFlags = [...doc.matchAll(/--([a-z][a-z-]*)/g)].map((m) => m[1]!);
+    expect(documentedFlags.length).toBeGreaterThan(2);
+    for (const flag of new Set(documentedFlags)) {
+      expect(
+        generatorScript.includes(`"${flag}":`) || generatorScript.includes(`${flag}:`),
+        `--${flag} is not a flag generate_image.mjs parses`,
+      ).toBe(true);
+    }
+  });
+
+  test("`--style` is named as the trap it is, never as an option", () => {
+    // Measured in the script: `--style sketch` REWRITES the prompt, appending
+    // "…, no shading, white background". A white background is the exact
+    // opposite of what a board can take a picture from — it comes back a
+    // solid block. The flag is not dead, it is poisonous, and the default
+    // (`photo`) leaves the prompt alone, so the rule is: never pass it.
+    expect(generatorScript).toContain("white background");
+    const doc = illustrations();
+    expect(doc).toMatch(/never pass `--style`|do not pass `--style`/i);
+    expect(doc).toMatch(/white background/i);
+    // …and the doc never hands it over as an option: every mention of the
+    // flag sits inside the prohibition that names it.
+    for (const at of [...doc.matchAll(/--style/g)].map((m) => m.index!)) {
+      expect(
+        /never|do not/i.test(doc.slice(Math.max(0, at - 200), at + 200)),
+        `--style at ${at} is mentioned without the prohibition`,
+      ).toBe(true);
+    }
+  });
+
+  test("the output conventions are complete enough to act on, and the sidecar example parses", () => {
+    const doc = illustrations();
+    // White on black is the whole contract with the board: it is what lets
+    // ONE picture serve both a dark board and a light one.
+    expect(doc).toMatch(/white[^\n]*black/i);
+    // Where the file lands, and how the board finds it again.
+    expect(doc).toContain("illustrations/");
+    expect(doc).toContain("illustrations/manifest.json");
+    // The sidecar example is real JSON — an agent copies it — and it is fed
+    // to the BOARD'S OWN reader, not to a copy of its rules. A documented
+    // shape the reader would drop is the whole failure: the figure is
+    // ordered, paid for, written down, and silently never drawn.
+    const json = doc.match(/```json\n([\s\S]*?)```/);
+    expect(json, "no json example in illustrations.md").not.toBeNull();
+    const read = readIllustrationManifest(json![1]!);
+    expect({ issue: read.issue, empty: read.manifest === null }).toEqual({
+      issue: null,
+      empty: false,
+    });
+    const entries = Object.entries(read.manifest!.figures);
+    expect(entries.length).toBeGreaterThan(0);
+    for (const [key, entry] of entries) {
+      // Keyed by exactly the path written into board.md — relative to the
+      // content set, never prefixed with the set directory (the narration
+      // manifest's one way to corrupt itself).
+      expect(key.startsWith("illustrations/")).toBe(true);
+      expect(doc).toContain(`](${key})`);
+      // The ratio DECLARED in the file is the ratio ORDERED on the command
+      // line. Two numbers that disagree leave the board holding a space of
+      // the wrong height for a picture that is otherwise perfect.
+      const ordered = doc.match(/--aspect-ratio (\d+):(\d+)/);
+      expect(ordered, "the documented command declares no aspect ratio").not.toBeNull();
+      const [, w, h] = ordered!;
+      expect(entry.aspect).toBeCloseTo(Number(w) / Number(h), 3);
+      // …and the ordered ratio is one the generator accepts.
+      const accepted = generatorScript
+        .slice(generatorScript.indexOf("const ASPECT_RATIOS"))
+        .slice(0, 300);
+      expect(accepted, `--aspect-ratio ${w}:${h} is not one the script takes`).toContain(
+        `"${w}:${h}"`,
+      );
+    }
+  });
+
+  test("no key is an honest outcome, never a faked one", () => {
+    // The narration precedent, and the standing rule: never fake, never
+    // silently skip. Said in the plan, so the user sees the figure change
+    // tier before the lecture is written rather than finding a hole in it.
+    const doc = illustrations();
+    expect(doc).toMatch(/never fake/i);
+    expect(doc).toMatch(/say so|tell the user|said in the plan/i);
+    expect(doc).toMatch(/fall back to tier 1|falls back to tier 1/i);
+    // SKILL.md carries the no-key outcome too — it is a writing-time fact.
+    expect(read("SKILL.md")).toMatch(/no key/i);
+  });
+
+  test("a drawn figure obeys the room like anything else — no exemption", () => {
+    // A big picture is the single most likely thing to trip the user's
+    // standing floor 「不能有什么东西被挤出画面」. If the skill implies the
+    // room bends around it, the first wall it lands on proves otherwise.
+    const doc = illustrations();
+    expect(doc).toContain("@at");
+    expect(doc).toMatch(/regionBurst|check-board/);
+  });
+
+  test("the manifest ships the generator beside the voice, and the key is declared once", () => {
+    const shared = banshoManifest.skill.sharedScripts ?? [];
+    expect([...shared].sort()).toEqual(["generate-tts.mjs", "generate_image.mjs"]);
+    // One key, one mapping — the fal key already reaches the session `.env`
+    // for the voice, and a second entry would be a second source of truth.
+    expect(banshoManifest.skill.envMapping).toEqual({ FAL_KEY: "falApiKey" });
+    // The sidecar's write is the board's signal that the pictures changed,
+    // exactly as `narration/manifest.json` is for the voice. A file nobody
+    // watches makes the documented "save it last" instruction a lie.
+    expect(banshoManifest.viewer?.watchPatterns ?? []).toContain(
+      "**/illustrations/manifest.json",
+    );
   });
 
   test("the manifest scene is present and told in expression terms", () => {

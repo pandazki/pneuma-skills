@@ -70,6 +70,32 @@ A passage is a **formula** when the notation is the shortest true statement
 — and a formula is almost always followed by a picture, because a formula
 convinces nobody who does not already believe it.
 
+### A figure also carries a TIER, in the same cell
+
+Write it beside the medium — `FIGURE t1` / `FIGURE t2` — and the decision
+is made once, in the cheapest place, by a one-line rule:
+
+- **Tier 1** — sayable with `chart`, `graph`, or ink on the words. The
+  board draws it itself, one line at a time, in front of the audience.
+  Almost everything is tier 1, and it is the better lecture: they watch
+  it being made.
+- **Tier 2** — needs real hand-drawing ability, so an outside hand draws
+  it: a neuron, a cross-section, an object whose likeness is the point.
+  Craft, the fixed look and the command are in
+  `references/illustrations.md`.
+
+**Every tier-2 picture in the table is ordered in ONE batch, the moment the
+design is settled and before the first board step — never mid-lecture.**
+Each is real money and the better part of a minute; a wait
+that lands between two sentences is paid by the person watching, and the
+writing loses its thread to a command. Batched, they are on disk before
+the pen wants them. A tier-2 figure added in a later revision is ordered
+at that revision, again before writing resumes.
+
+With no key there is no tier 2 at all. Say so in the row, and either fall
+back to tier 1 or drop the figure and tell the user — never write the
+lecture as if the picture will be there.
+
 Two traps:
 
 - **A figure that only labels prose is not a figure.** A `graph` whose

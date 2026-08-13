@@ -166,11 +166,30 @@ Q 加一倍机器，为什么不快一倍？   A 串行的那一段就是天花�
 | # | 内容 | medium | room | len |
 |---|---|---|---|---|
 | 1 | 把口头禅立在板上 | prose | b1 `@at left` | ~40s |
-| 2 | 三人搬砖、一人签字 | FIGURE | b1 `@at right` | ~60s |
+| 2 | 三人搬砖、一人签字 | FIGURE t1 | b1 `@at right` | ~60s |
 | 3 | 阿姆达尔定律 | formula | b2 `@at full` | ~50s |
-| 4 | 1% 串行 → 100 倍上限 | FIGURE | b2 `@at right` | ~70s |
+| 4 | 1% 串行 → 100 倍上限 | FIGURE t1 | b2 `@at right` | ~70s |
 | 5 | 收束：先去找那一段 | prose | b3 `@at full` | ~40s |
 ```
+
+**A figure also gets a tier, in the same table.** Almost every picture is
+the board's own — `chart`, `graph`, ink on the words — and the board
+genuinely draws it, one line at a time, in front of the user: that is
+**tier 1**, and it is the answer whenever the passage counts, compares,
+splits or traces a flow. A few pictures need real hand-drawing ability
+(a neuron, a cross-section, a thing whose likeness is the point): that is
+**tier 2**, ordered from an outside hand in one command. You never write
+the look — the skill owns it, you fill in the subject.
+
+The rule is one line, so it costs nothing at the table: **sayable with
+`chart` / `graph` / ink → tier 1; needs a real hand → tier 2.** Then
+**every tier-2 picture is ordered in ONE batch the moment the plan is
+settled, before the first board step — never mid-lecture**, because each
+is real money and the better part of a minute, and a wait spent in the
+middle of a live talk is paid by the audience. Batched, the pictures are
+on disk before the pen wants them and the writing carries nothing extra.
+With no key there is no tier 2: say so in `plan.md` and fall back to tier
+1, or drop the figure and tell the user. Never fake one.
 
 Then one passage at a time: **write it → let it play → `glance-board` →
 hold what stands against the design → next.** Two passages behind a glance
@@ -497,8 +516,9 @@ Knowing the edges is better than discovering them on a live board:
   badge stands in and `refUnresolved` warns you. Quote the plain words
   beside the formula instead.
 - **Trend charts draw lines only.** `type: bar` parses but is reserved.
-- **Images and raw HTML hold their place but draw nothing** — they parse,
-  keep their step slot, and raise `unsupportedStep`.
+- **Raw HTML holds its place but draws nothing** — it parses, keeps its
+  step slot, and raises `unsupportedStep`. (A picture — `![…](…)` — is
+  written on the board; `references/illustrations.md` says how.)
 - **No markdown tables.** Pipes are handwritten literally; the aligned
   list pair (`- 标签：值`) is this board's table.
 
@@ -515,6 +535,7 @@ vocabulary and ready board looks are in `references/themes.md`.
 | Topic | File |
 |---|---|
 | Designing the lecture before writing it — `plan.md`, medium, room, length | `references/lecture-plan.md` |
+| The figure the board cannot draw — the two tiers, the fixed look, the batch | `references/illustrations.md` |
 | The full dialect, one paired example per form | `references/board-language.md` |
 | Charts & graphs — evidence pacing craft | `references/charts.md` |
 | Lecture voice: sentence length, sections, live rhythm | `references/voice-and-pacing.md` |

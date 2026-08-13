@@ -19,7 +19,7 @@ import { loadBoard, saveBoard } from "./domain.js";
 
 const banshoManifest: ModeManifest = {
   name: "bansho",
-  version: "0.17.4",
+  version: "0.18.0",
   // The name is the brand and stays romanized where the script has no
   // word for it (house style — `modes/kami/manifest.ts` ships "Kami" ×7);
   // the CJK locales have their own reading of 板書 and use it.
@@ -47,6 +47,12 @@ const banshoManifest: ModeManifest = {
     // Wording discipline: these bullets render VERBATIM in the launcher's
     // skill-update prompt, so they may only claim what the build actually
     // does.
+    "0.18.0": [
+      "A lecture can carry a figure the board cannot draw itself. Two tiers, both decided in plan.md before the first board step: whatever a chart, a graph or ink on the words can say stays the board's own and is drawn in front of you one line at a time, and only a picture that needs real hand-drawing ability — a neuron, a cross-section, a thing whose likeness is the point — is ordered from an outside hand",
+      "You never write how it should look. The skill owns the whole chalk-on-black opening of that order and the agent fills in the subject only, so the figure arrives in the board's own hand — and it carries no lettering, because every other word on that board was written by the pen, and a label drawn into the picture would be in the wrong hand",
+      "Every ordered picture is drawn in ONE batch the moment the design is settled, never in the middle of writing. Each one costs real money and the better part of a minute; batched, the lecture is written without a single pause for one",
+      "No fal.ai key stays an honest outcome: the design says which figure lost its tier, and the lecture either falls back to a chart or a graph the board draws itself, or drops the figure and tells you which one. Never a faked one",
+    ],
     "0.17.4": [
       "The voice-over workflow's very first command now works. The synthesis example passed `--language \"cmn-CN\"`, which the service refuses outright — no audio was written, so every Chinese board that followed the documented steps got an error instead of a voice. It takes an English name: `\"Chinese Mandarin (China)\"`",
       "Recording a clip now asks for everything a clip needs. The instruction named only the file path, while a manifest entry is rejected without `seconds` and `text` as well — so a step could be synthesized, paid for, written down, and still play silent, with the instruction that caused it reading as correct",
@@ -217,11 +223,13 @@ const banshoManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-bansho",
-    // The shared TTS CLI (same source clipcraft installs) — the voice
-    // pipeline's synthesis half. The key comes from the falApiKey init
-    // param below via .env; no key simply means the voice-over workflow
-    // is unavailable and the board plays as written.
-    sharedScripts: ["generate-tts.mjs"],
+    // Two shared CLIs (the same sources clipcraft and illustrate install),
+    // both fed by the ONE falApiKey init param below via .env: the voice's
+    // synthesis half, and the drawing hand a tier-2 figure is ordered from
+    // (`skill/references/illustrations.md`). No key is an honest outcome
+    // for both — the board plays as written, and a figure the board cannot
+    // draw itself falls back to tier 1 or is dropped out loud.
+    sharedScripts: ["generate-tts.mjs", "generate_image.mjs"],
     envMapping: {
       FAL_KEY: "falApiKey",
     },
@@ -233,12 +241,18 @@ const banshoManifest: ModeManifest = {
     // Narration audio is content-addressed (narration/<step hash>.wav —
     // new content is a new file name), so only the MANIFEST is watched:
     // its write is the agent's commit signal, and stale-URL caching is
-    // structurally impossible.
+    // structurally impossible. A drawn figure is watched BOTH ways: its
+    // sidecar (the write the skill says to save LAST — the commit signal
+    // that a lecture's pictures changed) and the picture files themselves,
+    // because a re-draw lands on the SAME path — the one thing content
+    // addressing rules out for audio and does not for a re-ordered figure.
     watchPatterns: [
       "**/board.md",
       "**/theme.css",
       "**/assets/**/*",
       "**/narration/manifest.json",
+      "**/illustrations/manifest.json",
+      "**/illustrations/**/*",
     ],
     ignorePatterns: [],
     serveDir: ".",
@@ -252,6 +266,7 @@ const banshoManifest: ModeManifest = {
           "**/board.md",
           "**/theme.css",
           "**/narration/manifest.json",
+          "**/illustrations/manifest.json",
         ],
         load: loadBoard,
         save: saveBoard, // v1 stub — the viewer is a player, not an editor
@@ -515,7 +530,7 @@ The user opened Bansho to have something explained on a board. Write the lecture
         name: "falApiKey",
         label: "fal.ai API Key",
         description:
-          "lets the agent synthesize voice-over clips (TTS via gemini-3.1-flash-tts) — leave empty to skip the voice-over workflow",
+          "lets the agent give the board a voice (TTS clips) and order the few figures the board cannot draw itself — leave empty and both are skipped: the lecture plays as written, and a figure that needed a drawing hand falls back to a chart or a graph, or is dropped out loud",
         type: "string",
         defaultValue: "",
         sensitive: true,

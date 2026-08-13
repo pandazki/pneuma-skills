@@ -27,7 +27,7 @@
 export const meta = {
   name: 'plan-lecture',
   description:
-    "Design a board lecture before writing it: propose rival arcs, judge them, write <contentSet>/plan.md with every passage's medium (prose / figure / formula / worked example), room (which board, which column, in @at words) and rough length, then critique the design for missing pictures and unused columns. Produces the plan only — the session writes the board against it.",
+    "Design a board lecture before writing it: propose rival arcs, judge them, write <contentSet>/plan.md with every passage's medium (prose / figure / formula / worked example), every figure's tier (t1 the board draws itself / t2 an outside hand draws), room (which board, which column, in @at words) and rough length, then critique the design for missing pictures, over-reached tiers and unused columns. Produces the plan only — the session writes the board against it.",
   phases: [{ title: 'Arcs' }, { title: 'Design' }, { title: 'Critique' }],
 }
 
@@ -71,6 +71,16 @@ The three facts that decide a design here:
    names or concludes is words. A formula is words that convince nobody who
    does not already believe them, so a formula is almost always followed by
    a picture.
+   Every picture also carries a TIER, decided here and nowhere else:
+   sayable with chart / graph / ink on the words → TIER 1, the board draws
+   it itself, one line at a time, in front of the audience; needs real
+   hand-drawing ability (a neuron, a cross-section, an object whose likeness
+   is the point) → TIER 2, drawn by an outside hand from one command. Almost
+   everything is tier 1, and tier 1 is the better lecture — the audience
+   watches it being made. Tier 2 costs real money and the better part of a
+   minute EACH, which is why every tier-2 picture is ordered in ONE batch
+   after this design is settled and before the first board step, never
+   mid-lecture.
 3. Length is structure, not a schedule: a spoken sentence is 4-6 seconds, a
    three-sentence paragraph with its pauses 15-25, a chart layer 8-15 on top
    of the sentence that introduces it.
@@ -141,18 +151,23 @@ A <the payoff, one line>
 | # | 内容 / what it does | medium | room | len |
 |---|---|---|---|---|
 | 1 | … | prose | b1 \`@at left\` | ~40s |
-| 2 | … | FIGURE | b1 \`@at right\` | ~60s |
+| 2 | … | FIGURE t1 | b1 \`@at right\` | ~60s |
 
 Rules the table must obey, and you are accountable for each:
 - EVERY passage names a medium, a room and a length. No blanks.
+- EVERY figure names its TIER in the medium cell — \`FIGURE t1\` or
+  \`FIGURE t2\`. A figure without a tier is a decision left for writing
+  time, which is the one place it must never be made.
 - \`room\` is a board number plus an \`@at\` word — never a size, never a
   percentage.
 - The lengths must sum to roughly ${MINUTES} minutes. Put the sum under the
   table. If it does not reach the target, the design is thin — add a passage
   or deepen one, do not pad a sentence.
 - Under the table, one line per FIGURE saying what it draws (\`chart\` of what
-  against what, or \`graph\` of which flow) — enough that the writer does not
-  have to reinvent it.
+  against what, \`graph\` of which flow, or — for a \`t2\` — the SUBJECT of the
+  drawing in one sentence, the thing itself and how its parts sit, with no
+  words about how it should look) — enough that the writer does not have to
+  reinvent it.
 
 Write the file. Then return: the path, the passage count, the figure count,
 the column count you used out of ${COLUMNS}, and the length sum.
@@ -174,6 +189,10 @@ agent. Critique it on exactly three axes and FIX what you find, in the file:
    traces a flow and is still marked \`prose\`? Is the lecture's CENTRAL idea
    drawn? A lecture whose central idea is a picture and which draws none is
    the failure this design step exists to prevent. Be specific: name the row.
+   Then check the TIERS: every figure carries \`t1\` or \`t2\`, and a \`t2\`
+   that a \`chart\` or \`graph\` could have said is money and a wait spent on
+   a worse lecture — demote it. A \`t2\` earns its tier only when the
+   drawing itself is the meaning.
 2. UNUSED COLUMNS — count the distinct board+column slots the table uses,
    out of ${COLUMNS}. If a face carries two consecutive \`@at full\` passages,
    the second writes below the first and the face runs out at half its real
@@ -201,5 +220,5 @@ return {
   arcs: { concrete: arcA, misconception: arcB },
   design,
   critique,
-  next: `Read ${PLAN_PATH}, then write ${SET}/board.md one passage at a time: write it, let it play, glance-board, hold what stands against the design, next. When reality disagrees with the design, edit ${PLAN_PATH} and say in one line what changed and why.`,
+  next: `Read ${PLAN_PATH}. If it holds any FIGURE marked t2, order EVERY one of them FIRST, in ONE batch, before the first board step and never mid-lecture — see references/illustrations.md for the fixed prompt opening (you fill in the subject only), the command, and the illustrations/manifest.json entry each one needs. Then write ${SET}/board.md one passage at a time: write it, let it play, glance-board, hold what stands against the design, next. When reality disagrees with the design, edit ${PLAN_PATH} and say in one line what changed and why.`,
 }

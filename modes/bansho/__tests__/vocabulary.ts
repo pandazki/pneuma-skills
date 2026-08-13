@@ -61,6 +61,29 @@ export const BANNED_PATTERNS: ReadonlyArray<readonly [label: string, re: RegExp]
   ["动画", /动画/],
 ];
 
+/**
+ * The one text on any agent surface that is NOT the agent's own words: the
+ * prompt handed to an outside illustrator for a tier-2 figure
+ * (`references/illustrations.md`). It is a quotation, ratified and fixed —
+ * the skill owns the whole look precisely so the agent never composes one —
+ * and it contains "hand-drawn strokes" in the physical sense a person means
+ * at a board, not the rendering sense this list bans.
+ *
+ * The exemption is CONTENT-ADDRESSED rather than a marker or a file
+ * exclusion: `agentSurfaces` removes exactly this literal string and nothing
+ * else, anywhere it appears. So it cannot be widened to smuggle a rendering
+ * word into prose, and if anyone edits the prompt in the skill without
+ * editing it here, the strip stops matching and the purity gate fails loudly
+ * — which is the same alarm as `skill.test.ts` pinning the two copies equal.
+ */
+export const LOCKED_ILLUSTRATION_PROMPT =
+  "A chalk drawing on a blackboard. Pure white chalk lines on a solid pure black background. Line art only: no fill, no shading, no gradients, no color. Loose confident hand-drawn strokes, the way a professor sketches while lecturing — slightly uneven, alive, not mechanical. Clear readable silhouette, generous spacing, no frame, no border, no background scenery, no text labels. Subject:";
+
+/** The surface text as the purity gate sees it — the quotation removed. */
+function withoutQuotedPrompt(text: string): string {
+  return text.split(LOCKED_ILLUSTRATION_PROMPT).join(" … ");
+}
+
 /** The first banned word in `text`, with its neighbourhood — or `null`. */
 export function findBannedWord(
   text: string,
@@ -114,10 +137,10 @@ export function agentSurfaces(): Array<{ name: string; text: string }> {
   const actions = banshoManifest.viewerApi?.actions ?? [];
   const commands = banshoManifest.viewerApi?.commands ?? [];
   return [
-    { name: "SKILL.md", text: readSkillFile("SKILL.md") },
+    { name: "SKILL.md", text: withoutQuotedPrompt(readSkillFile("SKILL.md")) },
     ...referenceFiles().map((f) => ({
       name: `references/${f}`,
-      text: readSkillFile(`references/${f}`),
+      text: withoutQuotedPrompt(readSkillFile(`references/${f}`)),
     })),
     { name: "manifest.skill.mdScene", text: banshoManifest.skill?.mdScene ?? "" },
     // The first thing the agent ever reads in a session. It reached T7
