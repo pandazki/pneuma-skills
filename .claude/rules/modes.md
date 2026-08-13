@@ -21,4 +21,5 @@ paths:
 - **Mode skill version bump 必须带 `changelog`**:`manifest.ts` 的 `version` 动了,就要在 `changelog` map 加同 key 的条目(launcher 的 skill-update 提示从这里取 bullets)。同时 grep 旧版本字符串——`server/__tests__/` 与 backend lifecycle harness 里有测试硬编码 manifest version。
 - **Viewer 改动遵守 frontend rules**(`.claude/rules/frontend.md`):视觉验证、design tokens、snapdom/缩略图约束都适用于 `modes/*/viewer/`。
 - **SKILL.md 模板变量**:`{{key}}` / `{{viewerCapabilities}}` 由 skill-installer 替换;不要在 skill 文本里发明新的模板语法。
+- **`generate_image.mjs --style sketch` 会改写你的 prompt**:它不是一个开关,而是在 model dispatch 之前把 `, no shading, white background` 追加到 prompt 尾巴上(`modes/_shared/scripts/generate_image.mjs`)。任何靠"生成图自身明暗"做合成的 mode(bansho 的板书插图靠 luminance 当遮罩)拿到的就是一整块实心白 —— 图看着"生成成功",落到板上是个方块。**自己在 prompt 里写死风格的 mode,一律不要传 `--style`**(默认 `photo` 不动 prompt)。顺带:prompt 是**位置参数**,没有 `--prompt` 这个 flag,写了直接当第二个 positional 吞掉。
 - **Seed/showcase 物料**:showcase 内容在 `modes/<name>/showcase/showcase.json` + `hero.png` + 3-4 `highlight-*.png`,由 `/showcase` command 生成,不要手画占位图。
