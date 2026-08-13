@@ -1432,6 +1432,15 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
       // an optimisation but as a guarantee: a document that never says
       // `@at` takes byte-for-byte the path it took before regions existed,
       // down to the absence of the style writes.
+      //
+      // ONE EXCEPTION, and it is not an erosion of that guarantee: a
+      // FIGURE is sized here whatever its region (`sizeFigure`). Its box
+      // is the only one on the board that is not a consequence of how much
+      // was written, so leaving it unsized does not preserve an older
+      // behaviour — it reproduces a defect that has no older correct
+      // version to preserve (see `sizeFigure`). Figures postdate regions
+      // entirely, so there is no pre-region path of theirs to be faithful
+      // to.
       const widthOf = new Map<string, number>();
       if (frame) {
         // ONE ANSWER to "how wide is this box" (`layout.ts::scanBoxRects`),
