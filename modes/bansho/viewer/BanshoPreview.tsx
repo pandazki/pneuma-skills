@@ -72,6 +72,8 @@ import {
 } from "./board-frame.js";
 import { captureViewer } from "../../../src/utils/viewer-capture.js";
 import { AudioConductor } from "./audio-conductor.js";
+import { TrackConductor } from "./track-conductor.js";
+import { layOutTrack, verifyTrack } from "../narration/track.js";
 import BoardCanvas, {
   type BoardApi,
   type CompiledBoard,
@@ -332,7 +334,25 @@ export default function BanshoPreview({
         `${getApiBase()}/api/file?path=${encodeURIComponent(path)}`,
     });
   }
-  useEffect(() => () => conductorRef.current?.dispose(), []);
+  // The pre-mixed track's conductor (T10-5), created beside the per-clip
+  // one and never instead of it: a missing or stale track falls back to
+  // clip-at-a-time playback, which is flawed but audible. Exactly one of
+  // the two holds a program at any moment (the effect below), so they can
+  // never both be sounding.
+  const trackConductorRef = useRef<TrackConductor | null>(null);
+  if (trackConductorRef.current === null) {
+    trackConductorRef.current = new TrackConductor({
+      resolveUrl: (path) =>
+        `${getApiBase()}/api/file?path=${encodeURIComponent(path)}`,
+    });
+  }
+  useEffect(
+    () => () => {
+      conductorRef.current?.dispose();
+      trackConductorRef.current?.dispose();
+    },
+    [],
+  );
 
   // ── The file-existence probe (M3), on the PLAYBACK path ─────────────────
   // A manifest `seconds` whose audio file is gone must not pace the
@@ -507,6 +527,60 @@ export default function BanshoPreview({
       .map((e) => ({ ref: e.ref, file: e.file }));
   }, [missingClips, lecture, narrationRead]);
 
+  // ── The pre-mixed track (T10-5) ──────────────────────────────────────────
+  // The track's layout is EVIDENCE, never authority. Per-clip playback is
+  // self-correcting — a clip sounds when its window opens, so a schedule
+  // error costs one step — but one track is globally aligned: after t = 0
+  // there is no per-step resync at all, so a layout mixed against a
+  // schedule that has since moved divorces the voice from the pen
+  // progressively, and it reads as an engine bug. The board's schedule is
+  // a function of MEASURED text (a theme flip changes the font and the
+  // same words wrap differently), so it genuinely does move.
+  //
+  // Therefore the layout is recomputed HERE, from this compile, and the
+  // recorded one has to still agree. It does not → the track is not
+  // played, the per-clip path takes over, and the reason is said out loud
+  // (a `staleTrack` finding + the chip). Staleness detection costs nothing
+  // extra: appending one sentence shifts every later position, which is
+  // the same disagreement.
+  const trackRead = setKey === null ? null : (board?.track[setKey] ?? null);
+  const trackVerdict = useMemo(() => {
+    const recorded = trackRead?.manifest ?? null;
+    if (recorded === null) {
+      // No track is the ordinary state; a MALFORMED sidecar is not, and
+      // must not hide behind the same silent fallback.
+      return { manifest: null, reason: trackRead?.issue ?? null };
+    }
+    if (!compiled) return { manifest: null, reason: null };
+    const live = layOutTrack(
+      compiled.narration,
+      compiled.timeline.duration,
+      recorded.sampleRate,
+    );
+    const verdict = verifyTrack(recorded, live);
+    return verdict.ok
+      ? { manifest: recorded, reason: null }
+      : { manifest: null, reason: verdict.reason };
+  }, [trackRead, compiled]);
+
+  // A track that would not load or start takes the whole voice with it, so
+  // it hands the board back to the per-clip path rather than muting the
+  // lecture. Cleared when the track itself changes — a new file is a new
+  // chance.
+  const [trackFailed, setTrackFailed] = useState(false);
+  useEffect(
+    () =>
+      trackConductorRef.current?.onDegraded(({ reason }) => {
+        if (reason === "failed") setTrackFailed(true);
+      }),
+    [],
+  );
+  const trackFile = trackVerdict.manifest?.file ?? null;
+  useEffect(() => {
+    setTrackFailed(false);
+  }, [trackFile, setKey]);
+  const useTrack = trackVerdict.manifest !== null && !trackFailed;
+
   // Every compile hands the conductor its program: the clip windows plus
   // each clip's WORKSPACE path (manifest `file` values are content-set
   // relative — the one path rule narration-actions.ts pins). Same-hash
@@ -514,8 +588,23 @@ export default function BanshoPreview({
   // the sounding voice.
   useEffect(() => {
     const conductor = conductorRef.current;
-    if (!conductor) return;
+    const track = trackConductorRef.current;
+    if (!conductor || !track) return;
     const windows = compiled?.narration ?? [];
+    const recorded = useTrack ? trackVerdict.manifest : null;
+    if (recorded) {
+      // The track path: ONE src, set here and not touched again while the
+      // board plays. The per-clip conductor is emptied in the same breath
+      // — an empty program is a quiet element — so only one voice exists.
+      track.setProgram(
+        recorded,
+        windows,
+        setKey ? `${setKey}/${recorded.file}` : recorded.file,
+      );
+      conductor.setProgram([], new Map());
+      return;
+    }
+    track.setProgram(null, [], null);
     const clips = narrationForBoard?.clips ?? {};
     const files = new Map<string, string>();
     for (const w of windows) {
@@ -523,16 +612,22 @@ export default function BanshoPreview({
       if (clip) files.set(w.hash, setKey ? `${setKey}/${clip.file}` : clip.file);
     }
     conductor.setProgram(windows, files);
-  }, [compiled, narrationForBoard, setKey]);
+  }, [compiled, narrationForBoard, setKey, useTrack, trackVerdict]);
 
   // Autoplay policy surface: when the browser refused to sound the voice
   // without a gesture, say so — a silently muted voice is the same
   // degradation class as the font-fallback chip (§6.4-A). One click (or
   // any page gesture — the conductor also re-arms itself) brings it back.
   const [voiceBlocked, setVoiceBlocked] = useState(false);
+  // Follows whichever conductor currently owns the voice; `onBlocked`
+  // fires immediately with the current value, so switching paths re-reads
+  // the latch rather than inheriting a stale one.
   useEffect(
-    () => conductorRef.current?.onBlocked(setVoiceBlocked),
-    [],
+    () =>
+      (useTrack ? trackConductorRef.current : conductorRef.current)?.onBlocked(
+        setVoiceBlocked,
+      ),
+    [useTrack],
   );
 
   // Clips the conductor had to abandon at runtime (a load/start failure,
@@ -566,7 +661,7 @@ export default function BanshoPreview({
     // the tip (the export posture — everything already written), and
     // returning to the board view rejoins the live tip.
     canvasKey,
-    conductorRef.current,
+    useTrack ? trackConductorRef.current : conductorRef.current,
   );
   // Stable getter — BoardCanvas's rebuild effect depends on it; a new
   // identity per render would recompile the board every frame.
@@ -819,6 +914,7 @@ export default function BanshoPreview({
         overflowing: compiled?.overflowing ?? [],
         inkAfterErase: compiled?.inkAfterErase ?? [],
         missingNarrationClips: missingNarration,
+        staleTrack: trackVerdict.reason,
         undrawnIllustrations: undrawnFigures,
         collisions: compiled?.collisions ?? [],
         bursts: compiled?.bursts ?? [],
@@ -831,7 +927,7 @@ export default function BanshoPreview({
       message: report.summary,
       data: { ok: report.ok, findings: report.findings },
     };
-  }, [compiled, missingNarration, undrawnFigures]);
+  }, [compiled, missingNarration, undrawnFigures, trackVerdict]);
 
   /**
    * `narrate` (T10) — the voice-over plan. The response shape lives in
@@ -1150,6 +1246,7 @@ export default function BanshoPreview({
         // the board DOES fire: it rides `refUnresolved`, one of the three
         // §9 kinds, because a hole in the board is worth interrupting for.
         missingNarrationClips: missingNarration,
+        staleTrack: trackVerdict.reason,
         undrawnIllustrations: undrawnFigures,
         collisions: compiled?.collisions ?? [],
         bursts: compiled?.bursts ?? [],
@@ -1159,7 +1256,7 @@ export default function BanshoPreview({
     );
     reportedRef.current = seen;
     for (const notification of notifications) notify(notification);
-  }, [lecture, compiled, readonly, missingNarration, undrawnFigures]);
+  }, [lecture, compiled, readonly, missingNarration, undrawnFigures, trackVerdict]);
 
   // `boardCollision` (§5.5): the room now lets declarations land on top of
   // each other, and being SEEN is the whole of how a collision is handled.
@@ -1303,12 +1400,29 @@ export default function BanshoPreview({
                 // board. The click IS the gesture that unlocks it.
                 <button
                   type="button"
-                  onClick={() => conductorRef.current?.unlock()}
+                  onClick={() =>
+                    (useTrack
+                      ? trackConductorRef.current
+                      : conductorRef.current
+                    )?.unlock()
+                  }
                   className="px-2 py-1 rounded-md text-[11px] font-medium bg-cc-warning/15 text-cc-warning backdrop-blur hover:bg-cc-warning/25 transition-colors cursor-pointer"
                   title="The browser blocked sound before your first interaction with the page — click to let the voice-over play"
                 >
                   voice muted — click to enable
                 </button>
+              ) : null}
+              {trackVerdict.reason ? (
+                // A refused track (T10-5). The board did NOT go silent —
+                // it fell back to playing the clips one at a time — but a
+                // silent downgrade would leave the author believing the
+                // track they mixed is what they are hearing.
+                <div
+                  className="px-2 py-1 rounded-md text-[11px] font-medium bg-cc-warning/15 text-cc-warning backdrop-blur"
+                  title={`The mixed narration track no longer matches this board (${trackVerdict.reason}), so it is not played — the clips play one at a time instead. Ask the agent to re-run the mixer.`}
+                >
+                  narration track stale — playing clips
+                </div>
               ) : null}
               {voiceTroubleCount > 0 ? (
                 // Degraded voice (M3/M2): clips whose file is missing on

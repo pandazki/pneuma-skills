@@ -35,6 +35,7 @@ import {
   readNarrationManifest,
   type NarrationManifestRead,
 } from "./narration/types.js";
+import { readTrackManifest, type TrackManifestRead } from "./narration/track.js";
 import type {
   ChartAxis,
   ChartLayerRow,
@@ -78,6 +79,16 @@ export interface Board {
    * failure through the same silence (see `narration/types.ts`).
    */
   narration: Record<string, NarrationManifestRead>;
+  /**
+   * Sibling `narration/track.json` per content set (T10-5), same key, same
+   * ride: the layout of the PRE-MIXED track — which clip sits at which
+   * sample. Absent is the ordinary state (no track has been mixed yet) and
+   * falls back to per-clip playback; malformed carries its reason rather
+   * than hiding behind that fallback. The layout is EVIDENCE, never
+   * authority — the viewer recomputes it from the live compile and refuses
+   * a track that no longer agrees (see `narration/track.ts`).
+   */
+  track: Record<string, TrackManifestRead>;
   /**
    * Sibling `illustrations/manifest.json` per content set (I1), same key,
    * same ride. The READ result, like narration's: a missing file is a
@@ -1645,6 +1656,7 @@ export function loadBoard(
   const byContentSet: Record<string, Lecture> = {};
   const themeCss: Record<string, string> = {};
   const narration: Record<string, NarrationManifestRead> = {};
+  const track: Record<string, TrackManifestRead> = {};
   const illustrations: Record<string, IllustrationManifestRead> = {};
   for (const f of boards) {
     const prefix =
@@ -1662,6 +1674,11 @@ export function loadBoard(
     narration[prefix] = readNarrationManifest(
       files.find((n) => n.path === narrationPath)?.content,
     );
+    const trackPath =
+      prefix === "" ? "narration/track.json" : `${prefix}/narration/track.json`;
+    track[prefix] = readTrackManifest(
+      files.find((n) => n.path === trackPath)?.content,
+    );
     const illustrationsPath =
       prefix === ""
         ? "illustrations/manifest.json"
@@ -1670,7 +1687,7 @@ export function loadBoard(
       files.find((n) => n.path === illustrationsPath)?.content,
     );
   }
-  return { byContentSet, themeCss, narration, illustrations };
+  return { byContentSet, themeCss, narration, track, illustrations };
 }
 
 /**

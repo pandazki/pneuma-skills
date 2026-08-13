@@ -64,6 +64,13 @@ export const FINDING_CODES = [
   // four boards on one board's worth of talk, and nobody watching the
   // room from inside it can see that.
   "turnUnderfilled",
+  // T10-5 — the one finding a PRE-MIXED narration track can produce. A
+  // track is globally aligned (no per-step resync after t = 0), so a
+  // layout that no longer matches the board would divorce voice from pen
+  // progressively and look like an engine bug. It is refused instead, and
+  // said out loud: the board falls back to per-clip playback and asks for
+  // a remix.
+  "staleTrack",
 ] as const;
 
 export type FindingCode = (typeof FINDING_CODES)[number];
@@ -101,6 +108,14 @@ export interface BoardObservations {
    * finding, and silence would be the worse failure.
    */
   unplacedMathErrors?: number;
+  /**
+   * Why the pre-mixed narration track was refused (T10-5), or null/absent
+   * when there is no track or it still agrees with the live board. Carries
+   * the REASON rather than a boolean: "clip 12 sits 1.4s away from where
+   * the board now performs it" tells the agent what to do; "stale" does
+   * not. Board-level, so the finding carries no address.
+   */
+  staleTrack?: string | null;
   /** Steps whose writing runs past the right edge of the board. */
   overflowing: readonly StepRef[];
   /**
@@ -471,6 +486,8 @@ const SENTENCE: Record<FindingCode, string> = {
   turnOnFullWall: TURN_ON_FULL_WALL_MESSAGE,
   turnUnderfilled:
     "This turns to a new board while the one it leaves is still mostly empty — the writing before it could have kept going.",
+  staleTrack:
+    "The mixed narration track no longer matches this board, so it is not played — re-run the mixer with a fresh plan from the narrate action.",
 };
 
 const HEADLINE: Record<FindingCode, string> = {
@@ -484,6 +501,7 @@ const HEADLINE: Record<FindingCode, string> = {
   regionBurst: "stand taller than the space they were placed in",
   turnOnFullWall: "turn away from a wall with nothing clean left",
   turnUnderfilled: "leave a board that is still mostly empty",
+  staleTrack: "no longer match the board they were mixed for",
 };
 
 // ── Reading the board ───────────────────────────────────────────────────────
@@ -632,6 +650,17 @@ export function collectFindings(
       address: toAddress(figure.ref),
       message: UNDRAWN_SENTENCE[figure.reason],
       ...quote(figure.src),
+    });
+  }
+
+  // The mixed track the board would not play (T10-5). One finding for the
+  // whole track, because that is what it is: a track is one object, and
+  // half a track is not a degradation anyone can use.
+  if (observations.staleTrack) {
+    findings.push({
+      code: "staleTrack",
+      message: SENTENCE.staleTrack,
+      ...quote(observations.staleTrack),
     });
   }
 

@@ -464,7 +464,9 @@ your latest append.
 `stepParseError`, `refUnresolved` (a look-back or chart annotation that
 matched nothing), `unsupportedStep`, `mathRenderError`, `boardOverflow`
 (past the board's edge — clipped or taller than one board),
-`narrationClipMissing` (clip file gone), plus four that are not faults but
+`narrationClipMissing` (clip file gone), `staleTrack` (the mixed narration
+track no longer matches this board — the board played the clips one by one
+instead; re-run the mixer), plus four that are not faults but
 what you declared: `regionCollision`, `regionBurst`, `turnOnFullWall`, `turnUnderfilled`.
 
 **Do not** reach for play / pause / the playhead / speed. Those are the
