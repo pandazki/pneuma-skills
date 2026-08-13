@@ -81,7 +81,7 @@ function manifestFor(
   for (const [fragment, seconds] of entries) {
     const hash = hashOf(lecture, fragment);
     clips[hash] = {
-      file: `narration/${hash}.wav`,
+      file: `narration/${hash}.mp3`,
       seconds,
       text: fragment,
     };
@@ -257,7 +257,7 @@ describe("buildNarrationPlan", () => {
     expect(texts.some((t) => t.includes("第一句话"))).toBe(true);
     expect(texts.some((t) => t.includes("结尾一句"))).toBe(true);
     expect(plan.entries.every((e) => e.status === "needs-audio")).toBe(true);
-    expect(plan.entries.every((e) => e.file === `narration/${e.hash}.wav`)).toBe(
+    expect(plan.entries.every((e) => e.file === `narration/${e.hash}.mp3`)).toBe(
       true,
     );
     // @wait produces no plan entry (its plain text is empty).
@@ -329,8 +329,8 @@ describe("buildNarrationPlan", () => {
     // The probe asks about WORKSPACE paths (set prefix + manifest file).
     expect(probed.sort()).toEqual(
       [
-        `tech-zh/narration/${gone}.wav`,
-        `tech-zh/narration/${kept}.wav`,
+        `tech-zh/narration/${gone}.mp3`,
+        `tech-zh/narration/${kept}.mp3`,
       ].sort(),
     );
     expect(missing).toEqual(new Set([gone]));
@@ -381,6 +381,9 @@ describe("buildNarrationPlan", () => {
     const hash = stepContentHash(step, lecture.source);
     const manifest: NarrationManifest = {
       clips: {
+        // Deliberately `.wav`: a lecture voiced before the board's voice
+        // moved to Seed-Speech keeps the clips it already paid for, and the
+        // plan must go on echoing their recorded paths verbatim.
         [hash]: { file: `narration/${hash}.wav`, seconds: 3, text: "E 等于 mc 平方" },
       },
     };
@@ -408,7 +411,7 @@ describe("buildNarrationPlan", () => {
     expect(entry).toBeDefined();
     expect(entry!.status).toBe("silent");
     expect(entry!.text).toBe("");
-    expect(entry!.file).toBe(`narration/${hash}.wav`);
+    expect(entry!.file).toBe(`narration/${hash}.mp3`);
     expect(entry!.ref).toEqual(ref);
     // Waits and rules still never appear — silence is the formula's
     // special case, not a door for every zero-text step.
@@ -428,7 +431,7 @@ describe("buildNarrationPlan", () => {
     // had no way to get the first key. Now the formula is handed over…
     const silent = data.steps.filter((s) => s.status === "silent");
     expect(silent).toHaveLength(1);
-    expect(silent[0]!.output).toBe(`narration/${silent[0]!.key}.wav`);
+    expect(silent[0]!.output).toBe(`narration/${silent[0]!.key}.mp3`);
     // …while the speakable counts stay honest (a formula is not owed a
     // clip) and the message routes the agent to the workflow.
     expect(response.message).toContain("0 of 0 speakable");

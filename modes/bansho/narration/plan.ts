@@ -76,7 +76,12 @@ export function buildNarrationPlan(
       ref,
       hash,
       text,
-      file: clip?.file ?? `narration/${hash}.wav`,
+      // `.mp3` because the board's voice is Seed-Speech, which returns mp3
+      // or opus and no WAV at all. A clip ALREADY recorded keeps whatever
+      // path its manifest entry names — a lecture voiced before this change
+      // keeps its `.wav` files and plays exactly as it did; only clips not
+      // yet synthesized are proposed under the new extension.
+      file: clip?.file ?? `narration/${hash}.mp3`,
       status: clip
         ? missingClips.has(hash)
           ? "needs-audio"

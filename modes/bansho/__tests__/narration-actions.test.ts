@@ -60,7 +60,7 @@ describe("narrateResponse — the path contract", () => {
     const steps = stepsOf(result);
     expect(steps.length).toBeGreaterThan(0);
     for (const step of steps) {
-      expect(step.file).toBe(`narration/${step.key}.wav`);
+      expect(step.file).toBe(`narration/${step.key}.mp3`);
       expect(step.file.startsWith("tech-zh/")).toBe(false);
       expect(step.output).toBe(`tech-zh/${step.file}`);
       expect(step.status).toBe("needs-audio");

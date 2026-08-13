@@ -26,8 +26,13 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  audioDurationSeconds,
   buildResultJson,
+  DEFAULT_MODEL,
   formatFromPath,
+  MODELS,
+  mp3DurationSeconds,
+  resolveFormat,
   synthesizeToFile,
   wavDurationSeconds,
 } from "../generate-tts.mjs";
@@ -119,6 +124,7 @@ function fetchQueue(
 }
 
 describe("synthesizeToFile — every failure names its cause, nothing exits", () => {
+  const GEMINI = MODELS["gemini-3.1-flash-tts"]!;
   const body = { prompt: "hi", voice: "Kore", output_format: "wav" };
 
   test("fal non-200 propagates the status and the response text", async () => {
@@ -126,16 +132,16 @@ describe("synthesizeToFile — every failure names its cause, nothing exits", ()
       new Response("quota exhausted", { status: 429 }),
     ]);
     await expect(
-      synthesizeToFile(body, "k", "/nonexistent/out.wav", impl),
+      synthesizeToFile(GEMINI, body, "k", "/nonexistent/out.wav", impl),
     ).rejects.toThrow(
-      "fal-ai/gemini-3.1-flash-tts failed (429): quota exhausted",
+      "failed (429): quota exhausted",
     );
   });
 
   test("a 200 with no audio URL fails loudly, before any download", async () => {
     const { impl, calls } = fetchQueue([Response.json({ audio: {} })]);
     await expect(
-      synthesizeToFile(body, "k", "/nonexistent/out.wav", impl),
+      synthesizeToFile(GEMINI, body, "k", "/nonexistent/out.wav", impl),
     ).rejects.toThrow("fal.ai returned no audio URL");
     expect(calls.length).toBe(1); // never reached for the audio
   });
@@ -146,7 +152,7 @@ describe("synthesizeToFile — every failure names its cause, nothing exits", ()
       new Response("gone", { status: 404 }),
     ]);
     await expect(
-      synthesizeToFile(body, "k", "/nonexistent/out.wav", impl),
+      synthesizeToFile(GEMINI, body, "k", "/nonexistent/out.wav", impl),
     ).rejects.toThrow("Failed to download audio (404)");
   });
 
@@ -159,7 +165,7 @@ describe("synthesizeToFile — every failure names its cause, nothing exits", ()
     const dir = mkdtempSync(join(tmpdir(), "tts-test-"));
     try {
       const out = join(dir, "nested", "out.wav");
-      const bytes = await synthesizeToFile(body, "secret-key", out, impl);
+      const bytes = await synthesizeToFile(GEMINI, body, "secret-key", out, impl);
       // The fal request carries the key and the body — and never leaks
       // the key anywhere else.
       expect(calls[0]!.url).toContain("fal.run/fal-ai/gemini-3.1-flash-tts");
@@ -275,5 +281,174 @@ describe("CLI guard rails", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+// ── Two voices, one CLI ─────────────────────────────────────────────────────
+//
+// bansho's board speaks with Seed-Speech, which returns mp3 or opus and NO
+// WAV — and bansho's narration manifest cannot record a clip without its
+// `seconds`. So the vendor move is only honest if the length is measured
+// from an MP3 as exactly as it was from a WAV. These pin both halves: the
+// measurement, and the refusals that keep a mismatch from becoming a file
+// with the wrong extension and a manifest with a missing number.
+
+/**
+ * A CBR MPEG-2 Layer III stream: 24 kHz, 128 kbps, mono — byte for byte the
+ * shape fal's Seed-Speech returns (verified against a real clip, whose
+ * length this arithmetic reproduced to four decimals).
+ */
+function mp3Bytes(audioBytes: number, id3 = 0): Uint8Array {
+  const out = new Uint8Array(id3 + audioBytes);
+  if (id3 >= 10) {
+    out.set([0x49, 0x44, 0x33, 0x04, 0x00, 0x00], 0); // "ID3" v2.4, no flags
+    const size = id3 - 10; // syncsafe: 7 bits per byte
+    out[6] = (size >> 21) & 0x7f;
+    out[7] = (size >> 14) & 0x7f;
+    out[8] = (size >> 7) & 0x7f;
+    out[9] = size & 0x7f;
+  }
+  out.set([0xff, 0xf3, 0xc4, 0xc4], id3); // MPEG-2, Layer III, 128 kbps, 24 kHz, mono
+  return out;
+}
+
+describe("mp3DurationSeconds — measured, never estimated", () => {
+  test("constant bitrate: the audio bytes over the bitrate, exactly", () => {
+    expect(mp3DurationSeconds(mp3Bytes(32000))).toBe(2); // 32000 * 8 / 128000
+    expect(mp3DurationSeconds(mp3Bytes(8000))).toBeCloseTo(0.5, 10);
+  });
+
+  test("ID3 tags are not audio and are not counted", () => {
+    // The trap this closes: a 45-byte ID3 header read as audio adds ~3ms to
+    // every clip, and the board paces the pen by that number.
+    expect(mp3DurationSeconds(mp3Bytes(32000, 45))).toBe(2);
+    const withV1 = new Uint8Array(mp3Bytes(32000).length + 128);
+    withV1.set(mp3Bytes(32000), 0);
+    withV1.set([0x54, 0x41, 0x47], mp3Bytes(32000).length); // trailing "TAG"
+    expect(mp3DurationSeconds(withV1)).toBe(2);
+  });
+
+  test("a Xing frame count wins over the bitrate arithmetic", () => {
+    // What a VBR encoder writes; the frame count is exact where a bitrate
+    // would only be an average.
+    const bytes = mp3Bytes(4000);
+    const tagAt = 4 + 9; // mono MPEG-2 side info
+    bytes.set([0x58, 0x69, 0x6e, 0x67], tagAt); // "Xing"
+    new DataView(bytes.buffer).setUint32(tagAt + 4, 0x01, false); // frames flag
+    new DataView(bytes.buffer).setUint32(tagAt + 8, 100, false); // 100 frames
+    expect(mp3DurationSeconds(bytes)).toBeCloseTo((100 * 576) / 24000, 10);
+  });
+
+  test("MPEG-1 and MPEG-2 do not share a frame size", () => {
+    // 1152 samples on a 24 kHz MPEG-2 clip reports exactly DOUBLE the real
+    // length — wrong in a way that still reads plausibly in a manifest.
+    const mpeg1 = mp3Bytes(4000);
+    mpeg1.set([0xff, 0xfb, 0x90, 0xc4], 0); // MPEG-1, Layer III, 128 kbps, 44.1 kHz
+    const tagAt = 4 + 17; // mono MPEG-1 side info
+    mpeg1.set([0x49, 0x6e, 0x66, 0x6f], tagAt); // "Info"
+    new DataView(mpeg1.buffer).setUint32(tagAt + 4, 0x01, false);
+    new DataView(mpeg1.buffer).setUint32(tagAt + 8, 100, false);
+    expect(mp3DurationSeconds(mpeg1)).toBeCloseTo((100 * 1152) / 44100, 10);
+  });
+
+  test("unreadable bytes return null rather than a guess", () => {
+    expect(mp3DurationSeconds(new Uint8Array([1, 2, 3]))).toBeNull();
+    expect(mp3DurationSeconds(new Uint8Array(64))).toBeNull(); // no sync word
+    expect(mp3DurationSeconds(null as unknown as Uint8Array)).toBeNull();
+    // A WAV is not an MP3 — each reader answers only for its own format.
+    expect(mp3DurationSeconds(wavBytes(48000, 96000))).toBeNull();
+  });
+
+  test("audioDurationSeconds reads whichever format arrived", () => {
+    expect(audioDurationSeconds(wavBytes(48000, 96000))).toBe(2);
+    expect(audioDurationSeconds(mp3Bytes(32000))).toBe(2);
+    expect(audioDurationSeconds(new Uint8Array([9, 9, 9]))).toBeNull();
+    // …and the --json line still omits what could not be measured.
+    expect(buildResultJson("a.ogg", audioDurationSeconds(new Uint8Array([9])))).toBe(
+      '{"path":"a.ogg"}',
+    );
+  });
+});
+
+describe("the model table is the only place the vendors differ", () => {
+  test("the default stays gemini — clipcraft's voice does not move under it", () => {
+    expect(DEFAULT_MODEL).toBe("gemini-3.1-flash-tts");
+    expect(Object.keys(MODELS).sort()).toEqual([
+      "gemini-3.1-flash-tts",
+      "seed-speech",
+    ]);
+  });
+
+  test("each vendor's request shape is built from one description", () => {
+    const gemini = MODELS["gemini-3.1-flash-tts"]!.body({
+      text: "hi",
+      voice: "Kore",
+      format: "wav",
+      style: "warm",
+      language: "English (US)",
+      temperature: 1,
+    });
+    expect(gemini).toEqual({
+      prompt: "hi",
+      voice: "Kore",
+      output_format: "wav",
+      style_instructions: "warm",
+      language_code: "English (US)",
+      temperature: 1,
+    });
+    const seed = MODELS["seed-speech"]!.body({
+      text: "hi",
+      voice: "vienna_mixed_en_zh",
+      format: "mp3",
+      style: "warm",
+      language: "zh",
+      speed: 1.1,
+    });
+    // Same asks, different field names — `prompt`/`text`,
+    // `style_instructions`/`voice_instruction`, `language_code`/`language`.
+    expect(seed).toEqual({
+      text: "hi",
+      voice: "vienna_mixed_en_zh",
+      output_format: "mp3",
+      voice_instruction: "warm",
+      language: "zh",
+      speed: 1.1,
+    });
+  });
+
+  test("seed-speech refuses a .wav path instead of writing mp3 into it", () => {
+    const seed = MODELS["seed-speech"]!;
+    expect(() => resolveFormat(seed, "narration/a.wav")).toThrow(
+      /cannot return wav/,
+    );
+    expect(resolveFormat(seed, "narration/a.mp3")).toBe("mp3");
+    // One ask, two spellings: `.opus` is `ogg_opus` on gemini and `opus` here.
+    expect(resolveFormat(seed, "narration/a.opus")).toBe("opus");
+    expect(resolveFormat(MODELS["gemini-3.1-flash-tts"]!, "a.opus")).toBe("ogg_opus");
+    expect(resolveFormat(MODELS["gemini-3.1-flash-tts"]!, "a.wav")).toBe("wav");
+  });
+
+  test("the two vendors spell a language differently, and each rejects the other's", () => {
+    // The lesson the narration reference already paid for once: a value the
+    // far end refuses costs a request and writes no audio. Both spellings
+    // are now checked locally, before the key is even used.
+    const seedLang = MODELS["seed-speech"]!.language;
+    const geminiLang = MODELS["gemini-3.1-flash-tts"]!.language;
+    // The `kind` IS the difference; narrowing on it here is the same act
+    // the CLI performs before it validates a value.
+    expect([seedLang.kind, geminiLang.kind]).toEqual(["code", "display-name"]);
+    if (seedLang.kind !== "code" || geminiLang.kind !== "display-name") return;
+    expect(seedLang.values).toContain("zh");
+    expect(seedLang.values).not.toContain("Chinese Mandarin (China)");
+    expect(geminiLang.check.test("Chinese Mandarin (China)")).toBe(true);
+    expect(geminiLang.check.test("zh")).toBe(false);
+    expect(geminiLang.check.test("cmn-CN")).toBe(false);
+  });
+
+  test("a bilingual voice is the board's default, not an English one", () => {
+    // A lecture says 「阿姆达尔定律」 and "NVIDIA" in one breath; a
+    // single-language voice reads one of them as noise.
+    expect(MODELS["seed-speech"]!.defaultVoice).toContain("_zh");
+    expect(MODELS["seed-speech"]!.defaultVoice).toContain("en");
   });
 });

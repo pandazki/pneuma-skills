@@ -50,33 +50,55 @@ requirement.
 
    ```bash
    node {SKILL_PATH}/scripts/generate-tts.mjs --json \
+     --model seed-speech \
      --text "the spoken line" \
-     --voice Kore --language "Chinese Mandarin (China)" \
      --output <the step's "output" from the plan>
    ```
 
-   Always `--json`, always the `.wav` path the plan's `output` names: the
-   command prints `{"path": "...", "seconds": N}`, and `seconds` can only
-   be measured from `.wav` output. Needs `FAL_KEY` in the session `.env`
-   (the fal.ai key init parameter); if it is missing, tell the user the
-   board cannot get a voice rather than working around it.
+   Always `--json`, always the exact path the plan's `output` names: the
+   command prints `{"path": "...", "seconds": N}`, and the manifest wants
+   that `seconds` verbatim. Needs `FAL_KEY` in the session `.env` (the
+   fal.ai key init parameter); if it is missing, tell the user the board
+   cannot get a voice rather than working around it.
 
-   **`--language` takes an English display name, not a BCP-47 tag** —
-   `"Chinese Mandarin (China)"`, `"English (US)"`, `"Japanese (Japan)"`.
-   A tag like `cmn-CN` or `zh-CN` is rejected outright (HTTP 422) and no
-   audio is written; the error lists every accepted name. The flag is
-   optional — omitting it lets the voice follow the text — so if a name
-   is refused, drop the flag rather than guessing another spelling.
+   **The board's voice is `seed-speech`** — ByteDance Seed-Speech. It
+   returns `.mp3` (never `.wav`, and asking for a `.wav` path is refused
+   outright rather than quietly written), and the plan already names its
+   clips `.mp3`. Its length is measured just as exactly as a `.wav`, so
+   nothing about the manifest changes.
+
+   **Leave `--language` off.** Unset means the voice detects the language
+   itself, which is the only way it will read 「阿姆达尔定律」 and "NVIDIA"
+   in one sentence without stumbling — and a board mixes them constantly.
+   Force it only to stop a mis-detection, with a short code: `zh`, `en`,
+   `ja`, `es-mx`, `id`, `pt-br`, `ko`, `it`, `de`, `fr`.
+
+   **Voices — the name says which languages it carries.** The default is
+   `vienna_mixed_en_zh`; `mixed_en_zh` means it blends the two inside one
+   sentence. Others: `alina_mixed_en_zh`, `corinne_mixed_en_zh`,
+   `daisy_mixed_en_zh`, `freya_mixed_en_zh`, `holly_mixed_en_zh`,
+   `lyla_mixed_en_zh` · Chinese only `bonnie_zh`, `felix_zh`,
+   `celeste_zh` · English only `stokie_en`, `dacey_en`, `tim_en`. Two more
+   knobs: `--style "unhurried, like explaining to one person"` steers the
+   delivery, and `--speed 0.9` slows it. Pick by ear with the user; keep
+   one voice for the whole board.
+
+   **The other voice.** `--model gemini-3.1-flash-tts` is still there and
+   is the one to reach for when a line needs inline expressive tags
+   (`[sigh]`, `[whispering]`) or a `.wav`. Its `--language` is spelled the
+   opposite way — an English display name, `"Chinese Mandarin (China)"`,
+   never a code or a BCP-47 tag (a tag is rejected with HTTP 422 and
+   writes no audio). Both spellings are checked before the request, so a
+   wrong one costs you nothing but the message.
 3. **Record each clip in the manifest.** `narration/manifest.json` sits
    next to `board.md` in the same content set:
 
    ```json
    {
-     "voice": "Kore",
-     "language": "Chinese Mandarin (China)",
+     "voice": "vienna_mixed_en_zh",
      "clips": {
        "1a2b3c4d": {
-         "file": "narration/1a2b3c4d.wav",
+         "file": "narration/1a2b3c4d.mp3",
          "seconds": 3.42,
          "text": "第一句话,讲清楚一件事。"
        }

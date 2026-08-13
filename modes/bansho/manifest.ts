@@ -19,7 +19,7 @@ import { loadBoard, saveBoard } from "./domain.js";
 
 const banshoManifest: ModeManifest = {
   name: "bansho",
-  version: "0.18.0",
+  version: "0.19.0",
   // The name is the brand and stays romanized where the script has no
   // word for it (house style — `modes/kami/manifest.ts` ships "Kami" ×7);
   // the CJK locales have their own reading of 板書 and use it.
@@ -47,6 +47,11 @@ const banshoManifest: ModeManifest = {
     // Wording discipline: these bullets render VERBATIM in the launcher's
     // skill-update prompt, so they may only claim what the build actually
     // does.
+    "0.19.0": [
+      "The board has a new voice: ByteDance Seed-Speech, chosen because it reads a bilingual lecture the way a bilingual person does — 「阿姆达尔定律」 and \"NVIDIA\" in one breath, with no language flag set at all. The old voice is still one flag away (--model gemini-3.1-flash-tts) and is still the one for inline expressive tags",
+      "Clips are .mp3 now, because this voice returns no .wav — and their length is still MEASURED, not estimated, so a clip still paces the pen exactly as it did. A lecture already voiced keeps every clip it paid for and plays unchanged",
+      "Asking a voice for a format it cannot make is refused before the request instead of writing the wrong bytes into a file with the right name; the same goes for a language spelled the other vendor's way, which used to cost a request and return no audio",
+    ],
     "0.18.0": [
       "A lecture can carry a figure the board cannot draw itself. Two tiers, both decided in plan.md before the first board step: whatever a chart, a graph or ink on the words can say stays the board's own and is drawn in front of you one line at a time, and only a picture that needs real hand-drawing ability — a neuron, a cross-section, a thing whose likeness is the point — is ordered from an outside hand",
       "You never write how it should look. The skill owns the whole chalk-on-black opening of that order and the agent fills in the subject only, so the figure arrives in the board's own hand — and it carries no lettering, because every other word on that board was written by the pen, and a label drawn into the picture would be in the wrong hand",

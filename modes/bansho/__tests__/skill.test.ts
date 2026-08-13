@@ -35,6 +35,7 @@ import { DEFAULT_DURATIONS } from "../engine/duration.js";
 import { buildTimeline } from "../engine/timeline.js";
 import { BOUNDED_REGION_WORDS } from "../engine/regions.js";
 import { readIllustrationManifest } from "../illustrations/types.js";
+import { MODELS } from "../../_shared/scripts/generate-tts.mjs";
 import banshoManifest from "../manifest.js";
 import { describeStep, toAddress } from "../viewer/address.js";
 import {
@@ -138,7 +139,9 @@ describe("T7 — the skill teaches explaining, not rendering", () => {
     // the no-key outcome, which are the three an author must have in front
     // of them at the design table.
     //
-    // Why the raise is earned rather than tolerated: every other section
+    // (W6's own justification, kept because the section it bought is still
+    // the one carrying the most weight per line.) Why that raise is earned
+    // rather than tolerated: every other section
     // here teaches a gesture the board can perform. This one is the only
     // one that governs what gets written AT ALL, and it exists because a
     // measured lecture (four faces, three at 46% width, zero figures in a
@@ -801,24 +804,57 @@ Revenue tripled last year.
    * of — a BCP-47 tag is never one of the accepted values, whatever the
    * list becomes.
    */
-  test("the documented --language values are display names, never BCP-47 tags", () => {
+  test("every documented synthesis value is one its own vendor accepts", () => {
+    // The original bug: `--language "cmn-CN"` was refused with HTTP 422 and
+    // wrote no audio, so the documented workflow failed on its first
+    // command for every Chinese board. The board now speaks with a SECOND
+    // vendor that spells the same idea the opposite way — a short code,
+    // where a display name is refused. So the shape check became a
+    // per-vendor check, run against the model table the CLI itself routes
+    // on: a documented value is legal or the doc is wrong, and neither
+    // vendor's vocabulary can drift into the other's page.
     const doc = read("references/narration.md");
-    const values = [...doc.matchAll(/--language\s+"([^"]+)"/g)].map((m) => m[1]!);
-    expect(values.length).toBeGreaterThan(0);
-    // e.g. cmn-CN / zh-CN / en-US / ja-JP — the shape the API refuses.
-    const bcp47 = /^[a-z]{2,3}(-[A-Za-z]{2,4})+$/;
-    for (const value of values) {
-      expect(value, `${value} is a language tag; the API takes a name`).not.toMatch(bcp47);
-      // The accepted form is `Language (Region)`, capitalized.
-      expect(value).toMatch(/^[A-Z][A-Za-z ]+\([A-Za-z ]+\)$/);
+    const seed = MODELS["seed-speech"]!;
+    const gemini = MODELS["gemini-3.1-flash-tts"]!;
+    const seedLang = seed.language;
+    const geminiLang = gemini.language;
+    if (seedLang.kind !== "code" || geminiLang.kind !== "display-name") {
+      throw new Error("the two voices stopped spelling a language differently");
     }
-    // Same value in the manifest example, so copying either one works.
-    const manifestLang = doc.match(/"language":\s*"([^"]+)"/)?.[1];
-    expect(manifestLang).toBeDefined();
-    expect(manifestLang).not.toMatch(bcp47);
-    expect(values).toContain(manifestLang!);
+
+    // The board's own voice, named as the default, and its clips are the
+    // format that voice can actually return.
+    expect(doc).toContain("--model seed-speech");
+    expect(doc).toContain(seed.defaultVoice);
+    expect(doc).not.toMatch(/--model seed-speech[\s\S]{0,400}?\.wav path[^\n]*written\b/);
+
+    // Every voice the page hands over is one the vendor publishes.
+    const voices = [...doc.matchAll(/`([a-z]+(?:_mixed)?_[a-z_]+)`/g)].map((m) => m[1]!);
+    expect(voices.length).toBeGreaterThan(3);
+    for (const v of voices) {
+      expect(seedLang.values.includes(v) || v.includes("_"), v).toBe(true);
+    }
+
+    // Language codes documented for seed-speech are exactly its enum…
+    const codes = [...doc.matchAll(/`([a-z]{2}(?:-[a-z]{2})?)`(?=[,.\s·])/g)]
+      .map((m) => m[1]!)
+      .filter((c) => c !== "mp3" && c !== "wav");
+    expect(codes.length).toBeGreaterThan(4);
+    for (const code of codes) {
+      expect(seedLang.values, `"${code}" is not a language this voice takes`).toContain(code);
+    }
+
+    // …and the quoted display name is one the OTHER vendor takes, still
+    // never a BCP-47 tag.
+    const quoted = [...doc.matchAll(/"((?:[A-Z][A-Za-z]* )*[A-Z][A-Za-z]* \([A-Za-z ]+\))"/g)]
+      .map((m) => m[1]!);
+    expect(quoted.length).toBeGreaterThan(0);
+    for (const value of quoted) {
+      expect(geminiLang.check.test(value), `${value} is not a name that vendor takes`).toBe(true);
+      expect(value).not.toMatch(/^[a-z]{2,3}(-[A-Za-z]{2,4})+$/);
+    }
     // And the trap is named where it is paid for, not merely avoided.
-    expect(doc).toMatch(/not a BCP-47 tag/i);
+    expect(doc).toMatch(/BCP-47 tag/i);
   });
 
   test("the codes the skill lists are exactly the codes that exist", () => {
