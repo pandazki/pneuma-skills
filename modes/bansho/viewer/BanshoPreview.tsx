@@ -408,14 +408,26 @@ export default function BanshoPreview({
   const [absentFigures, setAbsentFigures] = useState<ReadonlySet<string>>(
     new Set(),
   );
-  // The pictures this lecture names, as one string: the aggregate source
-  // mints a fresh Lecture on every watched-file emit (including each
-  // board.md append while the agent live-writes), and the probe must re-run
-  // on a real change only — the file-watch → render loop is hot.
+  // TWO fingerprints, and both are STRINGS on purpose (the narration
+  // probe's precedent): the aggregate source mints a fresh Lecture AND a
+  // fresh manifest object on every watched-file emit — including each
+  // board.md append while the agent live-writes — so an effect keyed on
+  // either object would re-probe on every keystroke burst, and the
+  // file-watch → render loop is hot. Keyed on the strings, the probe runs
+  // when the pictures or their declarations actually change.
   const figureFingerprint = useMemo(
     () => (lecture ? illustrationSources(lecture).join("|") : ""),
     [lecture],
   );
+  const figureManifestFingerprint = useMemo(() => {
+    const figures = illustrationRead?.manifest?.figures ?? {};
+    return [
+      illustrationRead?.issue ?? "",
+      ...Object.keys(figures)
+        .sort()
+        .map((key) => `${key}=${figures[key]!.aspect}`),
+    ].join("|");
+  }, [illustrationRead]);
   const probeFiguresRef = useRef<() => Promise<Set<string>>>(async () => new Set());
   probeFiguresRef.current = async () => {
     const paths = lecture ? illustrationSources(lecture) : [];
@@ -452,7 +464,9 @@ export default function BanshoPreview({
     return () => {
       cancelled = true;
     };
-  }, [figureFingerprint, setKey, illustrationRead]);
+    // NOT keyed on `illustrations.identity`: that carries `absentFigures`,
+    // which this effect writes — the probe would re-arm itself for ever.
+  }, [figureFingerprint, figureManifestFingerprint, setKey]);
 
   const illustrations = useMemo(
     () =>

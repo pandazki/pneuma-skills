@@ -53,8 +53,14 @@ export interface IllustrationManifestRead {
   /**
    * null when the manifest is absent OR fully valid. A MISSING manifest is
    * the documented "this lecture draws no figures" state; a MALFORMED one
-   * must not hide behind that silence, so the reason rides along and
-   * reaches the agent through `check-board`.
+   * must not hide behind that silence, so the reason rides along.
+   *
+   * NOT SURFACED YET (I1 scope): today a manifest that will not parse
+   * refuses every figure as `noEntry`, whose advice — add the path to
+   * `illustrations/manifest.json` — misreads the situation when the file
+   * does not parse at all. Wiring this string into a `check-board` finding
+   * of its own (the narration reader's `issue` reaches the agent through
+   * the `narrate` action) is the follow-up that closes it.
    */
   issue: string | null;
 }

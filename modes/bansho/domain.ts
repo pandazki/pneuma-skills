@@ -81,8 +81,9 @@ export interface Board {
   /**
    * Sibling `illustrations/manifest.json` per content set (I1), same key,
    * same ride. The READ result, like narration's: a missing file is a
-   * lecture that draws no figures, but a malformed one must not hide
-   * behind that silence — it carries its reason to `check-board`.
+   * lecture that draws no figures, and a malformed one carries its reason
+   * (see `IllustrationManifestRead.issue` for what that reason does and
+   * does not reach today).
    */
   illustrations: Record<string, IllustrationManifestRead>;
 }
