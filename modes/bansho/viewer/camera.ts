@@ -51,6 +51,7 @@ export {
   followShift,
   handBackCamera,
   homePose,
+  penHandBack,
   reattachCamera,
   restZoom,
   type FollowBoard,

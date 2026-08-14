@@ -451,6 +451,48 @@ export function handBackCamera(
 }
 
 /**
+ * THE HAND-BACK'S ONE ENTRANCE (2026-08-15, defect `@at`-flashback) — and
+ * the place "there is no board" stops meaning the same thing as "I do not
+ * know which board".
+ *
+ * `handBackCamera` reads an absent board as x = 0, which is exactly right
+ * on a STRIP: a strip has one board and it starts at the origin. On a WALL
+ * the origin is board 1, so the same spelling turns "unknown" into a walk
+ * across the room. That is not a hypothetical: measured per frame on a
+ * lecture that turns to board 2 and then places the pen with
+ * `@at bottom-left`, the camera flew back to board 1 for 1.26 s and only
+ * the next written step brought it home. The `@at` step is not a box, so
+ * the fold gives it no assignment, so the host resolved no board — and
+ * handed the camera to the wall origin.
+ *
+ * The rule, stated once for both callers (P1-4: the fold's simulation and
+ * the host's live follow must share one arithmetic — this is the third
+ * time that discipline has paid, and the first time the two had DRIFTED):
+ * a hand-back with no board on a wall writes NOTHING. The pen has not
+ * moved, so neither does the camera; the z any director residue owes is
+ * restored at the next step that does name a board, and every WRITING step
+ * names one, because a write is a box and a box is assigned.
+ *
+ * `wall` is a required parameter rather than an inference from `board`
+ * precisely because the two absences are the whole point: a caller must say
+ * which world it is in, and neither world can be guessed from a null.
+ */
+export function penHandBack(
+  camera: CameraPose,
+  restZ: number,
+  viewH: number,
+  /** The board the pen stands on; `null` when the caller could not
+   *  resolve one for this step. */
+  board: FollowBoard | null,
+  /** Does this stage have boards to migrate between? A single strip does
+   *  not, and its rest genuinely IS the origin. */
+  wall: boolean,
+): CameraPose | null {
+  if (wall && !board) return null;
+  return handBackCamera(camera, restZ, board ?? undefined, viewH);
+}
+
+/**
  * THE RE-ATTACH POSE (2026-08-12, defect W4a-3b) — where a reader who took
  * the camera and then pressed play is put back.
  *
@@ -841,12 +883,13 @@ export function resolveCameraOps(
    *  the simulated x is kept rather than snapped to the wall's origin. */
   const decay = (board: FollowBoard | null, fallbackX: number): void => {
     if (!latched) return;
-    const handed = handBackCamera(
-      latched,
-      restZ,
-      board ?? undefined,
-      view.viewH,
-    );
+    // Through `penHandBack`, so the "no board on a wall" rule is stated
+    // ONCE for the simulation and the live follow both (P1-4). It is a
+    // no-op here by construction — an unknown board on a wall returns
+    // null, `next` falls back to `latched`, and `fallbackX` supplies the
+    // very x the null was protecting; the fold has always been the caller
+    // that got this right, and the helper is how the host inherits it.
+    const handed = penHandBack(latched, restZ, view.viewH, board, multi);
     const next = handed ?? latched;
     sim = clampCamera(
       { x: board ? next.x : fallbackX, y: next.y, z: restZ },

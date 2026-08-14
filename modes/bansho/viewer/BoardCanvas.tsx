@@ -174,9 +174,9 @@ import {
   followShift,
   gateCamera,
   grabPan,
-  handBackCamera,
   homeCamera,
   latchInput,
+  penHandBack,
   reattachCamera,
   restZoom,
   wheelZoomFactor,
@@ -3520,21 +3520,30 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
 
   /**
    * The gate's follow branch on a camera board: first hand a
-   * director-residue camera back to the pen (camera.ts::handBackCamera —
-   * z = the rest zoom, x = 0; measured on the first G7 trace, where an @overview's
-   * zoom otherwise stuck to the whole rest of the lecture and the next
-   * move's window opened with a one-frame z jump), then the C1 follow.
-   * Camera-free boards skip the hand-back entirely — C1 untouched.
+   * director-residue camera back to the pen (camera.ts::penHandBack —
+   * z = the rest zoom, x = the pen's board; measured on the first G7 trace,
+   * where an @overview's zoom otherwise stuck to the whole rest of the
+   * lecture and the next move's window opened with a one-frame z jump),
+   * then the C1 follow. Camera-free boards skip the hand-back entirely —
+   * C1 untouched.
+   *
+   * The board is the ACTIVE step's own assignment, and the entry may not
+   * have one: `@at` places the pen without writing, so it is no box and
+   * the fold assigns it nothing. That absence goes to `penHandBack` as
+   * `null` — "unknown" — and never as the strip's "there is no board",
+   * which is x = 0 and, on a wall, board 1 (the 2026-08-15 flashback: a
+   * placement after a turn threw the camera back across the room for
+   * 1.26 s while the ink landed correctly the whole time).
    */
   const followAt = useCallback((index: number): void => {
     const sched = stageScheduleRef.current;
     if (sched && sched.moves.length > 0) {
       const viewport = viewportRef.current;
       // The pen camera's rest is the WRITING board (C3) — the origin on a
-      // single panel, exactly the C2 contract. A board is supplied only on
+      // single panel, exactly the C2 contract. A board is resolved only on
       // a wall: on a strip the hand-back keeps the director's y, which is
       // the C2 behaviour the G7 trace pinned.
-      let board: FollowBoard | undefined;
+      let board: FollowBoard | null = null;
       if (stagedMultiRef.current) {
         const entry = compiledRef.current?.timeline.schedule[index];
         const a = entry
@@ -3546,11 +3555,12 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
           board = { ...slot, h: geom.panelH };
         }
       }
-      const rebased = handBackCamera(
+      const rebased = penHandBack(
         cameraRef.current,
         restZoom(viewWRef.current, PANEL_WIDTH),
-        board,
         viewHRef.current,
+        board,
+        stagedMultiRef.current,
       );
       if (rebased && viewport) {
         applyCamera(clampCamera(rebased, liveViewbox(viewport)));

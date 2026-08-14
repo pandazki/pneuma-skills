@@ -19,7 +19,7 @@ import { loadBoard, saveBoard } from "./domain.js";
 
 const banshoManifest: ModeManifest = {
   name: "bansho",
-  version: "0.22.0",
+  version: "0.22.1",
   // The name is the brand and stays romanized where the script has no
   // word for it (house style — `modes/kami/manifest.ts` ships "Kami" ×7);
   // the CJK locales have their own reading of 板書 and use it.
@@ -47,6 +47,9 @@ const banshoManifest: ModeManifest = {
     // Wording discipline: these bullets render VERBATIM in the launcher's
     // skill-update prompt, so they may only claim what the build actually
     // does.
+    "0.22.1": [
+      "Placing the pen with @at no longer sends the view back to the board you just left. Right after a @turn, a placement made the camera flash to the first board and sit there for over a second before correcting itself — the writing landed on the right board the whole time, so only the view was ever wrong. It now stays where the pen is",
+    ],
     "0.22.0": [
       "A graph now grows into the room it was given instead of sitting in it. It used to be capped at whatever width its own boxes happened to need — a three-box Chinese chain drew at 452px on a 1242px board, a postage stamp beside 34px handwriting — and its lettering was a fixed 24px no matter how much room it had. Both are derived from the board now: a graph fills its region and is written in a hand you can read from the back of the room",
       "The eraser stays on the board the pen is standing at. It could be aimed by a quoted anchor at content anywhere in the room, which turned it into a way to grab space — clear a board you are not standing at, then move in. An erase now retires only what the pen is standing over and what the talk has finished with, and the lecture says so before it wipes",

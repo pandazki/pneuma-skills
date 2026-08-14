@@ -20,6 +20,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 
 import {
   CAMERA_MAX_Z,
@@ -39,6 +40,7 @@ import {
   homeCamera,
   latchInput,
   panBy,
+  penHandBack,
   restZoom,
   wheelZoomFactor,
   zoomAt,
@@ -390,6 +392,110 @@ describe("W4a-3a — a wall has ROWS, and the follow may not leave a board", () 
     // window can stand (1820 - 1017), and the wall's own clamp has the last
     // word — the whole board is in view either way.
     expect(next).toEqual(cam(0, 803, 1));
+  });
+});
+
+/**
+ * THE @at FLASHBACK (2026-08-15) — measured, not reasoned.
+ *
+ * A lecture that turns to board 2 and then places the pen with
+ * `@at bottom-left` sent the camera back to BOARD 1 for 1.26 s before it
+ * corrected itself. Per-frame trace of the real player (1370x817 window, a
+ * 2x2 wall of 1242x894 boards):
+ *
+ *   t=7.50  board 2   the @turn's walk, correct
+ *   t=10.40 board 1   ← the excursion
+ *   t=11.66 board 2   the next written step pulls it back
+ *
+ * Both obvious suspects were exonerated by the same trace: the stage-anchor
+ * measurement answered `left: 1318` (board 2's own coordinates) for every
+ * written step, and the fold's assignment said panel 1 for every one of
+ * them. The liar was a third input — the hand-back's BOARD, which the host
+ * resolves from the active schedule entry's own assignment. An `@at` is not
+ * a box, so it has no assignment, and "no board" was then spelled the way a
+ * STRIP spells it — and on a strip the pen's rest x is 0, which on a wall is
+ * board 1. Absence of a board was being read as the board at the origin.
+ *
+ * `penHandBack` is where the two facts stop sharing a spelling.
+ */
+describe("penHandBack — 'I don't know the board' is not 'the board at x = 0'", () => {
+  /** The measured window: 1370 wide over 1242-wide boards. */
+  const REST = restZoom(1370, PANEL_WIDTH);
+  /** The measured wall: 2 x 2 boards of 1242x894 with a 32px gap. */
+  const VIEW_H = 817;
+  const BOARD2 = { x: 1274, y: 0, h: 894 };
+
+  test("a wall entry that names NO board leaves the camera where the pen left it", () => {
+    // The exact frame the trace caught: the camera stands in front of
+    // board 2 at rest, and the active entry is the `@at`.
+    const standing = cam(1274, 0, REST);
+    expect(penHandBack(standing, REST, VIEW_H, null, true)).toBeNull();
+    // Pin the defect itself: the spelling the host used to reach for is
+    // still, correctly, the STRIP's — it walks to the wall origin. That is
+    // why the seam exists, and why passing `undefined` from a wall is the
+    // bug rather than a style choice.
+    expect(handBackCamera(standing, REST, undefined, VIEW_H)).toEqual(
+      cam(0, 0, REST),
+    );
+  });
+
+  test("…even when the camera still wears a director's residue", () => {
+    // An @overview's zoom with the board unknown: the hand-back cannot
+    // invent a board to walk to, so it writes nothing at all rather than
+    // walking to the wrong one. The z is restored at the next step that
+    // DOES name a board — which is every writing step, since a write is a
+    // box and a box is assigned.
+    expect(penHandBack(cam(600, 40, 0.5), REST, VIEW_H, null, true)).toBeNull();
+  });
+
+  test("a wall entry that names a board hands back to it, unchanged", () => {
+    expect(penHandBack(cam(0, 0, 0.5), REST, VIEW_H, BOARD2, true)).toEqual(
+      handBackCamera(cam(0, 0, 0.5), REST, BOARD2, VIEW_H),
+    );
+    expect(penHandBack(cam(0, 0, 0.5), REST, VIEW_H, BOARD2, true)).toEqual(
+      cam(1274, 0, REST),
+    );
+  });
+
+  test("a STRIP keeps C2's contract bit for bit — no board means x = 0", () => {
+    // The single-panel lecture supplies no board by design (the director's
+    // y is the one thing the hand-back keeps there), and its rest IS the
+    // origin, because a strip has exactly one board and it starts at 0.
+    const drifted = cam(0, 500, 0.5);
+    expect(penHandBack(drifted, REST_1, 600, null, false)).toEqual(
+      handBackCamera(drifted, REST_1, undefined, 600),
+    );
+    expect(penHandBack(drifted, REST_1, 600, null, false)).toEqual(
+      cam(0, 500, 1),
+    );
+    // Already at rest on the strip: still no write.
+    expect(penHandBack(cam(0, 500, 1), REST_1, 600, null, false)).toBeNull();
+  });
+
+  /**
+   * The teeth (the G8-J pattern in stage-measure.test.ts, applied to the
+   * hand-back): the arithmetic above only protects callers who USE it, and
+   * the defect was a host that reached past it with `undefined`. So the
+   * raw entrance is pinned to the engine, where both absences are visible
+   * side by side; a viewer that wants a hand-back goes through
+   * `penHandBack` and has to say which world it is in.
+   */
+  test("the raw hand-back is engine-only — no viewer calls it directly", async () => {
+    const root = join(import.meta.dir, "..");
+    const glob = new Bun.Glob("**/*.{ts,tsx}");
+    const found: Record<string, number> = {};
+    for (const path of glob.scanSync({ cwd: root })) {
+      if (path.includes("__tests__/") || path.startsWith("harness/")) continue;
+      const text = await Bun.file(join(root, path)).text();
+      const count = text.split("handBackCamera(").length - 1;
+      if (count > 0) found[path] = count;
+    }
+    expect(found).toEqual({
+      // The definition, `penHandBack`'s delegation, and the fold's
+      // unmeasurable-rect walk — which already gates on a resolved board,
+      // so it can never spell "unknown" as the origin.
+      "engine/stage.ts": 3,
+    });
   });
 });
 
