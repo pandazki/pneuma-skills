@@ -94,6 +94,8 @@ async function mountTransport(opts: {
   muted?: boolean;
   /** Omitted = a host with no voice output to drive. */
   withHandler?: boolean;
+  /** The transport's playback rate — decides whether a voice is possible. */
+  rate?: number;
 } = {}): Promise<Mounted> {
   const { act, createElement } = await import("react");
   const { createRoot } = await import("react-dom/client");
@@ -101,7 +103,13 @@ async function mountTransport(opts: {
 
   const toggles: boolean[] = [];
   const player: BoardPlayerHandle = {
-    ui: { t: 0, playing: true, rate: 1, follow: "live", duration: 40 },
+    ui: {
+      t: 0,
+      playing: true,
+      rate: (opts.rate ?? 1) as BoardPlayerHandle["ui"]["rate"],
+      follow: "live",
+      duration: 40,
+    },
     getT: () => 0,
     onFrame: (listener) => {
       listener(0, 40);
@@ -271,5 +279,64 @@ describe("the choice is remembered at the browser level", () => {
         configurable: true,
       });
     }
+  });
+});
+
+describe("three states, and never two of them read as one", () => {
+  /**
+   * The listener's own silence and the rate's silence are different facts
+   * and must not wear the same face: one is a choice that can be undone
+   * with this very button, the other is the board reporting that no choice
+   * is available here. A user who reads "rate silenced" as "I muted it"
+   * presses a dead control and concludes the board is broken.
+   */
+  test("sounding, user-muted and rate-silenced are three distinct faces", async () => {
+    const shapes = new Map<string, string>();
+    for (const [state, opts] of [
+      ["sounding", { muted: false, rate: 1 }],
+      ["muted", { muted: true, rate: 1 }],
+      ["rate-silent", { muted: false, rate: 2 }],
+    ] as const) {
+      const m = await mountTransport(opts);
+      const el = m.button()!;
+      expect(el.getAttribute("data-voice-state")).toBe(state);
+      // The GLYPH differs, not merely the tint — a colour-only difference
+      // is no difference at all to a good part of the audience.
+      const paths = [...el.querySelectorAll("path")].map((p) =>
+        p.getAttribute("d"),
+      );
+      shapes.set(state, paths.join("|"));
+      await m.unmount();
+    }
+    expect(new Set(shapes.values()).size).toBe(3);
+  });
+
+  test("at a silenced rate the control is disabled and says why", async () => {
+    const m = await mountTransport({ muted: false, rate: 2 });
+    const el = m.button()! as HTMLButtonElement;
+    expect(el.disabled).toBe(true);
+    // Unmuting cannot bring back a voice the rate refuses, so the label
+    // must not offer it.
+    expect(el.getAttribute("aria-label")).toBe("Narration is silent at 2 times");
+    expect(el.getAttribute("title") ?? "").toContain("1× and 1.5×");
+    await m.unmount();
+  });
+
+  test("inside the band it is a live control again, at both edges", async () => {
+    for (const rate of [1, 1.25, 1.5]) {
+      const m = await mountTransport({ muted: false, rate });
+      const el = m.button()! as HTMLButtonElement;
+      expect(el.disabled).toBe(false);
+      expect(el.getAttribute("data-voice-state")).toBe("sounding");
+      await m.unmount();
+    }
+  });
+
+  test("below the band is silenced too — 0.75× is studying, not listening", async () => {
+    const m = await mountTransport({ muted: false, rate: 0.75 });
+    const el = m.button()! as HTMLButtonElement;
+    expect(el.disabled).toBe(true);
+    expect(el.getAttribute("data-voice-state")).toBe("rate-silent");
+    await m.unmount();
   });
 });
