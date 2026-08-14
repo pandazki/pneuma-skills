@@ -34,6 +34,7 @@ import dagre from "@dagrejs/dagre";
 import { containerKey } from "../container.js";
 import { Ease } from "../easing.js";
 import { planStepUnits, type UnitPlan } from "../inference.js";
+import { BOARD_BODY_FS, BOARD_H2_FS } from "../layout.js";
 import { jitterArrow, jitterRect, mulberry32, type Rand } from "../sketch/index.js";
 import { strokeReveal } from "../strategies/stroke.js";
 import { clipWipe } from "../strategies/wipe.js";
@@ -50,16 +51,73 @@ import type {
 } from "../types.js";
 import { contentSeed, el, inertRevealable, type StyledElement } from "./svg.js";
 
-// ── Geometry constants (px, viewBox units) ──────────────────────────────────
+// ── Geometry constants (BOARD px — the viewBox is board px) ─────────────────
+//
+// Every number here is a ratio of `BOARD_BODY_FS`, and that is the whole
+// point of the file's units: the viewBox is board px, so a graph laid out
+// at its natural size draws its names at exactly the size the prose beside
+// it is written in. The first T12 pass hardcoded 24/16 against nothing —
+// 0.71 and 0.47 of a 34px board — and the explanation ended up smaller
+// than the board's quietest voice (the 27px aside) inside its loudest
+// element. A figure factory does not get to invent its own type scale.
 
-const NAME_FS = 24;
-const NOTE_FS = 16;
-const PAD_X = 18;
-const PAD_Y = 14;
-const NAME_LH = 30;
-const NOTE_LH = 21;
-const MIN_W = 96;
-const MAX_W = 260;
+/** A box's name is written in the board's own hand. */
+const NAME_FS = BOARD_BODY_FS;
+/** Its explanation, two thirds of that — the ratio the first pass shipped
+ *  (16/24) and the one that keeps a `名字: 说明` row reading as an
+ *  annotation rather than a second name. */
+const NOTE_FS = Math.round((NAME_FS * 2) / 3);
+/** Breathing room inside the box, in fractions of the hand that writes in
+ *  it (the previous pass's 18/24 and 14/24, kept). */
+const PAD_X = Math.round(NAME_FS * 0.75);
+const PAD_Y = Math.round(NAME_FS * 0.58);
+/** Tighter leading than the board's 1.5: a label is one or two lines in a
+ *  box, not a paragraph between ruled lines. */
+const NAME_LH = Math.round(NAME_FS * 1.25);
+const NOTE_LH = Math.round(NOTE_FS * 1.31);
+/** A box is at least four glyphs of its own name wide … */
+const MIN_W = NAME_FS * 4;
+/** … and at most eleven, past which a box has become a paragraph and the
+ *  reference file's answer is narration, not a wider box. */
+const MAX_W = NAME_FS * 11;
+/** The gap between boxes stacked in one rank: one written line. */
+const NODE_SEP = NAME_LH;
+/** The corridor between ranks — three glyphs of arrow. */
+const RANK_SEP = NAME_FS * 3;
+/** The canvas margin around the drawing. */
+const MARGIN = Math.round(NAME_FS / 4);
+
+/**
+ * How far a graph may be MAGNIFIED to fill the region it was given.
+ *
+ * The svg wears `width: 100%` like a chart's, so the region decides the
+ * drawn width and the rendered hand is `NAME_FS × region / layout` — a
+ * pure ratio, content-determined and unbounded above. Left alone, a
+ * two-box graph on a full face would write its names at ~98px, half again
+ * the board's own h1. So the growth stops where the board's type scale
+ * does: at full stretch a box name is exactly a section title (h2) and
+ * never louder than the headings it sits between.
+ *
+ * The other direction needs no constant — a graph wider than its region
+ * shrinks to fit, because `width: 100%` already says so, and a figure
+ * pushed past the face's edge is the one failure the board does not
+ * tolerate.
+ */
+const MAX_GROW = BOARD_H2_FS / NAME_FS;
+
+/**
+ * The widest the shell will let a figure be drawn (board px).
+ *
+ * ONE expression, called by the factory that writes the style and by the
+ * flow-height mirror that has to predict it. They were separate arithmetic
+ * before and agreed only because both said "the natural width"; the moment
+ * the shell could grow, a mirror that had not been told would under-charge
+ * every figure that filled its room and leave the column cursor beneath it
+ * wrong by half a face.
+ */
+export function graphFillWidth(layout: GraphLayout): number {
+  return Math.round(layout.width * MAX_GROW);
+}
 
 const HAND_FONT = "var(--hand, cursive)";
 const BOARD_FG = "var(--board-fg, currentColor)";
@@ -212,7 +270,13 @@ export function graphLayout(frame: GraphFrameStep): GraphLayout {
   if (cached) return cached;
 
   const g = new dagre.graphlib.Graph({ directed: true });
-  g.setGraph({ rankdir: "LR", nodesep: 30, ranksep: 74, marginx: 8, marginy: 8 });
+  g.setGraph({
+    rankdir: "LR",
+    nodesep: NODE_SEP,
+    ranksep: RANK_SEP,
+    marginx: MARGIN,
+    marginy: MARGIN,
+  });
   g.setDefaultEdgeLabel(() => ({}));
   const shapes = new Map<string, { w: number; h: number; noteLines: string[] }>();
   for (const node of spec.nodes) {
@@ -297,11 +361,15 @@ export interface GraphPrefixBlock {
  * standing, so layer k's growth is `heights[k + 1] − heights[k]`.
  *
  * Arithmetic mirror of the factory's shell: the SVG wears `width: 100%`
- * and `max-width: round(layout.width)` with its viewBox aspect, so its
- * flow height is `layout.height` scaled by the width clamp. The wrapper's
- * margins cancel in the deltas, so they are deliberately absent. Pure in
- * (union, blocks, boxW) — the streamed and the cold compile derive the
- * same numbers from the same document (R8).
+ * and `max-width: graphFillWidth(layout)` with its viewBox aspect, so its
+ * flow height is `layout.height` scaled by whatever width it ends up
+ * drawn at — which now GROWS as well as shrinks, and is why both sides
+ * call the one function rather than each writing the bound out. The
+ * wrapper's margins cancel in the deltas, so they are deliberately absent.
+ * Pure in (union, blocks, boxW) — the streamed and the cold compile derive
+ * the same numbers from the same document (R8). `boxW = 0` means "no room
+ * known" and answers with the union's own size: the snapshot basis folds
+ * for membership, never geometry, and must not be handed a fabricated one.
  *
  * Prefix specs are REPLAYED, not sliced blind: the union's arrays are
  * append-only in document order (slices recover the node/edge sets), but
@@ -338,9 +406,9 @@ export function graphPrefixFlowHeights(
     };
     const layout = graphLayout(prefix);
     const usedW =
-      boxW > 0 ? Math.min(boxW, Math.round(layout.width)) : layout.width;
+      boxW > 0 ? Math.min(boxW, graphFillWidth(layout)) : layout.width;
     heights.push(
-      usedW >= layout.width
+      usedW === layout.width
         ? layout.height
         : (layout.height * usedW) / layout.width,
     );
@@ -546,9 +614,12 @@ export const graphFrameFactory: RevealableFactory = {
     svg.style.display = "block";
     svg.style.width = "100%";
     // The canvas is sized by the CONTAINER's union, so the board never
-    // reflows when a later block lands — and a small flow chart is not
-    // blown up to the board's full width.
-    svg.style.maxWidth = `${Math.round(layout.width)}px`;
+    // reflows when a later block lands. The limit is a GROWTH ceiling, not
+    // the natural width: a chart fills the face it was given, and a graph
+    // is the same kind of centrepiece — the pair of them used to sit side
+    // by side with the chart across the whole face and the graph at 64% of
+    // it, for no reason but this one line.
+    svg.style.maxWidth = `${graphFillWidth(layout)}px`;
     svg.style.overflow = "visible";
     node.appendChild(svg);
 

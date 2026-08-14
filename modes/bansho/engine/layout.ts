@@ -177,6 +177,32 @@ export function panelHeightFor(panelW: number): number {
  *  ratio, computed once so no caller re-derives it. */
 export const PANEL_HEIGHT = panelHeightFor(PANEL_WIDTH);
 
+/**
+ * THE BOARD'S HAND (board px) — the body size everything else on the board
+ * is a ratio of, and the size a drawn figure has to hold its own NEXT TO.
+ *
+ * It lives here, beside `PANEL_WIDTH`, because it is the same kind of fact:
+ * part of what the canonical board IS. The comment above says so already —
+ * 1242 is the geometry "the 34px body and the 13-character column were
+ * tuned against" — and the two numbers only mean anything together.
+ *
+ * The DECLARATION is `viewer/board-css.ts` (`.bansho-board { font-size }`),
+ * which the engine may not import (G2 — engine core is DOM-free and never
+ * reaches upward), so this is a restatement and `__tests__/graph.test.ts`
+ * pins the two equal by reading the CSS back. Restating it beats the
+ * alternative that shipped: a figure factory inventing its own 24px out of
+ * nothing, unrelated to the board it is drawn on and unable to follow it.
+ */
+export const BOARD_BODY_FS = 34;
+
+/**
+ * A section title inside the flow (`.bansho-heading-2`, 50px) — carried
+ * here as the CEILING on any hand a drawn figure may be magnified to.
+ * Past this a box label outranks the headings it sits between, which is a
+ * hierarchy error rather than a legibility win.
+ */
+export const BOARD_H2_FS = 50;
+
 // ────────────────────────────────────────────────────────────────────────────
 // Keys & the board count
 // ────────────────────────────────────────────────────────────────────────────

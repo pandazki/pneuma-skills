@@ -26,10 +26,13 @@ import { factoryFor } from "../engine/factories/index.js";
 import {
   arrowEndpoints,
   arrowKey,
+  graphFillWidth,
   graphLayout,
   graphPrefixFlowHeights,
 } from "../engine/factories/graph.js";
+import { BOARD_BODY_FS, BOARD_H2_FS } from "../engine/layout.js";
 import { planLecture, planStepUnits } from "../engine/inference.js";
+import { BOARD_BASE_CSS } from "../viewer/board-css.js";
 import {
   planReconcile,
   toEntries,
@@ -350,9 +353,20 @@ describe("layout — dagre is a test gate, not a promise", () => {
     // Every glyph the author wrote is on the board, in order.
     expect(box.noteLines.join("")).toBe(long);
     // The box stays inside the declared maximum WIDTH however long the text
-    // is — it grows downward, the direction a board has room in.
-    expect(box.w).toBeLessThanOrEqual(260);
-    expect(box.h).toBeGreaterThan(14 * 2 + 30 + 3 * 21);
+    // is — it grows downward, the direction a board has room in. The
+    // maximum is eleven glyphs of the board's own hand, so it is written
+    // that way rather than as a number that has to be chased when the
+    // board's type scale moves (it just did: 260 was eleven glyphs of a
+    // 24px hand nobody had tied to anything).
+    expect(box.w).toBeLessThanOrEqual(BOARD_BODY_FS * 11);
+    // Deeper than a name plus three explanation lines, whatever the scale:
+    // padding + one name line + more than three note lines.
+    const noteFs = Math.round((BOARD_BODY_FS * 2) / 3);
+    expect(box.h).toBeGreaterThan(
+      Math.round(BOARD_BODY_FS * 0.58) * 2 +
+        Math.round(BOARD_BODY_FS * 1.25) +
+        3 * Math.round(noteFs * 1.31),
+    );
   });
 
 
@@ -613,16 +627,147 @@ describe("prefix flow heights — the growth behind LayoutStepInput.growth (revi
     expect(graphNoteWrites(src, frame.srcSpan)).toEqual([]);
   });
 
-  test("the width clamp mirrors the shell: a narrow box scales the height by the aspect", () => {
+  test("the width mirror follows the shell BOTH ways — it grows to the cap and shrinks by the aspect", () => {
+    // The mirror exists so the fold charges the same height the browser
+    // will lay out, and it used to model a shell that could only shrink.
+    // Now that the shell grows into its region, a mirror that still tops
+    // out at the natural width would under-charge every graph that fills
+    // — the board would think a figure it grew by 1.47 was still its own
+    // size, and the column cursor under it would be wrong by half a face.
     const { frame, blocks } = blocksOf(src);
-    const wide = graphPrefixFlowHeights(frame.layout, blocks, 10000);
-    const layoutW = graphLayout(frame).width;
-    const narrowW = Math.round(layoutW / 2);
-    const narrow = graphPrefixFlowHeights(frame.layout, blocks, narrowW);
-    expect(wide[wide.length - 1]!).toBe(graphLayout(frame).height);
-    expect(narrow[narrow.length - 1]!).toBeCloseTo(
-      (graphLayout(frame).height * narrowW) / layoutW,
+    const layout = graphLayout(frame);
+    const layoutW = layout.width;
+    const roomier = graphPrefixFlowHeights(frame.layout, blocks, 10000);
+    expect(roomier[roomier.length - 1]!).toBeCloseTo(
+      (layout.height * graphFillWidth(layout)) / layoutW,
       6,
     );
+    const narrowW = Math.round(layoutW / 2);
+    const narrow = graphPrefixFlowHeights(frame.layout, blocks, narrowW);
+    expect(narrow[narrow.length - 1]!).toBeCloseTo(
+      (layout.height * narrowW) / layoutW,
+      6,
+    );
+    // No box width at all still means "the union's own size" — the basis
+    // the union-reproduction invariant above is written against.
+    const blind = graphPrefixFlowHeights(frame.layout, blocks, 0);
+    expect(blind[blind.length - 1]!).toBe(layout.height);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// A figure grows into its room, and its hand is the board's (2026-08-14)
+//
+// Reported as "the figure came out a postage stamp beside the handwriting",
+// and it was two independent defects with one symptom:
+//
+//  1. the type was a HARDCODED 24/16 px, chosen against nothing. The board's
+//     body is 34px, so a box's name was written at 0.71 of the prose beside
+//     it and its explanation at 0.47 — smaller than the board's own smallest
+//     voice (the 27px aside), for content that is the section's centrepiece;
+//  2. the svg carried `width: 100%` AND `max-width: <natural layout width>`,
+//     so it could only ever SHRINK. A graph narrower than its region — which
+//     after (1) was most of them — sat at its own small size while a chart in
+//     the same slot filled the face. Measured on the shipped seeds: the
+//     pitch-zh pipeline laid out at 742px on a 1154px face (64%), and a
+//     three-box CJK chain at 452px (39%).
+//
+// Both halves are fixed here, and they have to be fixed TOGETHER, because
+// under a filling svg the rendered hand is `NAME_FS × region / layout` — a
+// pure ratio, so raising the font alone would have changed nothing about a
+// filled figure, and filling alone would have magnified a two-box graph's
+// 24px hand to ~98px, past the board's own h1. So: the type comes from the
+// board (`BOARD_BODY_FS`), which makes the layout board px; and the clamp
+// stops being "never grow" and becomes "grow until the hand reaches the
+// board's h2" — a figure fills its room, and never shouts louder than the
+// section titles it sits between.
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("the graph's hand and the room it fills", () => {
+  const window = new Window();
+  const doc = window.document as unknown as Document;
+  const ctx: MeasureContext = {
+    durations: D,
+    document: doc,
+    measureHost: doc.createElement("div"),
+    env: { handwritingFontActive: true, strokeFontCovers: () => false },
+    container: () => undefined,
+  };
+  const buildFrame = (src: string): Element =>
+    factoryFor("graph-frame")!.build(frameOf(src), ctx).node;
+
+  /** The `font-size` of one rule in the board's own stylesheet. */
+  function cssFontSize(selector: string): number {
+    const rule = new RegExp(
+      `${selector.replace(/\./g, "\\.")}\\s*\\{([^}]*)\\}`,
+    ).exec(BOARD_BASE_CSS);
+    expect(rule, `no ${selector} rule in BOARD_BASE_CSS`).not.toBeNull();
+    const size = /font-size:\s*(\d+(?:\.\d+)?)px/.exec(rule![1]!);
+    expect(size, `${selector} declares no font-size`).not.toBeNull();
+    return Number(size![1]);
+  }
+
+  test("the engine's copy of the board's type scale is the CSS's copy", () => {
+    // The engine may not import the viewer (G2), so the body size is
+    // RESTATED in engine/layout.ts and pinned here by reading the
+    // declaration back. Without this the two drift silently and the whole
+    // "legible next to the prose" argument quietly stops being true — which
+    // is the state the 24px constant was already in.
+    expect(BOARD_BODY_FS).toBe(cssFontSize(".bansho-board"));
+    expect(BOARD_H2_FS).toBe(cssFontSize(".bansho-heading-2"));
+  });
+
+  test("a box's name is written in the board's own hand, its note at two thirds", () => {
+    // Read off the drawn element, not off a constant: the viewBox is board
+    // px (the layout is sized in the same units the board writes in), so
+    // this attribute IS the rendered size wherever the figure is not scaled.
+    const node = buildFrame("```graph g\n甲: 一句说明\n```");
+    const name = node.querySelector("text")!;
+    expect(Number(name.getAttribute("font-size"))).toBe(BOARD_BODY_FS);
+    const note = node.querySelectorAll("tspan")[1]!;
+    expect(Number(note.getAttribute("font-size"))).toBe(
+      Math.round((BOARD_BODY_FS * 2) / 3),
+    );
+  });
+
+  test("the svg FILLS its region — the clamp is a growth ceiling, not a natural-size lid", () => {
+    const src = "```graph g\n甲 → 乙 → 丙\n```";
+    const layout = graphLayout(frameOf(src));
+    const svg = buildFrame(src).querySelector("svg") as SVGElement;
+    // Same shell a chart wears: it takes the width it is given.
+    expect(svg.style.width).toBe("100%");
+    // …and the only limit left is the growth cap, which is STRICTLY
+    // greater than the natural width — the old lid was equal to it.
+    expect(svg.style.maxWidth).toBe(`${graphFillWidth(layout)}px`);
+    expect(graphFillWidth(layout)).toBeGreaterThan(layout.width);
+  });
+
+  test("at full growth the hand is exactly the board's h2 — the ceiling is a real one", () => {
+    // The cap is not a taste number: `MAX_GROW = h2 / body`, so a figure
+    // magnified all the way writes its box names at section-title size and
+    // stops. This is the assertion that fails if someone "just raises the
+    // cap a bit".
+    const layout = graphLayout(frameOf("```graph g\n甲 → 乙\n```"));
+    const grown = graphFillWidth(layout) / layout.width;
+    expect(BOARD_BODY_FS * grown).toBeCloseTo(BOARD_H2_FS, 1);
+    expect(BOARD_BODY_FS * grown).toBeLessThanOrEqual(BOARD_H2_FS + 0.5);
+  });
+
+  test("the shipped pitch pipeline stops being a postage stamp on its own face", () => {
+    // The regression in the units the complaint was made in. A bounded
+    // board's face is 1154px (PANEL_WIDTH less its paddings) and the strip's
+    // is the same width; the pitch seeds' four-box pipeline used to draw at
+    // 742px of it with a 24px hand. It must now cover most of the face and
+    // write at no less than the prose beside it.
+    const FACE = 1154;
+    const layout = graphLayout(
+      frameOf("```graph 流水线\n提交 → 自动测试 → 灰度 10% → 全量\n灰度 10%: 先放给十分之一的人\n```"),
+    );
+    const drawnW = Math.min(FACE, graphFillWidth(layout));
+    expect(drawnW / FACE).toBeGreaterThan(0.85);
+    // The hand it lands at: the layout is board px, scaled by what it got.
+    const hand = BOARD_BODY_FS * (drawnW / layout.width);
+    expect(hand).toBeGreaterThanOrEqual(BOARD_BODY_FS * 0.8);
+    expect(hand).toBeLessThanOrEqual(BOARD_H2_FS);
   });
 });
