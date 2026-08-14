@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.31.1] - 2026-08-15
+
+### Fixed
+- **Placing the pen right after turning to a new board threw the view back at the board you just left.** `@turn` then `@at <region>` sent the camera to the first board for over a second before it corrected itself; the writing was on the right board the whole time, so only the view was ever wrong. The cause was an absence read as a location: the camera's hand-back takes the pen's board from the active step's own layout assignment, and a placement is not a box, so it has none — and "no board" is spelled the same way a single-strip lecture spells it, whose rest position is `x = 0`. On a wall of boards, `x = 0` is the first one. A wall that cannot name the pen's board now moves the camera nowhere, which is also the truth: the pen did not move either.
+
 ## [3.31.0] - 2026-08-14
 
 ### Fixed
