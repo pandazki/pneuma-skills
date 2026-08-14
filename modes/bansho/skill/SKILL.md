@@ -480,7 +480,7 @@ moment of the rhythm:
 | `capture` | `{"address":{…}}` optional | What do the pixels actually look like? Before judging any visual effect (composition, chart density, theme.css) — by milestone, not per append. `navigate-to` the tip, then `capture` = the final wall without playing. |
 | `navigate-to` | `{"address":{"section":1,"step":3}}` | Show the user what you changed: puts the board at the moment that step finished and brings it into view. |
 | `play-from` | `{"address":{…}}`, or nothing for the top | "Let me walk you through this again", from there. |
-| `narrate` | `{}` | The voice-over plan: cache keys, spoken lines, both clip paths, freshness. Workflow in `references/narration.md`. |
+| `narrate` | `{}` | The voice-over plan: cache keys, spoken lines, both clip paths, freshness. Reach for it once the user has said yes to a voice (see *After the last word*), never to decide for them. Workflow in `references/narration.md`. |
 | `subtitles` | `{}` | The lecture as finished SRT / VTT text. Save `data.srt` / `data.vtt` verbatim to the paths in `data.save`; never retime a cue yourself. |
 
 `glance-board` answers `data.boards[]` (per board: `standing[]` sections with
