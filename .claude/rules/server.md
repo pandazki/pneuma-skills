@@ -46,3 +46,4 @@ paths:
 - **Replay**:(1) `--replay` 推迟 agent 启动到 `/api/replay/continue`。(2) 每次 checkout 前清 `.pneuma/replay-checkout/`。(3) 文件 navigation 必须在 checkpoint 加载**之后**(不能在 `displayMessage` 期间)。
 - **Editing/readonly distinction**:`editing` 是 session 布尔(`true`=创作,`false`=消费),`false` 时不跑 agent;`readonly`(replay)禁用一切交互。两者不要混。
 - **Bun `os.homedir()` 启动时缓存**:boot 后改 `process.env.HOME` 不会改 `homedir()` 返回值。需要 tmp home 的模块改读 `process.env.HOME ?? process.env.USERPROFILE ?? homedir()`。
+- **启动强制写 `~/.pneuma/sessions.json`,任何禁止写 HOME 的沙箱里 Pneuma 起不来**(2026-08-14 实测,Codex 托管环境):registry 的 upsert 走原子写(临时文件 + rename),沙箱只允许写工作区内部时,它在 `open('~/.pneuma/sessions.json.tmp.<pid>.<rand>')` 上拿到 `EPERM` 并且**直接 fatal**——不是降级、不是警告,进程退出码 1,而此前的 skill 安装、端口选择、banner 全都已经打印过了,所以日志读起来像"启动成功后突然死掉"。受影响的不止 Codex:任何 CI runner、容器、或把 HOME 只读挂载的环境同理。**要在受限环境里跑,得先想清楚 registry 是不是可选的**——它今天是必需的,而这是个产品决定,不是实现细节。顺带:Codex 自己也要写 `~/.codex`,同一堵墙。
