@@ -60,11 +60,11 @@ Now add the cost of coherence. Same machines, and the curve turns back halfway:
 + mark With coherence cost @ 32 : "peak"
 ```
 
+The two curves have said what they came to say. This board comes down, and the conclusion goes up where it stood.
+
 @overview
 
-@erase "Amdahl's law writes the speed-up like this"
-
-@turn
+@erase
 
 ## So where is the saying wrong
 

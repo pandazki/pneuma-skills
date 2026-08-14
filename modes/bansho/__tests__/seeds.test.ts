@@ -38,9 +38,15 @@
  *
  *  - **tech is the room's board** — two competing models (Amdahl's ceiling,
  *    then the coherence cost that bends the curve down) belong side by side,
- *    so it stands four boards, `@turn`s at the topic boundaries, retires the
- *    algebra board by name once the curves have taken it over, and steps back
- *    with `@overview` before the close;
+ *    so it stands four boards, `@turn`s at the topic boundaries, steps back
+ *    with `@overview` at the close and then clears the board under the pen
+ *    to write the conclusion where the chart stood. That last move is the
+ *    room's taught answer to a FULL wall — say the drawing is finished,
+ *    wipe the board you are standing at, carry on there — and it replaced
+ *    an `@erase "阿姆达尔定律…"` that reached from board 4 back to board 2.
+ *    That earlier shape was the defect the user reported as "the agent
+ *    erases unrelated content on other boards": prose forbids it, and the
+ *    范文 demonstrated it, and few-shot material wins that argument;
  *  - **pitch is the strip's board** — its contrast is two trends in ONE chart
  *    (charts.md's own teaching), so it stays a strip and spends its stage
  *    budget where the argument is structural: a ```graph for the pipeline and
@@ -353,24 +359,88 @@ for (const id of TECH_IDS) describe(`${id} — the room: four boards, turns, one
     expect(turns.length).toBeLessThanOrEqual(4);
   });
 
-  test("the retirement is ANCHORED — @erase names the board it retires", () => {
-    // Bare `@erase` clears whatever board the pen happens to be on; the
-    // anchored form names the content. The distinction is the whole reason
-    // the tech board can retire its algebra without the room taking the
-    // saying (board 1) that the closing `@strike` still has to reach — the
-    // taught escape from board-language.md ("if you disagree with the room's
-    // pick, say your own retirement first"). A copy-edit that drops the quote
-    // still parses, still plays, and erases the WRONG board.
+  test("the retirement is BARE — the pen clears the board it is standing at", () => {
+    // The eraser only reaches where you are standing (board-language.md,
+    // §the eraser): the board the pen is ON, content the talk is finished
+    // with, and a sentence that says so — all three or none. By the time
+    // this board retires anything the wall is FULL and the pen stands on
+    // board 4, so the ONLY honest retirement here is the bare form: the
+    // chart has made its point, the teacher wipes the board in front of
+    // them and writes the conclusion in its place ("finish where you
+    // stand… the pen is already on the clean board, so no turn is
+    // wanted").
+    //
+    // This test previously pinned the exact opposite — an `@erase "阿姆达尔
+    // 定律…"` reaching back to board 2 while the pen stood on board 4, on
+    // the theory that the anchor "names the board it retires". It does
+    // not: an anchor names CONTENT, and content on another board is the
+    // one shape board-language.md rules out entirely (`@turn` followed by
+    // an anchored erase reaching backwards). Nothing about it faults —
+    // which is exactly how the shipped 范文 taught an agent to wipe a
+    // board the audience was still reading.
     const erases = ofKind(steps(), "erase");
     expect(erases.length).toBe(1);
-    expect(erases[0]!.targetText, "the erase lost its anchor").toBeTruthy();
-    expect(erases[0]!.target, "the erase anchor resolved to nothing").toBeDefined();
+    expect(
+      erases[0]!.targetText,
+      "the erase reaches back to a quote — the pen's own board is bare @erase",
+    ).toBeUndefined();
   });
 
-  test("the erase happens AFTER the evidence that supersedes it", () => {
-    // "This served its purpose" is a claim the lecture has to have earned:
-    // the algebra board may only be retired once the curves have taken it
-    // over. An erase before the chart would be retiring live working.
+  test("the erase CLEARS AND REUSES its board — no @turn follows it", () => {
+    // The second half of the same move, and the half a copy-edit restores
+    // by reflex: `@erase` then `@turn` is redundant (the erase already
+    // cleared the stage; the turn adds only a breath) and it also throws
+    // away the reason the erase was legal — the pen is standing on the
+    // board it just freed. Pick ONE: erase = clear and reuse this board,
+    // turn = leave it standing and go.
+    const flat = flattenSteps(lectureOf(id));
+    const eraseAt = flat.findIndex((e) => e.step.kind === "erase");
+    expect(eraseAt).toBeGreaterThan(-1);
+    const turnsAfter = flat
+      .slice(eraseAt + 1)
+      .filter((e) => e.step.kind === "turn");
+    expect(turnsAfter.length, "a @turn follows the erase").toBe(0);
+    // …and the board is actually reused: something is WRITTEN after it.
+    const writtenAfter = flat
+      .slice(eraseAt + 1)
+      .filter((e) => e.step.kind !== "turn" && e.step.kind !== "camera");
+    expect(
+      writtenAfter.length,
+      "nothing is written after the erase — the board was cleared for no one",
+    ).toBeGreaterThan(0);
+  });
+
+  test("the lecture SAYS it is retiring the board, in the sentence before", () => {
+    // The third condition, and the only one with no structural shadow: the
+    // audience hears the retiring, they do not just find the board empty.
+    // Pinned as "the last thing written before the camera steps back is
+    // prose" — the say-so line sits ahead of `@overview` because nothing
+    // written may come between the glance and the erase it frames (the
+    // test below). A seed that erases in silence teaches that the sentence
+    // is optional, which is how two of the three conditions become one.
+    const flat = flattenSteps(lectureOf(id));
+    const overviewAt = flat.findIndex((e) => e.step.kind === "camera");
+    expect(overviewAt).toBeGreaterThan(0);
+    const before = flat[overviewAt - 1]!;
+    expect(
+      before.step.kind,
+      "the step before @overview is not prose — nothing says the board is done",
+    ).toBe("prose");
+    // It has to be about the retiring, not just any last paragraph: the
+    // board's own words for putting something down.
+    const said = stepPlainText(before.step);
+    expect(
+      /放下|擦|down they come|comes down/.test(said),
+      `the sentence before the glance does not say the board is finished: ${said}`,
+    ).toBe(true);
+  });
+
+  test("the erase happens AFTER the drawing it retires is finished", () => {
+    // "This served its purpose" is a claim the lecture has to have earned,
+    // and the board being wiped is the CHART's own: the two curves may
+    // only be put down once both of them are drawn and read. An erase
+    // between the layers would wipe a series still being drawn — live
+    // working, retired mid-sentence.
     const flat = flattenSteps(lectureOf(id));
     const eraseAt = flat.findIndex((e) => e.step.kind === "erase");
     const lastLayerAt = flat.reduce(
@@ -381,12 +451,13 @@ for (const id of TECH_IDS) describe(`${id} — the room: four boards, turns, one
     expect(eraseAt).toBeGreaterThan(lastLayerAt);
   });
 
-  test("@overview steps back once, right before the room is rearranged", () => {
-    // The teacher's "glance before you turn", said out loud in the lecture:
-    // look at the whole wall, then retire a board, then walk to it. A
-    // directed view holds through erase and turn (both are room actions, not
-    // writing) and hands back to the pen at the next written step — so this
-    // ORDER is what makes the gesture legible instead of a flash.
+  test("@overview steps back once, right before the board under the pen is cleared", () => {
+    // The teacher's glance before they wipe, said out loud in the lecture:
+    // look at the whole wall — everything the argument has built — and only
+    // then put down the one board in front of you. A directed view holds
+    // through the erase (a room action, not writing) and hands back to the
+    // pen at the next written step, so this ORDER is what makes the gesture
+    // legible instead of a flash.
     const flat = flattenSteps(lectureOf(id));
     const cameras = flat.filter((e) => e.step.kind === "camera");
     expect(cameras.length).toBe(1);
@@ -404,23 +475,36 @@ for (const id of TECH_IDS) describe(`${id} — the room: four boards, turns, one
     // The one way this board can break at RUNTIME while parsing perfectly:
     // retire the board the final `@strike` points at, and the ink lands on
     // nothing (reported as refUnresolved / inkAfterErase by the live board,
-    // which no pure test can see). The structural guard is that the strike's
-    // target sits EARLIER than the erase's target — different movement,
-    // therefore a different board, and the erased one is behind it.
+    // which no pure test can see).
+    //
+    // A bare erase wipes the board the pen is standing on, and the pen has
+    // stood there since the last `@turn` before it — so everything written
+    // BEFORE that turn is on an earlier board and survives. That is the
+    // structural guard, and it is the honest one: the old version compared
+    // the strike's target against the ERASE's target, which only typechecks
+    // while the erase reaches across the room, and read as a safety proof
+    // for the very move that was unsafe.
     const flat = flattenSteps(lectureOf(id));
     const strike = flat.find(
       (e) => e.step.kind === "backref" && e.step.action === "strike",
     );
-    const erase = flat.find((e) => e.step.kind === "erase");
+    const eraseAt = flat.findIndex((e) => e.step.kind === "erase");
     expect(strike).toBeDefined();
-    expect(erase).toBeDefined();
+    expect(eraseAt).toBeGreaterThan(-1);
+    const lastTurnAt = flat.reduce(
+      (last, e, i) => (i < eraseAt && e.step.kind === "turn" ? i : last),
+      -1,
+    );
+    expect(lastTurnAt, "no @turn precedes the erase — the pen never moved").toBeGreaterThan(-1);
     const strikeTarget = (strike!.step as Extract<Step, { kind: "backref" }>).target.step;
-    const eraseTarget = (erase!.step as Extract<Step, { kind: "erase" }>).target!;
+    const turnRef = flat[lastTurnAt]!.ref;
     const earlier =
-      strikeTarget.section < eraseTarget.section ||
-      (strikeTarget.section === eraseTarget.section &&
-        strikeTarget.step < eraseTarget.step);
-    expect(earlier).toBe(true);
+      strikeTarget.section < turnRef.section ||
+      (strikeTarget.section === turnRef.section && strikeTarget.step < turnRef.step);
+    expect(
+      earlier,
+      "the strike's target was written after the pen reached the board it erases",
+    ).toBe(true);
   });
 });
 

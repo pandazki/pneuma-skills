@@ -483,9 +483,9 @@ The user opened Bansho to have something explained on a board. Write the lecture
           de: "Ein Konzept erklären · Chinesisch",
         },
         description: {
-          en: "Amdahl's law across four boards: formulas written by hand, two curves on one chart, the algebra retired once the picture takes it over, the saying crossed out.",
+          en: "Amdahl's law across four boards: formulas written by hand, two curves on one chart, the chart put down once it has made its point, the saying crossed out.",
           "zh-CN":
-            "用四块板讲「加机器为什么不一定更快」：公式一笔笔写出来，两条曲线画在同一张图上，曲线接手后把推导那块板擦掉，最后回头划掉那句口头禅。",
+            "用四块板讲「加机器为什么不一定更快」：公式一笔笔写出来，两条曲线画在同一张图上，图讲完了就把眼前这块板擦掉、结论写在原地，最后回头划掉那句口头禅。",
         },
         tags: ["中文", "技术讲解"],
       },

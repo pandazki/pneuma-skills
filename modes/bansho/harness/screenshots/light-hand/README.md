@@ -120,3 +120,14 @@ ends with `@erase` retiring the algebra board once the chart takes it over —
 the manifest's seed description says so in as many words ("the algebra retired
 once the picture takes it over"). Frame `01` is the same board at 51.1 s,
 written out across both columns, which is the counter-evidence.
+
+**Stale as of 2026-08-14 — the frames are unchanged, the explanation is not.**
+That cross-board retirement was the defect a user later reported ("it erases
+things on other boards for no reason"): the pen stood on board 4 and the
+anchor named text on board 2, which `board-language.md` rules out entirely.
+`tech-zh` / `tech-en` now say the drawing is finished, `@overview`, then a
+**bare** `@erase` on the board under the pen, and the closing section is
+written where the chart stood. So a re-shoot of this set will show board 2
+FULL and board 4 re-used — the emptied face moves from 2 to 4. The frames
+here still document the code they were taken against; nothing above is
+retracted, it just no longer describes the shipped seed.
