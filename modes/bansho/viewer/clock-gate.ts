@@ -36,18 +36,26 @@
  *  5. **Rate lives on the element** (`audio.playbackRate = rate`), so both
  *     masters scale identically and the gate compares canonical seconds
  *     only — it never multiplies by rate itself (that would double-apply).
- *  6. **Above `NARRATION_MAX_RATE` the voice steps aside** — the reader is
- *     skimming, not listening, and rule 5 stops being available: browsers
- *     do not agree on what `playbackRate = 16` means (clamped, silently
- *     ignored, or honoured but muted), and an element that quietly kept
- *     ITS speed while the board asked for sixteen would drag the picture
- *     back to walking pace through the projection — with a long clip's
- *     hold (rule 4) that is a board waiting on a voice that cannot finish.
- *     So past the threshold the gate refuses engagement outright: rAF is
- *     master, no pin binds, and 16× means sixteen. This is rule 1 again
- *     ("silence is structural"), reached by the transport rather than by a
- *     failure. The element-side half — actually stopping the sound, and
- *     never handing it a rate no browser promises — is the conductor's.
+ *  6. **Outside `NARRATION_RATE_BAND` the voice steps aside** — rule 5
+ *     stops being available. Rate lives on the element, and a recorded
+ *     voice only survives being stretched over a narrow neighbourhood of
+ *     1×: browsers do not agree on what `playbackRate = 16` means
+ *     (clamped, silently ignored, or honoured but muted), and even where
+ *     the time-stretcher nominally works, a lecture read at 2× is not a
+ *     lecture being listened to. An element that quietly kept ITS speed
+ *     while the board asked for more would drag the picture back to
+ *     walking pace through the projection — with a long clip's hold (rule
+ *     4) that is a board waiting on a voice that cannot finish. So outside
+ *     the band the gate refuses engagement outright: rAF is master, no pin
+ *     binds, and 2× means two. This is rule 1 again ("silence is
+ *     structural"), reached by the transport rather than by a failure.
+ *     The band is closed at BOTH ends on purpose — 0.75× is studying a
+ *     single stroke land, not listening to a sentence, and a voice
+ *     dragged below 1× is the same unreliable stretch in the other
+ *     direction. The element-side half is the conductors': outside the
+ *     band they do not merely go quiet, they let the element GO (see
+ *     `audio-conductor.ts` / `track-conductor.ts`) — a voice that will
+ *     not be heard is not worth a download or a decoder.
  *
  * Pure and host-free: the DOM element lives behind `NarrationClock`
  * (implemented by `audio-conductor.ts`); this module only projects its
@@ -60,14 +68,37 @@ import type { ClipWindow } from "../narration/timing.js";
 import { tick, type PlayerState } from "./player-core.js";
 
 /**
- * The fastest playback rate a recorded voice still accompanies the board
- * (rule 6). Four is where `HTMLMediaElement` stops being dependable:
- * Chromium's time-stretcher covers roughly [0.5, 4] and outputs silence
- * outside it, other engines clamp or ignore the assignment entirely. Past
- * it the board is being skimmed rather than listened to, so the honest
- * answer is a silent picture at exactly the rate that was asked for.
+ * The rates at which a recorded voice still accompanies the board (rule
+ * 6), inclusive at both ends.
+ *
+ * Narrow, and deliberately so. `playbackRate` is the only mechanism that
+ * can keep sound and picture on one clock (rule 5), and it buys less than
+ * it appears to: Chromium's time-stretcher nominally covers [0.5, 4] but
+ * degrades audibly well before either edge, and other engines clamp or
+ * ignore the assignment entirely. Past a small neighbourhood of 1× the
+ * honest answer is not a worse voice — it is no voice, and a picture
+ * running at exactly the speed that was asked for.
+ *
+ * Both edges are closed for the same reason read in two directions: above
+ * the band the lecture is being SKIMMED, below it a single stroke is being
+ * STUDIED (`player-core.ts` argues the ladder's two jobs). Neither is
+ * listening, and neither is a speed a stretched voice survives.
  */
-export const NARRATION_MAX_RATE = 4;
+export const NARRATION_RATE_BAND = { min: 1, max: 1.5 } as const;
+
+/**
+ * Whether a recorded voice accompanies the board at `rate` — the ONE
+ * definition of rule 6's threshold.
+ *
+ * Both conductors and the gate ask this same question, and they must
+ * never be able to disagree: the conductors decide whether an element
+ * exists at all, the gate decides whether a snapshot may take the clock,
+ * and a gate that trusted a rate the conductors had written off would let
+ * a stale in-flight frame drive the picture. One predicate, three callers.
+ */
+export function narrationAudibleAtRate(rate: number): boolean {
+  return rate >= NARRATION_RATE_BAND.min && rate <= NARRATION_RATE_BAND.max;
+}
 
 /** What the host read off the sounding element, one snapshot per frame. */
 export interface AudioClockSnapshot {
@@ -135,12 +166,12 @@ export function gatedTick(
   const engaged =
     window !== null &&
     audio !== null &&
-    // Rule 6 — a skimming reader has no voice. Checked here and not only
-    // in the conductor so the RULE holds whatever an element claims: a
-    // snapshot still reporting `sounding` at 16× (a browser that ignored
+    // Rule 6 — outside the band there is no voice. Checked here and not
+    // only in the conductor so the RULE holds whatever an element claims:
+    // a snapshot still reporting `sounding` at 16× (a browser that ignored
     // the rate, a frame in flight across the change) can never take the
     // clock.
-    s.rate <= NARRATION_MAX_RATE &&
+    narrationAudibleAtRate(s.rate) &&
     audio.hash === window.hash &&
     audio.sounding &&
     !audio.ended &&

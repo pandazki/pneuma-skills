@@ -47,13 +47,14 @@ import {
   type TrackLayout,
 } from "../narration/track.js";
 import type { ClipWindow } from "../narration/timing.js";
-import type {
-  AudioElementLike,
-  GestureTargetLike,
-  NarrationDegradation,
+import {
+  HAVE_METADATA,
+  type AudioElementLike,
+  type GestureTargetLike,
+  type NarrationDegradation,
 } from "./audio-conductor.js";
 import {
-  NARRATION_MAX_RATE,
+  narrationAudibleAtRate,
   type AudioClockSnapshot,
   type NarrationClock,
 } from "./clock-gate.js";
@@ -91,8 +92,32 @@ export class TrackConductor implements NarrationClock, VoiceOutput {
   private layout: TrackLayout | null = null;
   private windowByHash = new Map<string, ClipWindow>();
   private element: AudioElementLike | null = null;
-  /** The URL currently on the element — the ONE thing that may set `src`. */
+  /**
+   * The track this board WANTS loaded — set by `setProgram` and kept
+   * across a teardown, which is what lets an unmute (or a return into the
+   * rate band) reinstall the src without the host recompiling.
+   */
+  private trackUrl: string | null = null;
+  /** The URL actually on the element — null whenever there is no element. */
   private loadedUrl: string | null = null;
+  /**
+   * The element exists but has not been placed at the canonical playhead
+   * yet. True from the moment an element is (re)created until a frame
+   * finds it at `HAVE_METADATA` and seeks it — until then the conductor
+   * reports no audio and stays silent, because a fresh element sits at 0
+   * and playing it would sound the opening of the lecture under whatever
+   * the pen is actually writing.
+   */
+  private needsResync = false;
+  /**
+   * The SILENT METRONOME (see `setMuted`). While the listener has muted
+   * the board there is no element, but the lecture must keep its shape —
+   * so the conductor keeps counting the track's clock itself, in track
+   * seconds, advancing exactly as the element would have.
+   */
+  private virtualTrackTime = 0;
+  /** Whether `virtualTrackTime` has been placed since the metronome took over. */
+  private virtualPrimed = false;
   private blocked = false;
   private failed = false;
   private rate = 1;
@@ -135,16 +160,19 @@ export class TrackConductor implements NarrationClock, VoiceOutput {
     this.layout = layout;
     this.windowByHash = new Map(windows.map((w) => [w.hash, w]));
     if (layout === null || trackPath === null) {
+      this.trackUrl = null;
       this.silence();
-      this.loadedUrl = null;
       return;
     }
     const url = this.opts.resolveUrl(trackPath);
-    if (url === this.loadedUrl) return;
-    this.loadedUrl = url;
+    if (url === this.trackUrl) return;
+    this.trackUrl = url;
     this.failed = false;
-    const el = this.ensureElement();
-    if (el) el.src = url;
+    // A different file is a different clock: whatever is loaded is wrong.
+    this.releaseElement();
+    // Installed only if the voice is wanted at all — a board opened muted,
+    // or opened at 2×, downloads nothing.
+    this.ensureLoaded();
   }
 
   // ── NarrationClock ───────────────────────────────────────────────────────
@@ -154,18 +182,35 @@ export class TrackConductor implements NarrationClock, VoiceOutput {
     rate: number,
     dt = 0,
   ): { window: ClipWindow | null; audio: AudioClockSnapshot | null } {
-    this.rate = rate;
-    if (rate > NARRATION_MAX_RATE) {
-      // Rule 6 — a skimming reader has no voice, and no browser agrees on
-      // what `playbackRate = 16` means. The element stops rather than
-      // being asked for a rate it will not honour.
-      this.silence();
-      return { window: null, audio: null };
+    if (rate !== this.rate) {
+      this.rate = rate;
+      // Rule 6 — outside the band there is no voice, and no browser agrees
+      // on what `playbackRate = 16` means. The element is not merely
+      // stopped, it is released: nothing decodes, nothing downloads.
+      this.reconcile();
     }
+    // Outside the band the conductor is INERT — no window, no clock, no
+    // pin. That is rule 6's deliberate consequence (a ten-minute clip must
+    // not pin a board being skimmed), and it is why the band and the mute
+    // do not share this exit.
+    if (!narrationAudibleAtRate(rate)) return { window: null, audio: null };
     const layout = this.layout;
-    const el = this.element;
-    if (!layout || !el || this.failed) return { window: null, audio: null };
+    if (!layout || this.failed) return { window: null, audio: null };
+    if (this.muted) return this.metronomeFrame(layout, t, rate, dt);
+    const el = this.ensureLoaded();
+    if (!el) return { window: null, audio: null };
     if (el.playbackRate !== rate) el.playbackRate = rate;
+
+    // A just-installed element is at 0 and knows nothing. Until metadata
+    // lands there is no `seekable` to clamp into, so a `currentTime` write
+    // would be silently dropped and `play()` would sound the opening word
+    // over the middle of the lecture. rAF stays master for those frames.
+    if (this.needsResync) {
+      if (el.readyState < HAVE_METADATA) return { window: null, audio: null };
+      el.currentTime = canonicalToTrack(layout, t);
+      this.needsResync = false;
+      this.clearStall();
+    }
 
     this.wantsPlay = true;
     if (el.paused && !this.blocked) this.startPlay(el);
@@ -194,19 +239,37 @@ export class TrackConductor implements NarrationClock, VoiceOutput {
   }
 
   seek(t: number, playing: boolean): void {
-    if (this.rate > NARRATION_MAX_RATE) {
+    if (!narrationAudibleAtRate(this.rate)) {
       this.silence();
       return;
     }
     const layout = this.layout;
-    const el = this.element;
-    if (!layout || !el || this.failed) return;
+    if (!layout || this.failed) return;
+    if (this.muted) {
+      // The metronome is a clock too, and an explicit navigation moves it
+      // exactly as it moves the element — otherwise unmuting after a scrub
+      // would find the lecture where it was before the scrub.
+      this.virtualTrackTime = canonicalToTrack(layout, t);
+      this.virtualPrimed = true;
+      this.wantsPlay = playing;
+      return;
+    }
+    const el = this.ensureLoaded();
+    if (!el) return;
+    this.wantsPlay = playing;
+    if (el.readyState < HAVE_METADATA) {
+      // Nothing to seek yet. The next frame carries the LIVE playhead and
+      // positions it there, which is strictly better than remembering this
+      // `t` — by the time metadata lands the board has moved on.
+      this.needsResync = true;
+      return;
+    }
     // An explicit navigation is the one moment a seek is EXPECTED — the
     // user moved the playhead, and the decode gap lands under their own
     // gesture rather than under a word.
     el.currentTime = canonicalToTrack(layout, t);
+    this.needsResync = false;
     this.clearStall();
-    this.wantsPlay = playing;
     // Playing seeks run inside the user's gesture (scrub / play-from /
     // Live) — this synchronous play() is what unlocks strict autoplay.
     if (playing) this.startPlay(el);
@@ -214,12 +277,24 @@ export class TrackConductor implements NarrationClock, VoiceOutput {
   }
 
   resume(t: number): void {
-    if (this.rate > NARRATION_MAX_RATE) {
+    if (!narrationAudibleAtRate(this.rate)) {
       this.silence();
       return;
     }
+    if (this.muted) {
+      // The metronome never stopped counting anywhere it mattered; a
+      // resume simply means frames start arriving again.
+      this.wantsPlay = true;
+      return;
+    }
     const el = this.element;
-    if (!el || !this.layout || this.failed) return;
+    // No element (released while muted / out of band) or one not yet
+    // placed: the next frame installs and positions it. Resuming a
+    // fresh element here would sound the lecture's opening.
+    if (!el || this.needsResync || !this.layout || this.failed) {
+      this.wantsPlay = true;
+      return;
+    }
     // The element continues from its OWN clock: nothing moved while the
     // board was paused, so element and playhead are still the pair they
     // were — and paused mid-hold the element deliberately sits ahead of
@@ -236,11 +311,9 @@ export class TrackConductor implements NarrationClock, VoiceOutput {
   }
 
   setRate(rate: number): void {
+    if (rate === this.rate) return;
     this.rate = rate;
-    if (rate > NARRATION_MAX_RATE) {
-      this.silence();
-      return;
-    }
+    this.reconcile();
     const el = this.element;
     if (el && el.playbackRate !== rate) el.playbackRate = rate;
   }
@@ -248,16 +321,109 @@ export class TrackConductor implements NarrationClock, VoiceOutput {
   // ── Voice output (the transport's mute) ──────────────────────────────────
 
   /**
-   * The listener asked for silence — the SPEAKER only. Doubly load-bearing
-   * on this path: the element is never paused for silence anyway (a gap
-   * between clips is part of the file), so stopping it to mute would not
-   * just release the gate's hold, it would put back the very seam this
-   * conductor exists to delete. The flag is the whole mechanism.
+   * The listener asked for silence — and on this path silence means the
+   * track is LET GO, not merely turned down. A muted element would go on
+   * downloading two megabytes and decoding them for nobody.
+   *
+   * What must not change is the lecture: the gate's holds are a function
+   * of the compiled schedule, which already encodes every clip's duration,
+   * so a released element leaves the pen waiting exactly as long as a
+   * sounding one would have (`mute-seam.test.ts` pins that equality).
+   * Unmuting mid-lecture reinstalls the file and places it at the
+   * canonical playhead before a sound is made — never at 0.
    */
   setMuted(muted: boolean): void {
+    if (muted === this.muted) return;
     this.muted = muted;
     const el = this.element;
+    // Applied first so the moment between deciding and releasing is silent
+    // even if the release itself is a frame away.
     if (el && el.muted !== muted) el.muted = muted;
+    this.reconcile();
+  }
+
+  /**
+   * Whether an ELEMENT should exist. Deliberately narrower than "is the
+   * conductor participating": outside the band the conductor goes inert
+   * (no clock, no pin), while muted it keeps clocking without an element.
+   */
+  private wantsElement(): boolean {
+    return !this.muted && narrationAudibleAtRate(this.rate);
+  }
+
+  /**
+   * Reconcile the element with `wantsElement()`. Called from every input
+   * that can change the answer — the mute, the rate — so no caller has to
+   * remember the teardown/reinstall dance.
+   */
+  private reconcile(): void {
+    if (!narrationAudibleAtRate(this.rate)) {
+      // Inert: neither an element nor a metronome. The next re-entry into
+      // the band re-places whichever one it needs from the live playhead.
+      this.virtualPrimed = false;
+      this.silence();
+      return;
+    }
+    if (!this.wantsElement()) {
+      // Muted: the metronome takes over from exactly where the element
+      // stood, so the lecture does not skip a beat at the handover.
+      const el = this.element;
+      if (el) {
+        this.virtualTrackTime = el.currentTime;
+        this.virtualPrimed = true;
+      }
+      this.silence();
+      return;
+    }
+    // Coming back to sound: the next frame installs the file and places it
+    // at the live playhead. Deliberately not done here — `setMuted` /
+    // `setRate` are not told `t`, and guessing it is how the voice ends up
+    // at 0, which is the defect this release exists to remove.
+    this.virtualPrimed = false;
+    if (!this.element) this.needsResync = true;
+  }
+
+  /**
+   * One frame of the silent metronome — the muted board's clock.
+   *
+   * It reports the same snapshot shape an element would, so `clock-gate`
+   * engages exactly as it does with sound: the same clip owns the same
+   * canonical seconds, and a voice longer than its writing pins the pen
+   * for precisely as long. That is what makes a muted lecture the SAME
+   * lecture (`voice-output.ts`) even though nothing is loaded or decoded.
+   *
+   * Read-then-advance, in that order: the host advances a real element
+   * BETWEEN frames, so counting first would put the metronome one frame
+   * ahead of the voice it is standing in for.
+   */
+  private metronomeFrame(
+    layout: TrackLayout,
+    t: number,
+    rate: number,
+    dt: number,
+  ): { window: ClipWindow | null; audio: AudioClockSnapshot | null } {
+    if (!this.virtualPrimed) {
+      this.virtualTrackTime = canonicalToTrack(layout, t);
+      this.virtualPrimed = true;
+    }
+    const tt = this.virtualTrackTime;
+    this.virtualTrackTime = tt + dt * rate;
+    const clip = clipAtTrackTime(layout, tt);
+    if (!clip) return { window: null, audio: null };
+    const window = this.windowByHash.get(clip.hash);
+    if (!window) return { window: null, audio: null };
+    return {
+      window,
+      audio: {
+        hash: clip.hash,
+        time: tt - clip.offset / layout.sampleRate,
+        // "Sounding" here means "this clip owns the clock", which is the
+        // only thing the gate asks it. Nothing is audible; the listener
+        // chose that, and the pacing is not theirs to change.
+        sounding: true,
+        ended: false,
+      },
+    };
   }
 
   // ── Autoplay policy surface (the chip) ───────────────────────────────────
@@ -291,21 +457,41 @@ export class TrackConductor implements NarrationClock, VoiceOutput {
 
   dispose(): void {
     this.disarmGestureRetry();
-    const el = this.element;
-    if (el) {
-      if (!el.paused) el.pause();
-      el.removeEventListener("error", this.onError);
-    }
-    this.element = null;
-    this.loadedUrl = null;
+    this.releaseElement();
+    this.trackUrl = null;
     this.blockedListeners.clear();
     this.degradedListeners.clear();
   }
 
   // ── Internals ────────────────────────────────────────────────────────────
 
-  private ensureElement(): AudioElementLike | null {
-    if (this.element) return this.element;
+  /**
+   * The element with this board's track on it, or null when there should
+   * not be one. The ONLY place `src` is assigned.
+   *
+   * Idempotent and cheap: with the right file already loaded it is a
+   * single reference return, which is what keeps the seamless-across-
+   * appends guarantee (a recompile that keeps the track path never
+   * touches the element) while letting an unmute reinstall it.
+   */
+  private ensureLoaded(): AudioElementLike | null {
+    if (!this.wantsElement() || this.trackUrl === null) return null;
+    if (this.element && this.loadedUrl === this.trackUrl) return this.element;
+    const el = this.element ?? this.createElement();
+    if (!el) return null;
+    el.src = this.trackUrl;
+    this.loadedUrl = this.trackUrl;
+    // Deliberately NOT marking a resync here. A first install starts the
+    // element and the lecture from their own natural positions, and
+    // `alignInSilence` is the mechanism that has always reconciled them —
+    // seeking on the opening frame would cost a decode for nothing, which
+    // is the very thing this conductor exists to avoid. Only a RE-install
+    // into a lecture already under way needs placing, and `reconcile` is
+    // what knows that happened.
+    return el;
+  }
+
+  private createElement(): AudioElementLike | null {
     const created = this.opts.createElement
       ? this.opts.createElement()
       : typeof Audio !== "undefined"
@@ -315,11 +501,32 @@ export class TrackConductor implements NarrationClock, VoiceOutput {
     // The whole reason this class exists: one src, buffered from the
     // moment the board loads, so no clip is ever asked to start cold.
     created.preload = "auto";
-    // Born with the listener's choice already applied (see `setMuted`).
     created.muted = this.muted;
     created.addEventListener("error", this.onError);
     this.element = created;
     return created;
+  }
+
+  /**
+   * Let the element go — the mechanism behind both the listener's mute
+   * and the rate band.
+   *
+   * `removeAttribute("src")` + `load()` before dropping the reference is
+   * the part that matters: without it the browser keeps streaming the
+   * track to an object nobody holds, and "the voice is off" would still
+   * cost the network everything it cost before.
+   */
+  private releaseElement(): void {
+    const el = this.element;
+    this.element = null;
+    this.loadedUrl = null;
+    this.needsResync = false;
+    this.clearStall();
+    if (!el) return;
+    el.removeEventListener("error", this.onError);
+    if (!el.paused) el.pause();
+    el.removeAttribute("src");
+    el.load();
   }
 
   /**
@@ -383,10 +590,10 @@ export class TrackConductor implements NarrationClock, VoiceOutput {
     if (el && !el.paused) el.pause();
   }
 
+  /** No voice is wanted: stop wanting one, and stop holding the file. */
   private silence(): void {
     this.wantsPlay = false;
-    this.quiet();
-    this.clearStall();
+    this.releaseElement();
   }
 
   private clearStall(): void {

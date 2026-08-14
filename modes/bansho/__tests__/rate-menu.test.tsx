@@ -19,7 +19,7 @@
  *    ArrowDown, focus lands on the checked rung, arrows walk the list,
  *    Escape closes and hands focus back;
  *  - the rungs where the recorded voice steps aside (above
- *    `NARRATION_MAX_RATE`) say so BEFORE they are chosen, and only on a
+ *    `NARRATION_RATE_BAND`) say so BEFORE they are chosen, and only on a
  *    board that actually has a voice.
  */
 
@@ -27,7 +27,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
 
 import type { BoardTimeline } from "../engine/types.js";
-import { NARRATION_MAX_RATE } from "../viewer/clock-gate.js";
+import { narrationAudibleAtRate } from "../viewer/clock-gate.js";
 import { RATES, type Rate } from "../viewer/player-core.js";
 import type { BoardPlayerHandle } from "../viewer/useBoardPlayer.js";
 
@@ -226,7 +226,7 @@ describe("the menu tells the truth about the voice before you choose", () => {
     for (const item of m.items()) {
       const rate = Number(item.dataset.rate);
       const label = item.getAttribute("aria-label") ?? "";
-      if (rate > NARRATION_MAX_RATE) {
+      if (!narrationAudibleAtRate(rate)) {
         expect(item.textContent).toContain("silent");
         expect(label).toContain("narration silent");
       } else {

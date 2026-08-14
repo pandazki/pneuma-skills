@@ -403,16 +403,24 @@ describe("AudioConductor — transport discipline", () => {
 
     conductor.setRate(16);
     conductor.frame(w.start + 0.3, 16);
+    // Outside the band the clip is not merely paused, it is LET GO: a
+    // voice nobody will hear is not worth a download or a decoder.
     expect(el.paused).toBe(true);
+    expect(el.srcRemovals).toBe(1);
+    expect(el.loadCalls).toBe(1);
 
-    // Back to 1×: the element still holds the right clip, so nothing
-    // reloads — but its clock is now behind the picture and must be seeked
-    // FORWARD, never the picture back to it.
+    // Back to 1×: the clip is loaded again and aligned to where the PEN
+    // is, never replayed from its own beginning. (The cold-start half of
+    // this — an element that cannot be positioned yet stays silent rather
+    // than sounding from 0 — is pinned in `mute-seam.test.ts`, where the
+    // element's readyState can be driven.)
     conductor.setRate(1);
     conductor.frame(back, 1);
-    expect(el.paused).toBe(false);
-    expect(el.playbackRate).toBe(1);
-    expect(el.currentTime).toBeCloseTo(back - w.start, 6);
+    const fresh = elements[elements.length - 1]!;
+    expect(fresh).not.toBe(el);
+    expect(fresh.paused).toBe(false);
+    expect(fresh.playbackRate).toBe(1);
+    expect(fresh.currentTime).toBeCloseTo(back - w.start, 6);
   });
 
   test("dispose stops the sound and detaches everything", async () => {

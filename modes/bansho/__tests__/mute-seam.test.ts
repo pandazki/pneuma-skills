@@ -147,57 +147,81 @@ function play(
   return trajectory;
 }
 
-describe("the mute lands on the element, on both voice paths", () => {
+describe("muting lets the element GO, on both voice paths", () => {
   for (const { name, make } of PATHS) {
-    test(`${name}: the flag reaches the live element and comes back off`, () => {
+    test(`${name}: muting releases the resource, not just the volume`, () => {
       const path = ready(make);
       path.clock.frame(1.5, 1, 1 / 60); // the element exists and is sounding
-      expect(path.el.muted).toBe(false);
+      expect(path.el.src).not.toBe("");
+      expect(path.el.paused).toBe(false);
+
       path.voice.setMuted(true);
-      expect(path.el.muted).toBe(true);
-      path.voice.setMuted(false);
-      expect(path.el.muted).toBe(false);
+      // Dropping the reference is not enough: without removeAttribute +
+      // load() the browser keeps streaming audio to an object nobody
+      // holds, and "the voice is off" still costs the whole download.
+      expect(path.el.srcRemovals).toBe(1);
+      expect(path.el.loadCalls).toBe(1);
+      expect(path.el.src).toBe("");
+      expect(path.el.paused).toBe(true);
     });
 
-    test(`${name}: an element created AFTER the choice is born muted`, () => {
+    test(`${name}: a board opened muted never asks for the audio at all`, () => {
       // The persisted preference is pushed in on mount, before any program
-      // and before any element exists. Both conductors build their element
-      // lazily, so the flag has to survive the gap — or the first clip
-      // sounds out loud for the frames it takes the host to catch up.
+      // exists. Nothing may be fetched on the strength of a program that
+      // arrives afterwards.
       const path = make();
       path.voice.setMuted(true);
       path.install();
-      path.clock.frame(1.5, 1, 1 / 60);
-      expect(path.el.muted).toBe(true);
-      expect(path.el.paused).toBe(false); // muted, and playing
+      for (let i = 0; i < 60; i++) path.clock.frame(1 + i / 60, 1, 1 / 60);
+      expect(path.el.src).toBe("");
+      expect(path.el.playCalls).toBe(0);
     });
 
-    test(`${name}: muting never pauses the element and never seeks it`, () => {
+    test(`${name}: unmuting mid-lecture resumes at the pen, never at 0`, () => {
       const path = ready(make);
+      // Play into the clip, then silence it and let the metronome carry
+      // the lecture on for another second.
+      let t = 0;
       for (let i = 0; i < 120; i++) {
-        path.clock.frame(1 + i / 60, 1, 1 / 60);
+        path.clock.frame(t, 1, 1 / 60);
         path.el.advance(1 / 60);
+        t += 1 / 60;
       }
-      const pausesBefore = path.el.pauseCalls;
-      const seeksBefore = [...path.el.seeks];
       path.voice.setMuted(true);
+      for (let i = 0; i < 60; i++) {
+        path.clock.frame(t, 1, 1 / 60);
+        t += 1 / 60;
+      }
+
       path.voice.setMuted(false);
-      path.voice.setMuted(true);
-      expect(path.el.pauseCalls).toBe(pausesBefore);
-      expect(path.el.seeks).toEqual(seeksBefore);
-      expect(path.el.paused).toBe(false); // still running: mute is not stop
+      // A just-reinstalled element knows nothing yet: no seek is possible
+      // (an empty `seekable` swallows the write) and no sound may start,
+      // or the lecture's opening word plays under the middle of the board.
+      path.el.readyState = 0;
+      const playsBefore = path.el.playCalls;
+      const cold = path.clock.frame(t, 1, 1 / 60);
+      expect(cold.audio).toBeNull();
+      expect(path.el.playCalls).toBe(playsBefore);
+
+      path.el.readyState = 4;
+      const seeksBefore = path.el.seeks.length;
+      path.clock.frame(t, 1, 1 / 60);
+      const landed = path.el.seeks[seeksBefore];
+      expect(landed).toBeDefined();
+      // Where the pen is, not where the lecture starts.
+      expect(landed).toBeGreaterThan(0.5);
+      expect(path.el.playCalls).toBeGreaterThan(playsBefore);
     });
 
     test(`${name}: setting the same value twice writes nothing new`, () => {
       const path = ready(make);
       path.clock.frame(1.5, 1, 1 / 60);
       path.voice.setMuted(true);
-      const pauses = path.el.pauseCalls;
-      const seeks = path.el.seeks.length;
+      const removals = path.el.srcRemovals;
+      const loads = path.el.loadCalls;
       path.voice.setMuted(true);
-      expect(path.el.muted).toBe(true);
-      expect(path.el.pauseCalls).toBe(pauses);
-      expect(path.el.seeks).toHaveLength(seeks);
+      expect(path.el.srcRemovals).toBe(removals);
+      expect(path.el.loadCalls).toBe(loads);
     });
   }
 });
@@ -236,6 +260,23 @@ describe("a muted lecture is the SAME lecture", () => {
       // rule 4) — the whole point of a hold.
       expect(Math.max(...quiet)).toBeLessThanOrEqual(hold + 1e-9);
       expect(quiet[FRAMES - 1]).toBeCloseTo(hold, 6);
+    });
+
+    test(`${name}: and RELEASES it when the voice would have ended`, () => {
+      // The other half of the hold, and the half the 400-frame runs cannot
+      // see: this clip's voice runs 30 s, so a metronome that never
+      // synthesized the end of it would pin the board at the pen-down
+      // forever — a silent deadlock that looks exactly like a frozen
+      // viewer. 2000 frames ≈ 33 s carries the run past the voice's end.
+      const LONG = 2000;
+      const loud = play(ready(make), LONG);
+      const quiet = play(ready(make), LONG, { muteAt: 0 });
+      expect(quiet).toEqual(loud);
+      const hold = WINDOWS[0]!.holdAt!;
+      // Pinned in the middle…
+      expect(quiet[Math.floor(LONG / 2)]).toBeCloseTo(hold, 6);
+      // …and moving again by the end.
+      expect(quiet[LONG - 1]).toBeGreaterThan(hold + 1);
     });
   }
 });

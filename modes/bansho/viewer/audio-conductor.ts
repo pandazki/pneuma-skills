@@ -24,15 +24,17 @@
  *    pinned canonical time — re-deriving its offset would replay voice
  *    already heard); an ended clip is spent until an explicit seek
  *    re-arms it, so it can never replay on its own.
- *  - **Above `NARRATION_MAX_RATE` the element is stopped, not stretched.**
- *    A rate no browser agrees on (see the constant) is never written to
- *    `playbackRate` — the conductor simply goes quiet and reports no
- *    audio, which is the same degradation a missing clip produces. This is
- *    the element-side half of the gate's rule 6; the gate refuses the
- *    projection independently, so neither side can be the only guard.
- *    Coming back down re-enters through the ordinary path: the loaded clip
- *    is still the right one, and the lag rule above seeks it forward to
- *    wherever the picture got to.
+ *  - **Outside `NARRATION_RATE_BAND` the element is released, not
+ *    stretched.** A rate no browser agrees on (see the constant) is never
+ *    written to `playbackRate`; nor is the clip kept loaded, because a
+ *    voice that will not be heard is not worth a download or a decoder.
+ *    This is the element-side half of the gate's rule 6, and the
+ *    listener's mute takes exactly the same path — one mechanism, two
+ *    reasons. The gate refuses the projection independently, so neither
+ *    side can be the only guard. Coming back re-enters through the
+ *    ordinary path: the next frame loads the clip the playhead is inside
+ *    and aligns it before sounding, so the voice resumes where the pen is
+ *    rather than where the clip begins.
  *
  * Hot-path discipline: `frame()` runs once per rAF while playing — every
  * DOM write (src, currentTime, playbackRate, play/pause) is guarded
@@ -41,11 +43,20 @@
 
 import { activeClipAt, type ClipWindow } from "../narration/timing.js";
 import {
-  NARRATION_MAX_RATE,
+  narrationAudibleAtRate,
   type AudioClockSnapshot,
   type NarrationClock,
 } from "./clock-gate.js";
 import type { VoiceOutput } from "./voice-output.js";
+
+/**
+ * `HTMLMediaElement.HAVE_METADATA` — duration and `seekable` are known, so
+ * a `currentTime` write will be honoured. Below it the seek algorithm has
+ * an empty `seekable` to clamp into and the assignment is silently lost,
+ * which is why a freshly installed element is never positioned (or played)
+ * until it reaches this.
+ */
+export const HAVE_METADATA = 1;
 
 /** The element surface the conductor drives (HTMLAudioElement satisfies it). */
 export interface AudioElementLike {
@@ -53,15 +64,25 @@ export interface AudioElementLike {
   currentTime: number;
   playbackRate: number;
   readonly paused: boolean;
+  readonly readyState: number;
   preload: string;
   /**
-   * The listener's silence (`voice-output.ts`). Output-stage only: the
-   * element keeps playing and keeps advancing its clock, so muting can
-   * never reach the gate's projection. Never confuse it with `pause()`.
+   * The listener's silence, applied while an element still exists — the
+   * transient state between deciding to go quiet and letting the element
+   * go. Output-stage only: it never stops the clock (see `voice-output.ts`
+   * for why stopping it would change the lecture).
    */
   muted: boolean;
   play(): Promise<void>;
   pause(): void;
+  /**
+   * Abandon the current resource. `removeAttribute("src")` followed by
+   * `load()` is the only sequence that actually stops an in-flight media
+   * download; dropping the reference alone leaves the fetch running until
+   * GC gets there, which is exactly what "the voice is off" must not mean.
+   */
+  removeAttribute(name: string): void;
+  load(): void;
   addEventListener(type: string, listener: () => void): void;
   removeEventListener(type: string, listener: () => void): void;
 }
@@ -114,6 +135,14 @@ export class AudioConductor implements NarrationClock, VoiceOutput {
   private files = new Map<string, string>();
   private element: AudioElementLike | null = null;
   private loadedHash: string | null = null;
+  /**
+   * The clip the element has actually been POSITIONED for. Distinct from
+   * `loadedHash` because a just-assigned `src` knows nothing yet: below
+   * `HAVE_METADATA` there is no `seekable` to clamp into and a
+   * `currentTime` write is silently dropped, so the element would sound
+   * the clip's opening under the middle of a step.
+   */
+  private alignedHash: string | null = null;
   /** Clips whose element errored — muted individually, never the board. */
   private readonly failed = new Set<string>();
   /** Clips that played to their end — spent until an explicit seek. */
@@ -133,6 +162,13 @@ export class AudioConductor implements NarrationClock, VoiceOutput {
    * restored on mount arrives before the first clip is ever asked for.
    */
   private muted = false;
+  /**
+   * The SILENT METRONOME (see `setMuted`) — seconds into `virtualHash`'s
+   * clip. While muted there is no element, but the lecture keeps its
+   * shape, so the conductor counts the clip's clock itself.
+   */
+  private virtualTime = 0;
+  private virtualHash: string | null = null;
   private gestureArmed = false;
   private readonly blockedListeners = new Set<(blocked: boolean) => void>();
   private readonly degradedListeners = new Set<
@@ -209,14 +245,16 @@ export class AudioConductor implements NarrationClock, VoiceOutput {
     rate: number,
     dt = 0,
   ): { window: ClipWindow | null; audio: AudioClockSnapshot | null } {
-    this.rate = rate;
-    if (rate > NARRATION_MAX_RATE) {
-      // Skimming: no clip owns any canonical time (gate rule 6). Reported
-      // as a stretch with no voice at all rather than as a silent window,
-      // because that is what it is — nothing here is waiting to sound.
-      this.silence();
-      return { window: null, audio: null };
+    if (rate !== this.rate) {
+      this.rate = rate;
+      this.reconcile();
     }
+    // Outside the band the conductor is INERT — no clip owns any canonical
+    // time, no pin binds (gate rule 6, and the reason a ten-minute clip
+    // cannot deadlock a board being skimmed). The mute does NOT share this
+    // exit: it keeps the clock and drops only the sound.
+    if (!narrationAudibleAtRate(rate)) return { window: null, audio: null };
+    if (this.muted) return this.metronomeFrame(t, rate, dt);
     const window = this.activeWindowAt(t);
     if (!window) {
       this.wantsPlay = false;
@@ -235,8 +273,16 @@ export class AudioConductor implements NarrationClock, VoiceOutput {
 
     if (this.loadedHash !== window.hash) {
       this.loadedHash = window.hash;
+      this.alignedHash = null;
       el.src = this.opts.resolveUrl(file);
-      el.currentTime = t - window.start; // align BEFORE sounding
+    }
+    if (this.alignedHash !== window.hash) {
+      // Align BEFORE sounding — and only once the element can be aligned.
+      // Until then rAF is master and the board plays on silently, which is
+      // the same degradation a slow clip already produces.
+      if (el.readyState < HAVE_METADATA) return { window, audio: null };
+      el.currentTime = t - window.start;
+      this.alignedHash = window.hash;
     }
     if (el.playbackRate !== rate) el.playbackRate = rate;
 
@@ -312,8 +358,17 @@ export class AudioConductor implements NarrationClock, VoiceOutput {
     // skim check so dropping back to a listening rate finds the clips
     // around the new playhead armed.
     this.spent.clear();
-    if (this.rate > NARRATION_MAX_RATE) {
+    if (!narrationAudibleAtRate(this.rate)) {
       this.silence();
+      return;
+    }
+    if (this.muted) {
+      // The metronome is a clock too — an explicit navigation moves it
+      // exactly as it moves the element.
+      const w = activeClipAt(this.windows, t);
+      this.virtualHash = w?.hash ?? null;
+      this.virtualTime = w ? t - w.start : 0;
+      this.wantsPlay = playing;
       return;
     }
     const window = activeClipAt(this.windows, t);
@@ -327,10 +382,19 @@ export class AudioConductor implements NarrationClock, VoiceOutput {
     if (!el) return;
     if (this.loadedHash !== window.hash) {
       this.loadedHash = window.hash;
+      this.alignedHash = null;
       el.src = this.opts.resolveUrl(file);
     }
-    el.currentTime = t - window.start;
     this.wantsPlay = playing;
+    if (el.readyState < HAVE_METADATA) {
+      // Nothing to seek yet. The next frame carries the LIVE playhead and
+      // positions it there — better than remembering this `t`, which the
+      // board will have moved past by the time metadata lands.
+      this.alignedHash = null;
+      return;
+    }
+    el.currentTime = t - window.start;
+    this.alignedHash = window.hash;
     // Playing seeks run inside the user's gesture (scrub / play-from /
     // Live) — this synchronous play() is what unlocks strict autoplay.
     if (playing) this.startPlay(el);
@@ -338,8 +402,12 @@ export class AudioConductor implements NarrationClock, VoiceOutput {
   }
 
   resume(t: number): void {
-    if (this.rate > NARRATION_MAX_RATE) {
+    if (!narrationAudibleAtRate(this.rate)) {
       this.silence();
+      return;
+    }
+    if (this.muted) {
+      this.wantsPlay = true;
       return;
     }
     const window = this.activeWindowAt(t);
@@ -366,14 +434,12 @@ export class AudioConductor implements NarrationClock, VoiceOutput {
   }
 
   setRate(rate: number): void {
+    if (rate === this.rate) return;
     this.rate = rate;
-    if (rate > NARRATION_MAX_RATE) {
-      // Never written to the element: `playbackRate = 16` is not portable
-      // (clamped here, ignored there, muted elsewhere), and the whole
-      // point of stepping aside is to depend on none of that.
-      this.silence();
-      return;
-    }
+    // Never written to the element outside the band: `playbackRate = 16`
+    // is not portable (clamped here, ignored there, muted elsewhere), and
+    // the whole point of stepping aside is to depend on none of that.
+    this.reconcile();
     const el = this.element;
     if (el && el.playbackRate !== rate) el.playbackRate = rate;
   }
@@ -381,15 +447,98 @@ export class AudioConductor implements NarrationClock, VoiceOutput {
   // ── Voice output (the transport's mute) ──────────────────────────────────
 
   /**
-   * The listener asked for silence — the SPEAKER only. The element keeps
-   * playing and keeps advancing, so the gate's projection, the hold pins
-   * and the schedule are untouched: a muted lecture is the same lecture
-   * (`voice-output.ts`, pinned by `mute-seam.test.ts`).
+   * The listener asked for silence — and silence means the clip is LET GO,
+   * not merely turned down. The lecture is unchanged either way: the
+   * gate's holds come from the compiled schedule, which already encodes
+   * every clip's duration, so a released element leaves the pen waiting
+   * exactly as long as a sounding one would have (`mute-seam.test.ts`
+   * pins that equality). Unmuting mid-lecture reloads the clip the
+   * playhead is inside and aligns it before sounding.
    */
   setMuted(muted: boolean): void {
+    if (muted === this.muted) return;
     this.muted = muted;
     const el = this.element;
     if (el && el.muted !== muted) el.muted = muted;
+    this.reconcile();
+  }
+
+  /**
+   * Whether an ELEMENT should exist. Narrower than "is the conductor
+   * participating": outside the band it goes inert, while muted it keeps
+   * clocking without an element.
+   */
+  private wantsElement(): boolean {
+    return !this.muted && narrationAudibleAtRate(this.rate);
+  }
+
+  /** Reconcile the element with `wantsElement()` — every input funnels here. */
+  private reconcile(): void {
+    if (!narrationAudibleAtRate(this.rate)) {
+      this.virtualHash = null;
+      this.silence();
+      return;
+    }
+    if (!this.wantsElement()) {
+      // Muted: hand the clock to the metronome from exactly where the
+      // element stood, so the lecture does not skip a beat at the handover.
+      const el = this.element;
+      if (el && this.loadedHash !== null) {
+        this.virtualHash = this.loadedHash;
+        this.virtualTime = el.currentTime;
+      }
+      this.silence();
+      return;
+    }
+    // Coming back to sound: the next frame loads the clip the playhead is
+    // inside and aligns it before sounding.
+    this.virtualHash = null;
+  }
+
+  /**
+   * One frame of the silent metronome — the muted board's clock.
+   *
+   * Reports the snapshot shape an element would, so `clock-gate` engages
+   * exactly as it does with sound and a voice longer than its writing pins
+   * the pen for precisely as long. That is what makes a muted lecture the
+   * SAME lecture (`voice-output.ts`) with nothing loaded or decoded.
+   *
+   * Read-then-advance: the host advances a real element BETWEEN frames, so
+   * counting first would put the metronome a frame ahead of the voice it
+   * stands in for. The end of the clip is synthesized too — without it the
+   * hold would never be released and a long clip would pin the board
+   * forever.
+   */
+  private metronomeFrame(
+    t: number,
+    rate: number,
+    dt: number,
+  ): { window: ClipWindow | null; audio: AudioClockSnapshot | null } {
+    const window = this.activeWindowAt(t);
+    if (!window) {
+      this.virtualHash = null;
+      return { window: null, audio: null };
+    }
+    if (!this.files.has(window.hash) || this.failed.has(window.hash)) {
+      // A missing clip is silent on this path too — same degradation the
+      // sounding path reports, so muting cannot mask or invent one.
+      return { window, audio: null };
+    }
+    if (this.virtualHash !== window.hash) {
+      this.virtualHash = window.hash;
+      this.virtualTime = t - window.start;
+    }
+    const time = this.virtualTime;
+    if (this.spent.has(window.hash)) {
+      return { window, audio: { hash: window.hash, time, sounding: false, ended: true } };
+    }
+    this.virtualTime = time + dt * rate;
+    // The `ended` event the element would have fired, at the same frame.
+    if (this.virtualTime >= window.audioSeconds) this.spent.add(window.hash);
+    return {
+      window,
+      audio: { hash: window.hash, time, sounding: true, ended: false },
+    };
   }
 
   // ── Autoplay policy surface (the chip) ───────────────────────────────────
@@ -429,14 +578,7 @@ export class AudioConductor implements NarrationClock, VoiceOutput {
 
   dispose(): void {
     this.disarmGestureRetry();
-    const el = this.element;
-    if (el) {
-      if (!el.paused) el.pause();
-      el.removeEventListener("ended", this.onEnded);
-      el.removeEventListener("error", this.onError);
-    }
-    this.element = null;
-    this.loadedHash = null;
+    this.releaseElement();
     this.blockedListeners.clear();
     this.degradedListeners.clear();
   }
@@ -467,15 +609,34 @@ export class AudioConductor implements NarrationClock, VoiceOutput {
   }
 
   /**
-   * Stop wanting sound and stop making it — the one shape every "no voice
-   * belongs here" exit takes. The stall episode is dropped with it: the
-   * element's clock will legitimately stand still while it is paused, and
-   * that must not be read as buffering when playback resumes.
+   * No voice is wanted here at all (muted, or outside the rate band) —
+   * stop wanting one and let the element GO. Distinct from `quiet()`,
+   * which merely pauses and is what an ordinary transport pause uses: a
+   * paused board still intends to sound, and its element must survive so
+   * `resume` can continue from its own clock.
    */
   private silence(): void {
     this.wantsPlay = false;
-    this.quiet();
+    this.releaseElement();
+  }
+
+  /**
+   * Abandon the loaded clip. The `removeAttribute("src")` + `load()` pair
+   * is what actually stops an in-flight download — dropping the reference
+   * alone leaves the browser streaming audio to an object nobody holds.
+   */
+  private releaseElement(): void {
+    const el = this.element;
+    this.element = null;
+    this.loadedHash = null;
+    this.alignedHash = null;
     this.clearStall();
+    if (!el) return;
+    el.removeEventListener("ended", this.onEnded);
+    el.removeEventListener("error", this.onError);
+    if (!el.paused) el.pause();
+    el.removeAttribute("src");
+    el.load();
   }
 
   /** Forget the stall episode; `-1` can equal no element clock. */

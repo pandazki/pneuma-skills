@@ -40,7 +40,8 @@ import { stepKey } from "../viewer/address.js";
 import { AudioConductor } from "../viewer/audio-conductor.js";
 import {
   gatedTick,
-  NARRATION_MAX_RATE,
+  NARRATION_RATE_BAND,
+  narrationAudibleAtRate,
   type AudioClockSnapshot,
 } from "../viewer/clock-gate.js";
 import {
@@ -243,24 +244,30 @@ describe("gatedTick — the pin rule: never pass a pen-down or the end while sou
   });
 });
 
-describe("the skim threshold — above NARRATION_MAX_RATE the voice steps aside", () => {
-  test("engaged at the threshold, released above it", () => {
+describe("the rate band — outside NARRATION_RATE_BAND the voice steps aside", () => {
+  test("engaged inside the band, released at either edge of it", () => {
     const { windows, timeline } = compile([["第一句话", 1]]);
     const w = windows[0]!;
-    const at = { ...playingAt(w.start, timeline.duration), rate: 4 as const };
-    // 4× is still a companion: the element runs at 4× and the gate maps it.
-    expect(gatedTick(at, 0.016, w, snap(w, 0.064)).t).toBeCloseTo(
-      w.start + 0.064,
-      10,
-    );
-    expect(NARRATION_MAX_RATE).toBe(4);
-    // Above it the gate refuses engagement no matter WHAT the element
-    // claims — a browser that silently ignored `playbackRate = 16` would
-    // otherwise drive the board at the clip's own speed while the reader
-    // asked for sixteen.
-    for (const rate of [8, 16] as const) {
+    expect(NARRATION_RATE_BAND).toEqual({ min: 1, max: 1.5 });
+    // Inside, INCLUSIVE at both ends: the element runs at that rate and
+    // the gate maps it.
+    for (const rate of [1, 1.25, 1.5] as const) {
+      const at = { ...playingAt(w.start, timeline.duration), rate };
+      expect(narrationAudibleAtRate(rate)).toBe(true);
+      expect(gatedTick(at, 0.016, w, snap(w, 0.064)).t).toBeCloseTo(
+        w.start + 0.064,
+        10,
+      );
+    }
+    // Outside — in EITHER direction — the gate refuses engagement no
+    // matter what the element claims: a browser that silently ignored
+    // `playbackRate = 16` would otherwise drive the board at the clip's
+    // own speed while the reader asked for sixteen, and one that ignored
+    // 0.75 would race the picture ahead of a voice studying a stroke.
+    for (const rate of [0.75, 2, 4, 8, 16] as const) {
       const s = { ...playingAt(w.start, timeline.duration), rate };
       const stale = snap(w, 0.064); // element crawling at 1×
+      expect(narrationAudibleAtRate(rate)).toBe(false);
       expect(gatedTick(s, 0.016, w, stale)).toEqual(tick(s, 0.016));
       expect(gatedTick(s, 0.016, w, stale).t).toBeCloseTo(
         w.start + 0.016 * rate,

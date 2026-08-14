@@ -72,6 +72,7 @@ import {
 } from "./board-frame.js";
 import { captureViewer } from "../../../src/utils/viewer-capture.js";
 import { AudioConductor } from "./audio-conductor.js";
+import { narrationAudibleAtRate } from "./clock-gate.js";
 import { TrackConductor } from "./track-conductor.js";
 import { readVoiceMuted, writeVoiceMuted } from "./voice-output.js";
 import { layOutTrack, verifyTrack } from "../narration/track.js";
@@ -689,6 +690,10 @@ export default function BanshoPreview({
     canvasKey,
     useTrack ? trackConductorRef.current : conductorRef.current,
   );
+  // Whether the transport's rate leaves any voice to have (clock-gate
+  // rule 6). Read from the SAME predicate the conductors obey — never a
+  // second copy of the band living in the host.
+  const voiceAudibleAtRate = narrationAudibleAtRate(player.ui.rate);
   // Stable getter — BoardCanvas's rebuild effect depends on it; a new
   // identity per render would recompile the board every frame.
   const playerRef = useRef(player);
@@ -1428,17 +1433,19 @@ export default function BanshoPreview({
                     : "handwriting font fallback"}
                 </div>
               ) : null}
-              {voiceBlocked && !voiceMuted ? (
+              {voiceBlocked && !voiceMuted && voiceAudibleAtRate ? (
                 // The voice-over sibling of the font chip: the browser
                 // refused to sound audio before the first interaction, and
                 // a silently muted voice must not pretend to be a silent
                 // board. The click IS the gesture that unlocks it.
                 //
-                // Suppressed while the LISTENER has chosen silence, and the
+                // Suppressed while the LISTENER has chosen silence — and
+                // equally while the RATE has taken the voice away — and the
                 // distinction is the whole point: this chip reports a
-                // degradation — sound the board wanted and could not get —
-                // whereas the transport's toggle is a control state the
-                // user set on purpose. Warning someone that the browser is
+                // degradation, sound the board wanted and could not get,
+                // whereas those two are states the board is in on purpose.
+                // Outside the band there is no element to unblock, so the
+                // chip would offer a button that cannot work. Warning someone that the browser is
                 // withholding a voice they just switched off would be
                 // noise about a problem they do not have. Unmuting brings
                 // it back if the block is still real, and the unmuting

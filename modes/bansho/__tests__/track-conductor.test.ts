@@ -225,10 +225,25 @@ describe("navigation and transport", () => {
     expect(el.playbackRate).toBe(1); // never written a rate no browser honours
   });
 
-  test("rate rides the element so both clocks scale together", () => {
+  test("rate rides the element so both clocks scale together, inside the band", () => {
     const { el, conductor } = harness();
-    conductor.frame(1.5, 2, 0.016);
-    expect(el.playbackRate).toBe(2);
+    conductor.frame(1.5, 1.25, 0.016);
+    expect(el.playbackRate).toBe(1.25);
+  });
+
+  test("outside the band the rate is never written — the track is released", () => {
+    const { el, conductor } = harness();
+    conductor.frame(1.5, 1, 0.016);
+    expect(el.src).not.toBe("");
+    // 2× is outside the band: an unportable `playbackRate` is never asked
+    // for, and the file is let go rather than left decoding for nobody.
+    const out = conductor.frame(1.5, 2, 0.016);
+    expect(out.window).toBeNull();
+    expect(out.audio).toBeNull();
+    expect(el.playbackRate).toBe(1);
+    expect(el.src).toBe("");
+    expect(el.srcRemovals).toBe(1);
+    expect(el.loadCalls).toBe(1);
   });
 });
 

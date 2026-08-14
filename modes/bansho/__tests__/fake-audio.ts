@@ -28,12 +28,23 @@ export class FakeAudioElement {
    * muting stop the clock would hide the bug the seam test hunts.
    */
   muted = false;
+  /**
+   * Defaults to HAVE_ENOUGH_DATA: almost every test wants an element that
+   * can be positioned, and the interesting case — a conductor asked to
+   * seek something that knows nothing yet — is opted into by setting it
+   * to 0. Real elements pass through 0 on every `src` change, which is why
+   * the conductors must never assume otherwise.
+   */
+  readyState = 4;
 
   /** Every `currentTime` assignment the conductor made (alignment audit). */
   seeks: number[] = [];
   playCalls = 0;
   pauseCalls = 0;
   rateSets = 0;
+  /** Teardown audit: dropping the reference is not releasing the resource. */
+  srcRemovals = 0;
+  loadCalls = 0;
   /** How the next play() settles — the autoplay/abort dial. */
   playMode: FakePlayMode = "resolve";
 
@@ -63,6 +74,26 @@ export class FakeAudioElement {
 
   pause(): void {
     this.pauseCalls++;
+    this.paused = true;
+  }
+
+  removeAttribute(name: string): void {
+    if (name !== "src") return;
+    this.srcRemovals++;
+    this.src = "";
+  }
+
+  /**
+   * The media load algorithm: abandons the resource and takes the element
+   * back to knowing nothing. Modelled faithfully because that is what
+   * makes it a release rather than a pause — a fake that left `readyState`
+   * at 4 would let a conductor "reinstall" an element that never actually
+   * let go.
+   */
+  load(): void {
+    this.loadCalls++;
+    this.readyState = 0;
+    this.time = 0;
     this.paused = true;
   }
 

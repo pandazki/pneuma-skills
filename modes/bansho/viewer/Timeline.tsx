@@ -25,7 +25,10 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 
 import type { BoardTimeline } from "../engine/types.js";
-import { NARRATION_MAX_RATE } from "./clock-gate.js";
+import {
+  NARRATION_RATE_BAND,
+  narrationAudibleAtRate,
+} from "./clock-gate.js";
 import { RATES, type Rate } from "./player-core.js";
 import type { BoardPlayerHandle } from "./useBoardPlayer.js";
 
@@ -72,6 +75,14 @@ const ICON_SPEAKER_WAVES =
   "M10 5.9a3 3 0 0 1 0 4.2M12.2 3.9a6 6 0 0 1 0 8.2";
 /** Silence: the cross that replaces the waves — a different SHAPE, not a tint. */
 const ICON_SPEAKER_CROSS = "M10.4 6.2l4 3.6M14.4 6.2l-4 3.6";
+/**
+ * Unavailable at this rate: the waves are there but BROKEN — a dashed
+ * outer arc, the inner one gone. A third distinct shape, deliberately not
+ * the cross: the cross is a choice the listener made, and this is the
+ * board reporting that no choice is available. Reading them as the same
+ * state is exactly the confusion to avoid.
+ */
+const ICON_SPEAKER_WAVES_BROKEN = "M10 5.9a3 3 0 0 1 0 4.2";
 
 function Timeline({
   timeline,
@@ -91,6 +102,13 @@ function Timeline({
   const [rateOpen, setRateOpen] = useState(false);
 
   const { ui } = player;
+  /**
+   * The rate has taken the voice away (clock-gate rule 6). Derived here
+   * from the same predicate the conductors obey rather than passed in, so
+   * the control and the mechanism can never disagree about which rungs are
+   * silent — and so a host that adds the switch gets the band for free.
+   */
+  const rateSilent = narrated && !narrationAudibleAtRate(ui.rate);
   const duration = timeline?.duration ?? 0;
 
   // Step ticks: one per step's FIRST unit; section headings mark strong.
@@ -329,32 +347,60 @@ function Timeline({
         <button
           type="button"
           data-voice-toggle=""
+          // Three states, three appearances, and they must not be read as
+          // one another: the listener's own silence (a control state), the
+          // rate having taken the voice away (nothing to control), and the
+          // ordinary sounding board. The rate state is DISABLED — pressing
+          // it could do nothing useful, because unmuting cannot bring back
+          // a voice the rate refuses.
+          disabled={rateSilent}
+          data-voice-state={
+            rateSilent ? "rate-silent" : muted ? "muted" : "sounding"
+          }
           // A glyph is invisible to a screen reader, so the state is
           // announced twice over: `aria-pressed` for the toggle's own
           // semantics, and a label that says which way pressing it goes.
           aria-pressed={muted}
-          aria-label={muted ? "Unmute the narration" : "Mute the narration"}
+          aria-label={
+            rateSilent
+              ? `Narration is silent at ${ui.rate} times`
+              : muted
+                ? "Unmute the narration"
+                : "Mute the narration"
+          }
           title={
-            muted
-              ? "The recorded voice is silenced — pacing is unchanged, so the board still waits for a long clip exactly as it does with sound on"
-              : "Silence the recorded voice. Only the sound: the pacing, the schedule and where the pen is are untouched"
+            rateSilent
+              ? `The recorded voice only plays between ${NARRATION_RATE_BAND.min}× and ${NARRATION_RATE_BAND.max}× — at ${ui.rate}× the board runs silent at exactly the speed you asked for. The pacing is unchanged either way`
+              : muted
+                ? "The recorded voice is silenced — pacing is unchanged, so the board still waits for a long clip exactly as it does with sound on"
+                : "Silence the recorded voice. Only the sound: the pacing, the schedule and where the pen is are untouched"
           }
           onClick={onToggleMute}
           className={
-            (muted
-              ? "text-cc-primary bg-cc-primary/10 "
-              : "text-cc-muted hover:text-cc-primary hover:bg-cc-primary/10 ") +
-            "w-8 h-8 grid place-items-center rounded-md transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-cc-primary/70"
+            (rateSilent
+              ? "text-cc-muted/35 cursor-default "
+              : muted
+                ? "text-cc-primary bg-cc-primary/10 cursor-pointer hover:bg-cc-primary/15 "
+                : "text-cc-muted hover:text-cc-primary hover:bg-cc-primary/10 cursor-pointer ") +
+            "w-8 h-8 grid place-items-center rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-cc-primary/70"
           }
         >
           <svg viewBox="0 0 16 16" className="w-4 h-4" aria-hidden="true">
             <path d={ICON_SPEAKER_BODY} className="fill-current" />
             <path
-              d={muted ? ICON_SPEAKER_CROSS : ICON_SPEAKER_WAVES}
+              d={
+                rateSilent
+                  ? ICON_SPEAKER_WAVES_BROKEN
+                  : muted
+                    ? ICON_SPEAKER_CROSS
+                    : ICON_SPEAKER_WAVES
+              }
               fill="none"
               stroke="currentColor"
               strokeWidth="1.3"
               strokeLinecap="round"
+              // The broken arc reads as broken rather than faint.
+              strokeDasharray={rateSilent ? "1.6 1.6" : undefined}
             />
           </svg>
         </button>
@@ -421,7 +467,7 @@ function Timeline({
           >
             {RATE_MENU.map((rate) => {
               const active = rate === ui.rate;
-              const silent = narrated && rate > NARRATION_MAX_RATE;
+              const silent = narrated && !narrationAudibleAtRate(rate);
               return (
                 <button
                   key={rate}
