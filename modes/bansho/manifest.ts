@@ -19,7 +19,7 @@ import { loadBoard, saveBoard } from "./domain.js";
 
 const banshoManifest: ModeManifest = {
   name: "bansho",
-  version: "0.21.1",
+  version: "0.22.0",
   // The name is the brand and stays romanized where the script has no
   // word for it (house style — `modes/kami/manifest.ts` ships "Kami" ×7);
   // the CJK locales have their own reading of 板書 and use it.
@@ -47,6 +47,14 @@ const banshoManifest: ModeManifest = {
     // Wording discipline: these bullets render VERBATIM in the launcher's
     // skill-update prompt, so they may only claim what the build actually
     // does.
+    "0.22.0": [
+      "A graph now grows into the room it was given instead of sitting in it. It used to be capped at whatever width its own boxes happened to need — a three-box Chinese chain drew at 452px on a 1242px board, a postage stamp beside 34px handwriting — and its lettering was a fixed 24px no matter how much room it had. Both are derived from the board now: a graph fills its region and is written in a hand you can read from the back of the room",
+      "The eraser stays on the board the pen is standing at. It could be aimed by a quoted anchor at content anywhere in the room, which turned it into a way to grab space — clear a board you are not standing at, then move in. An erase now retires only what the pen is standing over and what the talk has finished with, and the lecture says so before it wipes",
+      "The example lecture stopped teaching the move it is not allowed to make. Both technical seeds reached across the room to erase a board they had already left; a seed is few-shot material, so it taught that louder than the prose forbade it",
+      "A figure gets looked at before it is left alone. A picture's size is the one thing about it that cannot be read back from the file, so the skill now treats seeing it as part of drawing it",
+      "The voice is offered rather than forgotten. Narration is an optional finishing pass once the content is settled — the board says so when it is done, instead of quietly skipping it or spending on it unasked",
+      "Muting releases the voice instead of silencing it, and the voice steps aside outside 1x-1.5x rather than being stretched. In both cases the lecture is unchanged: the same pacing, the same schedule, the pen still waiting for a long line",
+    ],
     "0.21.1": [
       "Seeking no longer sends the voice back to the opening word. Scrubbing the timeline, playing from a step, or jumping back to live positioned the pen correctly and the narration not at all — the audio restarted from the beginning of the lecture every time. The board was asking for the right position; the file was being served in a way no browser can seek inside, so the request was silently clamped to zero. It is served properly now, and the voice lands where the pen does",
     ],

@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.31.0] - 2026-08-14
+
+### Fixed
+- **Seeking sent the voice back to the opening word, every time.** Scrubbing the timeline placed the pen correctly and the narration not at all. The board was asking for the right position — the *server* was the problem: `/api/file` answered every request with the whole file, no `Accept-Ranges`, no `Content-Length`, `Range` ignored. Chromium marks such a response streaming, and for a streaming source of finite duration `seekable` is `[0, 0]` — so the HTML seek algorithm silently clamped every `currentTime` write to zero. Measured: asked 111.638, got 0, with `readyState 4` and 42 s already buffered. The route speaks byte ranges now (206 + `Content-Range`, 416 past EOF), and the voice lands where the pen does. The same clamp is the likeliest cause of the stutter people heard at changed playback rates: every drift-repair seek was landing at zero too.
+- **A graph never grew into the room it was given.** Its svg carried `width: 100%` *and* a `max-width` of whatever its own boxes happened to need, so it could only ever shrink: a three-box Chinese chain drew at 452px on a 1242px board — a postage stamp beside 34px handwriting — and its lettering was a fixed 24px however much room it had. Both now derive from the board: a graph fills its region, and is written in a hand you can read from the back of the room. Nothing gets smaller anywhere; in the shrink case the two changes cancel exactly.
+- **The eraser could reach across the room, and the example lecture taught it to.** A quoted `@erase` resolves to the nearest earlier match, which may live on another board — so under space pressure it became a way to grab room: clear a board you are not standing at, then move in. That is now three conditions (the pen's own board, content the talk has finished with, and the lecture says so before it wipes). The technical seeds did exactly the banned move, and a test pinned that shape with the opposite rationale; both are corrected. A seed is few-shot material, and it was teaching this louder than the prose forbade it.
+
+### Added
+- **The voice has an off switch, and it steps aside outside 1x–1.5x.** Muting releases the audio rather than silencing a still-running element, and no file is fetched at all while the voice is off or the rate is outside the band. In both cases the lecture is unchanged — the same pacing, the same schedule, the pen still waiting for a long line — because the conductor keeps the clip's own time as a silent metronome. Three states read differently: sounding, you turned it off, and the rate turned it off.
+- **A figure is looked at before it is left alone, and the voice is offered rather than forgotten.** A picture's size is the one thing about it that cannot be read back from the file, so seeing it is now part of drawing it. And narration has a definite place — an optional finishing pass once the content is settled, which the board offers when it is done instead of quietly skipping it or spending on it unasked.
+
 ## [3.30.0] - 2026-08-13
 
 ### Added
