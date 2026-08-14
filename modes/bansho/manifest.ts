@@ -19,7 +19,7 @@ import { loadBoard, saveBoard } from "./domain.js";
 
 const banshoManifest: ModeManifest = {
   name: "bansho",
-  version: "0.21.0",
+  version: "0.21.1",
   // The name is the brand and stays romanized where the script has no
   // word for it (house style — `modes/kami/manifest.ts` ships "Kami" ×7);
   // the CJK locales have their own reading of 板書 and use it.
@@ -47,6 +47,9 @@ const banshoManifest: ModeManifest = {
     // Wording discipline: these bullets render VERBATIM in the launcher's
     // skill-update prompt, so they may only claim what the build actually
     // does.
+    "0.21.1": [
+      "Seeking no longer sends the voice back to the opening word. Scrubbing the timeline, playing from a step, or jumping back to live positioned the pen correctly and the narration not at all — the audio restarted from the beginning of the lecture every time. The board was asking for the right position; the file was being served in a way no browser can seek inside, so the request was silently clamped to zero. It is served properly now, and the voice lands where the pen does",
+    ],
     "0.21.0": [
       "The voice has an off switch. A speaker button sits beside the playback-rate control in the transport, on any board that has recorded narration; a board with no voice does not grow one. The choice is remembered by your browser, so a lecture opened later stays the way you left it",
       "Muting silences the sound and nothing else. The pacing, the schedule and where the pen is are untouched: a step whose voice runs long still holds the pen until that voice would have finished, exactly as it does with sound on. A muted lecture is the same lecture",
