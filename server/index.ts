@@ -129,16 +129,91 @@ export interface ServerOptions {
   pneumaProjectRoot?: string;
 }
 
+/** One resolved byte range, or a refusal. */
+type RangeSpec =
+  | { kind: "full" }
+  | { kind: "partial"; start: number; end: number }
+  | { kind: "unsatisfiable" };
+
+/**
+ * Parse one RFC 9110 `Range` header against a known file size.
+ *
+ * Only single `bytes` ranges are honoured; a multi-range request or an
+ * unknown unit falls back to `full`, which is explicitly allowed ("a
+ * server MAY ignore the Range header field") and which no media element
+ * ever needs. `end` is INCLUSIVE, as the wire format is — callers slicing
+ * with an exclusive end must add one.
+ *
+ * Exported for the tests: the inclusive/exclusive boundary is exactly
+ * where this kind of code goes wrong.
+ */
+export function parseByteRange(header: string | null | undefined, size: number): RangeSpec {
+  if (!header) return { kind: "full" };
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+  if (!match) return { kind: "full" };
+  const [, rawStart, rawEnd] = match;
+  if (rawStart === "" && rawEnd === "") return { kind: "full" };
+  if (size === 0) return { kind: "unsatisfiable" };
+  let start: number;
+  let end: number;
+  if (rawStart === "") {
+    // Suffix form `bytes=-N`: the LAST n bytes, clamped to the whole file.
+    const suffix = Number(rawEnd);
+    if (suffix === 0) return { kind: "unsatisfiable" };
+    start = Math.max(0, size - suffix);
+    end = size - 1;
+  } else {
+    start = Number(rawStart);
+    // Open form `bytes=N-` runs to the last byte; a stated end past the
+    // last byte is clamped rather than refused (RFC 9110 §14.1.1).
+    end = rawEnd === "" ? size - 1 : Math.min(Number(rawEnd), size - 1);
+  }
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return { kind: "full" };
+  if (start >= size || start > end) return { kind: "unsatisfiable" };
+  return { kind: "partial", start, end };
+}
+
 /**
  * Mount the `GET /api/file?path=<abs>` route — serves a single file by
  * absolute path, gated by a workspace-containment check (path-traversal
  * guard). Used by the chat's inline image previews to fetch a workspace
  * file the agent read. Factored out of `startServer` so it can be unit
  * tested against a bare `new Hono()`.
+ *
+ * It also serves every MEDIA file a viewer plays (bansho's pre-mixed
+ * narration track, its per-clip audio), and that makes byte ranges load
+ * bearing rather than polite. Chromium marks a response streaming when the
+ * server neither advertises `Accept-Ranges` nor answers `Range` with a
+ * 206 — and for a streaming source of finite duration `Seekable()` reports
+ * `[0, 0]`, which the HTML seek algorithm then clamps every `currentTime`
+ * write into. Measured before this route grew ranges: a seek to 111.6s on
+ * a fully buffered 222s track read back 0.0s, so the narration replayed
+ * from the opening word after every scrub. A stated `content-length` is
+ * half of the same fix — a chunked body has no known size, which is by
+ * itself enough to mark the source streaming.
  */
-export function mountFileRoute(app: Hono, opts: { workspace: string }): void {
+/**
+ * Most a single partial response will hold in memory.
+ *
+ * Sub-ranges cannot be streamed here: `Response(BunFile.slice(a, b)).body`
+ * read as a STREAM ignores the slice's end and runs to EOF (measured: a
+ * 101-byte range arrived as 924 bytes), and `cors()` re-wraps every
+ * response as `new Response(res.body, res)` — so the only way to send
+ * exactly the requested bytes through this stack is to hold them. A server
+ * may always answer with a SHORTER range than was asked for (RFC 9110
+ * §14.4); the client simply asks for the rest, which is how every CDN
+ * serves large media. The whole-file case is exempt — it streams the
+ * unsliced file and costs nothing.
+ */
+const MAX_RANGE_CHUNK = 8 * 1024 * 1024;
+
+export function mountFileRoute(
+  app: Hono,
+  opts: { workspace: string; maxRangeChunk?: number },
+): void {
   const workspaceRoot = resolve(opts.workspace);
-  app.get("/api/file", (c) => {
+  const maxChunk = opts.maxRangeChunk ?? MAX_RANGE_CHUNK;
+  app.get("/api/file", async (c) => {
     const rel = c.req.query("path");
     if (!rel) return c.json({ error: "missing path" }, 400);
     // Anchor relative paths to the workspace, NOT process.cwd() — the server
@@ -154,17 +229,53 @@ export function mountFileRoute(app: Hono, opts: { workspace: string }): void {
       return c.json({ error: "path escapes workspace" }, 403);
     }
     if (!existsSync(abs)) return c.json({ error: "not found" }, 404);
+    let size: number;
     try {
-      if (!statSync(abs).isFile()) return c.json({ error: "not a file" }, 400);
+      const stat = statSync(abs);
+      if (!stat.isFile()) return c.json({ error: "not a file" }, 400);
+      size = stat.size;
     } catch {
       return c.json({ error: "stat failed" }, 500);
     }
     const file = Bun.file(abs);
+    const type = file.type || "application/octet-stream";
+    const base = {
+      "content-type": type,
+      "cache-control": "private, max-age=60",
+      // Said on EVERY response, not just partial ones: it is what tells a
+      // media element the resource is seekable in the first place.
+      "accept-ranges": "bytes",
+    };
+    const range = parseByteRange(c.req.header("range"), size);
+    if (range.kind === "unsatisfiable") {
+      return new Response(null, {
+        status: 416,
+        headers: { ...base, "content-range": `bytes */${size}` },
+      });
+    }
+    if (range.kind === "partial") {
+      const { start } = range;
+      const whole = start === 0 && range.end === size - 1;
+      // Served range, which may be shorter than the asked-for one. The
+      // whole-file case is exempt from the cap: it is how Chromium opens
+      // every media resource (`Range: bytes=0-`), and capping it would
+      // turn one request into hundreds.
+      const end = whole ? range.end : Math.min(range.end, start + maxChunk - 1);
+      const headers = {
+        ...base,
+        "content-range": `bytes ${start}-${end}/${size}`,
+        "content-length": String(end - start + 1),
+      };
+      // Unsliced: no end bound for the stream to lose, and nothing held.
+      if (whole) return new Response(file, { status: 206, headers });
+      // `end` is inclusive on the wire and exclusive in `slice`.
+      return new Response(await file.slice(start, end + 1).arrayBuffer(), {
+        status: 206,
+        headers,
+      });
+    }
     return new Response(file, {
-      headers: {
-        "content-type": file.type || "application/octet-stream",
-        "cache-control": "private, max-age=60",
-      },
+      headers: { ...base, "content-length": String(size) },
     });
   });
 }
