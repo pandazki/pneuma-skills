@@ -198,6 +198,13 @@ overfills: a wider word, a board of its own, or a smaller claim on the
 room. A figure wants a column or a face, never a band shared with the
 prose that introduces it.
 
+**And look at it once it is up.** A picture you ordered is a picture you
+have never seen on this board: `capture` it after it plays and ask whether
+it reads at the same distance as the writing beside it — a drawing fitted
+into a corner is a drawing at quarter size. Same question, same cure, as
+for the board's own figures (`references/charts.md`): a wider word before
+anything else.
+
 ## One batch, right after the plan — never mid-lecture
 
 Every tier-2 picture in the design is ordered in **one batch**, once the

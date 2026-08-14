@@ -87,9 +87,14 @@ Erasing is a move of its own — "this served its purpose, put it down":
 @erase "并行的天花板"
 ```
 
-Bare `@erase` clears the board under the pen; the quoted form finds that
-earlier text and clears the board it lives on. Strike negates in view;
-erase retires without judgment; scrubbing back always re-shows it.
+Bare `@erase` clears the board under the pen; the quoted form takes back
+what stands around that earlier text — **and the text you name has to be
+on the board the pen is on**. Three conditions, all three or none: the
+pen's own board, content the talk is **finished with**, and a sentence
+that **says so**. Running short of room is not one of them: "I need
+space" reaches for the nearest earlier quote and retires a board the
+audience was still reading. Strike negates in view; erase retires without
+judgment; scrubbing back always re-shows it.
 
 `@turn` — the word written too early more than any other: **"there is no room left here."**
 Strike negates, erase retires, turn leaves a FULL board standing; a full wall
@@ -325,7 +330,18 @@ Chains draw boxes and arrows in reading order; `名字: 说明` writes an
 explanation into a box; naming a node again draws nothing — it is already
 on the board. Layout is computed; you never place boxes. Formulas are
 evidence too: `$S(n) = \frac{1}{(1-p) + p/n}$` inline or `$$…$$` as a
-block. Pacing craft for both containers is in `references/charts.md`.
+block.
+
+A figure's SIZE is the one thing about it you cannot read back from the
+file. `chart` and `graph` take their proportions from their own contents,
+not from the handwriting beside them, so a flow chart in a narrow column
+comes out at a third the size of the words around it while the markdown
+reads perfectly — and nothing warns you, because small is not a fault.
+So when a figure has played, look at it once: `capture`, then one
+question — **do its labels read at the same distance as the sentence
+above it?** If they do not, it wants a wider word (`@at full`), fewer
+boxes, or shorter names. Pacing and proportion for both containers are in
+`references/charts.md`.
 
 ### 6. Close — 收束
 
@@ -338,6 +354,22 @@ A hand-drawn line, the takeaway, ink on it, and a promise for next time:
 
 > 下周单独讲灰度那一段的做法。
 ```
+
+## After the last word — offer the voice
+
+A finished board is silent, and a silent board is a complete lecture: the
+voice is optional, always. A voice-over is a **finishing pass**, never a
+writing step — it belongs after the content has settled, because each
+clip is keyed to the exact sentence it speaks (rewrite that sentence
+afterwards and it is bought twice), and it spends the user's own key.
+
+So it is theirs to choose and yours to raise. When the board is done, say
+so and put it on the table — "the board is finished; I can give it a
+voice, or leave it as it stands" — then do what they say. Both failures
+are real: a whole board synthesized unasked is money nobody agreed to,
+and a lecture that ends without the offer ever being made is how the
+voice comes to feel forgotten. Subtitles cost nothing and need no voice.
+Workflow: `references/narration.md`.
 
 ## Three disciplines
 
@@ -539,7 +571,7 @@ vocabulary and ready board looks are in `references/themes.md`.
 | Designing the lecture before writing it — `plan.md`, medium, room, length | `references/lecture-plan.md` |
 | The figure the board cannot draw — the two tiers, the fixed look, the batch | `references/illustrations.md` |
 | The full dialect, one paired example per form | `references/board-language.md` |
-| Charts & graphs — evidence pacing craft | `references/charts.md` |
+| Charts & graphs — evidence pacing, and whether a figure is big enough | `references/charts.md` |
 | Lecture voice: sentence length, sections, live rhythm | `references/voice-and-pacing.md` |
-| Voice-over: per-sentence clips, the manifest, cache keys | `references/narration.md` |
+| Voice-over: whether/when/who, per-sentence clips, cache keys | `references/narration.md` |
 | theme.css tokens, fonts, board looks | `references/themes.md` |

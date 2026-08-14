@@ -163,7 +163,8 @@ a never-used board first, then one an erase has emptied. When there is no
 clean board left, **the room stops deciding**: the pen stays where it is
 and the writing runs on past the bottom edge, visibly, and says so. It
 never picks a board to retire for you. When the retiring is part of the
-talk — "this part is done, put it down" — say it yourself with `@erase`.
+talk — "this part is done, put it down" — say it yourself with `@erase`,
+on the board the pen is on.
 
 ## Placing — `@at`
 
@@ -303,8 +304,13 @@ you get is told, not fixed:
   flow. Splitting the passage into two steps is not one of them: the
   region does not migrate, so two short steps stand exactly as tall as one
   long one. When the flow itself (`full`) runs off the bottom, there is no
-  wider word and `@turn` has nowhere to go — retire a finished board with
-  `@erase "锚"`, or say less.
+  wider word and `@turn` has nowhere to go, so what is left is to **say
+  less** — split the passage, drop the aside, make the point in fewer
+  sentences. Retiring is the other move only when it is honestly available:
+  the board the pen is on holds a passage the talk is finished with, and
+  you say so and clear it. That is a teaching move that happens to free
+  room. Hunting backwards for something to erase is not the same act — see
+  the eraser, below.
 
   **A burst is not a weather report.** It is the one finding that costs
   the audience words, so answer it before you write the next passage;
@@ -312,9 +318,14 @@ you get is told, not fixed:
   that end mid-sentence.
 
 The first collision of a pair also arrives unasked, without your having to
-check. Three ways out, all of them yours: erase one side (`@erase "锚"`),
-rewrite the side that has not played yet under a different word, or leave
-it if writing over is what you meant.
+check. Three ways out, all of them yours: rewrite the side that has not
+played yet under a different word; leave it, if writing over is what you
+meant; or, when one side is a passage the talk is finished with and it
+stands on the board the pen is on, retire that side out loud —
+`@erase "锚"` takes back its column and leaves the other standing. The
+anchor has to live where the pen is; an erase that reaches back to another
+board to settle an argument about space is the wrong act with the right
+syntax.
 
 Look before you place — `glance-board` for what stands, `frame-board` to
 lay your candidate words over the real board and be told what they would
@@ -365,14 +376,27 @@ bad as a sentence written for geometry.
   "clear the stage for a new chapter".
 - **`@erase "锚文本"`** — resolves the quoted text exactly like a
   turn-back line (nearest earlier match), then erases **the part of the
-  board that text lives in**. It never takes a board number — anchor
-  content, like every other verb.
+  board that text lives in** — and that text has to be on the board the
+  pen is on. It never takes a board number — anchor content, like every
+  other verb.
 - The eraser's reach is one **region**, not the whole board: bare
   `@erase` takes back what stands where the pen is, the anchored form
   what stands around the quote. On a board that never said `@at` the pen
   is in `full` and `full` is the whole board, so both read exactly as
   they always did. After a placement, `@erase "锚"` is how you take back
   one column and leave the other standing.
+- **The eraser only reaches where you are standing.** Three conditions,
+  and all three hold or you do not erase: the board **the pen is on**,
+  content the talk is **finished with**, and a sentence in the lecture
+  that **says so** — the audience hears the retiring, they do not just
+  find the board empty. Room is never a condition by itself. That is the
+  one wrong turn this verb makes easy: the matcher takes the nearest
+  EARLIER occurrence of your quote, so "there is no space here" reaches
+  backwards and retires a board the audience was still reading, with no
+  warning anywhere, because nothing about it is a fault — you asked for
+  it. Under space pressure the honest form is bare `@erase` on your own
+  board; the anchored form is for naming a thing deliberately, and its one
+  everyday job is taking back one column after a placement.
 - To take back one claim, use `@strike` — strike negates in view and
   leaves the words standing; erase retires finished writing without
   judgment.
@@ -394,9 +418,9 @@ bad as a sentence written for geometry.
 ```
 
 - The family's third member: `~~x~~` / `@strike` negates in view,
-  `@erase` retires to make room, **`@turn` leaves a FULL board standing
-  and walks to a blank one**. It stands alone and takes no argument — the
-  room picks the board, never you.
+  `@erase` retires what the talk is done with, **`@turn` leaves a FULL
+  board standing and walks to a blank one**. It stands alone and takes no
+  argument — the room picks the board, never you.
 - **The trigger is no room left, not a new topic.** The room already
   turns for you: writing that does not fit its board continues on a blank
   one by itself, the moment the face runs out. A heading therefore needs
@@ -413,8 +437,13 @@ bad as a sentence written for geometry.
   then an erased-empty one); on a **full wall** it does nothing and says
   so (`turnOnFullWall`) — the room will not choose which of your boards to
   retire, the same way writing into overflow no longer erases anything. So
-  glance (`glance-board`) before you turn, and say your own retirement
-  first when the wall is full: `@erase "锚"`, then `@turn`.
+  glance (`glance-board`) before you turn. On a full wall the answer is
+  not to go shopping for a board to retire: finish where you stand. If the
+  board the pen is on is one the talk is done with, say so and clear it
+  (bare `@erase`) and carry on writing there — the pen is already on the
+  clean board, so no turn is wanted. If it is not done with, the wall is
+  full because the lecture is longer than the room, and that is answered
+  by saying less, not by erasing.
 - On a board that is already clean, `@turn` is just a breath — a pause at
   the topic boundary, nothing moves. Only the single strip refuses it: a
   strip has no next board, and the line degrades to a bad step that says
@@ -424,9 +453,11 @@ bad as a sentence written for geometry.
   to avoid: `@erase` then `@turn` (the erase already cleared the stage —
   the turn adds only a breath; pick ONE: erase = clear and reuse this
   board, turn = leave it standing and go) and `@turn` then bare `@erase`
-  (it erases the empty board you just reached — noise). `@turn` then
-  `@erase "锚"` is meaningful: a new board for the new topic, and an old
-  board retired to make future room.
+  (it erases the empty board you just reached — noise). And one that is
+  out entirely: `@turn` followed by an `@erase "锚"` reaching back to an
+  earlier board "to free room for later". After a turn the pen stands on
+  the fresh board, so that anchor is by construction somewhere the pen is
+  not — the cross-board erase, whatever it was meant for.
 
 ## The escape valve
 

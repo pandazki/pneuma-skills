@@ -165,6 +165,49 @@ has its place); a graph does it on every added block.
   That swollen box is the board telling you the sentence belongs in the
   talk, not in the node.
 
+## Is it big enough? — look, because nothing will tell you
+
+The two containers do not take their size the same way, and the
+difference is the whole reason a figure comes out too small to read:
+
+- **A chart fills the width it is given.** Its picture is stretched to the
+  room its `@at` word named, so its axis labels and series names grow and
+  shrink with that room and stay roughly in proportion with the
+  handwriting beside them.
+- **A graph is drawn at the size its boxes need, and from there it only
+  ever shrinks.** The lettering inside a graph is a fixed size in the
+  picture's own coordinates: a node's name is about seven tenths of the
+  body handwriting, an explanation line under half of it. Two consequences
+  follow, and both are the "postage stamp" complaint. A small graph sits
+  small on a big board instead of growing into it — a three-box chain
+  covers about a third of a full board's width. And a graph wider than the
+  room it was given is shrunk **whole**, lettering included: a five-box
+  CJK chain carrying explanations, put under `@at left`, lands with its
+  names at roughly two fifths of the body text and its explanations at
+  under a third. Nobody at the back of the room can read that.
+
+Neither is a fault, so **`check-board` says nothing about it** — there is
+no finding for "too small", because you asked for the word and the board
+gave you exactly what the word means. The only instrument is your eyes:
+`capture` the figure once it has played and ask whether its labels read at
+the same distance as the sentence above it. Look once per figure, not once
+per block.
+
+Three things make a graph bigger, and only these three:
+
+- **a wider word** — `@at full` rather than a column. A picture that
+  carries the passage deserves the face; a picture in a corner is a
+  decoration.
+- **fewer boxes** — two three-box pictures say more than one seven-box
+  one, and each is drawn at full size.
+- **shorter names** — a box grows to its text, so every character cut is
+  width the picture keeps for itself.
+
+Making it taller changes nothing: width alone decides how much the picture
+is shrunk. And splitting one wide graph into two same-name blocks does not
+help either — the container lays out over everything it holds, so the
+second block re-arranges the first into the same wide picture.
+
 ## Honest edges
 
 - Chart series always draw as lines. `type: bar` parses and is reserved;

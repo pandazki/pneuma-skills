@@ -43,9 +43,30 @@ they have, the chip is not shown, because there is nothing to report.
 Nothing here changes what you write, and a muted reader is still hearing
 the lecture's timing, so never compensate for it.
 
-A board with no voice is a normal board. No key, no manifest, no clips —
-it plays exactly as written. The voice is a layer you add, never a
-requirement.
+## Whether, when, and who decides
+
+**Whether — optional, always.** A board with no voice is a normal board.
+No key, no manifest, no clips — it plays exactly as written. The voice is
+a layer you add, never a requirement, and a board is never worse for not
+having one.
+
+**When — after the content has settled, never while it moves.** A clip is
+keyed to the exact text of its step, so every sentence rewritten after
+its clip was bought buys that sentence a second time, and the fused track
+has to be built again on top. Voicing a board you are still writing is
+paying twice for the same lecture. The order is: write the board, check
+it, let the user say the content is right — then, if they want it, the
+voice.
+
+**Who — the user, and you are the one who raises it.** Each clip is real
+money out of their key, so this is not a step you take on your own
+judgement that the board looks finished. When the board IS finished, say
+so and offer it: "the board is done; I can give it a voice, or leave it
+silent" — and say roughly how many sentences that means. Then do what
+they say. The two failures are equal and opposite, and this page exists
+to prevent both: synthesizing a whole board unasked, and finishing a
+lecture without ever mentioning that it could speak. (Subtitles are not
+part of this trade — they cost nothing and work with no voice at all.)
 
 ## The workflow
 

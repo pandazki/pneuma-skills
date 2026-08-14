@@ -97,7 +97,7 @@ describe("T7 — the skill teaches explaining, not rendering", () => {
     expect(skill).toContain("unsupportedStep");
   });
 
-  test("the body stays under 524 lines; depth lives in references/", () => {
+  test("the body stays under 582 lines; depth lives in references/", () => {
     // 400 → 430: the S1 gate raise the product owner approved (board-
     // snapshot design §10.2 rev 3) — one deliberate raise buying the
     // whole horizon (@turn + the third discipline + the sensory table,
@@ -127,6 +127,30 @@ describe("T7 — the skill teaches explaining, not rendering", () => {
     // draw nothing" half of a boundary bullet. The gate sits 4 above what
     // landed, as the last raise did.
     //
+    // 548 → 582 (R1–R3, 2026-08-14): derived the same way. The change
+    // measures +36 / −4 against 545, landing at 577 — three defects reported
+    // from real use, one paragraph each. The figure-proportion habit inside
+    // move 5 is 11 lines of it (+12 / −1), the voice's own section 16, the
+    // erase lock 5 (+8 / −3). The gate sits 4 above what landed, as the last
+    // two raises did.
+    //
+    // Why THIS raise is earned. All three are the same species of failure —
+    // the board could do the thing and the skill never said when, so the
+    // agent did the reasonable thing with what it had. A figure has no size
+    // an agent can read off the file, so an unlooked-at figure is a coin
+    // flip; the voice-over reference explained HOW and never WHETHER, so it
+    // was neither required nor offered, just unmentioned; and the eraser was
+    // handed an escape hatch ("need room → retire a board") whose quoted
+    // form resolves to the nearest earlier match, which is how unrelated
+    // content on OTHER boards got erased. Two of the three could have been
+    // left to references/ — they are not, for the standing reason: a backend
+    // with no `Workflow` tool reads nothing but this prose, and a habit
+    // filed in a reference the agent never opens is a habit that does not
+    // exist. Depth did go to references/ (`charts.md` carries the measured
+    // proportions and the three cures, `narration.md` the whether/when/who,
+    // `board-language.md` the eraser's three conditions); what stayed here
+    // is the sentence that has to be in front of an author mid-lecture.
+    //
     // Why this raise is earned and not merely tolerated: the requirement it
     // serves is 「没有额外的认知负担」, and the ONLY way an agent carries
     // nothing extra while writing is if the expensive decision was already
@@ -150,7 +174,7 @@ describe("T7 — the skill teaches explaining, not rendering", () => {
     // writing. Depth went to `references/lecture-plan.md`; what stayed is
     // what an author must have in front of them at the first keystroke.
     const lines = read("SKILL.md").split("\n").length;
-    expect(lines).toBeLessThan(548);
+    expect(lines).toBeLessThan(582);
     for (const f of REFERENCES) {
       const text = read(`references/${f}`);
       expect(text.split("\n").length, `${f} too thin`).toBeGreaterThan(30);
@@ -588,6 +612,192 @@ describe("T7 — the skill teaches explaining, not rendering", () => {
     const doc = illustrations();
     expect(doc).toContain("@at");
     expect(doc).toMatch(/regionBurst|check-board/);
+  });
+
+  // ── R1: a figure is looked at, never imagined ───────────────────────────
+  //
+  // Reported from real use (2026-08-14): a `graph` beside 34px handwriting
+  // came out a postage stamp and the agent never noticed. Measured against
+  // the engine, the agent was right not to guess — `engine/factories/
+  // graph.ts` sizes a node name at 24px and an explanation line at 16px,
+  // i.e. 71% and 47% of the body text, and its svg wears `max-width:
+  // <natural>` so it ONLY ever shrinks: a five-box CJK chain with notes
+  // placed under `@at left` lands at 43% / 29% of the body. The skill had
+  // `capture`, `glance-board` and `check-board` and not one sentence saying
+  // a figure's proportion is a thing to look at.
+  //
+  // Deliberately NOT a procedural gate — the product owner's steer is 「不一
+  // 定要强制的程序性提醒」, and a habit an agent keeps beats a rule it
+  // resents. What is pinned instead is that the habit sits where the figure
+  // is WRITTEN, that it names the single question worth asking, and that the
+  // cures are concrete. "Consider whether the figure is big enough" would
+  // satisfy none of these, and is exactly the sentence the failed board
+  // would have passed.
+
+  test("the figure habit is taught at the moment a figure is written", () => {
+    const skill = read("SKILL.md");
+    const evidence = skill.slice(
+      skill.indexOf("### 5. Give evidence"),
+      skill.indexOf("### 6. Close"),
+    );
+    expect(evidence.length).toBeGreaterThan(400);
+    // WHY it must be looked at: this is the one thing the file cannot answer.
+    // (Whitespace-tolerant: the skill is hard-wrapped, so any pin spanning
+    // more than a few words has to survive a line break falling inside it.)
+    expect(evidence).toMatch(/cannot\s+read\s+back\s+from\s+the\s+file/i);
+    // The instrument, and the question it is asked.
+    expect(evidence).toContain("capture");
+    expect(evidence).toMatch(/labels?[\s\S]{0,120}read/i);
+    // …and the way out, said in the dialect's own words so it is actionable.
+    expect(evidence).toMatch(/@at full/);
+    expect(evidence).toContain("references/charts.md");
+  });
+
+  test("why a figure comes out small is measured in the reference, with the only three cures", () => {
+    const charts = read("references/charts.md");
+    // The asymmetry no author can infer from the dialect: the two sibling
+    // containers behave oppositely — one fills its room, the other shrinks
+    // into it and never grows. Without this the cures read as superstition.
+    expect(charts).toMatch(/chart[\s\S]{0,240}fills\s+the\s+width/i);
+    expect(charts).toMatch(/only\s+ever\s+shrinks|never\s+grows/i);
+    // The three cures, and only these three — width alone decides the size.
+    for (const [what, cure] of [
+      ["a wider word", /wider word/i],
+      ["fewer boxes", /fewer boxes/i],
+      ["shorter names", /shorter names/i],
+    ] as const) {
+      expect(charts, `the cure "${what}" is missing`).toMatch(cure);
+    }
+    // And the honest boundary: small is not a fault, so no finding reports
+    // it. An author who thinks `check-board` covers this never looks.
+    expect(charts).toMatch(/check-board[\s\S]{0,160}(will not|cannot|does not|says nothing)/i);
+  });
+
+  test("a tier-2 picture gets the same look, on the surface that teaches it", () => {
+    // The board draws tier 1; an outside hand draws tier 2 — but both land
+    // in a room, and the proportion question is about the room, not about
+    // who drew it. A rule that covered only `graph` would be half a rule.
+    expect(illustrations()).toContain("capture");
+    expect(illustrations()).toContain("references/charts.md");
+  });
+
+  // ── R2: the voice has a place, instead of being forgotten ───────────────
+  //
+  // `references/narration.md` explained HOW to make a voice-over — cache
+  // keys, the manifest, the mix order — and never said whether it was
+  // expected, when it happened, or who decided. So it fell through the
+  // crack: not a required step, not an offered option, just a page nobody
+  // was ever sent to. The ruling gives it a definite place — an optional
+  // finishing pass AFTER the content is settled, offered out loud by the
+  // agent and chosen by the user, never bought unasked with the user's key.
+  // Both surfaces carry it, because a backend with no `Workflow` tool
+  // (Codex, Kimi) reads nothing but prose.
+
+  test("SKILL.md gives the voice a place: optional, last, offered, never unasked", () => {
+    const skill = read("SKILL.md");
+    const at = skill.indexOf("## After the last word");
+    expect(at, "the section that gives the voice its place is missing").toBeGreaterThan(-1);
+    // After the six moves: a finishing pass is not a seventh move.
+    expect(at).toBeGreaterThan(skill.indexOf("## The six moves"));
+    const section = skill.slice(at, skill.indexOf("\n## ", at + 3));
+    expect(section).toMatch(/optional|never a requirement/i);
+    // WHEN — once the content has settled, which is also why not earlier.
+    expect(section).toMatch(/settled/i);
+    // WHO — both halves. Only one of them is a silent skip; only the other
+    // is an unasked bill, and the fix has to prevent both.
+    expect(section).toMatch(/offer|say so/i);
+    expect(section).toMatch(/unasked|without being asked/i);
+    expect(section).toContain("references/narration.md");
+  });
+
+  test("the reference answers whether / when / who before it answers how", () => {
+    const doc = read("references/narration.md");
+    const place = doc.indexOf("## Whether, when, and who decides");
+    expect(place, "narration.md still opens straight onto the how").toBeGreaterThan(-1);
+    expect(place).toBeLessThan(doc.indexOf("## The workflow"));
+    const section = doc.slice(place, doc.indexOf("## The workflow"));
+    expect(section).toMatch(/never a requirement|optional/i);
+    // The mechanical reason WHEN is a rule and not a preference: a clip is
+    // keyed to the exact text of its step, so rewriting after buying it
+    // buys the same sentence twice.
+    expect(section).toMatch(/settled/i);
+    expect(section).toMatch(/keyed to/i);
+    // WHO — it is the user's money, therefore the user's call.
+    expect(section).toMatch(/money|costs/i);
+    expect(section).toMatch(/offer/i);
+  });
+
+  // ── R3: the eraser is locked to the board the pen is on ─────────────────
+  //
+  // Reported from real use: the agent erased unrelated content on OTHER
+  // boards, for no narrative reason. The cause was in the text, not in the
+  // room. `board-language.md` gave `@erase` two faces — the correct one
+  // ("the room never picks a board to retire for you; when the retiring is
+  // part of the talk, say it yourself"), and escape hatches reached for
+  // under space pressure: "retire a finished board with `@erase \"锚\"`, or
+  // say less", "erase one side", "`@erase \"锚\"`, then `@turn`". The quoted
+  // form resolves to the NEAREST EARLIER match, which can live on another
+  // board — so "I have run out of room" silently retired a board the
+  // audience was still reading.
+  //
+  // Ruled: keep the hatch, lock it. Three conditions, all three or none —
+  // the board the pen is on, content the talk has finished with, and said
+  // out loud in the lecture. The pins are positive (the conditions stated on
+  // both surfaces, and present beside EVERY anchored form, so a new hatch
+  // cannot be written without them) and negative (the four dead
+  // instructions quoted, so a revert is loud rather than plausible).
+
+  /** The half of the lock that is mechanical, and therefore checkable. */
+  const ERASE_LOCK = /the pen is on|you are standing on|where the pen (is|stands)/i;
+
+  test("both surfaces state all three conditions on the erase", () => {
+    for (const surface of ["SKILL.md", "references/board-language.md"] as const) {
+      const text = read(surface);
+      expect(text, `${surface}: the board has to be the pen's`).toMatch(ERASE_LOCK);
+      expect(text, `${surface}: the content has to be finished with`).toMatch(
+        /finished with/i,
+      );
+      expect(text, `${surface}: the retiring has to be said`).toMatch(
+        /say(s|ing)? so|said out loud|out loud|a sentence that says/i,
+      );
+    }
+  });
+
+  test("no anchored erase is handed over without the constraint beside it", () => {
+    // The `--style` shape, one verb over: the anchored form is the ONLY one
+    // that can reach another board, so every occurrence of it must sit
+    // inside the rule that says it may not. This is the pin that makes the
+    // fix durable — the next author who needs room cannot write a fourth
+    // hatch without also writing the constraint.
+    for (const surface of ["SKILL.md", "references/board-language.md"] as const) {
+      const text = read(surface);
+      const hits = [...text.matchAll(/@erase\s+"/g)].map((m) => m.index!);
+      expect(hits.length, `${surface}: the anchored form vanished entirely`).toBeGreaterThan(0);
+      for (const at of hits) {
+        expect(
+          ERASE_LOCK.test(text.slice(Math.max(0, at - 700), at + 700)),
+          `${surface}: the anchored erase at ${at} is handed over with no constraint near it`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  test("the room-pressure hatches are gone, quoted so a revert is loud", () => {
+    const grammar = read("references/board-language.md");
+    // "…retire a finished board with `@erase "锚"`, or say less."
+    expect(grammar).not.toMatch(/retire a finished board with\s*\n?\s*`@erase/);
+    // "Three ways out…: erase one side (`@erase "锚"`), …"
+    expect(grammar).not.toMatch(/erase one side \(`@erase/);
+    // "…say your own retirement first when the wall is full: `@erase "锚"`,
+    //  then `@turn`."
+    expect(grammar).not.toMatch(/`@erase "锚"`,\s*\n?\s*then `@turn`/);
+    // "`@turn` then `@erase "锚"` is meaningful: … an old board retired to
+    //  make future room."
+    expect(grammar).not.toMatch(/an old board retired to make future\s*\n?\s*room/);
+    // The room's own physics is untouched: the wall still refuses a turn,
+    // and it still never picks a board to retire on the author's behalf.
+    expect(grammar).toContain("turnOnFullWall");
+    expect(grammar).toMatch(/never picks a board to retire/i);
   });
 
   test("the manifest ships the generator beside the voice, and the key is declared once", () => {
