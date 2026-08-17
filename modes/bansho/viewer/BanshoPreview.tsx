@@ -81,7 +81,7 @@ import BoardCanvas, {
   type CompiledBoard,
 } from "./BoardCanvas.js";
 import BoardCommands from "./BoardCommands.js";
-import BoardSettings from "./BoardSettings.js";
+import BoardLook from "./BoardLook.js";
 import { BOARD_BASE_CSS } from "./board-css.js";
 import { CHALK_EFFECT_CSS, CHALK_FILTER_DEFS_SVG } from "./chalk-css.js";
 import { BUNDLED_FONT_FACE_CSS } from "./board-fonts.js";
@@ -265,7 +265,9 @@ export default function BanshoPreview({
   // decision in this mode (the hand, the 瑕疵 knob, the palette) already
   // lives in that file. `themePathFor` mirrors domain.ts's board.md ↔
   // theme.css pairing, so the write lands where `loadBoard` reads.
-  const [themePickerOpen, setThemePickerOpen] = useState(false);
+  // One open flag for the whole look panel — the picker is a group inside
+  // it, not a panel of its own, so there is nothing to keep in sync.
+  const [lookOpen, setLookOpen] = useState(false);
   // Which shipped preset this lecture is wearing, or null for a theme
   // somebody wrote by hand (which the picker will not replace unasked).
   const installedTheme = useMemo(
@@ -1403,84 +1405,76 @@ export default function BanshoPreview({
                 child's z inside it cannot help. */}
             <div className="absolute top-2 right-2 z-30 flex flex-col items-end gap-1.5">
               {lecture ? (
-                // 板 ≠ 笔记 (C3): the same lecture, two projections. The
-                // board performs (limited area, erasing, camera); the
-                // notes lay everything out on one unbounded strip and
-                // never lose a word — erased content included.
-                <div
-                  role="group"
-                  aria-label="Board or lecture notes view"
-                  className="flex rounded-md overflow-hidden border border-cc-border bg-cc-surface/70 backdrop-blur text-[11px] font-medium"
-                >
-                  {(["board", "notes"] as const).map((v) => (
-                    <button
-                      key={v}
-                      type="button"
-                      aria-pressed={boardView === v}
-                      onClick={() => setBoardView(v)}
-                      className={[
-                        "px-2 py-1 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-cc-primary/60",
-                        boardView === v
-                          ? "bg-cc-primary/20 text-cc-primary"
-                          : "text-cc-muted hover:text-cc-fg hover:bg-cc-surface",
-                      ].join(" ")}
-                      title={
-                        v === "board"
-                          ? "The stage: boards with limited area — erased content leaves the board (and comes back when you scrub back)"
-                          : "The lecture notes: everything ever written, on one long page — nothing is lost"
-                      }
-                    >
-                      {v === "board" ? "Board" : "Notes"}
-                    </button>
-                  ))}
+                // ONE ROW, not a stack of same-sized buttons down the
+                // corner: what you are reading, then what the board looks
+                // like. The chips below are a different kind of thing —
+                // signals, not controls — and they keep their own line.
+                <div className="flex items-center gap-1.5">
+                  {/* 板 ≠ 笔记 (C3): the same lecture, two projections. The
+                      board performs (limited area, erasing, camera); the
+                      notes lay everything out on one unbounded strip and
+                      never lose a word — erased content included. Stays in
+                      the open: it is the most common decision here. */}
+                  <div
+                    role="group"
+                    aria-label="Board or lecture notes view"
+                    className="flex rounded-md overflow-hidden border border-cc-border bg-cc-surface/70 backdrop-blur text-[11px] font-medium"
+                  >
+                    {(["board", "notes"] as const).map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        aria-pressed={boardView === v}
+                        onClick={() => setBoardView(v)}
+                        className={[
+                          "px-2 py-1 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-cc-primary/60",
+                          boardView === v
+                            ? "bg-cc-primary/20 text-cc-primary"
+                            : "text-cc-muted hover:text-cc-fg hover:bg-cc-surface",
+                        ].join(" ")}
+                        title={
+                          v === "board"
+                            ? "The stage: boards with limited area — erased content leaves the board (and comes back when you scrub back)"
+                            : "The lecture notes: everything ever written, on one long page — nothing is lost"
+                        }
+                      >
+                        {v === "board" ? "Board" : "Notes"}
+                      </button>
+                    ))}
+                  </div>
+                  {/* The look, wearing its own name — see BoardLook.tsx for
+                      why it is NOT a gear (the shell owns the only one) and
+                      how the two groups behind it are split. The picker is
+                      offered only when there is a content set to write into
+                      (it lands in `{set}/theme.css`); parallax only on the
+                      board projection, since the notes strip has no depth to
+                      rock. */}
+                  <BoardLook
+                    label={installedTheme?.labelZh ?? null}
+                    open={lookOpen}
+                    onOpenChange={setLookOpen}
+                    themePicker={
+                      interactive && setKey !== null ? (
+                        <ThemePicker
+                          themeCss={themeCss}
+                          theme={theme}
+                          env={env}
+                          onApply={applyTheme}
+                          onClose={() => setLookOpen(false)}
+                        />
+                      ) : null
+                    }
+                    parallax={
+                      boardView === "board"
+                        ? {
+                            active: parallaxActive,
+                            reduceMotion,
+                            onToggle: () => setParallaxOn((on) => !on),
+                          }
+                        : null
+                    }
+                  />
                 </div>
-              ) : null}
-              {lecture ? (
-                // One gear for everything that is a SETTING, split by what
-                // persists and who it affects — the argument, and the two
-                // controls, live in BoardSettings.tsx. What is left out here
-                // is the point: the projection switch above is the most
-                // common decision on the board and stays in the open, and
-                // the chips below are signals rather than controls, so they
-                // are never one click away from being seen.
-                //
-                // Theme is offered only when there is a content set to write
-                // into (it lands in `{set}/theme.css`), parallax only on the
-                // board projection — the notes strip has no depth to rock.
-                <BoardSettings
-                  theme={
-                    interactive && setKey !== null
-                      ? {
-                          installedLabel: installedTheme?.labelZh ?? null,
-                          pickerOpen: themePickerOpen,
-                          onOpenPicker: () => setThemePickerOpen(true),
-                        }
-                      : null
-                  }
-                  parallax={
-                    boardView === "board"
-                      ? {
-                          active: parallaxActive,
-                          reduceMotion,
-                          onToggle: () => setParallaxOn((on) => !on),
-                        }
-                      : null
-                  }
-                />
-              ) : null}
-              {lecture && interactive && setKey !== null && themePickerOpen ? (
-                // The look, and a real board wearing it. A panel of its own
-                // rather than a row inside the settings popover: it carries a
-                // live preview of every candidate, which is the whole reason
-                // it exists (a theme here is a HAND, and a swatch would show
-                // the one axis the presets agree on).
-                <ThemePicker
-                  themeCss={themeCss}
-                  theme={theme}
-                  env={env}
-                  onApply={applyTheme}
-                  onClose={() => setThemePickerOpen(false)}
-                />
               ) : null}
               {fontsReady && (!handStackActive || handFallbackGlyphs.length > 0) ? (
                 // §6.4-A — a silently-fallback board font is exactly the
