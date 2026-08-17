@@ -81,6 +81,7 @@ import BoardCanvas, {
   type CompiledBoard,
 } from "./BoardCanvas.js";
 import BoardCommands from "./BoardCommands.js";
+import BoardSettings from "./BoardSettings.js";
 import { BOARD_BASE_CSS } from "./board-css.js";
 import { CHALK_EFFECT_CSS, CHALK_FILTER_DEFS_SVG } from "./chalk-css.js";
 import { BUNDLED_FONT_FACE_CSS } from "./board-fonts.js";
@@ -1434,71 +1435,52 @@ export default function BanshoPreview({
                   ))}
                 </div>
               ) : null}
-              {lecture && boardView === "board" ? (
-                // V1.5 — the depth probe. Its own control, not a third
-                // segment of the projection switch above: board/notes picks
-                // WHAT you are reading, this picks how you are looking at
-                // it, and folding a viewing pose into a projection choice
-                // would say they are the same kind of decision.
-                <button
-                  type="button"
-                  aria-pressed={parallaxActive}
-                  disabled={reduceMotion}
-                  onClick={() => setParallaxOn((on) => !on)}
-                  className={[
-                    "px-2 py-1 rounded-md border text-[11px] font-medium backdrop-blur transition-colors",
-                    "focus-visible:ring-2 focus-visible:ring-cc-primary/60",
-                    reduceMotion
-                      ? "border-cc-border bg-cc-surface/70 text-cc-muted/60 cursor-not-allowed"
-                      : parallaxActive
-                        ? "border-cc-primary/40 bg-cc-primary/20 text-cc-primary cursor-pointer"
-                        : "border-cc-border bg-cc-surface/70 text-cc-muted hover:text-cc-fg hover:bg-cc-surface cursor-pointer",
-                  ].join(" ")}
-                  title={
-                    reduceMotion
-                      ? "Your system asks for reduced motion, so the board stays still — transitions keep their existing flat glide"
-                      : "Rock the board with the pointer. Real depth answers with parallax; a board that only looks tilted does not"
+              {lecture ? (
+                // One gear for everything that is a SETTING, split by what
+                // persists and who it affects — the argument, and the two
+                // controls, live in BoardSettings.tsx. What is left out here
+                // is the point: the projection switch above is the most
+                // common decision on the board and stays in the open, and
+                // the chips below are signals rather than controls, so they
+                // are never one click away from being seen.
+                //
+                // Theme is offered only when there is a content set to write
+                // into (it lands in `{set}/theme.css`), parallax only on the
+                // board projection — the notes strip has no depth to rock.
+                <BoardSettings
+                  theme={
+                    interactive && setKey !== null
+                      ? {
+                          installedLabel: installedTheme?.labelZh ?? null,
+                          pickerOpen: themePickerOpen,
+                          onOpenPicker: () => setThemePickerOpen(true),
+                        }
+                      : null
                   }
-                >
-                  Parallax
-                </button>
+                  parallax={
+                    boardView === "board"
+                      ? {
+                          active: parallaxActive,
+                          reduceMotion,
+                          onToggle: () => setParallaxOn((on) => !on),
+                        }
+                      : null
+                  }
+                />
               ) : null}
-              {lecture && interactive && setKey !== null ? (
-                // The look, and a real board wearing it. Kept beside the
-                // viewing controls rather than in the transport: it is a
-                // decision about the LECTURE (it lands in a file the agent
-                // reads), not a knob on the reader's remote.
-                <>
-                  <button
-                    type="button"
-                    aria-expanded={themePickerOpen}
-                    onClick={() => setThemePickerOpen((open) => !open)}
-                    className={[
-                      "px-2 py-1 rounded-md border text-[11px] font-medium backdrop-blur transition-colors cursor-pointer",
-                      "focus-visible:ring-2 focus-visible:ring-cc-primary/60",
-                      themePickerOpen
-                        ? "border-cc-primary/40 bg-cc-primary/20 text-cc-primary"
-                        : "border-cc-border bg-cc-surface/70 text-cc-muted hover:text-cc-fg hover:bg-cc-surface",
-                    ].join(" ")}
-                    title="The board's look — paper or slate, and the hand it is written in. Writes this lecture's own theme.css"
-                  >
-                    Theme
-                    {installedTheme ? (
-                      <span className="ml-1.5 opacity-70">
-                        {installedTheme.labelZh}
-                      </span>
-                    ) : null}
-                  </button>
-                  {themePickerOpen ? (
-                    <ThemePicker
-                      themeCss={themeCss}
-                      theme={theme}
-                      env={env}
-                      onApply={applyTheme}
-                      onClose={() => setThemePickerOpen(false)}
-                    />
-                  ) : null}
-                </>
+              {lecture && interactive && setKey !== null && themePickerOpen ? (
+                // The look, and a real board wearing it. A panel of its own
+                // rather than a row inside the settings popover: it carries a
+                // live preview of every candidate, which is the whole reason
+                // it exists (a theme here is a HAND, and a swatch would show
+                // the one axis the presets agree on).
+                <ThemePicker
+                  themeCss={themeCss}
+                  theme={theme}
+                  env={env}
+                  onApply={applyTheme}
+                  onClose={() => setThemePickerOpen(false)}
+                />
               ) : null}
               {fontsReady && (!handStackActive || handFallbackGlyphs.length > 0) ? (
                 // §6.4-A — a silently-fallback board font is exactly the
