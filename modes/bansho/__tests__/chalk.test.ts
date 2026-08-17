@@ -298,6 +298,73 @@ describe("the chalk stylesheet — every rule gated on the surface attribute", (
     expect(CHALK_EFFECT_CSS).toContain("filter: none");
   });
 
+  // Selector ↔ body pairs, for the claims that are about which rule WINS
+  // rather than about which selectors exist.
+  const blocks = [...CHALK_EFFECT_CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(
+    (m) => ({ sel: m[1]!.trim(), body: m[2]!.trim() }),
+  );
+  const applies = blocks.filter((b) => b.body.includes(`url(#${CHALK_INK_FILTER_ID})`));
+  const lifts = blocks.filter((b) => b.body.includes("filter: none"));
+  /**
+   * The class-level half of a selector's specificity — every `.class` and
+   * every `[attr]`, with `:is(…)` contributing the heaviest of its
+   * arguments (CSS's own rule). Enough to decide the only contest this
+   * stylesheet has: a lift against the apply rule it must beat.
+   */
+  const weight = (sel: string): number => {
+    let total = 0;
+    const rest = sel.replace(/:is\(([^)]*)\)/g, (_, args: string) => {
+      total += Math.max(
+        ...args.split(",").map((a) => (a.match(/[.[]/g) ?? []).length),
+      );
+      return " ";
+    });
+    return total + (rest.match(/[.[]/g) ?? []).length;
+  };
+
+  test("figures are written in the same chalk as the words — lines AND labels", () => {
+    // The owner's report: prose carried grain, the graph's rectangles and
+    // the rule did not — one board, two materials. The pen's ink is the
+    // pen's ink whether it spells a word or draws a box.
+    const figures = applies.filter((b) => b.sel.includes(".bansho-graph"));
+    expect(figures.length).toBe(1);
+    const sel = figures[0]!.sel;
+    for (const cls of [".bansho-graph", ".bansho-chart", ".bansho-rule"]) {
+      expect(sel).toContain(cls);
+    }
+    // A figure node IS the fold's box (the flaw layer stamps the step node
+    // itself), so the gate is COMPOUND here, never a descendant.
+    expect(sel).toMatch(/\)\[data-bansho-box="1"\]/);
+    // Lines AND labels. The first cut of this rule stopped at `path`,
+    // reading "texture strokes, not fills" as covering a graph node's
+    // SVG `<text>`. That reading was wrong twice over: the fill exclusion
+    // was written about the highlighter BANDS, and prose glyphs
+    // (`.bansho-w`, HTML text — fills) have carried this filter since W9.
+    // Stopping at `path` did not enforce the rule, it relocated the
+    // reported defect INSIDE the figure: a chalk box holding a typeset
+    // name. So the tail is the pair, and nothing wider than the pair — a
+    // bare descendant here would sweep the figure's own wrapper.
+    expect(sel.trimEnd().endsWith(":is(path, text)")).toBe(true);
+  });
+
+  test("the wiping lift reaches the figures too — or the budget re-opens", () => {
+    const figureLifts = lifts.filter((b) => b.sel.includes(".bansho-graph"));
+    expect(figureLifts.length).toBe(1);
+    for (const cls of [".bansho-chart", ".bansho-rule", "[data-bansho-wiping]"]) {
+      expect(figureLifts[0]!.sel).toContain(cls);
+    }
+  });
+
+  test("every lift out-specifies every apply rule — order cannot decide it", () => {
+    // The header's 6-vs-5 claim, made structural: a stylesheet reordered by
+    // a later edit must still lift the filter inside a wiping wrapper.
+    expect(lifts.length).toBeGreaterThan(0);
+    const heaviestApply = Math.max(...applies.map((b) => weight(b.sel)));
+    for (const lift of lifts) {
+      expect(weight(lift.sel)).toBeGreaterThan(heaviestApply);
+    }
+  });
+
   test("the filter def is same-document SVG with the id the rules reference", () => {
     expect(CHALK_FILTER_DEFS_SVG).toContain(`id="${CHALK_INK_FILTER_ID}"`);
     expect(CHALK_EFFECT_CSS).toContain(`url(#${CHALK_INK_FILTER_ID})`);

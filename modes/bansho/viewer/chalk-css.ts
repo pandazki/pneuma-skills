@@ -25,6 +25,63 @@
  *    chewed. The under/over split is structural (z 0 / z 2, ink.ts), so
  *    the exclusion is a selector, not a judgment call per mark.
  *
+ *  - A FIGURE IS THE SAME PEN. The rule, the graph's boxes and arrows and
+ *    the chart's axes / series / ticks are drawn by the same hand as the
+ *    writing, so they carry the same grain; without them a slate board
+ *    showed TWO materials at once — grainy prose beside mechanically clean
+ *    strokes (reported from a live board, 2026-08-17). The target is the
+ *    `path` elements inside the figure's own svg, which also covers every
+ *    LAYER build: a chart/graph layer appends into the frame's svg (its
+ *    own node is `display: none`), so one selector holds accumulation too.
+ *
+ *  - PER PATH, NOT PER FIGURE — and here that is structural, not only the
+ *    per-word tail argument below. A `filter` MINTS A STACKING CONTEXT, and
+ *    a figure's node IS a step node ("Step nodes must NOT mint stacking
+ *    contexts", board-css.ts — the backref mount contract). Filtering the
+ *    figure element would break that contract for every board that has a
+ *    figure; filtering the paths inside its svg cannot. Measured
+ *    2026-08-17 on a slate board (two graphs, two charts, two rules, two
+ *    erases; 120Hz; full playback at 1x, ~6030 frames): before median
+ *    8.3 ms / p95 10.0 / max 10.4; after median 8.3 / p95 9.8 / max 10.5
+ *    — 0 frames over 33 either way, and the wipe legs are inside those
+ *    runs (both erases sweep a figure). The one COST, measured the same
+ *    day: on the thinnest paths the filter region (an object bounding box
+ *    only ~2px tall for a chart tick, `-15% / 130%`) clips the stroke's
+ *    round caps, so a tick reads a touch blunter and thinner. Visible at
+ *    12x magnification, not at 1x; the heading baseline (amp 1.6, 2.6px)
+ *    that has ridden this filter since W9 shows no thinning at all.
+ *    Accepted rather than widening the region, which every filtered WORD
+ *    would pay for in raster area.
+ *
+ *  - THE FIGURE GATE IS COMPOUND, NOT A DESCENDANT: a figure node is
+ *    ITSELF the fold's box (`data-bansho-box="1"` is stamped on the step
+ *    node, and a rule / graph / chart node is one), where `.bansho-w` is a
+ *    descendant of one. `:is(…)[data-bansho-box="1"]` is therefore the
+ *    same gate the word rule spells with a space — do not "tidy" it into
+ *    the descendant form, which would match nothing.
+ *
+ *  - THE FIGURES' LABELS ARE TEXTURED TOO, and the fill exclusion above
+ *    does not reach them. A graph node's name and a chart's tick labels
+ *    are SVG `<text>` — glyph fills — so the letter of "strokes, not
+ *    fills" would exclude them; but that rule was written about the
+ *    highlighter BANDS whose edges a block-level filter chewed, and it is
+ *    already not true of glyphs: `.bansho-w` is HTML text, i.e. fills,
+ *    and it has carried this filter since W9. Leaving the labels smooth
+ *    therefore enforced nothing — it only moved the reported defect (one
+ *    board, two materials) inside the figure, where a chalk box holds a
+ *    typeset name. Measured at 1× on slate: title, prose, box strokes and
+ *    labels read as one chalk. The thickening visible when a label is
+ *    magnified 12× is a magnification artifact, not the reader's view.
+ *    Math fraction bars (`drawHandFractionBars`) stay smooth on the same
+ *    logic pointing the other way: texturing one hand-drawn bar inside an
+ *    otherwise typeset KaTeX formula would MAKE a mismatch rather than
+ *    close one. The illustration layer is excluded for a different
+ *    reason — `.bansho-illustration-ink` is a solid
+ *    `--board-fg` field revealed THROUGH a luminance mask, and a filter
+ *    runs BEFORE the mask, so displacing a uniform field is a visual
+ *    no-op; the only mount point that would texture the drawn ink is the
+ *    figure element itself, which is the stacking-context violation above.
+ *
  *  - PER WORD, NOT PER BLOCK. Small filter regions re-raster only the
  *    word whose reveal is moving; measured 2026-08-17 while streaming:
  *    baseline median 8.3 ms / p95 9.2 / 0 over 33; per-word filter
@@ -52,7 +109,11 @@
  *    Lifting the filter inside exactly the wrapper whose wipe is holding
  *    state (`data-bansho-wiping`, written by the eraser) returns the
  *    sweep to max 28 ms / 0 over 33. The lift out-specifies the apply
- *    rules (6 class-level selectors vs 5), so order cannot decide it.
+ *    rules (6 class-level selectors vs 5), so order cannot decide it —
+ *    and EVERY apply rule needs its lift: a figure inside a wiping run
+ *    would re-run its own paths' filters per frame exactly as the words
+ *    did. chalk.test.ts weighs the two families against each other, so
+ *    an apply rule added without its lift fails the suite.
  */
 
 import { CHALK_INK_FILTER_ID } from "../engine/chalk.js";
@@ -68,12 +129,22 @@ export const CHALK_EFFECT_CSS = `
   filter: url(#${CHALK_INK_FILTER_ID});
 }
 .bansho-board-surface[data-bansho-chalk][data-bansho-flawed]
+  :is(.bansho-graph, .bansho-chart, .bansho-rule)[data-bansho-box="1"]
+  :is(path, text) {
+  filter: url(#${CHALK_INK_FILTER_ID});
+}
+.bansho-board-surface[data-bansho-chalk][data-bansho-flawed]
   .bansho-erased-run[data-bansho-wiping] .bansho-w {
   filter: none;
 }
 .bansho-board-surface[data-bansho-chalk][data-bansho-flawed]
   .bansho-erased-run[data-bansho-wiping]
   :is(.bansho-ink-over, .bansho-backref-over, .bansho-bullet) path {
+  filter: none;
+}
+.bansho-board-surface[data-bansho-chalk][data-bansho-flawed]
+  .bansho-erased-run[data-bansho-wiping]
+  :is(.bansho-graph, .bansho-chart, .bansho-rule) :is(path, text) {
   filter: none;
 }
 `;
