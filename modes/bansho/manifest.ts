@@ -19,7 +19,7 @@ import { loadBoard, saveBoard } from "./domain.js";
 
 const banshoManifest: ModeManifest = {
   name: "bansho",
-  version: "0.22.1",
+  version: "0.23.0",
   // The name is the brand and stays romanized where the script has no
   // word for it (house style — `modes/kami/manifest.ts` ships "Kami" ×7);
   // the CJK locales have their own reading of 板書 and use it.
@@ -47,6 +47,13 @@ const banshoManifest: ModeManifest = {
     // Wording discipline: these bullets render VERBATIM in the launcher's
     // skill-update prompt, so they may only claim what the build actually
     // does.
+    "0.23.0": [
+      "A board can choose its look. Three themes ship — 牛皮纸 (paper, pen), 绿板·行楷 (slate, running script, chalk) and 可爱·奶油 (cream, rounded) — and the picker shows you the actual board in each one rather than a name and a swatch. Picking writes the content set's own theme.css, so a lecture still carries its look with it",
+      "Two of the faces ship with the mode, so a board looks the same on every machine. The cream theme's face covers Chinese and Latin in one family, and the slate theme now falls back to a bundled 行书 rather than to something printed — Xingkai SC is an optional macOS download, which the picker will also tell you",
+      "The slate board writes in chalk. The ink carries grain, and erasing is a hand sweeping an arc rather than a straight cut — it takes most of the chalk and leaves a little, the way a real board does. The residue is seeded from the erase itself, so scrubbing back and forth shows the same marks every time",
+      "Chalk belongs to slate. A paper board is unchanged: ink is either there or struck through, an erase is an exact absence, and none of the texture code runs",
+      "The wall has an outside. Dragging past the edge now leaves a margin of room beyond the boards instead of stopping dead at the content — the give is a slice of the window, so it feels the same zoomed in or out",
+    ],
     "0.22.1": [
       "Placing the pen with @at no longer sends the view back to the board you just left. Right after a @turn, a placement made the camera flash to the first board and sit there for over a second before correcting itself — the writing landed on the right board the whole time, so only the view was ever wrong. It now stays where the pen is",
     ],

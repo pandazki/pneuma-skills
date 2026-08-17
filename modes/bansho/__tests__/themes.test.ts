@@ -69,10 +69,19 @@ describe("the three shipped themes are exactly what was chosen", () => {
     expect(t.tokens["--accent"]).toBe("#e8894b");
     expect(t.tokens["--hl"]).toBe("#e8c24a");
     expect(t.chalk).toBe(1);
+    // `Zhi Mang Xing` is the third because Xingkai SC is an OPTIONAL macOS
+    // download: this theme was chosen on a machine that had it, and a stock
+    // install falls through. The bundled 行书 is what a stock install then
+    // sees — so it is a promised face, not a softener, and it is measured
+    // and reported like the other two.
     expect(t.faces.map((f) => f.family)).toEqual([
       "Chalkduster",
       "Xingkai SC",
+      "Zhi Mang Xing",
     ]);
+    expect(t.faces.find((f) => f.family === "Zhi Mang Xing")?.bundled).toBe(
+      true,
+    );
   });
 
   test("kawaii-cream — 可爱 · 奶油, one bundled family, no chalk", () => {

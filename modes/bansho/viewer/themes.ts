@@ -131,14 +131,26 @@ export const BOARD_THEMES: readonly BoardThemePreset[] = [
     labelZh: "绿板 · 行楷",
     label: "Slate · Cursive",
     hand: "Chalkduster + Xingkai SC",
-    // `STXingkai` is the same face under the name older macOS releases
-    // report; naming both costs nothing and is the difference between a
-    // 行楷 board and a fallback on a machine one release behind.
+    // `Zhi Mang Xing` SHIPS, and that is what makes this theme honest.
+    // Xingkai SC is an OPTIONAL macOS download — the machine this theme was
+    // chosen on had it, a stock install does not, and a warning in the
+    // picker is not a board. The bundled 行书 is the floor: freer than
+    // Xingkai and harder to read in a long paragraph, which is exactly why
+    // it is the fallback and not the first choice. Whoever has 行楷 keeps
+    // it; everyone else still gets a cursive hand rather than print.
+    //
+    // The alias `STXingkai` (the same face under the name older macOS
+    // reports) is deliberately NOT here. It was added to be "the difference
+    // between a 行楷 board and a fallback" — that sentence stopped being
+    // true the moment the fallback became a 行书 board, and an alias
+    // wedged between the promised faces breaks the invariant that `faces`
+    // leads the stack.
     handStack:
-      '"Chalkduster", "Xingkai SC", "STXingkai", "HanziPen SC", cursive',
+      '"Chalkduster", "Xingkai SC", "Zhi Mang Xing", "HanziPen SC", cursive',
     faces: [
       { family: "Chalkduster", sample: LATIN_SAMPLE, bundled: false },
       { family: "Xingkai SC", sample: CJK_SAMPLE, bundled: false },
+      { family: "Zhi Mang Xing", sample: CJK_SAMPLE, bundled: true },
     ],
     chalk: 1,
     tokens: {

@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.32.0] - 2026-08-17
+
+### Added
+- **A bansho board chooses its look, and the picker shows you the board.** Three themes ship — 牛皮纸 (paper and pen), 绿板·行楷 (slate, running script, chalk) and 可爱·奶油 (cream, rounded) — and selecting one renders the real board in it rather than a name beside a colour swatch. Picking writes the content set's own `theme.css`, so a lecture keeps carrying its look with it; nothing becomes a viewer-level setting that overrides what a lecture chose.
+- **Two faces ship with the mode, so a board is the same board on every machine.** The cream theme's face covers Chinese and Latin in *one family*, which is why its two scripts finally read as one hand. And the slate theme falls back to a bundled 行书 rather than to something printed — `Xingkai SC` turns out to be an **optional** macOS download, so the theme was chosen on a machine that had it and a stock install would not. Availability is measured, not guessed: `document.fonts.check()` answers true for any name the fallback can draw, which is how a font that was not installed once led a ranking here.
+- **The slate board writes in chalk, and a hand wipes it.** The ink carries grain, and an erase is an arc that takes most of the chalk and leaves a little — residue is information, it says something was here. Every "random" mark is seeded from the erase's own identity, so scrubbing back and forth shows the same smear forever and the canonical byte-for-byte gate still passes with chalk on.
+- **The wall has an outside.** Dragging past the edge leaves a margin of room beyond the boards instead of stopping dead at the content. The give is a slice of the window rather than a fixed number of pixels, so it feels the same zoomed in on one board or out across four.
+
+### Fixed
+- **Chalk texture and the wipe together blew the frame budget; separately neither did.** Measured before shipping: the ink filter alone and the mask sweep alone both stayed clean, and the combination spent 29 frames over 33 ms with a worst of 58 ms — a stutter at exactly the moment a lecture erases. The wipe now lifts the per-word texture on the run it is erasing (nobody reads grain on a word being wiped away), which closes it structurally: worst frame 31.8 ms, none over budget. A paper board never enters any of it.
+
 ## [3.31.1] - 2026-08-15
 
 ### Fixed

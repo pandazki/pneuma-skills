@@ -31,6 +31,11 @@ const ZCOOL_KUAI_LE_URL = new URL(
   import.meta.url,
 ).href;
 
+const ZHI_MANG_XING_URL = new URL(
+  "../assets/fonts/ZhiMangXing-Regular.ttf",
+  import.meta.url,
+).href;
+
 /**
  * A face this mode ships, with the string that proves it is drawing.
  *
@@ -50,6 +55,13 @@ export const BUNDLED_FACES: readonly BundledFace[] = [
     // CJK + Latin: ZCOOL KuaiLe is one family covering both, which is the
     // whole reason `kawaii-cream` needs no second face in its stack.
     sample: "板书快乐 Aa",
+    licence: "SIL OFL 1.1",
+  },
+  {
+    family: "Zhi Mang Xing",
+    // CJK only — it is the 行书 floor under `slate-cursive`'s optional
+    // `Xingkai SC`, and the Latin beside it stays Chalkduster.
+    sample: "板书行草",
     licence: "SIL OFL 1.1",
   },
 ];
@@ -75,6 +87,13 @@ export const BUNDLED_FONT_FACE_CSS = `
 @font-face {
   font-family: "ZCOOL KuaiLe";
   src: url("${ZCOOL_KUAI_LE_URL}") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "Zhi Mang Xing";
+  src: url("${ZHI_MANG_XING_URL}") format("truetype");
   font-weight: 400;
   font-style: normal;
   font-display: block;
