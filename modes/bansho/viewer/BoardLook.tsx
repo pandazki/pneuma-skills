@@ -42,12 +42,23 @@
  * ── STACKING ────────────────────────────────────────────────────────────────
  * The panel is a plain `absolute` child of the chrome column, and that is
  * enough here BECAUSE the column already wins the parent ordering
- * (`absolute … z-30` in BanshoPreview, above the wall map's z-10). Note what
- * is deliberately NOT done: no `backdrop-blur` on any ancestor of the panel
- * inside this component — the blurred surfaces are the cards themselves,
- * never a wrapper — since `backdrop-filter` opens a stacking context and
- * would seal any z-index used inside it. Same trap as the transport's rate
- * menu, and the same discipline.
+ * (`absolute … z-30` in BanshoPreview, above the wall map's z-10). Two rules
+ * this file obeys so it stays enough:
+ *
+ *   1. Nothing inside the panel relies on a z-index. The panel carries
+ *      `backdrop-blur`, and `backdrop-filter` opens a STACKING CONTEXT — any
+ *      z-index used by a descendant would be sealed inside it and could not
+ *      outrank anything outside. That is the trap that ate the transport's
+ *      rate menu, and the one the App Settings popover was portaled out of.
+ *   2. The panel is one opaque surface, not a stack of floating cards.
+ *      Measured on 2026-08-17: with the groups floating separately, the wall
+ *      map showed through the gaps between them. That was never a stacking
+ *      failure — it was holes in the panel, and a panel with no holes shows
+ *      nothing through.
+ *
+ * Verified with `document.elementFromPoint` over the panel's own corners,
+ * not from a screenshot: CDP composites `backdrop-filter` wrongly, so a
+ * correctly-stacked panel can photograph as if it were transparent.
  */
 
 import { useEffect, useRef } from "react";
@@ -157,7 +168,12 @@ export default function BoardLook({
           data-bansho-look-panel=""
           role="dialog"
           aria-label="The board's look"
-          className="absolute right-0 top-full mt-1.5 w-[420px] max-w-[80vw] flex flex-col gap-2 text-left"
+          // ONE surface, not a stack of floating cards. Measured, 2026-08-17:
+          // with the groups floating separately, the wall map (z-10, inside
+          // the canvas) showed through the gaps between them — not a
+          // stacking failure, just holes in the panel. A panel that is one
+          // opaque thing has no holes to show anything through.
+          className="absolute right-0 top-full mt-1.5 w-[436px] max-w-[86vw] flex flex-col gap-2 p-2 rounded-lg border border-cc-border bg-cc-surface/95 backdrop-blur shadow-xl text-left"
         >
           {themePicker ? (
             <Group
@@ -181,7 +197,6 @@ export default function BoardLook({
               <button
                 type="button"
                 data-bansho-setting="parallax"
-                data-card=""
                 aria-pressed={parallax.active}
                 disabled={parallax.reduceMotion}
                 onClick={parallax.onToggle}
@@ -192,11 +207,11 @@ export default function BoardLook({
                 }
                 className={[
                   "w-full flex items-center justify-between gap-3 px-3 py-2 text-left transition-colors",
-                  "rounded-lg border border-cc-border bg-cc-surface/95 backdrop-blur shadow-xl",
+                  "rounded-lg border border-cc-border",
                   "focus-visible:ring-2 focus-visible:ring-cc-primary/60 focus-visible:ring-inset",
                   parallax.reduceMotion
                     ? "cursor-not-allowed"
-                    : "hover:bg-cc-surface cursor-pointer",
+                    : "hover:bg-cc-hover cursor-pointer",
                 ].join(" ")}
               >
                 <span className="flex flex-col gap-0.5 min-w-0">
@@ -248,7 +263,7 @@ function Group({
       data-bansho-look-group={name}
       className="flex flex-col items-stretch gap-1"
     >
-      <div className="px-2.5 py-1 rounded-md border border-cc-border bg-cc-surface/95 backdrop-blur">
+      <div className="px-1">
         <div className="text-[10px] font-semibold uppercase tracking-wider text-cc-muted/80">
           {label}
         </div>
