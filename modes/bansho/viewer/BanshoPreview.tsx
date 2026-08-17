@@ -1573,6 +1573,12 @@ export default function BanshoPreview({
                 onCompiled={onCompiled}
                 activeIndex={activeIndex}
                 playing={player.ui.playing}
+                // The camera keeps the lecture's tempo: the host glide
+                // duration is divided by the rate, so at 2× the board moves
+                // to the next region twice as fast instead of gliding at a
+                // reading pace nobody is reading at. Surfaces with no rate
+                // control never pass it and stay at the default 1.
+                rate={player.ui.rate}
                 follow={player.ui.follow}
                 onSeek={player.onSeek}
                 onFrame={player.onFrame}
