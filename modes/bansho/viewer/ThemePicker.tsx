@@ -27,21 +27,32 @@
  * (0,2,0), so the preview wins on specificity and never depends on which
  * `<style>` tag landed last.
  *
- * ── AVAILABILITY IS MEASURED ────────────────────────────────────────────────
+ * ── AVAILABILITY IS MEASURED, AND SO IS THE SUBSTITUTE ──────────────────────
  * `parchment` and `slate-cursive` are built on macOS system faces and will
  * silently fall back elsewhere. `document.fonts.check()` cannot detect that —
  * it answers `true` for any name the fallback can draw — so every face is
  * measured through `familyAvailable`, and a face the instrument cannot judge
  * is reported as unknown rather than as fine.
+ *
+ * A warning that a face is missing is only half an answer. 「那你要写清楚。。
+ * 用什么替代了？」 — a reader cannot decide whether they care until the message
+ * NAMES the face that took over, and "it will fall back" names nothing. So
+ * the substitute is measured too, through `drawnFamily`: the stack's own ink
+ * compared against each declared family's, which is the claim
+ * `CSS.getPlatformFontsForNode` makes, reachable from inside the page. It is
+ * deliberately not read off the declared ORDER — the order says nothing
+ * about coverage (a Latin hand leads `slate-cursive` and draws no Han at
+ * all), and reasoning from the declared order instead of from a measurement
+ * is what produced the wrong answer twice already.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { parseLecture } from "../domain.js";
-import { familyAvailable } from "../engine/factories/env.js";
+import { drawnFamily, familyAvailable } from "../engine/factories/env.js";
 import type { EnvCaps } from "../engine/types.js";
 import BoardCanvas from "./BoardCanvas.js";
-import { loadFamilies } from "./board-fonts.js";
+import { familiesIn, loadFamilies } from "./board-fonts.js";
 import {
   type BoardThemePreset,
   BOARD_THEMES,
@@ -66,10 +77,71 @@ const SAMPLE_SOURCE = [
 const PREVIEW_SCOPE = "bansho-theme-preview";
 
 /** A face, and what the measurement said about it. */
-interface FaceVerdict {
+export interface FaceVerdict {
   family: string;
   /** `null` = the instrument could not judge; never rendered as "fine". */
   present: boolean | null;
+  /**
+   * For a face that is NOT here: the family measurably drawing its sample
+   * under this preset's stack. `null` means no family the stack names is
+   * drawing it — the generic tail or the platform's own choice won, and
+   * neither has a name this page can read.
+   */
+  drawnBy: string | null;
+}
+
+/** What the message calls the face it cannot name. */
+const UNNAMEABLE = "your system’s fallback";
+
+/**
+ * What this machine will really do with one preset's faces.
+ *
+ * Pure and exported so the sentence the reader ends up seeing can be
+ * asserted against a machine whose fonts are known, rather than described
+ * in a comment — this is the message that was wrong twice.
+ */
+export function faceVerdicts(
+  doc: Document,
+  preset: BoardThemePreset,
+): FaceVerdict[] {
+  // Every family the stack NAMES is a candidate for having taken over —
+  // including ones ahead of the missing face, since the reason a face gets
+  // skipped is coverage as often as absence.
+  const declared = familiesIn(preset.handStack);
+  return preset.faces.map((face) => {
+    const present = familyAvailable(doc, face.family, face.sample);
+    return {
+      family: face.family,
+      present,
+      // Only asked when there is something to answer for: it is several
+      // rasters per candidate, and a present face has no substitute.
+      drawnBy:
+        present === false
+          ? drawnFamily(doc, preset.handStack, face.sample, declared)
+          : null,
+    };
+  });
+}
+
+/**
+ * The warning line, or `null` when nothing is missing.
+ *
+ * Every missing face is paired with the one that took over. "The board will
+ * fall back" was the old wording and it is worth being explicit about why it
+ * had to go: 行草 in place of 行楷 is a substitution most readers would shrug
+ * at, and 苹方 in place of a hand is one nobody would accept — and that
+ * sentence rendered the two identically, so it asked the reader to worry
+ * without giving them anything to decide with.
+ */
+export function fallbackNotice(
+  verdicts: readonly FaceVerdict[],
+): string | null {
+  const missing = verdicts.filter((v) => v.present === false);
+  if (missing.length === 0) return null;
+  const pairs = missing
+    .map((v) => `${v.family} → ${v.drawnBy ?? UNNAMEABLE}`)
+    .join(", ");
+  return `not on this machine, and what draws instead: ${pairs}`;
 }
 
 type Verdicts = Record<string, FaceVerdict[]>;
@@ -126,10 +198,7 @@ export default function ThemePicker({
       if (cancelled) return;
       const next: Verdicts = {};
       for (const preset of BOARD_THEMES) {
-        next[preset.id] = preset.faces.map((face) => ({
-          family: face.family,
-          present: familyAvailable(document, face.family, face.sample),
-        }));
+        next[preset.id] = faceVerdicts(document, preset);
       }
       setVerdicts(next);
     });
@@ -269,7 +338,7 @@ function ThemeRow({
   verdict: FaceVerdict[] | undefined;
   onPick: () => void;
 }): React.ReactElement {
-  const missing = (verdict ?? []).filter((v) => v.present === false);
+  const notice = fallbackNotice(verdict ?? []);
   const unknown = (verdict ?? []).filter((v) => v.present === null);
   return (
     <button
@@ -302,12 +371,18 @@ function ThemeRow({
           </span>
         ) : null}
       </div>
-      {missing.length > 0 ? (
-        // Say it plainly. The whole reason this is measured rather than
-        // asked is that the cheap API answers "yes" for a font nobody has.
-        <div className="mt-1 text-[10.5px] text-cc-warning">
-          not on this machine: {missing.map((v) => v.family).join(", ")} — the
-          board will fall back, so it will not look like the preview here
+      {notice ? (
+        // Names the replacement, not just the absence — see `fallbackNotice`.
+        <div
+          className="mt-1 text-[10.5px] text-cc-warning"
+          title={
+            "Measured on this machine by comparing what each face draws, not " +
+            "by asking whether it is installed. The name on the right is the " +
+            "face whose ink the board actually renders — the preview above is " +
+            "already drawn with it."
+          }
+        >
+          {notice}
         </div>
       ) : unknown.length > 0 ? (
         <div className="mt-1 text-[10.5px] text-cc-muted/70">

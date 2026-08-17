@@ -1511,8 +1511,8 @@ export default function BanshoPreview({
                   className="px-2 py-1 rounded-md text-[11px] font-medium bg-cc-warning/15 text-cc-warning backdrop-blur"
                   title={
                     handFallbackGlyphs.length > 0
-                      ? `These characters of this board measure the same width under the declared handwriting stack (--hand) as under the system fallback (PingFang), so the hand is not drawing them: ${handFallbackGlyphs.join(" ")}. Add a family that covers them to the stack in theme.css.`
-                      : "The board's declared handwriting stack (--hand) measures the same width as the system fallback (PingFang) — the declared face is not rendering and the board falls back"
+                      ? `These characters of this board are drawn pixel-for-pixel as the system fallback (PingFang) draws them, so the declared handwriting stack (--hand) is not writing them: ${handFallbackGlyphs.join(" ")}. Add a family that covers them to the stack in theme.css.`
+                      : "The board's declared handwriting stack (--hand) draws exactly what the system fallback (PingFang) draws — the declared face is not rendering and the board falls back"
                   }
                 >
                   {handFallbackGlyphs.length > 0
