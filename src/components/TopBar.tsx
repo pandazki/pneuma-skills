@@ -21,6 +21,11 @@ function EditingToggle() {
   const setEditing = useStore((s) => s.setEditing);
   const [switching, setSwitching] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  // The panel is portaled to <body> (see AppSettings) so it escapes this
+  // bar's `relative z-20` stacking context — otherwise a viewer's own chrome
+  // painted at a higher z outside the bar punches through it. It hangs off
+  // this rect instead of off the DOM.
+  const gearRef = useRef<HTMLButtonElement>(null);
 
   if (!editingSupported) return null;
 
@@ -57,7 +62,9 @@ function EditingToggle() {
       <div className="relative flex items-center gap-1">
         {/* Settings gear */}
         <button
+          ref={gearRef}
           onClick={() => setShowSettings((v) => !v)}
+          aria-expanded={showSettings}
           className="w-6 h-6 rounded-md flex items-center justify-center text-cc-muted/50 hover:text-cc-primary hover:bg-cc-primary/10 transition-colors cursor-pointer"
           title={t("settings_tooltip")}
         >
@@ -90,7 +97,7 @@ function EditingToggle() {
         </button>
         {showSettings && (
           <Suspense fallback={null}>
-            <AppSettings onClose={() => setShowSettings(false)} />
+            <AppSettings anchorRef={gearRef} onClose={() => setShowSettings(false)} />
           </Suspense>
         )}
       </div>
