@@ -46,6 +46,7 @@ export function factoryFor(kind: Step["kind"]): RevealableFactory | undefined {
 
 export {
   FALLBACK_GLYPH_LIST_CAP,
+  drawnFamily,
   familyAvailable,
   glyphsFallingBack,
   probeEnvCaps,

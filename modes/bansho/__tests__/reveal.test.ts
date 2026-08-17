@@ -57,6 +57,7 @@ import {
 } from "../engine/factories/ink.js";
 import { buildMathNode } from "../engine/factories/math.js";
 import { el, inertRevealable } from "../engine/factories/svg.js";
+import { MACOS_LIKE, fakeFontMachine } from "./fake-font-machine.js";
 // Viewer-side, imported deliberately: the math host's shrink-wrap (engine)
 // and its centering (stylesheet) are two halves of one geometry decision, so
 // the test that pins one pins the other. The G2 layering rule constrains
@@ -1908,32 +1909,30 @@ describe("determinism — same content, byte-identical jitter", () => {
   });
 });
 
-// ── G8-A — env probe: canvas width comparison, never fonts.check() ──────────
+// ── G8-A — env probe: canvas RASTER comparison, never fonts.check() ─────────
 
-describe("G8-A — handwriting font probe measures widths on canvas", () => {
-  const fakeDoc = (widthOf: (font: string) => number): Document =>
-    ({
-      createElement: () => ({
-        getContext: () => {
-          const g = {
-            font: "",
-            measureText: (_s: string) => ({ width: widthOf(g.font) }),
-          };
-          return g;
-        },
-      }),
-    }) as unknown as Document;
-
-  test("differing width vs known fallback → font is ACTIVE", () => {
-    const caps = probeEnvCaps(
-      fakeDoc((font) => (font.includes("HanziPen") ? 322 : 280)),
-    );
-    expect(caps.handwritingFontActive).toBe(true);
+/**
+ * The probe compares what the declared stack DRAWS against what the known
+ * fallback draws. It used to compare advance widths, and on 2026-08-17 that
+ * cost the board three simultaneous false alarms: Han is full-width in every
+ * CJK face, so a `slate-cursive` board drawing `Xingkai SC` measured exactly
+ * what 苹方 measures and reported its own hand inactive. The machine below
+ * ties every CJK advance on purpose (see `fake-font-machine.ts`), so a width
+ * probe cannot pass these tests and a raster probe can.
+ */
+describe("G8-A — handwriting font probe compares rasters on canvas", () => {
+  test("drawing something other than the known fallback → font is ACTIVE", () => {
+    const m = fakeFontMachine(MACOS_LIKE);
+    expect(probeEnvCaps(m.document).handwritingFontActive).toBe(true);
   });
 
-  test("identical width = silent fallback (the Hannotate trap) → NOT active", () => {
-    const caps = probeEnvCaps(fakeDoc(() => 280));
-    expect(caps.handwritingFontActive).toBe(false);
+  test("identical ink = silent fallback (the Hannotate trap) → NOT active", () => {
+    // The candidate is not on this machine, so naming it draws 苹方 — which
+    // is precisely what the comparison is against.
+    const faces = { ...MACOS_LIKE.faces };
+    delete (faces as Record<string, unknown>)["HanziPen SC"];
+    const m = fakeFontMachine({ ...MACOS_LIKE, faces });
+    expect(probeEnvCaps(m.document).handwritingFontActive).toBe(false);
   });
 
   test("no canvas 2d context → degrades to inactive, never throws", () => {
@@ -1944,47 +1943,38 @@ describe("G8-A — handwriting font probe measures widths on canvas", () => {
   });
 
   test("stroke font (Hershey) is not vendored yet — covers nothing", () => {
-    const caps = probeEnvCaps(fakeDoc(() => 1));
-    expect(caps.strokeFontCovers("abc")).toBe(false);
+    const m = fakeFontMachine(MACOS_LIKE);
+    expect(probeEnvCaps(m.document).strokeFontCovers("abc")).toBe(false);
   });
 
   // §6.3 makes the `--hand` stack the SEED's property, so probing a
   // hardcoded face answers the wrong question in both directions.
   test("the DECLARED stack is what gets measured, verbatim", () => {
-    let measured = "";
-    const doc = fakeDoc((font) => {
-      if (font.includes("Comic Relief")) {
-        measured = font;
-        return 322;
-      }
-      return 280;
-    });
-    const caps = probeEnvCaps(doc, {
+    const m = fakeFontMachine(MACOS_LIKE);
+    const caps = probeEnvCaps(m.document, {
       stacks: [`"Comic Relief", "HanziPen SC", cursive`],
     });
     expect(caps.handwritingFontActive).toBe(true);
     // The whole list reaches `ctx.font` — quoting it as one family name
     // would make every declared stack measure as the fallback.
-    expect(measured).toBe(`28px "Comic Relief", "HanziPen SC", cursive`);
+    expect(m.fontsDrawn).toContain(
+      `28px "Comic Relief", "HanziPen SC", cursive`,
+    );
   });
 
   test("a seed stack with NO handwriting face fails the check, not passes it", () => {
     // The trap the chip exists to catch, arriving through a seed instead of
-    // through a missing system font. The stub's widths must DISTINGUISH the
-    // two cases (a constant-width stub is satisfied by any stack at all —
-    // including a perfectly valid one — and can never fail for this
-    // test's stated reason): a stack resolving to a handwriting face
-    // measures 322, anything collapsing into the fallback measures 280.
-    const widthOf = (font: string) => (font.includes("HanziPen") ? 322 : 280);
+    // through a missing system font.
+    const m = fakeFontMachine(MACOS_LIKE);
     expect(
-      probeEnvCaps(fakeDoc(widthOf), {
+      probeEnvCaps(m.document, {
         stacks: [`"PingFang SC", sans-serif`],
       }).handwritingFontActive,
     ).toBe(false);
-    // Positive control under the SAME stub: a valid handwriting stack
+    // Positive control on the SAME machine: a valid handwriting stack
     // passes — proving the assertion above fails for the right reason.
     expect(
-      probeEnvCaps(fakeDoc(widthOf), {
+      probeEnvCaps(m.document, {
         stacks: [`"HanziPen SC", cursive`],
       }).handwritingFontActive,
     ).toBe(true);
@@ -1993,33 +1983,25 @@ describe("G8-A — handwriting font probe measures widths on canvas", () => {
   test("a stack that degrades in only ONE theme still raises the chip", () => {
     // EnvCaps is session-fixed (§5.2) — the probe cannot re-run when the
     // user flips the theme, so both declared variants must hold now.
-    const widthOf = (font: string) => (font.includes("HanziPen") ? 322 : 280);
+    const m = fakeFontMachine(MACOS_LIKE);
     expect(
-      probeEnvCaps(fakeDoc(widthOf), {
+      probeEnvCaps(m.document, {
         stacks: [`"HanziPen SC", cursive`, `"Chalkboard SE", sans-serif`],
       }).handwritingFontActive,
     ).toBe(false);
     expect(
-      probeEnvCaps(fakeDoc(widthOf), {
+      probeEnvCaps(m.document, {
         stacks: [`"HanziPen SC", cursive`, `"Bradley Hand", "HanziPen SC"`],
       }).handwritingFontActive,
     ).toBe(true);
   });
 
   test("nothing declared → the hardcoded candidate, quoted as one family", () => {
-    let measured = "";
-    const caps = probeEnvCaps(
-      fakeDoc((font) => {
-        if (font.includes("HanziPen")) {
-          measured = font;
-          return 322;
-        }
-        return 280;
-      }),
-      { stacks: [] },
-    );
-    expect(caps.handwritingFontActive).toBe(true);
-    expect(measured).toBe(`28px 'HanziPen SC'`);
+    const m = fakeFontMachine(MACOS_LIKE);
+    expect(
+      probeEnvCaps(m.document, { stacks: [] }).handwritingFontActive,
+    ).toBe(true);
+    expect(m.fontsDrawn).toContain(`28px "HanziPen SC"`);
   });
 });
 

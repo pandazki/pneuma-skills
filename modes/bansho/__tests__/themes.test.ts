@@ -14,7 +14,7 @@ import { existsSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { loadBoard } from "../domain.js";
-import { familyAvailable } from "../engine/factories/env.js";
+import { drawnFamily, familyAvailable } from "../engine/factories/env.js";
 import { BOARD_BASE_CSS } from "../viewer/board-css.js";
 import {
   BUNDLED_FACES,
@@ -31,6 +31,10 @@ import {
   themeById,
   themePathFor,
 } from "../viewer/themes.js";
+import { MACOS_LIKE, fakeFontMachine } from "./fake-font-machine.js";
+
+/** A CJK probe string every Chinese face on the fake machine covers. */
+const CJK_PROBE = "板书手写";
 
 const byId = (id: string) => {
   const preset = themeById(id);
@@ -327,7 +331,56 @@ describe("the chalk seam", () => {
   });
 });
 
-describe("familyAvailable — measured, never asked", () => {
+/**
+ * The picker's promise, on the machine the themes were CHOSEN on.
+ *
+ * The instrument itself is pinned in `font-probe.test.ts`; what belongs here
+ * is what the shipped presets claim about a real machine — because on
+ * 2026-08-17 the picker told a reader that `slate-cursive`'s first-choice
+ * face was missing while `CSS.getPlatformFontsForNode` named that very face
+ * on the ink node. Every face a preset declares has to be judged correctly
+ * on a machine that has it, and the substitute named for one that is absent
+ * has to be the face that really draws.
+ */
+describe("what the picker will say about the shipped themes", () => {
+  const macos = (): Document => fakeFontMachine(MACOS_LIKE).document;
+  /** The same machine without the optional macOS download. */
+  const withoutXingkai = (): Document => {
+    const faces = { ...MACOS_LIKE.faces };
+    delete (faces as Record<string, unknown>)["Xingkai SC"];
+    return fakeFontMachine({ ...MACOS_LIKE, faces }).document;
+  };
+
+  test("every face of every shipped preset is judged present on macOS", () => {
+    const doc = macos();
+    for (const preset of BOARD_THEMES) {
+      for (const face of preset.faces) {
+        expect([preset.id, face.family, familyAvailable(doc, face.family, face.sample)])
+          .toEqual([preset.id, face.family, true]);
+      }
+    }
+  });
+
+  test("slate-cursive's optional face is not called missing when it is there", () => {
+    // The defect verbatim: `Xingkai SC` is full-width like the system CJK
+    // face, so every width comparison tied and the picker warned about a
+    // font the reader could see on their own board.
+    const slate = BOARD_THEMES.find((t) => t.id === "slate-cursive")!;
+    const xingkai = slate.faces.find((f) => f.family === "Xingkai SC")!;
+    expect(familyAvailable(macos(), xingkai.family, xingkai.sample)).toBe(true);
+  });
+
+  test("when it really is absent, the bundled face is the one that draws", () => {
+    // This is the answer to 「用什么替代了？」 — measured, not inferred from
+    // the declared order.
+    const slate = BOARD_THEMES.find((t) => t.id === "slate-cursive")!;
+    const doc = withoutXingkai();
+    expect(familyAvailable(doc, "Xingkai SC", CJK_PROBE)).toBe(false);
+    expect(
+      drawnFamily(doc, slate.handStack, CJK_PROBE, familiesIn(slate.handStack)),
+    ).toBe("Zhi Mang Xing");
+  });
+
   test("an instrument-less host answers 'unknown', not 'missing'", () => {
     // `false` here would be an invention, and the picker would tell the
     // reader a font is absent on no evidence at all.
@@ -337,38 +390,12 @@ describe("familyAvailable — measured, never asked", () => {
     expect(familyAvailable(doc, "Bradley Hand", "Handwriting")).toBe(null);
   });
 
-  test("a host that measures everything to zero is instrument-less too", () => {
-    const doc = {
-      createElement: () => ({
-        getContext: () => ({ font: "", measureText: () => ({ width: 0 }) }),
-      }),
-    } as unknown as Document;
+  test("a host that draws nothing is instrument-less too", () => {
+    const doc = fakeFontMachine({ ...MACOS_LIKE, blank: true }).document;
     expect(familyAvailable(doc, "Bradley Hand", "Handwriting")).toBe(null);
   });
 
-  test("present when naming the family changes what gets drawn", () => {
-    const doc = {
-      createElement: () => ({
-        getContext: () => ({
-          font: "",
-          measureText(): { width: number } {
-            // The sentinels each measure differently; naming the family in
-            // front of them changes the answer only when it is installed.
-            const named = (this as { font: string }).font.includes('"Real"');
-            return { width: named ? 120 : 100 };
-          },
-        }),
-      }),
-    } as unknown as Document;
-    expect(familyAvailable(doc, "Real", "Handwriting")).toBe(true);
-  });
-
-  test("absent when it changes nothing — the fallback drew it, exactly the fonts.check lie", () => {
-    const doc = {
-      createElement: () => ({
-        getContext: () => ({ font: "", measureText: () => ({ width: 100 }) }),
-      }),
-    } as unknown as Document;
-    expect(familyAvailable(doc, "Hannotate SC", "板书手写")).toBe(false);
+  test("a face nobody has is still reported absent — the fonts.check lie", () => {
+    expect(familyAvailable(macos(), "Hannotate SC", CJK_PROBE)).toBe(false);
   });
 });

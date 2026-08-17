@@ -39,6 +39,7 @@ import {
 } from "../engine/factories/hand-glyphs.js";
 import { buildMathNode } from "../engine/factories/math.js";
 import type { MeasureContext, Step } from "../engine/types.js";
+import { MACOS_LIKE, fakeFontMachine } from "./fake-font-machine.js";
 
 const makeDoc = (): Document => {
   const win = new Window();
@@ -200,44 +201,30 @@ describe("prose writes the substituted mark, and keeps the source's offsets", ()
  * answered `true` for every family they asked about — the G8-A lie, which
  * is about the family and never about the glyph.
  *
- * The instrument is `probeEnvCaps`'s, narrowed to one character at a time
- * and tightened to EXACT width equality, because a single glyph's advance is
- * a small number: measured on the live board, Chalkboard SE's `A` (25.81px)
- * and 苹方's (26.28px) sit inside the stack probe's 0.5px tolerance, while at
- * exact equality the shipped stacks name `⋯` and `⊂` alone and the blind
- * trial's stack names every CJK character plus both arrows.
+ * The instrument is `probeEnvCaps`'s, narrowed to one character at a time: a
+ * glyph whose INK under the declared stack is byte-identical to the known
+ * fallback's is being drawn by the fallback. It compared advance WIDTHS
+ * until 2026-08-17, when the board proved that cannot work on Chinese text —
+ * Han is full-width in every CJK face, so a board drawing `Xingkai SC`
+ * measured exactly what 苹方 measures and this function named all 312 of its
+ * characters. The fake machine below ties every CJK advance for that reason;
+ * a width probe cannot pass these tests.
  */
 describe("the §6.4-A chip names the characters that fell back", () => {
-  /** `widthOf(font, text)` — the fake canvas both arguments reach. */
-  const fakeDoc = (widthOf: (font: string, text: string) => number): Document =>
-    ({
-      createElement: () => ({
-        getContext: () => {
-          const g = {
-            font: "",
-            measureText: (s: string) => ({ width: widthOf(g.font, s) }),
-          };
-          return g;
-        },
-      }),
-    }) as unknown as Document;
-
-  /** A hand face draws CJK at 1.03em; the fallback draws it at exactly 1em. */
-  const HAND_ONLY = new Set([..."板书手写字宽验证样本一二三"]);
-  const boardLike = (font: string, ch: string): number =>
-    font.includes("HanziPen") && HAND_ONLY.has(ch) ? 28.84 : 28;
+  /** The machine the defect was measured on (see `fake-font-machine.ts`). */
+  const board = (): Document => fakeFontMachine(MACOS_LIKE).document;
 
   test("a character no declared stack can draw is named", () => {
-    const missing = glyphsFallingBack(fakeDoc(boardLike), "板书 → 验", {
+    const missing = glyphsFallingBack(board(), "板书 → 验", {
       stacks: [`"HanziPen SC", cursive`],
     });
-    // 板书验 are drawn by the hand (1.03em); `→` measures exactly the
-    // fallback's width, so the hand is not drawing it.
+    // 板书验 are drawn by the hand; `→` is in no face on this machine, so
+    // it lands on the system fallback and the hand is not drawing it.
     expect(missing).toEqual(["→"]);
   });
 
   test("the blind trial's stack names every character it cannot draw", () => {
-    const missing = glyphsFallingBack(fakeDoc(boardLike), "板书手写", {
+    const missing = glyphsFallingBack(board(), "板书手写", {
       stacks: [`"Bradley Hand", "Chalkboard SE", cursive`],
     });
     expect(missing).toEqual(["板", "书", "手", "写"]);
@@ -245,8 +232,19 @@ describe("the §6.4-A chip names the characters that fell back", () => {
 
   test("a healthy board names nothing", () => {
     expect(
-      glyphsFallingBack(fakeDoc(boardLike), "板书手写", {
+      glyphsFallingBack(board(), "板书手写", {
         stacks: [`"HanziPen SC", cursive`],
+      }),
+    ).toEqual([]);
+  });
+
+  test("a CJK hand that shares the fallback's advance still names nothing", () => {
+    // The 2026-08-17 regression, stated as its own claim: `Xingkai SC` is
+    // full-width exactly like 苹方, so every width comparison ties — and the
+    // board it draws must still come back clean.
+    expect(
+      glyphsFallingBack(board(), "板书手写", {
+        stacks: [`"Chalkduster", "Xingkai SC", "Zhi Mang Xing", cursive`],
       }),
     ).toEqual([]);
   });
@@ -255,7 +253,7 @@ describe("the §6.4-A chip names the characters that fell back", () => {
     // `EnvCaps` is session-fixed and the reader can flip the theme at any
     // moment, so both declared variants have to hold now.
     expect(
-      glyphsFallingBack(fakeDoc(boardLike), "板", {
+      glyphsFallingBack(board(), "板", {
         stacks: [`"HanziPen SC", cursive`, `"Bradley Hand", cursive`],
       }),
     ).toEqual(["板"]);
@@ -263,7 +261,7 @@ describe("the §6.4-A chip names the characters that fell back", () => {
 
   test("each character is named once, in first-appearance order", () => {
     expect(
-      glyphsFallingBack(fakeDoc(boardLike), "→ 板 ← → ←", {
+      glyphsFallingBack(board(), "→ 板 ← → ←", {
         stacks: [`"HanziPen SC", cursive`],
       }),
     ).toEqual(["→", "←"]);
@@ -271,25 +269,32 @@ describe("the §6.4-A chip names the characters that fell back", () => {
 
   test("whitespace is never named — it has no glyph to fall back", () => {
     expect(
-      glyphsFallingBack(fakeDoc(boardLike), " \t\n板书", {
+      glyphsFallingBack(board(), " \t\n板书", {
         stacks: [`"HanziPen SC", cursive`],
       }),
     ).toEqual([]);
   });
 
   test("nothing declared, or no canvas → says nothing rather than guessing", () => {
-    expect(glyphsFallingBack(fakeDoc(boardLike), "板书", { stacks: [] })).toEqual([]);
+    expect(glyphsFallingBack(board(), "板书", { stacks: [] })).toEqual([]);
     const noCanvas = {
       createElement: () => ({ getContext: () => null }),
     } as unknown as Document;
     expect(glyphsFallingBack(noCanvas, "板书", { stacks: [`"X"`] })).toEqual([]);
-    expect(glyphsFallingBack(fakeDoc(boardLike), "", { stacks: [`"X"`] })).toEqual([]);
+    expect(glyphsFallingBack(board(), "", { stacks: [`"X"`] })).toEqual([]);
+  });
+
+  test("a host that draws nothing names nothing — silence, not a false alarm", () => {
+    const blank = fakeFontMachine({ ...MACOS_LIKE, blank: true }).document;
+    expect(
+      glyphsFallingBack(blank, "板书", { stacks: [`"HanziPen SC", cursive`] }),
+    ).toEqual([]);
   });
 
   test("astral characters are one name, not two broken halves", () => {
     // `for…of` over a string walks code points; a surrogate-pair character
     // named as two lone surrogates would be unreadable in the chip.
-    const missing = glyphsFallingBack(fakeDoc(boardLike), "𝄞", {
+    const missing = glyphsFallingBack(board(), "𝄞", {
       stacks: [`"HanziPen SC", cursive`],
     });
     expect(missing).toEqual(["𝄞"]);
