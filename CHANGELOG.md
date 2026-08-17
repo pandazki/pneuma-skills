@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.32.1] - 2026-08-17
+
+### Fixed
+- **The board warned about fonts it was drawing perfectly, because the check could not tell one Chinese face from another.** Han characters are full-width — exactly one em — in essentially every CJK font, so comparing how *wide* a Chinese sample comes out carries no information about which face drew it: an installed face, a missing one, and a deliberately bogus name all measure identically. Three separate things sat on that one primitive, and two were lying on screen: the theme picker announced "not on this machine: Xingkai SC" while Xingkai SC was writing every character, and a chip called all 312 Chinese characters of a lecture "fallen back". The probe now compares what the candidates actually *draw* — it rasterises the sample and hashes the ink — and refuses to answer at all when the canvas gives it nothing readable, rather than reporting a confident wrong answer.
+- **When a face really is missing, the picker now says what replaced it.** "Xingkai SC → Zhi Mang Xing" rather than "the board will fall back": getting 行草 in place of 行楷 is a substitution most people would accept, and getting a printed face is one they would not, and the old sentence read the same either way. The name on the right is measured on the reader's own machine — never read off the order the stack lists, since that order says nothing about which face covers the script.
+
 ## [3.32.0] - 2026-08-17
 
 ### Added
