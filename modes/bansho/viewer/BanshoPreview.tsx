@@ -1384,7 +1384,13 @@ export default function BanshoPreview({
 
         <div className="flex-1 min-w-0 min-h-0 flex flex-col gap-2">
           <div className="relative flex-1 min-h-0 flex flex-col">
-            <div className="absolute top-2 right-2 z-10 flex flex-col items-end gap-1.5">
+            {/* z-30, not z-10: the WallMap inside the canvas is z-10 and
+                comes LATER in the DOM, so at equal z it wins and covers
+                anything opened from this column (measured — the theme
+                picker was half-eaten by the wall thumbnails). The winner
+                has to be this container in the parent ordering; raising a
+                child's z inside it cannot help. */}
+            <div className="absolute top-2 right-2 z-30 flex flex-col items-end gap-1.5">
               {lecture ? (
                 // 板 ≠ 笔记 (C3): the same lecture, two projections. The
                 // board performs (limited area, erasing, camera); the

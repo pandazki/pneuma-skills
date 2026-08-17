@@ -21,6 +21,31 @@ body { background: #1d2b33; }
 * { font-family: cursive; }
 ```
 
+## The three shipped themes
+
+The viewer's **Theme** button opens a picker that writes one of three
+presets into this content set's `theme.css` — the same file described
+below, with a marker comment on its first line. Picking one is exactly
+"write this stylesheet"; there is no viewer setting behind the reader's
+back, and a lecture that chose a look keeps it on every machine that
+opens it.
+
+| id | 名字 | The hand | The board |
+|---|---|---|---|
+| `parchment` | 牛皮纸 | Bradley Hand + HanziPen SC | warm paper, rust accent |
+| `slate-cursive` | 绿板 · 行楷 | Chalkduster + Xingkai SC | the green slate, chalk on |
+| `kawaii-cream` | 可爱 · 奶油 | ZCOOL KuaiLe | cream paper, coral accent |
+
+Two of the three are built on **macOS system faces** and fall back to
+`cursive` elsewhere; the picker measures each face on the machine it is
+running on and says so rather than showing a preview it cannot deliver.
+`kawaii-cream` uses **ZCOOL KuaiLe**, which bansho ships (SIL OFL 1.1,
+`modes/bansho/assets/fonts/`), so it renders identically everywhere —
+that is the whole reason it is bundled.
+
+You can edit a picked `theme.css` freely afterwards. Removing its marker
+line only means the picker will ask before replacing your edits.
+
 ## Token vocabulary
 
 The board look is driven by a small set of custom properties:
@@ -33,7 +58,30 @@ The board look is driven by a small set of custom properties:
 | `--hl` | the marker's color (`==…==` sweeps) |
 | `--hl-a` | the marker's opacity — lower on dark boards so writing shows through |
 | `--s1`, `--s2` | first and second chart series line colors |
+| `--wall` | the room the boards hang in (multi-board only) |
 | `--hand` | the handwriting font stack |
+| `--bansho-chalk` | `1` = this board is chalk on slate, `0` = ink on paper |
+| `--bansho-flaw` | how much of a hand the board has (see below) |
+
+### `--bansho-chalk` — is this board chalk on slate?
+
+```css
+.bansho-board-surface { --bansho-chalk: 1; }
+```
+
+`1` means the writing is chalk: the chalk-edge texture and the hand-wipe
+erase residue are active. `0` means ink on paper, where ink is either
+there or struck through and never smeared — a paper board looks exactly
+as it did before any of that existed.
+
+**Default is `0`, on both the light and the dark board.** The stock dark
+board is a slate by colour but does not claim to be chalk; only a theme
+that says so gets the effects. `slate-cursive` is the shipped theme that
+opts in.
+
+This one token is the whole interface between a board's *look* and the
+chalk effects drawn on top of it. Set it in `theme.css` like any other
+token; do not reach for a second signal.
 
 Defaults: a white board (`#ffffff` / near-black writing, light marker at
 0.62) and, under `data-bansho-theme="dark"`, a deep green-gray chalk
