@@ -69,10 +69,10 @@ The board look is driven by a small set of custom properties:
 .bansho-board-surface { --bansho-chalk: 1; }
 ```
 
-`1` means the writing is chalk: the chalk-edge texture and the hand-wipe
-erase residue are active. `0` means ink on paper, where ink is either
-there or struck through and never smeared — a paper board looks exactly
-as it did before any of that existed.
+`1` means the writing is chalk: the slate carries grain, and an erase
+leaves behind the smear a cloth leaves. `0` means ink on paper, where ink
+is either there or struck through and never smeared — a paper board looks
+exactly as it did before any of this existed.
 
 **Default is `0`, on both the light and the dark board.** The stock dark
 board is a slate by colour but does not claim to be chalk; only a theme
