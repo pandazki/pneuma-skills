@@ -16,6 +16,21 @@
 /** A seeded pseudo-random stream in [0, 1). */
 export type Rand = () => number;
 
+/** FNV-1a 32-bit over a string — deterministic, dependency-free. The
+ *  house identity→seed hash (every seeded stream in this mode starts
+ *  here); it lives beside the PRNG it feeds. Historically defined in
+ *  `factories/svg.ts`, which still re-exports it — moved so engine core
+ *  (stage.ts's turn landing) can seed from a step identity without
+ *  importing the render layer. */
+export function fnv1a(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
 /** mulberry32 — tiny, high-quality-enough, byte-deterministic PRNG. */
 export function mulberry32(seed: number): Rand {
   let a = seed | 0;

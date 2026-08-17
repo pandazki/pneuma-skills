@@ -181,8 +181,13 @@ export function wheelZoomFactor(deltaY: number, deltaMode = 0): number {
  * Zoom about a viewport-relative screen point: the board point under the
  * cursor stays under the cursor. The screen->board conversion divides by
  * the MODEL z — exact, because the stage transform is written from this
- * same value with no CSS transition in between (were one ever added, the
- * conversion would have to move to the same-frame measured scale, G8-J).
+ * same value with no CSS transition in between. The host glide
+ * (camera-glide.ts) preserves that invariant on purpose: it is a JS tween
+ * that commits every interpolated pose to the model BEFORE painting it,
+ * so model and paint agree on every frame even mid-flight — where a CSS
+ * transition on the stage transform would let the painted scale trail the
+ * model, and this conversion would have to move to the same-frame
+ * measured scale (G8-J).
  */
 export function zoomAt(
   camera: Camera,

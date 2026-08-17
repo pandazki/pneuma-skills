@@ -7,6 +7,7 @@
  */
 
 import type { UnitPlan } from "../inference.js";
+import { fnv1a } from "../sketch/index.js";
 import { stepPlainText } from "../text.js";
 import type { Revealable, Step } from "../types.js";
 
@@ -69,15 +70,10 @@ export function overlaySvg(doc: Document, zIndex: number): StyledElement {
   return svg;
 }
 
-/** FNV-1a 32-bit over a string — deterministic, dependency-free. */
-export function fnv1a(s: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
-}
+// FNV-1a moved to `../sketch/index.js` (the determinism module — beside
+// the PRNG it feeds) so engine core can seed from step identities without
+// importing this render-layer file; re-exported here so no caller moved.
+export { fnv1a };
 
 /**
  * The jitter seed for a step — derived from CONTENT, never from position.

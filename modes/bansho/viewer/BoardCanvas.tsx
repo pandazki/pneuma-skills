@@ -190,6 +190,14 @@ import {
   type Viewbox,
 } from "./camera.js";
 import {
+  glidePoseAt,
+  samePose,
+  stampGlide,
+  startGlide,
+  type CameraGlide,
+  type CameraMotion,
+} from "./camera-glide.js";
+import {
   boardRects,
   deltaLeft,
   viewportPoint,
@@ -445,6 +453,13 @@ export interface BoardCanvasProps {
   playing: boolean;
   follow: "live" | "detached";
   /**
+   * Playback rate (`player.ui.rate`) — divides every host camera glide's
+   * duration so camera tempo tracks lecture tempo at 1.5×/2×. Optional
+   * with a default of 1: an unwired host glides at real-time tempo, which
+   * is correct for every viewing surface that has no rate control.
+   */
+  rate?: number;
+  /**
    * Explicit-navigation subscription (player.onSeek) — a scrub / keyboard
    * seek / Live / replay jump re-engages the camera even while paused or
    * after a manual scroll. Must be identity-stable across renders.
@@ -551,6 +566,7 @@ export default function BoardCanvas({
   activeIndex,
   playing,
   follow,
+  rate = 1,
   onSeek,
   onFrame,
   selectedRef,
@@ -777,13 +793,122 @@ export default function BoardCanvas({
     });
   }, [wallGeom]);
 
-  /** The one writer: commit a camera and paint it onto the stage. */
-  const applyCamera = useCallback((camera: Camera): void => {
+  /** The playback rate as a ref: glide durations read it at start; a prop
+   *  dependency here would re-subscribe every camera effect on a rate flip. */
+  const rateRef = useRef(rate);
+  rateRef.current = rate;
+  /**
+   * THE HOST GLIDE (2026-08-17) — the tween behind every host camera commit
+   * that used to be an instant cut (the same-board paragraph chase, the
+   * decay hand-back, the Live re-attach, a locator jump). Measured on a
+   * real reader, the cuts are exactly what loses them: 「无论是移动镜头还是
+   * 移动白板，都不应该闪烁」. The arithmetic is the director's own
+   * (`camera-glide.ts` wraps `cameraPoseAt` + `cameraMoveDuration`), the
+   * canonical schedule is untouched (R8 byte-identity holds), and under
+   * `prefers-reduced-motion` the 2D glide STAYS — the `depthMotion`
+   * precedent above: degrade to flat motion, never to a cut.
+   *
+   * The tween runs on its OWN rAF chain, alive only while a glide is in
+   * flight — deliberately NOT ridden on the player's `onFrame`: that
+   * listener only fires inside `apply`, and at the live tip `tick` returns
+   * the identical state so NO frames fire exactly where the paragraph
+   * chase lives (an agent writing at the tip). A glide can also be owed
+   * while paused (Live, a locator jump). One stepper, no handovers.
+   */
+  const glideRef = useRef<CameraGlide | null>(null);
+  const glideRafRef = useRef(0);
+
+  /** Paint a camera: MODEL FIRST, pixels second — on every tween frame the
+   *  model camera equals the painted camera, which is what keeps `zoomAt`'s
+   *  screen→board divide by the model z exact mid-flight (camera.ts). */
+  const paintCamera = useCallback((camera: Camera): void => {
     cameraRef.current = camera;
     const stage = stageRef.current;
     if (stage) stage.style.transform = cameraCss(camera);
     markWallMap(camera);
   }, [markWallMap]);
+
+  /** Settle the tween: drop the glide and its pending frame. */
+  const cancelGlide = useCallback((): void => {
+    glideRef.current = null;
+    if (glideRafRef.current) {
+      cancelAnimationFrame(glideRafRef.current);
+      glideRafRef.current = 0;
+    }
+  }, []);
+
+  /** The one INSTANT writer: commit a camera and paint it now. An instant
+   *  write is a CUT on purpose — every caller is in the cancel set (user
+   *  gestures, seek tracking, director poses, the rebuild's re-clamp) — so
+   *  it also settles any tween in flight; a leftover frame stepping a dead
+   *  glide would fight the very write that superseded it. */
+  const applyCamera = useCallback((camera: Camera): void => {
+    cancelGlide();
+    paintCamera(camera);
+  }, [cancelGlide, paintCamera]);
+
+  /** The tween's frames. The FIRST frame stamps the glide's zero with its
+   *  own timestamp (frame clock and step clock are one source), so frame
+   *  one paints the departure and motion begins on frame two. */
+  const glideFrame = useCallback((now: number): void => {
+    glideRafRef.current = 0;
+    const active = glideRef.current;
+    if (!active) return;
+    const glide = stampGlide(active, now);
+    glideRef.current = glide;
+    const { pose, done } = glidePoseAt(glide, now);
+    if (done) glideRef.current = null;
+    else glideRafRef.current = requestAnimationFrame(glideFrame);
+    paintCamera(pose);
+  }, [paintCamera]);
+
+  /** The one TWEEN writer: commit a camera as motion. Retarget, never
+   *  queue — a target arriving mid-flight replaces the glide, departing
+   *  from the pose painted right now, so the camera never doubles back to
+   *  serve a stale destination. A commit with no travel, or before the
+   *  viewport has a size, degrades to the instant writer (a zero-length
+   *  glide is a cut by definition — the fold says the same). */
+  const glideCameraTo = useCallback((target: Camera): void => {
+    const viewport = viewportRef.current;
+    const glide = viewport
+      ? startGlide(
+          cameraRef.current,
+          target,
+          {
+            viewW: viewport.clientWidth,
+            viewH: viewport.clientHeight,
+            panelW: PANEL_WIDTH,
+            panelH: PANEL_HEIGHT,
+            panelCount: panelCountRef.current,
+            panelGap: PANEL_GAP,
+          },
+          DEFAULT_DURATIONS,
+          rateRef.current,
+        )
+      : null;
+    if (!glide) {
+      applyCamera(target);
+      return;
+    }
+    glideRef.current = glide;
+    if (!glideRafRef.current) {
+      glideRafRef.current = requestAnimationFrame(glideFrame);
+    }
+  }, [applyCamera, glideFrame]);
+
+  /** Commit a camera the way the caller's channel decided: as motion, or
+   *  as the deliberate cut the cancel set names. */
+  const commitCamera = useCallback(
+    (camera: Camera, motion: CameraMotion): void => {
+      if (motion === "glide") glideCameraTo(camera);
+      else applyCamera(camera);
+    },
+    [applyCamera, glideCameraTo],
+  );
+
+  // A glide must not outlive the canvas — the pending frame would write to
+  // a stage React is dropping.
+  useEffect(() => cancelGlide, [cancelGlide]);
 
   /**
    * THE ONE RE-ENGAGE DOOR (`latchInput(_, "reset")`) — Live, resuming
@@ -1989,6 +2114,11 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
 
   // ── The reconcile-driven rebuild ─────────────────────────────────────────
   useEffect(() => {
+    // A recompile invalidates the geometry a tween in flight was measured
+    // against — settle it before anything is re-measured, unconditionally
+    // (the re-clamp at the bottom also cancels, but only on the paths that
+    // reach it). Cancel set: recompile / reconcile / invalidateMeasurements.
+    cancelGlide();
     const board = boardRef.current;
     const measureHost = measureRef.current;
     if (!board || !measureHost || !fontsReady) return;
@@ -2782,9 +2912,12 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
               // to the DESTINATION board's head (the fold's own verdict,
               // turnPanelByKeyRef). A turn holds a schedule window even
               // with zero revealables, so it maps before the check below.
+              // `key` is the step's own identity — the seed of the
+              // landing's air (`engine/stage.ts::turnLanding`).
               inputs.push({
                 kind: "turn",
                 rect: turnBoardHead(refKey(entry.ref)) ?? null,
+                key: refKey(entry.ref),
               });
               inputKeys.push(refKey(entry.ref));
               continue;
@@ -3128,6 +3261,7 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
     measureStageAnchor,
     applySelectionMark,
     applyCamera,
+    cancelGlide,
     liveViewbox,
     computeFoldInputs,
     turnBoardHead,
@@ -3148,6 +3282,9 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
     // one task, so no blank board is ever painted (G5). The camera needs
     // no snapshot/restore: it is a transform, not a scroll offset, so the
     // wipe cannot clamp it (the rebuild re-clamps against fresh heights).
+    // A tween in flight, though, was measured against the geometry being
+    // voided — settle it now rather than let it glide toward a stale rect.
+    cancelGlide();
     stateRef.current = null;
     containersRef.current.clear();
     labelWidthRef.current.clear();
@@ -3165,7 +3302,7 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
     // with heights the reflow just voided.
     basisRef.current = null;
     setRebuildTick((n) => n + 1);
-  }, []);
+  }, [cancelGlide]);
 
   // ── Width changes invalidate every measured geometry: full rebuild ───────
   // The VIEWPORT is observed, not the panel: the panel's width is derived
@@ -3566,8 +3703,23 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
     [applyCamera, liveViewbox],
   );
 
-  /** Bring one built step into view. Returns false when it is not mounted. */
-  const showStep = useCallback((ref: StepRef): boolean => {
+  /**
+   * Bring one built step into view. Returns false when it is not mounted.
+   *
+   * `motion` is the caller's channel speaking (2026-08-17): playback's
+   * follow and a locator/navigate jump GLIDE (the cuts here are what the
+   * owner measured attention loss on), while seek tracking passes "cut" —
+   * a dragged playhead must be tracked, not chased. Defaults to "glide"
+   * because the published BoardApi (`onApi`) is exactly the locator
+   * channel. `from` is a departure the caller has already decided on (the
+   * hand-back's rebased pose) — the shift composes ON it and the whole
+   * journey commits ONCE, where it used to be two writes and a stutter.
+   */
+  const showStep = useCallback((
+    ref: StepRef,
+    motion: CameraMotion = "glide",
+    from?: Camera,
+  ): boolean => {
     const viewport = viewportRef.current;
     const item = itemByRefRef.current.get(refKey(ref));
     if (!viewport || !item) return false;
@@ -3599,27 +3751,41 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
       bottom: rect.bottom,
       ...(board ? { left: rect.left, right: rect.right, board } : {}),
     };
+    const departure = from ?? cameraRef.current;
     // The reader is coming back (they took the camera, then pressed play /
     // Live / seeked): they get the canonical re-attach pose, not the
     // minimum shift that would suit a pen already in view. One flag, spent
-    // the moment it is honoured.
+    // the moment it is honoured. The return ALWAYS glides — this is the
+    // Live return, the one displacement the reader most needs to ride
+    // (their camera is wherever they wandered) — even on the seek channel:
+    // a scrub's next tick cuts through `applyCamera` and settles it anyway.
     if (reattachRef.current) {
       reattachRef.current = false;
-      applyCamera(reattachCamera(cameraRef.current, box, target));
+      glideCameraTo(reattachCamera(departure, box, target));
       return true;
     }
-    const next = followShift(cameraRef.current, box, target);
-    if (next) applyCamera(next);
+    // The shift composes on the caller's departure; when it answers null
+    // (target already comfortably in view FROM there) the departure itself
+    // is still owed — the hand-back must land even when no chase follows.
+    const next =
+      followShift(departure, box, target) ??
+      (from && !samePose(from, cameraRef.current) ? from : null);
+    if (next) commitCamera(next, motion);
     return true;
-  }, [applyCamera, liveViewbox, measureStageAnchor, panelSlotOf, erasedBoardHead, turnBoardHead, wallGeom]);
+  }, [glideCameraTo, commitCamera, liveViewbox, measureStageAnchor, panelSlotOf, erasedBoardHead, turnBoardHead, wallGeom]);
 
-  /** Bring the given schedule entry into view (ref reads only — stable). */
-  const followEntry = useCallback((index: number): void => {
+  /** Bring the given schedule entry into view (ref reads only — stable).
+   *  Returns false when there is nothing mounted to bring. */
+  const followEntry = useCallback((
+    index: number,
+    motion: CameraMotion,
+    from?: Camera,
+  ): boolean => {
     const compiled = compiledRef.current;
-    if (!compiled || index < 0) return;
+    if (!compiled || index < 0) return false;
     const entry = compiled.timeline.schedule[index];
-    if (!entry) return;
-    showStep(entry.step);
+    if (!entry) return false;
+    return showStep(entry.step, motion, from);
   }, [showStep]);
 
   /**
@@ -3639,8 +3805,15 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
    * placement after a turn threw the camera back across the room for
    * 1.26 s while the ink landed correctly the whole time).
    */
-  const followAt = useCallback((index: number): void => {
+  const followAt = useCallback((index: number, motion: CameraMotion): void => {
     const sched = stageScheduleRef.current;
+    // The hand-back is COMPOSED, not applied (2026-08-17): it used to be
+    // its own camera write, with the follow's shift landing as a second
+    // one — a two-segment stutter on every decay. Now it becomes the
+    // DEPARTURE the shift builds on, and the whole journey (z restored, x
+    // walked, y chased) commits once — as one glide on the playback
+    // channel, one cut on the seek channel.
+    let base: Camera | undefined;
     if (sched && sched.moves.length > 0) {
       const viewport = viewportRef.current;
       // The pen camera's rest is the WRITING board (C3) — the origin on a
@@ -3667,11 +3840,15 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
         stagedMultiRef.current,
       );
       if (rebased && viewport) {
-        applyCamera(clampCamera(rebased, liveViewbox(viewport)));
+        base = clampCamera(rebased, liveViewbox(viewport));
       }
     }
-    followEntry(index);
-  }, [followEntry, applyCamera, liveViewbox, wallGeom]);
+    // An entry that cannot be brought (unmounted mid-rebuild) still owes
+    // the hand-back itself — exactly what the old first write delivered.
+    if (!followEntry(index, motion, base) && base) {
+      commitCamera(base, motion);
+    }
+  }, [followEntry, commitCamera, liveViewbox, wallGeom]);
 
   // Publish the imperative camera to the shell (navigate-to / play-from /
   // a locator card all land here).
@@ -3727,7 +3904,7 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
       getPlayheadT(),
       latchRef.current,
     );
-    if (verdict.kind === "follow") followAt(activeIndex);
+    if (verdict.kind === "follow") followAt(activeIndex, "glide");
     else if (verdict.kind === "director") {
       // Symmetric with the seek path: a director pose IS canonical, so it
       // settles any re-attach the reader is owed. An armed flag that
@@ -3787,7 +3964,12 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
       }
       const compiled = compiledRef.current;
       if (!compiled) return;
-      followAt(activeScheduleIndex(compiled.timeline.schedule, t));
+      // "cut": the camera TRACKS the dragged playhead — a scrub streaming
+      // seeks must not trail behind an eased chase. The one exception
+      // rides inside `showStep`: a reader being RE-ATTACHED (Live, a seek
+      // after a grab) glides home, and the next scrub tick's instant
+      // write settles it if the drag goes on.
+      followAt(activeScheduleIndex(compiled.timeline.schedule, t), "cut");
     });
   }, [onSeek, followAt, applyCamera, applyDirectorDepth, resetLatch]);
 

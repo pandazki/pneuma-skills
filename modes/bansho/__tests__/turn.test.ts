@@ -440,7 +440,7 @@ describe("@turn — camera neutrality (P1-3 applied, §7.6-Q2)", () => {
     const inputs: StageStepInput[] = [
       { kind: "write", rect: rect(0) },
       { kind: "camera", op: "focus", anchor: rect(2000) },
-      { kind: "turn", rect: { left: 0, top: 0, right: 800, bottom: 0 } },
+      { kind: "turn", rect: { left: 0, top: 0, right: 800, bottom: 0 }, key: "0:2" },
       { kind: "camera", op: "focus", anchor: rect(100) },
     ];
     const ops = resolveCameraOps(inputs, view, D);
@@ -454,7 +454,9 @@ describe("@turn — camera neutrality (P1-3 applied, §7.6-Q2)", () => {
     const headAt = (top: number) => ({ left: 0, top, right: 800, bottom: top });
     const silent: StageStepInput[] = [
       { kind: "write", rect: rect(0) },
-      { kind: "turn", rect: headAt(3000) },
+      // A strip supplies no board, so the walk keeps the plain follow
+      // pose — the landing's air is a wall behaviour (turn-walk.test.ts).
+      { kind: "turn", rect: headAt(3000), key: "0:1" },
       { kind: "camera", op: "overview", anchor: null },
     ];
     const walked = resolveCameraOps(silent, view, D);

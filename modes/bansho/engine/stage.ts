@@ -53,6 +53,7 @@
  */
 
 import { PANEL_WIDTH } from "./layout.js";
+import { fnv1a, mulberry32 } from "./sketch/index.js";
 import type { DurationConstants, StageRect } from "./types.js";
 import {
   wallExtent,
@@ -621,6 +622,99 @@ export function reattachCamera(
   );
 }
 
+/**
+ * THE AIR AT A TURN'S LANDING (2026-08-17) — how far past the destination
+ * board's edges the walk arrives, and how far off-centre it may lean.
+ *
+ * Reported from use: 「turn 的时候最好也看到黑板的边缘外部一点,甚至有点
+ * 随机感。每次都整整齐齐地贴在黑板的内容边缘,就感觉不到环境变化了,有点
+ * 晃神。」 The walk itself shipped on 2026-08-11, but every walk landed
+ * IDENTICALLY: the follow's flush pose, the board's content edge on the
+ * viewport's edge, the same photograph at every arrival. Nothing in the
+ * frame said "you are somewhere new", so the change of place did not
+ * register. What says it is the ROOM: the board's own frame, the gap to
+ * its neighbour, a strip of the wall — the same strip `GESTURE_GIVE`
+ * exists to show a dragging hand, arriving here with the teacher instead.
+ *
+ * `min`/`max` bound the stand-back as a fraction of the rest view (air =
+ * restZ / z − 1): at 0.09 about a ninth of a board's width of extra room
+ * splits around the board, at 0.16 about a sixth. The floor keeps the
+ * thinnest side unmistakably air (never a flush-looking sliver); the
+ * ceiling keeps the landing a LOOK at one board, not an overview — and
+ * keeps the step-in short enough that stand-back-then-write reads as
+ * intent, not as an overshoot bouncing off the edge.
+ *
+ * `drift` is how far the extra room may lean to one side, as a fraction
+ * of it: at 0.22 the shares split anywhere in [28%, 72%], so consecutive
+ * landings frame the board differently while BOTH sides always keep real
+ * air. The amplitude arithmetic guarantees the void is bounded by
+ * construction — the worst overhang past the stage,
+ * `max × (0.5 + drift)` of the rest view, sits just inside the
+ * `GESTURE_GIVE` band a reader's own hand is held to.
+ *
+ * All three are drawn per turn, seeded from the step's own identity
+ * (`turnLanding`) — never the viewport, never `Math.random()` — the same
+ * determinism discipline as the ink's jitter (`sketch/`) and the flaw
+ * layer (`flaw.ts`): same lecture, same landings, every reload, every
+ * scrub, every export.
+ */
+export const TURN_AIR = {
+  /** The least stand-back a landing carries (fraction of the rest view). */
+  min: 0.09,
+  /** The most — past this the arrival reads as an overview, not a look. */
+  max: 0.16,
+  /** How far the air may lean to one side (fraction of the extra room). */
+  drift: 0.22,
+} as const;
+
+/** Symmetric draw in [-amp, amp], quantised to 3 decimals — the flaw
+ *  layer's own `swing` discipline (byte-stable across runs). */
+const airSwing = (rnd: () => number, amp: number): number =>
+  Math.round((rnd() * 2 - 1) * amp * 1000) / 1000;
+
+/**
+ * Where a turn's walk actually lands: the follow's flush pose (`walked` —
+ * today's landing, the destination board's head framed by the ordinary
+ * follow rule) stepped BACK by a seeded amount of air, leaning a seeded
+ * amount to one side. See `TURN_AIR` for why and for the amplitudes.
+ *
+ * The stand-back is ABSOLUTE — `z = restZ / (1 + air)`, never a factor
+ * over `walked.z` — so a chain of turns with no write between them draws
+ * each landing from the rest zoom and cannot compound the zoom-out. The
+ * extra room is quoted at the rest view for the same reason (`viewW /
+ * restZ` board px, viewport-independent at the unclamped rest zoom).
+ *
+ * UNCLAMPED, like `overviewPose` — a director pose's bounds live in its
+ * own arithmetic, never in a clamp (`camera.test.ts` keeps the gesture
+ * clamp one-door for exactly this reason). The amplitudes ARE the bound:
+ * `walked` is a strictly clamped resting pose, and the worst step past it
+ * on any edge is `max × (0.5 + drift)` ≈ 11.5% of the rest view — a
+ * deliberate strip of wall, inside the band a reader's own drag may rest
+ * at, and a clamp here would do nothing but hand the wall's edge boards
+ * their flush landing back.
+ */
+export function turnLanding(
+  walked: CameraPose,
+  box: Viewbox,
+  restZ: number,
+  key: string,
+): CameraPose {
+  const rnd = mulberry32((fnv1a(key) ^ 0x51ab73e9) >>> 0);
+  const air =
+    Math.round(
+      (TURN_AIR.min + rnd() * (TURN_AIR.max - TURN_AIR.min)) * 1000,
+    ) / 1000;
+  const dx = airSwing(rnd, TURN_AIR.drift);
+  const dy = airSwing(rnd, TURN_AIR.drift);
+  const seeW = box.viewW / restZ;
+  const seeH = box.viewH / restZ;
+  return {
+    x: walked.x - seeW * air * (0.5 + dx),
+    y: walked.y - seeH * air * (0.5 + dy),
+    z: restZ / (1 + air),
+  };
+}
+
 /** `@focus`: the performance's own zoom (`restZoom` — W7; the literal 1
  *  until the board had a size of its own), centered on the anchor step,
  *  clamped into the stage (a focus near an edge shows board, not void). Not
@@ -856,6 +950,15 @@ export type StageStepInput =
        */
       kind: "turn";
       rect: StageRect | null;
+      /**
+       * The turn step's own identity (the caller's `refKey`) — the seed of
+       * the landing's air (`turnLanding`). REQUIRED, not optional, on the
+       * W7 discipline (`handBackCamera`'s restZ): a caller that forgot it
+       * would silently land every walk flush against the content edge
+       * again, which is exactly the defect the air exists to close —
+       * forgetting must be a compile error, not a quiet regression.
+       */
+      key: string;
     }
   | {
       /**
@@ -942,8 +1045,11 @@ export function resolveCameraOps(
    *  at it, exactly as the live camera does. */
   const restZ = restZoom(view.viewW, view.panelW);
   /** The SIMULATED live camera: where the host's follow rests after each
-   *  step of an uninterrupted play-through. Always at the rest zoom (HOME,
-   *  follow and hand-back all keep it there). */
+   *  step of an uninterrupted play-through. At the rest zoom everywhere a
+   *  pen is working (HOME, follow and hand-back all keep it there); the
+   *  ONE unlatched excursion is a turn's stand-back landing
+   *  (`turnLanding`, z < restZ), which the next write settles through the
+   *  same hand-back the host runs. */
   let sim: CameraPose = homePose(view.viewW, view.panelW);
   /** The register's latched pose; null = decayed to follow. */
   let latched: CameraPose | null = null;
@@ -1002,12 +1108,24 @@ export function resolveCameraOps(
         // `handBackCamera` keeps it; on a wall the camera stands in front
         // of the board (its corner, or the nearest height inside it),
         // because a row change is a walk, not a scroll.
+        //
+        // `sim` goes in VERBATIM (2026-08-17; it used to be spelled
+        // `{ ...sim, z: restZ }`, a value-identical no-op while the
+        // unlatched sim could only rest at the performance zoom): a turn's
+        // stand-back landing leaves the simulated camera zoomed out, and
+        // the live hand-back reads that z off the real camera — forcing it
+        // here would read "already home" off a pose that is not, and the
+        // z-restore this move owes would silently vanish.
         const rest = board
-          ? handBackCamera({ ...sim, z: restZ }, restZ, board, view.viewH)
+          ? handBackCamera(sim, restZ, board, view.viewH)
           : null;
         if (rest) {
           const walked = clampCamera(rest, box);
-          if (walked.x !== sim.x || walked.y !== sim.y) {
+          if (
+            walked.x !== sim.x ||
+            walked.y !== sim.y ||
+            walked.z !== sim.z
+          ) {
             ops.push({
               index: i,
               move: { from: sim, to: walked },
@@ -1020,7 +1138,42 @@ export function resolveCameraOps(
         continue;
       }
       {
-        const walked = followShift(sim, box, target(input.rect));
+        // THE STAND-BACK'S STEP-IN (2026-08-17): an unlatched sim resting
+        // off the performance zoom can only be a turn's airy landing
+        // (`turnLanding` — nothing else writes an unlatched z). The host's
+        // `followAt` COMPOSES the hand-back into this write's own follow —
+        // z restored, x walked, y chased, committed as ONE glide — so the
+        // fold folds the same composition: the shift builds on the
+        // handed-back pen camera (`basis`), while a migration move's
+        // DEPARTURE stays `sim`, the airy pose the reader is actually
+        // watching. When the sim rests at the performance zoom the basis
+        // IS the sim, and every pre-existing byte survives verbatim.
+        const basis =
+          sim.z !== restZ
+            ? clampCamera(
+                (() => {
+                  const handed = penHandBack(
+                    sim,
+                    restZ,
+                    view.viewH,
+                    board,
+                    multi,
+                  );
+                  const next = handed ?? sim;
+                  return {
+                    x: board ? next.x : (input.penX ?? sim.x),
+                    y: next.y,
+                    z: restZ,
+                  };
+                })(),
+                box,
+              )
+            : sim;
+        const shifted = followShift(basis, box, target(input.rect));
+        // A dead-band shift off a settled basis still owes the settle
+        // itself: the live camera glides to the basis even when the pen's
+        // line asks for nothing further.
+        const walked = shifted ?? (basis !== sim ? basis : null);
         const migrated = sameBoard(board, penBoard) === false;
         if (board) penBoard = board;
         if (walked) {
@@ -1042,11 +1195,19 @@ export function resolveCameraOps(
           // paragraph as a migration or (as it was gated) a row change as
           // none. The pen's board is known here; ask it.
           //
-          // The ordinary vertical chase down one board's face stays the
-          // instant C1 follow, because a glide on every paragraph would
-          // be motion sickness, not teaching. And a board change that
-          // needs no travel (the destination already in view) stays no
-          // move at all — a zero-length glide is a tilt with no journey.
+          // The ordinary vertical chase down one board's face stays OUT
+          // of the canonical schedule — but NOT because instant is right:
+          // that was this comment's old claim, and measured against a
+          // real reader (2026-08-17) it is false — the instant chase is
+          // exactly what loses them. The chase is smoothed HOST-side
+          // (`viewer/camera-glide.ts`, this fold's own arithmetic),
+          // because it is a function of the reader's live camera — dead
+          // band, latch, where they actually stand — which the fold can
+          // only simulate, never own; scheduling it would put a canonical
+          // move under every paragraph and change R8 output for a purely
+          // presentational concern. And a board change that needs no
+          // travel (the destination already in view) stays no move at
+          // all — a zero-length glide is a tilt with no journey.
           const travelled = walked.x !== sim.x || walked.y !== sim.y;
           if (migrated && travelled) {
             ops.push({
@@ -1115,6 +1276,15 @@ export function resolveCameraOps(
             // anywhere (css3d brief §5.1: V1.5 shipped the capability,
             // this is the teaching move that consumes it).
             //
+            // AND THE LANDING HAS AIR (2026-08-17): the walk arrives
+            // standing BACK from the board, not flush against its content
+            // edge — `turnLanding` steps the follow's pose back by a
+            // seeded amount and leans it a seeded amount, keyed to this
+            // step's own identity, so every arrival frames the room a
+            // little differently and the change of place actually reads.
+            // Gated on `board`: a strip has no neighbouring board or gap
+            // to show, so its degraded turn keeps the plain follow pose.
+            //
             // Two things it deliberately does NOT do:
             //   - it does not LATCH. A turn stays 走位不是写, so a held
             //     `@focus` still rides straight through it — which is why
@@ -1125,13 +1295,18 @@ export function resolveCameraOps(
             //     leaves the op list untouched, so a board with nothing to
             //     walk to keeps an empty schedule — and an empty schedule
             //     is what keeps the depth surface absent at rest.
+            const landing = board
+              ? turnLanding(walked, box, restZ, input.key)
+              : walked;
             ops.push({
               index: i,
-              move: { from: sim, to: walked },
-              duration: cameraMoveDuration(sim, walked, view, d),
+              move: { from: sim, to: landing },
+              duration: cameraMoveDuration(sim, landing, view, d),
             });
+            sim = landing;
+          } else {
+            sim = walked;
           }
-          sim = walked;
         }
       }
       continue;
