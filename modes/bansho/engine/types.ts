@@ -885,13 +885,37 @@ export interface StagePlanInput {
  * relink rule, made structural).
  *
  * G8-L (hard rule): the surface behind `resolve()` is an element NO reveal
- * strategy ever touches — erase owns `clipPath` on ITS OWN wrapper and
+ * strategy ever touches — erase owns its wrapper's visual state (the
+ * legacy sweep writes `clipPath`; the W9 chalk wipe writes the `mask-*`
+ * family plus `pointerEvents` and its own `data-bansho-wiping` marker) and
  * writes nothing any strategy owns, so a scrub that dispatches
  * `C.seek(0.5); E.seek(0)` can never blow a half-revealed unit to fully
- * visible.
+ * visible. The two flavours never mix on one unit: the verdict is fixed at
+ * build (`MeasureContext.chalkWipe`), and wrappers are re-minted per
+ * rebuild, so a stale flavour's state dies with its node.
  */
 export interface EraseTargetHandle {
-  resolve(): { style: { clipPath: string } } | null;
+  resolve(): EraseWipeSurface | null;
+}
+
+/**
+ * The eraser's wrapper, as the eraser sees it — a structural minimum so
+ * the sweep stays testable with plain objects (the same shape argument
+ * `QuietableSurface` makes). Only `clipPath` is required: the legacy sweep
+ * writes nothing else, and pre-W9 fakes stay valid verbatim. The optional
+ * members are what the chalk wipe additionally owns; in production the
+ * surface is always the live `HTMLElement` wrapper, which has them all.
+ */
+export interface EraseWipeSurface {
+  readonly style: {
+    clipPath: string;
+    maskImage?: string;
+    maskSize?: string;
+    maskRepeat?: string;
+    maskPosition?: string;
+    pointerEvents?: string;
+  };
+  readonly dataset?: Record<string, string | undefined>;
 }
 
 /**
@@ -993,6 +1017,16 @@ export interface MeasureContext {
    * `EraseTargetHandle` for the G8-L exclusive-channel contract.
    */
   eraseTarget?(step: Step): EraseTargetHandle | undefined;
+  /**
+   * W9 — the chalk-wipe verdict, `eraseTarget`'s sibling on the same seam:
+   * theme knowledge the step value cannot hold, read by the HOST once per
+   * rebuild (the computed `--bansho-chalk` gate times the 瑕疵 knob) and
+   * handed down at build time. Present with `knob > 0` → `@erase` sweeps
+   * as a hand-wipe (masked arc front + seeded residue, engine/chalk.ts).
+   * Absent → the legacy hard-edge clip sweep, byte for byte; a paper
+   * board (`--bansho-chalk: 0`) must never see a new code path.
+   */
+  chalkWipe?: { knob: number };
   /**
    * §4.4 accumulation seam — ONE seam for every named container (charts and
    * graphs alike; `key` is `containerKeyOf`, engine/container.ts, so the two

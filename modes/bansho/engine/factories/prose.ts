@@ -125,6 +125,11 @@ function buildTextStep(
   node.style.position = "relative";
 
   const svgUnder = overlaySvg(doc, 0); // highlighter bands, under the text
+  // Named layers (W9): the chalk ink texture is a stylesheet rule, and a
+  // stylesheet can only honor "the pen's ink, never the marker bands" if
+  // the under/over split is addressable. Same names as the backref
+  // factory's (-under holds fills, -over holds strokes).
+  svgUnder.classList.add("bansho-ink-under");
   const defs = el(doc, "defs");
   svgUnder.appendChild(defs);
   const textEl = doc.createElement("div") as StyledElement;
@@ -132,6 +137,7 @@ function buildTextStep(
   textEl.style.position = "relative";
   textEl.style.zIndex = "1";
   const svgOver = overlaySvg(doc, 2); // circles / strikes / underlines, over
+  svgOver.classList.add("bansho-ink-over");
   node.appendChild(svgUnder);
   node.appendChild(textEl);
   node.appendChild(svgOver);

@@ -196,6 +196,7 @@ import {
   withDepthSuspended,
 } from "./stage-measure.js";
 import { contentSeed } from "../engine/factories/svg.js";
+import { CHALK_FLAG, CHALK_KNOB_PROP, readChalk } from "../engine/chalk.js";
 import {
   blockFlaw,
   clampFlaw,
@@ -1966,6 +1967,26 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
     stampFlaw();
   }, [stampFlaw, themeCss]);
 
+  // ── Chalk lands (W9) ─────────────────────────────────────────────────────
+  // The other half of the theme seam: `--bansho-chalk` (the theme's one
+  // token) becomes ONE gate attribute on the surface, exactly the shape
+  // the 瑕疵 knob takes above — at 0 no chalk rule matches at all, so a
+  // paper board is a structural absence of the whole effect family, not a
+  // zeroed one. Paint-only, same as stampFlaw, so it rides the same
+  // trigger and never a rebuild.
+  const stampChalk = useCallback((): void => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+    const on = readChalk(
+      getComputedStyle(surface).getPropertyValue(CHALK_KNOB_PROP),
+    );
+    if (on) surface.dataset[CHALK_FLAG] = "";
+    else delete surface.dataset[CHALK_FLAG];
+  }, []);
+  useEffect(() => {
+    stampChalk();
+  }, [stampChalk, themeCss]);
+
   // ── The reconcile-driven rebuild ─────────────────────────────────────────
   useEffect(() => {
     const board = boardRef.current;
@@ -1998,11 +2019,29 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
     /** The entry under construction — the erase seam's key (alignShift's
      *  pattern: the step value cannot name its board; the fold can). */
     let currentBuildKey = "";
+    // W9 — the chalk-wipe verdict, read ONCE per rebuild (theme knowledge
+    // the step value cannot hold): the theme's `--bansho-chalk` gate times
+    // the 瑕疵 knob. Baked into this build's erase units; a theme edit that
+    // flips it re-flavours via the zero-crossing effect below (the rebuild
+    // re-minted wrappers make a stale flavour's state die with its node).
+    const surfaceForChalk = surfaceRef.current;
+    const chalkComputed = surfaceForChalk
+      ? getComputedStyle(surfaceForChalk)
+      : null;
+    const chalkKnob = chalkComputed
+      ? clampFlaw(
+          Number.parseFloat(chalkComputed.getPropertyValue(FLAW_KNOB_PROP)),
+        )
+      : 0;
+    const chalkOn = chalkComputed
+      ? readChalk(chalkComputed.getPropertyValue(CHALK_KNOB_PROP))
+      : false;
     const ctx: MeasureContext = {
       durations: DEFAULT_DURATIONS,
       document: doc,
       measureHost,
       env,
+      ...(chalkOn && chalkKnob > 0 ? { chalkWipe: { knob: chalkKnob } } : {}),
       alignShift: () => currentAlign,
       container: (key) => containersRef.current.get(key),
       // The seam needs to know WHICH annotation is asking (the fold's
@@ -3206,6 +3245,28 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
     return () => {
       cancelled = true;
     };
+  }, [themeCss, invalidateMeasurements]);
+
+  // ── A theme edit that flips the CHALK-WIPE flavour re-flavours (W9) ──────
+  // The erase units bake the chalk verdict at build (`ctx.chalkWipe`), so a
+  // theme.css edit that crosses it — chalk toggled, or the 瑕疵 knob
+  // crossing zero on a chalk board — must rebuild or standing erases keep
+  // sweeping in the retired flavour. Deliberately COARSER than the flaw
+  // stamp above it: amplitude edits stay paint-only and rebuild nothing;
+  // only the flavour BOOLEAN flipping pays a rebuild, and the first stamp
+  // pays nothing at all (a mount is not a flip).
+  const chalkFlavorRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+    const cs = getComputedStyle(surface);
+    const flavor =
+      readChalk(cs.getPropertyValue(CHALK_KNOB_PROP)) &&
+      clampFlaw(Number.parseFloat(cs.getPropertyValue(FLAW_KNOB_PROP))) > 0;
+    if (chalkFlavorRef.current === flavor) return;
+    const first = chalkFlavorRef.current === null;
+    chalkFlavorRef.current = flavor;
+    if (!first) invalidateMeasurements();
   }, [themeCss, invalidateMeasurements]);
 
   // ── User input (C1 + the C1′ grab, W4a's infinite-canvas table) ──────────

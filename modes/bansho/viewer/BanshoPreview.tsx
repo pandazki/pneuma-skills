@@ -82,6 +82,7 @@ import BoardCanvas, {
 } from "./BoardCanvas.js";
 import BoardCommands from "./BoardCommands.js";
 import { BOARD_BASE_CSS } from "./board-css.js";
+import { CHALK_EFFECT_CSS, CHALK_FILTER_DEFS_SVG } from "./chalk-css.js";
 import { BUNDLED_FONT_FACE_CSS } from "./board-fonts.js";
 import ThemePicker from "./ThemePicker.js";
 import {
@@ -1352,6 +1353,15 @@ export default function BanshoPreview({
   return (
     <div className="h-full min-h-0 flex flex-col bg-cc-bg">
       <style data-bansho-base>{BOARD_BASE_CSS}</style>
+      {/* Chalk effects (W9): every rule gated on `data-bansho-chalk`, the
+          attribute BoardCanvas stamps only when the theme's --bansho-chalk
+          token is 1 — a paper board matches no rule here, by scan-pinned
+          construction (chalk.test.ts). The def <svg> is the ink filter the
+          rules reference; a CSS filter resolves same-document ids only, so
+          it must be DOM — a zero-sized def paints nothing while nothing
+          references it. Static trusted markup, not user content. */}
+      <style data-bansho-chalk-css>{CHALK_EFFECT_CSS}</style>
+      <span aria-hidden dangerouslySetInnerHTML={{ __html: CHALK_FILTER_DEFS_SVG }} />
       {/* The faces bansho SHIPS (viewer/board-fonts.ts). Declared once, for
           the whole surface: an @font-face names a family and selects
           nothing, so it cannot restyle the app chrome, and a theme.css —
