@@ -26,6 +26,7 @@ import { Window } from "happy-dom";
 import { parseLecture } from "../domain.js";
 import type { EnvCaps } from "../engine/types.js";
 import type { StepRef } from "../engine/types.js";
+import { GESTURE_GIVE } from "../viewer/camera.js";
 
 const SOURCE = [
   "# Grab",
@@ -131,6 +132,9 @@ interface Mounted {
   surface: HTMLElement;
   grabs: number[];
   points: (StepRef | null)[];
+  /** Re-render with fresh lecture bytes — the agent appending a line. It
+   *  runs the compile effect, and with it the post-rebuild camera re-clamp. */
+  append(source: string): Promise<void>;
   unmount(): Promise<void>;
 }
 
@@ -139,34 +143,36 @@ async function mountBoard(name: string): Promise<Mounted> {
   const { createRoot } = await import("react-dom/client");
   const { default: BoardCanvas } = await import("../viewer/BoardCanvas.js");
 
-  const lecture = parseLecture(SOURCE, name);
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
   const grabs: number[] = [];
   const points: (StepRef | null)[] = [];
 
-  await act(async () => {
-    root.render(
-      <BoardCanvas
-        lecture={lecture}
-        view="board"
-        theme="light"
-        fontsReady={true}
-        env={ENV}
-        getPlayheadT={() => 999}
-        onCompiled={() => {}}
-        activeIndex={0}
-        playing={false}
-        follow="detached"
-        onSeek={() => () => {}}
-        onFrame={() => () => {}}
-        selectedRef={null}
-        onSelectStep={(ref) => points.push(ref)}
-        onGrab={() => grabs.push(1)}
-      />,
-    );
-  });
+  const paint = async (source: string): Promise<void> => {
+    await act(async () => {
+      root.render(
+        <BoardCanvas
+          lecture={parseLecture(source, name)}
+          view="board"
+          theme="light"
+          fontsReady={true}
+          env={ENV}
+          getPlayheadT={() => 999}
+          onCompiled={() => {}}
+          activeIndex={0}
+          playing={false}
+          follow="detached"
+          onSeek={() => () => {}}
+          onFrame={() => () => {}}
+          selectedRef={null}
+          onSelectStep={(ref) => points.push(ref)}
+          onGrab={() => grabs.push(1)}
+        />,
+      );
+    });
+  };
+  await paint(SOURCE);
 
   const surface = host.querySelector(".bansho-board-surface") as HTMLElement;
   const viewport = host.querySelector(".bansho-viewport") as HTMLElement;
@@ -183,6 +189,20 @@ async function mountBoard(name: string): Promise<Mounted> {
     surface,
     grabs,
     points,
+    async append(source: string) {
+      await paint(source);
+      // The stubs live on the element objects; re-stub in case the rebuild
+      // handed React a fresh node, so a lost fiction can never masquerade
+      // as a moved camera.
+      stubSize(
+        host.querySelector(".bansho-panel") as HTMLElement,
+        { offsetWidth: PANEL_W, offsetHeight: PANEL_H },
+      );
+      stubSize(
+        host.querySelector(".bansho-viewport") as HTMLElement,
+        { clientWidth: VIEW_W, clientHeight: VIEW_H },
+      );
+    },
     async unmount() {
       await act(async () => {
         root.unmount();
@@ -267,10 +287,32 @@ describe("the grab (C1′) — dragging the board pans it", () => {
     expect(cameraY(m.stage)).toBe(200);
     // Exactly one grab was reported for one gesture, not one per move.
     expect(m.grabs.length).toBe(1);
-    // Dragging back DOWN returns it (and is clamped at the top edge).
+    // Dragging back DOWN returns it — and stops one GIVE past the top edge
+    // (2026-08-17), not dead on it. Wiring, not arithmetic: what this pins
+    // is that the hand on the board reaches the gesture clamp at all.
     await drag(m, { x: 400, y: 200 }, [{ x: 400, y: 500 }]);
-    expect(cameraY(m.stage)).toBe(0);
+    expect(cameraY(m.stage)).toBe(-GESTURE_GIVE * VIEW_H);
     expect(m.grabs.length).toBe(2);
+    await m.unmount();
+  });
+
+  test("the pose a hand let go of survives the agent appending a line", async () => {
+    // THE half of the give that is wiring and could not be a pure test:
+    // "it stays" is only true if nothing downstream repairs it, and the
+    // board's own rebuild re-clamps the camera after every compile (a
+    // reflow that shortened the board must not leave the view staring past
+    // its end). Held to the STRICT clamp, that step would yank a leaning
+    // reader back by a give the next time the agent wrote a line — the
+    // gesture undone by somebody else's keystroke.
+    const m = await mountBoard("grab-append");
+    await drag(m, { x: 400, y: 400 }, [
+      { x: 400, y: 500 },
+      { x: 400, y: 800 },
+    ]);
+    const leaning = cameraY(m.stage);
+    expect(leaning).toBe(-GESTURE_GIVE * VIEW_H);
+    await m.append(`${SOURCE}- A line the agent just wrote\n`);
+    expect(cameraY(m.stage)).toBe(leaning);
     await m.unmount();
   });
 

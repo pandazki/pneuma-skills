@@ -261,6 +261,35 @@ export function cameraMinZ(box: Viewbox): number {
 }
 
 /**
+ * THE GIVE AT THE EDGE (2026-08-17) — how far past its pinned range a USER
+ * GESTURE may push the camera, as a fraction of the viewport on that axis.
+ *
+ * Reported from use: 「现在只能拖到内容的边缘。。拖拽的时候像是卡住了」. A
+ * hand that stops dead the instant the content edge reaches the viewport
+ * edge does not read as "the board ends here" — it reads as a jammed
+ * gesture, because nothing on screen distinguishes "you have arrived" from
+ * "the drag broke". What tells them apart is seeing a strip of the room
+ * OUTSIDE the board: the wall the board hangs on, arriving with the edge.
+ *
+ * A FRACTION, not a pixel count, and converted at the camera's own zoom
+ * (`give = GESTURE_GIVE * view / z` board px, `view / z` being the visible
+ * extent in board px) — so on SCREEN the give is the same slice of the
+ * window at every zoom, which is the only quantity a hand can feel. A fixed
+ * board-px give would be three different gestures across the zoom range: at
+ * a give of 96 board px, a reader zoomed out to a whole 4-board wall
+ * (z ≈ 0.32) gets 31 screen px — indistinguishable from the jam being
+ * reported — while a reader zoomed in to read a formula (z = 2.5) gets 240
+ * screen px and can push a quarter of the window into the void.
+ *
+ * 0.12 of a 1600x900 window is 192 x 108 screen px: unmistakably a strip of
+ * wall, and nowhere near enough to lose the board. It is a TOLERANCE, not a
+ * runway — the travel is linear and then it genuinely stops (no rubber-band
+ * physics, no second animation loop beside the canonical one), so the pose
+ * a reader lets go of is exactly the pose they dragged to.
+ */
+export const GESTURE_GIVE = 0.12;
+
+/**
  * One axis of the clamp. While the stage is LARGER than the viewport the
  * camera roams `[0, panel - view]` — the viewport never leaves the stage.
  * Once it is SMALLER there is no roaming left to do, and the only question
@@ -269,10 +298,26 @@ export function cameraMinZ(box: Viewbox): number {
  * the MIDDLE. Pinning to 0 instead — which is what this did until
  * 2026-08-12 — hung the whole room off the top-left corner with dead room
  * to the right, which is not how anything hangs on a wall.
+ *
+ * `give` (board px, 0 for every non-gesture caller) is the user's tolerance
+ * at both ends, which lets ONE sentence cover both branches: you may push
+ * `give` past wherever the camera would otherwise be pinned. The centring
+ * branch gets it for the same reason the roaming one does — that branch is
+ * the zoom a WALL is read at, and a hand that dies the moment everything
+ * fits is the same dead hand, met at the other end of the zoom range.
  */
-const clampAxis = (v: number, panel: number, view: number): number => {
+const clampAxis = (
+  v: number,
+  panel: number,
+  view: number,
+  give: number,
+): number => {
   const span = panel - view;
-  return span >= 0 ? clampNum(v, 0, span) : span / 2;
+  /** Where the camera pins with no give at all… */
+  const rest = span >= 0 ? 0 : span / 2;
+  /** …and how far it may roam from there (nothing, once the stage fits). */
+  const roam = span >= 0 ? span : 0;
+  return clampNum(v, rest - give, rest + roam + give);
 };
 
 /**
@@ -281,15 +326,53 @@ const clampAxis = (v: number, panel: number, view: number): number => {
  * state), and zoomed out past the panel the stage CENTRES on that axis
  * (see `clampAxis`).
  *
- * This is the USER-gesture clamp only. A director pose is applied verbatim
- * (`viewer/camera.ts::gateCamera`) precisely so an `@overview` may sit
- * outside the stage to fit and centre everything revealed so far; that
- * exception is untouched, and `overviewPose` does its own centring.
+ * THE STRICT one, and NOT the user-gesture clamp its comment claimed it was
+ * until 2026-08-17. Its callers are the performance's: the live follow
+ * (`followShift`), the re-attach, the decay hand-back, the fold's own
+ * simulation of all three, and the host's re-clamp after a rebuild while
+ * the reader has not taken the camera. They must rest exactly where they
+ * rested before the give existed — which is why the give is a second
+ * function (`clampUserCamera`) rather than a parameter spent here.
+ *
+ * A director pose is applied verbatim (`viewer/camera.ts::gateCamera`) —
+ * neither clamp touches it — precisely so an `@overview` may sit outside
+ * the stage to fit and centre everything revealed so far; that exception is
+ * untouched, and `overviewPose` does its own centring.
  */
 export function clampCamera(camera: CameraPose, box: Viewbox): CameraPose {
+  return clampWith(camera, box, 0);
+}
+
+/**
+ * The clamp a HAND is held to: the strict one plus `GESTURE_GIVE` of the
+ * viewport at either end of each axis. Every user camera gesture goes
+ * through it — the drag, the wheel zoom, the wall map's own drag — and
+ * nothing else does (`camera.test.ts` keeps that ban executable).
+ *
+ * The pose it returns is a legal RESTING pose, not a transient one: there
+ * is no rubber-band, so nothing downstream repairs it, and the host's
+ * re-clamp after a rebuild holds a detached camera to this same range so an
+ * agent appending a line cannot yank a leaning reader back. Live, an
+ * explicit seek and resume all re-engage the follow, which returns the
+ * camera to the performance through the strict clamp — that hand-back is
+ * the pre-existing one, not a repair of the gesture.
+ */
+export function clampUserCamera(camera: CameraPose, box: Viewbox): CameraPose {
+  return clampWith(camera, box, GESTURE_GIVE);
+}
+
+/** The one clamp arithmetic; `give` is a fraction of the viewport (0 = the
+ *  strict clamp, whose numbers must stay bit for bit what they were). */
+function clampWith(
+  camera: CameraPose,
+  box: Viewbox,
+  give: number,
+): CameraPose {
   const z = clampNum(camera.z, cameraMinZ(box), CAMERA_MAX_Z);
-  const x = clampAxis(camera.x, box.panelW, box.viewW / z);
-  const y = clampAxis(camera.y, box.panelH, box.viewH / z);
+  const seeW = box.viewW / z;
+  const seeH = box.viewH / z;
+  const x = clampAxis(camera.x, box.panelW, seeW, give * seeW);
+  const y = clampAxis(camera.y, box.panelH, seeH, give * seeH);
   return x === camera.x && y === camera.y && z === camera.z
     ? camera
     : { x, y, z };

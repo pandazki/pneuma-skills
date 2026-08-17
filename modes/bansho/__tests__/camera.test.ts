@@ -28,8 +28,10 @@ import {
   cameraCss,
   cameraMinZ,
   clampCamera,
+  clampUserCamera,
   exceedsGrabSlop,
   followShift,
+  GESTURE_GIVE,
   reattachCamera,
   gateCamera,
   GRAB_SLOP_PX,
@@ -109,6 +111,136 @@ describe("clampCamera — the viewport never leaves the panel", () => {
   });
 });
 
+/**
+ * THE GIVE AT THE EDGE (2026-08-17) — the loose half of the clamp, and the
+ * reason there are now two.
+ *
+ * Reported from use: 「现在只能拖到内容的边缘。。拖拽的时候像是卡住了」. A
+ * hand that stops dead on the content edge does not read as "the board ends
+ * here", it reads as a broken drag — nothing on screen says the hand is
+ * still being tracked. So a user gesture may lean `GESTURE_GIVE` of the
+ * viewport past wherever the camera would otherwise pin, and what it buys
+ * is the board's own edge plus a strip of the room outside it.
+ *
+ * The give is a SECOND function rather than a parameter on the old one for
+ * a reason this file can state precisely: `clampCamera` is not the
+ * user-gesture clamp its comment claimed it was — `followShift`,
+ * `reattachCamera`, the decay hand-back and the fold's own simulation all
+ * go through it, so a tolerance spent there would move where the live
+ * follow rests and what the fold emits as a camera move. The block above
+ * is therefore the byte-identity assertion for every non-gesture caller,
+ * and it is unchanged.
+ */
+describe("clampUserCamera — the give at the edge (a hand is not a wall)", () => {
+  test("well inside the strict range it IS the strict clamp, object for object", () => {
+    const inside = cam(0, 1000, 1);
+    // Identity, not equality: the host skips the transform write when the
+    // clamp hands back the same object, and a gesture that moves nothing
+    // must stay as cheap as it was.
+    expect(clampUserCamera(inside, TALL)).toBe(inside);
+    expect(clampUserCamera(inside, TALL)).toEqual(clampCamera(inside, TALL));
+  });
+
+  test("a hand may lean GESTURE_GIVE of the VIEWPORT past each edge, and no further", () => {
+    // TALL: 800x3000 panel, 800x600 viewport, z = 1. Strict y is
+    // [0, 2400]; the give is 0.12 * 600 = 72 board px at this zoom.
+    const give = GESTURE_GIVE * TALL.viewH;
+    expect(give).toBe(72);
+    expect(clampUserCamera(cam(0, 99999, 1), TALL).y).toBe(2400 + give);
+    expect(clampUserCamera(cam(0, -99999, 1), TALL).y).toBe(0 - give);
+    // …and the horizontal axis, where the strict clamp has no room at all
+    // (panelW === viewW at z = 1) and so felt deadest of the two.
+    const giveX = GESTURE_GIVE * TALL.viewW;
+    expect(clampUserCamera(cam(500, 100, 1), TALL).x).toBe(giveX);
+    expect(clampUserCamera(cam(-500, 100, 1), TALL).x).toBe(-giveX);
+  });
+
+  test("the give is the same fraction of the WINDOW at every zoom", () => {
+    // THE argument for a fraction over a pixel count. The give is quoted in
+    // board px (`GESTURE_GIVE * view / z`), so on SCREEN (`give * z`) it is
+    // the same slice of the window zoomed in and zoomed out — a fixed board-px
+    // give would read as three different gestures across the zoom range.
+    for (const z of [0.5, 1, 2.5]) {
+      const pushed = clampUserCamera(cam(0, 99999, z), TALL);
+      const strict = clampCamera(cam(0, 99999, z), TALL);
+      expect((pushed.y - strict.y) * z).toBeCloseTo(GESTURE_GIVE * TALL.viewH, 9);
+    }
+  });
+
+  test("with the stage smaller than the view, the give surrounds the CENTRED pose", () => {
+    // The 2026-08-12 centring branch (`span < 0`): there is no roaming left,
+    // so the whole question is where the stage hangs. One sentence covers
+    // both branches — you may push `give` past wherever the camera would
+    // otherwise be pinned — which keeps the hand alive at the zoom a wall is
+    // actually read at, instead of dying the moment everything fits.
+    const short: Viewbox = { panelW: 800, panelH: 500, viewW: 800, viewH: 600 };
+    const centred = clampCamera(cam(0, 0, 0.5), short);
+    const giveX = (GESTURE_GIVE * short.viewW) / 0.5;
+    const giveY = (GESTURE_GIVE * short.viewH) / 0.5;
+    expect(clampUserCamera(cam(9999, 9999, 0.5), short)).toEqual(
+      cam(centred.x + giveX, centred.y + giveY, 0.5),
+    );
+    expect(clampUserCamera(cam(-9999, -9999, 0.5), short)).toEqual(
+      cam(centred.x - giveX, centred.y - giveY, 0.5),
+    );
+  });
+
+  test("the zoom floor and ceiling are the strict ones — the give is positional only", () => {
+    // A tolerance on z would be a different feature (and would let a gesture
+    // zoom out into the void the floor exists to forbid).
+    expect(clampUserCamera(cam(0, 0, 0.01), TALL).z).toBe(CAMERA_MIN_Z);
+    expect(clampUserCamera(cam(0, 0, 50), TALL).z).toBe(CAMERA_MAX_Z);
+  });
+
+  test("the strict clamp still pins the same edges it always did", () => {
+    // Stated here as well as above because the two now live side by side:
+    // the director's poses, the live follow and the fold's simulation must
+    // rest exactly where they rested before the give existed.
+    expect(clampCamera(cam(0, 99999, 1), TALL).y).toBe(2400);
+    expect(clampCamera(cam(500, 100, 1), TALL).x).toBe(0);
+    const short: Viewbox = { panelW: 800, panelH: 500, viewW: 800, viewH: 600 };
+    expect(clampCamera(cam(9999, 9999, 0.5), short)).toEqual(
+      cam((800 - 1600) / 2, (500 - 1200) / 2, 0.5),
+    );
+  });
+
+  test("the give has exactly one door — no engine module may reach for it", async () => {
+    // A standing ban, the shape `canonical-size.test.ts` and `wall.test.ts`
+    // use, for the same reason: the failure it guards against is SILENT.
+    // Wire the loose clamp into the fold or the follow and nothing throws —
+    // the lecture simply starts resting 72px off the board's edge, and no
+    // screenshot attributes that to a line of code. The gesture surface is
+    // the only caller: the pure gesture functions here, and the host's own
+    // pointer/wheel/wall-map handlers.
+    const root = join(import.meta.dir, "..");
+    const allowed = new Set([
+      "engine/stage.ts", // the definition
+      "viewer/camera.ts", // the gesture functions + the re-export
+      "viewer/BoardCanvas.tsx", // the host's gesture handlers
+    ]);
+    const glob = new Bun.Glob("**/*.{ts,tsx}");
+    const offenders: string[] = [];
+    for (const path of glob.scanSync({ cwd: root })) {
+      if (path.includes("__tests__/") || path.startsWith("harness/")) continue;
+      if (allowed.has(path)) continue;
+      const text = await Bun.file(join(root, path)).text();
+      if (text.includes("clampUserCamera") || text.includes("GESTURE_GIVE")) {
+        offenders.push(path);
+      }
+    }
+    expect(offenders).toEqual([]);
+    // …and inside the engine module that DEFINES it, the give is defined
+    // and never called: the fold's own simulation of the follow, the decay
+    // hand-back and the walk all live in that same file, and the whole
+    // point of two clamps is that they keep resting where they rested.
+    const stage = await Bun.file(join(root, "engine/stage.ts")).text();
+    expect(stage.split("clampUserCamera(").length - 1).toBe(1);
+    expect(stage).toContain(
+      "export function clampUserCamera(camera: CameraPose, box: Viewbox)",
+    );
+  });
+});
+
 describe("panBy — a pan is quoted in SCREEN px, the board moves in board px", () => {
   // No gesture calls `panBy` directly any more: since W4a the wheel is the
   // zoom, and what is left is `grabPan` (the hand, which negates first) and
@@ -120,17 +252,24 @@ describe("panBy — a pan is quoted in SCREEN px, the board moves in board px", 
     expect(panBy(cam(0, 100, 2), TALL, 0, 120).y).toBe(160);
   });
 
-  test("a horizontal pan at z=1 has no effect on x — but is correct, not absent", () => {
-    // The spec pins this exact case: with panelW == viewW the clamp keeps
-    // x at 0, so the conversion is a no-op at rest yet fully wired for z>1.
-    expect(panBy(cam(0, 100, 1), TALL, 500, 0)).toEqual(cam(0, 100, 1));
+  test("a horizontal pan at z=1 travels the give and no further", () => {
+    // The spec pinned this as "no effect on x" while the clamp was hard:
+    // with panelW == viewW there is no roaming room, so the conversion was
+    // a no-op at rest yet fully wired for z>1. Since the give (2026-08-17)
+    // a hand still gets its lean out onto the wall — the conversion is what
+    // this block is about, and it is unchanged: 500px of hand at z=1 is 500
+    // board px of intent, of which the clamp grants the give.
+    expect(panBy(cam(0, 100, 1), TALL, 500, 0)).toEqual(
+      cam(GESTURE_GIVE * TALL.viewW, 100, 1),
+    );
     const zoomed = panBy(cam(0, 100, 2), TALL, 120, 0);
     expect(zoomed.x).toBe(60);
   });
 
-  test("panning clamps at the panel edges", () => {
-    expect(panBy(cam(0, 2390, 1), TALL, 0, 500).y).toBe(2400);
-    expect(panBy(cam(0, 10, 1), TALL, 0, -500).y).toBe(0);
+  test("panning stops one give past the panel edges", () => {
+    const give = GESTURE_GIVE * TALL.viewH;
+    expect(panBy(cam(0, 2390, 1), TALL, 0, 500).y).toBe(2400 + give);
+    expect(panBy(cam(0, 10, 1), TALL, 0, -500).y).toBe(0 - give);
   });
 });
 
@@ -164,12 +303,16 @@ describe("zoomAt — the board point under the cursor does not move", () => {
     expect(zoomAt(atMin, single, { x: 10, y: 10 }, 0.5)).toBe(atMin);
   });
 
-  test("zooming out re-clamps the position", () => {
+  test("zooming out re-clamps the position — into the GESTURE range", () => {
     // At z=1 sitting deep in the board; zooming out to 0.5 makes the
     // visible slice taller than what remains -> y pulls back into range.
+    // The zoom is a user gesture like the hand, so the range it pulls back
+    // into is the one with the give in it: snapping a reader who had leaned
+    // out onto the wall back to the strict edge on the next wheel notch is
+    // the same jam, one gesture later.
     const after = zoomAt(cam(0, 2400, 1), TALL, { x: 0, y: 0 }, 0.5);
     expect(after.z).toBe(0.5);
-    expect(after.y).toBe(3000 - 600 / 0.5);
+    expect(after.y).toBe(3000 - 600 / 0.5 + (GESTURE_GIVE * 600) / 0.5);
   });
 
   test("wheelZoomFactor: pinch-out (negative deltaY) zooms in", () => {
@@ -615,18 +758,30 @@ describe("the grab (C1′) — a press that travels takes the camera", () => {
     const start = cam(300, 900, 1);
     const after = grabPan(start, TALL, 200, 100);
     expect(after.y).toBe(800);
-    // Single-panel board: x is pinned at 0 by the clamp regardless.
-    expect(after.x).toBe(0);
+    // Single-panel board, so x has no roaming room: the strict clamp
+    // pinned it at 0 regardless, and since the give (2026-08-17) it comes
+    // to rest one give out onto the wall instead — the far end of the
+    // tolerance, because this start pose (x = 300) is already past it.
+    expect(after.x).toBe(GESTURE_GIVE * TALL.viewW);
     // Dragging up scrolls forward — the same gesture as a wheel down.
     expect(grabPan(start, TALL, 0, -100).y).toBe(1000);
   });
 
-  test("a grab is clamped like every other camera write", () => {
-    // Yanking the board down at the top edge cannot pull it past y = 0,
-    // and yanking up at the bottom cannot pass the last screenful.
-    expect(grabPan(cam(0, 10, 1), TALL, 0, 400).y).toBe(0);
+  test("a grab travels one give past the edge, then stops", () => {
+    // THE reported defect (「拖拽的时候像是卡住了」) and its fix in two
+    // lines: yanking the board down at the top edge used to stop dead on
+    // y = 0, which is the content edge and reads as a jammed gesture. It
+    // now travels a strip of wall further — and then genuinely stops, so
+    // the pose a reader lets go of is still a camera the board can be seen
+    // from and nothing later has to repair it.
+    const give = GESTURE_GIVE * TALL.viewH;
+    expect(grabPan(cam(0, 10, 1), TALL, 0, 400).y).toBe(0 - give);
     const floor = TALL.panelH - TALL.viewH; // 2400
-    expect(grabPan(cam(0, floor - 10, 1), TALL, 0, -900).y).toBe(floor);
+    expect(grabPan(cam(0, floor - 10, 1), TALL, 0, -900).y).toBe(floor + give);
+    // The give is a tolerance, not a runway: a second yank from the same
+    // place lands in exactly the same spot.
+    const leaned = grabPan(cam(0, 10, 1), TALL, 0, 400);
+    expect(grabPan(leaned, TALL, 0, 400).y).toBe(0 - give);
   });
 
   test("zoom divides the hand's travel — the board tracks the finger at any z", () => {

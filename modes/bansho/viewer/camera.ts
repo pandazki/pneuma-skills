@@ -28,7 +28,7 @@
  */
 
 import {
-  clampCamera,
+  clampUserCamera,
   cameraMinZ,
   CAMERA_MAX_Z,
   restZoom as restZoomOf,
@@ -47,7 +47,9 @@ export {
   CAMERA_MAX_Z,
   cameraMinZ,
   clampCamera,
+  clampUserCamera,
   FOLLOW_MARGIN,
+  GESTURE_GIVE,
   followShift,
   handBackCamera,
   homePose,
@@ -94,14 +96,16 @@ export function homeCamera(viewW: number): Camera {
 const clampNum = (v: number, lo: number, hi: number): number =>
   Math.min(Math.max(v, lo), hi);
 
-/** Pan by SCREEN pixel deltas (wheel deltas arrive in screen px). */
+/** Pan by SCREEN pixel deltas (wheel deltas arrive in screen px). A user
+ *  gesture, so it is held to `clampUserCamera` — the strict range plus the
+ *  give at the edge (2026-08-17). */
 export function panBy(
   camera: Camera,
   box: Viewbox,
   dxPx: number,
   dyPx: number,
 ): Camera {
-  return clampCamera(
+  return clampUserCamera(
     { x: camera.x + dxPx / camera.z, y: camera.y + dyPx / camera.z, z: camera.z },
     box,
   );
@@ -190,7 +194,13 @@ export function zoomAt(
   if (z === camera.z) return camera;
   const bx = camera.x + point.x / camera.z;
   const by = camera.y + point.y / camera.z;
-  return clampCamera(
+  // The wheel is a user gesture like the hand, so the range it re-clamps
+  // into is the one with the give in it: pulling a reader who had leaned
+  // out onto the wall back to the strict edge on their next notch would be
+  // the same jam, one gesture later. The zoom FLOOR and ceiling stay
+  // strict (above) — a tolerance there would let a gesture out into the
+  // void the floor exists to forbid.
+  return clampUserCamera(
     { x: bx - point.x / z, y: by - point.y / z, z },
     box,
   );
