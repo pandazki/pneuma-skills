@@ -140,6 +140,75 @@ export function probeEnvCaps(doc: Document, opts?: ProbeOptions): EnvCaps {
   }
 }
 
+/**
+ * The three generic families every engine resolves to a real, and mutually
+ * different, face. Asking "is X installed?" is really asking "does naming X
+ * in front of a sentinel change what gets drawn?", and one sentinel is not
+ * enough: a face can coincide with `monospace`'s advances by accident, and
+ * on a machine where it does, a single-sentinel probe declares an installed
+ * face missing. Three disagree far more reliably than one.
+ */
+const SENTINELS = ["monospace", "serif", "sans-serif"] as const;
+
+/**
+ * Is this family actually on this machine — measured, never asked.
+ *
+ * `document.fonts.check()` CANNOT answer this and is the trap that gave this
+ * project G8-A: it returns `true` for any family name the fallback can draw,
+ * so `check("Hannotate SC")` says yes on a Mac that has no such font and
+ * renders every character in 苹方. The same lie put a font nobody has at the
+ * top of a ranking on 2026-08-17. There is no flag or option that fixes it —
+ * the API answers a different question than the one being asked.
+ *
+ * What CAN answer it is a width comparison, which is `probeEnvCaps`'s
+ * instrument narrowed to one family: measure `sample` under `"<family>",
+ * <sentinel>` and under `<sentinel>` alone. If the family is absent both
+ * measurements are the sentinel's and are equal; if it is present it draws
+ * the sample and the widths part. Any one sentinel disagreeing is enough.
+ *
+ * `sample` must be script-appropriate — measuring a CJK face with Latin text
+ * asks whether the FALLBACK draws Latin, which it does, and the probe would
+ * report a missing face as present.
+ *
+ * Returns `null`, not `false`, when the instrument itself is unavailable (no
+ * canvas — a non-DOM host, a locked-down browser). A caller must show that
+ * as "unknown": claiming a face is missing on no evidence is the same class
+ * of lie as claiming it is present.
+ *
+ * WHAT IT CANNOT SAY: a family whose advances match all three sentinels
+ * within half a pixel over the whole sample reads as absent. For the
+ * handwriting faces this mode ships that is not a realistic collision, and
+ * the failure direction is the safe one — it under-claims availability, so
+ * the picker warns about a face that would in fact have rendered rather than
+ * promising one that would not.
+ */
+export function familyAvailable(
+  doc: Document,
+  family: string,
+  sample: string,
+): boolean | null {
+  try {
+    const canvas = doc.createElement("canvas") as HTMLCanvasElement;
+    const g =
+      typeof canvas.getContext === "function" ? canvas.getContext("2d") : null;
+    if (!g || typeof g.measureText !== "function") return null;
+    const widthIn = (families: string): number => {
+      g.font = `28px ${families}`;
+      return g.measureText(sample).width;
+    };
+    // A host that measures every string to zero (happy-dom, jsdom) has no
+    // instrument either — reporting `false` there would be an invention.
+    if (SENTINELS.every((s) => widthIn(s) === 0)) return null;
+    const escaped = family.replace(/["\\]/g, "");
+    return SENTINELS.some(
+      (sentinel) =>
+        Math.abs(widthIn(`"${escaped}", ${sentinel}`) - widthIn(sentinel)) > 0.5,
+    );
+  } catch {
+    return null;
+  }
+}
+
 /** How many characters the chip names before it starts counting. */
 export const FALLBACK_GLYPH_LIST_CAP = 8;
 

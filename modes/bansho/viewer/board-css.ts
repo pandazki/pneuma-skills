@@ -34,6 +34,25 @@ export const BOARD_BASE_CSS = `
      every other token here. See the 瑕疵 block near the end of this sheet
      for what it drives and why all of it is paint-time. */
   --bansho-flaw: 1;
+  /* IS THIS BOARD CHALK ON SLATE? 1 says yes, 0 says ink on paper.
+     ------------------------------------------------------------------
+     This one token is the ENTIRE interface between a board's look and the
+     chalk-edge texture / hand-wipe erase built on top of it. Those effects
+     read --bansho-chalk and nothing else about themes; a theme declares it
+     and never touches an effect. Anything that needs more than this token
+     to pass between the two halves is a second channel, and a second
+     channel is how a seam rots.
+
+     DEFAULT 0, and no override on the dark board below — deliberate and
+     conservative: a board with no theme must stay byte-identical to the
+     board of before this token existed. Ink is either there or struck
+     through, never smeared. slate-cursive (viewer/themes.ts) is the one
+     shipped theme that opts in.
+
+     It is a NUMBER, not a boolean, so effect CSS can multiply by it the way
+     the 瑕疵 knob is used further down this sheet — no @supports, no class
+     toggling, no JS. */
+  --bansho-chalk: 0;
 }
 .bansho-board-surface[data-bansho-theme="dark"] {
   --board: #22302a;

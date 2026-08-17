@@ -82,6 +82,15 @@ import BoardCanvas, {
 } from "./BoardCanvas.js";
 import BoardCommands from "./BoardCommands.js";
 import { BOARD_BASE_CSS } from "./board-css.js";
+import { BUNDLED_FONT_FACE_CSS } from "./board-fonts.js";
+import ThemePicker from "./ThemePicker.js";
+import {
+  type BoardThemePreset,
+  presetCss,
+  presetIdOf,
+  themeById,
+  themePathFor,
+} from "./themes.js";
 import {
   narrateResponse,
   probeMissingClips,
@@ -133,6 +142,7 @@ function readPerformed(
 
 export default function BanshoPreview({
   sources,
+  fileChannel,
   theme,
   selection,
   onSelect,
@@ -242,6 +252,31 @@ export default function BanshoPreview({
   // generation, so the projections never dual-build.
   const [boardView, setBoardView] = useState<"board" | "notes">("board");
   const canvasKey = `${setKey ?? ""}::${boardView}`;
+
+  // ── The board's look belongs to the LECTURE, not to the reader ───────────
+  // The picker writes the chosen preset into THIS content set's own
+  // `theme.css` — the same file an author or the agent edits by hand — so
+  // the look survives a reload, travels with an export or a share, and is
+  // visible to the agent as a file rather than as a setting it cannot see.
+  // Deliberately not a viewer preference: a viewer-level theme would
+  // override what a lecture chose for itself, and every other content-set
+  // decision in this mode (the hand, the 瑕疵 knob, the palette) already
+  // lives in that file. `themePathFor` mirrors domain.ts's board.md ↔
+  // theme.css pairing, so the write lands where `loadBoard` reads.
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
+  // Which shipped preset this lecture is wearing, or null for a theme
+  // somebody wrote by hand (which the picker will not replace unasked).
+  const installedTheme = useMemo(
+    () => themeById(presetIdOf(themeCss) ?? ""),
+    [themeCss],
+  );
+  const applyTheme = useCallback(
+    async (preset: BoardThemePreset): Promise<void> => {
+      if (setKey === null) throw new Error("no content set is selected yet");
+      await fileChannel.write(themePathFor(setKey), presetCss(preset));
+    },
+    [fileChannel, setKey],
+  );
 
   // ── V1.5: parallax, and the accessibility gate over it ──────────────────
   // The switch is the css3d brief's §5.2 probe: with it on the pointer rocks
@@ -1317,6 +1352,11 @@ export default function BanshoPreview({
   return (
     <div className="h-full min-h-0 flex flex-col bg-cc-bg">
       <style data-bansho-base>{BOARD_BASE_CSS}</style>
+      {/* The faces bansho SHIPS (viewer/board-fonts.ts). Declared once, for
+          the whole surface: an @font-face names a family and selects
+          nothing, so it cannot restyle the app chrome, and a theme.css —
+          picked or hand-written — only has to name the family. */}
+      <style data-bansho-fonts>{BUNDLED_FONT_FACE_CSS}</style>
       {/* Injected VERBATIM and unscoped — the contract (SKILL.md + both
           seed theme.css headers) is that every rule scopes itself under
           `.bansho-board-surface`. A bare selector would restyle the app
@@ -1406,6 +1446,43 @@ export default function BanshoPreview({
                 >
                   Parallax
                 </button>
+              ) : null}
+              {lecture && interactive && setKey !== null ? (
+                // The look, and a real board wearing it. Kept beside the
+                // viewing controls rather than in the transport: it is a
+                // decision about the LECTURE (it lands in a file the agent
+                // reads), not a knob on the reader's remote.
+                <>
+                  <button
+                    type="button"
+                    aria-expanded={themePickerOpen}
+                    onClick={() => setThemePickerOpen((open) => !open)}
+                    className={[
+                      "px-2 py-1 rounded-md border text-[11px] font-medium backdrop-blur transition-colors cursor-pointer",
+                      "focus-visible:ring-2 focus-visible:ring-cc-primary/60",
+                      themePickerOpen
+                        ? "border-cc-primary/40 bg-cc-primary/20 text-cc-primary"
+                        : "border-cc-border bg-cc-surface/70 text-cc-muted hover:text-cc-fg hover:bg-cc-surface",
+                    ].join(" ")}
+                    title="The board's look — paper or slate, and the hand it is written in. Writes this lecture's own theme.css"
+                  >
+                    Theme
+                    {installedTheme ? (
+                      <span className="ml-1.5 opacity-70">
+                        {installedTheme.labelZh}
+                      </span>
+                    ) : null}
+                  </button>
+                  {themePickerOpen ? (
+                    <ThemePicker
+                      themeCss={themeCss}
+                      theme={theme}
+                      env={env}
+                      onApply={applyTheme}
+                      onClose={() => setThemePickerOpen(false)}
+                    />
+                  ) : null}
+                </>
               ) : null}
               {fontsReady && (!handStackActive || handFallbackGlyphs.length > 0) ? (
                 // §6.4-A — a silently-fallback board font is exactly the

@@ -72,6 +72,8 @@ import {
 } from "../illustrations/types.js";
 import type { NarrationManifest } from "../narration/types.js";
 import { parseStepKey, stepKey } from "./address.js";
+import { loadFamilies } from "./board-fonts.js";
+import { fontFingerprint, handFamiliesIn } from "./themes.js";
 import WallMap from "./WallMap.js";
 import {
   readPanelOutline,
@@ -170,6 +172,7 @@ import {
 import {
   cameraCss,
   clampCamera,
+  clampUserCamera,
   exceedsGrabSlop,
   followShift,
   gateCamera,
@@ -3016,12 +3019,18 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
         // W7 — the board no longer resizes with the window, so a resize is
         // the CAMERA's business: while the reader has not taken it, re-fit
         // to the rest zoom (one board wide). Detached, the pose is theirs
-        // and only the clamp touches it.
-        const base =
-          latchRef.current === "following"
-            ? { ...cameraRef.current, z: restZoom(viewport.clientWidth, PANEL_WIDTH) }
-            : cameraRef.current;
-        applyCamera(clampCamera(base, liveViewbox(viewport)));
+        // and only the clamp touches it — and since the give (2026-08-17)
+        // it is the reader's OWN clamp that touches it. A reader leaning
+        // out onto the wall is standing in a legal gesture pose; re-clamping
+        // them strictly here would yank them back by up to a give on the
+        // next agent append, which is the "somebody repairs it later" the
+        // give was designed not to need.
+        const following = latchRef.current === "following";
+        const base = following
+          ? { ...cameraRef.current, z: restZoom(viewport.clientWidth, PANEL_WIDTH) }
+          : cameraRef.current;
+        const box = liveViewbox(viewport);
+        applyCamera(following ? clampCamera(base, box) : clampUserCamera(base, box));
       }
     }
 
@@ -3166,6 +3175,38 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
     measuredThemeRef.current = theme;
     invalidateMeasurements();
   }, [theme, invalidateMeasurements]);
+
+  // ── So is a theme.css that changes the HAND ──────────────────────────────
+  // The sibling of the flip above, through the other door. A content set's
+  // stylesheet owns `--hand` (§6.3), so a theme picker — or an author with
+  // the file open — can swap the board's face without the light/dark prop
+  // ever moving. Reconcile is blind to it for the usual reason (the board's
+  // bytes did not move, every hash matches, the plan is a no-op), so the
+  // board would keep overlays measured against a face it no longer writes in.
+  //
+  // Fingerprinted rather than watched wholesale: `themeCss` ALSO carries the
+  // 瑕疵 knob and the palette, and re-folding the board because someone
+  // nudged a colour is the churn the stamp effect above was written to
+  // avoid. `fontFingerprint` is exactly "the parts that can move a glyph".
+  //
+  // And the re-measure WAITS on the fonts. A bundled face (kawaii-cream's
+  // ZCOOL KuaiLe) is only fetched once something asks for it, so measuring
+  // the instant the stylesheet lands measures the fallback and then watches
+  // the real face reflow underneath the fresh overlays — the same defect
+  // this effect exists to prevent, one beat later.
+  const measuredFontsRef = useRef(fontFingerprint(themeCss));
+  useEffect(() => {
+    const next = fontFingerprint(themeCss);
+    if (measuredFontsRef.current === next) return;
+    measuredFontsRef.current = next;
+    let cancelled = false;
+    void loadFamilies(document, handFamiliesIn(themeCss)).then(() => {
+      if (!cancelled) invalidateMeasurements();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [themeCss, invalidateMeasurements]);
 
   // ── User input (C1 + the C1′ grab, W4a's infinite-canvas table) ──────────
   //   wheel / trackpad scroll   ZOOM at the cursor; DETACH + pause
@@ -3452,8 +3493,10 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
       latchRef.current = latchInput(latchRef.current, "grab");
       onGrabRef.current?.();
       const camera = cameraRef.current;
+      // A hand on the map is still a hand, so it is held to the gesture
+      // clamp (the give at the edge) exactly like a hand on the board.
       applyCamera(
-        clampCamera(
+        clampUserCamera(
           { x: camera.x + dx, y: camera.y + dy, z: camera.z },
           liveViewbox(viewport),
         ),

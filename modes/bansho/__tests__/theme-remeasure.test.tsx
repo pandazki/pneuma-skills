@@ -148,3 +148,100 @@ describe("BoardCanvas — a theme flip re-measures the board", () => {
     host.remove();
   });
 });
+
+/**
+ * The other door into the same defect: a content set's `theme.css` owns
+ * `--hand` (§6.3), so a theme picker — or an author with the file open —
+ * can swap the board's face while the light/dark prop never moves. The
+ * stylesheet reaches the canvas as `themeCss`, and the canvas has to tell a
+ * FACE change (re-measure everything) from a repaint (do not re-fold the
+ * board): the same prop already carries the 瑕疵 knob, whose whole
+ * documented contract is that tuning it cannot move a line break.
+ */
+describe("BoardCanvas — a theme.css that changes the hand re-measures", () => {
+  const HAND = (family: string): string =>
+    `.bansho-board-surface { --hand: "${family}", cursive; }`;
+
+  async function mount(themeCss: string): Promise<{
+    rerender: (css: string) => Promise<void>;
+    nodes: () => Element[];
+    done: () => Promise<void>;
+  }> {
+    const { act } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const { default: BoardCanvas } = await import("../viewer/BoardCanvas.js");
+
+    const lecture = parseLecture(SOURCE, "theme-css-remeasure");
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const props = {
+      lecture,
+      view: "board" as const,
+      theme: "light" as const,
+      fontsReady: true,
+      env: ENV,
+      getPlayheadT: () => 999,
+      onCompiled: () => {},
+      activeIndex: 0,
+      playing: false,
+      follow: "live" as const,
+      onSeek: () => () => {},
+      onFrame: () => () => {},
+      selectedRef: null,
+    };
+    const render = async (css: string): Promise<void> => {
+      await act(async () => {
+        root.render(<BoardCanvas {...props} themeCss={css} />);
+      });
+      // The invalidation waits on the font preload, so the rebuild lands a
+      // microtask later than the render that triggered it.
+      await act(async () => {
+        await Promise.resolve();
+      });
+    };
+    await render(themeCss);
+    return {
+      rerender: render,
+      nodes: () => Array.from(host.querySelectorAll("[data-bansho-ref]")),
+      done: async () => {
+        await act(async () => {
+          root.unmount();
+        });
+        host.remove();
+      },
+    };
+  }
+
+  test("a new face rebuilds every step node", async () => {
+    const board = await mount(HAND("Bradley Hand"));
+    const before = board.nodes();
+    expect(before.length).toBeGreaterThan(0);
+
+    await board.rerender(HAND("ZCOOL KuaiLe"));
+    const after = board.nodes();
+    expect(after.length).toBe(before.length);
+    for (const node of after) expect(before.includes(node)).toBe(false);
+
+    await board.done();
+  });
+
+  test("a 瑕疵 knob edit rebuilds nothing — it is paint, not layout", async () => {
+    const board = await mount(`${HAND("Bradley Hand")}\n`);
+    const before = board.nodes();
+    expect(before.length).toBeGreaterThan(0);
+
+    await board.rerender(
+      `${HAND("Bradley Hand")}\n.bansho-board-surface { --bansho-flaw: 2; }`,
+    );
+    expect(board.nodes()).toEqual(before);
+
+    // Nor does a recolour.
+    await board.rerender(
+      `${HAND("Bradley Hand")}\n.bansho-board-surface { --accent: #123456; }`,
+    );
+    expect(board.nodes()).toEqual(before);
+
+    await board.done();
+  });
+});
