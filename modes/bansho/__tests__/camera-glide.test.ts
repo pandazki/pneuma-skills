@@ -32,6 +32,7 @@ import {
 } from "../engine/stage.js";
 import {
   glidePoseAt,
+  glideRoomSeconds,
   samePose,
   stampGlide,
   startGlide,
@@ -166,8 +167,12 @@ describe("glidePoseAt — the director's arithmetic, frame by frame", () => {
   });
 });
 
-describe("retarget, never queue — the new tween departs the painted pose", () => {
-  test("a mid-flight retarget's first frame is exactly the pose on screen", () => {
+describe("a leg departs the painted pose — no jump at any seam", () => {
+  // The HOST absorbs mid-flight targets and starts the next leg only at
+  // arrival (camera-glide-host.test.tsx pins that law); what is pure and
+  // pinned HERE is the seam arithmetic it relies on: a glide started from
+  // the pose on screen paints exactly that pose on its first frame.
+  test("a new leg's first frame is exactly the pose on screen", () => {
     const first = stampGlide(
       startGlide(FROM, TO, VIEW, DEFAULT_DURATIONS, 1)!,
       1000,
@@ -189,5 +194,70 @@ describe("samePose", () => {
     expect(samePose({ x: 1, y: 2, z: 3 }, { x: 1, y: 2, z: 3 })).toBe(true);
     expect(samePose({ x: 1, y: 2, z: 3 }, { x: 1, y: 2.0001, z: 3 })).toBe(false);
     expect(samePose({ x: 0, y: -0, z: 1 }, { x: -0, y: 0, z: 1 })).toBe(true);
+  });
+});
+
+describe("the clip rule — the host never starts a glide it cannot finish", () => {
+  test("maxMs below the natural tempo clips the duration to the room", () => {
+    const natural = startGlide(FROM, TO, VIEW, DEFAULT_DURATIONS, 1)!;
+    const room = natural.durationMs / 3;
+    const clipped = startGlide(FROM, TO, VIEW, DEFAULT_DURATIONS, 1, room)!;
+    expect(clipped.durationMs).toBe(room);
+    // The path itself is untouched — same endpoints, same rho; only the
+    // clock is shorter, so the walk plays faster rather than dying early.
+    expect(clipped.from).toBe(FROM);
+    expect(clipped.to).toBe(TO);
+    expect(clipped.rho).toBe(natural.rho);
+  });
+
+  test("maxMs above the natural tempo (or Infinity) changes nothing", () => {
+    const natural = startGlide(FROM, TO, VIEW, DEFAULT_DURATIONS, 1)!;
+    expect(
+      startGlide(FROM, TO, VIEW, DEFAULT_DURATIONS, 1, natural.durationMs * 2)!
+        .durationMs,
+    ).toBe(natural.durationMs);
+    expect(
+      startGlide(FROM, TO, VIEW, DEFAULT_DURATIONS, 1, Infinity)!.durationMs,
+    ).toBe(natural.durationMs);
+  });
+
+  test("no room is a cut, not a fast glide — the fold's lead <= 0 rule, mirrored", () => {
+    expect(startGlide(FROM, TO, VIEW, DEFAULT_DURATIONS, 1, 0)).toBeNull();
+    expect(startGlide(FROM, TO, VIEW, DEFAULT_DURATIONS, 1, -50)).toBeNull();
+    // A broken room (NaN) must degrade to the cut too — a tween with an
+    // unknowable budget is never an answer.
+    expect(startGlide(FROM, TO, VIEW, DEFAULT_DURATIONS, 1, NaN)).toBeNull();
+  });
+});
+
+describe("glideRoomSeconds — the budget before the director's next window", () => {
+  const view = VIEW;
+  const move = (start: number, end: number) => ({
+    start,
+    end,
+    holdUntil: end + 1,
+    from: FROM,
+    to: TO,
+  });
+
+  test("no schedule, or no window ahead: open country (Infinity)", () => {
+    expect(glideRoomSeconds(null, 3)).toBe(Infinity);
+    expect(
+      glideRoomSeconds({ view, rho: 1.4, moves: [move(1, 2)] }, 5),
+    ).toBe(Infinity);
+  });
+
+  test("the first move start beyond t is the boundary", () => {
+    const schedule = { view, rho: 1.4, moves: [move(1, 2), move(8, 9), move(20, 21)] };
+    expect(glideRoomSeconds(schedule, 5)).toBe(3);
+    // Standing exactly on a start: that window is open NOW, the next one
+    // is the boundary — room is measured to a window that has yet to open.
+    expect(glideRoomSeconds(schedule, 8)).toBe(12);
+  });
+
+  test("a non-finite clock reads as open country, never NaN room", () => {
+    expect(
+      glideRoomSeconds({ view, rho: 1.4, moves: [move(1, 2)] }, NaN),
+    ).toBe(Infinity);
   });
 });

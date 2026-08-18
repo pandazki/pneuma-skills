@@ -10,10 +10,23 @@
  *    write, frames converge on the follow target, the chain terminates;
  *  - the passive playback follow (activeIndex advancing) GLIDES — the
  *    same-board paragraph chase was the loudest cut of all;
- *  - a seek TRACKS: the camera lands instantly (a dragged playhead is
- *    tracked, not chased) — except a reader being RE-ATTACHED (Live after
- *    a grab), whose return home is precisely the glide they are owed;
- *  - a user gesture mid-flight CANCELS the tween outright.
+ *  - a mid-flight conflict is decided by WHO ASKED (2026-08-18, measured
+ *    and ruled: the old retarget reset the tween clock — one still frame
+ *    at full speed, ease-in from zero, five times in 800ms during a decay
+ *    hand-back). The AUTOMATIC chase is ABSORBED (one deep, latest wins)
+ *    and takes over at arrival — every automatic leg completes; an
+ *    EXPLICIT navigation SUPERSEDES — a fresh leg departs the painted
+ *    pose at once, because "take me there" must not visibly go somewhere
+ *    else first;
+ *  - a PAUSE drops the waiting target and only that — the leg in flight
+ *    settles, but no new leg may begin while the lecture is stopped;
+ *  - a seek TRACKS by default: the camera lands instantly (a dragged
+ *    playhead is tracked, not chased) — but the seek channel carries a
+ *    MOTION HINT (task #213): a locator card click passes "glide" and the
+ *    camera walks there instead of teleporting. A reader being RE-ATTACHED
+ *    (Live after a grab) glides home unconditionally;
+ *  - a user gesture mid-flight CANCELS the whole journey — the leg AND the
+ *    target waiting at the door.
  *
  * happy-dom has no rAF timing, so the harness installs a CONTROLLABLE
  * rAF: a queue the test flushes with chosen timestamps. Every per-frame
@@ -154,7 +167,7 @@ interface Mounted {
   viewport: HTMLElement;
   api: BoardApi;
   compiled: CompiledBoard;
-  seek: (t: number) => void;
+  seek: (t: number, motion?: "glide" | "cut") => void;
   /** offsetTop stubbed onto each step node, by refKey. */
   topOf: Map<string, number>;
   render(props: { playing?: boolean; activeIndex?: number }): Promise<void>;
@@ -175,7 +188,7 @@ async function mountBoard(
   const lecture: Lecture = parseLecture(SOURCE, name);
   let api: BoardApi | null = null;
   let compiled: CompiledBoard | null = null;
-  let seekListener: ((t: number) => void) | null = null;
+  let seekListener: ((t: number, motion?: "glide" | "cut") => void) | null = null;
 
   // IDENTITY-STABLE callbacks, exactly as the real host provides them —
   // inline arrows would re-fire the rebuild effect on every re-render and
@@ -184,7 +197,7 @@ async function mountBoard(
   const onCompiled = (c: CompiledBoard | null) => {
     if (c) compiled = c;
   };
-  const onSeek = (l: (t: number) => void) => {
+  const onSeek = (l: (t: number, motion?: "glide" | "cut") => void) => {
     seekListener = l;
     return () => {};
   };
@@ -240,7 +253,7 @@ async function mountBoard(
     viewport,
     api,
     compiled,
-    seek: (t: number) => seekListener!(t),
+    seek: (t: number, motion?: "glide" | "cut") => seekListener!(t, motion),
     topOf,
     render: paint,
     async unmount() {
@@ -447,6 +460,247 @@ describe("the host glide — displacement is motion, not a cut", () => {
     await m.unmount();
   });
 
+  test("the AUTOMATIC chase never abandons a leg mid-stride: a mid-flight recommit is absorbed and takes over at arrival", async () => {
+    const m = await mountBoard("glide-absorb", { playing: true, activeIndex: 0 });
+    const from = { x: 0, y: 0, z: 1 };
+    // Two DISTINCT steps at two depths: the chase's first commit walks to
+    // the middle one; the pen "advances" to the last one mid-flight.
+    const keys: string[] = [];
+    for (const entry of m.compiled.timeline.schedule) {
+      const k = stepKey(entry.step);
+      if (!keys.includes(k)) keys.push(k);
+    }
+    expect(keys.length).toBeGreaterThanOrEqual(4);
+    const keyMid = keys[keys.length - 3]!;
+    const iMid = m.compiled.timeline.schedule.findIndex(
+      (e) => stepKey(e.step) === keyMid,
+    );
+    const iLast = m.compiled.timeline.schedule.length - 1;
+    const topMid = m.topOf.get(keyMid)!;
+    const t1 = followShift(from, BOX, { top: topMid, bottom: topMid + 40 })!;
+    expect(t1).not.toBeNull();
+
+    // First commit: the chase leg toward the middle step.
+    await m.render({ playing: true, activeIndex: iMid });
+    expect(rafQueue.size).toBe(1);
+    flushFrame(60_000);
+    const g1 = stampGlide(oracle(from, t1), 60_000);
+    const midNow = 60_000 + g1.durationMs * 0.4;
+    flushFrame(midNow);
+    const p1 = glidePoseAt(g1, midNow).pose;
+    expect(poseFrom(m.stage)).toBe(cameraCss(p1));
+
+    // The pen advances MID-FLIGHT. The old law retargeted here — the tween
+    // clock restarted, one still frame at full speed, ease-in from zero
+    // (the measured truncation). The law now: ABSORB — nothing on screen
+    // moves at the commit, and the leg keeps ITS OWN clock.
+    await m.render({ playing: true, activeIndex: iLast });
+    expect(poseFrom(m.stage)).toBe(cameraCss(p1));
+    expect(rafQueue.size).toBe(1);
+    // The pending target was computed from the pose painted at the commit.
+    const { top: topLast } = lastTarget(m);
+    const t2 = followShift(p1, BOX, { top: topLast, bottom: topLast + 40 })!;
+    expect(t2).not.toBeNull();
+
+    // The original leg continues on the ORIGINAL oracle, byte for byte —
+    // this is "a glide is never killed at speed".
+    const lateNow = 60_000 + g1.durationMs * 0.75;
+    flushFrame(lateNow);
+    expect(poseFrom(m.stage)).toBe(cameraCss(glidePoseAt(g1, lateNow).pose));
+
+    // Arrival: the first leg lands VERBATIM, and the journey does not stop
+    // — the absorbed target takes over (a frame stays owed).
+    flushFrame(60_000 + g1.durationMs + 1);
+    expect(poseFrom(m.stage)).toBe(cameraCss(t1));
+    expect(rafQueue.size).toBe(1);
+
+    // The takeover leg: departs the arrival pose at rest (frame one stamps
+    // and paints the departure — stillness at ZERO velocity, which is a
+    // rest, not the defect), then the second oracle, then arrival, then
+    // the chain ends.
+    flushFrame(70_000);
+    expect(poseFrom(m.stage)).toBe(cameraCss(t1));
+    const g2 = stampGlide(oracle(t1, t2), 70_000);
+    const mid2 = 70_000 + g2.durationMs * 0.5;
+    flushFrame(mid2);
+    expect(poseFrom(m.stage)).toBe(cameraCss(glidePoseAt(g2, mid2).pose));
+    flushFrame(70_000 + g2.durationMs + 1);
+    expect(poseFrom(m.stage)).toBe(cameraCss(t2));
+    expect(rafQueue.size).toBe(0);
+    await m.unmount();
+  });
+
+  test("an EXPLICIT navigation supersedes a leg in flight: a fresh leg departs the painted pose at once", async () => {
+    const m = await mountBoard("glide-supersede", { playing: true, activeIndex: 0 });
+    const { act } = await import("react");
+    const from = { x: 0, y: 0, z: 1 };
+    const keys: string[] = [];
+    for (const entry of m.compiled.timeline.schedule) {
+      const k = stepKey(entry.step);
+      if (!keys.includes(k)) keys.push(k);
+    }
+    const keyMid = keys[keys.length - 3]!;
+    const iMid = m.compiled.timeline.schedule.findIndex(
+      (e) => stepKey(e.step) === keyMid,
+    );
+    const topMid = m.topOf.get(keyMid)!;
+    const t1 = followShift(from, BOX, { top: topMid, bottom: topMid + 40 })!;
+
+    // An automatic chase leg in flight…
+    await m.render({ playing: true, activeIndex: iMid });
+    flushFrame(100_000);
+    const g1 = stampGlide(oracle(from, t1), 100_000);
+    const midNow = 100_000 + g1.durationMs * 0.4;
+    flushFrame(midNow);
+    const p1 = glidePoseAt(g1, midNow).pose;
+    expect(poseFrom(m.stage)).toBe(cameraCss(p1));
+
+    // …and the user clicks a locator card (the explicit channel). The
+    // chase would be absorbed here; explicit intent is allowed to
+    // interrupt itself — the old leg dies and a fresh one departs the
+    // pose on screen. Nothing paints at the commit itself.
+    const { ref: refLast, top: topLast } = lastTarget(m);
+    let ok = false;
+    await act(async () => {
+      ok = m.api.showStep(refLast);
+    });
+    expect(ok).toBe(true);
+    expect(poseFrom(m.stage)).toBe(cameraCss(p1));
+    expect(rafQueue.size).toBe(1);
+    const t2 = followShift(p1, BOX, { top: topLast, bottom: topLast + 40 })!;
+    expect(t2).not.toBeNull();
+
+    // The next frame stamps the FRESH leg and paints its departure — the
+    // painted pose, i.e. the accepted one-frame plateau — and from there
+    // every frame is the new oracle, never the old leg's.
+    flushFrame(100_000 + g1.durationMs * 0.6);
+    expect(poseFrom(m.stage)).toBe(cameraCss(p1));
+    const g2 = stampGlide(oracle(p1, t2), 100_000 + g1.durationMs * 0.6);
+    const mid2 = 100_000 + g1.durationMs * 0.6 + g2.durationMs * 0.5;
+    flushFrame(mid2);
+    expect(poseFrom(m.stage)).toBe(cameraCss(glidePoseAt(g2, mid2).pose));
+
+    // Arrival is the EXPLICIT target, and the chain ends — the superseded
+    // leg's target is never revisited (the waiting slot died with it).
+    flushFrame(100_000 + g1.durationMs * 0.6 + g2.durationMs + 1);
+    expect(poseFrom(m.stage)).toBe(cameraCss(t2));
+    expect(rafQueue.size).toBe(0);
+    await m.unmount();
+  });
+
+  test("a pause drops the waiting target and only that — the leg settles, no new leg begins", async () => {
+    const m = await mountBoard("glide-pause-pending", { playing: true, activeIndex: 0 });
+    const from = { x: 0, y: 0, z: 1 };
+    const keys: string[] = [];
+    for (const entry of m.compiled.timeline.schedule) {
+      const k = stepKey(entry.step);
+      if (!keys.includes(k)) keys.push(k);
+    }
+    const keyMid = keys[keys.length - 3]!;
+    const iMid = m.compiled.timeline.schedule.findIndex(
+      (e) => stepKey(e.step) === keyMid,
+    );
+    const iLast = m.compiled.timeline.schedule.length - 1;
+    const topMid = m.topOf.get(keyMid)!;
+    const t1 = followShift(from, BOX, { top: topMid, bottom: topMid + 40 })!;
+
+    // A chase leg in flight, with a second automatic target absorbed…
+    await m.render({ playing: true, activeIndex: iMid });
+    flushFrame(110_000);
+    const g1 = stampGlide(oracle(from, t1), 110_000);
+    flushFrame(110_000 + g1.durationMs * 0.4);
+    await m.render({ playing: true, activeIndex: iLast });
+    expect(rafQueue.size).toBe(1);
+
+    // …then the lecture pauses. The leg is unaffected — it keeps ITS OWN
+    // oracle to the end (a settle) —
+    await m.render({ playing: false, activeIndex: iLast });
+    const lateNow = 110_000 + g1.durationMs * 0.8;
+    flushFrame(lateNow);
+    expect(poseFrom(m.stage)).toBe(cameraCss(glidePoseAt(g1, lateNow).pose));
+    flushFrame(110_000 + g1.durationMs + 1);
+    expect(poseFrom(m.stage)).toBe(cameraCss(t1));
+    // — but the absorbed target does NOT rise at arrival: no new motion
+    // begins while the lecture is stopped.
+    expect(rafQueue.size).toBe(0);
+    flushFrame(112_000);
+    expect(poseFrom(m.stage)).toBe(cameraCss(t1));
+    await m.unmount();
+  });
+
+  test("a user gesture cancels the whole journey — the leg AND the waiting target", async () => {
+    const m = await mountBoard("glide-cancel-pending");
+    const { act } = await import("react");
+    const keys: string[] = [];
+    for (const entry of m.compiled.timeline.schedule) {
+      const k = stepKey(entry.step);
+      if (!keys.includes(k)) keys.push(k);
+    }
+    const keyMid = keys[keys.length - 3]!;
+    const refMid = m.compiled.timeline.schedule.find(
+      (e) => stepKey(e.step) === keyMid,
+    )!.step;
+    const { ref: refLast } = lastTarget(m);
+
+    // Leg one in flight…
+    await act(async () => {
+      m.api.showStep(refMid);
+    });
+    flushFrame(80_000);
+    flushFrame(80_200);
+    // …a second target absorbed at the door…
+    await act(async () => {
+      m.api.showStep(refLast);
+    });
+    expect(rafQueue.size).toBe(1);
+
+    // …and the hand takes the camera: everything dies at once.
+    const wheel = new win.WheelEvent("wheel", { bubbles: true, cancelable: true });
+    for (const [key, value] of Object.entries({
+      deltaX: 0, deltaY: -120, deltaMode: 0, clientX: 400, clientY: 300, ctrlKey: false,
+    })) {
+      Object.defineProperty(wheel, key, { value, configurable: true });
+    }
+    await act(async () => {
+      m.viewport.dispatchEvent(wheel as unknown as Event);
+    });
+    const held = poseFrom(m.stage);
+    expect(rafQueue.size).toBe(0);
+    // No stray frame resumes the leg, and no pending leg rises from the
+    // door either — the journey is gone, not paused.
+    flushFrame(81_000);
+    flushFrame(82_000);
+    expect(poseFrom(m.stage)).toBe(held);
+    await m.unmount();
+  });
+
+  test("a seek carrying the \"glide\" hint walks — the locator card is \"take me there\", not a teleport", async () => {
+    const m = await mountBoard("glide-seek-hint");
+    const { act } = await import("react");
+    const before = poseFrom(m.stage);
+    const from = { x: 0, y: 0, z: 1 };
+    const { top, bottom } = lastTarget(m);
+    const to = followShift(from, BOX, { top, bottom })!;
+
+    await act(async () => {
+      m.seek(999, "glide");
+    });
+    // No instant write — a frame is owed instead (contrast the bare seek
+    // above, which lands already).
+    expect(poseFrom(m.stage)).toBe(before);
+    expect(rafQueue.size).toBe(1);
+
+    flushFrame(90_000);
+    const g = stampGlide(oracle(from, to), 90_000);
+    const mid = 90_000 + g.durationMs / 2;
+    flushFrame(mid);
+    expect(poseFrom(m.stage)).toBe(cameraCss(glidePoseAt(g, mid).pose));
+    flushFrame(90_000 + g.durationMs + 1);
+    expect(poseFrom(m.stage)).toBe(cameraCss(to));
+    expect(rafQueue.size).toBe(0);
+    await m.unmount();
+  });
+
   test("unmounting mid-flight leaves no frame behind", async () => {
     const m = await mountBoard("glide-unmount");
     const { act } = await import("react");
@@ -457,5 +711,54 @@ describe("the host glide — displacement is motion, not a cut", () => {
     expect(rafQueue.size).toBe(1);
     await m.unmount();
     expect(rafQueue.size).toBe(0);
+  });
+});
+
+describe("the seek fan-out carries the motion hint (task #213)", () => {
+  test("scrubTo's hint reaches every seek listener verbatim; every other transport act stays hint-less", async () => {
+    const { act } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const { createElement } = await import("react");
+    const { useBoardPlayer } = await import("../viewer/useBoardPlayer.js");
+    type Handle = ReturnType<typeof useBoardPlayer>["player"];
+
+    const timeline = {
+      duration: 10,
+      schedule: [],
+      seek: () => {},
+    } as unknown as import("../engine/types.js").BoardTimeline;
+
+    let handle: Handle | null = null;
+    function Probe() {
+      handle = useBoardPlayer(timeline, false, "", null).player;
+      return null;
+    }
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => {
+      root.render(createElement(Probe));
+    });
+
+    const seeks: Array<[number, string | undefined]> = [];
+    handle!.onSeek((t, motion) => seeks.push([t, motion]));
+
+    // The locator card's channel: "take me there" — the hint travels.
+    await act(async () => handle!.scrubTo(3, "glide"));
+    expect(seeks.at(-1)).toEqual([3, "glide"]);
+    // The drag's channel: no hint — the settled tracking cut downstream.
+    await act(async () => handle!.scrubTo(5));
+    expect(seeks.at(-1)).toEqual([5, undefined]);
+    // The other explicit navigations say nothing — their camera behaviour
+    // is the listener's default, not a per-caller opinion.
+    await act(async () => handle!.playFrom(2));
+    expect(seeks.at(-1)).toEqual([2, undefined]);
+    await act(async () => handle!.goLive());
+    expect(seeks.at(-1)).toEqual([10, undefined]);
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
   });
 });

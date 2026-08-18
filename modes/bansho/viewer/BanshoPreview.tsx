@@ -915,8 +915,11 @@ export default function BanshoPreview({
         : null;
       if (window) {
         // Seeking IS the camera move: the player's seek fan-out brings the
-        // step being performed into view (BoardCanvas.onSeek).
-        playerRef.current.scrubTo(window.end);
+        // step being performed into view (BoardCanvas.onSeek). "glide" is
+        // this channel's voice (task #213): a locator/navigate jump is the
+        // user or agent saying "take me there" — the camera walks, where a
+        // scrub drag (no hint) keeps tracking with cuts.
+        playerRef.current.scrubTo(window.end, "glide");
       } else if (!boardApiRef.current?.showStep(ref)) {
         return {
           success: false,

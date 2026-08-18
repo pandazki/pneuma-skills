@@ -191,6 +191,7 @@ import {
 } from "./camera.js";
 import {
   glidePoseAt,
+  glideRoomSeconds,
   samePose,
   stampGlide,
   startGlide,
@@ -797,6 +798,11 @@ export default function BoardCanvas({
    *  dependency here would re-subscribe every camera effect on a rate flip. */
   const rateRef = useRef(rate);
   rateRef.current = rate;
+  /** `playing` as a ref, for the same reason: the glide-room clip reads it
+   *  at leg start (paused, the clock cannot walk into a canonical window,
+   *  so the room is infinite). */
+  const playingRef = useRef(playing);
+  playingRef.current = playing;
   /**
    * THE HOST GLIDE (2026-08-17) — the tween behind every host camera commit
    * that used to be an instant cut (the same-board paragraph chase, the
@@ -817,6 +823,27 @@ export default function BoardCanvas({
    */
   const glideRef = useRef<CameraGlide | null>(null);
   const glideRafRef = useRef(0);
+  /**
+   * The target waiting at the door (2026-08-18) — one deep, latest wins.
+   * An AUTOMATIC commit (`"chase"`) arriving while a leg is in flight is
+   * ABSORBED here instead of replacing the tween: replacing resets the
+   * tween's clock, and the measured trace convicted exactly that (the
+   * retarget inside the old `glideCameraTo` — five restarts in 800ms
+   * during a decay hand-back, motion killed at max step each time, one
+   * still frame per restart; see camera-glide.ts's header). The leg
+   * finishes, then the newest target takes over from the arrived pose —
+   * continuous, and still convergent. An EXPLICIT navigation (`"glide"`)
+   * never waits here — it supersedes the leg outright (who-asked rule).
+   *
+   * INVARIANT: only `"chase"` ever writes this slot, and the chase only
+   * runs while playing — which is what makes "a pause drops the pending
+   * target" (the effect below) a complete rule with no frame-level gate.
+   */
+  const glidePendingRef = useRef<Camera | null>(null);
+  /** Forward wiring for the takeover: `glideFrame` (declared first — it is
+   *  the rAF callback) begins the pending leg through this ref. Stable for
+   *  the component's life; the render-phase assignment below is idempotent. */
+  const beginGlideRef = useRef<(target: Camera) => void>(() => {});
 
   /** Paint a camera: MODEL FIRST, pixels second — on every tween frame the
    *  model camera equals the painted camera, which is what keeps `zoomAt`'s
@@ -828,9 +855,12 @@ export default function BoardCanvas({
     markWallMap(camera);
   }, [markWallMap]);
 
-  /** Settle the tween: drop the glide and its pending frame. */
+  /** Settle the tween: drop the glide, its pending frame, AND the target
+   *  waiting at the door — a deliberate cut supersedes the whole journey,
+   *  not just the leg in flight (one cancel set, one lifecycle). */
   const cancelGlide = useCallback((): void => {
     glideRef.current = null;
+    glidePendingRef.current = null;
     if (glideRafRef.current) {
       cancelAnimationFrame(glideRafRef.current);
       glideRafRef.current = 0;
@@ -849,7 +879,11 @@ export default function BoardCanvas({
 
   /** The tween's frames. The FIRST frame stamps the glide's zero with its
    *  own timestamp (frame clock and step clock are one source), so frame
-   *  one paints the departure and motion begins on frame two. */
+   *  one paints the departure and motion begins on frame two. ARRIVAL is
+   *  where a waiting target takes over: the leg has eased to rest, so the
+   *  next leg departs from a standing camera — velocity is continuous at
+   *  every seam, which is the whole point of absorbing instead of
+   *  retargeting (see `glidePendingRef`). */
   const glideFrame = useCallback((now: number): void => {
     glideRafRef.current = 0;
     const active = glideRef.current;
@@ -857,19 +891,33 @@ export default function BoardCanvas({
     const glide = stampGlide(active, now);
     glideRef.current = glide;
     const { pose, done } = glidePoseAt(glide, now);
-    if (done) glideRef.current = null;
-    else glideRafRef.current = requestAnimationFrame(glideFrame);
+    if (done) {
+      glideRef.current = null;
+      paintCamera(pose);
+      const pending = glidePendingRef.current;
+      glidePendingRef.current = null;
+      if (pending) beginGlideRef.current(pending);
+      return;
+    }
+    glideRafRef.current = requestAnimationFrame(glideFrame);
     paintCamera(pose);
   }, [paintCamera]);
 
-  /** The one TWEEN writer: commit a camera as motion. Retarget, never
-   *  queue — a target arriving mid-flight replaces the glide, departing
-   *  from the pose painted right now, so the camera never doubles back to
-   *  serve a stale destination. A commit with no travel, or before the
-   *  viewport has a size, degrades to the instant writer (a zero-length
-   *  glide is a cut by definition — the fold says the same). */
-  const glideCameraTo = useCallback((target: Camera): void => {
+  /**
+   * Start one LEG of tween motion from the pose painted right now, clipped
+   * to the room before the director's next canonical window opens: the
+   * host must never start a glide it cannot finish. Paused, the clock
+   * cannot walk into a window, so the room is infinite; playing, the
+   * canonical seconds convert to wall ms through the same rate divide the
+   * duration itself takes. No room — like no travel and no measured
+   * viewport — is a cut, mirroring the fold's own `lead <= 0` rule.
+   */
+  const beginGlide = useCallback((target: Camera): void => {
     const viewport = viewportRef.current;
+    const roomMs = playingRef.current
+      ? (glideRoomSeconds(stageScheduleRef.current, getPlayheadT()) * 1000) /
+        rateRef.current
+      : Infinity;
     const glide = viewport
       ? startGlide(
           cameraRef.current,
@@ -884,6 +932,7 @@ export default function BoardCanvas({
           },
           DEFAULT_DURATIONS,
           rateRef.current,
+          roomMs,
         )
       : null;
     if (!glide) {
@@ -894,14 +943,51 @@ export default function BoardCanvas({
     if (!glideRafRef.current) {
       glideRafRef.current = requestAnimationFrame(glideFrame);
     }
-  }, [applyCamera, glideFrame]);
+  }, [applyCamera, glideFrame, getPlayheadT]);
+  beginGlideRef.current = beginGlide;
 
-  /** Commit a camera the way the caller's channel decided: as motion, or
-   *  as the deliberate cut the cancel set names. */
+  /** The one TWEEN writer: commit a camera as motion, and decide a
+   *  mid-flight conflict by WHO ASKED (the `CameraMotion` doc is the
+   *  ruling). The AUTOMATIC chase is absorbed — one deep, latest wins,
+   *  takes over at arrival — so the camera never stops dead at speed and
+   *  still never doubles back to serve a stale destination. An EXPLICIT
+   *  navigation supersedes: the whole waiting journey is dropped and a
+   *  fresh leg departs the currently painted pose at once — "take me
+   *  there" must not visibly go somewhere else first. A commit with no
+   *  travel, or before the viewport has a size, degrades to the instant
+   *  writer (a zero-length glide is a cut by definition — the fold says
+   *  the same). */
+  const glideCameraTo = useCallback(
+    (target: Camera, motion: "glide" | "chase" = "glide"): void => {
+      const inFlight = glideRef.current;
+      if (inFlight !== null) {
+        if (motion === "chase") {
+          // Already bound there: nothing new to absorb (and no same-pose
+          // cut owed at arrival).
+          if (!samePose(inFlight.to, target)) {
+            glidePendingRef.current = target;
+          }
+          return;
+        }
+        // Explicit: supersede. The leg and the waiting target both yield;
+        // `beginGlide` departs the painted pose and reuses the already
+        // scheduled frame, so the restart costs one zero-velocity frame —
+        // the accepted price of interrupting yourself.
+        glideRef.current = null;
+        glidePendingRef.current = null;
+      }
+      beginGlide(target);
+    },
+    [beginGlide],
+  );
+
+  /** Commit a camera the way the caller's channel decided: as motion
+   *  (explicit or automatic — `glideCameraTo` reads the word), or as the
+   *  deliberate cut the cancel set names. */
   const commitCamera = useCallback(
     (camera: Camera, motion: CameraMotion): void => {
-      if (motion === "glide") glideCameraTo(camera);
-      else applyCamera(camera);
+      if (motion === "cut") applyCamera(camera);
+      else glideCameraTo(camera, motion);
     },
     [applyCamera, glideCameraTo],
   );
@@ -909,6 +995,17 @@ export default function BoardCanvas({
   // A glide must not outlive the canvas — the pending frame would write to
   // a stage React is dropping.
   useEffect(() => cancelGlide, [cancelGlide]);
+
+  // A pause drops the WAITING target and only that (2026-08-18 ruling):
+  // the leg in flight settles — finishing a walk is a settle — but the
+  // absorbed target firing at its arrival would be new motion beginning
+  // while the lecture is stopped, which nobody asked for. Complete by the
+  // invariant on `glidePendingRef`: only the chase writes the slot, and
+  // the chase only runs while playing, so nothing can legitimately be
+  // waiting once `playing` is false.
+  useEffect(() => {
+    if (!playing) glidePendingRef.current = null;
+  }, [playing]);
 
   /**
    * THE ONE RE-ENGAGE DOOR (`latchInput(_, "reset")`) — Live, resuming
@@ -3706,14 +3803,17 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
   /**
    * Bring one built step into view. Returns false when it is not mounted.
    *
-   * `motion` is the caller's channel speaking (2026-08-17): playback's
-   * follow and a locator/navigate jump GLIDE (the cuts here are what the
-   * owner measured attention loss on), while seek tracking passes "cut" —
-   * a dragged playhead must be tracked, not chased. Defaults to "glide"
-   * because the published BoardApi (`onApi`) is exactly the locator
-   * channel. `from` is a departure the caller has already decided on (the
-   * hand-back's rebased pose) — the shift composes ON it and the whole
-   * journey commits ONCE, where it used to be two writes and a stutter.
+   * `motion` is the caller's channel speaking (2026-08-17; split by who
+   * asked 2026-08-18): the automatic playback follow passes "chase" and a
+   * locator/navigate jump passes "glide" — both are walks (the cuts here
+   * are what the owner measured attention loss on), but mid-flight the
+   * chase absorbs where the explicit glide supersedes. Seek tracking
+   * passes "cut" — a dragged playhead must be tracked, not chased.
+   * Defaults to "glide" because the published BoardApi (`onApi`) is
+   * exactly the locator channel. `from` is a departure the caller has
+   * already decided on (the hand-back's rebased pose) — the shift composes
+   * ON it and the whole journey commits ONCE, where it used to be two
+   * writes and a stutter.
    */
   const showStep = useCallback((
     ref: StepRef,
@@ -3904,7 +4004,11 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
       getPlayheadT(),
       latchRef.current,
     );
-    if (verdict.kind === "follow") followAt(activeIndex, "glide");
+    // "chase", not "glide": this is the AUTOMATIC channel — its recommits
+    // absorb into a leg in flight instead of interrupting it (the ruling
+    // in camera-glide.ts::CameraMotion; the storm was five automatic
+    // restarts in 800ms).
+    if (verdict.kind === "follow") followAt(activeIndex, "chase");
     else if (verdict.kind === "director") {
       // Symmetric with the seek path: a director pose IS canonical, so it
       // settles any re-attach the reader is owed. An armed flag that
@@ -3945,8 +4049,14 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
   // user saying "show me this moment"), so the scroll latch resets. Gated
   // (C2): a seek into a camera window lands on the director's pose at
   // exactly that t.
+  //
+  // `motion` (task #213) is the seek's channel speaking: a drag omits it
+  // and the camera TRACKS (cut per tick — the settled rule); a locator
+  // card click passes "glide" and the camera WALKS there, director pose
+  // included — "take me there" must never teleport.
   useEffect(() => {
-    return onSeek((t) => {
+    return onSeek((t, motion) => {
+      const nav: CameraMotion = motion ?? "cut";
       resetLatch();
       // A scrub that lands inside a transition window shows that
       // transition's depth — the pose is a pure function of t, so the
@@ -3959,19 +4069,19 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
         // this seek owed the reader — leaving the flag armed would fire a
         // re-attach at some unrelated later step.
         reattachRef.current = false;
-        applyCamera(verdict.camera);
+        commitCamera(verdict.camera, nav);
         return;
       }
       const compiled = compiledRef.current;
       if (!compiled) return;
-      // "cut": the camera TRACKS the dragged playhead — a scrub streaming
-      // seeks must not trail behind an eased chase. The one exception
-      // rides inside `showStep`: a reader being RE-ATTACHED (Live, a seek
-      // after a grab) glides home, and the next scrub tick's instant
-      // write settles it if the drag goes on.
-      followAt(activeScheduleIndex(compiled.timeline.schedule, t), "cut");
+      // Default "cut": the camera TRACKS the dragged playhead — a scrub
+      // streaming seeks must not trail behind an eased chase. The one
+      // unconditional exception rides inside `showStep`: a reader being
+      // RE-ATTACHED (Live, a seek after a grab) glides home, and the next
+      // scrub tick's instant write settles it if the drag goes on.
+      followAt(activeScheduleIndex(compiled.timeline.schedule, t), nav);
     });
-  }, [onSeek, followAt, applyCamera, applyDirectorDepth, resetLatch]);
+  }, [onSeek, followAt, commitCamera, applyDirectorDepth, resetLatch]);
 
   return (
     <div

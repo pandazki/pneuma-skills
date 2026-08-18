@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { BoardTimeline } from "../engine/types.js";
+import type { CameraMotion } from "./camera-glide.js";
 import { gatedTick, type NarrationClock } from "./clock-gate.js";
 import {
   createPlayer,
@@ -34,7 +35,15 @@ import {
 import { activeScheduleIndex } from "./script-sync.js";
 
 export type FrameListener = (t: number, duration: number) => void;
-export type SeekListener = (t: number) => void;
+/**
+ * `motion` is the seek's OWN channel speaking (task #213): a scrub drag
+ * omits it and the camera TRACKS the dragged playhead (every tick a cut —
+ * the settled rule); a navigation that means "take me there" (a locator
+ * card click) passes `"glide"` and the camera walks. The hint rides the
+ * seek fan-out because only the caller knows which gesture it is — the
+ * playhead value alone cannot say.
+ */
+export type SeekListener = (t: number, motion?: CameraMotion) => void;
 
 export interface BoardPlayerHandle {
   /** Discrete UI state — safe to render from, with ONE exception: `ui.t`
@@ -63,7 +72,9 @@ export interface BoardPlayerHandle {
    * to leaving the voice alone.
    */
   pause(): void;
-  scrubTo(t: number): void;
+  /** `motion` reaches the seek listeners verbatim: omitted = a tracking
+   *  scrub (cut); `"glide"` = an explicit "take me there" (locator card). */
+  scrubTo(t: number, motion?: CameraMotion): void;
   /** `play-from` (§9): start playing at `t`, detached — the agent's replay. */
   playFrom(t: number): void;
   goLive(): void;
@@ -155,8 +166,8 @@ export function useBoardPlayer(
   }, []);
 
   /** Explicit-navigation fan-out — always after `apply` (state committed). */
-  const notifySeek = useCallback((t: number): void => {
-    for (const listener of seekListenersRef.current) listener(t);
+  const notifySeek = useCallback((t: number, motion?: CameraMotion): void => {
+    for (const listener of seekListenersRef.current) listener(t, motion);
   }, []);
   const onSeek = useCallback((listener: SeekListener) => {
     seekListenersRef.current.add(listener);
@@ -267,12 +278,12 @@ export function useBoardPlayer(
         apply(pause(prev));
         if (stateRef.current !== prev) narrationRef.current?.pause();
       },
-      scrubTo: (t: number) => {
+      scrubTo: (t: number, motion?: CameraMotion) => {
         apply(scrub(stateRef.current, t));
         // Align the voice to the new playhead WITHOUT sounding it — a
         // drag must not spray clip fragments (scrub always pauses).
         narrationRef.current?.seek(stateRef.current.t, false);
-        notifySeek(stateRef.current.t);
+        notifySeek(stateRef.current.t, motion);
       },
       playFrom: (t: number) => {
         // Explicit navigation like a scrub — the camera re-engages on the
