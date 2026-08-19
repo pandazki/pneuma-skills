@@ -112,7 +112,7 @@ async function mountTransport(opts: {
     },
     getT: () => 0,
     onFrame: (listener) => {
-      listener(0, 40);
+      listener(0, 40, "transition");
       return () => {};
     },
     onSeek: () => () => {},

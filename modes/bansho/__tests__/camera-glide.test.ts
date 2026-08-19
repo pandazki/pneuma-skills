@@ -31,8 +31,11 @@ import {
   type StageView,
 } from "../engine/stage.js";
 import {
+  GLIDE_FLOOR_MS,
+  GLIDE_NUDGE_PX,
   glidePoseAt,
   glideRoomSeconds,
+  glideScreenShift,
   samePose,
   stampGlide,
   startGlide,
@@ -227,6 +230,65 @@ describe("the clip rule — the host never starts a glide it cannot finish", () 
     // A broken room (NaN) must degrade to the cut too — a tween with an
     // unknowable budget is never an answer.
     expect(startGlide(FROM, TO, VIEW, DEFAULT_DURATIONS, 1, NaN)).toBeNull();
+  });
+});
+
+describe("the duration floor — a nonzero duration is not yet continuity", () => {
+  // Measured on tech-zh at 1× (2026-08-19): the same-board paragraph chase
+  // ran 75–200ms for 80–190px and the @turn step-in ran 65–84ms for
+  // ~205–223px of screen — below roughly 100–150ms an easing curve is not
+  // perceived as motion at all, so those walks were still cuts wearing a
+  // curve. The floor is what makes a SHORT walk a walk.
+
+  test("a real displacement with a short natural tempo is floored", () => {
+    // NUDGE moves 180 screen px (z = 1); its arc-length tempo is ~159ms —
+    // measured territory. The floor lifts it into legible motion.
+    const glide = startGlide(FROM, NUDGE, VIEW, DEFAULT_DURATIONS, 1)!;
+    expect(
+      cameraMoveDuration(FROM, NUDGE, VIEW, DEFAULT_DURATIONS) * 1000,
+    ).toBeLessThan(GLIDE_FLOOR_MS);
+    expect(glide.durationMs).toBe(GLIDE_FLOOR_MS);
+  });
+
+  test("a genuinely tiny nudge keeps its natural tempo — no 220ms drift on 5px", () => {
+    const tiny: CameraPose = { x: 0, y: 5, z: 1 };
+    expect(glideScreenShift(FROM, tiny, VIEW)).toBeLessThan(GLIDE_NUDGE_PX);
+    const glide = startGlide(FROM, tiny, VIEW, DEFAULT_DURATIONS, 1)!;
+    expect(glide.durationMs).toBe(
+      cameraMoveDuration(FROM, tiny, VIEW, DEFAULT_DURATIONS) * 1000,
+    );
+    expect(glide.durationMs).toBeLessThan(GLIDE_FLOOR_MS);
+  });
+
+  test("the floor divides by the playback rate — 2× floors at half the wall clock", () => {
+    const at2 = startGlide(FROM, NUDGE, VIEW, DEFAULT_DURATIONS, 2)!;
+    expect(at2.durationMs).toBe(GLIDE_FLOOR_MS / 2);
+  });
+
+  test("the room clip outranks the floor — the host never overruns a canonical window", () => {
+    const room = GLIDE_FLOOR_MS / 3;
+    const clipped = startGlide(FROM, NUDGE, VIEW, DEFAULT_DURATIONS, 1, room)!;
+    expect(clipped.durationMs).toBe(room);
+  });
+
+  test("a long walk is untouched — the floor only lifts, never drags", () => {
+    const walk = startGlide(FROM, TO, VIEW, DEFAULT_DURATIONS, 1)!;
+    expect(walk.durationMs).toBe(
+      cameraMoveDuration(FROM, TO, VIEW, DEFAULT_DURATIONS) * 1000,
+    );
+    expect(walk.durationMs).toBeGreaterThan(GLIDE_FLOOR_MS);
+  });
+
+  test("a pure zoom is a displacement too — the corners move even when the center does not", () => {
+    // Zoom about the viewport center: the center point is still, the
+    // corners fly. The @turn step-in is exactly this family (z restored
+    // from the landing's air), and it was the fastest cut in the lecture.
+    const zoomed: CameraPose = {
+      x: FROM.x - VIEW.viewW * (1 / 0.8 - 1) / 2,
+      y: FROM.y - VIEW.viewH * (1 / 0.8 - 1) / 2,
+      z: 0.8,
+    };
+    expect(glideScreenShift(FROM, zoomed, VIEW)).toBeGreaterThan(GLIDE_NUDGE_PX);
   });
 });
 

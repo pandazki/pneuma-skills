@@ -749,12 +749,14 @@ describe("the seek fan-out carries the motion hint (task #213)", () => {
     // The drag's channel: no hint — the settled tracking cut downstream.
     await act(async () => handle!.scrubTo(5));
     expect(seeks.at(-1)).toEqual([5, undefined]);
-    // The other explicit navigations say nothing — their camera behaviour
-    // is the listener's default, not a per-caller opinion.
+    // Live and play-from are "take me there" too (2026-08-19: they were
+    // left hint-less when the motion hint landed, and the measured cost was
+    // a 953px single-frame jump on the LIVE button — the one displacement
+    // a returning reader most needs to ride). Both walk.
     await act(async () => handle!.playFrom(2));
-    expect(seeks.at(-1)).toEqual([2, undefined]);
+    expect(seeks.at(-1)).toEqual([2, "glide"]);
     await act(async () => handle!.goLive());
-    expect(seeks.at(-1)).toEqual([10, undefined]);
+    expect(seeks.at(-1)).toEqual([10, "glide"]);
 
     await act(async () => {
       root.unmount();

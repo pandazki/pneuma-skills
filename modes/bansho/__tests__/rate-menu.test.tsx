@@ -101,7 +101,7 @@ async function mountTransport(
     ui: { t: 0, playing: true, rate, follow: "live", duration: 40 },
     getT: () => 0,
     onFrame: (listener) => {
-      listener(0, 40);
+      listener(0, 40, "transition");
       return () => {};
     },
     onSeek: () => () => {},

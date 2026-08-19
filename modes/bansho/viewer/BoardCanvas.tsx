@@ -992,6 +992,25 @@ export default function BoardCanvas({
     [applyCamera, glideCameraTo],
   );
 
+  /** Commit a DIRECTOR pose from the automatic channels (the clock's
+   *  per-frame write, the passive follow's director branch). Two guards
+   *  keep it from stomping motion it should be riding (2026-08-19):
+   *  a host glide already bound for exactly this pose is left to LAND it —
+   *  cutting now would kill the very walk (the Live / resume re-attach)
+   *  that is delivering the pose; and an idle hold whose pose is already
+   *  painted does zero work per frame. A director pose that is genuinely
+   *  new (a move window advancing) still cuts through, which is right —
+   *  the fold owns the camera inside its windows. */
+  const commitDirector = useCallback(
+    (camera: Camera): void => {
+      const inFlight = glideRef.current;
+      if (inFlight && samePose(inFlight.to, camera)) return;
+      if (!inFlight && samePose(cameraRef.current, camera)) return;
+      applyCamera(camera);
+    },
+    [applyCamera],
+  );
+
   // A glide must not outlive the canvas — the pending frame would write to
   // a stage React is dropping.
   useEffect(() => cancelGlide, [cancelGlide]);
@@ -3405,6 +3424,16 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
   // The VIEWPORT is observed, not the panel: the panel's width is derived
   // from it (C1's single panel fills the viewport), and clientWidth is a
   // layout value the camera transform never touches.
+  //
+  // THE CAMERA AT A RESIZE IS A CUT, BY RULE (2026-08-19): mid-playback a
+  // resize lands as a one-frame re-pose (measured: 238px / 0.262 of scale
+  // at 1280×900 → 900×700 mid-turn). Deliberate, not accidental — the
+  // viewport changed UNDER the reader, so every pose, path and canonical
+  // camera duration is re-derived against geometry that no longer matches
+  // what was on screen; a glide from the old pose would ride arithmetic
+  // the rebuild just voided (`invalidateMeasurements` settles any tween
+  // for the same reason). The rebuild's re-clamp is in the cancel set by
+  // name; this is the sentence that says the resize is too.
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
@@ -3991,6 +4020,18 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
     wasPlayingRef.current = playing;
     if (resumed) resetLatch();
   }, [playing, resetLatch]);
+  /**
+   * Whether the camera has been PLACED on this canvas yet (2026-08-19).
+   * A remount — opening a board, returning from the Notes projection —
+   * resets `cameraRef` to the wall's home corner, and the first follow
+   * used to play the journey from there: Notes → Board mid-lecture panned
+   * 1542ms from a corner the reader was never looking at. An OPENING
+   * ARRIVES — the reader was not watching a camera that is somewhere
+   * else — so the first placement is a cut, and only displacement the
+   * reader actually witnessed is played as motion. Explicit seeks count
+   * as placements too (their own channel already decides cut vs glide).
+   */
+  const openedRef = useRef(false);
   // Passive follow: the pen advancing during playback. Guarded on `playing`
   // so a paused user's camera is never yanked by an agent recompile. Gated
   // (C2): while the register holds a director pose the pen follow yields —
@@ -4007,41 +4048,63 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
     // "chase", not "glide": this is the AUTOMATIC channel — its recommits
     // absorb into a leg in flight instead of interrupting it (the ruling
     // in camera-glide.ts::CameraMotion; the storm was five automatic
-    // restarts in 800ms).
-    if (verdict.kind === "follow") followAt(activeIndex, "chase");
-    else if (verdict.kind === "director") {
+    // restarts in 800ms). The FIRST placement since mount is a cut — an
+    // opening arrives (`openedRef`), it does not travel.
+    if (verdict.kind === "follow") {
+      const first = !openedRef.current && activeIndex >= 0;
+      if (activeIndex >= 0) openedRef.current = true;
+      followAt(activeIndex, first ? "cut" : "chase");
+    } else if (verdict.kind === "director") {
+      openedRef.current = true;
       // Symmetric with the seek path: a director pose IS canonical, so it
-      // settles any re-attach the reader is owed. An armed flag that
-      // survived a hold would fire at whatever step the register happens
-      // to decay on, which is the stale-flag bug this one line closes.
+      // settles any re-attach the reader is owed. But a reader COMING BACK
+      // (grab, then Play) is owed the return as motion (2026-08-19,
+      // measured: resuming into a director hold teleported ~200px back
+      // onto the canonical path) — the armed flag glides home to the held
+      // pose; the per-frame writer's same-pose guard then lets the walk
+      // land instead of cutting to its end.
+      const owed = reattachRef.current;
       reattachRef.current = false;
-      applyCamera(verdict.camera);
+      if (owed) glideCameraTo(verdict.camera);
+      else commitDirector(verdict.camera);
     }
-  }, [activeIndex, playing, followAt, getPlayheadT, applyCamera]);
+  }, [activeIndex, playing, followAt, getPlayheadT, glideCameraTo, commitDirector]);
   // The director's glide (C2): the interpolated pose advances with the
   // clock. All animation state lives in the FOLD (a pure function of t —
   // that is what makes scrub correct); this listener only queries and
   // writes. Camera-free boards return before any fold work — the C1
   // per-frame hot path stays untouched.
   useEffect(() => {
-    return onFrame((t) => {
+    return onFrame((t, _duration, origin) => {
       const sched = stageScheduleRef.current;
       if (!sched) return;
-      const verdict = gateCamera(sched, t, latchRef.current);
-      if (verdict.kind === "director") {
-        // Same rule on the glide's own path — a read, not a write, so the
-        // per-frame hot path pays a branch and nothing else.
-        if (reattachRef.current) reattachRef.current = false;
-        applyCamera(verdict.camera);
+      // ONE WRITER PER SEAM (2026-08-19, measured): `apply` fans out here
+      // for every explicit transport act too, and the camera write below
+      // used to race the seek channel in the same frame (scrub: 3
+      // writes/frame; Live / grab / resize / wall-map: 2) — worse than a
+      // race, it CUT to the director pose before the seek channel could
+      // start the glide its motion hint asked for. Transition frames'
+      // camera policy lives on the seek channel alone; the clock's frames
+      // are this listener's own.
+      if (origin === "clock") {
+        const verdict = gateCamera(sched, t, latchRef.current);
+        if (verdict.kind === "director") {
+          // Same rule on the glide's own path — a read, not a write, so
+          // the per-frame hot path pays a branch and nothing else.
+          if (reattachRef.current) reattachRef.current = false;
+          commitDirector(verdict.camera);
+        }
       }
       // V1.5 — the transition's depth, from the same fold, at the same t.
       // Written even when the user has detached: the pose they dragged to
       // is theirs, but the board's ORIENTATION is the director's, and a
       // transition that ran flat for detached readers would make the
-      // feature depend on who is holding the camera.
+      // feature depend on who is holding the camera. Unlike the camera it
+      // is written on BOTH origins: depth is a pure function of t with no
+      // motion policy, so a duplicate write is the same bytes.
       applyDirectorDepth(t);
     });
-  }, [onFrame, applyCamera, applyDirectorDepth]);
+  }, [onFrame, commitDirector, applyDirectorDepth]);
   // Explicit navigation (scrub / keyboard seek / Live / replay jump): the
   // player pauses+detaches on a scrub, so the passive path never fires —
   // this seam is what keeps the camera on the pen when the user seeks a
@@ -4057,6 +4120,9 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
   useEffect(() => {
     return onSeek((t, motion) => {
       const nav: CameraMotion = motion ?? "cut";
+      // An explicit navigation is a placement — the opening-arrival rule
+      // (`openedRef`) must not later downgrade a walk the reader watched.
+      openedRef.current = true;
       resetLatch();
       // A scrub that lands inside a transition window shows that
       // transition's depth — the pose is a pure function of t, so the

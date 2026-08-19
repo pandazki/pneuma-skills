@@ -34,7 +34,22 @@ import {
 } from "./player-core.js";
 import { activeScheduleIndex } from "./script-sync.js";
 
-export type FrameListener = (t: number, duration: number) => void;
+/**
+ * Where a frame notification came from (2026-08-19). Every explicit
+ * transport act (scrub, Live, play-from, pause, a timeline swap) calls
+ * `apply` and fans out here too — and the measured cost of not saying so
+ * was TWO camera producers writing in the same frame at exactly the seams
+ * that felt wrong (scrub: 3 writes/frame; Live, grab, resize, wall-map: 2).
+ * `"clock"` marks the rAF loop's own ticks; everything else is a
+ * `"transition"`, whose camera policy lives on the SEEK channel (the
+ * single writer at seams). Transport fill/clock listeners ignore the flag.
+ */
+export type FrameOrigin = "clock" | "transition";
+export type FrameListener = (
+  t: number,
+  duration: number,
+  origin: FrameOrigin,
+) => void;
 /**
  * `motion` is the seek's OWN channel speaking (task #213): a scrub drag
  * omits it and the camera TRACKS the dragged playhead (every tick a cut —
@@ -136,6 +151,9 @@ export function useBoardPlayer(
   const [ui, setUi] = useState<PlayerState>(stateRef.current);
   const [activeIndex, setActiveIndex] = useState(-1);
   const activeIndexRef = useRef(-1);
+  /** True only while the rAF loop itself is applying a tick — the one
+   *  producer whose frames are `"clock"` origin (see `FrameOrigin`). */
+  const clockApplyRef = useRef(false);
 
   /** Apply a transition: seek the timeline, notify, mirror discrete state. */
   const apply = useCallback((next: PlayerState): void => {
@@ -149,8 +167,9 @@ export function useBoardPlayer(
         setActiveIndex(idx);
       }
     }
+    const origin: FrameOrigin = clockApplyRef.current ? "clock" : "transition";
     for (const listener of listenersRef.current) {
-      listener(next.t, next.duration);
+      listener(next.t, next.duration, origin);
     }
     // `t` matters to render only at discrete transition points (the
     // transport swaps play/replay icons at the end); duration/playing
@@ -230,7 +249,14 @@ export function useBoardPlayer(
         } else {
           next = tick(s, dt);
         }
-        if (next !== s) apply(next);
+        if (next !== s) {
+          clockApplyRef.current = true;
+          try {
+            apply(next);
+          } finally {
+            clockApplyRef.current = false;
+          }
+        }
       }
       if (stateRef.current.playing) raf = requestAnimationFrame(loop);
     };
@@ -246,7 +272,8 @@ export function useBoardPlayer(
       getT: () => stateRef.current.t,
       onFrame(listener: FrameListener) {
         listenersRef.current.add(listener);
-        listener(stateRef.current.t, stateRef.current.duration);
+        // The subscribe-time replay seeds transport UI — it is not a tick.
+        listener(stateRef.current.t, stateRef.current.duration, "transition");
         return () => listenersRef.current.delete(listener);
       },
       onSeek,
@@ -287,7 +314,11 @@ export function useBoardPlayer(
       },
       playFrom: (t: number) => {
         // Explicit navigation like a scrub — the camera re-engages on the
-        // step being replayed, then playback carries it forward.
+        // step being replayed, then playback carries it forward. "glide"
+        // (2026-08-19): play-from is "take me there and play", not a
+        // dragged playhead — the hint was left off when the motion channel
+        // landed, and the regression measured as a whole-wall single-frame
+        // jump (98.8 → 104.2 crossed three boards in one 9.4ms frame).
         const prev = stateRef.current;
         apply(playFrom(prev, t));
         // A refused address (non-finite t) returns the identical state —
@@ -295,12 +326,18 @@ export function useBoardPlayer(
         if (stateRef.current !== prev) {
           narrationRef.current?.seek(stateRef.current.t, true);
         }
-        notifySeek(stateRef.current.t);
+        notifySeek(stateRef.current.t, "glide");
       },
       goLive: () => {
+        // "glide" for the same reason — the LIVE button is the one return
+        // a wandered reader most needs to ride home (measured: 953px and
+        // 0.107 of scale in one 9.4ms frame without the hint). On a long
+        // finished board Live also jumps most of the lecture; the walk is
+        // still right — the V&N path zooms out over the distance, which is
+        // exactly the "where am I going" a cut refuses to answer.
         apply(goLive(stateRef.current));
         narrationRef.current?.seek(stateRef.current.t, true);
-        notifySeek(stateRef.current.t);
+        notifySeek(stateRef.current.t, "glide");
       },
       setRate: (rate: Rate) => {
         apply(setRate(stateRef.current, rate));

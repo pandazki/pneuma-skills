@@ -60,11 +60,26 @@
  * caller clips its duration to the room left before the director's next
  * canonical window opens (`glideRoomSeconds` + `startGlide`'s `maxMs`). No
  * room is not a fast glide — it is a cut, exactly mirroring the fold's own
- * `lead <= 0` rule (engine/stage.ts::buildStageSchedule). The handoff
- * between the two producers is thereby continuous: the host's leg has
- * ARRIVED (at the settled follow pose the canonical from-pose simulates)
- * before the director's first write, so the camera changes drivers without
- * teleporting.
+ * `lead <= 0` rule (engine/stage.ts::buildStageSchedule).
+ *
+ * WHAT THE CLIP DOES AND DOES NOT GUARANTEE (corrected 2026-08-19 — the
+ * old sentence here claimed the driver handoff "without teleporting"
+ * unconditionally, and an e2e pass falsified it with an 82px one-frame
+ * cut at a window open): the clip guarantees the leg has LANDED before
+ * the director's first write — no leg is ever killed at speed. Whether
+ * the landed pose EQUALS the canonical from-pose is a separate,
+ * CONDITIONAL fact: the composed chase target (hand-back + `followShift`)
+ * is departure-independent whenever the shift fires (its y and board x
+ * are absolute), so an uninterrupted stretch converges on the simulated
+ * rest — measured bit-exact on a full tech-zh replay. But the DEAD BAND
+ * decides whether it fires at all: a live camera whose history departs
+ * from the simulation's (a seek entry, a re-attach, a leg settled by a
+ * cut) can be left holding a residue that no later chase settles, and the
+ * window open then pays that residue as a one-frame cut. Both entry
+ * classes measured on the current build (uninterrupted replay; seek-entry
+ * then play) open their windows seam-exact; if the residue cut ever
+ * reappears, its structural fingerprint is "settle, hold, then one frame
+ * of exactly the residue at a move's start".
  *
  * REDUCED MOTION: the 2D Van Wijk glide deliberately STAYS under
  * `prefers-reduced-motion` — the precedent set for the canonical camera
@@ -132,6 +147,72 @@ export function samePose(a: CameraPose, b: CameraPose): boolean {
 }
 
 /**
+ * THE DURATION FLOOR (2026-08-19, measured): a nonzero duration is not yet
+ * continuity. On tech-zh at 1× the same-board paragraph chase ran 75–200ms
+ * for 80–190px and the `@turn` step-in ran 65–84ms while moving ~205–223px
+ * of screen at up to ~10,000 px/s — the fastest motion in the lecture,
+ * spent exiting the walk's own 1.2s set-piece. Below roughly 100–150ms an
+ * easing curve is not perceived as motion at all, so those short walks
+ * were still cuts wearing a curve. The arc-length tempo says how long a
+ * move WANTS to take; this floor says how long a visible move MUST take to
+ * read as a move. 220ms sits inside the measured 180–250ms band: above
+ * the two-to-three-frame blur where easing is invisible, below the point
+ * where a per-paragraph chase starts to feel like syrup. Divided by the
+ * playback rate exactly like the natural tempo (camera tempo tracks
+ * lecture tempo), and always outranked by the room clip — a floor must
+ * never make the host overrun a canonical window.
+ */
+export const GLIDE_FLOOR_MS = 220;
+
+/**
+ * Below this much SCREEN displacement a move is a nudge, not a walk, and
+ * keeps its natural (short) tempo — flooring a 5px settle to 220ms would
+ * turn an imperceptible correction into a visible drift. 32px is under a
+ * board line's height on every real window (34px hand at rest zoom ≥ 1):
+ * anything smaller than one line of writing reads as settling, not as
+ * displacement; everything the trace convicted (80px and up) is well
+ * above it.
+ */
+export const GLIDE_NUDGE_PX = 32;
+
+/** The five probes: viewport center + corners, as fractions of the view. */
+const SHIFT_PROBES: ReadonlyArray<readonly [number, number]> = [
+  [0.5, 0.5],
+  [0, 0],
+  [1, 0],
+  [0, 1],
+  [1, 1],
+];
+
+/**
+ * The largest on-screen displacement a CUT `from → to` would inflict on
+ * the content the reader is looking at: board points under the viewport
+ * center and corners of `from`, re-projected under `to`, max distance
+ * moved (screen px). The corners are what catch a pure zoom — its center
+ * is still while its edges fly — and the center catches a pure pan. This
+ * is the same per-frame displacement the e2e trace measures, which is the
+ * point: the floor gates on the metric the defect was convicted with.
+ */
+export function glideScreenShift(
+  from: CameraPose,
+  to: CameraPose,
+  view: StageView,
+): number {
+  let max = 0;
+  for (const [fx, fy] of SHIFT_PROBES) {
+    const sx = fx * view.viewW;
+    const sy = fy * view.viewH;
+    // Screen (sx, sy) under `from` is board (from.x + sx/z, from.y + sy/z);
+    // the same board point under `to` paints at ((p − to.xy) · to.z).
+    const dx = (from.x + sx / from.z - to.x) * to.z - sx;
+    const dy = (from.y + sy / from.z - to.y) * to.z - sy;
+    const d = Math.hypot(dx, dy);
+    if (d > max) max = d;
+  }
+  return max;
+}
+
+/**
  * Begin a tween `from → to`, or answer `null` when the move is a CUT by
  * definition: no travel (a zero-length glide is a tilt with no journey),
  * an unmeasured viewport (no geometry to run the path against), a
@@ -164,12 +245,20 @@ export function startGlide(
   const seconds = cameraMoveDuration(from, to, view, d);
   if (!Number.isFinite(seconds) || !(seconds > 0)) return null;
   const naturalMs = (seconds * 1000) / speed;
+  // The floor (see GLIDE_FLOOR_MS): a move the reader can SEE must last
+  // long enough to read as motion. Gated on real screen displacement so a
+  // sub-line settle keeps its natural snap, and always inside the room
+  // clip — the window boundary is a harder law than legibility.
+  const floored =
+    glideScreenShift(from, to, view) >= GLIDE_NUDGE_PX
+      ? Math.max(naturalMs, GLIDE_FLOOR_MS / speed)
+      : naturalMs;
   return {
     from,
     to,
     view,
     rho: d.cameraRho,
-    durationMs: maxMs !== undefined ? Math.min(naturalMs, maxMs) : naturalMs,
+    durationMs: maxMs !== undefined ? Math.min(floored, maxMs) : floored,
     startMs: null,
   };
 }
