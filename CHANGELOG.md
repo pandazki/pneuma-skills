@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.33.0] - 2026-08-19
+
+### Added
+- **The room moves, it does not cut.** Only board-to-board walks used to glide; the pen's chase down a board, the hand-back after a scripted camera move, the Live return and locator jumps all snapped instantly, and a reader watching a real lecture lost the thread on it. Every displacement now animates, on the director's own path and duration law — near nudges quick, cross-room walks slow, one motion vocabulary. Scrubbing the timeline still cuts, deliberately: a dragged camera must track your hand, not chase it.
+- **A `@turn` lands with air.** The camera stands back as it arrives at a new board, so the board's frame, the gap and a sliver of its neighbour are in shot — the cue that you have moved somewhere, which a flush landing never gave. How far back varies, seeded from the step's own identity, so no two turns land alike and the same lecture always lands the same way.
+- **Figures are drawn in the same chalk as the words.** On slate themes the graph boxes, rules, chart axes and the labels inside figures now carry the grain the prose has always had. One board, one material.
+- **The board's corner sorted by what persists and who it affects.** `Board | Notes` and the status chips stay out; the look folds into one panel whose entry point is the current theme's own name, with two labelled groups — what is written into this lecture's files for everyone, and what is only on your screen right now.
+
+### Fixed
+- **Nothing invisible is clickable, and the shell owns the top 12px.** A transparent full-width bar held the viewing layout's Edit button in front of every viewer's own controls, so a real click on the board's theme button flipped the session to editing, spawned an agent inside a `--viewing` session, and set it looking for the lecture to rewrite. The shell's edge is now one published line that binds in both directions — the band that reveals the button is the line it may not draw past — so a viewer can put chrome below it and rely on that.
+- **The settings panel leaves the top bar.** A `z-index: 10000` lost to a `z-30` because z only argues with siblings: the bar's whole subtree competed as one, and the number inside it never entered the comparison. The panel is portaled to the document, which fixes it against every viewer rather than the one that happened to be looked at.
+- **A leg in flight is never abandoned mid-stride.** Camera moves were being replaced mid-flight and restarted from zero velocity — measured as five restarts inside 800ms — which read as animations fighting each other and stalling. The automatic follow now absorbs a target that arrives mid-move and takes over at arrival; an explicit navigation still supersedes, because "take me there" must not walk somewhere else first.
+- **A short move is still a move.** A move that lasted 70ms was a cut wearing an easing curve — and the fastest of them was the step-in that threw away the 1.2s walk that had just delivered the turn's air. Host moves now have a floor, scaled by playback rate, above a displacement where a settle should keep its snap.
+- **Live walks again, and returning from Notes arrives instead of travelling.** Live had regressed into a 953px single-frame jump; returning from the notes projection panned a second and a half from the wall's corner to reach the board you were already reading.
+- **A strike through a line is not a line running off the board.** The board's own marks tripped its overflow check — an `@strike` overlay is re-parented inside its target so its ink lands in panel coordinates, and the check counted it — so any lecture that underlined or struck a paragraph got a warning about writing that was never cut off. Too-tall steps were also told they ran off the *right* edge, and the notification dropped the finding's sentence entirely, leaving an agent with an address and nothing to act on.
+
+### Improved
+- **A board finding now says what a fix needs.** How far over, in board pixels; which part did it — a quoted unbreakable token, an inline formula, a named figure; and the lever for that case. When the check cannot name the culprit it says so and keeps the finding, rather than guessing or going quiet.
+
 ## [3.32.1] - 2026-08-17
 
 ### Fixed
