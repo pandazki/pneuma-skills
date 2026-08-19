@@ -74,8 +74,12 @@ performance:
 4. **After a correction, `navigate-to`** the fixed step — put the user's
    eyes on what changed instead of making them hunt.
 5. **Keep lines inside the board.** Very long unbroken tokens (URLs,
-   identifiers) can run past the right edge; the board clips them and
-   warns (`boardOverflow`). Break the line or shorten the token.
+   identifiers) can run past the right edge; the board cuts them off and
+   warns (`boardOverflow`), quoting the token and how far over it runs.
+   Break the line or shorten the token. The board's own marks (`@strike`,
+   `@circle` and friends) bleed past a step's box by design and never
+   trip this warning — when it fires, something the reader should see
+   really is cut off.
 
 ## Answering the three buttons
 

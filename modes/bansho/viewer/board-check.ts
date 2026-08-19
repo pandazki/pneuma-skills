@@ -18,14 +18,14 @@
  * agent's own writing, quoted back.
  *
  * Pure: no DOM. Geometry enters as already-measured numbers
- * (`overflowingRefs`) so the classifier is testable without a layout
+ * (`rightOverflows`) so the classifier is testable without a layout
  * engine.
  */
 
 import type { ViewerNotification } from "../../../core/types/viewer-contract.js";
 import type { RegionBurst } from "../engine/layout.js";
 import type { BoxCollision, Rect } from "../engine/regions.js";
-import type { Lecture, StepRef } from "../engine/types.js";
+import type { Lecture, Step, StepRef } from "../engine/types.js";
 import type {
   IllustrationRefusal,
   UndrawnIllustration,
@@ -116,8 +116,15 @@ export interface BoardObservations {
    * not. Board-level, so the finding carries no address.
    */
   staleTrack?: string | null;
-  /** Steps whose writing runs past the right edge of the board. */
-  overflowing: readonly StepRef[];
+  /**
+   * Steps standing past the board's edge, both axes: the right-edge
+   * verdicts `rightOverflows` produced from the host's width reads, and
+   * the bottom-edge records the fold produced (`layout.overflowing`,
+   * mapped by the host). Each carries the overrun in board px and — when
+   * the host could tell — the responsible part, so the finding can say
+   * what to change instead of only where it hurts.
+   */
+  overflowing: readonly OverflowObservation[];
   /**
    * Steps that turn back to — or extend — writing an erase had already
    * taken off the board when they arrived (the assignment fold's
@@ -414,6 +421,69 @@ function burstMessage(burst: RegionBurst): string {
   )}px more writing than ${room}${over}. ${consequence} ${waysOut}`;
 }
 
+/**
+ * What a §9 `boardOverflow` fact says to the agent — the three-sentence
+ * shape `burstMessage` set: the numbers, what the READER gets, and the
+ * lever that applies to THIS case. The old sentence ("this runs past the
+ * right edge and is cut off") named neither the amount nor the part nor
+ * the move — and for the fold's too-tall steps, which ride the same code,
+ * it named the wrong EDGE. The board's width is fixed and canonical; the
+ * agent cannot see the rendering, so a warning without a place and a size
+ * is pain without a location. That is the churn this message ends.
+ */
+function overflowMessage(o: OverflowObservation, step: Step | null): string {
+  const px = Math.max(1, Math.round(o.overBy));
+  if (o.edge === "bottom") {
+    if (o.cause === "growth") {
+      const word =
+        step?.kind === "graph-layer"
+          ? "graph"
+          : step?.kind === "chart-layer"
+            ? "chart"
+            : "drawing";
+      return `A later layer of this ${word} grew its frame and pushed the board's standing content ${px}px past the board's bottom edge — past that edge nothing is shown. Give the ${word} a board of its own (@turn before it), or trim what its layers add.`;
+    }
+    return `This step alone stands ${px}px taller than one whole board — it is written in full, but past the board's bottom edge nothing is shown. Split it into smaller steps so the writing can flow on, or say less here.`;
+  }
+  if (o.culprit?.kind === "formula") {
+    return `A formula here runs ${px}px past the right edge of the room it stands in and is cut off there. An inline formula never wraps: set it as a display formula ($$ … $$), which sizes itself to its room, or shorten it.`;
+  }
+  if (o.culprit?.kind === "token") {
+    return `The writing here runs ${px}px past the right edge of the room it stands in and is cut off there — the reader watches the line stop at the edge. The widest piece is one unbreakable token: "${o.culprit.text}". Break it, shorten it, or give it a line of its own.`;
+  }
+  const word = overflowWord(step?.kind);
+  if (word === "writing") {
+    return `The writing here runs ${px}px past the right edge of the room it stands in and is cut off there. Re-word the widest line, or break its longest unbroken token.`;
+  }
+  if (word) {
+    return `This ${word} is drawn ${px}px wider than the room it stands in and is cut off at the right edge — capture this address to see what the reader loses, then reshape what it holds.`;
+  }
+  return `Something here measures ${px}px wider than the room it stands in, but the board could not tell which part — capture this address and look before rewriting.`;
+}
+
+/** The lecture's own word for what kind of thing a step is, or nothing. */
+function overflowWord(kind: Step["kind"] | undefined): string | undefined {
+  switch (kind) {
+    case "prose":
+    case "heading":
+    case "list-item":
+    case "aside":
+      return "writing";
+    case "math":
+      return "formula";
+    case "image":
+      return "figure";
+    case "chart-frame":
+    case "chart-layer":
+      return "chart";
+    case "graph-frame":
+    case "graph-layer":
+      return "graph";
+    default:
+      return undefined;
+  }
+}
+
 /** Longest quoted excerpt handed to the agent. */
 const EXCERPT_LIMIT = 160;
 
@@ -477,7 +547,12 @@ const SENTENCE: Record<FindingCode, string> = {
     "This version does not perform this kind of block — nothing is written for it.",
   mathRenderError:
     "This formula could not be written out; the board shows its raw text instead.",
-  boardOverflow: "This runs past the right edge of the board and is cut off.",
+  // The fallback only — a real observation goes through `overflowMessage`,
+  // which knows the edge, the amount and the part. Axis-neutral on
+  // purpose: the code covers both the width scan and the fold's too-tall
+  // steps, and "right edge" here once sent an agent hunting the wrong axis.
+  boardOverflow:
+    "This stands past the board's edge, and past the edge nothing is shown.",
   narrationClipMissing:
     "This step's recorded voice clip is missing on disk — it plays silent at its written pace; re-synthesize the clip to the quoted path.",
   regionCollision:
@@ -495,7 +570,11 @@ const HEADLINE: Record<FindingCode, string> = {
   refUnresolved: "point at something that is not on the board",
   unsupportedStep: "are not performed in this version",
   mathRenderError: "could not be written out",
-  boardOverflow: "run past the right edge of the board",
+  // Axis-neutral: the code carries both the width scan and the fold's
+  // too-tall steps, and this line captions the retraction too. Past tense
+  // on purpose — it is the one English form that agrees in every slot the
+  // templates put it ("1 spot ran…", "2 spots ran…", "anything that ran…").
+  boardOverflow: "ran past the board's edge",
   narrationClipMissing: "have a recorded voice clip missing on disk",
   regionCollision: "have declarations standing on top of each other",
   regionBurst: "stand taller than the space they were placed in",
@@ -552,12 +631,12 @@ export function collectFindings(
     });
   }
 
-  for (const ref of observations.overflowing) {
-    const step = stepAt(lecture, ref);
+  for (const o of observations.overflowing) {
+    const step = stepAt(lecture, o.ref);
     findings.push({
       code: "boardOverflow",
-      address: toAddress(ref),
-      message: SENTENCE.boardOverflow,
+      address: toAddress(o.ref),
+      message: overflowMessage(o, step),
       ...quote(step ? summarizeStep(step, EXCERPT_LIMIT) : undefined),
     });
   }
@@ -679,20 +758,175 @@ export function collectFindings(
 }
 
 /**
- * Which measured steps are wider than the space they have. Measurement is
- * the host's job (it owns the layout); this is only the verdict, so it can
- * be pinned without a layout engine. The tolerance absorbs sub-pixel
- * rounding — a 1px difference is not a board the user can see overflowing.
+ * Sub-pixel absorption for the width check — a 1px difference is not a
+ * board the user can see overflowing. Shared with the host, which uses it
+ * to decide when the child walk is worth paying for.
  */
-export function overflowingRefs(
-  measured: readonly { ref: StepRef; scrollWidth: number; clientWidth: number }[],
-  tolerance = 2,
-): StepRef[] {
-  return measured
-    .filter(
-      (m) => m.clientWidth > 0 && m.scrollWidth - m.clientWidth > tolerance,
-    )
-    .map((m) => m.ref);
+export const OVERFLOW_TOLERANCE = 2;
+
+/**
+ * One child of a flagged step that crosses the step's own right edge —
+ * the host's walk (`BoardCanvas::readOverflowParts`) hands these in so
+ * the verdict can name WHAT is over, not only that something is.
+ */
+export interface MeasuredOverflowPart {
+  /** The child's class attribute, space-joined — the pure layer's only
+   *  handle on what kind of thing crossed. */
+  classes: string;
+  /** Its layout right edge relative to the step's box (offset family —
+   *  camera-transform-immune). */
+  right: number;
+  /** Its text, when it has any — the unbreakable token, quoted back. */
+  text?: string;
+}
+
+/** One step's width read, as the host measured it. */
+export interface MeasuredStepWidth {
+  ref: StepRef;
+  scrollWidth: number;
+  clientWidth: number;
+  /**
+   * Present when the raw numbers flagged the step and the host walked its
+   * children; absent when the host did not walk. An EMPTY array means the
+   * walk found nothing attributable — the finding is kept (silence is the
+   * worse failure), honestly unattributed.
+   */
+  parts?: readonly MeasuredOverflowPart[];
+}
+
+/**
+ * One §9 `boardOverflow` fact, with what a fix needs: which edge, how far
+ * over in board px, and — for the width axis, when the walk could tell —
+ * the responsible piece. The px amount lives HERE and in the message,
+ * never in the finding's identity (`signature`), so a rebuild that
+ * re-measures 633 as 634 does not re-announce the same spot.
+ */
+export type OverflowObservation =
+  | {
+      edge: "right";
+      ref: StepRef;
+      overBy: number;
+      culprit?: { kind: "formula" } | { kind: "token"; text: string };
+    }
+  | {
+      edge: "bottom";
+      ref: StepRef;
+      overBy: number;
+      cause: "step" | "growth";
+    };
+
+/**
+ * The overlays a step is DESIGNED to bleed past its own box: the W3
+ * re-based back-reference node is the panel's full width inside its
+ * target's box on purpose (its ink lands in panel coordinates), and the
+ * in-place mark layers are full-bleed siblings of the writing. Measured
+ * live (tech-zh seed, 2026-08-19): a 565px column with a @strike on it
+ * reads scrollWidth 1198 — "633px over" — while every written word fits
+ * and the strike sits exactly on its target. Decoration must never accuse
+ * the writing it decorates; this list is what tells them apart.
+ */
+const DECORATION_CLASSES = new Set([
+  "bansho-backref",
+  "bansho-backref-under",
+  "bansho-backref-over",
+  "bansho-ink-under",
+  "bansho-ink-over",
+  "bansho-illustration-ink",
+]);
+
+const isDecoration = (classes: string): boolean =>
+  classes.split(/\s+/).some((c) => DECORATION_CLASSES.has(c));
+
+/** Longest culprit token quoted back in a message. */
+const TOKEN_QUOTE_LIMIT = 48;
+
+/** The culprit one crossing part names, if it names one. */
+function culpritOf(
+  parts: readonly MeasuredOverflowPart[],
+): { kind: "formula" } | { kind: "token"; text: string } | undefined {
+  // An inline formula never wraps, so when one crosses it IS the story —
+  // display math sizes itself to its box (`fitMathToBox`) and carries
+  // `bansho-math-block` instead, which deliberately does not match here.
+  if (parts.some((p) => /\bbansho-math-inline\b/.test(p.classes))) {
+    return { kind: "formula" };
+  }
+  // The tightest named box around the widest point: among the parts that
+  // reach the farthest right, the one with the SHORTEST text (a wrapper
+  // quotes the whole paragraph; the word span quotes the token). Ties go
+  // to the LATER part — the walk is parent-then-child, so when the host's
+  // own text cap makes a wrapper and its word span read the same length,
+  // later is deeper, and deeper is the token itself (seen live: three
+  // 80-char-capped texts, and the first was the paragraph).
+  const named = parts.filter((p) => p.text);
+  if (named.length === 0) return undefined;
+  const maxRight = Math.max(...named.map((p) => p.right));
+  const tightest = named
+    .filter((p) => p.right === maxRight)
+    .reduce((a, b) => (b.text!.length <= a.text!.length ? b : a));
+  const text = tightest.text!;
+  return {
+    kind: "token",
+    text:
+      text.length > TOKEN_QUOTE_LIMIT
+        ? `${text.slice(0, TOKEN_QUOTE_LIMIT)}…`
+        : text,
+  };
+}
+
+/**
+ * Which measured steps are wider than the space they have, and by how
+ * much. Measurement is the host's job (it owns the layout); this is only
+ * the verdict, so it can be pinned without a layout engine.
+ *
+ * With `parts` in hand the verdict is CONTENT's: designed bleed
+ * (`DECORATION_CLASSES`) is filtered out, and the overrun is the widest
+ * remaining part's own edge — not `scrollWidth`'s, which counts the
+ * decoration too. A step whose crossing children are all decoration is
+ * not overflowing at all: the writing fits, the board is right, and the
+ * old verdict here is exactly what sent an agent hunting for a defect
+ * that did not exist.
+ */
+export function rightOverflows(
+  measured: readonly MeasuredStepWidth[],
+  tolerance = OVERFLOW_TOLERANCE,
+): OverflowObservation[] {
+  const out: OverflowObservation[] = [];
+  for (const m of measured) {
+    if (!(m.clientWidth > 0)) continue;
+    if (m.scrollWidth - m.clientWidth <= tolerance) continue;
+    if (!m.parts) {
+      // No walk (a host that only has the two numbers): the raw verdict,
+      // unattributed.
+      out.push({
+        edge: "right",
+        ref: m.ref,
+        overBy: Math.round(m.scrollWidth - m.clientWidth),
+      });
+      continue;
+    }
+    const content = m.parts.filter(
+      (p) => !isDecoration(p.classes) && p.right - m.clientWidth > tolerance,
+    );
+    if (content.length === 0) {
+      if (m.parts.some((p) => isDecoration(p.classes))) continue; // designed bleed
+      // Walked, found nothing at all — keep the finding, honestly bare.
+      out.push({
+        edge: "right",
+        ref: m.ref,
+        overBy: Math.round(m.scrollWidth - m.clientWidth),
+      });
+      continue;
+    }
+    const right = Math.max(...content.map((p) => p.right));
+    const culprit = culpritOf(content);
+    out.push({
+      edge: "right",
+      ref: m.ref,
+      overBy: Math.round(right - m.clientWidth),
+      ...(culprit ? { culprit } : {}),
+    });
+  }
+  return out;
 }
 
 // ── `check-board` ───────────────────────────────────────────────────────────
@@ -847,9 +1081,14 @@ function warningText(
   code: FindingCode,
   findings: readonly BoardFinding[],
 ): string {
-  const lines = findings.map(
-    (f) => `  - ${formatAddress(f.address)}: ${f.excerpt ?? "(no text)"}`,
-  );
+  // Each spot carries its OWN sentence — the amount, the part, the lever.
+  // The channel used to hand over only the address and the excerpt, which
+  // told the agent something hurt without where inside the step or how
+  // much: pain with no location, and an agent that churns on it.
+  const lines = findings.map((f) => {
+    const wrote = f.excerpt ? ` (you wrote: "${f.excerpt}")` : "";
+    return `  - ${formatAddress(f.address)}: ${f.message}${wrote}`;
+  });
   return [
     `${findings.length} ${plural(findings.length, "spot", "spots")} on the board ${HEADLINE[code]}:`,
     ...lines,

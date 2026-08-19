@@ -495,7 +495,8 @@ your latest append.
 `data.findings: [{ code, address, message, excerpt }]`. Codes:
 `stepParseError`, `refUnresolved` (a look-back or chart annotation that
 matched nothing), `unsupportedStep`, `mathRenderError`, `boardOverflow`
-(past the board's edge — clipped or taller than one board),
+(past the board's edge — the message names the edge, the px over, the
+responsible piece — a quoted token, an inline formula — and the fix),
 `narrationClipMissing` (clip file gone), `staleTrack` (the mixed narration
 track no longer matches this board — the board played the clips one by one
 instead; re-run the mixer), plus four that are not faults but
@@ -507,8 +508,10 @@ user's own controls over their own board.
 ### What the board tells you unasked
 
 Three warnings arrive on their own, once per new problem —
-`stepParseError`, `refUnresolved`, `boardOverflow`, each with addresses
-and text. Fix them in `board.md`; the board keeps going regardless. And one
+`stepParseError`, `refUnresolved`, `boardOverflow`. Each spot carries its
+address, its own sentence — what stands wrong, by how much, and the move
+that fixes it — and what you wrote there. Do what the sentence says in
+`board.md`; the board keeps going regardless. And one
 notice, `boardCollision`, the first time a pair of regions comes to stand on
 each other — nothing moved, nothing erased, but look up before you append.
 

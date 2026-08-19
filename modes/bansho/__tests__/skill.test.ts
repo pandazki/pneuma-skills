@@ -962,7 +962,9 @@ Revenue tripled last year.
   const report = reportBoardCheck(
     collectFindings(parseLecture(BROKEN), {
       mathErrors: [{ section: 0, step: 0 }],
-      overflowing: [{ section: 0, step: 0 }],
+      overflowing: [
+        { edge: "right", ref: { section: 0, step: 0 }, overBy: 40 },
+      ],
     }),
   );
 

@@ -444,6 +444,24 @@ export interface RegionBurst {
   cut: number;
 }
 
+/**
+ * One step the board's own depth could not hold (§9 boardOverflow family,
+ * the vertical half — the horizontal half is measured on the live DOM by
+ * the host). Soft-passed: nothing here truncates or moves anything, the
+ * record only says what happened and by how much.
+ */
+export interface LayoutOverflow {
+  key: string;
+  /** How far past the board's bottom edge the content stands, board px. */
+  overBy: number;
+  /**
+   * `step` — this step alone stands taller than one whole board;
+   * `growth` — a container layer's arrival regrew its frame and pushed the
+   * board's standing content past the bottom edge.
+   */
+  cause: "step" | "growth";
+}
+
 export interface BoardLayout {
   count: number;
   /**
@@ -485,8 +503,11 @@ export interface BoardLayout {
   /** Steps taller than one board — soft-passed (§9 boardOverflow family).
    *  Also carries a container layer whose growth pushed its home board's
    *  standing content past the board's bottom edge (same family: content
-   *  the user cannot see, said out loud). */
-  overflowing: readonly string[];
+   *  the user cannot see, said out loud). Each record keeps the overrun:
+   *  the fold has `charge − budget` in hand at the moment it decides, and
+   *  a finding that says "150px taller than one board" is fixable where
+   *  "taller than one board" alone sent an agent hunting. */
+  overflowing: readonly LayoutOverflow[];
   /**
    * Steps whose home — the run their container frame or anchor target
    * lives in — was already CLOSED by an erase when they arrived. Their ink
@@ -984,7 +1005,7 @@ export function foldBoardLayout(
   const boxes = new Map<string, LayoutBox>();
   const runs = new Map<string, { panel: number; steps: string[] }>();
   const eraseOps: EraseOp[] = [];
-  const overflowing: string[] = [];
+  const overflowing: LayoutOverflow[] = [];
   const orphaned: string[] = [];
   const turns: {
     key: string;
@@ -1264,7 +1285,9 @@ export function foldBoardLayout(
     if (input.container !== undefined && !containerHome.has(input.container)) {
       containerHome.set(input.container, { panel: p, region, run });
     }
-    if (charge > budget) overflowing.push(input.key);
+    if (charge > budget) {
+      overflowing.push({ key: input.key, overBy: charge - budget, cause: "step" });
+    }
     placeBox(state, named, input);
   };
 
@@ -1528,16 +1551,21 @@ export function foldBoardLayout(
         // Every container frame there is (a chart, a graph) is a
         // face-spanning centrepiece, so its regrowth crowds EVERY column —
         // charge them all, the same rungs the frame itself charged.
-        let over = false;
+        let over = 0;
         for (const col of state.cols) {
           const before = col.cursor;
           col.cursor += growth;
-          if (before <= budget && col.cursor > budget) over = true;
+          if (before <= budget && col.cursor > budget) {
+            over = Math.max(over, col.cursor - budget);
+          }
         }
         // The regrown frame crowds its board: standing content below it
         // is pushed past the board's bottom edge. Loud, named after the
-        // layer that did the crowding (§9 boardOverflow family).
-        if (over) overflowing.push(input.key);
+        // layer that did the crowding (§9 boardOverflow family), with the
+        // worst column's overrun on the record.
+        if (over > 0) {
+          overflowing.push({ key: input.key, overBy: over, cause: "growth" });
+        }
       }
       continue;
     }

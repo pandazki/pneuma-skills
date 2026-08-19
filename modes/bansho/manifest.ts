@@ -19,7 +19,7 @@ import { loadBoard, saveBoard } from "./domain.js";
 
 const banshoManifest: ModeManifest = {
   name: "bansho",
-  version: "0.24.0",
+  version: "0.25.0",
   // The name is the brand and stays romanized where the script has no
   // word for it (house style — `modes/kami/manifest.ts` ships "Kami" ×7);
   // the CJK locales have their own reading of 板書 and use it.
@@ -47,6 +47,12 @@ const banshoManifest: ModeManifest = {
     // Wording discipline: these bullets render VERBATIM in the launcher's
     // skill-update prompt, so they may only claim what the build actually
     // does.
+    "0.25.0": [
+      "The board stops accusing writing that fits. A @strike or @circle paints its ink across the whole panel by design, and the width check was reading that bleed as the marked paragraph running off the board — on the stock tech seed it warned about a 565px column being '633px over' while every word stood inside it and the strike sat exactly on its target. The check now looks at what actually crosses the edge and stays quiet when it is only the board's own marks",
+      "When something really is cut off, the warning now says what a fix needs: which edge, how far over in px, and the piece responsible — an unbreakable token is quoted back, an inline formula is told the display-formula move, a step taller than one board is told to split. 'Runs past the right edge' with an address alone sent an agent hunting through a paragraph that wrapped fine",
+      "A step taller than one board is no longer described in right-edge words — it was riding the same warning with the wrong axis, so the fix it pointed at could not exist",
+      "The unasked warnings carry each spot's own sentence now, not just its address and a quote. What reaches you unprompted is the same words check-board would answer with",
+    ],
     "0.24.0": [
       "The board stops warning you about fonts it is drawing perfectly. Chinese characters are full-width in every Chinese font, so the check behind those warnings — which compared how WIDE the text came out — could never tell one Chinese face from another; it now compares what the two actually draw. On a 绿板·行楷 board with Xingkai SC installed, that check was calling all 312 Chinese characters of the lecture 'fallen back' while Xingkai SC was writing every one of them",
       "When a face really is missing, the theme picker now says what took its place — 'Xingkai SC → Zhi Mang Xing' rather than 'the board will fall back'. Getting 行草 instead of 行楷 is a substitution you might happily accept and getting a printed face is one you would not, and the old message read the same either way. The replacement is measured on your machine, not read off the order the fonts are listed in",

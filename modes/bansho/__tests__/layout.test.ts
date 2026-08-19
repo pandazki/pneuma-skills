@@ -192,9 +192,13 @@ describe("the assignment fold", () => {
       2,
       100,
     );
-    // Placed whole on the next unused board, never truncated.
+    // Placed whole on the next unused board, never truncated. The record
+    // carries how far past one board it stands (250 − 100), so the finding
+    // can say the amount instead of just pointing.
     expect(layout.assignments.get("giant")).toEqual({ panel: 1, region: "full", run: "1.0" });
-    expect(layout.overflowing).toEqual(["giant"]);
+    expect(layout.overflowing).toEqual([
+      { key: "giant", overBy: 150, cause: "step" },
+    ]);
     // Degenerate continuation (a bad lecture, handled deterministically):
     // both boards are spoken for, and the room no longer makes room —
     // `b` joins the giant's own run and the board stands over-full.
@@ -306,8 +310,11 @@ describe("the assignment fold", () => {
     }
     expect(after.assignments.get("layer")).toEqual({ panel: 0, region: "full", run: "0.0" });
     // Board 0 now stands at 540 + 160 = 700 > 600: the growth crowded the
-    // standing content past the board's bottom edge — said out loud.
-    expect(after.overflowing).toEqual(["layer"]);
+    // standing content past the board's bottom edge — said out loud, with
+    // the overrun (700 − 600) on the record.
+    expect(after.overflowing).toEqual([
+      { key: "layer", overBy: 100, cause: "growth" },
+    ]);
   });
 });
 

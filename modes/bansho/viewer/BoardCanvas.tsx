@@ -124,7 +124,14 @@ const MEASURED_IN_HOST: ReadonlySet<Step["kind"]> = new Set<Step["kind"]>([
 /** A board whose panel never mounted — an outline of nothing, shared. */
 const EMPTY_PANEL_OUTLINE: PanelOutline = Object.freeze({ groups: [] });
 const EMPTY_OUTLINES: readonly PanelOutline[] = Object.freeze([]);
-import { BURST_MARK_NOTE, burstMarks, overflowingRefs } from "./board-check.js";
+import {
+  BURST_MARK_NOTE,
+  burstMarks,
+  OVERFLOW_TOLERANCE,
+  rightOverflows,
+  type MeasuredOverflowPart,
+  type OverflowObservation,
+} from "./board-check.js";
 import type { SnapshotBasis } from "./glance.js";
 import {
   boardCount,
@@ -272,13 +279,17 @@ export interface CompiledBoard {
    */
   unplacedMathErrors: number;
   /**
-   * Steps whose writing runs past the right edge of the board (§9
-   * `boardOverflow`). Measured here because only the host has layout; the
-   * verdict itself is the pure classifier in `board-check.ts`. The board
-   * clips horizontally, so an overflowing step is content the user simply
-   * never sees — exactly the silent loss worth telling the agent about.
+   * Steps standing past the board's edge (§9 `boardOverflow`), both axes:
+   * the width scan's verdicts (measured here because only the host has
+   * layout; the verdict itself is `board-check.ts::rightOverflows`) and
+   * the fold's too-tall records (`layout.overflowing`), mapped to the same
+   * observation shape. Each carries the overrun in board px and, when the
+   * child walk could tell, the responsible part — the board clips at its
+   * edges, so an overflowing step is content the user simply never sees,
+   * and a finding without the amount and the part is pain without a
+   * location.
    */
-  overflowing: StepRef[];
+  overflowing: OverflowObservation[];
   /**
    * The voice layer of THIS compile (T10): each applied clip's exact audio
    * window on the canonical timeline. Empty when the board has no
@@ -2946,13 +2957,26 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
     // Width check (§9 `boardOverflow`) — read here, BEFORE the timeline's
     // seek writes styles back, so the whole pass is one forced layout
     // rather than a write/read ping-pong. Reveal state does not affect it:
-    // clipping and opacity are not layout.
-    const overflowing = overflowingRefs(
-      newItems.map((item) => ({
-        ref: item.ref,
-        scrollWidth: item.node instanceof HTMLElement ? item.node.scrollWidth : 0,
-        clientWidth: item.node instanceof HTMLElement ? item.node.clientWidth : 0,
-      })),
+    // clipping and opacity are not layout. The child walk is paid only for
+    // steps the two raw numbers already flag — normally zero — and it is
+    // reads-only inside the same forced layout, so the hot rebuild path
+    // stays two reads per step.
+    const overflowing = rightOverflows(
+      newItems.map((item) => {
+        const node = item.node instanceof HTMLElement ? item.node : null;
+        const scrollWidth = node?.scrollWidth ?? 0;
+        const clientWidth = node?.clientWidth ?? 0;
+        return {
+          ref: item.ref,
+          scrollWidth,
+          clientWidth,
+          ...(node &&
+          clientWidth > 0 &&
+          scrollWidth - clientWidth > OVERFLOW_TOLERANCE
+            ? { parts: readOverflowParts(node) }
+            : {}),
+        };
+      }),
     );
 
     // ── Stage pass (C2): camera poses + Van Wijk durations ───────────────
@@ -3227,11 +3251,19 @@ function sizeFigure(item: BuiltItem, region: { w: number; h: number }): void {
     }
     // Fold-detected too-tall steps join the §9 boardOverflow family the
     // horizontal scan already feeds (soft-passed on the board, loudly
-    // reported to the agent).
-    const tooTall: StepRef[] = [];
-    for (const key of layoutRef.current?.overflowing ?? []) {
-      const ref = parseStepKey(key);
-      if (ref) tooTall.push(ref);
+    // reported to the agent) — as BOTTOM-edge observations, so the finding
+    // stops describing a too-tall step in right-edge words.
+    const tooTall: OverflowObservation[] = [];
+    for (const over of layoutRef.current?.overflowing ?? []) {
+      const ref = parseStepKey(over.key);
+      if (ref) {
+        tooTall.push({
+          edge: "bottom",
+          ref,
+          overBy: Math.round(over.overBy),
+          cause: over.cause,
+        });
+      }
     }
     const inkAfterErase: StepRef[] = [];
     for (const key of layoutRef.current?.orphaned ?? []) {
@@ -4309,7 +4341,7 @@ function wipeSteps(board: HTMLElement): void {
  * only.
  *
  * Exported for its own test: this is the measurement half of a §9 finding
- * (the same split `overflowingRefs` has — the host reads the DOM, the pure
+ * (the same split `rightOverflows` has — the host reads the DOM, the pure
  * classifier in board-check.ts turns it into words), and the attribution
  * from a failed formula to the step that owns it is the whole point.
  */
@@ -4329,6 +4361,83 @@ export function readMathErrors(board: HTMLElement): {
     else unplacedMathErrors++;
   }
   return { mathErrors, unplacedMathErrors };
+}
+
+/**
+ * Which children of a width-flagged step actually cross its right edge —
+ * the HOST half of the §9 `boardOverflow` width check (the same split
+ * `readMathErrors` has: the host reads the DOM, the pure classifier in
+ * board-check.ts turns it into words).
+ *
+ * Why `scrollWidth` alone cannot be trusted to accuse: it counts every
+ * descendant the step is the containing block for, and the W3 re-based
+ * back-reference overlay is the panel's FULL width inside its target's box
+ * by design — its ink has to land in panel coordinates. Measured live
+ * (tech-zh seed, 2026-08-19): the @strike target's 565px column read
+ * scrollWidth 1198 — "633px over" — while every written word fit and the
+ * strike sat exactly on its quote. This walk names what crossed, so the
+ * verdict (`rightOverflows`) can tell designed bleed from writing the
+ * reader loses — and quote the unbreakable token that is actually over.
+ *
+ * Geometry is the offset family only — a client rect is the camera's
+ * opinion (G8-J), and a box overflowing the whole board reads as a
+ * plausible column through one. Positions accumulate to the document root
+ * and difference out, so the walk does not care whether the offsetParent
+ * chain of a child passes through the step node itself (on an unstaged
+ * board a static step is nobody's offsetParent).
+ *
+ * Paid only for steps whose two raw numbers already flag them, with reads
+ * only — the rebuild's forced layout stays a single pass.
+ */
+export function readOverflowParts(node: HTMLElement): MeasuredOverflowPart[] {
+  const absLeft = (el: HTMLElement): number => {
+    let x = 0;
+    let p: Element | null = el;
+    while (p instanceof HTMLElement) {
+      x += p.offsetLeft;
+      p = p.offsetParent;
+    }
+    return x;
+  };
+  const base = absLeft(node);
+  const limit = node.clientWidth + OVERFLOW_TOLERANCE;
+  const parts: MeasuredOverflowPart[] = [];
+  const push = (classes: string, right: number, raw: string | null): void => {
+    if (!(right > limit)) return;
+    const text = raw?.replace(/\s+/g, " ").trim().slice(0, 80);
+    parts.push({ classes, right, ...(text ? { text } : {}) });
+  };
+  const walk = (el: Element): void => {
+    for (const child of Array.from(el.children)) {
+      if (child instanceof HTMLElement) {
+        const left = absLeft(child) - base;
+        // `scrollWidth` folds the child's own overflowing content in (the
+        // long token inside a column-wide text box); `offsetWidth` covers
+        // the box that is simply wider than the step.
+        push(
+          child.className,
+          left + Math.max(child.offsetWidth, child.scrollWidth),
+          child.textContent,
+        );
+        walk(child);
+      } else if (child instanceof SVGSVGElement) {
+        // No offset family on svg roots. Every bansho svg is width-bound
+        // (overlays are full-bleed, charts are 100%), so its layout box is
+        // its computed width at its parent's left — good enough to name
+        // it, and ink painted past the box (`overflow: visible`) is not
+        // layout and must not accuse.
+        const left = child.parentElement
+          ? absLeft(child.parentElement) - base
+          : 0;
+        const width =
+          Number.parseFloat(getComputedStyle(child).width) || 0;
+        push(child.getAttribute("class") ?? "", left + width, null);
+        // Never descend into svg internals — their geometry is paint.
+      }
+    }
+  };
+  walk(node);
+  return parts;
 }
 
 /** Build one flat entry through its factory (badge / placeholder fallbacks). */

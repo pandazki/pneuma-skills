@@ -32,11 +32,12 @@ import {
   collectFindings,
   deriveCollisionNotification,
   deriveNotifications,
-  overflowingRefs,
   REGION_BURST_SENTENCE,
   reportBoardCheck,
+  rightOverflows,
   TURN_ON_FULL_WALL_MESSAGE,
   type BoardFinding,
+  type OverflowObservation,
 } from "../viewer/board-check.js";
 import { BANNED_WORDS } from "./vocabulary.js";
 
@@ -150,11 +151,85 @@ describe("collectFindings — everything the board could not perform", () => {
     const ref: StepRef = { section: 0, step: 0 };
     const findings = collectFindings(clean, {
       mathErrors: [],
-      overflowing: [ref],
+      overflowing: [{ edge: "right", ref, overBy: 40 }],
     });
     expect(codesOf(findings)).toEqual(["boardOverflow"]);
     expect(findings[0]!.address).toEqual({ section: 0, step: 1 });
     expect(findings[0]!.excerpt).toContain("One paragraph");
+  });
+
+  test("a width overflow says how far over, and names the token to break", () => {
+    const ref: StepRef = { section: 0, step: 0 };
+    const [finding] = collectFindings(clean, {
+      mathErrors: [],
+      overflowing: [
+        {
+          edge: "right",
+          ref,
+          overBy: 1333,
+          culprit: { kind: "token", text: "VeryLongConfigurationKey" },
+        },
+      ],
+    });
+    // The three things a fix needs: the amount, the responsible piece,
+    // and the lever — not "edit board.md".
+    expect(finding!.message).toContain("1333px");
+    expect(finding!.message).toContain("right edge");
+    expect(finding!.message).toContain('"VeryLongConfigurationKey"');
+    expect(finding!.message).toContain("Break it");
+  });
+
+  test("an over-wide inline formula is told the display-formula move", () => {
+    const ref: StepRef = { section: 0, step: 0 };
+    const [finding] = collectFindings(clean, {
+      mathErrors: [],
+      overflowing: [
+        { edge: "right", ref, overBy: 135, culprit: { kind: "formula" } },
+      ],
+    });
+    expect(finding!.message).toContain("135px");
+    expect(finding!.message).toContain("$$");
+    expect(finding!.message).toContain("never wraps");
+  });
+
+  test("a width overflow nobody could attribute says so instead of guessing", () => {
+    const ref: StepRef = { section: 0, step: 0 };
+    const [finding] = collectFindings(clean, {
+      mathErrors: [],
+      overflowing: [{ edge: "right", ref, overBy: 90 }],
+    });
+    expect(finding!.code).toBe("boardOverflow");
+    expect(finding!.message).toContain("90px");
+    // The honest fallback: the writing itself is the widest thing the
+    // board knows of on a prose step.
+    expect(finding!.message.length).toBeGreaterThan(40);
+  });
+
+  test("a step taller than one board is a bottom-edge sentence, not a right-edge one", () => {
+    const ref: StepRef = { section: 0, step: 0 };
+    const [finding] = collectFindings(clean, {
+      mathErrors: [],
+      overflowing: [{ edge: "bottom", ref, overBy: 150, cause: "step" }],
+    });
+    expect(finding!.code).toBe("boardOverflow");
+    expect(finding!.message).toContain("150px");
+    expect(finding!.message).toContain("taller");
+    expect(finding!.message).toContain("bottom edge");
+    expect(finding!.message).not.toContain("right edge");
+    // The lever for a too-tall step is splitting, so the flow can carry on.
+    expect(finding!.message).toContain("Split");
+  });
+
+  test("a layer that grew past the board's bottom edge names the growth", () => {
+    const ref: StepRef = { section: 0, step: 0 };
+    const [finding] = collectFindings(clean, {
+      mathErrors: [],
+      overflowing: [{ edge: "bottom", ref, overBy: 100, cause: "growth" }],
+    });
+    expect(finding!.code).toBe("boardOverflow");
+    expect(finding!.message).toContain("100px");
+    expect(finding!.message).toContain("@turn");
+    expect(finding!.message).not.toContain("right edge");
   });
 
   test("ink aimed at erased writing is a loud refUnresolved finding with its own sentence (review P1-1)", () => {
@@ -182,7 +257,26 @@ describe("collectFindings — everything the board could not perform", () => {
   test("no rendering vocabulary in anything the agent reads", () => {
     const findings = collectFindings(broken, {
       mathErrors: [{ section: 0, step: 0 }],
-      overflowing: [{ section: 0, step: 0 }],
+      // Every overflow branch that speaks: token, formula, bare width,
+      // too-tall, and growth — the new sentences say the most, so they
+      // are the most able to say it in the wrong dialect.
+      overflowing: [
+        {
+          edge: "right",
+          ref: { section: 0, step: 0 },
+          overBy: 633,
+          culprit: { kind: "token", text: "VeryLongToken" },
+        },
+        {
+          edge: "right",
+          ref: { section: 0, step: 0 },
+          overBy: 135,
+          culprit: { kind: "formula" },
+        },
+        { edge: "right", ref: { section: 0, step: 0 }, overBy: 90 },
+        { edge: "bottom", ref: { section: 0, step: 0 }, overBy: 150, cause: "step" },
+        { edge: "bottom", ref: { section: 0, step: 0 }, overBy: 100, cause: "growth" },
+      ],
       inkAfterErase: [{ section: 0, step: 0 }],
       // W8 — the burst's two branches say the most, so they are the most
       // able to say it in the wrong dialect. A cut burst reaches both the
@@ -383,28 +477,166 @@ describe("readMathErrors — a failed formula knows which step it is in", () => 
   });
 });
 
-describe("overflowingRefs — the classifier, measured elsewhere", () => {
+describe("rightOverflows — the classifier, measured elsewhere", () => {
   const ref = (step: number): StepRef => ({ section: 0, step });
 
-  test("content wider than its box overflows", () => {
+  test("content wider than its box overflows, with the amount", () => {
     expect(
-      overflowingRefs([
+      rightOverflows([
         { ref: ref(0), scrollWidth: 900, clientWidth: 800 },
         { ref: ref(1), scrollWidth: 800, clientWidth: 800 },
       ]),
-    ).toEqual([ref(0)]);
+    ).toEqual([{ edge: "right", ref: ref(0), overBy: 100 }]);
   });
 
   test("sub-pixel rounding is not an overflow", () => {
     expect(
-      overflowingRefs([{ ref: ref(0), scrollWidth: 801, clientWidth: 800 }]),
+      rightOverflows([{ ref: ref(0), scrollWidth: 801, clientWidth: 800 }]),
     ).toEqual([]);
   });
 
   test("an unmeasured box (no layout yet) is never reported", () => {
     expect(
-      overflowingRefs([{ ref: ref(0), scrollWidth: 0, clientWidth: 0 }]),
+      rightOverflows([{ ref: ref(0), scrollWidth: 0, clientWidth: 0 }]),
     ).toEqual([]);
+  });
+
+  test("a back-reference overlay bleeding past the box is not an overflow", () => {
+    // The measured false positive (2026-08-19, tech-zh seed live in
+    // Chromium): the @strike target's box is a 565px column, and the W3
+    // re-based overlay inside it is the panel's full 1242px on purpose —
+    // its ink has to land in panel coordinates. scrollWidth reads 1198,
+    // "633px over", while every written word fits and the strike sits
+    // exactly on its target. Decoration that is DESIGNED to bleed must
+    // not accuse the writing it decorates.
+    expect(
+      rightOverflows([
+        {
+          ref: ref(0),
+          scrollWidth: 1198,
+          clientWidth: 565,
+          parts: [{ classes: "bansho-backref", right: 1198 }],
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  test("in-place mark overlays are decoration too", () => {
+    expect(
+      rightOverflows([
+        {
+          ref: ref(0),
+          scrollWidth: 700,
+          clientWidth: 565,
+          parts: [
+            { classes: "bansho-ink-under", right: 700 },
+            { classes: "bansho-ink-over", right: 700 },
+          ],
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  test("an unbreakable token is the culprit, measured by its own edge", () => {
+    // The measured true positive (same board): a 1898px token span in a
+    // 565px column. The amount is the CONTENT's overrun, not scrollWidth's.
+    expect(
+      rightOverflows([
+        {
+          ref: ref(0),
+          scrollWidth: 1898,
+          clientWidth: 565,
+          parts: [
+            { classes: "bansho-text", right: 1898, text: "配置项 VeryLongKey 决定这个行为。" },
+            { classes: "bansho-w", right: 1898, text: "VeryLongKey" },
+          ],
+        },
+      ]),
+    ).toEqual([
+      {
+        edge: "right",
+        ref: ref(0),
+        overBy: 1333,
+        culprit: { kind: "token", text: "VeryLongKey" },
+      },
+    ]);
+  });
+
+  test("a text-length tie names the deepest part — the token, not its wrapper", () => {
+    // Seen live: the host caps part text at 80 chars, so a paragraph
+    // wrapper and the token span inside it can read the same length. The
+    // walk is parent-then-child, so the later part is the tighter box.
+    expect(
+      rightOverflows([
+        {
+          ref: ref(0),
+          scrollWidth: 1898,
+          clientWidth: 565,
+          parts: [
+            { classes: "bansho-text", right: 1898, text: "配置项 VeryLongToken 决定" },
+            { classes: "bansho-w", right: 1898, text: "VeryLongTokenItself…" },
+          ],
+        },
+      ]),
+    ).toEqual([
+      {
+        edge: "right",
+        ref: ref(0),
+        overBy: 1333,
+        culprit: { kind: "token", text: "VeryLongTokenItself…" },
+      },
+    ]);
+  });
+
+  test("content still accuses when decoration bleeds beside it", () => {
+    expect(
+      rightOverflows([
+        {
+          ref: ref(0),
+          scrollWidth: 1198,
+          clientWidth: 565,
+          parts: [
+            { classes: "bansho-backref", right: 1198 },
+            { classes: "bansho-w", right: 800, text: "LongToken" },
+          ],
+        },
+      ]),
+    ).toEqual([
+      {
+        edge: "right",
+        ref: ref(0),
+        overBy: 235,
+        culprit: { kind: "token", text: "LongToken" },
+      },
+    ]);
+  });
+
+  test("an inline formula crossing the edge is named a formula", () => {
+    expect(
+      rightOverflows([
+        {
+          ref: ref(0),
+          scrollWidth: 700,
+          clientWidth: 565,
+          parts: [
+            { classes: "bansho-math bansho-math-inline", right: 700 },
+          ],
+        },
+      ]),
+    ).toEqual([
+      { edge: "right", ref: ref(0), overBy: 135, culprit: { kind: "formula" } },
+    ]);
+  });
+
+  test("a walked step with nothing attributable keeps its finding, honestly", () => {
+    // The raw numbers flagged it and the walk found no crossing part at
+    // all — the one wrong answer is silence, so the finding stays, with
+    // no culprit invented.
+    expect(
+      rightOverflows([
+        { ref: ref(0), scrollWidth: 900, clientWidth: 800, parts: [] },
+      ]),
+    ).toEqual([{ edge: "right", ref: ref(0), overBy: 100 }]);
   });
 });
 
@@ -504,6 +736,51 @@ describe("deriveNotifications — transitions, not repetitions", () => {
         expect(text).not.toContain(banned);
       }
     }
+  });
+
+  test("the warning carries each finding's own sentence, not just its address", () => {
+    // The owner watched an agent receive "1 spot … run past the right
+    // edge" with an address and an excerpt and churn for a long time: the
+    // channel had dropped the finding's message — the amount, the culprit,
+    // the lever — on the floor. The notification is the agent's only
+    // unasked sense; it must carry what a fix needs.
+    const overflowing: OverflowObservation[] = [
+      {
+        edge: "right",
+        ref: { section: 0, step: 0 },
+        overBy: 1333,
+        culprit: { kind: "token", text: "VeryLongConfigurationKey" },
+      },
+    ];
+    const findings = collectFindings(clean, { mathErrors: [], overflowing });
+    const { notifications } = deriveNotifications(new Set(), findings);
+    expect(notifications.length).toBe(1);
+    const message = notifications[0]!.message;
+    expect(message).toContain("1333px");
+    expect(message).toContain('"VeryLongConfigurationKey"');
+    expect(message).toContain("Break it");
+    // …and still says where, and what stands written there.
+    expect(message).toContain("the opening, step 1");
+    expect(message).toContain("One paragraph");
+  });
+
+  test("a changed overflow amount does not re-announce the same spot", () => {
+    // The amount lives in the MESSAGE, never in the identity: a rebuild
+    // that re-measures 633 as 634 must stay silent, or the channel trains
+    // the agent to ignore it (the transitions bar above).
+    const at = (overBy: number): OverflowObservation[] => [
+      { edge: "right", ref: { section: 0, step: 0 }, overBy },
+    ];
+    const first = deriveNotifications(
+      new Set(),
+      collectFindings(clean, { mathErrors: [], overflowing: at(633) }),
+    );
+    expect(first.notifications.length).toBe(1);
+    const second = deriveNotifications(
+      first.seen,
+      collectFindings(clean, { mathErrors: [], overflowing: at(634) }),
+    );
+    expect(second.notifications).toEqual([]);
   });
 });
 
