@@ -102,11 +102,21 @@ chore: bump version to X.Y.Z — <brief milestone description>
 
 ### 5b. Pre-push sanity — run the test suite
 
-Before pushing, run the full test suite locally:
+Before pushing, run the **full** test suite locally — this is the one moment
+it is required:
 
 ```
-bun test
+bun run test:all
 ```
+
+Day-to-day work runs `bun run test` (everything except `backends/`, ~34s).
+`test:all` is the superset, and the extra ~4 minutes is entirely the backend
+lifecycle harness spawning real `claude` / `codex` / `kimi acp` processes.
+Run it here anyway: a release is exactly when "the backends still boot" is
+worth four minutes. (See `.claude/rules/testing.md` for the suite table and
+for `kimi-cli > resume`, a live-model assertion that flakes on a machine with
+the binary installed — check `git diff <base> --stat -- backends/` before
+treating it as yours.)
 
 CI runs the same suite as the gate before tagging + publishing — so a local pass is the cheapest way to avoid burning a CI cycle on a hardcoded-version mismatch or a typing slip that only manifests when something downstream re-imports the manifest. Expected output:
 

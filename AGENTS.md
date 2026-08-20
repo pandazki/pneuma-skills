@@ -40,7 +40,11 @@ bun run dev doc          # Doc Mode (cwd as workspace)
 bun run dev doc --workspace ~/notes --port 17996 --backend claude-code --no-open --debug
 bun run build            # Vite production build
 bun run typecheck        # tsc --noEmit
-bun test                 # All tests (bun:test)
+bun run test             # Default suite — everything except backends/ (~34s)
+bun run test:frontend    # src/ + modes/            bun run test:server   # core bin server snapshot plugins
+bun run test:modes       # modes/                   bun run test:backends # backends/ (slow: real CLI spawns)
+bun run test:all         # Full suite — the bump / release gate
+bun test modes/bansho    # Any path filter still works while iterating
 
 # Skill evolution
 pneuma evolve <mode>
@@ -177,7 +181,7 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 | **ViewerCommandDescriptor** | `core/types/viewer-contract.ts` | Mode `manifest.viewerApi.commands[]` | Runtime injects into `props.commands`; viewer renders command menu; click → `onNotifyAgent` → `server/ws-bridge.ts` |
 | **ViewerSelectionContext** + `extractContext()` | `core/types/viewer-contract.ts` | Each viewer implements `extractContext` | `server/ws-bridge.ts` prefixes every `user_message` with `<viewer-context>` block |
 | **ViewerNotification** | `core/types/viewer-contract.ts` | Viewer calls `props.onNotifyAgent()` | `server/ws-bridge.ts` buffers; flushes as system message on agent idle |
-| **ViewerLocator** | `core/types/viewer-contract.ts` | Agent emits `<viewer-locator>` chat tag | `src/components/chat/*` renders card; click triggers `navigateRequest` |
+| **ViewerLocator** | `core/types/viewer-contract.ts` | Agent emits `<viewer-locator>` chat tag | `src/components/MessageBubble.tsx` renders card; click → `store::setNavigateRequest` (returns a `seq`) → `navigateRequest`; the viewer's verdict returns through `onNavigateComplete(result?)` as `navigateOutcome`, and a failure is shown beside the card that was pressed. `src/store/navigate-plan.ts` owns the `contentSet` half — an address naming a board this workspace lacks is refused, never redirected to the open one |
 | **Source\<T\>** + `SourceEvent<T>` + `SourceProvider` + `SourceContext` + `FileChannel` + `FileChangeEvent` + `SourceDescriptor` | `core/types/source.ts` | `core/source-registry.ts` picks provider by `kind` from `manifest.sources` | Built-in providers in `core/sources/{file-glob,json-file,aggregate-file,memory}.ts` (all extend `core/sources/base.ts` which enforces the four invariants); viewer subscribes via `src/hooks/useSource.ts` |
 | **AgentBackend** + `AgentCapabilities` + `AgentSessionInfo` + `AgentLaunchOptions` | `core/types/agent-backend.ts` | Each backend's `manifest.ts::createBackend(port)` | `bin/pneuma.ts` boots one per session; `server/ws-bridge*.ts` drives lifecycle |
 | **AgentProtocolAdapter** _(reserved/unused — see `BridgeBackend` row for the real seam)_ | `core/types/agent-backend.ts` | — (no production implementor) | — (no production consumer) |

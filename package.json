@@ -38,7 +38,12 @@
     "build": "vite build",
     "start": "bun bin/pneuma.ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
+    "test": "bun test core server bin snapshot plugins src modes",
+    "test:all": "bun test",
+    "test:frontend": "bun test src modes",
+    "test:server": "bun test core server bin snapshot plugins",
+    "test:modes": "bun test modes",
+    "test:backends": "bun test backends",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
