@@ -219,6 +219,15 @@ function getImageUrl(file: string, contentSet: string | null, imageVersion: numb
   return `/content/${prefix}${file}?v=${imageVersion}`;
 }
 
+// Backoff schedule for a card whose <img> failed to load. The manifest flip
+// to "ready" and the image bytes landing on disk can race (generation writes
+// the file, the agent writes the manifest, chokidar batches both), and the
+// global imageVersion only bumps on a LATER image write — which never comes
+// for the last image of a batch. Without self-retry, one transient 404 or
+// truncated read leaves the card on "Not yet generated" forever while the
+// file sits happily on disk.
+const IMAGE_RETRY_DELAYS_MS = [400, 1000, 2500, 6000];
+
 /** Convert manifest rows into React Flow nodes. */
 function manifestToNodes(
   manifest: IllustrateManifest,
@@ -325,12 +334,26 @@ const ImageCardNode = memo(({ data, selected }: NodeProps<Node<ImageNodeData>>) 
   const [hovered, setHovered] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [errored, setErrored] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const { item, contentSet, imageVersion, isAnnotated, mode } = data;
   const colors = ((data as any).colors as ThemeColors) ?? getColors("dark");
   const isGenerating = item.status === "generating";
+  const retriesExhausted = attempt >= IMAGE_RETRY_DELAYS_MS.length;
 
   // Reset error state when image version changes (new image generated)
-  useEffect(() => { setErrored(false); setLoaded(false); }, [imageVersion]);
+  useEffect(() => { setErrored(false); setLoaded(false); setAttempt(0); }, [imageVersion, item.file]);
+
+  // Self-heal a failed load: re-mount the <img> with a fresh cache-busting
+  // query after a backoff, up to the schedule above. Only after the schedule
+  // is exhausted does the card admit "Not yet generated".
+  useEffect(() => {
+    if (!errored || retriesExhausted) return;
+    const t = setTimeout(() => {
+      setErrored(false);
+      setAttempt((a) => a + 1);
+    }, IMAGE_RETRY_DELAYS_MS[attempt]);
+    return () => clearTimeout(t);
+  }, [errored, attempt, retriesExhausted]);
 
   const ringColor = mode === "annotate" ? colors.annotateRing : mode === "select" ? colors.selectRing : colors.primary;
 
@@ -383,7 +406,7 @@ const ImageCardNode = memo(({ data, selected }: NodeProps<Node<ImageNodeData>>) 
               alignItems: "center", justifyContent: "center", gap: 6,
               background: `linear-gradient(135deg, ${colors.surfaceSolid} 0%, ${colors.surfaceSolidAlt} 100%)`,
             }}>
-              {errored ? (
+              {errored && retriesExhausted ? (
                 <>
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={colors.textDim} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
@@ -400,7 +423,7 @@ const ImageCardNode = memo(({ data, selected }: NodeProps<Node<ImageNodeData>>) 
           )}
 
           <img
-            src={getImageUrl(item.file, contentSet, imageVersion)}
+            src={`${getImageUrl(item.file, contentSet, imageVersion)}&r=${attempt}`}
             alt={item.title}
             draggable={false}
             loading="lazy"
@@ -1245,16 +1268,28 @@ function CanvasInner(props: ViewerPreviewProps) {
   // keyed by content-set prefix. We pick the active one at render time.
   const studioSource = sources.studio as Source<Studio>;
   const { value: studio } = useSource(studioSource);
-  const manifest = useMemo<IllustrateManifest | null>(() => {
-    if (!studio) return null;
+  // Resolve the manifest to render AND the content-set key it actually
+  // belongs to. Every image URL must be prefixed with the RESOLVED key, not
+  // `activeContentSet`: when the store's active set is still null (fresh
+  // session, agent created the first content set, no locator clicked yet)
+  // the fallback picks e.g. `panda-logo`'s manifest — building URLs with the
+  // null active set then drops the directory prefix, every <img> 404s, and
+  // the whole canvas reads "Not yet generated" while the files sit on disk.
+  const { manifest, resolvedContentSet } = useMemo<{
+    manifest: IllustrateManifest | null;
+    resolvedContentSet: string | null;
+  }>(() => {
+    if (!studio) return { manifest: null, resolvedContentSet: null };
     const key = activeContentSet ?? "";
     const byCS = studio.byContentSet;
-    if (byCS[key]) return byCS[key];
+    if (byCS[key]) return { manifest: byCS[key], resolvedContentSet: key || null };
     // Fallback: if no matching content set (e.g. activeContentSet not yet
     // set), take the first manifest we have. Mirrors the old
     // files.find(...) behavior that just picked the first match.
     const firstKey = Object.keys(byCS)[0];
-    return firstKey !== undefined ? byCS[firstKey] : null;
+    return firstKey !== undefined
+      ? { manifest: byCS[firstKey], resolvedContentSet: firstKey || null }
+      : { manifest: null, resolvedContentSet: null };
   }, [studio, activeContentSet]);
 
   const annotatedFiles = useMemo(() => {
@@ -1266,8 +1301,8 @@ function CanvasInner(props: ViewerPreviewProps) {
   // Convert manifest → React Flow nodes
   const computedNodes = useMemo(() => {
     if (!manifest) return [];
-    return manifestToNodes(manifest, activeContentSet, imageVersion, annotatedFiles, previewMode, colors);
-  }, [manifest, activeContentSet, imageVersion, annotatedFiles, previewMode, colors]);
+    return manifestToNodes(manifest, resolvedContentSet, imageVersion, annotatedFiles, previewMode, colors);
+  }, [manifest, resolvedContentSet, imageVersion, annotatedFiles, previewMode, colors]);
 
   // Sync computed nodes to React Flow state, applying multi-select
   useEffect(() => {
@@ -1314,10 +1349,10 @@ function CanvasInner(props: ViewerPreviewProps) {
 
   const downloadImage = useCallback((item: ManifestItem) => {
     const a = document.createElement("a");
-    a.href = getImageUrl(item.file, activeContentSet, imageVersion);
+    a.href = getImageUrl(item.file, resolvedContentSet, imageVersion);
     a.download = item.file.split("/").pop() || "image.png";
     a.click();
-  }, [imageVersion, activeContentSet]);
+  }, [imageVersion, resolvedContentSet]);
 
   // ── Build selection info from manifest ─────────────────────────────────────
   const buildSelectedInfo = useCallback((item: ManifestItem, rowId: string, rowLabel: string): SelectedImageInfo | null => {
@@ -1643,7 +1678,7 @@ function CanvasInner(props: ViewerPreviewProps) {
             <HighlighterOverlay
               active={cmdHeld}
               nodes={computedNodes}
-              contentSet={activeContentSet}
+              contentSet={resolvedContentSet}
               imageVersion={imageVersion}
               onHighlightRegion={handleHighlightRegion}
             />
@@ -1654,7 +1689,7 @@ function CanvasInner(props: ViewerPreviewProps) {
         <SidebarSlider
           selectedImage={selectedImage}
           visible={!!selectedImage && previewMode === "view"}
-          contentSet={activeContentSet}
+          contentSet={resolvedContentSet}
           imageVersion={imageVersion}
           onClose={() => setSelectedImage(null)}
           onCopyPrompt={(item) => copyPrompt(item)}
@@ -1678,7 +1713,7 @@ function CanvasInner(props: ViewerPreviewProps) {
       {/* Detail overlay */}
       {detailItem && (
         <ImageDetail
-          item={detailItem} contentSet={activeContentSet} imageVersion={imageVersion}
+          item={detailItem} contentSet={resolvedContentSet} imageVersion={imageVersion}
           onClose={() => setDetailItem(null)}
           onCopyPrompt={() => copyPrompt(detailItem)}
           onDownload={() => downloadImage(detailItem)}
