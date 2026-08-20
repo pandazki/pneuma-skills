@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.34.0] - 2026-08-20
+
+### Added
+- **Illustrate learns the logo trade.** A new genre playbook (`references/logo-mascot.md`) teaches identity work as its own craft: a logo first and a character second — 6–10 rounded shapes in one continuous silhouette, exactly two IP colors over one solid background, readable at 32 × 32, emerging from a lower corner at 75–85% of the canvas, with only a breath (8–12%) of internal modeling — plus a fill-in prompt skeleton that carries all of it into every call. Inspired by [ip-as-logo](https://github.com/s1dashu/ip-as-logo-skill) by @s1dashu.
+- **Identity batches propose before they spend.** An open-ended "make me a logo" now mines product context first — in a project session, the project atlas and README — then puts up three directions (subject — product connection — defining silhouette) and waits for a nod before generating six labeled candidates: two per direction across all three (A1–C2), or six controlled variants of a chosen one (A1–A6). One row per direction, so the canvas reads as the comparison. Simple one-off generations stay confirmation-free as ever.
+- **Every candidate is judged, and the judging is honest.** After a batch lands the agent inspects each image against the playbook's rubric — reads-as-illustration, color count, fragile contours, cropped paired features, backgrounds that became scenes — and says which candidates it recommends and why. Non-recommended results stay in their row with the exact findings; nothing is silently filtered, repaired, or retried.
+
+### Improved
+- **Large batches fan out; the manifest keeps one writer.** Illustrate batch generation may now run calls concurrently — one candidate per call, never a contact sheet or grid — while `manifest.json` is only ever written by the agent, serially, as each result lands.
+
 ## [3.33.0] - 2026-08-19
 
 ### Added
