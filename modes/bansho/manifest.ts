@@ -19,7 +19,7 @@ import { loadBoard, saveBoard } from "./domain.js";
 
 const banshoManifest: ModeManifest = {
   name: "bansho",
-  version: "0.25.0",
+  version: "0.25.1",
   // The name is the brand and stays romanized where the script has no
   // word for it (house style — `modes/kami/manifest.ts` ships "Kami" ×7);
   // the CJK locales have their own reading of 板書 and use it.
@@ -47,6 +47,9 @@ const banshoManifest: ModeManifest = {
     // Wording discipline: these bullets render VERBATIM in the launcher's
     // skill-update prompt, so they may only claim what the build actually
     // does.
+    "0.25.1": [
+      "A locator card in chat can only take the user to a place: it parks the board at that step, paused, and never plays. The skill never said so, so a card could be labelled 'play this from the top' and then sit still when it was clicked. It now says what a click does, and points at play-from — the action that actually plays, and that starts from the very top when given no address",
+    ],
     "0.25.0": [
       "The board stops accusing writing that fits. A @strike or @circle paints its ink across the whole panel by design, and the width check was reading that bleed as the marked paragraph running off the board — on the stock tech seed it warned about a 565px column being '633px over' while every word stood inside it and the strike sat exactly on its target. The check now looks at what actually crosses the edge and stays quiet when it is only the board's own marks",
       "When something really is cut off, the warning now says what a fix needs: which edge, how far over in px, and the piece responsible — an unbreakable token is quoted back, an inline formula is told the display-formula move, a step taller than one board is told to split. 'Runs past the right edge' with an address alone sent an agent hunting through a paragraph that wrapped fine",

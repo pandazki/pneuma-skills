@@ -173,8 +173,17 @@ describe("T7 — the skill teaches explaining, not rendering", () => {
     // reading all 448 previous lines still had no reason to design before
     // writing. Depth went to `references/lecture-plan.md`; what stayed is
     // what an author must have in front of them at the first keystroke.
+    //
+    // (0.25.1, +3 lines.) Why THIS raise is earned: the section it pays for
+    // is the only place the skill states what a `<viewer-locator>` click
+    // actually does, and a live session proved the omission costs the user
+    // a dead button — an agent that had read the whole action table shipped
+    // a card labelled 「从头播放这堂课」 whose one channel is `navigate-to`,
+    // so the click parked the board on step 1 and stayed paused. A card's
+    // limit cannot go to `references/`: it is read at the moment of writing
+    // the card, in the same breath as the two examples above it.
     const lines = read("SKILL.md").split("\n").length;
-    expect(lines).toBeLessThan(582);
+    expect(lines).toBeLessThan(585);
     for (const f of REFERENCES) {
       const text = read(`references/${f}`);
       expect(text.split("\n").length, `${f} too thin`).toBeGreaterThan(30);

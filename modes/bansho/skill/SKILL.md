@@ -522,8 +522,11 @@ each other — nothing moved, nothing erased, but look up before you append.
 <viewer-locator label="the pitch's close" address='{"contentSet":"pitch-zh","section":2,"step":1}' />
 ```
 
-A click on the card takes them there; the second card switches to that
-board first.
+A click takes them there — the board parks where that step finished,
+**paused** — and the second card switches boards first. A card is
+`navigate-to` in their hand and nothing more: it never plays. Name one for
+the PLACE it points at, never for an act it cannot perform ("play this
+from the top"); to offer a replay, say so in words and run `play-from`.
 
 ### What the user can ask you for
 
