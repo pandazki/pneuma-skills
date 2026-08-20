@@ -506,5 +506,8 @@ describe("GET /api/github/status", () => {
     };
     expect(typeof body.installed).toBe("boolean");
     expect(typeof body.authenticated).toBe("boolean");
-  });
+    // The route runs the real detectGh probe; `gh auth status` reads the
+    // macOS keychain (~2.6s measured; slower under full-suite load), so the
+    // default 5s budget flakes without asserting anything about speed.
+  }, 20_000);
 });

@@ -58,6 +58,10 @@ describe("detectGh", () => {
         expect(status.hint).toMatch(/gh auth login/);
       }
     },
+    // detectGh shells out to `gh auth status`, which reads the macOS
+    // keychain (~2.6s measured; slower under full-suite load) — the default
+    // 5s budget flakes without asserting anything about speed.
+    20_000,
   );
 
   test.skipIf(ghAvailable)(
@@ -83,7 +87,7 @@ describe("detectGh", () => {
     if (status.username !== undefined) {
       expect(typeof status.username).toBe("string");
     }
-  });
+  }, 20_000);
 });
 
 describe("createRepo", () => {
@@ -112,5 +116,10 @@ describe("createRepo", () => {
         }),
       ).rejects.toThrow();
     },
+    // createRepo runs the full detectGh probe first, and `gh auth status`
+    // reads the macOS keychain (~2.6s measured; slower under load) before
+    // the invalid call even starts — the default 5s budget flakes on a
+    // machine with keychain-backed auth while asserting nothing about speed.
+    20_000,
   );
 });
