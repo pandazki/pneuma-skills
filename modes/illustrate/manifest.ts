@@ -8,7 +8,15 @@ import { loadStudio, saveStudio } from "./domain.js";
 
 const illustrateManifest: ModeManifest = {
   name: "illustrate",
-  version: "0.2.0",
+  version: "0.3.0",
+  changelog: {
+    "0.3.0": [
+      "New logo & mascot genre playbook (references/logo-mascot.md) — complexity budget, thick rounded shape language, exactly-three-semantic-colors rule, 32×32 readability, corner-crop composition, and a fill-in prompt skeleton. Inspired by s1dashu/ip-as-logo-skill",
+      "Brand-identity requests now propose three directions (subject — product connection — silhouette) and wait for approval before generating six labeled candidates; simple one-off generations stay confirmation-free",
+      "Every identity candidate is inspected against the playbook rubric and reported honestly — non-recommended results are kept and explained, never silently filtered or retried",
+      "Large batches may fan generation calls out concurrently; the manifest keeps a single serialized writer, and contact-sheet / grid generations are banned outright",
+    ],
+  },
   displayName: {
     en: "Illustrate",
     "zh-CN": "插画工坊",

@@ -165,7 +165,8 @@ After scaffolding, the canvas shows a placeholder row; run the generation script
 - When the user asks to **modify** an existing image, use `edit_image.mjs` (not regenerate) to preserve composition
 - When the user highlights a region with the highlighter tool, pass the crop as `--annotation` to the edit script
 - **New project → new content set** directory rather than overwriting existing content
-- Do not ask for confirmation on simple generations — just do them
+- Do not ask for confirmation on simple generations — just do them. One exception: multi-candidate brand-identity batches go through the direction-proposal gate in `references/logo-mascot.md`
+- **One candidate per image file** — never ask the model to compose a contact sheet, grid, or multi-image collage
 - Never modify files in `.claude/` or `.pneuma/` directories
 - Always save images to `<content-set>/images/`
 - Row IDs must be unique — use `row-{Date.now()}` format
@@ -282,7 +283,7 @@ The viewer watches `manifest.json` — each save triggers a live refresh. The pl
 2. **Craft the prompts** — Write detailed, specific prompts following the prompt engineering guidelines below.
 3. **Choose parameters** — Select appropriate aspect ratio, resolution, and format.
 4. **Add placeholder row** — Write the new row to `manifest.json` with `"status": "generating"` on each item. The user sees placeholder cards immediately.
-5. **Generate images** — Run the generation script. For batch generation, generate one at a time and update each item's status in manifest after it completes.
+5. **Generate images** — Run the generation script. For batch generation, follow **Batch Operations** below: sequential for small batches, optionally concurrent for large ones — you update each item's status in the manifest as it completes.
 6. **Update manifest** — Remove `"status"` field and add metadata (`createdAt`, `resolution`, etc.) for each completed item.
 7. **Report** — Briefly describe what was generated. The user sees results live on the canvas.
 
@@ -515,6 +516,28 @@ Write prompts with these components in order:
 - For **consistency** across a series, repeat core style descriptors in each prompt
 - For **variations**, change only one dimension (color, angle, expression) at a time
 
+## Genre Playbooks
+
+Some genres carry hard craft constraints that the generic prompt structure above can't
+express. When a request matches a playbook, read it before crafting any prompt.
+
+### Logos & mascots — `references/logo-mascot.md`
+
+For logo, app-icon, mascot, and brand-identity work (inspired by
+[ip-as-logo](https://github.com/s1dashu/ip-as-logo-skill) by @s1dashu). It covers:
+
+- the **identity workflow** — mine product context, propose three directions
+  (`<subject> — <product connection> — <defining silhouette>`), get approval, then generate
+  six labeled candidates (A1–C2 across directions, or A1–A6 within one)
+- the **craft constraints** — complexity budget (6–10 shapes, readable at 32 × 32), thick
+  rounded shape language, exactly-three-semantic-colors rule, corner-crop composition, and
+  a fill-in prompt skeleton
+- the **evaluation rubric** — inspect every candidate visually, report non-recommended
+  results honestly, never silently filter or retry
+
+Simple one-off generations ("draw me a quick fox icon") stay confirmation-free as usual;
+the playbook's proposal gate applies to multi-candidate identity batches.
+
 ## Style Consistency
 
 When creating a series of related images:
@@ -543,9 +566,10 @@ Then vary only: [Subject description]
 When the user wants multiple images:
 
 1. **Plan first** — List all images with titles and prompts before generating
-2. **Generate sequentially** — One at a time, so the user can review and adjust
-3. **Add all to one row** — A batch generation task is a single row with multiple items
-4. **Offer adjustments** — After each image, briefly note it's done; continue to the next unless the user intervenes
+2. **Write the full placeholder row upfront** — every item with `"status": "generating"` before the first call
+3. **Generate** — for 2–3 images, run calls sequentially so the user can steer between results. For larger batches (e.g. a six-candidate identity batch) you may fan the generation calls out concurrently (background shell jobs, one candidate per call) — but **`manifest.json` has exactly one writer: you**. Update it serially, one item at a time, as each result lands; never let parallel jobs write the manifest themselves
+4. **Add all to one row** — a batch generation task is a single row with multiple items (identity batches: one row per direction — see `references/logo-mascot.md`)
+5. **Offer adjustments** — after each image lands, briefly note it's done; continue unless the user intervenes
 
 ## Constraints
 
