@@ -48,6 +48,7 @@ const banshoManifest: ModeManifest = {
     // skill-update prompt, so they may only claim what the build actually
     // does.
     "0.25.1": [
+      "A place the board never writes is no longer a dead link. @board, an explicit pause and an unreadable block hold a step number without any ink of their own, so a chat card or a navigate-to addressed at one used to do nothing whatsoever — no move, and the refusal went into a result a card click throws away. It now goes to the moment the pen reaches that line, which for a lecture's opening @board is the top of the lecture",
       "A locator card in chat can only take the user to a place: it parks the board at that step, paused, and never plays. The skill never said so, so a card could be labelled 'play this from the top' and then sit still when it was clicked. It now says what a click does, and points at play-from — the action that actually plays, and that starts from the very top when given no address",
     ],
     "0.25.0": [

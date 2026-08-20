@@ -439,8 +439,8 @@ Everything below uses one address, and so does the user:
 
 - `section` counts from **0** (the opening); `step` counts from **1**
   inside its section — a paragraph, a list item, a chart block, a `---`,
-  a formula and a look-back are each one step. Leave `step` out to name
-  the section's own title.
+  a formula, a look-back and **every `@` line** are each one step. Leave
+  `step` out to name the section's own title.
 - `contentSet` — the board's directory. `navigate-to` / `play-from` refuse
   an address naming another board; `capture` and `<viewer-locator>` cross.
 

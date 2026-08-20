@@ -54,6 +54,7 @@ import {
   formatAddress,
   resolveAddress,
   stepAt,
+  penArrival,
   stepWindow,
   summarizeStep,
   toAddress,
@@ -913,13 +914,22 @@ export default function BanshoPreview({
       const window = compiled
         ? stepWindow(compiled.timeline.schedule, ref)
         : null;
-      if (window) {
+      // A step with no ink of its own is still a place the pen passes, and
+      // that moment is the honest answer for it (`penArrival`). Measured
+      // 2026-08-20: without this, a card addressed at the lecture's own
+      // `@board 4` was inert — no seek, and the refusal below went into a
+      // result a card click throws away.
+      const arrival =
+        window || !compiled
+          ? null
+          : penArrival(compiled.timeline.schedule, ref);
+      if (window || arrival !== null) {
         // Seeking IS the camera move: the player's seek fan-out brings the
         // step being performed into view (BoardCanvas.onSeek). "glide" is
         // this channel's voice (task #213): a locator/navigate jump is the
         // user or agent saying "take me there" — the camera walks, where a
         // scrub drag (no hint) keeps tracking with cuts.
-        playerRef.current.scrubTo(window.end, "glide");
+        playerRef.current.scrubTo(window ? window.end : arrival!, "glide");
       } else if (!boardApiRef.current?.showStep(ref)) {
         return {
           success: false,
@@ -930,10 +940,16 @@ export default function BanshoPreview({
         success: true,
         message: window
           ? `Showing ${where} — ${describeStep(step)}: "${summarizeStep(step)}"`
-          : `${where} is in view, but the board never writes it (${describeStep(step)}), so the playhead did not move.`,
+          : arrival !== null
+            ? `${where} is a ${describeStep(step)}, which the board never writes — showing the moment the pen reaches it.`
+            : `${where} is in view, but the board never writes it (${describeStep(step)}), so the playhead did not move.`,
         data: {
           address: toAddress(ref),
-          ...(window ? { at: Number(window.end.toFixed(2)) } : {}),
+          ...(window
+            ? { at: Number(window.end.toFixed(2)) }
+            : arrival !== null
+              ? { at: Number(arrival.toFixed(2)) }
+              : {}),
         },
       };
     },

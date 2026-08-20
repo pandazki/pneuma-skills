@@ -33,6 +33,7 @@ import {
   resolveAddress,
   revealStatus,
   stepKey,
+  penArrival,
   stepWindow,
   summarizeStep,
   toAddress,
@@ -354,6 +355,63 @@ describe("summarizeStep — a readable anchor, not just an index", () => {
         expect(summary.toLowerCase()).not.toContain(banned);
       }
     }
+  });
+});
+
+
+describe("penArrival — a place the board never writes still has a moment", () => {
+  test("a step with ink answers its own start (at-or-after includes itself)", () => {
+    const proseRef = findRef(
+      (s) => s.kind === "prose" && s.srcSpan.start > SOURCE.indexOf("## Supply"),
+    );
+    const window = stepWindow(timeline.schedule, proseRef)!;
+    expect(penArrival(timeline.schedule, proseRef)).toBeCloseTo(window.start, 6);
+  });
+
+  test("a pause answers when the pen gets past it — the next thing written", () => {
+    const wait = findRef((s) => s.kind === "wait");
+    const image = findRef((s) => s.kind === "image");
+    expect(stepWindow(timeline.schedule, wait)).toBeNull();
+    const arrival = penArrival(timeline.schedule, wait)!;
+    expect(arrival).toBeGreaterThan(0);
+    expect(arrival).toBeCloseTo(stepWindow(timeline.schedule, image)!.start, 6);
+  });
+
+  test("nothing written after it answers the lecture's last moment", () => {
+    // The embedded block is the fixture's final step and draws nothing, so
+    // there is no later start to answer with. The end of the lecture is
+    // still where the pen ends up — a null here would be the inert card.
+    const html = findRef((s) => s.kind === "html");
+    expect(stepWindow(timeline.schedule, html)).toBeNull();
+    expect(penArrival(timeline.schedule, html)).toBeCloseTo(
+      timeline.duration,
+      6,
+    );
+  });
+
+  test("the lecture's own @board line answers 0 — the top", () => {
+    // The live report (2026-08-20): a chat card labelled 「从头播放这堂课」
+    // addressed `{section:0, step:1}`, which on a board opening with
+    // `@board 4` is the stage-setup line. It plans no units, so the click
+    // used to do nothing at all. The opening of the lecture is the honest
+    // answer, and it is what the card meant.
+    const opening = parseLecture(`@board 2
+
+@at left
+
+# A title
+
+The first thing actually written.
+`);
+    const built = buildTimeline(opening, { durations: DEFAULT_DURATIONS });
+    const ref = resolveAddress(opening, { section: 0, step: 1 })!;
+    expect(opening.sections[0]!.steps[ref.step]!.kind).toBe("board-config");
+    expect(stepWindow(built.schedule, ref)).toBeNull();
+    expect(penArrival(built.schedule, ref)).toBe(0);
+  });
+
+  test("an empty schedule has no moment to offer", () => {
+    expect(penArrival([], { section: 0, step: 0 })).toBeNull();
   });
 });
 

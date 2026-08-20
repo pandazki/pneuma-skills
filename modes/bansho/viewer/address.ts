@@ -370,6 +370,54 @@ export function stepWindow(
   return end < start ? null : { start, end };
 }
 
+/**
+ * When the pen REACHES a place the board never writes — the honest answer
+ * to "take me there" for a step that has no ink of its own.
+ *
+ * `@board 4`, an explicit pause and an unreadable block plan no units at
+ * all (`planStepUnits`), so they hold a step number and no schedule entry:
+ * `stepWindow` answers null and there is no moment to seek to. Measured on
+ * a live board (2026-08-20): a chat card addressed at `@board 4` — the
+ * first line of the lecture — did NOTHING when clicked. No seek, and the
+ * refusal went into a `ViewerActionResult` a card click discards, so the
+ * user saw a live-looking button that was inert.
+ *
+ * The address is not wrong, though: it names a real line, and the board's
+ * pen really does pass it. So answer with the moment it does — the start
+ * of the first thing WRITTEN at or after that line.
+ *
+ * NOT the clamping `resolveAddress` refuses. That one would land on a
+ * neighbour of an address pointing NOWHERE (past the end of the board),
+ * and would make the agent believe it navigated somewhere it did not.
+ * This address points somewhere; only its ink is missing, and the time it
+ * answers is that place's own.
+ *
+ * Document order is `(section, step)` ascending, and a section's own title
+ * (step -1) sorts before its first step — where it is written. The scan is
+ * a min over the whole schedule rather than a walk to the first match, so
+ * it never assumes the array is sorted.
+ *
+ * Nothing written after it (a trailing pause) answers the lecture's last
+ * moment; `null` only when the board is empty of writing altogether.
+ */
+export function penArrival(
+  schedule: readonly StepSchedule[],
+  ref: StepRef,
+): number | null {
+  let arrival = Infinity;
+  let last = -Infinity;
+  for (const entry of schedule) {
+    if (entry.end > last) last = entry.end;
+    const at = entry.step;
+    const atOrAfter =
+      at.section > ref.section ||
+      (at.section === ref.section && at.step >= ref.step);
+    if (atOrAfter && entry.start < arrival) arrival = entry.start;
+  }
+  if (arrival < Infinity) return arrival;
+  return last > -Infinity ? last : null;
+}
+
 /** Whether the board has written this step yet, at canonical time `t`. */
 export function revealStatus(
   schedule: readonly StepSchedule[],
