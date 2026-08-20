@@ -11,19 +11,9 @@ import { parsePneumaTag, PneumaSignalPill } from "./PneumaSignalPill.js";
 import type { ViewerLocator } from "../../core/types/viewer-contract.js";
 
 // ─── Viewer Locator parsing ────────────────────────────────────────────────
-
-// The canonical attribute is `address='{...}'`; `data='{...}'` is accepted too
-// so locator cards in resumed sessions (history written before the
-// ViewerAddress contract) keep rendering.
-const LOCATOR_RE = /<viewer-locator\s+label="([^"]+)"\s+(?:address|data)='([^']+)'\s*\/>/g;
-
-function parseViewerLocators(text: string): { cleanText: string; locators: ViewerLocator[] } {
-  const locators: ViewerLocator[] = [];
-  for (const match of text.matchAll(LOCATOR_RE)) {
-    try { locators.push({ label: match[1], address: JSON.parse(match[2]) }); } catch { /* skip malformed */ }
-  }
-  return { cleanText: text.replace(LOCATOR_RE, "").trim(), locators };
-}
+// Pure parse logic lives in viewer-locator-parse.ts so tests can import it
+// without dragging in the component graph (ws → native-bridge needs a DOM).
+import { parseViewerLocators, stripViewerLocatorTags } from "./viewer-locator-parse.js";
 
 function LocatorCardGroup({ locators }: { locators: ViewerLocator[] }) {
   const { t } = useTranslation("message-bubble");
@@ -802,7 +792,8 @@ function SelectionIndicator({ multi, selected }: { multi: boolean; selected: boo
 
 export function MarkdownContent({ text, showCursor = false }: { text: string; showCursor?: boolean }) {
   // Strip locator tags so they don't render as raw HTML during streaming
-  const cleanText = text.replace(/<viewer-locator\s[^>]*\/>/g, "");
+  // (both the self-closing and the paired-closing form).
+  const cleanText = stripViewerLocatorTags(text);
   return (
     <div className="markdown-body text-[14px] text-cc-fg leading-relaxed overflow-hidden font-chat">
       <Markdown
