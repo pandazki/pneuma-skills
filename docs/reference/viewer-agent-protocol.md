@@ -41,7 +41,7 @@
 | **`ViewerCommandDescriptor`** | `core/types/viewer-contract.ts` | mode `manifest.viewerApi.commands[]` 声明 | runtime 注入 viewer props.commands；viewer 点击经 `onNotifyAgent` 上行 |
 | **`ViewerSelectionContext`** + `extractContext()` | `core/types/viewer-contract.ts` | viewer 实现 `extractContext` | `server/ws-bridge.ts` 在每个 `user_message` 前缀注入 `<viewer-context>` 块 |
 | **`ViewerNotification`** | `core/types/viewer-contract.ts` | viewer 调 `onNotifyAgent()` | `server/ws-bridge.ts` 在 agent 空闲时 flush 为 system message |
-| **`ViewerLocator`** | `core/types/viewer-contract.ts` | agent 在 chat 输出 `<viewer-locator>` 标签 | `src/components/chat/*` 渲染卡片，点击触发 `navigateRequest` |
+| **`ViewerLocator`** | `core/types/viewer-contract.ts` | agent 在 chat 输出 `<viewer-locator>` 标签 | `src/components/chat/*` 渲染卡片，点击触发 `navigateRequest`；viewer 的判定经 `onNavigateComplete(result)` 回到卡片旁 |
 | **`Source<T>`** + `SourceEvent<T>` + `SourceProvider` + `SourceContext` | `core/types/source.ts` | `core/source-registry.ts` 按 `manifest.sources[kind]` 选 provider 实例化 | viewer 用 `src/hooks/useSource.ts` 订阅；`core/sources/base.ts` 强制四不变量 |
 | **`FileChannel`** + `FileChangeEvent` | `core/types/source.ts` | 每 session 由 runtime 实例化一份 | file-backed provider 在 `core/sources/file-glob.ts` 等里订阅 |
 | **`SourceDescriptor`** | `core/types/source.ts` | `manifest.sources` 数组每一项 | `core/source-registry.ts` |
@@ -116,6 +116,13 @@ export interface ViewerLocator {
 ```
 
 **链路。** Backend → adapter → `server/ws-bridge*.ts` → `/ws/browser/:sessionId` → `src/store/` → 聊天面板 `src/components/chat/*` 渲染 streaming blocks、permission banner、locator 卡片。点击 locator 触发 `navigateRequest` 走 ⑤ 通道把 viewer 移过去。
+
+**点击可能失败，而失败必须看得见（2026-08-20）。** 地址可能指向这个工作区没有的 content set，或指向 viewer 解析不出的对象。此前这条失败无处可去——点击把 viewer 返回的 `ViewerActionResult` 直接丢弃，于是**一张接在空气上的卡片和一张正常工作的卡片长得一模一样**。现在:
+
+- `store::setNavigateRequest` 返回一个 `seq`(每次派发自增),`navigateOutcome` 带同一个 `seq` 回来——卡片据此只认自己那次点击的判定;
+- viewer 通过 `onNavigateComplete(result?)` 交回判定。**可选参数**:11 个早于这条缝的 viewer 仍旧空调用,读作"没有判定"即成功;
+- content set 这个**框架级坐标**由 store 自己裁决(`src/store/navigate-plan.ts`,纯函数):地址点名一个不存在的 board 时**拒绝派发**——旧行为是跳过切换、把余下的地址照发给**当前打开的 board**,一次看起来像成功的错误移动;
+- **不通知 agent**。排队通知会唤醒 idle agent 让它自己动手改文件(见 `.claude/rules/modes.md`),而读者按一张死卡片不是在请谁开工。这条失败只对**人**说。
 
 ### ⑤ Agent → Viewer · Action（action space 的主舞台）
 

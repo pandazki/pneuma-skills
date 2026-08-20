@@ -81,7 +81,7 @@ export function useViewerProps(prefs: { theme: "light" | "dark"; locale: string 
   const actionRequest = useStore((s) => s.actionRequest);
   const setActionRequest = useStore((s) => s.setActionRequest);
   const navigateRequest = useStore((s) => s.navigateRequest);
-  const setNavigateRequest = useStore((s) => s.setNavigateRequest);
+  const resolveNavigate = useStore((s) => s.resolveNavigate);
   const replayMode = useStore((s) => s.replayMode);
   const commands = useStore((s) => s.modeCommands);
   // Backward-compat snapshot for pre-2.29 viewers (e.g. external modes that
@@ -146,7 +146,7 @@ export function useViewerProps(prefs: { theme: "light" | "dark"; locale: string 
       useStore.getState().addPendingNotification(notification);
     },
     navigateRequest,
-    onNavigateComplete: () => setNavigateRequest(null),
+    onNavigateComplete: (result) => resolveNavigate(result),
     commands,
     readonly: replayMode,
     theme: prefs.theme,

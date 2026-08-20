@@ -57,5 +57,10 @@
     "payload_label": "Payload",
     "payload_tooltip": "Debug: CLI-Payload anzeigen",
     "image_alt": "Debug-Bild {{index}}"
+  },
+  "locator": {
+    "failed": "Konnte nicht zu „{{label}}“ springen",
+    "unknown_set": "In diesem Arbeitsbereich gibt es kein Content-Set „{{name}}“",
+    "unresolved": "Der Viewer konnte diese Adresse nicht auflösen"
   }
 }

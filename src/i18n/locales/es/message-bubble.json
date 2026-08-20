@@ -57,5 +57,10 @@
     "payload_label": "carga",
     "payload_tooltip": "Depuración: ver la carga del CLI",
     "image_alt": "Imagen de depuración {{index}}"
+  },
+  "locator": {
+    "failed": "No se pudo ir a «{{label}}»",
+    "unknown_set": "Este espacio de trabajo no tiene un conjunto llamado «{{name}}»",
+    "unresolved": "El visor no pudo resolver esa dirección"
   }
 }

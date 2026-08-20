@@ -219,7 +219,17 @@ export interface ViewerNotification {
 // ── Viewer Locator (navigable link cards in agent messages) ────────────────
 
 /** Viewer locator — clickable navigation cards embedded in agent messages.
- *  Clicking navigates the viewer to the target address (frontend-only, no server roundtrip). */
+ *  Clicking navigates the viewer to the target address (frontend-only, no
+ *  server roundtrip — the agent is never told the card was clicked, and must
+ *  not be: a queued notification wakes an idle agent, and a reader pressing
+ *  a card is not asking anyone to start working).
+ *
+ *  A click can FAIL — the address may name a board this workspace does not
+ *  have, or an object the viewer cannot resolve — and until 2026-08-20 that
+ *  failure had nowhere to go: the click dropped the viewer's
+ *  `ViewerActionResult` on the floor, so a card wired to nothing looked
+ *  exactly like a card that worked. `onNavigateComplete` now carries the
+ *  verdict back, and the shell says so beside the card that was pressed. */
 export interface ViewerLocator {
   /** Card display text */
   label: string;
@@ -289,8 +299,12 @@ export interface ViewerPreviewProps {
   activeFile?: string | null;
   /** Navigation request — triggered by clicking a locator card in chat */
   navigateRequest?: ViewerLocator | null;
-  /** Called after the Viewer completes navigation, clears the request */
-  onNavigateComplete?: () => void;
+  /** Called after the Viewer completes navigation, clears the request.
+   *  Pass the navigation's own `ViewerActionResult` to have the shell
+   *  surface a failure beside the card that was clicked; calling it bare
+   *  (every viewer written before this seam) means "no verdict" and reads
+   *  as success, which is what a viewer that cannot fail should say. */
+  onNavigateComplete?: (result?: ViewerActionResult) => void;
   /** Viewer commands declared in the manifest (user → agent) — injected by the runtime from the manifest, used by the viewer to render command menus, etc. */
   commands?: ViewerCommandDescriptor[];
   /** When true, viewer should suppress editing, selection, and annotation modes.

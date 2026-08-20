@@ -1319,8 +1319,11 @@ export default function BanshoPreview({
   // address — the same move as `navigate-to`.
   useEffect(() => {
     if (!navigateRequest) return;
-    runnersRef.current.runNavigateTo(navigateRequest.address);
-    onNavigateComplete?.();
+    // The verdict rides back with the completion (2026-08-20): a card
+    // pointing at a board this workspace does not have, or at nothing the
+    // lecture holds, used to be an inert button — the refusal went into a
+    // result the click discarded. The shell says it beside the card now.
+    onNavigateComplete?.(runnersRef.current.runNavigateTo(navigateRequest.address));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigateRequest]);
 

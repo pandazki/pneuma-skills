@@ -57,5 +57,10 @@
     "payload_label": "ペイロード",
     "payload_tooltip": "デバッグ：CLI ペイロードを表示",
     "image_alt": "デバッグ画像 {{index}}"
+  },
+  "locator": {
+    "failed": "「{{label}}」へ移動できませんでした",
+    "unknown_set": "このワークスペースに「{{name}}」というコンテンツセットはありません",
+    "unresolved": "ビューアーがその位置を解決できませんでした"
   }
 }

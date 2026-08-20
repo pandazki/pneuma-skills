@@ -57,5 +57,10 @@
     "payload_label": "payload",
     "payload_tooltip": "Debug：檢視 CLI payload",
     "image_alt": "除錯圖片 {{index}}"
+  },
+  "locator": {
+    "failed": "無法前往「{{label}}」",
+    "unknown_set": "這個工作區裡沒有叫「{{name}}」的內容集",
+    "unresolved": "檢視器沒能解析這個位置"
   }
 }

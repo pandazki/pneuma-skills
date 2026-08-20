@@ -57,5 +57,10 @@
     "payload_label": "payload",
     "payload_tooltip": "Debug: view CLI payload",
     "image_alt": "Debug image {{index}}"
+  },
+  "locator": {
+    "failed": "Couldn't go to \"{{label}}\"",
+    "unknown_set": "this workspace has no board called “{{name}}”",
+    "unresolved": "the viewer could not resolve that address"
   }
 }

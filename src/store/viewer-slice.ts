@@ -1,7 +1,26 @@
 import type { StateCreator } from "zustand";
 import type { Annotation, UserAction } from "../types.js";
-import type { ViewerActionRequest, ViewerLocator } from "../../core/types/viewer-contract.js";
+import type {
+  ViewerActionRequest,
+  ViewerActionResult,
+  ViewerLocator,
+} from "../../core/types/viewer-contract.js";
+import { planNavigate } from "./navigate-plan.js";
 import type { AppState, ElementSelection } from "./types.js";
+
+/**
+ * How a locator click ended. `message` is the viewer's own sentence, shown
+ * verbatim (mode-authored, English, like every other `ViewerActionResult`
+ * message); `code` is the shell's own refusal, which the UI translates —
+ * the store must not mint user-facing copy in one language.
+ */
+export interface NavigateOutcome {
+  seq: number;
+  ok: boolean;
+  message?: string;
+  code?: "unknownContentSet";
+  contentSet?: string;
+}
 
 export interface ViewerSlice {
   selection: ElementSelection | null;
@@ -16,6 +35,13 @@ export interface ViewerSlice {
   viewportRange: { file: string; startLine: number; endLine: number; heading?: string } | null;
   actionRequest: ViewerActionRequest | null;
   navigateRequest: ViewerLocator | null;
+  /** Bumped once per locator dispatch — the handle a card holds so it can
+   *  recognise ITS OWN verdict and ignore everyone else's. */
+  navigateSeq: number;
+  /** How the last dispatched navigation ended, or null while one is in
+   *  flight (and after a clean arrival). Only failures are worth keeping:
+   *  the card renders nothing on success. */
+  navigateOutcome: NavigateOutcome | null;
   userActions: UserAction[];
 
   setSelection: (s: ElementSelection | null) => void;
@@ -27,7 +53,12 @@ export interface ViewerSlice {
   updateAnnotationComment: (id: string, comment: string) => void;
   clearAnnotations: () => void;
   setActionRequest: (req: ViewerActionRequest | null) => void;
-  setNavigateRequest: (req: ViewerLocator | null) => void;
+  /** Dispatch a navigation; returns the seq that will carry its verdict.
+   *  `null` clears the in-flight request WITHOUT touching seq or outcome —
+   *  it is the viewer saying "done", not a new question. */
+  setNavigateRequest: (req: ViewerLocator | null) => number;
+  /** The viewer's verdict on the navigation it was just handed. */
+  resolveNavigate: (result?: ViewerActionResult) => void;
   pushUserAction: (action: UserAction) => void;
   drainUserActions: () => UserAction[];
 }
@@ -41,6 +72,8 @@ export const createViewerSlice: StateCreator<AppState, [], [], ViewerSlice> = (s
   viewportRange: null,
   actionRequest: null,
   navigateRequest: null,
+  navigateSeq: 0,
+  navigateOutcome: null,
   userActions: [],
 
   setSelection: (selection) => set((s) => ({ selection, selectionStamp: selection ? s.selectionStamp + 1 : s.selectionStamp })),
@@ -62,59 +95,61 @@ export const createViewerSlice: StateCreator<AppState, [], [], ViewerSlice> = (s
   setActionRequest: (actionRequest) => set({ actionRequest }),
 
   setNavigateRequest: (navigateRequest) => {
+    // The viewer saying "done" — not a new question, so the seq and the
+    // verdict it belongs to both stand. Clearing them here would erase the
+    // failure a card is about to render.
     if (!navigateRequest) {
       set({ navigateRequest: null });
-      return;
+      return get().navigateSeq;
     }
-    // `contentSet` is a framework-level coordinate the runtime resolves here
-    // (switching the active content set) before handing the rest of the
-    // address to the mode viewer. Every other key is mode-defined and opaque.
-    const { address } = navigateRequest;
-    if (address.contentSet) {
-      const targetSet = address.contentSet as string;
-      const state = get();
-      const needsSwitch = state.activeContentSet !== targetSet;
-      if (needsSwitch && state.contentSets.some((cs) => cs.prefix === targetSet)) {
-        state.setActiveContentSet(targetSet);
-      }
-      const { contentSet: _, ...rest } = address;
-      if (typeof rest.file === "string" && rest.file.startsWith(targetSet + "/")) {
-        rest.file = rest.file.slice(targetSet.length + 1);
-      }
-      if (Object.keys(rest).length > 0) {
-        if (needsSwitch) {
-          setTimeout(() => {
-            set({ navigateRequest: { label: navigateRequest.label, address: rest } });
-          }, 50);
-        } else {
-          set({ navigateRequest: { label: navigateRequest.label, address: rest } });
-        }
-      }
-    } else {
-      const state = get();
-      const filePath = typeof address.file === "string" ? address.file : null;
-      if (filePath && state.contentSets.length > 0) {
-        const matchedCS = state.contentSets.find((cs) => filePath.startsWith(cs.prefix + "/"));
-        if (matchedCS) {
-          const needsSwitch = state.activeContentSet !== matchedCS.prefix;
-          if (needsSwitch) {
-            state.setActiveContentSet(matchedCS.prefix);
-          }
-          const stripped = { ...address, file: filePath.slice(matchedCS.prefix.length + 1) };
-          if (needsSwitch) {
-            setTimeout(() => {
-              set({ navigateRequest: { label: navigateRequest.label, address: stripped } });
-            }, 50);
-          } else {
-            set({ navigateRequest: { label: navigateRequest.label, address: stripped } });
-          }
-          return;
-        }
-      }
-      set({ navigateRequest });
+    const state = get();
+    const seq = state.navigateSeq + 1;
+    const plan = planNavigate(
+      navigateRequest.address,
+      state.activeContentSet,
+      state.contentSets,
+    );
+    set({ navigateSeq: seq, navigateOutcome: null });
+    if (plan.kind === "refuse") {
+      set({
+        navigateOutcome: {
+          seq,
+          ok: false,
+          code: plan.code,
+          contentSet: plan.contentSet,
+        },
+      });
+      return seq;
     }
+    if (plan.kind === "noop") return seq;
+    if (plan.kind === "switch") {
+      state.setActiveContentSet(plan.switchTo);
+      return seq;
+    }
+    if (plan.switchTo) state.setActiveContentSet(plan.switchTo);
+    const handOver = () => {
+      set({
+        navigateRequest: { label: navigateRequest.label, address: plan.address },
+      });
+    };
+    // A viewer handed a set it has not mounted yet cannot resolve anything
+    // inside it. Same navigation, same seq — the wait is the switch's, not
+    // a second question.
+    if (plan.delayed) setTimeout(handOver, 50);
+    else handOver();
+    return seq;
   },
 
+  resolveNavigate: (result) => {
+    const seq = get().navigateSeq;
+    set({
+      navigateRequest: null,
+      navigateOutcome:
+        result && result.success === false
+          ? { seq, ok: false, message: result.message }
+          : null,
+    });
+  },
 
   pushUserAction: (action) => set((s) => ({ userActions: [...s.userActions, action] })),
   drainUserActions: (): UserAction[] => {

@@ -57,5 +57,10 @@
     "payload_label": "原始载荷",
     "payload_tooltip": "调试：查看 CLI 载荷",
     "image_alt": "调试图像 {{index}}"
+  },
+  "locator": {
+    "failed": "无法前往「{{label}}」",
+    "unknown_set": "这个工作区里没有叫「{{name}}」的内容集",
+    "unresolved": "视图没能解析这个位置"
   }
 }

@@ -57,5 +57,10 @@
     "payload_label": "페이로드",
     "payload_tooltip": "디버그: CLI 페이로드 보기",
     "image_alt": "디버그 이미지 {{index}}"
+  },
+  "locator": {
+    "failed": "「{{label}}」(으)로 이동하지 못했습니다",
+    "unknown_set": "이 작업 공간에는 「{{name}}」라는 콘텐츠 세트가 없습니다",
+    "unresolved": "뷰어가 해당 위치를 찾지 못했습니다"
   }
 }

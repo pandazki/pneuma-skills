@@ -1,4 +1,4 @@
-import { useState, useMemo, type ComponentProps } from "react";
+import { useEffect, useState, useMemo, type ComponentProps } from "react";
 import { useTranslation } from "react-i18next";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -28,13 +28,38 @@ function parseViewerLocators(text: string): { cleanText: string; locators: Viewe
 function LocatorCardGroup({ locators }: { locators: ViewerLocator[] }) {
   const { t } = useTranslation("message-bubble");
   const setNavigateRequest = useStore((s) => s.setNavigateRequest);
+  const navigateOutcome = useStore((s) => s.navigateOutcome);
   const debugMode = useStore((s) => s.debugMode);
   const [debugOpen, setDebugOpen] = useState(false);
+  // A card that goes nowhere used to look exactly like one that works: the
+  // click threw the viewer's verdict away. Each press remembers the seq it
+  // dispatched, so a group only ever speaks for its OWN card — and the
+  // sentence is COPIED into local state, because the next navigation
+  // (a `capture`, another card) clears the shared outcome underneath it.
+  const [pressed, setPressed] = useState<{ seq: number; label: string } | null>(null);
+  const [failure, setFailure] = useState<{ label: string; text: string } | null>(null);
+  useEffect(() => {
+    if (!pressed || !navigateOutcome || navigateOutcome.seq !== pressed.seq) return;
+    if (navigateOutcome.ok) {
+      setFailure(null);
+      return;
+    }
+    setFailure({
+      label: pressed.label,
+      text:
+        navigateOutcome.code === "unknownContentSet"
+          ? t("locator.unknown_set", { name: navigateOutcome.contentSet ?? "" })
+          : (navigateOutcome.message ?? t("locator.unresolved")),
+    });
+  }, [navigateOutcome, pressed, t]);
   return (
     <div className="mt-2">
       <div className="flex flex-wrap gap-1.5">
         {locators.map((loc, i) => (
-          <button key={i} onClick={() => setNavigateRequest(loc)}
+          <button key={i} onClick={() => {
+            setFailure(null);
+            setPressed({ seq: setNavigateRequest(loc), label: loc.label });
+          }}
             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-cc-primary/5 border border-cc-primary/20 hover:bg-cc-primary/15 hover:border-cc-primary/40 transition-all cursor-pointer text-xs group">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 text-cc-primary shrink-0">
               <circle cx="8" cy="8" r="3" />
@@ -44,6 +69,11 @@ function LocatorCardGroup({ locators }: { locators: ViewerLocator[] }) {
           </button>
         ))}
       </div>
+      {failure && (
+        <div className="mt-1.5 text-[11px] text-cc-error/90">
+          {t("locator.failed", { label: failure.label })} — {failure.text}
+        </div>
+      )}
       {debugMode && (
         <div className="mt-1">
           <button
