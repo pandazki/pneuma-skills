@@ -1,0 +1,108 @@
+{
+  "title": "IP Mascots",
+  "description": "Six IP-mascot logo candidates from one identity brief — three directions, two takes each, generated with the logo & mascot playbook (references/logo-mascot.md; inspired by s1dashu/ip-as-logo-skill).",
+  "rows": [
+    {
+      "id": "row-ip-direction-a",
+      "label": "Direction A — ember spirit — the spark of co-creation — one soft flame tuft",
+      "items": [
+        {
+          "file": "images/mascot-a1-ember.png",
+          "title": "A1 — ember spirit, charcoal ground",
+          "prompt": "Create one complete full-bleed 1:1 square IP mascot logo artwork.\nBackdrop: cover the entire canvas with one visible, fully opaque solid deep charcoal-black. Keep it clearly visible in all four square corners and every open area surrounding the mascot.\nSubject: place one highly simplified plump ember-spirit mascot — a rounded teardrop flame creature — over the backdrop, reduced to one rounded continuous silhouette with one soft blunt flame tuft on top as its single defining feature.\nComplexity: use 6-10 broad basic shapes, at most two broad internal color regions, and a face with two eyes and one mouth. Keep the symbol readable at 32 x 32.\nColor behavior: use exactly three semantic colors in the complete artwork: vivid warm orange and soft warm cream as the two IP base colors, plus the charcoal backdrop. The body is one broad orange mass; the two eyes and mouth are cream. Keep the IP, facial marks, and backdrop clearly separated. Closely related tonal variants used for the ultra-light internal modeling do not count as additional semantic colors.\nComposition: keep the mascot upright, emerging from the lower-right, filling 75-85% of the square, with both paired identifying features visible.\nStyle: use an ultra-clean flat-first logo treatment with minimal graphic masses and only 8-12% extremely subtle internal tonal modeling inside the IP; barely neo-skeuomorphic, thick, soft, restrained, and scalable. Keep the result mostly flat.\nFinish: show only the mascot over the full-canvas backdrop, with clean geometric surfaces and normal square outer corners.\nConstraints: Use no text or watermark. Add no borders, frames, cards, or app-icon masks. Include one mascot only, with no extra subjects or scenery. Keep the contours thick and rounded, without fragile lines or sharp tips. Add no photorealistic material, dramatic bevel, glossy hotspot, deep occlusion, extrusion, strong three-dimensional rendering, or external cast shadow. Keep the background flat, with no gradient, texture, vignette, or lighting variation.",
+          "aspectRatio": "1:1",
+          "resolution": "1K",
+          "style": "flat-logo",
+          "tags": [
+            "logo",
+            "identity",
+            "direction-a"
+          ],
+          "createdAt": "2026-08-20T04:02:00Z"
+        },
+        {
+          "file": "images/mascot-a2-ember.png",
+          "title": "A2 — cream belly patch, lower-left",
+          "prompt": "Create one complete full-bleed 1:1 square IP mascot logo artwork.\nBackdrop: cover the entire canvas with one visible, fully opaque solid deep charcoal-black. Keep it clearly visible in all four square corners and every open area surrounding the mascot.\nSubject: place one highly simplified plump ember-spirit mascot — a rounded teardrop flame creature — over the backdrop, reduced to one rounded continuous silhouette with one soft blunt flame tuft on top as its single defining feature.\nComplexity: use 6-10 broad basic shapes, at most two broad internal color regions, and a face with two eyes and one mouth. Keep the symbol readable at 32 x 32.\nColor behavior: use exactly three semantic colors in the complete artwork: vivid warm orange and soft warm cream as the two IP base colors, plus the charcoal backdrop. The body is broad orange with one single broad cream belly patch as the second internal region; the two eyes and mouth reuse the cream. Keep the IP, facial marks, and backdrop clearly separated. Closely related tonal variants used for the ultra-light internal modeling do not count as additional semantic colors.\nComposition: keep the mascot upright, emerging from the lower-left, filling 75-85% of the square, with both paired identifying features visible.\nStyle: use an ultra-clean flat-first logo treatment with minimal graphic masses and only 8-12% extremely subtle internal tonal modeling inside the IP; barely neo-skeuomorphic, thick, soft, restrained, and scalable. Keep the result mostly flat.\nFinish: show only the mascot over the full-canvas backdrop, with clean geometric surfaces and normal square outer corners.\nConstraints: Use no text or watermark. Add no borders, frames, cards, or app-icon masks. Include one mascot only, with no extra subjects or scenery. Keep the contours thick and rounded, without fragile lines or sharp tips. Add no photorealistic material, dramatic bevel, glossy hotspot, deep occlusion, extrusion, strong three-dimensional rendering, or external cast shadow. Keep the background flat, with no gradient, texture, vignette, or lighting variation.",
+          "aspectRatio": "1:1",
+          "resolution": "1K",
+          "style": "flat-logo",
+          "tags": [
+            "logo",
+            "identity",
+            "direction-a"
+          ],
+          "createdAt": "2026-08-20T04:02:00Z"
+        }
+      ]
+    },
+    {
+      "id": "row-ip-direction-b",
+      "label": "Direction B — breath ghost — pneuma means breath and spirit — one wavy hem",
+      "items": [
+        {
+          "file": "images/mascot-b1-ghost.png",
+          "title": "B1 — cream on indigo, lower-left",
+          "prompt": "Create one complete full-bleed 1:1 square IP mascot logo artwork.\nBackdrop: cover the entire canvas with one visible, fully opaque solid deep indigo-navy. Keep it clearly visible in all four square corners and every open area surrounding the mascot.\nSubject: place one highly simplified plump breath-spirit ghost mascot — a rounded dome-headed friendly ghost — over the backdrop, reduced to one rounded continuous silhouette with one gently wavy blunt hem at its base as its single defining feature.\nComplexity: use 6-10 broad basic shapes, at most two broad internal color regions, and a face with two eyes and one mouth. Keep the symbol readable at 32 x 32.\nColor behavior: use exactly three semantic colors in the complete artwork: soft warm cream and vivid warm orange as the two IP base colors, plus the indigo backdrop. The body is one broad cream mass; the two eyes, mouth, and round cheek marks are orange. Keep the IP, facial marks, and backdrop clearly separated. Closely related tonal variants used for the ultra-light internal modeling do not count as additional semantic colors.\nComposition: keep the mascot upright, emerging from the lower-left, filling 75-85% of the square, with both paired identifying features visible.\nStyle: use an ultra-clean flat-first logo treatment with minimal graphic masses and only 8-12% extremely subtle internal tonal modeling inside the IP; barely neo-skeuomorphic, thick, soft, restrained, and scalable. Keep the result mostly flat.\nFinish: show only the mascot over the full-canvas backdrop, with clean geometric surfaces and normal square outer corners.\nConstraints: Use no text or watermark. Add no borders, frames, cards, or app-icon masks. Include one mascot only, with no extra subjects or scenery. Keep the contours thick and rounded, without fragile lines or sharp tips. Add no photorealistic material, dramatic bevel, glossy hotspot, deep occlusion, extrusion, strong three-dimensional rendering, or external cast shadow. Keep the background flat, with no gradient, texture, vignette, or lighting variation.",
+          "aspectRatio": "1:1",
+          "resolution": "1K",
+          "style": "flat-logo",
+          "tags": [
+            "logo",
+            "identity",
+            "direction-b"
+          ],
+          "createdAt": "2026-08-20T04:02:00Z"
+        },
+        {
+          "file": "images/mascot-b2-ghost.png",
+          "title": "B2 — tight head crop, lower-right",
+          "prompt": "Create one complete full-bleed 1:1 square IP mascot logo artwork.\nBackdrop: cover the entire canvas with one visible, fully opaque solid deep indigo-navy. Keep it clearly visible in all four square corners and every open area surrounding the mascot.\nSubject: place one highly simplified plump breath-spirit ghost mascot — a rounded dome-headed friendly ghost — over the backdrop, reduced to one rounded continuous silhouette with one gently wavy blunt hem at its base as its single defining feature.\nComplexity: use 6-10 broad basic shapes, at most two broad internal color regions, and a face with two eyes and one mouth. Keep the symbol readable at 32 x 32.\nColor behavior: use exactly three semantic colors in the complete artwork: soft warm cream and vivid warm orange as the two IP base colors, plus the indigo backdrop. The body is one broad cream mass; the two eyes, mouth, and round cheek marks are orange. Keep the IP, facial marks, and backdrop clearly separated. Closely related tonal variants used for the ultra-light internal modeling do not count as additional semantic colors.\nComposition: keep the mascot upright, emerging from the lower-right with a tight head-and-shoulders crop, filling about 85% of the square, with both paired identifying features visible.\nStyle: use an ultra-clean flat-first logo treatment with minimal graphic masses and only 8-12% extremely subtle internal tonal modeling inside the IP; barely neo-skeuomorphic, thick, soft, restrained, and scalable. Keep the result mostly flat.\nFinish: show only the mascot over the full-canvas backdrop, with clean geometric surfaces and normal square outer corners.\nConstraints: Use no text or watermark. Add no borders, frames, cards, or app-icon masks. Include one mascot only, with no extra subjects or scenery. Keep the contours thick and rounded, without fragile lines or sharp tips. Add no photorealistic material, dramatic bevel, glossy hotspot, deep occlusion, extrusion, strong three-dimensional rendering, or external cast shadow. Keep the background flat, with no gradient, texture, vignette, or lighting variation.",
+          "aspectRatio": "1:1",
+          "resolution": "1K",
+          "style": "flat-logo",
+          "tags": [
+            "logo",
+            "identity",
+            "direction-b"
+          ],
+          "createdAt": "2026-08-20T04:02:00Z"
+        }
+      ]
+    },
+    {
+      "id": "row-ip-direction-c",
+      "label": "Direction C — visor robot — the agent teammate at your side — one broad visor",
+      "items": [
+        {
+          "file": "images/mascot-c1-visor.png",
+          "title": "C1 — graphite body, orange visor",
+          "prompt": "Create one complete full-bleed 1:1 square IP mascot logo artwork.\nBackdrop: cover the entire canvas with one visible, fully opaque solid warm cream. Keep it clearly visible in all four square corners and every open area surrounding the mascot.\nSubject: place one highly simplified round-headed robot companion mascot over the backdrop, reduced to one rounded continuous silhouette with one broad rounded visor as its single defining feature, and its pair of small round side ear-caps both visible.\nComplexity: use 6-10 broad basic shapes, at most two broad internal color regions, and a face with two eyes and one mouth. Keep the symbol readable at 32 x 32.\nColor behavior: use exactly three semantic colors in the complete artwork: deep graphite and vivid warm orange as the two IP base colors, plus the cream backdrop. The head and body are one broad graphite mass; the visor is one broad orange region carrying the face — two graphite eyes and one graphite mouth. Keep the IP, facial marks, and backdrop clearly separated. Closely related tonal variants used for the ultra-light internal modeling do not count as additional semantic colors.\nComposition: keep the mascot upright, emerging from the lower-right, filling 75-85% of the square, with both paired identifying features visible.\nStyle: use an ultra-clean flat-first logo treatment with minimal graphic masses and only 8-12% extremely subtle internal tonal modeling inside the IP; barely neo-skeuomorphic, thick, soft, restrained, and scalable. Keep the result mostly flat.\nFinish: show only the mascot over the full-canvas backdrop, with clean geometric surfaces and normal square outer corners.\nConstraints: Use no text or watermark. Add no borders, frames, cards, or app-icon masks. Include one mascot only, with no extra subjects or scenery. Keep the contours thick and rounded, without fragile lines or sharp tips. Add no photorealistic material, dramatic bevel, glossy hotspot, deep occlusion, extrusion, strong three-dimensional rendering, or external cast shadow. Keep the background flat, with no gradient, texture, vignette, or lighting variation.",
+          "aspectRatio": "1:1",
+          "resolution": "1K",
+          "style": "flat-logo",
+          "tags": [
+            "logo",
+            "identity",
+            "direction-c"
+          ],
+          "createdAt": "2026-08-20T04:02:00Z"
+        },
+        {
+          "file": "images/mascot-c2-visor.png",
+          "title": "C2 — orange body, graphite visor",
+          "prompt": "Create one complete full-bleed 1:1 square IP mascot logo artwork.\nBackdrop: cover the entire canvas with one visible, fully opaque solid warm cream. Keep it clearly visible in all four square corners and every open area surrounding the mascot.\nSubject: place one highly simplified round-headed robot companion mascot over the backdrop, reduced to one rounded continuous silhouette with one broad rounded visor as its single defining feature, and its pair of small round side ear-caps both visible.\nComplexity: use 6-10 broad basic shapes, at most two broad internal color regions, and a face with two eyes and one mouth. Keep the symbol readable at 32 x 32.\nColor behavior: use exactly three semantic colors in the complete artwork: vivid warm orange and deep graphite as the two IP base colors, plus the cream backdrop. The head and body are one broad orange mass; the visor is one broad graphite region carrying the face — two orange eyes and one orange mouth. Keep the IP, facial marks, and backdrop clearly separated. Closely related tonal variants used for the ultra-light internal modeling do not count as additional semantic colors.\nComposition: keep the mascot upright, emerging from the lower-left, filling 75-85% of the square, with both paired identifying features visible.\nStyle: use an ultra-clean flat-first logo treatment with minimal graphic masses and only 8-12% extremely subtle internal tonal modeling inside the IP; barely neo-skeuomorphic, thick, soft, restrained, and scalable. Keep the result mostly flat.\nFinish: show only the mascot over the full-canvas backdrop, with clean geometric surfaces and normal square outer corners.\nConstraints: Use no text or watermark. Add no borders, frames, cards, or app-icon masks. Include one mascot only, with no extra subjects or scenery. Keep the contours thick and rounded, without fragile lines or sharp tips. Add no photorealistic material, dramatic bevel, glossy hotspot, deep occlusion, extrusion, strong three-dimensional rendering, or external cast shadow. Keep the background flat, with no gradient, texture, vignette, or lighting variation.",
+          "aspectRatio": "1:1",
+          "resolution": "1K",
+          "style": "flat-logo",
+          "tags": [
+            "logo",
+            "identity",
+            "direction-c"
+          ],
+          "createdAt": "2026-08-20T04:02:00Z"
+        }
+      ]
+    }
+  ]
+}

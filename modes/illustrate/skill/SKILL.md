@@ -81,20 +81,20 @@ JSON straight back.
 
 ### Locator cards
 
-Embed `<viewer-locator address='{...}'></viewer-locator>` in chat so the user can jump to a result with one click. The `address` payload is a ViewerAddress — use these keys, alone or combined:
+Embed `<viewer-locator label="..." address='{...}' />` in chat so the user can jump to a result with one click. The `label` is the card's button text; the `address` payload is a ViewerAddress — use these keys, alone or combined:
 
 ```html
 <!-- Navigate to a specific image in the active content set -->
-<viewer-locator address='{"file":"images/logo-fox-1.png"}'></viewer-locator>
+<viewer-locator label="Open Geometric Fox v1" address='{"file":"images/logo-fox-1.png"}' />
 
 <!-- Focus a whole row (e.g. after a batch generation) -->
-<viewer-locator address='{"rowId":"row-1710000000000"}'></viewer-locator>
+<viewer-locator label="See the new batch" address='{"rowId":"row-1710000000000"}' />
 
 <!-- Switch the active content set -->
-<viewer-locator address='{"contentSet":"marketing-assets"}'></viewer-locator>
+<viewer-locator label="Switch to marketing-assets" address='{"contentSet":"marketing-assets"}' />
 
 <!-- Switch content set AND select a specific image in one click -->
-<viewer-locator address='{"contentSet":"marketing-assets","file":"images/hero.png"}'></viewer-locator>
+<viewer-locator label="Open the hero image" address='{"contentSet":"marketing-assets","file":"images/hero.png"}' />
 ```
 
 Drop a locator after every generation, edit, and variation so the canvas and the conversation stay synced.

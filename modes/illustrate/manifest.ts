@@ -8,8 +8,13 @@ import { loadStudio, saveStudio } from "./domain.js";
 
 const illustrateManifest: ModeManifest = {
   name: "illustrate",
-  version: "0.3.0",
+  version: "0.4.0",
   changelog: {
+    "0.4.0": [
+      "New starting point: IP mascots — six candidates from one identity brief, three directions × two takes, generated with the logo playbook itself",
+      "Locator examples now carry a label and the canonical self-closing form, so every card renders with meaningful button text",
+      "The canvas now builds image URLs from the content set it actually renders — a fresh session's first batch no longer reads 'Not yet generated' while the files sit on disk, and a transiently failed load retries itself with backoff",
+    ],
     "0.3.0": [
       "New logo & mascot genre playbook (references/logo-mascot.md) — complexity budget, thick rounded shape language, exactly-three-semantic-colors rule, 32×32 readability, corner-crop composition, and a fill-in prompt skeleton. Inspired by s1dashu/ip-as-logo-skill",
       "Brand-identity requests now propose three directions (subject — product connection — silhouette) and wait for approval before generating six labeled candidates; simple one-off generations stay confirmation-free",
@@ -123,6 +128,7 @@ The user just opened the illustration workspace. You are ready to assist with AI
     contentCheckPattern: "**/manifest.json",
     seedFiles: {
       "modes/illustrate/seed/pneuma-brand/": "pneuma-brand/",
+      "modes/illustrate/seed/ip-mascots/": "ip-mascots/",
       "modes/illustrate/seed/feature-cards/": "feature-cards/",
       "modes/illustrate/seed/blog-heroes/": "blog-heroes/",
     },
@@ -141,6 +147,21 @@ The user just opened the illustration workspace. You are ready to assist with AI
           "zh-CN": "Logo 概念图与文字标的多版本探索。生成、对照、选出方向。",
         },
         tags: ["Logo", "Wordmark"],
+      },
+      {
+        id: "ip-mascots",
+        sourceKey: "modes/illustrate/seed/ip-mascots/",
+        thumbnail: "ip-mascots.png",
+        displayName: {
+          en: "IP mascots",
+          "zh-CN": "IP 吉祥物",
+          "zh-TW": "IP 吉祥物",
+        },
+        description: {
+          en: "Six mascot-logo candidates from one identity brief — three directions, two takes each, judged by the logo playbook.",
+          "zh-CN": "一份品牌简报长出的六个吉祥物 logo 候选——三个方向各出两版,按 logo playbook 逐张评审。",
+        },
+        tags: ["Logo", "Mascot"],
       },
       {
         id: "feature-cards",
