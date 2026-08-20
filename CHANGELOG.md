@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.35.0] - 2026-08-20
+
+### Added
+- **IP mascots — a starting point made by the playbook it demonstrates.** Illustrate's seed gallery gains a fourth template: six mascot-logo candidates from one identity brief — three directions (ember spirit, breath ghost, visor robot), two takes each, one row per direction — generated end-to-end with the logo playbook's own workflow and prompt skeleton, full prompts preserved in the manifest for re-generation.
+
+### Fixed
+- **Every documented `<viewer-locator>` variant renders as a card.** The chat renderer demanded a `label` and a self-closing tag, while several mode skills teach label-less examples with a paired closing tag — an agent following its own skill verbatim got raw text in chat instead of a clickable card, and the one click that would have set the active content set never became clickable. The label is now optional (the card derives its button text from the address values), both closing forms parse, and the legacy `data=` attribute keeps working.
+- **Illustrate's canvas builds image URLs from the content set it actually renders.** With no active content set yet — a fresh session where the agent minted the first set and no locator was clicked — the viewer fell back to the first manifest for rendering but kept building image URLs with the null active set, dropping the directory prefix: a whole six-candidate batch 404'd and read "Not yet generated" while the files and a fully-updated manifest sat correct on disk. Reproduced live on a fresh seed, fixed, and verified against the same canvas.
+- **A transiently failed image load heals itself.** One failed fetch used to stick a card on "Not yet generated" forever — the global cache-buster only bumps on a *later* image write, which never comes for the last image of a batch. An errored card now retries with backoff before admitting defeat.
+
 ## [3.34.0] - 2026-08-20
 
 ### Added
