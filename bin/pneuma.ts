@@ -18,6 +18,7 @@ import { createBackend, getDefaultBackendType, getBackendModule } from "../backe
 import { ClaudeCodeBackend } from "../backends/claude-code/index.js";
 import { installSkill, readInboundHandoff, type InboundHandoffPayload } from "../server/skill-installer.js";
 import { buildEnvTag } from "./env-tag.js";
+import { ensureCliWrapper } from "./cli-wrapper.js";
 import { startFileWatcher } from "../server/file-watcher.js";
 import { initShadowGit } from "../server/shadow-git.js";
 import { loadModeManifest, listBuiltinModes, registerExternalMode } from "../core/mode-loader.js";
@@ -2048,13 +2049,15 @@ async function main() {
     PNEUMA_HOME_ROOT: startup.paths.homeRoot,
     PNEUMA_SESSION_ID: startup.sessionId,
     // Canonical command for any pneuma CLI invocation the agent needs to run
-    // (Smart Handoff today; future tools later). Resolves to the bun-driven
-    // form in dev (where there's no global `pneuma` on PATH) and the same
-    // form in prod (npm-installed `pneuma` is already a thin wrapper around
-    // the same script). Works under bash word-splitting, so the skill can
-    // teach `$PNEUMA_CLI handoff --json '...'` and the agent doesn't have
-    // to discover the binary.
-    PNEUMA_CLI: `bun ${import.meta.path}`,
+    // (session refine, Smart Handoff, borrow, …). A single spaceless
+    // executable path — a `~/.pneuma/bin/` wrapper that execs this exact
+    // runtime + entry with both paths quoted inside the script — so
+    // `$PNEUMA_CLI handoff --json '…'` invokes correctly in bash, zsh AND
+    // fish, quoted or not. The old `bun <entry>` two-token string only
+    // worked under bash with a spaceless install path; the desktop bundle
+    // (`/Applications/Pneuma Skills.app/…`) broke it, and fish never
+    // word-splits a variable at all. See bin/cli-wrapper.ts.
+    PNEUMA_CLI: ensureCliWrapper({ entry: import.meta.path }),
   };
   if (startup.paths.projectRoot) {
     pneumaEnv.PNEUMA_PROJECT_ROOT = startup.paths.projectRoot;

@@ -29,6 +29,7 @@
 | `settings.json` | Plugin 设置 + 全局偏好 | Plugin SettingsManager | 由 launcher UI 写入 |
 | `api-keys.json` / `r2.json` / `cloudflare-pages.json` | 服务凭据 | 用户手动配置 / launcher 表单 | 长期持有；不轮换 |
 | `replay-workspaces/<id>/` | Replay 包解压临时根 | History replay 模块 | `pneuma history open` 时创建；用完保留以便复用 |
+| `bin/pneuma-<hash>` | `$PNEUMA_CLI` 的 sh wrapper——单一无空格可执行路径，内部引号写死真实 runtime + entry；按 (runtime, entry) 哈希命名，一个安装形态一份 | `bin/cli-wrapper.ts`（session boot 时幂等重写） | 每次 session 启动 ensure；可随时删除，下次启动重建 |
 | `cache/` | 杂项缓存（图片、构建产物等） | 多模块共享 | 可随时清空，不影响功能正确性 |
 | `scheduled_tasks.json`*, `scheduled_tasks.lock`* | 计划任务（如有） | （非核心子系统） | 调度模块自管 |
 

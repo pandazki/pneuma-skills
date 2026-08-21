@@ -69,7 +69,7 @@ For each `needsTidy` session, work out a title + one-line summary from its `dige
 $PNEUMA_CLI session refine --target-session <sessionId> --json '{"displayName": "<≤40 chars>", "description": "<≤280 chars>"}'
 ```
 
-- Always call through `$PNEUMA_CLI` (not the literal `pneuma`), unquoted — the Bash tool word-splits it correctly.
+- Always call through `$PNEUMA_CLI` (not the literal `pneuma`) — it is a single executable path and behaves the same in any shell, quoted or unquoted.
 - `--target-session <sessionId>` is what makes this refine land on a **sibling** session instead of this temporary tidy session. Without it you'd re-title the tidy session itself — never do that.
 - Before moving to the next session, update that session's entry in `report.json`: set `status` to `"done"`, fill `after.displayName` / `after.description`, and carry `before.displayName` as the old value (usually `null` / the default). Rewrite the whole file each time — the viewer re-reads it.
 

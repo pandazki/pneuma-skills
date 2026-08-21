@@ -28,7 +28,7 @@ This skill is how you fix that. You write a meaningful title + one-sentence summ
 $PNEUMA_CLI session refine --json '{"displayName": "<≤40 chars>", "description": "<≤280 chars>"}'
 ```
 
-Always call through the `$PNEUMA_CLI` env var, not the literal `pneuma` binary. The env var resolves to the right invocation regardless of how Pneuma was installed (npm-global, dev worktree, desktop bundle); writing the literal `pneuma session refine` only works when the binary happens to be on `PATH`, which it usually isn't inside the agent's sandbox. The Bash tool word-splits unquoted `$PNEUMA_CLI` correctly, so `$PNEUMA_CLI session refine ...` invokes as one command — don't quote it.
+Always call through the `$PNEUMA_CLI` env var, not the literal `pneuma` binary. The env var resolves to the right invocation regardless of how Pneuma was installed (npm-global, dev worktree, desktop bundle); writing the literal `pneuma session refine` only works when the binary happens to be on `PATH`, which it usually isn't inside the agent's sandbox. `$PNEUMA_CLI` is a single executable path, so the call behaves the same in bash, zsh, and fish, quoted or unquoted.
 
 The command POSTs to the running Pneuma server (via `$PNEUMA_SERVER_URL`), which atomically rewrites `<sessionDir>/session.json`, syncs the global registry at `~/.pneuma/sessions.json`, and broadcasts an event so any open browsers refresh the row without a reload.
 
