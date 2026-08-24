@@ -1,24 +1,24 @@
 # Taste Profile
 
-> 这是一份空白起步的口味档案。你不需要先描述风格；它只从真实写作任务里的选择、否决和亲手修改中生长。
+> 这是一份空白起步的口味档案。你不需要先描述风格；它只从真实写作任务里的选择、否决和亲手修改中长出来。
 
-## 0. Calibration
+## 0. 校准
 
-- Chinese long-form: uncalibrated
-- Evidence-backed defaults come from the bundled `preset-default.md`.
-- Other genres and languages remain uncalibrated.
+- 中文长文：尚未校准
+- 有证据的默认值来自随附的 `preset-default.md`。
+- 其他体裁和语言尚未校准。
 
-## 1. Voice floor
+## 1. 声音底线
 
-还没有稳定的声音下限。
+还没有稳定的声音底线。
 
-如果有你自己写过、并且觉得「这像我」的文字，把一两篇放进 `materials/voice/`。这里只学习呼吸、姿态、限定语和句法，不照搬内容。
+如果有你自己写过、并且觉得「这像我」的文字，把一两篇放进 `materials/voice/`。这里只学呼吸、姿态、限定和句法，不照搬内容。
 
-## 2. Strongest rejections
+## 2. 最强的否决项
 
-还没有从你的真实判断里学到稳定的拒绝项。
+还没有从你的真实判断里学到稳定的否决项。
 
-## 5. Working principles
+## 5. 工作原则
 
 - 可读性和「不像模型默认输出」是两条不同的轴。
-- 新结论都只是小样本强假设，不当成永久真理。
+- 新结论都只是小样本的强假设，不当成永久的真理。

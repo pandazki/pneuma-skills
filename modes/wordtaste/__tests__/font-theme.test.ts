@@ -5,17 +5,29 @@ import {
   DEFAULT_FONT_ID,
   DEFAULT_FONT_BY_SCRIPT,
   DEFAULT_THEME_ID,
+  DEFAULT_SKIN,
+  DEFAULT_THEME_BY_SKIN,
+  SURFACE_SKINS,
   LEGACY_SKIN_MAP,
   fontById,
   themeById,
   detectScript,
+  isSurfaceSkin,
+  otherSkin,
+  readStoredSkin,
   resolveFont,
+  resolveSkin,
+  resolveSurfaceTheme,
   resolveTheme,
+  skinStorageKey,
+  writeStoredSkin,
   fontCssVars,
   themeCssVars,
   surfaceCssVars,
-  type ReadingFont,
   type ColorTheme,
+  type ReadingFont,
+  type SkinStore,
+  type SurfaceSkin,
 } from "../viewer/font-theme.js";
 
 // ── The font axis ─────────────────────────────────────────────────────────────
@@ -244,5 +256,225 @@ describe("CSS vars — font and theme project into separate, composable groups",
     const vars = surfaceCssVars(wenkai, midnight);
     expect(vars["--wordtaste-font-family"]).toContain("LXGW WenKai");
     expect(vars["--wordtaste-theme-mode"]).toBe("night");
+  });
+});
+
+// ── The skin axis — which surface the whole studio reads on ──────────────────
+
+/** A Storage-shaped double that keeps its writes in memory. */
+function fakeStore(seed: Record<string, string> = {}): SkinStore & { data: Record<string, string> } {
+  const data = { ...seed };
+  return {
+    data,
+    getItem: (key: string) => (key in data ? data[key] : null),
+    setItem: (key: string, value: string) => {
+      data[key] = value;
+    },
+  };
+}
+
+/** The Storage a browser hands out in private mode / over quota. */
+const throwingStore: SkinStore = {
+  getItem() {
+    throw new DOMException("SecurityError");
+  },
+  setItem() {
+    throw new DOMException("QuotaExceededError");
+  },
+};
+
+describe("the skin axis — the surface the whole studio reads on", () => {
+  it("offers exactly two surfaces and defaults to the dark one", () => {
+    expect([...SURFACE_SKINS].sort()).toEqual(["dark", "light"]);
+    expect(DEFAULT_SKIN).toBe("dark");
+  });
+
+  it("names a real theme as each skin's article palette", () => {
+    for (const skin of SURFACE_SKINS) {
+      const theme = themeById(DEFAULT_THEME_BY_SKIN[skin]);
+      expect(theme, `theme for skin ${skin}`).toBeDefined();
+      // A light surface reads on a day palette, a dark one on a night palette —
+      // otherwise the page and the desk it sits on disagree.
+      expect(theme!.mode).toBe(skin === "light" ? "day" : "night");
+    }
+  });
+
+  it("recognises only the two known skin ids", () => {
+    expect(isSurfaceSkin("light")).toBe(true);
+    expect(isSurfaceSkin("dark")).toBe(true);
+    expect(isSurfaceSkin("banana")).toBe(false);
+    expect(isSurfaceSkin("")).toBe(false);
+    expect(isSurfaceSkin(null)).toBe(false);
+    expect(isSurfaceSkin(undefined)).toBe(false);
+    expect(isSurfaceSkin(1)).toBe(false);
+  });
+
+  it("flips to the other surface", () => {
+    expect(otherSkin("dark")).toBe("light");
+    expect(otherSkin("light")).toBe("dark");
+  });
+});
+
+describe("resolveSkin — the user's toggle wins, the file is the default", () => {
+  it("defaults to dark when neither the user nor the file says anything", () => {
+    expect(resolveSkin({}, null)).toBe("dark");
+    expect(resolveSkin(null, null)).toBe("dark");
+    expect(resolveSkin(undefined, undefined)).toBe("dark");
+  });
+
+  it("takes the stored choice over whatever the file says", () => {
+    expect(resolveSkin({ theme: "midnight" }, "light")).toBe("light");
+    expect(resolveSkin({ theme: "parchment" }, "dark")).toBe("dark");
+  });
+
+  it("reads the file default off the theme axis — a day palette means a light surface", () => {
+    expect(resolveSkin({ theme: "parchment" }, null)).toBe("light");
+    expect(resolveSkin({ theme: "quartz" }, null)).toBe("light");
+    expect(resolveSkin({ theme: "dusk" }, null)).toBe("dark");
+  });
+
+  it("honours an agent's themeSuggested the same way", () => {
+    expect(resolveSkin({ themeSuggested: "ivory" }, null)).toBe("light");
+    expect(resolveSkin({ themeSuggested: "midnight" }, null)).toBe("dark");
+  });
+
+  it("maps a pre-split legacy `skin` id through to a surface", () => {
+    // The legacy vocabulary is not a second theme mechanism: it resolves to a
+    // theme first, and the theme's day/night mood is what names the surface.
+    expect(resolveSkin({ skin: "parchment" }, null)).toBe("light");
+    expect(resolveSkin({ skin: "dusk" }, null)).toBe("dark");
+    expect(resolveSkin({ skinSuggested: "ivory" }, null)).toBe("light");
+  });
+
+  it("ignores a stored value that names no known skin", () => {
+    expect(resolveSkin({ theme: "midnight" }, "banana")).toBe("dark");
+    expect(resolveSkin({ theme: "parchment" }, "")).toBe("light");
+    expect(resolveSkin({}, 7)).toBe("dark");
+  });
+
+  it("ignores an unknown theme id and lands on the default surface", () => {
+    expect(resolveSkin({ theme: "ghost" }, null)).toBe("dark");
+  });
+});
+
+describe("resolveSurfaceTheme — the article palette agrees with the surface", () => {
+  it("leaves the resolved theme alone when it already matches the surface", () => {
+    expect(resolveSurfaceTheme({ theme: "dusk" }, "dark").id).toBe("dusk");
+    expect(resolveSurfaceTheme({ theme: "quartz" }, "light").id).toBe("quartz");
+  });
+
+  it("substitutes the surface's own palette when the two disagree", () => {
+    // Toggling to light must not leave a night page on a paper desk.
+    expect(resolveSurfaceTheme({ theme: "midnight" }, "light").id).toBe(
+      DEFAULT_THEME_BY_SKIN.light,
+    );
+    expect(resolveSurfaceTheme({ theme: "parchment" }, "dark").id).toBe(
+      DEFAULT_THEME_BY_SKIN.dark,
+    );
+  });
+
+  it("returns a day palette for light and a night palette for dark, always", () => {
+    for (const theme of THEMES) {
+      expect(resolveSurfaceTheme({ theme: theme.id }, "light").mode).toBe("day");
+      expect(resolveSurfaceTheme({ theme: theme.id }, "dark").mode).toBe("night");
+    }
+  });
+
+  it("comes back to the file's own theme when the user toggles away and back", () => {
+    const cfg = { theme: "dusk" };
+    const away = resolveSurfaceTheme(cfg, "light");
+    expect(away.id).toBe(DEFAULT_THEME_BY_SKIN.light);
+    // Nothing about the file changed, so returning to dark returns to dusk.
+    expect(resolveSurfaceTheme(cfg, "dark").id).toBe("dusk");
+  });
+
+  it("changes nothing for a user who never toggles — the invariant this ships on", () => {
+    // For every config the file can express, the untoggled surface theme is
+    // exactly what resolveTheme already produced before the skin axis existed.
+    const configs: Array<Record<string, unknown>> = [
+      {},
+      { theme: "ghost" },
+      ...THEMES.map((t) => ({ theme: t.id })),
+      ...THEMES.map((t) => ({ themeSuggested: t.id })),
+      ...Object.keys(LEGACY_SKIN_MAP).map((id) => ({ skin: id })),
+      ...Object.keys(LEGACY_SKIN_MAP).map((id) => ({ skinSuggested: id })),
+    ];
+    for (const cfg of configs) {
+      const skin = resolveSkin(cfg, null);
+      expect(resolveSurfaceTheme(cfg, skin).id, JSON.stringify(cfg)).toBe(
+        resolveTheme(cfg).id,
+      );
+    }
+  });
+});
+
+describe("skin persistence — one remembered choice per session", () => {
+  it("keys the choice by session so two sessions can differ", () => {
+    const a = skinStorageKey("session-a");
+    const b = skinStorageKey("session-b");
+    expect(a).not.toBe(b);
+    expect(a).toContain("wordtaste");
+    // A viewer that has not learned its session id yet still has somewhere to
+    // write, and it must not collide with a real session.
+    const anonymous = skinStorageKey(null);
+    expect(anonymous.length).toBeGreaterThan(0);
+    expect(anonymous).not.toBe(a);
+    expect(skinStorageKey(undefined)).toBe(anonymous);
+  });
+
+  it("round-trips a choice through a store", () => {
+    const store = fakeStore();
+    const key = skinStorageKey("s1");
+    expect(readStoredSkin(key, store)).toBe(null);
+    writeStoredSkin(key, "light", store);
+    expect(readStoredSkin(key, store)).toBe("light");
+    writeStoredSkin(key, "dark", store);
+    expect(readStoredSkin(key, store)).toBe("dark");
+  });
+
+  it("reads nothing for a session that never toggled", () => {
+    const store = fakeStore({ [skinStorageKey("s1")]: "light" });
+    expect(readStoredSkin(skinStorageKey("s2"), store)).toBe(null);
+  });
+
+  it("discards a stored value that names no known skin", () => {
+    const key = skinStorageKey("s1");
+    expect(readStoredSkin(key, fakeStore({ [key]: "banana" }))).toBe(null);
+    expect(readStoredSkin(key, fakeStore({ [key]: "" }))).toBe(null);
+  });
+
+  it("survives a Storage that throws on read and on write", () => {
+    // Private mode, a disabled-storage policy, or a full quota must degrade to
+    // "the habit is not remembered", never to a broken viewer.
+    const key = skinStorageKey("s1");
+    expect(readStoredSkin(key, throwingStore)).toBe(null);
+    expect(() => writeStoredSkin(key, "light", throwingStore)).not.toThrow();
+  });
+
+  it("survives having no Storage at all", () => {
+    const key = skinStorageKey("s1");
+    expect(readStoredSkin(key, null)).toBe(null);
+    expect(() => writeStoredSkin(key, "light", null)).not.toThrow();
+  });
+
+  it("feeds resolveSkin directly — stored choice, then file, then dark", () => {
+    const key = skinStorageKey("s1");
+    const store = fakeStore();
+    const cfg = { theme: "midnight" };
+    expect(resolveSkin(cfg, readStoredSkin(key, store))).toBe("dark");
+    writeStoredSkin(key, "light", store);
+    expect(resolveSkin(cfg, readStoredSkin(key, store))).toBe("light");
+  });
+});
+
+describe("skin typing", () => {
+  it("narrows an unknown value to a SurfaceSkin", () => {
+    const raw: unknown = "light";
+    if (isSurfaceSkin(raw)) {
+      const skin: SurfaceSkin = raw;
+      expect(skin).toBe("light");
+    } else {
+      throw new Error("expected 'light' to narrow");
+    }
   });
 });

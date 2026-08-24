@@ -1,0 +1,120 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WordTaste plan",
+  "description": "The plan a planner returns for one Chinese long-form essay. Every Chinese string in it is copied character for character from the human material; everything the planner says in its own words is English, in notes_en. open_question is the one exception: it is shown to the user and never composed into a prompt.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "title", "claims", "units"],
+  "properties": {
+    "version": { "const": 1 },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The essay title, verbatim from the material."
+    },
+    "claims": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The argument as individually addressable claims.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "source"],
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Verbatim from the material."
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Where it came from: materials/original.md or materials/outline.md, optionally with a line anchor such as #L12."
+          }
+        }
+      }
+    },
+    "units": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Sequential writing units, normally 600-1200 Chinese characters, grouped by content rather than by capacity.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "role",
+          "spans",
+          "must_keep",
+          "target_chars",
+          "pace",
+          "ends",
+          "notes_en"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+            "description": "u1, u2, ... — unique within the plan."
+          },
+          "role": {
+            "enum": ["background", "problem", "reasoning", "conclusion", "close"],
+            "description": "What this unit does in the essay. Assigned before length or pace; the prose form follows from it."
+          },
+          "spans": {
+            "type": "array",
+            "description": "Heading-to-heading ranges of a material file. The range starts at the from line and ends before the to line; an empty to means end of file.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["file", "from", "to"],
+              "properties": {
+                "file": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "A material file path relative to the content set, such as materials/original.md."
+                },
+                "from": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "A whole line of that file, copied exactly."
+                },
+                "to": {
+                  "type": "string",
+                  "description": "A whole line of that file after from, copied exactly, or empty for end of file."
+                }
+              }
+            }
+          },
+          "must_keep": {
+            "type": "array",
+            "description": "Sentences whose meaning must survive, verbatim from the spanned material.",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "target_chars": {
+            "type": "integer",
+            "minimum": 300,
+            "maximum": 2000,
+            "description": "A rough length in Chinese characters, not a threshold to hit."
+          },
+          "pace": {
+            "enum": ["dense", "loose", "mixed"],
+            "description": "How tightly this unit is packed. Neighbouring units change gear."
+          },
+          "ends": {
+            "enum": ["stop", "open"],
+            "description": "stop: the unit ends and says nothing more. open: it leaves the reader waiting for the next unit."
+          },
+          "notes_en": {
+            "type": "string",
+            "description": "English only. Anything the planner wants to tell the writer in its own words belongs here and nowhere else."
+          }
+        }
+      }
+    },
+    "open_question": {
+      "type": "string",
+      "description": "Optional. One question for the user, Chinese allowed. It is shown to the user and never composed into a prompt."
+    }
+  }
+}

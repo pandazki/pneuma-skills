@@ -15,6 +15,7 @@
  */
 
 import {
+  Fragment,
   forwardRef,
   useCallback,
   useEffect,
@@ -25,7 +26,20 @@ import {
 import type { CSSProperties, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+// KaTeX's HTML output is a pile of positioned spans; without its stylesheet
+// a formula renders as a scrambled line of glyphs. Vite resolves the font
+// files this sheet references, which is why it is imported here rather than
+// inlined into `STYLES` below.
+import "katex/dist/katex.min.css";
+import {
+  WORDTASTE_REHYPE_PLUGINS,
+  WORDTASTE_REMARK_PLUGINS,
+} from "./markdown-plugins.js";
+import {
+  readRangeSegments,
+  segmentsHaveConstruct,
+  segmentsToSource,
+} from "./math-selection.js";
 import type {
   ViewerPreviewProps,
   ViewerSelectionContext,
@@ -35,6 +49,7 @@ import { useSource } from "../../../src/hooks/useSource.js";
 import { useStore } from "../../../src/store.js";
 import type {
   Draft,
+  Plan,
   TasteProfile,
   WorkflowState,
   WritingCandidate,
@@ -48,16 +63,26 @@ import {
   deriveDraft,
   deriveTaste,
   deriveWorkflow,
+  findPlanUnit,
   inferStage,
   normalizeEmphasis,
+  planRows,
+  planSourceLabel,
+  planUnitCaption,
   progressPercent,
   stageIndex,
   type WordtasteAddress,
 } from "./studio-logic.js";
 import {
+  otherSkin,
+  readStoredSkin,
   resolveFont,
-  resolveTheme,
+  resolveSkin,
+  resolveSurfaceTheme,
+  skinStorageKey,
   surfaceCssVars,
+  writeStoredSkin,
+  type SurfaceSkin,
 } from "./font-theme.js";
 
 interface WordtasteConfig {
@@ -109,6 +134,8 @@ export default function WordtastePreview(props: ViewerPreviewProps) {
   const activeContentSet = useStore((state) => state.activeContentSet) ?? "";
   const contentSets = useStore((state) => state.contentSets);
   const setActiveContentSet = useStore((state) => state.setActiveContentSet);
+  // Only ever used to key the remembered reading surface to this session.
+  const sessionId = useStore((state) => state.sessionId);
 
   const draftSource = sources.draft as Source<Draft> | undefined;
   const workflowSource = sources.workflow as Source<WorkflowState> | undefined;
@@ -154,6 +181,12 @@ export default function WordtastePreview(props: ViewerPreviewProps) {
 
   const stage = inferStage(workflow, draft);
   const activeStageIndex = stageIndex(stage);
+  // Emphasis indexes address the claim list the user is actually looking at.
+  // A planned session lists `plan.claims`, a legacy one lists `layout.thesis`;
+  // bounding against the wrong one would clip a mark the user could see and
+  // click.
+  const claimCount =
+    workflow?.layout?.plan?.claims.length ?? workflow?.layout?.thesis.length ?? 0;
   const [emphasis, setEmphasis] = useState<number[]>(workflow?.emphasis ?? []);
   const [layoutNote, setLayoutNote] = useState("");
   const [selectedCandidateId, setSelectedCandidateId] = useState(
@@ -187,9 +220,52 @@ export default function WordtastePreview(props: ViewerPreviewProps) {
       config?.skinSuggested,
     ],
   );
+  // The reading surface. `null` means "the user has not toggled in this
+  // session", which is what lets the file stay the default.
+  const skinKey = useMemo(() => skinStorageKey(sessionId), [sessionId]);
+  const [skinChoice, setSkinChoice] = useState<SurfaceSkin | null>(() =>
+    readStoredSkin(skinKey),
+  );
+  // One effect owns the whole state <-> storage sync, in both directions, so
+  // there is exactly one writer.
+  //
+  // It has to run on the key as well as the choice: the session id arrives
+  // with the WebSocket connect, which can land after this viewer mounts, so
+  // the storage key changes underneath it. A choice already made in this
+  // mount is carried across and written through — a late session id must
+  // never silently undo a toggle the user is looking at — and only when there
+  // is no choice yet does the stored habit flow back in.
+  useEffect(() => {
+    if (skinChoice) {
+      writeStoredSkin(skinKey, skinChoice);
+      return;
+    }
+    const stored = readStoredSkin(skinKey);
+    if (stored) setSkinChoice(stored);
+  }, [skinKey, skinChoice]);
+
+  const skin = useMemo(
+    () => resolveSkin(config, skinChoice),
+    [
+      skinChoice,
+      config?.theme,
+      config?.themeSuggested,
+      config?.skin,
+      config?.skinSuggested,
+    ],
+  );
+  // Pure state. Persisting it is the sync effect's job, not this one's.
+  const toggleSkin = useCallback(() => setSkinChoice(otherSkin(skin)), [skin]);
+
   const theme = useMemo(
-    () => resolveTheme(config),
-    [config?.theme, config?.themeSuggested, config?.skin, config?.skinSuggested],
+    () => resolveSurfaceTheme(config, skin),
+    [
+      skin,
+      config?.theme,
+      config?.themeSuggested,
+      config?.skin,
+      config?.skinSuggested,
+    ],
   );
   const surfaceVars = useMemo(
     () => surfaceCssVars(font, theme) as CSSProperties,
@@ -287,12 +363,31 @@ export default function WordtastePreview(props: ViewerPreviewProps) {
     ) {
       return;
     }
-    const quote = selection.toString().trim();
+    // Plain prose reads back off the Selection, as it always has. Anything
+    // the renderer did not print verbatim does not: KaTeX drew
+    // `t=(user_id,agent_id)` where the file says
+    // `$t = (\mathit{user\_id}, \mathit{agent\_id})$`, and markdown drew
+    // `recipe_json.py` where the file wrote `` `recipe_json.py` ``. A range
+    // that crossed either is read back out of the DOM in source form instead
+    // (`math-selection.ts`), and the segments travel with it so the lookup
+    // can forgive what the renderer normalised away.
+    const segments = readRangeSegments(range);
+    const hasConstruct = segmentsHaveConstruct(segments);
+    const quote = hasConstruct
+      ? segmentsToSource(segments)
+      : selection.toString().trim();
     const address = buildSpanAddress({
       contentSet: activeContentSet,
       markdown: draft.markdown,
       quote,
+      segments: hasConstruct ? segments : undefined,
     });
+    // Residual, deliberately silent: the constructs the walk does not model
+    // — `~~struck~~`, an image, a heading's `## ` — still have no address,
+    // and a stale draft can always leave a selection with none. This viewer
+    // has no error surface to say so in, and inventing one for this is worse
+    // than the gap; the fix is to teach the walk the missing element, not to
+    // grow chrome here.
     if (!address) return;
     const rect = range.getBoundingClientRect();
     setSelectionPopup({
@@ -304,11 +399,14 @@ export default function WordtastePreview(props: ViewerPreviewProps) {
         right: rect.right,
       },
     });
+    // The agent is told what the file says, not what the page drew — it goes
+    // on to edit `draft.md`, and `address.quote` is a verbatim slice of it.
+    const source = address.quote;
     const context: ViewerSelectionContext = {
       type: "span",
-      content: quote,
+      content: source,
       file: address.file,
-      label: `Selected text: “${quote.slice(0, 72)}${quote.length > 72 ? "…" : ""}”`,
+      label: `Selected text: “${source.slice(0, 72)}${source.length > 72 ? "…" : ""}”`,
       address,
     };
     onSelect(context);
@@ -330,7 +428,7 @@ export default function WordtastePreview(props: ViewerPreviewProps) {
     : draftText;
 
   return (
-    <div className="wordtaste-v2" style={surfaceVars}>
+    <div className="wordtaste-v2" data-skin={skin} style={surfaceVars}>
       <WordtasteStyles />
       <StudioHeader
         stage={stage}
@@ -339,6 +437,8 @@ export default function WordtastePreview(props: ViewerPreviewProps) {
         onContentSet={setActiveContentSet}
         canExport={Boolean(visibleDraft.trim())}
         onExport={() => exportMarkdown(visibleDraft, workflow?.layout?.title)}
+        skin={skin}
+        onToggleSkin={toggleSkin}
       />
 
       <div className="wordtaste-v2-body">
@@ -381,9 +481,7 @@ export default function WordtastePreview(props: ViewerPreviewProps) {
                   const next = emphasis.includes(index)
                     ? emphasis.filter((value) => value !== index)
                     : [...emphasis, index];
-                  setEmphasis(
-                    normalizeEmphasis(next, workflow.layout?.thesis.length ?? 0),
-                  );
+                  setEmphasis(normalizeEmphasis(next, claimCount));
                 }}
                 onNote={setLayoutNote}
                 onApprove={() =>
@@ -391,10 +489,7 @@ export default function WordtastePreview(props: ViewerPreviewProps) {
                     "approve-layout",
                     "The layout is approved",
                     {
-                      emphasis: normalizeEmphasis(
-                        emphasis,
-                        workflow.layout?.thesis.length ?? 0,
-                      ),
+                      emphasis: normalizeEmphasis(emphasis, claimCount),
                       note: layoutNote.trim(),
                     },
                   )
@@ -481,6 +576,7 @@ export default function WordtastePreview(props: ViewerPreviewProps) {
         && createPortal(
           <SelectionMenu
             popup={selectionPopup}
+            skin={skin}
             onFlag={() => {
               fireCommand(
                 "flag-selection",
@@ -512,6 +608,8 @@ function StudioHeader({
   onContentSet,
   canExport,
   onExport,
+  skin,
+  onToggleSkin,
 }: {
   stage: WritingStage;
   contentSets: Array<{ prefix: string; label: string }>;
@@ -519,7 +617,16 @@ function StudioHeader({
   onContentSet: (prefix: string) => void;
   canExport: boolean;
   onExport: () => void;
+  skin: SurfaceSkin;
+  onToggleSkin: () => void;
 }) {
+  // The icon shows the surface the press moves TO, which is what the label
+  // says as well — a reader should never have to guess whether the sun means
+  // "you are here" or "go here".
+  const toLight = skin === "dark";
+  const skinLabel = toLight
+    ? "Switch to the light reading surface"
+    : "Switch to the dark reading surface";
   return (
     <header className="wordtaste-header">
       <div className="wordtaste-brand">
@@ -547,6 +654,16 @@ function StudioHeader({
             ))}
           </select>
         )}
+        <button
+          type="button"
+          className="wordtaste-header-button wordtaste-skin-toggle"
+          onClick={onToggleSkin}
+          aria-label={skinLabel}
+          aria-pressed={skin === "light"}
+          title={skinLabel}
+        >
+          {toLight ? <SunIcon /> : <MoonIcon />}
+        </button>
         <button
           type="button"
           className="wordtaste-header-button"
@@ -633,7 +750,10 @@ function ProcessRail({
               <details key={material.path}>
                 <summary>{material.label}</summary>
                 <div className="wordtaste-material-copy">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  <ReactMarkdown
+                    remarkPlugins={WORDTASTE_REMARK_PLUGINS}
+                    rehypePlugins={WORDTASTE_REHYPE_PLUGINS}
+                  >
                     {material.content || "_Empty_"}
                   </ReactMarkdown>
                 </div>
@@ -653,7 +773,10 @@ function ProcessRail({
           </summary>
           <div className="wordtaste-memory">
             {taste.voiceFloor ? (
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              <ReactMarkdown
+                remarkPlugins={WORDTASTE_REMARK_PLUGINS}
+                rehypePlugins={WORDTASTE_REHYPE_PLUGINS}
+              >
                 {taste.voiceFloor}
               </ReactMarkdown>
             ) : (
@@ -745,6 +868,14 @@ function LayoutGate({
   onRevise: () => void;
 }) {
   const layout = workflow.layout!;
+  // A planned session shows the plan; a legacy one shows the prose projection
+  // it was written with. There is no toggle between them — the session either
+  // has a plan or it does not.
+  const plan = layout.plan;
+  const claims = plan
+    ? plan.claims
+    : layout.thesis.map((text) => ({ text, source: "" }));
+  const openQuestion = layout.openQuestion ?? plan?.open_question?.trim() ?? "";
   return (
     <section className="wordtaste-layout-gate">
       <div className="wordtaste-gate-heading">
@@ -756,25 +887,32 @@ function LayoutGate({
         </p>
       </div>
 
-      {layout.openQuestion && (
+      {openQuestion && (
         <div className="wordtaste-open-question">
           <QuestionIcon />
           <div>
             <strong>One thing is still open</strong>
-            <p>{layout.openQuestion}</p>
+            <p>{openQuestion}</p>
           </div>
         </div>
       )}
 
       <div className="wordtaste-thesis">
-        <h2>{layout.title || "Untitled piece"}</h2>
+        <h2>{plan?.title || layout.title || "Untitled piece"}</h2>
         <ol>
-          {layout.thesis.map((claim, index) => {
+          {claims.map((claim, index) => {
             const selected = emphasis.includes(index);
             return (
-              <li key={`${index}-${claim}`}>
+              <li key={`${index}-${claim.text}`}>
                 <span className="wordtaste-claim-number">{index + 1}</span>
-                <p>{claim}</p>
+                <div className="wordtaste-claim-body">
+                  <p>{claim.text}</p>
+                  {claim.source && (
+                    <span className="wordtaste-claim-source" title={claim.source}>
+                      {planSourceLabel(claim.source)}
+                    </span>
+                  )}
+                </div>
                 <button
                   type="button"
                   className={selected ? "is-selected" : ""}
@@ -791,29 +929,33 @@ function LayoutGate({
         </ol>
       </div>
 
-      <details className="wordtaste-plan-details">
-        <summary>
-          How it will move
-          <span>{layout.units.length} writing units</span>
-        </summary>
-        <ol>
-          {layout.units.map((unit, index) => (
-            <li key={unit.id}>
-              <span>{index + 1}</span>
-              <div>
-                <strong>{unit.brief}</strong>
-                {(unit.role || unit.rhythm || unit.emphasis) && (
-                  <small>
-                    {[unit.role, unit.rhythm, unit.emphasis]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </small>
-                )}
-              </div>
-            </li>
-          ))}
-        </ol>
-      </details>
+      {plan ? (
+        <PlanUnits plan={plan} />
+      ) : (
+        <details className="wordtaste-plan-details">
+          <summary>
+            How it will move
+            <span>{layout.units.length} writing units</span>
+          </summary>
+          <ol>
+            {layout.units.map((unit, index) => (
+              <li key={unit.id}>
+                <span>{index + 1}</span>
+                <div>
+                  <strong>{unit.brief}</strong>
+                  {(unit.role || unit.rhythm || unit.emphasis) && (
+                    <small>
+                      {[unit.role, unit.rhythm, unit.emphasis]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </small>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
 
       <label className="wordtaste-note-field">
         <span>Anything to change before writing?</span>
@@ -850,6 +992,97 @@ function LayoutGate({
   );
 }
 
+/**
+ * The plan, shown as a plan.
+ *
+ * A prose list reads like a summary of an article; a table reads like a
+ * sequence someone is about to execute, which is what the user is being asked
+ * to approve. Every cell is a fact the plan already committed to — what the
+ * unit does, which headings it reads, roughly how long, how many sentences it
+ * must not lose, how tightly it is packed and whether it stops or leaves the
+ * door open. The planner's own words are English and stay in a muted line
+ * under the row, where they cannot be mistaken for the author's material.
+ *
+ * The table scrolls inside its own container: on a narrow window the row must
+ * stay a row, and the page must not start sliding sideways to show it.
+ */
+function PlanUnits({ plan }: { plan: Plan }) {
+  const rows = planRows(plan);
+  return (
+    <section className="wordtaste-plan" aria-labelledby="wordtaste-plan-heading">
+      <div className="wordtaste-plan-head">
+        <h3 id="wordtaste-plan-heading">How it will move</h3>
+        <span>{rows.length} writing units</span>
+      </div>
+      <div
+        className="wordtaste-plan-scroll"
+        role="region"
+        aria-labelledby="wordtaste-plan-heading"
+        tabIndex={0}
+      >
+        <table className="wordtaste-plan-table">
+          <thead>
+            <tr>
+              <th scope="col" className="wordtaste-plan-order">#</th>
+              <th scope="col">What it does</th>
+              <th scope="col">Reads from</th>
+              <th scope="col" className="wordtaste-plan-figure">Target chars</th>
+              <th scope="col" className="wordtaste-plan-figure">Must keep</th>
+              <th scope="col">Rhythm</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <Fragment key={row.id}>
+                <tr className="wordtaste-plan-row">
+                  <td className="wordtaste-plan-order">{row.order}</td>
+                  <td className="wordtaste-plan-role">{row.roleLabel}</td>
+                  <td>
+                    {row.spans.length ? (
+                      <div className="wordtaste-plan-spans">
+                        {row.spans.map((span, index) => (
+                          <span
+                            className="wordtaste-plan-span"
+                            key={`${span.from}-${span.to}-${index}`}
+                          >
+                            <code title={span.from}>{span.from}</code>
+                            <i aria-hidden>→</i>
+                            <code title={span.to}>{span.to}</code>
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="wordtaste-plan-blank">—</span>
+                    )}
+                  </td>
+                  <td className="wordtaste-plan-figure">≈{row.targetChars}</td>
+                  <td className="wordtaste-plan-figure">
+                    {row.mustKeepCount || (
+                      <span className="wordtaste-plan-blank">—</span>
+                    )}
+                  </td>
+                  <td>
+                    <span className="wordtaste-plan-chips">
+                      <span className="wordtaste-plan-chip">{row.paceLabel}</span>
+                      <span className="wordtaste-plan-chip">{row.endsLabel}</span>
+                    </span>
+                  </td>
+                </tr>
+                {row.notes && (
+                  <tr className="wordtaste-plan-notes">
+                    <td />
+                    <td colSpan={5}>{row.notes}</td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function WritingGate({
   workflow,
   hasDraft,
@@ -860,6 +1093,11 @@ function WritingGate({
   const progress = workflow?.progress;
   const done = progress?.completedUnits.length ?? 0;
   const total = progress?.totalUnits ?? workflow?.layout?.units.length ?? 0;
+  // "u1" names the unit without saying anything about it. When the session
+  // carries a plan, the same line can say what the unit is for and which
+  // headings it is reading — the two things a reader needs to judge whether
+  // the writing is on the right material.
+  const currentUnit = findPlanUnit(workflow?.layout?.plan, progress?.currentUnit);
   return (
     <section className="wordtaste-writing-gate">
       <div>
@@ -869,6 +1107,14 @@ function WritingGate({
             ? `Working through ${progress.currentUnit}`
             : "Building the piece in sequence"}
         </h1>
+        {currentUnit && (
+          <p
+            className="wordtaste-writing-unit"
+            title={planUnitCaption(currentUnit)}
+          >
+            {planUnitCaption(currentUnit)}
+          </p>
+        )}
         <p>
           Each unit grows from the text before it. A fresh reader checks the
           joins and the whole argument before anything comes back to you.
@@ -1084,7 +1330,12 @@ const DraftSurface = forwardRef<
         onKeyUp={stage === "choice" ? undefined : onMouseUp}
         data-flash-quote={flashQuote || undefined}
       >
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>
+        <ReactMarkdown
+          remarkPlugins={WORDTASTE_REMARK_PLUGINS}
+          rehypePlugins={WORDTASTE_REHYPE_PLUGINS}
+        >
+          {markdown}
+        </ReactMarkdown>
       </article>
     </section>
   );
@@ -1110,11 +1361,18 @@ function WritingEmpty({ stage }: { stage: WritingStage }) {
 
 function SelectionMenu({
   popup,
+  skin,
   onFlag,
   onVariants,
   onClose,
 }: {
   popup: SelectionPopup;
+  /**
+   * The menu is portaled to `document.body`, so it inherits nothing from the
+   * studio root — it carries the surface itself, and the stylesheet declares
+   * the `--wt-*` token set for both mount points.
+   */
+  skin: SurfaceSkin;
   onFlag: () => void;
   onVariants: () => void;
   onClose: () => void;
@@ -1148,6 +1406,7 @@ function SelectionMenu({
     <div
       ref={menuRef}
       className="wordtaste-selection-menu"
+      data-skin={skin}
       style={{ left, top }}
       role="toolbar"
       aria-label="Selected text actions"
@@ -1251,6 +1510,25 @@ function ExportIcon() {
   );
 }
 
+/** The light surface, drawn as the daylight it is. */
+function SunIcon() {
+  return (
+    <Svg>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4" />
+    </Svg>
+  );
+}
+
+/** The dark surface. */
+function MoonIcon() {
+  return (
+    <Svg>
+      <path d="M20 14.2A8 8 0 0 1 9.8 4a8 8 0 1 0 10.2 10.2Z" />
+    </Svg>
+  );
+}
+
 function CheckIcon() {
   return (
     <Svg>
@@ -1344,7 +1622,18 @@ const STYLES = `
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,550;6..72,650&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap');
 @import url('https://cdn.jsdelivr.net/npm/lxgw-wenkai-screen-webfont@1.7.0/lxgwwenkaiscreen.css');
 
-.wordtaste-v2 {
+/* The studio surface is ONE token set with two value sets, keyed by
+   [data-skin]. Every rule below is written against these names and none of
+   them branches on the skin: switching surface re-values the tokens, it does
+   not fork the stylesheet. The selection menu is portaled to <body> — it
+   inherits nothing from the studio root, so it carries the same attribute and
+   is listed alongside it here.
+
+   Note on color-scheme: it is deliberately NOT set. The document has none, so
+   declaring "dark" here would repaint today's native selects and scrollbars,
+   and declaring "light" would only restate the document default. */
+.wordtaste-v2, .wordtaste-selection-menu {
+  /* dark — the Ethereal Tech desk this mode has always read on */
   --wt-chrome: var(--color-cc-bg, #09090b);
   --wt-panel: var(--color-cc-surface, #111113);
   --wt-raised: var(--color-cc-card, #18181b);
@@ -1352,8 +1641,43 @@ const STYLES = `
   --wt-ink: var(--color-cc-fg, #f4f4f5);
   --wt-muted: var(--color-cc-muted, #a1a1aa);
   --wt-accent: var(--color-cc-primary, #f97316);
+  --wt-accent-hover: #fb923c;
+  --wt-on-accent: #111113;
   --wt-accent-soft: color-mix(in srgb, var(--wt-accent) 14%, transparent);
   --wt-success: #65a30d;
+  --wt-success-ink: #a3e635;
+  --wt-info: #38bdf8;
+  --wt-done: #84cc16;
+  --wt-card-shadow: 0 18px 70px rgba(0,0,0,.18);
+  --wt-menu-shadow: 0 18px 60px rgba(0,0,0,.5);
+}
+
+/* light — a warm paper desk. Deliberately not white and not black: the page
+   the draft renders on is the parchment palette (#f7f2e9), so the desk sits a
+   few percent below it and the panels a few percent above, which is what makes
+   the draft read as a lit page rather than a flat region. Ink is the same
+   #2b2620 the parchment article uses. The accent is burnt sienna rather than
+   the neon orange — #f97316 on paper measures 3.3:1 against small text, this
+   clears 4.5:1 on both the desk and the panels. */
+.wordtaste-v2[data-skin="light"], .wordtaste-selection-menu[data-skin="light"] {
+  --wt-chrome: #ebe4d7;
+  --wt-panel: #faf6ee;
+  --wt-raised: #f1ebdf;
+  --wt-border: #ded3c1;
+  --wt-ink: #2b2620;
+  --wt-muted: #655c4f;
+  --wt-accent: #a34a19;
+  --wt-accent-hover: #8a3d13;
+  --wt-on-accent: #fdfaf4;
+  --wt-success: #4d7c0f;
+  --wt-success-ink: #3f6212;
+  --wt-info: #0369a1;
+  --wt-done: #4d7c0f;
+  --wt-card-shadow: 0 12px 40px rgba(84,66,40,.11);
+  --wt-menu-shadow: 0 14px 44px rgba(84,66,40,.20);
+}
+
+.wordtaste-v2 {
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -1368,7 +1692,7 @@ const STYLES = `
 .wordtaste-v2 *, .wordtaste-v2 *::before, .wordtaste-v2 *::after { box-sizing: border-box; }
 .wordtaste-v2 button, .wordtaste-v2 textarea, .wordtaste-v2 select { font-family: inherit; }
 .wordtaste-v2 button:focus-visible, .wordtaste-v2 textarea:focus-visible, .wordtaste-v2 select:focus-visible,
-.wordtaste-selection-menu button:focus-visible {
+.wordtaste-plan-scroll:focus-visible, .wordtaste-selection-menu button:focus-visible {
   outline: 2px solid var(--wt-accent, #f97316);
   outline-offset: 2px;
 }
@@ -1398,8 +1722,8 @@ const STYLES = `
 .wordtaste-header-status { display: flex; align-items: center; gap: 8px; color: var(--wt-muted); font-size: 12px; }
 .wordtaste-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--wt-muted); }
 .wordtaste-status-dot.is-layout, .wordtaste-status-dot.is-choice { background: var(--wt-accent); box-shadow: 0 0 0 4px var(--wt-accent-soft); }
-.wordtaste-status-dot.is-writing, .wordtaste-status-dot.is-review { background: #38bdf8; }
-.wordtaste-status-dot.is-final, .wordtaste-status-dot.is-distilled { background: #84cc16; }
+.wordtaste-status-dot.is-writing, .wordtaste-status-dot.is-review { background: var(--wt-info); }
+.wordtaste-status-dot.is-final, .wordtaste-status-dot.is-distilled { background: var(--wt-done); }
 .wordtaste-header-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .wordtaste-project-select {
   height: 32px;
@@ -1483,7 +1807,7 @@ const STYLES = `
 .wordtaste-stage.is-active { color: var(--wt-ink); }
 .wordtaste-stage.is-active .wordtaste-stage-marker { border-color: var(--wt-accent); background: var(--wt-accent-soft); color: var(--wt-accent); }
 .wordtaste-stage.is-complete { color: var(--wt-muted); }
-.wordtaste-stage.is-complete .wordtaste-stage-marker { border-color: color-mix(in srgb, var(--wt-success) 55%, var(--wt-border)); color: #a3e635; }
+.wordtaste-stage.is-complete .wordtaste-stage-marker { border-color: color-mix(in srgb, var(--wt-success) 55%, var(--wt-border)); color: var(--wt-success-ink); }
 
 .wordtaste-goal-summary, .wordtaste-progress-block {
   margin: 16px 4px 0;
@@ -1495,7 +1819,7 @@ const STYLES = `
 .wordtaste-progress-block > div:first-child { display: flex; align-items: baseline; justify-content: space-between; }
 .wordtaste-progress-block strong { font-size: 12px; }
 .wordtaste-progress-track { height: 4px; margin-top: 9px; border-radius: 4px; overflow: hidden; background: var(--wt-border); }
-.wordtaste-progress-track span { display: block; width: 100%; height: 100%; background: #38bdf8; transform-origin: left center; transition: transform .2s cubic-bezier(.16,1,.3,1); }
+.wordtaste-progress-track span { display: block; width: 100%; height: 100%; background: var(--wt-info); transform-origin: left center; transition: transform .2s cubic-bezier(.16,1,.3,1); }
 
 .wordtaste-rail-details { margin: 14px 4px 0; border-top: 1px solid var(--wt-border); }
 .wordtaste-rail-details > summary {
@@ -1631,6 +1955,86 @@ const STYLES = `
 .wordtaste-plan-details li > span { color: var(--wt-accent); font-family: ui-monospace, monospace; font-size: 10px; }
 .wordtaste-plan-details strong { display: block; font-size: 12px; font-weight: 500; line-height: 1.45; }
 .wordtaste-plan-details small { display: block; margin-top: 3px; color: var(--wt-muted); font-size: 10.5px; }
+
+.wordtaste-claim-body { min-width: 0; }
+.wordtaste-claim-source {
+  display: inline-block;
+  margin-top: 5px;
+  padding: 2px 6px;
+  max-width: 100%;
+  border: 1px solid color-mix(in srgb, var(--wt-border) 85%, transparent);
+  border-radius: 5px;
+  background: var(--wt-raised);
+  color: var(--wt-muted);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 9.5px;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+.wordtaste-plan { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--wt-border); }
+.wordtaste-plan-head { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; margin-bottom: 11px; }
+.wordtaste-plan-head h3 { margin: 0; color: var(--wt-ink); font-size: 12.5px; font-weight: 600; }
+.wordtaste-plan-head > span { color: var(--wt-muted); font-size: 11px; }
+.wordtaste-plan-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  border-top: 1px solid var(--wt-border);
+  border-bottom: 1px solid var(--wt-border);
+}
+.wordtaste-plan-table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+  text-align: left;
+}
+.wordtaste-plan-table th {
+  padding: 9px 14px 9px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--wt-border) 75%, transparent);
+  color: var(--wt-muted);
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.wordtaste-plan-table td { padding: 11px 14px 11px 0; vertical-align: top; font-size: 12px; }
+.wordtaste-plan-table :is(th, td):last-child { padding-right: 0; }
+.wordtaste-plan-row + .wordtaste-plan-row > td,
+.wordtaste-plan-notes + .wordtaste-plan-row > td { border-top: 1px solid color-mix(in srgb, var(--wt-border) 75%, transparent); }
+/* Muted, like the claim numbers: orange belongs to the decision being made
+   and to the button that commits it, not to a row label. */
+.wordtaste-plan-order { width: 26px; color: var(--wt-muted); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 10px; }
+.wordtaste-plan-role { color: var(--wt-ink); line-height: 1.45; }
+.wordtaste-plan-figure { width: 1%; color: var(--wt-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wordtaste-plan-blank { color: color-mix(in srgb, var(--wt-muted) 60%, transparent); }
+.wordtaste-plan-spans { display: flex; flex-direction: column; gap: 5px; }
+.wordtaste-plan-span { display: flex; align-items: center; gap: 6px; }
+.wordtaste-plan-span code {
+  display: block;
+  max-width: 17ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--wt-ink);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 10.5px;
+}
+.wordtaste-plan-span i { flex: 0 0 auto; color: var(--wt-muted); font-style: normal; font-size: 10px; }
+.wordtaste-plan-chips { display: inline-flex; flex-wrap: nowrap; gap: 5px; }
+.wordtaste-plan-chip {
+  padding: 2px 8px;
+  border: 1px solid var(--wt-border);
+  border-radius: 999px;
+  background: var(--wt-raised);
+  color: var(--wt-muted);
+  font-size: 10px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.wordtaste-plan-notes > td { padding-top: 0; padding-bottom: 12px; color: var(--wt-muted); font-size: 10.5px; line-height: 1.55; }
+
 .wordtaste-note-field { display: block; margin-top: 20px; }
 .wordtaste-note-field > span { display: block; margin-bottom: 8px; color: var(--wt-muted); font-size: 11.5px; }
 .wordtaste-note-field textarea {
@@ -1659,8 +2063,8 @@ const STYLES = `
   font-weight: 600;
   cursor: pointer;
 }
-.wordtaste-primary { border: 1px solid var(--wt-accent); background: var(--wt-accent); color: #111113; }
-.wordtaste-primary:hover:not(:disabled) { background: #fb923c; border-color: #fb923c; }
+.wordtaste-primary { border: 1px solid var(--wt-accent); background: var(--wt-accent); color: var(--wt-on-accent); }
+.wordtaste-primary:hover:not(:disabled) { background: var(--wt-accent-hover); border-color: var(--wt-accent-hover); }
 .wordtaste-secondary { border: 1px solid var(--wt-border); background: transparent; color: var(--wt-ink); }
 .wordtaste-secondary:hover:not(:disabled) { border-color: var(--wt-muted); }
 .wordtaste-primary:disabled, .wordtaste-secondary:disabled { opacity: .42; cursor: default; }
@@ -1675,10 +2079,18 @@ const STYLES = `
 .wordtaste-writing-gate { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 28px; align-items: end; }
 .wordtaste-writing-gate h1, .wordtaste-final-gate h1 { margin: 6px 0 6px; font-size: 20px; letter-spacing: -0.025em; }
 .wordtaste-writing-gate p, .wordtaste-final-gate p { max-width: 68ch; margin: 0; color: var(--wt-muted); font-size: 12px; line-height: 1.55; }
+.wordtaste-writing-gate p.wordtaste-writing-unit {
+  margin: 0 0 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--wt-ink);
+  font-size: 12.5px;
+}
 .wordtaste-writing-count { text-align: right; }
 .wordtaste-writing-count strong { display: block; font-size: 27px; line-height: 1; font-weight: 600; }
 .wordtaste-writing-count span { display: block; margin-top: 5px; color: var(--wt-muted); font-size: 10.5px; }
-.wordtaste-inline-skeleton { grid-column: 1 / -1; height: 3px; border-radius: 3px; background: linear-gradient(90deg, var(--wt-border), #38bdf8, var(--wt-border)); background-size: 200% 100%; animation: wordtaste-scan 1.8s linear infinite; }
+.wordtaste-inline-skeleton { grid-column: 1 / -1; height: 3px; border-radius: 3px; background: linear-gradient(90deg, var(--wt-border), var(--wt-info), var(--wt-border)); background-size: 200% 100%; animation: wordtaste-scan 1.8s linear infinite; }
 @keyframes wordtaste-scan { to { background-position: -200% 0; } }
 
 .wordtaste-review-gate { padding-top: 30px; }
@@ -1712,10 +2124,10 @@ const STYLES = `
   font-family: var(--wordtaste-font-family, "Newsreader", serif);
   font-size: 17px;
   line-height: var(--wordtaste-font-line, 1.82);
-  box-shadow: 0 18px 70px rgba(0,0,0,.18);
+  box-shadow: var(--wt-card-shadow);
   transition: border-color .18s ease, box-shadow .18s ease;
 }
-.wordtaste-draft.is-flashing { border-color: var(--wordtaste-theme-accent, var(--wt-accent)); box-shadow: 0 0 0 4px color-mix(in srgb, var(--wordtaste-theme-accent, var(--wt-accent)) 12%, transparent), 0 18px 70px rgba(0,0,0,.18); }
+.wordtaste-draft.is-flashing { border-color: var(--wordtaste-theme-accent, var(--wt-accent)); box-shadow: 0 0 0 4px color-mix(in srgb, var(--wordtaste-theme-accent, var(--wt-accent)) 12%, transparent), var(--wt-card-shadow); }
 .wordtaste-draft ::selection { background: color-mix(in srgb, var(--wordtaste-theme-accent, var(--wt-accent)) 35%, transparent); color: inherit; }
 .wordtaste-draft :is(h1, h2, h3) { color: var(--wordtaste-theme-heading, var(--wt-ink)); text-wrap: balance; letter-spacing: -0.025em; }
 .wordtaste-draft h1 { margin: 0 0 28px; font-size: 31px; line-height: 1.25; }
@@ -1726,6 +2138,20 @@ const STYLES = `
 .wordtaste-draft :is(ul, ol) { max-width: 70ch; padding-left: 1.4em; }
 .wordtaste-draft li { margin: .45em 0; }
 .wordtaste-draft a { color: var(--wordtaste-theme-accent, var(--wt-accent)); }
+/* KaTeX writes every formula twice: a clipped MathML copy for assistive
+   technology, then the glyphs a reader sees. The hidden copy is still live
+   text to Selection — measured on the live draft, copying one paragraph
+   returned 675 characters where the eye saw ~340, each formula repeated
+   once as one-MathML-token-per-line. Taking that copy out of selection
+   leaves the accessibility tree untouched; it is only about what the
+   clipboard and the quote-a-line gesture collect. */
+.wordtaste-v2 .katex-mathml { -webkit-user-select: none; user-select: none; }
+/* A display formula never wraps, and the reading column is 72ch. Measured
+   with a 1800px probe: the article's scrollWidth went to 1892 against a
+   938px client while the page itself did not grow — the right end of the
+   formula was simply cut off, unreachable. Scrolling the formula in its own
+   box keeps it readable and leaves the column alone. */
+.wordtaste-draft .katex-display { overflow-x: auto; overflow-y: hidden; padding-block: 2px; }
 .wordtaste-draft hr { border: none; border-top: 1px solid var(--wordtaste-theme-rule, var(--wt-border)); margin: 2em 0; }
 
 .wordtaste-writing-empty { width: min(940px, calc(100% - 72px)); margin: 44px auto; color: var(--wt-muted); text-align: center; font-size: 11.5px; }
@@ -1740,22 +2166,22 @@ const STYLES = `
   z-index: 80;
   width: 268px;
   padding: 7px;
-  border: 1px solid var(--color-cc-border, #29292e);
+  border: 1px solid var(--wt-border);
   border-radius: 11px;
-  background: color-mix(in srgb, var(--color-cc-surface, #111113) 96%, transparent);
-  color: var(--color-cc-fg, #f4f4f5);
-  box-shadow: 0 18px 60px rgba(0,0,0,.5);
+  background: color-mix(in srgb, var(--wt-panel) 96%, transparent);
+  color: var(--wt-ink);
+  box-shadow: var(--wt-menu-shadow);
   backdrop-filter: blur(16px);
   font-family: "DM Sans", Inter, system-ui, sans-serif;
   animation: wordtaste-menu-in .16s cubic-bezier(.16,1,.3,1);
 }
 @keyframes wordtaste-menu-in { from { opacity: 0; transform: translateY(-5px); } }
-.wordtaste-selection-head { display: flex; align-items: center; justify-content: space-between; padding: 3px 6px 7px; color: var(--color-cc-muted, #a1a1aa); font-size: 10px; }
+.wordtaste-selection-head { display: flex; align-items: center; justify-content: space-between; padding: 3px 6px 7px; color: var(--wt-muted); font-size: 10px; }
 .wordtaste-selection-head > button { width: 24px; height: 24px; display: grid; place-items: center; border: none; background: transparent; color: inherit; cursor: pointer; }
 .wordtaste-selection-head .wordtaste-icon { width: 13px; height: 13px; }
-.wordtaste-selection-menu > button { width: 100%; min-height: 44px; padding: 0 9px; display: flex; align-items: center; gap: 9px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--color-cc-fg, #f4f4f5); font-size: 12px; cursor: pointer; text-align: left; }
-.wordtaste-selection-menu > button:hover { background: color-mix(in srgb, var(--color-cc-primary, #f97316) 13%, transparent); border-color: color-mix(in srgb, var(--color-cc-primary, #f97316) 28%, transparent); }
-.wordtaste-selection-menu > button .wordtaste-icon { color: var(--color-cc-primary, #f97316); width: 15px; height: 15px; }
+.wordtaste-selection-menu > button { width: 100%; min-height: 44px; padding: 0 9px; display: flex; align-items: center; gap: 9px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--wt-ink); font-size: 12px; cursor: pointer; text-align: left; }
+.wordtaste-selection-menu > button:hover { background: color-mix(in srgb, var(--wt-accent) 13%, transparent); border-color: color-mix(in srgb, var(--wt-accent) 28%, transparent); }
+.wordtaste-selection-menu > button .wordtaste-icon { color: var(--wt-accent); width: 15px; height: 15px; }
 
 @media (max-width: 900px) {
   .wordtaste-header { gap: 10px; }

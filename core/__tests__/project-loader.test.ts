@@ -165,7 +165,7 @@ describe("scanProjectSessions", () => {
   });
 
   test("overrides mismatched sessionId with directory name", async () => {
-    // Legacy demo sessions on disk (`/Users/pandazki/Tmp/pneuma-demo-project`)
+    // Legacy demo sessions on disk (an absolute path outside the repo)
     // have session.json files where the persisted sessionId points at a
     // sibling directory — clicking resume in the panel would otherwise
     // resolve to the wrong session. The directory name always wins.

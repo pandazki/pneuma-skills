@@ -47,11 +47,75 @@ export interface LayoutUnit {
   emphasis?: string;
 }
 
+/**
+ * The structured plan a planner returns for one essay.
+ *
+ * The shape mirrors `skill/references/plan-schema.json` field for field,
+ * snake_case included: `layout.plan` is the plan as it was validated on disk,
+ * and a later writing unit is composed out of it. Renaming keys here would put
+ * the viewer's spelling and the pipeline's spelling one rename apart forever.
+ *
+ * Every Chinese string in a plan is a verbatim quote from the author's own
+ * material; everything the planner says in its own words is English, in
+ * `notes_en`. `open_question` is the one exception — it is shown to the user
+ * and never composed into a prompt.
+ */
+export type PlanRole =
+  | "background"
+  | "problem"
+  | "reasoning"
+  | "conclusion"
+  | "close";
+
+export type PlanPace = "dense" | "loose" | "mixed";
+
+export type PlanEnds = "stop" | "open";
+
+export interface PlanSpan {
+  /** A material file path relative to the content set. */
+  file: string;
+  /** A whole line of that file, copied exactly. */
+  from: string;
+  /** A later whole line, copied exactly, or empty for end of file. */
+  to: string;
+}
+
+export interface PlanClaim {
+  /** Verbatim from the material. */
+  text: string;
+  /** Where it came from, optionally with a line anchor such as `#L12`. */
+  source: string;
+}
+
+export interface PlanUnit {
+  id: string;
+  role: PlanRole;
+  spans: PlanSpan[];
+  must_keep: string[];
+  target_chars: number;
+  pace: PlanPace;
+  ends: PlanEnds;
+  notes_en: string;
+}
+
+export interface Plan {
+  version: 1;
+  title: string;
+  claims: PlanClaim[];
+  units: PlanUnit[];
+  open_question?: string;
+}
+
 export interface WritingLayout {
   title: string;
   thesis: string[];
   units: LayoutUnit[];
   openQuestion?: string;
+  /**
+   * The full structured plan, when the session was planned by the deterministic
+   * pipeline. Legacy sessions have only the projected fields above.
+   */
+  plan?: Plan;
 }
 
 export interface WritingProgress {
@@ -188,6 +252,79 @@ export function saveDraft(
   };
 }
 
+const PLAN_ROLES = new Set(["background", "problem", "reasoning", "conclusion", "close"]);
+const PLAN_PACES = new Set(["dense", "loose", "mixed"]);
+const PLAN_ENDS = new Set(["stop", "open"]);
+
+function isFilledString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isPlanSpan(value: unknown): value is PlanSpan {
+  return (
+    isRecord(value)
+    && isFilledString(value.file)
+    && isFilledString(value.from)
+    && typeof value.to === "string"
+  );
+}
+
+function isPlanClaim(value: unknown): value is PlanClaim {
+  return isRecord(value) && isFilledString(value.text) && isFilledString(value.source);
+}
+
+function isPlanUnit(value: unknown): value is PlanUnit {
+  return (
+    isRecord(value)
+    && isFilledString(value.id)
+    && typeof value.role === "string"
+    && PLAN_ROLES.has(value.role)
+    && Array.isArray(value.spans)
+    && value.spans.every(isPlanSpan)
+    && Array.isArray(value.must_keep)
+    && value.must_keep.every(isFilledString)
+    && typeof value.target_chars === "number"
+    && Number.isInteger(value.target_chars)
+    && typeof value.pace === "string"
+    && PLAN_PACES.has(value.pace)
+    && typeof value.ends === "string"
+    && PLAN_ENDS.has(value.ends)
+    && typeof value.notes_en === "string"
+  );
+}
+
+/**
+ * Accept or reject `layout.plan` — never repair it.
+ *
+ * The plan on disk is the pipeline's source of truth: a later unit is composed
+ * out of `workflow.json` alone. So this function validates the structure and
+ * then hands back the parsed object untouched, extra keys included. Filling in
+ * a missing `notes_en` or quietly dropping one malformed span would make the
+ * viewer's copy diverge from the file, and `saveWorkflow` round-trips whatever
+ * it is given.
+ *
+ * A plan is all or nothing. One unmappable unit means the sequence on screen is
+ * not the sequence that will be written, and the user would be approving
+ * something false; dropping the whole plan falls back to the projected legacy
+ * fields, which the same projection step wrote from the same plan and which are
+ * therefore still accurate. Ranges (`target_chars` bounds) are the planner's
+ * business and were already gated by `validate_plan.ts` upstream — this is a
+ * render-safety check, not a second validator.
+ */
+function normalizePlan(value: unknown): Plan | undefined {
+  if (!isRecord(value)) return undefined;
+  if (value.version !== 1) return undefined;
+  if (!isFilledString(value.title)) return undefined;
+  if (!Array.isArray(value.claims) || value.claims.length === 0) return undefined;
+  if (!value.claims.every(isPlanClaim)) return undefined;
+  if (!Array.isArray(value.units) || value.units.length === 0) return undefined;
+  if (!value.units.every(isPlanUnit)) return undefined;
+  if (value.open_question !== undefined && typeof value.open_question !== "string") {
+    return undefined;
+  }
+  return value as unknown as Plan;
+}
+
 function normalizeLayout(value: unknown): WritingLayout | undefined {
   if (!isRecord(value)) return undefined;
   const rawUnits = Array.isArray(value.units) ? value.units : [];
@@ -202,6 +339,7 @@ function normalizeLayout(value: unknown): WritingLayout | undefined {
       ...(typeof unit.emphasis === "string" ? { emphasis: unit.emphasis } : {}),
     }))
     .filter((unit) => unit.brief.length > 0);
+  const plan = normalizePlan(value.plan);
   return {
     title: asString(value.title),
     thesis: asStringArray(value.thesis),
@@ -209,6 +347,7 @@ function normalizeLayout(value: unknown): WritingLayout | undefined {
     ...(typeof value.openQuestion === "string" && value.openQuestion.trim()
       ? { openQuestion: value.openQuestion }
       : {}),
+    ...(plan ? { plan } : {}),
   };
 }
 

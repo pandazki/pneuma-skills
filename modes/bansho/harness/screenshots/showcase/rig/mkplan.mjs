@@ -3,7 +3,7 @@
  * Both artifacts come off disk verbatim; this only lays them out.
  */
 const OUT = process.env.BANSHO_SHOT_DIR ?? ".";
-const plan = await Bun.file("/Users/pandazki/bansho-new/three-months/plan.md").text();
+const plan = await Bun.file(`${process.env.HOME}/bansho-new/three-months/plan.md`).text();
 const lines = plan.split("\n");
 
 // Verbatim slices: the design header + the passage table, then the note the

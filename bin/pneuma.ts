@@ -2131,6 +2131,23 @@ async function main() {
       saveConfig(stateDir, resolvedParams);
       p.log.step(t("pneuma.saved_init_params"));
     }
+    // Backfill API keys from the global store (~/.pneuma/api-keys.json) for
+    // envMapping-bound params the user left empty. Without this, --no-prompt
+    // launches (and cached configs from them) never see globally configured
+    // keys — only the replay Continue Work path had this merge.
+    if (manifest.skill.envMapping) {
+      const { getApiKeys } = await import("../server/share.js");
+      const globalKeys = getApiKeys();
+      let backfilled = false;
+      for (const [envVar, paramName] of Object.entries(manifest.skill.envMapping)) {
+        const current = resolvedParams[paramName];
+        if (globalKeys[envVar] && (current === undefined || String(current).trim() === "")) {
+          resolvedParams[paramName] = globalKeys[envVar];
+          backfilled = true;
+        }
+      }
+      if (backfilled) saveConfig(stateDir, resolvedParams);
+    }
     // Compute derived params (e.g. imageGenEnabled from API keys,
     // pageWidthMm/pageHeightMm from paper size). Persist the enriched
     // set so viewers reading config.json see the derived fields too.
