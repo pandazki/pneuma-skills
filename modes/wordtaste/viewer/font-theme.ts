@@ -1,5 +1,5 @@
 /**
- * font-theme — the reading surface as TWO independent axes.
+ * font-theme — the reading surface as THREE axes.
  *
  * Pure, framework-free data + resolution logic so it unit-tests without React.
  *
@@ -33,8 +33,30 @@
  *                        to its `{ font, theme }` pair so an old config never
  *                        strands the surface (LEGACY_SKIN_MAP + resolveFont/Theme).
  *
- * The studio CHROME stays on the dark Ethereal Tech `cc-*` base; only the center
- * article reads these vars.
+ *   SKIN axis    which SURFACE the whole studio reads on — `dark` (the Ethereal
+ *                Tech desk this mode shipped on) or `light` (a warm paper desk).
+ *                A writing room is a reading UI, so this is the one switch the
+ *                user reaches for by hand, in the viewer's own chrome.
+ *
+ * The skin is NOT a second theme mechanism. It is the day/night register the
+ * other two axes already speak, lifted to the whole viewer:
+ *
+ *   - its DEFAULT is read off the file through the existing chain — whatever
+ *     `resolveTheme` lands on (user `theme`, agent `themeSuggested`, or a
+ *     legacy `skin` id through LEGACY_SKIN_MAP), its `mode` names the surface;
+ *   - the user's explicit toggle (remembered per session in localStorage, see
+ *     readStoredSkin) wins over the file;
+ *   - the article palette then follows the surface (`resolveSurfaceTheme`), so
+ *     a night page never sits on a paper desk.
+ *
+ * Consequence worth stating: for a user who never toggles, the article theme is
+ * *exactly* what `resolveTheme` produced before this axis existed — the skin is
+ * derived from that same theme, so the substitution can never fire. That
+ * invariant is test-pinned.
+ *
+ * The CHROME reads `--wt-*` custom properties whose two value sets are declared
+ * per `[data-skin]` in the viewer's own stylesheet; the center article reads the
+ * `--wordtaste-font-*` / `--wordtaste-theme-*` vars projected from here.
  */
 
 // ── FONT axis ────────────────────────────────────────────────────────────────
@@ -262,6 +284,43 @@ export function themeById(id: string | undefined | null): ColorTheme | undefined
   return THEMES.find((t) => t.id === id);
 }
 
+// ── SKIN axis ────────────────────────────────────────────────────────────────
+
+/**
+ * The surface the whole studio reads on. Two values, deliberately: this is the
+ * light/dark switch a reading UI owes its user, not a third palette registry.
+ * The color values live in the viewer's stylesheet as two `--wt-*` token sets
+ * keyed by `[data-skin]`, so every rule already written against those tokens
+ * follows the switch with no per-skin branch.
+ */
+export type SurfaceSkin = "dark" | "light";
+
+/** Every surface, in toggle order. */
+export const SURFACE_SKINS: readonly SurfaceSkin[] = ["dark", "light"];
+
+/** The surface a session opens on when neither the user nor the file says. */
+export const DEFAULT_SKIN: SurfaceSkin = "dark";
+
+/**
+ * The article palette each surface falls back to when the file's chosen theme
+ * belongs to the other register. Dark keeps the mode's own default so the
+ * untoggled studio is byte-identical to what shipped before the skin axis.
+ */
+export const DEFAULT_THEME_BY_SKIN: Record<SurfaceSkin, string> = {
+  dark: DEFAULT_THEME_ID,
+  light: "parchment",
+};
+
+/** Narrow an unknown (a stored string, a config value) to a known surface. */
+export function isSurfaceSkin(value: unknown): value is SurfaceSkin {
+  return value === "dark" || value === "light";
+}
+
+/** The surface the toggle moves to. */
+export function otherSkin(skin: SurfaceSkin): SurfaceSkin {
+  return skin === "light" ? "dark" : "light";
+}
+
 // ── Legacy skin → { font, theme } compatibility map ──────────────────────────
 
 /**
@@ -367,6 +426,119 @@ export function resolveTheme(config: SurfaceConfig | null | undefined): ColorThe
   if (fromLegacyAgent) return fromLegacyAgent;
 
   return themeById(DEFAULT_THEME_ID) ?? THEMES[0];
+}
+
+/**
+ * Resolve the active SURFACE. The user's own toggle wins; with no toggle the
+ * file decides, and it decides through the theme axis rather than a key of its
+ * own — whatever `resolveTheme` lands on (a `theme`, a `themeSuggested`, or a
+ * legacy `skin` id) carries a day/night mood, and that mood IS the surface.
+ * Nothing else to configure, and no second vocabulary to keep in sync.
+ *
+ * `stored` is deliberately `unknown`: it comes off localStorage, so a value
+ * from a future or corrupted write must degrade to the file default rather
+ * than strand the viewer on a surface that does not exist.
+ */
+export function resolveSkin(
+  config: SurfaceConfig | null | undefined,
+  stored: unknown,
+): SurfaceSkin {
+  if (isSurfaceSkin(stored)) return stored;
+  return resolveTheme(config).mode === "day" ? "light" : "dark";
+}
+
+/**
+ * Resolve the article palette for a given surface. Keeps the file's theme when
+ * it belongs to the surface's register, and substitutes the surface's own
+ * palette when it does not — a night page on a paper desk (or the reverse) is
+ * the one pairing the two axes must never produce.
+ *
+ * The substitution is memoryless: it reads the file every time, so toggling
+ * away from a `dusk` config and back returns to `dusk`, not to the fallback.
+ */
+export function resolveSurfaceTheme(
+  config: SurfaceConfig | null | undefined,
+  skin: SurfaceSkin,
+): ColorTheme {
+  const wanted: ColorTheme["mode"] = skin === "light" ? "day" : "night";
+  const chosen = resolveTheme(config);
+  if (chosen.mode === wanted) return chosen;
+  return (
+    themeById(DEFAULT_THEME_BY_SKIN[skin])
+    ?? THEMES.find((t) => t.mode === wanted)
+    ?? chosen
+  );
+}
+
+// ── Skin persistence (the one remembered UI habit) ───────────────────────────
+
+/**
+ * The slice of `Storage` this module uses. Narrow on purpose: it makes the
+ * persistence unit-testable with a plain object, including the store that
+ * throws — which is what a browser hands out in private mode or over quota.
+ */
+export interface SkinStore {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
+const SKIN_KEY_PREFIX = "pneuma:wordtaste:skin:";
+
+/**
+ * Where one session's remembered choice lives. Keyed by session so two open
+ * sessions can read on different surfaces; a viewer that has not learned its
+ * session id yet writes to a reserved key instead of colliding with a real one.
+ */
+export function skinStorageKey(sessionId: string | null | undefined): string {
+  return SKIN_KEY_PREFIX + (sessionId || "__unbound__");
+}
+
+/** `localStorage` when the host has one and lets us touch it, else null. */
+function browserSkinStore(): SkinStore | null {
+  try {
+    const storage = (globalThis as { localStorage?: SkinStore }).localStorage;
+    return storage ?? null;
+  } catch {
+    // Reading the property itself throws under some storage-blocking policies.
+    return null;
+  }
+}
+
+/**
+ * The remembered choice for a key, or null when the user has not toggled in
+ * this session. Pass `null` for `store` to mean "no storage at all"; omit it
+ * to use the browser's. An unreadable store and an unrecognised value are the
+ * same answer — the habit simply is not there — which is why this never
+ * throws and never invents a surface.
+ */
+export function readStoredSkin(
+  key: string,
+  store: SkinStore | null | undefined = browserSkinStore(),
+): SurfaceSkin | null {
+  if (!store) return null;
+  try {
+    const raw = store.getItem(key);
+    return isSurfaceSkin(raw) ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Remember an explicit choice. A store that refuses the write costs the user
+ * their habit across reloads, never the toggle they just pressed.
+ */
+export function writeStoredSkin(
+  key: string,
+  skin: SurfaceSkin,
+  store: SkinStore | null | undefined = browserSkinStore(),
+): void {
+  if (!store) return;
+  try {
+    store.setItem(key, skin);
+  } catch {
+    /* private mode / quota — the surface still switched, it just won't stick */
+  }
 }
 
 // ── CSS projection (two independent var groups, composed on the surface) ─────
