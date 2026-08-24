@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.36.0] - 2026-08-24
+
+### Added
+- **WordTaste writes from prompts no machine composed.** The writing pipeline is rebuilt around a plan JSON with a verbatim guard — every Chinese sentence a writer reads is the author's own material, human-written reference prose, or the accepted draft itself; the orchestrator's Chinese never enters a prompt. Prompts are assembled by code from one English scaffolding file, the writer runs over OpenRouter (`anthropic/claude-sonnet-5` by default) with probe-gated fallback to the session's CLI harness, the checker stays in the other model family, and the bash-era skill scripts are now TypeScript on Bun.
+- **A writer with a charter.** Writer and repair calls carry a proper system/user split: the system message states the mode's design philosophy, the writer's place in the pipeline, and how to treat each material type; the task message carries only this section's materials and ends on the draft-so-far with an explicit continue-from-here instruction. OpenRouter gets a real system role, the claude CLI fallback replaces its default preamble via `--system-prompt-file`, codex and the Workflow path prepend.
+- **Creation mode.** `from-idea` sessions run intake as an interview and archive the user's answers verbatim in `materials/notes.md` — the user's own chat Chinese becomes the material. The charter switches to a creation posture: named facts and judgments bind exactly, development (reasoning, transitions, examples) is expected, and factual claims the material does not support stay out.
+- **A primer before writing.** Writers read a few randomly-windowed passages of public-domain Chinese prose before dispatch (bundled library under the skill; private libraries under `~/.pneuma/primers/`), framed as texture, never content.
+- **WordTaste viewer: math, selection, and a paper surface.** Draft, candidate, and material views render KaTeX math with graceful degradation for bad TeX; selecting a sentence that crosses a formula, inline code, bold, or a link resolves to the exact source-form span (rebuilt from KaTeX's own TeX annotations and the markdown constructs); and a light/dark writing-surface toggle joins the existing font/theme axis — warm paper by choice, the Pneuma dark theme by default, remembered per session.
+
+### Fixed
+- **Globally configured API keys reach CLI-launched sessions.** The main launch path never consulted `~/.pneuma/api-keys.json` when resolving init params — only the replay Continue-Work path did — so `--no-prompt` launches (and sessions resuming on their cached config) ran without keys the launcher had stored. Empty envMapping-bound params now backfill from the global store at every launch.
+
 ## [3.35.0] - 2026-08-20
 
 ### Added
