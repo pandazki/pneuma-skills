@@ -24,7 +24,8 @@ export const meta = {
  *
  * It returns the synthesized artifacts as DATA; the session agent performs
  * the actual file writes (taste-profile.md / recipes/<content-type>.md /
- * appended prefs.log.jsonl + swaps.jsonl) with its native Edit/Write tools.
+ * appended prefs.log.jsonl + examples/swaps.jsonl, and style.en.md) with its
+ * native Edit/Write tools.
  * This mirrors the source experiment's "all learning is disciplined file
  * updates" discipline and wordtaste's §3.3 state-ownership rule: taste/ is
  * agent-owned, never mutated by anything but the agent's own tools.
@@ -44,7 +45,7 @@ export const meta = {
  *   })
  *
  * When the Workflow tool is absent, the SKILL.md must fall back to a MANUAL
- * two-role pass through run_leaf.sh, then perform the verdict-reproduction
+ * two-role pass through run_leaf.ts, then perform the verdict-reproduction
  * check by hand. This script is the automated path; the prompts below are the
  * source of truth the manual fallback should paraphrase.
  *
@@ -54,8 +55,9 @@ export const meta = {
  *   contentSetLabel?: string,        // human label of the writing project, for prompts
  *   trajectory: {                    // the FULL session trajectory, gathered by the agent OR by the Gather phase
  *     tasteProfile?: string,         // current taste/taste-profile.md text (may be the generic bootstrap)
+ *     styleDirectives?: string,      // current taste/style.en.md text (may be the empty seeded header)
  *     prefsJsonl?: string,           // taste/prefs.log.jsonl raw text (one judgment per line)
- *     swapsJsonl?: string,           // taste/swaps.jsonl raw text (AI->human sentence pairs)
+ *     swapsJsonl?: string,           // taste/examples/swaps.jsonl raw text (the user's own hand edits)
  *     positives?: Array<{ name: string, text: string }>,  // accepted / voice-anchor texts (examples/positive)
  *   },
  *   reflectors?: Array<{             // which cross-family reflectors to run (>=2). Defaults below.
@@ -67,6 +69,9 @@ export const meta = {
  *
  * Returns: {
  *   updatedTasteProfile: string,     // the synthesized taste-profile.md the agent should write
+ *   styleDirectives: string,         // the rewritten taste/style.en.md the agent should write. This is
+ *                                    // the one taste artifact a writer reads directly: voice_sample.ts
+ *                                    // samples it into the <user_voice> block of every writer prompt.
  *   recipe: { contentType, markdown },  // recipes/<contentType>.md the agent should write
  *   prefsGuidance: string[],         // bullets to APPEND as a distill summary into prefs.log context
  *   swapsGuidance: string[],         // symbol-layer collection guidance (what to mine next)
@@ -182,7 +187,7 @@ Discipline (wordtaste distillation — from the validated reflect->validate->com
 - Prose (rubric titles, recipe text, voice notes) in ${language}; structural keys (symptom ids S1..S7, content-type, jsonl field names) stay stable.
 - The goal is "reach the quality the USER accepted", not "imitate the user". Voice is a FLOOR; taste is the target.
 - A sharper rubric means: better discriminators, phrase-level "tells", merged/split/reordered symptoms — NOT more symptoms for their own sake.
-- A generation recipe is operational: an inject-and-go prompt for THIS content-type that aims to hit the accepted version in one or two steps, NOT climb the ladder from rung 0. Distillation succeeds when the ladder is flattened.
+- A generation recipe is operational: an inject-and-go prompt for THIS content-type that aims to hit the accepted version in one or two steps. Distillation succeeds when the next task starts where this one ended, not where it began.
 - The symbol layer (metaphors / aphorisms) is the deepest AI tell; a model cannot invent a human replacement — it must be MINED from the user's own sentences (swaps.jsonl). Say what to collect next, do not fabricate swaps.
 - n=1 honesty: everything here is a small-sample strong-hypothesis, never locked truth.`
 
@@ -190,7 +195,8 @@ function trajectoryBlock(t) {
   const parts = []
   if (t.tasteProfile) parts.push(`# Current taste-profile.md\n${t.tasteProfile}`)
   if (t.prefsJsonl) parts.push(`# prefs.log.jsonl (the user's judgments, one per line)\n${t.prefsJsonl}`)
-  if (t.swapsJsonl) parts.push(`# swaps.jsonl (AI->human sentence pairs already mined)\n${t.swapsJsonl}`)
+  if (t.styleDirectives) parts.push(`# Current taste/style.en.md (the distilled directives a writer already reads)\n${t.styleDirectives}`)
+  if (t.swapsJsonl) parts.push(`# examples/swaps.jsonl (the user's own hand edits, already mined)\n${t.swapsJsonl}`)
   if (Array.isArray(t.positives) && t.positives.length) {
     parts.push(
       `# Accepted / voice-anchor texts (the gold standard)\n` +
@@ -207,7 +213,7 @@ function reflectPrompt(family, trajText) {
   const role = family === 'claude' ? 'checker' : 'writer'
   const isolatedInstruction =
     `Reflect in a clean context. Write the prompt below to a temp file, run ` +
-    `\`bash <skillDir>/scripts/run_leaf.sh ${role} <promptfile>\`, redirect stdout to a staging file, then return ` +
+    `\`bun <skillDir>/scripts/run_leaf.ts ${role} <promptfile>\`, redirect stdout to a staging file, then return ` +
     `that answer normalized into the schema. If the isolated process is unavailable or errors, report it in ` +
     `\`notes\`; do not expose adapter provenance.`
 
@@ -216,15 +222,15 @@ function reflectPrompt(family, trajText) {
 ${isolatedInstruction}
 
 Read the full trajectory below. Answer the one GEPA question:
-"What sharper rubric / voice signature / generation recipe would make the generator hit the version the user ACCEPTED on the first try — flattening the disruption ladder?"
+"What sharper rubric / voice signature / generation recipe would make the generator hit the version the user ACCEPTED on the first try?"
 
 Trajectory:
 ${trajText}
 
 Produce three things:
 1. rubricDelta: concrete sharpenings to the symptom rubric (better tells, phrase templates, merges/splits, new symptoms). Each as { id?, change, why }.
-2. recipe: an operational, inject-and-go generation recipe for ${contentType} (markdown) that targets the accepted quality directly. Fold in any structural-disruption + readability constraints the trajectory revealed.
-3. voiceSignature: 2-5 bullets naming the user's voice floor (breathing/hedging habits, metaphor style, structural preferences) AND the AI-symptoms they reject hardest.
+2. recipe: an operational, inject-and-go generation recipe for ${contentType} (markdown) that targets the accepted quality directly. Fold in any structural and readability constraints the trajectory revealed.
+3. voiceSignature: 2-5 bullets naming the user's voice floor (breathing/hedging habits, metaphor style, structural preferences) AND the AI-symptoms they reject hardest. Each bullet must name the judgment in the trajectory that shows it.
 Plus: collectNext (what symbol-layer material to mine next), notes (execution caveats).
 
 ${RULES}
@@ -315,7 +321,7 @@ function commitPrompt(survivors, currentProfile, verdictCount, degraded) {
   return `You are SYNTHESIZING the final wordtaste taste artifacts for ${contentSetLabel} (content-type: ${contentType}) from the surviving distilled candidates.
 
 ${degraded
-      ? `NOTE: only ${verdictCount} past verdict(s) existed, so the Pareto validation was SKIPPED (single-trajectory degradation). Treat every candidate as a hypothesis of equal standing; lean on the reflection that best flattens the ladder, and mark new claims as n-small strong-hypotheses.`
+      ? `NOTE: only ${verdictCount} past verdict(s) existed, so the Pareto validation was SKIPPED (single-trajectory degradation). Treat every candidate as a hypothesis of equal standing; lean on the reflection best grounded in what actually happened, and mark new claims as n-small strong-hypotheses.`
       : `These ${survivors.length} candidate(s) survived Pareto validation against ${verdictCount} past verdicts — they reproduce the user's known judgments best. Synthesize across them; where they agree, the signal is strong; where they diverge, prefer the sharper, more concrete sharpening.`}
 
 Current taste-profile.md (preserve its structure — §0 calibration / §1 voice floor / §2 symptom rubric / §3+ discipline / meta-principles):
@@ -327,18 +333,20 @@ ${JSON.stringify(survivors.map((s) => ({ family: s.family, rubricDelta: s.rubric
 ${RULES}
 
 Produce:
-- updatedTasteProfile: the FULL rewritten taste-profile.md (same section structure, sharper rubric folded in, launch rung re-calibrated if the trajectory justifies it).
-- recipe.markdown: the operational recipes/${contentType}.md (inject-and-go, ladder-flattening).
+- updatedTasteProfile: the FULL rewritten taste-profile.md (same section structure, sharper rubric folded in, calibration re-stated if the trajectory justifies it).
+- styleDirectives: the FULL rewritten taste/style.en.md — 5 to 10 lines, one English imperative per line, each one grounded in a real judgment from this trajectory and followed by an `<!-- evidence: ... -->` comment naming it. No line without evidence; drop a directive this trajectory contradicts rather than keeping every line ever written. English, except for a short quoted fragment (a handful of characters, copied from the user's own text) when a directive names a specific tic to avoid. A writer reads this file, so it holds directives, not descriptions of the person.
+- recipe.markdown: the operational recipes/${contentType}.md (inject-and-go, targeting the accepted quality directly).
 - prefsGuidance: 2-5 bullets summarizing what this distillation learned (for the distill changelog the agent appends).
 - swapsGuidance: 1-4 bullets on which symbol-layer (metaphor/aphorism) material to mine from the user next.
 
-Return {updatedTasteProfile, recipe:{contentType, markdown}, prefsGuidance, swapsGuidance}.`
+Return {updatedTasteProfile, styleDirectives, recipe:{contentType, markdown}, prefsGuidance, swapsGuidance}.`
 }
 
 const COMMIT_SCHEMA = {
   type: 'object',
   properties: {
     updatedTasteProfile: { type: 'string' },
+    styleDirectives: { type: 'string', description: 'The full rewritten taste/style.en.md: one English imperative per line, each with its evidence comment.' },
     recipe: {
       type: 'object',
       properties: {
@@ -369,8 +377,9 @@ if (!haveTrajectoryText) {
     `Read the wordtaste taste trajectory for the active content-set (${contentSetLabel}). From the workspace, read:\n` +
       `  - taste/taste-profile.md (the current rubric + voice floor)\n` +
       `  - taste/prefs.log.jsonl (every judgment, raw)\n` +
-      `  - taste/swaps.jsonl (mined AI->human pairs, if present)\n` +
-      `  - examples/positive/* OR materials/voice/* (accepted / anchor texts)\n` +
+      `  - taste/style.en.md (the distilled English directives, if present)\n` +
+      `  - taste/examples/swaps.jsonl (the user's own hand edits, if present)\n` +
+      `  - taste/examples/positive/* (the pieces the user accepted)\n` +
       `Return their raw contents verbatim — do NOT summarize. positives[] is a list of {name, text}.`,
     {
       phase: 'Gather',
@@ -481,6 +490,7 @@ if (!recipe.contentType) recipe.contentType = contentType
 
 return {
   updatedTasteProfile: committed.updatedTasteProfile,
+  styleDirectives: committed.styleDirectives || '',
   recipe,
   prefsGuidance: committed.prefsGuidance || [],
   swapsGuidance: committed.swapsGuidance || [],

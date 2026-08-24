@@ -122,6 +122,45 @@ describe("distill.workflow.js — launch contract", () => {
   });
 });
 
+describe("distill.workflow.js — the artifacts it commits", () => {
+  const src = source();
+
+  /**
+   * 0.9.0 gave distillation a second output. `taste/style.en.md` is the one
+   * taste artifact a writer reads directly — `voice_sample.ts` samples it into
+   * the `<user_voice>` block of every writer prompt — so if the commit step
+   * stops producing it, the block quietly empties out and nothing else fails.
+   * The schema, the prompt, and the return all have to name it.
+   */
+  it("commits the style directives alongside the taste profile and the recipe", () => {
+    expect(src).toContain("styleDirectives: { type: 'string'");
+    expect(src).toContain("- styleDirectives: the FULL rewritten taste/style.en.md");
+    expect(src).toContain(
+      "Return {updatedTasteProfile, styleDirectives, recipe:{contentType, markdown}, prefsGuidance, swapsGuidance}.",
+    );
+    expect(src).toContain("styleDirectives: committed.styleDirectives || ''");
+  });
+
+  it("asks for directives that carry their evidence, and for stale ones to be dropped", () => {
+    // A directive with no judgment behind it is a habit invented for a person
+    // who never asked for it, and it would reach the next writer as an order.
+    expect(src).toContain("each one grounded in a real judgment from this trajectory");
+    expect(src).toContain("`<!-- evidence: ... -->`");
+    expect(src).toContain("No line without evidence");
+    expect(src).toMatch(/drop a directive this trajectory contradicts/);
+  });
+
+  it("gathers the taste artifacts from the paths the rest of the mode uses", () => {
+    // The sampler reads `taste/examples/swaps.jsonl` and
+    // `taste/examples/positive/`; a gather step pointed somewhere else returns
+    // an empty trajectory and distils nothing, without erroring.
+    expect(src).toContain("taste/examples/swaps.jsonl");
+    expect(src).toContain("taste/examples/positive/*");
+    expect(src).toContain("taste/style.en.md");
+    expect(src).not.toContain("taste/swaps.jsonl (mined");
+  });
+});
+
 describe("distill.workflow.js — determinism + sandbox bans", () => {
   const src = source();
   // Strip block + line comments before scanning so prose explaining the bans
