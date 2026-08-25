@@ -79,6 +79,7 @@ When humans and code agents co-create content, they need more than a chat window
 | **cosmos** | Project any content — code, prose, research, business — into a structured cosmos: an interactive graph that lays its inner shape bare. Schema and dashboard tech borrow from [Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything) (MIT) |
 | **wordtaste** | Human-in-the-loop Chinese long-form writing — plan the piece as verbatim-guarded JSON, compose every prompt by code so no machine-written Chinese reaches the writer (OpenRouter sonnet by default, CLI fallback), write sequential units that continue the draft, cross-check with a fresh model family, and finish through finite repair with human gates |
 | **bansho** | Board-writing explainer — write the lecture as plain markdown and the board performs it: handwriting flows in, emphasis becomes hand-drawn ink, charts and formulas draw themselves as the narration reaches them, scrubbable like a replayed lecture |
+| **eli5** | Explain anything to anyone — one topic climbs an audience ladder, from a five-year-old to the engineer on call, and every rung is its own page whose typography, vocabulary and pacing are tuned to whoever is reading it. Audience taxonomy adapted from [DreambigOu/ELI5](https://github.com/DreambigOu/ELI5) (MIT) |
 | **mode-maker** | Create custom modes with AI — fork, play-test, publish |
 | **evolve** | Evolution Agent — analyze history, propose skill improvements, apply/rollback |
 
@@ -162,6 +163,7 @@ Modes:
   gridboard                    Interactive tile dashboards
   wordtaste                    Chinese long-form writing loop
   bansho                       Board-writing explainer
+  eli5                         Explain anything to anyone
   mode-maker                   Create custom modes with AI
   evolve                       Launch the Evolution Agent
   /path/to/mode                Load from a local directory

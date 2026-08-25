@@ -10,9 +10,9 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. Agents e
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.36.0
+**Version:** 3.37.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
-**Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `cosmos`, `wordtaste`, `bansho`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`, `project-tidy`
+**Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `cosmos`, `wordtaste`, `bansho`, `eli5`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`, `project-tidy`
 
 > Modes can set `hidden: true` to disappear from user-pickable lists (launcher grids, ProjectPanel mode-tile picker). Their sessions are also stamped `internal: true` by `scanProjectSessions` and filtered out of user-facing session lists (project panel, project cards, quick-resume). Internal modes (`evolve`, `project-evolve`, `project-onboard`, `project-tidy`) are hidden — triggered by specific UI affordances or programmatically, never by a "what mode to start?" choice.
 

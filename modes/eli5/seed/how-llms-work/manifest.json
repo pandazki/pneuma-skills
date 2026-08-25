@@ -1,0 +1,25 @@
+{
+  "title": "大语言模型是怎么工作的？",
+  "topic": "how-llms-work",
+  "language": "zh",
+  "audiences": [
+    {
+      "id": "kid-8",
+      "label": "8 岁孩子",
+      "file": "pages/kid-8.html",
+      "tone": "像在饭桌上讲故事；词语接龙的比喻，圆体大字，明亮配色"
+    },
+    {
+      "id": "pm",
+      "label": "产品经理",
+      "file": "pages/pm.html",
+      "tone": "能力边界、成本结构、风险三件事；结论前置，落到立项要问的问题"
+    },
+    {
+      "id": "engineer",
+      "label": "工程师",
+      "file": "pages/engineer.html",
+      "tone": "准确、不吹；token、注意力、训练与推理的真实差别，附取舍表"
+    }
+  ]
+}

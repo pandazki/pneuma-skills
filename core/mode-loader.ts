@@ -159,6 +159,13 @@ const builtinModes: Record<string, ModeSource> = {
     definitionLoader: () =>
       import("../modes/bansho/pneuma-mode.js").then((m) => m.default),
   },
+  eli5: {
+    type: "builtin",
+    manifestLoader: () =>
+      import("../modes/eli5/manifest.js").then((m) => m.default),
+    definitionLoader: () =>
+      import("../modes/eli5/pneuma-mode.js").then((m) => m.default),
+  },
 };
 
 /** External mode registry — registered by the CLI at startup via registerExternalMode */

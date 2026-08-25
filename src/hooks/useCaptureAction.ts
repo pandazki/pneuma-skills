@@ -35,12 +35,13 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
  * This is the registry of coarse keys across every mode's address
  * vocabulary; each entry was added by the mode that coined it (`slide` by
  * slide, `nodeId` by diagram, `section`/`step` by bansho — where a step is
- * a MOMENT in a lecture, so reaching it is always a navigation). A mode
+ * a MOMENT in a lecture, so reaching it is always a navigation; `audience`
+ * by eli5, where each rung of the ladder is its own page). A mode
  * whose coarse key is missing here does not fail loudly: `capture` would
  * silently screenshot whatever is on screen, which is why new coarse keys
  * belong in this list.
  */
-const COARSE_ADDRESS_KEYS = ["page", "file", "slide", "contentSet", "nodeId", "elementId", "image", "section", "step"];
+const COARSE_ADDRESS_KEYS = ["page", "file", "slide", "contentSet", "nodeId", "elementId", "image", "section", "step", "audience"];
 
 /** Extract a CSS-selector-shaped fine handle from a mode address, if any. */
 function fineSelector(address: ViewerAddress | undefined): string | undefined {

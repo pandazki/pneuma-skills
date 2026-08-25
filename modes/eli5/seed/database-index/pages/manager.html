@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>What is a database index? — for a manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --paper: #ffffff;
+    --ink: #14181f;
+    --ink-2: #444c58;
+    --ink-3: #79828f;
+    --line: #e2e5ea;
+    --accent: #1e5fd1;
+    --accent-soft: #eaf1fd;
+    --warn: #b45309;
+    --warn-soft: #fdf3e3;
+    --good: #15803d;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 16.5px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .sheet {
+    max-width: 760px;
+    margin: clamp(0px, 4vw, 56px) auto;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: clamp(28px, 5vw, 60px);
+    box-shadow: 0 1px 2px rgba(20, 24, 31, 0.05), 0 12px 32px -20px rgba(20, 24, 31, 0.28);
+  }
+
+  /* ---------- memo header ---------- */
+
+  .memo-head {
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 20px;
+    margin-bottom: 28px;
+  }
+
+  .memo-tag {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 10px;
+  }
+
+  h1 {
+    font-size: clamp(27px, 4.2vw, 36px);
+    font-weight: 700;
+    letter-spacing: -0.022em;
+    line-height: 1.18;
+    margin: 0 0 14px;
+  }
+
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 26px;
+    font-size: 13px;
+    color: var(--ink-3);
+  }
+
+  .meta b { color: var(--ink-2); font-weight: 600; }
+
+  /* ---------- the answer ---------- */
+
+  .answer {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    padding: 20px 24px;
+    margin: 0 0 32px;
+    border-radius: 0 4px 4px 0;
+  }
+
+  .answer p { margin: 0 0 10px; font-size: 17px; }
+  .answer p:last-child { margin-bottom: 0; }
+  .answer strong { font-weight: 650; }
+
+  /* ---------- stat tiles ---------- */
+
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin: 0 0 12px;
+  }
+
+  .tile {
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 16px 18px;
+    background: #fbfcfd;
+  }
+
+  .tile .figure {
+    font-size: clamp(24px, 3.4vw, 30px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tile.win .figure { color: var(--good); }
+  .tile.cost .figure { color: var(--warn); }
+
+  .tile .caption {
+    font-size: 12.5px;
+    color: var(--ink-3);
+    margin-top: 6px;
+    line-height: 1.45;
+  }
+
+  .tiles-note {
+    font-size: 12.5px;
+    color: var(--ink-3);
+    margin: 0 0 34px;
+  }
+
+  /* ---------- body ---------- */
+
+  h2 {
+    font-size: 19px;
+    font-weight: 650;
+    letter-spacing: -0.012em;
+    margin: 38px 0 12px;
+    padding-top: 26px;
+    border-top: 1px solid var(--line);
+  }
+
+  h2:first-of-type { border-top: none; padding-top: 0; }
+
+  p { margin: 0 0 14px; }
+
+  .aside {
+    color: var(--ink-2);
+    font-size: 15.5px;
+    border-left: 2px solid var(--line);
+    padding-left: 18px;
+    margin: 0 0 14px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 15px;
+    margin: 4px 0 18px;
+  }
+
+  th, td {
+    text-align: left;
+    padding: 11px 12px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+
+  th {
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    border-bottom: 1px solid var(--ink);
+  }
+
+  td:first-child { font-weight: 600; width: 34%; }
+
+  ul { margin: 0 0 14px; padding-left: 20px; }
+  li { margin-bottom: 9px; }
+  li b { font-weight: 650; }
+
+  /* ---------- decision ---------- */
+
+  .decision {
+    border: 1px solid var(--ink);
+    border-radius: 4px;
+    padding: 24px 26px;
+    margin: 34px 0 0;
+  }
+
+  .decision h3 {
+    margin: 0 0 14px;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+  }
+
+  .decision ol { margin: 0; padding-left: 20px; }
+  .decision li { margin-bottom: 12px; }
+  .decision li:last-child { margin-bottom: 0; }
+  .decision .why { display: block; color: var(--ink-3); font-size: 14px; margin-top: 3px; }
+
+  .caution {
+    background: var(--warn-soft);
+    border-radius: 4px;
+    padding: 16px 20px;
+    font-size: 15px;
+    color: #6b3f08;
+    margin: 26px 0 0;
+  }
+
+  .caution b { font-weight: 650; }
+
+  footer {
+    margin-top: 34px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    font-size: 13px;
+    color: var(--ink-3);
+  }
+
+  @media (max-width: 620px) {
+    .tiles { grid-template-columns: 1fr; }
+    td:first-child { width: auto; }
+  }
+</style>
+</head>
+<body>
+<main class="sheet">
+
+  <header class="memo-head">
+    <p class="memo-tag">Plain-language brief</p>
+    <h1>What a database index is, and what it costs</h1>
+    <div class="meta">
+      <span><b>Audience</b> Engineering manager</span>
+      <span><b>Read time</b> 3 minutes</span>
+      <span><b>Decision</b> Yes — see the last section</span>
+    </div>
+  </header>
+
+  <div class="answer">
+    <p><strong>An index is a lookup shortcut the database keeps beside a table</strong> so it can jump straight to the rows you asked for instead of reading every row to find them.</p>
+    <p>Adding the right index is usually the single cheapest performance fix available: hours of work, no product change, and a slow screen becomes an instant one. It is not free — indexes take disk space and make writes slightly slower — but for most read-heavy tables that trade is strongly in your favour.</p>
+  </div>
+
+  <div class="tiles">
+    <div class="tile win">
+      <div class="figure">2.4s → 4ms</div>
+      <div class="caption">Query time for "find this customer's orders" before and after adding one index.</div>
+    </div>
+    <div class="tile cost">
+      <div class="figure">+11%</div>
+      <div class="caption">Storage added to that table by the index.</div>
+    </div>
+    <div class="tile cost">
+      <div class="figure">~5%</div>
+      <div class="caption">Slower writes on that table, because each new row updates the index too.</div>
+    </div>
+  </div>
+
+  <p class="tiles-note">Figures from a representative 8.4M-row orders table on a mid-tier managed Postgres instance. Your numbers will differ; the <em>shape</em> — large read win, small storage and write cost — is what holds.</p>
+
+  <h2>The one-line version</h2>
+
+  <p class="aside">It is the index at the back of a reference book. Without it you read every page to find the one mention of a term. With it you check three lines and turn to page 412. The index costs a few pages and has to be rebuilt if the book changes — that is the entire trade.</p>
+
+  <h2>What it costs you</h2>
+
+  <table>
+    <thead>
+      <tr><th>Dimension</th><th>What actually happens</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Engineering time</td>
+        <td>Hours, not weeks. Identifying the right column is the work; creating the index is one command. On a large live table it should be created without locking writes, which takes longer to run but needs no downtime.</td>
+      </tr>
+      <tr>
+        <td>Storage</td>
+        <td>Typically 5–20% of the table's size per index. Real money at scale, rounding error below a few hundred GB.</td>
+      </tr>
+      <tr>
+        <td>Write speed</td>
+        <td>Every insert, update, or delete has to maintain every index on the table. One or two indexes: negligible. Twelve indexes on a hot write path: measurable, and a common cause of mysterious write slowdowns.</td>
+      </tr>
+      <tr>
+        <td>Ongoing risk</td>
+        <td>Low. Indexes are invisible to the application — the code does not change, and one can be dropped again in seconds if it turns out not to help.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>When an index will <em>not</em> save you</h2>
+
+  <p>This is the part that usually does not get said out loud, and it is where teams lose weeks:</p>
+
+  <ul>
+    <li><b>The column barely narrows anything.</b> Indexing a status column that is <code>active</code> for 90% of rows does not help — the database still has to visit almost every row, and it will sensibly ignore the index.</li>
+    <li><b>The table is small.</b> Under a few thousand rows, reading everything is already fast. An index here is noise.</li>
+    <li><b>The table is written far more than it is read.</b> Event and audit tables often fall here; every index is a tax on the write path with little read benefit.</li>
+    <li><b>The query is slow for a different reason.</b> Missing pagination, an N+1 query loop, or fetching a million rows to display twenty. An index will not rescue any of those, and reaching for one first can hide the real problem for months.</li>
+    <li><b>Nobody removed the old ones.</b> Indexes accumulate. Unused indexes cost storage and write speed forever and give nothing back.</li>
+  </ul>
+
+  <div class="decision">
+    <h3>What to ask when someone proposes one</h3>
+    <ol>
+      <li>Which query is slow, and how slow is it today?
+        <span class="why">Turns "the app feels sluggish" into something you can verify afterwards.</span></li>
+      <li>What fraction of the table does the filter actually match?
+        <span class="why">If the honest answer is "most of it", an index is the wrong fix.</span></li>
+      <li>How many indexes does this table already carry, and are they all used?
+        <span class="why">The write cost is cumulative, and databases can report which indexes are never touched.</span></li>
+    </ol>
+  </div>
+
+  <div class="caution">
+    <b>One thing not to conclude:</b> "so we should index everything." Indexes are a targeted instrument. Applied per slow query they are among the best returns in engineering; applied by default to every column they quietly make every write slower and every backup larger, and nobody notices until the write path is the outage.
+  </div>
+
+  <footer>
+    Want the mechanics — B-trees, query plans, why the database sometimes ignores an index — the Engineer rung of this ladder has them.
+  </footer>
+
+</main>
+</body>
+</html>

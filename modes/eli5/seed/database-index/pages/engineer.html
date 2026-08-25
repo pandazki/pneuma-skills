@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>What is a database index? — for an engineer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --paper: #ffffff;
+    --ink: #101419;
+    --ink-2: #3d454f;
+    --ink-3: #6d7783;
+    --line: #e3e6ea;
+    --line-2: #f0f2f4;
+    --accent: #2f5fa8;
+    --accent-soft: #eef3fa;
+    --code-bg: #12161c;
+    --code-fg: #d5dbe3;
+    --tok-kw: #82a8ff;
+    --tok-str: #a5d6a7;
+    --tok-num: #ffcc80;
+    --tok-com: #6b7784;
+    --tok-fn: #ffd479;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 15.5px;
+    line-height: 1.68;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .doc {
+    max-width: 840px;
+    margin: 0 auto;
+    background: var(--paper);
+    border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line);
+    padding: clamp(28px, 5vw, 64px) clamp(20px, 4.5vw, 60px) 88px;
+    min-height: 100vh;
+  }
+
+  header { border-bottom: 1px solid var(--line); padding-bottom: 26px; margin-bottom: 34px; }
+
+  .eyebrow {
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 12px;
+  }
+
+  h1 {
+    font-size: clamp(26px, 3.8vw, 34px);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    margin: 0 0 14px;
+  }
+
+  .standfirst { font-size: 17px; color: var(--ink-2); margin: 0; max-width: 62ch; }
+
+  h2 {
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: -0.012em;
+    margin: 46px 0 14px;
+    scroll-margin-top: 20px;
+  }
+
+  h2 .idx {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 12px;
+    color: var(--accent);
+    margin-right: 10px;
+    font-weight: 500;
+  }
+
+  h3 { font-size: 15.5px; font-weight: 600; margin: 26px 0 8px; }
+
+  p { margin: 0 0 14px; max-width: 72ch; }
+
+  code {
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.875em;
+    background: var(--line-2);
+    border-radius: 3px;
+    padding: 0.12em 0.36em;
+  }
+
+  pre {
+    background: var(--code-bg);
+    color: var(--code-fg);
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+    line-height: 1.66;
+    padding: 18px 20px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 0 0 18px;
+  }
+
+  pre code { background: none; padding: 0; font-size: inherit; }
+
+  .kw { color: var(--tok-kw); }
+  .str { color: var(--tok-str); }
+  .num { color: var(--tok-num); }
+  .com { color: var(--tok-com); font-style: italic; }
+  .fn { color: var(--tok-fn); }
+
+  figure { margin: 22px 0 24px; }
+  figure svg { width: 100%; height: auto; display: block; }
+  figcaption { font-size: 13px; color: var(--ink-3); margin-top: 10px; max-width: 72ch; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 6px 0 20px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    border-bottom: 1px solid var(--ink);
+  }
+  td code { font-size: 12.5px; }
+
+  ul { margin: 0 0 16px; padding-left: 20px; max-width: 72ch; }
+  li { margin-bottom: 9px; }
+
+  .note {
+    background: var(--accent-soft);
+    border-left: 2px solid var(--accent);
+    padding: 14px 18px;
+    font-size: 14.5px;
+    color: var(--ink-2);
+    margin: 0 0 18px;
+    border-radius: 0 4px 4px 0;
+    max-width: 72ch;
+  }
+
+  .note b { color: var(--ink); font-weight: 600; }
+
+  footer {
+    margin-top: 52px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+    font-size: 13px;
+    color: var(--ink-3);
+  }
+</style>
+</head>
+<body>
+<main class="doc">
+
+  <header>
+    <p class="eyebrow">explainer · storage engines</p>
+    <h1>What a database index actually is</h1>
+    <p class="standfirst">An auxiliary, ordered data structure the storage engine maintains alongside a table, mapping key values to row locations — so a predicate can be answered by traversal instead of by scanning.</p>
+  </header>
+
+  <h2><span class="idx">01</span>The structure</h2>
+
+  <p>Unless you asked for something else, your index is a <strong>B+tree</strong>. Postgres implements a Lehman–Yao B-link variant; InnoDB, SQL Server and Oracle all ship close cousins. Two properties matter:</p>
+
+  <ul>
+    <li><strong>All keys live in the leaves.</strong> Internal nodes hold only separator keys and child pointers, so their fanout is high and the tree is shallow.</li>
+    <li><strong>Leaves are linked to their siblings.</strong> Once you have found the first matching key, a range scan walks sideways through leaf pages — no re-descending the tree per row.</li>
+  </ul>
+
+  <figure>
+    <svg viewBox="0 0 820 260" role="img" aria-label="A three-level B+tree: one root, three internal nodes, five linked leaf pages pointing into a heap">
+      <defs>
+        <style>
+          .nd { fill: #ffffff; stroke: #2f5fa8; stroke-width: 1.4; }
+          .nd-root { fill: #eef3fa; stroke: #2f5fa8; stroke-width: 1.6; }
+          .lf { fill: #ffffff; stroke: #6d7783; stroke-width: 1.3; }
+          .lbl { font-family: "JetBrains Mono", monospace; font-size: 11px; fill: #3d454f; }
+          .lbl-s { font-family: "JetBrains Mono", monospace; font-size: 9.5px; fill: #6d7783; }
+          .ln { stroke: #b6bfc9; stroke-width: 1.2; fill: none; }
+          .sib { stroke: #2f5fa8; stroke-width: 1.4; fill: none; stroke-dasharray: 3 3; }
+          .heap { fill: #f0f2f4; stroke: #cdd3da; stroke-width: 1.2; }
+        </style>
+      </defs>
+
+      <!-- root -->
+      <rect class="nd-root" x="330" y="14" width="160" height="30" rx="4" />
+      <text class="lbl" x="410" y="33" text-anchor="middle">root · [ 4000 | 8000 ]</text>
+
+      <!-- level 2 -->
+      <g class="ln">
+        <path d="M370 44 L150 88" /><path d="M410 44 L410 88" /><path d="M450 44 L670 88" />
+      </g>
+      <rect class="nd" x="80" y="88" width="140" height="28" rx="4" />
+      <text class="lbl" x="150" y="106" text-anchor="middle">[ 1200 | 2600 ]</text>
+      <rect class="nd" x="340" y="88" width="140" height="28" rx="4" />
+      <text class="lbl" x="410" y="106" text-anchor="middle">[ 5100 | 6800 ]</text>
+      <rect class="nd" x="600" y="88" width="140" height="28" rx="4" />
+      <text class="lbl" x="670" y="106" text-anchor="middle">[ 9300 ]</text>
+
+      <!-- leaves -->
+      <g class="ln">
+        <path d="M110 116 L70 160" /><path d="M190 116 L215 160" />
+        <path d="M370 116 L360 160" /><path d="M450 116 L505 160" />
+        <path d="M670 116 L680 160" />
+      </g>
+      <g>
+        <rect class="lf" x="20" y="160" width="110" height="30" rx="3" />
+        <text class="lbl-s" x="75" y="179" text-anchor="middle">1004 … 1198</text>
+        <rect class="lf" x="160" y="160" width="110" height="30" rx="3" />
+        <text class="lbl-s" x="215" y="179" text-anchor="middle">1200 … 2594</text>
+        <rect class="lf" x="300" y="160" width="110" height="30" rx="3" />
+        <text class="lbl-s" x="355" y="179" text-anchor="middle">2600 … 5090</text>
+        <rect class="lf" x="450" y="160" width="110" height="30" rx="3" />
+        <text class="lbl-s" x="505" y="179" text-anchor="middle">5100 … 6790</text>
+        <rect class="lf" x="620" y="160" width="120" height="30" rx="3" />
+        <text class="lbl-s" x="680" y="179" text-anchor="middle">6800 … 9999</text>
+      </g>
+
+      <!-- sibling links -->
+      <g class="sib">
+        <path d="M130 175 L160 175" /><path d="M270 175 L300 175" />
+        <path d="M410 175 L450 175" /><path d="M560 175 L620 175" />
+      </g>
+      <text class="lbl-s" x="760" y="179" fill="#2f5fa8">next →</text>
+
+      <!-- heap -->
+      <rect class="heap" x="20" y="222" width="720" height="26" rx="3" />
+      <text class="lbl-s" x="380" y="239" text-anchor="middle">heap / clustered rows — unordered on disk</text>
+      <g class="ln" stroke-dasharray="2 3">
+        <path d="M75 190 L120 222" /><path d="M215 190 L300 222" /><path d="M355 190 L470 222" />
+        <path d="M505 190 L560 222" /><path d="M680 190 L650 222" />
+      </g>
+    </svg>
+    <figcaption>Three levels is typical. With 8&nbsp;KB pages and a narrow key, fanout runs in the high hundreds, so ~10<sup>8</sup>–10<sup>9</sup> rows still fit in a height-4 tree. The upper levels are small enough that they effectively live in the buffer cache permanently.</figcaption>
+  </figure>
+
+  <h2><span class="idx">02</span>What a lookup costs</h2>
+
+  <table>
+    <thead>
+      <tr><th>Access path</th><th>Complexity</th><th>What you actually pay</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Sequential scan</td>
+        <td><code>O(N)</code></td>
+        <td>Sequential I/O and cheap per page — which is why it wins when a predicate matches a large slice of the table.</td>
+      </tr>
+      <tr>
+        <td>B+tree point lookup</td>
+        <td><code>O(log&nbsp;N)</code></td>
+        <td>Height-many page accesses, ~3–4, of which usually only the leaf misses cache.</td>
+      </tr>
+      <tr>
+        <td>B+tree range, <em>k</em> rows</td>
+        <td><code>O(log&nbsp;N&nbsp;+&nbsp;k)</code></td>
+        <td>One descent, then sideways along the leaf chain.</td>
+      </tr>
+      <tr>
+        <td>Hash index, equality</td>
+        <td><code>O(1)</code> expected</td>
+        <td>Equality only. No ordering, no ranges, no prefix matching.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>The asymptotics hide the interesting part: an index scan does <em>random</em> I/O, a sequential scan does sequential I/O. That constant factor is why the planner will refuse your index when the predicate matches a large fraction of the table.</p>
+
+  <h2><span class="idx">03</span>In practice</h2>
+
+<pre><code><span class="com">-- 8.4M rows, no index on customer_id</span>
+<span class="kw">EXPLAIN ANALYZE</span> <span class="kw">SELECT</span> id, total_cents, placed_at
+<span class="kw">FROM</span> orders <span class="kw">WHERE</span> customer_id = <span class="num">90210</span>;
+
+Seq Scan on orders  (rows=41 loops=1)
+  Filter: (customer_id = 90210)
+  Rows Removed by Filter: 8419612
+  Execution Time: 2417.883 ms
+
+<span class="com">-- build it without blocking writes on a live table</span>
+<span class="kw">CREATE INDEX CONCURRENTLY</span> idx_orders_customer_id
+  <span class="kw">ON</span> orders (customer_id);
+
+<span class="com">-- same query, same data</span>
+Index Scan using idx_orders_customer_id on orders  (rows=41 loops=1)
+  Index Cond: (customer_id = 90210)
+  Execution Time: 3.914 ms</code></pre>
+
+  <p>Two things to note. <code>CONCURRENTLY</code> builds the index without taking a write lock — it costs a second table pass and can leave an invalid index if it fails, but it is what you use on anything in production. And <code>Rows Removed by Filter</code> is the number to look for in a plan: eight million rows read to return forty-one is the definition of a missing index.</p>
+
+  <h2><span class="idx">04</span>Composite indexes and the leftmost prefix</h2>
+
+<pre><code><span class="kw">CREATE INDEX</span> idx_orders_cust_status_date
+  <span class="kw">ON</span> orders (customer_id, status, placed_at <span class="kw">DESC</span>);</code></pre>
+
+  <p>The index is sorted by the tuple <code>(customer_id, status, placed_at)</code>, in that order. That means it serves:</p>
+
+  <ul>
+    <li><code>WHERE customer_id = ?</code> — leading column alone.</li>
+    <li><code>WHERE customer_id = ? AND status = ?</code> — leading pair.</li>
+    <li><code>WHERE customer_id = ? AND status = ? ORDER BY placed_at DESC</code> — equality on the prefix, then the third column is already in the requested order, so the sort disappears from the plan.</li>
+  </ul>
+
+  <p>It does <em>not</em> usefully serve <code>WHERE status = ?</code> alone. Nothing constrains the leading column, so there is no contiguous range to descend to. Order your columns by the shape of the predicate: equality columns first, the range or sort column last.</p>
+
+  <div class="note">
+    <b>One range ends the useful prefix.</b> In <code>(a, b, c)</code>, once you use an inequality on <code>b</code>, the entries matching it are spread across many <code>b</code> values, so <code>c</code> is no longer sorted within the scanned range. Postgres can still apply <code>c</code> as a filter on the entries it visits, but it cannot use it to narrow the scan or skip a sort.
+  </div>
+
+  <h2><span class="idx">05</span>Covering indexes, and the fetch you forgot about</h2>
+
+  <p>Finding the index entry is not the same as having the row. What happens next is engine-specific, and it is the most commonly skipped step in a mental model:</p>
+
+  <table>
+    <thead>
+      <tr><th>Engine</th><th>Leaf entry holds</th><th>Cost to get the row</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>PostgreSQL</td>
+        <td>A TID — physical <code>(page, offset)</code> into the heap</td>
+        <td>One extra random heap read, <em>unless</em> the query is index-only and the visibility map marks the page all-visible.</td>
+      </tr>
+      <tr>
+        <td>InnoDB (MySQL)</td>
+        <td>The primary key value</td>
+        <td>A second descent, this time through the clustered index, unless the secondary index already covers every column the query needs.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>You avoid the fetch by making the index cover the query — putting every referenced column in it:</p>
+
+<pre><code><span class="com">-- payload columns ride along in the leaves, not in the sort key</span>
+<span class="kw">CREATE INDEX</span> idx_orders_cust_covering
+  <span class="kw">ON</span> orders (customer_id) <span class="kw">INCLUDE</span> (total_cents, placed_at);
+
+<span class="com">-- plan becomes:</span>
+Index Only Scan using idx_orders_cust_covering on orders
+  Heap Fetches: 0</code></pre>
+
+  <p><code>INCLUDE</code> (Postgres 11+) is the honest way to do this: the extra columns are stored in leaf pages only, so they widen the leaves without widening the internal nodes or affecting the key ordering. Cramming payload into the key tuple instead makes the tree taller and the sort semantics wrong.</p>
+
+  <p><code>Heap Fetches: 0</code> is what you are actually checking for. In Postgres an index-only scan still consults the visibility map, and on a table with heavy recent churn it will fall back to heap reads until autovacuum catches up.</p>
+
+  <h2><span class="idx">06</span>Why the planner ignored your index</h2>
+
+  <ul>
+    <li><strong>The predicate is not selective enough.</strong> If statistics say it matches ~20%+ of rows, random-access-per-row loses to a sequential scan. The planner is right; add a more selective column or accept the scan.</li>
+    <li><strong>The column is wrapped in a function.</strong> <code>WHERE lower(email) = ?</code> cannot use an index on <code>email</code>. Build the expression index — <code>CREATE INDEX ON users (lower(email))</code> — or normalise on write.</li>
+    <li><strong>An implicit cast lands on the column side.</strong> A predicate that has to convert every stored value before comparing is not sargable. Cast the literal, not the column.</li>
+    <li><strong>Leading wildcard.</strong> <code>LIKE 'acme%'</code> is a prefix range and a B-tree can serve it; <code>LIKE '%acme'</code> is not, and needs a trigram or full-text index. In Postgres, prefix matching on a non-C collation additionally requires <code>text_pattern_ops</code>.</li>
+    <li><strong>Stale statistics.</strong> After a bulk load the planner is costing a table it thinks is tiny. <code>ANALYZE</code> before you conclude anything about a plan.</li>
+    <li><strong><code>NULL</code> semantics.</strong> <code>IS NULL</code> is indexable in Postgres, but a partial index built <code>WHERE col IS NOT NULL</code> obviously cannot answer it.</li>
+  </ul>
+
+  <h2><span class="idx">07</span>What every index costs on the write path</h2>
+
+  <p>Each insert, delete, and qualifying update maintains <em>every</em> index on the table. Three specifics worth carrying around:</p>
+
+  <ul>
+    <li><strong>Random keys split pages.</strong> A monotonic key appends to the rightmost leaf. A random one (UUIDv4 as a primary key is the classic) inserts into arbitrary leaves, forcing splits and leaving pages half-full. UUIDv7 or ULID restores time-ordering and most of the locality.</li>
+    <li><strong>Postgres HOT updates skip index maintenance</strong> when no indexed column changed <em>and</em> the new tuple fits on the same heap page. Every extra index widens the set of columns that can break that condition — an index on a frequently-updated column silently disables HOT for the whole row.</li>
+    <li><strong>Unused indexes never stop charging.</strong> They cost write time, storage, and vacuum work forever. <code>pg_stat_user_indexes.idx_scan</code> tells you which ones have never been read since the last stats reset.</li>
+  </ul>
+
+  <h2><span class="idx">08</span>When a B-tree is the wrong tool</h2>
+
+  <table>
+    <thead>
+      <tr><th>Type</th><th>Reach for it when</th><th>Cost</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>btree</code></td>
+        <td>Equality, ranges, sorting, prefix matching. The default, and correct ~90% of the time.</td>
+        <td>Baseline.</td>
+      </tr>
+      <tr>
+        <td><code>hash</code></td>
+        <td>Equality only, on a wide key where the B-tree entry would be large.</td>
+        <td>No ranges, no ordering. Rarely worth the specialisation.</td>
+      </tr>
+      <tr>
+        <td><code>gin</code></td>
+        <td>One row contains many searchable values — <code>jsonb</code>, arrays, full-text vectors, trigrams.</td>
+        <td>Slow to update; batch inserts benefit from a pending-list configuration.</td>
+      </tr>
+      <tr>
+        <td><code>gist</code></td>
+        <td>Geometry, ranges, nearest-neighbour ordering, exclusion constraints.</td>
+        <td>Lossy for some types — results may need rechecking against the heap.</td>
+      </tr>
+      <tr>
+        <td><code>brin</code></td>
+        <td>Very large tables whose physical order correlates with the column — append-only time series is the canonical case.</td>
+        <td>Tiny (kilobytes for gigabytes of table), but useless the moment that correlation breaks.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>And the partial index, which is underused</h3>
+
+<pre><code><span class="com">-- 0.3% of rows are pending; index only those</span>
+<span class="kw">CREATE INDEX</span> idx_orders_pending <span class="kw">ON</span> orders (placed_at)
+  <span class="kw">WHERE</span> status = <span class="str">'pending'</span>;</code></pre>
+
+  <p>A predicate the planner can prove implies the index's <code>WHERE</code> clause gets an index a fraction of the full size, with a correspondingly smaller write cost — and rows outside the predicate are not maintained at all. When a hot query always carries the same narrow filter, this beats a composite index on both columns.</p>
+
+  <footer>
+    Same topic, other rungs: the Manager page has the cost/benefit framing and the questions to ask in review; the Age&nbsp;5 page has the toy box.
+  </footer>
+
+</main>
+</body>
+</html>

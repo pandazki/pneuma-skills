@@ -79,6 +79,7 @@
 | **cosmos** | 把任何内容——代码、小说、研究、商业流程——投影成一张结构化的星图：让内在脉络以可交互图谱的方式显形。schema 与 dashboard 技术借鉴自 [Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything)（MIT） |
 | **wordtaste** | 人机协作的中文长文写作 —— 计划落成逐字校验的 JSON，所有提示词由代码拼装、写手读到的中文全部出自人手（默认 OpenRouter sonnet 执笔，无 key 回落本机 CLI），逐段续写成文，换一个模型家族交叉检查，有限轮修复后由你把关收尾 |
 | **bansho** | 板书式讲解 —— 用普通 Markdown 写一份讲稿，板子自己演出来：手写一笔一笔浮现，强调的地方变成手绘的圈和荧光，讲到哪就把图表和公式画到哪，还能像回看直播一样拖时间轴 |
+| **eli5** | 把任何东西讲给任何人听 —— 同一个主题爬一架「受众阶梯」，从五岁孩子一路讲到随时待命的工程师，每一级都是单独一页，字号、用词、节奏全按读它的人来调。受众分级参考 [DreambigOu/ELI5](https://github.com/DreambigOu/ELI5)（MIT） |
 | **mode-maker** | 用 AI 做自定义 mode —— fork、Play 试跑、发布 |
 | **evolve** | Evolution Agent —— 分析历史、提出技能改进、apply / 回滚 |
 
@@ -163,6 +164,7 @@ Modes:
   cosmos                       把任何内容投影成结构化星图
   wordtaste                    人机协作的中文长文写作
   bansho                       板书式讲解
+  eli5                         把任何东西讲给任何人听
   mode-maker                   用 AI 做自定义 mode
   evolve                       启动 Evolution Agent
   /path/to/mode                从本地目录加载

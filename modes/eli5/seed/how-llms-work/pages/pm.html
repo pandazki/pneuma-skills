@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>大语言模型是怎么工作的？——讲给产品经理</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --paper: #ffffff;
+    --ink: #15181e;
+    --ink-2: #414855;
+    --ink-3: #757e8c;
+    --line: #e3e6eb;
+    --line-2: #f1f3f5;
+    --accent: #3b5bdb;
+    --accent-soft: #eef1fd;
+    --warn: #b45309;
+    --warn-soft: #fdf4e6;
+    --good: #147a52;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", "Heiti SC", -apple-system, system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.88;
+    letter-spacing: 0.012em;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .sheet {
+    max-width: 780px;
+    margin: clamp(0px, 4vw, 56px) auto;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: clamp(28px, 5vw, 60px);
+    box-shadow: 0 1px 2px rgba(21, 24, 30, 0.05), 0 12px 32px -20px rgba(21, 24, 30, 0.26);
+  }
+
+  header { border-bottom: 2px solid var(--ink); padding-bottom: 20px; margin-bottom: 28px; }
+
+  .tag {
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    color: var(--accent);
+    margin: 0 0 10px;
+  }
+
+  h1 {
+    font-size: clamp(25px, 4vw, 33px);
+    font-weight: 600;
+    line-height: 1.45;
+    letter-spacing: 0.01em;
+    margin: 0 0 14px;
+  }
+
+  .meta { display: flex; flex-wrap: wrap; gap: 4px 26px; font-size: 13px; color: var(--ink-3); }
+  .meta b { color: var(--ink-2); font-weight: 500; margin-right: 7px; }
+
+  .answer {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    padding: 20px 24px;
+    margin: 0 0 30px;
+    border-radius: 0 4px 4px 0;
+  }
+
+  .answer p { margin: 0 0 10px; font-size: 16.5px; }
+  .answer p:last-child { margin-bottom: 0; }
+  .answer strong { font-weight: 600; }
+
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 0 0 34px; }
+
+  .tile { border: 1px solid var(--line); border-radius: 4px; padding: 16px 18px; background: #fbfcfd; }
+  .tile .figure { font-size: 17px; font-weight: 600; line-height: 1.5; color: var(--accent); }
+  .tile .caption { font-size: 13px; color: var(--ink-3); margin-top: 6px; line-height: 1.7; }
+
+  h2 {
+    font-size: 18.5px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    margin: 40px 0 12px;
+    padding-top: 26px;
+    border-top: 1px solid var(--line);
+  }
+
+  h2:first-of-type { border-top: none; padding-top: 0; }
+
+  h3 { font-size: 15.5px; font-weight: 600; margin: 22px 0 8px; }
+
+  p { margin: 0 0 14px; }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 6px 0 18px; }
+
+  .col { border: 1px solid var(--line); border-radius: 4px; padding: 18px 20px; }
+  .col.can { border-top: 3px solid var(--good); }
+  .col.cant { border-top: 3px solid var(--warn); }
+  .col h4 { margin: 0 0 10px; font-size: 14.5px; font-weight: 600; }
+  .col.can h4 { color: var(--good); }
+  .col.cant h4 { color: var(--warn); }
+  .col ul { margin: 0; padding-left: 18px; font-size: 14.5px; }
+  .col li { margin-bottom: 8px; line-height: 1.75; }
+  .col li:last-child { margin-bottom: 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; margin: 6px 0 20px; }
+  th, td { text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-align: top; line-height: 1.75; }
+  th {
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+    border-bottom: 1px solid var(--ink);
+  }
+  td:first-child { font-weight: 500; width: 26%; white-space: nowrap; }
+
+  ul.plain { margin: 0 0 14px; padding-left: 20px; }
+  ul.plain li { margin-bottom: 9px; }
+
+  .decision { border: 1px solid var(--ink); border-radius: 4px; padding: 24px 26px; margin: 34px 0 0; }
+  .decision h3 { margin: 0 0 14px; font-size: 16px; }
+  .decision ol { margin: 0; padding-left: 20px; }
+  .decision li { margin-bottom: 13px; }
+  .decision li:last-child { margin-bottom: 0; }
+  .decision .why { display: block; color: var(--ink-3); font-size: 13.5px; margin-top: 2px; line-height: 1.7; }
+
+  .caution {
+    background: var(--warn-soft);
+    border-radius: 4px;
+    padding: 16px 20px;
+    font-size: 15px;
+    color: #6b3f08;
+    margin: 26px 0 0;
+    line-height: 1.85;
+  }
+  .caution b { font-weight: 600; }
+
+  footer { margin-top: 34px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-3); }
+
+  @media (max-width: 640px) {
+    .tiles, .cols { grid-template-columns: 1fr; }
+    td:first-child { width: auto; white-space: normal; }
+  }
+</style>
+</head>
+<body>
+<main class="sheet">
+
+  <header>
+    <p class="tag">写给做决策的人</p>
+    <h1>大语言模型到底在做什么，以及它会在哪儿咬你一口</h1>
+    <div class="meta">
+      <span><b>读者</b>产品经理</span>
+      <span><b>阅读</b>约 4 分钟</span>
+      <span><b>用途</b>立项判断、方案评审</span>
+    </div>
+  </header>
+
+  <div class="answer">
+    <p><strong>它是一个「猜下一个字」的机器。</strong>把海量文本喂给它，让它反复练习「给定前面的内容，下一个字最可能是什么」，练到足够好，就能一个字一个字地把一整段话生成出来。</p>
+    <p>这句话不是打比方，是它真实的工作方式。你在产品上遇到的所有惊喜和所有麻烦，几乎都能从这一句推出来。</p>
+  </div>
+
+  <div class="tiles">
+    <div class="tile">
+      <div class="figure">按字数计费</div>
+      <div class="caption">输入和输出都算钱。对话越长，每多说一轮就越贵。</div>
+    </div>
+    <div class="tile">
+      <div class="figure">同问不同答</div>
+      <div class="caption">它是从概率里采样的，同一个问题问两次，答案未必一样。</div>
+    </div>
+    <div class="tile">
+      <div class="figure">知识有截止</div>
+      <div class="caption">训练数据停在某个时间点，之后的事它一概不知。</div>
+    </div>
+  </div>
+
+  <h2>为什么「猜字」能变成「像是懂了」</h2>
+
+  <p>要把下一个字猜准，它被迫学会了很多东西：语法、常见事实、代码怎么写、一段论证怎么往下走。这些不是有人教给它的条目，而是「猜得准」这个目标顺带逼出来的能力。</p>
+
+  <p>所以它的表现有个特点——<strong>能力和可靠性是两件事</strong>。它能写出一段结构漂亮、术语准确、读起来很专业的文字，同时里面某个关键数字是编的。这两件事在它身上不矛盾，因为它优化的目标从来不是「说真话」，而是「像训练时见过的那种话」。</p>
+
+  <h2>能力边界</h2>
+
+  <div class="cols">
+    <div class="col can">
+      <h4>它做得好的</h4>
+      <ul>
+        <li>改写、润色、翻译、换一种语气重说一遍</li>
+        <li>从一段长文里抽出结构化信息</li>
+        <li>分类、打标、按规则判断</li>
+        <li>写初稿：文案、邮件、代码骨架</li>
+        <li>把你给它的材料读懂，然后基于材料回答</li>
+      </ul>
+    </div>
+    <div class="col cant">
+      <h4>它做不好的</h4>
+      <ul>
+        <li>精确算术和多步计算（要外接工具）</li>
+        <li>需要「查得准」的事实问答（要外接检索）</li>
+        <li>要求每次输出完全一致的场景</li>
+        <li>它没见过的私有数据——不喂给它就是不知道</li>
+        <li>需要为结果负法律或安全责任的最终判定</li>
+      </ul>
+    </div>
+  </div>
+
+  <p>右边这一列不是「以后会好」的清单，其中几项是机制决定的。正确的做法是<strong>在产品设计里绕开，而不是等模型变强</strong>：算术交给计算器，事实交给检索，一致性交给模板和缓存。</p>
+
+  <h2>成本长什么样</h2>
+
+  <p>计价单位是 token，可以粗略理解成「字」——中文一个字大致就是一到两个 token，英文一个常见单词约一个。要记住三件事：</p>
+
+  <ul class="plain">
+    <li><strong>输入也收费。</strong>你塞给它的提示词、检索到的资料、历史对话，全都按量计费。很多项目的成本大头在输入而不是输出。</li>
+    <li><strong>多轮对话是累加的。</strong>模型本身不记得上一轮，是你每次把整段历史重新发过去。第十轮的单次成本可能是第一轮的好几倍——这条最容易在上线后才被发现。</li>
+    <li><strong>贵的模型不总是划算，便宜的也不总是省钱。</strong>小模型答不好会触发重试、人工介入或用户流失，这些成本不出现在 API 账单上。要按「一次成功交付的总成本」比，不要按单价比。</li>
+  </ul>
+
+  <h2>三类风险，以及怎么兜</h2>
+
+  <table>
+    <thead>
+      <tr><th>风险</th><th>它为什么会发生</th><th>产品上怎么兜</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>一本正经地编</td>
+        <td>它在补一个「读起来最顺」的答案。没有材料支撑时，它不会空着，会补一个像样的。</td>
+        <td>把材料喂进去再让它答；输出附出处；关键字段做校验；界面上让人一眼看出哪些是模型说的。</td>
+      </tr>
+      <tr>
+        <td>结果不稳定</td>
+        <td>生成过程带随机采样，同样的输入可能走到不同的路径上。</td>
+        <td>要结构化就约定输出格式并做解析校验；能缓存的缓存；上线前用固定的评测集跑回归，别靠手动试几条。</td>
+      </tr>
+      <tr>
+        <td>说了不该说的</td>
+        <td>它的目标是把话接下去，不天然理解你的合规边界和业务口径。</td>
+        <td>系统提示写清楚边界；输出侧加审核；高风险动作一律留人工确认这一步。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>顺带一提：它不会「越用越懂你」</h3>
+
+  <p>模型参数在你调用的时候是冻结的。它显得记得你，是因为有人把历史又发了一遍给它。所谓「个性化」，在工程上其实是「你存了什么、又塞了多少回去」——这是一个存储和检索问题，不是模型问题。想清楚这一点，很多需求的实现路径会立刻变得具体。</p>
+
+  <div class="decision">
+    <h3>立项前值得问的五个问题</h3>
+    <ol>
+      <li>这个功能答错一次，代价是什么？
+        <span class="why">代价是「用户重写一遍」还是「赔钱」，决定了兜底要做到多重。</span></li>
+      <li>答案能从我们自己的数据里找到吗？
+        <span class="why">能，就该做检索加生成；不能，就要接受它在凭印象说话。</span></li>
+      <li>怎么判断这次输出是好的？
+        <span class="why">说不出验收标准，就没法回归、没法迭代，也没法判断换模型是变好了还是变差了。</span></li>
+      <li>单次调用要塞进去多少内容，上限在哪？
+        <span class="why">这一条直接决定单位成本和响应时间，而且会随使用时长悄悄上涨。</span></li>
+      <li>出错的时候，用户能自己救回来吗？
+        <span class="why">一个好用的「重来 / 编辑 / 转人工」，往往比再调半天提示词有用。</span></li>
+    </ol>
+  </div>
+
+  <div class="caution">
+    <b>不要得出的结论：</b>「它现在还不准，等下一代模型就行了。」有些问题会随模型变强而缓解，但「它可能自信地说错」是这套机制自带的属性，不是这一代的缺陷。把产品建在「它偶尔会错、而我们接得住」的假设上，比建在「它以后不会错」上要稳得多。
+  </div>
+
+  <footer>
+    想看它内部到底怎么算的——token、注意力、训练和推理的区别——梯子上还有「工程师」那一级。
+  </footer>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "title": "What is a database index?",
+  "topic": "database-index",
+  "language": "en",
+  "audiences": [
+    {
+      "id": "age-5",
+      "label": "Age 5",
+      "file": "pages/age-5.html",
+      "tone": "playful and delighted; toy-box analogy, huge rounded type, crayon palette"
+    },
+    {
+      "id": "manager",
+      "label": "Manager",
+      "file": "pages/manager.html",
+      "tone": "memo; answer in the first screen, cost and risk quantified, ends on a decision"
+    },
+    {
+      "id": "engineer",
+      "label": "Engineer",
+      "file": "pages/engineer.html",
+      "tone": "precise; B+tree mechanics, complexity, real SQL, explicit trade-offs"
+    }
+  ]
+}

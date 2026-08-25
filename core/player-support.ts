@@ -25,6 +25,11 @@ export const WEB_PLAYER_SUPPORTED_MODES: readonly string[] = [
   "diagram",
   "remotion",
   "cosmos",
+  // eli5's pages are self-contained documents rendered in sandboxed srcdoc
+  // iframes; the only network dependency is the Google Fonts link inside each
+  // page, which the player's permissive CSP allows. Verified on the local
+  // player harness against both seed topics.
+  "eli5",
 ];
 
 export function isModeWebPlayable(mode: string | undefined | null): boolean {
