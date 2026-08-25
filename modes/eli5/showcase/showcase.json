@@ -1,0 +1,52 @@
+{
+  "tagline": {
+    "en": "Explain anything to anyone, at every level",
+    "zh-CN": "把任何东西，讲给任何人听",
+    "ja": "どんなことでも、どんな相手にも"
+  },
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": {
+        "en": "Audience Ladder",
+        "zh-CN": "受众阶梯",
+        "ja": "オーディエンス・ラダー"
+      },
+      "description": {
+        "en": "One topic, one page per audience, ordered simplest to most technical. Click a rung on the rail and the explainer rewritten for that person fills the canvas — age 5, then manager, then engineer.",
+        "zh-CN": "一个主题，每类受众各一页，从最浅到最深依次排开。点侧栏上的任意一级，为那个人重写的讲解就铺满画布——先是 5 岁孩子，再是经理，最后是工程师。",
+        "ja": "ひとつのトピックに対し、相手ごとに一枚ずつ。やさしい順に並んだ段を選べば、その人のために書き直された解説がキャンバスいっぱいに開く——5 歳、マネージャー、エンジニアの順に。"
+      },
+      "media": "audience-ladder.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "Tone-Matched Design",
+        "zh-CN": "语气匹配的版面",
+        "ja": "相手に合わせた誌面"
+      },
+      "description": {
+        "en": "Each page is designed for its reader, not merely reworded. Huge rounded type and crayon colours for a five-year-old; a quantified one-screen memo for a manager; mono type, a code block and a trade-offs table for an engineer.",
+        "zh-CN": "每一页是为它的读者设计的，不只是换了说法。5 岁孩子拿到的是圆体大字和蜡笔色；经理拿到的是一屏读完、带数字的备忘录；工程师拿到的是等宽字体、代码块和取舍表。",
+        "ja": "言葉を替えるだけではない。5 歳には大きな丸文字とクレヨンの色、マネージャーには数字の入った一画面のメモ、エンジニアには等幅フォントとコードとトレードオフ表——誌面の設計そのものが読み手に寄り添う。"
+      },
+      "media": "tone-matched-design.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "Side-by-Side Compare",
+        "zh-CN": "并排对照",
+        "ja": "並べて比べる"
+      },
+      "description": {
+        "en": "Split the canvas and put two rungs next to each other. The same idea in two registers — playground analogy on the left, B-tree mechanics on the right — so the shift is visible in a single glance.",
+        "zh-CN": "把画布一分为二，让两级并排站着。同一件事的两种讲法——左边是玩具箱的比喻，右边是 B 树的机制——差别一眼就看得到。",
+        "ja": "キャンバスを二分割し、二つの段を隣り合わせに置く。同じ中身が、公園のたとえから B 木の仕組みへとどう変わるのか、ひと目で見て取れる。"
+      },
+      "media": "side-by-side-compare.png",
+      "mediaType": "image"
+    }
+  ]
+}

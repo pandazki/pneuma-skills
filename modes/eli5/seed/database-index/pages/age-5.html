@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>What is a database index? — for a 5-year-old</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --cream: #fff8ef;
+    --paper: #ffffff;
+    --ink: #3b2a24;
+    --ink-soft: #7a6259;
+    --coral: #ff6b4a;
+    --sunny: #ffc542;
+    --sky: #45b7e8;
+    --grass: #74c365;
+    --grape: #a06cd5;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    margin: 0;
+    background:
+      radial-gradient(circle at 12% 8%, rgba(255, 197, 66, 0.22), transparent 42%),
+      radial-gradient(circle at 88% 22%, rgba(69, 183, 232, 0.18), transparent 40%),
+      var(--cream);
+    color: var(--ink);
+    font-family: "Baloo 2", ui-rounded, "Nunito", "Avenir Next Rounded", "Trebuchet MS", system-ui, sans-serif;
+    font-size: clamp(21px, 2.3vw, 26px);
+    font-weight: 500;
+    line-height: 1.65;
+  }
+
+  .page {
+    max-width: 940px;
+    margin: 0 auto;
+    padding: clamp(28px, 5vw, 72px) clamp(20px, 4vw, 48px) 96px;
+  }
+
+  /* ---------- hero ---------- */
+
+  .hero { text-align: center; padding: clamp(16px, 3vw, 40px) 0 clamp(24px, 4vw, 48px); }
+
+  .kicker {
+    display: inline-block;
+    background: var(--sunny);
+    color: var(--ink);
+    font-weight: 700;
+    font-size: 0.62em;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.35em 1.1em;
+    border-radius: 999px;
+    transform: rotate(-2deg);
+    box-shadow: 0 4px 0 rgba(59, 42, 36, 0.14);
+  }
+
+  h1 {
+    font-size: clamp(44px, 8.2vw, 84px);
+    font-weight: 800;
+    line-height: 1.05;
+    margin: 0.45em 0 0.25em;
+    letter-spacing: -0.02em;
+  }
+
+  h1 .pop { color: var(--coral); }
+
+  .hero p {
+    max-width: 20ch;
+    margin: 0 auto;
+    font-size: clamp(24px, 3.4vw, 34px);
+    color: var(--ink-soft);
+  }
+
+  /* ---------- shared blocks ---------- */
+
+  h2 {
+    font-size: clamp(30px, 5vw, 46px);
+    font-weight: 800;
+    line-height: 1.15;
+    margin: clamp(48px, 7vw, 88px) 0 0.5em;
+    letter-spacing: -0.015em;
+  }
+
+  p { margin: 0 0 0.9em; }
+
+  .lead { font-size: 1.08em; }
+
+  .art {
+    display: block;
+    width: 100%;
+    height: auto;
+    margin: clamp(20px, 3vw, 36px) 0;
+  }
+
+  /* ---------- story steps ---------- */
+
+  .steps {
+    display: grid;
+    gap: clamp(18px, 2.6vw, 28px);
+    margin: clamp(24px, 4vw, 44px) 0;
+  }
+
+  .step {
+    display: flex;
+    gap: clamp(14px, 2.4vw, 26px);
+    align-items: flex-start;
+    background: var(--paper);
+    border-radius: 26px;
+    padding: clamp(18px, 3vw, 30px);
+    box-shadow: 0 6px 0 rgba(59, 42, 36, 0.08);
+  }
+
+  .step .num {
+    flex: 0 0 auto;
+    width: 2.1em;
+    height: 2.1em;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-weight: 800;
+    font-size: 0.9em;
+    color: #fff;
+  }
+
+  .step:nth-child(1) .num { background: var(--coral); }
+  .step:nth-child(2) .num { background: var(--sky); }
+  .step:nth-child(3) .num { background: var(--grass); }
+
+  .step p { margin: 0; }
+  .step strong { color: var(--ink); }
+
+  /* ---------- big idea ---------- */
+
+  .bigidea {
+    background: var(--coral);
+    color: #fff;
+    border-radius: 34px;
+    padding: clamp(28px, 5vw, 52px);
+    text-align: center;
+    margin: clamp(36px, 6vw, 64px) 0;
+    box-shadow: 0 10px 0 rgba(59, 42, 36, 0.12);
+  }
+
+  .bigidea .label {
+    font-size: 0.6em;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    opacity: 0.85;
+  }
+
+  .bigidea p {
+    font-size: clamp(28px, 4.6vw, 44px);
+    font-weight: 700;
+    line-height: 1.25;
+    margin: 0.35em 0 0;
+  }
+
+  /* ---------- catch ---------- */
+
+  .catch {
+    background: var(--paper);
+    border: 4px dashed var(--sunny);
+    border-radius: 28px;
+    padding: clamp(20px, 3.4vw, 34px);
+    margin: clamp(24px, 4vw, 40px) 0;
+  }
+
+  .catch h3 {
+    margin: 0 0 0.4em;
+    font-size: clamp(24px, 3.4vw, 32px);
+    font-weight: 800;
+  }
+
+  .catch p:last-child { margin-bottom: 0; }
+
+  /* ---------- ending ---------- */
+
+  .ending {
+    text-align: center;
+    margin-top: clamp(48px, 7vw, 88px);
+    font-size: clamp(26px, 4vw, 38px);
+    font-weight: 700;
+    line-height: 1.35;
+    color: var(--grape);
+  }
+
+  @media (max-width: 560px) {
+    .step { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+<main class="page">
+
+  <header class="hero">
+    <span class="kicker">A big computer secret</span>
+    <h1>How does a computer find things <span class="pop">so fast?</span></h1>
+    <p>It keeps a little list of where everything is.</p>
+  </header>
+
+  <svg class="art" viewBox="0 0 900 332" role="img" aria-label="A messy toy box next to a tidy set of labelled drawers">
+    <rect x="0" y="0" width="900" height="332" fill="none" />
+
+    <!-- messy toy box -->
+    <g>
+      <rect x="40" y="120" width="290" height="140" rx="22" fill="#45b7e8" />
+      <rect x="40" y="120" width="290" height="34" rx="16" fill="#2f9fd0" />
+      <circle cx="110" cy="96" r="26" fill="#ff6b4a" />
+      <rect x="152" y="74" width="46" height="46" rx="8" fill="#ffc542" transform="rotate(-14 175 97)" />
+      <path d="M232 118 l26 -46 l26 46 z" fill="#74c365" />
+      <circle cx="290" cy="92" r="18" fill="#a06cd5" />
+      <text x="185" y="298" text-anchor="middle" font-family="inherit" font-size="30" font-weight="700" fill="#7a6259">everything in one box</text>
+    </g>
+
+    <!-- arrow -->
+    <g stroke="#7a6259" stroke-width="7" fill="none" stroke-linecap="round">
+      <path d="M370 180 h100" />
+      <path d="M452 162 l22 18 l-22 18" />
+    </g>
+
+    <!-- tidy drawers -->
+    <g>
+      <rect x="520" y="70" width="330" height="190" rx="20" fill="#fff" stroke="#3b2a24" stroke-width="6" />
+      <g fill="#fff8ef" stroke="#3b2a24" stroke-width="5">
+        <rect x="542" y="92" width="286" height="46" rx="10" />
+        <rect x="542" y="146" width="286" height="46" rx="10" />
+        <rect x="542" y="200" width="286" height="38" rx="10" />
+      </g>
+      <circle cx="810" cy="115" r="7" fill="#3b2a24" />
+      <circle cx="810" cy="169" r="7" fill="#3b2a24" />
+      <circle cx="810" cy="219" r="7" fill="#3b2a24" />
+      <circle cx="572" cy="115" r="15" fill="#ff6b4a" />
+      <rect x="558" y="155" width="28" height="28" rx="6" fill="#ffc542" />
+      <path d="M558 232 l14 -24 l14 24 z" fill="#74c365" />
+      <text x="685" y="298" text-anchor="middle" font-family="inherit" font-size="30" font-weight="700" fill="#7a6259">one drawer for each kind</text>
+    </g>
+  </svg>
+
+  <h2>Imagine your toy box</h2>
+
+  <p class="lead">Every single toy you own lives in one giant box. Cars, blocks, dinosaurs, the little green frog — all of it, mixed up together.</p>
+
+  <p>Now someone says: <strong>find the red dinosaur.</strong></p>
+
+  <div class="steps">
+    <div class="step">
+      <span class="num">1</span>
+      <p>You tip the whole box onto the floor. Every toy comes out. <strong>Every single one.</strong></p>
+    </div>
+    <div class="step">
+      <span class="num">2</span>
+      <p>You start looking. Not it. Not it. Not it. Not it. Your knees hurt.</p>
+    </div>
+    <div class="step">
+      <span class="num">3</span>
+      <p>Somewhere near the bottom — there it is! Now you have to put everything back.</p>
+    </div>
+  </div>
+
+  <p>It worked. It just took <em>forever</em>.</p>
+
+  <h2>Now imagine drawers</h2>
+
+  <p class="lead">Same toys. But this time there are little drawers, and each one has a picture on the front. A car on this one. A dinosaur on that one. A block on the last one.</p>
+
+  <p>Find the red dinosaur? You look at the pictures, open <strong>one</strong> drawer, and there it is.</p>
+
+  <p>You didn't touch the cars. You didn't touch the blocks. You looked in one place, because the pictures on the front told you where to go.</p>
+
+  <div class="bigidea">
+    <span class="label">So here's the secret</span>
+    <p>A database index is the little picture on the front of the drawer.</p>
+  </div>
+
+  <h2>Computers have a REALLY big toy box</h2>
+
+  <p class="lead">A computer keeps millions of things — every message, every order, every photo. When you tap a button, it has to go find one of them.</p>
+
+  <p>Without an index, it does the messy thing: it looks at every single one until it finds yours. That's a lot of looking!</p>
+
+  <p>With an index, it peeks at the little list first. The list says <strong>"that one is over there."</strong> So the computer goes straight there and gets it.</p>
+
+  <svg class="art" viewBox="0 0 900 210" role="img" aria-label="A magnifying glass next to a short list pointing at one item">
+    <g stroke="#3b2a24" stroke-width="6" fill="none" stroke-linecap="round">
+      <circle cx="120" cy="95" r="52" fill="#fff" />
+      <path d="M158 133 l44 44" />
+    </g>
+    <circle cx="120" cy="95" r="24" fill="#ffc542" />
+
+    <g>
+      <rect x="270" y="30" width="300" height="150" rx="18" fill="#fff" stroke="#3b2a24" stroke-width="6" />
+      <rect x="298" y="58" width="180" height="16" rx="8" fill="#e6dcd2" />
+      <rect x="298" y="94" width="230" height="16" rx="8" fill="#ff6b4a" />
+      <rect x="298" y="130" width="150" height="16" rx="8" fill="#e6dcd2" />
+    </g>
+
+    <g stroke="#ff6b4a" stroke-width="7" fill="none" stroke-linecap="round">
+      <path d="M600 102 h110" />
+      <path d="M692 84 l22 18 l-22 18" />
+    </g>
+
+    <circle cx="800" cy="102" r="46" fill="#74c365" />
+    <path d="M778 102 l16 18 l30 -36" stroke="#fff" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+  </svg>
+
+  <div class="catch">
+    <h3>But there's a catch</h3>
+    <p>Somebody has to make those little pictures. And every time you get a <strong>new</strong> toy, you have to add it to the right drawer — otherwise the list is telling fibs.</p>
+    <p>So the drawers are amazing for finding things, and a tiny bit of extra work for putting things away. Grown-ups who build computers think about that a lot.</p>
+  </div>
+
+  <h2>Why you should care</h2>
+
+  <p class="lead">When you open a game and your player is right there — no waiting, no spinny circle — that's because somebody made good drawers.</p>
+
+  <p class="ending">Tidy drawers.<br />That's the whole trick.</p>
+
+</main>
+</body>
+</html>

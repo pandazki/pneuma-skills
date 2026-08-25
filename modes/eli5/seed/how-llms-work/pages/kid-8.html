@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>大语言模型是怎么工作的？——讲给 8 岁的你</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --cream: #fffaf2;
+    --paper: #ffffff;
+    --ink: #33261f;
+    --ink-soft: #7d675c;
+    --mango: #ff9f1c;
+    --berry: #ff5d73;
+    --mint: #2ec4a6;
+    --sky: #4aa8ff;
+    --grape: #9d6ce0;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    margin: 0;
+    background:
+      radial-gradient(circle at 10% 6%, rgba(255, 159, 28, 0.20), transparent 40%),
+      radial-gradient(circle at 92% 18%, rgba(74, 168, 255, 0.18), transparent 38%),
+      var(--cream);
+    color: var(--ink);
+    font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", "Heiti SC", sans-serif;
+    font-size: clamp(20px, 2.2vw, 25px);
+    line-height: 1.95;
+    letter-spacing: 0.01em;
+  }
+
+  .page {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: clamp(28px, 5vw, 72px) clamp(20px, 4vw, 48px) 96px;
+  }
+
+  .fun {
+    font-family: "ZCOOL KuaiLe", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    font-weight: 400;
+  }
+
+  /* ---------- 开头 ---------- */
+
+  .hero { text-align: center; padding: clamp(12px, 3vw, 36px) 0 clamp(20px, 4vw, 40px); }
+
+  .kicker {
+    display: inline-block;
+    background: var(--mango);
+    color: #fff;
+    font-size: 0.76em;
+    padding: 0.38em 1.25em;
+    border-radius: 999px;
+    transform: rotate(-2deg);
+    box-shadow: 0 4px 0 rgba(51, 38, 31, 0.14);
+    letter-spacing: 0.08em;
+  }
+
+  h1 {
+    font-size: clamp(40px, 7.4vw, 76px);
+    line-height: 1.25;
+    margin: 0.5em 0 0.3em;
+    letter-spacing: 0.01em;
+  }
+
+  h1 .pop { color: var(--berry); }
+
+  .hero .sub {
+    font-size: clamp(22px, 3vw, 30px);
+    color: var(--ink-soft);
+    margin: 0;
+  }
+
+  /* ---------- 通用 ---------- */
+
+  h2 {
+    font-size: clamp(28px, 4.6vw, 42px);
+    line-height: 1.4;
+    margin: clamp(44px, 7vw, 84px) 0 0.6em;
+  }
+
+  p { margin: 0 0 1em; }
+
+  .art { display: block; width: 100%; height: auto; margin: clamp(18px, 3vw, 34px) 0; }
+
+  em { font-style: normal; color: var(--berry); font-weight: 600; }
+
+  /* ---------- 接龙 ---------- */
+
+  .chain {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 12px;
+    background: var(--paper);
+    border-radius: 26px;
+    padding: clamp(20px, 3.4vw, 32px);
+    margin: clamp(20px, 3.4vw, 36px) 0;
+    box-shadow: 0 6px 0 rgba(51, 38, 31, 0.08);
+    font-size: 0.92em;
+  }
+
+  .word {
+    background: #fff3e0;
+    border-radius: 14px;
+    padding: 0.28em 0.8em;
+  }
+
+  .word.hot { background: var(--berry); color: #fff; }
+
+  .arrow { color: var(--ink-soft); }
+
+  .guess {
+    border: 3px dashed var(--mango);
+    border-radius: 14px;
+    padding: 0.22em 1.1em;
+    color: var(--mango);
+  }
+
+  /* ---------- 步骤 ---------- */
+
+  .steps { display: grid; gap: clamp(16px, 2.4vw, 24px); margin: clamp(22px, 3.6vw, 40px) 0; }
+
+  .step {
+    display: flex;
+    gap: clamp(14px, 2.2vw, 24px);
+    align-items: flex-start;
+    background: var(--paper);
+    border-radius: 24px;
+    padding: clamp(18px, 3vw, 28px);
+    box-shadow: 0 6px 0 rgba(51, 38, 31, 0.08);
+  }
+
+  .step .num {
+    flex: 0 0 auto;
+    width: 2em;
+    height: 2em;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    font-size: 0.9em;
+  }
+
+  .step:nth-child(1) .num { background: var(--berry); }
+  .step:nth-child(2) .num { background: var(--sky); }
+  .step:nth-child(3) .num { background: var(--mint); }
+
+  .step p { margin: 0; }
+
+  /* ---------- 大结论 ---------- */
+
+  .bigidea {
+    background: var(--grape);
+    color: #fff;
+    border-radius: 32px;
+    padding: clamp(26px, 5vw, 50px);
+    text-align: center;
+    margin: clamp(34px, 6vw, 62px) 0;
+    box-shadow: 0 10px 0 rgba(51, 38, 31, 0.12);
+  }
+
+  .bigidea .label {
+    font-size: 0.74em;
+    letter-spacing: 0.14em;
+    opacity: 0.88;
+  }
+
+  .bigidea p {
+    font-size: clamp(26px, 4.2vw, 40px);
+    line-height: 1.45;
+    margin: 0.4em 0 0;
+  }
+
+  /* ---------- 提醒 ---------- */
+
+  .warn {
+    background: var(--paper);
+    border: 4px dashed var(--mango);
+    border-radius: 26px;
+    padding: clamp(20px, 3.2vw, 32px);
+    margin: clamp(22px, 3.6vw, 40px) 0;
+  }
+
+  .warn h3 { margin: 0 0 0.4em; font-size: clamp(23px, 3.2vw, 30px); }
+  .warn p:last-child { margin-bottom: 0; }
+
+  .ending {
+    text-align: center;
+    margin-top: clamp(46px, 7vw, 84px);
+    font-size: clamp(25px, 3.8vw, 36px);
+    line-height: 1.6;
+    color: var(--mint);
+  }
+
+  @media (max-width: 560px) {
+    .step { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+<main class="page">
+
+  <header class="hero">
+    <span class="kicker fun">一个大秘密</span>
+    <h1 class="fun">电脑怎么会<span class="pop">聊天</span>呀？</h1>
+    <p class="sub">它其实一直在玩一个游戏——猜下一个字。</p>
+  </header>
+
+  <h2 class="fun">你肯定玩过接龙</h2>
+
+  <p>我说「小白兔白又」，你不用想就知道下一个字是什么。</p>
+
+  <div class="chain fun">
+    <span class="word">小</span><span class="arrow">→</span>
+    <span class="word">白</span><span class="arrow">→</span>
+    <span class="word">兔</span><span class="arrow">→</span>
+    <span class="word">白</span><span class="arrow">→</span>
+    <span class="word hot">又</span><span class="arrow">→</span>
+    <span class="guess">？</span>
+  </div>
+
+  <p>为什么你猜得到？因为这句话你听过好多好多次啦。你不是算出来的，你是<em>见得多了</em>。</p>
+
+  <p>会聊天的电脑，玩的就是这个游戏。你给它半句话，它猜下一个字；猜完再接着往下猜，一个字一个字，就变成了一整段话。</p>
+
+  <svg class="art" viewBox="0 0 880 220" role="img" aria-label="一句话后面接着一个又一个新字">
+    <g font-family="inherit">
+      <rect x="30" y="70" width="330" height="76" rx="22" fill="#ffffff" stroke="#33261f" stroke-width="5" />
+      <text x="195" y="118" text-anchor="middle" font-size="27" fill="#33261f">今天天气真</text>
+
+      <g stroke="#ff5d73" stroke-width="6" fill="none" stroke-linecap="round">
+        <path d="M382 108 h72" />
+        <path d="M438 92 l20 16 l-20 16" />
+      </g>
+
+      <rect x="478" y="70" width="76" height="76" rx="20" fill="#ff5d73" />
+      <text x="516" y="118" text-anchor="middle" font-size="30" fill="#ffffff">好</text>
+
+      <g stroke="#4aa8ff" stroke-width="6" fill="none" stroke-linecap="round">
+        <path d="M572 108 h58" />
+        <path d="M616 92 l18 16 l-18 16" />
+      </g>
+
+      <rect x="652" y="70" width="76" height="76" rx="20" fill="#4aa8ff" />
+      <text x="690" y="118" text-anchor="middle" font-size="30" fill="#ffffff">呀</text>
+
+      <g stroke="#2ec4a6" stroke-width="6" fill="none" stroke-linecap="round" stroke-dasharray="8 8">
+        <path d="M746 108 h74" />
+      </g>
+      <text x="838" y="118" text-anchor="middle" font-size="30" fill="#2ec4a6">…</text>
+
+      <text x="440" y="196" text-anchor="middle" font-size="22" fill="#7d675c">一个字，再一个字，句子就长出来了</text>
+    </g>
+  </svg>
+
+  <h2 class="fun">它是怎么变得这么会猜的？</h2>
+
+  <div class="steps">
+    <div class="step">
+      <span class="num fun">1</span>
+      <p>它读过<em>特别特别多</em>的字。多到什么程度呢？比全学校的图书馆加起来还要多得多。</p>
+    </div>
+    <div class="step">
+      <span class="num fun">2</span>
+      <p>每读一句，它就先把后面的字盖住，自己猜一遍。猜错了就悄悄改一改自己，下次再来。</p>
+    </div>
+    <div class="step">
+      <span class="num fun">3</span>
+      <p>这样猜了亿万次以后，它就变得特别会猜了——像你听多了儿歌，一开口就能接上。</p>
+    </div>
+  </div>
+
+  <div class="bigidea">
+    <span class="label fun">所以真相是</span>
+    <p class="fun">它不是「知道」答案，<br />它是「猜」得特别特别准。</p>
+  </div>
+
+  <div class="warn">
+    <h3 class="fun">这里要小心一下</h3>
+    <p>正因为它是猜的，所以它<em>有时候会说错</em>，而且说错的时候，语气也一样特别有把握——听起来跟说对的时候一模一样。</p>
+    <p>所以呀，它说的话可以听，可以拿来帮你想主意；但重要的事情，还是要再问问爸爸妈妈、再翻翻书。</p>
+  </div>
+
+  <h2 class="fun">它也有不会的时候</h2>
+
+  <p>它没有眼睛，看不见你家的猫；它也不知道今天早上发生了什么。它会的，全都是从以前读过的那些字里学来的。</p>
+
+  <p>所以它更像一个<em>读过好多书、但一直待在房间里</em>的朋友。它懂的东西很多，可外面的事，还得你告诉它。</p>
+
+  <p class="ending fun">读得多，就猜得准。<br />这就是全部的魔法。</p>
+
+</main>
+</body>
+</html>

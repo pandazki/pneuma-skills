@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>大语言模型是怎么工作的？——讲给工程师</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --paper: #ffffff;
+    --ink: #10141a;
+    --ink-2: #3d454f;
+    --ink-3: #6c7683;
+    --line: #e3e6ea;
+    --line-2: #f0f2f4;
+    --accent: #1a6f63;
+    --accent-soft: #eaf4f2;
+    --code-bg: #12161c;
+    --code-fg: #d5dbe3;
+    --tok-kw: #82a8ff;
+    --tok-str: #a5d6a7;
+    --tok-num: #ffcc80;
+    --tok-com: #6b7784;
+    --tok-fn: #ffd479;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", "Heiti SC", -apple-system, system-ui, sans-serif;
+    font-size: 15.5px;
+    line-height: 1.9;
+    letter-spacing: 0.012em;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .doc {
+    max-width: 850px;
+    margin: 0 auto;
+    background: var(--paper);
+    border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line);
+    padding: clamp(28px, 5vw, 64px) clamp(20px, 4.5vw, 60px) 88px;
+    min-height: 100vh;
+  }
+
+  header { border-bottom: 1px solid var(--line); padding-bottom: 26px; margin-bottom: 34px; }
+
+  .eyebrow {
+    font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+    font-size: 11.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 12px;
+  }
+
+  h1 {
+    font-size: clamp(24px, 3.6vw, 32px);
+    font-weight: 600;
+    line-height: 1.45;
+    letter-spacing: 0.01em;
+    margin: 0 0 14px;
+  }
+
+  .standfirst { font-size: 16.5px; color: var(--ink-2); margin: 0; }
+
+  h2 {
+    font-size: 18.5px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    margin: 46px 0 14px;
+  }
+
+  h2 .idx {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 12px;
+    color: var(--accent);
+    margin-right: 10px;
+  }
+
+  h3 { font-size: 15.5px; font-weight: 600; margin: 26px 0 8px; }
+
+  p { margin: 0 0 14px; }
+
+  code {
+    font-family: "JetBrains Mono", ui-monospace, Menlo, "PingFang SC", monospace;
+    font-size: 0.88em;
+    background: var(--line-2);
+    border-radius: 3px;
+    padding: 0.12em 0.36em;
+  }
+
+  pre {
+    background: var(--code-bg);
+    color: var(--code-fg);
+    font-family: "JetBrains Mono", ui-monospace, Menlo, "PingFang SC", monospace;
+    font-size: 13px;
+    line-height: 1.72;
+    padding: 18px 20px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 0 0 18px;
+    letter-spacing: 0;
+  }
+
+  pre code { background: none; padding: 0; font-size: inherit; }
+
+  .kw { color: var(--tok-kw); }
+  .str { color: var(--tok-str); }
+  .num { color: var(--tok-num); }
+  .com { color: var(--tok-com); }
+  .fn { color: var(--tok-fn); }
+
+  figure { margin: 22px 0 24px; }
+  figure svg { width: 100%; height: auto; display: block; }
+  figcaption { font-size: 13px; color: var(--ink-3); margin-top: 10px; line-height: 1.8; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; margin: 6px 0 20px; }
+  th, td { text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-align: top; line-height: 1.78; }
+  th {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    border-bottom: 1px solid var(--ink);
+  }
+  td:first-child { font-weight: 500; }
+
+  ul { margin: 0 0 16px; padding-left: 20px; }
+  li { margin-bottom: 9px; }
+
+  .note {
+    background: var(--accent-soft);
+    border-left: 2px solid var(--accent);
+    padding: 14px 18px;
+    font-size: 14.5px;
+    color: var(--ink-2);
+    margin: 0 0 18px;
+    border-radius: 0 4px 4px 0;
+    line-height: 1.85;
+  }
+  .note b { color: var(--ink); font-weight: 600; }
+
+  .formula {
+    font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+    font-size: 14px;
+    background: var(--line-2);
+    border-radius: 4px;
+    padding: 14px 18px;
+    margin: 0 0 16px;
+    overflow-x: auto;
+    letter-spacing: 0;
+  }
+
+  footer { margin-top: 52px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-3); }
+</style>
+</head>
+<body>
+<main class="doc">
+
+  <header>
+    <p class="eyebrow">explainer · transformers</p>
+    <h1>大语言模型内部到底在算什么</h1>
+    <p class="standfirst">一个自回归的下一个 token 预测器：堆叠的 Transformer 解码器层，在超大规模文本上以「预测下一个 token」为目标训练，推理时逐 token 采样输出。下面按这条主线拆开，顺带说清几个最常被略过的地方。</p>
+  </header>
+
+  <h2><span class="idx">01</span>输入不是字，是 token</h2>
+
+  <p>模型看不到字符串。文本先经过分词器切成 token —— 用 BPE 或类似的子词算法，从语料里统计出一份几万到十几万条目的词表。切分粒度在字符和词之间：英文常见词通常是一个 token，词缀会被切开；中文常见字大多是一个 token，生僻字和 emoji 可能被拆成多个字节级片段。</p>
+
+  <p>这不是实现细节，它会直接影响你：<strong>计费按 token</strong>、<strong>上下文窗口按 token</strong>、<strong>模型对字符级操作天生不灵</strong>（数一个词有几个字母、精确截断到 N 个字符，这类任务它经常算错，因为它看到的根本不是字母）。</p>
+
+  <h2><span class="idx">02</span>一次前向传播</h2>
+
+  <figure>
+    <svg viewBox="0 0 820 190" role="img" aria-label="从 token 到 logits 再采样出下一个 token 的流程">
+      <defs>
+        <style>
+          .bx { fill: #ffffff; stroke: #1a6f63; stroke-width: 1.5; }
+          .bx2 { fill: #eaf4f2; stroke: #1a6f63; stroke-width: 1.5; }
+          .t { font-family: "PingFang SC", sans-serif; font-size: 13px; fill: #10141a; }
+          .ts { font-family: "JetBrains Mono", monospace; font-size: 10.5px; fill: #6c7683; }
+          .ar { stroke: #9aa4b0; stroke-width: 1.4; fill: none; }
+        </style>
+        <marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L7,3 L0,6 z" fill="#9aa4b0" />
+        </marker>
+      </defs>
+
+      <rect class="bx" x="10" y="52" width="112" height="46" rx="4" />
+      <text class="t" x="66" y="72" text-anchor="middle">token 序列</text>
+      <text class="ts" x="66" y="88" text-anchor="middle">[8,1042,77…]</text>
+
+      <path class="ar" d="M124 75 h30" marker-end="url(#a)" />
+
+      <rect class="bx" x="158" y="52" width="104" height="46" rx="4" />
+      <text class="t" x="210" y="72" text-anchor="middle">嵌入 + 位置</text>
+      <text class="ts" x="210" y="88" text-anchor="middle">n × d</text>
+
+      <path class="ar" d="M264 75 h30" marker-end="url(#a)" />
+
+      <rect class="bx2" x="298" y="30" width="180" height="90" rx="4" />
+      <text class="t" x="388" y="56" text-anchor="middle">解码器层 × N</text>
+      <text class="ts" x="388" y="76" text-anchor="middle">self-attention</text>
+      <text class="ts" x="388" y="94" text-anchor="middle">feed-forward</text>
+      <text class="ts" x="388" y="112" text-anchor="middle">残差 + 归一化</text>
+
+      <path class="ar" d="M480 75 h30" marker-end="url(#a)" />
+
+      <rect class="bx" x="514" y="52" width="112" height="46" rx="4" />
+      <text class="t" x="570" y="72" text-anchor="middle">logits</text>
+      <text class="ts" x="570" y="88" text-anchor="middle">词表维度 V</text>
+
+      <path class="ar" d="M628 75 h30" marker-end="url(#a)" />
+
+      <rect class="bx" x="662" y="52" width="146" height="46" rx="4" />
+      <text class="t" x="735" y="72" text-anchor="middle">softmax → 采样</text>
+      <text class="ts" x="735" y="88" text-anchor="middle">下一个 token</text>
+
+      <path class="ar" d="M735 100 v34 h-669 v-34" marker-end="url(#a)" stroke-dasharray="4 4" />
+      <text class="ts" x="400" y="152" text-anchor="middle">把新 token 追加回输入，重来一次</text>
+    </svg>
+    <figcaption>一次前向只产出<strong>一个</strong> token 的概率分布。一段话是这张图跑了几百上千次的结果 —— 延迟随输出长度线性增长，这也是流式输出成为默认交互方式的原因。</figcaption>
+  </figure>
+
+  <h2><span class="idx">03</span>注意力做的事</h2>
+
+  <p>每个位置把自己的表示投影成三个向量：查询 Q、键 K、值 V。位置 <code>i</code> 用自己的 Q 去和所有位置的 K 做点积，得到一组权重，再按这组权重把各位置的 V 加权求和 —— 也就是「我这个位置，该从上下文的哪些地方取信息」。</p>
+
+  <div class="formula">Attention(Q, K, V) = softmax( Q Kᵀ / √d_k + M ) V</div>
+
+  <p><code>M</code> 是因果掩码：把所有 <code>j &gt; i</code> 的位置置为 <code>-inf</code>，保证位置 <code>i</code> 只能看到它左边的内容。这一条是「自回归」的全部含义，也是训练能在整条序列上并行、而推理只能一个一个往外吐的根本原因。</p>
+
+  <p>多头就是并行做若干组这样的投影再拼接，让不同的头去关注不同类型的关系。计算量上，一次完整前向对长度 <code>n</code> 是 <code>O(n²·d)</code> —— 长上下文真正贵在这里，不在参数量。</p>
+
+  <div class="note">
+    <b>位置信息不是加进去就完事。</b>现在主流做法是旋转位置编码（RoPE），把位置以旋转的形式作用在 Q/K 上。它带来的一个实际后果是：模型在训练长度之外的位置上会明显退化，所以「支持 128K 上下文」和「在 128K 上表现和 8K 一样好」是两件不同的事，需要分别验证。
+  </div>
+
+  <h2><span class="idx">04</span>训练和推理，差别比想象中大</h2>
+
+  <table>
+    <thead>
+      <tr><th></th><th>训练</th><th>推理</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>序列处理</td>
+        <td>整条并行。因果掩码保证位置 <code>i</code> 看不到答案，所以一次前向就能对所有位置算 loss。</td>
+        <td>严格串行。第 <code>t</code> 个 token 是第 <code>t+1</code> 步的输入，无法提前算。</td>
+      </tr>
+      <tr>
+        <td>参数</td>
+        <td>反向传播更新。显存要同时放下参数、梯度和优化器状态。</td>
+        <td>完全冻结。你这次调用不会改变模型的任何一个权重。</td>
+      </tr>
+      <tr>
+        <td>输入来源</td>
+        <td>teacher forcing —— 喂的是真实的下一个 token，不是模型自己上一步的输出。</td>
+        <td>喂的是模型自己刚生成的 token。错误会顺着往下累积。</td>
+      </tr>
+      <tr>
+        <td>主要开销</td>
+        <td>算力。一次预训练是集群规模、以周计的作业。</td>
+        <td>显存带宽。逐 token 生成阶段通常是访存受限，不是算力受限。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>KV cache：推理端最重要的一个优化</h3>
+
+  <p>朴素实现每生成一个 token 都要把整条序列重算一遍，代价 <code>O(n²·d)</code>。但历史位置的 K 和 V 不会变（因果掩码保证了这点），所以把它们缓存下来，每步只算新 token 的 Q 与全部 K/V 的注意力，单步降到 <code>O(n·d)</code>。</p>
+
+  <p>代价是显存：缓存大小正比于 <code>层数 × KV 头数 × 头维度 × 序列长度 × 批量</code>。长上下文的高并发服务里，KV cache 常常比模型权重还占地方 —— GQA、MQA 这些做法就是冲着压这一项去的。</p>
+
+<pre><code><span class="com"># 自回归生成的骨架，省掉了批处理与停止条件</span>
+<span class="kw">def</span> <span class="fn">generate</span>(model, prompt_ids, max_new_tokens, temperature=<span class="num">0.7</span>, top_p=<span class="num">0.9</span>):
+    ids, cache = prompt_ids, <span class="kw">None</span>
+    <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(max_new_tokens):
+        <span class="com"># 首次传完整 prompt（prefill），之后每次只传最后一个 token</span>
+        step_in = ids <span class="kw">if</span> cache <span class="kw">is</span> <span class="kw">None</span> <span class="kw">else</span> ids[:, -<span class="num">1</span>:]
+        logits, cache = model(step_in, kv_cache=cache)
+
+        logits = logits[:, -<span class="num">1</span>, :] / temperature   <span class="com"># 只取最后一个位置</span>
+        probs  = softmax(logits)
+        probs  = <span class="fn">nucleus_filter</span>(probs, top_p)        <span class="com"># 截掉概率尾巴</span>
+
+        nxt = <span class="fn">sample</span>(probs)
+        ids = <span class="fn">cat</span>([ids, nxt], dim=-<span class="num">1</span>)
+    <span class="kw">return</span> ids</code></pre>
+
+  <p>注意 <code>logits[:, -1, :]</code> 这一行：模型对每个位置都算了分布，但生成时只用最后一个。训练时用的恰恰是被丢掉的那些 —— 同一次前向，两种用法。</p>
+
+  <h2><span class="idx">05</span>预训练之后还有一大半</h2>
+
+  <p>只做完预训练的模型是个「续写机」，你问它问题，它可能给你再编三个类似的问题出来。把它变成会对话、会守规矩的助手，靠的是后训练：</p>
+
+  <ul>
+    <li><strong>监督微调（SFT）</strong> —— 在人写的「指令 → 期望回答」样本上继续训练，教会它「被问了就该答」这种格式。</li>
+    <li><strong>偏好优化</strong> —— 收集同一个提示下多个回答的人类排序，用 RLHF 或 DPO 一类方法把模型往被偏好的方向推。有用性、无害性、语气，主要在这一步成形。</li>
+  </ul>
+
+  <p>一个有用的分工判断：<strong>预训练决定它知道什么，后训练决定它怎么表现</strong>。所以「模型不肯做某件事」和「模型不会做某件事」是两个完全不同的问题，排查方向也完全不同。</p>
+
+  <h2><span class="idx">06</span>采样、确定性，以及幻觉</h2>
+
+  <p>模型输出的是词表上的一个概率分布，选哪个 token 是采样策略的事。<code>temperature</code> 缩放 logits：越低分布越尖、越保守；越高越发散。<code>top_p</code>（核采样）只在累积概率达到 p 的那部分候选里采。</p>
+
+  <div class="note">
+    <b>把 temperature 设成 0 也不等于可复现。</b>它退化成贪心解码，但服务端的批处理组合、GPU 上并行归约的浮点加法顺序、不同的 kernel 实现，都会让 logits 在末位上抖动，而两个概率接近的候选一旦因此换位，后面整条路径就分叉了。要可复现，得靠固定输出格式、缓存和校验，别指望采样参数。
+  </div>
+
+  <p>幻觉也从这里看得最清楚。训练目标是「在给定上文时，最大化真实下一个 token 的似然」—— 这个目标里没有任何一项在衡量「这句话是不是真的」。当上下文里没有足够信息时，模型不会空着，它会补一个在分布上最像样的续写，而且流畅度和它说对时完全一样。</p>
+
+  <p>所以工程上能做的不是「让它别编」，而是<strong>把它需要的事实放进上下文</strong>（检索增强）、<strong>让输出可校验</strong>（结构化格式 + 解析校验 + 引用溯源）、<strong>在高风险处保留人</strong>。这三条是绕开机制，不是修复机制。</p>
+
+  <h2><span class="idx">07</span>取舍一览</h2>
+
+  <table>
+    <thead>
+      <tr><th>做法</th><th>换来什么</th><th>代价</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>拉长上下文</td>
+        <td>能一次塞进更多材料，少做切分和拼接</td>
+        <td>注意力开销随长度平方增长，KV cache 显存线性增长；而且长上下文中段的信息更容易被忽略，得实测而不是假设</td>
+      </tr>
+      <tr>
+        <td>换更大的模型</td>
+        <td>推理质量、长链条任务的稳定性明显更好</td>
+        <td>单价和延迟都上去了；很多任务上小模型加好提示词就够，先测再换</td>
+      </tr>
+      <tr>
+        <td>检索增强（RAG）</td>
+        <td>把私有和最新的事实喂进去，答案可溯源</td>
+        <td>检索质量成了新的上限；召回错了，模型会非常自信地基于错材料作答</td>
+      </tr>
+      <tr>
+        <td>微调</td>
+        <td>稳定输出风格和格式，压缩提示词长度</td>
+        <td>需要数据和评测；灌事实知识效果通常不如检索，且换基座就得重来</td>
+      </tr>
+      <tr>
+        <td>调低 temperature</td>
+        <td>输出更收敛、更可控</td>
+        <td>创造性任务上变得乏味重复；而且如上所述，并不能换来严格可复现</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <footer>
+    同一个主题的其他层级：「产品经理」那一级讲能力边界、成本和风险；「8 岁孩子」那一级用词语接龙讲同一件事。
+  </footer>
+
+</main>
+</body>
+</html>
