@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.37.0] - 2026-08-25
+
+### Added
+- **ELI5 — explain anything to anyone.** New builtin mode adapted from [DreambigOu/ELI5](https://github.com/DreambigOu/ELI5) (MIT; pinned commit and borrowed/adapted/dropped tables in `modes/eli5/NOTICE.md`): one topic becomes an **audience ladder** — one self-contained HTML page per audience, ordered simplest to most technical, each page's typography and layout designed for its reader rather than merely reworded. The viewer is a player: a numbered audience rail, sandboxed srcdoc iframes with base-href asset resolution, side-by-side compare with per-pane pickers, scroll-to-anchor with an honest verdict channel (the timeout measures the in-document search, not the network), and capture / locator navigation over the `{contentSet, audience, anchor}` address vocabulary. The skill adapts the upstream audience taxonomy and extends it with a visual-register table mapping each audience to a page design language; two finished seed topics ship ("What is a database index?" in English, 「大语言模型是怎么工作的？」 in Chinese) alongside generated showcase imagery. Topic directories resolve as neutral content sets — a topic named `dark-matter` is not a theme variant.
+- **A chrome rule learned on first user contact.** Native form-control styling is now banned from every user-facing surface (`.claude/rules/frontend.md`, mirrored in the create-mode skill's viewer patterns): controls are either fully restyled with the design tokens or built as custom components — eli5's compare pickers shipped as native `<select>` elements for exactly one demo before becoming the rule's first precedent.
+
 ## [3.36.0] - 2026-08-24
 
 ### Added
