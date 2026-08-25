@@ -38,7 +38,8 @@ import { useSource } from "../../../src/hooks/useSource.js";
 import { useStore } from "../../../src/store.js";
 import type { AudienceEntry, Explainer } from "../domain.js";
 import AudienceRail from "./AudienceRail.js";
-import PagePane, { type AnchorRequest, type PageSelectionPayload } from "./PagePane.js";
+import { anchorRequestForPane, type AnchorRequest } from "./anchor-relay.js";
+import PagePane, { type PageSelectionPayload } from "./PagePane.js";
 import { PAGE_SCRIPT } from "./page-script.js";
 import {
   activeRungIndex,
@@ -53,6 +54,7 @@ import {
   pagePath,
   readAddress,
   resolveNavigateTarget,
+  rungKey,
   selectLadder,
 } from "./player-logic.js";
 
@@ -62,14 +64,6 @@ const NO_AUDIENCES: AudienceEntry[] = [];
 
 /** How long a notice about a refused navigation stays on screen. */
 const NOTICE_MS = 6000;
-/**
- * How long to wait for a page to answer an anchor request. Generous
- * because the answer may have to survive a content-set switch and a fresh
- * document load; bounded because a page that never answers must not hold
- * an agent's action open (the same 10s-class discipline as the native
- * bridge, one order down — this is a local postMessage).
- */
-const ANCHOR_TIMEOUT_MS = 2000;
 
 export default function Eli5Preview({
   sources,
@@ -211,47 +205,70 @@ export default function Eli5Preview({
   useEffect(() => () => clearTimeout(noticeTimerRef.current), []);
 
   // ── Anchor scrolling (parent ↔ page, with a verdict) ──────────────────
+  //
+  // The timing lives in the pane's `AnchorRelay`, because only the pane
+  // knows when its document is reachable: a rung switch mounts a fresh
+  // opaque-origin iframe, and the budget for finding an element must not be
+  // spent on that document's network. What stays here is the half only this
+  // component can do — mint the sequence, name the rung the request is FOR,
+  // and hold the promise the navigation runner is awaiting.
   const [anchorRequest, setAnchorRequest] = useState<AnchorRequest | null>(null);
   const anchorSeqRef = useRef(0);
-  const anchorWaitersRef = useRef(
-    new Map<number, { resolve: (found: boolean) => void; timer: ReturnType<typeof setTimeout> }>(),
-  );
+  const anchorWaitersRef = useRef(new Map<number, (found: boolean) => void>());
 
   const requestAnchor = useCallback(
-    (anchor: string) =>
+    (anchor: string, target: string | null) =>
       new Promise<boolean>((resolve) => {
         const seq = anchorSeqRef.current + 1;
         anchorSeqRef.current = seq;
-        const timer = setTimeout(() => {
-          anchorWaitersRef.current.delete(seq);
-          resolve(false);
-        }, ANCHOR_TIMEOUT_MS);
-        anchorWaitersRef.current.set(seq, { resolve, timer });
-        setAnchorRequest({ seq, anchor });
+        anchorWaitersRef.current.set(seq, resolve);
+        setAnchorRequest({ seq, anchor, target });
       }),
     [],
   );
 
   const handleAnchorResult = useCallback((seq: number, found: boolean) => {
-    const waiter = anchorWaitersRef.current.get(seq);
-    if (!waiter) return;
-    clearTimeout(waiter.timer);
+    // Retiring the request is what keeps a settled question from being
+    // re-asked: a pane remounts with fresh state every time the reader
+    // climbs back onto that rung, and a request still in its props would be
+    // dispatched again — a page scrolling itself for a navigation that
+    // finished long ago.
+    setAnchorRequest((current) => (current && current.seq === seq ? null : current));
+    const resolve = anchorWaitersRef.current.get(seq);
+    if (!resolve) return; // already settled — a verdict arrives at most once
     anchorWaitersRef.current.delete(seq);
-    waiter.resolve(found);
+    resolve(found);
   }, []);
 
-  // Unmounting mid-flight must not leave a timer running or an action
-  // waiting forever on a promise nobody can settle.
+  // Unmounting mid-flight must not leave an action waiting forever on a
+  // promise nobody can settle — the viewer is gone, so no page will ever
+  // answer, and the agent's `navigate-to` would sit until the framework's
+  // 60 s bound.
   useEffect(
     () => () => {
-      for (const waiter of anchorWaitersRef.current.values()) {
-        clearTimeout(waiter.timer);
-        waiter.resolve(false);
-      }
+      for (const resolve of anchorWaitersRef.current.values()) resolve(false);
       anchorWaitersRef.current.clear();
     },
     [],
   );
+
+  // Which pane may answer. A request names the rung it was issued for, and
+  // only the pane standing on that rung ever receives it — so a reader who
+  // climbs elsewhere while a page is still loading gets an honest miss for
+  // the rung the agent named, instead of a scroll into a page that was
+  // never addressed.
+  const activeRungKey = rungKey(prefix, activeAudience?.id);
+  const mainAnchorRequest = anchorRequestForPane(anchorRequest, activeRungKey);
+
+  // A request whose rung is not on screen belongs to no pane, so nothing
+  // will ever answer it. Settle it here, where the ladder is known: the
+  // navigation itself succeeded (the reader is somewhere real), and the
+  // anchor is honestly reported as missed rather than left pending until
+  // the framework's own 60 s bound gives up on the action.
+  useEffect(() => {
+    if (!anchorRequest || mainAnchorRequest) return;
+    handleAnchorResult(anchorRequest.seq, false);
+  }, [anchorRequest, mainAnchorRequest, handleAnchorResult]);
 
   // ── Selection ─────────────────────────────────────────────────────────
   const pickAudience = useCallback(
@@ -336,7 +353,14 @@ export default function Eli5Preview({
       const manifest = explainer?.byContentSet[target.prefix];
       const rung = manifest?.audiences.find((a) => a.id === target.audienceId);
       const where = rung?.label ?? manifest?.title ?? "the page";
-      const found = await requestAnchor(target.anchor);
+      // The request is stamped with the rung the ADDRESS named — resolved,
+      // not observed — so that the pane which ends up showing that rung is
+      // the only one allowed to answer it. An address that named no rung
+      // (topic + anchor) is stamped null: it means "wherever the reader is".
+      const found = await requestAnchor(
+        target.anchor,
+        rung ? rungKey(target.prefix, rung.id) : null,
+      );
       // The page landed — that is what `success` reports. The anchor is
       // the fine half, and a miss is a fact the agent should hear without
       // being told the navigation failed. It also has to be a fact the
@@ -480,12 +504,12 @@ export default function Eli5Preview({
 
       <main className="flex min-h-0 flex-1 gap-3 p-3">
         <PagePane
-          key={`main-${prefix}-${activeAudience?.id ?? "none"}`}
+          key={`main-${activeRungKey}`}
           audience={activeAudience}
           html={activePage.html}
           srcdoc={activePage.srcdoc}
           selectMode={selectMode}
-          anchorRequest={anchorRequest}
+          anchorRequest={mainAnchorRequest}
           onAnchorResult={handleAnchorResult}
           onSelectElement={selectInActivePage}
           header={
@@ -501,7 +525,7 @@ export default function Eli5Preview({
         />
         {comparing && (
           <PagePane
-            key={`compare-${prefix}-${compareAudience?.id ?? "none"}`}
+            key={`compare-${rungKey(prefix, compareAudience?.id)}`}
             audience={compareAudience}
             html={comparePage.html}
             srcdoc={comparePage.srcdoc}

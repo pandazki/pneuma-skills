@@ -132,6 +132,25 @@ export function activeRungIndex(
 }
 
 /**
+ * One rung's identity across a whole workspace: the topic it belongs to
+ * plus the audience it names.
+ *
+ * Two consumers must agree on it or they drift apart silently — the React
+ * key that decides when a pane REMOUNTS (a new document, a fresh scroll
+ * position) and the gate that decides which pane an anchor request belongs
+ * to. If the gate ever admitted a request the pane's key had already
+ * invalidated, the request would land in whatever document replaced it:
+ * an anchor found on a page nobody asked about, reported as a success. So
+ * both derive from here.
+ *
+ * Not the file path: two rungs may name the same file mid-edit, and the
+ * pane's remount is keyed on the audience.
+ */
+export function rungKey(prefix: string, audienceId: string | null | undefined): string {
+  return `${prefix}::${audienceId ?? ""}`;
+}
+
+/**
  * The page's HTML from the raw file snapshot, or null when the agent has
  * not written it yet.
  *

@@ -39,6 +39,7 @@ import {
   pagePath,
   readAddress,
   resolveNavigateTarget,
+  rungKey,
   selectLadder,
 } from "../viewer/player-logic.js";
 
@@ -498,6 +499,71 @@ describe("anchorVerdict — a missed anchor is visible to BOTH readers", () => {
     const { result, notice } = anchorVerdict(false, "Manager", "#impact");
     expect(notice).not.toBeNull();
     expect(notice).toBe(result.message!);
+  });
+});
+
+describe("rungKey — one identity for the pane and for the request that targets it", () => {
+  test("the same rung id in two topics is two different rungs", () => {
+    // The failure it prevents: both seeds ship an `engineer` rung, so an
+    // identity that forgot the topic would let a request issued against one
+    // topic's engineer page be answered by the other's.
+    expect(rungKey("how-llms-work", "engineer")).not.toBe(
+      rungKey("database-index", "engineer"),
+    );
+  });
+
+  test("a root-level ladder and a missing rung both have a stable key", () => {
+    expect(rungKey("", "manager")).toBe(rungKey("", "manager"));
+    expect(rungKey("topic", null)).toBe(rungKey("topic", undefined));
+    expect(rungKey("topic", null)).not.toBe(rungKey("topic", "manager"));
+  });
+});
+
+describe("the anchor request and the pane it targets cannot drift apart", () => {
+  // Two independent decisions have to agree: WHEN a pane remounts (its
+  // React key — a new document, a fresh scroll position) and WHICH pane an
+  // in-flight anchor request belongs to. If the gate admitted a request the
+  // key had already invalidated, the anchor would be searched for in
+  // whatever document replaced it and a hit there would be reported as
+  // success. Both go through `rungKey`; this pins that they still do.
+  const preview = readFileSync(join(MODE_DIR, "viewer", "Eli5Preview.tsx"), "utf8");
+
+  test("the pane's key is built from rungKey", () => {
+    expect(preview).toContain("const activeRungKey = rungKey(prefix, activeAudience?.id);");
+    expect(preview).toContain("key={`main-${activeRungKey}`}");
+  });
+
+  test("the gate routes on that same key", () => {
+    expect(preview).toContain(
+      "anchorRequestForPane(anchorRequest, activeRungKey)",
+    );
+  });
+
+  test("a request no pane holds is settled, not left pending", () => {
+    // Otherwise the reader climbing to another rung mid-load leaves the
+    // agent's action open until the framework's 60 s bound.
+    expect(preview).toContain("if (!anchorRequest || mainAnchorRequest) return;");
+    expect(preview).toContain("handleAnchorResult(anchorRequest.seq, false);");
+  });
+
+  test("the request's target is the rung the ADDRESS resolved to", () => {
+    // Not the rung currently on screen: the switch and the anchor are
+    // issued in one batch, so reading render state here would stamp the
+    // request with the rung the reader is LEAVING.
+    expect(preview).toContain("rung ? rungKey(target.prefix, rung.id) : null");
+  });
+
+  test("the parent runs no clock of its own — the budget is the pane's", () => {
+    // The whole defect: a timer started at request time was spent on the
+    // iframe's font fetch. The bound now lives in `AnchorRelay`, armed at
+    // `load`. A `setTimeout` reappearing around the waiter map would quietly
+    // restore the old behaviour.
+    const anchorSection = preview.slice(
+      preview.indexOf("const requestAnchor"),
+      preview.indexOf("// ── Selection"),
+    );
+    expect(anchorSection.length).toBeGreaterThan(0);
+    expect(anchorSection).not.toContain("setTimeout");
   });
 });
 
