@@ -31,6 +31,12 @@
  *     (`onModels` → `available_models` + current model); browser `set_model`
  *     routes to ACP `session/set_model`.
  *
+ *   - **Usage & mode reporting** (Kimi Code 0.38.0) — ACP `usage_update`
+ *     reports context-window occupancy (`used` of `size`), which becomes
+ *     `context_used_percent` (the "ctx N%" readout) and the result
+ *     envelope's `input_tokens`; ACP `current_mode_update` reports the
+ *     active session mode, which becomes `permissionMode`.
+ *
  *   - **Interrupt** — Stop button → ACP `session/cancel` notification. The
  *     in-flight `session/prompt` then resolves with
  *     `stopReason: "cancelled"`, which lands as a normal turn end — no
@@ -43,7 +49,7 @@ import type {
   ContentBlock,
 } from "./session-types.js";
 import type { Session } from "./ws-bridge-types.js";
-import type { KimiAdapter } from "../backends/kimi-cli/kimi-adapter.js";
+import type { KimiAdapter, KimiUsageInfo } from "../backends/kimi-cli/kimi-adapter.js";
 import type { PneumaMessage } from "../backends/kimi-cli/protocol.js";
 import { enqueueCheckpoint, isShadowGitAvailable } from "./shadow-git.js";
 import type { BridgeBackend, BridgeBackendDeps, RouteResult } from "./ws-bridge-backend.js";
@@ -77,6 +83,18 @@ export class KimiBridge implements BridgeBackend {
 
   /** Per-toolCallId progress bookkeeping (start + last broadcast time). */
   private toolProgress = new Map<string, { startedAt: number; lastBroadcastAt: number }>();
+
+  /**
+   * Latest ACP `usage_update` snapshot, or `null` until the first one lands.
+   *
+   * Kimi emits it once per turn and — verified against 0.38.0 — the frame
+   * arrives in a separate stdout chunk just AFTER the `session/prompt` call
+   * for that turn resolves. So the result envelope built at turn end carries
+   * the snapshot taken at the previous boundary (and turn 1 carries none).
+   * The `context_used_percent` readout has no such lag: it updates the
+   * millisecond the frame lands.
+   */
+  private lastUsage: KimiUsageInfo | null = null;
 
   private msgCounter = 0;
 
@@ -133,6 +151,21 @@ export class KimiBridge implements BridgeBackend {
     this.adapter.onModels(({ current, available }) => {
       this.session.state.model = current;
       this.session.state.available_models = available;
+      this.broadcastSessionUpdate();
+    });
+
+    this.adapter.onUsage((usage) => {
+      this.lastUsage = usage;
+      if (usage.size <= 0) return; // no window to measure against — report nothing
+      const percent = Math.min(100, Math.round((usage.used / usage.size) * 100));
+      if (percent === this.session.state.context_used_percent) return;
+      this.session.state.context_used_percent = percent;
+      this.broadcastSessionUpdate();
+    });
+
+    this.adapter.onModeChanged(({ permissionMode }) => {
+      if (this.session.state.permissionMode === permissionMode) return;
+      this.session.state.permissionMode = permissionMode;
       this.broadcastSessionUpdate();
     });
 
@@ -349,6 +382,10 @@ export class KimiBridge implements BridgeBackend {
         model: this.session.state.model || "kimi",
         content: pneuma.content as ContentBlock[],
         stop_reason: null,
+        // Per-message usage stays zero on purpose: ACP reports occupancy
+        // once per TURN, so stamping every mid-turn message with the same
+        // cumulative snapshot would invent per-message numbers. Codex does
+        // the same — real numbers ride the turn-level surfaces below.
         usage: {
           input_tokens: 0,
           output_tokens: 0,
@@ -388,10 +425,18 @@ export class KimiBridge implements BridgeBackend {
         duration_ms: durationMs,
         duration_api_ms: durationMs,
         num_turns: numTurns,
+        // ACP carries no cost signal — never fabricate one.
         total_cost_usd: 0,
         stop_reason: stopReason,
         usage: {
-          input_tokens: 0,
+          // Kimi reports ONE number: `used`, the tokens the session occupies
+          // of its context window (cumulative, not a per-turn delta). It is
+          // the closest true analogue of "what the model read", so it rides
+          // `input_tokens` — the same convention codex uses for its
+          // cumulative `total.inputTokens`. The other three stay 0 because
+          // ACP reports no output/cache split, and a fabricated number is
+          // worse than an honest zero.
+          input_tokens: this.lastUsage?.used ?? 0,
           output_tokens: 0,
           cache_creation_input_tokens: 0,
           cache_read_input_tokens: 0,

@@ -4,10 +4,10 @@
  * plus a stateful translator from that stream to Pneuma's normalized message
  * shape.
  *
- * Wire shapes verified empirically against Kimi Code CLI 0.26.0 (every frame
- * kind below was captured live, not read from docs). No IO in this module —
- * the translator is a pure state machine so it can be unit-tested without a
- * running kimi process.
+ * Wire shapes verified empirically against Kimi Code CLI 0.26.0 and re-probed
+ * against 0.38.0 (every frame kind below was captured live, not read from
+ * docs). No IO in this module — the translator is a pure state machine so it
+ * can be unit-tested without a running kimi process.
  *
  * Key empirical facts the translation depends on:
  *
@@ -26,6 +26,11 @@
  *   - `session/load` replays history as `user_message_chunk` /
  *     `agent_*_chunk` frames; `user_message_chunk` is deliberately ignored
  *     (Pneuma rehydrates chat history from its own `history.json`).
+ *   - 0.38.0 added three update kinds: `usage_update` (context-window
+ *     occupancy — NOT an input/output token split), `current_mode_update`
+ *     (the active ACP session mode) and `session_info_update` (an
+ *     agent-generated conversation title). The first two carry real signal
+ *     and are translated; the third is consumed silently (see its case).
  */
 
 // ── ACP wire shapes (agent → client `session/update` payloads) ───────────────
@@ -104,6 +109,43 @@ export interface AcpConfigOptionUpdate {
   configOptions: AcpConfigOption[];
 }
 
+/**
+ * Context-window occupancy, emitted once per turn (0.38.0+).
+ *
+ * `used` is how many tokens the session currently occupies of a `size`-token
+ * window — a cumulative gauge, NOT a per-turn input/output split (ACP carries
+ * no such split; captured: `{used: 36350, size: 1048576}` on a fresh k3
+ * session whose system prompt alone is ~36k). The frame lands just AFTER the
+ * `session/prompt` response for the turn it describes, in a separate stdout
+ * chunk — see the one-turn lag note in README.md.
+ */
+export interface AcpUsageUpdate {
+  sessionUpdate: "usage_update";
+  used: number;
+  size: number;
+}
+
+/**
+ * The active ACP session mode changed (0.38.0+) — emitted after
+ * `session/set_mode` and whenever the agent switches mode on its own.
+ * `currentModeId` is one of the ids in the session-setup `modes.availableModes`
+ * list (`default` / `plan` / `auto` / `yolo`).
+ */
+export interface AcpCurrentModeUpdate {
+  sessionUpdate: "current_mode_update";
+  currentModeId: string;
+}
+
+/**
+ * Agent-generated conversation title (0.38.0+), derived from the first user
+ * prompt. Carries no model / cwd / version — despite the name it is NOT a
+ * session-metadata frame. Deliberately dropped; see the translator case.
+ */
+export interface AcpSessionInfoUpdate {
+  sessionUpdate: "session_info_update";
+  title?: string;
+}
+
 export type AcpSessionUpdate =
   | AcpToolCallStart
   | AcpToolCallUpdate
@@ -111,7 +153,10 @@ export type AcpSessionUpdate =
   | AcpAgentThoughtChunk
   | AcpAvailableCommandsUpdate
   | AcpUserMessageChunk
-  | AcpConfigOptionUpdate;
+  | AcpConfigOptionUpdate
+  | AcpUsageUpdate
+  | AcpCurrentModeUpdate
+  | AcpSessionInfoUpdate;
 
 // ── ACP session-setup shapes ─────────────────────────────────────────────────
 
@@ -123,6 +168,31 @@ export interface AcpConfigOption {
   category?: string;
   currentValue?: string;
   options?: { value: string; name?: string; description?: string }[];
+}
+
+/** One entry of `modes.availableModes[]` (ACP session modes). */
+export interface AcpSessionMode {
+  id: string;
+  name?: string;
+  description?: string;
+}
+
+/**
+ * `modes` on the `session/new` / `session/resume` result (0.38.0+) — the
+ * ACP-canonical mirror of the `mode` config option, and the only place the
+ * mode is reported at setup time on a resumed session.
+ */
+export interface AcpSessionModeState {
+  currentModeId?: string;
+  availableModes?: AcpSessionMode[];
+}
+
+/** Result shape of `session/new` / `session/resume`. */
+export interface AcpSessionSetupResult {
+  /** Present on `session/new`; `session/resume` returns `null` here (0.38.0). */
+  sessionId?: string | null;
+  configOptions?: AcpConfigOption[];
+  modes?: AcpSessionModeState;
 }
 
 export interface AcpPermissionOption {
@@ -217,6 +287,10 @@ export type AcpTranslationEvent =
   | { kind: "commands"; commands: AcpAvailableCommand[] }
   /** Session config changed (model / mode) — carries the refreshed list. */
   | { kind: "config"; configOptions: AcpConfigOption[] }
+  /** Context-window occupancy snapshot (cumulative, once per turn). */
+  | { kind: "usage"; used: number; size: number }
+  /** The active ACP session mode changed (`default`/`plan`/`auto`/`yolo`). */
+  | { kind: "mode"; currentModeId: string }
   /** A tool call is executing / still generating arguments. */
   | { kind: "tool-progress"; toolCallId: string; toolName: string }
   /** Unrecognized `sessionUpdate` — surfaced so the adapter can log once. */
@@ -234,6 +308,17 @@ export function parseModelConfig(
     current: model.currentValue ?? "",
     available: (model.options ?? []).map((o) => ({ id: o.value, name: o.name })),
   };
+}
+
+/**
+ * Extract the active ACP session mode id from a `session/new` /
+ * `session/resume` result's `modes` state. Returns `null` for agents that
+ * don't report one (pre-0.38.0), so callers can fall back to the `mode`
+ * config option.
+ */
+export function parseCurrentModeId(modes: AcpSessionModeState | undefined): string | null {
+  const id = modes?.currentModeId;
+  return typeof id === "string" && id.length > 0 ? id : null;
 }
 
 function stringifyRawOutput(rawOutput: unknown, fallback: AcpToolCallContent[] | undefined): string {
@@ -317,6 +402,28 @@ export class AcpSessionTranslator {
           kind: "config",
           configOptions: (update as AcpConfigOptionUpdate).configOptions ?? [],
         }];
+      case "usage_update": {
+        const { used, size } = update as AcpUsageUpdate;
+        // Both numbers are needed to say anything true: `used` alone is a
+        // token count with no window to measure it against. A frame missing
+        // either one is dropped rather than half-reported.
+        if (typeof used !== "number" || typeof size !== "number") return [];
+        return [{ kind: "usage", used, size }];
+      }
+      case "current_mode_update": {
+        const currentModeId = (update as AcpCurrentModeUpdate).currentModeId;
+        if (typeof currentModeId !== "string" || currentModeId.length === 0) return [];
+        return [{ kind: "mode", currentModeId }];
+      }
+      case "session_info_update":
+        // Agent-generated conversation title. Pneuma owns session display
+        // names on its own surface (`pneuma session refine` → session.json +
+        // the registry, guarded by `preserveRefinedSessionMeta`), and this
+        // frame is just a restatement of the first user prompt — the same
+        // thing Pneuma already falls back to. Adopting it would overwrite
+        // user/agent-chosen names with a worse default, so it is consumed
+        // deliberately (like `user_message_chunk`) instead of warned about.
+        return [];
       default:
         return [{ kind: "unknown", sessionUpdate: String(kind) }];
     }

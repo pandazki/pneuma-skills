@@ -8,7 +8,13 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { KimiAdapter, mapPermissionModeToAcp } from "../kimi-adapter.js";
+import {
+  KimiAdapter,
+  mapAcpModeToPermissionMode,
+  mapPermissionModeToAcp,
+  type KimiModeInfo,
+  type KimiUsageInfo,
+} from "../kimi-adapter.js";
 import type { PneumaMessage } from "../protocol.js";
 import { FAKE_SESSION_ID, FakeAcpServer, tick } from "./fake-acp-server.js";
 
@@ -71,7 +77,7 @@ describe("KimiAdapter — handshake", () => {
     await server.waitForMethod("session/new");
     await tick();
 
-    expect(metas).toEqual([{ agentVersion: "Kimi Code CLI 0.26.0" }]);
+    expect(metas).toEqual([{ agentVersion: "Kimi Code CLI 0.38.0" }]);
     expect(models[0]).toEqual({
       current: "kimi-code/k3",
       available: [
@@ -114,6 +120,99 @@ describe("mapPermissionModeToAcp", () => {
     expect(mapPermissionModeToAcp("default")).toBe("default");
     // Unknown values never silently escalate to auto-approval.
     expect(mapPermissionModeToAcp("something-new")).toBe("default");
+  });
+});
+
+describe("mapAcpModeToPermissionMode", () => {
+  it("maps every ACP session mode back onto Pneuma vocabulary", () => {
+    expect(mapAcpModeToPermissionMode("yolo")).toBe("bypassPermissions");
+    expect(mapAcpModeToPermissionMode("auto")).toBe("acceptEdits");
+    expect(mapAcpModeToPermissionMode("plan")).toBe("plan");
+    expect(mapAcpModeToPermissionMode("default")).toBe("default");
+  });
+
+  it("round-trips every mode the 0.38.0 agent offers", () => {
+    // The four ids from the captured `modes.availableModes` list. A mode we
+    // report must be a mode we can ask for again.
+    for (const acpMode of ["default", "plan", "auto", "yolo"]) {
+      expect(mapPermissionModeToAcp(mapAcpModeToPermissionMode(acpMode))).toBe(acpMode);
+    }
+  });
+
+  it("degrades an unknown future mode to the ask posture, never to auto-approval", () => {
+    expect(mapAcpModeToPermissionMode("something-new")).toBe("default");
+  });
+});
+
+describe("KimiAdapter — usage & mode reporting (Kimi Code 0.38.0)", () => {
+  it("fires onUsage with the captured context-window occupancy", async () => {
+    const { adapter, server } = makeAdapter();
+    const usage: KimiUsageInfo[] = [];
+    adapter.onUsage((u) => usage.push(u));
+    await server.waitForMethod("session/new");
+    await tick();
+
+    // Captured verbatim from `kimi acp` 0.38.0 (one frame per turn).
+    server.emitUpdate({ sessionUpdate: "usage_update", used: 36350, size: 1048576 });
+    server.emitUpdate({ sessionUpdate: "usage_update", used: 36680, size: 1048576 });
+    await tick();
+
+    expect(usage).toEqual([
+      { used: 36350, size: 1048576 },
+      { used: 36680, size: 1048576 },
+    ]);
+  });
+
+  it("seeds the session mode from the setup result, then tracks current_mode_update", async () => {
+    const { adapter, server } = makeAdapter({ permissionMode: "default" });
+    const modes: KimiModeInfo[] = [];
+    adapter.onModeChanged((m) => modes.push(m));
+    await server.waitForMethod("session/new");
+    await tick(8);
+
+    // Seeded from `modes.currentModeId` on the session/new result.
+    expect(modes).toEqual([{ acpModeId: "default", permissionMode: "default" }]);
+
+    // The agent switches mode (here: the user flipped it inside kimi).
+    server.emitUpdate({ sessionUpdate: "current_mode_update", currentModeId: "yolo" });
+    await tick();
+    expect(modes.at(-1)).toEqual({ acpModeId: "yolo", permissionMode: "bypassPermissions" });
+  });
+
+  it("replays the mode to late onModeChanged subscribers (bridge attaches after launch)", async () => {
+    const { adapter, server } = makeAdapter({ permissionMode: "plan" });
+    await server.waitForMethod("session/set_mode");
+    await tick(8);
+
+    const late: KimiModeInfo[] = [];
+    adapter.onModeChanged((m) => late.push(m));
+    expect(late).toEqual([{ acpModeId: "plan", permissionMode: "plan" }]);
+  });
+
+  it("does not warn about session_info_update (known kind, deliberately dropped)", async () => {
+    const { adapter, server } = makeAdapter();
+    const messages: PneumaMessage[] = [];
+    adapter.onMessage((m) => messages.push(m));
+    await server.waitForMethod("session/new");
+    await tick();
+
+    const warn = console.warn;
+    const warnings: string[] = [];
+    console.warn = (...args: unknown[]) => { warnings.push(args.join(" ")); };
+    try {
+      server.emitUpdate({
+        sessionUpdate: "session_info_update",
+        title: "Remember the magic word: paprika. Reply with only the word ok.",
+      });
+      server.emitUpdate({ sessionUpdate: "usage_update", used: 36350, size: 1048576 });
+      server.emitUpdate({ sessionUpdate: "current_mode_update", currentModeId: "yolo" });
+      await tick();
+    } finally {
+      console.warn = warn;
+    }
+
+    expect(warnings.filter((w) => w.includes("unknown sessionUpdate kind"))).toEqual([]);
+    expect(messages).toEqual([]);
   });
 });
 

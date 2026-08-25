@@ -228,3 +228,132 @@ describe("WsBridge.attachKimiAdapter", () => {
     }
   });
 });
+
+/**
+ * Kimi Code 0.38.0 started reporting context-window occupancy and the active
+ * ACP session mode. These pin the whole path: ACP frame → translator →
+ * adapter → bridge → session state / result envelope.
+ *
+ * Captured `usage_update` frames: `{used: 36350, size: 1048576}` then
+ * `{used: 36680, size: 1048576}` — and, crucially, they land AFTER the
+ * `session/prompt` for that turn resolves. The turn-ordering test below
+ * reproduces that order rather than a convenient one.
+ */
+describe("WsBridge + KimiAdapter — usage & mode (Kimi Code 0.38.0)", () => {
+  function route(bridge: WsBridge, session: unknown, msg: BrowserOutgoingMessage): void {
+    (bridge as unknown as { routeBrowserMessage: (s: unknown, m: unknown) => void })
+      .routeBrowserMessage(session, msg);
+  }
+
+  it("turns usage_update into context_used_percent on the session state", async () => {
+    const bridge = new WsBridge();
+    const { adapter, server } = makeAdapter("s1");
+    bridge.attachKimiAdapter("s1", adapter);
+    const session = bridge.getSession("s1")!;
+    await server.waitForMethod("session/new");
+    await tick();
+
+    expect(session.state.context_used_percent).toBe(0);
+
+    server.emitUpdate({ sessionUpdate: "usage_update", used: 36350, size: 1048576 });
+    await tick();
+    expect(session.state.context_used_percent).toBe(3);
+
+    server.emitUpdate({ sessionUpdate: "usage_update", used: 524288, size: 1048576 });
+    await tick();
+    expect(session.state.context_used_percent).toBe(50);
+  });
+
+  it("carries the latest usage snapshot on the result envelope (one-turn lag is real)", async () => {
+    const bridge = new WsBridge();
+    const { adapter, server } = makeAdapter("s1");
+    bridge.attachKimiAdapter("s1", adapter);
+    const session = bridge.getSession("s1")!;
+    await server.waitForMethod("session/new");
+    await tick();
+
+    // Turn 1 — no usage frame has arrived yet, so the envelope reports zeros
+    // rather than a fabricated number.
+    route(bridge, session, { type: "user_message", content: "remember paprika" });
+    await server.waitForMethod("session/prompt");
+    server.resolvePrompt("end_turn");
+    await tick();
+
+    const results = () => session.messageHistory.filter((m) => m.type === "result");
+    expect(results().length).toBe(1);
+    const first = results()[0] as { data: { usage: Record<string, number> } };
+    expect(first.data.usage).toEqual({
+      input_tokens: 0,
+      output_tokens: 0,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+    });
+
+    // The agent reports the turn's occupancy AFTER the prompt resolved.
+    server.emitUpdate({ sessionUpdate: "usage_update", used: 36350, size: 1048576 });
+    await tick();
+
+    // Turn 2 — the envelope carries the freshest snapshot Kimi has given us.
+    route(bridge, session, { type: "user_message", content: "and now?" });
+    await server.waitForFrame(
+      (f) => f.method === "session/prompt" && (f.params?.prompt as { text?: string }[])?.[0]?.text === "and now?",
+    );
+    server.resolvePrompt("end_turn");
+    await tick();
+
+    expect(results().length).toBe(2);
+    const second = results()[1] as { data: { usage: Record<string, number> } };
+    expect(second.data.usage).toEqual({
+      // `used` is cumulative context occupancy, not a per-turn input count —
+      // documented as such in backends/kimi-cli/README.md.
+      input_tokens: 36350,
+      output_tokens: 0,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+    });
+  });
+
+  it("leaves per-message assistant envelopes at zero usage (turn-level surface only)", async () => {
+    const bridge = new WsBridge();
+    const { adapter, server } = makeAdapter("s1");
+    bridge.attachKimiAdapter("s1", adapter);
+    const session = bridge.getSession("s1")!;
+    await server.waitForMethod("session/new");
+    await tick();
+
+    server.emitUpdate({ sessionUpdate: "usage_update", used: 36350, size: 1048576 });
+    route(bridge, session, { type: "user_message", content: "hi" });
+    await server.waitForMethod("session/prompt");
+    server.emitUpdate({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "ok" } });
+    server.resolvePrompt("end_turn");
+    await tick();
+
+    const assistant = session.messageHistory.find((m) => m.type === "assistant") as
+      { message: { usage: Record<string, number> } } | undefined;
+    expect(assistant).toBeDefined();
+    expect(assistant!.message.usage).toEqual({
+      input_tokens: 0,
+      output_tokens: 0,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+    });
+  });
+
+  it("reflects the ACP session mode on session.state.permissionMode", async () => {
+    const bridge = new WsBridge();
+    const { adapter, server } = makeAdapter("s1");
+    bridge.attachKimiAdapter("s1", adapter);
+    const session = bridge.getSession("s1")!;
+    await server.waitForMethod("session/new");
+    await tick(8);
+
+    // The adapter launches with Pneuma's default posture → ACP "yolo", and
+    // the agent's `current_mode_update` answer is what lands in the state.
+    expect(session.state.permissionMode).toBe("bypassPermissions");
+
+    // A user flipping the mode inside kimi is reported the same way.
+    server.emitUpdate({ sessionUpdate: "current_mode_update", currentModeId: "plan" });
+    await tick();
+    expect(session.state.permissionMode).toBe("plan");
+  });
+});

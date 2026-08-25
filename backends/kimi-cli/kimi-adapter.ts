@@ -29,11 +29,12 @@ import { randomUUID } from "node:crypto";
 import { AcpTransport } from "./acp-transport.js";
 import {
   AcpSessionTranslator,
+  parseCurrentModeId,
   parseModelConfig,
   type AcpAvailableCommand,
-  type AcpConfigOption,
   type AcpPermissionRequestParams,
   type AcpPromptResult,
+  type AcpSessionSetupResult,
   type PneumaMessage,
 } from "./protocol.js";
 
@@ -79,6 +80,43 @@ export function mapPermissionModeToAcp(permissionMode: string | undefined): stri
     default:
       return "default";
   }
+}
+
+/**
+ * Inverse of `mapPermissionModeToAcp` — turns the ACP session mode the agent
+ * reports (`current_mode_update`, or the setup result's `modes` state) back
+ * into Pneuma's Claude-vocabulary `SessionState.permissionMode`, so one field
+ * means the same thing across every backend. A mode we have never seen
+ * degrades to "default" (ask) — the same direction the forward map refuses to
+ * escalate in.
+ */
+export function mapAcpModeToPermissionMode(acpModeId: string): string {
+  switch (acpModeId) {
+    case "yolo":
+      return "bypassPermissions";
+    case "auto":
+      return "acceptEdits";
+    case "plan":
+      return "plan";
+    default:
+      return "default";
+  }
+}
+
+/** Context-window occupancy snapshot (ACP `usage_update`, 0.38.0+). */
+export interface KimiUsageInfo {
+  /** Tokens the session currently occupies — cumulative, not per-turn. */
+  used: number;
+  /** Size of the model's context window in tokens. */
+  size: number;
+}
+
+/** The active ACP session mode, in both vocabularies. */
+export interface KimiModeInfo {
+  /** ACP mode id as the agent reports it (`default`/`plan`/`auto`/`yolo`). */
+  acpModeId: string;
+  /** Same mode in Pneuma's `SessionState.permissionMode` vocabulary. */
+  permissionMode: string;
 }
 
 export interface KimiPermissionRequest {
@@ -132,6 +170,8 @@ export class KimiAdapter {
   private permissionRequestHandlers: ((req: KimiPermissionRequest) => void)[] = [];
   private permissionCancelledHandlers: ((requestId: string) => void)[] = [];
   private modelsHandlers: ((models: KimiModelInfo) => void)[] = [];
+  private usageHandlers: ((usage: KimiUsageInfo) => void)[] = [];
+  private modeChangedHandlers: ((mode: KimiModeInfo) => void)[] = [];
   private commandsHandlers: ((commands: AcpAvailableCommand[]) => void)[] = [];
   private metaHandlers: ((meta: { agentVersion: string }) => void)[] = [];
   private toolProgressHandlers: ((progress: { toolCallId: string; toolName: string }) => void)[] = [];
@@ -140,6 +180,8 @@ export class KimiAdapter {
 
   private acpSessionId: string | undefined;
   private lastEmittedSessionId: string | undefined;
+  /** Last reported session mode — replayed to late `onModeChanged` subscribers. */
+  private lastMode: KimiModeInfo | undefined;
   private disconnected = false;
   private initFailed = false;
 
@@ -218,6 +260,32 @@ export class KimiAdapter {
 
   onModels(cb: (models: KimiModelInfo) => void): void {
     this.modelsHandlers.push(cb);
+  }
+
+  /** Context-window occupancy — one frame per turn (ACP `usage_update`). */
+  onUsage(cb: (usage: KimiUsageInfo) => void): void {
+    this.usageHandlers.push(cb);
+  }
+
+  /**
+   * The active ACP session mode — seeded from the session-setup result and
+   * updated on every `current_mode_update` (ours via `session/set_mode`, or
+   * the user's from inside kimi).
+   *
+   * Replay-on-subscribe, for the same reason `onSessionId` has it: the mode
+   * is learned during the asynchronous handshake while the bridge attaches
+   * after `launch()` returns. Without the replay, a session that starts in a
+   * non-default mode AND needs no `session/set_mode` would report a mode it
+   * is not in.
+   */
+  onModeChanged(cb: (mode: KimiModeInfo) => void): void {
+    this.modeChangedHandlers.push(cb);
+    if (!this.lastMode) return;
+    try {
+      cb(this.lastMode);
+    } catch (err) {
+      console.error(`[kimi-adapter ${this.sessionId}] modeChanged handler error (replay):`, err);
+    }
   }
 
   onCommands(cb: (commands: AcpAvailableCommand[]) => void): void {
@@ -335,28 +403,40 @@ export class KimiAdapter {
       const name = initResult?.agentInfo?.name ?? "Kimi Code CLI";
       this.fireMeta({ agentVersion: version ? `${name} ${version}` : name });
 
-      const configOptions = await this.setupSession();
+      const setup = await this.setupSession();
+      const configOptions = setup?.configOptions;
       const modelConfig = parseModelConfig(configOptions);
       if (modelConfig) this.fireModels(modelConfig);
 
-      // Apply the permission posture via ACP session modes. Only attempt a
-      // mode the agent actually offers (configOptions `mode` entry); an
-      // unknown/missing offer degrades to the agent's default mode.
-      const acpMode = mapPermissionModeToAcp(this.permissionMode);
+      // Report the mode the session actually starts in BEFORE trying to
+      // change it — 0.38.0 ships it as the setup result's `modes` state,
+      // older agents only inside the `mode` config option.
       const modeOption = configOptions?.find((o) => o.id === "mode");
-      if (modeOption && modeOption.currentValue !== acpMode) {
-        if (modeOption.options?.some((o) => o.value === acpMode)) {
+      const initialMode = parseCurrentModeId(setup?.modes) ?? modeOption?.currentValue;
+      if (initialMode) this.fireModeChanged(initialMode);
+
+      // Apply the permission posture via ACP session modes. Only attempt a
+      // mode the agent actually offers; an unknown/missing offer stays on
+      // whatever the agent started in (and says so — never silently).
+      const acpMode = mapPermissionModeToAcp(this.permissionMode);
+      if (initialMode !== acpMode) {
+        const offered = setup?.modes?.availableModes?.some((m) => m.id === acpMode)
+          ?? modeOption?.options?.some((o) => o.value === acpMode)
+          ?? false;
+        if (offered) {
           try {
             await this.transport.call("session/set_mode", {
               sessionId: this.acpSessionId,
               modeId: acpMode,
             });
+            // The agent answers with a `current_mode_update` frame, which is
+            // what updates our reported mode — no optimistic local write.
           } catch (err) {
             console.warn(`[kimi-adapter ${this.sessionId}] session/set_mode "${acpMode}" failed:`, err);
           }
         } else {
           console.warn(
-            `[kimi-adapter ${this.sessionId}] agent offers no "${acpMode}" mode — staying on "${modeOption.currentValue}"`,
+            `[kimi-adapter ${this.sessionId}] agent offers no "${acpMode}" mode — staying on "${initialMode ?? "<unreported>"}"`,
           );
         }
       }
@@ -384,21 +464,25 @@ export class KimiAdapter {
   }
 
   /**
-   * `session/resume` when resuming (verified: replays NO history — Pneuma
-   * rehydrates chat from its own history.json; `session/load` is avoided
-   * precisely because it replays the full conversation as update frames).
-   * Falls back to a fresh `session/new` when resume is unsupported or the
-   * old session is gone.
+   * `session/resume` when resuming (verified on 0.26.0 and re-verified on
+   * 0.38.0: replays NO history frames, yet the model still has the prior
+   * conversation in context — Pneuma rehydrates chat from its own
+   * history.json; `session/load` is avoided precisely because it replays the
+   * full conversation as update frames). Falls back to a fresh `session/new`
+   * when resume is unsupported or the old session is gone.
+   *
+   * 0.38.0 answers resume with `sessionId: null`; the id we asked to resume
+   * stays authoritative, so nothing reads it off the result.
    */
-  private async setupSession(): Promise<AcpConfigOption[] | undefined> {
+  private async setupSession(): Promise<AcpSessionSetupResult | undefined> {
     if (this.resumeSessionId && this.supportsResume) {
       try {
         const result = (await this.transport.call("session/resume", {
           sessionId: this.resumeSessionId,
           cwd: this.cwd,
-        })) as { configOptions?: AcpConfigOption[] };
+        })) as AcpSessionSetupResult;
         this.setAcpSessionId(this.resumeSessionId);
-        return result?.configOptions;
+        return result;
       } catch (err) {
         console.warn(
           `[kimi-adapter ${this.sessionId}] session/resume failed (${err}); starting a new session`,
@@ -409,12 +493,12 @@ export class KimiAdapter {
     const result = (await this.transport.call("session/new", {
       cwd: this.cwd,
       mcpServers: [],
-    })) as { sessionId?: string; configOptions?: AcpConfigOption[] };
+    })) as AcpSessionSetupResult;
     if (!result?.sessionId) {
       throw new Error("session/new returned no sessionId");
     }
     this.setAcpSessionId(result.sessionId);
-    return result.configOptions;
+    return result;
   }
 
   private setAcpSessionId(id: string): void {
@@ -572,11 +656,25 @@ export class KimiAdapter {
           break;
         case "config": {
           // Agent-side config change (set_model / set_mode echo) — keep the
-          // model state in sync.
+          // model state in sync. The mode deliberately is NOT read here:
+          // `current_mode_update` is its single source, and two sources for
+          // one fact eventually disagree.
           const modelConfig = parseModelConfig(event.configOptions);
           if (modelConfig) this.fireModels(modelConfig);
           break;
         }
+        case "usage":
+          for (const handler of this.usageHandlers) {
+            try {
+              handler({ used: event.used, size: event.size });
+            } catch (err) {
+              console.error(`[kimi-adapter ${this.sessionId}] usage handler error:`, err);
+            }
+          }
+          break;
+        case "mode":
+          this.fireModeChanged(event.currentModeId);
+          break;
         case "tool-progress":
           for (const handler of this.toolProgressHandlers) {
             try {
@@ -614,6 +712,21 @@ export class KimiAdapter {
         handler(models);
       } catch (err) {
         console.error(`[kimi-adapter ${this.sessionId}] models handler error:`, err);
+      }
+    }
+  }
+
+  private fireModeChanged(acpModeId: string): void {
+    const mode: KimiModeInfo = {
+      acpModeId,
+      permissionMode: mapAcpModeToPermissionMode(acpModeId),
+    };
+    this.lastMode = mode;
+    for (const handler of this.modeChangedHandlers) {
+      try {
+        handler(mode);
+      } catch (err) {
+        console.error(`[kimi-adapter ${this.sessionId}] modeChanged handler error:`, err);
       }
     }
   }

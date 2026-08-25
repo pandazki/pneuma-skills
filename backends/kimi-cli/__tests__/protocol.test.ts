@@ -1,13 +1,16 @@
 /**
  * AcpSessionTranslator tests. Every fixture below is lifted from frames
- * captured live against `kimi acp` (Kimi Code CLI 0.26.0) — including the
- * partial-JSON tool-argument streaming trap, the mutating `title`, and the
- * failed-tool and `session/load` replay shapes.
+ * captured live against `kimi acp` — the tool / chunk / command shapes from
+ * Kimi Code CLI 0.26.0 (including the partial-JSON tool-argument streaming
+ * trap, the mutating `title`, and the failed-tool and `session/load` replay
+ * shapes), the `usage_update` / `current_mode_update` / `session_info_update`
+ * shapes from 0.38.0.
  */
 
 import { describe, expect, it } from "bun:test";
 import {
   AcpSessionTranslator,
+  parseCurrentModeId,
   parseModelConfig,
   type AcpTranslationEvent,
   type PneumaMessage,
@@ -301,5 +304,101 @@ describe("parseModelConfig", () => {
   it("returns null when configOptions is missing or has no model entry", () => {
     expect(parseModelConfig(undefined)).toBeNull();
     expect(parseModelConfig([{ type: "select", id: "mode" }])).toBeNull();
+  });
+});
+
+// ── Kimi Code 0.38.0 update kinds ────────────────────────────────────────────
+
+/**
+ * Frames captured verbatim from `kimi acp` 0.38.0 (probe: initialize →
+ * session/new → set_mode → two prompts). All three kinds were unknown to the
+ * 0.26.0-era translator and produced "unknown sessionUpdate kind" warnings.
+ */
+const CAPTURED_0_38_0 = {
+  usage: { sessionUpdate: "usage_update", used: 36350, size: 1048576 },
+  usageLater: { sessionUpdate: "usage_update", used: 36680, size: 1048576 },
+  modeYolo: { sessionUpdate: "current_mode_update", currentModeId: "yolo" },
+  modeDefault: { sessionUpdate: "current_mode_update", currentModeId: "default" },
+  sessionInfo: {
+    sessionUpdate: "session_info_update",
+    title: "Remember the magic word: paprika. Reply with only the word ok.",
+  },
+} as const;
+
+describe("AcpSessionTranslator — Kimi Code 0.38.0 update kinds", () => {
+  it("translates usage_update into a usage event carrying the captured numbers", () => {
+    const t = new AcpSessionTranslator();
+    expect(t.translate(CAPTURED_0_38_0.usage)).toEqual([
+      { kind: "usage", used: 36350, size: 1048576 },
+    ]);
+    expect(t.translate(CAPTURED_0_38_0.usageLater)).toEqual([
+      { kind: "usage", used: 36680, size: 1048576 },
+    ]);
+  });
+
+  it("drops a usage_update that is missing either number rather than inventing one", () => {
+    const t = new AcpSessionTranslator();
+    expect(t.translate({ sessionUpdate: "usage_update", used: 100 } as never)).toEqual([]);
+    expect(t.translate({ sessionUpdate: "usage_update", size: 1000 } as never)).toEqual([]);
+  });
+
+  it("translates current_mode_update into a mode event (ACP session mode id)", () => {
+    const t = new AcpSessionTranslator();
+    expect(t.translate(CAPTURED_0_38_0.modeYolo)).toEqual([
+      { kind: "mode", currentModeId: "yolo" },
+    ]);
+    expect(t.translate(CAPTURED_0_38_0.modeDefault)).toEqual([
+      { kind: "mode", currentModeId: "default" },
+    ]);
+    // A mode frame with no id carries no signal — dropped, not guessed.
+    expect(t.translate({ sessionUpdate: "current_mode_update" } as never)).toEqual([]);
+  });
+
+  it("consumes session_info_update silently (auto title has no Pneuma surface)", () => {
+    const t = new AcpSessionTranslator();
+    expect(t.translate(CAPTURED_0_38_0.sessionInfo)).toEqual([]);
+    expect(t.translate({ sessionUpdate: "session_info_update" } as never)).toEqual([]);
+  });
+
+  it("never reports any 0.38.0 kind as unknown", () => {
+    const t = new AcpSessionTranslator();
+    for (const frame of Object.values(CAPTURED_0_38_0)) {
+      const events = t.translate(frame);
+      expect(events.some((e) => e.kind === "unknown")).toBe(false);
+    }
+  });
+
+  it("does not disturb the text buffer — usage/mode/info frames interleave mid-stream", () => {
+    const t = new AcpSessionTranslator();
+    t.translate({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "pap" } });
+    t.translate(CAPTURED_0_38_0.sessionInfo);
+    t.translate(CAPTURED_0_38_0.usage);
+    t.translate(CAPTURED_0_38_0.modeYolo);
+    t.translate({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "rika" } });
+    expect(messages(t.endTurn())).toEqual([
+      { type: "assistant", content: [{ type: "text", text: "paprika" }] },
+    ]);
+  });
+});
+
+describe("parseCurrentModeId", () => {
+  /** Captured verbatim from `session/new` on Kimi Code CLI 0.38.0. */
+  const CAPTURED_MODES = {
+    currentModeId: "default",
+    availableModes: [
+      { id: "default", name: "Default", description: "Manual approvals; tools execute normally." },
+      { id: "plan", name: "Plan", description: "Read-only planning; no tool execution." },
+      { id: "auto", name: "Auto", description: "Auto-approve safe operations." },
+      { id: "yolo", name: "YOLO", description: "Auto-approve everything." },
+    ],
+  };
+
+  it("extracts the current mode id from the session-setup `modes` state", () => {
+    expect(parseCurrentModeId(CAPTURED_MODES)).toBe("default");
+  });
+
+  it("returns null when the agent reports no mode state (pre-0.38.0 results)", () => {
+    expect(parseCurrentModeId(undefined)).toBeNull();
+    expect(parseCurrentModeId({ availableModes: [] })).toBeNull();
   });
 });
