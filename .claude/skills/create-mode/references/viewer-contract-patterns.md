@@ -55,6 +55,7 @@ export function ModePreview(props: ViewerPreviewProps): JSX.Element {
 - 直接读 `props.sources.deck.current()` 而不用 `useSource`：少了 subscribe，文件变化不会触发 re-render。
 - 在 PreviewComponent 顶层 useState 镜像 `deck`：Source 四不变量已经保证一致性，本地镜像只会引入 stale。
 - 把 `props.editing` 默认成 `true` 之外的值：mode 永远先假设 editing，再按 `props.editing === false` 关闭交互。
+- **用原生 `<select>` / 默认样式的 `<input>` 当 viewer 控件**：OS 原生控件的样式与 Ethereal Tech 主题违和，这是全局禁令（见 `.claude/rules/frontend.md`）。表单控件要么 `appearance-none` + `cc-*` token 全量重绘，要么做成自定义组件；原生 `<select>` 的弹出菜单样式改不动，一律换自定义 dropdown。先例：eli5 的 compare picker 曾以原生 `<select>` 上线，用户第一眼就打了回来。
 
 ### 2. extractContext — 把 selection 翻成文本
 

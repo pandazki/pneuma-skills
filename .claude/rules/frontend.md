@@ -14,6 +14,7 @@ paths:
 - **Design tokens**: "Ethereal Tech" theme via `cc-*` CSS custom properties (deep zinc bg `#09090b`, neon orange primary `#f97316`, glassmorphism surfaces with `backdrop-blur`). New UI must use the tokens, not ad-hoc colors.
 - **Visual verification is mandatory**: after modifying viewer components, CSS, or any UI-facing code, use `chrome-devtools-mcp` to screenshot the running dev server and verify before reporting completion. Do not judge visual correctness by reading code alone.
 - **No emoji in UI elements** — use SVG icons or text labels.
+- **No native form-control chrome in any user-facing surface** (viewers, session UI, launcher): a bare `<select>`, default-styled `<input>` (checkbox/radio/range/date), `<progress>` etc. renders OS-native widgetry that clashes with the Ethereal Tech theme. Either fully restyle the element (`appearance-none` + `cc-*` tokens, including the popup where the platform allows) or build a custom component styled with the tokens; when the platform popup cannot be styled (classic `<select>` dropdown), build the custom component. A default-styled control shipping to users is a defect, not a polish item. (Rule set 2026-08-25 — eli5's compare picker shipped a native `<select>` and was called out on first user contact.)
 
 ## Gotchas
 

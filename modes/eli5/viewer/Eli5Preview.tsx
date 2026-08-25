@@ -37,6 +37,7 @@ import type {
 import { useSource } from "../../../src/hooks/useSource.js";
 import { useStore } from "../../../src/store.js";
 import type { AudienceEntry, Explainer } from "../domain.js";
+import AudiencePicker from "./AudiencePicker.js";
 import AudienceRail from "./AudienceRail.js";
 import { anchorRequestForPane, type AnchorRequest } from "./anchor-relay.js";
 import PagePane, { type PageSelectionPayload } from "./PagePane.js";
@@ -514,12 +515,14 @@ export default function Eli5Preview({
           onSelectElement={selectInActivePage}
           header={
             comparing ? (
-              <PaneHeader
-                caption="In view"
-                audiences={audiences}
-                valueId={activeAudience?.id ?? null}
-                onChange={pickAudience}
-              />
+              <div className="mb-2 shrink-0">
+                <AudiencePicker
+                  caption="In view"
+                  audiences={audiences}
+                  valueId={activeAudience?.id ?? null}
+                  onChange={pickAudience}
+                />
+              </div>
             ) : undefined
           }
         />
@@ -532,49 +535,18 @@ export default function Eli5Preview({
             selectMode={selectMode}
             onSelectElement={selectInComparePage}
             header={
-              <PaneHeader
-                caption="Compared with"
-                audiences={audiences}
-                valueId={compareAudience?.id ?? null}
-                onChange={setWantedCompareId}
-              />
+              <div className="mb-2 shrink-0">
+                <AudiencePicker
+                  caption="Compared with"
+                  audiences={audiences}
+                  valueId={compareAudience?.id ?? null}
+                  onChange={setWantedCompareId}
+                />
+              </div>
             }
           />
         )}
       </main>
-    </div>
-  );
-}
-
-/** The per-pane audience picker, shown only while comparing. */
-function PaneHeader({
-  caption,
-  audiences,
-  valueId,
-  onChange,
-}: {
-  caption: string;
-  audiences: AudienceEntry[];
-  valueId: string | null;
-  onChange: (id: string) => void;
-}) {
-  return (
-    <div className="mb-2 flex shrink-0 items-center gap-2">
-      <span className="shrink-0 text-[10px] uppercase tracking-wider text-cc-muted">
-        {caption}
-      </span>
-      <select
-        aria-label={caption}
-        value={valueId ?? ""}
-        onChange={(e) => onChange(e.target.value)}
-        className="min-w-0 flex-1 truncate rounded-md border border-cc-border bg-cc-surface/70 px-2 py-1 text-xs text-cc-fg focus-visible:ring-2 focus-visible:ring-cc-primary/60"
-      >
-        {audiences.map((audience, i) => (
-          <option key={audience.id} value={audience.id}>
-            {i + 1}. {audience.label}
-          </option>
-        ))}
-      </select>
     </div>
   );
 }
