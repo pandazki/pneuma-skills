@@ -38,8 +38,16 @@ extraResources:
     to: "pneuma/backends"
   - from: "../core"
     to: "pneuma/core"
+  # harness/ is dev-only experiment bulk (bansho screenshots etc., ~71 MB) —
+  # npm already excludes it via package.json "files" negation; without this
+  # filter the desktop app shipped it, and its 3 concurrent on-disk copies
+  # (.app + zip + dmg staging) helped push the macOS CI runner into ENOSPC
+  # at the dmg step (v3.36.0, twice).
   - from: "../modes"
     to: "pneuma/modes"
+    filter:
+      - "**/*"
+      - "!**/harness/**"
   # Builtin plugins (vercel-deploy, cf-pages-deploy, obsidian-memory).
   # Plugin registry discovers via `join(import.meta.dir, "..", "plugins")` from
   # server/, so the directory must sit at pneuma/plugins next to server/. Without

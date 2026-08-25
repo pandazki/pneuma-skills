@@ -3,6 +3,12 @@ name: Release
 on:
   push:
     branches: [main]
+  # Manual rebuild path for desktop artifacts. When the version tag already
+  # exists, check-version skips the release job, but the desktop matrix still
+  # runs and uploads ONLY the assets missing from that release — the recovery
+  # path for a failed platform build (e.g. the v3.36.0 macOS ENOSPC) without
+  # re-tagging or churning already-published binaries.
+  workflow_dispatch:
 
 concurrency:
   group: release
@@ -120,7 +126,13 @@ jobs:
   desktop:
     name: Desktop (${{ matrix.os-label }})
     needs: [check-version, release]
-    if: needs.check-version.outputs.should_release == 'true'
+    # Push path: run only after a successful release job. Dispatch path: the
+    # tag already exists, release is skipped, and we rebuild to backfill
+    # missing assets onto the existing GitHub Release.
+    if: >-
+      always() && needs.check-version.result == 'success' &&
+      (needs.release.result == 'success' ||
+       (github.event_name == 'workflow_dispatch' && needs.release.result == 'skipped'))
     strategy:
       fail-fast: false
       matrix:
@@ -156,6 +168,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+
+      # macOS runners keep ~10+ GB of iOS simulator runtimes we never use,
+      # while the dmg step needs the .app, the zip, and the dmg staging volume
+      # on disk simultaneously (~0.5 GB each). v3.36.0 hit ENOSPC here twice.
+      - name: Free disk space (macOS)
+        if: matrix.platform == 'darwin'
+        run: |
+          df -h /
+          sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes/* || true
+          sudo rm -rf ~/Library/Developer/CoreSimulator/Caches || true
+          df -h /
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -226,16 +249,31 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
+      - name: Disk usage after build
+        if: always() && matrix.platform == 'darwin'
+        run: df -h /
+
       - name: Upload to GitHub Release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.check-version.outputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           TAG="v${VERSION}"
+          # On a manual dispatch we are backfilling a partially-populated
+          # release: upload only assets it does not have yet, so binaries
+          # users already downloaded (and their latest*.yml checksums) are
+          # never churned. Push builds keep the original clobber behavior.
+          EXISTING="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
           for file in desktop/release/*.{dmg,zip,exe,AppImage,deb,yml}; do
             if [ -f "$file" ]; then
-              echo "Uploading $(basename "$file")..."
+              base="$(basename "$file")"
+              if [ "$EVENT_NAME" = "workflow_dispatch" ] && printf '%s\n' "$EXISTING" | grep -qxF "$base"; then
+                echo "Skipping $base — already on $TAG"
+                continue
+              fi
+              echo "Uploading $base..."
               gh release upload "$TAG" "$file" --clobber
             fi
           done
