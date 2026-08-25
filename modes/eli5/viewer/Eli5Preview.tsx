@@ -48,6 +48,7 @@ import {
   audienceAddress,
   buildPageSrcdoc,
   comparePaneIndex,
+  exportUrl,
   findPageHtml,
   frameworkPath,
   nextRung,
@@ -424,6 +425,14 @@ export default function Eli5Preview({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigateRequest]);
 
+  // ── Export ────────────────────────────────────────────────────────────
+  // Opens the server's export page for the topic in view: ladder preview,
+  // per-rung downloads, whole-topic zip, deploy. New tab — it is a
+  // standalone page served by the backend, not a viewer state.
+  const handleExport = useCallback(() => {
+    window.open(exportUrl(apiBase, activeContentSet), "_blank");
+  }, [apiBase, activeContentSet]);
+
   // ── Compare ───────────────────────────────────────────────────────────
   const toggleCompare = useCallback(() => {
     if (compareOn) {
@@ -476,6 +485,14 @@ export default function Eli5Preview({
             }`}
           >
             Compare
+          </button>
+          <button
+            type="button"
+            onClick={handleExport}
+            title="Open the export page — download pages or publish this topic"
+            className="shrink-0 rounded-md border border-cc-border bg-cc-surface/60 px-2.5 py-1 text-xs font-medium text-cc-muted transition-colors duration-200 hover:border-cc-primary/40 hover:text-cc-fg focus-visible:ring-2 focus-visible:ring-cc-primary/60"
+          >
+            Export
           </button>
         </div>
         <div className="flex items-center px-4 pb-2.5 pt-2">

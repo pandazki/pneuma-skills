@@ -32,6 +32,7 @@ import {
   audienceAddress,
   buildPageSrcdoc,
   comparePaneIndex,
+  exportUrl,
   findPageHtml,
   frameworkPath,
   nextRung,
@@ -582,5 +583,29 @@ describe("the framework's half of the loop", () => {
     ).text();
     const list = hook.match(/const COARSE_ADDRESS_KEYS = \[([^\]]+)\]/)?.[1] ?? "";
     expect(list).toContain('"audience"');
+  });
+});
+
+// ── the export entry point ──────────────────────────────────────────────────
+
+describe("exportUrl — the Export button's destination", () => {
+  test("names the active content set so export opens the topic in view", () => {
+    expect(exportUrl("", "database-index")).toBe(
+      "/export/eli5?contentSet=database-index",
+    );
+  });
+
+  test("dev mode prefixes the backend origin — the export routes are not Vite's", () => {
+    expect(exportUrl("http://localhost:17007", "database-index")).toBe(
+      "http://localhost:17007/export/eli5?contentSet=database-index",
+    );
+  });
+
+  test("no active content set → bare route; the server auto-discovers", () => {
+    expect(exportUrl("", null)).toBe("/export/eli5");
+  });
+
+  test("content-set names are URL-encoded, not pasted", () => {
+    expect(exportUrl("", "my topic")).toBe("/export/eli5?contentSet=my%20topic");
   });
 });

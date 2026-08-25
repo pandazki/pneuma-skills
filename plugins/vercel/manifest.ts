@@ -7,7 +7,7 @@ const manifest: PluginManifest = {
   description: "Deploy to Vercel (CLI or API token)",
   builtin: true,
   scope: "global",
-  compatibleModes: ["slide", "webcraft", "remotion", "doc", "gridboard"],
+  compatibleModes: ["slide", "webcraft", "remotion", "doc", "gridboard", "eli5"],
 
   hooks: {
     "deploy:providers": "./hooks.ts",

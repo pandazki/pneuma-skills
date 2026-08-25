@@ -486,3 +486,19 @@ export function comparePaneIndex(
     ? wanted
     : nextRung(activeIndex, audiences.length);
 }
+
+// ── Export ──────────────────────────────────────────────────────────────────
+
+/**
+ * Where the Export button goes: the server's `/export/eli5` page for the
+ * topic in view. The export routes live on the backend, so in dev the
+ * `apiBase` prefix matters (Vite serves nothing under /export); the active
+ * content set rides along so the server exports the ladder the reader is
+ * looking at rather than re-discovering one.
+ */
+export function exportUrl(apiBase: string, activeContentSet: string | null): string {
+  const qs = activeContentSet
+    ? `?contentSet=${encodeURIComponent(activeContentSet)}`
+    : "";
+  return `${apiBase}/export/eli5${qs}`;
+}

@@ -1,10 +1,10 @@
 /**
  * Export routes — Slide export + WebCraft export + Remotion export + Kami
- * export + WordTaste markdown export + file listing.
+ * export + WordTaste markdown export + ELI5 export + file listing.
  *
  * Registered for all non-launcher modes.
  * Includes: /export/slides, /export/webcraft, /export/remotion, /export/kami,
- * /export/wordtaste, /api/files (GET).
+ * /export/wordtaste, /export/eli5, /api/files (GET).
  */
 
 import type { Hono } from "hono";
@@ -12,6 +12,9 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, extname, dirname } from "node:path";
 import { pathStartsWith } from "../utils.js";
 import { parseCompositions } from "../../modes/remotion/viewer/composition-parser.js";
+import { loadExplainer } from "../../modes/eli5/domain.js";
+import type { AudienceEntry, ExplainerManifest } from "../../modes/eli5/domain.js";
+import { buildPageSrcdoc } from "../../modes/eli5/viewer/player-logic.js";
 import { getDeployCSS, getDeployToolbarHTML, getDeployModalHTML, getDeployScript } from "./deploy-ui.js";
 import type { HookBus } from "../../core/hook-bus.js";
 import type { SessionInfo } from "../../core/types/plugin.js";
@@ -2919,6 +2922,761 @@ async function downloadPdf() {
       } catch { /* ignore */ }
       const zipName = safeDownloadName(rawTitle, contentSet, "webcraft-project");
       const utf8ZipName = encodeURIComponent((rawTitle ?? zipName) + ".zip");
+      return new Response(content, {
+        headers: {
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename="${zipName}.zip"; filename*=UTF-8''${utf8ZipName}`,
+        },
+      });
+    } catch {
+      return c.text("Export failed", 500);
+    }
+  });
+
+  // ── ELI5 export: the audience ladder as a small website ──────────────────
+  //
+  // An eli5 topic is one content set: `manifest.json` lists `audiences[]` in
+  // ladder order (simplest register first, most technical last), each rung a
+  // complete self-contained HTML page under `pages/`. Export mirrors
+  // webcraft's quadruple — preview page, per-rung download, whole-topic zip,
+  // deploy — plus two eli5-specific surfaces the deploy script fetches so the
+  // deployed artifact reads as the ladder, not a file dump:
+  //
+  //   /export/eli5             — ladder preview + downloads + deploy UI
+  //   /export/eli5/download    — one rung, assets inlined (?page=<audienceId>;
+  //                              &nav=ladder adds the deployed-site way back)
+  //   /export/eli5/site-index  — the ladder landing page (deployed index.html)
+  //   /export/eli5/zip         — the whole topic directory
+  //
+  // The manifest schema differs from webcraft's (`audiences[]`, not
+  // `pages[]`), so none of the webcraft routes can serve it. Parsing reuses
+  // the viewer's own loader (modes/eli5/domain.ts) so export sees exactly the
+  // ladder the viewer shows — same id/label fallbacks, same junk-entry
+  // tolerance — while still reading the manifest straight off disk like the
+  // other export routes do.
+
+  /** Escape manifest-sourced text for HTML body/attribute positions. */
+  function escapeEli5Text(value: string): string {
+    return value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  /**
+   * Resolve the topic directory + manifest for an eli5 request. Same
+   * three-branch rule as webcraft: honour ?contentSet=, else the workspace
+   * root manifest, else auto-discover the first subdirectory holding a
+   * manifest.json — but the discovered content-set NAME is captured (kami's
+   * download-route idiom) because the /content base href and the deploy
+   * paths need it, and the explicit branch is traversal-guarded (wordtaste's
+   * idiom).
+   */
+  function resolveEli5Topic(rawContentSet: string | undefined):
+    | { baseDir: string; contentSet?: string; manifest: ExplainerManifest }
+    | { error: string; status: 400 | 404 | 500 } {
+    let baseDir = workspace;
+    let contentSet = rawContentSet;
+    if (contentSet) {
+      baseDir = join(workspace, contentSet);
+      if (!pathStartsWith(baseDir, workspace)) {
+        return { error: "Invalid content set", status: 400 };
+      }
+    } else if (!existsSync(join(workspace, "manifest.json"))) {
+      try {
+        for (const entry of readdirSync(workspace, { withFileTypes: true })) {
+          if (entry.isDirectory() && existsSync(join(workspace, entry.name, "manifest.json"))) {
+            contentSet = entry.name;
+            baseDir = join(workspace, entry.name);
+            break;
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
+    const manifestPath = join(baseDir, "manifest.json");
+    if (!existsSync(manifestPath)) {
+      return { error: "No manifest.json found in workspace", status: 404 };
+    }
+    let manifest: ExplainerManifest | undefined;
+    try {
+      manifest = loadExplainer([
+        { path: "manifest.json", content: readFileSync(manifestPath, "utf-8") },
+      ])?.byContentSet[""];
+    } catch {
+      return { error: "Failed to parse manifest.json", status: 500 };
+    }
+    if (!manifest || manifest.audiences.length === 0) {
+      return { error: "No audiences in manifest.json", status: 404 };
+    }
+    return { baseDir, contentSet, manifest };
+  }
+
+  /**
+   * Find the rung a ?page= names. The id is the audience's stable identity
+   * (the mode's ViewerAddress vocabulary), so it is matched first; a file
+   * path is accepted as a fallback, and an unknown value lands on the first
+   * rung — webcraft's fallback rule.
+   */
+  function findEli5Audience(
+    manifest: ExplainerManifest,
+    page: string | undefined,
+  ): { audience: AudienceEntry; index: number } {
+    const list = manifest.audiences;
+    let index = page ? list.findIndex((a) => a.id === page) : 0;
+    if (index === -1) index = list.findIndex((a) => a.file === page);
+    if (index === -1) index = 0;
+    return { audience: list[index], index };
+  }
+
+  /**
+   * The ladder landing page — the deployed site's index.html. Pure function
+   * of the manifest: numbered rungs in ladder order, joined by a vertical
+   * rail so the progression (simplest first) is visible, each card linking
+   * its rung's page. Ethereal Tech dark idiom, matching the export chrome.
+   */
+  function buildEli5SiteIndexHtml(manifest: ExplainerManifest): string {
+    const esc = escapeEli5Text;
+    const n = manifest.audiences.length;
+    const chips = [manifest.topic, manifest.language]
+      .filter((v): v is string => !!v)
+      .map((v) => `<span class="chip">${esc(v)}</span>`)
+      .join("");
+    const rungs = manifest.audiences
+      .map(
+        (a, i) => `<li class="rung">
+  <a class="rung-card" href="pages/${encodeURIComponent(a.id)}.html">
+    <span class="rung-num">${i + 1}</span>
+    <span class="rung-body">
+      <span class="rung-label">${esc(a.label)}</span>${a.tone ? `\n      <span class="rung-tone">${esc(a.tone)}</span>` : ""}
+    </span>
+    <svg class="rung-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+  </a>
+</li>`,
+      )
+      .join("\n");
+
+    return `<!DOCTYPE html>
+<html lang="${esc(manifest.language || "en")}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(manifest.title)}</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0; min-height: 100vh;
+  background: #09090b;
+  background-image: radial-gradient(circle at 50% 0%, rgba(249,115,22,0.08) 0%, transparent 55%);
+  color: #fafafa;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  padding: 64px 24px 80px;
+}
+.wrap { max-width: 640px; margin: 0 auto; }
+.ladder-header { margin-bottom: 40px; }
+.ladder-header h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 12px; line-height: 1.25; }
+.ladder-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: #a1a1aa; font-size: 13px; }
+.chip {
+  padding: 2px 10px; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04);
+  font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: #a1a1aa;
+}
+.ladder { list-style: none; margin: 0; padding: 0; position: relative; }
+.ladder::before {
+  content: ""; position: absolute; left: 27px; top: 28px; bottom: 28px; width: 2px;
+  background: linear-gradient(180deg, rgba(249,115,22,0.55), rgba(249,115,22,0.06));
+}
+.rung + .rung { margin-top: 14px; }
+.rung-card {
+  position: relative;
+  display: flex; align-items: center; gap: 16px;
+  padding: 18px 20px; border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.08); background: rgba(24,24,27,0.6);
+  text-decoration: none; color: #fafafa;
+  transition: border-color 0.15s, background 0.15s, transform 0.15s;
+}
+.rung-card:hover { background: rgba(255,255,255,0.06); border-color: rgba(249,115,22,0.35); transform: translateX(2px); }
+.rung-num {
+  flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 9px;
+  background: rgba(249,115,22,0.15); color: #f97316;
+  font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 5px #09090b;
+}
+.rung-body { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.rung-label { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+.rung-tone { font-size: 12.5px; color: #a1a1aa; line-height: 1.5; }
+.rung-arrow { margin-left: auto; flex-shrink: 0; color: #52525b; transition: color 0.15s, transform 0.15s; }
+.rung-card:hover .rung-arrow { color: #f97316; transform: translateX(2px); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="ladder-header">
+    <h1>${esc(manifest.title)}</h1>
+    <div class="ladder-meta">${chips}<span>${n} audience${n > 1 ? "s" : ""}</span></div>
+  </header>
+  <ol class="ladder">
+${rungs}
+  </ol>
+</div>
+</body>
+</html>`;
+  }
+
+  /**
+   * The way back from a deployed rung: a compact fixed-position control
+   * (bottom-right) naming the current rung, expanding to the full ladder +
+   * the landing page. A `<details>` element so it needs no script; its CSS
+   * is scoped under one id, reset with `all: revert` and pinned with
+   * `!important` on the load-bearing declarations so an agent-authored
+   * page's global styles can neither leak in nor knock it out. Links are
+   * relative to the deployed layout (siblings in pages/, index one level
+   * up), so the snippet is meaningless outside `nav=ladder` deploy fetches.
+   */
+  function buildEli5PageNavHtml(manifest: ExplainerManifest, currentId: string): string {
+    const esc = escapeEli5Text;
+    const n = manifest.audiences.length;
+    const idx = Math.max(
+      manifest.audiences.findIndex((a) => a.id === currentId),
+      0,
+    );
+    const current = manifest.audiences[idx];
+    const links = manifest.audiences
+      .map((a, i) => {
+        const cur = a.id === current.id;
+        return `<a class="pen-rung${cur ? " pen-current" : ""}"${cur ? ' aria-current="page"' : ""} href="${encodeURIComponent(a.id)}.html"><span class="pen-num">${i + 1}</span><span class="pen-rung-label">${esc(a.label)}</span></a>`;
+      })
+      .join("\n    ");
+
+    return `<style data-pneuma-eli5-nav>
+#pneuma-eli5-nav, #pneuma-eli5-nav * { all: revert; box-sizing: border-box !important; margin: 0 !important; padding: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif !important; line-height: 1.4 !important; }
+#pneuma-eli5-nav { position: fixed !important; right: 16px !important; bottom: 16px !important; z-index: 2147483000 !important; font-size: 12px !important; }
+#pneuma-eli5-nav > summary { list-style: none !important; display: flex !important; align-items: center !important; gap: 8px !important; padding: 8px 14px !important; cursor: pointer !important; -webkit-user-select: none; user-select: none; border-radius: 999px !important; background: rgba(24,24,27,0.92) !important; color: #fafafa !important; border: 1px solid rgba(255,255,255,0.16) !important; box-shadow: 0 6px 24px rgba(0,0,0,0.35) !important; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+#pneuma-eli5-nav > summary::-webkit-details-marker { display: none !important; }
+#pneuma-eli5-nav > summary:hover { border-color: rgba(249,115,22,0.45) !important; }
+#pneuma-eli5-nav .pen-count { color: #f97316 !important; font-weight: 600 !important; font-variant-numeric: tabular-nums; white-space: nowrap !important; }
+#pneuma-eli5-nav .pen-sum-label { max-width: 160px !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; font-weight: 500 !important; color: #fafafa !important; }
+#pneuma-eli5-nav .pen-chevron { flex-shrink: 0 !important; color: #a1a1aa !important; transition: transform 0.2s ease; }
+#pneuma-eli5-nav[open] .pen-chevron { transform: rotate(180deg); }
+#pneuma-eli5-nav .pen-panel { position: absolute !important; right: 0 !important; bottom: calc(100% + 10px) !important; min-width: 240px !important; max-width: 320px !important; padding: 6px !important; border-radius: 14px !important; background: rgba(24,24,27,0.96) !important; border: 1px solid rgba(255,255,255,0.12) !important; box-shadow: 0 16px 48px rgba(0,0,0,0.45) !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+#pneuma-eli5-nav .pen-title { display: block !important; padding: 8px 10px 6px !important; font-size: 11px !important; color: #a1a1aa !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; }
+#pneuma-eli5-nav .pen-rung, #pneuma-eli5-nav .pen-all { display: flex !important; align-items: center !important; gap: 10px !important; padding: 8px 10px !important; border-radius: 9px !important; color: #fafafa !important; text-decoration: none !important; font-size: 13px !important; font-weight: 400 !important; }
+#pneuma-eli5-nav .pen-rung:hover, #pneuma-eli5-nav .pen-all:hover { background: rgba(255,255,255,0.07) !important; }
+#pneuma-eli5-nav .pen-rung-label { overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+#pneuma-eli5-nav .pen-num { flex-shrink: 0 !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; width: 20px !important; height: 20px !important; border-radius: 6px !important; background: rgba(255,255,255,0.08) !important; color: #a1a1aa !important; font-size: 11px !important; font-weight: 600 !important; }
+#pneuma-eli5-nav .pen-current { color: #f97316 !important; }
+#pneuma-eli5-nav .pen-current .pen-num { background: rgba(249,115,22,0.18) !important; color: #f97316 !important; }
+#pneuma-eli5-nav .pen-all { margin-top: 4px !important; border-top: 1px solid rgba(255,255,255,0.08) !important; border-radius: 0 !important; color: #a1a1aa !important; }
+#pneuma-eli5-nav .pen-all:hover { color: #fafafa !important; }
+#pneuma-eli5-nav .pen-all svg { flex-shrink: 0 !important; }
+</style>
+<details id="pneuma-eli5-nav">
+  <summary title="${esc(manifest.title)}"><span class="pen-count">${idx + 1} / ${n}</span><span class="pen-sum-label">${esc(current.label)}</span><svg class="pen-chevron" width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 5l4-4 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+  <nav class="pen-panel">
+    <span class="pen-title">${esc(manifest.title)}</span>
+    ${links}
+    <a class="pen-all" href="../index.html"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>All audiences</a>
+  </nav>
+</details>`;
+  }
+
+  function buildEli5ExportHtml(opts: { contentSet?: string }): { html: string; title: string } | { error: string; status: number } {
+    const resolved = resolveEli5Topic(opts.contentSet);
+    if ("error" in resolved) return resolved;
+    const { baseDir, contentSet, manifest } = resolved;
+
+    const title = manifest.title;
+    const n = manifest.audiences.length;
+    const contentBase = `/content/${contentSet ? contentSet + "/" : ""}`;
+
+    // One srcdoc per rung, base-href'd at the page's OWN directory (the same
+    // rule the viewer's pageBaseHref follows) so `../assets/...` refs resolve
+    // — a rung's assets live beside pages/, not under it. buildPageSrcdoc is
+    // the viewer's own document builder (base placement + curly-quote
+    // sanitizing); the export iframes carry no selection script.
+    const pageContents = manifest.audiences.map((a) => {
+      const pagePath = join(baseDir, a.file);
+      const inWorkspace = pathStartsWith(pagePath, workspace);
+      const raw = inWorkspace && a.file && existsSync(pagePath)
+        ? readFileSync(pagePath, "utf-8")
+        : `<p>Missing: ${escapeEli5Text(a.file || "(no file)")}</p>`;
+      const fileDir = a.file.includes("/") ? a.file.slice(0, a.file.lastIndexOf("/") + 1) : "";
+      return {
+        id: a.id,
+        label: a.label,
+        tone: a.tone ?? "",
+        file: a.file,
+        srcdoc: buildPageSrcdoc(raw, { baseHref: contentBase + fileDir, script: "", imageVersion: 0 }),
+      };
+    });
+
+    const toolbarHtml = `\n<div class="export-toolbar-wrapper">
+  <div class="export-toolbar">
+    <div class="header-left">
+      <h1>${escapeEli5Text(title)}</h1>
+      <span class="meta">${n} audience${n > 1 ? "s" : ""}</span>
+    </div>
+    <div class="export-toolbar-actions">
+      <button class="btn-primary" onclick="downloadZip()">Download ZIP</button>
+      ${getDeployToolbarHTML()}
+    </div>
+  </div>
+</div>
+${getDeployModalHTML()}`;
+
+    const downloadScript = `\n<script>
+function rungDownloadUrl(id){
+  var qs=new URLSearchParams(location.search).get("contentSet");
+  var params=new URLSearchParams();
+  if(qs)params.set("contentSet",qs);
+  params.set("page",id);
+  return "/export/eli5/download?"+params.toString();
+}
+function downloadRung(id){
+  // window.open lets the server's Content-Disposition name the file
+  // (label + topic title, CJK-safe) instead of a client-side guess.
+  window.open(rungDownloadUrl(id));
+}
+function downloadZip(){
+  var qs=new URLSearchParams(location.search).get("contentSet");
+  window.open("/export/eli5/zip"+(qs?"?contentSet="+encodeURIComponent(qs):""));
+}
+
+// --- ELI5-specific file collection for deploy ---
+// The deployed artifact is the ladder as a small website: the server-built
+// landing page as index.html, one inlined page per rung under pages/, each
+// carrying the injected way-back nav (nav=ladder). A one-rung ladder deploys
+// that page directly as index.html — no ladder, so no nav either.
+function collectDeployFiles(logEl){
+  var qs = new URLSearchParams(location.search).get("contentSet");
+  var csParam = qs ? "?contentSet=" + encodeURIComponent(qs) : "";
+  deployLog(logEl, "Collecting rungs...", "info");
+
+  if(pages.length === 1){
+    deployLog(logEl, "Single audience — deploying its page as the site", "info");
+    return fetch(rungDownloadUrl(pages[0].id)).then(function(r){
+      if(!r.ok)throw new Error("HTTP "+r.status);return r.text();
+    }).then(function(html){
+      deployLog(logEl, "  + index.html");
+      return [{ path: "index.html", content: html }];
+    });
+  }
+
+  var indexPromise = fetch("/export/eli5/site-index" + csParam).then(function(r){
+    if(!r.ok)throw new Error("HTTP "+r.status);return r.text();
+  });
+  var pagePromises = pages.map(function(page){
+    return fetch(rungDownloadUrl(page.id) + "&nav=ladder").then(function(r){
+      if(!r.ok)throw new Error("HTTP "+r.status);return r.text();
+    }).then(function(html){
+      deployLog(logEl, "  + pages/" + page.id + ".html");
+      return { path: "pages/" + page.id + ".html", content: html };
+    });
+  });
+
+  return Promise.all([indexPromise].concat(pagePromises)).then(function(all){
+    deployLog(logEl, "  + index.html (ladder)");
+    return [{ path: "index.html", content: all[0] }].concat(all.slice(1));
+  });
+}
+
+${getDeployScript().replace(/<\/script>/gi, "<\\/script>")}
+<\/script>`;
+
+    // Escape </script> inside JSON to prevent premature script block closure
+    const pagesJson = JSON.stringify(
+      pageContents.map((p) => ({ id: p.id, label: p.label, srcdoc: p.srcdoc })),
+    ).replace(/<\/script>/gi, "<\\/script>");
+    const pageInitScript = `\n<script>
+var pages = ${pagesJson};
+pages.forEach(function(page, i) {
+  var frame = document.getElementById('page-frame-' + i);
+  if (frame) {
+    frame.srcdoc = page.srcdoc;
+    frame.addEventListener('load', function() {
+      try {
+        var doc = frame.contentDocument;
+        // Force all animations to their end state and trigger scroll-reveal
+        // classes. In export there's no scrolling, so IntersectionObserver
+        // never fires and elements with opacity:0 + scroll triggers stay hidden.
+        var style = doc.createElement('style');
+        style.textContent = [
+          '*, *::before, *::after { animation-fill-mode: forwards !important; animation-delay: 0s !important; animation-duration: 0s !important; transition-duration: 0s !important; }',
+          // Collapse viewport-height layouts that cause excessive space in export iframes.
+          // In export, each page is a continuous document — full-screen hero sections
+          // should shrink to fit their content, not claim 100vh of the iframe.
+          ':where([class*="hero"], [class*="banner"], [class*="cover"], [class*="landing"], [class*="fullscreen"], [class*="full-screen"]) { min-height: auto !important; height: auto !important; }',
+        ].join('\\n');
+        // Also scan all stylesheets for vh-based rules and override inline
+        try {
+          Array.from(doc.styleSheets).forEach(function(ss) {
+            try {
+              Array.from(ss.cssRules).forEach(function(rule) {
+                if (rule.style) {
+                  var mh = rule.style.minHeight || '';
+                  var h = rule.style.height || '';
+                  if (mh.indexOf('vh') > -1 || mh.indexOf('svh') > -1 || mh.indexOf('dvh') > -1) {
+                    rule.style.setProperty('min-height', 'auto', 'important');
+                  }
+                  if (h.indexOf('vh') > -1 || h.indexOf('svh') > -1 || h.indexOf('dvh') > -1) {
+                    rule.style.setProperty('height', 'auto', 'important');
+                  }
+                }
+              });
+            } catch(e2) {}
+          });
+        } catch(e3) {}
+        doc.head.appendChild(style);
+        // Trigger common scroll-reveal class patterns
+        doc.querySelectorAll('section, [class*="reveal"], [class*="fade"], [class*="scroll"], [class*="animate"]').forEach(function(el) {
+          el.classList.add('visible', 'revealed', 'in-view', 'is-visible', 'show', 'active');
+        });
+        // Wait a frame for layout to settle after overrides
+        requestAnimationFrame(function() {
+          var h = doc.documentElement.scrollHeight;
+          frame.style.height = Math.max(h, 200) + 'px';
+        });
+      } catch(e) {}
+    });
+  }
+});
+<\/script>`;
+
+    const pageSectionsHtml = pageContents.map((p, i) => {
+      return `<div class="page-section">
+  <div class="page-header">
+    <span class="page-number">${i + 1}</span>
+    <span class="page-title">${escapeEli5Text(p.label)}</span>${p.tone ? `\n    <span class="page-tone">${escapeEli5Text(p.tone)}</span>` : ""}
+    <span class="page-file">${escapeEli5Text(p.file)}</span>
+    <button class="rung-dl" data-rung="${escapeEli5Text(p.id)}" onclick="downloadRung(this.dataset.rung)" title="Download this page as a standalone HTML file">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download
+    </button>
+  </div>
+  <div class="page-frame-wrapper">
+    <iframe id="page-frame-${i}" sandbox="allow-same-origin allow-scripts" style="width:100%;min-height:600px;border:none;background:#fff;"></iframe>
+  </div>
+</div>`;
+    }).join("\n");
+
+    const exportHtml = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeEli5Text(title)} — Export</title>
+<style>
+:root {
+  --color-cc-bg: #09090b;
+  --color-cc-surface: #18181b;
+  --color-cc-card: rgba(24, 24, 27, 0.6);
+  --color-cc-primary: #f97316;
+  --color-cc-primary-hover: #fdba74;
+  --color-cc-fg: #fafafa;
+  --color-cc-muted: #a1a1aa;
+  --color-cc-border: rgba(255, 255, 255, 0.08);
+}
+
+* { box-sizing: border-box; }
+
+html {
+  margin: 0;
+  padding: 0;
+  background: var(--color-cc-bg);
+  font-family: 'Inter', 'Geist', system-ui, -apple-system, sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 0 0 60px 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at 50% 0%, rgba(249, 115, 22, 0.08) 0%, transparent 60%);
+}
+
+.export-toolbar-wrapper {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  padding: 16px 24px 0;
+  pointer-events: none;
+}
+
+.export-toolbar {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 10px 20px;
+  background: var(--color-cc-card);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--color-cc-border);
+  border-radius: 999px;
+  color: var(--color-cc-fg);
+  min-width: 560px;
+  max-width: 1200px;
+  margin: 0 auto;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+
+.header-left {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-right: auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.export-toolbar h1 {
+  font-size: 15px;
+  font-weight: 500;
+  margin: 0;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.export-toolbar .meta {
+  font-size: 13px;
+  color: var(--color-cc-muted);
+}
+
+.export-toolbar-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.export-toolbar-actions button {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease-out;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: var(--color-cc-primary);
+  color: #fff;
+  box-shadow: 0 2px 12px rgba(249, 115, 22, 0.2);
+}
+.btn-primary:hover {
+  background: var(--color-cc-primary-hover);
+  box-shadow: 0 4px 16px rgba(249, 115, 22, 0.4);
+  transform: translateY(-1px);
+}
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-cc-fg);
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.print-divider {
+  width: 1px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+${getDeployCSS()}
+
+.page-section {
+  max-width: 960px;
+  margin: 32px auto;
+  padding: 0 24px;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px 8px;
+}
+
+.page-number {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: rgba(249, 115, 22, 0.15);
+  color: var(--color-cc-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.page-title {
+  flex-shrink: 0;
+  color: var(--color-cc-fg);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.page-tone {
+  color: var(--color-cc-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.page-file {
+  flex-shrink: 0;
+  color: var(--color-cc-muted);
+  font-size: 12px;
+  font-family: ui-monospace, 'SF Mono', monospace;
+}
+
+.rung-dl {
+  flex-shrink: 0;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-cc-muted);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.rung-dl:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-cc-fg);
+}
+.rung-dl svg { flex-shrink: 0; }
+
+.page-frame-wrapper {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.6), 0 0 0 1px var(--color-cc-border);
+}
+
+.page-frame-wrapper iframe {
+  display: block;
+  border-radius: 8px;
+}
+</style>
+</head>
+<body>${toolbarHtml}
+${pageSectionsHtml}${downloadScript}${pageInitScript}
+</body>
+</html>`;
+
+    return { html: exportHtml, title };
+  }
+
+  app.get("/export/eli5", (c) => {
+    const contentSet = c.req.query("contentSet") || undefined;
+    const result = buildEli5ExportHtml({ contentSet });
+    if ("error" in result) return c.text(result.error, result.status as any);
+    return c.html(result.html);
+  });
+
+  app.get("/export/eli5/download", async (c) => {
+    const contentSet = c.req.query("contentSet") || undefined;
+    const page = c.req.query("page") || undefined;
+    const nav = c.req.query("nav") || undefined;
+    const format = "eli5-html";
+    const enriched = hookBus && sessionInfo
+      ? await hookBus.emit("export:before", { format, contentSet, page }, sessionInfo).catch(() => ({ format, contentSet, page }))
+      : { format, contentSet, page };
+
+    const resolved = resolveEli5Topic(contentSet);
+    if ("error" in resolved) return c.text(resolved.error, resolved.status);
+    const { manifest } = resolved;
+    const { audience, index } = findEli5Audience(manifest, page);
+    if (!audience.file) return c.text(`No page file for audience: ${audience.id}`, 404);
+    const pagePath = join(resolved.baseDir, audience.file);
+    if (!pathStartsWith(pagePath, workspace)) return c.text("Invalid page path", 400);
+    if (!existsSync(pagePath)) return c.text(`Missing: ${audience.file}`, 404);
+
+    // Inline assets against the page's OWN directory — an explainer page's
+    // relative refs (../assets/foo.png) resolve from pages/, not the topic
+    // root. This is the same base rule the viewer follows; resolving from the
+    // topic root silently drops every image.
+    let html = inlineAssets(readFileSync(pagePath, "utf-8"), dirname(pagePath));
+
+    // nav=ladder: the deployed-site fetch. Every deployed rung carries a way
+    // back to the ladder and its siblings; a one-rung ladder has no ladder to
+    // go back to, so no nav.
+    if (nav === "ladder" && manifest.audiences.length > 1) {
+      const navHtml = buildEli5PageNavHtml(manifest, audience.id);
+      html = /<\/body>/i.test(html)
+        ? html.replace(/<\/body>/i, `${navHtml}\n</body>`)
+        : html + navHtml;
+    }
+
+    if (hookBus && sessionInfo) hookBus.emit("export:after", { format: (enriched as { format: string }).format, result: { title: `${manifest.title} — ${audience.label}` }, contentSet: (enriched as { contentSet?: string }).contentSet, page: (enriched as { page?: string }).page }, sessionInfo).catch(() => {});
+
+    // ASCII filename: topic title + audience label when they slug to
+    // something with at least one LETTER; a CJK label's stray digit ("8 岁孩子"
+    // → "8") reads as a missing name, so those fall back to
+    // contentSet + audience id — distinct per rung, unlike a bare contentSet.
+    const rungSlugRaw = audience.id.replace(/[^\w.-]+/g, "_").replace(/^[_\s.-]+|[_\s.-]+$/g, "");
+    const rungSlug = /\w/.test(rungSlugRaw) ? rungSlugRaw : `rung-${index + 1}`;
+    const fallbackBase = resolved.contentSet
+      ? `${resolved.contentSet}-${rungSlug}`
+      : `eli5-${rungSlug}`;
+    const combined = safeDownloadName(`${manifest.title} - ${audience.label}`, undefined, "");
+    const asciiBase = /[a-zA-Z]/.test(combined) ? combined : fallbackBase;
+    const utf8Filename = encodeURIComponent(`${manifest.title} — ${audience.label}.html`);
+    return new Response(html, {
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${asciiBase}.html"; filename*=UTF-8''${utf8Filename}`,
+      },
+    });
+  });
+
+  app.get("/export/eli5/site-index", (c) => {
+    const contentSet = c.req.query("contentSet") || undefined;
+    const resolved = resolveEli5Topic(contentSet);
+    if ("error" in resolved) return c.text(resolved.error, resolved.status);
+    return c.html(buildEli5SiteIndexHtml(resolved.manifest));
+  });
+
+  app.get("/export/eli5/zip", async (c) => {
+    if (!workspace) return c.text("No workspace", 400);
+    const contentSet = c.req.query("contentSet") || undefined;
+    const resolved = resolveEli5Topic(contentSet);
+    if ("error" in resolved) return c.text(resolved.error, resolved.status);
+    const exportDir = resolved.baseDir;
+    const tmpFile = `/tmp/pneuma-eli5-export-${Date.now()}.zip`;
+    try {
+      const proc = Bun.spawn(
+        ["zip", "-r", tmpFile, ".", "-x", ".claude/*", ".pneuma/*", "CLAUDE.md", ".gitignore", "node_modules/*", ".git/*"],
+        { cwd: exportDir, stdout: "ignore", stderr: "ignore" },
+      );
+      await proc.exited;
+      const file = Bun.file(tmpFile);
+      if (!(await file.exists())) return c.text("Export failed", 500);
+      const content = await file.arrayBuffer();
+      try { await Bun.spawn(["rm", tmpFile]).exited; } catch {}
+      const zipName = safeDownloadName(resolved.manifest.title, resolved.contentSet, "eli5-topic");
+      const utf8ZipName = encodeURIComponent(`${resolved.manifest.title}.zip`);
       return new Response(content, {
         headers: {
           "Content-Type": "application/zip",
