@@ -37,6 +37,31 @@ exit 1
 /** An invented token, and the string every leak assertion looks for. */
 const KEY = "sk-or-v1-probe-testonly-0123456789";
 
+/**
+ * The deadline (`WORDTASTE_PROBE_TIMEOUT`, seconds, fractional accepted) each
+ * case hands the probe. A hang-path case asserts the deadline FIRES, so the
+ * deadline is the whole cost of the case — and a short one is also the LESS
+ * flaky choice, because the `elapsedMs` bound it is measured against keeps
+ * every second of headroom the deadline does not spend.
+ *
+ *   HANG_ONLY — nothing in the run has to answer: the CLI sleeps forever, or
+ *     the hosted route never replies. The parent-side timer fires by wall
+ *     clock regardless of what the child is doing, so this is deterministic
+ *     however small it is.
+ *   HANG_PLUS_LIVE — a hang and a real answer share one run. The families are
+ *     probed together, so the run costs the deadline no matter how fast the
+ *     live half is, AND the live half must beat that same deadline: the two
+ *     requirements pull against each other and there is no cheaper setting.
+ *     This keeps the value the file has always used — measured at 2s, a
+ *     `bash` stub under a parallel suite can miss a 2s deadline and flip the
+ *     live answer to false, which is a lie about the CLI, not about the load.
+ *   LIVE_ONLY (default) — nothing hangs, so the deadline is never reached and
+ *     its value costs nothing. Generous on purpose: pure margin.
+ */
+const HANG_ONLY = { WORDTASTE_PROBE_TIMEOUT: "0.3" };
+const HANG_PLUS_LIVE = { WORDTASTE_PROBE_TIMEOUT: "3" };
+const LIVE_ONLY_TIMEOUT = "10";
+
 interface HostedRequest {
   auth: string | null;
   body: string;
@@ -125,9 +150,10 @@ async function runProbe(
       HOME: work,
       TMPDIR: scratch,
       PNEUMA_SESSION_DIR: sessionDir,
-      // Short per-family timeout so a hanging stub is killed quickly and the
-      // suite stays fast — the liveness contract is independent of the value.
-      WORDTASTE_PROBE_TIMEOUT: "3",
+      // Per-family deadline. The liveness contract is independent of the
+      // value, so each case picks the cheapest one that still proves its
+      // point — see HANG_ONLY / HANG_PLUS_LIVE / LIVE_ONLY_TIMEOUT above.
+      WORDTASTE_PROBE_TIMEOUT: LIVE_ONLY_TIMEOUT,
       ...(hosted ? { WORDTASTE_OPENROUTER_URL: hosted.url } : {}),
       ...extraEnv,
     },
@@ -165,7 +191,7 @@ describe("cross_family_probe.ts — liveness detection", () => {
   });
 
   test("present-but-hanging CLI is reported false (does NOT hang the probe)", async () => {
-    const { json, elapsedMs, exitCode } = await runProbe({ claude: STUB_HANG });
+    const { json, elapsedMs, exitCode } = await runProbe({ claude: STUB_HANG }, HANG_ONLY);
     expect(exitCode).toBe(0);
     expect(json.claude).toBe(false);
     // The whole probe (which includes a hard timeout) must finish far faster
@@ -181,10 +207,10 @@ describe("cross_family_probe.ts — liveness detection", () => {
   });
 
   test("mixed: one live and one hanging → true/false", async () => {
-    const { json, elapsedMs, exitCode } = await runProbe({
-      codex: STUB_OK,
-      claude: STUB_HANG,
-    });
+    const { json, elapsedMs, exitCode } = await runProbe(
+      { codex: STUB_OK, claude: STUB_HANG },
+      HANG_PLUS_LIVE,
+    );
     expect(exitCode).toBe(0);
     expect(json.codex).toBe(true);
     expect(json.claude).toBe(false);
@@ -238,7 +264,12 @@ describe("cross_family_probe.ts — the hosted writer route", () => {
   test("a call that never returns is reported false, and does not hang the probe", async () => {
     const hosted = startHosted({ hang: true });
     try {
-      const { json, elapsedMs } = await runProbe({}, { OPENROUTER_API_KEY: KEY }, {}, hosted);
+      const { json, elapsedMs } = await runProbe(
+        {},
+        { OPENROUTER_API_KEY: KEY, ...HANG_ONLY },
+        {},
+        hosted,
+      );
       expect(json.openrouter).toBe(false);
       expect(elapsedMs).toBeLessThan(20_000);
     } finally {
@@ -330,6 +361,7 @@ describe("cross_family_probe.ts — the hosted writer route", () => {
     try {
       const { json } = await runProbe({ codex: STUB_OK, claude: STUB_HANG }, {
         OPENROUTER_API_KEY: KEY,
+        ...HANG_PLUS_LIVE,
       }, {}, hosted);
       expect(json.codex).toBe(true);
       expect(json.claude).toBe(false);

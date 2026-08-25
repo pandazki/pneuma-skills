@@ -80,6 +80,11 @@ jobs:
         # --timeout caps any single test at 60s so a wedged test fails the
         # step instead of stalling it; the job-level timeout-minutes above is
         # the backstop for a "process won't exit" leak (e.g. a stray watcher).
+        # PNEUMA_TEST_LIVE=1 opts in to the live tier (tests that drive a real
+        # external binary, skipped by the routine local suite). The release
+        # gate runs everything — that is what makes it the gate.
+        env:
+          PNEUMA_TEST_LIVE: "1"
         run: bun test --timeout 60000
 
       - name: Build

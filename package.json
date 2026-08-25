@@ -1,6 +1,6 @@
 {
   "name": "pneuma-skills",
-  "version": "3.38.0",
+  "version": "3.39.0",
   "type": "module",
   "description": "Co-creation infrastructure for humans and code agents \u2014 visual environment, skills, continuous learning, and distribution.",
   "license": "MIT",
@@ -39,11 +39,12 @@
     "start": "bun bin/pneuma.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test core server bin snapshot plugins src modes",
-    "test:all": "bun test",
+    "test:shard": "bun scripts/test-shard.ts core server bin snapshot plugins src modes",
+    "test:all": "PNEUMA_TEST_LIVE=1 bun test",
     "test:frontend": "bun test src modes",
     "test:server": "bun test core server bin snapshot plugins",
     "test:modes": "bun test modes",
-    "test:backends": "bun test backends",
+    "test:backends": "PNEUMA_TEST_LIVE=1 bun test backends",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {

@@ -147,6 +147,47 @@ function writePrompt(harness: Harness, name: string, content: string = BRIEF): s
   return file;
 }
 
+interface WriterRun {
+  result: RunResult;
+  /** What the stub adapter was handed on stdin for this dispatch. */
+  received: string;
+}
+
+/**
+ * Dispatch one writer leaf per prompt name, all at once.
+ *
+ * The library-resolution cases below sample the primer several times because
+ * the passage draw is seeded per prompt — one draw proves nothing about the
+ * library it came from. Run sequentially, those samples ARE the cost of this
+ * file: every one is a `bun` cold start plus a library scan.
+ *
+ * They are also fully independent — each dispatch gets its own prompt file,
+ * its own `<name>.primed.md`, and (via `WORDTASTE_TEST_CAPTURE`) its own
+ * capture file; the writer role touches no repair-budget counter, and the
+ * script stages through `mkdtemp` / pid-suffixed temp names. So they run
+ * together and every assertion is made afterwards, on the same evidence.
+ *
+ * Anything order-dependent — repair budgets, "the same call repeated reads
+ * the same passages" — stays sequential below, on purpose.
+ */
+async function runWriterBatch(
+  harness: Harness,
+  names: readonly string[],
+  extraEnv: Record<string, string> = {},
+): Promise<WriterRun[]> {
+  return await Promise.all(
+    names.map(async (name) => {
+      const prompt = writePrompt(harness, name);
+      const capture = join(harness.root, `capture-${name}.txt`);
+      const result = await runRouter(harness, ["writer", prompt], {
+        ...extraEnv,
+        WORDTASTE_TEST_CAPTURE: capture,
+      });
+      return { result, received: existsSync(capture) ? readFileSync(capture, "utf8") : "" };
+    }),
+  );
+}
+
 describe("leaf priming", () => {
   it("dispatches a private .primed.md holding the brief and the primer block", async () => {
     await withHarness("wordtaste-primed-end-", async (harness) => {
@@ -319,11 +360,13 @@ describe("primerLibraries resolution", () => {
       );
 
       let found = false;
-      for (const name of ["u1.md", "u2.md", "u3.md", "u4.md"]) {
-        const prompt = writePrompt(harness, name);
-        const result = await runRouter(harness, ["writer", prompt]);
+      for (const { result, received } of await runWriterBatch(harness, [
+        "u1.md",
+        "u2.md",
+        "u3.md",
+        "u4.md",
+      ])) {
         expect(result.status).toBe(0);
-        const received = readFileSync(harness.capture, "utf8");
         if (MARKERS.slice(0, 12).some((marker) => markerPresent(received, marker))) {
           found = true;
         }
@@ -342,11 +385,13 @@ describe("primerLibraries resolution", () => {
         JSON.stringify({ primerLibraries: "bundled" }),
       );
 
-      for (const name of ["p1.md", "p2.md", "p3.md", "p4.md"]) {
-        const prompt = writePrompt(harness, name);
-        const result = await runRouter(harness, ["writer", prompt]);
+      for (const { result, received } of await runWriterBatch(harness, [
+        "p1.md",
+        "p2.md",
+        "p3.md",
+        "p4.md",
+      ])) {
         expect(result.status).toBe(0);
-        const received = readFileSync(harness.capture, "utf8");
         expect(received.length).toBeGreaterThan(BRIEF.length);
         for (const marker of MARKERS.slice(0, 6)) {
           expect(markerPresent(received, marker)).toBe(false);
@@ -366,11 +411,15 @@ describe("primerLibraries resolution", () => {
       );
 
       let sawMine = false;
-      for (const name of ["n1.md", "n2.md", "n3.md", "n4.md", "n5.md", "n6.md"]) {
-        const prompt = writePrompt(harness, name);
-        const result = await runRouter(harness, ["writer", prompt]);
+      for (const { result, received } of await runWriterBatch(harness, [
+        "n1.md",
+        "n2.md",
+        "n3.md",
+        "n4.md",
+        "n5.md",
+        "n6.md",
+      ])) {
         expect(result.status).toBe(0);
-        const received = readFileSync(harness.capture, "utf8");
         for (const marker of MARKERS.slice(6, 12)) {
           expect(markerPresent(received, marker)).toBe(false);
         }
@@ -391,12 +440,14 @@ describe("primerLibraries resolution", () => {
         JSON.stringify({ primerLibraries: "../../outside, .. , ." }),
       );
 
-      for (const name of ["x1.md", "x2.md", "x3.md", "x4.md"]) {
-        const prompt = writePrompt(harness, name);
-        const result = await runRouter(harness, ["writer", prompt]);
+      for (const { result, received } of await runWriterBatch(harness, [
+        "x1.md",
+        "x2.md",
+        "x3.md",
+        "x4.md",
+      ])) {
         expect(result.status).toBe(0);
         expect(result.stderr).toBe("");
-        const received = readFileSync(harness.capture, "utf8");
         for (const marker of MARKERS.slice(0, 12)) {
           expect(markerPresent(received, marker)).toBe(false);
         }
@@ -415,11 +466,15 @@ describe("primerLibraries resolution", () => {
         JSON.stringify({ primerLibraries: "all" }),
       );
 
-      for (const name of ["s1.md", "s2.md", "s3.md", "s4.md", "s5.md", "s6.md"]) {
-        const prompt = writePrompt(harness, name);
-        const result = await runRouter(harness, ["writer", prompt]);
+      for (const { result, received } of await runWriterBatch(harness, [
+        "s1.md",
+        "s2.md",
+        "s3.md",
+        "s4.md",
+        "s5.md",
+        "s6.md",
+      ])) {
         expect(result.status).toBe(0);
-        const received = readFileSync(harness.capture, "utf8");
         for (const marker of MARKERS.slice(0, 12)) {
           expect(markerPresent(received, marker)).toBe(false);
         }
@@ -438,13 +493,13 @@ describe("primerLibraries resolution", () => {
       );
 
       let found = false;
-      for (const name of ["t1.md", "t2.md", "t3.md", "t4.md"]) {
-        const prompt = writePrompt(harness, name);
-        const result = await runRouter(harness, ["writer", prompt], {
-          PNEUMA_PROJECT_ROOT: projectRoot,
-        });
+      for (const { result, received } of await runWriterBatch(
+        harness,
+        ["t1.md", "t2.md", "t3.md", "t4.md"],
+        { PNEUMA_PROJECT_ROOT: projectRoot },
+      )) {
         expect(result.status).toBe(0);
-        if (MARKERS.slice(0, 12).some((marker) => markerPresent(readFileSync(harness.capture, "utf8"), marker))) {
+        if (MARKERS.slice(0, 12).some((marker) => markerPresent(received, marker))) {
           found = true;
         }
       }

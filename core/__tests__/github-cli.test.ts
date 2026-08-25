@@ -4,10 +4,18 @@
  * `detectGh` shells out to the real local `gh` binary. We avoid brittle
  * `mock.module("bun", ...)` here — instead we probe PATH at test setup
  * time and gate the assertions on what's actually available.
+ *
+ * That honesty is exactly why this file is **live tier**: every assertion
+ * below costs a real `gh` spawn, and `gh auth status` reads the macOS
+ * keychain, which measured 1.5–5.3s per call depending on load. The routine
+ * suite skips it; `bun run test:all` runs it. See `./test-tier.ts`.
  */
 
 import { describe, expect, test } from "bun:test";
 import { detectGh, createRepo } from "../github-cli.js";
+import { LIVE_TIER, LIVE_TIER_LABEL, announceLiveTierSkip } from "./test-tier.js";
+
+announceLiveTierSkip("the real `gh` binary probe and every assertion built on it");
 
 /** Returns true when `gh --version` exits 0 within a short timeout. */
 async function probeGhInstalled(): Promise<boolean> {
@@ -35,9 +43,12 @@ async function probeGhInstalled(): Promise<boolean> {
   }
 }
 
-const ghAvailable = await probeGhInstalled();
+// Top-level `await` runs during collection, before any `skipIf` is consulted
+// — so the probe itself has to be gated, or a routine run pays for it while
+// skipping everything it was meant to inform.
+const ghAvailable = LIVE_TIER ? await probeGhInstalled() : false;
 
-describe("detectGh", () => {
+describe.skipIf(!LIVE_TIER)(`detectGh ${LIVE_TIER_LABEL}`, () => {
   test.skipIf(!ghAvailable)(
     "reports installed: true with a version string when gh is on PATH",
     async () => {
@@ -90,7 +101,7 @@ describe("detectGh", () => {
   }, 20_000);
 });
 
-describe("createRepo", () => {
+describe.skipIf(!LIVE_TIER)(`createRepo ${LIVE_TIER_LABEL}`, () => {
   test.skipIf(ghAvailable)(
     "throws with the install hint when gh is missing",
     async () => {
