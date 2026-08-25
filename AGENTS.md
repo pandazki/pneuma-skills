@@ -10,7 +10,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. Agents e
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.38.0
+**Version:** 3.39.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `cosmos`, `wordtaste`, `bansho`, `eli5`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`, `project-tidy`
 
@@ -40,10 +40,10 @@ bun run dev doc          # Doc Mode (cwd as workspace)
 bun run dev doc --workspace ~/notes --port 17996 --backend claude-code --no-open --debug
 bun run build            # Vite production build
 bun run typecheck        # tsc --noEmit
-bun run test             # Default suite — everything except backends/ (~34s)
+bun run test             # Routine suite — everything except backends/ and the live tier (~64s)
 bun run test:frontend    # src/ + modes/            bun run test:server   # core bin server snapshot plugins
 bun run test:modes       # modes/                   bun run test:backends # backends/ (slow: real CLI spawns)
-bun run test:all         # Full suite — the bump / release gate
+bun run test:all         # Full suite (sets PNEUMA_TEST_LIVE=1) — the bump / release gate
 bun test modes/bansho    # Any path filter still works while iterating
 
 # Skill evolution

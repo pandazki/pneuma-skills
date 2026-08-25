@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.39.0] - 2026-08-25
+
+### Added
+- **Kimi sessions finally show their context meter, and tell the truth about their mode.** Kimi Code 0.38.0 emits three session updates the adapter did not know; two of them carried real information Pneuma was displaying as zeros. The "ctx N%" readout, permanently blank for Kimi, now fills from the agent's own occupancy report, and the permission mode shown for a session is the mode it is actually running in rather than a hardcoded default. The third update restates the session title from the first prompt and is deliberately ignored — adopting it would overwrite a name the user or the session-refine agent chose with a worse default.
+
+### Improved
+- **The routine test suite stops waiting for things that cannot happen.** `bun run test` runs in ~64s instead of ~77s, unchanged in what it asserts: deadline-proving tests now use deadlines proportional to what they prove (a hang test does not need to wait three seconds to show a timeout fires), sampling tests that spawn the same script repeatedly run those spawns concurrently, and tests that drive a real external binary moved into a live tier the release gate still runs in full. Skipped tiers announce themselves by name instead of vanishing into a bare skip count.
+
+### Fixed
+- **`bun test backends/<name>` no longer fails on a module it never finished loading.** The registry read its backend modules while its own module body was still evaluating, so entering the import graph from a single backend's test file hit a temporal dead zone and crashed collection — which meant that filter had been silently skipping the Kimi lifecycle suite entirely, not running it. The registry now resolves modules at call time; the previously-dead tests run.
+- **A resume test that graded the model's inner monologue.** The backend lifecycle harness asserted on the first assistant envelope of a resumed turn, and Kimi streams its thinking as its own envelope — so the test passed only when the model happened to mention the remembered word while reasoning, and failed about half the time otherwise. It now waits for the turn to end and reads everything the turn said.
+
 ## [3.38.0] - 2026-08-25
 
 ### Added
