@@ -70,6 +70,47 @@ function withPrefix(prefix: string, file: string): string {
   return prefix === "" ? file : `${prefix}/${file}`;
 }
 
+/**
+ * One topic per top-level directory — and a topic name is just a name.
+ *
+ * The shared resolver's default parser reads directory names as
+ * presentation variants: it splits on `-`/`_` and hands `light`, `dark` or
+ * any BCP-47 code it recognises straight to `ContentSetTraits`. That is
+ * right for slide, whose directories genuinely ARE `en-dark` / `zh-light`
+ * renditions of one deck, and wrong here, because ELI5 directories are
+ * unrelated SUBJECTS. `dark-matter/` and `light-refraction/` would be read
+ * as a dark and a light theme, and traits are not inert: a trait-bearing
+ * set makes `src/store/workspace-slice.ts` stand down from its own
+ * first-set default so `App.tsx::selectBestContentSet` can match the
+ * user's theme and locale — so the topic that opened would depend on
+ * whether the reader runs Pneuma in dark mode. `en-passant/` would do the
+ * same through `locale`.
+ *
+ * So the name is parsed for a LABEL only, and no trait is ever asserted.
+ * With no traits anywhere, the store's own rule applies again and the
+ * first topic (alphabetical, per the shared resolver's sort) opens — the
+ * same topic for every reader.
+ *
+ * Exported for `__tests__/content-sets.test.ts`; the wiring below is the
+ * only production caller.
+ */
+export const resolveEli5ContentSets = createDirectoryContentSetResolver({
+  parseName: (dirName: string) => ({ label: humanizeTopicDir(dirName) }),
+});
+
+/**
+ * `how-llms-work` → `How Llms Work`. Word-splitting and capitalisation
+ * only — the same shape the shared parser produces for the parts it does
+ * not recognise, minus the recognition.
+ */
+function humanizeTopicDir(dirName: string): string {
+  return dirName
+    .split(/[-_]/)
+    .filter((part) => part.length > 0)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 const eli5Mode: ModeDefinition = {
   manifest: eli5Manifest,
 
@@ -85,8 +126,8 @@ const eli5Mode: ModeDefinition = {
       hasActiveFile: eli5Manifest.viewerApi!.workspace!.hasActiveFile,
       manifestFile: eli5Manifest.viewerApi!.workspace!.manifestFile,
 
-      // One topic per top-level directory.
-      resolveContentSets: createDirectoryContentSetResolver(),
+      // One topic per top-level directory, named but never typed.
+      resolveContentSets: resolveEli5ContentSets,
 
       /**
        * One workspace item per rung of the ladder, in manifest order.

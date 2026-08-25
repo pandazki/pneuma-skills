@@ -41,6 +41,8 @@ import AudienceRail from "./AudienceRail.js";
 import PagePane, { type AnchorRequest, type PageSelectionPayload } from "./PagePane.js";
 import { PAGE_SCRIPT } from "./page-script.js";
 import {
+  activeRungIndex,
+  anchorVerdict,
   audienceAddress,
   buildPageSrcdoc,
   comparePaneIndex,
@@ -75,6 +77,7 @@ export default function Eli5Preview({
   mode: rawPreviewMode,
   imageVersion,
   onActiveFileChange,
+  activeFile,
   actionRequest,
   onActionResult,
   navigateRequest,
@@ -125,9 +128,13 @@ export default function Eli5Preview({
   const [compareOn, setCompareOn] = useState(false);
   const [wantedCompareId, setWantedCompareId] = useState<string | null>(null);
 
-  const activeIndex = Math.max(
-    0,
-    audiences.findIndex((a) => a.id === wantedId),
+  // The wish wins while it names a rung of THIS ladder; otherwise the
+  // framework's `activeFile` — which on a resumed session or a replay is
+  // the position the reader left off at — decides. `activeRungIndex`
+  // documents the whole order.
+  const activeIndex = useMemo(
+    () => activeRungIndex(audiences, prefix, wantedId, activeFile),
+    [audiences, prefix, wantedId, activeFile],
   );
   const activeAudience = audiences[activeIndex] ?? null;
 
@@ -174,12 +181,24 @@ export default function Eli5Preview({
   // The page in view, in the framework's path space (stripped while a
   // content set is active) — the shape `activeFile` and `<viewer-context>`
   // both expect.
-  const activeFile = activeAudience
+  const currentFile = activeAudience
     ? frameworkPath(prefix, activeAudience.file, activeContentSet)
     : "";
+  // Report the position, never erase it. Two guards, each load-bearing:
+  //
+  //  - an empty `currentFile` is NOT reported as `null`. On first mount the
+  //    ladder is still empty, and `App.tsx` restores the persisted position
+  //    asynchronously — pushing `null` here races that restore and wipes the
+  //    rung the reader left off at. A ladder that genuinely loses its pages
+  //    is handled upstream: `workspace-slice` clears `activeFile` itself
+  //    when the item list no longer contains it.
+  //  - a value the store already holds is not re-sent, so the round trip
+  //    (`activeFile` → rung → `currentFile` → `activeFile`) settles instead
+  //    of writing on every render.
   useEffect(() => {
-    onActiveFileChange?.(activeFile || null);
-  }, [activeFile, onActiveFileChange]);
+    if (!currentFile || currentFile === activeFile) return;
+    onActiveFileChange?.(currentFile);
+  }, [currentFile, activeFile, onActiveFileChange]);
 
   // ── Transient notice (a refused navigation has to be visible) ─────────
   const [notice, setNotice] = useState<string | null>(null);
@@ -320,13 +339,13 @@ export default function Eli5Preview({
       const found = await requestAnchor(target.anchor);
       // The page landed — that is what `success` reports. The anchor is
       // the fine half, and a miss is a fact the agent should hear without
-      // being told the navigation failed.
-      return found
-        ? { success: true }
-        : {
-            success: true,
-            message: `Opened "${where}", but no element matched anchor "${target.anchor}".`,
-          };
+      // being told the navigation failed. It also has to be a fact the
+      // READER can see: a `success: true` message is dropped by
+      // `resolveNavigate`, so the caveat would otherwise die between a
+      // locator card and the person who clicked it.
+      const verdict = anchorVerdict(found, where, target.anchor);
+      if (verdict.notice) showNotice(verdict.notice);
+      return verdict.result;
     },
     [
       explainer,

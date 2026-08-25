@@ -127,7 +127,7 @@ One topic is one content set — a top-level directory in the workspace:
 <topic-slug>/
 ├── manifest.json            # the ladder
 ├── pages/<audience-id>.html # one self-contained page per audience
-└── assets/                  # optional images referenced by the pages
+└── assets/                  # optional images — pages reference them as ../assets/<file>
 ```
 
 `manifest.json` has exactly this shape:
@@ -271,8 +271,12 @@ cd {SKILL_PATH} && node scripts/generate_image.mjs \
 - Default model is `gpt-image-2` (fal.ai only), strongest at legible text and
   labels. If only `OPENROUTER_API_KEY` is configured, pass
   `--model gemini-3-pro`; `gpt-image-2` will error out without a fal.ai key.
-- `--output-dir` is always the explainer's own `assets/` directory, so the page
-  can reference it as `assets/<file>.png`.
+- `--output-dir` is always the explainer's own `assets/` directory. The page
+  that shows the image lives in `<topic-slug>/pages/`, and that directory —
+  not the topic root — is the iframe's base URL, so the reference is
+  **`../assets/<file>.png`**. A bare `assets/<file>.png` resolves to
+  `<topic-slug>/pages/assets/<file>.png`, which does not exist, and the page
+  renders a broken image rather than an error.
 - Generating for several rungs of one ladder? Reuse the same style descriptor
   sentences verbatim across prompts, or the explainer stops looking like one
   piece of work.

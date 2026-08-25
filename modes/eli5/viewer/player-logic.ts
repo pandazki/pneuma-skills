@@ -21,7 +21,11 @@
  * one to the other's consumer fails silently in both directions.
  */
 
-import type { ViewerAddress, ViewerFileContent } from "../../../core/types/viewer-contract.js";
+import type {
+  ViewerActionResult,
+  ViewerAddress,
+  ViewerFileContent,
+} from "../../../core/types/viewer-contract.js";
 import type { AudienceEntry, Explainer, ExplainerManifest } from "../domain.js";
 
 // ── The ladder in view ──────────────────────────────────────────────────────
@@ -82,6 +86,49 @@ export function frameworkPath(
 ): string {
   if (!file) return "";
   return activeContentSet ? file : pagePath(prefix, file);
+}
+
+/**
+ * Which rung is on screen, in priority order:
+ *
+ *  1. the reader's own wish for THIS ladder — a rung they climbed to, or
+ *     one a `navigate-to` put them on;
+ *  2. the framework's `activeFile` — the persisted position, restored by
+ *     `src/App.tsx` from `/api/viewer-state` on every session resume and
+ *     replay. Without this step a resumed session always reopens on rung
+ *     0 while the store still names another page, so the visible page and
+ *     the next `<viewer-context>` describe different rungs;
+ *  3. rung 0 — a fresh ladder starts at the bottom.
+ *
+ * `activeFile` is matched in BOTH path spaces (see the file header). The
+ * store hands it over stripped while a content set is active and prefixed
+ * while none is, and a viewer that understood only one of the two would
+ * restore correctly in single-topic workspaces and silently fail in
+ * multi-topic ones, or the reverse.
+ *
+ * A wish naming a rung this ladder does not have is not honoured — that is
+ * what happens right after a content-set switch, and falling through to
+ * the file (then to rung 0) is what keeps the ladder pointing at a real
+ * page instead of an empty one.
+ */
+export function activeRungIndex(
+  audiences: ReadonlyArray<AudienceEntry>,
+  prefix: string,
+  wantedId: string | null,
+  activeFile: string | null | undefined,
+): number {
+  const wished = audiences.findIndex((a) => a.id === wantedId);
+  if (wished >= 0) return wished;
+
+  const file = (activeFile ?? "").trim();
+  if (file) {
+    const found = audiences.findIndex(
+      (a) => a.file && (a.file === file || pagePath(prefix, a.file) === file),
+    );
+    if (found >= 0) return found;
+  }
+
+  return 0;
 }
 
 /**
@@ -362,6 +409,37 @@ export function resolveNavigateTarget(
     audienceId: rung.id,
     ...(anchor ? { anchor } : {}),
   };
+}
+
+/**
+ * What a landed navigation says, once the page has answered about its
+ * fine anchor.
+ *
+ * The page opening IS the navigation, so a missed anchor is reported as a
+ * successful move carrying a caveat rather than as a failure — the reader
+ * did land somewhere meaningful, and telling the agent "navigate failed"
+ * would invite it to try again at an address that is already correct.
+ *
+ * But `success: true` is exactly the case
+ * `src/store/viewer-slice.ts::resolveNavigate` drops on the floor: it
+ * keeps a `message` only when `success === false`, so on the locator-card
+ * path the caveat never reaches the person who clicked. That is the
+ * silent half of the failure this repo has already paid for once
+ * (`.claude/rules/frontend.md`, the `<viewer-locator>` entry): the card
+ * looks like it worked, and only the audience page moved.
+ *
+ * So the miss is returned twice — once as the action result the agent
+ * reads, once as a `notice` the viewer paints where the reader is
+ * looking. `notice` is non-null exactly when the anchor missed.
+ */
+export function anchorVerdict(
+  found: boolean,
+  where: string,
+  anchor: string,
+): { result: ViewerActionResult; notice: string | null } {
+  if (found) return { result: { success: true }, notice: null };
+  const message = `Opened "${where}", but no element matched anchor "${anchor}".`;
+  return { result: { success: true, message }, notice: message };
 }
 
 /** The compare pane's default partner: the next rung up, wrapping at the top. */

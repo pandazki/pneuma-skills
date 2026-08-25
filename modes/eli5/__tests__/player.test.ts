@@ -21,12 +21,14 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import type { ViewerFileContent } from "../../../core/types/viewer-contract.js";
 import type { Explainer } from "../domain.js";
 import {
+  activeRungIndex,
+  anchorVerdict,
   audienceAddress,
   buildPageSrcdoc,
   comparePaneIndex,
@@ -157,6 +159,34 @@ describe("the two path spaces", () => {
       "http://localhost:17007/content/database-index/pages/",
     );
     expect(pageBaseHref("", "", "index.html")).toBe("/content/");
+  });
+
+  test("the skill teaches the reference form this base href actually resolves", () => {
+    // The agent never sees `pageBaseHref`; it sees SKILL.md, and writes the
+    // `<img src>` that sentence tells it to write. The two have to agree or
+    // every generated image 404s inside the iframe — silently, as a broken
+    // image rather than an error. Pinned as source text because SKILL.md is
+    // the only place this contract is stated to the agent.
+    const skill = readFileSync(join(MODE_DIR, "skill", "SKILL.md"), "utf-8");
+    expect(skill).toContain("../assets/<file>.png");
+    // The prior wording — `reference it as assets/<file>.png` — resolved to
+    // `<topic>/pages/assets/…`, one directory too deep.
+    expect(skill).not.toContain("reference it as `assets/");
+
+    // And nothing anywhere in the mode may model the bare form. The seeds
+    // are the agent's most-copied example, so a bare `src="assets/…"` there
+    // would teach the broken path more effectively than any sentence.
+    const modeled = [
+      join(MODE_DIR, "skill", "SKILL.md"),
+      ...readdirSync(join(MODE_DIR, "seed"), { recursive: true })
+        .map(String)
+        .filter((rel) => rel.endsWith(".html"))
+        .map((rel) => join(MODE_DIR, "seed", rel)),
+    ];
+    for (const path of modeled) {
+      const text = readFileSync(path, "utf-8");
+      expect([path, /["'(]assets\//.test(text)]).toEqual([path, false]);
+    }
   });
 });
 
@@ -376,6 +406,98 @@ describe("compare defaults", () => {
     // two identical pages side by side under a header promising a
     // comparison. Nobody asked for that, so nobody has to undo it.
     expect(comparePaneIndex(EN.audiences, 2, "engineer")).toBe(0);
+  });
+});
+
+// ── which rung is on screen ─────────────────────────────────────────────────
+
+describe("activeRungIndex — the restored position is honoured", () => {
+  const RUNGS = EN.audiences;
+
+  test("the reader's wish wins while it names a rung of this ladder", () => {
+    expect(activeRungIndex(RUNGS, "database-index", "engineer", null)).toBe(2);
+    // ...even when the framework still names a different page: the wish is
+    // the newer fact, and the effect that reports it upstream has not run
+    // yet on the render that first shows it.
+    expect(
+      activeRungIndex(RUNGS, "database-index", "engineer", "pages/age-5.html"),
+    ).toBe(2);
+  });
+
+  test("with no wish, `activeFile` decides — STRIPPED space", () => {
+    // A content set is active, so the store hands the viewer bare paths.
+    expect(activeRungIndex(RUNGS, "database-index", null, "pages/manager.html")).toBe(1);
+  });
+
+  test("with no wish, `activeFile` decides — PREFIXED space", () => {
+    // Single-topic workspace: no content set is surfaced, so the same
+    // position arrives carrying its directory. A viewer fluent in only one
+    // of these two spaces restores in one workspace shape and silently
+    // reopens on rung 0 in the other.
+    expect(
+      activeRungIndex(RUNGS, "database-index", null, "database-index/pages/manager.html"),
+    ).toBe(1);
+  });
+
+  test("this is the bug the fix exists for: rung 0 is NOT the answer", () => {
+    // Before `activeFile` was consumed, every resumed session and every
+    // replay reopened here while the store named another page — the visible
+    // page and the next `<viewer-context>` describing different rungs.
+    expect(
+      activeRungIndex(RUNGS, "database-index", null, "pages/engineer.html"),
+    ).not.toBe(0);
+  });
+
+  test("a wish from the topic we just left does not survive the switch", () => {
+    // `kid-8` belongs to the Chinese ladder; on the English one it names
+    // nothing, so the file (then rung 0) decides instead of an empty pane.
+    expect(activeRungIndex(RUNGS, "database-index", "kid-8", "pages/manager.html")).toBe(1);
+    expect(activeRungIndex(RUNGS, "database-index", "kid-8", null)).toBe(0);
+  });
+
+  test("an unknown or empty file falls back to the bottom rung", () => {
+    expect(activeRungIndex(RUNGS, "database-index", null, "pages/nobody.html")).toBe(0);
+    expect(activeRungIndex(RUNGS, "database-index", null, "")).toBe(0);
+    expect(activeRungIndex(RUNGS, "database-index", null, null)).toBe(0);
+    expect(activeRungIndex([], "database-index", null, "pages/manager.html")).toBe(0);
+  });
+
+  test("a rung with no page yet is never matched by an empty file", () => {
+    const half = [{ id: "pm", label: "PM", file: "" }, ...RUNGS];
+    expect(activeRungIndex(half, "database-index", null, "")).toBe(0);
+    expect(activeRungIndex(half, "database-index", null, "pages/manager.html")).toBe(2);
+  });
+});
+
+// ── the anchor verdict ──────────────────────────────────────────────────────
+
+describe("anchorVerdict — a missed anchor is visible to BOTH readers", () => {
+  test("a hit is a plain success with nothing to announce", () => {
+    expect(anchorVerdict(true, "Manager", "#impact")).toEqual({
+      result: { success: true },
+      notice: null,
+    });
+  });
+
+  test("a miss still succeeded — the page did open", () => {
+    // Reporting `success: false` would tell the agent to retry an address
+    // that is already right, and the reader IS looking at the rung asked
+    // for. The caveat rides along instead.
+    const { result } = anchorVerdict(false, "Manager", "#impact");
+    expect(result.success).toBe(true);
+    expect(result.message).toContain("#impact");
+    expect(result.message).toContain("Manager");
+  });
+
+  test("a miss ALSO produces a notice, because the message alone is dropped", () => {
+    // `src/store/viewer-slice.ts::resolveNavigate` keeps a message only
+    // when `success === false`, so on the locator-card path this notice is
+    // the reader's only evidence that the anchor missed. If this ever goes
+    // back to null, a stale locator card becomes a button that looks like
+    // it worked.
+    const { result, notice } = anchorVerdict(false, "Manager", "#impact");
+    expect(notice).not.toBeNull();
+    expect(notice).toBe(result.message!);
   });
 });
 
