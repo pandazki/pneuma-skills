@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.38.0] - 2026-08-25
+
+### Added
+- **Bansho and WordTaste play in the browser.** A shared lecture now runs in the hosted player with its progressive reveal, timeline seek, chalk hands, chart layers, formulas and narration intact; a shared WordTaste piece renders its typeset math, plan table and paper/slate surfaces. Links shared before today light up too — a package's support flag is frozen at export, so the player now widens a stale "unsupported" stamp against the modes it can actually render.
+- **Cloud viewing is a question the mode's author answers first.** The `create-mode` skill asks about the hosted player and artifact deploy during discovery, records the answer in the design brief, and treats the player whitelist and the deploy plugins as a conditional fourth registration — with browser verification stated as the price of a whitelist entry. The new `references/cloud-surfaces.md` carries the compatibility checklist, the webcraft static-page fast path, and the disqualifiers.
+
+### Fixed
+- **The static player stops calling a server that isn't there.** Viewer-state persistence, user locale and theme sync each fired against a backend the hosted player does not have, 404ing on every content-set switch. Each seam is now opt-out, and only the player opts out.
+
 ## [3.37.0] - 2026-08-25
 
 ### Added

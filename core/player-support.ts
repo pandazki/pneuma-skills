@@ -16,6 +16,12 @@
  * clipcraft, mode-maker, gridboard and any custom mode
  * are intentionally NOT web-playable — they fall back to the local client.
  *
+ * Adding a mode here is only half the change: mode viewers are compiled into
+ * the player bundle at build time, so the entry goes live on the hosted player
+ * only after `scripts/deploy-player.sh` runs (CI never deploys it). Until then
+ * the exporter stamps packages `supported: true` for a mode the deployed shell
+ * cannot `loadMode()`, and the share link hard-errors instead of falling back.
+ *
  * No React / Bun imports — importable from both backend and frontend.
  */
 export const WEB_PLAYER_SUPPORTED_MODES: readonly string[] = [
