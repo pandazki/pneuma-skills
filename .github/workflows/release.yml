@@ -5,10 +5,17 @@ on:
     branches: [main]
   # Manual rebuild path for desktop artifacts. When the version tag already
   # exists, check-version skips the release job, but the desktop matrix still
-  # runs and uploads ONLY the assets missing from that release — the recovery
-  # path for a failed platform build (e.g. the v3.36.0 macOS ENOSPC) without
-  # re-tagging or churning already-published binaries.
+  # runs and backfills the release — the recovery path for a failed platform
+  # build (e.g. the v3.36.0 macOS ENOSPC) without re-tagging.
   workflow_dispatch:
+    inputs:
+      force_platforms:
+        description: >-
+          Comma-separated matrix platforms (darwin,win32,linux) whose asset
+          set re-uploads even when already present — for repairing a
+          binary/latest*.yml mismatch on the published release.
+        required: false
+        default: ""
 
 concurrency:
   group: release
@@ -259,21 +266,37 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.check-version.outputs.version }}
           EVENT_NAME: ${{ github.event_name }}
+          PLATFORM: ${{ matrix.platform }}
+          FORCE_PLATFORMS: ${{ inputs.force_platforms }}
         run: |
           TAG="v${VERSION}"
-          # On a manual dispatch we are backfilling a partially-populated
-          # release: upload only assets it does not have yet, so binaries
-          # users already downloaded (and their latest*.yml checksums) are
-          # never churned. Push builds keep the original clobber behavior.
+          # A platform's binaries and its latest*.yml are one consistency
+          # unit — the yml carries the binaries' sha512, so partial uploads
+          # can strand users on a checksum mismatch. On a dispatch backfill:
+          # skip the platform only when EVERY one of its files already exists
+          # on the release (and it is not force-listed); otherwise upload the
+          # whole set with clobber. Push builds always upload everything.
           EXISTING="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
+          FILES=()
           for file in desktop/release/*.{dmg,zip,exe,AppImage,deb,yml}; do
-            if [ -f "$file" ]; then
-              base="$(basename "$file")"
-              if [ "$EVENT_NAME" = "workflow_dispatch" ] && printf '%s\n' "$EXISTING" | grep -qxF "$base"; then
-                echo "Skipping $base — already on $TAG"
-                continue
-              fi
-              echo "Uploading $base..."
-              gh release upload "$TAG" "$file" --clobber
-            fi
+            [ -f "$file" ] && FILES+=("$file")
+          done
+          if [ "${#FILES[@]}" -eq 0 ]; then
+            echo "No release files produced — failing"; exit 1
+          fi
+          MISSING=0
+          for file in "${FILES[@]}"; do
+            printf '%s\n' "$EXISTING" | grep -qxF "$(basename "$file")" || MISSING=1
+          done
+          FORCE=0
+          case ",${FORCE_PLATFORMS}," in
+            *",${PLATFORM},"*) FORCE=1 ;;
+          esac
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$MISSING" -eq 0 ] && [ "$FORCE" -eq 0 ]; then
+            echo "All ${PLATFORM} assets already on $TAG — skipping upload (backfill mode)"
+            exit 0
+          fi
+          for file in "${FILES[@]}"; do
+            echo "Uploading $(basename "$file")..."
+            gh release upload "$TAG" "$file" --clobber
           done

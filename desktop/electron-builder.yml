@@ -128,6 +128,11 @@ nsis:
 linux:
   icon: resources/icon.png
   category: Development
+  # Space-free name, like win/mac. The productName default ("Pneuma
+  # Skills-…") gets sanitized inconsistently — electron-builder writes the
+  # yml url with dashes while GitHub renames the uploaded asset with dots —
+  # so the updater's asset lookup and CI's exists-check both mismatched.
+  artifactName: "Pneuma-Skills-${version}-${arch}.${ext}"
   target:
     - target: AppImage
       arch:
