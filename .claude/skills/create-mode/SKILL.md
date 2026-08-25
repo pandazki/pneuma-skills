@@ -1,6 +1,6 @@
 ---
 name: create-mode
-description: Author a new Pneuma mode end-to-end — manifest + viewer + skill + seed + showcase. Use this skill whenever the user says they want to create a new mode, fork an existing one for a different domain, scaffold mode files, design a new viewer, or asks "how should I build a mode for X". Walks the user through a discovery interview, produces a design brief that names every key choice (Source kind, ViewerAddress vocabulary, action space, seed strategy, external integrations, evolution directive), and only then generates the directory skeleton. Encodes the practice rules pulled from webcraft / slide / diagram / illustrate / remotion / kami. Pneuma Skills project only; Claude Code only.
+description: Author a new Pneuma mode end-to-end — manifest + viewer + skill + seed + showcase. Use this skill whenever the user says they want to create a new mode, fork an existing one for a different domain, scaffold mode files, design a new viewer, or asks "how should I build a mode for X". Walks the user through a discovery interview, produces a design brief that names every key choice (Source kind, ViewerAddress vocabulary, action space, seed strategy, external integrations, cloud surfaces, evolution directive), and only then generates the directory skeleton. Encodes the practice rules pulled from webcraft / slide / diagram / illustrate / remotion / kami. Pneuma Skills project only; Claude Code only.
 ---
 
 # Create Mode
@@ -39,8 +39,9 @@ Goal: extract enough signal that you can fill every field of the design brief wi
 6. **ViewerAddress vocabulary** — "what's the smallest thing the user can point at?" Propose a draft `{ contentSet?, ... }` based on Q2's domain noun (slide / page / row / node / heading). Confirm with the user; explicitly name the coarse "where" key and any fine "within" key. See `references/viewer-contract-patterns.md::ViewerAddress`.
 7. **Initial action space** — propose 2–5 actions with id / label / category / agentInvocable. Almost every viewer needs a `navigate-to` (navigate); add `ui` and `custom` only if the user names a concrete need. Don't list `capture` — it's framework-built-in.
 8. **External integrations** *(conditional — only ask if Q2 or Q3 implied an external API / SDK / CDN / library / API key)* — does the viewer fetch external APIs (→ `proxy`)? does the agent or viewer need API keys (→ `init.params` with `sensitive: true` + `envMapping`)? does this need an MCP server (→ `skill.mcpServers`)? Read `references/external-integrations.md` for the proxy / Babel-JIT / NOTICE patterns.
-9. **Seed strategy** — single file, multiple use-case content sets, or language×theme matrix? What's the *first* seed's narrative — what story does it tell to a brand-new user? See `references/seed-and-showcase.md`.
-10. **Evolution directive** — give the evolve agent a one-sentence "what should it learn for this mode?" (e.g., "Learn the user's slide design preferences: typography, palette, density, structure"). This is what makes the mode personalize over time.
+9. **Cloud surfaces** — ask this every time, never conditionally; it's cheap now and expensive to retrofit. Two independent questions, in this order: (a) *should a finished piece of work in this mode be shareable as a read-only page a stranger can open with no Pneuma installed?* — that's the hosted player, and it obligates the viewer to render from workspace files alone, with no live backend; (b) *does the mode produce a deployable static site?* — that's Vercel / Cloudflare Pages deploy. Put the real trade-off in each option's `description`: "yes" buys shareability and costs a read-only degradation path plus a browser verification pass on every viewer change; "no" costs nothing and can be revisited in a later release. Read `references/cloud-surfaces.md` before you ask — the compatibility checklist there is what "yes" actually commits to.
+10. **Seed strategy** — single file, multiple use-case content sets, or language×theme matrix? What's the *first* seed's narrative — what story does it tell to a brand-new user? See `references/seed-and-showcase.md`.
+11. **Evolution directive** — give the evolve agent a one-sentence "what should it learn for this mode?" (e.g., "Learn the user's slide design preferences: typography, palette, density, structure"). This is what makes the mode personalize over time.
 
 ### What to read while interviewing
 
@@ -49,8 +50,9 @@ Goal: extract enough signal that you can fill every field of the design brief wi
 | Q2 / Q4 (domain → source kind) | `references/domain-and-sources.md` |
 | Q5 / Q6 / Q7 (workspace / address / actions) | `references/viewer-contract-patterns.md` |
 | Q3 / Q8 (inspiration / external deps) | `references/external-integrations.md` |
-| Q9 (seed strategy) | `references/seed-and-showcase.md` |
-| Q10 (evolution directive) | `references/skill-md-patterns.md` (evolution section) |
+| Q9 (cloud surfaces) | `references/cloud-surfaces.md` |
+| Q10 (seed strategy) | `references/seed-and-showcase.md` |
+| Q11 (evolution directive) | `references/skill-md-patterns.md` (evolution section) |
 
 If you ever find yourself stuck choosing between two patterns, open `references/case-studies.md` — it indexes which existing mode made which choice, so you can read that mode's manifest as a concrete precedent.
 
@@ -116,6 +118,14 @@ Render the brief inline in the conversation (not as a file — the conversation 
 - NOTICE.md required: <yes | no — if yes, upstream name + license + version pinned>
 - inspiredBy: <none | { name, url }>
 
+## Cloud surfaces
+- hosted player: <yes | no — and the reason, in the vocabulary of references/cloud-surfaces.md>
+- artifact deploy: <none | vercel + cf-pages>
+- obligations (only when either is yes):
+  - registration: <`core/player-support.ts` whitelist entry / `compatibleModes` entry in BOTH deploy plugins + an `/export/<name>` route>
+  - read-only degradation: <which affordances hide when `editing === false`; which `/api/*` calls gate on the `staticPlayer` store flag>
+  - verification: <build the player, load a real package for THIS mode in a browser, exercise it read-only, console clean>
+
 ## Launcher surface
 - visibility: <public (in gallery) | hidden (internal-only, manifest.hidden=true)>
 - featured-eligible: <yes (default; showcase highlights present) | no (no showcase or hidden mode)>
@@ -169,7 +179,7 @@ For each file, fill in templates against the brief. Specifics:
 - **showcase/showcase.json** — from template, with brief's tagline + 3 highlight concept descriptions. *Images are generated in Step 4.*
 - **NOTICE.md** *(if required)* — pin upstream name + URL + license + version + sync date; include the "what we borrowed / what we adapted / what we dropped" mapping table. Template at `assets/templates/NOTICE.md.template`.
 
-### Step 3 — Register the mode (three places, all required)
+### Step 3 — Register the mode (three places always, plus cloud if the brief said yes)
 
 A new builtin mode needs to be registered in **three** separate
 files for the runtime to find it. Skipping any one leaves it in a
@@ -177,6 +187,11 @@ half-installed state — the dev server might run, but the launcher
 won't list it, or imports will fail in the frontend bundle. The
 three files are deliberately separate because they're consumed by
 different processes (backend / frontend / docs).
+
+Cloud registration (**3d**) is a fourth place, and unlike the first
+three it is **conditional** — it happens only when the brief's
+`## Cloud surfaces` section said yes, and only after the verification
+pass described there.
 
 Before adding code, ask the user whether the mode should appear in
 the launcher gallery at all, or be **hidden** (internal-only, like
@@ -192,12 +207,19 @@ Without this, the mode 404s when a user opens its URL ("Unknown
 mode: <name>").
 
 ```ts
-// core/mode-loader.ts — inside `const builtinModes = { ... }`
+// core/mode-loader.ts — inside `const builtinModes: Record<string, ModeSource> = { ... }`
 <name>: {
-  loadManifest: () => import("../modes/<name>/manifest.js").then((m) => m.default),
-  loadModeDefinition: () => import("../modes/<name>/pneuma-mode.js").then((m) => m.default),
+  type: "builtin",
+  manifestLoader: () =>
+    import("../modes/<name>/manifest.js").then((m) => m.default),
+  definitionLoader: () =>
+    import("../modes/<name>/pneuma-mode.js").then((m) => m.default),
 },
 ```
+
+Copy the shape from the neighboring entry rather than from memory —
+the field names are `manifestLoader` / `definitionLoader`, and the
+`type: "builtin"` discriminant is required.
 
 #### 3b. Launcher gallery registry — `server/index.ts`
 
@@ -214,21 +236,61 @@ const builtinNames = [..., "<name>"];
 ```
 
 The launcher filters out modes whose manifest declares
-`hidden: true`, so hidden modes go in the array but get hidden at
-render time. (Authoring choice: include them so the omission-list
-pattern stays out of code.)
+`hidden: true`, so listing a hidden mode here is harmless — the
+filter is the safety net. Current practice omits them anyway, so a
+hidden mode needs no entry; add one only if you want the filter,
+rather than your memory, to be what keeps it out of the gallery.
 
 #### 3c. Docs — `CLAUDE.md` and `AGENTS.md`
 
-Add the mode name to the `**Builtin Modes:**` line in `CLAUDE.md`,
-then `cp CLAUDE.md AGENTS.md` (they must be byte-identical per the
-release contract). If the mode is **not hidden**, also add a row to
-README's "Built-in Modes" table. Hidden modes don't go in the
-README.
+Add the mode name to the `**Builtin Modes:**` line in **`AGENTS.md`** —
+the single source of agent instructions. `CLAUDE.md` is a one-line
+`@AGENTS.md` import: never write content into it, and never `cp` it
+over `AGENTS.md` (that collapses the whole instruction file to one
+line). If the mode is **not hidden**, also add a row to the
+"Built-in Modes" table in **both** `README.md` and `README.zh.md` —
+the Chinese README has no automated guard and has silently fallen
+months behind before. Hidden modes go in neither README.
+
+#### 3d. Cloud surfaces — *conditional*, driven by the brief
+
+Unlike 3a–3c, this one is **not universal**. Add each entry only if
+the brief's `## Cloud surfaces` section said yes; a mode that answered
+"no" is correctly absent from both files, and adding it speculatively
+ships a broken share link.
+
+- **Hosted player** — append the mode name to
+  `WEB_PLAYER_SUPPORTED_MODES` in `core/player-support.ts`. This is the
+  only line of code, and it is the *last* thing you do: the whitelist
+  is a claim that the viewer has been exercised in a real player build.
+  See the verification obligation below.
+- **Artifact deploy** — add the mode name to `compatibleModes` in
+  **both** `plugins/vercel/manifest.ts` and
+  `plugins/cf-pages/manifest.ts`. Membership there only makes the
+  deploy providers resolve for the session; the button itself lives on
+  the mode's `/export/<name>` page (`server/routes/export.ts` +
+  `server/routes/deploy-ui.ts`), which needs a mode-specific
+  `collectDeployFiles()`. Listing the mode without building that page
+  produces nothing — `doc` and `gridboard` are both listed today and
+  neither has an export route.
+
+**Verification obligation (hosted player).** Never whitelist a mode on
+the strength of reading code. Build the player
+(`bunx vite build --config vite.player.config.ts`), materialize a real
+package for *this* mode and serve it from one origin (copy
+`scripts/smoke-player.ts`; `scripts/smoke-webcraft.ts` and
+`scripts/smoke-kami.ts` are the mode-specific precedents), open it in a
+browser, and exercise the viewer read-only — content sets, item
+navigation, timeline scrub — with the console clean. The failure modes
+here all look fine in source: an empty viewer because the mode's file
+extension isn't in the package's text allowlist, an asset path the
+content service worker can't resolve, a viewer stuck on "Loading…"
+waiting for a signal the player never sends.
+`references/cloud-surfaces.md` carries the full checklist.
 
 #### Featured vs. hidden — confirm with the user
 
-After the three registrations land, ask the user one more question:
+After registration lands, ask the user one more question:
 
 > Should I propose this mode be eligible for the launcher's
 > featured slot? The launcher randomly picks one builtin with
@@ -258,6 +320,18 @@ Don't claim the mode is ready until you verify these:
 3. **The launcher's `/api/registry` includes the new entry.** Test via `curl -s http://localhost:17996/api/registry | jq '.builtins[].name'` (or whatever port the launcher is on). If the name isn't there, you skipped Step 3b (`server/index.ts builtinNames`) — go fix it before continuing.
 4. The launcher's mode gallery shows the new entry (same — say so if you can't run the launcher).
 5. There are no lingering `TODO:` comments from the template you didn't address.
+6. **Cloud surfaces match the brief.** If the brief said *no* to both,
+   verify the mode's name appears in **neither** `core/player-support.ts`
+   nor either deploy plugin's `compatibleModes` — a speculative entry
+   ships a broken share link or a dead Deploy button. If the brief said
+   *yes* to the hosted player, the browser pass from Step 3d must have
+   actually happened: player built, real package for this mode loaded,
+   viewer exercised read-only, console clean. If you couldn't run it,
+   say so explicitly and leave the whitelist entry **out** until someone
+   can — an unverified whitelist entry is worse than a missing one,
+   because `supported` is baked into every package at share time and a
+   package exported while the flag was wrong stays wrong until it's
+   re-shared.
 
 ---
 
@@ -287,6 +361,7 @@ Open the matching file when you're about to make the corresponding decision. Don
 | `references/skill-md-patterns.md` | Writing `skill/SKILL.md` and the evolution directive |
 | `references/seed-and-showcase.md` | Designing seed content sets and `showcase.json` |
 | `references/external-integrations.md` | proxy routes, JIT compilation, API-key params, NOTICE.md mechanics |
+| `references/cloud-surfaces.md` | Deciding hosted-player support and artifact deploy — what the player environment is, the viewer compatibility checklist, the static-web fast path, the disqualifiers, how to verify before whitelisting |
 | `references/case-studies.md` | "Where did <existing mode> make this choice?" — index by pattern, not by mode |
 
 Templates in `assets/templates/` are the concrete files you'll write from. Each template has `TODO:` markers where the brief plugs in.

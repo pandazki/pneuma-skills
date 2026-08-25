@@ -169,6 +169,12 @@ const manifest: ModeManifest = {
 
   // ── Optional metadata ──────────────────────────────────────────────────
   // Uncomment any that apply; delete the rest.
+  //
+  // Note: cloud support is NOT a manifest field. Hosted-player support is
+  // registered in `core/player-support.ts` (WEB_PLAYER_SUPPORTED_MODES) and
+  // artifact deploy in each deploy plugin's `compatibleModes`
+  // (plugins/vercel, plugins/cf-pages). Both are conditional on the design
+  // brief's "Cloud surfaces" answer — see references/cloud-surfaces.md.
 
   // changelog: {
   //   "0.1.0": ["Initial release."],
