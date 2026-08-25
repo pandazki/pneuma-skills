@@ -150,7 +150,14 @@ export default function PagePane({
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
       {header}
-      <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-cc-border bg-white shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+      {/* White belongs to the document, not to the frame: a finished page is a
+          light document, but before one exists that white becomes a bare slab
+          with the pending state's translucent tint washed out on top of it. */}
+      <div
+        className={`relative min-h-0 flex-1 overflow-hidden rounded-xl border border-cc-border shadow-[0_10px_40px_rgba(0,0,0,0.35)] ${
+          doc !== null ? "bg-white" : "bg-cc-card"
+        }`}
+      >
         {doc !== null ? (
           <iframe
             ref={iframeRef}
@@ -176,19 +183,22 @@ export default function PagePane({
  */
 function PendingPage({ audience }: { audience: AudienceEntry | null }) {
   return (
-    <div className="grid h-full place-items-center bg-cc-surface/40 px-6 text-center">
-      <div className="max-w-xs">
-        <div className="mx-auto h-px w-10 bg-cc-border" />
-        <p className="mt-4 text-sm font-medium text-cc-fg/80">
+    <div className="grid h-full place-items-center px-6 text-center">
+      <div className="max-w-sm">
+        <div className="mx-auto h-px w-12 bg-cc-border" />
+        <p className="mt-5 text-base font-medium text-cc-fg">
           {audience
             ? `No page yet for “${audience.label}”`
             : "This topic has no audiences yet"}
         </p>
-        <p className="mt-2 text-xs leading-relaxed text-cc-muted">
+        <p className="mt-2 text-sm leading-relaxed text-cc-muted">
           {audience?.file
-            ? `The manifest points at ${audience.file}. Ask the agent to write it.`
+            ? "The rung is on the ladder; its page has not been written."
             : "Ask the agent who this should be explained to."}
         </p>
+        {audience?.file ? (
+          <p className="mt-4 font-mono text-xs text-cc-muted/70">{audience.file}</p>
+        ) : null}
       </div>
     </div>
   );

@@ -1527,18 +1527,40 @@ ${getDeployModalHTML()}`;
     const downloadScript = opts.inline
       ? ""
       : `\n<script>
+// Every page the preview shows, not just the first one. The download route
+// falls back to pages[0] when no ?page is given, so a multi-page project used
+// to hand back page one under the whole project's name — a silent truncation
+// that reads as a complete download. A single-page project keeps its old
+// filename; a multi-page one saves each page under its own file name, so the
+// links between them still resolve once the files sit in one folder.
 function downloadHtml(){
-  var btn=document.querySelector('.btn-primary');btn.textContent="Preparing...";btn.disabled=true;
+  var btn=document.querySelector('.btn-primary');var orig=btn.textContent;btn.disabled=true;
   var qs=new URLSearchParams(location.search).get("contentSet");
-  fetch("/export/webcraft/download"+(qs?"?contentSet="+encodeURIComponent(qs):"")).then(function(r){
-    if(!r.ok)throw new Error("HTTP "+r.status);return r.blob();
-  }).then(function(b){
-    var a=document.createElement("a");a.href=URL.createObjectURL(b);
-    a.download="${title.replace(/"/g, "")}.html";
-    document.body.appendChild(a);a.click();document.body.removeChild(a);
-    URL.revokeObjectURL(a.href);
-  }).catch(function(e){alert("Download failed: "+e.message)})
-  .finally(function(){btn.textContent="Download HTML";btn.disabled=false});
+  var list=(typeof pages!=="undefined"&&pages.length)?pages:[];
+  var single=list.length<=1;
+  var i=0;
+  function done(){btn.textContent=orig;btn.disabled=false;}
+  function step(){
+    if(i>=Math.max(list.length,1)){done();return;}
+    var page=list[i];
+    btn.textContent=single?"Preparing...":("Preparing "+(i+1)+"/"+list.length+"...");
+    var params=[];
+    if(qs)params.push("contentSet="+encodeURIComponent(qs));
+    if(!single&&page)params.push("page="+encodeURIComponent(page.file));
+    fetch("/export/webcraft/download"+(params.length?"?"+params.join("&"):"")).then(function(r){
+      if(!r.ok)throw new Error("HTTP "+r.status);return r.blob();
+    }).then(function(b){
+      var a=document.createElement("a");a.href=URL.createObjectURL(b);
+      a.download=single?"${title.replace(/"/g, "")}.html":page.file.split("/").pop();
+      document.body.appendChild(a);a.click();document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+      i++;
+      // Browsers drop downloads fired in the same tick; the gap also lets the
+      // multi-file permission prompt appear once instead of racing per file.
+      setTimeout(step,300);
+    }).catch(function(e){alert("Download failed: "+e.message);done()});
+  }
+  step();
 }
 function downloadZip(){
   var qs=new URLSearchParams(location.search).get("contentSet");
@@ -2024,8 +2046,12 @@ body {
 
   ${getDeployCSS()}
 
+  /* Matches the toolbar's 1200px. A narrower value was not a reading measure —
+     the page inside the frame sets its own — it just cropped the canvas 240px
+     short of the chrome above it, so wide designs got squeezed and the two
+     edges never lined up. */
   .page-section {
-    max-width: 960px;
+    max-width: 1200px;
     margin: 32px auto;
   }
 
@@ -3497,8 +3523,9 @@ body {
 
 ${getDeployCSS()}
 
+/* Matches the toolbar's 1200px — see the note on webcraft's .page-section. */
 .page-section {
-  max-width: 960px;
+  max-width: 1200px;
   margin: 32px auto;
   padding: 0 24px;
 }
