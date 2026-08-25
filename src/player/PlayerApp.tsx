@@ -13,6 +13,7 @@ import { useViewerProps } from "../hooks/useViewerProps.js";
 import { useSystemPreferences } from "../hooks/useSystemPreferences.js";
 import { useAppTheme } from "../hooks/useAppTheme.js";
 import { selectBestContentSet } from "../../core/utils/content-set-matcher.js";
+import { isPackagePlayable } from "../../core/player-support.js";
 import { loadMode } from "../../core/mode-loader.js";
 import { resolveLocalized } from "../../core/types/mode-manifest.js";
 import { fetchPlayIndex } from "../replay/provider.js";
@@ -44,8 +45,10 @@ export default function PlayerApp() {
   const [error, setError] = useState<string>("");
   const [historyOpen, setHistoryOpen] = useState(true);
 
-  const { resolved: appTheme } = useAppTheme();
-  const prefs = useSystemPreferences();
+  // No backend on the static host — theme lives in localStorage + system scheme.
+  const { resolved: appTheme } = useAppTheme({ syncWithServer: false });
+  // No backend on the static host — /api/user-{locale,theme} could only 404.
+  const prefs = useSystemPreferences({ fetchOverrides: false });
   const themeClass = appTheme === "light" ? "cc-theme-light" : "";
 
   const PreviewComponent = useStore((s) => s.modeViewer?.PreviewComponent);
@@ -62,7 +65,10 @@ export default function PlayerApp() {
         if (cancelled) return;
         setIndex(idx);
 
-        if (!idx.supported) {
+        // The package's `supported` stamp is frozen at export time; the live
+        // whitelist can be newer (a package shared before its mode became
+        // playable). Union the two so old links light up in new player builds.
+        if (!isPackagePlayable(idx.mode, idx.supported)) {
           setPhase("fallback");
           return;
         }

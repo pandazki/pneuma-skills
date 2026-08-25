@@ -70,7 +70,21 @@ function merge(
   return { theme, locale, locales };
 }
 
-export function useSystemPreferences(): SystemPreferences {
+export interface SystemPreferencesOptions {
+  /**
+   * Whether to fetch the user's Pneuma overrides from the local server
+   * (`/api/user-locale` + `/api/user-theme`). The hosted static player has no
+   * server — those requests can only 404 against the static host — so it
+   * passes `false` and runs on platform defaults alone. Defaults to `true`;
+   * the live app never passes this.
+   */
+  fetchOverrides?: boolean;
+}
+
+export function useSystemPreferences(
+  options: SystemPreferencesOptions = {},
+): SystemPreferences {
+  const { fetchOverrides = true } = options;
   const [base, setBase] = useState<Omit<SystemPreferences, "ready">>(detectFromBrowser);
   const [overrides, setOverrides] = useState<UserOverrides | null>(null);
   const [ready, setReady] = useState(false);
@@ -91,6 +105,11 @@ export function useSystemPreferences(): SystemPreferences {
   // preference is changed elsewhere in the app via the custom events
   // dispatched by `persistLocale` / `useTheme`.
   useEffect(() => {
+    if (!fetchOverrides) {
+      // No server to ask — platform defaults are the whole answer.
+      setReady(true);
+      return;
+    }
     let cancelled = false;
 
     const refresh = async () => {
@@ -127,7 +146,7 @@ export function useSystemPreferences(): SystemPreferences {
       window.removeEventListener("pneuma:locale-changed", onChange);
       window.removeEventListener("pneuma:theme-changed", onChange);
     };
-  }, []);
+  }, [fetchOverrides]);
 
   return { ...merge(base, overrides), ready };
 }

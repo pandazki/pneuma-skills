@@ -32,7 +32,18 @@ export interface AppTheme {
  * share this hook so a `pneuma:theme-changed` dispatch from any of them
  * fans out to the rest within one tick.
  */
-export function useAppTheme(): AppTheme {
+export interface AppThemeOptions {
+  /**
+   * Whether to sync the preference with the local server's
+   * `/api/user-theme`. The hosted static player has no server — the requests
+   * could only 404 — so it passes `false` and runs on localStorage + system
+   * scheme alone. Defaults to `true`; the live app never passes this.
+   */
+  syncWithServer?: boolean;
+}
+
+export function useAppTheme(options: AppThemeOptions = {}): AppTheme {
+  const { syncWithServer = true } = options;
   const [preference, setPreferenceState] = useState<ThemePreference>(getInitialTheme);
   const [resolved, setResolved] = useState<ResolvedTheme>(
     () => preference === "system" ? getSystemTheme() : preference,
@@ -40,6 +51,7 @@ export function useAppTheme(): AppTheme {
   const lastBroadcastRef = useRef<ThemePreference>(preference);
 
   useEffect(() => {
+    if (!syncWithServer) return;
     let cancelled = false;
     fetch(`${getApiBase()}/api/user-theme`)
       .then((r) => r.json())
@@ -56,7 +68,7 @@ export function useAppTheme(): AppTheme {
       .catch(() => { /* server unreachable — keep localStorage value */ });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [syncWithServer]);
 
   useEffect(() => {
     const next = preference === "system" ? getSystemTheme() : preference;
@@ -89,15 +101,17 @@ export function useAppTheme(): AppTheme {
       const resolved = typeof next === "function" ? next(prev) : next;
       if (resolved === prev) return prev;
       lastBroadcastRef.current = resolved;
-      void fetch(`${getApiBase()}/api/user-theme`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theme: resolved }),
-      }).catch(() => { /* offline-safe */ });
+      if (syncWithServer) {
+        void fetch(`${getApiBase()}/api/user-theme`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ theme: resolved }),
+        }).catch(() => { /* offline-safe */ });
+      }
       window.dispatchEvent(new CustomEvent("pneuma:theme-changed", { detail: { theme: resolved } }));
       return resolved;
     });
-  }, []);
+  }, [syncWithServer]);
 
   const cycle = useCallback(() => {
     set((prev) => {

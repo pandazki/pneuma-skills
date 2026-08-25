@@ -145,7 +145,10 @@ let _viewerStateSaveTimer: ReturnType<typeof setTimeout> | null = null;
 function saveViewerState() {
   if (_viewerStateSaveTimer) clearTimeout(_viewerStateSaveTimer);
   _viewerStateSaveTimer = setTimeout(() => {
-    const { activeContentSet, activeFile, contentSets } = useStore.getState();
+    const { activeContentSet, activeFile, contentSets, staticPlayer } = useStore.getState();
+    // The hosted static player has no backend to persist to — a POST here
+    // can only 404 against the static host, once per content-set switch.
+    if (staticPlayer) return;
     const normalized = normalizeViewerState(
       { contentSet: activeContentSet, file: activeFile },
       contentSets,
