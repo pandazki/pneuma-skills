@@ -10,7 +10,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. Agents e
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.39.0
+**Version:** 3.40.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `cosmos`, `wordtaste`, `bansho`, `eli5`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`, `project-tidy`
 
@@ -173,6 +173,7 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 | Contract | Defined in | Instantiated | Consumed by |
 |----------|------------|--------------|-------------|
 | **ModeManifest** + `ViewerApiConfig` / `SkillConfig` / `InitConfig` / `SeedDescriptor` / `ProxyRoute` | `core/types/mode-manifest.ts` | Each mode's `modes/<name>/manifest.ts` (no React imports — read by both backend and frontend) | `core/mode-loader.ts::loadModeManifest()` → `server/skill-installer.ts` (skills + instructions assembly) + `core/source-registry.ts` (sources) + `server/index.ts` (proxy routes) + `server/seed-installer.ts::resolveSeedCatalog` (gallery cards from `init.seeds[]`, auto-derive from directory-shaped `seedFiles` when absent) |
+| **InitParam** + `InitParamOption` / `InitParamOptionsSource` | `core/types/mode-manifest.ts` | Each mode's `manifest.init.params[]`. `type: "select" \| "multi-select"` takes `options` (bare strings still valid, or `{ value, label, description, group, exclusive }`); `optionsSource` declares options **resolved at launch time** — the manifest names *what kind of thing* to look for, never how to find it | `core/init-param-resolver.ts` (the only place discovery happens; `directory-scan` walks `roots × path`, requires `markerFile`, reads `displayName`/`name`/`description` out of it, and yields `[]` for anything unreadable) → `server/init-params.ts::prepareInitParams` (both `/api/launch/prepare` routes: API-key auto-fill + resolved options on one pass) → `src/components/InitParamForm.tsx` (chips) and `bin/pneuma.ts::promptInitParams` (clack). Selection algebra + wire format (`,`-joined, declared order, never empty) in `core/init-param-options.ts`, shared by both renderers |
 | **ModeDefinition** = `{ manifest, viewer }` | `core/types/mode-definition.ts` | Each mode's `modes/<name>/pneuma-mode.ts` default export — binds manifest + ViewerContract | Frontend `core/mode-loader.ts` dynamic-imports it; the React tree mounts `viewer.PreviewComponent`. Split from `manifest.ts` so the latter can be loaded by the Bun backend (which has no React). |
 | **ViewerContract** + `ViewerPreviewProps` | `core/types/viewer-contract.ts` | Each mode's `modes/<name>/viewer/<Name>Preview.tsx` (referenced from `pneuma-mode.ts`) | `core/mode-loader.ts` dynamic import → `src/App.tsx` mounts `PreviewComponent` with props injected from `src/store/` |
 | **ModeShowcase** | `core/types/mode-manifest.ts` (declared); actual content in `modes/<name>/showcase/showcase.json` (sibling file, not inline in manifest) | Each mode's `showcase/showcase.json` + `hero.png` + 3-4 `highlight-*.png` | `server/index.ts` serves via `GET /api/modes/:name/showcase/*`; launcher gallery cards consume |

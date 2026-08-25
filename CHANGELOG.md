@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.40.0] - 2026-08-25
+
+### Added
+- **Launch parameters get controls that match what they are.** A mode can now declare that a parameter's choices are discovered at launch time rather than listed in its manifest, and that more than one may be picked. WordTaste's primer libraries stop being a text box you had to type `all` into: the launch sheet shows the presets and every library actually present on the machine, each with its own name and description, and picking a specific one drops the preset because "everything, plus this" is not a thing. The stored value is byte-identical to what the old text box produced, so nothing downstream noticed.
+
+### Improved
+- **ELI5 designs for the reader, not for a costume.** The skill used to say the analogy domain was the lever and the reader's field was its source — so a page for a music student arrived built out of orchestras, with the reader's identity louder than the subject. Now a comparison is chosen because its structure matches the idea, and an audience descriptor is read for what that person already knows and how they read. A page's look and its argument are both derived: the look from the printed matter that reader already trusts, the argument from what would actually convince them — worked cases for a humanities reader, an exact mechanism and its edge cases for an engineer, a procedure in the order a shift needs it for a practitioner. Restraint stops being an identity and has to say what the space it saves is for.
+
+### Fixed
+- **WebCraft downloads the whole site, not its first page.** The export's Download HTML button never told the server which page it wanted, so a multi-page project silently handed back page one under the project's name. Each page now downloads under its own file name, which also keeps the links between them working once the files sit in a folder together.
+- **Export previews line up with their own toolbar.** The page column was 240px narrower than the chrome above it in both the WebCraft and ELI5 exports, so wide page designs were squeezed and the two edges never met.
+- **An ELI5 rung that has no page yet stops looking broken.** The white belonging to a finished document was painted on the frame instead, so the not-yet-written state washed out into a pale slab with unreadable text on it.
+
 ## [3.39.0] - 2026-08-25
 
 ### Added
