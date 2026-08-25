@@ -27,14 +27,21 @@ import { claudeCodeModule } from "./claude-code/manifest.js";
 import { codexModule } from "./codex/manifest.js";
 import { kimiCliModule } from "./kimi-cli/manifest.js";
 
-const MODULES: Record<AgentBackendType, BackendModule> = {
-  "claude-code": claudeCodeModule,
-  codex: codexModule,
-  "kimi-cli": kimiCliModule,
+// Thunks, not values. A backend's manifest reaches back into this registry
+// through its own bridge/server imports, so touching the imported bindings in
+// this module's body puts them in the temporal dead zone whenever the graph is
+// entered from that side — `bun test backends/kimi-cli` failed with
+// "Cannot access 'kimiCliModule' before initialization" while the full
+// `bun test backends` run, which enters from another file first, passed.
+// Deferring the reference to call time removes the ordering dependency.
+const MODULES: Record<AgentBackendType, () => BackendModule> = {
+  "claude-code": () => claudeCodeModule,
+  codex: () => codexModule,
+  "kimi-cli": () => kimiCliModule,
 };
 
 export function getBackendModule(type: AgentBackendType): BackendModule {
-  return MODULES[type];
+  return MODULES[type]();
 }
 
 /**
@@ -62,7 +69,7 @@ export function getInstallConventions(backendType?: string): BackendModule {
 }
 
 export function getAllBackendModules(): BackendModule[] {
-  return Object.values(MODULES);
+  return Object.values(MODULES).map((load) => load());
 }
 
 export function getBackendDescriptors(): AgentBackendDescriptor[] {
@@ -83,7 +90,7 @@ export function getDefaultBackendType(): AgentBackendType {
 }
 
 export function getBackendCapabilities(type: AgentBackendType): AgentCapabilities {
-  return MODULES[type].capabilities;
+  return MODULES[type]().capabilities;
 }
 
 export interface BackendAvailability {
@@ -107,5 +114,5 @@ export function detectBackendAvailability(): BackendAvailability[] {
 }
 
 export function createBackend(type: AgentBackendType, port: number): AgentBackend {
-  return MODULES[type].createBackend(port);
+  return MODULES[type]().createBackend(port);
 }

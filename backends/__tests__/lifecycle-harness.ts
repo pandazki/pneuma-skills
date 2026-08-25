@@ -713,15 +713,16 @@ const SCENARIOS: Record<ScenarioName, ScenarioFn> = {
         resumeSessionId: agentSessionId,
       });
       await resumedObs.send("What was the magic word I told you?");
-      const result = await resumedStore.waitFor(
-        (m) => m.type === "assistant",
+      await resumedStore.waitFor(
+        (m) => m.type === "result",
         60_000,
-        "resumed assistant",
+        "resumed turn result",
       );
       try {
         // Best-effort substring assertion. Models occasionally rephrase, so
-        // we accept either lowercase or capitalised forms.
-        const text = stringifyAssistant(result);
+        // we accept either lowercase or capitalised forms — and we read the
+        // whole turn, not its first envelope (see assistantTextOfTurn).
+        const text = assistantTextOfTurn(resumedStore);
         expect(text.toLowerCase()).toContain("paprika");
       } finally {
         await resumedBackend.kill(resumedSessionId);
@@ -783,12 +784,12 @@ const SCENARIOS: Record<ScenarioName, ScenarioFn> = {
           type: "user_message",
           content: "What was the magic word I told you?",
         });
-        const result = await resumedStore.waitFor(
-          (m) => m.type === "assistant",
+        await resumedStore.waitFor(
+          (m) => m.type === "result",
           45_000,
-          "resumed assistant",
+          "resumed turn result",
         );
-        const text = stringifyAssistant(result);
+        const text = assistantTextOfTurn(resumedStore);
         expect(text.toLowerCase()).toContain("paprika");
       } finally {
         await resumedBridge.disconnect();
@@ -832,6 +833,26 @@ function sendInterrupt(ctx: ScenarioContext): void {
     throw new Error("sendInterrupt: only valid for bridge-backed backends");
   }
   ctx.attached.bridge.routeBrowserMessage({ type: "interrupt" });
+}
+
+/**
+ * Every assistant envelope of a turn, concatenated.
+ *
+ * Asserting on the FIRST assistant envelope tests whichever half of the turn
+ * the backend happens to emit first — and kimi flushes the model's thinking as
+ * its own assistant envelope, so the first one carries reasoning, not the
+ * answer. `kimi-cli > resume` failed ~half the time on exactly that: it passed
+ * only when the model happened to repeat the word while reasoning ("just
+ * answer." / "simple recall question." are real captured failures). Waiting
+ * for the turn's `result` and reading everything is strictly stronger: the
+ * answer can no longer hide in an envelope the assertion never looked at.
+ */
+function assistantTextOfTurn(store: MessageStore): string {
+  return store
+    .entries()
+    .filter((m) => m.type === "assistant")
+    .map(stringifyAssistant)
+    .join(" ");
 }
 
 function stringifyAssistant(msg: BrowserIncomingMessage): string {
