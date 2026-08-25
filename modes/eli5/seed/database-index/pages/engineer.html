@@ -256,7 +256,7 @@
       <tr>
         <td>Sequential scan</td>
         <td><code>O(N)</code></td>
-        <td>Sequential I/O and cheap per page — which is why it wins at high selectivity.</td>
+        <td>Sequential I/O and cheap per page — which is why it wins when a predicate matches a large slice of the table.</td>
       </tr>
       <tr>
         <td>B+tree point lookup</td>
@@ -358,7 +358,7 @@ Index Only Scan using idx_orders_cust_covering on orders
   <h2><span class="idx">06</span>Why the planner ignored your index</h2>
 
   <ul>
-    <li><strong>Low selectivity.</strong> If statistics say the predicate matches ~20%+ of rows, random-access-per-row loses to a sequential scan. The planner is right; add a more selective column or accept the scan.</li>
+    <li><strong>The predicate is not selective enough.</strong> If statistics say it matches ~20%+ of rows, random-access-per-row loses to a sequential scan. The planner is right; add a more selective column or accept the scan.</li>
     <li><strong>The column is wrapped in a function.</strong> <code>WHERE lower(email) = ?</code> cannot use an index on <code>email</code>. Build the expression index — <code>CREATE INDEX ON users (lower(email))</code> — or normalise on write.</li>
     <li><strong>An implicit cast lands on the column side.</strong> A predicate that has to convert every stored value before comparing is not sargable. Cast the literal, not the column.</li>
     <li><strong>Leading wildcard.</strong> <code>LIKE 'acme%'</code> is a prefix range and a B-tree can serve it; <code>LIKE '%acme'</code> is not, and needs a trigram or full-text index. In Postgres, prefix matching on a non-C collation additionally requires <code>text_pattern_ops</code>.</li>
