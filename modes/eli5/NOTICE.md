@@ -19,7 +19,7 @@ taxonomy, its calibration guidance, and the explanation structure.
 
 | Pneuma file | Upstream source | Note |
 |---|---|---|
-| `skill/references/audience-calibration.md` | `skills/eli5/SKILL.md` — "Step 1: Identify the Audience" (Ages / Grade Levels / Job Roles / Relationships tables), "Language Calibration", "Tone Matching" | Adapted, not transcribed: rewritten in this project's voice, every row extended with a **page visual register** column that upstream (text-only) had no need for, and extended with rows upstream did not carry (Executive/CEO, Client/Customer, Colleague). |
+| `skill/references/audience-calibration.md` | `skills/eli5/SKILL.md` — "Step 1: Identify the Audience" (Ages / Grade Levels / Job Roles / Relationships tables), "Language Calibration", "Tone Matching" | Adapted, not transcribed: rewritten in this project's voice, every row extended with a **page visual register** column that upstream (text-only) had no need for and a **what lands as understanding** column that names the evidence each reader is convinced by, and extended with rows upstream did not carry (Executive/CEO, Client/Customer, Colleague, and a Formations section for arts/humanities-educated and practitioner readers). |
 | `skill/SKILL.md` — "The shape of an explanation" | `skills/eli5/SKILL.md` — "Step 3: Craft the Explanation → Structure" | The four beats (what → analogy → details → so-what) are upstream's, kept intact because they are the load-bearing idea. |
 | `skill/SKILL.md` — "Same truth, different register" | `skills/eli5/SKILL.md` — "Important Reminders" | Upstream's "never talk down", "purpose before mechanism", and "80% accuracy beats losing the audience" principles, restated with Pneuma's cause-and-effect rule style. |
 | `skill/SKILL.md` frontmatter `description` | `skills/eli5/SKILL.md` frontmatter `description` | Trigger-phrase list adapted; Pneuma-specific workspace framing added. |
@@ -42,12 +42,17 @@ these explicitly helps future syncs land cleanly.
   a chat message. Here each audience gets a real document on disk under
   `pages/<audience-id>.html`, rendered live by the viewer and navigable by
   address.
-- **Text-only calibration → a visual register system.** Upstream calibrates
-  vocabulary, analogy, tone, and depth. Because the deliverable here is a
-  designed page, we added a sixth dimension — typography, palette, density, and
-  decoration per audience band — as a table in `skill/SKILL.md` and a column in
-  every taxonomy table in `skill/references/audience-calibration.md`. This is
-  the Pneuma-native extension; nothing upstream corresponds to it.
+- **Text-only calibration → a derivation for the page itself.** Upstream
+  calibrates vocabulary, analogy, tone, and depth. Because the deliverable here
+  is a designed document rather than a chat reply, we added two dimensions
+  upstream has no use for: what the page *looks* like (type pairing, measure,
+  palette and ground, one gesture, decoration vocabulary) and what it has to
+  *contain* to convince that particular reader (what persuades them, the shape
+  of the reasoning, how concrete, what the figures are for, where the "so what"
+  lands). Both are taught as a derivation in `skill/SKILL.md`, with reference
+  rows there and a column apiece in every taxonomy table in
+  `skill/references/audience-calibration.md`. This is the Pneuma-native
+  extension; nothing upstream corresponds to it.
 - **Response-style examples → seed content sets.** Upstream illustrates each
   register with a sample paragraph inside SKILL.md. Here the illustration is
   the seed: two finished explainers the user sees on first launch.

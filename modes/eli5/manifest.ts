@@ -8,7 +8,7 @@ import { loadExplainer, saveExplainer } from "./domain.js";
 
 const eli5Manifest: ModeManifest = {
   name: "eli5",
-  version: "0.1.0",
+  version: "0.2.0",
   // A brand-name acronym — it reads the same in every locale, so only the
   // description below is localized.
   displayName: {
@@ -34,6 +34,17 @@ const eli5Manifest: ModeManifest = {
   // A speech bubble with a lightbulb inside it — explaining, plus the
   // moment it lands. Two stroke paths, lucide register.
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4.5v9a1.5 1.5 0 0 1-1.5 1.5H12l-4.5 3.75V15H4.5A1.5 1.5 0 0 1 3 13.5v-9A1.5 1.5 0 0 1 4.5 3h15A1.5 1.5 0 0 1 21 4.5Z"/><path d="M12 4.5a2.75 2.75 0 0 0-1.65 4.95c.34.26.55.65.55 1.08v.22h2.2v-.22c0-.43.21-.82.55-1.08A2.75 2.75 0 0 0 12 4.5ZM10.9 12.8h2.2"/></svg>`,
+
+  // These bullets render verbatim in the launcher's skill-update prompt, so
+  // they may only claim what the skill actually now says.
+  changelog: {
+    "0.2.0": [
+      "Every audience gets a visual identity, not only the kid one. The page's look is now derived from the printed matter that reader already trusts — a concert programme, a lab notebook, a discharge sheet, an analyst note — and the derivation names the type pairing, the measure and leading, the palette and its ground, where the page's one expressive gesture lives, and what its decoration is made of. Rows that used to be defined by subtraction ('almost none', 'no illustration') now say what the page is and what the saved space buys",
+      "The page's evidence is calibrated too, not just its typography. Each reader now has a stated answer for what convinces them, the shape their reasoning takes, how concrete the page has to be and how often, whether a figure decorates or carries the argument, and where the 'so what' lands — so a humanities page argues by accumulating worked cases while a technical one argues from one exact mechanism and its edge cases",
+      "Two readers the table never had: an arts or humanities-educated reader (editorial serif, asymmetric measure, ink-like accent, ornament made of typography, plates discussed in the text) and a hands-on practitioner (checklist-card legibility, one alert colour, situation-action-check). Both are written at the same specificity as the young-child row, and the calibration reference now tells you to derive an unlisted audience rather than borrow the closest row",
+      "A comparison is chosen by the idea, not by the reader's résumé — an analogy earns its place when the relationships line up on both sides, and an educated reader in another field is usually better served by plain, well-paced prose than by a metaphor built out of their own profession",
+    ],
+  },
 
   skill: {
     sourceDir: "skill",
