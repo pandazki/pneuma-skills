@@ -47,7 +47,7 @@ function parseCrossFamily(raw: string): CrossFamily {
 
 const wordtasteManifest: ModeManifest = {
   name: "wordtaste",
-  version: "0.15.0",
+  version: "0.16.0",
   displayName: {
     en: "WordTaste",
     "zh-CN": "文字品味",
@@ -59,6 +59,9 @@ const wordtasteManifest: ModeManifest = {
     "zh-TW": "人機協作的中文長文寫作：先定論點與落筆重點，再逐段寫作、換雙眼睛複查，留下真正順耳的版本",
   },
   changelog: {
+    "0.16.0": [
+      "Pick your primer libraries from the launch sheet: the two presets and every library this machine actually has, each under its own name, instead of typing a magic word into a text box",
+    ],
     "0.15.0": [
       "Write from an idea with a charter of its own: the intake becomes an interview whose answers land verbatim in materials/notes.md, and the writer develops the outline and notes — every fact in them binding, no unsupported facts allowed in — while rewriting keeps the strict only-source-of-facts rule",
     ],
@@ -317,11 +320,41 @@ The user opened WordTaste with a concrete Chinese writing goal. Run the bundled 
     contentCheckPattern: "**/workflow.json",
     params: [
       {
+        // The passages every writer reads immediately before it writes. The
+        // bundled public-domain set always leads, so this chooses what joins
+        // it. Options are half declared and half discovered: the two presets
+        // live here, the libraries are whatever this machine actually has
+        // under `~/.pneuma/primers` (and, in a project session, the project's
+        // own). The stored value stays the string it always was — `all`,
+        // `bundled`, or a comma-separated list of names — which is what
+        // `skill/scripts/lib/session.ts::primerSelection` parses.
         name: "primerLibraries",
         label: "Primer libraries",
-        type: "string",
-        description:
-          "all = bundled + every library under ~/.pneuma/primers; bundled = only the built-in public-domain set; or a comma-separated list of library names",
+        type: "multi-select",
+        description: "the writing the writers read just before they write",
+        options: [
+          {
+            value: "all",
+            label: "Everything",
+            description: "The bundled set plus every library on this machine",
+            group: "Presets",
+            exclusive: true,
+          },
+          {
+            value: "bundled",
+            label: "Bundled only",
+            description: "Just the built-in public-domain Chinese prose",
+            group: "Presets",
+            exclusive: true,
+          },
+        ],
+        optionsSource: {
+          kind: "directory-scan",
+          roots: ["user-home", "project-root"],
+          path: ".pneuma/primers",
+          markerFile: "library.json",
+          group: "Your libraries",
+        },
         defaultValue: "all",
       },
       {

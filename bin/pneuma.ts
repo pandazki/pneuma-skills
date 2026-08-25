@@ -23,6 +23,17 @@ import { startFileWatcher } from "../server/file-watcher.js";
 import { initShadowGit } from "../server/shadow-git.js";
 import { loadModeManifest, listBuiltinModes, registerExternalMode } from "../core/mode-loader.js";
 import { type ModeManifest, resolveLocalized } from "../core/types/mode-manifest.js";
+import {
+  resolveInitParamOptions,
+  type InitParamOptionsContext,
+} from "../core/init-param-resolver.js";
+import {
+  initParamOptionLabel,
+  orderInitParamSelection,
+  parseInitParamSelection,
+  serializeInitParamSelection,
+  toggleInitParamSelection,
+} from "../core/init-param-options.js";
 import type { AgentBackendType } from "../core/types/agent-backend.js";
 import { applyTemplateParams } from "../server/skill-installer.js";
 import {
@@ -316,6 +327,7 @@ function saveConfig(stateDir: string, config: Record<string, number | string>): 
 async function promptInitParams(
   manifest: ModeManifest,
   defaultOverrides?: Record<string, string>,
+  optionsContext?: InitParamOptionsContext,
 ): Promise<Record<string, number | string>> {
   const params: Record<string, number | string> = {};
   const initParams = manifest.init?.params;
@@ -325,14 +337,62 @@ async function promptInitParams(
   for (const param of initParams) {
     const effectiveDefault = defaultOverrides?.[param.name] ?? String(param.defaultValue);
     const suffix = param.description ? ` (${param.description})` : "";
+    // Options declared in the manifest, plus any this machine has — the CLI
+    // resolves them itself, since it never goes through `/api/launch/prepare`.
+    // A mode must not become launchable only from the launcher.
+    const options =
+      param.type === "select" || param.type === "multi-select"
+        ? resolveInitParamOptions(param, optionsContext ?? {})
+        : [];
+    // A group reads as a hint here; clack has no group headers in a flat list.
+    const asChoice = (option: (typeof options)[number]) => ({
+      value: option.value,
+      label: initParamOptionLabel(option),
+      ...(option.description || option.group
+        ? { hint: [option.group, option.description].filter(Boolean).join(" — ") }
+        : {}),
+    });
+
+    if (param.type === "multi-select") {
+      if (options.length === 0) {
+        throw new Error(`InitParam "${param.name}" has type "multi-select" but no options`);
+      }
+      const initial = orderInitParamSelection(
+        options,
+        parseInitParamSelection(effectiveDefault).filter((value) =>
+          options.some((option) => option.value === value),
+        ),
+      );
+      const answer = await p.multiselect({
+        message: `${param.label}${suffix}`,
+        options: options.map(asChoice),
+        initialValues: initial,
+        required: true,
+      });
+      if (p.isCancel(answer)) {
+        p.cancel(t("common.cancelled"));
+        process.exit(0);
+      }
+      // Reduce through the same algebra the launcher chips use, so an
+      // exclusive preset picked alongside libraries resolves identically in
+      // both paths and the stored bytes are the same.
+      let selection: string[] = [];
+      for (const value of answer as string[]) {
+        selection = toggleInitParamSelection(options, selection, value);
+      }
+      params[param.name] = serializeInitParamSelection(
+        selection.length > 0 ? selection : parseInitParamSelection(effectiveDefault),
+      );
+      continue;
+    }
 
     if (param.type === "select") {
-      if (!param.options || param.options.length === 0) {
+      if (options.length === 0) {
         throw new Error(`InitParam "${param.name}" has type "select" but no options`);
       }
       const answer = await p.select({
         message: `${param.label}${suffix}`,
-        options: param.options.map((o) => ({ value: o, label: o })),
+        options: options.map(asChoice),
         initialValue: effectiveDefault,
       });
       if (p.isCancel(answer)) {
@@ -2127,7 +2187,9 @@ async function main() {
           .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
           .join(" ");
       }
-      resolvedParams = await promptInitParams(manifest, defaultOverrides);
+      resolvedParams = await promptInitParams(manifest, defaultOverrides, {
+        projectRoot: startup.paths.projectRoot ?? undefined,
+      });
       saveConfig(stateDir, resolvedParams);
       p.log.step(t("pneuma.saved_init_params"));
     }

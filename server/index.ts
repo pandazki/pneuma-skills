@@ -129,6 +129,26 @@ export interface ServerOptions {
   pneumaProjectRoot?: string;
 }
 
+/**
+ * The Pneuma project root implied by a workspace path, or undefined.
+ *
+ * `/api/launch/prepare` accepts an optional `workspace` so a parameter whose
+ * options are discovered under `<projectRoot>/.pneuma/...` can be answered
+ * before any session exists (the empty-shell launch sheet). A workspace that
+ * is not a project — or a path that cannot be read — simply yields nothing,
+ * which is exactly what a quick session should see.
+ */
+async function pneumaProjectRootFor(workspace?: string): Promise<string | undefined> {
+  if (!workspace || workspace.trim().length === 0) return undefined;
+  try {
+    const resolved = resolve(workspace.replace(/^~/, homedir()));
+    const { detectWorkspaceKind } = await import("../core/project-loader.js");
+    return (await detectWorkspaceKind(resolved)) === "project" ? resolved : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** One resolved byte range, or a refusal. */
 type RangeSpec =
   | { kind: "full" }
@@ -1361,7 +1381,13 @@ export async function startServer(options: ServerOptions) {
     });
 
     app.post("/api/launch/prepare", async (c) => {
-      const { specifier } = await c.req.json<{ specifier: string }>();
+      // `workspace` is optional and only used to discover launch-time options:
+      // a workspace that is itself a Pneuma project supplies the project root
+      // that `optionsSource: { roots: ["project-root"] }` scans.
+      const { specifier, workspace: rawWorkspace } = await c.req.json<{
+        specifier: string;
+        workspace?: string;
+      }>();
       try {
         // Resolve mode → load manifest → return initParams
         const { resolveMode } = await import("../core/mode-resolver.js");
@@ -1376,34 +1402,9 @@ export async function startServer(options: ServerOptions) {
         const { loadModeManifest } = await import("../core/mode-loader.js");
         const manifest = await loadModeManifest(resolved.name);
 
-        // Auto-fill initParams defaults from stored API keys
-        // Match by: exact name, UPPER_SNAKE_CASE → camelCase, camelCase → UPPER_SNAKE_CASE
-        const storedKeys = getApiKeys();
-        const camelFromSnake = (s: string) =>
-          s.toLowerCase().replace(/_([a-z])/g, (_: string, c: string) => c.toUpperCase());
-        const snakeFromCamel = (s: string) =>
-          s.replace(/[A-Z]/g, (c: string) => `_${c}`).toUpperCase();
-
-        const params = (manifest.init?.params || []).map((p: any) => {
-          let matchedValue: string | null = null;
-
-          if (storedKeys[p.name]) {
-            matchedValue = storedKeys[p.name];
-          } else {
-            for (const [storedName, storedValue] of Object.entries(storedKeys)) {
-              if (camelFromSnake(storedName) === p.name || snakeFromCamel(p.name) === storedName) {
-                matchedValue = storedValue;
-                break;
-              }
-            }
-          }
-
-          if (matchedValue) {
-            // Return actual value for launch, but mark as auto-filled with masked preview
-            const masked = matchedValue.slice(0, 4) + "****" + matchedValue.slice(-4);
-            return { ...p, defaultValue: matchedValue, autoFilled: true, maskedPreview: masked };
-          }
-          return p;
+        const { prepareInitParams } = await import("./init-params.js");
+        const params = prepareInitParams(manifest.init?.params, {
+          projectRoot: await pneumaProjectRootFor(rawWorkspace),
         });
 
         return c.json({
@@ -2860,7 +2861,10 @@ export async function startServer(options: ServerOptions) {
   // API keys) before the user confirms. Mirrors the launcher block above;
   // both branches share the same resolve → loadModeManifest → autoFill path.
   app.post("/api/launch/prepare", async (c) => {
-    const { specifier } = await c.req.json<{ specifier: string }>();
+    const { specifier, workspace: rawWorkspace } = await c.req.json<{
+      specifier: string;
+      workspace?: string;
+    }>();
     try {
       const { resolveMode } = await import("../core/mode-resolver.js");
       const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
@@ -2874,31 +2878,14 @@ export async function startServer(options: ServerOptions) {
       const { loadModeManifest } = await import("../core/mode-loader.js");
       const manifest = await loadModeManifest(resolved.name);
 
-      // Auto-fill defaults from stored API keys — same matching as the
-      // launcher route (exact name, UPPER_SNAKE ↔ camelCase).
-      const storedKeys = getApiKeys();
-      const camelFromSnake = (s: string) =>
-        s.toLowerCase().replace(/_([a-z])/g, (_: string, c: string) => c.toUpperCase());
-      const snakeFromCamel = (s: string) =>
-        s.replace(/[A-Z]/g, (c: string) => `_${c}`).toUpperCase();
-
-      const params = (manifest.init?.params || []).map((p: any) => {
-        let matchedValue: string | null = null;
-        if (storedKeys[p.name]) {
-          matchedValue = storedKeys[p.name];
-        } else {
-          for (const [storedName, storedValue] of Object.entries(storedKeys)) {
-            if (camelFromSnake(storedName) === p.name || snakeFromCamel(p.name) === storedName) {
-              matchedValue = storedValue;
-              break;
-            }
-          }
-        }
-        if (matchedValue) {
-          const masked = matchedValue.slice(0, 4) + "****" + matchedValue.slice(-4);
-          return { ...p, defaultValue: matchedValue, autoFilled: true, maskedPreview: masked };
-        }
-        return p;
+      // Auto-fill from stored API keys + resolve launch-time options — the
+      // launcher route above shares this one implementation. The running
+      // session already knows its own Pneuma project root; ProjectPanel's
+      // `workspace` covers the empty-shell case, where there is no session yet.
+      const { prepareInitParams } = await import("./init-params.js");
+      const params = prepareInitParams(manifest.init?.params, {
+        projectRoot:
+          options.pneumaProjectRoot ?? (await pneumaProjectRootFor(rawWorkspace)),
       });
 
       return c.json({

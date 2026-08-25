@@ -3,7 +3,7 @@ import wordtasteManifest from "../manifest.js";
 
 describe("wordtaste v0.9 manifest", () => {
   it("declares the upstream method alignment and calibrated scope", () => {
-    expect(wordtasteManifest.version).toBe("0.15.0");
+    expect(wordtasteManifest.version).toBe("0.16.0");
     expect(wordtasteManifest.changelog?.["0.3.0"]).toBeDefined();
     expect(wordtasteManifest.changelog?.["0.4.0"]).toBeDefined();
     expect(wordtasteManifest.changelog?.["0.5.0"]).toHaveLength(3);
@@ -21,6 +21,7 @@ describe("wordtaste v0.9 manifest", () => {
     expect(wordtasteManifest.changelog?.["0.13.0"]).toHaveLength(1);
     expect(wordtasteManifest.changelog?.["0.14.0"]).toHaveLength(1);
     expect(wordtasteManifest.changelog?.["0.15.0"]).toHaveLength(1);
+    expect(wordtasteManifest.changelog?.["0.16.0"]).toHaveLength(1);
     const description = wordtasteManifest.description;
     expect(typeof description === "string" ? description : description?.en).toContain(
       "Chinese long-form",
@@ -105,13 +106,21 @@ describe("wordtaste v0.9 manifest", () => {
   });
 
   it("lets the user pick which primer libraries a session reads", () => {
+    // The choices are half declared (the two presets) and half discovered at
+    // launch time (whatever libraries this machine has) — the full behaviour
+    // is pinned in `primer-libraries-param.test.ts`, including the proof that
+    // the stored value stays the string `session.ts` already parses.
     const params = wordtasteManifest.init?.params ?? [];
     const primer = params.find((param) => param.name === "primerLibraries");
     expect(primer).toBeDefined();
-    expect(primer!.type).toBe("string");
+    expect(primer!.type).toBe("multi-select");
     expect(primer!.defaultValue).toBe("all");
     expect(primer!.label).toBe("Primer libraries");
-    expect(primer!.description).toContain("bundled");
+    expect(primer!.options?.map((o) => (typeof o === "string" ? o : o.value))).toEqual([
+      "all",
+      "bundled",
+    ]);
+    expect(primer!.optionsSource?.kind).toBe("directory-scan");
     expect(primer!.sensitive).toBeUndefined();
   });
 

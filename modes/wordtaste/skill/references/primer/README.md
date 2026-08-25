@@ -168,6 +168,14 @@ every library under `~/.pneuma/primers/` — and, for a project session, under
 those, resolved against the same two roots; `bundled` uses only this directory.
 `WORDTASTE_PRIMER_LIBS=<dir>[:<dir>]` overrides the whole list for one dispatch.
 
+The launch sheet does not ask you to type any of those words. The parameter is
+declared `multi-select` with the two presets and an `optionsSource` that scans
+those same two roots for directories carrying a `library.json`, so each library
+appears under its own `displayName` with its `description` beside it, and the
+value above is what the chips you tick serialize to. Nothing here reads
+differently because of it — that equivalence is pinned by
+`modes/wordtaste/__tests__/primer-libraries-param.test.ts`.
+
 Resolved init params persist to `<stateDir>/config.json`, and `stateDir` depends
 on the session shape (`core/path-resolver-pneuma.ts`, mirrored by the launcher's
 `/api/launch`):

@@ -165,6 +165,79 @@ export interface AgentPreferences {
   greeting?: string;
 }
 
+/**
+ * One selectable choice for a `select` / `multi-select` init parameter.
+ *
+ * A bare string in `InitParam.options` is shorthand for `{ value: s }` — every
+ * existing `options: ["A4", "A5"]` declaration stays valid and renders exactly
+ * as before. The object form exists so a choice can say what it *is* (a
+ * library's display name and blurb) rather than only what it serializes to.
+ */
+export interface InitParamOption {
+  /** The literal that lands in the stored config value. */
+  value: string;
+  /** Human-facing name. Falls back to `value` when absent. */
+  label?: string;
+  /** One-line explanation shown beside the label. */
+  description?: string;
+  /**
+   * UI grouping label ("Presets", "Your libraries"). Options that declare no
+   * group render first, in declaration order; groups follow in first-seen
+   * order. Purely presentational — it never reaches the config value.
+   */
+  group?: string;
+  /**
+   * `multi-select` only: choosing this clears every other selection, and
+   * choosing anything else clears it. Presets that stand alone (`all`,
+   * `bundled`) declare this; it is what keeps a set-valued parameter able to
+   * serialize a single magic word.
+   */
+  exclusive?: boolean;
+}
+
+/**
+ * Declares that a parameter's options are **discovered at launch time**
+ * instead of listed in the manifest.
+ *
+ * The manifest says *what kind of thing to look for*; the discovery itself
+ * lives server-side in `core/init-param-resolver.ts`, so `manifest.ts` stays
+ * free of both React and runtime filesystem logic. Resolved options ride back
+ * to the browser on the existing `/api/launch/prepare` enrichment path — the
+ * same seam that already decorates params with `autoFilled`.
+ *
+ * Discovered options are appended to the static `options` list, so a mode can
+ * declare its presets in the manifest and let the rest be found.
+ */
+export type InitParamOptionsSource = {
+  /**
+   * One option per direct subdirectory of each root. The only kind today;
+   * the field is a discriminated union so a future kind (a registry query,
+   * a proxy endpoint) is an addition rather than a rewrite.
+   */
+  kind: "directory-scan";
+  /**
+   * Where to look. `"user-home"` is the user's home directory; `"project-root"`
+   * is the Pneuma project root and is simply skipped for a quick session.
+   * Roots are scanned in the declared order and the first occurrence of a name
+   * wins, mirroring how a named lookup resolves at read time.
+   */
+  roots: Array<"user-home" | "project-root">;
+  /**
+   * Path under each root, relative and traversal-free (e.g. `".pneuma/primers"`).
+   * An absolute or `..`-bearing path is refused — the scan yields nothing.
+   */
+  path: string;
+  /**
+   * Required marker file inside a candidate directory. A directory without it
+   * is not offered. When the marker parses as JSON, its `displayName` / `name`
+   * supply the option's label and its `description` the blurb — the same
+   * vocabulary Pneuma's own manifests use.
+   */
+  markerFile?: string;
+  /** Group label stamped on every option this source discovers. */
+  group?: string;
+};
+
 /** Mode init parameter declaration — interactively prompted on first launch */
 export interface InitParam {
   /** Parameter name, also used as template placeholder key (e.g. "slideWidth") */
@@ -173,11 +246,32 @@ export interface InitParam {
   label: string;
   /** Additional description (e.g. "pixels") */
   description?: string;
-  /** Parameter type. "select" requires `options` to be set. */
-  type: "number" | "string" | "select";
-  /** Required when type === "select". List of string choices shown to the user. */
-  options?: string[];
-  /** Default value. For "select", must be one of `options`. */
+  /**
+   * Parameter type.
+   * - `"select"` — one choice; requires `options` and/or `optionsSource`.
+   * - `"multi-select"` — a set of choices; requires `options` and/or
+   *   `optionsSource`. The chosen set serializes into the stored config value
+   *   as the selected `value`s joined by `,` in declared option order
+   *   (`INIT_PARAM_MULTI_SEPARATOR`, `core/init-param-options.ts`), so a
+   *   set-valued parameter reads on disk exactly like the comma-separated
+   *   string a text box used to produce. A selection is never empty.
+   */
+  type: "number" | "string" | "select" | "multi-select";
+  /**
+   * Static choices. Required for `"select"` unless `optionsSource` supplies
+   * them. Bare strings are shorthand for `{ value }`.
+   */
+  options?: Array<string | InitParamOption>;
+  /**
+   * Declares options resolved at launch time, appended to `options`.
+   * Resolution happens server-side; the browser only ever sees the result.
+   */
+  optionsSource?: InitParamOptionsSource;
+  /**
+   * Default value. For `"select"`, must be one of the option values. For
+   * `"multi-select"`, the serialized form of the initial selection
+   * (e.g. `"all"`, or `"alpha,beta"`).
+   */
   defaultValue: number | string;
   /** Mark as sensitive value (API keys, etc.), cleared during snapshot packaging */
   sensitive?: boolean;
