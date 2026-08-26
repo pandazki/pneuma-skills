@@ -7,6 +7,7 @@
 import { describe, test, expect } from "bun:test";
 import {
   isDuplicateClientMessage,
+  forgetClientMessage,
   rememberClientMessage,
   shouldBufferForReplay,
   isHistoryBackedEvent,
@@ -105,6 +106,18 @@ describe("rememberClientMessage", () => {
   });
 });
 
+describe("forgetClientMessage", () => {
+  test("releases a rejected request from both idempotency indexes", () => {
+    const session = makeDefaultSession();
+    rememberClientMessage(session, "steer-retry", 100);
+
+    forgetClientMessage(session, "steer-retry");
+
+    expect(isDuplicateClientMessage(session, "steer-retry")).toBe(false);
+    expect(session.processedClientMessageIds).not.toContain("steer-retry");
+  });
+});
+
 // ── shouldBufferForReplay ───────────────────────────────────────────────────
 
 describe("shouldBufferForReplay", () => {
@@ -131,6 +144,14 @@ describe("shouldBufferForReplay", () => {
   test("returns true for content_update message", () => {
     const msg = { type: "content_update" } as BrowserIncomingMessage;
     expect(shouldBufferForReplay(msg)).toBe(true);
+  });
+
+  test("returns true for steer_result so reconnect can resolve a queued message", () => {
+    expect(shouldBufferForReplay({
+      type: "steer_result",
+      client_msg_id: "queued-1",
+      success: true,
+    })).toBe(true);
   });
 
   test("returns false for session_init message", () => {

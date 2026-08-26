@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import { join, relative } from "node:path";
 import { enqueueCheckpoint, isShadowGitAvailable } from "./shadow-git.js";
 import { setBridgeSocket, handleBridgeResult } from "./native-bridge.js";
@@ -36,6 +36,7 @@ import { isPneumaMarkerOnly } from "../core/utils/pneuma-markers.js";
 export type { SocketData } from "./ws-bridge-types.js";
 import {
   isDuplicateClientMessage,
+  forgetClientMessage,
   rememberClientMessage,
   isHistoryBackedEvent,
   sequenceEvent,
@@ -66,6 +67,7 @@ export class WsBridge {
   private static readonly PROCESSED_CLIENT_MSG_ID_LIMIT = 1000;
   private static readonly IDEMPOTENT_BROWSER_MESSAGE_TYPES = new Set<string>([
     "user_message",
+    "steer_message",
     "permission_response",
     "interrupt",
   ]);
@@ -99,6 +101,7 @@ export class WsBridge {
   bridgeBackendDeps(): BridgeBackendDeps {
     return {
       broadcastToBrowsers: (s, msg) => this.broadcastToBrowsers(s, msg),
+      forgetClientMessage,
       workspace: this.workspace,
       onAgentSessionId: (sessionId, agentSessionId) => {
         if (this.onCLISessionId) this.onCLISessionId(sessionId, agentSessionId);
@@ -1348,6 +1351,10 @@ export class WsBridge {
         this.handleUserMessage(session, msg);
         break;
 
+      case "steer_message":
+        this.handleSteerMessage(session, msg);
+        break;
+
       case "permission_response":
         handlePermissionResponse(session, msg, this.sendToCLI.bind(this));
         break;
@@ -1502,9 +1509,15 @@ export class WsBridge {
       content: string;
       images?: { media_type: string; data: string }[];
       files?: { name: string; media_type: string; data: string; size: number }[];
+      client_msg_id?: string;
     },
-    opts: { inlineImagesSupported: boolean },
-  ): { textContent: string; inlineImages: { media_type: string; data: string }[] } {
+    opts: { inlineImagesSupported: boolean; deferCommit?: boolean },
+  ): {
+    textContent: string;
+    inlineImages: { media_type: string; data: string }[];
+    commit: () => void;
+    rollback: () => void;
+  } {
     const IMAGE_INLINE_LIMIT = 5 * 1024 * 1024; // 5 MB base64 chars ≈ 3.75 MB raw
     const TEXT_INLINE_LIMIT = 32 * 1024;
 
@@ -1564,14 +1577,17 @@ export class WsBridge {
           .filter((entry): entry is { media_type: string; path: string } => Boolean(entry.path))
       : [];
     const historyFiles = savedFiles.map((f) => ({ name: f.name, size: f.size, path: f.path }));
-    session.messageHistory.push({
+    const historyEntry: BrowserIncomingMessage = {
       type: "user_message",
       content: msg.content,
       timestamp: ts,
-      id: `user-${ts}-${this.userMsgCounter++}`,
+      id: msg.client_msg_id
+        ? `steer-${msg.client_msg_id}`
+        : `user-${ts}-${this.userMsgCounter++}`,
+      ...(msg.client_msg_id ? { client_msg_id: msg.client_msg_id } : {}),
       ...(historyImages.length ? { images: historyImages } : {}),
       ...(historyFiles.length ? { files: historyFiles } : {}),
-    });
+    };
 
     // 4. Drain any pending `<pneuma:env>` context that was queued while the
     //    user wasn't typing. Those tags were already recorded in
@@ -1580,11 +1596,10 @@ export class WsBridge {
     //    spurious "welcome back" replies). Now that a real user message is
     //    heading to the agent, fold them in as a one-shot prefix so the
     //    agent sees session-lineage / locale / handoff context.
-    let envPrefix = "";
-    if (session.pendingEnvContext.length > 0) {
-      envPrefix = session.pendingEnvContext.join("\n") + "\n";
-      session.pendingEnvContext = [];
-    }
+    const drainedEnvContext = session.pendingEnvContext.splice(0);
+    const envPrefix = drainedEnvContext.length > 0
+      ? drainedEnvContext.join("\n") + "\n"
+      : "";
 
     // 5. Assemble the text the agent should receive: envPrefix +
     //    `<uploaded-files>` block + the user's original message.
@@ -1598,7 +1613,28 @@ export class WsBridge {
       ? msg.images.filter((img) => img.data.length <= IMAGE_INLINE_LIMIT)
       : [];
 
-    return { textContent, inlineImages };
+    let settled = false;
+    const commit = () => {
+      if (settled) return;
+      settled = true;
+      session.messageHistory.push(historyEntry);
+    };
+    const rollback = () => {
+      if (settled) return;
+      settled = true;
+      if (drainedEnvContext.length > 0) {
+        session.pendingEnvContext = [...drainedEnvContext, ...session.pendingEnvContext];
+      }
+      // These paths were minted by this ingest attempt. A rejected steer
+      // remains queued and may retry, so keep failed attempts from leaking a
+      // second copy of every attachment into `.pneuma/uploads/`.
+      for (const path of [...savedImagePaths, ...savedFiles.map((file) => file.path)]) {
+        try { unlinkSync(path); } catch {}
+      }
+    };
+
+    if (!opts.deferCommit) commit();
+    return { textContent, inlineImages, commit, rollback };
   }
 
   private handleUserMessage(
@@ -1634,6 +1670,70 @@ export class WsBridge {
       session_id: msg.session_id || session.state.session_id || "",
     });
     this.sendToCLI(session, ndjson);
+  }
+
+  private handleSteerMessage(
+    session: Session,
+    msg: {
+      type: "steer_message";
+      content: string;
+      images?: { media_type: string; data: string }[];
+      files?: { name: string; media_type: string; data: string; size: number }[];
+      client_msg_id: string;
+    },
+  ): void {
+    const fail = (error: string) => {
+      forgetClientMessage(session, msg.client_msg_id);
+      this.broadcastToBrowsers(session, {
+        type: "steer_result",
+        client_msg_id: msg.client_msg_id,
+        success: false,
+        error,
+      });
+    };
+
+    if (!session.state.agent_capabilities.steer) {
+      fail("The current agent connection does not support steer-in.");
+      return;
+    }
+    if (session.cliIdle || !session.cliSocket) {
+      fail("There is no active agent turn to steer.");
+      return;
+    }
+
+    const prepared = this.prepareIncomingUserMessage(
+      session,
+      msg,
+      { inlineImagesSupported: true, deferCommit: true },
+    );
+    const content = prepared.inlineImages.length > 0
+      ? [
+          ...prepared.inlineImages.map((image) => ({
+            type: "image",
+            source: { type: "base64", media_type: image.media_type, data: image.data },
+          })),
+          { type: "text", text: prepared.textContent },
+        ]
+      : prepared.textContent;
+    const ndjson = JSON.stringify({
+      type: "user",
+      message: { role: "user", content },
+      parent_tool_use_id: null,
+      session_id: session.state.session_id || "",
+    });
+
+    try {
+      session.cliSocket.send(ndjson + "\n");
+      prepared.commit();
+      this.broadcastToBrowsers(session, {
+        type: "steer_result",
+        client_msg_id: msg.client_msg_id,
+        success: true,
+      });
+    } catch (error) {
+      prepared.rollback();
+      fail(error instanceof Error ? error.message : String(error));
+    }
   }
 
   private buildUploadNotification(

@@ -13,6 +13,7 @@ describe("makeDefaultState", () => {
       permissions: true,
       toolProgress: true,
       modelSwitch: true,
+      steer: true,
       scheduling: true,
       costTracking: true,
       contextWindow: true,

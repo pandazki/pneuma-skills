@@ -28,6 +28,7 @@ function fakeBackend(): AgentBackend {
       permissions: true,
       toolProgress: true,
       modelSwitch: true,
+      steer: true,
     },
     launch: () => ({
       sessionId: "fake",
@@ -61,6 +62,7 @@ function makeFakeModule(overrides: Partial<BackendModule> = {}): BackendModule {
       permissions: true,
       toolProgress: true,
       modelSwitch: true,
+      steer: true,
     },
     createBackend: () => fakeBackend(),
     createBridgeBackend: () => null,

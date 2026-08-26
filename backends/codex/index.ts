@@ -24,6 +24,7 @@ export class CodexBackend implements AgentBackend {
     permissions: true,
     toolProgress: false,
     modelSwitch: true,
+    steer: true,
   };
 
   private launcher: CodexCliLauncher;

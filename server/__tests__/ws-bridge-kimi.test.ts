@@ -165,6 +165,36 @@ describe("WsBridge.attachKimiAdapter", () => {
     expect(cancel.params).toEqual({ sessionId: FAKE_SESSION_ID });
   });
 
+  it("rejects steer-in explicitly because the ACP transport has no steer method", async () => {
+    const bridge = new WsBridge();
+    const { adapter, server } = makeAdapter("s1");
+    bridge.attachKimiAdapter("s1", adapter);
+    const session = bridge.getSession("s1")!;
+    await server.waitForMethod("session/new");
+    await tick();
+    const frames: Array<Record<string, unknown>> = [];
+    session.browserSockets.add({
+      send: (raw: string) => frames.push(JSON.parse(raw)),
+    } as never);
+    const before = server.frames.length;
+
+    (bridge as unknown as { routeBrowserMessage: (s: unknown, m: unknown) => void })
+      .routeBrowserMessage(session, {
+        type: "steer_message",
+        content: "change direction",
+        client_msg_id: "kimi-queued",
+      });
+    await tick();
+
+    expect(server.frames.slice(before).some((frame) => frame.method === "session/prompt")).toBe(false);
+    expect(server.frames.slice(before).some((frame) => frame.method === "session/cancel")).toBe(false);
+    expect(session.messageHistory.filter((message) => message.type === "user_message")).toHaveLength(0);
+    expect(frames.find((frame) => frame.type === "steer_result")).toMatchObject({
+      client_msg_id: "kimi-queued",
+      success: false,
+    });
+  });
+
   it("closeSession disconnects the adapter and removes it from the map", () => {
     const bridge = new WsBridge();
     const { adapter } = makeAdapter("s1");

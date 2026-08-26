@@ -90,6 +90,12 @@ RPC (`fetchAvailableModels`); skills come from `skills/list`.
 
 // turn/interrupt — sent by the chat UI's stop button
 { "method": "turn/interrupt", "id": 8, "params": { "threadId": "…", "turnId": "trn_…" } }
+
+// turn/steer — promotes one queued message into the active turn
+{ "method": "turn/steer", "id": 9, "params": {
+    "threadId": "…", "expectedTurnId": "trn_…",
+    "input": [{ "type": "text", "text": "Focus on rollback safety" }]
+} }
 ```
 
 ### Per-turn flow (Codex → server)
@@ -165,6 +171,7 @@ must call `transport.respond(id, …)` once the user decides:
 | `permissions`  | `true`  | Seven different approval-request methods are wired (see Permission round-trips above). |
 | `toolProgress` | `false` | We surface "Running… (Ns)" via `handleItemUpdated`, but it's a coarse text update — there is no incremental progress integer the UI can chart, so we report `false` to match what the UI reasonably gates on. |
 | `modelSwitch`  | `true`  | `set_model` records the new model on the adapter; it's applied to the next `turn/start` (Codex is per-turn model selection, not a stateful flip). |
+| `steer`        | `true`  | app-server's native `turn/steer` appends typed input to the active turn. Pneuma includes `expectedTurnId` so a turn-boundary race fails explicitly instead of steering the wrong turn. |
 
 ## Install layout
 

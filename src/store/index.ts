@@ -40,6 +40,10 @@ function tryFlushPendingQueue() {
   const state = useStore.getState();
   if (state.sessionStatus !== "idle" || state.turnInProgress) return;
   if (state.pendingMessages.length === 0) return;
+  // A steer RPC can resolve a few milliseconds after the active turn's
+  // `result`. Do not let that idle edge auto-flush the same queue item as a
+  // brand-new turn while its steer acknowledgement is still in flight.
+  if (state.pendingSteerIds.size > 0) return;
   // Don't flush into a socket that can't carry the message. `send()` silently
   // no-ops when the WS isn't OPEN, so flushing mid-reconnect would shift the
   // message out of the queue, mark the turn busy, and then drop it on the
@@ -54,6 +58,7 @@ function tryFlushPendingQueue() {
     const store = useStore.getState();
     if (store.sessionStatus !== "idle" || store.turnInProgress) return;
     if (store.connectionStatus !== "connected") return;
+    if (store.pendingSteerIds.size > 0) return;
     const next = store.shiftPendingMessage();
     if (!next) return;
 
@@ -134,7 +139,8 @@ useStore.subscribe(
     const turnCleared = !state.turnInProgress && prevState.turnInProgress;
     const queueGrew = state.pendingMessages.length > prevState.pendingMessages.length;
     const reconnected = state.connectionStatus === "connected" && prevState.connectionStatus !== "connected";
-    if (becameIdle || turnCleared || queueGrew || reconnected) {
+    const steerSettled = state.pendingSteerIds.size < prevState.pendingSteerIds.size;
+    if (becameIdle || turnCleared || queueGrew || reconnected || steerSettled) {
       tryFlushPendingQueue();
     }
   },

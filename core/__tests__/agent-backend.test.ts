@@ -33,6 +33,7 @@ function createMockBackend(): AgentBackend {
       permissions: true,
       toolProgress: true,
       modelSwitch: true,
+      steer: true,
     },
 
     launch(options: AgentLaunchOptions): AgentSessionInfo {
@@ -207,6 +208,7 @@ describe("AgentCapabilities", () => {
     expect(caps.permissions).toBe(true);
     expect(caps.toolProgress).toBe(true);
     expect(caps.modelSwitch).toBe(true);
+    expect(caps.steer).toBe(true);
   });
 
   test("capabilities shape has all required fields", () => {
@@ -216,13 +218,14 @@ describe("AgentCapabilities", () => {
       permissions: false,
       toolProgress: false,
       modelSwitch: false,
+      steer: false,
     };
 
     // All fields are booleans
     for (const [key, value] of Object.entries(caps)) {
       expect(typeof value).toBe("boolean");
     }
-    expect(Object.keys(caps)).toHaveLength(5);
+    expect(Object.keys(caps)).toHaveLength(6);
   });
 });
 

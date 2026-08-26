@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.41.0] - 2026-08-26
+
+### Added
+- **Queued guidance can join the turn already in progress.** Every queued user message now has its own steer-in control: Claude Code receives it through streaming input and Codex through native `turn/steer`, without stopping the agent or opening a second turn. The selected row stays put until the backend accepts it, remains retryable after a race or transport failure, and reconciles exactly once after reconnects; attachments and viewer context travel with it too.
+
+### Improved
+- **Unsupported means visibly unavailable, not approximately emulated.** Kimi's current ACP connection has no in-flight steer method, so its queue control is deliberately disabled with an explanatory tooltip instead of cancelling and resending. The same control explains disconnected and idle states, shows progress while an acknowledgement is pending, and keeps a visible keyboard-focus ring.
+
 ## [3.40.0] - 2026-08-25
 
 ### Added

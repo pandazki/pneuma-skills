@@ -88,6 +88,9 @@ export class CodexBridge implements BridgeBackend {
       case "user_message":
         this.handleBrowserUserMessage(msg);
         return "handled";
+      case "steer_message":
+        void this.handleBrowserSteerMessage(msg);
+        return "handled";
       case "permission_response":
         this.adapter.sendBrowserMessage(msg);
         this.session.pendingPermissions.delete(msg.request_id);
@@ -134,6 +137,52 @@ export class CodexBridge implements BridgeBackend {
       type: "user_message",
       content: textContent,
       images: inlineImages.length > 0 ? inlineImages : undefined,
+    });
+  }
+
+  private async handleBrowserSteerMessage(msg: {
+    type: "steer_message";
+    content: string;
+    images?: { media_type: string; data: string }[];
+    files?: { name: string; media_type: string; data: string; size: number }[];
+    client_msg_id: string;
+  }): Promise<void> {
+    if (this.session.cliIdle || !this.adapter.canSteer()) {
+      this.deps.forgetClientMessage(this.session, msg.client_msg_id);
+      this.broadcastSteerResult(msg.client_msg_id, false, "Codex has no active turn to steer.");
+      return;
+    }
+
+    const prepared = this.deps.prepareIncomingUserMessage(
+      this.session,
+      msg,
+      { inlineImagesSupported: true, deferCommit: true },
+    );
+
+    try {
+      await this.adapter.steerUserMessage(
+        prepared.textContent,
+        prepared.inlineImages.length > 0 ? prepared.inlineImages : undefined,
+      );
+      prepared.commit();
+      this.broadcastSteerResult(msg.client_msg_id, true);
+    } catch (error) {
+      prepared.rollback();
+      this.deps.forgetClientMessage(this.session, msg.client_msg_id);
+      this.broadcastSteerResult(
+        msg.client_msg_id,
+        false,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  private broadcastSteerResult(clientMsgId: string, success: boolean, error?: string): void {
+    this.deps.broadcastToBrowsers(this.session, {
+      type: "steer_result",
+      client_msg_id: clientMsgId,
+      success,
+      ...(error ? { error } : {}),
     });
   }
 

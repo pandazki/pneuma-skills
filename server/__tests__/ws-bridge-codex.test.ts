@@ -13,6 +13,8 @@ import type { BrowserOutgoingMessage } from "../session-types.js";
  */
 function makeFakeCodexAdapter() {
   const sentMessages: BrowserOutgoingMessage[] = [];
+  const steerCalls: Array<{ content: string; images?: { media_type: string; data: string }[] }> = [];
+  let steerError: Error | null = null;
   const fake = {
     onBrowserMessage: (_cb: unknown) => {},
     onSessionMeta: (_cb: unknown) => {},
@@ -21,9 +23,27 @@ function makeFakeCodexAdapter() {
       sentMessages.push(msg);
       return true;
     },
+    canSteer: () => true,
+    steerUserMessage: async (content: string, images?: { media_type: string; data: string }[]) => {
+      steerCalls.push({ content, images });
+      if (steerError) throw steerError;
+    },
     disconnect: async () => {},
   };
-  return { adapter: fake as unknown as CodexAdapter, sentMessages };
+  return {
+    adapter: fake as unknown as CodexAdapter,
+    sentMessages,
+    steerCalls,
+    failSteer: (error: Error | null) => { steerError = error; },
+  };
+}
+
+function attachRecordingBrowser(session: ReturnType<WsBridge["getOrCreateSession"]>) {
+  const frames: Array<Record<string, unknown>> = [];
+  session.browserSockets.add({
+    send: (raw: string) => frames.push(JSON.parse(raw)),
+  } as never);
+  return frames;
 }
 
 describe("WsBridge Codex integration", () => {
@@ -136,6 +156,145 @@ describe("WsBridge Codex integration", () => {
       // Notification still lists the image (small → no `large="true"`).
       expect(sent.content).toContain("<image path=");
       expect(sent.content).not.toContain('large="true"');
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  test("steers the active turn and acknowledges only after the native RPC succeeds", async () => {
+    const bridge = new WsBridge();
+    const { adapter, steerCalls } = makeFakeCodexAdapter();
+    bridge.attachCodexAdapter("steer-ok", adapter);
+    const session = bridge.getSession("steer-ok")!;
+    session.cliIdle = false;
+    const frames = attachRecordingBrowser(session);
+
+    (bridge as unknown as { routeBrowserMessage: (s: unknown, m: unknown) => void })
+      .routeBrowserMessage(session, {
+        type: "steer_message",
+        content: "focus on rollback",
+        images: [{ media_type: "image/png", data: "aW1hZ2U=" }],
+        client_msg_id: "queued-2",
+      });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(steerCalls).toEqual([{
+      content: "focus on rollback",
+      images: [{ media_type: "image/png", data: "aW1hZ2U=" }],
+    }]);
+    expect(session.messageHistory.filter((message) => message.type === "user_message")).toHaveLength(1);
+    expect(frames.find((frame) => frame.type === "steer_result")).toMatchObject({
+      client_msg_id: "queued-2",
+      success: true,
+    });
+  });
+
+  test("failed native steer restores env context and does not commit chat history", async () => {
+    const bridge = new WsBridge();
+    const { adapter, failSteer } = makeFakeCodexAdapter();
+    failSteer(new Error("active turn changed"));
+    bridge.attachCodexAdapter("steer-fail", adapter);
+    const session = bridge.getSession("steer-fail")!;
+    session.cliIdle = false;
+    session.pendingEnvContext.push("<pneuma:env reason=\"opened\" />");
+    const frames = attachRecordingBrowser(session);
+
+    (bridge as unknown as { routeBrowserMessage: (s: unknown, m: unknown) => void })
+      .routeBrowserMessage(session, {
+        type: "steer_message",
+        content: "try this",
+        client_msg_id: "queued-fail",
+      });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(session.messageHistory.filter((message) => message.type === "user_message")).toHaveLength(0);
+    expect(session.pendingEnvContext).toEqual(["<pneuma:env reason=\"opened\" />"]);
+    expect(frames.find((frame) => frame.type === "steer_result")).toMatchObject({
+      client_msg_id: "queued-fail",
+      success: false,
+      error: "active turn changed",
+    });
+  });
+
+  test("a rejected steer can retry the same queued message id", async () => {
+    const bridge = new WsBridge();
+    const { adapter, failSteer, steerCalls } = makeFakeCodexAdapter();
+    failSteer(new Error("active turn changed"));
+    bridge.attachCodexAdapter("steer-retry", adapter);
+    const session = bridge.getSession("steer-retry")!;
+    session.cliIdle = false;
+    const frames = attachRecordingBrowser(session);
+    const msg = {
+      type: "steer_message",
+      content: "retry this guidance",
+      client_msg_id: "queued-retry",
+    } as const;
+    const route = () => (bridge as unknown as {
+      routeBrowserMessage: (s: unknown, m: unknown) => void;
+    }).routeBrowserMessage(session, msg);
+
+    route();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    failSteer(null);
+    route();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(steerCalls).toHaveLength(2);
+    expect(frames.filter((frame) => frame.type === "steer_result").map((frame) => frame.success))
+      .toEqual([false, true]);
+    expect(session.messageHistory.filter((message) => message.type === "user_message")).toHaveLength(1);
+  });
+
+  test("idle preflight rejects before the native RPC and leaves the id retryable", async () => {
+    const bridge = new WsBridge();
+    const { adapter, steerCalls } = makeFakeCodexAdapter();
+    bridge.attachCodexAdapter("steer-idle", adapter);
+    const session = bridge.getSession("steer-idle")!;
+    const frames = attachRecordingBrowser(session);
+
+    (bridge as unknown as { routeBrowserMessage: (s: unknown, m: unknown) => void })
+      .routeBrowserMessage(session, {
+        type: "steer_message",
+        content: "too late",
+        client_msg_id: "queued-codex-idle",
+      });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(steerCalls).toHaveLength(0);
+    expect(session.processedClientMessageIdSet.has("queued-codex-idle")).toBe(false);
+    expect(frames.find((frame) => frame.type === "steer_result")).toMatchObject({
+      client_msg_id: "queued-codex-idle",
+      success: false,
+    });
+  });
+
+  test("failed steer removes only the attachment files minted by that attempt", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "pneuma-codex-steer-rollback-"));
+    try {
+      const bridge = new WsBridge();
+      bridge.setWorkspace(workspace);
+      const { adapter, failSteer } = makeFakeCodexAdapter();
+      failSteer(new Error("active turn changed"));
+      bridge.attachCodexAdapter("steer-files-fail", adapter);
+      const session = bridge.getSession("steer-files-fail")!;
+      session.cliIdle = false;
+
+      (bridge as unknown as { routeBrowserMessage: (s: unknown, m: unknown) => void })
+        .routeBrowserMessage(session, {
+          type: "steer_message",
+          content: "inspect this",
+          files: [{
+            name: "retry.txt",
+            media_type: "text/plain",
+            data: Buffer.from("retry body").toString("base64"),
+            size: 10,
+          }],
+          client_msg_id: "queued-files-fail",
+        });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(readdirSync(join(workspace, ".pneuma", "uploads"))).toHaveLength(0);
+      expect(session.messageHistory.filter((message) => message.type === "user_message")).toHaveLength(0);
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }

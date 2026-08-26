@@ -192,7 +192,9 @@ export class CliLauncher {
     if (this.streamHandlers) {
       const stdin = proc.stdin;
       const sendInput = (line: string) => {
-        if (!stdin || stdin.destroyed) return;
+        if (!stdin || stdin.destroyed) {
+          throw new Error("Claude Code stdin is no longer writable");
+        }
         // Each user message is one NDJSON line. The bridge already appends
         // "\n" via the existing sendToCLI path, so we just write what we got.
         stdin.write(line.endsWith("\n") ? line : line + "\n");
