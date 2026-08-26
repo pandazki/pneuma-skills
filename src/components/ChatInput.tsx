@@ -118,7 +118,7 @@ export default function ChatInput() {
   const pendingSteerIds = useStore((s) => s.pendingSteerIds);
   const setPendingMessageSteering = useStore((s) => s.setPendingMessageSteering);
   const resolvePendingSteer = useStore((s) => s.resolvePendingSteer);
-  const steerSupported = useStore((s) => s.session?.agent_capabilities.steer === true);
+  const steerSupported = useStore((s) => s.session?.agent_capabilities?.steer === true);
   const selection = useStore((s) => s.selection);
   const setSelection = useStore((s) => s.setSelection);
   const annotations = useStore((s) => s.annotations);
@@ -481,11 +481,12 @@ export default function ChatInput() {
                     </button>
                   </span>
                 )}
+                {/* Always removable, steer in flight or not — this is the
+                    only way out of a row whose acknowledgement never lands. */}
                 <button
                   type="button"
                   onClick={() => removePendingMessage(msg.id)}
-                  disabled={isSteering}
-                  className="shrink-0 text-cc-muted/40 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 disabled:cursor-not-allowed disabled:hover:text-cc-muted/40"
+                  className="shrink-0 text-cc-muted/40 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
                   title={t("remove_from_queue")}
                 >
                   <CloseIcon />

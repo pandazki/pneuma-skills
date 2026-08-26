@@ -155,9 +155,20 @@ export const createChatSlice: StateCreator<AppState, [], [], ChatSlice> = (set, 
     return id;
   },
   removePendingMessage: (id) =>
-    set((s) => ({
-      pendingMessages: s.pendingMessages.filter((m) => m.id !== id),
-    })),
+    set((s) => {
+      // Dropping a row must also drop its in-flight steer marker. The marker
+      // is what pauses the whole flush loop, so leaving one behind on a
+      // removed row would stall every other queued message forever.
+      if (!s.pendingSteerIds.has(id)) {
+        return { pendingMessages: s.pendingMessages.filter((m) => m.id !== id) };
+      }
+      const pendingSteerIds = new Set(s.pendingSteerIds);
+      pendingSteerIds.delete(id);
+      return {
+        pendingSteerIds,
+        pendingMessages: s.pendingMessages.filter((m) => m.id !== id),
+      };
+    }),
   setPendingMessageSteering: (id, steering) =>
     set((s) => {
       const pendingSteerIds = new Set(s.pendingSteerIds);

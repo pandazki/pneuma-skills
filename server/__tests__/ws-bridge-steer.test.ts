@@ -63,7 +63,31 @@ describe("WsBridge Claude steer-in", () => {
 
     expect(sent.map((line) => JSON.parse(line)).filter((frame) => frame.type === "user")).toHaveLength(1);
     expect(session.messageHistory.filter((message) => message.type === "user_message")).toHaveLength(1);
-    expect(frames.filter((frame) => frame.type === "steer_result")).toHaveLength(1);
+    // The guidance goes out once, but both requests are answered — a retry
+    // whose first acknowledgement was lost must not be met with silence.
+    const results = frames.filter((frame) => frame.type === "steer_result");
+    expect(results).toHaveLength(2);
+    expect(results.every((frame) => frame.success === true)).toBe(true);
+  });
+
+  test("stays silent on a duplicate whose first attempt has not committed yet", () => {
+    const bridge = new WsBridge();
+    const session = bridge.getOrCreateSession("claude-steer-inflight", "claude-code");
+    bridge.attachCLITransport("claude-steer-inflight", {
+      send: () => {},
+      close: () => {},
+    });
+    session.cliIdle = false;
+    const frames = attachRecordingBrowser(session);
+
+    // Stand in for an async backend that has taken the id but not answered:
+    // the key is remembered while nothing is in history yet.
+    session.processedClientMessageIdSet.add("queued-inflight");
+    session.processedClientMessageIds.push("queued-inflight");
+
+    routeSteer(bridge, session, "still waiting", "queued-inflight");
+
+    expect(frames.filter((frame) => frame.type === "steer_result")).toHaveLength(0);
   });
 
   test("rejects steer while idle without consuming the queued message into history", () => {

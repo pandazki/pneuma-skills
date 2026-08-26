@@ -1313,6 +1313,20 @@ export class WsBridge {
       && msg.client_msg_id
     ) {
       if (isDuplicateClientMessage(session, msg.client_msg_id)) {
+        // Every `steer_message` owes the browser exactly one answer. A retry
+        // whose original acknowledgement never landed would otherwise be
+        // dropped in silence, leaving its queue row spinning and the flush
+        // loop paused behind it. Only a steer already written into durable
+        // history can be answered from here — a duplicate that arrives while
+        // the first attempt's async RPC is still open belongs to that
+        // attempt, which will answer for both.
+        if (msg.type === "steer_message" && this.hasCommittedSteer(session, msg.client_msg_id)) {
+          this.broadcastToBrowsers(session, {
+            type: "steer_result",
+            client_msg_id: msg.client_msg_id,
+            success: true,
+          });
+        }
         return;
       }
       rememberClientMessage(
@@ -1670,6 +1684,13 @@ export class WsBridge {
       session_id: msg.session_id || session.state.session_id || "",
     });
     this.sendToCLI(session, ndjson);
+  }
+
+  /** True once a steer has been committed to this session's durable history. */
+  private hasCommittedSteer(session: Session, clientMsgId: string): boolean {
+    return session.messageHistory.some(
+      (entry) => entry.type === "user_message" && entry.client_msg_id === clientMsgId,
+    );
   }
 
   private handleSteerMessage(

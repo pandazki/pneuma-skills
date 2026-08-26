@@ -68,8 +68,16 @@ guidance twice.
 5. A backend/protocol race must fail explicitly via `steer_result`; it must
    not silently fall back to interrupt-plus-resend or to a new turn.
 6. A rejected steer releases its idempotency key so retrying the same queued
-   message is processed again rather than silently deduplicated.
+   message is processed again rather than silently deduplicated. Every
+   `steer_message` is answered: a duplicate whose original already reached
+   durable history is re-acknowledged rather than dropped in silence, because
+   an unanswered request leaves its queue row pending forever and the pending
+   marker pauses the whole flush loop. A duplicate arriving while the first
+   attempt's RPC is still open is left for that attempt to answer.
 7. A committed history entry retains the queued message id, so reconnect can
    reconcile exactly once even when its transient `steer_result` aged out of
    the replay buffer. Failed attempts remove only the attachment paths minted
    by that attempt.
+8. A queued row stays removable while its steer is in flight. Removal also
+   clears the pending marker, so a request that never comes back can never
+   strand the queue behind it.

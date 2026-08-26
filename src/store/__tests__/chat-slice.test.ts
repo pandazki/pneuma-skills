@@ -110,4 +110,18 @@ describe("chat-slice pending steer lifecycle", () => {
     expect(useStore.getState().pendingMessages.map((message) => message.id)).toEqual([pending.id]);
     expect(useStore.getState().pendingSteerIds.has(pending.id)).toBe(false);
   });
+
+  test("removing a row whose steer never answered unblocks the rest of the queue", () => {
+    const useStore = makeStore();
+    useStore.getState().addPendingMessage({ text: "stuck" });
+    useStore.getState().addPendingMessage({ text: "behind it" });
+    const [stuck, behind] = useStore.getState().pendingMessages;
+
+    useStore.getState().setPendingMessageSteering(stuck.id, true);
+    useStore.getState().removePendingMessage(stuck.id);
+
+    expect(useStore.getState().pendingMessages.map((message) => message.id)).toEqual([behind.id]);
+    // The marker pauses the flush loop; a removed row must not keep holding it.
+    expect(useStore.getState().pendingSteerIds.size).toBe(0);
+  });
 });
