@@ -349,6 +349,7 @@ export type ContentBlock =
 /** Messages the browser sends to the bridge */
 export type BrowserOutgoingMessage =
   | { type: "user_message"; content: string; session_id?: string; images?: { media_type: string; data: string }[]; files?: { name: string; media_type: string; data: string; size: number }[]; client_msg_id?: string }
+  | { type: "steer_message"; content: string; images?: { media_type: string; data: string }[]; files?: { name: string; media_type: string; data: string; size: number }[]; client_msg_id: string }
   | { type: "permission_response"; request_id: string; behavior: "allow" | "deny"; updated_input?: Record<string, unknown>; updated_permissions?: PermissionUpdate[]; message?: string; client_msg_id?: string }
   | { type: "session_subscribe"; last_seq: number }
   | { type: "session_ack"; last_seq: number }
@@ -386,6 +387,7 @@ export type BrowserIncomingMessageBase =
   | { type: "auth_status"; isAuthenticating: boolean; output: string[]; error?: string }
   | { type: "command_output"; content: string; subtype?: "context" }
   | { type: "error"; message: string }
+  | { type: "steer_result"; client_msg_id: string; success: boolean; error?: string }
   | { type: "cli_disconnected" }
   | { type: "cli_connected" }
   | {
@@ -393,6 +395,8 @@ export type BrowserIncomingMessageBase =
     content: string;
     timestamp: number;
     id?: string;
+    /** Queue id of a successfully committed steer, used for reconnect reconciliation. */
+    client_msg_id?: string;
     /** Image attachments — disk paths only; rendered via /api/file?path=… on rehydrate. */
     images?: { media_type: string; path: string }[];
     /** Non-image file attachments — name + size for chip display, path for inspection. */

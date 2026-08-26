@@ -26,6 +26,7 @@ export const codexModule: BackendModule = {
     permissions: true,
     toolProgress: false,
     modelSwitch: true,
+    steer: true,
   },
 
   // Codex emits its own model list via `available_models` over the wire — no

@@ -67,6 +67,9 @@ export const kimiCliModule: BackendModule = {
     permissions: true,
     toolProgress: true,
     modelSwitch: true,
+    // Kimi's TUI and Server API can steer, but the ACP transport used here
+    // exposes session/prompt + session/cancel only — no in-flight input method.
+    steer: false,
   },
 
   // Kimi emits its own model list dynamically (session/new `configOptions`)

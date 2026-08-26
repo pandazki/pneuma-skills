@@ -48,6 +48,9 @@ function createMockTransport(): ICodexTransport & {
       if (method === "turn/interrupt") {
         return {};
       }
+      if (method === "turn/steer") {
+        return { turnId: "turn_1" };
+      }
 
       // For other methods, return a promise that can be resolved externally
       return new Promise((resolve) => {
@@ -175,6 +178,50 @@ describe("CodexAdapter", () => {
     expect(turnCall).toBeDefined();
     expect(turnCall?.params.threadId).toBe("thr_test");
     expect(turnCall?.params.input).toEqual([{ type: "text", text: "Hello Codex" }]);
+  });
+
+  test("steers an active turn with turn/steer without starting or interrupting a turn", async () => {
+    const transport = createMockTransport();
+    const adapter = new CodexAdapter(transport, "test-session", {
+      model: "gpt-5.3-codex",
+      cwd: "/tmp/test",
+    });
+
+    await waitForInit();
+    adapter.sendBrowserMessage({ type: "user_message", content: "Draft the plan" });
+    await new Promise((r) => setTimeout(r, 20));
+
+    const before = transport._callHistory.length;
+    await adapter.steerUserMessage("Focus on migration risk", [
+      { media_type: "image/png", data: "aW1hZ2U=" },
+    ]);
+
+    const calls = transport._callHistory.slice(before);
+    expect(calls).toEqual([
+      {
+        method: "turn/steer",
+        params: {
+          threadId: "thr_test",
+          expectedTurnId: "turn_1",
+          input: [
+            { type: "image", url: "data:image/png;base64,aW1hZ2U=" },
+            { type: "text", text: "Focus on migration risk" },
+          ],
+        },
+      },
+    ]);
+    expect(calls.some((call) => call.method === "turn/start")).toBe(false);
+    expect(calls.some((call) => call.method === "turn/interrupt")).toBe(false);
+  });
+
+  test("rejects steer when there is no active turn", async () => {
+    const transport = createMockTransport();
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    await waitForInit();
+
+    expect(adapter.canSteer()).toBe(false);
+    await expect(adapter.steerUserMessage("too early")).rejects.toThrow("No active Codex turn");
+    expect(transport._callHistory.some((call) => call.method === "turn/steer")).toBe(false);
   });
 
   test("emits streaming text via item/agentMessage/delta", async () => {

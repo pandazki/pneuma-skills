@@ -24,6 +24,14 @@ export function rememberClientMessage(
   }
 }
 
+/** Release an idempotency key after a request was explicitly rejected. */
+export function forgetClientMessage(session: Session, clientMsgId: string): void {
+  if (!session.processedClientMessageIdSet.delete(clientMsgId)) return;
+  session.processedClientMessageIds = session.processedClientMessageIds.filter(
+    (id) => id !== clientMsgId,
+  );
+}
+
 export function shouldBufferForReplay(
   msg: BrowserIncomingMessage,
 ): msg is ReplayableBrowserIncomingMessage {

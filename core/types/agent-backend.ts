@@ -98,6 +98,8 @@ export interface AgentCapabilities {
   toolProgress: boolean;
   /** Supports runtime model switching */
   modelSwitch: boolean;
+  /** Supports inserting guidance into the currently active turn without interrupting it. */
+  steer: boolean;
   /** Scheduled / cron tasks supported (Claude Code currently only). */
   scheduling?: boolean;
   /** Backend reports per-message / cumulative cost via `total_cost_usd`. */

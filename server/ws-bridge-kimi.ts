@@ -280,6 +280,18 @@ export class KimiBridge implements BridgeBackend {
       case "user_message":
         this.handleBrowserUserMessage(msg);
         return "handled";
+      case "steer_message":
+        // Kimi's native TUI / Server API expose steer, but the ACP transport
+        // used by this backend has no equivalent method. Never emulate it by
+        // cancelling the turn or starting a new session/prompt.
+        this.deps.forgetClientMessage(this.session, msg.client_msg_id);
+        this.deps.broadcastToBrowsers(this.session, {
+          type: "steer_result",
+          client_msg_id: msg.client_msg_id,
+          success: false,
+          error: "Kimi ACP does not support inserting guidance into an active turn.",
+        });
+        return "unsupported";
       case "permission_response": {
         this.adapter.respondPermission(msg.request_id, msg.behavior);
         this.session.pendingPermissions.delete(msg.request_id);

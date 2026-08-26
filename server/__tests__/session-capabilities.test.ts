@@ -2,7 +2,7 @@
  * Lock-in test for the manifest → server `session_init` capability bridge.
  *
  * Task 7 of the backend-architecture refactor: the frontend reads
- * `session.agent_capabilities.{scheduling,costTracking,contextWindow,extras}`
+ * `session.agent_capabilities.{steer,scheduling,costTracking,contextWindow,extras}`
  * to drive UI gating without hardcoding backend names. That contract lives
  * across three layers (manifest declaration → registry helper → bridge
  * `session_init` payload) — these tests pin each layer so a future change
@@ -22,11 +22,18 @@ describe("session capabilities propagation", () => {
       const caps = getBackendModule(type).capabilities;
       expect(typeof caps.streaming).toBe("boolean");
       expect(typeof caps.modelSwitch).toBe("boolean");
+      expect(typeof caps.steer).toBe("boolean");
       // optional fields just need to be undefined or boolean
       if (caps.scheduling !== undefined) expect(typeof caps.scheduling).toBe("boolean");
       if (caps.costTracking !== undefined) expect(typeof caps.costTracking).toBe("boolean");
     },
   );
+
+  it("declares steer-in only for transports with an in-flight input primitive", () => {
+    expect(getBackendModule("claude-code").capabilities.steer).toBe(true);
+    expect(getBackendModule("codex").capabilities.steer).toBe(true);
+    expect(getBackendModule("kimi-cli").capabilities.steer).toBe(false);
+  });
 
   it("only claude-code declares scheduling = true", () => {
     expect(getBackendModule("claude-code").capabilities.scheduling).toBe(true);
@@ -60,6 +67,7 @@ describe("session capabilities propagation", () => {
       permissions: true,
       toolProgress: true,
       modelSwitch: true,
+      steer: true,
       scheduling: true,
       costTracking: true,
       contextWindow: true,
@@ -81,6 +89,7 @@ describe("session capabilities propagation", () => {
       "permissions",
       "resume",
       "scheduling",
+      "steer",
       "streaming",
       "toolProgress",
     ]);

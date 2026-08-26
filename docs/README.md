@@ -38,6 +38,7 @@ docs/
 | 文档 | 说明 |
 |------|------|
 | [`viewer-agent-protocol.md`](reference/viewer-agent-protocol.md) | Viewer–Agent–Server 三方协议：6 个通信方向 / Sources 抽象 / ViewerAddress 对象寻址 / 注入到 instructions 的 marker blocks |
+| [`steer-in.md`](reference/steer-in.md) | 排队消息的非中断插入契约：后端能力矩阵 / `steer_message` 与 `steer_result` / 幂等、回滚、重连语义 |
 | [`network-topology.md`](reference/network-topology.md) | 端口分配 / WS 路由 / 进程拓扑 / 环境变量传递链 |
 | [`controlled-state-surface.md`](reference/controlled-state-surface.md) | 3.0 受控状态的三层同心圆：global (`~/.pneuma/`) → project (`<root>/.pneuma/`) → session (`<sessionDir>/`) |
 

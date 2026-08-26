@@ -83,3 +83,31 @@ describe("chat-slice addPendingNotification replaces semantics", () => {
     expect(pending[0].kind).toBe("user");
   });
 });
+
+describe("chat-slice pending steer lifecycle", () => {
+  test("successful steer removes exactly the selected queued message", () => {
+    const useStore = makeStore();
+    useStore.getState().addPendingMessage({ text: "first" });
+    useStore.getState().addPendingMessage({ text: "second" });
+    const [first, second] = useStore.getState().pendingMessages;
+
+    useStore.getState().setPendingMessageSteering(second.id, true);
+    expect(useStore.getState().pendingSteerIds.has(second.id)).toBe(true);
+
+    useStore.getState().resolvePendingSteer(second.id, true);
+    expect(useStore.getState().pendingMessages.map((message) => message.id)).toEqual([first.id]);
+    expect(useStore.getState().pendingSteerIds.has(second.id)).toBe(false);
+  });
+
+  test("failed steer keeps the queued message available for retry", () => {
+    const useStore = makeStore();
+    useStore.getState().addPendingMessage({ text: "keep me" });
+    const [pending] = useStore.getState().pendingMessages;
+
+    useStore.getState().setPendingMessageSteering(pending.id, true);
+    useStore.getState().resolvePendingSteer(pending.id, false);
+
+    expect(useStore.getState().pendingMessages.map((message) => message.id)).toEqual([pending.id]);
+    expect(useStore.getState().pendingSteerIds.has(pending.id)).toBe(false);
+  });
+});

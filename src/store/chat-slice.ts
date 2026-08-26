@@ -29,6 +29,7 @@ export interface ChatSlice {
   streamingFileWrite: StreamingFileWrite | null;
   activity: Activity | null;
   pendingMessages: PendingMessage[];
+  pendingSteerIds: Set<string>;
   pendingPermissions: Map<string, PermissionRequest>;
   answeredQuestions: Map<string, AnsweredQuestion>;
   promptSuggestions: string[];
@@ -43,6 +44,8 @@ export interface ChatSlice {
   addPendingMessage: (payload: PendingUserPayload) => void;
   addPendingNotification: (notification: { type: string; message: string; severity: "info" | "warning"; summary?: string; replaces?: string[] }, images?: { media_type: string; data: string }[]) => string;
   removePendingMessage: (id: string) => void;
+  setPendingMessageSteering: (id: string, steering: boolean) => void;
+  resolvePendingSteer: (id: string, success: boolean) => void;
   shiftPendingMessage: () => PendingMessage | undefined;
   /** Put a message back at the HEAD of the queue — used to recover a flush
    *  whose send didn't go out (socket closed mid-flight), so it isn't lost. */
@@ -58,6 +61,7 @@ export const createChatSlice: StateCreator<AppState, [], [], ChatSlice> = (set, 
   streamingFileWrite: null,
   activity: null,
   pendingMessages: [],
+  pendingSteerIds: new Set(),
   pendingPermissions: new Map(),
   answeredQuestions: new Map(),
   promptSuggestions: [],
@@ -154,6 +158,24 @@ export const createChatSlice: StateCreator<AppState, [], [], ChatSlice> = (set, 
     set((s) => ({
       pendingMessages: s.pendingMessages.filter((m) => m.id !== id),
     })),
+  setPendingMessageSteering: (id, steering) =>
+    set((s) => {
+      const pendingSteerIds = new Set(s.pendingSteerIds);
+      if (steering) pendingSteerIds.add(id);
+      else pendingSteerIds.delete(id);
+      return { pendingSteerIds };
+    }),
+  resolvePendingSteer: (id, success) =>
+    set((s) => {
+      const pendingSteerIds = new Set(s.pendingSteerIds);
+      pendingSteerIds.delete(id);
+      return {
+        pendingSteerIds,
+        pendingMessages: success
+          ? s.pendingMessages.filter((message) => message.id !== id)
+          : s.pendingMessages,
+      };
+    }),
   shiftPendingMessage: () => {
     const s = get();
     if (s.pendingMessages.length === 0) return undefined;

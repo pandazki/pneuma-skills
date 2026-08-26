@@ -224,10 +224,15 @@ a user/agent-chosen name with a worse default.
 ## Capabilities
 
 `streaming: true, resume: true, permissions: true, toolProgress: true,
-modelSwitch: true` — permissions and toolProgress are real ACP features
+modelSwitch: true, steer: false` — permissions and toolProgress are real ACP features
 (they were `false` under the old print-mode protocol, which had neither).
 Declared in **two places** (`manifest.ts` + `index.ts`) — keep them in sync
 (a manifest test pins this).
+
+`steer` is deliberately `false` for this integration. Kimi's native TUI and
+local Server API expose steer-in, but ACP only exposes `session/prompt` (a new
+turn) and `session/cancel` (an interruption). The bridge returns an explicit
+`steer_result` failure and never emulates steering with either method.
 
 The optional `contextWindow` flag stays **undeclared** even though 0.38.0's
 `usage_update` now feeds `context_used_percent`. Codex is in the same

@@ -240,23 +240,34 @@ async function createScenarioContext(
 
   const deps: BridgeBackendDeps = {
     broadcastToBrowsers: (_session, msg) => store.push(msg),
+    forgetClientMessage: (s, id) => {
+      s.processedClientMessageIdSet.delete(id);
+      s.processedClientMessageIds = s.processedClientMessageIds.filter((entry) => entry !== id);
+    },
     workspace,
     onAgentSessionId: (_sid, agentSessionId) => {
       backend.setAgentSessionId(sessionId, agentSessionId);
     },
     getOrCreateSession: () => session,
     prepareIncomingUserMessage: (s, msg, opts) => {
-      // Minimal stub mirroring production: push history, pass content
-      // through. File/image upload paths aren't exercised by the lifecycle
-      // harness, so we skip the disk-save side effects.
-      s.messageHistory.push({
+      const historyEntry = {
         type: "user_message",
         content: msg.content,
         timestamp: Date.now(),
-      });
+      } as const;
+      let settled = false;
+      const commit = () => {
+        if (settled) return;
+        settled = true;
+        s.messageHistory.push(historyEntry);
+      };
+      const rollback = () => { settled = true; };
+      if (!opts.deferCommit) commit();
       return {
         textContent: msg.content,
         inlineImages: opts.inlineImagesSupported && msg.images ? msg.images : [],
+        commit,
+        rollback,
       };
     },
   };
@@ -759,18 +770,32 @@ const SCENARIOS: Record<ScenarioName, ScenarioFn> = {
       };
       const deps: BridgeBackendDeps = {
         broadcastToBrowsers: (_s, msg) => resumedStore.push(msg),
+        forgetClientMessage: (s, id) => {
+          s.processedClientMessageIdSet.delete(id);
+          s.processedClientMessageIds = s.processedClientMessageIds.filter((entry) => entry !== id);
+        },
         workspace: ctx.workspace,
         onAgentSessionId: (_sid, aid) => resumedBackend.setAgentSessionId(resumedSessionId, aid),
         getOrCreateSession: () => session,
         prepareIncomingUserMessage: (s, msg, opts) => {
-          s.messageHistory.push({
+          const historyEntry = {
             type: "user_message",
             content: msg.content,
             timestamp: Date.now(),
-          });
+          } as const;
+          let settled = false;
+          const commit = () => {
+            if (settled) return;
+            settled = true;
+            s.messageHistory.push(historyEntry);
+          };
+          const rollback = () => { settled = true; };
+          if (!opts.deferCommit) commit();
           return {
             textContent: msg.content,
             inlineImages: opts.inlineImagesSupported && msg.images ? msg.images : [],
+            commit,
+            rollback,
           };
         },
       };

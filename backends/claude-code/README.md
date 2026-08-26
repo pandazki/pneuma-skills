@@ -122,6 +122,7 @@ Outbound (server → CLI stdin, one JSON object per `\n`-delimited line):
 | `permissions`    | `true`  | CC supports `control_request:can_use_tool` round-trips (not used in default `bypassPermissions` mode but the protocol path is wired). |
 | `toolProgress`   | `true`  | CC exposes long-running tool progress via `stream_event` and tool_use streaming. |
 | `modelSwitch`    | `true`  | A `set_model` **control request** mid-session is honoured by CC (next turn uses the new model). |
+| `steer`          | `true`  | Streaming input stays open for the life of the process, so Pneuma can write another SDK `user` envelope while a turn is active; Claude consumes it at the next interruptible point without a stop/new-turn fallback. |
 | `scheduling`     | `true`  | Background tasks via the `Task` tool family. |
 | `costTracking`   | `true`  | `result.total_cost_usd` + per-message `usage` are real numbers Anthropic computes server-side. |
 | `contextWindow`  | `true`  | `system.compact_boundary` plus per-result usage fields let the UI compute a "% of context used" indicator. |

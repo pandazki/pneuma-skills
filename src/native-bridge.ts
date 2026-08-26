@@ -1,4 +1,4 @@
-const desktop = (window as any).pneumaDesktop as {
+const desktop = (typeof window !== "undefined" ? (window as any).pneumaDesktop : undefined) as {
   invoke?: (capability: string, method: string, ...args: unknown[]) => Promise<{ ok: boolean; result?: unknown; error?: string }>;
   capabilities?: () => Promise<Record<string, string[]>>;
 } | undefined;

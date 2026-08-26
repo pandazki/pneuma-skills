@@ -31,6 +31,8 @@ import type { Session } from "./ws-bridge-types.js";
 export interface BridgeBackendDeps {
   /** Broadcast a message to all browsers attached to a session. */
   broadcastToBrowsers: (session: Session, msg: BrowserIncomingMessage) => void;
+  /** Release a rejected request's idempotency key so the queued item can retry. */
+  forgetClientMessage: (session: Session, clientMsgId: string) => void;
   /** Workspace path — used by checkpoint hooks etc. */
   workspace: string;
   /**
@@ -70,11 +72,16 @@ export interface BridgeBackendDeps {
       content: string;
       images?: { media_type: string; data: string }[];
       files?: { name: string; media_type: string; data: string; size: number }[];
+      client_msg_id?: string;
     },
-    opts: { inlineImagesSupported: boolean },
+    opts: { inlineImagesSupported: boolean; deferCommit?: boolean },
   ) => {
     textContent: string;
     inlineImages: { media_type: string; data: string }[];
+    /** Persist the user history entry after an async backend accepts input. */
+    commit: () => void;
+    /** Restore one-shot env context if the backend rejects the input. */
+    rollback: () => void;
   };
 }
 

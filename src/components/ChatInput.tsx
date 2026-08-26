@@ -2,9 +2,11 @@ import { useState, useRef, useCallback, useEffect, useMemo, type KeyboardEvent, 
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { useStore } from "../store.js";
-import { sendUserMessage, sendInterrupt } from "../ws.js";
+import { sendUserMessage, sendSteerMessage, sendInterrupt } from "../ws.js";
 import ModelSwitcher from "./ModelSwitcher.js";
 import SlashMenu, { type SlashMenuItem } from "./SlashMenu.js";
+import { getPendingSteerAvailability, deliverPendingSteer } from "./pending-steer.js";
+import type { PendingMessage } from "../store/chat-slice.js";
 
 const EMPTY_STRINGS: string[] = [];
 
@@ -113,6 +115,10 @@ export default function ChatInput() {
   const pendingMessages = useStore((s) => s.pendingMessages);
   const addPendingMessage = useStore((s) => s.addPendingMessage);
   const removePendingMessage = useStore((s) => s.removePendingMessage);
+  const pendingSteerIds = useStore((s) => s.pendingSteerIds);
+  const setPendingMessageSteering = useStore((s) => s.setPendingMessageSteering);
+  const resolvePendingSteer = useStore((s) => s.resolvePendingSteer);
+  const steerSupported = useStore((s) => s.session?.agent_capabilities.steer === true);
   const selection = useStore((s) => s.selection);
   const setSelection = useStore((s) => s.setSelection);
   const annotations = useStore((s) => s.annotations);
@@ -203,6 +209,22 @@ export default function ChatInput() {
     // user had scrolled up — ChatPanel listens for this.
     window.dispatchEvent(new Event("pneuma:chat-jump-bottom"));
   }, [text, attachments, selection, setSelection, annotations, clearAnnotations, isBusy, addPendingMessage]);
+
+  const handleSteerPendingMessage = useCallback(async (message: PendingMessage) => {
+    if (message.kind !== "user") return;
+    setPendingMessageSteering(message.id, true);
+    await deliverPendingSteer(
+      () => sendSteerMessage(
+        message.id,
+        message.text,
+        message.selection,
+        message.images,
+        message.annotations,
+        message.files,
+      ),
+      () => resolvePendingSteer(message.id, false),
+    );
+  }, [resolvePendingSteer, setPendingMessageSteering]);
 
   const handleKeyDown = (e: KeyboardEvent) => {
     // Slash menu navigation
@@ -414,26 +436,63 @@ export default function ChatInput() {
       {/* Pending message queue */}
       {pendingMessages.length > 0 && (
         <div className="flex flex-col gap-1 mb-2 px-1">
-          {pendingMessages.map((msg) => (
-            <div
-              key={msg.id}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-cc-surface/40 border border-cc-border/30 rounded-lg group"
-            >
-              <span className={`text-[10px] font-medium shrink-0 ${msg.kind === "notification" ? "text-amber-500/70" : "text-cc-primary/60"}`}>
-                {msg.kind === "notification" ? t("queue_label_notification") : t("queue_label_user")}
-              </span>
-              <span className="text-xs text-cc-muted truncate flex-1">
-                {msg.kind === "user" ? msg.text : msg.notification.summary || msg.notification.type}
-              </span>
-              <button
-                onClick={() => removePendingMessage(msg.id)}
-                className="shrink-0 text-cc-muted/40 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
-                title={t("remove_from_queue")}
+          {pendingMessages.map((msg) => {
+            const isSteering = pendingSteerIds.has(msg.id);
+            const availability = getPendingSteerAvailability({
+              supported: steerSupported,
+              connected: cliConnected,
+              busy: isBusy,
+              pending: isSteering,
+            });
+            const tooltip = availability.reason === "unsupported"
+              ? t("steer_unsupported")
+              : availability.reason === "disconnected"
+                ? t("steer_disconnected")
+                : availability.reason === "idle"
+                  ? t("steer_no_active_turn")
+                  : availability.reason === "pending"
+                    ? t("steer_in_progress")
+                    : t("steer_in");
+            return (
+              <div
+                key={msg.id}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-cc-surface/40 border border-cc-border/30 rounded-lg group"
               >
-                <CloseIcon />
-              </button>
-            </div>
-          ))}
+                <span className={`text-[10px] font-medium shrink-0 ${msg.kind === "notification" ? "text-amber-500/70" : "text-cc-primary/60"}`}>
+                  {msg.kind === "notification" ? t("queue_label_notification") : t("queue_label_user")}
+                </span>
+                <span className="text-xs text-cc-muted truncate flex-1">
+                  {msg.kind === "user" ? msg.text : msg.notification.summary || msg.notification.type}
+                </span>
+                {msg.kind === "user" && (
+                  <span className="shrink-0 inline-flex" title={tooltip}>
+                    <button
+                      type="button"
+                      onClick={() => void handleSteerPendingMessage(msg)}
+                      disabled={!availability.enabled}
+                      aria-label={tooltip}
+                      className={`w-6 h-6 rounded-md inline-flex items-center justify-center transition-colors focus-visible:ring-2 focus-visible:ring-cc-primary/40 ${
+                        availability.enabled
+                          ? "text-cc-primary/70 hover:text-cc-primary hover:bg-cc-primary/10 cursor-pointer"
+                          : "text-cc-muted/25 cursor-not-allowed"
+                      }`}
+                    >
+                      <SteerIcon spinning={isSteering} />
+                    </button>
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => removePendingMessage(msg.id)}
+                  disabled={isSteering}
+                  className="shrink-0 text-cc-muted/40 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 disabled:cursor-not-allowed disabled:hover:text-cc-muted/40"
+                  title={t("remove_from_queue")}
+                >
+                  <CloseIcon />
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -587,6 +646,22 @@ function CloseIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
       <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SteerIcon({ spinning }: { spinning: boolean }) {
+  if (spinning) {
+    return (
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 animate-spin">
+        <path d="M13 8a5 5 0 11-1.46-3.54" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
+      <path d="M2.5 4.5h8M8.5 2.5l2 2-2 2M10.5 4.5h.5a2.5 2.5 0 012.5 2.5v1.5A3.5 3.5 0 0110 12H4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M6 10l-2 2 2 2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

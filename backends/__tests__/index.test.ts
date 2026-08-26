@@ -25,6 +25,7 @@ describe("kimi-cli backend registration", () => {
       permissions: true,
       toolProgress: true,
       modelSwitch: true,
+      steer: false,
     });
   });
 
@@ -116,10 +117,13 @@ describe("module registry", () => {
       // deps + backend args are unused on the claude-code path
       {
         broadcastToBrowsers: () => {},
+        forgetClientMessage: () => {},
         workspace: "/tmp",
         prepareIncomingUserMessage: (_s, msg) => ({
           textContent: msg.content,
           inlineImages: [],
+          commit: () => {},
+          rollback: () => {},
         }),
       },
       m.createBackend(17007),

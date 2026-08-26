@@ -78,6 +78,7 @@ const DEFAULT_RPC_TIMEOUT_MS = 60_000;
 const RPC_METHOD_TIMEOUTS: Record<string, number> = {
   "turn/start": 120_000,
   "turn/interrupt": 15_000,
+  "turn/steer": 15_000,
   "thread/start": 30_000,
   "thread/resume": 30_000,
 };
@@ -528,6 +529,29 @@ export class CodexAdapter {
     return this.threadId;
   }
 
+  canSteer(): boolean {
+    return this.connected
+      && this.transport.isConnected()
+      && this.threadId !== null
+      && this.currentTurnId !== null;
+  }
+
+  /** Append input to the active Codex turn via the native app-server RPC. */
+  async steerUserMessage(
+    content: string,
+    images?: { media_type: string; data: string }[],
+  ): Promise<void> {
+    if (!this.canSteer() || !this.threadId || !this.currentTurnId) {
+      throw new Error("No active Codex turn to steer");
+    }
+
+    await this.transport.call("turn/steer", {
+      threadId: this.threadId,
+      input: this.buildTurnInput(content, images),
+      expectedTurnId: this.currentTurnId,
+    });
+  }
+
   // ── Initialization ──────────────────────────────────────────────────────
 
   private static readonly INIT_THREAD_MAX_RETRIES = 3;
@@ -693,18 +717,7 @@ export class CodexAdapter {
       return;
     }
 
-    const input: Array<{ type: string; text?: string; url?: string }> = [];
-
-    if (msg.images?.length) {
-      for (const img of msg.images) {
-        input.push({
-          type: "image",
-          url: `data:${img.media_type};base64,${img.data}`,
-        });
-      }
-    }
-
-    input.push({ type: "text", text: msg.content });
+    const input = this.buildTurnInput(msg.content, msg.images);
 
     try {
       const turnParams: Record<string, unknown> = {
@@ -727,6 +740,21 @@ export class CodexAdapter {
         this.emit({ type: "error", message: `Failed to start turn: ${err}` });
       }
     }
+  }
+
+  private buildTurnInput(
+    content: string,
+    images?: { media_type: string; data: string }[],
+  ): Array<{ type: string; text?: string; url?: string }> {
+    const input: Array<{ type: string; text?: string; url?: string }> = [];
+    for (const image of images ?? []) {
+      input.push({
+        type: "image",
+        url: `data:${image.media_type};base64,${image.data}`,
+      });
+    }
+    input.push({ type: "text", text: content });
+    return input;
   }
 
   private async handleOutgoingPermissionResponse(

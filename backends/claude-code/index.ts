@@ -23,6 +23,7 @@ export class ClaudeCodeBackend implements AgentBackend {
     permissions: true,
     toolProgress: true,
     modelSwitch: true,
+    steer: true,
   };
 
   private launcher: CliLauncher;

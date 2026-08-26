@@ -10,7 +10,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. Agents e
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.40.0
+**Version:** 3.41.0
 **Runtime:** Bun >= 1.3.5 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `cosmos`, `wordtaste`, `bansho`, `eli5`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`, `project-tidy`
 
@@ -184,7 +184,7 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 | **ViewerNotification** | `core/types/viewer-contract.ts` | Viewer calls `props.onNotifyAgent()` | `server/ws-bridge.ts` buffers; flushes as system message on agent idle |
 | **ViewerLocator** | `core/types/viewer-contract.ts` | Agent emits `<viewer-locator>` chat tag | `src/components/MessageBubble.tsx` renders card; click → `store::setNavigateRequest` (returns a `seq`) → `navigateRequest`; the viewer's verdict returns through `onNavigateComplete(result?)` as `navigateOutcome`, and a failure is shown beside the card that was pressed. `src/store/navigate-plan.ts` owns the `contentSet` half — an address naming a board this workspace lacks is refused, never redirected to the open one |
 | **Source\<T\>** + `SourceEvent<T>` + `SourceProvider` + `SourceContext` + `FileChannel` + `FileChangeEvent` + `SourceDescriptor` | `core/types/source.ts` | `core/source-registry.ts` picks provider by `kind` from `manifest.sources` | Built-in providers in `core/sources/{file-glob,json-file,aggregate-file,memory}.ts` (all extend `core/sources/base.ts` which enforces the four invariants); viewer subscribes via `src/hooks/useSource.ts` |
-| **AgentBackend** + `AgentCapabilities` + `AgentSessionInfo` + `AgentLaunchOptions` | `core/types/agent-backend.ts` | Each backend's `manifest.ts::createBackend(port)` | `bin/pneuma.ts` boots one per session; `server/ws-bridge*.ts` drives lifecycle |
+| **AgentBackend** + `AgentCapabilities` + `AgentSessionInfo` + `AgentLaunchOptions` | `core/types/agent-backend.ts` | Each backend's `manifest.ts::createBackend(port)` | `bin/pneuma.ts` boots one per session; `server/ws-bridge*.ts` drives lifecycle; `AgentCapabilities.steer` gates the queued-message steer-in affordance and maps to each backend's native in-flight input protocol (see `docs/reference/steer-in.md`) |
 | **AgentProtocolAdapter** _(reserved/unused — see `BridgeBackend` row for the real seam)_ | `core/types/agent-backend.ts` | — (no production implementor) | — (no production consumer) |
 | **BackendModule** (incl. the optional install-seam fields `commandsDir` / `workflowsDir`) | `core/types/agent-backend.ts` | One per backend: `backends/{claude-code,codex,kimi-cli}/manifest.ts` | `backends/index.ts` is a pure registry — no `if (type === ...)` outside this file; `server/skill-installer.ts` gates the session-command and workflow-script install steps on the FIELDS being defined |
 | **BridgeBackend** | `server/ws-bridge-backend.ts` | `BackendModule.createBridgeBackend()` per non-Claude backend | `server/ws-bridge.ts` central bridge dispatches; Claude legacy NDJSON path returns `null` here |

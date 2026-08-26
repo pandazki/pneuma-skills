@@ -47,6 +47,7 @@ describe("backend registry", () => {
       permissions: true,
       toolProgress: true,
       modelSwitch: true,
+      steer: true,
       scheduling: true,
       costTracking: true,
       contextWindow: true,
@@ -58,6 +59,7 @@ describe("backend registry", () => {
       permissions: true,
       toolProgress: false,
       modelSwitch: true,
+      steer: true,
     });
 
     expect(getBackendCapabilities("kimi-cli")).toEqual({
@@ -67,6 +69,7 @@ describe("backend registry", () => {
       permissions: true,
       toolProgress: true,
       modelSwitch: true,
+      steer: false,
     });
   });
 

@@ -362,7 +362,10 @@ function extractTextFromBlocks(blocks: ContentBlock[]): string {
     .join("\n");
 }
 
-function handleParsedMessage(data: BrowserIncomingMessage) {
+export function handleParsedMessage(
+  data: BrowserIncomingMessage,
+  opts: { replayed?: boolean } = {},
+) {
   const store = useStore.getState();
 
   // Track sequence numbers
@@ -546,6 +549,38 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
             timestamp: Date.now(),
           });
         }
+      }
+      break;
+    }
+
+    case "steer_result": {
+      const pending = store.pendingMessages.find(
+        (message) => message.id === data.client_msg_id && message.kind === "user",
+      );
+      // message_history is canonical on reconnect and already contains an
+      // accepted steer; replayed acknowledgement only resolves the queue.
+      if (data.success && pending?.kind === "user" && !opts.replayed) {
+        store.appendMessage({
+          id: `steer-${data.client_msg_id}`,
+          role: "user",
+          content: pending.text,
+          timestamp: Date.now(),
+          ...(pending.selection ? { selectionContext: pending.selection } : {}),
+          ...(pending.images?.length ? { images: pending.images } : {}),
+          ...(pending.files?.length
+            ? { files: pending.files.map((file) => ({ name: file.name, size: file.size })) }
+            : {}),
+          ...(pending.annotations?.length ? { annotations: pending.annotations } : {}),
+        });
+      }
+      store.resolvePendingSteer(data.client_msg_id, data.success);
+      if (!data.success) {
+        store.appendMessage({
+          id: `steer-error-${data.client_msg_id}`,
+          role: "system",
+          content: `Steer-in failed: ${data.error || "the active turn no longer accepts guidance"}`,
+          timestamp: Date.now(),
+        });
       }
       break;
     }
@@ -751,6 +786,12 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       for (const histMsg of data.messages) {
         if (histMsg.type === "user_message") {
           historyTurnUserInitiated = true;
+          // A committed steer can outlive the finite replay buffer. Its
+          // durable history marker is therefore also an acknowledgement:
+          // reconcile the local queue even if steer_result was evicted.
+          if (histMsg.client_msg_id) {
+            store.resolvePendingSteer(histMsg.client_msg_id, true);
+          }
           const parsed = parseSelectionFromContent(histMsg.content);
           const histImages = (histMsg as { images?: { media_type: string; path: string }[] }).images;
           const histFiles = (histMsg as { files?: { name: string; size: number; path?: string }[] }).files;
@@ -876,7 +917,7 @@ function handleParsedMessage(data: BrowserIncomingMessage) {
       for (const evt of data.events) {
         if (evt.seq <= lastSeq) continue;
         lastSeq = evt.seq;
-        handleParsedMessage(evt.message as BrowserIncomingMessage);
+        handleParsedMessage(evt.message as BrowserIncomingMessage, { replayed: true });
       }
       break;
     }
@@ -1071,22 +1112,34 @@ export function sendSetModel(model: string) {
   send({ type: "set_model", model });
 }
 
-export async function sendUserMessage(content: string, selection?: ElementSelection | null, images?: { media_type: string; data: string }[], annotations?: Annotation[], files?: { name: string; media_type: string; data: string; size: number }[]) {
-  currentTurnUserInitiated = true;
+async function sendPreparedUserMessage(
+  content: string,
+  selection?: ElementSelection | null,
+  images?: { media_type: string; data: string }[],
+  annotations?: Annotation[],
+  files?: { name: string; media_type: string; data: string; size: number }[],
+  steerClientMsgId?: string,
+) {
+  const isSteer = Boolean(steerClientMsgId);
+  if (!isSteer) currentTurnUserInitiated = true;
   const store = useStore.getState();
   store.clearPromptSuggestions();
-  // Add user message to local store immediately (show original text)
-  const msgId = nextId();
-  store.appendMessage({
-    id: msgId,
-    role: "user",
-    content,
-    timestamp: Date.now(),
-    ...(selection ? { selectionContext: selection } : {}),
-    ...(images?.length ? { images } : {}),
-    ...(files?.length ? { files: files.map((f) => ({ name: f.name, size: f.size })) } : {}),
-    ...(annotations?.length ? { annotations } : {}),
-  });
+  // Normal turns are optimistic. Steer-in waits for `steer_result` before
+  // moving the selected queue item into the transcript, so a rejected steer
+  // stays retryable without creating a duplicate user bubble.
+  const msgId = isSteer ? null : nextId();
+  if (msgId) {
+    store.appendMessage({
+      id: msgId,
+      role: "user",
+      content,
+      timestamp: Date.now(),
+      ...(selection ? { selectionContext: selection } : {}),
+      ...(images?.length ? { images } : {}),
+      ...(files?.length ? { files: files.map((f) => ({ name: f.name, size: f.size })) } : {}),
+      ...(annotations?.length ? { annotations } : {}),
+    });
+  }
 
   // Enrich with selection context — delegate to mode's viewer if available
   let enrichedContent = content;
@@ -1234,7 +1287,7 @@ export async function sendUserMessage(content: string, selection?: ElementSelect
   }
 
   // In debug mode, attach the enriched payload to the user message for inspection
-  if (store.debugMode) {
+  if (store.debugMode && msgId) {
     store.appendMessage({
       id: msgId,
       role: "user",
@@ -1248,10 +1301,9 @@ export async function sendUserMessage(content: string, selection?: ElementSelect
     });
   }
 
-  const msg: import("./types.js").BrowserOutgoingMessage & { type: "user_message" } = {
-    type: "user_message",
-    content: enrichedContent,
-  };
+  const msg: BrowserOutgoingMessage = steerClientMsgId
+    ? { type: "steer_message", content: enrichedContent, client_msg_id: steerClientMsgId }
+    : { type: "user_message", content: enrichedContent };
   if (allImages.length > 0) {
     msg.images = allImages;
   }
@@ -1268,13 +1320,41 @@ export async function sendUserMessage(content: string, selection?: ElementSelect
   // when the actual turn completes. Only do this when the message actually
   // went out — otherwise we'd freeze the composer on a turn that never
   // started (the queue flush relies on the returned flag to recover).
-  if (delivered) {
+  if (delivered && !isSteer) {
     store.setTurnInProgress(true);
     if (store.sessionStatus === "idle") {
       store.setSessionStatus("running");
     }
   }
   return delivered;
+}
+
+export function sendUserMessage(
+  content: string,
+  selection?: ElementSelection | null,
+  images?: { media_type: string; data: string }[],
+  annotations?: Annotation[],
+  files?: { name: string; media_type: string; data: string; size: number }[],
+) {
+  return sendPreparedUserMessage(content, selection, images, annotations, files);
+}
+
+export function sendSteerMessage(
+  clientMsgId: string,
+  content: string,
+  selection?: ElementSelection | null,
+  images?: { media_type: string; data: string }[],
+  annotations?: Annotation[],
+  files?: { name: string; media_type: string; data: string; size: number }[],
+) {
+  return sendPreparedUserMessage(
+    content,
+    selection,
+    images,
+    annotations,
+    files,
+    clientMsgId,
+  );
 }
 
 export function sendPermissionResponse(

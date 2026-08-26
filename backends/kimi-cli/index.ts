@@ -26,6 +26,7 @@ export class KimiCliBackend implements AgentBackend {
     permissions: true,
     toolProgress: true,
     modelSwitch: true,
+    steer: false,
   };
 
   private launcher: KimiCliLauncher;

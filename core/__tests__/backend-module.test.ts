@@ -30,6 +30,7 @@ describe("BackendModule type", () => {
         permissions: true,
         toolProgress: true,
         modelSwitch: true,
+        steer: true,
         scheduling: true,
         costTracking: true,
       },
@@ -50,6 +51,7 @@ describe("BackendModule type", () => {
       permissions: false,
       toolProgress: false,
       modelSwitch: false,
+      steer: false,
     };
     expect(minimal.scheduling).toBeUndefined();
     expect(minimal.costTracking).toBeUndefined();
