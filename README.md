@@ -309,6 +309,7 @@ Quick (project-less) sessions remain fully supported — projects are opt-in. Cr
 - The selected backend is persisted in `<workspace>/.pneuma/session.json` and `~/.pneuma/sessions.json`.
 - Existing workspaces are backend-locked. Pneuma resumes the same backend for the lifetime of that workspace session instead of switching mid-stream.
 - Frontend features now read `agent_capabilities` from session state. Claude-only features such as Schedules and cost tracking are hidden for non-Claude backends.
+- While an agent is working, a queued user message can join the active turn without interrupting it when the selected backend supports steering. Claude Code and Codex support this today; Kimi's ACP connection leaves the control disabled instead of emulating it with cancel-and-resend.
 
 ## License
 

@@ -310,6 +310,7 @@ Pneuma 支持在 session 之上的可选 Project 层 —— 用来锚定**一件
 - 所选后端持久化到 `<workspace>/.pneuma/session.json` 与 `~/.pneuma/sessions.json`。
 - 已有的工作区**锁定**到当时选的后端 —— Pneuma 会用同一个后端 resume，不允许中途切换。
 - 前端按 session state 里的 `agent_capabilities` 做能力门控。Schedules、cost tracking 这类 Claude 独有的能力对其它后端会自动隐藏。
+- Agent 正在工作时，只要当前后端支持 steering，排队中的用户消息就能直接加入这一轮，而不用先打断它。Claude Code 与 Codex 目前支持；Kimi 的 ACP 连接会禁用这个控件，不用“取消后重发”来近似模拟。
 
 ## License
 
