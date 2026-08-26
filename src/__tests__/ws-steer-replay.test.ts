@@ -93,6 +93,54 @@ describe("steer acknowledgement replay", () => {
     expect(useStore.getState().pendingMessages).toHaveLength(0);
   });
 
+  test("a refusal Pneuma decided itself is worded by the browser, not the server", async () => {
+    const { handleParsedMessage } = await import("../ws.js");
+    useStore.setState({
+      messages: [],
+      pendingMessages: [{ id: "queued-refused", kind: "user", text: "too late" }],
+      pendingSteerIds: new Set(["queued-refused"]),
+      connectionStatus: "connected",
+      sessionStatus: "running",
+      turnInProgress: true,
+    });
+
+    handleParsedMessage({
+      type: "steer_result",
+      client_msg_id: "queued-refused",
+      success: false,
+      error: "There is no active agent turn to steer.",
+      reason: "no-active-turn",
+    });
+
+    const system = useStore.getState().messages.find((message) => message.role === "system");
+    // The `reason` code drives the sentence so it can be translated; the
+    // server's English `error` is only the fallback for transport failures.
+    expect(system?.content).toBe("Steer-in failed: there is no active agent turn to steer");
+  });
+
+  test("a transport failure keeps the message the transport actually gave", async () => {
+    const { handleParsedMessage } = await import("../ws.js");
+    useStore.setState({
+      messages: [],
+      pendingMessages: [{ id: "queued-transport", kind: "user", text: "guidance" }],
+      pendingSteerIds: new Set(["queued-transport"]),
+      connectionStatus: "connected",
+      sessionStatus: "running",
+      turnInProgress: true,
+    });
+
+    handleParsedMessage({
+      type: "steer_result",
+      client_msg_id: "queued-transport",
+      success: false,
+      error: "socket closed",
+      reason: "transport-error",
+    });
+
+    const system = useStore.getState().messages.find((message) => message.role === "system");
+    expect(system?.content).toBe("Steer-in failed: socket closed");
+  });
+
   test("durable history reconciles the queue even when steer_result aged out", async () => {
     const { handleParsedMessage } = await import("../ws.js");
 

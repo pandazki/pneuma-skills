@@ -13,5 +13,11 @@
   "no_model": "未選擇模型",
   "empty_send_message": "傳送一則訊息開始編輯",
   "empty_connecting": "正在連線到 Claude…",
-  "jump_to_bottom": "回到底部"
+  "jump_to_bottom": "回到底部",
+  "system_error": "錯誤：{{detail}}",
+  "auth_error": "驗證失敗：{{detail}}",
+  "steer_failed": "插入引導失敗：{{reason}}",
+  "steer_failed_reason": "這一輪回答已經不再接受引導",
+  "steer_failed_unsupported": "目前 Agent 連線不支援插入引導",
+  "steer_failed_no_active_turn": "現在沒有正在進行的回答可以插入"
 }

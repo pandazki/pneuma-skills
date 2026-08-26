@@ -90,6 +90,23 @@ describe("WsBridge Claude steer-in", () => {
     expect(frames.filter((frame) => frame.type === "steer_result")).toHaveLength(0);
   });
 
+  test("names the cause when the backend cannot steer at all", () => {
+    const bridge = new WsBridge();
+    const session = bridge.getOrCreateSession("claude-no-cap", "claude-code");
+    bridge.attachCLITransport("claude-no-cap", { send: () => {}, close: () => {} });
+    session.cliIdle = false;
+    session.state.agent_capabilities.steer = false;
+    const frames = attachRecordingBrowser(session);
+
+    routeSteer(bridge, session, "nope", "queued-no-cap");
+
+    expect(frames.find((frame) => frame.type === "steer_result")).toMatchObject({
+      client_msg_id: "queued-no-cap",
+      success: false,
+      reason: "unsupported",
+    });
+  });
+
   test("rejects steer while idle without consuming the queued message into history", () => {
     const bridge = new WsBridge();
     const session = bridge.getOrCreateSession("claude-idle", "claude-code");
@@ -107,6 +124,7 @@ describe("WsBridge Claude steer-in", () => {
     expect(frames.find((frame) => frame.type === "steer_result")).toMatchObject({
       client_msg_id: "queued-idle",
       success: false,
+      reason: "no-active-turn",
     });
     expect(session.processedClientMessageIdSet.has("queued-idle")).toBe(false);
   });
@@ -133,6 +151,7 @@ describe("WsBridge Claude steer-in", () => {
       client_msg_id: "queued-write-fail",
       success: false,
       error: "socket closed",
+      reason: "transport-error",
     });
   });
 

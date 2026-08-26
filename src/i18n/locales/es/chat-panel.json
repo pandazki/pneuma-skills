@@ -13,5 +13,11 @@
   "no_model": "sin modelo",
   "empty_send_message": "Envía un mensaje para empezar a editar",
   "empty_connecting": "Conectando con Claude...",
-  "jump_to_bottom": "Ir al final"
+  "jump_to_bottom": "Ir al final",
+  "system_error": "Error: {{detail}}",
+  "auth_error": "Error de autenticación: {{detail}}",
+  "steer_failed": "No se pudo insertar la indicación: {{reason}}",
+  "steer_failed_reason": "la respuesta activa ya no admite indicaciones",
+  "steer_failed_unsupported": "la conexión actual del agente no permite insertar indicaciones",
+  "steer_failed_no_active_turn": "no hay una respuesta activa en la que insertar"
 }

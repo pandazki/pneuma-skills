@@ -13,5 +13,11 @@
   "no_model": "kein Modell",
   "empty_send_message": "Nachricht senden, um mit der Bearbeitung zu beginnen",
   "empty_connecting": "Verbindung zu Claude wird hergestellt…",
-  "jump_to_bottom": "Zum Ende scrollen"
+  "jump_to_bottom": "Zum Ende scrollen",
+  "system_error": "Fehler: {{detail}}",
+  "auth_error": "Authentifizierungsfehler: {{detail}}",
+  "steer_failed": "Hinweis konnte nicht eingefügt werden: {{reason}}",
+  "steer_failed_reason": "die aktive Antwort nimmt keine Hinweise mehr an",
+  "steer_failed_unsupported": "die aktuelle Agent-Verbindung unterstützt keine Hinweise",
+  "steer_failed_no_active_turn": "es läuft gerade keine Antwort, in die eingefügt werden könnte"
 }

@@ -213,6 +213,7 @@ describe("WsBridge Codex integration", () => {
       client_msg_id: "queued-fail",
       success: false,
       error: "active turn changed",
+      reason: "transport-error",
     });
   });
 
@@ -265,6 +266,7 @@ describe("WsBridge Codex integration", () => {
     expect(frames.find((frame) => frame.type === "steer_result")).toMatchObject({
       client_msg_id: "queued-codex-idle",
       success: false,
+      reason: "no-active-turn",
     });
   });
 

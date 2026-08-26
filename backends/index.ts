@@ -90,7 +90,11 @@ export function getDefaultBackendType(): AgentBackendType {
 }
 
 export function getBackendCapabilities(type: AgentBackendType): AgentCapabilities {
-  return MODULES[type]().capabilities;
+  // A copy, not the manifest's own object. `makeDefaultState` hands this
+  // straight into a session's state, so returning the shared instance would
+  // let one session's edit rewrite the declared capabilities of the backend
+  // itself — and with them every other session in the process.
+  return { ...MODULES[type]().capabilities };
 }
 
 export interface BackendAvailability {

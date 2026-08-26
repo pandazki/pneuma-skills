@@ -5,10 +5,19 @@
 
 import { useStore, nextId } from "./store.js";
 import type { ElementSelection } from "./store.js";
-import type { BrowserIncomingMessage, BrowserOutgoingMessage, ContentBlock, ChatMessage, SelectionContext, SelectionType, Annotation } from "./types.js";
+import type { BrowserIncomingMessage, BrowserOutgoingMessage, ContentBlock, ChatMessage, SelectionContext, SelectionType, Annotation, SteerFailureReason } from "./types.js";
 import type { ViewerSelectionContext, ContentSet } from "../core/types/viewer-contract.js";
 import { isPneumaMarkerOnly } from "../core/utils/pneuma-markers.js";
 import { getNativeCapabilities, handleNativeRequest } from "./native-bridge.js";
+import { systemText } from "./i18n/system-text.js";
+
+/**
+ * Enriched payloads for steers that are still waiting on `steer_result`, so
+ * debug mode can attach one to the bubble that acknowledgement creates.
+ * Populated only while debug mode is on; every entry is consumed or dropped
+ * by the matching `steer_result`.
+ */
+const pendingSteerDebugPayloads = new Map<string, NonNullable<ChatMessage["debugPayload"]>>();
 
 let socket: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -351,6 +360,29 @@ function detectFileChanges(blocks: ContentBlock[]): boolean {
   );
 }
 
+/**
+ * Turn a steer refusal into one sentence in the reader's language. The two
+ * causes Pneuma decides itself are translated; anything the transport threw is
+ * shown verbatim, because that text was never ours to translate.
+ */
+function describeSteerFailure(reason: SteerFailureReason | undefined, error?: string): string {
+  switch (reason) {
+    case "unsupported":
+      return systemText(
+        "chat-panel:steer_failed_unsupported",
+        "the current agent connection does not support steer-in",
+      );
+    case "no-active-turn":
+      return systemText(
+        "chat-panel:steer_failed_no_active_turn",
+        "there is no active agent turn to steer",
+      );
+    default:
+      return error
+        || systemText("chat-panel:steer_failed_reason", "the active turn no longer accepts guidance");
+  }
+}
+
 function extractTextFromBlocks(blocks: ContentBlock[]): string {
   return blocks
     .map((b) => {
@@ -545,7 +577,7 @@ export function handleParsedMessage(
           store.appendMessage({
             id: nextId(),
             role: "system",
-            content: `Error: ${filtered.join(", ")}`,
+            content: systemText("chat-panel:system_error", "Error: {{detail}}", { detail: filtered.join(", ") }),
             timestamp: Date.now(),
           });
         }
@@ -557,6 +589,8 @@ export function handleParsedMessage(
       const pending = store.pendingMessages.find(
         (message) => message.id === data.client_msg_id && message.kind === "user",
       );
+      const steerDebugPayload = pendingSteerDebugPayloads.get(data.client_msg_id);
+      pendingSteerDebugPayloads.delete(data.client_msg_id);
       // message_history is canonical on reconnect and already contains an
       // accepted steer; replayed acknowledgement only resolves the queue.
       if (data.success && pending?.kind === "user" && !opts.replayed) {
@@ -571,6 +605,7 @@ export function handleParsedMessage(
             ? { files: pending.files.map((file) => ({ name: file.name, size: file.size })) }
             : {}),
           ...(pending.annotations?.length ? { annotations: pending.annotations } : {}),
+          ...(steerDebugPayload ? { debugPayload: steerDebugPayload } : {}),
         });
       }
       store.resolvePendingSteer(data.client_msg_id, data.success);
@@ -578,7 +613,9 @@ export function handleParsedMessage(
         store.appendMessage({
           id: `steer-error-${data.client_msg_id}`,
           role: "system",
-          content: `Steer-in failed: ${data.error || "the active turn no longer accepts guidance"}`,
+          content: systemText("chat-panel:steer_failed", "Steer-in failed: {{reason}}", {
+            reason: describeSteerFailure(data.reason, data.error),
+          }),
           timestamp: Date.now(),
         });
       }
@@ -670,7 +707,7 @@ export function handleParsedMessage(
         store.appendMessage({
           id: nextId(),
           role: "system",
-          content: `Authentication error: ${data.error}`,
+          content: systemText("chat-panel:auth_error", "Authentication error: {{detail}}", { detail: data.error }),
           timestamp: Date.now(),
         });
       }
@@ -878,7 +915,7 @@ export function handleParsedMessage(
               chatMessages.push({
                 id: nextId(),
                 role: "system",
-                content: `Error: ${filtered.join(", ")}`,
+                content: systemText("chat-panel:system_error", "Error: {{detail}}", { detail: filtered.join(", ") }),
                 timestamp: Date.now(),
               });
             }
@@ -1287,7 +1324,10 @@ async function sendPreparedUserMessage(
   }
 
   // In debug mode, attach the enriched payload to the user message for inspection
-  if (store.debugMode && msgId) {
+  const debugPayload = store.debugMode
+    ? { enrichedContent, images: allImages.length > 0 ? allImages : undefined, files: files?.length ? files.map((f) => ({ name: f.name, media_type: f.media_type, size: f.size })) : undefined }
+    : null;
+  if (debugPayload && msgId) {
     store.appendMessage({
       id: msgId,
       role: "user",
@@ -1297,7 +1337,7 @@ async function sendPreparedUserMessage(
       ...(images?.length ? { images } : {}),
       ...(files?.length ? { files: files.map((f) => ({ name: f.name, size: f.size })) } : {}),
       ...(annotations?.length ? { annotations } : {}),
-      debugPayload: { enrichedContent, images: allImages.length > 0 ? allImages : undefined, files: files?.length ? files.map((f) => ({ name: f.name, media_type: f.media_type, size: f.size })) : undefined },
+      debugPayload,
     });
   }
 
@@ -1311,6 +1351,13 @@ async function sendPreparedUserMessage(
     msg.files = files;
   }
   const delivered = send(msg);
+
+  // A steer has no optimistic bubble to decorate — its bubble is minted when
+  // `steer_result` confirms delivery. Park the payload until then so debug
+  // mode can inspect what a steered message actually carried.
+  if (debugPayload && steerClientMsgId && delivered) {
+    pendingSteerDebugPayloads.set(steerClientMsgId, debugPayload);
+  }
 
   // Optimistically mark the turn as in-progress so the Stop button shows
   // immediately. Without this, there's a 1–10s gap between "user clicked

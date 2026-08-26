@@ -13,5 +13,11 @@
   "no_model": "모델 없음",
   "empty_send_message": "메시지를 보내 편집을 시작하세요",
   "empty_connecting": "Claude에 연결하는 중...",
-  "jump_to_bottom": "맨 아래로 이동"
+  "jump_to_bottom": "맨 아래로 이동",
+  "system_error": "오류: {{detail}}",
+  "auth_error": "인증 오류: {{detail}}",
+  "steer_failed": "지시 삽입 실패: {{reason}}",
+  "steer_failed_reason": "진행 중인 응답이 더 이상 지시를 받지 않습니다",
+  "steer_failed_unsupported": "현재 Agent 연결은 지시 삽입을 지원하지 않습니다",
+  "steer_failed_no_active_turn": "지시를 삽입할 진행 중인 응답이 없습니다"
 }

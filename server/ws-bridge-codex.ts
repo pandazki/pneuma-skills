@@ -12,6 +12,7 @@
 import type {
   BrowserOutgoingMessage,
   SessionState,
+  SteerFailureReason,
 } from "./session-types.js";
 import type { CodexAdapter } from "../backends/codex/codex-adapter.js";
 import type { Session } from "./ws-bridge-types.js";
@@ -149,7 +150,7 @@ export class CodexBridge implements BridgeBackend {
   }): Promise<void> {
     if (this.session.cliIdle || !this.adapter.canSteer()) {
       this.deps.forgetClientMessage(this.session, msg.client_msg_id);
-      this.broadcastSteerResult(msg.client_msg_id, false, "Codex has no active turn to steer.");
+      this.broadcastSteerResult(msg.client_msg_id, false, "Codex has no active turn to steer.", "no-active-turn");
       return;
     }
 
@@ -173,16 +174,23 @@ export class CodexBridge implements BridgeBackend {
         msg.client_msg_id,
         false,
         error instanceof Error ? error.message : String(error),
+        "transport-error",
       );
     }
   }
 
-  private broadcastSteerResult(clientMsgId: string, success: boolean, error?: string): void {
+  private broadcastSteerResult(
+    clientMsgId: string,
+    success: boolean,
+    error?: string,
+    reason?: SteerFailureReason,
+  ): void {
     this.deps.broadcastToBrowsers(this.session, {
       type: "steer_result",
       client_msg_id: clientMsgId,
       success,
       ...(error ? { error } : {}),
+      ...(reason ? { reason } : {}),
     });
   }
 

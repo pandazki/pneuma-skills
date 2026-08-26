@@ -40,6 +40,14 @@ describe("kimi-cli backend registration", () => {
   });
 });
 
+describe("capability isolation", () => {
+  it("hands out a copy so one session cannot rewrite the backend's declaration", () => {
+    const first = getBackendCapabilities("claude-code");
+    first.steer = false;
+    expect(getBackendCapabilities("claude-code").steer).toBe(true);
+  });
+});
+
 describe("module registry", () => {
   it("aggregates all three backend modules", () => {
     const modules = getAllBackendModules();

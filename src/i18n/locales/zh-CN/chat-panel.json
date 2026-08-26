@@ -13,5 +13,11 @@
   "no_model": "未选择模型",
   "empty_send_message": "发送一条消息开始编辑",
   "empty_connecting": "正在连接 Claude…",
-  "jump_to_bottom": "回到底部"
+  "jump_to_bottom": "回到底部",
+  "system_error": "错误：{{detail}}",
+  "auth_error": "认证失败：{{detail}}",
+  "steer_failed": "插入引导失败：{{reason}}",
+  "steer_failed_reason": "这一轮回答已经不再接受引导",
+  "steer_failed_unsupported": "当前 Agent 连接不支持插入引导",
+  "steer_failed_no_active_turn": "现在没有正在进行的回答可以插入"
 }

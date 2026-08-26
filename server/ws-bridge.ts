@@ -21,6 +21,7 @@ import type {
   BrowserOutgoingMessage,
   BrowserIncomingMessage,
   PermissionRequest,
+  SteerFailureReason,
 } from "./session-types.js";
 import type {
   CLITransport,
@@ -1703,22 +1704,28 @@ export class WsBridge {
       client_msg_id: string;
     },
   ): void {
-    const fail = (error: string) => {
+    const fail = (error: string, reason: SteerFailureReason) => {
       forgetClientMessage(session, msg.client_msg_id);
       this.broadcastToBrowsers(session, {
         type: "steer_result",
         client_msg_id: msg.client_msg_id,
         success: false,
         error,
+        reason,
       });
     };
 
     if (!session.state.agent_capabilities.steer) {
-      fail("The current agent connection does not support steer-in.");
+      fail("The current agent connection does not support steer-in.", "unsupported");
       return;
     }
+    // The strongest guard this transport allows. Claude's streaming input has
+    // no turn id to aim at the way Codex's `expectedTurnId` does, so a `result`
+    // arriving between this check and the write below turns the guidance into a
+    // new turn rather than an explicit refusal. See invariant 5 in
+    // docs/reference/steer-in.md — deliberately not emulated with an interrupt.
     if (session.cliIdle || !session.cliSocket) {
-      fail("There is no active agent turn to steer.");
+      fail("There is no active agent turn to steer.", "no-active-turn");
       return;
     }
 
@@ -1753,7 +1760,7 @@ export class WsBridge {
       });
     } catch (error) {
       prepared.rollback();
-      fail(error instanceof Error ? error.message : String(error));
+      fail(error instanceof Error ? error.message : String(error), "transport-error");
     }
   }
 

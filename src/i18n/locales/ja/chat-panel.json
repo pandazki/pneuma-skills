@@ -13,5 +13,11 @@
   "no_model": "モデルなし",
   "empty_send_message": "メッセージを送信して編集を開始",
   "empty_connecting": "Claude に接続中…",
-  "jump_to_bottom": "最下部へ移動"
+  "jump_to_bottom": "最下部へ移動",
+  "system_error": "エラー: {{detail}}",
+  "auth_error": "認証エラー: {{detail}}",
+  "steer_failed": "指示の挿入に失敗しました: {{reason}}",
+  "steer_failed_reason": "進行中の回答はもう指示を受け付けません",
+  "steer_failed_unsupported": "現在の Agent 接続は指示の挿入に対応していません",
+  "steer_failed_no_active_turn": "指示を挿入できる進行中の回答がありません"
 }

@@ -346,6 +346,14 @@ export type ContentBlock =
 
 // ─── Browser Message Types (browser <-> bridge) ──────────────────────────────
 
+/**
+ * Why a steer was refused. `error` carries the human sentence; this names the
+ * cause so the browser can show it in the reader's own language. Anything the
+ * transport itself threw is `transport-error` — that text stays verbatim,
+ * since it comes from outside Pneuma.
+ */
+export type SteerFailureReason = "unsupported" | "no-active-turn" | "transport-error";
+
 /** Messages the browser sends to the bridge */
 export type BrowserOutgoingMessage =
   | { type: "user_message"; content: string; session_id?: string; images?: { media_type: string; data: string }[]; files?: { name: string; media_type: string; data: string; size: number }[]; client_msg_id?: string }
@@ -387,7 +395,7 @@ export type BrowserIncomingMessageBase =
   | { type: "auth_status"; isAuthenticating: boolean; output: string[]; error?: string }
   | { type: "command_output"; content: string; subtype?: "context" }
   | { type: "error"; message: string }
-  | { type: "steer_result"; client_msg_id: string; success: boolean; error?: string }
+  | { type: "steer_result"; client_msg_id: string; success: boolean; error?: string; reason?: SteerFailureReason }
   | { type: "cli_disconnected" }
   | { type: "cli_connected" }
   | {

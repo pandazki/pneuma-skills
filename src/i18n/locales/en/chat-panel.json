@@ -13,5 +13,11 @@
   "no_model": "no model",
   "empty_send_message": "Send a message to start editing",
   "empty_connecting": "Connecting to Claude...",
-  "jump_to_bottom": "Scroll to bottom"
+  "jump_to_bottom": "Scroll to bottom",
+  "system_error": "Error: {{detail}}",
+  "auth_error": "Authentication error: {{detail}}",
+  "steer_failed": "Steer-in failed: {{reason}}",
+  "steer_failed_reason": "the active turn no longer accepts guidance",
+  "steer_failed_unsupported": "the current agent connection does not support steer-in",
+  "steer_failed_no_active_turn": "there is no active agent turn to steer"
 }

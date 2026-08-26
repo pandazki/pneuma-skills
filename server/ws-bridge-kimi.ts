@@ -290,6 +290,7 @@ export class KimiBridge implements BridgeBackend {
           client_msg_id: msg.client_msg_id,
           success: false,
           error: "Kimi ACP does not support inserting guidance into an active turn.",
+          reason: "unsupported",
         });
         return "unsupported";
       case "permission_response": {

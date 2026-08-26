@@ -192,6 +192,7 @@ describe("WsBridge.attachKimiAdapter", () => {
     expect(frames.find((frame) => frame.type === "steer_result")).toMatchObject({
       client_msg_id: "kimi-queued",
       success: false,
+      reason: "unsupported",
     });
   });
 

@@ -4,10 +4,11 @@ import type {
   ContentBlock,
   BrowserIncomingMessage,
   BrowserOutgoingMessage,
+  SteerFailureReason,
 } from "../server/session-types.js";
 import type { ViewerAddress } from "../core/types/viewer-contract.js";
 
-export type { SessionState, PermissionRequest, ContentBlock, BrowserIncomingMessage, BrowserOutgoingMessage };
+export type { SessionState, PermissionRequest, ContentBlock, BrowserIncomingMessage, BrowserOutgoingMessage, SteerFailureReason };
 
 export type SelectionType =
   | "heading" | "paragraph" | "list" | "code" | "blockquote" | "image" | "table" | "text-range"
