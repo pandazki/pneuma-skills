@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.41.1] - 2026-08-26
+
+### Fixed
+- **A queued message can always be taken back, steer in flight or not.** The row's remove button was disabled while its steer-in waited for an acknowledgement, and the pending marker that pauses the queue was never cleared by removal — so an acknowledgement that never arrived left the row spinning and every message behind it stuck, with no way out but a reload. Removal now clears the marker, and the server answers a repeated steer whose original already reached durable history instead of dropping it in silence.
+- **The steer control reads capabilities defensively again.** It was the one capability-gated component reaching through `agent_capabilities` without a guard, in exactly the spot the Codex backend notes warn about — a session broadcast that omits the field would have taken the composer down with it.
+
 ## [3.41.0] - 2026-08-26
 
 ### Added
