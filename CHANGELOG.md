@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.41.2] - 2026-08-27
+
+### Improved
+- **A failed steer explains itself in the language the session is running in.** The message read "插入引导失败：There is no active agent turn to steer." — a Chinese sentence with an English one inside it, because only the frame around the reason had ever been translated. `steer_result` now names the cause as well as describing it, so the two refusals Pneuma decides for itself are worded by the browser in all seven locales; text a transport actually threw is still shown verbatim, since that was never ours to translate. The other system messages in the chat stream — errors and authentication failures — went through the same door.
+- **Debug mode shows what a steered message carried.** Every other user message can be opened to see the enriched payload that went over the wire. A steered one could not, because it has no optimistic bubble to attach it to; the payload now waits for the acknowledgement that mints the bubble.
+- **The steer capability table stops promising more than the transport can keep.** Codex names the turn it is aiming at, so the app-server refuses a steer meant for a turn that has ended. Claude Code's streaming input carries no turn id, so the same guarantee rests on a pre-write check — which covers the window that matters but cannot close a turn boundary. The reference, the backend notes, and the code all say so now instead of implying a symmetry that does not exist.
+
+### Fixed
+- **One session can no longer rewrite a backend's declared capabilities.** `getBackendCapabilities` handed every session the manifest's own object, so a single write to `session.state.agent_capabilities` would have changed what that backend claims to support for every other session in the process.
+
 ## [3.41.1] - 2026-08-26
 
 ### Fixed
