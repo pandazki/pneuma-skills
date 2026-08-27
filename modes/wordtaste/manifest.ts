@@ -47,7 +47,7 @@ function parseCrossFamily(raw: string): CrossFamily {
 
 const wordtasteManifest: ModeManifest = {
   name: "wordtaste",
-  version: "0.16.0",
+  version: "0.17.0",
   displayName: {
     en: "WordTaste",
     "zh-CN": "文字品味",
@@ -59,6 +59,10 @@ const wordtasteManifest: ModeManifest = {
     "zh-TW": "人機協作的中文長文寫作：先定論點與落筆重點，再逐段寫作、換雙眼睛複查，留下真正順耳的版本",
   },
   changelog: {
+    "0.17.0": [
+      "Give a long piece parts: the plan marks where a section opens and the writer names it, so an essay can have sections without turning back into an outline",
+      "Ask for what a piece needs and words cannot be: an asset block says what belongs there and the exact copy it has to carry, drawn as a card in the draft and left as a brief for whoever builds the thing",
+    ],
     "0.16.0": [
       "Pick your primer libraries from the launch sheet: the two presets and every library this machine actually has, each under its own name, instead of typing a magic word into a text box",
     ],

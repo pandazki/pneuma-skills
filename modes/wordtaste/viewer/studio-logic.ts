@@ -211,6 +211,14 @@ export const PLAN_ENDS_LABELS: Record<PlanEnds, string> = {
   open: "留个口",
 };
 
+/**
+ * The mark on a unit the essay breaks a new section at. One of the same
+ * label family as the maps above — written once in code, never composed by a
+ * model — and Chinese for the same reason they are: it sits inside a row whose
+ * every other word is Chinese.
+ */
+export const PLAN_SECTION_LABEL = "新一节";
+
 /** A span with an empty `to` runs to the end of its file. */
 export const PLAN_SPAN_OPEN_END = "…";
 
@@ -230,6 +238,13 @@ export interface PlanRow {
   paceLabel: string;
   endsLabel: string;
   notes: string;
+  /**
+   * Whether the essay starts a new section here. The gate is where the user
+   * ratifies a plan and where they reorder or merge its units, so where the
+   * sections fall has to be visible in the same table those decisions are made
+   * in. The first unit never carries one: the title is its opening.
+   */
+  opensSection: boolean;
 }
 
 export function planSpanLabel(span: PlanSpan): PlanSpanLabel {
@@ -266,6 +281,7 @@ export function planRows(plan: Plan): PlanRow[] {
     paceLabel: PLAN_PACE_LABELS[unit.pace],
     endsLabel: PLAN_ENDS_LABELS[unit.ends],
     notes: unit.notes_en.trim(),
+    opensSection: index > 0 && unit.opens_section === true,
   }));
 }
 

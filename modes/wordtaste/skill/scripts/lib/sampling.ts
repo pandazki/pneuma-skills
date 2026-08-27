@@ -10,6 +10,7 @@
 
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripAssetBlocks } from "./prompt-assembly.ts";
 import { byteCompare, realpathOrNull, scriptsDir } from "./session.ts";
 
 /** A sampler-level refusal: one neutral message, exit 2 at the entry point. */
@@ -468,7 +469,17 @@ export function sampleVoice(tasteDir: string, outDir: string, seed: string): voi
     const positiveFiles = listMarkdownFiles(positiveDir);
     if (positiveFiles.length > 0) {
       const choice = positiveFiles[rand.below(positiveFiles.length)]!;
-      window = buildWindow(readFileSync(choice, "utf8"), WINDOW_MIN, WINDOW_MAX, rand);
+      // Slots come out before the window is cut. An accepted piece is stored
+      // verbatim, but `<user_voice>` presents what it samples as the way this
+      // person writes — and an `asset` block is a specification, not a
+      // sentence anyone wrote. It is the same reason the block never reaches
+      // `<preceding_prose>`; this is the other door into a writer's prompt.
+      window = buildWindow(
+        stripAssetBlocks(readFileSync(choice, "utf8")),
+        WINDOW_MIN,
+        WINDOW_MAX,
+        rand,
+      );
     }
   }
 

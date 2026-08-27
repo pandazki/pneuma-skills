@@ -11,6 +11,20 @@ import {
 import { join } from "node:path";
 
 const scriptsDir = join(import.meta.dir, "..", "skill", "scripts");
+/**
+ * The first-unit title line, read from the scaffolding rather than retyped:
+ * `run_check_cycle.ts` drops that exact line from a repair's constraints by
+ * matching its text, so a hand-copied sentence here would keep passing while
+ * the real pipeline stopped dropping anything.
+ */
+const UNIT_CONSTRAINT_FIRST = (
+  JSON.parse(
+    readFileSync(
+      join(import.meta.dir, "..", "skill", "references", "prompt-scaffolding.en.json"),
+      "utf8",
+    ),
+  ) as { unit_constraint_first: string }
+).unit_constraint_first;
 const cycleScript = join(scriptsDir, "run_check_cycle.ts");
 const projectionScript = join(scriptsDir, "project_check_cycle.ts");
 
@@ -135,7 +149,7 @@ function makeComposedHarness() {
   writeFileSync(join(parts, "kernel.md"), "「大部分时候」不能写成「一直」。\n");
   writeFileSync(
     join(parts, "constraints.en.md"),
-    "- First line: the author's own title, exactly as it is given above, on a line of its own.\n",
+    `- ${UNIT_CONSTRAINT_FIRST}\n`,
   );
 
   // The leaf: a repair is recognised by the writer framing it now carries, not

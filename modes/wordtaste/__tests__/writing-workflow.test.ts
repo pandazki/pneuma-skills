@@ -898,7 +898,9 @@ describe("writing.workflow.js — control shape", () => {
 
   it("writes units sequentially and passes finished preceding prose", () => {
     expect(SOURCE).toContain("for (const unit of plan.units)");
-    expect(SOURCE).toContain("preceding: prose");
+    // The prose so far, minus its asset blocks — a specification block in the
+    // last position a writer reads is a register it would imitate.
+    expect(SOURCE).toContain("preceding: stripAssetBlocks(prose)");
     expect(SOURCE).toContain("label: unit.id");
     expect(SOURCE).not.toContain("parallel(");
     expect(SOURCE).not.toContain("pipeline(");

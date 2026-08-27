@@ -291,6 +291,31 @@ Legal stages are `intake`, `layout`, `writing`, `review`, `choice`, `final`,
 and `distilled`. Write the file before returning control at every human gate.
 Do not invent parallel state in chat.
 
+## The shape of a piece
+
+Read [references/piece-shape.md](references/piece-shape.md). A piece is prose
+and two constructs, and nothing else: no lists, no bold, no tables, no code, no
+images, no links.
+
+- **Sections** are one heading level, `## `. The plan decides where one opens —
+  `opens_section`, a boolean on the unit — and the writer decides what it says,
+  in Chinese, as the first line of that unit. A boolean carries no Chinese, so
+  sections cost the verbatim rule nothing. Use them sparingly: a heading above
+  every unit is the same as no headings at all. Many pieces want none. The
+  first unit opens with the author's own title, as `# `.
+- **Asset slots** are how a piece asks for something that is not a sentence.
+  Nothing is generated and no file is linked: a fenced `asset` block says
+  `what` belongs there and, on one `copy` line each, the words that thing has
+  to carry. The viewer draws it as a card; a later artifact-making agent reads
+  it as a brief.
+
+Two consequences for you as orchestrator. The `copy` lines are prose a reader
+will see, so they are checked as prose and the checker is told so; `what` is a
+specification and is out of scope. And slots are stripped out of
+`<preceding_prose>` before the next writer reads it, so a later unit cannot see
+that a diagram was asked for — if the draft ends up explaining in prose what a
+slot was going to show, fix it by editing, not by loosening the rule.
+
 ## The loop
 
 ### 1. Receive and freeze meaning

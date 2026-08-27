@@ -81,6 +81,7 @@ interface Plan {
     pace: string;
     ends: string;
     notes_en: string;
+    opens_section?: boolean;
   }>;
   open_question?: string;
 }
@@ -258,6 +259,30 @@ describe("validate_plan.ts — the verbatim guard", () => {
       );
     });
   }, 20_000);
+
+  it("accepts opens_section, and rejects anything that is not a boolean", async () => {
+    // Where a section opens is the plan's call; what it is called is the
+    // writer's. A boolean is the whole of the plan's say in it, which is why
+    // sections cost the verbatim rule nothing.
+    await withHarness("wordtaste-plan-section-ok-", async (harness) => {
+      writePlan(harness, (plan) => {
+        plan.units[0].opens_section = true;
+      });
+      const result = await run(harness, validatePath, validateArgs(harness));
+      expect(result.status).toBe(0);
+      expect(result.stderr).toBe("");
+    });
+    await withHarness("wordtaste-plan-section-bad-", async (harness) => {
+      writePlan(harness, (plan) => {
+        (plan.units[0] as Record<string, unknown>).opens_section = "两条腿走路";
+      });
+      const result = await run(harness, validatePath, validateArgs(harness));
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain(
+        "wordtaste: plan — units[].opens_section does not match the schema",
+      );
+    });
+  }, 40_000);
 
   it("rejects Chinese in notes_en", async () => {
     await withHarness("wordtaste-plan-notes-", async (harness) => {
@@ -566,6 +591,42 @@ describe("compose_unit_parts.ts — one unit's parts directory", () => {
         0,
       );
       expect(readFileSync(join(parts, "preceding.md"), "utf8")).toBe(finished);
+    });
+  }, 20_000);
+
+  it("takes the asset slots out of the preceding prose and leaves the sections in", async () => {
+    // `<preceding_prose>` is the last thing a writer reads, and a block of
+    // keys and values in that position is a register it would imitate. The
+    // workflow path has its own guard on the same rule; this is the script
+    // path, which is the one most backends actually run.
+    await withHarness("wordtaste-parts-asset-", async (harness) => {
+      await project(harness);
+      const parts = join(harness.root, ".pneuma", "private", "u2");
+      const fence = "`".repeat(3);
+      writeFileSync(
+        join(harness.root, "draft.md"),
+        [
+          "# 两张工作台",
+          "",
+          "第一节写完了，两张台子都摆出来了。",
+          "",
+          `${fence}asset`,
+          "what: 一张示意图，两张工作台并排",
+          "copy: 粗活台",
+          fence,
+          "",
+          "## 两条腿走路",
+          "",
+          "第二节接着写。",
+          "",
+        ].join("\n"),
+      );
+      expect((await run(harness, unitPartsPath, [harness.workflowFile, "u2", parts])).status).toBe(
+        0,
+      );
+      expect(readFileSync(join(parts, "preceding.md"), "utf8")).toBe(
+        "# 两张工作台\n\n第一节写完了，两张台子都摆出来了。\n\n## 两条腿走路\n\n第二节接着写。\n",
+      );
     });
   }, 20_000);
 

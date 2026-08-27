@@ -115,6 +115,25 @@ const SCAFFOLD = {
       "You are one isolated writer inside a larger loop: an essay is planned, its sections are written one after another, and a separate checker then verifies that no meaning was lost. You write exactly one section, continuing an essay in progress.",
       "Because the checker exists, your only job is to write well. Do not annotate, explain, or hedge about your own text: your entire output is prose, and it enters the draft verbatim."
     ],
+    "shape_heading": "## What may appear in your output besides sentences",
+    "shape": [
+      "Your output is prose. Two constructs are allowed inside it and nothing else is: no bullet points, no numbered lists, no bold, no italics, no tables, no code, no images, no links.",
+      "A section heading — one line beginning with `## `, in your own Chinese, naming what the section is about. Write one only when the constraints for this task ask you to open a section; otherwise your output begins with prose. There is one level of section and no level below it.",
+      "An asset block — how this pipeline writes down something that is not a sentence. Where a passage needs a diagram, a photograph, a screenshot, a clip, you neither make it nor link to a file: you write what belongs there and the words that thing has to carry, and a later agent builds it from your description. It looks like this:"
+    ],
+    "shape_asset_example": [
+      "```asset",
+      "what: a diagram of three agents rewriting one passage in turn, with arrows marking the two return trips",
+      "copy: input",
+      "copy: first rewrite",
+      "copy: second rewrite",
+      "```"
+    ],
+    "shape_close": [
+      "`what` says what the thing is, once, in one sentence. Each `copy` line is one string that has to appear inside the thing itself, in the order it should appear; leave them out entirely when it carries no words. Those two keys are the whole format — no others, no nesting, no prose inside the block.",
+      "The example is written in English so that this charter stays free of Chinese you might imitate; your own blocks are written in the language of the essay, like everything else you write.",
+      "An asset block stands between paragraphs, on its own. The prose around it has to stand on its own too: write as though the thing may never be built, and never make a sentence depend on it the way \"as the diagram below shows\" does. Most sections need none at all."
+    ],
     "given_heading": "## What the task message may contain, and how to treat it",
     "given": {
       "material": {
@@ -141,7 +160,7 @@ const SCAFFOLD = {
   "constraints_heading": "## Constraints",
   "constraints": [
     "Chinese throughout; keep technical identifiers in English exactly as they appear in the material; one space between Chinese and Latin text; full-width Chinese punctuation.",
-    "No bullet points, no numbered lists, no bold, no italics, no subheadings, no diagrams, no code blocks.",
+    "Prose only, apart from the two constructs above: no bullet points, no numbered lists, no bold, no italics, no tables, no diagrams, no code blocks.",
     "Length: roughly 600–900 Chinese characters, unless the brief above names a different target.",
     "Output the section only. No preface, no notes, no explanation after the text."
   ],
@@ -192,11 +211,13 @@ const SCAFFOLD = {
   },
   "unit_brief_length": "Length: roughly {target_chars} Chinese characters. Anything within twenty per cent of that is fine; it is a direction, not a threshold.",
   "unit_brief_stop": "Stop where this section's material ends. What comes after it belongs to another section.",
-  "unit_constraint_first": "First line: the author's own title, exactly as it is given above, on a line of its own.",
+  "unit_constraint_first": "First line: the author's own title, exactly as it is given above, as a level-one heading — `# ` and then the title.",
   "unit_constraint_later": "Do not repeat the title.",
+  "unit_constraint_section": "This section opens a new part of the essay: begin with a heading of your own on a line starting with `## `, a few words in Chinese saying what this part is about, and then write the prose.",
   "check_role_whole": "You are checking a complete long-form Chinese essay.",
   "check_role_unit": "You are checking one section of a long-form Chinese essay.",
   "check_role_common": "You check. You do not write, you do not rank versions, and you do not predict what anyone will like. Report quoted evidence only.",
+  "check_structure_note": "Two things in the text are structure, not writing, and are never issues on their own: a section heading (a line starting with `## `) and an asset block (a fenced ```asset block). Inside an asset block the `copy:` lines are prose the reader will see, and you check them as prose; the `what:` line is a specification for a later agent and is out of scope. Everything else is prose.",
   "check_rubric": [
     {
       "heading": "## 1. Meaning first",
@@ -403,6 +424,10 @@ const PLAN_SCHEMA_TEXT = String.raw`{
           "notes_en": {
             "type": "string",
             "description": "English only. Anything the planner wants to tell the writer in its own words belongs here and nowhere else."
+          },
+          "opens_section": {
+            "type": "boolean",
+            "description": "Optional, default false. True when this unit opens a new section of the essay; the writer then gives that section a heading of its own. You decide where sections begin, not what they are called — the heading is Chinese, and Chinese you wrote is not allowed in a plan. Use it sparingly: a heading before every unit is the same as no headings at all. The first unit is already the opening and its first line is the title, so the flag is ignored there."
           }
         }
       }
@@ -502,6 +527,14 @@ function assembleLeafSystem(S, parts) {
     b.say(sys.pipeline_heading, '');
     for (const paragraph of sys.pipeline)
         b.say(paragraph, '');
+    b.say(sys.shape_heading, '');
+    for (const paragraph of sys.shape)
+        b.say(paragraph, '');
+    for (const line of sys.shape_asset_example)
+        b.say(line);
+    b.say('');
+    for (const paragraph of sys.shape_close)
+        b.say(paragraph, '');
     b.say(sys.given_heading, '');
     b.say(`- ${sys.given.material[entry]}`);
     if (present(parts.kernel))
@@ -516,6 +549,36 @@ function assembleLeafSystem(S, parts) {
     if (present(parts.preceding))
         b.say(`- ${sys.given.preceding}`);
     return b.text();
+}
+/**
+ * An `asset` block, fences and all, wherever one sits on its own lines.
+ * Mirrors `modes/wordtaste/domain.ts`, which parses the same construct for the
+ * viewer; the two live apart because the skill scripts and the mode's frontend
+ * module share no code.
+ */
+const ASSET_BLOCK = /^[ \t]*```asset[ \t]*\r?\n[\s\S]*?^[ \t]*```[ \t]*(?:\r?\n|$)/gm;
+/**
+ * Take the asset blocks out of the draft before it becomes `<preceding_prose>`.
+ *
+ * The charter says it plainly: the Chinese you read just before writing is the
+ * Chinese you will write — and the draft so far is the last thing a writer
+ * reads. An asset block is a specification, written in keys and values, and
+ * leaving one in that position hands the next writer a register to imitate.
+ * Nothing replaces it: a marker would be Chinese this pipeline wrote, which is
+ * the thing the whole prompt is built to keep out. The cost is stated rather
+ * than hidden — a writer continuing the essay cannot see that a diagram was
+ * asked for two paragraphs ago, and may explain in prose what the diagram was
+ * going to show. Section headings stay: they are the writer's own Chinese and
+ * they are how the essay's shape reads.
+ */
+function stripAssetBlocks(markdown) {
+    // The early return is not an optimisation. Text with no slot in it comes
+    // back byte for byte, which is what lets the frozen sampler fixtures keep
+    // meaning what they meant: the blank-line collapse below can only ever run
+    // on text a slot was actually cut out of.
+    if (!markdown.includes('```asset'))
+        return markdown;
+    return markdown.replace(ASSET_BLOCK, '').replace(/\n{3,}/g, '\n\n');
 }
 /**
  * The degradation for a route with no system channel: the charter rides at
@@ -619,9 +682,24 @@ function assembleUnitBrief(S, unit, title) {
     b.say(S.unit_brief_stop);
     return b.text();
 }
-/** One unit's `constraints.en.md`. */
-function assembleUnitConstraints(S, isFirstUnit) {
-    return `- ${isFirstUnit ? S.unit_constraint_first : S.unit_constraint_later}\n`;
+/**
+ * One unit's `constraints.en.md`.
+ *
+ * The section line is here rather than in the brief because the plan decides
+ * where a section opens and the writer decides what it is called: a boolean
+ * travels through the plan without touching the verbatim rule, and the Chinese
+ * of the heading is written where all the other Chinese is written.
+ */
+function assembleUnitConstraints(S, isFirstUnit, opensSection = false) {
+    const lines = [isFirstUnit ? S.unit_constraint_first : S.unit_constraint_later];
+    // The first unit is already an opening, and its first line is the title. A
+    // plan that marks it as opening a section too would otherwise ask the same
+    // writer for two different first lines; the mark is dropped rather than
+    // refused, because throwing away an entire plan over a redundant flag costs
+    // far more than ignoring it.
+    if (opensSection && !isFirstUnit)
+        lines.push(S.unit_constraint_section);
+    return `${lines.map((line) => `- ${line}`).join('\n')}\n`;
 }
 /** One unit's `kernel.md`, absent when the unit keeps nothing. */
 function assembleUnitKernel(unit) {
@@ -674,6 +752,7 @@ function assembleCheckBrief(S, scope, mustKeep) {
     const b = makeBody();
     b.say(scope === 'whole' ? S.check_role_whole : S.check_role_unit);
     b.say(S.check_role_common, '');
+    b.say(S.check_structure_note, '');
     for (const section of S.check_rubric) {
         b.say(section.heading, '');
         for (const block of section.blocks) {
@@ -919,8 +998,14 @@ for (const unit of plan.units) {
     brief: assembleUnitBrief(SCAFFOLD, unit, plan.title),
     material: unitText,
     kernel: assembleUnitKernel(unit),
-    preceding: prose,
-    constraints: assembleUnitConstraints(SCAFFOLD, unit.id === plan.units[0].id),
+    // Stripped, for the reason `stripAssetBlocks` gives: a specification block
+    // in the last position a writer reads is a register it will imitate.
+    preceding: stripAssetBlocks(prose),
+    constraints: assembleUnitConstraints(
+      SCAFFOLD,
+      unit.id === plan.units[0].id,
+      unit.opens_section === true,
+    ),
     referenceProse: A.referenceProse,
     voiceStyle: A.voiceStyle,
     voiceExamples: A.voiceExamples,

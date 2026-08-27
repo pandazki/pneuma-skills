@@ -37,7 +37,7 @@ Never open a paragraph with "值得注意的是".
 ## Constraints
 
 - Chinese throughout; keep technical identifiers in English exactly as they appear in the material; one space between Chinese and Latin text; full-width Chinese punctuation.
-- No bullet points, no numbered lists, no bold, no italics, no subheadings, no diagrams, no code blocks.
+- Prose only, apart from the two constructs above: no bullet points, no numbered lists, no bold, no italics, no tables, no diagrams, no code blocks.
 - Length: roughly 600–900 Chinese characters, unless the brief above names a different target.
 - Output the section only. No preface, no notes, no explanation after the text.
 - First line: the author's own title, exactly as it appears in the material.

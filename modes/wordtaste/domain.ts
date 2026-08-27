@@ -23,12 +23,49 @@ export type WritingStage =
   | "final"
   | "distilled";
 
+/**
+ * A multimodal slot, written in words.
+ *
+ * WordTaste writes text and only text. When a piece needs something that is
+ * not a sentence — a diagram, a photograph, a short clip — the writer neither
+ * produces it nor links to a file that does not exist. It writes down what
+ * belongs there and what words that thing has to carry, and the draft carries
+ * the description. A later agent whose job is making artifacts reads those
+ * descriptions as its brief.
+ *
+ * ```asset
+ * what: 一张示意图，三个 Agent 依次改写同一段文本，箭头标出两次回路
+ * copy: 输入
+ * copy: 第一次改写
+ * ```
+ *
+ * `what` is the specification and appears exactly once. `copy` is the text the
+ * thing itself has to show, one line per string, in the order it should appear
+ * — prose, and checked as prose.
+ */
+export interface AssetSlot {
+  /** What concretely goes here, in the writer's own words. */
+  what: string;
+  /** The words that thing has to carry, in order. Often empty. */
+  copy: string[];
+}
+
+/**
+ * What a block is, for surfaces that treat structure differently from prose.
+ * Every block was a paragraph until 0.17.0; `kind` is how a surface tells a
+ * section opening and an asset slot apart from the prose around them.
+ */
+export type DraftBlockKind = "prose" | "heading" | "asset";
+
 export interface DraftBlock {
   /** Ephemeral, deterministic address within the current draft. */
   id: string;
   markdown: string;
   start: number;
   end: number;
+  kind: DraftBlockKind;
+  /** Present only when `kind` is `"asset"`. */
+  asset?: AssetSlot;
 }
 
 export interface Draft {
@@ -96,6 +133,17 @@ export interface PlanUnit {
   pace: PlanPace;
   ends: PlanEnds;
   notes_en: string;
+  /**
+   * Whether this unit opens a new section of the essay.
+   *
+   * The plan decides *where* sections begin; the writer decides what the
+   * heading says. Splitting it that way keeps the verbatim rule intact — a
+   * boolean carries no Chinese — and keeps section openings from becoming a
+   * per-unit habit, which is what an isolated writer left to decide for itself
+   * would land on. Absent means false, so every plan written before 0.17.0 is
+   * a plan with no sections.
+   */
+  opens_section?: boolean;
 }
 
 export interface Plan {
@@ -210,6 +258,49 @@ function asStage(value: unknown): WritingStage {
   }
 }
 
+/** The info string that marks a fenced block as an asset slot. */
+export const ASSET_FENCE_LANG = "asset";
+
+/**
+ * Split one `key: value` line. Both colons are accepted: the writer works
+ * under a full-width-punctuation constraint, so `what：` is what it will
+ * actually type a good share of the time.
+ */
+function splitKeyValue(line: string): { key: string; value: string } | null {
+  const match = /^([a-z]+)[ \t]*[:：][ \t]*(.*)$/.exec(line.trim());
+  if (!match) return null;
+  return { key: match[1]!, value: match[2]!.trim() };
+}
+
+/**
+ * Parse the body of an `asset` fence into a slot.
+ *
+ * Returns null for anything the format does not describe — an unknown key, a
+ * missing or repeated `what`, an empty value, a line that is not `key: value`.
+ * A slot that does not parse stays a code block on the page instead of
+ * vanishing from it: a malformed slot the author can see is recoverable, one
+ * the renderer swallowed is not.
+ */
+export function parseAssetSlot(body: string): AssetSlot | null {
+  let what: string | undefined;
+  const copy: string[] = [];
+  for (const raw of body.split("\n")) {
+    if (!raw.trim()) continue;
+    const pair = splitKeyValue(raw);
+    if (!pair || !pair.value) return null;
+    if (pair.key === "what") {
+      if (what !== undefined) return null;
+      what = pair.value;
+    } else if (pair.key === "copy") {
+      copy.push(pair.value);
+    } else {
+      return null;
+    }
+  }
+  if (what === undefined) return null;
+  return { what, copy };
+}
+
 function splitBlocks(source: string): DraftBlock[] {
   const tree = fromMarkdown(source);
   const blocks: DraftBlock[] = [];
@@ -219,11 +310,24 @@ function splitBlocks(source: string): DraftBlock[] {
     if (start == null || end == null) continue;
     const markdown = source.slice(start, end);
     if (!markdown.trim()) continue;
+    let kind: DraftBlockKind = "prose";
+    let asset: AssetSlot | undefined;
+    if (child.type === "heading") {
+      kind = "heading";
+    } else if (child.type === "code" && child.lang === ASSET_FENCE_LANG) {
+      const parsed = parseAssetSlot(child.value);
+      if (parsed) {
+        kind = "asset";
+        asset = parsed;
+      }
+    }
     blocks.push({
       id: `p${blocks.length + 1}`,
       markdown,
       start,
       end,
+      kind,
+      ...(asset ? { asset } : {}),
     });
   }
   return blocks;
@@ -290,6 +394,7 @@ function isPlanUnit(value: unknown): value is PlanUnit {
     && typeof value.ends === "string"
     && PLAN_ENDS.has(value.ends)
     && typeof value.notes_en === "string"
+    && (value.opens_section === undefined || typeof value.opens_section === "boolean")
   );
 }
 

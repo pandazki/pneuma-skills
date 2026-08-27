@@ -3,7 +3,7 @@ import wordtasteManifest from "../manifest.js";
 
 describe("wordtaste v0.9 manifest", () => {
   it("declares the upstream method alignment and calibrated scope", () => {
-    expect(wordtasteManifest.version).toBe("0.16.0");
+    expect(wordtasteManifest.version).toBe("0.17.0");
     expect(wordtasteManifest.changelog?.["0.3.0"]).toBeDefined();
     expect(wordtasteManifest.changelog?.["0.4.0"]).toBeDefined();
     expect(wordtasteManifest.changelog?.["0.5.0"]).toHaveLength(3);

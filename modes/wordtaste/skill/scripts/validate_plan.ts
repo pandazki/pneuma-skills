@@ -155,6 +155,13 @@ function main(): void {
   for (const unit of units) {
     if (typeof unit.notes_en !== "string") schemaFail("units[].notes_en");
   }
+  // Optional and boolean-only. A plan written before sections existed simply
+  // omits it, and omitted means no section opens here.
+  for (const unit of units) {
+    if (unit.opens_section !== undefined && typeof unit.opens_section !== "boolean") {
+      schemaFail("units[].opens_section");
+    }
+  }
   if (plan.open_question !== undefined && plan.open_question !== null && typeof plan.open_question !== "string") {
     schemaFail("open_question");
   }

@@ -31,6 +31,7 @@ import ReactMarkdown from "react-markdown";
 // files this sheet references, which is why it is imported here rather than
 // inlined into `STYLES` below.
 import "katex/dist/katex.min.css";
+import { WORDTASTE_MARKDOWN_COMPONENTS } from "./markdown-components.js";
 import {
   WORDTASTE_REHYPE_PLUGINS,
   WORDTASTE_REMARK_PLUGINS,
@@ -58,6 +59,7 @@ import type {
 import {
   STAGES,
   buildSpanAddress,
+  PLAN_SECTION_LABEL,
   candidateMarkdown,
   commandMessage,
   deriveDraft,
@@ -753,6 +755,7 @@ function ProcessRail({
                   <ReactMarkdown
                     remarkPlugins={WORDTASTE_REMARK_PLUGINS}
                     rehypePlugins={WORDTASTE_REHYPE_PLUGINS}
+                    components={WORDTASTE_MARKDOWN_COMPONENTS}
                   >
                     {material.content || "_Empty_"}
                   </ReactMarkdown>
@@ -776,6 +779,7 @@ function ProcessRail({
               <ReactMarkdown
                 remarkPlugins={WORDTASTE_REMARK_PLUGINS}
                 rehypePlugins={WORDTASTE_REHYPE_PLUGINS}
+                components={WORDTASTE_MARKDOWN_COMPONENTS}
               >
                 {taste.voiceFloor}
               </ReactMarkdown>
@@ -1036,7 +1040,14 @@ function PlanUnits({ plan }: { plan: Plan }) {
               <Fragment key={row.id}>
                 <tr className="wordtaste-plan-row">
                   <td className="wordtaste-plan-order">{row.order}</td>
-                  <td className="wordtaste-plan-role">{row.roleLabel}</td>
+                  <td className="wordtaste-plan-role">
+                    {row.roleLabel}
+                    {row.opensSection && (
+                      <span className="wordtaste-plan-section" title="Opens a new section">
+                        {PLAN_SECTION_LABEL}
+                      </span>
+                    )}
+                  </td>
                   <td>
                     {row.spans.length ? (
                       <div className="wordtaste-plan-spans">
@@ -1333,6 +1344,7 @@ const DraftSurface = forwardRef<
         <ReactMarkdown
           remarkPlugins={WORDTASTE_REMARK_PLUGINS}
           rehypePlugins={WORDTASTE_REHYPE_PLUGINS}
+          components={WORDTASTE_MARKDOWN_COMPONENTS}
         >
           {markdown}
         </ReactMarkdown>
@@ -2152,7 +2164,62 @@ const STYLES = `
    formula was simply cut off, unreachable. Scrolling the formula in its own
    box keeps it readable and leaves the column alone. */
 .wordtaste-draft .katex-display { overflow-x: auto; overflow-y: hidden; padding-block: 2px; }
+/* Where the essay breaks into a new part. It rides in the role cell rather
+   than taking a column of its own: most plans mark two or three units at
+   most, and an almost-always-empty column reads as a mistake. */
+.wordtaste-plan-section {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--wt-accent) 45%, transparent);
+  border-radius: 999px;
+  font-size: 10px;
+  color: var(--wt-accent);
+  vertical-align: middle;
+}
 .wordtaste-draft hr { border: none; border-top: 1px solid var(--wordtaste-theme-rule, var(--wt-border)); margin: 2em 0; }
+
+/* An asset slot: a place held open for something that has not been made.
+   Dashed, unfilled, and set below the reading size on purpose — it is not
+   the essay, it is a note to whoever builds the thing later. */
+.wordtaste-asset {
+  max-width: var(--wordtaste-font-max-measure, 72ch);
+  margin: 1.6em 0;
+  padding: 15px 18px 13px;
+  border: 1px dashed var(--wordtaste-theme-rule, var(--wt-border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--wordtaste-theme-heading, var(--wt-ink)) 3%, transparent);
+}
+.wordtaste-asset-label {
+  display: block;
+  font-size: 9.5px;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--wordtaste-theme-muted, var(--wt-muted));
+}
+.wordtaste-asset-what {
+  max-width: none;
+  margin: 6px 0 0;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--wordtaste-theme-heading, var(--wt-ink));
+}
+.wordtaste-asset .wordtaste-asset-label + .wordtaste-asset-label,
+.wordtaste-asset-what + .wordtaste-asset-label { margin-top: 13px; }
+/* Numbered, because the order is part of what the slot specifies: these are
+   the strings the thing has to show, in the sequence it should show them. The
+   draft's own list rule leaves markers off, so this one puts them back. */
+.wordtaste-asset-copy {
+  max-width: none;
+  margin: 6px 0 0;
+  padding-left: 1.6em;
+  font-size: 13.5px;
+  line-height: 1.7;
+  list-style: decimal;
+  color: var(--wordtaste-theme-muted, var(--wt-muted));
+}
+.wordtaste-asset-copy li { margin: .1em 0; }
+.wordtaste-asset-copy li::marker { font-size: 11px; color: color-mix(in srgb, var(--wordtaste-theme-muted, var(--wt-muted)) 70%, transparent); }
 
 .wordtaste-writing-empty { width: min(940px, calc(100% - 72px)); margin: 44px auto; color: var(--wt-muted); text-align: center; font-size: 11.5px; }
 .wordtaste-empty-lines { width: min(560px, 100%); margin: 0 auto 18px; display: flex; flex-direction: column; gap: 12px; }

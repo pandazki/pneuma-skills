@@ -47,6 +47,11 @@ export interface SystemScaffolding {
   philosophy_close: Record<"draft" | "idea", string>;
   pipeline_heading: string;
   pipeline: string[];
+  shape_heading: string;
+  shape: string[];
+  /** The worked `asset` block, fences included, one entry per line. */
+  shape_asset_example: string[];
+  shape_close: string[];
   given_heading: string;
   given: {
     material: Record<"draft" | "idea", string>;
@@ -97,9 +102,11 @@ export interface Scaffolding {
   unit_brief_stop: string;
   unit_constraint_first: string;
   unit_constraint_later: string;
+  unit_constraint_section: string;
   check_role_whole: string;
   check_role_unit: string;
   check_role_common: string;
+  check_structure_note: string;
   check_rubric: RubricSection[];
   check_must_keep_heading: string;
   check_output_heading: string;
@@ -252,6 +259,11 @@ function assembleLeafSystem(S: Scaffolding, parts: LeafParts): string {
   b.say(sys.philosophy_close[entry], '')
   b.say(sys.pipeline_heading, '')
   for (const paragraph of sys.pipeline) b.say(paragraph, '')
+  b.say(sys.shape_heading, '')
+  for (const paragraph of sys.shape) b.say(paragraph, '')
+  for (const line of sys.shape_asset_example) b.say(line)
+  b.say('')
+  for (const paragraph of sys.shape_close) b.say(paragraph, '')
   b.say(sys.given_heading, '')
   b.say(`- ${sys.given.material[entry]}`)
   if (present(parts.kernel)) b.say(`- ${sys.given.must_keep}`)
@@ -261,6 +273,37 @@ function assembleLeafSystem(S: Scaffolding, parts: LeafParts): string {
   b.say(`- ${sys.given.constraints}`)
   if (present(parts.preceding)) b.say(`- ${sys.given.preceding}`)
   return b.text()
+}
+
+/**
+ * An `asset` block, fences and all, wherever one sits on its own lines.
+ * Mirrors `modes/wordtaste/domain.ts`, which parses the same construct for the
+ * viewer; the two live apart because the skill scripts and the mode's frontend
+ * module share no code.
+ */
+const ASSET_BLOCK = /^[ \t]*```asset[ \t]*\r?\n[\s\S]*?^[ \t]*```[ \t]*(?:\r?\n|$)/gm
+
+/**
+ * Take the asset blocks out of the draft before it becomes `<preceding_prose>`.
+ *
+ * The charter says it plainly: the Chinese you read just before writing is the
+ * Chinese you will write — and the draft so far is the last thing a writer
+ * reads. An asset block is a specification, written in keys and values, and
+ * leaving one in that position hands the next writer a register to imitate.
+ * Nothing replaces it: a marker would be Chinese this pipeline wrote, which is
+ * the thing the whole prompt is built to keep out. The cost is stated rather
+ * than hidden — a writer continuing the essay cannot see that a diagram was
+ * asked for two paragraphs ago, and may explain in prose what the diagram was
+ * going to show. Section headings stay: they are the writer's own Chinese and
+ * they are how the essay's shape reads.
+ */
+function stripAssetBlocks(markdown: string): string {
+  // The early return is not an optimisation. Text with no slot in it comes
+  // back byte for byte, which is what lets the frozen sampler fixtures keep
+  // meaning what they meant: the blank-line collapse below can only ever run
+  // on text a slot was actually cut out of.
+  if (!markdown.includes('```asset')) return markdown
+  return markdown.replace(ASSET_BLOCK, '').replace(/\n{3,}/g, '\n\n')
 }
 
 /**
@@ -361,9 +404,27 @@ function assembleUnitBrief(S: Scaffolding, unit: PlanUnit, title: string): strin
   return b.text()
 }
 
-/** One unit's `constraints.en.md`. */
-function assembleUnitConstraints(S: Scaffolding, isFirstUnit: boolean): string {
-  return `- ${isFirstUnit ? S.unit_constraint_first : S.unit_constraint_later}\n`
+/**
+ * One unit's `constraints.en.md`.
+ *
+ * The section line is here rather than in the brief because the plan decides
+ * where a section opens and the writer decides what it is called: a boolean
+ * travels through the plan without touching the verbatim rule, and the Chinese
+ * of the heading is written where all the other Chinese is written.
+ */
+function assembleUnitConstraints(
+  S: Scaffolding,
+  isFirstUnit: boolean,
+  opensSection = false,
+): string {
+  const lines = [isFirstUnit ? S.unit_constraint_first : S.unit_constraint_later]
+  // The first unit is already an opening, and its first line is the title. A
+  // plan that marks it as opening a section too would otherwise ask the same
+  // writer for two different first lines; the mark is dropped rather than
+  // refused, because throwing away an entire plan over a redundant flag costs
+  // far more than ignoring it.
+  if (opensSection && !isFirstUnit) lines.push(S.unit_constraint_section)
+  return `${lines.map((line) => `- ${line}`).join('\n')}\n`
 }
 
 /** One unit's `kernel.md`, absent when the unit keeps nothing. */
@@ -427,6 +488,7 @@ function assembleCheckBrief(S: Scaffolding, scope: string, mustKeep: string[]): 
   const b = makeBody()
   b.say(scope === 'whole' ? S.check_role_whole : S.check_role_unit)
   b.say(S.check_role_common, '')
+  b.say(S.check_structure_note, '')
   for (const section of S.check_rubric) {
     b.say(section.heading, '')
     for (const block of section.blocks) {
@@ -616,6 +678,7 @@ export {
   normalizeQuote,
   prependSystem,
   sliceSpan,
+  stripAssetBlocks,
   textLines,
   unitMaterial,
 };
@@ -658,9 +721,19 @@ function entryKeyedString(value: unknown): boolean {
 function hasSystemScaffolding(value: unknown): boolean {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const sys = value as Raw
-  const strings = ['persona', 'philosophy_heading', 'pipeline_heading', 'given_heading']
+  const strings = [
+    'persona', 'philosophy_heading', 'pipeline_heading',
+    'shape_heading', 'given_heading',
+  ]
   if (!strings.every((key) => nonEmptyString(sys[key]))) return false
   if (!nonEmptyStringArray(sys.philosophy) || !nonEmptyStringArray(sys.pipeline)) return false
+  if (
+    !nonEmptyStringArray(sys.shape) ||
+    !nonEmptyStringArray(sys.shape_asset_example) ||
+    !nonEmptyStringArray(sys.shape_close)
+  ) {
+    return false
+  }
   if (!entryKeyedString(sys.philosophy_close)) return false
   const given = sys.given
   if (typeof given !== 'object' || given === null || Array.isArray(given)) return false
@@ -704,7 +777,7 @@ export function hasPlanScaffolding(s: Raw): boolean {
 export function hasUnitScaffolding(s: Raw): boolean {
   const strings = [
     'unit_brief_title', 'unit_brief_length', 'unit_brief_stop',
-    'unit_constraint_first', 'unit_constraint_later',
+    'unit_constraint_first', 'unit_constraint_later', 'unit_constraint_section',
   ]
   const roles = s.unit_role_sentences
   return (
@@ -719,7 +792,7 @@ export function hasUnitScaffolding(s: Raw): boolean {
 export function hasCheckScaffolding(s: Raw): boolean {
   const strings = [
     'check_role_whole', 'check_role_unit', 'check_role_common',
-    'check_must_keep_heading', 'check_output_heading', 'check_output_intro',
+    'check_structure_note', 'check_must_keep_heading', 'check_output_heading', 'check_output_intro',
     'check_output_shape', 'check_output_rules',
   ]
   const rubric = s.check_rubric

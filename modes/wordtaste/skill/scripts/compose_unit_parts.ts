@@ -32,7 +32,6 @@
 
 import {
   appendFileSync,
-  copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -48,6 +47,7 @@ import {
   assembleUnitKernel,
   hasUnitScaffolding,
   sliceSpan,
+  stripAssetBlocks,
   textLines,
   type PlanUnit,
   type Scaffolding,
@@ -140,14 +140,20 @@ function main(): void {
   if (!fileNonEmpty(draftFile) && process.env.PNEUMA_SESSION_DIR) {
     draftFile = join(process.env.PNEUMA_SESSION_DIR, "draft.md");
   }
-  if (fileNonEmpty(draftFile)) copyFileSync(draftFile, join(partsDir, "preceding.md"));
-  else rmSync(join(partsDir, "preceding.md"), { force: true });
+  // Asset blocks come out on the way: `<preceding_prose>` is the last thing a
+  // writer reads, and a block of keys and values in that position is a
+  // register to imitate. See `stripAssetBlocks`.
+  if (fileNonEmpty(draftFile)) {
+    const preceding = stripAssetBlocks(readFileSync(draftFile, "utf8")).trim();
+    if (preceding.length > 0) writeFileSync(join(partsDir, "preceding.md"), `${preceding}\n`);
+    else rmSync(join(partsDir, "preceding.md"), { force: true });
+  } else rmSync(join(partsDir, "preceding.md"), { force: true });
 
   // ── constraints.en.md ──
   const firstId = units[0]!.id;
   writeFileSync(
     join(partsDir, "constraints.en.md"),
-    assembleUnitConstraints(S, unitId === firstId),
+    assembleUnitConstraints(S, unitId === firstId, unit.opens_section === true),
   );
 
   // ── voice_style.en.md / voice_examples.md ──

@@ -116,6 +116,10 @@ One JSON object matching this schema exactly. Every key it marks as required mus
           "notes_en": {
             "type": "string",
             "description": "English only. Anything the planner wants to tell the writer in its own words belongs here and nowhere else."
+          },
+          "opens_section": {
+            "type": "boolean",
+            "description": "Optional, default false. True when this unit opens a new section of the essay; the writer then gives that section a heading of its own. You decide where sections begin, not what they are called — the heading is Chinese, and Chinese you wrote is not allowed in a plan. Use it sparingly: a heading before every unit is the same as no headings at all. The first unit is already the opening and its first line is the title, so the flag is ignored there."
           }
         }
       }
