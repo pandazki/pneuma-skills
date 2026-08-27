@@ -136,10 +136,55 @@ git push origin main
 
 Do NOT create or push tags — CI handles that automatically.
 
+### 6b. Deploy the online player when the release touched it
+
+**Automatic — do this on every release whose diff touches the player, without
+being asked.** CI never deploys the player; it only tags, releases and
+publishes to npm. The hosted player at `pneuma.deepaste.ai` is a separate
+Cloudflare Pages surface, and viewers are compiled **into its bundle at build
+time** — so "the mode is in the whitelist" is not the same as "the online
+player can play it", and a viewer fix that shipped in npm is still absent from
+every shared link until this runs.
+
+Decide by looking at what actually changed since the previous tag:
+
+```bash
+PREV=$(git describe --tags --abbrev=0 HEAD^)
+git diff --name-only "$PREV"...HEAD -- \
+  core/player-support.ts 'src/player/**' web/ 'modes/*/viewer/**' 'modes/*/domain.ts' 'modes/*/pneuma-mode.ts'
+```
+
+Any output at all means deploy. (`domain.ts` and `pneuma-mode.ts` are on the
+list because a mode's viewer bundle imports them, so a change there reaches the
+player even when no `viewer/` file moved.)
+
+```bash
+bash scripts/deploy-player.sh
+```
+
+Needs wrangler already logged in on this machine (`npx wrangler whoami`); if it
+is not, say so and hand the command to the user rather than skipping in
+silence. The script builds `dist-player/`, then deploys it plus the landing
+page to the `pneuma-landing` Pages project on the `production` branch. Success
+ends with `Deployment complete!` and a `*.pages.dev` preview URL; the custom
+domain `pneuma.deepaste.ai` follows.
+
+Two failure shapes worth knowing:
+
+- **A whitelisted mode with no viewer in the deployed bundle is a hard error,
+  not a degradation.** The exporter stamps a package `supported: true` from the
+  whitelist in the repo, and the live player's `loadMode()` throws on a mode it
+  was not built with — the user sees "This shared link could not be loaded".
+  That is what happened to every eli5 link shared after 3.37.0.
+- **A stale viewer degrades quietly instead.** The mode loads, but renders with
+  the old build — a new construct comes out as raw markdown, which reads as
+  broken without saying so.
+
 ### 7. Report
 
 Print a summary:
 - Previous version → new version
 - Bump type (patch/minor/major)
 - Key changes included
+- Whether the online player was redeployed, and why or why not
 - Confirm CI will handle tag + release + npm publish
