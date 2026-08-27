@@ -1298,6 +1298,57 @@ export interface InstallSkillOptions {
   displayName?: string;
 }
 
+/** Cross-mode primitives every session gets, independent of its mode. */
+const SESSION_COMMANDS = ["borrow", "handoff"] as const;
+
+/**
+ * Install the session-scoped slash commands into `<installTarget>/<commandsDir>`.
+ *
+ * Gated on `conventions.commandsDir` being defined — NOT on a backend
+ * conditional. Only backends that surface project-scoped slash commands
+ * declare this field (Claude Code reports `<cwd>/.claude/commands/*.md` as
+ * native `slash_commands`); Codex and Kimi leave it undefined and skip this
+ * step entirely. Each command file is a self-contained caller guide for the
+ * in-session chat input, copied into the per-session install target so it
+ * works for both quick and project sessions.
+ *
+ * `handoff` lives here rather than only in the `pneuma-project` skill for the
+ * same reason `borrow` does: that skill is project-only, so a quick session
+ * would otherwise have no way to learn either command exists — the machinery
+ * would be mounted and unreachable.
+ *
+ * Deliberately callable on its own, outside `installSkill`. These commands
+ * ship with pneuma (`templates/session-commands/`) and version with pneuma,
+ * so whether a session has them must not depend on a decision about the
+ * *mode skill* — declining a skill update, resuming, replaying or viewing all
+ * skip `installSkill`, and used to take `/handoff` and `/borrow` with them.
+ * Note the contrast with the workflow scripts installed just below in
+ * `installSkill`: those come from `modeSourceDir` and version WITH the mode
+ * skill, so keeping the old ones when a skill update is declined is correct.
+ * Do not hoist that block out the same way.
+ *
+ * Idempotent: overwrites in place, creates the directory on demand.
+ */
+export function installSessionCommands(
+  installTarget: string,
+  backendType?: string,
+): void {
+  const conventions = getInstallConventions(backendType);
+  if (!conventions.commandsDir) return;
+  const commandsTarget = join(installTarget, conventions.commandsDir);
+  const templatesDir = join(import.meta.dirname, "..", "templates", "session-commands");
+  for (const name of SESSION_COMMANDS) {
+    const template = join(templatesDir, `${name}.md`);
+    if (!existsSync(template)) {
+      console.warn(`[skill-installer] Session-command template not found: ${template}`);
+      continue;
+    }
+    mkdirSync(commandsTarget, { recursive: true });
+    cpSync(template, join(commandsTarget, `${name}.md`), { force: true });
+    console.log(`[skill-installer] Installed /${name} command to ${commandsTarget}`);
+  }
+}
+
 /**
  * Install a mode's skill and inject CLAUDE.md configuration.
  */
@@ -1389,34 +1440,10 @@ export function installSkill(options: InstallSkillOptions): void {
     skillSnippets.push(...globalSnippets);
   }
 
-  // 1d-bis. Install session-scoped slash commands (e.g. `/borrow`).
-  //         Gated on `conventions.commandsDir` being defined — NOT on a
-  //         backend conditional. Only backends that surface project-scoped
-  //         slash commands declare this field (Claude Code reports
-  //         `<cwd>/.claude/commands/*.md` as native `slash_commands`); Codex
-  //         and Kimi leave it undefined and skip this step entirely. The
-  //         command file is a self-contained caller guide for the in-session
-  //         chat input, copied into the per-session install target so it works
-  //         for both quick and project sessions.
-  if (conventions.commandsDir) {
-    const commandsTarget = join(installTarget, conventions.commandsDir);
-    const templatesDir = join(import.meta.dirname, "..", "templates", "session-commands");
-    // Both cross-mode primitives, installed for quick and project sessions
-    // alike. `handoff` is here rather than only in the `pneuma-project` skill
-    // for the same reason `borrow` is: that skill is project-only, so a quick
-    // session would otherwise have no way to learn either command exists —
-    // the machinery would be mounted and unreachable.
-    for (const name of ["borrow", "handoff"]) {
-      const template = join(templatesDir, `${name}.md`);
-      if (!existsSync(template)) {
-        console.warn(`[skill-installer] Session-command template not found: ${template}`);
-        continue;
-      }
-      mkdirSync(commandsTarget, { recursive: true });
-      cpSync(template, join(commandsTarget, `${name}.md`), { force: true });
-      console.log(`[skill-installer] Installed /${name} command to ${commandsTarget}`);
-    }
-  }
+  // 1d-bis. Install session-scoped slash commands (`/borrow`, `/handoff`).
+  //         Also called directly from the launch path when the mode skill
+  //         install is skipped — see `installSessionCommands` for why.
+  installSessionCommands(installTarget, backendType);
 
   // 1d-ter. Install the mode's own session-scoped WORKFLOW scripts.
   //         Same seam as 1d-bis and the same rule: gated on

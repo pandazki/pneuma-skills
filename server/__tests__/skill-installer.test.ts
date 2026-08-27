@@ -8,7 +8,7 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { applyTemplateParams, installSkill, generateViewerApiSection, installMcpServers, installSkillDependencies } from "../skill-installer.js";
+import { applyTemplateParams, installSkill, installSessionCommands, generateViewerApiSection, installMcpServers, installSkillDependencies } from "../skill-installer.js";
 import type { SkillConfig, ViewerApiConfig, McpServerConfig, SkillDependency } from "../../core/types/mode-manifest.js";
 
 // ── applyTemplateParams (pure) ──────────────────────────────────────────────
@@ -415,6 +415,37 @@ describe("installSkill", () => {
     expect(existsSync(join(workspace, ".kimi-code", "commands", "borrow.md"))).toBe(false);
     expect(existsSync(join(workspace, ".claude", "commands", "borrow.md"))).toBe(false);
     expect(existsSync(join(workspace, ".kimi-code", "commands", "handoff.md"))).toBe(false);
+  });
+
+  // The launch path calls this directly whenever `installSkill` is skipped —
+  // resume with "keep current skill version", replay, viewing. These commands
+  // ship with pneuma, not with the mode skill, so a decision about the skill
+  // must never decide whether the session can reach `/handoff` at all.
+  test("installSessionCommands installs both commands without any skill install", () => {
+    installSessionCommands(workspace, "claude-code");
+
+    expect(existsSync(join(workspace, ".claude", "commands", "borrow.md"))).toBe(true);
+    expect(existsSync(join(workspace, ".claude", "commands", "handoff.md"))).toBe(true);
+    // Nothing else got written — this is the commands step alone, not a
+    // back-door skill install.
+    expect(existsSync(join(workspace, ".claude", "skills"))).toBe(false);
+    expect(existsSync(join(workspace, "CLAUDE.md"))).toBe(false);
+  });
+
+  test("installSessionCommands honours the commandsDir gate", () => {
+    installSessionCommands(workspace, "codex");
+    expect(existsSync(join(workspace, ".agents", "commands", "borrow.md"))).toBe(false);
+    expect(existsSync(join(workspace, ".claude", "commands", "borrow.md"))).toBe(false);
+  });
+
+  test("installSessionCommands is idempotent and refreshes stale copies", () => {
+    const handoffPath = join(workspace, ".claude", "commands", "handoff.md");
+    installSessionCommands(workspace, "claude-code");
+    writeFileSync(handoffPath, "stale content from an older pneuma");
+
+    installSessionCommands(workspace, "claude-code");
+
+    expect(readFileSync(handoffPath, "utf-8")).toContain("$PNEUMA_CLI handoff --json");
   });
 
   // ── Mode-shipped workflow scripts (gated on `workflowsDir`) ──────────────

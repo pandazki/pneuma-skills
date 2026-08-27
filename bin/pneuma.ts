@@ -16,7 +16,7 @@ import { t } from "./i18n.js";
 import { startServer } from "../server/index.js";
 import { createBackend, getDefaultBackendType, getBackendModule } from "../backends/index.js";
 import { ClaudeCodeBackend } from "../backends/claude-code/index.js";
-import { installSkill, readInboundHandoff, type InboundHandoffPayload } from "../server/skill-installer.js";
+import { installSkill, installSessionCommands, readInboundHandoff, type InboundHandoffPayload } from "../server/skill-installer.js";
 import { buildEnvTag } from "./env-tag.js";
 import { ensureCliWrapper } from "./cli-wrapper.js";
 import { startFileWatcher } from "../server/file-watcher.js";
@@ -2303,6 +2303,15 @@ async function main() {
     const skillVersionPath = join(stateDir, "skill-version.json");
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(skillVersionPath, JSON.stringify({ mode: modeName, version: manifest.version }));
+  } else {
+    // `/borrow` and `/handoff` ship with pneuma, not with the mode skill, so
+    // they must survive every reason `installSkill` was skipped — declining a
+    // skill update, resuming, replaying, viewing. Through 3.43.0 they rode
+    // inside `installSkill`, which meant a session launched down the
+    // `--skip-skill` leg had the handoff machinery mounted and no way to
+    // reach it. Must run BEFORE the agent spawns: Claude Code scans
+    // `.claude/commands/` once at boot and does not hot-reload it.
+    installSessionCommands(sessionDir, backendType);
   }
 
   // Read the v2 inbound handoff payload (if any). Used both to record the
