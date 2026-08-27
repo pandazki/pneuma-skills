@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.42.0] - 2026-08-27
+
+### Added
+- **A WordTaste piece can have parts.** A long essay was a title and an unbroken run of paragraphs, because the writer's constraints banned every heading. It can now break into sections at one level — where a section opens is decided in the plan you approve at the layout gate, and what the heading says is written by the writer, in the same Chinese as the prose around it. Use them sparingly on purpose: a heading above every unit turns an essay back into an outline, which is the shape this mode exists to avoid.
+- **A piece can ask for what a sentence cannot be.** Where a draft needs a diagram, a photograph, a screenshot, a clip, WordTaste writes it down instead of making it: an asset block says what belongs there and, one line each, the exact words that thing has to carry. The draft draws it as a card rather than as source, and the block is written to be read later as a brief — by you, or by whichever agent ends up building the thing.
+
+### Fixed
+- **The Codex context gauge stops reporting impossible numbers.** A session showed "ctx 5851%". Codex reports two token counts and the gauge was dividing the wrong one by the window: the session's cumulative spend, which re-counts the whole prompt on every request, instead of the most recent request — the only part that actually occupies the window. On a real long session that was 9,024% where the honest answer was 49%. The reading is now taken from the last request and can no longer exceed 100%.
+- **Every backend now declares that it reports context usage.** All three transports have always reported it — Claude by parsing `/context`, Codex and Kimi by pushing it — but only Claude said so, leaving the capability under-declared for anything that gates on it.
+
 ## [3.41.2] - 2026-08-27
 
 ### Improved
