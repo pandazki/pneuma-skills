@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.43.0] - 2026-08-27
+
+### Added
+- **A quick session can hand its work to another mode.** Asking for a handoff outside a project drew the review card and then failed on confirm, so the only working route was a CLI nothing in the session mentioned. Confirming now hands the workspace to a new session in the target mode, with the brief already in its first turn. No project is created and nothing is migrated: the two sessions are unrelated, which is the point — sessions that need to share preferences, files and a panel are what a project is for. The card says what confirming will do to the workspace before you press it.
+- **`/handoff` is a command you can type, next to `/borrow`.** Both are installed in every Claude Code session, quick or project. Handing off used to be explained only in the project-scoped skill, so the one kind of session that most needed it had no way to know it existed.
+
+### Fixed
+- **Opening a second mode in a workspace no longer continues the first one's conversation.** A quick session's state lives in the workspace's single `.pneuma/`, and nothing compared modes before resuming — so a mode started on top of another picked up its agent session, then overwrote its record. A session started by a handoff now starts clean, and does not inherit the previous session's title or description either.
+
 ## [3.42.0] - 2026-08-27
 
 ### Added
