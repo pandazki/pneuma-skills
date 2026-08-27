@@ -37,15 +37,24 @@ function makeMockBridge(): HandoffWsBridgeLike & {
 
 let home: string;
 let projRoot: string;
+let quickWs: string;
 let app: Hono;
 let bridge: ReturnType<typeof makeMockBridge>;
 let stop: () => void;
-let launchedTargets: Array<{ mode: string; project: string; sessionId?: string }>;
+let launchedTargets: Array<{
+  mode: string;
+  workspace: string;
+  project?: string;
+  sessionId?: string;
+  backendType?: string;
+}>;
 let killedSources: string[];
 
 beforeEach(async () => {
   home = await mkdtemp(join(tmpdir(), "pneuma-handoff-"));
   projRoot = join(home, "proj");
+  quickWs = join(home, "quick-ws");
+  await mkdir(join(quickWs, ".pneuma"), { recursive: true });
   await mkdir(join(projRoot, ".pneuma", "sessions", "src-1"), { recursive: true });
   await writeFile(
     join(projRoot, ".pneuma", "project.json"),
@@ -74,7 +83,21 @@ beforeEach(async () => {
     },
     resolveSource: async (sid) => {
       if (sid === "src-1") {
-        return { projectRoot: projRoot, mode: "doc", displayName: "Source Doc" };
+        return {
+          kind: "project" as const,
+          projectRoot: projRoot,
+          mode: "doc",
+          displayName: "Source Doc",
+        };
+      }
+      if (sid === "src-quick") {
+        return {
+          kind: "quick" as const,
+          workspace: quickWs,
+          backendType: "codex",
+          mode: "doc",
+          displayName: "Quick Doc",
+        };
       }
       return null;
     },
@@ -258,6 +281,7 @@ describe("POST /api/handoffs/:id/confirm", () => {
     expect(launchedTargets).toHaveLength(1);
     expect(launchedTargets[0]).toMatchObject({
       mode: "webcraft",
+      workspace: projRoot,
       project: projRoot,
       sessionId: body.target_session_id,
     });
@@ -268,6 +292,71 @@ describe("POST /api/handoffs/:id/confirm", () => {
       await readFile(join(projRoot, ".pneuma", "sessions", "src-1", "history.json"), "utf-8"),
     ) as Array<{ type?: string; subtype?: string }>;
     expect(hist.some((e) => e.type === "session_event" && e.subtype === "switched_out")).toBe(true);
+  });
+
+  /**
+   * A quick source hands its workspace to a new quick session. No project is
+   * created, nothing is migrated, and the two sessions are related by nothing
+   * the server writes — sessions that need to be related are what a project
+   * is for. What the target gets is a brief and a launch.
+   */
+  test("a quick source hands the workspace to a new quick session", async () => {
+    const emit = await app.request("/api/handoffs/emit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        source_session_id: "src-quick",
+        target_mode: "webcraft",
+        intent: "turn these notes into a page",
+        suggested_files: ["notes.md"],
+      }),
+    });
+    const id = ((await emit.json()) as { handoff_id: string }).handoff_id;
+
+    const res = await app.request(`/api/handoffs/${id}/confirm`, { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { confirmed: boolean; target_session_id?: string };
+    expect(body.confirmed).toBe(true);
+    // No id to report: a quick session mints its own at boot.
+    expect(body.target_session_id).toBeUndefined();
+
+    // Staged where a quick session's agent actually looks — the workspace's
+    // own `.pneuma/`, not one nesting deeper.
+    const inboundPath = join(quickWs, ".pneuma", "inbound-handoff.json");
+    expect(existsSync(inboundPath)).toBe(true);
+    const inbound = JSON.parse(await readFile(inboundPath, "utf-8")) as {
+      intent: string;
+      source_session_id: string;
+      suggested_files: string[];
+    };
+    expect(inbound.intent).toBe("turn these notes into a page");
+    expect(inbound.source_session_id).toBe("src-quick");
+    expect(inbound.suggested_files).toEqual(["notes.md"]);
+
+    // A workspace launch: no project, no pre-minted id, and the source's
+    // backend carried over because a workspace's backend is fixed.
+    expect(launchedTargets).toHaveLength(1);
+    expect(launchedTargets[0]!.workspace).toBe(quickWs);
+    expect(launchedTargets[0]!.project).toBeUndefined();
+    expect(launchedTargets[0]!.sessionId).toBeUndefined();
+    expect(launchedTargets[0]!.backendType).toBe("codex");
+
+    expect(killedSources).toEqual(["src-quick"]);
+  });
+
+  test("refuses when the source session cannot be resolved", async () => {
+    const emit = await app.request("/api/handoffs/emit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source_session_id: "nobody", target_mode: "webcraft", intent: "x" }),
+    });
+    const id = ((await emit.json()) as { handoff_id: string }).handoff_id;
+    const res = await app.request(`/api/handoffs/${id}/confirm`, { method: "POST" });
+    expect(res.status).toBe(500);
+    expect(launchedTargets).toHaveLength(0);
+    // Left pending so the user can try again rather than losing the card.
+    const retry = await app.request(`/api/handoffs/${id}/confirm`, { method: "POST" });
+    expect(retry.status).toBe(500);
   });
 
   test("404 unknown id", async () => {

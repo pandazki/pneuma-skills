@@ -15,5 +15,6 @@
   "cancel_failed_code": "취소 실패 ({{code}})",
   "confirm_failed": "확인 실패",
   "cancel_failed": "취소 실패",
-  "no_launch_url": "서버가 실행 URL을 반환하지 않았습니다"
+  "no_launch_url": "서버가 실행 URL을 반환하지 않았습니다",
+  "quick_note": "이 폴더에는 빠른 세션이 한 번에 하나만 있습니다. 확인하면 여기서 새 세션이 시작되고 이 대화 기록은 대체됩니다. 파일은 그대로입니다."
 }

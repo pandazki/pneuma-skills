@@ -15,5 +15,6 @@
   "cancel_failed_code": "Error al cancelar ({{code}})",
   "confirm_failed": "Error al confirmar",
   "cancel_failed": "Error al cancelar",
-  "no_launch_url": "El servidor no devolvió una URL de inicio"
+  "no_launch_url": "El servidor no devolvió una URL de inicio",
+  "quick_note": "Esta carpeta tiene una sola sesión rápida a la vez. Al confirmar se abre una nueva aquí y se reemplaza el historial de esta sesión; tus archivos no se tocan."
 }

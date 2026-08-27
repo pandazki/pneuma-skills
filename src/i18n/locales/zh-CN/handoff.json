@@ -15,5 +15,6 @@
   "cancel_failed_code": "取消失败（{{code}}）",
   "confirm_failed": "确认失败",
   "cancel_failed": "取消失败",
-  "no_launch_url": "服务器未返回启动 URL"
+  "no_launch_url": "服务器未返回启动 URL",
+  "quick_note": "这个目录一次只放一个快速会话。确认后会在这里开一个新的，本次对话记录会被替换掉；文件不受影响。"
 }

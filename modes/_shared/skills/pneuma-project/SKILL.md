@@ -197,7 +197,7 @@ Field reference:
 | Field | Required | Notes |
 |---|---|---|
 | `target_mode` | yes | Mode name (e.g. `webcraft`, `slide`, `doc`) |
-| `target_session` | no | Existing session id to resume into; `auto` or omit to spawn fresh |
+| `target_session` | no | Existing session id to resume into; `auto` or omit to spawn fresh. Project sessions only — a quick session has no siblings to name, and the field is ignored there |
 | `intent` | yes | One sentence — what the target should accomplish |
 | `summary` | recommended | A few sentences on what's done in this session |
 | `suggested_files` | recommended | Ordered list of `$PNEUMA_PROJECT_ROOT`-relative paths the target should read first |

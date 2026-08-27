@@ -6,8 +6,31 @@ import {
   parseVitePort,
   preserveRefinedSessionMeta,
   resolveWorkspaceBackendType,
+  startsOverPersistedSession,
   type PersistedSession,
 } from "../pneuma-cli-helpers.js";
+
+/**
+ * A quick session's state directory is the workspace's single `.pneuma/`, so a
+ * handoff into that workspace boots on top of whatever session was working
+ * there. Continuing it would resume the previous mode's conversation inside
+ * the new mode — nothing in the boot path compares modes, and nothing needs
+ * to once the handoff itself answers the question.
+ */
+describe("startsOverPersistedSession", () => {
+  test("a quick session with a handoff staged for it starts over", () => {
+    expect(startsOverPersistedSession("quick", true)).toBe(true);
+  });
+
+  test("a quick session opened normally continues where it left off", () => {
+    expect(startsOverPersistedSession("quick", false)).toBe(false);
+  });
+
+  test("a project session never starts over — it owns its own directory", () => {
+    expect(startsOverPersistedSession("project", true)).toBe(false);
+    expect(startsOverPersistedSession("project", false)).toBe(false);
+  });
+});
 
 describe("pneuma CLI helpers", () => {
   test("parseCliArgs uses the default backend when none is provided", () => {

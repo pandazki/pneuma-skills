@@ -15,5 +15,6 @@
   "cancel_failed_code": "取消失敗（{{code}}）",
   "confirm_failed": "確認失敗",
   "cancel_failed": "取消失敗",
-  "no_launch_url": "伺服器未回傳啟動網址"
+  "no_launch_url": "伺服器未回傳啟動網址",
+  "quick_note": "這個目錄一次只放一個快速工作階段。確認後會在這裡開一個新的，本次對話記錄會被取代；檔案不受影響。"
 }

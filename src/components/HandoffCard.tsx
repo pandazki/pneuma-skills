@@ -169,6 +169,15 @@ export default function HandoffCard() {
           </div>
         ) : null}
 
+        {/* A quick source hands its workspace over rather than gaining a
+            sibling session, and that is a different thing to agree to — so it
+            is said here, immediately above the button that does it. */}
+        {payload.source_kind === "quick" ? (
+          <p className="mb-3 text-[11px] leading-relaxed text-cc-muted/80 border-l-2 border-cc-border pl-2.5">
+            {t("quick_note")}
+          </p>
+        ) : null}
+
         {error ? (
           <div className="mb-3 text-xs text-red-400/90">{error}</div>
         ) : null}

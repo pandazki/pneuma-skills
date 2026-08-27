@@ -63,6 +63,7 @@ import {
   parseCliArgs,
   preserveRefinedSessionMeta,
   resolveWorkspaceBackendType,
+  startsOverPersistedSession,
   startViteDev,
   type PersistedSession,
   type SessionRecord,
@@ -149,7 +150,21 @@ function loadSession(stateDir: string): PersistedSession | null {
   }
 }
 
-function saveSession(stateDir: string, session: PersistedSession): void {
+/**
+ * Write `session.json`.
+ *
+ * `freshStart` says the file already there belongs to a session this one is
+ * replacing rather than continuing — a quick session booted by a handoff into
+ * a workspace another mode had been working in. Nothing is carried over then:
+ * the refined title, description and provenance below all describe the session
+ * that just ended, and inheriting them would put its name on someone else's
+ * work.
+ */
+function saveSession(
+  stateDir: string,
+  session: PersistedSession,
+  freshStart = false,
+): void {
   mkdirSync(stateDir, { recursive: true });
   const filePath = join(stateDir, "session.json");
   // Preserve refined session meta (displayName / description / refinedAt) the
@@ -159,10 +174,12 @@ function saveSession(stateDir: string, session: PersistedSession): void {
   // the row to the mode default. The merge rule mirrors the registry-side
   // pickRefinedMeta and lives in a tested helper.
   let prev: Partial<PersistedSession> | undefined;
-  try {
-    prev = JSON.parse(readFileSync(filePath, "utf-8")) as Partial<PersistedSession>;
-  } catch {
-    // No prior file (fresh session) or unreadable JSON — nothing to preserve.
+  if (!freshStart) {
+    try {
+      prev = JSON.parse(readFileSync(filePath, "utf-8")) as Partial<PersistedSession>;
+    } catch {
+      // No prior file (fresh session) or unreadable JSON — nothing to preserve.
+    }
   }
   writeFileSync(filePath, JSON.stringify(preserveRefinedSessionMeta(session, prev), null, 2));
 }
@@ -2768,7 +2785,15 @@ async function main() {
     p.log.info(t("pneuma.replay_mode", { path: replayPackage }));
   } else {
     // Normal mode — launch agent backend (selected at startup, fixed for the session lifetime)
-    const existing = loadSession(stateDir);
+    //
+    // A quick session that boots with a handoff staged for it starts over
+    // rather than continuing whatever was in this workspace's `.pneuma/`
+    // before — see `startsOverPersistedSession`. Reading the file either way
+    // keeps the decision in one named place instead of two conditionals.
+    const persisted = loadSession(stateDir);
+    const existing = startsOverPersistedSession(startup.kind, inboundHandoff !== null)
+      ? null
+      : persisted;
     const backendSelection = resolveWorkspaceBackendType(backendType, existing);
     if (backendSelection.mismatchMessage) {
       p.cancel(backendSelection.mismatchMessage);
@@ -2980,17 +3005,27 @@ async function main() {
         startup.kind === "project"
           ? existing?.agentSessionId
           : existing?.agentSessionId;
-      saveSession(stateDir, {
-        sessionId: persistedSessionId,
-        agentSessionId: persistedAgentSessionId,
-        mode: modeName,
-        backendType: sessionBackendType,
-        createdAt: existing?.createdAt || Date.now(),
-        editing: true,
-        // Stamp borrow provenance + internal flag so this sub-session B is
-        // filtered from user-facing lists. No-op spread for a normal session.
-        ...borrowSessionFields,
-      });
+      saveSession(
+        stateDir,
+        {
+          sessionId: persistedSessionId,
+          agentSessionId: persistedAgentSessionId,
+          mode: modeName,
+          backendType: sessionBackendType,
+          createdAt: existing?.createdAt || Date.now(),
+          editing: true,
+          // A mark of where this session came from, and nothing more — no
+          // reader follows it. Two sessions that need to be related are what
+          // a project is for.
+          ...(inboundHandoff?.source_session_id
+            ? { sourceSessionId: inboundHandoff.source_session_id }
+            : {}),
+          // Stamp borrow provenance + internal flag so this sub-session B is
+          // filtered from user-facing lists. No-op spread for a normal session.
+          ...borrowSessionFields,
+        },
+        existing === null && persisted !== null,
+      );
       await recordSession({
         startup,
         mode: modeName,

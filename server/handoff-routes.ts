@@ -35,11 +35,36 @@ export interface HandoffProposal {
   suggested_files?: string[];
   key_decisions?: string[];
   open_questions?: string[];
-  /** Project root inferred from the source session (best-effort). */
-  project_root?: string;
+  /**
+   * Where the target session will be minted, resolved from the source
+   * session. Absent means the source was not recognised, and confirm refuses.
+   */
+  location?: HandoffSourceLocation;
   proposed_at: number;
   state: "pending" | "confirmed" | "cancelled" | "timed_out";
 }
+
+/**
+ * Where a handoff's target session gets minted, which follows from what the
+ * source session is.
+ *
+ * A project source mints a sibling under `<projectRoot>/.pneuma/sessions/`. A
+ * quick source hands the workspace to a new quick session instead — no project
+ * is created, nothing is migrated, and the two sessions are related by nothing
+ * but a `sourceSessionId` mark in the new `session.json`. Two sessions that
+ * need to share preferences, files and a panel are what a project is for; a
+ * handoff out of a quick session is just a launch with a brief.
+ */
+export type HandoffSourceLocation =
+  | { kind: "project"; projectRoot: string; mode?: string; displayName?: string }
+  | {
+      kind: "quick";
+      workspace: string;
+      /** The source's backend, which the target inherits — it is workspace-locked. */
+      backendType?: string;
+      mode?: string;
+      displayName?: string;
+    };
 
 /**
  * Minimal surface the routes need from the WS bridge — typed loosely so the
@@ -67,8 +92,14 @@ export interface HandoffRoutesOptions {
    */
   launchSession?: (params: {
     mode: string;
-    project: string;
+    /** Agent workspace. For a project target this is the project root. */
+    workspace: string;
+    /** Set only for a project target; a quick target has no project. */
+    project?: string;
+    /** Set only for a project target, whose id names its directory. */
     sessionId?: string;
+    /** Inherited from the source for a quick target; backends are locked per workspace. */
+    backendType?: string;
   }) => Promise<string>;
   /**
    * Resolve project root + source session metadata for a given source session
@@ -79,11 +110,7 @@ export interface HandoffRoutesOptions {
    * back to the data the agent submitted (which doesn't include project
    * root, so confirm can't proceed without this lookup).
    */
-  resolveSource?: (sourceSessionId: string) => Promise<{
-    projectRoot: string;
-    mode?: string;
-    displayName?: string;
-  } | null>;
+  resolveSource?: (sourceSessionId: string) => Promise<HandoffSourceLocation | null>;
 
   /** Override for tests so the timer doesn't keep the test process alive. */
   pruneIntervalMs?: number;
@@ -200,24 +227,19 @@ export function mountHandoffRoutes(
       }
     }
 
-    // Resolve source metadata up front — the proposal carries project_root so
+    // Resolve the source up front — the proposal carries the location so
     // confirm doesn't have to look it up again, and the inbound-handoff.json
     // can include source identity attributes for the target's env-tag dispatch.
-    let projectRoot: string | undefined;
-    let sourceMode: string | undefined;
-    let sourceDisplayName: string | undefined;
+    let location: HandoffSourceLocation | undefined;
     if (options.resolveSource) {
       try {
-        const resolved = await options.resolveSource(sourceSessionId);
-        if (resolved) {
-          projectRoot = resolved.projectRoot;
-          sourceMode = resolved.mode;
-          sourceDisplayName = resolved.displayName;
-        }
+        location = (await options.resolveSource(sourceSessionId)) ?? undefined;
       } catch (err) {
         console.warn(`[handoff-routes] resolveSource failed for ${sourceSessionId}: ${err}`);
       }
     }
+    const sourceMode = location?.mode;
+    const sourceDisplayName = location?.displayName;
 
     const handoffId = randomUUID();
     const proposal: HandoffProposal = {
@@ -232,7 +254,7 @@ export function mountHandoffRoutes(
       ...(suggestedFiles !== undefined ? { suggested_files: suggestedFiles } : {}),
       ...(keyDecisions !== undefined ? { key_decisions: keyDecisions } : {}),
       ...(openQuestions !== undefined ? { open_questions: openQuestions } : {}),
-      ...(projectRoot !== undefined ? { project_root: projectRoot } : {}),
+      ...(location !== undefined ? { location } : {}),
       proposed_at: Date.now(),
       state: "pending",
     };
@@ -257,6 +279,11 @@ export function mountHandoffRoutes(
           suggested_files: suggestedFiles,
           key_decisions: keyDecisions,
           open_questions: openQuestions,
+          // The one piece of plumbing the card does need: what confirming
+          // will do to this workspace. A project source gains a sibling
+          // session; a quick source hands its workspace over, and the card
+          // has to say so before the user presses the button.
+          source_kind: location?.kind,
         },
         proposed_at: proposal.proposed_at,
       });
@@ -284,31 +311,44 @@ export function mountHandoffRoutes(
     // point once per id.
     proposal.state = "confirmed";
 
-    // Resolve target session id. `auto` and undefined mean "fresh UUID".
-    const targetSessionId =
-      proposal.target_session && proposal.target_session !== "auto"
-        ? proposal.target_session
-        : randomUUID();
-
-    if (!proposal.project_root) {
+    const location = proposal.location;
+    if (!location) {
       proposal.state = "pending"; // Allow another confirm attempt.
-      return c.json({ error: "project root could not be resolved for source session" }, 500);
+      return c.json({ error: "the source session could not be resolved" }, 500);
     }
 
-    const projectRoot = proposal.project_root;
+    // Resolve target session id. `auto` and undefined mean "fresh UUID".
+    //
+    // Only a project target has one to resolve: its id names the directory it
+    // will live in, so it has to be decided here, before anything is written.
+    // A quick target's id is minted by the session itself at boot, the way
+    // every quick session's always has been, so there is nothing to name and
+    // `target_session` has no siblings to point at.
+    const targetSessionId =
+      location.kind === "project"
+        ? proposal.target_session && proposal.target_session !== "auto"
+          ? proposal.target_session
+          : randomUUID()
+        : undefined;
 
     // Write inbound-handoff.json BEFORE spawn, so the target's skill installer
     // has the file in place when the project-level instructions file
     // (CLAUDE.md / AGENTS.md, depending on backend) is generated. Atomic via
     // .tmp + rename so a concurrent reader never sees a half-written payload.
     //
-    // Path: `<targetSessionDir>/.pneuma/inbound-handoff.json`. Project sessions
-    // store their flat state directly in `<projectRoot>/.pneuma/sessions/<id>/`,
-    // so the inbound payload lands one nesting deeper at
-    // `<projectRoot>/.pneuma/sessions/<id>/.pneuma/inbound-handoff.json`. The
-    // skill installer reads from this same path; the target agent rms the file
-    // after consuming.
-    const targetSessionDir = join(projectRoot, ".pneuma", "sessions", targetSessionId);
+    // Path: `<targetSessionDir>/.pneuma/inbound-handoff.json`, where
+    // `targetSessionDir` is the agent's working directory — the same rule
+    // `readInboundHandoff` and `handoff-from-external` both follow. Project
+    // sessions store their flat state in `<projectRoot>/.pneuma/sessions/<id>/`
+    // and the payload lands one nesting deeper inside it; a quick session's
+    // working directory is the workspace itself, so the payload lands in the
+    // workspace's own `.pneuma/`. Getting this wrong is invisible — the target
+    // boots and sees no handoff at all, which is the shape of the pre-3.10.9
+    // double-nesting bug.
+    const targetSessionDir =
+      location.kind === "project"
+        ? join(location.projectRoot, ".pneuma", "sessions", targetSessionId!)
+        : location.workspace;
     const targetPneumaDir = join(targetSessionDir, ".pneuma");
     try {
       await mkdir(targetPneumaDir, { recursive: true });
@@ -347,37 +387,51 @@ export function mountHandoffRoutes(
     }
 
     // Append `switched_out` to source history.json (best-effort; matches v1).
-    try {
-      const sourceHistoryPath = join(
-        projectRoot,
-        ".pneuma",
-        "sessions",
-        proposal.source_session_id,
-        "history.json",
-      );
-      if (existsSync(sourceHistoryPath)) {
-        const raw = await readFile(sourceHistoryPath, "utf-8");
-        const arr = JSON.parse(raw) as unknown[];
-        if (Array.isArray(arr)) {
-          arr.push({
-            type: "session_event",
-            subtype: "switched_out",
-            handoff_id: id,
-            ts: Date.now(),
-          });
-          await writeFile(sourceHistoryPath, JSON.stringify(arr, null, 2), "utf-8");
+    //
+    // Project sources only. A quick source's history lives in the workspace's
+    // single `.pneuma/`, which the target session is about to take over — the
+    // event would be written into a file that is replaced moments later, and
+    // the two sessions are deliberately unrelated anyway.
+    if (location.kind === "project") {
+      try {
+        const sourceHistoryPath = join(
+          location.projectRoot,
+          ".pneuma",
+          "sessions",
+          proposal.source_session_id,
+          "history.json",
+        );
+        if (existsSync(sourceHistoryPath)) {
+          const raw = await readFile(sourceHistoryPath, "utf-8");
+          const arr = JSON.parse(raw) as unknown[];
+          if (Array.isArray(arr)) {
+            arr.push({
+              type: "session_event",
+              subtype: "switched_out",
+              handoff_id: id,
+              ts: Date.now(),
+            });
+            await writeFile(sourceHistoryPath, JSON.stringify(arr, null, 2), "utf-8");
+          }
         }
+      } catch (err) {
+        console.warn(`[handoff-routes] write switched_out failed: ${err}`);
       }
-    } catch (err) {
-      console.warn(`[handoff-routes] write switched_out failed: ${err}`);
     }
 
     let launchUrl: string;
     try {
       launchUrl = await options.launchSession({
         mode: proposal.target_mode,
-        project: projectRoot,
-        sessionId: targetSessionId,
+        // A project target is launched into its project; a quick target is a
+        // plain workspace launch, with the source's backend carried over
+        // because a workspace's backend is fixed once chosen.
+        ...(location.kind === "project"
+          ? { workspace: location.projectRoot, project: location.projectRoot, sessionId: targetSessionId }
+          : {
+              workspace: location.workspace,
+              ...(location.backendType ? { backendType: location.backendType } : {}),
+            }),
       });
     } catch (err) {
       // The target failed to spawn — leave the proposal as `confirmed` (it
@@ -391,6 +445,8 @@ export function mountHandoffRoutes(
     return c.json({
       confirmed: true,
       launchUrl,
+      // Absent for a quick target, whose id the session mints for itself at
+      // boot; the browser navigates by `launchUrl`, which carries the real one.
       target_session_id: targetSessionId,
       handoff_id: id,
     });

@@ -1970,9 +1970,10 @@ export async function startServer(options: ServerOptions) {
       launchSession: async (params) => {
         const result = await launchPneumaChild({
           specifier: params.mode,
-          workspace: params.project,
+          workspace: params.workspace,
           project: params.project,
           sessionId: params.sessionId,
+          backendType: params.backendType as AgentBackendType | undefined,
         });
         return result.url;
       },
@@ -1985,10 +1986,24 @@ export async function startServer(options: ServerOptions) {
           const sessionsPath = join(homedir(), ".pneuma", "sessions.json");
           const data = await readSessionsFile(sessionsPath);
           const entry = data.sessions.find(
-            (s) => s.kind === "project" && s.sessionId === sourceSessionId,
+            (s) =>
+              (s.kind === "project" && s.sessionId === sourceSessionId) ||
+              (s.kind === "quick" && s.id === sourceSessionId),
           );
-          if (!entry || entry.kind !== "project") return null;
+          if (!entry) return null;
+          if (entry.kind === "quick") {
+            // Mirrors the per-session arm: a quick source hands its workspace
+            // to a new quick session, and gets no project for it.
+            return {
+              kind: "quick" as const,
+              workspace: entry.workspace,
+              ...(entry.backendType ? { backendType: entry.backendType } : {}),
+              mode: entry.mode,
+              displayName: entry.sessionName || entry.displayName,
+            };
+          }
           return {
+            kind: "project" as const,
             projectRoot: entry.projectRoot,
             mode: entry.mode,
             displayName: entry.sessionName || entry.displayName,
@@ -2760,9 +2775,10 @@ export async function startServer(options: ServerOptions) {
     launchSession: async (params) => {
       const result = await launchPneumaChild({
         specifier: params.mode,
-        workspace: params.project,
+        workspace: params.workspace,
         project: params.project,
         sessionId: params.sessionId,
+        backendType: params.backendType as AgentBackendType | undefined,
       });
       return result.url;
     },
@@ -2773,16 +2789,25 @@ export async function startServer(options: ServerOptions) {
     // siblings the source might somehow reference).
     resolveSource: async (sourceSessionId) => {
       const activeId = wsBridge.getActiveSessionId();
-      if (
-        sourceSessionId === activeId &&
-        options.pneumaProjectRoot &&
-        options.modeName
-      ) {
-        const manifest = await loadProjectManifest(options.pneumaProjectRoot).catch(() => null);
+      if (sourceSessionId === activeId && options.modeName) {
+        if (options.pneumaProjectRoot) {
+          const manifest = await loadProjectManifest(options.pneumaProjectRoot).catch(() => null);
+          return {
+            kind: "project" as const,
+            projectRoot: options.pneumaProjectRoot,
+            mode: options.modeName,
+            displayName: manifest?.displayName ?? undefined,
+          };
+        }
+        // A quick session. It has no project and gets none: the handoff hands
+        // this workspace to a new quick session, which is unrelated to this
+        // one beyond a `sourceSessionId` mark in its `session.json`. Sessions
+        // that need to be related are what a project is for.
         return {
-          projectRoot: options.pneumaProjectRoot,
+          kind: "quick" as const,
+          workspace: options.workspace,
+          ...(sessionInfo.backendType ? { backendType: sessionInfo.backendType } : {}),
           mode: options.modeName,
-          displayName: manifest?.displayName ?? undefined,
         };
       }
       try {
@@ -2794,6 +2819,7 @@ export async function startServer(options: ServerOptions) {
         );
         if (!entry || entry.kind !== "project") return null;
         return {
+          kind: "project" as const,
           projectRoot: entry.projectRoot,
           mode: entry.mode,
           displayName: entry.sessionName || entry.displayName,

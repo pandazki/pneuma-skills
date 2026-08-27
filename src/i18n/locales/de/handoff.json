@@ -15,5 +15,6 @@
   "cancel_failed_code": "Abbruch fehlgeschlagen ({{code}})",
   "confirm_failed": "Bestätigung fehlgeschlagen",
   "cancel_failed": "Abbruch fehlgeschlagen",
-  "no_launch_url": "Server hat keine Start-URL zurückgegeben"
+  "no_launch_url": "Server hat keine Start-URL zurückgegeben",
+  "quick_note": "In diesem Ordner läuft immer nur eine Schnellsitzung. Nach dem Bestätigen startet hier eine neue, der Verlauf dieser Sitzung wird ersetzt; deine Dateien bleiben unberührt."
 }

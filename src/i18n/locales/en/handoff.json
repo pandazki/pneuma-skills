@@ -15,5 +15,6 @@
   "cancel_failed_code": "Cancel failed ({{code}})",
   "confirm_failed": "Confirm failed",
   "cancel_failed": "Cancel failed",
-  "no_launch_url": "Server did not return a launch URL"
+  "no_launch_url": "Server did not return a launch URL",
+  "quick_note": "This workspace holds one quick session at a time. Confirming starts a new one here and replaces this session's chat history; your files are untouched."
 }

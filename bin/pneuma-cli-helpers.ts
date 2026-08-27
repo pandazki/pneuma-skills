@@ -7,6 +7,13 @@ export interface PersistedSession {
   sessionId: string;
   agentSessionId?: string;
   mode: string;
+  /**
+   * The session this one was handed off from, when it was started by a
+   * confirmed handoff. It is a mark, not a link: nothing reads it to find the
+   * other session, and the two sessions share no state. Two quick sessions
+   * that need to be related are what a project is for.
+   */
+  sourceSessionId?: string;
   backendType: AgentBackendType;
   createdAt: number;
   editing?: boolean;
@@ -274,6 +281,28 @@ export function parseCliArgs(argv: string[], cwd = process.cwd()): ParsedCliArgs
     fromDisplayName,
     borrowId,
   };
+}
+
+/**
+ * Whether this launch starts a new session over whatever is persisted in the
+ * state directory, instead of continuing it.
+ *
+ * Only one case says yes, and it is the whole reason the question exists: a
+ * quick session that boots with a handoff staged for it. A quick session's
+ * state directory is the workspace's single `.pneuma/`, so a handoff into that
+ * workspace arrives at a directory another mode's session already lives in —
+ * and continuing that one would resume the previous mode's conversation inside
+ * the new mode. The handoff carries its own brief; it is a new session by
+ * definition.
+ *
+ * Project sessions never ask: each one owns its own directory, so there is
+ * nothing there to continue by accident.
+ */
+export function startsOverPersistedSession(
+  kind: "quick" | "project",
+  hasInboundHandoff: boolean,
+): boolean {
+  return kind === "quick" && hasInboundHandoff;
 }
 
 export function resolveWorkspaceBackendType(

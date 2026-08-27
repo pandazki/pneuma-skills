@@ -17,6 +17,14 @@ export interface HandoffProposalPayload {
   suggested_files?: string[];
   key_decisions?: string[];
   open_questions?: string[];
+  /**
+   * What confirming will do to this workspace. A project source gains a
+   * sibling session and keeps this one's history; a quick source hands its
+   * workspace to a new session, which is a different sentence to put on a
+   * button. Absent on a proposal whose source the server could not resolve —
+   * confirm refuses those anyway.
+   */
+  source_kind?: "quick" | "project";
 }
 
 /**

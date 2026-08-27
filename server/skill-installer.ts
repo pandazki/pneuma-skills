@@ -1400,19 +1400,21 @@ export function installSkill(options: InstallSkillOptions): void {
   //         for both quick and project sessions.
   if (conventions.commandsDir) {
     const commandsTarget = join(installTarget, conventions.commandsDir);
-    const borrowTemplate = join(
-      import.meta.dirname,
-      "..",
-      "templates",
-      "session-commands",
-      "borrow.md",
-    );
-    if (existsSync(borrowTemplate)) {
+    const templatesDir = join(import.meta.dirname, "..", "templates", "session-commands");
+    // Both cross-mode primitives, installed for quick and project sessions
+    // alike. `handoff` is here rather than only in the `pneuma-project` skill
+    // for the same reason `borrow` is: that skill is project-only, so a quick
+    // session would otherwise have no way to learn either command exists —
+    // the machinery would be mounted and unreachable.
+    for (const name of ["borrow", "handoff"]) {
+      const template = join(templatesDir, `${name}.md`);
+      if (!existsSync(template)) {
+        console.warn(`[skill-installer] Session-command template not found: ${template}`);
+        continue;
+      }
       mkdirSync(commandsTarget, { recursive: true });
-      cpSync(borrowTemplate, join(commandsTarget, "borrow.md"), { force: true });
-      console.log(`[skill-installer] Installed /borrow command to ${commandsTarget}`);
-    } else {
-      console.warn(`[skill-installer] Session-command template not found: ${borrowTemplate}`);
+      cpSync(template, join(commandsTarget, `${name}.md`), { force: true });
+      console.log(`[skill-installer] Installed /${name} command to ${commandsTarget}`);
     }
   }
 

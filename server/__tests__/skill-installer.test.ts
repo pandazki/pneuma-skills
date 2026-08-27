@@ -361,6 +361,29 @@ describe("installSkill", () => {
     expect(content).toContain("\"scope\": \"return\"");
   });
 
+  test("installs the session-scoped /handoff command for claude-code", () => {
+    // Both cross-mode primitives ride the same seam. `/handoff` has to be here
+    // and not only in the project skill: a quick session never installs that
+    // skill, so the command file is the only place its agent can learn the
+    // primitive exists.
+    installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir, backendType: "claude-code" });
+
+    const handoffPath = join(workspace, ".claude", "commands", "handoff.md");
+    expect(existsSync(handoffPath)).toBe(true);
+
+    const content = readFileSync(handoffPath, "utf-8");
+    // Handoff framing — a goto, and explicitly not the borrow it is confused with.
+    expect(content).toContain("goto");
+    expect(content).toContain("/borrow");
+    // The real CLI invocation the caller must run.
+    expect(content).toContain("$PNEUMA_CLI handoff --json");
+    expect(content).toContain("$ARGUMENTS");
+    // The user decides, not the agent.
+    expect(content).toContain("review card");
+    // What confirming does to a workspace that is not a project.
+    expect(content).toContain("one quick session at a time");
+  });
+
   test("installs the /borrow command into the session dir for project sessions", () => {
     const sessionDir = join(tmpDir, "session");
     mkdirSync(sessionDir, { recursive: true });
@@ -375,20 +398,23 @@ describe("installSkill", () => {
       sessionId: "sess-1",
     });
 
-    // Command installs into the per-session install target, not the workspace.
+    // Commands install into the per-session install target, not the workspace.
     expect(existsSync(join(sessionDir, ".claude", "commands", "borrow.md"))).toBe(true);
+    expect(existsSync(join(sessionDir, ".claude", "commands", "handoff.md"))).toBe(true);
   });
 
   test("does not install the /borrow command for codex (commandsDir undefined)", () => {
     installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir, backendType: "codex" });
     expect(existsSync(join(workspace, ".agents", "commands", "borrow.md"))).toBe(false);
     expect(existsSync(join(workspace, ".claude", "commands", "borrow.md"))).toBe(false);
+    expect(existsSync(join(workspace, ".agents", "commands", "handoff.md"))).toBe(false);
   });
 
   test("does not install the /borrow command for kimi-cli (commandsDir undefined)", () => {
     installSkill({ workspace, skillConfig: defaultSkillConfig, modeSourceDir, backendType: "kimi-cli" });
     expect(existsSync(join(workspace, ".kimi-code", "commands", "borrow.md"))).toBe(false);
     expect(existsSync(join(workspace, ".claude", "commands", "borrow.md"))).toBe(false);
+    expect(existsSync(join(workspace, ".kimi-code", "commands", "handoff.md"))).toBe(false);
   });
 
   // ── Mode-shipped workflow scripts (gated on `workflowsDir`) ──────────────
