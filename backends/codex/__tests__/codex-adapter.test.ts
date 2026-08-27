@@ -498,6 +498,90 @@ describe("CodexAdapter", () => {
     }
   });
 
+  /**
+   * These pin the v0.114+ `tokenUsage` shape, which shipped untested and let
+   * the ctx gauge read a session-cumulative number: real sessions rendered
+   * "ctx 5851%".
+   */
+  test("measures the context window against the last request, not the session total", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    await waitForInit();
+
+    // Numbers taken verbatim from a real 194-turn codex rollout: `total` is
+    // every request's prompt re-counted, `last` is what sits in the window.
+    transport.simulateNotification("thread/tokenUsage/updated", {
+      tokenUsage: {
+        total: { inputTokens: 23_245_850, outputTokens: 74_081, totalTokens: 23_319_931 },
+        last: { inputTokens: 125_962, outputTokens: 1_329, totalTokens: 127_291 },
+        modelContextWindow: 258_400,
+      },
+    });
+
+    const update = messages.findLast(
+      (m) => m.type === "session_update" && m.session.context_used_percent !== undefined,
+    );
+    expect(update).toBeDefined();
+    if (update?.type === "session_update") {
+      expect(update.session.context_used_percent).toBe(49); // 127291/258400
+    }
+  });
+
+  test("falls back to the session total before the first request completes", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    await waitForInit();
+
+    // No `last` yet — on turn one `total` *is* the last request.
+    transport.simulateNotification("thread/tokenUsage/updated", {
+      tokenUsage: {
+        total: { inputTokens: 20_000, outputTokens: 600, totalTokens: 20_600 },
+        modelContextWindow: 200_000,
+      },
+    });
+
+    const update = messages.findLast(
+      (m) => m.type === "session_update" && m.session.context_used_percent !== undefined,
+    );
+    expect(update).toBeDefined();
+    if (update?.type === "session_update") {
+      expect(update.session.context_used_percent).toBe(10); // 20600/200000
+    }
+  });
+
+  test("never reports more of the window than exists", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    await waitForInit();
+
+    // A shape this adapter does not understand must degrade to a bounded
+    // number, never to another 5851%.
+    transport.simulateNotification("thread/tokenUsage/updated", {
+      tokenUsage: {
+        total: { inputTokens: 9_000_000, outputTokens: 500_000 },
+        last: { inputTokens: 9_000_000, outputTokens: 500_000 },
+        modelContextWindow: 200_000,
+      },
+    });
+
+    const update = messages.findLast(
+      (m) => m.type === "session_update" && m.session.context_used_percent !== undefined,
+    );
+    expect(update).toBeDefined();
+    if (update?.type === "session_update") {
+      expect(update.session.context_used_percent).toBe(100);
+    }
+  });
+
   test("handles thread/status/changed notifications", async () => {
     const transport = createMockTransport();
     const messages: BrowserIncomingMessage[] = [];

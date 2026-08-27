@@ -47,6 +47,37 @@ interface CodexItem {
   [key: string]: unknown;
 }
 
+/** One scope's token counts, as carried by `thread/tokenUsage/updated`. */
+interface CodexTokenCounts {
+  totalTokens?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  cachedInputTokens?: number;
+  reasoningOutputTokens?: number;
+}
+
+/** Assumed window when codex reports none (older builds, unknown models). */
+const DEFAULT_CONTEXT_WINDOW = 128_000;
+
+/**
+ * How much of the context window one request occupies. Codex's `totalTokens`
+ * is that request's input plus output; the sum is the fallback for shapes that
+ * omit it.
+ */
+function occupiedTokens(counts: CodexTokenCounts): number {
+  return counts.totalTokens ?? (counts.inputTokens ?? 0) + (counts.outputTokens ?? 0);
+}
+
+/**
+ * Clamped, so a readout can never claim more of the window than exists. The
+ * clamp is a backstop rather than the fix — it holds even if a future codex
+ * release reshapes the notification again.
+ */
+function contextPercent(tokens: number, contextWindow: number): number {
+  if (!(contextWindow > 0)) return 0;
+  return Math.max(0, Math.min(100, Math.round((tokens / contextWindow) * 100)));
+}
+
 /** Safely extract a string kind from a Codex file change entry. */
 function safeKind(kind: unknown): string {
   if (typeof kind === "string") return kind;
@@ -1509,39 +1540,48 @@ export class CodexAdapter {
     });
   }
 
+  /**
+   * `thread/tokenUsage/updated` carries two quantities that must not be
+   * confused. `tokenUsage.total` is the session's *cumulative* spend — every
+   * request re-counts the whole prompt it resent, so a long session runs to
+   * millions of tokens. `tokenUsage.last` is the most recent request alone,
+   * which is what actually occupies the model's context window right now.
+   *
+   * Measuring the window against `total` is what produced readouts like
+   * "ctx 5851%": a real session showed 23.3M cumulative tokens against a
+   * 258,400-token window, where `last` was 127,291 — 49%. Cumulative counters
+   * still read `total`; the context gauge reads `last`.
+   */
   private handleTokenUsageUpdated(params: Record<string, unknown>): void {
-    // v0.114+: params.tokenUsage = { total: { totalTokens, inputTokens, ... }, last: {...}, modelContextWindow }
+    // v0.114+: params.tokenUsage = { total, last, modelContextWindow }
     // Legacy: flat params.inputTokens, params.outputTokens, etc.
     const tokenUsage = params.tokenUsage as {
-      total?: { totalTokens?: number; inputTokens?: number; outputTokens?: number; cachedInputTokens?: number; reasoningOutputTokens?: number };
-      last?: { totalTokens?: number; inputTokens?: number; outputTokens?: number };
+      total?: CodexTokenCounts;
+      last?: CodexTokenCounts;
       modelContextWindow?: number | null;
     } | undefined;
 
-    let inputTokens: number;
-    let outputTokens: number;
+    const costUsd = (params.costUsd as number) || 0;
+    const model = params.model as string | undefined;
+
+    let contextTokens: number;
     let modelContextWindow: number;
-    let costUsd: number;
-    let model: string | undefined;
 
     if (tokenUsage?.total) {
-      // v0.114+ format
-      inputTokens = tokenUsage.total.inputTokens ?? 0;
-      outputTokens = tokenUsage.total.outputTokens ?? 0;
-      modelContextWindow = tokenUsage.modelContextWindow ?? 128_000;
-      costUsd = (params.costUsd as number) || 0;
-      model = params.model as string | undefined;
-
-      // Update cumulative counters from total
-      this.cumulativeInputTokens = inputTokens;
-      this.cumulativeOutputTokens = outputTokens;
+      // v0.114+ format. `total` is already cumulative, so it replaces the
+      // running counters rather than adding to them.
+      this.cumulativeInputTokens = tokenUsage.total.inputTokens ?? 0;
+      this.cumulativeOutputTokens = tokenUsage.total.outputTokens ?? 0;
+      modelContextWindow = tokenUsage.modelContextWindow ?? DEFAULT_CONTEXT_WINDOW;
+      // `last` is absent until the first request completes; until then `total`
+      // *is* the last request, so it is the honest fallback.
+      contextTokens = occupiedTokens(tokenUsage.last ?? tokenUsage.total);
     } else {
-      // Legacy flat format
-      inputTokens = (params.inputTokens as number) || 0;
-      outputTokens = (params.outputTokens as number) || 0;
-      modelContextWindow = (params.modelContextWindow as number) || 128_000;
-      costUsd = (params.costUsd as number) || 0;
-      model = params.model as string | undefined;
+      // Legacy flat format: one request's counts, so they are the occupancy.
+      // Cumulative totals are maintained by `turn/completed` on this path and
+      // are deliberately left alone here.
+      modelContextWindow = (params.modelContextWindow as number) || DEFAULT_CONTEXT_WINDOW;
+      contextTokens = ((params.inputTokens as number) || 0) + ((params.outputTokens as number) || 0);
     }
 
     // Update cumulative cost if provided
@@ -1554,11 +1594,9 @@ export class CodexAdapter {
       this.activeModel = model;
     }
 
-    const contextPercent = Math.round(((inputTokens + outputTokens) / modelContextWindow) * 100);
-
     this.emitSessionUpdate({
       model: this.activeModel,
-      context_used_percent: contextPercent,
+      context_used_percent: contextPercent(contextTokens, modelContextWindow),
       total_cost_usd: this.cumulativeCostUsd,
     });
   }

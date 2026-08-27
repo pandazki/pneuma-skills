@@ -26,6 +26,8 @@ describe("kimi-cli backend registration", () => {
       toolProgress: true,
       modelSwitch: true,
       steer: false,
+      // ACP `usage_update` reports used tokens against the window size.
+      contextWindow: true,
     });
   });
 

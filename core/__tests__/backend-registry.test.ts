@@ -60,6 +60,7 @@ describe("backend registry", () => {
       toolProgress: false,
       modelSwitch: true,
       steer: true,
+      contextWindow: true,
     });
 
     expect(getBackendCapabilities("kimi-cli")).toEqual({
@@ -70,6 +71,7 @@ describe("backend registry", () => {
       toolProgress: true,
       modelSwitch: true,
       steer: false,
+      contextWindow: true,
     });
   });
 

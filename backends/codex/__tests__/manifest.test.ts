@@ -20,7 +20,7 @@ describe("codex BackendModule", () => {
     expect(c.modelSwitch).toBe(true);
     expect(c.scheduling).toBeFalsy();
     expect(c.costTracking).toBeFalsy();
-    expect(c.contextWindow).toBeFalsy();
+    expect(c.contextWindow).toBe(true);
   });
 
   it("ships no defaultModels (codex emits available_models dynamically)", () => {

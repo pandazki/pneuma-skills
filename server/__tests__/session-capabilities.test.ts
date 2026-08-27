@@ -47,10 +47,14 @@ describe("session capabilities propagation", () => {
     expect(getBackendModule("kimi-cli").capabilities.costTracking).toBeFalsy();
   });
 
-  it("only claude-code declares contextWindow = true", () => {
+  it("every backend declares contextWindow = true", () => {
+    // All three transports report window occupancy: Claude parses `/context`
+    // output, codex sends `thread/tokenUsage/updated`, kimi sends ACP
+    // `usage_update`. The declaration says the stat exists, not that any
+    // caller gates on it.
     expect(getBackendModule("claude-code").capabilities.contextWindow).toBe(true);
-    expect(getBackendModule("codex").capabilities.contextWindow).toBeFalsy();
-    expect(getBackendModule("kimi-cli").capabilities.contextWindow).toBeFalsy();
+    expect(getBackendModule("codex").capabilities.contextWindow).toBe(true);
+    expect(getBackendModule("kimi-cli").capabilities.contextWindow).toBe(true);
   });
 
   it("WsBridge session_init payload carries the full capability set for claude-code", () => {

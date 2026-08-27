@@ -27,6 +27,11 @@ export const codexModule: BackendModule = {
     toolProgress: false,
     modelSwitch: true,
     steer: true,
+    // `thread/tokenUsage/updated` carries `modelContextWindow` alongside the
+    // per-request counts, so the window gauge is real here. Cost is not:
+    // codex only exposes an estimate through a `codex/usage/*` request it
+    // never pushes, and nothing polls it, so `costTracking` stays undeclared.
+    contextWindow: true,
   },
 
   // Codex emits its own model list via `available_models` over the wire — no

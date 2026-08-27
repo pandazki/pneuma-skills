@@ -70,6 +70,9 @@ export const kimiCliModule: BackendModule = {
     // Kimi's TUI and Server API can steer, but the ACP transport used here
     // exposes session/prompt + session/cancel only — no in-flight input method.
     steer: false,
+    // ACP `usage_update` reports used tokens against the window size, which
+    // `KimiBridge` turns into the ctx readout.
+    contextWindow: true,
   },
 
   // Kimi emits its own model list dynamically (session/new `configOptions`)

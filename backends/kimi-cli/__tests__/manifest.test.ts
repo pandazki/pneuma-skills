@@ -25,7 +25,7 @@ describe("kimi-cli BackendModule", () => {
     expect(c.modelSwitch).toBe(true);
     expect(c.scheduling).toBeFalsy();
     expect(c.costTracking).toBeFalsy();
-    expect(c.contextWindow).toBeFalsy();
+    expect(c.contextWindow).toBe(true);
   });
 
   it("keeps manifest and backend-instance capability declarations in sync", () => {

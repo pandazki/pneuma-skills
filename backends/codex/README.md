@@ -119,9 +119,16 @@ RPC (`fetchAvailableModels`); skills come from `skills/list`.
 { "method": "item/reasoning/textDelta", "params": { "delta": "First, …" } }
 
 // Token usage — driven by thread/tokenUsage/updated; v0.114+ payload is
-// nested under `tokenUsage.total`, legacy was flat. Adapter handles both.
+// nested under `tokenUsage`, legacy was flat. Adapter handles both.
+// `total` = cumulative session spend, `last` = the most recent request.
+// The ctx gauge measures `last` against the window; only cumulative
+// counters read `total`. See "Two token numbers" below.
 { "method": "thread/tokenUsage/updated", "params": {
-    "tokenUsage": { "total": { "inputTokens": 132, "outputTokens": 41 }, "modelContextWindow": 128000 }
+    "tokenUsage": {
+      "total": { "inputTokens": 23245850, "outputTokens": 74081, "totalTokens": 23319931 },
+      "last":  { "inputTokens": 125962,   "outputTokens": 1329,  "totalTokens": 127291 },
+      "modelContextWindow": 258400
+    }
 } }
 
 // turn/completed — adapter then SYNTHESISES a Pneuma `result` envelope
@@ -172,6 +179,30 @@ must call `transport.respond(id, …)` once the user decides:
 | `toolProgress` | `false` | We surface "Running… (Ns)" via `handleItemUpdated`, but it's a coarse text update — there is no incremental progress integer the UI can chart, so we report `false` to match what the UI reasonably gates on. |
 | `modelSwitch`  | `true`  | `set_model` records the new model on the adapter; it's applied to the next `turn/start` (Codex is per-turn model selection, not a stateful flip). |
 | `steer`        | `true`  | app-server's native `turn/steer` appends typed input to the active turn. Pneuma includes `expectedTurnId` so a turn-boundary race fails explicitly instead of steering the wrong turn. |
+| `contextWindow`| `true`  | `thread/tokenUsage/updated` carries `modelContextWindow` alongside the per-request counts, so the "ctx N%" readout is measurable. See "Two token numbers" below. |
+| `costTracking` | *unset* | The app-server never pushes a cost. `costUsd` is read opportunistically but no codex build has been observed to send it; an estimate exists only behind a `codex/usage/*` **request** (`estimatedUsageUsdMicros` on `ThreadUsage`), and nothing polls it. Declaring `true` would put a permanent `$0.0000` in the UI. |
+
+### Two token numbers, and which one the window gauge uses
+
+`thread/tokenUsage/updated` reports **two** scopes plus the window, and they
+mean different things:
+
+- **`total`** — the session's *cumulative* spend. Every request re-sends and
+  re-counts the whole prompt, so this climbs to millions of tokens over a long
+  thread. It is the right source for cumulative counters and cost.
+- **`last`** — the most recent request alone. This is what actually occupies
+  the model's context window right now.
+
+Measuring the window against `total` is a category error that renders as an
+absurd percentage. A real 194-turn rollout ended at 23,319,931 cumulative
+tokens against a 258,400-token window — 9,024% — while `last` was 127,291,
+i.e. 49%. `handleTokenUsageUpdated` therefore reads `last` for
+`context_used_percent` (falling back to `total` only before the first request
+completes, when the two are equal) and clamps the result to `[0, 100]` so a
+future reshape of the payload can never render an impossible number again.
+
+`totalTokens` on either scope is that scope's input + output; the adapter
+falls back to summing the two when it is absent.
 
 ## Install layout
 
