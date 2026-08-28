@@ -471,6 +471,22 @@ workflow paths land.
    Read `stats.trust`: a healthy run is mostly `verified`; a pile of
    `unverifiable` means the source wasn't where the extractor thought —
    investigate before you ship it.
+
+   Then read `stats.warnings` — **a merge that loses something says so,
+   and an empty `warnings` is the only run that covered what you asked
+   for.** `stats.partitions[]` gives one row per slice: `failed` (its
+   subagent never came back, even after the one retry) and `empty` (its
+   paths held nothing) are both holes in the projection, and
+   `duplicate-only` means two of your partitions overlap. Each entry in
+   `stats.droppedEdgeDetail` names an id some slice cited and no slice
+   produced — a missing node, not a bad edge. Do not write
+   `cosmos.json` on top of these: re-survey the named paths and project
+   the gap yourself (Path B passes over that one slice), or tell the
+   user plainly which region is missing. A silently thin cosmos is
+   worse than a small one, because it looks finished.
+
+   `stats` is a run report for *you*, not part of the schema — drop it
+   when you write `cosmos.json`, or the file fails validation.
 4. **Add the tour (and prune if needed).** The workflow writes the
    verified graph + perspectives but NOT the overall `tour` — pick the
    5–8 nodes that teach how the cosmos hangs together (tour discipline
