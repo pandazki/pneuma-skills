@@ -66,7 +66,7 @@ When humans and code agents co-create content, they need more than a chat window
 
 | Mode | What it does |
 |------|-------------|
-| **webcraft** | Live web development with [Impeccable](https://impeccable.style) AI design intelligence — 22 design commands, brand vs product register, responsive preview, export |
+| **webcraft** | Live web development with [Impeccable](https://impeccable.style) AI design intelligence — 22 design commands, four visitor modes, responsive preview, export |
 | **clipcraft** | AI-orchestrated video production on [@pneuma-craft](https://github.com/pandazki/pneuma-craft) — assets, composition with tracks/clips, provenance DAG, scenes; canvas preview + 3D timeline + dive panels; image / video / TTS / BGM generation scripts |
 | **kami** | Paper-canvas typesetting — locked paper size (A4/A5/A3/Letter/Legal × portrait/landscape), Scroll / Focus / Book views, fit-discipline feedback loop, PDF / PNG / HTML export. Design language adapted from [tw93/kami](https://github.com/tw93/kami) |
 | **slide** | HTML presentations — content sets, drag-reorder, presenter mode, PDF/image export. Skill design guidelines informed by [frontend-slides](https://github.com/zarazhangrui/frontend-slides) |

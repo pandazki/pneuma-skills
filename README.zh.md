@@ -66,7 +66,7 @@
 
 | Mode | 它做什么 |
 |------|------|
-| **webcraft** | 实时网页开发，搭载 [Impeccable](https://impeccable.style) 的 AI 设计能力 —— 22 条设计指令、品牌/产品双声调、响应式预览、导出 |
+| **webcraft** | 实时网页开发，搭载 [Impeccable](https://impeccable.style) 的 AI 设计能力 —— 22 条设计指令、四种访客模式、响应式预览、导出 |
 | **clipcraft** | 基于 [@pneuma-craft](https://github.com/pandazki/pneuma-craft) 的 AIGC 视频流水线 —— 资产、Track/Clip 组合、来源 DAG、Scene 划分；Canvas 预览 + 3D 时间线 + 单 clip 钻入面板；图像/视频/TTS/BGM 生成脚本一应俱全 |
 | **kami** | 纸张画布排版 —— 锁纸张尺寸（A4/A5/A3/Letter/Legal × 横/竖）、Scroll/Focus/Book 三种视图、留白纪律反馈、PDF/PNG/HTML 导出。设计语言改编自 [tw93/kami](https://github.com/tw93/kami) |
 | **slide** | HTML 幻灯片 —— 多内容集、拖拽排序、演讲者模式、PDF/图片导出。Skill 设计参考了 [frontend-slides](https://github.com/zarazhangrui/frontend-slides) |
