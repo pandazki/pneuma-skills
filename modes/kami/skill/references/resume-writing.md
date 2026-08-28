@@ -132,7 +132,9 @@ Do not add `flex-wrap: wrap`; it causes uneven line splits that look like layout
 - Two `.hl` spans on the same row
 - Highlighting an entire clause
 
-Healthy ratio: one emphasis per 80 to 150 characters of body text.
+The per-row limits above are the resume rule and the only one that applies here.
+For prose density anywhere else, `writing.md` «Emphasis rhythm» is the single
+source — do not carry a second ratio around.
 
 ---
 

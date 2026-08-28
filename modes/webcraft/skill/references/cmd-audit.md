@@ -1,13 +1,13 @@
 ---
 name: audit
-description: "Run technical quality checks across accessibility, performance, theming, responsive design, and anti-patterns. Generates a scored report with P0-P3 severity ratings and actionable plan. Use when the user wants an accessibility check, performance audit, or technical quality review."
+description: "Run technical quality checks across accessibility, performance, theming, responsive design, and implementation integrity. Generates a scored report with P0-P3 severity ratings and actionable plan. Use when the user wants an accessibility check, performance audit, or technical quality review."
 argument-hint: "[area (feature, page, component...)]"
 user-invocable: true
 ---
 
 ## MANDATORY PREPARATION
 
-Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `init` command first (see [cmd-init](cmd-init.md)).
+Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it carries the setup steps, the visitor modes, and the Context Gathering Protocol. The quality floor and the ban list live in [craft-floor.md](craft-floor.md); load it immediately before you edit UI. If no design context exists yet, you MUST run the `init` command first (see [cmd-init](cmd-init.md)).
 
 ---
 
@@ -23,6 +23,7 @@ Run comprehensive checks across 5 dimensions. Score each dimension 0-4 using the
 
 **Check for**:
 - **Contrast issues**: Text contrast ratios < 4.5:1 (or 7:1 for AAA)
+- **Motion sensitivity**: `prefers-reduced-motion` needs an intentional alternative that preserves state change and hierarchy; flag a global `0.01ms` kill that destroys useful feedback, flashing above threshold, and motion that blocks focus, reading, or task completion
 - **Missing ARIA**: Interactive elements without proper roles, labels, or states
 - **Keyboard navigation**: Missing focus indicators, illogical tab order, keyboard traps
 - **Semantic HTML**: Improper heading hierarchy, missing landmarks, divs instead of buttons
@@ -36,7 +37,8 @@ Run comprehensive checks across 5 dimensions. Score each dimension 0-4 using the
 **Check for**:
 - **Layout thrashing**: Reading/writing layout properties in loops
 - **Expensive animations**: Casual layout-property animation, unbounded blur/filter/shadow effects, or effects that visibly drop frames
-- **Missing optimization**: Images without lazy loading, unoptimized assets, missing will-change
+- **Missing optimization**: Images without lazy loading, unoptimized assets
+- **will-change overuse**: `will-change` applied broadly or left on at rest (it is a targeted hint for known expensive animations, not a baseline requirement)
 - **Bundle size**: Unnecessary imports, unused dependencies
 - **Render performance**: Unnecessary re-renders, missing memoization
 
@@ -63,11 +65,11 @@ Run comprehensive checks across 5 dimensions. Score each dimension 0-4 using the
 
 **Score 0-4**: 0=Desktop-only (breaks on mobile), 1=Major issues (some breakpoints, many failures), 2=Partial (works on mobile, rough edges), 3=Good (responsive, minor touch target or overflow issues), 4=Excellent (fluid, all viewports, proper touch targets)
 
-### 5. Anti-Patterns (CRITICAL)
+### 5. Implementation Integrity (CRITICAL)
 
-Check against ALL the **DON'T** guidelines in the pneuma-webcraft SKILL.md "Impeccable.style Design Intelligence" section. Look for AI slop tells (AI color palette, gradient text, glassmorphism, hero metrics, card grids, generic fonts) and general design anti-patterns (gray on color, nested cards, bounce easing, redundant copy).
+Check the implementation against every ban in [craft-floor.md](craft-floor.md) and verify each hit in context. Look for repeated implementation shortcuts, design-system drift, misleading or decorative content, and structure that is interchangeable with an unrelated product. Keep the rule-level findings — the ones the ban list names — separate from your own visual judgment, and call out false positives.
 
-**Score 0-4**: 0=AI slop gallery (5+ tells), 1=Heavy AI aesthetic (3-4 tells), 2=Some tells (1-2 noticeable), 3=Mostly clean (subtle issues only), 4=No AI tells (distinctive, intentional design)
+**Score 0-4**: 0=systemic drift, 1=major repeated failures, 2=several verified issues, 3=minor isolated issues, 4=coherent and intentional
 
 ## Generate Report
 
@@ -79,13 +81,13 @@ Check against ALL the **DON'T** guidelines in the pneuma-webcraft SKILL.md "Impe
 | 2 | Performance | ? | |
 | 3 | Responsive Design | ? | |
 | 4 | Theming | ? | |
-| 5 | Anti-Patterns | ? | |
+| 5 | Implementation Integrity | ? | |
 | **Total** | | **??/20** | **[Rating band]** |
 
 **Rating bands**: 18-20 Excellent (minor polish), 14-17 Good (address weak dimensions), 10-13 Acceptable (significant work needed), 6-9 Poor (major overhaul), 0-5 Critical (fundamental issues)
 
-### Anti-Patterns Verdict
-**Start here.** Pass/fail: Does this look AI-generated? List specific tells. Be brutally honest.
+### Implementation Integrity Verdict
+**Start here.** Pass/fail: does the implementation express a coherent product-specific system? Cite verified evidence and the ban-list rules it breaks. Be brutally honest.
 
 ### Executive Summary
 - Audit Health Score: **??/20** ([rating band])
@@ -104,7 +106,7 @@ Tag every issue with **P0-P3 severity**:
 For each issue, document:
 - **[P?] Issue name**
 - **Location**: Component, file, line
-- **Category**: Accessibility / Performance / Theming / Responsive / Anti-Pattern
+- **Category**: Accessibility / Performance / Theming / Responsive / Implementation Integrity
 - **Impact**: How it affects users
 - **WCAG/Standard**: Which standard it violates (if applicable)
 - **Recommendation**: How to fix it

@@ -530,8 +530,8 @@ For logo, app-icon, mascot, and brand-identity work (inspired by
   (`<subject> — <product connection> — <defining silhouette>`), get approval, then generate
   six labeled candidates (A1–C2 across directions, or A1–A6 within one)
 - the **craft constraints** — complexity budget (6–10 shapes, readable at 32 × 32), thick
-  rounded shape language, exactly-three-semantic-colors rule, corner-crop composition, and
-  a fill-in prompt skeleton
+  rounded shape language, exactly-three-semantic-colors rule, dominant corner composition,
+  and a fill-in prompt skeleton that never tells the generator it is making a logo
 - the **evaluation rubric** — inspect every candidate visually, report non-recommended
   results honestly, never silently filter or retry
 

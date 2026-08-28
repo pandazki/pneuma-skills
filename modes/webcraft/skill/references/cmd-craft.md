@@ -1,152 +1,134 @@
 ---
 name: craft
-description: "Build a feature with impeccable UX and UI through a structured shape-then-build flow: produce a design brief, load the right references, then implement and iterate visually until the result delights."
+description: "New visual work: name the job kind and the freedom it earns, settle the direction, write the intent contract, build with full commitment, then finish with a reviewed verdict."
 argument-hint: "[feature description]"
 user-invocable: true
 ---
 
-# Craft Flow
+# New visual work
 
-Build a feature with impeccable UX and UI quality: shape the design, land the visual direction, build real production code, inspect and improve in-browser until it meets a high-end studio bar.
+This is the flow for any request to make new visual work — a whole site, a page inside one, a section, a redesign, a scoped refinement — whether or not the `craft` command was invoked from the toolbar. "Build me a landing page", "add a pricing section", and "redesign this" all land here.
+
+`PRODUCT.md` owns product truth. `DESIGN.md` owns durable visual decisions. A surface brief in `.impeccable/surfaces/<page-slug>.md` owns strategy that belongs to one page.
 
 ## MANDATORY PREPARATION
 
-Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `init` command (see [cmd-init](cmd-init.md)) first.
+Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it carries the setup steps, the visitor modes, and the Context Gathering Protocol. If no design context exists yet, run the `init` command (see [cmd-init](cmd-init.md)) first; a missing `DESIGN.md` does **not** route back to `init`.
 
-Before writing code, you need: PRODUCT.md loaded, register identified and the matching reference loaded, and a confirmed design direction for this task (either from `shape` or supplied by the user). PRODUCT.md is project context, not a task-specific brief.
-
-Treat any approved visual direction (generated mock or stated reference) as a concrete contract for composition, hierarchy, density, atmosphere, signature motifs, and distinctive visual moves. Don't let mocks replace structure, copy, accessibility, or state design. But if the live result lacks the approved direction's major ingredients, the implementation is wrong.
+Load [craft-floor.md](craft-floor.md) immediately before you edit UI, not now — the floor is for building, not for planning.
 
 ---
 
-### Gates: do not compress
+## 1. Decide what is already true
 
-Craft has **multiple user gates**, not one. When image generation is enabled in this Pneuma session (the `generate_image.mjs` script is available to the agent), the gate sequence before code is:
+Read `DESIGN.md`, the active content set's representative pages, tokens, components, and assets. Then place the request on this ladder — **each rung earns a different amount of freedom, and getting the rung wrong is the classic failure in both directions**: restyling a whole product around one new section, or polishing the look the user asked you to discard.
 
-1. **Shape brief confirmed** (Step 1)
-2. **Direction questions answered** (Step 3 Q-set)
-3. **Palette confirmed** (Step 3 palette)
-4. **One mock direction approved** (Step 3 mock review)
+| Job kind | What is fixed | What you decide |
+|---|---|---|
+| **Scoped refinement** — "make this button tighter" | Everything outside the ask: identity, behavior, copy, layout | Only the named element. No interview, no direction round, no `DESIGN.md` change. |
+| **Section added to a page that works** | The page's world and composition | The new purpose, content, hierarchy, states, interaction, and how the addition joins what surrounds it. Never turn a local addition into an identity exercise. |
+| **New page inside an established product** | The visual system: palette, type, components, motion grammar | The structure. Derive five to seven materially different compositions from the content, task, and behavior, order them by resonance, and put the strongest two or three in front of the user as full options of equal weight. |
+| **Redesign** | Product truth, content, function, constraints, explicit brand commitments | The visual world — replaced, not polished. The old look is evidence of what the subject *is*, never authority over what it becomes. Rewrite `DESIGN.md` at finish. |
+| **Blank slate / no visual authority** | Nothing but product truth | The whole world, with the user. Run step 3's derivation in full. |
 
-You must stop at every gate. **Shape confirmation alone is NOT a green light to start coding.** It is the green light to begin Step 3. Compressing gates 2 through 4 because the shape brief felt complete is the dominant failure mode of this flow.
+Two corrections that decide this correctly: an **established world** is inherited even when `DESIGN.md` is missing — a coherent identity already in the code is authority, and you document it rather than replace it. An **incomplete brand** (a logo and two colors) keeps its confirmed assets and recognizable traits, and you expand the system with the user for this surface.
 
-When image generation is unavailable, gates 2–4 collapse into the brief itself, and shape confirmation does advance straight to code.
+## 2. Ask what will change the work
 
-## Step 0: Project Foundation
+Ask **one** round of two or three related questions, then move. Skip settled facts — a precise request may need only a compact confirmation. {{ask_instruction}}
 
-Before shape, before code: figure out what kind of project you're working in.
+- **Persuade:** who must act, what they should believe, and which real proof, content, or assets earn that belief.
+- **Operate:** the task, the information it needs, the states that matter, the frequency, the constraints.
+- **Read:** the reader's question, the source material, the structure, the wayfinding.
+- **Experience:** what leads, how exploration unfolds, which interaction or transition matters.
 
-Look at the working directory. Run `ls`. Check for:
+Across all four, ask what success looks like, what must remain untouched, and what would make a polished result feel wrong. Never ask for CSS values or for a canned aesthetic lane.
 
-- An existing framework: `astro.config.mjs/ts`, `next.config.js/ts`, `nuxt.config.ts`, `svelte.config.js`, `vite.config.js/ts`, `package.json` with framework deps, `Cargo.toml` + Leptos/Yew, `Gemfile` + Rails. **If found, use it.** Do not start a parallel build, do not introduce a second framework, do not write to `dist/` or `build/` directly. Whatever pipeline the project has, respect it.
-- An existing component library or design system: `src/components/`, `app/components/`, a `tokens.css` / `theme.ts`, an `astro.config` `integrations`. Read what's there before adding to it.
-- An existing icon set: `lucide-react`, `@phosphor-icons/react`, `@iconify/*`, hand-rolled SVG sprites in `assets/icons/`. **Use what's already in the project**; don't introduce a second set.
+## 3. Choose the direction
 
-If the directory is empty (greenfield), don't pick a framework silently. {{ask_instruction}} with sensible defaults framed by the brief:
+**Extending or adding inside an established world:** skip to step 4. Inherit the world; resolve composition only.
 
-```text
-What should this be built on?
-  - Astro (default for content-led brand sites, landing pages, marketing surfaces)
-  - SvelteKit / Next.js / Nuxt (when the brief implies an app surface or significant interactivity)
-  - Single index.html (one-shot demo, prototype, or a deliberately framework-free experiment)
-```
+**Creating or replacing a visual world:**
 
-Default: Astro for brand briefs, the project's existing framework for product briefs. Ask once; don't re-ask mid-task.
+1. Name the product's unique mechanism in one sentence, the audience's real scene, its cultural home, and what this first surface must prove. Name the page this category always ships *and* its predictable opposite — both are the rut, and both stay out of the candidate list. A brief that paints its own picture (a product name, a titled artifact, a governing metaphor) adds its literal reading to the rut: spend at most one candidate on it and derive the rest from elsewhere in the audience's world.
+2. From that cultural world, list **seven** concrete visual systems, artifacts, places, or rituals the audience knows by heart — each with one line on why it resonates and can carry the mechanism, ordered by resonance. The audience's world includes its graphic and screen traditions, not only its physical objects: the notation, publications, identity programs, data graphics, and interfaces it reads daily. A nameable abstract system (a school of poster, a documentation standard) is as concrete a candidate as any object. What would this thing look like as a physical object; what did its world look like before the web? Near-duplicates count once. **If more than three of the seven share one material family, the derivation stopped at the subject's most obvious artifact** — dig until the list spans at least three families.
+3. Turn that material into complete directions: each joins a reusable visual world to a concrete first-surface experience — world, first viewport, visitor path, signature interaction, cross-surface reach, honest risk.
+4. Present **one** committed direction, not a ranked menu: a lineup hands selection back to a taste function and invites the safest card. Carry at most two alternates beside it, each with a one-line case and an honest risk line. Name what each rejected candidate did better, and raise the presented direction to match before showing it — a raise nobody can read did not happen. A raise transfers ambition and discipline (a palette's total commitment, a grid's density courage, a form's structural honesty), never the rejected candidate's clothes: one world owns the page.
+5. Offer **the standing exit**: one quiet, permanent alternative — the category standard, played straight. It is the user's door, never yours. Never recommend it, never weigh it against the direction, never let it soften what you present. When the user takes it, convention becomes the commitment: ask once for two or three products this should sit alongside, make their craft level the bar, and execute the canon at full fidelity, without irony or smuggled quirk. Record a standing preference as a brand commitment in `PRODUCT.md`.
 
-## Step 1: Shape the Design
+Every direction you show must already be viable: every relationship it visualizes true, a real palette and component family, a distinctive composition, workable at full-page scale within the available assets and performance budget. **Truth binds claims, not demonstrations.** In greenfield work, author whatever illustrative material the concept needs at full fidelity, label it synthetic wherever a visitor could mistake it for real, and hand the user the list of what to replace. What stays uninventable are commercial and factual claims: prices, customers, benchmarks, capabilities the product does not have. Refusing a bold direction because its demonstration data does not exist yet is timidity wearing honesty's clothes.
 
-Run the `shape` command (see [cmd-shape](cmd-shape.md)), passing along whatever feature description the user provided. Shape is **required** for craft; it is what produces a confirmed direction.
+**When image generation is available in this session**, visualizing the locked direction before building it produces the most compositional and ambitious work. Generate the first viewport as a full-fidelity mock (structure-led prompt, real product name and real content, the direction's own palette and material world, no invented commercial claims), show it, and get approval. See SKILL.md's Image Generation section for the call. Without image generation there is no mock and no apology for it: the ambition moves into the direction contract's FIRST VIEWPORT block and a named signature interaction, and the finish review audits those promises in behavior.
 
-Present the shape output and stop. **STOP — wait for the user to confirm, override, or course-correct before writing code.**
+## 4. Commit the world
 
-If the user already supplied a confirmed brief or ran shape separately, use it and skip this step.
+Pick a **color strategy** before picking colors:
 
-When the original prompt + PRODUCT.md already answer scope, content, and visual direction with no real ambiguity, the shape output can be **compact** (3–5 bullets stating what you're building and the visual lane, ending with one or two specific questions or "confirm or override"). The full 10-section structured brief is reserved for genuinely ambiguous, multi-screen, or stakeholder-heavy tasks. Don't pad a clear brief into a long one to look thorough; equally, don't skip the pause to look efficient.
+- **Restrained** — tinted neutrals plus one accent under 10%. The default when the visitor came to operate or read.
+- **Committed** — one saturated color carries 30–60% of the surface.
+- **Full palette** — three or four named roles, each used deliberately.
+- **Drenched** — the surface IS the color.
 
-If image generation is enabled in this session, a compact shape's "confirm or override" advances to **Step 3 (direction + palette + mocks)**, not to Step 4. Phrase the closing line accordingly: "Confirm or override; once we lock direction, I'll run a couple of palette and reference questions before generating any mocks." This stops the model from reading shape confirmation as code-green.
+Persuade and Experience surfaces have permission for the bolder strategies; take it when the brief allows. Color commits at page scale — fields that own whole regions, not accents scattered over a neutral ground. Tinted neutrals add 0.005–0.015 chroma toward the brand's own hue, never toward warm-by-default. Use OKLCH throughout. Dark or light is never a default: write one sentence of physical scene (who uses this, where, under what light) and let it force the answer; if it doesn't, the sentence isn't concrete enough yet.
 
-## Step 2: Load References
+Choose type like objects from the subject's world, in the mode's register. Operate and Read surfaces are well served by system stacks and workhorse UI faces. Persuade and Experience surfaces want faces with a point of view — and **these training-data defaults mean you stopped looking**: Fraunces, Playfair Display, Cormorant, Lora, Crimson, Newsreader, Syne, Space Grotesk, Space Mono, IBM Plex, Inter-as-display, DM Sans, DM Serif, Outfit, Plus Jakarta Sans, Instrument Sans. Naming one anyway requires a reason no other face could satisfy, and a subject association is never that reason: books wanting a serif, bookshops wanting hand-lettering, and tech wanting a mono are exactly the associations this list exists to break. Don't pair two faces that are similar but not identical; pair on a contrast axis, or use one family across weights.
 
-Based on the design brief's "Recommended References" section, consult the relevant reference files. At minimum, always consult:
+Energy is not the enemy of trust: a brief's negative constraints (no gamification, no hype) rule out those devices, not exuberance, and adjectives describing the product's *behavior* (quiet support, calm coaching) do not dictate the surface's energy. A brief-pinned world pins the world, not its softest rendition — the pinned world's full material range stays in play. Before writing code, reread your own OWN-WORLD block: when it says cream, paper, parchment, ivory, or lamplight on a Persuade surface the brief never pinned, the rendition failed and you rework it from the world's saturated materials first.
 
-- [cmd-layout](cmd-layout.md) for layout, spacing, grid, container queries, optical adjustments (Reference Material section)
-- [cmd-typeset](cmd-typeset.md) for type hierarchy, font selection, web font loading, OpenType features (Reference Material section)
+## 5. Record the decision
 
-Then add references based on the brief's needs:
-- Complex interactions or forms? Consult [interaction-design](interaction-design.md)
-- Animation or transitions? Consult [cmd-animate](cmd-animate.md) (Reference Material covers motion materials, durations, easing, perceived performance)
-- Color-heavy or themed? Consult [cmd-colorize](cmd-colorize.md) (Reference Material covers OKLCH, palette structure, dark mode, contrast)
-- Responsive requirements? Consult [cmd-adapt](cmd-adapt.md) (Reference Material covers breakpoints, input methods, safe areas, responsive images)
-- Heavy on copy, labels, or errors? Consult [cmd-clarify](cmd-clarify.md) (Reference Material covers button labels, error formula, voice/tone, translation)
+**Before code**, state the chosen direction as a contract in the page's opening comment — five short blocks, 150 words at most, as an HTML comment placed as the first child of `<body>` so it survives any build step:
 
-## Step 3: Visual Direction & Assets (Image-Gen Gated)
+- **THESIS:** the one idea this surface owns, and the category-default arrangement it refuses.
+- **OWN-WORLD:** the palette and component language, specific enough to be recognizable with all content removed.
+- **STORY:** what the visitor understands, believes, and does.
+- **FIRST VIEWPORT:** the exact composition — what is where, at what scale, and where the primary action sits.
+- **FORM:** the chosen form, its position on your ordered list, and the palette seed if `palette.mjs` supplied one.
 
-If image generation is **enabled** in this session (the `generate_image.mjs` script is available — the pneuma-webcraft SKILL.md describes its use), this step is mandatory. Work through these sub-gates in order:
+Close with one more line — **FINISH:** the run's exit condition, verbatim: `unreviewed and undocumented is unfinished; this build ends with the finish review, its verdict, and DESIGN.md`.
 
-**A. Direction questions.** Ask 2–4 targeted questions to pin down what's not yet locked from shape: hero composition, atmosphere, signature motifs, reference anchors. **STOP — wait for answers.**
+If a block reads like a mood, the direction is not decided yet. The comment tops the file you reopen on every edit; it is the one reminder that survives a long build. A page that looks complete with the FINISH line undischarged is not done, it is abandoned at the finish line.
 
-**B. Palette confirmation.** Propose a concrete palette (3–6 named swatches with hex/OKLCH) aligned to the chosen color strategy and the brief's anchors. **STOP — confirm before generating any mocks.** A confirmed palette is what makes Step C reproducible.
+On a new or replacement world, `DESIGN.md` is written **at finish, from the built page** (step 7) — a rulebook written before the build gets defended against reality instead of describing it. An ordinary extension does not rewrite `DESIGN.md`. If the work settles durable strategy for this page, write the surface brief now (`.impeccable/surfaces/<page-slug>.md`, per SKILL.md).
 
-**C. Generate mocks.** Use `generate_image.mjs` to produce **2–3 distinct mock directions** that differ in hierarchy, density, or atmosphere — not just palette tweaks. Each mock should be a usable visual contract for the build.
+For `shape`, return the selected direction to [cmd-shape](cmd-shape.md) and stop before persistence or implementation.
 
-**D. Mock approval.** Present the mocks, name what each one buys, and recommend one. **STOP — wait for the user to approve a direction (or course-correct).** Compressing gate D and starting to code is the dominant failure mode of this flow.
+## 6. Build with full commitment
 
-If image generation is **not** enabled, **state in one line that the visual-direction-by-generation step is being skipped because image generation isn't available, then proceed**. The one-line announcement is required; it forces a conscious decision instead of letting the step quietly evaporate. The brief is your only visual reference. Implement directly from it, treating any named anchor references and the brief's "Design Direction" as the contract.
+Build the direction you presented, not a safer interpretation of it. The form supplies structure, reading order, component conventions, and native motion; the product supplies every fact. Commit every atom: nav, buttons, inputs, and links are rebuilt in the form's vocabulary, and a stock component inside a committed form is a lapse. Land the first build fully committed — committing is the hard part, and the passes that follow exist to make the committed thing clear and effective, never to dilute it.
 
-Whether you generated mocks or not: don't replace required imagery with generic cards, bullets, emoji, fake metrics, decorative CSS panels, or filler copy. Image-led briefs (restaurants, hotels, magazines, photography, hobbyist communities, food, travel, fashion, product) need real or sourced imagery in the build, not CSS scenery.
+**When an approved mock exists, the mock is the spatial contract, not a mood board.** Reproduce it first: rebuild the region until a `capture` at the mock's framing overlaps it near-exactly — materials, components, elevation, assets, and implied design language included. Exactly three concessions exist: fonts (the closest obtainable face), icons (exact match unless the user already chose a library), and genuine defects in the mock. Set the capture beside the freshly reopened mock, never beside your memory of it; models systematically believe their HTML/CSS/SVG recreation succeeded when it did not. When a region keeps losing that comparison, stop recreating it in code and produce it as a rendered asset composited into the page. The mock also outranks every written record of it: when your notes commit to less than the mock shows — a softer texture, a sparser field, a sculpted plate flattened to CSS — correct the record upward. Qualifiers like "subtle" and "restrained", and counts rounded down to a comfortable fraction, are how approved materials die between approval and build. Check colors by number, not by eye: sample the capture's ground, dominant fields, and accents and set them against the recorded values; a difference with a color name (warmer, grayer, darker) is drift to fix, a few digits of compression noise is the same color. Only when reproduction holds do motion, interaction, and responsiveness get added.
 
-### Mock fidelity inventory
+- **The first viewport is a thesis, not a header.** Demonstrate the mechanism immediately, at the scale the form has in life; do not trap the concept inside a standard hero shell. The memory test: if someone left after one viewport, what would they describe an hour later? If the honest answer is a mood, the concept has not committed yet.
+- **Prove the hero before building past it.** Render the first viewport, `capture` it, and judge it against the direction (and the mock, when one exists) before any later section. The hero carries the run's ambition and every following section inherits its shortfall. Judge scale and density as quantities — a field at a tenth of the intended coverage, or type at half its weight, is a different design — and a two-minute retry here is what a rebuild verdict costs later.
+- **Prove, don't claim.** Show the subject doing its job: the interface at work, the mechanism dramatized, specifics a competitor could not copy-paste. Sections that restate a claim in different words add length, not substance.
+- **Author the assets; never substitute chrome.** Great surfaces live on carefully made content: names, entries, copy, covers, thumbnails, textures. Gradients, glass, and generic icon tiles where an authored asset belongs are the gap wearing chrome. Icons drawn in the world's own grammar are the remedy, not the target.
+- **Build the form's web leverage.** When the chosen world names a technique (canvas, WebGL, view transitions, generative motion), build the technique itself, not a static imitation of it. The graceful fallback serves constrained clients; it is not the default experience.
+- **Pace the scroll like a studio.** Vary density, scale, image, motion, and quiet inside one grammar — a dense passage earns a quiet one — and end the page anchored by a real close. One spacing rhythm throughout, with more space above a heading than below it.
+- **Use real, verified imagery when the brief implies it.** Search for the subject's physical object rather than the category; one decisive photo beats five mediocre ones. Verify that any external URL resolves.
+- **Author motion as material.** The form has native motion — what it does in life between states. Give the page that motion once, orchestrated, rather than scattered hover effects. Bound expensive effects and keep content visible by default.
 
-Before writing code, list the **major visual ingredients** the approved mock (or, if no mock was generated, the brief's stated direction) actually contains: hero silhouette and composition, signature motifs, density and rhythm, atmospheric treatment, world/product imagery, nav/CTA shape, distinctive typographic moves. This list is your fidelity contract — Step 4 must preserve these ingredients, and Step 5 verifies them.
+Preserve semantics, accessibility, performance, responsiveness, content-set conventions, and working behavior throughout.
 
-### Image gate
+## 7. Inspect and finish
 
-If the build will need real imagery (hero shots, product imagery, atmospheric photography) and image generation is enabled, generate or source those assets **now**, before code. Don't ship CSS scenery in place of required imagery. If image generation is not enabled, surface the gap as a mock-deviation list and confirm with the user before writing imagery-shaped placeholders.
+Inspect in **one batched round**, then at most one more. Use the viewer's `capture` action (SKILL.md, "Verifying your work") — never an external browser, which renders the files outside their content set and shows you something the user is not looking at.
 
-## Step 4: Build to Production Quality
+- Capture the full page, then each major section as its own crop at legible scale. A single full-page thumbnail hides exactly the failures that matter: crude controls, wrong lettering character, flattened material behind a superficially similar section order.
+- Settle or disable entrance motion before capturing — an element hidden by animation timing reads as a missing element and gets "fixed" into a regression.
+- Then open every capture and confirm it shows what its name claims: no black or blank regions, no half-loaded state. **A capture that is invalid is evidence of nothing, and no verdict may rest on it** — retake it and run the review again.
+- `capture` shoots the live viewer at its current viewport, so responsive claims are not evidence you can produce alone. Verify the responsive composition by reading the real breakpoints and clamp scales with the actual copy in place, and when a width genuinely matters, ask the user to set the viewport and say what they see.
 
-**Precondition.** If Step 3 ran the image-gen flow, sub-gates A through D must be complete before any code: questions answered, palette confirmed, mocks generated, one direction approved. **Do not mention implementation, file paths, or patch plans until that's done.** A confirmed shape brief is not enough; the model that compressed those gates is the model that already failed this flow.
+Critique the render against the user's request and against the direction contract, promise by promise. On a Persuade surface, verify the mode did its job: a first-time visitor should know what this is, why it matters, and what to do, within seconds, in the form's own vocabulary.
 
-Implement the feature following the design brief. Build in passes so structure, visual system, states, motion/media, and responsive behavior each get deliberate attention. The list below is the definition of done, not inspiration.
+**Run the review from outside the build.** When the backend exposes a Task tool, spawn a fresh sub-agent for the finish review with no forked conversation history, and give it: the original request, the confirmed answers, the page path, the capture paths, the direction contract, the approved mock path when one exists, and [craft-floor.md](craft-floor.md). A reviewer that inherits your transcript inherits your framing, your optimism, and your abstractions. Without a Task tool, run the pass in-thread after stepping fully out of the build context, and say in one line that the review was in-context (`DEGRADED: single-context finish review`) — a substituted review is disclosed, never silent.
 
-### Production bar
+The review ends on **a derived verdict, computed from what the captures show, not felt**. Report it under its own word, at its actual scope:
 
-- **Real content.** No placeholder copy, placeholder images, dead links, fake controls, or unused scaffold at presentation time.
-- **Preserve the approved mock's major ingredients.** Missing hero objects, world/product imagery, section structure, CTA/nav treatment, or distinctive motifs are blocking defects unless the user accepted the change. Use the mock fidelity inventory from Step 3 as the checklist.
-- **Semantic first.** Real headings, landmarks, labels, form associations, button/link semantics, accessible names, state announcements where needed.
-- **Deliberate spacing and alignment.** No default gaps, arbitrary margins, unbalanced whitespace, or accidental optical misalignment.
-- **Intentional typography.** Chosen loading strategy, clear hierarchy, readable measure, stable line breaks, no overflow at any width.
-- **Realistic state coverage.** Default, hover, focus-visible, active, disabled, loading, error, success, empty, overflow, long/short text, first-run.
-- **Finished interaction quality.** Keyboard paths, touch targets, feedback timing, scroll behavior, state transitions, no hover-only functionality.
-- **Coherent icon set.** Use the project's established set; otherwise pick one library or use accessible text. Don't mix.
-- **Respect the build pipeline.** Edit source files and run the project's build (`npm run build` or equivalent). Don't write to `build/` / `dist/` / `.next/` with `cat`, heredoc, or Bash redirects; that skips asset hashing, image optimization, code splitting, and CSS extraction, and produces output the dev server won't serve.
-- **Verify image URLs before referencing them.** Use image-search or web-fetch tooling when available; guessed photo IDs ship as broken-image placeholders. Without verification, prefer fewer images you're confident about.
-- **Optimized imagery and media.** Correct dimensions, useful alt text, lazy loading below the fold, modern formats when practical, responsive `srcset`/`picture` for raster, no project-referenced asset left outside the workspace.
-- **Premium motion.** Use atmospheric blur, filter, mask, shadow, reveal when they improve the experience. Avoid casual layout-property animation, bound expensive effects, verify smoothness in-browser, respect reduced motion, and avoid choreography that blocks task completion.
-- **Maintainable.** Reusable local patterns, clear component boundaries, project conventions. No rasterized UI text or one-off hacks when a local pattern exists.
-- **Technically clean.** Production build passes, no console errors, no avoidable layout shift, no needless dependencies, no broken asset paths.
-- **Ask when uncertain.** If a discovery materially changes the brief or approved direction, stop and ask. Don't guess.
+- **rebuild** — fidelity failed wholesale, not in patches. Skip the fix batch, re-derive the named regions, produce the named assets, and run a full review again over fresh captures. Tell the user what is happening rather than asking permission to fix a failure. Consult them on a second rebuild directive, or when rebuilding would discard content they approved.
+- **fix** — apply the material fixes in **one batch**, rebuild once, recapture the same views, and score every fix `resolved`, `partial`, or `unresolved` against the new evidence. Items still open earn one more round. Two rounds is the budget an unattended run ends at; in an attended session, put the table in front of the user and let them choose between shipping as it stands and funding another round. Stop the moment a round resolves nothing, and work only from the review's findings — never from a re-opened hunt of your own.
+- **ship** — nothing is owed. Report the verdict at its scope and go document.
 
-## Step 5: Iterate Visually
+A verdict pass scores the listed fixes and nothing else: "all three fixes scored resolved" is a claim it supports; "no material issues remain" is not. A table with open findings is never announced as a pass. **When the user answers a ship with evidence against it** — their own screenshot, a named mismatch with the mock — that evidence outranks every capture you made: put their material in the packet and run a fresh full review. Patching inline and self-certifying is how a rejected page ships twice.
 
-Look at what you built like a designer would. Your eyes are whatever the Pneuma viewer gives you: the live iframe preview, a screenshotting tool, or asking the user. Use them for responsive testing (mobile, tablet, desktop minimum) and general visual validation.
-
-If your tool returns a file path, read the PNG back into the conversation. A screenshot you didn't read doesn't count.
-
-For long-form brand surfaces, inspect major sections individually. Thumbnails hide spacing, clipping, and cascade defects.
-
-After the first pass, write an honest critique against the brief, the mock fidelity inventory from Step 3 (hero silhouette, motifs, imagery, nav/CTA, density), and the DON'Ts in the pneuma-webcraft SKILL.md "Impeccable.style Design Intelligence" section. Patch material defects and re-inspect. **Don't invent defects to demonstrate iteration.** A confident "first pass clean, shipping" beats a fake fix.
-
-Actively check: responsive behavior (composes, not shrinks), every state (empty / error / loading / edge), craft details (spacing, alignment, hierarchy, contrast, motion timing, focus), performance basics. The exit bar: defensible in a high-end studio review.
-
-Detector or QA output is defect evidence only; never proof the work is finished.
-
-## Step 6: Present
-
-Present the result to the user:
-- Show the feature in its primary state
-- Summarize the viewports checked and the most important fixes made after inspection
-- Walk through the key states (empty, error, responsive)
-- Explain design decisions that connect back to the design brief and, when used, the chosen north-star mock. Include any accepted deviations from the mock; do not hide unimplemented mock ingredients.
-- Note any remaining limitations or follow-up risks honestly
-- Ask: "What's working? What isn't?"
+Then record the world: run the `document` flow ([cmd-document](cmd-document.md)) over what actually shipped, ground truth over intention, and re-run it if any later fix round changes the surface — a `DESIGN.md` describing a layout that no longer exists turns defects into system guidance. A clean page is not finished. Finished is the contract kept, the review closed, and the system recorded.

@@ -96,6 +96,39 @@
 
 **Project kind:** `"media:photo"`, `"media:scrapbook"`.
 
+## Design system (component library, Figma export)
+
+You read whatever the user hands you — a component source tree, a
+design-token file (`tokens.json`, Style Dictionary, a Tailwind theme),
+a Figma document exported to JSON, a Storybook. There is no design-tool
+API here; project the files you can actually read, and say so when the
+export is missing a layer the user asked about.
+
+**Nodes:** `page`, `screen`, `component`, `component-set`, `instance`,
+`token`
+
+**Edges:** `contains`, `instance_of`, `variant_of`, `uses_token`,
+`navigates_to`, `composes`
+
+**Layers (typical):** `screens`, `components`, `tokens`, `flows`
+
+**Project kind:** `"design:system"`, `"design:figma"`,
+`"design:ui-kit"`.
+
+The split that earns this vocabulary its keep is **`component` vs
+`instance` vs `token`**. A component is the definition; an instance is
+one placement of it on a screen; a `component-set` is the family a
+`variant_of` edge points at. Tokens are the leaves everything else
+bottoms out in — a `uses_token` edge from a component to
+`color-primary` is what makes "what breaks if I change this token"
+answerable. Projecting a component library with the **Codebase**
+vocabulary instead gives you `file` / `module` nodes and `imports`
+edges: technically true, and it loses every one of those questions.
+
+Don't node every leaf: one node per exported component, not per
+`<div>`. Screens that only differ by state are `tags` on one screen
+node, not five.
+
 ## Mixed / unknown
 
 Sometimes the user brings a tarball with code + docs + screenshots,

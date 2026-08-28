@@ -16,7 +16,7 @@ Push an interface past conventional limits. This isn't just about visual effects
 
 ## MANDATORY PREPARATION
 
-Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `init` command (see [cmd-init](cmd-init.md)) first.
+Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it carries the setup steps, the visitor modes, and the Context Gathering Protocol. The quality floor and the ban list live in [craft-floor.md](craft-floor.md); load it immediately before you edit UI. If no design context exists yet, you MUST run the `init` command (see [cmd-init](cmd-init.md)) first.
 
 ---
 
@@ -27,7 +27,7 @@ Before proceeding, consult the "Impeccable.style Design Intelligence" section of
 This command has the highest potential to misfire. Do NOT jump straight into implementation. You MUST:
 
 1. **Think through 2-3 different directions**: consider different techniques, levels of ambition, and aesthetic approaches. For each direction, briefly describe what the result would look and feel like.
-2. **{{ask_instruction}}** Present these directions and get the user's pick before writing any code. Explain trade-offs (browser support, performance cost, complexity).
+2. **Get the user's pick before writing any code.** {{ask_instruction}} Carry each direction's description and its trade-offs (browser support, performance cost, complexity) inside the option itself, so the user is choosing between things they can read rather than between labels.
 3. Only proceed with the direction the user confirms.
 
 Skipping this step risks building something embarrassing that needs to be thrown away.
@@ -70,7 +70,7 @@ Organized by what you're trying to achieve, not by technology name.
 
 ### Render beyond CSS
 - **WebGL** (all browsers): shader effects, post-processing, particle systems. Libraries: Three.js, OGL (lightweight), regl. Use for effects CSS can't express.
-- **WebGPU** (Chrome/Edge; Safari partial; Firefox: flag only): next-gen GPU compute. More powerful than WebGL but limited browser support. Always fall back to WebGL2.
+- **WebGPU** (Chrome/Edge; Safari 26+; Firefox on Windows/macOS; flag only on Firefox Linux/Android): next-gen GPU compute, more powerful than WebGL. Always fall back to WebGL2.
 - **Canvas 2D / OffscreenCanvas**: custom rendering, pixel manipulation, or moving heavy rendering off the main thread entirely via Web Workers + OffscreenCanvas.
 - **SVG filter chains**: displacement maps, turbulence, morphology for organic distortion effects. CSS-animatable.
 
@@ -115,7 +115,6 @@ else if (canvas.getContext('webgl2')) { /* WebGL2 fallback */ }
 ### Performance rules
 
 - Target 60fps. If dropping below 50, simplify.
-- Respect `prefers-reduced-motion`, always. Provide a beautiful static alternative.
 - Lazy-initialize heavy resources (WebGL contexts, WASM modules) only when near viewport.
 - Pause off-screen rendering. Kill what you can't see.
 - Test on real mid-range devices, not just your development machine.
@@ -125,7 +124,6 @@ else if (canvas.getContext('webgl2')) { /* WebGL2 fallback */ }
 The gap between "cool" and "extraordinary" is in the last 20% of refinement: the easing curve on a spring animation, the timing offset in a staggered reveal, the subtle secondary motion that makes a transition feel physical. Don't ship the first version that works; ship the version that feels inevitable.
 
 **NEVER**:
-- Ignore `prefers-reduced-motion`. This is an accessibility requirement, not a suggestion
 - Ship effects that cause jank on mid-range devices
 - Use bleeding-edge APIs without a functional fallback
 - Add sound without explicit user opt-in
@@ -137,7 +135,6 @@ The gap between "cool" and "extraordinary" is in the last 20% of refinement: the
 - **The wow test**: Show it to someone who hasn't seen it. Do they react?
 - **The removal test**: Take it away. Does the experience feel diminished, or does nobody notice?
 - **The device test**: Run it on a phone, a tablet, a Chromebook. Still smooth?
-- **The accessibility test**: Enable reduced motion. Still beautiful?
 - **The context test**: Does this make sense for THIS brand and audience?
 
 "Technically extraordinary" isn't about using the newest API. It's about making an interface do something users didn't think a website could do.

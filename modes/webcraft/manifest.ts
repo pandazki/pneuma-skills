@@ -8,7 +8,7 @@ import { loadSite, saveSite } from "./domain.js";
 
 const webcraftManifest: ModeManifest = {
   name: "webcraft",
-  version: "1.5.0",
+  version: "1.6.0",
   displayName: {
     en: "WebCraft",
     "zh-CN": "WebCraft",
@@ -28,6 +28,16 @@ const webcraftManifest: ModeManifest = {
     de: "Webdesign mit Impeccable.style —— 22 KI-Designbefehle, responsive Vorschau und Export",
   },
   changelog: {
+    "1.6.0": [
+      "Synced Impeccable.style guidance to upstream skill v4.1.2",
+      "A much leaner core: the always-loaded skill text is a fraction of its old length, so a request to polish one button no longer triggers a full product interview — depth now loads on demand",
+      "Four visitor modes (Persuade, Operate, Read, Experience) replace the brand/product register, chosen per surface from what the visitor came to do",
+      "New work names its job kind first — blank slate, new page, added section, redesign, scoped refinement — and each one earns a different amount of freedom",
+      "Every build states its intent in a five-block contract before code, and the finish review audits the render against it and ends on a verdict: rebuild, fix, or ship",
+      "New craft floor reference carries the quality checks and the ban list, now including glow halos, marquees, blinking cursors, decorative dot and grid fields, text under overlays, fake circle-mask cutouts, and stock-geometry hero art",
+      "Pages remember their strategy in .impeccable/surfaces/, and PRODUCT.md gains positioning, evidence on hand, and brand commitments",
+      "All 22 command references resynced against v4: the ones upstream consolidated are far shorter (typeset, clarify, delight, colorize, polish, layout, animate, bolder, shape), critique now speaks its report before filing it, document records what actually shipped, and init no longer offers DESIGN.md",
+    ],
     "1.5.0": [
       "Synced Impeccable.style guidance to upstream skill v3.9.1",
       "Teach command renamed to Init (teach still works as an alias); it now closes by recommending your next commands",

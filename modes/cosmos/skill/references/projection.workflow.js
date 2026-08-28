@@ -3,8 +3,8 @@ export const meta = {
   description:
     'Project a codebase into a verified cosmos: parallel extract → merge cross-edges → adversarial verify → completeness loop. Returns nodes/edges/layers with a per-node trust verdict.',
   phases: [
-    { title: 'Extract', detail: 'one subagent per partition, a fresh context each — reads the whole slice' },
-    { title: 'Merge', detail: 'dedup nodes/layers + resolve edges that cross partition boundaries' },
+    { title: 'Extract', detail: 'one subagent per partition, a fresh context each — reads the whole slice; a slice that comes back empty is re-dispatched once' },
+    { title: 'Merge', detail: 'dedup nodes/layers + resolve edges that cross partition boundaries, and report what each partition actually contributed' },
     { title: 'Verify', detail: 'a skeptic re-reads each node’s cited sources and assigns trust' },
     { title: 'Complete', detail: 'a critic names under-covered regions → targeted re-extract, loop until dry' },
     { title: 'Perspectives', detail: 'propose variant walks per design lens → judge panel drops the ungrounded' },
@@ -70,6 +70,17 @@ const withPerspectives = A.withPerspectives !== false
 
 if (!sourceRoot) throw new Error('cosmos-projection: args.sourceRoot is required')
 if (!partitions.length) throw new Error('cosmos-projection: args.partitions[] is required — run the survey first')
+// Partition ids key the contribution ledger, the verify batches, and the
+// agent labels. Two slices sharing one id would silently merge into one
+// row and make the merge report lie — fail before spending any tokens.
+const declaredIds = partitions.map((p, i) => p?.id || String(i))
+const duplicateIds = declaredIds.filter((id, i) => declaredIds.indexOf(id) !== i)
+if (duplicateIds.length) {
+  throw new Error(
+    `cosmos-projection: args.partitions[] has duplicate ids (${[...new Set(duplicateIds)].join(', ')}) — ` +
+      'each partition needs a unique id',
+  )
+}
 
 // ── Shared prompt fragments ──────────────────────────────────────────
 
@@ -148,6 +159,17 @@ Look for under-coverage: a partition with suspiciously few nodes for its size; a
 Return {gaps:[{area, why, suggestedFocus?}]}.`
 }
 
+function retryExtractPrompt(p, rec) {
+  const what = rec.returned
+    ? 'returned ZERO nodes and ZERO edges'
+    : 'produced no result at all (the subagent died or was skipped)'
+  return `A previous pass over this slice ${what}. This is the one retry it gets — after this the slice ships as a hole in the projection.
+
+Before extracting, sanity-check the slice itself with Glob: do the paths below exist under the repo root, and do they hold source or only generated/vendored/binary files? If they do hold real material, project it — the first pass failing is not evidence the slice is empty. If the paths are wrong or the slice genuinely holds nothing a reader would click on, return {"nodes":[],"edges":[]}; that is recorded as a deliberate empty and reported to the user, not retried again.
+
+${extractPrompt(p)}`
+}
+
 function gapExtractPrompt(gap) {
   return `Fill a coverage gap in a codebase cosmos at ${sourceRoot}.
 
@@ -173,6 +195,18 @@ const layerById = new Map()
 const edgeKeys = new Set()
 const edges = []
 
+// Loud-merge bookkeeping. `parallel()` turns a thrown thunk into `null`
+// and `agent()` resolves to `null` when a subagent dies or is skipped,
+// so a whole partition can disappear between Extract and Merge without
+// leaving a single line behind. Every slice gets a ledger row whether it
+// came back or not; the row is what makes "this partition contributed
+// nothing" a reported outcome instead of an invisible one.
+const warnings = []
+function warn(msg) {
+  warnings.push(msg)
+  log(`WARNING — ${msg}`)
+}
+
 for (const l of draftLayers) if (l?.id) layerById.set(l.id, l)
 
 function addNode(n, partId) {
@@ -186,41 +220,150 @@ function addLayer(l) {
   if (l?.id && !layerById.has(l.id)) layerById.set(l.id, l)
 }
 function addEdge(e) {
-  if (!e || typeof e.source !== 'string' || typeof e.target !== 'string') return
+  if (!e || typeof e.source !== 'string' || typeof e.target !== 'string') return false
   const key = `${e.source}|${e.target}|${e.type}`
-  if (edgeKeys.has(key)) return
+  if (edgeKeys.has(key)) return false
   edgeKeys.add(key)
   edges.push(e)
+  return true
+}
+
+// Fold one extraction result into the graph and report what it actually
+// added — emitted vs added is the difference between "this slice found
+// nothing" and "another slice already claimed everything it found".
+function absorb(result, partId) {
+  const fresh = []
+  let edgesAdded = 0
+  for (const l of result?.layers || []) addLayer(l)
+  for (const n of result?.nodes || []) if (addNode(n, partId)) fresh.push(n)
+  for (const e of result?.edges || []) if (addEdge(e)) edgesAdded++
+  return {
+    fresh,
+    nodesEmitted: (result?.nodes || []).length,
+    nodesAdded: fresh.length,
+    edgesEmitted: (result?.edges || []).length,
+    edgesAdded,
+  }
 }
 
 // Phase 1 — parallel extraction (barrier: merge needs all slices).
 phase('Extract')
+const ledger = partitions.map((p, i) => ({
+  part: p,
+  id: p.id || String(i),
+  label: p.label || '',
+  returned: false,
+  retried: false,
+  nodesEmitted: 0,
+  nodesAdded: 0,
+  edgesEmitted: 0,
+  edgesAdded: 0,
+}))
+
 const slices = await parallel(
-  partitions.map((p, i) => () =>
-    agent(extractPrompt(p), {
+  ledger.map((rec) => () =>
+    agent(extractPrompt(rec.part), {
       schema: SCHEMAS.partitionExtraction,
       phase: 'Extract',
-      label: `extract:${p.id || i}`,
-    }).then((r) => ({ partition: p, ...r })),
+      label: `extract:${rec.id}`,
+    }).then((r) => ({ rec, result: r })),
   ),
 )
-for (const slice of slices.filter(Boolean)) {
-  for (const l of slice.layers || []) addLayer(l)
-  for (const n of slice.nodes || []) addNode(n, slice.partition.id)
-  for (const e of slice.edges || []) addEdge(e)
+function record(rec, result) {
+  if (!result) return
+  rec.returned = true
+  const c = absorb(result, rec.id)
+  rec.nodesEmitted += c.nodesEmitted
+  rec.nodesAdded += c.nodesAdded
+  rec.edgesEmitted += c.edgesEmitted
+  rec.edgesAdded += c.edgesAdded
 }
+slices.forEach((slice, i) => {
+  // A `null` slice means the thunk itself threw — index-aligned with the
+  // ledger, so the row is still reachable.
+  if (!slice) return
+  record(slice.rec || ledger[i], slice.result)
+})
 log(`extracted ${nodeById.size} nodes, ${edges.length} edges from ${partitions.length} partitions`)
 
-// Phase 2 — merge: resolve cross-partition edges.
+// Phase 1b — re-dispatch the slices that produced nothing. Retry only
+// where a retry can help: a dead subagent, or a slice that emitted zero
+// of both. A slice that emitted nodes but added none lost a dedup race —
+// re-running it just reproduces the same duplicates, so it is reported,
+// not retried.
+const toRetry = ledger.filter((r) => !r.returned || (r.nodesEmitted === 0 && r.edgesEmitted === 0))
+if (toRetry.length) {
+  log(`zero-contribution partitions: ${toRetry.map((r) => r.id).join(', ')} — re-dispatching once`)
+  for (const rec of toRetry) rec.retried = true
+  const retries = await parallel(
+    toRetry.map((rec) => () =>
+      agent(retryExtractPrompt(rec.part, rec), {
+        schema: SCHEMAS.partitionExtraction,
+        phase: 'Extract',
+        label: `retry:${rec.id}`,
+      }).then((r) => ({ rec, result: r })),
+    ),
+  )
+  for (const t of retries) {
+    if (!t) continue
+    record(t.rec, t.result)
+  }
+  const stillEmpty = toRetry.filter((r) => r.nodesEmitted === 0 && r.edgesEmitted === 0)
+  log(
+    `retry: ${toRetry.length} partitions re-dispatched → ${toRetry.length - stillEmpty.length} recovered, ` +
+      `${stillEmpty.length} still empty`,
+  )
+}
+
+// Phase 2 — merge: report what each partition contributed, then resolve
+// cross-partition edges.
 phase('Merge')
+
+// Classify every ledger row. `duplicate-only` is a real and different
+// failure from `empty`: the slice DID read its paths and emit nodes, but
+// another partition had already claimed every id — which means the
+// partitions overlap and the survey cut them wrong.
+function statusOf(r) {
+  if (!r.returned) return 'failed'
+  if (r.nodesEmitted === 0 && r.edgesEmitted === 0) return 'empty'
+  if (r.nodesAdded === 0 && r.edgesAdded === 0) return 'duplicate-only'
+  return 'ok'
+}
+for (const r of ledger) {
+  const status = statusOf(r)
+  const tail = r.retried ? ' (after one retry)' : ''
+  if (status === 'failed') {
+    warn(`partition "${r.id}" never returned a result${tail} — its paths are absent from the projection`)
+  } else if (status === 'empty') {
+    warn(
+      `partition "${r.id}" contributed 0 nodes / 0 edges${tail} — either its paths are wrong ` +
+        `or they hold nothing projectable; re-survey before trusting the coverage`,
+    )
+  } else if (status === 'duplicate-only') {
+    warn(
+      `partition "${r.id}" emitted ${r.nodesEmitted} nodes / ${r.edgesEmitted} edges but added none — ` +
+        `every id was already claimed elsewhere, so these partitions overlap`,
+    )
+  }
+}
+log(
+  'partition contribution: ' +
+    ledger.map((r) => `${r.id}=${r.nodesAdded}n/${r.edgesAdded}e${r.retried ? '*' : ''}`).join(' '),
+)
+
 const nodeIndex = () =>
   [...nodeById.values()].map((n) => `${n.id} — ${n.type} — ${n.name} — ${n.layerId || '?'}`).join('\n')
 const cross = await agent(crossEdgePrompt(nodeIndex()), {
   schema: SCHEMAS.crossEdges,
   phase: 'Merge',
   label: 'cross-edges',
-}).catch(() => ({ edges: [] }))
-for (const e of cross.edges || []) addEdge(e)
+}).catch(() => null)
+if (!cross) {
+  warn('the cross-partition edge pass produced nothing — edges that span slices are probably missing')
+}
+let crossAdded = 0
+for (const e of cross?.edges || []) if (addEdge(e)) crossAdded++
+log(`merge: +${crossAdded} cross-partition edges`)
 
 // Phase 3 — adversarial verify, batched by partition.
 phase('Verify')
@@ -230,17 +373,32 @@ async function verifyNodes(nodeList, labelTag) {
     schema: SCHEMAS.verificationBatch,
     phase: 'Verify',
     label: `verify:${labelTag}`,
-  }).catch(() => ({ verdicts: [] }))
-  for (const v of batch.verdicts || []) {
+  }).catch(() => null)
+  let rated = 0
+  for (const v of batch?.verdicts || []) {
     const n = nodeById.get(v.nodeId)
-    if (n) n.trust = v.trust
+    if (n) {
+      n.trust = v.trust
+      rated++
+    }
+  }
+  if (rated < nodeList.length) {
+    // Unrated nodes ship without a trust badge and would otherwise be
+    // indistinguishable from nodes nobody thought to check.
+    warn(
+      `verify "${labelTag}": ${nodeList.length - rated} of ${nodeList.length} nodes came back without a ` +
+        `verdict — they ship unrated, not verified`,
+    )
   }
 }
+// Batch by ledger id, not by `partitions[].id` — `partitionOfNode` is
+// keyed by the ledger's id, and a partition that declared no `id` would
+// otherwise never match its own nodes and ship unverified.
 await parallel(
-  partitions.map((p, i) => () =>
+  ledger.map((rec) => () =>
     verifyNodes(
-      [...nodeById.values()].filter((n) => partitionOfNode.get(n.id) === p.id),
-      p.id || String(i),
+      [...nodeById.values()].filter((n) => partitionOfNode.get(n.id) === rec.id),
+      rec.id,
     ),
   ),
 )
@@ -254,7 +412,11 @@ while (round < maxRounds) {
     schema: SCHEMAS.completeness,
     phase: 'Complete',
     label: `critic:round-${round + 1}`,
-  }).catch(() => ({ gaps: [] }))
+  }).catch(() => null)
+  if (!crit) {
+    warn(`completeness round ${round + 1}: the critic produced nothing — coverage is unaudited, not clean`)
+    break
+  }
   const gaps = (crit.gaps || []).filter((g) => (g.suggestedFocus || []).length)
   if (!gaps.length) {
     log(`completeness round ${round + 1}: no actionable gaps — converged`)
@@ -266,16 +428,23 @@ while (round < maxRounds) {
         schema: SCHEMAS.partitionExtraction,
         phase: 'Complete',
         label: `fill:${round + 1}.${i}`,
-      }).then((r) => ({ gap: g, ...r })),
+      }).then((r) => ({ gap: g, result: r })),
     ),
   )
   const fresh = []
-  for (const slice of fills.filter(Boolean)) {
-    for (const l of slice.layers || []) addLayer(l)
-    for (const n of slice.nodes || []) {
-      if (addNode(n, `gap-${round + 1}`)) fresh.push(n)
+  let unfilled = 0
+  for (const slice of fills) {
+    if (!slice?.result) {
+      unfilled++
+      continue
     }
-    for (const e of slice.edges || []) addEdge(e)
+    fresh.push(...absorb(slice.result, `gap-${round + 1}`).fresh)
+  }
+  if (unfilled) {
+    warn(
+      `completeness round ${round + 1}: ${unfilled} of ${gaps.length} named gaps were never filled — ` +
+        `those areas stay under-covered`,
+    )
   }
   log(`completeness round ${round + 1}: ${gaps.length} gaps → +${fresh.length} new nodes`)
   if (!fresh.length) break
@@ -287,7 +456,37 @@ while (round < maxRounds) {
 
 const nodes = [...nodeById.values()]
 const nodeIds = new Set(nodeById.keys())
-const liveEdges = edges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target))
+
+// An edge whose endpoint never materialised is dropped here rather than
+// at extraction time, so the completeness loop gets a chance to produce
+// the missing node first. What survived that grace period is a real
+// signal — each dangling endpoint names a node some slice believed in
+// and no slice produced — so it leaves with the id that went missing,
+// not just a tally.
+const DROPPED_EDGE_DETAIL_CAP = 50
+const liveEdges = []
+const droppedEdges = []
+for (const e of edges) {
+  const missing = []
+  if (!nodeIds.has(e.source)) missing.push(e.source)
+  if (!nodeIds.has(e.target)) missing.push(e.target)
+  if (missing.length) droppedEdges.push({ source: e.source, target: e.target, type: e.type, missing })
+  else liveEdges.push(e)
+}
+const droppedEdgeDetail = droppedEdges.slice(0, DROPPED_EDGE_DETAIL_CAP)
+if (droppedEdges.length) {
+  warn(
+    `${droppedEdges.length} edges were dropped because an endpoint never materialised — ` +
+      `each missing id is a node the projection is short of (see stats.droppedEdgeDetail)`,
+  )
+  if (droppedEdges.length > DROPPED_EDGE_DETAIL_CAP) {
+    log(
+      `stats.droppedEdgeDetail lists the first ${DROPPED_EDGE_DETAIL_CAP} of ${droppedEdges.length} ` +
+        `dropped edges; the rest are counted but not itemised`,
+    )
+  }
+}
+
 // Keep only layers actually referenced (plus any draft layer the agent kept using).
 const usedLayerIds = new Set(nodes.map((n) => n.layerId).filter(Boolean))
 const layers = [...layerById.values()].filter((l) => usedLayerIds.has(l.id))
@@ -346,8 +545,8 @@ if (withPerspectives && nodes.length >= 15) {
     schema: SCHEMAS.perspectiveSet,
     phase: 'Perspectives',
     label: 'propose',
-  }).catch(() => ({ perspectives: [] }))
-  const candidates = (gen.perspectives || []).slice(0, 6)
+  }).catch(() => null)
+  const candidates = (gen?.perspectives || []).slice(0, 6)
   const judged = await parallel(
     candidates.map((p, i) => () =>
       agent(judgePerspectivePrompt(p, nodeIndex()), {
@@ -373,8 +572,26 @@ return {
   ...(perspectives.length ? { perspectives } : {}),
   stats: {
     trust: trustCounts,
-    droppedEdges: edges.length - liveEdges.length,
+    droppedEdges: droppedEdges.length,
     completenessRounds: round,
     perspectives: perspectives.length,
+    // The merge report. Everything the pipeline chose NOT to carry into
+    // the graph leaves through here — a run whose warnings[] is empty is
+    // the only run that covered what it was asked to cover.
+    partitions: ledger.map((r) => ({
+      id: r.id,
+      label: r.label,
+      status: statusOf(r),
+      retried: r.retried,
+      nodesEmitted: r.nodesEmitted,
+      nodesAdded: r.nodesAdded,
+      edgesEmitted: r.edgesEmitted,
+      edgesAdded: r.edgesAdded,
+    })),
+    droppedEdgeDetail,
+    ...(droppedEdges.length > droppedEdgeDetail.length
+      ? { droppedEdgeDetailTruncated: droppedEdges.length - droppedEdgeDetail.length }
+      : {}),
+    warnings,
   },
 }

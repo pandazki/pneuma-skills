@@ -8,8 +8,15 @@ import { loadStudio, saveStudio } from "./domain.js";
 
 const illustrateManifest: ModeManifest = {
   name: "illustrate",
-  version: "0.4.0",
+  version: "0.5.0",
   changelog: {
+    "0.5.0": [
+      "Logo & mascot playbook re-synced against upstream s1dashu/ip-as-logo-skill@acb834c (2026-08-22) — and it now records that pin, so the next sync starts from a known baseline",
+      "Composition relaxed to a dominant corner: the subject fills 85–95% of the square out of an assigned lower-left or lower-right corner, the fixed crop prescription is gone, and a batch splits its candidates evenly between the two sides so every direction is seen from each",
+      "Depth is asked for in one sentence instead of a percentage; incidental shading inside a color family is a property of the draw now, not a defect to filter or retry",
+      "Generation prompts no longer name the use case — the words 'logo', 'app icon' and image-mode terms like 'opaque' push these models toward badges and cut-outs; the logo framing stays in the conversation, the row labels, and the manifest",
+      "Identity work runs on gpt-image-2 or gemini-3-pro and nothing cheaper; a missing API key is a reportable blocker, never a reason to hand-draw a stand-in",
+    ],
     "0.4.0": [
       "New starting point: IP mascots — six candidates from one identity brief, three directions × two takes, generated with the logo playbook itself",
       "Locator examples now carry a label and the canonical self-closing form, so every card renders with meaningful button text",

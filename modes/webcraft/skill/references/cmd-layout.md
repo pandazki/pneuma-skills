@@ -7,148 +7,77 @@ user-invocable: true
 
 ## MANDATORY PREPARATION
 
-Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `init` command (see [cmd-init](cmd-init.md)) first.
+Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it carries the setup steps, the visitor modes, and the Context Gathering Protocol. The quality floor and the ban list live in [craft-floor.md](craft-floor.md); load it immediately before you edit UI. If no design context exists yet, you MUST run the `init` command (see [cmd-init](cmd-init.md)) first.
+
+Load [craft-floor.md](craft-floor.md) before you edit — its **Spacing** line and its page-scaffold bans are the floor this command has to clear.
 
 ---
 
-Space is the most underused design tool. Find the layout's actual problem (monotone spacing, weak hierarchy, identical card grids) and fix the structure, not the surface.
+Layout turns product priority into reading order, grouping, rhythm, and usable space. Diagnose the structural problem before moving any boxes.
 
 ---
 
-## Register
+## Visitor mode
 
-Brand: asymmetric compositions, fluid spacing with `clamp()`, intentional grid-breaking for emphasis. Rhythm through contrast: tight groupings paired with generous separations.
+- **Persuade / Experience:** the composition may be asymmetric, fluid, or intentionally disruptive when the committed world earns it. Rhythm comes from contrast — tight groupings paired with generous separations.
+- **Operate / Read:** predictable structure, stable density, and navigable linearity are affordances. Responsive behavior is structural (collapse the sidebar, reflow the table), not fluid typography; the depth is in [operate.md](operate.md).
 
-Product: predictable grids, consistent densities, familiar navigation patterns. Responsive behavior is structural (collapse sidebar, responsive table), not fluid typography. Consistency IS an affordance.
+Preserve the established visual world. A layout pass changes structure inside it; replacing the identity belongs to the new-work flow in [cmd-craft](cmd-craft.md).
 
----
+## Two isolated assessments
 
-## Assess Current Layout
+When a sub-agent tool is available and permitted, run these independently; otherwise run them yourself in this order. Do not let ban-list findings anchor the design assessment.
 
-Analyze what's weak about the current spatial design:
+1. **Layout assessment.** Inspect the representative states and viewports. Answer every question below with rendered or source evidence:
+   - **Reading order:** apply the squint test. With the detail blurred, can you still identify the primary element, the secondary element, and the major groups, in order?
+   - **Grouping:** are related items close and distinct groups separated, or are containers compensating for weak proximity?
+   - **Rhythm:** do tight and generous intervals create a deliberate cadence, or is one spacing value repeated until everything carries equal weight?
+   - **Structure:** does the topology match the content and the task? Are repeated cards, columns, or sections genuinely equivalent, or merely a framework default?
+   - **Density:** does the amount of information per region fit use frequency, decision complexity, and visitor mode?
+   - **Adaptation:** at narrow, intermediate, wide, zoomed, and localized states, what reorders, collapses, wraps, scrolls, or stays fixed? Do DOM and focus order still agree with the visual order?
+   - **Extremes:** do long content, empty states, overlays, sticky elements, and small touch targets expose structural failures?
+2. **Pattern check.** Read [craft-floor.md](craft-floor.md) and check the rendered page against its **Spacing** line and its page-scaffold bans — same-size card grids as page structure, nested cards, the hero-metric template, section-number scaffolding, first-viewport overflow, body text running to the viewport edge — over a `capture` of the live viewer (SKILL.md, "Verifying your work"). Also inspect the arbitrary spacing, overflow, stacking, and container behavior a rendered view cannot resolve.
 
-1. **Spacing**:
-   - Is spacing consistent or arbitrary? (Random padding/margin values)
-   - Is all spacing the same? (Equal padding everywhere = no rhythm)
-   - Are related elements grouped tightly, with generous space between groups?
+`capture` shoots the live viewer at its current viewport, so the adaptation questions are answered by reading the real breakpoints and container queries with the actual copy in place, and by asking the user to set a width when one genuinely matters. Synthesize both passes before editing. A clean pattern check cannot prove hierarchy or rhythm.
 
-2. **Visual hierarchy**:
-   - Apply the squint test: blur your (metaphorical) eyes. Can you still identify the most important element, second most important, and clear groupings?
-   - Is hierarchy achieved effectively? (Space and weight alone can be enough; is the current approach working?)
-   - Does whitespace guide the eye to what matters?
+## Set the spatial thesis
 
-3. **Grid & structure**:
-   - Is there a clear underlying structure, or does the layout feel random?
-   - Are identical card grids used everywhere? (Icon + heading + text, repeated endlessly)
+Before editing, name:
 
-4. **Rhythm & variety**:
-   - Does the layout have visual rhythm? (Alternating tight/generous spacing)
-   - Is every section structured the same way? (Monotonous repetition)
-   - Are there intentional moments of surprise or emphasis?
+- the primary reading or task path;
+- what belongs together and what must separate;
+- which element leads and which supports;
+- the intended density and spacing rhythm;
+- how the structure changes across containers, viewports, input modes, and content extremes.
 
-5. **Density**:
-   - Is the layout too cramped? (Not enough breathing room)
-   - Is the layout too sparse? (Excessive whitespace without purpose)
-   - Does density match the content type? (Data-dense UIs need tighter spacing; marketing pages need more air)
+Choose the simplest structural model that expresses those relationships: Flexbox for one-dimensional runs, Grid (with named areas at page scale) for two-dimensional structure, container queries for a component that appears in different contexts. Name reusable spacing and container roles semantically (`--space-md`, not `--spacing-16`).
 
-**CRITICAL**: Layout problems are often the root cause of interfaces feeling "off" even when colors and fonts are fine. Space is a design material; use it with intention.
+## Apply
 
-## Plan Layout Improvements
+- Group by meaning. Use proximity before adding a container or any decoration.
+- Create rhythm through deliberate contrast between tight and generous intervals: 8–12px between siblings, 48–96px between distinct sections, and not every row on the same gap.
+- Use a documented spacing scale rather than one-off values. A 4-unit base (4, 8, 12, 16, 24, 32, 48, 64, 96) provides the useful middle steps an 8-only scale misses.
+- Let hierarchy follow product priority, not framework defaults, and build it from the fewest dimensions that work — space and weight alone are often enough. Size at 3:1 or more, bold against regular, and generous surrounding space read as primary; 15-versus-16px and medium-versus-regular do not.
+- Keep distinct content visually distinct without turning every group into an isolated component.
+- Make responsive behavior structural: reorder, collapse, reflow, or reveal based on what stays important.
+- Use `gap` for sibling rhythm when it expresses the relationship more directly than child margins, and `clamp()` for spacing that should breathe on larger screens.
+- Keep touch targets usable at 44×44px even when the visible mark is smaller — expand the hit area with padding or a pseudo-element.
+- Use depth only when it clarifies state or hierarchy, on a consistent, restrained shadow scale.
+- Make optical corrections only after inspecting the rendered result: nudge a glyph that reads off-center, pull text back by about `-0.05em` where letterform whitespace fakes an indent. Never adjust speculatively.
 
-Create a systematic plan:
+Variation is not a goal by itself. Repetition should support recognition; break it only when the content or the priority changes.
 
-- **Spacing system**: Use a consistent scale (a framework's built-in scale like Tailwind's, rem-based tokens, or a custom system). The specific values matter less than consistency.
-- **Hierarchy strategy**: How will space communicate importance?
-- **Layout approach**: What structure fits the content? Flex for 1D, Grid for 2D, named areas for complex page layouts.
-- **Rhythm**: Where should spacing be tight vs generous?
+## Verify
 
-## Improve Layout Systematically
+- The squint test still reveals the primary element, the secondary element, and the major groups, in order.
+- The reading and task path stays clear at every supported size.
+- Related content groups naturally; unrelated content does not blur together.
+- Tight and generous spacing create an intentional rhythm instead of monotonous repetition.
+- Density matches use frequency and content complexity.
+- Long text, empty states, localization, zoom, and dynamic content do not break the structure.
+- Keyboard, touch, and assistive-technology order agree with the visual order.
+- The final pattern check against [craft-floor.md](craft-floor.md) has no unexplained findings.
 
-### Establish a Spacing System
+Answer each item with rendered or source evidence, then run the pattern check once more. Do not substitute a bare "yes" for verification.
 
-- Use a consistent spacing scale (framework scales like Tailwind, rem-based tokens, or a custom scale all work). What matters is that values come from a defined set, not arbitrary numbers.
-- Prefer a 4pt base scale (4, 8, 12, 16, 24, 32, 48, 64, 96px) over 8pt; 8pt is too coarse and you'll frequently need 12px between 8 and 16.
-- Name tokens semantically if using custom properties: `--space-xs` through `--space-xl`, not `--spacing-8`
-- Use `gap` for sibling spacing instead of margins; eliminates margin collapse hacks
-- Apply `clamp()` for fluid spacing that breathes on larger screens
-
-### Create Visual Rhythm
-
-- **Tight grouping** for related elements (8-12px between siblings)
-- **Generous separation** between distinct sections (48-96px)
-- **Varied spacing** within sections (not every row needs the same gap)
-- **Asymmetric compositions**: a deliberate choice when the content invites it (not a default to chase).
-
-### Choose the Right Layout Tool
-
-- **Use Flexbox for 1D layouts**: Rows of items, nav bars, button groups, card contents, most component internals.
-- **Use Grid for 2D layouts**: Page-level structure, dashboards, data-dense interfaces, anything where rows AND columns need coordinated control.
-- Use named grid areas (`grid-template-areas`) for complex page layouts; redefine at breakpoints.
-- Use **container queries** for components, viewport queries for page layouts. A card in a narrow sidebar can stay compact while the same card in a main content area expands automatically:
-
-```css
-.card-container { container-type: inline-size; }
-.card { display: grid; gap: var(--space-md); }
-@container (min-width: 400px) {
-  .card { grid-template-columns: 120px 1fr; }
-}
-```
-
-### Break Card Grid Monotony
-
-- Don't default to card grids for everything; spacing and alignment create visual grouping naturally
-- Use cards only when content is truly distinct and actionable. Never nest cards inside cards
-- Vary card sizes, span columns, or mix cards with non-card content to break repetition
-
-### Strengthen Visual Hierarchy
-
-- Use the fewest dimensions needed for clear hierarchy. Space alone can be enough; generous whitespace around an element draws the eye. Some of the most polished designs achieve rhythm with just space and weight. Add color or size contrast only when simpler means aren't sufficient.
-- The best hierarchy combines 2–3 dimensions at once. A heading that's larger, bolder, AND has more space above it reads as primary without trying:
-
-| Tool | Strong Hierarchy | Weak Hierarchy |
-|------|------------------|----------------|
-| **Size** | 3:1 ratio or more | <2:1 ratio |
-| **Weight** | Bold vs Regular | Medium vs Regular |
-| **Color** | High contrast | Similar tones |
-| **Position** | Top/left (primary) | Bottom/right |
-| **Space** | Surrounded by white space | Crowded |
-
-- Be aware of reading flow: in LTR languages, the eye naturally scans top-left to bottom-right, but primary action placement depends on context (e.g., bottom-right in dialogs, top in navigation).
-- Create clear content groupings through proximity and separation.
-
-### Manage Depth & Elevation
-
-- Build a consistent shadow scale (sm → md → lg → xl); shadows should be subtle
-- Use elevation to reinforce hierarchy, not as decoration
-
-### Optical Adjustments
-
-- If an icon looks visually off-center despite being geometrically centered, nudge it. But only if you're confident it actually looks wrong. Don't adjust speculatively.
-- Text at `margin-left: 0` looks slightly indented because of letterform whitespace; a negative margin (`-0.05em`) optically aligns it. Geometrically centered glyphs often look off-center (play icons need to shift right, arrows shift toward their direction).
-- Touch targets must be 44×44px minimum even when the visual element is smaller. Expand the hit area with padding or a pseudo-element:
-
-```css
-.icon-button { width: 24px; height: 24px; position: relative; }
-.icon-button::before {
-  content: ''; position: absolute; inset: -10px;
-}
-```
-
-**NEVER**:
-- Use arbitrary spacing values outside your scale
-- Make all spacing equal (variety creates hierarchy)
-- Wrap everything in cards (not everything needs a container)
-- Nest cards inside cards (use spacing and dividers for hierarchy within)
-- Use identical card grids everywhere (icon + heading + text, repeated)
-- Default to the hero metric layout (big number, small label, stats, gradient) as a template. If showing real user data, a prominent metric can work, but it should display actual data, not decorative numbers.
-
-## Verify Layout Improvements
-
-- **Squint test**: Can you identify primary, secondary, and groupings with blurred vision?
-- **Rhythm**: Does the page have a satisfying beat of tight and generous spacing?
-- **Hierarchy**: Is the most important content obvious within 2 seconds?
-- **Breathing room**: Does the layout feel comfortable, not cramped or wasteful?
-- **Consistency**: Is the spacing system applied uniformly?
-- **Responsiveness**: Does the layout adapt gracefully across screen sizes?
-
-When the rhythm and hierarchy land, hand off to the `polish` command (see [cmd-polish](cmd-polish.md)) for the final pass.
+When the rhythm and the hierarchy land, hand off to the `polish` command (see [cmd-polish](cmd-polish.md)) for the final pass.

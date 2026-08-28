@@ -5,9 +5,10 @@
  * 1. Mode loading via manifest import
  * 2. Manifest validation (required fields, viewer actions, watch patterns)
  * 3. Skill installation (SKILL.md + every reference file in mode source)
- * 4. SKILL.md content (Impeccable principles, 22 commands, AI slop test)
- * 5. Reference file completeness (3 register/topic + 22 command references; deep
- *    topic material folded into the commands as of upstream skill-v3.9.1)
+ * 4. SKILL.md content (lean core: setup, visitor modes, 22 commands, routing)
+ * 5. Reference file completeness (3 standalone + 22 command references; the
+ *    quality floor and the ban list live in craft-floor.md as of upstream
+ *    skill-v4.1.2, so SKILL.md stays a short, always-loaded core)
  * 6. CLAUDE.md injection with pneuma markers
  * 7. Seed file (index.html) for empty workspaces
  * 8. Seed quality (OKLCH, fluid typography, semantic HTML, responsive, reduced motion)
@@ -82,7 +83,7 @@ describe("mode loading", () => {
 describe("manifest validation", () => {
   it("has all required top-level fields", () => {
     expect(webcraftManifest.name).toBe("webcraft");
-    expect(webcraftManifest.version).toBe("1.5.0");
+    expect(webcraftManifest.version).toBe("1.6.0");
     expect(resolveLocalized(webcraftManifest.displayName)).toBe("WebCraft");
     expect(resolveLocalized(webcraftManifest.description)).toContain("Impeccable");
     // Mode version bumps must carry a matching changelog entry (launcher
@@ -198,7 +199,7 @@ describe("SKILL.md content", () => {
     expect(skillMd).toContain("description:");
   });
 
-  it("contains Impeccable design principles sections", () => {
+  it("contains the lean-core design sections", () => {
     const ws = makeWorkspace("skill-content-principles");
     installWebcraftSkill(ws);
 
@@ -206,27 +207,64 @@ describe("SKILL.md content", () => {
     expect(skillMd).toContain("## Core Principles");
     expect(skillMd).toContain("### Setup — before any design work");
     expect(skillMd).toContain("### Context Gathering Protocol");
-    expect(skillMd).toContain("### Register: brand vs product");
-    expect(skillMd).toContain("### General rules");
-    expect(skillMd).toContain("#### Typography");
-    expect(skillMd).toContain("#### Layout");
-    expect(skillMd).toContain("#### Motion");
-    expect(skillMd).toContain("#### Interaction");
-    expect(skillMd).toContain("#### Copy");
-    expect(skillMd).toContain("### New projects only (when no prior work exists)");
-    expect(skillMd).toContain("### Absolute bans");
-    expect(skillMd).toContain("### Implementation Principles");
+    expect(skillMd).toContain("### How to design");
+    expect(skillMd).toContain("### Modes — what the visitor came to do");
   });
 
-  it("contains the v3.9.1 anti-pattern additions (model-tell bans)", () => {
-    const ws = makeWorkspace("skill-content-bans");
+  it("routes the four visitor modes instead of the brand/product register", () => {
+    const ws = makeWorkspace("skill-content-modes");
     installWebcraftSkill(ws);
 
     const skillMd = readFileSync(join(ws, ".claude", "skills", "pneuma-webcraft", "SKILL.md"), "utf-8");
-    expect(skillMd).toContain("Model-tell bans");
-    expect(skillMd).toContain("Decorative grid backgrounds");
-    expect(skillMd).toContain("Numbered section markers");
-    expect(skillMd).toContain("ghost card");
+    for (const mode of ["**Persuade:**", "**Operate:**", "**Read:**", "**Experience:**"]) {
+      expect(skillMd).toContain(mode);
+    }
+    // The v3 register split is retired — no brand.md / product.md references survive.
+    expect(skillMd).not.toContain("references/brand.md");
+    expect(skillMd).not.toContain("references/product.md");
+    expect(skillMd).toContain("references/operate.md");
+  });
+
+  it("defers the quality floor to craft-floor.md instead of inlining it", () => {
+    const ws = makeWorkspace("skill-content-floor-pointer");
+    installWebcraftSkill(ws);
+
+    const skillMd = readFileSync(join(ws, ".claude", "skills", "pneuma-webcraft", "SKILL.md"), "utf-8");
+    expect(skillMd).toContain("references/craft-floor.md");
+    // Depth loads on demand: the always-loaded core stays short.
+    expect(skillMd.split("\n").length).toBeLessThan(400);
+  });
+
+  it("craft-floor.md carries the quality floor and the ban list", () => {
+    const ws = makeWorkspace("skill-content-bans");
+    installWebcraftSkill(ws);
+
+    const floor = readFileSync(
+      join(ws, ".claude", "skills", "pneuma-webcraft", "references", "craft-floor.md"),
+      "utf-8",
+    );
+    expect(floor).toContain("## Verify");
+    expect(floor).toContain("## Refuse");
+    // v3-era bans that must survive the move out of SKILL.md
+    expect(floor).toContain("Decorative grid backgrounds");
+    expect(floor).toContain("Section numbers");
+    expect(floor).toContain("ghost card");
+    // v4 additions, including the detector rules ported as agent-readable bans
+    for (const ban of [
+      "kicker or eyebrow",
+      "Hard offset shadows",
+      "system display face",
+      "Unicode glyphs",
+      "Geometric masks",
+      "glow",
+      "Marquee",
+      "blinking",
+      "dot and grid fields",
+      "under an overlay",
+      "stock geometric",
+    ]) {
+      expect(floor).toContain(ban);
+    }
   });
 
   it("teaches the brand seed palette script for new projects", () => {
@@ -239,16 +277,19 @@ describe("SKILL.md content", () => {
     expect(existsSync(join(ws, ".claude", "skills", "pneuma-webcraft", "scripts", "palette.mjs"))).toBe(true);
   });
 
-  it("contains the AI Slop Test section", () => {
+  it("keeps the AI Slop Test with the craft floor", () => {
     const ws = makeWorkspace("skill-content-slop");
     installWebcraftSkill(ws);
 
-    const skillMd = readFileSync(join(ws, ".claude", "skills", "pneuma-webcraft", "SKILL.md"), "utf-8");
-    expect(skillMd).toContain("### The AI Slop Test");
-    expect(skillMd).toContain("which AI made this");
+    const floor = readFileSync(
+      join(ws, ".claude", "skills", "pneuma-webcraft", "references", "craft-floor.md"),
+      "utf-8",
+    );
+    expect(floor).toContain("## The AI Slop Test");
+    expect(floor).toContain("which AI made this");
   });
 
-  it("lists all 20 Impeccable commands", () => {
+  it("lists all 22 Impeccable commands", () => {
     const ws = makeWorkspace("skill-content-cmds");
     installWebcraftSkill(ws);
 
@@ -315,14 +356,13 @@ describe("SKILL.md content", () => {
 // ── 5. Reference File Completeness ───────────────────────────────────────────
 
 describe("reference file completeness", () => {
-  // Standalone register/topic references. The former deep topic files
-  // (typography, color-and-contrast, spatial-design, motion-design,
-  // responsive-design, ux-writing, cognitive-load, heuristics-scoring,
-  // personas) were folded into their command references upstream in
-  // skill-v3.5.0 and are pinned inside the commands below.
+  // Standalone topic references as of upstream skill-v4.1.2: the quality floor
+  // (craft-floor), the Operate/Read depth that replaced the brand/product
+  // register split (operate), and the forms/focus/loading depth Pneuma keeps
+  // after upstream retired its standalone file (interaction-design).
   const designReferences = [
-    "brand.md",
-    "product.md",
+    "craft-floor.md",
+    "operate.md",
     "interaction-design.md",
   ];
 
@@ -391,10 +431,7 @@ describe("reference file completeness", () => {
 
     const refsDir = join(ws, ".claude", "skills", "pneuma-webcraft", "references");
     const folded: Array<[string, string]> = [
-      ["cmd-typeset.md", "previously `typography.md`"],
-      ["cmd-colorize.md", "previously `color-and-contrast.md`"],
       ["cmd-adapt.md", "previously `responsive-design.md`"],
-      ["cmd-clarify.md", "previously `ux-writing.md`"],
       ["cmd-critique.md", "Heuristics Scoring Guide"],
       ["cmd-critique.md", "Persona-Based Design Testing"],
       ["cmd-critique.md", "Cognitive Load Assessment"],

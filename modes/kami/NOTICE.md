@@ -59,8 +59,8 @@ it mirrors upstream V1.7.0's "Korean Paper" without bundling the font.
 ## Tracked upstream version
 
 Diagrams and reference docs in this mode are synced against
-[tw93/kami **V1.10.0**](https://github.com/tw93/Kami/releases/tag/V1.10.0)
-("Reliable Documents", 2026-07-19). Items intentionally not synced from
+[tw93/kami **V1.13.0**](https://github.com/tw93/Kami/releases/tag/V1.13.0)
+("Steadier Proof", 2026-08-23). Items intentionally not synced from
 upstream because they don't apply to Pneuma's iframe paper-canvas /
 browser-print model:
 
@@ -104,6 +104,50 @@ browser-print model:
 - The V1.9.3 changelog-template `--mono` fix is structurally covered
   here: documents build on `_shared/styles.css`, which already defines
   the `--mono` stack with CJK fallback.
+- `references/production.md` has never been adopted and stays that way
+  after V1.13.0. It is the PDF / PPTX / ZIP delivery pipeline —
+  WeasyPrint invocation, `pdffonts` reading, python-pptx palette
+  constants, Marp render commands. Its V1.13.0 additions (the
+  `--check-fonts` verdict, pitfall 4.1 on Latin-first stacks splitting
+  CJK inside inline SVG) are fontconfig-and-WeasyPrint truths, not
+  browser ones; the *stack ordering* they argue for is adopted in
+  `references/design.md` §2 and in the diagram templates, the tooling
+  around them is not.
+- `references/deck-preflight.md` (new in V1.13.0) is adopted **in part**.
+  The six pre-flight questions and the slide content rules are
+  medium-independent and ship here. Its path-selection table
+  (WeasyPrint / python-pptx / Marp) and its page-size table are dropped:
+  a Pneuma deck is HTML paper pages in the viewer, and the page size is
+  locked at workspace creation, so neither is a decision the agent gets
+  to make.
+- The V1.12.0–V1.13.0 check mechanics: `scripts/checks.py` and the
+  `--check-fonts` / `--check-style` / `--check-rhythm` / `--doctor`
+  flags, the MCP report shape that grades content / coverage / visual
+  separately, the render-to-temp-file-then-swap strategy for PDF, PPTX
+  and ZIP builds, `release_gate.py`, the CI matrix that renders every
+  page-limited template, the font-integrity gate, the desktop-package
+  byte comparison, and the "announce an update only once the Release
+  and ZIP exist" flow. All of it is delivery plumbing around a build
+  pipeline this mode does not have. **Their principles are adapted as
+  agent-side guidance instead**: plan-before-layout (Step 2 now records
+  output target, page target and the checks the document must pass),
+  bounded visual repair (name the target, name what stays untouched,
+  verify the blast radius), and weak-evidence-does-not-pass — hidden
+  text, an unresolvable image, and an empty `<div class="page">` cannot
+  satisfy a check, and "I did not look" is the honest verdict.
+- The V1.13.0 `references/schemas/*.json` tightening (`minItems` on the
+  changelog contract) — unchanged stance: the JSON content contracts are
+  not adopted, and their intent rides SKILL.md's post-fill fact check.
+- Upstream's V1.13.0 `references/anti-patterns.md` change is a pure
+  renumbering that fixes a duplicate-number collision (41–45 appeared
+  twice in V1.10.0). This mode's adapted copy never had the collision,
+  so its numbering is already correct and unchanged.
+- Upstream's root `styles.css` V1.13.0 changes are almost entirely its
+  public design-system *site* (a `.anti` ledger layout, `.hero.doc`,
+  `.doc-nav`, `.prose`). Only the CN font-chain addition applies to this
+  mode's `seed/_shared/styles.css`. Upstream also retired
+  `--ring-warm` / `--ring-deep`; this mode still defines and uses them,
+  so `references/design.md` keeps naming them.
 
 ## Seed demos
 

@@ -12,8 +12,16 @@ import { normalizeCosmos, type Cosmos } from "./types.js";
 
 const cosmosManifest: ModeManifest = {
   name: "cosmos",
-  version: "0.4.1",
+  version: "0.5.0",
   changelog: {
+    "0.5.0": [
+      "Projection workflow: a partition can no longer vanish silently — every slice gets a contribution row (`stats.partitions[]`), and one that dies or comes back empty is re-dispatched once before being reported as `failed` / `empty`",
+      "Overlapping partitions are named: a slice whose nodes were all claimed elsewhere reports `duplicate-only` instead of looking like a slice that found nothing",
+      "Dropped edges leave with the id that went missing (`stats.droppedEdgeDetail`, capped at 50 with the truncation declared) — each one names a node the projection is short of, not a bad edge",
+      "`stats.warnings[]` collects every lossy outcome; SKILL Path A step 3 makes an empty warnings list the bar for shipping a projection",
+      "Fixed a latent crash: a merge / verify / completeness / perspectives stage whose subagent was skipped resolved to `null` and took the whole run down on property access",
+      "New `Design system` node-type vocabulary (component library, Figma export) — `component` / `instance` / `token` with `variant_of` + `uses_token`, the relationships the Codebase vocabulary flattens into `imports`",
+    ],
     "0.4.1": [
       "SKILL.md — disambiguate the two walk shapes: `tour[]` uses `{ step, nodeId, narrative }`, `perspectives[].steps[]` uses `{ focus, narrative }`. Added an inline tour-shape example at Pass 3, a contrast table in the Perspective-tours chapter, and an explicit warning on Path A step 4 (where the workflow's perspective `focus` shape was being copied into the tour by reflex)",
     ],
