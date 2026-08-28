@@ -314,3 +314,24 @@ Quick (project-less) sessions remain fully supported — projects are opt-in. Cr
 ## License
 
 [MIT](LICENSE)
+
+---
+
+<p align="center">
+  <a href="https://github.com/pouyashahrdami/github-pulse">
+    <img
+      src="https://github-pulse-topaz.vercel.app/r/pandazki/pneuma-skills?size=wide&color=f97316&bg=09090b&text=fafafa&accent=f97316&muted=71717a&border=27272a&gradient=fb923c,f97316,ea580c"
+      alt="Pneuma Skills repository pulse — a live EKG of commit activity on main"
+      width="830"
+    />
+  </a>
+</p>
+<p align="center">
+  <a href="https://github.com/pouyashahrdami/github-pulse">
+    <img
+      src="https://github-pulse-topaz.vercel.app/report/pandazki?color=f97316&bg=09090b&text=fafafa&accent=f97316&muted=71717a&border=27272a&gradient=fb923c,f97316,ea580c"
+      alt="Cardiology report — a year of commit vitals for @pandazki, who maintains Pneuma Skills"
+      width="830"
+    />
+  </a>
+</p>
