@@ -71,6 +71,17 @@
   --brand:        #1B365D;
   --brand-light:  #2D5A8A;
 
+  /*
+   * The only two brand tints (upstream V1.13.0). Both are ink blue
+   * pre-blended onto parchment as solid hex — never rgba(), which
+   * composites differently over padding and glyph areas in print.
+   * --tag-bg is the default swatch; --brand-tint is the lighter fill
+   * for a tag that must recede, and the focal fill in diagrams.
+   * A third tint is drift, not a new idea.
+   */
+  --tag-bg:       #E4ECF5;
+  --brand-tint:   #EEF2F7;
+
   /* Warm neutrals */
   --near-black:   #141413;
   --dark-warm:    #3d3d3a;
@@ -92,15 +103,24 @@
    * Chinese content uses TsangerJinKai02 → Source Han Serif → Songti.
    * English content falls through to Charter → Georgia.
    * Japanese authors should override --serif inline with the YuMincho stack.
+   *
+   * The CJK families lead and the Latin faces trail (upstream V1.13.0).
+   * One family drawing both scripts is what keeps a mixed CN/EN line on a
+   * single face; a Latin serif in front hands every ideograph to whatever
+   * the system picks next, and a label can end up split mid-word.
+   * "Source Han Serif CN" / "Noto Serif SC" / "SimSun" are the real family
+   * names some systems register these fonts under — same faces, different
+   * label, so all spellings stay in the chain.
    */
-  --serif: "TsangerJinKai02", Charter, "Source Han Serif SC",
-           "Noto Serif CJK SC", "Songti SC", "STSong",
-           Georgia, Palatino, "Times New Roman", serif;
+  --serif: "TsangerJinKai02", "Source Han Serif SC", "Source Han Serif CN",
+           "Noto Serif CJK SC", "Noto Serif SC", "Songti SC", "STSong",
+           "SimSun", Charter, Georgia, Palatino, "Times New Roman", serif;
   --sans:  var(--serif);
   --mono:  "JetBrains Mono", "SF Mono", "Fira Code",
            Consolas, Monaco,
-           "TsangerJinKai02", "Source Han Serif SC", "Noto Serif CJK SC",
-           "Songti SC", monospace;
+           "TsangerJinKai02", "Source Han Serif SC", "Source Han Serif CN",
+           "Noto Serif CJK SC", "Noto Serif SC", "Songti SC", "SimSun",
+           monospace;
 }
 
 @page {

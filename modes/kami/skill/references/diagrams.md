@@ -333,6 +333,7 @@ Extract **only the `<svg>...</svg>` block** from the template (leave the frame /
 
 Edit the `<text>` and `<rect>` values directly. Rules:
 
+- **Leave the `font-family` attributes alone.** Since upstream V1.13.0 every `<text>` in the templates names its own CJK-first stack instead of inheriting. That is what keeps an extracted `<svg>` self-contained: a fragment dropped into a content set whose page font differs still draws its labels from one family, so a two-character Chinese label cannot come back set in two faces. Change a label's *text*, never its stack — and if you author a new `<text>`, copy the stack from a sibling rather than writing `font-family="inherit"`. **Two exceptions, and they bite**: `candlestick.html` and `waterfall.html` label their axes with numbers, so upstream left those labels on `Charter, Georgia, serif`. Their `{{Cat A}}` / `{{D1}}` category placeholders sit on that same Latin-only stack — if you replace one with a Chinese label, put the CJK stack on that `<text>` yourself.
 - **All coordinates, widths, and gaps must be divisible by 4.** This is the anti-AI-slop floor. Break it once and the diagram starts looking "close enough".
 - Node widths: 128 / 144 / 160 (three tiers, don't add more). Small diagrams (viewBox width < 360) may compress to 2 tiers, but still keep it 2 - don't tailor each node.
 - Node heights: 32 (pill) / 64 (standard)
@@ -605,13 +606,19 @@ For raster illustrations produced with the image-generation script (SKILL.md «I
 
 Switch to a generated illustration (instead of enlarging a hand-assembled SVG) when a figure needs more detail than SVG assembly holds at the target display width — typically teaching-depth figures (section 2, teaching tier).
 
-**Brief skeleton**, in order:
+**Brief skeleton**, in order. The first four items state what the image is *for*;
+write them before any visual language, because they are what makes a rejection
+diagnosable instead of a coin flip:
 
-1. Canvas: warm parchment `#f5f4ed`, never pure white; generous whitespace; composed like a figure in a well-typeset report.
-2. Accent: ink blue `#1B365D` on the 1-2 focal elements only; everything else warm gray with a yellow-brown undertone; no second hue anywhere.
-3. Strokes and icons: thin single-line geometric strokes; flat icons matching section 6 (rounded line style, no fills beyond the two sanctioned ones); no gradients, drop shadows, or 3D.
-4. Labels: serif, few, short. Prefer single words; image models misspell long phrases, and a misspelled label voids the image. If a label must be a phrase, plan to typeset it in HTML over the image instead.
-5. Content spec: the same complexity budget as section 2 (state the tier: 4/10 editorial or 6-7/10 teaching), what is focal, and the reading direction.
+1. Claim: one sentence naming what the reader should conclude — the assertion, not the topic. "Review protects the release boundary", not "software workflow".
+2. Placement: the page and figure slot it lands in, its aspect ratio, and the smallest size it will be seen at. A report figure, a portfolio hero, and a spot illustration have different type floors.
+3. Reference: the accepted sibling image or named visual system it must sit beside, and what survives from that reference — composition, density, line language, or crop.
+4. Exclusions: what must not appear. Version strings, invented UI, unrelated atmosphere, extra hues, and identifying details stay out unless the document actually needs them.
+5. Canvas: warm parchment `#f5f4ed`, never pure white; generous whitespace; composed like a figure in a well-typeset report.
+6. Accent: ink blue `#1B365D` on the 1-2 focal elements only; everything else warm gray with a yellow-brown undertone; no second hue anywhere.
+7. Strokes and icons: thin single-line geometric strokes; flat icons matching section 6 (rounded line style, no fills beyond the two sanctioned ones); no gradients, drop shadows, or 3D.
+8. Labels: serif, few, short. Prefer single words; image models misspell long phrases, and a misspelled label voids the image. If a label must be a phrase, plan to typeset it in HTML over the image instead.
+9. Content spec: the same complexity budget as section 2 (state the tier: 4/10 editorial or 6-7/10 teaching), what is focal, and the reading direction.
 
 **QC before placing a generated image** (regenerate on any failure, do not retouch expectations):
 
@@ -619,7 +626,16 @@ Switch to a generated illustration (instead of enlarging a hand-assembled SVG) w
 - No gradient, shadow, or 3D crept in.
 - Text in the image is spelled correctly and minimal; anything wrong or verbose gets re-briefed with fewer words.
 - Composition reads as a report figure (balanced margins, clear focal point), not as a poster or clip art.
+- The claim is legible at the size it will actually be printed at. Detail that only resolves in the full-resolution source does not count — check it against the figure's real width on the page, not the file.
+- Every exclusion holds, especially invented product surfaces, stray version text, and identifying details.
 - Style matches the other generated images in the same deliverable (shared style anchor — see SKILL.md «Consistency across figures»).
+
+After a partly successful generation, name what survives before you change the
+brief; otherwise the next attempt trades a solved problem for a new one. After
+two look-based rejections, stop regenerating blind and switch to the comparison
+protocol in SKILL.md «Vague feedback → concrete options»: keep the accepted part,
+put labeled alternatives in one frame, and realign on the claim, the reference,
+and the exclusions.
 
 ---
 

@@ -185,22 +185,6 @@ Use your `Read` tool on that `path` to view the screenshot inline, then
 iterate. For fit issues, `.pneuma/kami-fit.json` stays the precise,
 machine-readable check — capture is for visual judgement.
 
-## Core rules
-
-- Edit HTML/CSS/JS files directly — the user sees updates live.
-- Keep the canvas warm (`#f5f4ed` parchment, never pure white). One
-  sanctioned exception: the opt-in white-paper print recipe for documents
-  headed to a home/office printer — see `references/design.md` §6.
-- Single accent color: ink blue `#1B365D`. No gradients, no second
-  chromatic hue, no hard drop shadows.
-- Serif (TsangerJinKai02 CN / Newsreader EN) weight locked at 500.
-  Never bold.
-- Do not edit `_shared/styles.css` tokens casually. Aesthetic drift
-  compounds fast.
-- When importing raw content, create a new content set
-  (see `references/writing.md`).
-- Do not modify `.claude/` — it's runtime-managed.
-
 ## Aesthetic rules (kami adapted)
 
 | Element | Rule |
@@ -212,14 +196,36 @@ machine-readable check — capture is for visual judgement.
 | Letter-spacing | CN body 0.3pt (locks in TsangerJinKai02 density). EN body 0. Tracking only on small labels and overlines. |
 | Line-height | Titles 1.1–1.3. Dense body 1.4–1.45. Reading body 1.5–1.55. Never 1.6+. |
 | Shadows | Ring or whisper only. No hard drop shadows. No gradients. |
-| Tags | Solid hex backgrounds only — rgba() can break in print. |
+| Tags | Two tints, both tokens: `--tag-bg` `#E4ECF5` default, `--brand-tint` `#EEF2F7` to recede. Solid only — `rgba()` can break in print, and a third tint is drift. |
 
 `--sans` aliases `--serif` in `_shared/styles.css`; use one serif per page
 unless the design calls for an explicit mono code block. Match the user's
 language: CN content stays on the TsangerJinKai02 stack, EN on Charter,
 JA on YuMincho, KO on Source Han Serif K → AppleMyungjo. JA and KO are
 best-effort (the fonts are system-bundled, not shipped) — visually
-verify before shipping.
+verify before shipping. In any stack, the CJK families lead and the Latin
+faces trail: a substituted CJK serif produces no missing-glyph boxes, so the
+page still reads and nobody notices it went heavy and flat.
+
+## Working rules
+
+- Edit HTML / CSS / JS files directly — the user sees every change live.
+- Do not edit `_shared/styles.css` tokens casually. Aesthetic drift
+  compounds fast. Per-document overrides go in that document's own stylesheet.
+- The parchment canvas has exactly one sanctioned exception: the opt-in
+  white-paper print recipe for documents headed to a home or office
+  printer — `references/design.md` §6.
+- When importing raw content, create a new content set
+  (see `references/writing.md`).
+- Do not modify `.claude/` — it's runtime-managed.
+- Paper size and orientation are locked at workspace creation. A different
+  size means a new workspace, not an edit.
+
+**Out of model here.** Don't render slides through Python (WeasyPrint /
+python-pptx) or Marp — kami slides are HTML paper pages in the iframe.
+Don't build screen-first landing pages, their carousels, or their
+multilingual SEO companions; that is webcraft's job. Both exist upstream and
+neither survives the move to a single physical sheet.
 
 ## Workspace layout
 
@@ -262,33 +268,44 @@ scratch into a new content set.
 > Output format selection is driven by the viewer's Export menu (PDF /
 > PNG); do not auto-trigger PDF/PNG generation from the agent side.
 
+## Which kind of task this is
+
+Route on the *state of the artifact*, not on the words in the request. Four
+kinds, and only the first one runs the full flow below:
+
+| The request | Kind | What it commits you to |
+|---|---|---|
+| A new document, or a restructuring that changes what the pages are | **New document** | The full flow: source pass, layout note, content set, post-fill check |
+| Replacing text, translating, correcting a fact in an existing document | **Content-only** | Change the copy. Leave CSS and layout alone unless the new copy proves a genuine fit defect |
+| The user looks at the render and says something is wrong with how it looks | **Visual repair** | The render is the brief. Name the target, name what must stay untouched, make the smallest fix — see «Vague feedback → concrete options» |
+| A standalone generated illustration, cover, or redraw | **Generated asset** | Lock the semantic brief before any pixels; preserve what was already accepted across iterations — see «Image generation» |
+
+The two that go wrong quietly are content-only and visual repair, because both
+invite a tidy-up of everything nearby. Approved pages, settled content, and
+`_shared/styles.css` are outside the boundary in both.
+
 ## When the user hands over raw content
 
-The flow below assumes you've already classified the doc type using the
-table above.
+This is the **New document** flow. It assumes you've already classified the doc
+type using the table above.
 
 ### Step 1 · Source and material pass
 
 Run this before distilling or filling when the document depends on facts
-or materials outside the user's draft. Skip only for personal drafts
-where the user supplied everything needed.
+or materials outside the user's draft. Skip it for personal drafts where
+the user already supplied everything.
 
-**Source check.** Trigger when the document mentions a specific company,
-product, person, release date, version, funding round, metric, market
-fact, or technical spec — any current fact likely to change.
+**Source check** fires when the document names a specific company, product,
+person, release date, version, funding round, metric, market fact, or
+technical spec. Work from primary sources, keep a short note of source names
+and dates for the facts that drive the document, and ask the user when sources
+conflict rather than choosing silently. `references/writing.md` «5. Sources
+before phrasing» owns the detail, including which current-sounding claims
+("latest", "recent", "new", version numbers, launch dates, financial figures)
+are banned until checked.
 
-- Use primary sources before writing: user-provided material, official
-  site, docs, filings, press release, app store page, or repo release.
-- Keep a short note of source names and dates for facts that drive the
-  document.
-- If sources conflict or a fact cannot be checked quickly, ask the user
-  instead of choosing silently.
-- Avoid current-sounding claims ("latest", "recent", "new", version
-  numbers, launch dates, financial figures) unless they are checked.
-
-**Material check.** Trigger when the document is about a company,
-product, project, venue, or personal brand. Confirm the materials that
-make the subject recognizable before layout:
+**Material check** fires when the subject is a company, product, project,
+venue, or personal brand. Confirm what makes it recognizable before layout:
 
 | Need | Required when | Accept |
 |---|---|---|
@@ -298,9 +315,9 @@ make the subject recognizable before layout:
 | Brand colors | Branded one-pager / portfolio / deck | Official value, extracted asset value, or keep kami ink-blue |
 | Fonts | Only if brand typography matters | Official font, close system fallback, or kami default |
 
-If a required item is missing, use a compact gap table and ask once. Do
-not replace missing material with generic imagery, approximate logo
-drawings, or invented values.
+A missing item gets a compact gap table and one question — never a generic
+stand-in, an approximated logo, or an invented value. `references/writing.md`
+«6. Materials serve recognition» carries the writing-side rules.
 
 **Materials status block.** After the material check, output a structured
 status block before continuing. One-shot transparency display, not a
@@ -318,13 +335,17 @@ Use `OK`, `MISSING`, or `not required`. If a required item is missing and
 no user input arrived, ask once with the gap table; otherwise continue
 silently.
 
-### Step 2 · Layout note (transparent, non-blocking)
+### Step 2 · Layout note (plan before layout)
 
-Before creating the content set, write a short editor-style note stating
-the layout intent: doc genre, length target, narrative arc, embedded
-diagrams, material status. Match the user's language. Keep it under 80
-words, written as prose, not a status panel. Continue immediately after;
-do not wait for approval.
+Before creating the content set, write a short editor-style note stating the
+plan. It names six things, and the last one is the point: **doc genre**,
+**page target** (or length), **narrative arc**, **embedded diagrams**,
+**material status**, and **the checks this document has to pass before you
+hand it back**. Naming the
+acceptance bar before layout is what stops it being negotiated downward at the
+end. Match the user's language, keep it under 80 words, write it as prose
+rather than a status panel, and continue immediately — this is transparency,
+not an approval gate.
 
 Example (EN):
 
@@ -332,16 +353,17 @@ Example (EN):
 > price target, run through valuation (DCF and comparables), close on
 > catalysts and risks. A revenue line chart and an FY26 waterfall sit
 > mid-doc. Logo is in hand; product image is absent, so the header stays
-> text-only.
+> text-only. Ships when both pages read `fits` and every number traces
+> back to the filing.
 
 Example (CN):
 
 > 排版意图：Equity Report 中文版，2 页 A4。先立论与目标价，进入估值 (DCF
 > 与可比公司)，落于催化剂与风险。中段嵌一张营收趋势折线和 FY26 收入桥瀑
-> 布。Logo 已就位，产品图暂缺，header 改走纯文字。
+> 布。Logo 已就位，产品图暂缺，header 改走纯文字。交付标准：两页都 `fits`，
+> 每个数字都能回溯到财报原文。
 
-The note is for transparency, not approval. If the user pushes back,
-adjust; otherwise proceed to Step 3.
+If the user pushes back, adjust; otherwise proceed to Step 3.
 
 ### Step 3 · Create the content set
 
@@ -434,49 +456,37 @@ A document task is done only when your closing message carries:
    checked; if you did not look, say "fit verified, visuals unconfirmed",
    not "done". One visual defect found means sweeping every page for
    that class of issue, not fixing the one spot.
+5. The plan from Step 2, answered item by item — genre, page target,
+   arc, diagrams, and each check you named. A plan that quietly stops
+   being mentioned at the end is a plan that was abandoned.
+
+**What does not count as a pass.** Every clause above is about evidence you
+actually have, and three near-misses look like evidence but aren't:
+
+- **A page with no content on it is not a page.** An empty or near-empty
+  `<div class="page">`, a section whose body never got filled, a figure slot
+  with nothing in it — none of these ship, and none of them count toward a page
+  target. Delete the block or fill it; a page target met by blank sheets is
+  not met.
+- **Hidden or unresolvable content does not satisfy a requirement.** Text sized
+  to zero, content behind `display: none`, an `<img>` pointing at a file that
+  isn't in the content set, a remote URL standing in for a local asset — the
+  requirement is still open. Say so.
+- **"I did not look" is a verdict, and it is the honest one.** Never report a
+  check you did not run, and never let a check you skipped ride along inside a
+  sentence about the checks you did run.
 
 ### Per-page density target (multi-page docs only)
 
-Applies to long-doc / portfolio / slides / equity-report / changelog.
-Does **not** apply to resume / one-pager / letter — those have their own
-length contracts.
+Long-doc / portfolio / slides / equity-report / changelog carry a **60–80%**
+body-page fill target — a guard against drafts that fragment content too thin
+to fill the sheets they occupy. Resume / one-pager / letter are exempt; they
+have their own length contracts, and so do cover, contents, and sign-off pages.
 
-Body-page fill target is **60–80%**. Cover, table-of-contents, and final
-sign-off pages are exempt. This rule guards against AI-generated drafts
-that fragment content too thin to fill the sheets they occupy. The fill
-percentage is `content_height_mm / paper_height_mm` from `kami-fit.json`;
-the existing `sparse` status (`overflow_mm < -50` ≈ <~83% on A4) already
-flags the worst cases — the per-template thresholds below sharpen the
-decision for borderline pages.
-
-**Items-per-page contract** (thresholds from upstream V1.5.0):
-
-| Genre | Typical body page | Hard floor (merge if below) |
-|---|---|---|
-| Slides | 1 assertion title + 3–5 supporting items, or 1 chart + 2–3 callouts | <3 items and no chart → merge into adjacent slide |
-| Long doc | 1 chapter heading + 2–4 paragraphs + at most 1 figure | Chapter renders <40% page → merge into neighbor |
-| Portfolio | 1 project header + 1 hero image + 3–5 outcome bullets | No image and <3 outcomes → merge with adjacent project |
-| Equity report | 1 section + 1 table/chart + supporting prose | Only a 2-row table on the page → combine sections |
-| Changelog | 1 version block + 4–8 entries | Version has <4 entries → place on the same page as the prior version |
-
-**Sparse-page merge rule.** Any body page rendering under 50% full
-(i.e. `kami-fit.json` reports `status: "sparse"` *and* the items-per-page
-floor for the genre is breached) → apply, in order:
-
-1. Merge upward into the previous section.
-2. Merge downward into the next section.
-3. Promote a list to a small diagram or table that earns the space.
-4. Pin a `.co` callout to the bottom (slides only). Whitespace above a
-   pinned callout is intentional, not sparse.
-
-Forbidden ways to "fill" a sparse page: padding with filler prose,
-repeating the heading as a sentence, inventing statistics, restating the
-prior page in different words. If the merge options don't apply, the page
-itself shouldn't exist — delete the `<div class="page">` block.
-
-**Last-page exemption.** The last body page is allowed 40–60% fill;
-forcing balance there usually means padding. The cover and closing
-colophon may have any fill level.
+`kami-fit.json`'s `sparse` status already flags the worst cases. For the
+borderline page, `references/cmd-fit.md` «Per-genre density floors» carries the
+items-per-page contract, the merge order, and the last-page exemption. Read it
+when a page is borderline, not before.
 
 ## Image generation (only when the user has configured a key)
 
@@ -621,12 +631,29 @@ before placing the result.
 
 ## Vague feedback → concrete options
 
-When the user gives vague visual feedback ("looks off", "太挤了", "not
-elegant"), do not guess. Ask back naming the element and its current
-value, offering 2 in-spec alternatives: "X is currently set to Y. Would
-you like (a) [specific alternative within spec] or (b) [another
-option]?" Never say "I'll adjust the spacing" without naming the exact
-property and its new value.
+When the user gives visual feedback ("looks off", "太挤了", "not elegant"),
+**look before you ask**. The render is the evidence; their negative label is
+only the signal that something is wrong. You already have the render — a
+`capture` of the page they are looking at costs one call.
+
+1. **Name the defect** in one sentence: which page, and whether the problem is
+   density, hierarchy, alignment, type, colour, cropping, or text fit.
+2. **Lock the boundary.** State what you will change and, explicitly, what
+   stays untouched — the neighbouring pages, the approved content, and
+   `_shared/styles.css`. Ask only when two plausible targets would produce
+   materially different documents.
+3. **Make the smallest change** that fixes the named defect. Never hide a
+   content problem by shrinking type: the typography is locked, and a page
+   that only fits at a smaller size has too much on it.
+4. **Verify the whole blast radius**, not the one spot: the target page, its
+   neighbours, the total page count, and — whenever the change touched a
+   shared class or token — every other page that class reaches. Then re-read
+   `.pneuma/kami-fit.json`.
+
+If no render exists and the feedback still leaves two materially different
+fixes, ask once by naming the current property and offering two in-spec
+alternatives: "X is currently Y. Would you like (a) … or (b) …?" Never say
+"I'll adjust the spacing" without naming the exact property and its new value.
 
 **Escalate after two rounds.** If the same element is still not approved
 after two adjustment rounds, stop nudging values: build one comparison
@@ -639,96 +666,32 @@ title-plus-paragraph content. One round of "pick one" converges where
 five rounds of "try again" do not; after the pick, apply it everywhere
 in the same round.
 
-## Don'ts
-
-- Don't add a second accent color, gradients, or hard drop shadows.
-- Don't change paper size — it is locked in `.pneuma/config.json`. If the
-  user wants a different size, tell them to create a new workspace.
-- Don't edit tokens in `_shared/styles.css` casually. Aesthetic drift
-  compounds fast.
-- Don't modify `.claude/` — runtime-managed.
-- Don't render slides through Python (WeasyPrint / python-pptx) or Marp
-  (`marp-cli`). Kami slides here are HTML paper pages in the iframe; the
-  upstream `.md`-to-PPTX/PDF rendering paths (V1.6.0) are out of model.
-- Don't build screen-first landing pages here. Upstream kami added a
-  landing-page genre (V1.5.0+), but Pneuma's kami renders a single
-  physical paper sheet — landing pages, their carousels, and their
-  multilingual SEO companions are out of scope. Reach for webcraft
-  instead.
-
 ## Diagrams (18 self-contained templates)
 
-When a page benefits from a chart, pick the closest match from
-`_shared/assets/diagrams/`, copy the `<svg>` block out, and drop it inside
-a `<figure>` on the page. Don't link the file via `<iframe>` — diagrams
-are meant to live inline so they paginate with the surrounding text.
+Eighteen types ship in `_shared/assets/diagrams/`. Pick the closest match,
+copy the `<svg>` block out, and drop it inside a `<figure>` on the page —
+inline, never linked through an `<iframe>`, so it paginates with the text
+around it. `references/diagrams.md` §1 «Selection» maps every type to what it
+shows and §7 lists the AI-slop patterns; read it once before drawing.
 
-| User intent | Diagram | File |
-|---|---|---|
-| 架构 / system / components | Architecture | `architecture.html` |
-| 架构全景 / architecture board / 平台全景 / 系统大图 | Architecture Board | `architecture-board.html` |
-| 流程 / flowchart / branching | Flowchart | `flowchart.html` |
-| 象限 / quadrant / 2×2 matrix | Quadrant | `quadrant.html` |
-| 柱状 / bar / category compare | Bar Chart | `bar-chart.html` |
-| 折线 / line / time series | Line Chart | `line-chart.html` |
-| 环形 / donut / pie / 占比 | Donut | `donut-chart.html` |
-| 状态机 / lifecycle | State Machine | `state-machine.html` |
-| 时间线 / milestones / roadmap | Timeline | `timeline.html` |
-| 泳道 / cross-team flow | Swimlane | `swimlane.html` |
-| 树状 / hierarchy / org chart | Tree | `tree.html` |
-| 分层 / OSI / stack | Layer Stack | `layer-stack.html` |
-| 维恩 / overlap / 集合 | Venn | `venn.html` |
-| K 线 / OHLC / 股价 | Candlestick | `candlestick.html` |
-| 瀑布 / revenue bridge / decomposition | Waterfall | `waterfall.html` |
-| 时序 / sequence / API handshake / 消息交互 | Sequence | `sequence.html` |
-| 类图 / class / 类型关系 / inheritance | Class | `class.html` |
-| ER / 实体关系 / data model / schema | ER | `er.html` |
-
-Read `references/diagrams.md` once before drawing — it has the selection
-guide, kami token map, and the AI-slop anti-pattern table.
-
-For a **full-system architecture board** (platform panorama, control
-plane, roadmap, or owner map in one artifact), do not inflate the single
-architecture figure past its node budget. Give the board its own
-`<div class="page">` (or content set), start from
-`architecture-board.html`, and follow «Architecture boards» in
-`references/diagrams.md`: five fixed information layers, bands over
-cards, lines never on module edges, and a structure outline before any
-rendering.
-
-When **updating a diagram someone drew earlier** (a redraw request, a
-diagram living in a content set across sessions), follow «Maintained
-diagrams» in `references/diagrams.md`: run the evidence pass first
-(intent note, current source, a `capture` of the render, then the facts
-that define objects and boundaries), encode shipped / in-build / future
-maturity, and never redraw from memory alone.
-
-**Auto-select charts from data.** When the page content includes numeric
-data, pick the right chart type and embed it without waiting for the user
-to ask. Decision tree (first match wins, from upstream V1.5.0):
-
-| Data shape | Chart |
-|---|---|
-| Has open/high/low/close fields, or per-day price | Candlestick |
-| Has + and − contributions that sum to a total (bridge, waterfall, P&L) | Waterfall |
-| One series, values sum to ~100%, items ≤ 6 | Donut |
-| One series, values sum to ~100%, items ≥ 7 | Horizontal bar |
-| Two or more series across time (months, quarters, years) | Line |
-| One series across time, large count changes dominate (not rate) | Bar |
-| Multiple categories, same time snapshot, 2+ series | Grouped bar |
-| 2×2 strategic or priority positioning | Quadrant |
-| Hierarchical data with depth ≥ 2 | Tree |
-| Process with decision branches | Flowchart |
-| Cross-team or cross-role process with ≥ 3 actors | Swimlane |
-| Set overlaps or shared attributes between 2–3 groups | Venn |
-| Category comparison, single series, no time axis | Bar |
-
-When data fits multiple types, prefer the one that shows variance most
-clearly. Always embed inside a `<figure>` with a caption that states the
-insight, not just the data range.
-
-Before drawing, ask: **would a well-written paragraph teach the reader
+Before drawing at all, ask: **would a well-written paragraph teach the reader
 less than this diagram?** If no, don't draw.
+
+Three routes inside that reference, by trigger:
+
+| Trigger | Section |
+|---|---|
+| Full-system panorama, control plane, roadmap, or owner map in one artifact | «Architecture boards». Give it its own page or content set; do not inflate the single architecture figure past its node budget. |
+| Updating a diagram someone drew earlier — a redraw, or one living in a content set across sessions | «Maintained diagrams». Evidence pass first (intent note, current source, a `capture` of the render, then the facts that define objects and boundaries), maturity encoded, never redrawn from memory. |
+| A raster illustration that needs more detail than hand-assembled SVG holds | «Illustration briefs», plus «Image generation» below. |
+
+**Auto-select charts from data.** When the page carries numbers, pick the chart
+type yourself and embed it without waiting to be asked; `diagrams.md` §1 owns
+the mapping. Two house calls differ from the common default: a ~100% share is a
+donut only up to 6 items and a horizontal bar at 7 or more; and a single time
+series whose absolute *count* changes dominate (not rate) is bars, not a line.
+When several types fit, prefer the one that shows variance most clearly. Always
+embed inside a `<figure>` whose caption states the insight, not the data range.
 
 ## References (read on demand)
 
@@ -743,6 +706,7 @@ Load only what the task needs. Default to the lowest tier.
 | Writing tone / structure guidance | `references/writing.md` |
 | Embedding a diagram | `references/diagrams.md` |
 | Architecture board / maintained diagram | `references/diagrams.md` §3-4 — board skeleton, evidence pass, maturity encoding |
+| Drafting a deck | `references/deck-preflight.md` — the six questions to ask in one batch, then the slide content rules |
 | Building or editing a resume | `references/resume-writing.md` — bullet structure, source-and-truth pass, ownership calibration, two-page balance, recruiter pass |
 | Document headed to a home/office printer | `references/design.md` §6 — the opt-in white-paper recipe |
 | Quality pass before handing back | `references/anti-patterns.md` — the AI-document failure checklist |

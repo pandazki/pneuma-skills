@@ -78,15 +78,18 @@ Four levels: near-black (primary) > dark-warm (secondary) > olive (subtext) > st
 
 **Why**: alpha compositing over padding vs glyph areas can produce a visible double rectangle in PDF renderers (a WeasyPrint bug upstream documented); solid pre-blended hex prints identically everywhere.
 
-Ink Blue `#1B365D` over parchment `#f5f4ed`:
+Ink Blue `#1B365D` over parchment `#f5f4ed` resolves to exactly two tokens, and
+those two are the only tints the design system has:
 
-| rgba alpha | Solid hex |
-|---|---|
-| 0.08 | `#EEF2F7` |
-| 0.14 | `#E4ECF5` |
-| **0.18** | **`#E4ECF5`** ← default tag |
-| 0.22 | `#D0DCE9` |
-| 0.30 | `#D6E1EE` |
+| Token | Hex | Use |
+|---|---|---|
+| `--tag-bg` | `#E4ECF5` | the default tag swatch, and any filled brand chip |
+| `--brand-tint` | `#EEF2F7` | the lightest fill — a tag that must recede, a focal node in a diagram |
+
+Both are declared in `_shared/styles.css`. Use the token, never a hand-mixed
+`rgba()` and never a third value: a tint outside these two is drift, not a new
+idea. If a document genuinely needs one, define it once next to these and reuse
+it everywhere, rather than inlining a one-off hex on the element.
 
 ---
 
@@ -103,8 +106,9 @@ font-family: Charter, Georgia, Palatino,
 
 /* Chinese */
 font-family: "TsangerJinKai02",
-             "Source Han Serif SC", "Noto Serif CJK SC",
-             "Songti SC", "STSong",
+             "Source Han Serif SC", "Source Han Serif CN",
+             "Noto Serif CJK SC", "Noto Serif SC",
+             "Songti SC", "STSong", "SimSun",
              Georgia, serif;
 
 /* Japanese */
@@ -115,7 +119,8 @@ font-family: "YuMincho", "Yu Mincho",
              Georgia, serif;
 
 /* Korean (best-effort, like Japanese — visual QA before shipping) */
-font-family: "Source Han Serif K", "Noto Serif CJK KR",
+font-family: "Source Han Serif K", "Source Han Serif KR",
+             "Noto Serif CJK KR", "Noto Serif KR",
              "AppleMyungjo", "Nanum Myeongjo",
              "TsangerJinKai02",
              Georgia, serif;
@@ -128,6 +133,20 @@ font-family: "JetBrains Mono", "SF Mono", "Fira Code",
 ```
 
 Any font-family that may render Chinese, Japanese, or Korean must include a CJK fallback, including `@page` footer text, `pre`, `code`, and SVG labels. A pure mono stack can render missing glyph boxes in print.
+
+**CJK families lead, Latin faces trail** (upstream V1.13.0). Write the stack so
+one family draws the whole label. A Latin serif in front is not wrong for a
+page of English, but on a mixed line it hands every ideograph off separately,
+and a two-character word can come back set in two different faces. Same rule
+inside inline SVG, where a diagram is the usual place this shows up.
+
+**Family names differ by system for the same font.** `Source Han Serif SC` also
+registers as `Source Han Serif CN`, `Noto Serif CJK SC` as `Noto Serif SC`,
+`Source Han Serif K` as `Source Han Serif KR`. Keep both spellings in the chain;
+they cost nothing and are the difference between the intended face and a
+substitution nobody notices, because a substituted CJK serif produces no
+fallback boxes — the page still reads, just heavier and flatter than the
+parchment metrics were tuned for.
 
 ### Size scale (pt for print A4, px for screen)
 
@@ -181,19 +200,19 @@ Print documents are **tighter** than English web body. English web typically run
 | CJK screen body | 1.55-1.65 | 中日文 serif 在 slide scale (27-33px) 下比 print x1.33 更需松行高 |
 
 **Forbidden**:
-- 1.60+ - loose feel, web rhythm, not print
+- 1.60+ on a print body - loose feel, web rhythm, not print. The CJK screen-body row above is the one exception, and only at slide scale
 - 1.00-1.05 - lines collide except at extreme display sizes
 
 ### Letter-spacing
 
 - Body text: **0**
-- Chinese and Japanese body text with TsangerJinKai02: **0.1–0.2pt** to compensate for the font's natural density; section titles and Mincho samples: **0**
+- Chinese and Japanese body text with TsangerJinKai02: **0.3pt** — the baseline `_shared/styles.css` sets on `body`, and what every seed inherits; section titles and Mincho samples: **0**
 - Chinese lede text (14–22pt) with TsangerJinKai02: **0.03–0.06em** to open up large-body paragraphs without breaking density; EN and JA lede: **0** (only TsangerJinKai02 needs density compensation)
 - Chinese and Japanese display text (24pt+): **0.2–1pt** optical spacing for visual breathing room at large sizes; scale with font size
 - English headings may use subtle optical tightening when needed; keep it localized, never inherited by body copy
 - Small labels (< 10pt): +0.2 to +0.5pt for readability
 - All-caps overlines: +0.5 to +1pt mandatory
-- **Slide-specific**: print tracking x0.5 at slide scale. Eyebrow max 3px (not 8px), display titles -0.5pt. Large type at 40pt+ will look scattered at print tracking values
+- **Slide-specific**: halve the print value for *display* tracking — eyebrow max 3px (not 8px), display titles -0.5pt. Wide tracking falls apart at slide scale; body letter-spacing stays at the print baseline
 
 ---
 
@@ -241,9 +260,8 @@ Print uses mm/pt; slides (screen) use px. The scale relationships differ:
 
 **Key rules**:
 - Slide padding-top: 72-80px (print is 96-120px; slides are more compact)
-- Slide letter-spacing = print value / 2 (8px tracking "falls apart" on screen; halve it)
 - Macro scale (font size, padding): multiply print pt values by ~1.6
-- Micro scale (letter-spacing, border, radius): multiply by ~0.6
+- Micro scale (display tracking, border, radius): halve the print value. Body letter-spacing is not a micro value here — it stays at the print baseline
 
 ---
 
@@ -254,18 +272,46 @@ Print uses mm/pt; slides (screen) use px. The scale relationships differ:
 ```css
 .card {
   background: var(--ivory);
-  border: 0.5pt solid var(--border-cream);
-  border-radius: 8pt;
+  border-radius: 4pt;
   padding: 16pt 20pt;
 }
 
-.card-featured {
-  border-radius: 16pt;
-  box-shadow: 0 4pt 24pt rgba(0,0,0,0.05);   /* whisper shadow */
+.card-accent {                              /* when a card must be marked out */
+  border-left: 1.4pt solid var(--brand);
 }
 ```
 
-Radius scale: 4pt -> 6pt -> 8pt (default) -> 12pt -> 16pt -> 24pt -> 32pt (hero containers).
+A lifted surface is carried by its fill, not by an outline: `--ivory` against
+`--parchment` is the whole gesture. Do not close a hairline border around it —
+below 1pt a closed border plus a radius renders as a double ring. When a card
+needs more weight than its fill gives, mark **one** edge rather than ringing all
+four.
+
+Print radius: 2pt for chips, 4pt for blocks (cards, code, tables). Larger steps
+(8pt and up) belong to screen surfaces; on a printed page they read as a web
+component dropped into a document.
+
+### The brand left rule
+
+One gesture, three weights. The weight tracks what the rule is *doing*, not the
+size of the type beside it:
+
+| Weight | Role | Where it belongs |
+|---|---|---|
+| 2.5pt | Structural divide: a heading that opens a section or document | `.section-title`, chapter heads, changelog version heads |
+| 2pt | Aside: a passage lifted out of the reading flow | `.callout`, `blockquote` / `.quote` |
+| 1.4pt | Edge of an already-filled block, where the fill carries the weight | a marked-out card, an analyst box, an executive summary |
+
+Pick the tier by role, then leave the number alone. A fourth value is not a new
+idea, it is drift — the same `.callout` at two widths across two pages is what
+teaches a reader that the number is theirs to choose. Most documents need only
+the 2pt tier; the structural weight is for documents that get scanned for
+boundaries rather than read straight through, and heads in an ordinary document
+carry their hierarchy through type alone.
+
+The callout and the quote share the rule and differ in fill: a callout has the
+ivory ground, a quotation does not. That is the whole distinction, and it is
+worth keeping — two shapes for "this is set apart" on one page is one too many.
 
 ### Buttons
 
@@ -291,45 +337,39 @@ Radius scale: 4pt -> 6pt -> 8pt (default) -> 12pt -> 16pt -> 24pt -> 32pt (hero 
 
 ### Tags
 
-Three tiers from weak to strong visual weight:
+Two tiers, both on registered tokens.
 
-**Lightest solid** (default, most restrained):
+**Default**:
 ```css
 .tag {
-  background: #EEF2F7;      /* 0.08 solid equivalent */
+  background: var(--tag-bg);       /* #E4ECF5 */
   color: var(--brand);
   font-size: 9pt;
   font-weight: 600;
-  padding: 1pt 5pt;
-  border-radius: 2pt;
+  padding: 1pt 6pt;
+  border-radius: 4pt;
   letter-spacing: 0.4pt;
   text-transform: uppercase;
 }
 ```
 
-**Standard solid** (when more contrast needed):
+**Recede** (dense pages, or several tags in one row):
 ```css
 .tag {
-  background: #E4ECF5;      /* 0.18 solid equivalent */
-  color: var(--brand);
-  padding: 1pt 6pt;
-  border-radius: 4pt;
-}
-```
-
-**Gradient brush** (only when "hand-painted" feel is required - use sparingly):
-```css
-.tag {
-  background: linear-gradient(to right, #D6E1EE, #E4ECF5 70%, #EEF2F7);
+  background: var(--brand-tint);   /* #EEF2F7 */
   color: var(--brand);
   padding: 1pt 5pt;
   border-radius: 2pt;
 }
 ```
 
-**Philosophy**: tint depth should be one step lighter than what decoration wants. Prefer pale over saturated. In iteration, "gradient brush" often steals focus - lightest solid wins most of the time.
+**The test**: if the reader's eye lands on the tag's background shape before the
+text inside it, the tag is too strong. That is why there is no third, richer
+tier — a gradient tag is safe engineering-wise (the whole chip rasterizes as one
+bitmap, no alpha compositing), but at tag size it oversells every time.
 
-**Never**: `background: rgba(201, 100, 66, 0.18)` - WeasyPrint double-rectangle bug.
+**Never**: `background: rgba(27, 54, 93, 0.18)` — alpha over padding vs glyph
+areas is the double-rectangle bug. Solid tokens only.
 
 ### Lists
 
@@ -368,8 +408,7 @@ ul.dash li::before {
 ```css
 .code-block {
   background: var(--ivory);
-  border: 0.5pt solid var(--border-cream);
-  border-radius: 6pt;
+  border-radius: 4pt;              /* fill only; no border, see «Cards» */
   padding: 10pt 14pt;
   font-family: var(--mono);
   font-size: 9pt;
@@ -445,8 +484,19 @@ Key numbers side-by-side (one-pager header, resume top, portfolio cover):
   color: var(--brand);
   font-variant-numeric: tabular-nums;   /* align digits in columns */
 }
-.metric-label { font-size: 9pt; color: var(--olive); }
+.metric-label { font-size: 9pt; color: var(--olive); white-space: nowrap; }
 ```
+
+This inline, baseline-shared form is the print one, and it holds only because
+print labels are fixed short strings. A label that wraps to a second line dangles
+below the shared baseline and reads broken, so set `white-space: nowrap` and let
+an over-long label surface as overflow during the fit loop instead of silently
+wrapping. Fix it by shortening the words, not by allowing the wrap.
+
+Stack instead (`flex-direction: column`) whenever a label genuinely can wrap —
+translated copy, a metric strip along the bottom of a slide, anything where one
+multi-line label among three columns would break the row. Stacked, every number
+sits on one top edge and a wrap only extends its own column downward.
 
 ### Section Header (`.kami-section-header`)
 
@@ -478,7 +528,7 @@ Lightweight section opener for content slides. Has an eyebrow and a horizontal r
 }
 .kami-section-header .rule {
   height: 1px;
-  background: var(--border-warm);
+  background: var(--border);
   margin-bottom: 36px;             /* gap below rule >= 36px (>= 2x the gap above) */
 }
 .kami-section-header h1 {
@@ -499,7 +549,7 @@ For displaying pseudocode or code snippets in slides. More structured than a pla
 ```css
 .kami-code-card {
   background: var(--ivory);
-  border: 1px solid var(--border-cream);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 20px 24px;
   overflow: hidden;
@@ -841,9 +891,13 @@ html, body { background: #ffffff; }   /* was var(--parchment) */
 Everything else is unchanged: ink-blue accent, warm text grays, and `--border`
 hairlines all read fine on white. Leave the `--parchment` token itself alone (any
 `var(--parchment)` section fill then reads as an intentional warm band on white).
-A lifted surface that separated from parchment by fill *alone* (rare, most already
-carry a `0.5pt var(--border)` edge) wants that border added so it holds an edge on
-white.
+
+This is the one place the fill-only card rule («Cards») bends. On parchment,
+ivory against the page *is* the lift; on white the two are close enough that a
+card can dissolve. Where that happens, add a `0.5pt solid var(--border)` edge to
+that document's card, code, and table surfaces — inside this recipe, in this
+document's own stylesheet, and only for the surfaces that actually lost their
+edge. It is a print concession, not a new default.
 
 Notes:
 - Page-fit contracts are unaffected; `kami-fit.json` reads the same. Still inspect
@@ -858,44 +912,44 @@ Notes:
 
 When you're not sure "what should I use":
 
+The answer is almost always a component one of the seed documents already ships.
+Open the closest one, copy that block, and edit its content. Assembling a fresh
+container out of a recipe is how a page ends up carrying three unrelated
+emphasis languages at once.
+
 | Need | Use |
 |---|---|
 | Big headline | serif 500, size by level, line-height 1.10-1.30 |
-| Reading body (EN) | serif 400, 9.5-10pt, line-height 1.55 |
-| Reading body (CN) | sans 400, 9.5-10pt, line-height 1.55 |
+| Reading body | serif 400, 9.5-10pt, line-height 1.55. Every language: `--sans` aliases `--serif`, so one page carries one typeface |
 | Emphasize a number | `color: var(--brand)`, no bold |
-| Divide two sections | 2.5pt brand left bar, or 0.5pt warm-gray dotted |
-| Quote someone | 2pt brand left border + olive color |
-| Show code | ivory background + 0.5pt border + 6pt radius + mono |
-| Primary vs secondary button | Primary = brand fill + ivory text; Secondary = warm-sand + dark-warm |
-| Highlight one card in a list | `border: 0.5pt solid var(--brand)` or `border-left: 3pt solid var(--brand)` |
-| Start a chapter | serif heading + 2.5pt brand left bar |
+| Raise a passage above body text | `.callout`: ivory fill + 2pt brand left rule + 3pt radius. One raised form per page, reused — not a new shape each time |
+| Quote someone | Same 2pt left rule, olive text, **no fill**. The rule is shared; the fill is what separates a quotation from a raised passage |
+| Start a section | `.section-title`: serif + 2.5pt brand left bar (see «The brand left rule» for when the bar is earned) |
+| Show code | ivory fill, 4pt radius, mono. No border |
+| Show key figures | `.metric`: baseline row, transparent, no container. Numbers carry themselves; a filled card around them is the most common drift |
+| Mark out one item in a list | One edge: `border-left: 1.4pt solid var(--brand)`. Never a full ring |
 | Cover page | Display-size heading + right-aligned author/date + heavy whitespace |
-| Data card | ivory background + 8pt radius + serif big number + sans small label |
+| Primary vs secondary button | Primary = brand fill + ivory text; Secondary = warm-sand + dark-warm. Printed documents have no buttons — this is for the rare on-screen surface |
 
-Not on this table -> return to first principles: **serif carries authority, sans carries utility, warm gray carries rhythm, ink-blue carries focus**.
+Nothing here fits -> return to first principles: **serif carries authority, sans
+carries utility, warm gray carries rhythm, ink-blue carries focus**. Then add the
+smallest thing that works, and prefer an existing class over a new one.
 
 ---
 
 ## 8. Deck Recipe
 
-Slides in kami use WeasyPrint HTML to PDF as the primary rendering path. The pptx path (`slides.py`) is available as a fallback when the user explicitly requires an editable PPTX file.
-
-### Architecture
-
-**Why WeasyPrint over python-pptx:** pptx output passed through LibreOffice loses CJK font weight, tracking, and glyph spacing. WeasyPrint embeds fonts exactly, giving pixel-level CSS control.
-
-Use `assets/templates/slides-weasy.html` (CN) or `assets/templates/slides-weasy-en.html` (EN) as the starting point.
+A deck here is HTML paper pages in the viewer — one `<div class="page">` per
+slide, at the paper size locked for the workspace. Read `deck-preflight.md`
+before drafting; this section owns the visual grammar once drafting starts.
 
 ### Page size
 
-Default `280mm 158mm`. Change in `@page` and `.slide` together.
-
-| Size | `@page` | Use when |
-|---|---|---|
-| Compact (default) | `280mm 158mm` | Standard density, fits most content |
-| Standard | `297mm 167mm` | Slightly more room per slide |
-| Wide | `338mm 190mm` | Heavy content, many data points |
+There is no slide-size decision to make. The workspace's locked paper size *is*
+the slide, and a Landscape workspace is what makes a deck read as a deck. So the
+usual escape hatch — "shrink the page until the content fits" — does not exist:
+a slide that overruns gets its content cut or split, never its geometry changed.
+`kami-fit.json` is the referee, exactly as for any other document.
 
 ### Typography
 
@@ -979,7 +1033,7 @@ table.data td:first-child {
 | No section divider slides | Use `.eyebrow` for section numbering instead; saves one slide per section |
 | No CJK parentheses | Replace `（...）` with `·` or `,` |
 | One line per bullet | Trim until each item fits on one line; never let it wrap |
-| Empty space ≥50% | Draft defect. Order: merge with neighbor slide > pin `.co` callout > add a chart that earns the space. Shrinking page size is a last resort and must apply to the whole deck, not per slide. |
+| Empty space ≥50% | Draft defect. Order: merge with neighbor slide > pin `.co` callout > add a chart that earns the space. The page cannot shrink here, so there is no fourth option. |
 | Empty space 25-50% | Acceptable if the slide has a pinned `.co` callout. Otherwise add one supporting bullet or a small inline figure. Never pad with filler prose. |
 | Cover | No horizontal rule; title centered `38pt`; subtitle on one line; bottom meta centered |
 
@@ -989,18 +1043,20 @@ table.data td:first-child {
 |---|---|
 | Content overflows to next page | Add `max-height` or trim content |
 | 2×2 columns misaligned | Switch from CSS Grid to `table.t2x2` |
-| Large blank at slide bottom | First check item count (target 3-5 items per slide). If content is genuinely short, pin a `.co` callout. Only reduce page size when the entire deck is uniformly sparse. |
+| Large blank at slide bottom | First check item count (target 3-5 items per slide). If content is genuinely short, pin a `.co` callout. If the whole deck is uniformly sparse, it is a content problem, not a geometry one. |
 | CJK text looks tight | Add `letter-spacing: 0.3pt` |
 
 ### Core principles
 
+Everything else in this section already states its own rule once. Only two are
+worth carrying out of it as principles:
+
 1. `letter-spacing` matters more than `font-size` for CJK density
-2. 2×2 layouts use `table`, not grid
-3. No section divider slides
-4. No white card panels on parchment; use border lines to divide
-5. Callout pins to bottom; whitespace above is the design
-6. Each bullet fits one line
-7. Shrink page first before adding more content
+2. No white card panels on parchment; use border lines to divide
+
+The slide *content* rules (ghost-deck test, one evidence shape, one line per
+bullet, no divider slides) live in `deck-preflight.md`, which is where you
+should already be before drafting a deck.
 
 ---
 

@@ -30,7 +30,7 @@ const SAFE_MARGINS_MM: Record<string, { top: number; side: number; bottom: numbe
 
 const kamiManifest: ModeManifest = {
   name: "kami",
-  version: "1.5.0",
+  version: "1.6.0",
   displayName: {
     en: "Kami",
     "zh-CN": "Kami",
@@ -50,6 +50,14 @@ const kamiManifest: ModeManifest = {
     de: "Webdesign auf Papier-Leinwand mit warmer Pergament-Ästhetik —— Designsprache übernommen von tw93/kami (MIT)",
   },
   changelog: {
+    "1.6.0": [
+      "Synced upstream tw93/kami V1.10.0 → V1.13.0 (Verified Typography / Safer Output / Steadier Proof)",
+      "All 18 diagram templates now name their own CJK-first font stack per label — an extracted SVG keeps one typeface wherever it lands, instead of splitting a Chinese word across two faces",
+      "Brand tints collapse to two registered tokens, cards and code drop their hairline borders, and a new brand-left rule fixes the three bar weights by role",
+      "New deck pre-flight reference — six questions asked in one batch, then the ghost-deck and one-evidence-shape rules, before a slide gets drafted",
+      "Plan before layout: the layout note now records the page target and the checks the document must pass, and the closing message answers them item by item",
+      "Weak evidence no longer passes — hidden text, an unresolvable image, and an empty page cannot satisfy a check, and a visual fix now names what it leaves untouched",
+    ],
     "1.5.0": [
       "Synced upstream tw93/kami V1.7.3 → V1.10.0 (Grounded Resumes / Mermaid Diagrams / Print Ready / Living Diagrams / Reliable Documents)",
       "Four new diagram templates — sequence, class, ER and a report-scale architecture board (18 total)",

@@ -109,6 +109,48 @@ filler; empty space is more honest than vacuous text.
 
 ---
 
+## Per-genre density floors
+
+The sparse tactics above answer "this page is too empty". These thresholds
+answer the prior question — **is it?** They apply to multi-page genres only
+(long-doc, portfolio, slides, equity report, changelog); resume, one-pager, and
+letter have their own length contracts, and cover, contents, and sign-off pages
+are exempt everywhere.
+
+Body-page fill target is **60–80%**, computed as
+`content_height_mm / paper_height_mm`. The `sparse` status
+(`overflow_mm < -50`, roughly under 83% on A4) already catches the worst cases;
+the floors below decide the borderline page.
+
+**Items-per-page contract** (thresholds from upstream V1.5.0):
+
+| Genre | Typical body page | Hard floor (merge if below) |
+|---|---|---|
+| Slides | 1 assertion title + 3–5 supporting items, or 1 chart + 2–3 callouts | <3 items and no chart -> merge into adjacent slide |
+| Long doc | 1 chapter heading + 2–4 paragraphs + at most 1 figure | Chapter renders <40% page -> merge into neighbor |
+| Portfolio | 1 project header + 1 hero image + 3–5 outcome bullets | No image and <3 outcomes -> merge with adjacent project |
+| Equity report | 1 section + 1 table/chart + supporting prose | Only a 2-row table on the page -> combine sections |
+| Changelog | 1 version block + 4–8 entries | Version has <4 entries -> place on the same page as the prior version |
+
+**Sparse-page merge rule.** A body page that is both `sparse` *and* under its
+genre's floor gets, in order:
+
+1. Merge upward into the previous section.
+2. Merge downward into the next section.
+3. Promote a list to a small diagram or table that earns the space.
+4. Pin a `.co` callout to the bottom (slides only). Whitespace above a pinned
+   callout is intentional, not sparse.
+
+Forbidden ways to "fill" it: filler prose, the heading restated as a sentence,
+invented statistics, the prior page reworded. If none of the four options
+apply, the page should not exist — delete the `<div class="page">` block.
+
+**Last-page exemption.** The last body page is allowed 40–60% fill; forcing
+balance there usually means padding. Cover and closing colophon may sit at any
+fill level.
+
+---
+
 ## The iteration loop
 
 After every meaningful `Write` or `Edit` call:
