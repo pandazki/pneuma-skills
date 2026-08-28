@@ -1,174 +1,145 @@
 ---
 name: init
-description: "Sets up a project for design work. Runs a multi-round discovery interview when context is missing and writes PRODUCT.md (strategic: users, brand, principles); offers DESIGN.md (visual: colors, typography, components) when code exists; then recommends the best commands to run next. Every other command reads these files before doing work. Use once per project. `teach` is a deprecated alias for this command."
+description: "Sets up a project for design work. Explores the workspace, runs a focused interview for product truth, and writes PRODUCT.md (users, purpose, positioning, evidence on hand, brand commitments, principles), then recommends the best commands to run next. It never invents a visual world and never writes DESIGN.md — the `document` command records that. Use once per project. `teach` is a deprecated alias for this command."
 argument-hint: "[target]"
 user-invocable: true
 ---
 
-# Init Flow
+# Init flow
 
-The setup command for a project. One codebase crawl feeds everything it writes:
+`init` captures durable product truth in `PRODUCT.md`. It does not invent a visual world and it does not write `DESIGN.md`: the new-work flow in [cmd-craft](cmd-craft.md) creates or expands one, and [cmd-document](cmd-document.md) records an incumbent one. `.impeccable.md` is the accepted legacy single-file equivalent of `PRODUCT.md` — pneuma-webcraft keeps reading and updating it so existing workspaces don't break.
 
-- **PRODUCT.md** (strategic): root project file for register, target users, product purpose, brand personality, anti-references, strategic design principles. Answers "who/what/why".
-- **DESIGN.md** (visual): root project file for visual theme, color palette, typography, components, layout. Follows the [DESIGN.md format spec](https://raw.githubusercontent.com/google-labs-code/design.md/main/docs/spec.md). Answers "how it looks". The `document` command writes this one (see [cmd-document](cmd-document.md)).
-- **`.impeccable.md`** (legacy single-file context): pneuma-webcraft accepts this filename for back-compat with existing user workspaces. New projects should split into PRODUCT.md + DESIGN.md, but if an existing `.impeccable.md` is already present, treat it as PRODUCT.md's content and continue to update it in place.
-
-It closes by pointing the user at the best command to run next. Every other webcraft command reads PRODUCT.md and DESIGN.md (whichever exist) before doing any work.
-
-`teach` is the deprecated name for this command: if the user invokes `teach`, follow this flow as if they ran `init`.
+Every other webcraft command reads `PRODUCT.md` and `DESIGN.md` (whichever exist) before doing any work. `teach` is the deprecated name for this command: a `teach` invocation runs this flow unchanged.
 
 ## Step 1: Load current state
 
-Check what already exists. Use the Read tool against the project root (the active content set and the workspace root).
+Read the project root and the active content set with your `Read` tool: `PRODUCT.md`, `DESIGN.md`, a legacy `.impeccable.md`, and any `README.md` or brand docs. Update the file that already carries authority instead of creating a competing one.
 
-- Is there a `PRODUCT.md` or `DESIGN.md`?
-- Is there a legacy `.impeccable.md`? (single-file context from earlier pneuma-webcraft sessions)
-- Anything else (`README.md`, brand docs)?
+- **No `PRODUCT.md`:** explore, interview, and write it.
+- **`PRODUCT.md` exists:** ask what product knowledge is stale or missing; do not reopen confirmed fields without a reason.
+- **Legacy `PRODUCT.md`:** add only durable missing facts. A `## Register` section or a `register:` field is the retired brand/product split — replace it with the confirmed visitor mode rather than carrying both.
+- **Legacy `.impeccable.md` and no `PRODUCT.md`:** keep updating `.impeccable.md` in place with the structure in Step 4. Offer to migrate it to `PRODUCT.md` only if the user agrees.
+- **Only `DESIGN.md` exists:** leave it untouched and create `PRODUCT.md`.
+- **Redesign or rebrand request:** preserve confirmed product truth unless the user changes it. Visual replacement happens later in the new-work flow, not here.
 
-Decision tree:
-- **Neither file exists (empty project or no context yet)**: do Steps 2-4 (write PRODUCT.md, or `.impeccable.md` for back-compat — see Step 4), then decide on DESIGN.md based on whether there's code to analyze.
-- **PRODUCT.md exists, DESIGN.md missing**: skip to Step 5 and offer to run the `document` command for DESIGN.md.
-- **PRODUCT.md exists but has no `## Register` section (legacy)**: add it. Infer a hypothesis from the codebase (see Step 2), confirm with the user, write the field.
-- **Both exist**: {{ask_instruction}} Ask which file to refresh. Skip the one the user doesn't want changed.
-- **Just DESIGN.md exists (unusual)**: do Steps 2-4 to produce PRODUCT.md.
-- **`.impeccable.md` exists but no PRODUCT.md/DESIGN.md**: keep updating `.impeccable.md` (Step 4 falls back to it for back-compat). Optionally offer to migrate by renaming `.impeccable.md` to `PRODUCT.md` and running the `document` command for DESIGN.md; only do it if the user agrees.
+Never silently overwrite an existing file, and never offer `DESIGN.md` during init. If another request invoked init as a setup blocker, finish `PRODUCT.md` and resume that request: your own writes are the freshest source, so no reload is needed. New visual work continues in [cmd-craft](cmd-craft.md); `shape` resumes its task interview first, because init is not a substitute for the task-specific brief.
 
-Never silently overwrite an existing file. Always confirm first.
+## Step 2: Explore the project
 
-If init was invoked as a setup blocker by another command (e.g. the user ran `craft landing page` with no PRODUCT.md), pause that command here. Complete init, then resume the original command. Your own writes are the freshest source; no reload needed. For craft, resume into shape next; init creates project context, but it is not a substitute for the task-specific shape interview and confirmed design brief.
+Before asking anything, scan enough that the user never repeats a fact the workspace already states: README and product docs; package and config files; pages, routes, content sets, and roles; names, logos, and legal or proof assets; existing design tokens, CSS variables, and components; accessibility signals.
 
-## Step 2: Explore the codebase
+Treat repository evidence as a hypothesis, not user approval. Note the visual maturity you find without documenting, extending, or replacing that world.
 
-Before asking questions, thoroughly scan the project to discover what you can. This single crawl feeds PRODUCT.md **and** DESIGN.md, so be thorough once rather than re-scanning later:
+Form a **visitor-mode hypothesis** (Persuade / Operate / Read / Experience — see SKILL.md's Modes section) from what the code shows:
 
-- **README and docs**: Project purpose, target audience, any stated goals
-- **Package.json / config files**: Tech stack, dependencies, existing design libraries
-- **Existing components**: Current design patterns, spacing, typography in use
-- **Brand assets**: Logos, favicons, color values already defined
-- **Design tokens / CSS variables**: Existing color palettes, font stacks, spacing scales
-- **Any style guides or brand documentation**
+- Persuade signals: `/`, `/about`, `/pricing`, hero sections, big typography, scroll-driven sections, landing-page-shaped content.
+- Operate signals: `/app/*`, `/dashboard`, `/settings`, forms, data tables, side or top nav, app-shell components.
+- Read signals: `/docs/*`, `/blog/*`, changelogs, long-form article templates, tables of contents.
+- Experience signals: galleries, case-study pages, full-bleed media, work indexes where the artifact leads.
 
-Also form a **register hypothesis** from what you find:
+It stays a hypothesis; Step 3 confirms it. Also note rough edges worth a follow-up command (thin hierarchy, flat palette, missing error or empty states, dull copy) — Step 5 turns them into recommendations without re-analyzing.
 
-- Brand signals: `/`, `/about`, `/pricing`, `/blog/*`, `/docs/*`, hero sections, big typography, scroll-driven sections, landing-page-shaped content.
-- Product signals: `/app/*`, `/dashboard`, `/settings`, `/(auth)`, forms, data tables, side/top nav, app-shell components.
+## Step 3: Interview for product truth
 
-Register is a hypothesis at this point, not a decision; Step 3 confirms it.
+{{ask_instruction}} Ask only about material gaps the workspace and the original request do not already answer with strong evidence. Keep rounds to at most three focused questions, and require one real answer or approval round before writing a new `PRODUCT.md`. Confirm every inference; never synthesize `PRODUCT.md` from the original prompt alone.
 
-Note what you've learned and what remains unclear. Also note any rough edges worth a follow-up command (thin hierarchy, flat or gray palette, missing error/empty states, dull copy); Step 6 turns these into concrete recommendations without re-analyzing.
+Whether anyone can answer is a mechanical test, not a judgment call. Probe once with the real first round before concluding no one is there. Only after that probe goes unanswered may you infer from the explicit brief — and then you label every inferred fact in `PRODUCT.md` and disclose the substitution in your first reply, not your last.
 
-## Step 3: Ask strategic questions (for PRODUCT.md)
+Start with the unknowns that most change future product decisions:
 
-{{ask_instruction}} Ask only about what you couldn't infer from the codebase.
+1. Who is the primary user, in what situation, and what job are they doing?
+2. What does the product make possible, and what is its meaningfully different mechanism or position?
+3. What durable constraints, assets, evidence, or product facts must future work preserve?
 
-### Interview mode, not confirmation mode
+Confirm the visitor mode separately when Step 2's signal is genuinely split (a product with a big marketing landing, say): lead with the hypothesis — *"this reads as an Operate surface, does that match your intent?"* — rather than offering a four-option menu. The mode is decided per surface and one project can hold all four; `PRODUCT.md` carries the primary one.
 
-If the workspace is empty or the user's brief is sparse, run a short interview before proposing PRODUCT.md. Do **not** turn a one-sentence request into a complete inferred PRODUCT.md and ask for blanket confirmation.
+When the workspace has no framework or scaffold and the request implies building, the stack is a user decision, not yours: ask once whether they want plain static HTML/CSS, a specific framework, or your recommendation, plus any deploy target that constrains the answer. Record the outcome under `## Stack`, including "delegated" when they leave it to you, so later work knows the choice was offered.
 
-- Ask **2-3 questions per round**, then wait for answers.
-- Use inferred answers as hypotheses or options, not as finished facts.
-- Complete at least one real user-answer round before drafting PRODUCT.md, unless every required answer is directly discoverable from repo docs.
-- Round 1 should establish register, users/purpose, and desired outcome.
-- Round 2 should establish brand personality or references, anti-references, and accessibility needs.
+Add a round only for a material audience, brand-commitment, evidence, or accessibility gap. Record undecided facts instead of inventing them.
 
-### Minimum viable interview
+Do not ask for an aesthetic direction, emotional feel, visual references, colors, typography, or style during init. If the user volunteers a binding visual constraint, record it without expanding it.
 
-Ask enough to complete PRODUCT.md. At minimum, cover register confirmation, users and purpose, brand personality, anti-references, and accessibility needs unless each answer is directly discoverable from repo context. After at least one interview round, you may propose inferred answers, but the user must confirm them before you write PRODUCT.md. Never synthesize PRODUCT.md from the original task prompt alone.
+### What belongs here
 
-### Register (ask first; it shapes everything below)
+- users, jobs, workflows, purpose, success, positioning, and operating context;
+- capabilities, constraints, terminology, evidence, and accessibility;
+- confirmed voice, assets, and brand commitments.
 
-Every design task is either **brand** (marketing, landing, campaign, long-form content, portfolio: design IS the product) or **product** (app UI, admin, dashboards, tools: design SERVES the product).
+### What does not belong here
 
-If Step 2 produced a clear hypothesis, lead with it: *"From the codebase, this looks like a [brand / product] surface. Does that match your intent, or should we treat it differently?"*
-
-If the signal is genuinely split (e.g. a product with a big marketing landing), {{ask_instruction}} Ask which register describes the **primary** surface. The register can be overridden per task later, but PRODUCT.md carries one default.
-
-### Users & Purpose
-- Who uses this? What's their context when using it?
-- What job are they trying to get done?
-- For brand: what emotions should the interface evoke? (confidence, delight, calm, urgency)
-- For product: what workflow are they in? What's the primary task on any given screen?
-
-### Brand & Personality
-- How would you describe the brand personality in 3 words?
-- Reference sites or apps that capture the right feel? What specifically about them?
-  - Push for specific named references with the *specific* thing about them that fits this brand, not generic "modern" adjectives or category-bucket lanes.
-- What should this explicitly NOT look like? Any anti-references?
-
-### Accessibility & Inclusion
-- Specific accessibility requirements? (WCAG level, known user needs)
-- Considerations for reduced motion, color blindness, or other accommodations?
-
-Skip questions where the answer is already clear. **Do NOT ask about colors, fonts, radii, or visual styling here.** Those belong in DESIGN.md, not PRODUCT.md.
+- visual worlds, palettes, typography, components, or page concepts;
+- visitor-mode strategy per surface, narrative, CTA or proof sequence;
+- invented testimonials, customers, benchmarks, pricing, or deployment claims;
+- a requirement to decide every optional field.
 
 ## Step 4: Write PRODUCT.md
 
-Write PRODUCT.md only after the user has confirmed the strategic answers from Step 3. If an inferred answer is uncertain or unconfirmed, ask before writing.
+Write only confirmed facts and explicitly marked open decisions. Omit an irrelevant section rather than filling it with generic prose.
 
-### Where to write
+Where it goes:
 
-- **Greenfield (no prior file)**: write `PRODUCT.md` at the project root.
-- **Existing `.impeccable.md` (legacy back-compat)**: update `.impeccable.md` in place using the structure below — pneuma-webcraft accepts this filename so existing user workspaces don't break. Optionally offer to migrate to `PRODUCT.md` + `DESIGN.md`; only do it if the user agrees.
-- **Existing `PRODUCT.md`**: merge with the existing content rather than starting from scratch.
-
-### Structure
+- **Greenfield:** write `PRODUCT.md` at the project root.
+- **Existing `PRODUCT.md`:** merge into it rather than starting from scratch.
+- **Legacy `.impeccable.md`:** update it in place with the same structure; it already serves as that workspace's design-context source of truth.
 
 ```markdown
 # Product
 
-## Register
+<!-- impeccable:product-schema 1 -->
 
-product
+## Platform
+
+web
+
+## Stack
+[Greenfield only: the user's answer to the stack question, e.g. "static HTML/CSS", "Astro", or "delegated: <what you chose and why>". Omit the section when an existing codebase already answers it.]
 
 ## Users
-[Who they are, their context, the job to be done]
+[Primary users, their situation, and job. Add other audiences only when confirmed.]
 
 ## Product Purpose
-[What this product does, why it exists, what success looks like]
+[What the product does, why it exists, and what success means.]
 
-## Brand Personality
-[Voice, tone, 3-word personality, emotional goals]
+## Positioning
+[The product mechanism or claim a neighboring product could not truthfully copy.]
 
-## Anti-references
-[What this should NOT look like. Specific bad-example sites or patterns to avoid.]
+## Operating Context
+[Workflows, environments, tools, documents, materials, and rituals that are factual parts of using or evaluating the product.]
 
-## Design Principles
-[3-5 strategic principles derived from the conversation. Principles like "practice what you preach", "show, don't tell", "expert confidence". NOT visual rules like "use OKLCH" or "magenta accent".]
+## Capabilities and Constraints
+[Confirmed functionality, technical constraints, terminology, and explicitly undecided product facts.]
+
+## Brand Commitments
+[Existing name, voice, assets, personality, identity constraints, and references the user explicitly made binding. Omit when none exist.]
+
+## Evidence on Hand
+[Real content, data, demonstrations, testimonials, case studies, press, or assets, with paths where applicable. State absences that future work must not fabricate.]
+
+## Product Principles
+[Three to five durable strategic principles derived from confirmed answers; no visual recipes.]
 
 ## Accessibility & Inclusion
-[WCAG level, known user needs, considerations]
+[Known user needs or required standard. Omit when no product-specific requirement was established.]
 ```
 
-Register is either `brand` or `product` as a bare value. No prose, no commentary.
+Platform is the bare value `web` — webcraft renders web pages in the viewer, so there is no other value to record. Preserve useful legacy headings. Write the file before any visual-world or surface-concept work.
 
-When writing to legacy `.impeccable.md`, keep the same section structure; the file already serves as the project's design-context source of truth.
+Copy the `impeccable:product-schema` comment verbatim, including when you update an older file. It records which version of the product record this file follows, so a later version can tell a deliberately short record from one written before a section existed, and never proposes an interview the user has already sat through. Change the number only when this reference's template changes it.
 
-## Step 5: Decide on DESIGN.md
+### Completion gate
 
-Offer the `document` command (see [cmd-document](cmd-document.md)) either way. Two paths:
+Before entering the new-work flow or resuming `shape`, verify that `PRODUCT.md` (or the legacy `.impeccable.md`) exists and holds the confirmed product record. If the file is absent, init is incomplete. Do not substitute interview notes, a planning packet, or later design prose for the file.
 
-- **Code exists** (CSS tokens, components, a running site): "I can generate a DESIGN.md that captures your visual system (colors, typography, components) so future work stays on-brand. Want to do that now?"
-- **Pre-implementation** (empty project): "I can seed a starter DESIGN.md from five quick questions about color strategy, type direction, motion energy, and references. You can re-run once there's code, to capture the real tokens. Want to do that now?"
+## Step 5: Wrap up or resume
 
-If the user agrees, hand off to the `document` command (it auto-detects scan vs seed). Load its reference and follow that flow.
+Summarize tersely: the visitor mode captured, what was written, the three to five product principles that will guide future work, and any fact deliberately left undecided. Do not offer `DESIGN.md` merely because it is missing.
 
-If the user prefers to skip, mention they can run the `document` command any time later.
+Then recommend the next action from the actual project state, drawn from what your Step 2 crawl already surfaced — do not run a fresh analysis. Offer the two to four most relevant, not a menu dump, and name the exact toolbar command:
 
-## Step 6: Recommend starting points, then wrap up
-
-Summarize tersely:
-- Register captured (brand / product)
-- What was written (PRODUCT.md, DESIGN.md, updated `.impeccable.md`, or a subset)
-- The 3-5 strategic principles from PRODUCT.md that will guide future work
-- If DESIGN.md is pending, one line on how to generate it later
-
-Then recommend the **best commands to run next**, drawn from what your Step 2 crawl already surfaced. Do not run a fresh analysis here; surface observations you already have. Tailor to register and to what you saw, offer the 2-4 most relevant (not a menu dump), and name the exact toolbar command. Group by intent:
-
-- **Build something new**: `craft <feature>` (shape, then build end-to-end) or `shape <feature>` (plan first). Lead with this for empty or early-stage projects.
-- **Improve what's there**: name the specific surface. `critique <page>` for a scored UX review; `audit <area>` for a11y / perf / responsive checks; `polish <component>` for a pre-ship pass. When the crawl flagged a specific weakness, point the matching command at it: thin hierarchy or spacing → `layout`, flat or gray palette → `colorize`, missing error / empty states → `harden` or `onboard`, dull or unclear copy → `clarify`.
+- **Empty or early project:** ask naturally for the surface to build, or `shape <surface>` when the user wants a confirmed brief without implementation. The new-work flow establishes a visual world only when the requested work needs one.
+- **Existing coherent interface without `DESIGN.md`:** `document`, if the user wants the incumbent system recorded independently of a new build.
+- **Existing surface needing work:** name the most relevant scoped command. When the crawl flagged a specific weakness, point the matching command at it: thin hierarchy or spacing → `layout`, flat or gray palette → `colorize`, missing error or empty states → `harden` or `onboard`, dull or unclear copy → `clarify`, a scored UX review → `critique`, accessibility / performance / responsive checks → `audit`.
 
 The full command menu lives in the viewer toolbar; keep this list short and pointed.
 
-If init was invoked as a blocker by another command (e.g. the user ran `polish` with no PRODUCT.md), resume that original task now. Your own writes are the freshest source; no reload needed.
-
-Optionally {{ask_instruction}} Ask whether they'd like a brief summary of PRODUCT.md appended to {{config_file}} for easier agent reference. If yes, append a short **Design Context** pointer section there.
+If init was invoked as a blocker by another command (the user ran `polish` with no `PRODUCT.md`, say), resume that original task now. The new-work flow owns every later visual decision.

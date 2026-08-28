@@ -1,13 +1,13 @@
 ---
 name: critique
-description: "Evaluate design from a UX perspective, assessing visual hierarchy, information architecture, emotional resonance, cognitive load, and overall quality with quantitative scoring, persona-based testing, automated anti-pattern detection, and actionable feedback. Use when the user asks to review, critique, evaluate, or give feedback on a design or component."
+description: "Evaluate design from a UX perspective, assessing visual hierarchy, information architecture, emotional resonance, cognitive load, and overall quality with quantitative scoring, persona-based testing, a systematic pattern-catalog scan, and actionable feedback. Use when the user asks to review, critique, evaluate, or give feedback on a design or component."
 argument-hint: "[area (feature, page, component...)]"
 user-invocable: true
 ---
 
 ## MANDATORY PREPARATION
 
-Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `init` command first (see [cmd-init](cmd-init.md)). Additionally gather: what the interface is trying to accomplish.
+Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it carries the setup steps, the visitor modes, and the Context Gathering Protocol. The quality floor and the ban list live in [craft-floor.md](craft-floor.md); load it immediately before you edit UI. If no design context exists yet, you MUST run the `init` command first (see [cmd-init](cmd-init.md)). Additionally gather: what the interface is trying to accomplish.
 
 ---
 
@@ -23,6 +23,9 @@ Resolve one stable target, run two independent assessments, synthesize a design 
 - Assessment A must finish before Assessment B's findings enter the parent synthesis context. The pattern catalog is systematic, but it still anchors judgment.
 - A skipped pattern-catalog scan is a failed critique run.
 - Viewable targets require visual inspection via the Pneuma viewer's `capture` action (see SKILL.md, "Verifying your work") when the page renders in the preview.
+- **The report is spoken to the user, not filed.** Write the whole report into the chat response before any persistence work; a report that exists only in `.impeccable/critique/` was never delivered.
+- **The question is the LAST thing in the response.** Write the entire report out first, then ask; nothing follows the question. A report that arrives after the question arrives after the decision it was supposed to inform.
+- A run that ends with neither the targeted questions nor a literal `Questions skipped: <reason>` line is an incomplete run. The report is not the finish; the close is.
 
 ## Setup: Resolve Target and Load Ignore List
 
@@ -33,7 +36,7 @@ Resolve one stable target, run two independent assessments, synthesize a design 
 
    Prefer the source file path over a dev-server URL when both identify the same surface; ports drift, paths do not.
 
-2. **Compute a slug** from the resolved target. A simple lowercase + `-`/`_` slug works (e.g. `gazette/article.html` → `gazette-article-html`). Keep the slug. It identifies this target's stream across runs. If the target is too vague to slug (root-level, no concrete file or URL), skip persistence for this run and tell the user; the trend won't update but the critique still goes ahead.
+2. **Derive the slug once, from the resolved target.** A simple lowercase + `-`/`_` slug works (e.g. `gazette/article.html` → `gazette-article-html`). Keep it; it identifies this target's stream across runs, and every later step derives from the same resolved target rather than hand-writing a second slug — a stream split across two spellings has no trend. If the target is too vague to slug (root-level, no concrete file or URL), skip persistence for this run and tell the user; the trend won't update but the critique still goes ahead.
 
 3. **Read the ignore list** at `.impeccable/critique/ignore.md` if it exists. Plain markdown; each non-empty, non-comment line is something the user has marked as "do not re-raise" (deferred tradeoffs, designer-intended deviations, false-positives the user accepts). When a finding's text matches a line here (case-insensitive substring against rule name or snippet), **drop it silently**. Do not mention it in the report. This is the ONLY input critique consumes from prior runs; anchoring on prior findings would defeat the point of independent assessment.
 
@@ -55,17 +58,17 @@ On Codex backends (whose permission model requires asking before spawning): aski
 Read the relevant source files (HTML, CSS, JS/TS) and visually inspect the live page via the Pneuma viewer's `capture` action. Think like a design director.
 
 Evaluate:
-- **AI slop**: Would someone believe "AI made this" immediately? Check all DON'T guidance in the pneuma-webcraft SKILL.md "Impeccable.style Design Intelligence" section.
+- **Design specificity**: Is the composition, interaction, and visual language grounded in this product, or could an unrelated product use it unchanged? Check it against the ban list in [craft-floor.md](craft-floor.md), and make the judgment from your own reading — Assessment B's catalog must not anchor it.
 - **Holistic design**: hierarchy, IA, emotional fit, discoverability, composition, typography, color, accessibility, states, copy, and edge cases.
 - **Cognitive load**: consult the [Cognitive Load Assessment](#cognitive-load-assessment) section below; report checklist failures and decision points with >4 visible options.
 - **Emotional journey**: peak-end rule, emotional valleys, reassurance at high-stakes moments.
-- **Nielsen heuristics**: consult the [Heuristics Scoring Guide](#heuristics-scoring-guide) section below; score all 10 heuristics 0-4.
+- **Nielsen heuristics**: consult the [Heuristics Scoring Guide](#heuristics-scoring-guide) section below; score all 10 heuristics 0-4, marking any heuristic the mode-applicability rule allows as `n/a` instead of forcing a number.
 
-Return: AI slop verdict, heuristic scores, cognitive load, emotional journey, 2-3 strengths, 3-5 priority issues, persona red flags, minor observations, and provocative questions.
+Return: design-specificity verdict, heuristic scores, cognitive load, emotional journey, 2-3 strengths, 3-5 priority issues, persona red flags, minor observations, and provocative questions.
 
 ## Assessment B: Pattern Catalog Scan
 
-Review the source files for the specific anti-patterns documented in the pneuma-webcraft SKILL.md "Impeccable.style Design Intelligence" section (absolute bans, model-tell bans, and the general design-quality rules). Catalog each finding with file location and specific evidence. Assessment B is mandatory and must remain isolated from Assessment A until both are complete.
+Review the source files against the ban list in [craft-floor.md](craft-floor.md) (absolute bans, model-tell bans, and the quality floor). Catalog each finding with file location and specific evidence. Assessment B is mandatory and must remain isolated from Assessment A until both are complete.
 
 For large targets (many files), prioritize: pages referenced in the content set's `manifest.json`, shared/reusable components, and files on primary user flows.
 
@@ -106,15 +109,19 @@ Present the Nielsen's 10 heuristics scores as a table:
 | 8 | Aesthetic and Minimalist Design | ? | |
 | 9 | Error Recovery | ? | |
 | 10 | Help and Documentation | ? | |
-| **Total** | | **??/40** | **[Rating band]** |
+| **Total** | | **??/[applicable max]** | **[Rating band]** |
 
-Be honest with scores. A 4 means genuinely excellent. Most real interfaces score 20-32.
+The applicable maximum is 4 times the number of heuristics you actually scored: **/40** when all ten apply, **/32** when two are `n/a`. Never print `/40` over a partial set.
 
-### Anti-Patterns Verdict
+Be honest with scores. A 4 means genuinely excellent. Most real interfaces score 20-32 out of 40.
 
-**Start here.** Does this look AI-generated?
+**Mode applicability**: heuristics 7 (Flexibility and Efficiency) and 10 (Help and Documentation) may be scored `n/a` on Persuade and Experience surfaces (landing pages, campaigns, portfolios, bodies of work), as may any other heuristic that genuinely cannot apply to the surface under review. Write `n/a` in the Score cell with a one-line reason, and renormalize the total to the applicable maximum (e.g. **24/32** when two heuristics are n/a) so the rating band stays proportional. The persisted snapshot must record the applicable maximum and which heuristics were scored n/a.
 
-**LLM assessment**: Your own evaluation of AI slop tells. Cover overall aesthetic feel, layout sameness, generic composition, missed opportunities for personality.
+### Design Specificity Verdict
+
+**Start here.** Does the result feel authored for this product, or category-interchangeable?
+
+**LLM assessment**: Your unanchored evaluation of design specificity. Cover overall coherence, structural sameness, category-interchangeable choices, and missed opportunities for product character.
 
 **Pattern catalog scan**: Summarize what the systematic scan found, with counts and file locations. Note any additional issues the catalog caught that you missed, and flag any false positives.
 
@@ -163,19 +170,31 @@ Provocative questions that might unlock better solutions:
 - Prioritize ruthlessly. If everything is important, nothing is.
 - Don't soften criticism. Developers need honest feedback to ship great design.
 
+## Deliver the Report
+
+Write the full report into the chat response now, before any persistence work. This is the deliverable; everything below it is bookkeeping.
+
+Do this first because the alternative is the most common way this command fails: the report gets composed once, straight into the snapshot file, and the run ends with a perfect archive nobody has read. Composing it into a file is not delivering it. If the report exists only in `.impeccable/critique/`, the run produced nothing.
+
+Persistence is not the end of the run either. After it, the response continues with the trend line and the close.
+
 ## Persist the Snapshot
 
-Once the report above is finalized, write it to `.impeccable/critique/` so the user can refer back, and so the `polish` command can pick up the priority issues without a copy-paste.
+Once the report above is delivered, write a copy to `.impeccable/critique/` so the user can refer back, and so the `polish` command can pick up the priority issues without a copy-paste.
 
 Skip this step if Setup couldn't produce a stable slug (vague or root-level target).
 
-1. **Compose the snapshot.** Take the full report body (heuristic table, anti-patterns verdict, priority issues, persona red flags) and stop before the "Ask the User" / "Recommended Actions" sections that come later. Prepend a small YAML frontmatter block with structured metadata:
+1. **Compose the snapshot.** Take the full report body (heuristic table, design-specificity verdict, priority issues, persona red flags) and stop before the "Ask the User" / "Recommended Actions" sections that come later. This is a copy of the report you already delivered above, for later commands to read; it is not delivery. If you find yourself composing the report for the first time here, you have skipped Deliver the Report — go back and send it.
+
+   Prepend a small YAML frontmatter block with structured metadata:
 
    ```markdown
    ---
    target: <user phrasing>
    resolved: <file path or URL>
-   total_score: <0–40>
+   total_score: <n>
+   max_score: <applicable maximum, 40 when every heuristic applied>
+   na_heuristics: <comma-separated heuristic numbers, or empty>
    p0_count: <n>
    p1_count: <n>
    ts: <ISO-8601 timestamp>
@@ -184,22 +203,30 @@ Skip this step if Setup couldn't produce a stable slug (vague or root-level targ
    <report body>
    ```
 
+   `max_score` is what lets a later run tell a renormalized total from a full one.
+
 2. **Write the file** using the Write tool to `.impeccable/critique/<YYYYMMDD-HHMMSS>__<slug>.md` (timestamp first so files sort newest-last in the directory, then `__` separator, then the slug from Setup).
 
-3. **Read the recent trend** for context: use the Read tool to list the directory or read the most recent 4 files for this slug. Pull their `total_score` from frontmatter to form the trend series (oldest → newest, ending with the one you just wrote).
+3. **Read the recent trend** for context: use the Read tool to list the directory or read the most recent 4 files for this slug. Pull their `total_score` and `max_score` from frontmatter to form the trend series (oldest → newest, ending with the one you just wrote). Treat a missing `max_score` on an older entry as 40.
 
 4. **Append a single line to the user-visible output**, after the report and before the questions:
 
-   > **Trend for `<slug>` (last 5 runs): 24 → 28 → 32 → 29 → 32**
+   > **Trend for `<slug>` (last 5 runs): 24 → 28 → 32 → 29 → 32 (out of 40)**
    > Wrote `.impeccable/critique/<filename>`.
+
+   When every entry shares one maximum, state it once as above. When they differ, print each score with its own denominator (`24/32 → 30/40`) and note that the runs scored different heuristic sets, so the line is not a like-for-like comparison.
 
    If this is the first run for the slug, the trend is just one score; say so: "First run for this target, no trend yet."
 
-Persistence is fire-and-forget. Failures here should not block the rest of the flow; print the error and move on. Mention the existence of `.impeccable/critique/ignore.md` to the user if they bring up false positives — that's where they can curate deviations the next critique should ignore.
+5. **Close the run.** Go to Ask the User below and emit the questions, or the `Questions skipped: <reason>` line when the count allows it. The run is not complete until you do. Persistence is bookkeeping and cleanup is not an ending; stopping here leaves the user with a report and no way forward, and leaves the `polish` command with no priorities to inherit.
+
+Persistence itself is fire-and-forget. Failures here should not block the rest of the flow; print the error and move on. Mention the existence of `.impeccable/critique/ignore.md` to the user if they bring up false positives — that's where they can curate deviations the next critique should ignore.
 
 ## Ask the User
 
 **After presenting findings**, use targeted questions based on what was actually found. {{ask_instruction}} These answers will shape the action plan.
+
+Ask in the same message that carries the report, with the report written out first and the question last. Do not split the two across turns: a turn that ends on the report is a turn that ends, and the questions never arrive.
 
 Ask questions along these lines (adapt to the specific findings; do NOT ask generic questions):
 
@@ -215,7 +242,9 @@ Ask questions along these lines (adapt to the specific findings; do NOT ask gene
 - Every question must reference specific findings from the report. Never ask generic "who is your audience?" questions.
 - Keep it to 2-4 questions maximum. Respect the user's time.
 - Offer concrete options, not open-ended prompts.
-- If findings are straightforward (e.g., only 1-2 clear issues), skip questions and go directly to Recommended Actions.
+- Skipping is allowed only when the report listed **fewer than 3 Priority Issues**. Count them; do not judge the findings "straightforward" by feel. At 3 or more, the questions are required.
+
+**Final-question gate.** The user-visible response must either include the targeted questions or carry the literal line `Questions skipped: <reason>` naming the count that permitted the skip. Each question must include 2-3 concrete answer options tied to the actual critique findings. Do not end with only open-ended questions, and do not end with neither: stopping after the report, having asked nothing and printed no skip line, is the most common way this command fails.
 
 ## Recommended Actions
 
@@ -316,11 +345,11 @@ At any decision point, count the number of distinct options, actions, or pieces 
 - **8+ items**: Overloaded; users will skip, misclick, or abandon
 
 **Practical applications**:
-- Navigation menus: ≤5 top-level items (group the rest under clear categories)
-- Form sections: ≤4 fields visible per group before a visual break
 - Action buttons: 1 primary, 1–2 secondary, group the rest in a menu
-- Dashboard widgets: ≤4 key metrics visible without scrolling
-- Pricing tiers: ≤3 options (more causes analysis paralysis)
+- Navigation menus: ≤5 top-level items (group the rest under clear categories)
+- Long-form articles: one reading path; gather related links into a single block at the end instead of scattering them mid-flow
+- Documentation sidebars: ≤4 sibling choices visible per level before grouping kicks in
+- Portfolio and gallery indexes: one decision per screen (which piece to open), not filter, sort, and tag controls all at once
 
 ---
 
@@ -579,6 +608,8 @@ Even if the system is usable without docs, help should be easy to find, task-foc
 | 20–27 | Acceptable | Significant improvements needed before users are happy |
 | 12–19 | Poor | Major UX overhaul required; core experience broken |
 | 0–11 | Critical | Redesign needed; unusable in current state |
+
+When heuristics were scored `n/a`, the maximum is lower than 40; read the band off the percentage instead of the raw number (90%+ Excellent, 70%+ Good, 50%+ Acceptable, 30%+ Poor, below that Critical). 24/32 is 75%, so Good.
 
 ---
 

@@ -9,7 +9,7 @@ Strip a design to its essence. Remove anything that doesn't earn its place: redu
 
 ## MANDATORY PREPARATION
 
-Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `init` command first (see [cmd-init](cmd-init.md)).
+Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it carries the setup steps, the visitor modes, and the Context Gathering Protocol. The quality floor and the ban list live in [craft-floor.md](craft-floor.md); load it immediately before you edit UI. If no design context exists yet, you MUST run the `init` command first (see [cmd-init](cmd-init.md)).
 
 ---
 
@@ -31,7 +31,7 @@ Analyze what makes the design feel complex or cluttered:
    - What can be removed, hidden, or combined?
    - What's the 20% that delivers 80% of value?
 
-If any of these are unclear from the codebase, {{ask_instruction}}
+If any of these are unclear from the codebase, do not guess. {{ask_instruction}}
 
 **CRITICAL**: Simplicity is not about removing features. It's about removing obstacles between users and their goals. Every element should justify its existence.
 
@@ -76,8 +76,8 @@ Systematically remove complexity across these dimensions:
 - **Reduce choices**: Fewer buttons, fewer options, clearer path forward (paradox of choice is real)
 - **Smart defaults**: Make common choices automatic, only ask when necessary
 - **Inline actions**: Replace modal flows with inline editing where possible
-- **Remove steps**: Can signup be one step instead of three? Can checkout be simplified?
-- **Clear CTAs**: ONE obvious next step, not five competing actions
+- **Remove steps**: Can the flow lose a step?
+- **Clear next action**: ONE obvious next action, not five competing ones
 
 ### Content Simplification
 - **Shorter copy**: Cut every sentence in half, then do it again

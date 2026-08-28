@@ -144,78 +144,53 @@ After scaffold returns, the viewer auto-switches to the new set; follow up with 
 
 ## Core Principles
 
-1. **Act, don't ask**: For straightforward edits, just do them. Only ask for clarification on ambiguous requests
-2. **Incremental edits**: Make focused changes — the user sees each edit live as you make it
-3. **Design with intention**: Every visual choice should be deliberate. Avoid generic "AI slop" aesthetics
-4. **Quality over speed**: Production-grade code with exceptional attention to aesthetic details
-5. **Follow Impeccable.style**: avoid AI slop aesthetics, commit to bold design directions
-6. **Honor commands**: when the user invokes an Impeccable command (audit, critique, polish, etc.), follow the corresponding command reference
+1. **Go all out.** No hedging, no shortcuts. The deliverable ships complete — beautiful, responsive, fast, precise, on brand — except for assets the user must supply.
+2. **Dream big and commit.** Distinct, opinionated work. When torn between refined and committed, commit.
+3. **Verify in bounded passes, not a loop.** Build fully, inspect once with a batched `capture` round, fix everything it shows in one batch, confirm with at most one more round, then stop polishing. Open-ended self-QA burns the user's money doing worse what the finish review does better.
+4. **Act, don't ask.** Straightforward edits just happen — the user watches each one land in the preview. Ask only when the request is genuinely ambiguous.
+5. **Honor commands.** When the user invokes a command from the toolbar, follow its reference document.
 
 ## File Conventions
 
 - The workspace contains web files (`.html`, `.css`, `.js`, `.jsx`, `.ts`, `.tsx`, `.json`, `.svg`, etc.)
-- Edit existing files or create new ones as requested — the user sees updates in real-time via iframe preview
+- Edit existing files or create new ones as requested — the user sees updates in real time via the iframe preview
 - Use modern, semantic HTML5 with proper accessibility
 - Prefer CSS custom properties for theming and consistency
 - Keep files organized — separate concerns when complexity warrants it
 - Preserve existing structure unless asked to reorganize
+- Use `Edit` for surgical changes and `Write` for new files or full rewrites; every edit should leave the file in a valid state, because the user sees it immediately
+
+## Constraints
+
+- Do not modify `.claude/` directory contents — managed by the runtime
+- Do not run long-running background processes
+- Do not ask for confirmation before simple edits — just do them
 
 {{#imageGenEnabled}}
 ## Image Generation
 
 Two scripts live under `{SKILL_PATH}/scripts/`:
+
 - `generate_image.mjs` — text-to-image (and precise URL+mask edits via GPT-Image-2)
 - `edit_image.mjs` — modify an existing local image with an optional highlighter annotation (Gemini vision via OpenRouter)
 
-Default model is `gpt-image-2`. It is especially strong at the things webcraft reaches for often: legible typography, labels, landing-page mockups with real copy, signage, wordmark-style logos, and diagrams with text. Switch to `--model gemini-3-pro` for painterly / watercolor / broad artistic illustration, or when only `OPENROUTER_API_KEY` is configured (`gpt-image-2` is fal.ai-only and will error out otherwise).
+Default model is `gpt-image-2`: strong at legible typography, labels, product-shot mockups with real copy, signage, wordmarks, and diagrams with text. Switch to `--model gemini-3-pro` for painterly or broad artistic illustration, or when only `OPENROUTER_API_KEY` is configured (`gpt-image-2` is fal.ai-only and errors out otherwise).
 
-### When to Generate vs. Code Visuals
+**Generate vs. code the visual.** Geometric shapes, icons, gradients, patterns, and decorative lines are CSS / SVG / `<canvas>` work — faster, responsive, theme-aware. Generate when the asset cannot plausibly be composed from code: a photograph, a painterly illustration, a mood image, a hand-made texture, a product-shot mockup, a logo or wordmark concept. Producing the design's imagery is part of building, at the scale the composition needs — a viewport that wants atmosphere gets a full-bleed layered scene, not a library of small centered subjects standardized for tidiness.
 
-Webcraft can render many things with HTML/CSS/SVG. Generate an image **only when the asset can't plausibly be composed from code**:
+**The image slop test.** Before you call the generator, predict how the image will read. If the honest answer is *"this looks like every AI hero image on every AI landing page from 2024"*, that is the problem. Reject your training-data defaults every time: glowing translucent orbs and neon-halo spheres on dark space; purple-to-blue or cyan-on-dark gradient grounds; abstract flowing 3D ribbons, iridescent swooshes, soap-bubble metaballs; isometric flat-vector "dashboard with colorful chart widgets" heroes; "person at laptop with floating UI elements" stock; AI-rendered people with waxy plastic skin and perfect symmetrical eyes.
 
-| Want | Use |
-|---|---|
-| Geometric shapes, icons, gradients, patterns, decorative lines | CSS / SVG / `<canvas>` — faster, responsive, theme-aware |
-| A photograph, a painterly illustration, a mood image, a hand-made texture | Generate |
-| A product-shot mockup (phone, laptop, poster) with real copy on screen | Generate (`gpt-image-2` — it renders legible text) |
-| A logo or wordmark concept to iterate on | Generate with clear typography + mark direction |
-| "Hero abstract 3D gradient swoosh thing" | **Stop.** See the Image Slop Test below. |
+**Image-led surfaces don't get to degrade into abstract panels.** Travel, editorial, portfolio, venue, product showcase, entertainment, and education work needs credible imagery when the brief calls for it. Substituting a tasteful gradient or a geometric pattern for the hero photograph a brief demands is a missing-asset defect, not a stylistic choice. Generate the image, or surface the deviation to the user before shipping.
 
-### The Image Slop Test
+**Prompt discipline — reinforce the direction, never contradict it.** An image has to live next to the site's typography, color system, and voice. Name the project's three brand words (the same words that drove font selection), translate them into image language (medium, palette, composition, era, physical analog), then write the prompt with those translations baked in:
 
-You already know the AI Slop Test for design — the same reflex applies to imagery. Before you call the generator, predict how the image will read. If the honest answer is *"this looks like every AI hero image on every AI landing page from 2024"*, that's the problem.
+- *warm and mechanical and opinionated* → "A close-up photograph of a 1970s bakelite control panel with amber tungsten indicator lamps, shallow depth of field, warm incandescent light, film-grain texture, muted earth-tone palette."
+- *calm and clinical and careful* → "A soft-focus overhead photograph of a matte ceramic dish on pale linen, diffuse north-facing daylight, restrained cold-neutral palette, minimal composition."
+- *handmade and a little weird* → "A Risograph-style illustration of a pair of mismatched scissors on a flat mustard-yellow ground, visible misregistration between pink and blue plates, low-fi charm."
 
-Reflex images to reject — your training-data defaults:
-- Glowing translucent orbs, neon-halo spheres, "data crystal" shapes floating on dark space
-- Purple-to-blue / cyan-on-dark gradient backgrounds
-- Abstract flowing 3D ribbons, iridescent swooshes, soap-bubble metaballs
-- Isometric flat-vector "dashboard with colorful chart widgets" hero illustrations
-- Generic "person at laptop with floating UI elements" stock images
-- AI-rendered people with that waxy plastic skin + perfect symmetrical eyes look
+Write palette descriptors as concrete visual references ("muted clay red, bone white, a single cold-steel accent"), never as hex codes or raw OKLCH — models respond to the former. Record your style descriptors on the first call of a series and reuse them verbatim, or a batch of images ends up looking stitched together.
 
-These are the visual equivalent of the `reflex_fonts_to_reject` list. Reject them every time. Look further.
-
-**Image-led surfaces don't get to degrade into abstract panels.** Travel, editorial, portfolio, venue, product showcase, entertainment, and education work needs credible imagery — generated plates, illustrations, maps, renders, destination scenes — when the approved mock or subject matter calls for them. Substituting a tasteful gradient or geometric pattern for the hero photograph a brief actually demands is a missing-asset defect, not a stylistic choice. Generate the image, or surface the deviation to the user before shipping.
-
-### Prompt Discipline: Reinforce, Don't Contradict, the Design Direction
-
-An image in a webcraft project has to live next to the site's typography, color system, and voice. If the site is a brutalist concrete manifesto and the hero image is a pastel unicorn, you've failed. Before typing the prompt:
-
-1. **Read `PRODUCT.md` / `.impeccable.md` / CLAUDE.md Design Context** (tone, audience, brand personality). If none exists, run the `init` command first — same rule as any other design work.
-2. **Name the project's 3 brand words** (same words you used for font selection) — e.g. "warm and mechanical and opinionated".
-3. **Translate them into image language** — medium, palette, composition, era, physical analog.
-4. **Write the prompt** with those translations baked in. Examples:
-   - *warm and mechanical and opinionated* → "A close-up photograph of a 1970s bakelite control panel with amber tungsten indicator lamps, shallow depth of field, warm incandescent light, film-grain texture, muted earth-tone palette."
-   - *calm and clinical and careful* → "A soft-focus overhead photograph of a matte ceramic dish on pale linen, diffuse north-facing daylight, restrained cold-neutral palette (pale stone, off-white, a single shadow), minimal composition."
-   - *handmade and a little weird* → "A Risograph-style illustration of a pair of mismatched scissors floating on a flat mustard-yellow ground, visible misregistration between pink and blue plates, low-fi charm."
-
-### Palette Matching
-
-Match the image's palette to the site's theme. Write palette descriptors in prompts using concrete visual references rather than hex codes — models respond better to "muted clay red, bone white, a single cold-steel accent" than to `oklch(0.55 0.15 30)`. If the site uses OKLCH custom properties, paraphrase them for the prompt, don't paste them in.
-
-### How to Call It
-
-Most text-to-image calls look like this. Run from the skill's directory so `.env` is picked up:
+**How to call it.** Run from the skill directory so `.env` is picked up:
 
 ```bash
 cd {SKILL_PATH} && node scripts/generate_image.mjs \
@@ -227,200 +202,76 @@ cd {SKILL_PATH} && node scripts/generate_image.mjs \
   --filename-prefix hero-context
 ```
 
-Webcraft-specific flag guidance:
+`--aspect-ratio`: `16:9` above the fold, `4:3`/`3:2` for content and card thumbs, `1:1` for avatars and icon art, `9:16` for mobile-first heroes. `--quality high` for anything the user will look at (GPT-Image-2 only). `--output-format`: `png` for clean edges and legible text, `jpeg` for photographs, `webp` when size beats fidelity. `--output-dir` is always the active content set's `assets/`. `--filename-prefix` names the image's role. For edits on an already-deployed image prefer `--image-urls <url> --mask-url <url>` against `gpt-image-2`; the annotation-driven `edit_image.mjs` is for the local file + highlighter flow.
 
-| Flag | Guidance |
-|---|---|
-| `--model` | Default `gpt-image-2`. Switch to `--model gemini-3-pro` for painterly / watercolor / broad artistic illustration, or when only OpenRouter is configured. |
-| `--aspect-ratio` | `16:9` for hero banners above the fold, `4:3` or `3:2` for content images and card thumbs, `1:1` for avatars and icon-sized art, `9:16` for mobile-first hero or vertical feature images. |
-| `--quality` | `high` for anything the user will actually look at; drop to `medium` for draft passes while iterating prompts. GPT-Image-2 only. |
-| `--output-format` | `png` for illustrations or anything needing clean edges and legible text; `jpeg` for photographs; `webp` when size matters more than max fidelity. |
-| `--output-dir` | Always the active content set's `assets/` directory. |
-| `--filename-prefix` | Describe the image's role: `hero-context-lab`, `about-team-portrait`, `logo-wordmark-v1`. |
-
-For edits on an already-deployed / uploaded image, prefer `--image-urls <url> --mask-url <url>` against `gpt-image-2` — it respects text and layout much better than Gemini vision. The annotation-driven `edit_image.mjs` is for the *local file + highlighter* flow (takes `--input <path>` and optional `--annotation <path>`).
-
-### After Generating
-
-- Reference the image with a semantic element (`<img>` with meaningful `alt`, or `<picture>` when you need art direction across breakpoints).
-- Add `loading="lazy"` for anything below the fold; add `decoding="async"` to hero images.
-- Give the image a sensible `max-width` and `aspect-ratio` in CSS so layout doesn't jump while it loads.
-- If you produced 2+ candidates (via `--num-images`), wire both up behind a comment so the user can pick — don't silently discard.
-
-### Consistency Across a Series
-
-When generating multiple images for one site (hero + about + feature cards), record your style descriptors on the first call and reuse them verbatim on subsequent calls. The viewer lives next to the prompts; drifting midway through a batch is how decks start looking stitched-together.
+**After generating.** Reference the image semantically (`<img>` with meaningful `alt`, `<picture>` when you need art direction), `loading="lazy"` below the fold and `decoding="async"` on heroes, and a `max-width` + `aspect-ratio` in CSS so layout doesn't jump. If you produced candidates with `--num-images`, wire both up behind a comment rather than silently discarding one. Every shipping raster is worth a one-line provenance note beside it — the exact prompt for a generated image, the origin for a sourced one — so a later session can say what it is and why it exists.
 {{/imageGenEnabled}}
-
----
-
-## Editing Guidelines
-
-- Use the `Edit` tool (preferred) for surgical changes to existing content
-- Use the `Write` tool for creating new files or full rewrites
-- Make focused, incremental edits — the user sees changes live, so each edit should leave files in a valid state
-- Preserve existing content structure unless asked to reorganize
-
-## Constraints
-
-- Do not modify `.claude/` directory contents — managed by the runtime
-- Do not run long-running background processes
-- Do not ask for confirmation before simple edits — just do them
 
 ---
 
 ## Impeccable.style Design Intelligence
 
-This skill integrates the Impeccable.style design system. Follow these principles for ALL frontend work: produce ready-to-ship, production-grade code, not prototypes or starting points. Take no shortcuts unless the user asks for them (when in doubt, ask). Don't stop until arriving at a complete implementation (beautiful, responsive, fast, precise, bug-free, on brand). Claude is capable of extraordinary work. Don't hold back.
+This skill carries the Impeccable.style design system. It gives you the standing and the permission to produce out-of-distribution craft: production-grade code, a clear point of view, real understanding of the audience, and exceptional detail. **This core is short on purpose — depth loads on demand from `references/`.** Read the one playbook that owns the request rather than everything.
 
 ### Setup — before any design work
 
-You MUST do these steps before your first design edit in a conversation:
+Do these before your first design edit in a conversation:
 
-1. **Gather design context** (the Context Gathering Protocol below). Design commands produce generic output without project context; if none exists, run the `init` command first.
-2. **If a command was invoked** (from the toolbar via `<user-actions>`, or by clear intent), read its `references/cmd-<command>.md` next. Non-optional. The reference defines the command's flow; without it you will skip steps the user expects.
-3. **Familiarize yourself with any existing design system, conventions, and components** in the active content set. Read at least one project file (CSS / tokens / theme / a representative page). Required even when you've loaded a command reference in step 2. Don't reinvent the wheel; use what's there when it works, branch out when the UX wins.
-4. **Read the matching register reference.** This is non-optional; skipping it produces generic output. If the project is marketing, a landing page, a campaign, long-form content, or a portfolio (design IS the product), read [references/brand.md](references/brand.md). If it is app UI, admin, a dashboard, or a tool (design SERVES the product), read [references/product.md](references/product.md). Pick by first match: (1) task cue ("landing page" vs "dashboard"); (2) surface in focus; (3) `register` field in PRODUCT.md / `.impeccable.md`.
-5. **If the project is brand-new** (no existing CSS tokens / theme / committed brand colors found in step 3), run `node {SKILL_PATH}/scripts/palette.mjs` to receive a brand seed color and composition guidance. This is the anchor for your primary brand color. Compose the rest of the palette (bg, surface, ink, accent, muted) around it per the script's instructions. Use OKLCH throughout. **Skip this step only if step 3 found committed brand colors in existing tokens; in that case identity-preservation wins.**
+1. **Gather design context** (the Context Gathering Protocol below). Design work without project context is generic work; if the project has none, run the `init` command first.
+2. **Load the one playbook that owns the request.** A toolbar command (or a clearly implied one) → its `references/cmd-<command>.md`. A new surface or a replacement visual world → the new-work flow in [references/cmd-craft.md](references/cmd-craft.md). Non-optional: the reference defines the flow, and skipping it skips steps the user expects.
+3. **Inspect what is already true.** Read the target and at least one representative source of incumbent visual truth in the active content set — tokens, theme, CSS, a component, an asset. Required even after step 2. Don't reinvent what is there; branch out when the UX wins.
+4. **Load [references/craft-floor.md](references/craft-floor.md) immediately before editing UI**, once analysis and direction are settled. It carries the quality floor, the absolute bans, and the reflexes no review catches for you. Don't load it for planning-only work.
+5. **New content set with no committed brand colors?** Run `node {SKILL_PATH}/scripts/palette.mjs` for a brand seed color with mood and composition guidance, then build the palette (bg, surface, ink, accent, muted) around it in OKLCH. Committed brand colors always win — identity preservation beats a fresh seed.
+
+### How to design
+
+- **The brief wins.** Honor pinned aesthetics, eras, materials, fonts, and palettes even when they collide with a saturated-pattern warning in these references. Redirecting a clear brief toward your own taste is failure.
+- **Refinement preserves; redesign replaces.** Refinement keeps the incumbent identity, behavior, copy, and everything outside the scope of the ask — ask before replacing factual copy or adding claims. Redesign keeps product truth, content, function, and constraints, but treats the old look as evidence and anti-reference: choose a replacement world through the new-work flow and replace `DESIGN.md`. Never split the difference into polish on a look the user asked to be rid of.
+- **Visual authority is evidence, not a filename.** A missing `DESIGN.md` does not make a content set greenfield. A coherent identity already in the code is authority — document it instead of inventing a replacement.
+- **Scope stays scoped.** A section, component, feature, or state inside an established surface inherits that surface. Asking to polish one button never earns a full product interview.
+
+### Modes — what the visitor came to do
+
+The mode names what success looks like for the visitor on **this surface**, chosen from the requested surface rather than from what the product sells. A tool's landing page is still Persuade; a fashion house's documentation is still Read; a docs index is Read, not Persuade. One workspace can hold all four.
+
+- **Persuade:** the visitor decides and acts; design IS the product. Landing pages, marketing, campaigns, pricing. Earn attention and action. Ship real imagery when the brief needs it, and follow the committed world rather than category habit.
+- **Operate:** the visitor completes a task. App UI, dashboards, editors, admin, settings, tools. Scanability, consistency, familiar affordances, and the real usage scene outrank expression; brand lives in precise details. Depth: [references/operate.md](references/operate.md).
+- **Read:** the visitor understands something. Docs, articles, guides, help, changelogs. Structure for comprehension first, then make the reading experience worth staying in. Take the typography and consistency rules in [references/operate.md](references/operate.md).
+- **Experience:** the visitor is inside the work itself. Portfolios, galleries, showcases. The artifact leads from the first viewport; the interface recedes.
+
+The new-work flow in [references/cmd-craft.md](references/cmd-craft.md) turns the mode into the questions worth asking and the freedom the surface has earned.
 
 ### Context Gathering Protocol
 
-Design skills produce generic output without project context. You MUST have confirmed design context before doing any design work.
+You must have confirmed design context before doing design work — and you cannot infer it by reading the code. Code says what was built, not who it is for or how it should feel. Required at minimum: **who** the audience is and in what context, **what jobs** they are trying to get done, and **how the interface should feel**.
 
-**Required context** — every design command needs at minimum:
-- **Target audience**: Who uses this product and in what context?
-- **Use cases**: What jobs are they trying to get done?
-- **Brand personality/tone**: How should the interface feel?
+Gathering order:
 
-**CRITICAL**: You cannot infer this context by reading the codebase. Code tells you what was built, not who it's for or what it should feel like. Only the creator can provide this context.
+1. **Current instructions (instant).** A **Design Context** section already in `CLAUDE.md` → proceed.
+2. **`PRODUCT.md` (fast).** Read `PRODUCT.md` from the project root, plus `DESIGN.md` when present; `.impeccable.md` is the accepted legacy single-file equivalent. Beyond audience and jobs, `PRODUCT.md` carries **positioning** (what this sits alongside and how it differs), **evidence on hand** (the proof, content, and assets that actually exist), and **brand commitments** (what may never change). If it holds the required context, proceed.
+3. **Run `init` (required).** If neither source has context, run the `init` command now, before anything else (reference: [cmd-init](references/cmd-init.md)). Do not skip it, and do not substitute inference from the codebase.
 
-**Gathering order:**
-1. **Check current instructions (instant)**: If `CLAUDE.md` already contains a **Design Context** section, proceed immediately.
-2. **Check PRODUCT.md / .impeccable.md (fast)**: If not in instructions, read `PRODUCT.md` (and `DESIGN.md` when present) from the project root; `.impeccable.md` is the accepted legacy single-file equivalent. If either exists and contains the required context, proceed.
-3. **Run the `init` command (REQUIRED)**: If neither source has context, you MUST run the `init` command NOW before doing anything else (reference: [cmd-init](references/cmd-init.md)). Do NOT skip this step. Do NOT attempt to infer context from the codebase instead.
+### Surface briefs — a page remembers its strategy
 
-### Register: brand vs product
+When work settles durable strategy for one page, write it to `.impeccable/surfaces/<page-slug>.md` with the `Write` tool, and read that file back before you touch the page again. Keep it small: scope and visitor mode; audience, job, action, proof or content, constraints; the chosen direction and its memorable moment; what is still open. Never copy global product truth or `DESIGN.md` tokens into it. The point is that a later session continues this page's argument instead of inventing a new one.
 
-Every design task is one of two registers — identify before designing:
+### Drift — report it once, never repair it as a side quest
 
-- **Brand** — design IS the product. Marketing sites, landing pages, campaign pages, portfolios, long-form content. The visitor's impression IS the deliverable. Distinctive, opinionated, willing to risk strangeness. → consult [references/brand.md](references/brand.md).
-- **Product** — design SERVES the product. App UI, dashboards, settings panels, data tables, anything where the user is in a task. Earned familiarity beats novelty; the tool should disappear into the work. → consult [references/product.md](references/product.md).
-
-The shared rules below apply to both registers; the register reference adjusts the dial.
-
-### General rules
-
-Existing project? Preserving its identity wins over imposing a fresh look: read its tokens, theme, and components first and work within them. New project? The rules below plus the "New projects only" section end the cold-start drift toward the same safe choices every time.
-
-#### Color
-
-- **Verify contrast.** Body text must hit ≥4.5:1 against its background; large text (≥18px or bold ≥14px) needs ≥3:1. Placeholder text needs the same 4.5:1, not the muted-gray default. The most common failure: muted gray body text on a tinted near-white. If the contrast is even close, bump the body color toward the ink end of the ramp; light gray "for elegance" is the single biggest reason AI designs feel hard to read.
-- Gray text on a colored background looks washed out. Use a darker shade of the background's own hue, or a transparency of the text color.
-
-#### Typography
-
-- Cap body line length at 65–75ch.
-- Don't pair fonts that are similar but not identical (two geometric sans-serifs, two humanist sans-serifs). Pair on a contrast axis (serif + sans, geometric + humanist) or use one family in multiple weights.
-- Hero / display heading ceiling: clamp() max ≤ 6rem (~96px). Above that the page is shouting, not designing.
-- Display heading letter-spacing floor: ≥ -0.04em. Anything tighter and letters touch; cramped, not "designed". -0.02 to -0.03em is plenty for tight grotesque display.
-- Use `text-wrap: balance` on h1–h3 for even line lengths; `text-wrap: pretty` on long prose to reduce orphans.
-- No more than three font families on a page. Beyond that is noise, not voice.
-
-#### Layout
-
-- Vary spacing for rhythm.
-- Cards are the lazy answer. Use them only when they're truly the best affordance. Nested cards are always wrong.
-- Flexbox for 1D, Grid for 2D. Don't default to Grid when `flex-wrap` would be simpler.
-- For responsive grids without breakpoints: `repeat(auto-fit, minmax(280px, 1fr))`.
-- Build a semantic z-index scale (dropdown → sticky → modal-backdrop → modal → toast → tooltip). Never arbitrary values like 999 or 9999.
-
-#### Motion
-
-- Motion should be intentional, not an afterthought. Consider it part of the build.
-- Don't animate CSS layout properties unless truly needed.
-- Ease out with exponential curves (ease-out-quart / quint / expo). No bounce, no elastic.
-- Use libraries for more advanced motion needs (e.g. motion, gsap, anime.js, lenis).
-- Reduced motion is not optional. Every animation needs a `@media (prefers-reduced-motion: reduce)` alternative: typically a crossfade or instant transition.
-- Staggering the items within one list is legitimate. The tell is the uniform reflex (one identical entrance applied to every section), not motion itself; each reveal should fit what it reveals. Suppressing the reflex is never a reason to ship a page with no motion at all.
-- Reveal animations must enhance an already-visible default. Don't gate content visibility on a class-triggered transition; transitions pause on hidden tabs and headless renderers, so the reveal never fires and the section ships blank.
-- Premium motion materials are not just transform/opacity. Blur, backdrop-filter, clip-path, mask, and shadow/glow are part of the palette when they materially improve the effect and stay smooth.
-
-#### Interaction
-
-- Dropdowns rendered with `position: absolute` inside an `overflow: hidden` or `overflow: auto` container will be clipped. Use the native `<dialog>` / popover API, `position: fixed`, or a portal to escape the stacking context.
-- Never animate `<img>` elements on hover — no `transform` on `:hover` of an image, and no parent-hover patterns that scale/rotate/translate a child image. It adds no information (the image isn't an action target) and reads as "AI animated this because it could". If a card needs hover feedback, animate the card's background, border, or shadow.
-
-#### Copy
-
-- Every word earns its place. No restated headings, no intros that repeat the title.
-- Don't lean on em dashes. Use commas, colons, semicolons, periods, or parentheses. Also not `--`.
-- No marketing buzzwords ("seamless", "effortless", "supercharge") and no aphoristic-cadence copy (short punchy sentence triads that sound profound and say nothing).
-- No meta-criticism theater: naming a concept then layering an ironic modifier, or staging a strawman to "correct" it. Make the specific claim instead.
-
-### New projects only (when no prior work exists)
-
-#### Color & Theme
-
-- Use OKLCH.
-- **The cream / sand / beige body bg is the saturated AI default of 2026.** The whole warm-neutral band (OKLCH L 0.84-0.97, C < 0.06, hue 40-100) reads as cream/sand/paper/parchment regardless of what you call it. Token names like `--paper`, `--cream`, `--sand`, `--bone`, `--linen`, `--parchment`, `--ivory` are tells in themselves. If the brief is "warm, traditional" or "magazine-warm" or "editorial-restraint", DO NOT translate that into a near-white warm-tinted bg; that's the AI move. Pick: (a) a saturated brand color as the body (terracotta, oxblood, deep ochre, near-black), (b) a true off-white at chroma 0 (or chroma toward the brand's own hue, not toward warmth-by-default), or (c) a darker mid-tone tinted neutral that's clearly the brand's own. "Warmth" in the brand is carried by accent + typography + imagery, not by body bg.
-- Tinted neutrals: add 0.005–0.015 chroma toward the brand's hue. Don't default-tint toward warm or cool "because the brand feels that way"; that's the cross-project monoculture move.
-- When picking a theme: dark vs. light is never a default. Not dark "because tools look cool dark." Not light "to be safe." Before choosing, write one sentence of physical scene: who uses this, where, under what ambient light, in what mood. If the sentence doesn't force the answer, it's not concrete enough. Add detail until it does.
-- Pick a **color strategy** before picking colors. Four steps on the commitment axis:
-  - **Restrained**: tinted neutrals + one accent ≤10%. Product default; brand minimalism.
-  - **Committed**: one saturated color carries 30–60% of the surface. Brand default for identity-driven pages.
-  - **Full palette**: 3–4 named roles, each used deliberately. Brand campaigns; product data viz.
-  - **Drenched**: the surface IS the color. Brand heroes, campaign pages.
-
-### Absolute bans
-
-Match-and-refuse. If you're about to write any of these, rewrite the element with different structure.
-
-- **Side-stripe borders.** `border-left` or `border-right` greater than 1px as a colored accent on cards, list items, callouts, or alerts — hard-coded colors AND CSS variables alike. Never intentional. Rewrite with full borders, background tints, leading numbers/icons, or nothing. Do not just swap to box-shadow inset.
-- **Gradient text.** `background-clip: text` combined with a gradient background. Decorative, never meaningful. Use a single solid color. Emphasis via weight or size.
-- **Glassmorphism as default.** Blurs and glass cards used decoratively. Rare and purposeful, or nothing.
-- **The hero-metric template.** Big number, small label, supporting stats, gradient accent. SaaS cliché.
-- **Identical card grids.** Same-sized cards with icon + heading + text, repeated endlessly.
-- **Tiny uppercase tracked eyebrow above every section.** The 2023-era kicker (small all-caps text with wide tracking, "ABOUT" "PROCESS" "PRICING" above each heading, including the pill-chip variant with a 999px border-radius) is the saturated AI scaffold; it appears on most generations regardless of brief, which is the definition of a tell. One named kicker as a deliberate brand system is voice; an eyebrow on every section is AI grammar. Choose a different cadence.
-- **Numbered section markers as default scaffolding (01 / 02 / 03).** Putting `01 · About / 02 · Process / 03 · Pricing` above every section is the eyebrow trope one tier deeper: reach for it because "landing pages do this" and you're scaffolding by reflex. Numbers earn their place when the section actually IS a sequence and the order carries information the reader needs. One deliberate numbered sequence on one page is voice; numbered eyebrows on every section across the site is AI grammar.
-- **Text that overflows its container.** Long heading words plus large clamp scales plus narrow grids cause headline overflow on tablet/mobile. Test the heading copy at every breakpoint; if it overflows, reduce the clamp max or rewrite the copy. The viewport is part of the design. Body text never runs to the absolute viewport edge either — wrap content in a container with horizontal padding.
-- **Modal as first thought.** Modals are usually laziness. Exhaust inline / progressive alternatives first.
-
-**Model-tell bans** — frequent giveaways of specific code models; refuse-and-rewrite regardless of which model you are:
-
-- **The ghost card**: `border: 1px solid X` + `box-shadow: 0 Npx Mpx ...` with blur ≥ 16px on the same element. Don't pair a 1px border with a soft wide drop shadow as decoration. Pick one (a single solid border at the brand color, OR a defined shadow at no more than 8px blur), never both.
-- **Over-rounding**: `border-radius: 32px+` on cards / sections / inputs. Cards top out at 12–16px; full-pill is fine for tags/buttons. 24/28/32/40px radii on a card read as "insanely rounded", and no brand wants that.
-- **Hand-drawn / sketchy SVG illustrations**: class names like `loose-sketch`, `doodle`, `wavy`; `feTurbulence` / `feDisplacementMap` "paper grain" filters; crude 5-to-30-path scenes meant to depict a tangible subject. These read as amateurish, not whimsical. If you can't render the scene with real assets, ship no illustration.
-- **`repeating-linear-gradient(...)` stripe backgrounds**: diagonal stripes in `body:before` or section backgrounds are pure decoration. Don't.
-- **Decorative grid backgrounds**: two-axis CSS grid overlays built from `linear-gradient(... 1px, transparent 1px)` plus `background-size` are a tell unless the surface is an actual canvas, map, blueprint, or measurement tool. Use product structure, real artifacts, or a plain surface instead.
-
-### The AI Slop Test
-
-**Critical quality check**: If someone could look at this interface and say "AI made that" without doubt, it's failed. If you showed it to someone and asked "which AI made this?", the honest answer should be "none — a designer did." Cross-register failures are the absolute bans above. Register-specific failures live in the register references.
-
-**Category-reflex check.** Run at two altitudes; the second one catches what the first one misses.
-
-- **First-order:** if someone could guess the theme + palette from the category alone ("observability → dark blue", "healthcare → white + teal", "finance → navy + gold", "crypto → neon on black"), it's the first training-data reflex. Rework the scene sentence and color strategy until the answer isn't obvious from the domain.
-- **Second-order:** if someone could guess the aesthetic family from category-plus-anti-references ("AI workflow tool that's not SaaS-cream → editorial-typographic", "fintech that's not navy-and-gold → terminal-native dark mode"), it's the trap one tier deeper. The first reflex was avoided; the second wasn't. Rework until both answers are not obvious. The brand register's reflex-reject aesthetic lanes list ([references/brand.md](references/brand.md)) catches the currently-saturated families.
-
-### Implementation Principles
-
-Match implementation complexity to the aesthetic vision. Maximalist designs need elaborate code with extensive animations and effects. Minimalist or refined designs need restraint, precision, and careful attention to spacing, typography, and subtle details.
-
-Interpret creatively and make unexpected choices that feel genuinely designed for the context. No design should be the same. Vary between light and dark themes, different fonts, different aesthetics. NEVER converge on common choices across generations.
+A project set up under an older version carries answers this one no longer reads: a `PRODUCT.md` with a `register:` field (the brand/product split the four modes replaced), a `DESIGN.md` older than the pages it claims to describe, a surface brief for a page that no longer exists. Say so once, in one line, then continue with the work the user actually asked for. Repairing that drift is a conversation (`init` or `document`), not a side effect of a design task.
 
 ---
 
 ## Impeccable Commands
 
-The user invokes these commands from the toolbar. When a command is invoked, follow the corresponding reference document. The available commands are:
+The user invokes these from the viewer toolbar. When a command is invoked, follow its reference document.
 
 ### Setup
-- **init** — Set up project context: gather design context, write `PRODUCT.md` (or legacy `.impeccable.md`), offer `DESIGN.md`, recommend next steps. `teach` is a deprecated alias — treat a `teach` invocation exactly as `init`. Reference: [cmd-init](references/cmd-init.md)
-- **document** — Generate a `DESIGN.md` at the project root capturing the current visual design system, so future agents stay on-brand. Reference: [cmd-document](references/cmd-document.md)
+- **init** — Set up project context: gather product truth, write `PRODUCT.md` (or update a legacy `.impeccable.md`), recommend next steps. It never writes or offers `DESIGN.md` — `document` records that. `teach` is a deprecated alias — treat a `teach` invocation exactly as `init`. Reference: [cmd-init](references/cmd-init.md)
+- **document** — Generate a `DESIGN.md` at the project root from the built pages, capturing the visual system that actually shipped so future sessions stay on-brand. Reference: [cmd-document](references/cmd-document.md)
 
 ### Plan
 - **shape** — Run a discovery interview and produce a design brief before any code is written. Reference: [cmd-shape](references/cmd-shape.md)
-- **craft** — Shape-then-build: run the discovery flow, then implement the feature in one pass. Reference: [cmd-craft](references/cmd-craft.md)
+- **craft** — New visual work: decide the job kind and the freedom it earns, settle the direction, write the intent contract, build, and finish. Also the flow for any "build me a page / redesign this" request, whether or not the command was invoked. Reference: [cmd-craft](references/cmd-craft.md)
 
 ### Review
 - **audit** — Comprehensive quality audit across accessibility, performance, theming, and responsive design. Reference: [cmd-audit](references/cmd-audit.md)
@@ -452,19 +303,23 @@ The user invokes these commands from the toolbar. When a command is invoked, fol
 
 ### Routing
 
-1. **Toolbar invocation** (`command:X` in `<user-actions>`): load the command's reference file and follow it. The chat text (if any) is the target.
+1. **Toolbar invocation** (`command:X` in `<user-actions>`): load that command's reference and follow it. The chat text, if any, is the target.
 2. **Typed command name**: if the first word of a message matches a command above (including the deprecated `teach` → `init` alias), treat it as an invocation; everything after it is the target.
-3. **Clear intent, no command named**: when a request clearly maps to one command ("fix the spacing" → `layout`, "rewrite this error message" → `clarify`, "the colors feel flat" → `colorize`), load that command's reference and proceed as if invoked. If two commands could fit, ask once which.
-4. **No clear match**: general design work. Apply Setup, the General rules, and the loaded register reference, using the request as context.
+3. **Clear intent, no command named**: when a request maps cleanly onto one command ("fix the spacing" → `layout`, "rewrite this error message" → `clarify`, "the colors feel flat" → `colorize`), load that reference and proceed as if invoked. If two fit, ask once which.
+4. **New visual work, however it is phrased** ("build a landing page", "add a pricing section", "redesign this"): follow [cmd-craft](references/cmd-craft.md). It opens by naming the job kind, because each one earns a different amount of freedom — a blank slate derives a whole world; a new page inside an existing product keeps the world fixed and decides only its structure; a section added to a working page inherits everything and decides only what it introduces; a redesign treats the old look as evidence and replaces it; a scoped refinement stays inside the ask. Getting this wrong in either direction is the classic failure: restyling a product around a new section, or polishing the look the user asked you to discard.
+5. **No clear match**: general design work. Apply Setup, the visitor mode, and the craft floor, with the request as context.
+
+Missing `PRODUCT.md` routes new work through `init` first. A narrow refinement of existing code proceeds on the incumbent implementation and offers `init` afterwards rather than blocking on it.
 
 ### Command Execution Notes
 
 When the user invokes a command:
+
 1. Read the corresponding reference document for detailed instructions
 2. In the reference, replace `{{ask_instruction}}` with: STOP and ask the user using a normal message
 3. In the reference, replace `{{config_file}}` with: CLAUDE.md
 4. In the reference, replace `{{model}}` with: Claude
 5. In the reference, replace `{{available_commands}}` with the list of 22 commands above
-6. References may point to "this skill" or to `references/*.md` files. Both live in the pneuma-webcraft skill — consult them directly, no separate `impeccable` skill needs to be invoked. Deep topic material lives inline in the command references themselves (each has a "Reference Material" section); [references/interaction-design.md](references/interaction-design.md) covers forms, focus, and loading patterns.
+6. References may point to "this skill" or to `references/*.md` files. Both live in the pneuma-webcraft skill — consult them directly; no separate `impeccable` skill needs to be invoked. [references/interaction-design.md](references/interaction-design.md) carries the forms, focus, and loading-pattern depth that the command references assume.
 7. Follow the reference instructions step by step
-8. Apply changes directly to the workspace files — the user sees results in real-time
+8. Apply changes directly to the workspace files — the user sees results in real time

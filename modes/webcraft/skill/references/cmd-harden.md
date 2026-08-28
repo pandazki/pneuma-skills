@@ -9,7 +9,7 @@ Designs that only work with perfect data aren't production-ready. Harden the int
 
 ## MANDATORY PREPARATION
 
-Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it contains the design principles, anti-patterns, and Context Gathering Protocol. If no design context exists yet, you MUST run the `init` command first (see [cmd-init](cmd-init.md)).
+Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it carries the setup steps, the visitor modes, and the Context Gathering Protocol. The quality floor and the ban list live in [craft-floor.md](craft-floor.md); load it immediately before you edit UI. If no design context exists yet, you MUST run the `init` command first (see [cmd-init](cmd-init.md)).
 
 ---
 
@@ -91,7 +91,7 @@ Systematically improve resilience:
 
 **Responsive text sizing**:
 - Use `clamp()` for fluid typography
-- Set minimum readable sizes (14px on mobile)
+- Set minimum readable sizes (16px body on mobile, the same floor the typography guidance sets; 14px only for genuinely secondary text. iOS Safari force-zooms focused inputs under 16px, which breaks form layouts)
 - Test text scaling (zoom to 200%)
 - Ensure containers expand with text
 
@@ -307,17 +307,6 @@ Empty state types to handle:
 - Announce dynamic changes (live regions)
 - Descriptive alt text
 - Semantic HTML
-
-**Motion sensitivity**:
-```css
-@media (prefers-reduced-motion: reduce) {
-  * {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
-```
 
 **High contrast mode**:
 - Test in Windows high contrast mode
