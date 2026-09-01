@@ -13,6 +13,7 @@
  * pass-through.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { PlayheadSnapResult } from "./playheadSnap.js";
 import { theme } from "../theme/tokens.js";
 
 interface PlayheadProps {
@@ -22,6 +23,10 @@ interface PlayheadProps {
   scrollLeft: number;
   trackAreaHeight: number;
   onSeek: (time: number) => void;
+  /** Magnetic snap to clip boundaries / t=0. `enabled` is false while
+   *  Shift is held, which is read per-event so the user can toggle the
+   *  magnet mid-drag. */
+  snap: (time: number, enabled: boolean) => PlayheadSnapResult;
 }
 
 function formatTimeMs(seconds: number): string {
@@ -38,9 +43,13 @@ export function Playhead({
   scrollLeft,
   trackAreaHeight,
   onSeek,
+  snap,
 }: PlayheadProps) {
   const [dragging, setDragging] = useState(false);
   const [dragTime, setDragTime] = useState(0);
+  // Whether the current drag position is locked onto a boundary. Drives
+  // the glow + tooltip accent so the lock is visible, not just felt.
+  const [dragSnapped, setDragSnapped] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const displayTime = dragging ? dragTime : globalTime;
@@ -61,10 +70,9 @@ export function Playhead({
     (e: React.MouseEvent) => {
       // Only handle clicks directly on the container, not on the playhead handle
       if ((e.target as HTMLElement).dataset.playhead) return;
-      const t = xToTime(e.clientX);
-      onSeek(t);
+      onSeek(snap(xToTime(e.clientX), !e.shiftKey).time);
     },
-    [xToTime, onSeek],
+    [xToTime, onSeek, snap],
   );
 
   // Drag
@@ -74,6 +82,7 @@ export function Playhead({
       e.stopPropagation();
       setDragging(true);
       setDragTime(displayTime);
+      setDragSnapped(false);
     },
     [displayTime],
   );
@@ -82,13 +91,15 @@ export function Playhead({
     if (!dragging) return;
 
     const handleMove = (e: MouseEvent) => {
-      const t = xToTime(e.clientX);
-      setDragTime(t);
-      onSeek(t);
+      const { time, snappedTo } = snap(xToTime(e.clientX), !e.shiftKey);
+      setDragTime(time);
+      setDragSnapped(snappedTo !== null);
+      onSeek(time);
     };
 
     const handleUp = () => {
       setDragging(false);
+      setDragSnapped(false);
     };
 
     window.addEventListener("mousemove", handleMove);
@@ -97,7 +108,7 @@ export function Playhead({
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
     };
-  }, [dragging, xToTime, onSeek]);
+  }, [dragging, xToTime, onSeek, snap]);
 
   return (
     <div
@@ -114,6 +125,25 @@ export function Playhead({
         pointerEvents: "none",
       }}
     >
+      {/* Snap lock glow — a soft band behind the line, shown only while
+          a drag is magnetically held on a boundary. The playhead already
+          sits exactly on the target, so a separate guide line would be
+          invisible underneath it; widening the mark is the readable cue. */}
+      {dragging && dragSnapped && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            left: x,
+            top: 0,
+            width: 5,
+            height: trackAreaHeight,
+            marginLeft: -2.5,
+            background: theme.color.playheadSoft,
+            pointerEvents: "none",
+          }}
+        />
+      )}
       {/* Vertical line — purely visual; clicks must fall through to the
           clip underneath. Only the handle (below) is interactive. */}
       <div
@@ -159,8 +189,10 @@ export function Playhead({
             top: -26,
             transform: "translateX(-50%)",
             background: theme.color.surface3,
-            border: `1px solid ${theme.color.playhead}`,
-            color: theme.color.ink0,
+            border: `1px solid ${
+              dragSnapped ? theme.color.accentBright : theme.color.playhead
+            }`,
+            color: dragSnapped ? theme.color.accentBright : theme.color.ink0,
             fontFamily: theme.font.numeric,
             fontVariantNumeric: "tabular-nums",
             fontSize: theme.text.xs,

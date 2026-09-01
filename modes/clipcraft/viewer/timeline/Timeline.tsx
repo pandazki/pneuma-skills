@@ -32,6 +32,7 @@ import { TransportBar } from "./transport/TransportBar.js";
 import { TimelineMinimap } from "./TimelineMinimap.js";
 import { useTimelineZoom } from "./hooks/useTimelineZoom.js";
 import { useEditorTool } from "./hooks/useEditorTool.js";
+import { usePlayheadSnap } from "./hooks/usePlayheadSnap.js";
 import { useTrackReorder } from "./hooks/useTrackReorder.js";
 import { EditToolbar } from "./toolbar/EditToolbar.js";
 import { AddTrackButton } from "./toolbar/AddTrackButton.js";
@@ -91,12 +92,23 @@ export function Timeline() {
 
   const zoom = useTimelineZoom(dur, containerRef);
   const reorder = useTrackReorder(composition);
+  const playheadSnap = usePlayheadSnap();
 
   const handleSeek = useCallback(
     (time: number) => {
       playback.seek(Math.max(0, Math.min(time, dur)));
     },
     [playback, dur],
+  );
+
+  /** Magnetic snap for the two paths the user moves the playhead by
+   *  hand — ruler click and handle drag — bound to the live zoom.
+   *  Programmatic seeks (Home / End / transport / locator navigation /
+   *  hover-scrub restore) stay exact and never route through here. */
+  const snapAt = useCallback(
+    (time: number, enabled: boolean) =>
+      playheadSnap(time, zoom.pixelsPerSecond, enabled),
+    [playheadSnap, zoom.pixelsPerSecond],
   );
 
   const onSelectClip = useCallback(
@@ -113,9 +125,9 @@ export function Timeline() {
     (e: React.MouseEvent<HTMLDivElement>) => {
       const rect = e.currentTarget.getBoundingClientRect();
       const xInTrack = e.clientX - rect.left;
-      handleSeek(zoom.xToTime(xInTrack));
+      handleSeek(snapAt(zoom.xToTime(xInTrack), !e.shiftKey).time);
     },
-    [handleSeek, zoom],
+    [handleSeek, snapAt, zoom],
   );
 
   if (!composition || composition.tracks.length === 0) {
@@ -365,6 +377,7 @@ export function Timeline() {
               scrollLeft={zoom.scrollLeft}
               trackAreaHeight={showTracks ? trackAreaHeight : 0}
               onSeek={handleSeek}
+              snap={snapAt}
             />
           </div>
         </div>
