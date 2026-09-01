@@ -1,6 +1,6 @@
 {
   "name": "pneuma-skills",
-  "version": "3.44.0",
+  "version": "3.44.1",
   "type": "module",
   "description": "Co-creation infrastructure for humans and code agents \u2014 visual environment, skills, continuous learning, and distribution.",
   "license": "MIT",
@@ -62,7 +62,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@excalidraw/excalidraw": "^0.18.0",
     "@pneuma-craft/core": "^0.1.0",
-    "@pneuma-craft/react": "^0.4.0",
+    "@pneuma-craft/react": "^0.5.0",
     "@pneuma-craft/timeline": "^0.4.0",
     "@pneuma-craft/video": "^0.6.0",
     "@remotion/player": "4.0.438",

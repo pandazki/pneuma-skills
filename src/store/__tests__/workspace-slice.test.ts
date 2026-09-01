@@ -4,6 +4,8 @@ import {
   createWorkspaceSlice,
   type WorkspaceSlice,
 } from "../workspace-slice.js";
+import { fileEventBus } from "../../runtime/file-event-bus.js";
+import type { FileChangeEvent } from "../../../core/types/source.js";
 
 function makeStore() {
   return create<WorkspaceSlice>()((...a) => ({
@@ -58,5 +60,91 @@ describe("workspace-slice — the files-at-hydration snapshot", () => {
     useStore.getState().updateFiles([{ path: "board.md", content: "# b" }]);
     useStore.getState().markFilesHydrated();
     expect(useStore.getState().filesAtHydration).toEqual([]);
+  });
+});
+
+
+/**
+ * setFiles delivers a SNAPSHOT, not a changelog — the initial workspace
+ * load, a replay checkpoint, a seed application. The same snapshot
+ * legitimately arrives more than once per page load (a plain clipcraft
+ * start calls setFiles four times with byte-identical content).
+ *
+ * `origin: "external"` means "someone other than this viewer changed the
+ * world" (core/types/source.ts), and viewers act on it — clipcraft tears
+ * down and rebuilds its entire craft store, re-decoding every video and
+ * audio asset. Publishing an unchanged snapshot as external therefore
+ * cost roughly half the media traffic of a session start, for nothing.
+ */
+describe("workspace-slice — setFiles publishes changes, not snapshots", () => {
+  function captureBatches(fn: () => void): FileChangeEvent[][] {
+    const seen: FileChangeEvent[][] = [];
+    const off = fileEventBus.subscribe((batch) => seen.push(batch));
+    try {
+      fn();
+    } finally {
+      off();
+    }
+    return seen;
+  }
+
+  test("first load publishes the files the source layer has not seen", () => {
+    const useStore = makeStore();
+    const seen = captureBatches(() => {
+      useStore.getState().setFiles([{ path: "a.json", content: "{}" }]);
+    });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toEqual([
+      { path: "a.json", content: "{}", origin: "external" },
+    ]);
+  });
+
+  test("re-delivering the identical snapshot publishes nothing", () => {
+    const useStore = makeStore();
+    useStore.getState().setFiles([{ path: "a.json", content: "{}" }]);
+    const seen = captureBatches(() => {
+      // App.tsx's /api/files fetch landing on top of the WS-seeded list.
+      useStore.getState().setFiles([{ path: "a.json", content: "{}" }]);
+      useStore.getState().setFiles([{ path: "a.json", content: "{}" }]);
+    });
+    expect(seen).toEqual([]);
+    // The state itself is still correct — only the notification is suppressed.
+    expect(useStore.getState().files).toEqual([
+      { path: "a.json", content: "{}" },
+    ]);
+  });
+
+  test("a genuinely changed file in an otherwise identical snapshot still publishes, alone", () => {
+    const useStore = makeStore();
+    useStore.getState().setFiles([
+      { path: "a.json", content: "{}" },
+      { path: "b.json", content: "1" },
+    ]);
+    const seen = captureBatches(() => {
+      // A replay checkpoint boundary: b moved, a did not.
+      useStore.getState().setFiles([
+        { path: "a.json", content: "{}" },
+        { path: "b.json", content: "2" },
+      ]);
+    });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toEqual([
+      { path: "b.json", content: "2", origin: "external" },
+    ]);
+  });
+
+  test("a file that is new to this snapshot publishes even when the others repeat", () => {
+    const useStore = makeStore();
+    useStore.getState().setFiles([{ path: "a.json", content: "{}" }]);
+    const seen = captureBatches(() => {
+      useStore.getState().setFiles([
+        { path: "a.json", content: "{}" },
+        { path: "seed.json", content: "new" },
+      ]);
+    });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toEqual([
+      { path: "seed.json", content: "new", origin: "external" },
+    ]);
   });
 });
