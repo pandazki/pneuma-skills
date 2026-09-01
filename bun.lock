@@ -19,7 +19,7 @@
         "@dnd-kit/utilities": "^3.2.2",
         "@excalidraw/excalidraw": "^0.18.0",
         "@pneuma-craft/core": "^0.1.0",
-        "@pneuma-craft/react": "^0.4.0",
+        "@pneuma-craft/react": "^0.5.0",
         "@pneuma-craft/timeline": "^0.4.0",
         "@pneuma-craft/video": "^0.6.0",
         "@remotion/player": "4.0.438",
@@ -296,7 +296,7 @@
 
     "@pneuma-craft/core": ["@pneuma-craft/core@0.1.0", "", { "dependencies": { "nanoid": "^5.1.7" } }, "sha512-AzviYtDZ+3J+xpZD2wDTFSRSNLrygs/U6p/y98tBoq706GjkT1DNHsO9vUgAn1lWBK7uwOfdTxPstIGJDKoGVA=="],
 
-    "@pneuma-craft/react": ["@pneuma-craft/react@0.4.0", "", { "dependencies": { "@pneuma-craft/core": "0.1.0", "@pneuma-craft/timeline": "0.4.0", "@pneuma-craft/video": "0.6.0", "zustand": "^5.0.0" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" } }, "sha512-WM2vPuv2xen+LsQJp1rSZP/Rm63n2gQDvutFY8+dyUrhsiMLzxWvSYqePKt5U4mIS5uCgS5gdXOQn/aupmojLA=="],
+    "@pneuma-craft/react": ["@pneuma-craft/react@0.5.0", "", { "dependencies": { "@pneuma-craft/core": "0.1.0", "@pneuma-craft/timeline": "0.4.0", "@pneuma-craft/video": "0.6.0", "zustand": "^5.0.0" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" } }, "sha512-eOt+JW6T70UBCuY3GrG08nzV9oPZX6v7bLnMrGV24u2+v5TdtO25riVajvVbSrX7TKgfHkG0/KCZz7ViJb0sCg=="],
 
     "@pneuma-craft/timeline": ["@pneuma-craft/timeline@0.4.0", "", { "dependencies": { "@pneuma-craft/core": "0.1.0" } }, "sha512-4xzk/ov3bQcAtYO60jGUpI2FAklA6zTvB9zASjtcah64qeVhkqHsr97+uCNURIYD2tS5aCo7ilMEJ9PgGsAAQg=="],
 

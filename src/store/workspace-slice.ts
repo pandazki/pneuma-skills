@@ -36,7 +36,7 @@ export interface WorkspaceSlice {
   markFilesHydrated: () => void;
 }
 
-export const createWorkspaceSlice: StateCreator<AppState, [], [], WorkspaceSlice> = (set) => ({
+export const createWorkspaceSlice: StateCreator<AppState, [], [], WorkspaceSlice> = (set, get) => ({
   files: [],
   contentSets: [],
   activeContentSet: null,
@@ -46,6 +46,14 @@ export const createWorkspaceSlice: StateCreator<AppState, [], [], WorkspaceSlice
   filesAtHydration: null,
 
   setFiles: (files) => {
+    // Which of these are actually new to us? setFiles delivers a SNAPSHOT
+    // (initial workspace load, a replay checkpoint, a seed application),
+    // not a changelog, and the same snapshot legitimately arrives more
+    // than once per load. Diffing here is what keeps the publish below
+    // honest — see the comment on it.
+    const known = new Map((get().files ?? []).map((f) => [f.path, f.content]));
+    const changed = files.filter((f) => known.get(f.path) !== f.content);
+
     set((s) => {
       const ws = s.modeViewer?.workspace;
       const contentSets = ws?.resolveContentSets ? ws.resolveContentSets(files) : [];
@@ -83,18 +91,30 @@ export const createWorkspaceSlice: StateCreator<AppState, [], [], WorkspaceSlice
         activeFile,
       };
     });
-    // After state has been updated, notify source providers. setFiles is
-    // used both on initial mode load (fetch /api/files → setFiles) and
-    // on replay-checkpoint boundaries — both cases need the source layer
-    // to see the new file list. We tag origin: "external" because the
-    // batch is not the echo of any specific in-viewer write.
-    fileEventBus.publish(
-      files.map((f) => ({
-        path: f.path,
-        content: f.content,
-        origin: "external" as const,
-      })),
-    );
+    // After state has been updated, notify source providers — but only
+    // about files whose content actually changed. setFiles is used on
+    // initial mode load (fetch /api/files → setFiles), on replay-checkpoint
+    // boundaries, and after a seed is applied; the source layer needs to
+    // see genuinely new content in all three.
+    //
+    // Publishing the whole snapshot unconditionally was wrong, and
+    // expensively so. `origin: "external"` means "someone other than this
+    // viewer changed the world" (core/types/source.ts) — viewers treat it
+    // as a cue to re-hydrate, and some rebuild everything they own. On a
+    // plain clipcraft load setFiles fires four times with byte-identical
+    // content, so the viewer tore down and rebuilt its whole craft store
+    // four times, re-decoding every video and audio asset each time —
+    // roughly half the media traffic of a session start, for nothing.
+    // A value event has to mean the value changed.
+    if (changed.length > 0) {
+      fileEventBus.publish(
+        changed.map((f) => ({
+          path: f.path,
+          content: f.content,
+          origin: "external" as const,
+        })),
+      );
+    }
   },
 
   updateFiles: (updates) => {

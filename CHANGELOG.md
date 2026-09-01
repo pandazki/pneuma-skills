@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.44.1] - 2026-09-01
+
+### Fixed
+- **A viewer no longer rebuilds everything it owns four times on every session start.** `setFiles` delivers a snapshot — the initial workspace load, a replay checkpoint, a seed application — but it announced that snapshot to the source layer as `origin: "external"`, unconditionally, even when not a single byte had changed. `external` means "someone other than this viewer changed the world", and viewers act on it: ClipCraft tears down and rebuilds its entire craft store, re-decoding every video and audio asset. A plain load calls `setFiles` four times with byte-identical content, so that happened four times before the user touched anything. The publish now carries only files whose content actually changed. A value event has to mean the value changed.
+- **Workspace assets are no longer re-downloaded in full by every consumer that wants them.** `/content/*` served no `ETag`, no `Last-Modified` and no `Cache-Control`, so nothing a browser already held could be reused. On one ClipCraft session start — five media files, 6.5 MB distinct — the server sent **42.67 MB across 30 responses**, because the playback engine's audio decode, the waveform, the frame strip, the 3D view and the preview each fetch the same URL independently. The route now sends a strong ETag (weak validators cannot validate a Range request, and media is fetched almost entirely by range) plus `Last-Modified`, and answers a matching `If-None-Match` with a 304. The same load is now **17.75 MB, with 21 of 31 requests answered 304**; a warm reload transfers nothing. `no-cache` rather than a max-age is deliberate: an agent can regenerate an asset at any moment, so the bytes are bought back with a revalidation, never with a window in which the viewer shows something stale.
+
+### Changed
+- **`@pneuma-craft/react` 0.5.0.** Store teardown is no longer reported as a playback failure: work abandoned because the store was destroyed used to log `[PneumaCraft] Failed to seek: Error: Store destroyed` through the same channel and wording as a real failure, 1-3 times per page load under React StrictMode alone (pandazki/pneuma-craft#6). A new exported `StoreDestroyedError` / `isStoreDestroyedError` marks the cancellation for callers that want to branch on it. Worth naming: that console line was the only outward sign of the redundant remount fixed above, so the two changes had to land together — silencing it alone would have made the waste invisible.
+- `/content/*` moves into an exported `mountContentRoute`, mirroring the existing `mountFileRoute`, so its behaviour can be tested against a bare Hono app instead of a booted server.
+
 ## [3.44.0] - 2026-08-28
 
 ### Improved
