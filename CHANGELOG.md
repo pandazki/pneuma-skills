@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.45.2] - 2026-09-03
+
+### Fixed
+- **Plotwise has its showcase images.** 3.45.0 and 3.45.1 shipped `showcase.json` pointing at five images that did not exist, so the launcher card and the launch dialog showed a broken image where the hero belongs. The five are now in place, in the gallery's dark-mockup style and drawn from real captures of the viewer on a finished trial course: the stage ending on its choice cards, a scene end offering the spine, the detour and the learner's own question, the evidence panel beside the figure the shoot reproduced, the style board holding a sample for confirmation, and the course map with the travelled path.
+
 ## [3.45.1] - 2026-09-03
 
 ### Fixed
