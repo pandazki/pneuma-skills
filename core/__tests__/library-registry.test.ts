@@ -8,7 +8,7 @@
  * mocked-out `homedir` at it.
  */
 
-import { describe, expect, test, beforeEach, afterEach, mock } from "bun:test";
+import { describe, expect, test, beforeEach, afterEach, afterAll, mock } from "bun:test";
 import {
   mkdtempSync,
   rmSync,
@@ -98,6 +98,14 @@ beforeEach(() => {
 
 afterEach(() => {
   rmSync(tmp, { recursive: true, force: true });
+});
+
+// The node:os mock above is process-global: every module loaded later in
+// the same `bun test` run gets this `homedir`. Point it back at the real
+// home when this file is done, or a later file's `homedir()` returns the
+// deleted tmp dir (server/path-resolver's PATH probe found no home dirs).
+afterAll(() => {
+  currentHome = process.env.HOME ?? tmpdir();
 });
 
 // ── detectRepoShape ─────────────────────────────────────────────────────────

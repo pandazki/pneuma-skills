@@ -1,0 +1,68 @@
+{
+  "title": "勾股定理",
+  "topic": "勾股定理:它说了什么,为什么成立",
+  "goal": "看懂 a²+b²=c² 的含义,并亲眼看到一个让人信服的证明",
+  "style": { "id": "chalkboard" },
+  "outline": [
+    {
+      "id": "b1",
+      "title": "直角三角形藏着一个秘密",
+      "summary": "知道勾股定理描述的是直角三角形三边的关系",
+      "tier": "world-knowledge"
+    },
+    {
+      "id": "b2",
+      "title": "亲手验证一次",
+      "summary": "用 3-4-5 三角形算一遍,确认 9+16=25",
+      "tier": "code-verification"
+    },
+    {
+      "id": "b3",
+      "title": "为什么永远成立",
+      "summary": "通过面积拼图证明,看到定理对一切直角三角形成立",
+      "tier": "code-verification"
+    }
+  ],
+  "rootNode": "n1",
+  "path": ["n1", "n2a", "n3"],
+  "nodes": {
+    "n1": {
+      "beat": "b1",
+      "kind": "main",
+      "choiceLabel": "开场:一个三千年前的秘密",
+      "video": { "file": "nodes/n1/video.mp4", "duration": 5 },
+      "children": [
+        { "nodeId": "n2a", "label": "用一个例子亲手算一遍" },
+        { "nodeId": "n2b", "label": "先打个比方,感受它在说什么" }
+      ],
+      "status": "ready"
+    },
+    "n2a": {
+      "parent": "n1",
+      "beat": "b2",
+      "kind": "branch",
+      "choiceLabel": "用一个例子亲手算一遍",
+      "video": { "file": "nodes/n2a/video.mp4", "duration": 5 },
+      "children": [{ "nodeId": "n3", "label": "继续:为什么它永远成立?" }],
+      "status": "ready"
+    },
+    "n2b": {
+      "parent": "n1",
+      "beat": "b2",
+      "kind": "branch",
+      "choiceLabel": "先打个比方,感受它在说什么",
+      "children": [],
+      "status": "planned"
+    },
+    "n3": {
+      "parent": "n2a",
+      "beat": "b3",
+      "kind": "main",
+      "choiceLabel": "面积拼图:亲眼看到证明",
+      "video": { "file": "nodes/n3/video.mp4", "duration": 5 },
+      "children": [],
+      "status": "ready"
+    }
+  },
+  "summaryFile": "summary.md"
+}

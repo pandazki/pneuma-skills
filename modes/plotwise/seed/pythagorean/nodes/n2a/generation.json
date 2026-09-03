@@ -1,0 +1,22 @@
+{
+  "endpoint": "reference-to-video",
+  "params": {
+    "duration": 5,
+    "resolution": "480P",
+    "aspect_ratio": "16:9"
+  },
+  "refs": [
+    "<last frame of n1>",
+    "nodes/n2a/figure-345.png"
+  ],
+  "continuity": "Image 1 = last frame of segment n1 (style/scene anchor)",
+  "expanded_prompt": "subject_definitions:\n<Subject 1> is the blackboard environment from <Picture 1>, featuring a dark green slate surface with chalk dust textures and soft, atmospheric lighting.\n<Subject 2> is the mathematical diagram from <Picture 2>, consisting of a right-angled triangle with side lengths labeled 3, 4, and 5, and the equation \"3² + 4² = 9 + 16 = 25 = 5²\" written above it.\n\nsummary:\n[keyframe completion + reference generation] The target video begins from the exact visual state of <Picture 1>, seamlessly continuing as the mathematical diagram <Subject 2> is drawn onto the blackboard <Subject 1> in a chalk-like style, with specific numbers glowing in sequence while a female voiceover narrates.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - the blackboard texture, color, and framing are identical to <Picture 1>.\n<Subject 2> (appears in [Shot 1]): attribute_transfer - the geometry, numbers, and labels are faithfully reproduced in a chalk medium on the blackboard.\n\ndetailed_description:\nThe visual style is a cinematic close-up of a traditional classroom blackboard, maintaining the moody lighting, grainy texture, and dusty green tones seen in <Picture 1>.\n\n[Shot 1] The video opens as a perfect continuation of <Picture 1>. The camera is a Static Shot. In a fluid, invisible-hand motion, the mathematical diagram <Subject 2> is drawn onto the blackboard <Subject 1> using a white chalk stroke texture that matches the existing marks on the board. The right triangle is sketched first, followed by the side labels \"3\", \"4\", and \"5\", and finally the identity \"3² + 4² = 9 + 16 = 25 = 5²\" is written above it. All handwriting is precise and follows the clean, academic style of <Picture 2>. As the narration progresses, the numbers \"9\", \"16\", and \"25\" within the equation begin to glow with a soft, ethereal white light in sequence: first \"9\", then \"16\", and finally \"25\", emphasizing the calculation. A warm, clear Mandarin female voiceover (S1) speaks in synchronization with the drawing and glowing effects: <d>[Chinese] 三条边是三、四、五:九加十六,正好等于二十五。</d>\n\noverall_soundscape:\nThe audio is dominated by the crisp, rhythmic sound of chalk scratching and clicking against a slate blackboard. There is a very faint, ambient room tone of a quiet classroom.\n\nnon_diegetic_music:\nN/A",
+  "inference_seconds": 2.5413016870152205,
+  "qa": [
+    {
+      "transcript": "三条边是3459加16正好等于25",
+      "verdict": "pass"
+    }
+  ],
+  "seed": 1151667450
+}

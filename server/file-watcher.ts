@@ -50,6 +50,21 @@ const DEFAULT_IGNORE = [
   // Dependencies
   "**/node_modules/**",
   "**/bower_components/**",
+  // Python environments & caches — mirrors shadow-git's BASE_EXCLUDE_RULES.
+  // A grounding agent once built a virtualenv INSIDE a course directory
+  // (12,704 files); the watcher swallowed the flood, then went silent for
+  // good — every later course.json change reached the server and never
+  // the browser — and the next server start spent minutes stat-ing the
+  // tree under Bun's allocator lock before it answered a single request.
+  "**/.venv/**",
+  "**/venv/**",
+  "**/__pycache__/**",
+  "**/site-packages/**",
+  "**/*.pyc",
+  "**/.mypy_cache/**",
+  "**/.pytest_cache/**",
+  "**/.ruff_cache/**",
+  "**/.tox/**",
   // Build artifacts & caches
   "**/dist/**",
   "**/build/**",

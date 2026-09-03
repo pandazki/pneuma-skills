@@ -1,8 +1,15 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { useStore } from "../store/index.js";
+import i18n from "i18next";
 
 describe("steer acknowledgement replay", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    // The assertions below read the English copy. `systemText` speaks
+    // through the bare i18next singleton, which is process-global: a CLI
+    // test loaded earlier in the same run initialises it with the
+    // developer's own locale (bin/i18n.ts → resolveLocale()). Uninitialised,
+    // systemText falls back to the English default on its own.
+    if (i18n.isInitialized) await i18n.changeLanguage("en");
     useStore.setState({
       messages: [],
       pendingMessages: [{

@@ -80,6 +80,7 @@
 | **wordtaste** | 人机协作的中文长文写作 —— 计划落成逐字校验的 JSON，所有提示词由代码拼装、写手读到的中文全部出自人手（默认 OpenRouter sonnet 执笔，无 key 回落本机 CLI），逐段续写成文，换一个模型家族交叉检查，有限轮修复后由你把关收尾 |
 | **bansho** | 板书式讲解 —— 用普通 Markdown 写一份讲稿，板子自己演出来：手写一笔一笔浮现，强调的地方变成手绘的圈和荧光，讲到哪就把图表和公式画到哪，还能像回看直播一样拖时间轴 |
 | **eli5** | 把任何东西讲给任何人听 —— 同一个主题爬一架「受众阶梯」，从五岁孩子一路讲到随时待命的工程师，每一级都是单独一页，字号、用词、节奏全按读它的人来调。受众分级参考 [DreambigOu/ELI5](https://github.com/DreambigOu/ELI5)（MIT） |
+| **plotwise** | 量身定制的学习片场 —— 用 MiniMax H3 Max 一段一段拍出来的剧情式课程：每个走向由你选，每个知识点都由代码渲染的图、可查的引用和逐字核对的口播兜底 |
 | **mode-maker** | 用 AI 做自定义 mode —— fork、Play 试跑、发布 |
 | **evolve** | Evolution Agent —— 分析历史、提出技能改进、apply / 回滚 |
 
@@ -117,7 +118,7 @@ agent 干活的 30–60 秒里，loading 槽位会变成一段 10 帧的 carouse
 ### 命令行
 
 ```bash
-# 前置：Bun >= 1.3.5，及以下任一 CLI：Claude Code CLI / Codex CLI / Kimi CLI
+# 前置：Bun >= 1.3.14，及以下任一 CLI：Claude Code CLI / Codex CLI / Kimi CLI
 
 # 打开 Launcher（市场化 UI）
 bunx pneuma-skills
@@ -165,6 +166,7 @@ Modes:
   wordtaste                    人机协作的中文长文写作
   bansho                       板书式讲解
   eli5                         把任何东西讲给任何人听
+  plotwise                     量身定制的学习片场
   mode-maker                   用 AI 做自定义 mode
   evolve                       启动 Evolution Agent
   /path/to/mode                从本地目录加载

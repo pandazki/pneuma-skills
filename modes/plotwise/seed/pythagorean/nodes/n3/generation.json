@@ -1,0 +1,22 @@
+{
+  "endpoint": "reference-to-video",
+  "params": {
+    "duration": 5,
+    "resolution": "480P",
+    "aspect_ratio": "16:9"
+  },
+  "refs": [
+    "<last frame of n2a>",
+    "nodes/n3/figure-proof.png"
+  ],
+  "continuity": "Image 1 = last frame of segment n2a (style/scene anchor)",
+  "expanded_prompt": "subject_definitions:\n<Subject 1> is the classroom blackboard scene from <Picture 1>, featuring a dark green, textured surface with white chalk handwriting and atmospheric lighting.\n<Subject 2> is the geometric proof diagram from <Picture 2>, consisting of a large square containing four congruent right triangles and a central tilted square labeled \"c²\".\n\nsummary:\n[keyframe completion + reference generation] The target video continues the scene from <Subject 1>, where the blackboard content transitions to the geometric diagram of <Subject 2>, with the triangles being shaded sequentially and the center glowing.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - the board texture, lighting, and framing are maintained exactly from <Picture 1>.\n<Subject 2> (appears in [Shot 1]): attribute_transfer - the geometric layout and labels are reproduced in the chalk style of <Subject 1>.\n\ndetailed_description:\nThe video maintains a cinematic, educational aesthetic with a focus on the tactile quality of chalk on a blackboard. The lighting is soft and directional, creating subtle gradients across the dark green surface.\n\n[Shot 1] The video begins as a seamless continuation of <Picture 1>, starting with the static shot of the blackboard <Subject 1>. In a fluid motion, the initial equation and triangle from <Picture 1> are erased or fade away, and the geometric diagram from <Subject 2> is drawn in the same white chalk style. The diagram is reproduced faithfully: a large square enclosing four right triangles that create a tilted inner square labeled \"c²\". As the diagram completes, the four outer triangles are shaded in one by one in a clockwise sequence, filling with a soft white chalk texture. Once the four triangles are shaded, the central inner square labeled \"c²\" begins to emit a soft, ethereal white glow, highlighting the result of the proof. The camera remains a Static Shot throughout the entire sequence. A warm, clear Mandarin female voice (S1) provides a voiceover: <d>[Mandarin] 四个同样的三角形拼进大正方形,中间剩下的空白,就是斜边的平方。</d>\n\noverall_soundscape:\nThe audio features the organic, rhythmic scratching sounds of chalk writing and shading on a slate blackboard. A subtle, quiet room ambience provides a sense of space.\n\nnon_diegetic_music:\nN/A",
+  "inference_seconds": 2.553098879987374,
+  "qa": [
+    {
+      "transcript": "四个同样的三角形拼进大正方形中间剩下的空白就是斜边的平方",
+      "verdict": "pass"
+    }
+  ],
+  "seed": 219685794
+}

@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serveStatic } from "hono/bun";
-import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, unlinkSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, unlinkSync, mkdirSync, createReadStream } from "node:fs";
+import { Readable } from "node:stream";
 import { join, resolve, relative, basename, dirname, sep } from "node:path";
 import { execSync } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
@@ -367,21 +368,38 @@ export function mountContentRoute(
       const size = file.size;
       const contentType = file.type || "application/octet-stream";
 
-      // Support Range requests (needed for video seeking)
+      // Support Range requests (needed for video seeking).
+      //
+      // The body is a Node read stream over the byte window, not
+      // `file.slice(start, end + 1)`. A sliced Bun.file() is the right size
+      // as a Blob body, but on Bun 1.4.0 `.stream()` on that slice yields
+      // the whole file — and every middleware that re-wraps the response
+      // (`new Response(res.body, …)`; the CORS layer in front of this route
+      // does) reads the body as a stream. The browser then got a 206 whose
+      // body contradicted Content-Range and refused the media outright.
+      // No Content-Length: Bun sends a stream body chunked and drops an
+      // explicit length; Content-Range already carries the total.
       const rangeHeader = c.req.header("range");
       if (rangeHeader) {
         const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
         if (match) {
           const start = parseInt(match[1], 10);
-          const end = match[2] ? parseInt(match[2], 10) : size - 1;
-          const chunkSize = end - start + 1;
-          return new Response(file.slice(start, end + 1), {
+          const end = Math.min(match[2] ? parseInt(match[2], 10) : size - 1, size - 1);
+          if (start > end) {
+            return new Response(null, {
+              status: 416,
+              headers: { ...validators, "Content-Range": `bytes */${size}` },
+            });
+          }
+          // node:stream/web and the DOM ReadableStream types disagree on
+          // getReader() overloads; the runtime object is one and the same.
+          const body = Readable.toWeb(createReadStream(absPath, { start, end })) as unknown as ReadableStream;
+          return new Response(body, {
             status: 206,
             headers: {
               ...validators,
               "Content-Type": contentType,
               "Content-Range": `bytes ${start}-${end}/${size}`,
-              "Content-Length": String(chunkSize),
               "Accept-Ranges": "bytes",
             },
           });
@@ -812,7 +830,7 @@ export async function startServer(options: ServerOptions) {
     // their manifest and get filtered out below. The filter is the source
     // of truth; the omission-from-this-list pattern is fragile (forget to
     // add a hidden mode → it leaks).
-    const builtinNames = ["webcraft", "kami", "slide", "doc", "draw", "diagram", "illustrate", "remotion", "gridboard", "clipcraft", "cosmos", "wordtaste", "bansho", "eli5"];
+    const builtinNames = ["webcraft", "kami", "slide", "doc", "draw", "diagram", "illustrate", "remotion", "gridboard", "clipcraft", "cosmos", "wordtaste", "bansho", "eli5", "plotwise"];
     const builtins = builtinNames
       .map((name) => {
         const manifestPath = join(projectRoot, "modes", name, "manifest.ts");

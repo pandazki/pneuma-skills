@@ -17,7 +17,7 @@ import { existsSync, mkdirSync, chmodSync, copyFileSync, unlinkSync } from "node
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
-const BUN_VERSION = "1.3.10";
+const BUN_VERSION = "1.4.0";
 
 // Parse args
 const args = process.argv.slice(2);

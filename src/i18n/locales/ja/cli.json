@@ -9,7 +9,7 @@
     "version_label": "pneuma-skills v{{version}}",
     "help": "pneuma-skills [mode] [options]\n\nモード：\n  (引数なし)                   ランチャーを開く（マーケットプレイスUI）\n  webcraft                     Impeccable.style でのWebデザイン\n  slide                        HTML プレゼンテーション\n  doc                          ライブプレビュー付き Markdown\n  draw                         Excalidraw キャンバス\n  illustrate                   AI イラストスタジオ\n  mode-maker                   AI でカスタムモードを作成\n  evolve                       進化エージェントを起動\n  /path/to/mode                ローカルディレクトリから読み込み\n  github:user/repo             GitHub から読み込み\n  https://...tar.gz            URL から読み込み\n\nオプション：\n  --workspace <path>           対象のワークスペースディレクトリ（既定：カレントディレクトリ）\n  --port <number>              優先サーバーポート\n  --backend <type>             エージェントバックエンド（{{backendList}}；既定：{{defaultBackend}}）\n  --no-open                    ブラウザを自動で開かない\n  --no-prompt                  非対話モード\n  --skip-skill                 スキルのインストールをスキップ\n  --debug                      デバッグモードを有効化\n  --dev                        開発モードを強制（Vite）\n  --help, -h                   このヘルプを表示\n  --version, -v                バージョンを表示",
     "bun_not_running": "Bun で実行されていません。Pneuma は Bun >= {{min}} が必要です",
-    "bun_too_old": "Bun {{current}} を検出しましたが、>= {{min}} が必要です。ターミナル機能が動作しない場合があります。`bun upgrade` で更新してください。",
+    "bun_too_old": "Bun {{current}} を検出しましたが、>= {{min}} が必要です。古いバージョンはワークスペースの変更が多いとファイル監視ごとサーバー全体がデッドロックします（macOS arm64、oven-sh/bun#26762）。`bun upgrade` で更新してください。",
     "update": {
       "available": "更新が利用可能：{{current}} → {{latest}}",
       "prompt": "最新バージョンに更新しますか？",

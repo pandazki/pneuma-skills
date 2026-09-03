@@ -10,6 +10,7 @@ import type { ViewerSelectionContext, ContentSet } from "../core/types/viewer-co
 import { isPneumaMarkerOnly } from "../core/utils/pneuma-markers.js";
 import { getNativeCapabilities, handleNativeRequest } from "./native-bridge.js";
 import { systemText } from "./i18n/system-text.js";
+import { getApiBase } from "./utils/api.js";
 
 /**
  * Enriched payloads for steers that are still waiting on `steer_result`, so
@@ -422,6 +423,18 @@ export function handleParsedMessage(
       const isBusy = (data.session as { cli_busy?: boolean }).cli_busy === true;
       store.setSessionStatus(isBusy ? "running" : "idle");
       store.setTurnInProgress(isBusy);
+      // A session_init after the first hydration is a reconnect. Anything
+      // the watcher broadcast while this tab was away is gone for good,
+      // so read the workspace again; setFiles only republishes files whose
+      // content actually changed, so a no-op resync costs nothing.
+      if (store.filesHydrated) {
+        fetch(`${getApiBase()}/api/files`)
+          .then((r) => r.json())
+          .then((d) => {
+            if (Array.isArray(d?.files) && d.files.length) useStore.getState().setFiles(d.files);
+          })
+          .catch(() => {});
+      }
       break;
     }
 

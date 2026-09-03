@@ -1,0 +1,66 @@
+{
+  "tagline": {
+    "en": "Your custom course, shot while you choose the plot",
+    "zh-CN": "边选剧情边开拍,一门只属于你的课",
+    "ja": "展開を選ぶたびに撮影される、あなただけのコース"
+  },
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": {
+        "en": "Choose Every Turn",
+        "zh-CN": "每一步都由你选",
+        "ja": "展開はあなたが選ぶ"
+      },
+      "description": {
+        "en": "Each 5-15s narrated segment ends on two real choices — go deeper or advance, a worked example or an analogy. Both continuations are already shot while you watch, so the next clip plays the instant you click. Visual idea: a paused video frame on a dark stage with two glowing choice cards beneath it, a branching path faintly drawn behind.",
+        "zh-CN": "每段带口播的短视频结尾都有两个真实的选择——深入或前进、例子或类比。你观看时下一步已在后台拍好,点击即播。",
+        "ja": "各セグメントの終わりに本物の選択肢が2つ。視聴中に次のクリップは撮影済み、クリックで即再生。"
+      },
+      "media": "highlight-choices.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "Facts You Can Audit",
+        "zh-CN": "每个知识点都有据可查",
+        "ja": "すべての知識に監査可能な裏付け"
+      },
+      "description": {
+        "en": "The video model is never trusted with knowledge: formulas and diagrams are rendered by code, derivations are run and verified, claims carry citations — all pinned to an evidence panel on every segment, and narration is transcribed back and checked word-for-word. Visual idea: a video frame of a chalkboard diagram side-by-side with the code-rendered figure it faithfully reproduces, an evidence panel listing citations and a passing verification check.",
+        "zh-CN": "视频模型从不被信任生成知识:公式与图表由代码渲染、推导经代码验证、结论带引用,全部挂在每段的依据面板上;口播还会被转写回来逐字核对。",
+        "ja": "数式や図はコードで描画・検証され、出典付き。ナレーションも文字起こしで逐語チェック。"
+      },
+      "media": "highlight-evidence.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "Nine Styles, Auditioned Live",
+        "zh-CN": "九种画风,现场试镜",
+        "ja": "9つのスタイルをその場でオーディション"
+      },
+      "description": {
+        "en": "Chalkboard, elegant math animation, ink comic, documentary, watercolor storybook, pixel quest and more — the agent shoots the same hook in three fitting styles and lets you pick; upload a photo and a consistent character hosts your whole course. Visual idea: a 3-up film-strip of the same lesson fragment rendered in three wildly different visual styles.",
+        "zh-CN": "黑板粉笔、数学动画、水墨漫画、纪录片、水彩绘本、像素游戏……agent 用同一段内容拍三种画风让你挑;传一张照片,还能让固定角色贯穿整门课。",
+        "ja": "同じ内容を3スタイルで撮影して選べる。写真を渡せば専属キャラがコースを案内。"
+      },
+      "media": "highlight-styles.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "The Course Map Remains",
+        "zh-CN": "学完,地图留下",
+        "ja": "学び終えても、コースマップは残る"
+      },
+      "description": {
+        "en": "When you finish, the whole journey stands as an explorable canvas — every branch you took (and the ones you didn't), replayable end to end, with a recap written from your actual path. Visual idea: an infinite canvas viewed from above, video thumbnails connected as a branching tree with one glowing traversed path.",
+        "zh-CN": "学完之后,整段旅程沉淀为一张可探索的画布——走过和没走过的分支都在,可整段重播,课后总结按你的真实路径生成。",
+        "ja": "学習後は旅全体が探索可能なキャンバスに。実際の経路からふりかえりも生成。"
+      },
+      "media": "highlight-canvas.png",
+      "mediaType": "image"
+    }
+  ]
+}

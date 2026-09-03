@@ -124,6 +124,13 @@ describe("buildIgnoreMatcher", () => {
     test("ignores DEFAULT_IGNORE entries (globs compiled, not passed raw)", () => {
       expect(ignored(join(ws, ".git/objects/ab/cd"))).toBe(true);
       expect(ignored(join(ws, "node_modules/pkg/index.js"))).toBe(true);
+      // Python environments and caches, wherever they sit in the tree — a
+      // virtualenv a grounding agent built under a course's evidence/ dir
+      // silenced the watcher for a whole session.
+      expect(ignored(join(ws, "bayes/evidence/.venv/lib/python3.14/site-packages/numpy/__init__.py"))).toBe(true);
+      expect(ignored(join(ws, ".venv/pyvenv.cfg"))).toBe(true);
+      expect(ignored(join(ws, "bayes/evidence/b2/__pycache__/check.cpython-314.pyc"))).toBe(true);
+      expect(ignored(join(ws, "bayes/evidence/b2/check.py"))).toBe(false);
       expect(ignored(join(ws, ".DS_Store"))).toBe(true);
       expect(ignored(join(ws, "sub/.DS_Store"))).toBe(true);
       expect(ignored(join(ws, "CLAUDE.md"))).toBe(true);

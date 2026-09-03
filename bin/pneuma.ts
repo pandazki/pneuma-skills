@@ -444,7 +444,14 @@ async function promptInitParams(
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 function checkBunVersion() {
-  const MIN_BUN = "1.3.5"; // Required for Bun.spawn terminal (PTY) support
+  // 1.3.5 brought Bun.spawn terminal (PTY) support. 1.3.14 is the first
+  // release whose file watcher survives a churning workspace: on macOS
+  // arm64, Bun <= 1.3.13 deadlocks the whole server (main thread + "File
+  // Watcher" thread parked on one os_unfair_lock, 0% CPU, every route and
+  // the WS dead) after a few hundred create/rename/delete bursts under
+  // chokidar — oven-sh/bun#26762, fixed by the mimalloc v3 upgrade. See
+  // .claude/rules/server.md for the reproduction.
+  const MIN_BUN = "1.3.14";
   const current = typeof Bun !== "undefined" ? Bun.version : null;
   if (!current) {
     p.log.warn(t("pneuma.bun_not_running", { min: MIN_BUN }));

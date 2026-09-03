@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 440" font-family="Georgia, 'Noto Serif SC', serif">
+  <!-- Rearrangement proof: (a+b)^2 square, four congruent right triangles,
+       central hole = c^2. Vertex coordinates verified by nodes/n3/verify-proof.py -->
+  <rect width="400" height="440" fill="#1c3a2d"/>
+  <!-- outer square, side a+b -->
+  <rect x="25" y="65" width="350" height="350" fill="none" stroke="#f2f0e9" stroke-width="4"/>
+  <!-- four triangles (hatch-like translucent chalk fill) -->
+  <g fill="#f2f0e9" fill-opacity="0.14" stroke="#f2f0e9" stroke-width="3" stroke-linejoin="round">
+    <path d="M 25 415 L 225 415 L 25 265 Z"/>
+    <path d="M 225 415 L 375 415 L 375 215 Z"/>
+    <path d="M 375 215 L 375 65 L 175 65 Z"/>
+    <path d="M 175 65 L 25 65 L 25 265 Z"/>
+  </g>
+  <!-- inner square = c^2 -->
+  <text x="200" y="250" fill="#f2f0e9" font-size="34" text-anchor="middle">c²</text>
+  <!-- edge labels: bottom edge splits b then a -->
+  <text x="125" y="438" fill="#f2f0e9" font-size="20" text-anchor="middle">b</text>
+  <text x="300" y="438" fill="#f2f0e9" font-size="20" text-anchor="middle">a</text>
+  <text x="330" y="330" fill="#f2f0e9" font-size="20" text-anchor="middle">c</text>
+  <!-- the area identity -->
+  <text x="200" y="40" fill="#f2f0e9" font-size="22" text-anchor="middle">(a+b)² − 4·(ab⁄2) = c²</text>
+</svg>

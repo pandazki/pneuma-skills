@@ -1,0 +1,12 @@
+[
+  {
+    "kind": "rendered-figure",
+    "file": "nodes/n3/figure-proof.svg",
+    "note": "面积重排证明图:(a+b)² 大正方形内四个全等直角三角形围出 c²,坐标经代码核对"
+  },
+  {
+    "kind": "code-verification",
+    "file": "nodes/n3/verify-proof.py",
+    "note": "验证拼图各顶点坐标、四条斜边等长且互相垂直,输出见 verify-proof.out.txt"
+  }
+]
