@@ -19,20 +19,22 @@ import { createManager, defaultDeps, descendantWindow, subtreeIds, type ManagerD
 import { probeDuration } from "../skill/scripts/segment-lib.mjs";
 
 function shot(id: string, script: string) {
-  return { id, script, visual: "a chalkboard", duration: 10, figures: [], videoPrompt: `PROMPT ${script}`, status: "planned" };
+  return { id, script, visual: "a chalkboard", duration: 10, figures: [] as string[], videoPrompt: `PROMPT ${script}`, status: "planned" };
 }
+
+type Evidence = { kind: string; file?: string; url?: string; note: string };
 
 function courseFixture() {
   return {
     title: "贝叶斯",
     topic: "Bayes",
     language: "zh",
-    style: { id: "chalkboard", status: "confirmed", refImages: [] },
+    style: { id: "chalkboard", status: "confirmed", refImages: [] as string[] },
     outline: [
-      { id: "b1", title: "一", evidence: [] },
-      { id: "b2", title: "二", evidence: [] },
-      { id: "b3", title: "三", evidence: [] },
-      { id: "b4", title: "四", evidence: [] },
+      { id: "b1", title: "一", evidence: [] as Evidence[] },
+      { id: "b2", title: "二", evidence: [] as Evidence[] },
+      { id: "b3", title: "三", evidence: [] as Evidence[] },
+      { id: "b4", title: "四", evidence: [] as Evidence[] },
     ],
     rootNode: "n1",
     path: [],
@@ -51,15 +53,21 @@ interface Fakes {
   deps: ManagerDeps;
   /** Shots rendered, in order, as "node/shot". */
   renders: string[];
+  /** Transcriptions attempted, in order, as "node/shot". */
+  transcriptions: string[];
   /** Make the next render of this shot throw. */
   failOnce: Set<string>;
+  /** Make the next N transcriptions of this shot throw. */
+  deafFor: Map<string, number>;
   /** Park a render until released; records whether it was aborted. */
   hold(key: string): { release: () => void; aborted: () => boolean };
 }
 
 function fakes(setDir: string, manager: () => PlayManager): Fakes {
   const renders: string[] = [];
+  const transcriptions: string[] = [];
   const failOnce = new Set<string>();
+  const deafFor = new Map<string, number>();
   const holds = new Map<string, { promise: Promise<void>; release: () => void; aborted: boolean }>();
   const keyOf = (abs: string) => abs.slice(setDir.length + 1).replace(/^nodes\//, "").replace(/\.mp4$/, "");
   const deps: ManagerDeps = {
@@ -78,6 +86,8 @@ function fakes(setDir: string, manager: () => PlayManager): Fakes {
       }
       const h = holds.get(key);
       if (h) {
+        // Parked once: a re-run of the same shot renders straight away.
+        holds.delete(key);
         await new Promise<void>((res, rej) => {
           h.promise.then(res);
           signal?.addEventListener("abort", () => {
@@ -92,8 +102,15 @@ function fakes(setDir: string, manager: () => PlayManager): Fakes {
       return { duration: 10 };
     },
     async transcribe({ input }) {
+      const key = keyOf(input);
+      transcriptions.push(key);
+      const deaf = deafFor.get(key) ?? 0;
+      if (deaf > 0) {
+        deafFor.set(key, deaf - 1);
+        throw new Error(`wizper is down for ${key}`);
+      }
       // Exactly what the shot says: the fake camera never mis-speaks.
-      const [id, sid] = keyOf(input).split("/");
+      const [id, sid] = key.split("/");
       return manager().course.nodes[id].shots.find((s) => s.id === sid)?.script ?? "";
     },
     judge: async () => ({ verdict: "pass", reason: "" }),
@@ -109,7 +126,9 @@ function fakes(setDir: string, manager: () => PlayManager): Fakes {
   return {
     deps,
     renders,
+    transcriptions,
     failOnce,
+    deafFor,
     hold(key) {
       let release = () => {};
       const promise = new Promise<void>((res) => {
@@ -174,10 +193,14 @@ describe("createManager", () => {
     mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, pollMs: 20 }).start();
     await settle(mgr);
 
-    expect(f.renders).toEqual(["n1/s1", "n1/s2", "n2/s1", "n1d/s1", "n1d/s2", "n3/s1", "n2d/s1", "n2d/s2"]);
+    // One ahead means the scene on stage and the scenes one step from it
+    // — the next main scene and this scene's detour — and nothing further
+    // until the learner moves (an extra step was shot before the review).
+    expect(f.renders).toEqual(["n1/s1", "n1/s2", "n2/s1", "n1d/s1", "n1d/s2"]);
     const c = mgr.course;
-    expect(["n1", "n2", "n3", "n1d", "n2d"].map((id) => c.nodes[id].status)).toEqual(["ready", "ready", "ready", "ready", "ready"]);
-    expect(c.nodes.n4.status).toBe("planned");
+    expect(["n1", "n2", "n1d"].map((id) => c.nodes[id].status)).toEqual(["ready", "ready", "ready"]);
+    expect(["n3", "n2d", "n4"].map((id) => c.nodes[id].status)).toEqual(["planned", "planned", "planned"]);
+    expect(c.nodes.n2d.shots).toEqual([]);
     expect(c.nodes.n1.video).toEqual({ file: "nodes/n1/video.mp4", duration: 10 });
     expect(readFileSync(join(setDir, "nodes/n1/video.mp4"), "utf-8")).toBe("mp4:n1/s1+mp4:n1/s2");
     expect(existsSync(join(setDir, "nodes/n1/s2.last.png"))).toBe(true);
@@ -197,6 +220,13 @@ describe("createManager", () => {
     expect(disk.nodes.n1.status).toBe("ready");
     expect(typeof disk.play.updatedAt).toBe("string");
     expect(existsSync(join(setDir, "state/manager.pid"))).toBe(true);
+
+    // Moving on brings the next step into the window: n3 and n2's detour.
+    mgr.choose("n2");
+    await settle(mgr);
+    expect(f.renders.slice(5)).toEqual(["n3/s1", "n2d/s1", "n2d/s2"]);
+    expect(["n3", "n2d"].map((id) => c.nodes[id].status)).toEqual(["ready", "ready"]);
+    expect(c.nodes.n4.status).toBe("planned");
   });
 
   test("a choice prunes the roads not taken, cancels their work in flight, and pulls the chosen road forward", async () => {
@@ -214,7 +244,7 @@ describe("createManager", () => {
     expect(f.renders).not.toContain("n1d/s2");
     expect(c.nodes.n1d.video).toBeUndefined();
     expect(c.nodes.n3.status).toBe("ready");
-    expect(c.nodes.n4.status).toBe("ready");
+    expect(c.nodes.n4.status).toBe("planned");
     expect(c.path).toEqual(["n1", "n2"]);
     expect(c.play.currentNode).toBe("n2");
     // Only the detour itself: its way back onto the spine must not take
@@ -241,14 +271,15 @@ describe("createManager", () => {
     expect(mgr.course.play.pruned).toBe(0);
     expect(Object.values(mgr.course.nodes).some((n) => n.status === "cancelled")).toBe(false);
     await settle(mgr);
-    expect(["n1d", "n2", "n3"].map((id) => mgr!.course.nodes[id].status)).toEqual(["ready", "ready", "ready"]);
+    // The way back (n2) is one step from the detour; n3 is two.
+    expect(["n1d", "n2", "n3"].map((id) => mgr!.course.nodes[id].status)).toEqual(["ready", "ready", "planned"]);
     expect(mgr.course.path).toEqual(["n1", "n1d"]);
   });
 
   test("a failed scene carries its reason; a retry re-queues it", async () => {
     const f = fakes(setDir, () => mgr!);
     f.failOnce.add("n3/s1");
-    mgr = createManager({ setDir, deps: f.deps, slots: 2, videoAhead: 1, planAhead: 1, pollMs: 20 }).start();
+    mgr = createManager({ setDir, deps: f.deps, slots: 2, videoAhead: 2, planAhead: 1, pollMs: 20 }).start();
     await settle(mgr);
 
     expect(mgr.course.nodes.n3.status).toBe("failed");
@@ -260,6 +291,103 @@ describe("createManager", () => {
     await settle(mgr);
     expect(mgr.course.nodes.n3.status).toBe("ready");
     expect(f.renders.filter((k) => k === "n3/s1")).toHaveLength(2);
+  });
+
+  test("a retry while the scene is being shot re-queues it once the abort has settled", async () => {
+    const f = fakes(setDir, () => mgr!);
+    const parked = f.hold("n2/s1");
+    mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, pollMs: 20 }).start();
+    await until(() => f.renders.includes("n2/s1"));
+
+    // The learner asks again while the shot is in flight: the running job
+    // is aborted, and the scene must come back on its own — the reconcile
+    // that ran inside the aborted job's tail used to see its key still
+    // active and give up until the next choice.
+    mgr.retry("n2");
+    await until(() => parked.aborted());
+    await settle(mgr);
+    expect(f.renders.filter((k) => k === "n2/s1")).toHaveLength(2);
+    expect(mgr.course.nodes.n2.status).toBe("ready");
+    expect(readFileSync(join(setDir, "nodes/n2/video.mp4"), "utf-8")).toBe("mp4:n2/s1");
+  });
+
+  test("a retry of a ready scene is a new take of every shot, a single-shot scene included", async () => {
+    const f = fakes(setDir, () => mgr!);
+    mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, pollMs: 20 }).start();
+    await settle(mgr);
+    expect(mgr.course.nodes.n2.status).toBe("ready");
+    expect(mgr.course.nodes.n1.status).toBe("ready");
+
+    // n2 is one shot, so its clip IS the scene file; a re-run used to
+    // rename that file onto itself and lose it.
+    mgr.retry("n2");
+    expect(mgr.course.nodes.n2.video).toBeUndefined();
+    expect(mgr.course.nodes.n2.shots[0].status).toBe("planned");
+    await settle(mgr);
+    expect(f.renders.filter((k) => k === "n2/s1")).toHaveLength(2);
+    expect(mgr.course.nodes.n2.status).toBe("ready");
+    expect(mgr.course.nodes.n2.video).toEqual({ file: "nodes/n2/video.mp4", duration: 10 });
+    expect(readFileSync(join(setDir, "nodes/n2/video.mp4"), "utf-8")).toBe("mp4:n2/s1");
+
+    // A two-shot scene: both shots are shot again, not only the last.
+    mgr.retry("n1");
+    await settle(mgr);
+    expect(f.renders.filter((k) => k === "n1/s1")).toHaveLength(2);
+    expect(f.renders.filter((k) => k === "n1/s2")).toHaveLength(2);
+    expect(mgr.course.nodes.n1.status).toBe("ready");
+  });
+
+  test("narration that cannot be transcribed fails the shot honestly, and a retry checks the kept clip before paying again", async () => {
+    const f = fakes(setDir, () => mgr!);
+    f.deafFor.set("n2/s1", 2);
+    mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, pollMs: 20 }).start();
+    await settle(mgr);
+
+    const n2 = mgr.course.nodes.n2;
+    expect(n2.status).toBe("failed");
+    expect(String(n2.error)).toContain("could not be checked");
+    expect(String(n2.error)).toContain("wizper is down");
+    // Two attempts, one clip, and the clip is still there.
+    expect(f.transcriptions.filter((k) => k === "n2/s1")).toHaveLength(2);
+    expect(f.renders.filter((k) => k === "n2/s1")).toHaveLength(1);
+    expect(n2.shots[0].status).toBe("unchecked");
+    expect(existsSync(join(setDir, "nodes/n2/s1.mp4"))).toBe(true);
+    expect(onDisk().nodes.n2.shots[0].status).toBe("unchecked");
+
+    // The transcriber is back: the retry checks the clip on disk and lands
+    // the scene without a second render.
+    mgr.retry("n2");
+    await settle(mgr);
+    expect(mgr.course.nodes.n2.status).toBe("ready");
+    expect(f.renders.filter((k) => k === "n2/s1")).toHaveLength(1);
+    expect(f.transcriptions.filter((k) => k === "n2/s1")).toHaveLength(3);
+    expect(mgr.course.nodes.n2.shots[0].status).toBe("ready");
+  });
+
+  test("a shot binding more figures than the reference slots allow fails at the shoot, naming the split", async () => {
+    const raw = courseFixture();
+    // A style anchor takes one slot; a recurring character another; two
+    // figures fit, three do not.
+    mkdirSync(join(setDir, "style"), { recursive: true });
+    mkdirSync(join(setDir, "evidence", "b2"), { recursive: true });
+    writeFileSync(join(setDir, "style", "anchor.png"), "png");
+    writeFileSync(join(setDir, "style", "host.png"), "png");
+    raw.style.refImages = ["style/anchor.png", "style/host.png"];
+    const figures = ["a.png", "b.png", "c.png"].map((f) => `evidence/b2/${f}`);
+    for (const f of figures) writeFileSync(join(setDir, f), "png");
+    raw.outline[1] = { ...raw.outline[1], evidence: figures.map((file) => ({ kind: "rendered-figure", file, note: "" })) };
+    raw.nodes.n2.shots[0].figures = figures;
+    writeFileSync(join(setDir, "course.json"), JSON.stringify(raw));
+
+    const f = fakes(setDir, () => mgr!);
+    mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, pollMs: 20 }).start();
+    await settle(mgr);
+    expect(mgr.course.nodes.n2.status).toBe("failed");
+    expect(String(mgr.course.nodes.n2.error)).toContain("3 figures");
+    expect(String(mgr.course.nodes.n2.error)).toContain("split the figures across shots");
+    expect(f.renders).not.toContain("n2/s1");
+    // The scenes that fit were shot as usual.
+    expect(mgr.course.nodes.n1.status).toBe("ready");
   });
 
   test("a learner's question becomes a scene under the scene they were on, with the way back", async () => {

@@ -20,20 +20,57 @@
  *     await runFalJob({ url, body, key, signal });
  *
  * Failure modes, all reported and distinguishable:
- *   - a transient submit (408/425/429/5xx or a dropped connection) gets
- *     three attempts with a 6s then 15s back-off, each announced through
- *     `onRetry`; a 4xx is the request's own fault and is thrown at once;
+ *   - a transient submit gets three attempts with a 6s then 15s back-off,
+ *     each announced through `onRetry` — but only when the failure proves
+ *     no job was created (an HTTP 408/425/429/5xx answer, or a connection
+ *     that never opened). fal has no idempotency key, so a request that
+ *     left and lost its answer (a timeout, a reset) is NOT sent again: it
+ *     may already be a paid job, and the error says so. A 4xx is the
+ *     request's own fault and is thrown at once;
  *   - a transient status poll is retried in place, three consecutive
- *     failures at most;
- *   - `FAILED` throws with the upstream message; `deadlineMs` throws with
- *     the label; an aborted signal rejects with a real AbortError (`name`
- *     === "AbortError") *after* the remote cancel has been sent.
+ *     failures at most — then the job is cancelled remotely and the
+ *     failure thrown;
+ *   - `FAILED` throws with the upstream message; `deadlineMs` cancels the
+ *     job remotely and throws with the label; an aborted signal rejects
+ *     with a real AbortError (`name` === "AbortError") *after* the remote
+ *     cancel has been sent. Nothing that this module gives up on keeps
+ *     running upstream.
  *
  * Node 22+, no dependencies.
  */
 
 /** Worth another attempt: gateway hiccups, throttling, request timeouts. */
 const RETRY_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+/**
+ * Error codes that prove the request never reached fal (Node's undici and
+ * Bun spellings): the socket was refused, the name did not resolve, the
+ * network is unreachable. Anything else that a `fetch` throws — a
+ * timeout, a reset, a broken pipe — happened after the request may have
+ * left, and a job may exist for it.
+ */
+const NEVER_REACHED_CODES = new Set([
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ENETUNREACH",
+  "EHOSTUNREACH",
+  "ConnectionRefused",
+  "FailedToOpenSocket",
+  "DNSError",
+]);
+
+/** Whether a thrown submit proves the request never became a job. */
+export function neverReached(error) {
+  let e = error;
+  for (let depth = 0; e && depth < 5; depth++) {
+    if (NEVER_REACHED_CODES.has(e.code)) return true;
+    const nested = Array.isArray(e.errors) ? e.errors : [];
+    if (nested.some((inner) => NEVER_REACHED_CODES.has(inner?.code))) return true;
+    e = e.cause;
+  }
+  return false;
+}
 
 /** Back-off between submit attempts — three attempts, two waits. */
 const SUBMIT_RETRY_DELAYS_MS = [6000, 15000];
@@ -148,6 +185,14 @@ async function submitJob(context) {
       });
     } catch (error) {
       throwIfAborted(signal, label);
+      if (!neverReached(error)) {
+        // The request may have been accepted upstream. Sending it again
+        // could start a second paid job for the same shot — fal has no
+        // idempotency key — so this is reported, never retried.
+        throw new Error(
+          `fal.ai submit lost its answer (${errorMessage(error)}) — not sent again, because the job may already have been accepted upstream${attempts > 1 ? ` (attempt ${attempts})` : ""}`,
+        );
+      }
       lastFailure = `request failed: ${errorMessage(error)}`;
     }
 
@@ -185,7 +230,7 @@ async function submitJob(context) {
  * @param {unknown} options.body        Request body, serialized as JSON.
  * @param {string} options.key          fal API key (`Authorization: Key <key>`).
  * @param {AbortSignal} [options.signal] Aborting cancels the job remotely.
- * @param {number} [options.deadlineMs] Wall clock for the whole job (default 10 min).
+ * @param {number} [options.deadlineMs] Wall clock for the whole job (default 10 min); the job is cancelled remotely when it passes.
  * @param {number} [options.pollMs]     Gap between status polls (default 900 ms).
  * @param {string} [options.label]      Names the job in deadline/cancel messages.
  * @param {typeof fetch} [options.fetchImpl]
@@ -274,6 +319,10 @@ export async function runFalJob({
   let metricsInferenceSeconds;
   let lastAnnounced = "";
   let consecutiveFailures = 0;
+  // Once fal has reported COMPLETED or FAILED there is nothing left to
+  // cancel; before that, any way out of the loop below leaves a running
+  // job unless it is told to stop.
+  let terminal = false;
 
   try {
     for (;;) {
@@ -311,8 +360,12 @@ export async function runFalJob({
       if (typeof inferenceTime === "number") metricsInferenceSeconds = inferenceTime;
 
       const status = payload?.status;
-      if (status === "COMPLETED") break;
+      if (status === "COMPLETED") {
+        terminal = true;
+        break;
+      }
       if (status === "FAILED") {
+        terminal = true;
         const detail =
           typeof payload?.error === "string"
             ? payload.error
@@ -353,6 +406,13 @@ export async function runFalJob({
       cancelRemote();
       await cancelSent;
       throw abortErrorFor(signal, label);
+    }
+    // A deadline, a poll that kept failing, a status the key cannot read:
+    // the job is still running upstream and would be paid for in full.
+    // It is cancelled before the failure is reported.
+    if (!terminal) {
+      cancelRemote();
+      await cancelSent;
     }
     throw error;
   } finally {

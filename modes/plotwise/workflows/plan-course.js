@@ -154,11 +154,44 @@ if (!outline || !Array.isArray(outline.beats) || outline.beats.length === 0) {
   return { status: 'FAILED', reason: 'outline agent produced no beats' }
 }
 const beats = outline.beats
-if (!outline.landed) {
-  log(`outline agent did not confirm landing course.json — run \`${COURSE_EDIT} outline --set ${SET_DIR} --file ${SET_DIR}/outline.json\` yourself before shooting`)
-} else {
-  log(`outline landed: ${beats.length} beats in ${COURSE_PATH} — the opening can be shot now`)
+const LAND_CMD = `${COURSE_EDIT} outline --set ${SET_DIR} --file ${SET_DIR}/outline.json`
+let landed = outline.landed === true
+if (!landed) {
+  // Grounding commits into the outline's beats (course-edit.mjs evidence
+  // refuses a beat that is not in course.json), so nothing below is worth
+  // paying for until the outline is on disk. One cheap, deterministic
+  // attempt to land it; then stop, rather than ground into a void.
+  log('outline agent did not confirm landing course.json — landing it now')
+  const attempt = await agent(
+    `
+Land a course outline that was proposed but not committed.
+1. If \`${SET_DIR}/outline.json\` does not exist, write this JSON array to it verbatim:
+${JSON.stringify(beats, null, 2)}
+2. Run exactly: \`${LAND_CMD}\`
+Return whether the command printed a JSON result (a line starting with "{"), and its stderr verbatim if it failed.
+`.trim(),
+    {
+      agentType: 'general-purpose',
+      label: 'land-outline',
+      phase: 'Outline',
+      effort: 'low',
+      schema: {
+        type: 'object',
+        required: ['landed'],
+        properties: { landed: { type: 'boolean' }, error: { type: 'string' } },
+      },
+    },
+  )
+  landed = attempt?.landed === true
+  if (!landed) {
+    return {
+      status: 'FAILED',
+      reason: `the outline could not be landed in ${COURSE_PATH}${attempt?.error ? ` (${attempt.error})` : ''} — nothing was grounded. Run \`${LAND_CMD}\` yourself, read its error, then resume this workflow with resumeFromRunId (the outline agent's answer is cached).`,
+      beats,
+    }
+  }
 }
+log(`outline landed: ${beats.length} beats in ${COURSE_PATH} — the opening can be shot now`)
 
 phase('Grounding')
 // World-knowledge beats with no figures were recorded by the outline op.

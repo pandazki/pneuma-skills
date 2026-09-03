@@ -182,10 +182,22 @@ describe("planner ops: outline / evidence / audit", () => {
     expect(b2.evidence.map((e: { file: string }) => e.file)).toEqual(["evidence/b2/waves.png", "evidence/b2/check.py"]);
     expect(b2.problems).toEqual(["6 次那条的标注挤在一起", "evidence file not on disk: evidence/b2/ghost.png"]);
     expect(b2.grounded).toBe(true);
-    // Committing again is a merge, not a duplicate.
+    // Committing again is a merge, not a duplicate — and the problems are
+    // this commit's, not a ledger: the same file reports the same two.
     run(ws, "evidence", "--set", "plexus", "--beat", "b2", "--file", join(evDir, "grounding.json"));
     b2 = readCourse(ws).outline[1];
     expect(b2.evidence).toHaveLength(2);
+    expect(b2.problems).toEqual(["6 次那条的标注挤在一起", "evidence file not on disk: evidence/b2/ghost.png"]);
+    // The grounder fixed both and commits a clean list: the beat reads clean.
+    writeFileSync(join(evDir, "ghost.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    writeFileSync(
+      join(evDir, "fixed.json"),
+      JSON.stringify({ evidence: [{ kind: "rendered-figure", file: "evidence/b2/ghost.png", note: "rendered now" }], problems: [] }),
+    );
+    run(ws, "evidence", "--set", "plexus", "--beat", "b2", "--file", join(evDir, "fixed.json"));
+    b2 = readCourse(ws).outline[1];
+    expect(b2.evidence).toHaveLength(3);
+    expect(b2.problems).toBeUndefined();
     // A beat that is not in the outline is refused.
     expect(run(ws, "evidence", "--set", "plexus", "--beat", "b9", "--file", join(evDir, "grounding.json")).code).toBe(1);
   });

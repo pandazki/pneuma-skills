@@ -2,9 +2,10 @@
 
 /**
  * Plotwise course.json editor — the manifest edits the session makes
- * while producers may be committing concurrently. Every op goes through
- * the same lock `produce-segment.mjs` and `make-style-sample.mjs` use,
- * so a hand edit never races a producer's read-modify-write.
+ * while the play manager may be committing concurrently. Every op goes
+ * through the same lock `play-manager.mjs`, `write-screenplay.mjs` and
+ * `make-style-sample.mjs` use, so a hand edit never races a
+ * read-modify-write of theirs.
  *
  * Usage:
  *   node course-edit.mjs init          --set <dir> --title <t> [--topic <t>] [--goal <g>] [--language zh]
@@ -262,7 +263,11 @@ try {
         }
       }
       beat.evidence = merged;
-      const problems = new Set([...(Array.isArray(beat.problems) ? beat.problems : []), ...reported, ...missing.map((f) => `evidence file not on disk: ${f}`)]);
+      // The problems are THIS commit's report on the beat, not a ledger:
+      // a grounding agent that fixed what an earlier pass named commits
+      // again with the fixed list, and the audit must read clean. (A
+      // union kept every problem ever reported — Codex review, PR #144.)
+      const problems = new Set([...reported, ...missing.map((f) => `evidence file not on disk: ${f}`)]);
       if (problems.size) beat.problems = [...problems];
       else delete beat.problems;
       beat.grounded = true;

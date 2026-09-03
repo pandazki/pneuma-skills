@@ -308,12 +308,13 @@ describe("runFalJob", () => {
     }
   });
 
-  test("throws once the poll keeps failing", async () => {
+  test("throws once the poll keeps failing, and cancels the job it can no longer watch", async () => {
     const fake = startFakeFal({ status: [{ status: 500 }] });
     try {
       const error = await rejection(runFalJob({ ...FAST, url: fake.url, body: {} }));
       expect(error.message).toContain("status HTTP 500");
       expect(fake.statusUrls.length).toBe(4);
+      expect(fake.cancels).toEqual(["/requests/req-42/cancel"]);
     } finally {
       fake.stop();
     }
@@ -332,7 +333,7 @@ describe("runFalJob", () => {
     }
   });
 
-  test("enforces the deadline while the job stays in progress", async () => {
+  test("enforces the deadline while the job stays in progress, and cancels the job it gives up on", async () => {
     const fake = startFakeFal({ status: [{ body: { status: "IN_PROGRESS" } }] });
     try {
       const startedAt = Date.now();
@@ -343,9 +344,72 @@ describe("runFalJob", () => {
       expect(error.message).toContain("H3 Max");
       expect(error.message).toMatch(/exceeded/i);
       expect(Date.now() - startedAt).toBeLessThan(3000);
+      // The job would otherwise keep running — and billing — upstream.
+      expect(fake.cancels).toEqual(["/requests/req-42/cancel"]);
     } finally {
       fake.stop();
     }
+  });
+
+  test("a job that finished upstream is not cancelled when its result cannot be read", async () => {
+    const fake = startFakeFal({ result: { status: 500, text: "storage hiccup" } });
+    try {
+      const error = await rejection(runFalJob({ ...FAST, url: fake.url, body: {} }));
+      expect(error.message).toContain("result HTTP 500");
+      expect(fake.cancels).toEqual([]);
+    } finally {
+      fake.stop();
+    }
+  });
+
+  describe("submit failures without an answer", () => {
+    /** A fetch whose first call throws `error`, then behaves normally. */
+    const failFirst = (error: Error): typeof fetch => {
+      let first = true;
+      return ((input: RequestInfo | URL, init?: RequestInit) => {
+        if (first) {
+          first = false;
+          return Promise.reject(error);
+        }
+        return fetch(input, init);
+      }) as typeof fetch;
+    };
+
+    test("a connection that never opened is retried — no job can exist for it", async () => {
+      const fake = startFakeFal({});
+      try {
+        const refused = new TypeError("fetch failed");
+        (refused as { cause?: unknown }).cause = Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
+        const retries: unknown[] = [];
+        const result = await runFalJob({
+          ...FAST,
+          url: fake.url,
+          body: {},
+          fetchImpl: failFirst(refused),
+          onRetry: (info) => retries.push(info),
+        });
+        expect(result.attempts).toBe(2);
+        expect(retries.length).toBe(1);
+        expect(fake.submits.length).toBe(1);
+      } finally {
+        fake.stop();
+      }
+    });
+
+    test("a request that left and lost its answer is not sent again — fal has no idempotency key", async () => {
+      const fake = startFakeFal({});
+      try {
+        const timedOut = new DOMException("The operation was aborted due to timeout", "TimeoutError");
+        const error = await rejection(
+          runFalJob({ ...FAST, url: fake.url, body: {}, fetchImpl: failFirst(timedOut) }),
+        );
+        expect(error.message).toContain("not sent again");
+        expect(error.message).toContain("timeout");
+        expect(fake.submits.length).toBe(0);
+      } finally {
+        fake.stop();
+      }
+    });
   });
 
   test("aborting mid-poll cancels the job remotely and rejects with AbortError", async () => {

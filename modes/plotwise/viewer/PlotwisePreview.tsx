@@ -424,6 +424,25 @@ export default function PlotwisePreview(props: ViewerPreviewProps) {
       clearInterval(sync);
     };
   }, [waiting]);
+  // The end of the course is the manager's to declare and the director's
+  // to close: the summary is written from the path actually taken. The
+  // manager notifies no one, so the viewer says it once, until the
+  // summary exists.
+  const completeToldRef = useRef<string | null>(null);
+  const complete = !!set && set.play?.state === "complete" && !set.summaryFile;
+  useEffect(() => {
+    if (!complete || !set) return;
+    const key = `${prefix}:${set.path.join(",")}`;
+    if (completeToldRef.current === key) return;
+    completeToldRef.current = key;
+    props.onNotifyAgent?.({
+      type: "courseComplete",
+      severity: "info",
+      replaces: ["courseComplete"],
+      message: `The learner has reached the end of the course "${set.title}" (play.state is complete; the path they took: ${set.path.join(" → ")}). Close it exactly as SKILL.md's "Finale" says: write <set>/summary.md — a recap of the path they ACTUALLY took (the detours they chose, the questions they asked), in the course language — then register it with \`node the skill's scripts/course-edit.mjs summary --set "${prefix}" --file summary.md\` and tell them in one line that the course map holds the whole journey. Do not navigate-to and do not shoot anything.`,
+      summary: "课程走完了,请导演写总结",
+    });
+  }, [complete, prefix]); // eslint-disable-line react-hooks/exhaustive-deps
   const choicesRevealed =
     !!node && !replaying && !loading && (revealedFor === node.id || !node.video);
 
@@ -599,15 +618,20 @@ export default function PlotwisePreview(props: ViewerPreviewProps) {
     writeChoice({ retry: id, choose: id });
   };
 
-  // A scene the learner waited for has landed and is now playing.
+  // A scene the learner waited for has landed: it leaves the requested
+  // set whether or not it is the one on stage now. A scene they retried
+  // and then walked away from otherwise stayed "requested" for the rest
+  // of the session, and the stage kept counting it as production.
   useEffect(() => {
-    if (!node?.video || !requested.has(node.id)) return;
+    if (!set || requested.size === 0) return;
+    const landed = [...requested].filter((id) => !!set.nodes[id]?.video);
+    if (landed.length === 0) return;
     setRequested((prev) => {
       const next = new Set(prev);
-      next.delete(node.id);
+      for (const id of landed) next.delete(id);
       return next;
     });
-  }, [node?.id, node?.video?.file]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [set, requested]);
 
   // The caption follows the shot being spoken.
   useEffect(() => {

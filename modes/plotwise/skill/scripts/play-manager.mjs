@@ -46,6 +46,7 @@ import { parseArgs } from "node:util";
 import { AsyncJobQueue } from "./async-job-queue.mjs";
 import {
   DEFAULT_MODEL,
+  MAX_REFS,
   autoVerdict,
   chatJson,
   compareNarration,
@@ -129,6 +130,8 @@ function runChild(cmd, argv, { signal, cwd } = {}) {
 
 /** How long one shot may take at fal, queue wait included, before it is retried. */
 export const SHOT_DEADLINE_S = 360;
+/** Pause before the second transcription attempt of a shot. */
+const TRANSCRIBE_RETRY_MS = 3000;
 
 // ── Default production dependencies (the paid ones) ─────────────────────────
 
@@ -237,9 +240,30 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
   const styleAnchor = refImages[0] ?? null;
   const characters = refImages.slice(1);
 
-  const planning = new AsyncJobQueue(3, () => syncSnapshot());
-  const video = new AsyncJobQueue(slots, () => syncSnapshot());
-  const jobs = new Map(); // nodeId → { kind, promise }
+  // Every queue transition refreshes the snapshot; a key LEAVING the
+  // active set (a job finished, failed or — after an abort — finally
+  // settled) also schedules a reconcile. A reconcile run from inside the
+  // job's own tail sees its key still active, so a retry of a scene that
+  // was being shot could not re-queue it until the next choice (Codex
+  // review of PR #144).
+  let lastActive = new Set();
+  let reconcileTimer = null;
+  const scheduleReconcile = () => {
+    if (stopped || reconcileTimer) return;
+    reconcileTimer = setTimeout(() => {
+      reconcileTimer = null;
+      reconcile();
+    }, 0);
+  };
+  const onQueueChange = () => {
+    const active = new Set([...planning.snapshot().active, ...video.snapshot().active].map((i) => i.key));
+    const left = [...lastActive].some((k) => !active.has(k));
+    lastActive = active;
+    syncSnapshot();
+    if (left) scheduleReconcile();
+  };
+  const planning = new AsyncJobQueue(3, onQueueChange);
+  const video = new AsyncJobQueue(slots, onQueueChange);
   let stopped = false;
   let lastChoiceAt = "";
   let persistChain = Promise.resolve();
@@ -313,6 +337,18 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
     const offered = shootableFigures(evidence);
     const wanted = (shot.figures ?? []).map(String);
     const bound = offered.filter((f) => wanted.some((w) => w === f.file || basename(w) === basename(f.file)));
+    // fal analyses at most MAX_REFS images: one is the continuity frame
+    // or the style anchor, the course's recurring characters take the
+    // next, and the figures share what is left. A shot over that budget
+    // would lose its last figure silently at the shoot — it fails here
+    // instead, naming the split the screenplay needs.
+    const anchored = prevFrame || styleAnchor ? 1 : 0;
+    const budget = MAX_REFS - anchored - characters.length;
+    if (bound.length > budget) {
+      throw new Error(
+        `${node.id}/${shot.id}: ${bound.length} figures with ${anchored ? "the continuity frame and " : ""}${characters.length} character reference${characters.length === 1 ? "" : "s"} exceed the ${MAX_REFS} reference slots (${Math.max(0, budget)} left for figures) — split the figures across shots`,
+      );
+    }
     if (prevFrame) {
       // Inside a scene: continue from the previous shot's last frame.
       if (bound.length === 0 && characters.length === 0) {
@@ -349,14 +385,34 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
       .map((e) => ({ kind: e.kind, file: e.file, url: e.url, note: e.note ?? "" }));
   }
 
-  async function qaShot(node, shot, result, signal) {
-    let transcript = "";
-    try {
-      transcript = await deps.transcribe({ input: result.url ?? join(setDir, shot.video.file), language }, signal);
-    } catch (e) {
-      if (isAbort(e, signal)) throw e;
-      return { verdict: "pass", judge: "skipped", reason: `transcription unavailable: ${e.message}`, similarity: null, coverage: null };
+  /**
+   * Transcribe the shot, twice if the first attempt fails. Narration that
+   * cannot be checked is not narration that passed: a transcriber outage
+   * used to wave the shot through as "skipped", which is exactly the clip
+   * this mode promises never to show. The clip stays on disk under the
+   * shot as `unchecked`, so a retry checks it again without paying for
+   * another render.
+   */
+  async function transcribeShot(node, shot, result, signal) {
+    let last = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        return await deps.transcribe({ input: result.url ?? join(setDir, shot.video.file), language }, signal);
+      } catch (e) {
+        if (isAbort(e, signal)) throw e;
+        last = e;
+        if (attempt === 1) {
+          log(`${node.id}/${shot.id}: transcription failed (${e.message}) — trying once more`);
+          await sleep(TRANSCRIBE_RETRY_MS, signal);
+        }
+      }
     }
+    shot.status = "unchecked";
+    throw new Error(`${node.id}/${shot.id}: narration could not be checked — transcription failed twice (${last?.message}); the clip is kept and 再拍一次 checks it again`);
+  }
+
+  async function qaShot(node, shot, result, signal) {
+    const transcript = await transcribeShot(node, shot, result, signal);
     const cmp = compareNarration(shot.script, transcript);
     const sim = Math.round(cmp.similarity * 1000) / 1000;
     const coverage = Math.round(cmp.coverage * 1000) / 1000;
@@ -408,11 +464,20 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
       const prompt = refs.lines.length ? injectBindings(shot.videoPrompt, refs.lines) : shot.videoPrompt;
       let done = null;
       let lastQa = null;
+      // A clip whose narration could not be checked last time is checked
+      // first; it is rendered again only if that check fails.
+      const unchecked = shot.status === "unchecked" && shot.video?.file && existsSync(join(setDir, shot.video.file));
       for (let attempt = 1; attempt <= 2 && !done; attempt++) {
-        const result = await deps.renderShot({ prompt, output: join(setDir, shotFile), duration: shot.duration, image: refs.mode === "image" ? refs.image : undefined, refImages: refs.mode === "reference" ? refs.refs : [], seed: attempt === 1 ? undefined : Math.floor(Math.random() * 2 ** 31) }, signal);
-        shot.video = { file: shotFile, duration: Number(result.duration ?? deps.probe(join(setDir, shotFile)) ?? shot.duration) };
+        let result;
+        if (attempt === 1 && unchecked) {
+          result = { duration: shot.video.duration };
+        } else {
+          result = await deps.renderShot({ prompt, output: join(setDir, shotFile), duration: shot.duration, image: refs.mode === "image" ? refs.image : undefined, refImages: refs.mode === "reference" ? refs.refs : [], seed: attempt === 1 ? undefined : Math.floor(Math.random() * 2 ** 31) }, signal);
+          shot.video = { file: shotFile, duration: Number(result.duration ?? deps.probe(join(setDir, shotFile)) ?? shot.duration) };
+        }
         setPhase(id, "qa", { shotIndex: i + 1 });
         const qa = await qaShot(node, shot, result, signal);
+        signal?.throwIfAborted();
         lastQa = qa;
         if (qa.verdict === "pass") done = { result, qa };
         else if (attempt === 1) {
@@ -433,8 +498,13 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
     const finalRel = `nodes/${id}/video.mp4`;
     const finalAbs = join(setDir, finalRel);
     if (outputs.length === 1) {
-      try { unlinkSync(finalAbs); } catch { /* none */ }
-      renameSync(outputs[0], finalAbs);
+      // A single-shot scene IS its shot. When the surviving clip already
+      // is the scene file (a re-run over a scene that was ready), there
+      // is nothing to move — renaming it onto itself would delete it.
+      if (outputs[0] !== finalAbs) {
+        try { unlinkSync(finalAbs); } catch { /* none */ }
+        renameSync(outputs[0], finalAbs);
+      }
       shots[0].video.file = finalRel;
     } else {
       await deps.concat(outputs, finalAbs, signal);
@@ -456,7 +526,10 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
   function reconcile() {
     if (stopped) return;
     const from = current();
-    const window = descendantWindow(nodes(), from, Math.max(videoAhead, planAhead) + 1);
+    // `videoAhead` scenes ahead means distances 1..videoAhead from the
+    // scene on stage (distance 0): "two ahead" is the next two main
+    // scenes and the detours they offer, not three.
+    const window = descendantWindow(nodes(), from, Math.max(videoAhead, planAhead));
     // A learner's question is scheduled wherever it hangs: they asked it,
     // they are waiting for it. One filed under a scene they had already
     // left sat outside the window for six minutes (2026-09-03).
@@ -468,7 +541,10 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
       const n = nodes()[id];
       if (!n || isDone(n) || n.status === "failed") continue;
       const priority = distance * 100 + (n.kind === "question" ? -50 : n.kind === "main" ? 0 : 10);
-      if (needsScript(n) && distance <= planAhead + 1) {
+      // The queues reconcile when a job's key leaves them (onQueueChange),
+      // which is after these tails have run — a reconcile inside the tail
+      // would still see the key as active.
+      if (needsScript(n) && distance <= planAhead) {
         planning.enqueue(id, priority, async (signal) => {
           try {
             await scriptNode(id, signal);
@@ -477,13 +553,11 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
             log(`${id}: scripting failed: ${e.message}`);
             setNode(id, { status: "failed", phase: null, error: `写稿失败：${e.message}`.slice(0, 240) });
             await persist();
-          } finally {
-            reconcile();
           }
         });
         continue;
       }
-      if ((n.shots ?? []).length > 0 && n.status === "planned" && distance <= videoAhead + 1) {
+      if ((n.shots ?? []).length > 0 && n.status === "planned" && distance <= videoAhead) {
         // Marked before the enqueue: a job that starts at once sets
         // `generating` synchronously, and a mark after the call would
         // put "排队中" over a shoot in progress (seen 2026-09-03).
@@ -496,8 +570,6 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
             log(`${id}: rendering failed: ${e.message}`);
             setNode(id, { status: "failed", phase: null, startedAt: null, error: String(e.message).slice(0, 240) });
             await persist();
-          } finally {
-            reconcile();
           }
         });
         if (!queued && nodes()[id]?.status === "queued") setNode(id, { status: "planned" });
@@ -557,9 +629,17 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
     if (!n) return;
     video.cancel(nodeId);
     planning.cancel(nodeId);
-    for (const s of n.shots ?? []) if (s.status !== "ready") { s.status = "planned"; delete s.video; }
-    setNode(nodeId, { status: "planned", phase: null, startedAt: null, shotIndex: null, error: null });
-    log(`retry: ${nodeId}`);
+    // A retry of a scene that is READY is the learner asking for a new
+    // take of the whole scene (a garbled figure, a mis-drawn board):
+    // every shot is shot again. A retry of a failed or stuck scene keeps
+    // the shots that passed and the clip whose narration is still to be
+    // checked — neither is paid for twice.
+    const whole = n.status === "ready" || !!n.video;
+    for (const s of n.shots ?? []) {
+      if (whole || (s.status !== "ready" && s.status !== "unchecked")) { s.status = "planned"; delete s.video; delete s.qa; }
+    }
+    setNode(nodeId, { status: "planned", video: undefined, phase: null, startedAt: null, shotIndex: null, error: null });
+    log(`retry: ${nodeId}${whole ? " (a new take of every shot)" : ""}`);
     reconcile();
   }
   function request({ parent, label, brief }) {
@@ -618,6 +698,7 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
       for (const n of Object.values(nodes())) {
         if (n.status === "generating" || n.status === "queued" || n.status === "scripting") { n.status = "planned"; n.phase = null; }
       }
+      lastActive = new Set();
       course.play = { ...(course.play ?? {}), state: course.play?.state === "complete" ? "complete" : nodes()[course.rootNode]?.status === "ready" ? "playing" : "warming", currentNode: current() };
       if (!course.path?.length && course.rootNode) course.path = [course.rootNode];
       const choicePath = join(stateDir, "choice.json");
@@ -639,6 +720,7 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
       stopped = true;
       if (timer) clearInterval(timer);
       if (heartbeat) clearInterval(heartbeat);
+      if (reconcileTimer) { clearTimeout(reconcileTimer); reconcileTimer = null; }
       video.cancelWhere(() => true);
       planning.cancelWhere(() => true);
       await persistChain;

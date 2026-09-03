@@ -80,6 +80,7 @@ address='{…}' />` cards and into the `capture` action's `params.address`.
 | `styleConfirmed` | The user confirmed the sample | `course-edit.mjs confirm-style`, then **Start** (below): outline → screenplay → manager |
 | `userQuestion` | The user typed a question mid-course | **A learner's question** (below): ground it, then hand it to the manager as a request file |
 | `managerOffline` | The manager never started after the screenplay landed, or its heartbeat (`play.updatedAt`) stopped while scenes are pending | Start it with `--detach` (**Play**, below) and say so in one line. Do not produce anything by hand |
+| `courseComplete` | The learner reached the end of the spine (`play.state` is `complete`) and no summary exists yet | **Finale** (below): write `summary.md` from the path they took, register it |
 
 Choices, retries and "continue" never reach you: the viewer writes them
 to `<set>/state/choice.json` and the manager answers. If the learner
@@ -223,17 +224,28 @@ starts (shorten the beat's summary, render the figure, re-run).
   loudness → transcription → narration check (one re-shoot with a fresh
   seed on failure) → last frame → next shot; then the shots are
   concatenated into `nodes/<id>/video.mp4`, `script.md` is written and
-  the scene is `ready`.
+  the scene is `ready`. A narration that cannot be transcribed (two
+  attempts) is NOT waved through: the shot fails with the reason, the
+  clip stays on disk as `unchecked`, and a retry checks it before it
+  would pay for another render. A shot that binds more figures than the
+  reference slots allow (four, less the continuity frame and the
+  course's recurring characters) fails at the shoot, naming the split —
+  the screenplay validator caps by the same budget, so read its
+  `problems`.
 - Scheduling by distance from the scene the learner is on: its children
   first, then grandchildren, main before detour, a question above
-  everything; main scenes are shot up to `--video-ahead` beats ahead,
-  detours one scene ahead. Anything outside the window waits `planned`.
+  everything; scenes are shot exactly `--video-ahead` steps ahead
+  (`2` = the next two main scenes and the detours they offer), detours
+  written `--plan-ahead` steps ahead. Anything outside the window waits
+  `planned`.
 - A choice (`state/choice.json`, written by the viewer) makes the chosen
   scene current, appends it to `path[]`, and **prunes** the siblings'
   subtrees: their queued and running jobs are cancelled — remotely too,
   a fal job in flight is cancelled at the queue — and they are marked
   `cancelled` (still on the map; choosing one later revives it). A retry
-  resets a failed or stuck scene and re-queues it.
+  of a failed or stuck scene re-queues it keeping the shots that passed;
+  a retry of a READY scene (再拍一次 on a scene the learner has seen) is
+  a new take of every shot.
 - Every state change is written to `course.json` under the lock —
   `status` (`planned|scripting|queued|generating|ready|failed|cancelled`),
   `phase`, `shotIndex/shotCount`, `startedAt`, `error` on each node, and
@@ -371,8 +383,13 @@ script. A clip that says the wrong thing is worse than no clip.
 
 **Kickoff.** This session's init params: course depth
 **{{perceivedDuration}}**, scenes shot ahead **{{lookahead}}**, resolution
-**{{resolution}}**. Confirm the learning goal and perceived length with
-the user in one short exchange. The moment the topic is known:
+**{{resolution}}**. Both API keys are required and nothing here has an
+offline lane: fal for every clip, OpenRouter for the screenplay, every
+detour and question scene and the narration judge — `write-screenplay.mjs`
+and the manager refuse to run without `OPENROUTER_API_KEY`, and there is
+no fallback to your own model. If a key is missing, say so in one line
+and stop. Confirm the learning goal and perceived length with the user
+in one short exchange. The moment the topic is known:
 
 1. `course-edit.mjs init --set <slug> --title "<course title>" --topic "<topic>" --goal "<goal>"`
    — the board now shows the topic, and the sampler has a course to
@@ -438,16 +455,16 @@ turn. The manager shoots
 the opening and everything after; the stage opens when the root scene is
 ready.
 
-**Learning loop.** Nothing, unless a `userQuestion` or `managerOffline`
-arrives.
+**Learning loop.** Nothing, unless a `userQuestion`, `managerOffline` or
+`courseComplete` arrives.
 
-**Finale.** When `play.state` is `complete` (the manager exits after the
-last main scene is chosen), write `summary.md` — a recap built from the
-user's ACTUAL path (which detours they took, what they asked), not a
-generic abstract. Register it (`course-edit.mjs summary --file
-summary.md`), point the user at the course map, and offer a keepsake
-export (768P re-render + ffmpeg concat of the taken path) only if they
-want it.
+**Finale.** On `courseComplete` (the viewer sends it once `play.state`
+is `complete` — the last main scene chosen — and no summary exists),
+write `summary.md` — a recap built from the user's ACTUAL path (which
+detours they took, what they asked), not a generic abstract. Register
+it (`course-edit.mjs summary --file summary.md`), point the user at the
+course map, and offer a keepsake export (768P re-render + ffmpeg concat
+of the taken path) only if they want it.
 
 ## File layout (the contract with the viewer)
 
@@ -474,7 +491,9 @@ want it.
 
 `course.json` node entries carry `parent`, `beat`, `kind`
 (`main|branch|question`), `choiceLabel`, `brief` (stubs), `shots[]`
-(`{id, script, visual, duration, figures[], videoPrompt, status, video?}`),
+(`{id, script, visual, duration, figures[], videoPrompt, status, video?,
+qa?}` — a shot's `status` is `planned|ready|unchecked`, the last one a
+clip on disk whose narration is still to be checked),
 `video {file, duration}`, `children [{nodeId, label}]`, `status`, and
 while in production `phase`, `shotIndex`, `shotCount`, `startedAt`,
 `error`. `style` carries `id`, `status`

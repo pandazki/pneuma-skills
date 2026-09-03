@@ -195,6 +195,26 @@ describe("the style board — sample confirmation", () => {
     await board.unmount();
   });
 
+  test("a sample that failed is said on the catalog, and the wait it answers is over", async () => {
+    // The learner asked for a candidate; the sampler failed before it
+    // could mark `sampling` and reset the style to pending with the reason.
+    const board = await mountBoard(null);
+    await board.click(board.host.querySelector("img")!.closest("button")!);
+    await board.click(board.button("拍一条样片看看")!);
+    expect(board.button("样片拍摄中")).toBeDefined();
+    await board.update({ id: "chalkboard", status: "pending", sample: { error: "sample shoot failed: HTTP 504" } });
+    const notice = board.host.querySelector("[data-style-sample-error]");
+    expect(notice?.textContent).toContain("样片没拍成");
+    expect(notice?.textContent).toContain("HTTP 504");
+    // The catalog is still there, the pick is kept, and the shoot button
+    // is a button again (the 19th image is the picked card's thumbnail
+    // in the sticky bar).
+    expect(board.host.querySelectorAll("img").length).toBe(19);
+    expect(board.button("样片拍摄中")).toBeUndefined();
+    expect(board.button("拍一条样片看看")?.disabled).toBe(false);
+    await board.unmount();
+  });
+
   test("a custom style shows its own name and recipe", async () => {
     const board = await mountBoard({
       ...SAMPLED,

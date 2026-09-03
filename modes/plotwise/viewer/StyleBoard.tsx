@@ -59,6 +59,7 @@ const COPY = {
   sampling: "导演正在拍样片…",
   samplingHint: "先出锚图,再出 5 秒片,约一分钟。",
   sampleFailed: "样片没拍成:",
+  sampleFailedHint: "再选一次就会重拍,或者换一种风格。",
   hookLabel: "样片口播",
   playWithSound: "有声播放",
   confirm: "就用这个风格,开始课程",
@@ -84,12 +85,15 @@ export default function StyleBoard({ topic, style, prefix, onEvent }: StyleBoard
   const [waiting, setWaiting] = useState<"recommend" | "custom" | "candidate" | "adjust" | null>(null);
 
   const status = style?.status ?? "pending";
+  // A sample that failed resets the style to pending with the reason on
+  // `sample.error`; that answers the wait as much as a landed sample does.
+  const sampleError = style?.sample?.error;
   useEffect(() => {
     setBrowsing(false);
     setAdjusting(false);
     setAdjustText("");
-    if (status === "sampling" || status === "sampled") setWaiting(null);
-  }, [style?.id, status, style?.sample?.video]);
+    if (status === "sampling" || status === "sampled" || sampleError) setWaiting(null);
+  }, [style?.id, status, style?.sample?.video, sampleError]);
 
   const card = STYLE_CARDS.find((c) => c.id === style?.id);
   const styleName = style?.name || card?.name || (style?.id === "custom" ? COPY.customName : style?.id || "");
@@ -226,6 +230,17 @@ export default function StyleBoard({ topic, style, prefix, onEvent }: StyleBoard
           <div className="mx-auto mt-2 max-w-lg text-sm leading-relaxed text-cc-muted">
             {topic ? COPY.leadWithTopic : COPY.leadNoTopic}
           </div>
+          {sampleError && (
+            <div
+              data-style-sample-error
+              className="mx-auto mt-4 max-w-xl rounded-lg border border-cc-error/40 bg-cc-error/10 px-4 py-2 text-left text-sm leading-relaxed"
+            >
+              <span className="text-cc-error">
+                {COPY.sampleFailed} {sampleError}
+              </span>
+              <span className="ml-2 text-cc-muted">{COPY.sampleFailedHint}</span>
+            </div>
+          )}
         </div>
 
         <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">

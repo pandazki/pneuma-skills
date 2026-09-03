@@ -92,6 +92,8 @@ export const DEFAULT_SHOT_SECONDS: number;
 export const MAX_SHOTS_PER_SCENE: number;
 export const MAX_DETOUR_SHOTS: number;
 export const MAX_FIGURES_PER_SHOT: number;
+/** MAX_FIGURES_PER_SHOT less one per recurring character (`style.refImages[1..]`). */
+export function figureBudget(course: { style?: { refImages?: string[] } } | null | undefined): number;
 
 export const SCREENPLAY_SYSTEM: string;
 export const SCENE_SYSTEM: string;

@@ -1,8 +1,8 @@
 /**
  * Plotwise segment library — the pure half of the play loop, pinned.
  *
- * `produce-segment.mjs` is one process that turns a direction into a
- * ready choice card; everything it decides without the network lives in
+ * `play-manager.mjs` is one process that turns the screenplay into
+ * ready scenes; everything it decides without the network lives in
  * `segment-lib.mjs` and is tested here: which recipe a style id resolves
  * to, which evidence a beat offers, how references are numbered, when a
  * transcript passes without a judge, and how course.json is committed

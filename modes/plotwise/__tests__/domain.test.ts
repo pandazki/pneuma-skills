@@ -1,7 +1,7 @@
 /**
  * Plotwise domain tests — the `Course` aggregate.
  *
- * course.json is written by agents and by `produce-segment.mjs`; this
+ * course.json is written by agents and by `play-manager.mjs`; this
  * parse is the only structural truth the viewer has. Every field must
  * degrade to something renderable — a dropped note, an invented evidence
  * kind, a markdown heading in a script — never to a crash. The outline

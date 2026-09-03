@@ -43,9 +43,23 @@ export const DEFAULT_SHOT_SECONDS = 10;
 export const MAX_SHOTS_PER_SCENE = 6;
 /** A detour is a side trip, not a second course. */
 export const MAX_DETOUR_SHOTS = 4;
-/** How many figures one shot can bind: the shoot spends one reference
- * slot on the continuity/anchor frame, and fal analyses at most MAX_REFS. */
+/** How many figures one shot can bind in a course with no recurring
+ * character: the shoot spends one reference slot on the continuity frame
+ * or the style anchor, and fal analyses at most MAX_REFS. */
 export const MAX_FIGURES_PER_SHOT = MAX_REFS - 1;
+
+/**
+ * The figure budget of THIS course: MAX_REFS minus the continuity/anchor
+ * slot minus one slot per recurring character (`style.refImages[1..]`
+ * ride along on every shot). The manager fails a shot over this budget
+ * rather than drop a figure silently, so the validator caps by the same
+ * number and the writer hears about it before anything is shot.
+ */
+export function figureBudget(course) {
+  const refs = Array.isArray(course?.style?.refImages) ? course.style.refImages : [];
+  const characters = Math.max(0, refs.length - 1);
+  return Math.max(0, MAX_FIGURES_PER_SHOT - characters);
+}
 
 const LANGUAGE_NAMES = { zh: "Chinese", en: "English", ja: "Japanese" };
 
@@ -252,7 +266,7 @@ function offeredFigures({ setDir, beat, nodeId }) {
  * normalized (clamped, dropped) AND reported — the caller keeps a usable
  * scene and still learns what was wrong with it.
  */
-function validateShots({ raw, beat, language, setDir, nodeId, where, max }) {
+function validateShots({ raw, beat, language, setDir, nodeId, where, max, budget = MAX_FIGURES_PER_SHOT }) {
   const problems = [];
   const list = Array.isArray(raw) ? raw : [];
   if (list.length === 0 || list.length > max) {
@@ -287,9 +301,9 @@ function validateShots({ raw, beat, language, setDir, nodeId, where, max }) {
       problems.push(`${at}: figure "${miss}" is not a rendered figure on disk for this beat — dropped`);
     }
     const bound = dedupe(gate.bound.map((f) => f.file));
-    if (bound.length > MAX_FIGURES_PER_SHOT) {
-      // The shoot would drop the tail silently; say so here instead.
-      problems.push(`${at}: ${bound.length} figures on screen at once — the shoot binds at most ${MAX_FIGURES_PER_SHOT}, so split them across shots`);
+    if (bound.length > budget) {
+      // The manager fails such a shot at the shoot; say so here instead.
+      problems.push(`${at}: ${bound.length} figures on screen at once — this course's shoot binds at most ${budget} (${MAX_REFS} reference slots less the continuity frame${budget < MAX_FIGURES_PER_SHOT ? " and the recurring characters" : ""}), so split them across shots`);
     }
     return { script, visual, duration, figures: bound };
   });
@@ -304,7 +318,7 @@ function normalizeDetour(raw) {
   return { label, brief };
 }
 
-function normalizeScene({ rawScene, beat, index, language, setDir, max = MAX_SHOTS_PER_SCENE }) {
+function normalizeScene({ rawScene, beat, index, language, setDir, max = MAX_SHOTS_PER_SCENE, budget }) {
   const where = `scene ${index + 1} (${beat?.id ?? "?"})`;
   const problems = [];
   const named = trim(rawScene?.beat);
@@ -318,6 +332,7 @@ function normalizeScene({ rawScene, beat, index, language, setDir, max = MAX_SHO
     setDir,
     where,
     max,
+    budget,
   });
   problems.push(...shotProblems);
 
@@ -359,13 +374,14 @@ export function validateScreenplay(raw, { course, language, setDir } = {}) {
     );
   }
   const scenes = [];
+  const budget = figureBudget(course);
   list.forEach((rawScene, i) => {
     const beat = beats[i];
     if (!beat) {
       problems.push(`scene ${i + 1} has no beat in the outline — dropped`);
       return;
     }
-    const { scene, problems: sceneProblems } = normalizeScene({ rawScene, beat, index: i, language: lang, setDir });
+    const { scene, problems: sceneProblems } = normalizeScene({ rawScene, beat, index: i, language: lang, setDir, budget });
     problems.push(...sceneProblems);
     scenes.push(scene);
   });
@@ -683,6 +699,7 @@ export async function writeDetourScene({ course, node, chat, styleRecipe, narrat
     nodeId: node?.id,
     where: `detour ${label}`,
     max: MAX_DETOUR_SHOTS,
+    budget: figureBudget(course),
   });
 
   const anchored = !!styleAnchorOf(course);

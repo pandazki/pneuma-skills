@@ -3,11 +3,13 @@
  * Safely imported by both backend (pneuma.ts) and frontend (pneuma-mode.ts).
  *
  * Plotwise is a custom-tailored interactive learning-video mode: the agent
- * plans a grounded course outline, then shoots 5-15s narrated video
- * segments with MiniMax H3 Max on fal.ai; at the end of each segment the
- * learner picks the next development like a visual novel. Every knowledge
- * visual is anchored by code-rendered reference figures and cited
- * evidence — the video model is never allowed to imagine facts.
+ * plans a grounded course outline and a screenplay — one scene per beat,
+ * each a run of chained 5-15 s narrated shots — and a play-manager
+ * process shoots it ahead of the learner with MiniMax H3 Max on fal.ai;
+ * at the end of each scene the learner picks the next development like a
+ * visual novel. Every knowledge visual is anchored by code-rendered
+ * reference figures and cited evidence — the video model is never allowed
+ * to imagine facts.
  */
 
 import type { ModeManifest } from "../../core/types/mode-manifest.js";
@@ -110,19 +112,19 @@ The user just opened the learning studio. Greet them briefly (1-2 sentences) and
     actions: [
       {
         id: "navigate-to",
-        label: "Go to Segment",
+        label: "Go to Scene",
         category: "navigate",
         agentInvocable: true,
         params: {
           address: {
             type: "object",
             description:
-              'ViewerAddress of the target segment, e.g. `{ "node": "n3" }` (optionally with `t` seconds into the clip)',
+              'ViewerAddress of the target scene, e.g. `{ "node": "n3" }` (optionally with `t` seconds into the clip)',
             required: true,
           },
         },
         description:
-          "Focus the viewer on a specific course segment — the stage jumps to that node's clip; the canvas view centers on it. Use after producing a segment so the user can review it.",
+          "Focus the viewer on a specific scene — the stage jumps to that node's clip; the canvas view centers on it. Only when the user asks to jump somewhere; never while they are watching.",
       },
       {
         id: "open-references",
@@ -133,12 +135,12 @@ The user just opened the learning studio. Greet them briefly (1-2 sentences) and
           address: {
             type: "object",
             description:
-              'ViewerAddress of the segment whose evidence panel to open, e.g. `{ "node": "n3" }`',
+              'ViewerAddress of the scene whose evidence panel to open, e.g. `{ "node": "n3" }`',
             required: true,
           },
         },
         description:
-          "Open the evidence panel for a segment — citations, code verifications, and rendered reference figures bound to that clip.",
+          "Open the evidence panel for a scene — citations, code verifications, and rendered reference figures bound to that clip.",
       },
     ],
   },
@@ -157,8 +159,8 @@ The user just opened the learning studio. Greet them briefly (1-2 sentences) and
           "zh-CN": "勾股定理 · 示例课程",
         },
         description: {
-          en: "A finished mini-course to explore: a branching tree on the canvas, playable narrated clips, and evidence pinned to every segment.",
-          "zh-CN": "一门已经学完的迷你课:画布上的分支树、可播放的口播片段、每一段都挂着参考依据。",
+          en: "A finished mini-course to explore: a branching tree on the canvas, playable narrated scenes, and evidence pinned to every one.",
+          "zh-CN": "一门已经学完的迷你课:画布上的分支树、可播放的口播场景、每一场都挂着参考依据。",
         },
         tags: ["Sample", "中文"],
       },
@@ -168,10 +170,10 @@ The user just opened the learning studio. Greet them briefly (1-2 sentences) and
         name: "perceivedDuration",
         label: "Course depth",
         description:
-          "How thorough the course feels — drives outline size and segment length, not just total video minutes",
+          "How thorough the course feels — drives outline size and scene length, not just total video minutes",
         type: "select",
         options: [
-          { value: "light", label: "Light (~10 min)", description: "A quick tour: 4-6 main beats, short segments" },
+          { value: "light", label: "Light (~10 min)", description: "A quick tour: 4-6 main beats, short scenes" },
           { value: "standard", label: "Standard", description: "A solid pass: 6-10 beats with room for branches" },
           { value: "deep", label: "Deep dive", description: "Thorough: 10+ beats, worked examples, side quests expected" },
         ],
@@ -216,7 +218,7 @@ The user just opened the learning studio. Greet them briefly (1-2 sentences) and
         name: "openrouterApiKey",
         label: "OpenRouter API Key",
         description:
-          "Optional — used for fast deterministic script-writing (GPT 5.6 Luna); leave blank to fall back to the backend's own model",
+          "Required — GPT 5.6 Luna via OpenRouter writes the screenplay, every detour and question scene, and judges the narration; the course cannot be written without it",
         type: "string",
         defaultValue: "",
         sensitive: true,
@@ -225,11 +227,13 @@ The user just opened the learning studio. Greet them briefly (1-2 sentences) and
   },
 
   evolution: {
-    directive: `Learn this learner's preferences from their course history: which branch types they pick
-(worked example vs analogy vs story vs advance), which visual styles and character setups they choose,
-their pacing and perceived-duration comfort, and what kinds of questions they ask mid-course.
-Augment the skill so future courses bias candidate-direction generation, style auditioning, and
-segment length toward these preferences, while always respecting explicit instructions.`,
+    directive: `Learn this learner's preferences from their course history: how often they take the
+detour instead of continuing and which kinds of detour they take (a worked example, a closer look, a
+check), what they ask mid-course and at which scenes, which style they settle on at the board (a
+preset, the recommendation, their own description) and what they adjust in the sample, and how the
+course depth and lookahead they chose matched their pace. Augment the skill so future courses bias
+the outline's depth, the detour briefs the screenplay offers, the style recommendation and the
+scene length toward these preferences, while always respecting explicit instructions.`,
   },
 
   changelog: {
@@ -238,6 +242,7 @@ segment length toward these preferences, while always respecting explicit instru
       "The viewer writes choices and retries to state/choice.json instead of notifying the director; between scenes the stage shows an interlude — the last frame drifting under a recap of what was just said, what comes next, and the shot progress (拍摄中 2/3) — and the caption follows the shot being spoken. The manager's heartbeat is watched: a stopped one is shown and reported once (managerOffline).",
       "course.json nodes carry shots[], brief, shotIndex/shotCount and the statuses scripting/queued/cancelled; play{} is the manager's snapshot. Init params: lookahead (scenes shot ahead) and resolution replace generationStrategy; SKILL.md carries them in the manager command. generate-video.mjs runs on fal's queue API with remote cancellation.",
       "Hardened by three blind trials: the manager daemonizes itself (--detach, pid gate) because a process backgrounded by an agent's shell dies with the command; a choice prunes only what the chosen scene cannot reach; narration QA reads digits and symbols as the words they were spoken as; every clip leaves with one audio format and the concat verifies its length; reference figures outside fal's 0.4–2.5 aspect range are letterboxed and audited; a learner's question is scheduled at once and offered where they are; the viewer watches only the text it reads (a wide watch pattern had shipped every clip to the browser as base64), re-reads the workspace after every manager write, and holds a short interlude on every scene change.",
+      "After review: the manager shoots exactly `lookahead` scenes ahead (one too many before); a job leaving a queue re-schedules, so a scene retried while it was being shot is re-queued; a retry of a ready scene is a new take of every shot; narration that cannot be transcribed fails the shot (the clip is kept as `unchecked` and a retry checks it first) instead of passing unheard; a shot binding more figures than the reference slots allow — four, less the continuity frame and the course's recurring characters — fails at the shoot and is capped by the screenplay validator; fal jobs are cancelled remotely on a deadline or a dead poll, and a submit whose answer was lost is never sent twice (fal has no idempotency key); the viewer reports courseComplete so the director writes the summary; the OpenRouter key is declared required; a failed style sample stays visible on the board; course-edit evidence replaces a beat's problems instead of accumulating them; plan-course stops when the outline did not land.",
     ],
     "0.3.8": [
       "The endpoint is decided after the script, from what it shows: a segment with no figure on screen (most of them) is image-to-video from the parent's last frame; one that shows a figure, or a course with a recurring character, is reference-to-video with the producer injecting the numbered bindings. The writer hears the available figures by name and uses one only when the content needs it to be exact.",

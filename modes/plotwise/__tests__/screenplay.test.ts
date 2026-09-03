@@ -17,6 +17,7 @@ import type { CourseLike } from "../skill/scripts/segment-lib.mjs";
 import type { Screenplay, ScreenplayScene } from "../skill/scripts/screenplay-lib.mjs";
 import {
   buildShotPrompt,
+  figureBudget,
   landScreenplay,
   validateScreenplay,
   writeDetourScene,
@@ -162,8 +163,24 @@ describe("validateScreenplay", () => {
     expect(problems.length).toBe(1);
     expect(problems[0]).toContain("scene 1 (b1) shot 1");
     expect(problems[0]).toContain("4 figures");
+    expect(problems[0]).toContain("at most 3");
     // They are all kept: the writer bound them, and the caller decides.
     expect(scenes[0].shots[0].figures).toEqual(many);
+
+    // A course with a recurring character has one slot fewer: the same
+    // three figures that fit above are now one too many — the manager
+    // would fail that shot at the shoot, so the writer hears it here.
+    const withHost = course();
+    withHost.style = { ...withHost.style, refImages: ["style/anchor.png", "style/host.png"] };
+    expect(figureBudget(withHost)).toBe(2);
+    draft.scenes[0].shots[0].figures = many.slice(0, 3);
+    const capped = validateScreenplay(draft, { course: withHost, language: "zh", setDir });
+    expect(capped.problems.length).toBe(1);
+    expect(capped.problems[0]).toContain("3 figures");
+    expect(capped.problems[0]).toContain("at most 2");
+    expect(capped.problems[0]).toContain("recurring characters");
+    // Without a character the three fit again.
+    expect(validate(draft, setDir).problems).toEqual([]);
   });
 
   test("a scene without a detour brief is a problem", () => {

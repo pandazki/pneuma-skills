@@ -48,15 +48,22 @@ hallucinates axis labels exactly like a video model. Generated images are
 allowed only for decorative material (a backdrop, a character portrait),
 and even then prefer the style recipe to carry decoration.
 
-Feed figures to the shoot as `--ref-image` (reference-to-video — the
-prompt says "the diagram from Image 1 appears on the blackboard,
-faithfully reproduced") or as `--image` (image-to-video first frame — the
-figure IS the opening shot and the camera moves from it). The reference
-image outranks prompt wording: this is the mechanism that keeps the model
-honest.
+A figure reaches the shoot only as a REFERENCE (reference-to-video, Image
+2+ — the prompt says "the reference figure appears on the board,
+faithfully reproduced, every label unaltered") and the model draws it
+inside its own picture. Never as a first or last frame: a keyframe is
+copied pixel for pixel, the raw bitmap fills the screen and the next shot
+chains from it (a course turned into a slideshow that way, 2026-09-02).
+The reference image outranks prompt wording: this is the mechanism that
+keeps the model honest. Budget: fal analyses at most four references —
+one is the continuity frame or the style anchor, one each for the
+course's recurring characters, the rest for figures; a shot that needs
+more is two shots.
 
-After the shoot, `capture` the segment and CHECK the figure on screen
-against the rendered original. A mangled figure fails the segment exactly
+When the learner reports a figure that came out wrong, look at the scene
+(`capture`) against the rendered original before answering: a mangled
+figure is a too-dense figure — simplify it under `evidence/<beatId>/`
+(fewer, larger labels) and let them 再拍一次; it fails the scene exactly
 like a misspoken fact fails QA.
 
 ## The outline is the evidence index
@@ -128,10 +135,12 @@ Rules:
   opening mood shot, a transition). Any segment that teaches carries at
   least one ref.
 
-## Side quests
+## A learner's question
 
 A mid-course question gets the same treatment at runtime — the user asked,
 so they will tolerate the wait. Classify the question's tier, verify
-accordingly, render figures if the answer needs visuals, THEN shoot.
-Announce what you are doing ("checking sources...") so the wait reads as
+accordingly, render any figure the answer needs under
+`evidence/<sceneId>/` (the scene id is `q<n>`), THEN hand the scene to
+the manager as a request file (SKILL.md, "A learner's question"). Say in
+one line what you are doing ("checking sources...") so the wait reads as
 diligence, not lag.

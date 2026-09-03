@@ -1,7 +1,7 @@
 /**
  * Plotwise segment library — the pure, testable half of the play loop.
  *
- * Everything `produce-segment.mjs` and `course-edit.mjs` do that does not
+ * Everything `play-manager.mjs`, `write-screenplay.mjs` and `course-edit.mjs` do that does not
  * touch the network lives here: reading the style catalog, resolving a
  * beat's evidence, planning reference bindings, comparing a transcript to
  * its script, and committing to course.json under a lock. Kept separate
@@ -108,7 +108,7 @@ function isCjk(language) {
 }
 
 /** Comfortable speech per clip: ~4.8 CJK characters or ~2.6 English words
- * per second (write-script.mjs states the same rule to the writer). */
+ * per second (screenplay-lib.mjs states the same rule to the writer). */
 export function speechBudgetUnits(language, seconds) {
   return Math.round(seconds * (isCjk(language) ? 4.8 : 2.6));
 }
