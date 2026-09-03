@@ -80,7 +80,7 @@ When humans and code agents co-create content, they need more than a chat window
 | **wordtaste** | Human-in-the-loop Chinese long-form writing — plan the piece as verbatim-guarded JSON, compose every prompt by code so no machine-written Chinese reaches the writer (OpenRouter sonnet by default, CLI fallback), write sequential units that continue the draft, cross-check with a fresh model family, and finish through finite repair with human gates |
 | **bansho** | Board-writing explainer — write the lecture as plain markdown and the board performs it: handwriting flows in, emphasis becomes hand-drawn ink, charts and formulas draw themselves as the narration reaches them, scrubbable like a replayed lecture |
 | **eli5** | Explain anything to anyone — one topic climbs an audience ladder, from a five-year-old to the engineer on call, and every rung is its own page whose typography, vocabulary and pacing are tuned to whoever is reading it. Audience taxonomy adapted from [DreambigOu/ELI5](https://github.com/DreambigOu/ELI5) (MIT) |
-| **plotwise** | Custom-tailored learning videos — a visual-novel course shot segment by segment on MiniMax H3 Max: pick each plot turn, every fact grounded by code-rendered figures, cited evidence and word-for-word narration QA |
+| **plotwise** | Custom-tailored learning videos — a visual-novel course shot scene by scene on MiniMax H3 Max ahead of you: continue, take the detour, or ask a question; every fact grounded by code-rendered figures, cited evidence and word-for-word narration QA |
 | **mode-maker** | Create custom modes with AI — fork, play-test, publish |
 | **evolve** | Evolution Agent — analyze history, propose skill improvements, apply/rollback |
 
