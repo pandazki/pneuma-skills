@@ -113,6 +113,13 @@ mac:
 
 dmg:
   sign: false
+  # The staging volume's size. Left to dmgbuild, it is estimated from the
+  # app's file sizes and undercounts what the .app takes on the mounted
+  # image (frameworks, helper apps, hard links): 3.45.1's macOS build died
+  # with "No space left on device" INSIDE /Volumes/Pneuma Skills … while
+  # the runner had 91 GiB free. The final .dmg is UDZO-compressed, so the
+  # unused space costs nothing.
+  size: 3g
 
 win:
   icon: resources/icon.ico
