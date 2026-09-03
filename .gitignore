@@ -31,3 +31,6 @@ web/.deploy.env
 
 # Per-mode build artifacts (e.g. modes/slide/.build/)
 .build/
+# Blind-trial screenshots a browser-driving agent can only write under the repo root
+.tmp-*/
+e2e-*-shots/

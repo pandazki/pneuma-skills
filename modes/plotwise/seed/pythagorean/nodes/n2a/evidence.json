@@ -1,0 +1,12 @@
+[
+  {
+    "kind": "code-verification",
+    "file": "nodes/n2a/verify-345.py",
+    "note": "用代码验证 3²+4²=5²,输出见 verify-345.out.txt"
+  },
+  {
+    "kind": "rendered-figure",
+    "file": "nodes/n2a/figure-345.svg",
+    "note": "3-4-5 直角三角形标注图,手写 SVG,数值经代码核对"
+  }
+]

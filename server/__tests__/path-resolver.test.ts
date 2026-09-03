@@ -14,6 +14,7 @@
 import { describe, expect, test } from "bun:test";
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { delimiter } from "node:path";
 
 import {
@@ -64,7 +65,11 @@ describe("parseCapturedPath", () => {
 
 describe("buildFallbackPath", () => {
   test("includes Kimi Code's install dir when it exists", () => {
-    const home = process.env.HOME;
+    // Same source of truth as buildFallbackPath: `homedir()` from node:os.
+    // Another test file's process-global `mock.module("node:os")` can leave
+    // it pointing at a deleted tmp dir; probing `$HOME` here while the code
+    // probes the mock made this test fail for a reason unrelated to PATH.
+    const home = homedir();
     if (!home || !existsSync(`${home}/.kimi-code/bin`)) return; // not installed here
     expect(buildFallbackPath().split(delimiter)).toContain(`${home}/.kimi-code/bin`);
   });

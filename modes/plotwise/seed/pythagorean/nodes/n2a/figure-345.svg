@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" font-family="Georgia, 'Noto Serif SC', serif">
+  <!-- 3-4-5 right triangle, chalk-on-slate palette. Coordinates verified by nodes/n2a/verify-345.py -->
+  <rect width="400" height="400" fill="#1c3a2d"/>
+  <!-- right angle marker -->
+  <path d="M 80 296 h 24 v 24" fill="none" stroke="#e8e6df" stroke-width="2" opacity="0.8"/>
+  <!-- triangle: right angle at (80,320); horizontal leg 4 units (240px); vertical leg 3 units (180px) -->
+  <path d="M 80 320 L 320 320 L 80 140 Z" fill="none" stroke="#f2f0e9" stroke-width="4" stroke-linejoin="round"/>
+  <!-- labels -->
+  <text x="200" y="352" fill="#f2f0e9" font-size="26" text-anchor="middle">4</text>
+  <text x="58" y="238" fill="#f2f0e9" font-size="26" text-anchor="middle">3</text>
+  <text x="216" y="218" fill="#f2f0e9" font-size="26" text-anchor="middle">5</text>
+  <!-- the identity, verified in code -->
+  <text x="200" y="60" fill="#f2f0e9" font-size="24" text-anchor="middle">3² + 4² = 9 + 16 = 25 = 5²</text>
+</svg>

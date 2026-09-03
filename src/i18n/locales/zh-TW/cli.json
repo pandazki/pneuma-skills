@@ -9,7 +9,7 @@
     "version_label": "pneuma-skills v{{version}}",
     "help": "pneuma-skills [模式] [選項]\n\n模式：\n  (不傳參數)                   開啟啟動器（市集介面）\n  webcraft                     使用 Impeccable.style 進行網頁設計\n  slide                        HTML 投影片\n  doc                          Markdown 即時預覽\n  draw                         Excalidraw 畫布\n  illustrate                   AI 插畫工作室\n  mode-maker                   以 AI 建立自訂模式\n  evolve                       啟動演化智慧體\n  /path/to/mode                從本地目錄載入\n  github:user/repo             從 GitHub 載入\n  https://...tar.gz            從 URL 載入\n\n選項：\n  --workspace <path>           目標工作區目錄（預設：目前目錄）\n  --port <number>              偏好的伺服器連接埠\n  --backend <type>             智慧體後端（{{backendList}}；預設：{{defaultBackend}}）\n  --no-open                    不要自動開啟瀏覽器\n  --no-prompt                  非互動模式\n  --skip-skill                 略過技能安裝\n  --debug                      啟用除錯模式\n  --dev                        強制開發模式（Vite）\n  --help, -h                   顯示這份說明\n  --version, -v                顯示版本",
     "bun_not_running": "並非在 Bun 下執行。Pneuma 需要 Bun >= {{min}}",
-    "bun_too_old": "偵測到 Bun {{current}}，但需要 >= {{min}}。終端功能可能無法運作。執行 `bun upgrade` 進行升級。",
+    "bun_too_old": "偵測到 Bun {{current}}，但需要 >= {{min}}：較舊版本在工作區頻繁變動時會讓檔案監看連同整個服務死鎖（macOS arm64，oven-sh/bun#26762），所有 API 和 viewer 一起卡死。執行 `bun upgrade` 升級。",
     "update": {
       "available": "有可用更新：{{current}} → {{latest}}",
       "prompt": "要更新到最新版嗎？",

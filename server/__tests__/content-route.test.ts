@@ -3,6 +3,7 @@ import { mkdtemp, rm, mkdir, writeFile, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { mountContentRoute } from "../index.js";
 
 let root: string;
@@ -11,6 +12,11 @@ let app: Hono;
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "pneuma-content-"));
   app = new Hono();
+  // Same shape as startServer: the CORS middleware sits in front of the
+  // route and re-wraps every response to stamp its headers. A body that is
+  // only correct until something calls `new Response(res.body, …)` is not
+  // correct in production.
+  app.use("/content/*", cors({ origin: "*" }));
   mountContentRoute(app, { contentRoot: root });
 });
 afterEach(async () => {
@@ -98,6 +104,36 @@ describe("GET /content/* — cache validators", () => {
     expect(res.headers.get("etag")).toBeTruthy();
     expect(res.headers.get("cache-control")).toBe("no-cache");
     expect(res.headers.get("accept-ranges")).toBe("bytes");
+  });
+
+  it("a partial response carries exactly the requested bytes", async () => {
+    // Bun 1.4.0 regression: a sliced Bun.file() is the right size as a Blob
+    // body, but `.stream()` on that slice yields the WHOLE file — and the
+    // CORS middleware's re-wrap reads the body as a stream. Chrome then sees
+    // a 206 whose body contradicts Content-Range and refuses the clip
+    // (MediaError 4): every plotwise stage went black, every clipcraft seek
+    // failed. The route must not depend on blob slicing surviving a wrap.
+    const bytes = Buffer.alloc(4096, 0);
+    for (let i = 0; i < bytes.length; i++) bytes[i] = i % 251;
+    await writeFile(join(root, "a.mp4"), bytes);
+
+    const middle = await app.request("/content/a.mp4", {
+      headers: { range: "bytes=1000-1499" },
+    });
+    expect(middle.status).toBe(206);
+    expect(middle.headers.get("content-range")).toBe("bytes 1000-1499/4096");
+    const body = new Uint8Array(await middle.arrayBuffer());
+    expect(body.length).toBe(500);
+    expect(body[0]).toBe(1000 % 251);
+    expect(body[499]).toBe(1499 % 251);
+
+    // Open-ended, the shape a browser sends on every seek.
+    const tail = await app.request("/content/a.mp4", {
+      headers: { range: "bytes=4000-" },
+    });
+    expect(tail.status).toBe(206);
+    expect(tail.headers.get("content-range")).toBe("bytes 4000-4095/4096");
+    expect((await tail.arrayBuffer()).byteLength).toBe(96);
   });
 
   it("If-None-Match wins over Range, per RFC 9110 §13.2.2", async () => {

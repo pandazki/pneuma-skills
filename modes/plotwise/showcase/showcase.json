@@ -1,0 +1,66 @@
+{
+  "tagline": {
+    "en": "Your custom course, shot while you choose the plot",
+    "zh-CN": "边选剧情边开拍,一门只属于你的课",
+    "ja": "展開を選ぶたびに撮影される、あなただけのコース"
+  },
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": {
+        "en": "Choose Every Turn",
+        "zh-CN": "每一场都由你选",
+        "ja": "展開はあなたが選ぶ"
+      },
+      "description": {
+        "en": "Each scene — a run of narrated shots as long as the idea needs — ends on three real moves: continue along the spine, take the one detour written for that scene, or ask your own question. A play manager shoots the next scenes ahead of you, so the click lands on a ready clip; between scenes the stage recaps what you just heard instead of spinning. Visual idea: a paused video frame on a dark stage with three glowing cards beneath it (继续 · 举个例子 · 我有问题) and a faint progress bar '拍摄中 2/3'.",
+        "zh-CN": "每一场是一串口播镜头,想讲多长就讲多长;场尾三个真实的选择——沿主线继续、走这一场专属的支线、或提你自己的问题。制片进程提前把后面的场拍好,点击就播;两场之间舞台回放刚才讲过的话,而不是转圈等待。",
+        "ja": "各シーンの終わりに本物の選択肢が3つ。次のシーンは先に撮影済み、クリックで即再生。"
+      },
+      "media": "highlight-choices.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "Facts You Can Audit",
+        "zh-CN": "每个知识点都有据可查",
+        "ja": "すべての知識に監査可能な裏付け"
+      },
+      "description": {
+        "en": "The video model is never trusted with knowledge: formulas and diagrams are rendered by code and handed to the shoot as references it must reproduce, derivations are run and verified, claims carry citations — all pinned to an evidence panel on every scene, and every shot's narration is transcribed back and checked word for word before you hear it. Visual idea: a video frame of a chalkboard diagram side-by-side with the code-rendered figure it faithfully reproduces, an evidence panel listing citations and a passing narration check.",
+        "zh-CN": "视频模型从不被信任生成知识:公式与图表由代码渲染、作为参考图喂给拍摄让模型照着复现,推导经代码验证,结论带引用,全部挂在每一场的依据面板上;每个镜头的口播都被转写回来逐字核对,通过了你才听得到。",
+        "ja": "数式や図はコードで描画・検証され、出典付き。ナレーションも文字起こしで逐語チェック。"
+      },
+      "media": "highlight-evidence.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "One Style, Confirmed on a Sample",
+        "zh-CN": "先看样片,再定画风",
+        "ja": "サンプルで決めるスタイル"
+      },
+      "description": {
+        "en": "Chalkboard, elegant math animation, ink comic, documentary, watercolor storybook, pixel quest and a dozen more on the style board — pick one, ask for a recommendation, or describe your own; the director shoots a five-second sample about your topic and you confirm it. That sample's still becomes the anchor every scene opens from, so the whole course is one continuous production. Visual idea: a style board of preset cards on the left, a cinema frame on the right playing a 5-second sample with a '就用这个风格' button.",
+        "zh-CN": "黑板粉笔、数学动画、水墨漫画、纪录片、水彩绘本、像素游戏……风格板上十八种画风:选一种、让导演推荐、或口述你想要的;导演用你的主题拍一条 5 秒样片给你确认。样片的定帧就是整门课的风格锚图,每一场都从它开拍,一门课就是一部连贯的片子。",
+        "ja": "18のスタイルから選ぶか、自分で描写。5秒のサンプルで確認してから本番。"
+      },
+      "media": "highlight-styles.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "The Course Map Remains",
+        "zh-CN": "学完,地图留下",
+        "ja": "学び終えても、コースマップは残る"
+      },
+      "description": {
+        "en": "When you finish, the whole journey stands as an explorable canvas — every scene you took and the roads you didn't, replayable end to end, with a recap written from your actual path. Visual idea: an infinite canvas viewed from above, video thumbnails connected as a branching tree with one glowing traversed path.",
+        "zh-CN": "学完之后,整段旅程沉淀为一张可探索的画布——走过的场和没走的路都在,可整段重播,课后总结按你的真实路径生成。",
+        "ja": "学習後は旅全体が探索可能なキャンバスに。実際の経路からふりかえりも生成。"
+      },
+      "media": "highlight-canvas.png",
+      "mediaType": "image"
+    }
+  ]
+}

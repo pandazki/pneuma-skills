@@ -1,0 +1,2 @@
+inner quadrilateral: all sides = 5.0 (=c), all corners 90 degrees
+area check: (a+b)^2 - 4*(a*b/2) = 25 = c^2 = 25  OK

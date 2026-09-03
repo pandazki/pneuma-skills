@@ -1,0 +1,17 @@
+{
+  "endpoint": "text-to-video",
+  "params": {
+    "duration": 5,
+    "resolution": "480P",
+    "aspect_ratio": "16:9"
+  },
+  "refs": [],
+  "expanded_prompt": "integrated_multimodal_description: [Shot 1] This is a hand-drawn chalkboard animation featuring clean, crisp white chalk lines on a dark green matte slate background. The camera is a Static Shot, providing a flat, overhead view of the chalkboard surface which has a subtle, organic texture of light chalk dust and slight slate imperfections. An invisible hand begins to draw a right triangle, the white lines appearing stroke by stroke in a smooth, fluid motion: first the vertical leg, then the horizontal base, and finally the hypotenuse connecting them. Once the triangle is complete, a soft, ethereal white glow begins to trace the perimeter of the shape, starting from the right-angle vertex, traveling up the vertical side, across the hypotenuse, and back along the base, illuminating the chalk lines as it passes. Throughout the shot, a warm, mature Mandarin female voice (S1) with a clear, scholarly timbre and a steady, rhythmic speaking rate says in an off-screen voiceover, her lips remaining completely closed as she delivers the narration: <d>[Mandarin] 三千年前,人们就发现:直角三角形里,藏着一个整齐得惊人的秘密。</d>\n\noverall_soundscape: The audio is dominated by the rhythmic, tactile sound of chalk scratching and gliding across a slate surface, with distinct pauses between the three strokes of the triangle. A soft, shimmering magical chime accompanies the movement of the glowing light as it traces the edges of the triangle.\n\nnon_diegetic_music: A minimal, elegant orchestral accompaniment featuring a soft piano melody and light string sustains, played at a slow tempo to evoke a sense of historical discovery and intellectual curiosity.",
+  "inference_seconds": 0.755616607144475,
+  "qa": [
+    {
+      "transcript": "三千年前人们就发现直角三角形里藏着一个整齐的惊人的秘密",
+      "verdict": "pass"
+    }
+  ]
+}
