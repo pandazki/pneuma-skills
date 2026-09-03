@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.45.1] - 2026-09-03
+
+### Fixed
+- **The npm package fits the registry again.** 3.45.0 was tagged and released on GitHub but never reached npm: the publish answered `413 Payload Too Large` at 202.5 MB packed / 249.4 MB unpacked, four megabytes past where 3.44.1 had squeezed through. The weight was not the new mode (4.5 MB) but the launcher's marketing art — 94 showcase and seed-gallery PNGs, 87 MB between them. They are now palette-quantized (pngquant, quality floor 85; 30 gradient-heavy files that could not meet it are untouched) to 40 MB, with no filename or code change. Install `pneuma-skills@3.45.1` for everything 3.45.0 announced.
+
 ## [3.45.0] - 2026-09-03
 
 ### Added

@@ -10,7 +10,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. Agents e
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.45.0
+**Version:** 3.45.1
 **Runtime:** Bun >= 1.3.14 (required, not Node.js)
 **Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `cosmos`, `wordtaste`, `bansho`, `eli5`, `plotwise`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`, `project-tidy`
 
@@ -470,6 +470,9 @@ CI (`release.yml`) handles tagging, GitHub Release, and npm publish on push to `
 
 6. **发布体积** —— 若本次新增了 mode 或往仓库里加了大宗二进制(截图、证据帧、样例素材),先跑 `npm pack --dry-run` 看打包体积。**npm 单包上限约 250 MB**,超了 `npm publish` 回 `413 Payload Too Large`,而那一步在 CI 的**最后**:tag 建了、GitHub Release 发了、**只有 registry 没拿到包**——半发布状态,而且从 release 页面上看不出来。3.29.0 就这么炸过一次(bansho 的 `harness/screenshots/` 166 MB,把包顶到 346 MB)。
    **排除大宗物料只能靠 `package.json` 的 `files` 否定模式**(`"!modes/*/harness/"`),**`.npmignore` 对 `files` 白名单里的目录无效**——`files` 优先级更高,写进 `.npmignore` 的那一版打出来一个字节都没少。
+   **先 `bun run build` 再 `npm pack --dry-run`,否则少算 `dist/`(30 MB / 294 文件)**——CI 在 publish 前会 build,`files` 里有 `dist/`。3.45.0 就是这样漏的:本地 dry-run 185.8 MB 看着安全,CI 打出 202.5 MB / 249.4 MB unpacked,`413`;3.44.1 是 244 MB unpacked 刚好挤过去的。**实际上限按 tarball ≈ 195 MB / unpacked ≈ 245 MB 算,目标留 40 MB 余量**。大头是 launcher 的 showcase / seed-gallery PNG(94 张 87 MB → pngquant 后 40 MB)和 kami 种子里的两份 19 MB 字体;新加的 showcase 图先 `pngquant --quality=85-100` 再提交。
+
+
 
 7. **桌面产物半发布的恢复路径** —— desktop 矩阵在 release 之后跑,单个平台失败(先例:3.36.0 的 macOS 连续两次在 dmg 步 ENOSPC——runner 磁盘被 .app+zip+dmg 暂存三份大件顶爆)**不会**回滚已发的 tag/Release/npm。恢复用 `gh workflow run Release`(workflow_dispatch):tag 已存在 → release job 跳过,desktop 矩阵重建并**只补缺失资产**(已发布的安装包与 latest*.yml 校验和不被搅动)。不要删 tag 重推。darwin job 自带磁盘清理 + `df -h` 诊断;`electron-builder.yml` 的 modes 条目排除 `harness/`(npm 的 `files` 负模式管不到桌面包)。
 
