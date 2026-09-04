@@ -59,12 +59,15 @@ sections:
    unspecified is the documented cause of random background tracks. Name
    instrumentation/tempo only when the style truly calls for scoring.
 
-`screenplay-lib.mjs` (`buildShotPrompt`) templates all of this for every
-shot the writer lands — the narration verbatim inside the tagged clause,
-the picture in the style's materials, the negatives — and the manager
-injects the numbered reference bindings at shoot time (`injectBindings`),
-so a prompt written before the endpoint is known never contradicts it.
-Keep hand-written prompts (keepsake re-shoots) in the same shape.
+`h3-prompt.mjs` (`buildShotPrompt`) templates all of this for every
+shot the writer lands — style anchor first, the picture as a timeline of
+beats each with its camera move, the narration verbatim inside the tagged
+clause, a two-layer soundscape under the voice, the negatives — and the
+manager injects the numbered reference bindings at shoot time
+(`injectBindings`), so a prompt written before the endpoint is known
+never contradicts it. The practice and its measurements:
+`references/h3-best-practices.md`. Keep hand-written prompts (keepsake
+re-shoots) in the same shape.
 
 ## Loudness
 
@@ -102,11 +105,19 @@ How the manager binds references, per shot (`shotRefs`):
   between scenes is natural (the learner chose something there), and it
   is what lets scenes render in parallel. Characters (`refImages[1..]`)
   and the shot's figures follow as Image 2+.
-- **The budget is four**: fal analyses at most four references. One is
-  the continuity frame or the anchor, one each for the recurring
-  characters, the rest for figures. The screenplay validator caps a
-  shot's figures by that budget and the manager fails a shot over it
-  ("split the figures across shots") rather than drop one silently.
+- **The budget is four images**: fal analyses at most four reference
+  images. One is the continuity frame or the anchor, one each for the
+  recurring characters (including the character sheet the continuity
+  kit draws for a speaker on screen), the rest for figures. The
+  screenplay validator caps a shot's figures by that budget and the
+  manager fails a shot over it ("split the figures across shots") rather
+  than drop one silently.
+- **Audio 1 is the voice.** The confirmed sample's narration
+  (`style/voice.mp3`) rides on every reference-to-video shot, so the
+  narrator keeps one voice across the course (+4 s a shot measured).
+  `--continuity chain` (default) keeps image-to-video for the shots inside
+  a scene that carry nothing else — the seamless frame chain; `locked`
+  makes every shot a reference shot with the voice.
 - **Never a figure as `--image` or `--end-image`**: a keyframe is copied
   verbatim, the raw matplotlib bitmap fills the screen, the next shot
   chains from it, and the course turns into a slideshow (seen

@@ -17,7 +17,7 @@ import { load, save } from "./domain.js";
 
 const plotwiseManifest: ModeManifest = {
   name: "plotwise",
-  version: "0.4.0",
+  version: "0.5.0",
   displayName: {
     en: "Plotwise",
     "zh-CN": "Plotwise",
@@ -206,6 +206,18 @@ The user just opened the learning studio. Greet them briefly (1-2 sentences) and
         defaultValue: "480P",
       },
       {
+        name: "continuity",
+        label: "Continuity",
+        description:
+          "How hard the shoot holds one look, one voice and one face. Chain: shots inside a scene start on the exact last frame of the previous one (seamless), and every reference shot — scene openings, figures, a speaker on screen — carries the sample's voice. Locked: every shot carries the voice, and a speaker on screen gets a two-angle character sheet; about seven seconds more a shot, joins are matched cuts",
+        type: "select",
+        options: [
+          { value: "chain", label: "Chain", description: "Seamless frame chain inside a scene; the voice reference rides where a reference shot is made anyway" },
+          { value: "locked", label: "Locked", description: "The voice on every shot and a character sheet for a speaker — one narrator, one face, guaranteed; slower, joins are matched cuts" },
+        ],
+        defaultValue: "chain",
+      },
+      {
         name: "falApiKey",
         label: "fal.ai API Key",
         description:
@@ -237,6 +249,13 @@ scene length toward these preferences, while always respecting explicit instruct
   },
 
   changelog: {
+    "0.5.0": [
+      "The H3 prompt practice lives in one script (h3-prompt.mjs), not in the model's head: every shot's prompt opens on the style anchor, writes the picture as a timeline of beats each with its camera move, carries a two-layer soundscape under the voice, and closes on the negatives for what the style shows",
+      "One voice across the course: the confirmed sample's narration rides on every reference-to-video shot as the voice reference (about four seconds more a shot); a speaker on screen is always a reference shot, so their voice holds between shots too",
+      "Continuity init param — chain (default) keeps the seamless image-to-video frame chain inside a scene and carries the voice on every reference shot; locked puts the voice on every shot and draws a two-angle character sheet for a speaker on screen, at a looser join",
+      "The eighteen style recipes name their kind, frame, concrete colors, material and light, so the anchor holds across shots",
+      "Shot joins fade 30 ms of audio so a scene no longer clicks between shots",
+    ],
     "0.4.0": [
       "Play is a program. After the style is confirmed and the outline lands, write-screenplay.mjs writes the whole main line in one designed call — one scene per beat, 1-6 chained shots as long as the content needs, one detour brief per scene — and play-manager.mjs runs the play loop as a long-lived process: two queues (Luna for detours and questions, H3 slots for shots), scheduling by distance from the learner with main before detour, pruning and remote cancellation on choice, one narration re-shoot per shot, the shots concatenated into the scene. No model runs on the click path; the director does nothing during play but answer questions (a request file) and restart the manager.",
       "The viewer writes choices and retries to state/choice.json instead of notifying the director; between scenes the stage shows an interlude — the last frame drifting under a recap of what was just said, what comes next, and the shot progress (拍摄中 2/3) — and the caption follows the shot being spoken. The manager's heartbeat is watched: a stopped one is shown and reported once (managerOffline).",

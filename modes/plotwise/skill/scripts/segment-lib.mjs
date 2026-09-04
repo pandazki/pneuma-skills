@@ -484,7 +484,14 @@ export function injectBindings(prompt, sentences) {
   return `${prompt.slice(0, at).trimEnd()} ${block}${prompt.slice(at)}`;
 }
 
-export function planRefs({ anchorFile, anchorKind = "continuity", characters = [], figures = [], max = MAX_REFS, mode = "reference" }) {
+/**
+ * `voice` is the course's voice reference (the confirmed sample's
+ * narration, `style/voice.mp3`): it rides along as `Audio 1` on every
+ * reference-to-video shot so the narrator keeps one voice across shots
+ * and scenes. Audio is outside the image budget (`max` counts images);
+ * fal takes up to 12 files in all.
+ */
+export function planRefs({ anchorFile, anchorKind = "continuity", characters = [], figures = [], voice = null, max = MAX_REFS, mode = "reference", narration = "voiceover" }) {
   if (mode === "image") {
     // Continuity only: the frame chain is the first frame, and nothing
     // else can ride along — a figure is a reference, never a keyframe, so
@@ -502,18 +509,26 @@ export function planRefs({ anchorFile, anchorKind = "continuity", characters = [
     return { refs, lines };
   }
   const refs = [];
-  if (anchorFile) refs.push({ file: anchorFile, job: anchorKind });
+  if (anchorFile) refs.push({ file: anchorFile, job: anchorKind, kind: "image" });
   for (const file of characters) {
     if (refs.length >= max) break;
-    refs.push({ file, job: "character" });
+    refs.push({ file, job: "character", kind: "image" });
   }
   for (const fig of figures) {
     if (refs.length >= max) break;
-    refs.push({ file: fig.file, job: "figure", note: fig.note ?? "" });
+    refs.push({ file: fig.file, job: "figure", note: fig.note ?? "", kind: "image" });
   }
   const lines = refs.map(
     (r, i) => `Image ${i + 1} is ${r.job === "figure" ? figureJobText(r) : r.job === "character" ? `the reference image "${basename(r.file)}" — ${JOB_TEXT.character}` : JOB_TEXT[r.job]}.`,
   );
+  if (voice) {
+    refs.push({ file: voice, job: "voice", kind: "audio" });
+    lines.push(
+      narration === "on-camera"
+        ? "Audio 1 is the speaker's voice — they speak in exactly this voice, timbre and pace."
+        : "Audio 1 is the narrator's voice — the voiceover keeps exactly this voice, timbre and pace.",
+    );
+  }
   return { refs, lines };
 }
 

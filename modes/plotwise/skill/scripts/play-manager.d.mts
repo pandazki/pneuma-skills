@@ -13,9 +13,13 @@ export interface ManagerDeps {
   model?: string;
   chat: ((request: { system: string; user: string }) => Promise<Record<string, unknown>>) | null;
   renderShot(
-    input: { prompt: string; output: string; duration: number; image?: string; refImages?: string[]; seed?: number },
+    input: { prompt: string; output: string; duration: number; image?: string; refImages?: string[]; refAudios?: string[]; seed?: number },
     signal?: AbortSignal,
   ): Promise<{ duration?: number; url?: string; [key: string]: unknown }>;
+  /** The continuity kit's steps — optional; a manager without them shoots without a voice reference or character sheet. */
+  extractAudio?(video: string, output: string, maxSeconds?: number, signal?: AbortSignal): Promise<void>;
+  firstFrame?(video: string, output: string, signal?: AbortSignal): Promise<void>;
+  characterSheet?(input: { frame: string; outputs: string[]; styleRecipe: string }, signal?: AbortSignal): Promise<void>;
   transcribe(input: { input: string; language: string }, signal?: AbortSignal): Promise<string>;
   judge:
     | ((args: { script: string; transcript: string; language: string; similarity: number; coverage: number }) => Promise<{ verdict: "pass" | "fail"; reason: string }>)
@@ -52,6 +56,17 @@ export interface ManagerCourse {
   rootNode: string;
   path: string[];
   nodes: Record<string, ManagerNode>;
+  style: {
+    id?: string;
+    narration?: string;
+    refImages?: string[];
+    userRefs?: string[];
+    sample?: { image?: string; video?: string; hook?: string };
+    /** Set by the continuity kit. */
+    voiceRef?: string;
+    characterSheet?: string[];
+    [key: string]: unknown;
+  };
   play: {
     state: string;
     currentNode?: string;
@@ -70,9 +85,15 @@ export interface ManagerOptions {
   slots?: number;
   videoAhead?: number;
   planAhead?: number;
+  /** "chain" (default): image-to-video frame chain inside a scene, reference-to-video (with the voice) for openings, figures and characters; "locked": every shot reference-to-video with the voice. The continuity kit is made in both. */
+  continuity?: "chain" | "locked";
   log?: (line: string) => void;
   pollMs?: number;
 }
+
+/** Where the continuity kit lives, set-relative. */
+export const VOICE_REF: string;
+export const CHARACTER_SHEET: string[];
 
 export interface PlayManager {
   readonly course: ManagerCourse;

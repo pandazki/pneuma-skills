@@ -21,8 +21,6 @@
  * to guess which figure becomes Image 2 would guess wrong.
  */
 
-import { basename } from "node:path";
-
 import {
   MAX_REFS,
   SPEECH_OVERRUN,
@@ -33,6 +31,12 @@ import {
   speechBudgetUnits,
   speechUnits,
 } from "./segment-lib.mjs";
+import { buildShotPrompt, normalizeBeats } from "./h3-prompt.mjs";
+
+// The H3 prompt itself is built by h3-prompt.mjs — the practice lives
+// there; this module only re-exports it for the callers that always
+// imported it from here.
+export { buildShotPrompt };
 
 /** A shot is one H3 clip. The model's floor and ceiling, not ours. */
 export const MIN_SHOT_SECONDS = 5;
@@ -100,13 +104,15 @@ const CORE_RULES = `Rules, in priority order:
 2. THE LINE IS CONTINUOUS. Every scene opens by picking up the previous scene's closing thought in ONE clause, and closes on a hook that makes the next beat wanted. Inside a scene, shot k+1 continues shot k: the same set, the same board, the thought carried forward.
 3. THE NARRATION FITS THE CLIP. A shot's "script" is what is spoken in that shot, and it must be speakable inside its "duration": about 4.5 Chinese or Japanese characters per second, or about 2.4 English words per second. A 12-second Chinese shot is therefore about 54 characters, not 80. The caller measures every shot and rejects the ones that do not fit; an over-long script is spoken at a rush or cut off mid-sentence.
 4. FIGURES ARE FOR EXACTNESS ONLY. Put a figure in a shot's "figures" ONLY when the content must be exact on screen — a plot, a coordinate system, a formula, a table. Name it by the set-relative path exactly as the beat's evidence list spells it; a path that is not on that list does not exist and asking for it fails the shot. MOST SHOTS SHOW NO FIGURE — a scene, a metaphor or a character carries an idea better than a diagram. Never describe a knowledge visual you have no figure to reproduce.
-5. "visual" IS WHAT IS ON SCREEN. 1-3 English sentences describing the picture in the style's own materials: objects, action, and camera motion written plainly (motion + amplitude + speed). No on-screen text, labels, formulas or numbers unless you spell them out verbatim in double quotes — the video model renders unspecified text as garbled glyphs. WRITTEN MATHEMATICS NEEDS A FIGURE: a shot that shows a formula, a derivation or a labeled axis names a figure that contains it; without one, the board stays free of formulas and the narration carries them (a video model asked to write c₃ = f‴(a)/3! wrote f″ — a wrong formula on screen is worse than none).`;
+5. "visual" IS WHAT IS ON SCREEN, "beats" IS WHEN. "visual" is 1-2 English sentences summarizing the picture in the style's own materials — the viewer shows it. "beats" is the same picture as a TIMELINE inside one continuous take: 2-4 entries {"from","to","action","camera"} in seconds, covering the whole duration, each ending where the narration changes thought, and each with its own CAMERA MOVE written as motion + amplitude + speed ("the camera pushes in slowly with small amplitude toward the gap", "holds still", "drifts left"). A beat without a camera is a dead static frame. Name colors from the style anchor, not adjectives ("amber", "deep navy" — never "vivid"). No on-screen text, labels, formulas or numbers unless you spell them out verbatim in double quotes — the video model renders unspecified text as garbled glyphs. WRITTEN MATHEMATICS NEEDS A FIGURE: a shot that shows a formula, a derivation or a labeled axis names a figure that contains it; without one, the board stays free of formulas and the narration carries them (a video model asked to write c₃ = f‴(a)/3! wrote f″ — a wrong formula on screen is worse than none).
+6. "sound" IS THE TWO LAYERS UNDER THE VOICE. One English sentence: the ambience (room tone, wind, chalk dust settling) and the action effects with the moment they land ("a soft chalk tap when the second curve appears at 3s"). The voice is the narration and is fixed; never write music.`;
 
-const DETOUR_RULE = `6. EVERY SCENE ENDS WITH ONE DETOUR. "detour.label" is what the learner would press to take it, in the course's language, 4-14 characters (举个例子 / 讲细一点 / 练一练 / "a worked example"). "detour.brief" is one paragraph: what that side scene teaches, on what example, and how it hands the learner back to the spine. You write the label and the brief only — the detour's own shots are written later, and only if it is ever taken.`;
+const DETOUR_RULE = `7. EVERY SCENE ENDS WITH ONE DETOUR. "detour.label" is what the learner would press to take it, in the course's language, 4-14 characters (举个例子 / 讲细一点 / 练一练 / "a worked example"). "detour.brief" is one paragraph: what that side scene teaches, on what example, and how it hands the learner back to the spine. You write the label and the brief only — the detour's own shots are written later, and only if it is ever taken.`;
 
 const STRICT_JSON = `Output STRICT JSON only, no markdown fences, no commentary.`;
 
-const SCENE_JSON = `{"beat":"b1","label":"<the scene's name in the course's language — the text on the card that leads into it>","shots":[{"script":"<verbatim narration>","visual":"<what is on screen>","duration":10,"figures":[]}],"detour":{"label":"...","brief":"..."}}`;
+const SHOT_JSON = `{"script":"<verbatim narration>","visual":"<one-line summary of the picture>","duration":10,"figures":[],"beats":[{"from":0,"to":4,"action":"<what happens>","camera":"<motion + amplitude + speed>"},{"from":4,"to":10,"action":"...","camera":"..."}],"sound":"<ambience and action effects, with when they land>"}`;
+const SCENE_JSON = `{"beat":"b1","label":"<the scene's name in the course's language — the text on the card that leads into it>","shots":[${SHOT_JSON}],"detour":{"label":"...","brief":"..."}}`;
 
 /** The system prompt for writing the whole main line in one call. */
 export const SCREENPLAY_SYSTEM = `You are Luna, the screenwriter of an interactive learning-video course. You write the WHOLE main line in one pass: the outline is the spine, and you turn each of its beats into exactly ONE scene, in the outline's order.
@@ -138,7 +144,7 @@ A detour serves the scene it hangs off: it opens by picking up that scene's clos
 ${CORE_RULES}
 
 ${STRICT_JSON}
-{"shots":[{"script":"<verbatim narration>","visual":"<what is on screen>","duration":10,"figures":[]}]}`;
+{"shots":[${SHOT_JSON}]}`;
 
 /** One outline beat as the writer sees it: what it teaches, what it may show. */
 function beatBlock(beat, index) {
@@ -305,7 +311,17 @@ function validateShots({ raw, beat, language, setDir, nodeId, where, max, budget
       // The manager fails such a shot at the shoot; say so here instead.
       problems.push(`${at}: ${bound.length} figures on screen at once — this course's shoot binds at most ${budget} (${MAX_REFS} reference slots less the continuity frame${budget < MAX_FIGURES_PER_SHOT ? " and the recurring characters" : ""}), so split them across shots`);
     }
-    return { script, visual, duration, figures: bound };
+
+    // The timeline and the sound are optional — a shot with only a visual
+    // still shoots — but what is there is made honest: beats clamped to
+    // the shot, a missing camera named (the builder fills the default).
+    const { beats, problems: beatProblems } = normalizeBeats(rawShot?.beats, duration, { where: at });
+    problems.push(...beatProblems);
+    const sound = trim(rawShot?.sound);
+    const shot = { script, visual, duration, figures: bound };
+    if (beats.length) shot.beats = beats;
+    if (sound) shot.sound = sound;
+    return shot;
   });
   return { shots, problems };
 }
@@ -388,83 +404,6 @@ export function validateScreenplay(raw, { course, language, setDir } = {}) {
   return { scenes, problems };
 }
 
-// ── The H3 prompt for one shot ──────────────────────────────────────────────
-
-/**
- * The video prompt for ONE shot, in the three-section shape H3's prompt
- * expander rewrites toward. Deterministic on purpose: the writer supplies
- * the narration and the picture, the discipline (framing, negatives,
- * the tagged narration clause) is the same every time.
- *
- * No "Image N" binding appears here. The manager decides the endpoint
- * from what the shot bound and injects the numbered bindings at shoot
- * time (`injectBindings`), so a script written before the endpoint is
- * known never contradicts it.
- */
-export function buildShotPrompt({
-  styleRecipe,
-  narration,
-  language,
-  shot,
-  sceneGoal,
-  hasParentFrame = false,
-  isSceneOpening = false,
-} = {}) {
-  const script = trim(shot?.script);
-  const visual = trim(shot?.visual);
-  const duration = Number(shot?.duration) || 10;
-  const figures = dedupe((Array.isArray(shot?.figures) ? shot.figures : []).map(String).filter(Boolean));
-
-  const continuity = hasParentFrame
-    ? isSceneOpening
-      ? "The supplied frame is this course's look: its palette, materials, line quality, lighting and set carry over exactly, and this scene is established from it."
-      : "This shot continues seamlessly from the previous shot's last frame — the same set, stroke texture, handwriting and typography, lighting and framing carry over; that frame is not new content to describe."
-    : "";
-
-  const goalNote = trim(sceneGoal)
-    ? `Continuity note, never shown on screen: this shot is one part of a longer continuous scene explaining ${trim(sceneGoal)}, and the set and materials stay identical across it.`
-    : "";
-
-  const figureClause = figures
-    .map(
-      (file) =>
-        `The reference figure "${basename(file)}" appears on screen, reproduced faithfully — every label, axis and number unaltered.`,
-    )
-    .join(" ");
-
-  const cameraClause = /camera|pan|zoom|dolly|push|tilt|orbit/i.test(visual)
-    ? ""
-    : "The camera holds steady with only a slow, small push-in as the action unfolds.";
-
-  const narrationClause =
-    narration === "on-camera"
-      ? `The speaker (S1), framed at medium distance facing the camera, says: <d>[${langName(language)}] ${script}</d>`
-      : `A clear, warm narrator says in an off-screen voiceover: <d>[${langName(language)}] ${script}</d>. No on-screen character's lips move.`;
-
-  const negatives = `No soft dissolves or fluid morphs; do not introduce any on-screen text that is not spelled out in this prompt${figures.length ? " or carried by the reference figure" : ""}; no garbled characters.`;
-
-  const description = [
-    "integrated_multimodal_description: [Shot 1] One continuous shot.",
-    trim(styleRecipe),
-    continuity,
-    goalNote,
-    visual,
-    figureClause,
-    `The action fills the ${duration} seconds and is the visual focus.`,
-    cameraClause,
-    narrationClause,
-    negatives,
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  return [
-    description,
-    "overall_soundscape: quiet ambience matched to the scene, low enough that the narration stays the focus.",
-    "non_diegetic_music: N/A",
-  ].join("\n");
-}
-
 // ── Landing ─────────────────────────────────────────────────────────────────
 
 const hasVideo = (node) => !!node && !!node.video && typeof node.video.file === "string";
@@ -483,6 +422,8 @@ function landShots({ scene, course, styleRecipe, narration, language, sceneGoal 
     visual: shot.visual,
     duration: shot.duration,
     figures: shot.figures,
+    ...(shot.beats ? { beats: shot.beats } : {}),
+    ...(shot.sound ? { sound: shot.sound } : {}),
     videoPrompt: buildShotPrompt({
       styleRecipe,
       narration,
@@ -710,6 +651,8 @@ export async function writeDetourScene({ course, node, chat, styleRecipe, narrat
       visual: shot.visual,
       duration: shot.duration,
       figures: shot.figures,
+      ...(shot.beats ? { beats: shot.beats } : {}),
+      ...(shot.sound ? { sound: shot.sound } : {}),
       videoPrompt: buildShotPrompt({
         styleRecipe,
         narration,
