@@ -8,7 +8,7 @@
  * the sentences the learner just heard pass one by one over it — the
  * rehearsal that makes a point stick — and the bottom edge says what is
  * coming and how far along it is ("拍摄中 2/3", a clock, one bar per
- * shot). When production is stuck or has failed, the same screen says so
+ * clip). When production is stuck or has failed, the same screen says so
  * and offers 再拍一次; a wait that cannot fail is a lie.
  */
 
@@ -25,28 +25,30 @@ const KEYFRAMES = `
 @keyframes pw-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 `;
 
-/** The sentences of the scene the learner just watched: one per shot,
- * or the script's lines when the scene predates shots. */
-export function recapLines(prev: Pick<CourseNode, "shots" | "script"> | null | undefined): string[] {
+/** The sentences of the scene the learner just watched: the narration
+ * lines of its clips, in order, or the script's lines when the scene has
+ * no clips at all. */
+export function recapLines(prev: Pick<CourseNode, "clips" | "script"> | null | undefined): string[] {
   if (!prev) return [];
-  const fromShots = prev.shots.map((s) => s.script.trim()).filter(Boolean);
-  if (fromShots.length) return fromShots;
+  const spoken = prev.clips.flatMap((c) => c.narration.map((l) => l.text.trim())).filter(Boolean);
+  if (spoken.length) return spoken;
   return prev.script
     .split(/\n+/)
     .map((l) => l.trim())
     .filter(Boolean);
 }
 
-/** The still to hold: the last frame of the previous scene's last shot
- * when the manager extracted one, otherwise the course's style anchor. */
+/** The still to hold: the last frame of the last clip the previous scene
+ * actually shot, when the manager extracted one, otherwise the course's
+ * style anchor. */
 export function interludeBackdrop(
   set: Pick<CourseSet, "style">,
   prefix: string,
-  prev: Pick<CourseNode, "id" | "shots"> | null | undefined,
+  prev: Pick<CourseNode, "id" | "clips"> | null | undefined,
 ): { image: string | null; fallback: string | null } {
   const asset = (file?: string | null) => (file ? `/content/${prefix ? `${prefix}/` : ""}${file}` : null);
   const fallback = asset(set.style.refImages?.[0]) ?? asset(set.style.sample?.image);
-  const last = prev ? [...prev.shots].reverse().find((s) => s.video) : undefined;
+  const last = prev ? [...prev.clips].reverse().find((c) => c.video) : undefined;
   const image = prev && last ? asset(`nodes/${prev.id}/${last.id}.last.png`) : null;
   return { image: image ?? fallback, fallback };
 }
@@ -80,8 +82,8 @@ export default function Interlude({
   }, [set, prefix, prev?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const lineIdx = lines.length ? Math.floor(Math.max(0, now - mountedRef.current) / RECAP_LINE_MS) % lines.length : 0;
-  const total = next.shotCount ?? next.shots.length;
-  const done = next.shots.filter((s) => s.status === "ready").length;
+  const total = next.clipCount ?? next.clips.length;
+  const done = next.clips.filter((c) => c.status === "ready").length;
   const running = state.kind === "running" && !state.stale;
   const trouble = state.kind === "failed" || (state.kind === "running" && state.stale);
 

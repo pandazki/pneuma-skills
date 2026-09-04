@@ -12,10 +12,13 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { Window } from "happy-dom";
 
 import type { CourseStyle } from "../domain.js";
 import type { StyleBoardEvent } from "../viewer/StyleBoard.js";
+import { parseStyleCatalog } from "../skill/scripts/segment-lib.mjs";
 
 let win: Window;
 let restore: (() => void) | undefined;
@@ -113,6 +116,37 @@ const SAMPLED: CourseStyle = {
   rationale: "过程与因果,一笔一画长出来,正合这个主题。",
   sample: { image: "style/anchor.png", video: "style/sample.mp4", hook: "为什么三条边永远绑在一个等式里?" },
 };
+
+describe("the style board mirrors the art direction", () => {
+  // `skill/references/styles.md` is the authority — recipe, graphic
+  // devices, narration mode, best-for/never-for — and the board's cards
+  // are its mirror. Nothing enforced that before: a style added, renamed
+  // or re-moded in the reference could leave the board showing a roster
+  // the agent no longer recognises (and a card whose narration mode
+  // contradicts the shoot).
+  const STYLES_MD = join(import.meta.dir, "..", "skill", "references", "styles.md");
+
+  test("the roster, its order and every narration mode are the reference's", async () => {
+    const { STYLE_CARDS } = await import("../viewer/styleCatalog.js");
+    const catalog = parseStyleCatalog(readFileSync(STYLES_MD, "utf-8"));
+
+    expect(STYLE_CARDS.map((c) => c.id)).toEqual([...catalog.keys()]);
+    for (const card of STYLE_CARDS) {
+      expect(card.narration).toBe(catalog.get(card.id)!.narration);
+    }
+  });
+
+  test("every card says something, short enough not to be truncated", async () => {
+    const { STYLE_CARDS } = await import("../viewer/styleCatalog.js");
+    for (const card of STYLE_CARDS) {
+      expect(card.name.length).toBeGreaterThan(0);
+      expect(card.nameEn.length).toBeGreaterThan(0);
+      expect(card.pitch.length).toBeGreaterThan(0);
+      // One truncated line on a ~180px card at text-xs.
+      expect(card.pitch.length).toBeLessThanOrEqual(13);
+    }
+  });
+});
 
 describe("the style board — catalog", () => {
   test("every preset is a card, no native form control, and a pick asks for a sample once", async () => {

@@ -30,8 +30,7 @@ import {
   normalizeForCompare,
   parseStyleCatalog,
   chooseEndpoint,
-  describeAvailableRefs,
-  injectBindings,
+  parseJsonCompletion,
   planRefs,
   readEnvValue,
   resolveEvidence,
@@ -62,6 +61,9 @@ describe("parseStyleCatalog", () => {
     expect(catalog.get("isometric-tech")?.recipe).toMatch(/^Isometric technical infographic/);
     // Multi-line recipe quotes are joined into one line.
     for (const [, s] of catalog) expect(s.recipe).not.toContain("\n");
+    // The look's graphic devices ride along for the writer (0.6).
+    expect(catalog.get("papercraft")?.devices).toContain("flat lay");
+    for (const [id, s] of catalog) expect(s.devices, id).toBeTruthy();
   });
 
   test("skips prose headings and sections without a recipe", () => {
@@ -224,107 +226,109 @@ describe("evidence resolution", () => {
   });
 });
 
+describe("parseJsonCompletion", () => {
+  test("one object, a fenced object, and prose around it", () => {
+    expect(parseJsonCompletion('{"a":1}')).toEqual({ a: 1 });
+    expect(parseJsonCompletion('```json\n{"a":1}\n```')).toEqual({ a: 1 });
+    expect(parseJsonCompletion('Here you go:\n{"a":{"b":"}"}}\nhope that helps')).toEqual({ a: { b: "}" } });
+  });
+
+  test("two objects are merged in order, not dropped on the floor", () => {
+    // A detour scene died on exactly this in a live run (2026-09-04): the
+    // writer sent the device and the clips as two objects, a greedy
+    // {…} match parsed as neither, and the learner's detour was never
+    // written.
+    expect(parseJsonCompletion('{"device":"a coin buds"}\n{"clips":[{"duration":15}]}')).toEqual({
+      device: "a coin buds",
+      clips: [{ duration: 15 }],
+    });
+  });
+
+  test("nothing parseable is an error that shows what came back", () => {
+    expect(() => parseJsonCompletion("I cannot do that")).toThrow(/no JSON object: I cannot do that/);
+    expect(() => parseJsonCompletion('{"a": ')).toThrow(/no JSON object/);
+  });
+});
+
 describe("planRefs", () => {
-  test("continuity is Image 1, characters next, figures last, capped at four", () => {
+  test("the style anchor is Image 1, characters next, figures last, capped at four", () => {
     const plan = planRefs({
-      anchorFile: "nodes/n2/prev-frame.png",
+      anchorFile: "style/anchor.png",
       characters: ["style/host.png"],
       figures: [
-        { file: "evidence/b1/a.png", note: "A" },
+        { file: "evidence/b1/a.png", note: "A", cut: 2 },
         { file: "evidence/b1/b.png", note: "" },
         { file: "evidence/b1/c.png", note: "" },
       ],
     });
-    expect(plan.refs.map((r) => r.job)).toEqual(["continuity", "character", "figure", "figure"]);
-    expect(plan.lines[0]).toMatch(/^Image 1 is the exact scene this shot continues from/);
+    expect(plan.refs.map((r) => r.job)).toEqual(["style-anchor", "character", "figure", "figure"]);
+    expect(plan.lines[0]).toMatch(/^Image 1 is this course's style anchor/);
+    expect(plan.lines[0]).toContain("not a picture to show");
     expect(plan.lines[2]).toContain('"a.png" (A)');
+    // A figure says WHEN it appears, so the model does not spread it over
+    // the whole montage.
+    expect(plan.lines[2]).toContain("It appears in cut 2");
+    expect(plan.lines[3]).toContain("It appears in the cut that names it");
     expect(plan.lines).toHaveLength(4);
-  });
-
-  test("a style anchor is described as a look reference, not content", () => {
-    const plan = planRefs({ anchorFile: "style/anchor.png", anchorKind: "style-anchor" });
-    expect(plan.lines[0]).toContain("style anchor");
-    expect(plan.lines[0]).toContain("not content to show");
   });
 
   test("the voice reference rides as Audio 1, outside the image budget", () => {
     const plan = planRefs({
-      anchorFile: "nodes/n2/s1.last.png",
+      anchorFile: "style/anchor.png",
       characters: ["style/character-1.png", "style/character-2.png"],
       figures: [{ file: "evidence/b1/a.png", note: "" }, { file: "evidence/b1/b.png", note: "" }],
       voice: "style/voice.mp3",
     });
     // Four images (the cap), then the audio.
     expect(plan.refs.map((r) => [r.job, r.kind])).toEqual([
-      ["continuity", "image"],
+      ["style-anchor", "image"],
       ["character", "image"],
       ["character", "image"],
       ["figure", "image"],
       ["voice", "audio"],
     ]);
     expect(plan.lines[4]).toBe("Audio 1 is the narrator's voice — the voiceover keeps exactly this voice, timbre and pace.");
-    const spoken = planRefs({ anchorFile: "style/anchor.png", anchorKind: "style-anchor", voice: "style/voice.mp3", narration: "on-camera" });
+    const spoken = planRefs({ anchorFile: "style/anchor.png", voice: "style/voice.mp3", narration: "on-camera" });
     expect(spoken.lines[1]).toContain("the speaker's voice");
     // No voice, no audio line.
     expect(planRefs({ anchorFile: "style/anchor.png" }).refs.some((r) => r.kind === "audio")).toBe(false);
   });
-});
 
-describe("chooseEndpoint (from what the script shows)", () => {
-  const anchor = "nodes/n2/prev-frame.png";
-  const fig = (n: string) => ({ file: `evidence/b1/${n}.png` });
-  test("a scene to continue and nothing to show: image-to-video from the parent's last frame", () => {
-    expect(chooseEndpoint({ anchorFile: anchor })).toBe("image");
+  test("the previous clip's last frame can ride as a continuity reference", () => {
+    const plan = planRefs({ anchorFile: "nodes/n2/c1.last.png", anchorKind: "continuity" });
+    expect(plan.lines[0]).toContain("the last frame of the previous part of this scene");
   });
-  test("a figure on screen or a recurring character: reference-to-video", () => {
-    expect(chooseEndpoint({ anchorFile: anchor, figures: [fig("a")] })).toBe("reference");
-    expect(chooseEndpoint({ anchorFile: anchor, characters: ["style/host.png"] })).toBe("reference");
-    expect(chooseEndpoint({ figures: [fig("a")] })).toBe("reference");
-  });
-  test("nothing to continue from and nothing to show: text-to-video", () => {
-    expect(chooseEndpoint({})).toBe("text");
-  });
-  test("an explicit request is honoured when it is possible", () => {
-    expect(chooseEndpoint({ requested: "reference", anchorFile: anchor })).toBe("reference");
-    expect(chooseEndpoint({ requested: "image", anchorFile: null, figures: [fig("a")] })).toBe("reference");
-    expect(chooseEndpoint({ requested: "image", anchorFile: null })).toBe("text");
-    expect(chooseEndpoint({ requested: "text", anchorFile: anchor })).toBe("text");
-  });
-});
 
-describe("describeAvailableRefs / injectBindings", () => {
-  test("the writer hears what is on offer by name, never by number", () => {
-    const lines = describeAvailableRefs({
-      anchorKind: "continuity",
-      characters: ["style/refs/host.png"],
-      figures: [{ file: "evidence/b1/a.png", note: "A" }],
-    });
-    expect(lines).toHaveLength(3);
-    expect(lines[0]).toMatch(/^This shot continues seamlessly from the previous segment's last frame/);
-    expect(lines[1]).toContain('the reference image "host.png"');
-    expect(lines[2]).toContain('the reference figure "a.png"');
-    expect(lines.join(" ")).not.toMatch(/Image \d/);
-  });
-  test("bindings land in the visual section, ahead of the soundscape", () => {
-    const prompt = "integrated_multimodal_description: [Shot 1] A board.\noverall_soundscape: quiet.\nnon_diegetic_music: N/A";
-    const out = injectBindings(prompt, ["Image 1 is the scene.", "Image 2 is the figure."]);
-    expect(out).toBe("integrated_multimodal_description: [Shot 1] A board. Image 1 is the scene. Image 2 is the figure.\noverall_soundscape: quiet.\nnon_diegetic_music: N/A");
-    expect(injectBindings("just a prompt", ["Image 1 is the scene."])).toBe("just a prompt Image 1 is the scene.");
-    expect(injectBindings(prompt, [])).toBe(prompt);
-  });
-});
-
-describe("planRefs in image mode", () => {
-  test("continuity only: the chain frame is the first frame and no figure ever becomes a keyframe", () => {
+  test("image mode is the escape hatch: the anchor as a first frame, nothing else", () => {
     const plan = planRefs({
-      anchorFile: "nodes/n2/prev-frame.png",
+      anchorFile: "style/anchor.png",
       characters: ["style/host.png"],
       figures: [{ file: "evidence/b1/a.png", note: "A" }, { file: "evidence/b1/b.png" }],
       mode: "image",
     });
-    expect(plan.refs.map((r) => [r.job, r.role])).toEqual([["continuity", "first-frame"]]);
-    expect(plan.lines).toHaveLength(1);
-    expect(plan.lines[0]).toMatch(/^The first frame of this shot is the exact last frame of the previous segment/);
+    expect(plan.refs.map((r) => [r.job, r.role])).toEqual([["style-anchor", "first-frame"]]);
+    // A first frame is not a numbered reference — nothing to bind.
+    expect(plan.lines).toEqual([]);
+  });
+});
+
+describe("chooseEndpoint (from what the clip binds)", () => {
+  const anchor = "style/anchor.png";
+  const fig = (n: string) => ({ file: `evidence/b1/${n}.png` });
+  test("anything to bind — anchor, character or figure — is reference-to-video", () => {
+    expect(chooseEndpoint({ anchorFile: anchor })).toBe("reference");
+    expect(chooseEndpoint({ anchorFile: anchor, figures: [fig("a")] })).toBe("reference");
+    expect(chooseEndpoint({ anchorFile: anchor, characters: ["style/host.png"] })).toBe("reference");
+    expect(chooseEndpoint({ figures: [fig("a")] })).toBe("reference");
+  });
+  test("nothing to bind at all: text-to-video", () => {
+    expect(chooseEndpoint({})).toBe("text");
+  });
+  test("an explicit request is honoured when it is possible", () => {
+    expect(chooseEndpoint({ requested: "image", anchorFile: anchor })).toBe("image");
+    expect(chooseEndpoint({ requested: "image", anchorFile: null, figures: [fig("a")] })).toBe("reference");
+    expect(chooseEndpoint({ requested: "image", anchorFile: null })).toBe("text");
+    expect(chooseEndpoint({ requested: "text", anchorFile: anchor })).toBe("text");
   });
 });
 

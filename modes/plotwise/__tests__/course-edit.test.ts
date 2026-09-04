@@ -131,10 +131,17 @@ describe("course-edit.mjs", () => {
 
 describe("planner ops: outline / evidence / audit", () => {
   const BEATS = [
-    { id: "b1", title: "开场：秋千摇一摇", summary: "波是来回摇", tier: "world-knowledge", figures: [] },
-    { id: "b2", title: "频率", summary: "一秒摇几次", tier: "code-verification", figures: ["两条正弦波，一秒 2 次与 6 次"] },
-    { id: "b3", title: "傅里叶的历史", summary: "谁提出的", tier: "citation", figures: [] },
+    { id: "b1", title: "开场：秋千摇一摇", summary: "波是来回摇", device: "一个空荡的秋千被推一下，来回摆动，摆幅慢慢变小", tier: "world-knowledge", figures: [] },
+    { id: "b2", title: "频率", summary: "一秒摇几次", device: "同一副秋千旁边多出一副小秋千，小的来回三趟、大的才走一趟", tier: "code-verification", figures: ["两条正弦波，一秒 2 次与 6 次"] },
+    { id: "b3", title: "傅里叶的历史", summary: "谁提出的", device: "一叠手稿摊开，最上面那页的曲线被分解成几条更简单的曲线", tier: "citation", figures: [] },
   ];
+  // What a pre-0.6 planner (or a hand-written outline.json) lands.
+  const BEATS_NO_DEVICE = BEATS.map(({ device, ...rest }) => rest);
+  const VISUAL = {
+    bible: "整门课发生在同一间空荡的儿童游乐场：秋千、沙地、一根晾衣绳。跑通全课的例子是那副秋千，每一拍都由它或它的影子承担；节奏靠物体的运动，不靠画面上的字。",
+    motifs: ["那副秋千", "沙地上被摆出的痕迹", "一根绷紧的晾衣绳"],
+    neverDraw: ["没有配图的公式", "悬浮的文字", "渐变"],
+  };
 
   test("outline lands the beats, mints n1, keeps style and path, and grounds textbook beats by definition", () => {
     const ws = fresh();
@@ -154,6 +161,51 @@ describe("planner ops: outline / evidence / audit", () => {
     expect(c.nodes.n1).toMatchObject({ beat: "b1", kind: "main", choiceLabel: "开场：秋千摇一摇", status: "planned" });
     expect(c.style).toMatchObject({ id: "papercraft", status: "sampled" });
     expect(c.path).toEqual([]);
+  });
+
+  test("outline lands each beat's visual device and the course's visual bible", () => {
+    // 0.6: the writer is handed a device, never a bare concept. The
+    // device and the bible are planning work, written beside the evidence
+    // in course.json — the same file, the same lock, one command.
+    const ws = fresh();
+    run(ws, "init", "--set", "plexus", "--title", "声音的配方", "--topic", "傅里叶");
+    writeFileSync(join(ws, "outline.json"), JSON.stringify({ beats: BEATS, visual: VISUAL }));
+    const r = run(ws, "outline", "--set", "plexus", "--file", join(ws, "outline.json"));
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.out)).toMatchObject({ op: "outline", outline: 3, devices: 3, visual: true });
+    const c = readCourse(ws);
+    expect(c.outline.map((b: { device: string }) => b.device)).toEqual(BEATS.map((b) => b.device));
+    expect(c.visual).toEqual(VISUAL);
+
+    // A visual layer written in the wrong shape is refused, not dropped:
+    // a bible that vanished silently is a course shot without direction.
+    writeFileSync(join(ws, "bad.json"), JSON.stringify({ beats: BEATS, visual: "一段散文" }));
+    const bad = run(ws, "outline", "--set", "plexus", "--file", join(ws, "bad.json"));
+    expect(bad.code).toBe(1);
+    expect(bad.err).toContain('"visual" must be an object');
+    expect(readCourse(ws).visual).toEqual(VISUAL);
+  });
+
+  test("re-landing an outline that never heard of the visual layer keeps it", () => {
+    // A pre-0.6 planner, a hand-written outline.json, or a re-plan that
+    // only touches the beats must not erase the visual layer of a course
+    // already in production — the same reason evidence survives a re-land.
+    const ws = fresh();
+    run(ws, "init", "--set", "plexus", "--title", "t");
+    writeFileSync(join(ws, "outline.json"), JSON.stringify({ beats: BEATS, visual: VISUAL }));
+    run(ws, "outline", "--set", "plexus", "--file", join(ws, "outline.json"));
+    writeFileSync(join(ws, "legacy.json"), JSON.stringify(BEATS_NO_DEVICE));
+    expect(run(ws, "outline", "--set", "plexus", "--file", join(ws, "legacy.json")).code).toBe(0);
+    let c = readCourse(ws);
+    expect(c.outline.map((b: { device: string }) => b.device)).toEqual(BEATS.map((b) => b.device));
+    expect(c.visual).toEqual(VISUAL);
+
+    // Revising one field of the bible keeps the rest; one motif written as
+    // a bare string is a one-item list, not a dropped motif.
+    writeFileSync(join(ws, "revised.json"), JSON.stringify({ beats: BEATS_NO_DEVICE, visual: { motifs: "那副秋千" } }));
+    expect(run(ws, "outline", "--set", "plexus", "--file", join(ws, "revised.json")).code).toBe(0);
+    c = readCourse(ws);
+    expect(c.visual).toEqual({ bible: VISUAL.bible, motifs: ["那副秋千"], neverDraw: VISUAL.neverDraw });
   });
 
   test("evidence merges one beat, refuses files that are not on disk, and records problems", () => {
@@ -216,6 +268,36 @@ describe("planner ops: outline / evidence / audit", () => {
     expect(report.beats[1].problems).toEqual(["1 figure spec(s) without a rendered file", "no verification run on disk"]);
     expect(report.beats[2].problems).toEqual(["no pinned source"]);
     expect(readFileSync(coursePath(ws), "utf-8")).toBe(before);
+  });
+
+  test("audit flags a beat with no device and a course with no visual bible", () => {
+    const ws = fresh();
+    run(ws, "init", "--set", "plexus", "--title", "t");
+    writeFileSync(join(ws, "legacy.json"), JSON.stringify(BEATS_NO_DEVICE));
+    run(ws, "outline", "--set", "plexus", "--file", join(ws, "legacy.json"));
+    const before = readFileSync(coursePath(ws), "utf-8");
+    const report = JSON.parse(run(ws, "audit", "--set", "plexus").out);
+    expect(report.ok).toBe(false);
+    expect(report.problems).toEqual(["no visual bible — nothing says how this course looks as a whole (course.visual.bible)"]);
+    expect(report.visual).toEqual({ bible: false, motifs: 0, neverDraw: 0 });
+    // Every beat owes a device — including the textbook beat that owes
+    // nothing else, so it is no longer ok.
+    for (const b of report.beats) {
+      expect(b.device).toBe(false);
+      expect(b.problems).toContain("no visual device — the writer has nothing concrete to film");
+    }
+    expect(report.beats[0].ok).toBe(false);
+    expect(readFileSync(coursePath(ws), "utf-8")).toBe(before);
+
+    // With the visual layer landed, both findings are gone and the
+    // textbook beat reads clean again.
+    writeFileSync(join(ws, "outline.json"), JSON.stringify({ beats: BEATS, visual: VISUAL }));
+    run(ws, "outline", "--set", "plexus", "--file", join(ws, "outline.json"));
+    const after = JSON.parse(run(ws, "audit", "--set", "plexus").out);
+    expect(after.problems).toEqual([]);
+    expect(after.visual).toEqual({ bible: true, motifs: 3, neverDraw: 3 });
+    expect(after.beats[0]).toMatchObject({ id: "b1", device: true, ok: true, problems: [] });
+    expect(after.beats[1].problems).toEqual(["1 figure spec(s) without a rendered file", "no verification run on disk"]);
   });
 
   test("audit names a figure outside fal's reference aspect range", () => {

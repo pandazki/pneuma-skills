@@ -17,7 +17,7 @@ import { load, save } from "./domain.js";
 
 const plotwiseManifest: ModeManifest = {
   name: "plotwise",
-  version: "0.5.0",
+  version: "0.6.0",
   displayName: {
     en: "Plotwise",
     "zh-CN": "Plotwise",
@@ -206,18 +206,6 @@ The user just opened the learning studio. Greet them briefly (1-2 sentences) and
         defaultValue: "480P",
       },
       {
-        name: "continuity",
-        label: "Continuity",
-        description:
-          "How hard the shoot holds one voice and one face across the course. Locked: every shot carries the confirmed sample's narration as the voice reference, and a speaker on screen gets a character sheet — one narrator, one face, at about seven seconds more a shot; joins inside a scene are matched cuts. Chain: shots inside a scene start on the exact last frame of the previous one (seamless) but the voice reference rides only on reference shots — the narrator may change between shots",
-        type: "select",
-        options: [
-          { value: "locked", label: "Locked", description: "One narrator and one face on every shot — the default" },
-          { value: "chain", label: "Chain", description: "Seamless frame chain inside a scene; faster, the voice may drift between shots" },
-        ],
-        defaultValue: "locked",
-      },
-      {
         name: "falApiKey",
         label: "fal.ai API Key",
         description:
@@ -249,6 +237,13 @@ scene length toward these preferences, while always respecting explicit instruct
   },
 
   changelog: {
+    "0.6.0": [
+      "A scene is a montage, not a chain of shots: one outline beat becomes 1-3 clips of up to 15 s, and inside a clip the model cuts by itself across a time-coded shot list of 4-8 cuts, each a composed picture with its own camera move, with the narration distributed across the timeline. Every prompt used to open with \"One continuous shot, no cuts\" — that clause is most of why the courses looked like talking illustrations",
+      "The writer is a director: it decides the visual device that carries a beat before it writes a frame, and the plan hands it one (every outline beat now carries a style-agnostic `device`, and the course a visual bible of motifs and things it never draws). Measured 2026-09-04: the same model on the same topic in the same style returns montages of a different league once it is handed a device instead of a concept",
+      "The style board is art direction: every recipe reads as a director's brief with its own graphic devices and a sharpened \"teaches best / never for\", the anchor is a composed key frame of the topic's device rather than an empty set, and the sample is the hook's first montage clip — written by the same writer and assembled by the same script as a real scene, so what the learner confirms is what they get",
+      "Continuity is the anchor and the voice on EVERY clip (style anchor as Image 1, the character sheet for a speaker on screen, that clip's figures, and the confirmed sample's narration as Audio 1). The image-to-video frame chain is retired, and with it the Continuity init param — it bought a seamless join at the price of the voice reference and of every cut inside a shot; `--continuity` is still accepted and ignored so a resumed session cannot fail to start its manager",
+      "course.json speaks clips: `nodes[].clips[]` with `cuts[]`, timed `narration[]`, `audio`, `negatives` and `clipIndex/clipCount` during production. Courses shot before 0.6 still play — the viewer reads a legacy `shots[]` as one clip of one cut",
+    ],
     "0.5.0": [
       "The H3 prompt practice lives in one script (h3-prompt.mjs), not in the model's head: every shot's prompt opens on the style anchor, writes the picture as a timeline of beats each with its camera move, carries a two-layer soundscape under the voice, and closes on the negatives for what the style shows",
       "One voice across the course: the confirmed sample's narration rides on every reference-to-video shot as the voice reference (about four seconds more a shot); a speaker on screen is always a reference shot, so their voice holds between shots too",

@@ -25,11 +25,12 @@ import {
 } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { bindingLines } from "./h3-prompt.mjs";
 
 export const FIGURE_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 export const FIGURE_KINDS = new Set(["rendered-figure", "figure"]);
 /** fal reference analysis is the slow, paid part of reference-to-video —
- * continuity frame + up to three figures/characters is the ceiling. */
+ * the style anchor + up to three figures/characters is the ceiling. */
 export const MAX_REFS = 4;
 
 /** Transcript similarity above this passes without a judge call; below
@@ -57,9 +58,13 @@ export function parseStyleCatalog(markdown) {
     const recipe = section.match(/\*\*Recipe\*\*:\s*"([\s\S]*?)"/);
     if (!recipe) continue;
     const narration = section.match(/\*\*Narration\*\*:\s*([a-z-]+)/);
+    // The composition moves that belong to this look, for the writer to
+    // reach for cut by cut. A bullet that runs to the next "- **" marker.
+    const devices = section.match(/\*\*Graphic devices\*\*:\s*([\s\S]*?)(?=\n- \*\*|\n##|$)/);
     catalog.set(head[1], {
       recipe: recipe[1].replace(/\s*\n\s*/g, " ").trim(),
       narration: narration?.[1]?.startsWith("on-camera") ? "on-camera" : "voiceover",
+      ...(devices ? { devices: devices[1].replace(/\s*\n\s*/g, " ").trim() } : {}),
     });
   }
   return catalog;
@@ -80,6 +85,9 @@ export function resolveStyle(course, stylesMarkdown) {
     name: typeof s.name === "string" && s.name ? s.name : id,
     recipe: custom ?? preset?.recipe ?? id,
     narration: s.narration === "on-camera" ? "on-camera" : (preset?.narration ?? "voiceover"),
+    // A custom recipe keeps the preset's graphic devices only when it is
+    // an adjusted preset (same id); a truly custom look has none on file.
+    devices: preset?.devices ?? "",
     status: typeof s.status === "string" ? s.status : id ? "confirmed" : "pending",
     fromCatalog: !!preset && !custom,
   };
@@ -404,111 +412,53 @@ export function checkFigureGate(needsFigureRefs, figures) {
 
 // ── Reference plan ──────────────────────────────────────────────────────────
 
-const JOB_TEXT = {
-  continuity:
-    "the exact scene this shot continues from — the same set/board, stroke texture, handwriting/typography, lighting and framing must carry over precisely, and the shot continues seamlessly from it (it is not new content to describe)",
-  "style-anchor":
-    "the course's style anchor — reproduce its palette, materials, line quality and lighting exactly; it is a look reference, not content to show",
-  character: "a recurring character of this course — keep their identity, face and outfit exactly",
-};
-
-function figureJobText(ref) {
-  const note = ref.note ? ` (${ref.note})` : "";
-  return `the reference figure "${basename(ref.file)}"${note}: it appears on screen reproduced faithfully, every label unaltered`;
-}
-
 /**
- * Decide which images ride along and what each one is for, so the
- * writer can address them as "Image N" and the shoot passes them in the
- * same order. Continuity/anchor is always Image 1.
- */
-/**
- * Which H3 endpoint a segment is shot on — decided AFTER the script, from
- * what it actually shows (`figures` here are the figures the script bound,
- * not every figure the beat offers):
+ * Which H3 endpoint a clip is shot on — decided AFTER the script, from
+ * what it actually shows (`figures` here are the figures the shot list
+ * bound, not every figure the beat offers):
  *
- *   - a figure on screen, or a recurring character → reference-to-video:
- *     Image 1 is the continuity frame with its binding, Image 2+ are the
- *     figures and characters, all REFERENCES the model reproduces inside
- *     its own picture. A figure is never a keyframe — pinned as a first or
- *     last frame the raw bitmap fills the screen and the next segment
- *     chains from it (a course turned into a slideshow that way).
- *   - nothing to show but a scene to continue → image-to-video from the
- *     parent's last frame: the previous shot's end is this one's start.
- *   - no frame to continue from → text-to-video.
+ *   - anything to bind — the style anchor, a recurring character, a
+ *     figure this clip shows → reference-to-video. Every reference is a
+ *     REFERENCE the model reproduces inside its own picture. A figure is
+ *     never a keyframe: pinned as a first or last frame the raw bitmap
+ *     fills the screen and the course turns into a slideshow (2026-09-02).
+ *   - an anchor and nothing else, when reference-to-video is unavailable
+ *     → image-to-video from the anchor as the first frame.
+ *   - nothing at all → text-to-video.
  *
- * Most teaching segments have no figure to show; that is the point.
+ * In 0.6 a clip essentially always binds the style anchor and the voice,
+ * so "reference" is the normal answer and the others are escape hatches.
  */
 export function chooseEndpoint({ requested = "auto", anchorFile = null, characters = [], figures = [] } = {}) {
   const needsRefs = characters.length > 0 || figures.length > 0;
   if (requested === "image") return anchorFile ? "image" : needsRefs ? "reference" : "text";
   if (requested === "reference") return needsRefs || anchorFile ? "reference" : "text";
   if (requested === "text") return "text";
-  if (needsRefs) return "reference";
-  return anchorFile ? "image" : "text";
+  if (needsRefs || anchorFile) return "reference";
+  return "text";
 }
 
 /**
- * What the scriptwriter is told about the images on offer — by NAME, never
- * by number. The producer numbers the references at shoot time from what
- * the script actually uses (`planRefs` + `injectBindings`), so the writer
- * never has to guess which figure becomes Image 2.
+ * Which files ride along with ONE clip, and in which order — that order
+ * is what makes "Image 2" mean anything: the style anchor first (or, as
+ * a W3 option, the previous clip's last frame), then the course's
+ * recurring characters, then the figures this clip shows, each carrying
+ * the cut it belongs to. The voice reference rides outside the image
+ * budget as `Audio 1` (fal takes up to 12 files in all), so the narrator
+ * keeps one voice across every clip of the course — the continuity that
+ * used to come from chaining frames.
+ *
+ * The WORDING of the bindings is prompt craft, so it lives in
+ * `h3-prompt.mjs::bindingLines`; this function only decides who rides.
  */
-export function describeAvailableRefs({ anchorKind = null, characters = [], figures = [] } = {}) {
-  const lines = [];
-  if (anchorKind === "continuity") {
-    lines.push("This shot continues seamlessly from the previous segment's last frame (the producer supplies it): the same set/board, stroke texture, handwriting/typography, lighting and framing carry over — it is not new content to describe.");
-  } else if (anchorKind === "style-anchor") {
-    lines.push("The course's style anchor is supplied by the producer: its palette, materials, line quality and lighting carry over exactly — it is a look reference, not content to show.");
-  }
-  for (const file of characters) {
-    lines.push(`A recurring character of this course is available as the reference image "${basename(file)}" — keep their identity, face and outfit exactly; refer to it in the prompt as: the reference image "${basename(file)}".`);
-  }
-  for (const fig of figures) {
-    const note = fig.note ? ` (${fig.note})` : "";
-    lines.push(`The code-rendered knowledge figure "${basename(fig.file)}"${note} is available as a reference. If this segment shows it, name it in needs_figure_refs and refer to it in the prompt as: the reference figure "${basename(fig.file)}" — reproduced faithfully on screen, every label unaltered. If this segment does not show it, do not mention it.`);
-  }
-  return lines;
-}
-
-/**
- * Put the numbered reference bindings into the prompt's first section (the
- * visual description), ahead of the soundscape sections, so the model reads
- * them with the picture. Appends when the prompt has no sections.
- */
-export function injectBindings(prompt, sentences) {
-  const block = (sentences ?? []).filter(Boolean).join(" ");
-  if (!block) return prompt;
-  const at = prompt.indexOf("\noverall_soundscape:");
-  if (at === -1) return `${prompt.trimEnd()} ${block}`;
-  return `${prompt.slice(0, at).trimEnd()} ${block}${prompt.slice(at)}`;
-}
-
-/**
- * `voice` is the course's voice reference (the confirmed sample's
- * narration, `style/voice.mp3`): it rides along as `Audio 1` on every
- * reference-to-video shot so the narrator keeps one voice across shots
- * and scenes. Audio is outside the image budget (`max` counts images);
- * fal takes up to 12 files in all.
- */
-export function planRefs({ anchorFile, anchorKind = "continuity", characters = [], figures = [], voice = null, max = MAX_REFS, mode = "reference", narration = "voiceover" }) {
-  if (mode === "image") {
-    // Continuity only: the frame chain is the first frame, and nothing
-    // else can ride along — a figure is a reference, never a keyframe, so
-    // a segment that needs one is not shot in this mode at all.
-    const refs = [];
-    const lines = [];
-    if (anchorFile) {
-      refs.push({ file: anchorFile, job: anchorKind, role: "first-frame" });
-      lines.push(
-        anchorKind === "continuity"
-          ? "The first frame of this shot is the exact last frame of the previous segment — the same set/board, stroke texture, handwriting/typography, lighting and framing carry over, and the shot continues seamlessly from it (it is not new content to describe)."
-          : "The first frame of this shot is the course's style anchor — its palette, materials, line quality and lighting carry over exactly; the scene develops from it.",
-      );
-    }
-    return { refs, lines };
-  }
+export function planRefs({ anchorFile, anchorKind = "style-anchor", characters = [], figures = [], voice = null, max = MAX_REFS, mode = "reference", narration = "voiceover" }) {
   const refs = [];
+  if (mode === "image") {
+    // The escape hatch: the anchor as an actual first frame. Nothing else
+    // can ride along, so a clip that shows a figure is never shot this way.
+    if (anchorFile) refs.push({ file: anchorFile, job: anchorKind, role: "first-frame", kind: "image" });
+    return { refs, lines: bindingLines({ refs: [], narration }) };
+  }
   if (anchorFile) refs.push({ file: anchorFile, job: anchorKind, kind: "image" });
   for (const file of characters) {
     if (refs.length >= max) break;
@@ -516,20 +466,10 @@ export function planRefs({ anchorFile, anchorKind = "continuity", characters = [
   }
   for (const fig of figures) {
     if (refs.length >= max) break;
-    refs.push({ file: fig.file, job: "figure", note: fig.note ?? "", kind: "image" });
+    refs.push({ file: fig.file, job: "figure", note: fig.note ?? "", ...(fig.cut ? { cut: fig.cut } : {}), kind: "image" });
   }
-  const lines = refs.map(
-    (r, i) => `Image ${i + 1} is ${r.job === "figure" ? figureJobText(r) : r.job === "character" ? `the reference image "${basename(r.file)}" — ${JOB_TEXT.character}` : JOB_TEXT[r.job]}.`,
-  );
-  if (voice) {
-    refs.push({ file: voice, job: "voice", kind: "audio" });
-    lines.push(
-      narration === "on-camera"
-        ? "Audio 1 is the speaker's voice — they speak in exactly this voice, timbre and pace."
-        : "Audio 1 is the narrator's voice — the voiceover keeps exactly this voice, timbre and pace.",
-    );
-  }
-  return { refs, lines };
+  if (voice) refs.push({ file: voice, job: "voice", kind: "audio" });
+  return { refs, lines: bindingLines({ refs, narration }) };
 }
 
 // ── course.json ─────────────────────────────────────────────────────────────
@@ -714,9 +654,59 @@ export async function chatJson({ key, model = DEFAULT_MODEL, system, user, tempe
   const result = await resp.json();
   const content = result?.choices?.[0]?.message?.content;
   if (typeof content !== "string") throw new Error("no completion in response");
-  const match = content.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error(`completion carried no JSON object: ${content.slice(0, 200)}`);
-  return JSON.parse(match[0]);
+  return parseJsonCompletion(content);
+}
+
+/** Every balanced `{…}` in a string, in order, strings and escapes respected. */
+function balancedObjects(text) {
+  const out = [];
+  let start = -1;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === "{") {
+      if (depth === 0) start = i;
+      depth += 1;
+    } else if (ch === "}" && depth > 0) {
+      depth -= 1;
+      if (depth === 0) out.push(text.slice(start, i + 1));
+    }
+  }
+  return out;
+}
+
+/**
+ * The JSON object a completion carried. A model asked for one object
+ * sometimes sends two — a `{"device": …}` and a `{"clips": […]}`, or an
+ * object followed by a fenced copy of it — and a greedy `{…}` match over
+ * the whole string then parses as neither (2026-09-04: a detour scene
+ * died on "Unexpected non-whitespace character after JSON at position
+ * 930", and the learner's detour simply never got written). So: every
+ * balanced object is parsed, and several are merged in order rather than
+ * dropped on the floor.
+ */
+export function parseJsonCompletion(content) {
+  const parsed = [];
+  for (const candidate of balancedObjects(String(content))) {
+    try {
+      const value = JSON.parse(candidate);
+      if (value && typeof value === "object" && !Array.isArray(value)) parsed.push(value);
+    } catch {
+      /* not this one */
+    }
+  }
+  if (parsed.length === 1) return parsed[0];
+  if (parsed.length > 1) return Object.assign({}, ...parsed);
+  throw new Error(`completion carried no JSON object: ${String(content).slice(0, 200)}`);
 }
 
 export const JUDGE_SYSTEM = `You are the narration QA editor of a learning-video studio. A clip was generated to speak a SCRIPT verbatim; an automatic speech recognizer produced the TRANSCRIPT. Decide whether the CLIP says what the script says — you are judging the speech, not the recognizer.

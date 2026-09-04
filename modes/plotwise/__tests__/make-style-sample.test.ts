@@ -1,11 +1,12 @@
 /**
  * make-style-sample.mjs — the style board's one producer, pinned at the
- * only layer a test can reach without paying fal.ai: what it refuses.
- * The refusal that matters is `--action`: the first live sample of this
- * mode was shot with a hook line alone and came back as the empty set
- * with a voice over it (an empty papercraft blackboard under a Fourier
- * hook). A sample must carry the topic, so the script will not shoot
- * without being told what the five seconds show.
+ * only layer a test can reach without paying fal.ai: what it refuses and
+ * what it reuses. The refusal that matters is `--action`: the first live
+ * sample of this mode was shot with a hook line alone and came back as
+ * the empty set with a voice over it (an empty papercraft blackboard
+ * under a Fourier hook). Since 0.6 the device in `--action` also composes
+ * the anchor — the still that becomes Image 1 of every clip in the
+ * course — so a run with a different device may not reuse the old frame.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -56,29 +57,33 @@ describe("make-style-sample.mjs", () => {
     expect(r.err).toContain("--action is required");
   });
 
-  test("an anchor on file for the same style and topic is kept, not shot again", () => {
+  test("an anchor on file for the same style, topic and device is kept, not shot again", () => {
     // A re-run after a failed clip (the endpoint was down) must not spend
-    // another image on the same establishing frame. With no keys the
-    // anchor step would fail first; skipping it means the run gets as far
-    // as the clip, which then fails for want of a key.
+    // another image on the same key frame. With no keys the anchor step
+    // would fail first; skipping it means the run gets as far as the
+    // clip, which then fails for want of a key.
     const ws = courseWorkspace();
     const recipe = parseStyleCatalog(readFileSync(STYLES_MD, "utf-8")).get("papercraft")!.recipe;
+    const action = "paper waves stack and peel apart";
     const styleDir = join(ws, "fourier", "style");
     mkdirSync(styleDir, { recursive: true });
     writeFileSync(join(styleDir, "anchor.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
-    writeFileSync(join(styleDir, "anchor.json"), JSON.stringify({ style_id: "papercraft", recipe, topic: "傅里叶变换" }));
+    writeFileSync(join(styleDir, "anchor.json"), JSON.stringify({ style_id: "papercraft", recipe, topic: "傅里叶变换", action }));
     const before = statSync(join(styleDir, "anchor.png")).mtimeMs;
 
-    const r = run(ws, "--set", "fourier", "--style-id", "papercraft", "--hook", "h", "--action", "paper waves stack and peel apart", "--json");
+    const r = run(ws, "--set", "fourier", "--style-id", "papercraft", "--hook", "h", "--action", action, "--json");
     expect(r.code).toBe(1);
     const out = JSON.parse(r.out);
     expect(out.reason).toContain("sample shoot failed");
     expect(out.reason).not.toContain("anchor");
     expect(statSync(join(styleDir, "anchor.png")).mtimeMs).toBe(before);
     // A different topic is a different frame: the record no longer matches.
-    writeFileSync(join(styleDir, "anchor.json"), JSON.stringify({ style_id: "papercraft", recipe, topic: "something else" }));
-    const again = run(ws, "--set", "fourier", "--style-id", "papercraft", "--hook", "h", "--action", "paper waves stack and peel apart", "--json");
-    expect(JSON.parse(again.out).reason).toContain("anchor");
+    writeFileSync(join(styleDir, "anchor.json"), JSON.stringify({ style_id: "papercraft", recipe, topic: "something else", action }));
+    expect(JSON.parse(run(ws, "--set", "fourier", "--style-id", "papercraft", "--hook", "h", "--action", action, "--json").out).reason).toContain("anchor");
+    // And so is a different device: the anchor is composed around it now,
+    // so an anchor of the old device would anchor the whole course wrong.
+    writeFileSync(join(styleDir, "anchor.json"), JSON.stringify({ style_id: "papercraft", recipe, topic: "傅里叶变换", action: "an empty paper stage" }));
+    expect(JSON.parse(run(ws, "--set", "fourier", "--style-id", "papercraft", "--hook", "h", "--action", action, "--json").out).reason).toContain("anchor");
   });
 
   test("a custom style needs a recipe", () => {

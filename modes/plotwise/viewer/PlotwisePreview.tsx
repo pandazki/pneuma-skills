@@ -25,7 +25,7 @@ import { useStore } from "../../../src/store.js";
 import type { ChoiceRef, Course, CourseNode, CourseSet } from "../domain.js";
 import { mainLine } from "./mainLine.js";
 import { Spinner } from "./cinema.js";
-import { IN_PRODUCTION, MANAGER_SILENT_MS, fmtElapsed, managerSilent, productionLabel, productionState, shotAt, waitState } from "./waiting.js";
+import { IN_PRODUCTION, MANAGER_SILENT_MS, captionAt, fmtElapsed, managerSilent, productionLabel, productionState, waitState } from "./waiting.js";
 import { getApiBase } from "../../../src/utils/api.js";
 import { STYLE_CARDS } from "./styleCatalog.js";
 import StyleBoard, { type StyleBoardEvent } from "./StyleBoard.js";
@@ -342,8 +342,11 @@ export default function PlotwisePreview(props: ViewerPreviewProps) {
   // recaps while the next one is made.
   const lastPlayedRef = useRef<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  // The shot being spoken on stage, for the caption.
-  const [captionShot, setCaptionShot] = useState(0);
+  // The narration line being spoken on stage, for the caption. Held as
+  // the text itself, so a playhead report that does not change the line
+  // — four a second — does not re-render the stage; empty means nothing
+  // has been reported for the scene on stage yet.
+  const [caption, setCaption] = useState("");
 
   // A scene with no clip (an untaken planned branch) has nothing to
   // wait for; one in production has — its choices come after it plays.
@@ -382,7 +385,7 @@ export default function PlotwisePreview(props: ViewerPreviewProps) {
   // it did not start, or died before its first write. Nothing else would
   // ever say so — the preparing screen would read "等待开拍" forever (it
   // did, for ten minutes, on 2026-09-03).
-  const scripted = !!set && Object.values(set.nodes).some((n) => n.kind === "main" && n.shots.length > 0);
+  const scripted = !!set && Object.values(set.nodes).some((n) => n.kind === "main" && n.clips.length > 0);
   const managerMissing = scripted && !set?.play;
   // Stamped from the wall clock, never from `now`: the ticker only runs
   // while something is waited on, so `now` can be minutes stale at the
@@ -602,7 +605,7 @@ export default function PlotwisePreview(props: ViewerPreviewProps) {
     props.onNotifyAgent?.({
       type: "userQuestion",
       severity: "warning",
-      message: `About scene "${node.id}" (${node.choiceLabel || "untitled"}), the learner asks: "${q}". This came from the stage's question box — do NOT ask them to repeat it. Answer it as a question scene, as SKILL.md's "A learner's question" says: verify the answer now (this is preparation — the learner expects this wait), put any figure it needs under evidence/<sceneId>/, then hand it to the play manager by writing state/requests/<slug>.json with { parent: "${node.id}", label, brief } — the manager writes the shots, shoots the scene and links it under "${node.id}"; the card appears when it is ready. Do not shoot anything yourself and do not navigate-to.`,
+      message: `About scene "${node.id}" (${node.choiceLabel || "untitled"}), the learner asks: "${q}". This came from the stage's question box — do NOT ask them to repeat it. Answer it as a question scene, as SKILL.md's "A learner's question" says: verify the answer now (this is preparation — the learner expects this wait), put any figure it needs under evidence/<sceneId>/, then hand it to the play manager by writing state/requests/<slug>.json with { parent: "${node.id}", label, brief } — the manager writes the clips, shoots the scene and links it under "${node.id}"; the card appears when it is ready. Do not shoot anything yourself and do not navigate-to.`,
       summary: `提问:${q.slice(0, 40)}${q.length > 40 ? "…" : ""}`,
     });
     setQuestion("");
@@ -633,9 +636,9 @@ export default function PlotwisePreview(props: ViewerPreviewProps) {
     });
   }, [set, requested]);
 
-  // The caption follows the shot being spoken.
+  // The caption follows the narration line being spoken.
   useEffect(() => {
-    setCaptionShot(0);
+    setCaption("");
     setPlaybackFailed(null);
   }, [node?.id, node?.video?.file]);
 
@@ -841,7 +844,7 @@ export default function PlotwisePreview(props: ViewerPreviewProps) {
                 <span className="ml-2 text-xs text-cc-muted">
                   {view === "map"
                     ? `主线 ${spineMain}/${set.outline.length} 场`
-                    : `${STATUS_LABEL[node.status]} · ${KIND_LABEL[node.kind]}${node.shots.length > 1 ? ` · ${node.shots.length} 镜` : ""}`}
+                    : `${STATUS_LABEL[node.status]} · ${KIND_LABEL[node.kind]}${node.clips.length > 1 ? ` · ${node.clips.length} 个片段` : ""}`}
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -943,8 +946,8 @@ export default function PlotwisePreview(props: ViewerPreviewProps) {
                       onEnded={() => handleClipEnded(node.id)}
                       onFailed={() => handleClipFailed(node.id)}
                       onTime={(t) => {
-                        const idx = shotAt(node.shots, t);
-                        if (idx !== captionShot) setCaptionShot(idx);
+                        const line = captionAt(node, t);
+                        if (line !== caption) setCaption(line);
                       }}
                     />
                   ) : loading || node.status === "failed" || node.status === "cancelled" ? (
@@ -972,7 +975,7 @@ export default function PlotwisePreview(props: ViewerPreviewProps) {
                       </div>
                     ) : (
                       <div className="line-clamp-2 max-w-xl text-center text-sm leading-relaxed text-cc-muted" data-plotwise-caption>
-                        {node.shots[captionShot]?.script || node.script}
+                        {caption || captionAt(node, 0)}
                       </div>
                     )}
                     {asking ? (

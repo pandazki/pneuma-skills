@@ -21,7 +21,7 @@ const COPY = {
   scriptStep: "剧本",
   scriptWaiting: "大纲落地后写剧本",
   scriptActive: "导演在写整条主线的分镜",
-  scriptDone: (scenes: number, shots: number) => `${scenes} 场 · ${shots} 个镜头`,
+  scriptDone: (scenes: number, clips: number) => `${scenes} 场 · ${clips} 个片段`,
   shootStep: "开场拍摄",
   shootWaiting: "剧本落地后开拍",
   shootReady: "剧本已落地,等待开拍",
@@ -88,10 +88,10 @@ export default function PreparingScreen({
   const planned = beats.length > 0;
   const grounded = beats.filter((b) => b.evidence.length > 0).length;
   const nodes = Object.values(set.nodes);
-  // The screenplay has landed once a main scene carries shots.
-  const scenes = nodes.filter((n) => n.shots.length > 0);
+  // The screenplay has landed once a main scene carries clips.
+  const scenes = nodes.filter((n) => n.clips.length > 0);
   const scripted = scenes.some((n) => n.kind === "main");
-  const shotsTotal = scenes.reduce((s, n) => s + n.shots.length, 0);
+  const clipsTotal = scenes.reduce((s, n) => s + n.clips.length, 0);
   const root = set.nodes[set.rootNode];
   const shooting = !!root && IN_PRODUCTION.has(root.status);
   const failed = root?.status === "failed";
@@ -101,7 +101,7 @@ export default function PreparingScreen({
   // screenplay nor the opening waits for it.
   const groundedAll = planned && grounded === beats.length;
   const scriptState: StepState = scripted ? "done" : planned ? "active" : "pending";
-  const scriptDetail = scripted ? COPY.scriptDone(scenes.length, shotsTotal) : planned ? COPY.scriptActive : COPY.scriptWaiting;
+  const scriptDetail = scripted ? COPY.scriptDone(scenes.length, clipsTotal) : planned ? COPY.scriptActive : COPY.scriptWaiting;
   const shootState: StepState = shooting || failed || managerDown ? "active" : "pending";
   const started = root?.startedAt ? Date.parse(root.startedAt) : NaN;
   const clock = Number.isFinite(started) ? ` · ${fmtElapsed(Math.max(0, now - started))}` : "";
@@ -135,7 +135,7 @@ export default function PreparingScreen({
         </div>
         {managerDown && (
           <div className="mt-3 rounded-md border border-cc-error/40 bg-cc-error/10 px-3 py-2 text-xs text-cc-fg/90" data-plotwise-manager-silent>
-            剧本已经写好,但制片进程没有起来。已请导演启动它;启动后开场会从第一个镜头开始拍。
+            剧本已经写好,但制片进程没有起来。已请导演启动它;启动后开场会从第一个片段开始拍。
           </div>
         )}
         {failed && !managerDown && (

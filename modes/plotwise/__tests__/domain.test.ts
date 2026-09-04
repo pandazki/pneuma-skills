@@ -7,6 +7,11 @@
  * kind, a markdown heading in a script — never to a crash. The outline
  * is the attention anchor AND the evidence index the play loop shoots
  * against, so its per-beat references are pinned here too.
+ *
+ * Two scene shapes are on disk and both must play: 0.6's montage
+ * `clips[]` (time-coded cuts, narration spread across the clip) and the
+ * pre-0.6 `shots[]` (one continuous take, one spoken line), which loads
+ * as one clip of one cut per shot.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -140,11 +145,12 @@ describe("load", () => {
     });
   });
 
-  test("a scene carries its shots, its brief and the manager's progress; the caption falls back to the shots", () => {
+  test("a pre-0.6 scene's shots each become one clip of one cut, and shotIndex/shotCount still drive the label", () => {
     const set = load(
       files({
         "c/course.json": JSON.stringify({
           title: "t",
+          language: "zh",
           outline: [],
           rootNode: "n1",
           nodes: {
@@ -171,14 +177,34 @@ describe("load", () => {
     )!.byContentSet["c"];
 
     const n1 = set.nodes.n1;
-    expect(n1.shots).toEqual([
-      { id: "s1", script: "第一句。", visual: "a board", duration: 10, figures: ["evidence/b1/fig.png"], status: "ready", video: { file: "nodes/n1/s1.mp4", duration: 10.4 } },
-      { id: "s2", script: "第二句。", visual: undefined, duration: 12, figures: [], status: "planned", video: undefined },
+    // One clip per legacy shot: a single cut over the whole clip (the
+    // shot's `visual` was its one composed picture) and the shot's
+    // script as the clip's one narration line.
+    expect(n1.clips).toEqual([
+      {
+        id: "s1",
+        duration: 10,
+        cuts: [{ from: 0, to: 10, shot: "a board", camera: undefined, figures: ["evidence/b1/fig.png"] }],
+        narration: [{ from: 0, to: 10, text: "第一句。" }],
+        figures: ["evidence/b1/fig.png"],
+        status: "ready",
+        video: { file: "nodes/n1/s1.mp4", duration: 10.4 },
+      },
+      {
+        id: "s2",
+        duration: 12,
+        cuts: [{ from: 0, to: 12, shot: "", camera: undefined, figures: [] }],
+        narration: [{ from: 0, to: 12, text: "第二句。" }],
+        figures: [],
+        status: "planned",
+        video: undefined,
+      },
     ]);
-    expect(n1.script).toBe("第一句。\n\n第二句。");
-    expect(n1).toMatchObject({ status: "generating", phase: "shoot", shotIndex: 2, shotCount: 3 });
+    // The scene's text is the narration joined — zh takes no separator.
+    expect(n1.script).toBe("第一句。第二句。");
+    expect(n1).toMatchObject({ status: "generating", phase: "shoot", clipIndex: 2, clipCount: 3 });
 
-    expect(set.nodes.n1x).toMatchObject({ kind: "branch", brief: "举个抛硬币的例子", status: "scripting", shots: [], shotCount: undefined });
+    expect(set.nodes.n1x).toMatchObject({ kind: "branch", brief: "举个抛硬币的例子", status: "scripting", clips: [], clipCount: undefined });
     expect(set.nodes.n9).toMatchObject({ kind: "question", status: "cancelled" });
 
     expect(set.play).toEqual({
@@ -194,7 +220,110 @@ describe("load", () => {
     });
   });
 
-  test("a course without a manager has no play snapshot, and script.md wins over the shots", () => {
+  test("a 0.6 scene carries its montage clips — time-coded cuts, narration lines, clip progress — and ignores any legacy shots", () => {
+    const set = load(
+      files({
+        "c/course.json": JSON.stringify({
+          title: "t",
+          language: "zh",
+          outline: [],
+          rootNode: "n2",
+          nodes: {
+            n2: {
+              kind: "main",
+              status: "generating",
+              phase: "shoot",
+              clipIndex: 1,
+              clipCount: 3,
+              device: "会自己繁殖的纸片硬币",
+              clips: [
+                {
+                  id: "c1",
+                  duration: 15,
+                  theme: "用会繁殖的纸片硬币表现利息生利息",
+                  visual: "纸片硬币在米白纸面上自我复制",
+                  cuts: [
+                    { from: 0, to: 2, shot: " 一枚芥末黄色纸片硬币静置在米白色纸面上 ", camera: "俯拍" },
+                    { from: 2, to: 3.5, shot: "第二枚硬币从边缘弹出", camera: " 快速硬切 ", figures: ["evidence/b2/curve.png", 7] },
+                    "not a cut",
+                  ],
+                  narration: [
+                    { from: 0, to: 3, text: " 本金先生出利息。" },
+                    { from: 3, to: 6, text: "   " },
+                    { from: 6, to: 9, text: "利息又生利息。" },
+                  ],
+                  audio: "全程轻微纸张摩擦",
+                  negatives: "不要出现人物",
+                  videoPrompt: "1. 风格锚点：…",
+                  endpoint: "reference",
+                  qa: { similarity: 0.98, verdict: "pass" },
+                  h3Practices: "2026-09-04-montage",
+                  status: "ready",
+                  video: { file: "nodes/n2/c1.mp4", duration: 15.2 },
+                },
+                { duration: 8, cuts: "nope", narration: "nope", figures: ["evidence/b2/curve.png"], status: "planned" },
+              ],
+              shots: [{ id: "sX", script: "a pre-0.6 shot beside clips[] is ignored" }],
+              children: [],
+            },
+          },
+        }),
+      }),
+    )!.byContentSet["c"];
+
+    const [c1, c2] = set.nodes.n2.clips;
+    expect(c1).toEqual({
+      id: "c1",
+      duration: 15,
+      cuts: [
+        { from: 0, to: 2, shot: "一枚芥末黄色纸片硬币静置在米白色纸面上", camera: "俯拍", figures: [] },
+        { from: 2, to: 3.5, shot: "第二枚硬币从边缘弹出", camera: "快速硬切", figures: ["evidence/b2/curve.png"] },
+      ],
+      // A blank narration line is not a spoken line.
+      narration: [
+        { from: 0, to: 3, text: "本金先生出利息。" },
+        { from: 6, to: 9, text: "利息又生利息。" },
+      ],
+      // Derived from the cuts, in cut order, when the clip declares none.
+      figures: ["evidence/b2/curve.png"],
+      status: "ready",
+      video: { file: "nodes/n2/c1.mp4", duration: 15.2 },
+    });
+    expect(c2).toEqual({
+      id: "c2",
+      duration: 8,
+      cuts: [],
+      narration: [],
+      figures: ["evidence/b2/curve.png"],
+      status: "planned",
+      video: undefined,
+    });
+    expect(set.nodes.n2).toMatchObject({ clipIndex: 1, clipCount: 3 });
+    expect(set.nodes.n2.script).toBe("本金先生出利息。利息又生利息。");
+  });
+
+  test("a course in a spaced language joins the narration with single spaces", () => {
+    const set = load(
+      files({
+        "c/course.json": JSON.stringify({
+          title: "t",
+          language: "en-US",
+          nodes: {
+            n1: {
+              clips: [
+                { narration: [{ from: 0, to: 2, text: "Interest earns interest." }] },
+                { narration: ["That is the whole trick."] },
+              ],
+            },
+          },
+        }),
+      }),
+    )!.byContentSet["c"];
+    expect(set.language).toBe("en-US");
+    expect(set.nodes.n1.script).toBe("Interest earns interest. That is the whole trick.");
+  });
+
+  test("a course without a manager has no play snapshot, and script.md wins over the clips", () => {
     const set = load(
       files({
         "c/course.json": JSON.stringify({ title: "t", outline: [], nodes: { n1: { status: "ready", shots: [{ script: "from shots" }] } } }),
@@ -203,7 +332,7 @@ describe("load", () => {
     )!.byContentSet["c"];
     expect(set.play).toBeUndefined();
     expect(set.nodes.n1.script).toBe("from the file");
-    expect(set.nodes.n1.shotCount).toBe(1);
+    expect(set.nodes.n1.clipCount).toBe(1);
   });
 
   test("a malformed course.json throws so the provider keeps the last good value", () => {

@@ -12,7 +12,7 @@ import type { QueueSnapshot } from "./async-job-queue.d.mts";
 export interface ManagerDeps {
   model?: string;
   chat: ((request: { system: string; user: string }) => Promise<Record<string, unknown>>) | null;
-  renderShot(
+  renderClip(
     input: { prompt: string; output: string; duration: number; image?: string; refImages?: string[]; refAudios?: string[]; seed?: number },
     signal?: AbortSignal,
   ): Promise<{ duration?: number; url?: string; [key: string]: unknown }>;
@@ -29,9 +29,13 @@ export interface ManagerDeps {
   concat(inputs: string[], output: string, signal?: AbortSignal): Promise<void>;
 }
 
-export interface ManagerShot {
+export interface ManagerClip {
   id: string;
-  script: string;
+  duration: number;
+  cuts?: Array<{ from: number; to: number; shot: string; camera: string; figures?: string[] }>;
+  narration?: Array<{ from: number; to: number; text: string }>;
+  figures?: string[];
+  videoPrompt?: string;
   status: string;
   video?: { file: string; duration: number };
   [key: string]: unknown;
@@ -46,7 +50,7 @@ export interface ManagerNode {
   status: string;
   phase?: string | null;
   error?: string | null;
-  shots: ManagerShot[];
+  clips: ManagerClip[];
   children: Array<{ nodeId: string; label: string }>;
   video?: { file: string; duration: number };
   [key: string]: unknown;
@@ -85,8 +89,6 @@ export interface ManagerOptions {
   slots?: number;
   videoAhead?: number;
   planAhead?: number;
-  /** "locked" (default): every shot reference-to-video with the voice reference, and a character sheet for a speaker on screen — one narrator, one face; "chain": image-to-video frame chain inside a scene for voiceover shots with nothing else (seamless, no voice on those). The voice reference is made in both. */
-  continuity?: "chain" | "locked";
   log?: (line: string) => void;
   pollMs?: number;
 }

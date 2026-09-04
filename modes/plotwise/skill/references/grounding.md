@@ -20,6 +20,82 @@ Tier is per-beat, but a segment can escalate: if a "world-knowledge" beat's
 segment ends up wanting a plot, that plot is a rendered figure regardless
 of the beat's tier.
 
+## The visual layer — the other half of a plan
+
+The tier decides what a beat may CLAIM. The visual layer decides what it
+SHOWS, and it is settled at the same time, in the same file, for the same
+reason: the play loop cannot invent either one.
+
+**Per beat, a `device`.** One or two sentences in the course language
+naming the concrete objects, metaphor or character that carry that beat's
+idea — what a camera could film. Compound interest: *"a coin that buds a
+second coin, then both bud again, and the pile climbs one step higher each
+time"*. Not *"the exponential effect of interest earning interest"* — that
+is the concept a second time, and a writer given it answers with a
+narrator in front of a pretty background.
+
+Three rules make a device usable:
+
+1. **Style-agnostic.** No palette, material, lighting or camera words. The
+   learner confirms the style separately on the board, and the writer
+   translates the device into that style's own materials — paper coins for
+   papercraft, chalk coins for a chalkboard. "Flat vector coins in coral,
+   seen top-down" pre-empts a decision that is not the plan's, and is
+   simply wrong once the learner picks something else.
+2. **Filmable and concrete.** Objects, an action, a change. If you cannot
+   say what moves in the first two seconds, it is not a device yet.
+3. **It composes with its neighbours.** One running example carries the
+   whole course: beat 3's device grows out of beat 2's (the coins pile
+   into a staircase; the staircase feeds a snowball). A new world per beat
+   reads as a new course per beat. Only the plan sees the whole course,
+   which is exactly why the writer cannot be asked to do this.
+
+**Per course, a visual bible** — `course.visual` (written in the course's
+language; shown here in English):
+
+```json
+{ "bible": "The whole course happens on one sheet of paper seen from above. Every quantity is made of paper, and more of it means a taller pile; the running example is a single coin that keeps budding.",
+  "motifs": ["the coin that buds", "the pile that climbs", "the crease across the sheet"],
+  "neverDraw": ["a formula with no rendered figure behind it", "floating text", "gradients", "real metal coins"] }
+```
+
+- `bible` — one paragraph: where the course happens, how the running
+  example is drawn, what recurs from beat to beat, what tells the audience
+  they are still inside the same course.
+- `motifs` — 2–5 things a viewer would notice a second time.
+- `neverDraw` — what this course never draws, whatever the topic invites
+  and this pipeline cannot deliver. Almost always: a formula or a labelled
+  axis with no rendered figure behind it (the video model writes
+  plausible-looking wrong glyphs), floating text, gradients. Add what your
+  own topic tempts — for money, real metal coins and brand logos.
+  Style-agnostic like the rest; the writer turns these into the clip's
+  negative constraints.
+
+**The device is for the idea, the figure is for the fact.** A device
+carries what a beat MEANS and needs no evidence; a rendered figure carries
+what must be exact on screen and needs all of it (below). Most beats want
+only a device — a beat that reaches for a figure to say something a coin
+could have said pays 19 s of reference analysis for a worse picture.
+
+Both are written by `course-edit.mjs outline --set <set> --file
+outline.json`, where the file is `{ "beats": [ … "device": "…" … ],
+"visual": { "bible", "motifs", "neverDraw" } }`. The op merges: a re-land
+that omits the visual layer keeps what is on file (an older planner must
+not erase the direction of a course already shooting), a `visual` of the
+wrong shape is refused rather than dropped, and its JSON result reports
+`devices` and `visual` so a land is verifiable in one read.
+`course-edit.mjs audit` names a beat with no device in that beat's
+`problems` and a course with no bible in the report's top-level
+`problems`; both are planning holes to fill before `write-screenplay.mjs`
+runs.
+
+Why it lives here at all (2026-09-04): our courses looked like talking
+illustrations partly because the writer was handed abstract concepts with
+nothing concrete to film. Under a director's brief that started from a
+device — "self-replicating paper coins climbing a rising band" — the same
+model, the same topic and the same style returned montages of a
+completely different league, with the device carrying through every cut.
+
 ## Rendering knowledge figures
 
 Shape first: one idea per figure, few large labels, and a screen-like
@@ -92,6 +168,10 @@ shoot time. Consequences worth internalizing:
 
 - A figure that exists on disk but is listed nowhere is invisible to the
   course. List it.
+- The same beat entry carries its `device`, and the course carries its
+  `visual` bible ("The visual layer", above) — one file, one command, one
+  lock. A beat with evidence but no device is only half planned, and the
+  audit says so.
 - Figures must be raster (PNG/JPG) to be shot — render SVG to PNG beside
   it at planning time.
 - **Nothing is rendered, searched or derived during play.** A gate failure

@@ -8,6 +8,8 @@
 export interface StyleRecipe {
   recipe: string;
   narration: "on-camera" | "voiceover";
+  /** The composition moves that belong to this look, for the writer. */
+  devices?: string;
 }
 
 export interface EvidenceRef {
@@ -23,6 +25,9 @@ export interface OutlineBeatLike {
   id?: string;
   title?: string;
   summary?: string;
+  /** The concrete objects, metaphor or character that carry this beat's
+   * idea, style-agnostic — written by the planner (0.6). */
+  device?: string;
   tier?: string;
   evidence?: unknown;
   figures?: unknown;
@@ -36,6 +41,8 @@ export interface RefPlanEntry {
   /** "image" rides as a reference image ("Image N"); "audio" as "Audio 1". */
   kind?: "image" | "audio";
   note?: string;
+  /** 1-based index of the cut a figure belongs to. */
+  cut?: number;
 }
 
 export interface RefPlan {
@@ -124,6 +131,7 @@ export function resolveStyle(
   name: string;
   recipe: string;
   narration: "on-camera" | "voiceover";
+  devices: string;
   status: string;
   fromCatalog: boolean;
 };
@@ -164,24 +172,17 @@ export function chooseEndpoint(input?: {
   figures?: Array<{ file: string; note?: string }>;
 }): ShootEndpoint;
 
-export function describeAvailableRefs(input?: {
-  anchorKind?: "continuity" | "style-anchor" | null;
-  characters?: string[];
-  figures?: Array<{ file: string; note?: string }>;
-}): string[];
-export function injectBindings(prompt: string, sentences: string[]): string;
-
 export function planRefs(input: {
   anchorFile?: string | null;
   anchorKind?: "continuity" | "style-anchor";
   characters?: string[];
-  figures?: Array<{ file: string; note?: string }>;
+  figures?: Array<{ file: string; note?: string; cut?: number }>;
   /** The course's voice reference (style/voice.mp3); rides as "Audio 1". */
   voice?: string | null;
   /** Wording of the voice binding: whose voice it is. */
   narration?: "voiceover" | "on-camera";
   max?: number;
-  /** "image": first/last keyframes only (the chain and one figure). */
+  /** "image": the anchor as an actual first frame, nothing else. */
   mode?: "reference" | "image";
 }): RefPlan;
 
@@ -197,6 +198,8 @@ export function withCourseLock<T extends CourseLike = CourseLike>(
 export function loadEnvKey(name: string, options?: { skillRoot?: string; cwd?: string }): string | null;
 export function readEnvValue(content: string, name: string): string | null;
 
+/** The JSON object a completion carried; several objects merge in order. */
+export function parseJsonCompletion(content: string): Record<string, unknown>;
 export function chatJson(input: {
   key: string;
   model?: string;
