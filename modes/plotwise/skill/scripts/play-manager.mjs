@@ -5,11 +5,18 @@
  * program. After the director has confirmed the style, planned the
  * outline and landed the screenplay, this process owns everything the
  * learner sees change: it writes detour and question scripts ahead of
- * them (planning queue, Luna), renders scenes shot by shot ahead of them
+ * them (planning queue, Luna), shoots scenes clip by clip ahead of them
  * (video queue, H3 slots), prunes what they did not choose, and records
  * the path. No model is ever called on the click path: a choice is a
  * file the viewer writes, and the manager answers by switching the
  * current node and re-prioritising work.
+ *
+ * A scene is 1-3 MONTAGE CLIPS (0.6). Every clip is shot
+ * reference-to-video with the same bindings — the style anchor as Image 1,
+ * the character sheet next, that clip's figures after, and the course's
+ * voice as Audio 1 — so the look and the voice carry across a scene
+ * without chaining frames. The frame chain is gone: it bought a seamless
+ * join at the price of the voice reference and of every cut inside a clip.
  *
  * Usage:
  *   node play-manager.mjs --set <dir> --detach [--slots 3] [--video-ahead 2]
@@ -28,7 +35,7 @@
  *   choice.json    { "at": iso, "choose": "<nodeId>" } | { "at": iso, "retry": "<nodeId>" }
  *   requests/*.json  { "parent": "<nodeId>", "label": "...", "brief": "..." }  (a learner question)
  * Outputs: course.json (nodes / path / play, under the course lock),
- *   nodes/<id>/s<k>.mp4, nodes/<id>/video.mp4, state/manager.log,
+ *   nodes/<id>/c<k>.mp4, nodes/<id>/video.mp4, state/manager.log,
  *   state/manager.pid.
  *
  * Every dependency with a cost — the writer, the renderer, ffmpeg, the
@@ -51,7 +58,6 @@ import {
   chatJson,
   compareNarration,
   extractLastFrame,
-  injectBindings,
   judgeNarration,
   loadEnvKey,
   planRefs,
@@ -64,7 +70,7 @@ import {
   withCourseLock,
 } from "./segment-lib.mjs";
 import { writeDetourScene } from "./screenplay-lib.mjs";
-import { H3_PRACTICES_VERSION } from "./h3-prompt.mjs";
+import { H3_PRACTICES_VERSION, clipScript, insertReferenceBlock } from "./h3-prompt.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -79,7 +85,7 @@ export const VOICE_REF = "style/voice.mp3";
 export const CHARACTER_SHEET = ["style/character-1.png", "style/character-2.png"];
 /** fal takes 2-15 s of reference audio; the sample is 5 s. */
 const VOICE_REF_MAX_S = 15;
-/** Audio fade at every shot join in the scene concat: long enough to
+/** Audio fade at every clip join in the scene concat: long enough to
  * kill the click of a waveform discontinuity, short enough to be
  * inaudible as a fade. */
 const SEAM_FADE_S = 0.03;
@@ -140,9 +146,9 @@ function runChild(cmd, argv, { signal, cwd } = {}) {
   });
 }
 
-/** How long one shot may take at fal, queue wait included, before it is retried. */
-export const SHOT_DEADLINE_S = 360;
-/** Pause before the second transcription attempt of a shot. */
+/** How long one clip may take at fal, queue wait included, before it is retried. */
+export const CLIP_DEADLINE_S = 360;
+/** Pause before the second transcription attempt of a clip. */
 const TRANSCRIBE_RETRY_MS = 3000;
 
 // ── Default production dependencies (the paid ones) ─────────────────────────
@@ -154,13 +160,17 @@ export function defaultDeps({ setDir, resolution = "480P", model = DEFAULT_MODEL
     chat: openrouterKey
       ? ({ system, user }) => chatJson({ key: openrouterKey, model, system, user, temperature: 0.4 })
       : null,
-    /** Render one shot to `output`; returns generate-video's JSON. */
-    async renderShot({ prompt, output, duration, image, refImages = [], refAudios = [], seed }, signal) {
-      // A shot that fal has not returned in six minutes is re-tried, not
+    /** Render one clip to `output`; returns generate-video's JSON. */
+    async renderClip({ prompt, output, duration, image, refImages = [], refAudios = [], seed }, signal) {
+      // A clip that fal has not returned in six minutes is re-tried, not
       // waited on: the learner is watching a clock. (Three 768P openings
       // once sat 21 minutes in fal's queue under the generator's own
       // 15-minute deadline, 2026-09-03.)
-      const argv = ["--prompt", prompt, "--output", output, "--duration", String(duration), "--resolution", resolution, "--expansion", "balanced", "--deadline-s", String(SHOT_DEADLINE_S), "--json"];
+      //
+      // `--expansion balanced` is not optional: the prompt is the plain
+      // four-block montage form, and fal's expander is what turns it into
+      // H3's own sectioned shape (measured 2026-09-04).
+      const argv = ["--prompt", prompt, "--output", output, "--duration", String(duration), "--resolution", resolution, "--expansion", "balanced", "--deadline-s", String(CLIP_DEADLINE_S), "--json"];
       if (image) argv.push("--image", image);
       else if (refImages.length) {
         for (const r of refImages) argv.push("--ref-image", r);
@@ -184,7 +194,7 @@ export function defaultDeps({ setDir, resolution = "480P", model = DEFAULT_MODEL
       if (r.code !== 0 || !existsSync(output)) throw new Error(`ffmpeg first-frame extraction failed: ${(r.stderr || "").trim().slice(-200)}`);
     },
     /**
-     * Two more angles of the course's host from one frame, so every shot
+     * Two more angles of the course's host from one frame, so every clip
      * carries the same face: reference images govern identity, prompt
      * words do not (a face described in words drifts scene to scene).
      */
@@ -213,11 +223,11 @@ export function defaultDeps({ setDir, resolution = "480P", model = DEFAULT_MODEL
     lastFrame: (video, out) => extractLastFrame(video, out),
     probe: (video) => probeDuration(video),
     /**
-     * ffmpeg concat of the shots into one file. Stream copy when every shot
+     * ffmpeg concat of the clips into one file. Stream copy when every clip
      * has the same stream shape and the result is as long as its parts;
-     * otherwise the shots are brought to one format and re-encoded through
-     * the concat filter. A stream-copy join of shots with mixed audio
-     * sample rates once produced a 141 s file from 47 s of shots — the
+     * otherwise the clips are brought to one format and re-encoded through
+     * the concat filter. A stream-copy join of clips with mixed audio
+     * sample rates once produced a 141 s file from 47 s of clips — the
      * demuxer does not check, so this does (2026-09-03).
      */
     async concat(inputs, output, signal) {
@@ -229,7 +239,7 @@ export function defaultDeps({ setDir, resolution = "480P", model = DEFAULT_MODEL
       };
       // A join between two clips is a waveform discontinuity — a click.
       // Each shot's audio fades in and out over 30 ms at the seam; the
-      // shots end on sentence boundaries, so nothing spoken is touched.
+      // clips end on sentence boundaries, so nothing spoken is touched.
       const fade = (i, from) =>
         `[${from}:a]afade=t=in:st=0:d=${SEAM_FADE_S},afade=t=out:st=${Math.max(0, durations[i] - SEAM_FADE_S).toFixed(3)}:d=${SEAM_FADE_S}`;
       const shapes = inputs.map((f) => JSON.stringify(probeStreams(f)));
@@ -274,7 +284,7 @@ export function defaultDeps({ setDir, resolution = "480P", model = DEFAULT_MODEL
       );
       const enc = await runChild("ffmpeg", argv, { signal });
       if (enc.code !== 0 || !existsSync(output)) throw new Error(`ffmpeg concat failed: ${(enc.stderr || "").trim().slice(-300)}`);
-      if (!fits()) throw new Error(`ffmpeg concat produced ${probeDuration(output)}s from ${Math.round(expected)}s of shots`);
+      if (!fits()) throw new Error(`ffmpeg concat produced ${probeDuration(output)}s from ${Math.round(expected)}s of clips`);
     },
   };
 }
@@ -290,12 +300,11 @@ export function defaultDeps({ setDir, resolution = "480P", model = DEFAULT_MODEL
  *   .reconcile()      — (re)schedule work from the current node
  *   .stop()           — cancel everything, exit
  */
-export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhead = 2, continuity = "locked", log = () => {}, pollMs = 500 }) {
+export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhead = 2, log = () => {}, pollMs = 500 }) {
   setDir = resolve(setDir);
   const stateDir = join(setDir, "state");
   mkdirSync(stateDir, { recursive: true });
   mkdirSync(join(stateDir, "requests"), { recursive: true });
-  if (continuity !== "chain" && continuity !== "locked") throw new Error(`continuity must be "chain" or "locked" (got ${JSON.stringify(continuity)})`);
 
   let course = readCourse(setDir);
   const style = resolveStyle(course, existsSync(STYLES_MD) ? readFileSync(STYLES_MD, "utf-8") : "");
@@ -398,79 +407,88 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
   // ── scripting (planning queue) ─────────────────────────────────────────
   async function scriptNode(id, signal) {
     const n = nodes()[id];
-    if (!n || (n.shots ?? []).length > 0 || !n.brief) return;
+    if (!n || (n.clips ?? []).length > 0 || !n.brief) return;
     if (!deps.chat) throw new Error("no OPENROUTER_API_KEY — detour and question scenes cannot be written");
     setNode(id, { status: "scripting", phase: "script", startedAt: nowIso(), error: null });
     await persist();
-    const { shots, problems } = await writeDetourScene({ course, node: n, chat: deps.chat, styleRecipe: style.recipe, narration: style.narration, language, setDir });
+    const { clips, device, problems } = await writeDetourScene({ course, node: n, chat: deps.chat, styleRecipe: style.recipe, styleDevices: style.devices, narration: style.narration, language, setDir });
     signal?.throwIfAborted();
     if (!nodes()[id]) return; // pruned meanwhile
-    if (!shots?.length) throw new Error(`the writer returned no shots${problems?.length ? `: ${problems.join("; ")}` : ""}`);
-    setNode(id, { shots: shots.map((s, i) => ({ ...s, id: s.id ?? `s${i + 1}`, status: "planned" })), status: "planned", phase: null, startedAt: null, problems: problems?.length ? problems : undefined });
+    if (!clips?.length) throw new Error(`the writer returned no clips${problems?.length ? `: ${problems.join("; ")}` : ""}`);
+    setNode(id, {
+      clips: clips.map((c, i) => ({ ...c, id: c.id ?? `c${i + 1}`, status: "planned" })),
+      ...(device ? { device } : {}),
+      status: "planned",
+      phase: null,
+      startedAt: null,
+      problems: problems?.length ? problems : undefined,
+    });
     await persist();
   }
 
   // ── rendering (video queue) ────────────────────────────────────────────
-  function shotRefs(node, shot, prevFrame) {
-    // Figures the shot shows, resolved against the beat's evidence.
+  /**
+   * What one clip binds. Every clip gets the same shape — the style
+   * anchor as Image 1, the recurring characters, then the figures this
+   * clip's cuts name, and the course's voice as Audio 1 — because that
+   * is where continuity now comes from. A figure carries the cut it
+   * belongs to, so the prompt can say when it appears.
+   */
+  function clipRefs(node, clip) {
+    // Figures the clip shows, resolved against the beat's evidence, in
+    // the order of the cuts that show them.
     const beat = (course.outline ?? []).find((b) => b.id === node.beat) ?? null;
     const evidence = beat ? resolveEvidence({ setDir, beat, nodeId: node.id }) : [];
     const offered = shootableFigures(evidence);
-    const wanted = (shot.figures ?? []).map(String);
-    const bound = offered.filter((f) => wanted.some((w) => w === f.file || basename(w) === basename(f.file)));
-    // fal analyses at most MAX_REFS images: one is the continuity frame
-    // or the style anchor, the course's recurring characters take the
-    // next, and the figures share what is left. A shot over that budget
-    // would lose its last figure silently at the shoot — it fails here
-    // instead, naming the split the screenplay needs.
-    const anchored = prevFrame || styleAnchor ? 1 : 0;
+    const cutOf = new Map();
+    (clip.cuts ?? []).forEach((cut, i) => {
+      for (const f of cut.figures ?? []) {
+        const key = basename(String(f));
+        if (!cutOf.has(key)) cutOf.set(key, i + 1);
+      }
+    });
+    const wanted = (clip.figures ?? []).map(String);
+    const bound = offered
+      .filter((f) => wanted.some((w) => w === f.file || basename(w) === basename(f.file)))
+      .map((f) => ({ ...f, cut: cutOf.get(basename(f.file)) }))
+      .sort((a, b) => (a.cut ?? 99) - (b.cut ?? 99));
+    // fal analyses at most MAX_REFS images: one is the style anchor, the
+    // course's recurring characters take the next, and the figures share
+    // what is left. A clip over that budget would lose its last figure
+    // silently at the shoot — it fails here instead, naming the split the
+    // screenplay needs.
+    const anchored = styleAnchor ? 1 : 0;
     const budget = MAX_REFS - anchored - characters.length;
     if (bound.length > budget) {
       throw new Error(
-        `${node.id}/${shot.id}: ${bound.length} figures with ${anchored ? "the continuity frame and " : ""}${characters.length} character reference${characters.length === 1 ? "" : "s"} exceed the ${MAX_REFS} reference slots (${Math.max(0, budget)} left for figures) — split the figures across shots`,
+        `${node.id}/${clip.id}: ${bound.length} figures with ${anchored ? "the style anchor and " : ""}${characters.length} character reference${characters.length === 1 ? "" : "s"} exceed the ${MAX_REFS} reference slots (${Math.max(0, budget)} left for figures) — split the figures across clips`,
       );
     }
     const voice = voiceRef();
-    const reference = (plan) => ({
+    const plan = planRefs({
+      anchorFile: styleAnchor,
+      anchorKind: "style-anchor",
+      characters,
+      figures: bound,
+      voice,
+      narration: style.narration,
+      mode: "reference",
+    });
+    if (plan.refs.length === 0) return { mode: "text", refs: [], audios: [], lines: [] };
+    return {
       mode: "reference",
       refs: plan.refs.filter((r) => r.kind !== "audio").map((r) => join(setDir, r.file)),
       audios: plan.refs.filter((r) => r.kind === "audio").map((r) => join(setDir, r.file)),
       lines: plan.lines,
-    });
-    if (prevFrame) {
-      // Inside a scene: continue from the previous shot's last frame.
-      // `chain` shoots image-to-video when nothing else rides along: the
-      // frame IS the first frame, so the join is seamless (measured
-      // 2026-09-04: reference-to-video treats the same frame as a look
-      // reference and reframes; it also costs 7 s more) — at the price of
-      // no voice reference on that shot. `locked` keeps every shot
-      // reference-to-video with the voice, accepting the looser join.
-      // A speaker on screen is always a reference shot: their voice must
-      // not change between two shots of the same take, and a matched cut
-      // on a talking head reads as normal video.
-      if (continuity === "chain" && bound.length === 0 && characters.length === 0 && style.narration !== "on-camera") {
-        return { mode: "image", image: join(setDir, prevFrame), refs: [], audios: [], lines: [] };
-      }
-      return reference(planRefs({ anchorFile: prevFrame, anchorKind: "continuity", characters, figures: bound, voice, narration: style.narration, mode: "reference" }));
-    }
-    // A scene opening: the style anchor as a look reference (a cut is fine
-    // between scenes), plus whatever the shot shows.
-    if (styleAnchor) {
-      return reference(planRefs({ anchorFile: styleAnchor, anchorKind: "style-anchor", characters, figures: bound, voice, narration: style.narration, mode: "reference" }));
-    }
-    if (bound.length) {
-      return reference(planRefs({ anchorFile: null, characters, figures: bound, voice, narration: style.narration, mode: "reference" }));
-    }
-    return { mode: "text", refs: [], audios: [], lines: [] };
+    };
   }
 
   /**
-   * The continuity kit, made once per course before the first shot: the
+   * The continuity kit, made once per course before the first clip: the
    * confirmed sample's narration as the voice reference, and for a course
    * with a speaker on screen (or references the learner supplied) a
    * character sheet — two more angles of the host from the sample's
    * first frame — so identity rides on images, not on prompt words.
-   * The voice is made in both continuity modes, the sheet in `locked`.
    * Every step is best effort and reported: a course without a sample
    * still shoots, without a voice reference.
    */
@@ -491,11 +509,12 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
         log(`continuity kit: voice reference failed (${e.message}) — shooting without it`);
       }
     }
-    // The sheet is `locked` only: measured 2026-09-04 on the teacher
-    // style, the anchor still already shows the host and every reference
-    // shot kept the same face without it, while the two sheet images cost
-    // 77 s once and two of the four reference slots on every shot.
-    const wantsSheet = continuity === "locked" && (style.narration === "on-camera" || (course.style?.userRefs ?? []).length > 0);
+    // The sheet is only for a course that actually has a person to keep:
+    // measured 2026-09-04 on the teacher style, the anchor still already
+    // shows the host and every reference clip kept the same face without
+    // it, while the two sheet images cost 77 s once and two of the four
+    // reference slots on every clip.
+    const wantsSheet = style.narration === "on-camera" || (course.style?.userRefs ?? []).length > 0;
     const hasSheet = Array.isArray(course.style?.characterSheet) && course.style.characterSheet.every((f) => existsSync(join(setDir, f)));
     if (wantsSheet && !hasSheet && typeof deps.characterSheet === "function" && typeof deps.firstFrame === "function") {
       try {
@@ -523,13 +542,13 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
 
   /**
    * What the evidence panel shows for a scene: the beat's citations and
-   * verifications, plus the figures its shots actually put on screen; a
+   * verifications, plus the figures its clips actually put on screen; a
    * question scene's own evidence directory rides along.
    */
   function sceneEvidence(node) {
     const beat = (course.outline ?? []).find((b) => b.id === node.beat) ?? null;
     const all = resolveEvidence({ setDir, beat, nodeId: node.id });
-    const shown = new Set((node.shots ?? []).flatMap((s) => (s.figures ?? []).map((f) => basename(String(f)))));
+    const shown = new Set((node.clips ?? []).flatMap((c) => (c.figures ?? []).map((f) => basename(String(f)))));
     const isFigure = (e) => e.file && /\.(png|jpe?g|webp)$/i.test(e.file);
     return all
       .filter((e) => !isFigure(e) || shown.has(basename(e.file)) || (node.kind === "question" && String(e.file).startsWith(`evidence/${node.id}/`)))
@@ -537,34 +556,36 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
   }
 
   /**
-   * Transcribe the shot, twice if the first attempt fails. Narration that
+   * Transcribe the clip, twice if the first attempt fails. Narration that
    * cannot be checked is not narration that passed: a transcriber outage
-   * used to wave the shot through as "skipped", which is exactly the clip
-   * this mode promises never to show. The clip stays on disk under the
-   * shot as `unchecked`, so a retry checks it again without paying for
+   * used to wave the clip through as "skipped", which is exactly the clip
+   * this mode promises never to show. The file stays on disk under the
+   * clip as `unchecked`, so a retry checks it again without paying for
    * another render.
    */
-  async function transcribeShot(node, shot, result, signal) {
+  async function transcribeClip(node, clip, result, signal) {
     let last = null;
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        return await deps.transcribe({ input: result.url ?? join(setDir, shot.video.file), language }, signal);
+        return await deps.transcribe({ input: result.url ?? join(setDir, clip.video.file), language }, signal);
       } catch (e) {
         if (isAbort(e, signal)) throw e;
         last = e;
         if (attempt === 1) {
-          log(`${node.id}/${shot.id}: transcription failed (${e.message}) — trying once more`);
+          log(`${node.id}/${clip.id}: transcription failed (${e.message}) — trying once more`);
           await sleep(TRANSCRIBE_RETRY_MS, signal);
         }
       }
     }
-    shot.status = "unchecked";
-    throw new Error(`${node.id}/${shot.id}: narration could not be checked — transcription failed twice (${last?.message}); the clip is kept and 再拍一次 checks it again`);
+    clip.status = "unchecked";
+    throw new Error(`${node.id}/${clip.id}: narration could not be checked — transcription failed twice (${last?.message}); the clip is kept and 再拍一次 checks it again`);
   }
 
-  async function qaShot(node, shot, result, signal) {
-    const transcript = await transcribeShot(node, shot, result, signal);
-    const cmp = compareNarration(shot.script, transcript);
+  /** The whole clip's narration against the whole clip's transcript: the
+   * lines are spread across the montage, and H3 places them itself. */
+  async function qaClip(node, clip, result, signal) {
+    const transcript = await transcribeClip(node, clip, result, signal);
+    const cmp = compareNarration(clipScript(clip, language), transcript);
     const sim = Math.round(cmp.similarity * 1000) / 1000;
     const coverage = Math.round(cmp.coverage * 1000) / 1000;
     let verdict = autoVerdict(sim, coverage);
@@ -573,7 +594,7 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
     if (verdict == null) {
       if (deps.judge) {
         try {
-          const j = await deps.judge({ script: shot.script, transcript, language, similarity: sim, coverage });
+          const j = await deps.judge({ script: clipScript(clip, language), transcript, language, similarity: sim, coverage });
           verdict = j.verdict;
           reason = j.reason;
           judge = "luna";
@@ -594,86 +615,89 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
     if (!node || node.status === "ready") return;
     const nodeDir = join(setDir, "nodes", id);
     mkdirSync(nodeDir, { recursive: true });
-    const shots = node.shots ?? [];
-    setNode(id, { status: "generating", phase: "shoot", startedAt: nowIso(), shotIndex: 1, shotCount: shots.length, error: null });
+    const clips = node.clips ?? [];
+    setNode(id, { status: "generating", phase: "shoot", startedAt: nowIso(), clipIndex: 1, clipCount: clips.length, error: null });
     await persist();
-    let prevFrame = null;
     const outputs = [];
-    for (let i = 0; i < shots.length; i++) {
+    for (let i = 0; i < clips.length; i++) {
       signal?.throwIfAborted();
-      const shot = shots[i];
-      const shotFile = `nodes/${id}/${shot.id}.mp4`;
-      if (shot.status === "ready" && shot.video?.file && existsSync(join(setDir, shot.video.file))) {
-        // A shot that survived an earlier attempt is not paid for twice.
-        outputs.push(join(setDir, shot.video.file));
-        const frame = `nodes/${id}/${shot.id}.last.png`;
-        if (deps.lastFrame(join(setDir, shot.video.file), join(setDir, frame))) prevFrame = frame;
+      const clip = clips[i];
+      const clipFile = `nodes/${id}/${clip.id}.mp4`;
+      // The clip's last frame is what the interlude shows while the next
+      // scene is still being shot. It is no longer a first frame for
+      // anything: the chain is retired.
+      const frameOf = (rel) => {
+        const frame = `nodes/${id}/${clip.id}.last.png`;
+        deps.lastFrame(join(setDir, rel), join(setDir, frame));
+      };
+      if (clip.status === "ready" && clip.video?.file && existsSync(join(setDir, clip.video.file))) {
+        // A clip that survived an earlier attempt is not paid for twice.
+        outputs.push(join(setDir, clip.video.file));
+        frameOf(clip.video.file);
         continue;
       }
-      setPhase(id, "shoot", { shotIndex: i + 1 });
-      const refs = shotRefs(node, shot, prevFrame);
-      const prompt = refs.lines.length ? injectBindings(shot.videoPrompt, refs.lines) : shot.videoPrompt;
+      setPhase(id, "shoot", { clipIndex: i + 1 });
+      const refs = clipRefs(node, clip);
+      const prompt = refs.lines.length ? insertReferenceBlock(clip.videoPrompt, refs.lines) : clip.videoPrompt;
       let done = null;
       let lastQa = null;
       // A clip whose narration could not be checked last time is checked
       // first; it is rendered again only if that check fails.
-      const unchecked = shot.status === "unchecked" && shot.video?.file && existsSync(join(setDir, shot.video.file));
+      const unchecked = clip.status === "unchecked" && clip.video?.file && existsSync(join(setDir, clip.video.file));
       for (let attempt = 1; attempt <= 2 && !done; attempt++) {
         let result;
         if (attempt === 1 && unchecked) {
-          result = { duration: shot.video.duration };
+          result = { duration: clip.video.duration };
         } else {
-          result = await deps.renderShot({ prompt, output: join(setDir, shotFile), duration: shot.duration, image: refs.mode === "image" ? refs.image : undefined, refImages: refs.mode === "reference" ? refs.refs : [], refAudios: refs.mode === "reference" ? refs.audios ?? [] : [], seed: attempt === 1 ? undefined : Math.floor(Math.random() * 2 ** 31) }, signal);
-          shot.video = { file: shotFile, duration: Number(result.duration ?? deps.probe(join(setDir, shotFile)) ?? shot.duration) };
-          shot.h3Practices = H3_PRACTICES_VERSION;
+          result = await deps.renderClip({ prompt, output: join(setDir, clipFile), duration: clip.duration, image: refs.mode === "image" ? refs.image : undefined, refImages: refs.mode === "reference" ? refs.refs : [], refAudios: refs.mode === "reference" ? refs.audios ?? [] : [], seed: attempt === 1 ? undefined : Math.floor(Math.random() * 2 ** 31) }, signal);
+          clip.video = { file: clipFile, duration: Number(result.duration ?? deps.probe(join(setDir, clipFile)) ?? clip.duration) };
+          clip.h3Practices = H3_PRACTICES_VERSION;
         }
-        setPhase(id, "qa", { shotIndex: i + 1 });
-        const qa = await qaShot(node, shot, result, signal);
+        setPhase(id, "qa", { clipIndex: i + 1 });
+        const qa = await qaClip(node, clip, result, signal);
         signal?.throwIfAborted();
         lastQa = qa;
         if (qa.verdict === "pass") done = { result, qa };
         else if (attempt === 1) {
-          try { renameSync(join(setDir, shotFile), join(nodeDir, `${shot.id}.rejected.mp4`)); } catch { /* fine */ }
-          log(`${id}/${shot.id}: narration QA failed (similarity ${qa.similarity}) — re-shooting with a fresh seed`);
+          try { renameSync(join(setDir, clipFile), join(nodeDir, `${clip.id}.rejected.mp4`)); } catch { /* fine */ }
+          log(`${id}/${clip.id}: narration QA failed (similarity ${qa.similarity}) — re-shooting with a fresh seed`);
         }
       }
-      if (!done) throw new Error(`${id}/${shot.id}: narration QA failed twice (similarity ${lastQa?.similarity})`);
-      shot.status = "ready";
-      shot.qa = { similarity: done.qa.similarity, coverage: done.qa.coverage, verdict: done.qa.verdict, judge: done.qa.judge };
-      shot.endpoint = refs.mode;
-      outputs.push(join(setDir, shotFile));
-      const frame = `nodes/${id}/${shot.id}.last.png`;
-      prevFrame = deps.lastFrame(join(setDir, shotFile), join(setDir, frame)) ? frame : null;
+      if (!done) throw new Error(`${id}/${clip.id}: narration QA failed twice (similarity ${lastQa?.similarity})`);
+      clip.status = "ready";
+      clip.qa = { similarity: done.qa.similarity, coverage: done.qa.coverage, verdict: done.qa.verdict, judge: done.qa.judge };
+      clip.endpoint = refs.mode;
+      outputs.push(join(setDir, clipFile));
+      frameOf(clipFile);
       await persist();
     }
     signal?.throwIfAborted();
     const finalRel = `nodes/${id}/video.mp4`;
     const finalAbs = join(setDir, finalRel);
     if (outputs.length === 1) {
-      // A single-shot scene IS its shot. When the surviving clip already
+      // A single-clip scene IS its clip. When the surviving file already
       // is the scene file (a re-run over a scene that was ready), there
       // is nothing to move — renaming it onto itself would delete it.
       if (outputs[0] !== finalAbs) {
         try { unlinkSync(finalAbs); } catch { /* none */ }
         renameSync(outputs[0], finalAbs);
       }
-      shots[0].video.file = finalRel;
+      clips[0].video.file = finalRel;
     } else {
       await deps.concat(outputs, finalAbs, signal);
     }
-    const duration = deps.probe(finalAbs) ?? shots.reduce((s, x) => s + (x.video?.duration ?? x.duration), 0);
-    writeFileSync(join(nodeDir, "script.md"), `# ${node.choiceLabel ?? id}\n\n${shots.map((s) => s.script).join("\n\n")}\n`);
+    const duration = deps.probe(finalAbs) ?? clips.reduce((s, x) => s + (x.video?.duration ?? x.duration), 0);
+    writeFileSync(join(nodeDir, "script.md"), `# ${node.choiceLabel ?? id}\n\n${clips.map((c) => clipScript(c, language)).join("\n\n")}\n`);
     writeFileSync(join(nodeDir, "evidence.json"), JSON.stringify(sceneEvidence(node), null, 2));
-    setNode(id, { status: "ready", video: { file: finalRel, duration }, phase: null, startedAt: null, shotIndex: null, error: null });
+    setNode(id, { status: "ready", video: { file: finalRel, duration }, phase: null, startedAt: null, clipIndex: null, error: null });
     if (id === course.rootNode) course.play.state = "playing";
     await persist();
-    log(`${id} ready (${shots.length} shot${shots.length === 1 ? "" : "s"}, ${Math.round(duration)}s)`);
+    log(`${id} ready (${clips.length} clip${clips.length === 1 ? "" : "s"}, ${Math.round(duration)}s)`);
   }
 
   // ── scheduling ─────────────────────────────────────────────────────────
   function isDone(n) { return n.status === "ready" || n.status === "cancelled"; }
-  function needsScript(n) { return (n.shots ?? []).length === 0 && !!n.brief && n.status !== "cancelled" && n.status !== "failed"; }
-  function canRender(n) { return (n.shots ?? []).length > 0 && (n.status === "planned" || n.status === "scripting" && false); }
+  function needsScript(n) { return (n.clips ?? []).length === 0 && !!n.brief && n.status !== "cancelled" && n.status !== "failed"; }
 
   function reconcile() {
     if (stopped) return;
@@ -709,7 +733,7 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
         });
         continue;
       }
-      if (kitReady && (n.shots ?? []).length > 0 && n.status === "planned" && distance <= videoAhead) {
+      if (kitReady && (n.clips ?? []).length > 0 && n.status === "planned" && distance <= videoAhead) {
         // Marked before the enqueue: a job that starts at once sets
         // `generating` synchronously, and a mark after the call would
         // put "排队中" over a shoot in progress (seen 2026-09-03).
@@ -784,13 +808,13 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
     // A retry of a scene that is READY is the learner asking for a new
     // take of the whole scene (a garbled figure, a mis-drawn board):
     // every shot is shot again. A retry of a failed or stuck scene keeps
-    // the shots that passed and the clip whose narration is still to be
+    // the clips that passed and the one whose narration is still to be
     // checked — neither is paid for twice.
     const whole = n.status === "ready" || !!n.video;
-    for (const s of n.shots ?? []) {
+    for (const s of n.clips ?? []) {
       if (whole || (s.status !== "ready" && s.status !== "unchecked")) { s.status = "planned"; delete s.video; delete s.qa; }
     }
-    setNode(nodeId, { status: "planned", video: undefined, phase: null, startedAt: null, shotIndex: null, error: null });
+    setNode(nodeId, { status: "planned", video: undefined, phase: null, startedAt: null, clipIndex: null, error: null });
     log(`retry: ${nodeId}${whole ? " (a new take of every shot)" : ""}`);
     reconcile();
   }
@@ -804,7 +828,7 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
     const hangOn = cur !== parent && subtreeIds(nodes(), parent).includes(cur) ? cur : parent;
     const p = nodes()[hangOn];
     const id = `q${Object.keys(nodes()).filter((k) => /^q\d+$/.test(k)).length + 1}`;
-    nodes()[id] = { parent: hangOn, beat: asked.beat, kind: "question", choiceLabel: label, brief, status: "planned", shots: [], children: [{ nodeId: (p.children ?? []).find((c) => nodes()[c.nodeId]?.kind === "main")?.nodeId, label: "回到主线" }].filter((c) => c.nodeId) };
+    nodes()[id] = { parent: hangOn, beat: asked.beat, kind: "question", choiceLabel: label, brief, status: "planned", clips: [], children: [{ nodeId: (p.children ?? []).find((c) => nodes()[c.nodeId]?.kind === "main")?.nodeId, label: "回到主线" }].filter((c) => c.nodeId) };
     p.children = [...(p.children ?? []), { nodeId: id, label }];
     log(`question scene ${id} under ${hangOn}${hangOn !== parent ? ` (asked at ${parent})` : ""}: ${label}`);
     reconcile();
@@ -907,7 +931,11 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
       "video-ahead": { type: "string", default: "2" },
       "plan-ahead": { type: "string", default: "2" },
       resolution: { type: "string", default: "480P" },
-      continuity: { type: "string", default: "locked" },
+      // 0.5's continuity switch. Every clip now carries the anchor and
+      // the voice, so there is nothing to choose — but a session resumed
+      // with the old skill text still passes it, and dying on an
+      // unknown flag would leave the learner on "等待开拍".
+      continuity: { type: "string" },
       model: { type: "string" },
       once: { type: "boolean", default: false },
       detach: { type: "boolean", default: false },
@@ -977,10 +1005,10 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     slots: Math.max(1, Number(args.slots) || 3),
     videoAhead: Math.max(1, Number(args["video-ahead"]) || 2),
     planAhead: Math.max(1, Number(args["plan-ahead"]) || 2),
-    continuity: args.continuity.toLowerCase(),
     log,
   }).start();
-  log(`play-manager started for ${setDir} (slots ${args.slots}, video-ahead ${args["video-ahead"]}, continuity ${args.continuity}, h3 practices ${H3_PRACTICES_VERSION})`);
+  log(`play-manager started for ${setDir} (slots ${args.slots}, video-ahead ${args["video-ahead"]}, h3 practices ${H3_PRACTICES_VERSION})`);
+  if (args.continuity) log(`--continuity ${args.continuity} ignored: every clip carries the style anchor and the voice since 0.6`);
   const shutdown = async (sig) => { log(`${sig}: stopping`); await manager.stop(); process.exit(0); };
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));

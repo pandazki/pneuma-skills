@@ -1,164 +1,258 @@
 # H3 best practices — what the scripts do for you, and why
 
 This is the living record of how plotwise talks to MiniMax H3 (fal's H3
-Max). **The practice is implemented in `scripts/h3-prompt.mjs`
-(the prompt) and `scripts/play-manager.mjs` (the references and the
-continuity kit); this file is its reasoning.** Nothing here is for you to
-type into a prompt — if a rule should change, change it in the script,
-record why here, and bump `H3_PRACTICES_VERSION`. Every shot records the
-version it was shot under (`shots[].h3Practices`), so a course can be
-read against the practice of its day.
+Max). **The practice is implemented in `scripts/h3-prompt.mjs` (the
+prompt), `scripts/screenplay-lib.mjs` (what the writer is asked for) and
+`scripts/play-manager.mjs` (the references and the continuity kit); this
+file is its reasoning.** Nothing here is for you to type into a prompt —
+if a rule should change, change it in the script, record why here, and
+bump `H3_PRACTICES_VERSION`. Every clip records the version it was shot
+under (`clips[].h3Practices`), so a course can be read against the
+practice of its day.
 
 Sources: [God-minmax-H3](https://github.com/LIUFelix2004/God-minmax-H3)
 (MIT — five prompts validated on H3, a prompt grammar and a stitching
-guide; the user confirmed the difference by hand), fal's H3 Max API
-schema, MiniMax's published prompt spec, and our measurements
-(2026-09-01 smoke, 2026-09-03 blind trials, 2026-09-04 A/B).
+guide), fal's H3 Max API schema, MiniMax's published prompt spec, and our
+own measurements (2026-09-01 smoke, 2026-09-03 blind trials, 2026-09-04
+reproduction and writer trial).
 
-## The prompt (`h3-prompt.mjs`)
+## What 0.6 changed, and what proved it
 
-fal's H3 Max expander rewrites toward three labeled sections —
-`integrated_multimodal_description`, `overall_soundscape`,
-`non_diegetic_music` — so that is the frame. Inside the description the
-order is the one that H3 weights: **style anchor → bindings → continuity
-→ picture as a timeline → figure → narration → negatives.**
+Until 0.6 a scene was a chain of one-take shots and every prompt opened
+with "One continuous shot, no cuts". The courses came out as talking
+illustrations. Four measurements on 2026-09-04 settled why:
 
-1. **Style anchor first, verbatim, every shot.** The model has no memory
-   across shots; "as before" is nothing. Every recipe in `styles.md`
-   names five things — kind of picture, 16:9 frame, concrete colors
-   (named, hex where useful), material/texture, light — because an
-   anchor missing one of them is filled in by the model differently each
-   time. "High contrast" is not a color; "deep navy (#0b1a3a) and warm
-   amber (#f5a623)" is.
-2. **Bindings are injected at shoot time.** `Image 1 is …`, `Audio 1 is
-   …` are written by the manager from what the shot actually binds
-   (`segment-lib::planRefs`), never by the writer — a writer guessing
-   numbers guesses wrong.
-3. **The picture is a timeline inside one take.** `beats[]` —
-   `{from, to, action, camera}` in seconds — give the model its time
-   allocation, and each beat carries a camera move written as motion +
-   amplitude + speed. **No camera means a dead static shot** (the
-   community's most common failure); a beat without one gets
-   `DEFAULT_CAMERA`. Still ONE continuous take: cuts inside a shot fight
-   the frame chain, so the multi-cut trick the community uses for
-   trailers is deliberately not used for teaching.
-4. **Figures are references it reproduces**, never keyframes — one
-   sentence per figure, "every label, axis and number unaltered".
-5. **Narration verbatim in the tagged clause** — `<d>[Chinese] …</d>`,
-   voiceover or on-camera speaker (S1).
-6. **Negatives close every prompt**: no text the prompt did not spell,
-   no garbled glyphs, no dissolves/morphs/cuts, no shake, nothing not
-   described; and when the style has people: no extra fingers or limbs,
-   no deformed hands or faces, one speaker, lips in sync.
-7. **Sound in three layers.** The voice is the narration; the writer's
-   `sound` line carries the ambience and the action effects with the
-   moment they land ("a soft chalk tap when the second curve appears at
-   3s"). Music is never requested (`N/A`) — unspecified music is the
-   documented cause of random tracks.
+1. **The model is not the ceiling.** The community's published 15-second
+   prompts, sent to fal's H3 Max unchanged, come back at their published
+   quality — at **480P with `--expansion balanced`, in about 10 seconds**.
+   Three settings were tried; the cheapest one reproduced the reference.
+2. **A voiceover does not break a montage** (X1). A `<d>` narration line
+   added to such a prompt is spoken verbatim and the cutting survives.
+3. **A lesson written in that grammar reaches the same level** (X2):
+   coins, a staircase, a snowball, one two-word title card — narration
+   verbatim.
+4. **Our writer can write it** (W1). Given a director's brief — the
+   visual device first, then a time-coded shot list with a bracketed
+   camera per cut, the narration split across the cuts, three-layer
+   audio, style-specific negatives — Luna returned, for three different
+   styles, a fitting device and 8-9 cuts per 15 seconds inside the speech
+   budget. Shot as plain text-to-video at 768P, with no anchor and no
+   references: the device carries through every cut, no invented text,
+   narration verbatim. A different league from the 0.5 pipeline's output.
+   That brief is the seed of today's `SCREENPLAY_SYSTEM`.
+
+So the final-video practice is copied from the community as it stands.
+What we build well is upstream: the content plan (what carries each idea
+visually), the writing (a shot list a director would sign), and the style
+anchor (art direction that fits the topic).
+
+## The prompt: four blocks (`h3-prompt.mjs::buildClipPrompt`)
+
+One clip, plain text, in this order — the community's form, which fal's
+expander then rewrites into H3's own `[Shot N]` / `overall_soundscape`
+sections. **`--expansion balanced` is therefore not optional**; the
+expander is doing that translation.
+
+```
+1. Style anchor: <recipe verbatim>
+Subject: <what this clip is about>
+
+Reference material: Image 1 is …  Audio 1 is …          ← injected at the shoot
+
+2. Shot list — 6 cuts in 15s, cut on the times given:
+0-2s Cut 1: <subject + action + setting>. [camera]
+…
+
+3. Narration — off-screen voiceover; no one on screen opens their mouth:
+0-3s <d>[Chinese]…</d>
+
+4. Audio: <ambience + effects with their moments> Nothing louder than the voice, and no music.
+
+5. Do not show: <standing negatives> <the style's own>
+```
+
+1. **Style anchor first, verbatim, every clip.** The model has no memory
+   across clips; "as before" is nothing. Every recipe in `styles.md`
+   names kind, frame, palette (with hex and a rule), material, light and
+   camera behaviour, because an anchor missing one of them is filled in
+   differently each time. "High contrast" is not a colour; "deep navy
+   (#0b1a3a) and warm amber (#f5a623)" is.
+2. **The shot list is time-coded and it cuts.** 3-9 cuts in 15 seconds,
+   4-8 being the zone the published prompts live in. Each cut is one
+   sentence — subject + action + setting — and carries **its own camera
+   move in brackets**. A cut with no camera is a dead frame, so
+   `normalizeCuts` fills one in and says it did.
+3. **The narration is distributed, and it fills the clip at speaking
+   pace.** One `<d>` line per moment where the picture changes, each with
+   the span it is spoken over — and the total sized to the clip:
+   **60-85 Chinese characters for 15 seconds**, about 4.5-5.5 a second.
+   Both edges are real (measured 2026-09-04, below): under about 50
+   characters H3 pads the unspoken seconds by repeating a line or
+   inventing speech; over about 100 it cannot fit the words and swallows
+   a stretch. The validator reports a clip outside the band
+   (`SPARSE_FLOOR`, `DENSE_CEILING`, and the hard cap
+   `SPEECH_OVERRUN`), and the writer is asked once more with those
+   problems as revision notes before anything is shot — the one place in
+   this pipeline where a model is re-asked, because a clip outside the
+   band fails its transcript gate more often than not and each failure
+   costs two renders. The prompt's narration block also ends with "these
+   are the only words spoken", which helps at the margin but does not
+   rescue a sparse clip.
+4. **Bindings are injected at the shoot,** never written by the writer:
+   `insertReferenceBlock` puts `Image 1 is …` / `Audio 1 is …` between
+   block 1 and block 2, numbered from what that clip actually binds
+   (`planRefs` + `bindingLines`). A writer guessing numbers guesses wrong.
+5. **A figure is content to reproduce, not a picture to paste.** Its cut
+   names it, and the binding says which cut it appears in, "drawn in the
+   scene's own materials and filling the frame, every label, axis and
+   number unaltered".
+6. **Audio is two layers under the voice**, with the moments they land,
+   and music is never requested. Unspecified music is the documented
+   cause of random tracks.
+7. **Negatives close the prompt**: no text the prompt did not spell, no
+   invented glyphs, no dissolves or morphs, no shake; for a style with
+   people, no extra limbs, no deformed hands or faces, one speaker, lips
+   in sync. Then the style's own ("no metal coins, no neon, no plastic"
+   for papercraft).
+   Two clauses are deliberately **absent**: "hard cuts" (a montage is
+   cuts) and "nothing the prompt did not describe" — with a figure on
+   screen that one made the model paste the figure flat on an empty
+   background (2026-09-04).
+
+**Language.** The content — cuts, narration, audio, negatives — is
+written in the **course's language**; the structural labels this module
+emits, and the style recipe it quotes, are **English**. That is exactly
+the mix W1 validated (an English style anchor inside an otherwise Chinese
+shot list), and it keeps the repository's source in one language. The
+narration is always verbatim in its own language inside `<d>`.
 
 ## The references (`play-manager.mjs`)
 
 Reference material governs *who and what*; the prompt governs *what
-happens*. fal analyses at most four images per shot (`MAX_REFS`), plus
-audio, twelve files in all.
+happens*. fal analyses at most four images per clip (`MAX_REFS`), plus
+audio, twelve files in all. **Every clip gets the same shape** — that is
+where continuity comes from now:
 
-- **Image 1** is the continuity frame — the previous shot's last frame
-  inside a scene, the style anchor for a scene opening.
-- **Characters** ride next: the learner's references, and in `locked`
-  mode the **character sheet** the kit draws for a speaker on screen (two
-  more angles from the sample's first frame). Given to *every* shot
-  including the first — a face the first shot invented cannot be caught
-  up with later. Measured 2026-09-04 (teacher style): the anchor still of
-  an on-camera style already shows the host, and reference-to-video on it
-  kept the same face across shots with or without the sheet — so `chain`
-  skips the sheet (77 s once, two of the four slots on every shot) and
-  simply keeps every shot of a speaking host a reference shot with the
-  voice.
-- **Figures** take what is left; the screenplay validator caps by the
-  same budget (`figureBudget`), and the manager fails a shot over it
-  rather than drop one silently.
+- **Image 1 is the style anchor**, a composed key frame of the topic's
+  device in the course's style (`make-style-sample.mjs`). It is a look
+  reference, not a picture to show.
+- **Characters ride next**: the learner's references, and for a speaker
+  on screen the **character sheet** the kit draws once (two more angles
+  from the sample's first frame). Given to *every* clip, including the
+  first — a face the first clip invented cannot be caught up with later.
+- **Figures take what is left**, in the order of the cuts that show them;
+  the screenplay validator caps by the same budget (`figureBudget`) and
+  the manager fails a clip over it rather than drop one silently.
 - **Audio 1 is the voice.** The confirmed sample's narration
-  (`style/voice.mp3`) rides on every reference-to-video shot, so the
-  narrator keeps one voice across shots and scenes. Without it the model
-  picks a voice per shot.
+  (`style/voice.mp3`) rides on every clip, so the narrator keeps one
+  voice across a whole course. Without it the model picks a voice per
+  clip. The user set this as non-negotiable (2026-09-04).
 
-`--continuity locked` (default): every shot is reference-to-video with
-the voice as Audio 1, plus the character sheet for a speaker on screen —
-one narrator and one face on every shot. The user set this as
-non-negotiable for a course (2026-09-04): a narrator who changes voice
-between two shots of one take breaks the lesson more than a matched cut
-does. The cost: image-to-video from the previous last frame is a true
-continuation (the frame IS the first frame), while reference-to-video
-given the same frame reframes it and costs ~7 s more — so joins inside a
-scene are matched cuts. `chain` keeps the seamless image-to-video frame
-chain for voiceover shots that carry nothing else, at the price of the
-voice drifting on exactly those shots (H3's image-to-video takes no audio
-reference).
-
-**Prompt language follows the content.** The scaffolding is English
-(fal's H3 Max spec); the picture, beats and sound may be written in the
-course language — H3 reads both, and the community's validated prompts
-are Chinese. Narration is always verbatim in its own language in `<d>`.
+**The frame chain is retired.** Image-to-video from the previous shot's
+last frame was a true continuation, and it bought two things we now
+refuse to pay for: no voice reference on those shots (H3's
+image-to-video takes no audio reference), and no cuts inside a shot. A
+scene is 1-3 clips joined by matched cuts, which is where the community
+puts its cuts too. `--continuity` is accepted and ignored, because a
+session resumed with the 0.5 skill text still passes it and dying on an
+unknown flag would leave the learner waiting for a manager that never
+started.
 
 ## Seams
 
-Shots end on sentence boundaries (the writer's unit is what is spoken in
-the shot), which is where the community puts its cuts too. The scene
-concat fades 30 ms of audio in and out at every join — a waveform
-discontinuity clicks, and the shots are already loudness-matched.
+Clips end on sentence boundaries. The scene concat fades 30 ms of audio
+in and out at every join — a waveform discontinuity clicks, and the clips
+are already loudness-matched. The concat verifies that the joined file is
+as long as its parts (a stream-copy join of mixed sample rates once
+produced 141 s from 47 s of clips, and the demuxer does not check).
 
 ## Measured
 
-- 2026-09-04, math-anim, 7 s shot, 480P, same narration: reference-to-
-  video 14.4 s; with the voice reference 18.4 s; with voice + timed beats
-  18.7 s; image-to-video from the anchor 27.8 s. Narration verbatim in
-  all. Frames: the beat "the amber gap lights up at 3 s" landed on time.
-- 2026-09-04, same course, the scene's second shot from the same last
-  frame: image-to-video 10.3 s and the first frame is that frame, the
-  picture evolving in place; reference-to-video with the frame as Image 1
-  plus the voice 17.4 s, starting near the frame and reframing. Voice
-  proxy identical. Hence `chain` as the default.
-- 2026-09-04, the same course re-shot at 768P with this practice (n3,
-  n4, n3d: ten shots, 2 min 50 s on three slots, one narration re-shoot,
-  all passing). Stills side by side with the 0.4 shoot: **not better** —
-  one figure shot came out as the figure pasted flat on an empty
-  background, another invented axis numbers, and in every figure shot the
-  previous shot's curves stayed on screen under the figure. A three-way
-  A/B of one figure shot (prompt as shot / prompt with the blunt "nothing
-  the prompt did not describe" negative removed and "drawn in the scene's
-  own materials, filling the frame" added / the 0.4 prompt) came out
-  near-identical: **seed-to-seed variance is larger than the wording
-  difference**, so a two-scene comparison cannot rank prompts. The blunt
-  negative was dropped anyway (it is wrong in principle — the anchor's set
-  dressing is welcome). What the practice buys — one voice, a camera on
-  every beat, timed beats, clean seams — is not visible in a still.
-  Open: figure shots inherit the previous shot's content; a writer's beat
-  that clears the board before the figure draws itself may be the fix.
+- **2026-09-04, the reproduction.** A community 15-second multi-cut
+  montage prompt, unchanged: 480P + balanced ≈ 10 s wall and matches the
+  published reference; higher settings cost more and did not read better.
+  X1 (same prompt + one `<d>` line): montage intact, narration verbatim.
+  X2 (a compound-interest lesson written in the same grammar): same
+  level.
+- **2026-09-04, W1.** Compound interest, three styles (flat-vector,
+  papercraft, clean-3d), Luna under the director's brief: a fitting
+  device each, 8-9 cuts per 15 s, five narration lines inside budget,
+  style-tuned negatives. Shot text-to-video at 768P, 24-36 s each.
+  Bracket camera tags survived the expander as proper camera moves.
+- **2026-09-04, narration density — the live e2e of 0.6.** A two-beat
+  compound-interest course, papercraft, 480P, every clip
+  reference-to-video with the anchor and the voice. First-shoot results
+  by characters spoken in a 15 s clip:
+
+  | characters | clean on the first take |
+  |---|---|
+  | 44-45 | 1 of 4 — transcript 30-60% LONGER, a line spoken twice or gibberish spliced between the lines |
+  | 50-56 | 2 of 2 |
+  | 84-89 | 4 of 6 |
+  | 118 | 0 of 2 — transcript SHORTER, a swallowed stretch |
+
+  On the 44-character clip, three takes each of two hypotheses: with the
+  per-line time spans stripped from the prompt, 2 of 3 clean — **the
+  spans are not the cause**; without the voice reference, 0 of 3, every
+  take repeating a line — **the voice is not the cause, and it helps**.
+  So the failure is the ratio of words to seconds, at both ends, and the
+  fix is the band plus one revision ask. The W1 trial spoke 40 characters
+  over 15 s cleanly, but as text-to-video at 768P with no references —
+  not the production path.
+- **2026-09-04, the ceiling check.** A GPT-Image-2 key frame as Image 1
+  with the voice (reference-to-video) is about as good as
+  image-to-video from that same frame — so the anchor does its work as a
+  reference, and per-cut storyboards are not needed. Kept as a later
+  option, not part of 0.6.
+- **2026-09-04, the 0.5 re-shoot that did not work.** The same course
+  re-shot at 768P under the 0.5 practice (ten shots, one narration
+  re-shoot, all passing) was **not better** than the 0.4 shoot: a figure
+  pasted flat, invented axis numbers, the previous shot's curves left
+  under the figure. A three-way A/B of one shot came out near-identical —
+  **seed-to-seed variance is larger than prompt wording** on a single
+  shot, so a two-scene comparison cannot rank prompts. This is the
+  measurement that sent us upstream instead of on to a fourth wording.
+- 2026-09-04, timings on a busy afternoon (math-anim, 7 s shot, 480P):
+  reference-to-video 14.4 s; with the voice reference 18.4 s; with voice
+  + timed beats 18.7 s; image-to-video from the anchor 27.8 s.
+- 2026-09-04, the character sheet: on an on-camera style the anchor
+  already shows the host and reference-to-video kept the same face with
+  or without the sheet. So the sheet is drawn only for a course that has
+  a person to keep (77 s once, two of four slots on every clip).
 - 2026-09-01 smoke: text-to-video 2 s wall, image-to-video 3 s,
-  reference-to-video 19 s (reference analysis dominates) — the numbers
-  fal's queue gives on a quiet night; the 2026-09-04 numbers are a busy
-  afternoon.
-- 2026-09-02: a figure pinned as a keyframe fills the screen with the
-  raw bitmap and the next shot chains from it — the course became a
+  reference-to-video 19 s (reference analysis dominates) — a quiet night.
+- 2026-09-02: a figure pinned as a keyframe fills the screen with the raw
+  bitmap and the next shot chains from it — the course became a
   slideshow. Figures are references only.
 - 2026-09-03: at 480P the model reproduces structure and large labels;
   small text becomes plausible fake glyphs. Figures: ≤ 6 labels, each
   ≥ 1/20 of the image height.
+- 2026-09-04, voice: the objective proxy (MFCC-mean cosine) barely
+  separates a matched voice from an unmatched one (0.996 vs 0.975).
+  Whether the timbre is locked is judged by ear, so a voice experiment
+  leaves the clips for a person to listen to.
 
 ## Not adopted, and why
 
-- Bracket camera tags (`[推进]`) — the MiniMax-platform dialect; fal's
-  expander is documented against natural-language camera.
-- 8–12 cuts in one 15 s prompt — great for a trailer, wrong for a
-  teaching take that must chain frame to frame.
-- 768P → 2K regeneration, Context-IR — MiniMax platform only.
+- **768P → 2K regeneration, Context-IR** — MiniMax platform only, not on
+  fal.
+- **Per-cut storyboards** — with 4-8 cuts per clip that is too many
+  images for the time budget; the anchor already lifts composition.
+
+Adopted since 0.5, having been listed here as rejected: **bracket camera
+tags** (`[缓慢推进]`) and **multi-cut prompts**. Both were rejected on the
+theory that the frame chain needed one continuous take. The chain is
+gone, and both are now the practice.
 
 ## How to update this practice
 
-1. Change the rule in `h3-prompt.mjs` (prompt) or `play-manager.mjs`
-   (references / kit / concat) and bump `H3_PRACTICES_VERSION`.
-2. Shoot the same shot before and after (the A/B runner from 2026-09-04
-   is the model: one shot, one variable, four variants, transcribe each,
-   frames at 0.5 / 3.5 / 6.5 s) and record the numbers under *Measured*.
-3. Update the tests in `__tests__/h3-prompt.test.ts` — they pin the
-   shape, so a change is a deliberate one.
+1. Change the rule in `h3-prompt.mjs` (prompt), `screenplay-lib.mjs`
+   (what the writer is asked for) or `play-manager.mjs` (references, kit,
+   concat), and bump `H3_PRACTICES_VERSION`.
+2. Shoot the same clip before and after — one clip, one variable, a
+   handful of variants, transcribe each, pull frames across the timeline
+   — and record the numbers under *Measured*. Remember what the 0.5
+   re-shoot proved: on a single clip, seed variance beats wording, so a
+   difference has to survive more than one pair.
+3. Update `__tests__/h3-prompt.test.ts` — it pins the shape, so a change
+   is a deliberate one.

@@ -4,19 +4,23 @@
  * how long) and can give up: a producer that died without writing
  * `failed`, or a director that never answered, leaves a node
  * `generating` forever, and a spinner that cannot fail is a lie.
+ *
+ * It also owns the other thing the stage derives from a scene while it
+ * plays: which narration line the playhead is on (`lineAt` / `captionAt`).
  */
 
-import type { CourseNode, ProductionPhase, Shot } from "../domain.js";
+import type { Clip, CourseNode, ProductionPhase } from "../domain.js";
 
 /** A scene in production for longer than this is presumed stuck. A scene
- * is up to six shots, each a minute or so with its check — so the line
- * sits well past one shot and short of a forgotten process. */
+ * is one to three montage clips, each a minute or so to shoot with its
+ * check — so the line sits well past one clip and short of a forgotten
+ * process. */
 export const PRODUCTION_STALE_MS = 8 * 60_000;
 /** A finished clip whose continuations have not appeared for this long. */
 export const PREPARING_STALE_MS = 3 * 60_000;
 /** The manager's heartbeat (`play.updatedAt`) older than this while work
  * is pending means the process is gone. It writes on every state change
- * and at least once a shot; two minutes of silence is not a slow shot. */
+ * and at least once a clip; two minutes of silence is not a slow clip. */
 export const MANAGER_SILENT_MS = 2 * 60_000;
 
 /** Statuses that mean the manager is (or should be) working on the node. */
@@ -71,17 +75,22 @@ export function phaseLabel(phase: ProductionPhase | undefined): string {
 /**
  * What a card or the placeholder says about a scene in production:
  * "排队中" before its slot, "写稿中" for a detour being written, and
- * "拍摄中 2/3" / "质检中 2/3" while its shots are made. A scene that is
- * one shot reads without the fraction.
+ * "拍摄中 2/3" / "质检中 2/3" while its montage clips are made. A scene
+ * that is one clip reads without the fraction.
+ *
+ * The fraction carries no unit on purpose: everywhere else in this
+ * viewer 段 means the SCENE the learner is watching ("这一段没拍成"), and
+ * labelling clips with the same word inside a scene card would make two
+ * different things share one noun.
  */
 export function productionLabel(
-  node: Pick<CourseNode, "status" | "phase" | "shotIndex" | "shotCount">,
+  node: Pick<CourseNode, "status" | "phase" | "clipIndex" | "clipCount">,
 ): string {
   if (node.status === "queued") return "排队中";
   if (node.status === "scripting") return PHASE_LABEL.script;
   const base = phaseLabel(node.phase);
-  if (node.phase !== "script" && node.shotIndex && node.shotCount && node.shotCount > 1) {
-    return `${base} ${node.shotIndex}/${node.shotCount}`;
+  if (node.phase !== "script" && node.clipIndex && node.clipCount && node.clipCount > 1) {
+    return `${base} ${node.clipIndex}/${node.clipCount}`;
   }
   return base;
 }
@@ -105,17 +114,72 @@ export function managerSilent(
   return { silent: pending && sinceMs > silentMs, sinceMs };
 }
 
+// ── The caption's lookup ────────────────────────────────────────────────
+
+/** Where in a scene the playhead is: which montage clip, and which of
+ * that clip's narration lines. */
+export interface LinePosition {
+  clip: number;
+  line: number;
+}
+
+/** All the caption needs of a clip: how long it runs and what it says. */
+type ClipTiming = Pick<Clip, "duration" | "video" | "narration">;
+
+/** What a clip is worth on the stage's timeline: what was measured once
+ * it was shot, else what was planned. */
+const clipSeconds = (c: Pick<Clip, "duration" | "video">): number => c.video?.duration || c.duration || 0;
+
 /**
- * The shot whose narration is being spoken at `seconds` into the scene's
- * clip, by the shots' actual durations (planned ones when a clip has no
- * measured length). The caption under the stage follows it.
+ * The line being spoken at `seconds` into a clip: the one whose
+ * `[from, to)` contains the playhead, and between two lines (or past the
+ * last one) the last line that was spoken — a caption that blinks off
+ * mid-scene reads as a bug, and the last thing said is still the truest
+ * thing on screen. A clip that says nothing is line 0.
  */
-export function shotAt(shots: ReadonlyArray<Pick<Shot, "duration" | "video">>, seconds: number): number {
-  let t = 0;
-  for (let i = 0; i < shots.length; i++) {
-    const d = shots[i].video?.duration || shots[i].duration || 0;
-    t += d;
-    if (seconds < t) return i;
+function lineIndexAt(lines: ReadonlyArray<{ from: number; to: number }>, seconds: number): number {
+  let best = 0;
+  let bestFrom = -Infinity;
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    if (seconds >= l.from && seconds < l.to) return i;
+    if (l.from <= seconds && l.from > bestFrom) {
+      best = i;
+      bestFrom = l.from;
+    }
   }
-  return Math.max(0, shots.length - 1);
+  return best;
+}
+
+/**
+ * Where the playhead is in a scene, resolved to one narration line.
+ *
+ * The scene's video is its clips concatenated, so a position inside it is
+ * only meaningful once the clips before the current one are subtracted:
+ * `seconds - sum(earlier clip lengths)` is the offset inside the clip,
+ * and that is what the clip's narration windows are written against.
+ * Past the end of the scene the last clip's last line stays up.
+ */
+export function lineAt(clips: ReadonlyArray<ClipTiming>, seconds: number): LinePosition {
+  if (clips.length === 0) return { clip: 0, line: 0 };
+  let offset = 0;
+  let clip = 0;
+  for (let i = 0; i < clips.length; i++) {
+    clip = i;
+    const span = clipSeconds(clips[i]);
+    if (seconds < offset + span) break;
+    // Past every clip: stay on the last one, at its own offset.
+    if (i < clips.length - 1) offset += span;
+  }
+  return { clip, line: lineIndexAt(clips[clip].narration, seconds - offset) };
+}
+
+/**
+ * The caption under the stage at `seconds` into the scene: the narration
+ * line being spoken, or the scene's whole text when it has no timed
+ * narration (a scene written before 0.6 whose script.md is all there is).
+ */
+export function captionAt(node: Pick<CourseNode, "clips" | "script">, seconds: number): string {
+  const at = lineAt(node.clips, seconds);
+  return node.clips[at.clip]?.narration[at.line]?.text || node.script;
 }

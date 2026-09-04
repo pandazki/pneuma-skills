@@ -6,11 +6,11 @@
  *
  * Runs after the outline has landed and the style has been confirmed,
  * and before the play manager starts: Luna turns every outline beat into
- * ONE scene of 1-6 shots (with a detour brief hanging off each), the
- * draft is validated against the speech budget and the beat's rendered
- * evidence, and the result is landed into course.json under the same
- * lock every other writer uses — `n1..nK` main scenes, `n<k>d` detour
- * stubs, children linked, `rootNode` set.
+ * ONE scene of 1-3 montage clips (with a detour brief hanging off each),
+ * the draft is validated against the speech budget, the shot list's shape
+ * and the beat's rendered evidence, and the result is landed into
+ * course.json under the same lock every other writer uses — `n1..nK` main
+ * scenes, `n<k>d` detour stubs, children linked, `rootNode` set.
  *
  * This is a DETERMINISTIC LLM call, not an agent: the discipline lives in
  * `screenplay-lib.mjs` so every course goes through the same one.
@@ -18,11 +18,12 @@
  * Usage (from the session cwd; paths inside course.json are set-relative):
  *   node write-screenplay.mjs --set plexus [--model openai/gpt-5.6-luna] [--json]
  *
- * Output (--json): { scenes, shots, problems, mode }
+ * Output (--json): { scenes, clips, cuts, problems, mode }
  *   mode is "single" when one call covered the whole spine, "fallback"
- *   when it was written scene by scene. `problems` names every shot that
- *   is over its speech budget, every figure that is not on disk, and
- *   every beat the writer missed — they are reported, never swallowed.
+ *   when it was written scene by scene. `problems` names every clip that
+ *   is over its speech budget or short of a montage, every figure that is
+ *   not on disk, and every beat the writer missed — reported, never
+ *   swallowed.
  *
  * Exit codes:
  *   0  landed
@@ -87,7 +88,7 @@ if (beats.length === 0) {
 const style = resolveStyle(course, existsSync(STYLES_MD) ? readFileSync(STYLES_MD, "utf-8") : null);
 if (!style.id || style.status !== "confirmed") {
   fail(
-    `the style is ${style.id ? `"${style.id}" (${style.status})` : "not chosen yet"} — every shot's picture is written in the style's materials, so confirm it on the board first (\`course-edit.mjs confirm-style --set <dir>\`).`,
+    `the style is ${style.id ? `"${style.id}" (${style.status})` : "not chosen yet"} — every cut is composed in the style's materials, so confirm it on the board first (\`course-edit.mjs confirm-style --set <dir>\`).`,
   );
 }
 
@@ -109,6 +110,7 @@ try {
     chat,
     setDir,
     styleRecipe: style.recipe,
+    styleDevices: style.devices,
     narration: style.narration,
     language,
   });
@@ -134,10 +136,12 @@ try {
   fail(`the screenplay was written but could not be landed in course.json: ${e.message}`);
 }
 
-const shots = written.scenes.reduce((n, s) => n + s.shots.length, 0);
+const clips = written.scenes.reduce((n, s) => n + s.clips.length, 0);
+const cuts = written.scenes.reduce((n, s) => n + s.clips.reduce((m, c) => m + c.cuts.length, 0), 0);
 const payload = {
   scenes: written.scenes.length,
-  shots,
+  clips,
+  cuts,
   problems: written.problems,
   mode: written.mode,
 };
@@ -145,6 +149,6 @@ const payload = {
 if (args.json) {
   console.log(JSON.stringify(payload));
 } else {
-  console.log(`${payload.scenes} scenes / ${payload.shots} shots landed (${payload.mode})`);
+  console.log(`${payload.scenes} scenes / ${payload.clips} clips / ${payload.cuts} cuts landed (${payload.mode})`);
   for (const problem of payload.problems) console.log(`  ! ${problem}`);
 }

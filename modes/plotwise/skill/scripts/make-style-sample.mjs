@@ -5,12 +5,14 @@
  *
  * Turns a style candidate (a catalog preset, or a custom recipe the
  * session wrote from the learner's description) into the SAMPLE the
- * learner confirms on the board: a style-anchor still (GPT-Image-2, from
- * the recipe) and a 5-second H3 Max clip shot from that anchor, speaking
- * one hook line about the topic. course.json `style` moves
- * pending → sampling (anchor written) → sampled (clip written); the
- * board renders each step as it lands. On confirmation the clip's last
- * frame seeds the course's frame chain — the sample IS the opening look.
+ * learner confirms on the board: a STYLE KEY FRAME (GPT-Image-2, the
+ * recipe composed around the hook's device) and the hook's first MONTAGE
+ * CLIP shot from it. course.json `style` moves pending → sampling (anchor
+ * written) → sampled (clip written); the board renders each step as it
+ * lands. On confirmation the clip becomes the course's voice reference
+ * and the anchor becomes Image 1 of every clip — the sample IS the course
+ * in miniature, shot through the same writer and the same assembler, so
+ * what the learner confirms is what they get.
  *
  * Usage (from the session cwd):
  *   node make-style-sample.mjs --set <dir> --style-id chalkboard \
@@ -18,15 +20,20 @@
  *     --action "three chalk line segments slide together into a right triangle, and a chalk square grows off each side until the two smaller squares visibly tile the largest" \
  *     [--name "<display name>"] [--recipe "<custom recipe>"] \
  *     [--rationale "<why this style, user's language>"] \
- *     [--ref-image style/refs/a.png]... [--duration 5] [--language zh] --json
+ *     [--ref-image style/refs/a.png]... [--duration 15] [--language zh] --json
  *
- * --hook is the spoken line; --action is what those five seconds SHOW —
- * the hook made visible in the style's own materials (motion, not text:
- * no formulas, labels or numbers, which are the course's job with real
- * figures). Both are required: a sample without an action is the empty
- * set with a voice over it, which shows the look but not the topic — the
- * first live sample of this mode was exactly that (an empty papercraft
- * blackboard under a Fourier hook).
+ * --hook is the spoken line; --action is the VISUAL DEVICE — what these
+ * seconds show, in matter the camera can see, no formulas or labels or
+ * numbers (those are the course's job, with real figures). Both are
+ * required: a sample without a device is the empty set with a voice over
+ * it, which shows the look but not the topic — the first live sample of
+ * this mode was exactly that (an empty papercraft blackboard under a
+ * Fourier hook), and it is also what the anchor is now composed around.
+ *
+ * The shot list itself is written by Luna (`SAMPLE_SYSTEM`) and assembled
+ * by `h3-prompt.mjs`, exactly as a scene is. Without an
+ * OPENROUTER_API_KEY the sample falls back to one long cut over the
+ * device — the same four blocks, one cut instead of six — and says so.
  *
  * --recipe is required for --style-id custom and optional for presets
  * (an adjusted preset keeps its id and carries the revised recipe).
@@ -45,15 +52,15 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { spawnSync } from "node:child_process";
 
-import { detectLanguage, parseStyleCatalog, readCourse, withCourseLock } from "./segment-lib.mjs";
+import { DEFAULT_MODEL, chatJson, detectLanguage, loadEnvKey, parseStyleCatalog, readCourse, withCourseLock } from "./segment-lib.mjs";
+import { SAMPLE_SYSTEM, sampleUser, validateSampleClip } from "./screenplay-lib.mjs";
+import { bindingLines, buildClipPrompt, defaultCamera, insertReferenceBlock } from "./h3-prompt.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SKILL_ROOT = dirname(__dirname);
 const STYLES_MD = join(SKILL_ROOT, "references", "styles.md");
 const GENERATE_IMAGE = join(__dirname, "generate_image.mjs");
 const GENERATE_VIDEO = join(__dirname, "generate-video.mjs");
-
-const LANGUAGE_NAMES = { zh: "Chinese", en: "English", ja: "Japanese" };
 
 const { values: args } = parseArgs({
   options: {
@@ -65,7 +72,8 @@ const { values: args } = parseArgs({
     hook: { type: "string" },
     action: { type: "string" },
     language: { type: "string" },
-    duration: { type: "string", default: "5" },
+    model: { type: "string" },
+    duration: { type: "string", default: "15" },
     resolution: { type: "string", default: "480P" },
     "ref-image": { type: "string", multiple: true, default: [] },
     json: { type: "boolean", default: false },
@@ -81,7 +89,7 @@ for (const required of ["set", "style-id", "hook", "action"]) {
   if (!args[required] || !String(args[required]).trim()) {
     fail(
       required === "action"
-        ? "--action is required: what the five seconds SHOW, in the style's materials — the hook made visible. Without it the sample is the empty set with a voice over it."
+        ? "--action is required: the visual device these seconds SHOW, in matter the camera can see. Without it the sample is the empty set with a voice over it, and so is the anchor."
         : `--${required} is required`,
     );
   }
@@ -98,9 +106,8 @@ const narration = preset?.narration ?? "voiceover";
 
 const course = readCourse(setDir);
 const language = args.language ?? course.language ?? detectLanguage(`${course.title ?? ""} ${course.goal ?? ""}`);
-const langName = LANGUAGE_NAMES[String(language).slice(0, 2)] ?? "English";
 const topic = course.topic || course.title || "";
-const duration = Math.min(15, Math.max(5, Number(args.duration) || 5));
+const duration = Math.min(15, Math.max(8, Number(args.duration) || 15));
 const userRefs = args["ref-image"].filter((f) => existsSync(join(setDir, f)));
 for (const f of args["ref-image"]) if (!userRefs.includes(f)) console.error(`WARN: reference image not found, skipped: ${f}`);
 
@@ -152,7 +159,12 @@ setStyle({
 
 // ── 2. Anchor still ─────────────────────────────────────────────────────
 
-const anchorPrompt = `${recipe} A single wide establishing frame of the set where a short learning video about "${topic || "the course topic"}" will be narrated — the board, stage or scene itself, ready but not yet in use. No text, no letters, no captions, no logos, no watermark. Clean composition, 16:9.`;
+// A STYLE KEY FRAME, not an empty set. This still is Image 1 of every
+// clip in the course, so it has to carry the look at full strength —
+// composed, lit, with the topic's own device in frame. "The set, ready
+// but not yet in use" was the 0.5 anchor, and a course of montages
+// anchored on an empty room inherits the emptiness (2026-09-04).
+const anchorPrompt = `${recipe} A single composed key frame from a short learning video about "${topic || "the course topic"}": ${action}, caught at its most legible moment and filling the frame. No text, no letters, no captions, no numbers, no logos, no watermark. 16:9.`;
 // An anchor already on file for this exact recipe and topic is kept: a
 // re-run after a failed shoot (the clip endpoint was down; the learner
 // asked again) must not spend another minute and another image on a
@@ -167,14 +179,23 @@ let anchorReused = false;
   } catch {
     onFile = null;
   }
-  if (onFile && onFile.style_id === styleId && onFile.recipe === recipe && (onFile.topic ?? "") === topic && existsSync(join(setDir, ANCHOR_REL))) {
+  // The device is part of the frame now, so it is part of the identity of
+  // what is on file: a re-run with a different device needs a new anchor.
+  if (
+    onFile &&
+    onFile.style_id === styleId &&
+    onFile.recipe === recipe &&
+    (onFile.topic ?? "") === topic &&
+    (onFile.action ?? "") === action &&
+    existsSync(join(setDir, ANCHOR_REL))
+  ) {
     anchorReused = true;
   } else {
     const r = run(GENERATE_IMAGE, [anchorPrompt, "--aspect-ratio", "16:9", "--quality", "medium", "--output-dir", styleDir, "--filename-prefix", "anchor"]);
     if (r.status !== 0 || !existsSync(join(setDir, ANCHOR_REL))) {
       abort(`style anchor generation failed: ${(r.stderr || "").trim().split("\n").slice(-2).join(" ").slice(0, 300)}`);
     }
-    writeFileSync(ANCHOR_META, `${JSON.stringify({ produced_at: new Date().toISOString(), style_id: styleId, recipe, topic, prompt: anchorPrompt }, null, 2)}\n`);
+    writeFileSync(ANCHOR_META, `${JSON.stringify({ produced_at: new Date().toISOString(), style_id: styleId, recipe, topic, action, prompt: anchorPrompt }, null, 2)}\n`);
   }
 }
 mark("anchor");
@@ -182,32 +203,61 @@ setStyle({ sample: { image: ANCHOR_REL } });
 
 // ── 3. Sample clip ──────────────────────────────────────────────────────
 
-// The anchor is the sample's first frame: image-to-video starts from it
-// exactly, so that is the default shoot. Reference-to-video is used only
-// when the learner supplied references of their own (a character that
-// must keep its identity), and if that endpoint is down — 2026-09-02 it
+// The shot list: written by the same writer, under the same grammar, and
+// assembled by the same module as every scene of the course. Keyless (or
+// when the call fails) it degrades to ONE cut over the device — still the
+// four blocks, so the sample is never a different kind of artifact.
+const key = loadEnvKey("OPENROUTER_API_KEY", { skillRoot: SKILL_ROOT, cwd: setDir });
+let clip = null;
+let writer = "luna";
+let writerProblems = [];
+if (key) {
+  try {
+    const raw = await chatJson({
+      key,
+      model: args.model ?? DEFAULT_MODEL,
+      system: SAMPLE_SYSTEM,
+      user: sampleUser({ topic, goal: course.goal, hook: args.hook, action, styleRecipe: recipe, styleDevices: preset?.devices ?? "", styleName: args.name ?? styleId, narration, language, duration }),
+      temperature: 0.7,
+    });
+    const checked = validateSampleClip(raw?.clips?.[0] ?? raw?.clip ?? raw, { language, duration });
+    writerProblems = checked.problems;
+    if (checked.clip?.cuts?.length) clip = { ...checked.clip, duration };
+    else writerProblems.push("the writer returned no cuts");
+  } catch (e) {
+    writerProblems.push(`the writer failed — ${e.message}`);
+  }
+}
+if (!clip) {
+  writer = key ? "fallback" : "keyless";
+  if (writerProblems.length) console.error(`WARN: ${writerProblems.join("; ")} — shooting the device as one cut instead`);
+  clip = {
+    duration,
+    theme: topic,
+    cuts: [{ from: 0, to: duration, shot: action, camera: defaultCamera(language) }],
+    narration: [{ from: 0, to: duration, text: args.hook }],
+    figures: [],
+  };
+}
+
+const samplePrompt = insertReferenceBlock(
+  buildClipPrompt({ styleRecipe: recipe, narration, language, clip }),
+  bindingLines({
+    refs: [
+      { file: ANCHOR_REL, job: "style-anchor", kind: "image" },
+      ...userRefs.map((file) => ({ file, job: "character", kind: "image" })),
+    ],
+    narration,
+  }),
+);
+
+// Reference-to-video, like every clip of the course: the anchor is a look
+// reference, not a first frame. If that endpoint is down — 2026-09-02 it
 // answered 504 "downstream_service_unavailable" for hours while
 // text-to-video and image-to-video answered — the shoot falls back to
 // image-to-video from the anchor rather than leaving the board stuck.
-const wantReference = userRefs.length > 0;
-const refLines = wantReference
-  ? [
-      "Image 1 is the course's style anchor — reproduce its palette, materials, line quality, lighting and set exactly; this shot takes place in that scene.",
-      ...userRefs.map((_, i) => `Image ${i + 2} is a reference the learner provided — match its look and mood closely.`),
-    ]
-  : ["The first frame is the course's style anchor — keep its palette, materials, line quality, lighting and set exactly; this shot takes place in that scene."];
-const narrationClause =
-  narration === "on-camera"
-    ? `The host (S1), framed at medium distance facing the camera, says: <d>[${langName}] ${args.hook}</d>`
-    : `A clear, warm narrator says in an off-screen voiceover: <d>[${langName}] ${args.hook}</d>. No on-screen character's lips move.`;
-const samplePrompt = [
-  `integrated_multimodal_description: [Shot 1] One continuous shot. ${recipe} ${refLines.join(" ")} In that scene, ${action}. The action fills the ${duration} seconds and is the visual focus; the camera pushes in with small amplitude at slow speed as it unfolds. ${narrationClause} No soft dissolves or fluid morphs; do not introduce any on-screen text, labels, formulas or numbers; no garbled characters.`,
-  "overall_soundscape: quiet room tone matched to the scene.",
-  "non_diegetic_music: N/A",
-].join("\n");
-
 let shot;
-let endpointUsed = wantReference ? "reference" : "image";
+let endpointUsed = "reference";
 let fallbackReason = null;
 {
   const base = ["--prompt", samplePrompt, "--output", join(setDir, SAMPLE_REL), "--duration", String(duration), "--resolution", args.resolution, "--expansion", "balanced", "--json"];
@@ -217,8 +267,8 @@ let fallbackReason = null;
     return run(GENERATE_VIDEO, argv);
   };
   const viaImage = () => run(GENERATE_VIDEO, [...base, "--image", join(setDir, ANCHOR_REL)]);
-  let r = wantReference ? viaReference() : viaImage();
-  if (r.status !== 0 && wantReference && /HTTP 5\d\d|request failed/.test(r.stderr || "")) {
+  let r = viaReference();
+  if (r.status !== 0 && /HTTP 5\d\d|request failed/.test(r.stderr || "")) {
     fallbackReason = (r.stderr || "").trim().split("\n").pop().slice(0, 200);
     console.error(`WARN: reference-to-video failed (${fallbackReason}) — shooting image-to-video from the anchor instead; the learner's references are not in this sample`);
     endpointUsed = "image";
@@ -247,6 +297,9 @@ writeFileSync(
       anchor_reused: anchorReused,
       endpoint: endpointUsed,
       fallback: fallbackReason,
+      writer,
+      writer_problems: writerProblems,
+      clip,
       prompt: samplePrompt,
       expanded_prompt: shot.expanded_prompt ?? null,
       seed: shot.seed ?? null,

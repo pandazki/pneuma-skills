@@ -16,7 +16,7 @@ function node(id: string, parent: string | undefined, children: string[] = []): 
     parent,
     kind: "main",
     script: "",
-    shots: [],
+    clips: [],
     evidence: [],
     status: "ready",
     children: children.map((nodeId) => ({ nodeId, label: `to ${nodeId}` })),

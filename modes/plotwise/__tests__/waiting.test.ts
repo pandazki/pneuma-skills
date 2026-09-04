@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { fmtElapsed, managerSilent, phaseLabel, productionLabel, productionState, shotAt, waitState, MANAGER_SILENT_MS, PREPARING_STALE_MS, PRODUCTION_STALE_MS } from "../viewer/waiting.js";
+import { fmtElapsed, lineAt, managerSilent, phaseLabel, productionLabel, productionState, waitState, MANAGER_SILENT_MS, PREPARING_STALE_MS, PRODUCTION_STALE_MS } from "../viewer/waiting.js";
 
 const T0 = Date.parse("2026-09-02T10:00:00Z");
 
@@ -63,10 +63,10 @@ describe("waitState / labels", () => {
 });
 
 describe("productionLabel", () => {
-  test("names the shot being made when a scene has more than one", () => {
-    expect(productionLabel({ status: "generating", phase: "shoot", shotIndex: 2, shotCount: 3 })).toBe("拍摄中 2/3");
-    expect(productionLabel({ status: "generating", phase: "qa", shotIndex: 3, shotCount: 3 })).toBe("质检中 3/3");
-    expect(productionLabel({ status: "generating", phase: "shoot", shotIndex: 1, shotCount: 1 })).toBe("拍摄中");
+  test("counts the clip being made when a scene is more than one", () => {
+    expect(productionLabel({ status: "generating", phase: "shoot", clipIndex: 2, clipCount: 3 })).toBe("拍摄中 2/3");
+    expect(productionLabel({ status: "generating", phase: "qa", clipIndex: 3, clipCount: 3 })).toBe("质检中 3/3");
+    expect(productionLabel({ status: "generating", phase: "shoot", clipIndex: 1, clipCount: 1 })).toBe("拍摄中");
     expect(productionLabel({ status: "generating", phase: undefined })).toBe("拍摄中");
   });
   test("queued and scripting scenes say so, whatever their phase field", () => {
@@ -87,21 +87,82 @@ describe("managerSilent", () => {
   });
 });
 
-describe("shotAt", () => {
-  const shots = [
-    { duration: 10, video: { file: "s1.mp4", duration: 9.5 } },
-    { duration: 12, video: undefined },
-    { duration: 8, video: { file: "s3.mp4", duration: 8.2 } },
+/**
+ * The caption's lookup. A scene's video is its clips concatenated, so a
+ * playhead first picks the clip (by measured length, planned when a clip
+ * has not been shot yet) and then the narration line inside it — the
+ * montage's whole point is that one clip says several things.
+ */
+describe("lineAt", () => {
+  const clips = [
+    // 0 → 14.6
+    {
+      duration: 15,
+      video: { file: "c1.mp4", duration: 14.6 },
+      narration: [
+        { from: 0, to: 3, text: "a" },
+        { from: 3, to: 8, text: "b" },
+        { from: 8, to: 14, text: "c" },
+      ],
+    },
+    // 14.6 → 26.6 (not shot yet: the planned length carries it)
+    {
+      duration: 12,
+      video: undefined,
+      narration: [
+        { from: 0, to: 4, text: "d" },
+        { from: 6, to: 11, text: "e" },
+      ],
+    },
+    // 26.6 → 42
+    { duration: 15, video: { file: "c3.mp4", duration: 15.4 }, narration: [{ from: 0, to: 5, text: "f" }] },
   ];
-  test("follows the measured durations, planned ones when a shot has no clip", () => {
-    expect(shotAt(shots, 0)).toBe(0);
-    expect(shotAt(shots, 9.4)).toBe(0);
-    expect(shotAt(shots, 9.6)).toBe(1);
-    expect(shotAt(shots, 21.4)).toBe(1);
-    expect(shotAt(shots, 21.6)).toBe(2);
+  const at = (t: number) => {
+    const p = lineAt(clips, t);
+    return `${p.clip}:${p.line}`;
+  };
+
+  test("walks the narration lines inside the first clip", () => {
+    expect(at(0)).toBe("0:0");
+    expect(at(2.9)).toBe("0:0");
+    expect(at(3.1)).toBe("0:1");
+    expect(at(13.9)).toBe("0:2");
   });
-  test("past the end stays on the last shot; no shots is shot 0", () => {
-    expect(shotAt(shots, 99)).toBe(2);
-    expect(shotAt([], 5)).toBe(0);
+
+  test("crosses into the next clip by the clips before it, measured or planned", () => {
+    expect(at(14.5)).toBe("0:2");
+    expect(at(14.7)).toBe("1:0");
+    expect(at(21)).toBe("1:1");
+    expect(at(26.5)).toBe("1:1");
+    expect(at(27)).toBe("2:0");
+  });
+
+  test("a silence holds the last line spoken, in the clip and past its end", () => {
+    // clip 1's lines are [0,4) and [6,11): 5 s in, nobody is speaking.
+    expect(at(19.6)).toBe("1:0");
+    // clip 0's last line ends at 14, the clip runs to 14.6.
+    expect(at(14.2)).toBe("0:2");
+  });
+
+  test("past the end of the scene stays on the last clip's last line", () => {
+    expect(at(99)).toBe("2:0");
+  });
+
+  test("no clips, or a clip with nothing spoken, is line 0 — the caption falls back to the scene", () => {
+    expect(lineAt([], 5)).toEqual({ clip: 0, line: 0 });
+    expect(lineAt([{ duration: 15, narration: [] }], 7)).toEqual({ clip: 0, line: 0 });
+  });
+
+  test("a pre-0.6 scene — one clip per shot, one line each — reads as the shot being spoken", () => {
+    const legacy = [
+      { duration: 6, video: { file: "s1.mp4", duration: 6.6 }, narration: [{ from: 0, to: 6, text: "one" }] },
+      { duration: 8, video: { file: "s2.mp4", duration: 8 }, narration: [{ from: 0, to: 8, text: "two" }] },
+      { duration: 8, video: { file: "s3.mp4", duration: 8 }, narration: [{ from: 0, to: 8, text: "three" }] },
+    ];
+    expect(lineAt(legacy, 0)).toEqual({ clip: 0, line: 0 });
+    expect(lineAt(legacy, 6.4)).toEqual({ clip: 0, line: 0 });
+    expect(lineAt(legacy, 7)).toEqual({ clip: 1, line: 0 });
+    expect(lineAt(legacy, 15)).toEqual({ clip: 2, line: 0 });
+    expect(lineAt(legacy, 22.5)).toEqual({ clip: 2, line: 0 });
   });
 });

@@ -2,33 +2,41 @@
  * h3-prompt — the one place plotwise's knowledge of how to talk to
  * MiniMax H3 lives.
  *
- * Luna writes what is said and what is seen; this module writes the
- * prompt. The shape follows fal's H3 Max prompt spec (three labeled
- * sections the expander rewrites toward) and, inside the description,
- * the four-block order the community validated on H3 — style anchor
- * first, then the picture as timed beats each with its camera, then the
- * narration, then the negatives — with the practices below baked in so
- * no model has to remember them:
+ * Luna writes what is seen and what is said; this module writes the
+ * prompt. Its shape is the four-block montage grammar the community
+ * validated on H3 and we reproduced on fal (references/h3-best-practices.md):
  *
- *   - the STYLE ANCHOR is the first sentence of every shot, verbatim: the
- *     model has no memory across shots, and "as before" is nothing;
- *   - every beat carries a CAMERA MOVE written as motion + amplitude +
- *     speed; a beat without one gets a default, because no camera means
- *     a dead static shot;
- *   - the picture is written as a TIMELINE of beats inside one continuous
- *     take ("0-3s … 3-7s …"): the model's time allocation follows the
- *     numbers, and the narration lands where the picture changes;
- *   - the SOUND is three layers — ambience, action effects, the voice —
- *     and the voice is the narration, fixed; the writer's `sound` line
- *     carries the other two and when they land;
- *   - the NEGATIVES close every prompt: no text the prompt did not spell,
- *     no garbled glyphs, no dissolves/morphs/cuts/shake, and for any style
- *     with people: no extra limbs, no deformed hands or faces, lips in
- *     sync with the words;
- *   - reference BINDINGS ("Image 1 is …", "Audio 1 is …") are not written
- *     here: the manager numbers them at shoot time (`injectBindings`)
- *     from what the shot actually binds — the style anchor or the
- *     previous frame, the characters, the figures, the voice.
+ *   1. the STYLE ANCHOR verbatim, then the clip's subject in one line —
+ *      the model has no memory across clips, and "as before" is nothing;
+ *   2. a time-coded SHOT LIST: one line per cut, subject + action +
+ *      setting + a bracketed camera move. H3 cuts by itself inside one
+ *      prompt, and 4-8 cuts in 15 seconds is the zone the published
+ *      prompts live in. Our own pipeline used to open every prompt with
+ *      "One continuous shot, no cuts" — that single clause is most of why
+ *      plotwise looked like a talking illustration (2026-09-04);
+ *   3. the NARRATION, distributed across the timeline in `<d>` tags, so
+ *      each line lands where its picture is;
+ *   4. the AUDIO in two layers under the voice — ambience and action
+ *      effects with the moment they land — and never music;
+ *   5. the NEGATIVES, closing the prompt: the pipeline-wide ones (no text
+ *      the prompt did not spell, no invented glyphs, no dissolves, and
+ *      for a style with people no extra limbs) plus whatever the writer
+ *      ruled out for this style.
+ *
+ * Two rules about language, both deliberate:
+ *   - the CONTENT is written in the course's language (the validated
+ *     prompts are Chinese; H3 reads both), because that is the language
+ *     the topic, the evidence and the narration are already in;
+ *   - the STRUCTURAL LABELS this module emits are English, and so is the
+ *     style recipe it copies. The validated W1 prompt was exactly this
+ *     mix — an English style anchor inside an otherwise Chinese shot
+ *     list — and it keeps this repository's source in one language
+ *     (.claude/rules/modes.md).
+ *
+ * Reference BINDINGS ("Image 1 is …", "Audio 1 is …") are not written at
+ * writing time: the manager numbers them at the shoot from what the clip
+ * actually binds (`insertReferenceBlock`), because the numbering depends
+ * on the anchor, the character sheet and the figures of that one clip.
  *
  * Provenance and the reasoning behind each rule: references/h3-best-practices.md.
  * Change the practice there and here, together, and bump the version.
@@ -36,175 +44,292 @@
 
 import { basename } from "node:path";
 
-/** Stamped on every shot the manager renders, so a course records which
+/** Stamped on every clip the manager renders, so a course records which
  * generation of the practice shot it. */
-export const H3_PRACTICES_VERSION = "2026-09-04";
+export const H3_PRACTICES_VERSION = "2026-09-04-montage";
 
 const LANGUAGE_NAMES = { zh: "Chinese", en: "English", ja: "Japanese" };
-const langName = (language) => LANGUAGE_NAMES[String(language ?? "").slice(0, 2)] ?? "English";
+const lang2 = (language) => String(language ?? "").slice(0, 2).toLowerCase();
+export const langName = (language) => LANGUAGE_NAMES[lang2(language)] ?? "English";
+
 const trim = (v) => String(v ?? "").trim();
-const sentence = (s) => {
+/** Languages whose sentences are not separated by a space. */
+const isCjk = (language) => lang2(language) === "zh" || lang2(language) === "ja";
+
+/** Close a clause with a stop in the right script, if it has none. */
+function sentence(s, language) {
   const t = trim(s).replace(/\s+/g, " ");
-  return t && !/[.!?。！？]$/.test(t) ? `${t}.` : t;
-};
+  if (!t) return "";
+  if (/[.!?。！？；;：:,，、]$/.test(t)) return t;
+  return isCjk(language) ? `${t}。` : `${t}.`;
+}
 
-/** The camera a beat gets when the writer named none. */
-export const DEFAULT_CAMERA = "the camera holds steady with a slow, small push-in";
-
-/** Words that mean the writer did describe a camera. */
-const CAMERA_WORDS = /\b(camera|dolly|push(es|ing)? in|pull(s|ing)? (out|back)|pan(s|ning)?|tilt(s|ing)?|orbit|tracking|handheld|zoom|crane|static shot|holds? (still|steady)|locked[- ]off)\b/i;
-
-export function hasCameraDirection(text) {
-  return CAMERA_WORDS.test(String(text ?? ""));
+/** The camera a cut gets when the writer named none. A cut with no camera
+ * is a dead static frame, and the model reads the absence as "hold". */
+export const DEFAULT_CAMERA = "static shot";
+export function defaultCamera(language) {
+  return lang2(language) === "zh" ? "固定镜头" : lang2(language) === "ja" ? "固定カメラ" : DEFAULT_CAMERA;
 }
 
 /** Styles that put people on screen need the people negatives. */
 export function styleHasPeople({ narration, styleRecipe } = {}) {
   if (narration === "on-camera") return true;
-  return /\b(character|host|instructor|teacher|presenter|person|people|actor|figure of a|children|kids|hands?)\b/i.test(String(styleRecipe ?? ""));
+  // Plurals included: the art-direction recipes say "characters", "faces",
+  // "real people at real work" — a singular-only list missed three styles
+  // that put drawn people on screen (2026-09-04).
+  // `hands?(?!-)`: "hand-drawn" and "hand-painted" describe the line, not a
+  // person — the chalkboard recipe was getting anatomy negatives for it.
+  return /\b(characters?|hosts?|instructors?|teachers?|presenters?|persons?|people|actors?|figures? of|children|kids|hands?(?!-)|faces?|skin|bodies|body)\b/i.test(String(styleRecipe ?? ""));
+}
+
+/** "0-2s", "2-3.5s" — whole seconds stay whole. */
+function span(from, to) {
+  const fmt = (t) => (Number.isInteger(t) ? String(t) : String(Math.round(t * 10) / 10));
+  return `${fmt(from)}-${fmt(to)}s`;
 }
 
 /**
- * Normalize the writer's beats against the shot's duration: numeric
- * bounds, clamped to [0, duration], sorted, camera filled in. Returns
- * `{ beats, problems }`; an empty list means "no beats written".
+ * Normalize the writer's cuts against the clip's duration: numeric
+ * bounds clamped to [0, duration], sorted, the last cut carried to the
+ * end, a missing camera filled in, figure paths deduped. Returns
+ * `{ cuts, problems }`; an empty list means the writer wrote no shot list
+ * at all, which the validator refuses.
  */
-export function normalizeBeats(rawBeats, duration, { where = "shot" } = {}) {
+export function normalizeCuts(rawCuts, duration, { where = "clip", language } = {}) {
   const problems = [];
-  const list = Array.isArray(rawBeats) ? rawBeats : [];
-  const total = Number(duration) || 10;
-  const beats = [];
+  const list = Array.isArray(rawCuts) ? rawCuts : [];
+  const total = Number(duration) || 15;
+  const cuts = [];
   list.forEach((raw, i) => {
     if (!raw || typeof raw !== "object") return;
-    const action = trim(raw.action ?? raw.what ?? raw.visual);
-    if (!action) {
-      problems.push(`${where} beat ${i + 1}: no action — dropped`);
+    const shot = trim(raw.shot ?? raw.action ?? raw.visual ?? raw.what);
+    if (!shot) {
+      problems.push(`${where} cut ${i + 1}: nothing is described — dropped`);
       return;
     }
     let from = Number(raw.from ?? raw.start ?? raw.t0);
     let to = Number(raw.to ?? raw.end ?? raw.t1);
-    if (!Number.isFinite(from)) from = i === 0 ? 0 : (beats[beats.length - 1]?.to ?? 0);
+    if (!Number.isFinite(from)) from = i === 0 ? 0 : (cuts[cuts.length - 1]?.to ?? 0);
     if (!Number.isFinite(to)) to = total;
     from = Math.min(Math.max(0, from), total);
     to = Math.min(Math.max(from, to), total);
-    if (to > total || Number(raw.to) > total) problems.push(`${where} beat ${i + 1}: ends past the shot's ${total}s — clamped`);
+    if (Number(raw.to) > total) problems.push(`${where} cut ${i + 1}: ends past the clip's ${total}s — clamped`);
     let camera = trim(raw.camera);
     if (!camera) {
-      problems.push(`${where} beat ${i + 1}: no camera — the shot would sit on a dead static frame; using "${DEFAULT_CAMERA}"`);
-      camera = DEFAULT_CAMERA;
+      camera = defaultCamera(language);
+      problems.push(`${where} cut ${i + 1}: no camera move — the cut would sit on a dead frame; using "${camera}"`);
     }
-    beats.push({ from, to, action, camera });
+    const figures = [...new Set((Array.isArray(raw.figures) ? raw.figures : []).map(String).map(trim).filter(Boolean))];
+    cuts.push({ from, to, shot, camera, ...(figures.length ? { figures } : {}) });
   });
-  beats.sort((a, b) => a.from - b.from);
-  if (beats.length && beats[beats.length - 1].to < total - 0.5) {
-    beats[beats.length - 1].to = total;
+  cuts.sort((a, b) => a.from - b.from);
+  if (cuts.length && cuts[cuts.length - 1].to < total - 0.5) cuts[cuts.length - 1].to = total;
+  return { cuts, problems };
+}
+
+/**
+ * Normalize the narration into timed lines. The writer is asked for
+ * `[{ from, to, text }]`; a bare array of strings (which a model reaches
+ * for) is spread evenly across the clip rather than dropped, and said so.
+ */
+export function normalizeNarration(rawLines, duration, { where = "clip" } = {}) {
+  const problems = [];
+  const list = Array.isArray(rawLines) ? rawLines : rawLines ? [rawLines] : [];
+  const total = Number(duration) || 15;
+  const timed = [];
+  const bare = [];
+  list.forEach((raw) => {
+    if (typeof raw === "string") {
+      const text = trim(raw);
+      if (text) bare.push(text);
+      return;
+    }
+    if (!raw || typeof raw !== "object") return;
+    const text = trim(raw.text ?? raw.script ?? raw.line);
+    if (!text) return;
+    let from = Number(raw.from ?? raw.start ?? raw.t0);
+    let to = Number(raw.to ?? raw.end ?? raw.t1);
+    if (!Number.isFinite(from) || !Number.isFinite(to)) {
+      bare.push(text);
+      return;
+    }
+    from = Math.min(Math.max(0, from), total);
+    to = Math.min(Math.max(from, to), total);
+    timed.push({ from, to, text });
+  });
+  if (bare.length) {
+    problems.push(`${where}: ${bare.length} narration line${bare.length === 1 ? "" : "s"} carried no time span — spread evenly across the clip`);
+    const slice = total / bare.length;
+    bare.forEach((text, i) => {
+      timed.push({ from: Math.round(i * slice * 10) / 10, to: Math.round((i + 1) * slice * 10) / 10, text });
+    });
   }
-  return { beats, problems };
+  timed.sort((a, b) => a.from - b.from);
+  return { narration: timed, problems };
 }
 
-/** "0-3s — action; the camera …" for one beat. */
-function beatSentence(beat) {
-  const span = `${Math.round(beat.from)}-${Math.round(beat.to)}s`;
-  const cam = trim(beat.camera);
-  return `${span} — ${sentence(beat.action)} ${sentence(cam.charAt(0).toUpperCase() + cam.slice(1))}`;
+/**
+ * What the clip says, as one string: the narration lines in order. This
+ * is what the transcript is compared against and what script.md records,
+ * so it has exactly one definition.
+ */
+export function clipScript(clip, language) {
+  const lines = (Array.isArray(clip?.narration) ? clip.narration : [])
+    .map((l) => trim(typeof l === "string" ? l : l?.text))
+    .filter(Boolean);
+  return lines.join(isCjk(language ?? clip?.language) ? "" : " ");
 }
 
-/** The negatives that close every prompt, by what the style shows. */
-export function negativesFor({ narration, styleRecipe, figures = [] } = {}) {
-  // No "nothing the prompt did not describe": the style anchor's own set
-  // dressing is welcome, and with a figure on screen that clause made the
-  // model paste the figure as a flat picture on an empty background
-  // (2026-09-04, math-anim n3/n4 re-shoot) instead of drawing it into the
-  // scene.
+/**
+ * The negatives that close every prompt. Pipeline-wide first — invented
+ * on-screen text is this mode's oldest failure, and a knowledge figure
+ * must be reproduced rather than re-imagined — then whatever the writer
+ * ruled out for this style.
+ *
+ * Note what is NOT here any more: "hard cuts". A montage is cuts. It is
+ * also not "objects or shapes the prompt did not describe" — with a
+ * figure on screen that clause made the model paste the figure as a flat
+ * picture on an empty background (2026-09-04, math-anim n3/n4).
+ */
+export function negativesFor({ narration, styleRecipe, figures = [], extra, language } = {}) {
   const parts = [
-    `Do not show: any on-screen text, labels, formulas or numbers beyond what this prompt spells out in quotes${figures.length ? " or the reference figure carries" : ""}`,
+    `any on-screen text, labels, formulas or numbers beyond what this prompt spells out in quotes${figures.length ? " or the reference figure carries" : ""}`,
     "garbled or invented characters or numbers",
-    "soft dissolves, morphs or hard cuts",
+    "soft dissolves or morphing between shots",
     "camera shake",
+    "any spoken word beyond the narration above, including muttering, chanting or invented speech",
   ];
   if (styleHasPeople({ narration, styleRecipe })) {
     parts.push("extra fingers or limbs", "deformed hands or faces", "a second speaker", "lips out of sync with the words");
   }
-  return `${parts.join("; ")}.`;
+  const own = trim(extra);
+  return `${parts.join("; ")}.${own ? ` ${sentence(own, language)}` : ""}`;
+}
+
+/** "The reference figure "x.png" appears in this cut, …" — a figure is
+ * content to reproduce, not a picture to paste. */
+function figureClause(files) {
+  return files
+    .map(
+      (file) =>
+        `(The reference figure "${basename(file)}" appears in this cut, drawn in the scene's own materials and filling the frame — not pasted as a flat picture — with every label, axis and number reproduced faithfully and unaltered.)`,
+    )
+    .join(" ");
 }
 
 /**
- * The video prompt for ONE shot.
+ * The video prompt for ONE montage clip.
  *
  * @param {object} p
- * @param {string} p.styleRecipe   The style anchor (five elements), verbatim.
+ * @param {string} p.styleRecipe  The style anchor, verbatim (the art direction).
  * @param {"voiceover"|"on-camera"} p.narration
- * @param {string} p.language      Course language tag (zh / en / ja).
- * @param {object} p.shot          { script, visual, duration, figures, beats?, sound? }
- * @param {string} [p.sceneGoal]   What the scene explains (a continuity note, never on screen).
- * @param {boolean} [p.hasParentFrame]  A frame is supplied at shoot time (previous shot or anchor).
- * @param {boolean} [p.isSceneOpening]  The supplied frame is the style anchor, not a continuation.
+ * @param {string} p.language     Course language tag (zh / en / ja).
+ * @param {object} p.clip         { duration, theme, cuts[], narration[], audio, negatives }
+ * @param {{index:number,total:number,sceneGoal?:string}} [p.part]
+ *   Which clip of a multi-clip scene this is, so the model keeps the set.
  */
-export function buildShotPrompt({
-  styleRecipe,
-  narration,
-  language,
-  shot,
-  sceneGoal,
-  hasParentFrame = false,
-  isSceneOpening = false,
-} = {}) {
-  const script = trim(shot?.script);
-  const visual = trim(shot?.visual);
-  const duration = Number(shot?.duration) || 10;
-  const figures = [...new Set((Array.isArray(shot?.figures) ? shot.figures : []).map(String).filter(Boolean))];
-  const { beats } = normalizeBeats(shot?.beats, duration);
+export function buildClipPrompt({ styleRecipe, narration, language, clip, part } = {}) {
+  const duration = Number(clip?.duration) || 15;
+  const { cuts } = normalizeCuts(clip?.cuts, duration, { language });
+  const { narration: lines } = normalizeNarration(clip?.narration, duration);
+  const figures = cuts.flatMap((c) => c.figures ?? []);
 
-  const anchor = trim(styleRecipe) ? `Style anchor: ${sentence(styleRecipe)}` : "";
+  const anchor = trim(styleRecipe) ? `1. Style anchor: ${sentence(styleRecipe, "en")}` : "1. Style anchor: (none on file).";
+  const subject = trim(clip?.theme) ? `Subject: ${sentence(clip.theme, language)}` : "";
+  const continuity =
+    part && Number(part.total) > 1
+      ? `This is part ${part.index} of ${part.total} of one continuous scene${trim(part.sceneGoal) ? ` about ${trim(part.sceneGoal)}` : ""}: the same set, materials, palette and lighting as the other parts. Never shown on screen.`
+      : "";
 
-  const continuity = hasParentFrame
-    ? isSceneOpening
-      ? "The supplied frame is this course's look: its palette, materials, line quality, lighting and set carry over exactly, and this scene is established from it."
-      : "This shot continues seamlessly from the previous shot's last frame — the same set, stroke texture, handwriting and typography, lighting and framing carry over; that frame is not new content to describe."
-    : "";
+  const shotList = [
+    `2. Shot list — ${cuts.length} cut${cuts.length === 1 ? "" : "s"} in ${duration}s, cut on the times given:`,
+    ...cuts.map((cut, i) => {
+      const figs = cut.figures?.length ? ` ${figureClause(cut.figures)}` : "";
+      return `${span(cut.from, cut.to)} Cut ${i + 1}: ${sentence(cut.shot, language)} [${cut.camera}]${figs}`;
+    }),
+  ].join("\n");
 
-  const goalNote = trim(sceneGoal)
-    ? `Continuity note, never shown on screen: this shot is one part of a longer continuous scene explaining ${trim(sceneGoal)}, and the set and materials stay identical across it.`
-    : "";
-
-  // The picture: timed beats when the writer gave them, else the visual
-  // with the camera it names or the default.
-  let picture;
-  if (beats.length) {
-    picture = `Timeline of this one continuous take: ${beats.map(beatSentence).join(" ")}`;
-  } else {
-    const cam = hasCameraDirection(visual) ? "" : sentence(DEFAULT_CAMERA.charAt(0).toUpperCase() + DEFAULT_CAMERA.slice(1));
-    picture = [sentence(visual), `The action fills the ${duration} seconds and is the visual focus.`, cam].filter(Boolean).join(" ");
-  }
-
-  // A figure is content to reproduce, not a picture to paste: it is drawn
-  // in the scene's own materials, large, with its labels unaltered.
-  const figureClause = figures
-    .map((file) => `The reference figure "${basename(file)}" appears on screen, drawn in the scene's own materials and filling the frame — not pasted as a flat picture — with every label, axis and number reproduced faithfully and unaltered.`)
-    .join(" ");
-
-  const narrationClause =
+  const speaks =
     narration === "on-camera"
-      ? `The speaker (S1), framed at medium distance facing the camera, says: <d>[${langName(language)}] ${script}</d>`
-      : `A clear, warm narrator says in an off-screen voiceover: <d>[${langName(language)}] ${script}</d>. No on-screen character's lips move.`;
+      ? "3. Narration — the speaker (S1) is in frame at medium distance and their lips are in sync with the words:"
+      : "3. Narration — off-screen voiceover; no one on screen opens their mouth:";
+  // "These are the only words" is load-bearing. A montage carries fewer
+  // words than its seconds, and H3 fills the gap with invented speech:
+  // measured 2026-09-04, a clip whose three lines came to ten seconds of
+  // a fifteen-second montage came back with a stretch of gibberish
+  // spliced between them (similarity 0.57 twice, the QA gate caught it),
+  // while its neighbours in the same course passed at 0.96. Unspecified
+  // audio is invented audio — the same lesson as `non_diegetic_music: N/A`.
+  const narrationBlock = lines.length
+    ? [
+        speaks,
+        ...lines.map((l) => `${span(l.from, l.to)} <d>[${langName(language)}]${l.text}</d>`),
+        "These are the only words spoken in the whole clip. Outside them there is no speech at all — no muttering, no chanting, no crowd voices, no invented words — only the ambience below.",
+      ].join("\n")
+    : "";
 
-  const description = [
-    "integrated_multimodal_description: [Shot 1] One continuous shot, no cuts.",
-    anchor,
-    continuity,
-    goalNote,
-    picture,
-    figureClause,
-    narrationClause,
-    negativesFor({ narration, styleRecipe, figures }),
-  ]
+  const audio = trim(clip?.audio);
+  const audioBlock = `4. Audio: ${audio ? sentence(audio, language) : "quiet ambience matched to the scene."} Nothing louder than the voice, and no music.`;
+
+  const negatives = `5. Do not show: ${negativesFor({ narration, styleRecipe, figures, extra: clip?.negatives, language })}`;
+
+  return [[anchor, subject, continuity].filter(Boolean).join("\n"), shotList, narrationBlock, audioBlock, negatives]
     .filter(Boolean)
-    .join(" ");
+    .join("\n\n");
+}
 
-  const soundLine = trim(shot?.sound);
-  const sound = soundLine
-    ? `${sentence(soundLine.charAt(0).toUpperCase() + soundLine.slice(1))} Nothing louder than the voice.`
-    : "Quiet ambience matched to the scene, low enough that the narration stays the focus.";
+/** What each reference does, by the job the manager gave it. */
+const JOB_TEXT = {
+  "style-anchor":
+    "this course's style anchor — its palette, materials, line quality, lighting and set carry over exactly; it is a look reference, not a picture to show",
+  continuity:
+    "the last frame of the previous part of this scene; this part continues in the same set, with the same materials and lighting",
+  character: "keep this person's identity, face, hair and outfit exactly as they are here",
+};
 
-  return [description, `overall_soundscape: ${sound}`, "non_diegetic_music: N/A"].join("\n");
+/**
+ * The numbered reference bindings for one clip, in the order the manager
+ * passes the files to fal. `refs` is `[{ file, job, kind, note?, cut? }]`;
+ * images are numbered "Image N" in order and the voice is "Audio 1".
+ * A figure names the cut it belongs to, so the model knows WHEN as well
+ * as WHICH.
+ */
+export function bindingLines({ refs = [], narration = "voiceover" } = {}) {
+  const lines = [];
+  let image = 0;
+  for (const ref of refs) {
+    if (ref.kind === "audio") continue;
+    image += 1;
+    if (ref.job === "figure") {
+      const cut = Number(ref.cut) > 0 ? ` It appears in cut ${Number(ref.cut)}` : " It appears in the cut that names it";
+      lines.push(
+        `Image ${image} is the code-rendered knowledge figure "${basename(ref.file)}"${trim(ref.note) ? ` (${trim(ref.note)})` : ""}.${cut}, drawn in the scene's own materials with every label, axis and number reproduced faithfully and unaltered.`,
+      );
+    } else {
+      lines.push(`Image ${image} is ${JOB_TEXT[ref.job] ?? "a reference for this clip"}.`);
+    }
+  }
+  if (refs.some((r) => r.kind === "audio")) {
+    lines.push(
+      narration === "on-camera"
+        ? "Audio 1 is the speaker's voice — they speak in exactly this voice, timbre and pace."
+        : "Audio 1 is the narrator's voice — the voiceover keeps exactly this voice, timbre and pace.",
+    );
+  }
+  return lines;
+}
+
+/**
+ * Put the numbered bindings into the prompt as their own block, between
+ * the style anchor and the shot list: the references say who and what the
+ * picture is made of, so the model must read them before the cuts.
+ * A prompt with no recognizable blocks gets them appended.
+ */
+export function insertReferenceBlock(prompt, lines) {
+  const block = (lines ?? []).filter(Boolean).join(" ");
+  if (!block) return prompt;
+  const body = `Reference material: ${block}`;
+  const at = prompt.indexOf("\n\n2. Shot list");
+  if (at === -1) return `${prompt.trimEnd()}\n\n${body}`;
+  return `${prompt.slice(0, at)}\n\n${body}${prompt.slice(at)}`;
 }

@@ -3,11 +3,16 @@
  *
  * Two phases, and the course is usable after the first:
  *
- *   Outline    one agent proposes the master outline and LANDS it in
+ *   Outline    one agent proposes the master outline — beats, tiers,
+ *              figure specs, and the VISUAL LAYER (each beat's device,
+ *              plus the course's visual bible) — and LANDS all of it in
  *              course.json at once (course-edit.mjs outline). The viewer
  *              shows the beats, n1 is minted, and the opening can be shot
  *              while grounding is still running — an opening rarely needs
- *              a figure.
+ *              a figure. The device is here and not with the writer
+ *              because a writer handed a bare concept answers with a
+ *              talking illustration, and because one running example has
+ *              to carry the whole course, which no single scene can see.
  *   Grounding  the first beat that needs work gets its own agent, the rest
  *              are chunked; every agent COMMITS each beat's evidence into
  *              course.json the moment that beat is done (course-edit.mjs
@@ -30,9 +35,9 @@
 export const meta = {
   name: 'plan-course',
   description:
-    'Ground a plotwise course before shooting: propose the master outline and land it in course.json at once, then ground every beat (citations searched, derivations run as code, knowledge figures rendered by code into evidence/) with each beat committed to course.json the moment it is done. The opening can be shot as soon as the outline lands.',
+    "Ground a plotwise course before shooting: propose the master outline — with each beat's visual device and the course's visual bible — and land it in course.json at once, then ground every beat (citations searched, derivations run as code, knowledge figures rendered by code into evidence/) with each beat committed to course.json the moment it is done. The opening can be shot as soon as the outline lands.",
   phases: [
-    { title: 'Outline', detail: 'one agent; the outline lands in course.json' },
+    { title: 'Outline', detail: 'one agent; the outline and its visual layer land in course.json' },
     { title: 'Grounding', detail: 'first beat alone, the rest chunked; each beat commits itself' },
   ],
 }
@@ -71,7 +76,7 @@ The course is a MASTER OUTLINE of beats; at play time each beat becomes
 5-15s narrated video segments and the learner branches between them. The
 outline is the attention anchor — branches always return to it.
 
-The three facts that decide a plan here:
+The four facts that decide a plan here:
 
 1. EVERY BEAT CARRIES AN ACCURACY TIER, decided now and nowhere else:
    - world-knowledge: uncontroversial textbook fact. No lookup.
@@ -92,26 +97,48 @@ The three facts that decide a plan here:
 3. HEAVY WORK LIVES HERE. The per-segment loop during play must never need
    a search or a derivation; if a beat would force one mid-course, the
    plan is wrong.
+4. THE IDEA GETS A DEVICE, THE FACT GETS A FIGURE. Every beat also names a
+   VISUAL DEVICE — the concrete objects, metaphor or character the audience
+   SEES carrying that beat's idea. It is what the writer films, and it is
+   decided here: a beat handed a bare concept comes back as a talking
+   illustration. A device is not a figure — the device carries the IDEA
+   (coins that breed), a figure carries an exact FACT (the labelled curve
+   with its values). Most beats need only a device.
 
-Write course-facing text (beat titles, summaries, evidence notes) in ${LANGUAGE}.
+Write course-facing text (beat titles, summaries, devices, the visual
+bible, evidence notes) in ${LANGUAGE}.
 `.trim()
 
 const OUTLINE_SCHEMA = {
   type: 'object',
-  required: ['beats', 'landed'],
+  required: ['beats', 'visual', 'landed'],
   properties: {
     beats: {
       type: 'array',
       items: {
         type: 'object',
-        required: ['id', 'title', 'summary', 'tier'],
+        required: ['id', 'title', 'summary', 'tier', 'device'],
         properties: {
           id: { type: 'string' },
           title: { type: 'string' },
           summary: { type: 'string' },
           tier: { type: 'string', enum: ['world-knowledge', 'citation', 'code-verification'] },
+          device: {
+            type: 'string',
+            description: "what the audience SEES carrying this beat's idea — concrete, filmable, style-agnostic",
+          },
           figures: { type: 'array', items: { type: 'string' } },
         },
+      },
+    },
+    visual: {
+      type: 'object',
+      required: ['bible', 'motifs', 'neverDraw'],
+      description: 'how the course looks as a whole — style-agnostic',
+      properties: {
+        bible: { type: 'string' },
+        motifs: { type: 'array', items: { type: 'string' } },
+        neverDraw: { type: 'array', items: { type: 'string' } },
       },
     },
     landed: { type: 'boolean', description: 'true only if course-edit.mjs outline printed a JSON result' },
@@ -134,18 +161,53 @@ beat give:
 - title: one line, in ${LANGUAGE}
 - summary: one line — what the learner can do/say after it, in ${LANGUAGE}
 - tier: world-knowledge | citation | code-verification
+- device: one or two sentences, in ${LANGUAGE}, naming the concrete
+  objects, metaphor or character the audience SEES carrying this beat's
+  idea — what a camera could film, never the concept restated. For
+  compound interest: "a coin that buds a second coin, then both bud
+  again, and the pile climbs one step higher each time" — NOT "the
+  exponential effect of interest earning interest".
+  STYLE-AGNOSTIC: no palette, material, lighting or camera words. The
+  learner settles the style separately on the board, and the writer
+  translates the device into the materials of the style they confirmed —
+  so "flat vector coins in coral, seen top-down" is WRONG and "a coin
+  that buds a second coin" is right.
+  THE DEVICES COMPOSE: one running example carries the whole course, so
+  each beat's device grows out of the one before it (the coins pile into
+  a staircase, the staircase feeds a snowball) instead of opening a new
+  world every beat.
 - figures: array (possibly empty) of one-line specs, each naming a
   knowledge visual this beat's segments will need — WHAT it shows exactly
   (axes, labels, values), not how it should look. One idea per figure.
+  A beat whose device is enough needs no figure: the device carries the
+  idea, a figure carries a fact that must be exact on screen.
+
+Then, for the course as a whole, a VISUAL BIBLE — also in ${LANGUAGE},
+also style-agnostic:
+- bible: one paragraph — how this course looks as a whole: where it
+  happens, how the running example is drawn, what recurs from beat to
+  beat, what makes the audience feel they are still inside the same
+  course.
+- motifs: 2-5 recurring things a viewer would notice a second time (the
+  budding coin, the climbing pile, the margin of a notebook).
+- neverDraw: what this course NEVER draws — whatever your topic invites
+  and this pipeline cannot deliver. Almost always: a formula or a labelled
+  axis with no rendered figure behind it, floating text, gradients. Add
+  what your own topic tempts (for money: real metal coins, brand logos).
 
 Then LAND it, so the course can start while grounding runs:
-1. Write the beats as a JSON array to \`${SET_DIR}/outline.json\`.
+1. Write \`${SET_DIR}/outline.json\` as
+   { "beats": [ <the beats, in order> ], "visual": { "bible": "...", "motifs": [...], "neverDraw": [...] } }
 2. Run exactly: \`${COURSE_EDIT} outline --set ${SET_DIR} --file ${SET_DIR}/outline.json\`
    It merges into the existing course.json (title, topic, style and path
-   are kept), mints the root node n1 on the first beat, and records every
-   world-knowledge beat that needs no figure as already grounded. Never
-   write course.json by hand.
-Return the beats and whether the command printed a JSON result.
+   are kept), mints the root node n1 on the first beat, records every
+   world-knowledge beat that needs no figure as already grounded, and
+   writes each beat's device plus the visual bible. Its JSON result
+   reports \`devices\` (how many beats carry one) and \`visual\` (whether
+   the bible landed) — check both are what you wrote. Never write
+   course.json by hand.
+Return the beats, the visual bible, and whether the command printed a
+JSON result.
 `.trim(),
   { agentType: 'general-purpose', label: 'outline', phase: 'Outline', schema: OUTLINE_SCHEMA },
 )
@@ -154,6 +216,8 @@ if (!outline || !Array.isArray(outline.beats) || outline.beats.length === 0) {
   return { status: 'FAILED', reason: 'outline agent produced no beats' }
 }
 const beats = outline.beats
+const visual =
+  outline.visual && typeof outline.visual === 'object' && !Array.isArray(outline.visual) ? outline.visual : null
 const LAND_CMD = `${COURSE_EDIT} outline --set ${SET_DIR} --file ${SET_DIR}/outline.json`
 let landed = outline.landed === true
 if (!landed) {
@@ -165,8 +229,12 @@ if (!landed) {
   const attempt = await agent(
     `
 Land a course outline that was proposed but not committed.
-1. If \`${SET_DIR}/outline.json\` does not exist, write this JSON array to it verbatim:
-${JSON.stringify(beats, null, 2)}
+1. Write this JSON to \`${SET_DIR}/outline.json\` verbatim if that file is
+   missing, or if what is already there has no top-level "visual" key. It
+   carries each beat's visual device and the course's visual bible — land
+   it whole; without them the writer is handed a bare concept and answers
+   with a talking illustration.
+${JSON.stringify({ beats, ...(visual ? { visual } : {}) }, null, 2)}
 2. Run exactly: \`${LAND_CMD}\`
 Return whether the command printed a JSON result (a line starting with "{"), and its stderr verbatim if it failed.
 `.trim(),
@@ -192,6 +260,24 @@ Return whether the command printed a JSON result (a line starting with "{"), and
   }
 }
 log(`outline landed: ${beats.length} beats in ${COURSE_PATH} — the opening can be shot now`)
+
+// The visual layer is planning work, so a hole in it is REPORTED here
+// rather than discovered as a talking illustration three phases later.
+// `course-edit.mjs audit` names the same two holes from disk.
+const warnings = []
+const deviceless = beats.filter((b) => !String(b?.device ?? '').trim()).map((b) => b?.id ?? '?')
+if (deviceless.length) {
+  warnings.push(
+    `beats [${deviceless.join(', ')}] have no visual device — their writer is handed a bare concept and answers with a talking illustration. Write one or two concrete, style-agnostic sentences for each into ${SET_DIR}/outline.json and re-run \`${LAND_CMD}\`.`,
+  )
+}
+const bible = String(visual?.bible ?? '').trim()
+if (!bible) {
+  warnings.push(
+    `the course has no visual bible — nothing says how it looks as a whole, so every scene invents its own world. Add "visual": { "bible", "motifs", "neverDraw" } to ${SET_DIR}/outline.json and re-run \`${LAND_CMD}\`.`,
+  )
+}
+log(`visual layer: ${beats.length - deviceless.length}/${beats.length} beats carry a device, bible ${bible ? 'written' : 'MISSING'}`)
 
 phase('Grounding')
 // World-knowledge beats with no figures were recorded by the outline op.
@@ -292,7 +378,6 @@ const groundingResults = await parallel(
 
 // agent() failures resolve to null, not reject — a dead chunk must become
 // a REPORTED hole, never a silently missing one.
-const warnings = []
 let committed = 0
 groundingResults.forEach((res, i) => {
   const ids = chunks[i].map((b) => b.id).join(',')
@@ -315,6 +400,8 @@ return {
   evidenceDir: EVIDENCE_DIR,
   beatCount: beats.length,
   grounded: committed + alreadyGrounded,
+  devices: beats.length - deviceless.length,
+  visualBible: Boolean(bible),
   warnings,
-  next: `Run \`${COURSE_EDIT} audit --set ${SET_DIR}\` and read its problems. The outline has been in course.json since the Outline phase — the root should already be shooting; a segment for a beat with problems must not claim what could not be verified. Heavy verification is DONE — the play loop must not search, derive, or render.`,
+  next: `Run \`${COURSE_EDIT} audit --set ${SET_DIR}\` and read its problems (per beat) and its top-level \`problems\` (the course's). The outline has been in course.json since the Outline phase — the root should already be shooting; a segment for a beat with problems must not claim what could not be verified. A beat with no device or a course with no visual bible is a planning hole to fill BEFORE the screenplay is written, not something the writer can invent. Heavy verification is DONE — the play loop must not search, derive, or render.`,
 }

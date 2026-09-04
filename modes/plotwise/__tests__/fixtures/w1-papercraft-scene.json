@@ -1,0 +1,35 @@
+{
+  "_provenance": "W1 (2026-09-04): Luna under a director's brief wrote this montage for the beat 利息生利息 in the papercraft style; shot at 768P it carried the device through every cut, invented no on-screen text and spoke the narration verbatim. It is the reference for what the 0.6 writer is expected to produce, and the shape the validator must pass clean. Evidence: ~/plotwise-w1, scratchpad/w1/w1-papercraft.json.",
+  "beat": "b1",
+  "label": "利息生利息",
+  "device": "用会自己繁殖的纸片硬币表现复利：一枚本金纸币先生出利息，随后本金和利息一起继续长出更多纸片硬币，并沿一条越来越陡的纸带向上扩展。",
+  "clips": [
+    {
+      "duration": 15,
+      "theme": "用会繁殖的纸片硬币表现利息生利息，增长路径从平缓变得越来越陡",
+      "cuts": [
+        { "from": 0, "to": 1.5, "shot": "一枚芥末黄色纸片硬币静置在米白色纸面上，旁边只有一道短短的褐色纸影，纸片边缘轻微抖动", "camera": "俯拍" },
+        { "from": 1.5, "to": 3, "shot": "一枚珊瑚色纸片硬币从芥末黄硬币边缘弹出，像新芽一样立起又落下", "camera": "快速硬切到特写" },
+        { "from": 3, "to": 4.5, "shot": "芥末黄本金硬币和珊瑚色利息硬币并排向前滑动，底下一条青绿色纸带从平面延伸出来", "camera": "跟随" },
+        { "from": 4.5, "to": 6, "shot": "两枚硬币同时抖动，各自分出新的珊瑚色和芥末黄小硬币，纸片层次和短影清晰可见", "camera": "俯拍" },
+        { "from": 6, "to": 9, "shot": "越来越多的纸片硬币从已有硬币旁连续弹出，形成向前扩散的分叉硬币群，青绿纸带开始上弯", "camera": "缓慢推进" },
+        { "from": 9, "to": 11, "shot": "纸片硬币沿青绿上升纸带逐个落下，后半段明显变得密集，纸带弯曲幅度加大", "camera": "横移" },
+        { "from": 11, "to": 12.5, "shot": "镜头沿纸带从稀疏的底部移动到密集的顶部，硬币一层层叠起，投下短促的纸影", "camera": "跟随" },
+        { "from": 12.5, "to": 15, "shot": "整条青绿纸带从画面左下平缓升向右上，末端突然变陡，硬币在高处形成最大的一簇", "camera": "俯拍定格" }
+      ],
+      "narration": [
+        { "from": 0, "to": 2.5, "text": "本金先生出利息。" },
+        { "from": 3, "to": 5.5, "text": "下一轮，利息也开始生利息。" },
+        { "from": 6, "to": 8.5, "text": "本金和利息一起滚动。" },
+        { "from": 9, "to": 11.5, "text": "每一轮，新增的钱更多。" },
+        { "from": 12, "to": 15, "text": "所以曲线越来越陡。" }
+      ],
+      "audio": "全程轻微纸张摩擦与房间底噪；1.5 秒第一枚硬币弹出时一声清脆纸响；4.5 到 9 秒分裂时连续的纸片弹动与轻敲；9 到 12 秒沿纸带移动时纸片滑动声逐渐加快；结尾一声柔和的纸片落桌声",
+      "negatives": "不要出现真实金属硬币、霓虹光、塑料质感、渐变、平滑无纹理的电脑动画感"
+    }
+  ],
+  "detour": {
+    "label": "算一遍",
+    "brief": "用一万块本金、每年百分之十，把前三年的利息一年一年算出来，让观众看到第三年的新增比第一年大，然后回到主线继续讲曲线为什么变陡。"
+  }
+}

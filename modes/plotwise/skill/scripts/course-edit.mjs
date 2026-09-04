@@ -25,9 +25,14 @@
  * ...learner refs]. `watched` appends to path[] (idempotent at the tail)
  * — kept for courses without a play manager (0.4 records the path itself). `outline --file` lands
  * the planner's beats (merge; mints n1; world-knowledge beats with no
- * figures are recorded as grounded). `evidence --beat --file` merges one
- * beat's evidence entries + problems (files must exist on disk).
- * `audit` prints, without writing, what every beat still owes. Prints JSON.
+ * figures are recorded as grounded) together with the course's VISUAL
+ * LAYER: each beat's `device` (what the audience SEES carrying that idea)
+ * and the top-level `visual` bible ({ bible, motifs[], neverDraw[] }) the
+ * file may carry beside `beats`. Both survive a re-land that omits them —
+ * they are planning work, not a per-run input. `evidence --beat --file`
+ * merges one beat's evidence entries + problems (files must exist on
+ * disk). `audit` prints, without writing, what every beat still owes —
+ * including a beat with no device and a course with no bible. Prints JSON.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -73,6 +78,37 @@ const EVIDENCE_KINDS = new Set(["citation", "code-verification", "rendered-figur
 const WORLD_KNOWLEDGE_NOTE = (language) =>
   String(language ?? "").startsWith("zh") ? "教科书级常识，无需查证" : "Textbook fact — no lookup needed";
 
+/** One trimmed line of text, or "" — the planner's prose fields. */
+function asText(v) {
+  return v == null ? "" : String(v).trim();
+}
+
+/** A list of non-empty strings; a single string counts as a one-item list
+ * (the planner writes one motif as often as five, and dropping it would be
+ * a silent loss). */
+function asTextList(v) {
+  const items = Array.isArray(v) ? v : v == null || v === "" ? [] : [v];
+  return items.map(asText).filter(Boolean);
+}
+
+const isPlainObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+
+/** A visual bible as stored, or `{}` — never a stray type. */
+const asVisual = (v) => (isPlainObject(v) ? v : {});
+
+/** Merge a visual bible into the one on file, always in its three-field
+ * shape. A field the incoming object does not mention — and an empty
+ * `bible` — keeps what is already there; an explicit empty list clears a
+ * list. Re-planning the beats must not cost a course its art direction. */
+function mergeVisual(prev, next) {
+  const before = asVisual(prev);
+  return {
+    bible: asText(next.bible) || asText(before.bible),
+    motifs: next.motifs !== undefined ? asTextList(next.motifs) : asTextList(before.motifs),
+    neverDraw: next.neverDraw !== undefined ? asTextList(next.neverDraw) : asTextList(before.neverDraw),
+  };
+}
+
 function readJsonFile(file) {
   if (!existsSync(file)) fail(`file not found: ${file}`);
   try {
@@ -107,6 +143,10 @@ function beatProblems(setDir, beat) {
   if (specs.length > rendered) problems.add(`${specs.length - rendered} figure spec(s) without a rendered file`);
   if (beat.tier === "citation" && !ev.some((e) => e?.kind === "citation" && (e.url || e.file))) problems.add("no pinned source");
   if (beat.tier === "code-verification" && !ev.some((e) => e?.kind === "code-verification")) problems.add("no verification run on disk");
+  // A beat with no device hands the writer an abstract concept, and the
+  // writer answers with a talking illustration. It is planning work, so
+  // the planner hears about it here and not at shoot time.
+  if (!asText(beat.device)) problems.add("no visual device — the writer has nothing concrete to film");
   return [...problems];
 }
 
@@ -119,13 +159,35 @@ if (op === "audit") {
     return {
       id: b.id,
       tier: b.tier ?? null,
+      device: Boolean(asText(b.device)),
       figureSpecs: Array.isArray(b.figureSpecs) ? b.figureSpecs.length : 0,
       evidence: Array.isArray(b.evidence) ? b.evidence.length : 0,
       ok: problems.length === 0 && (Array.isArray(b.evidence) ? b.evidence.length : 0) > 0,
       problems,
     };
   });
-  console.log(JSON.stringify({ op, ok: beats.length > 0 && beats.every((b) => b.ok), beats }, null, 2));
+  // Course-level holes, in the same shape as a beat's: what the course
+  // owes as a whole belongs to no single beat.
+  const visual = asVisual(c.visual);
+  const problems = [];
+  if (!asText(visual.bible)) problems.push("no visual bible — nothing says how this course looks as a whole (course.visual.bible)");
+  console.log(
+    JSON.stringify(
+      {
+        op,
+        ok: beats.length > 0 && problems.length === 0 && beats.every((b) => b.ok),
+        problems,
+        visual: {
+          bible: Boolean(asText(visual.bible)),
+          motifs: asTextList(visual.motifs).length,
+          neverDraw: asTextList(visual.neverDraw).length,
+        },
+        beats,
+      },
+      null,
+      2,
+    ),
+  );
   process.exit(0);
 }
 
@@ -215,6 +277,13 @@ try {
       const raw = readJsonFile(args.file);
       const beats = Array.isArray(raw) ? raw : raw?.beats;
       if (!Array.isArray(beats) || beats.length === 0) fail("the outline file must be a non-empty array of beats");
+      // The visual bible rides beside the beats in the object form. A
+      // wrong shape is refused rather than dropped: a bible that vanished
+      // silently is a course shot without art direction.
+      const incomingVisual = Array.isArray(raw) ? undefined : raw?.visual;
+      if (incomingVisual !== undefined && !isPlainObject(incomingVisual)) {
+        fail(`the outline file's "visual" must be an object { bible, motifs[], neverDraw[] }`);
+      }
       const prevById = new Map((c.outline ?? []).map((b) => [b.id, b]));
       c.outline = beats.map((b, i) => {
         const id = String(b?.id || `b${i + 1}`);
@@ -225,10 +294,16 @@ try {
         // a textbook beat with nothing to draw is grounded by definition.
         const kept = Array.isArray(prev?.evidence) && prev.evidence.length ? prev.evidence : null;
         const evidence = kept ?? (tier === "world-knowledge" && figureSpecs.length === 0 ? [{ kind: "world-knowledge", note: WORLD_KNOWLEDGE_NOTE(c.language) }] : []);
-        const beat = { id, title: String(b?.title ?? id), summary: b?.summary ? String(b.summary) : "", tier, figureSpecs, evidence };
+        // The device is what the audience SEES carrying this beat's idea.
+        // Like the evidence it survives a re-plan that does not mention
+        // it: an outline landed by an older planner must not erase the
+        // visual layer of a course already being shot.
+        const device = asText(b?.device) || asText(prev?.device);
+        const beat = { id, title: String(b?.title ?? id), summary: b?.summary ? String(b.summary) : "", device, tier, figureSpecs, evidence };
         if (Array.isArray(prev?.problems) && prev.problems.length) beat.problems = prev.problems;
         return beat;
       });
+      if (incomingVisual !== undefined) c.visual = mergeVisual(c.visual, incomingVisual);
       if (!c.rootNode) c.rootNode = "n1";
       c.nodes = c.nodes && typeof c.nodes === "object" ? c.nodes : {};
       if (!c.nodes.n1) {
@@ -296,6 +371,8 @@ console.log(
     path: course.path ?? [],
     outline: (course.outline ?? []).length,
     grounded: (course.outline ?? []).filter((b) => Array.isArray(b.evidence) && b.evidence.length > 0).length,
+    devices: (course.outline ?? []).filter((b) => asText(b.device)).length,
+    visual: Boolean(asText(asVisual(course.visual).bible)),
     summaryFile: course.summaryFile ?? null,
   }),
 );
