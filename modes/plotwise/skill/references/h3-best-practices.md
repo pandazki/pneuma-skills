@@ -110,6 +110,22 @@ discontinuity clicks, and the shots are already loudness-matched.
   picture evolving in place; reference-to-video with the frame as Image 1
   plus the voice 17.4 s, starting near the frame and reframing. Voice
   proxy identical. Hence `chain` as the default.
+- 2026-09-04, the same course re-shot at 768P with this practice (n3,
+  n4, n3d: ten shots, 2 min 50 s on three slots, one narration re-shoot,
+  all passing). Stills side by side with the 0.4 shoot: **not better** —
+  one figure shot came out as the figure pasted flat on an empty
+  background, another invented axis numbers, and in every figure shot the
+  previous shot's curves stayed on screen under the figure. A three-way
+  A/B of one figure shot (prompt as shot / prompt with the blunt "nothing
+  the prompt did not describe" negative removed and "drawn in the scene's
+  own materials, filling the frame" added / the 0.4 prompt) came out
+  near-identical: **seed-to-seed variance is larger than the wording
+  difference**, so a two-scene comparison cannot rank prompts. The blunt
+  negative was dropped anyway (it is wrong in principle — the anchor's set
+  dressing is welcome). What the practice buys — one voice, a camera on
+  every beat, timed beats, clean seams — is not visible in a still.
+  Open: figure shots inherit the previous shot's content; a writer's beat
+  that clears the board before the figure draws itself may be the fix.
 - 2026-09-01 smoke: text-to-video 2 s wall, image-to-video 3 s,
   reference-to-video 19 s (reference analysis dominates) — the numbers
   fal's queue gives on a quiet night; the 2026-09-04 numbers are a busy

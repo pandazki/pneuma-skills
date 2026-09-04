@@ -35,7 +35,7 @@ describe("buildShotPrompt", () => {
     expect(description.startsWith("integrated_multimodal_description: [Shot 1] One continuous shot, no cuts. Style anchor: ")).toBe(true);
     expect(description).toContain(RECIPE);
     expect(description.indexOf(RECIPE)).toBeLessThan(description.indexOf(shot.visual));
-    expect(description.trimEnd().endsWith("objects or shapes the prompt did not describe.")).toBe(true);
+    expect(description.trimEnd().endsWith("soft dissolves, morphs or hard cuts; camera shake.")).toBe(true);
     expect(soundscape).toBe("overall_soundscape: Quiet ambience matched to the scene, low enough that the narration stays the focus.");
     expect(music).toBe("non_diegetic_music: N/A");
     // The narration rides verbatim in the tagged clause; nothing numbers a reference here.
@@ -106,7 +106,9 @@ describe("buildShotPrompt", () => {
       isSceneOpening: false,
     });
     expect(p).toContain("continues seamlessly from the previous shot's last frame");
-    expect(p).toContain('The reference figure "prior.png" appears on screen, reproduced faithfully');
+    // Drawn into the scene, not pasted: the pasted-picture failure of 2026-09-04.
+    expect(p).toContain('The reference figure "prior.png" appears on screen, drawn in the scene\'s own materials and filling the frame — not pasted as a flat picture — with every label, axis and number reproduced faithfully and unaltered.');
+    expect(p).not.toContain("objects or shapes the prompt did not describe");
     expect(p).toContain("Continuity note, never shown on screen: this shot is one part of a longer continuous scene explaining 误差为何变小");
     const opening = buildShotPrompt({ styleRecipe: RECIPE, narration: "voiceover", language: "zh", shot, hasParentFrame: true, isSceneOpening: true });
     expect(opening).toContain("this scene is established from it");

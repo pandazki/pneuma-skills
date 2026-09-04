@@ -143,7 +143,22 @@ voice (their voice must not change mid-take). Both runs drew a small
 arrow-curve on the board that the prompt placed "in the air" — the model
 put the gesture on the board; harmless, noted.
 
-**E4 — four references at once (to run).** frame + 2 characters + 1
+**E4 — the course re-shot with the practice, for the showcase (done
+2026-09-04).** n3, n4 and n3d at 768P through the real manager: ten
+shots in 2 min 50 s on three slots, one narration re-shoot, every shot
+passing. Stills against the 0.4 shoot: not better — one figure shot
+pasted the figure flat on an empty background, another invented axis
+numbers, and every figure shot kept the previous shot's curves under the
+figure. A three-way A/B of one figure shot (as shot / the blunt "nothing
+the prompt did not describe" negative removed + "drawn in the scene's own
+materials, filling the frame" / the 0.4 prompt) came out near-identical:
+seed variance outweighs the wording. Decisions: the blunt negative is
+gone (wrong in principle); the showcase images stay as they are (the
+practice's gains — voice, camera, beats, seams — are not visible in a
+still); open question: a writer's beat that clears the board before a
+figure draws itself.
+
+**E5 — four references at once (to run).** frame + 2 characters + 1
 figure + voice: latency and whether the figure still reproduces.
 
 ## Out of scope

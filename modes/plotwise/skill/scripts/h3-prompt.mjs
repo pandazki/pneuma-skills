@@ -111,12 +111,16 @@ function beatSentence(beat) {
 
 /** The negatives that close every prompt, by what the style shows. */
 export function negativesFor({ narration, styleRecipe, figures = [] } = {}) {
+  // No "nothing the prompt did not describe": the style anchor's own set
+  // dressing is welcome, and with a figure on screen that clause made the
+  // model paste the figure as a flat picture on an empty background
+  // (2026-09-04, math-anim n3/n4 re-shoot) instead of drawing it into the
+  // scene.
   const parts = [
     `Do not show: any on-screen text, labels, formulas or numbers beyond what this prompt spells out in quotes${figures.length ? " or the reference figure carries" : ""}`,
-    "garbled or invented characters",
+    "garbled or invented characters or numbers",
     "soft dissolves, morphs or hard cuts",
     "camera shake",
-    "objects or shapes the prompt did not describe",
   ];
   if (styleHasPeople({ narration, styleRecipe })) {
     parts.push("extra fingers or limbs", "deformed hands or faces", "a second speaker", "lips out of sync with the words");
@@ -173,8 +177,10 @@ export function buildShotPrompt({
     picture = [sentence(visual), `The action fills the ${duration} seconds and is the visual focus.`, cam].filter(Boolean).join(" ");
   }
 
+  // A figure is content to reproduce, not a picture to paste: it is drawn
+  // in the scene's own materials, large, with its labels unaltered.
   const figureClause = figures
-    .map((file) => `The reference figure "${basename(file)}" appears on screen, reproduced faithfully — every label, axis and number unaltered.`)
+    .map((file) => `The reference figure "${basename(file)}" appears on screen, drawn in the scene's own materials and filling the frame — not pasted as a flat picture — with every label, axis and number reproduced faithfully and unaltered.`)
     .join(" ");
 
   const narrationClause =
