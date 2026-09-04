@@ -313,11 +313,34 @@ describe("buildShotPrompt", () => {
     // The manager numbers the references at shoot time (injectBindings).
     expect(prompt).not.toMatch(/Image \d/);
     expect(prompt).toContain('reference figure "prior.png"');
-    expect(prompt.split("\n")[0].startsWith("integrated_multimodal_description: [Shot 1] One continuous shot.")).toBe(true);
+    expect(prompt.split("\n")[0].startsWith("integrated_multimodal_description: [Shot 1] One continuous shot, no cuts. Style anchor: ")).toBe(true);
     expect(prompt).toContain("\noverall_soundscape:");
     expect(prompt).toContain("\nnon_diegetic_music: N/A");
     expect(prompt).toContain(RECIPE);
     expect(prompt).toContain("continues seamlessly");
+  });
+
+  test("a shot's beats and sound survive validation and landing, and a beat without a camera is named", () => {
+    const setDir = tempSet();
+    const draft = fullDraft() as { scenes: Array<{ shots: Array<Record<string, unknown>> }> };
+    draft.scenes[0].shots[0].beats = [
+      { from: 0, to: 4, action: "chalk lines sketch the slate", camera: "the camera holds still" },
+      { from: 4, to: 10, action: "the curve rises" },
+    ];
+    draft.scenes[0].shots[0].sound = "quiet classroom tone, a chalk tap at 4s";
+    const { scenes, problems } = validate(draft, setDir);
+    expect(problems).toEqual([expect.stringContaining("scene 1 (b1) shot 1 beat 2: no camera")]);
+    expect(scenes[0].shots[0].beats).toHaveLength(2);
+    expect(scenes[0].shots[0].sound).toBe("quiet classroom tone, a chalk tap at 4s");
+    const c = landScreenplay(course(), scenes, { language: "zh", styleRecipe: RECIPE, narration: "voiceover" });
+    const landed = c.nodes!.n1.shots[0];
+    expect(landed.beats).toHaveLength(2);
+    expect(landed.sound).toBe("quiet classroom tone, a chalk tap at 4s");
+    expect(landed.videoPrompt).toContain("Timeline of this one continuous take: 0-4s — chalk lines sketch the slate. The camera holds still.");
+    expect(landed.videoPrompt).toContain("overall_soundscape: Quiet classroom tone, a chalk tap at 4s. Nothing louder than the voice.");
+    // A shot without beats still lands with a prompt.
+    expect(c.nodes!.n2.shots[0].beats).toBeUndefined();
+    expect(String(c.nodes!.n2.shots[0].videoPrompt)).toContain("integrated_multimodal_description:");
   });
 
   test("on-camera speaks on screen; a scene opening establishes instead of continuing", () => {

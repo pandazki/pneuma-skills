@@ -53,6 +53,10 @@ interface Fakes {
   deps: ManagerDeps;
   /** Shots rendered, in order, as "node/shot". */
   renders: string[];
+  /** What each render was given: the first frame (image-to-video) or the reference images and audio. */
+  inputs: Map<string, { image?: string; refImages: string[]; refAudios: string[] }>;
+  /** The continuity kit steps that ran. */
+  kit: string[];
   /** Transcriptions attempted, in order, as "node/shot". */
   transcriptions: string[];
   /** Make the next render of this shot throw. */
@@ -65,11 +69,14 @@ interface Fakes {
 
 function fakes(setDir: string, manager: () => PlayManager): Fakes {
   const renders: string[] = [];
+  const inputs = new Map<string, { image?: string; refImages: string[]; refAudios: string[] }>();
+  const kit: string[] = [];
   const transcriptions: string[] = [];
   const failOnce = new Set<string>();
   const deafFor = new Map<string, number>();
   const holds = new Map<string, { promise: Promise<void>; release: () => void; aborted: boolean }>();
   const keyOf = (abs: string) => abs.slice(setDir.length + 1).replace(/^nodes\//, "").replace(/\.mp4$/, "");
+  const rel = (abs: string) => abs.slice(setDir.length + 1);
   const deps: ManagerDeps = {
     chat: async () => ({
       shots: [
@@ -77,9 +84,22 @@ function fakes(setDir: string, manager: () => PlayManager): Fakes {
         { script: "例子二。", visual: "coins again", duration: 8, figures: [] },
       ],
     }),
-    async renderShot({ output }, signal) {
+    async extractAudio(_video, output) {
+      kit.push("voice");
+      writeFileSync(output, "mp3");
+    },
+    async firstFrame(_video, output) {
+      kit.push("frame");
+      writeFileSync(output, "png");
+    },
+    async characterSheet({ outputs }) {
+      kit.push("sheet");
+      for (const o of outputs) writeFileSync(o, "png");
+    },
+    async renderShot({ output, image, refImages = [], refAudios = [] }, signal) {
       const key = keyOf(output);
       renders.push(key);
+      inputs.set(key, { image: image ? rel(image) : undefined, refImages: refImages.map(rel), refAudios: refAudios.map(rel) });
       if (failOnce.has(key)) {
         failOnce.delete(key);
         throw new Error(`boom at ${key}`);
@@ -126,6 +146,8 @@ function fakes(setDir: string, manager: () => PlayManager): Fakes {
   return {
     deps,
     renders,
+    inputs,
+    kit,
     transcriptions,
     failOnce,
     deafFor,
@@ -362,6 +384,74 @@ describe("createManager", () => {
     expect(f.renders.filter((k) => k === "n2/s1")).toHaveLength(1);
     expect(f.transcriptions.filter((k) => k === "n2/s1")).toHaveLength(3);
     expect(mgr.course.nodes.n2.shots[0].status).toBe("ready");
+  });
+
+  /** A confirmed style with a sample on file: anchor still + clip. */
+  function withSample(raw: ReturnType<typeof courseFixture>, extra: Record<string, unknown> = {}) {
+    mkdirSync(join(setDir, "style"), { recursive: true });
+    writeFileSync(join(setDir, "style", "anchor.png"), "png");
+    writeFileSync(join(setDir, "style", "sample.mp4"), "mp4");
+    raw.style = { ...raw.style, refImages: ["style/anchor.png"], sample: { image: "style/anchor.png", video: "style/sample.mp4", hook: "h" }, ...extra } as typeof raw.style;
+    writeFileSync(join(setDir, "course.json"), JSON.stringify(raw));
+  }
+
+  test("locked: the kit takes the voice from the sample, and every shot is reference-to-video with it", async () => {
+    withSample(courseFixture());
+    const f = fakes(setDir, () => mgr!);
+    mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, pollMs: 20 }).start();
+    await settle(mgr);
+
+    expect(f.kit).toEqual(["voice"]);
+    expect(mgr.course.style.voiceRef).toBe("style/voice.mp3");
+    expect(existsSync(join(setDir, "style/voice.mp3"))).toBe(true);
+    expect(onDisk().style.voiceRef).toBe("style/voice.mp3");
+    // Scene opening: the anchor as Image 1; inside the scene: the previous
+    // frame as Image 1 — never image-to-video; the voice on both.
+    expect(f.inputs.get("n1/s1")).toEqual({ image: undefined, refImages: ["style/anchor.png"], refAudios: ["style/voice.mp3"] });
+    expect(f.inputs.get("n1/s2")).toEqual({ image: undefined, refImages: ["nodes/n1/s1.last.png"], refAudios: ["style/voice.mp3"] });
+    expect(mgr.course.nodes.n1.shots[0].h3Practices).toMatch(/^\d{4}-\d{2}-\d{2}/);
+    // The voice reference is not a reference image: the binding says Audio 1.
+    expect(mgr.course.nodes.n1.status).toBe("ready");
+  });
+
+  test("fast: no kit, image-to-video inside a scene, no voice reference", async () => {
+    withSample(courseFixture());
+    const f = fakes(setDir, () => mgr!);
+    mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, continuity: "fast", pollMs: 20 }).start();
+    await settle(mgr);
+    expect(f.kit).toEqual([]);
+    expect(mgr.course.style.voiceRef).toBeUndefined();
+    expect(f.inputs.get("n1/s1")).toEqual({ image: undefined, refImages: ["style/anchor.png"], refAudios: [] });
+    expect(f.inputs.get("n1/s2")).toEqual({ image: "nodes/n1/s1.last.png", refImages: [], refAudios: [] });
+  });
+
+  test("locked with a speaker on screen: a character sheet is drawn once and rides on every shot", async () => {
+    withSample(courseFixture(), { narration: "on-camera" });
+    const f = fakes(setDir, () => mgr!);
+    mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, pollMs: 20 }).start();
+    await settle(mgr);
+    expect(f.kit).toEqual(["voice", "frame", "sheet"]);
+    expect(mgr.course.style.characterSheet).toEqual(["style/character-1.png", "style/character-2.png"]);
+    expect(mgr.course.style.refImages).toEqual(["style/anchor.png", "style/character-1.png", "style/character-2.png"]);
+    expect(f.inputs.get("n1/s1")?.refImages).toEqual(["style/anchor.png", "style/character-1.png", "style/character-2.png"]);
+    expect(f.inputs.get("n2/s1")?.refImages).toEqual(["style/anchor.png", "style/character-1.png", "style/character-2.png"]);
+    expect(f.inputs.get("n1/s2")?.refImages).toEqual(["nodes/n1/s1.last.png", "style/character-1.png", "style/character-2.png"]);
+
+    // A second manager finds the kit on file and does not draw it again.
+    await mgr.stop();
+    const g = fakes(setDir, () => mgr!);
+    mgr = createManager({ setDir, deps: g.deps, slots: 1, videoAhead: 1, planAhead: 1, pollMs: 20 }).start();
+    await settle(mgr);
+    expect(g.kit).toEqual([]);
+  });
+
+  test("locked without a sample shoots anyway, without a voice reference", async () => {
+    const f = fakes(setDir, () => mgr!);
+    mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, pollMs: 20 }).start();
+    await settle(mgr);
+    expect(f.kit).toEqual([]);
+    expect(mgr.course.nodes.n1.status).toBe("ready");
+    expect(f.inputs.get("n1/s2")).toEqual({ image: undefined, refImages: ["nodes/n1/s1.last.png"], refAudios: [] });
   });
 
   test("a shot binding more figures than the reference slots allow fails at the shoot, naming the split", async () => {

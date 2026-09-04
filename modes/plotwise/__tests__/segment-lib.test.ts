@@ -246,6 +246,28 @@ describe("planRefs", () => {
     expect(plan.lines[0]).toContain("style anchor");
     expect(plan.lines[0]).toContain("not content to show");
   });
+
+  test("the voice reference rides as Audio 1, outside the image budget", () => {
+    const plan = planRefs({
+      anchorFile: "nodes/n2/s1.last.png",
+      characters: ["style/character-1.png", "style/character-2.png"],
+      figures: [{ file: "evidence/b1/a.png", note: "" }, { file: "evidence/b1/b.png", note: "" }],
+      voice: "style/voice.mp3",
+    });
+    // Four images (the cap), then the audio.
+    expect(plan.refs.map((r) => [r.job, r.kind])).toEqual([
+      ["continuity", "image"],
+      ["character", "image"],
+      ["character", "image"],
+      ["figure", "image"],
+      ["voice", "audio"],
+    ]);
+    expect(plan.lines[4]).toBe("Audio 1 is the narrator's voice — the voiceover keeps exactly this voice, timbre and pace.");
+    const spoken = planRefs({ anchorFile: "style/anchor.png", anchorKind: "style-anchor", voice: "style/voice.mp3", narration: "on-camera" });
+    expect(spoken.lines[1]).toContain("the speaker's voice");
+    // No voice, no audio line.
+    expect(planRefs({ anchorFile: "style/anchor.png" }).refs.some((r) => r.kind === "audio")).toBe(false);
+  });
 });
 
 describe("chooseEndpoint (from what the script shows)", () => {

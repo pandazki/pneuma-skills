@@ -6,6 +6,10 @@
  */
 
 import type { CourseLike, OutlineBeatLike } from "./segment-lib.d.mts";
+import type { ShotBeat } from "./h3-prompt.d.mts";
+
+/** The prompt builder lives in h3-prompt.mjs; re-exported for callers. */
+export { buildShotPrompt } from "./h3-prompt.d.mts";
 
 /** One shot as the writer hands it over: narration, picture, length. */
 export interface ScreenplayShot {
@@ -14,6 +18,10 @@ export interface ScreenplayShot {
   duration: number;
   /** Set-relative paths of rendered figures this shot puts on screen. */
   figures: string[];
+  /** The picture as a timeline inside one continuous take (optional). */
+  beats?: ShotBeat[];
+  /** Ambience and action effects under the voice (optional). */
+  sound?: string;
 }
 
 /** The side trip offered at the end of every main scene. */
@@ -126,16 +134,6 @@ export function validateScreenplay(
   raw: unknown,
   context: { course: CourseLike; language?: string; setDir?: string },
 ): { scenes: ScreenplayScene[]; problems: string[] };
-
-export function buildShotPrompt(input: {
-  styleRecipe?: string;
-  narration?: "on-camera" | "voiceover" | string;
-  language?: string;
-  shot: Partial<ScreenplayShot>;
-  sceneGoal?: string;
-  hasParentFrame?: boolean;
-  isSceneOpening?: boolean;
-}): string;
 
 export function landScreenplay(
   course: CourseLike,

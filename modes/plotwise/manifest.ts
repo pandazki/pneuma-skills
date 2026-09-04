@@ -17,7 +17,7 @@ import { load, save } from "./domain.js";
 
 const plotwiseManifest: ModeManifest = {
   name: "plotwise",
-  version: "0.4.0",
+  version: "0.5.0",
   displayName: {
     en: "Plotwise",
     "zh-CN": "Plotwise",
@@ -206,6 +206,18 @@ The user just opened the learning studio. Greet them briefly (1-2 sentences) and
         defaultValue: "480P",
       },
       {
+        name: "continuity",
+        label: "Continuity",
+        description:
+          "How hard the shoot holds one voice and one face across the course — every shot carries the sample's narration as a voice reference and, for a speaker on screen, a character sheet (about four seconds more a shot); or the faster chain that lets the narrator drift",
+        type: "select",
+        options: [
+          { value: "locked", label: "Locked", description: "One narrator, one face, one look — the sample's voice rides on every shot" },
+          { value: "fast", label: "Fast", description: "Cheapest per shot; the voice may change between shots" },
+        ],
+        defaultValue: "locked",
+      },
+      {
         name: "falApiKey",
         label: "fal.ai API Key",
         description:
@@ -237,6 +249,13 @@ scene length toward these preferences, while always respecting explicit instruct
   },
 
   changelog: {
+    "0.5.0": [
+      "The H3 prompt practice lives in one script (h3-prompt.mjs), not in the model's head: every shot's prompt opens on the style anchor, writes the picture as a timeline of beats each with its camera move, carries a two-layer soundscape under the voice, and closes on the negatives for what the style shows",
+      "One voice across the course: the confirmed sample's narration rides on every reference-to-video shot as the voice reference (about four seconds more a shot); a speaker on screen gets a character sheet so the same face appears in every scene",
+      "Continuity init param — locked (default) shoots every shot reference-to-video with the voice and the sheet; fast keeps the cheaper image-to-video chain",
+      "The eighteen style recipes name their kind, frame, concrete colors, material and light, so the anchor holds across shots",
+      "Shot joins fade 30 ms of audio so a scene no longer clicks between shots",
+    ],
     "0.4.0": [
       "Play is a program. After the style is confirmed and the outline lands, write-screenplay.mjs writes the whole main line in one designed call — one scene per beat, 1-6 chained shots as long as the content needs, one detour brief per scene — and play-manager.mjs runs the play loop as a long-lived process: two queues (Luna for detours and questions, H3 slots for shots), scheduling by distance from the learner with main before detour, pruning and remote cancellation on choice, one narration re-shoot per shot, the shots concatenated into the scene. No model runs on the click path; the director does nothing during play but answer questions (a request file) and restart the manager.",
       "The viewer writes choices and retries to state/choice.json instead of notifying the director; between scenes the stage shows an interlude — the last frame drifting under a recap of what was just said, what comes next, and the shot progress (拍摄中 2/3) — and the caption follows the shot being spoken. The manager's heartbeat is watched: a stopped one is shown and reported once (managerOffline).",

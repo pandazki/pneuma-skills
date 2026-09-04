@@ -177,16 +177,18 @@ and the outline has landed:
 ```
 node {SKILL_PATH}/scripts/write-screenplay.mjs --set <set> --json
 node {SKILL_PATH}/scripts/play-manager.mjs --set <set> --detach \
-  --slots 3 --video-ahead {{lookahead}} --plan-ahead 2 --resolution {{resolution}}
+  --slots 3 --video-ahead {{lookahead}} --plan-ahead 2 --resolution {{resolution}} \
+  --continuity {{continuity}}
 ```
 
 (`{SKILL_PATH}` is this skill's install directory — the base directory
 shown when the skill loads. Paths inside course.json are set-relative.
-The `--video-ahead` and `--resolution` values above ARE this session's
-init params, filled in when the skill was installed — copy the command
-as written. If either still reads as a `{{…}}` placeholder, use 2 and
-480P. A session that asked for 768P and was shot at 480P is a wrong
-course, not a slower one — the third trial did exactly that.) **`--detach` is the only way to start the manager.**
+The `--video-ahead`, `--resolution` and `--continuity` values above ARE
+this session's init params, filled in when the skill was installed —
+copy the command as written. If one still reads as a `{{…}}`
+placeholder, use 2, 480P and locked. A session that asked for 768P and
+was shot at 480P is a wrong course, not a slower one — the third trial
+did exactly that.) **`--detach` is the only way to start the manager.**
 It daemonizes itself into its own session, waits for its pid file and
 prints `{ pid, log }` — the command returns in seconds and the manager
 lives on. Never `nohup … &`, never `run_in_background`, never run it in
@@ -364,6 +366,23 @@ style is anchored by IMAGES, never by prompt adjectives alone:
   and shoots the 5s sample from it. `confirm-style` records
   `refImages = [anchor, ...learner references]`; entries after the anchor
   ride along as recurring subjects on every shot.
+- **The sample is also the voice.** With `--continuity locked` (the
+  default) the manager makes a continuity kit before the first shot: the
+  sample's narration becomes `<set>/style/voice.mp3` and rides on every
+  reference-to-video shot as the voice reference, so the narrator keeps
+  one voice across shots and scenes (measured +4 s a shot); for a style
+  with a speaker on screen, two more angles of the host are drawn from
+  the sample's first frame (`style/character-1.png`, `-2.png`) and join
+  `refImages`, so the same face appears in every scene. `fast` skips the
+  kit and shoots image-to-video inside a scene — cheaper, and the voice
+  may drift. You start nothing of this by hand; the manager does it and
+  logs each step in `state/manager.log`.
+- **Prompt craft is not yours.** `h3-prompt.mjs` builds every shot's
+  prompt from what Luna wrote (narration, timed beats with a camera
+  move each, a sound line) with the practice baked in — style anchor
+  first, negatives last. What the practice is and why:
+  `references/h3-best-practices.md`. Improve it there and in that
+  script, never in a prompt you type.
 
 ## Narration QA (direct use)
 
@@ -383,7 +402,7 @@ script. A clip that says the wrong thing is worse than no clip.
 
 **Kickoff.** This session's init params: course depth
 **{{perceivedDuration}}**, scenes shot ahead **{{lookahead}}**, resolution
-**{{resolution}}**. Both API keys are required and nothing here has an
+**{{resolution}}**, continuity **{{continuity}}**. Both API keys are required and nothing here has an
 offline lane: fal for every clip, OpenRouter for the screenplay, every
 detour and question scene and the narration judge — `write-screenplay.mjs`
 and the manager refuse to run without `OPENROUTER_API_KEY`, and there is
@@ -518,3 +537,4 @@ Read when you need depth; keep this file lean.
 | Style presets — 18 recipes, narration modes, best-for | `references/styles.md` |
 | Grounding — accuracy tiers, figure rendering, the outline evidence index, evidence schema | `references/grounding.md` |
 | Generation — endpoint cheatsheet, prompt anatomy, the manager's steps and timings, QA, pricing | `references/generation.md` |
+| H3 best practices — the prompt shape, the continuity kit, what was measured, how to update the practice | `references/h3-best-practices.md` |

@@ -64,13 +64,25 @@ import {
   withCourseLock,
 } from "./segment-lib.mjs";
 import { writeDetourScene } from "./screenplay-lib.mjs";
+import { H3_PRACTICES_VERSION } from "./h3-prompt.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const SKILL_ROOT = dirname(__dirname);
 const GENERATE_VIDEO = join(__dirname, "generate-video.mjs");
 const TRANSCRIBE = join(__dirname, "transcribe.mjs");
+const GENERATE_IMAGE = join(__dirname, "generate_image.mjs");
 const STYLES_MD = join(SKILL_ROOT, "references", "styles.md");
+
+/** Where the continuity kit lives, set-relative. */
+export const VOICE_REF = "style/voice.mp3";
+export const CHARACTER_SHEET = ["style/character-1.png", "style/character-2.png"];
+/** fal takes 2-15 s of reference audio; the sample is 5 s. */
+const VOICE_REF_MAX_S = 15;
+/** Audio fade at every shot join in the scene concat: long enough to
+ * kill the click of a waveform discontinuity, short enough to be
+ * inaudible as a fade. */
+const SEAM_FADE_S = 0.03;
 
 // ── Small helpers ───────────────────────────────────────────────────────────
 
@@ -143,19 +155,52 @@ export function defaultDeps({ setDir, resolution = "480P", model = DEFAULT_MODEL
       ? ({ system, user }) => chatJson({ key: openrouterKey, model, system, user, temperature: 0.4 })
       : null,
     /** Render one shot to `output`; returns generate-video's JSON. */
-    async renderShot({ prompt, output, duration, image, refImages = [], seed }, signal) {
+    async renderShot({ prompt, output, duration, image, refImages = [], refAudios = [], seed }, signal) {
       // A shot that fal has not returned in six minutes is re-tried, not
       // waited on: the learner is watching a clock. (Three 768P openings
       // once sat 21 minutes in fal's queue under the generator's own
       // 15-minute deadline, 2026-09-03.)
       const argv = ["--prompt", prompt, "--output", output, "--duration", String(duration), "--resolution", resolution, "--expansion", "balanced", "--deadline-s", String(SHOT_DEADLINE_S), "--json"];
       if (image) argv.push("--image", image);
-      else if (refImages.length) for (const r of refImages) argv.push("--ref-image", r);
-      else argv.push("--endpoint", "text");
+      else if (refImages.length) {
+        for (const r of refImages) argv.push("--ref-image", r);
+        for (const a of refAudios) argv.push("--ref-audio", a);
+      } else argv.push("--endpoint", "text");
       if (seed != null) argv.push("--seed", String(seed));
       const r = await runChild(process.execPath, [GENERATE_VIDEO, ...argv], { signal, cwd: setDir });
       if (r.code !== 0) throw new Error(`generate-video.mjs failed: ${(r.stderr || "").trim().slice(0, 400)}`);
       return JSON.parse(r.stdout);
+    },
+    /** The narration of a clip as an mp3, at most `maxSeconds` long. */
+    async extractAudio(video, output, maxSeconds = VOICE_REF_MAX_S, signal) {
+      const r = await runChild("ffmpeg", ["-y", "-v", "error", "-i", video, "-t", String(maxSeconds), "-vn", "-acodec", "libmp3lame", "-q:a", "2", output], { signal });
+      if (r.code !== 0 || !existsSync(output)) throw new Error(`ffmpeg audio extraction failed: ${(r.stderr || "").trim().slice(-200)}`);
+      const d = probeDuration(output);
+      if (d != null && d < 2) throw new Error(`the voice reference is ${d.toFixed(1)}s — fal needs at least 2s of audio`);
+    },
+    /** The first frame of a clip as a PNG. */
+    async firstFrame(video, output, signal) {
+      const r = await runChild("ffmpeg", ["-y", "-v", "error", "-ss", "0.1", "-i", video, "-frames:v", "1", output], { signal });
+      if (r.code !== 0 || !existsSync(output)) throw new Error(`ffmpeg first-frame extraction failed: ${(r.stderr || "").trim().slice(-200)}`);
+    },
+    /**
+     * Two more angles of the course's host from one frame, so every shot
+     * carries the same face: reference images govern identity, prompt
+     * words do not (a face described in words drifts scene to scene).
+     */
+    async characterSheet({ frame, outputs, styleRecipe }, signal) {
+      const uri = `data:image/png;base64,${readFileSync(frame).toString("base64")}`;
+      const angles = [
+        "a three-quarter view, head and shoulders",
+        "a medium close-up facing the camera, neutral expression",
+      ];
+      for (let i = 0; i < outputs.length; i++) {
+        const prompt = `Character sheet. The same person as in the attached frame — identical face, hair, skin, outfit and accessories — shown as ${angles[i] ?? angles[0]}, in the same setting and lighting, in this exact visual style: ${styleRecipe}. No text, no labels, no watermark, 16:9.`;
+        const dir = dirname(outputs[i]);
+        const prefix = basename(outputs[i]).replace(/\.png$/, "");
+        const r = await runChild(process.execPath, [GENERATE_IMAGE, prompt, "--model", "gpt-image-2", "--image-urls", uri, "--aspect-ratio", "16:9", "--quality", "medium", "--output-dir", dir, "--filename-prefix", prefix], { signal });
+        if (r.code !== 0 || !existsSync(outputs[i])) throw new Error(`character sheet ${i + 1} failed: ${(r.stderr || "").trim().slice(-200)}`);
+      }
     },
     async transcribe({ input, language }, signal) {
       const r = await runChild(process.execPath, [TRANSCRIBE, "--input", input, "--language", language, "--json"], { signal, cwd: setDir });
@@ -176,18 +221,36 @@ export function defaultDeps({ setDir, resolution = "480P", model = DEFAULT_MODEL
      * demuxer does not check, so this does (2026-09-03).
      */
     async concat(inputs, output, signal) {
-      const expected = inputs.reduce((sum, f) => sum + (probeDuration(f) ?? 0), 0);
+      const durations = inputs.map((f) => probeDuration(f) ?? 0);
+      const expected = durations.reduce((sum, d) => sum + d, 0);
       const fits = () => {
         const d = probeDuration(output);
         return d != null && Math.abs(d - expected) <= 1.5;
       };
+      // A join between two clips is a waveform discontinuity — a click.
+      // Each shot's audio fades in and out over 30 ms at the seam; the
+      // shots end on sentence boundaries, so nothing spoken is touched.
+      const fade = (i, from) =>
+        `[${from}:a]afade=t=in:st=0:d=${SEAM_FADE_S},afade=t=out:st=${Math.max(0, durations[i] - SEAM_FADE_S).toFixed(3)}:d=${SEAM_FADE_S}`;
       const shapes = inputs.map((f) => JSON.stringify(probeStreams(f)));
       const uniform = shapes.every((x) => x === shapes[0] && x !== "null");
       if (uniform) {
+        // Video by stream copy through the concat demuxer; audio through
+        // the fade chain, so only the audio is re-encoded.
         const list = `${output}.txt`;
         writeFileSync(list, inputs.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join("\n") + "\n");
         try {
-          const copy = await runChild("ffmpeg", ["-y", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", "-movflags", "+faststart", output], { signal });
+          const argv = ["-y", "-f", "concat", "-safe", "0", "-i", list];
+          for (const f of inputs) argv.push("-i", f);
+          const chains = inputs.map((_, i) => `${fade(i, i + 1)}[a${i}]`).join(";");
+          const refs = inputs.map((_, i) => `[a${i}]`).join("");
+          argv.push(
+            "-filter_complex", `${chains};${refs}concat=n=${inputs.length}:v=0:a=1[a]`,
+            "-map", "0:v", "-c:v", "copy",
+            "-map", "[a]", "-c:a", "aac", "-b:a", "128k", "-ar", "48000",
+            "-movflags", "+faststart", output,
+          );
+          const copy = await runChild("ffmpeg", argv, { signal });
           if (copy.code === 0 && existsSync(output) && fits()) return;
         } finally {
           try { unlinkSync(list); } catch { /* fine */ }
@@ -199,7 +262,7 @@ export function defaultDeps({ setDir, resolution = "480P", model = DEFAULT_MODEL
       const argv = ["-y"];
       for (const f of inputs) argv.push("-i", f);
       const chains = inputs
-        .map((_, i) => `[${i}:v]scale=${w}:${h},fps=24,format=yuv420p[v${i}];[${i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`)
+        .map((_, i) => `[${i}:v]scale=${w}:${h},fps=24,format=yuv420p[v${i}];${fade(i, i)},aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`)
         .join(";");
       const refs = inputs.map((_, i) => `[v${i}][a${i}]`).join("");
       argv.push(
@@ -227,18 +290,35 @@ export function defaultDeps({ setDir, resolution = "480P", model = DEFAULT_MODEL
  *   .reconcile()      — (re)schedule work from the current node
  *   .stop()           — cancel everything, exit
  */
-export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhead = 2, log = () => {}, pollMs = 500 }) {
+export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhead = 2, continuity = "locked", log = () => {}, pollMs = 500 }) {
   setDir = resolve(setDir);
   const stateDir = join(setDir, "state");
   mkdirSync(stateDir, { recursive: true });
   mkdirSync(join(stateDir, "requests"), { recursive: true });
+  if (continuity !== "locked" && continuity !== "fast") throw new Error(`continuity must be "locked" or "fast" (got ${JSON.stringify(continuity)})`);
 
   let course = readCourse(setDir);
   const style = resolveStyle(course, existsSync(STYLES_MD) ? readFileSync(STYLES_MD, "utf-8") : "");
   const language = course.language ?? "zh";
-  const refImages = (course.style?.refImages ?? []).filter((f) => typeof f === "string" && existsSync(join(setDir, f)));
-  const styleAnchor = refImages[0] ?? null;
-  const characters = refImages.slice(1);
+  // The style's reference images: the anchor first, then the recurring
+  // characters (the continuity kit may add a character sheet at start).
+  let refImages = [];
+  let styleAnchor = null;
+  let characters = [];
+  const reloadRefs = () => {
+    refImages = (course.style?.refImages ?? []).filter((f) => typeof f === "string" && existsSync(join(setDir, f)));
+    styleAnchor = refImages[0] ?? null;
+    characters = refImages.slice(1);
+  };
+  reloadRefs();
+  /** The course's voice reference, when the kit produced one. */
+  const voiceRef = () => {
+    const v = course.style?.voiceRef;
+    return continuity === "locked" && typeof v === "string" && existsSync(join(setDir, v)) ? v : null;
+  };
+  // Video work waits for the kit (voice reference, character sheet); the
+  // planning queue does not need it.
+  let kitReady = false;
 
   // Every queue transition refreshes the snapshot; a key LEAVING the
   // active set (a job finished, failed or — after an abort — finally
@@ -349,25 +429,85 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
         `${node.id}/${shot.id}: ${bound.length} figures with ${anchored ? "the continuity frame and " : ""}${characters.length} character reference${characters.length === 1 ? "" : "s"} exceed the ${MAX_REFS} reference slots (${Math.max(0, budget)} left for figures) — split the figures across shots`,
       );
     }
+    const voice = voiceRef();
+    const reference = (plan) => ({
+      mode: "reference",
+      refs: plan.refs.filter((r) => r.kind !== "audio").map((r) => join(setDir, r.file)),
+      audios: plan.refs.filter((r) => r.kind === "audio").map((r) => join(setDir, r.file)),
+      lines: plan.lines,
+    });
     if (prevFrame) {
       // Inside a scene: continue from the previous shot's last frame.
-      if (bound.length === 0 && characters.length === 0) {
-        return { mode: "image", image: join(setDir, prevFrame), refs: [], lines: [] };
+      // `fast` shoots image-to-video when nothing else rides along (the
+      // cheapest call, but no voice reference — the narrator may drift);
+      // `locked` keeps every shot reference-to-video with the voice.
+      if (continuity === "fast" && bound.length === 0 && characters.length === 0) {
+        return { mode: "image", image: join(setDir, prevFrame), refs: [], audios: [], lines: [] };
       }
-      const plan = planRefs({ anchorFile: prevFrame, anchorKind: "continuity", characters, figures: bound, mode: "reference" });
-      return { mode: "reference", refs: plan.refs.map((r) => join(setDir, r.file)), lines: plan.lines };
+      return reference(planRefs({ anchorFile: prevFrame, anchorKind: "continuity", characters, figures: bound, voice, narration: style.narration, mode: "reference" }));
     }
     // A scene opening: the style anchor as a look reference (a cut is fine
     // between scenes), plus whatever the shot shows.
     if (styleAnchor) {
-      const plan = planRefs({ anchorFile: styleAnchor, anchorKind: "style-anchor", characters, figures: bound, mode: "reference" });
-      return { mode: "reference", refs: plan.refs.map((r) => join(setDir, r.file)), lines: plan.lines };
+      return reference(planRefs({ anchorFile: styleAnchor, anchorKind: "style-anchor", characters, figures: bound, voice, narration: style.narration, mode: "reference" }));
     }
     if (bound.length) {
-      const plan = planRefs({ anchorFile: null, characters, figures: bound, mode: "reference" });
-      return { mode: "reference", refs: plan.refs.map((r) => join(setDir, r.file)), lines: plan.lines };
+      return reference(planRefs({ anchorFile: null, characters, figures: bound, voice, narration: style.narration, mode: "reference" }));
     }
-    return { mode: "text", refs: [], lines: [] };
+    return { mode: "text", refs: [], audios: [], lines: [] };
+  }
+
+  /**
+   * The continuity kit, made once per course before the first shot: the
+   * confirmed sample's narration as the voice reference, and for a course
+   * with a speaker on screen (or references the learner supplied) a
+   * character sheet — two more angles of the host from the sample's
+   * first frame — so identity rides on images, not on prompt words.
+   * `fast` skips it. Every step is best effort and reported: a course
+   * without a sample still shoots, without a voice reference.
+   */
+  async function ensureContinuityKit() {
+    if (continuity !== "locked") return;
+    const sample = course.style?.sample?.video;
+    const sampleAbs = typeof sample === "string" ? join(setDir, sample) : null;
+    if (!sampleAbs || !existsSync(sampleAbs)) {
+      log("continuity kit: no confirmed sample on file — shooting without a voice reference");
+      return;
+    }
+    const patch = {};
+    if (!voiceRef() && typeof deps.extractAudio === "function") {
+      try {
+        await deps.extractAudio(sampleAbs, join(setDir, VOICE_REF));
+        patch.voiceRef = VOICE_REF;
+        log(`continuity kit: voice reference ${VOICE_REF} from the sample`);
+      } catch (e) {
+        log(`continuity kit: voice reference failed (${e.message}) — shooting without it`);
+      }
+    }
+    const wantsSheet = style.narration === "on-camera" || (course.style?.userRefs ?? []).length > 0;
+    const hasSheet = Array.isArray(course.style?.characterSheet) && course.style.characterSheet.every((f) => existsSync(join(setDir, f)));
+    if (wantsSheet && !hasSheet && typeof deps.characterSheet === "function" && typeof deps.firstFrame === "function") {
+      try {
+        const frame = join(setDir, "style", "character-0.png");
+        await deps.firstFrame(sampleAbs, frame);
+        const outputs = CHARACTER_SHEET.map((f) => join(setDir, f));
+        await deps.characterSheet({ frame, outputs, styleRecipe: style.recipe }, undefined);
+        patch.characterSheet = [...CHARACTER_SHEET];
+        const userRefs = (course.style?.userRefs ?? []).filter((f) => typeof f === "string");
+        patch.refImages = [...(styleAnchor ? [styleAnchor] : []), ...CHARACTER_SHEET, ...userRefs.filter((f) => f !== styleAnchor)];
+        log(`continuity kit: character sheet ${CHARACTER_SHEET.join(", ")}`);
+      } catch (e) {
+        log(`continuity kit: character sheet failed (${e.message}) — shooting without it`);
+      }
+    }
+    if (Object.keys(patch).length) {
+      withCourseLock(setDir, (c) => {
+        c.style = { ...(c.style ?? {}), ...patch };
+        course.style = c.style;
+        return c;
+      });
+      reloadRefs();
+    }
   }
 
   /**
@@ -472,8 +612,9 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
         if (attempt === 1 && unchecked) {
           result = { duration: shot.video.duration };
         } else {
-          result = await deps.renderShot({ prompt, output: join(setDir, shotFile), duration: shot.duration, image: refs.mode === "image" ? refs.image : undefined, refImages: refs.mode === "reference" ? refs.refs : [], seed: attempt === 1 ? undefined : Math.floor(Math.random() * 2 ** 31) }, signal);
+          result = await deps.renderShot({ prompt, output: join(setDir, shotFile), duration: shot.duration, image: refs.mode === "image" ? refs.image : undefined, refImages: refs.mode === "reference" ? refs.refs : [], refAudios: refs.mode === "reference" ? refs.audios ?? [] : [], seed: attempt === 1 ? undefined : Math.floor(Math.random() * 2 ** 31) }, signal);
           shot.video = { file: shotFile, duration: Number(result.duration ?? deps.probe(join(setDir, shotFile)) ?? shot.duration) };
+          shot.h3Practices = H3_PRACTICES_VERSION;
         }
         setPhase(id, "qa", { shotIndex: i + 1 });
         const qa = await qaShot(node, shot, result, signal);
@@ -557,7 +698,7 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
         });
         continue;
       }
-      if ((n.shots ?? []).length > 0 && n.status === "planned" && distance <= videoAhead) {
+      if (kitReady && (n.shots ?? []).length > 0 && n.status === "planned" && distance <= videoAhead) {
         // Marked before the enqueue: a job that starts at once sets
         // `generating` synchronously, and a mark after the call would
         // put "排队中" over a shoot in progress (seen 2026-09-03).
@@ -704,7 +845,19 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
       const choicePath = join(stateDir, "choice.json");
       if (existsSync(choicePath)) { try { lastChoiceAt = JSON.parse(readFileSync(choicePath, "utf-8")).at ?? ""; } catch { /* fine */ } }
       writeFileSync(join(stateDir, "manager.pid"), String(process.pid));
+      // Scripting starts at once; shooting waits for the kit (a minute at
+      // most: an audio extraction and, for a speaker on screen, two
+      // images). The snapshot is written first so the viewer sees a live
+      // manager while the kit is made.
+      syncSnapshot();
+      void persist();
       reconcile();
+      void ensureContinuityKit()
+        .catch((e) => log(`continuity kit: ${e.message}`))
+        .finally(() => {
+          kitReady = true;
+          reconcile();
+        });
       timer = setInterval(() => { try { pollInputs(); } catch (e) { log(`poll: ${e.message}`); } }, pollMs);
       // The heartbeat: while a shot waits on fal nothing else writes the
       // snapshot, and a silent snapshot reads as a dead process.
@@ -740,6 +893,7 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
       "video-ahead": { type: "string", default: "2" },
       "plan-ahead": { type: "string", default: "2" },
       resolution: { type: "string", default: "480P" },
+      continuity: { type: "string", default: "locked" },
       model: { type: "string" },
       once: { type: "boolean", default: false },
       detach: { type: "boolean", default: false },
@@ -809,9 +963,10 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     slots: Math.max(1, Number(args.slots) || 3),
     videoAhead: Math.max(1, Number(args["video-ahead"]) || 2),
     planAhead: Math.max(1, Number(args["plan-ahead"]) || 2),
+    continuity: args.continuity.toLowerCase(),
     log,
   }).start();
-  log(`play-manager started for ${setDir} (slots ${args.slots}, video-ahead ${args["video-ahead"]})`);
+  log(`play-manager started for ${setDir} (slots ${args.slots}, video-ahead ${args["video-ahead"]}, continuity ${args.continuity}, h3 practices ${H3_PRACTICES_VERSION})`);
   const shutdown = async (sig) => { log(`${sig}: stopping`); await manager.stop(); process.exit(0); };
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
