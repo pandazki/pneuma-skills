@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.46.0] - 2026-09-04
+
+### Added
+- **Plotwise shoots montages, not talking illustrations (skill 0.6.0).** Every prompt used to open with "One continuous shot, no cuts" — and the courses looked like it. A scene is now 1–3 montage clips of up to 15 s; inside a clip the model cuts by itself across a time-coded shot list of 3–9 cuts, each a composed picture with its own camera move and a change of scale, with the narration distributed across the timeline. The reproduction that decided it: the community's published H3 prompts come back at their published quality on fal's H3 Max at 480P in about ten seconds, and a voiceover inside one is spoken verbatim — the model was never the ceiling.
+- **The writer is a director, and the plan hands it something to film.** Luna's brief is the community's grammar — the visual device first, then the four blocks — and every outline beat now carries a style-agnostic `device` (a coin that buds a second coin, then both bud again, climbing a band that steepens) plus a visual bible for the course: motifs, and what it never draws. Measured on 2026-09-04: the same model on the same topic in the same style returns montages of a different league once it is handed a device instead of a concept. Prompt craft stays out of the agent's hands: `h3-prompt.mjs` assembles the four blocks and numbers the reference bindings at the shoot.
+- **The style board is art direction.** All eighteen recipes are rewritten as director's briefs — palette with intent and hex, material, light, how the camera behaves across cuts, the look's own graphic devices, and a sharpened "teaches best / never for" (a three-colour casino poster does not teach compound interest). The anchor is a composed key frame of the topic's device rather than an empty set, and the sample the learner confirms is the hook's first montage clip, written and assembled exactly as a real scene is.
+- **One narrator and one look on every clip, without a frame chain.** Every clip is shot reference-to-video with the style anchor as Image 1, the character sheet for a speaker on screen, that clip's figures bound to the cut they appear in, and the confirmed sample's narration as Audio 1 (from 0.5.0's continuity kit). The image-to-video frame chain and its `Continuity` init param are retired — the chain bought a seamless join at the price of the voice reference and of every cut inside a shot. Courses shot before 0.6 still play: the viewer reads a legacy `shots[]` as one-cut clips.
+- **The H3 practice lives in scripts and is measured.** `references/h3-best-practices.md` is rewritten around the four blocks with the evidence — the reproduction, the writer trial, the re-shoot that proved seed variance beats prompt wording on a single shot, and the narration-density band found in the first live end-to-end run: in a 15 s clip, under about 50 Chinese characters the model pads the silence with a repeated line or invented speech (first take clean 1 of 4), 50–89 pass (6 of 8), 118 swallows a stretch (0 of 2). The validator reports a floor and a ceiling, and the writer is re-asked once with those notes — the one place a model is re-asked — after which the trial course's three clips all passed their transcript gate first take.
+
+### Fixed
+- **A detour no longer dies when the writer answers with two JSON objects.** Luna occasionally sends `{"device": …}` and `{"clips": […]}` separately; a greedy match over the whole completion then parsed as neither and the learner's detour was never written. Balanced objects are now parsed one by one and merged.
+- **A montage whose cuts are all the same distance is refused at the brief.** A sample whose five cuts were all mid-overheads lost the one thing its own anchor did best; every clip now needs at least one wide cut and one close.
+- **The manager never fails to start on a stale flag.** A session resumed with the 0.5 skill text still passes `--continuity`; it is accepted and ignored instead of leaving the learner on "等待开拍".
+
 ## [3.45.2] - 2026-09-03
 
 ### Fixed
