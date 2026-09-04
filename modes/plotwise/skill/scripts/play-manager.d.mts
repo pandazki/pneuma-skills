@@ -85,8 +85,8 @@ export interface ManagerOptions {
   slots?: number;
   videoAhead?: number;
   planAhead?: number;
-  /** "locked" (default): every shot reference-to-video with the voice reference and character sheet; "fast": image-to-video inside a scene, no voice reference. */
-  continuity?: "locked" | "fast";
+  /** "chain" (default): image-to-video frame chain inside a scene, reference-to-video (with the voice) for openings, figures and characters; "locked": every shot reference-to-video with the voice. The continuity kit is made in both. */
+  continuity?: "chain" | "locked";
   log?: (line: string) => void;
   pollMs?: number;
 }

@@ -186,7 +186,7 @@ shown when the skill loads. Paths inside course.json are set-relative.
 The `--video-ahead`, `--resolution` and `--continuity` values above ARE
 this session's init params, filled in when the skill was installed —
 copy the command as written. If one still reads as a `{{…}}`
-placeholder, use 2, 480P and locked. A session that asked for 768P and
+placeholder, use 2, 480P and chain. A session that asked for 768P and
 was shot at 480P is a wrong course, not a slower one — the third trial
 did exactly that.) **`--detach` is the only way to start the manager.**
 It daemonizes itself into its own session, waits for its pid file and
@@ -366,17 +366,19 @@ style is anchored by IMAGES, never by prompt adjectives alone:
   and shoots the 5s sample from it. `confirm-style` records
   `refImages = [anchor, ...learner references]`; entries after the anchor
   ride along as recurring subjects on every shot.
-- **The sample is also the voice.** With `--continuity locked` (the
-  default) the manager makes a continuity kit before the first shot: the
-  sample's narration becomes `<set>/style/voice.mp3` and rides on every
-  reference-to-video shot as the voice reference, so the narrator keeps
-  one voice across shots and scenes (measured +4 s a shot); for a style
-  with a speaker on screen, two more angles of the host are drawn from
-  the sample's first frame (`style/character-1.png`, `-2.png`) and join
-  `refImages`, so the same face appears in every scene. `fast` skips the
-  kit and shoots image-to-video inside a scene — cheaper, and the voice
-  may drift. You start nothing of this by hand; the manager does it and
-  logs each step in `state/manager.log`.
+- **The sample is also the voice.** Before the first shot the manager
+  makes a continuity kit: the sample's narration becomes
+  `<set>/style/voice.mp3` and rides on every reference-to-video shot as
+  the voice reference (measured +4 s a shot). `--continuity chain` (the
+  default) keeps the seamless image-to-video frame chain inside a scene
+  for voiceover shots that carry no figure and no character; a speaker
+  on screen is always a reference shot with the voice. `locked` shoots
+  every shot reference-to-video with the voice and, for a speaker on
+  screen, draws two more angles of the host from the sample's first
+  frame (`style/character-1.png`, `-2.png`) into `refImages` — one
+  narrator and one face guaranteed, at a looser join and ~7 s more a
+  shot. You start nothing of this by hand; the manager does it and logs
+  each step in `state/manager.log`.
 - **Prompt craft is not yours.** `h3-prompt.mjs` builds every shot's
   prompt from what Luna wrote (narration, timed beats with a camera
   move each, a sound line) with the practice baked in — style anchor

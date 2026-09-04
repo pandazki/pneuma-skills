@@ -290,12 +290,12 @@ export function defaultDeps({ setDir, resolution = "480P", model = DEFAULT_MODEL
  *   .reconcile()      — (re)schedule work from the current node
  *   .stop()           — cancel everything, exit
  */
-export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhead = 2, continuity = "locked", log = () => {}, pollMs = 500 }) {
+export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhead = 2, continuity = "chain", log = () => {}, pollMs = 500 }) {
   setDir = resolve(setDir);
   const stateDir = join(setDir, "state");
   mkdirSync(stateDir, { recursive: true });
   mkdirSync(join(stateDir, "requests"), { recursive: true });
-  if (continuity !== "locked" && continuity !== "fast") throw new Error(`continuity must be "locked" or "fast" (got ${JSON.stringify(continuity)})`);
+  if (continuity !== "chain" && continuity !== "locked") throw new Error(`continuity must be "chain" or "locked" (got ${JSON.stringify(continuity)})`);
 
   let course = readCourse(setDir);
   const style = resolveStyle(course, existsSync(STYLES_MD) ? readFileSync(STYLES_MD, "utf-8") : "");
@@ -314,11 +314,12 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
   /** The course's voice reference, when the kit produced one. */
   const voiceRef = () => {
     const v = course.style?.voiceRef;
-    return continuity === "locked" && typeof v === "string" && existsSync(join(setDir, v)) ? v : null;
+    return typeof v === "string" && existsSync(join(setDir, v)) ? v : null;
   };
   // Video work waits for the kit (voice reference, character sheet); the
   // planning queue does not need it.
   let kitReady = false;
+  let kitPromise = Promise.resolve();
 
   // Every queue transition refreshes the snapshot; a key LEAVING the
   // active set (a job finished, failed or — after an abort — finally
@@ -438,10 +439,16 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
     });
     if (prevFrame) {
       // Inside a scene: continue from the previous shot's last frame.
-      // `fast` shoots image-to-video when nothing else rides along (the
-      // cheapest call, but no voice reference — the narrator may drift);
-      // `locked` keeps every shot reference-to-video with the voice.
-      if (continuity === "fast" && bound.length === 0 && characters.length === 0) {
+      // `chain` shoots image-to-video when nothing else rides along: the
+      // frame IS the first frame, so the join is seamless (measured
+      // 2026-09-04: reference-to-video treats the same frame as a look
+      // reference and reframes; it also costs 7 s more) — at the price of
+      // no voice reference on that shot. `locked` keeps every shot
+      // reference-to-video with the voice, accepting the looser join.
+      // A speaker on screen is always a reference shot: their voice must
+      // not change between two shots of the same take, and a matched cut
+      // on a talking head reads as normal video.
+      if (continuity === "chain" && bound.length === 0 && characters.length === 0 && style.narration !== "on-camera") {
         return { mode: "image", image: join(setDir, prevFrame), refs: [], audios: [], lines: [] };
       }
       return reference(planRefs({ anchorFile: prevFrame, anchorKind: "continuity", characters, figures: bound, voice, narration: style.narration, mode: "reference" }));
@@ -463,11 +470,11 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
    * with a speaker on screen (or references the learner supplied) a
    * character sheet — two more angles of the host from the sample's
    * first frame — so identity rides on images, not on prompt words.
-   * `fast` skips it. Every step is best effort and reported: a course
-   * without a sample still shoots, without a voice reference.
+   * The voice is made in both continuity modes, the sheet in `locked`.
+   * Every step is best effort and reported: a course without a sample
+   * still shoots, without a voice reference.
    */
   async function ensureContinuityKit() {
-    if (continuity !== "locked") return;
     const sample = course.style?.sample?.video;
     const sampleAbs = typeof sample === "string" ? join(setDir, sample) : null;
     if (!sampleAbs || !existsSync(sampleAbs)) {
@@ -484,7 +491,11 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
         log(`continuity kit: voice reference failed (${e.message}) — shooting without it`);
       }
     }
-    const wantsSheet = style.narration === "on-camera" || (course.style?.userRefs ?? []).length > 0;
+    // The sheet is `locked` only: measured 2026-09-04 on the teacher
+    // style, the anchor still already shows the host and every reference
+    // shot kept the same face without it, while the two sheet images cost
+    // 77 s once and two of the four reference slots on every shot.
+    const wantsSheet = continuity === "locked" && (style.narration === "on-camera" || (course.style?.userRefs ?? []).length > 0);
     const hasSheet = Array.isArray(course.style?.characterSheet) && course.style.characterSheet.every((f) => existsSync(join(setDir, f)));
     if (wantsSheet && !hasSheet && typeof deps.characterSheet === "function" && typeof deps.firstFrame === "function") {
       try {
@@ -852,7 +863,7 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
       syncSnapshot();
       void persist();
       reconcile();
-      void ensureContinuityKit()
+      kitPromise = ensureContinuityKit()
         .catch((e) => log(`continuity kit: ${e.message}`))
         .finally(() => {
           kitReady = true;
@@ -879,7 +890,10 @@ export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhe
       await persistChain;
       try { unlinkSync(join(stateDir, "manager.pid")); } catch { /* fine */ }
     },
-    whenIdle: async () => { await planning.whenIdle(); await video.whenIdle(); await persistChain; },
+    // Idle means the kit is made and both queues are empty — a `--once`
+    // run that asked before the kit finished would have exited with
+    // nothing shot.
+    whenIdle: async () => { await kitPromise; await planning.whenIdle(); await video.whenIdle(); await persistChain; },
   };
 }
 
@@ -893,7 +907,7 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
       "video-ahead": { type: "string", default: "2" },
       "plan-ahead": { type: "string", default: "2" },
       resolution: { type: "string", default: "480P" },
-      continuity: { type: "string", default: "locked" },
+      continuity: { type: "string", default: "chain" },
       model: { type: "string" },
       once: { type: "boolean", default: false },
       detach: { type: "boolean", default: false },

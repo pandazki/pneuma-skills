@@ -68,7 +68,12 @@ audio, twelve files in all.
   mode the **character sheet** the kit draws for a speaker on screen (two
   more angles from the sample's first frame). Given to *every* shot
   including the first — a face the first shot invented cannot be caught
-  up with later.
+  up with later. Measured 2026-09-04 (teacher style): the anchor still of
+  an on-camera style already shows the host, and reference-to-video on it
+  kept the same face across shots with or without the sheet — so `chain`
+  skips the sheet (77 s once, two of the four slots on every shot) and
+  simply keeps every shot of a speaking host a reference shot with the
+  voice.
 - **Figures** take what is left; the screenplay validator caps by the
   same budget (`figureBudget`), and the manager fails a shot over it
   rather than drop one silently.
@@ -77,9 +82,15 @@ audio, twelve files in all.
   narrator keeps one voice across shots and scenes. Without it the model
   picks a voice per shot.
 
-`--continuity locked` (default) shoots every shot reference-to-video with
-all of the above. `fast` shoots image-to-video inside a scene when
-nothing rides along — cheaper per call, no voice reference.
+`--continuity chain` (default): inside a scene a voiceover shot with no
+figure and no character is image-to-video from the previous last frame —
+the frame IS the first frame, the join is seamless (measured:
+reference-to-video given the same frame reframes it; a matched cut, not a
+continuation, and 7 s slower) — and every reference-to-video shot
+(openings, figures, characters, any shot with a speaker on screen)
+carries the voice. `locked`: every shot reference-to-video with the
+voice, plus the character sheet for a speaker — one narrator and one face
+guaranteed on every shot, looser joins.
 
 ## Seams
 
@@ -94,6 +105,11 @@ discontinuity clicks, and the shots are already loudness-matched.
   video 14.4 s; with the voice reference 18.4 s; with voice + timed beats
   18.7 s; image-to-video from the anchor 27.8 s. Narration verbatim in
   all. Frames: the beat "the amber gap lights up at 3 s" landed on time.
+- 2026-09-04, same course, the scene's second shot from the same last
+  frame: image-to-video 10.3 s and the first frame is that frame, the
+  picture evolving in place; reference-to-video with the frame as Image 1
+  plus the voice 17.4 s, starting near the frame and reframing. Voice
+  proxy identical. Hence `chain` as the default.
 - 2026-09-01 smoke: text-to-video 2 s wall, image-to-video 3 s,
   reference-to-video 19 s (reference analysis dominates) — the numbers
   fal's queue gives on a quiet night; the 2026-09-04 numbers are a busy

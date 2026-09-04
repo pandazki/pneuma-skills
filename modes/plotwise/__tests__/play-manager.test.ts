@@ -398,7 +398,7 @@ describe("createManager", () => {
   test("locked: the kit takes the voice from the sample, and every shot is reference-to-video with it", async () => {
     withSample(courseFixture());
     const f = fakes(setDir, () => mgr!);
-    mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, pollMs: 20 }).start();
+    mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, continuity: "locked", pollMs: 20 }).start();
     await settle(mgr);
 
     expect(f.kit).toEqual(["voice"]);
@@ -414,40 +414,53 @@ describe("createManager", () => {
     expect(mgr.course.nodes.n1.status).toBe("ready");
   });
 
-  test("fast: no kit, image-to-video inside a scene, no voice reference", async () => {
+  test("chain (default): the kit still runs; the voice rides on reference shots and the frame chain stays image-to-video", async () => {
     withSample(courseFixture());
     const f = fakes(setDir, () => mgr!);
-    mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, continuity: "fast", pollMs: 20 }).start();
+    mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, pollMs: 20 }).start();
     await settle(mgr);
-    expect(f.kit).toEqual([]);
-    expect(mgr.course.style.voiceRef).toBeUndefined();
-    expect(f.inputs.get("n1/s1")).toEqual({ image: undefined, refImages: ["style/anchor.png"], refAudios: [] });
+    expect(f.kit).toEqual(["voice"]);
+    expect(mgr.course.style.voiceRef).toBe("style/voice.mp3");
+    // A scene opening is a reference shot: anchor + voice.
+    expect(f.inputs.get("n1/s1")).toEqual({ image: undefined, refImages: ["style/anchor.png"], refAudios: ["style/voice.mp3"] });
+    // Inside the scene the previous frame IS the first frame — no reference call, so no voice slot.
     expect(f.inputs.get("n1/s2")).toEqual({ image: "nodes/n1/s1.last.png", refImages: [], refAudios: [] });
+  });
+
+  test("chain with a speaker on screen: no sheet, but every shot is a reference shot with the voice", async () => {
+    withSample(courseFixture(), { narration: "on-camera" });
+    const f = fakes(setDir, () => mgr!);
+    mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, pollMs: 20 }).start();
+    await settle(mgr);
+    expect(f.kit).toEqual(["voice"]);
+    expect(mgr.course.style.characterSheet).toBeUndefined();
+    expect(f.inputs.get("n1/s2")).toEqual({ image: undefined, refImages: ["nodes/n1/s1.last.png"], refAudios: ["style/voice.mp3"] });
   });
 
   test("locked with a speaker on screen: a character sheet is drawn once and rides on every shot", async () => {
     withSample(courseFixture(), { narration: "on-camera" });
     const f = fakes(setDir, () => mgr!);
-    mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, pollMs: 20 }).start();
+    mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, continuity: "locked", pollMs: 20 }).start();
     await settle(mgr);
     expect(f.kit).toEqual(["voice", "frame", "sheet"]);
     expect(mgr.course.style.characterSheet).toEqual(["style/character-1.png", "style/character-2.png"]);
     expect(mgr.course.style.refImages).toEqual(["style/anchor.png", "style/character-1.png", "style/character-2.png"]);
     expect(f.inputs.get("n1/s1")?.refImages).toEqual(["style/anchor.png", "style/character-1.png", "style/character-2.png"]);
     expect(f.inputs.get("n2/s1")?.refImages).toEqual(["style/anchor.png", "style/character-1.png", "style/character-2.png"]);
-    expect(f.inputs.get("n1/s2")?.refImages).toEqual(["nodes/n1/s1.last.png", "style/character-1.png", "style/character-2.png"]);
+    // Characters ride along, so the inside-scene shot is a reference shot too — with the voice.
+    expect(f.inputs.get("n1/s2")).toEqual({ image: undefined, refImages: ["nodes/n1/s1.last.png", "style/character-1.png", "style/character-2.png"], refAudios: ["style/voice.mp3"] });
 
     // A second manager finds the kit on file and does not draw it again.
     await mgr.stop();
     const g = fakes(setDir, () => mgr!);
-    mgr = createManager({ setDir, deps: g.deps, slots: 1, videoAhead: 1, planAhead: 1, pollMs: 20 }).start();
+    mgr = createManager({ setDir, deps: g.deps, slots: 1, videoAhead: 1, planAhead: 1, continuity: "locked", pollMs: 20 }).start();
     await settle(mgr);
     expect(g.kit).toEqual([]);
   });
 
   test("locked without a sample shoots anyway, without a voice reference", async () => {
     const f = fakes(setDir, () => mgr!);
-    mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, pollMs: 20 }).start();
+    mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, continuity: "locked", pollMs: 20 }).start();
     await settle(mgr);
     expect(f.kit).toEqual([]);
     expect(mgr.course.nodes.n1.status).toBe("ready");

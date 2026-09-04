@@ -66,24 +66,29 @@ binding injected like the image bindings. Measured 2026-09-04 (480P,
 7 s shot, same prompt): reference-to-video 14.4 s without, 18.4 s with
 the audio reference — the cost is four seconds a shot.
 
-**D4 — `continuity` init param: `locked` (default) | `fast`.**
-`locked`: every shot is reference-to-video — Image 1 the previous shot's
-last frame (the style anchor for a scene opening), then the character
-sheet, then the shot's figures, Audio 1 the voice. `fast`: today's chain
-(image-to-video inside a scene, no voice reference, reference-to-video
-only when a figure or character rides along) — cheaper per shot, the
-voice may drift. The manager takes `--continuity`, templated into
-SKILL.md like `--resolution`. Reference budget in `locked` is
-`4 − 1 (frame) − characters` for figures; the screenplay validator already
-caps by that number.
+**D4 — `continuity` init param: `chain` (default) | `locked`.** Revised
+after E2. `chain`: inside a scene a shot that carries no figure and no
+character is image-to-video from the previous shot's last frame — the
+frame IS the first frame, so the join is seamless; every reference-to-
+video shot (scene openings on the anchor, shots with figures, every shot
+of a course with characters) carries the voice as Audio 1. `locked`:
+every shot is reference-to-video with the voice, Image 1 the previous
+frame — one narrator guaranteed on every shot, but the frame becomes a
+look reference (the model reframes) and the shot costs ~7 s more. The
+first draft made `locked` the default; E2 showed the frame chain is the
+thing worth keeping. The manager takes `--continuity`, templated into
+SKILL.md like `--resolution`. The figure budget is unchanged:
+`4 − 1 (frame) − characters`.
 
-**D5 — Character sheet for on-camera courses.** In `locked` mode, when the
-style's narration is on-camera or the learner supplied reference images,
-the kit step generates two more angles of the host from the sample's
-first frame (GPT-Image-2 edit: same person, outfit and set; three-quarter
-view; medium close-up) into `style/character-{1,2}.png` and appends them
-to `refImages`. Every shot then carries the same face. Experiment E3
-decides the exact prompt and whether two angles or one suffice.
+**D5 — Character sheet for on-camera courses, `locked` only.** Revised
+after E3. When `continuity` is `locked` and the style's narration is
+on-camera or the learner supplied reference images, the kit step
+generates two more angles of the host from the sample's first frame
+(GPT-Image-2 edit: same person, outfit and set; three-quarter view;
+medium close-up) into `style/character-{1,2}.png` and appends them to
+`refImages`. In `chain`, a speaker on screen is still always a
+reference-to-video shot with the voice — the anchor still shows the host
+and holds the face (E3) — and the figure budget stays at three.
 
 **D6 — Seam fades in the scene concat.** 30 ms audio fade-in/out at every
 join (the shots already end on sentence boundaries); the video stays
@@ -111,12 +116,32 @@ user's ear decides. Frames: A pushed in hard; B and D stayed on the
 anchor's set and D's "amber gap lights up at 3 s" landed on time; C's first
 frame was the anchor itself (podium and hourglass) before a jump.
 
-**E2 — locked vs fast continuity inside a scene (to run).** Shot k+1 from
-the same last frame: i2v vs r2v(frame + voice). Judge the seam and the
-voice.
+**E2 — chain vs locked inside a scene (done 2026-09-04).** The scene's
+second shot from the same last frame, 480P: image-to-video 10.3 s;
+reference-to-video with the frame as Image 1 + the voice 17.4 s.
+Narration verbatim in both. Frames: the image-to-video clip's first frame
+IS the previous last frame and the picture evolves inside that
+composition; the reference-to-video clip starts near it and reframes
+(curve shape and camera drift) — a matched cut, not a continuation.
+Voice proxy identical (0.994 / 0.994). Decision: keep the frame chain as
+the default (`chain`), put the voice on every reference shot, offer
+`locked` for courses where one narrator on every shot outranks the join.
 
-**E3 — character sheet (to run).** `teacher` style: sample → two angles →
-two shots with and without the sheet; compare the face across shots.
+**E3 — character sheet (done 2026-09-04).** `teacher` style, sample
+(anchor 36 s + clip 16 s), then the real manager on a two-shot scene:
+the kit made the voice at once and the two-angle sheet in 77 s; both
+shots reference-to-video with anchor + sheet + voice, narration
+similarity 1.0, concat 16.02 s. Control: the same two shots with the
+anchor + voice only. Frames at 1 s and 6 s of each shot: the same
+instructor, outfit and set in all eight frames, with and without the
+sheet — the anchor still of an on-camera style already shows the host,
+and reference-to-video on it holds the face. The sheet bought nothing
+visible here and costs 77 s once plus two of the four reference slots on
+every shot (figures down to one). Decision: the sheet is `locked` only;
+in `chain` a speaker on screen is still always a reference shot with the
+voice (their voice must not change mid-take). Both runs drew a small
+arrow-curve on the board that the prompt placed "in the air" — the model
+put the gesture on the board; harmless, noted.
 
 **E4 — four references at once (to run).** frame + 2 characters + 1
 figure + voice: latency and whether the figure still reproduces.
