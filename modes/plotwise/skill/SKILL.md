@@ -186,7 +186,7 @@ shown when the skill loads. Paths inside course.json are set-relative.
 The `--video-ahead`, `--resolution` and `--continuity` values above ARE
 this session's init params, filled in when the skill was installed —
 copy the command as written. If one still reads as a `{{…}}`
-placeholder, use 2, 480P and chain. A session that asked for 768P and
+placeholder, use 2, 480P and locked. A session that asked for 768P and
 was shot at 480P is a wrong course, not a slower one — the third trial
 did exactly that.) **`--detach` is the only way to start the manager.**
 It daemonizes itself into its own session, waits for its pid file and
@@ -369,16 +369,21 @@ style is anchored by IMAGES, never by prompt adjectives alone:
 - **The sample is also the voice.** Before the first shot the manager
   makes a continuity kit: the sample's narration becomes
   `<set>/style/voice.mp3` and rides on every reference-to-video shot as
-  the voice reference (measured +4 s a shot). `--continuity chain` (the
-  default) keeps the seamless image-to-video frame chain inside a scene
-  for voiceover shots that carry no figure and no character; a speaker
-  on screen is always a reference shot with the voice. `locked` shoots
-  every shot reference-to-video with the voice and, for a speaker on
-  screen, draws two more angles of the host from the sample's first
-  frame (`style/character-1.png`, `-2.png`) into `refImages` — one
-  narrator and one face guaranteed, at a looser join and ~7 s more a
-  shot. You start nothing of this by hand; the manager does it and logs
-  each step in `state/manager.log`.
+  the voice reference (measured +4 s a shot). `--continuity locked` (the
+  default) shoots every shot reference-to-video with the voice and, for a
+  speaker on screen, draws two more angles of the host from the sample's
+  first frame (`style/character-1.png`, `-2.png`) into `refImages` — one
+  narrator and one face across the course, which the user has said is
+  non-negotiable; joins inside a scene are matched cuts (~7 s more a
+  shot). `chain` keeps the seamless image-to-video frame chain for
+  voiceover shots that carry nothing else, at the price of the narrator
+  drifting on those shots. You start nothing of this by hand; the manager
+  does it and logs each step in `state/manager.log`.
+- **Prompt language follows the content.** The prompt's scaffolding is
+  English (fal's H3 Max spec is written against it); the picture, the
+  beats and the sound line may be written in the course language — H3
+  reads both, and the community's validated prompts are Chinese. The
+  narration is always verbatim in its own language inside the `<d>` tag.
 - **Prompt craft is not yours.** `h3-prompt.mjs` builds every shot's
   prompt from what Luna wrote (narration, timed beats with a camera
   move each, a sound line) with the practice baked in — style anchor

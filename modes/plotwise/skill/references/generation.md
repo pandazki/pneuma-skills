@@ -115,9 +115,10 @@ How the manager binds references, per shot (`shotRefs`):
 - **Audio 1 is the voice.** The confirmed sample's narration
   (`style/voice.mp3`) rides on every reference-to-video shot, so the
   narrator keeps one voice across the course (+4 s a shot measured).
-  `--continuity chain` (default) keeps image-to-video for the shots inside
-  a scene that carry nothing else — the seamless frame chain; `locked`
-  makes every shot a reference shot with the voice.
+  `--continuity locked` (default) makes every shot a reference shot with
+  the voice — one narrator across the course; `chain` keeps image-to-video
+  for voiceover shots inside a scene that carry nothing else (seamless,
+  but the voice may drift on those shots).
 - **Never a figure as `--image` or `--end-image`**: a keyframe is copied
   verbatim, the raw matplotlib bitmap fills the screen, the next shot
   chains from it, and the course turns into a slideshow (seen

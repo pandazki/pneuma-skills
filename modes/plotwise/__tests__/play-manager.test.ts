@@ -395,10 +395,10 @@ describe("createManager", () => {
     writeFileSync(join(setDir, "course.json"), JSON.stringify(raw));
   }
 
-  test("locked: the kit takes the voice from the sample, and every shot is reference-to-video with it", async () => {
+  test("locked (default): the kit takes the voice from the sample, and every shot is reference-to-video with it", async () => {
     withSample(courseFixture());
     const f = fakes(setDir, () => mgr!);
-    mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, continuity: "locked", pollMs: 20 }).start();
+    mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, pollMs: 20 }).start();
     await settle(mgr);
 
     expect(f.kit).toEqual(["voice"]);
@@ -414,10 +414,10 @@ describe("createManager", () => {
     expect(mgr.course.nodes.n1.status).toBe("ready");
   });
 
-  test("chain (default): the kit still runs; the voice rides on reference shots and the frame chain stays image-to-video", async () => {
+  test("chain: the kit still runs; the voice rides on reference shots and the frame chain stays image-to-video", async () => {
     withSample(courseFixture());
     const f = fakes(setDir, () => mgr!);
-    mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, pollMs: 20 }).start();
+    mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, continuity: "chain", pollMs: 20 }).start();
     await settle(mgr);
     expect(f.kit).toEqual(["voice"]);
     expect(mgr.course.style.voiceRef).toBe("style/voice.mp3");
@@ -430,7 +430,7 @@ describe("createManager", () => {
   test("chain with a speaker on screen: no sheet, but every shot is a reference shot with the voice", async () => {
     withSample(courseFixture(), { narration: "on-camera" });
     const f = fakes(setDir, () => mgr!);
-    mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, pollMs: 20 }).start();
+    mgr = createManager({ setDir, deps: f.deps, slots: 1, videoAhead: 1, planAhead: 1, continuity: "chain", pollMs: 20 }).start();
     await settle(mgr);
     expect(f.kit).toEqual(["voice"]);
     expect(mgr.course.style.characterSheet).toBeUndefined();

@@ -209,13 +209,13 @@ The user just opened the learning studio. Greet them briefly (1-2 sentences) and
         name: "continuity",
         label: "Continuity",
         description:
-          "How hard the shoot holds one look, one voice and one face. Chain: shots inside a scene start on the exact last frame of the previous one (seamless), and every reference shot — scene openings, figures, a speaker on screen — carries the sample's voice. Locked: every shot carries the voice, and a speaker on screen gets a two-angle character sheet; about seven seconds more a shot, joins are matched cuts",
+          "How hard the shoot holds one voice and one face across the course. Locked: every shot carries the confirmed sample's narration as the voice reference, and a speaker on screen gets a character sheet — one narrator, one face, at about seven seconds more a shot; joins inside a scene are matched cuts. Chain: shots inside a scene start on the exact last frame of the previous one (seamless) but the voice reference rides only on reference shots — the narrator may change between shots",
         type: "select",
         options: [
-          { value: "chain", label: "Chain", description: "Seamless frame chain inside a scene; the voice reference rides where a reference shot is made anyway" },
-          { value: "locked", label: "Locked", description: "The voice on every shot and a character sheet for a speaker — one narrator, one face, guaranteed; slower, joins are matched cuts" },
+          { value: "locked", label: "Locked", description: "One narrator and one face on every shot — the default" },
+          { value: "chain", label: "Chain", description: "Seamless frame chain inside a scene; faster, the voice may drift between shots" },
         ],
-        defaultValue: "chain",
+        defaultValue: "locked",
       },
       {
         name: "falApiKey",
@@ -252,7 +252,7 @@ scene length toward these preferences, while always respecting explicit instruct
     "0.5.0": [
       "The H3 prompt practice lives in one script (h3-prompt.mjs), not in the model's head: every shot's prompt opens on the style anchor, writes the picture as a timeline of beats each with its camera move, carries a two-layer soundscape under the voice, and closes on the negatives for what the style shows",
       "One voice across the course: the confirmed sample's narration rides on every reference-to-video shot as the voice reference (about four seconds more a shot); a speaker on screen is always a reference shot, so their voice holds between shots too",
-      "Continuity init param — chain (default) keeps the seamless image-to-video frame chain inside a scene and carries the voice on every reference shot; locked puts the voice on every shot and draws a two-angle character sheet for a speaker on screen, at a looser join",
+      "Continuity init param — locked (default) puts the voice reference on every shot and draws a two-angle character sheet for a speaker on screen; chain keeps the seamless image-to-video frame chain inside a scene at the price of the voice drifting between shots",
       "The eighteen style recipes name their kind, frame, concrete colors, material and light, so the anchor holds across shots",
       "Shot joins fade 30 ms of audio so a scene no longer clicks between shots",
     ],

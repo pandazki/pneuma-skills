@@ -290,7 +290,7 @@ export function defaultDeps({ setDir, resolution = "480P", model = DEFAULT_MODEL
  *   .reconcile()      — (re)schedule work from the current node
  *   .stop()           — cancel everything, exit
  */
-export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhead = 2, continuity = "chain", log = () => {}, pollMs = 500 }) {
+export function createManager({ setDir, deps, slots = 3, videoAhead = 2, planAhead = 2, continuity = "locked", log = () => {}, pollMs = 500 }) {
   setDir = resolve(setDir);
   const stateDir = join(setDir, "state");
   mkdirSync(stateDir, { recursive: true });
@@ -907,7 +907,7 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
       "video-ahead": { type: "string", default: "2" },
       "plan-ahead": { type: "string", default: "2" },
       resolution: { type: "string", default: "480P" },
-      continuity: { type: "string", default: "chain" },
+      continuity: { type: "string", default: "locked" },
       model: { type: "string" },
       once: { type: "boolean", default: false },
       detach: { type: "boolean", default: false },

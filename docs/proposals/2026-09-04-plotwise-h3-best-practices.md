@@ -66,19 +66,19 @@ binding injected like the image bindings. Measured 2026-09-04 (480P,
 7 s shot, same prompt): reference-to-video 14.4 s without, 18.4 s with
 the audio reference — the cost is four seconds a shot.
 
-**D4 — `continuity` init param: `chain` (default) | `locked`.** Revised
-after E2. `chain`: inside a scene a shot that carries no figure and no
-character is image-to-video from the previous shot's last frame — the
-frame IS the first frame, so the join is seamless; every reference-to-
-video shot (scene openings on the anchor, shots with figures, every shot
-of a course with characters) carries the voice as Audio 1. `locked`:
-every shot is reference-to-video with the voice, Image 1 the previous
-frame — one narrator guaranteed on every shot, but the frame becomes a
-look reference (the model reframes) and the shot costs ~7 s more. The
-first draft made `locked` the default; E2 showed the frame chain is the
-thing worth keeping. The manager takes `--continuity`, templated into
-SKILL.md like `--resolution`. The figure budget is unchanged:
-`4 − 1 (frame) − characters`.
+**D4 — `continuity` init param: `locked` (default) | `chain`.** Revised
+twice. E2 showed image-to-video from the previous last frame is a true
+continuation while reference-to-video given the same frame reframes it
+(a matched cut, ~7 s slower), which argued for a `chain` default; the
+user then set the rule that decides it: **narration and voice continuity
+across a course is non-negotiable**, and H3's image-to-video takes no
+audio reference. So `locked` is the default — every shot reference-to-
+video with the voice as Audio 1, joins inside a scene are matched cuts —
+and `chain` is the opt-in for a seamless frame chain on voiceover shots
+that carry nothing else, at the price of the voice drifting on those
+shots. The manager takes `--continuity`, templated into SKILL.md like
+`--resolution`. The figure budget is unchanged: `4 − 1 (frame) −
+characters`.
 
 **D5 — Character sheet for on-camera courses, `locked` only.** Revised
 after E3. When `continuity` is `locked` and the style's narration is

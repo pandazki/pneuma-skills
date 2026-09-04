@@ -82,15 +82,23 @@ audio, twelve files in all.
   narrator keeps one voice across shots and scenes. Without it the model
   picks a voice per shot.
 
-`--continuity chain` (default): inside a scene a voiceover shot with no
-figure and no character is image-to-video from the previous last frame —
-the frame IS the first frame, the join is seamless (measured:
-reference-to-video given the same frame reframes it; a matched cut, not a
-continuation, and 7 s slower) — and every reference-to-video shot
-(openings, figures, characters, any shot with a speaker on screen)
-carries the voice. `locked`: every shot reference-to-video with the
-voice, plus the character sheet for a speaker — one narrator and one face
-guaranteed on every shot, looser joins.
+`--continuity locked` (default): every shot is reference-to-video with
+the voice as Audio 1, plus the character sheet for a speaker on screen —
+one narrator and one face on every shot. The user set this as
+non-negotiable for a course (2026-09-04): a narrator who changes voice
+between two shots of one take breaks the lesson more than a matched cut
+does. The cost: image-to-video from the previous last frame is a true
+continuation (the frame IS the first frame), while reference-to-video
+given the same frame reframes it and costs ~7 s more — so joins inside a
+scene are matched cuts. `chain` keeps the seamless image-to-video frame
+chain for voiceover shots that carry nothing else, at the price of the
+voice drifting on exactly those shots (H3's image-to-video takes no audio
+reference).
+
+**Prompt language follows the content.** The scaffolding is English
+(fal's H3 Max spec); the picture, beats and sound may be written in the
+course language — H3 reads both, and the community's validated prompts
+are Chinese. Narration is always verbatim in its own language in `<d>`.
 
 ## Seams
 
