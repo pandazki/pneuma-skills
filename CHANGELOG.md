@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.46.1] - 2026-09-05
+
+### Fixed
+- **Desktop windows no longer wait on Google Fonts before they appear.** A new session window in the desktop app stayed hidden for as long as Google Fonts took to answer — more than ten seconds on a slow link — because the entry HTML loaded a render-blocking remote stylesheet and Electron shows a window only after its first paint; `font-display: swap` never helped, since it governs the font files, not the stylesheet that names them. The four UI faces (DM Sans, Fraunces, Lora, Playfair Display) now ship with the app as 25 unmodified WOFF2 files, 759 KiB in all, declared through the shared application CSS with the same weights, italics, variable axes and Unicode subsets as before, so a page still downloads only the subsets it uses. Measured on an Electron 41 production build: a simulated 12-second font response reproduced a 12.18-second hidden window; with the bundled fonts and every external request blocked, the window reached `ready-to-show` in 79 ms with zero network font requests. The upstream OFL 1.1 licenses, copyright notices, source URLs and SHA-256 checksums travel with the files, and both the app and the hosted player entry use them.
+- **The hosted player deploy ships the bundled fonts.** `scripts/deploy-player.sh` stages an explicit list of build outputs rather than the whole `dist-player/`, so the fonts the player CSS now asks for at `/fonts/*` would have fallen through to the landing page's catch-all, and every shared link would have rendered in system faces. The stage now carries `fonts/`, cached as immutable since the filenames are versioned.
+
 ## [3.46.0] - 2026-09-04
 
 ### Added
