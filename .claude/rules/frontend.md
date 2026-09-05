@@ -18,6 +18,7 @@ paths:
 
 ## Gotchas
 
+- **Remote font CSS delays desktop windows, even with `display=swap`**: `BrowserWindow({ show: false })` waits for `ready-to-show`, and a stylesheet in the entry HTML blocks the first paint. Delaying Google Fonts CSS by 12 seconds reproduced a 12-second hidden window in Electron 41; `font-display` only governs font-file loading after CSS arrives. Keep `index.html` and `player.html` free of remote font stylesheets. Shared UI faces live in `src/fonts.css`, with unchanged WOFF2 files, OFL notices, and source checksums in `public/fonts/`. Verify both build outputs and the npm package retain the fonts and licenses when changing asset packaging.
 - **`import.meta.glob` 只能是一个裸调用表达式,别用 `typeof import.meta.glob` 守卫它**(2026-09-02 plotwise 风格看板实测):Vite 在构建期靠静态分析把这个调用整个替换掉,`typeof import.meta.glob === "function" ? import.meta.glob(...) : {}` 里的条件在浏览器运行时求值为 `"undefined"`——于是缩略图全部静默变成空 `src`,而 bun test 那边看起来"修好了"。要让 happy-dom 组件测试也能加载同一个模块,用 `try { thumbs = import.meta.glob(...) } catch { thumbs = {} }`:Vite 照常替换 try 里的调用,bun 里调用 undefined 抛错被接住。先例:`modes/plotwise/viewer/styleCatalog.ts`。
 - **react-resizable-panels v4.6**:`Group` 不是 `PanelGroup`,`Separator` 不是 `PanelResizeHandle`,`orientation` 不是 `direction`。
 - **`line-clamp` 需要 `display: -webkit-box`**,Tailwind `block` 在源码顺序中会覆盖:`block` 配 `line-clamp-N` 会静默失效。删掉 `block`;line-clamp 自带 display 规则。

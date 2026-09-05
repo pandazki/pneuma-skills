@@ -1,0 +1,3 @@
+# Preserve upstream license bytes (including CRLF and trailing spaces) so
+# public/fonts/sources.json checksums remain valid on every platform.
+public/fonts/*/OFL.txt -text -whitespace

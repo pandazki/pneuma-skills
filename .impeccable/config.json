@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "fraunces",
+        "files": [
+          "src/index.css"
+        ],
+        "createdAt": "2026-09-05T15:09:13.334Z",
+        "reason": "Agent: .impeccable.md explicitly specifies Fraunces for brand elements, and HEAD:src/index.css already uses it for .font-logo. This change only bundles existing fonts locally to remove startup network blocking."
+      }
+    ]
+  }
+}
