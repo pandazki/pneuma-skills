@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   normalizePersistedSession,
   normalizeSessionRecord,
@@ -9,6 +9,18 @@ import {
   startsOverPersistedSession,
   type PersistedSession,
 } from "../pneuma-cli-helpers.js";
+import { i18next } from "../i18n.js";
+
+// `resolveWorkspaceBackendType` is asserted on its English message. `bin/i18n.ts`
+// picks its language at import time from `~/.pneuma/settings.json` (`locale`),
+// so pin English here and hand the developer's choice back afterwards.
+const localeBeforeTests = i18next.language;
+beforeAll(async () => {
+  await i18next.changeLanguage("en");
+});
+afterAll(async () => {
+  await i18next.changeLanguage(localeBeforeTests);
+});
 
 /**
  * A quick session's state directory is the workspace's single `.pneuma/`, so a

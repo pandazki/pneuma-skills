@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   parseHandoffArgs,
   runHandoffCommand,
@@ -6,6 +6,19 @@ import {
   type HandoffCliEnv,
   type HandoffCliIo,
 } from "../handoff-cli.js";
+import { i18next } from "../i18n.js";
+
+// The assertions below read the English copy. `bin/i18n.ts` picks its language
+// at import time from `~/.pneuma/settings.json` (`locale`), so on a machine
+// whose Pneuma UI is set to another language every string here would come back
+// translated. Pin English for this file and hand the developer's choice back.
+const localeBeforeTests = i18next.language;
+beforeAll(async () => {
+  await i18next.changeLanguage("en");
+});
+afterAll(async () => {
+  await i18next.changeLanguage(localeBeforeTests);
+});
 
 /**
  * Build a stub `HandoffCliIo` that captures stdout / stderr lines and lets
