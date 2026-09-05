@@ -24,6 +24,7 @@
     "!modes/*/harness/",
     "snapshot/",
     "dist/",
+    "public/fonts/",
     "src/",
     "vendor/",
     "vite.config.ts",
