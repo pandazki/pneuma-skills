@@ -151,12 +151,17 @@ Decide by looking at what actually changed since the previous tag:
 ```bash
 PREV=$(git describe --tags --abbrev=0 HEAD^)
 git diff --name-only "$PREV"...HEAD -- \
-  core/player-support.ts 'src/player/**' web/ 'modes/*/viewer/**' 'modes/*/domain.ts' 'modes/*/pneuma-mode.ts'
+  core/player-support.ts 'src/player/**' web/ 'modes/*/viewer/**' 'modes/*/domain.ts' 'modes/*/pneuma-mode.ts' \
+  player.html src/index.css src/fonts.css 'public/fonts/**' scripts/deploy-player.sh
 ```
 
 Any output at all means deploy. (`domain.ts` and `pneuma-mode.ts` are on the
 list because a mode's viewer bundle imports them, so a change there reaches the
-player even when no `viewer/` file moved.)
+player even when no `viewer/` file moved. `player.html` is the player's own
+entry, and it imports the same `src/index.css` as the app — which is where the
+bundled fonts in `public/fonts/` are declared — so those reach the player too.
+`scripts/deploy-player.sh` stages an explicit file list, not all of
+`dist-player/`; a change to it only takes effect by running it.)
 
 ```bash
 bash scripts/deploy-player.sh

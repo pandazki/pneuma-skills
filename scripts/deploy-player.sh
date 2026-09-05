@@ -26,6 +26,11 @@ cp -r dist-player/player-assets/. "$STAGE/player-assets/"
 cp dist-player/player-content-sw.js "$STAGE/"
 cp dist-player/favicon.png dist-player/favicon.ico dist-player/apple-touch-icon.png "$STAGE/" 2>/dev/null || true
 
+# Bundled UI fonts. The player CSS (src/index.css → src/fonts.css) asks for them
+# at /fonts/*; without this copy the request falls through to the landing page's
+# catch-all and every shared link renders in system faces.
+cp -r dist-player/fonts "$STAGE/fonts"
+
 # Routing. The landing project serves /index.html as a catch-all SPA fallback,
 # so the player's /s/* rule MUST come first (first match wins in _redirects).
 {
@@ -40,6 +45,8 @@ cp dist-player/favicon.png dist-player/favicon.ico dist-player/apple-touch-icon.
   printf '/s/*\n  Cache-Control: no-cache\n'
   printf '/player-content-sw.js\n  Cache-Control: no-cache\n'
   printf '/player-assets/*\n  Cache-Control: public, max-age=31536000, immutable\n'
+  # Font filenames carry their upstream version (v17-…), so they are immutable too.
+  printf '/fonts/*\n  Cache-Control: public, max-age=31536000, immutable\n'
 } > "$STAGE/_headers"
 
 echo "[deploy] Deploying to Cloudflare Pages: $CF_PROJECT ($CF_BRANCH)..."
