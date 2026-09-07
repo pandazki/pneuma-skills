@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.46.2] - 2026-09-07
+
+### Fixed
+- **`/compact` works in Codex sessions, and every backend marks the boundary in the chat.** Codex app-server has no slash-command surface, so `/compact` used to reach the model as a two-word prompt: the composer menu never listed it and nothing compacted. The Codex adapter now answers the bare command with the native `thread/compact/start` call and advertises `compact` in the menu next to the skills. Codex runs the compaction as a turn of its own (probed on codex-cli 0.154: `turn/started` → `contextCompaction` → `turn/completed`), so the composer returns to idle when it ends, and the token-usage update inside that turn already reports the compacted size (20,716 → 5,750 in the probe), so the "before" figure is captured when the compaction starts and the context gauge keeps Codex's own reading. Every compaction, on Claude Code and Codex alike, now leaves a marker in the chat — "Context compacted · /compact · 22k tokens before", or "automatic" when the agent compacted on its own — live and after a reload, in all seven UI languages.
+- **Codex errors say what went wrong instead of "Unknown error".** The v2 `error` notification nests its text under `error.message` and flags retries with `willRetry`; the adapter read only the legacy top-level fields, so every modern error rendered as the same two-word divider — the two that bracketed a `/compact` on 0.154 were transient stream errors around a perfectly good turn. The real message is shown now, with "(retrying)" when Codex is about to retry by itself.
+- **A slash command is never wrapped in context.** The first user message after opening a session carries the queued `<pneuma:env>` tag, and messages sent with a selection carry `<viewer-context>` / `<user-actions>`; both were prepended to slash commands too, and every backend resolves commands by the first characters of the turn — so a `/compact` typed right after opening reached the agent as `<pneuma:env …/>` followed by the command and was answered as a question about its context. Commands with no attachments now travel bare on both the browser and the server side, and the held-back context rides the next ordinary message.
+
 ## [3.46.1] - 2026-09-05
 
 ### Fixed
