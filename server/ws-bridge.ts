@@ -57,6 +57,7 @@ import { handleViewerActionResponse } from "./ws-bridge-viewer.js";
 import { stampFileRefs } from "./file-ref.js";
 import type { CodexAdapter } from "../backends/codex/codex-adapter.js";
 import { CodexBridge } from "./ws-bridge-codex.js";
+import { isSlashCommandMessage } from "../core/utils/slash-command.js";
 import type { KimiAdapter } from "../backends/kimi-cli/kimi-adapter.js";
 import { KimiBridge } from "./ws-bridge-kimi.js";
 import type { BridgeBackend, BridgeBackendDeps } from "./ws-bridge-backend.js";
@@ -1611,7 +1612,15 @@ export class WsBridge {
     //    spurious "welcome back" replies). Now that a real user message is
     //    heading to the agent, fold them in as a one-shot prefix so the
     //    agent sees session-lineage / locale / handoff context.
-    const drainedEnvContext = session.pendingEnvContext.splice(0);
+    //
+    //    A slash command is not that message. Backends resolve commands by
+    //    the first characters of the turn, and a command turn never reaches
+    //    the model as prose, so the queue is left intact for the next
+    //    ordinary message (see `core/utils/slash-command.ts`).
+    const verbatimCommand = isSlashCommandMessage(msg.content)
+      && !msg.files?.length
+      && !msg.images?.length;
+    const drainedEnvContext = verbatimCommand ? [] : session.pendingEnvContext.splice(0);
     const envPrefix = drainedEnvContext.length > 0
       ? drainedEnvContext.join("\n") + "\n"
       : "";

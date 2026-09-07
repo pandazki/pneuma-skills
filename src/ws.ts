@@ -8,6 +8,7 @@ import type { ElementSelection } from "./store.js";
 import type { BrowserIncomingMessage, BrowserOutgoingMessage, ContentBlock, ChatMessage, SelectionContext, SelectionType, Annotation, SteerFailureReason } from "./types.js";
 import type { ViewerSelectionContext, ContentSet } from "../core/types/viewer-contract.js";
 import { isPneumaMarkerOnly } from "../core/utils/pneuma-markers.js";
+import { isSlashCommandMessage } from "../core/utils/slash-command.js";
 import { getNativeCapabilities, handleNativeRequest } from "./native-bridge.js";
 import { systemText } from "./i18n/system-text.js";
 import { getApiBase } from "./utils/api.js";
@@ -1218,10 +1219,17 @@ async function sendPreparedUserMessage(
     });
   }
 
-  // Enrich with selection context — delegate to mode's viewer if available
+  // Enrich with selection context — delegate to mode's viewer if available.
+  // A slash command is exempt: backends resolve commands by the first
+  // characters of the turn, so `<viewer-context>` / `<user-actions>` would
+  // turn `/compact` into prose. Those stay queued for the next ordinary
+  // message (see `core/utils/slash-command.ts`).
   let enrichedContent = content;
+  const verbatimCommand = isSlashCommandMessage(content) && !images?.length && !files?.length;
   const viewer = store.modeViewer;
-  if (viewer) {
+  if (verbatimCommand) {
+    // travels bare
+  } else if (viewer) {
     // Filter files by active content set and strip prefix (matching what the viewer sees)
     const activeContentSet = store.activeContentSet;
     const allFiles = store.files.map((f) => ({ path: f.path, content: f.content }));
@@ -1319,7 +1327,7 @@ async function sendPreparedUserMessage(
   }
 
   // Inject user action events between viewer-context and user text
-  const drainedActions = useStore.getState().drainUserActions();
+  const drainedActions = verbatimCommand ? [] : useStore.getState().drainUserActions();
   if (drainedActions.length > 0) {
     const lines = drainedActions.map((a) => {
       const agoMs = Date.now() - a.timestamp;

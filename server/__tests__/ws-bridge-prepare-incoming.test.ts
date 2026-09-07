@@ -165,6 +165,41 @@ describe("WsBridge.prepareIncomingUserMessage", () => {
     expect(session.pendingEnvContext.length).toBe(0);
   });
 
+  test("a slash command travels verbatim and leaves queued env context for the next message", () => {
+    const session = ctx.bridge.getSession(ctx.sessionId)!;
+    session.pendingEnvContext.push("<pneuma:env reason=\"opened\" mode=\"doc\" />");
+
+    const command = ctx.bridge.prepareIncomingUserMessage(
+      session,
+      { content: "/compact" },
+      { inlineImagesSupported: true },
+    );
+    expect(command.textContent).toBe("/compact");
+    expect(session.pendingEnvContext).toEqual(["<pneuma:env reason=\"opened\" mode=\"doc\" />"]);
+    // The command itself is still part of the visible conversation.
+    expect(session.messageHistory.at(-1)).toMatchObject({ type: "user_message", content: "/compact" });
+
+    const next = ctx.bridge.prepareIncomingUserMessage(
+      session,
+      { content: "continue where we left off" },
+      { inlineImagesSupported: true },
+    );
+    expect(next.textContent.startsWith("<pneuma:env reason=\"opened\" mode=\"doc\" />")).toBe(true);
+    expect(session.pendingEnvContext).toEqual([]);
+  });
+
+  test("a command with an attachment is an ordinary message and drains env context", () => {
+    const session = ctx.bridge.getSession(ctx.sessionId)!;
+    session.pendingEnvContext.push("<pneuma:env reason=\"opened\" />");
+    const result = ctx.bridge.prepareIncomingUserMessage(
+      session,
+      { content: "/compact", images: [{ media_type: "image/png", data: Buffer.from("png").toString("base64") }] },
+      { inlineImagesSupported: true },
+    );
+    expect(result.textContent.startsWith("<pneuma:env reason=\"opened\" />")).toBe(true);
+    expect(session.pendingEnvContext).toEqual([]);
+  });
+
   test("no uploads + empty env queue → textContent is just the original content", () => {
     const session = ctx.bridge.getSession(ctx.sessionId)!;
     const result = ctx.bridge.prepareIncomingUserMessage(
