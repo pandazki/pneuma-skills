@@ -395,6 +395,27 @@ function extractTextFromBlocks(blocks: ContentBlock[]): string {
     .join("\n");
 }
 
+/**
+ * One chat marker per context compaction, for every backend: Claude Code's
+ * `system.compact_boundary` and the Codex adapter's synthesised twin both
+ * arrive as this `system_event`. `content` is the English fallback for
+ * surfaces without i18n; MessageBubble renders `compaction` itself.
+ */
+function compactBoundaryMessage(
+  meta: { trigger?: string; pre_tokens?: number } | undefined,
+  timestamp?: number,
+): ChatMessage {
+  const preTokens = typeof meta?.pre_tokens === "number" && meta.pre_tokens > 0 ? meta.pre_tokens : 0;
+  return {
+    id: nextId(),
+    role: "system",
+    content: "Context compacted",
+    timestamp: typeof timestamp === "number" ? timestamp : Date.now(),
+    subtype: "compact",
+    compaction: { trigger: meta?.trigger === "manual" ? "manual" : "auto", preTokens },
+  };
+}
+
 export function handleParsedMessage(
   data: BrowserIncomingMessage,
   opts: { replayed?: boolean } = {},
@@ -773,7 +794,9 @@ export function handleParsedMessage(
           summary: evt.summary || undefined,
         });
       }
-      // compact_boundary: context% is only updated on explicit /context now
+      if (evt?.subtype === "compact_boundary") {
+        store.appendMessage(compactBoundaryMessage(evt.compact_metadata, (data as any).timestamp));
+      }
       break;
     }
 
@@ -948,6 +971,8 @@ export function handleParsedMessage(
               isCollapsible: true,
               subtype: histMsg.subtype,
             });
+          } else if (histMsg.type === "system_event" && histMsg.event.subtype === "compact_boundary") {
+            chatMessages.push(compactBoundaryMessage(histMsg.event.compact_metadata, histMsg.timestamp));
           }
         }
       }

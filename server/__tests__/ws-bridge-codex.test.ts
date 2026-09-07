@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WsBridge } from "../ws-bridge.js";
 import type { CodexAdapter } from "../../backends/codex/codex-adapter.js";
-import type { BrowserOutgoingMessage } from "../session-types.js";
+import type { BrowserIncomingMessage, BrowserOutgoingMessage } from "../session-types.js";
 
 /**
  * Minimal fake of `CodexAdapter` — just the surface `CodexBridge.attach`
@@ -15,8 +15,9 @@ function makeFakeCodexAdapter() {
   const sentMessages: BrowserOutgoingMessage[] = [];
   const steerCalls: Array<{ content: string; images?: { media_type: string; data: string }[] }> = [];
   let steerError: Error | null = null;
+  let browserCb: ((msg: BrowserIncomingMessage) => void) | null = null;
   const fake = {
-    onBrowserMessage: (_cb: unknown) => {},
+    onBrowserMessage: (cb: (msg: BrowserIncomingMessage) => void) => { browserCb = cb; },
     onSessionMeta: (_cb: unknown) => {},
     onDisconnect: (_cb: unknown) => {},
     sendBrowserMessage: (msg: BrowserOutgoingMessage) => {
@@ -35,6 +36,8 @@ function makeFakeCodexAdapter() {
     sentMessages,
     steerCalls,
     failSteer: (error: Error | null) => { steerError = error; },
+    /** Play an adapter-originated event into the bridge, as the real adapter would. */
+    emitFromAdapter: (msg: BrowserIncomingMessage) => { browserCb?.(msg); },
   };
 }
 
@@ -300,5 +303,35 @@ describe("WsBridge Codex integration", () => {
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }
+  });
+  /**
+   * A compaction boundary is history-backed: the replay ring skips it on
+   * the assumption that `messageHistory` carries it. The Codex bridge used
+   * to broadcast the adapter's `system_event` without recording it, so the
+   * marker vanished on the first refresh.
+   */
+  test("persists adapter system_event into messageHistory and broadcasts it", () => {
+    const bridge = new WsBridge();
+    const session = bridge.getOrCreateSession("compact-echo", "codex");
+    const frames = attachRecordingBrowser(session);
+    const { adapter, emitFromAdapter } = makeFakeCodexAdapter();
+    bridge.attachCodexAdapter("compact-echo", adapter);
+
+    emitFromAdapter({
+      type: "system_event",
+      event: {
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "manual", pre_tokens: 142_000 },
+        uuid: "u-1",
+        session_id: "compact-echo",
+      },
+      timestamp: 1_700_000_000_000,
+    });
+
+    const persisted = session.messageHistory.filter((m) => m.type === "system_event");
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0].type === "system_event" && persisted[0].timestamp).toBe(1_700_000_000_000);
+    const broadcast = frames.find((f) => f.type === "system_event");
+    expect((broadcast?.event as { subtype?: string } | undefined)?.subtype).toBe("compact_boundary");
   });
 });

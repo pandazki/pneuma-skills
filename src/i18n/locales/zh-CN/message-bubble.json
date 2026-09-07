@@ -1,6 +1,10 @@
 {
   "system": {
-    "output_label": "输出"
+    "output_label": "输出",
+    "compacted": "上下文已压缩",
+    "compacted_manual": "/compact",
+    "compacted_auto": "自动触发",
+    "compacted_before": "压缩前 {{tokens}} tokens"
   },
   "selection": {
     "in_file": "于 {{file}}",

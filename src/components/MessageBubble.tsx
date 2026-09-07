@@ -86,6 +86,67 @@ function LocatorCardGroup({ locators }: { locators: ViewerLocator[] }) {
   );
 }
 
+// ─── Compaction boundary ───────────────────────────────────────────────────
+
+/**
+ * The chat's trace of a context compaction — the point past which the model
+ * sees a summary rather than the turns above. A divider naming the trigger
+ * (the user's `/compact`, or the agent's own housekeeping) and the window
+ * occupancy it started from, so a reader can tell why the agent's memory of
+ * the earlier turns is thinner from here on. Every backend lands here: the
+ * Claude bridge forwards `system.compact_boundary`, the Codex adapter
+ * synthesises the same event when its `contextCompaction` item completes.
+ */
+function CompactBoundaryMarker({ compaction }: { compaction: NonNullable<ChatMessage["compaction"]> }) {
+  const { t } = useTranslation("message-bubble");
+  const trigger = compaction.trigger === "manual"
+    ? t("system.compacted_manual")
+    : t("system.compacted_auto");
+  const before = compaction.preTokens > 0
+    ? t("system.compacted_before", { tokens: formatTokenCount(compaction.preTokens) })
+    : null;
+  return (
+    <div
+      className="flex items-center gap-2 py-1.5 animate-[fadeSlideIn_0.2s_ease-out]"
+      role="separator"
+      aria-label={t("system.compacted")}
+    >
+      <div className="flex-1 min-w-3 h-px bg-cc-border" />
+      {/* The pill may shrink and wrap between its segments: the chat column
+          can be docked narrow on any viewport, and a `shrink-0` pill pushed
+          the token detail past the column edge at ~700px. */}
+      <div className="flex flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5 min-w-0 max-w-full px-2.5 py-1 rounded-2xl border border-cc-border/60 bg-cc-card/40 text-[11px] font-mono-code">
+        <span className="flex items-center gap-1.5 whitespace-nowrap">
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="w-3 h-3 text-cc-primary/80 shrink-0"
+            aria-hidden="true"
+          >
+            <path d="M8 1.5v4M6 3.5l2 2 2-2M8 14.5v-4M6 12.5l2-2 2 2M2.5 8h11" />
+          </svg>
+          <span className="text-cc-fg/80">{t("system.compacted")}</span>
+        </span>
+        <span className="text-cc-muted whitespace-nowrap">· {trigger}</span>
+        {before ? <span className="text-cc-muted whitespace-nowrap">· {before}</span> : null}
+      </div>
+      <div className="flex-1 min-w-3 h-px bg-cc-border" />
+    </div>
+  );
+}
+
+/** 142000 → "142k", 1234 → "1.2k", 2_500_000 → "2.5M". */
+function formatTokenCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 10_000) return `${Math.round(n / 1000)}k`;
+  if (n >= 1_000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
+}
+
 export default function MessageBubble({
   message,
   globalToolUseById,
@@ -104,6 +165,9 @@ export default function MessageBubble({
 }) {
   const { t } = useTranslation("message-bubble");
   if (message.role === "system") {
+    if (message.subtype === "compact" && message.compaction) {
+      return <CompactBoundaryMarker compaction={message.compaction} />;
+    }
     if (message.isCollapsible) {
       // /context output — render as a rich visualization card (open by default)
       if (message.subtype === "context") {

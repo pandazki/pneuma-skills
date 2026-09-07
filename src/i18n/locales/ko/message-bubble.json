@@ -1,6 +1,10 @@
 {
   "system": {
-    "output_label": "출력"
+    "output_label": "출력",
+    "compacted": "컨텍스트 압축됨",
+    "compacted_manual": "/compact",
+    "compacted_auto": "자동",
+    "compacted_before": "압축 전 {{tokens}} 토큰"
   },
   "selection": {
     "in_file": "{{file}} 안",

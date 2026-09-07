@@ -1,6 +1,10 @@
 {
   "system": {
-    "output_label": "Output"
+    "output_label": "Output",
+    "compacted": "Context compacted",
+    "compacted_manual": "/compact",
+    "compacted_auto": "automatic",
+    "compacted_before": "{{tokens}} tokens before"
   },
   "selection": {
     "in_file": "in {{file}}",

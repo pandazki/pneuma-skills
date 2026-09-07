@@ -1,6 +1,10 @@
 {
   "system": {
-    "output_label": "Ausgabe"
+    "output_label": "Ausgabe",
+    "compacted": "Kontext komprimiert",
+    "compacted_manual": "/compact",
+    "compacted_auto": "automatisch",
+    "compacted_before": "{{tokens}} Tokens zuvor"
   },
   "selection": {
     "in_file": "in {{file}}",

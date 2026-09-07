@@ -1,6 +1,10 @@
 {
   "system": {
-    "output_label": "Salida"
+    "output_label": "Salida",
+    "compacted": "Contexto compactado",
+    "compacted_manual": "/compact",
+    "compacted_auto": "automático",
+    "compacted_before": "{{tokens}} tokens antes"
   },
   "selection": {
     "in_file": "en {{file}}",

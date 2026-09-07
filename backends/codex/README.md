@@ -98,6 +98,15 @@ RPC (`fetchAvailableModels`); skills come from `skills/list`.
 } }
 ```
 
+```jsonc
+// Browser `/compact` — the ONE slash command the adapter answers itself.
+// app-server has no slash-command surface (the TUI owns those), so the bare
+// text is translated into the native RPC instead of reaching the model as
+// prose. `/compact <note>` stays prose: the RPC takes no focus instructions.
+{ "method": "thread/compact/start", "params": { "threadId": "thr_…" } }
+// → {} — the compaction then runs as a turn of its own (see below).
+```
+
 ### Per-turn flow (Codex → server)
 
 ```jsonc
@@ -137,6 +146,36 @@ RPC (`fetchAvailableModels`); skills come from `skills/list`.
 { "method": "turn/completed", "params": { "turn": { "status": "completed" }, "usage": {...} } }
 ```
 
+```jsonc
+// Context compaction — whether the user asked (`thread/compact/start`) or
+// Codex decided on its own mid-turn. The adapter echoes ONE
+// `system_event { subtype: "compact_boundary" }` per compaction
+// (`trigger: "manual" | "auto"`, `pre_tokens` = occupancy when it started).
+// Sequence as probed live on codex-cli 0.154.0 (2026-09-07): a manual
+// compaction is bracketed by its own turn/started … turn/completed (so it
+// ends with a `result` like any turn), the turn id is under `turn.id`, and
+// the token-usage update INSIDE the turn already reports the
+// post-compaction occupancy (20,716 → 5,750 in the probe) — which is why
+// pre_tokens is snapshotted at item/started and the gauge is left alone.
+// 0.154 sent no `thread/compacted`; the handler stays for builds that do,
+// deduped against the item.
+{ "method": "turn/started",   "params": { "threadId": "thr_…", "turn": { "id": "turn_…", "status": "inProgress" } } }
+{ "method": "item/started",   "params": { "item": { "type": "contextCompaction", "id": "itm_…" } } }
+{ "method": "thread/tokenUsage/updated", "params": { "tokenUsage": { "last": { "totalTokens": 5750, "inputTokens": 0, "outputTokens": 0 }, "modelContextWindow": 258400 } } }
+{ "method": "item/completed", "params": { "item": { "type": "contextCompaction", "id": "itm_…" } } }
+{ "method": "turn/completed", "params": { "turn": { "id": "turn_…", "status": "completed" } } }
+
+// Errors — v2 nests the text; `willRetry: true` means Codex is about to
+// retry on its own (stream drops, transient 5xx) and the turn is not over.
+// Legacy servers put `message` (or `msg.message`) at the top level; the
+// adapter reads all three shapes (`describeErrorNotification`).
+{ "method": "error", "params": {
+    "threadId": "thr_…", "turnId": "turn_…",
+    "error": { "message": "stream disconnected before completion", "codexErrorInfo": "responseStreamDisconnected", "additionalDetails": null },
+    "willRetry": true
+} }
+```
+
 ### Permission round-trips (Codex → server, expects response)
 
 These are **JSON-RPC requests with an `id`**, not notifications — the adapter
@@ -168,6 +207,8 @@ must call `transport.respond(id, …)` once the user decides:
 | `permission_request`    | Synthesised from any of the seven approval-style JSON-RPC requests above. |
 | `session_update`        | Native-ish — adapter pushes one whenever model / cost / context-percent / available models change. |
 | `status_change`         | Synthesised from `thread/status/changed`. |
+| `system_event` (`compact_boundary`) | **Synthesised** once per compaction from `item/completed` (`contextCompaction`) / `thread/compacted` — the same envelope the Claude bridge forwards from `system.compact_boundary`, so the chat draws one marker for every backend. |
+| `error`                 | Native `error` notification, text lifted from `params.error.message` (v2) or the legacy top-level fields; `(retrying)` appended when `willRetry` is set. |
 
 ## Capabilities + why
 
@@ -220,6 +261,20 @@ reads these paths directly.
 
 ## Lifecycle gotchas
 
+- **`/compact` is not prose.** app-server does not parse slash commands — a
+  browser `/compact` sent through `turn/start` reaches the model as a
+  two-word prompt. The adapter intercepts the bare command and calls
+  `thread/compact/start` (present since ~0.100; a rejected call is unwound
+  with an error `result` so the composer does not stay stuck on "running").
+  `compact` is advertised in `slash_commands` ahead of the `skills/list`
+  names so the composer menu shows it; skills are still reported separately
+  in `skills`.
+- **The `error` notification nests its text.** v2 sends
+  `{ threadId, turnId, error: { message, codexErrorInfo, additionalDetails }, willRetry }`.
+  Reading only the legacy `params.message` / `params.msg.message` rendered
+  every modern error as "Unknown error" — the shape that greeted a `/compact`
+  on 0.154 was two such dividers around a perfectly good turn. Go through
+  `describeErrorNotification`; do not add a fourth ad-hoc reader.
 - **`CodexBridge` MUST merge the adapter's partial session before broadcasting.**
   The adapter emits `session_init` / `session_update` with only the fields it
   knows about — notably without `agent_capabilities`, which the bridge layer

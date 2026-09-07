@@ -114,6 +114,46 @@ const RPC_METHOD_TIMEOUTS: Record<string, number> = {
   "thread/resume": 30_000,
 };
 
+/**
+ * Slash commands the adapter answers itself. Codex `app-server` has no
+ * slash-command surface — the TUI owns those — so a browser `/compact` must
+ * be translated into the native `thread/compact/start` RPC rather than handed
+ * to the model as prose. Advertised in `slash_commands` so the composer's menu
+ * lists it next to the skills `skills/list` returns.
+ */
+const CODEX_BUILTIN_SLASH_COMMANDS: readonly string[] = ["compact"];
+
+/**
+ * Bare `/compact`, whitespace tolerated. `/compact <note>` stays prose on
+ * purpose: the RPC takes no focus instructions, and silently dropping the
+ * note would be worse than the model reading it.
+ */
+const COMPACT_COMMAND_PATTERN = /^\s*\/compact\s*$/i;
+
+/**
+ * `error` notification payloads. v2 (0.114+) nests the text:
+ * `{ threadId, turnId, error: { message, codexErrorInfo, additionalDetails }, willRetry }`;
+ * legacy servers carried `message` (or `msg.message`) at the top level.
+ * Reading only the legacy fields is what rendered every modern error as
+ * "Unknown error" in the chat.
+ */
+export function describeErrorNotification(
+  params: Record<string, unknown>,
+): { message: string; willRetry: boolean; details?: string } {
+  const nested = params.error as { message?: unknown; additionalDetails?: unknown } | undefined;
+  const legacy = params.msg as { message?: unknown } | undefined;
+  const text = [nested?.message, params.message, legacy?.message]
+    .find((c): c is string => typeof c === "string" && c.trim().length > 0);
+  const details = typeof nested?.additionalDetails === "string" && nested.additionalDetails.trim().length > 0
+    ? nested.additionalDetails
+    : undefined;
+  return {
+    message: text ?? `Codex reported an error without a message: ${JSON.stringify(params).slice(0, 200)}`,
+    willRetry: params.willRetry === true,
+    ...(details ? { details } : {}),
+  };
+}
+
 // ─── Stdio JSON-RPC Transport ────────────────────────────────────────────────
 
 export class StdioTransport implements ICodexTransport {
@@ -377,6 +417,22 @@ export class CodexAdapter {
   private threadId: string | null = null;
   private currentTurnId: string | null = null;
   private connected = false;
+
+  // Context compaction bookkeeping. `manualCompactRequested` is set when a
+  // browser `/compact` was translated into `thread/compact/start`, so the
+  // boundary echo can say whether the user or Codex triggered it.
+  // `compactionEchoed` dedupes that echo: v0.114+ reports one compaction as
+  // both a `contextCompaction` item and a `thread/compacted` notification.
+  private manualCompactRequested = false;
+  private compactionEchoed = false;
+  // Occupancy of the most recent request, from `thread/tokenUsage/updated`.
+  private lastContextTokens = 0;
+  // Snapshot of `lastContextTokens` taken when a compaction starts. Codex
+  // 0.154 (probed live) emits a `thread/tokenUsage/updated` INSIDE the
+  // compaction turn, before `item/completed`, and that update already reports
+  // the post-compaction occupancy — so `pre_tokens` has to be captured at
+  // `item/started`, not read at the boundary.
+  private compactionPreTokens = 0;
   private initialized = false;
   private initFailed = false;
   private initInProgress = false;
@@ -706,7 +762,7 @@ export class CodexAdapter {
         claude_code_version: "",
         mcp_servers: [],
         agents: [],
-        slash_commands: [],
+        slash_commands: [...CODEX_BUILTIN_SLASH_COMMANDS],
         skills: [],
         total_cost_usd: 0,
         num_turns: 0,
@@ -748,6 +804,11 @@ export class CodexAdapter {
       return;
     }
 
+    if (COMPACT_COMMAND_PATTERN.test(msg.content) && !msg.images?.length) {
+      await this.startCompaction(this.threadId);
+      return;
+    }
+
     const input = this.buildTurnInput(msg.content, msg.images);
 
     try {
@@ -771,6 +832,86 @@ export class CodexAdapter {
         this.emit({ type: "error", message: `Failed to start turn: ${err}` });
       }
     }
+  }
+
+  /**
+   * Browser `/compact` → `thread/compact/start`. Codex runs the compaction as
+   * a turn of its own (`turn/started` → `contextCompaction` item started /
+   * completed → `turn/completed`; some builds add `thread/compacted`), so the
+   * ordinary lifecycle handlers carry it through and nothing here waits on
+   * the outcome. A
+   * rejected RPC — servers before the method existed, a closed transport —
+   * unwinds the browser's optimistic turn state with the same error `result`
+   * a failed turn ends with.
+   */
+  private async startCompaction(threadId: string): Promise<void> {
+    this.manualCompactRequested = true;
+    this.compactionEchoed = false;
+    this.compactionPreTokens = this.lastContextTokens;
+    try {
+      await this.transport.call("thread/compact/start", { threadId });
+    } catch (err) {
+      this.manualCompactRequested = false;
+      const detail = err instanceof Error ? err.message : String(err);
+      console.warn(`[codex-adapter] thread/compact/start failed: ${detail}`);
+      this.emit({ type: "error", message: `Failed to compact context: ${detail}` } as BrowserIncomingMessage);
+      this.emit({ type: "result", data: this.buildResultEnvelope("error_during_execution") });
+      this.emit({ type: "status_change", status: "idle" });
+    }
+  }
+
+  /**
+   * The protocol-level trace of a compaction — the same `system_event` the
+   * Claude bridge forwards from `system.compact_boundary`, so the chat draws
+   * one marker for every backend. `pre_tokens` is the occupancy captured
+   * when the compaction started. The context gauge is deliberately NOT
+   * reset here: Codex reports the real post-compaction occupancy through
+   * `thread/tokenUsage/updated` on its own (0.154: inside the compaction
+   * turn, before this fires), and a forced 0 would overwrite that reading.
+   */
+  private emitCompactBoundary(): void {
+    if (this.compactionEchoed) return;
+    this.compactionEchoed = true;
+    const trigger = this.manualCompactRequested ? "manual" : "auto";
+    const preTokens = this.compactionPreTokens;
+    this.manualCompactRequested = false;
+    this.compactionPreTokens = 0;
+    this.emit({
+      type: "system_event",
+      event: {
+        subtype: "compact_boundary",
+        compact_metadata: { trigger, pre_tokens: preTokens },
+        uuid: randomUUID(),
+        session_id: this.sessionId,
+      },
+      timestamp: Date.now(),
+    });
+    this.emitSessionUpdate({ is_compacting: false });
+  }
+
+  /** The synthetic `result` a Codex turn ends with; Codex has no native equivalent. */
+  private buildResultEnvelope(
+    status: string,
+    usage?: Record<string, number>,
+  ): CLIResultMessage {
+    return {
+      type: "result",
+      subtype: status === "completed" ? "success" : "error_during_execution",
+      is_error: status !== "completed",
+      duration_ms: 0,
+      duration_api_ms: 0,
+      num_turns: this.turnCount,
+      total_cost_usd: this.cumulativeCostUsd,
+      stop_reason: status,
+      usage: {
+        input_tokens: usage?.inputTokens ?? 0,
+        output_tokens: usage?.outputTokens ?? 0,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+      },
+      uuid: randomUUID(),
+      session_id: this.sessionId,
+    };
   }
 
   private buildTurnInput(
@@ -878,7 +1019,10 @@ export class CodexAdapter {
         .filter(Boolean);
       if (enabledNames.length > 0) {
         console.log(`[codex-adapter] Skills: ${enabledNames.join(", ")}`);
-        this.emitSessionUpdate({ slash_commands: enabledNames, skills: enabledNames });
+        this.emitSessionUpdate({
+          slash_commands: [...CODEX_BUILTIN_SLASH_COMMANDS, ...enabledNames],
+          skills: enabledNames,
+        });
       }
     } catch (err) {
       console.warn("[codex-adapter] Failed to fetch skills:", err);
@@ -916,10 +1060,15 @@ export class CodexAdapter {
         break;
       }
 
-      case "turn/started":
-        this.currentTurnId = params.turnId as string || this.currentTurnId;
+      case "turn/started": {
+        // v2 nests the id under `turn`; a turn Codex opened on its own (a
+        // `/compact`) has no `turn/start` response to seed `currentTurnId`,
+        // and interrupt needs it.
+        const startedTurn = params.turn as { id?: string } | undefined;
+        this.currentTurnId = (params.turnId as string) || startedTurn?.id || this.currentTurnId;
         this.emit({ type: "status_change", status: "running" });
         break;
+      }
 
       case "turn/completed": {
         this.flushStreamingText();
@@ -945,26 +1094,11 @@ export class CodexAdapter {
           this.emit({ type: "error", message: turn.error.message } as BrowserIncomingMessage);
         }
 
-        // Build a synthetic result message
-        const result: CLIResultMessage = {
-          type: "result",
-          subtype: status === "completed" ? "success" : "error_during_execution",
-          is_error: status !== "completed",
-          duration_ms: 0,
-          duration_api_ms: 0,
-          num_turns: this.turnCount,
-          total_cost_usd: this.cumulativeCostUsd,
-          stop_reason: status,
-          usage: {
-            input_tokens: usage?.inputTokens ?? 0,
-            output_tokens: usage?.outputTokens ?? 0,
-            cache_creation_input_tokens: 0,
-            cache_read_input_tokens: 0,
-          },
-          uuid: randomUUID(),
-          session_id: this.sessionId,
-        };
-        this.emit({ type: "result", data: result });
+        // A turn that ended without a boundary compacted nothing; do not let
+        // a stale "manual" flag label the next auto-compaction.
+        this.manualCompactRequested = false;
+
+        this.emit({ type: "result", data: this.buildResultEnvelope(status, usage) });
 
         // Push cumulative stats to session state
         this.emitSessionUpdate({
@@ -1050,9 +1184,12 @@ export class CodexAdapter {
         break;
 
       case "error": {
-        const message = (params.message as string) || (params.msg as { message?: string })?.message || "Unknown error";
-        console.error(`[codex-adapter] Error notification: ${message}`);
-        this.emit({ type: "error", message } as BrowserIncomingMessage);
+        const { message, willRetry, details } = describeErrorNotification(params);
+        console.error(`[codex-adapter] Error notification: ${message}${details ? `\n${details}` : ""}`);
+        this.emit({
+          type: "error",
+          message: willRetry ? `${message} (retrying)` : message,
+        } as BrowserIncomingMessage);
         break;
       }
 
@@ -1066,9 +1203,10 @@ export class CodexAdapter {
         break;
       }
 
-      // v0.114+: context compacted via notification (not just item)
+      // v0.114+: context compacted via notification (not just item). Both
+      // arrive for one compaction; `emitCompactBoundary` echoes it once.
       case "thread/compacted":
-        this.emitSessionUpdate({ is_compacting: false });
+        this.emitCompactBoundary();
         break;
 
       // v0.114+: hooks, plans, diffs, server request resolved — informational
@@ -1331,6 +1469,8 @@ export class CodexAdapter {
         break;
 
       case "contextCompaction":
+        this.compactionEchoed = false;
+        this.compactionPreTokens = this.lastContextTokens;
         this.emit({ type: "status_change", status: "compacting" });
         this.emitSessionUpdate({ is_compacting: true });
         break;
@@ -1457,8 +1597,8 @@ export class CodexAdapter {
         break;
 
       case "contextCompaction":
+        this.emitCompactBoundary();
         this.emit({ type: "status_change", status: "running" });
-        this.emitSessionUpdate({ is_compacting: false });
         break;
 
       case "userMessage":
@@ -1583,6 +1723,8 @@ export class CodexAdapter {
       modelContextWindow = (params.modelContextWindow as number) || DEFAULT_CONTEXT_WINDOW;
       contextTokens = ((params.inputTokens as number) || 0) + ((params.outputTokens as number) || 0);
     }
+
+    this.lastContextTokens = contextTokens;
 
     // Update cumulative cost if provided
     if (costUsd > 0) {

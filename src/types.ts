@@ -53,8 +53,10 @@ export interface ChatMessage {
   annotations?: Annotation[];
   /** If true, system message is shown in a collapsible section (e.g. command output) */
   isCollapsible?: boolean;
-  /** Subtype for specialized rendering (e.g. "context" for /context output) */
+  /** Subtype for specialized rendering (e.g. "context" for /context output, "compact" for a compaction boundary) */
   subtype?: string;
+  /** Present on `subtype: "compact"` markers — who triggered the compaction and how full the window was. */
+  compaction?: { trigger: "manual" | "auto"; preTokens: number };
   /**
    * Attached images for display. Fresh sends carry `data` (base64 from the
    * composer); rehydrated history entries carry `path` only and the bubble

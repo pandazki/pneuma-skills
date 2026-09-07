@@ -215,6 +215,12 @@ export class CodexBridge implements BridgeBackend {
     } else if (msg.type === "status_change") {
       this.session.state.is_compacting = msg.status === "compacting";
       this.session.cliIdle = msg.status === "idle";
+    } else if (msg.type === "system_event") {
+      // Compaction boundaries are history-backed (`isHistoryBackedEvent`):
+      // the replay ring skips them on the assumption that `messageHistory`
+      // carries them, so persist here or a refresh loses the marker. Mirrors
+      // `WsBridge.forwardSystemEvent` on the Claude path.
+      this.session.messageHistory.push({ ...msg, timestamp: msg.timestamp ?? Date.now() });
     }
 
     // Track message history for replay.

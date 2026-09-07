@@ -1,5 +1,5 @@
 import { describe, expect, test, mock, beforeEach } from "bun:test";
-import { CodexAdapter } from "../codex-adapter.js";
+import { CodexAdapter, describeErrorNotification } from "../codex-adapter.js";
 import type { ICodexTransport } from "../codex-adapter.js";
 import type { BrowserIncomingMessage } from "../../../server/session-types.js";
 
@@ -724,5 +724,204 @@ describe("CodexAdapter", () => {
     const threadCall = transport._callHistory.find((c) => c.method === "thread/start");
     expect(threadCall?.params.approvalPolicy).toBe("never");
     expect(threadCall?.params.sandbox).toBe("danger-full-access");
+  });
+  // ── /compact + compaction echo ────────────────────────────────────────────
+
+  test("advertises compact as a builtin slash command, kept apart from skills", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    await waitForInit();
+
+    const init = messages.find((m) => m.type === "session_init");
+    expect(init?.type === "session_init" && init.session.slash_commands).toEqual(["compact"]);
+
+    transport._callResolver.get("skills/list")?.({
+      data: [{ cwd: "/tmp/test", skills: [{ name: "pneuma-doc", enabled: true }, { name: "off", enabled: false }], errors: [] }],
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    const update = messages
+      .filter((m): m is Extract<BrowserIncomingMessage, { type: "session_update" }> => m.type === "session_update")
+      .find((m) => Array.isArray(m.session.slash_commands));
+    expect(update?.session.slash_commands).toEqual(["compact", "pneuma-doc"]);
+    expect(update?.session.skills).toEqual(["pneuma-doc"]);
+  });
+
+  test("/compact calls thread/compact/start instead of turn/start and echoes a manual boundary once", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    await waitForInit();
+
+    // Occupancy before the compaction — what the boundary reports as pre_tokens.
+    transport.simulateNotification("thread/tokenUsage/updated", {
+      tokenUsage: {
+        total: { inputTokens: 900_000, outputTokens: 40_000, totalTokens: 940_000 },
+        last: { inputTokens: 140_000, outputTokens: 2_000, totalTokens: 142_000 },
+        modelContextWindow: 258_400,
+      },
+    });
+
+    adapter.sendBrowserMessage({ type: "user_message", content: "  /Compact \n" });
+    await new Promise((r) => setTimeout(r, 10));
+
+    const compactCall = transport._callHistory.find((c) => c.method === "thread/compact/start");
+    expect(compactCall?.params).toEqual({ threadId: "thr_test" });
+    expect(transport._callHistory.some((c) => c.method === "turn/start")).toBe(false);
+    transport._callResolver.get("thread/compact/start")?.({});
+
+    // Codex runs the compaction as a turn of its own; v0.114+ reports it
+    // both as an item and as thread/compacted.
+    // Order as probed live on codex-cli 0.154: the token-usage update INSIDE
+    // the compaction turn already carries the post-compaction occupancy.
+    transport.simulateNotification("turn/started", { threadId: "thr_test", turn: { id: "turn_c" } });
+    transport.simulateNotification("item/started", { item: { type: "contextCompaction", id: "cc-1" } });
+    transport.simulateNotification("thread/tokenUsage/updated", {
+      tokenUsage: {
+        total: { inputTokens: 900_000, outputTokens: 40_000, totalTokens: 940_000 },
+        last: { inputTokens: 0, outputTokens: 0, totalTokens: 5_750 },
+        modelContextWindow: 258_400,
+      },
+    });
+    transport.simulateNotification("item/completed", { item: { type: "contextCompaction", id: "cc-1" } });
+    transport.simulateNotification("thread/compacted", { threadId: "thr_test", turnId: "turn_c" });
+    transport.simulateNotification("turn/completed", { turn: { id: "turn_c", status: "completed" } });
+
+    const boundaries = messages.filter(
+      (m): m is Extract<BrowserIncomingMessage, { type: "system_event" }> =>
+        m.type === "system_event" && m.event.subtype === "compact_boundary",
+    );
+    expect(boundaries).toHaveLength(1);
+    const event = boundaries[0].event as { compact_metadata: { trigger: string; pre_tokens: number } };
+    expect(event.compact_metadata.trigger).toBe("manual");
+    expect(event.compact_metadata.pre_tokens).toBe(142_000);
+
+    // The gauge keeps Codex's own post-compaction reading (5,750 / 258,400)
+    // rather than being forced to 0 at the boundary; the turn still ends
+    // with a result and the interrupt id came from `turn.id`.
+    const gauge = messages
+      .filter((m): m is Extract<BrowserIncomingMessage, { type: "session_update" }> => m.type === "session_update")
+      .map((m) => m.session.context_used_percent)
+      .filter((v): v is number => typeof v === "number")
+      .pop();
+    expect(gauge).toBeGreaterThan(0);
+    expect(gauge).toBeLessThan(5);
+    expect(messages.some((m) => m.type === "result")).toBe(true);
+    const last = messages.filter((m) => m.type === "status_change").pop();
+    expect(last?.type === "status_change" && last.status).toBe("idle");
+  });
+
+  test("/compact with a note stays prose — the RPC takes no focus instructions", async () => {
+    const transport = createMockTransport();
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    await waitForInit();
+
+    adapter.sendBrowserMessage({ type: "user_message", content: "/compact keep the file list" });
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(transport._callHistory.some((c) => c.method === "thread/compact/start")).toBe(false);
+    expect(transport._callHistory.some((c) => c.method === "turn/start")).toBe(true);
+  });
+
+  test("a rejected thread/compact/start unwinds the turn with an error result", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    await waitForInit();
+
+    const originalCall = transport.call.bind(transport);
+    transport.call = async (method: string, params: Record<string, unknown> = {}) => {
+      if (method === "thread/compact/start") throw new Error("Method not found");
+      return originalCall(method, params);
+    };
+
+    adapter.sendBrowserMessage({ type: "user_message", content: "/compact" });
+    await new Promise((r) => setTimeout(r, 10));
+
+    const error = messages.find((m) => m.type === "error");
+    expect(error?.type === "error" && error.message).toContain("Method not found");
+    const result = messages.find((m) => m.type === "result");
+    expect(result?.type === "result" && result.data.is_error).toBe(true);
+    const last = messages.filter((m) => m.type === "status_change").pop();
+    expect(last?.type === "status_change" && last.status).toBe("idle");
+  });
+
+  test("an unprompted compaction echoes an auto boundary", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    await waitForInit();
+
+    transport.simulateNotification("item/started", { item: { type: "contextCompaction", id: "cc-auto" } });
+    transport.simulateNotification("item/completed", { item: { type: "contextCompaction", id: "cc-auto" } });
+
+    const boundaries = messages.filter((m) => m.type === "system_event" && m.event.subtype === "compact_boundary");
+    expect(boundaries).toHaveLength(1);
+    const event = boundaries[0].type === "system_event" ? boundaries[0].event as { compact_metadata: { trigger: string } } : null;
+    expect(event?.compact_metadata.trigger).toBe("auto");
+  });
+
+  test("thread/compacted on its own still echoes a boundary", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    await waitForInit();
+
+    transport.simulateNotification("thread/compacted", { threadId: "thr_test", turnId: "turn_x" });
+
+    const boundaries = messages.filter((m) => m.type === "system_event" && m.event.subtype === "compact_boundary");
+    expect(boundaries).toHaveLength(1);
+  });
+
+  // ── error notifications ───────────────────────────────────────────────────
+
+  test("surfaces the nested v2 error message instead of 'Unknown error'", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    await waitForInit();
+
+    transport.simulateNotification("error", {
+      threadId: "thr_test",
+      turnId: "turn_1",
+      error: { message: "stream disconnected before completion", codexErrorInfo: "responseStreamDisconnected" },
+      willRetry: true,
+    });
+    transport.simulateNotification("error", {
+      threadId: "thr_test",
+      turnId: "turn_1",
+      error: { message: "context window exceeded", codexErrorInfo: "contextWindowExceeded" },
+      willRetry: false,
+    });
+    transport.simulateNotification("error", { message: "legacy top-level message" });
+
+    const errors = messages
+      .filter((m): m is Extract<BrowserIncomingMessage, { type: "error" }> => m.type === "error")
+      .map((m) => m.message);
+    expect(errors).toEqual([
+      "stream disconnected before completion (retrying)",
+      "context window exceeded",
+      "legacy top-level message",
+    ]);
+    expect(errors.some((e) => e.includes("Unknown error"))).toBe(false);
+  });
+
+  test("describeErrorNotification reads every known payload shape", () => {
+    expect(describeErrorNotification({ error: { message: "nested" }, willRetry: true }))
+      .toEqual({ message: "nested", willRetry: true });
+    expect(describeErrorNotification({ error: { message: "nested", additionalDetails: "stack…" } }))
+      .toEqual({ message: "nested", willRetry: false, details: "stack…" });
+    expect(describeErrorNotification({ message: "flat" }).message).toBe("flat");
+    expect(describeErrorNotification({ msg: { message: "wrapped" } }).message).toBe("wrapped");
+    const empty = describeErrorNotification({ threadId: "t", turnId: "u" });
+    expect(empty.message).toContain("without a message");
+    expect(empty.message).toContain("\"threadId\"");
   });
 });
