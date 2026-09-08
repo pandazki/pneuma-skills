@@ -28,8 +28,8 @@
  *
  * Watcher:
  *   - One chokidar watcher per project root, watching the `.pneuma/sessions/`
- *     directory at depth 2 so we catch session adds/removes AND
- *     `session.json` / `history.json` writes inside each session subdir.
+ *     directory and direct session metadata files, pruning content trees
+ *     before traversal. Session adds/removes and metadata writes refresh it.
  *   - `awaitWriteFinish` debounces rapid writes; the in-flight Promise
  *     dedupe re-runs once if events accumulate while a scan is running.
  *
@@ -39,7 +39,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { watch, type FSWatcher } from "chokidar";
 import {
   loadProjectManifest,
@@ -73,6 +73,7 @@ const inFlight = new Map<string, Promise<void>>();
  * fire during the in-flight window.
  */
 const pendingFollowUp = new Set<string>();
+const SESSION_METADATA_FILES = new Set(["session.json", "history.json", "thumbnail.png"]);
 
 /**
  * Build a fresh cache entry by re-reading manifest + scanning sessions.
@@ -216,22 +217,27 @@ export async function primeProjectCache(projectRoot: string): Promise<void> {
   // but only register one watcher per project root.
   if (!watchers.has(projectRoot)) {
     const sessionsDir = join(projectRoot, ".pneuma", "sessions");
-    // chokidar tolerates a missing directory by waiting for it to appear,
-    // but we still want to bound the watch depth so we don't spin up
-    // recursive watchers for every nested file. Depth 2 covers:
-    //   - sessions/<id>/                (add/remove session dirs)
-    //   - sessions/<id>/{session.json,history.json,thumbnail.png}
-    // which is exactly what `scanProjectSessions` reads.
+    // A depth limit alone still opens every content/capture/dependency
+    // directory immediately below a session. Across registered projects,
+    // that initial filesystem work can stall Bun's HTTP event loop for
+    // tens of seconds. Prune everything except the metadata the scan reads.
     const watcher = watch(sessionsDir, {
-      depth: 2,
+      depth: 1,
+      followSymlinks: false,
       persistent: true,
       ignoreInitial: true,
       awaitWriteFinish: {
         stabilityThreshold: 200,
         pollInterval: 50,
       },
-      // Common noise we definitely don't want to revalidate on.
-      ignored: [/\.DS_Store$/, /\.tmp$/, /\.swp$/],
+      ignored: (path, stats) => {
+        const rel = relative(sessionsDir, path).replaceAll("\\", "/");
+        if (!rel || rel === ".." || rel.startsWith("../")) return false;
+        const parts = rel.split("/");
+        if (parts.length === 1) return stats ? !stats.isDirectory() : false;
+        return parts.length !== 2 || !SESSION_METADATA_FILES.has(parts[1])
+          || (stats ? !stats.isFile() : false);
+      },
     });
 
     const trigger = () => {

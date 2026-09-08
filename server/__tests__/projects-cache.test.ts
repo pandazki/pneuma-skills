@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, rename, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -52,6 +52,75 @@ afterEach(async () => {
 });
 
 describe("primeProjectCache", () => {
+  test("content, captures, and linked directories do not invalidate session metadata", async () => {
+    await seedProject(projectRoot, ["s1"]);
+    const sessionDir = join(projectRoot, ".pneuma", "sessions", "s1");
+    const externalDir = join(home, "external");
+    for (const dir of ["captures", "content", "shadow.git", "node_modules"]) {
+      await mkdir(join(sessionDir, dir));
+      await writeFile(join(sessionDir, dir, "existing.json"), "{}");
+    }
+    await mkdir(externalDir);
+    await writeFile(join(externalDir, "existing.json"), "{}");
+    await symlink(externalDir, join(sessionDir, "linked-content"), "dir");
+    await primeProjectCache(projectRoot);
+    // Let chokidar finish its initial scan before exercising changes.
+    await Bun.sleep(250);
+    const before = getProjectCache(projectRoot)!.lastScanned;
+
+    for (const dir of ["captures", "content", "shadow.git", "node_modules", "linked-content"]) {
+      await writeFile(join(sessionDir, dir, "existing.json"), '{"changed":true}');
+      await writeFile(join(sessionDir, dir, "new.json"), "{}");
+    }
+    await writeFile(join(sessionDir, "index.html"), "<h1>Updated content</h1>");
+    await Bun.sleep(500);
+    expect(getProjectCache(projectRoot)!.lastScanned).toBe(before);
+
+    // Atomic metadata replacement must still refresh the recent-session row.
+    const metadataPath = join(sessionDir, "session.json");
+    await writeFile(`${metadataPath}.tmp`, JSON.stringify({
+      sessionId: "s1", mode: "doc", displayName: "Renamed session", createdAt: 1,
+    }));
+    await rename(`${metadataPath}.tmp`, metadataPath);
+    for (let i = 0; i < 100; i++) {
+      if (getProjectCache(projectRoot)!.sessions[0]?.displayName === "Renamed session") break;
+      await Bun.sleep(20);
+    }
+    expect(getProjectCache(projectRoot)!.sessions[0]?.displayName).toBe("Renamed session");
+  });
+
+  test("observes history, thumbnail, and session creation/removal without manual refresh", async () => {
+    await seedProject(projectRoot, ["s1"]);
+    await primeProjectCache(projectRoot);
+    await Bun.sleep(250);
+    const sessionDir = join(projectRoot, ".pneuma", "sessions", "s1");
+    const waitFor = async (check: () => boolean) => {
+      for (let i = 0; i < 100 && !check(); i++) await Bun.sleep(20);
+      expect(check()).toBe(true);
+    };
+
+    await writeFile(join(sessionDir, "history.json"), JSON.stringify([
+      { role: "user", content: "A new session preview" },
+    ]));
+    await writeFile(join(sessionDir, "thumbnail.png"), "thumbnail");
+    await waitFor(() => {
+      const session = getProjectCache(projectRoot)!.sessions[0];
+      return session?.preview === "A new session preview" && !!session.thumbnailUrl;
+    });
+
+    await rm(join(sessionDir, "history.json"));
+    await rm(join(sessionDir, "thumbnail.png"));
+    await waitFor(() => {
+      const session = getProjectCache(projectRoot)!.sessions[0];
+      return session?.preview === undefined && session?.thumbnailUrl === undefined;
+    });
+
+    await seedProject(projectRoot, ["s2"]);
+    await waitFor(() => getProjectCache(projectRoot)!.sessions.some((s) => s.sessionId === "s2"));
+    await rm(join(projectRoot, ".pneuma", "sessions", "s2"), { recursive: true });
+    await waitFor(() => getProjectCache(projectRoot)!.sessions.length === 1);
+  });
+
   test("populates the cache entry from disk", async () => {
     await seedProject(projectRoot, ["s1", "s2"]);
     expect(getProjectCache(projectRoot)).toBeNull();
