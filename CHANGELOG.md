@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.46.3] - 2026-09-08
+
+### Fixed
+- **Recent sessions open without a long pause.** Opening a session could leave the project panel visible for more than 30 seconds while background watchers scanned content, captures, and dependency directories across registered projects. Project-list watchers now observe only session metadata, history, and thumbnails, skipping content trees and symlink targets. In a local reproduction with 19 registered projects, the same session's initial page response fell from 37.7 seconds to 0.74 seconds. Session renames, activity, thumbnails, and session creation/removal still update automatically.
+
 ## [3.46.2] - 2026-09-07
 
 ### Fixed

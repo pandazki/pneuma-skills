@@ -294,7 +294,7 @@ Pneuma 支持在 session 之上的可选 Project 层 —— 用来锚定**一件
 
 | 层 | 技术 |
 |------|------|
-| Runtime | [Bun](https://bun.sh) >= 1.3.5 |
+| Runtime | [Bun](https://bun.sh) >= 1.3.14 |
 | Server | [Hono](https://hono.dev) 4.7 |
 | Frontend | React 19 + [Vite](https://vite.dev) 7 + [Tailwind CSS](https://tailwindcss.com) 4 + [Zustand](https://zustand.docs.pmnd.rs) 5 |
 | Desktop | [Electron](https://www.electronjs.org) 41 + electron-builder + electron-updater |
