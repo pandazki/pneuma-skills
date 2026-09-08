@@ -12,6 +12,8 @@ paths:
 
 ## Gotchas
 
+- **Release uploads must select `latest*.yml`, never every `*.yml`.** All platform builds emit `builder-debug.yml`. Concurrent `gh release upload --clobber` calls race on that shared name (delete/create is not atomic), returning HTTP 422 before the updater manifest is uploaded. This interrupted the v3.46.3 Windows x64 upload after its installer had already succeeded. Select installer files plus updater manifests explicitly; recover an interrupted upload by rerunning the failed job once the other uploads finish.
+
 - **Background mode**(`pneuma://handoff` 默认):session 跑在隐藏 `BrowserWindow({ show: false, backgroundThrottling: false })`。完成自动揭示:渲染端 `useBackgroundStatusReporter` 经 IPC push `running`/`idle`,`background-sessions.ts` 按 `webContents.id` 关联;首个 `running → idle`(≥1 turn)触发 `revealModeWindow`。容错:60s watchdog 强制 reveal、`did-fail-load` 重试 `loadURL`、renderer crash 也 reveal。逃生口 `&background=0`。服务端零改动——纯桌面表现层。
 - **URL 协议**:`pneuma://` 在 `desktop/src/main/index.ts::handlePneumaUrl` 处理;`handoff` case POST 到 launcher 的 `/api/handoffs/external` 再开 mode window。
 - **Launcher window 复用**:launcher 经 `window.location.href` 把自己的 `BrowserWindow` 导航成 session 窗口——窗口仍是 `titleBarStyle: "hiddenInset"`,前端 TopBar 的 drag/no-drag 约束因此存在(见 `.claude/rules/frontend.md`)。

@@ -283,7 +283,10 @@ jobs:
           # whole set with clobber. Push builds always upload everything.
           EXISTING="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
           FILES=()
-          for file in desktop/release/*.{dmg,zip,exe,AppImage,deb,yml}; do
+          # Only updater manifests are release assets. Every platform emits
+          # builder-debug.yml; concurrent --clobber uploads of that shared
+          # name can race and abort before the updater manifest is uploaded.
+          for file in desktop/release/*.{dmg,zip,exe,AppImage,deb} desktop/release/latest*.yml; do
             [ -f "$file" ] && FILES+=("$file")
           done
           if [ "${#FILES[@]}" -eq 0 ]; then
