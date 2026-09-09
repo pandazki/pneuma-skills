@@ -88,7 +88,16 @@ Copy an address verbatim into:
 
 ## Core rules
 
-- **`project.json` is written only by `scripts/sprite-project.mjs`.** A single
+- **Every script runs from the workspace, never from the skill.** The form is
+  `node {SKILL_PATH}/scripts/<script>.mjs …`. `{SKILL_PATH}` is an absolute
+  path, so there is nothing to `cd` into — and a `cd` would re-root every path
+  you pass inside the skill directory, where `motions/idle/sheet-raw.png` does
+  not exist. File arguments are **workspace-relative** and therefore carry the
+  character directory — `lumi/motions/idle/sheet-raw.png`,
+  `--output-dir lumi/refs`. The one exception is `sprite-project.mjs`, where `--dir` names
+  the character directory and `--file` is relative to *it*, because a `--file`
+  is literally the uri stored in `project.json`.
+- **`project.json` is written only by `{SKILL_PATH}/scripts/sprite-project.mjs`.** A single
   motion adds sixteen frame assets plus their provenance edges; ids and edges
   drift the moment they are typed by hand, and a drifted project renders a
   motion with missing frames while every file sits correctly on disk. Read it
@@ -131,12 +140,12 @@ prompt is anchored to; the ten minutes here save every motion afterwards.
    sentence (the exact words that will open every prompt), facing
    (`left`/`right`), and cell size (256×256 is a good default; 128×128 for a
    pixel look). Ask in one message, not five.
-2. **Generate `refs/turnaround.png`** — a three-view sheet (front / side /
-   back) of the character standing neutral, on a transparent background,
-   2048×2048, `--quality high`. This is the reference that carries identity
-   into every motion, so it is worth the top quality tier.
-3. **Generate `refs/portrait.png`** — head and shoulders, same style, same
-   transparent background.
+2. **Generate `<character>/refs/turnaround.png`** — a three-view sheet (front /
+   side / back) of the character standing neutral, on a transparent
+   background, 2048×2048, `--quality high`. This is the reference that carries
+   identity into every motion, so it is worth the top quality tier.
+3. **Generate `<character>/refs/portrait.png`** — head and shoulders, same
+   style, same transparent background.
 4. **Record it** — `sprite-project.mjs init` then `add-ref` for each
    reference.
 5. **Show them** — `navigate-to { "ref": "turnaround" }`, `capture`, look at
@@ -144,9 +153,26 @@ prompt is anchored to; the ten minutes here save every motion afterwards.
    agree with each other, regenerate now; every motion inherits this.
 
 {{#imageGenEnabled}}
-Both reference generations run through `scripts/generate_image.mjs` with
-`--background transparent`. Prompt grammar and worked examples are in
-`references/prompting.md`.
+Both reference generations are one `generate_image.mjs` call each:
+
+```bash
+node {SKILL_PATH}/scripts/generate_image.mjs \
+  "<the style sentence verbatim>. A front, side and back view of the same character standing neutral, evenly spaced on one row, identical height in all three. Fully transparent background, no ground shadow, no text." \
+  --background transparent \
+  --image-size 2048x2048 \
+  --quality high \
+  --output-format png \
+  --output-dir <character>/refs \
+  --filename-prefix turnaround
+```
+
+The prompt is a **positional argument** — there is no `--prompt` flag on
+`generate_image.mjs` (the video scripts do have one, which is what makes this
+worth saying twice). One image lands at exactly
+`<character>/refs/turnaround.png`, no numeric suffix, which is the file
+`add-ref --dir <character> --file refs/turnaround.png` then registers. The
+portrait is the same call with `--filename-prefix portrait`. Prompt grammar,
+every flag, and worked examples are in `references/prompting.md`.
 {{/imageGenEnabled}}
 
 ### B. Add a motion
@@ -167,25 +193,53 @@ Both reference generations run through `scripts/generate_image.mjs` with
    shows a placeholder while the model works, so the user is not staring at
    nothing wondering whether you heard them.
 3. **Generate the sheet** — one `generate_image.mjs` call with every reference
-   attached, `--background transparent`, and the style sentence first.
-4. **Probe the alpha** — `sprite-sheet.mjs probe motions/<id>/sheet-raw.png`.
+   attached, `--background transparent`, and the style sentence first:
+
+   ```bash
+   node {SKILL_PATH}/scripts/generate_image.mjs \
+     "<style sentence verbatim>. A single image laid out as a strict 4x4 grid of 16 equal cells, read left to right, top to bottom. …" \
+     --image-urls <character>/refs/turnaround.png \
+     --image-urls <character>/refs/portrait.png \
+     --background transparent \
+     --image-size 2048x2048 \
+     --quality high \
+     --output-format png \
+     --output-dir <character>/motions/<id> \
+     --filename-prefix sheet-raw
+   ```
+
+   Positional prompt, one `--image-urls` per reference, and the file lands at
+   `<character>/motions/<id>/sheet-raw.png` — the path `set-sheet --file
+   motions/<id>/sheet-raw.png` registers.
+4. **Probe the alpha** — `node {SKILL_PATH}/scripts/sprite-sheet.mjs probe <character>/motions/<id>/sheet-raw.png`.
    Models honour `background: transparent` inconsistently; probing is free and
    tells you which branch you are on.
 5. **Key it if it came back opaque** — `remove-background.mjs` (fal, best
    quality) or, with no fal key, `sprite-sheet.mjs key` (ffmpeg `colorkey` on
-   the detected corner colour). Writes `sheet-alpha.png`.
-6. **Run the pipeline** — `sprite-sheet.mjs run` does probe → key → slice →
-   align → pack → gif → inspect in one call and prints one JSON object.
-7. **Record the run** — `sprite-project.mjs register-run --motion <id> --run <run.json>`.
+   the detected corner colour). Either one writes
+   `<character>/motions/<id>/sheet-alpha.png`.
+6. **Run the pipeline** — `run` does probe → key → slice → align → pack → gif →
+   inspect in one call and prints one JSON object. Feed it the sheet you
+   actually have: `sheet-alpha.png` when you keyed one in step 5 (`run` probes
+   first and will not re-key a sheet that already has alpha), otherwise
+   `sheet-raw.png`.
+
+   ```bash
+   node {SKILL_PATH}/scripts/sprite-sheet.mjs run <character>/motions/<id>/sheet-raw.png \
+     --rows 4 --cols 4 --out <character>/motions/<id> --name <id> --fps 8 --loop \
+     --json > <character>/motions/<id>/run.json
+   ```
+7. **Record the run** — `node {SKILL_PATH}/scripts/sprite-project.mjs register-run --dir <character> --motion <id> --run <character>/motions/<id>/run.json`.
    This registers every frame, the atlas, the previews, copies the inspect
    summary into the motion, and sets the status to `ready`.
 8. **Read the inspect warnings**, then verify: `navigate-to`, `play`,
    `pause` + `capture` at a couple of frames.
-9. **Fix the loop when it is wrong.** One bad cell → `edit_image.mjs` on the
-   raw sheet targeting that cell, then re-run from step 6. Scale drift or
-   mixed facing across the sheet → regenerate with a tightened prompt; that is
-   a drawing problem, not an alignment problem. `references/prompting.md` has
-   the phrasings that fix each.
+9. **Fix the loop when it is wrong.** One bad cell → `edit_image.mjs` on
+   `<character>/motions/<id>/sheet-raw.png` targeting that cell, then re-run
+   from step 6. Scale drift or mixed facing across the sheet → regenerate with
+   a tightened prompt; that is a drawing problem, not an alignment problem.
+   `references/prompting.md` has the phrasings that fix each, and the worked
+   `edit_image.mjs` call.
 
 ### C. Render a video preview
 
@@ -196,11 +250,13 @@ A clip is how the user feels the motion; the frames stay the deliverable.
    asked for in the `render-video` command.
 2. **Pick the mode:**
    - `i2v` — flatten frame 00 onto the character's background colour
-     (`sprite-sheet.mjs flatten`), then `seedance-video.mjs --image … --duration 4 --resolution 480p --no-audio`.
-     Video models mishandle alpha; hand them an opaque frame.
+     (`sprite-sheet.mjs flatten`), then
+     `node {SKILL_PATH}/scripts/seedance-video.mjs --prompt "…" --image <character>/motions/<id>/first.png --duration 4 --resolution 480p --no-audio --output <character>/motions/<id>/video-seedance-1.mp4`.
+     Video models mishandle alpha; hand them an opaque frame. These two are the
+     one place a prompt travels as `--prompt` instead of a positional.
    - `first-last` — add `--end-image` (the last frame, or frame 00 again when
      the motion loops) so the clip lands where it started.
-   - `r2v` — `--ref-image refs/turnaround.png --ref-image motions/<id>/sheet.png`
+   - `r2v` — `--ref-image <character>/refs/turnaround.png --ref-image <character>/motions/<id>/sheet.png`
      with a prompt that says `@Image1` is the character and `@Image2` is the
      motion sequence to perform. Use this when the motion must be recognisably
      the same beats, not a reinterpretation.

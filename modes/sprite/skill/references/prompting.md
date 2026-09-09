@@ -26,8 +26,55 @@ is the style.
 5. **Negative constraints.** Transparent background, no cell borders, no
    numbers, no drop shadow, no motion blur, no effects leaving the cell.
 
-Then, on the command line: every reference with `--image-urls`,
-`--background transparent`, and `--aspect-ratio 1:1` for a square grid.
+## The call
+
+The five parts above are one argument, quoted. This is the whole invocation —
+the three worked prompts below are what belongs inside the quotes:
+
+```bash
+node {SKILL_PATH}/scripts/generate_image.mjs \
+  "Clean anime-chibi line art, flat colors, thick uniform outline, no shading. A single image laid out as a strict 4x4 grid of 16 equal cells, read left to right, top to bottom. …" \
+  --image-urls <character>/refs/turnaround.png \
+  --image-urls <character>/refs/portrait.png \
+  --background transparent \
+  --image-size 2048x2048 \
+  --quality high \
+  --output-format png \
+  --output-dir <character>/motions/<id> \
+  --filename-prefix sheet-raw
+```
+
+Run it from the workspace — no `cd`, `{SKILL_PATH}` is absolute, and every
+path here is workspace-relative (`references/pipeline.md` states the rule
+once for all the scripts).
+
+- **The prompt is a positional argument.** There is no `--prompt` flag on
+  `generate_image.mjs` or `edit_image.mjs`; writing one fails the call outright
+  with `ERROR: Unknown option '--prompt'`. The video scripts on the next page
+  *do* take `--prompt` — that asymmetry is the trap, and it costs you a turn,
+  not an image.
+- **`--image-urls` repeats, once per reference** (up to 16), and it is what
+  makes the sheet the *same* character. Passing any reference switches the
+  model to Flare automatically; do not override with `--model`.
+- **`--background transparent` needs `--output-format png` or `webp`** — it
+  refuses on jpeg, which has no alpha channel. The JSON result reports
+  `hasAlpha` for what actually arrived, and the script prints a `WARN` when the
+  provider ignored the request; either way, probe the sheet (workflow B step 4)
+  rather than trusting the flag.
+- **`--image-size 2048x2048` pins the pixels**; `--aspect-ratio 1:1` only asks
+  for a square at whatever size the provider picks. Pin the size for a sheet —
+  2048 across a 4×4 grid is a 512 px cell, which survives slicing and
+  downscaling. `--quality high` is the default; write it anyway on anything a
+  later motion inherits.
+- **Where the file lands:** with one image (the default) the output is exactly
+  `<output-dir>/<filename-prefix>.<format>` — `sheet-raw.png` here, with no
+  `-1` or `_1` suffix; the `_2`, `_3` … suffixes appear only when you ask for
+  more than one. The extension follows the bytes that actually arrived, so read
+  `files[0]` out of the JSON instead of assuming. The prefixes are not
+  decoration: `sheet-raw` is the name `set-sheet --file motions/<id>/sheet-raw.png`
+  registers, and `--output-dir <character>/refs --filename-prefix turnaround`
+  is what puts the reference where `add-ref --file refs/turnaround.png` expects
+  it.
 
 ## Three worked prompts
 
@@ -114,11 +161,23 @@ come back.
 
 1. Work on the raw sheet, not the aligned frames — the pipeline re-derives
    everything downstream anyway.
-2. `edit_image.mjs` on `motions/<id>/sheet-raw.png`, describing the cell by
-   position, not by index: "the third cell of the second row". Say what is
-   wrong and what it should be: "the character's sword arm is missing; redraw
-   that cell with the sword raised, matching the neighbouring cells exactly.
-   Change nothing else in the image."
+2. `edit_image.mjs` on the raw sheet, describing the cell by position, not by
+   index — "the third cell of the second row" — and saying both what is wrong
+   and what it should be:
+
+   ```bash
+   node {SKILL_PATH}/scripts/edit_image.mjs \
+     "The third cell of the second row: the character's sword arm is missing. Redraw that cell with the sword raised, matching the neighbouring cells exactly. Change nothing else in the image." \
+     --input <character>/motions/<id>/sheet-raw.png \
+     --output-dir <character>/motions/<id> \
+     --filename-prefix sheet-raw
+   ```
+
+   The prompt is positional here too. The output prefix overwrites
+   `sheet-raw.png` on purpose — the raw sheet is the motion's source and
+   `set-sheet` keeps the same asset id across regenerations — so copy the file
+   aside first if you want a fallback; a re-run never brings the fifteen good
+   cells back.
 3. Re-run `sprite-sheet.mjs run` from the edited raw sheet and
    `register-run` again. The old frames and their provenance edges are
    replaced, not duplicated.
@@ -128,8 +187,8 @@ tighten it against the table above and regenerate.
 
 ## Reference images
 
-Attach **every** reference the character has (`--image-urls refs/turnaround.png
---image-urls refs/portrait.png`). The turnaround carries proportions and
+Attach **every** reference the character has
+(`--image-urls <character>/refs/turnaround.png --image-urls <character>/refs/portrait.png`). The turnaround carries proportions and
 silhouette; the portrait carries the face, which is what a viewer notices
 first when it drifts. Passing references switches `generate_image.mjs` to the
 Flare model automatically — do not override it with `--model`.

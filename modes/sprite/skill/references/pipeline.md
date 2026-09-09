@@ -9,10 +9,37 @@ Both are plain ESM run with `node`, take `--json`, print `--help`, write
 atomically, and put progress on stderr so `--json` stdout stays parseable.
 Both need `ffmpeg` and `ffprobe` on PATH.
 
+## How every script here is invoked
+
 ```bash
-cd {SKILL_PATH} && node scripts/sprite-sheet.mjs <subcommand> [flags] --json
-cd {SKILL_PATH} && node scripts/sprite-project.mjs <subcommand> --dir <characterDir> [flags] --json
+node {SKILL_PATH}/scripts/sprite-sheet.mjs <subcommand> [flags] --json
+node {SKILL_PATH}/scripts/sprite-project.mjs <subcommand> --dir <character> [flags] --json
 ```
+
+**Never `cd` into the skill.** `{SKILL_PATH}` is an absolute path, so the
+script is found from wherever you are — and your working directory stays the
+workspace, which is the only place the paths you type mean what they say. A
+`cd` re-roots every one of them inside the skill directory, where
+`motions/idle/sheet-raw.png` does not exist, and the whole call dies on
+ENOENT after the image was already paid for.
+
+So, on every command on this page:
+
+- **File arguments are workspace-relative**, which means they carry the
+  character directory — `lumi/motions/idle/sheet-raw.png`,
+  `--out lumi/motions/idle`, `--run lumi/motions/idle/run.json`.
+- **`--dir` names the character directory** — the top-level content-set
+  directory holding `project.json`, `refs/` and `motions/`.
+- **`sprite-project.mjs --file` is the one exception: it is relative to
+  `--dir`.** That is not an inconsistency, it is the point — a `--file` is
+  literally the uri stored in `project.json`, and every uri in that file is
+  character-relative. `--dir lumi --file refs/turnaround.png` registers
+  `refs/turnaround.png` and reads `lumi/refs/turnaround.png` off disk.
+
+The same rule covers the shared model scripts the workflows call
+(`generate_image.mjs`, `edit_image.mjs`, `remove-background.mjs`,
+`seedance-video.mjs`, `generate-video.mjs`): `node {SKILL_PATH}/scripts/<name>.mjs`,
+no `cd`, workspace-relative paths.
 
 ## `sprite-sheet.mjs`
 
@@ -31,12 +58,16 @@ ffmpeg `colorkey`. `auto` uses the probed `cornerColor`. Reports
 to roughly the sprite's share of the image) from one that ate the character
 (coverage near zero) or did nothing (coverage still ~1.0). Raise
 `--similarity` when a gradient background survives; lower it when the
-character's own colours start disappearing.
+character's own colours start disappearing. When neither setting separates the
+character from its background, the sheet needs a matting model, not a colour
+threshold — see `remove-background.mjs` below.
 
 ### `flatten <in> --out <png> [--bg #ffffff]`
 
 Composite onto a solid colour. Video models mishandle alpha — flatten frame 00
-before handing it to `seedance-video.mjs --image`.
+before handing it to `seedance-video.mjs --image`. Both paths are
+workspace-relative: `flatten <character>/motions/<id>/frames/00.png --out
+<character>/motions/<id>/first.png`.
 
 ### `slice <sheet> --rows R --cols C --out <dir> [--margin px] [--gutter px]`
 
@@ -121,10 +152,47 @@ Emits one JSON object:
 Save that JSON — `sprite-project.mjs register-run` consumes it verbatim. The
 input sheet is never moved.
 
+## `remove-background.mjs` — the fal keying path
+
+The one model call on this page, and the better half of workflow B step 5:
+BiRefNet matting on fal, which cuts the character out on its own silhouette
+instead of by colour distance. Reach for it when `probe` says the sheet came
+back opaque and the background is not a flat plate — a gradient, a drawn
+floor, or a colour the character also wears. Needs `FAL_KEY`; with no fal key,
+`sprite-sheet.mjs key` above is the ffmpeg fallback.
+
+```bash
+node {SKILL_PATH}/scripts/remove-background.mjs \
+  --input <character>/motions/<id>/sheet-raw.png \
+  --output <character>/motions/<id>/sheet-alpha.png \
+  --model heavy \
+  --resolution 2048 \
+  --json
+```
+
+| Flag | Values | Default | Notes |
+|---|---|---|---|
+| `--input` | path or URL | **required** | png, jpg or webp; local files are inlined as data URIs (30 MB max) |
+| `--output` | path | **required** | Where the RGBA cut-out is written |
+| `--model` | `light`, `light-2k`, `heavy`, `matting`, `portrait`, `dynamic` | `heavy` | `heavy` is the quality tier; `light`/`light-2k` are the quick ones |
+| `--resolution` | `1024`, `2048`, `2304` | `2048` | Match the sheet you generated, or you pay for a downscale |
+| `--no-refine` | flag | refinement on | Faster, softer edges — wrong trade for a sheet you are about to slice |
+| `--deadline-s` | seconds | `300` | |
+| `--json` | flag | | One JSON object on stdout |
+
+Write the output to `sheet-alpha.png` — the same name `sprite-sheet.mjs key`
+uses, and the name `run` would have written had it keyed the sheet itself, so
+nothing downstream needs to know which of the two made the cut. Then hand
+*that* file to `run` rather than the raw one: `run` probes first and skips its
+own keying step for a sheet that already carries alpha, so the matting you
+just paid for survives instead of being redone with a colour threshold.
+
 ## `sprite-project.mjs`
 
-Every subcommand takes `--dir <characterDir>` and prints the resulting motion
-or project summary with `--json`. Writes are atomic; unknown top-level fields
+Every subcommand takes `--dir <character>` (workspace-relative) and prints the
+resulting motion or project summary with `--json`. Every `--file` below is
+relative to that directory, because a `--file` is the uri that lands in
+`project.json`. Writes are atomic; unknown top-level fields
 in `project.json` are preserved; asset ids are validated unique. Timestamps
 come from `Date.now()` unless `--at <ms>` is passed.
 

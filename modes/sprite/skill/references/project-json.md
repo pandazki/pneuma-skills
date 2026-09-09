@@ -5,7 +5,7 @@ the same format ClipCraft persists — plus a `sprite` sidecar. The craft half
 gives every file a provenance edge (what made it, from what, with which
 parameters); the sidecar carries everything this mode adds.
 
-**Read it freely. Write it only through `scripts/sprite-project.mjs`.** A
+**Read it freely. Write it only through `{SKILL_PATH}/scripts/sprite-project.mjs`.** A
 single 4×4 motion adds 16 frame assets plus their edges; typed by hand, ids
 drift and the viewer renders a motion with missing frames while the files sit
 correctly on disk.

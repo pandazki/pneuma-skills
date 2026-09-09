@@ -29,6 +29,16 @@ import spriteManifest from "../manifest.js";
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..");
 const read = (rel: string) => readFileSync(join(REPO_ROOT, rel), "utf-8");
 
+/** Every markdown file the installer copies into the session — SKILL.md and
+ *  all four references. The installer templates them all, and the agent reads
+ *  them all, so an invariant that holds only in SKILL.md holds nowhere. */
+function skillMarkdown(): string[] {
+  const dir = join(REPO_ROOT, "modes/sprite/skill");
+  return readdirSync(dir, { recursive: true, encoding: "utf-8" })
+    .filter((f) => f.endsWith(".md"))
+    .map((f) => join(dir, f));
+}
+
 const MODE_NAME = "sprite";
 
 describe("registration 1/3 — the frontend dynamic-import registry", () => {
@@ -272,10 +282,7 @@ describe("the skill install surface", () => {
     // reach the agent verbatim, so this test has to keep failing on it.
     known.add("viewerCapabilities");
 
-    const dir = join(REPO_ROOT, "modes/sprite/skill");
-    const markdown = readdirSync(dir, { recursive: true, encoding: "utf-8" })
-      .filter((f) => f.endsWith(".md"))
-      .map((f) => join(dir, f));
+    const markdown = skillMarkdown();
     expect(markdown.length).toBeGreaterThan(1);
 
     for (const file of markdown) {
@@ -287,6 +294,50 @@ describe("the skill install surface", () => {
           known: true,
         });
       }
+    }
+  });
+
+  test("every script is invoked from the workspace, never behind a `cd`", () => {
+    // `cd {SKILL_PATH} && node scripts/x.mjs motions/idle/sheet-raw.png`
+    // re-roots every workspace-relative argument inside the skill directory,
+    // where none of those files exist — so the call dies on ENOENT, and for
+    // the model scripts it dies AFTER the image was paid for. One form for
+    // the whole skill: `node {SKILL_PATH}/scripts/<name>.mjs`, cwd untouched.
+    for (const file of skillMarkdown()) {
+      const source = readFileSync(file, "utf-8");
+      expect({ file, cd: source.includes("cd {SKILL_PATH}") }).toEqual({
+        file,
+        cd: false,
+      });
+      for (const line of source.split("\n")) {
+        if (!/\bnode .*\.mjs/.test(line)) continue;
+        expect({
+          file,
+          line: line.trim(),
+          form: line.includes("node {SKILL_PATH}/scripts/"),
+        }).toEqual({ file, line: line.trim(), form: true });
+      }
+    }
+  });
+
+  test("every shared script the skill calls is shown in that form at least once", () => {
+    // `sharedScripts` is the whitelist of what gets installed; the skill text
+    // is where the agent learns how to call it. A script listed but never
+    // shown is a capability the agent has to guess the shape of — which is
+    // how `--prompt` gets written for a script that takes a positional.
+    const invoked = spriteManifest.skill!.sharedScripts!.filter(
+      // fal-queue.mjs is a dependency of the two video scripts, never a
+      // command the agent runs.
+      (name) => name !== "fal-queue.mjs",
+    );
+    const corpus = skillMarkdown()
+      .map((file) => readFileSync(file, "utf-8"))
+      .join("\n");
+    for (const name of [...invoked, "sprite-sheet.mjs", "sprite-project.mjs"]) {
+      expect({
+        name,
+        shown: corpus.includes(`node {SKILL_PATH}/scripts/${name}`),
+      }).toEqual({ name, shown: true });
     }
   });
 

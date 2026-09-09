@@ -8,8 +8,13 @@ Two scripts, deliberately the same CLI shape so one grammar covers both:
 
 | Script | Model | Role |
 |---|---|---|
-| `scripts/seedance-video.mjs` | ByteDance Seedance 2.5 on fal | cheap, quick, all three endpoints |
-| `scripts/generate-video.mjs` | MiniMax H3 Max on fal | stronger motion, slower, ≥ 5 s |
+| `{SKILL_PATH}/scripts/seedance-video.mjs` | ByteDance Seedance 2.5 on fal | cheap, quick, all three endpoints |
+| `{SKILL_PATH}/scripts/generate-video.mjs` | MiniMax H3 Max on fal | stronger motion, slower, ≥ 5 s |
+
+Invoked like everything else in this skill — `node {SKILL_PATH}/scripts/<name>.mjs`
+from the workspace, no `cd`, every path workspace-relative. Unlike
+`generate_image.mjs`, both of these **do** take `--prompt` as a flag; it is the
+one place in this mode where the prompt is not a positional argument.
 
 This session's default is **`{{defaultVideoModel}}`** — use it unless the
 user's `render-video` choice says otherwise.
@@ -25,13 +30,18 @@ report the failure and stop.
 |---|---|---|
 | `image` (i2v) | The default preview. You want the character to start exactly as drawn. | `--image <flattened frame 00>`; the prompt describes the motion |
 | `image` + `--end-image` (first-last) | The motion has a definite end pose, or it loops and must land back where it started | first frame and last frame pin both ends; the model fills between |
-| `reference` (r2v) | The clip must perform *these* beats, not a reinterpretation | `--ref-image refs/turnaround.png --ref-image motions/<id>/sheet.png`, addressed in the prompt as `@Image1` / `@Image2` |
+| `reference` (r2v) | The clip must perform *these* beats, not a reinterpretation | `--ref-image <character>/refs/turnaround.png --ref-image <character>/motions/<id>/sheet.png`, addressed in the prompt as `@Image1` / `@Image2` |
 | `text` | Almost never here — you have a character and you want it kept | — |
 
 **Flatten before i2v.** Video models mishandle alpha; a transparent PNG comes
-back with black fringing or a grey plate. `sprite-sheet.mjs flatten
-motions/<id>/frames/00.png --out /tmp/first.png --bg <a colour that suits the
-character>`.
+back with black fringing or a grey plate.
+
+```bash
+node {SKILL_PATH}/scripts/sprite-sheet.mjs flatten \
+  <character>/motions/<id>/frames/00.png \
+  --out <character>/motions/<id>/first.png \
+  --bg <a colour that suits the character>
+```
 
 **Reference binding grammar.** Both scripts number references in the order
 passed: the first `--ref-image` is `@Image1`, the second `@Image2`, videos are
@@ -44,6 +54,20 @@ guesses:
 > continuous action, side view, plain background.
 
 ## `seedance-video.mjs` flags
+
+The i2v preview, end to end:
+
+```bash
+node {SKILL_PATH}/scripts/seedance-video.mjs \
+  --prompt "The character bounces in place, one continuous loop, plain background." \
+  --image <character>/motions/<id>/first.png \
+  --duration 4 \
+  --resolution 480p \
+  --no-audio \
+  --output <character>/motions/<id>/video-seedance-1.mp4 \
+  --json
+```
+
 
 | Flag | Values | Default | Notes |
 |---|---|---|---|
@@ -72,6 +96,17 @@ reference are both far under it).
 ## `generate-video.mjs` (H3 Max) flags
 
 Same shape, different limits:
+
+```bash
+node {SKILL_PATH}/scripts/generate-video.mjs \
+  --prompt "@Image1 is the character … @Image2 is a sprite sheet showing the motion to perform …" \
+  --ref-image <character>/refs/turnaround.png \
+  --ref-image <character>/motions/<id>/sheet.png \
+  --duration 5 \
+  --resolution 480P \
+  --output <character>/motions/<id>/video-h3-1.mp4 \
+  --json
+```
 
 | Flag | Values | Default |
 |---|---|---|
@@ -110,10 +145,23 @@ a sprite preview that is fine — there is no text in the frame. Go to 720p /
 
 Always, in this order:
 
-1. `sprite-project.mjs add-video --motion <id> --file motions/<id>/video-<model>-<n>.mp4 --model … --mode … --from <the frame assets you fed it> --prompt "…" --status generating`
+1. ```bash
+   node {SKILL_PATH}/scripts/sprite-project.mjs add-video --dir <character> \
+     --motion <id> --file motions/<id>/video-<model>-<n>.mp4 \
+     --model … --mode … --from <the frame assets you fed it> \
+     --prompt "…" --status generating --json
+   ```
 2. run the script once
-3. `sprite-project.mjs set-video --motion <id> --video <id> --status ready`
+3. ```bash
+   node {SKILL_PATH}/scripts/sprite-project.mjs set-video --dir <character> \
+     --motion <id> --video <videoId> --status ready --json
+   ```
    — or `--status failed --notes "<what the script reported>"`
+
+Note the two path shapes in one flow: the video script's `--output` is
+workspace-relative (`<character>/motions/<id>/…`), while `add-video --file` is
+relative to `--dir`, because that string becomes the asset uri inside
+`project.json`.
 
 Registering before the call is what puts a "rendering" chip on the stage; a
 user who sees nothing for forty seconds assumes you did not hear them. And
