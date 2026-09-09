@@ -12,13 +12,37 @@
  * its own. When those two disagree the overlay is drawn on lines that are not
  * there and the printed cell size is wrong — a picture that looks exactly like
  * a correct one. So the layout is only reported as trusted when the packed
- * image really does divide into `cols × rows` whole cells, and when those
- * cells match the frames' own recorded size. Otherwise the caller shows the
- * sheet bare and says why; `atlas.json` on disk is the truth in that case.
+ * image really does divide into `cols × rows` whole cells, and when the cells
+ * relate to the frames' own recorded size by ONE factor on both axes — that
+ * factor is `pack --scale`, and reporting it is how the panel can say "128
+ * became 125" instead of refusing a perfectly regular pack. Anything else
+ * (no recorded size, a sheet the grid does not divide, a ratio that differs
+ * between the axes) gets the bare sheet and a note; `atlas.json` on disk is
+ * the truth in that case.
  */
 
 import type { CharacterProject, Motion } from "../domain.js";
 import { measuredAnchor } from "../domain.js";
+
+/**
+ * Why a layout could not be believed — as DATA, not a sentence.
+ *
+ * The panel is the only thing that turns this into words, and it does so
+ * through the locale table: a note built here as English prose would be the
+ * one string in the viewer that no translation could reach.
+ */
+export type AtlasNote =
+  | { kind: "unmeasured" }
+  | { kind: "not-whole-cells"; width: number; height: number; cols: number; rows: number }
+  | {
+      kind: "cell-mismatch";
+      cols: number;
+      rows: number;
+      cellWidth: number;
+      cellHeight: number;
+      frameWidth: number;
+      frameHeight: number;
+    };
 
 export interface AtlasGeometry {
   /** Packed image size as recorded when the asset was registered; 0 = unknown. */
@@ -30,10 +54,17 @@ export interface AtlasGeometry {
   /** Cell size implied by that layout; 0 when it cannot be trusted. */
   cellWidth: number;
   cellHeight: number;
+  /**
+   * How much `pack` scaled the frames on their way into the sheet — the
+   * packed cell divided by the frame that went into it. `1` is a pack at
+   * source size, `0.5` a `pack --scale 0.5`, and `null` means the frames
+   * carry no recorded size so the question cannot be answered.
+   */
+  scale: number | null;
   /** True when the packed image really is `cols × rows` cells of that size. */
   trusted: boolean;
-  /** Why not, in one sentence for the panel; null when it is trusted. */
-  note: string | null;
+  /** Why not; null when it is trusted. */
+  note: AtlasNote | null;
 }
 
 const dimension = (value: unknown): number => {
@@ -51,21 +82,25 @@ export function atlasGeometry(
   const height = dimension(sheet?.metadata.height);
   const cols = Math.max(1, Math.floor(motion.grid.cols));
   const rows = Math.max(1, Math.ceil(motion.frames.length / cols));
-  const blank = { width, height, cols, rows, cellWidth: 0, cellHeight: 0 };
+  const blank = {
+    width,
+    height,
+    cols,
+    rows,
+    cellWidth: 0,
+    cellHeight: 0,
+    scale: null,
+  };
 
   if (width === 0 || height === 0) {
-    return {
-      ...blank,
-      trusted: false,
-      note: "sheet.png has no recorded size, so its grid cannot be checked — atlas.json has the real cells.",
-    };
+    return { ...blank, trusted: false, note: { kind: "unmeasured" } };
   }
 
   if (width % cols !== 0 || height % rows !== 0) {
     return {
       ...blank,
       trusted: false,
-      note: `The packed sheet is ${width}×${height}, which is not ${cols}×${rows} whole cells — \`pack\` without \`--cols\` chooses its own columns. Read atlas.json for the layout.`,
+      note: { kind: "not-whole-cells", width, height, cols, rows },
     };
   }
 
@@ -79,19 +114,59 @@ export function atlasGeometry(
     : undefined;
   const frameWidth = dimension(first?.metadata.width);
   const frameHeight = dimension(first?.metadata.height);
-  if (
-    frameWidth > 0 &&
-    frameHeight > 0 &&
-    (frameWidth !== cellWidth || frameHeight !== cellHeight)
-  ) {
+  const known = frameWidth > 0 && frameHeight > 0;
+
+  if (known && (frameWidth !== cellWidth || frameHeight !== cellHeight)) {
+    // A cell that is not the frame is not automatically a wrong grid: `pack
+    // --scale` resamples every frame by the SAME factor on its way in, which
+    // is how a 250px sheet is delivered as 125px cells. That pack is regular
+    // — the overlay lines fall exactly where they should — and refusing it
+    // hid a fact the user had asked for ("128 became 125"). What must still
+    // be refused is a RATIO THAT DIFFERS BETWEEN THE AXES: no pack produces
+    // that, so the declared grid is simply not the one this sheet was made
+    // on, and lines drawn from it would be lines on nothing.
+    const scaleX = cellWidth / frameWidth;
+    const scaleY = cellHeight / frameHeight;
+    const uniform = Math.abs(scaleX - scaleY) <= 0.005 * Math.max(scaleX, scaleY);
+    if (!uniform) {
+      return {
+        ...blank,
+        trusted: false,
+        note: {
+          kind: "cell-mismatch",
+          cols,
+          rows,
+          cellWidth,
+          cellHeight,
+          frameWidth,
+          frameHeight,
+        },
+      };
+    }
     return {
-      ...blank,
-      trusted: false,
-      note: `A ${cols}×${rows} grid would make ${cellWidth}×${cellHeight} cells, but the frames are ${frameWidth}×${frameHeight} — read atlas.json for the layout.`,
+      width,
+      height,
+      cols,
+      rows,
+      cellWidth,
+      cellHeight,
+      scale: round4(scaleX),
+      trusted: true,
+      note: null,
     };
   }
 
-  return { width, height, cols, rows, cellWidth, cellHeight, trusted: true, note: null };
+  return {
+    width,
+    height,
+    cols,
+    rows,
+    cellWidth,
+    cellHeight,
+    scale: known ? 1 : null,
+    trusted: true,
+    note: null,
+  };
 }
 
 /** The normalized pivot `atlas.json` declares for one motion. */

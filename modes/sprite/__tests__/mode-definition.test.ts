@@ -265,7 +265,33 @@ describe("the definition and the manifest agree", () => {
       "fix-alignment",
     ]);
     for (const command of commands) {
-      expect((command.description ?? "").length).toBeGreaterThan(60);
+      expect(command.label.length).toBeGreaterThan(0);
+      const description = command.description ?? "";
+      // A command's description is what the USER reads on hover. It has to
+      // say something (a bare label is not a hint) and it has to fit on one
+      // line of a tooltip.
+      expect(description.length).toBeGreaterThan(30);
+      expect(description.length).toBeLessThanOrEqual(120);
+      expect(description).not.toContain("\n");
+      // ...and it may not leak the agent's vocabulary. Three blind testers
+      // hovered these buttons and were shown script names and flags; the
+      // agent's briefing for the same three commands lives in SKILL.md.
+      expect(description).not.toMatch(/\.mjs|--[a-z]|`|register-run|inspect\b/);
+    }
+  });
+
+  test("the skill still carries the agent's briefing for those commands", () => {
+    // The other half of the same decision: the hint moved to the user, so the
+    // agent's copy must exist somewhere. If this section ever goes, the
+    // manifest is the only text left and it is written for a human.
+    const skill = readFileSync(
+      join(import.meta.dir, "..", "skill", "SKILL.md"),
+      "utf-8",
+    );
+    const commands = skill.slice(skill.indexOf("\n## Commands"));
+    expect(commands.length).toBeGreaterThan(0);
+    for (const id of ["render-video", "regenerate-motion", "fix-alignment"]) {
+      expect(commands).toContain(id);
     }
   });
 

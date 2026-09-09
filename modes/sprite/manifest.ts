@@ -160,24 +160,32 @@ const spriteManifest: ModeManifest = {
     ],
     // User → agent. The viewer renders these only while `editing !== false`,
     // so the hosted player shows a motion without offering to change it.
+    //
+    // `description` is the ONE-LINE HINT THE USER READS on hover. It used to
+    // be the agent's briefing — script names, flags and all — and three blind
+    // testers in a row hovered a button and got prose written past them
+    // ("the UI is talking to the AI"). The agent's briefing for these same
+    // three commands lives in the skill's Commands section, which is where a
+    // sentence about `align --smooth` belongs; nothing here may name a
+    // script, a flag or a file.
     commands: [
       {
         id: "render-video",
         label: "Render video preview",
         description:
-          "The user picked a model (Seedance 2.5 / H3 Max) and a mode (i2v / first-last / r2v) for the selected motion and wants a clip. The notification carries the motion and their choices — honour them instead of falling back to your defaults, register the video with `add-video` before you call the script, and set its status when it lands.",
+          "Ask for a short video clip of this motion — you choose the model and how it is generated.",
       },
       {
         id: "regenerate-motion",
         label: "Regenerate this motion",
         description:
-          "The user wants the selected motion's sheet drawn again, optionally with a note about what to change. Fold their note into the sheet prompt, re-run the whole pipeline, and keep the motion id — this replaces the motion, it does not add one.",
+          "Draw this motion again, keeping the same name — add a note if something should change.",
       },
       {
         id: "fix-alignment",
         label: "Frames are misaligned",
         description:
-          "The user is seeing the character swim or jump between frames. Read the motion's inspect warnings first, then re-run `sprite-sheet.mjs align` with a different anchor or `--smooth`; regenerate the sheet only when inspect says the drawing itself drifts in scale or leaves its cell.",
+          "Say the character slides or jumps between frames, and the agent re-aligns them.",
       },
     ],
   },

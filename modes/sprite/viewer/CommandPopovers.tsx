@@ -22,6 +22,36 @@ import type {
 } from "../../../core/types/viewer-contract.js";
 import type { Motion, VideoMode, VideoModel } from "../domain.js";
 import { CrosshairIcon, FilmIcon, SparkIcon, type IconProps } from "./icons.js";
+import type { SpriteStrings } from "./strings.js";
+
+/**
+ * The hover text on a command button: the label, then the one-line hint.
+ *
+ * `command.description` is written FOR THE USER now. For three blind sessions
+ * it was the agent's prose — script names, flags and all — hanging off a
+ * button a human was hovering ("the UI is talking to the AI", in the tester's
+ * words); the agent's copy of the same three commands lives in the mode's
+ * SKILL.md, where it belongs. The locale table gets first refusal so a
+ * translated hint can win, and falls through to the manifest, which is the
+ * single English source.
+ */
+export function commandTooltip(
+  command: ViewerCommandDescriptor,
+  t: SpriteStrings,
+): string {
+  const hint = t.commandHint(command.id) ?? command.description ?? "";
+  const label = commandLabel(command, t);
+  return hint ? `${label} — ${hint}` : label;
+}
+
+/** The button's word. Same rule as the hint: the table first, the manifest
+ *  (which is written in English) as the fallback. */
+export function commandLabel(
+  command: ViewerCommandDescriptor,
+  t: SpriteStrings,
+): string {
+  return t.commandLabel(command.id) ?? command.label;
+}
 
 const ICON_FOR: Record<string, (p: IconProps) => React.ReactElement> = {
   "render-video": FilmIcon,
@@ -29,15 +59,17 @@ const ICON_FOR: Record<string, (p: IconProps) => React.ReactElement> = {
   "fix-alignment": CrosshairIcon,
 };
 
-const MODELS: Array<{ id: VideoModel; label: string; hint: string }> = [
-  { id: "seedance-2.5", label: "Seedance 2.5", hint: "cheap and quick at 480p" },
-  { id: "h3-max", label: "MiniMax H3 Max", hint: "stronger motion, slower, min 5 s" },
+/** Model and mode names are the API's own, so they are not translated — the
+ *  sentence explaining each one is (see `strings.ts`). */
+const MODELS: Array<{ id: VideoModel; label: string }> = [
+  { id: "seedance-2.5", label: "Seedance 2.5" },
+  { id: "h3-max", label: "MiniMax H3 Max" },
 ];
 
-const MODES: Array<{ id: VideoMode; label: string; hint: string }> = [
-  { id: "i2v", label: "i2v", hint: "from the first frame" },
-  { id: "first-last", label: "first-last", hint: "from the first and last frames" },
-  { id: "r2v", label: "r2v", hint: "frames as references, new footage" },
+const MODES: Array<{ id: VideoMode; label: string }> = [
+  { id: "i2v", label: "i2v" },
+  { id: "first-last", label: "first-last" },
+  { id: "r2v", label: "r2v" },
 ];
 
 export interface CommandBarProps {
@@ -46,6 +78,7 @@ export interface CommandBarProps {
   /** `initParams.defaultVideoModel` — the session's configured default. */
   defaultVideoModel: VideoModel;
   onNotifyAgent: (notification: ViewerNotification) => void;
+  t: SpriteStrings;
   /** Told whenever a popover opens or closes: while one is up it owns the
    *  keyboard, and the stage's transport shortcuts must stand down. */
   onOpenChange?: (open: boolean) => void;
@@ -56,6 +89,7 @@ export function CommandBar({
   motion,
   defaultVideoModel,
   onNotifyAgent,
+  t,
   onOpenChange,
 }: CommandBarProps) {
   const [open, setOpen] = useState<string | null>(null);
@@ -101,11 +135,13 @@ export function CommandBar({
       type: `sprite-command:${command.id}`,
       severity: "warning",
       summary: `/${command.id} · ${motion.label}`,
+      // `command.description` is deliberately NOT forwarded: it is the hint
+      // the user was shown, not an instruction, and the agent's own briefing
+      // for these three commands is in SKILL.md's Commands section.
       message: [
         `The user pressed "${command.label}" on the sprite stage.`,
         line,
         note ? `note: ${note}` : "",
-        command.description ?? "",
       ]
         .filter(Boolean)
         .join("\n"),
@@ -126,8 +162,8 @@ export function CommandBar({
               onClick={() => setOpen(open === command.id ? null : command.id)}
               title={
                 disabled
-                  ? "Select a motion first"
-                  : (command.description ?? command.label)
+                  ? t.selectMotionFirst
+                  : commandTooltip(command, t)
               }
               className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] transition-colors focus-visible:ring-2 focus-visible:ring-cc-primary/60 ${
                 open === command.id
@@ -136,7 +172,7 @@ export function CommandBar({
               } disabled:opacity-40`}
             >
               <Icon size={12} />
-              {command.label}
+              {commandLabel(command, t)}
             </button>
 
             {open === command.id && motion ? (
@@ -144,6 +180,7 @@ export function CommandBar({
                 <RenderVideoPopover
                   motion={motion}
                   defaultModel={defaultVideoModel}
+                  t={t}
                   onCancel={() => setOpen(null)}
                   onConfirm={(model, mode, note) =>
                     send(command, [`model: ${model}`, `mode: ${mode}`], note)
@@ -151,12 +188,13 @@ export function CommandBar({
                 />
               ) : (
                 <NotePopover
-                  title={command.label}
+                  title={commandLabel(command, t)}
                   motion={motion}
+                  t={t}
                   placeholder={
                     command.id === "fix-alignment"
-                      ? "What looks wrong? (e.g. the feet slide on frames 3-5)"
-                      : "Anything to change? (optional)"
+                      ? t.notePlaceholder.misalignment
+                      : t.notePlaceholder.change
                   }
                   onCancel={() => setOpen(null)}
                   onConfirm={(note) => send(command, [], note)}
@@ -181,11 +219,13 @@ function Popover({ children }: { children: React.ReactNode }) {
 function RenderVideoPopover({
   motion,
   defaultModel,
+  t,
   onCancel,
   onConfirm,
 }: {
   motion: Motion;
   defaultModel: VideoModel;
+  t: SpriteStrings;
   onCancel: () => void;
   onConfirm: (model: VideoModel, mode: VideoMode, note: string) => void;
 }) {
@@ -196,27 +236,27 @@ function RenderVideoPopover({
   return (
     <Popover>
       <p className="pb-2 text-[11px] text-cc-muted">
-        Render a clip of <span className="text-cc-fg">{motion.label}</span>.
+        {t.renderClipFor} <span className="text-cc-fg">{motion.label}</span>
       </p>
-      <Field label="Model">
+      <Field label={t.fieldModel}>
         {MODELS.map((option) => (
           <Choice
             key={option.id}
             active={model === option.id}
             onClick={() => setModel(option.id)}
-            hint={option.hint}
+            hint={t.modelHint[option.id]}
           >
             {option.label}
           </Choice>
         ))}
       </Field>
-      <Field label="Mode">
+      <Field label={t.fieldMode}>
         {MODES.map((option) => (
           <Choice
             key={option.id}
             active={mode === option.id}
             onClick={() => setMode(option.id)}
-            hint={option.hint}
+            hint={t.modeHint[option.id]}
           >
             {option.label}
           </Choice>
@@ -225,12 +265,13 @@ function RenderVideoPopover({
       <NoteBox
         value={note}
         onChange={setNote}
-        placeholder="Anything the clip should emphasise? (optional)"
+        placeholder={t.notePlaceholder.emphasis}
       />
       <Actions
         onCancel={onCancel}
         onConfirm={() => onConfirm(model, mode, note.trim())}
-        confirmLabel="Ask the agent"
+        confirmLabel={t.askTheAgent}
+        cancelLabel={t.cancel}
       />
     </Popover>
   );
@@ -240,12 +281,14 @@ function NotePopover({
   title,
   motion,
   placeholder,
+  t,
   onCancel,
   onConfirm,
 }: {
   title: string;
   motion: Motion;
   placeholder: string;
+  t: SpriteStrings;
   onCancel: () => void;
   onConfirm: (note: string) => void;
 }) {
@@ -259,7 +302,8 @@ function NotePopover({
       <Actions
         onCancel={onCancel}
         onConfirm={() => onConfirm(note.trim())}
-        confirmLabel="Ask the agent"
+        confirmLabel={t.askTheAgent}
+        cancelLabel={t.cancel}
       />
     </Popover>
   );
@@ -333,10 +377,12 @@ function Actions({
   onCancel,
   onConfirm,
   confirmLabel,
+  cancelLabel,
 }: {
   onCancel: () => void;
   onConfirm: () => void;
   confirmLabel: string;
+  cancelLabel: string;
 }) {
   return (
     <div className="flex justify-end gap-1.5 pt-2">
@@ -345,7 +391,7 @@ function Actions({
         onClick={onCancel}
         className="rounded-lg px-2 py-1 text-[11px] text-cc-muted transition-colors hover:text-cc-fg"
       >
-        Cancel
+        {cancelLabel}
       </button>
       <button
         type="button"
