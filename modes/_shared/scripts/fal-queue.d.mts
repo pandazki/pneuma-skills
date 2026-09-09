@@ -107,12 +107,17 @@ export interface FalMediaUrlOptions {
  */
 export function falMediaUrl(input: string, options?: FalMediaUrlOptions): string;
 
+/** Attempts one artifact download spends before it gives up. */
+export const DOWNLOAD_ATTEMPTS: number;
+
 export interface DownloadFalFileOptions {
   signal?: AbortSignal;
   attempts?: number;
   /** Idle ceiling: a stream that stops moving this long is given up on. */
   idleMs?: number;
   fetchImpl?: typeof fetch;
+  /** Injectable back-off, so a test never spends the real one. */
+  sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
   onNote?: (message: string) => void;
 }
 

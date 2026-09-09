@@ -441,6 +441,16 @@ export async function runFalJob({
  * of `scripts/`), then walking up from cwd. Parsed, never sourced — that
  * file lives in a workspace. Returns null when there is no key; the value
  * is never printed and never becomes an argv.
+ *
+ * `generate-video.mjs` (H3 Max) keeps its own copy of this function and is
+ * deliberately left alone: it is the one script already in production use,
+ * and a key-discovery change there would move a working pipeline's ground
+ * for no gain. The two differ in one place — that copy stops at the FIRST
+ * `.env` it finds and reads only that file, so a keyless `.env` in the cwd
+ * shadows a keyed one at the skill root, while this one walks every
+ * candidate until one actually carries `FAL_KEY`. New callers should use
+ * this function: "a `.env` exists here" and "the key lives here" are not
+ * the same question, and only the second one is worth answering.
  */
 export function loadFalKey(env = process.env) {
   if (env.FAL_KEY) return env.FAL_KEY;
@@ -516,8 +526,14 @@ export function falMediaUrl(input, { label = "input", maxBytes = MAX_DATA_URI_BY
   return `data:${mime};base64,${readFileSync(input).toString("base64")}`;
 }
 
-/** Attempts and idle ceiling for one artifact download. */
-const DOWNLOAD_ATTEMPTS = 3;
+/**
+ * Attempts one artifact download makes before it gives up. Exported so a
+ * caller can say how many attempts were spent when it reports the failure,
+ * rather than hardcoding a number that would silently drift from this one.
+ */
+export const DOWNLOAD_ATTEMPTS = 3;
+
+/** How long a stream may deliver nothing before it is given up on. */
 const DOWNLOAD_IDLE_MS = 60_000;
 
 /**
@@ -528,12 +544,17 @@ const DOWNLOAD_IDLE_MS = 60_000;
  * delivering must be allowed to finish — only a stream that stops moving
  * for a minute is given up on. A failed attempt is retried with a short
  * back-off; the caller's `signal` aborts immediately and is rethrown as is.
+ *
+ * `fetchImpl` and `sleep` are injectable for the same reason the runner's
+ * are: a test that had to spend the real back-off would be paying seconds
+ * to pin a branch worth milliseconds.
  */
 export async function downloadFalFile(url, {
   signal,
   attempts = DOWNLOAD_ATTEMPTS,
   idleMs = DOWNLOAD_IDLE_MS,
   fetchImpl = fetch,
+  sleep = abortableSleep,
   onNote = (m) => console.error(m),
 } = {}) {
   let lastError = null;
@@ -572,7 +593,7 @@ export async function downloadFalFile(url, {
       lastError = idle.signal.aborted ? new Error(`no bytes for ${Math.round(idleMs / 1000)}s`) : error;
       if (attempt < attempts) {
         onNote(`WARN: download failed (${errorMessage(lastError)}) — retrying (attempt ${attempt} of ${attempts})`);
-        await abortableSleep(3000 * attempt, signal);
+        await sleep(3000 * attempt, signal);
       }
     } finally {
       if (idleTimer) clearTimeout(idleTimer);

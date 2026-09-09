@@ -69,6 +69,7 @@ export interface SeedanceRequest {
 export interface SeedanceResult {
   path: string;
   url: string;
+  /** Bytes of the file on disk, measured after the faststart remux. */
   file_size: number;
   model: string;
   endpoint: SeedanceEndpointName;
@@ -90,7 +91,9 @@ export interface SeedanceDependencies {
     onRetry?: (info: { attempt: number; attempts: number; delayMs: number; reason: string }) => void;
   }) => Promise<{ data?: any; apiMs?: number; attempts?: number; inferenceSeconds?: number; requestId?: string }>;
   /** Defaults to `fal-queue.mjs::downloadFalFile`. */
-  download?: (url: string, options?: { signal?: AbortSignal }) => Promise<Uint8Array>;
+  download?: (url: string, options?: { signal?: AbortSignal; attempts?: number }) => Promise<Uint8Array>;
+  /** Defaults to `remuxFaststart`; injected so a test needs no ffmpeg. */
+  remuxFile?: (path: string, options?: { onNote?: (message: string) => void }) => boolean;
 }
 
 /**

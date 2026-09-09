@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, truncateSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -58,6 +58,17 @@ describe("seedance endpoint inference", () => {
     expect(() => resolveEndpointName({ endpoint: "text", refImages: [frame] })).toThrow("reference endpoint");
     expect(() => resolveEndpointName({ endpoint: "text", image: frame })).toThrow("--image");
     expect(() => resolveEndpointName({ endpoint: "reference" })).toThrow("at least one");
+  });
+
+  test("a forced image endpoint with no first frame is refused here, not by fal", () => {
+    // fal answers 422 for a missing `image_url`, i.e. after the request has
+    // left. The refusal belongs on this side of the wire, symmetric with
+    // the reference endpoint's "at least one anchor" check.
+    expect(() => resolveEndpointName({ endpoint: "image" })).toThrow("--image");
+    expect(() => resolveEndpointName({ endpoint: "image-to-video" })).toThrow("--image");
+    expect(() => resolveEndpointName({ endpoint: "image", endImage: frame })).toThrow("--image");
+    expect(() => buildSeedanceRequest({ prompt: "walk", endpoint: "image" })).toThrow("--image");
+    expect(resolveEndpointName({ endpoint: "image", image: frame })).toBe("image");
   });
 
   test("every endpoint is a Seedance 2.5 URL on fal", () => {
@@ -185,6 +196,62 @@ describe("seedance download and result", () => {
     expect(readdirSync(join(workspace, "clips"))).toEqual(["shot.mp4"]);
   });
 
+  test("file_size is the file on disk after the remux, not the bytes fal delivered", async () => {
+    const output = join(workspace, "remuxed", "shot.mp4");
+    const delivered = Buffer.from("fal delivered these bytes");
+    const remuxed = Buffer.from("faststart rewrote the file: the index moved, and so did the length");
+    const result = await generateSeedanceVideo(
+      { prompt: "A knight idles", output, apiKey: "fixture-key" },
+      {
+        runJob: async () => ({ data: { video: { url: "https://cdn.fal.ai/clip.mp4" } }, apiMs: 10, attempts: 1 }),
+        download: async () => delivered,
+        // Stands in for the ffmpeg pass, which rewrites the staged file.
+        remuxFile: (path: string) => {
+          writeFileSync(path, remuxed);
+          return true;
+        },
+      },
+    );
+    expect(result.file_size).toBe(remuxed.length);
+    expect(result.file_size).not.toBe(delivered.length);
+    expect(statSync(output).size).toBe(result.file_size);
+  });
+
+  test("a download that never succeeds names the phase and the attempts it spent", async () => {
+    const output = join(workspace, "lost", "shot.mp4");
+    await expect(
+      generateSeedanceVideo(
+        { prompt: "x", output, apiKey: "fixture-key", remux: false },
+        {
+          runJob: async () => ({ data: { video: { url: "https://cdn.fal.ai/clip.mp4" } }, apiMs: 1, attempts: 1 }),
+          download: async () => {
+            throw new Error("HTTP 504");
+          },
+        },
+      ),
+    ).rejects.toThrow(/clip download failed after 3 attempts: HTTP 504/);
+    expect(existsSync(output)).toBe(false);
+  });
+
+  test("an interrupt during the download stays an AbortError, so the CLI still exits 130", async () => {
+    const reason = new DOMException("received SIGINT", "AbortError");
+    let caught: unknown = null;
+    try {
+      await generateSeedanceVideo(
+        { prompt: "x", output: join(workspace, "aborted", "shot.mp4"), apiKey: "fixture-key", remux: false },
+        {
+          runJob: async () => ({ data: { video: { url: "https://cdn.fal.ai/clip.mp4" } }, apiMs: 1, attempts: 1 }),
+          download: async () => {
+            throw reason;
+          },
+        },
+      );
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBe(reason);
+  });
+
   test("a response with no video URL fails loudly and writes nothing", async () => {
     const output = join(workspace, "empty", "shot.mp4");
     await expect(
@@ -216,5 +283,8 @@ describe("seedance CLI guard rails", () => {
     const badDuration = runCli(["--prompt", "hi", "--output", join(workspace, "o.mp4"), "--duration", "99"]);
     expect(badDuration.code).toBe(1);
     expect(badDuration.err).toContain("--duration");
+    const noFrame = runCli(["--prompt", "hi", "--output", join(workspace, "o.mp4"), "--endpoint", "image"]);
+    expect(noFrame.code).toBe(1);
+    expect(noFrame.err).toContain("--image");
   });
 });

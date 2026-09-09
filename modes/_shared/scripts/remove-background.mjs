@@ -118,7 +118,7 @@ export async function removeBackground(options, { runJob = runFalJob, download =
   const { output, apiKey, signal, deadlineMs = 300_000 } = options;
   if (!apiKey) throw new Error("No API key found. Set FAL_KEY in the environment or a .env file.");
 
-  const { url, body, model } = buildRemoveBackgroundRequest(options);
+  const { url, body } = buildRemoveBackgroundRequest(options);
 
   const job = await runJob({
     url,

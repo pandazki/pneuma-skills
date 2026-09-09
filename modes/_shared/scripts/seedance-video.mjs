@@ -47,12 +47,12 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
-import { downloadFalFile, falMediaUrl, loadFalKey, runFalJob } from "./fal-queue.mjs";
+import { DOWNLOAD_ATTEMPTS, downloadFalFile, falMediaUrl, loadFalKey, runFalJob } from "./fal-queue.mjs";
 
 export const SEEDANCE_MODEL = "bytedance/seedance-2.5";
 
@@ -89,6 +89,9 @@ export function resolveEndpointName({ endpoint, image, endImage, refImages = [],
   if (refCount && name !== "reference") throw new Error(`--ref-* inputs require the reference endpoint (inferred/forced: ${name})`);
   if (image && name !== "image") throw new Error(`--image requires the image endpoint (inferred/forced: ${name})`);
   if (endImage && name !== "image") throw new Error(`--end-image requires the image endpoint (inferred/forced: ${name})`);
+  if (name === "image" && !image) {
+    throw new Error("image endpoint needs --image (the first frame; --end-image alone cannot start a shot)");
+  }
   if (name === "reference" && refImages.length + refVideos.length === 0) {
     throw new Error("reference endpoint needs at least one --ref-image or --ref-video (audio cannot be the only reference)");
   }
@@ -188,12 +191,15 @@ export function remuxFaststart(path, { onNote = (m) => console.error(m) } = {}) 
 /**
  * Run one Seedance job and write its clip to `output`.
  *
- * The job runner and the downloader are injected so the whole path can be
- * exercised without touching fal. The file appears atomically: bytes go to
- * `<output>.tmp`, are remuxed there, and only then take the real name — a
- * watcher never sees a half-written clip.
+ * The job runner, the downloader and the remux pass are injected so the
+ * whole path can be exercised without touching fal or ffmpeg. The file
+ * appears atomically: bytes go to `<output>.tmp`, are remuxed there, and
+ * only then take the real name — a watcher never sees a half-written clip.
  */
-export async function generateSeedanceVideo(options, { runJob = runFalJob, download = downloadFalFile } = {}) {
+export async function generateSeedanceVideo(
+  options,
+  { runJob = runFalJob, download = downloadFalFile, remuxFile = remuxFaststart } = {},
+) {
   const { output, apiKey, signal, deadlineMs = 900_000, remux = true } = options;
   if (typeof output !== "string" || !output.trim()) throw new Error("--output is required");
   if (!apiKey) throw new Error("No API key found. Set FAL_KEY in the environment or a .env file.");
@@ -215,18 +221,28 @@ export async function generateSeedanceVideo(options, { runJob = runFalJob, downl
   const videoUrl = job?.data?.video?.url;
   if (!videoUrl) throw new Error(`response carried no video URL: ${JSON.stringify(job?.data ?? null).slice(0, 500)}`);
 
-  const bytes = await download(videoUrl, { signal });
+  // The render is paid for and finished upstream; a failure from here on
+  // is the download's own, and says which phase lost it.
+  let bytes;
+  try {
+    bytes = await download(videoUrl, { signal, attempts: DOWNLOAD_ATTEMPTS });
+  } catch (error) {
+    if (error?.name === "AbortError") throw error; // an interrupt stays an interrupt
+    throw new Error(`clip download failed after ${DOWNLOAD_ATTEMPTS} attempts: ${error instanceof Error ? error.message : String(error)}`);
+  }
 
   mkdirSync(dirname(output), { recursive: true });
   const staged = `${output}.tmp`;
   writeFileSync(staged, bytes);
-  if (remux) remuxFaststart(staged);
+  if (remux) remuxFile(staged);
   renameSync(staged, output);
 
   const result = {
     path: output,
     url: videoUrl,
-    file_size: bytes.length,
+    // The file on disk, not what fal delivered: the faststart pass rewrites
+    // the container, so the two differ whenever ffmpeg was there.
+    file_size: statSync(output).size,
     model: SEEDANCE_MODEL,
     endpoint,
     requested_duration: body.duration === "auto" ? "auto" : Number(body.duration),
