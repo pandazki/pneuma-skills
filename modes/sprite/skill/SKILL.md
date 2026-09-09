@@ -214,10 +214,12 @@ Flags, endpoints, and the cost/latency table are in
 `references/video-preview.md`.
 {{/videoGenEnabled}}
 
-If the numbered steps above are missing from your copy of this skill, this
-session has no fal.ai key and video preview is off. Say that plainly when the
-user asks for a clip, and point them at the GIF and WebP previews — those are
-built from the real frames and always work.
+{{#videoGenDisabled}}
+Video previews need a fal.ai key and this session has none, so there is
+nothing to render a clip with. Say that plainly when the user asks for one and
+point them at session settings to add the key. Meanwhile hand them the GIF and
+WebP previews — those are built from the real frames and always work.
+{{/videoGenDisabled}}
 
 ### D. Hand off to a game engine
 
@@ -256,5 +258,5 @@ Read when you need depth on the topic.
 |---|---|
 | Sheet prompt grammar, worked prompts, what breaks consistency, fixing one cell | `references/prompting.md` |
 | Every `sprite-sheet.mjs` / `sprite-project.mjs` subcommand, the atlas schema, inspect warnings | `references/pipeline.md` |
-| Seedance 2.5 and H3 Max flags, endpoint choice, reference binding, cost and latency | `references/video-preview.md` |
+| Seedance 2.5 and H3 Max flags, endpoint choice, reference binding, cost and latency (needs the fal key) | `references/video-preview.md` |
 | The `project.json` schema — craft fields, the sprite sidecar, asset id conventions | `references/project-json.md` |

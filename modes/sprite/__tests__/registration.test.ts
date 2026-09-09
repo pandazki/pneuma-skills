@@ -23,6 +23,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { listBuiltinModes } from "../../../core/mode-loader.js";
+import { applyTemplateParams } from "../../../server/skill-installer.js";
 import spriteManifest from "../manifest.js";
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..");
@@ -179,13 +180,54 @@ describe("the skill install surface", () => {
   });
 
   test("deriveParams gates the skill's conditional blocks on the two keys", () => {
+    // `videoGenDisabled` is the complement of `videoGenEnabled`, not a second
+    // opinion: the template engine has no inverted section, so the "video is
+    // off, tell the user why" paragraph needs its own truthy key. Exactly one
+    // of the pair is ever truthy — both blocks showing, or neither, is what
+    // this pins.
     const derive = spriteManifest.init!.deriveParams!;
     expect(
       derive({ openrouterApiKey: "sk-x", falApiKey: "", defaultVideoModel: "seedance-2.5" }),
-    ).toMatchObject({ imageGenEnabled: "true", videoGenEnabled: "" });
+    ).toMatchObject({
+      imageGenEnabled: "true",
+      videoGenEnabled: "",
+      videoGenDisabled: "true",
+    });
     expect(
       derive({ openrouterApiKey: "", falApiKey: "fal-x", defaultVideoModel: "h3-max" }),
-    ).toMatchObject({ imageGenEnabled: "", videoGenEnabled: "true" });
+    ).toMatchObject({
+      imageGenEnabled: "",
+      videoGenEnabled: "true",
+      videoGenDisabled: "",
+    });
+  });
+
+  test("the no-fal-key sentence is gated, not printed to every session", () => {
+    // It sat outside `{{/videoGenEnabled}}` once: a session that COULD render
+    // video read "video preview is off" right under the steps for doing it.
+    const skill = read("modes/sprite/skill/SKILL.md");
+    const enabled = applyTemplateParams(skill, {
+      defaultVideoModel: "seedance-2.5",
+      imageGenEnabled: "true",
+      videoGenEnabled: "true",
+      videoGenDisabled: "",
+    });
+    const disabled = applyTemplateParams(skill, {
+      defaultVideoModel: "seedance-2.5",
+      imageGenEnabled: "true",
+      videoGenEnabled: "",
+      videoGenDisabled: "true",
+    });
+
+    expect(enabled).toContain("Pick the model");
+    expect(enabled).not.toContain("needs a fal.ai key");
+    expect(disabled).not.toContain("Pick the model");
+    expect(disabled).toContain("Video previews need a fal.ai key");
+    // The reference stays indexed either way — the flags are still the truth
+    // about those scripts, and the row says what it costs to use them.
+    for (const rendered of [enabled, disabled]) {
+      expect(rendered).toContain("(needs the fal key) | `references/video-preview.md`");
+    }
   });
 
   test("every conditional block in SKILL.md closes, and uses a real flag", () => {

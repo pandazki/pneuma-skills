@@ -234,10 +234,15 @@ The user just opened the sprite workspace. Greet them briefly (1-2 sentences) an
         defaultValue: "seedance-2.5",
       },
     ],
+    // The installer's template engine has `{{#key}}` sections and no inverted
+    // form, so "no fal key" needs its own truthy key — otherwise the sentence
+    // that tells the agent video is off has to sit outside the gate, where a
+    // session that CAN render video reads it too.
     deriveParams: (params) => ({
       ...params,
       imageGenEnabled: params.openrouterApiKey ? "true" : "",
       videoGenEnabled: params.falApiKey ? "true" : "",
+      videoGenDisabled: params.falApiKey ? "" : "true",
     }),
   },
 
