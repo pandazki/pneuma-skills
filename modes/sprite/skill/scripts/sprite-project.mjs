@@ -35,6 +35,9 @@ const VIDEO_STATUSES = ["generating", "ready", "failed"];
 const VIDEO_MODELS = ["seedance-2.5", "h3-max"];
 const VIDEO_MODES = ["i2v", "first-last", "r2v"];
 const ANCHORS = ["bottom", "center"];
+/** How a motion's frames were obtained. Absent means "sheet" — every motion
+ *  made before the video source existed. */
+const MOTION_SOURCES = ["sheet", "video"];
 const FACINGS = ["left", "right"];
 
 const SUBCOMMANDS = [
@@ -60,10 +63,17 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
 
   add-motion --id <motionId> --label <text> --rows R --cols C --fps N
              [--loop|--no-loop] [--anchor ${ANCHORS.join("|")}] [--prompt <text>]
-             [--status ${MOTION_STATUSES.join("|")}]
+             [--status ${MOTION_STATUSES.join("|")}] [--source ${MOTION_SOURCES.join("|")}]
+      --source records how the frames will be obtained (a generated sheet or
+      a sampled video clip) before anything is generated. Omitted means sheet.
 
   set-motion --motion <motionId> [--label] [--fps] [--loop|--no-loop] [--anchor]
              [--prompt] [--status] [--notes]
+             [--ack-warnings "<reason>"] [--clear-ack]
+      --ack-warnings accepts the motion's remaining inspect warnings with a
+      one-sentence reason the user reads on the stage; the numbers stay
+      visible. --clear-ack takes it back. Re-registering a run drops the
+      acknowledgement with the measurement it covered.
 
   set-sheet --motion <motionId> --file <path> [--from <assetId,…>] [--model]
             [--prompt] [--background <text>] [--status ${MOTION_STATUSES.join("|")}]
@@ -75,7 +85,7 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       measures it and flips the same asset to ready. A missing file under any
       other status is an error.
 
-  register-run --motion <motionId> --run <run.json|-> [--at <ms>]
+  register-run --motion <motionId> --run <run.json|-> [--video <videoId>] [--at <ms>]
       Consume a 'sprite-sheet.mjs run' summary: registers sheet-alpha (when
       keyed), every frame, the packed sheet, the atlas, the GIF and the WebP,
       wires their provenance, copies the inspect summary into the motion and
@@ -83,6 +93,11 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       only what the previous run left over (the tail of a longer motion), so
       a video keeps the frame it was generated from. The run's intermediate
       'cells' are not registered.
+      A 'from-video' summary (source: "video") derives every frame from the
+      CLIP instead of a sheet, with params.frameIndex and params.t seconds,
+      and sets motion.source = "video". The clip must already be a registered
+      video asset (add-video); --video names which one when there is more
+      than one, and the newest is used with a note when there is not.
 
   add-video --motion <motionId> --file <path> --model ${VIDEO_MODELS.join("|")}
             --mode ${VIDEO_MODES.join("|")} [--from <assetId,…>] [--prompt]
@@ -135,7 +150,7 @@ function loadProject(dir) {
 
 const ASSET_KEYS = ["id", "type", "uri", "name", "metadata", "createdAt", "status", "tags"];
 const MOTION_KEYS = [
-  "id", "label", "prompt", "grid", "fps", "loop", "anchor", "status", "notes",
+  "id", "label", "prompt", "grid", "fps", "loop", "anchor", "status", "notes", "source",
   "sheetRaw", "sheetAlpha", "sheet", "atlas", "frames", "gif", "webp", "videos", "inspect",
 ];
 
@@ -569,17 +584,19 @@ const OPTIONS = {
     id: { type: "string" }, label: { type: "string" }, rows: { type: "string" }, cols: { type: "string" },
     fps: { type: "string" }, loop: { type: "boolean", default: false }, "no-loop": { type: "boolean", default: false },
     anchor: { type: "string" }, prompt: { type: "string" }, status: { type: "string" },
+    source: { type: "string" },
   },
   "set-motion": {
     motion: { type: "string" }, label: { type: "string" }, fps: { type: "string" },
     loop: { type: "boolean", default: false }, "no-loop": { type: "boolean", default: false },
     anchor: { type: "string" }, prompt: { type: "string" }, status: { type: "string" }, notes: { type: "string" },
+    "ack-warnings": { type: "string" }, "clear-ack": { type: "boolean", default: false },
   },
   "set-sheet": {
     motion: { type: "string" }, file: { type: "string" }, from: { type: "string", multiple: true },
     model: { type: "string" }, prompt: { type: "string" }, background: { type: "string" }, status: { type: "string" },
   },
-  "register-run": { motion: { type: "string" }, run: { type: "string" } },
+  "register-run": { motion: { type: "string" }, run: { type: "string" }, video: { type: "string" } },
   "add-video": {
     motion: { type: "string" }, file: { type: "string" }, model: { type: "string" }, mode: { type: "string" },
     from: { type: "string", multiple: true }, prompt: { type: "string" }, duration: { type: "string" },
@@ -756,6 +773,11 @@ function main() {
         loop: loop(false),
         anchor: oneOf(values.anchor ?? "bottom", ANCHORS, "--anchor"),
         status: oneOf(values.status ?? "planned", MOTION_STATUSES, "--status"),
+        // Absent is the honest default: it means "sheet", and every motion
+        // made before the video source existed says nothing at all.
+        ...(values.source === undefined
+          ? {}
+          : { source: oneOf(values.source, MOTION_SOURCES, "--source") }),
         frames: [],
         videos: [],
       };
@@ -775,6 +797,24 @@ function main() {
       if (values.prompt !== undefined) motion.prompt = values.prompt;
       if (values.status !== undefined) motion.status = oneOf(values.status, MOTION_STATUSES, "--status");
       if (values.notes !== undefined) motion.notes = values.notes;
+
+      // Acknowledging warnings is a statement about a measurement, so it can
+      // only be made when there is one, and it has to carry the sentence the
+      // user reads next to the dimmed badge — an empty reason would dim the
+      // warning and explain nothing.
+      if (values["ack-warnings"] !== undefined && values["clear-ack"]) {
+        fail("--ack-warnings and --clear-ack are mutually exclusive");
+      }
+      if (values["ack-warnings"] !== undefined) {
+        const reason = String(values["ack-warnings"]).trim();
+        if (!reason) fail("--ack-warnings: a reason is required — the user reads it on the stage");
+        if (!motion.inspect) {
+          fail(`--ack-warnings: motion '${motion.id}' has no inspect report to acknowledge — run register-run first`);
+        }
+        motion.inspect = { ...motion.inspect, acknowledged: { reason, at: now } };
+      }
+      if (values["clear-ack"] && motion.inspect) delete motion.inspect.acknowledged;
+
       saveProject(dir, doc);
       emit(values, motion, [`${motion.id}: ${motion.status}, ${motion.fps}fps, loop=${motion.loop}`]);
       break;
@@ -839,6 +879,40 @@ function main() {
 
       const sheetRawId = motion.sheetRaw && doc.assets.some((a) => a.id === motion.sheetRaw) ? motion.sheetRaw : null;
 
+      // A `from-video` run has no sheet anywhere in its history: the frames
+      // were cut out of a clip, and that clip is an asset of its own. The
+      // parent has to be the clip or the provenance graph tells a story that
+      // never happened — and it is not derivable from the run summary, which
+      // knows a path and not an asset id.
+      const fromVideo = run.source === "video";
+      let videoAssetId = null;
+      if (fromVideo) {
+        const videos = motion.videos ?? [];
+        if (!videos.length) {
+          fail(`--run says these frames were sampled from a video, but motion '${motion.id}' has no video asset. Register the clip first: add-video --dir <character> --motion ${motion.id} --file ${run.video ? toUri(dir, run.video, "--run video") : `motions/${motion.id}/video-<model>-1.mp4`} --model <model> --mode <mode> (it becomes ${motion.id}-video-1).`);
+        }
+        if (values.video !== undefined) {
+          const chosen = videos.find((v) => v.id === values.video || v.asset === values.video);
+          if (!chosen) {
+            fail(`--video: no video '${values.video}' on motion '${motion.id}' (known: ${videos.map((v) => v.id).join(", ")})`);
+          }
+          videoAssetId = chosen.asset;
+        } else {
+          const newest = videos[videos.length - 1];
+          videoAssetId = newest.asset;
+          console.error(`note: no --video given — hanging the frames off '${newest.id}' (${videoAssetId}), the newest clip on this motion`);
+        }
+        // Naming the wrong clip is silent corruption: the frames would claim
+        // to come from a take they were never sampled from.
+        if (run.video) {
+          const sampledFrom = toUri(dir, run.video, "--run video");
+          const asset = doc.assets.find((a) => a.id === videoAssetId);
+          if (asset && asset.uri !== sampledFrom) {
+            fail(`--run was sampled from ${sampledFrom} but ${videoAssetId} is ${asset.uri} — pass --video <id> for the clip these frames came from`);
+          }
+        }
+      }
+
       let sheetAlphaId;
       if (run.sheetAlpha) {
         sheetAlphaId = `${motion.id}-sheet-alpha`;
@@ -862,9 +936,11 @@ function main() {
           metadata: imageMetadata(requireFile(dir, uri, "--run frames"), "--run frames"),
           createdAt: now, status: "ready",
         }, owner);
-        setEdge(doc, edge(id, sourceId ? [sourceId] : [], operation("derive", now, {
-          tool: TOOL, step: "run", cell: index,
-        })));
+        const sampledAt = Array.isArray(run.sampledAt) ? run.sampledAt[index] : undefined;
+        const parents = fromVideo ? [videoAssetId] : (sourceId ? [sourceId] : []);
+        setEdge(doc, edge(id, parents, operation("derive", now, fromVideo
+          ? { tool: TOOL, step: "from-video", frameIndex: index, t: Number.isFinite(sampledAt) ? sampledAt : undefined }
+          : { tool: TOOL, step: "run", cell: index })));
         return id;
       });
 
@@ -914,13 +990,21 @@ function main() {
       motion.atlas = atlasId;
       motion.gif = gifId;
       if (webpId) motion.webp = webpId; else delete motion.webp;
+      // The sidecar says how these frames were obtained, and it is corrected
+      // in both directions: a sheet run over a motion someone declared `video`
+      // is still a sheet's frames. `sheet` stays unwritten when nothing ever
+      // claimed otherwise, because absent already means sheet.
+      if (fromVideo) motion.source = "video";
+      else if (motion.source === "video") motion.source = "sheet";
+      // A fresh measurement is not the one that was acknowledged, so the
+      // acknowledgement goes with the numbers it covered.
       const summary = inspectSummary(run.inspect);
       if (summary) motion.inspect = summary;
       motion.status = "ready";
 
       saveProject(dir, doc);
       emit(values, motion, [
-        `${motion.id}: ${frameIds.length} frames, atlas + preview registered (ready)`,
+        `${motion.id}: ${frameIds.length} frames${fromVideo ? ` sampled from ${videoAssetId}` : ""}, atlas + preview registered (ready)`,
         ...(motion.inspect?.warnings ?? []),
       ]);
       break;

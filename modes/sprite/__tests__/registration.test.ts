@@ -229,10 +229,10 @@ describe("the skill install surface", () => {
       videoGenDisabled: "true",
     });
 
-    expect(enabled).toContain("Pick the model");
+    expect(enabled).toContain("Pick the mode");
     expect(enabled).not.toContain("needs a fal.ai key");
-    expect(disabled).not.toContain("Pick the model");
-    expect(disabled).toContain("Video previews need a fal.ai key");
+    expect(disabled).not.toContain("Pick the mode");
+    expect(disabled).toContain("Video needs a fal.ai key");
     // The reference stays indexed either way — the flags are still the truth
     // about those scripts, and the row says what it costs to use them.
     for (const rendered of [enabled, disabled]) {
