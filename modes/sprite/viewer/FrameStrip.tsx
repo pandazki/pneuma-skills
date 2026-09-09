@@ -46,7 +46,8 @@ export interface FrameStripProps {
   onStep: (delta: number) => void;
   onSeek: (frame: number) => void;
   onFps: (fps: number | null) => void;
-  onLoop: (loop: boolean) => void;
+  /** `null` clears the override and hands the motion back to the file. */
+  onLoop: (loop: boolean | null) => void;
 }
 
 export function FrameStrip(props: FrameStripProps) {
@@ -145,8 +146,12 @@ export function FrameStrip(props: FrameStripProps) {
           <button
             type="button"
             onClick={() => {
+              // Both halves clear the OVERRIDE rather than writing the file's
+              // current value into it: writing it back looks identical right
+              // now and pins the stage to a stale value the moment the agent
+              // edits `motion.loop` in project.json.
               props.onFps(null);
-              props.onLoop(props.motionLoop);
+              props.onLoop(null);
             }}
             className="rounded border border-cc-warning/40 px-2 py-1 text-[11px] text-cc-warning transition-colors hover:bg-cc-warning/10"
             title="Playback settings differ from the motion's stored values"

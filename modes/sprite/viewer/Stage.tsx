@@ -48,11 +48,22 @@ export interface StageProps {
   onCanvas: (canvas: HTMLCanvasElement | null) => void;
 }
 
+/** Distance from the stage edge to the chrome sitting in each corner. */
+const EDGE_PX = 12;
+/** Clear air between the status strip and the toolbar it must not slide under. */
+const CHROME_GAP_PX = 12;
+
 export function Stage(props: StageProps) {
   const boxRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [scale, setScale] = useState(1);
+  /** Width the toolbar actually occupies. Measured rather than assumed: the
+   *  status strip is capped so it can never slide under the toolbar, and a
+   *  guessed cap is wrong by however much the label row grows or shrinks —
+   *  which is invisible until two pieces of chrome overlap. */
+  const [toolbarWidth, setToolbarWidth] = useState(0);
 
   useEffect(() => {
     const box = boxRef.current;
@@ -66,6 +77,19 @@ export function Stage(props: StageProps) {
       });
     });
     observer.observe(box);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const toolbar = toolbarRef.current;
+    if (!toolbar) return;
+    // `offsetWidth` is the border box, which is what has to be reserved;
+    // `contentRect` would leave the padding and border unaccounted for.
+    const measure = () => setToolbarWidth(toolbar.offsetWidth);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(toolbar);
     return () => observer.disconnect();
   }, []);
 
@@ -110,10 +134,17 @@ export function Stage(props: StageProps) {
     <div className="relative min-h-0 flex-1">
       <div ref={boxRef} className="absolute inset-0">
         <canvas ref={canvasRef} className="block h-full w-full" />
-        <StageOverlays {...props} scale={scale} />
+        <StageOverlays
+          {...props}
+          scale={scale}
+          reserve={toolbarWidth > 0 ? toolbarWidth + 2 * EDGE_PX + CHROME_GAP_PX : 0}
+        />
       </div>
 
-      <div className="pointer-events-auto absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-lg border border-cc-border bg-cc-surface/80 p-1 shadow-lg backdrop-blur">
+      <div
+        ref={toolbarRef}
+        className="pointer-events-auto absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-lg border border-cc-border bg-cc-surface/80 p-1 shadow-lg backdrop-blur"
+      >
         <Segmented
           icon={<CheckerIcon size={12} />}
           title="Stage background"
@@ -150,13 +181,13 @@ export function Stage(props: StageProps) {
 }
 
 /** Status, provenance and scale, said in words over the canvas. */
-function StageOverlays(props: StageProps & { scale: number }) {
-  const { motion, source, refLabel, images } = props;
+function StageOverlays(props: StageProps & { scale: number; reserve: number }) {
+  const { motion, source, refLabel, images, reserve } = props;
 
   if (refLabel) {
     return (
-      <Corner>
-        <span className="min-w-0 truncate text-cc-fg">{refLabel}</span>
+      <Corner reserve={reserve}>
+        <span className={LABEL_CLASS}>{refLabel}</span>
         <span className="shrink-0 text-cc-muted">reference</span>
         <ScaleTag scale={props.scale} />
       </Corner>
@@ -210,8 +241,8 @@ function StageOverlays(props: StageProps & { scale: number }) {
 
   return (
     <>
-      <Corner>
-        <span className="min-w-0 truncate text-cc-fg">{motion.label}</span>
+      <Corner reserve={reserve}>
+        <span className={LABEL_CLASS}>{motion.label}</span>
         {source.kind === "raw-sheet" ? (
           <span
             className="shrink-0 rounded border border-cc-warning/50 px-1 py-px text-cc-warning"
@@ -245,11 +276,34 @@ function ScaleTag({ scale }: { scale: number }) {
   );
 }
 
+/**
+ * The name of the thing on stage.
+ *
+ * `min-w-[4rem]` is a floor, not a width: every chip beside it (`sheet
+ * preview`, `N frames missing`, `decoding…`, the scale) is `shrink-0`, so with
+ * `min-w-0` the label is the only thing that can give — and on a narrow pane
+ * it gave everything, truncating to an ellipsis or to nothing at all while
+ * the chips stayed whole. Four rem is enough to read a word and still lets
+ * the label shrink before the strip overflows.
+ */
+const LABEL_CLASS = "min-w-[4rem] truncate text-cc-fg";
+
 /** Top-left status strip. Width-capped so it can never slide under the stage
- *  toolbar sitting in the opposite corner and get painted over. */
-function Corner({ children }: { children: React.ReactNode }) {
+ *  toolbar sitting in the opposite corner and get painted over — `reserve` is
+ *  the measured width of that toolbar plus the air around it (0 before the
+ *  first measurement, where the class fallback holds the line). */
+function Corner({
+  children,
+  reserve,
+}: {
+  children: React.ReactNode;
+  reserve: number;
+}) {
   return (
-    <div className="pointer-events-none absolute left-3 top-3 flex max-w-[calc(100%-22rem)] items-center gap-2 overflow-hidden rounded-lg border border-cc-border bg-cc-surface/70 px-2 py-1 text-[11px] whitespace-nowrap backdrop-blur">
+    <div
+      style={reserve > 0 ? { maxWidth: `calc(100% - ${reserve}px)` } : undefined}
+      className="pointer-events-none absolute left-3 top-3 flex max-w-[calc(100%-28rem)] items-center gap-2 overflow-hidden rounded-lg border border-cc-border bg-cc-surface/70 px-2 py-1 text-[11px] whitespace-nowrap backdrop-blur"
+    >
       {children}
     </div>
   );

@@ -46,6 +46,9 @@ export interface CommandBarProps {
   /** `initParams.defaultVideoModel` — the session's configured default. */
   defaultVideoModel: VideoModel;
   onNotifyAgent: (notification: ViewerNotification) => void;
+  /** Told whenever a popover opens or closes: while one is up it owns the
+   *  keyboard, and the stage's transport shortcuts must stand down. */
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function CommandBar({
@@ -53,9 +56,17 @@ export function CommandBar({
   motion,
   defaultVideoModel,
   onNotifyAgent,
+  onOpenChange,
 }: CommandBarProps) {
   const [open, setOpen] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+
+  // Unmounting with a popover up (the command bar is gated on `editing`)
+  // must release the keyboard too, hence the cleanup.
+  useEffect(() => {
+    onOpenChange?.(open !== null);
+    return () => onOpenChange?.(false);
+  }, [open, onOpenChange]);
 
   useEffect(() => {
     if (!open) return;

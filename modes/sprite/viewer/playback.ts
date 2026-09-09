@@ -14,7 +14,9 @@
  *   3. WHEN IT MOVES    — `advance`: an accumulator against `1000 / fps`, so
  *      playback runs at the motion's own fps regardless of the display's
  *      refresh rate, and a one-shot stops on its last frame instead of
- *      wrapping.
+ *      wrapping. `transportIntent` / `typingTarget` are the same question
+ *      asked of the keyboard: which key moves the stage, and when does a key
+ *      belong to whatever the user is typing into instead.
  *   4. WHERE AN ADDRESS POINTS — `resolveAddress`, shared by the `navigate-to`
  *      action, the `capture` pre-navigation, and a `<viewer-locator>` click,
  *      so all three land in the same place or refuse for the same reason.
@@ -213,6 +215,78 @@ export function clampFrame(frame: number, count: number): number {
   return Math.min(Math.max(Math.floor(frame), 0), count - 1);
 }
 
+// ── Which key moves it ─────────────────────────────────────────────────────
+
+/** What a transport key asks for; each maps onto a transport button. */
+export type TransportIntent =
+  | "toggle-play"
+  | "step-back"
+  | "step-forward"
+  | "first-frame"
+  | "last-frame";
+
+/** The half of a `KeyboardEvent` this decision is made of. */
+export interface TransportKeyEvent {
+  key: string;
+  repeat?: boolean;
+  altKey?: boolean;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  shiftKey?: boolean;
+}
+
+/**
+ * Space plays, arrows step — the keyboard half of the transport.
+ *
+ * Only a BARE key counts: `Cmd+ArrowLeft` is the browser's history gesture and
+ * `Shift+Space` scrolls a page, and stealing either of them from a user who
+ * meant it is worse than making them reach for the mouse. A held Space is
+ * dropped too — key repeat would toggle play dozens of times a second, which
+ * reads as the stage stuttering rather than as a shortcut working.
+ */
+export function transportIntent(event: TransportKeyEvent): TransportIntent | null {
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return null;
+  switch (event.key) {
+    case " ":
+    // Older engines (and some remotes) still report the legacy name.
+    case "Spacebar":
+      return event.repeat ? null : "toggle-play";
+    case "ArrowLeft":
+      return "step-back";
+    case "ArrowRight":
+      return "step-forward";
+    case "Home":
+      return "first-frame";
+    case "End":
+      return "last-frame";
+    default:
+      return null;
+  }
+}
+
+/** The part of an event target that decides whether a key was meant for it. */
+export interface TransportKeyTarget {
+  tagName?: string;
+  isContentEditable?: boolean;
+}
+
+/**
+ * True when the key belongs to whatever the user is typing into.
+ *
+ * The stage listens on the document — it has no focus of its own to hold — so
+ * every keystroke in the chat composer, in a command popover's note field or
+ * in any other editable surface passes through this listener first. A space
+ * swallowed out of a sentence is the loudest bug a shortcut can have.
+ */
+export function typingTarget(
+  target: TransportKeyTarget | null | undefined,
+): boolean {
+  if (!target) return false;
+  if (target.isContentEditable) return true;
+  const tag = (target.tagName ?? "").toUpperCase();
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tag === "OPTION";
+}
+
 // ── Where an address points ────────────────────────────────────────────────
 
 /**
@@ -277,6 +351,30 @@ export interface AddressResolution {
 const trimKey = (key: string): string => key.replace(/^\/+|\/+$/g, "");
 
 /**
+ * Refuse an address that names a character this stage is not showing.
+ *
+ * The framework switches content sets before an address reaches a viewer
+ * (`src/store/navigate-plan.ts`); an action dispatched straight from the agent
+ * has had no such pass, and answering about the character on stage while the
+ * agent asked about another one is the failure that looks exactly like
+ * success. Every action that takes an address goes through here, so
+ * `navigate-to` and `get-playback-state` refuse for the same reason in the
+ * same words.
+ *
+ * @returns the refusal sentence, or null when the address is about this stage.
+ */
+export function contentSetMismatch(
+  project: CharacterProject | null,
+  contentSet: string | undefined,
+): string | null {
+  if (!project || contentSet === undefined) return null;
+  const named = trimKey(contentSet);
+  const here = trimKey(project.contentSet);
+  if (named === here) return null;
+  return `This stage is showing "${here || "the root character"}", not "${named}". Switch the content set first.`;
+}
+
+/**
  * Resolve an address against the character on stage.
  *
  * `currentMotionId` is what a bare `{ frame }` applies to — the motion the
@@ -291,22 +389,8 @@ export function resolveAddress(
     return { ok: false, target: null, message: "No character is loaded." };
   }
 
-  if (address.contentSet !== undefined) {
-    const named = trimKey(address.contentSet);
-    const here = trimKey(project.contentSet);
-    if (named !== here) {
-      // The framework switches content sets before the address reaches a
-      // viewer (`src/store/navigate-plan.ts`); an action dispatched straight
-      // from the agent has had no such pass, and pointing at another
-      // character while showing this one is the failure that looks like
-      // success.
-      return {
-        ok: false,
-        target: null,
-        message: `This stage is showing "${here || "the root character"}", not "${named}". Switch the content set first.`,
-      };
-    }
-  }
+  const mismatch = contentSetMismatch(project, address.contentSet);
+  if (mismatch) return { ok: false, target: null, message: mismatch };
 
   let note: string | undefined;
   if (address.motion && address.ref) {

@@ -20,8 +20,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { loadRoster, type CharacterProject, type Motion } from "../domain.js";
+import { atlasGeometry } from "../viewer/atlas.js";
 import {
   advance,
+  contentSetMismatch,
   frameCountOf,
   parseAddress,
   playbackStateData,
@@ -29,9 +31,12 @@ import {
   resolveFrameSource,
   selectActiveCharacter,
   stageWarnings,
+  transportIntent,
+  typingTarget,
   type PlaybackState,
 } from "../viewer/playback.js";
 import { contentUrl, encodeContentPath } from "../viewer/urls.js";
+import { sourceKey, stableSourceKey } from "../viewer/useFrameImages.js";
 
 const MINI = readFileSync(
   join(import.meta.dir, "fixtures", "mini", "project.json"),
@@ -140,6 +145,76 @@ describe("advance", () => {
     expect(Number.isFinite(next.frame)).toBe(true);
     expect(next.frame).toBeGreaterThanOrEqual(0);
     expect(next.frame).toBeLessThan(8);
+  });
+});
+
+// ── The keyboard half of the transport ─────────────────────────────────────
+
+describe("transportIntent", () => {
+  test("space plays, arrows step, home and end jump", () => {
+    expect(transportIntent({ key: " " })).toBe("toggle-play");
+    expect(transportIntent({ key: "Spacebar" })).toBe("toggle-play");
+    expect(transportIntent({ key: "ArrowLeft" })).toBe("step-back");
+    expect(transportIntent({ key: "ArrowRight" })).toBe("step-forward");
+    expect(transportIntent({ key: "Home" })).toBe("first-frame");
+    expect(transportIntent({ key: "End" })).toBe("last-frame");
+  });
+
+  test("a held space does not toggle play dozens of times a second", () => {
+    expect(transportIntent({ key: " ", repeat: true })).toBeNull();
+    // Held arrows are a legitimate way to scrub, so they keep repeating.
+    expect(transportIntent({ key: "ArrowRight", repeat: true })).toBe("step-forward");
+  });
+
+  test("a modified key belongs to the browser, not to the stage", () => {
+    expect(transportIntent({ key: "ArrowLeft", metaKey: true })).toBeNull();
+    expect(transportIntent({ key: "ArrowRight", altKey: true })).toBeNull();
+    expect(transportIntent({ key: " ", shiftKey: true })).toBeNull();
+    expect(transportIntent({ key: " ", ctrlKey: true })).toBeNull();
+  });
+
+  test("every other key is left alone", () => {
+    expect(transportIntent({ key: "k" })).toBeNull();
+    expect(transportIntent({ key: "Enter" })).toBeNull();
+    expect(transportIntent({ key: "ArrowUp" })).toBeNull();
+  });
+});
+
+describe("typingTarget", () => {
+  test("a key typed into a field is not a transport key", () => {
+    expect(typingTarget({ tagName: "INPUT" })).toBe(true);
+    expect(typingTarget({ tagName: "textarea" })).toBe(true);
+    expect(typingTarget({ tagName: "SELECT" })).toBe(true);
+    expect(typingTarget({ tagName: "DIV", isContentEditable: true })).toBe(true);
+  });
+
+  test("the stage, the canvas and a button are not typing surfaces", () => {
+    expect(typingTarget({ tagName: "CANVAS" })).toBe(false);
+    expect(typingTarget({ tagName: "BUTTON" })).toBe(false);
+    expect(typingTarget({ tagName: "DIV", isContentEditable: false })).toBe(false);
+    expect(typingTarget(null)).toBe(false);
+  });
+});
+
+// ── Reload versus switch (what the stage may keep showing) ─────────────────
+
+describe("stableSourceKey", () => {
+  const p = project();
+  const bounce = resolveFrameSource(p, motionOf(p), 1);
+
+  test("a cache-buster bump is the same pictures — the stage may hold them", () => {
+    const reloaded = resolveFrameSource(p, motionOf(p), 2);
+    expect(sourceKey(reloaded)).not.toBe(sourceKey(bounce));
+    expect(stableSourceKey(reloaded)).toBe(stableSourceKey(bounce));
+  });
+
+  test("different pictures are a different set, however they are versioned", () => {
+    const sheetProject = mutate((body) => {
+      body.sprite.motions[0].frames = [];
+    });
+    const sheet = resolveFrameSource(sheetProject, motionOf(sheetProject), 1);
+    expect(stableSourceKey(sheet)).not.toBe(stableSourceKey(bounce));
+    expect(stableSourceKey({ kind: "none" })).toBe("none");
   });
 });
 
@@ -364,6 +439,126 @@ describe("resolveAddress", () => {
     const r = resolveAddress(p, {}, "bounce");
     expect(r.ok).toBe(true);
     expect(r.target).toEqual({ kind: "character" });
+  });
+});
+
+/**
+ * The guard every addressed action shares.
+ *
+ * `navigate-to` refuses another character's address; `get-playback-state` must
+ * refuse the same one, because answering it with THIS character's stage is a
+ * report that reads as success and describes the wrong sprite. Both call this
+ * function, so they can only ever agree.
+ */
+describe("contentSetMismatch", () => {
+  const p = project();
+
+  test("no content set in the address is not a mismatch", () => {
+    expect(contentSetMismatch(p, undefined)).toBeNull();
+  });
+
+  test("this character, with or without a trailing slash, passes", () => {
+    expect(contentSetMismatch(p, "mini")).toBeNull();
+    expect(contentSetMismatch(p, "mini/")).toBeNull();
+    expect(contentSetMismatch(p, "/mini")).toBeNull();
+  });
+
+  test("another character is refused by name, both names said out loud", () => {
+    const message = contentSetMismatch(p, "someone-else");
+    expect(message).toContain("someone-else");
+    expect(message).toContain("mini");
+  });
+
+  test("a root-level character is nameable and still guarded", () => {
+    const root = project(MINI, "project.json");
+    expect(contentSetMismatch(root, "")).toBeNull();
+    expect(contentSetMismatch(root, "lumi")).toContain("the root character");
+  });
+
+  test("the refusal `navigate-to` gives is this exact sentence", () => {
+    const viaAddress = resolveAddress(p, { contentSet: "someone-else" }, null);
+    expect(viaAddress.ok).toBe(false);
+    expect(viaAddress.message).toBe(contentSetMismatch(p, "someone-else") ?? "");
+  });
+
+  test("no character at all is nothing to compare against", () => {
+    expect(contentSetMismatch(null, "mini")).toBeNull();
+  });
+});
+
+// ── The packed sheet's layout ──────────────────────────────────────────────
+
+describe("atlasGeometry", () => {
+  test("a sheet that really is cols x rows of the frame size is trusted", () => {
+    const p = project();
+    const geometry = atlasGeometry(p, motionOf(p));
+    expect(geometry).toEqual({
+      width: 128,
+      height: 128,
+      cols: 2,
+      rows: 2,
+      cellWidth: 64,
+      cellHeight: 64,
+      trusted: true,
+      note: null,
+    });
+  });
+
+  test("a pack that chose its own columns is refused, not drawn over", () => {
+    // `sprite-sheet.mjs pack` without --cols lays out ceil(sqrt(n)) columns,
+    // so a motion whose declared grid says otherwise produces a sheet the
+    // declared grid does not divide — the overlay would be lines on nothing.
+    const p = mutate((body) => {
+      body.sprite.motions[0].grid = { rows: 1, cols: 3 };
+      body.assets.find((a: any) => a.id === "bounce-sheet").metadata = {
+        width: 128,
+        height: 128,
+      };
+    });
+    const geometry = atlasGeometry(p, motionOf(p));
+    expect(geometry.trusted).toBe(false);
+    expect(geometry.cellWidth).toBe(0);
+    expect(geometry.note).toContain("128×128");
+    expect(geometry.note).toContain("atlas.json");
+  });
+
+  test("cells that divide but do not match the frames are refused too", () => {
+    // 256x64 over a 4x1 grid divides cleanly into 64x64 — but these frames
+    // are 32 px, so the packed image is not the one this grid describes.
+    const p = mutate((body) => {
+      body.sprite.motions[0].grid = { rows: 1, cols: 4 };
+      body.assets.find((a: any) => a.id === "bounce-sheet").metadata = {
+        width: 256,
+        height: 64,
+      };
+      for (const asset of body.assets) {
+        if (asset.id.startsWith("bounce-frame")) {
+          asset.metadata = { width: 32, height: 32 };
+        }
+      }
+    });
+    const geometry = atlasGeometry(p, motionOf(p));
+    expect(geometry.trusted).toBe(false);
+    expect(geometry.note).toContain("32×32");
+  });
+
+  test("an unmeasured sheet says so rather than drawing an unchecked grid", () => {
+    const p = mutate((body) => {
+      body.assets.find((a: any) => a.id === "bounce-sheet").metadata = {};
+    });
+    const geometry = atlasGeometry(p, motionOf(p));
+    expect(geometry.trusted).toBe(false);
+    expect(geometry.width).toBe(0);
+    expect(geometry.note).toContain("no recorded size");
+  });
+
+  test("frames with no recorded size do not veto an otherwise sound grid", () => {
+    const p = mutate((body) => {
+      for (const asset of body.assets) {
+        if (asset.id.startsWith("bounce-frame")) asset.metadata = {};
+      }
+    });
+    expect(atlasGeometry(p, motionOf(p)).trusted).toBe(true);
   });
 });
 

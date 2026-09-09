@@ -10,17 +10,20 @@
  * sprite sheet gets asked are "where is frame 5" and "how big is a cell".
  *
  * The grid is recomputed from the packed image's own dimensions and the
- * motion's declared columns rather than read back out of `atlas.json`. The
- * pack step lays frames out row-major, `cols` per row, with no margin and no
- * gutter (Shared vocabulary), so the two agree by construction — and the panel
- * stays free of a second data source, which is also what makes it work in the
- * hosted player with no fetch at render time.
+ * motion's declared columns rather than read back out of `atlas.json`, which
+ * keeps the panel free of a second data source and is what makes it work in
+ * the hosted player with no fetch at render time. The two agree only when the
+ * pack step was given the same `--cols`, so `atlasGeometry` (see `atlas.ts`)
+ * checks the division before anything is drawn: an unverifiable layout gets
+ * the bare sheet and a sentence pointing at `atlas.json`, never a grid on
+ * lines that are not there.
  */
 
 import { useMemo } from "react";
 
 import type { CharacterProject, Motion, MotionVideo } from "../domain.js";
 import { resolveAssetUri } from "../domain.js";
+import { atlasGeometry } from "./atlas.js";
 import { DownloadIcon, FilmIcon, GridIcon, ImageIcon, WarnIcon } from "./icons.js";
 import { contentUrl } from "./urls.js";
 
@@ -226,21 +229,7 @@ function AtlasTab({
 }) {
   const sheet = url(motion.sheet);
   const atlas = url(motion.atlas);
-  const geometry = useMemo(() => {
-    const asset = motion.sheet ? project.assetsById.get(motion.sheet) : undefined;
-    const width = Number(asset?.metadata.width ?? 0);
-    const height = Number(asset?.metadata.height ?? 0);
-    const cols = Math.max(1, Math.floor(motion.grid.cols));
-    const rows = Math.max(1, Math.ceil(motion.frames.length / cols));
-    return {
-      width,
-      height,
-      cols,
-      rows,
-      cellWidth: width ? Math.round(width / cols) : 0,
-      cellHeight: height ? Math.round(height / rows) : 0,
-    };
-  }, [project, motion]);
+  const geometry = useMemo(() => atlasGeometry(project, motion), [project, motion]);
 
   if (!sheet) {
     return (
@@ -263,32 +252,44 @@ function AtlasTab({
           className="block w-full"
           style={{ imageRendering: "pixelated" }}
         />
-        <div className="pointer-events-none absolute inset-0">
-          {Array.from({ length: geometry.cols - 1 }, (_, i) => (
-            <span
-              key={`c${i}`}
-              className="absolute top-0 bottom-0 w-px bg-cc-primary/40"
-              style={{ left: `${((i + 1) / geometry.cols) * 100}%` }}
-            />
-          ))}
-          {Array.from({ length: geometry.rows - 1 }, (_, i) => (
-            <span
-              key={`r${i}`}
-              className="absolute right-0 left-0 h-px bg-cc-primary/40"
-              style={{ top: `${((i + 1) / geometry.rows) * 100}%` }}
-            />
-          ))}
-        </div>
+        {/* Only drawn over a layout that has been checked against the packed
+            image: lines on a grid that is not there are worse than no lines,
+            because they look exactly like lines on a grid that is. */}
+        {geometry.trusted ? (
+          <div className="pointer-events-none absolute inset-0">
+            {Array.from({ length: geometry.cols - 1 }, (_, i) => (
+              <span
+                key={`c${i}`}
+                className="absolute top-0 bottom-0 w-px bg-cc-primary/40"
+                style={{ left: `${((i + 1) / geometry.cols) * 100}%` }}
+              />
+            ))}
+            {Array.from({ length: geometry.rows - 1 }, (_, i) => (
+              <span
+                key={`r${i}`}
+                className="absolute right-0 left-0 h-px bg-cc-primary/40"
+                style={{ top: `${((i + 1) / geometry.rows) * 100}%` }}
+              />
+            ))}
+          </div>
+        ) : null}
       </div>
+      {geometry.note ? (
+        <p className="rounded-lg border border-cc-warning/40 bg-cc-warning/10 px-2 py-1.5 text-[11px] leading-relaxed text-cc-fg">
+          {geometry.note}
+        </p>
+      ) : null}
       <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
         <Fact label="Sheet">
-          {geometry.width}×{geometry.height}
+          {geometry.width > 0 ? `${geometry.width}×${geometry.height}` : "—"}
         </Fact>
         <Fact label="Grid">
-          {geometry.cols}×{geometry.rows}
+          {geometry.trusted ? `${geometry.cols}×${geometry.rows}` : "—"}
         </Fact>
         <Fact label="Cell">
-          {geometry.cellWidth}×{geometry.cellHeight}
+          {geometry.trusted
+            ? `${geometry.cellWidth}×${geometry.cellHeight}`
+            : "—"}
         </Fact>
         <Fact label="Pivot">
           {motion.anchor === "center" ? "0.5, 0.5" : "0.5, 1.0"}

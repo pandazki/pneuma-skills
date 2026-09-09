@@ -54,6 +54,7 @@ import { PreviewPanel, type PanelTab } from "./PreviewPanel.js";
 import {
   advance,
   clampFrame,
+  contentSetMismatch,
   declaredFrameCount,
   frameCountOf,
   parseAddress,
@@ -62,6 +63,8 @@ import {
   resolveFrameSource,
   selectActiveCharacter,
   stepFrame,
+  transportIntent,
+  typingTarget,
   type FrameSource,
   type PlaybackState,
 } from "./playback.js";
@@ -102,6 +105,9 @@ export default function SpritePreview(props: ViewerPreviewProps) {
   const [tab, setTab] = useState<PanelTab>("gif");
   const [railOpen, setRailOpen] = useState(true);
   const [paneWidth, setPaneWidth] = useState(1200);
+  /** A command popover owns the keyboard while it is open (see the transport
+   *  shortcuts below): its own buttons and note field must keep Space. */
+  const [popoverOpen, setPopoverOpen] = useState(false);
 
   // ── Playback ─────────────────────────────────────────────────────────────
   const playRef = useRef<PlaybackState>({ frame: 0, acc: 0, playing: false });
@@ -312,6 +318,70 @@ export default function SpritePreview(props: ViewerPreviewProps) {
     [character, onSelect],
   );
 
+  // ── The transport, however it is driven ──────────────────────────────────
+  //
+  // The buttons and the keyboard call the SAME two functions. A shortcut that
+  // stepped the playhead without pausing, or without telling the agent what
+  // the user is now looking at, would be a second transport with its own
+  // behaviour — and the drift would only show up as an agent answering about
+  // a frame nobody is on.
+
+  /** Step by hand: stop the clock, move one frame, report where we landed. */
+  const stepBy = useCallback(
+    (delta: number) => {
+      setPlay(false);
+      const next = stepFrame(playRef.current.frame, delta, countRef.current);
+      seek(next);
+      reportSelection(motion, next);
+    },
+    [setPlay, seek, reportSelection, motion],
+  );
+
+  /** Jump to one frame by hand — a strip click, Home, End. */
+  const seekTo = useCallback(
+    (index: number) => {
+      setPlay(false);
+      seek(index);
+      reportSelection(motion, index);
+    },
+    [setPlay, seek, reportSelection, motion],
+  );
+
+  const togglePlay = useCallback(() => {
+    setPlay(!playRef.current.playing);
+  }, [setPlay]);
+
+  /**
+   * Keyboard transport.
+   *
+   * On `document`, because the stage is a canvas with no focus of its own and
+   * a shortcut that only works after clicking the right pixel is not a
+   * shortcut. Everything that could mean something else to whoever is
+   * actually focused is handed back: text fields and contenteditables
+   * (`typingTarget`), modifier combinations and key repeat
+   * (`transportIntent`), and an open command popover, whose own buttons take
+   * Space. `preventDefault` is what keeps Space from scrolling the pane — and
+   * from double-firing on a transport button that still has focus after being
+   * clicked.
+   */
+  const transportLive = !refId && count > 0;
+  useEffect(() => {
+    if (!transportLive || popoverOpen || typeof document === "undefined") return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (typingTarget(event.target as HTMLElement | null)) return;
+      const intent = transportIntent(event);
+      if (!intent) return;
+      event.preventDefault();
+      if (intent === "toggle-play") togglePlay();
+      else if (intent === "step-back") stepBy(-1);
+      else if (intent === "step-forward") stepBy(1);
+      else if (intent === "first-frame") seekTo(0);
+      else seekTo(Math.max(0, countRef.current - 1));
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [transportLive, popoverOpen, togglePlay, stepBy, seekTo]);
+
   // ── Capture: the stage canvas, not the whole pane ────────────────────────
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const handleCanvas = useCallback((canvas: HTMLCanvasElement | null) => {
@@ -373,6 +443,11 @@ export default function SpritePreview(props: ViewerPreviewProps) {
   const readState = useCallback(
     (raw: unknown): ViewerActionResult => {
       const address = parseAddress(raw);
+      // Another character's name must not be answered with this character's
+      // stage — the same refusal `navigate-to` gives, for the same reason:
+      // a state report about the wrong sprite reads exactly like a right one.
+      const mismatch = contentSetMismatch(character, address.contentSet);
+      if (mismatch) return { success: false, message: mismatch };
       const named = address.motion && character ? findMotion(character, address.motion) : null;
       if (address.motion && !named) {
         return {
@@ -572,6 +647,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
               motion={motion}
               defaultVideoModel={defaultVideoModel}
               onNotifyAgent={props.onNotifyAgent!}
+              onOpenChange={setPopoverOpen}
             />
           ) : null}
         </div>
@@ -647,18 +723,9 @@ export default function SpritePreview(props: ViewerPreviewProps) {
                 loop={loop}
                 motionFps={motion?.fps ?? 8}
                 motionLoop={motion?.loop ?? true}
-                onTogglePlay={() => setPlay(!playing)}
-                onStep={(delta) => {
-                  setPlay(false);
-                  const next = stepFrame(playRef.current.frame, delta, count);
-                  seek(next);
-                  reportSelection(motion, next);
-                }}
-                onSeek={(index) => {
-                  setPlay(false);
-                  seek(index);
-                  reportSelection(motion, index);
-                }}
+                onTogglePlay={togglePlay}
+                onStep={stepBy}
+                onSeek={seekTo}
                 onFps={applyFps}
                 onLoop={applyLoop}
               />
