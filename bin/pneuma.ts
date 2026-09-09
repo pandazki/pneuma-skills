@@ -2220,19 +2220,22 @@ async function main() {
     // Backfill API keys from the global store (~/.pneuma/api-keys.json) for
     // envMapping-bound params the user left empty. Without this, --no-prompt
     // launches (and cached configs from them) never see globally configured
-    // keys — only the replay Continue Work path had this merge.
+    // keys — only the replay Continue Work path had this merge. The matching
+    // lives next to the launcher's, so a store entry the launcher wrote under
+    // the param name (`FAL_API_KEY`) is found even though `envMapping` spells
+    // the env variable (`FAL_KEY`).
     if (manifest.skill.envMapping) {
       const { getApiKeys } = await import("../server/share.js");
-      const globalKeys = getApiKeys();
-      let backfilled = false;
-      for (const [envVar, paramName] of Object.entries(manifest.skill.envMapping)) {
-        const current = resolvedParams[paramName];
-        if (globalKeys[envVar] && (current === undefined || String(current).trim() === "")) {
-          resolvedParams[paramName] = globalKeys[envVar];
-          backfilled = true;
-        }
+      const { resolveBackfilledParams } = await import("../server/init-params.js");
+      const backfilled = resolveBackfilledParams(
+        resolvedParams,
+        manifest.skill.envMapping,
+        getApiKeys(),
+      );
+      if (Object.keys(backfilled).length > 0) {
+        Object.assign(resolvedParams, backfilled);
+        saveConfig(stateDir, resolvedParams);
       }
-      if (backfilled) saveConfig(stateDir, resolvedParams);
     }
     // Compute derived params (e.g. imageGenEnabled from API keys,
     // pageWidthMm/pageHeightMm from paper size). Persist the enriched
