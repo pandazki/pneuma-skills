@@ -36,8 +36,19 @@
  *     cancel has been sent. Nothing that this module gives up on keeps
  *     running upstream.
  *
+ * Alongside the runner live the three things every fal-backed script needs
+ * around it and must not each invent: the key (`loadFalKey`), the way a
+ * local file becomes a payload (`falMediaUrl`), and the way a finished
+ * job's artifact comes back (`downloadFalFile`).
+ *
  * Node 22+, no dependencies.
  */
+
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { dirname, extname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /** Worth another attempt: gateway hiccups, throttling, request timeouts. */
 const RETRY_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
@@ -418,4 +429,154 @@ export async function runFalJob({
   } finally {
     signal?.removeEventListener("abort", cancelRemote);
   }
+}
+
+// ---------------------------------------------------------------------------
+// The three things every fal-backed script needs around the runner.
+// ---------------------------------------------------------------------------
+
+/**
+ * `FAL_KEY` from the environment first, then from a `.env` discovered the
+ * way every sibling shared script discovers one: the skill root (the parent
+ * of `scripts/`), then walking up from cwd. Parsed, never sourced — that
+ * file lives in a workspace. Returns null when there is no key; the value
+ * is never printed and never becomes an argv.
+ */
+export function loadFalKey(env = process.env) {
+  if (env.FAL_KEY) return env.FAL_KEY;
+
+  const candidates = [join(dirname(__dirname), ".env")];
+  for (let dir = process.cwd(); ; ) {
+    candidates.push(join(dir, ".env"));
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+
+  for (const path of candidates) {
+    if (!existsSync(path)) continue;
+    for (const raw of readFileSync(path, "utf-8").split("\n")) {
+      const line = raw.trim();
+      if (!line || line.startsWith("#")) continue;
+      const eq = line.indexOf("=");
+      if (eq === -1 || line.slice(0, eq).trim() !== "FAL_KEY") continue;
+      let value = line.slice(eq + 1).trim();
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      if (value) return value;
+    }
+  }
+  return null;
+}
+
+/** Extensions fal payloads carry, and how they are spelled as a MIME type. */
+const MEDIA_MIME = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".mp4": "video/mp4",
+  ".mov": "video/quicktime",
+  ".webm": "video/webm",
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".ogg": "audio/ogg",
+  ".opus": "audio/ogg",
+  ".m4a": "audio/mp4",
+};
+
+/** What a single data URI may carry. Bigger inputs have to be hosted. */
+export const MAX_DATA_URI_BYTES = 30 * 1024 * 1024;
+
+/** Past this a data URI still works but is slow enough to say so. */
+const DATA_URI_NOTE_BYTES = 8 * 1024 * 1024;
+
+/**
+ * One media input as fal wants it: an `http(s)` or `data:` URL passes
+ * through untouched, a local file is inlined as a base64 data URI. The size
+ * is checked from the directory entry — a file too big to inline is refused
+ * here rather than timing out inside a paid request.
+ *
+ * Throws (never exits) so the caller owns how a failure is reported.
+ */
+export function falMediaUrl(input, { label = "input", maxBytes = MAX_DATA_URI_BYTES, onNote = (m) => console.error(m) } = {}) {
+  if (typeof input !== "string" || !input.trim()) throw new Error(`${label}: a path or URL is required`);
+  if (/^(https?:|data:)/.test(input)) return input;
+  if (!existsSync(input)) throw new Error(`${label}: file not found: ${input}`);
+  const { size } = statSync(input);
+  const mb = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (size > maxBytes) {
+    throw new Error(`${label}: ${input} is ${mb(size)} — too large to inline as a data URI (limit ${mb(maxBytes)}). Host it and pass a URL.`);
+  }
+  if (size > DATA_URI_NOTE_BYTES) onNote(`NOTE: ${input} is ${mb(size)} — inlining it makes the request slow; hosting it and passing a URL is faster`);
+  const mime = MEDIA_MIME[extname(input).toLowerCase()];
+  if (!mime) throw new Error(`${label}: unsupported file extension: ${input}`);
+  return `data:${mime};base64,${readFileSync(input).toString("base64")}`;
+}
+
+/** Attempts and idle ceiling for one artifact download. */
+const DOWNLOAD_ATTEMPTS = 3;
+const DOWNLOAD_IDLE_MS = 60_000;
+
+/**
+ * Download a finished job's artifact into memory.
+ *
+ * The clock here is an IDLE clock, not a wall clock: fal's CDN has been
+ * measured at 6 KB/s for half an hour, and a slow link that keeps
+ * delivering must be allowed to finish — only a stream that stops moving
+ * for a minute is given up on. A failed attempt is retried with a short
+ * back-off; the caller's `signal` aborts immediately and is rethrown as is.
+ */
+export async function downloadFalFile(url, {
+  signal,
+  attempts = DOWNLOAD_ATTEMPTS,
+  idleMs = DOWNLOAD_IDLE_MS,
+  fetchImpl = fetch,
+  onNote = (m) => console.error(m),
+} = {}) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const idle = new AbortController();
+    let idleTimer = null;
+    const touch = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => idle.abort(), idleMs);
+    };
+    const started = Date.now();
+    try {
+      touch();
+      const response = await fetchImpl(url, {
+        signal: signal ? AbortSignal.any([signal, idle.signal]) : idle.signal,
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.body) throw new Error("response carried no body");
+      const chunks = [];
+      let received = 0;
+      const reader = response.body.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        touch();
+      }
+      const seconds = (Date.now() - started) / 1000;
+      if (seconds > 30) {
+        onNote(`NOTE: downloaded in ${seconds.toFixed(0)}s (${(received / 1024 / 1024).toFixed(1)} MB, ${(received / 1024 / seconds).toFixed(0)} KB/s)`);
+      }
+      return Buffer.concat(chunks);
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      lastError = idle.signal.aborted ? new Error(`no bytes for ${Math.round(idleMs / 1000)}s`) : error;
+      if (attempt < attempts) {
+        onNote(`WARN: download failed (${errorMessage(lastError)}) — retrying (attempt ${attempt} of ${attempts})`);
+        await abortableSleep(3000 * attempt, signal);
+      }
+    } finally {
+      if (idleTimer) clearTimeout(idleTimer);
+    }
+  }
+  throw lastError ?? new Error("download failed");
 }

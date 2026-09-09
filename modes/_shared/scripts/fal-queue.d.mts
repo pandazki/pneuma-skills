@@ -75,3 +75,51 @@ export function abortableSleep(ms: number, signal?: AbortSignal): Promise<void>;
  * `<label> exceeded Ns` error on `deadlineMs`.
  */
 export function runFalJob<T = any>(options: RunFalJobOptions): Promise<FalJobResult<T>>;
+
+// ---------------------------------------------------------------------------
+// The three things every fal-backed script needs around the runner.
+// ---------------------------------------------------------------------------
+
+/**
+ * `FAL_KEY` from the environment first, then from a `.env` discovered the
+ * way every sibling shared script discovers one: the skill root (the
+ * parent of `scripts/`), then walking up from cwd. Parsed, never sourced.
+ * Null when there is no key; the value is never printed.
+ */
+export function loadFalKey(env?: Record<string, string | undefined>): string | null;
+
+/** What a single data URI may carry before the input has to be hosted. */
+export const MAX_DATA_URI_BYTES: number;
+
+export interface FalMediaUrlOptions {
+  /** The flag this input came from, used in every refusal message. */
+  label?: string;
+  maxBytes?: number;
+  /** Where the "this is big enough to be slow" note goes. */
+  onNote?: (message: string) => void;
+}
+
+/**
+ * One media input as fal wants it: an `http(s):`/`data:` URL passes
+ * through, a local file becomes a base64 data URI. Throws — never exits —
+ * for a missing file, an unsupported extension, or a file too large to
+ * inline.
+ */
+export function falMediaUrl(input: string, options?: FalMediaUrlOptions): string;
+
+export interface DownloadFalFileOptions {
+  signal?: AbortSignal;
+  attempts?: number;
+  /** Idle ceiling: a stream that stops moving this long is given up on. */
+  idleMs?: number;
+  fetchImpl?: typeof fetch;
+  onNote?: (message: string) => void;
+}
+
+/**
+ * Download a finished job's artifact into memory, retrying a failed
+ * attempt with a short back-off. The clock is an IDLE clock — a slow link
+ * that keeps delivering is allowed to finish. The caller's `signal` aborts
+ * at once and its error is rethrown untouched.
+ */
+export function downloadFalFile(url: string, options?: DownloadFalFileOptions): Promise<Buffer>;

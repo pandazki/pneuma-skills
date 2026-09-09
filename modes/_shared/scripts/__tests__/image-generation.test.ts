@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildImageRequest, generateImage } from "../generate_image.mjs";
+import { buildImageRequest, generateImage, hasAlphaChannel } from "../generate_image.mjs";
 import { generateComposite } from "../storyboard.mjs";
 
 const SUNBURST = "openai/gpt-image-2.5-sunburst";
@@ -167,5 +167,115 @@ describe("installed image CLIs", () => {
       expect(result.code).toBe(1);
       expect(result.request).toBeNull();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// --background: transparent output for sprite sheets and cut-out artwork.
+// ---------------------------------------------------------------------------
+
+/** A PNG header the alpha probe can read: colour type + optional extra chunk. */
+function pngHeader(colorType: number, extraChunk?: string): Buffer {
+  const chunk = (type: string, data: Buffer) => {
+    const out = Buffer.alloc(12 + data.length);
+    out.writeUInt32BE(data.length, 0);
+    out.write(type, 4, "ascii");
+    data.copy(out, 8);
+    return out; // CRC left zero — the probe reads structure, not integrity.
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(1, 0);
+  ihdr.writeUInt32BE(1, 4);
+  ihdr[8] = 8;
+  ihdr[9] = colorType;
+  const parts = [Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr)];
+  if (extraChunk) parts.push(chunk(extraChunk, Buffer.from([0])));
+  parts.push(chunk("IDAT", Buffer.from([0])), chunk("IEND", Buffer.alloc(0)));
+  return Buffer.concat(parts);
+}
+
+/** A RIFF/WEBP container whose VP8X flags byte declares alpha or does not. */
+function webpVp8x(alpha: boolean): Buffer {
+  const buf = Buffer.alloc(30);
+  buf.write("RIFF", 0, "ascii");
+  buf.writeUInt32LE(22, 4);
+  buf.write("WEBP", 8, "ascii");
+  buf.write("VP8X", 12, "ascii");
+  buf.writeUInt32LE(10, 16);
+  buf[20] = alpha ? 0x10 : 0x00;
+  return buf;
+}
+
+describe("transparent backgrounds", () => {
+  test("a caller that never asks for a background sends today's bytes, unchanged", () => {
+    expect(JSON.stringify(buildImageRequest({ prompt: "A tree" }))).toBe(
+      '{"model":"openai/gpt-image-2.5-sunburst","prompt":"A tree","n":1,"quality":"high","output_format":"png","aspect_ratio":"1:1"}',
+    );
+    expect(buildImageRequest({ prompt: "A tree" })).not.toHaveProperty("background");
+  });
+
+  test("background rides in the body only when asked for, and only in a format with alpha", () => {
+    expect(buildImageRequest({ prompt: "A sprite", background: "transparent" }).background).toBe("transparent");
+    expect(buildImageRequest({ prompt: "A sprite", background: "transparent", outputFormat: "webp" }).background).toBe("transparent");
+    expect(buildImageRequest({ prompt: "A sprite", background: "opaque" }).background).toBe("opaque");
+    expect(buildImageRequest({ prompt: "A sprite", background: "auto" }).background).toBe("auto");
+    expect(() => buildImageRequest({ prompt: "A sprite", background: "transparent", outputFormat: "jpeg" })).toThrow("jpeg");
+    expect(() => buildImageRequest({ prompt: "A sprite", background: "clear" })).toThrow("Invalid --background");
+  });
+
+  test("alpha is read out of the saved bytes, per container", () => {
+    expect(hasAlphaChannel(pngHeader(6))).toBe(true); // RGBA
+    expect(hasAlphaChannel(pngHeader(4))).toBe(true); // grey + alpha
+    expect(hasAlphaChannel(pngHeader(2))).toBe(false); // RGB
+    expect(hasAlphaChannel(pngHeader(3, "tRNS"))).toBe(true); // palette with a transparent index
+    expect(hasAlphaChannel(pngHeader(3))).toBe(false);
+    expect(hasAlphaChannel(webpVp8x(true))).toBe(true);
+    expect(hasAlphaChannel(webpVp8x(false))).toBe(false);
+    expect(hasAlphaChannel(Buffer.from([255, 216, 255, 224]))).toBe(false); // JPEG
+    expect(hasAlphaChannel(Buffer.alloc(0))).toBe(false);
+  });
+
+  test("a provider that ignores the request is reported, not assumed", async () => {
+    const opaque = pngHeader(2);
+    const warnings: string[] = [];
+    const consoleError = console.error;
+    console.error = (message?: unknown) => { warnings.push(String(message)); };
+    try {
+      const honoured = await generateImage(
+        { apiKey: "fixture-key", prompt: "A sprite", background: "transparent", outputDir: workspace, filenamePrefix: "alpha-yes" },
+        { fetchImpl: async () => imageResponse() },
+      );
+      expect(honoured.hasAlpha).toBe(true);
+      const ignored = await generateImage(
+        { apiKey: "fixture-key", prompt: "A sprite", background: "transparent", outputDir: workspace, filenamePrefix: "alpha-no" },
+        { fetchImpl: async () => Response.json({ data: [{ b64_json: opaque.toString("base64"), media_type: "image/png" }] }) },
+      );
+      expect(ignored.hasAlpha).toBe(false);
+      const untouched = await generateImage(
+        { apiKey: "fixture-key", prompt: "A sprite", outputDir: workspace, filenamePrefix: "alpha-unasked" },
+        { fetchImpl: async () => Response.json({ data: [{ b64_json: opaque.toString("base64"), media_type: "image/png" }] }) },
+      );
+      expect(untouched).not.toHaveProperty("hasAlpha");
+    } finally {
+      console.error = consoleError;
+    }
+    expect(warnings.some((line) => line.includes("alpha-no.png") && line.startsWith("WARN:"))).toBe(true);
+    expect(warnings.some((line) => line.includes("alpha-yes.png") && line.startsWith("WARN:"))).toBe(false);
+  });
+
+  test("both installed CLIs forward the flag and stay silent about it otherwise", () => {
+    const generated = runCli("generate_image.mjs", ["A sprite", "--background", "transparent", "--output-dir", workspace]);
+    expect(generated.code).toBe(0);
+    expect(generated.request.background).toBe("transparent");
+    expect(runCli("generate_image.mjs", ["A sprite", "--output-dir", workspace]).request).not.toHaveProperty("background");
+
+    const edited = runCli("edit_image.mjs", ["Cut it out", "--input", reference, "--background", "transparent", "--output-dir", workspace]);
+    expect(edited.code).toBe(0);
+    expect(edited.request.background).toBe("transparent");
+    expect(runCli("edit_image.mjs", ["Cut it out", "--input", reference, "--output-dir", workspace]).request).not.toHaveProperty("background");
+
+    const jpeg = runCli("generate_image.mjs", ["A sprite", "--background", "transparent", "--output-format", "jpeg"]);
+    expect(jpeg.code).toBe(1);
+    expect(jpeg.request).toBeNull();
   });
 });

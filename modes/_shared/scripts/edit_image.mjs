@@ -3,7 +3,7 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { DEFAULT_EDIT_IMAGE_MODEL, IMAGE_MODELS, IMAGE_ASPECTS, IMAGE_QUALITIES, generateImage, loadEnvKeys } from "./generate_image.mjs";
+import { DEFAULT_EDIT_IMAGE_MODEL, IMAGE_MODELS, IMAGE_ASPECTS, IMAGE_BACKGROUNDS, IMAGE_QUALITIES, generateImage, loadEnvKeys } from "./generate_image.mjs";
 
 export async function main(args = process.argv.slice(2)) {
   const { values, positionals } = parseArgs({ args, options: {
@@ -14,6 +14,7 @@ export async function main(args = process.argv.slice(2)) {
     "image-size": { type: "string" },
     quality: { type: "string", default: "high" },
     "output-format": { type: "string", default: "png" },
+    background: { type: "string" },
     "output-dir": { type: "string", default: "." },
     "filename-prefix": { type: "string", default: "edited" },
     help: { type: "boolean", short: "h" },
@@ -28,6 +29,8 @@ export async function main(args = process.argv.slice(2)) {
   --image-size <preset|WxH>  Explicit output size
   --quality <level>         ${IMAGE_QUALITIES.join(", ")} (default: high)
   --output-format <fmt>     png, jpeg, webp (default: png)
+  --background <mode>       ${IMAGE_BACKGROUNDS.join(", ")} (omitted unless passed)
+                            transparent requires --output-format png or webp
   --output-dir <path>       Output directory (default: .)
   --filename-prefix <name>  Filename prefix (default: edited)
 
@@ -45,7 +48,7 @@ Annotations are visual guides, not pixel masks. For multiple references use gene
   const result = await generateImage({
     apiKey: loadEnvKeys().OPENROUTER_API_KEY, prompt, imageUrls,
     model: values.model, aspectRatio: values["aspect-ratio"], imageSize: values["image-size"],
-    quality: values.quality, outputFormat: values["output-format"],
+    quality: values.quality, outputFormat: values["output-format"], background: values.background,
     outputDir: values["output-dir"], filenamePrefix: values["filename-prefix"],
   });
   console.log(JSON.stringify(result, null, 2));
