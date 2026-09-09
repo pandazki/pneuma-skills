@@ -17,15 +17,62 @@ let active = null;
  *  it; we do the same here. */
 let activeContentSet = null;
 
+// A service worker is NOT a long-lived process: the browser terminates it after
+// ~30 s idle and restarts it on the next fetch with a fresh module scope — and
+// `controllerchange` does not fire for a restart, so the page never re-pushes.
+// Keeping the checkout only in the variables above therefore meant every asset
+// fetched LATE in a session answered 404 while the page still had the very same
+// checkpoint open (measured against a sprite package: assets 200 right after
+// load, the identical URL 404 after 95 s of no traffic). Modes that paint
+// everything in the load burst never noticed; anything fetched on demand — a
+// sprite motion's frames, an mp4 opened from the Video tab, bansho narration —
+// did. So the checkout is mirrored into the Cache API, the storage a restarted
+// worker can read back, and restored on the first request of a new lifetime.
+const STATE_CACHE = "pneuma-player-state-v1";
+/** Not a real route — a stable key inside our own cache. */
+const STATE_KEY = "https://pneuma.invalid/__player-checkout__";
+
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+
+async function persistState() {
+  try {
+    const cache = await caches.open(STATE_CACHE);
+    await cache.put(STATE_KEY, new Response(JSON.stringify({ active, activeContentSet })));
+  } catch (err) {
+    // Degrades to the old behaviour (assets 404 after a restart) rather than
+    // failing the checkout that is about to render the page.
+    console.warn("[player-sw] could not persist the checkout map:", err);
+  }
+}
+
+/** Rehydrate a restarted worker. No-op once this lifetime has a checkout — a
+ *  message that arrived first is always newer than what is on disk. */
+async function ensureState() {
+  if (active) return;
+  try {
+    const cache = await caches.open(STATE_CACHE);
+    const stored = await cache.match(STATE_KEY);
+    if (!stored) return;
+    const data = await stored.json();
+    if (active) return; // a checkout landed while we were reading
+    active = data && data.active ? data.active : null;
+    if (activeContentSet === null && data && data.activeContentSet) {
+      activeContentSet = data.activeContentSet;
+    }
+  } catch (err) {
+    console.warn("[player-sw] could not restore the checkout map:", err);
+  }
+}
 
 self.addEventListener("message", (event) => {
   const data = event.data;
   if (data && data.type === "pneuma-player-checkout") {
     active = { baseUrl: data.baseUrl.replace(/\/$/, ""), files: data.files || {} };
+    event.waitUntil(persistState());
   } else if (data && data.type === "pneuma-player-content-set") {
     activeContentSet = data.contentSet || null;
+    event.waitUntil(persistState());
   }
 });
 
@@ -76,6 +123,7 @@ function resolveKey(rel) {
 }
 
 async function serveContent(request, rel) {
+  await ensureState();
   const key = resolveKey(rel);
   if (!key) return new Response("Not found in play package", { status: 404 });
 
