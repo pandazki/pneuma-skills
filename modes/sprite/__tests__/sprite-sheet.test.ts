@@ -17,7 +17,7 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import {
-  cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync,
+  cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -471,6 +471,23 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       const frames = useFrames(motion, framesOf("plain", 2, 2, 0));
       const out = runJson("inspect", motion, "--cells", frames);
       expect(out.warnings.join(" ")).toContain("clipped");
+    });
+
+    test("a failed write leaves no .tmp beside the report", () => {
+      // Every JSON here is written scratch-then-rename. When the rename is
+      // the step that fails, the scratch must go with it: an `inspect.json.tmp`
+      // left in the motion directory is indistinguishable from a write in
+      // flight, and the next reader has to guess. A directory standing where
+      // the file belongs is the cheapest deterministic rename failure.
+      const ws = fresh();
+      const motion = join(ws, "motion");
+      useFrames(motion, framesOf("plain", 2, 2, 17));
+      mkdirSync(join(motion, "inspect.json", "occupied"), { recursive: true });
+
+      const r = run("inspect", motion, "--json");
+      expect(r.code).toBe(1);
+      expect(r.err).toContain("ERROR:");
+      expect(existsSync(join(motion, "inspect.json.tmp"))).toBe(false);
     });
   });
 

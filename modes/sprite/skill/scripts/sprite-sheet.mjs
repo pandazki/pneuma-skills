@@ -161,8 +161,16 @@ function writeJsonFile(outPath, value) {
   const out = resolve(outPath);
   mkdirSync(dirname(out), { recursive: true });
   const scratch = `${out}.tmp`;
-  writeFileSync(scratch, `${JSON.stringify(value, null, 2)}\n`);
-  renameSync(scratch, out);
+  // Same shape as sprite-project.mjs::saveProject: a serialize or rename that
+  // throws must not leave `atlas.json.tmp` sitting next to the real file,
+  // where the next reader has to guess whether it is a leftover or a write in
+  // flight. The rename itself is what makes the write atomic.
+  try {
+    writeFileSync(scratch, `${JSON.stringify(value, null, 2)}\n`);
+    renameSync(scratch, out);
+  } finally {
+    if (existsSync(scratch)) rmSync(scratch, { force: true });
+  }
   return out;
 }
 
