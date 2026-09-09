@@ -27,6 +27,7 @@ import {
   findMotion,
   findRef,
   loadRoster,
+  MOTION_STATUSES,
   resolveAssetUri,
   saveRoster,
 } from "../domain.js";
@@ -155,6 +156,30 @@ describe("loadRoster", () => {
       }),
     );
     expect(Object.keys(roster!.byContentSet)).toEqual(["mini"]);
+  });
+
+  test("every declared status survives, and an unknown one falls back", () => {
+    // `status` is what the rail renders a chip for and what "is this motion
+    // done" reads. A string outside the five would travel as if it were one
+    // of ours — an unrenderable chip, or a half-built motion reading `ready`
+    // because the sidecar carried a typo.
+    const withStatus = (status: unknown) => {
+      const body = JSON.parse(MINI);
+      body.sprite.motions[0].status = status;
+      return loadRoster(files({ "mini/project.json": JSON.stringify(body) }))!
+        .byContentSet.mini.sprite.motions[0].status;
+    };
+
+    for (const status of MOTION_STATUSES) {
+      expect({ status, parsed: withStatus(status) }).toEqual({
+        status,
+        parsed: status,
+      });
+    }
+    expect(withStatus("rendering")).toBe("planned");
+    expect(withStatus("")).toBe("planned");
+    expect(withStatus(7)).toBe("planned");
+    expect(withStatus(undefined)).toBe("planned");
   });
 
   test("a motion missing its optional halves still loads as a motion", () => {

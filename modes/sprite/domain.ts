@@ -103,12 +103,18 @@ export interface SpriteRef {
   label: string;
 }
 
-export type MotionStatus =
-  | "planned"
-  | "generating"
-  | "processing"
-  | "ready"
-  | "failed";
+/** Declared order is the lifecycle order. The tuple is the single source of
+ *  truth: the type is derived from it, so the parser's guard can never fall
+ *  behind a status added to the union. */
+export const MOTION_STATUSES = [
+  "planned",
+  "generating",
+  "processing",
+  "ready",
+  "failed",
+] as const;
+
+export type MotionStatus = (typeof MOTION_STATUSES)[number];
 
 export type VideoModel = "seedance-2.5" | "h3-max";
 
@@ -283,6 +289,20 @@ function parseInspect(value: unknown): InspectSummary | undefined {
   };
 }
 
+/**
+ * A status the loader does not recognise is not a status: the stage renders a
+ * chip per status and reads `ready` as "this motion is done". Letting an
+ * unknown string through as if it were one of ours puts an unrenderable chip
+ * on the rail and can make a half-built motion read as finished, so an
+ * unknown value falls back to the safest one.
+ */
+function parseMotionStatus(value: unknown): MotionStatus {
+  const status = optionalStr(value);
+  return status && (MOTION_STATUSES as readonly string[]).includes(status)
+    ? (status as MotionStatus)
+    : "planned";
+}
+
 function parseMotion(value: unknown): Motion | null {
   if (!isRecord(value)) return null;
   const id = optionalStr(value.id);
@@ -297,7 +317,7 @@ function parseMotion(value: unknown): Motion | null {
     fps: num(value.fps, 8),
     loop: value.loop !== false,
     anchor: value.anchor === "center" ? "center" : "bottom",
-    status: (optionalStr(value.status) as MotionStatus | undefined) ?? "planned",
+    status: parseMotionStatus(value.status),
     ...(optionalStr(value.notes) ? { notes: value.notes as string } : {}),
     ...(optionalStr(value.sheetRaw)
       ? { sheetRaw: value.sheetRaw as string }
