@@ -36,16 +36,30 @@
     },
     {
       "title": {
-        "en": "Video Preview",
-        "zh-CN": "视频预览",
-        "ja": "動画プレビュー"
+        "en": "Sheet or Video, Your Call",
+        "zh-CN": "雪碧图还是视频，你来定",
+        "ja": "シートか動画か、選ぶのはあなた"
       },
       "description": {
-        "en": "See the motion twice: the GIF assembled from your own frames, and a short clip a video model shot from them — Seedance 2.5 by default, MiniMax H3 Max when you want more. The frames stay the source.",
-        "zh-CN": "同一个动作看两遍：一遍是你自己的帧拼出来的 GIF，一遍是视频模型据此拍出来的短片——默认 Seedance 2.5，想要更强就换 MiniMax H3 Max。帧始终是素材本身。",
-        "ja": "同じモーションを二度見る —— 自分のコマから組んだ GIF と、それをもとに動画モデルが撮った短いクリップ（既定は Seedance 2.5、必要なら MiniMax H3 Max）。素材はあくまでコマです。"
+        "en": "Draw the motion as one sheet, or shoot it as a video clip on chroma green and sample that — you pick per motion. Either source lands on the same aligned frames, the same atlas, and the clip doubles as the preview.",
+        "zh-CN": "一个动作，可以画成一张雪碧图，也可以在纯绿背景上拍成视频再采样成帧——每个动作自己选。两条路最后都落到同样对齐的帧和同一份 atlas，而那段视频顺便就是预览。",
+        "ja": "モーションは 1 枚のシートとして描いてもいいし、クロマキーグリーンで撮った動画をサンプリングしてもいい —— モーションごとに選べます。どちらの入り口でも揃ったコマと同じアトラスに行き着き、クリップはそのままプレビューになります。"
       },
-      "media": "highlight-video-preview.png",
+      "media": "highlight-sheet-or-video.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "Any Style, Any Grid",
+        "zh-CN": "任何画风，任何网格",
+        "ja": "どんな画風も、どんなグリッドも"
+      },
+      "description": {
+        "en": "Chibi line art, flat vector, 128px pixel art, semi-realistic — the style sentence is yours, and so is the grid. A 4×4 of sixteen frames, a 2×4 walk cycle and a 3×3 of nine all go through the same pipeline untouched.",
+        "zh-CN": "Q 版线稿、扁平矢量、128 像素点阵、半写实——画风由你一句话定，网格也一样。4×4 的十六帧、2×4 的走路循环、3×3 的九帧，走的是同一条流水线，一行都不用改。",
+        "ja": "ちび線画、フラットベクター、128px ドット絵、セミリアル —— 画風はあなたの一文で決まり、グリッドも同じ。16 コマの 4×4 も、歩行ループの 2×4 も、9 コマの 3×3 も、同じパイプラインをそのまま通ります。"
+      },
+      "media": "highlight-any-style-any-grid.png",
       "mediaType": "image"
     }
   ]

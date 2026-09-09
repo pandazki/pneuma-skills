@@ -21,4 +21,4 @@ const server = Bun.serve({
   },
 });
 console.log(`Showcase: ${server.url}?view=hero`);
-console.log("Views: hero, character-locked, slice-align, video-preview");
+console.log("Views: hero, character-locked, slice-align, sheet-or-video, any-style");

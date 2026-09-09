@@ -120,25 +120,45 @@
     .cut .code{border:1px solid #2b282b;border-radius:7px;padding:14px 14px;background:#111113;color:#8d8783;line-height:1.78}
     .cut .code em{font-style:normal;color:#c8c1bb}
 
-    /* --- 03 video-preview --- */
-    .vid h1{margin-top:20px}
-    .vid .window{margin-top:14px;height:540px}
-    .vid .board{height:496px;display:grid;grid-template-columns:340px 1fr;padding:0;overflow:hidden}
-    .vid .source{border-right:1px solid #262327;padding:18px 18px}
-    .vid .source .eyebrow{margin-bottom:11px}
-    .vid .source .sheetbox{height:210px;display:flex;align-items:center;justify-content:center;overflow:hidden}
-    .vid .source .sheetbox img{max-height:100%}
-    .vid .meta{margin-top:15px;font-size:12px;color:#8d8783;line-height:1.75}
-    .vid .meta b{color:#c8c1bb;font-weight:500}
-    .vid .meta em{font-style:italic}
-    .vid .meta .rule{border-top:1px solid #2b282b;margin:13px 0 12px}
-    .vid .out{padding:18px 20px}
-    .vid .out .eyebrow{margin-bottom:11px}
-    .vid .panels{display:flex;gap:14px}
-    .vid .panels .panel{width:285px}
-    .vid .panels .media{position:relative;height:404px;display:flex;align-items:center;justify-content:center;overflow:hidden;background-color:#0d0d0f}
-    .vid .panels .media img{height:100%}
-    .vid .panels .media.clip img{width:100%;height:100%;object-fit:cover;object-position:50% 42%}
+    /* --- 03 sheet-or-video (PREPARED — awaits r7 video-source assets) --- */
+    .src .paths{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:22px}
+    .src .path{border:1px solid #2f2b2e;border-radius:11px;padding:15px 16px 16px;background:#0e0e10}
+    .src .path.sel{border-color:#c4753d;box-shadow:0 0 0 1px #f9731620}
+    .src .ptop{display:flex;align-items:baseline;gap:9px;margin-bottom:11px}
+    .src .ptop .tag{font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8d8783}
+    .src .path.sel .ptop .tag{color:#f9a665}
+    .src .ptop b{font-size:13px;font-weight:500;color:#ded7d1}
+    .src .ptop span{margin-left:auto;font-size:11px;color:#7e7874}
+    .src .srcbox{height:214px;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid #2b282b;border-radius:8px}
+    .src .srcbox img{max-height:100%;max-width:100%}
+    .src .down{display:flex;align-items:center;gap:9px;margin:10px 0 9px;font-size:11px;color:#8d8783}
+    .src .down i{flex:1;height:1px;background:#332f33;font-style:normal}
+    .src .path.sel .down i{background:linear-gradient(90deg,#7a4c2c,#f97316)}
+    .src .fstrip{display:flex;gap:6px;height:104px}
+    .src .fstrip div{flex:1;border:1px solid #262327;border-radius:5px;display:flex;align-items:flex-end;justify-content:center;overflow:hidden}
+    .src .fstrip img{height:92px;margin-bottom:3px}
+    .src .pmeta{margin-top:11px;font-size:11.5px;color:#8d8783}
+    .src .pmeta b{color:#c8c1bb;font-weight:500}
+    .src .slot{border-style:dashed;border-color:#4d4348;position:relative;background:#0f0e10}
+    .src .slot:after{content:attr(data-slot);position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;font-size:10.5px;letter-spacing:.3px;color:#6b6165;padding:0 8px;line-height:1.6}
+    .src .slot img{position:relative;z-index:1}
+    .src .converge{margin-top:18px;border:1px solid #2b282b;border-radius:9px;background:#111113;padding:12px 18px;display:flex;align-items:center;gap:14px;font-size:12px;color:#a29a95}
+    .src .converge b{color:#e6ddd5;font-weight:500}
+    .src .converge .mono{color:#8d8783}
+    .src .converge .arrow{width:9px;height:9px;border-top:1.5px solid #f9a665;border-right:1.5px solid #f9a665;transform:rotate(135deg);flex:none;margin-top:-4px}
+
+    /* --- 04 any-style --- */
+    .range .cards{display:flex;gap:14px;margin-top:20px}
+    .range .card{width:309px;flex:none;border:1px solid #2f2b2e;border-radius:9px;overflow:hidden;background:#101012}
+    .range .card.sel{border-color:#c4753d;box-shadow:0 0 0 1px #f9731626}
+    .range .sheetbox{height:352px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .range .sheetbox img{max-height:100%;max-width:100%}
+    .range .who{height:34px;padding:0 12px;display:flex;align-items:center;justify-content:space-between;font-size:12.5px;color:#ded7d1;background:#151416;border-top:1px solid #262327}
+    .range .who small{font-size:11px;color:#8d8783}
+    .range .card.sel .who{color:#f9be92}
+    .range .card.sel .who small{color:#c98a52}
+    .range .style{padding:11px 12px 12px;font-size:11px;line-height:1.6;color:#8d8783;font-style:italic;border-top:1px solid #201e21;min-height:72px}
+    .range .style span{display:block;font-style:normal;color:#a29a95;margin-top:7px}
   </style>
 </head>
 <body>
@@ -274,42 +294,87 @@
   <div class="foot"><span>Rivet · walk · real frames and real inspect numbers from one pipeline run</span><span>ffmpeg only — no model call in this step</span></div>
 </section>
 
-<!-- ══════════════ VIDEO PREVIEW ══════════════ -->
-<section class="page vid" data-view="video-preview">
-  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">03 / PREVIEW</span></div>
-  <h1>Watch the motion, not the sheet.</h1>
-  <p>A GIF built from your own frames, and a clip a video model shot from them.</p>
-  <div class="window">
-    <div class="bar">Mio <span class="muted">pickup-letter · 9 frames · 6 fps</span>
-      <div class="right">3 × 3 sheet<span class="pill quiet">Render video preview</span></div>
-    </div>
-    <div class="board">
-      <div class="source">
-        <div class="eyebrow">The source</div>
-        <div class="panel"><div class="sheetbox chk"><img src="/art/mio/pickup-sheet.png"></div>
-          <div class="plabel">pickup-letter · sheet.png<small>3 × 3</small></div></div>
-        <div class="meta">
-          <b>9 aligned frames</b> · anchor bottom<br>382 × 692 cell
-          <div class="rule"></div>
-          Clips are how a motion <em>feels</em>.<br>The frames stay the source.
-          <div class="rule"></div>
-          Seedance 2.5 by default<br>MiniMax H3 Max on request
-        </div>
+<!-- ══════════════ SHEET OR VIDEO (PREPARED — needs r7 video-source assets) ══════════════ -->
+<section class="page src" data-view="sheet-or-video">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">03 / SOURCE</span></div>
+  <h1>Draw the frames, or shoot them.</h1>
+  <p>Two ways into one motion. Both land on the same aligned frames and the same atlas.</p>
+  <div class="paths">
+
+    <div class="path">
+      <div class="ptop"><span class="tag">Path A</span><b>A drawn sheet</b><span>GPT Image 2.5</span></div>
+      <div class="srcbox chk"><img src="/art/lumi/attack-sheet.png"></div>
+      <div class="down">slice 4 × 4<i></i>key<i></i>align</div>
+      <div class="fstrip">
+        <div><img src="/art/lumi/attack-00.png"></div>
+        <div><img src="/art/lumi/attack-05.png"></div>
+        <div><img src="/art/lumi/attack-10.png"></div>
+        <div><img src="/art/lumi/attack-15.png"></div>
       </div>
-      <div class="out">
-        <div class="eyebrow">Three ways to watch it</div>
-        <div class="panels">
-          <div class="panel"><div class="media chk"><img src="/art/mio/pickup.gif"></div>
-            <div class="plabel">preview.gif<small>your frames</small></div></div>
-          <div class="panel sel"><div class="media clip"><img src="/art/mio/video-seedance.png"><div class="play"></div></div>
-            <div class="plabel">Seedance 2.5<small>6.0 s · 480p</small></div></div>
-          <div class="panel"><div class="media clip"><img src="/art/mio/video-h3.png"><div class="play"></div></div>
-            <div class="plabel">MiniMax H3 Max<small>6.6 s · 480P</small></div></div>
-        </div>
-      </div>
+      <div class="pmeta"><b>16 frames</b> · one image · cheap and instant</div>
     </div>
+
+    <div class="path sel">
+      <div class="ptop"><span class="tag">Path B</span><b>A video clip</b><span>Seedance 2.5 · chroma green</span></div>
+      <div class="srcbox slot" data-slot="clip-still.png — a still from the green-screen clip"><img src="/art/video-source/clip-still.png" alt=""></div>
+      <div class="down">sample<i></i>key green<i></i>align</div>
+      <div class="fstrip">
+        <div class="slot" data-slot="frames/00"><img src="/art/video-source/frames/00.png" alt=""></div>
+        <div class="slot" data-slot="frames/03"><img src="/art/video-source/frames/03.png" alt=""></div>
+        <div class="slot" data-slot="frames/06"><img src="/art/video-source/frames/06.png" alt=""></div>
+        <div class="slot" data-slot="frames/09"><img src="/art/video-source/frames/09.png" alt=""></div>
+      </div>
+      <div class="pmeta"><b>sampled frames</b> · real motion · the clip is also the preview</div>
+    </div>
+
   </div>
-  <div class="foot"><span>Actual renders from one motion · Seedance 2.5 and MiniMax H3 Max on fal.ai</span><span>Conceptual interface · actual generated sprites</span></div>
+  <div class="converge">
+    <span class="arrow"></span><b>Either way:</b>
+    <span class="mono">motions/&lt;id&gt;/frames/ · sheet.png · atlas.json · preview.gif</span>
+    <span style="margin-left:auto">The stage does not know which path made them.</span>
+  </div>
+  <div class="caption">One sheet ≈ 35 s · one 4 s Seedance clip ≈ $1, 5–7 min — the clip also plays as the preview.</div>
+  <div class="foot"><span>You pick the source per motion · the pipeline after it is identical</span><span>Conceptual interface · actual generated sprites</span></div>
+</section>
+
+<!-- ══════════════ ANY STYLE, ANY GRID ══════════════ -->
+<section class="page range" data-view="any-style">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">04 / RANGE</span></div>
+  <h1>Any style. Any grid.</h1>
+  <p>The style sentence is yours. The pipeline never needs to know what it is cutting up.</p>
+  <div class="cards">
+
+    <div class="card">
+      <div class="sheetbox chk"><img src="/art/lumi/idle-sheet.png"></div>
+      <div class="who">Lumi · idle<small>4 × 4</small></div>
+      <div class="style">“Clean anime-chibi line art, flat colours, thick uniform outline, no shading.”
+        <span>16 frames · 8 fps · loop</span></div>
+    </div>
+
+    <div class="card">
+      <div class="sheetbox chk"><img src="/art/rivet/walk-sheet.png"></div>
+      <div class="who">Rivet · walk<small>2 × 4</small></div>
+      <div class="style">“Clean flat-color vector cartoon, crisp uniform dark outlines, flat fills, no shading.”
+        <span>8 frames · 12 fps · loop</span></div>
+    </div>
+
+    <div class="card">
+      <div class="sheetbox chk"><img src="/art/ame/attack-sheet.png"></div>
+      <div class="who">Ame · attack<small>4 × 4</small></div>
+      <div class="style">“Simplified 128px pixel art sprite, chunky readable pixels, hard edges, no anti-aliasing.”
+        <span>16 frames · 10 fps</span></div>
+    </div>
+
+    <div class="card sel">
+      <div class="sheetbox chk"><img src="/art/mio/pickup-sheet.png"></div>
+      <div class="who">Mio · pickup-letter<small>3 × 3</small></div>
+      <div class="style">“Realistic anime illustration, fine ink linework, soft painterly cel shading in cool blue-grey tones.”
+        <span>9 frames · 6 fps</span></div>
+    </div>
+
+  </div>
+  <div class="caption">Four characters, four style sentences, one unchanged pipeline.</div>
+  <div class="foot"><span>Actual sheets from four separate runs of the mode</span><span>Conceptual interface · actual generated sprites</span></div>
 </section>
 
 <script>

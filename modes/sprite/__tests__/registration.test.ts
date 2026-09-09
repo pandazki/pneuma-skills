@@ -358,10 +358,24 @@ describe("the skill install surface", () => {
 });
 
 describe("showcase copy", () => {
-  test("three highlights with localized titles and non-placeholder copy", () => {
+  /** Media the gallery references but that is not on disk yet, with the reason.
+   *  The launcher serves `showcase/*` straight off disk, so a name here is a
+   *  404 on a gallery card — deliberate and temporary, never silent. Empty this
+   *  set (and capture the view) the moment the blocking work lands. */
+  const PENDING_MEDIA = new Map([
+    [
+      "highlight-sheet-or-video.png",
+      "needs the video-source validation assets from the `sprite-sheet.mjs from-video` work; " +
+        "`?view=sheet-or-video` in showcase/layout.html is already composed around them",
+    ],
+  ]);
+
+  test("four highlights with localized titles and non-placeholder copy", () => {
+    // Four, not three: the sheet-vs-video choice and the style/grid range are
+    // separate claims, and neither is implied by the other two.
     const showcase = JSON.parse(read("modes/sprite/showcase/showcase.json"));
     expect(showcase.hero).toBe("hero.png");
-    expect(showcase.highlights).toHaveLength(3);
+    expect(showcase.highlights).toHaveLength(4);
     expect(Object.keys(showcase.tagline).sort()).toEqual(["en", "ja", "zh-CN"]);
     for (const highlight of showcase.highlights) {
       expect(Object.keys(highlight.title).sort()).toEqual(["en", "ja", "zh-CN"]);
@@ -369,6 +383,32 @@ describe("showcase copy", () => {
       expect(highlight.media).toMatch(/^highlight-[\w-]+\.png$/);
       expect(JSON.stringify(highlight)).not.toContain("TODO");
     }
+  });
+
+  test("every referenced image is on disk, or is a declared pending one", () => {
+    // The copy and the art are written in separate passes, so a highlight can
+    // name a file nobody ever captured. That reads as a broken gallery card and
+    // nothing else reports it.
+    const showcase = JSON.parse(read("modes/sprite/showcase/showcase.json"));
+    const dir = join(REPO_ROOT, "modes/sprite/showcase");
+    const onDisk = new Set(readdirSync(dir));
+    const referenced = [showcase.hero, ...showcase.highlights.map((h: { media: string }) => h.media)];
+    for (const media of referenced) {
+      const expected = onDisk.has(media) || PENDING_MEDIA.has(media);
+      expect({ media, presentOrDeclaredPending: expected }).toEqual({
+        media,
+        presentOrDeclaredPending: true,
+      });
+    }
+  });
+
+  test("nothing lingers in the pending set once its image exists", () => {
+    // Keeps the exemption self-removing: land the capture, this test fails
+    // until the entry above is deleted.
+    const dir = join(REPO_ROOT, "modes/sprite/showcase");
+    const onDisk = new Set(readdirSync(dir));
+    const stale = [...PENDING_MEDIA.keys()].filter((media) => onDisk.has(media));
+    expect(stale).toEqual([]);
   });
 });
 
