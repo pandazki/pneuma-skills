@@ -22,7 +22,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { buildClip, buildSheet, readBbox, readColorBbox, CELL_OFFSETS } from "./fixtures/pipeline/make-sheet.mjs";
+import { alphaColorAudit, buildClip, buildSheet, readBbox, readColorBbox, CELL_OFFSETS } from "./fixtures/pipeline/make-sheet.mjs";
 import type { BuildSheetOptions } from "./fixtures/pipeline/make-sheet.mjs";
 
 const SCRIPT = join(import.meta.dir, "..", "skill", "scripts", "sprite-sheet.mjs");
@@ -137,6 +137,25 @@ const SHEETS = {
       { index: 3, x: 47, y: 20, w: 14, h: 8, color: "white" },
     ],
   }),
+  /**
+   * The prop drawing on an OPAQUE GREEN plate, 1x2.
+   *
+   * The body and the bar are separate blobs, so the bbox `align` crops
+   * contains keyed-out pixels — which is the whole point: a solid square's
+   * bbox is all opaque, its aligned frame is transparent only where `pad`
+   * put it, and green could never reach the packed sheet on such a fixture
+   * however broken the keyer was. A real character is this shape, not that
+   * one.
+   */
+  greenProp: () => sheet("green-prop", {
+    rows: 1, cols: 2,
+    background: "0x00b140",
+    squares: [{ x: 17, y: 17, color: BODY_COLOR_NAME }],
+    extras: [
+      { index: 0, x: 47, y: 20, w: 14, h: 8, color: "white" },
+      { index: 1, x: 47, y: 20, w: 14, h: 8, color: "white" },
+    ],
+  }),
   /** 1x3 whose drawing sits in the cell corner (clipped) plus the stray limb. */
   clipped: () => sheet("clipped", {
     rows: 1, cols: 3,
@@ -247,6 +266,27 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       const out = runJson("key", SHEETS.green(), "--out", join(ws, "keyed.png"), "--color", "#00b140");
       expect(out.color).toBe("#00b140");
       expect(out.alphaCoverage).toBeLessThan(0.5);
+    });
+
+    test("erases the plate it keyed out instead of hiding it under alpha", () => {
+      // `colorkey` writes the alpha plane and nothing else, so a keyed sheet
+      // measures perfectly (`readBbox` only reads alpha) while still carrying
+      // the whole green plate underneath — which any bilinear resize bleeds
+      // back into the fringe, and any alpha-ignoring importer shows whole.
+      const ws = fresh();
+      const keyed = join(ws, "sheet-alpha.png");
+      runJson("key", SHEETS.green(), "--out", keyed, "--color", "auto");
+
+      const audit = alphaColorAudit(keyed);
+      expect(audit.hidden).toBeGreaterThan(0);
+      expect(audit.hiddenColors).toEqual(["0,0,0"]);
+
+      // …and the visible half is untouched: the bodies sit exactly where the
+      // same drawing on a transparent plate has them, in their own colours.
+      expect(audit.opaqueBlack).toBe(0);
+      expect(readColorBbox(keyed, BODY_COLOR)).toEqual(
+        readColorBbox(SHEETS.plain(), BODY_COLOR),
+      );
     });
   });
 
@@ -927,6 +967,34 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(readBbox(join(motionDir, "frames", "00.png")).bbox).toEqual({ x: 17, y: 17, w: 30, h: 30 });
     });
 
+    test("the erased plate travels all the way to the packed sheet", () => {
+      // `run` keys once and everything after it — slice, align, pack — only
+      // copies those pixels, so fixing the keyer has to be enough. Measured
+      // on the green PROP sheet, because it is the only green fixture whose
+      // aligned frame contains keyed-out pixels at all (see `greenProp`).
+      // `sheet.png` is the artifact the defect was first seen on: an engine
+      // imports it, and a bilinear resize of it bleeds whatever hides under
+      // the transparency back into every edge.
+      const ws = fresh();
+      const motionDir = join(ws, "motions", "prop");
+      runJson(
+        "run", SHEETS.greenProp(), "--rows", "1", "--cols", "2", "--out", motionDir,
+        "--name", "prop", "--fps", "8", "--key", "auto",
+      );
+
+      for (const image of ["sheet-alpha.png", "cells/00.png", "frames/00.png", "sheet.png"]) {
+        const audit = alphaColorAudit(join(motionDir, ...image.split("/")));
+        expect({ image, hiddenColors: audit.hiddenColors }).toEqual({
+          image,
+          hiddenColors: ["0,0,0"],
+        });
+        // The drawing itself is untouched — a fix that zeroed too much would
+        // satisfy the line above by erasing the character.
+        expect({ image, opaqueBlack: audit.opaqueBlack }).toEqual({ image, opaqueBlack: 0 });
+        expect(audit.opaque).toBeGreaterThan(0);
+      }
+    });
+
     test("--key none leaves an opaque sheet alone", () => {
       const ws = fresh();
       const motionDir = join(ws, "motions", "flat");
@@ -1194,6 +1262,35 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(cell.coverage).toBeGreaterThan(0.07);
       expect(cell.coverage).toBeLessThan(0.16);
       expect(existsSync(join(motionDir, "inspect.json"))).toBe(true);
+    });
+
+    test("erases the plate out of every sampled frame, all the way to the sheet", () => {
+      // Here the key runs inside the extraction filter, one plate per frame,
+      // so there is no keyed sheet to fix once. The packed sheet is the one
+      // the first real video motion showed as solid green: `--scale` mixes
+      // the RGB under a transparent pixel straight back into its neighbours.
+      const ws = fresh();
+      const motionDir = join(ws, "erased");
+      runJson(
+        "from-video", clip(), "--out", motionDir, "--name", "hop",
+        "--frames", "2", "--loop",
+      );
+
+      // The cells are where the plate enters — 23 distinct greens of h264
+      // noise, before this fix. (The clip's body is one solid rectangle, so
+      // its aligned frame is transparent only where `pad` put it; the
+      // end-to-end claim is pinned on the `run` prop sheet instead.)
+      for (const image of ["cells/00.png", "cells/01.png", "sheet.png"]) {
+        const audit = alphaColorAudit(join(motionDir, ...image.split("/")));
+        expect({ image, hiddenColors: audit.hiddenColors }).toEqual({
+          image,
+          hiddenColors: ["0,0,0"],
+        });
+        // The body is still there and still coloured — an over-eager fix that
+        // zeroed the character would pass the assertion above and fail here.
+        expect({ image, opaqueBlack: audit.opaqueBlack }).toEqual({ image, opaqueBlack: 0 });
+        expect(audit.opaque).toBeGreaterThan(0);
+      }
     });
 
     test("--no-loop samples both ends, --loop leaves the closing pose to frame 00", () => {
