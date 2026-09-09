@@ -120,7 +120,7 @@
     .cut .code{border:1px solid #2b282b;border-radius:7px;padding:14px 14px;background:#111113;color:#8d8783;line-height:1.78}
     .cut .code em{font-style:normal;color:#c8c1bb}
 
-    /* --- 03 sheet-or-video (PREPARED — awaits r7 video-source assets) --- */
+    /* --- 03 sheet-or-video --- */
     .src .paths{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:22px}
     .src .path{border:1px solid #2f2b2e;border-radius:11px;padding:15px 16px 16px;background:#0e0e10}
     .src .path.sel{border-color:#c4753d;box-shadow:0 0 0 1px #f9731620}
@@ -129,7 +129,7 @@
     .src .path.sel .ptop .tag{color:#f9a665}
     .src .ptop b{font-size:13px;font-weight:500;color:#ded7d1}
     .src .ptop span{margin-left:auto;font-size:11px;color:#7e7874}
-    .src .srcbox{height:214px;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid #2b282b;border-radius:8px}
+    .src .srcbox{width:228px;height:222px;margin:0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid #2b282b;border-radius:8px}
     .src .srcbox img{max-height:100%;max-width:100%}
     .src .down{display:flex;align-items:center;gap:9px;margin:10px 0 9px;font-size:11px;color:#8d8783}
     .src .down i{flex:1;height:1px;background:#332f33;font-style:normal}
@@ -139,9 +139,6 @@
     .src .fstrip img{height:92px;margin-bottom:3px}
     .src .pmeta{margin-top:11px;font-size:11.5px;color:#8d8783}
     .src .pmeta b{color:#c8c1bb;font-weight:500}
-    .src .slot{border-style:dashed;border-color:#4d4348;position:relative;background:#0f0e10}
-    .src .slot:after{content:attr(data-slot);position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;font-size:10.5px;letter-spacing:.3px;color:#6b6165;padding:0 8px;line-height:1.6}
-    .src .slot img{position:relative;z-index:1}
     .src .converge{margin-top:18px;border:1px solid #2b282b;border-radius:9px;background:#111113;padding:12px 18px;display:flex;align-items:center;gap:14px;font-size:12px;color:#a29a95}
     .src .converge b{color:#e6ddd5;font-weight:500}
     .src .converge .mono{color:#8d8783}
@@ -294,7 +291,7 @@
   <div class="foot"><span>Rivet · walk · real frames and real inspect numbers from one pipeline run</span><span>ffmpeg only — no model call in this step</span></div>
 </section>
 
-<!-- ══════════════ SHEET OR VIDEO (PREPARED — needs r7 video-source assets) ══════════════ -->
+<!-- ══════════════ SHEET OR VIDEO ══════════════ -->
 <section class="page src" data-view="sheet-or-video">
   <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">03 / SOURCE</span></div>
   <h1>Draw the frames, or shoot them.</h1>
@@ -306,25 +303,25 @@
       <div class="srcbox chk"><img src="/art/lumi/attack-sheet.png"></div>
       <div class="down">slice 4 × 4<i></i>key<i></i>align</div>
       <div class="fstrip">
-        <div><img src="/art/lumi/attack-00.png"></div>
-        <div><img src="/art/lumi/attack-05.png"></div>
-        <div><img src="/art/lumi/attack-10.png"></div>
-        <div><img src="/art/lumi/attack-15.png"></div>
+        <div class="chk"><img src="/art/lumi/attack-00.png"></div>
+        <div class="chk"><img src="/art/lumi/attack-05.png"></div>
+        <div class="chk"><img src="/art/lumi/attack-10.png"></div>
+        <div class="chk"><img src="/art/lumi/attack-15.png"></div>
       </div>
-      <div class="pmeta"><b>16 frames</b> · one image · cheap and instant</div>
+      <div class="pmeta"><b>16 frames</b> · one image · drawn in ≈ 35 s</div>
     </div>
 
     <div class="path sel">
-      <div class="ptop"><span class="tag">Path B</span><b>A video clip</b><span>Seedance 2.5 · chroma green</span></div>
-      <div class="srcbox slot" data-slot="clip-still.png — a still from the green-screen clip"><img src="/art/video-source/clip-still.png" alt=""></div>
-      <div class="down">sample<i></i>key green<i></i>align</div>
+      <div class="ptop"><span class="tag">Path B</span><b>A video clip</b><span>Seedance 2.5 · 640 × 640 · 4.04 s</span></div>
+      <div class="srcbox"><img src="/art/video-source/clip-still.png"></div>
+      <div class="down">sample 16<i></i>key green<i></i>align</div>
       <div class="fstrip">
-        <div class="slot" data-slot="frames/00"><img src="/art/video-source/frames/00.png" alt=""></div>
-        <div class="slot" data-slot="frames/03"><img src="/art/video-source/frames/03.png" alt=""></div>
-        <div class="slot" data-slot="frames/06"><img src="/art/video-source/frames/06.png" alt=""></div>
-        <div class="slot" data-slot="frames/09"><img src="/art/video-source/frames/09.png" alt=""></div>
+        <div class="chk"><img src="/art/video-source/frames/00.png"></div>
+        <div class="chk"><img src="/art/video-source/frames/03.png"></div>
+        <div class="chk"><img src="/art/video-source/frames/06.png"></div>
+        <div class="chk"><img src="/art/video-source/frames/09.png"></div>
       </div>
-      <div class="pmeta"><b>sampled frames</b> · real motion · the clip is also the preview</div>
+      <div class="pmeta"><b>16 frames</b> · sampled in 12.4 s · anchor drift 2.9 px, 0 warnings</div>
     </div>
 
   </div>
