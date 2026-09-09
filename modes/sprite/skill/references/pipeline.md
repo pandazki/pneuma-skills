@@ -362,3 +362,58 @@ converter.
 - `pivot` is `{0.5, 1.0}` for `anchor: bottom`, `{0.5, 0.5}` for `center`.
 - `duration` is `round(1000 / fps)` in milliseconds.
 - Frames are laid out row-major, `cols` per row, no margin and no gutter.
+
+## Measured (Lumi seed, 2026-09-09)
+
+The first real end-to-end run of this pipeline, recorded so the next agent
+knows what "normal" looks like. Machine: M-series mac, ffmpeg 8 on PATH,
+OpenRouter + fal.
+
+**`--background transparent` is refused, not ignored.** Every attempt returned
+`400` from OpenRouter *before* generating anything (so it costs nothing, and
+the retry is free):
+
+```
+ERROR: OpenRouter Images API returned 400: … No provider for
+openai/gpt-image-2.5-flare supports the requested parameter(s): output_format
+"png", quality "high", background "transparent", n "1", input_references
+(2 items). Provider rejections: OpenAI: background: not supported.
+Accepted: auto, opaque
+```
+
+Same rejection for `openai/gpt-image-2.5-sunburst` with no references. So on
+this provider the transparent branch of workflow B step 5 never fires: ask the
+prompt for *a flat solid pure white background*, pass `--background opaque`,
+and plan on keying. `probe` then reports `hasAlpha: false`,
+`alphaCoverage: 1`, `cornerColor: "#fefefe"` — the opaque branch, every time.
+
+| Step | Wall time | Result |
+|---|---|---|
+| ref generation (2048², quality high, no reference) | 40–41 s | $0.108 per image |
+| ref generation (2048², one reference attached → Flare) | 30 s | $0.120 |
+| sheet generation (2048², two references attached) | 33 s (idle) / 34 s (attack) | $0.133 each |
+| `remove-background.mjs --model heavy --resolution 2048` | 10 s (idle) / 20 s (attack) | alpha coverage 26.4 % / 28.6 % |
+| `run` (probe → key → slice → align → pack → gif+webp → inspect), 2048 sheet | 6 s (idle) / 7 s (attack) | 16 frames, zero warnings |
+| `run` again from a 1024 sheet | ~4 s | same geometry at 256 px cells |
+
+Both motions passed `inspect` with **no warnings on the first generation**:
+anchor drift 0.25 px, max jump 0.5 px, empty frames none; scale drift 0.009
+(idle) and 0.130 (attack — the swung lantern changes the bounding box, not the
+character's size). A 4×4 sheet at 2048² gives 512 px grid cells and, after
+`--cell auto` tightens to the silhouette plus `--pad 8`, frames of 304×484
+(idle) / 416×506 (attack).
+
+**Sheet resolution drives seed size more than anything else.** At 2048 the two
+finished motions plus refs came to 11 MB after pruning and 5 MB was needed;
+re-running the same two commands from 1024² sheets (`ffmpeg -vf scale=1024:1024`
+→ `set-sheet` again → `run --alpha` → `register-run`) gives 256 px grid cells —
+the character's own declared `cell` — and lands the whole seed at 5.0 MB with
+every referenced asset kept. Re-running `set-sheet` and `register-run` after a
+resolution change is what keeps `project.json`'s recorded dimensions honest;
+both are idempotent on the same ids.
+
+**`init` does not create the character directory.** `sprite-project.mjs init
+--dir lumi` on a workspace where `lumi/` does not exist yet dies with a raw
+Node `ENOENT` stack trace from `saveProject` rather than a one-line `ERROR:`.
+`mkdir -p <character>` first (or generate the references first — the image
+script creates its `--output-dir`).

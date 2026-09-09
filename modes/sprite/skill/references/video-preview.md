@@ -167,3 +167,39 @@ Registering before the call is what puts a "rendering" chip on the stage; a
 user who sees nothing for forty seconds assumes you did not hear them. And
 registering the failure is what stops the next turn from believing a clip
 exists.
+
+## Measured (Lumi seed, 2026-09-09)
+
+One real Seedance 2.5 clip, `image` endpoint with `--end-image` (first-last),
+rendered from the `attack` motion's flattened frame 00 and frame 15:
+
+```bash
+node {SKILL_PATH}/scripts/seedance-video.mjs \
+  --prompt "The chibi lantern courier swings her paper lantern through one continuous arc: …" \
+  --endpoint image \
+  --image lumi/motions/attack/first.png \
+  --end-image lumi/motions/attack/last.png \
+  --duration 4 --resolution 480p --no-audio \
+  --output lumi/motions/attack/video-seedance-1.mp4 --json
+```
+
+| Measurement | Value |
+|---|---|
+| wall time | **404 s** (6 min 44 s) for a 4-second 480p clip |
+| output | 860 089 bytes, h264, 588×716, 24 fps, 4.04 s |
+| `--duration 4` (numeric) | **accepted** — the script sends the enum string and fal echoed `requested_duration: 4` |
+| aspect ratio | taken from the first frame (416×506 → 588×716); `--aspect-ratio` stays refused on this endpoint |
+| seed (returned) | 479351011 |
+
+**Budget seven minutes, not one.** The cost table above is about money; this is
+the number that matters to a waiting user. Register the video with
+`add-video --status generating` *before* the call — that chip on the stage is
+the only thing standing between the user and seven minutes of silence — and
+say out loud that it takes several minutes. Call the script once: it already
+retries transient failures itself.
+
+**Flatten first, always.** Both keyframes went through
+`sprite-sheet.mjs flatten --bg "#f0ece4"`; a light neutral suits this
+character's cream palette better than white (which loses the cloak's edge) or
+black. The flattened `first.png` / `last.png` are working files, not assets —
+they are not registered in `project.json` and are not shipped in the seed.
