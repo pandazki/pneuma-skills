@@ -6,15 +6,24 @@
  * `fixtures/pipeline/make-sheet.mjs`); nothing binary is committed. The whole
  * file skips with a named reason when ffmpeg is missing — the routine suite
  * must stay green on a machine without it.
+ *
+ * Each sheet, cell set and aligned frame set is built ONCE and copied into a
+ * fresh workspace per test: an ffmpeg spawn costs ~40 ms and a `cpSync` of
+ * four small PNGs costs nothing, so the read-only cases share pixels instead
+ * of redrawing them. Only the cases that are *about* slicing, aligning or
+ * `run` drive those steps themselves.
  */
 
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import {
+  cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { buildSheet, readBbox } from "./fixtures/pipeline/make-sheet.mjs";
+import type { BuildSheetOptions } from "./fixtures/pipeline/make-sheet.mjs";
 
 const SCRIPT = join(import.meta.dir, "..", "skill", "scripts", "sprite-sheet.mjs");
 
@@ -55,6 +64,78 @@ function cleanupAll() {
   for (const dir of workspaces.splice(0)) rmSync(dir, { recursive: true, force: true });
 }
 
+// ---------------------------------------------------------------------------
+// Shared, built-once fixtures
+// ---------------------------------------------------------------------------
+
+const built = new Map<string, string>();
+let sharedRoot: string | null = null;
+
+function shared(): string {
+  if (!sharedRoot) sharedRoot = fresh();
+  return sharedRoot;
+}
+
+/** A sheet drawn once and never written to again. */
+function sheet(name: string, options?: BuildSheetOptions): string {
+  const key = `sheet:${name}`;
+  if (!built.has(key)) built.set(key, buildSheet(join(shared(), `${name}.png`), options));
+  return built.get(key)!;
+}
+
+/** A directory of NN.png produced once by `make`, then copied per test. */
+function stage(name: string, make: (out: string) => void): string {
+  const key = `dir:${name}`;
+  if (!built.has(key)) {
+    const out = join(shared(), name);
+    make(out);
+    built.set(key, out);
+  }
+  return built.get(key)!;
+}
+
+const SHEETS = {
+  /** 2x2, transparent, one 30x30 square per cell at a different offset. */
+  plain: () => sheet("plain"),
+  /** The same drawing on an opaque green background. */
+  green: () => sheet("green", { background: "0x00b140" }),
+  /** 2x2 with cell 02 left empty. */
+  gap: () => sheet("gap", { cells: [0, 1, 3] }),
+  /** 1x3, three identical bodies. */
+  wide: () => sheet("wide", { rows: 1, cols: 3 }),
+  /** 1x2 — the cheapest sheet that still has more than one frame. */
+  pair: () => sheet("pair", { rows: 1, cols: 2 }),
+  /** 1x3; frame 01 grows a stray limb that widens its bbox. */
+  limb: () => sheet("limb", {
+    rows: 1, cols: 3,
+    squares: [{ x: 17, y: 17, color: "red" }],
+    extras: [{ index: 1, x: 53, y: 20, w: 6, h: 6 }],
+  }),
+  /** 1x3 whose drawing sits in the cell corner (clipped) plus the stray limb. */
+  clipped: () => sheet("clipped", {
+    rows: 1, cols: 3,
+    squares: [{ x: 0, y: 0, color: "red" }],
+    extras: [{ index: 1, x: 53, y: 20, w: 6, h: 6 }],
+  }),
+};
+
+const cellsOf = (name: keyof typeof SHEETS, rows: number, cols: number) =>
+  stage(`cells-${name}`, (out) => {
+    runJson("slice", SHEETS[name](), "--rows", String(rows), "--cols", String(cols), "--out", out);
+  });
+
+const framesOf = (name: keyof typeof SHEETS, rows: number, cols: number, pad: number) =>
+  stage(`frames-${name}-${pad}`, (out) => {
+    runJson("align", cellsOf(name, rows, cols), "--out", out, "--pad", String(pad));
+  });
+
+/** Copy a prepared frame set into a workspace under `<ws>/<name>`. */
+function useFrames(ws: string, source: string, name = "frames"): string {
+  const dest = join(ws, name);
+  cpSync(source, dest, { recursive: true });
+  return dest;
+}
+
 describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
   test("--help exits 0 and lists every subcommand", () => {
     const r = run("--help");
@@ -72,9 +153,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
 
   describe("probe", () => {
     test("reports alpha on a transparent sheet", () => {
-      const ws = fresh();
-      const sheet = buildSheet(join(ws, "sheet.png"));
-      const out = runJson("probe", sheet);
+      const out = runJson("probe", SHEETS.plain());
       expect(out.width).toBe(128);
       expect(out.height).toBe(128);
       expect(out.hasAlpha).toBe(true);
@@ -84,9 +163,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
     });
 
     test("reports an opaque sheet as fully covered with its corner colour", () => {
-      const ws = fresh();
-      const sheet = buildSheet(join(ws, "green.png"), { background: "0x00b140" });
-      const out = runJson("probe", sheet);
+      const out = runJson("probe", SHEETS.green());
       expect(out.hasAlpha).toBe(false);
       expect(out.alphaCoverage).toBe(1);
       expect(out.cornerColor).toBe("#00b140");
@@ -96,11 +173,10 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
   describe("key", () => {
     test("turns an opaque green background transparent", () => {
       const ws = fresh();
-      const sheet = buildSheet(join(ws, "green.png"), { background: "0x00b140" });
-      const before = runJson("probe", sheet);
+      const before = runJson("probe", SHEETS.green());
       expect(before.alphaCoverage).toBe(1);
 
-      const out = runJson("key", sheet, "--out", join(ws, "sheet-alpha.png"), "--color", "auto");
+      const out = runJson("key", SHEETS.green(), "--out", join(ws, "sheet-alpha.png"), "--color", "auto");
       expect(out.color).toBe("#00b140");
       expect(out.alphaCoverage).toBeLessThan(0.5);
       expect(readBbox(join(ws, "sheet-alpha.png")).coverage).toBeCloseTo(3600 / 16384, 3);
@@ -108,8 +184,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
 
     test("accepts an explicit key colour", () => {
       const ws = fresh();
-      const sheet = buildSheet(join(ws, "green.png"), { background: "0x00b140" });
-      const out = runJson("key", sheet, "--out", join(ws, "keyed.png"), "--color", "#00b140");
+      const out = runJson("key", SHEETS.green(), "--out", join(ws, "keyed.png"), "--color", "#00b140");
       expect(out.color).toBe("#00b140");
       expect(out.alphaCoverage).toBeLessThan(0.5);
     });
@@ -118,8 +193,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
   describe("flatten", () => {
     test("composites a transparent sheet onto a solid colour", () => {
       const ws = fresh();
-      const sheet = buildSheet(join(ws, "sheet.png"));
-      const out = runJson("flatten", sheet, "--out", join(ws, "flat.png"), "--bg", "#ffffff");
+      const out = runJson("flatten", SHEETS.plain(), "--out", join(ws, "flat.png"), "--bg", "#ffffff");
       expect(out.output).toContain("flat.png");
       expect(readBbox(join(ws, "flat.png")).coverage).toBe(1);
     });
@@ -128,8 +202,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
   describe("slice", () => {
     test("yields four 64x64 RGBA cells row-major", () => {
       const ws = fresh();
-      const sheet = buildSheet(join(ws, "sheet.png"));
-      const out = runJson("slice", sheet, "--rows", "2", "--cols", "2", "--out", join(ws, "cells"));
+      const out = runJson("slice", SHEETS.plain(), "--rows", "2", "--cols", "2", "--out", join(ws, "cells"));
       expect(out.cell).toEqual({ width: 64, height: 64 });
       expect(out.exact).toBe(true);
       expect(out.frames).toHaveLength(4);
@@ -145,8 +218,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
 
     test("reports a floored, inexact cell size instead of silently rounding", () => {
       const ws = fresh();
-      const sheet = buildSheet(join(ws, "sheet.png"));
-      const out = runJson("slice", sheet, "--rows", "2", "--cols", "3", "--out", join(ws, "cells3"));
+      const out = runJson("slice", SHEETS.plain(), "--rows", "2", "--cols", "3", "--out", join(ws, "cells3"));
       expect(out.cell.width).toBe(42); // floor(128 / 3)
       expect(out.exact).toBe(false);
       expect(out.remainder).toEqual({ x: 2, y: 0 });
@@ -156,9 +228,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
   describe("align", () => {
     test("bottom anchor lands every frame on the same point", () => {
       const ws = fresh();
-      const sheet = buildSheet(join(ws, "sheet.png"));
-      runJson("slice", sheet, "--rows", "2", "--cols", "2", "--out", join(ws, "cells"));
-      const out = runJson("align", join(ws, "cells"), "--out", join(ws, "frames"), "--anchor", "bottom", "--pad", "8");
+      const out = runJson("align", cellsOf("plain", 2, 2), "--out", join(ws, "frames"), "--anchor", "bottom", "--pad", "8");
 
       expect(out.cell).toEqual({ width: 46, height: 46 }); // 30 + 2*8, made even
       expect(out.frames).toHaveLength(4);
@@ -176,9 +246,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
 
     test("center anchor centres the bbox in the cell", () => {
       const ws = fresh();
-      const sheet = buildSheet(join(ws, "sheet.png"));
-      runJson("slice", sheet, "--rows", "2", "--cols", "2", "--out", join(ws, "cells"));
-      runJson("align", join(ws, "cells"), "--out", join(ws, "frames"), "--anchor", "center", "--pad", "8");
+      runJson("align", cellsOf("plain", 2, 2), "--out", join(ws, "frames"), "--anchor", "center", "--pad", "8");
       for (const n of ["00", "01", "02", "03"]) {
         expect(readBbox(join(ws, "frames", `${n}.png`)).bbox).toEqual({ x: 8, y: 8, w: 30, h: 30 });
       }
@@ -186,9 +254,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
 
     test("an empty cell becomes a transparent frame and is reported", () => {
       const ws = fresh();
-      const sheet = buildSheet(join(ws, "gap.png"), { cells: [0, 1, 3] });
-      runJson("slice", sheet, "--rows", "2", "--cols", "2", "--out", join(ws, "cells"));
-      const out = runJson("align", join(ws, "cells"), "--out", join(ws, "frames"));
+      const out = runJson("align", cellsOf("gap", 2, 2), "--out", join(ws, "frames"));
       expect(out.emptyFrames).toEqual([2]);
       expect(readBbox(join(ws, "frames", "02.png")).bbox).toBeNull();
       expect(out.warnings.join(" ")).toContain("frame 02 is empty");
@@ -198,30 +264,23 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       const ws = fresh();
       // Three identical bodies; frame 01 also has a small limb sticking out to
       // the right, which widens its bbox and drags its centre with it.
-      const sheet = buildSheet(join(ws, "limb.png"), {
-        rows: 1, cols: 3,
-        squares: [{ x: 17, y: 17, color: "red" }],
-        extras: [{ index: 1, x: 53, y: 20, w: 6, h: 6 }],
-      });
-      runJson("slice", sheet, "--rows", "1", "--cols", "3", "--out", join(ws, "cells"));
+      const cells = cellsOf("limb", 1, 3);
 
-      runJson("align", join(ws, "cells"), "--out", join(ws, "plain"), "--pad", "8");
+      runJson("align", cells, "--out", join(ws, "plain"), "--pad", "8");
       const plain = ["00", "01", "02"].map((n) => readBbox(join(ws, "plain", `${n}.png`)).bbox!.x);
       // bbox-centred alignment shoves the body sideways on the odd frame
       expect(plain[0]).toBe(14);
       expect(plain[1]).toBe(8);
       expect(plain[2]).toBe(14);
 
-      runJson("align", join(ws, "cells"), "--out", join(ws, "smoothed"), "--pad", "8", "--smooth");
+      runJson("align", cells, "--out", join(ws, "smoothed"), "--pad", "8", "--smooth");
       const smoothed = ["00", "01", "02"].map((n) => readBbox(join(ws, "smoothed", `${n}.png`)).bbox!.x);
       expect(smoothed).toEqual([14, 14, 14]);
     });
 
     test("an explicit cell smaller than the artwork fails with the required size", () => {
       const ws = fresh();
-      const sheet = buildSheet(join(ws, "sheet.png"));
-      runJson("slice", sheet, "--rows", "2", "--cols", "2", "--out", join(ws, "cells"));
-      const r = run("align", join(ws, "cells"), "--out", join(ws, "frames"), "--cell", "16x16", "--json");
+      const r = run("align", cellsOf("plain", 2, 2), "--out", join(ws, "frames"), "--cell", "16x16", "--json");
       expect(r.code).toBe(1);
       expect(r.err).toMatch(/ERROR: .*30x30/);
     });
@@ -230,12 +289,10 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
   describe("pack", () => {
     test("writes a packed sheet and a schema-shaped atlas", () => {
       const ws = fresh();
-      const sheet = buildSheet(join(ws, "sheet.png"));
-      runJson("slice", sheet, "--rows", "2", "--cols", "2", "--out", join(ws, "cells"));
-      runJson("align", join(ws, "cells"), "--out", join(ws, "frames"), "--pad", "17"); // 30 + 34 = 64px cell
+      const frames = useFrames(ws, framesOf("plain", 2, 2, 17)); // 30 + 34 = 64px cell
 
       const out = runJson(
-        "pack", join(ws, "frames"),
+        "pack", frames,
         "--out", join(ws, "sheet-packed.png"),
         "--atlas", join(ws, "atlas.json"),
         "--name", "bounce", "--fps", "8", "--loop", "--cols", "2",
@@ -270,11 +327,9 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
 
     test("the packed sheet keeps the transparent gutter of an unfilled cell", () => {
       const ws = fresh();
-      const sheet = buildSheet(join(ws, "sheet.png"), { rows: 1, cols: 3 });
-      runJson("slice", sheet, "--rows", "1", "--cols", "3", "--out", join(ws, "cells"));
-      runJson("align", join(ws, "cells"), "--out", join(ws, "frames"), "--pad", "17");
+      const frames = useFrames(ws, framesOf("wide", 1, 3, 17));
       const out = runJson(
-        "pack", join(ws, "frames"),
+        "pack", frames,
         "--out", join(ws, "packed.png"), "--atlas", join(ws, "atlas.json"),
         "--name", "walk", "--fps", "12", "--cols", "2",
       );
@@ -290,11 +345,9 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
 
     test("--scale --nearest resizes every cell before packing", () => {
       const ws = fresh();
-      const sheet = buildSheet(join(ws, "sheet.png"));
-      runJson("slice", sheet, "--rows", "2", "--cols", "2", "--out", join(ws, "cells"));
-      runJson("align", join(ws, "cells"), "--out", join(ws, "frames"), "--pad", "17");
+      const frames = useFrames(ws, framesOf("plain", 2, 2, 17));
       const out = runJson(
-        "pack", join(ws, "frames"),
+        "pack", frames,
         "--out", join(ws, "packed.png"), "--atlas", join(ws, "atlas.json"),
         "--name", "bounce", "--fps", "8", "--cols", "2", "--scale", "0.5", "--nearest",
       );
@@ -304,16 +357,25 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(atlas.frames.bounce_00.frame).toEqual({ x: 0, y: 0, w: 32, h: 32 });
       expect(atlas.frames.bounce_00.sourceSize).toEqual({ w: 32, h: 32 });
     });
+
+    test("a frame that cannot be decoded stops the pack instead of vanishing", () => {
+      const ws = fresh();
+      const frames = useFrames(ws, framesOf("plain", 2, 2, 17));
+      writeFileSync(join(frames, "02.png"), "not a png at all");
+      const r = run("pack", frames, "--out", join(ws, "packed.png"), "--atlas", join(ws, "atlas.json"),
+        "--name", "bounce", "--fps", "8", "--json");
+      expect(r.code).toBe(1);
+      expect(r.err).toContain("pack:");
+      expect(r.err).toContain("02.png");
+    });
   });
 
   describe("gif", () => {
     test("writes a looping GIF that keeps the transparent background", () => {
       const ws = fresh();
-      const sheet = buildSheet(join(ws, "sheet.png"));
-      runJson("slice", sheet, "--rows", "2", "--cols", "2", "--out", join(ws, "cells"));
-      runJson("align", join(ws, "cells"), "--out", join(ws, "frames"), "--pad", "17");
+      const frames = useFrames(ws, framesOf("plain", 2, 2, 17));
 
-      const out = runJson("gif", join(ws, "frames"), "--out", join(ws, "preview.gif"), "--fps", "8", "--loop");
+      const out = runJson("gif", frames, "--out", join(ws, "preview.gif"), "--fps", "8", "--loop");
       expect(out.frameCount).toBe(4);
       expect(out.loop).toBe(true);
       const bytes = readFileSync(join(ws, "preview.gif"));
@@ -324,11 +386,9 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
 
     test.skipIf(!HAS_LIBWEBP)("writes an animated WebP with an alpha channel", () => {
       const ws = fresh();
-      const sheet = buildSheet(join(ws, "sheet.png"));
-      runJson("slice", sheet, "--rows", "2", "--cols", "2", "--out", join(ws, "cells"));
-      runJson("align", join(ws, "cells"), "--out", join(ws, "frames"), "--pad", "17");
+      const frames = useFrames(ws, framesOf("plain", 2, 2, 17));
       const out = runJson(
-        "gif", join(ws, "frames"), "--out", join(ws, "preview.gif"),
+        "gif", frames, "--out", join(ws, "preview.gif"),
         "--fps", "8", "--loop", "--webp", join(ws, "preview.webp"),
       );
       expect(out.webp).toContain("preview.webp");
@@ -343,27 +403,47 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
 
     test("--width rescales the preview", () => {
       const ws = fresh();
-      const sheet = buildSheet(join(ws, "sheet.png"));
-      runJson("slice", sheet, "--rows", "2", "--cols", "2", "--out", join(ws, "cells"));
-      runJson("align", join(ws, "cells"), "--out", join(ws, "frames"), "--pad", "17");
+      const frames = useFrames(ws, framesOf("plain", 2, 2, 17));
       const out = runJson(
-        "gif", join(ws, "frames"), "--out", join(ws, "small.gif"),
+        "gif", frames, "--out", join(ws, "small.gif"),
         "--fps", "8", "--no-loop", "--width", "32",
       );
       expect(out.loop).toBe(false);
       expect(out.width).toBe(32);
       expect(readBbox(join(ws, "small.gif")).width).toBe(32);
     });
+
+    test("a frame that cannot be decoded is refused, not silently dropped", () => {
+      const ws = fresh();
+      const frames = useFrames(ws, framesOf("plain", 2, 2, 17));
+      // ffmpeg's image2 demuxer skips an unreadable frame and still exits 0,
+      // so without the probe this used to write a 3-frame GIF while the JSON
+      // claimed 4.
+      writeFileSync(join(frames, "02.png"), "not a png at all");
+      const r = run("gif", frames, "--out", join(ws, "preview.gif"), "--fps", "8", "--loop", "--json");
+      expect(r.code).toBe(1);
+      expect(r.err).toContain("gif:");
+      expect(r.err).toContain("02.png");
+      expect(existsSync(join(ws, "preview.gif"))).toBe(false);
+    });
+
+    test("frames of different sizes are refused rather than quietly rescaled", () => {
+      const ws = fresh();
+      const frames = useFrames(ws, framesOf("plain", 2, 2, 17));
+      cpSync(join(useFrames(ws, framesOf("plain", 2, 2, 8), "small"), "00.png"), join(frames, "02.png"));
+      const r = run("gif", frames, "--out", join(ws, "preview.gif"), "--fps", "8", "--json");
+      expect(r.code).toBe(1);
+      expect(r.err).toMatch(/gif: frames are not uniform/);
+    });
   });
 
   describe("inspect", () => {
     test("a clean aligned motion produces zero warnings", () => {
       const ws = fresh();
-      const sheet = buildSheet(join(ws, "sheet.png"));
-      runJson("slice", sheet, "--rows", "2", "--cols", "2", "--out", join(ws, "cells"));
-      runJson("align", join(ws, "cells"), "--out", join(ws, "motion", "frames"), "--pad", "17");
+      const motion = join(ws, "motion");
+      useFrames(motion, framesOf("plain", 2, 2, 17));
 
-      const out = runJson("inspect", join(ws, "motion"));
+      const out = runJson("inspect", motion);
       expect(out.frameCount).toBe(4);
       expect(out.cell).toEqual({ width: 64, height: 64 });
       expect(out.anchorDrift).toEqual({ x: 0, y: 0 });
@@ -372,26 +452,24 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(out.emptyFrames).toEqual([]);
       expect(out.warnings).toEqual([]);
       expect(out.frames).toHaveLength(4);
-      expect(JSON.parse(readFileSync(join(ws, "motion", "inspect.json"), "utf-8")).frameCount).toBe(4);
+      expect(JSON.parse(readFileSync(join(motion, "inspect.json"), "utf-8")).frameCount).toBe(4);
     });
 
     test("flags an injected empty cell", () => {
       const ws = fresh();
-      const sheet = buildSheet(join(ws, "gap.png"), { cells: [0, 1, 3] });
-      runJson("slice", sheet, "--rows", "2", "--cols", "2", "--out", join(ws, "cells"));
-      runJson("align", join(ws, "cells"), "--out", join(ws, "motion", "frames"), "--pad", "17");
+      const motion = join(ws, "motion");
+      useFrames(motion, framesOf("gap", 2, 2, 17));
 
-      const out = runJson("inspect", join(ws, "motion"));
+      const out = runJson("inspect", motion);
       expect(out.emptyFrames).toEqual([2]);
       expect(out.warnings.join(" ")).toContain("frame 02 is empty");
     });
 
     test("flags a cell whose drawing touches the grid edge", () => {
       const ws = fresh();
-      const sheet = buildSheet(join(ws, "sheet.png"));
-      runJson("slice", sheet, "--rows", "2", "--cols", "2", "--out", join(ws, "cells"));
-      runJson("align", join(ws, "cells"), "--out", join(ws, "motion", "frames"), "--pad", "0");
-      const out = runJson("inspect", join(ws, "motion"), "--cells", join(ws, "motion", "frames"));
+      const motion = join(ws, "motion");
+      const frames = useFrames(motion, framesOf("plain", 2, 2, 0));
+      const out = runJson("inspect", motion, "--cells", frames);
       expect(out.warnings.join(" ")).toContain("clipped");
     });
   });
@@ -399,7 +477,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
   describe("run", () => {
     test("drives probe → slice → align → pack → gif → inspect on a transparent sheet", () => {
       const ws = fresh();
-      const raw = buildSheet(join(ws, "raw.png"));
+      const raw = SHEETS.plain();
       const motionDir = join(ws, "motions", "bounce");
       const out = runJson(
         "run", raw, "--rows", "2", "--cols", "2", "--out", motionDir,
@@ -437,10 +515,9 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
 
     test("keys an opaque sheet automatically and records sheet-alpha", () => {
       const ws = fresh();
-      const raw = buildSheet(join(ws, "raw.png"), { background: "0x00b140" });
       const motionDir = join(ws, "motions", "bounce");
       const out = runJson(
-        "run", raw, "--rows", "2", "--cols", "2", "--out", motionDir,
+        "run", SHEETS.green(), "--rows", "2", "--cols", "2", "--out", motionDir,
         "--name", "bounce", "--fps", "8", "--key", "auto", "--pad", "17",
       );
       expect(out.keyed).toBe(true);
@@ -453,10 +530,9 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
 
     test("--key none leaves an opaque sheet alone", () => {
       const ws = fresh();
-      const raw = buildSheet(join(ws, "raw.png"), { background: "0x00b140" });
       const motionDir = join(ws, "motions", "flat");
       const out = runJson(
-        "run", raw, "--rows", "2", "--cols", "2", "--out", motionDir,
+        "run", SHEETS.green(), "--rows", "2", "--cols", "2", "--out", motionDir,
         "--name", "flat", "--fps", "8", "--key", "none",
       );
       expect(out.keyed).toBe(false);
@@ -467,34 +543,91 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
 
     test("is idempotent — a second run over the same motion dir replaces the frames", () => {
       const ws = fresh();
-      const raw = buildSheet(join(ws, "raw.png"));
       const motionDir = join(ws, "motions", "bounce");
       const args = [
-        "run", raw, "--rows", "2", "--cols", "2", "--out", motionDir,
+        "run", SHEETS.pair(), "--rows", "1", "--cols", "2", "--out", motionDir,
         "--name", "bounce", "--fps", "8", "--pad", "17",
       ];
-      runJson(...args);
+      const first = runJson(...args);
       const second = runJson(...args);
-      expect(second.frames).toHaveLength(4);
-      expect(readdirSync(join(motionDir, "frames")).sort()).toEqual(["00.png", "01.png", "02.png", "03.png"]);
+      expect(second.frames).toEqual(first.frames);
+      expect(readdirSync(join(motionDir, "frames")).sort()).toEqual(["00.png", "01.png"]);
+      expect(readdirSync(join(motionDir, "cells")).sort()).toEqual(["00.png", "01.png"]);
     });
 
-    test("a shrinking frame count leaves no stale frame files", () => {
+    test("a shrinking frame count leaves no stale frame or cell files", () => {
       const ws = fresh();
       const motionDir = join(ws, "motions", "bounce");
       runJson(
-        "run", buildSheet(join(ws, "four.png")), "--rows", "2", "--cols", "2",
+        "run", SHEETS.plain(), "--rows", "2", "--cols", "2",
         "--out", motionDir, "--name", "bounce", "--fps", "8", "--pad", "17",
       );
       runJson(
-        "run", buildSheet(join(ws, "two.png"), { rows: 1, cols: 2 }), "--rows", "1", "--cols", "2",
+        "run", SHEETS.pair(), "--rows", "1", "--cols", "2",
         "--out", motionDir, "--name", "bounce", "--fps", "8", "--pad", "17",
       );
       expect(readdirSync(join(motionDir, "frames")).sort()).toEqual(["00.png", "01.png"]);
+      expect(readdirSync(join(motionDir, "cells")).sort()).toEqual(["00.png", "01.png"]);
+    });
+
+    test("keeps the pre-align cells so the report can be reproduced and the alignment redone", () => {
+      const ws = fresh();
+      const motionDir = join(ws, "motions", "clip");
+      // The drawing sits in the cell corner (so every cell is clipped) and
+      // frame 01 grows a limb that widens its bbox (so the anchors jump).
+      const out = runJson(
+        "run", SHEETS.clipped(), "--rows", "1", "--cols", "3", "--out", motionDir,
+        "--name", "clip", "--fps", "8", "--pad", "8", "--smooth",
+      );
+      expect(out.cells).toBe(join(motionDir, "cells"));
+      expect(readdirSync(join(motionDir, "cells")).sort()).toEqual(["00.png", "01.png", "02.png"]);
+      expect(out.inspect.warnings).toEqual([
+        "anchor jumps between frames 00 and 01",
+        "cell 00 is clipped — the drawing leaves its grid cell",
+        "cell 01 is clipped — the drawing leaves its grid cell",
+        "cell 02 is clipped — the drawing leaves its grid cell",
+      ]);
+
+      // A plain `inspect <motionDir>` now says exactly what `run` said.
+      const report = runJson("inspect", motionDir);
+      expect(report.warnings).toEqual(out.inspect.warnings);
+      expect(report.cellsDir).toBe(join(motionDir, "cells"));
+
+      // The cells are also the input a fix-the-alignment pass re-reads.
+      const realigned = runJson("align", join(motionDir, "cells"), "--out", join(ws, "again"), "--pad", "8", "--smooth");
+      expect(realigned.cell).toEqual(out.cell);
+
+      // Without them, the clipping verdict falls back to the padded frames and
+      // names the wrong cells — which is why `run` stopped throwing them away.
+      rmSync(join(motionDir, "cells"), { recursive: true, force: true });
+      const blind = runJson("inspect", motionDir);
+      expect(blind.cellsDir).toBeUndefined();
+      expect(blind.warnings).not.toEqual(out.inspect.warnings);
+    });
+
+    test("a failing run cleans up after itself and reports one ERROR line", () => {
+      const ws = fresh();
+      const motionDir = join(ws, "motions", "bad");
+      const before = readdirSync(tmpdir()).filter((f) => f.startsWith("sprite-cells-"));
+
+      const r = run(
+        "run", SHEETS.plain(), "--rows", "2", "--cols", "2", "--out", motionDir,
+        "--name", "bad", "--fps", "8", "--cell", "10x10", "--json",
+      );
+      expect(r.code).toBe(1);
+      // `fail()` throws and is caught once at the top: a single ERROR: line,
+      // no stack trace, and every `finally` on the way out has run.
+      expect(r.err.trim().split("\n")).toHaveLength(1);
+      expect(r.err).toMatch(/^ERROR: /);
+      expect(r.err).not.toMatch(/^\s+at /m);
+      expect(readdirSync(tmpdir()).filter((f) => f.startsWith("sprite-cells-"))).toEqual(before);
+      expect(readdirSync(motionDir).filter((f) => f.includes("tmp"))).toEqual([]);
     });
   });
 
   test("cleanup", () => {
+    built.clear();
+    sharedRoot = null;
     cleanupAll();
     expect(workspaces).toHaveLength(0);
   });

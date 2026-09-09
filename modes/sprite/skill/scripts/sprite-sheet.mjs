@@ -17,10 +17,9 @@
 
 import { spawnSync } from "node:child_process";
 import {
-  copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync,
+  copyFileSync, existsSync, mkdirSync, readdirSync, renameSync,
   rmSync, statSync, unlinkSync, writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
@@ -35,8 +34,21 @@ const MAX_FRAMES = 100;
 const MAX_RAW_BYTES = 512 * 1024 * 1024;
 /** A sheet whose alpha is this dense is background-opaque for keying purposes. */
 const OPAQUE_COVERAGE = 0.99;
+/** Keying that leaves this much of the sheet opaque did not find a background. */
+const KEYED_OPAQUE_ALERT = 0.9;
+/** A frame drawn on less than this fraction of its cell is "nearly empty". */
+const NEARLY_EMPTY_COVERAGE = 0.02;
+/** An anchor moving more than this fraction of the cell width between two
+ *  consecutive frames reads as a jump, not as motion. */
+const MAX_JUMP_FRACTION = 0.08;
+/** Relative spread of bbox heights above which the character is being drawn at
+ *  different scales from frame to frame. */
+const MAX_SCALE_DRIFT = 0.15;
 /** Warning lists are truncated so a broken sheet cannot flood the agent. */
 const MAX_LISTED = 6;
+/** Pre-align grid cells `run` leaves next to `frames/`: what `inspect` judges
+ *  "leaves its grid cell" on, and what re-aligning a motion re-reads. */
+const CELLS_DIRNAME = "cells";
 
 const SUBCOMMANDS = ["probe", "key", "flatten", "slice", "align", "pack", "gif", "inspect", "run"];
 
@@ -78,14 +90,17 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       Frame count, cell, per-frame bboxes, anchor drift, max jump, scale
       drift, empty frames and human warnings. Writes <motionDir>/inspect.json.
       --cells points at the pre-align grid cells so "leaves its grid cell"
-      can be judged on the raw crop rather than the padded frame.
+      can be judged on the raw crop rather than the padded frame; it defaults
+      to <motionDir>/${CELLS_DIRNAME} when 'run' left that directory there.
 
   run <sheet-raw> --rows R --cols C --out <motionDir> --name <motionId> --fps N
       [--loop] [--anchor bottom|center] [--key auto|#rrggbb|none] [--cell auto|WxH]
       [--pad ${DEFAULT_PAD}] [--smooth] [--scale 1] [--nearest] [--margin 0] [--gutter 0]
       [--width W] [--no-webp] [--threshold ${DEFAULT_THRESHOLD}]
       probe -> key (only when the sheet is opaque) -> slice -> align -> pack
-      -> gif (+webp) -> inspect. The input sheet is copied, never moved.
+      -> gif (+webp) -> inspect. The input sheet is copied, never moved. The
+      pre-align cells are kept as <motionDir>/${CELLS_DIRNAME}/NN.png so the
+      report can be reproduced and the alignment redone without re-slicing.
 
 Exit code 0 on success, 1 on failure with a one-line ERROR: on stderr.`;
 
@@ -93,9 +108,17 @@ Exit code 0 on success, 1 on failure with a one-line ERROR: on stderr.`;
 // Process plumbing
 // ---------------------------------------------------------------------------
 
+/** A refusal this script knows how to phrase, as opposed to a crash. */
+class SpriteSheetError extends Error {}
+
+/**
+ * Refuse the current command. This THROWS rather than calling `process.exit`:
+ * exiting from inside a step skips every enclosing `finally`, which used to
+ * leave scratch directories and half-written `.tmp` renders on disk after each
+ * failure. `main` is the single place that turns the throw into `ERROR:` + 1.
+ */
 function fail(message) {
-  console.error(`ERROR: ${message}`);
-  process.exit(1);
+  throw new SpriteSheetError(message);
 }
 
 let toolsChecked = false;
@@ -147,16 +170,17 @@ function writeJsonFile(outPath, value) {
 // Pixels
 // ---------------------------------------------------------------------------
 
-function probeSize(path) {
+function probeSize(path, label) {
+  const step = label ? `${label}: ` : "";
   const r = spawnSync(
     "ffprobe",
     ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", path],
     { encoding: "utf-8" },
   );
-  if (r.error || r.status !== 0) fail(`ffprobe failed for ${path}: ${(r.stderr || "").trim()}`);
+  if (r.error || r.status !== 0) fail(`${step}ffprobe failed for ${path}: ${(r.stderr || "").trim()}`);
   const [width, height] = String(r.stdout).trim().split(",").map(Number);
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-    fail(`ffprobe returned bad dimensions for ${path}: '${String(r.stdout).trim()}'`);
+    fail(`${step}ffprobe returned bad dimensions for ${path}: '${String(r.stdout).trim()}' — the file is not a decodable image`);
   }
   return { width, height };
 }
@@ -171,7 +195,7 @@ function readRgba(path) {
   }
   const r = spawnSync(
     "ffmpeg",
-    ["-v", "error", "-i", path, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", "-"],
+    ["-v", "error", "-y", "-i", path, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", "-"],
     { maxBuffer: MAX_RAW_BYTES },
   );
   if (r.error) fail(`could not decode ${path} (${r.error.message})`);
@@ -515,15 +539,43 @@ function stepAlign(framesDir, { out, anchor, cell, pad, smooth, threshold, bboxe
   };
 }
 
-function stepPack(framesDir, { out, atlas, name, fps, loop, anchor, cols, scale, nearest }) {
-  const entries = listFrames(resolve(framesDir));
-  const { width, height } = probeSize(entries[0].path);
+/**
+ * Probe every frame and return the cell they all share.
+ *
+ * This is the gate in front of any encoder that reads the whole `%02d.png`
+ * sequence: ffmpeg's image2 demuxer skips a frame it cannot decode and still
+ * exits 0, so without this an undecodable or odd-sized PNG turns into a
+ * preview that is silently one frame short of what the JSON claims. ffprobe
+ * reports 0x0 for such a file, which `probeSize` already refuses by name.
+ */
+function uniformCell(entries, label) {
+  const first = probeSize(entries[0].path, label);
   for (const entry of entries) {
-    const size = probeSize(entry.path);
-    if (size.width !== width || size.height !== height) {
-      fail(`frames are not uniform: ${basename(entries[0].path)} is ${width}x${height} but ${basename(entry.path)} is ${size.width}x${size.height} — run align first`);
+    const size = probeSize(entry.path, label);
+    if (size.width !== first.width || size.height !== first.height) {
+      fail(`${label}: frames are not uniform: ${basename(entries[0].path)} is ${first.width}x${first.height} but ${basename(entry.path)} is ${size.width}x${size.height} — run align first`);
     }
   }
+  return first;
+}
+
+/** Frames actually present in an encoded animation, or null when the format
+ *  cannot be counted (ffprobe cannot read animated WebP at all). */
+function countEncodedFrames(path) {
+  const r = spawnSync(
+    "ffprobe",
+    ["-v", "error", "-count_frames", "-select_streams", "v:0",
+      "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", path],
+    { encoding: "utf-8" },
+  );
+  if (r.error || r.status !== 0) return null;
+  const count = Number(String(r.stdout).trim());
+  return Number.isInteger(count) && count > 0 ? count : null;
+}
+
+function stepPack(framesDir, { out, atlas, name, fps, loop, anchor, cols, scale, nearest }) {
+  const entries = listFrames(resolve(framesDir));
+  const { width, height } = uniformCell(entries, "pack");
 
   const cellW = Math.max(1, Math.round(width * scale));
   const cellH = Math.max(1, Math.round(height * scale));
@@ -590,14 +642,14 @@ function stepPack(framesDir, { out, atlas, name, fps, loop, anchor, cols, scale,
 }
 
 function hasLibwebp() {
-  const r = spawnSync("ffmpeg", ["-hide_banner", "-encoders"], { encoding: "utf-8" });
+  const r = spawnSync("ffmpeg", ["-v", "error", "-hide_banner", "-encoders"], { encoding: "utf-8" });
   return r.status === 0 && String(r.stdout).includes("libwebp");
 }
 
 function stepGif(framesDir, { out, fps, loop, webp, width }) {
   const dir = resolve(framesDir);
   const entries = listFrames(dir);
-  const source = probeSize(entries[0].path);
+  const source = uniformCell(entries, "gif");
   const outWidth = width ?? source.width;
   const outHeight = width ? Math.max(1, Math.round((source.height * width) / source.width)) : source.height;
   const pattern = join(dir, "%02d.png");
@@ -612,6 +664,14 @@ function stepGif(framesDir, { out, fps, loop, webp, width }) {
     `[0:v]${scaleStep}split[a][b];[a]palettegen=reserve_transparent=1:stats_mode=full[p];[b][p]paletteuse=alpha_threshold=128:dither=sierra2_4a`,
     "-loop", loop ? "0" : "-1",
   ], "gif");
+
+  // The probe above rejects a frame ffprobe cannot measure; this catches the
+  // rest — a file whose header reads but whose pixels do not decode is dropped
+  // by the encoder without a word.
+  const encoded = countEncodedFrames(gifPath);
+  if (encoded !== null && encoded !== entries.length) {
+    fail(`gif: ${gifPath} holds ${encoded} of the ${entries.length} frames in ${dir} — a frame could not be decoded`);
+  }
 
   let webpPath;
   if (webp) {
@@ -656,10 +716,14 @@ function stdDev(values) {
  * Read a finished motion and say what is wrong with it in sentences a human
  * (and the agent talking to one) can act on.
  */
-function stepInspect(motionDir, { anchor, threshold, cellsDir, write = true }) {
+function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write = true }) {
   const dir = resolve(motionDir);
   const framesDir = existsSync(join(dir, "frames")) ? join(dir, "frames") : dir;
   const entries = listFrames(framesDir);
+  // `run` leaves the pre-align cells beside the frames, so a plain
+  // `inspect <motionDir>` reproduces the clipping report `run` printed
+  // instead of quietly judging it on the padded frames.
+  const cells = cellsDir ?? (existsSync(join(dir, CELLS_DIRNAME)) ? join(dir, CELLS_DIRNAME) : null);
 
   const measured = entries.map((entry) => {
     const image = readRgba(entry.path);
@@ -691,16 +755,18 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, write = true }) {
   const scaleDrift = meanHeight > 0 ? round((Math.max(...heights) - Math.min(...heights)) / meanHeight, 4) : 0;
 
   const emptyFrames = measured.filter((f) => !f.bbox).map((f) => f.index);
-  const nearlyEmpty = measured.filter((f) => f.bbox && f.coverage < 0.02).map((f) => f.index);
+  const nearlyEmpty = measured.filter((f) => f.bbox && f.coverage < NEARLY_EMPTY_COVERAGE).map((f) => f.index);
 
   // "Leaves its grid cell" is a statement about the raw crop: judge it on the
   // pre-align cells when the caller has them, never on a padded frame.
-  const clipSource = cellsDir
-    ? listFrames(resolve(cellsDir)).map((entry) => {
+  // `cellBoxes` lets a caller that already measured those cells (see `run`,
+  // which gets all of them out of one decode of the sheet) skip the re-decode.
+  const clipSource = cellBoxes ?? (cells
+    ? listFrames(resolve(cells)).map((entry) => {
         const image = readRgba(entry.path);
         return { index: entry.index, width: image.width, height: image.height, ...computeBbox(image, threshold) };
       })
-    : measured;
+    : measured);
   const clipped = clipSource
     .filter((f) => f.bbox && (f.bbox.x === 0 || f.bbox.y === 0 || f.bbox.x + f.bbox.w === f.width || f.bbox.y + f.bbox.h === f.height))
     .map((f) => f.index);
@@ -712,10 +778,10 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, write = true }) {
   }
   warnings.push(...listAndTruncate(emptyFrames, (i) => `frame ${pad(i)} is empty`));
   warnings.push(...listAndTruncate(nearlyEmpty, (i) => `frame ${pad(i)} is nearly empty`));
-  if (jumpPair && maxJump > 0.08 * cellW) {
+  if (jumpPair && maxJump > MAX_JUMP_FRACTION * cellW) {
     warnings.push(`anchor jumps between frames ${pad(jumpPair[0])} and ${pad(jumpPair[1])}`);
   }
-  if (scaleDrift > 0.15) {
+  if (scaleDrift > MAX_SCALE_DRIFT) {
     warnings.push("character scale varies across frames — regenerate with a fixed-scale instruction");
   }
   warnings.push(...listAndTruncate(clipped, (i) => `cell ${pad(i)} is clipped — the drawing leaves its grid cell`));
@@ -733,6 +799,7 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, write = true }) {
     ...summary,
     motionDir: dir,
     framesDir,
+    ...(cells ? { cellsDir: resolve(cells) } : {}),
     anchor,
     frames: measured.map((f) => ({
       index: f.index,
@@ -772,94 +839,99 @@ function stepRun(sheetRaw, options) {
     });
     sheetAlpha = keyed.output;
     keyColor = keyed.color;
-    if (keyed.alphaCoverage > 0.9) {
+    if (keyed.alphaCoverage > KEYED_OPAQUE_ALERT) {
       warnings.push(`keying ${keyed.color} left ${(keyed.alphaCoverage * 100).toFixed(0)}% of the sheet opaque — check the background colour`);
     }
   }
 
   const source = sheetAlpha ?? sheetRawPath;
-  const scratch = mkdtempSync(join(tmpdir(), "sprite-cells-"));
-  try {
-    const sliced = stepSlice(source, {
-      rows: options.rows, cols: options.cols, out: scratch,
-      margin: options.margin, gutter: options.gutter,
-    });
+  // The cells stay next to the frames rather than in a temp dir that dies with
+  // the process: they are what `inspect` judges "leaves its grid cell" on, and
+  // what `align <motionDir>/cells --out <motionDir>/frames` re-reads when only
+  // the alignment has to be redone. `resetFramesDir` keeps them in step with
+  // the frames, so a shorter re-run cannot leave a stale tail.
+  const cellsDir = join(motionDir, CELLS_DIRNAME);
+  const sliced = stepSlice(source, {
+    rows: options.rows, cols: options.cols, out: cellsDir,
+    margin: options.margin, gutter: options.gutter,
+  });
 
-    // One decode of the source covers every cell's bbox: slicing is a pure
-    // crop, so a cell's pixels are the sheet's pixels.
-    const sheetImage = readRgba(source);
-    const bboxes = sliced.cells.map((cell) => {
-      const local = computeBbox({
-        width: sliced.cell.width,
-        height: sliced.cell.height,
-        data: cropBuffer(sheetImage, cell.x, cell.y, sliced.cell.width, sliced.cell.height),
-      }, options.threshold);
-      return local.bbox;
-    });
+  // One decode of the source covers every cell's bbox: slicing is a pure
+  // crop, so a cell's pixels are the sheet's pixels.
+  const sheetImage = readRgba(source);
+  const bboxes = sliced.cells.map((cell) => {
+    const local = computeBbox({
+      width: sliced.cell.width,
+      height: sliced.cell.height,
+      data: cropBuffer(sheetImage, cell.x, cell.y, sliced.cell.width, sliced.cell.height),
+    }, options.threshold);
+    return local.bbox;
+  });
 
-    const aligned = stepAlign(scratch, {
-      out: join(motionDir, "frames"),
-      anchor: options.anchor,
-      cell: options.cell,
-      pad: options.pad,
-      smooth: options.smooth,
-      threshold: options.threshold,
-      bboxes,
-    });
-    warnings.push(...aligned.warnings);
+  const aligned = stepAlign(cellsDir, {
+    out: join(motionDir, "frames"),
+    anchor: options.anchor,
+    cell: options.cell,
+    pad: options.pad,
+    smooth: options.smooth,
+    threshold: options.threshold,
+    bboxes,
+  });
+  warnings.push(...aligned.warnings);
 
-    const packed = stepPack(join(motionDir, "frames"), {
-      out: join(motionDir, "sheet.png"),
-      atlas: join(motionDir, "atlas.json"),
-      name: options.name,
-      fps: options.fps,
-      loop: options.loop,
-      anchor: options.anchor,
-      cols: options.cols,
-      scale: options.scale,
-      nearest: options.nearest,
-    });
+  const packed = stepPack(join(motionDir, "frames"), {
+    out: join(motionDir, "sheet.png"),
+    atlas: join(motionDir, "atlas.json"),
+    name: options.name,
+    fps: options.fps,
+    loop: options.loop,
+    anchor: options.anchor,
+    cols: options.cols,
+    scale: options.scale,
+    nearest: options.nearest,
+  });
 
-    const preview = stepGif(join(motionDir, "frames"), {
-      out: join(motionDir, "preview.gif"),
-      fps: options.fps,
-      loop: options.loop,
-      webp: options.webp ? join(motionDir, "preview.webp") : null,
-      width: options.width,
-    });
-    warnings.push(...preview.warnings);
+  const preview = stepGif(join(motionDir, "frames"), {
+    out: join(motionDir, "preview.gif"),
+    fps: options.fps,
+    loop: options.loop,
+    webp: options.webp ? join(motionDir, "preview.webp") : null,
+    width: options.width,
+  });
+  warnings.push(...preview.warnings);
 
-    const { summary } = stepInspect(motionDir, {
-      anchor: options.anchor,
-      threshold: options.threshold,
-      cellsDir: scratch,
-    });
-    warnings.push(...summary.warnings.filter((w) => !warnings.includes(w)));
+  const { summary } = stepInspect(motionDir, {
+    anchor: options.anchor,
+    threshold: options.threshold,
+    cellsDir,
+    cellBoxes: bboxes.map((bbox, index) => ({
+      index, width: sliced.cell.width, height: sliced.cell.height, bbox,
+    })),
+  });
+  warnings.push(...summary.warnings.filter((w) => !warnings.includes(w)));
 
-    return {
-      motionDir,
-      name: options.name,
-      grid: { rows: options.rows, cols: options.cols },
-      sheetRaw: sheetRawPath,
-      ...(sheetAlpha ? { sheetAlpha } : {}),
-      keyed: Boolean(sheetAlpha),
-      ...(keyColor ? { keyColor } : {}),
-      frames: aligned.frames.map((f) => f.path),
-      sheet: packed.sheet,
-      atlas: packed.atlas,
-      gif: preview.gif,
-      ...(preview.webp ? { webp: preview.webp } : {}),
-      inspect: summary,
-      cell: aligned.cell,
-      fps: options.fps,
-      loop: options.loop,
-      anchor: options.anchor,
-      scale: options.scale,
-      warnings,
-    };
-  } finally {
-    rmSync(scratch, { recursive: true, force: true });
-  }
+  return {
+    motionDir,
+    name: options.name,
+    grid: { rows: options.rows, cols: options.cols },
+    sheetRaw: sheetRawPath,
+    ...(sheetAlpha ? { sheetAlpha } : {}),
+    keyed: Boolean(sheetAlpha),
+    ...(keyColor ? { keyColor } : {}),
+    cells: cellsDir,
+    frames: aligned.frames.map((f) => f.path),
+    sheet: packed.sheet,
+    atlas: packed.atlas,
+    gif: preview.gif,
+    ...(preview.webp ? { webp: preview.webp } : {}),
+    inspect: summary,
+    cell: aligned.cell,
+    fps: options.fps,
+    loop: options.loop,
+    anchor: options.anchor,
+    scale: options.scale,
+    warnings,
+  };
 }
 
 /** Copy a w*h RGBA window out of a decoded image without re-decoding it. */
@@ -1118,4 +1190,16 @@ function main() {
   }
 }
 
-main();
+try {
+  main();
+} catch (error) {
+  if (error instanceof SpriteSheetError) {
+    console.error(`ERROR: ${error.message}`);
+  } else {
+    // A crash is still a one-line ERROR: first, so the agent reads the same
+    // shape either way; the stack follows for whoever has to fix it.
+    console.error(`ERROR: unexpected failure: ${error?.message ?? error}`);
+    if (error?.stack) console.error(error.stack);
+  }
+  process.exit(1);
+}
