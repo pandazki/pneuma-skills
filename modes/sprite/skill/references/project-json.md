@@ -126,6 +126,9 @@ interface Motion {
                   prompt: string;
                   status: "generating" | "ready" | "failed" }>;
   inspect?: InspectSummary;       // copied from inspect.json by register-run
+  source?: "sheet" | "video";     // how the frames were obtained; absent means
+                                  // "sheet" (set by add-motion --source and by
+                                  // register-run for a from-video run)
 }
 
 interface InspectSummary {
@@ -146,6 +149,10 @@ interface InspectSummary {
   scaleDrift: number;                       // (max h − min h) / mean
   emptyFrames: number[];
   warnings: string[];                       // human sentences
+  acknowledged?: { reason: string; at: number }; // written by
+                                            // `set-motion --ack-warnings`; the
+                                            // viewer dims the badge and shows
+                                            // the reason, numbers stay visible
 }
 ```
 

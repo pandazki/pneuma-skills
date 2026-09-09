@@ -121,13 +121,13 @@ export function maxJumpVerdict(inspect: InspectSummary): MetricVerdict {
 
 /**
  * `bodyDrift` — the feet-centre std-dev `align --x-from feet` was built to
- * kill — is measured by `inspect` and written into `project.json`, but is not
- * yet part of `InspectSummary` (the sidecar contract belongs to the pipeline
- * task). Read defensively so the row appears the moment the contract carries
- * it, and stays absent — rather than showing a fabricated 0 — until then.
+ * kill — is measured by `inspect`, carried into the sidecar by `register-run`
+ * and declared on `InspectSummary` (optional: motions registered before the
+ * metric existed have none). The row stays absent, rather than showing a
+ * fabricated 0, when the sidecar carries no number.
  */
 export function bodyDriftOf(inspect: InspectSummary): number | null {
-  const value = (inspect as Partial<Record<"bodyDrift", unknown>>).bodyDrift;
+  const value = inspect.bodyDrift;
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
