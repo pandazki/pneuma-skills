@@ -222,8 +222,13 @@ describe("the skill install surface", () => {
         }),
       ),
     );
-    // The installer also substitutes {{SKILL_PATH}} and {{viewerCapabilities}}.
-    known.add("SKILL_PATH").add("viewerCapabilities");
+    // `{{viewerCapabilities}}` is the one framework-supplied key beyond the
+    // init params. `SKILL_PATH` is deliberately NOT in this set: the repo's
+    // convention is the single-brace literal `{SKILL_PATH}`, which the
+    // installer never substitutes — the agent resolves it against its own
+    // installed skill directory. A `{{SKILL_PATH}}` written by mistake would
+    // reach the agent verbatim, so this test has to keep failing on it.
+    known.add("viewerCapabilities");
 
     const dir = join(REPO_ROOT, "modes/sprite/skill");
     const markdown = readdirSync(dir, { recursive: true, encoding: "utf-8" })
