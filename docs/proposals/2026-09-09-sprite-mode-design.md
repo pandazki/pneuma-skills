@@ -986,7 +986,7 @@ TASK-2 + TASK-4 — record what you learn.
    `preview.gif`/`preview.webp` as produced; confirm the seed is ≤ 8 MB
    (`du -sh`). Remove `inspect.json`? No — keep it (small, and the viewer shows
    warnings).
-5. Manifest: `init.seedFiles: { "lumi/": "seed/lumi/" }`, `init.seeds: [{ id: "lumi", sourceKey: "lumi/", displayName: {…}, description: {…}, thumbnail: "lumi.png", tags: ["chibi", "sprite-sheet"] }]`,
+5. Manifest: `init.seedFiles: { "modes/sprite/seed/lumi/": "lumi/" }` (key = source relative to the repo root for a builtin, value = workspace destination — `copySeedEntry`'s contract), `init.seeds: [{ id: "lumi", sourceKey: "modes/sprite/seed/lumi/", displayName: {…}, description: {…}, thumbnail: "lumi.png", tags: ["chibi", "sprite-sheet"] }]`,
    and `modes/sprite/seed-gallery/lumi.png` (a 640×360 pngquant-ed crop of the
    attack sheet or a frame — read how other modes produce gallery thumbnails).
 6. Append the measured numbers (generation time per sheet, Seedance clip time
