@@ -195,8 +195,11 @@ node {SKILL_PATH}/scripts/seedance-video.mjs \
 the number that matters to a waiting user. Register the video with
 `add-video --status generating` *before* the call — that chip on the stage is
 the only thing standing between the user and seven minutes of silence — and
-say out loud that it takes several minutes. Call the script once: it already
-retries transient failures itself.
+say out loud that it takes several minutes, *before* you start. Call the script
+once and then leave it alone: it is already polling the queue for you, so
+there is nothing to check on, and a second submission because the first went
+quiet is a second render and a second bill. It retries transient failures
+itself.
 
 **Flatten first, always.** Both keyframes went through
 `sprite-sheet.mjs flatten --bg "#f0ece4"`; a light neutral suits this
