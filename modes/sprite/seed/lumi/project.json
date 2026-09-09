@@ -1422,6 +1422,10 @@
             "width": 162,
             "height": 252
           },
+          "anchorPoint": {
+            "x": 81,
+            "y": 244
+          },
           "anchorDrift": {
             "x": 0.248,
             "y": 0
@@ -1483,6 +1487,10 @@
           "cell": {
             "width": 216,
             "height": 262
+          },
+          "anchorPoint": {
+            "x": 108,
+            "y": 254
           },
           "anchorDrift": {
             "x": 0.242,
