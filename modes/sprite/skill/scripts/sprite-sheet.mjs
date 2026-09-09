@@ -390,9 +390,14 @@ function anchorOf(bbox, anchor) {
   };
 }
 
+/**
+ * 3-frame median with the edges clamped (the first and last value repeat).
+ * Shrinking the window at the ends instead would make it a 2-value median —
+ * i.e. an average — which reintroduces exactly the jitter being filtered out.
+ */
 function median3(values, i) {
-  const window = [values[i - 1], values[i], values[i + 1]].filter((v) => v !== undefined);
-  return median(window);
+  const at = (k) => values[Math.min(Math.max(k, 0), values.length - 1)];
+  return median([at(i - 1), at(i), at(i + 1)]);
 }
 
 /**
@@ -426,12 +431,12 @@ function stepAlign(framesDir, { out, anchor, cell, pad, smooth, threshold, bboxe
 
   // Smoothing works on the *source* anchor, so a one-frame bbox wobble stops
   // shoving the body; the frame keeps its own offset from the smoothed anchor.
-  const anchorsX = bboxes.map((b, i) => (b ? anchorOf(b, anchor).x : null));
-  const anchorsY = bboxes.map((b, i) => (b ? anchorOf(b, anchor).y : null));
+  const anchorsX = bboxes.map((b) => (b ? anchorOf(b, anchor).x : null));
+  const anchorsY = bboxes.map((b) => (b ? anchorOf(b, anchor).y : null));
   let targetsX = anchorsX;
   let targetsY = anchorsY;
   if (smooth) {
-    const xs = anchorsX.map((v, i) => v ?? 0);
+    const xs = anchorsX.map((v) => v ?? 0);
     targetsX = anchorsX.map((v, i) => (v === null ? null : median3(xs, i)));
     if (anchor === "center") {
       const ys = anchorsY.map((v) => v ?? 0);
@@ -542,7 +547,7 @@ function stepPack(framesDir, { out, atlas, name, fps, loop, anchor, cols, scale,
   const pivot = anchor === "center" ? { x: 0.5, y: 0.5 } : { x: 0.5, y: 1 };
   const frames = {};
   const order = [];
-  for (const [i, _entry] of entries.entries()) {
+  for (let i = 0; i < entries.length; i++) {
     const key = `${name}_${String(i).padStart(2, "0")}`;
     order.push(key);
     frames[key] = {
@@ -770,8 +775,6 @@ function stepRun(sheetRaw, options) {
     if (keyed.alphaCoverage > 0.9) {
       warnings.push(`keying ${keyed.color} left ${(keyed.alphaCoverage * 100).toFixed(0)}% of the sheet opaque — check the background colour`);
     }
-  } else if (options.key !== "none" && !opaque) {
-    // nothing to do: the sheet arrived transparent
   }
 
   const source = sheetAlpha ?? sheetRawPath;

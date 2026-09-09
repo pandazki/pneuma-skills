@@ -1,0 +1,31 @@
+{
+  "motionDir": "motions/bounce",
+  "name": "bounce",
+  "grid": { "rows": 2, "cols": 2 },
+  "sheetRaw": "motions/bounce/sheet-raw.png",
+  "keyed": false,
+  "frames": [
+    "motions/bounce/frames/00.png",
+    "motions/bounce/frames/01.png",
+    "motions/bounce/frames/02.png",
+    "motions/bounce/frames/03.png"
+  ],
+  "sheet": "motions/bounce/sheet.png",
+  "atlas": "motions/bounce/atlas.json",
+  "gif": "motions/bounce/preview.gif",
+  "inspect": {
+    "frameCount": 4,
+    "cell": { "width": 64, "height": 64 },
+    "anchorDrift": { "x": 0.5, "y": 0 },
+    "maxJump": 1,
+    "scaleDrift": 0.02,
+    "emptyFrames": [],
+    "warnings": []
+  },
+  "cell": { "width": 64, "height": 64 },
+  "fps": 8,
+  "loop": true,
+  "anchor": "bottom",
+  "scale": 1,
+  "warnings": []
+}

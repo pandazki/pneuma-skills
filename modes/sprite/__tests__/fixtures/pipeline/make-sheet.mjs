@@ -50,11 +50,22 @@ export function buildSheet(outPath, {
   cols = 2,
   background = "black@0",
   cells = null,
+  extras = [],
+  squares = CELL_OFFSETS,
 } = {}) {
   const total = rows * cols;
   const filled = cells ?? Array.from({ length: total }, (_, i) => i);
-  const boxes = drawboxes({ cell, cols, filled });
-  const chain = [`color=c=${background}:s=${cols * cell}x${rows * cell}`, "format=rgba", boxes]
+  const boxes = drawboxes({ cell, cols, filled, squares });
+  // Extra boxes in cell-local coordinates — a stray limb that widens one
+  // frame's bbox without moving the body, which is what --smooth is for.
+  const extraBoxes = extras
+    .map(({ index, x, y, w, h, color = "white" }) => {
+      const px = (index % cols) * cell + x;
+      const py = Math.floor(index / cols) * cell + y;
+      return `drawbox=x=${px}:y=${py}:w=${w}:h=${h}:color=${color}@1:t=fill:replace=1`;
+    })
+    .join(",");
+  const chain = [`color=c=${background}:s=${cols * cell}x${rows * cell}`, "format=rgba", boxes, extraBoxes]
     .filter(Boolean)
     .join(",");
   mkdirSync(dirname(outPath), { recursive: true });

@@ -14,8 +14,6 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore -- plain ESM fixture helper, no types
 import { buildSheet, readBbox } from "./fixtures/pipeline/make-sheet.mjs";
 
 const SCRIPT = join(import.meta.dir, "..", "skill", "scripts", "sprite-sheet.mjs");
@@ -194,6 +192,29 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(out.emptyFrames).toEqual([2]);
       expect(readBbox(join(ws, "frames", "02.png")).bbox).toBeNull();
       expect(out.warnings.join(" ")).toContain("frame 02 is empty");
+    });
+
+    test("--smooth keeps the body still when one frame's bbox grows a stray limb", () => {
+      const ws = fresh();
+      // Three identical bodies; frame 01 also has a small limb sticking out to
+      // the right, which widens its bbox and drags its centre with it.
+      const sheet = buildSheet(join(ws, "limb.png"), {
+        rows: 1, cols: 3,
+        squares: [{ x: 17, y: 17, color: "red" }],
+        extras: [{ index: 1, x: 53, y: 20, w: 6, h: 6 }],
+      });
+      runJson("slice", sheet, "--rows", "1", "--cols", "3", "--out", join(ws, "cells"));
+
+      runJson("align", join(ws, "cells"), "--out", join(ws, "plain"), "--pad", "8");
+      const plain = ["00", "01", "02"].map((n) => readBbox(join(ws, "plain", `${n}.png`)).bbox!.x);
+      // bbox-centred alignment shoves the body sideways on the odd frame
+      expect(plain[0]).toBe(14);
+      expect(plain[1]).toBe(8);
+      expect(plain[2]).toBe(14);
+
+      runJson("align", join(ws, "cells"), "--out", join(ws, "smoothed"), "--pad", "8", "--smooth");
+      const smoothed = ["00", "01", "02"].map((n) => readBbox(join(ws, "smoothed", `${n}.png`)).bbox!.x);
+      expect(smoothed).toEqual([14, 14, 14]);
     });
 
     test("an explicit cell smaller than the artwork fails with the required size", () => {
