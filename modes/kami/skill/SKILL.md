@@ -491,11 +491,10 @@ when a page is borderline, not before.
 ## Image generation (only when the user has configured a key)
 
 A script lives at `{SKILL_PATH}/scripts/generate_image.mjs`. Default model
-is `gpt-image-2` (fal.ai) — the right choice for kami because it renders
+is `gpt-image-2.5-sunburst` (OpenRouter) — the right choice for kami because it renders
 **legible typography inside images**: figure captions, diagram labels,
-mock book spines, imagined postage stamps, rendered monograms. Opt in to
-`--model gemini-3-pro` only for painterly / watercolor / woodcut-style
-decorative artwork.
+mock book spines, imagined postage stamps, rendered monograms. Reference-image edits automatically use `gpt-image-2.5-flare`. Both models require
+`OPENROUTER_API_KEY`.
 
 Images here live on a **printed paper page**. That constraint is absolute
 and distinguishes kami from every other Pneuma mode. The images can't
@@ -593,7 +592,7 @@ Flag guidance in paper terms:
 | `--output-format` | `png` for illustrations / diagrams / monochrome portraits (preserves clean edges and text); `jpeg` only for full-color photography. |
 | `--output-dir` | Always the active content set's `assets/` directory. Don't dump into `_shared/assets/` — that's the upstream-sourced font & diagram folder. |
 | `--filename-prefix` | Role + index: `portrait-founder`, `figure-02-buffer`, `stamp-motif`. |
-| `--model gemini-3-pro` | Reach for this when the style is explicitly painterly / watercolor / woodcut — Gemini's aesthetic range is broader at that end. Everything else stays on `gpt-image-2`. |
+| `--image-urls <source>` | Reference-image edits automatically use `gpt-image-2.5-flare`; text-only generation uses Sunburst. |
 
 ### After generating
 

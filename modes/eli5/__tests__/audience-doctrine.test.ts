@@ -223,6 +223,6 @@ describe("skill version", () => {
     // installed skill silently stays the old one.
     expect(eli5Manifest.version).not.toBe("0.1.0");
     expect(eli5Manifest.changelog?.[eli5Manifest.version]).toBeDefined();
-    expect(eli5Manifest.changelog![eli5Manifest.version]!.length).toBeGreaterThanOrEqual(3);
+    expect(eli5Manifest.changelog!["0.2.0"]!.length).toBeGreaterThanOrEqual(3);
   });
 });

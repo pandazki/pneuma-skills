@@ -86,6 +86,8 @@
 
 > 每个 mode 独立版本号 —— 在 launcher 和 mode 市场处呈现，不在 README 里重复以避免与代码漂移。
 
+各 mode 的图像工具统一通过 OpenRouter 使用 GPT Image 2.5：Sunburst 生图，Flare 改图及基于参考图生成。配置 OpenRouter API key 即可启用；视频或语音工具可能还需要 fal.ai key。
+
 ## 第一次进项目时，Pneuma 会带着你走一遍
 
 新建项目，Pneuma 会主动迎接你。一个隐藏的 `project-onboard` mode 会在你第一次进入空项目时自动启动 —— 它读你的 README、包清单、视觉资产，然后给你一份"发现报告"：项目是什么、里面有什么、下一步可以做的两件具体事情，每一件都能一键开始。
@@ -96,7 +98,7 @@
 
 agent 干活的 30–60 秒里，loading 槽位会变成一段 10 帧的 carousel，把 Pneuma 的核心讲给你听 —— agent 在真实文件里做事、十二个 mode 同壳、多个会话共享同一个项目大脑。等报告渲染完，你脑子里已经有了地图。
 
-如果你的项目几乎是空的（只有一个 `test.txt` 或一个 stub README），agent 会顺手画一张**见面礼**插画 —— 暮色里的天灯、笔记本上正被画出的星座 —— 再写一句符合你语气的问候。如果项目有内容但没有 logo，它会主动生成一张极简单 monogram 封面，免得 launcher 的项目卡老是显示点状字母占位符。这两件事都需要图像生成 API key 才会触发，没有的话报告照样出，只是少了那点小礼物。
+如果你的项目几乎是空的（只有一个 `test.txt` 或一个 stub README），agent 会顺手画一张**见面礼**插画 —— 暮色里的天灯、笔记本上正被画出的星座 —— 再写一句符合你语气的问候。如果项目有内容但没有 logo，它会主动生成一张极简单 monogram 封面，免得 launcher 的项目卡老是显示点状字母占位符。这两件事都需要 OpenRouter API key 才会触发，没有的话报告照样出，只是少了那点小礼物。
 
 想自己来？Create Project 对话框右侧有个 chevron，里面藏着 **"Create without discovery"** —— 你可以晚些再用 ProjectPanel 上的 **Re-discover** 触发同样的发现流程。
 

@@ -29,3 +29,17 @@ export function assemblePrompt(opts: {
   includeAnnotations?: boolean;
 }): string;
 export function buildStdoutJson(opts: Record<string, any>): any;
+
+export function generateComposite(
+  options: {
+    apiKey?: string;
+    model?: string;
+    finalPrompt: string;
+    aspect: string;
+    refs: string[];
+    quality: string;
+    outputFormat: string;
+    outputDir: string;
+  },
+  dependencies?: import("./generate_image.mjs").ImageDependencies,
+): Promise<{ compositePath: string; compositeUrl: null; endpoint: string; model: string }>;

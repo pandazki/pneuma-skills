@@ -17,7 +17,7 @@ import { load, save } from "./domain.js";
 
 const plotwiseManifest: ModeManifest = {
   name: "plotwise",
-  version: "0.6.0",
+  version: "0.7.0",
   displayName: {
     en: "Plotwise",
     "zh-CN": "Plotwise",
@@ -218,7 +218,7 @@ The user just opened the learning studio. Greet them briefly (1-2 sentences) and
         name: "openrouterApiKey",
         label: "OpenRouter API Key",
         description:
-          "Required — GPT 5.6 Luna via OpenRouter writes the screenplay, every detour and question scene, and judges the narration; the course cannot be written without it",
+          "Required — GPT 5.6 Luna via OpenRouter writes the screenplay, every detour and question scene, and judges the narration; GPT Image 2.5 generates style anchors and character references",
         type: "string",
         defaultValue: "",
         sensitive: true,
@@ -237,6 +237,7 @@ scene length toward these preferences, while always respecting explicit instruct
   },
 
   changelog: {
+    "0.7.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
     "0.6.0": [
       "A scene is a montage, not a chain of shots: one outline beat becomes 1-3 clips of up to 15 s, and inside a clip the model cuts by itself across a time-coded shot list of 4-8 cuts, each a composed picture with its own camera move, with the narration distributed across the timeline. Every prompt used to open with \"One continuous shot, no cuts\" — that clause is most of why the courses looked like talking illustrations",
       "The writer is a director: it decides the visual device that carries a beat before it writes a frame, and the plan hands it one (every outline beat now carries a style-agnostic `device`, and the course a visual bible of motifs and things it never draws). Measured 2026-09-04: the same model on the same topic in the same style returns montages of a different league once it is handed a device instead of a concept",

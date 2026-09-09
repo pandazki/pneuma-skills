@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Generate the 4 kami showcase images from prompts.md.
 #
-# Requires FAL_KEY or OPENROUTER_API_KEY in env. Run from repo root:
+# Requires OPENROUTER_API_KEY in env. Run from repo root:
 #
 #     bash modes/kami/showcase/generate.sh
 #
@@ -11,8 +11,8 @@
 
 set -euo pipefail
 
-if [[ -z "${FAL_KEY:-}" && -z "${OPENROUTER_API_KEY:-}" ]]; then
-  echo "ERROR: set FAL_KEY or OPENROUTER_API_KEY in your environment first." >&2
+if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
+  echo "ERROR: set OPENROUTER_API_KEY in your environment first." >&2
   exit 1
 fi
 
@@ -32,7 +32,7 @@ gen() {
   echo ">>> Generating $prefix.png..."
   bun "$SCRIPT" "$prompt" \
     --aspect-ratio 16:9 \
-    --resolution 2K \
+    --quality high \
     --output-format png \
     --output-dir "$OUT" \
     --filename-prefix "$prefix"

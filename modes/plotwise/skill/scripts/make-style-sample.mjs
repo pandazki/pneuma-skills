@@ -5,7 +5,7 @@
  *
  * Turns a style candidate (a catalog preset, or a custom recipe the
  * session wrote from the learner's description) into the SAMPLE the
- * learner confirms on the board: a STYLE KEY FRAME (GPT-Image-2, the
+ * learner confirms on the board: a STYLE KEY FRAME (GPT Image 2.5, the
  * recipe composed around the hook's device) and the hook's first MONTAGE
  * CLIP shot from it. course.json `style` moves pending → sampling (anchor
  * written) → sampled (clip written); the board renders each step as it

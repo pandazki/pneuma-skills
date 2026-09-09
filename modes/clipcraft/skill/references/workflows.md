@@ -270,7 +270,7 @@ happens to share a provenance edge", which is not what the user asked for:
   for a different size or length.
 - **Prefer edit mode for small deltas (images).** For "change the red
   card to green", "swap copy to 额度见底", "add grain" — pass
-  `--image-urls <source.uri>` so GPT-Image-2 routes through edit mode
+  `--image-urls <source.uri>` so GPT Image 2.5 routes through edit mode
   and the variant inherits composition, palette, and identity. For
   structural changes ("different character entirely", "new camera
   angle"), a pure text-to-image with the fused prompt is fine.
@@ -603,8 +603,8 @@ Each notification message looks like:
     "operation_type": "generate",
     "from_asset_id": null,
     "agent_id": "clipcraft-imagegen",
-    "label": "openai/gpt-image-2",
-    "model": "openai/gpt-image-2"
+    "label": "openai/gpt-image-2.5-sunburst",
+    "model": "openai/gpt-image-2.5-sunburst"
   }
 }
 ```

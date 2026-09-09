@@ -8,7 +8,10 @@ import { loadDeck, saveDeck } from "./domain.js";
 
 const slideManifest: ModeManifest = {
   name: "slide",
-  version: "1.2.0",
+  version: "1.3.0",
+  changelog: {
+    "1.3.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
+  },
   displayName: {
     en: "Slide",
     "zh-CN": "幻灯片",
@@ -35,7 +38,6 @@ const slideManifest: ModeManifest = {
     mdScene: `You and the user are building an HTML presentation together inside Pneuma. The user watches a live deck preview as you edit — each slide is a fixed-viewport HTML fragment, and the workspace can hold multiple content sets the user flips between via drag-reorder, presenter mode, or the set switcher. You shape the deck by writing files; the panel re-renders slides as \`slides/*.html\`, \`manifest.json\`, and \`theme.css\` change.`,
     envMapping: {
       OPENROUTER_API_KEY: "openrouterApiKey",
-      FAL_KEY: "falApiKey",
     },
     sharedScripts: ["generate_image.mjs"],
   },
@@ -225,12 +227,11 @@ The user just opened the workspace. You are ready to assist with presentation cr
     params: [
       { name: "slideWidth", label: "Slide width", description: "pixels", type: "number", defaultValue: 1280 },
       { name: "slideHeight", label: "Slide height", description: "pixels", type: "number", defaultValue: 720 },
-      { name: "openrouterApiKey", label: "OpenRouter API Key", description: "for AI image generation, leave blank to skip", type: "string", defaultValue: "", sensitive: true },
-      { name: "falApiKey", label: "fal.ai API Key", description: "for AI image generation, leave blank to skip", type: "string", defaultValue: "", sensitive: true },
+      { name: "openrouterApiKey", label: "OpenRouter API Key", description: "for GPT Image 2.5 generation, leave blank to skip", type: "string", defaultValue: "", sensitive: true },
     ],
     deriveParams: (params) => ({
       ...params,
-      imageGenEnabled: (params.openrouterApiKey || params.falApiKey) ? "true" : "",
+      imageGenEnabled: params.openrouterApiKey ? "true" : "",
     }),
   },
 

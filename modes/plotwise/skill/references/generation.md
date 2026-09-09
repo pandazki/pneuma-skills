@@ -92,7 +92,7 @@ node scripts/make-style-sample.mjs --set <dir> --style-id <id> \
 Two products, and everything downstream inherits them:
 
 - **`style/anchor.png`** — a style KEY FRAME, not an empty set:
-  GPT-Image-2 composes the recipe around the topic's own device, caught
+  GPT Image 2.5 composes the recipe around the topic's own device, caught
   at its most legible moment, filling the frame, no text, 16:9. This
   still becomes Image 1 of every clip in the course, so an anchor of "the
   set, ready but not yet in use" hands its emptiness to every montage.
@@ -282,7 +282,7 @@ evidence, then 再拍一次.
 Post-promo pricing (2026-09-01): t2v/i2v 480P $0.05/s, 768P $0.08/s; r2v
 $0.08/s flat + reference tokens (first ~4096 free — about four 1024²
 images; beyond that ~$0.02 per 1k tokens). Wizper transcription is ~cents;
-the anchor is one GPT-Image-2 call per course, plus two more for the
+the anchor is one GPT Image 2.5 call per course, plus two more for the
 character sheet when the course has a person to keep.
 
 - Arithmetic on those prices, not a measurement: every clip is

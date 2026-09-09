@@ -102,8 +102,8 @@ node {SKILL_PATH}/scripts/generate_image.mjs \
 
 The prompt is the first thing on the line and takes no flag of its own.
 The command prints a small JSON object; `files[0]` is the path it saved.
-It needs `FAL_KEY` in the session `.env` (the fal.ai key init parameter),
-the same key the voice uses.
+It needs `OPENROUTER_API_KEY` in the session `.env` (the OpenRouter key init parameter),
+Narration continues to use its separate fal.ai key.
 
 **Never pass `--style`.** `--style sketch` rewrites your prompt behind
 you, appending "…no shading, white background" — and a white background
@@ -222,7 +222,7 @@ one when you revise `plan.md` — at the design, again, never mid-lecture.
 
 ## No key, no invention
 
-Without `FAL_KEY` there are no tier-2 pictures, and that is an honest
+Without `OPENROUTER_API_KEY` there are no tier-2 pictures, and that is an honest
 outcome with a written answer:
 
 1. **Say it in `plan.md`**, in the line where the tier was decided.

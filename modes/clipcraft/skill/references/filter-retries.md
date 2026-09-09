@@ -54,7 +54,7 @@ was never evaluated. Prompt rewording does NOT defeat this filter.
    the model reads them from the source image, at the cost of
    less-controlled annotations. For richer annotations or a more
    custom sheet layout, prefer `generate_image.mjs --image-urls` with
-   a hand-written prompt (GPT-Image-2 composes the 4-panel layout +
+   a hand-written prompt (GPT Image 2.5 composes the 4-panel layout +
    typewriter text reliably).
 
 3. Replace the original `--image-url` with the generated sheet.

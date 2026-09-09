@@ -219,7 +219,8 @@ describe("buildStdoutJson", () => {
     const out = buildStdoutJson({
       compositePath: "/tmp/sb/composite.png",
       compositeUrl: "https://example.com/composite.png",
-      endpoint: "openai/gpt-image-2",
+      endpoint: "https://openrouter.ai/api/v1/images",
+      model: "openai/gpt-image-2.5-flare",
       grid: { rows: 2, cols: 2 },
       imageSize: { preset: "square_hd", width: 1024, height: 1024 },
       finalPrompt: "test prompt",
@@ -241,6 +242,9 @@ describe("buildStdoutJson", () => {
     expect(out.panels[0].assetId).toContain("panel-01");
     expect(out.suggestedAssets).toHaveLength(5); // 1 composite + 4 panels
     expect(out.suggestedProvenance).toHaveLength(5);
+
+    expect(out.suggestedProvenance[0].operation.params.model).toBe("openai/gpt-image-2.5-flare");
+    expect(out.suggestedProvenance[0].operation.params.provider).toBe("openrouter");
 
     // Composite has fromAssetId: null
     expect(out.suggestedProvenance[0].fromAssetId).toBeNull();

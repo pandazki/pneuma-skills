@@ -13,7 +13,10 @@ import {
 
 const clipcraftManifest: ModeManifest = {
   name: "clipcraft",
-  version: "0.9.0",
+  version: "0.10.0",
+  changelog: {
+    "0.10.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
+  },
   displayName: {
     en: "ClipCraft",
     "zh-CN": "ClipCraft",
@@ -173,7 +176,7 @@ The user just opened the workspace. You are ready to assist with AI-orchestrated
       {
         name: "openrouterApiKey",
         label: "OpenRouter API Key",
-        description: "for BGM generation via google/lyria-3-pro-preview",
+        description: "for GPT Image 2.5 images, edits, storyboards, and BGM generation",
         type: "string",
         defaultValue: "",
         sensitive: true,
@@ -181,7 +184,7 @@ The user just opened the workspace. You are ready to assist with AI-orchestrated
       {
         name: "falApiKey",
         label: "fal.ai API Key",
-        description: "for image (GPT-Image-2), video (seedance 2.0), and TTS",
+        description: "for video (seedance 2.0) and TTS",
         type: "string",
         defaultValue: "",
         sensitive: true,

@@ -1,3 +1,4 @@
+import { buildImageRequest } from "../../_shared/scripts/generate_image.mjs";
 /**
  * T7 — SKILL.md acceptance gate.
  *
@@ -593,12 +594,7 @@ describe("T7 — the skill teaches explaining, not rendering", () => {
       const [, w, h] = ordered!;
       expect(entry.aspect).toBeCloseTo(Number(w) / Number(h), 3);
       // …and the ordered ratio is one the generator accepts.
-      const accepted = generatorScript
-        .slice(generatorScript.indexOf("const ASPECT_RATIOS"))
-        .slice(0, 300);
-      expect(accepted, `--aspect-ratio ${w}:${h} is not one the script takes`).toContain(
-        `"${w}:${h}"`,
-      );
+      expect(() => buildImageRequest({ prompt: "A board illustration", aspectRatio: `${w}:${h}` })).not.toThrow();
     }
   });
 
@@ -809,12 +805,11 @@ describe("T7 — the skill teaches explaining, not rendering", () => {
     expect(grammar).toMatch(/never picks a board to retire/i);
   });
 
-  test("the manifest ships the generator beside the voice, and the key is declared once", () => {
+  test("the manifest ships the generator beside the voice with their provider keys", () => {
     const shared = banshoManifest.skill.sharedScripts ?? [];
     expect([...shared].sort()).toEqual(["generate-tts.mjs", "generate_image.mjs"]);
-    // One key, one mapping — the fal key already reaches the session `.env`
-    // for the voice, and a second entry would be a second source of truth.
-    expect(banshoManifest.skill.envMapping).toEqual({ FAL_KEY: "falApiKey" });
+    // Speech remains on fal.ai; image generation and editing use OpenRouter.
+    expect(banshoManifest.skill.envMapping).toEqual({ FAL_KEY: "falApiKey", OPENROUTER_API_KEY: "openrouterApiKey" });
     // The sidecar's write is the board's signal that the pictures changed,
     // exactly as `narration/manifest.json` is for the voice. A file nobody
     // watches makes the documented "save it last" instruction a lie.

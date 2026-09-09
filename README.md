@@ -86,6 +86,8 @@ When humans and code agents co-create content, they need more than a chat window
 
 > Each mode versions independently. Per-mode versions surface in the launcher and on the mode marketplace — they're not duplicated here to avoid drift.
 
+Image tools across modes use GPT Image 2.5 through OpenRouter: Sunburst for new images, Flare for edits and reference-based generation. Configure an OpenRouter API key to enable them; modes with video or speech tools may also need a fal.ai key.
+
 ## First Run — Pneuma Walks You Through It
 
 Create a project and Pneuma greets you on the way in. A hidden `project-onboard` mode auto-runs the first time you open a fresh project: it reads your README, package manifest, and visual assets, then drafts a Discovery Report — what your project is, what's already there, and two concrete next moves you can pick with one click.
@@ -96,7 +98,7 @@ Create a project and Pneuma greets you on the way in. A hidden `project-onboard`
 
 While the onboarding agent works (~30–60s), the loading slot becomes a 10-frame carousel introducing what Pneuma actually is — agents working in real files, twelve modes sharing one shell, sessions that share a project's brain. By the time the report lands, you already have the map.
 
-For projects that are nearly empty (just a `test.txt` or a stub README), the agent draws a small **welcome egg** — a paper lantern in the dusk, a notebook with constellations being sketched — and writes a short greeting that matches your tone. Projects with content but no logo get an auto-generated cover so the launcher tile stops showing the dotted-letter placeholder. Both gestures only fire when an image-gen API key is configured; otherwise the report still renders, just without the gift.
+For projects that are nearly empty (just a `test.txt` or a stub README), the agent draws a small **welcome egg** — a paper lantern in the dusk, a notebook with constellations being sketched — and writes a short greeting that matches your tone. Projects with content but no logo get an auto-generated cover so the launcher tile stops showing the dotted-letter placeholder. Both gestures only fire when an OpenRouter API key is configured; otherwise the report still renders, just without the gift.
 
 Prefer to set things up by hand? The Create Project dialog's chevron menu offers **Create without discovery** — you can still trigger discovery later via ProjectPanel's **Re-discover** affordance.
 

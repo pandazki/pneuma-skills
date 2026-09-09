@@ -8,7 +8,7 @@ import { loadExplainer, saveExplainer } from "./domain.js";
 
 const eli5Manifest: ModeManifest = {
   name: "eli5",
-  version: "0.2.0",
+  version: "0.3.0",
   // A brand-name acronym — it reads the same in every locale, so only the
   // description below is localized.
   displayName: {
@@ -38,6 +38,7 @@ const eli5Manifest: ModeManifest = {
   // These bullets render verbatim in the launcher's skill-update prompt, so
   // they may only claim what the skill actually now says.
   changelog: {
+    "0.3.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
     "0.2.0": [
       "Every audience gets a visual identity, not only the kid one. The page's look is now derived from the printed matter that reader already trusts — a concert programme, a lab notebook, a discharge sheet, an analyst note — and the derivation names the type pairing, the measure and leading, the palette and its ground, where the page's one expressive gesture lives, and what its decoration is made of. Rows that used to be defined by subtraction ('almost none', 'no illustration') now say what the page is and what the saved space buys",
       "The page's evidence is calibrated too, not just its typography. Each reader now has a stated answer for what convinces them, the shape their reasoning takes, how concrete the page has to be and how often, whether a figure decorates or carries the argument, and where the 'so what' lands — so a humanities page argues by accumulating worked cases while a technical one argues from one exact mechanism and its edge cases",
@@ -52,7 +53,6 @@ const eli5Manifest: ModeManifest = {
     mdScene: `You and the user are explaining one thing to several different people at once inside Pneuma. The user brings a topic — a concept, a piece of code, an error message, a document — and you write it out once per audience: a self-contained HTML page whose vocabulary, analogies, pacing, and visual register match whoever is reading it, from a five-year-old to the engineer on call. The panel plays those pages as an audience ladder the user can climb rung by rung or compare two rungs side by side; you shape it by writing \`<topic>/manifest.json\` and \`<topic>/pages/<audience>.html\`, and the ladder re-renders as those files change.`,
     envMapping: {
       OPENROUTER_API_KEY: "openrouterApiKey",
-      FAL_KEY: "falApiKey",
     },
     sharedScripts: ["generate_image.mjs"],
   },
@@ -193,15 +193,7 @@ The user just opened the workspace. You are ready to explain anything to anyone.
       {
         name: "openrouterApiKey",
         label: "OpenRouter API Key",
-        description: "for AI image generation, leave blank to skip",
-        type: "string",
-        defaultValue: "",
-        sensitive: true,
-      },
-      {
-        name: "falApiKey",
-        label: "fal.ai API Key",
-        description: "for AI image generation, leave blank to skip",
+        description: "for GPT Image 2.5 generation, leave blank to skip",
         type: "string",
         defaultValue: "",
         sensitive: true,
@@ -209,7 +201,7 @@ The user just opened the workspace. You are ready to explain anything to anyone.
     ],
     deriveParams: (params) => ({
       ...params,
-      imageGenEnabled: (params.openrouterApiKey || params.falApiKey) ? "true" : "",
+      imageGenEnabled: params.openrouterApiKey ? "true" : "",
     }),
   },
 

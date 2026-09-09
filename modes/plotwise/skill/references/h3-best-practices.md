@@ -199,7 +199,7 @@ produced 141 s from 47 s of clips, and the demuxer does not check).
   fix is the band plus one revision ask. The W1 trial spoke 40 characters
   over 15 s cleanly, but as text-to-video at 768P with no references —
   not the production path.
-- **2026-09-04, the ceiling check.** A GPT-Image-2 key frame as Image 1
+- **2026-09-04, the ceiling check.** A GPT Image 2.5 key frame as Image 1
   with the voice (reference-to-video) is about as good as
   image-to-video from that same frame — so the anchor does its work as a
   reference, and per-cut storyboards are not needed. Kept as a later

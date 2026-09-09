@@ -54,7 +54,7 @@ expensive to compare in wasted generations — so propose before you generate.
    SKILL.md), but manifest updates stay yours alone, serialized.
 6. **Evaluate every output, then report honestly** — see the rubric at the end.
 7. **Refinement** of a picked candidate is the normal edit workflow (`edit_image.mjs`, or the
-   GPT-Image-2 URL + mask path): new row labeled after the change, original preserved.
+   GPT Image 2.5 URL + mask path): new row labeled after the change, original preserved.
 
 ## Complexity budget
 
@@ -133,16 +133,15 @@ expensive to compare in wasted generations — so propose before you generate.
 
 ## Script settings (built-in models only)
 
-- **Model: `gpt-image-2` — the default, and the right one here.** It holds crisp geometry,
-  flat masses, and clean marks. `gemini-3-pro` (Gemini 3 Pro Image) is the only other model
-  the scripts dispatch to, and it is a fine second choice; it drifts painterly, so pick it
-  when the user asks or when only `OPENROUTER_API_KEY` is configured. Identity work is the
+- **Model: `gpt-image-2.5-sunburst` — the default, and the right one here.** Use it for crisp geometry,
+  flat masses, and clean marks. `gpt-image-2.5-flare` is the other supported model,
+  selected automatically when reference images are provided for edits. Both use OpenRouter. Identity work is the
   last place to economize — never drop to a cheaper path than these two.
 - **Never stand in for a generation.** No hand-written SVG, no code-drawn shape, no borrowed
-  placeholder passed off as a candidate. If neither `FAL_KEY` nor `OPENROUTER_API_KEY` is
-  configured, say exactly that and ask the user to add one — an unconfigured key is a
+  placeholder passed off as a candidate. If `OPENROUTER_API_KEY` is not
+  configured, say exactly that and ask the user to add it — an unconfigured key is a
   reportable blocker, never a reason to fabricate a result.
-- `--aspect-ratio 1:1` (maps to the `square_hd` preset). For a final render of a chosen
+- `--aspect-ratio 1:1`. For a final render of a chosen
   candidate you may pin `--image-size 1536x1536`.
 - **Never pass `--style`.** That flag rewrites the prompt before dispatch (e.g. `sketch`
   appends `, no shading, white background`), which fights both the solid backdrop and the

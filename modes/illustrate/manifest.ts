@@ -8,8 +8,9 @@ import { loadStudio, saveStudio } from "./domain.js";
 
 const illustrateManifest: ModeManifest = {
   name: "illustrate",
-  version: "0.5.0",
+  version: "0.6.0",
   changelog: {
+    "0.6.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
     "0.5.0": [
       "Logo & mascot playbook re-synced against upstream s1dashu/ip-as-logo-skill@acb834c (2026-08-22) — and it now records that pin, so the next sync starts from a known baseline",
       "Composition relaxed to a dominant corner: the subject fills 85–95% of the square out of an assigned lower-left or lower-right corner, the fixed crop prescription is gone, and a batch splits its candidates evenly between the two sides so every direction is seen from each",
@@ -55,7 +56,6 @@ const illustrateManifest: ModeManifest = {
     mdScene: `You and the user are creating illustrations together inside Pneuma's workspace. The user watches a row-based canvas update in real time — they can select an image, ask for variations, or scribble a highlight mask on a region they want changed. You generate and edit images by writing files; the canvas re-renders as files change.`,
     envMapping: {
       OPENROUTER_API_KEY: "openrouterApiKey",
-      FAL_KEY: "falApiKey",
     },
     sharedScripts: ["generate_image.mjs", "edit_image.mjs"],
   },
@@ -202,12 +202,11 @@ The user just opened the illustration workspace. You are ready to assist with AI
       },
     ],
     params: [
-      { name: "openrouterApiKey", label: "OpenRouter API Key", description: "for AI image generation (recommended)", type: "string", defaultValue: "", sensitive: true },
-      { name: "falApiKey", label: "fal.ai API Key", description: "alternative image generation backend", type: "string", defaultValue: "", sensitive: true },
+      { name: "openrouterApiKey", label: "OpenRouter API Key", description: "for GPT Image 2.5 generation and editing", type: "string", defaultValue: "", sensitive: true },
     ],
     deriveParams: (params) => ({
       ...params,
-      imageGenEnabled: (params.openrouterApiKey || params.falApiKey) ? "true" : "",
+      imageGenEnabled: params.openrouterApiKey ? "true" : "",
     }),
   },
 

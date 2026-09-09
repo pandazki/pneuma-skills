@@ -208,7 +208,7 @@ export function defaultDeps({ setDir, resolution = "480P", model = DEFAULT_MODEL
         const prompt = `Character sheet. The same person as in the attached frame — identical face, hair, skin, outfit and accessories — shown as ${angles[i] ?? angles[0]}, in the same setting and lighting, in this exact visual style: ${styleRecipe}. No text, no labels, no watermark, 16:9.`;
         const dir = dirname(outputs[i]);
         const prefix = basename(outputs[i]).replace(/\.png$/, "");
-        const r = await runChild(process.execPath, [GENERATE_IMAGE, prompt, "--model", "gpt-image-2", "--image-urls", uri, "--aspect-ratio", "16:9", "--quality", "medium", "--output-dir", dir, "--filename-prefix", prefix], { signal });
+        const r = await runChild(process.execPath, [GENERATE_IMAGE, prompt, "--image-urls", uri, "--aspect-ratio", "16:9", "--quality", "medium", "--output-dir", dir, "--filename-prefix", prefix], { signal });
         if (r.code !== 0 || !existsSync(outputs[i])) throw new Error(`character sheet ${i + 1} failed: ${(r.stderr || "").trim().slice(-200)}`);
       }
     },

@@ -37,42 +37,28 @@
  * Flags:
  *   --source-url  required. Local path or http(s) URL. Local files are
  *                 inlined as base64 data URI, same pattern as
- *                 generate-image.mjs edit.
- *   --outfit      optional, comma-separated. If omitted, nano-banana
+ *                 generate_image.mjs --image-urls.
+ *   --outfit      optional, comma-separated. If omitted, GPT Image 2.5
  *                 reads the outfit from the source image.
  *   --traits      optional, comma-separated. If omitted, defaults to
  *                 the character appearance from the source image.
+ *   --model       optional. gpt-image-2.5-flare (default) or gpt-image-2.5-sunburst.
  *   --output      required. Workspace-relative path for the sheet.
  *
  * Environment:
- *   FAL_KEY — required; fal.ai API key
+ *   OPENROUTER_API_KEY — required; OpenRouter API key
  */
 
-import { writeFileSync, readFileSync, mkdirSync } from "node:fs";
-import { dirname, extname } from "node:path";
+import { existsSync, renameSync } from "node:fs";
+import { dirname, extname, basename } from "node:path";
 import { parseArgs } from "node:util";
 
-const FAL_EDIT_URL = "https://fal.run/fal-ai/nano-banana-2/edit";
-
-const MIME_BY_EXT = {
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".png": "image/png",
-  ".webp": "image/webp",
-  ".gif": "image/gif",
-};
-
-function mimeFromPath(path) {
-  return MIME_BY_EXT[extname(path).toLowerCase()] || "image/jpeg";
-}
-
-function resolveSourceUrl(src) {
-  if (src.startsWith("http://") || src.startsWith("https://")) {
-    return src;
-  }
-  const buf = readFileSync(src);
-  return `data:${mimeFromPath(src)};base64,${buf.toString("base64")}`;
-}
+// Installed sessions keep shared scripts beside this CLI; source checkouts
+// resolve the same adapter from the shared scripts directory.
+const installedAdapter = new URL("./generate_image.mjs", import.meta.url);
+const { DEFAULT_EDIT_IMAGE_MODEL, generateImage, loadEnvKeys } = await import(
+  existsSync(installedAdapter) ? installedAdapter.href : new URL("../../../_shared/scripts/generate_image.mjs", import.meta.url).href
+);
 
 function csvToList(csv) {
   return csv
@@ -101,36 +87,6 @@ function buildPrompt({ outfit, traits }) {
   ].join("\n");
 }
 
-async function falEdit(prompt, imageUrl, apiKey) {
-  const res = await fetch(FAL_EDIT_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Key ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      prompt,
-      image_urls: [imageUrl],
-      num_images: 1,
-      output_format: "jpeg",
-      resolution: "1K",
-    }),
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`nano-banana-2/edit failed (${res.status}): ${body}`);
-  }
-  return res.json();
-}
-
-async function downloadImage(url, outputPath) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to download image (${res.status})`);
-  const buffer = Buffer.from(await res.arrayBuffer());
-  mkdirSync(dirname(outputPath), { recursive: true });
-  writeFileSync(outputPath, buffer);
-}
-
 function die(msg) {
   console.error(msg);
   process.exit(1);
@@ -143,27 +99,36 @@ const { values } = parseArgs({
     outfit: { type: "string" },
     traits: { type: "string" },
     output: { type: "string" },
+    model: { type: "string", default: DEFAULT_EDIT_IMAGE_MODEL },
   },
   allowPositionals: false,
 });
 
 try {
-  const apiKey = process.env.FAL_KEY;
-  if (!apiKey) die("FAL_KEY is not set");
+  const apiKey = loadEnvKeys().OPENROUTER_API_KEY;
 
   const sourceArg = values["source-url"];
   const outputPath = values.output;
   if (!sourceArg) die("--source-url is required");
   if (!outputPath) die("--output is required");
 
-  const imageUrl = resolveSourceUrl(sourceArg);
   const prompt = buildPrompt({ outfit: values.outfit, traits: values.traits });
 
-  const result = await falEdit(prompt, imageUrl, apiKey);
-  const outUrl = result.images?.[0]?.url;
-  if (!outUrl) die("nano-banana-2/edit returned no image");
-
-  await downloadImage(outUrl, outputPath);
+  const ext = extname(outputPath).toLowerCase();
+  const outputFormat = { ".png": "png", ".jpg": "jpeg", ".jpeg": "jpeg", ".webp": "webp" }[ext];
+  if (!outputFormat) die("--output must end in .png, .jpg, .jpeg, or .webp");
+  const result = await generateImage({
+    apiKey, model: values.model, prompt, imageUrls: [sourceArg], aspectRatio: "16:9",
+    quality: "high", outputFormat, outputDir: dirname(outputPath), filenamePrefix: basename(outputPath, ext),
+  });
+  const generatedPath = result.files[0];
+  // .jpg and .jpeg encode the same format. Never rename PNG bytes to .jpg.
+  if (generatedPath !== outputPath && ext === ".jpg" && extname(generatedPath) === ".jpeg") {
+    renameSync(generatedPath, outputPath);
+  } else if (generatedPath !== outputPath) {
+    console.log(generatedPath);
+    process.exit(0);
+  }
   console.log(outputPath);
 } catch (err) {
   die(err instanceof Error ? err.message : String(err));

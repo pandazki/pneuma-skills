@@ -28,7 +28,10 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 
 const projectOnboardManifest: ModeManifest = {
   name: "project-onboard",
-  version: "1.0.0",
+  version: "1.1.0",
+  changelog: {
+    "1.1.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
+  },
   displayName: {
     en: "Project Discovery",
     "zh-CN": "项目探索",
@@ -56,7 +59,20 @@ const projectOnboardManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-project-onboard",
+    sharedScripts: ["generate_image.mjs"],
+    envMapping: { OPENROUTER_API_KEY: "openrouterApiKey" },
     mdScene: `You and the user are looking at a fresh Pneuma project together for the first time. Your job is to read the directory carefully — README, logos, palette, package manifest, asset folders — and assemble a single discovery proposal: what this project is, what's already in it, and two concrete next steps the user can take to put Pneuma to work right away. The user watches a custom Discovery Report viewer that renders your proposal in real time; when they click a task card, you hand off to the target mode with a fully-prepared brief.`,
+  },
+
+  init: {
+    params: [{
+      name: "openrouterApiKey",
+      label: "OpenRouter API Key",
+      description: "optional GPT Image 2.5 welcome images and project covers",
+      type: "string",
+      defaultValue: "",
+      sensitive: true,
+    }],
   },
 
   viewer: {

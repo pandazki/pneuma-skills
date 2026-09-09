@@ -12,7 +12,7 @@ Run with:
 
 ```bash
 bun modes/_shared/scripts/generate_image.mjs "<PROMPT>" \
-  --aspect-ratio 16:9 --resolution 2K --output-format png \
+  --aspect-ratio 16:9 --quality high --output-format png \
   --output-dir modes/kami/showcase --filename-prefix <PREFIX>
 ```
 
@@ -56,7 +56,7 @@ You'll need `FAL_KEY` or `OPENROUTER_API_KEY` in env (or the script's
 ```bash
 bun modes/_shared/scripts/generate_image.mjs \
   "$(cat modes/kami/showcase/prompts.md | sed -n '/## 1/,/^## 2/p' | grep -A 9999 'Prompt:' | head -n -2 | tail -n +2)" \
-  --aspect-ratio 16:9 --resolution 2K --output-format png \
+  --aspect-ratio 16:9 --quality high --output-format png \
   --output-dir modes/kami/showcase --filename-prefix hero
 # then: mv modes/kami/showcase/hero-*.png modes/kami/showcase/hero.png
 ```
@@ -93,7 +93,7 @@ bun modes/_shared/scripts/generate_image.mjs \
 ```bash
 # Prompt text: see Section 2 above. Save as:
 bun modes/_shared/scripts/generate_image.mjs "<paste prompt>" \
-  --aspect-ratio 16:9 --resolution 2K --output-format png \
+  --aspect-ratio 16:9 --quality high --output-format png \
   --output-dir modes/kami/showcase --filename-prefix paper-locked
 ```
 
@@ -126,7 +126,7 @@ bun modes/_shared/scripts/generate_image.mjs "<paste prompt>" \
 
 ```bash
 bun modes/_shared/scripts/generate_image.mjs "<paste prompt>" \
-  --aspect-ratio 16:9 --resolution 2K --output-format png \
+  --aspect-ratio 16:9 --quality high --output-format png \
   --output-dir modes/kami/showcase --filename-prefix typography
 ```
 

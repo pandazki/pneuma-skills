@@ -240,13 +240,13 @@ Six CLI scripts wrap the provider APIs. Call them via the Bash tool.
 
 | Script | Purpose | Default model | Env var |
 |---|---|---|---|
-| `scripts/generate_image.mjs` | Text→image; edits via `--image-urls`/`--mask-url`; 1–4 images per call | OpenAI `gpt-image-2` (fal.ai); `--model gemini-3-pro` alternative | `FAL_KEY` (or `OPENROUTER_API_KEY` for gemini-3-pro) |
-| `scripts/edit_image.mjs` | Modify a local image with optional highlighter annotation (multimodal reasoning) | Gemini 3.1 flash image via OpenRouter | `OPENROUTER_API_KEY` |
+| `scripts/generate_image.mjs` | Text→image; edits via `--image-urls`; 1–10 images per call | GPT Image 2.5 Sunburst for generation; Flare with references | `OPENROUTER_API_KEY` |
+| `scripts/edit_image.mjs` | Modify a local image with optional highlighter annotation (multimodal reasoning) | GPT Image 2.5 Flare via OpenRouter | `OPENROUTER_API_KEY` |
 | `scripts/generate-video.mjs` | Text→video + image→video + reference-to-video | bytedance `seedance-2.0` (fallback: `veo3.1` via `--model veo3.1`) | `FAL_KEY` |
 | `scripts/generate-tts.mjs` | Text→speech (expressive: inline `[laughing]` / `[sigh]` tags, 30 voices) | fal.ai `gemini-3.1-flash-tts` | `FAL_KEY` |
 | `scripts/generate-bgm.mjs` | Text→background music | OpenRouter `google/lyria-3-pro-preview` | `OPENROUTER_API_KEY` |
-| `scripts/make-character-sheet.mjs` | Photo → photo-body / sketch-head 16:9 character reference sheet (deterministic recovery shortcut for seedance's image-side filter; see `references/filter-retries.md`) | fal.ai `nano-banana-2/edit` | `FAL_KEY` |
-| `scripts/storyboard.mjs` | Compose-and-slice: one gpt-image-2 call generates an N-cell composite at the target video aspect ratio; ffmpeg slices into N individual panel images with provenance metadata. Engine layer for Path C (see `references/storyboard-workflow.md`). | OpenAI `gpt-image-2` (fal.ai) | `FAL_KEY` |
+| `scripts/make-character-sheet.mjs` | Photo → photo-body / sketch-head 16:9 character reference sheet (deterministic recovery shortcut for seedance's image-side filter; see `references/filter-retries.md`) | GPT Image 2.5 Flare via OpenRouter | `OPENROUTER_API_KEY` |
+| `scripts/storyboard.mjs` | Compose-and-slice: one GPT Image 2.5 call generates an N-cell composite at the target video aspect ratio; ffmpeg slices into N individual panel images with provenance metadata. Engine layer for Path C (see `references/storyboard-workflow.md`). | Sunburst, or Flare with `--ref`, via OpenRouter | `OPENROUTER_API_KEY` |
 
 `generate_image.mjs` and `edit_image.mjs` share their output shape —
 a JSON object on stdout with `files`, `urls`, and `description`. They
@@ -258,14 +258,13 @@ stdout is just the output path.
 All scripts read their API keys from `process.env` or from a `.env`
 file in the skill directory.
 
-### Why GPT-Image-2 matters for video work
+### Why GPT Image 2.5 matters for video work
 
-The default image model was swapped from `nano-banana-2` to
-`gpt-image-2` because the video-side pipeline gets dramatically more
-controllable when the image step holds up:
+The shared image model is `gpt-image-2.5-sunburst` via OpenRouter;
+`gpt-image-2.5-flare` is selected automatically for editing and calls with reference images. Use it for:
 
 - **First / last frames**. Seedance's `from-image` and first-last-frame
-  video modes inherit the quality of their anchor images. GPT-Image-2
+  video modes inherit the quality of their anchor images. GPT Image 2.5
   holds a specific aesthetic, character, and composition across paired
   calls — so the two frames actually look like they belong to the same
   shot, and the interpolated video doesn't need to fight a stylistic
@@ -281,11 +280,11 @@ controllable when the image step holds up:
   overlays.
 - **Multi-reference stitching via `--image-urls`**. Pass a character
   portrait plus an environment plate plus a style plate and
-  GPT-Image-2 composes them coherently — a stronger control surface
+  GPT Image 2.5 composes them coherently — a stronger control surface
   for prompting first frames and character sheets than free-text alone.
-- **`--mask-url` for precise edits**. Paint a mask, change only that
-  region. Useful for patching one shot's framing without redoing the
-  whole pipeline.
+- **Reference-guided edits**. Pass the source via `--image-urls` and describe
+  what to change and preserve. `edit_image.mjs --annotation` accepts a visual
+  location guide. OpenRouter does not expose a pixel-mask parameter.
 
 Because the image step is this much stronger, be more ambitious with
 the creative brief: text-heavy frames, multi-layer compositions, and
@@ -301,9 +300,10 @@ mode), its pixel dimensions must match the video output exactly. An
 off-size anchor image gets letterboxed, cropped, or distorted by the
 video model at the seams.
 
-Pass `--image-size WxH` with the exact composition dimensions —
-**do not** rely on `--aspect-ratio`, which routes to a fal.ai preset
-(e.g. `landscape_16_9` lands on whatever size fal picks that day).
+Pass `--image-size WxH` to request the composition dimensions through
+OpenRouter's `size` field. Check the returned image dimensions before using
+it as an anchor: providers may normalize the requested size. `--aspect-ratio`
+only requests proportions.
 
 Composition-to-image-size cheat sheet for the common cases:
 
@@ -328,33 +328,31 @@ node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
   --aspect-ratio 9:16 --quality high \
   --output-dir assets/image --filename-prefix kitchen-3am
 
-# Edit / reference — pass one or more image URLs. Switches the script
-# to the GPT-Image-2 edit endpoint. Mask optional.
+# Edit / reference — pass one or more URLs, data URIs, or local files.
+# Uses the same GPT Image 2.5 OpenRouter Images endpoint.
 node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
   "Same character, now at a neon-lit ramen counter, back to camera" \
   --image-urls https://example.com/character-ref.png \
   --aspect-ratio 9:16 --quality high \
   --output-dir assets/image --filename-prefix kitchen-to-ramen
 
-# Video first-frame — exact pixel dimensions to match the composition.
-# Use --image-size WxH (not --aspect-ratio) so the anchor lands at the
-# seedance output size with no letterbox/crop.
+# Video first-frame — request the composition dimensions.
+# Verify actual output dimensions before using the image as an anchor.
 node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
   "Overhead shot of a desk at 3am: laptop closed, spiral notebook, cold coffee ring, warm tungsten lamp in upper right" \
   --image-size 720x1280 --quality high \
   --output-dir assets/image --filename-prefix opening-desk
 
-# Multiple takes in one call — 1–4 per request.
+# Multiple takes in one call — 1–10 per request.
 node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
   "Four phone mockups of the app home screen, each with a different colorway" \
   --num-images 4 --aspect-ratio 9:16 \
   --output-dir assets/image --filename-prefix colorway-grid
 
-# Gemini 3 Pro alternative — painterly / watercolor / less literal.
-# Works with FAL_KEY or OPENROUTER_API_KEY.
+# Flare edit with a source image. Requires OPENROUTER_API_KEY.
 node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
   "Watercolor of a city at dusk, soft bleeds, visible cold-press texture" \
-  --model gemini-3-pro --aspect-ratio 16:9 \
+  --image-urls assets/image/kitchen-3am.png --aspect-ratio 16:9 \
   --output-dir assets/image --filename-prefix dusk-watercolor
 ```
 

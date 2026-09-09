@@ -227,10 +227,9 @@ describe("genre and model floor", () => {
       PLAYBOOK.indexOf("## Script settings"),
       PLAYBOOK.indexOf("## Prompt skeleton"),
     );
-    expect(settings).toContain("gpt-image-2");
-    expect(settings).toContain("gemini-3-pro");
+    expect(settings).toContain("gpt-image-2.5-sunburst");
+    expect(settings).toContain("gpt-image-2.5-flare");
     // A missing key is a blocker to report, never a licence to hand-draw one.
-    expect(settings).toContain("FAL_KEY");
     expect(settings).toContain("OPENROUTER_API_KEY");
     expect(settings).toContain("Never stand in for a generation");
     expect(settings).toMatch(/never a reason to fabricate a result/);
@@ -259,8 +258,8 @@ describe("candidate evaluation (deliberately not synced)", () => {
 // ── the version that carries all of it ──────────────────────────────────────
 
 describe("skill version", () => {
-  test("0.5.0 ships the sync with a changelog the update prompt can read", () => {
-    expect(illustrateManifest.version).toBe("0.5.0");
+  test("ships the image upgrade and preserves the upstream sync changelog", () => {
+    expect(illustrateManifest.version).toBe("0.6.0");
     // A bump without a same-key entry ships a silent update — the launcher's
     // skill-update prompt reads its bullets straight out of this map.
     expect(illustrateManifest.changelog?.[illustrateManifest.version!]).toBeDefined();

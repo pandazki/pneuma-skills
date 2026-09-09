@@ -131,25 +131,12 @@ The agent already knows how to do this — see `skill/SKILL.md` and
 the source:
 
 ```bash
-# 0. Decrypt API keys from ~/.pneuma/api-keys.json into your shell.
-bun -e "import { getApiKeys } from './server/share.ts'; \
-  const k = getApiKeys(); \
-  console.log('export FAL_KEY=' + k.FAL_API_KEY); \
-  console.log('export OPENROUTER_API_KEY=' + k.OPENROUTER_API_KEY);"
-
-# 1. Upload the logo once, reuse the URL across all anchor images.
-curl -sX POST https://rest.alpha.fal.ai/storage/upload/initiate \
-  -H "Authorization: Key $FAL_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"content_type":"image/png","file_name":"pneuma-logo.png"}' > /tmp/init.json
-curl -X PUT "$(jq -r .upload_url /tmp/init.json)" \
-  -H "Content-Type: image/png" --data-binary @public/logo.png
-LOGO_URL=$(jq -r .file_url /tmp/init.json)
-
-# 2. Anchor images (gpt-image-2 edit, passes the logo as reference).
-node modes/_shared/scripts/generate_image.mjs "<prompt>" \
-  --model gpt-image-2 --quality high --image-size 1920x1080 \
-  --image-urls "$LOGO_URL" \
+# Configure OPENROUTER_API_KEY for images and FAL_KEY for videos in .env.
+# Existing seed provenance records its original model; regenerations use Flare.
+# Anchor edits accept the local logo directly as a reference.
+bun modes/_shared/scripts/generate_image.mjs "<prompt>" \
+  --quality high --image-size 1920x1080 \
+  --image-urls public/logo.png \
   --output-dir modes/clipcraft/seed/assets/images \
   --filename-prefix shotN-{start,end}
 

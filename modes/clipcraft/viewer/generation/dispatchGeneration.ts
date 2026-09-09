@@ -80,12 +80,12 @@ export interface GenerationRequest {
     /** Human label / semantic id, e.g. "asset-panda-sad-v2". */
     name: string;
     /** URI of the source asset, so the agent can feed it as a reference
-     *  to GPT-Image-2's edit mode when appropriate. */
+     *  to GPT Image 2.5's edit mode when appropriate. */
     uri?: string | null;
     /** Prompt recorded on the source's provenance edge. */
     sourcePrompt?: string | null;
     /** Model id recorded on the source's provenance edge, e.g.
-     *  "openai/gpt-image-2" or "bytedance/seedance-2.0/image-to-video". */
+     *  "openai/gpt-image-2.5-sunburst" or "bytedance/seedance-2.0/image-to-video". */
     sourceModel?: string | null;
     /** Image/video pixel dimensions from asset.metadata. Carried so the
      *  variant inherits exact size unless the change direction asks
@@ -239,17 +239,16 @@ function resolveScriptForRequest(req: GenerationRequest): ResolvedScript {
       // agent reads `prompt` from the top-level payload and passes it
       // positionally when invoking the script.
       //
-      // --image-size vs --aspect-ratio: when exact dimensions are known
-      // (e.g. the image is destined for a video first/last frame and
-      // MUST match the composition's pixel size), we pass
-      // `--image-size WxH` to pin fal.ai's output to those exact pixels.
-      // Without width/height we fall back to `--aspect-ratio`, which
-      // routes to a fal preset (landscape_16_9, portrait_4_3, etc.) —
-      // good enough for standalone illustrations, wrong for video anchors.
+      // Request explicit pixels through OpenRouter when composition dimensions
+      // are known. The agent must verify the actual generated size before using
+      // it as a video anchor; otherwise request only the desired aspect ratio.
       const aspectRatio = p.aspectRatio ?? deriveAspectRatio(p.width, p.height) ?? "1:1";
+      const reference = req.mode === "variant" ? req.source?.uri : null;
+      const model = reference ? "openai/gpt-image-2.5-flare" : "openai/gpt-image-2.5-sunburst";
       const scriptArgs: Record<string, string | number> = {
         "--quality": "high",
       };
+      if (reference) scriptArgs["--image-urls"] = reference;
       if (p.width && p.height) {
         scriptArgs["--image-size"] = `${p.width}x${p.height}`;
       } else {
@@ -257,8 +256,8 @@ function resolveScriptForRequest(req: GenerationRequest): ResolvedScript {
       }
       // `params.style` is a free-form direction note (e.g. "warm 1970s
       // 35mm"). The agent folds it into the prompt rather than passing
-      // a flag — the shared script has no style flag, and a freeform
-      // hint embedded in the prompt is what actually steers GPT-Image-2.
+      // a flag — the shared style flag only accepts sketch/photo; a freeform
+      // hint embedded in the prompt is what actually steers GPT Image 2.5.
       return {
         params: {
           prompt: p.prompt,
@@ -273,8 +272,8 @@ function resolveScriptForRequest(req: GenerationRequest): ResolvedScript {
           operation_type: operationType,
           from_asset_id: fromAssetId,
           agent_id: "clipcraft-imagegen",
-          label: "openai/gpt-image-2",
-          model: "openai/gpt-image-2",
+          label: model,
+          model,
         },
       };
     }
@@ -363,7 +362,7 @@ function resolveScriptForRequest(req: GenerationRequest): ResolvedScript {
 function buildInstructions(req: GenerationRequest): string {
   const isImage = req.params.kind === "image";
   const runStep = isImage
-    ? "4. Run the script in `script` — prompt is POSITIONAL, not a flag. Example: `node <script> \"<prompt>\" --aspect-ratio ... --quality ... --output-dir assets/image --filename-prefix <semantic-id>`. Fold `params.style` (if set) into the prompt text rather than a flag. Use `--image-urls <url>` to switch GPT-Image-2 to edit mode (reference-driven continuation, first/last-frame pairs, character-on-background swaps, etc.)."
+    ? "4. Run the script in `script` — prompt is POSITIONAL, not a flag. Example: `node <script> \"<prompt>\" --aspect-ratio ... --quality ... --output-dir assets/image --filename-prefix <semantic-id>`. Fold `params.style` (if set) into the prompt text rather than a flag. Use `--image-urls <url>` to switch GPT Image 2.5 to edit mode (reference-driven continuation, first/last-frame pairs, character-on-background swaps, etc.)."
     : "4. Run the script referenced in `script` with the flags in `script_args`. Append `--output <path>`.";
   if (req.mode === "variant") {
     // Variant is a fundamentally different shape: the user did NOT write a
@@ -383,7 +382,7 @@ function buildInstructions(req: GenerationRequest): string {
       "   - Prefer additive edits. Do not rewrite the whole prompt unless the change direction explicitly asks for a wholesale redo.",
       "3. Honor source format:",
       "   - Run the script with the exact same `--image-size` / `--duration` / `--aspect-ratio` as the source unless the change direction explicitly asks for a different size / duration.",
-      "   - For images, consider `--image-urls <source.uri>` to route through GPT-Image-2's edit mode — that produces the tightest family resemblance for small-delta variants (add grain, text swap, minor swap-outs). Pure t2v without the reference is fine when the change direction is more structural (different composition, different character).",
+      "   - For images, consider `--image-urls <source.uri>` to route through GPT Image 2.5's edit mode — that produces the tightest family resemblance for small-delta variants (add grain, text swap, minor swap-outs). Pure t2v without the reference is fine when the change direction is more structural (different composition, different character).",
       "4. Pick a semantic asset id — never a UUID. Variants of `asset-panda-sad-v1` might be `asset-panda-sad-v2`, `asset-panda-sad-v3`, etc.",
       "5. Pick a relative output path under the matching `assets/{kind}/` directory.",
       runStep,

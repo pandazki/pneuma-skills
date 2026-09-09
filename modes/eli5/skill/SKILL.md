@@ -377,14 +377,14 @@ cd {SKILL_PATH} && node scripts/generate_image.mjs \
 ```
 
 - The prompt is a **positional argument** — there is no `--prompt` flag, and
-  passing one silently swallows your prompt as a second positional.
+  passing one is an error.
 - **Do not pass `--style`.** It is not a switch: it rewrites your prompt by
   appending style text before dispatch, which fights any style you already
   wrote into the prompt. Write the style into the prompt and leave the flag
   alone.
-- Default model is `gpt-image-2` (fal.ai only), strongest at legible text and
-  labels. If only `OPENROUTER_API_KEY` is configured, pass
-  `--model gemini-3-pro`; `gpt-image-2` will error out without a fal.ai key.
+- Default model is `gpt-image-2.5-sunburst` via OpenRouter for illustrations and
+  labels. Reference-image edits use `gpt-image-2.5-flare` automatically. Both require
+  `OPENROUTER_API_KEY`.
 - `--output-dir` is always the explainer's own `assets/` directory. The page
   that shows the image lives in `<topic-slug>/pages/`, and that directory —
   not the topic root — is the iframe's base URL, so the reference is

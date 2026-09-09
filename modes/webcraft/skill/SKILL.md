@@ -171,10 +171,10 @@ After scaffold returns, the viewer auto-switches to the new set; follow up with 
 
 Two scripts live under `{SKILL_PATH}/scripts/`:
 
-- `generate_image.mjs` — text-to-image (and precise URL+mask edits via GPT-Image-2)
-- `edit_image.mjs` — modify an existing local image with an optional highlighter annotation (Gemini vision via OpenRouter)
+- `generate_image.mjs` — text-to-image and reference-image edits via GPT Image 2.5
+- `edit_image.mjs` — modify an existing local image with an optional highlighter annotation (GPT Image 2.5 via OpenRouter)
 
-Default model is `gpt-image-2`: strong at legible typography, labels, product-shot mockups with real copy, signage, wordmarks, and diagrams with text. Switch to `--model gemini-3-pro` for painterly or broad artistic illustration, or when only `OPENROUTER_API_KEY` is configured (`gpt-image-2` is fal.ai-only and errors out otherwise).
+Default model is `gpt-image-2.5-sunburst`: strong at legible typography, labels, product-shot mockups with real copy, signage, wordmarks, and diagrams with text. Edits (`edit_image.mjs` or `--image-urls`) automatically use `gpt-image-2.5-flare`. Both models use OpenRouter and require `OPENROUTER_API_KEY`.
 
 **Generate vs. code the visual.** Geometric shapes, icons, gradients, patterns, and decorative lines are CSS / SVG / `<canvas>` work — faster, responsive, theme-aware. Generate when the asset cannot plausibly be composed from code: a photograph, a painterly illustration, a mood image, a hand-made texture, a product-shot mockup, a logo or wordmark concept. Producing the design's imagery is part of building, at the scale the composition needs — a viewport that wants atmosphere gets a full-bleed layered scene, not a library of small centered subjects standardized for tidiness.
 
@@ -202,7 +202,7 @@ cd {SKILL_PATH} && node scripts/generate_image.mjs \
   --filename-prefix hero-context
 ```
 
-`--aspect-ratio`: `16:9` above the fold, `4:3`/`3:2` for content and card thumbs, `1:1` for avatars and icon art, `9:16` for mobile-first heroes. `--quality high` for anything the user will look at (GPT-Image-2 only). `--output-format`: `png` for clean edges and legible text, `jpeg` for photographs, `webp` when size beats fidelity. `--output-dir` is always the active content set's `assets/`. `--filename-prefix` names the image's role. For edits on an already-deployed image prefer `--image-urls <url> --mask-url <url>` against `gpt-image-2`; the annotation-driven `edit_image.mjs` is for the local file + highlighter flow.
+`--aspect-ratio`: `16:9` above the fold, `4:3`/`3:2` for content and card thumbs, `1:1` for avatars and icon art, `9:16` for mobile-first heroes. `--quality high` for anything the user will look at. `--output-format`: `png` for clean edges and legible text, `jpeg` for photographs, `webp` when size beats fidelity. `--output-dir` is always the active content set's `assets/`. `--filename-prefix` names the image's role. For edits on an already-deployed image prefer `--image-urls <url>` with clear edit instructions against `gpt-image-2.5-flare`; the annotation-driven `edit_image.mjs` is for the local file + highlighter flow.
 
 **After generating.** Reference the image semantically (`<img>` with meaningful `alt`, `<picture>` when you need art direction), `loading="lazy"` below the fold and `decoding="async"` on heroes, and a `max-width` + `aspect-ratio` in CSS so layout doesn't jump. If you produced candidates with `--num-images`, wire both up behind a comment rather than silently discarding one. Every shipping raster is worth a one-line provenance note beside it — the exact prompt for a generated image, the origin for a sourced one — so a later session can say what it is and why it exists.
 {{/imageGenEnabled}}

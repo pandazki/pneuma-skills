@@ -481,26 +481,26 @@ You have access to an AI image generation script at `{SKILL_PATH}/scripts/genera
 - The design outline specifies a visual that CSS/SVG can't achieve (photos, illustrations, mood imagery)
 - A slide would benefit from a hero image or background visual
 - The content calls for real-world imagery (people, places, products, scenes)
-- The slide needs a mockup with **legible typography, labels, or signage** — this is the strength of the default `gpt-image-2` model
+- The slide needs a mockup with **legible typography, labels, or signage** — this is the strength of the default `gpt-image-2.5-sunburst` model
 
 **When NOT to generate**:
 - The slide is diagram/chart/data-focused — use CSS/SVG instead
 - The slide is typography-only by design intent
 
-**Model picking** (default is `gpt-image-2`):
+**Model picking** (default is `gpt-image-2.5-sunburst`):
 
-| Model | Pick when | Backends |
+| Model | Pick when | Backend |
 |---|---|---|
-| `gpt-image-2` (default) | Most slides. Especially strong at **legible text, labels, logos, UI mockups, signage, diagrams with text**, and precise mask-based edits. | fal.ai only |
-| `gemini-3-pro` | Painterly backgrounds, watercolor illustrations, broad artistic reach, or when only OpenRouter is configured. | fal.ai or OpenRouter |
+| `gpt-image-2.5-sunburst` | Default for text-to-image generation | OpenRouter |
+| `gpt-image-2.5-flare` | Default for edits and calls with reference images | OpenRouter |
 
-If the user only configured `OPENROUTER_API_KEY`, pass `--model gemini-3-pro` — `gpt-image-2` is fal.ai-only and will error out otherwise.
+Both models require `OPENROUTER_API_KEY`. The script selects Sunburst for text-only generation and Flare whenever `--image-urls` is present. `edit_image.mjs` defaults to Flare. `--model` overrides this selection; the `openai/` prefix is optional.
 
 **Workflow**:
 
 1. **Plan in outline**: The design outline's Visual field should already specify which slides need generated images and what kind
 2. **Craft a detailed prompt**: Include subject, style, composition, mood, and technical details
-3. **Generate** (defaults to `gpt-image-2`):
+3. **Generate** (defaults to `gpt-image-2.5-sunburst`):
 
 ```bash
 cd {SKILL_PATH} && node scripts/generate_image.mjs \
@@ -519,13 +519,13 @@ cd {SKILL_PATH} && node scripts/generate_image.mjs \
 | Flag | Slide guidance |
 |---|---|
 | `--aspect-ratio` | `16:9` for full-width heroes, `1:1` for thumbnails, `4:3` for content images |
-| `--quality` | `high` for anything the user will look at; drop to `medium` for draft passes. GPT-Image-2 only. |
-| `--output-format` | `png` for illustrations (crisp text / transparent edges); `jpeg` for photos |
+| `--quality` | `high` for anything the user will look at; drop to `medium` for draft passes. |
+| `--output-format` | `png` for illustrations (crisp text / clean edges); `jpeg` for photos |
 | `--filename-prefix` | Slide number + purpose, e.g. `slide-05-hero` |
 | `--output-dir` | Always the workspace's `assets/` directory |
-| `--model gemini-3-pro` + `--resolution 2K` | Reach for these only on painterly/artistic backgrounds or full-bleed hero frames |
+| `--image-urls <source>` | Reference-image edits automatically use Flare |
 
-**API reference**: The script auto-routes between OpenRouter and fal.ai based on configured API keys. Outputs JSON to stdout with `backend`, `model`, `files` (local paths), and `description`.
+**API reference**: The script uses the OpenRouter Images API and requires `OPENROUTER_API_KEY`. Outputs JSON to stdout with `backend`, `model`, `files` (local paths), and `description`.
 
 **Style consistency**: When generating multiple images for a deck, maintain consistent style descriptors across all prompts (color palette, rendering style, mood). Reuse the same descriptor sentences verbatim.
 {{/imageGenEnabled}}

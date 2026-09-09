@@ -30,7 +30,7 @@ const SAFE_MARGINS_MM: Record<string, { top: number; side: number; bottom: numbe
 
 const kamiManifest: ModeManifest = {
   name: "kami",
-  version: "1.6.0",
+  version: "1.7.0",
   displayName: {
     en: "Kami",
     "zh-CN": "Kami",
@@ -50,6 +50,7 @@ const kamiManifest: ModeManifest = {
     de: "Webdesign auf Papier-Leinwand mit warmer Pergament-Ästhetik —— Designsprache übernommen von tw93/kami (MIT)",
   },
   changelog: {
+    "1.7.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
     "1.6.0": [
       "Synced upstream tw93/kami V1.10.0 → V1.13.0 (Verified Typography / Safer Output / Steadier Proof)",
       "All 18 diagram templates now name their own CJK-first font stack per label — an extracted SVG keeps one typeface wherever it lands, instead of splitting a Chinese word across two faces",
@@ -104,7 +105,6 @@ const kamiManifest: ModeManifest = {
     mdScene: `You and the user are designing a printed paper page together inside Pneuma. The user watches a live iframe preview rendered as a single paper sheet — every HTML/CSS/JS edit you make appears immediately, so they can react and redirect mid-stroke. The design language is adapted from tw93/kami (MIT): warm parchment canvas, single ink-blue accent, serif at weight 500, strict-page fit discipline.`,
     envMapping: {
       OPENROUTER_API_KEY: "openrouterApiKey",
-      FAL_KEY: "falApiKey",
     },
     sharedScripts: ["generate_image.mjs"],
   },
@@ -236,8 +236,8 @@ const kamiManifest: ModeManifest = {
     params: [
       { name: "paperSize",   label: "Paper size",  type: "select", options: ["A4", "A5", "A3", "Letter", "Legal"], defaultValue: "A4" },
       { name: "orientation", label: "Orientation", type: "select", options: ["Portrait", "Landscape"],             defaultValue: "Portrait" },
-      { name: "falApiKey",        label: "fal.ai API Key",     description: "for AI image generation (default model: gpt-image-2)", type: "string", defaultValue: "", sensitive: true },
-      { name: "openrouterApiKey", label: "OpenRouter API Key", description: "optional fallback for Gemini 3 Pro; leave blank to skip", type: "string", defaultValue: "", sensitive: true },
+
+      { name: "openrouterApiKey", label: "OpenRouter API Key", description: "for GPT Image 2.5 generation and editing; leave blank to skip", type: "string", defaultValue: "", sensitive: true },
     ],
     deriveParams: (p) => {
       const size = String(p.paperSize);
@@ -253,7 +253,7 @@ const kamiManifest: ModeManifest = {
         safeTopMm:    margins.top,
         safeSideMm:   margins.side,
         safeBottomMm: margins.bottom,
-        imageGenEnabled: (p.falApiKey || p.openrouterApiKey) ? "true" : "",
+        imageGenEnabled: p.openrouterApiKey ? "true" : "",
       };
     },
   },

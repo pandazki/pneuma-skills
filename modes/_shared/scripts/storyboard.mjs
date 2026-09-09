@@ -2,7 +2,7 @@
 /**
  * storyboard.mjs — compose-and-slice tool for ClipCraft Path C.
  *
- * Generates a composite N-cell storyboard image via gpt-image-2,
+ * Generates a composite N-cell storyboard image via GPT Image 2.5 on OpenRouter,
  * then slices it into N individual panel files via ffmpeg.
  *
  * See modes/clipcraft/skill/references/storyboard-workflow.md
@@ -13,20 +13,20 @@
  */
 
 import {
-  readFileSync, writeFileSync, mkdirSync, existsSync,
+  readFileSync, mkdirSync, existsSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { spawnSync } from "node:child_process";
+import { DEFAULT_IMAGE_MODEL, DEFAULT_EDIT_IMAGE_MODEL, IMAGE_QUALITIES, generateImage, loadEnvKeys, resolveImageModel } from "./generate_image.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 const ASPECTS = ["9:16", "16:9", "1:1"];
 const PANEL_COUNTS = [4, 6, 8, 9, 12, 16];
 const OUTPUT_FORMATS = ["png", "jpeg", "webp"];
-const QUALITIES = ["low", "medium", "high"];
+const QUALITIES = IMAGE_QUALITIES;
 
 const USAGE = `Usage: storyboard.mjs --aspect <9:16|16:9|1:1> --panels <4|6|8|9|12|16> (--prompt <text> | --prompt-file <path>) [options]
 
@@ -39,11 +39,11 @@ Required:
 Options:
   --out-dir <path>            Output directory (default: .)
   --name <baseName>           Slice filename base (default: panel)
-  --ref <url>                 Reference image URL (repeatable). Switches to gpt-image-2/edit endpoint.
-                              Local file paths are NOT supported in v1 — upload first and pass the URL.
+  --ref <source>              Reference URL, data URI, or local image path (repeatable, up to 16).
+  --model <name>              Sunburst for generation, Flare with --ref (auto by default)
   --no-annotations            Drop the annotation color-system block from the prompt prelude
   --keep-composite            Keep the composite image after slicing (default: true)
-  --quality <low|medium|high> gpt-image-2 quality (default: high)
+  --quality <level>           auto, low, medium, high, xhigh, max (default: high)
   --output-format <fmt>       ${OUTPUT_FORMATS.join(", ")} (default: png)
   --help, -h                  Show this help
 
@@ -94,7 +94,7 @@ const IMAGE_SIZES = {
 };
 
 /**
- * Pick the gpt-image-2 output size for a chosen grid + video aspect.
+ * Pick the nominal composite size for a chosen grid + video aspect.
  * The composite always matches the video orientation, regardless of
  * the grid's internal aspect ratio. The cells inside the composite
  * land at exact video aspect by construction (see computeBboxes).
@@ -110,7 +110,7 @@ export function pickImageSize(grid, aspect) {
  * Compute panel bounding boxes for a grid laid out inside the
  * composite image. Each cell is exact video aspect ratio. Grid is
  * centered with uniform margins absorbing any size mismatch between
- * the chosen gpt-image-2 preset and the (cols x rows) of cells.
+ * the chosen nominal preset and the (cols x rows) of cells.
  */
 export function computeBboxes(grid, imgSize, aspect) {
   const [vw, vh] = aspect.split(":").map(Number);
@@ -195,173 +195,15 @@ export function assemblePrompt({ userPrompt, grid, aspect, includeAnnotations })
   return lines.join("\n");
 }
 
-// ---------------------------------------------------------------------------
-// .env loading (copied verbatim from generate_image.mjs; see that file
-// for the canonical version. Kept self-contained to match the
-// "each script is self-contained" pattern of _shared/scripts/.)
-// ---------------------------------------------------------------------------
-
-function findEnvFile() {
-  // 1. Check skill root directory (parent of scripts/)
-  const skillRoot = dirname(__dirname);
-  const skillEnv = join(skillRoot, ".env");
-  if (existsSync(skillEnv)) return skillEnv;
-
-  // 2. Fallback: search from cwd upward
-  let dir = process.cwd();
-  while (true) {
-    const envPath = join(dir, ".env");
-    if (existsSync(envPath)) return envPath;
-    const parent = dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
-  }
-}
-
-function loadEnvKeys() {
-  const keys = {};
-
-  // Check environment variables first
-  for (const name of ["FAL_KEY", "OPENROUTER_API_KEY"]) {
-    if (process.env[name]) keys[name] = process.env[name];
-  }
-
-  const envPath = findEnvFile();
-  if (!envPath) return keys;
-
-  const content = readFileSync(envPath, "utf-8");
-  for (const raw of content.split("\n")) {
-    const line = raw.trim();
-    if (!line || line.startsWith("#")) continue;
-    const eqIdx = line.indexOf("=");
-    if (eqIdx === -1) continue;
-    const key = line.slice(0, eqIdx).trim();
-    let value = line.slice(eqIdx + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    if ((key === "FAL_KEY" || key === "OPENROUTER_API_KEY") && value && !keys[key]) {
-      keys[key] = value;
-    }
-  }
-  return keys;
-}
-
-// ---------------------------------------------------------------------------
-// fal.ai queue helper (no SDK — direct REST). Copied verbatim from
-// generate_image.mjs.
-// ---------------------------------------------------------------------------
-
-async function falSubscribe({ apiKey, appId, payload, tag }) {
-  const baseUrl = `https://queue.fal.run/${appId}`;
-  const headers = {
-    "Content-Type": "application/json",
-    Authorization: `Key ${apiKey}`,
-  };
-
-  console.error(`[${tag}] Sending request...`);
-  const submitResp = await fetch(baseUrl, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload),
-  });
-
-  if (!submitResp.ok) {
-    const text = await submitResp.text();
-    console.error(`ERROR: fal.ai submit returned ${submitResp.status}: ${text}`);
-    process.exit(1);
-  }
-
-  const submitJson = await submitResp.json();
-  const { request_id } = submitJson;
-  // Use the URLs fal returns in the submit response — for some endpoints
-  // (e.g. `openai/gpt-image-2/edit`) requests are queued under a parent
-  // path (`openai/gpt-image-2`), so building from appId 404s.
-  const statusUrl = submitJson.status_url ?? `${baseUrl}/requests/${request_id}/status`;
-  const responseUrl = submitJson.response_url ?? `${baseUrl}/requests/${request_id}`;
-  const seenLogs = new Set();
-
-  while (true) {
-    const statusResp = await fetch(`${statusUrl}?logs=1`, { headers });
-    if (!statusResp.ok) {
-      const text = await statusResp.text();
-      console.error(`ERROR: fal.ai status returned ${statusResp.status}: ${text}`);
-      process.exit(1);
-    }
-    const status = await statusResp.json();
-    if (Array.isArray(status.logs)) {
-      for (const log of status.logs) {
-        const key = `${log.timestamp ?? ""}|${log.message ?? ""}`;
-        if (!seenLogs.has(key)) {
-          seenLogs.add(key);
-          console.error(`  [log] ${log.message}`);
-        }
-      }
-    }
-    if (status.status === "COMPLETED") break;
-    if (status.status === "FAILED") {
-      console.error(`ERROR: fal.ai generation failed: ${status.error ?? "unknown"}`);
-      process.exit(1);
-    }
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-
-  const resultResp = await fetch(responseUrl, { headers });
-  if (!resultResp.ok) {
-    const text = await resultResp.text();
-    console.error(`ERROR: fal.ai result returned ${resultResp.status}: ${text}`);
-    process.exit(1);
-  }
-  return await resultResp.json();
-}
-
-// ---------------------------------------------------------------------------
-// Composite generation
-// ---------------------------------------------------------------------------
-
-async function downloadComposite(result, outputFormat, outputDir, tag) {
-  mkdirSync(outputDir, { recursive: true });
-  const images = Array.isArray(result.images) ? result.images : [];
-  if (images.length === 0) {
-    console.error(`ERROR: fal.ai returned no images for ${tag}`);
-    process.exit(1);
-  }
-  const url = images[0].url;
-  const filepath = join(outputDir, `composite.${outputFormat}`);
-  const imgResp = await fetch(url);
-  if (!imgResp.ok) {
-    console.error(`ERROR: download failed ${imgResp.status} for ${url}`);
-    process.exit(1);
-  }
-  writeFileSync(filepath, Buffer.from(await imgResp.arrayBuffer()));
-  console.error(`[${tag}] composite saved: ${filepath}`);
-  return { filepath, url };
-}
-
-async function generateComposite({
-  apiKey, finalPrompt, imageSize, refs, quality, outputFormat, outputDir,
-}) {
-  const isEdit = Array.isArray(refs) && refs.length > 0;
-  const appId = isEdit ? "openai/gpt-image-2/edit" : "openai/gpt-image-2";
-  const tag = isEdit ? "fal:gpt-image-2/edit" : "fal:gpt-image-2";
-
-  const payload = {
-    prompt: finalPrompt,
-    num_images: 1,
-    quality,
-    output_format: outputFormat,
-    image_size: imageSize.preset,
-  };
-  if (isEdit) {
-    payload.image_urls = refs;
-  }
-
-  const result = await falSubscribe({ apiKey, appId, payload, tag });
-  const { filepath, url } = await downloadComposite(result, outputFormat, outputDir, tag);
-  return { compositePath: filepath, compositeUrl: url, endpoint: appId };
+// All image calls share the same model selection, authentication and response decoder.
+export async function generateComposite({
+  apiKey, model, finalPrompt, aspect, refs, quality, outputFormat, outputDir,
+}, dependencies) {
+  const result = await generateImage({
+    apiKey, model, prompt: finalPrompt, aspectRatio: aspect, imageUrls: refs,
+    quality, outputFormat, outputDir, filenamePrefix: "composite",
+  }, dependencies);
+  return { compositePath: result.files[0], compositeUrl: null, endpoint: result.endpoint, model: result.model };
 }
 
 // ---------------------------------------------------------------------------
@@ -376,12 +218,8 @@ function ensureFfmpeg() {
   }
 }
 
-// Read actual pixel dimensions from a downloaded image. fal.ai's
-// gpt-image-2 presets (portrait_16_9, landscape_16_9, square_hd) are
-// nominal — the actual returned image dimensions can differ (e.g.
-// portrait_16_9 may return 608x1088 instead of 1024x1536, both still
-// at the requested 9:16 aspect). Bbox math MUST use actual dimensions
-// or the slices will be misaligned.
+// Always slice against the actual returned pixel dimensions. Requested
+// aspect and nominal planning sizes do not guarantee exact provider output.
 function readImageDimensions(filePath) {
   const res = spawnSync(
     "ffprobe",
@@ -436,23 +274,6 @@ function sliceComposite({ compositePath, panels, outputDir, baseName, format }) 
   return slices;
 }
 
-// Reject local file paths in --ref. The fal.ai edit endpoint requires
-// remote URLs (or data: URLs) for image_urls; for v1 we don't auto-upload.
-function validateRefs(refs) {
-  if (!Array.isArray(refs)) return;
-  for (const ref of refs) {
-    if (!ref) continue;
-    const isHttp = ref.startsWith("http://") || ref.startsWith("https://");
-    const isData = ref.startsWith("data:");
-    if (!isHttp && !isData) {
-      console.error(
-        `ERROR: --ref '${ref}' must be an http(s) URL or data: URI. Local file paths are not supported in v1 — upload first and pass the URL.`,
-      );
-      process.exit(1);
-    }
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Stdout JSON builder
 // ---------------------------------------------------------------------------
@@ -466,7 +287,7 @@ function validateRefs(refs) {
 export function buildStdoutJson({
   compositePath, compositeUrl, endpoint, grid, imageSize,
   finalPrompt, panels, refs, baseName, aspect, panelCount,
-  quality = "high",
+  quality = "high", model = DEFAULT_IMAGE_MODEL,
 }) {
   const now = Date.now();
   const compositeAssetId = `asset-storyboard-composite-${now}`;
@@ -496,8 +317,8 @@ export function buildStdoutJson({
       agentId: "claude-clipcraft-storyboard",
       timestamp: now,
       params: {
-        model: "gpt-image-2",
-        provider: "fal.ai",
+        model: resolveImageModel(model),
+        provider: "openrouter",
         endpoint,
         prompt: finalPrompt,
         imageSize: imageSize.preset,
@@ -602,6 +423,7 @@ async function main() {
       "no-annotations": { type: "boolean", default: false },
       "keep-composite": { type: "boolean", default: true },
       quality:          { type: "string", default: "high" },
+      model:            { type: "string" },
       "output-format":  { type: "string", default: "png" },
       help:             { type: "boolean", short: "h" },
     },
@@ -653,16 +475,16 @@ async function main() {
   }
 
   const refs = values.ref ?? [];
-  validateRefs(refs);
+  const model = resolveImageModel(values.model ?? (refs.length ? DEFAULT_EDIT_IMAGE_MODEL : DEFAULT_IMAGE_MODEL));
 
   // ---- pipeline ----
   ensureFfmpeg();
 
   const keys = loadEnvKeys();
-  if (!keys.FAL_KEY) {
-    console.error("ERROR: FAL_KEY not found.");
-    console.error("Add FAL_KEY=... to the skill .env or export it in the environment.");
-    console.error("Get one at https://fal.ai/dashboard/keys.");
+  if (!keys.OPENROUTER_API_KEY) {
+    console.error("ERROR: OPENROUTER_API_KEY not found.");
+    console.error("Add OPENROUTER_API_KEY=... to the skill .env or export it in the environment.");
+    console.error("Get one at https://openrouter.ai/keys.");
     process.exit(1);
   }
 
@@ -681,19 +503,17 @@ async function main() {
   );
 
   const composite = await generateComposite({
-    apiKey: keys.FAL_KEY,
+    apiKey: keys.OPENROUTER_API_KEY,
+    model,
     finalPrompt,
-    imageSize,
+    aspect,
     refs,
     quality: values.quality,
     outputFormat: values["output-format"],
     outputDir: outDir,
   });
 
-  // fal.ai presets are nominal — read actual dimensions from the
-  // downloaded composite before slicing. Aspect ratio is honored, but
-  // pixel size can differ (e.g. portrait_16_9 → 608x1088 vs requested
-  // 1024x1536), and bbox math MUST run against the real pixel grid.
+  // Read the generated composite before computing any crop boxes.
   const actualImageSize = {
     preset: imageSize.preset,
     ...readImageDimensions(composite.compositePath),
@@ -715,6 +535,7 @@ async function main() {
     compositePath: composite.compositePath,
     compositeUrl: composite.compositeUrl,
     endpoint: composite.endpoint,
+    model: composite.model,
     grid,
     imageSize: actualImageSize,
     finalPrompt,
@@ -734,5 +555,5 @@ async function main() {
 }
 
 if (isCliEntry()) {
-  await main();
+  main().catch((error) => { console.error(`ERROR: ${error.message}`); process.exitCode = 1; });
 }

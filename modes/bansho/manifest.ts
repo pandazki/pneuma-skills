@@ -19,7 +19,7 @@ import { loadBoard, saveBoard } from "./domain.js";
 
 const banshoManifest: ModeManifest = {
   name: "bansho",
-  version: "0.25.1",
+  version: "0.26.0",
   // The name is the brand and stays romanized where the script has no
   // word for it (house style — `modes/kami/manifest.ts` ships "Kami" ×7);
   // the CJK locales have their own reading of 板書 and use it.
@@ -44,6 +44,7 @@ const banshoManifest: ModeManifest = {
     de: "Erklären wie an der Tafel: Schreib die Vorlesung in schlichtem Markdown, und die Tafel führt sie selbst auf — fließende Handschrift, handgezeichnete Hervorhebungen und Diagramme, die entstehen, sobald die Erzählung sie erreicht; jederzeit zurückspulbar",
   },
   changelog: {
+    "0.26.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
     // Wording discipline: these bullets render VERBATIM in the launcher's
     // skill-update prompt, so they may only claim what the build actually
     // does.
@@ -278,15 +279,12 @@ const banshoManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-bansho",
-    // Two shared CLIs (the same sources clipcraft and illustrate install),
-    // both fed by the ONE falApiKey init param below via .env: the voice's
-    // synthesis half, and the drawing hand a tier-2 figure is ordered from
-    // (`skill/references/illustrations.md`). No key is an honest outcome
-    // for both — the board plays as written, and a figure the board cannot
-    // draw itself falls back to tier 1 or is dropped out loud.
+    // Shared TTS uses fal.ai; generated figures use GPT Image 2.5 on OpenRouter.
+    // Both are optional: a lecture can play without generated voice or figures.
     sharedScripts: ["generate-tts.mjs", "generate_image.mjs"],
     envMapping: {
       FAL_KEY: "falApiKey",
+      OPENROUTER_API_KEY: "openrouterApiKey",
     },
     mdScene:
       "You and the user are at a whiteboard inside Pneuma. You explain by writing a lecture — plain structured markdown in board.md. Everything you write performs itself on the user's board: handwriting flows in, your emphasis marks become hand-drawn ink, your charts draw themselves as the narration reaches them. History only accumulates — an appended @erase can retire a finished board while scrubbing back still re-shows everything, and @focus / @overview direct the camera at the turns. The user can scrub back through time like replaying a lecture.",
@@ -584,10 +582,18 @@ The user opened Bansho to have something explained on a board. Write the lecture
     ],
     params: [
       {
+        name: "openrouterApiKey",
+        label: "OpenRouter API Key",
+        description: "for GPT Image 2.5 illustrations; leave blank to use charts and graphs only",
+        type: "string",
+        defaultValue: "",
+        sensitive: true,
+      },
+      {
         name: "falApiKey",
         label: "fal.ai API Key",
         description:
-          "lets the agent give the board a voice (TTS clips) and order the few figures the board cannot draw itself — leave empty and both are skipped: the lecture plays as written, and a figure that needed a drawing hand falls back to a chart or a graph, or is dropped out loud",
+          "for board narration (TTS clips); leave blank to play without generated speech",
         type: "string",
         defaultValue: "",
         sensitive: true,

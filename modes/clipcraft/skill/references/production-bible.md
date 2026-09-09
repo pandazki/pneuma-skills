@@ -201,7 +201,7 @@ decks.
 Three things make this template work where shorter prompts fail:
 
 1. **Production triggers** — `CORE DIRECTIVE (NON-NEGOTIABLE)`,
-   `STRICT`, `MUST` — push gpt-image-2 onto its high-effort
+   `STRICT`, `MUST` — push gpt-image-2.5-sunburst onto its high-effort
    "production board" track. See `references/direction-notation.md`
    for the full vocabulary.
 2. **Performance over pose** — "real actor caught mid-moment, NOT
@@ -224,7 +224,7 @@ node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
   --filename-prefix anya
 ```
 
-Cost: ~$0.16 (gpt-image-2 high quality, 16:9). Inspect, regenerate
+Cost varies with quality and image dimensions; read `usage.cost` from the response. Inspect, regenerate
 once or twice if needed. The cost of the wrong character bible is N
 shots × $0.16-1.50 each, so pay for the high-quality bible.
 

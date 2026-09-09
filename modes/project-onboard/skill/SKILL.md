@@ -59,7 +59,7 @@ If nothing of the above fits AND you decide not to draw, set `coverSource: null`
 
 ## Drawing for the project
 
-You have two opportunities to put image-gen to work during onboarding. Both are **completely optional** — they're gifts, not requirements. Only attempt them if **`FAL_KEY`** (or `FAL_API_KEY`) is configured in `~/.pneuma/api-keys.json`. No key → silently skip both branches and proceed with the rest of the discovery. If invocation fails for any reason (missing skill install, bad API call, network) catch it and skip — the discovery report works fine without the gift.
+You have two opportunities to put image-gen to work during onboarding. Both are **completely optional** — they're gifts, not requirements. Only attempt them if **`OPENROUTER_API_KEY`** is configured in `~/.pneuma/api-keys.json`. No key → silently skip both branches and proceed with the rest of the discovery. If invocation fails for any reason (missing skill install, bad API call, network) catch it and skip — the discovery report works fine without the gift.
 
 The two branches are mutually exclusive — pick at most one based on what you saw in the project:
 
@@ -88,26 +88,21 @@ When the project has real content (README, code, dependencies, docs) but **no us
 
 ### Invocation
 
-The user's machine has the `contextual-illustrator` skill installed (you can see it via `Skill` tool). Invoke it with:
-
-- A self-contained prompt that fully describes the image (see style intent above — be specific about palette, composition, what NOT to include).
-- `--aspect-ratio 1:1`
-- `--quality high` (welcome egg) or `--quality medium` (auto-cover — saves cost on a more constrained image)
-- `--output-format png`
-- `--output-dir $PNEUMA_SESSION_DIR/onboard`
-- `--filename-prefix welcome-egg` (Branch A) or `cover-generated` (Branch B)
-
-If the contextual-illustrator skill isn't available, fall back to invoking it via Bash directly:
+Use the bundled `{SKILL_PATH}/scripts/generate_image.mjs`. It defaults to
+`gpt-image-2.5-sunburst`; reference-image edits automatically select `gpt-image-2.5-flare`.
+Both use OpenRouter and require `OPENROUTER_API_KEY` in the session environment
+or skill `.env` (auto-filled from the saved OpenRouter key at launch).
 
 ```bash
-cd ~/.claude/plugins/cache/vibe-skills/contextual-illustrator/*/  && \
-  uv run python scripts/generate_image.py "<prompt>" \
-    --aspect-ratio 1:1 --quality high --output-format png \
-    --output-dir $PNEUMA_SESSION_DIR/onboard \
-    --filename-prefix welcome-egg
+bun {SKILL_PATH}/scripts/generate_image.mjs "<self-contained prompt>" \
+  --aspect-ratio 1:1 --quality high --output-format png \
+  --output-dir "$PNEUMA_SESSION_DIR/onboard" \
+  --filename-prefix welcome-egg
 ```
 
-If both fail or the user has no `FAL_KEY`, skip silently — no apology, no retry. The discovery report still works without the gift.
+Use `--quality medium --filename-prefix cover-generated` for an auto-cover.
+Read the saved path from the JSON `files` array. If generation fails or no
+OpenRouter key is configured, skip this optional gift and continue discovery.
 
 ### Wiring into proposal.json
 
@@ -135,8 +130,8 @@ This is the core craft of the onboarding. Pick **two** concrete, immediately-doa
 Both tasks must be doable end-to-end without API keys the user hasn't configured — a failed first run is the worst possible onboarding outcome. If the project would benefit from API-keyed work but the user hasn't configured keys, surface that as an `apiKeyHints` (the viewer will render a soft "you could unlock more by adding X key" prompt), but the two recommended tasks themselves stay key-free.
 
 **Read `~/.pneuma/api-keys.json`** to see what's configured. Common keys:
-- `OPENROUTER_API_KEY` — unlocks `gpt-image-2` (best for text-heavy logos/illustrations) and `gemini-3-pro` (painterly/artistic work)
-- `FAL_KEY` (sometimes stored as `FAL_API_KEY` — accept either) — unlocks `gpt-image-2` (alternate route) plus video generation models for `clipcraft`
+- `OPENROUTER_API_KEY` — unlocks `gpt-image-2.5-sunburst` (default) and `gpt-image-2.5-flare` (edits) for image generation and editing
+- `FAL_KEY` (sometimes stored as `FAL_API_KEY` — accept either) — unlocks video generation and TTS models for `clipcraft`
 
 If the file doesn't exist or is empty, treat the user as having no keys.
 
@@ -156,7 +151,7 @@ Use this as guidance, not a rigid lookup. Adapt to the project's signals.
 ### Hard rules
 
 - **Never recommend `clipcraft` (video generation) without `FAL_KEY`.** It needs the key; failing without it is brutal.
-- **Never recommend `illustrate` without an image-gen key** (`OPENROUTER_API_KEY` or `FAL_KEY`). Same reason.
+- **Never recommend `illustrate` without an image-gen key** (`OPENROUTER_API_KEY`). Same reason.
 - **Always give two distinct tasks** — different modes if possible. Variety lets the user pick by mood.
 - **Each task should produce something visibly delightful within 5 minutes** of the user clicking. No "we'll need to discuss…" tasks; pick tasks where the agent can land a real first artifact fast.
 - **Each task's `handoffPayload.suggested_files` must include the most relevant existing files** — README, logo, etc. The target agent uses these as anchors so it doesn't ask the user to repeat what's already on disk.
@@ -272,7 +267,7 @@ If `welcome` is absent, the viewer renders only the regular discovery report. If
 ## Procedure
 
 1. **Read** the project (per Discovery protocol above). Stop once you have enough.
-2. **Decide on a drawing branch** (per "Drawing for the project" above). If `FAL_KEY` is configured AND the project signal calls for it, generate either a welcome egg (sparse project) or an auto-cover (logo-less but real content), saving the PNG into `$PNEUMA_SESSION_DIR/onboard/`. If there's no key or the project doesn't need it, skip.
+2. **Decide on a drawing branch** (per "Drawing for the project" above). If `OPENROUTER_API_KEY` is configured AND the project signal calls for it, generate either a welcome egg (sparse project) or an auto-cover (logo-less but real content), saving the PNG into `$PNEUMA_SESSION_DIR/onboard/`. If there's no key or the project doesn't need it, skip.
 3. **Synthesize** the proposal in memory: project metadata, atlas body, anchors, two tasks, optional API-key hint, optional `welcome` block.
 4. **Write** `$PNEUMA_SESSION_DIR/onboard/proposal.json`. Use the Bash `mkdir` to ensure the `onboard/` subdir exists, then Write.
 5. **Stop.** Don't post a chat reply. The viewer will render your proposal automatically. The user reviews and clicks; you don't need to wait around in chat.

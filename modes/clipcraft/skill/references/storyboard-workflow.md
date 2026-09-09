@@ -2,8 +2,8 @@
 
 ClipCraft's planning layer is the `previewFrames` array on each video track. It lets you stage three layers of fidelity on the timeline before any expensive video generation runs:
 
-1. **Sketch layer** — line-art images placed across the timeline. Cheap (`gpt-image-2 --style sketch --quality low` ≈ $0.01 per image). Defines vibe, blocking, pacing.
-2. **Anchor layer** — photoreal first/last frames at planned generation boundaries (`gpt-image-2 --style photo --quality high`). Replaces specific sketch positions. Used as seedance from-image / end-image-url.
+1. **Sketch layer** — line-art images placed across the timeline. Cheap (`gpt-image-2.5-sunburst --style sketch --quality low`). Defines vibe, blocking, pacing.
+2. **Anchor layer** — photoreal first/last frames at planned generation boundaries (`gpt-image-2.5-sunburst --style photo --quality high`). Replaces specific sketch positions. Used as seedance from-image / end-image-url.
 3. **Real clip layer** — `Clip` on the same track from a seedance run. Replaces the planning layer in its time range via the upstream auto-fallback rule (clip wins per half-open interval).
 
 The user reviews at every layer transition. Your job is to surface the right artifact at the right time and ask "ready to commit?" before each escalation.
@@ -75,7 +75,7 @@ Then for each output file, register the asset and add the preview frame in `proj
       "actor": "agent",
       "agentId": "claude-clipcraft",
       "timestamp": 1714200000000,
-      "params": { "model": "gpt-image-2", "style": "sketch", "prompt": "..." }
+      "params": { "model": "gpt-image-2.5-sunburst", "style": "sketch", "prompt": "..." }
     }
   }
 ],
@@ -207,10 +207,10 @@ A variant: if you have multiple anchors that need to be honored during the singl
 
 ## Path C — composite-and-slice for high panel-count consistency
 
-When the user wants 4–16 distinct panels (storyboard sketches, music-driven cuts, multi-shot beats), generating each panel as an independent gpt-image-2 call costs N × $0.16 and produces panels that drift in character look, palette, and lighting. **Path C generates one composite image containing all N panels in a grid, then engineering-slices it into N individual files.** Trade-off summary:
+When the user wants 4–16 distinct panels (storyboard sketches, music-driven cuts, multi-shot beats), generating each panel as an independent gpt-image-2.5-sunburst call requires N separate image generations and produces panels that drift in character look, palette, and lighting. **Path C generates one composite image containing all N panels in a grid, then engineering-slices it into N individual files.** Trade-off summary:
 
-- **Cost:** ~$0.16 total (vs N×$0.16 for Path A sketches)
-- **Internal consistency:** dramatically higher — gpt-image-2 spends one image's attention budget across all panels at once
+- **Cost:** one image generation instead of N; price depends on quality and dimensions
+- **Internal consistency:** dramatically higher — gpt-image-2.5-sunburst spends one image's attention budget across all panels at once
 - **Constraint:** panels must fit a 2×2 / 3×2 / 4×2 / 3×3 / 4×3 / 4×4 grid (4–16 panels)
 - **Best for:** sketch stage of a multi-panel project, or as the source of references for a Path B reference-mode seedance call
 
@@ -219,9 +219,9 @@ When the user wants 4–16 distinct panels (storyboard sketches, music-driven cu
 `scripts/storyboard.mjs` is a single CLI that orchestrates compose + slice:
 
 1. Computes grid layout (`rows × cols`) from panel count + video aspect ratio. Grid orientation tracks video orientation: 9:16 video → cols ≤ rows; 16:9 → cols ≥ rows.
-2. Picks the closest gpt-image-2 output size (1024², 1024×1536, or 1536×1024).
+2. Requests the composite at the target aspect ratio through OpenRouter.
 3. Wraps your prompt with the grid prelude and (by default) the annotation color system vocabulary from `references/direction-notation.md`.
-4. Generates the composite via gpt-image-2 (passing any `--ref` images for character/style refs).
+4. Generates through OpenRouter: Sunburst without references, Flare with any `--ref` images for character/style guidance.
 5. Computes panel bounding boxes from the grid (each cell exactly the video aspect by construction).
 6. Crops each panel with ffmpeg.
 7. Emits a JSON summary on stdout listing each panel, the final prompt, and suggested provenance entries.
@@ -248,7 +248,7 @@ Flags:
 - `--prompt <text>` or `--prompt-file <path>` — the storyboard description (per-panel content). Either flag works.
 - `--out-dir <path>` — output directory; created if missing.
 - `--name <basename>` — file prefix for panel slices (default `panel`).
-- `--ref <path>` — character/style reference image. Repeatable; up to 4 refs (gpt-image-2 limit).
+- `--ref <path>` — character/style reference image. Repeatable; up to 16 refs.
 - `--no-annotations` — disable the annotation color system prelude (use when the panels don't need annotated direction).
 - `--keep-composite` (default true) — keep `composite.png` alongside slices (the composite is also useful as a presentation artifact).
 
@@ -265,7 +265,7 @@ Flags:
 8. Run seedance          (Path A per-cut, OR Path B single long-form with sliced panels as refs)
 ```
 
-Step 5 — register the slices in `project.json` with the slice provenance (`fromAssetId` pointing at the composite asset, `operation.type: "slice"`, `operation.params: { row, col, bbox }`). The composite itself is also an asset (root: `fromAssetId: null`, `operation.type: "generate"`, `model: "gpt-image-2"`, full prompt and refs in `params`). Lineage view: composite → panel-1 / panel-2 / … / panel-N.
+Step 5 — register the slices in `project.json` with the slice provenance (`fromAssetId` pointing at the composite asset, `operation.type: "slice"`, `operation.params: { row, col, bbox }`). The composite itself is also an asset (root: `fromAssetId: null`, `operation.type: "generate"`, the actual Sunburst/Flare model, full prompt and refs in `params`). Lineage view: composite → panel-1 / panel-2 / … / panel-N.
 
 Step 8 — when feeding sliced panels as references for a single-long-form seedance call, use the `reference` subcommand (not `from-image`):
 
@@ -343,6 +343,6 @@ Click flashes the strip thumbnail and selects the asset. Use sparingly. (See SKI
 - **Forgetting `metadata.fidelity`** — without it, the timeline row renders sketches as anchors. Always set the field at registration time.
 - **Floating-point time** — always `Math.round(t * 1000) / 1000` before passing to commands. Otherwise, equality checks (e.g. for `(trackId, time)` invariant collisions) misbehave.
 - **Adding a preview frame at exact `time === composition.duration`** — engine pauses at duration, so the last preview won't render. Add a sentinel preview slightly after to keep the visual tail visible during scrub.
-- **Anchor ≠ a video first frame in disguise** — the anchor *is* the seedance from-image. Generate at the exact composition pixel dimensions (`--image-size WxH`), not via `--aspect-ratio` which routes through fal.ai presets.
+- **Anchor ≠ a video first frame in disguise** — the anchor *is* the seedance from-image. Generate at the exact composition pixel dimensions (`--image-size WxH`), and verify the returned dimensions; `--aspect-ratio` only requests proportions.
 - **Sketch fidelity in the final cut** — the user occasionally says "I want to keep the sketch in the final video". That's a real `Clip` of an image asset, not a preview frame. Add it via `composition:add-clip { assetId: sketchAssetId, ... }`. Preview frames don't show up in final exports by default.
 - **Skipping the draft export checkpoint** — don't run seedance without first showing a draft. Seedance is the most expensive step; the user should approve the rough video file before money flows.

@@ -8,7 +8,7 @@ import { loadSite, saveSite } from "./domain.js";
 
 const webcraftManifest: ModeManifest = {
   name: "webcraft",
-  version: "1.6.0",
+  version: "1.7.0",
   displayName: {
     en: "WebCraft",
     "zh-CN": "WebCraft",
@@ -28,6 +28,7 @@ const webcraftManifest: ModeManifest = {
     de: "Webdesign mit Impeccable.style —— 22 KI-Designbefehle, responsive Vorschau und Export",
   },
   changelog: {
+    "1.7.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
     "1.6.0": [
       "Synced Impeccable.style guidance to upstream skill v4.1.2",
       "A much leaner core: the always-loaded skill text is a fraction of its old length, so a request to polish one button no longer triggers a full product interview — depth now loads on demand",
@@ -78,7 +79,6 @@ const webcraftManifest: ModeManifest = {
     mdScene: `You and the user are designing a web page together inside Pneuma. The user watches a live responsive preview as you edit HTML, CSS, and JS files — every change appears immediately, and the toolbar exposes 22 Impeccable.style design commands for deeper guidance. When the page is ready they can export it as a static site or deploy it to Vercel or Cloudflare Pages.`,
     envMapping: {
       OPENROUTER_API_KEY: "openrouterApiKey",
-      FAL_KEY: "falApiKey",
     },
     sharedScripts: ["generate_image.mjs", "edit_image.mjs"],
   },
@@ -274,12 +274,11 @@ The user just opened the workspace. You are ready to assist with web design and 
       },
     ],
     params: [
-      { name: "falApiKey", label: "fal.ai API Key", description: "for AI image generation (default model: gpt-image-2)", type: "string", defaultValue: "", sensitive: true },
-      { name: "openrouterApiKey", label: "OpenRouter API Key", description: "optional fallback for Gemini 3 Pro; leave blank to skip", type: "string", defaultValue: "", sensitive: true },
+      { name: "openrouterApiKey", label: "OpenRouter API Key", description: "for GPT Image 2.5 generation and editing; leave blank to skip", type: "string", defaultValue: "", sensitive: true },
     ],
     deriveParams: (params) => ({
       ...params,
-      imageGenEnabled: (params.falApiKey || params.openrouterApiKey) ? "true" : "",
+      imageGenEnabled: params.openrouterApiKey ? "true" : "",
     }),
   },
 

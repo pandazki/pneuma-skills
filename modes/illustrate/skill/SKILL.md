@@ -174,10 +174,10 @@ After scaffolding, the canvas shows a placeholder row; run the generation script
 
 ## AI Image Generation
 
-- `scripts/generate_image.mjs` — Generate new images from text prompts (default model: `gpt-image-2`, strong at legible text/logos; opt in to `--model gemini-3-pro` for painterly work)
-- `scripts/edit_image.mjs` — Modify an existing local image with an optional highlighter annotation (Gemini vision via OpenRouter)
+- `scripts/generate_image.mjs` — Generate new images from text prompts (default model: `gpt-image-2.5-sunburst`, strong at legible text/logos; reference-image edits automatically use `gpt-image-2.5-flare`)
+- `scripts/edit_image.mjs` — Modify an existing local image with an optional highlighter annotation (GPT Image 2.5 via OpenRouter)
 
-**Workflow at a glance**: write placeholder row to `manifest.json` (status: "generating") → run script → update manifest with result. Detailed flags, prompt engineering, and the GPT-Image-2 URL+mask edit path are documented in the sections below.
+**Workflow at a glance**: write placeholder row to `manifest.json` (status: "generating") → run script → update manifest with result. Detailed flags, prompt engineering, and the GPT Image 2.5 reference-image edit path are documented in the sections below.
 {{/imageGenEnabled}}
 
 ## Data Model
@@ -313,41 +313,27 @@ cd {SKILL_PATH} && node scripts/generate_image.mjs \
 
 ### Model Picking
 
-| Model | Pick when | Backends |
+| Model | Pick when | Backend |
 |---|---|---|
-| `gpt-image-2` (default) | General use. Especially strong at **legible typography, labels, wordmark logos, UI mockups with real copy, signage, diagrams with text**, and precise mask-based edits. | fal.ai only |
-| `gemini-3-pro` | Painterly / watercolor / broad artistic illustration, Gemini-specific aesthetic, or when only OpenRouter is configured. | fal.ai or OpenRouter |
+| `gpt-image-2.5-sunburst` | Default for text-to-image generation | OpenRouter |
+| `gpt-image-2.5-flare` | Default for edits and calls with reference images | OpenRouter |
 
-Default to `gpt-image-2` unless the user asks for Gemini or the style specifically calls for it. If the user only configured `OPENROUTER_API_KEY`, pass `--model gemini-3-pro` — `gpt-image-2` is fal.ai-only and will error out otherwise.
+Both models require `OPENROUTER_API_KEY`. The script selects Sunburst for text-only generation and Flare whenever `--image-urls` is present. `edit_image.mjs` defaults to Flare. `--model` overrides this selection; the `openai/` prefix is optional.
 
 ### Parameters
 
-Common:
-
 | Parameter | Values | Default | Notes |
 |-----------|--------|---------|-------|
-| `--model` | `gpt-image-2`, `gemini-3-pro` | `gpt-image-2` | See model picking above |
-| `--aspect-ratio` | `auto`, `21:9`, `16:9`, `3:2`, `4:3`, `5:4`, `1:1`, `4:5`, `3:4`, `2:3`, `9:16` | `1:1` | Match the intended use. For `gpt-image-2` this maps to a fal.ai preset. |
-| `--output-format` | `png`, `jpeg`, `webp` | `png` | `png` for quality, `webp` for size |
-| `--num-images` | 1–4 | 1 | Multiple for variations |
+| `--model` | `gpt-image-2.5-sunburst`, `gpt-image-2.5-flare` | Sunburst for generation; Flare with references | Both use OpenRouter |
+| `--aspect-ratio` | `auto`, `21:9`, `16:9`, `3:2`, `4:3`, `1:1`, `3:4`, `2:3`, `9:16` | `1:1` | Match the intended use |
+| `--output-format` | `png`, `jpeg`, `webp` | `png` | Read the actual output path from `files` |
+| `--num-images` | 1–10 | 1 | Multiple variations |
 | `--filename-prefix` | any string | `illustration` | Use descriptive names |
+| `--quality` | `auto`, `low`, `medium`, `high`, `xhigh`, `max` | `high` | Lower quality for drafts |
+| `--image-size` | preset (`landscape_4_3`, `square_hd`, …) or `WxH` | — | Overrides `--aspect-ratio`; verify returned dimensions |
+| `--image-urls` | URL, data URI, or local path, repeatable | — | Up to 16 reference images for edits or composition |
 
-GPT-Image-2 only:
-
-| Parameter | Values | Default | Notes |
-|-----------|--------|---------|-------|
-| `--quality` | `low`, `medium`, `high` | `high` | Affects cost — drop to `medium` for drafts |
-| `--image-size` | preset (`landscape_4_3`, `square_hd`, …) or `WxH` | — | Overrides `--aspect-ratio` mapping |
-| `--image-urls` | one or more URLs | — | Switches to the edit endpoint |
-| `--mask-url` | URL | — | Optional mask for edit endpoint |
-
-Gemini 3 Pro only:
-
-| Parameter | Values | Default | Notes |
-|-----------|--------|---------|-------|
-| `--resolution` | `1K`, `2K`, `4K` | `1K` | Higher = more detail |
-| `--safety-tolerance` | `1`–`6` | `4` | fal.ai only. 1 = strictest, 6 = loosest |
-| `--seed` | integer | — | fal.ai only |
+The OpenRouter endpoint does not expose mask edits, resolution tiers, seed, or safety-tolerance controls. Do not pass those old flags.
 
 **Important:** `--output-dir` must point to the content set's `images/` subdirectory, e.g. `<workspace>/my-project/images`.
 
@@ -359,7 +345,7 @@ Two edit paths are available — pick based on how the user pointed at the chang
 
 ### Path A: Annotation-Driven (`edit_image.mjs`)
 
-Use when the source is a **local file** and the user's intent is best expressed by pointing at a region (e.g. they circled it with the highlighter tool). This sends the original image and an optional annotation crop to Gemini's vision + image model, which reasons about both in one pass.
+Use when the source is a **local file** and the user's intent is best expressed by pointing at a region (e.g. they circled it with the highlighter tool). This sends the original image and an optional annotation crop to GPT Image 2.5, which reasons about both in one pass.
 
 ```bash
 cd {SKILL_PATH} && node scripts/edit_image.mjs \
@@ -373,22 +359,23 @@ cd {SKILL_PATH} && node scripts/edit_image.mjs \
 |-----------|--------|---------|-------|
 | `--input, -i` | file path | **required** | Original image to modify |
 | `--annotation, -a` | file path | none | Highlighter region crop (sent as 2nd image) |
-| `--aspect-ratio` | same as generate, plus `1:4`, `4:1`, `1:8`, `8:1` | `auto` | Keeps original ratio by default |
-| `--resolution` | `0.5K`, `1K`, `2K`, `4K` | `1K` | Output resolution |
+| `--aspect-ratio` | same as generate | `auto` | Keeps original ratio by default |
+| `--model` | same as generate | `gpt-image-2.5-flare` | Edits default to Flare |
+| `--quality` | same as generate | `high` | Output quality |
+| `--image-size` | preset or `WxH` | — | Explicit output size |
 | `--output-format` | `png`, `jpeg`, `webp` | `png` | Output file format |
 | `--filename-prefix` | any string | `edited` | Output filename prefix |
 
 Requires `OPENROUTER_API_KEY`.
 
-### Path B: URL + Mask (GPT-Image-2 edit endpoint via `generate_image.mjs`)
+### Path B: Reference Images (`generate_image.mjs`)
 
-Use when the source image is already a **URL** (uploaded, remote, or from a prior generation) and you want precise mask-driven edits — GPT-Image-2 preserves text and layout much better than Gemini vision in this case. Add `--image-urls` (and optionally `--mask-url`) to the generate script; it automatically routes to `openai/gpt-image-2/edit`:
+Pass `--image-urls` for one or more remote URLs, data URIs, or local files. Describe which parts to change and preserve. Generation and editing use the same OpenRouter Images endpoint. A highlighter annotation is a visual guide, not a pixel mask.
 
 ```bash
 cd {SKILL_PATH} && node scripts/generate_image.mjs \
   "Same composition, replace the tagline with 'Hello World'" \
   --image-urls https://example.com/source.png \
-  --mask-url https://example.com/mask.png \
   --output-dir <workspace>/<content-set>/images \
   --filename-prefix edited-hero
 ```
@@ -399,7 +386,7 @@ cd {SKILL_PATH} && node scripts/generate_image.mjs \
 |----------|---------|
 | User says "make this darker" / "change the color" on a selected local image | `edit_image.mjs` |
 | User highlights a region and says "fix this part" | `edit_image.mjs --annotation` |
-| Source image is a URL and the change needs precise text/layout preservation | `generate_image.mjs --image-urls` (GPT-Image-2 edit) |
+| Source image is a URL and the change needs precise text/layout preservation | `generate_image.mjs --image-urls` (GPT Image 2.5 edit) |
 | User wants completely new images from a text description | `generate_image.mjs` |
 | User wants variations of a concept (not tied to a specific image file) | `generate_image.mjs` with modified prompt |
 
@@ -436,7 +423,7 @@ When the user selects an image and asks for modifications:
 3. **If highlighter annotation exists** — save the region data URL to a temp file, pass as `--annotation`
 4. **Add placeholder row** — create a new row in manifest with `"status": "generating"` on the item, labeled "Edit of [original title] — [change description]". The user sees a generating placeholder immediately.
 5. **Craft the edit prompt** — describe the change clearly, referencing the annotation if present
-6. **Run the edit** — `edit_image.mjs` for annotation-driven, or `generate_image.mjs --image-urls ... --mask-url ...` for URL+mask
+6. **Run the edit** — `edit_image.mjs` for annotation-driven, or `generate_image.mjs --image-urls ...` for reference-image edits
 7. **Update manifest** — remove `"status"` from the item and add metadata
 8. **Keep the original** — don't modify or delete the original image/row
 

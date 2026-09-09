@@ -30,8 +30,8 @@ const DIAGRAM_FILES = [
 ];
 
 describe("kami version + changelog contract", () => {
-  it("is at the upstream-V1.13.0 sync version", () => {
-    expect(kamiManifest.version).toBe("1.6.0");
+  it("includes the GPT Image 2.5 upgrade", () => {
+    expect(kamiManifest.version).toBe("1.7.0");
   });
 
   it("carries a changelog entry for the current version", () => {
