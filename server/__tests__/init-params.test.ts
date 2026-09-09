@@ -12,7 +12,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { InitParam } from "../../core/types/mode-manifest.js";
-import { matchStoredKey, prepareInitParams } from "../init-params.js";
+import { matchStoredKey, prepareInitParams, resolveBackfilledParams } from "../init-params.js";
 
 let home: string;
 
@@ -60,6 +60,77 @@ describe("matchStoredKey", () => {
     expect(matchStoredKey({ openrouterApiKey: "exact" }, "openrouterApiKey")).toBe("exact");
     expect(matchStoredKey({ OPENROUTER_API_KEY: "snake" }, "openrouterApiKey")).toBe("snake");
     expect(matchStoredKey({ FAL_API_KEY: "other" }, "openrouterApiKey")).toBeNull();
+  });
+});
+
+describe("resolveBackfilledParams", () => {
+  // sprite / plotwise / clipcraft all declare this pair. The `FAL_KEY` env name
+  // is what the session `.env` needs; `FAL_API_KEY` is what the launcher's own
+  // key store holds — the two spellings never meet unless the backfill looks
+  // for both.
+  const ENV_MAPPING = { OPENROUTER_API_KEY: "openrouterApiKey", FAL_KEY: "falApiKey" };
+
+  it("fills from the declared env name", () => {
+    expect(
+      resolveBackfilledParams({ openrouterApiKey: "" }, ENV_MAPPING, {
+        OPENROUTER_API_KEY: "sk-or-stored",
+      }),
+    ).toEqual({ openrouterApiKey: "sk-or-stored" });
+  });
+
+  it("fills from the param name when the store spells it the launcher's way", () => {
+    // The regression: `FAL_KEY` is absent from the store, `FAL_API_KEY` is not.
+    expect(
+      resolveBackfilledParams({ falApiKey: "" }, ENV_MAPPING, { FAL_API_KEY: "fal-stored" }),
+    ).toEqual({ falApiKey: "fal-stored" });
+    expect(
+      resolveBackfilledParams({ falApiKey: "" }, ENV_MAPPING, { falApiKey: "fal-camel" }),
+    ).toEqual({ falApiKey: "fal-camel" });
+  });
+
+  it("prefers the declared env name over the param-name match", () => {
+    expect(
+      resolveBackfilledParams({}, ENV_MAPPING, { FAL_KEY: "by-env", FAL_API_KEY: "by-param" }),
+    ).toEqual({ falApiKey: "by-env" });
+  });
+
+  it("backfills nothing when the store has no matching key", () => {
+    expect(resolveBackfilledParams({ falApiKey: "" }, ENV_MAPPING, {})).toEqual({});
+    expect(
+      resolveBackfilledParams({ falApiKey: "" }, ENV_MAPPING, { ANTHROPIC_API_KEY: "nope" }),
+    ).toEqual({});
+    // An empty stored value is not an answer — writing it back would look like
+    // a configured key to everything downstream.
+    expect(resolveBackfilledParams({}, ENV_MAPPING, { FAL_API_KEY: "" })).toEqual({});
+  });
+
+  it("never overwrites a param that already carries a value", () => {
+    expect(
+      resolveBackfilledParams({ falApiKey: "typed-by-hand" }, ENV_MAPPING, {
+        FAL_API_KEY: "fal-stored",
+      }),
+    ).toEqual({});
+  });
+
+  it("treats a blank or whitespace-only value as unanswered", () => {
+    expect(
+      resolveBackfilledParams({ falApiKey: "   " }, ENV_MAPPING, { FAL_API_KEY: "fal-stored" }),
+    ).toEqual({ falApiKey: "fal-stored" });
+    expect(resolveBackfilledParams({}, ENV_MAPPING, { FAL_API_KEY: "fal-stored" })).toEqual({
+      falApiKey: "fal-stored",
+    });
+  });
+
+  it("returns the whole batch a --no-prompt sprite launch needs", () => {
+    const resolved: Record<string, number | string> = { openrouterApiKey: "", falApiKey: "" };
+    expect(
+      resolveBackfilledParams(resolved, ENV_MAPPING, {
+        OPENROUTER_API_KEY: "sk-or-stored",
+        FAL_API_KEY: "fal-stored",
+      }),
+    ).toEqual({ openrouterApiKey: "sk-or-stored", falApiKey: "fal-stored" });
+    // Pure: the caller decides when to persist, so the input is untouched.
+    expect(resolved).toEqual({ openrouterApiKey: "", falApiKey: "" });
   });
 });
 
