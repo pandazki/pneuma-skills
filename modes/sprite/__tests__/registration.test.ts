@@ -274,13 +274,14 @@ describe("the skill install surface", () => {
         }),
       ),
     );
-    // `{{viewerCapabilities}}` is the one framework-supplied key beyond the
-    // init params. `SKILL_PATH` is deliberately NOT in this set: the repo's
+    // The installer's `applyTemplateParams` substitutes only init params and
+    // `deriveParams` output — there is no framework-supplied key beyond them
+    // (`{{viewerCapabilities}}` was once documented but never implemented).
+    // `SKILL_PATH` is deliberately NOT in this set either: the repo's
     // convention is the single-brace literal `{SKILL_PATH}`, which the
     // installer never substitutes — the agent resolves it against its own
-    // installed skill directory. A `{{SKILL_PATH}}` written by mistake would
-    // reach the agent verbatim, so this test has to keep failing on it.
-    known.add("viewerCapabilities");
+    // installed skill directory. Any other `{{…}}` would reach the agent
+    // verbatim, so this test has to keep failing on it.
 
     const markdown = skillMarkdown();
     expect(markdown.length).toBeGreaterThan(1);
