@@ -21,6 +21,7 @@ import { join } from "node:path";
 import ts from "typescript";
 
 import { loadRoster, type CharacterProject, type Motion } from "../domain.js";
+import spriteManifest from "../manifest.js";
 import { atlasGeometry, atlasPivot } from "../viewer/atlas.js";
 import { pivotGuide } from "../viewer/frame-render.js";
 import {
@@ -30,6 +31,7 @@ import {
   scaleDriftVerdict,
   sizeLine,
 } from "../viewer/metrics.js";
+import { commandLabel, commandTooltip } from "../viewer/CommandPopovers.js";
 import { tabAfterNavigate, tabHasContent } from "../viewer/panel.js";
 import {
   resolveLocale,
@@ -1080,11 +1082,41 @@ describe("spriteStrings", () => {
   });
 
   test("English hints come from the manifest, so the table adds none", () => {
-    // One source per language: the manifest for English (where the hint is
-    // the command's own `description`), this table for the rest.
+    // One source per language: the manifest for English (where the label and
+    // the hint are the command's own fields), this table for the rest.
     expect(SPRITE_STRING_TABLES.en.commandHint("render-video")).toBeNull();
+    expect(SPRITE_STRING_TABLES.en.commandLabel("render-video")).toBeNull();
     expect(SPRITE_STRING_TABLES["zh-CN"].commandHint("render-video")).toBeTruthy();
+    expect(SPRITE_STRING_TABLES["zh-CN"].commandLabel("render-video")).toBeTruthy();
     expect(SPRITE_STRING_TABLES["zh-CN"].commandHint("unknown-command")).toBeNull();
+    expect(SPRITE_STRING_TABLES["zh-CN"].commandLabel("unknown-command")).toBeNull();
+  });
+
+  test("a command falls back to the manifest when the table has no word", () => {
+    const command = { id: "sprite-only-in-english", label: "Do the thing" };
+    expect(commandLabel(command, SPRITE_STRING_TABLES["zh-CN"])).toBe(
+      "Do the thing",
+    );
+    expect(commandTooltip(command, SPRITE_STRING_TABLES.en)).toBe("Do the thing");
+    expect(
+      commandTooltip(
+        { ...command, description: "what it does" },
+        SPRITE_STRING_TABLES.en,
+      ),
+    ).toBe("Do the thing — what it does");
+  });
+
+  test("the three stage commands hover as label + a hint for the user", () => {
+    const commands = spriteManifest.viewerApi!.commands!;
+    for (const command of commands) {
+      const tip = commandTooltip(command, SPRITE_STRING_TABLES.en);
+      expect(tip.startsWith(`${command.label} — `)).toBe(true);
+      expect(tip).toContain(command.description!);
+      // zh-CN says the same thing in its own words, not half of each.
+      const zh = commandTooltip(command, SPRITE_STRING_TABLES["zh-CN"]);
+      expect(zh).not.toContain(command.description!);
+      expect(/[\u4e00-\u9fff]/.test(zh)).toBe(true);
+    }
   });
 });
 

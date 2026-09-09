@@ -40,7 +40,17 @@ export function commandTooltip(
   t: SpriteStrings,
 ): string {
   const hint = t.commandHint(command.id) ?? command.description ?? "";
-  return hint ? `${command.label} — ${hint}` : command.label;
+  const label = commandLabel(command, t);
+  return hint ? `${label} — ${hint}` : label;
+}
+
+/** The button's word. Same rule as the hint: the table first, the manifest
+ *  (which is written in English) as the fallback. */
+export function commandLabel(
+  command: ViewerCommandDescriptor,
+  t: SpriteStrings,
+): string {
+  return t.commandLabel(command.id) ?? command.label;
 }
 
 const ICON_FOR: Record<string, (p: IconProps) => React.ReactElement> = {
@@ -162,7 +172,7 @@ export function CommandBar({
               } disabled:opacity-40`}
             >
               <Icon size={12} />
-              {command.label}
+              {commandLabel(command, t)}
             </button>
 
             {open === command.id && motion ? (
@@ -178,7 +188,7 @@ export function CommandBar({
                 />
               ) : (
                 <NotePopover
-                  title={command.label}
+                  title={commandLabel(command, t)}
                   motion={motion}
                   t={t}
                   placeholder={

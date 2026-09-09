@@ -47,7 +47,7 @@ import {
 } from "../domain.js";
 import { setSpriteStageCapture } from "../pneuma-mode.js";
 import { atlasGeometry } from "./atlas.js";
-import { CommandBar } from "./CommandPopovers.js";
+import { CommandBar, commandLabel } from "./CommandPopovers.js";
 import { FrameStrip } from "./FrameStrip.js";
 import { frameThumbnail, type StageBackground, type StageZoom } from "./frame-render.js";
 import { generatingVideoMotions, sizeLine } from "./metrics.js";
@@ -570,6 +570,39 @@ export default function SpritePreview(props: ViewerPreviewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigateRequest]);
 
+  // ── The header's facts ───────────────────────────────────────────────────
+  //
+  // Derived ONCE, above the early return so the hooks are unconditional, and
+  // memoized because the playhead re-renders this component every frame while
+  // a motion plays. The Atlas tab is handed the same two values rather than
+  // working them out again: the three sizes on screen disagreed for two
+  // rounds precisely because each surface derived its own.
+  const geometry = useMemo(
+    () => (character && motion ? atlasGeometry(character, motion) : null),
+    [character, motion],
+  );
+  const sizes = useMemo(
+    () => sizeLine(character, motion, geometry),
+    [character, motion, geometry],
+  );
+  const rendering = useMemo(
+    () => generatingVideoMotions(character),
+    [character],
+  );
+  const headline = useMemo(() => {
+    if (!character) return "";
+    const identity = character.sprite.character;
+    return [
+      t.sizeLine(sizes),
+      motion?.source === "video" ? t.fromVideo : null,
+      identity.facing ? t.facing(identity.facing) : null,
+      t.refCount(character.sprite.refs.length),
+      t.motionCount(character.sprite.motions.length),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }, [character, motion, sizes, t]);
+
   // ── Layout ───────────────────────────────────────────────────────────────
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -608,27 +641,11 @@ export default function SpritePreview(props: ViewerPreviewProps) {
   }
 
   const identity = character.sprite.character;
-  const refCount = character.sprite.refs.length;
-  const motionCount = character.sprite.motions.length;
   const activeRef = refId ? findRef(character, refId) : null;
-  // One derivation of the packed layout, read by the header phrase and by the
-  // Atlas tab — the three sizes on screen (declared, measured, packed)
-  // disagreed for two rounds because each surface worked them out for itself.
-  const geometry = motion ? atlasGeometry(character, motion) : null;
-  const sizes = sizeLine(character, motion, geometry);
-  const rendering = generatingVideoMotions(character);
-  const renderVideoLabel =
-    props.commands?.find((command) => command.id === "render-video")?.label ??
-    null;
-  const headline = [
-    t.sizeLine(sizes),
-    motion?.source === "video" ? t.fromVideo : null,
-    identity.facing ? t.facing(identity.facing) : null,
-    t.refCount(refCount),
-    t.motionCount(motionCount),
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const renderVideo = props.commands?.find(
+    (command) => command.id === "render-video",
+  );
+  const renderVideoLabel = renderVideo ? commandLabel(renderVideo, t) : null;
 
   return (
     <div ref={rootRef} className="flex h-full w-full flex-col bg-cc-bg text-cc-fg">

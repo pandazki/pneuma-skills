@@ -144,6 +144,9 @@ export interface SpriteStrings {
   acknowledged: (reason: string) => string;
 
   // ── Commands ────────────────────────────────────────────────────────────
+  /** The button's own word, when this locale has one. `null` defers to the
+   *  manifest's `label`, which is the English source. */
+  commandLabel: (commandId: string) => string | null;
   commandHint: (commandId: string) => string | null;
   selectMotionFirst: string;
   renderClipFor: string;
@@ -301,7 +304,9 @@ const en: SpriteStrings = {
   limit: (text) => `max ${text}`,
   acknowledged: (reason) => `Accepted — ${reason}`,
 
-  // English hints come from the manifest, so this table has nothing to add.
+  // English comes from the manifest — label and hint both — so this table
+  // has nothing to add for it.
+  commandLabel: () => null,
   commandHint: () => null,
   selectMotionFirst: "Select a motion first",
   renderClipFor: "Render a clip of",
@@ -335,9 +340,15 @@ const zhStatus: Record<MotionStatus, string> = {
   failed: "失败",
 };
 
-/** zh-CN one-liners for the three stage commands. English is not here: the
- *  manifest's `description` is already the user-facing hint, and copying it
- *  would give English two sources that can disagree. */
+/** zh-CN copy for the three stage commands. English is not here: the
+ *  manifest's `label`/`description` are already the user-facing pair, and
+ *  copying them would give English two sources that can disagree. */
+const zhCommandLabels: Record<string, string> = {
+  "render-video": "渲染视频预览",
+  "regenerate-motion": "重画这个动作",
+  "fix-alignment": "帧对不齐",
+};
+
 const zhCommandHints: Record<string, string> = {
   "render-video": "让助手把这个动作渲成一段视频，可以挑模型和生成方式。",
   "regenerate-motion": "让助手重画这个动作的雪碧图，可以附一句要改什么。",
@@ -474,6 +485,7 @@ const zhCN: SpriteStrings = {
   limit: (text) => `上限 ${text}`,
   acknowledged: (reason) => `已确认保留 —— ${reason}`,
 
+  commandLabel: (commandId) => zhCommandLabels[commandId] ?? null,
   commandHint: (commandId) => zhCommandHints[commandId] ?? null,
   selectMotionFirst: "先选一个动作",
   renderClipFor: "渲染一段视频：",
