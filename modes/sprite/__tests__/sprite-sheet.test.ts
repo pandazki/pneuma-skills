@@ -599,6 +599,11 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(out.inspect).toEqual({
         frameCount: 4,
         cell: { width: 64, height: 64 },
+        // The summary — not just the fat report — carries the measured anchor
+        // point, because THIS object is what `register-run` copies into
+        // project.json and project.json is all the viewer ever reads. `--pad
+        // 17` puts the feet 17px above the cell floor.
+        anchorPoint: { x: 32, y: 47 },
         anchorDrift: { x: 0, y: 0 },
         maxJump: 0,
         scaleDrift: 0,

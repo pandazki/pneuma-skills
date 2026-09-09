@@ -4,6 +4,10 @@
     "width": 216,
     "height": 262
   },
+  "anchorPoint": {
+    "x": 108,
+    "y": 254
+  },
   "anchorDrift": {
     "x": 0.242,
     "y": 0

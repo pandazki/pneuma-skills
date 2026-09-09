@@ -136,6 +136,17 @@ export interface MotionVideo {
 export interface InspectSummary {
   frameCount: number;
   cell: { width: number; height: number };
+  /**
+   * Where `align` put the anchor INSIDE that cell, in pixels — the same point
+   * the atlas pivot names. With `--pad 8` on a 256px bottom-anchored cell it
+   * is `{128, 248}`, not `{128, 256}`: the feet sit 8px above the cell floor.
+   *
+   * Absent when the frames carry no `align.json` for this anchor and cell
+   * (aligned by something else, or before the pipeline recorded the point).
+   * That absence is information — it is how "measured" is told apart from
+   * "assumed the cell edge" — so it is an optional key, never a default.
+   */
+  anchorPoint?: { x: number; y: number };
   /** Std-dev in px of the anchor point across frames. */
   anchorDrift: { x: number; y: number };
   /** Largest anchor displacement between consecutive frames. */
@@ -270,13 +281,31 @@ function parseEdge(value: unknown): SpriteProvenanceEdge | null {
   };
 }
 
+/**
+ * A `{ x, y }` in pixels, or undefined for anything else.
+ *
+ * Unlike every other number in this file the anchor point has no safe
+ * fallback: a half-written or hand-edited point silently defaulted to 0 would
+ * put the pivot guide in the top-left corner and look like a measurement.
+ * Both coordinates finite, or the point is simply not there.
+ */
+function parsePoint(value: unknown): { x: number; y: number } | undefined {
+  if (!isRecord(value)) return undefined;
+  const { x, y } = value;
+  if (typeof x !== "number" || !Number.isFinite(x)) return undefined;
+  if (typeof y !== "number" || !Number.isFinite(y)) return undefined;
+  return { x, y };
+}
+
 function parseInspect(value: unknown): InspectSummary | undefined {
   if (!isRecord(value)) return undefined;
   const cell = isRecord(value.cell) ? value.cell : {};
   const drift = isRecord(value.anchorDrift) ? value.anchorDrift : {};
+  const anchorPoint = parsePoint(value.anchorPoint);
   return {
     frameCount: num(value.frameCount, 0),
     cell: { width: num(cell.width, 0), height: num(cell.height, 0) },
+    ...(anchorPoint ? { anchorPoint } : {}),
     anchorDrift: { x: num(drift.x, 0), y: num(drift.y, 0) },
     maxJump: num(value.maxJump, 0),
     scaleDrift: num(value.scaleDrift, 0),
@@ -515,6 +544,35 @@ export function findMotion(
   motionId: string,
 ): Motion | undefined {
   return project.sprite.motions.find((m) => m.id === motionId);
+}
+
+/** A measured anchor point, and the cell it was measured in. */
+export interface MeasuredAnchor {
+  /** The point inside the cell, in cell pixels. */
+  point: { x: number; y: number };
+  /** The cell `inspect` measured it in. */
+  cell: { width: number; height: number };
+}
+
+/**
+ * The anchor point the pipeline measured for this motion, or undefined when it
+ * measured none.
+ *
+ * The point is only meaningful together with the cell it was taken in, so the
+ * two travel as one value — a caller comparing that cell against the picture
+ * actually on screen is the whole reason this is not just a field read. Both
+ * consumers of the measurement (the stage's pivot guide, the Atlas tab's
+ * printed pivot) come through here so they can never disagree about whether
+ * one exists.
+ */
+export function measuredAnchor(motion: Motion): MeasuredAnchor | undefined {
+  const inspect = motion.inspect;
+  const point = inspect?.anchorPoint;
+  if (!inspect || !point) return undefined;
+  // A cell of zero is what the parser leaves when `inspect.cell` was missing;
+  // nothing can be normalized or matched against it.
+  if (!(inspect.cell.width > 0) || !(inspect.cell.height > 0)) return undefined;
+  return { point, cell: inspect.cell };
 }
 
 /** Find a reference by id inside a character. */

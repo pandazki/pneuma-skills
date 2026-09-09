@@ -131,6 +131,10 @@ interface Motion {
 interface InspectSummary {
   frameCount: number;
   cell: { width: number; height: number };
+  anchorPoint?: { x: number; y: number };   // where align put the anchor inside
+                                            // that cell, in px — the point the
+                                            // atlas pivot names. Absent when the
+                                            // frames carry no align.json
   anchorDrift: { x: number; y: number };   // std-dev in px across frames
   maxJump: number;                          // largest step between neighbours
   scaleDrift: number;                       // (max h − min h) / mean

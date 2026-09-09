@@ -233,6 +233,14 @@ reads `frames` / `sheet` / `atlas` / `gif` / `webp` / `sheetAlpha` and **ignores
 `cells`**: the cells are intermediate files, not assets, so no `cells/NN.png`
 ever appears in `project.json`. The input sheet is never moved.
 
+`register-run` also carries `inspect.anchorPoint` into the motion's sidecar,
+and that copy is the only route the measurement has to the screen: the viewer
+renders from `project.json` alone, so its pivot guide stands on this point when
+it is there and falls back to the cell edge when it is not — which with any
+`--pad` draws a confident ground line under a floating sprite. Frames aligned
+before the point was recorded simply carry none; that absence is honest and the
+stage says "assumed" rather than guessing.
+
 ### Fixing the alignment without regenerating the sheet
 
 The drawing is fine, the character just swims or jumps — that is an alignment
@@ -328,7 +336,7 @@ come from `Date.now()` unless `--at <ms>` is passed.
 | `add-motion --id idle --label Idle --rows 4 --cols 4 --fps 8 [--loop] [--anchor bottom] [--prompt] [--status planned]` | Adds the motion. Call it before you generate, so the stage shows a placeholder. |
 | `set-motion --motion idle [--label] [--fps] [--loop\|--no-loop] [--anchor] [--prompt] [--status] [--notes]` | Edits motion metadata. `--notes` is where a failure reason belongs. |
 | `set-sheet --motion idle --file motions/idle/sheet-raw.png --from ref-turnaround[,…] [--model] [--prompt] [--background opaque] [--status generating\|processing]` | Registers `<motion>-sheet-raw` with a `generate` edge. `--from` becomes the edge's `fromAssetId`; `params.inputs` lists the whole set **only when you attach two or more references** — with one, `fromAssetId` already says everything. Re-running replaces the previous raw sheet and its edges, keeping the id stable. Call it twice per sheet (see below). |
-| `register-run --motion idle --run <run.json \| ->` | Consumes `sprite-sheet.mjs run` output: registers the alpha sheet (if any), every frame, the packed sheet, atlas, gif and webp with `derive` edges; **removes** the previous frame assets and edges for that motion; copies `inspect` into the motion; sets status `ready`. |
+| `register-run --motion idle --run <run.json \| ->` | Consumes `sprite-sheet.mjs run` output: registers the alpha sheet (if any), every frame, the packed sheet, atlas, gif and webp with `derive` edges; **removes** the previous frame assets and edges for that motion; copies `inspect` into the motion (including the measured `anchorPoint`, which is what the viewer's pivot guide stands on); sets status `ready`. |
 | `add-video --motion idle --file motions/idle/video-seedance-1.mp4 --model seedance-2.5 --mode i2v --from idle-frame-00[,idle-frame-15] [--prompt] [--duration 4] [--status generating]` | Registers `<motion>-video-<n>` (n is the next free number) with a `generate` edge. |
 | `set-video --motion idle --video <id> --status ready\|failed [--notes]` | Closes out a video after the render returns. |
 | `remove-motion --motion idle` | Removes the motion, its assets and its edges. Files on disk are left alone; the orphaned paths are printed so you can delete them deliberately. |

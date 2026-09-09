@@ -23,7 +23,7 @@ import { useMemo } from "react";
 
 import type { CharacterProject, Motion, MotionVideo } from "../domain.js";
 import { resolveAssetUri } from "../domain.js";
-import { atlasGeometry } from "./atlas.js";
+import { atlasGeometry, atlasPivot } from "./atlas.js";
 import { DownloadIcon, FilmIcon, GridIcon, ImageIcon, WarnIcon } from "./icons.js";
 import { contentUrl } from "./urls.js";
 
@@ -230,6 +230,7 @@ function AtlasTab({
   const sheet = url(motion.sheet);
   const atlas = url(motion.atlas);
   const geometry = useMemo(() => atlasGeometry(project, motion), [project, motion]);
+  const pivot = useMemo(() => atlasPivot(motion), [motion]);
 
   if (!sheet) {
     return (
@@ -291,8 +292,21 @@ function AtlasTab({
             ? `${geometry.cellWidth}×${geometry.cellHeight}`
             : "—"}
         </Fact>
-        <Fact label="Pivot">
-          {motion.anchor === "center" ? "0.5, 0.5" : "0.5, 1.0"}
+        {/* The same point the stage's guide is drawn on, said as the ratio
+            atlas.json carries. An assumed pivot is labelled so, because a
+            measured `0.5, 1.0` and an assumed one mean different things. */}
+        <Fact
+          label="Pivot"
+          title={
+            pivot.measured
+              ? "The anchor point the pipeline measured, normalized by the cell — what atlas.json declares."
+              : `No measured anchor point for this motion; atlas.json falls back to the ${motion.anchor} of the cell.`
+          }
+        >
+          {formatPivot(pivot.x)}, {formatPivot(pivot.y)}
+          {pivot.measured ? null : (
+            <span className="pl-1 text-[10px] text-cc-muted">assumed</span>
+          )}
         </Fact>
       </dl>
       <div className="flex flex-wrap gap-2">
@@ -348,13 +362,26 @@ function InspectBlock({ motion }: { motion: Motion }) {
   );
 }
 
-function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+function Fact({
+  label,
+  title,
+  children,
+}: {
+  label: string;
+  title?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col" title={title}>
       <dt className="text-[10px] uppercase tracking-wide text-cc-muted">{label}</dt>
       <dd className="font-mono tabular-nums text-cc-fg">{children}</dd>
     </div>
   );
+}
+
+/** `1` reads as a count, `1.0` reads as a ratio — and the pivot is a ratio. */
+function formatPivot(value: number): string {
+  return Number.isInteger(value) ? value.toFixed(1) : String(value);
 }
 
 function Chip({ children }: { children: React.ReactNode }) {

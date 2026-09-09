@@ -18,6 +18,7 @@
  */
 
 import type { CharacterProject, Motion } from "../domain.js";
+import { measuredAnchor } from "../domain.js";
 
 export interface AtlasGeometry {
   /** Packed image size as recorded when the asset was registered; 0 = unknown. */
@@ -92,3 +93,37 @@ export function atlasGeometry(
 
   return { width, height, cols, rows, cellWidth, cellHeight, trusted: true, note: null };
 }
+
+/** The normalized pivot `atlas.json` declares for one motion. */
+export interface AtlasPivot {
+  x: number;
+  y: number;
+  /** True when it came from the pipeline's measurement rather than the
+   *  anchor's assumed position — the same distinction `pack` makes when it
+   *  omits `meta.anchorPoint`. */
+  measured: boolean;
+}
+
+/**
+ * The pivot the packed atlas declares, derived — like the grid above — from
+ * `project.json` alone rather than a second fetch of `atlas.json`.
+ *
+ * `pack` normalizes the measured anchor point by the cell and rounds to four
+ * decimals, so this does the same arithmetic on the same input and prints the
+ * same number the file carries. With `--pad 8` on a 256px cell that is
+ * `0.5, 0.9688` — printing a flat `0.5, 1.0` there would contradict both the
+ * atlas on disk and the guide the stage draws.
+ */
+export function atlasPivot(motion: Motion): AtlasPivot {
+  const measured = measuredAnchor(motion);
+  if (measured) {
+    return {
+      x: round4(measured.point.x / measured.cell.width),
+      y: round4(measured.point.y / measured.cell.height),
+      measured: true,
+    };
+  }
+  return { x: 0.5, y: motion.anchor === "center" ? 0.5 : 1, measured: false };
+}
+
+const round4 = (value: number): number => Math.round(value * 1e4) / 1e4;

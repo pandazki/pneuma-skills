@@ -275,6 +275,8 @@ interface Motion {
 interface InspectSummary {
   frameCount: number;
   cell: { width: number; height: number };
+  anchorPoint?: { x: number; y: number };   // where align put the anchor INSIDE that cell, in px;
+                                            // absent when the frames carry no align.json
   anchorDrift: { x: number; y: number };   // std-dev in px of the anchor point across frames
   maxJump: number;                          // largest anchor displacement between consecutive frames
   scaleDrift: number;                       // (max bbox height − min bbox height) / mean

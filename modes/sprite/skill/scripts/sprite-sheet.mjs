@@ -906,22 +906,28 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
   }
   warnings.push(...listAndTruncate(clipped, (i) => `cell ${pad(i)} is clipped — the drawing leaves its grid cell`));
 
+  // The point `align` put the anchor on, when these very frames carry it: the
+  // viewer draws its pivot guide there, and the atlas declares the same point.
+  // It belongs to the SUMMARY, not just the fat report: `run` embeds the
+  // summary as its `inspect` block and `register-run` copies that block into
+  // project.json, which is the only thing the viewer reads. Left out of the
+  // summary, the measurement stops at the report nobody downstream consumes.
+  const record = readAlignRecord(framesDir);
+  const measuredAnchor = record && record.anchor === anchor
+    && record.cell.width === cellW && record.cell.height === cellH
+    ? record.anchorPoint
+    : null;
+
   const summary = {
     frameCount: measured.length,
     cell: { width: cellW, height: cellH },
+    ...(measuredAnchor ? { anchorPoint: measuredAnchor } : {}),
     anchorDrift,
     maxJump: round(maxJump, 3),
     scaleDrift,
     emptyFrames,
     warnings,
   };
-  // The point `align` put the anchor on, when these very frames carry it: the
-  // viewer draws its pivot guide there, and the atlas declares the same point.
-  const record = readAlignRecord(framesDir);
-  const measuredAnchor = record && record.anchor === anchor
-    && record.cell.width === cellW && record.cell.height === cellH
-    ? record.anchorPoint
-    : null;
 
   const report = {
     ...summary,
@@ -929,7 +935,6 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
     framesDir,
     ...(cells ? { cellsDir: resolve(cells) } : {}),
     anchor,
-    ...(measuredAnchor ? { anchorPoint: measuredAnchor } : {}),
     frames: measured.map((f) => ({
       index: f.index,
       bbox: f.bbox,
