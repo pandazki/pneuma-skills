@@ -22,7 +22,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { buildSheet, readBbox } from "./fixtures/pipeline/make-sheet.mjs";
+import { buildSheet, readBbox, readColorBbox, CELL_OFFSETS } from "./fixtures/pipeline/make-sheet.mjs";
 import type { BuildSheetOptions } from "./fixtures/pipeline/make-sheet.mjs";
 
 const SCRIPT = join(import.meta.dir, "..", "skill", "scripts", "sprite-sheet.mjs");
@@ -94,6 +94,17 @@ function stage(name: string, make: (out: string) => void): string {
   return built.get(key)!;
 }
 
+/** The body square's colour, so `readColorBbox` can find the body under a
+ *  differently coloured prop. */
+const BODY_COLOR_NAME = "red";
+const BODY_COLOR = "#ff0000";
+/** Where the smoothed `limb` body lands. The cell is sized around the anchor
+ *  the frames are actually pinned by, and smoothing moves that anchor off the
+ *  bbox centre, so the cell is wider than `max bbox + 2·pad` — which is the
+ *  point: a frame that no longer straddles its anchor must still fit without
+ *  being clamped back to where it started. */
+const SMOOTHED_LIMB_X = 20;
+
 const SHEETS = {
   /** 2x2, transparent, one 30x30 square per cell at a different offset. */
   plain: () => sheet("plain"),
@@ -110,6 +121,21 @@ const SHEETS = {
     rows: 1, cols: 3,
     squares: [{ x: 17, y: 17, color: "red" }],
     extras: [{ index: 1, x: 53, y: 20, w: 6, h: 6 }],
+  }),
+  /**
+   * 1x4: the same body square in every cell, plus a prop bar that juts out to
+   * the right in cells 01 and 03 — the umbrella / lantern / wrench case. The
+   * prop never reaches the ground, so the feet do not move while the bbox
+   * centre swings 7px; the body is drawn in a different colour so a test can
+   * measure it without re-implementing the feet band it is checking.
+   */
+  prop: () => sheet("prop", {
+    rows: 1, cols: 4,
+    squares: [{ x: 17, y: 17, color: BODY_COLOR_NAME }],
+    extras: [
+      { index: 1, x: 47, y: 20, w: 14, h: 8, color: "white" },
+      { index: 3, x: 47, y: 20, w: 14, h: 8, color: "white" },
+    ],
   }),
   /** 1x3 whose drawing sits in the cell corner (clipped) plus the stray limb. */
   clipped: () => sheet("clipped", {
@@ -266,16 +292,20 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       // the right, which widens its bbox and drags its centre with it.
       const cells = cellsOf("limb", 1, 3);
 
-      runJson("align", cells, "--out", join(ws, "plain"), "--pad", "8");
+      // Pinned to `--x-from bbox`, which is what this case has always been
+      // about: the default now takes x from the feet, and a limb that never
+      // reaches the ground cannot move those at all (see the --x-from cases
+      // below). What --smooth is still for is a wobble in the anchor itself.
+      runJson("align", cells, "--out", join(ws, "plain"), "--pad", "8", "--x-from", "bbox");
       const plain = ["00", "01", "02"].map((n) => readBbox(join(ws, "plain", `${n}.png`)).bbox!.x);
       // bbox-centred alignment shoves the body sideways on the odd frame
       expect(plain[0]).toBe(14);
       expect(plain[1]).toBe(8);
       expect(plain[2]).toBe(14);
 
-      runJson("align", cells, "--out", join(ws, "smoothed"), "--pad", "8", "--smooth");
+      runJson("align", cells, "--out", join(ws, "smoothed"), "--pad", "8", "--x-from", "bbox", "--smooth");
       const smoothed = ["00", "01", "02"].map((n) => readBbox(join(ws, "smoothed", `${n}.png`)).bbox!.x);
-      expect(smoothed).toEqual([14, 14, 14]);
+      expect(smoothed).toEqual([SMOOTHED_LIMB_X, SMOOTHED_LIMB_X, SMOOTHED_LIMB_X]);
     });
 
     test("records the anchor point it used next to the frames", () => {
@@ -292,6 +322,9 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
         pad: 8,
         anchorPoint: { x: 23, y: 38 },
         smooth: false,
+        // Which x the frames were pinned by, so "why is the body off-centre"
+        // has an answer sitting next to them.
+        xFrom: "feet",
       });
     });
 
@@ -304,6 +337,74 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       const record = JSON.parse(readFileSync(join(frames, "align.json"), "utf-8"));
       expect(record.anchor).toBe("center");
       expect(record.anchorPoint).toEqual({ x: 23, y: 23 });
+    });
+
+    test("bottom anchor takes x from the feet, not from a prop-inflated bbox", () => {
+      // A prop that juts sideways moves the bbox centre by half its reach
+      // while the body has not moved at all — so pinning the bbox centre pays
+      // for the prop by shoving the body the other way, and the character
+      // splits sideways during playback. Measured on a real 4x4 attack sheet:
+      // the feet swung 81 -> 134px across the frames while the bbox centre sat
+      // still, an 18% of cell sideways jump.
+      const ws = fresh();
+      const cells = cellsOf("prop", 1, 4);
+      const bodyX = (dir: string) => ["00", "01", "02", "03"]
+        .map((n) => readColorBbox(join(dir, `${n}.png`), BODY_COLOR).bbox!.x);
+
+      const feet = runJson("align", cells, "--out", join(ws, "feet"), "--pad", "8");
+      expect(feet.xFrom).toBe("feet");
+      expect(bodyX(join(ws, "feet"))).toEqual([22, 22, 22, 22]);
+
+      // and the old behaviour is still one flag away — with the old jump
+      const bbox = runJson("align", cells, "--out", join(ws, "bbox"), "--pad", "8", "--x-from", "bbox");
+      expect(bbox.xFrom).toBe("bbox");
+      expect(bodyX(join(ws, "bbox"))).toEqual([15, 8, 15, 8]);
+
+      // Feet-pinned, the prop hangs off one side of the anchor, so the cell is
+      // wider than the bbox mode's: sizing follows the anchor, and a cell that
+      // did not would clamp the body straight back to where it started.
+      expect(feet.cell).toEqual({ width: 74, height: 46 });
+      expect(bbox.cell).toEqual({ width: 60, height: 46 });
+      expect(feet.warnings).toEqual([]);
+    });
+
+    test("--x-from cell keeps the offset the model drew and only levels y", () => {
+      // The escape hatch for a model that already places the body
+      // consistently: nothing horizontal moves at all, so the four different
+      // cell offsets of the `plain` squares survive exactly, while y is still
+      // levelled onto one ground line.
+      const ws = fresh();
+      const out = runJson("align", cellsOf("plain", 2, 2), "--out", join(ws, "frames"), "--pad", "8", "--x-from", "cell");
+
+      expect(out.xFrom).toBe("cell");
+      // The source grid cell IS the cell here: trimming it would shift the
+      // very offsets this mode exists to preserve.
+      expect(out.cell).toEqual({ width: 64, height: 46 });
+      const boxes = ["00", "01", "02", "03"].map((n) => readBbox(join(ws, "frames", `${n}.png`)).bbox!);
+      expect(boxes.map((b) => b.x)).toEqual(CELL_OFFSETS.map((o) => o.x));
+      expect(boxes.map((b) => b.y)).toEqual([8, 8, 8, 8]);
+    });
+
+    test("--anchor center keeps the bbox centre and records what it actually used", () => {
+      const ws = fresh();
+      // Feet are no reference for an airborne pose, so the `feet` default
+      // resolves to the bbox centre under a center anchor — and the record
+      // says `bbox`, never the mode that was asked for and not used.
+      const centered = runJson("align", cellsOf("prop", 1, 4), "--out", join(ws, "center"), "--pad", "8", "--anchor", "center");
+      expect(centered.xFrom).toBe("bbox");
+      expect(JSON.parse(readFileSync(join(ws, "center", "align.json"), "utf-8")).xFrom).toBe("bbox");
+
+      // `cell` is honoured under either anchor.
+      const kept = runJson("align", cellsOf("prop", 1, 4), "--out", join(ws, "center-cell"), "--pad", "8", "--anchor", "center", "--x-from", "cell");
+      expect(kept.xFrom).toBe("cell");
+      expect(kept.cell.width).toBe(64);
+    });
+
+    test("an unknown --x-from is refused by name", () => {
+      const ws = fresh();
+      const r = run("align", cellsOf("plain", 2, 2), "--out", join(ws, "frames"), "--x-from", "middle", "--json");
+      expect(r.code).toBe(1);
+      expect(r.err).toContain("--x-from: expected feet, bbox, cell");
     });
 
     test("an explicit cell smaller than the artwork fails with the required size", () => {
@@ -537,6 +638,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(out.frameCount).toBe(4);
       expect(out.cell).toEqual({ width: 64, height: 64 });
       expect(out.anchorDrift).toEqual({ x: 0, y: 0 });
+      expect(out.bodyDrift).toBe(0);
       expect(out.maxJump).toBe(0);
       expect(out.scaleDrift).toBe(0);
       expect(out.emptyFrames).toEqual([]);
@@ -561,6 +663,44 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       const frames = useFrames(motion, framesOf("plain", 2, 2, 0));
       const out = runJson("inspect", motion, "--cells", frames);
       expect(out.warnings.join(" ")).toContain("clipped");
+    });
+
+    test("bodyDrift catches a body that slides while the anchor sits perfectly still", () => {
+      const ws = fresh();
+      const cells = cellsOf("prop", 1, 4);
+      const feet = join(ws, "feet-motion");
+      const bbox = join(ws, "bbox-motion");
+      runJson("align", cells, "--out", join(feet, "frames"), "--pad", "8");
+      runJson("align", cells, "--out", join(bbox, "frames"), "--pad", "8", "--x-from", "bbox");
+
+      const drift = "body drifts sideways between frames — re-run align with --x-from feet/cell";
+
+      const good = runJson("inspect", feet);
+      expect(good.bodyDrift).toBe(0);
+      expect(good.warnings).not.toContain(drift);
+
+      const bad = runJson("inspect", bbox);
+      // anchorDrift is a flat zero here — the bbox is pinned, which is exactly
+      // why the old report could not see this defect at all. bodyDrift can.
+      expect(bad.anchorDrift).toEqual({ x: 0, y: 0 });
+      expect(bad.bodyDrift).toBe(3.5);
+      expect(bad.warnings).toContain(drift);
+      // and it names the frames, so the fix is not a guess
+      expect(bad.frames.map((f: { feetX: number }) => f.feetX)).toEqual([30, 23, 30, 23]);
+    });
+
+    test("a body that really does lurch still trips the jump warning", () => {
+      // The counterpart to the bodyDrift case: the jump warning is gated on
+      // the feet, so it must still fire when the feet are what moved. The four
+      // `plain` squares sit at four different x, and `--x-from cell` keeps
+      // every one of them — 8px of lurch in a 64px cell.
+      const ws = fresh();
+      const motion = join(ws, "motion");
+      runJson("align", cellsOf("plain", 2, 2), "--out", join(motion, "frames"), "--pad", "8", "--x-from", "cell");
+
+      const out = runJson("inspect", motion);
+      expect(out.maxJump).toBe(8);
+      expect(out.warnings).toContain("anchor jumps between frames 01 and 02");
     });
 
     test("a failed write leaves no .tmp beside the report", () => {
@@ -605,6 +745,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
         // 17` puts the feet 17px above the cell floor.
         anchorPoint: { x: 32, y: 47 },
         anchorDrift: { x: 0, y: 0 },
+        bodyDrift: 0,
         maxJump: 0,
         scaleDrift: 0,
         emptyFrames: [],
@@ -741,8 +882,12 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
     test("keeps the pre-align cells so the report can be reproduced and the alignment redone", () => {
       const ws = fresh();
       const motionDir = join(ws, "motions", "clip");
-      // The drawing sits in the cell corner (so every cell is clipped) and
-      // frame 01 grows a limb that widens its bbox (so the anchors jump).
+      // The drawing sits in the cell corner, so every cell is clipped. Frame 01
+      // also grows a limb that widens its bbox — which used to be listed here
+      // as an anchor jump too. It is not one: x now comes from the feet, so
+      // the body is pinned and only the silhouette moves, and the jump warning
+      // asks the feet before it speaks (see the `--x-from cell` case below,
+      // where a body that really does lurch still trips it).
       const out = runJson(
         "run", SHEETS.clipped(), "--rows", "1", "--cols", "3", "--out", motionDir,
         "--name", "clip", "--fps", "8", "--pad", "8", "--smooth",
@@ -750,7 +895,6 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(out.cells).toBe(join(motionDir, "cells"));
       expect(readdirSync(join(motionDir, "cells")).sort()).toEqual(["00.png", "01.png", "02.png"]);
       expect(out.inspect.warnings).toEqual([
-        "anchor jumps between frames 00 and 01",
         "cell 00 is clipped — the drawing leaves its grid cell",
         "cell 01 is clipped — the drawing leaves its grid cell",
         "cell 02 is clipped — the drawing leaves its grid cell",

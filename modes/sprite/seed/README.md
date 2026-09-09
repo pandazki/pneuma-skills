@@ -136,13 +136,24 @@ flatten` before being handed to the model — video models mishandle alpha.
 | | idle | attack |
 |---|---|---|
 | frames | 16 | 16 |
-| cell | 162×252 | 216×262 |
-| anchor drift (px, σ) | 0.248 | 0.242 |
-| max jump (px) | 0.5 | 0.5 |
-| scale drift | 0.009 | 0.130 |
+| cell | 186×252 | 272×262 |
+| anchor drift (px, σ) | 0.306 | 17.373 |
+| body drift (px, σ) | 0.199 | 0.263 |
+| max jump (px) | 0.5 | 50 |
+| scale drift | 0.009 | 0.126 |
 | empty frames | none | none |
 | warnings | none | none |
 
 `attack`'s scale drift is the lantern arc changing the silhouette's bounding
 box, not the character changing size — the drawing holds, which is why it was
 accepted on the first attempt.
+
+Both motions are aligned with `--x-from feet` (the default). That is what the
+last two rows of the attack column are about: the *body* holds still to a
+quarter of a pixel while the *silhouette* swings 17 px, because the lantern
+arcs overhead and back. The earlier build pinned the silhouette instead, which
+bought that flat anchor drift by shoving the body 17 px from side to side —
+`bodyDrift` was 17.4 px on a 216 px cell, an 8 % of cell sideways split every
+time the lantern crossed the body. The wider cells are the same trade: sizing
+follows the anchor, so a pose that hangs off one side of the feet gets room
+instead of being clamped back.

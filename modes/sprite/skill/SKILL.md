@@ -398,10 +398,12 @@ naming the selected motion.
   note they attached. Keep the motion id; `register-run` replaces the old
   frames and their edges, so the motion is updated, never duplicated.
 - **`fix-alignment`** — the character swims or jumps between frames. Read the
-  motion's inspect warnings first. `maxJump` warnings → re-run `align` with
-  `--smooth` or the other anchor. `scaleDrift` warnings or "cell NN is
-  clipped" → the drawing is the problem; regenerate with a fixed-scale
-  instruction.
+  motion's inspect warnings first. `bodyDrift` warnings → the body is sliding
+  under a prop that swings; re-run `align` with `--x-from feet` (the default)
+  or `--x-from cell` when the model already placed the body consistently.
+  `maxJump` warnings → re-run `align` with `--smooth` or the other anchor.
+  `scaleDrift` warnings or "cell NN is clipped" → the drawing is the problem;
+  regenerate with a fixed-scale instruction.
 
 <!-- pneuma:end -->
 

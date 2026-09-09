@@ -50,3 +50,4 @@ export declare const SQUARE: { w: number; h: number };
 export declare const CELL_OFFSETS: SquareSpec[];
 export declare function buildSheet(outPath: string, options?: BuildSheetOptions): string;
 export declare function readBbox(path: string, threshold?: number): BboxReport;
+export declare function readColorBbox(path: string, hex: string, threshold?: number): BboxReport;
