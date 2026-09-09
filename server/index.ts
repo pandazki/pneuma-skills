@@ -852,7 +852,9 @@ export async function startServer(options: ServerOptions) {
           version: "builtin",
           type: "builtin" as const,
           hidden: parsed.hidden === true,
-          ...((name === "slide" || name === "illustrate" || name === "kami") ? { hasInitParams: true } : {}),
+          // Read out of the manifest, never a list of names here: a mode that
+          // gains launch-time params says so in its own `init.params`.
+          ...(parsed.hasInitParams ? { hasInitParams: true } : {}),
           ...(showcase ? { showcase } : {}),
           ...(parsed.inspiredBy ? { inspiredBy: parsed.inspiredBy } : {}),
         };
