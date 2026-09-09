@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Improved
 - **GPT Image 2.5 across every image workflow.** New images use Sunburst; edits, reference-based generations, character sheets, and Clipcraft variants use Flare. Both run through OpenRouter, with one shared adapter for generation, annotated edits, storyboards, and project welcome images. Local reference files are accepted directly, generated files keep their actual format, and Clipcraft records the model that produced each asset.
 - **One API key for image tools.** Image-enabled modes now ask for an OpenRouter key, and their skill updates carry the new commands and model defaults into existing sessions. Modes that also produce video or speech retain their fal.ai key for those tools.
+- **Illustrate's gallery shows the new models at work.** Four refreshed showcase images follow one creative brief through visual directions, a finished poster, and a real Flare edit. The edit preview shows the actual original and result; its copy describes reference-guided editing without promising pixel-perfect preservation.
 
 ## [3.46.3] - 2026-09-08
 

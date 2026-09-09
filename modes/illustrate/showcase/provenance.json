@@ -1,0 +1,64 @@
+{
+  "generatedAt": "2026-09-09",
+  "endpoint": "https://openrouter.ai/api/v1/images",
+  "process": "Actual model outputs composed in layout.html, captured with Chromium, resized, and PNG-quantized",
+  "sourcePrompts": "prompts.json",
+  "sources": {
+    "poster": {
+      "model": "openai/gpt-image-2.5-sunburst",
+      "sha256": "bb0b70019f0ffab30e2e5fbe36fec1194e15c51dbae26afa7ab2d83bf605a119",
+      "input": null,
+      "cost": 0.05354
+    },
+    "paper": {
+      "model": "openai/gpt-image-2.5-sunburst",
+      "sha256": "86dc139450157b89d467e9db146ca9cdfcf0f56139c3eca6ce6ed977a0269d54",
+      "input": null,
+      "cost": 0.053435
+    },
+    "clay": {
+      "model": "openai/gpt-image-2.5-sunburst",
+      "sha256": "e871e3ac3eee9bcd4e433286e4b9d653afa137236afb71dedb40761ac81f2d71",
+      "input": null,
+      "cost": 0.053615
+    },
+    "editorial": {
+      "model": "openai/gpt-image-2.5-sunburst",
+      "sha256": "0633a8932708ce6798e29ae71e8be99ede7864a9b0eefc3218aaa592f380eaeb",
+      "input": null,
+      "cost": 0.05361
+    },
+    "scarf-edit": {
+      "model": "openai/gpt-image-2.5-flare",
+      "sha256": "deb69ac99311169e076e983064cab588d103b65cecd59ec6630cd307c8d00221",
+      "input": "editorial",
+      "cost": 0.061592
+    }
+  },
+  "outputs": {
+    "hero.png": {
+      "width": 1376,
+      "height": 768,
+      "bytes": 287016,
+      "sha256": "5f0fb0a335461ef1d4b56b0d11e232e217efa9a84e9b6d0c8b04c1b15cae0005"
+    },
+    "text-to-image.png": {
+      "width": 1376,
+      "height": 768,
+      "bytes": 265425,
+      "sha256": "8747e56bd47d31e2fc1ca05dc7f3d0df3a34a00da6b697f78183a5e5bf2b1f1d"
+    },
+    "row-canvas.png": {
+      "width": 1376,
+      "height": 768,
+      "bytes": 190773,
+      "sha256": "598d95b4712f57d2810e76e822d21b8707d8995c201f6cbf3a0fe36b7f2e08bc"
+    },
+    "region-edit.png": {
+      "width": 1376,
+      "height": 768,
+      "bytes": 390835,
+      "sha256": "ecdcc06a2fd58c586e928a24ce0d7e59b0da65c58ad8cfafc58f176fa1d2b8d4"
+    }
+  }
+}

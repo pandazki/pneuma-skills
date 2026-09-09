@@ -1,49 +1,49 @@
 {
   "tagline": {
-    "en": "AI image generation on a row-based canvas",
-    "zh-CN": "在按行组织的画布上生成 AI 图像",
-    "ja": "行ベースのキャンバスで AI 画像生成"
+    "en": "From an idea to a visual world",
+    "zh-CN": "从一个念头，到一整个视觉世界",
+    "ja": "ひとつのアイデアから、広がるビジュアルの世界へ"
   },
   "hero": "hero.png",
   "highlights": [
     {
       "title": {
-        "en": "Prompt → Images",
-        "zh-CN": "提示词即出图",
-        "ja": "プロンプトから画像へ"
+        "en": "Explore A Direction",
+        "zh-CN": "一句话，多种方向",
+        "ja": "アイデアを広げる"
       },
       "description": {
-        "en": "Describe what you need and the agent generates 1-4 variations. Shimmer placeholders show progress before results land.",
-        "zh-CN": "描述需求，代理会生成 1–4 张变体。结果落地前由微光占位符展示进度。",
-        "ja": "欲しい絵を伝えれば、エージェントが 1–4 枚のバリアントを生成。結果が届く前はシマー表示のプレースホルダーが進捗を示す。"
+        "en": "Describe a scene and explore several visual directions with GPT Image 2.5 Sunburst. Compare the results, then develop the one you like.",
+        "zh-CN": "描述一个场景，让 GPT Image 2.5 Sunburst 试出不同视觉方向。并排比较，再沿着喜欢的那一张继续创作。",
+        "ja": "シーンを言葉で伝え、GPT Image 2.5 Sunburst でさまざまな表現を探索。並べて比べ、気に入った方向を育てられます。"
       },
       "media": "text-to-image.png",
       "mediaType": "image"
     },
     {
       "title": {
-        "en": "Row-Based Canvas",
-        "zh-CN": "按行组织的画布",
-        "ja": "行ベースのキャンバス"
+        "en": "Compare Every Take",
+        "zh-CN": "每次探索，都留在画布上",
+        "ja": "すべての案を見比べる"
       },
       "description": {
-        "en": "Images organized in labeled rows — each row is a generation batch. Pan, zoom, and compare like a mood board with minimap navigation.",
-        "zh-CN": "图片按带标签的行组织 —— 每一行就是一次生成批次。像情绪板一样可平移、缩放和对比，还配有小地图导航。",
-        "ja": "画像はラベル付きの行に整理され、各行が 1 回の生成バッチに対応。ムードボードのようにパン・ズーム・比較ができ、ミニマップでも回遊できる。"
+        "en": "Keep concepts, finished pieces, and edits in labeled rows. Pan and zoom across the canvas, with a minimap to keep your place.",
+        "zh-CN": "概念、成稿和修改版按行整理，创作过程一目了然。平移、缩放自由比较，小地图帮你找到位置。",
+        "ja": "コンセプト、完成作品、編集版をラベル付きの行に整理。パンとズームで見比べ、ミニマップで位置を確認できます。"
       },
       "media": "row-canvas.png",
       "mediaType": "image"
     },
     {
       "title": {
-        "en": "Region Editing",
-        "zh-CN": "区域编辑",
-        "ja": "領域編集"
+        "en": "Refine With Context",
+        "zh-CN": "沿着原图，改好细节",
+        "ja": "元の画像をもとに調整"
       },
       "description": {
-        "en": "Hold Cmd and draw on any image to highlight a region. The agent edits just that area — fix colors, details, or composition without regenerating.",
-        "zh-CN": "按住 Cmd 在任意图片上涂抹即可圈选区域。代理只会改动该区域 —— 修色、补细节或调构图都无需重新生成。",
-        "ja": "Cmd を押しながら画像上をなぞれば領域をハイライトできる。エージェントはその範囲だけを編集 —— 再生成せずに色、ディテール、構図を修正可能。"
+        "en": "Select an image or highlight a detail and describe the change. GPT Image 2.5 Flare uses the original as a reference; the preview shows a real scarf-color edit.",
+        "zh-CN": "选中图片或涂抹标出细节，再描述想怎么改。GPT Image 2.5 Flare 参考原图完成修改；展示图就是一次真实的围巾换色。",
+        "ja": "画像を選ぶか細部をハイライトして、変更したい内容を伝えます。GPT Image 2.5 Flare が元画像を参照して編集。プレビューは実際のマフラーの色変更です。"
       },
       "media": "region-edit.png",
       "mediaType": "image"

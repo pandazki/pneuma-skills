@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Illustrate showcase</title>
+  <style>
+    @font-face{font-family:DM;src:url('/fonts/dmsans/v17-normal-latin.woff2');font-weight:300 700}
+    @font-face{font-family:Fraunces;src:url('/fonts/fraunces/v38-normal-latin.woff2');font-weight:400}
+    *{box-sizing:border-box}body{margin:0;width:1376px;height:768px;overflow:hidden;background:#09090b;color:#f6f3ee;font-family:DM,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+    body:before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 75% 0%,#57342225,transparent 65%);pointer-events:none}
+    .page{position:relative;width:1376px;height:768px;padding:35px 48px 30px}
+    .brand{display:flex;align-items:center;gap:12px;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#a5a1a0}
+    .brand b{color:#f6f3ee;font-weight:600}.brand i{height:17px;width:1px;background:#454044;margin:0 3px}.dot{width:7px;height:7px;background:#f97316;border-radius:50%}
+    .folio{margin-left:auto;letter-spacing:1.6px;color:#aaa09b;font-size:12px}
+    h1{font:400 48px/1.08 Fraunces,Georgia,serif;letter-spacing:-1.7px;margin:27px 0 10px}p{margin:0;color:#a6a2a1;font-size:16px;line-height:1.55}.accent{color:#f9a665}
+    .topline{display:flex;justify-content:space-between;align-items:flex-end}.topline>p{font-size:14px;padding-bottom:10px}
+    .window{border:1px solid #383335;border-radius:13px;overflow:hidden;background:#101012;box-shadow:0 25px 50px #0006}
+    .bar{height:44px;background:#181719;border-bottom:1px solid #302d30;display:flex;align-items:center;gap:10px;padding:0 20px;font-size:12px;color:#ddd7d3}
+    .bar .muted{color:#aaa09b;margin-left:10px}.bar .right{margin-left:auto;display:flex;align-items:center;gap:14px;color:#b9b1ac}.pill{padding:4px 9px;border:1px solid #4f3e31;border-radius:5px;color:#ffb47c;background:#f973160c;font-size:12px}
+    .board{position:relative;background-image:radial-gradient(#5d565b38 .75px,transparent .75px);background-size:15px 15px;padding:21px 24px;overflow:hidden}
+    .row-label{display:flex;align-items:center;gap:10px;font-size:12px;line-height:20px;margin-bottom:11px;color:#d5cfca}.row-label span{font-size:12px;color:#aaa09b;font-variant-numeric:tabular-nums}.row-label em{font-style:normal;font-size:12px;color:#aaa09b;margin-left:4px}
+    .cards{display:flex;gap:15px}.card{overflow:hidden;background:#19181a;border:1px solid #39343a;border-radius:7px;flex:none}.card img{width:100%;height:auto;display:block;object-fit:cover}.card .caption{height:33px;padding:0 11px;display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#d1cac5}.caption small{font-size:12px;color:#aaa09b}.selected{border-color:#cf7a3f}.selected .caption{color:#fac39d}
+    .foot{position:absolute;bottom:19px;left:48px;right:48px;display:flex;justify-content:space-between;color:#aaa09b;font-size:12px;letter-spacing:.2px}
+    .hero .window{margin-top:18px;height:531px}.hero .board{height:487px;display:grid;grid-template-columns:1fr 352px;gap:27px;padding:20px 23px}
+    .hero .card{width:261px}.hero .card img{height:261px}.hero .cards{gap:13px}.hero .aside{border-left:1px solid #333033;padding-left:25px}.hero .aside .card{width:304px}.hero .aside .card img{height:304px}.hero .small-row{display:flex;align-items:center;gap:16px;margin-top:22px;border-top:1px solid #393235;padding-top:17px}.hero .small-row img{width:78px;height:78px;object-fit:cover;border-radius:5px}.hero .small-row p{font-size:12px;line-height:1.6}.hero .small-row b{display:block;font-weight:500;font-size:14px;color:#d9d0ca;margin-bottom:3px}
+    .idea h1{margin-top:37px}.idea .intro{max-width:370px}.idea .content{display:grid;grid-template-columns:310px 1fr;gap:43px;margin-top:48px}.prompt-box{border-top:1px solid #615044;border-bottom:1px solid #3b3230;padding:20px 0 22px}.eyebrow{font-size:12px;letter-spacing:1.8px;color:#da8f57;margin-bottom:14px}.prompt-box blockquote{margin:0;font:400 27px/1.4 Fraunces,Georgia,serif;color:#e8ded4;letter-spacing:-.3px}.prompt-box .send{display:flex;justify-content:space-between;align-items:center;margin-top:22px;color:#aaa09b;font-size:12px}.send span{color:#ffb67e;font-size:23px}.idea .card{width:294px}.idea .card img{height:294px}.idea .caption{height:47px;font-size:13px;padding:0 14px}.idea .caption small{color:#ad8767}.idea .cards{gap:15px}.idea .support{font-size:12px;max-width:260px;margin-top:22px;color:#aaa09b}
+    .canvas h1{font-size:44px;margin-top:25px}.canvas .window{margin-top:20px;height:550px}.canvas .board{height:506px;padding:17px 22px}.canvas .row{display:flex;gap:24px}.canvas .row+.row{margin-top:22px}.canvas .label-col{width:152px;flex:none;padding-top:9px}.canvas .label-col .num{font-size:12px;color:#aaa09b;display:block;margin-bottom:6px}.canvas .label-col h2{font:400 19px Fraunces,Georgia,serif;margin:0 0 8px;color:#d9d0ca}.canvas .label-col p{font-size:12px;color:#aaa09b}.canvas .card{width:198px}.canvas .card img{height:175px}.canvas .caption{height:29px;font-size:12px}.canvas .selected img{object-position:50% 55%}.minimap{position:absolute;right:21px;bottom:18px;border:1px solid #4e4140;background:#1d1a1bdc;padding:12px;border-radius:7px;width:167px;height:105px;box-shadow:0 8px 20px #0005}.minimap small{font-size:12px;display:block;color:#aaa09b;margin-bottom:12px}.minirow{display:flex;gap:5px;margin:5px 0}.minirow i{display:block;width:23px;height:17px;background:#80644f;border:1px solid #ce9872}.minirow:last-child i{background:#42454d;border-color:#787c86}.zoom{position:absolute;right:25px;bottom:134px;color:#9d9590;font-size:12px;letter-spacing:8px}
+    .edit h1{margin-top:30px}.edit .comparison{display:grid;grid-template-columns:476px 1fr 476px;gap:20px;margin-top:28px;align-items:center}.edit .picture{overflow:hidden;border:1px solid #494047;border-radius:9px;background:#19171a}.edit .picture img{display:block;width:100%;height:474px;object-fit:cover}.edit .picture-label{height:36px;padding:0 13px;display:flex;align-items:center;justify-content:space-between;color:#d9d0ca;font-size:12px}.picture-label span{color:#aaa09b}.edit .picture:last-child{border-color:#a4693c}.edit .direction{position:relative;text-align:center}.direction .line{height:1px;background:#b77f52;width:100%;position:relative;margin:23px 0 19px}.direction .line:after{content:"";width:8px;height:8px;border-top:1px solid #f0a069;border-right:1px solid #f0a069;transform:rotate(45deg);position:absolute;right:0;top:-4px}.direction blockquote{font:400 27px/1.35 Fraunces,Georgia,serif;margin:0;color:#f3d9c4}.direction p{font-size:12px;color:#aaa09b}.direction .swatches{display:flex;justify-content:center;align-items:center;gap:12px;margin-bottom:20px;color:#aaa09b}.swatches i{height:19px;width:19px;display:block;border-radius:50%;border:1px solid #ffffff30}.swatches i:first-child{background:#b74c21}.swatches i:last-child{background:#628fe8}
+    .page{display:none}.page.active{display:block}
+  </style>
+</head>
+<body>
+  <section class="page hero" data-view="hero">
+    <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Illustrate</b><span class="folio">A STUDIO FOR YOUR IMAGINATION</span></div>
+    <div class="topline"><h1>An idea. A whole visual world.</h1><p>Generate. Compare. Make it yours.</p></div>
+    <div class="window">
+      <div class="bar">Moon Garden <span class="muted">2 rows · 5 images</span><div class="right">Fit all <span class="pill">＋ New row</span></div></div>
+      <div class="board">
+        <div>
+          <div class="row-label"><span>01</span> Explore a direction <em>3 takes</em></div>
+          <div class="cards">
+            <div class="card selected"><img src="/art/editorial.png"><div class="caption">Painterly <small>01</small></div></div>
+            <div class="card"><img src="/art/paper.png"><div class="caption">Cut paper <small>02</small></div></div>
+            <div class="card"><img src="/art/clay.png"><div class="caption">Miniature world <small>03</small></div></div>
+          </div>
+          <div class="small-row"><img src="/art/scarf-edit.png"><p><b>Same fox. A new detail.</b>“Make the scarf blue.”<br><span class="accent">Original → Flare edit</span></p></div>
+        </div>
+        <div class="aside"><div class="row-label"><span>02</span> Develop the idea</div><div class="card"><img src="/art/poster.png"><div class="caption">After-hours poster <small>04</small></div></div><p style="font-size:12px;margin-top:18px">From a first image to a finished piece.<br>Every direction stays in view.</p></div>
+      </div>
+    </div>
+    <div class="foot"><span>GPT Image 2.5 · Sunburst generation + Flare editing</span><span>Conceptual interface · actual generated artwork</span></div>
+  </section>
+
+  <section class="page idea" data-view="text-to-image">
+    <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Illustrate</b><span class="folio">01 / EXPLORE</span></div>
+    <h1>Start with a sentence.</h1><p>One brief. Several directions worth exploring.</p>
+    <div class="content">
+      <div><div class="prompt-box"><div class="eyebrow">YOUR PROMPT</div><blockquote>A white fox in a moonlit greenhouse. Try paint, paper, and a miniature set.</blockquote><div class="send">Three interpretations<span>↗</span></div></div><p class="support">Compare the results side by side, then tell the agent which direction to develop.</p></div>
+      <div class="cards">
+        <div class="card"><img src="/art/editorial.png"><div class="caption">Painterly <small>01</small></div></div>
+        <div class="card"><img src="/art/paper.png"><div class="caption">Cut paper <small>02</small></div></div>
+        <div class="card"><img src="/art/clay.png"><div class="caption">Miniature world <small>03</small></div></div>
+      </div>
+    </div>
+    <div class="foot"><span>Actual GPT Image 2.5 Sunburst outputs · one prompt per direction</span><span>Describe what you imagine</span></div>
+  </section>
+
+  <section class="page canvas" data-view="row-canvas">
+    <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Illustrate</b><span class="folio">02 / COMPARE</span></div>
+    <h1>Keep every direction in view.</h1>
+    <div class="window"><div class="bar">Moon Garden <span class="muted">2 rows · 5 images</span><div class="right">Pan · Zoom <span class="pill">Fit all</span></div></div>
+      <div class="board">
+        <div class="row"><div class="label-col"><span class="num">01</span><h2>Explore</h2><p>One idea.<br>Three visual directions.</p></div><div class="cards">
+          <div class="card"><img src="/art/editorial.png"><div class="caption">Painterly <small>01</small></div></div>
+          <div class="card"><img src="/art/paper.png"><div class="caption">Cut paper <small>02</small></div></div>
+          <div class="card"><img src="/art/clay.png"><div class="caption">Miniature world <small>03</small></div></div>
+        </div></div>
+        <div class="row"><div class="label-col"><span class="num">02</span><h2>Develop</h2><p>A finished poster.<br>A considered edit.</p></div><div class="cards">
+          <div class="card"><img src="/art/poster.png" style="object-position:top"><div class="caption">After-hours poster <small>04</small></div></div>
+          <div class="card selected"><img src="/art/scarf-edit.png"><div class="caption">Blue scarf <small>05</small></div></div>
+        </div></div>
+        <div class="zoom">− 75% ＋</div><div class="minimap"><small>Canvas overview</small><div class="minirow"><i></i><i></i><i></i></div><div class="minirow"><i></i><i></i></div></div>
+      </div>
+    </div><div class="foot"><span>Labeled rows · content sets · canvas navigation</span><span>Conceptual interface · actual generated artwork</span></div>
+  </section>
+
+  <section class="page edit" data-view="region-edit">
+    <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Illustrate</b><span class="folio">03 / REFINE</span></div>
+    <h1>Change the detail. Keep the idea.</h1><p>Give a reference. Describe the change.</p>
+    <div class="comparison">
+      <div class="picture"><img src="/art/editorial.png"><div class="picture-label">Original<span>Sunburst</span></div></div>
+      <div class="direction"><div class="swatches"><i></i>→<i></i></div><blockquote>“Make the<br>scarf blue.”</blockquote><div class="line"></div><p>One reference.<br>One precise request.</p></div>
+      <div class="picture"><img src="/art/scarf-edit.png"><div class="picture-label">Edited<span>Flare</span></div></div>
+    </div>
+    <div class="foot"><span>Actual before / after · GPT Image 2.5 via OpenRouter</span><span>The original image guides the edit</span></div>
+  </section>
+  <script>
+    const view = new URLSearchParams(location.search).get('view') || 'hero';
+    const page = Array.from(document.querySelectorAll('[data-view]')).find(el => el.dataset.view === view);
+    if (page) page.classList.add('active');
+    document.title = `Illustrate — ${view}`;
+  </script>
+</body>
+</html>
