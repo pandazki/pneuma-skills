@@ -245,7 +245,7 @@ export type ViewerAddress = Record<string, unknown>;
 
 **它是什么。** 一个 mode 定义、可序列化的 viewer 内对象引用。**对框架不透明**——只有拥有它的 mode viewer 知道 `{slide: 3}` 或 `{page: "about.html", anchor: "#pricing"}` 是什么。协议只固定"这个槽存在、哪些动词消费/产出它"；keys 与粒度由 mode 自己拥有，记在各自 SKILL.md。
 
-约定但不强制：一个 address 把粗粒度「where」（`page` / `slide` / `file` / `contentSet`）和可选的细粒度「within」（`anchor` / `selector` / `nodeId` / `lineRange`）配对。`contentSet` 是唯一保留键（由 store 自己解析切 active set），其余 mode-opaque。
+约定但不强制：一个 address 把粗粒度「where」（`page` / `slide` / `file` / `contentSet` / `nodeId` …）和可选的细粒度「within」（`anchor` / `selector` / `lineRange`）配对。粗细之别不是命名风格，而是一份登记：会让 `capture` 先导航再截的键都列在 `src/hooks/useCaptureAction.ts::COARSE_ADDRESS_KEYS`，`nodeId` 就在其中——diagram 的一个节点是要去的地方，不是当前画面里的一块区域。`contentSet` 是唯一保留键（由 store 自己解析切 active set），其余 mode-opaque。
 
 **为什么存在。** 在这个契约前，同一个名词在 `ViewerLocator.data` / `capture.selector` / `ViewerSelectionContext.selector|file` / `navigate-to.params` 各发明一种形状。代价落在 agent 身上：每个 feature 一套寻址词表、互不通用——用户选中一个元素拿回 `selector`，agent 想截或指回，`capture` 和 `ViewerLocator` 却要不同形状，**select → view → point** 这个最自然的 QA 闭环根本无法表达。`ViewerAddress` 让交互模式不变（"拿到一个 address，然后 point / view / navigate"），只让 address 内容随 mode 变。同源思路见 `BackendModule.toolFileRef` 的 `fileRef`：一个跨切面、运行时归一化的引用类型。
 

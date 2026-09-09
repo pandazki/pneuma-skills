@@ -30,8 +30,15 @@ export interface ParsedManifest {
    * explicitly empty array; `undefined` when no `init.params` is declared, or
    * when its value cannot be read without evaluating TypeScript.
    *
-   * `/api/registry` (`server/index.ts`) surfaces this to the launcher, which
-   * previously carried a hardcoded list of mode names for the same fact.
+   * Payload-only today: `/api/registry` (`server/index.ts`) puts it on each
+   * builtin entry and `Launcher.tsx` types it, but no UI reads it — the init
+   * form is driven by `/api/launch/prepare`, which returns the resolved
+   * `initParams` themselves. What the flag bought was the deletion of a
+   * hardcoded `name === "slide" || …` list from the server: the fact now
+   * comes from the manifest that owns it, so a new mode with params needs no
+   * server edit. Anything that wants to READ it should keep that in mind — it
+   * is derived from source text, so `undefined` means "cannot tell", never
+   * "no".
    */
   hasInitParams?: boolean;
 }
@@ -46,6 +53,50 @@ function extractString(source: string, field: string): string | undefined {
 function extractBacktickString(source: string, field: string): string | undefined {
   const re = new RegExp(`${field}:\\s*\`([^\`]*)\``,"s");
   return re.exec(source)?.[1]?.trim();
+}
+
+// ── Shared source scanners (every walker below reads through these) ───────
+
+/**
+ * Advance past whitespace and comments (`//` and block form). Returns the
+ * index of the next significant character, or `source.length` when only
+ * trivia remains.
+ */
+function skipTrivia(source: string, index: number): number {
+  let i = index;
+  while (i < source.length) {
+    const c = source[i];
+    if (c === " " || c === "\t" || c === "\n" || c === "\r") { i++; continue; }
+    if (c === "/" && source[i + 1] === "/") {
+      const nl = source.indexOf("\n", i + 2);
+      i = nl === -1 ? source.length : nl + 1;
+      continue;
+    }
+    if (c === "/" && source[i + 1] === "*") {
+      const end = source.indexOf("*/", i + 2);
+      i = end === -1 ? source.length : end + 2;
+      continue;
+    }
+    return i;
+  }
+  return i;
+}
+
+/**
+ * Advance past the string literal starting at `index` (`"`, `'` or a
+ * backtick), honoring escapes. Returns the index just past the closing quote,
+ * or `source.length` when the literal never closes.
+ */
+function skipStringLiteral(source: string, index: number): number {
+  const quote = source[index];
+  let i = index + 1;
+  while (i < source.length) {
+    const c = source[i];
+    if (c === "\\") { i += 2; continue; }
+    if (c === quote) return i + 1;
+    i++;
+  }
+  return i;
 }
 
 /**
@@ -74,25 +125,20 @@ function findTopLevelField(
   const om = objStartRe.exec(source);
   if (!om) return undefined;
 
-  // Walk from the opening brace, tracking brace depth and string state,
-  // to find the matching close. Sturdier than a greedy regex that
-  // breaks the moment the object contains any nested literal.
+  // Walk from the opening brace to its match, stepping over string literals
+  // and comments through the shared scanners. Sturdier than a greedy regex
+  // that breaks the moment the object contains a nested literal, and
+  // comment-aware: a lone apostrophe in a `// the viewer's own name` line
+  // inside the block would otherwise read as an opening quote, swallow every
+  // brace after it, and report the whole field as absent.
   let depth = 1;
   let i = om.index + om[0].length;
-  let inString: string | null = null;
   while (i < source.length && depth > 0) {
     const c = source[i];
-    if (inString) {
-      if (c === "\\") {
-        i += 2;
-        continue;
-      }
-      if (c === inString) inString = null;
-    } else {
-      if (c === '"' || c === "'" || c === "`") inString = c;
-      else if (c === "{") depth++;
-      else if (c === "}") depth--;
-    }
+    if (c === '"' || c === "'" || c === "`") { i = skipStringLiteral(source, i); continue; }
+    if (c === "/" && (source[i + 1] === "/" || source[i + 1] === "*")) { i = skipTrivia(source, i); continue; }
+    if (c === "{") depth++;
+    else if (c === "}") depth--;
     i++;
   }
   if (depth !== 0) return undefined;
@@ -167,48 +213,6 @@ function extractBoolean(source: string, field: string): boolean | undefined {
 const IDENT_CHAR = /[A-Za-z0-9_$]/;
 
 /**
- * Advance past whitespace and comments (`//` and block form). Returns the
- * index of the next significant character, or `source.length` when only
- * trivia remains.
- */
-function skipTrivia(source: string, index: number): number {
-  let i = index;
-  while (i < source.length) {
-    const c = source[i];
-    if (c === " " || c === "\t" || c === "\n" || c === "\r") { i++; continue; }
-    if (c === "/" && source[i + 1] === "/") {
-      const nl = source.indexOf("\n", i + 2);
-      i = nl === -1 ? source.length : nl + 1;
-      continue;
-    }
-    if (c === "/" && source[i + 1] === "*") {
-      const end = source.indexOf("*/", i + 2);
-      i = end === -1 ? source.length : end + 2;
-      continue;
-    }
-    return i;
-  }
-  return i;
-}
-
-/**
- * Advance past the string literal starting at `index` (`"`, `'` or a
- * backtick), honoring escapes. Returns the index just past the closing quote,
- * or `source.length` when the literal never closes.
- */
-function skipStringLiteral(source: string, index: number): number {
-  const quote = source[index];
-  let i = index + 1;
-  while (i < source.length) {
-    const c = source[i];
-    if (c === "\\") { i += 2; continue; }
-    if (c === quote) return i + 1;
-    i++;
-  }
-  return i;
-}
-
-/**
  * Whether the array literal opening at `openIndex` holds anything at all.
  * Whitespace and comments do not count as content, so an empty array reads as
  * empty whether or not it carries a placeholder comment.
@@ -230,9 +234,10 @@ function arrayLiteralHasEntries(source: string, openIndex: number): boolean {
  * object of action parameters that every mode has, and a `params` inside a
  * seed descriptor is not init's.
  *
- * Unlike `findTopLevelField`, this walker also skips comments — a lone
- * apostrophe in a `//` line inside `init` (`modes/plotwise/manifest.ts` has
- * one) would otherwise read as an opening quote and swallow the block.
+ * Shares `skipTrivia` / `skipStringLiteral` with `findTopLevelField`, so both
+ * walkers step over comments identically — a lone apostrophe in a `//` line
+ * inside `init` (`modes/plotwise/manifest.ts` has one) would otherwise read as
+ * an opening quote and swallow the block.
  *
  * Known limits, each answered with `undefined` ("cannot tell") rather than a
  * wrong claim: a manifest not formatted with the canonical two-space indent,

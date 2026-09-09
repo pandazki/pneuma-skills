@@ -441,6 +441,29 @@ describe("parseManifestTs — LocalizedString (displayName / description)", () =
 };`;
     expect(parseManifestTs(src).description).toBe("Craft web pages");
   });
+
+  test("survives an apostrophe inside a comment in the locale object", () => {
+    // A `//` comment is prose, and prose has apostrophes. A brace walker that
+    // reads that lone quote as a string opener loses every brace after it and
+    // reports the whole field as absent — the field does not degrade to the
+    // wrong locale, it vanishes. Same defect the `init.params` walker avoids;
+    // both now step over comments through the shared scanners.
+    const src = `const m = {
+  name: "sprite",
+  displayName: {
+    // the viewer's own name, kept short enough for the tile
+    en: "Sprite",
+    "zh-CN": "精灵",
+  },
+  description: {
+    /* the one-liner the gallery card shows — don't let it wrap */
+    en: "Animate a character",
+  },
+};`;
+    expect(parseManifestTs(src, "en").displayName).toBe("Sprite");
+    expect(parseManifestTs(src, "zh-CN").displayName).toBe("精灵");
+    expect(parseManifestTs(src, "en").description).toBe("Animate a character");
+  });
 });
 
 describe("parseManifestTs — inspiredBy object extraction", () => {
