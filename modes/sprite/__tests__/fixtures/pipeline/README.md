@@ -15,20 +15,15 @@ Inputs for `sprite-sheet.test.ts` and `sprite-project.test.ts`.
   `init → add-ref → add-motion → set-sheet → register-run` must produce.
 
 `expected-project.json` is the design spec's canonical `mini` fixture
-(`docs/proposals/2026-09-09-sprite-mode-design.md`, "Canonical fixture") with
-two deliberate differences:
+(`docs/proposals/2026-09-09-sprite-mode-design.md`, "Canonical fixture"),
+byte-identical to `../mini/project.json` but for one deliberate difference:
 
-1. **`params.inputs` on the `pack` and `gif` derive edges.** The spec states
-   the fan-in rule twice — "Derive edges for a multi-input step (`pack`,
-   `gif`, `r2v` video) use the first input as `fromAssetId` and list every
-   input id in `operation.params.inputs`" (Shared vocabulary) and "pack/gif
-   from frame 00 with `params.inputs` = all frame ids" (TASK-4b) — while the
-   illustrative fixture body omits them. Without `inputs` the provenance
-   graph cannot answer "which frames produced this atlas?", so the normative
-   rule wins. `inputs` is emitted only for genuine fan-in (two or more
-   inputs); a single input is fully described by `fromAssetId`, which is why
-   the `set-sheet` and `atlas` edges match the canonical fixture verbatim.
-2. **Timestamps.** The canonical fixture stamps the frames, the atlas and the
-   GIF at three different times. They are produced by one `register-run`
-   invocation, so they share its `--at` value. TASK-4c excludes timestamps
-   from the byte-for-byte comparison for exactly this reason.
+**Timestamps.** The canonical fixture stamps the frames, the atlas and the GIF
+at three different times. They are produced by one `register-run` invocation,
+so they share its `--at` value.
+
+Everything else matches, `params.inputs` included: the fan-in rule is that a
+derive edge with two or more inputs (`pack`, `gif`, an `r2v` or `first-last`
+video) names its first input as `fromAssetId` and lists the whole set in
+`operation.params.inputs`, while a single-parent edge (`atlas <- sheet`, a
+sheet generated from one ref) carries no `inputs` key at all.

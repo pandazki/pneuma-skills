@@ -75,6 +75,13 @@ Cuts row-major into `<dir>/NN.png`, two-digit zero-padded. Cell size is
 `(W − 2·margin − (C−1)·gutter) / C`, floored; a non-integer cell is reported so
 you know a pixel column was dropped. Output keeps alpha.
 
+These are the **cells** — the raw crop of each grid square, before any
+alignment. `run` writes them to `<motionDir>/cells/NN.png` and leaves them
+there, because two later steps need the un-padded crop: `inspect` judges
+"leaves its grid cell" on it (a padded frame has no edge left to touch), and
+`align` re-reads it when only the alignment has to be redone. They are
+intermediate files, not assets — `register-run` never registers them.
+
 ### `align <framesDir> --out <dir> [--anchor bottom|center] [--cell auto|WxH] [--pad 8] [--smooth]`
 
 The step that turns sixteen pictures into an animation. Computes each frame's
@@ -107,10 +114,17 @@ infinite loop, `--no-loop` plays once. `--webp` additionally writes a lossy
 animated WebP with alpha when the libwebp encoder is present; when it is not,
 the JSON carries a warning instead of failing.
 
-### `inspect <motionDir> [--anchor bottom|center]`
+### `inspect <motionDir> [--anchor bottom|center] [--cells <dir>] [--threshold 16]`
 
 The deterministic quality gate. Writes `<motionDir>/inspect.json` and prints
 the same object.
+
+`--cells` points at the pre-align cells, and **defaults to `<motionDir>/cells`
+whenever that directory exists** — which it does after any `run`, so you
+normally pass nothing. It only changes one verdict: "leaves its grid cell" is a
+statement about the raw crop, and an aligned frame has been re-padded away from
+its edges, so without the cells that warning can never fire. Point it elsewhere
+only if you sliced into a directory of your own.
 
 | Field | Meaning |
 |---|---|
@@ -132,7 +146,7 @@ Warning rules and what each one means:
 | "character scale varies across frames — regenerate with a fixed-scale instruction" | `scaleDrift > 0.15` | Not fixable by alignment. Regenerate with the identical-height clause from `prompting.md`. |
 | "cell NN is clipped — the drawing leaves its grid cell" | Bbox touches the cell edge before alignment | The pose is bigger than its cell. Regenerate with the "stays inside its own cell" clause. |
 
-### `run <sheet-raw> --rows R --cols C --out <motionDir> --name <motionId> --fps N [flags]`
+### `run <sheet-raw> --rows R --cols C --out <motionDir> --name <motionId> --fps N [--alpha <png>] [--force] [flags]`
 
 The whole chain in one call: probe → key (when the sheet is opaque and `--key`
 is not `none`, writing `sheet-alpha.png`) → slice → align → pack → gif (+ webp)
@@ -140,17 +154,95 @@ is not `none`, writing `sheet-alpha.png`) → slice → align → pack → gif (
 `--key auto|#rrggbb|none`, `--cell`, `--pad`, `--smooth`, `--scale`,
 `--nearest`, `--margin`, `--gutter`).
 
+The one command to remember, keyed or not:
+
+```bash
+node {SKILL_PATH}/scripts/sprite-sheet.mjs run <character>/motions/<id>/sheet-raw.png \
+  --alpha <character>/motions/<id>/sheet-alpha.png \
+  --rows 4 --cols 4 --out <character>/motions/<id> --name <id> --fps 8 --loop --json
+```
+
+`--alpha` names an already-keyed sheet — from `remove-background.mjs` or from
+`sprite-sheet.mjs key`, at any path. It is copied to
+`<motionDir>/sheet-alpha.png` and sliced, and `run` does not probe or key.
+Leave it off when the generated sheet already had alpha.
+
+**`sheet-raw.png` is the only copy of what the model drew, and `run` will not
+lose it.** Where the input sheet lives decides what happens to it:
+
+| Input sheet | What `run` does |
+|---|---|
+| Outside `<motionDir>` | Copies it to `sheet-raw.png`. If a *different* `sheet-raw.png` is already there, refuses unless `--force` — a regeneration is the legitimate case and says so. |
+| `<motionDir>/sheet-raw.png` | Uses it where it lies. Nothing is copied. |
+| `<motionDir>/sheet-alpha.png` | Uses it as the already-keyed sheet (same as `--alpha`): no probe, no key, `sheet-raw.png` untouched. |
+| Any other file inside `<motionDir>` | Refused, naming the two accepted in-place names. |
+
+That table is the fix for a real data loss: `run <motionDir>/sheet-alpha.png
+--out <motionDir>` used to copy the keyed sheet over `sheet-raw.png`, so the
+un-keyed original was gone and `<motion>-sheet-raw` pointed at a keyed file.
+
+It also keeps the pre-align cells at `<motionDir>/cells/NN.png` (see `slice`),
+which is what makes the fix-alignment path below possible.
+
 Emits one JSON object:
 
 ```json
 { "motionDir": "...", "sheetRaw": "...", "sheetAlpha": "...",
-  "frames": ["..."], "sheet": "...", "atlas": "...", "gif": "...",
-  "webp": "...", "inspect": { }, "cell": { "width": 0, "height": 0 },
-  "warnings": [] }
+  "alphaSource": "provided", "keyed": false,
+  "cells": "...", "frames": ["..."], "sheet": "...", "atlas": "...",
+  "gif": "...", "webp": "...", "inspect": { },
+  "cell": { "width": 0, "height": 0 }, "warnings": [] }
 ```
 
-Save that JSON — `sprite-project.mjs register-run` consumes it verbatim. The
-input sheet is never moved.
+`alphaSource` appears only when the alpha sheet was handed in rather than keyed
+here; `keyed` + `keyColor` mark the other branch. `sheetRaw` is omitted (with a
+`note:` on stderr) in the one case where there is no raw sheet on disk — an
+in-place `sheet-alpha.png` run in a directory that never held one.
+
+Save that JSON — `sprite-project.mjs register-run` consumes it verbatim. It
+reads `frames` / `sheet` / `atlas` / `gif` / `webp` / `sheetAlpha` and **ignores
+`cells`**: the cells are intermediate files, not assets, so no `cells/NN.png`
+ever appears in `project.json`. The input sheet is never moved.
+
+### Fixing the alignment without regenerating the sheet
+
+The drawing is fine, the character just swims or jumps — that is an alignment
+problem, and the cells are still on disk, so nothing has to be re-sliced:
+
+```bash
+node {SKILL_PATH}/scripts/sprite-sheet.mjs align <character>/motions/<id>/cells \
+  --out <character>/motions/<id>/frames --anchor center --smooth --json
+```
+
+`align` clears the old `NN.png` out of `--out` before writing, so the frames
+are replaced, never mixed. Then rebuild what depends on them and re-measure:
+
+```bash
+node {SKILL_PATH}/scripts/sprite-sheet.mjs pack <character>/motions/<id>/frames \
+  --out <character>/motions/<id>/sheet.png --atlas <character>/motions/<id>/atlas.json \
+  --name <id> --fps 8 --loop --anchor center --json
+node {SKILL_PATH}/scripts/sprite-sheet.mjs gif <character>/motions/<id>/frames \
+  --out <character>/motions/<id>/preview.gif --fps 8 --loop \
+  --webp <character>/motions/<id>/preview.webp --json
+node {SKILL_PATH}/scripts/sprite-sheet.mjs inspect <character>/motions/<id> --anchor center --json
+```
+
+Every path the old `run.json` names is still correct — same frames, same sheet,
+same previews — so `register-run --run <character>/motions/<id>/run.json`
+re-registers the new bytes with no id churn. The one field that has gone stale
+is its `inspect` block; paste the fresh `inspect` output into it first, or the
+motion in `project.json` keeps reporting the drift you just fixed.
+
+**Which one to reach for.** Re-running `run` with the new `--anchor` / `--smooth`
+is one command and hands you a complete, fresh `run.json`; it costs a re-probe
+and a re-slice (one ffmpeg crop per cell — sixteen for a 4×4) on top of the work
+the manual chain does anyway. The four-command chain is worth it while you are
+trying two or three anchor/smoothing settings and only want to *look* at the
+result; once you have settled, do the final pass with `run` so the summary
+`register-run` reads is one the pipeline actually produced. One caution on the
+`run` route: it re-probes whatever sheet you hand it and keys it again if that
+image is opaque, so a matting you paid `remove-background.mjs` for is redone
+with a colour threshold unless the sheet you pass already carries alpha.
 
 ## `remove-background.mjs` — the fal keying path
 
@@ -202,12 +294,44 @@ come from `Date.now()` unless `--at <ms>` is passed.
 | `add-ref --id turnaround --file refs/turnaround.png --role turnaround [--label] [--prompt] [--model] [--from <assetId,…>]` | Registers `ref-<id>` with a `generate` edge. |
 | `add-motion --id idle --label Idle --rows 4 --cols 4 --fps 8 [--loop] [--anchor bottom] [--prompt] [--status planned]` | Adds the motion. Call it before you generate, so the stage shows a placeholder. |
 | `set-motion --motion idle [--label] [--fps] [--loop\|--no-loop] [--anchor] [--prompt] [--status] [--notes]` | Edits motion metadata. `--notes` is where a failure reason belongs. |
-| `set-sheet --motion idle --file motions/idle/sheet-raw.png --from ref-turnaround[,…] [--model] [--prompt] [--background transparent] [--status processing]` | Registers `<motion>-sheet-raw` with a `generate` edge whose `params.inputs` lists every reference. Re-running replaces the previous raw sheet and its edges, keeping the id stable. |
+| `set-sheet --motion idle --file motions/idle/sheet-raw.png --from ref-turnaround[,…] [--model] [--prompt] [--background transparent] [--status generating\|processing]` | Registers `<motion>-sheet-raw` with a `generate` edge. `--from` becomes the edge's `fromAssetId`; `params.inputs` lists the whole set **only when you attach two or more references** — with one, `fromAssetId` already says everything. Re-running replaces the previous raw sheet and its edges, keeping the id stable. Call it twice per sheet (see below). |
 | `register-run --motion idle --run <run.json \| ->` | Consumes `sprite-sheet.mjs run` output: registers the alpha sheet (if any), every frame, the packed sheet, atlas, gif and webp with `derive` edges; **removes** the previous frame assets and edges for that motion; copies `inspect` into the motion; sets status `ready`. |
 | `add-video --motion idle --file motions/idle/video-seedance-1.mp4 --model seedance-2.5 --mode i2v --from idle-frame-00[,idle-frame-15] [--prompt] [--duration 4] [--status generating]` | Registers `<motion>-video-<n>` (n is the next free number) with a `generate` edge. |
 | `set-video --motion idle --video <id> --status ready\|failed [--notes]` | Closes out a video after the render returns. |
 | `remove-motion --motion idle` | Removes the motion, its assets and its edges. Files on disk are left alone; the orphaned paths are printed so you can delete them deliberately. |
 | `show [--motion id]` | Compact summary: name, refs, motions with status / grid / fps / frame count / warnings. The cheapest way to re-orient at the start of a turn. |
+
+### `set-sheet` is called twice per sheet
+
+The image call takes a minute or two, and the stage should not be empty for it.
+So the first call goes **before** `generate_image.mjs`:
+
+```bash
+node {SKILL_PATH}/scripts/sprite-project.mjs set-sheet --dir <character> --motion <id> \
+  --file motions/<id>/sheet-raw.png --from ref-turnaround,ref-portrait \
+  --model openai/gpt-image-2.5-flare --prompt "<the prompt you are about to send>" \
+  --background transparent --status generating --json
+```
+
+`--status generating` is the one status that accepts a `--file` which does not
+exist yet: it reserves `<motion>-sheet-raw` with `status: "generating"` and
+empty `metadata`, writes the `generate` edge with the model and prompt (which
+are known now and nowhere later), and sets the motion to `generating`.
+
+The second call goes **after** the image has landed — the same command without
+`--status`, so it defaults to `processing`:
+
+```bash
+node {SKILL_PATH}/scripts/sprite-project.mjs set-sheet --dir <character> --motion <id> \
+  --file motions/<id>/sheet-raw.png --from ref-turnaround,ref-portrait \
+  --model openai/gpt-image-2.5-flare --prompt "<the same prompt>" --background transparent --json
+```
+
+Now the file is measured and the same asset flips to `status: "ready"` with real
+dimensions — same id, same edge slot, nothing duplicated. **Skipping this second
+call leaves the sheet asset stuck at `generating` with no dimensions forever**;
+`register-run` writes the frames and the atlas but never revisits the raw sheet.
+A missing file under any status other than `generating` is still a hard error.
 
 ## `atlas.json`
 

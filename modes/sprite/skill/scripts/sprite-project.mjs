@@ -68,6 +68,11 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
             [--prompt] [--background <text>] [--status ${MOTION_STATUSES.join("|")}]
       Register the generated sheet as <motion>-sheet-raw (id stays stable
       across regenerations). Motion status defaults to processing.
+      Call it twice per sheet: '--status generating' BEFORE the image call
+      reserves the asset with empty metadata and no file on disk, so the
+      stage shows a placeholder; calling it again once the file has landed
+      measures it and flips the same asset to ready. A missing file under any
+      other status is an error.
 
   register-run --motion <motionId> --run <run.json|-> [--at <ms>]
       Consume a 'sprite-sheet.mjs run' summary: registers sheet-alpha (when
@@ -739,23 +744,33 @@ function main() {
       const doc = loadProject(dir);
       const motion = findMotion(doc, requireFlag(values.motion, "--motion"));
       const uri = toUri(dir, requireFlag(values.file, "--file"), "--file");
-      const file = requireFile(dir, uri, "--file");
+      const status = oneOf(values.status ?? "processing", MOTION_STATUSES, "--status");
       const inputs = parseInputs(doc, values.from, "--from");
       const assetId = `${motion.id}-sheet-raw`;
 
+      // `--status generating` is the placeholder leg: it is called BEFORE the
+      // image model runs, so the stage can show "generating" instead of
+      // nothing, and the file it names does not exist yet by definition.
+      // Every other status claims the sheet is on disk, so a missing file
+      // stays the hard error it always was.
+      const placeholder = status === "generating";
+      const file = placeholder ? null : requireFile(dir, uri, "--file");
+
       upsertAsset(doc, {
         id: assetId, type: "image", uri, name: `${motion.id} sheet (raw)`,
-        metadata: imageMetadata(file, "--file"),
-        createdAt: now, status: "ready",
+        metadata: placeholder ? {} : imageMetadata(file, "--file"),
+        createdAt: now, status: placeholder ? "generating" : "ready",
       }, `motion '${motion.id}'`);
       setEdge(doc, edge(assetId, inputs, operation("generate", now, {
         model: values.model, prompt: values.prompt, background: values.background,
       }, inputs)));
 
       motion.sheetRaw = assetId;
-      motion.status = oneOf(values.status ?? "processing", MOTION_STATUSES, "--status");
+      motion.status = status;
       saveProject(dir, doc);
-      emit(values, motion, [`${motion.id}: sheet ${uri} registered as ${assetId} (${motion.status})`]);
+      emit(values, motion, [placeholder
+        ? `${motion.id}: reserved ${assetId} for ${uri} (generating — measured once the file lands)`
+        : `${motion.id}: sheet ${uri} registered as ${assetId} (${motion.status})`]);
       break;
     }
 

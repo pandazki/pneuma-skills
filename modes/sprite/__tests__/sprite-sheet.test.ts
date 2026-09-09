@@ -17,7 +17,7 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import {
-  cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync,
+  cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -472,6 +472,23 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       const out = runJson("inspect", motion, "--cells", frames);
       expect(out.warnings.join(" ")).toContain("clipped");
     });
+
+    test("a failed write leaves no .tmp beside the report", () => {
+      // Every JSON here is written scratch-then-rename. When the rename is
+      // the step that fails, the scratch must go with it: an `inspect.json.tmp`
+      // left in the motion directory is indistinguishable from a write in
+      // flight, and the next reader has to guess. A directory standing where
+      // the file belongs is the cheapest deterministic rename failure.
+      const ws = fresh();
+      const motion = join(ws, "motion");
+      useFrames(motion, framesOf("plain", 2, 2, 17));
+      mkdirSync(join(motion, "inspect.json", "occupied"), { recursive: true });
+
+      const r = run("inspect", motion, "--json");
+      expect(r.code).toBe(1);
+      expect(r.err).toContain("ERROR:");
+      expect(existsSync(join(motion, "inspect.json.tmp"))).toBe(false);
+    });
   });
 
   describe("run", () => {
@@ -562,8 +579,10 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
         "run", SHEETS.plain(), "--rows", "2", "--cols", "2",
         "--out", motionDir, "--name", "bounce", "--fps", "8", "--pad", "17",
       );
+      // A second, different sheet over the same motion: that is a regeneration,
+      // and `run` only replaces the raw sheet when told to.
       runJson(
-        "run", SHEETS.pair(), "--rows", "1", "--cols", "2",
+        "run", SHEETS.pair(), "--rows", "1", "--cols", "2", "--force",
         "--out", motionDir, "--name", "bounce", "--fps", "8", "--pad", "17",
       );
       expect(readdirSync(join(motionDir, "frames")).sort()).toEqual(["00.png", "01.png"]);
@@ -603,6 +622,115 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       const blind = runJson("inspect", motionDir);
       expect(blind.cellsDir).toBeUndefined();
       expect(blind.warnings).not.toEqual(out.inspect.warnings);
+    });
+
+    describe("where the input sheet may live", () => {
+      /** A motion directory holding a raw sheet and a differently drawn
+       *  already-keyed sheet — the state a keying pass leaves behind, and the
+       *  one where `run` used to copy the keyed sheet over the raw one. */
+      function keyedMotion(ws: string): { motionDir: string; raw: Buffer } {
+        const motionDir = join(ws, "motions", "idle");
+        mkdirSync(motionDir, { recursive: true });
+        cpSync(SHEETS.green(), join(motionDir, "sheet-raw.png"));
+        cpSync(SHEETS.plain(), join(motionDir, "sheet-alpha.png"));
+        return { motionDir, raw: readFileSync(join(motionDir, "sheet-raw.png")) };
+      }
+
+      test("an in-place sheet-alpha.png run keeps sheet-raw.png byte-identical and slices the alpha", () => {
+        const ws = fresh();
+        const { motionDir, raw } = keyedMotion(ws);
+        const out = runJson(
+          "run", join(motionDir, "sheet-alpha.png"), "--rows", "2", "--cols", "2",
+          "--out", motionDir, "--name", "idle", "--fps", "8", "--pad", "17",
+        );
+
+        // The un-keyed original is still exactly what the model drew.
+        expect(readFileSync(join(motionDir, "sheet-raw.png")).equals(raw)).toBe(true);
+        expect(out.sheetRaw).toBe(join(motionDir, "sheet-raw.png"));
+        expect(out.sheetAlpha).toBe(join(motionDir, "sheet-alpha.png"));
+        expect(out.alphaSource).toBe("provided");
+        expect(out.keyed).toBe(false);
+        expect(out.keyColor).toBeUndefined();
+        // The alpha sheet is what got sliced: keying the opaque green raw
+        // sheet would have rewritten sheet-alpha.png first.
+        expect(readFileSync(join(motionDir, "sheet-alpha.png")).equals(readFileSync(SHEETS.plain()))).toBe(true);
+        expect(out.cell).toEqual({ width: 64, height: 64 });
+        expect(readBbox(join(motionDir, "frames", "00.png")).bbox).toEqual({ x: 17, y: 17, w: 30, h: 30 });
+      });
+
+      test("an in-place alpha run with no raw sheet omits sheetRaw and says so on stderr", () => {
+        const ws = fresh();
+        const motionDir = join(ws, "motions", "idle");
+        mkdirSync(motionDir, { recursive: true });
+        cpSync(SHEETS.plain(), join(motionDir, "sheet-alpha.png"));
+
+        const r = run(
+          "run", join(motionDir, "sheet-alpha.png"), "--rows", "2", "--cols", "2",
+          "--out", motionDir, "--name", "idle", "--fps", "8", "--pad", "17", "--json",
+        );
+        expect(r.code).toBe(0);
+        const out = JSON.parse(r.out);
+        expect(out.sheetRaw).toBeUndefined();
+        expect(out.alphaSource).toBe("provided");
+        // A missing raw sheet is reported, not invented.
+        expect(existsSync(join(motionDir, "sheet-raw.png"))).toBe(false);
+        expect(r.err).toContain("sheet-raw.png");
+      });
+
+      test("any other file inside --out is refused instead of overwriting the raw sheet", () => {
+        const ws = fresh();
+        const { motionDir, raw } = keyedMotion(ws);
+        cpSync(SHEETS.pair(), join(motionDir, "sheet-fixed.png"));
+
+        const r = run(
+          "run", join(motionDir, "sheet-fixed.png"), "--rows", "1", "--cols", "2",
+          "--out", motionDir, "--name", "idle", "--fps", "8", "--json",
+        );
+        expect(r.code).toBe(1);
+        expect(r.err).toContain("sheet-raw.png");
+        expect(r.err).toContain("sheet-alpha.png");
+        expect(readFileSync(join(motionDir, "sheet-raw.png")).equals(raw)).toBe(true);
+      });
+
+      test("an outside sheet does not replace a different sheet-raw.png without --force", () => {
+        const ws = fresh();
+        const { motionDir, raw } = keyedMotion(ws);
+        const args = [
+          "run", SHEETS.pair(), "--rows", "1", "--cols", "2", "--out", motionDir,
+          "--name", "idle", "--fps", "8", "--pad", "17",
+        ];
+
+        const refused = run(...args, "--json");
+        expect(refused.code).toBe(1);
+        expect(refused.err).toContain("--force");
+        expect(readFileSync(join(motionDir, "sheet-raw.png")).equals(raw)).toBe(true);
+
+        // A regeneration is the legitimate case, and it says so.
+        const forced = runJson(...args, "--force");
+        expect(forced.sheetRaw).toBe(join(motionDir, "sheet-raw.png"));
+        expect(readFileSync(join(motionDir, "sheet-raw.png")).equals(readFileSync(SHEETS.pair()))).toBe(true);
+        expect(forced.frames).toHaveLength(2);
+      });
+
+      test("--alpha copies an already-keyed sheet in and skips probing and keying", () => {
+        const ws = fresh();
+        const motionDir = join(ws, "motions", "idle");
+        const out = runJson(
+          "run", SHEETS.green(), "--alpha", SHEETS.plain(), "--rows", "2", "--cols", "2",
+          "--out", motionDir, "--name", "idle", "--fps", "8", "--pad", "17",
+        );
+
+        expect(out.sheetRaw).toBe(join(motionDir, "sheet-raw.png"));
+        expect(out.sheetAlpha).toBe(join(motionDir, "sheet-alpha.png"));
+        expect(out.alphaSource).toBe("provided");
+        expect(out.keyed).toBe(false);
+        expect(out.keyColor).toBeUndefined();
+        expect(readFileSync(join(motionDir, "sheet-raw.png")).equals(readFileSync(SHEETS.green()))).toBe(true);
+        // Untouched bytes: an opaque raw sheet would otherwise have been keyed
+        // straight over this file.
+        expect(readFileSync(join(motionDir, "sheet-alpha.png")).equals(readFileSync(SHEETS.plain()))).toBe(true);
+        expect(readBbox(join(motionDir, "frames", "00.png")).bbox).toEqual({ x: 17, y: 17, w: 30, h: 30 });
+      });
     });
 
     test("a failing run cleans up after itself and reports one ERROR line", () => {

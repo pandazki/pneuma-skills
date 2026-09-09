@@ -20,9 +20,9 @@
     { "toAssetId": "bounce-frame-01", "fromAssetId": "bounce-sheet-raw", "operation": { "type": "derive", "actor": "agent", "params": { "tool": "sprite-sheet.mjs", "step": "run", "cell": 1 }, "timestamp": 1757400002000 } },
     { "toAssetId": "bounce-frame-02", "fromAssetId": "bounce-sheet-raw", "operation": { "type": "derive", "actor": "agent", "params": { "tool": "sprite-sheet.mjs", "step": "run", "cell": 2 }, "timestamp": 1757400002000 } },
     { "toAssetId": "bounce-frame-03", "fromAssetId": "bounce-sheet-raw", "operation": { "type": "derive", "actor": "agent", "params": { "tool": "sprite-sheet.mjs", "step": "run", "cell": 3 }, "timestamp": 1757400002000 } },
-    { "toAssetId": "bounce-sheet", "fromAssetId": "bounce-frame-00", "operation": { "type": "derive", "actor": "agent", "params": { "tool": "sprite-sheet.mjs", "step": "pack" }, "timestamp": 1757400003000 } },
+    { "toAssetId": "bounce-sheet", "fromAssetId": "bounce-frame-00", "operation": { "type": "derive", "actor": "agent", "params": { "tool": "sprite-sheet.mjs", "step": "pack", "inputs": ["bounce-frame-00", "bounce-frame-01", "bounce-frame-02", "bounce-frame-03"] }, "timestamp": 1757400003000 } },
     { "toAssetId": "bounce-atlas", "fromAssetId": "bounce-sheet", "operation": { "type": "derive", "actor": "agent", "params": { "tool": "sprite-sheet.mjs", "step": "pack" }, "timestamp": 1757400003000 } },
-    { "toAssetId": "bounce-gif", "fromAssetId": "bounce-frame-00", "operation": { "type": "derive", "actor": "agent", "params": { "tool": "sprite-sheet.mjs", "step": "gif" }, "timestamp": 1757400004000 } }
+    { "toAssetId": "bounce-gif", "fromAssetId": "bounce-frame-00", "operation": { "type": "derive", "actor": "agent", "params": { "tool": "sprite-sheet.mjs", "step": "gif", "inputs": ["bounce-frame-00", "bounce-frame-01", "bounce-frame-02", "bounce-frame-03"] }, "timestamp": 1757400004000 } }
   ],
   "sprite": {
     "version": 1,

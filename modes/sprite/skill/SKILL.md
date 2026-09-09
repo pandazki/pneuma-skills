@@ -189,9 +189,12 @@ every flag, and worked examples are in `references/prompting.md`.
    | story key poses | 3×3 | 6 | no | bottom |
 
 2. **Register it before you generate** — `add-motion --status planned`, then
-   `set-sheet … --status generating` right before the image call. The stage
-   shows a placeholder while the model works, so the user is not staring at
-   nothing wondering whether you heard them.
+   `set-sheet … --file motions/<id>/sheet-raw.png --status generating` right
+   before the image call. `generating` is the one status that accepts a file
+   that does not exist yet: it reserves the sheet asset with empty metadata and
+   records the model and prompt you are about to send. The stage shows a
+   placeholder while the model works, so the user is not staring at nothing
+   wondering whether you heard them.
 3. **Generate the sheet** — one `generate_image.mjs` call with every reference
    attached, `--background transparent`, and the style sentence first:
 
@@ -211,35 +214,61 @@ every flag, and worked examples are in `references/prompting.md`.
    Positional prompt, one `--image-urls` per reference, and the file lands at
    `<character>/motions/<id>/sheet-raw.png` — the path `set-sheet --file
    motions/<id>/sheet-raw.png` registers.
-4. **Probe the alpha** — `node {SKILL_PATH}/scripts/sprite-sheet.mjs probe <character>/motions/<id>/sheet-raw.png`.
+4. **Run `set-sheet` again, now that the file exists** — the same command as
+   step 2 without `--status`, so it defaults to `processing`. The first call
+   could not measure a file that was not there; this one probes it and flips
+   the same asset id from `generating` to `ready` with its real dimensions.
+   Skip it and the sheet stays a placeholder in `project.json` forever —
+   `register-run` writes the frames and the atlas, but never revisits the raw
+   sheet.
+5. **Probe the alpha** — `node {SKILL_PATH}/scripts/sprite-sheet.mjs probe <character>/motions/<id>/sheet-raw.png`.
    Models honour `background: transparent` inconsistently; probing is free and
    tells you which branch you are on.
-5. **Key it if it came back opaque** — `remove-background.mjs` (fal, best
+6. **Key it if it came back opaque** — `remove-background.mjs` (fal, best
    quality) or, with no fal key, `sprite-sheet.mjs key` (ffmpeg `colorkey` on
    the detected corner colour). Either one writes
    `<character>/motions/<id>/sheet-alpha.png`.
-6. **Run the pipeline** — `run` does probe → key → slice → align → pack → gif →
-   inspect in one call and prints one JSON object. Feed it the sheet you
-   actually have: `sheet-alpha.png` when you keyed one in step 5 (`run` probes
-   first and will not re-key a sheet that already has alpha), otherwise
-   `sheet-raw.png`.
+7. **Run the pipeline** — `run` does probe → key → slice → align → pack → gif →
+   inspect in one call and prints one JSON object. Always hand it
+   `sheet-raw.png`; add `--alpha` when step 6 produced a keyed sheet, and it
+   slices that instead of keying again.
 
    ```bash
    node {SKILL_PATH}/scripts/sprite-sheet.mjs run <character>/motions/<id>/sheet-raw.png \
+     --alpha <character>/motions/<id>/sheet-alpha.png \
      --rows 4 --cols 4 --out <character>/motions/<id> --name <id> --fps 8 --loop \
      --json > <character>/motions/<id>/run.json
    ```
-7. **Record the run** — `node {SKILL_PATH}/scripts/sprite-project.mjs register-run --dir <character> --motion <id> --run <character>/motions/<id>/run.json`.
+
+   Drop the `--alpha` line when step 5 found alpha already there and you
+   skipped step 6 — then `run` slices the raw sheet as it is.
+   `sheet-raw.png` is the only copy of what the model drew, so `run` never
+   writes over it from inside the motion directory, and a sheet from anywhere
+   else needs `--force` to replace a raw sheet that is already there.
+
+   It leaves the raw sliced cells at `<character>/motions/<id>/cells/NN.png`
+   next to the aligned `frames/`. They are not assets — nothing registers
+   them — but they are what `inspect` judges "leaves its grid cell" on, and
+   what `align` re-reads when only the alignment has to be redone.
+8. **Record the run** — `node {SKILL_PATH}/scripts/sprite-project.mjs register-run --dir <character> --motion <id> --run <character>/motions/<id>/run.json`.
    This registers every frame, the atlas, the previews, copies the inspect
-   summary into the motion, and sets the status to `ready`.
-8. **Read the inspect warnings**, then verify: `navigate-to`, `play`,
+   summary into the motion, and sets the status to `ready`. The summary's
+   `cells` key is ignored.
+9. **Read the inspect warnings**, then verify: `navigate-to`, `play`,
    `pause` + `capture` at a couple of frames.
-9. **Fix the loop when it is wrong.** One bad cell → `edit_image.mjs` on
-   `<character>/motions/<id>/sheet-raw.png` targeting that cell, then re-run
-   from step 6. Scale drift or mixed facing across the sheet → regenerate with
-   a tightened prompt; that is a drawing problem, not an alignment problem.
-   `references/prompting.md` has the phrasings that fix each, and the worked
-   `edit_image.mjs` call.
+10. **Fix the loop when it is wrong.** One bad cell → `edit_image.mjs` on
+    `<character>/motions/<id>/sheet-raw.png` targeting that cell, then re-run
+    from step 5 — the edit rewrites the raw sheet, so the `sheet-alpha.png`
+    on disk is the *previous* drawing and must be re-keyed before it is fed
+    back in. Anchor drift or a jump between frames → the drawing is fine
+    and only the alignment is off: re-run `align` from `cells/` with a
+    different `--anchor` / `--smooth`, then `pack` + `gif` + `inspect` +
+    `register-run`, or just re-run `run` with the new flags (one command, one
+    fresh `run.json`, at the cost of re-slicing). `references/pipeline.md`
+    spells out both and says when each is worth it. Scale drift or mixed
+    facing across the sheet → regenerate with a tightened prompt; that is a
+    drawing problem, not an alignment problem. `references/prompting.md` has
+    the phrasings that fix each, and the worked `edit_image.mjs` call.
 
 ### C. Render a video preview
 

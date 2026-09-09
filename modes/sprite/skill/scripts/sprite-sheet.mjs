@@ -17,10 +17,10 @@
 
 import { spawnSync } from "node:child_process";
 import {
-  copyFileSync, existsSync, mkdirSync, readdirSync, renameSync,
+  copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync,
   rmSync, statSync, unlinkSync, writeFileSync,
 } from "node:fs";
-import { basename, dirname, extname, join, resolve } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
 const DEFAULT_THRESHOLD = 16;
@@ -94,13 +94,27 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       to <motionDir>/${CELLS_DIRNAME} when 'run' left that directory there.
 
   run <sheet-raw> --rows R --cols C --out <motionDir> --name <motionId> --fps N
-      [--loop] [--anchor bottom|center] [--key auto|#rrggbb|none] [--cell auto|WxH]
+      [--alpha <png>] [--force] [--loop] [--anchor bottom|center]
+      [--key auto|#rrggbb|none] [--cell auto|WxH]
       [--pad ${DEFAULT_PAD}] [--smooth] [--scale 1] [--nearest] [--margin 0] [--gutter 0]
       [--width W] [--no-webp] [--threshold ${DEFAULT_THRESHOLD}]
       probe -> key (only when the sheet is opaque) -> slice -> align -> pack
-      -> gif (+webp) -> inspect. The input sheet is copied, never moved. The
-      pre-align cells are kept as <motionDir>/${CELLS_DIRNAME}/NN.png so the
+      -> gif (+webp) -> inspect. An outside sheet is copied in, never moved.
+      The pre-align cells are kept as <motionDir>/${CELLS_DIRNAME}/NN.png so the
       report can be reproduced and the alignment redone without re-slicing.
+
+      <motionDir>/sheet-raw.png is the only copy of what the model drew, so it
+      is never overwritten by accident:
+        - a sheet from OUTSIDE <motionDir> is copied to sheet-raw.png; when a
+          different sheet-raw.png is already there, --force is required
+          (a regeneration is the legitimate case, and says so).
+        - <motionDir>/sheet-raw.png itself is used where it lies.
+        - <motionDir>/sheet-alpha.png itself is used as the already-keyed
+          sheet: no probe, no key, sheet-raw.png untouched.
+        - any OTHER file inside <motionDir> is refused.
+      --alpha <png> names an already-keyed sheet (e.g. from
+      remove-background.mjs) at any path: it is copied to
+      <motionDir>/sheet-alpha.png and sliced instead of keying.
 
 Exit code 0 on success, 1 on failure with a one-line ERROR: on stderr.`;
 
@@ -161,8 +175,16 @@ function writeJsonFile(outPath, value) {
   const out = resolve(outPath);
   mkdirSync(dirname(out), { recursive: true });
   const scratch = `${out}.tmp`;
-  writeFileSync(scratch, `${JSON.stringify(value, null, 2)}\n`);
-  renameSync(scratch, out);
+  // Same shape as sprite-project.mjs::saveProject: a serialize or rename that
+  // throws must not leave `atlas.json.tmp` sitting next to the real file,
+  // where the next reader has to guess whether it is a leftover or a write in
+  // flight. The rename itself is what makes the write atomic.
+  try {
+    writeFileSync(scratch, `${JSON.stringify(value, null, 2)}\n`);
+    renameSync(scratch, out);
+  } finally {
+    if (existsSync(scratch)) rmSync(scratch, { force: true });
+  }
   return out;
 }
 
@@ -812,35 +834,111 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
   return { summary, report };
 }
 
+/** True when `target` sits anywhere in the subtree rooted at `dir`. */
+function isInside(dir, target) {
+  const rel = relative(dir, target);
+  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+}
+
+/** Byte-for-byte equality — the question `run` asks before replacing a sheet.
+ *  Size first, so two differently sized sheets never get fully read. */
+function sameBytes(a, b) {
+  if (statSync(a).size !== statSync(b).size) return false;
+  return readFileSync(a).equals(readFileSync(b));
+}
+
+/**
+ * Decide which sheets this run works from, without ever destroying the raw one.
+ *
+ * `<motionDir>/sheet-raw.png` is the only copy of what the model drew. `run`
+ * used to copy its input there unconditionally, so the documented keying
+ * detour — key `sheet-raw.png` into `sheet-alpha.png`, then
+ * `run <motionDir>/sheet-alpha.png --out <motionDir>` — silently replaced the
+ * un-keyed original with the keyed sheet, and `<motion>-sheet-raw` ended up
+ * pointing at a keyed file. Placement now decides:
+ *   - inside <motionDir>: only sheet-raw.png (used as-is) and sheet-alpha.png
+ *     (used as the already-keyed sheet); anything else is refused.
+ *   - outside: copied in, but a *different* existing raw sheet is replaced
+ *     only with --force.
+ * Returns the raw sheet actually on disk (null when there is none) and the
+ * already-keyed sheet, if one was provided rather than keyed here.
+ */
+function resolveRunSheets(input, motionDir, { alpha, force }) {
+  const sheetRawPath = join(motionDir, "sheet-raw.png");
+  const sheetAlphaPath = join(motionDir, "sheet-alpha.png");
+
+  const alphaInput = alpha ? resolve(alpha) : null;
+  if (alphaInput && !existsSync(alphaInput)) fail(`--alpha: file not found: ${alphaInput}`);
+
+  const inPlaceAlpha = input === sheetAlphaPath;
+  /** Neither in-place name: this sheet has to be copied in to be used. */
+  const fromElsewhere = !inPlaceAlpha && input !== sheetRawPath;
+  const identicalRaw = fromElsewhere && existsSync(sheetRawPath) && sameBytes(input, sheetRawPath);
+
+  // Validate before touching anything, so a refusal leaves the directory
+  // exactly as it was found.
+  if (inPlaceAlpha && alphaInput && alphaInput !== input) {
+    fail(`--alpha ${alphaInput} contradicts the input sheet ${input}: pass the already-keyed sheet once, either as the positional argument or as --alpha.`);
+  }
+  if (fromElsewhere) {
+    if (isInside(motionDir, input)) {
+      fail(`${input} is inside --out ${motionDir}: only sheet-raw.png and sheet-alpha.png can be used in place. Keep the sheet outside the motion directory, or pass an already-keyed sheet with --alpha.`);
+    }
+    if (existsSync(sheetRawPath) && !identicalRaw && !force) {
+      fail(`${sheetRawPath} already holds a different sheet. Pass --force to replace the previous raw sheet, or point --out at another motion directory.`);
+    }
+  }
+
+  // An identical raw sheet is left alone: re-running from the same source must
+  // not rewrite the file, and `input` may even be a link to it.
+  if (fromElsewhere && !identicalRaw) copyFileSync(input, sheetRawPath);
+  if (alphaInput && alphaInput !== sheetAlphaPath) copyFileSync(alphaInput, sheetAlphaPath);
+
+  const rawOnDisk = existsSync(sheetRawPath) ? sheetRawPath : null;
+  if (!rawOnDisk) {
+    // Only reachable through the in-place alpha form. Say it out loud rather
+    // than emitting a sheetRaw path that is not there.
+    console.error(`note: no sheet-raw.png in ${motionDir} — this run records only the alpha sheet`);
+  }
+  return {
+    sheetRawPath: rawOnDisk,
+    providedAlpha: (alphaInput || inPlaceAlpha) ? sheetAlphaPath : null,
+  };
+}
+
 function stepRun(sheetRaw, options) {
   const input = resolve(sheetRaw);
   if (!existsSync(input)) fail(`file not found: ${input}`);
   const motionDir = resolve(options.out);
   mkdirSync(motionDir, { recursive: true });
 
-  const sheetRawPath = join(motionDir, "sheet-raw.png");
-  if (input !== sheetRawPath) copyFileSync(input, sheetRawPath);
+  const { sheetRawPath, providedAlpha } = resolveRunSheets(input, motionDir, options);
 
-  const probe = stepProbe(sheetRawPath, options.threshold);
   const warnings = [];
 
   // Key only when the background really is opaque; a sheet that already has
-  // alpha is left exactly as generated.
-  let sheetAlpha;
+  // alpha is left exactly as generated, and a sheet keyed elsewhere is taken
+  // at its word (no probe, no key).
+  let sheetAlpha = providedAlpha;
+  let keyedHere = null;
   let keyColor;
-  const opaque = !probe.hasAlpha || probe.alphaCoverage >= OPAQUE_COVERAGE;
-  if (options.key !== "none" && opaque) {
-    const keyed = stepKey(sheetRawPath, {
-      out: join(motionDir, "sheet-alpha.png"),
-      color: options.key,
-      similarity: options.similarity,
-      blend: options.blend,
-      threshold: options.threshold,
-    });
-    sheetAlpha = keyed.output;
-    keyColor = keyed.color;
-    if (keyed.alphaCoverage > KEYED_OPAQUE_ALERT) {
-      warnings.push(`keying ${keyed.color} left ${(keyed.alphaCoverage * 100).toFixed(0)}% of the sheet opaque — check the background colour`);
+  if (!providedAlpha) {
+    const probe = stepProbe(sheetRawPath, options.threshold);
+    const opaque = !probe.hasAlpha || probe.alphaCoverage >= OPAQUE_COVERAGE;
+    if (options.key !== "none" && opaque) {
+      const keyed = stepKey(sheetRawPath, {
+        out: join(motionDir, "sheet-alpha.png"),
+        color: options.key,
+        similarity: options.similarity,
+        blend: options.blend,
+        threshold: options.threshold,
+      });
+      keyedHere = keyed.output;
+      sheetAlpha = keyed.output;
+      keyColor = keyed.color;
+      if (keyed.alphaCoverage > KEYED_OPAQUE_ALERT) {
+        warnings.push(`keying ${keyed.color} left ${(keyed.alphaCoverage * 100).toFixed(0)}% of the sheet opaque — check the background colour`);
+      }
     }
   }
 
@@ -914,9 +1012,10 @@ function stepRun(sheetRaw, options) {
     motionDir,
     name: options.name,
     grid: { rows: options.rows, cols: options.cols },
-    sheetRaw: sheetRawPath,
+    ...(sheetRawPath ? { sheetRaw: sheetRawPath } : {}),
     ...(sheetAlpha ? { sheetAlpha } : {}),
-    keyed: Boolean(sheetAlpha),
+    ...(providedAlpha ? { alphaSource: "provided" } : {}),
+    keyed: Boolean(keyedHere),
     ...(keyColor ? { keyColor } : {}),
     cells: cellsDir,
     frames: aligned.frames.map((f) => f.path),
@@ -978,6 +1077,7 @@ const OPTIONS = {
   inspect: { anchor: { type: "string" }, threshold: { type: "string" }, cells: { type: "string" } },
   run: {
     rows: { type: "string" }, cols: { type: "string" }, out: { type: "string" }, name: { type: "string" },
+    alpha: { type: "string" }, force: { type: "boolean", default: false },
     fps: { type: "string" }, loop: { type: "boolean", default: false }, "no-loop": { type: "boolean", default: false },
     anchor: { type: "string" }, key: { type: "string" }, cell: { type: "string" }, pad: { type: "string" },
     smooth: { type: "boolean", default: false }, scale: { type: "string" }, nearest: { type: "boolean", default: false },
@@ -1162,6 +1262,8 @@ function main() {
         cols: num(requireFlag(values.cols, "--cols"), "--cols", { integer: true, min: 1 }),
         out: requireFlag(values.out, "--out"),
         name: requireFlag(values.name, "--name"),
+        alpha: values.alpha ?? null,
+        force: values.force,
         fps: num(requireFlag(values.fps, "--fps"), "--fps", { min: 1 }),
         loop: pickLoop(values),
         anchor: pickAnchor(values.anchor),

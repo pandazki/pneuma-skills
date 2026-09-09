@@ -400,6 +400,78 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       expect(r.err).toMatch(/not found/);
       expect(readProject(dir)).toEqual(before);
     });
+
+    test("--status generating registers the placeholder before the file exists", () => {
+      // Workflow B runs `set-sheet … --status generating` BEFORE the image
+      // call so the stage shows a placeholder while the model draws. The file
+      // is by definition not there yet; refusing it made the documented order
+      // impossible to follow.
+      const { dir } = seedMini();
+      projectJson(dir, "add-motion", "--id", "walk", "--label", "Walk",
+        "--rows", "2", "--cols", "2", "--fps", "10");
+      expect(existsSync(join(dir, "motions", "walk", "sheet-raw.png"))).toBe(false);
+
+      const motion = projectJson(dir, "set-sheet", "--motion", "walk",
+        "--file", "motions/walk/sheet-raw.png", "--from", "ref-portrait",
+        "--model", "openai/gpt-image-2.5-flare", "--prompt", "2x2 walk sheet",
+        "--background", "transparent", "--status", "generating", "--at", String(T2));
+
+      expect(motion).toMatchObject({ status: "generating", sheetRaw: "walk-sheet-raw" });
+      const doc = readProject(dir);
+      const asset = doc.assets.find((a: any) => a.id === "walk-sheet-raw");
+      expect(asset).toMatchObject({
+        type: "image",
+        uri: "motions/walk/sheet-raw.png",
+        status: "generating",
+        metadata: {},
+      });
+      // The edge is written now, not deferred: the prompt and model that are
+      // about to produce the file are known here and nowhere later.
+      const edge = doc.provenance.find((e: any) => e.toAssetId === "walk-sheet-raw");
+      expect(edge.fromAssetId).toBe("ref-portrait");
+      expect(edge.operation).toMatchObject({
+        type: "generate",
+        params: { model: "openai/gpt-image-2.5-flare", prompt: "2x2 walk sheet", background: "transparent" },
+      });
+    });
+
+    test("the second set-sheet upgrades the placeholder in place once the file lands", () => {
+      const { dir } = seedMini();
+      projectJson(dir, "add-motion", "--id", "walk", "--label", "Walk",
+        "--rows", "2", "--cols", "2", "--fps", "10");
+      projectJson(dir, "set-sheet", "--motion", "walk", "--file", "motions/walk/sheet-raw.png",
+        "--from", "ref-portrait", "--prompt", "2x2 walk sheet", "--status", "generating", "--at", String(T1));
+
+      buildSheet(join(dir, "motions", "walk", "sheet-raw.png"), { cell: 64, rows: 2, cols: 2 });
+      const motion = projectJson(dir, "set-sheet", "--motion", "walk", "--file", "motions/walk/sheet-raw.png",
+        "--from", "ref-portrait", "--prompt", "2x2 walk sheet", "--at", String(T2));
+
+      expect(motion.status).toBe("processing");
+      const doc = readProject(dir);
+      // one asset, one edge — the placeholder was replaced, not duplicated
+      expect(doc.assets.filter((a: any) => a.id === "walk-sheet-raw")).toHaveLength(1);
+      expect(doc.provenance.filter((e: any) => e.toAssetId === "walk-sheet-raw")).toHaveLength(1);
+      const asset = doc.assets.find((a: any) => a.id === "walk-sheet-raw");
+      expect(asset.status).toBe("ready");
+      expect(asset.metadata).toEqual({ width: 128, height: 128 });
+      expect(asset.uri).toBe("motions/walk/sheet-raw.png");
+    });
+
+    test("a missing file is still rejected under any other status", () => {
+      // Only `generating` means "not written yet". `processing` claims the
+      // sheet is in the pipeline, and a pipeline over a file that does not
+      // exist is the failure this check is for.
+      const { dir } = seedMini();
+      projectJson(dir, "add-motion", "--id", "walk", "--label", "Walk",
+        "--rows", "2", "--cols", "2", "--fps", "10");
+      const before = readProject(dir);
+
+      const r = project(dir, "set-sheet", "--motion", "walk", "--file", "motions/walk/sheet-raw.png",
+        "--status", "processing", "--json");
+      expect(r.code).toBe(1);
+      expect(r.err).toMatch(/not found/);
+      expect(readProject(dir)).toEqual(before);
+    });
   });
 
   describe("asset ownership", () => {

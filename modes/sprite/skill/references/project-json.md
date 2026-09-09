@@ -19,6 +19,9 @@ correctly on disk.
   motions/<motion-id>/
     sheet-raw.png                 # as generated
     sheet-alpha.png               # background removed (only when raw had none)
+    cells/00.png … NN.png         # raw sliced cells before alignment; kept so
+                                  # `inspect` can measure clipping/jumps and
+                                  # `align` can re-run from them
     frames/00.png … NN.png        # sliced + aligned, uniform cell, RGBA
     sheet.png                     # packed atlas image
     atlas.json                    # frame rects + pivot + timing
@@ -48,9 +51,13 @@ Frame files are two-digit zero-padded; a motion has at most 100 frames.
   actor: "agent"|"human", params?, label?, timestamp } }`.
 
 Craft edges are single-parent. A step with several inputs (`pack`, `gif`, an
-r2v video) names its **first** input as `fromAssetId` and lists every input id
-in `operation.params.inputs` — so the fan-in is recorded without inventing a
-multi-parent edge type.
+`r2v` or `first-last` video, a sheet generated from two or more references)
+names its **first** input as `fromAssetId` and lists every input id in
+`operation.params.inputs` — so the fan-in is recorded without inventing a
+multi-parent edge type. `inputs` appears **only when there really are two or
+more**: a single-parent edge (`<motion>-atlas` ← `<motion>-sheet`, an `i2v`
+video, a sheet generated from one reference) is fully described by
+`fromAssetId` and carries no `inputs` key at all.
 
 ### Asset id conventions
 
@@ -68,6 +75,17 @@ multi-parent edge type.
 Ids are stable across re-runs: `register-run` removes the previous frame
 assets and their edges before writing the new ones, so re-running a motion
 updates it instead of accumulating orphans.
+
+`cells/NN.png` has no id on purpose. The pre-align cells are intermediate
+files — `inspect` measures clipping on them and `align` can re-run from them —
+but they are not part of what the character *is*, so `register-run` ignores the
+`cells` key in the run summary and nothing in `assets[]` ever points at them.
+
+`<motion>-sheet-raw` is the one asset that legitimately exists before its file
+does: `set-sheet --status generating` reserves it with `status: "generating"`
+and an empty `metadata` so the stage has something to show while the model
+draws, and the second `set-sheet` (after the image lands) measures it and flips
+the same id to `ready`.
 
 ## The `sprite` sidecar
 
