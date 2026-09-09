@@ -190,9 +190,31 @@ The user just opened the sprite workspace. Greet them briefly (1-2 sentences) an
 
   init: {
     contentCheckPattern: "**/project.json",
-    // Seed content ships separately; the gallery stays empty until then.
-    seedFiles: {},
-    seeds: [],
+    // One content set per seed card. The key is the source path (relative to
+    // the repo root for a builtin mode), the value the destination inside the
+    // workspace — so this copies `modes/sprite/seed/lumi/` to `<workspace>/lumi/`,
+    // which is exactly one character directory, ready to play.
+    seedFiles: {
+      "modes/sprite/seed/lumi/": "lumi/",
+    },
+    seeds: [
+      {
+        id: "lumi",
+        sourceKey: "modes/sprite/seed/lumi/",
+        thumbnail: "lumi.png",
+        displayName: {
+          en: "Lumi — lantern courier",
+          "zh-CN": "Lumi · 提灯信使",
+          ja: "Lumi — 提灯の配達人",
+        },
+        description: {
+          en: "A chibi courier with a floating paper lantern: two finished motions (16-frame idle loop and a lantern-swing attack), each with frames, atlas, GIF/WebP previews — plus one Seedance clip.",
+          "zh-CN": "带着飘浮纸灯笼的 Q 版信使：两套做完的动作（16 帧待机循环 + 提灯挥击），各自带切好的帧、atlas 与 GIF/WebP 预览，外加一段 Seedance 短片。",
+          ja: "浮かぶ提灯を連れたちび配達人。完成済みモーション 2 種（16 コマの待機ループと提灯スイング）に、フレーム・アトラス・GIF/WebP プレビュー、そして Seedance のクリップ 1 本。",
+        },
+        tags: ["chibi", "sprite-sheet"],
+      },
+    ],
     params: [
       {
         name: "openrouterApiKey",

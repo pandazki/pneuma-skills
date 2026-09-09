@@ -1,0 +1,245 @@
+{
+  "frameCount": 16,
+  "cell": {
+    "width": 216,
+    "height": 262
+  },
+  "anchorDrift": {
+    "x": 0.242,
+    "y": 0
+  },
+  "maxJump": 0.5,
+  "scaleDrift": 0.1303,
+  "emptyFrames": [],
+  "warnings": [],
+  "motionDir": "/private/tmp/claude-501/-Users-pandazki-Codes-pneuma-skills/cc20601a-7ed4-41d6-9b8e-720f8c4946d7/scratchpad/sprite-seed/lumi/motions/attack",
+  "framesDir": "/private/tmp/claude-501/-Users-pandazki-Codes-pneuma-skills/cc20601a-7ed4-41d6-9b8e-720f8c4946d7/scratchpad/sprite-seed/lumi/motions/attack/frames",
+  "cellsDir": "/private/tmp/claude-501/-Users-pandazki-Codes-pneuma-skills/cc20601a-7ed4-41d6-9b8e-720f8c4946d7/scratchpad/sprite-seed/lumi/motions/attack/cells",
+  "anchor": "bottom",
+  "frames": [
+    {
+      "index": 0,
+      "bbox": {
+        "x": 27,
+        "y": 27,
+        "w": 163,
+        "h": 227
+      },
+      "coverage": 0.3396,
+      "anchor": {
+        "x": 108.5,
+        "y": 254
+      }
+    },
+    {
+      "index": 1,
+      "bbox": {
+        "x": 20,
+        "y": 24,
+        "w": 177,
+        "h": 230
+      },
+      "coverage": 0.3558,
+      "anchor": {
+        "x": 108.5,
+        "y": 254
+      }
+    },
+    {
+      "index": 2,
+      "bbox": {
+        "x": 17,
+        "y": 22,
+        "w": 182,
+        "h": 232
+      },
+      "coverage": 0.3643,
+      "anchor": {
+        "x": 108,
+        "y": 254
+      }
+    },
+    {
+      "index": 3,
+      "bbox": {
+        "x": 19,
+        "y": 22,
+        "w": 179,
+        "h": 232
+      },
+      "coverage": 0.3636,
+      "anchor": {
+        "x": 108.5,
+        "y": 254
+      }
+    },
+    {
+      "index": 4,
+      "bbox": {
+        "x": 26,
+        "y": 22,
+        "w": 165,
+        "h": 232
+      },
+      "coverage": 0.3603,
+      "anchor": {
+        "x": 108.5,
+        "y": 254
+      }
+    },
+    {
+      "index": 5,
+      "bbox": {
+        "x": 27,
+        "y": 9,
+        "w": 162,
+        "h": 245
+      },
+      "coverage": 0.3538,
+      "anchor": {
+        "x": 108,
+        "y": 254
+      }
+    },
+    {
+      "index": 6,
+      "bbox": {
+        "x": 42,
+        "y": 8,
+        "w": 133,
+        "h": 246
+      },
+      "coverage": 0.3115,
+      "anchor": {
+        "x": 108.5,
+        "y": 254
+      }
+    },
+    {
+      "index": 7,
+      "bbox": {
+        "x": 46,
+        "y": 10,
+        "w": 125,
+        "h": 244
+      },
+      "coverage": 0.3078,
+      "anchor": {
+        "x": 108.5,
+        "y": 254
+      }
+    },
+    {
+      "index": 8,
+      "bbox": {
+        "x": 23,
+        "y": 32,
+        "w": 170,
+        "h": 222
+      },
+      "coverage": 0.3253,
+      "anchor": {
+        "x": 108,
+        "y": 254
+      }
+    },
+    {
+      "index": 9,
+      "bbox": {
+        "x": 16,
+        "y": 32,
+        "w": 185,
+        "h": 222
+      },
+      "coverage": 0.3276,
+      "anchor": {
+        "x": 108.5,
+        "y": 254
+      }
+    },
+    {
+      "index": 10,
+      "bbox": {
+        "x": 20,
+        "y": 38,
+        "w": 176,
+        "h": 216
+      },
+      "coverage": 0.3256,
+      "anchor": {
+        "x": 108,
+        "y": 254
+      }
+    },
+    {
+      "index": 11,
+      "bbox": {
+        "x": 8,
+        "y": 37,
+        "w": 200,
+        "h": 217
+      },
+      "coverage": 0.341,
+      "anchor": {
+        "x": 108,
+        "y": 254
+      }
+    },
+    {
+      "index": 12,
+      "bbox": {
+        "x": 27,
+        "y": 25,
+        "w": 162,
+        "h": 229
+      },
+      "coverage": 0.3278,
+      "anchor": {
+        "x": 108,
+        "y": 254
+      }
+    },
+    {
+      "index": 13,
+      "bbox": {
+        "x": 32,
+        "y": 24,
+        "w": 153,
+        "h": 230
+      },
+      "coverage": 0.33,
+      "anchor": {
+        "x": 108.5,
+        "y": 254
+      }
+    },
+    {
+      "index": 14,
+      "bbox": {
+        "x": 38,
+        "y": 23,
+        "w": 141,
+        "h": 231
+      },
+      "coverage": 0.3193,
+      "anchor": {
+        "x": 108.5,
+        "y": 254
+      }
+    },
+    {
+      "index": 15,
+      "bbox": {
+        "x": 41,
+        "y": 24,
+        "w": 135,
+        "h": 230
+      },
+      "coverage": 0.3124,
+      "anchor": {
+        "x": 108.5,
+        "y": 254
+      }
+    }
+  ]
+}
