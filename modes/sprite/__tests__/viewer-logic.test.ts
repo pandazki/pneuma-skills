@@ -16,12 +16,27 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import ts from "typescript";
 
 import { loadRoster, type CharacterProject, type Motion } from "../domain.js";
 import { atlasGeometry, atlasPivot } from "../viewer/atlas.js";
 import { pivotGuide } from "../viewer/frame-render.js";
+import {
+  bodyDriftOf,
+  bodyDriftVerdict,
+  maxJumpVerdict,
+  scaleDriftVerdict,
+  sizeLine,
+} from "../viewer/metrics.js";
+import { tabAfterNavigate, tabHasContent } from "../viewer/panel.js";
+import {
+  resolveLocale,
+  selectionLabel,
+  spriteStrings,
+  SPRITE_STRING_TABLES,
+} from "../viewer/strings.js";
 import {
   advance,
   contentSetMismatch,
@@ -500,6 +515,7 @@ describe("atlasGeometry", () => {
       rows: 2,
       cellWidth: 64,
       cellHeight: 64,
+      scale: 1,
       trusted: true,
       note: null,
     });
@@ -519,13 +535,38 @@ describe("atlasGeometry", () => {
     const geometry = atlasGeometry(p, motionOf(p));
     expect(geometry.trusted).toBe(false);
     expect(geometry.cellWidth).toBe(0);
-    expect(geometry.note).toContain("128×128");
-    expect(geometry.note).toContain("atlas.json");
+    expect(geometry.scale).toBeNull();
+    expect(geometry.note).toEqual({
+      kind: "not-whole-cells",
+      width: 128,
+      height: 128,
+      cols: 3,
+      rows: 2,
+    });
   });
 
-  test("cells that divide but do not match the frames are refused too", () => {
+  test("cells that are the frames scaled by one factor report the scale", () => {
+    // `pack --scale 0.5` is the pixel-art path: 64px frames delivered as 32px
+    // cells. The grid lines still fall exactly where the overlay draws them,
+    // so refusing this pack hid the one number the user had asked about
+    // ("128 became 125") behind an amber note about atlas.json.
+    const p = mutate((body) => {
+      body.assets.find((a: any) => a.id === "bounce-sheet").metadata = {
+        width: 64,
+        height: 64,
+      };
+    });
+    const geometry = atlasGeometry(p, motionOf(p));
+    expect(geometry.trusted).toBe(true);
+    expect(geometry.note).toBeNull();
+    expect(geometry.cellWidth).toBe(32);
+    expect(geometry.scale).toBe(0.5);
+  });
+
+  test("cells whose ratio differs between the axes are still refused", () => {
     // 256x64 over a 4x1 grid divides cleanly into 64x64 — but these frames
-    // are 32 px, so the packed image is not the one this grid describes.
+    // are 32x16, which is ×2 across and ×4 down. No pack does that, so the
+    // declared grid is not the one this sheet was made on.
     const p = mutate((body) => {
       body.sprite.motions[0].grid = { rows: 1, cols: 4 };
       body.assets.find((a: any) => a.id === "bounce-sheet").metadata = {
@@ -534,13 +575,21 @@ describe("atlasGeometry", () => {
       };
       for (const asset of body.assets) {
         if (asset.id.startsWith("bounce-frame")) {
-          asset.metadata = { width: 32, height: 32 };
+          asset.metadata = { width: 32, height: 16 };
         }
       }
     });
     const geometry = atlasGeometry(p, motionOf(p));
     expect(geometry.trusted).toBe(false);
-    expect(geometry.note).toContain("32×32");
+    expect(geometry.note).toEqual({
+      kind: "cell-mismatch",
+      cols: 4,
+      rows: 1,
+      cellWidth: 64,
+      cellHeight: 64,
+      frameWidth: 32,
+      frameHeight: 16,
+    });
   });
 
   test("an unmeasured sheet says so rather than drawing an unchecked grid", () => {
@@ -550,7 +599,7 @@ describe("atlasGeometry", () => {
     const geometry = atlasGeometry(p, motionOf(p));
     expect(geometry.trusted).toBe(false);
     expect(geometry.width).toBe(0);
-    expect(geometry.note).toContain("no recorded size");
+    expect(geometry.note).toEqual({ kind: "unmeasured" });
   });
 
   test("frames with no recorded size do not veto an otherwise sound grid", () => {
@@ -559,7 +608,11 @@ describe("atlasGeometry", () => {
         if (asset.id.startsWith("bounce-frame")) asset.metadata = {};
       }
     });
-    expect(atlasGeometry(p, motionOf(p)).trusted).toBe(true);
+    const geometry = atlasGeometry(p, motionOf(p));
+    expect(geometry.trusted).toBe(true);
+    // ...but the pack scale is unknowable without them, and an invented ×1
+    // would be a claim about a sheet nobody measured.
+    expect(geometry.scale).toBeNull();
   });
 });
 
@@ -780,4 +833,372 @@ describe("selectActiveCharacter", () => {
   test("no roster is no character", () => {
     expect(selectActiveCharacter(null, "lumi")).toBeNull();
   });
+});
+
+// ── One size line, and what counts as over ─────────────────────────────────
+
+/**
+ * Round 2's first complaint was arithmetic nobody did out loud: a user asked
+ * for 128 px and read "128×128 cell" in the header, "CELL 250×250" in the
+ * inspect block and "SHEET 500×500" in the atlas tab, with nothing on screen
+ * relating the three. `sizeLine` is the relation — declared, measured, and
+ * the factor `pack` applied between them.
+ */
+describe("sizeLine", () => {
+  test("declared alone before a motion is selected", () => {
+    const p = project();
+    expect(sizeLine(p, null, null)).toEqual({
+      declared: "64",
+      measured: null,
+      packedScale: null,
+    });
+  });
+
+  test("declared, measured and the pack scale once there is a motion", () => {
+    const p = mutate((body) => {
+      body.sprite.character.cell = { width: 128, height: 128 };
+      body.sprite.motions[0].inspect.cell = { width: 250, height: 250 };
+      // 250×250 packed over the declared 2×2 grid = 125px cells out of 250px
+      // frames: the "128 became 125" the viewer never said.
+      body.assets.find((a: any) => a.id === "bounce-sheet").metadata = {
+        width: 250,
+        height: 250,
+      };
+      for (const asset of body.assets) {
+        if (asset.id.startsWith("bounce-frame")) {
+          asset.metadata = { width: 250, height: 250 };
+        }
+      }
+    });
+    const motion = motionOf(p);
+    const line = sizeLine(p, motion, atlasGeometry(p, motion));
+    expect(line).toEqual({
+      declared: "128",
+      measured: "250×250",
+      packedScale: 0.5,
+    });
+    expect(spriteStrings("en").sizeLine(line)).toBe(
+      "declared 128 · measured 250×250 · packed ×0.5",
+    );
+    expect(spriteStrings("zh").sizeLine(line)).toBe(
+      "声明 128 · 实测 250×250 · 打包 ×0.5",
+    );
+  });
+
+  test("a pack at source size says nothing about scale", () => {
+    const p = project();
+    const motion = motionOf(p);
+    const line = sizeLine(p, motion, atlasGeometry(p, motion));
+    expect(line.packedScale).toBeNull();
+    expect(spriteStrings("en").sizeLine(line)).toBe(
+      "declared 64 · measured 64×64",
+    );
+    // The declared cell collapses to one number because that is how it was
+    // asked for; the measured one never does.
+    expect(line.declared).toBe("64");
+    expect(line.measured).toBe("64×64");
+  });
+
+  test("an untrusted layout reports no scale rather than a wrong one", () => {
+    const p = mutate((body) => {
+      body.sprite.motions[0].grid = { rows: 1, cols: 3 };
+    });
+    const motion = motionOf(p);
+    const geometry = atlasGeometry(p, motion);
+    expect(geometry.trusted).toBe(false);
+    expect(sizeLine(p, motion, geometry).packedScale).toBeNull();
+  });
+
+  test("a non-square declared cell is printed as both numbers", () => {
+    const p = mutate((body) => {
+      body.sprite.character.cell = { width: 256, height: 192 };
+    });
+    expect(sizeLine(p, null, null).declared).toBe("256×192");
+  });
+});
+
+/**
+ * Three testers watched an agent call a warning ignorable while the panel
+ * showed the same number with nothing beside it. These are the pipeline's own
+ * bars (`sprite-sheet.mjs`), so a value the viewer paints amber is a value
+ * the script would have warned about — and one it leaves alone is not.
+ */
+describe("inspect thresholds", () => {
+  const inspect = (over: Record<string, unknown> = {}) =>
+    ({
+      frameCount: 4,
+      cell: { width: 250, height: 250 },
+      anchorDrift: { x: 0, y: 0 },
+      maxJump: 0,
+      scaleDrift: 0,
+      emptyFrames: [],
+      warnings: [],
+      ...over,
+    }) as any;
+
+  test("scale drift is judged at 15 %, not at whatever looks big", () => {
+    expect(scaleDriftVerdict(inspect({ scaleDrift: 0.126 })).over).toBe(false);
+    expect(scaleDriftVerdict(inspect({ scaleDrift: 0.279 })).over).toBe(true);
+    expect(scaleDriftVerdict(inspect()).limit).toBe(0.15);
+  });
+
+  test("the jump bar is 8 % of the cell, so it moves with the cell", () => {
+    // 250px cell → 20px. The same 25px jump is a warning here and not on a
+    // 512px sheet, which is exactly why a fixed px limit would lie.
+    expect(maxJumpVerdict(inspect({ maxJump: 25 }))).toEqual({
+      limit: 20,
+      over: true,
+    });
+    expect(
+      maxJumpVerdict(inspect({ maxJump: 25, cell: { width: 512, height: 512 } })),
+    ).toEqual({ limit: 40.96, over: false });
+  });
+
+  test("no measured cell means no bar at all — never a bar of zero", () => {
+    const verdict = maxJumpVerdict(inspect({ cell: { width: 0, height: 0 }, maxJump: 9 }));
+    expect(verdict.limit).toBeNull();
+    expect(verdict.over).toBe(false);
+  });
+
+  test("body drift is absent until the sidecar carries it, never a fake 0", () => {
+    expect(bodyDriftOf(inspect())).toBeNull();
+    expect(bodyDriftOf(inspect({ bodyDrift: 17.4 }))).toBe(17.4);
+    expect(bodyDriftOf(inspect({ bodyDrift: "17.4" }))).toBeNull();
+    expect(bodyDriftVerdict(inspect({ bodyDrift: 17.4 }))).toEqual({
+      limit: 12.5,
+      over: true,
+    });
+  });
+});
+
+/**
+ * "Switched the stage to GIF", said an agent, while the panel sat on a Video
+ * tab with no clips in it. The action could not do what the sentence claimed;
+ * now it can, and only when the tab is empty for that motion.
+ */
+describe("tabAfterNavigate", () => {
+  const motion = (over: Partial<Motion> = {}): Motion =>
+    ({
+      id: "m",
+      label: "m",
+      prompt: "",
+      grid: { rows: 1, cols: 1 },
+      fps: 8,
+      loop: true,
+      anchor: "bottom",
+      status: "ready",
+      frames: [],
+      videos: [],
+      ...over,
+    }) as Motion;
+
+  test("a tab with something in it is left alone", () => {
+    expect(tabAfterNavigate("atlas", motion({ sheet: "s" }))).toBe("atlas");
+    expect(tabAfterNavigate("video", motion({ videos: [{}] as any }))).toBe("video");
+    expect(tabAfterNavigate("gif", motion({ gif: "g" }))).toBe("gif");
+  });
+
+  test("an empty Video or Atlas tab hands the motion to GIF", () => {
+    expect(tabAfterNavigate("video", motion({ gif: "g" }))).toBe("gif");
+    expect(tabAfterNavigate("atlas", motion({ gif: "g" }))).toBe("gif");
+  });
+
+  test("GIF is the destination even when the GIF is missing too", () => {
+    // Its empty state is the true answer; hunting for a tab with content in
+    // it would move the panel somewhere nobody asked for.
+    expect(tabAfterNavigate("video", motion())).toBe("gif");
+  });
+
+  test("no motion means no opinion", () => {
+    expect(tabAfterNavigate("atlas", null)).toBe("atlas");
+  });
+
+  test("webp alone counts as a preview", () => {
+    expect(tabHasContent(motion({ webp: "w" }), "gif")).toBe(true);
+  });
+});
+
+// ── What the composer chip says ────────────────────────────────────────────
+
+describe("selectionLabel", () => {
+  const p = project();
+  const bounce = motionOf(p);
+
+  test("a frame names the motion and the frame, never the prompt", () => {
+    const label = selectionLabel(spriteStrings("en"), bounce, 7);
+    expect(label).toBe(`${bounce.label} · frame 07`);
+    expect(label).not.toContain(bounce.prompt);
+  });
+
+  test("a whole motion names its status", () => {
+    expect(selectionLabel(spriteStrings("en"), bounce, null)).toBe(
+      `${bounce.label} · ${bounce.status}`,
+    );
+  });
+
+  test("zh-CN says the same two facts in Chinese", () => {
+    expect(selectionLabel(spriteStrings("zh"), bounce, 7)).toBe(
+      `${bounce.label} · 第 07 帧`,
+    );
+    expect(selectionLabel(spriteStrings("zh"), bounce, null)).toBe(
+      `${bounce.label} · 就绪`,
+    );
+  });
+});
+
+// ── The locale table ───────────────────────────────────────────────────────
+
+/**
+ * A tester ran a Chinese agent inside an English viewer and called the mix
+ * jarring. The table is the fix; this is the part of it a screenshot cannot
+ * check — that the runtime's language-only locale finds the right table, and
+ * that no string was left behind in the JSX.
+ */
+describe("spriteStrings", () => {
+  test("the runtime's language-only locale finds the Chinese table", () => {
+    // `props.locale` is lowercased and stripped to the language by the shell.
+    expect(resolveLocale("zh")).toBe("zh-CN");
+    expect(resolveLocale("zh-CN")).toBe("zh-CN");
+    expect(resolveLocale("zh-hant")).toBe("zh-CN");
+    expect(resolveLocale("en")).toBe("en");
+    expect(resolveLocale("ja")).toBe("en");
+    expect(resolveLocale(undefined)).toBe("en");
+  });
+
+  test("both tables carry the same keys, and none of them is blank", () => {
+    const en = SPRITE_STRING_TABLES.en as unknown as Record<string, unknown>;
+    const zh = SPRITE_STRING_TABLES["zh-CN"] as unknown as Record<string, unknown>;
+    expect(Object.keys(zh).sort()).toEqual(Object.keys(en).sort());
+    for (const [key, value] of Object.entries(zh)) {
+      if (typeof value === "string") expect(value.length).toBeGreaterThan(0);
+      else if (typeof value === "object" && value !== null) {
+        for (const inner of Object.values(value as Record<string, string>)) {
+          expect(inner.length).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
+  test("English hints come from the manifest, so the table adds none", () => {
+    // One source per language: the manifest for English (where the hint is
+    // the command's own `description`), this table for the rest.
+    expect(SPRITE_STRING_TABLES.en.commandHint("render-video")).toBeNull();
+    expect(SPRITE_STRING_TABLES["zh-CN"].commandHint("render-video")).toBeTruthy();
+    expect(SPRITE_STRING_TABLES["zh-CN"].commandHint("unknown-command")).toBeNull();
+  });
+});
+
+/**
+ * The guard that keeps the table honest.
+ *
+ * Localizing a viewer once is easy; keeping it localized is not — the next
+ * feature adds one `<span>Rendering…</span>` and half the panel is bilingual
+ * again. So the TSX is parsed (really parsed, not grepped: a regex over JSX
+ * cannot tell `a > b && c < d` from a text node) and every visible literal is
+ * a failure. Two kinds are allowed through, and both are things a translation
+ * would break: a run with no letters in it (`×`, `·`, `, `, a number) and a
+ * file name, which has to match what is on disk.
+ */
+describe("no English left in the viewer's JSX", () => {
+  /** Attributes the user can actually read. `className` is not one of them. */
+  const VISIBLE_ATTRS = new Set([
+    "title",
+    "placeholder",
+    "aria-label",
+    "alt",
+    "label",
+    "confirmLabel",
+    "cancelLabel",
+    "hint",
+  ]);
+  const FILE_NAME = /^[\w.-]+\.(png|jpe?g|gif|webp|json|mp4|svg)$/;
+  /** Units and separators — the things a size line is made of. */
+  const UNITS = new Set(["px", "fps", "s", "ms"]);
+
+  const allowedText = (text: string): boolean => {
+    const trimmed = text.trim();
+    if (trimmed === "") return true;
+    if (!/[A-Za-z]/.test(trimmed)) return true;
+    return trimmed.split(/\s+/).every((word) => UNITS.has(word));
+  };
+
+  const allowedLiteral = (text: string): boolean => {
+    const trimmed = text.trim();
+    if (trimmed === "") return true;
+    if (!/[A-Za-z]/.test(trimmed)) return true;
+    return FILE_NAME.test(trimmed) || UNITS.has(trimmed);
+  };
+
+  const viewerDir = join(import.meta.dir, "..", "viewer");
+  const files = readdirSync(viewerDir).filter((name) => name.endsWith(".tsx"));
+
+  test("every .tsx in the viewer is scanned", () => {
+    // A file the scan silently skipped would be a file free to go English.
+    expect(files.length).toBeGreaterThanOrEqual(6);
+  });
+
+  for (const name of files) {
+    test(`${name} has no user-visible literal outside the table`, () => {
+      const source = ts.createSourceFile(
+        name,
+        readFileSync(join(viewerDir, name), "utf-8"),
+        ts.ScriptTarget.Latest,
+        true,
+        ts.ScriptKind.TSX,
+      );
+      const found: string[] = [];
+
+      const COMPARISON = new Set([
+        ts.SyntaxKind.EqualsEqualsToken,
+        ts.SyntaxKind.EqualsEqualsEqualsToken,
+        ts.SyntaxKind.ExclamationEqualsToken,
+        ts.SyntaxKind.ExclamationEqualsEqualsToken,
+      ]);
+
+      /** Every literal in an attribute that could REACH the screen. A
+       *  ternary's condition and an `===` comparison cannot: they decide
+       *  which string is shown, they are not one. */
+      const literalsIn = (node: ts.Node): string[] => {
+        const out: string[] = [];
+        const walk = (n: ts.Node) => {
+          if (ts.isBinaryExpression(n) && COMPARISON.has(n.operatorToken.kind)) {
+            return;
+          }
+          if (ts.isConditionalExpression(n)) {
+            walk(n.whenTrue);
+            walk(n.whenFalse);
+            return;
+          }
+          if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) {
+            out.push(n.text);
+          } else if (ts.isTemplateExpression(n)) {
+            out.push(n.head.text, ...n.templateSpans.map((span) => span.literal.text));
+          }
+          n.forEachChild(walk);
+        };
+        walk(node);
+        return out;
+      };
+
+      const visit = (node: ts.Node) => {
+        if (ts.isJsxText(node) && !allowedText(node.text)) {
+          found.push(`text: ${JSON.stringify(node.text.trim())}`);
+        }
+        if (ts.isJsxAttribute(node) && node.initializer) {
+          const attr = node.name.getText(source);
+          if (VISIBLE_ATTRS.has(attr)) {
+            for (const literal of literalsIn(node.initializer)) {
+              if (!allowedLiteral(literal)) {
+                found.push(`${attr}: ${JSON.stringify(literal)}`);
+              }
+            }
+          }
+        }
+        node.forEachChild(visit);
+      };
+      visit(source);
+
+      expect(found).toEqual([]);
+    });
+  }
 });

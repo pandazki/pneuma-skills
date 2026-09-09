@@ -26,6 +26,7 @@ import {
   StepForwardIcon,
 } from "./icons.js";
 import type { FrameSource } from "./playback.js";
+import type { SpriteStrings } from "./strings.js";
 
 const MIN_FPS = 1;
 const MAX_FPS = 60;
@@ -48,10 +49,11 @@ export interface FrameStripProps {
   onFps: (fps: number | null) => void;
   /** `null` clears the override and hands the motion back to the file. */
   onLoop: (loop: boolean | null) => void;
+  t: SpriteStrings;
 }
 
 export function FrameStrip(props: FrameStripProps) {
-  const { count, frame } = props;
+  const { count, frame, t } = props;
   const scrollerRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLButtonElement>(null);
 
@@ -80,7 +82,7 @@ export function FrameStrip(props: FrameStripProps) {
         <TransportButton
           onClick={props.onTogglePlay}
           disabled={disabled}
-          title={props.playing ? "Pause" : "Play"}
+          title={props.playing ? t.pause : t.play}
           primary
         >
           {props.playing ? <PauseIcon size={13} /> : <PlayIcon size={13} />}
@@ -88,14 +90,14 @@ export function FrameStrip(props: FrameStripProps) {
         <TransportButton
           onClick={() => props.onStep(-1)}
           disabled={disabled}
-          title="Previous frame"
+          title={t.previousFrame}
         >
           <StepBackIcon size={13} />
         </TransportButton>
         <TransportButton
           onClick={() => props.onStep(1)}
           disabled={disabled}
-          title="Next frame"
+          title={t.nextFrame}
         >
           <StepForwardIcon size={13} />
         </TransportButton>
@@ -107,21 +109,21 @@ export function FrameStrip(props: FrameStripProps) {
 
         <span className="mx-1 h-4 w-px bg-cc-border" />
 
-        <div className="flex items-center gap-1" title="Playback fps (this session only)">
+        <div className="flex items-center gap-1" title={t.playbackFps}>
           <TransportButton
             onClick={() => props.onFps(Math.max(MIN_FPS, props.fps - 1))}
             disabled={disabled || props.fps <= MIN_FPS}
-            title="Slower"
+            title={t.slower}
           >
             <span className="px-0.5 text-[13px] leading-none">−</span>
           </TransportButton>
           <span className="min-w-[3.5rem] text-center font-mono text-xs tabular-nums text-cc-fg">
-            {props.fps} fps
+            {t.fps(props.fps)}
           </span>
           <TransportButton
             onClick={() => props.onFps(Math.min(MAX_FPS, props.fps + 1))}
             disabled={disabled || props.fps >= MAX_FPS}
-            title="Faster"
+            title={t.faster}
           >
             <span className="px-0.5 text-[13px] leading-none">+</span>
           </TransportButton>
@@ -131,7 +133,7 @@ export function FrameStrip(props: FrameStripProps) {
           type="button"
           onClick={() => props.onLoop(!props.loop)}
           disabled={disabled}
-          title={props.loop ? "Looping" : "Plays once"}
+          title={props.loop ? t.looping : t.playsOnce}
           className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] transition-colors focus-visible:ring-2 focus-visible:ring-cc-primary/60 disabled:opacity-40 ${
             props.loop
               ? "border-cc-primary/40 bg-cc-primary/15 text-cc-primary"
@@ -139,7 +141,7 @@ export function FrameStrip(props: FrameStripProps) {
           }`}
         >
           {props.loop ? <LoopIcon size={12} /> : <OnceIcon size={12} />}
-          {props.loop ? "loop" : "once"}
+          {props.loop ? t.loopShort : t.onceShort}
         </button>
 
         {fpsDiffers || loopDiffers ? (
@@ -154,10 +156,9 @@ export function FrameStrip(props: FrameStripProps) {
               props.onLoop(null);
             }}
             className="rounded border border-cc-warning/40 px-2 py-1 text-[11px] text-cc-warning transition-colors hover:bg-cc-warning/10"
-            title="Playback settings differ from the motion's stored values"
+            title={t.storedPlaybackTitle}
           >
-            file: {props.motionFps} fps · {props.motionLoop ? "loop" : "once"} —
-            reset
+            {t.storedPlayback(props.motionFps, props.motionLoop)}
           </button>
         ) : null}
       </div>
@@ -166,11 +167,11 @@ export function FrameStrip(props: FrameStripProps) {
         ref={scrollerRef}
         className="flex gap-1.5 overflow-x-auto pb-1"
         role="listbox"
-        aria-label="Frames"
+        aria-label={t.framesList}
       >
         {disabled ? (
           <span className="px-1 py-3 text-[11px] text-cc-muted">
-            No frames to step through yet.
+            {t.noFramesYet}
           </span>
         ) : (
           Array.from({ length: count }, (_, index) => (
@@ -181,6 +182,7 @@ export function FrameStrip(props: FrameStripProps) {
               active={index === frame}
               source={props.source}
               images={props.images}
+              t={t}
               onClick={() => props.onSeek(index)}
             />
           ))
@@ -230,6 +232,7 @@ const FrameThumb = ({
   active,
   source,
   images,
+  t,
   onClick,
 }: {
   ref?: React.Ref<HTMLButtonElement>;
@@ -237,6 +240,7 @@ const FrameThumb = ({
   active: boolean;
   source: FrameSource;
   images: StageImages;
+  t: SpriteStrings;
   onClick: () => void;
 }) => {
   const rect = frameRect(source, images, index);
@@ -264,7 +268,7 @@ const FrameThumb = ({
       onClick={onClick}
       role="option"
       aria-selected={active}
-      title={`Frame ${String(index).padStart(2, "0")}`}
+      title={t.frameTitle(String(index).padStart(2, "0"))}
       style={{ width }}
       className={`group relative shrink-0 overflow-hidden rounded border transition-colors focus-visible:ring-2 focus-visible:ring-cc-primary/60 ${
         active
@@ -292,7 +296,7 @@ const FrameThumb = ({
               draggable={false}
             />
           ) : (
-            <span className="text-[9px] text-cc-error">no asset</span>
+            <span className="text-[9px] text-cc-error">{t.noAsset}</span>
           )
         ) : (
           <span className="h-full w-full" style={sheetStyle} />

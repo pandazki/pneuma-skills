@@ -25,6 +25,7 @@ import {
 } from "./frame-render.js";
 import { CheckerIcon, GroundIcon, OnionIcon, ZoomIcon } from "./icons.js";
 import type { FrameSource } from "./playback.js";
+import type { SpriteStrings } from "./strings.js";
 
 const BACKGROUNDS: StageBackground[] = ["checker", "dark", "light"];
 const ZOOMS: StageZoom[] = ["fit", "1x", "2x"];
@@ -47,6 +48,7 @@ export interface StageProps {
   onGround: (value: boolean) => void;
   /** Handed the live canvas so the shell can answer `capture` with it. */
   onCanvas: (canvas: HTMLCanvasElement | null) => void;
+  t: SpriteStrings;
 }
 
 /** Distance from the stage edge to the chrome sitting in each corner. */
@@ -161,24 +163,26 @@ export function Stage(props: StageProps) {
       >
         <Segmented
           icon={<CheckerIcon size={12} />}
-          title="Stage background"
+          title={props.t.stageBackground}
           options={BACKGROUNDS}
           value={props.background}
+          label={(option) => props.t.background[option]}
           onChange={props.onBackground}
         />
         <span className="h-4 w-px bg-cc-border" />
         <Segmented
           icon={<ZoomIcon size={12} />}
-          title="Zoom"
+          title={props.t.zoom}
           options={ZOOMS}
           value={props.zoom}
+          label={(option) => props.t.zoomOption[option]}
           onChange={props.onZoom}
         />
         <span className="h-4 w-px bg-cc-border" />
         <Toggle
           active={props.onion}
           onClick={() => props.onOnion(!props.onion)}
-          title="Onion skin — previous frame in blue, next in red"
+          title={props.t.onionTitle}
         >
           <OnionIcon size={12} />
         </Toggle>
@@ -187,8 +191,8 @@ export function Stage(props: StageProps) {
           onClick={() => props.onGround(!props.ground)}
           title={
             pivotMeasured
-              ? `Pivot guides — the anchor point the pipeline measured (${anchor})`
-              : `Pivot guides — the ${anchor} of the cell; this motion carries no measured anchor point`
+              ? props.t.pivotMeasured(anchor)
+              : props.t.pivotAssumed(anchor)
           }
         >
           <GroundIcon size={12} />
@@ -200,13 +204,13 @@ export function Stage(props: StageProps) {
 
 /** Status, provenance and scale, said in words over the canvas. */
 function StageOverlays(props: StageProps & { scale: number; reserve: number }) {
-  const { motion, source, refLabel, images, reserve } = props;
+  const { motion, source, refLabel, images, reserve, t } = props;
 
   if (refLabel) {
     return (
       <Corner reserve={reserve}>
         <span className={LABEL_CLASS}>{refLabel}</span>
-        <span className="shrink-0 text-cc-muted">reference</span>
+        <span className="shrink-0 text-cc-muted">{t.referenceTag}</span>
         <ScaleTag scale={props.scale} />
       </Corner>
     );
@@ -215,9 +219,7 @@ function StageOverlays(props: StageProps & { scale: number; reserve: number }) {
   if (!motion) {
     return (
       <Centered>
-        <p className="text-sm text-cc-muted">
-          Pick a motion on the left, or ask for a new one.
-        </p>
+        <p className="text-sm text-cc-muted">{t.pickAMotion}</p>
       </Centered>
     );
   }
@@ -231,16 +233,14 @@ function StageOverlays(props: StageProps & { scale: number; reserve: number }) {
               <div className="mx-auto mb-3 h-1 w-28 overflow-hidden rounded-full bg-cc-border">
                 <div className="h-full w-1/3 rounded-full bg-cc-primary motion-safe:animate-[pulse-dot_1.6s_ease-in-out_infinite]" />
               </div>
-              <p className="text-sm text-cc-fg">Drawing the sheet…</p>
+              <p className="text-sm text-cc-fg">{t.drawingSheet}</p>
             </>
           ) : motion.status === "processing" ? (
-            <p className="text-sm text-cc-fg">Slicing and aligning…</p>
+            <p className="text-sm text-cc-fg">{t.slicingAligning}</p>
           ) : motion.status === "failed" ? (
-            <p className="text-sm text-cc-error">This motion failed.</p>
+            <p className="text-sm text-cc-error">{t.motionFailed}</p>
           ) : (
-            <p className="text-sm text-cc-fg">
-              Planned — no sheet has been generated yet.
-            </p>
+            <p className="text-sm text-cc-fg">{t.plannedNoSheet}</p>
           )}
           {motion.prompt ? (
             <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-cc-muted">
@@ -264,17 +264,19 @@ function StageOverlays(props: StageProps & { scale: number; reserve: number }) {
         {source.kind === "raw-sheet" ? (
           <span
             className="shrink-0 rounded border border-cc-warning/50 px-1 py-px text-cc-warning"
-            title={`No aligned frames yet — this is the ${source.alpha ? "keyed" : "raw"} sheet sliced ${source.cols}×${source.rows} in the browser.`}
+            title={t.sheetPreviewTitle(source.alpha, source.cols, source.rows)}
           >
-            sheet preview
+            {t.sheetPreview}
           </span>
         ) : null}
         {source.kind === "frames" && source.missing > 0 ? (
           <span className="rounded border border-cc-error/50 px-1 py-px text-cc-error">
-            {source.missing} frame{source.missing === 1 ? "" : "s"} missing
+            {t.framesMissing(source.missing)}
           </span>
         ) : null}
-        {!images.ready ? <span className="text-cc-muted">decoding…</span> : null}
+        {!images.ready ? (
+          <span className="text-cc-muted">{t.decoding}</span>
+        ) : null}
         <ScaleTag scale={props.scale} />
       </Corner>
       {motion.status === "failed" && motion.notes ? (
@@ -340,12 +342,16 @@ function Segmented<T extends string>({
   title,
   options,
   value,
+  label,
   onChange,
 }: {
   icon: React.ReactNode;
   title: string;
   options: T[];
   value: T;
+  /** The option's word. Separate from the option itself because the value is
+   *  a protocol token (`"checker"`, `"fit"`) and the word is user copy. */
+  label: (option: T) => string;
   onChange: (value: T) => void;
 }) {
   return (
@@ -362,7 +368,7 @@ function Segmented<T extends string>({
               : "text-cc-muted hover:bg-cc-hover hover:text-cc-fg"
           }`}
         >
-          {option}
+          {label(option)}
         </button>
       ))}
     </div>

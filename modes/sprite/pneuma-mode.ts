@@ -68,7 +68,11 @@ function addressNumber(
 }
 
 /** One motion, described the way the agent needs to decide what to do next. */
-function describeMotion(motion: Motion, lines: string[]): void {
+function describeMotion(
+  motion: Motion,
+  lines: string[],
+  declaredCell?: { width: number; height: number },
+): void {
   lines.push(`Motion: "${motion.label}" (${motion.id})`);
   lines.push(
     `Grid: ${motion.grid.cols}×${motion.grid.rows} · ${motion.fps} fps · ${
@@ -76,7 +80,23 @@ function describeMotion(motion: Motion, lines: string[]): void {
     } · anchor ${motion.anchor}`,
   );
   lines.push(`Status: ${motion.status}`);
+  // Absent means "sheet" — the source of every motion made before the video
+  // path existed — so only the newer answer is worth a line.
+  if (motion.source === "video") {
+    lines.push("Source: video (frames sampled from a clip)");
+  }
   lines.push(`Frames: ${motion.frames.length}`);
+  // The size the user is looking at. The header says declared → measured, and
+  // an agent that only knew the declared cell answered "256" to somebody
+  // reading "186×252" off the same screen.
+  if (motion.inspect && motion.inspect.cell.width > 0) {
+    const measured = `${motion.inspect.cell.width}×${motion.inspect.cell.height}`;
+    const declared =
+      declaredCell && declaredCell.width > 0
+        ? ` (declared ${declaredCell.width}×${declaredCell.height})`
+        : "";
+    lines.push(`Measured cell: ${measured}${declared}`);
+  }
   if (motion.prompt) lines.push(`Prompt: "${motion.prompt}"`);
   if (motion.notes) lines.push(`Notes: ${motion.notes}`);
   if (motion.videos.length > 0) {
@@ -91,6 +111,12 @@ function describeMotion(motion: Motion, lines: string[]): void {
   if (motion.inspect && motion.inspect.warnings.length > 0) {
     lines.push("Inspect warnings:");
     for (const warning of motion.inspect.warnings) lines.push(`  - ${warning}`);
+    // ...and whether they were already answered for. Without this the agent
+    // re-litigates its own acknowledgement every turn, which is what the
+    // user sees as the viewer and the agent disagreeing about a warning.
+    if (motion.inspect.acknowledged) {
+      lines.push(`  (accepted: ${motion.inspect.acknowledged.reason})`);
+    }
   }
 }
 
@@ -153,7 +179,7 @@ export function extractSpriteContext(
   if (motionId) {
     const motion = findMotion(project, motionId);
     if (motion) {
-      describeMotion(motion, lines);
+      describeMotion(motion, lines, project.sprite.character.cell);
       if (frame !== undefined) lines.push(`Selected frame: ${frame}`);
     } else {
       lines.push(`Motion "${motionId}" is not in this character.`);

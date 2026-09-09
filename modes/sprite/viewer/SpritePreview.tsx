@@ -46,11 +46,14 @@ import {
   type VideoModel,
 } from "../domain.js";
 import { setSpriteStageCapture } from "../pneuma-mode.js";
+import { atlasGeometry } from "./atlas.js";
 import { CommandBar } from "./CommandPopovers.js";
 import { FrameStrip } from "./FrameStrip.js";
 import { frameThumbnail, type StageBackground, type StageZoom } from "./frame-render.js";
+import { generatingVideoMotions, sizeLine } from "./metrics.js";
 import { MotionRail } from "./MotionRail.js";
-import { PreviewPanel, type PanelTab } from "./PreviewPanel.js";
+import { tabAfterNavigate, type PanelTab } from "./panel.js";
+import { PreviewPanel } from "./PreviewPanel.js";
 import {
   advance,
   clampFrame,
@@ -69,7 +72,8 @@ import {
   type PlaybackState,
 } from "./playback.js";
 import { Stage } from "./Stage.js";
-import { RailIcon } from "./icons.js";
+import { FilmIcon, RailIcon } from "./icons.js";
+import { selectionLabel, spriteStrings } from "./strings.js";
 import { useFrameImages } from "./useFrameImages.js";
 import { contentUrl } from "./urls.js";
 
@@ -90,6 +94,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
     () => selectActiveCharacter(roster, activeContentSet),
     [roster, activeContentSet],
   );
+  const t = spriteStrings(props.locale);
 
   // ── Selection ────────────────────────────────────────────────────────────
   const [motionId, setMotionId] = useState<string | null>(null);
@@ -289,18 +294,20 @@ export default function SpritePreview(props: ViewerPreviewProps) {
       if (frameIndex !== null) address.frame = frameIndex;
       const thumbnail =
         frameIndex !== null ? frameThumbnail(stageSource, images, frameIndex) : null;
+      // The chip in the composer is built from `content`, and `content` used
+      // to be the motion's PROMPT — so pinning a frame put the style
+      // paragraph in front of the user instead of the frame they had just
+      // clicked. Both fields now name the thing: the motion and the frame.
+      const label = selectionLabel(t, target, frameIndex);
       onSelect({
         type: "image",
-        content: target.prompt || target.label,
-        label:
-          frameIndex !== null
-            ? `${target.label} — frame ${String(frameIndex).padStart(2, "0")}`
-            : `${target.label} (${target.status})`,
+        content: label,
+        label,
         address,
         ...(thumbnail ? { thumbnail } : {}),
       });
     },
-    [character, onSelect, stageSource, images],
+    [character, onSelect, stageSource, images, t],
   );
 
   const reportRefSelection = useCallback(
@@ -311,7 +318,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
       onSelect({
         type: "image",
         content: ref.label,
-        label: `${ref.label} (reference, ${ref.role})`,
+        label: ref.label,
         address: { contentSet: character.contentSet, ref: ref.id },
       });
     },
@@ -420,6 +427,12 @@ export default function SpritePreview(props: ViewerPreviewProps) {
           // whole point of naming it.
           play: target.frame === null && intent.autoplay && playable(next),
         });
+        // The panel comes along only when it has nothing of this motion's to
+        // show: an agent that finishes a motion and points at it must not
+        // leave the user staring at "no video preview yet" for the thing it
+        // just made, and a user who chose Atlas keeps Atlas while there is an
+        // atlas in it.
+        setTab((current) => tabAfterNavigate(current, next ?? null));
       } else if (target?.kind === "character") {
         showRef(null);
       }
@@ -585,11 +598,9 @@ export default function SpritePreview(props: ViewerPreviewProps) {
         className="flex h-full w-full items-center justify-center bg-cc-bg p-8 text-center"
       >
         <div className="max-w-md">
-          <h1 className="text-base text-cc-fg">No character yet</h1>
+          <h1 className="text-base text-cc-fg">{t.noCharacterTitle}</h1>
           <p className="mt-2 text-sm leading-relaxed text-cc-muted">
-            Sprite starts with a character — a name, a look, a style. Describe
-            one in the chat and the agent will draw its references, then you can
-            ask for motions: idle, walk, attack.
+            {t.noCharacterBody}
           </p>
         </div>
       </div>
@@ -600,6 +611,24 @@ export default function SpritePreview(props: ViewerPreviewProps) {
   const refCount = character.sprite.refs.length;
   const motionCount = character.sprite.motions.length;
   const activeRef = refId ? findRef(character, refId) : null;
+  // One derivation of the packed layout, read by the header phrase and by the
+  // Atlas tab — the three sizes on screen (declared, measured, packed)
+  // disagreed for two rounds because each surface worked them out for itself.
+  const geometry = motion ? atlasGeometry(character, motion) : null;
+  const sizes = sizeLine(character, motion, geometry);
+  const rendering = generatingVideoMotions(character);
+  const renderVideoLabel =
+    props.commands?.find((command) => command.id === "render-video")?.label ??
+    null;
+  const headline = [
+    t.sizeLine(sizes),
+    motion?.source === "video" ? t.fromVideo : null,
+    identity.facing ? t.facing(identity.facing) : null,
+    t.refCount(refCount),
+    t.motionCount(motionCount),
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <div ref={rootRef} className="flex h-full w-full flex-col bg-cc-bg text-cc-fg">
@@ -607,7 +636,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
         <button
           type="button"
           onClick={() => setRailOpen((value) => !value)}
-          title={showRail ? "Hide the rail" : "Show the rail"}
+          title={showRail ? t.railHide : t.railShow}
           aria-pressed={showRail}
           disabled={paneWidth < RAIL_PANE_PX}
           className={`rounded p-1.5 transition-colors focus-visible:ring-2 focus-visible:ring-cc-primary/60 disabled:opacity-30 ${
@@ -623,11 +652,8 @@ export default function SpritePreview(props: ViewerPreviewProps) {
           <h1 className="truncate text-sm font-medium text-cc-fg">
             {identity.name}
           </h1>
-          <p className="truncate text-[11px] text-cc-muted">
-            {identity.cell.width}×{identity.cell.height} cell
-            {identity.facing ? ` · facing ${identity.facing}` : ""} · {refCount}{" "}
-            reference{refCount === 1 ? "" : "s"} · {motionCount} motion
-            {motionCount === 1 ? "" : "s"}
+          <p className="truncate text-[11px] text-cc-muted" title={headline}>
+            {headline}
           </p>
         </div>
 
@@ -641,12 +667,27 @@ export default function SpritePreview(props: ViewerPreviewProps) {
         ) : null}
 
         <div className="ml-auto flex items-center gap-1.5">
+          {/* A clip outlives the turn that asked for it: the agent says "six
+              minutes" and stops, the composer unlocks, and the only sign of
+              life used to be a shimmer inside a tab the user may not have
+              open. This chip is that sign, wherever they are looking. */}
+          {rendering.length > 0 ? (
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full border border-cc-primary/40 bg-cc-primary/10 px-2 py-0.5 text-[11px] text-cc-primary"
+              title={t.renderingVideoTitle(rendering.map((m) => m.label))}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-current motion-safe:animate-pulse" />
+              <FilmIcon size={11} />
+              {t.renderingVideo}
+            </span>
+          ) : null}
           {commandsEnabled && props.commands?.length ? (
             <CommandBar
               commands={props.commands}
               motion={motion}
               defaultVideoModel={defaultVideoModel}
               onNotifyAgent={props.onNotifyAgent!}
+              t={t}
               onOpenChange={setPopoverOpen}
             />
           ) : null}
@@ -660,6 +701,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
             imageVersion={props.imageVersion}
             selectedMotionId={motionId}
             selectedRefId={refId}
+            t={t}
             onSelectMotion={(id) => {
               const next = findMotion(character, id);
               showMotion(id, { play: playable(next) });
@@ -691,12 +733,13 @@ export default function SpritePreview(props: ViewerPreviewProps) {
               onOnion={setOnion}
               onGround={setGround}
               onCanvas={handleCanvas}
+              t={t}
             />
 
             {activeRef ? (
               <div className="flex shrink-0 items-center gap-2 border-t border-cc-border bg-cc-surface/30 px-3 py-2 text-[11px]">
                 <span className="text-cc-muted">
-                  Showing the reference{" "}
+                  {t.showingReference}{" "}
                   <span className="text-cc-fg">{activeRef.label}</span>
                 </span>
                 {motion ? (
@@ -708,7 +751,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
                     }}
                     className="ml-auto rounded border border-cc-border px-2 py-1 text-cc-muted transition-colors hover:border-cc-primary/40 hover:text-cc-primary"
                   >
-                    Back to {motion.label}
+                    {t.backToMotion(motion.label)}
                   </button>
                 ) : null}
               </div>
@@ -728,6 +771,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
                 onSeek={seekTo}
                 onFps={applyFps}
                 onLoop={applyLoop}
+                t={t}
               />
             )}
           </div>
@@ -739,6 +783,10 @@ export default function SpritePreview(props: ViewerPreviewProps) {
               imageVersion={props.imageVersion}
               tab={tab}
               onTab={setTab}
+              geometry={geometry}
+              sizeLine={sizes}
+              renderVideoLabel={renderVideoLabel}
+              t={t}
               placement="bottom"
             />
           ) : null}
@@ -751,6 +799,10 @@ export default function SpritePreview(props: ViewerPreviewProps) {
             imageVersion={props.imageVersion}
             tab={tab}
             onTab={setTab}
+            geometry={geometry}
+            sizeLine={sizes}
+            renderVideoLabel={renderVideoLabel}
+            t={t}
             placement="side"
           />
         ) : null}

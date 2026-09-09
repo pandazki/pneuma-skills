@@ -12,27 +12,39 @@
  * The grid is recomputed from the packed image's own dimensions and the
  * motion's declared columns rather than read back out of `atlas.json`, which
  * keeps the panel free of a second data source and is what makes it work in
- * the hosted player with no fetch at render time. The two agree only when the
- * pack step was given the same `--cols`, so `atlasGeometry` (see `atlas.ts`)
- * checks the division before anything is drawn: an unverifiable layout gets
- * the bare sheet and a sentence pointing at `atlas.json`, never a grid on
- * lines that are not there.
+ * the hosted player with no fetch at render time. The geometry itself is
+ * computed once by the shell and handed down, so the size phrase in the
+ * header and the numbers in this tab are the SAME numbers rather than two
+ * derivations that can disagree — the disagreement was the finding.
+ *
+ * The inspect block prints every value against the bar the pipeline judges it
+ * by. A bare "27.9%" let three sessions end with an agent calling a warning
+ * ignorable while the screen said nothing either way; a value with its limit
+ * beside it, amber when it is over, is a fact the user can argue with.
  */
-
-import { useMemo } from "react";
 
 import type { CharacterProject, Motion, MotionVideo } from "../domain.js";
 import { resolveAssetUri } from "../domain.js";
-import { atlasGeometry, atlasPivot } from "./atlas.js";
+import { type AtlasGeometry, atlasPivot } from "./atlas.js";
 import { DownloadIcon, FilmIcon, GridIcon, ImageIcon, WarnIcon } from "./icons.js";
+import {
+  bodyDriftOf,
+  bodyDriftVerdict,
+  maxJumpVerdict,
+  scaleDriftVerdict,
+  type MetricVerdict,
+  type SizeLine,
+} from "./metrics.js";
+import type { PanelTab } from "./panel.js";
+import type { SpriteStrings } from "./strings.js";
 import { contentUrl } from "./urls.js";
 
-export type PanelTab = "gif" | "video" | "atlas";
+export type { PanelTab };
 
-const TABS: Array<{ id: PanelTab; label: string; icon: typeof ImageIcon }> = [
-  { id: "gif", label: "GIF", icon: ImageIcon },
-  { id: "video", label: "Video", icon: FilmIcon },
-  { id: "atlas", label: "Atlas", icon: GridIcon },
+const TABS: Array<{ id: PanelTab; icon: typeof ImageIcon }> = [
+  { id: "gif", icon: ImageIcon },
+  { id: "video", icon: FilmIcon },
+  { id: "atlas", icon: GridIcon },
 ];
 
 const CHECKER_STYLE = {
@@ -48,12 +60,20 @@ export interface PreviewPanelProps {
   imageVersion: number;
   tab: PanelTab;
   onTab: (tab: PanelTab) => void;
+  /** The shell's geometry for the selected motion — null when none is. */
+  geometry: AtlasGeometry | null;
+  /** The same phrase the header shows, so the two cannot drift. */
+  sizeLine: SizeLine;
+  t: SpriteStrings;
+  /** The label of the command that renders a clip, quoted in the empty state
+   *  so the sentence names a button the user can actually see. */
+  renderVideoLabel: string | null;
   /** Docked to the right on a wide pane, under the stage on a narrow one. */
   placement: "side" | "bottom";
 }
 
 export function PreviewPanel(props: PreviewPanelProps) {
-  const { project, motion, imageVersion } = props;
+  const { project, motion, imageVersion, t } = props;
   const url = (assetId: string | undefined): string | null => {
     if (!assetId) return null;
     const uri = resolveAssetUri(project, assetId);
@@ -63,15 +83,26 @@ export function PreviewPanel(props: PreviewPanelProps) {
   const frame = (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       {!motion ? (
-        <Empty>Select a motion to see what it produced.</Empty>
+        <Empty>{t.selectMotionForPanel}</Empty>
       ) : props.tab === "gif" ? (
-        <GifTab motion={motion} url={url} />
+        <GifTab motion={motion} url={url} t={t} />
       ) : props.tab === "video" ? (
-        <VideoTab motion={motion} url={url} />
+        <VideoTab
+          motion={motion}
+          url={url}
+          t={t}
+          renderVideoLabel={props.renderVideoLabel}
+        />
       ) : (
-        <AtlasTab project={project} motion={motion} url={url} />
+        <AtlasTab
+          motion={motion}
+          url={url}
+          t={t}
+          geometry={props.geometry}
+          sizeLine={props.sizeLine}
+        />
       )}
-      {motion ? <InspectBlock motion={motion} /> : null}
+      {motion ? <InspectBlock motion={motion} t={t} /> : null}
     </div>
   );
 
@@ -84,7 +115,7 @@ export function PreviewPanel(props: PreviewPanelProps) {
       }`}
     >
       <div className="flex shrink-0 items-center gap-1 border-b border-cc-border px-2 py-1.5">
-        {TABS.map(({ id, label, icon: Icon }) => (
+        {TABS.map(({ id, icon: Icon }) => (
           <button
             key={id}
             type="button"
@@ -96,7 +127,7 @@ export function PreviewPanel(props: PreviewPanelProps) {
             }`}
           >
             <Icon size={12} />
-            {label}
+            {t.tab[id]}
           </button>
         ))}
       </div>
@@ -107,15 +138,19 @@ export function PreviewPanel(props: PreviewPanelProps) {
 
 type UrlOf = (assetId: string | undefined) => string | null;
 
-function GifTab({ motion, url }: { motion: Motion; url: UrlOf }) {
+function GifTab({
+  motion,
+  url,
+  t,
+}: {
+  motion: Motion;
+  url: UrlOf;
+  t: SpriteStrings;
+}) {
   const gif = url(motion.gif);
   const webp = url(motion.webp);
   if (!gif && !webp) {
-    return (
-      <Empty>
-        No preview rendered yet. The GIF and WebP land with the pipeline run.
-      </Empty>
-    );
+    return <Empty>{t.noPreviewYet}</Empty>;
   }
   return (
     <div className="flex flex-col gap-3 p-3">
@@ -128,14 +163,17 @@ function GifTab({ motion, url }: { motion: Motion; url: UrlOf }) {
             to the box (nearest-neighbour, both directions). */}
         <img
           src={(gif ?? webp) as string}
-          alt={`${motion.label} preview`}
+          alt={motion.label}
           className="h-40 w-full object-contain"
           style={{ imageRendering: "pixelated" }}
         />
       </div>
       <p className="text-[11px] leading-relaxed text-cc-muted">
-        {motion.fps} fps · {motion.loop ? "loops" : "plays once"} ·{" "}
-        {motion.frames.length} frames
+        {t.previewMeta({
+          fps: motion.fps,
+          loop: motion.loop,
+          frames: motion.frames.length,
+        })}
       </p>
       <div className="flex flex-wrap gap-2">
         {gif ? <DownloadLink href={gif} label="preview.gif" /> : null}
@@ -145,25 +183,38 @@ function GifTab({ motion, url }: { motion: Motion; url: UrlOf }) {
   );
 }
 
-function VideoTab({ motion, url }: { motion: Motion; url: UrlOf }) {
+function VideoTab({
+  motion,
+  url,
+  t,
+  renderVideoLabel,
+}: {
+  motion: Motion;
+  url: UrlOf;
+  t: SpriteStrings;
+  renderVideoLabel: string | null;
+}) {
   if (motion.videos.length === 0) {
-    return (
-      <Empty>
-        No video preview yet. Use “Render video preview” to ask for one from
-        Seedance 2.5 or MiniMax H3 Max.
-      </Empty>
-    );
+    return <Empty>{t.noVideoYet(renderVideoLabel ?? t.tab.video)}</Empty>;
   }
   return (
     <div className="flex flex-col gap-3 p-3">
       {motion.videos.map((video) => (
-        <VideoCard key={video.id} video={video} href={url(video.asset)} />
+        <VideoCard key={video.id} video={video} href={url(video.asset)} t={t} />
       ))}
     </div>
   );
 }
 
-function VideoCard({ video, href }: { video: MotionVideo; href: string | null }) {
+function VideoCard({
+  video,
+  href,
+  t,
+}: {
+  video: MotionVideo;
+  href: string | null;
+  t: SpriteStrings;
+}) {
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-cc-border bg-cc-bg/40 p-2">
       <div className="flex flex-wrap items-center gap-1.5">
@@ -178,7 +229,7 @@ function VideoCard({ video, href }: { video: MotionVideo; href: string | null })
                 : "text-cc-primary"
           }`}
         >
-          {video.status}
+          {t.videoStatus[video.status]}
         </span>
       </div>
 
@@ -198,9 +249,7 @@ function VideoCard({ video, href }: { video: MotionVideo; href: string | null })
         </div>
       ) : (
         <p className="rounded border border-cc-error/40 bg-cc-error/10 px-2 py-1.5 text-[11px] text-cc-fg">
-          {video.status === "failed"
-            ? "This render failed."
-            : "The clip is registered but its file is missing."}
+          {video.status === "failed" ? t.renderFailed : t.clipFileMissing}
         </p>
       )}
 
@@ -212,33 +261,31 @@ function VideoCard({ video, href }: { video: MotionVideo; href: string | null })
       {/* Only a finished clip is a file worth offering: a render still in
           flight may point at the previous take, or at nothing. */}
       {video.status === "ready" && href ? (
-        <DownloadLink href={href} label="Download clip" />
+        <DownloadLink href={href} label={t.downloadClip} />
       ) : null}
     </div>
   );
 }
 
 function AtlasTab({
-  project,
   motion,
   url,
+  t,
+  geometry,
+  sizeLine,
 }: {
-  project: CharacterProject;
   motion: Motion;
   url: UrlOf;
+  t: SpriteStrings;
+  geometry: AtlasGeometry | null;
+  sizeLine: SizeLine;
 }) {
   const sheet = url(motion.sheet);
   const atlas = url(motion.atlas);
-  const geometry = useMemo(() => atlasGeometry(project, motion), [project, motion]);
-  const pivot = useMemo(() => atlasPivot(motion), [motion]);
+  const pivot = atlasPivot(motion);
 
-  if (!sheet) {
-    return (
-      <Empty>
-        No packed atlas yet. `sprite-sheet.mjs pack` writes sheet.png and
-        atlas.json together.
-      </Empty>
-    );
+  if (!sheet || !geometry) {
+    return <Empty>{t.noAtlasYet}</Empty>;
   }
 
   return (
@@ -249,7 +296,7 @@ function AtlasTab({
       >
         <img
           src={sheet}
-          alt={`${motion.label} packed sheet`}
+          alt={motion.label}
           className="block w-full"
           style={{ imageRendering: "pixelated" }}
         />
@@ -277,17 +324,22 @@ function AtlasTab({
       </div>
       {geometry.note ? (
         <p className="rounded-lg border border-cc-warning/40 bg-cc-warning/10 px-2 py-1.5 text-[11px] leading-relaxed text-cc-fg">
-          {geometry.note}
+          {t.atlasNote(geometry.note)}
         </p>
       ) : null}
+      {/* The header's phrase, repeated where the packed numbers are read —
+          the same three facts, not a second derivation of them. */}
+      <p className="font-mono text-[11px] tabular-nums text-cc-muted">
+        {t.sizeLine(sizeLine)}
+      </p>
       <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
-        <Fact label="Sheet">
+        <Fact label={t.factSheet}>
           {geometry.width > 0 ? `${geometry.width}×${geometry.height}` : "—"}
         </Fact>
-        <Fact label="Grid">
+        <Fact label={t.factGrid}>
           {geometry.trusted ? `${geometry.cols}×${geometry.rows}` : "—"}
         </Fact>
-        <Fact label="Cell">
+        <Fact label={t.factCell}>
           {geometry.trusted
             ? `${geometry.cellWidth}×${geometry.cellHeight}`
             : "—"}
@@ -296,16 +348,16 @@ function AtlasTab({
             atlas.json carries. An assumed pivot is labelled so, because a
             measured `0.5, 1.0` and an assumed one mean different things. */}
         <Fact
-          label="Pivot"
+          label={t.factPivot}
           title={
             pivot.measured
-              ? "The anchor point the pipeline measured, normalized by the cell — what atlas.json declares."
-              : `No measured anchor point for this motion; atlas.json falls back to the ${motion.anchor} of the cell.`
+              ? t.pivotMeasuredTitle
+              : t.pivotAssumedTitle(motion.anchor)
           }
         >
           {formatPivot(pivot.x)}, {formatPivot(pivot.y)}
           {pivot.measured ? null : (
-            <span className="pl-1 text-[10px] text-cc-muted">assumed</span>
+            <span className="pl-1 text-[10px] text-cc-muted">{t.assumed}</span>
           )}
         </Fact>
       </dl>
@@ -317,47 +369,120 @@ function AtlasTab({
   );
 }
 
-function InspectBlock({ motion }: { motion: Motion }) {
+function InspectBlock({ motion, t }: { motion: Motion; t: SpriteStrings }) {
   const inspect = motion.inspect;
   if (!inspect) return null;
   const warned = inspect.warnings.length > 0;
+  const acknowledged = inspect.acknowledged ?? null;
+  const bodyDrift = bodyDriftOf(inspect);
   return (
     <div className="mt-auto border-t border-cc-border p-3">
       <h3 className="flex items-center gap-1.5 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-cc-muted">
         {warned ? (
-          <span className="text-cc-warning">
+          <span className={acknowledged ? "text-cc-warning/40" : "text-cc-warning"}>
             <WarnIcon size={11} />
           </span>
         ) : null}
-        Inspect
+        {t.inspect}
       </h3>
       <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
-        <Fact label="Frames">{inspect.frameCount}</Fact>
-        <Fact label="Cell">
+        <Fact label={t.factFrames}>{inspect.frameCount}</Fact>
+        <Fact label={t.factCell}>
           {inspect.cell.width}×{inspect.cell.height}
         </Fact>
-        <Fact label="Anchor drift">
+        <Fact label={t.factAnchorDrift}>
           {inspect.anchorDrift.x.toFixed(1)}, {inspect.anchorDrift.y.toFixed(1)} px
         </Fact>
-        <Fact label="Max jump">{inspect.maxJump.toFixed(1)} px</Fact>
-        <Fact label="Scale drift">
-          {(inspect.scaleDrift * 100).toFixed(1)}%
-        </Fact>
-        <Fact label="Empty">
+        <Measured
+          label={t.factMaxJump}
+          value={`${inspect.maxJump.toFixed(1)} px`}
+          verdict={maxJumpVerdict(inspect)}
+          limitText={(limit) => `${limit} px`}
+          t={t}
+        />
+        <Measured
+          label={t.factScaleDrift}
+          value={`${(inspect.scaleDrift * 100).toFixed(1)}%`}
+          verdict={scaleDriftVerdict(inspect)}
+          limitText={(limit) => `${Math.round(limit * 100)}%`}
+          t={t}
+        />
+        {bodyDrift !== null ? (
+          <Measured
+            label={t.factBodyDrift}
+            value={`${bodyDrift.toFixed(1)} px`}
+            verdict={bodyDriftVerdict(inspect)}
+            limitText={(limit) => `${limit} px`}
+            t={t}
+          />
+        ) : null}
+        <Fact label={t.factEmpty}>
           {inspect.emptyFrames.length === 0
-            ? "none"
+            ? t.none
             : inspect.emptyFrames.map((n) => String(n).padStart(2, "0")).join(", ")}
         </Fact>
       </dl>
       {warned ? (
-        <ul className="mt-2 flex flex-col gap-1 rounded-lg border border-cc-warning/40 bg-cc-warning/10 p-2">
+        <ul
+          className={`mt-2 flex flex-col gap-1 rounded-lg border p-2 ${
+            acknowledged
+              ? "border-cc-border bg-cc-warning/5"
+              : "border-cc-warning/40 bg-cc-warning/10"
+          }`}
+        >
           {inspect.warnings.map((warning) => (
-            <li key={warning} className="text-[11px] leading-relaxed text-cc-fg">
+            <li
+              key={warning}
+              className={`text-[11px] leading-relaxed ${
+                acknowledged ? "text-cc-muted" : "text-cc-fg"
+              }`}
+            >
               {warning}
             </li>
           ))}
         </ul>
       ) : null}
+      {/* Kept OUTSIDE the warning list: the reason is the agent's sentence
+          about the pipeline's sentences, and folding it in would read as one
+          more thing the pipeline found. */}
+      {acknowledged ? (
+        <p className="mt-1.5 text-[11px] leading-relaxed text-cc-muted">
+          {t.acknowledged(acknowledged.reason)}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** One inspect value with the bar it is judged by, amber when it is over. */
+function Measured({
+  label,
+  value,
+  verdict,
+  limitText,
+  t,
+}: {
+  label: string;
+  value: string;
+  verdict: MetricVerdict;
+  limitText: (limit: number) => string;
+  t: SpriteStrings;
+}) {
+  return (
+    <div className="flex flex-col">
+      <dt className="text-[10px] uppercase tracking-wide text-cc-muted">
+        {label}
+      </dt>
+      <dd className="font-mono tabular-nums">
+        <span className={verdict.over ? "text-cc-warning" : "text-cc-fg"}>
+          {value}
+        </span>
+        {verdict.limit !== null ? (
+          <span className="pl-1 text-[10px] text-cc-muted">
+            {t.limit(limitText(verdict.limit))}
+          </span>
+        ) : null}
+      </dd>
     </div>
   );
 }
