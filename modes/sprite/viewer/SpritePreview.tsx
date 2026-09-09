@@ -41,7 +41,6 @@ import {
   findMotion,
   findRef,
   resolveAssetUri,
-  type CharacterProject,
   type Motion,
   type Roster,
   type VideoModel,
