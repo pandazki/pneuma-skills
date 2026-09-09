@@ -23,7 +23,7 @@
  *     showing.
  */
 
-import type { FrameSource } from "./playback.js";
+import { clampFrame, type FrameSource } from "./playback.js";
 
 export type StageBackground = "checker" | "dark" | "light";
 export type StageZoom = "fit" | "1x" | "2x";
@@ -224,7 +224,12 @@ export function drawStage(
   paintBackground(ctx, width, height, opts.background, opts.theme);
 
   const count = opts.source.kind === "none" ? 0 : opts.source.count;
-  const current = frameRect(opts.source, opts.images, opts.frame);
+  // The playhead belongs to the MOTION; the source on screen may briefly be
+  // something else (a reference image, or a re-run that came back shorter).
+  // Clamping here means the stage always draws a real frame instead of going
+  // blank while the two disagree.
+  const index = clampFrame(opts.frame, count);
+  const current = frameRect(opts.source, opts.images, index);
   // A blank frame must not collapse the stage: fall back to any decoded frame
   // for the geometry so the guides and the box stay where they were.
   const geometry =
@@ -246,8 +251,8 @@ export function drawStage(
   ctx.imageSmoothingEnabled = scale < 1;
 
   if (opts.onion && count > 1) {
-    const prev = frameRect(opts.source, opts.images, (opts.frame - 1 + count) % count);
-    const next = frameRect(opts.source, opts.images, (opts.frame + 1) % count);
+    const prev = frameRect(opts.source, opts.images, (index - 1 + count) % count);
+    const next = frameRect(opts.source, opts.images, (index + 1) % count);
     if (prev) drawTinted(ctx, prev, ONION_PREV, dx, dy, dw, dh, ONION_ALPHA);
     if (next) drawTinted(ctx, next, ONION_NEXT, dx, dy, dw, dh, ONION_ALPHA);
   }

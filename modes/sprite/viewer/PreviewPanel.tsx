@@ -120,10 +120,13 @@ function GifTab({ motion, url }: { motion: Motion; url: UrlOf }) {
         className="flex items-center justify-center rounded-lg border border-cc-border p-3"
         style={CHECKER_STYLE}
       >
+        {/* A sprite preview is usually far smaller than this panel; letting it
+            sit at its natural size reads as a broken thumbnail, so it scales
+            to the box (nearest-neighbour, both directions). */}
         <img
           src={(gif ?? webp) as string}
           alt={`${motion.label} preview`}
-          className="max-h-48 max-w-full object-contain"
+          className="h-40 w-full object-contain"
           style={{ imageRendering: "pixelated" }}
         />
       </div>
@@ -203,7 +206,11 @@ function VideoCard({ video, href }: { video: MotionVideo; href: string | null })
           {video.prompt}
         </p>
       ) : null}
-      {href ? <DownloadLink href={href} label="Download clip" /> : null}
+      {/* Only a finished clip is a file worth offering: a render still in
+          flight may point at the previous take, or at nothing. */}
+      {video.status === "ready" && href ? (
+        <DownloadLink href={href} label="Download clip" />
+      ) : null}
     </div>
   );
 }

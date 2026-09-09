@@ -109,6 +109,35 @@ export default function SpritePreview(props: ViewerPreviewProps) {
   const [frame, setFrame] = useState(0);
   const [playing, setPlaying] = useState(false);
 
+  /**
+   * Mirrors of the selection state, written synchronously.
+   *
+   * An action arrives, changes the stage, and must report what the stage now
+   * shows — all inside one handler. React state is a render behind at that
+   * moment, so answering out of it made `navigate-to` report the frame it was
+   * ON rather than the frame it had just moved to: a plausible, wrong answer,
+   * which is the failure mode this whole viewer is built to avoid. These refs
+   * are the same values one tick earlier, and every reader that has to be
+   * correct *now* uses them.
+   */
+  const motionIdRef = useRef<string | null>(null);
+  const refIdRef = useRef<string | null>(null);
+  const fpsOverrideRef = useRef<number | null>(null);
+  const loopOverrideRef = useRef<boolean | null>(null);
+
+  const showRef = useCallback((id: string | null) => {
+    refIdRef.current = id;
+    setRefId(id);
+  }, []);
+  const applyFps = useCallback((value: number | null) => {
+    fpsOverrideRef.current = value;
+    setFpsOverride(value);
+  }, []);
+  const applyLoop = useCallback((value: boolean | null) => {
+    loopOverrideRef.current = value;
+    setLoopOverride(value);
+  }, []);
+
   const motion = useMemo(
     () => (character && motionId ? (findMotion(character, motionId) ?? null) : null),
     [character, motionId],
@@ -159,13 +188,14 @@ export default function SpritePreview(props: ViewerPreviewProps) {
   const lastMotionRef = useRef<string | null>(null);
   const showMotion = useCallback(
     (id: string, options: { frame?: number | null; play?: boolean } = {}) => {
-      setRefId(null);
+      showRef(null);
       // Overrides belong to the motion they were dialled in on.
       if (lastMotionRef.current !== id) {
         lastMotionRef.current = id;
-        setFpsOverride(null);
-        setLoopOverride(null);
+        applyFps(null);
+        applyLoop(null);
       }
+      motionIdRef.current = id;
       setMotionId(id);
       const target = character ? findMotion(character, id) : null;
       const frameTarget = clampFrame(
@@ -176,7 +206,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
       setFrame(frameTarget);
       setPlaying(options.play ?? false);
     },
-    [character],
+    [character, showRef, applyFps, applyLoop],
   );
 
   /** Whether a motion is worth autoplaying: it has to have something to play. */
@@ -190,6 +220,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
   // at a motion the agent has removed.
   useEffect(() => {
     if (!character) {
+      motionIdRef.current = null;
       setMotionId(null);
       return;
     }
@@ -197,15 +228,22 @@ export default function SpritePreview(props: ViewerPreviewProps) {
     if (motionId && motions.some((m) => m.id === motionId)) return;
     const next = motions.find((m) => m.status === "ready") ?? motions[0];
     if (next) showMotion(next.id, { play: playable(next) });
-    else setMotionId(null);
+    else {
+      motionIdRef.current = null;
+      setMotionId(null);
+    }
   }, [character, motionId, showMotion, playable]);
 
   // The frame source can shrink under the playhead (a re-run with fewer
-  // frames); keep the index inside it rather than drawing nothing.
+  // frames); keep the index inside it. A reference on the stage is NOT that
+  // case — it is a one-frame source standing in front of the motion, and
+  // resetting the playhead for it would lose the frame the user was on.
+  const motionFrameCount = frameCountOf(motionSource);
   useEffect(() => {
-    if (playRef.current.frame < count) return;
-    seek(count - 1);
-  }, [count, seek]);
+    if (refId) return;
+    if (playRef.current.frame < motionFrameCount) return;
+    seek(Math.max(0, motionFrameCount - 1));
+  }, [motionFrameCount, refId, seek]);
 
   // ── The clock ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -303,7 +341,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
       const resolution = resolveAddress(character, address, motionId);
       const target = resolution.target;
       if (target?.kind === "ref") {
-        setRefId(target.refId);
+        showRef(target.refId);
         setPlay(false);
       } else if (target?.kind === "motion") {
         const next = character ? findMotion(character, target.motionId) : null;
@@ -314,17 +352,25 @@ export default function SpritePreview(props: ViewerPreviewProps) {
           play: target.frame === null && intent.autoplay && playable(next),
         });
       } else if (target?.kind === "character") {
-        setRefId(null);
+        showRef(null);
       }
       return {
         success: resolution.ok,
         ...(resolution.message ? { message: resolution.message } : {}),
       };
     },
-    [character, motionId, setPlay, showMotion, playable],
+    [character, motionId, setPlay, showMotion, showRef, playable],
   );
 
-  /** The stage described for the agent, optionally about another motion. */
+  /**
+   * The stage described for the agent, optionally about another motion.
+   *
+   * Always reports the MOTION's frame source, never the stage's: a reference
+   * image on the stage is a one-frame source, and letting it through here
+   * would tell the agent the motion had one frame and no aligned output. The
+   * reference is reported as a warning instead — true, and not confusable
+   * with a pipeline result.
+   */
   const readState = useCallback(
     (raw: unknown): ViewerActionResult => {
       const address = parseAddress(raw);
@@ -335,33 +381,38 @@ export default function SpritePreview(props: ViewerPreviewProps) {
           message: `Motion "${address.motion}" is not in this character.`,
         };
       }
-      const subject = named ?? motion;
-      const onStage = !named || named.id === motionId;
-      const source = onStage
-        ? stageSource
-        : resolveFrameSource(character, subject, props.imageVersion);
+      const stageMotionId = motionIdRef.current;
+      const onStageMotion =
+        character && stageMotionId ? (findMotion(character, stageMotionId) ?? null) : null;
+      const subject = named ?? onStageMotion;
+      const onStage = !!subject && subject.id === stageMotionId;
+      const source = resolveFrameSource(character, subject, props.imageVersion);
       const data = playbackStateData({
         project: character,
         motion: subject,
         source,
-        frame: onStage ? frame : 0,
-        playing: onStage ? playing : false,
-        fps: onStage ? fps : (subject?.fps ?? 8),
-        loop: onStage ? loop : (subject?.loop ?? true),
+        frame: onStage ? playRef.current.frame : 0,
+        playing: onStage ? playRef.current.playing : false,
+        fps: onStage
+          ? (fpsOverrideRef.current ?? subject?.fps ?? 8)
+          : (subject?.fps ?? 8),
+        loop: onStage
+          ? (loopOverrideRef.current ?? subject?.loop ?? true)
+          : (subject?.loop ?? true),
       });
-      if (refId && onStage) {
+      if (onStage && refIdRef.current) {
         data.warnings = [
           ...data.warnings,
-          `A reference image ("${refId}") is on the stage instead of the motion.`,
+          `A reference image ("${refIdRef.current}") is on the stage in front of this motion, so playback is paused.`,
         ];
       }
       return {
         success: true,
-        ...(onStage ? {} : { message: `"${subject?.id}" is not the motion on stage.` }),
+        ...(subject && !onStage ? { message: `"${subject.id}" is not the motion on stage.` } : {}),
         data,
       };
     },
-    [character, motion, motionId, stageSource, frame, playing, fps, loop, refId, props.imageVersion],
+    [character, props.imageVersion],
   );
 
   // ── Agent actions ────────────────────────────────────────────────────────
@@ -373,9 +424,12 @@ export default function SpritePreview(props: ViewerPreviewProps) {
     switch (actionId) {
       case "navigate-to": {
         const result = runAddress(params?.address, { autoplay: false });
+        // Report where the stage IS now — including after a refusal, where
+        // "nothing moved, here is what you are still looking at" is the
+        // useful answer.
         onActionResult(requestId, {
           ...result,
-          data: (readState(params?.address).data ?? {}) as Record<string, unknown>,
+          data: (readState(undefined).data ?? {}) as Record<string, unknown>,
         });
         break;
       }
@@ -389,19 +443,20 @@ export default function SpritePreview(props: ViewerPreviewProps) {
           }
         }
         if (typeof params?.fps === "number" && params.fps > 0) {
-          setFpsOverride(params.fps);
+          applyFps(params.fps);
         }
-        if (typeof params?.loop === "boolean") setLoopOverride(params.loop);
+        if (typeof params?.loop === "boolean") applyLoop(params.loop);
         setPlay(true);
-        onActionResult(requestId, { ...result, success: true });
+        onActionResult(requestId, {
+          ...result,
+          success: true,
+          data: (readState(undefined).data ?? {}) as Record<string, unknown>,
+        });
         break;
       }
       case "pause": {
         setPlay(false);
-        onActionResult(requestId, {
-          success: true,
-          data: { ...(readState(undefined).data ?? {}), playing: false },
-        });
+        onActionResult(requestId, readState(undefined));
         break;
       }
       case "get-playback-state": {
@@ -536,7 +591,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
               reportSelection(next ?? null, null);
             }}
             onSelectRef={(id) => {
-              setRefId(id);
+              showRef(id);
               setPlay(false);
               reportRefSelection(id);
             }}
@@ -573,7 +628,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
                   <button
                     type="button"
                     onClick={() => {
-                      setRefId(null);
+                      showRef(null);
                       showMotion(motion.id, { play: playable(motion) });
                     }}
                     className="ml-auto rounded border border-cc-border px-2 py-1 text-cc-muted transition-colors hover:border-cc-primary/40 hover:text-cc-primary"
@@ -605,8 +660,8 @@ export default function SpritePreview(props: ViewerPreviewProps) {
                   seek(index);
                   reportSelection(motion, index);
                 }}
-                onFps={(value) => setFpsOverride(value)}
-                onLoop={(value) => setLoopOverride(value)}
+                onFps={applyFps}
+                onLoop={applyLoop}
               />
             )}
           </div>

@@ -156,8 +156,8 @@ function StageOverlays(props: StageProps & { scale: number }) {
   if (refLabel) {
     return (
       <Corner>
-        <span className="text-cc-fg">{refLabel}</span>
-        <span className="text-cc-muted">reference</span>
+        <span className="min-w-0 truncate text-cc-fg">{refLabel}</span>
+        <span className="shrink-0 text-cc-muted">reference</span>
         <ScaleTag scale={props.scale} />
       </Corner>
     );
@@ -211,10 +211,13 @@ function StageOverlays(props: StageProps & { scale: number }) {
   return (
     <>
       <Corner>
-        <span className="text-cc-fg">{motion.label}</span>
+        <span className="min-w-0 truncate text-cc-fg">{motion.label}</span>
         {source.kind === "raw-sheet" ? (
-          <span className="rounded border border-cc-warning/50 px-1 py-px text-cc-warning">
-            unprocessed sheet · sliced here
+          <span
+            className="shrink-0 rounded border border-cc-warning/50 px-1 py-px text-cc-warning"
+            title={`No aligned frames yet — this is the ${source.alpha ? "keyed" : "raw"} sheet sliced ${source.cols}×${source.rows} in the browser.`}
+          >
+            sheet preview
           </span>
         ) : null}
         {source.kind === "frames" && source.missing > 0 ? (
@@ -236,15 +239,17 @@ function StageOverlays(props: StageProps & { scale: number }) {
 
 function ScaleTag({ scale }: { scale: number }) {
   return (
-    <span className="text-cc-muted">
+    <span className="shrink-0 text-cc-muted">
       {scale >= 1 ? `${Math.round(scale)}×` : `${Math.round(scale * 100)}%`}
     </span>
   );
 }
 
+/** Top-left status strip. Width-capped so it can never slide under the stage
+ *  toolbar sitting in the opposite corner and get painted over. */
 function Corner({ children }: { children: React.ReactNode }) {
   return (
-    <div className="pointer-events-none absolute left-3 top-3 flex items-center gap-2 rounded-lg border border-cc-border bg-cc-surface/70 px-2 py-1 text-[11px] backdrop-blur">
+    <div className="pointer-events-none absolute left-3 top-3 flex max-w-[calc(100%-22rem)] items-center gap-2 overflow-hidden rounded-lg border border-cc-border bg-cc-surface/70 px-2 py-1 text-[11px] whitespace-nowrap backdrop-blur">
       {children}
     </div>
   );
