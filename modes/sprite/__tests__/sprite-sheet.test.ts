@@ -278,6 +278,34 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(smoothed).toEqual([14, 14, 14]);
     });
 
+    test("records the anchor point it used next to the frames", () => {
+      const ws = fresh();
+      const out = runJson("align", cellsOf("plain", 2, 2), "--out", join(ws, "frames"), "--pad", "8");
+
+      // `pack` has no way to measure this itself — it sees uniform cells and
+      // cannot tell padding from artwork — so align has to leave it behind.
+      expect(out.anchorPoint).toEqual({ x: 23, y: 38 }); // W/2, H - pad
+      expect(out.alignRecord).toBe(join(ws, "frames", "align.json"));
+      expect(JSON.parse(readFileSync(join(ws, "frames", "align.json"), "utf-8"))).toEqual({
+        anchor: "bottom",
+        cell: { width: 46, height: 46 },
+        pad: 8,
+        anchorPoint: { x: 23, y: 38 },
+        smooth: false,
+      });
+    });
+
+    test("re-aligning the same directory replaces the record, never leaves a stale one", () => {
+      const ws = fresh();
+      const frames = join(ws, "frames");
+      runJson("align", cellsOf("plain", 2, 2), "--out", frames, "--pad", "8");
+      runJson("align", cellsOf("plain", 2, 2), "--out", frames, "--pad", "8", "--anchor", "center");
+
+      const record = JSON.parse(readFileSync(join(frames, "align.json"), "utf-8"));
+      expect(record.anchor).toBe("center");
+      expect(record.anchorPoint).toEqual({ x: 23, y: 23 });
+    });
+
     test("an explicit cell smaller than the artwork fails with the required size", () => {
       const ws = fresh();
       const r = run("align", cellsOf("plain", 2, 2), "--out", join(ws, "frames"), "--cell", "16x16", "--json");
@@ -310,6 +338,8 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
         fps: 8,
         loop: true,
         anchor: "bottom",
+        // where `align --pad 17` actually put the feet in the 64px cell
+        anchorPoint: { x: 32, y: 47 },
       });
       expect(Object.keys(atlas.frames)).toEqual(["bounce_00", "bounce_01", "bounce_02", "bounce_03"]);
       expect(atlas.frames.bounce_00).toEqual({
@@ -318,7 +348,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
         trimmed: false,
         spriteSourceSize: { x: 0, y: 0, w: 64, h: 64 },
         sourceSize: { w: 64, h: 64 },
-        pivot: { x: 0.5, y: 1 },
+        pivot: { x: 0.5, y: 0.7344 }, // 47 / 64, not the cell edge
         duration: 125,
       });
       expect(atlas.frames.bounce_03.frame).toEqual({ x: 64, y: 64, w: 64, h: 64 });
@@ -340,7 +370,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       const atlas = JSON.parse(readFileSync(join(ws, "atlas.json"), "utf-8"));
       expect(atlas.meta.loop).toBe(false);
       expect(atlas.frames.walk_00.duration).toBe(83); // round(1000/12)
-      expect(atlas.frames.walk_00.pivot).toEqual({ x: 0.5, y: 1 });
+      expect(atlas.frames.walk_00.pivot).toEqual({ x: 0.5, y: 0.7344 });
     });
 
     test("--scale --nearest resizes every cell before packing", () => {
@@ -356,6 +386,66 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(atlas.meta.scale).toBe(0.5);
       expect(atlas.frames.bounce_00.frame).toEqual({ x: 0, y: 0, w: 32, h: 32 });
       expect(atlas.frames.bounce_00.sourceSize).toEqual({ w: 32, h: 32 });
+      // The pivot is a ratio, so scaling the cells cannot move it; the pixel
+      // anchor is a measurement in those cells, so it scales with them.
+      expect(atlas.frames.bounce_00.pivot).toEqual({ x: 0.5, y: 0.7344 });
+      expect(atlas.meta.anchorPoint).toEqual({ x: 16, y: 23.5 });
+    });
+
+    test("frames with no align.json fall back to the anchor default and say so", () => {
+      const ws = fresh();
+      const frames = useFrames(ws, framesOf("plain", 2, 2, 17));
+      // Frames aligned by something other than this script are a legitimate
+      // input — but then nothing measured where the anchor sits, and the
+      // atlas must not pass the assumed pivot off as a measured one.
+      rmSync(join(frames, "align.json"));
+
+      const r = run(
+        "pack", frames, "--out", join(ws, "packed.png"), "--atlas", join(ws, "atlas.json"),
+        "--name", "bounce", "--fps", "8", "--cols", "2", "--json",
+      );
+      expect(r.code).toBe(0);
+      expect(r.err).toContain("no align.json");
+      expect(r.err).toContain("falls back to the bottom default {0.5, 1}");
+
+      const atlas = JSON.parse(readFileSync(join(ws, "atlas.json"), "utf-8"));
+      expect(atlas.frames.bounce_00.pivot).toEqual({ x: 0.5, y: 1 });
+      // an absent key is how a consumer tells "assumed" from "measured"
+      expect(atlas.meta.anchorPoint).toBeUndefined();
+    });
+
+    test("an align.json describing other frames is refused, not trusted", () => {
+      const ws = fresh();
+      const frames = useFrames(ws, framesOf("plain", 2, 2, 17));
+      const record = JSON.parse(readFileSync(join(frames, "align.json"), "utf-8"));
+      writeFileSync(
+        join(frames, "align.json"),
+        JSON.stringify({ ...record, cell: { width: 128, height: 128 }, anchorPoint: { x: 64, y: 120 } }),
+      );
+
+      const r = run(
+        "pack", frames, "--out", join(ws, "packed.png"), "--atlas", join(ws, "atlas.json"),
+        "--name", "bounce", "--fps", "8", "--cols", "2", "--json",
+      );
+      expect(r.code).toBe(0);
+      expect(r.err).toContain("128x128 cell but these frames are 64x64");
+      const atlas = JSON.parse(readFileSync(join(ws, "atlas.json"), "utf-8"));
+      expect(atlas.frames.bounce_00.pivot).toEqual({ x: 0.5, y: 1 });
+      expect(atlas.meta.anchorPoint).toBeUndefined();
+    });
+
+    test("an unreadable align.json stops the pack instead of silently guessing", () => {
+      const ws = fresh();
+      const frames = useFrames(ws, framesOf("plain", 2, 2, 17));
+      writeFileSync(join(frames, "align.json"), "{ not json");
+
+      const r = run(
+        "pack", frames, "--out", join(ws, "packed.png"), "--atlas", join(ws, "atlas.json"),
+        "--name", "bounce", "--fps", "8", "--json",
+      );
+      expect(r.code).toBe(1);
+      expect(r.err).toContain("align.json");
+      expect(r.err).toContain("re-run align");
     });
 
     test("a frame that cannot be decoded stops the pack instead of vanishing", () => {
@@ -522,12 +612,66 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       for (const rel of ["sheet.png", "atlas.json", "preview.gif", "inspect.json"]) {
         expect(existsSync(join(motionDir, rel))).toBe(true);
       }
-      expect(readdirSync(join(motionDir, "frames")).sort()).toEqual(["00.png", "01.png", "02.png", "03.png"]);
+      // the align record ships with the frames it describes
+      expect(readdirSync(join(motionDir, "frames")).sort())
+        .toEqual(["00.png", "01.png", "02.png", "03.png", "align.json"]);
       // no temp/scratch litter left behind
       expect(readdirSync(motionDir).filter((f) => f.includes("tmp"))).toEqual([]);
       const atlas = JSON.parse(readFileSync(join(motionDir, "atlas.json"), "utf-8"));
       expect(atlas.animations.bounce).toHaveLength(4);
       expect(atlas.meta.image).toBe("sheet.png");
+    });
+
+    test("the atlas pivot is the anchor point align used, not the cell edge", () => {
+      const ws = fresh();
+      const motionDir = join(ws, "motions", "bounce");
+      const out = runJson(
+        "run", SHEETS.plain(), "--rows", "2", "--cols", "2", "--out", motionDir,
+        "--name", "bounce", "--fps", "8", "--pad", "8",
+      );
+      const { width: W, height: H } = out.cell;
+      expect({ W, H }).toEqual({ W: 46, H: 46 });
+
+      const atlas = JSON.parse(readFileSync(join(motionDir, "atlas.json"), "utf-8"));
+      // `--pad 8` puts the feet 8px above the cell floor. A pivot of y = 1
+      // would hover the character exactly that far above the ground in any
+      // engine that pivots on atlas.json, and leave a visible gap under the
+      // viewer's pivot guide.
+      expect(atlas.meta.anchorPoint).toEqual({ x: W / 2, y: H - 8 });
+      expect(atlas.frames.bounce_00.pivot.y).toBeCloseTo((H - 8) / H, 4);
+      expect(atlas.frames.bounce_00.pivot).toEqual({ x: 0.5, y: 0.8261 });
+      expect(atlas.frames.bounce_03.pivot).toEqual(atlas.frames.bounce_00.pivot);
+
+      // The invariant the pivot guide draws: the declared point is where the
+      // sprite's feet actually are in every aligned frame.
+      for (const n of ["00", "01"]) {
+        const { bbox } = readBbox(join(motionDir, "frames", `${n}.png`));
+        expect(bbox!.y + bbox!.h).toBe(atlas.meta.anchorPoint.y);
+        expect(bbox!.x + bbox!.w / 2).toBe(atlas.meta.anchorPoint.x);
+      }
+
+      // and `inspect` hands the viewer the same point
+      expect(JSON.parse(readFileSync(join(motionDir, "inspect.json"), "utf-8")).anchorPoint)
+        .toEqual({ x: W / 2, y: H - 8 });
+    });
+
+    test("--anchor center pivots on the cell centre", () => {
+      const ws = fresh();
+      const motionDir = join(ws, "motions", "float");
+      const out = runJson(
+        "run", SHEETS.plain(), "--rows", "2", "--cols", "2", "--out", motionDir,
+        "--name", "float", "--fps", "8", "--pad", "8", "--anchor", "center",
+      );
+      expect(out.cell).toEqual({ width: 46, height: 46 });
+
+      const atlas = JSON.parse(readFileSync(join(motionDir, "atlas.json"), "utf-8"));
+      expect(atlas.meta.anchor).toBe("center");
+      expect(atlas.meta.anchorPoint).toEqual({ x: 23, y: 23 });
+      expect(atlas.frames.float_00.pivot).toEqual({ x: 0.5, y: 0.5 });
+
+      const { bbox } = readBbox(join(motionDir, "frames", "00.png"));
+      expect(bbox!.y + bbox!.h / 2).toBe(23);
+      expect(bbox!.x + bbox!.w / 2).toBe(23);
     });
 
     test("keys an opaque sheet automatically and records sheet-alpha", () => {
@@ -568,7 +712,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       const first = runJson(...args);
       const second = runJson(...args);
       expect(second.frames).toEqual(first.frames);
-      expect(readdirSync(join(motionDir, "frames")).sort()).toEqual(["00.png", "01.png"]);
+      expect(readdirSync(join(motionDir, "frames")).sort()).toEqual(["00.png", "01.png", "align.json"]);
       expect(readdirSync(join(motionDir, "cells")).sort()).toEqual(["00.png", "01.png"]);
     });
 
@@ -585,7 +729,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
         "run", SHEETS.pair(), "--rows", "1", "--cols", "2", "--force",
         "--out", motionDir, "--name", "bounce", "--fps", "8", "--pad", "17",
       );
-      expect(readdirSync(join(motionDir, "frames")).sort()).toEqual(["00.png", "01.png"]);
+      expect(readdirSync(join(motionDir, "frames")).sort()).toEqual(["00.png", "01.png", "align.json"]);
       expect(readdirSync(join(motionDir, "cells")).sort()).toEqual(["00.png", "01.png"]);
     });
 

@@ -49,6 +49,9 @@ const MAX_LISTED = 6;
 /** Pre-align grid cells `run` leaves next to `frames/`: what `inspect` judges
  *  "leaves its grid cell" on, and what re-aligning a motion re-reads. */
 const CELLS_DIRNAME = "cells";
+/** What `align` leaves in the frames dir so `pack` can declare the pivot it
+ *  actually used instead of guessing the cell edge. */
+const ALIGN_RECORD = "align.json";
 
 const SUBCOMMANDS = ["probe", "key", "flatten", "slice", "align", "pack", "gif", "inspect", "run"];
 
@@ -77,10 +80,15 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       anchor x with the 3-frame median so a one-frame bbox wobble (a stray
       arm) does not shove the whole body sideways; with --anchor center the
       same median is applied to y.
+      Records the point it used in <dir>/${ALIGN_RECORD}, so pack declares
+      that pivot instead of assuming the cell edge.
 
   pack <framesDir> --out <sheet.png> --atlas <atlas.json> --name <motionId>
        --fps N [--loop] [--anchor bottom|center] [--cols C] [--scale 1] [--nearest]
       Row-major atlas image + TexturePacker-JSON-hash-compatible atlas.json.
+      The pivot is the anchor point <framesDir>/${ALIGN_RECORD} recorded (also
+      copied into meta.anchorPoint in pixels, scaled with --scale); frames
+      aligned elsewhere fall back to {0.5,1} / {0.5,0.5} with a note on stderr.
 
   gif <framesDir> --out <preview.gif> --fps N [--loop|--no-loop]
       [--webp <preview.webp>] [--width W]
@@ -314,11 +322,13 @@ function listFrames(dir) {
 const frameName = (index) => `${String(index).padStart(2, "0")}.png`;
 
 /** A frames dir is rewritten wholesale — a shorter motion must not inherit
- *  the tail of a longer one. */
+ *  the tail of a longer one, and the align record goes with the frames it
+ *  describes: one left behind by a half-finished align would tell `pack`
+ *  where an anchor sat in frames that no longer exist. */
 function resetFramesDir(dir) {
   mkdirSync(dir, { recursive: true });
   for (const name of readdirSync(dir)) {
-    if (FRAME_RE.test(name)) unlinkSync(join(dir, name));
+    if (FRAME_RE.test(name) || name === ALIGN_RECORD) unlinkSync(join(dir, name));
   }
 }
 
@@ -550,11 +560,26 @@ function stepAlign(framesDir, { out, anchor, cell, pad, smooth, threshold, bboxe
     warnings.push(...listAndTruncate(clamped, (i) => `frame ${String(i).padStart(2, "0")} was clamped to stay inside the cell`));
   }
 
+  // Where the anchor landed is a measurement, and only this step has it: with
+  // --pad 8 a bottom-anchored character's feet sit 8px above the cell floor,
+  // so an atlas that assumed the cell edge would hover it over the ground in
+  // any engine that pivots on atlas.json. Written next to the frames it
+  // describes, so a frames dir carries its own anchor wherever it is copied.
+  const record = writeJsonFile(join(dir, ALIGN_RECORD), {
+    anchor,
+    cell: cellSize,
+    pad,
+    anchorPoint: { x: target.x, y: target.y },
+    smooth,
+  });
+
   return {
     inDir: resolve(framesDir),
     outDir: dir,
     anchor, pad, smooth,
     cell: cellSize,
+    anchorPoint: { x: target.x, y: target.y },
+    alignRecord: record,
     frames,
     emptyFrames,
     warnings,
@@ -595,9 +620,73 @@ function countEncodedFrames(path) {
   return Number.isInteger(count) && count > 0 ? count : null;
 }
 
+/**
+ * The anchor point `align` measured for these frames, or null when nothing
+ * measured them.
+ *
+ * A frames dir that never went through `align` is a legitimate input (frames
+ * drawn or aligned elsewhere), so a missing record is not a failure — but a
+ * record that is there and unreadable is: silently falling back would hand the
+ * caller a pivot that contradicts the file sitting next to the frames.
+ */
+function readAlignRecord(framesDir) {
+  const path = join(resolve(framesDir), ALIGN_RECORD);
+  if (!existsSync(path)) return null;
+  let doc;
+  try {
+    doc = JSON.parse(readFileSync(path, "utf-8"));
+  } catch (error) {
+    fail(`${path} is not valid JSON (${error.message}) — delete it or re-run align`);
+  }
+  const finite = (v) => typeof v === "number" && Number.isFinite(v);
+  const ok = doc && finite(doc.anchorPoint?.x) && finite(doc.anchorPoint?.y)
+    && finite(doc.cell?.width) && finite(doc.cell?.height)
+    && (doc.anchor === "bottom" || doc.anchor === "center");
+  if (!ok) fail(`${path} is not an align record (needs anchor, cell and anchorPoint) — delete it or re-run align`);
+  return {
+    anchor: doc.anchor,
+    cell: { width: doc.cell.width, height: doc.cell.height },
+    anchorPoint: { x: doc.anchorPoint.x, y: doc.anchorPoint.y },
+  };
+}
+
+/**
+ * The pivot the atlas declares, and the pixel point it came from.
+ *
+ * `align` puts a bottom anchor at `H - pad`, not at `H`: with the old fixed
+ * {0.5, 1} an engine pivoting on atlas.json floated the character `pad` pixels
+ * above the ground. So the recorded point wins — but only when the record
+ * describes THESE frames under THIS anchor. Every other case falls back to the
+ * old default and says on stderr which one it was, because a pivot that is
+ * assumed rather than measured must be distinguishable from one that is.
+ */
+function resolvePivot(framesDir, { anchor, width, height }) {
+  const fallbackPivot = anchor === "center" ? { x: 0.5, y: 0.5 } : { x: 0.5, y: 1 };
+  const fallback = (reason) => {
+    console.error(`note: ${reason} — the atlas pivot falls back to the ${anchor} default {${fallbackPivot.x}, ${fallbackPivot.y}}`);
+    return { pivot: fallbackPivot, anchorPoint: null };
+  };
+
+  const record = readAlignRecord(framesDir);
+  if (!record) {
+    return fallback(`no ${ALIGN_RECORD} in ${resolve(framesDir)}, so nothing recorded where the anchor landed`);
+  }
+  if (record.cell.width !== width || record.cell.height !== height) {
+    return fallback(`${ALIGN_RECORD} describes a ${record.cell.width}x${record.cell.height} cell but these frames are ${width}x${height}`);
+  }
+  if (record.anchor !== anchor) {
+    return fallback(`these frames were aligned on '${record.anchor}' but --anchor ${anchor} was given`);
+  }
+  return {
+    pivot: { x: round(record.anchorPoint.x / width, 4), y: round(record.anchorPoint.y / height, 4) },
+    anchorPoint: record.anchorPoint,
+  };
+}
+
 function stepPack(framesDir, { out, atlas, name, fps, loop, anchor, cols, scale, nearest }) {
   const entries = listFrames(resolve(framesDir));
   const { width, height } = uniformCell(entries, "pack");
+  const { pivot, anchorPoint } = resolvePivot(framesDir, { anchor, width, height });
 
   const cellW = Math.max(1, Math.round(width * scale));
   const cellH = Math.max(1, Math.round(height * scale));
@@ -618,7 +707,11 @@ function stepPack(framesDir, { out, atlas, name, fps, loop, anchor, cols, scale,
   ], "pack");
 
   const duration = Math.round(1000 / fps);
-  const pivot = anchor === "center" ? { x: 0.5, y: 0.5 } : { x: 0.5, y: 1 };
+  // The normalized pivot is a ratio and survives --scale untouched; the pixel
+  // point rides the same resize the cells did.
+  const scaledAnchor = anchorPoint
+    ? { x: round(anchorPoint.x * scale, 4), y: round(anchorPoint.y * scale, 4) }
+    : null;
   const frames = {};
   const order = [];
   for (let i = 0; i < entries.length; i++) {
@@ -645,6 +738,9 @@ function stepPack(framesDir, { out, atlas, name, fps, loop, anchor, cols, scale,
       fps,
       loop,
       anchor,
+      // Present only when `align` measured it: an absent key says "this pivot
+      // is the anchor's default, not a measurement".
+      ...(scaledAnchor ? { anchorPoint: scaledAnchor } : {}),
     },
     frames,
     animations: { [name]: order },
@@ -656,6 +752,8 @@ function stepPack(framesDir, { out, atlas, name, fps, loop, anchor, cols, scale,
     sheet: sheetPath,
     atlas: atlasPath,
     name, fps, loop, anchor, scale,
+    pivot,
+    ...(scaledAnchor ? { anchorPoint: scaledAnchor } : {}),
     grid: { rows, cols: columns },
     cell: { width: cellW, height: cellH },
     size,
@@ -817,12 +915,21 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
     emptyFrames,
     warnings,
   };
+  // The point `align` put the anchor on, when these very frames carry it: the
+  // viewer draws its pivot guide there, and the atlas declares the same point.
+  const record = readAlignRecord(framesDir);
+  const measuredAnchor = record && record.anchor === anchor
+    && record.cell.width === cellW && record.cell.height === cellH
+    ? record.anchorPoint
+    : null;
+
   const report = {
     ...summary,
     motionDir: dir,
     framesDir,
     ...(cells ? { cellsDir: resolve(cells) } : {}),
     anchor,
+    ...(measuredAnchor ? { anchorPoint: measuredAnchor } : {}),
     frames: measured.map((f) => ({
       index: f.index,
       bbox: f.bbox,
@@ -1211,7 +1318,7 @@ function main() {
         threshold,
       });
       emit(values, out, [
-        `aligned ${out.frames.length} frames on a ${out.cell.width}x${out.cell.height} cell (${out.anchor})`,
+        `aligned ${out.frames.length} frames on a ${out.cell.width}x${out.cell.height} cell (${out.anchor} anchor at ${out.anchorPoint.x},${out.anchorPoint.y})`,
         ...out.warnings,
       ]);
       break;
@@ -1228,7 +1335,9 @@ function main() {
         scale: num(values.scale, "--scale", { min: 0.01, fallback: 1 }),
         nearest: values.nearest,
       });
-      emit(values, out, [`packed ${out.frameCount} frames into ${out.size.w}x${out.size.h} → ${out.sheet}`]);
+      emit(values, out, [
+        `packed ${out.frameCount} frames into ${out.size.w}x${out.size.h} → ${out.sheet} (pivot ${out.pivot.x},${out.pivot.y})`,
+      ]);
       break;
     }
     case "gif": {

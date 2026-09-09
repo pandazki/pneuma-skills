@@ -99,12 +99,31 @@ up to an even number. `--smooth` replaces each frame's anchor x with the
 lateral movement (y is untouched for `bottom` — vertical bounce is the motion).
 Empty frames come out as fully transparent cells and are reported.
 
+It also writes `<dir>/align.json` — `{ anchor, cell, pad, anchorPoint, smooth }`
+— where `anchorPoint` is the pixel coordinate **inside the cell** the anchor
+landed on: `{W/2, H − pad}` for `bottom`, `{W/2, H/2}` for `center`. That file
+is how `pack` knows what to declare as the atlas pivot. Nothing downstream can
+measure the point from the frames alone — a uniform cell cannot tell padding
+from artwork — so this step, the only one that knows, records it. The record
+travels with the frames it describes and every align rewrites it; like the
+cells it is an intermediate file, not an asset, and `register-run` never
+registers it.
+
 ### `pack <framesDir> --out <sheet.png> --atlas <atlas.json> --name <motionId> --fps N [--loop] [--anchor bottom|center] [--cols C] [--scale 0.5] [--nearest]`
 
 Tiles the aligned frames row-major into one image and writes the atlas.
 `--scale` resizes every frame first; add `--nearest` for pixel art so
 downscaling stays hard-edged. No margin, no gutter — a game engine reads the
 rects from the atlas, and gutters only cost texture memory.
+
+The pivot it writes is the anchor point `<framesDir>/align.json` recorded, not
+the cell edge. `--scale` leaves the normalized pivot alone (it is a ratio) and
+scales `meta.anchorPoint`, which carries the same point in pixels. Frames that
+carry no usable record — aligned by something else, or a record describing a
+different cell or a different anchor — fall back to `{0.5, 1.0}` / `{0.5, 0.5}`,
+omit `meta.anchorPoint`, and print the reason on stderr; a *malformed*
+`align.json` is a hard error instead, because guessing past a file that is
+sitting right there would be the silent kind of wrong.
 
 ### `gif <framesDir> --out <preview.gif> --fps N [--loop|--no-loop] [--webp <preview.webp>] [--width W]`
 
@@ -134,6 +153,7 @@ only if you sliced into a directory of your own.
 | `maxJump` | Largest anchor displacement between consecutive frames |
 | `scaleDrift` | `(max bbox height − min bbox height) / mean` |
 | `emptyFrames` | Indices with no pixel above the alpha threshold |
+| `anchorPoint` | The point `align` recorded for these frames, in cell pixels — the same point the atlas pivot names. Absent when the frames carry no `align.json` for this anchor and cell |
 | `warnings` | Human sentences — read these, they name the fix |
 
 Warning rules and what each one means:
@@ -214,8 +234,9 @@ node {SKILL_PATH}/scripts/sprite-sheet.mjs align <character>/motions/<id>/cells 
   --out <character>/motions/<id>/frames --anchor center --smooth --json
 ```
 
-`align` clears the old `NN.png` out of `--out` before writing, so the frames
-are replaced, never mixed. Then rebuild what depends on them and re-measure:
+`align` clears the old `NN.png` and the old `align.json` out of `--out` before
+writing, so the frames — and the anchor point recorded for them — are replaced,
+never mixed. Then rebuild what depends on them and re-measure:
 
 ```bash
 node {SKILL_PATH}/scripts/sprite-sheet.mjs pack <character>/motions/<id>/frames \
@@ -342,14 +363,15 @@ converter.
 {
   "meta": { "app": "pneuma-sprite", "version": 1, "image": "sheet.png",
             "size": { "w": 1024, "h": 1024 }, "scale": 1,
-            "fps": 8, "loop": true, "anchor": "bottom" },
+            "fps": 8, "loop": true, "anchor": "bottom",
+            "anchorPoint": { "x": 128, "y": 248 } },
   "frames": {
     "idle_00": {
       "frame": { "x": 0, "y": 0, "w": 256, "h": 256 },
       "rotated": false, "trimmed": false,
       "spriteSourceSize": { "x": 0, "y": 0, "w": 256, "h": 256 },
       "sourceSize": { "w": 256, "h": 256 },
-      "pivot": { "x": 0.5, "y": 1.0 },
+      "pivot": { "x": 0.5, "y": 0.9688 },
       "duration": 125
     }
   },
@@ -359,6 +381,13 @@ converter.
 
 - Frame keys are `<motionId>_NN`; `animations[<motionId>]` lists them in
   playback order.
-- `pivot` is `{0.5, 1.0}` for `anchor: bottom`, `{0.5, 0.5}` for `center`.
+- `pivot` is the anchor point `align` measured, normalized by the cell:
+  `{0.5, (H − pad) / H}` for `anchor: bottom`, `{0.5, 0.5}` for `center`,
+  rounded to 4 decimals. With `--pad 8` on a 256px cell that is
+  `pivot.y = 0.9688`, **not** `1.0` — the feet sit 8px above the cell floor,
+  and an engine pivoting on the cell edge would hover the character those 8px
+  above the ground. `meta.anchorPoint` is the same point in pixels (scaled with
+  `--scale`); it is absent when the frames carried no `align.json`, which is
+  how you tell a measured pivot from the assumed default.
 - `duration` is `round(1000 / fps)` in milliseconds.
 - Frames are laid out row-major, `cols` per row, no margin and no gutter.

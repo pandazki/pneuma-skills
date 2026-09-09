@@ -313,8 +313,11 @@ Phaser: `this.load.atlas(key, 'sheet.png', 'atlas.json')` then
 `this.anims.createFromAseprite`-style frame names (`<motion>_00`, `<motion>_01`,
 …) listed in `animations`. PixiJS: `Assets.load('atlas.json')` yields a
 `Spritesheet` whose `animations` map is ready for `AnimatedSprite`. Frame
-timing rides in each frame's `duration` (ms), the pivot in `pivot` (`{0.5,1}`
-for `bottom`, `{0.5,0.5}` for `center`). For a pixel-art look, re-pack with
+timing rides in each frame's `duration` (ms), the pivot in `pivot` — the anchor
+point `align` actually used, normalized by the cell, so a `bottom` motion built
+with `--pad 8` on a 256px cell pivots on `y = 0.9688` and stands on the ground
+instead of hovering 8px above it (`meta.anchorPoint` is the same point in
+pixels). For a pixel-art look, re-pack with
 `pack --scale 0.5 --nearest` so downscaling stays hard-edged.
 
 ## Commands
