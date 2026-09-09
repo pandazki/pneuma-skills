@@ -210,6 +210,8 @@ Commands (user buttons → agent, rendered only when `editing !== false`):
   motions/<motion-id>/
     sheet-raw.png                 # as generated (may be opaque or already transparent)
     sheet-alpha.png               # background removed (only when sheet-raw had no alpha)
+    cells/00.png … NN.png         # raw sliced cells before alignment (kept: `inspect` measures
+                                  # clipping/jumps here, and `align` can re-run from them)
     frames/00.png … NN.png        # sliced + aligned, uniform cell, RGBA
     sheet.png                     # packed atlas image (cols × rows of aligned frames)
     atlas.json                    # frame rects + pivot + timing (schema below)
@@ -308,9 +310,9 @@ A 2×2 `bounce` motion so fixtures stay short. Timestamps are fixed.
     { "toAssetId": "bounce-frame-01", "fromAssetId": "bounce-sheet-raw", "operation": { "type": "derive", "actor": "agent", "params": { "tool": "sprite-sheet.mjs", "step": "run", "cell": 1 }, "timestamp": 1757400002000 } },
     { "toAssetId": "bounce-frame-02", "fromAssetId": "bounce-sheet-raw", "operation": { "type": "derive", "actor": "agent", "params": { "tool": "sprite-sheet.mjs", "step": "run", "cell": 2 }, "timestamp": 1757400002000 } },
     { "toAssetId": "bounce-frame-03", "fromAssetId": "bounce-sheet-raw", "operation": { "type": "derive", "actor": "agent", "params": { "tool": "sprite-sheet.mjs", "step": "run", "cell": 3 }, "timestamp": 1757400002000 } },
-    { "toAssetId": "bounce-sheet", "fromAssetId": "bounce-frame-00", "operation": { "type": "derive", "actor": "agent", "params": { "tool": "sprite-sheet.mjs", "step": "pack" }, "timestamp": 1757400003000 } },
+    { "toAssetId": "bounce-sheet", "fromAssetId": "bounce-frame-00", "operation": { "type": "derive", "actor": "agent", "params": { "tool": "sprite-sheet.mjs", "step": "pack", "inputs": ["bounce-frame-00", "bounce-frame-01", "bounce-frame-02", "bounce-frame-03"] }, "timestamp": 1757400003000 } },
     { "toAssetId": "bounce-atlas", "fromAssetId": "bounce-sheet", "operation": { "type": "derive", "actor": "agent", "params": { "tool": "sprite-sheet.mjs", "step": "pack" }, "timestamp": 1757400003000 } },
-    { "toAssetId": "bounce-gif", "fromAssetId": "bounce-frame-00", "operation": { "type": "derive", "actor": "agent", "params": { "tool": "sprite-sheet.mjs", "step": "gif" }, "timestamp": 1757400004000 } }
+    { "toAssetId": "bounce-gif", "fromAssetId": "bounce-frame-00", "operation": { "type": "derive", "actor": "agent", "params": { "tool": "sprite-sheet.mjs", "step": "gif", "inputs": ["bounce-frame-00", "bounce-frame-01", "bounce-frame-02", "bounce-frame-03"] }, "timestamp": 1757400004000 } }
   ],
   "sprite": {
     "version": 1,
@@ -330,10 +332,13 @@ A 2×2 `bounce` motion so fixtures stay short. Timestamps are fixed.
 }
 ```
 
-Derive edges for a multi-input step (`pack`, `gif`, `r2v` video) use the
-first input as `fromAssetId` and list every input id in
-`operation.params.inputs` — craft edges are single-parent; the params carry
-the full fan-in.
+Derive edges for a multi-input step (`pack`, `gif`, `r2v` / `first-last`
+video, a sheet generated from several refs) use the first input as
+`fromAssetId` and list every input id in `operation.params.inputs` — craft
+edges are single-parent; the params carry the full fan-in. `inputs` is
+emitted **only when there are two or more inputs**; a single-parent edge
+(`atlas ← sheet`, an `i2v` video, a sheet generated from one ref) carries no
+`inputs` key. The fixture above follows this rule.
 
 ### atlas.json schema (game-engine consumable, TexturePacker JSON-hash compatible)
 
@@ -376,6 +381,10 @@ image changes.
   size for references; error out above the limit with a clear message).
 - Writes are atomic (write to `<path>.tmp` then rename).
 - Every script has `--help` text listing all flags.
+- Skill text invokes scripts as `node {SKILL_PATH}/scripts/<name>.mjs …` with
+  the cwd left at the workspace — never `cd {SKILL_PATH} && …` — because every
+  file argument in this mode is workspace-relative (`refs/…`, `motions/…`)
+  and `--dir` names the character directory.
 
 ---
 
@@ -751,7 +760,10 @@ Subcommands (all accept `--json`; all print `--help`):
   paletteuse=alpha_threshold=128:dither=sierra2_4a`, `-loop 0` for loop, `-loop -1`
   for play-once; WebP via `libwebp` (`-loop 0`, `-q:v 85`, `-pix_fmt yuva420p`)
   when the encoder exists, otherwise skip with a warning in the JSON.
-- `inspect <motionDir> [--anchor bottom|center]` → the `InspectSummary` JSON
+- `inspect <motionDir> [--anchor bottom|center] [--cells <dir>]` → the `InspectSummary` JSON
+  (measured over `frames/` for anchor drift and emptiness, and over the
+  pre-align cells — `--cells`, defaulting to `<motionDir>/cells` when it
+  exists — for clipping and jumps, which alignment would otherwise hide)
   (frame count, cell, per-frame bbox list, `anchorDrift` std-dev, `maxJump`,
   `scaleDrift`, `emptyFrames`, `warnings[]`) and writes `<motionDir>/inspect.json`.
   Warning rules: empty frame; `maxJump > 0.08·cellWidth` ("anchor jumps
@@ -762,7 +774,7 @@ Subcommands (all accept `--json`; all print `--help`):
   grid cell").
 - `run <sheet-raw> --rows R --cols C --out <motionDir> --name <motionId> --fps N [--loop] [--anchor bottom|center] [--key auto|#rrggbb|none] [--cell auto|WxH] [--pad 8] [--smooth] [--scale] [--nearest] [--margin] [--gutter]`
   → the whole chain: probe → (key when opaque and `--key` ≠ none, writing
-  `sheet-alpha.png`) → slice (to a temp dir) → align (to `frames/`) → pack
+  `sheet-alpha.png`) → slice (to `cells/`, kept) → align (to `frames/`) → pack
   (`sheet.png`, `atlas.json`) → gif (+ webp) → inspect. Emits one JSON:
   `{ motionDir, sheetRaw, sheetAlpha?, frames: [paths], sheet, atlas, gif, webp?, inspect: InspectSummary, cell, warnings }`.
   Copies/leaves `sheet-raw.png` in place (never moves the input).
