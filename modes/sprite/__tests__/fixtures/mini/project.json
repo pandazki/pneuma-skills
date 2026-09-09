@@ -1,0 +1,42 @@
+{
+  "$schema": "pneuma-craft/project/v1",
+  "title": "Mini",
+  "composition": { "settings": { "width": 64, "height": 64, "fps": 8, "aspectRatio": "1:1" }, "tracks": [], "transitions": [] },
+  "assets": [
+    { "id": "ref-portrait", "type": "image", "uri": "refs/portrait.png", "name": "Portrait", "metadata": { "width": 256, "height": 256 }, "createdAt": 1757400000000, "status": "ready", "tags": ["ref"] },
+    { "id": "bounce-sheet-raw", "type": "image", "uri": "motions/bounce/sheet-raw.png", "name": "bounce sheet (raw)", "metadata": { "width": 128, "height": 128 }, "createdAt": 1757400001000, "status": "ready" },
+    { "id": "bounce-frame-00", "type": "image", "uri": "motions/bounce/frames/00.png", "name": "bounce frame 00", "metadata": { "width": 64, "height": 64 }, "createdAt": 1757400002000, "status": "ready" },
+    { "id": "bounce-frame-01", "type": "image", "uri": "motions/bounce/frames/01.png", "name": "bounce frame 01", "metadata": { "width": 64, "height": 64 }, "createdAt": 1757400002000, "status": "ready" },
+    { "id": "bounce-frame-02", "type": "image", "uri": "motions/bounce/frames/02.png", "name": "bounce frame 02", "metadata": { "width": 64, "height": 64 }, "createdAt": 1757400002000, "status": "ready" },
+    { "id": "bounce-frame-03", "type": "image", "uri": "motions/bounce/frames/03.png", "name": "bounce frame 03", "metadata": { "width": 64, "height": 64 }, "createdAt": 1757400002000, "status": "ready" },
+    { "id": "bounce-sheet", "type": "image", "uri": "motions/bounce/sheet.png", "name": "bounce atlas image", "metadata": { "width": 128, "height": 128 }, "createdAt": 1757400003000, "status": "ready" },
+    { "id": "bounce-atlas", "type": "text", "uri": "motions/bounce/atlas.json", "name": "bounce atlas", "metadata": {}, "createdAt": 1757400003000, "status": "ready" },
+    { "id": "bounce-gif", "type": "image", "uri": "motions/bounce/preview.gif", "name": "bounce preview", "metadata": { "width": 64, "height": 64, "fps": 8 }, "createdAt": 1757400004000, "status": "ready" }
+  ],
+  "provenance": [
+    { "toAssetId": "ref-portrait", "fromAssetId": null, "operation": { "type": "generate", "actor": "agent", "params": { "model": "openai/gpt-image-2.5-sunburst", "prompt": "portrait of Mini" }, "timestamp": 1757400000000 } },
+    { "toAssetId": "bounce-sheet-raw", "fromAssetId": "ref-portrait", "operation": { "type": "generate", "actor": "agent", "params": { "model": "openai/gpt-image-2.5-flare", "prompt": "2x2 bounce sheet", "background": "transparent" }, "timestamp": 1757400001000 } },
+    { "toAssetId": "bounce-frame-00", "fromAssetId": "bounce-sheet-raw", "operation": { "type": "derive", "actor": "agent", "params": { "tool": "sprite-sheet.mjs", "step": "run", "cell": 0 }, "timestamp": 1757400002000 } },
+    { "toAssetId": "bounce-frame-01", "fromAssetId": "bounce-sheet-raw", "operation": { "type": "derive", "actor": "agent", "params": { "tool": "sprite-sheet.mjs", "step": "run", "cell": 1 }, "timestamp": 1757400002000 } },
+    { "toAssetId": "bounce-frame-02", "fromAssetId": "bounce-sheet-raw", "operation": { "type": "derive", "actor": "agent", "params": { "tool": "sprite-sheet.mjs", "step": "run", "cell": 2 }, "timestamp": 1757400002000 } },
+    { "toAssetId": "bounce-frame-03", "fromAssetId": "bounce-sheet-raw", "operation": { "type": "derive", "actor": "agent", "params": { "tool": "sprite-sheet.mjs", "step": "run", "cell": 3 }, "timestamp": 1757400002000 } },
+    { "toAssetId": "bounce-sheet", "fromAssetId": "bounce-frame-00", "operation": { "type": "derive", "actor": "agent", "params": { "tool": "sprite-sheet.mjs", "step": "pack" }, "timestamp": 1757400003000 } },
+    { "toAssetId": "bounce-atlas", "fromAssetId": "bounce-sheet", "operation": { "type": "derive", "actor": "agent", "params": { "tool": "sprite-sheet.mjs", "step": "pack" }, "timestamp": 1757400003000 } },
+    { "toAssetId": "bounce-gif", "fromAssetId": "bounce-frame-00", "operation": { "type": "derive", "actor": "agent", "params": { "tool": "sprite-sheet.mjs", "step": "gif" }, "timestamp": 1757400004000 } }
+  ],
+  "sprite": {
+    "version": 1,
+    "character": { "name": "Mini", "description": "A test blob.", "style": "flat vector blob, thick outline", "cell": { "width": 64, "height": 64 }, "facing": "right" },
+    "refs": [ { "id": "portrait", "asset": "ref-portrait", "role": "portrait", "label": "Portrait" } ],
+    "motions": [
+      {
+        "id": "bounce", "label": "Bounce", "prompt": "2x2 bounce sheet",
+        "grid": { "rows": 2, "cols": 2 }, "fps": 8, "loop": true, "anchor": "bottom", "status": "ready",
+        "sheetRaw": "bounce-sheet-raw", "sheet": "bounce-sheet", "atlas": "bounce-atlas",
+        "frames": ["bounce-frame-00", "bounce-frame-01", "bounce-frame-02", "bounce-frame-03"],
+        "gif": "bounce-gif", "videos": [],
+        "inspect": { "frameCount": 4, "cell": { "width": 64, "height": 64 }, "anchorDrift": { "x": 0.5, "y": 0 }, "maxJump": 1, "scaleDrift": 0.02, "emptyFrames": [], "warnings": [] }
+      }
+    ]
+  }
+}

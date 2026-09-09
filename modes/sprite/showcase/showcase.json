@@ -1,0 +1,52 @@
+{
+  "tagline": {
+    "en": "One character, every motion, ready for a game engine",
+    "zh-CN": "一个角色，所有动作，游戏引擎直接能用",
+    "ja": "キャラクターは一度、モーションは無限、そのままゲームエンジンへ"
+  },
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": {
+        "en": "Character-Locked Sheets",
+        "zh-CN": "角色锁定的雪碧图",
+        "ja": "キャラクターが固定されたシート"
+      },
+      "description": {
+        "en": "Every motion sheet is generated with the character's turnaround and portrait attached, so frame 12 of the attack is the same character as frame 1 of the idle. Show the turnaround references on the left and a freshly generated 4×4 sheet on the right, with a connecting line that says the references went in with the prompt.",
+        "zh-CN": "每张动作雪碧图都带着角色的三视图和头像一起生成，所以攻击的第 12 帧和待机的第 1 帧还是同一个角色。左边是三视图参考，右边是刚生成的 4×4 雪碧图，中间一条连线说明参考图是随提示词一起送进去的。",
+        "ja": "モーションシートは必ずキャラクターの三面図とポートレートを添えて生成される。左に参照画像、右に生成された 4×4 シート、その間を結ぶ線が「参照はプロンプトと一緒に入った」ことを語る。"
+      },
+      "media": "highlight-character-locked-sheets.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "Auto Slice & Align",
+        "zh-CN": "自动切帧与对齐",
+        "ja": "自動スライスとアライン"
+      },
+      "description": {
+        "en": "The background is keyed out, the grid is cut into frames, and every frame is nudged so the character's feet land on the same pixel — then packed into sheet.png plus an atlas.json that Phaser and PixiJS read as-is. Show a filmstrip of transparent frames over a checkerboard with one horizontal anchor line running dead straight through all of them.",
+        "zh-CN": "背景抠掉、网格切成帧、每一帧都挪到角色的脚落在同一个像素上，再打包成 sheet.png 加一份 Phaser、PixiJS 直接能读的 atlas.json。画面是棋盘格上的一排透明帧，一条水平锚点线笔直穿过所有帧。",
+        "ja": "背景を抜き、グリッドをフレームに切り、キャラクターの足が同じピクセルに乗るよう各フレームを揃え、sheet.png と atlas.json にパックする。市松模様の上に並ぶ透明フレームを、一本の水平アンカー線がまっすぐ貫く。"
+      },
+      "media": "highlight-auto-slice-align.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "Video Preview",
+        "zh-CN": "视频预览",
+        "ja": "動画プレビュー"
+      },
+      "description": {
+        "en": "See the motion twice: the GIF assembled from your own frames, and a short clip a video model shot from them — Seedance 2.5 by default, MiniMax H3 Max when you want more. Show the motion stage with the looping GIF panel beside a video panel playing the same attack, both under the same motion name.",
+        "zh-CN": "同一个动作看两遍：一遍是你自己的帧拼出来的 GIF，一遍是视频模型据此拍出来的短片——默认 Seedance 2.5，想要更强就换 MiniMax H3 Max。画面是动作舞台上并排的 GIF 面板和视频面板，播的是同一段攻击。",
+        "ja": "同じモーションを二度見る —— 自分のフレームから組んだ GIF と、それを元に動画モデルが撮った短いクリップ（既定は Seedance 2.5、必要なら MiniMax H3 Max）。ステージ上で GIF パネルと動画パネルが同じアタックを並べて再生する。"
+      },
+      "media": "highlight-video-preview.png",
+      "mediaType": "image"
+    }
+  ]
+}
