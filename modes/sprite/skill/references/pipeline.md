@@ -91,6 +91,41 @@ there, because two later steps need the un-padded crop: `inspect` judges
 `align` re-reads it when only the alignment has to be redone. They are
 intermediate files, not assets — `register-run` never registers them.
 
+### `clean <cellsDir> --out <dir> [--threshold 16]`
+
+Removes what is not the character from every cell, and runs **by default**
+inside `run` and `from-video` (`--no-clean` skips it). Standalone it is for
+cells you sliced yourself, or a re-clean at another threshold; `--out` may be
+the input directory.
+
+It labels the connected alpha blobs of each cell (4-connectivity — 8 would
+weld a fragment to the body through one diagonal pixel) and then:
+
+1. keeps the largest blob: that is the character;
+2. keeps anything **≥ 2 % of its area**: a lantern held at arm's length, a
+   thrown weapon, a detached shadow the artist drew — those are design and
+   are never removed, wherever they sit;
+3. of what is left, drops only what **touches a cell border** (the
+   neighbouring cell's drawing bleeding in) or floats **clear above the head
+   or below the feet** (specks over the hair, dirt under the boots).
+
+A small blob *beside* the body — a separated hand, a hair strand — is kept:
+at that size and position it is far more likely to be the drawing than litter.
+
+```json
+{ "cleaned": [{ "cell": 3, "removedComponents": 2, "removedPixels": 25 }],
+  "warnings": ["cell 03 lost 9% to cleaning — check the sheet"] }
+```
+
+`cleaned[]` lists only the cells something came off; a cell that lost more
+than **5 % of its ink** (its opaque pixels, not its area) also gets a warning,
+because at that point the sheet is the thing to look at, not the cleaner.
+
+Cleaning happens **before** the bbox that positions the frame is measured —
+that is the whole point. A 4 px fragment jammed against the left cell border
+moves the bbox 17 px left, and the aligner then faithfully centres the
+character around the litter.
+
 ### `align <framesDir> --out <dir> [--anchor bottom|center] [--x-from feet|bbox|cell] [--cell auto|WxH] [--pad 8] [--smooth]`
 
 The step that turns sixteen pictures into an animation. Computes each frame's
@@ -277,6 +312,58 @@ it is there and falls back to the cell edge when it is not — which with any
 before the point was recorded simply carry none; that absence is honest and the
 stage says "assumed" rather than guessing.
 
+### `from-video <clip> --out <motionDir> --name <motionId> --frames N [flags]`
+
+The second motion source. There is no sheet: `--frames` frames are cut evenly
+out of the (trimmed) clip into `<motionDir>/cells/NN.png`, and from there it is
+the same chain `run` drives — clean → align → pack → gif (+webp) → inspect —
+so the JSON it prints is `run`'s plus three keys and `register-run` consumes it
+unchanged.
+
+```bash
+node {SKILL_PATH}/scripts/sprite-sheet.mjs from-video \
+  <character>/motions/<id>/video-seedance-1.mp4 \
+  --out <character>/motions/<id> --name <id> --frames 16 --loop --json
+```
+
+| Flag | Default | Notes |
+|---|---|---|
+| `--frames N` | **required** | 2–100. Sampled evenly across the trimmed clip |
+| `--fps N` | frames / trimmed duration | The default plays the motion at the speed the clip was shot at |
+| `--loop` / `--no-loop` | `--no-loop` | Decides the sampling schedule, see below |
+| `--trim-start` / `--trim-end` | 0 / the duration | **Timestamps** in seconds, like ffmpeg's `-ss` / `-to` — not durations |
+| `--key auto\|#rrggbb\|none` | `auto` | `auto` = the median of frame 00's four corner patches, i.e. the plate the model actually painted |
+| `--similarity` | **0.22** | Wider than a sheet's 0.12: a codec's "solid" green is a range, not a colour. Measurements in `video-preview.md` |
+| `--no-clean` | cleaning on | As in `run` |
+| `--anchor` `--x-from` `--cell` `--pad` `--smooth` `--scale` `--nearest` `--cols` `--width` `--no-webp` | as `run` | |
+
+**The sampling schedule depends on `--loop`**, and it matters: a looping
+motion stops one step short of the end, because the closing pose is the
+opening pose and sampling both puts the same picture in frame 00 and frame
+N-1 — a visible stutter at the seam. A one-shot motion samples both ends, so
+the recovery pose is in the sheet. The last timestamp is clamped to the last
+frame that can actually be seeked to (`-ss` past it writes no file and still
+exits 0, which is why this is worth saying).
+
+The extra keys on top of `run`'s JSON:
+
+```json
+{ "source": "video", "video": "<abs path to the clip>",
+  "sampledAt": [0, 0.253, 0.505, "…"],
+  "trim": { "start": 0, "end": 4.042 }, "duration": 4.042,
+  "alphaCoverage": 0.4438, "keyColor": "#08f00d" }
+```
+
+`register-run` reads `source` and `video`: it hangs every frame's `derive`
+edge off the **clip asset** instead of a sheet, with `params.frameIndex` and
+`params.t` (the second it was cut from), and sets `motion.source = "video"`.
+So the clip has to be registered first with `add-video` — the script refuses
+otherwise and names the command.
+
+The clip is only ever read. Unlike a sheet it is not copied into the motion
+directory, because it is already an asset in its own right and the frames'
+provenance points at it.
+
 ### Fixing the alignment without regenerating the sheet
 
 The drawing is fine, the character just swims or jumps — that is an alignment
@@ -376,7 +463,9 @@ come from `Date.now()` unless `--at <ms>` is passed.
 | `add-motion --id idle --label Idle --rows 4 --cols 4 --fps 8 [--loop] [--anchor bottom] [--prompt] [--status planned]` | Adds the motion. Call it before you generate, so the stage shows a placeholder. |
 | `set-motion --motion idle [--label] [--fps] [--loop\|--no-loop] [--anchor] [--prompt] [--status] [--notes]` | Edits motion metadata. `--notes` is where a failure reason belongs. |
 | `set-sheet --motion idle --file motions/idle/sheet-raw.png --from ref-turnaround[,…] [--model] [--prompt] [--background opaque] [--status generating\|processing]` | Registers `<motion>-sheet-raw` with a `generate` edge. `--from` becomes the edge's `fromAssetId`; `params.inputs` lists the whole set **only when you attach two or more references** — with one, `fromAssetId` already says everything. Re-running replaces the previous raw sheet and its edges, keeping the id stable. Call it twice per sheet (see below). |
-| `register-run --motion idle --run <run.json \| ->` | Consumes `sprite-sheet.mjs run` output: registers the alpha sheet (if any), every frame, the packed sheet, atlas, gif and webp with `derive` edges; **removes** the previous frame assets and edges for that motion; copies `inspect` into the motion (including the measured `anchorPoint`, which is what the viewer's pivot guide stands on); sets status `ready`. |
+| `add-motion … [--source sheet\|video]` | Records how the frames will be obtained, before anything is generated. Absent means `sheet`. |
+| `set-motion … [--ack-warnings "<reason>"] [--clear-ack]` | Accepts the motion's remaining inspect warnings with a one-sentence reason the user reads on the stage; the numbers stay visible and the badge dims. `--clear-ack` takes it back. Refused when the motion has no inspect report, and refused with an empty reason — the acknowledgement *is* the reason. |
+| `register-run --motion idle --run <run.json \| -> [--video <videoId>]` | Consumes `sprite-sheet.mjs run` output: registers the alpha sheet (if any), every frame, the packed sheet, atlas, gif and webp with `derive` edges; **removes** the previous frame assets and edges for that motion; copies `inspect` into the motion (including the measured `anchorPoint`, which is what the viewer's pivot guide stands on); sets status `ready`. A `from-video` summary derives the frames from the clip asset instead (`--video` names which, the newest is used with a note on stderr) and sets `motion.source`. Any acknowledgement goes with the measurement it covered. |
 | `add-video --motion idle --file motions/idle/video-seedance-1.mp4 --model seedance-2.5 --mode i2v --from idle-frame-00[,idle-frame-15] [--prompt] [--duration 4] [--status generating]` | Registers `<motion>-video-<n>` (n is the next free number) with a `generate` edge. |
 | `set-video --motion idle --video <id> --status ready\|failed [--notes]` | Closes out a video after the render returns. |
 | `remove-motion --motion idle` | Removes the motion, its assets and its edges. Files on disk are left alone; the orphaned paths are printed so you can delete them deliberately. |

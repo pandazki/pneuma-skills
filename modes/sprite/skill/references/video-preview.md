@@ -1,8 +1,21 @@
-# Video preview
+# Video: the second motion source, and the preview
 
-A clip is how the user *feels* a motion. It is never the source of frames —
-frames come from the sheet, cell-aligned; a clip's frames are neither aligned
-nor reliably the same character.
+A clip does two jobs in this mode, and they are not the same job.
+
+1. **A motion source.** A clip shot on a flat chroma-green plate is sampled
+   into frames by `sprite-sheet.mjs from-video`, keyed, cleaned, aligned and
+   packed exactly like a sheet's cells. This is the smoother of the two
+   sources — the model draws the in-betweens — and it is what a walk, a run or
+   an attack should be built from. It costs about a dollar and several minutes
+   per motion.
+2. **A preview.** A clip rendered *from* finished frames, so the user can feel
+   the motion. That clip is never sampled back into frames.
+
+The rule that used to read "video clips are previews, never sources" is now
+about job 2 only: a clip you rendered from the frames must not become the
+frames. A clip shot deliberately, on green, with the camera locked, IS a
+legitimate source — that is what `from-video` and `add-motion --source video`
+are for.
 
 Two scripts, deliberately the same CLI shape so one grammar covers both:
 
@@ -141,6 +154,63 @@ large shapes faithfully, and turns small text into plausible fake glyphs. For
 a sprite preview that is fine — there is no text in the frame. Go to 720p /
 768P only when the user asks for a keepsake.
 
+## The motion-source clip
+
+Shooting a clip to be *sampled* is a different prompt from shooting one to be
+*watched*. Six things have to be true or the frames are unusable, and the
+model will not do any of them unless asked:
+
+| Requirement | Why the pipeline needs it |
+|---|---|
+| Flat solid pure chroma green (#00FF00) filling the frame, evenly lit | `from-video --key auto` reads the corner patches of frame 00; a gradient or a vignette leaves the plate half-keyed |
+| No floor, no cast shadow, no reflection, no green spill on the character | A shadow keys as part of the silhouette; spill turns the character's edge green |
+| Locked-off camera — no pan, no tilt, no zoom, no parallax, no cut | Every camera move is read as the character moving, and the aligner faithfully removes it |
+| Character centred, fully in frame, constant size | A pose leaving the frame is a clipped cell; a size change is scale drift |
+| Feet (or contact points) on one fixed baseline, no walking or turning | The anchor is the feet; a character that walks across the plate cannot be pinned |
+| One continuous performance, ending in the starting pose when the motion loops | The frames are sampled evenly, so the clip's arc *is* the animation's arc |
+
+The template — fill the bracket, keep the rest verbatim:
+
+> One continuous [motion] of the character. The camera is locked off: no pan,
+> no tilt, no zoom, no parallax, no cut. The character stays centred and fully
+> inside the frame at a constant size, planted on one fixed baseline — no
+> walking, no turning, no stepping toward or away from the camera. The motion:
+> [what moves, in one or two clauses, with the secondary motion named]. The
+> background is a flat solid pure chroma green filling the whole frame, evenly
+> lit, no gradient, no floor, no cast shadow, no reflection, and no green
+> light spilling onto the character. The final frame returns to the opening
+> pose so the loop closes seamlessly.
+
+Drop the last sentence for a motion that does not loop.
+
+The `--image` is the character on that same green plate: take a reference (or
+frame 00 of an existing motion) and `sprite-sheet.mjs flatten --bg "#00ff00"`
+it, so the first frame the model extends already has the background the prompt
+asks for. The worked call, end to end:
+
+```bash
+node {SKILL_PATH}/scripts/sprite-sheet.mjs flatten <character>/refs/portrait.png \
+  --out <character>/motions/<id>/first-green.png --bg "#00ff00" --json
+
+node {SKILL_PATH}/scripts/seedance-video.mjs \
+  --prompt "One continuous idle loop of the character. The camera is locked off: no pan, no tilt, no zoom, no parallax, no cut. The character stays centred and fully inside the frame at a constant size, planted on one fixed baseline — no walking, no turning, no stepping toward or away from the camera. The motion: the chest and shoulders rise and fall once in one slow breath, the hair and the cloak trail a beat behind, the paper lantern beside her sways gently, and she blinks once. The background is a flat solid pure chroma green filling the whole frame, evenly lit, no gradient, no floor, no cast shadow, no reflection, and no green light spilling onto the character. The final frame returns to the opening pose so the loop closes seamlessly." \
+  --image <character>/motions/<id>/first-green.png \
+  --duration 4 --resolution 480p --no-audio \
+  --output <character>/motions/<id>/video-seedance-1.mp4 --json
+
+node {SKILL_PATH}/scripts/sprite-sheet.mjs from-video \
+  <character>/motions/<id>/video-seedance-1.mp4 \
+  --out <character>/motions/<id> --name <id> --frames 16 --loop --json \
+  > <character>/motions/<id>/run.json
+```
+
+Only a reference that already shows the whole character can be flattened
+straight to green. A reference with a white plate is white *inside* the
+character too (eye whites, a cream cloak), so keying the white first would
+punch holes in it — flatten an existing motion's `frames/00.png`, which is
+already cut out, or accept the white plate and let the model repaint the
+background from the prompt.
+
 ## Bookkeeping around the call
 
 Always, in this order:
@@ -200,6 +270,44 @@ once and then leave it alone: it is already polling the queue for you, so
 there is nothing to check on, and a second submission because the first went
 quiet is a second render and a second bill. It retries transient failures
 itself.
+
+## Measured: the video source (Lumi portrait, 2026-09-10)
+
+One Seedance 2.5 i2v clip of the seed's portrait flattened onto pure green,
+shot with the template above and sampled with `from-video --frames 16 --loop`:
+
+| Measurement | Value |
+|---|---|
+| clip | 640×640, 24 fps, 97 frames, 4.04 s, 552 KB, `--duration 4 --resolution 480p --no-audio` |
+| the plate the model actually painted | `#08f00d` — near the #00FF00 asked for, not equal to it, which is why `--key auto` measures it instead of assuming |
+| alpha coverage after keying | **0.4438** (the character is 44 % of the frame; the plate is gone) |
+| green fringe | a **1 px** dark-green rim on the silhouette — 2.8 % of the sprite's opaque pixels. It is the anti-aliased ramp between the plate and the black ink outline, so no similarity setting reaches it without eating the drawing. It disappears under `pack --scale 0.5` and is invisible at sprite size |
+| `bodyDrift` | **0.343 px** on a 622 px cell — 0.06 % of the cell, against a 5 % warning threshold |
+| `anchorDrift` | x 2.921 px, y 0 |
+| `maxJump` | 3 px (threshold: 8 % of 622 = 50 px) |
+| `scaleDrift` | 0.0226 (threshold 0.15) |
+| `cleaned` | `[]` — nothing to remove; a single-subject clip on a flat plate produces one blob per frame, and the lantern is far too big to be litter |
+| warnings | none |
+| `from-video` wall time | **12.4 s** for 16 frames (17 seeks + 16 decodes + align + pack + gif + webp + inspect) |
+| cell | 622×644 from a 640×640 frame, `--cell auto` |
+| default fps | 3.959 = 16 frames / 4.042 s — the clip at its own speed |
+
+**Why `--similarity` defaults to 0.22 on video and 0.12 on a sheet.** Sweeping
+the key on frame 00 of that clip:
+
+| `--similarity` | alpha coverage | greenish pixels left in the sprite |
+|---|---|---|
+| 0.10 | 0.4398 | 3.48 % |
+| 0.15 | 0.4368 | 2.82 % |
+| 0.22 | 0.4334 | 2.06 % |
+| 0.30 | 0.4295 | 1.17 % |
+| 0.35 | 0.4272 | 0.67 % |
+
+Every pixel lost between 0.10 and 0.35 is a greenish one — on *this* character
+the wider key only ate fringe. 0.22 is the default because it roughly halves
+the fringe while staying far from any palette; raise it toward 0.30 for a
+character with no green in its colours, and lower it toward the sheet default
+for one that is partly green, where a wide key would eat the costume.
 
 **Flatten first, always.** Both keyframes went through
 `sprite-sheet.mjs flatten --bg "#f0ece4"`; a light neutral suits this

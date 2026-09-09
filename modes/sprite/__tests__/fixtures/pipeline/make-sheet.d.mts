@@ -51,3 +51,24 @@ export declare const CELL_OFFSETS: SquareSpec[];
 export declare function buildSheet(outPath: string, options?: BuildSheetOptions): string;
 export declare function readBbox(path: string, threshold?: number): BboxReport;
 export declare function readColorBbox(path: string, hex: string, threshold?: number): BboxReport;
+
+/** One box drawn per frame of a clip, at a y that rides a 2px sine over t. */
+export interface ClipBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  color?: string;
+}
+
+export interface BuildClipOptions {
+  width?: number;
+  height?: number;
+  seconds?: number;
+  fps?: number;
+  /** Any ffmpeg colour expression; the chroma plate `from-video` keys away. */
+  background?: string;
+  box?: ClipBox;
+}
+
+export declare function buildClip(outPath: string, options?: BuildClipOptions): string;

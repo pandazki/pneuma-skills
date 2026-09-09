@@ -29,6 +29,46 @@ is the style.
    asked for here and cut off afterwards by the keying step — a *drawn* floor
    or a gradient is what makes that cut hard, so name them as negatives.
 
+## The five clauses that make the cut clean
+
+These are not style choices; they are what the keying and alignment steps need
+in order to work at all. Every sheet prompt carries all five.
+
+- **No floor, no cast shadow.** A shadow is opaque, so it lands in the alpha
+  and the aligner treats it as part of the character — the silhouette grows a
+  smear that moves with the pose, and the anchor moves with it.
+- **Preserve white and pale details inside the character.** Say it out loud
+  ("keep the white highlights, the cream cloak and the eye whites fully
+  opaque, only the background is white") — a colour key cannot tell the plate
+  from a white the character is wearing, and the fastest way to lose an eye is
+  to let the model paint it the same white as the backdrop.
+- **At least 16 px of empty background on every side of every cell**, moving
+  accessories included. A pose that touches its cell edge is a pose whose
+  neighbour bleeds into it, and `inspect` will say so ("cell NN is clipped").
+  The padding is what `clean` needs too: a fragment that reaches a border is
+  the one thing it can safely identify as litter.
+- **A fixed baseline and identical alignment in every cell.** "The character
+  stands on the same ground line in every cell, the same distance from the
+  left edge of its cell, at identical height" — the aligner can move a
+  drawing, but it cannot tell a deliberate lunge from a cell drawn 20 px lower
+  than the rest.
+- **Close the loop** when the motion loops: "the last cell returns exactly to
+  the first cell's pose so the cycle repeats seamlessly". Nobody asks for this
+  and every model forgets it.
+
+## Drawing a character that is not a person
+
+- **Adapt the anatomy to the chibi proportions, do not force the body into a
+  human one.** A two-headed-tall human is a chibi; a two-headed-tall dragon is
+  a dragon with its own proportions squashed, not a human with a snout. Say
+  which parts scale ("large head, short limbs, the tail and wings keep their
+  own proportions") rather than naming a human template.
+- **Infer what the reference does not show.** A portrait reference is a bust,
+  so a full-body sheet has to invent legs. Say so — "the reference is cropped
+  at the chest; extend it to a full body consistent with the costume and
+  palette" — or the model either crops every cell to the same bust or invents
+  a different lower half in each one.
+
 ## The call
 
 The five parts above are one argument, quoted. This is the whole invocation —
@@ -93,6 +133,51 @@ once for all the scripts).
   registers, and `--output-dir <character>/refs --filename-prefix turnaround`
   is what puts the reference where `add-ref --file refs/turnaround.png` expects
   it.
+
+## The canonical sheet spec
+
+One shape covers most motions, and it is the one the pipeline is tuned for:
+
+> **A single 1024×1024 image, a strict 4×4 grid of 16 equal 256×256 cells,
+> read left to right, top to bottom. Each cell holds one frame of the
+> character, centred, with at least 16 px of empty background on every side —
+> including anything the character is holding or wearing that moves. The
+> character stands on the same baseline in every cell and is drawn at
+> identical height and identical distance from the camera. A flat solid pure
+> white background fills every cell, no gradient, no cell borders, no
+> numbers.**
+
+Paste that after the style anchor, then say what the sixteen frames *are*.
+`--image-size 1024x1024` gives exactly the 256 px cell a character with
+`cell: 256×256` declares; go to `2048x2048` (a 512 px cell) when the frames
+are a hand-off to an engine or may be re-packed larger, and say why. The
+default the workflow prints is 2048; 1024 is the cheaper iteration tier and a
+quarter of the bytes on disk.
+
+## The idle recipe
+
+Idle is the motion every character needs first and the one most easily got
+wrong — an idle that "does something" reads as a twitch. The recipe, as a
+16-frame 4×4 sheet at 6–7 fps (a ≈ 2.4 s cycle):
+
+- **One gentle breathing rise and fall across the whole cycle.** The chest and
+  shoulders lift over the first half and settle over the second; the head
+  follows by a pixel or two. That is the entire primary motion.
+- **Exactly one secondary motion**, lagging a beat behind the body — hair, a
+  cloak hem, a tail, a held lantern. One, not three: two competing secondaries
+  read as wind, not as breathing.
+- **One brief blink** if the eyes are visible, in a single cell somewhere in
+  the second half. A blink spread over three cells is a character falling
+  asleep.
+- **The feet, or whatever the character rests on, do not move at all.** Name
+  the contact points and pin them: "the feet stay planted on the same baseline
+  in every cell".
+- **No walking, no turning, no stepping toward the camera**, and no change of
+  facing. Those are other motions.
+- **The last cell flows back into the first** — say it by number ("cell 16
+  returns exactly to the cell-1 pose").
+
+Written out, that is the first worked prompt below.
 
 ## Three worked prompts
 
