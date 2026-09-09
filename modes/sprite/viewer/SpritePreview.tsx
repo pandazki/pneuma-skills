@@ -1,115 +1,639 @@
 /**
- * Sprite viewer — STUB.
+ * Sprite viewer — the motion stage.
  *
- * The real motion stage (refs rail, motion list, frame player, GIF / video /
- * atlas panels, the four actions) is a later task. This stub exists so the
- * mode boots end to end: it subscribes to the same `roster` source the real
- * viewer will, resolves the active character the same way, and renders enough
- * for a human to see that the pipeline is landing files. It deliberately
- * implements NO action — a viewer that answered `play` with a shrug would be
- * worse than one the runtime can see has nothing wired.
+ * The shell: it owns the character selection, the playback clock, and every
+ * seam that faces the agent (actions, locator navigation, capture, commands).
+ * The pieces it composes are dumb on purpose — `Stage` draws, `FrameStrip`
+ * transports, `MotionRail` lists, `PreviewPanel` shows deliverables — because
+ * the state that must stay coherent is exactly the state an agent can read
+ * back with `get-playback-state`, and it lives here in one place.
+ *
+ * Two conventions worth knowing before changing anything:
+ *
+ * 1. AN AGENT'S NAVIGATION PAUSES; A HUMAN'S CLICK PLAYS. `navigate-to`
+ *    seeks and stops, because `capture` pre-navigates and then screenshots
+ *    ~1.1 s later — a stage still animating would hand back whichever frame
+ *    happened to land, and the agent would believe it was looking at the one
+ *    it asked for. A locator card pressed by a person is the opposite case:
+ *    they want to see it move, so that path autoplays.
+ *
+ * 2. NOTHING HERE WRITES. Frames, atlases, previews and `project.json` are
+ *    produced by the mode's scripts; the viewer reads. fps and loop are
+ *    session-local overrides (see `FrameStrip`), and every user request that
+ *    would change a file goes to the agent as a command notification.
+ *
+ * Player compatibility (`5c`): every asset URL is `/content/...`, no `/api/*`
+ * call is made at render time, and the command bar is gated on
+ * `editing !== false`, `readonly` and `staticPlayer`, so the hosted player
+ * shows a motion without offering to change it.
  */
 
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Source } from "../../../core/types/source.js";
-import type { ViewerPreviewProps } from "../../../core/types/viewer-contract.js";
+import type {
+  ViewerActionResult,
+  ViewerPreviewProps,
+} from "../../../core/types/viewer-contract.js";
 import { useSource } from "../../../src/hooks/useSource.js";
 import { useStore } from "../../../src/store.js";
-import type { CharacterProject, Motion, Roster } from "../domain.js";
+import {
+  findMotion,
+  findRef,
+  resolveAssetUri,
+  type CharacterProject,
+  type Motion,
+  type Roster,
+  type VideoModel,
+} from "../domain.js";
+import { setSpriteStageCapture } from "../pneuma-mode.js";
+import { CommandBar } from "./CommandPopovers.js";
+import { FrameStrip } from "./FrameStrip.js";
+import { frameThumbnail, type StageBackground, type StageZoom } from "./frame-render.js";
+import { MotionRail } from "./MotionRail.js";
+import { PreviewPanel, type PanelTab } from "./PreviewPanel.js";
+import {
+  advance,
+  clampFrame,
+  declaredFrameCount,
+  frameCountOf,
+  parseAddress,
+  playbackStateData,
+  resolveAddress,
+  resolveFrameSource,
+  selectActiveCharacter,
+  stepFrame,
+  type FrameSource,
+  type PlaybackState,
+} from "./playback.js";
+import { Stage } from "./Stage.js";
+import { RailIcon } from "./icons.js";
+import { useFrameImages } from "./useFrameImages.js";
+import { contentUrl } from "./urls.js";
 
-const STATUS_TONE: Record<Motion["status"], string> = {
-  planned: "text-[var(--cc-text-muted,#a1a1aa)] border-white/15",
-  generating: "text-[#f97316] border-[#f97316]/40",
-  processing: "text-[#f97316] border-[#f97316]/40",
-  ready: "text-[#4ade80] border-[#4ade80]/40",
-  failed: "text-[#f87171] border-[#f87171]/40",
-};
+/** Below this the preview panel moves under the stage instead of beside it. */
+const WIDE_PANE_PX = 900;
+/** Below this the rail folds away — the stage is what matters on a small pane. */
+const RAIL_PANE_PX = 680;
 
-/**
- * Which character the stage shows. `activeContentSet` is the framework's
- * answer when the workspace has switchable sets; a workspace with a single
- * character never surfaces one, so fall back to the first key rather than
- * rendering the empty state over a character that is right there.
- */
-export function selectActiveCharacter(
-  roster: Roster | null,
-  activeContentSet: string | null | undefined,
-): CharacterProject | null {
-  if (!roster) return null;
-  if (activeContentSet != null && roster.byContentSet[activeContentSet]) {
-    return roster.byContentSet[activeContentSet];
-  }
-  const first = Object.keys(roster.byContentSet).sort()[0];
-  return first === undefined ? null : roster.byContentSet[first];
-}
+export { selectActiveCharacter };
 
 export default function SpritePreview(props: ViewerPreviewProps) {
   const rosterSource = props.sources.roster as Source<Roster> | undefined;
   const { value: roster } = useSource(rosterSource);
   const activeContentSet = useStore((s) => s.activeContentSet);
+  const staticPlayer = useStore((s) => s.staticPlayer);
 
   const character = useMemo(
     () => selectActiveCharacter(roster, activeContentSet),
     [roster, activeContentSet],
   );
 
+  // ── Selection ────────────────────────────────────────────────────────────
+  const [motionId, setMotionId] = useState<string | null>(null);
+  const [refId, setRefId] = useState<string | null>(null);
+  const [fpsOverride, setFpsOverride] = useState<number | null>(null);
+  const [loopOverride, setLoopOverride] = useState<boolean | null>(null);
+
+  // ── Stage chrome ─────────────────────────────────────────────────────────
+  const [background, setBackground] = useState<StageBackground>("checker");
+  const [zoom, setZoom] = useState<StageZoom>("fit");
+  const [onion, setOnion] = useState(false);
+  const [ground, setGround] = useState(true);
+  const [tab, setTab] = useState<PanelTab>("gif");
+  const [railOpen, setRailOpen] = useState(true);
+  const [paneWidth, setPaneWidth] = useState(1200);
+
+  // ── Playback ─────────────────────────────────────────────────────────────
+  const playRef = useRef<PlaybackState>({ frame: 0, acc: 0, playing: false });
+  const [frame, setFrame] = useState(0);
+  const [playing, setPlaying] = useState(false);
+
+  const motion = useMemo(
+    () => (character && motionId ? (findMotion(character, motionId) ?? null) : null),
+    [character, motionId],
+  );
+
+  const motionSource = useMemo(
+    () => resolveFrameSource(character, motion, props.imageVersion),
+    [character, motion, props.imageVersion],
+  );
+
+  // A reference is put on the stage as a one-frame source, so it goes through
+  // the same draw, the same zoom and the same capture as everything else.
+  const refUrl = useMemo(() => {
+    if (!character || !refId) return null;
+    const ref = findRef(character, refId);
+    const uri = ref ? resolveAssetUri(character, ref.asset) : undefined;
+    return uri ? contentUrl(character.contentSet, uri, props.imageVersion) : null;
+  }, [character, refId, props.imageVersion]);
+
+  const stageSource: FrameSource = useMemo(
+    () =>
+      refUrl
+        ? { kind: "raw-sheet", url: refUrl, cols: 1, rows: 1, count: 1, alpha: true }
+        : motionSource,
+    [refUrl, motionSource],
+  );
+
+  const images = useFrameImages(stageSource);
+  const count = frameCountOf(stageSource);
+  const countRef = useRef(count);
+  countRef.current = count;
+
+  const fps = fpsOverride ?? motion?.fps ?? 8;
+  const loop = loopOverride ?? motion?.loop ?? true;
+
+  const setPlay = useCallback((value: boolean) => {
+    playRef.current = { ...playRef.current, playing: value, acc: 0 };
+    setPlaying(value);
+  }, []);
+
+  const seek = useCallback((next: number) => {
+    const clamped = clampFrame(next, countRef.current);
+    playRef.current = { ...playRef.current, frame: clamped, acc: 0 };
+    setFrame(clamped);
+  }, []);
+
+  /** Put a motion on the stage. `play` is the caller's intent, not a default. */
+  const lastMotionRef = useRef<string | null>(null);
+  const showMotion = useCallback(
+    (id: string, options: { frame?: number | null; play?: boolean } = {}) => {
+      setRefId(null);
+      // Overrides belong to the motion they were dialled in on.
+      if (lastMotionRef.current !== id) {
+        lastMotionRef.current = id;
+        setFpsOverride(null);
+        setLoopOverride(null);
+      }
+      setMotionId(id);
+      const target = character ? findMotion(character, id) : null;
+      const frameTarget = clampFrame(
+        options.frame ?? 0,
+        target ? declaredFrameCount(target) : 0,
+      );
+      playRef.current = { frame: frameTarget, acc: 0, playing: options.play ?? false };
+      setFrame(frameTarget);
+      setPlaying(options.play ?? false);
+    },
+    [character],
+  );
+
+  /** Whether a motion is worth autoplaying: it has to have something to play. */
+  const playable = useCallback(
+    (candidate: Motion | null | undefined): boolean =>
+      !!candidate && declaredFrameCount(candidate) > 1,
+    [],
+  );
+
+  // Land on something as soon as a character exists, and never keep pointing
+  // at a motion the agent has removed.
+  useEffect(() => {
+    if (!character) {
+      setMotionId(null);
+      return;
+    }
+    const motions = character.sprite.motions;
+    if (motionId && motions.some((m) => m.id === motionId)) return;
+    const next = motions.find((m) => m.status === "ready") ?? motions[0];
+    if (next) showMotion(next.id, { play: playable(next) });
+    else setMotionId(null);
+  }, [character, motionId, showMotion, playable]);
+
+  // The frame source can shrink under the playhead (a re-run with fewer
+  // frames); keep the index inside it rather than drawing nothing.
+  useEffect(() => {
+    if (playRef.current.frame < count) return;
+    seek(count - 1);
+  }, [count, seek]);
+
+  // ── The clock ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!playing || !images.ready || count <= 1) return;
+    let raf = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      const next = advance(playRef.current, now - last, {
+        frameCount: count,
+        fps,
+        loop,
+      });
+      last = now;
+      if (next.frame !== playRef.current.frame) setFrame(next.frame);
+      playRef.current = next;
+      if (!next.playing) {
+        setPlaying(false);
+        return;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [playing, images.ready, count, fps, loop]);
+
+  // ── Selection reported to the agent ──────────────────────────────────────
+  const { onSelect } = props;
+  const reportSelection = useCallback(
+    (target: Motion | null, frameIndex: number | null) => {
+      if (!character || !target) {
+        onSelect(null);
+        return;
+      }
+      const address: Record<string, unknown> = {
+        contentSet: character.contentSet,
+        motion: target.id,
+      };
+      if (frameIndex !== null) address.frame = frameIndex;
+      const thumbnail =
+        frameIndex !== null ? frameThumbnail(stageSource, images, frameIndex) : null;
+      onSelect({
+        type: "image",
+        content: target.prompt || target.label,
+        label:
+          frameIndex !== null
+            ? `${target.label} — frame ${String(frameIndex).padStart(2, "0")}`
+            : `${target.label} (${target.status})`,
+        address,
+        ...(thumbnail ? { thumbnail } : {}),
+      });
+    },
+    [character, onSelect, stageSource, images],
+  );
+
+  const reportRefSelection = useCallback(
+    (id: string) => {
+      if (!character) return;
+      const ref = findRef(character, id);
+      if (!ref) return;
+      onSelect({
+        type: "image",
+        content: ref.label,
+        label: `${ref.label} (reference, ${ref.role})`,
+        address: { contentSet: character.contentSet, ref: ref.id },
+      });
+    },
+    [character, onSelect],
+  );
+
+  // ── Capture: the stage canvas, not the whole pane ────────────────────────
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const handleCanvas = useCallback((canvas: HTMLCanvasElement | null) => {
+    canvasRef.current = canvas;
+  }, []);
+
+  useEffect(() => {
+    setSpriteStageCapture(async () => {
+      const canvas = canvasRef.current;
+      if (!canvas || canvas.width === 0 || canvas.height === 0) return null;
+      try {
+        const url = canvas.toDataURL("image/png");
+        return { data: url.slice(url.indexOf(",") + 1), media_type: "image/png" };
+      } catch {
+        // Tainted canvas — let the framework fall back to a DOM capture.
+        return null;
+      }
+    });
+    return () => setSpriteStageCapture(null);
+  }, []);
+
+  // ── Address routing, shared by the action and the locator card ───────────
+  const runAddress = useCallback(
+    (raw: unknown, intent: { autoplay: boolean }): ViewerActionResult => {
+      const address = parseAddress(raw);
+      const resolution = resolveAddress(character, address, motionId);
+      const target = resolution.target;
+      if (target?.kind === "ref") {
+        setRefId(target.refId);
+        setPlay(false);
+      } else if (target?.kind === "motion") {
+        const next = character ? findMotion(character, target.motionId) : null;
+        showMotion(target.motionId, {
+          frame: target.frame ?? 0,
+          // An address that names a frame always stops there — that is the
+          // whole point of naming it.
+          play: target.frame === null && intent.autoplay && playable(next),
+        });
+      } else if (target?.kind === "character") {
+        setRefId(null);
+      }
+      return {
+        success: resolution.ok,
+        ...(resolution.message ? { message: resolution.message } : {}),
+      };
+    },
+    [character, motionId, setPlay, showMotion, playable],
+  );
+
+  /** The stage described for the agent, optionally about another motion. */
+  const readState = useCallback(
+    (raw: unknown): ViewerActionResult => {
+      const address = parseAddress(raw);
+      const named = address.motion && character ? findMotion(character, address.motion) : null;
+      if (address.motion && !named) {
+        return {
+          success: false,
+          message: `Motion "${address.motion}" is not in this character.`,
+        };
+      }
+      const subject = named ?? motion;
+      const onStage = !named || named.id === motionId;
+      const source = onStage
+        ? stageSource
+        : resolveFrameSource(character, subject, props.imageVersion);
+      const data = playbackStateData({
+        project: character,
+        motion: subject,
+        source,
+        frame: onStage ? frame : 0,
+        playing: onStage ? playing : false,
+        fps: onStage ? fps : (subject?.fps ?? 8),
+        loop: onStage ? loop : (subject?.loop ?? true),
+      });
+      if (refId && onStage) {
+        data.warnings = [
+          ...data.warnings,
+          `A reference image ("${refId}") is on the stage instead of the motion.`,
+        ];
+      }
+      return {
+        success: true,
+        ...(onStage ? {} : { message: `"${subject?.id}" is not the motion on stage.` }),
+        data,
+      };
+    },
+    [character, motion, motionId, stageSource, frame, playing, fps, loop, refId, props.imageVersion],
+  );
+
+  // ── Agent actions ────────────────────────────────────────────────────────
+  const { actionRequest, onActionResult } = props;
+  useEffect(() => {
+    if (!actionRequest || !onActionResult) return;
+    const { requestId, actionId, params } = actionRequest;
+
+    switch (actionId) {
+      case "navigate-to": {
+        const result = runAddress(params?.address, { autoplay: false });
+        onActionResult(requestId, {
+          ...result,
+          data: (readState(params?.address).data ?? {}) as Record<string, unknown>,
+        });
+        break;
+      }
+      case "play": {
+        let result: ViewerActionResult = { success: true };
+        if (params?.address !== undefined) {
+          result = runAddress(params.address, { autoplay: false });
+          if (!result.success) {
+            onActionResult(requestId, result);
+            break;
+          }
+        }
+        if (typeof params?.fps === "number" && params.fps > 0) {
+          setFpsOverride(params.fps);
+        }
+        if (typeof params?.loop === "boolean") setLoopOverride(params.loop);
+        setPlay(true);
+        onActionResult(requestId, { ...result, success: true });
+        break;
+      }
+      case "pause": {
+        setPlay(false);
+        onActionResult(requestId, {
+          success: true,
+          data: { ...(readState(undefined).data ?? {}), playing: false },
+        });
+        break;
+      }
+      case "get-playback-state": {
+        onActionResult(requestId, readState(params?.address));
+        break;
+      }
+      default:
+        onActionResult(requestId, {
+          success: false,
+          message: `Unknown action: ${actionId}`,
+        });
+    }
+    // Only a NEW request may run this; every value it reads comes from the
+    // render that request arrived in.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actionRequest]);
+
+  // ── Locator cards ────────────────────────────────────────────────────────
+  const { navigateRequest, onNavigateComplete } = props;
+  useEffect(() => {
+    if (!navigateRequest) return;
+    const result = runAddress(navigateRequest.address, { autoplay: true });
+    onNavigateComplete?.(result);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigateRequest]);
+
+  // ── Layout ───────────────────────────────────────────────────────────────
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width;
+      if (width) setPaneWidth(Math.round(width));
+    });
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, []);
+
+  const showRail = railOpen && paneWidth >= RAIL_PANE_PX;
+  const panelPlacement = paneWidth >= WIDE_PANE_PX ? "side" : "bottom";
+
+  const commandsEnabled =
+    props.editing !== false && !props.readonly && !staticPlayer && !!props.onNotifyAgent;
+  const defaultVideoModel: VideoModel =
+    props.initParams?.defaultVideoModel === "h3-max" ? "h3-max" : "seedance-2.5";
+
   if (!character) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-[#09090b] p-8 text-center">
-        <p className="max-w-md text-sm text-[var(--cc-text-muted,#a1a1aa)]">
-          Sprite mode initialized — ask the agent to design a character
-        </p>
+      <div
+        ref={rootRef}
+        className="flex h-full w-full items-center justify-center bg-cc-bg p-8 text-center"
+      >
+        <div className="max-w-md">
+          <h1 className="text-base text-cc-fg">No character yet</h1>
+          <p className="mt-2 text-sm leading-relaxed text-cc-muted">
+            Sprite starts with a character — a name, a look, a style. Describe
+            one in the chat and the agent will draw its references, then you can
+            ask for motions: idle, walk, attack.
+          </p>
+        </div>
       </div>
     );
   }
 
-  const { character: identity, refs, motions } = character.sprite;
+  const identity = character.sprite.character;
+  const refCount = character.sprite.refs.length;
+  const motionCount = character.sprite.motions.length;
+  const activeRef = refId ? findRef(character, refId) : null;
 
   return (
-    <div className="h-full w-full overflow-auto bg-[#09090b] p-8 text-[var(--cc-text,#e4e4e7)]">
-      <header className="mb-6">
-        <h1 className="text-xl font-semibold tracking-tight">{identity.name}</h1>
-        {identity.description ? (
-          <p className="mt-1 max-w-2xl text-sm text-[var(--cc-text-muted,#a1a1aa)]">
-            {identity.description}
+    <div ref={rootRef} className="flex h-full w-full flex-col bg-cc-bg text-cc-fg">
+      <header className="relative z-30 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-cc-border bg-cc-surface/40 px-3 py-2 backdrop-blur">
+        <button
+          type="button"
+          onClick={() => setRailOpen((value) => !value)}
+          title={showRail ? "Hide the rail" : "Show the rail"}
+          aria-pressed={showRail}
+          disabled={paneWidth < RAIL_PANE_PX}
+          className={`rounded p-1.5 transition-colors focus-visible:ring-2 focus-visible:ring-cc-primary/60 disabled:opacity-30 ${
+            showRail
+              ? "bg-cc-primary/15 text-cc-primary"
+              : "text-cc-muted hover:bg-cc-hover hover:text-cc-fg"
+          }`}
+        >
+          <RailIcon size={14} />
+        </button>
+
+        <div className="flex min-w-0 flex-col">
+          <h1 className="truncate text-sm font-medium text-cc-fg">
+            {identity.name}
+          </h1>
+          <p className="truncate text-[11px] text-cc-muted">
+            {identity.cell.width}×{identity.cell.height} cell
+            {identity.facing ? ` · facing ${identity.facing}` : ""} · {refCount}{" "}
+            reference{refCount === 1 ? "" : "s"} · {motionCount} motion
+            {motionCount === 1 ? "" : "s"}
           </p>
+        </div>
+
+        {identity.style ? (
+          <span
+            className="hidden max-w-[22rem] truncate rounded-full border border-cc-border px-2 py-0.5 text-[11px] text-cc-muted lg:inline"
+            title={identity.style}
+          >
+            {identity.style}
+          </span>
         ) : null}
-        <p className="mt-2 text-xs text-[var(--cc-text-muted,#a1a1aa)]">
-          {identity.cell.width}×{identity.cell.height} cell · {refs.length}{" "}
-          reference{refs.length === 1 ? "" : "s"} · {motions.length} motion
-          {motions.length === 1 ? "" : "s"}
-        </p>
+
+        <div className="ml-auto flex items-center gap-1.5">
+          {commandsEnabled && props.commands?.length ? (
+            <CommandBar
+              commands={props.commands}
+              motion={motion}
+              defaultVideoModel={defaultVideoModel}
+              onNotifyAgent={props.onNotifyAgent!}
+            />
+          ) : null}
+        </div>
       </header>
 
-      <ul className="flex max-w-2xl flex-col gap-2">
-        {motions.map((motion) => (
-          <li
-            key={motion.id}
-            className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3 backdrop-blur"
-          >
-            <span className="flex flex-col">
-              <span className="text-sm">{motion.label}</span>
-              <span className="text-xs text-[var(--cc-text-muted,#a1a1aa)]">
-                {motion.grid.cols}×{motion.grid.rows} · {motion.fps} fps ·{" "}
-                {motion.loop ? "loop" : "once"} · {motion.frames.length} frame
-                {motion.frames.length === 1 ? "" : "s"}
-              </span>
-            </span>
-            <span
-              className={`rounded-full border px-2 py-0.5 text-[11px] uppercase tracking-wide ${STATUS_TONE[motion.status]}`}
-            >
-              {motion.status}
-            </span>
-          </li>
-        ))}
-      </ul>
+      <div className="flex min-h-0 flex-1">
+        {showRail ? (
+          <MotionRail
+            project={character}
+            imageVersion={props.imageVersion}
+            selectedMotionId={motionId}
+            selectedRefId={refId}
+            onSelectMotion={(id) => {
+              const next = findMotion(character, id);
+              showMotion(id, { play: playable(next) });
+              reportSelection(next ?? null, null);
+            }}
+            onSelectRef={(id) => {
+              setRefId(id);
+              setPlay(false);
+              reportRefSelection(id);
+            }}
+          />
+        ) : null}
 
-      {motions.length === 0 ? (
-        <p className="max-w-2xl text-sm text-[var(--cc-text-muted,#a1a1aa)]">
-          No motions yet — ask the agent for one (idle, walk, attack…).
-        </p>
-      ) : null}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col">
+            <Stage
+              source={stageSource}
+              images={images}
+              frame={frame}
+              motion={refId ? null : motion}
+              refLabel={activeRef ? activeRef.label : null}
+              theme={props.theme}
+              background={background}
+              zoom={zoom}
+              onion={onion}
+              ground={ground}
+              onBackground={setBackground}
+              onZoom={setZoom}
+              onOnion={setOnion}
+              onGround={setGround}
+              onCanvas={handleCanvas}
+            />
+
+            {activeRef ? (
+              <div className="flex shrink-0 items-center gap-2 border-t border-cc-border bg-cc-surface/30 px-3 py-2 text-[11px]">
+                <span className="text-cc-muted">
+                  Showing the reference{" "}
+                  <span className="text-cc-fg">{activeRef.label}</span>
+                </span>
+                {motion ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRefId(null);
+                      showMotion(motion.id, { play: playable(motion) });
+                    }}
+                    className="ml-auto rounded border border-cc-border px-2 py-1 text-cc-muted transition-colors hover:border-cc-primary/40 hover:text-cc-primary"
+                  >
+                    Back to {motion.label}
+                  </button>
+                ) : null}
+              </div>
+            ) : (
+              <FrameStrip
+                source={stageSource}
+                images={images}
+                frame={frame}
+                playing={playing}
+                count={count}
+                fps={fps}
+                loop={loop}
+                motionFps={motion?.fps ?? 8}
+                motionLoop={motion?.loop ?? true}
+                onTogglePlay={() => setPlay(!playing)}
+                onStep={(delta) => {
+                  setPlay(false);
+                  const next = stepFrame(playRef.current.frame, delta, count);
+                  seek(next);
+                  reportSelection(motion, next);
+                }}
+                onSeek={(index) => {
+                  setPlay(false);
+                  seek(index);
+                  reportSelection(motion, index);
+                }}
+                onFps={(value) => setFpsOverride(value)}
+                onLoop={(value) => setLoopOverride(value)}
+              />
+            )}
+          </div>
+
+          {panelPlacement === "bottom" ? (
+            <PreviewPanel
+              project={character}
+              motion={motion}
+              imageVersion={props.imageVersion}
+              tab={tab}
+              onTab={setTab}
+              placement="bottom"
+            />
+          ) : null}
+        </div>
+
+        {panelPlacement === "side" ? (
+          <PreviewPanel
+            project={character}
+            motion={motion}
+            imageVersion={props.imageVersion}
+            tab={tab}
+            onTab={setTab}
+            placement="side"
+          />
+        ) : null}
+      </div>
     </div>
   );
 }

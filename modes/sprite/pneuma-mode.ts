@@ -182,6 +182,30 @@ export function extractSpriteContext(
   return `<viewer-context ${attrs.join(" ")}>\n${lines.join("\n")}\n</viewer-context>`;
 }
 
+// ── Capture seam ───────────────────────────────────────────────────────────
+
+/**
+ * The mounted stage's canvas renderer, registered by `SpritePreview`.
+ *
+ * `capture` screenshots whatever the framework hands it — by default the whole
+ * viewer pane, chrome and rails included. For this mode the answer to "what am
+ * I looking at" is the STAGE: the sprite, its background and its pivot guides,
+ * at the frame the agent asked for. `captureViewer` prefers a viewer-supplied
+ * renderer over both the Electron window grab and snapdom, so returning the
+ * canvas here is what makes `navigate-to` + `capture` produce a picture of one
+ * frame rather than a picture of the UI.
+ *
+ * Returning `null` (nothing mounted, or a tainted canvas) is not a failure —
+ * the framework falls through to its own strategies.
+ */
+type StageCapture = () => Promise<{ data: string; media_type: string } | null>;
+
+const stageCapture: { current: StageCapture | null } = { current: null };
+
+export function setSpriteStageCapture(capture: StageCapture | null): void {
+  stageCapture.current = capture;
+}
+
 // ── Mode Definition ────────────────────────────────────────────────────────
 
 const workspace = spriteManifest.viewerApi!.workspace!;
@@ -231,6 +255,10 @@ const spriteMode: ModeDefinition = {
     // The manifest is the single source of truth for the action space —
     // re-listing them here is how modes end up declaring two different sets.
     actions: spriteManifest.viewerApi?.actions,
+
+    async captureViewport() {
+      return stageCapture.current ? stageCapture.current() : null;
+    },
 
     updateStrategy: "incremental",
   },
