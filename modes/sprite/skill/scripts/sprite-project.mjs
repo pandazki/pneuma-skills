@@ -17,9 +17,11 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  closeSync, existsSync, openSync, readFileSync, readSync, readdirSync,
+  realpathSync, renameSync, rmSync, writeFileSync,
+} from "node:fs";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { realpathSync } from "node:fs";
 import { parseArgs } from "node:util";
 
 const SCHEMA = "pneuma-craft/project/v1";
@@ -70,8 +72,11 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
   register-run --motion <motionId> --run <run.json|-> [--at <ms>]
       Consume a 'sprite-sheet.mjs run' summary: registers sheet-alpha (when
       keyed), every frame, the packed sheet, the atlas, the GIF and the WebP,
-      wires their provenance, drops the previous run's assets, copies the
-      inspect summary into the motion and sets it ready.
+      wires their provenance, copies the inspect summary into the motion and
+      sets it ready. Re-registering rewrites those assets in place and drops
+      only what the previous run left over (the tail of a longer motion), so
+      a video keeps the frame it was generated from. The run's intermediate
+      'cells' are not registered.
 
   add-video --motion <motionId> --file <path> --model ${VIDEO_MODELS.join("|")}
             --mode ${VIDEO_MODES.join("|")} [--from <assetId,…>] [--prompt]
@@ -213,14 +218,71 @@ function ffprobeEntries(path, entries) {
   return out;
 }
 
-function imageMetadata(path, label) {
+/**
+ * Canvas size of a WebP, read straight out of the RIFF header.
+ *
+ * ffprobe (tested on ffmpeg 8.0) cannot measure an ANIMATED WebP at all: it
+ * skips the ANIM/ANMF chunks, says "image data not found" and reports 0x0 —
+ * which is exactly what `sprite-sheet.mjs run` produces for `preview.webp`,
+ * so the default run -> register-run chain used to fail on every motion. The
+ * header is a fixed layout and cheaper than a decode, so it is parsed here.
+ * Returns null for anything that is not a WebP shape this understands.
+ */
+function webpCanvasSize(path) {
+  const head = Buffer.alloc(30);
+  let read = 0;
+  try {
+    const fd = openSync(path, "r");
+    try {
+      read = readSync(fd, head, 0, head.length, 0);
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return null;
+  }
+  if (read < 16) return null;
+  if (head.toString("latin1", 0, 4) !== "RIFF" || head.toString("latin1", 8, 12) !== "WEBP") return null;
+
+  const fourcc = head.toString("latin1", 12, 16);
+  // Extended (the only form an animation can take): 24-bit canvas size, each
+  // stored as value-1, at bytes 24..29.
+  if (fourcc === "VP8X" && read >= 30) {
+    return { width: head.readUIntLE(24, 3) + 1, height: head.readUIntLE(27, 3) + 1 };
+  }
+  // Simple lossy: a VP8 keyframe header behind the 3-byte start code.
+  if (fourcc === "VP8 " && read >= 30) {
+    if (head[23] !== 0x9d || head[24] !== 0x01 || head[25] !== 0x2a) return null;
+    return { width: head.readUInt16LE(26) & 0x3fff, height: head.readUInt16LE(28) & 0x3fff };
+  }
+  // Simple lossless: 14 bits of width-1 then 14 bits of height-1.
+  if (fourcc === "VP8L" && read >= 25 && head[20] === 0x2f) {
+    const bits = head.readUInt32LE(21);
+    return { width: (bits & 0x3fff) + 1, height: ((bits >>> 14) & 0x3fff) + 1 };
+  }
+  return null;
+}
+
+/**
+ * Dimensions of an image asset. `fallback` (the run summary's cell) is used
+ * only when neither the WebP header nor ffprobe can answer, and saying so on
+ * stderr is part of the deal — a guessed size must never look measured.
+ */
+function imageMetadata(path, label, fallback) {
+  const fromHeader = webpCanvasSize(path);
+  if (fromHeader) return fromHeader;
+
   const probed = ffprobeEntries(path, "stream=width,height");
   const width = Number(probed?.width);
   const height = Number(probed?.height);
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-    fail(`${label}: ffprobe could not read the dimensions of ${path} (is ffprobe installed and the file a real image?)`);
+  if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+    return { width, height };
   }
-  return { width, height };
+  if (fallback && Number.isFinite(fallback.width) && Number.isFinite(fallback.height)) {
+    console.error(`WARN: ${label}: could not measure ${path} — using the run's cell ${fallback.width}x${fallback.height}`);
+    return { width: fallback.width, height: fallback.height };
+  }
+  fail(`${label}: ffprobe could not read the dimensions of ${path} (is ffprobe installed and the file a real image?)`);
 }
 
 /** Video metadata is best effort: a clip may still be downloading when the
@@ -245,16 +307,56 @@ function videoMetadata(path) {
 // Document helpers
 // ---------------------------------------------------------------------------
 
-function upsertAsset(doc, asset) {
-  const index = doc.assets.findIndex((a) => a.id === asset.id);
-  if (index === -1) doc.assets.push(asset);
-  else doc.assets[index] = asset;
+/**
+ * Which ref or motion an existing asset id belongs to, read off the sidecar
+ * rather than stored on the asset — the craft `Asset` shape stays untouched.
+ * Returns null for an id nothing claims (an orphan a previous run left).
+ */
+function assetOwner(doc, id) {
+  const ref = doc.sprite.refs.find((r) => r.asset === id);
+  if (ref) return `ref '${ref.id}'`;
+  for (const motion of doc.sprite.motions) {
+    const slots = [motion.sheetRaw, motion.sheetAlpha, motion.sheet, motion.atlas, motion.gif, motion.webp];
+    if (slots.includes(id)
+      || (motion.frames ?? []).includes(id)
+      || (motion.videos ?? []).some((v) => v.asset === id)) {
+      return `motion '${motion.id}'`;
+    }
+  }
+  return null;
 }
 
+/**
+ * Write an asset, replacing an existing one IN PLACE so re-registering a
+ * motion does not shuffle the file (a re-run must be a no-op diff).
+ *
+ * `owner` is the ref or motion the caller is writing on behalf of. Ids are
+ * derived from names — a motion called `ref` and a reference called
+ * `sheet-raw` both spell `ref-sheet-raw` — so an upsert that would move an
+ * asset from one owner to the other is refused instead of silently winning.
+ */
+function upsertAsset(doc, asset, owner) {
+  const index = doc.assets.findIndex((a) => a.id === asset.id);
+  if (index === -1) {
+    doc.assets.push(asset);
+    return;
+  }
+  const current = assetOwner(doc, asset.id);
+  if (owner && current && current !== owner) {
+    fail(`asset '${asset.id}' already belongs to ${current}; ${owner} cannot take it over — rename one of them`);
+  }
+  doc.assets[index] = asset;
+}
+
+/** One edge per asset, kept at the position the asset first took. */
 function setEdge(doc, edge) {
-  const filtered = doc.provenance.filter((e) => e.toAssetId !== edge.toAssetId);
-  filtered.push(edge);
-  doc.provenance = filtered;
+  const index = doc.provenance.findIndex((e) => e.toAssetId === edge.toAssetId);
+  if (index === -1) {
+    doc.provenance.push(edge);
+    return;
+  }
+  doc.provenance[index] = edge;
+  doc.provenance = doc.provenance.filter((e, i) => i === index || e.toAssetId !== edge.toAssetId);
 }
 
 function dropAssets(doc, ids) {
@@ -342,6 +444,10 @@ const frameAssetId = (motionId, index) => `${motionId}-frame-${String(index).pad
  * Ids a `run` owns and therefore replaces wholesale. Matching is exact, never
  * by prefix: motions 'walk' and 'walk-fast' must not claim each other's
  * assets, and `<m>-sheet-raw` belongs to set-sheet, not to a run.
+ *
+ * An id that spells like this motion's but is claimed by a ref or another
+ * motion is left out: the naming collision is refused loudly by `upsertAsset`
+ * rather than resolved by quietly deleting somebody else's asset first.
  */
 function runOwnedIds(doc, motionId) {
   const framePrefix = `${motionId}-frame-`;
@@ -349,9 +455,14 @@ function runOwnedIds(doc, motionId) {
     `${motionId}-sheet-alpha`, `${motionId}-sheet`, `${motionId}-atlas`,
     `${motionId}-gif`, `${motionId}-webp`,
   ]);
+  const mine = `motion '${motionId}'`;
   return doc.assets
     .map((a) => a.id)
-    .filter((id) => owned.has(id) || (id.startsWith(framePrefix) && /^\d{2}$/.test(id.slice(framePrefix.length))));
+    .filter((id) => owned.has(id) || (id.startsWith(framePrefix) && /^\d{2}$/.test(id.slice(framePrefix.length))))
+    .filter((id) => {
+      const holder = assetOwner(doc, id);
+      return holder === null || holder === mine;
+    });
 }
 
 /** The six-field InspectSummary the sidecar carries — picked, never spread,
@@ -567,7 +678,7 @@ function main() {
         id: assetId, type: "image", uri, name: label,
         metadata: imageMetadata(file, "--file"),
         createdAt: now, status: "ready", tags: ["ref"],
-      });
+      }, `ref '${id}'`);
       setEdge(doc, edge(assetId, inputs, operation("generate", now, {
         model: values.model, prompt: values.prompt,
       }, inputs)));
@@ -636,7 +747,7 @@ function main() {
         id: assetId, type: "image", uri, name: `${motion.id} sheet (raw)`,
         metadata: imageMetadata(file, "--file"),
         createdAt: now, status: "ready",
-      });
+      }, `motion '${motion.id}'`);
       setEdge(doc, edge(assetId, inputs, operation("generate", now, {
         model: values.model, prompt: values.prompt, background: values.background,
       }, inputs)));
@@ -652,10 +763,24 @@ function main() {
       const doc = loadProject(dir);
       const motion = findMotion(doc, requireFlag(values.motion, "--motion"));
       const run = readRunSummary(requireFlag(values.run, "--run"));
+      const owner = `motion '${motion.id}'`;
+      const cell = run.cell && Number.isFinite(Number(run.cell.width)) && Number.isFinite(Number(run.cell.height))
+        ? { width: Number(run.cell.width), height: Number(run.cell.height) }
+        : null;
 
-      // Everything the previous run owned goes first, so a shorter motion
-      // cannot leave a tail of stale frame assets behind.
-      dropAssets(doc, runOwnedIds(doc, motion.id));
+      // Ids this run is about to write. They are NOT dropped first: dropping
+      // an id rewrites every surviving edge that pointed at it to null, which
+      // used to cut each video loose from the frame it was generated from on
+      // the second register-run. Only the previous run's leftovers — the tail
+      // of a longer motion — are really removed, and `upsertAsset` replaces
+      // the rest in place so a re-run is a no-op diff.
+      const rebuilt = new Set([
+        ...run.frames.map((_, index) => frameAssetId(motion.id, index)),
+        `${motion.id}-sheet`, `${motion.id}-atlas`, `${motion.id}-gif`,
+        ...(run.sheetAlpha ? [`${motion.id}-sheet-alpha`] : []),
+        ...(run.webp ? [`${motion.id}-webp`] : []),
+      ]);
+      dropAssets(doc, runOwnedIds(doc, motion.id).filter((id) => !rebuilt.has(id)));
 
       const sheetRawId = motion.sheetRaw && doc.assets.some((a) => a.id === motion.sheetRaw) ? motion.sheetRaw : null;
 
@@ -667,7 +792,7 @@ function main() {
           id: sheetAlphaId, type: "image", uri, name: `${motion.id} sheet (alpha)`,
           metadata: imageMetadata(requireFile(dir, uri, "--run sheetAlpha"), "--run sheetAlpha"),
           createdAt: now, status: "ready",
-        });
+        }, owner);
         setEdge(doc, edge(sheetAlphaId, sheetRawId ? [sheetRawId] : [], operation("derive", now, {
           tool: TOOL, step: "key", color: run.keyColor,
         })));
@@ -681,7 +806,7 @@ function main() {
           id, type: "image", uri, name: `${motion.id} frame ${String(index).padStart(2, "0")}`,
           metadata: imageMetadata(requireFile(dir, uri, "--run frames"), "--run frames"),
           createdAt: now, status: "ready",
-        });
+        }, owner);
         setEdge(doc, edge(id, sourceId ? [sourceId] : [], operation("derive", now, {
           tool: TOOL, step: "run", cell: index,
         })));
@@ -694,7 +819,7 @@ function main() {
         id: sheetId, type: "image", uri: sheetUri, name: `${motion.id} atlas image`,
         metadata: imageMetadata(requireFile(dir, sheetUri, "--run sheet"), "--run sheet"),
         createdAt: now, status: "ready",
-      });
+      }, owner);
       setEdge(doc, edge(sheetId, frameIds, operation("derive", now, { tool: TOOL, step: "pack" }, frameIds)));
 
       const atlasId = `${motion.id}-atlas`;
@@ -703,7 +828,7 @@ function main() {
       upsertAsset(doc, {
         id: atlasId, type: "text", uri: atlasUri, name: `${motion.id} atlas`,
         metadata: {}, createdAt: now, status: "ready",
-      });
+      }, owner);
       setEdge(doc, edge(atlasId, [sheetId], operation("derive", now, { tool: TOOL, step: "pack" })));
 
       const gifId = `${motion.id}-gif`;
@@ -711,9 +836,9 @@ function main() {
       upsertAsset(doc, {
         id: gifId, type: "image", uri: gifUri,
         name: `${motion.id} preview`,
-        metadata: { ...imageMetadata(requireFile(dir, gifUri, "--run gif"), "--run gif"), ...(run.fps ? { fps: run.fps } : {}) },
+        metadata: { ...imageMetadata(requireFile(dir, gifUri, "--run gif"), "--run gif", cell), ...(run.fps ? { fps: run.fps } : {}) },
         createdAt: now, status: "ready",
-      });
+      }, owner);
       setEdge(doc, edge(gifId, frameIds, operation("derive", now, { tool: TOOL, step: "gif" }, frameIds)));
 
       let webpId;
@@ -722,9 +847,9 @@ function main() {
         const webpUri = toUri(dir, run.webp, "--run webp");
         upsertAsset(doc, {
           id: webpId, type: "image", uri: webpUri, name: `${motion.id} preview (webp)`,
-          metadata: { ...imageMetadata(requireFile(dir, webpUri, "--run webp"), "--run webp"), ...(run.fps ? { fps: run.fps } : {}) },
+          metadata: { ...imageMetadata(requireFile(dir, webpUri, "--run webp"), "--run webp", cell), ...(run.fps ? { fps: run.fps } : {}) },
           createdAt: now, status: "ready",
-        });
+        }, owner);
         setEdge(doc, edge(webpId, frameIds, operation("derive", now, { tool: TOOL, step: "gif" }, frameIds)));
       }
 
@@ -769,7 +894,7 @@ function main() {
       upsertAsset(doc, {
         id: assetId, type: "video", uri, name: `${motion.id} video ${n} (${model})`,
         metadata, createdAt: now, status,
-      });
+      }, `motion '${motion.id}'`);
       setEdge(doc, edge(assetId, inputs, operation("generate", now, {
         model, mode, prompt: values.prompt, duration,
       }, inputs)));

@@ -8,7 +8,9 @@ Inputs for `sprite-sheet.test.ts` and `sprite-project.test.ts`.
   report its own pixels).
 - `bounce-run.json` — a hand-written `sprite-sheet.mjs run` summary with
   workspace-relative paths, fed to `sprite-project.mjs register-run`. Its
-  `inspect` block is the canonical fixture's, not a real measurement.
+  `inspect` block is the canonical fixture's, not a real measurement. It
+  carries the `cells` key a real run emits, which `register-run` must ignore:
+  the pre-align cells are intermediate files, not assets.
 - `expected-project.json` — the whole `project.json` the command sequence
   `init → add-ref → add-motion → set-sheet → register-run` must produce.
 

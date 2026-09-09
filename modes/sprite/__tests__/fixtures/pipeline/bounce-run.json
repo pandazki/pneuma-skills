@@ -4,6 +4,7 @@
   "grid": { "rows": 2, "cols": 2 },
   "sheetRaw": "motions/bounce/sheet-raw.png",
   "keyed": false,
+  "cells": "motions/bounce/cells",
   "frames": [
     "motions/bounce/frames/00.png",
     "motions/bounce/frames/01.png",

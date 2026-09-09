@@ -7,11 +7,17 @@
  * fixture (see `fixtures/pipeline/README.md` for the two deliberate
  * differences). Asset metadata comes from ffprobe, so the whole file skips
  * with a named reason when ffmpeg is missing.
+ *
+ * The seeded character is built ONCE per variant (with and without a WebP
+ * preview) and copied per test — a `cpSync` of a handful of small files
+ * instead of a second full `sprite-sheet run`, which is ~30 ffmpeg spawns.
  */
 
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -28,6 +34,9 @@ const HAS_FFMPEG =
 if (!HAS_FFMPEG) {
   console.warn("(skip) modes/sprite sprite-project.mjs suite — ffmpeg/ffprobe not on PATH");
 }
+
+const HAS_LIBWEBP = HAS_FFMPEG &&
+  spawnSync("ffmpeg", ["-hide_banner", "-encoders"], { encoding: "utf-8" }).stdout?.includes("libwebp") === true;
 
 const T0 = 1757400000000;
 const T1 = 1757400001000;
@@ -64,18 +73,25 @@ function projectJson(dir: string, ...argv: string[]) {
 const readProject = (dir: string) => JSON.parse(readFileSync(join(dir, "project.json"), "utf-8"));
 
 /**
- * The canonical `mini` character: real files on disk (so ffprobe reports the
- * fixture's dimensions) produced by the real sheet pipeline, plus the command
- * sequence up to but not including `register-run`.
+ * The canonical `mini` character, built once per variant: real files on disk
+ * (so ffprobe reports the fixture's dimensions) produced by the real sheet
+ * pipeline, plus the command sequence up to but not including `register-run`.
  */
-function seedMini() {
+const templates = new Map<string, { dir: string; runText: string }>();
+
+function template(webp: boolean) {
+  const key = webp ? "webp" : "no-webp";
+  const cached = templates.get(key);
+  if (cached) return cached;
+
   const dir = fresh();
   buildSheet(join(dir, "refs", "portrait.png"), { cell: 256, rows: 1, cols: 1 });
   const raw = buildSheet(join(dir, "raw.png"));
   const sheetRun = run(SHEET, [
     "run", raw, "--rows", "2", "--cols", "2",
     "--out", join(dir, "motions", "bounce"),
-    "--name", "bounce", "--fps", "8", "--loop", "--cell", "64x64", "--no-webp", "--json",
+    "--name", "bounce", "--fps", "8", "--loop", "--cell", "64x64",
+    ...(webp ? [] : ["--no-webp"]), "--json",
   ]);
   if (sheetRun.code !== 0) throw new Error(`sprite-sheet run failed:\n${sheetRun.err}`);
   rmSync(raw);
@@ -91,7 +107,18 @@ function seedMini() {
     "--from", "ref-portrait", "--model", "openai/gpt-image-2.5-flare", "--prompt", "2x2 bounce sheet",
     "--background", "transparent", "--at", String(T1));
 
-  return { dir, realRun: JSON.parse(sheetRun.out) };
+  const built = { dir, runText: sheetRun.out };
+  templates.set(key, built);
+  return built;
+}
+
+/** A private copy of the seeded character, with the run summary's absolute
+ *  paths rewritten to point at it. */
+function seedMini({ webp = false } = {}) {
+  const source = template(webp);
+  const dir = fresh();
+  cpSync(source.dir, dir, { recursive: true });
+  return { dir, realRun: JSON.parse(source.runText.replaceAll(source.dir, dir)) };
 }
 
 describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
@@ -166,12 +193,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
 
       const expected = JSON.parse(readFileSync(join(FIXTURES, "expected-project.json"), "utf-8"));
       expect(readProject(dir)).toEqual(expected);
-    });
-
-    test("the write is atomic — no .tmp litter survives", () => {
-      const { dir } = seedMini();
-      projectJson(dir, "register-run", "--motion", "bounce",
-        "--run", join(FIXTURES, "bounce-run.json"), "--at", String(T2));
+      // the write is atomic — no .tmp litter survives
       expect(readdirSync(dir).filter((f) => f.includes("tmp"))).toEqual([]);
     });
 
@@ -197,6 +219,12 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       // absolute paths from a real run become workspace-relative uris
       const doc = readProject(dir);
       expect(doc.assets.find((a: any) => a.id === "bounce-frame-00").uri).toBe("motions/bounce/frames/00.png");
+
+      // `run` reports its pre-align cells; they are intermediate files and
+      // must not become assets of their own.
+      expect(realRun.cells).toBe(join(dir, "motions", "bounce", "cells"));
+      expect(doc.assets.some((a: any) => a.uri.includes("cells/"))).toBe(false);
+      expect(motion.cells).toBeUndefined();
     });
 
     test("a run summary pointing outside the character dir is refused", () => {
@@ -205,6 +233,54 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
         JSON.stringify({ ...realRun, gif: "/etc/hosts" }));
       expect(r.code).toBe(1);
       expect(r.err).toMatch(/outside/);
+    });
+  });
+
+  describe("the WebP preview", () => {
+    test.skipIf(!HAS_LIBWEBP)("an animated preview.webp is registered with its real canvas size", () => {
+      const { dir, realRun } = seedMini({ webp: true });
+      const webpPath = join(dir, "motions", "bounce", "preview.webp");
+      expect(realRun.webp).toBe(webpPath);
+
+      // Why this needs its own reader: ffprobe (ffmpeg 8.0) skips the ANIM /
+      // ANMF chunks of an animated WebP and reports 0x0, which used to make
+      // the default run → register-run chain fail on every motion.
+      const probed = spawnSync("ffprobe",
+        ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", webpPath],
+        { encoding: "utf-8" });
+      expect(probed.stdout.trim()).toBe("0,0");
+
+      const motion = JSON.parse(run(PROJECT,
+        ["register-run", "--dir", dir, "--motion", "bounce", "--run", "-", "--json", "--at", String(T2)],
+        JSON.stringify(realRun)).out);
+      expect(motion.webp).toBe("bounce-webp");
+
+      const asset = readProject(dir).assets.find((a: any) => a.id === "bounce-webp");
+      expect(asset.uri).toBe("motions/bounce/preview.webp");
+      expect(asset.metadata).toEqual({ width: 64, height: 64, fps: 8 });
+    });
+
+    test("a run without a WebP registers no WebP asset", () => {
+      const { dir, realRun } = seedMini();
+      expect(realRun.webp).toBeUndefined();
+      const motion = JSON.parse(run(PROJECT,
+        ["register-run", "--dir", dir, "--motion", "bounce", "--run", "-", "--json"],
+        JSON.stringify(realRun)).out);
+      expect(motion.webp).toBeUndefined();
+      expect(readProject(dir).assets.some((a: any) => a.id === "bounce-webp")).toBe(false);
+    });
+
+    test("an unreadable preview falls back to the run's cell and says so", () => {
+      const { dir, realRun } = seedMini();
+      const webpPath = join(dir, "motions", "bounce", "preview.webp");
+      writeFileSync(webpPath, "neither a RIFF header nor anything ffprobe can read");
+
+      const r = run(PROJECT, ["register-run", "--dir", dir, "--motion", "bounce", "--run", "-", "--json"],
+        JSON.stringify({ ...realRun, webp: webpPath }));
+      expect(r.code).toBe(0);
+      expect(r.err).toMatch(/WARN: .*could not measure .*using the run's cell 64x64/);
+      const asset = readProject(dir).assets.find((a: any) => a.id === "bounce-webp");
+      expect(asset.metadata).toEqual({ width: 64, height: 64, fps: 8 });
     });
   });
 
@@ -224,6 +300,32 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
         expect(ids.has(edge.toAssetId)).toBe(true);
         if (edge.fromAssetId !== null) expect(ids.has(edge.fromAssetId)).toBe(true);
       }
+    });
+
+    test("a re-run keeps every video's parent frame and does not reshuffle the file", () => {
+      const { dir } = seedMini();
+      const args = ["register-run", "--motion", "bounce", "--run", join(FIXTURES, "bounce-run.json"), "--at", String(T2)];
+      projectJson(dir, ...args);
+      for (const n of [1, 2]) writeFileSync(join(dir, "motions", "bounce", `video-seedance-${n}.mp4`), "");
+      // one single-parent i2v clip and one two-input first-last clip: the
+      // i2v edge carries no params.inputs, so nulling its fromAssetId would
+      // lose the link to frame 00 for good.
+      projectJson(dir, "add-video", "--motion", "bounce", "--file", "motions/bounce/video-seedance-1.mp4",
+        "--model", "seedance-2.5", "--mode", "i2v", "--from", "bounce-frame-00", "--at", String(T2));
+      projectJson(dir, "add-video", "--motion", "bounce", "--file", "motions/bounce/video-seedance-2.mp4",
+        "--model", "h3-max", "--mode", "first-last", "--from", "bounce-frame-00,bounce-frame-03", "--at", String(T2));
+
+      const before = readFileSync(join(dir, "project.json"), "utf-8");
+      projectJson(dir, ...args);
+      const after = readFileSync(join(dir, "project.json"), "utf-8");
+
+      // byte-identical: no nulled parents, no assets migrating to the head
+      expect(after).toBe(before);
+      const edges = JSON.parse(after).provenance;
+      expect(edges.find((e: any) => e.toAssetId === "bounce-video-1").fromAssetId).toBe("bounce-frame-00");
+      expect(edges.find((e: any) => e.toAssetId === "bounce-video-2").fromAssetId).toBe("bounce-frame-00");
+      expect(JSON.parse(after).assets.map((a: any) => a.id).slice(-2))
+        .toEqual(["bounce-video-1", "bounce-video-2"]);
     });
 
     test("a shorter motion drops the stale frame assets, edges and ids", () => {
@@ -264,15 +366,22 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       expect(doc.sprite.motions[0].status).toBe("processing");
     });
 
-    test("lists every input on a multi-reference sheet, first one as the edge parent", () => {
+    test("params.inputs appears only on genuine fan-in", () => {
       const { dir } = seedMini();
+      // one reference: fromAssetId says everything, so no inputs list
+      const single = readProject(dir).provenance.find((e: any) => e.toAssetId === "bounce-sheet-raw");
+      expect(single.fromAssetId).toBe("ref-portrait");
+      expect(single.operation.params.inputs).toBeUndefined();
+
       buildSheet(join(dir, "refs", "turnaround.png"), { cell: 256, rows: 1, cols: 1 });
       projectJson(dir, "add-ref", "--id", "turnaround", "--file", "refs/turnaround.png", "--role", "turnaround");
       projectJson(dir, "set-sheet", "--motion", "bounce", "--file", "motions/bounce/sheet-raw.png",
         "--from", "ref-portrait,ref-turnaround", "--at", String(T2));
-      const edge = readProject(dir).provenance.find((e: any) => e.toAssetId === "bounce-sheet-raw");
-      expect(edge.fromAssetId).toBe("ref-portrait");
-      expect(edge.operation.params.inputs).toEqual(["ref-portrait", "ref-turnaround"]);
+
+      // two references: the first is the edge parent, the whole set is listed
+      const fanIn = readProject(dir).provenance.find((e: any) => e.toAssetId === "bounce-sheet-raw");
+      expect(fanIn.fromAssetId).toBe("ref-portrait");
+      expect(fanIn.operation.params.inputs).toEqual(["ref-portrait", "ref-turnaround"]);
     });
 
     test("an unknown --from asset is rejected", () => {
@@ -290,6 +399,32 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       expect(r.code).toBe(1);
       expect(r.err).toMatch(/not found/);
       expect(readProject(dir)).toEqual(before);
+    });
+  });
+
+  describe("asset ownership", () => {
+    test("a motion cannot take over an id a reference already owns", () => {
+      const dir = fresh();
+      // asset ids are spelled from names, so the reference `sheet-raw` and a
+      // motion called `ref` both want `ref-sheet-raw`.
+      buildSheet(join(dir, "refs", "sheet-raw.png"), { cell: 64, rows: 1, cols: 1 });
+      projectJson(dir, "init", "--name", "Clash", "--cell", "64x64");
+      projectJson(dir, "add-ref", "--id", "sheet-raw", "--file", "refs/sheet-raw.png", "--role", "custom",
+        "--at", String(T0));
+      projectJson(dir, "add-motion", "--id", "ref", "--label", "Ref", "--rows", "1", "--cols", "1", "--fps", "8");
+      const before = readProject(dir);
+
+      const r = project(dir, "set-sheet", "--motion", "ref", "--file", "refs/sheet-raw.png", "--json");
+      expect(r.code).toBe(1);
+      expect(r.err).toMatch(/ref-sheet-raw.*belongs to ref 'sheet-raw'/);
+      expect(readProject(dir)).toEqual(before);
+    });
+
+    test("re-registering the same reference is not a takeover", () => {
+      const { dir } = seedMini();
+      const again = projectJson(dir, "add-ref", "--id", "portrait", "--file", "refs/portrait.png",
+        "--role", "turnaround", "--at", String(T0));
+      expect(again.refs).toEqual([{ id: "portrait", role: "turnaround", label: "Portrait", uri: "refs/portrait.png" }]);
     });
   });
 
@@ -407,6 +542,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
   });
 
   test("cleanup", () => {
+    templates.clear();
     for (const dir of workspaces.splice(0)) rmSync(dir, { recursive: true, force: true });
     expect(workspaces).toHaveLength(0);
   });
