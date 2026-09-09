@@ -249,6 +249,11 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       expect(motion.inspect).toEqual({
         frameCount: 4,
         cell: { width: 64, height: 64 },
+        // Where `align` actually put the feet: the default `--pad 8` holds
+        // them 8px off the cell floor. The viewer renders from project.json
+        // alone, so if this does not make the trip its pivot guide has to
+        // guess the cell edge and the sprite floats above its own ground line.
+        anchorPoint: { x: 32, y: 56 },
         anchorDrift: { x: 0, y: 0 },
         maxJump: 0,
         scaleDrift: 0,
@@ -389,6 +394,44 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       expect(doc.provenance.some((e: any) => e.toAssetId === "bounce-frame-03")).toBe(false);
       expect(doc.provenance.find((e: any) => e.toAssetId === "bounce-sheet").operation.params.inputs)
         .toEqual(["bounce-frame-00", "bounce-frame-01"]);
+    });
+
+    test("a run with no measured anchor point leaves the sidecar without one", () => {
+      // The canonical fixture's inspect block predates `align.json`. Absence
+      // has to survive as absence: the viewer reads a missing key as "nobody
+      // measured this" and falls back, which is a different — and honest —
+      // picture from a point invented here.
+      const { dir } = seedMini();
+      const motion = projectJson(dir, "register-run", "--motion", "bounce",
+        "--run", join(FIXTURES, "bounce-run.json"), "--at", String(T2));
+      expect(motion.inspect.anchorPoint).toBeUndefined();
+      expect("anchorPoint" in motion.inspect).toBe(false);
+      expect(readProject(dir).sprite.motions[0].inspect.anchorPoint).toBeUndefined();
+    });
+
+    test("re-registering the same run leaves project.json byte-identical", () => {
+      // The anchor point rides in an optional key, and an optional key is the
+      // easy way to make an idempotent command stop being idempotent.
+      const { dir, realRun } = seedMini();
+      writeFileSync(join(dir, "run.json"), JSON.stringify(realRun));
+      projectJson(dir, "register-run", "--motion", "bounce", "--run", join(dir, "run.json"), "--at", String(T2));
+      const before = readFileSync(join(dir, "project.json"), "utf-8");
+      projectJson(dir, "register-run", "--motion", "bounce", "--run", join(dir, "run.json"), "--at", String(T2));
+      expect(readFileSync(join(dir, "project.json"), "utf-8")).toBe(before);
+      expect(JSON.parse(before).sprite.motions[0].inspect.anchorPoint).toEqual({ x: 32, y: 56 });
+    });
+
+    test("a malformed anchor point is dropped, not carried into the sidecar", () => {
+      // A half-written or hand-edited point would be drawn as a guide with no
+      // hint that it is nonsense — the viewer cannot tell 0 from measured-0.
+      const { dir, realRun } = seedMini();
+      for (const broken of [{ x: 32 }, { x: "32", y: "56" }, { x: 32, y: null }, [32, 56], "32,56"]) {
+        const payload = { ...realRun, inspect: { ...realRun.inspect, anchorPoint: broken } };
+        writeFileSync(join(dir, "broken-run.json"), JSON.stringify(payload));
+        const motion = projectJson(dir, "register-run", "--motion", "bounce",
+          "--run", join(dir, "broken-run.json"), "--at", String(T2));
+        expect({ broken, got: motion.inspect.anchorPoint }).toEqual({ broken, got: undefined });
+      }
     });
   });
 

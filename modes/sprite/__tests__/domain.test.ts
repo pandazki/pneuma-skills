@@ -27,6 +27,7 @@ import {
   findMotion,
   findRef,
   loadRoster,
+  measuredAnchor,
   MOTION_STATUSES,
   resolveAssetUri,
   saveRoster,
@@ -182,6 +183,52 @@ describe("loadRoster", () => {
     expect(withStatus(undefined)).toBe("planned");
   });
 
+  test("the measured anchor point survives, and a broken one does not", () => {
+    // The point is where the pipeline actually put the feet inside the cell.
+    // Unlike every other inspect number it has NO safe default: 0 would put
+    // the viewer's pivot guide in the top-left corner while looking exactly
+    // like a measurement, so a malformed point must vanish rather than degrade.
+    const withPoint = (anchorPoint: unknown) => {
+      const body = JSON.parse(MINI);
+      body.sprite.motions[0].inspect.anchorPoint = anchorPoint;
+      return loadRoster(files({ "mini/project.json": JSON.stringify(body) }))!
+        .byContentSet.mini.sprite.motions[0].inspect?.anchorPoint;
+    };
+
+    expect(withPoint({ x: 32, y: 56 })).toEqual({ x: 32, y: 56 });
+    // Fractional pixels are real: `--scale` and an odd bbox both produce them.
+    expect(withPoint({ x: 31.5, y: 55.5 })).toEqual({ x: 31.5, y: 55.5 });
+    expect(withPoint({ x: 0, y: 0 })).toEqual({ x: 0, y: 0 });
+
+    for (const broken of [
+      undefined,
+      null,
+      {},
+      { x: 32 },
+      { y: 56 },
+      { x: "32", y: "56" },
+      { x: 32, y: Number.NaN },
+      { x: Number.POSITIVE_INFINITY, y: 56 },
+      [32, 56],
+      "32,56",
+    ]) {
+      expect({ broken, parsed: withPoint(broken) }).toEqual({
+        broken,
+        parsed: undefined,
+      });
+    }
+  });
+
+  test("a motion measured before the pipeline recorded the point has none", () => {
+    // The canonical fixture predates `align.json`; absence is a real state,
+    // and it is what tells the viewer to fall back to the cell instead of
+    // drawing a guide on a number nobody measured.
+    const project = loadRoster(files({ "mini/project.json": MINI }))!
+      .byContentSet.mini;
+    expect(project.sprite.motions[0].inspect?.anchorPoint).toBeUndefined();
+    expect(project.sprite.motions[0].inspect?.frameCount).toBe(4);
+  });
+
   test("a motion missing its optional halves still loads as a motion", () => {
     // `add-motion --status planned` writes exactly this: no sheet, no frames.
     const planned = JSON.parse(MINI);
@@ -205,6 +252,67 @@ describe("loadRoster", () => {
     expect(project.sprite.motions[0].status).toBe("planned");
     expect(project.sprite.motions[0].sheet).toBeUndefined();
     expect(project.sprite.motions[0].inspect).toBeUndefined();
+  });
+});
+
+describe("measuredAnchor", () => {
+  const motionWith = (inspect: unknown) => {
+    const body = JSON.parse(MINI);
+    body.sprite.motions[0].inspect = inspect;
+    return loadRoster(files({ "mini/project.json": JSON.stringify(body) }))!
+      .byContentSet.mini.sprite.motions[0];
+  };
+
+  test("hands back the point together with the cell it was taken in", () => {
+    // The two travel as one value on purpose: a point in pixels means nothing
+    // without the cell, and both readers (the stage guide, the atlas pivot)
+    // have to compare or divide by that cell before they can use it.
+    const motion = motionWith({
+      frameCount: 4,
+      cell: { width: 64, height: 64 },
+      anchorPoint: { x: 32, y: 56 },
+      anchorDrift: { x: 0, y: 0 },
+      maxJump: 0,
+      scaleDrift: 0,
+      emptyFrames: [],
+      warnings: [],
+    });
+    expect(measuredAnchor(motion)).toEqual({
+      point: { x: 32, y: 56 },
+      cell: { width: 64, height: 64 },
+    });
+  });
+
+  test("no inspect, no point, or a zero cell is no measurement", () => {
+    expect(measuredAnchor(motionWith(undefined))).toBeUndefined();
+    expect(
+      measuredAnchor(
+        motionWith({
+          frameCount: 4,
+          cell: { width: 64, height: 64 },
+          anchorDrift: { x: 0, y: 0 },
+          maxJump: 0,
+          scaleDrift: 0,
+          emptyFrames: [],
+          warnings: [],
+        }),
+      ),
+    ).toBeUndefined();
+    // A cell of 0 is what the parser leaves behind when `cell` was missing;
+    // nothing can be divided by it or matched against it.
+    expect(
+      measuredAnchor(
+        motionWith({
+          frameCount: 4,
+          anchorPoint: { x: 32, y: 56 },
+          anchorDrift: { x: 0, y: 0 },
+          maxJump: 0,
+          scaleDrift: 0,
+          emptyFrames: [],
+          warnings: [],
+        }),
+      ),
+    ).toBeUndefined();
   });
 });
 

@@ -480,13 +480,33 @@ function runOwnedIds(doc, motionId) {
     });
 }
 
-/** The six-field InspectSummary the sidecar carries — picked, never spread,
- *  so a richer inspect report cannot leak fields into project.json. */
+/** A `{ x, y }` in cell pixels, or undefined for anything else. The viewer
+ *  draws its pivot guide on this point, so a half-written or hand-edited one
+ *  must not travel: absent is a state it renders correctly, `{0, undefined}`
+ *  is a guide in the corner that looks like a measurement. */
+function anchorPoint(value) {
+  if (!value || typeof value !== "object") return undefined;
+  const { x, y } = value;
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : undefined;
+}
+
+/** The InspectSummary the sidecar carries — picked field by field, never
+ *  spread, so a richer inspect report (per-frame bboxes, absolute paths)
+ *  cannot leak into project.json.
+ *
+ *  `anchorPoint` is the one optional member: it is where `align` actually put
+ *  the anchor inside the cell, and the viewer renders from project.json alone,
+ *  so without this copy the stage has no way to learn where the feet are and
+ *  falls back to the cell edge — which with any `--pad` floats the sprite
+ *  above its own guide. Absent stays absent; the fallback is the viewer's
+ *  call, not a default invented here. */
 function inspectSummary(value) {
   if (!value || typeof value !== "object") return undefined;
+  const point = anchorPoint(value.anchorPoint);
   return {
     frameCount: value.frameCount,
     cell: value.cell,
+    ...(point ? { anchorPoint: point } : {}),
     anchorDrift: value.anchorDrift,
     maxJump: value.maxJump,
     scaleDrift: value.scaleDrift,
