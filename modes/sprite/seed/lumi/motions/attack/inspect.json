@@ -1,249 +1,266 @@
 {
   "frameCount": 16,
   "cell": {
-    "width": 216,
+    "width": 272,
     "height": 262
   },
   "anchorPoint": {
-    "x": 108,
+    "x": 136,
     "y": 254
   },
   "anchorDrift": {
-    "x": 0.242,
+    "x": 17.373,
     "y": 0
   },
-  "maxJump": 0.5,
-  "scaleDrift": 0.1303,
+  "bodyDrift": 0.263,
+  "maxJump": 50,
+  "scaleDrift": 0.126,
   "emptyFrames": [],
   "warnings": [],
-  "motionDir": "/private/tmp/claude-501/-Users-pandazki-Codes-pneuma-skills/cc20601a-7ed4-41d6-9b8e-720f8c4946d7/scratchpad/sprite-seed/lumi/motions/attack",
-  "framesDir": "/private/tmp/claude-501/-Users-pandazki-Codes-pneuma-skills/cc20601a-7ed4-41d6-9b8e-720f8c4946d7/scratchpad/sprite-seed/lumi/motions/attack/frames",
-  "cellsDir": "/private/tmp/claude-501/-Users-pandazki-Codes-pneuma-skills/cc20601a-7ed4-41d6-9b8e-720f8c4946d7/scratchpad/sprite-seed/lumi/motions/attack/cells",
+  "motionDir": "/Users/pandazki/Codes/pneuma-skills/.claude/worktrees/sprite-r6/modes/sprite/seed/lumi/motions/attack",
+  "framesDir": "/Users/pandazki/Codes/pneuma-skills/.claude/worktrees/sprite-r6/modes/sprite/seed/lumi/motions/attack/frames",
+  "cellsDir": "/Users/pandazki/Codes/pneuma-skills/.claude/worktrees/sprite-r6/modes/sprite/seed/lumi/motions/attack/cells",
   "anchor": "bottom",
   "frames": [
     {
       "index": 0,
       "bbox": {
-        "x": 27,
+        "x": 38,
         "y": 27,
         "w": 163,
         "h": 227
       },
-      "coverage": 0.3396,
+      "coverage": 0.2693,
       "anchor": {
-        "x": 108.5,
+        "x": 119.5,
         "y": 254
-      }
+      },
+      "feetX": 136.08
     },
     {
       "index": 1,
       "bbox": {
-        "x": 20,
+        "x": 23,
         "y": 24,
         "w": 177,
         "h": 230
       },
-      "coverage": 0.3558,
+      "coverage": 0.2822,
       "anchor": {
-        "x": 108.5,
+        "x": 111.5,
         "y": 254
-      }
+      },
+      "feetX": 135.6
     },
     {
       "index": 2,
       "bbox": {
-        "x": 17,
+        "x": 21,
         "y": 22,
         "w": 182,
         "h": 232
       },
-      "coverage": 0.3643,
+      "coverage": 0.289,
       "anchor": {
-        "x": 108,
+        "x": 112,
         "y": 254
-      }
+      },
+      "feetX": 136.26
     },
     {
       "index": 3,
       "bbox": {
-        "x": 19,
+        "x": 21,
         "y": 22,
         "w": 179,
         "h": 232
       },
-      "coverage": 0.3636,
+      "coverage": 0.2884,
       "anchor": {
-        "x": 108.5,
+        "x": 110.5,
         "y": 254
-      }
+      },
+      "feetX": 136.07
     },
     {
       "index": 4,
       "bbox": {
-        "x": 26,
+        "x": 38,
         "y": 22,
         "w": 165,
         "h": 232
       },
-      "coverage": 0.3603,
+      "coverage": 0.2856,
       "anchor": {
-        "x": 108.5,
+        "x": 120.5,
         "y": 254
-      }
+      },
+      "feetX": 135.93
     },
     {
       "index": 5,
       "bbox": {
-        "x": 27,
+        "x": 47,
         "y": 9,
         "w": 162,
         "h": 245
       },
-      "coverage": 0.3538,
+      "coverage": 0.2805,
       "anchor": {
-        "x": 108,
+        "x": 128,
         "y": 254
-      }
+      },
+      "feetX": 136.04
     },
     {
       "index": 6,
       "bbox": {
-        "x": 42,
-        "y": 8,
+        "x": 71,
+        "y": 9,
         "w": 133,
-        "h": 246
+        "h": 245
       },
-      "coverage": 0.3115,
+      "coverage": 0.2468,
       "anchor": {
-        "x": 108.5,
+        "x": 137.5,
         "y": 254
-      }
+      },
+      "feetX": 136.3
     },
     {
       "index": 7,
       "bbox": {
-        "x": 46,
+        "x": 78,
         "y": 10,
         "w": 125,
         "h": 244
       },
-      "coverage": 0.3078,
+      "coverage": 0.2442,
       "anchor": {
-        "x": 108.5,
+        "x": 140.5,
         "y": 254
-      }
+      },
+      "feetX": 135.64
     },
     {
       "index": 8,
       "bbox": {
-        "x": 23,
+        "x": 68,
         "y": 32,
         "w": 170,
         "h": 222
       },
-      "coverage": 0.3253,
+      "coverage": 0.2579,
       "anchor": {
-        "x": 108,
+        "x": 153,
         "y": 254
-      }
+      },
+      "feetX": 136.48
     },
     {
       "index": 9,
       "bbox": {
-        "x": 16,
+        "x": 63,
         "y": 32,
-        "w": 185,
+        "w": 184,
         "h": 222
       },
-      "coverage": 0.3276,
+      "coverage": 0.2597,
       "anchor": {
-        "x": 108.5,
+        "x": 155,
         "y": 254
-      }
+      },
+      "feetX": 136.34
     },
     {
       "index": 10,
       "bbox": {
-        "x": 20,
+        "x": 59,
         "y": 38,
         "w": 176,
         "h": 216
       },
-      "coverage": 0.3256,
+      "coverage": 0.2582,
       "anchor": {
-        "x": 108,
+        "x": 147,
         "y": 254
-      }
+      },
+      "feetX": 136.24
     },
     {
       "index": 11,
       "bbox": {
-        "x": 8,
+        "x": 63,
         "y": 37,
         "w": 200,
         "h": 217
       },
-      "coverage": 0.341,
+      "coverage": 0.2705,
       "anchor": {
-        "x": 108,
+        "x": 163,
         "y": 254
-      }
+      },
+      "feetX": 135.96
     },
     {
       "index": 12,
       "bbox": {
-        "x": 27,
+        "x": 32,
         "y": 25,
         "w": 162,
         "h": 229
       },
-      "coverage": 0.3278,
+      "coverage": 0.2601,
       "anchor": {
-        "x": 108,
+        "x": 113,
         "y": 254
-      }
+      },
+      "feetX": 136.23
     },
     {
       "index": 13,
       "bbox": {
-        "x": 32,
+        "x": 37,
         "y": 24,
         "w": 153,
         "h": 230
       },
-      "coverage": 0.33,
+      "coverage": 0.2617,
       "anchor": {
-        "x": 108.5,
+        "x": 113.5,
         "y": 254
-      }
+      },
+      "feetX": 135.59
     },
     {
       "index": 14,
       "bbox": {
-        "x": 38,
+        "x": 43,
         "y": 23,
         "w": 141,
         "h": 231
       },
-      "coverage": 0.3193,
+      "coverage": 0.2534,
       "anchor": {
-        "x": 108.5,
+        "x": 113.5,
         "y": 254
-      }
+      },
+      "feetX": 136.27
     },
     {
       "index": 15,
       "bbox": {
-        "x": 41,
+        "x": 54,
         "y": 24,
         "w": 135,
         "h": 230
       },
-      "coverage": 0.3124,
+      "coverage": 0.2477,
       "anchor": {
-        "x": 108.5,
+        "x": 121.5,
         "y": 254
-      }
+      },
+      "feetX": 136.24
     }
   ]
 }

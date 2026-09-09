@@ -752,15 +752,24 @@ Subcommands (all accept `--json`; all print `--help`):
   → `<dir>/NN.png` row-major; cell = `(W − 2·margin − (C−1)·gutter) / C`
   (same for rows); non-integer cell sizes are floored and reported; the
   output keeps alpha (`-pix_fmt rgba`).
-- `align <framesDir> --out <dir> [--anchor bottom|center] [--cell auto|WxH] [--pad 8] [--smooth]`
-  → per-frame bbox; anchor point = bottom-center of bbox (`bottom`) or bbox
-  center (`center`); cell `auto` = max bbox w/h across frames + 2·pad, made
-  even; each frame is `crop`ped to its bbox then `pad`ded onto a transparent
-  cell (`pad=W:H:x:y:black@0`) so the anchor lands at the same point in every
-  frame (bottom: x centered, y = H − pad; center: cell center). `--smooth`
+- `align <framesDir> --out <dir> [--anchor bottom|center] [--x-from feet|bbox|cell] [--cell auto|WxH] [--pad 8] [--smooth]`
+  → per-frame bbox; anchor y = bbox bottom (`bottom`) or bbox center
+  (`center`); anchor x = `--x-from`: `feet` (default) is the mean x of the
+  alpha pixels in the bottom 10 % of the bbox — where the character stands, so
+  a prop reaching sideways cannot push the body the other way; `bbox` is the
+  bbox center (the pre-`--x-from` behaviour, and what `center` always uses);
+  `cell` is the source grid cell's center, i.e. no horizontal re-placement at
+  all. Cell `auto` = twice the worst frame's reach from its anchor + 2·pad,
+  made even (`cell` mode keeps the source cell width), so the cell is sized
+  around the anchor it actually used and no frame is clamped back. Each frame
+  is `crop`ped to its bbox then `pad`ded onto a transparent cell
+  (`pad=W:H:x:y:black@0`) so the anchor lands at the same point in every frame
+  (x centered, y = H − pad for bottom / cell center for center). `--smooth`
   replaces each frame's anchor x with the 3-frame median (y untouched for
   `bottom`). Empty frames (no pixel above threshold) are emitted as a fully
-  transparent cell and reported.
+  transparent cell and reported. `<dir>/align.json` records
+  `{ anchor, cell, pad, anchorPoint, smooth, xFrom }`, `xFrom` being the mode
+  it resolved to.
 - `pack <framesDir> --out <sheet.png> --atlas <atlas.json> --name <motionId> --fps N [--loop] [--anchor bottom|center] [--cols C] [--scale 0.5] [--nearest]`
   → packed image via ffmpeg `tile=CxR` over the frame sequence with a
   transparent fill (verify alpha survives; if `tile`'s `color` cannot be
@@ -776,15 +785,20 @@ Subcommands (all accept `--json`; all print `--help`):
   (measured over `frames/` for anchor drift and emptiness, and over the
   pre-align cells — `--cells`, defaulting to `<motionDir>/cells` when it
   exists — for clipping and jumps, which alignment would otherwise hide)
-  (frame count, cell, per-frame bbox list, `anchorDrift` std-dev, `maxJump`,
+  (frame count, cell, per-frame bbox list, `anchorDrift` std-dev, `bodyDrift`
+  std-dev of the feet-center x, `maxJump`,
   `scaleDrift`, `emptyFrames`, `warnings[]`) and writes `<motionDir>/inspect.json`.
-  Warning rules: empty frame; `maxJump > 0.08·cellWidth` ("anchor jumps
-  between frames NN and MM"); `scaleDrift > 0.15` ("character scale varies
+  Warning rules: empty frame; `bodyDrift > 0.05·cellWidth` ("body drifts
+  sideways between frames — re-run align with --x-from feet/cell");
+  `maxJump > 0.08·cellWidth` **with the feet having moved that far too**
+  ("anchor jumps between frames NN and MM" — the feet condition keeps a
+  swinging prop quiet, since under `--x-from feet` the silhouette is meant to
+  move while the body does not); `scaleDrift > 0.15` ("character scale varies
   across frames — regenerate with a fixed-scale instruction"); alpha
   coverage < 0.02 in a frame ("frame NN is nearly empty"); bbox touching the
   cell edge before alignment ("cell NN is clipped — the drawing leaves its
   grid cell").
-- `run <sheet-raw> --rows R --cols C --out <motionDir> --name <motionId> --fps N [--loop] [--anchor bottom|center] [--key auto|#rrggbb|none] [--cell auto|WxH] [--pad 8] [--smooth] [--scale] [--nearest] [--margin] [--gutter]`
+- `run <sheet-raw> --rows R --cols C --out <motionDir> --name <motionId> --fps N [--loop] [--anchor bottom|center] [--x-from feet|bbox|cell] [--key auto|#rrggbb|none] [--cell auto|WxH] [--pad 8] [--smooth] [--scale] [--nearest] [--margin] [--gutter]`
   → the whole chain: probe → (key when opaque and `--key` ≠ none, writing
   `sheet-alpha.png`) → slice (to `cells/`, kept) → align (to `frames/`) → pack
   (`sheet.png`, `atlas.json`) → gif (+ webp) → inspect. Emits one JSON:

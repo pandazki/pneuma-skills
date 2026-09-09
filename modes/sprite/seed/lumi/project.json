@@ -75,7 +75,7 @@
         "width": 1024,
         "height": 1024
       },
-      "createdAt": 1788955225303,
+      "createdAt": 1788966225490,
       "status": "ready"
     },
     {
@@ -84,10 +84,10 @@
       "uri": "motions/idle/frames/00.png",
       "name": "idle frame 00",
       "metadata": {
-        "width": 162,
+        "width": 186,
         "height": 252
       },
-      "createdAt": 1788955225303,
+      "createdAt": 1788966225490,
       "status": "ready"
     },
     {
@@ -96,10 +96,10 @@
       "uri": "motions/idle/frames/01.png",
       "name": "idle frame 01",
       "metadata": {
-        "width": 162,
+        "width": 186,
         "height": 252
       },
-      "createdAt": 1788955225303,
+      "createdAt": 1788966225490,
       "status": "ready"
     },
     {
@@ -108,10 +108,10 @@
       "uri": "motions/idle/frames/02.png",
       "name": "idle frame 02",
       "metadata": {
-        "width": 162,
+        "width": 186,
         "height": 252
       },
-      "createdAt": 1788955225303,
+      "createdAt": 1788966225490,
       "status": "ready"
     },
     {
@@ -120,10 +120,10 @@
       "uri": "motions/idle/frames/03.png",
       "name": "idle frame 03",
       "metadata": {
-        "width": 162,
+        "width": 186,
         "height": 252
       },
-      "createdAt": 1788955225303,
+      "createdAt": 1788966225490,
       "status": "ready"
     },
     {
@@ -132,10 +132,10 @@
       "uri": "motions/idle/frames/04.png",
       "name": "idle frame 04",
       "metadata": {
-        "width": 162,
+        "width": 186,
         "height": 252
       },
-      "createdAt": 1788955225303,
+      "createdAt": 1788966225490,
       "status": "ready"
     },
     {
@@ -144,10 +144,10 @@
       "uri": "motions/idle/frames/05.png",
       "name": "idle frame 05",
       "metadata": {
-        "width": 162,
+        "width": 186,
         "height": 252
       },
-      "createdAt": 1788955225303,
+      "createdAt": 1788966225490,
       "status": "ready"
     },
     {
@@ -156,10 +156,10 @@
       "uri": "motions/idle/frames/06.png",
       "name": "idle frame 06",
       "metadata": {
-        "width": 162,
+        "width": 186,
         "height": 252
       },
-      "createdAt": 1788955225303,
+      "createdAt": 1788966225490,
       "status": "ready"
     },
     {
@@ -168,10 +168,10 @@
       "uri": "motions/idle/frames/07.png",
       "name": "idle frame 07",
       "metadata": {
-        "width": 162,
+        "width": 186,
         "height": 252
       },
-      "createdAt": 1788955225303,
+      "createdAt": 1788966225490,
       "status": "ready"
     },
     {
@@ -180,10 +180,10 @@
       "uri": "motions/idle/frames/08.png",
       "name": "idle frame 08",
       "metadata": {
-        "width": 162,
+        "width": 186,
         "height": 252
       },
-      "createdAt": 1788955225303,
+      "createdAt": 1788966225490,
       "status": "ready"
     },
     {
@@ -192,10 +192,10 @@
       "uri": "motions/idle/frames/09.png",
       "name": "idle frame 09",
       "metadata": {
-        "width": 162,
+        "width": 186,
         "height": 252
       },
-      "createdAt": 1788955225303,
+      "createdAt": 1788966225490,
       "status": "ready"
     },
     {
@@ -204,10 +204,10 @@
       "uri": "motions/idle/frames/10.png",
       "name": "idle frame 10",
       "metadata": {
-        "width": 162,
+        "width": 186,
         "height": 252
       },
-      "createdAt": 1788955225303,
+      "createdAt": 1788966225490,
       "status": "ready"
     },
     {
@@ -216,10 +216,10 @@
       "uri": "motions/idle/frames/11.png",
       "name": "idle frame 11",
       "metadata": {
-        "width": 162,
+        "width": 186,
         "height": 252
       },
-      "createdAt": 1788955225303,
+      "createdAt": 1788966225490,
       "status": "ready"
     },
     {
@@ -228,10 +228,10 @@
       "uri": "motions/idle/frames/12.png",
       "name": "idle frame 12",
       "metadata": {
-        "width": 162,
+        "width": 186,
         "height": 252
       },
-      "createdAt": 1788955225303,
+      "createdAt": 1788966225490,
       "status": "ready"
     },
     {
@@ -240,10 +240,10 @@
       "uri": "motions/idle/frames/13.png",
       "name": "idle frame 13",
       "metadata": {
-        "width": 162,
+        "width": 186,
         "height": 252
       },
-      "createdAt": 1788955225303,
+      "createdAt": 1788966225490,
       "status": "ready"
     },
     {
@@ -252,10 +252,10 @@
       "uri": "motions/idle/frames/14.png",
       "name": "idle frame 14",
       "metadata": {
-        "width": 162,
+        "width": 186,
         "height": 252
       },
-      "createdAt": 1788955225303,
+      "createdAt": 1788966225490,
       "status": "ready"
     },
     {
@@ -264,10 +264,10 @@
       "uri": "motions/idle/frames/15.png",
       "name": "idle frame 15",
       "metadata": {
-        "width": 162,
+        "width": 186,
         "height": 252
       },
-      "createdAt": 1788955225303,
+      "createdAt": 1788966225490,
       "status": "ready"
     },
     {
@@ -276,10 +276,10 @@
       "uri": "motions/idle/sheet.png",
       "name": "idle atlas image",
       "metadata": {
-        "width": 648,
+        "width": 744,
         "height": 1008
       },
-      "createdAt": 1788955225303,
+      "createdAt": 1788966225490,
       "status": "ready"
     },
     {
@@ -288,7 +288,7 @@
       "uri": "motions/idle/atlas.json",
       "name": "idle atlas",
       "metadata": {},
-      "createdAt": 1788955225303,
+      "createdAt": 1788966225490,
       "status": "ready"
     },
     {
@@ -297,11 +297,11 @@
       "uri": "motions/idle/preview.gif",
       "name": "idle preview",
       "metadata": {
-        "width": 162,
+        "width": 186,
         "height": 252,
         "fps": 8
       },
-      "createdAt": 1788955225303,
+      "createdAt": 1788966225490,
       "status": "ready"
     },
     {
@@ -310,11 +310,11 @@
       "uri": "motions/idle/preview.webp",
       "name": "idle preview (webp)",
       "metadata": {
-        "width": 162,
+        "width": 186,
         "height": 252,
         "fps": 8
       },
-      "createdAt": 1788955225303,
+      "createdAt": 1788966225490,
       "status": "ready"
     },
     {
@@ -326,7 +326,7 @@
         "width": 1024,
         "height": 1024
       },
-      "createdAt": 1788955226012,
+      "createdAt": 1788966226221,
       "status": "ready"
     },
     {
@@ -335,10 +335,10 @@
       "uri": "motions/attack/frames/00.png",
       "name": "attack frame 00",
       "metadata": {
-        "width": 216,
+        "width": 272,
         "height": 262
       },
-      "createdAt": 1788955226012,
+      "createdAt": 1788966226221,
       "status": "ready"
     },
     {
@@ -347,10 +347,10 @@
       "uri": "motions/attack/frames/01.png",
       "name": "attack frame 01",
       "metadata": {
-        "width": 216,
+        "width": 272,
         "height": 262
       },
-      "createdAt": 1788955226012,
+      "createdAt": 1788966226221,
       "status": "ready"
     },
     {
@@ -359,10 +359,10 @@
       "uri": "motions/attack/frames/02.png",
       "name": "attack frame 02",
       "metadata": {
-        "width": 216,
+        "width": 272,
         "height": 262
       },
-      "createdAt": 1788955226012,
+      "createdAt": 1788966226221,
       "status": "ready"
     },
     {
@@ -371,10 +371,10 @@
       "uri": "motions/attack/frames/03.png",
       "name": "attack frame 03",
       "metadata": {
-        "width": 216,
+        "width": 272,
         "height": 262
       },
-      "createdAt": 1788955226012,
+      "createdAt": 1788966226221,
       "status": "ready"
     },
     {
@@ -383,10 +383,10 @@
       "uri": "motions/attack/frames/04.png",
       "name": "attack frame 04",
       "metadata": {
-        "width": 216,
+        "width": 272,
         "height": 262
       },
-      "createdAt": 1788955226012,
+      "createdAt": 1788966226221,
       "status": "ready"
     },
     {
@@ -395,10 +395,10 @@
       "uri": "motions/attack/frames/05.png",
       "name": "attack frame 05",
       "metadata": {
-        "width": 216,
+        "width": 272,
         "height": 262
       },
-      "createdAt": 1788955226012,
+      "createdAt": 1788966226221,
       "status": "ready"
     },
     {
@@ -407,10 +407,10 @@
       "uri": "motions/attack/frames/06.png",
       "name": "attack frame 06",
       "metadata": {
-        "width": 216,
+        "width": 272,
         "height": 262
       },
-      "createdAt": 1788955226012,
+      "createdAt": 1788966226221,
       "status": "ready"
     },
     {
@@ -419,10 +419,10 @@
       "uri": "motions/attack/frames/07.png",
       "name": "attack frame 07",
       "metadata": {
-        "width": 216,
+        "width": 272,
         "height": 262
       },
-      "createdAt": 1788955226012,
+      "createdAt": 1788966226221,
       "status": "ready"
     },
     {
@@ -431,10 +431,10 @@
       "uri": "motions/attack/frames/08.png",
       "name": "attack frame 08",
       "metadata": {
-        "width": 216,
+        "width": 272,
         "height": 262
       },
-      "createdAt": 1788955226012,
+      "createdAt": 1788966226221,
       "status": "ready"
     },
     {
@@ -443,10 +443,10 @@
       "uri": "motions/attack/frames/09.png",
       "name": "attack frame 09",
       "metadata": {
-        "width": 216,
+        "width": 272,
         "height": 262
       },
-      "createdAt": 1788955226012,
+      "createdAt": 1788966226221,
       "status": "ready"
     },
     {
@@ -455,10 +455,10 @@
       "uri": "motions/attack/frames/10.png",
       "name": "attack frame 10",
       "metadata": {
-        "width": 216,
+        "width": 272,
         "height": 262
       },
-      "createdAt": 1788955226012,
+      "createdAt": 1788966226221,
       "status": "ready"
     },
     {
@@ -467,10 +467,10 @@
       "uri": "motions/attack/frames/11.png",
       "name": "attack frame 11",
       "metadata": {
-        "width": 216,
+        "width": 272,
         "height": 262
       },
-      "createdAt": 1788955226012,
+      "createdAt": 1788966226221,
       "status": "ready"
     },
     {
@@ -479,10 +479,10 @@
       "uri": "motions/attack/frames/12.png",
       "name": "attack frame 12",
       "metadata": {
-        "width": 216,
+        "width": 272,
         "height": 262
       },
-      "createdAt": 1788955226012,
+      "createdAt": 1788966226221,
       "status": "ready"
     },
     {
@@ -491,10 +491,10 @@
       "uri": "motions/attack/frames/13.png",
       "name": "attack frame 13",
       "metadata": {
-        "width": 216,
+        "width": 272,
         "height": 262
       },
-      "createdAt": 1788955226012,
+      "createdAt": 1788966226221,
       "status": "ready"
     },
     {
@@ -503,10 +503,10 @@
       "uri": "motions/attack/frames/14.png",
       "name": "attack frame 14",
       "metadata": {
-        "width": 216,
+        "width": 272,
         "height": 262
       },
-      "createdAt": 1788955226012,
+      "createdAt": 1788966226221,
       "status": "ready"
     },
     {
@@ -515,10 +515,10 @@
       "uri": "motions/attack/frames/15.png",
       "name": "attack frame 15",
       "metadata": {
-        "width": 216,
+        "width": 272,
         "height": 262
       },
-      "createdAt": 1788955226012,
+      "createdAt": 1788966226221,
       "status": "ready"
     },
     {
@@ -527,10 +527,10 @@
       "uri": "motions/attack/sheet.png",
       "name": "attack atlas image",
       "metadata": {
-        "width": 864,
+        "width": 1088,
         "height": 1048
       },
-      "createdAt": 1788955226012,
+      "createdAt": 1788966226221,
       "status": "ready"
     },
     {
@@ -539,7 +539,7 @@
       "uri": "motions/attack/atlas.json",
       "name": "attack atlas",
       "metadata": {},
-      "createdAt": 1788955226012,
+      "createdAt": 1788966226221,
       "status": "ready"
     },
     {
@@ -548,11 +548,11 @@
       "uri": "motions/attack/preview.gif",
       "name": "attack preview",
       "metadata": {
-        "width": 216,
+        "width": 272,
         "height": 262,
         "fps": 10
       },
-      "createdAt": 1788955226012,
+      "createdAt": 1788966226221,
       "status": "ready"
     },
     {
@@ -561,11 +561,11 @@
       "uri": "motions/attack/preview.webp",
       "name": "attack preview (webp)",
       "metadata": {
-        "width": 216,
+        "width": 272,
         "height": 262,
         "fps": 10
       },
-      "createdAt": 1788955226012,
+      "createdAt": 1788966226221,
       "status": "ready"
     },
     {
@@ -652,7 +652,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955225303,
+        "timestamp": 1788966225490,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "key"
@@ -665,7 +665,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955225303,
+        "timestamp": 1788966225490,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -679,7 +679,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955225303,
+        "timestamp": 1788966225490,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -693,7 +693,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955225303,
+        "timestamp": 1788966225490,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -707,7 +707,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955225303,
+        "timestamp": 1788966225490,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -721,7 +721,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955225303,
+        "timestamp": 1788966225490,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -735,7 +735,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955225303,
+        "timestamp": 1788966225490,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -749,7 +749,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955225303,
+        "timestamp": 1788966225490,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -763,7 +763,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955225303,
+        "timestamp": 1788966225490,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -777,7 +777,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955225303,
+        "timestamp": 1788966225490,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -791,7 +791,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955225303,
+        "timestamp": 1788966225490,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -805,7 +805,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955225303,
+        "timestamp": 1788966225490,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -819,7 +819,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955225303,
+        "timestamp": 1788966225490,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -833,7 +833,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955225303,
+        "timestamp": 1788966225490,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -847,7 +847,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955225303,
+        "timestamp": 1788966225490,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -861,7 +861,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955225303,
+        "timestamp": 1788966225490,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -875,7 +875,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955225303,
+        "timestamp": 1788966225490,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -889,7 +889,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955225303,
+        "timestamp": 1788966225490,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "pack",
@@ -920,7 +920,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955225303,
+        "timestamp": 1788966225490,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "pack"
@@ -933,7 +933,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955225303,
+        "timestamp": 1788966225490,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "gif",
@@ -964,7 +964,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955225303,
+        "timestamp": 1788966225490,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "gif",
@@ -995,7 +995,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955226012,
+        "timestamp": 1788966226221,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "key"
@@ -1008,7 +1008,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955226012,
+        "timestamp": 1788966226221,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -1022,7 +1022,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955226012,
+        "timestamp": 1788966226221,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -1036,7 +1036,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955226012,
+        "timestamp": 1788966226221,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -1050,7 +1050,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955226012,
+        "timestamp": 1788966226221,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -1064,7 +1064,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955226012,
+        "timestamp": 1788966226221,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -1078,7 +1078,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955226012,
+        "timestamp": 1788966226221,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -1092,7 +1092,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955226012,
+        "timestamp": 1788966226221,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -1106,7 +1106,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955226012,
+        "timestamp": 1788966226221,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -1120,7 +1120,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955226012,
+        "timestamp": 1788966226221,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -1134,7 +1134,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955226012,
+        "timestamp": 1788966226221,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -1148,7 +1148,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955226012,
+        "timestamp": 1788966226221,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -1162,7 +1162,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955226012,
+        "timestamp": 1788966226221,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -1176,7 +1176,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955226012,
+        "timestamp": 1788966226221,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -1190,7 +1190,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955226012,
+        "timestamp": 1788966226221,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -1204,7 +1204,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955226012,
+        "timestamp": 1788966226221,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -1218,7 +1218,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955226012,
+        "timestamp": 1788966226221,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "run",
@@ -1232,7 +1232,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955226012,
+        "timestamp": 1788966226221,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "pack",
@@ -1263,7 +1263,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955226012,
+        "timestamp": 1788966226221,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "pack"
@@ -1276,7 +1276,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955226012,
+        "timestamp": 1788966226221,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "gif",
@@ -1307,7 +1307,7 @@
       "operation": {
         "type": "derive",
         "actor": "agent",
-        "timestamp": 1788955226012,
+        "timestamp": 1788966226221,
         "params": {
           "tool": "sprite-sheet.mjs",
           "step": "gif",
@@ -1419,15 +1419,15 @@
         "inspect": {
           "frameCount": 16,
           "cell": {
-            "width": 162,
+            "width": 186,
             "height": 252
           },
           "anchorPoint": {
-            "x": 81,
+            "x": 93,
             "y": 244
           },
           "anchorDrift": {
-            "x": 0.248,
+            "x": 0.306,
             "y": 0
           },
           "maxJump": 0.5,
@@ -1485,19 +1485,19 @@
         "inspect": {
           "frameCount": 16,
           "cell": {
-            "width": 216,
+            "width": 272,
             "height": 262
           },
           "anchorPoint": {
-            "x": 108,
+            "x": 136,
             "y": 254
           },
           "anchorDrift": {
-            "x": 0.242,
+            "x": 17.373,
             "y": 0
           },
-          "maxJump": 0.5,
-          "scaleDrift": 0.1303,
+          "maxJump": 50,
+          "scaleDrift": 0.126,
           "emptyFrames": [],
           "warnings": []
         }

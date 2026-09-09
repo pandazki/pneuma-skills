@@ -41,6 +41,15 @@ const NEARLY_EMPTY_COVERAGE = 0.02;
 /** An anchor moving more than this fraction of the cell width between two
  *  consecutive frames reads as a jump, not as motion. */
 const MAX_JUMP_FRACTION = 0.08;
+/** The bottom slice of the bbox that counts as "the feet" — the part of the
+ *  drawing that stands on the ground, as opposed to the part that waves a
+ *  prop around. 10% of the bbox height, so it scales with the character. */
+const FEET_BAND = 0.1;
+/** Feet wandering more than this fraction of the cell width across the frames
+ *  is a body that visibly slides sideways during playback, not animation. */
+const MAX_BODY_DRIFT_FRACTION = 0.05;
+/** Where `align` may take each frame's x from. */
+const X_FROM_MODES = ["feet", "bbox", "cell"];
 /** Relative spread of bbox heights above which the character is being drawn at
  *  different scales from frame to frame. */
 const MAX_SCALE_DRIFT = 0.15;
@@ -73,15 +82,21 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       Cut the grid into <dir>/NN.png, row-major. Non-integer cells are
       floored and reported (exact:false + remainder).
 
-  align <framesDir> --out <dir> [--anchor bottom|center] [--cell auto|WxH]
-        [--pad ${DEFAULT_PAD}] [--smooth] [--threshold ${DEFAULT_THRESHOLD}]
+  align <framesDir> --out <dir> [--anchor bottom|center] [--x-from feet|bbox|cell]
+        [--cell auto|WxH] [--pad ${DEFAULT_PAD}] [--smooth] [--threshold ${DEFAULT_THRESHOLD}]
       Re-place every frame so its anchor lands on the same point.
-      bottom: bbox bottom-centre; center: bbox centre. --smooth replaces each
-      anchor x with the 3-frame median so a one-frame bbox wobble (a stray
-      arm) does not shove the whole body sideways; with --anchor center the
-      same median is applied to y.
-      Records the point it used in <dir>/${ALIGN_RECORD}, so pack declares
-      that pivot instead of assuming the cell edge.
+      y: bbox bottom (bottom) or bbox centre (center).
+      x: --x-from feet (default) takes the mean x of the alpha pixels in the
+      bottom ${FEET_BAND * 100}% of the bbox — where the character STANDS, so a prop
+      swinging sideways no longer drags the body the other way; bbox takes the
+      bbox centre (what --anchor center always uses, feet being no reference
+      for an airborne pose); cell keeps the offset the drawing had inside its
+      grid cell, i.e. no horizontal re-placement at all.
+      --smooth replaces each frame's x with the 3-frame median so a one-frame
+      wobble does not shove the body sideways; with --anchor center the same
+      median is applied to y.
+      Records the point and the x mode it used in <dir>/${ALIGN_RECORD}, so
+      pack declares that pivot instead of assuming the cell edge.
 
   pack <framesDir> --out <sheet.png> --atlas <atlas.json> --name <motionId>
        --fps N [--loop] [--anchor bottom|center] [--cols C] [--scale 1] [--nearest]
@@ -95,15 +110,16 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       Palette GIF with a reserved transparent entry; optional animated WebP.
 
   inspect <motionDir> [--anchor bottom|center] [--cells <dir>] [--threshold ${DEFAULT_THRESHOLD}]
-      Frame count, cell, per-frame bboxes, anchor drift, max jump, scale
-      drift, empty frames and human warnings. Writes <motionDir>/inspect.json.
+      Frame count, cell, per-frame bboxes, anchor drift, body drift, max jump,
+      scale drift, empty frames and human warnings. Writes
+      <motionDir>/inspect.json.
       --cells points at the pre-align grid cells so "leaves its grid cell"
       can be judged on the raw crop rather than the padded frame; it defaults
       to <motionDir>/${CELLS_DIRNAME} when 'run' left that directory there.
 
   run <sheet-raw> --rows R --cols C --out <motionDir> --name <motionId> --fps N
       [--alpha <png>] [--force] [--loop] [--anchor bottom|center]
-      [--key auto|#rrggbb|none] [--cell auto|WxH]
+      [--x-from feet|bbox|cell] [--key auto|#rrggbb|none] [--cell auto|WxH]
       [--pad ${DEFAULT_PAD}] [--smooth] [--scale 1] [--nearest] [--margin 0] [--gutter 0]
       [--width W] [--no-webp] [--threshold ${DEFAULT_THRESHOLD}]
       probe -> key (only when the sheet is opaque) -> slice -> align -> pack
@@ -254,6 +270,51 @@ function computeBbox(image, threshold) {
     coverage: count / (width * height),
     bbox: count ? { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 } : null,
   };
+}
+
+/**
+ * Mean x of the alpha pixels in the bottom FEET_BAND of the bbox: where the
+ * character stands, as opposed to where its silhouette happens to be centred.
+ *
+ * The mean, not the midpoint of the extent, because the two disagree exactly
+ * when it matters. Measured on the Lumi attack sheet, the lantern sweeps down
+ * past the front foot in frames 09-11 and enters the band: the extent midpoint
+ * jumps 14 px on frame 10 and back again (it only takes ONE pixel at the new
+ * edge), while the mass-weighted mean moves ~2 px, because the lantern's few
+ * hundred pixels cannot outvote the body's thousand. Frame-to-frame, the mean
+ * is the smoother of the two on that fixture (max step 35 px vs 36.5 px, and
+ * no spurious 14/-22 px spike), so it is the one the body is pinned by.
+ *
+ * A non-null bbox always has at least one pixel in its bottom row, so the
+ * fallback is unreachable in practice; it is there so a threshold change can
+ * never turn this into a NaN that silently poisons every offset.
+ */
+function feetCenterX(image, bbox, threshold) {
+  const bandHeight = Math.max(1, Math.round(bbox.h * FEET_BAND));
+  const top = bbox.y + bbox.h - bandHeight;
+  let sum = 0, count = 0;
+  for (let y = top; y < bbox.y + bbox.h; y++) {
+    const row = y * image.width;
+    for (let x = bbox.x; x < bbox.x + bbox.w; x++) {
+      if (image.data[(row + x) * 4 + 3] < threshold) continue;
+      // Pixel centres, so a solid run x0..x1 averages to the same
+      // half-integer `anchorOf` calls the bbox centre.
+      sum += x + 0.5;
+      count++;
+    }
+  }
+  return count ? sum / count : bbox.x + bbox.w / 2;
+}
+
+/**
+ * Everything one decode of a frame can say about its geometry. `align` and
+ * `inspect` both need bbox AND feet, and `run` gets all of them out of a
+ * single decode of the sheet — so the pass that reads the pixels answers
+ * every question at once instead of being run twice.
+ */
+function measureFrame(image, threshold) {
+  const { bbox, coverage } = computeBbox(image, threshold);
+  return { bbox, coverage, feetX: bbox ? feetCenterX(image, bbox, threshold) : null };
 }
 
 function hasAlpha(image) {
@@ -438,6 +499,25 @@ function parseCell(value) {
   return { width: Number(m[1]), height: Number(m[2]) };
 }
 
+/**
+ * Width of the grid cell the source frames were cut from — the reference
+ * `--x-from cell` measures against, and the one mode that needs it. `run`
+ * already knows it (it did the slicing) and hands it in; a bare `align` probes
+ * for it. Only the width is checked: x is all this mode derives, so frames of
+ * differing heights are none of its business.
+ */
+function sourceCellWidth(entries, given) {
+  if (given) return given.width;
+  const first = probeSize(entries[0].path, "align");
+  for (const entry of entries) {
+    const size = probeSize(entry.path, "align");
+    if (size.width !== first.width) {
+      fail(`--x-from cell needs frames cut from one grid, but ${basename(entries[0].path)} is ${first.width}px wide and ${basename(entry.path)} is ${size.width}px — align these on --x-from feet or bbox instead`);
+    }
+  }
+  return first.width;
+}
+
 /** Anchor of a bbox in its own frame's coordinates. */
 function anchorOf(bbox, anchor) {
   return {
@@ -458,36 +538,37 @@ function median3(values, i) {
 
 /**
  * Re-place every frame so its anchor lands on one fixed point in a uniform
- * cell. `bboxes` may be supplied by a caller that already decoded the source
+ * cell. `measures` may be supplied by a caller that already decoded the source
  * (see `run`), which saves one decode per frame.
  */
-function stepAlign(framesDir, { out, anchor, cell, pad, smooth, threshold, bboxes: given }) {
+function stepAlign(framesDir, { out, anchor, cell, pad, smooth, threshold, xFrom, measures: given, sourceCell }) {
   const entries = listFrames(resolve(framesDir));
-  const bboxes = given ?? entries.map((entry) => computeBbox(readRgba(entry.path), threshold).bbox);
-  if (bboxes.length !== entries.length) fail("internal: bbox count does not match frame count");
+  const measures = given ?? entries.map((entry) => measureFrame(readRgba(entry.path), threshold));
+  if (measures.length !== entries.length) fail("internal: measurement count does not match frame count");
+  const bboxes = measures.map((m) => m.bbox);
 
   const filled = bboxes.filter(Boolean);
   if (!filled.length) fail(`every frame in ${framesDir} is empty above alpha threshold ${threshold}`);
 
-  let cellSize = cell;
-  if (!cellSize) {
-    const even = (n) => (n % 2 ? n + 1 : n);
-    cellSize = {
-      width: even(Math.max(...filled.map((b) => b.w)) + 2 * pad),
-      height: even(Math.max(...filled.map((b) => b.h)) + 2 * pad),
-    };
-  }
-
-  for (const [i, box] of bboxes.entries()) {
-    if (!box) continue;
-    if (box.w > cellSize.width || box.h > cellSize.height) {
-      fail(`frame ${frameName(i).slice(0, 2)} needs at least ${box.w}x${box.h} but the cell is ${cellSize.width}x${cellSize.height} — raise --pad or set --cell`);
-    }
-  }
+  // A center anchor is for poses with no feet on the ground, so its x has
+  // always been the bbox centre and stays there: the `feet` default resolves
+  // to `bbox` under it. What gets recorded and returned is what it resolved
+  // to, never what was asked for — a record that claimed `feet` while the
+  // pixels came from the bbox would be the silent kind of wrong.
+  const xMode = anchor === "center" && xFrom === "feet" ? "bbox" : xFrom;
+  const sourceWidth = xMode === "cell" ? sourceCellWidth(entries, sourceCell) : null;
 
   // Smoothing works on the *source* anchor, so a one-frame bbox wobble stops
   // shoving the body; the frame keeps its own offset from the smoothed anchor.
-  const anchorsX = bboxes.map((b) => (b ? anchorOf(b, anchor).x : null));
+  const anchorsX = measures.map((m) => {
+    if (!m.bbox) return null;
+    // `cell`: every frame's reference is the same point of the same grid cell,
+    // so the difference between two frames' offsets survives untouched — the
+    // drawing is only moved vertically.
+    if (xMode === "cell") return sourceWidth / 2;
+    if (xMode === "feet") return m.feetX;
+    return anchorOf(m.bbox, anchor).x;
+  });
   const anchorsY = bboxes.map((b) => (b ? anchorOf(b, anchor).y : null));
   let targetsX = anchorsX;
   let targetsY = anchorsY;
@@ -497,6 +578,43 @@ function stepAlign(framesDir, { out, anchor, cell, pad, smooth, threshold, bboxe
     if (anchor === "center") {
       const ys = anchorsY.map((v) => v ?? 0);
       targetsY = anchorsY.map((v, i) => (v === null ? null : median3(ys, i)));
+    }
+  }
+
+  // Sizing comes AFTER the anchor is known, because the anchor is what the
+  // cell has to be big enough around. `max bbox width + 2·pad` was only ever
+  // right while x came from the bbox centre; take x from the feet and the
+  // drawing reaches further to one side than the other, so that width clamps
+  // every frame against the cell edge — which puts the body back exactly where
+  // it was shoved before (measured on the Lumi idle sheet: all 16 frames
+  // clamped, feet landing 2px off the anchor and still drifting).
+  //
+  // So: how far does the drawing reach from its anchor, left or right, in the
+  // worst frame — doubled, because the anchor stays in the middle of the cell
+  // and the pivot stays {0.5, …}. For `bbox` this is identical to the old
+  // formula (the reach is half the bbox either way); for `feet` it widens the
+  // cell by however lopsided the pose is around the feet.
+  let cellSize = cell;
+  if (!cellSize) {
+    const even = (n) => (n % 2 ? n + 1 : n);
+    const reach = bboxes.map((b, i) => (b
+      ? Math.max(targetsX[i] - b.x, b.x + b.w - targetsX[i])
+      : 0));
+    cellSize = {
+      // In `cell` mode the drawing keeps the offset it had inside its grid
+      // cell, so that grid cell IS the natural width: anything else would
+      // shift exactly the offsets the mode exists to preserve.
+      width: xMode === "cell"
+        ? even(sourceWidth)
+        : even(2 * Math.ceil(Math.max(...reach)) + 2 * pad),
+      height: even(Math.max(...filled.map((b) => b.h)) + 2 * pad),
+    };
+  }
+
+  for (const [i, box] of bboxes.entries()) {
+    if (!box) continue;
+    if (box.w > cellSize.width || box.h > cellSize.height) {
+      fail(`frame ${frameName(i).slice(0, 2)} needs at least ${box.w}x${box.h} but the cell is ${cellSize.width}x${cellSize.height} — raise --pad or set --cell`);
     }
   }
 
@@ -571,12 +689,17 @@ function stepAlign(framesDir, { out, anchor, cell, pad, smooth, threshold, bboxe
     pad,
     anchorPoint: { x: target.x, y: target.y },
     smooth,
+    // Which x these frames were pinned by. `pack` does not need it, but the
+    // next person asking "why does the body sit off-centre" does, and so does
+    // anyone re-running align from the same cells.
+    xFrom: xMode,
   });
 
   return {
     inDir: resolve(framesDir),
     outDir: dir,
     anchor, pad, smooth,
+    xFrom: xMode,
     cell: cellSize,
     anchorPoint: { x: target.x, y: target.y },
     alignRecord: record,
@@ -847,8 +970,11 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
 
   const measured = entries.map((entry) => {
     const image = readRgba(entry.path);
-    const { bbox, coverage } = computeBbox(image, threshold);
-    return { index: entry.index, path: entry.path, width: image.width, height: image.height, bbox, coverage };
+    return {
+      index: entry.index, path: entry.path,
+      width: image.width, height: image.height,
+      ...measureFrame(image, threshold),
+    };
   });
 
   const cellW = measured[0].width;
@@ -862,12 +988,30 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
     y: round(stdDev(present.map((a) => a.y)), 3),
   };
 
+  // Where the character STANDS, frame to frame. `anchorDrift` measures the
+  // silhouette, and a prop that swings sideways moves the silhouette without
+  // moving the body — which is precisely how a bbox-centred alignment used to
+  // pay for a lantern by shoving the body the other way. Reported for both
+  // anchors: an airborne pose is aligned on its bbox centre, and this is then
+  // the number that says whether the body slid while it was in the air.
+  const feetX = measured.map((f) => f.feetX).filter((v) => v !== null);
+  const bodyDrift = round(stdDev(feetX), 3);
+
   let maxJump = 0;
   let jumpPair = null;
+  // The same walk over the feet. It is never reported — `maxJump` keeps its
+  // definition — it only decides whether a moving anchor is worth a sentence:
+  // with x taken from the feet a swinging prop moves the silhouette in every
+  // frame BY DESIGN, and calling that a jump would tell the agent to go and
+  // "fix" the one thing that is right. A character that genuinely lurches
+  // takes its feet with it.
+  let bodyJump = 0;
   for (let i = 1; i < anchors.length; i++) {
     if (!anchors[i] || !anchors[i - 1]) continue;
     const d = Math.hypot(anchors[i].x - anchors[i - 1].x, anchors[i].y - anchors[i - 1].y);
     if (d > maxJump) { maxJump = d; jumpPair = [i - 1, i]; }
+    const feet = Math.abs(measured[i].feetX - measured[i - 1].feetX);
+    if (feet > bodyJump) bodyJump = feet;
   }
 
   const heights = measured.filter((f) => f.bbox).map((f) => f.bbox.h);
@@ -898,8 +1042,11 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
   }
   warnings.push(...listAndTruncate(emptyFrames, (i) => `frame ${pad(i)} is empty`));
   warnings.push(...listAndTruncate(nearlyEmpty, (i) => `frame ${pad(i)} is nearly empty`));
-  if (jumpPair && maxJump > MAX_JUMP_FRACTION * cellW) {
+  if (jumpPair && maxJump > MAX_JUMP_FRACTION * cellW && bodyJump > MAX_JUMP_FRACTION * cellW) {
     warnings.push(`anchor jumps between frames ${pad(jumpPair[0])} and ${pad(jumpPair[1])}`);
+  }
+  if (bodyDrift > MAX_BODY_DRIFT_FRACTION * cellW) {
+    warnings.push("body drifts sideways between frames — re-run align with --x-from feet/cell");
   }
   if (scaleDrift > MAX_SCALE_DRIFT) {
     warnings.push("character scale varies across frames — regenerate with a fixed-scale instruction");
@@ -923,6 +1070,7 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
     cell: { width: cellW, height: cellH },
     ...(measuredAnchor ? { anchorPoint: measuredAnchor } : {}),
     anchorDrift,
+    bodyDrift,
     maxJump: round(maxJump, 3),
     scaleDrift,
     emptyFrames,
@@ -940,6 +1088,9 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
       bbox: f.bbox,
       coverage: round(f.coverage, 4),
       anchor: f.bbox ? { x: round(anchorOf(f.bbox, anchor).x, 2), y: round(anchorOf(f.bbox, anchor).y, 2) } : null,
+      // Per frame, so "the body drifts" names the frame it drifts on — the
+      // summary metric alone cannot.
+      feetX: f.feetX === null ? null : round(f.feetX, 2),
     })),
   };
   if (write) report.inspect = writeJsonFile(join(dir, "inspect.json"), report);
@@ -1069,14 +1220,11 @@ function stepRun(sheetRaw, options) {
   // One decode of the source covers every cell's bbox: slicing is a pure
   // crop, so a cell's pixels are the sheet's pixels.
   const sheetImage = readRgba(source);
-  const bboxes = sliced.cells.map((cell) => {
-    const local = computeBbox({
-      width: sliced.cell.width,
-      height: sliced.cell.height,
-      data: cropBuffer(sheetImage, cell.x, cell.y, sliced.cell.width, sliced.cell.height),
-    }, options.threshold);
-    return local.bbox;
-  });
+  const measures = sliced.cells.map((cell) => measureFrame({
+    width: sliced.cell.width,
+    height: sliced.cell.height,
+    data: cropBuffer(sheetImage, cell.x, cell.y, sliced.cell.width, sliced.cell.height),
+  }, options.threshold));
 
   const aligned = stepAlign(cellsDir, {
     out: join(motionDir, "frames"),
@@ -1085,7 +1233,9 @@ function stepRun(sheetRaw, options) {
     pad: options.pad,
     smooth: options.smooth,
     threshold: options.threshold,
-    bboxes,
+    xFrom: options.xFrom,
+    measures,
+    sourceCell: sliced.cell,
   });
   warnings.push(...aligned.warnings);
 
@@ -1114,8 +1264,8 @@ function stepRun(sheetRaw, options) {
     anchor: options.anchor,
     threshold: options.threshold,
     cellsDir,
-    cellBoxes: bboxes.map((bbox, index) => ({
-      index, width: sliced.cell.width, height: sliced.cell.height, bbox,
+    cellBoxes: measures.map((m, index) => ({
+      index, width: sliced.cell.width, height: sliced.cell.height, bbox: m.bbox,
     })),
   });
   warnings.push(...summary.warnings.filter((w) => !warnings.includes(w)));
@@ -1140,6 +1290,7 @@ function stepRun(sheetRaw, options) {
     fps: options.fps,
     loop: options.loop,
     anchor: options.anchor,
+    xFrom: aligned.xFrom,
     scale: options.scale,
     warnings,
   };
@@ -1173,7 +1324,8 @@ const OPTIONS = {
     margin: { type: "string" }, gutter: { type: "string" },
   },
   align: {
-    out: { type: "string" }, anchor: { type: "string" }, cell: { type: "string" },
+    out: { type: "string" }, anchor: { type: "string" }, "x-from": { type: "string" },
+    cell: { type: "string" },
     pad: { type: "string" }, smooth: { type: "boolean", default: false }, threshold: { type: "string" },
   },
   pack: {
@@ -1191,7 +1343,8 @@ const OPTIONS = {
     rows: { type: "string" }, cols: { type: "string" }, out: { type: "string" }, name: { type: "string" },
     alpha: { type: "string" }, force: { type: "boolean", default: false },
     fps: { type: "string" }, loop: { type: "boolean", default: false }, "no-loop": { type: "boolean", default: false },
-    anchor: { type: "string" }, key: { type: "string" }, cell: { type: "string" }, pad: { type: "string" },
+    anchor: { type: "string" }, "x-from": { type: "string" },
+    key: { type: "string" }, cell: { type: "string" }, pad: { type: "string" },
     smooth: { type: "boolean", default: false }, scale: { type: "string" }, nearest: { type: "boolean", default: false },
     margin: { type: "string" }, gutter: { type: "string" }, width: { type: "string" },
     "no-webp": { type: "boolean", default: false }, threshold: { type: "string" },
@@ -1223,6 +1376,14 @@ function pickAnchor(value) {
   const anchor = value ?? "bottom";
   if (anchor !== "bottom" && anchor !== "center") fail(`--anchor: expected bottom or center, got '${value}'`);
   return anchor;
+}
+
+function pickXFrom(value) {
+  const xFrom = value ?? "feet";
+  if (!X_FROM_MODES.includes(xFrom)) {
+    fail(`--x-from: expected ${X_FROM_MODES.join(", ")}, got '${value}'`);
+  }
+  return xFrom;
 }
 
 function pickLoop(values, fallback = false) {
@@ -1317,13 +1478,14 @@ function main() {
       const out = stepAlign(requirePositional(positionals, "<framesDir>"), {
         out: requireFlag(values.out, "--out"),
         anchor: pickAnchor(values.anchor),
+        xFrom: pickXFrom(values["x-from"]),
         cell: parseCell(values.cell),
         pad: num(values.pad, "--pad", { integer: true, min: 0, fallback: DEFAULT_PAD }),
         smooth: values.smooth,
         threshold,
       });
       emit(values, out, [
-        `aligned ${out.frames.length} frames on a ${out.cell.width}x${out.cell.height} cell (${out.anchor} anchor at ${out.anchorPoint.x},${out.anchorPoint.y})`,
+        `aligned ${out.frames.length} frames on a ${out.cell.width}x${out.cell.height} cell (${out.anchor} anchor at ${out.anchorPoint.x},${out.anchorPoint.y}, x from ${out.xFrom})`,
         ...out.warnings,
       ]);
       break;
@@ -1363,7 +1525,7 @@ function main() {
         cellsDir: values.cells ?? null,
       });
       emit(values, report, [
-        `${report.frameCount} frames of ${report.cell.width}x${report.cell.height}, drift ${report.anchorDrift.x}/${report.anchorDrift.y}px, max jump ${report.maxJump}px, scale drift ${report.scaleDrift}`,
+        `${report.frameCount} frames of ${report.cell.width}x${report.cell.height}, anchor drift ${report.anchorDrift.x}/${report.anchorDrift.y}px, body drift ${report.bodyDrift}px, max jump ${report.maxJump}px, scale drift ${report.scaleDrift}`,
         ...(report.warnings.length ? report.warnings : ["no warnings"]),
       ]);
       break;
@@ -1381,6 +1543,7 @@ function main() {
         fps: num(requireFlag(values.fps, "--fps"), "--fps", { min: 1 }),
         loop: pickLoop(values),
         anchor: pickAnchor(values.anchor),
+        xFrom: pickXFrom(values["x-from"]),
         key,
         cell: parseCell(values.cell),
         pad: num(values.pad, "--pad", { integer: true, min: 0, fallback: DEFAULT_PAD }),

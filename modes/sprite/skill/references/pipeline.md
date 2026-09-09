@@ -91,32 +91,66 @@ there, because two later steps need the un-padded crop: `inspect` judges
 `align` re-reads it when only the alignment has to be redone. They are
 intermediate files, not assets — `register-run` never registers them.
 
-### `align <framesDir> --out <dir> [--anchor bottom|center] [--cell auto|WxH] [--pad 8] [--smooth]`
+### `align <framesDir> --out <dir> [--anchor bottom|center] [--x-from feet|bbox|cell] [--cell auto|WxH] [--pad 8] [--smooth]`
 
 The step that turns sixteen pictures into an animation. Computes each frame's
 alpha bounding box, then crops to the bbox and pads onto a transparent cell so
-the anchor point lands at the same coordinate in every frame:
+the anchor point lands at the same coordinate in every frame.
 
-- `bottom` — anchor is the bbox's bottom-centre; x centred, y at `H − pad`.
-  Use for anything standing on the ground.
-- `center` — anchor is the bbox centre; used for airborne motions (jump,
+**y comes from `--anchor`:**
+
+- `bottom` — the bbox's bottom edge, placed at `H − pad`. Use for anything
+  standing on the ground.
+- `center` — the bbox centre, placed at `H/2`; for airborne motions (jump,
   float) where the feet are not the reference.
 
-`--cell auto` is the max bbox width/height across frames plus `2·pad`, rounded
-up to an even number. `--smooth` replaces each frame's anchor x with the
-3-frame median, which removes single-frame jitter without flattening a real
-lateral movement (y is untouched for `bottom` — vertical bounce is the motion).
-Empty frames come out as fully transparent cells and are reported.
+**x comes from `--x-from`**, and the three modes answer three different
+questions about where the character *is*:
 
-It also writes `<dir>/align.json` — `{ anchor, cell, pad, anchorPoint, smooth }`
-— where `anchorPoint` is the pixel coordinate **inside the cell** the anchor
-landed on: `{W/2, H − pad}` for `bottom`, `{W/2, H/2}` for `center`. That file
-is how `pack` knows what to declare as the atlas pivot. Nothing downstream can
-measure the point from the frames alone — a uniform cell cannot tell padding
-from artwork — so this step, the only one that knows, records it. The record
-travels with the frames it describes and every align rewrites it; like the
-cells it is an intermediate file, not an asset, and `register-run` never
-registers it.
+| `--x-from` | x is | Use when |
+|---|---|---|
+| `feet` (default) | the mean x of the alpha pixels in the bottom **10 %** of the bbox | Always, for a `bottom` anchor. It is where the character stands. |
+| `bbox` | the bbox centre — the behaviour before this flag existed | The drawing has no ground contact worth pinning, or you want the old frames back. It is also what a `center` anchor uses. |
+| `cell` | the centre of the grid cell the frame was cut from, i.e. **no horizontal re-placement at all** | The model already places the body consistently and you only want the vertical levelled. |
+
+**Why `feet` is the default.** The bbox is the whole drawing, props included.
+Give the character an umbrella, a lantern or a wrench that reaches sideways and
+the bbox centre moves while the body does not — so pinning the bbox centre pays
+for the prop by shoving the body the other way, and the character visibly
+splits sideways during playback. Measured on the Lumi attack sheet (4×4,
+250 px cells): the bbox centre sat still while the feet swung 81 → 134 px, an
+18 % of cell jump every time the lantern crossed the body. The feet band is
+mass-weighted (a mean, not the midpoint of the extent) because the lantern
+sweeping *into* the band on three frames moves the extent by half its
+overshoot and the mean by a couple of pixels.
+
+Under `--anchor center` the `feet` default resolves to `bbox` — an airborne
+pose has no feet on the ground to pin — and `align.json` records `bbox`, which
+is what it used. `--x-from cell` is honoured under both anchors.
+
+`--cell auto` sizes the cell around the anchor, not around the bbox: twice the
+worst frame's reach from its anchor, plus `2·pad`, rounded up to an even
+number (`cell` mode keeps the source grid cell's width, since shrinking it
+would shift the very offsets that mode preserves). Under `bbox` that is
+exactly the old `max bbox + 2·pad`; under `feet` it is wider whenever the pose
+hangs off one side, and it has to be — a narrower cell clamps every frame
+against the edge and puts the body back where it was.
+
+`--smooth` replaces each frame's x with the 3-frame median, which removes
+single-frame jitter without flattening a real lateral movement (y is untouched
+for `bottom` — vertical bounce is the motion). Empty frames come out as fully
+transparent cells and are reported.
+
+It also writes `<dir>/align.json` — `{ anchor, cell, pad, anchorPoint, smooth,
+xFrom }` — where `anchorPoint` is the pixel coordinate **inside the cell** the
+anchor landed on: `{W/2, H − pad}` for `bottom`, `{W/2, H/2}` for `center`.
+That file is how `pack` knows what to declare as the atlas pivot. Nothing
+downstream can measure the point from the frames alone — a uniform cell cannot
+tell padding from artwork — so this step, the only one that knows, records it.
+`xFrom` is the mode it *used*, so "why does the body sit off-centre" has an
+answer sitting next to the frames. The record travels with the frames it
+describes and every align rewrites it; like the cells it is an intermediate
+file, not an asset, and `register-run` never registers it.
 
 ### `pack <framesDir> --out <sheet.png> --atlas <atlas.json> --name <motionId> --fps N [--loop] [--anchor bottom|center] [--cols C] [--scale 0.5] [--nearest]`
 
@@ -158,7 +192,8 @@ only if you sliced into a directory of your own.
 |---|---|
 | `frameCount` | Frames found in `frames/` |
 | `cell` | `{ width, height }` of the aligned cell |
-| `anchorDrift` | Std-dev in px of the anchor point across frames |
+| `anchorDrift` | Std-dev in px of the anchor point across frames — the *silhouette*, props included |
+| `bodyDrift` | Std-dev in px of the feet-centre x across frames — the *body*. Near zero after `align --x-from feet`; large when a prop-inflated bbox pushed the body around |
 | `maxJump` | Largest anchor displacement between consecutive frames |
 | `scaleDrift` | `(max bbox height − min bbox height) / mean` |
 | `emptyFrames` | Indices with no pixel above the alpha threshold |
@@ -171,7 +206,8 @@ Warning rules and what each one means:
 |---|---|---|
 | "frame NN is empty" | No pixel above threshold | A cell the model left blank. Edit that one cell (see `prompting.md`) and re-run. |
 | "frame NN is nearly empty" | Alpha coverage < 0.02 | Usually the key ate the character. Re-key with a lower `--similarity`. |
-| "anchor jumps between frames NN and MM" | `maxJump > 0.08 · cellWidth` | Try `align --smooth`, or the other anchor. If it persists, the pose genuinely teleports — fix the drawing. |
+| "body drifts sideways between frames — re-run align with --x-from feet/cell" | `bodyDrift > 0.05 · cellWidth` | The body slides during playback. Re-align from `cells/` with `--x-from feet` (or `cell` when the model already placed it well). |
+| "anchor jumps between frames NN and MM" | `maxJump > 0.08 · cellWidth` **and** the feet moved that far too | Try `align --smooth`, or the other anchor. If it persists, the pose genuinely teleports — fix the drawing. The feet condition is what keeps a swinging prop quiet: under `--x-from feet` the silhouette is *supposed* to move while the body does not. |
 | "character scale varies across frames — regenerate with a fixed-scale instruction" | `scaleDrift > 0.15` | Not fixable by alignment. Regenerate with the identical-height clause from `prompting.md`. |
 | "cell NN is clipped — the drawing leaves its grid cell" | Bbox touches the cell edge before alignment | The pose is bigger than its cell. Regenerate with the "stays inside its own cell" clause. |
 
@@ -181,7 +217,7 @@ The whole chain in one call: probe → key (when the sheet is opaque and `--key`
 is not `none`, writing `sheet-alpha.png`) → slice → align → pack → gif (+ webp)
 → inspect. Accepts every flag the individual steps take (`--loop`, `--anchor`,
 `--key auto|#rrggbb|none`, `--cell`, `--pad`, `--smooth`, `--scale`,
-`--nearest`, `--margin`, `--gutter`).
+`--nearest`, `--margin`, `--gutter`, `--x-from`).
 
 The one command to remember, keyed or not:
 
@@ -250,6 +286,10 @@ problem, and the cells are still on disk, so nothing has to be re-sliced:
 node {SKILL_PATH}/scripts/sprite-sheet.mjs align <character>/motions/<id>/cells \
   --out <character>/motions/<id>/frames --anchor center --smooth --json
 ```
+
+Read the inspect warnings first: `bodyDrift` says re-align with a different
+`--x-from` (the body is sliding), `maxJump` says try `--smooth` or the other
+`--anchor` (the pose lurches), `scaleDrift` says the drawing is the problem.
 
 `align` clears the old `NN.png` and the old `align.json` out of `--out` before
 writing, so the frames — and the anchor point recorded for them — are replaced,

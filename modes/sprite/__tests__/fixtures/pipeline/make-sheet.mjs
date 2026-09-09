@@ -80,8 +80,11 @@ export function buildSheet(outPath, {
   return outPath;
 }
 
-/** Decode any image to RGBA and report its alpha bbox — the tests' eyes. */
-export function readBbox(path, threshold = 16) {
+/**
+ * Decode any image to RGBA and hand back the raw buffer plus its size — the
+ * one decode `readBbox` and `readColorBbox` both measure on.
+ */
+function decode(path) {
   const probe = spawnSync(
     "ffprobe",
     ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", path],
@@ -95,11 +98,16 @@ export function readBbox(path, threshold = 16) {
     { maxBuffer: 256 * 1024 * 1024 },
   );
   if (r.status !== 0) throw new Error(`ffmpeg decode failed for ${path}`);
-  const data = r.stdout;
+  return { width, height, data: r.stdout };
+}
+
+/** Bbox of every pixel a predicate accepts, in the script's own convention. */
+function bboxWhere({ width, height, data }, accept) {
   let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1, count = 0;
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      if (data[(y * width + x) * 4 + 3] < threshold) continue;
+      const i = (y * width + x) * 4;
+      if (!accept(data[i], data[i + 1], data[i + 2], data[i + 3])) continue;
       count++;
       if (x < x0) x0 = x;
       if (x > x1) x1 = x;
@@ -113,4 +121,22 @@ export function readBbox(path, threshold = 16) {
     coverage: count / (width * height),
     bbox: count ? { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 } : null,
   };
+}
+
+/** Decode any image to RGBA and report its alpha bbox — the tests' eyes. */
+export function readBbox(path, threshold = 16) {
+  return bboxWhere(decode(path), (_r, _g, _b, a) => a >= threshold);
+}
+
+/**
+ * The bbox of one exact colour. A prop-carrying fixture draws the body and the
+ * prop in different colours, so this measures where the BODY ended up without
+ * the test having to re-implement the feet-band arithmetic it is checking —
+ * which would only prove the script agrees with itself.
+ */
+export function readColorBbox(path, hex, threshold = 16) {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex);
+  if (!m) throw new Error(`readColorBbox: expected #rrggbb, got '${hex}'`);
+  const [wr, wg, wb] = [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16));
+  return bboxWhere(decode(path), (r, g, b, a) => a >= threshold && r === wr && g === wg && b === wb);
 }
