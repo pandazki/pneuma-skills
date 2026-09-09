@@ -55,6 +55,30 @@ const X_FROM_MODES = ["feet", "bbox", "cell"];
 const MAX_SCALE_DRIFT = 0.15;
 /** Warning lists are truncated so a broken sheet cannot flood the agent. */
 const MAX_LISTED = 6;
+/** A connected alpha blob smaller than this share of the largest one is a
+ *  candidate for removal. Anything bigger is part of the design — a lantern
+ *  held away from the body, a detached weapon — and is never dropped, wherever
+ *  it sits. Measured against the BODY, not the cell, so the rule scales with
+ *  the character rather than with the resolution it was drawn at. */
+const CLEAN_KEEP_RATIO = 0.02;
+/** Cleaning that takes more than this share of a cell's ink is worth a
+ *  sentence: at that point the sheet is the thing to look at, not the cleaner.
+ *  The denominator is the cell's OPAQUE pixels, not its area — 5% of a mostly
+ *  empty cell is a threshold nothing could ever cross. */
+const CLEAN_ALERT_FRACTION = 0.05;
+/**
+ * Colorkey similarity for frames sampled out of a video, against
+ * DEFAULT_SIMILARITY for a generated sheet.
+ *
+ * A sheet's plate is one exact colour in every pixel; a 480p h264 clip's
+ * "solid" green is not — chroma subsampling, quantisation and the model's own
+ * lighting spread it over a range. Measured on the validation clip
+ * (Seedance 2.5, 480p, chroma green): see `references/video-preview.md`.
+ */
+const DEFAULT_VIDEO_SIMILARITY = 0.22;
+/** How far short of the clip's end the last sample is pulled, so a timestamp
+ *  that lands exactly on the duration still decodes a frame. */
+const SAMPLE_TAIL = 0.001;
 /** Pre-align grid cells `run` leaves next to `frames/`: what `inspect` judges
  *  "leaves its grid cell" on, and what re-aligning a motion re-reads. */
 const CELLS_DIRNAME = "cells";
@@ -62,7 +86,10 @@ const CELLS_DIRNAME = "cells";
  *  actually used instead of guessing the cell edge. */
 const ALIGN_RECORD = "align.json";
 
-const SUBCOMMANDS = ["probe", "key", "flatten", "slice", "align", "pack", "gif", "inspect", "run"];
+const SUBCOMMANDS = [
+  "probe", "key", "flatten", "slice", "clean", "align", "pack", "gif",
+  "inspect", "run", "from-video",
+];
 
 const USAGE = `Usage: sprite-sheet.mjs <subcommand> [options]
 
@@ -81,6 +108,15 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
   slice <sheet> --rows R --cols C --out <dir> [--margin 0] [--gutter 0]
       Cut the grid into <dir>/NN.png, row-major. Non-integer cells are
       floored and reported (exact:false + remainder).
+
+  clean <cellsDir> --out <dir> [--threshold ${DEFAULT_THRESHOLD}]
+      Drop what is not the character out of every cell: keep the largest
+      connected alpha blob plus anything at least ${CLEAN_KEEP_RATIO * 100}% of its area (a
+      detached accessory is design), and remove the rest only where it
+      touches a cell border or floats above the head / below the feet —
+      i.e. a neighbouring cell's overspill and stray specks, never a prop
+      the character is holding. Reports cleaned[] and warns on any cell that
+      lost more than ${CLEAN_ALERT_FRACTION * 100}% of its ink. --out may be the input directory.
 
   align <framesDir> --out <dir> [--anchor bottom|center] [--x-from feet|bbox|cell]
         [--cell auto|WxH] [--pad ${DEFAULT_PAD}] [--smooth] [--threshold ${DEFAULT_THRESHOLD}]
@@ -139,6 +175,29 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       --alpha <png> names an already-keyed sheet (e.g. from
       remove-background.mjs) at any path: it is copied to
       <motionDir>/sheet-alpha.png and sliced instead of keying.
+      Cleaning runs by default; --no-clean skips it.
+
+  from-video <clip> --out <motionDir> --name <motionId> --frames N
+      [--fps N] [--loop|--no-loop] [--anchor bottom|center]
+      [--x-from feet|bbox|cell] [--key auto|#rrggbb|none]
+      [--trim-start s] [--trim-end s] [--no-clean] [--cell auto|WxH]
+      [--pad ${DEFAULT_PAD}] [--smooth] [--scale 1] [--nearest] [--width W] [--no-webp]
+      [--cols C] [--similarity ${DEFAULT_VIDEO_SIMILARITY}] [--blend ${DEFAULT_BLEND}] [--threshold ${DEFAULT_THRESHOLD}]
+      The video source: sample -> key -> clean -> align -> pack -> gif (+webp)
+      -> inspect. There is no sheet — --frames frames are cut evenly out of
+      the (trimmed) clip into <motionDir>/${CELLS_DIRNAME}/NN.png and the rest of the
+      chain is the one 'run' drives.
+      --key auto takes the median of frame 00's four corner patches (the
+      chroma green, when the clip was shot as instructed) and keys every
+      frame with it, at a wider default similarity than a generated sheet
+      needs because a codec's "solid" green is a range.
+      --trim-start / --trim-end are TIMESTAMPS in seconds, like ffmpeg's
+      -ss / -to; --trim-end defaults to the clip's duration.
+      --loop stops one step short of the end (frame 00 already holds the
+      closing pose); --no-loop samples both ends.
+      --fps defaults to frames / trimmed duration, so the preview plays at
+      the speed the clip was shot at.
+      The clip is only read: it is never copied or moved into <motionDir>.
 
 Exit code 0 on success, 1 on failure with a one-line ERROR: on stderr.`;
 
@@ -171,8 +230,13 @@ function ensureTools() {
   toolsChecked = true;
 }
 
-function ffmpeg(args, label) {
-  const r = spawnSync("ffmpeg", ["-v", "error", "-y", ...args], { encoding: "utf-8" });
+/** `input`, when given, is fed to ffmpeg's stdin — the only way raw pixels
+ *  computed here become a PNG. stdin is never inherited either way. */
+function ffmpeg(args, label, input) {
+  const r = spawnSync("ffmpeg", ["-v", "error", "-y", ...args], {
+    ...(input === undefined ? {} : { input, maxBuffer: MAX_RAW_BYTES }),
+    encoding: "utf-8",
+  });
   if (r.error) fail(`${label}: could not run ffmpeg (${r.error.message})`);
   if (r.status !== 0) fail(`${label}: ffmpeg failed\n${(r.stderr || "").trim()}`);
 }
@@ -182,17 +246,26 @@ function ffmpeg(args, label) {
  * reader never sees a half-encoded image. The scratch keeps the final
  * extension because ffmpeg picks its muxer from it.
  */
-function ffmpegTo(outPath, buildArgs, label) {
+function ffmpegTo(outPath, buildArgs, label, input) {
   const out = resolve(outPath);
   mkdirSync(dirname(out), { recursive: true });
   const scratch = join(dirname(out), `.${basename(out, extname(out))}.tmp${extname(out)}`);
   try {
-    ffmpeg([...buildArgs(scratch), "--", scratch], label);
+    ffmpeg([...buildArgs(scratch), "--", scratch], label, input);
     renameSync(scratch, out);
   } finally {
     if (existsSync(scratch)) rmSync(scratch, { force: true });
   }
   return out;
+}
+
+/** Encode a decoded RGBA image back to a PNG. The inverse of `readRgba`, and
+ *  the only way a buffer this script edited in memory reaches disk. */
+function writeRgbaPng(outPath, image, label) {
+  return ffmpegTo(outPath, () => [
+    "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${image.width}x${image.height}`, "-i", "-",
+    "-frames:v", "1", "-pix_fmt", "rgba",
+  ], label, image.data);
 }
 
 function writeJsonFile(outPath, value) {
@@ -315,6 +388,119 @@ function feetCenterX(image, bbox, threshold) {
 function measureFrame(image, threshold) {
   const { bbox, coverage } = computeBbox(image, threshold);
   return { bbox, coverage, feetX: bbox ? feetCenterX(image, bbox, threshold) : null };
+}
+
+/**
+ * Connected components of the alpha mask, 4-connectivity, one pass.
+ *
+ * 4-connectivity on purpose: 8-connectivity welds a fragment to the body
+ * through a single diagonally touching pixel, which is exactly the kind of
+ * accident this is meant to survive. The flood is iterative — a 512px cell is
+ * a quarter-million pixels and a recursive fill blows the stack on a large
+ * silhouette.
+ */
+function alphaComponents(image, threshold) {
+  const { width, height, data } = image;
+  const count = width * height;
+  const labels = new Int32Array(count).fill(-1);
+  const stack = new Int32Array(count);
+  const components = [];
+
+  for (let seed = 0; seed < count; seed++) {
+    if (labels[seed] !== -1 || data[seed * 4 + 3] < threshold) continue;
+    const id = components.length;
+    let top = 0;
+    stack[top++] = seed;
+    labels[seed] = id;
+    let area = 0, x0 = width, y0 = height, x1 = -1, y1 = -1;
+    while (top > 0) {
+      const p = stack[--top];
+      const x = p % width;
+      const y = (p - x) / width;
+      area++;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+      const push = (q) => {
+        if (labels[q] !== -1 || data[q * 4 + 3] < threshold) return;
+        labels[q] = id;
+        stack[top++] = q;
+      };
+      if (x > 0) push(p - 1);
+      if (x < width - 1) push(p + 1);
+      if (y > 0) push(p - width);
+      if (y < height - 1) push(p + width);
+    }
+    components.push({ id, area, bbox: { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 } });
+  }
+  return { labels, components };
+}
+
+/**
+ * Erase what is not the character from one cell, in place.
+ *
+ * The keep rule, in the order it is asked:
+ *   1. the largest blob is the character;
+ *   2. anything at least CLEAN_KEEP_RATIO of it is design — a lantern held at
+ *      arm's length, a thrown weapon, a detached shadow the artist drew;
+ *   3. of what is left, only blobs that TOUCH A CELL BORDER (the neighbouring
+ *      cell bleeding in) or float clear above the head / below the feet
+ *      (specks) are dropped. A small blob beside the body — a hand, a
+ *      separated hair strand — is kept, because at that size and position it
+ *      is far more likely to be the drawing than litter.
+ *
+ * Dropping is all four bytes, not just alpha: a transparent pixel that still
+ * carries colour bleeds back the moment anything rescales the cell.
+ */
+function cleanCell(image, threshold) {
+  const { width, height, data } = image;
+  const { labels, components } = alphaComponents(image, threshold);
+  const ink = components.reduce((sum, c) => sum + c.area, 0);
+  if (components.length < 2) return { removedComponents: 0, removedPixels: 0, ink };
+
+  const main = components.reduce((best, c) => (c.area > best.area ? c : best), components[0]);
+  const mainTop = main.bbox.y;
+  const mainBottom = main.bbox.y + main.bbox.h - 1;
+  const drop = new Set();
+  let removedPixels = 0;
+  for (const c of components) {
+    if (c.id === main.id) continue;
+    if (c.area >= CLEAN_KEEP_RATIO * main.area) continue;
+    const touchesBorder = c.bbox.x === 0 || c.bbox.y === 0
+      || c.bbox.x + c.bbox.w === width || c.bbox.y + c.bbox.h === height;
+    const above = c.bbox.y + c.bbox.h - 1 < mainTop;
+    const below = c.bbox.y > mainBottom;
+    if (!touchesBorder && !above && !below) continue;
+    drop.add(c.id);
+    removedPixels += c.area;
+  }
+  if (!drop.size) return { removedComponents: 0, removedPixels: 0, ink };
+
+  for (let p = 0; p < width * height; p++) {
+    if (!drop.has(labels[p])) continue;
+    data.fill(0, p * 4, p * 4 + 4);
+  }
+  return { removedComponents: drop.size, removedPixels, ink };
+}
+
+/** The JSON half of cleaning: what came off each cell, and the cells where
+ *  enough came off that the sheet itself deserves a look. */
+function cleanSummary(stats) {
+  const cleaned = [];
+  const warnings = [];
+  for (const stat of stats) {
+    if (!stat.removedComponents) continue;
+    cleaned.push({
+      cell: stat.index,
+      removedComponents: stat.removedComponents,
+      removedPixels: stat.removedPixels,
+    });
+    if (stat.ink > 0 && stat.removedPixels > CLEAN_ALERT_FRACTION * stat.ink) {
+      warnings.push(`cell ${String(stat.index).padStart(2, "0")} lost ${(100 * stat.removedPixels / stat.ink).toFixed(0)}% to cleaning — check the sheet`);
+    }
+  }
+  return { cleaned, warnings };
 }
 
 function hasAlpha(image) {
@@ -490,6 +676,39 @@ function stepSlice(sheet, { rows, cols, out, margin, gutter }) {
     cells: boxes,
     frames,
   };
+}
+
+/**
+ * Clean a directory of cells into another (or over itself).
+ *
+ * `run` and `from-video` do not come through here: they already hold each
+ * cell's pixels, so they call `cleanCell` in their own loop and skip a second
+ * decode. This is the standalone form — for cells sliced by hand, or for a
+ * re-clean at a different threshold.
+ */
+function stepClean(cellsDir, { out, threshold }) {
+  const inDir = resolve(cellsDir);
+  const outDir = resolve(out);
+  const entries = listFrames(inDir);
+  // Writing into a different directory replaces its whole contents; writing
+  // over the input must not delete the files still to be read.
+  const inPlace = inDir === outDir;
+  if (!inPlace) resetFramesDir(outDir);
+
+  const stats = [];
+  const frames = [];
+  for (const entry of entries) {
+    const image = readRgba(entry.path);
+    const result = cleanCell(image, threshold);
+    stats.push({ index: entry.index, ...result });
+    const target = join(outDir, frameName(entry.index));
+    // In place, an untouched cell is left exactly as it was found — a re-encode
+    // would rewrite bytes nothing asked to change.
+    if (result.removedPixels || !inPlace) writeRgbaPng(target, image, `clean cell ${entry.index}`);
+    frames.push(target);
+  }
+
+  return { inDir, outDir, threshold, frames, ...cleanSummary(stats) };
 }
 
 function parseCell(value) {
@@ -1169,6 +1388,64 @@ function resolveRunSheets(input, motionDir, { alpha, force }) {
   };
 }
 
+/**
+ * The half of the pipeline that does not care where the cells came from:
+ * align -> pack -> gif (+webp) -> inspect. `run` cuts them out of a sheet,
+ * `from-video` samples them out of a clip; past this point they are the same
+ * N pictures, and both emit the same JSON because both ran this.
+ *
+ * `warnings` is the caller's list, appended to in the order the steps ran —
+ * inspect's are added last and only when they are not already there.
+ */
+function finishMotion(motionDir, cellsDir, options, { measures, sourceCell, warnings }) {
+  const framesDir = join(motionDir, "frames");
+  const aligned = stepAlign(cellsDir, {
+    out: framesDir,
+    anchor: options.anchor,
+    cell: options.cell,
+    pad: options.pad,
+    smooth: options.smooth,
+    threshold: options.threshold,
+    xFrom: options.xFrom,
+    measures,
+    sourceCell,
+  });
+  warnings.push(...aligned.warnings);
+
+  const packed = stepPack(framesDir, {
+    out: join(motionDir, "sheet.png"),
+    atlas: join(motionDir, "atlas.json"),
+    name: options.name,
+    fps: options.fps,
+    loop: options.loop,
+    anchor: options.anchor,
+    cols: options.cols,
+    scale: options.scale,
+    nearest: options.nearest,
+  });
+
+  const preview = stepGif(framesDir, {
+    out: join(motionDir, "preview.gif"),
+    fps: options.fps,
+    loop: options.loop,
+    webp: options.webp ? join(motionDir, "preview.webp") : null,
+    width: options.width,
+  });
+  warnings.push(...preview.warnings);
+
+  const { summary } = stepInspect(motionDir, {
+    anchor: options.anchor,
+    threshold: options.threshold,
+    cellsDir,
+    cellBoxes: measures.map((m, index) => ({
+      index, width: sourceCell.width, height: sourceCell.height, bbox: m.bbox,
+    })),
+  });
+  warnings.push(...summary.warnings.filter((w) => !warnings.includes(w)));
+
+  return { aligned, packed, preview, summary };
+}
+
 function stepRun(sheetRaw, options) {
   const input = resolve(sheetRaw);
   if (!existsSync(input)) fail(`file not found: ${input}`);
@@ -1218,57 +1495,33 @@ function stepRun(sheetRaw, options) {
   });
 
   // One decode of the source covers every cell's bbox: slicing is a pure
-  // crop, so a cell's pixels are the sheet's pixels.
+  // crop, so a cell's pixels are the sheet's pixels. Cleaning rides the same
+  // pass — the cell is already in hand, and what it removes has to be gone
+  // before the bbox that positions the frame is measured.
   const sheetImage = readRgba(source);
-  const measures = sliced.cells.map((cell) => measureFrame({
-    width: sliced.cell.width,
-    height: sliced.cell.height,
-    data: cropBuffer(sheetImage, cell.x, cell.y, sliced.cell.width, sliced.cell.height),
-  }, options.threshold));
+  const cleanStats = [];
+  const measures = [];
+  for (const cell of sliced.cells) {
+    const image = {
+      width: sliced.cell.width,
+      height: sliced.cell.height,
+      data: cropBuffer(sheetImage, cell.x, cell.y, sliced.cell.width, sliced.cell.height),
+    };
+    if (options.clean) {
+      const result = cleanCell(image, options.threshold);
+      cleanStats.push({ index: cell.index, ...result });
+      if (result.removedPixels) {
+        writeRgbaPng(join(cellsDir, frameName(cell.index)), image, `clean cell ${cell.index}`);
+      }
+    }
+    measures.push(measureFrame(image, options.threshold));
+  }
+  const cleaned = options.clean ? cleanSummary(cleanStats) : null;
+  if (cleaned) warnings.push(...cleaned.warnings);
 
-  const aligned = stepAlign(cellsDir, {
-    out: join(motionDir, "frames"),
-    anchor: options.anchor,
-    cell: options.cell,
-    pad: options.pad,
-    smooth: options.smooth,
-    threshold: options.threshold,
-    xFrom: options.xFrom,
-    measures,
-    sourceCell: sliced.cell,
+  const { aligned, packed, preview, summary } = finishMotion(motionDir, cellsDir, options, {
+    measures, sourceCell: sliced.cell, warnings,
   });
-  warnings.push(...aligned.warnings);
-
-  const packed = stepPack(join(motionDir, "frames"), {
-    out: join(motionDir, "sheet.png"),
-    atlas: join(motionDir, "atlas.json"),
-    name: options.name,
-    fps: options.fps,
-    loop: options.loop,
-    anchor: options.anchor,
-    cols: options.cols,
-    scale: options.scale,
-    nearest: options.nearest,
-  });
-
-  const preview = stepGif(join(motionDir, "frames"), {
-    out: join(motionDir, "preview.gif"),
-    fps: options.fps,
-    loop: options.loop,
-    webp: options.webp ? join(motionDir, "preview.webp") : null,
-    width: options.width,
-  });
-  warnings.push(...preview.warnings);
-
-  const { summary } = stepInspect(motionDir, {
-    anchor: options.anchor,
-    threshold: options.threshold,
-    cellsDir,
-    cellBoxes: measures.map((m, index) => ({
-      index, width: sliced.cell.width, height: sliced.cell.height, bbox: m.bbox,
-    })),
-  });
-  warnings.push(...summary.warnings.filter((w) => !warnings.includes(w)));
 
   return {
     motionDir,
@@ -1279,6 +1532,7 @@ function stepRun(sheetRaw, options) {
     ...(providedAlpha ? { alphaSource: "provided" } : {}),
     keyed: Boolean(keyedHere),
     ...(keyColor ? { keyColor } : {}),
+    ...(cleaned ? { cleaned: cleaned.cleaned } : {}),
     cells: cellsDir,
     frames: aligned.frames.map((f) => f.path),
     sheet: packed.sheet,
@@ -1288,6 +1542,198 @@ function stepRun(sheetRaw, options) {
     inspect: summary,
     cell: aligned.cell,
     fps: options.fps,
+    loop: options.loop,
+    anchor: options.anchor,
+    xFrom: aligned.xFrom,
+    scale: options.scale,
+    warnings,
+  };
+}
+
+/** Seconds of playable video, straight out of the container. */
+function probeDuration(path, label) {
+  const r = spawnSync(
+    "ffprobe",
+    ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path],
+    { encoding: "utf-8" },
+  );
+  if (r.error || r.status !== 0) fail(`${label}: ffprobe failed for ${path}: ${(r.stderr || "").trim()}`);
+  const duration = Number(String(r.stdout).trim());
+  if (!Number.isFinite(duration) || duration <= 0) {
+    fail(`${label}: ${path} reports no duration ('${String(r.stdout).trim()}') — is it a video file?`);
+  }
+  return duration;
+}
+
+/**
+ * Timestamp of the last frame that can still be seeked to.
+ *
+ * `-ss T` selects the first frame at or AFTER T, so a sample time past the
+ * last frame's presentation time yields no frame at all — and ffmpeg exits 0
+ * while doing it, so the symptom is a missing file rather than an error. The
+ * container's `duration` is not that time: a 2.0s clip at 10fps has its last
+ * frame at 1.9s, and a duration that is not a whole number of frames puts it
+ * further back still.
+ */
+function probeLastFrameTime(path, duration) {
+  const r = spawnSync(
+    "ffprobe",
+    ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=nb_frames,r_frame_rate",
+      "-of", "default=noprint_wrappers=1", path],
+    { encoding: "utf-8" },
+  );
+  const fields = {};
+  if (!r.error && r.status === 0) {
+    for (const line of String(r.stdout).trim().split("\n")) {
+      const eq = line.indexOf("=");
+      if (eq > 0) fields[line.slice(0, eq)] = line.slice(eq + 1);
+    }
+  }
+  const [numerator, denominator] = String(fields.r_frame_rate ?? "").split("/").map(Number);
+  const fps = numerator > 0 && denominator > 0 ? numerator / denominator : null;
+  const frames = Number(fields.nb_frames);
+  if (fps && Number.isFinite(frames) && frames > 1) return (frames - 1) / fps;
+  if (fps) return Math.max(0, duration - 1 / fps);
+  // Nothing measurable (a stream with neither count nor rate): 50 ms is longer
+  // than one frame at any rate a clip is shot at.
+  return Math.max(0, duration - 0.05);
+}
+
+/**
+ * Where in the clip each frame is taken from.
+ *
+ * A looping motion stops one step short of the end: the closing pose is the
+ * opening pose, and sampling both would put the same picture in frame 00 and
+ * frame N-1 — a visible stutter at the seam. A one-shot motion has to show
+ * where it ended up, so it samples both ends, clamped to `last` so the final
+ * timestamp still names a frame that exists.
+ */
+function sampleTimes({ start, end, frames, loop, last }) {
+  const span = end - start;
+  const step = loop ? span / frames : span / Math.max(1, frames - 1);
+  return Array.from({ length: frames }, (_, i) => round(Math.min(start + i * step, last), 3));
+}
+
+/**
+ * The video source: sample the clip into cells, key the plate off every one of
+ * them, then hand the cells to the same chain `run` drives.
+ *
+ * The clip is read and never written: it is a registered asset in its own
+ * right (`sprite-project.mjs add-video`), and `register-run` hangs each
+ * frame's provenance off it, so moving or rewriting it here would cut the
+ * frames loose from what they were sampled out of.
+ */
+function stepFromVideo(clip, options) {
+  const input = resolve(clip);
+  if (!existsSync(input)) fail(`file not found: ${input}`);
+  const motionDir = resolve(options.out);
+  mkdirSync(motionDir, { recursive: true });
+
+  const duration = probeDuration(input, "from-video");
+  const start = options.trimStart ?? 0;
+  const end = options.trimEnd ?? duration;
+  if (end > duration + SAMPLE_TAIL) {
+    fail(`--trim-end ${end}s is past the end of a ${round(duration, 3)}s clip`);
+  }
+  if (!(end - start > SAMPLE_TAIL)) {
+    fail(`--trim-start ${start}s and --trim-end ${round(end, 3)}s leave nothing to sample`);
+  }
+  const last = Math.min(end - SAMPLE_TAIL, probeLastFrameTime(input, duration));
+  if (start > last) {
+    fail(`--trim-start ${start}s is past the last frame of a ${round(duration, 3)}s clip`);
+  }
+  const times = sampleTimes({
+    start, end: Math.min(end, duration), frames: options.frames, loop: options.loop, last,
+  });
+  // Sampling N frames across D seconds and then playing them at N/D fps is
+  // the clip at its own speed; any other fps is a deliberate slow-down.
+  const fps = options.fps ?? Math.max(1, round(options.frames / (end - start), 3));
+
+  const cellsDir = join(motionDir, CELLS_DIRNAME);
+  resetFramesDir(cellsDir);
+  const warnings = [];
+
+  // ffmpeg writes nothing and still exits 0 when a seek lands past the last
+  // frame, so a missing file here is turned into the sentence that names why.
+  const extract = (time, index, filter) => {
+    try {
+      return ffmpegTo(join(cellsDir, frameName(index)), () => [
+        "-ss", String(time), "-i", input, "-frames:v", "1",
+        ...(filter ? ["-vf", filter] : []),
+        "-pix_fmt", "rgba",
+      ], `from-video frame ${index}`);
+    } catch (error) {
+      if (error instanceof SpriteSheetError) throw error;
+      fail(`from-video: no frame at ${time}s of a ${round(duration, 3)}s clip (${error.message})`);
+    }
+  };
+
+  // The key colour is read off the first sampled frame, un-keyed — the clip's
+  // own idea of the chroma plate, codec drift included, rather than the ideal
+  // green the prompt asked for.
+  let keyColor;
+  let filter = null;
+  if (options.key !== "none") {
+    extract(times[0], 0, null);
+    const probe = stepProbe(join(cellsDir, frameName(0)), options.threshold);
+    keyColor = options.key === "auto" ? probe.cornerColor : normalizeColor(options.key, "--key");
+    filter = `colorkey=${keyColor}:${options.similarity}:${options.blend},format=rgba`;
+  }
+
+  for (const [index, time] of times.entries()) extract(time, index, filter);
+
+  const source = probeSize(join(cellsDir, frameName(0)), "from-video");
+  const cleanStats = [];
+  const measures = [];
+  const coverages = [];
+  for (let index = 0; index < times.length; index++) {
+    const path = join(cellsDir, frameName(index));
+    const image = readRgba(path);
+    if (options.clean) {
+      const result = cleanCell(image, options.threshold);
+      cleanStats.push({ index, ...result });
+      if (result.removedPixels) writeRgbaPng(path, image, `clean cell ${index}`);
+    }
+    const measure = measureFrame(image, options.threshold);
+    measures.push(measure);
+    coverages.push(measure.coverage);
+  }
+  const cleaned = options.clean ? cleanSummary(cleanStats) : null;
+  if (cleaned) warnings.push(...cleaned.warnings);
+
+  // A plate the key did not find leaves every frame opaque, and the aligner
+  // would then dutifully centre a full-bleed rectangle in every cell.
+  const meanCoverage = coverages.reduce((a, b) => a + b, 0) / coverages.length;
+  if (keyColor && meanCoverage > KEYED_OPAQUE_ALERT) {
+    warnings.push(`keying ${keyColor} left ${(meanCoverage * 100).toFixed(0)}% of each frame opaque — was the clip shot on a flat chroma background?`);
+  }
+
+  const { aligned, packed, preview, summary } = finishMotion(motionDir, cellsDir, { ...options, fps }, {
+    measures, sourceCell: source, warnings,
+  });
+
+  return {
+    motionDir,
+    name: options.name,
+    source: "video",
+    video: input,
+    sampledAt: times,
+    trim: { start: round(start, 3), end: round(Math.min(end, duration), 3) },
+    duration: round(duration, 3),
+    grid: packed.grid,
+    keyed: Boolean(keyColor),
+    ...(keyColor ? { keyColor } : {}),
+    alphaCoverage: round(meanCoverage, 4),
+    ...(cleaned ? { cleaned: cleaned.cleaned } : {}),
+    cells: cellsDir,
+    frames: aligned.frames.map((f) => f.path),
+    sheet: packed.sheet,
+    atlas: packed.atlas,
+    gif: preview.gif,
+    ...(preview.webp ? { webp: preview.webp } : {}),
+    inspect: summary,
+    cell: aligned.cell,
+    fps,
     loop: options.loop,
     anchor: options.anchor,
     xFrom: aligned.xFrom,
@@ -1323,6 +1769,7 @@ const OPTIONS = {
     rows: { type: "string" }, cols: { type: "string" }, out: { type: "string" },
     margin: { type: "string" }, gutter: { type: "string" },
   },
+  clean: { out: { type: "string" }, threshold: { type: "string" } },
   align: {
     out: { type: "string" }, anchor: { type: "string" }, "x-from": { type: "string" },
     cell: { type: "string" },
@@ -1349,6 +1796,20 @@ const OPTIONS = {
     margin: { type: "string" }, gutter: { type: "string" }, width: { type: "string" },
     "no-webp": { type: "boolean", default: false }, threshold: { type: "string" },
     similarity: { type: "string" }, blend: { type: "string" },
+    "no-clean": { type: "boolean", default: false },
+  },
+  "from-video": {
+    out: { type: "string" }, name: { type: "string" }, frames: { type: "string" },
+    fps: { type: "string" }, loop: { type: "boolean", default: false },
+    "no-loop": { type: "boolean", default: false },
+    anchor: { type: "string" }, "x-from": { type: "string" }, key: { type: "string" },
+    "trim-start": { type: "string" }, "trim-end": { type: "string" },
+    cell: { type: "string" }, pad: { type: "string" },
+    smooth: { type: "boolean", default: false }, scale: { type: "string" },
+    nearest: { type: "boolean", default: false }, cols: { type: "string" },
+    width: { type: "string" }, "no-webp": { type: "boolean", default: false },
+    threshold: { type: "string" }, similarity: { type: "string" }, blend: { type: "string" },
+    "no-clean": { type: "boolean", default: false },
   },
 };
 
@@ -1474,6 +1935,19 @@ function main() {
       ]);
       break;
     }
+    case "clean": {
+      const out = stepClean(requirePositional(positionals, "<cellsDir>"), {
+        out: requireFlag(values.out, "--out"),
+        threshold,
+      });
+      emit(values, out, [
+        out.cleaned.length
+          ? `cleaned ${out.cleaned.length} of ${out.frames.length} cells (${out.cleaned.reduce((n, c) => n + c.removedPixels, 0)} px removed)`
+          : `nothing to clean in ${out.frames.length} cells`,
+        ...out.warnings,
+      ]);
+      break;
+    }
     case "align": {
       const out = stepAlign(requirePositional(positionals, "<framesDir>"), {
         out: requireFlag(values.out, "--out"),
@@ -1557,9 +2031,47 @@ function main() {
         threshold,
         similarity: num(values.similarity, "--similarity", { min: 0, fallback: DEFAULT_SIMILARITY }),
         blend: num(values.blend, "--blend", { min: 0, fallback: DEFAULT_BLEND }),
+        clean: !values["no-clean"],
       });
       emit(values, out, [
         `${out.name}: ${out.frames.length} frames of ${out.cell.width}x${out.cell.height} → ${out.motionDir}`,
+        ...(out.warnings.length ? out.warnings : ["no warnings"]),
+      ]);
+      break;
+    }
+    case "from-video": {
+      const key = values.key ?? "auto";
+      if (key !== "auto" && key !== "none") normalizeColor(key, "--key");
+      const frames = num(requireFlag(values.frames, "--frames"), "--frames", { integer: true, min: 2 });
+      if (frames > MAX_FRAMES) fail(`--frames ${frames} is over the ${MAX_FRAMES}-frame limit (frame files are two digits)`);
+      const trimStart = num(values["trim-start"], "--trim-start", { min: 0, fallback: null });
+      const trimEnd = num(values["trim-end"], "--trim-end", { min: 0, fallback: null });
+      const out = stepFromVideo(requirePositional(positionals, "<clip>"), {
+        out: requireFlag(values.out, "--out"),
+        name: requireFlag(values.name, "--name"),
+        frames,
+        fps: values.fps === undefined ? null : num(values.fps, "--fps", { min: 1 }),
+        loop: pickLoop(values),
+        anchor: pickAnchor(values.anchor),
+        xFrom: pickXFrom(values["x-from"]),
+        key,
+        trimStart,
+        trimEnd,
+        cell: parseCell(values.cell),
+        pad: num(values.pad, "--pad", { integer: true, min: 0, fallback: DEFAULT_PAD }),
+        smooth: values.smooth,
+        scale: num(values.scale, "--scale", { min: 0.01, fallback: 1 }),
+        nearest: values.nearest,
+        cols: values.cols === undefined ? null : num(values.cols, "--cols", { integer: true, min: 1 }),
+        width: values.width === undefined ? null : num(values.width, "--width", { integer: true, min: 1 }),
+        webp: !values["no-webp"],
+        threshold,
+        similarity: num(values.similarity, "--similarity", { min: 0, fallback: DEFAULT_VIDEO_SIMILARITY }),
+        blend: num(values.blend, "--blend", { min: 0, fallback: DEFAULT_BLEND }),
+        clean: !values["no-clean"],
+      });
+      emit(values, out, [
+        `${out.name}: ${out.frames.length} frames of ${out.cell.width}x${out.cell.height} sampled from ${basename(out.video)} at ${out.fps}fps → ${out.motionDir}`,
         ...(out.warnings.length ? out.warnings : ["no warnings"]),
       ]);
       break;

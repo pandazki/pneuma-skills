@@ -22,7 +22,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { buildSheet, readBbox, readColorBbox, CELL_OFFSETS } from "./fixtures/pipeline/make-sheet.mjs";
+import { buildClip, buildSheet, readBbox, readColorBbox, CELL_OFFSETS } from "./fixtures/pipeline/make-sheet.mjs";
 import type { BuildSheetOptions } from "./fixtures/pipeline/make-sheet.mjs";
 
 const SCRIPT = join(import.meta.dir, "..", "skill", "scripts", "sprite-sheet.mjs");
@@ -143,6 +143,30 @@ const SHEETS = {
     squares: [{ x: 0, y: 0, color: "red" }],
     extras: [{ index: 1, x: 53, y: 20, w: 6, h: 6 }],
   }),
+  /**
+   * 1x2, the litter case `clean` exists for. Both cells hold the same 30x30
+   * body (900 px, so the 2 % keep threshold is 18 px). Cell 00 also has a
+   * 4x4 fragment jammed against the left cell border — the neighbouring
+   * drawing bleeding in — and a 3x3 speck floating over the head. Cell 01 has
+   * a 6x6 detached accessory that is neither: 36 px is over 2 % of the body,
+   * so it is part of the design and must survive.
+   */
+  litter: () => sheet("litter", {
+    rows: 1, cols: 2,
+    squares: [{ x: 17, y: 17, color: BODY_COLOR_NAME }],
+    extras: [
+      { index: 0, x: 0, y: 30, w: 4, h: 4 },
+      { index: 0, x: 25, y: 5, w: 3, h: 3 },
+      { index: 1, x: 52, y: 25, w: 6, h: 6 },
+    ],
+  }),
+  /** 1x1: the same body under six 4x4 specks, which together are ~10 % of the
+   *  cell's ink — past the point where cleaning is worth a sentence. */
+  speckled: () => sheet("speckled", {
+    rows: 1, cols: 1,
+    squares: [{ x: 17, y: 17, color: BODY_COLOR_NAME }],
+    extras: [2, 8, 14, 20, 26, 32].map((x) => ({ index: 0, x, y: 5, w: 4, h: 4 })),
+  }),
 };
 
 const cellsOf = (name: keyof typeof SHEETS, rows: number, cols: number) =>
@@ -166,8 +190,18 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
   test("--help exits 0 and lists every subcommand", () => {
     const r = run("--help");
     expect(r.code).toBe(0);
-    for (const cmd of ["probe", "key", "flatten", "slice", "align", "pack", "gif", "inspect", "run"]) {
+    for (const cmd of [
+      "probe", "key", "flatten", "slice", "clean", "align", "pack", "gif",
+      "inspect", "run", "from-video",
+    ]) {
       expect(r.out + r.err).toContain(cmd);
+    }
+  });
+
+  test("clean --help and from-video --help exit 0", () => {
+    for (const cmd of ["clean", "from-video"]) {
+      const r = run(cmd, "--help");
+      expect({ cmd, code: r.code }).toEqual({ cmd, code: 0 });
     }
   });
 
@@ -248,6 +282,64 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(out.cell.width).toBe(42); // floor(128 / 3)
       expect(out.exact).toBe(false);
       expect(out.remainder).toEqual({ x: 2, y: 0 });
+    });
+  });
+
+  describe("clean", () => {
+    /** Body 30x30 = 900 px; the fragment is 16 px and the speck 9 px. */
+    const BODY = { x: 17, y: 17, w: 30, h: 30 };
+
+    test("drops a border fragment and a floating speck, keeps the body to the pixel", () => {
+      const ws = fresh();
+      const out = runJson("clean", cellsOf("litter", 1, 2), "--out", join(ws, "clean"));
+
+      expect(out.cleaned).toEqual([{ cell: 0, removedComponents: 2, removedPixels: 25 }]);
+      expect(out.warnings).toEqual([]);
+
+      // The body is not merely still there — it is byte-for-byte where it was.
+      expect(readColorBbox(join(ws, "clean", "00.png"), BODY_COLOR).bbox).toEqual(BODY);
+      // …and nothing else survives in that cell: the neighbour's fragment and
+      // the speck over the head are both gone.
+      expect(readBbox(join(ws, "clean", "00.png")).bbox).toEqual(BODY);
+    });
+
+    test("a detached accessory over 2% of the body is design, not litter", () => {
+      const ws = fresh();
+      runJson("clean", cellsOf("litter", 1, 2), "--out", join(ws, "clean"));
+      // 6x6 = 36 px against a 900 px body, and it touches no cell border.
+      expect(readBbox(join(ws, "clean", "01.png")).bbox).toEqual({ x: 17, y: 17, w: 41, h: 30 });
+      expect(readColorBbox(join(ws, "clean", "01.png"), BODY_COLOR).bbox).toEqual(BODY);
+    });
+
+    test("leaves the source cells alone", () => {
+      const ws = fresh();
+      const cells = cellsOf("litter", 1, 2);
+      const before = readFileSync(join(cells, "00.png"));
+      runJson("clean", cells, "--out", join(ws, "clean"));
+      expect(readFileSync(join(cells, "00.png")).equals(before)).toBe(true);
+    });
+
+    test("cleaning in place rewrites the cells it read", () => {
+      const ws = fresh();
+      const cells = useFrames(ws, cellsOf("litter", 1, 2), "cells");
+      const out = runJson("clean", cells, "--out", cells);
+      expect(out.cleaned).toHaveLength(1);
+      expect(readBbox(join(cells, "00.png")).bbox).toEqual(BODY);
+    });
+
+    test("warns when a cell loses more than 5% of its ink", () => {
+      const ws = fresh();
+      const out = runJson("clean", cellsOf("speckled", 1, 1), "--out", join(ws, "clean"));
+      expect(out.cleaned).toEqual([{ cell: 0, removedComponents: 6, removedPixels: 96 }]);
+      // 96 of 996 opaque pixels — the sheet, not the cleaner, is the problem.
+      expect(out.warnings).toEqual(["cell 00 lost 10% to cleaning — check the sheet"]);
+    });
+
+    test("an empty cell is a no-op, not a removal", () => {
+      const ws = fresh();
+      const out = runJson("clean", cellsOf("gap", 2, 2), "--out", join(ws, "clean"));
+      expect(out.cleaned.map((c: { cell: number }) => c.cell)).not.toContain(2);
+      expect(readBbox(join(ws, "clean", "02.png")).bbox).toBeNull();
     });
   });
 
@@ -1026,6 +1118,23 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       });
     });
 
+    test("cleans the cells before aligning, and --no-clean leaves the litter in", () => {
+      const ws = fresh();
+      const args = ["run", SHEETS.litter(), "--rows", "1", "--cols", "2", "--name", "litter", "--fps", "8"] as const;
+
+      const cleaned = runJson(...args, "--out", join(ws, "cleaned"));
+      expect(cleaned.cleaned).toEqual([{ cell: 0, removedComponents: 2, removedPixels: 25 }]);
+      // The fragment sat against the left cell border, so the un-cleaned cell
+      // reads as "clipped" and drags the alignment 4 px to the left with it.
+      expect(cleaned.inspect.warnings).toEqual([]);
+      expect(readBbox(join(ws, "cleaned", "cells", "00.png")).bbox).toEqual({ x: 17, y: 17, w: 30, h: 30 });
+
+      const dirty = runJson(...args, "--out", join(ws, "dirty"), "--no-clean");
+      expect(dirty.cleaned).toBeUndefined();
+      expect(readBbox(join(ws, "dirty", "cells", "00.png")).bbox).toEqual({ x: 0, y: 5, w: 47, h: 42 });
+      expect(dirty.inspect.warnings).toContain("cell 00 is clipped — the drawing leaves its grid cell");
+    });
+
     test("a failing run cleans up after itself and reports one ERROR line", () => {
       const ws = fresh();
       const motionDir = join(ws, "motions", "bad");
@@ -1043,6 +1152,116 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(r.err).not.toMatch(/^\s+at /m);
       expect(readdirSync(tmpdir()).filter((f) => f.startsWith("sprite-cells-"))).toEqual(before);
       expect(readdirSync(motionDir).filter((f) => f.includes("tmp"))).toEqual([]);
+    });
+  });
+
+  describe("from-video", () => {
+    /** A 2 s, 10 fps green clip, drawn once like every other fixture. */
+    const clip = () => {
+      const key = "clip:hop";
+      if (!built.has(key)) built.set(key, buildClip(join(shared(), "hop.mp4")));
+      return built.get(key)!;
+    };
+
+    test("samples the clip evenly, keys the green plate and runs the whole chain", () => {
+      const ws = fresh();
+      const motionDir = join(ws, "motions", "hop");
+      const out = runJson(
+        "from-video", clip(), "--out", motionDir, "--name", "hop",
+        "--frames", "4", "--loop",
+      );
+
+      // The run summary is `run`'s shape plus the three video keys, so
+      // `register-run` consumes it unchanged.
+      expect(out.source).toBe("video");
+      expect(out.video).toBe(clip());
+      expect(out.sampledAt).toEqual([0, 0.5, 1, 1.5]);
+      expect(out.frames).toHaveLength(4);
+      expect(out.motionDir).toBe(motionDir);
+      expect(out.sheet).toBe(join(motionDir, "sheet.png"));
+      expect(out.atlas).toBe(join(motionDir, "atlas.json"));
+      expect(out.gif).toBe(join(motionDir, "preview.gif"));
+      expect(out.inspect.frameCount).toBe(4);
+      expect(out.xFrom).toBe("feet");
+      // fps defaults to the sampling rate, so the preview plays at the speed
+      // the clip was shot at: 4 frames across 2 s.
+      expect(out.fps).toBe(2);
+
+      // The green is gone: the square is ~400 of 4096 px.
+      expect(out.keyed).toBe(true);
+      expect(out.keyColor).toMatch(/^#[0-9a-f]{6}$/);
+      const cell = readBbox(join(motionDir, "cells", "00.png"));
+      expect(cell.coverage).toBeGreaterThan(0.07);
+      expect(cell.coverage).toBeLessThan(0.16);
+      expect(existsSync(join(motionDir, "inspect.json"))).toBe(true);
+    });
+
+    test("--no-loop samples both ends, --loop leaves the closing pose to frame 00", () => {
+      const ws = fresh();
+      const once = runJson(
+        "from-video", clip(), "--out", join(ws, "once"), "--name", "hop",
+        "--frames", "4", "--no-loop",
+      );
+      expect(once.sampledAt[0]).toBe(0);
+      // A one-shot motion has to show where it ended up; a loop must not
+      // sample the pose frame 00 already is.
+      expect(once.sampledAt[3]).toBeGreaterThanOrEqual(1.9);
+      expect(once.loop).toBe(false);
+    });
+
+    test("--trim-start and --trim-end window the clip", () => {
+      const ws = fresh();
+      const out = runJson(
+        "from-video", clip(), "--out", join(ws, "trim"), "--name", "hop",
+        "--frames", "2", "--loop", "--trim-start", "0.5", "--trim-end", "1.5",
+      );
+      expect(out.sampledAt).toEqual([0.5, 1]);
+      expect(out.video).toBe(clip());
+    });
+
+    test("--key none leaves the plate opaque", () => {
+      const ws = fresh();
+      const motionDir = join(ws, "raw");
+      const out = runJson(
+        "from-video", clip(), "--out", motionDir, "--name", "hop",
+        "--frames", "2", "--key", "none", "--cell", "64x64",
+      );
+      expect(out.keyed).toBe(false);
+      expect(readBbox(join(motionDir, "cells", "00.png")).coverage).toBe(1);
+    });
+
+    test("cleans the sampled frames unless --no-clean says otherwise", () => {
+      const ws = fresh();
+      const out = runJson(
+        "from-video", clip(), "--out", join(ws, "clean"), "--name", "hop", "--frames", "2",
+      );
+      expect(Array.isArray(out.cleaned)).toBe(true);
+      const skipped = runJson(
+        "from-video", clip(), "--out", join(ws, "dirty"), "--name", "hop",
+        "--frames", "2", "--no-clean",
+      );
+      expect(skipped.cleaned).toBeUndefined();
+    });
+
+    test("a missing clip and an over-long sample are refused by name", () => {
+      const ws = fresh();
+      const missing = run("from-video", join(ws, "nope.mp4"), "--out", join(ws, "m"), "--name", "x", "--frames", "4", "--json");
+      expect(missing.code).toBe(1);
+      expect(missing.err).toContain("nope.mp4");
+
+      const tooMany = run("from-video", clip(), "--out", join(ws, "big"), "--name", "x", "--frames", "101", "--json");
+      expect(tooMany.code).toBe(1);
+      expect(tooMany.err).toContain("100");
+    });
+
+    test("a trim window outside the clip is refused instead of sampling nothing", () => {
+      const ws = fresh();
+      const r = run(
+        "from-video", clip(), "--out", join(ws, "bad"), "--name", "x", "--frames", "4",
+        "--trim-start", "1.5", "--trim-end", "1.5", "--json",
+      );
+      expect(r.code).toBe(1);
+      expect(r.err).toMatch(/ERROR: /);
     });
   });
 

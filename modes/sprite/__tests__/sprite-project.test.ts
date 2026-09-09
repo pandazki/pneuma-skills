@@ -656,6 +656,165 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
     });
   });
 
+  describe("the video source", () => {
+    /** The seeded character with its clip registered, plus a run summary in
+     *  `from-video`'s shape pointing at the same files the sheet run produced
+     *  (the frames are the frames whichever way they were cut). */
+    /** register-run driven over stdin, so a synthesised run summary never has
+     *  to hit disk. */
+    function registerRun(dir: string, summary: unknown, extra: string[] = []) {
+      return run(PROJECT, ["register-run", "--dir", dir, "--motion", "bounce", "--run", "-", ...extra, "--json"],
+        JSON.stringify(summary));
+    }
+
+    function seedVideoMotion() {
+      const { dir, realRun } = seedMini();
+      writeFileSync(join(dir, "motions", "bounce", "video-seedance-1.mp4"), "");
+      projectJson(dir, "add-video", "--motion", "bounce", "--file", "motions/bounce/video-seedance-1.mp4",
+        "--model", "seedance-2.5", "--mode", "i2v", "--prompt", "one idle loop on green",
+        "--at", String(T2));
+      const run = {
+        ...realRun,
+        source: "video",
+        video: join(dir, "motions", "bounce", "video-seedance-1.mp4"),
+        sampledAt: [0, 0.25, 0.5, 0.75],
+      };
+      delete (run as { sheetAlpha?: string }).sheetAlpha;
+      return { dir, run };
+    }
+
+    test("register-run hangs the frames off the video asset and stamps the source", () => {
+      const { dir, run } = seedVideoMotion();
+      const r = registerRun(dir, run);
+      expect(r.code).toBe(0);
+      const motion = JSON.parse(r.out);
+      expect(motion.source).toBe("video");
+      expect(motion.status).toBe("ready");
+
+      // Every frame derives from the CLIP, not from a sheet that never
+      // existed, and carries where in the clip it was cut from.
+      const edges = readProject(dir).provenance;
+      const first = edges.find((e: any) => e.toAssetId === "bounce-frame-00");
+      expect(first.fromAssetId).toBe("bounce-video-1");
+      expect(first.operation.params).toEqual({
+        tool: "sprite-sheet.mjs", step: "from-video", frameIndex: 0, t: 0,
+      });
+      expect(edges.find((e: any) => e.toAssetId === "bounce-frame-03").operation.params.t).toBe(0.75);
+      // The clip itself keeps its own generate edge — registering the frames
+      // must not re-parent it.
+      expect(edges.find((e: any) => e.toAssetId === "bounce-video-1").operation.type).toBe("generate");
+    });
+
+    test("--video names which clip when a motion has more than one", () => {
+      const { dir, run } = seedVideoMotion();
+      writeFileSync(join(dir, "motions", "bounce", "video-seedance-2.mp4"), "");
+      projectJson(dir, "add-video", "--motion", "bounce", "--file", "motions/bounce/video-seedance-2.mp4",
+        "--model", "seedance-2.5", "--mode", "i2v", "--at", String(T2));
+
+      // Without --video the newest clip is used, and it says so rather than
+      // picking one silently.
+      const inferred = registerRun(dir, { ...run, video: join(dir, "motions", "bounce", "video-seedance-2.mp4") });
+      expect(inferred.code).toBe(0);
+      expect(inferred.err).toContain("bounce-video-2");
+      expect(readProject(dir).provenance.find((e: any) => e.toAssetId === "bounce-frame-00").fromAssetId)
+        .toBe("bounce-video-2");
+
+      const chosen = registerRun(dir, run, ["--video", "video-1"]);
+      expect(chosen.code).toBe(0);
+      expect(readProject(dir).provenance.find((e: any) => e.toAssetId === "bounce-frame-00").fromAssetId)
+        .toBe("bounce-video-1");
+    });
+
+    test("a run whose clip is not the named asset is refused, not mis-parented", () => {
+      const { dir, run } = seedVideoMotion();
+      writeFileSync(join(dir, "motions", "bounce", "video-seedance-2.mp4"), "");
+      projectJson(dir, "add-video", "--motion", "bounce", "--file", "motions/bounce/video-seedance-2.mp4",
+        "--model", "seedance-2.5", "--mode", "i2v", "--at", String(T2));
+
+      const r = registerRun(dir, run, ["--video", "video-2"]);
+      expect(r.code).toBe(1);
+      expect(r.err).toContain("video-seedance-1.mp4");
+      expect(r.err).toContain("video-seedance-2.mp4");
+    });
+
+    test("a video run with no registered clip names the command that fixes it", () => {
+      const { dir, realRun } = seedMini();
+      const r = registerRun(dir, { ...realRun, source: "video", video: "motions/bounce/video-seedance-1.mp4" });
+      expect(r.code).toBe(1);
+      expect(r.err).toContain("add-video");
+      expect(r.err).toContain("bounce");
+    });
+
+    test("add-motion --source records the choice before anything is generated", () => {
+      const { dir } = seedMini();
+      const motion = projectJson(dir, "add-motion", "--id", "walk", "--label", "Walk",
+        "--rows", "4", "--cols", "4", "--fps", "8", "--source", "video");
+      expect(motion.source).toBe("video");
+      expect(projectJson(dir, "add-motion", "--id", "wave", "--label", "Wave",
+        "--rows", "2", "--cols", "2", "--fps", "8").source).toBeUndefined();
+    });
+
+    test("a sheet run over a motion declared video corrects the source", () => {
+      const { dir } = seedMini();
+      // The motion was declared a video motion before anything was generated.
+      const doc = readProject(dir);
+      doc.sprite.motions[0].source = "video";
+      writeFileSync(join(dir, "project.json"), JSON.stringify(doc, null, 2));
+
+      projectJson(dir, "register-run", "--motion", "bounce",
+        "--run", join(FIXTURES, "bounce-run.json"), "--at", String(T2));
+      // The frames on disk came from a sheet; the sidecar has to say so.
+      expect(readProject(dir).sprite.motions[0].source).toBe("sheet");
+    });
+  });
+
+  describe("acknowledged warnings", () => {
+    test("--ack-warnings records the reason the user reads, --clear-ack takes it back", () => {
+      const { dir } = seedMini();
+      projectJson(dir, "register-run", "--motion", "bounce",
+        "--run", join(FIXTURES, "bounce-run.json"), "--at", String(T2));
+
+      const acked = projectJson(dir, "set-motion", "--motion", "bounce",
+        "--ack-warnings", "the lantern swings out of the bbox by design", "--at", String(T2));
+      expect(acked.inspect.acknowledged).toEqual({
+        reason: "the lantern swings out of the bbox by design",
+        at: T2,
+      });
+      // The numbers stay: acknowledging dims the badge, it does not erase the
+      // measurement.
+      expect(acked.inspect.scaleDrift).toBe(0.02);
+
+      const cleared = projectJson(dir, "set-motion", "--motion", "bounce", "--clear-ack");
+      expect(cleared.inspect.acknowledged).toBeUndefined();
+    });
+
+    test("a motion with no inspect report cannot be acknowledged", () => {
+      const { dir } = seedMini();
+      const r = project(dir, "set-motion", "--motion", "bounce", "--ack-warnings", "looks fine");
+      expect(r.code).toBe(1);
+      expect(r.err).toContain("register-run");
+    });
+
+    test("an empty reason is refused — the acknowledgement IS the reason", () => {
+      const { dir } = seedMini();
+      projectJson(dir, "register-run", "--motion", "bounce",
+        "--run", join(FIXTURES, "bounce-run.json"), "--at", String(T2));
+      const r = project(dir, "set-motion", "--motion", "bounce", "--ack-warnings", "   ");
+      expect(r.code).toBe(1);
+      expect(r.err).toContain("--ack-warnings");
+    });
+
+    test("re-registering a run drops the acknowledgement with the numbers it covered", () => {
+      const { dir } = seedMini();
+      const args = ["register-run", "--motion", "bounce", "--run", join(FIXTURES, "bounce-run.json"), "--at", String(T2)];
+      projectJson(dir, ...args);
+      projectJson(dir, "set-motion", "--motion", "bounce", "--ack-warnings", "fine for now", "--at", String(T2));
+      projectJson(dir, ...args);
+      // A fresh measurement is not the one that was accepted.
+      expect(readProject(dir).sprite.motions[0].inspect.acknowledged).toBeUndefined();
+    });
+  });
+
   describe("show", () => {
     test("summarises the character, refs and motions", () => {
       const { dir } = seedMini();

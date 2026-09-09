@@ -140,3 +140,39 @@ export function readColorBbox(path, hex, threshold = 16) {
   const [wr, wg, wb] = [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16));
   return bboxWhere(decode(path), (r, g, b, a) => a >= threshold && r === wr && g === wg && b === wb);
 }
+
+/**
+ * A short clip of one square breathing up and down on a chroma-green plate —
+ * the video fixture `from-video` samples.
+ *
+ * Encoded h264 / yuv420p on purpose: chroma subsampling and quantisation mean
+ * the green that comes back off the decoder is never exactly the green that
+ * went in, which is the whole reason the video keyer needs a wider similarity
+ * than a flat generated sheet does.
+ */
+export function buildClip(outPath, {
+  width = 64,
+  height = 64,
+  seconds = 2,
+  fps = 10,
+  background = "0x00b140",
+  box = { x: 22, y: 17, w: 20, h: 20, color: "red" },
+} = {}) {
+  const chain = [
+    `color=c=${background}:s=${width}x${height}:d=${seconds}:r=${fps}`,
+    // y rides a 2px sine so the frames differ without the body sliding
+    // sideways — a motion, not a drift.
+    `drawbox=x=${box.x}:y=${box.y}+2*sin(2*PI*t):w=${box.w}:h=${box.h}:color=${box.color}@1:t=fill:replace=1`,
+  ].join(",");
+  mkdirSync(dirname(outPath), { recursive: true });
+  const r = spawnSync(
+    "ffmpeg",
+    ["-v", "error", "-y", "-f", "lavfi", "-i", chain,
+      "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", "--", outPath],
+    { encoding: "utf-8" },
+  );
+  if (r.status !== 0) {
+    throw new Error(`fixture ffmpeg failed: ${r.stderr ?? r.error?.message ?? "unknown"}`);
+  }
+  return outPath;
+}
