@@ -358,10 +358,12 @@ describe("the skill install surface", () => {
 });
 
 describe("showcase copy", () => {
-  test("three highlights with localized titles and non-placeholder copy", () => {
+  test("four highlights with localized titles and non-placeholder copy", () => {
+    // Four, not three: the sheet-vs-video choice and the style/grid range are
+    // separate claims, and neither is implied by the other two.
     const showcase = JSON.parse(read("modes/sprite/showcase/showcase.json"));
     expect(showcase.hero).toBe("hero.png");
-    expect(showcase.highlights).toHaveLength(3);
+    expect(showcase.highlights).toHaveLength(4);
     expect(Object.keys(showcase.tagline).sort()).toEqual(["en", "ja", "zh-CN"]);
     for (const highlight of showcase.highlights) {
       expect(Object.keys(highlight.title).sort()).toEqual(["en", "ja", "zh-CN"]);
@@ -369,6 +371,21 @@ describe("showcase copy", () => {
       expect(highlight.media).toMatch(/^highlight-[\w-]+\.png$/);
       expect(JSON.stringify(highlight)).not.toContain("TODO");
     }
+  });
+
+  test("every referenced image is on disk", () => {
+    // The copy and the art are written in separate passes, so a highlight can
+    // name a file nobody ever captured. The launcher serves `showcase/*`
+    // straight off disk, so that is a 404 on a gallery card and nothing else
+    // reports it.
+    const showcase = JSON.parse(read("modes/sprite/showcase/showcase.json"));
+    const onDisk = new Set(readdirSync(join(REPO_ROOT, "modes/sprite/showcase")));
+    const referenced: string[] = [
+      showcase.hero,
+      ...showcase.highlights.map((h: { media: string }) => h.media),
+    ];
+    const missing = referenced.filter((media) => !onDisk.has(media));
+    expect(missing).toEqual([]);
   });
 });
 
