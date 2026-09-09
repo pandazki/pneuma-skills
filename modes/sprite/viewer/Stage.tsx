@@ -13,9 +13,10 @@
  * words, and `get-playback-state` reports the same fact as `source`.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { Motion } from "../domain.js";
+import { measuredAnchor } from "../domain.js";
 import {
   drawStage,
   type StageBackground,
@@ -100,6 +101,17 @@ export function Stage(props: StageProps) {
   }, [onCanvas]);
 
   const anchor = props.motion?.anchor ?? "bottom";
+  /** Where the pipeline measured this motion's anchor, when it measured one.
+   *  `project.json` is all the viewer reads, so this is the only channel the
+   *  measurement has — without it the guide falls back to the cell edge and a
+   *  padded sprite floats above its own ground line. Memoized because it is a
+   *  draw dependency: a fresh object every render would redraw the canvas on
+   *  every render, whatever changed. */
+  const measured = useMemo(
+    () => (props.motion ? measuredAnchor(props.motion) ?? null : null),
+    [props.motion],
+  );
+  const [pivotMeasured, setPivotMeasured] = useState(false);
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || size.width === 0) return;
@@ -122,12 +134,14 @@ export function Stage(props: StageProps) {
       onion: props.onion,
       ground: props.ground,
       anchor,
+      measured,
       theme: props.theme,
     });
     setScale(result.scale);
+    setPivotMeasured(result.pivot.measured);
   }, [
     size, props.source, props.images, props.frame, props.background,
-    props.zoom, props.onion, props.ground, props.theme, anchor,
+    props.zoom, props.onion, props.ground, props.theme, anchor, measured,
   ]);
 
   return (
@@ -171,7 +185,11 @@ export function Stage(props: StageProps) {
         <Toggle
           active={props.ground}
           onClick={() => props.onGround(!props.ground)}
-          title={`Pivot guides (anchor: ${anchor})`}
+          title={
+            pivotMeasured
+              ? `Pivot guides — the anchor point the pipeline measured (${anchor})`
+              : `Pivot guides — the ${anchor} of the cell; this motion carries no measured anchor point`
+          }
         >
           <GroundIcon size={12} />
         </Toggle>

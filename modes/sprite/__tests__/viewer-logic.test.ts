@@ -20,7 +20,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { loadRoster, type CharacterProject, type Motion } from "../domain.js";
-import { atlasGeometry } from "../viewer/atlas.js";
+import { atlasGeometry, atlasPivot } from "../viewer/atlas.js";
+import { pivotGuide } from "../viewer/frame-render.js";
 import {
   advance,
   contentSetMismatch,
@@ -559,6 +560,119 @@ describe("atlasGeometry", () => {
       }
     });
     expect(atlasGeometry(p, motionOf(p)).trusted).toBe(true);
+  });
+});
+
+// ── Where the pivot guides go ──────────────────────────────────────────────
+
+/**
+ * The guide is the one thing on the stage that claims to know something the
+ * picture cannot show: the point a game engine will stand this sprite on.
+ * Drawn at the cell edge while `align` actually parked the feet `--pad` px
+ * higher, it is a confident line under a floating sprite — a wrong answer
+ * that looks exactly like a right one, which is why it is pinned here rather
+ * than left to a screenshot.
+ */
+describe("pivotGuide", () => {
+  const cell = { width: 64, height: 64 };
+  const at = (over: Partial<Parameters<typeof pivotGuide>[0]> = {}) =>
+    pivotGuide({
+      anchor: "bottom",
+      measured: null,
+      frameWidth: 64,
+      frameHeight: 64,
+      dx: 100,
+      dy: 50,
+      scale: 4,
+      ...over,
+    });
+
+  test("with no measurement, bottom is the cell floor and center its middle", () => {
+    expect(at()).toEqual({ x: 100 + 128, y: 50 + 256, measured: false });
+    expect(at({ anchor: "center" })).toEqual({ x: 228, y: 50 + 128, measured: false });
+  });
+
+  test("a measured point wins, scaled with the stage zoom, on either anchor", () => {
+    // `--pad 8` on a 64px cell: the feet are at y=56, not y=64. At 4x that is
+    // 32 stage pixels of daylight between the sprite and a cell-edge guide.
+    const measured = { point: { x: 32, y: 56 }, cell };
+    expect(at({ measured })).toEqual({ x: 100 + 128, y: 50 + 224, measured: true });
+    // The anchor no longer decides anything once there is a measurement —
+    // a `center` motion's recorded point is just as authoritative.
+    expect(at({ anchor: "center", measured: { point: { x: 30, y: 30 }, cell } }))
+      .toEqual({ x: 100 + 120, y: 50 + 120, measured: true });
+  });
+
+  test("an off-centre measurement moves the vertical line too", () => {
+    // A character that faces right can have its anchor off the cell's middle;
+    // drawing the plumb line down the frame centre would contradict the atlas.
+    expect(at({ measured: { point: { x: 20, y: 56 }, cell } }))
+      .toEqual({ x: 100 + 80, y: 50 + 224, measured: true });
+  });
+
+  test("a point measured in another cell is refused, not rescaled", () => {
+    // The raw sheet sliced in the browser, or a re-align with a different
+    // --cell, leaves the measurement describing a picture that is not on
+    // screen. Falling back says "assumed"; rescaling would invent a number.
+    expect(at({ measured: { point: { x: 32, y: 56 }, cell: { width: 46, height: 46 } } }))
+      .toEqual({ x: 228, y: 306, measured: false });
+    expect(at({ frameWidth: 46, frameHeight: 46, measured: { point: { x: 32, y: 56 }, cell } }))
+      .toEqual({ x: 100 + 92, y: 50 + 184, measured: false });
+  });
+
+  test("a measurement at the cell edge is still a measurement", () => {
+    // `--pad 0` is legal, and the resulting guide is in the same place the
+    // fallback would put it — but it is now a fact, and the toolbar says so.
+    expect(at({ measured: { point: { x: 32, y: 64 }, cell } }))
+      .toEqual({ x: 228, y: 50 + 256, measured: true });
+  });
+});
+
+// ── What the Atlas tab prints ──────────────────────────────────────────────
+
+describe("atlasPivot", () => {
+  const withAnchorPoint = (anchorPoint: unknown, anchor = "bottom") =>
+    mutate((body) => {
+      body.sprite.motions[0].anchor = anchor;
+      body.sprite.motions[0].inspect.anchorPoint = anchorPoint;
+    });
+
+  test("prints the measured point as the ratio atlas.json carries", () => {
+    // `pack` writes `round(anchorPoint / cell, 4)`; the panel derives the same
+    // number from project.json so it needs no second fetch — and so it cannot
+    // disagree with the guide the stage just drew.
+    const p = withAnchorPoint({ x: 32, y: 56 });
+    expect(atlasPivot(motionOf(p))).toEqual({ x: 0.5, y: 0.875, measured: true });
+    const padded = withAnchorPoint({ x: 32, y: 62 });
+    expect(atlasPivot(motionOf(padded))).toEqual({ x: 0.5, y: 0.9688, measured: true });
+  });
+
+  test("without a measurement it falls back exactly like pack does", () => {
+    const p = project();
+    expect(atlasPivot(motionOf(p))).toEqual({ x: 0.5, y: 1, measured: false });
+    const centered = mutate((body) => {
+      body.sprite.motions[0].anchor = "center";
+    });
+    expect(atlasPivot(motionOf(centered))).toEqual({ x: 0.5, y: 0.5, measured: false });
+  });
+
+  test("the printed pivot and the stage guide name the same point", () => {
+    // The two are derived independently (one normalized, one in stage px);
+    // this is the assertion that keeps them from drifting apart.
+    const p = withAnchorPoint({ x: 20, y: 56 });
+    const motion = motionOf(p);
+    const pivot = atlasPivot(motion);
+    const guide = pivotGuide({
+      anchor: motion.anchor,
+      measured: { point: motion.inspect!.anchorPoint!, cell: motion.inspect!.cell },
+      frameWidth: 64,
+      frameHeight: 64,
+      dx: 0,
+      dy: 0,
+      scale: 1,
+    });
+    expect({ x: guide.x / 64, y: guide.y / 64 }).toEqual({ x: pivot.x, y: pivot.y });
+    expect(guide.measured).toBe(pivot.measured);
   });
 });
 

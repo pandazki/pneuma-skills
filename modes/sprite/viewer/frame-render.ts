@@ -17,12 +17,13 @@
  *   - The checkerboard is drawn INTO the canvas rather than set as a CSS
  *     background, because `capture` returns the canvas: a screenshot of a
  *     transparent sprite on nothing is unreadable.
- *   - The ground line is the atlas PIVOT (`{0.5, 1.0}` for `anchor: bottom`,
- *     `{0.5, 0.5}` for center) — the point a game engine will place on the
- *     floor. It is the promise the atlas makes, so it is the line worth
- *     showing.
+ *   - The ground line is the atlas PIVOT — the point a game engine will place
+ *     on the floor. It is the promise the atlas makes, so it is the line worth
+ *     showing. Where that point IS is a measurement (`pivotGuide` below), not
+ *     the cell edge: with any `--pad` the feet sit above the floor.
  */
 
+import type { MeasuredAnchor } from "../domain.js";
 import { clampFrame, type FrameSource } from "./playback.js";
 
 export type StageBackground = "checker" | "dark" | "light";
@@ -188,6 +189,63 @@ function drawTinted(
   ctx.globalAlpha = previousAlpha;
 }
 
+/** Where the pivot guides go, in stage (CSS pixel) coordinates. */
+export interface PivotGuide {
+  /** x of the vertical line. */
+  x: number;
+  /** y of the ground line. */
+  y: number;
+  /** True when the point came from the pipeline's measurement rather than
+   *  from the anchor's assumed position in the cell. */
+  measured: boolean;
+}
+
+/**
+ * Where to draw the pivot guides for the picture currently on stage.
+ *
+ * The measured point is expressed in the pixels of the cell `inspect` measured
+ * — so it only describes what is on screen when the picture on screen IS that
+ * cell. The raw sheet sliced in the browser has its own geometry, and a
+ * re-align with a different `--cell` leaves a stale measurement behind; in
+ * both cases a point taken in someone else's cell would put the guide at an
+ * arbitrary spot that looks exactly as authoritative as a correct one. So the
+ * cell is checked, and the anchor's assumed position is the honest fallback:
+ * bottom-centre for `bottom`, dead centre for `center` — the same points the
+ * atlas falls back to when the frames carry no `align.json`.
+ */
+export function pivotGuide(options: {
+  anchor: "bottom" | "center";
+  /** The motion's measurement, when it has one (`domain::measuredAnchor`). */
+  measured: MeasuredAnchor | null;
+  /** Source-pixel size of the frame being drawn. */
+  frameWidth: number;
+  frameHeight: number;
+  /** Top-left of that frame on the stage, and its magnification. */
+  dx: number;
+  dy: number;
+  scale: number;
+}): PivotGuide {
+  const { measured, frameWidth, frameHeight, dx, dy, scale } = options;
+  if (
+    measured &&
+    measured.cell.width === frameWidth &&
+    measured.cell.height === frameHeight
+  ) {
+    return {
+      x: dx + measured.point.x * scale,
+      y: dy + measured.point.y * scale,
+      measured: true,
+    };
+  }
+  const dw = frameWidth * scale;
+  const dh = frameHeight * scale;
+  return {
+    x: dx + dw / 2,
+    y: options.anchor === "center" ? dy + dh / 2 : dy + dh,
+    measured: false,
+  };
+}
+
 export interface DrawStageOptions {
   source: FrameSource;
   images: StageImages;
@@ -200,6 +258,8 @@ export interface DrawStageOptions {
   onion: boolean;
   ground: boolean;
   anchor: "bottom" | "center";
+  /** The motion's measured anchor point, when `register-run` recorded one. */
+  measured: MeasuredAnchor | null;
   theme: "light" | "dark";
 }
 
@@ -209,6 +269,8 @@ export interface DrawStageResult {
   frameHeight: number;
   /** False when the frame itself had nothing to draw (missing / empty). */
   drew: boolean;
+  /** Where the guides went — `measured` is what the toolbar tells the user. */
+  pivot: PivotGuide;
 }
 
 /**
@@ -239,7 +301,13 @@ export function drawStage(
         frameRect(opts.source, opts.images, Math.max(0, count - 1))
       : null);
   if (!geometry) {
-    return { scale: 1, frameWidth: 0, frameHeight: 0, drew: false };
+    return {
+      scale: 1,
+      frameWidth: 0,
+      frameHeight: 0,
+      drew: false,
+      pivot: { x: 0, y: 0, measured: false },
+    };
   }
 
   const scale = stageScale(opts.zoom, geometry.sw, geometry.sh, width, height);
@@ -265,23 +333,32 @@ export function drawStage(
     );
   }
 
+  const pivot = pivotGuide({
+    anchor: opts.anchor,
+    measured: opts.measured,
+    frameWidth: geometry.sw,
+    frameHeight: geometry.sh,
+    dx,
+    dy,
+    scale,
+  });
+
   if (opts.ground) {
     const guide = opts.theme === "dark"
       ? "rgba(249, 115, 22, 0.55)"
       : "rgba(234, 88, 12, 0.6)";
-    const pivotY = opts.anchor === "center" ? dy + dh / 2 : dy + dh;
     ctx.save();
     ctx.strokeStyle = guide;
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 4]);
     ctx.beginPath();
-    ctx.moveTo(dx - 16, Math.round(pivotY) + 0.5);
-    ctx.lineTo(dx + dw + 16, Math.round(pivotY) + 0.5);
+    ctx.moveTo(dx - 16, Math.round(pivot.y) + 0.5);
+    ctx.lineTo(dx + dw + 16, Math.round(pivot.y) + 0.5);
     ctx.stroke();
     ctx.setLineDash([2, 6]);
     ctx.beginPath();
-    ctx.moveTo(Math.round(dx + dw / 2) + 0.5, dy - 8);
-    ctx.lineTo(Math.round(dx + dw / 2) + 0.5, dy + dh + 8);
+    ctx.moveTo(Math.round(pivot.x) + 0.5, dy - 8);
+    ctx.lineTo(Math.round(pivot.x) + 0.5, dy + dh + 8);
     ctx.stroke();
     ctx.restore();
   }
@@ -291,6 +368,7 @@ export function drawStage(
     frameWidth: geometry.sw,
     frameHeight: geometry.sh,
     drew: current !== null,
+    pivot,
   };
 }
 
