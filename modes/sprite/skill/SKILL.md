@@ -229,16 +229,22 @@ every flag, and worked examples are in `references/prompting.md`.
    the detected corner colour). Either one writes
    `<character>/motions/<id>/sheet-alpha.png`.
 7. **Run the pipeline** — `run` does probe → key → slice → align → pack → gif →
-   inspect in one call and prints one JSON object. Feed it the sheet you
-   actually have: `sheet-alpha.png` when you keyed one in step 6 (`run` probes
-   first and will not re-key a sheet that already has alpha), otherwise
-   `sheet-raw.png`.
+   inspect in one call and prints one JSON object. Always hand it
+   `sheet-raw.png`; add `--alpha` when step 6 produced a keyed sheet, and it
+   slices that instead of keying again.
 
    ```bash
    node {SKILL_PATH}/scripts/sprite-sheet.mjs run <character>/motions/<id>/sheet-raw.png \
+     --alpha <character>/motions/<id>/sheet-alpha.png \
      --rows 4 --cols 4 --out <character>/motions/<id> --name <id> --fps 8 --loop \
      --json > <character>/motions/<id>/run.json
    ```
+
+   Drop the `--alpha` line when step 5 found alpha already there and you
+   skipped step 6 — then `run` slices the raw sheet as it is.
+   `sheet-raw.png` is the only copy of what the model drew, so `run` never
+   writes over it from inside the motion directory, and a sheet from anywhere
+   else needs `--force` to replace a raw sheet that is already there.
 
    It leaves the raw sliced cells at `<character>/motions/<id>/cells/NN.png`
    next to the aligned `frames/`. They are not assets — nothing registers
@@ -252,7 +258,9 @@ every flag, and worked examples are in `references/prompting.md`.
    `pause` + `capture` at a couple of frames.
 10. **Fix the loop when it is wrong.** One bad cell → `edit_image.mjs` on
     `<character>/motions/<id>/sheet-raw.png` targeting that cell, then re-run
-    from step 7. Anchor drift or a jump between frames → the drawing is fine
+    from step 5 — the edit rewrites the raw sheet, so the `sheet-alpha.png`
+    on disk is the *previous* drawing and must be re-keyed before it is fed
+    back in. Anchor drift or a jump between frames → the drawing is fine
     and only the alignment is off: re-run `align` from `cells/` with a
     different `--anchor` / `--smooth`, then `pack` + `gif` + `inspect` +
     `register-run`, or just re-run `run` with the new flags (one command, one

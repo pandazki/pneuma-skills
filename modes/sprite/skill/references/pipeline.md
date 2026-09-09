@@ -146,13 +146,40 @@ Warning rules and what each one means:
 | "character scale varies across frames — regenerate with a fixed-scale instruction" | `scaleDrift > 0.15` | Not fixable by alignment. Regenerate with the identical-height clause from `prompting.md`. |
 | "cell NN is clipped — the drawing leaves its grid cell" | Bbox touches the cell edge before alignment | The pose is bigger than its cell. Regenerate with the "stays inside its own cell" clause. |
 
-### `run <sheet-raw> --rows R --cols C --out <motionDir> --name <motionId> --fps N [flags]`
+### `run <sheet-raw> --rows R --cols C --out <motionDir> --name <motionId> --fps N [--alpha <png>] [--force] [flags]`
 
 The whole chain in one call: probe → key (when the sheet is opaque and `--key`
 is not `none`, writing `sheet-alpha.png`) → slice → align → pack → gif (+ webp)
 → inspect. Accepts every flag the individual steps take (`--loop`, `--anchor`,
 `--key auto|#rrggbb|none`, `--cell`, `--pad`, `--smooth`, `--scale`,
 `--nearest`, `--margin`, `--gutter`).
+
+The one command to remember, keyed or not:
+
+```bash
+node {SKILL_PATH}/scripts/sprite-sheet.mjs run <character>/motions/<id>/sheet-raw.png \
+  --alpha <character>/motions/<id>/sheet-alpha.png \
+  --rows 4 --cols 4 --out <character>/motions/<id> --name <id> --fps 8 --loop --json
+```
+
+`--alpha` names an already-keyed sheet — from `remove-background.mjs` or from
+`sprite-sheet.mjs key`, at any path. It is copied to
+`<motionDir>/sheet-alpha.png` and sliced, and `run` does not probe or key.
+Leave it off when the generated sheet already had alpha.
+
+**`sheet-raw.png` is the only copy of what the model drew, and `run` will not
+lose it.** Where the input sheet lives decides what happens to it:
+
+| Input sheet | What `run` does |
+|---|---|
+| Outside `<motionDir>` | Copies it to `sheet-raw.png`. If a *different* `sheet-raw.png` is already there, refuses unless `--force` — a regeneration is the legitimate case and says so. |
+| `<motionDir>/sheet-raw.png` | Uses it where it lies. Nothing is copied. |
+| `<motionDir>/sheet-alpha.png` | Uses it as the already-keyed sheet (same as `--alpha`): no probe, no key, `sheet-raw.png` untouched. |
+| Any other file inside `<motionDir>` | Refused, naming the two accepted in-place names. |
+
+That table is the fix for a real data loss: `run <motionDir>/sheet-alpha.png
+--out <motionDir>` used to copy the keyed sheet over `sheet-raw.png`, so the
+un-keyed original was gone and `<motion>-sheet-raw` pointed at a keyed file.
 
 It also keeps the pre-align cells at `<motionDir>/cells/NN.png` (see `slice`),
 which is what makes the fix-alignment path below possible.
@@ -161,10 +188,16 @@ Emits one JSON object:
 
 ```json
 { "motionDir": "...", "sheetRaw": "...", "sheetAlpha": "...",
+  "alphaSource": "provided", "keyed": false,
   "cells": "...", "frames": ["..."], "sheet": "...", "atlas": "...",
   "gif": "...", "webp": "...", "inspect": { },
   "cell": { "width": 0, "height": 0 }, "warnings": [] }
 ```
+
+`alphaSource` appears only when the alpha sheet was handed in rather than keyed
+here; `keyed` + `keyColor` mark the other branch. `sheetRaw` is omitted (with a
+`note:` on stderr) in the one case where there is no raw sheet on disk — an
+in-place `sheet-alpha.png` run in a directory that never held one.
 
 Save that JSON — `sprite-project.mjs register-run` consumes it verbatim. It
 reads `frames` / `sheet` / `atlas` / `gif` / `webp` / `sheetAlpha` and **ignores
