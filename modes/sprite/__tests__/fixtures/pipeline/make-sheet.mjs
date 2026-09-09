@@ -142,6 +142,39 @@ export function readColorBbox(path, hex, threshold = 16) {
 }
 
 /**
+ * What colour survives *under* the alpha, and what survives above it.
+ *
+ * `readBbox` cannot see this: it reads the alpha plane and nothing else, which
+ * is exactly the blind spot the defect lived in — ffmpeg's `colorkey` writes
+ * alpha and leaves the plate's RGB in place, so a keyed sheet measures
+ * perfectly while still carrying a full green plate for any bilinear resize or
+ * alpha-ignoring importer to bleed back out.
+ *
+ * `hiddenColors` is the distinct `r,g,b` of every pixel BELOW the threshold —
+ * `["0,0,0"]` is the only acceptable answer for a keyed image, and the green
+ * shows up by name when it is not. `opaqueBlack` is the counterpart guard: a
+ * fix that zeroed too much would erase the character and leave this non-zero.
+ */
+export function alphaColorAudit(path, threshold = 16) {
+  const { width, height, data } = decode(path);
+  const hiddenColors = new Set();
+  let hidden = 0;
+  let opaque = 0;
+  let opaqueBlack = 0;
+  for (let i = 0; i < width * height * 4; i += 4) {
+    const [r, g, b] = [data[i], data[i + 1], data[i + 2]];
+    if (data[i + 3] >= threshold) {
+      opaque++;
+      if (r === 0 && g === 0 && b === 0) opaqueBlack++;
+      continue;
+    }
+    hidden++;
+    hiddenColors.add(`${r},${g},${b}`);
+  }
+  return { width, height, hidden, opaque, opaqueBlack, hiddenColors: [...hiddenColors].sort() };
+}
+
+/**
  * A short clip of one square breathing up and down on a chroma-green plate —
  * the video fixture `from-video` samples.
  *

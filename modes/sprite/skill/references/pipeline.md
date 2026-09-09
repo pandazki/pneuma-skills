@@ -71,6 +71,16 @@ character's own colours start disappearing. When neither setting separates the
 character from its background, the sheet needs a matting model, not a colour
 threshold — see `remove-background.mjs` below.
 
+**The keyed-out pixels come back black, not invisible-green.** ffmpeg's
+`colorkey` only writes the alpha plane — the name is literal — so the plate is
+still there underneath, and anything that ignores alpha gets it back whole: a
+bilinear `--scale` bleeds green into every edge, and an engine that imports the
+sheet as RGB shows a solid plate. This step therefore zeroes the colour of
+every pixel left below the alpha threshold, the same rule `clean` applies when
+it drops a blob (transparency is all four bytes). `run` inherits it through the
+keyed sheet; `from-video` does the same to each sampled frame. Opaque pixels are
+never touched, so nothing you can see changes.
+
 ### `flatten <in> --out <png> [--bg #ffffff]`
 
 Composite onto a solid colour. Video models mishandle alpha — flatten frame 00

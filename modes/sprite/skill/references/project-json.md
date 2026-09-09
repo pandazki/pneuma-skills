@@ -135,7 +135,13 @@ interface InspectSummary {
                                             // that cell, in px — the point the
                                             // atlas pivot names. Absent when the
                                             // frames carry no align.json
-  anchorDrift: { x: number; y: number };   // std-dev in px across frames
+  anchorDrift: { x: number; y: number };   // std-dev in px across frames — the
+                                            // silhouette, props included
+  bodyDrift?: number;                       // std-dev in px of the feet-centre x
+                                            // across frames — the body. Absent
+                                            // when the report carried no finite
+                                            // number; 0 is a real reading, not
+                                            // an absence
   maxJump: number;                          // largest step between neighbours
   scaleDrift: number;                       // (max h − min h) / mean
   emptyFrames: number[];

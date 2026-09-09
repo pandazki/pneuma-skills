@@ -505,24 +505,43 @@ function anchorPoint(value) {
   return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : undefined;
 }
 
+/** A finite number, or undefined. The optional inspect numbers get the same
+ *  treatment as the anchor point: a report that never carried `bodyDrift`
+ *  (or carried a broken one) must arrive at the viewer as *absent*, because
+ *  the plausible default — 0 — is exactly the reading a perfectly still body
+ *  produces, and the row would show a measurement nobody made. */
+function finiteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
 /** The InspectSummary the sidecar carries — picked field by field, never
  *  spread, so a richer inspect report (per-frame bboxes, absolute paths)
  *  cannot leak into project.json.
  *
- *  `anchorPoint` is the one optional member: it is where `align` actually put
- *  the anchor inside the cell, and the viewer renders from project.json alone,
- *  so without this copy the stage has no way to learn where the feet are and
- *  falls back to the cell edge — which with any `--pad` floats the sprite
- *  above its own guide. Absent stays absent; the fallback is the viewer's
- *  call, not a default invented here. */
+ *  Picking by name is also why every field this report gains has to be added
+ *  HERE as well: `inspect` measured `bodyDrift` and wrote it into
+ *  `inspect.json` for a round before this copy learned to carry it, and the
+ *  viewer — which reads project.json and nothing else — showed a blank row
+ *  the whole time.
+ *
+ *  `anchorPoint` and `bodyDrift` are the optional members: the first is where
+ *  `align` actually put the anchor inside the cell, and the viewer renders
+ *  from project.json alone, so without this copy the stage has no way to learn
+ *  where the feet are and falls back to the cell edge — which with any `--pad`
+ *  floats the sprite above its own guide. Absent stays absent; the fallback is
+ *  the viewer's call, not a default invented here. */
 function inspectSummary(value) {
   if (!value || typeof value !== "object") return undefined;
   const point = anchorPoint(value.anchorPoint);
+  const bodyDrift = finiteNumber(value.bodyDrift);
   return {
     frameCount: value.frameCount,
     cell: value.cell,
     ...(point ? { anchorPoint: point } : {}),
     anchorDrift: value.anchorDrift,
+    // `=== undefined`, not truthiness: 0 is the drift a well-aligned motion
+    // has, and dropping it would hide the best result the pipeline can give.
+    ...(bodyDrift === undefined ? {} : { bodyDrift }),
     maxJump: value.maxJump,
     scaleDrift: value.scaleDrift,
     emptyFrames: value.emptyFrames ?? [],

@@ -503,6 +503,38 @@ function cleanSummary(stats) {
   return { cleaned, warnings };
 }
 
+/**
+ * Erase the colour under every pixel the key made transparent. Returns how
+ * many pixels were touched.
+ *
+ * ffmpeg's `colorkey` writes the ALPHA plane and leaves RGB exactly as it
+ * was, so a keyed sheet is the character floating on a full green plate that
+ * happens to be invisible — `colorkey` by name and by behaviour. Everything
+ * that respects alpha sees nothing wrong, and everything that does not sees
+ * the plate: a bilinear `scale` mixes those hidden greens into every edge, and
+ * an alpha-ignoring consumer (an engine importing the sheet as RGB, a
+ * thumbnailer) gets the plate back whole. The first packed video-sourced sheet
+ * came out solid green for exactly this reason.
+ *
+ * The rule is `cleanCell`'s, applied to the keyer: transparency is all four
+ * bytes, not just the fourth. The cut is the same alpha threshold the rest of
+ * the script measures with — below it a pixel is not the character, so its
+ * colour is the background's and has no business travelling.
+ */
+function zeroKeyedRgb(image, threshold) {
+  const { data } = image;
+  let zeroed = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] >= threshold) continue;
+    if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 0) continue;
+    data[i] = 0;
+    data[i + 1] = 0;
+    data[i + 2] = 0;
+    zeroed++;
+  }
+  return zeroed;
+}
+
 function hasAlpha(image) {
   const { data } = image;
   for (let i = 3; i < data.length; i += 4) if (data[i] < 255) return true;
@@ -609,16 +641,22 @@ function stepKey(input, { out, color, similarity, blend, threshold }) {
     "-vf", `colorkey=${resolved}:${similarity}:${blend},format=rgba`,
     "-frames:v", "1", "-pix_fmt", "rgba",
   ], "key");
-  const after = stepProbe(output, threshold);
+  // The keyed sheet is what `slice`, `align` and `pack` all copy pixels from,
+  // so the plate has to go here — at the one point where it is created — not
+  // at each of the places it would otherwise resurface. This costs no extra
+  // decode: the coverage this step reports is measured on the same buffer.
+  const keyed = readRgba(output);
+  if (zeroKeyedRgb(keyed, threshold)) writeRgbaPng(output, keyed, "key");
+  const { coverage } = computeBbox(keyed, threshold);
   return {
     input: resolve(input),
     output,
     color: resolved,
     similarity,
     blend,
-    width: after.width,
-    height: after.height,
-    alphaCoverage: after.alphaCoverage,
+    width: keyed.width,
+    height: keyed.height,
+    alphaCoverage: round(coverage, 4),
   };
 }
 
@@ -1689,11 +1727,17 @@ function stepFromVideo(clip, options) {
   for (let index = 0; index < times.length; index++) {
     const path = join(cellsDir, frameName(index));
     const image = readRgba(path);
+    let rewrite = false;
     if (options.clean) {
       const result = cleanCell(image, options.threshold);
       cleanStats.push({ index, ...result });
-      if (result.removedPixels) writeRgbaPng(path, image, `clean cell ${index}`);
+      if (result.removedPixels) rewrite = true;
     }
+    // Here the key ran inside the extraction filter, so there is no keyed
+    // sheet to fix once — every frame carries its own plate under the alpha,
+    // and this loop is the pass that already has the pixels in hand.
+    if (keyColor && zeroKeyedRgb(image, options.threshold)) rewrite = true;
+    if (rewrite) writeRgbaPng(path, image, `from-video cell ${index}`);
     const measure = measureFrame(image, options.threshold);
     measures.push(measure);
     coverages.push(measure.coverage);

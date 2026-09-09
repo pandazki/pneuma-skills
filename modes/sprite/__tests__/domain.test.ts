@@ -219,6 +219,55 @@ describe("loadRoster", () => {
     }
   });
 
+  test("the measured body drift survives, and a broken one does not", () => {
+    // `bodyDrift` is the number `align --x-from feet` exists to keep near
+    // zero, and the row the viewer shows beside the anchor drift. It gets
+    // `anchorPoint`'s treatment rather than `num(value, 0)`'s for one reason:
+    // 0 is the GOOD reading here, so a default of 0 is indistinguishable from
+    // a perfect measurement. It has to survive when real and vanish when not.
+    const withDrift = (bodyDrift: unknown) => {
+      const body = JSON.parse(MINI);
+      body.sprite.motions[0].inspect.bodyDrift = bodyDrift;
+      return loadRoster(files({ "mini/project.json": JSON.stringify(body) }))!
+        .byContentSet.mini.sprite.motions[0].inspect!;
+    };
+
+    // The Lumi seed's own two numbers, and the one that must not be dropped.
+    for (const value of [0.199, 0.263, 17.4, 0]) {
+      expect({ value, parsed: withDrift(value).bodyDrift }).toEqual({
+        value,
+        parsed: value,
+      });
+    }
+    expect("bodyDrift" in withDrift(0)).toBe(true);
+
+    for (const broken of [
+      undefined,
+      null,
+      "0.199",
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      {},
+      [0.199],
+      true,
+    ]) {
+      const parsed = withDrift(broken);
+      expect({ broken, value: parsed.bodyDrift, present: "bodyDrift" in parsed }).toEqual({
+        broken,
+        value: undefined,
+        present: false,
+      });
+    }
+
+    // The canonical fixture predates the field, and absence is what tells the
+    // viewer to leave the row out instead of printing a drift of 0.
+    const mini = loadRoster(files({ "mini/project.json": MINI }))!
+      .byContentSet.mini.sprite.motions[0].inspect!;
+    expect("bodyDrift" in mini).toBe(false);
+    expect(mini.frameCount).toBe(4);
+  });
+
   test("a motion measured before the pipeline recorded the point has none", () => {
     // The canonical fixture predates `align.json`; absence is a real state,
     // and it is what tells the viewer to fall back to the cell instead of

@@ -152,8 +152,20 @@ export interface InspectSummary {
    * (round 2). The viewer dims the badge but keeps every number visible.
    */
   acknowledged?: { reason: string; at: number };
-  /** Std-dev in px of the anchor point across frames. */
+  /** Std-dev in px of the anchor point across frames — the *silhouette*. */
   anchorDrift: { x: number; y: number };
+  /**
+   * Std-dev in px of the feet-centre x across frames — the *body*, which is a
+   * different claim from `anchorDrift`: a swinging prop moves the silhouette
+   * without moving the character, and this is the number `align --x-from feet`
+   * exists to keep near zero.
+   *
+   * Optional for the same reason `anchorPoint` is: a motion measured before
+   * `inspect` reported it carries no value, and 0 would read as "the body is
+   * perfectly still" — a fabricated measurement, not a missing one. Present
+   * only when the report carried a finite number.
+   */
+  bodyDrift?: number;
   /** Largest anchor displacement between consecutive frames. */
   maxJump: number;
   /** (max bbox height − min bbox height) / mean. */
@@ -312,18 +324,34 @@ function parseAcknowledged(value: unknown): { reason: string; at: number } | und
   return { reason, at };
 }
 
+/**
+ * A finite number, or undefined for anything else.
+ *
+ * The optional inspect numbers share `anchorPoint`'s problem: `num(v, 0)`
+ * would turn a missing or malformed `bodyDrift` into a confident 0 — "the body
+ * never moves" — which is the one answer indistinguishable from a perfect
+ * measurement. Absent is a state the viewer renders correctly; 0 is a lie.
+ */
+function parseFinite(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
 function parseInspect(value: unknown): InspectSummary | undefined {
   if (!isRecord(value)) return undefined;
   const cell = isRecord(value.cell) ? value.cell : {};
   const drift = isRecord(value.anchorDrift) ? value.anchorDrift : {};
   const anchorPoint = parsePoint(value.anchorPoint);
   const acknowledged = parseAcknowledged(value.acknowledged);
+  const bodyDrift = parseFinite(value.bodyDrift);
   return {
     frameCount: num(value.frameCount, 0),
     cell: { width: num(cell.width, 0), height: num(cell.height, 0) },
     ...(anchorPoint ? { anchorPoint } : {}),
     ...(acknowledged ? { acknowledged } : {}),
     anchorDrift: { x: num(drift.x, 0), y: num(drift.y, 0) },
+    // `=== undefined`, never a truthiness test: 0 is the *good* body drift and
+    // must survive the trip.
+    ...(bodyDrift === undefined ? {} : { bodyDrift }),
     maxJump: num(value.maxJump, 0),
     scaleDrift: num(value.scaleDrift, 0),
     emptyFrames: arr(value.emptyFrames).filter(

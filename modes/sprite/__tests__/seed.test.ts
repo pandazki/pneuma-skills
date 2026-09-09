@@ -125,6 +125,35 @@ describe("the seed character on disk", () => {
     }
   });
 
+  test("each motion's sidecar carries the body drift its own inspect.json measured", () => {
+    // `register-run` copies the inspect report into the sidecar field by
+    // field, and the viewer reads project.json and nothing else — so a number
+    // the pipeline measures reaches the user only if the picker was taught to
+    // carry it. `bodyDrift` spent a round measured, written to inspect.json,
+    // and missing from the sidecar, which showed up as a blank row on a seed
+    // whose alignment is in fact excellent. The seed is the one place both
+    // halves sit on disk together, so it is where they can be held to agree.
+    for (const motion of project.sprite.motions as Array<{
+      id: string;
+      inspect: { bodyDrift?: number; cell: { width: number } };
+    }>) {
+      const report = JSON.parse(
+        readFileSync(join(SEED_DIR, "motions", motion.id, "inspect.json"), "utf-8"),
+      );
+      expect({ id: motion.id, drift: motion.inspect.bodyDrift }).toEqual({
+        id: motion.id,
+        drift: report.bodyDrift,
+      });
+      // Sub-pixel on both motions, against a 5%-of-cell-width warning line —
+      // a seed that shipped a drifting body would teach sliding as normal.
+      expect({ id: motion.id, finite: Number.isFinite(motion.inspect.bodyDrift) }).toEqual({
+        id: motion.id,
+        finite: true,
+      });
+      expect(motion.inspect.bodyDrift!).toBeLessThan(0.05 * motion.inspect.cell.width);
+    }
+  });
+
   test("attack carries the one rendered clip, marked ready", () => {
     const attack = project.sprite.motions.find(
       (m: { id: string }) => m.id === "attack",

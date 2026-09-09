@@ -52,6 +52,21 @@ export declare function buildSheet(outPath: string, options?: BuildSheetOptions)
 export declare function readBbox(path: string, threshold?: number): BboxReport;
 export declare function readColorBbox(path: string, hex: string, threshold?: number): BboxReport;
 
+export interface AlphaColorAudit {
+  width: number;
+  height: number;
+  /** Pixels below the alpha threshold. */
+  hidden: number;
+  /** Pixels at or above it. */
+  opaque: number;
+  /** Of those, how many are pure black — a fix that erased too much. */
+  opaqueBlack: number;
+  /** Distinct `"r,g,b"` carried by the hidden pixels, sorted. */
+  hiddenColors: string[];
+}
+
+export declare function alphaColorAudit(path: string, threshold?: number): AlphaColorAudit;
+
 /** One box drawn per frame of a clip, at a y that rides a 2px sine over t. */
 export interface ClipBox {
   x: number;
