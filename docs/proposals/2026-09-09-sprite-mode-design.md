@@ -1066,6 +1066,146 @@ Hosted player support, earned by verification.
 Acceptance: typecheck + `bun test core src` green; the whitelist entry exists
 only alongside the screenshots and the console-clean statement in the report.
 
+## Round 2 — owner feedback after three blind e2e cases (2026-09-09)
+
+Verdict: functionality is acceptable; frame-to-frame continuity and coherence
+are not. Decisions: (1) keep both motion sources and let the **user choose**
+per motion — a single generated sheet (cheap, one image, best for micro
+motions such as idle) or a video clip sampled into frames (Seedance 2.5 on a
+chroma-green background; smoother, ~$1 and 5–7 min per motion); (2) fold the
+community "pixel-art idle sheet" prompt into the skill; (3) then produce
+showcase materials with `/showcase`. Findings log:
+`scratchpad/e2e/findings.md` (session scratchpad).
+
+New sidecar fields (already added to `domain.ts` on the branch, optional,
+parsed defensively):
+
+- `Motion.source?: "sheet" | "video"` — how the frames were obtained. Absent
+  means `sheet` (every motion produced before this round).
+- `InspectSummary.acknowledged?: { reason: string; at: number }` — the agent
+  (or the user through the agent) accepted the remaining warnings with a
+  reason; the viewer dims the badge but keeps the numbers visible.
+
+### TASK-8 — pipeline + skill: the video source, the clean step, the idle prompt
+
+Scope: `modes/sprite/skill/scripts/{sprite-sheet,sprite-project}.mjs`, their
+tests and fixtures, `modes/sprite/skill/SKILL.md` + `references/*`,
+`modes/sprite/domain.ts` parsing only if a field is missing. Not the viewer,
+not `manifest.ts` (TASK-9 owns those).
+
+1. `sprite-sheet.mjs from-video <clip.mp4> --out <motionDir> --name <id> --frames 16 [--fps N] [--loop|--no-loop] [--anchor bottom|center] [--x-from feet|bbox|cell] [--key auto|#rrggbb|none] [--trim-start s] [--trim-end s] [--cell auto|WxH] [--pad 8] [--scale] [--nearest] [--json]`:
+   ffmpeg samples `--frames` frames evenly across the (trimmed) clip into
+   `cells/NN.png` (this is the "raw cells" stage; there is no sheet), keys
+   the background (`auto` = median of the four corner patches of frame 00,
+   which is the chroma green when the clip was shot as instructed), then the
+   same align → pack → gif → inspect chain as `run`. The run JSON carries
+   `source: "video"`, `video: <clip path>`, `frames`, and the same keys as
+   `run` so `register-run` can consume it unchanged; `register-run` records
+   the frame `derive` edges from the **video asset** (`params.step: "from-video"`,
+   `params.frameIndex`, `params.t` seconds) and sets `motion.source`.
+   The clip itself must already be a registered video asset (`add-video`)
+   — refuse otherwise, naming the id to use.
+2. `clean` step (new, on by default in `run`/`from-video`, `--no-clean` to
+   skip; also a standalone `clean <cellsDir> --out <dir>`): per cell, keep
+   the largest connected alpha component plus any component whose area is
+   ≥ 2 % of it; drop the rest **only if** they touch the cell border or lie
+   above the main component's top / below its bottom (fragments of the
+   neighbouring cells, stray pixels over the head / under the feet). Report
+   `cleaned: [{ cell, removedComponents, removedPixels }]` in the JSON and a
+   warning when more than 5 % of a cell's pixels were removed ("cell NN lost
+   N % to cleaning — check the sheet"). Tests with a synthetic sheet that has
+   a neighbour fragment and a floating speck.
+3. Prompt and rule updates (from the community prompt the owner pasted):
+   - `references/prompting.md`: an **idle recipe** (gentle breathing rise/fall,
+     one secondary motion in hair/cloth/appendage, one brief blink if eyes
+     are visible, feet/contact points anchored, no walking/turning, the last
+     frame flows back into the first); a **seamless-loop clause** for every
+     looping motion; **≥ 16 px transparent padding on every side of every
+     cell, moving accessories included**; **fixed baseline and identical
+     alignment across cells**; adapt anatomy to chibi without forcing
+     non-human characters into a human body; infer missing body parts when
+     the reference is cropped; "no floor, no cast shadow, preserve white and
+     pale details inside the character" (these three are what make keying
+     clean); the 4×4 / 1024 / 256-cell canonical sheet spec as the worked
+     example.
+   - SKILL.md motion-type table: idle = 16 frames, 4×4, **6–7 fps (≈2.4 s
+     cycle)**, loop; a sentence that a looping motion's last frame must lead
+     back to the first.
+   - SKILL.md workflow B gets a **source choice** step before anything is
+     generated: present the two sources with cost/time/fidelity in one
+     line each (sheet: one image ≈ 35 s, best for idle/micro motions, frames
+     may be unevenly spaced; video: one Seedance clip ≈ $1 and 5–7 min,
+     smooth in-betweens, best for walk/run/attack) and **ask the user** unless
+     they already said which; record the choice in `add-motion --source`.
+   - Workflow B-video: refs → `add-motion --source video` → `add-video --status generating`
+     (the clip is the motion's *source* clip, `mode: "i2v"` or `"r2v"`) →
+     `seedance-video.mjs` with the flattened turnaround/portrait as
+     `--image`/`--ref-image`, `--no-audio`, `--duration 4`, `--resolution 480p`,
+     and a prompt that fixes: pure solid chroma-green background (#00FF00),
+     locked camera, no zoom, the character centred and fully in frame, feet
+     on one baseline, one continuous performance of the motion, ending in
+     the starting pose when the motion loops → `set-video --status ready`
+     → `from-video … --key auto` → `register-run` → inspect → look (play +
+     capture) → report.
+   - Workflow B (sheet) keeps the existing steps; both end with the same
+     look-before-you-claim rhythm.
+   - `set-motion --ack-warnings "<reason>"` (new) writes
+     `inspect.acknowledged`; the skill says: when you keep a motion despite
+     warnings, acknowledge them with the reason in one sentence (the user
+     sees it); regenerate when the warning names scale drift > 15 % or a
+     clipped cell on a sheet motion.
+   - Facing: every motion uses `character.facing` unless the user asks for
+     another view; say so in the motion prompt.
+   - Progress: before any paid call, post one line with the expected wait
+     (numbers from the Measured sections) and register the placeholder so
+     the viewer shows it.
+4. Validation with one paid clip (max one): shoot a 4 s Seedance 2.5 i2v
+   clip of the Lumi seed (flattened portrait or turnaround as `--image`) on
+   chroma green per the prompt above, run `from-video`, and report the
+   keying result (alpha coverage, any green fringe), `bodyDrift`, the clean
+   step's removals, and the GIF. Keep the outputs under the session
+   scratchpad, not in the seed. Append the numbers to the Measured sections.
+
+Gates: typecheck; `bun test modes/sprite`; `--help` for the new subcommands.
+
+### TASK-9 — viewer polish from the e2e findings
+
+Scope: `modes/sprite/viewer/**`, `modes/sprite/manifest.ts` (command
+descriptions only), `modes/sprite/pneuma-mode.ts` (`extractContext` / selection
+label), `modes/sprite/__tests__/viewer-logic.test.ts`. Not the scripts or the
+skill text.
+
+1. Commands talk to the user: the three command `description`s in the
+   manifest become one-line user-facing hints (the agent's guidance lives in
+   SKILL.md's Commands section, which the reviewer confirms still exists);
+   the viewer's tooltip shows the label + that hint, never script names.
+2. Selection chip: `onSelect` content/label for a frame reads
+   `"<motion label> · frame 07"` (and for a ref `"<ref label>"`); the style
+   sentence is not the label.
+3. One size line: the header shows the **declared** cell (`character.cell`)
+   and, when a motion is selected, its **measured** cell (`inspect.cell`) and
+   the packed scale when ≠ 1, in one phrase, e.g. `declared 256 · measured 384×492 · packed ×0.5`.
+   The Atlas tab uses the same numbers.
+4. Warnings: the INSPECT block shows thresholds beside the values (scale
+   drift 15 %, jump 8 % of cell, body drift 5 % of cell), colours a value
+   amber when over; `inspect.acknowledged` dims the motion badge and shows the
+   reason under the warnings.
+5. Video rendering is visible globally: when any motion has a video in
+   `generating`, a chip in the header and a dot on that motion's row say so;
+   the Video tab keeps its per-clip shimmer.
+6. `navigate-to` with a motion switches the preview tab to GIF when the
+   current tab has nothing for that motion (Video tab with no clips, Atlas
+   with no sheet).
+7. Source chip: a motion with `source: "video"` shows a small "video" chip in
+   the rail and the header phrase.
+8. Locale: string table for the viewer with `en` and `zh-CN`, selected by
+   `props.locale`; every visible string goes through it (a test asserts no
+   raw English literal remains in JSX outside the table).
+
+Gates: typecheck; `bun test modes/sprite`; screenshots (dark + light) of the
+header size line, an acknowledged warning, the global rendering chip, a zh-CN
+render.
+
 ## TASK-7-REVIEW
 
 TASK-7 plus: the smoke script cleans up its temp dirs; the whitelist comment

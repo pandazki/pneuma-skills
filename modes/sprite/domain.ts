@@ -147,6 +147,11 @@ export interface InspectSummary {
    * "assumed the cell edge" — so it is an optional key, never a default.
    */
   anchorPoint?: { x: number; y: number };
+  /**
+   * The agent accepted the remaining warnings with a one-sentence reason
+   * (round 2). The viewer dims the badge but keeps every number visible.
+   */
+  acknowledged?: { reason: string; at: number };
   /** Std-dev in px of the anchor point across frames. */
   anchorDrift: { x: number; y: number };
   /** Largest anchor displacement between consecutive frames. */
@@ -170,6 +175,8 @@ export interface Motion {
   status: MotionStatus;
   /** Failure reason or agent remarks. */
   notes?: string;
+  /** How the frames were obtained; absent means `"sheet"` (round 2). */
+  source?: "sheet" | "video";
   sheetRaw?: string;
   sheetAlpha?: string;
   sheet?: string;
@@ -297,15 +304,25 @@ function parsePoint(value: unknown): { x: number; y: number } | undefined {
   return { x, y };
 }
 
+function parseAcknowledged(value: unknown): { reason: string; at: number } | undefined {
+  if (!isRecord(value)) return undefined;
+  const reason = value.reason;
+  const at = value.at;
+  if (typeof reason !== "string" || reason.trim() === "" || typeof at !== "number" || !Number.isFinite(at)) return undefined;
+  return { reason, at };
+}
+
 function parseInspect(value: unknown): InspectSummary | undefined {
   if (!isRecord(value)) return undefined;
   const cell = isRecord(value.cell) ? value.cell : {};
   const drift = isRecord(value.anchorDrift) ? value.anchorDrift : {};
   const anchorPoint = parsePoint(value.anchorPoint);
+  const acknowledged = parseAcknowledged(value.acknowledged);
   return {
     frameCount: num(value.frameCount, 0),
     cell: { width: num(cell.width, 0), height: num(cell.height, 0) },
     ...(anchorPoint ? { anchorPoint } : {}),
+    ...(acknowledged ? { acknowledged } : {}),
     anchorDrift: { x: num(drift.x, 0), y: num(drift.y, 0) },
     maxJump: num(value.maxJump, 0),
     scaleDrift: num(value.scaleDrift, 0),
@@ -348,6 +365,7 @@ function parseMotion(value: unknown): Motion | null {
     anchor: value.anchor === "center" ? "center" : "bottom",
     status: parseMotionStatus(value.status),
     ...(optionalStr(value.notes) ? { notes: value.notes as string } : {}),
+    ...(value.source === "video" || value.source === "sheet" ? { source: value.source } : {}),
     ...(optionalStr(value.sheetRaw)
       ? { sheetRaw: value.sheetRaw as string }
       : {}),
