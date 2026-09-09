@@ -255,6 +255,13 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
         // guess the cell edge and the sprite floats above its own ground line.
         anchorPoint: { x: 32, y: 56 },
         anchorDrift: { x: 0, y: 0 },
+        // The feet-centre std-dev `inspect` measures. It is picked by name
+        // like every other field here, which is how it spent a round being
+        // measured, written to inspect.json, and never reaching the sidecar
+        // the viewer actually reads — a blank body-drift row on a motion the
+        // pipeline had a perfect number for. 0 is that perfect number, and
+        // the reason the pick tests `=== undefined` rather than truthiness.
+        bodyDrift: 0,
         maxJump: 0,
         scaleDrift: 0,
         emptyFrames: [],
@@ -419,6 +426,28 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       projectJson(dir, "register-run", "--motion", "bounce", "--run", join(dir, "run.json"), "--at", String(T2));
       expect(readFileSync(join(dir, "project.json"), "utf-8")).toBe(before);
       expect(JSON.parse(before).sprite.motions[0].inspect.anchorPoint).toEqual({ x: 32, y: 56 });
+    });
+
+    test("a run with no body drift, or a broken one, leaves the sidecar without it", () => {
+      // Same discipline as the anchor point, for the same reason: 0 is what a
+      // perfectly aligned motion measures, so a default of 0 would show the
+      // viewer the best possible reading for a motion nobody measured. The
+      // canonical `bounce-run.json` predates the field entirely.
+      const { dir, realRun } = seedMini();
+      const motion = projectJson(dir, "register-run", "--motion", "bounce",
+        "--run", join(FIXTURES, "bounce-run.json"), "--at", String(T2));
+      expect("bodyDrift" in motion.inspect).toBe(false);
+      expect("bodyDrift" in readProject(dir).sprite.motions[0].inspect).toBe(false);
+
+      for (const broken of ["0.199", null, {}, [0.199], Number.POSITIVE_INFINITY]) {
+        // JSON has no NaN/Infinity, so Infinity serializes to null — which is
+        // precisely the shape a hand-edited report arrives in.
+        const payload = { ...realRun, inspect: { ...realRun.inspect, bodyDrift: broken } };
+        writeFileSync(join(dir, "broken-drift.json"), JSON.stringify(payload));
+        const got = projectJson(dir, "register-run", "--motion", "bounce",
+          "--run", join(dir, "broken-drift.json"), "--at", String(T2));
+        expect({ broken, present: "bodyDrift" in got.inspect }).toEqual({ broken, present: false });
+      }
     });
 
     test("a malformed anchor point is dropped, not carried into the sidecar", () => {

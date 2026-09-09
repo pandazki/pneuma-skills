@@ -277,7 +277,9 @@ interface InspectSummary {
   cell: { width: number; height: number };
   anchorPoint?: { x: number; y: number };   // where align put the anchor INSIDE that cell, in px;
                                             // absent when the frames carry no align.json
-  anchorDrift: { x: number; y: number };   // std-dev in px of the anchor point across frames
+  anchorDrift: { x: number; y: number };   // std-dev in px of the anchor point across frames — the silhouette
+  bodyDrift?: number;                       // std-dev in px of the feet-centre x across frames — the body;
+                                            // absent when the report carried no finite number (0 is a reading)
   maxJump: number;                          // largest anchor displacement between consecutive frames
   scaleDrift: number;                       // (max bbox height − min bbox height) / mean
   emptyFrames: number[];

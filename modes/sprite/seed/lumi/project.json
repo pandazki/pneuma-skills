@@ -1430,6 +1430,7 @@
             "x": 0.306,
             "y": 0
           },
+          "bodyDrift": 0.199,
           "maxJump": 0.5,
           "scaleDrift": 0.0085,
           "emptyFrames": [],
@@ -1496,6 +1497,7 @@
             "x": 17.373,
             "y": 0
           },
+          "bodyDrift": 0.263,
           "maxJump": 50,
           "scaleDrift": 0.126,
           "emptyFrames": [],
