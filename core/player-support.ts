@@ -48,6 +48,17 @@ export const WEB_PLAYER_SUPPORTED_MODES: readonly string[] = [
   // wordtaste: math-heavy draft at the layout gate).
   "bansho",
   "wordtaste",
+  // Renders from project.json alone — every frame, packed sheet, GIF and mp4 is
+  // a `/content/<contentSet>/<uri>` URL, no /api/* at render time, and the
+  // command bar is gated on `editing !== false`. Verified on the built player
+  // against the Lumi seed package (`scripts/smoke-sprite.ts`): idle ran at its
+  // declared 8 fps, the strip seeked and held, the Seedance clip played off two
+  // 206 Range responses through the content worker, the atlas grid drew over the
+  // packed sheet, zero command buttons rendered, console clean. Sprite is also
+  // what exposed the worker losing its checkout map on eviction — it is the
+  // first mode to fetch assets minutes after load (see the SW's own comment and
+  // src/player/__tests__/content-sw.test.ts).
+  "sprite",
 ];
 
 export function isModeWebPlayable(mode: string | undefined | null): boolean {
