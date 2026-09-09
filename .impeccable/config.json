@@ -11,6 +11,60 @@
         ],
         "createdAt": "2026-09-05T15:09:13.334Z",
         "reason": "Agent: .impeccable.md explicitly specifies Fraunces for brand elements, and HEAD:src/index.css already uses it for .font-logo. This change only bundles existing fonts locally to remove startup network blocking."
+      },
+      {
+        "rule": "hero-eyebrow-chip",
+        "value": "*",
+        "files": [
+          "modes/illustrate/showcase/layout.html"
+        ],
+        "createdAt": "2026-09-09T10:05:51.126Z",
+        "reason": "Agent: this fixed-size showcase uses a full-width Pneuma / Illustrate masthead with a page folio, identifying the product and panel rather than adding a marketing eyebrow. Verified in the exported gallery PNGs."
+      },
+      {
+        "rule": "kicker-above-heading",
+        "value": "*",
+        "files": [
+          "modes/illustrate/showcase/layout.html"
+        ],
+        "createdAt": "2026-09-09T10:05:51.228Z",
+        "reason": "Agent: the detected Pneuma label belongs to the same full-width product masthead and page folio; it is a brand breadcrumb, not a content kicker. This file only composes fixed-size gallery images."
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "modes/illustrate/showcase/layout.html"
+        ],
+        "createdAt": "2026-09-09T10:05:51.332Z",
+        "reason": "Agent: all hits are outer image-card or picture wrappers with intentionally edge-to-edge artwork. Text lives in separate captions with 11-14px horizontal insets and vertical centering in 29-47px rows; exported PNGs were visually checked."
+      },
+      {
+        "rule": "gpt-thin-border-wide-shadow",
+        "value": "*",
+        "files": [
+          "modes/illustrate/showcase/layout.html"
+        ],
+        "createdAt": "2026-09-09T10:05:51.440Z",
+        "reason": "Agent: .claude/commands/showcase.md explicitly specifies conceptual dark application mockups with rounded panels, glass/depth effects and soft shadows. Here the edges identify the simulated app window and floating canvas minimap."
+      },
+      {
+        "rule": "nested-cards",
+        "value": "*",
+        "files": [
+          "modes/illustrate/showcase/layout.html"
+        ],
+        "createdAt": "2026-09-09T10:05:51.542Z",
+        "reason": "Agent: the containing panel depicts the Illustrate application window and its children are the actual row-of-images concept, as required by .claude/commands/showcase.md. It is an intentional app mockup inside a fixed-size marketing image."
+      },
+      {
+        "rule": "overused-font",
+        "value": "fraunces",
+        "files": [
+          "modes/illustrate/showcase/layout.html"
+        ],
+        "createdAt": "2026-09-09T10:05:51.645Z",
+        "reason": "Agent: .impeccable.md pins Fraunces for brand elements and src/fonts.css bundles that face. This showcase uses the existing Pneuma brand typography and local font assets."
       }
     ]
   }
