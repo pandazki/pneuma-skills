@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sprite showcase</title>
+  <style>
+    @font-face{font-family:DM;src:url('/fonts/dmsans/v17-normal-latin.woff2');font-weight:300 700}
+    @font-face{font-family:Fraunces;src:url('/fonts/fraunces/v38-normal-latin.woff2');font-weight:400}
+    *{box-sizing:border-box}
+    body{margin:0;width:1376px;height:768px;overflow:hidden;background:#09090b;color:#f4f2ef;font-family:DM,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+    body:before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 78% -8%,#5a341f22,transparent 62%);pointer-events:none}
+    .page{position:relative;width:1376px;height:768px;padding:35px 48px 30px;display:none}
+    .page.active{display:block}
+
+    /* --- shared chrome --- */
+    .brand{display:flex;align-items:center;gap:12px;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#a5a1a0}
+    .brand b{color:#f4f2ef;font-weight:600}
+    .brand i{height:17px;width:1px;background:#454044;margin:0 3px}
+    .dot{width:7px;height:7px;background:#f97316;border-radius:50%}
+    .folio{margin-left:auto;letter-spacing:1.6px;color:#aaa09b;font-size:12px}
+    h1{font:400 46px/1.08 Fraunces,Georgia,serif;letter-spacing:-1.6px;margin:26px 0 10px}
+    p{margin:0;color:#a6a2a1;font-size:15px;line-height:1.55}
+    .topline{display:flex;justify-content:space-between;align-items:flex-end}
+    .topline>p{font-size:14px;padding-bottom:9px}
+    .eyebrow{font-size:11px;letter-spacing:1.8px;color:#8d8783;text-transform:uppercase}
+    .foot{position:absolute;bottom:19px;left:48px;right:48px;display:flex;justify-content:space-between;color:#8d8783;font-size:12px;letter-spacing:.2px}
+    .caption{position:absolute;bottom:47px;left:48px;right:48px;text-align:center;font:400 15px/1.4 Fraunces,Georgia,serif;font-style:italic;color:#cfc6bd;letter-spacing:.1px}
+    .accent{color:#f9a665}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;letter-spacing:-.1px}
+
+    /* --- surfaces --- */
+    .window{border:1px solid #322e31;border-radius:13px;overflow:hidden;background:#0e0e10;box-shadow:0 25px 50px #0006}
+    .bar{height:44px;background:#171618;border-bottom:1px solid #2b282b;display:flex;align-items:center;gap:10px;padding:0 20px;font-size:12.5px;color:#ddd7d3}
+    .bar .muted{color:#918a86;margin-left:8px}
+    .bar .right{margin-left:auto;display:flex;align-items:center;gap:13px;color:#9c9490;font-size:12px}
+    .pill{padding:4px 9px;border:1px solid #4a3a2e;border-radius:5px;color:#ffb47c;background:#f973160e;font-size:11.5px}
+    .pill.quiet{border-color:#3a3639;color:#b0a8a3;background:#ffffff05}
+    .chk{background-color:#121214;background-image:linear-gradient(45deg,#1a1a1d 25%,transparent 25%,transparent 75%,#1a1a1d 75%),linear-gradient(45deg,#1a1a1d 25%,transparent 25%,transparent 75%,#1a1a1d 75%);background-size:14px 14px;background-position:0 0,7px 7px}
+    .panel{border:1px solid #2f2b2e;border-radius:8px;overflow:hidden;background:#101012}
+    .panel.sel{border-color:#c4753d;box-shadow:0 0 0 1px #f9731626}
+    .plabel{height:31px;padding:0 11px;display:flex;align-items:center;justify-content:space-between;font-size:11.5px;color:#c8c1bb;background:#141315}
+    .plabel small{color:#8d8783;font-size:11.5px}
+    .sel .plabel{color:#f7c398}
+    .art{display:block;object-fit:contain}
+    .play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:38px;height:38px;border-radius:50%;background:#0b0b0ccc;border:1px solid #6c625c;display:flex;align-items:center;justify-content:center}
+    .play:after{content:"";border-left:11px solid #f2e9e2;border-top:7px solid transparent;border-bottom:7px solid transparent;margin-left:3px}
+
+    /* --- 00 hero --- */
+    .hero .window{margin-top:16px;height:534px}
+    .hero .board{height:490px;display:grid;grid-template-columns:196px 1fr 300px;padding:0;overflow:hidden}
+    .hero .rail{border-right:1px solid #262327;padding:15px 13px}
+    .hero .rail .eyebrow{margin-bottom:10px}
+    .hero .mcard{display:flex;gap:9px;align-items:center;padding:7px;border:1px solid #2b282b;border-radius:7px;margin-bottom:7px;background:#111113}
+    .hero .mcard.sel{border-color:#c4753d;background:#f973160a}
+    .hero .mcard img{width:40px;height:40px;object-fit:contain;border-radius:4px}
+    .hero .mcard b{display:block;font-size:12.5px;font-weight:500;color:#ded7d1;white-space:nowrap}
+    .hero .mcard.sel b{color:#f9be92}
+    .hero .mcard span{font-size:10.5px;color:#8d8783;white-space:nowrap}
+    .hero .rail hr{border:0;border-top:1px solid #262327;margin:14px 0 12px}
+    .hero .ccard{display:flex;gap:9px;align-items:center;margin-bottom:10px}
+    .hero .ccard img{width:34px;height:34px;object-fit:contain}
+    .hero .ccard b{display:block;font-size:12px;font-weight:500;color:#c8c1bb;white-space:nowrap}
+    .hero .ccard span{font-size:10.5px;color:#7e7874;white-space:nowrap}
+    .hero .stage{padding:15px 18px;display:flex;flex-direction:column}
+    .hero .glass{position:relative;height:362px;border:1px solid #2b282b;border-radius:9px;overflow:hidden;display:flex;align-items:flex-end;justify-content:center}
+    .hero .glass img{height:296px;margin-bottom:26px}
+    .hero .anchor{position:absolute;left:0;right:0;bottom:35px;height:1px;background:linear-gradient(90deg,transparent,#f9731699 10%,#f97316cc 50%,#f9731699 90%,transparent)}
+    .hero .anchor b{position:absolute;right:9px;bottom:6px;font-size:10.5px;font-weight:400;color:#f9a665;letter-spacing:.3px}
+    .hero .readout{display:flex;justify-content:space-between;font-size:11.5px;color:#8d8783;margin:11px 2px 10px}
+    .hero .readout b{color:#f9be92;font-weight:500}
+    .hero .strip{display:flex;gap:5px;height:65px}
+    .hero .strip div{flex:1;border:1px solid #262327;border-radius:5px;display:flex;align-items:flex-end;justify-content:center;overflow:hidden}
+    .hero .strip div.sel{border-color:#c4753d}
+    .hero .strip img{height:55px;margin-bottom:3px}
+    .hero .aside{border-left:1px solid #262327;padding:15px 15px}
+    .hero .aside .eyebrow{margin-bottom:10px}
+    .hero .aside .panel{margin-bottom:9px}
+    .hero .aside .media{position:relative;height:143px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .hero .aside .media img{height:100%}
+    .hero .atlas{border:1px solid #2b282b;border-radius:7px;padding:9px 10px;background:#111113}
+    .hero .atlas b{display:block;font-size:11.5px;color:#c8c1bb;font-weight:500;margin-bottom:4px}
+    .hero .atlas .mono{color:#7e7874;line-height:1.5}
+
+    /* --- 01 character-locked --- */
+    .lock .content{display:grid;grid-template-columns:330px 168px 1fr;gap:0;margin-top:20px;align-items:center}
+    .lock .refs .big img{width:100%;height:266px}
+    .lock .refs .row2{display:flex;gap:11px;margin-top:10px;align-items:stretch}
+    .lock .refs .small{width:134px;flex:none}
+    .lock .refs .small img{width:100%;height:122px}
+    .lock .note{flex:1;font-size:11.5px;line-height:1.6;color:#8d8783;border:1px solid #2b282b;border-radius:8px;padding:11px 12px;background:#101012}
+    .lock .note em{font-style:italic;color:#bdb4ac;display:block;margin-top:5px}
+    .lock .link{text-align:center;padding:0 16px}
+    .lock .link .cap{font-size:11px;letter-spacing:1.4px;color:#c98a52;text-transform:uppercase;margin-bottom:11px}
+    .lock .link .line{position:relative;height:1px;background:linear-gradient(90deg,#7a4c2c,#f97316)}
+    .lock .link .line:after{content:"";width:8px;height:8px;border-top:1.5px solid #f9a665;border-right:1.5px solid #f9a665;transform:rotate(45deg);position:absolute;right:0;top:-4px}
+    .lock .link p{font-size:11.5px;margin-top:13px;color:#8d8783;line-height:1.55}
+    .lock .sheets{display:flex;gap:14px;justify-content:flex-end}
+    .lock .sheets .panel{width:446px}
+    .lock .sheets .panel:last-child{width:317px}
+    .lock .sheets .sheetbox{height:430px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .lock .sheets img{max-height:100%;max-width:100%}
+
+    /* --- 02 slice-align --- */
+    .cut .ribbon{display:flex;align-items:center;gap:9px;margin-top:24px;font-size:11.5px;color:#918a86}
+    .cut .ribbon span{border:1px solid #2f2b2e;border-radius:5px;padding:5px 11px;background:#111113}
+    .cut .ribbon span.on{border-color:#c4753d;color:#f9be92;background:#f973160f}
+    .cut .ribbon i{font-style:normal;color:#5c5652}
+    .cut .film{position:relative;margin-top:17px;border:1px solid #2f2b2e;border-radius:10px;padding:16px 16px 30px;height:246px;display:flex;gap:8px}
+    .cut .film .cell{flex:1;position:relative;display:flex;align-items:flex-end;justify-content:center}
+    .cut .film .cell img{height:194px}
+    .cut .film .cell b{position:absolute;top:-2px;left:0;font-size:10.5px;font-weight:400;color:#6b6561}
+    .cut .baseline{position:absolute;left:0;right:0;bottom:34px;height:1px;background:#f97316;box-shadow:0 0 7px #f9731666}
+    .cut .baseline b{position:absolute;right:8px;bottom:-24px;font-size:11px;font-weight:400;color:#f9a665;letter-spacing:.3px}
+    .cut .below{display:grid;grid-template-columns:1fr 430px;gap:18px;margin-top:20px;align-items:stretch}
+    .cut .stats{display:flex;gap:9px}
+    .cut .stat{flex:1;border:1px solid #2b282b;border-radius:7px;padding:14px 13px;background:#111113;display:flex;flex-direction:column;justify-content:center}
+    .cut .stat b{display:block;font:400 23px/1 Fraunces,Georgia,serif;color:#e6ddd5;margin-bottom:7px}
+    .cut .stat span{font-size:11px;color:#8d8783;line-height:1.7}
+    .cut .code{border:1px solid #2b282b;border-radius:7px;padding:14px 14px;background:#111113;color:#8d8783;line-height:1.78}
+    .cut .code em{font-style:normal;color:#c8c1bb}
+
+    /* --- 03 video-preview --- */
+    .vid h1{margin-top:20px}
+    .vid .window{margin-top:14px;height:540px}
+    .vid .board{height:496px;display:grid;grid-template-columns:340px 1fr;padding:0;overflow:hidden}
+    .vid .source{border-right:1px solid #262327;padding:18px 18px}
+    .vid .source .eyebrow{margin-bottom:11px}
+    .vid .source .sheetbox{height:210px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .vid .source .sheetbox img{max-height:100%}
+    .vid .meta{margin-top:15px;font-size:12px;color:#8d8783;line-height:1.75}
+    .vid .meta b{color:#c8c1bb;font-weight:500}
+    .vid .meta em{font-style:italic}
+    .vid .meta .rule{border-top:1px solid #2b282b;margin:13px 0 12px}
+    .vid .out{padding:18px 20px}
+    .vid .out .eyebrow{margin-bottom:11px}
+    .vid .panels{display:flex;gap:14px}
+    .vid .panels .panel{width:285px}
+    .vid .panels .media{position:relative;height:404px;display:flex;align-items:center;justify-content:center;overflow:hidden;background-color:#0d0d0f}
+    .vid .panels .media img{height:100%}
+    .vid .panels .media.clip img{width:100%;height:100%;object-fit:cover;object-position:50% 42%}
+  </style>
+</head>
+<body>
+
+<!-- ══════════════ HERO ══════════════ -->
+<section class="page hero" data-view="hero">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">ONE CHARACTER · EVERY MOTION</span></div>
+  <div class="topline">
+    <h1>One character. Every motion.</h1>
+    <p>Sheet, frames, atlas, preview — in one pass.</p>
+  </div>
+  <div class="window">
+    <div class="bar">Lumi <span class="muted">lantern courier · 2 motions · 32 frames</span>
+      <div class="right">Chibi anime line art<span class="pill">＋ New motion</span></div>
+    </div>
+    <div class="board">
+
+      <div class="rail">
+        <div class="eyebrow">Motions</div>
+        <div class="mcard"><img src="/art/lumi/idle-00.png"><div><b>Idle</b><span>16 frames · 8 fps</span></div></div>
+        <div class="mcard sel"><img src="/art/lumi/attack-06.png"><div><b>Attack</b><span>16 frames · 10 fps</span></div></div>
+        <hr>
+        <div class="eyebrow" style="margin-bottom:11px">Characters</div>
+        <div class="ccard"><img src="/art/rivet/idle-00.png"><div><b>Rivet</b><span>Flat vector · 2 motions</span></div></div>
+        <div class="ccard"><img src="/art/ame/attack-04.png"><div><b>Ame</b><span>128px pixel · 1 motion</span></div></div>
+        <div class="ccard"><img src="/art/mio/pickup-04.png"><div><b>Mio</b><span>Semi-realistic · 1 motion</span></div></div>
+      </div>
+
+      <div class="stage">
+        <div class="glass chk">
+          <img src="/art/lumi/attack-07.png">
+          <div class="anchor"><b>anchor · bottom</b></div>
+        </div>
+        <div class="readout"><span>frame <b>07</b> / 16 &nbsp;·&nbsp; playing at 10 fps &nbsp;·&nbsp; cell 272 × 262</span><span>source: frames</span></div>
+        <div class="strip">
+          <div><img src="/art/lumi/attack-04.png"></div>
+          <div><img src="/art/lumi/attack-05.png"></div>
+          <div><img src="/art/lumi/attack-06.png"></div>
+          <div class="sel"><img src="/art/lumi/attack-07.png"></div>
+          <div><img src="/art/lumi/attack-08.png"></div>
+          <div><img src="/art/lumi/attack-09.png"></div>
+          <div><img src="/art/lumi/attack-10.png"></div>
+          <div><img src="/art/lumi/attack-11.png"></div>
+        </div>
+      </div>
+
+      <div class="aside">
+        <div class="eyebrow">Preview</div>
+        <div class="panel"><div class="media chk"><img src="/art/lumi/attack.gif"></div>
+          <div class="plabel">preview.gif<small>10 fps</small></div></div>
+        <div class="panel"><div class="media"><img src="/art/lumi/attack-video.png"><div class="play"></div></div>
+          <div class="plabel">video-seedance-1.mp4<small>4 s · 480p</small></div></div>
+        <div class="atlas"><b>atlas.json</b><div class="mono">TexturePacker JSON-hash<br>16 frames · anchor 136, 254</div></div>
+      </div>
+
+    </div>
+  </div>
+  <div class="foot"><span>GPT Image 2.5 sheets · ffmpeg slice / align / pack · Seedance 2.5 preview</span><span>Conceptual interface · actual generated sprites</span></div>
+</section>
+
+<!-- ══════════════ CHARACTER-LOCKED SHEETS ══════════════ -->
+<section class="page lock" data-view="character-locked">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">01 / CONSISTENCY</span></div>
+  <h1>The character goes in with every prompt.</h1>
+  <p>Design it once. Every motion sheet is drawn with its own references attached.</p>
+  <div class="content">
+
+    <div class="refs">
+      <div class="eyebrow" style="margin-bottom:10px">lumi / refs</div>
+      <div class="panel big"><div class="chk"><img class="art" src="/art/lumi/turnaround-keyed.png"></div>
+        <div class="plabel">turnaround.png<small>1024 × 1024</small></div></div>
+      <div class="row2">
+        <div class="panel small"><div class="chk"><img class="art" src="/art/lumi/portrait-keyed.png"></div>
+          <div class="plabel">portrait.png</div></div>
+        <div class="note">Style, once, in the character's own words:<em>“Clean anime-chibi line art, flat colours, thick uniform outline, no shading.”</em></div>
+      </div>
+    </div>
+
+    <div class="link">
+      <div class="cap">Attached</div>
+      <div class="line"></div>
+      <p>to every sheet prompt<br>the model draws</p>
+    </div>
+
+    <div class="sheets">
+      <div class="panel"><div class="sheetbox chk"><img src="/art/lumi/attack-sheet.png"></div>
+        <div class="plabel">attack · 4 × 4<small>16 frames</small></div></div>
+      <div class="panel"><div class="sheetbox chk"><img src="/art/lumi/idle-sheet.png"></div>
+        <div class="plabel">idle · 4 × 4<small>16 frames</small></div></div>
+    </div>
+
+  </div>
+  <div class="caption">Frame 12 of the attack is the same character as frame 1 of the idle.</div>
+  <div class="foot"><span>Actual GPT Image 2.5 sheets from the Lumi seed · references attached to both prompts</span><span>Conceptual interface · actual generated sprites</span></div>
+</section>
+
+<!-- ══════════════ AUTO SLICE &amp; ALIGN ══════════════ -->
+<section class="page cut" data-view="slice-align">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">02 / PIPELINE</span></div>
+  <h1>Keyed, cut, and standing on the same pixel.</h1>
+  <p>One sheet in. Transparent frames, a packed atlas and a preview out — no hand-tracing.</p>
+  <div class="ribbon">
+    <span>sheet.png</span><i>›</i><span>key</span><i>›</i><span>slice 2 × 4</span><i>›</i>
+    <span class="on">align · anchor bottom</span><i>›</i><span>pack</span><i>›</i><span>atlas.json</span><i>›</i><span>preview.gif</span>
+  </div>
+  <div class="film chk">
+    <div class="cell"><b>00</b><img src="/art/rivet/walk-00.png"></div>
+    <div class="cell"><b>01</b><img src="/art/rivet/walk-01.png"></div>
+    <div class="cell"><b>02</b><img src="/art/rivet/walk-02.png"></div>
+    <div class="cell"><b>03</b><img src="/art/rivet/walk-03.png"></div>
+    <div class="cell"><b>04</b><img src="/art/rivet/walk-04.png"></div>
+    <div class="cell"><b>05</b><img src="/art/rivet/walk-05.png"></div>
+    <div class="cell"><b>06</b><img src="/art/rivet/walk-06.png"></div>
+    <div class="cell"><b>07</b><img src="/art/rivet/walk-07.png"></div>
+    <div class="baseline"><b>anchor · y 474</b></div>
+  </div>
+  <div class="below">
+    <div class="stats">
+      <div class="stat"><b>0.22 px</b><span>anchor drift<br>across 8 frames</span></div>
+      <div class="stat"><b>0.5 px</b><span>largest jump<br>frame to frame</span></div>
+      <div class="stat"><b>0</b><span>empty frames<br>0 warnings</span></div>
+    </div>
+    <div class="code mono">
+      <em>walk/atlas.json</em><br>
+      "image": "sheet.png", "fps": 12, "loop": true,<br>
+      "size": { "w": 1448, "h": 964 }, "anchor": "bottom",<br>
+      "anchorPoint": { "x": 181, "y": 474 }<br>
+      "walk_03": { "frame": { "x": 1086, "y": 0,<br>
+      &nbsp;&nbsp;"w": 362, "h": 482 }, "trimmed": false }
+    </div>
+  </div>
+  <div class="caption">Feet land on the same pixel in every frame — Phaser and PixiJS read the atlas as it is.</div>
+  <div class="foot"><span>Rivet · walk · real frames and real inspect numbers from one pipeline run</span><span>ffmpeg only — no model call in this step</span></div>
+</section>
+
+<!-- ══════════════ VIDEO PREVIEW ══════════════ -->
+<section class="page vid" data-view="video-preview">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">03 / PREVIEW</span></div>
+  <h1>Watch the motion, not the sheet.</h1>
+  <p>A GIF built from your own frames, and a clip a video model shot from them.</p>
+  <div class="window">
+    <div class="bar">Mio <span class="muted">pickup-letter · 9 frames · 6 fps</span>
+      <div class="right">3 × 3 sheet<span class="pill quiet">Render video preview</span></div>
+    </div>
+    <div class="board">
+      <div class="source">
+        <div class="eyebrow">The source</div>
+        <div class="panel"><div class="sheetbox chk"><img src="/art/mio/pickup-sheet.png"></div>
+          <div class="plabel">pickup-letter · sheet.png<small>3 × 3</small></div></div>
+        <div class="meta">
+          <b>9 aligned frames</b> · anchor bottom<br>382 × 692 cell
+          <div class="rule"></div>
+          Clips are how a motion <em>feels</em>.<br>The frames stay the source.
+          <div class="rule"></div>
+          Seedance 2.5 by default<br>MiniMax H3 Max on request
+        </div>
+      </div>
+      <div class="out">
+        <div class="eyebrow">Three ways to watch it</div>
+        <div class="panels">
+          <div class="panel"><div class="media chk"><img src="/art/mio/pickup.gif"></div>
+            <div class="plabel">preview.gif<small>your frames</small></div></div>
+          <div class="panel sel"><div class="media clip"><img src="/art/mio/video-seedance.png"><div class="play"></div></div>
+            <div class="plabel">Seedance 2.5<small>6.0 s · 480p</small></div></div>
+          <div class="panel"><div class="media clip"><img src="/art/mio/video-h3.png"><div class="play"></div></div>
+            <div class="plabel">MiniMax H3 Max<small>6.6 s · 480P</small></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>Actual renders from one motion · Seedance 2.5 and MiniMax H3 Max on fal.ai</span><span>Conceptual interface · actual generated sprites</span></div>
+</section>
+
+<script>
+  const view = new URLSearchParams(location.search).get('view') || 'hero';
+  const page = Array.from(document.querySelectorAll('[data-view]')).find(el => el.dataset.view === view);
+  if (page) page.classList.add('active');
+  document.title = `Sprite — ${view}`;
+</script>
+</body>
+</html>
