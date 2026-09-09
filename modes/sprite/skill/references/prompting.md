@@ -23,8 +23,11 @@ is the style.
 4. **The motion, cell by cell.** One clause per cell, or one clause per row
    when the row is a phase. This is the part that makes the frames a motion
    rather than sixteen poses.
-5. **Negative constraints.** Transparent background, no cell borders, no
-   numbers, no drop shadow, no motion blur, no effects leaving the cell.
+5. **Negative constraints.** A flat solid pure white background filling every
+   cell, no gradient, no cell borders, no numbers, no drop shadow, no ground
+   shadow, no motion blur, no effects leaving the cell. The white plate is
+   asked for here and cut off afterwards by the keying step — a *drawn* floor
+   or a gradient is what makes that cut hard, so name them as negatives.
 
 ## The call
 
@@ -36,7 +39,7 @@ node {SKILL_PATH}/scripts/generate_image.mjs \
   "Clean anime-chibi line art, flat colors, thick uniform outline, no shading. A single image laid out as a strict 4x4 grid of 16 equal cells, read left to right, top to bottom. …" \
   --image-urls <character>/refs/turnaround.png \
   --image-urls <character>/refs/portrait.png \
-  --background transparent \
+  --background opaque \
   --image-size 2048x2048 \
   --quality high \
   --output-format png \
@@ -53,14 +56,29 @@ once for all the scripts).
   with `ERROR: Unknown option '--prompt'`. The video scripts on the next page
   *do* take `--prompt` — that asymmetry is the trap, and it costs you a turn,
   not an image.
+- **Nor is there a `--json` flag on those two.** They always print one JSON
+  object on stdout, so there is nothing to switch on; passing `--json` anyway
+  dies with `ERROR: Unknown option '--json'. To specify a positional argument
+  starting with a '-'…`, which reads like a quoting problem and is not one.
+  Every other script this mode runs — `sprite-sheet.mjs`,
+  `sprite-project.mjs`, `remove-background.mjs`, `seedance-video.mjs`,
+  `generate-video.mjs` — *does* take `--json`, which is exactly why the habit
+  reaches for it. The two that take a positional prompt are the same two that
+  have no `--json`; learn them as a pair.
 - **`--image-urls` repeats, once per reference** (up to 16), and it is what
   makes the sheet the *same* character. Passing any reference switches the
   model to Flare automatically; do not override with `--model`.
-- **`--background transparent` needs `--output-format png` or `webp`** — it
-  refuses on jpeg, which has no alpha channel. The JSON result reports
-  `hasAlpha` for what actually arrived, and the script prints a `WARN` when the
-  provider ignored the request; either way, probe the sheet (workflow B step 4)
-  rather than trusting the flag.
+- **`--background` takes `auto`, `opaque` or `transparent`; use `opaque`.**
+  The alpha comes from the keying step, not from this flag. The flag reference
+  in full: `--background transparent` needs `--output-format png` or `webp`
+  (it refuses on jpeg, which has no alpha channel), the JSON result reports
+  `hasAlpha` for what actually arrived, and the script prints a `WARN` when a
+  provider ignores the request. None of that is reachable on OpenRouter's GPT
+  Image 2.5 today: as of 2026-09-09 both `sunburst` and `flare` reject the
+  parameter with a `400` before generating anything — `background: not
+  supported. Accepted: auto, opaque` — so the try is free and the answer is
+  always the same. Ask for the white plate in the prompt, pass `opaque`, and
+  probe the sheet (workflow B step 5) instead of trusting any flag.
 - **`--image-size 2048x2048` pins the pixels**; `--aspect-ratio 1:1` only asks
   for a square at whatever size the provider picks. Pin the size for a sheet —
   2048 across a 4×4 grid is a 512 px cell, which survives slicing and
@@ -89,9 +107,10 @@ once for all the scripts).
 > cell. A 16-frame idle breathing loop: cells 1-4 the chest rises and the
 > cloak settles, cells 5-8 the rise peaks and the lantern drifts up, cells
 > 9-12 the chest falls, cells 13-16 return exactly to the cell-1 pose so the
-> loop closes seamlessly. Fully transparent background. No grid lines, no cell
-> borders, no numbers, no text, no drop shadow, no ground shadow, no motion
-> blur, nothing crossing between cells.
+> loop closes seamlessly. A flat solid pure white background filling every
+> cell, no gradient. No grid lines, no cell borders, no numbers, no text, no
+> drop shadow, no ground shadow, no motion blur, nothing crossing between
+> cells.
 
 ### Pixel walk (4×2, 12 fps, loop)
 
@@ -102,9 +121,9 @@ once for all the scripts).
 > short sword on the back. Side view facing right, full body, identical pixel
 > height in every cell. An 8-frame walk cycle: contact, down, pass, up for the
 > left leg in cells 1-4 and the mirrored half for the right leg in cells 5-8,
-> arms swinging opposite the legs, the head bobbing one pixel. Fully
-> transparent background. No grid lines, no numbers, no shadow, no
-> anti-aliased halo around the sprite.
+> arms swinging opposite the legs, the head bobbing one pixel. A flat solid
+> pure white background filling every cell, no gradient. No grid lines, no
+> numbers, no shadow, no anti-aliased halo around the sprite.
 
 ### Anime attack (4×4, 10 fps, no loop)
 
@@ -116,9 +135,9 @@ once for all the scripts).
 > shrink across the grid. A 16-frame sword attack: cells 1-4 wind up and
 > weight shifts back, cells 5-8 the step forward begins, cells 9-12 the swing
 > passes through the strike, cells 13-16 recover to a ready stance. The blade
-> stays inside its own cell at all times. Fully transparent background. No
-> speed lines, no impact flashes, no glow, no motion blur, no cell borders, no
-> numbers, no shadow.
+> stays inside its own cell at all times. A flat solid pure white background
+> filling every cell, no gradient. No speed lines, no impact flashes, no glow,
+> no motion blur, no cell borders, no numbers, no shadow.
 
 ## What breaks consistency, and the phrasing that fixes it
 
@@ -127,7 +146,7 @@ once for all the scripts).
 | Character faces left in some cells | No facing declared, or an ambiguous "turning" clause | "Facing right in every cell" — and never ask for a turn inside one sheet; make the turn its own motion |
 | Character grows or shrinks across the grid | The model treats each cell as its own composition | "Identical height and identical distance from the camera in every cell — the character must not grow or shrink across the grid" |
 | Numbers or letters in the corners | Grids read as contact sheets to the model | "No numbers, no labels, no text anywhere" |
-| A grey box behind the sprite | The provider ignored the transparent background | Not a prompt problem — probe with `sprite-sheet.mjs probe` and key it (workflow B step 5) |
+| A grey, tinted or gradient plate behind the sprite | The model drew its own backdrop instead of the flat white you asked for | Say "a flat solid pure white background filling every cell, no gradient" — a gradient is what makes the cut-out (workflow B step 6) leave a halo. A *flat* plate of any colour is fine; the keyer takes it |
 | Sprite clipped at a cell edge | The pose is bigger than the cell | "The whole character, including the weapon, stays inside its own cell with a clear margin" |
 | Ground shadow follows the sprite | Default illustration habit | "No ground shadow, no drop shadow, no contact shadow" — a shadow is opaque and it lands in the alpha, so the aligner treats it as part of the silhouette |
 | Effects bleed between cells | Motion blur, speed lines, glow | "Nothing crossing between cells, no motion blur, no speed lines, no glow" |
@@ -186,6 +205,19 @@ If three or more cells are wrong, the prompt is the problem, not the draw —
 tighten it against the table above and regenerate.
 
 ## Reference images
+
+**The chain has no gaps.** The turnaround is the only image in a character
+that is drawn from nothing but words. *Every reference after it is generated
+with the earlier references attached* — the portrait carries
+`--image-urls <character>/refs/turnaround.png`, a third ref carries both — and
+*every sheet is generated with all of them attached*. Skip one link and the
+model draws a plausible character from your adjectives instead of *the*
+character: the first Lumi portrait was generated with no reference and came
+back as somebody else — dark brown hair, a red cloak, nobody had asked for
+either. Words narrow the space; only an attached image pins the identity. Say
+it in the prompt as well ("the character in the attached reference sheet,
+matching it exactly: …") — the attachment tells the model what to look at, the
+clause tells it that matching is the job.
 
 Attach **every** reference the character has
 (`--image-urls <character>/refs/turnaround.png --image-urls <character>/refs/portrait.png`). The turnaround carries proportions and

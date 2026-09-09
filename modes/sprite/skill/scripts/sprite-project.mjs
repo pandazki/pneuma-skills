@@ -18,7 +18,7 @@
 
 import { spawnSync } from "node:child_process";
 import {
-  closeSync, existsSync, openSync, readFileSync, readSync, readdirSync,
+  closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync,
   realpathSync, renameSync, rmSync, writeFileSync,
 } from "node:fs";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -50,7 +50,8 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
 
   init --name <Name> [--description ""] [--style ""] [--cell 256x256]
        [--facing left|right] [--force]
-      Create project.json. Refuses to clobber an existing one without --force.
+      Create project.json, creating --dir first if it does not exist yet.
+      Refuses to clobber an existing project without --force.
 
   add-ref --id <refId> --file <path> --role ${REF_ROLES.join("|")}
           [--label <text>] [--prompt <text>] [--model <name>] [--from <assetId,…>]
@@ -166,11 +167,20 @@ function saveProject(dir, doc) {
 
   const path = projectPath(dir);
   const scratch = `${path}.tmp`;
+  // The scratch file is cleaned up whichever way this goes, and a filesystem
+  // fault leaves as a one-line `ERROR:` like every other refusal here: the
+  // agent reads stderr, and a raw Node stack is not something it can act on.
+  // Reaching this point means the document already validated, so the message
+  // says the disk said no — not that the command was wrong.
   try {
-    writeFileSync(scratch, `${JSON.stringify(doc, null, 2)}\n`);
-    renameSync(scratch, path);
-  } finally {
-    if (existsSync(scratch)) rmSync(scratch, { force: true });
+    try {
+      writeFileSync(scratch, `${JSON.stringify(doc, null, 2)}\n`);
+      renameSync(scratch, path);
+    } finally {
+      if (existsSync(scratch)) rmSync(scratch, { force: true });
+    }
+  } catch (error) {
+    fail(`cannot write ${path}: ${error.message}`);
   }
 }
 
@@ -633,6 +643,16 @@ function main() {
       const name = requireFlag(values.name, "--name");
       const path = projectPath(dir);
       if (existsSync(path) && !values.force) fail(`${path} already exists — pass --force to overwrite it`);
+      // `init` is the first command of a character, so the character directory
+      // is routinely still an idea. Creating it here is the whole reason this
+      // subcommand can be the first thing an agent runs; every other
+      // subcommand loads an existing project and so cannot reach a missing
+      // directory.
+      try {
+        mkdirSync(dir, { recursive: true });
+      } catch (error) {
+        fail(`--dir: cannot create the character directory ${dir}: ${error.message}`);
+      }
       const cell = values.cell ? parseCell(values.cell, "--cell") : { ...DEFAULT_CELL };
       const facing = oneOf(values.facing ?? "right", FACINGS, "--facing");
       const doc = {
@@ -995,4 +1015,15 @@ function main() {
   }
 }
 
-main();
+// Every known failure already leaves through `fail`. This catches the ones
+// nobody predicted, and only the system errors among them: an unanticipated
+// EACCES/ENOSPC is a state the agent can act on and gets the one-line
+// `ERROR:` contract, while a genuine bug in this script keeps its stack —
+// turning a TypeError into a tidy sentence would hide it from whoever has to
+// fix it.
+try {
+  main();
+} catch (error) {
+  if (!error?.syscall) throw error;
+  fail(`${error.message || error.code || "filesystem error"}`);
+}

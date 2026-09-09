@@ -107,13 +107,23 @@ Copy an address verbatim into:
   invariant the atlas promises (every cell the same size, the anchor at the
   same point).
 - **Every sheet is generated with the character references attached**
-  (`--image-urls <each ref>`) and `--background transparent`, and the prompt
-  opens with the `character.style` sentence verbatim. Drop the references and
-  the model redesigns the character between motions; drop the style sentence
-  and it drifts within one sheet.
-- **Never pass `--style` to `generate_image.mjs`.** It is not a switch — it
-  appends `, no shading, white background` to your prompt, which is exactly
-  the background you are trying not to get. The style lives in your prompt.
+  (`--image-urls <each ref>`), and the prompt opens with the `character.style`
+  sentence verbatim. Drop the references and the model redesigns the character
+  between motions; drop the style sentence and it drifts within one sheet.
+- **The background is asked for in words, then cut off afterwards.** The
+  prompt ends with *a flat solid pure white background, no shadow, no
+  vignette*, the call passes `--background opaque` (or omits the flag), and
+  the alpha comes from keying the sheet afterwards — `remove-background.mjs`,
+  or `sprite-sheet.mjs key` with no fal key. That is the path, not a fallback:
+  the shared script still accepts `--background transparent`, and as of
+  2026-09-09 OpenRouter refuses it with a `400` *before* generating anything
+  (`background: not supported. Accepted: auto, opaque`), so the attempt costs
+  no image and no money. Try it once in a session if you want to know whether
+  that changed; the moment you see the 400, generate opaque and key.
+- **Never pass `--style` to `generate_image.mjs`.** It is not an art-direction
+  switch — `--style sketch` rewrites your prompt into "clean black-and-white
+  pencil sketch style, line art, no shading, white background" and quietly
+  drops `--quality` to `low`. The style lives in your prompt, verbatim.
 - **Look before you claim.** After `register-run`, read the inspect warnings,
   `navigate-to` the motion, `play` it, `capture` two or three frames, and only
   then report. The sheet PNG is not the animation — a sheet can look perfect
@@ -141,11 +151,17 @@ prompt is anchored to; the ten minutes here save every motion afterwards.
    (`left`/`right`), and cell size (256×256 is a good default; 128×128 for a
    pixel look). Ask in one message, not five.
 2. **Generate `<character>/refs/turnaround.png`** — a three-view sheet (front /
-   side / back) of the character standing neutral, on a transparent
+   side / back) of the character standing neutral, on a flat solid pure white
    background, 2048×2048, `--quality high`. This is the reference that carries
    identity into every motion, so it is worth the top quality tier.
 3. **Generate `<character>/refs/portrait.png`** — head and shoulders, same
-   style, same transparent background.
+   style, same white background, and **with the turnaround attached**
+   (`--image-urls <character>/refs/turnaround.png`) plus a clause naming what
+   to match ("the character in the attached reference sheet, matching it
+   exactly: the same hair, the same cloak, the same satchel"). Without the
+   reference it is a fresh draw of your description, not your character: the
+   first Lumi portrait came back with dark hair and a red cloak, and the fix
+   was the reference, not more adjectives.
 4. **Record it** — `sprite-project.mjs init` then `add-ref` for each
    reference.
 5. **Show them** — `navigate-to { "ref": "turnaround" }`, `capture`, look at
@@ -157,8 +173,8 @@ Both reference generations are one `generate_image.mjs` call each:
 
 ```bash
 node {SKILL_PATH}/scripts/generate_image.mjs \
-  "<the style sentence verbatim>. A front, side and back view of the same character standing neutral, evenly spaced on one row, identical height in all three. Fully transparent background, no ground shadow, no text." \
-  --background transparent \
+  "<the style sentence verbatim>. A front, side and back view of the same character standing neutral, evenly spaced on one row, identical height in all three. A flat solid pure white background, no gradient, no ground shadow, no drop shadow, no text." \
+  --background opaque \
   --image-size 2048x2048 \
   --quality high \
   --output-format png \
@@ -171,8 +187,14 @@ The prompt is a **positional argument** — there is no `--prompt` flag on
 worth saying twice). One image lands at exactly
 `<character>/refs/turnaround.png`, no numeric suffix, which is the file
 `add-ref --dir <character> --file refs/turnaround.png` then registers. The
-portrait is the same call with `--filename-prefix portrait`. Prompt grammar,
-every flag, and worked examples are in `references/prompting.md`.
+portrait is the same call with `--filename-prefix portrait` **and
+`--image-urls <character>/refs/turnaround.png`** — every reference after the
+first is drawn with the earlier ones attached. Prompt grammar, every flag, and
+worked examples are in `references/prompting.md`.
+
+The refs stay white-plated on disk; nothing keys a reference. They are the
+model's input, and the model reads a white plate fine — only the *sheets*
+become frames, and only the sheets are cut out.
 {{/imageGenEnabled}}
 
 ### B. Add a motion
@@ -195,15 +217,16 @@ every flag, and worked examples are in `references/prompting.md`.
    records the model and prompt you are about to send. The stage shows a
    placeholder while the model works, so the user is not staring at nothing
    wondering whether you heard them.
-3. **Generate the sheet** — one `generate_image.mjs` call with every reference
-   attached, `--background transparent`, and the style sentence first:
+3. **Generate the sheet** — one `generate_image.mjs` call with **every**
+   reference attached, the style sentence first, and the white plate asked for
+   in the prompt:
 
    ```bash
    node {SKILL_PATH}/scripts/generate_image.mjs \
-     "<style sentence verbatim>. A single image laid out as a strict 4x4 grid of 16 equal cells, read left to right, top to bottom. …" \
+     "<style sentence verbatim>. A single image laid out as a strict 4x4 grid of 16 equal cells, read left to right, top to bottom. … A flat solid pure white background filling every cell, no gradient, no drop shadow, no ground shadow." \
      --image-urls <character>/refs/turnaround.png \
      --image-urls <character>/refs/portrait.png \
-     --background transparent \
+     --background opaque \
      --image-size 2048x2048 \
      --quality high \
      --output-format png \
@@ -214,6 +237,14 @@ every flag, and worked examples are in `references/prompting.md`.
    Positional prompt, one `--image-urls` per reference, and the file lands at
    `<character>/motions/<id>/sheet-raw.png` — the path `set-sheet --file
    motions/<id>/sheet-raw.png` registers.
+
+   **Sheet resolution is a real choice.** `--image-size 2048x2048` over a 4×4
+   grid is a 512 px cell: the hand-off quality tier, and what you want if the
+   frames go to an engine or the user may re-pack them larger. `--image-size
+   1024x1024` is a 256 px cell — enough when the character's declared `cell`
+   is ≤ 256 px, and the right call while you are iterating on a prompt, since
+   it is cheaper to look at and a quarter of the bytes on disk. The default
+   stays 2048; drop to 1024 deliberately and say why.
 4. **Run `set-sheet` again, now that the file exists** — the same command as
    step 2 without `--status`, so it defaults to `processing`. The first call
    could not measure a file that was not there; this one probes it and flips
@@ -222,16 +253,30 @@ every flag, and worked examples are in `references/prompting.md`.
    `register-run` writes the frames and the atlas, but never revisits the raw
    sheet.
 5. **Probe the alpha** — `node {SKILL_PATH}/scripts/sprite-sheet.mjs probe <character>/motions/<id>/sheet-raw.png`.
-   Models honour `background: transparent` inconsistently; probing is free and
-   tells you which branch you are on.
-6. **Key it if it came back opaque** — `remove-background.mjs` (fal, best
-   quality) or, with no fal key, `sprite-sheet.mjs key` (ffmpeg `colorkey` on
-   the detected corner colour). Either one writes
-   `<character>/motions/<id>/sheet-alpha.png`.
+   It comes back opaque: `hasAlpha: false`, `alphaCoverage: 1`, a
+   `cornerColor` around `#fefefe`. That is the expected reading, not a
+   failure — probing is free, it confirms the plate is flat and one colour,
+   and it hands that colour to the fallback keyer in step 6.
+6. **Cut the background out** — the normal step, not a branch. Best quality,
+   and what the seed used:
+
+   ```bash
+   node {SKILL_PATH}/scripts/remove-background.mjs \
+     --input <character>/motions/<id>/sheet-raw.png \
+     --output <character>/motions/<id>/sheet-alpha.png \
+     --model heavy --resolution 2048 --json
+   ```
+
+   BiRefNet matting on fal, which cuts on the silhouette instead of by colour
+   distance — it keeps white highlights *inside* the character that a colour
+   key would eat. With no fal key, the ffmpeg fallback is
+   `node {SKILL_PATH}/scripts/sprite-sheet.mjs key <character>/motions/<id>/sheet-raw.png --out <character>/motions/<id>/sheet-alpha.png --color auto`
+   (`auto` = the corner colour step 5 just measured). Either one writes the
+   same `sheet-alpha.png`, so nothing downstream needs to know which ran.
 7. **Run the pipeline** — `run` does probe → key → slice → align → pack → gif →
    inspect in one call and prints one JSON object. Always hand it
-   `sheet-raw.png`; add `--alpha` when step 6 produced a keyed sheet, and it
-   slices that instead of keying again.
+   `sheet-raw.png` and pass `--alpha` for the sheet step 6 produced, so it
+   slices that instead of keying the white plate again.
 
    ```bash
    node {SKILL_PATH}/scripts/sprite-sheet.mjs run <character>/motions/<id>/sheet-raw.png \
@@ -240,8 +285,8 @@ every flag, and worked examples are in `references/prompting.md`.
      --json > <character>/motions/<id>/run.json
    ```
 
-   Drop the `--alpha` line when step 5 found alpha already there and you
-   skipped step 6 — then `run` slices the raw sheet as it is.
+   Drop the `--alpha` line only in the rare case where step 5 found alpha
+   already on the generated sheet — then `run` slices the raw sheet as it is.
    `sheet-raw.png` is the only copy of what the model drew, so `run` never
    writes over it from inside the motion directory, and a sheet from anywhere
    else needs `--force` to replace a raw sheet that is already there.
@@ -270,6 +315,25 @@ every flag, and worked examples are in `references/prompting.md`.
     drawing problem, not an alignment problem. `references/prompting.md` has
     the phrasings that fix each, and the worked `edit_image.mjs` call.
 
+**How long each step takes** (measured on the Lumi seed, 2026-09-09). Nothing
+here has a progress bar, so this is how you tell "working" from "hung", and
+what to tell the user before you start:
+
+| Step | Wall time |
+|---|---|
+| a reference image (2048², `--quality high`) | 30–40 s |
+| a sheet (2048², both refs attached) | ≈ 35 s |
+| `remove-background.mjs --model heavy --resolution 2048` | 10–20 s |
+| `sprite-sheet.mjs run` (probe → … → inspect) | ≈ 5 s |
+| a 4 s Seedance 480p `first-last` clip | **≈ 404 s — nearly seven minutes** |
+
+The clip is the one that looks broken and is not: fal queues it, then renders,
+and 404 s was the real measurement for four seconds of 480p. **Say so to the
+user before you start one**, register it with `add-video --status generating`
+so the stage shows a chip, and then wait — do not poll the queue, do not run
+the script a second time, and do not decide it failed. It retries transient
+failures itself, and a second call is a second bill.
+
 ### C. Render a video preview
 
 A clip is how the user feels the motion; the frames stay the deliverable.
@@ -294,6 +358,9 @@ A clip is how the user feels the motion; the frames stay the deliverable.
    5 seconds.
 4. **Register around the call** — `add-video … --status generating` before,
    `set-video --status ready` (or `failed`, with `--notes`) after.
+5. **Tell the user it takes minutes, then leave it alone.** Workflow B's
+   wall-time table has the measurement: ≈ 404 s for a 4 s 480p clip. One call,
+   no polling, no re-run.
 
 Flags, endpoints, and the cost/latency table are in
 `references/video-preview.md`.

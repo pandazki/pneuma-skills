@@ -9,6 +9,13 @@ Both are plain ESM run with `node`, take `--json`, print `--help`, write
 atomically, and put progress on stderr so `--json` stdout stays parseable.
 Both need `ffmpeg` and `ffprobe` on PATH.
 
+`--json` is the convention here and for `remove-background.mjs` and the two
+video scripts — but **not** for `generate_image.mjs` / `edit_image.mjs`. Those
+two always print one JSON object and have no flag for it; passing `--json`
+anyway kills the call with `ERROR: Unknown option '--json'`, which reads like a
+quoting complaint. Same two scripts, same shape of trap as their positional
+prompt (`references/prompting.md`).
+
 ## How every script here is invoked
 
 ```bash
@@ -48,8 +55,10 @@ no `cd`, workspace-relative paths.
 `{ width, height, hasAlpha, alphaCoverage, cornerColor }`. `hasAlpha` is true
 when any pixel's alpha is below 255; `alphaCoverage` is the fraction of pixels
 above the alpha threshold; `cornerColor` is the median of the four 8×8 corner
-patches as `#rrggbb`. Run this on every freshly generated sheet — it decides
-whether you need the keying step, and it costs nothing.
+patches as `#rrggbb`. Run this on every freshly generated sheet. On OpenRouter's
+GPT Image 2.5 the answer is always `hasAlpha: false` with a near-white
+`cornerColor`, so it is not really a branch — it is the free confirmation that
+the plate is flat and one colour, and the colour `key --color auto` will use.
 
 ### `key <in> --out <png> [--color auto|#rrggbb] [--similarity 0.12] [--blend 0.05]`
 
@@ -267,12 +276,15 @@ with a colour threshold unless the sheet you pass already carries alpha.
 
 ## `remove-background.mjs` — the fal keying path
 
-The one model call on this page, and the better half of workflow B step 5:
-BiRefNet matting on fal, which cuts the character out on its own silhouette
-instead of by colour distance. Reach for it when `probe` says the sheet came
-back opaque and the background is not a flat plate — a gradient, a drawn
-floor, or a colour the character also wears. Needs `FAL_KEY`; with no fal key,
-`sprite-sheet.mjs key` above is the ffmpeg fallback.
+The one model call on this page, and **the default way a sprite sheet gets its
+alpha** (workflow B step 6): BiRefNet matting on fal, which cuts the character
+out on its own silhouette instead of by colour distance. Every sheet needs it,
+because every sheet is generated against a white plate — the transparent
+background the image API nominally offers is refused by the provider (see
+*Measured* below). Matting also survives what a colour key cannot: white
+highlights inside the character, a soft edge, a drawn floor. Needs `FAL_KEY`;
+with no fal key, `sprite-sheet.mjs key --color auto` above is the ffmpeg
+fallback, and it is good enough on a genuinely flat plate.
 
 ```bash
 node {SKILL_PATH}/scripts/remove-background.mjs \
@@ -311,11 +323,11 @@ come from `Date.now()` unless `--at <ms>` is passed.
 
 | Subcommand | Purpose |
 |---|---|
-| `init --name "Lumi" [--description] [--style] [--cell 256x256] [--facing right]` | Creates `project.json`. Fails if one exists unless `--force`. |
+| `init --name "Lumi" [--description] [--style] [--cell 256x256] [--facing right]` | Creates the character directory if it is not there yet, then writes `project.json`. Fails if one exists unless `--force`. |
 | `add-ref --id turnaround --file refs/turnaround.png --role turnaround [--label] [--prompt] [--model] [--from <assetId,…>]` | Registers `ref-<id>` with a `generate` edge. |
 | `add-motion --id idle --label Idle --rows 4 --cols 4 --fps 8 [--loop] [--anchor bottom] [--prompt] [--status planned]` | Adds the motion. Call it before you generate, so the stage shows a placeholder. |
 | `set-motion --motion idle [--label] [--fps] [--loop\|--no-loop] [--anchor] [--prompt] [--status] [--notes]` | Edits motion metadata. `--notes` is where a failure reason belongs. |
-| `set-sheet --motion idle --file motions/idle/sheet-raw.png --from ref-turnaround[,…] [--model] [--prompt] [--background transparent] [--status generating\|processing]` | Registers `<motion>-sheet-raw` with a `generate` edge. `--from` becomes the edge's `fromAssetId`; `params.inputs` lists the whole set **only when you attach two or more references** — with one, `fromAssetId` already says everything. Re-running replaces the previous raw sheet and its edges, keeping the id stable. Call it twice per sheet (see below). |
+| `set-sheet --motion idle --file motions/idle/sheet-raw.png --from ref-turnaround[,…] [--model] [--prompt] [--background opaque] [--status generating\|processing]` | Registers `<motion>-sheet-raw` with a `generate` edge. `--from` becomes the edge's `fromAssetId`; `params.inputs` lists the whole set **only when you attach two or more references** — with one, `fromAssetId` already says everything. Re-running replaces the previous raw sheet and its edges, keeping the id stable. Call it twice per sheet (see below). |
 | `register-run --motion idle --run <run.json \| ->` | Consumes `sprite-sheet.mjs run` output: registers the alpha sheet (if any), every frame, the packed sheet, atlas, gif and webp with `derive` edges; **removes** the previous frame assets and edges for that motion; copies `inspect` into the motion; sets status `ready`. |
 | `add-video --motion idle --file motions/idle/video-seedance-1.mp4 --model seedance-2.5 --mode i2v --from idle-frame-00[,idle-frame-15] [--prompt] [--duration 4] [--status generating]` | Registers `<motion>-video-<n>` (n is the next free number) with a `generate` edge. |
 | `set-video --motion idle --video <id> --status ready\|failed [--notes]` | Closes out a video after the render returns. |
@@ -331,7 +343,7 @@ So the first call goes **before** `generate_image.mjs`:
 node {SKILL_PATH}/scripts/sprite-project.mjs set-sheet --dir <character> --motion <id> \
   --file motions/<id>/sheet-raw.png --from ref-turnaround,ref-portrait \
   --model openai/gpt-image-2.5-flare --prompt "<the prompt you are about to send>" \
-  --background transparent --status generating --json
+  --background opaque --status generating --json
 ```
 
 `--status generating` is the one status that accepts a `--file` which does not
@@ -345,7 +357,7 @@ The second call goes **after** the image has landed — the same command without
 ```bash
 node {SKILL_PATH}/scripts/sprite-project.mjs set-sheet --dir <character> --motion <id> \
   --file motions/<id>/sheet-raw.png --from ref-turnaround,ref-portrait \
-  --model openai/gpt-image-2.5-flare --prompt "<the same prompt>" --background transparent --json
+  --model openai/gpt-image-2.5-flare --prompt "<the same prompt>" --background opaque --json
 ```
 
 Now the file is measured and the same asset flips to `status: "ready"` with real
@@ -410,11 +422,13 @@ openai/gpt-image-2.5-flare supports the requested parameter(s): output_format
 Accepted: auto, opaque
 ```
 
-Same rejection for `openai/gpt-image-2.5-sunburst` with no references. So on
-this provider the transparent branch of workflow B step 5 never fires: ask the
-prompt for *a flat solid pure white background*, pass `--background opaque`,
-and plan on keying. `probe` then reports `hasAlpha: false`,
-`alphaCoverage: 1`, `cornerColor: "#fefefe"` — the opaque branch, every time.
+Same rejection for `openai/gpt-image-2.5-sunburst`, and the same with and
+without references — both models, both ways. That is why workflow B has no
+transparent branch left to take: ask the prompt for *a flat solid pure white
+background*, pass `--background opaque`, and key afterwards. `probe` then
+reports `hasAlpha: false`, `alphaCoverage: 1`, `cornerColor: "#fefefe"` —
+every time. The flag itself is still there and still free to try, since the
+rejection arrives before any image is drawn; this record is what it answers.
 
 | Step | Wall time | Result |
 |---|---|---|
@@ -441,8 +455,11 @@ every referenced asset kept. Re-running `set-sheet` and `register-run` after a
 resolution change is what keeps `project.json`'s recorded dimensions honest;
 both are idempotent on the same ids.
 
-**`init` does not create the character directory.** `sprite-project.mjs init
---dir lumi` on a workspace where `lumi/` does not exist yet dies with a raw
-Node `ENOENT` stack trace from `saveProject` rather than a one-line `ERROR:`.
-`mkdir -p <character>` first (or generate the references first — the image
-script creates its `--output-dir`).
+**`init` used to die on a character directory that did not exist yet.**
+`sprite-project.mjs init --dir lumi` in a workspace with no `lumi/` threw a raw
+Node `ENOENT` stack out of `saveProject`. Fixed the same day: `init` now
+`mkdir -p`s the directory it is initialising, and every filesystem failure in
+`saveProject` comes back as the one-line `ERROR:` the rest of the script
+promises. You no longer sequence a `mkdir` before it — but the lesson stands
+for any new writer added here: a stack trace is not a message the agent can
+act on.

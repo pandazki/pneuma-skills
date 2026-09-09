@@ -183,6 +183,45 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       expect(r.code).toBe(1);
       expect(r.err).toMatch(/project\.json/);
     });
+
+    test("creates the character directory when it does not exist yet", () => {
+      // The first command of a new character runs in a workspace where the
+      // character directory is still an idea. It used to die on a raw ENOENT
+      // from writeFileSync, so `init` had to be preceded by a mkdir nobody
+      // documented. Nested, because `<workspace>/<character>` is one level in
+      // the workspace and the agent may be pointed deeper.
+      const dir = join(fresh(), "lumi", "nested");
+      expect(existsSync(dir)).toBe(false);
+      expect(projectJson(dir, "init", "--name", "Lumi").title).toBe("Lumi");
+      expect(readProject(dir).sprite.character.name).toBe("Lumi");
+    });
+
+    test("a character directory that cannot be created is one ERROR line", () => {
+      // A regular file where the directory should go: mkdir -p fails with
+      // ENOTDIR whoever you are, so this pins the message shape without
+      // depending on file permissions (root ignores those).
+      const workspace = fresh();
+      writeFileSync(join(workspace, "blocker"), "not a directory\n");
+      const r = project(join(workspace, "blocker", "lumi"), "init", "--name", "Lumi", "--json");
+      expect(r.code).toBe(1);
+      expect(r.err.startsWith("ERROR: ")).toBe(true);
+      expect(r.err.trimEnd().split("\n")).toHaveLength(1);
+      expect(r.err).not.toMatch(/^\s+at /m); // no stack frames
+    });
+
+    test("a project.json that cannot be written is one ERROR line, and no litter", () => {
+      // The directory exists and is fine; the write is what fails. A
+      // directory named project.json makes the rename fail deterministically,
+      // which is the saveProject leg — the scratch file must still be gone.
+      const dir = fresh();
+      mkdirSync(join(dir, "project.json"));
+      const r = project(dir, "init", "--name", "Lumi", "--force", "--json");
+      expect(r.code).toBe(1);
+      expect(r.err.startsWith("ERROR: ")).toBe(true);
+      expect(r.err.trimEnd().split("\n")).toHaveLength(1);
+      expect(r.err).not.toMatch(/^\s+at /m);
+      expect(readdirSync(dir).filter((f) => f.includes("tmp"))).toEqual([]);
+    });
   });
 
   describe("round trip", () => {
