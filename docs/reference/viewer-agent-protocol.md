@@ -171,7 +171,7 @@ export interface ViewerActionResult {
 
 #### 内建 action：`capture`
 
-**每个 viewer 都自带 `capture`，无需在 manifest 里声明。** Agent 通过它请求一张实时渲染的 PNG 截图——可选传 `params.address`（`ViewerAddress`）只截某对象：不传 → 整个 viewport；传 coarse 半（`page` / `slide` / `file`）→ 先 navigate-then-shoot；传 fine 半（`anchor` / `selector` / `nodeId`）→ 在当前画面就地解析。Runtime 把截图写入磁盘返回 file path，agent 用 Read 工具查看。
+**每个 viewer 都自带 `capture`，无需在 manifest 里声明。** Agent 通过它请求一张实时渲染的 PNG 截图——可选传 `params.address`（`ViewerAddress`）只截某对象：不传 → 整个 viewport；传 coarse 半（`page` / `slide` / `file` / `contentSet` / `motion` / `ref` …）→ 先 navigate-then-shoot；传 fine 半（`anchor` / `selector`）→ 在当前画面就地解析。哪些键算 coarse 由 `src/hooks/useCaptureAction.ts::COARSE_ADDRESS_KEYS` 这份登记表说了算——**mode 新造的 coarse 键必须登记进去**，否则 `capture` 不会先导航，只会静默截下当前画面（一张看着合理、其实拍错对象的图）。Runtime 把截图写入磁盘返回 file path，agent 用 Read 工具查看。
 
 这让"渲染对不对、有没有溢出"的视觉自查留在 Pneuma viewer 内部完成——外部浏览器渲染的是脱离 viewer 规则的原始文件，看到的不是用户看到的画面。
 
