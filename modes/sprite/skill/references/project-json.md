@@ -23,6 +23,8 @@ correctly on disk.
                                   # `inspect` can measure clipping/jumps and
                                   # `align` can re-run from them
     frames/00.png … NN.png        # sliced + aligned, uniform cell, RGBA
+    frames/align.json             # anchor point align used; the atlas pivot
+                                  # is measured from it, not from the cell edge
     sheet.png                     # packed atlas image
     atlas.json                    # frame rects + pivot + timing
     preview.gif

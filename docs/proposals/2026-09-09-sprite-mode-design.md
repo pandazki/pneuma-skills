@@ -344,17 +344,27 @@ emitted **only when there are two or more inputs**; a single-parent edge
 
 ```json
 {
-  "meta": { "app": "pneuma-sprite", "version": 1, "image": "sheet.png", "size": { "w": 1024, "h": 1024 }, "scale": 1, "fps": 8, "loop": true, "anchor": "bottom" },
+  "meta": { "app": "pneuma-sprite", "version": 1, "image": "sheet.png", "size": { "w": 1024, "h": 1024 }, "scale": 1, "fps": 8, "loop": true, "anchor": "bottom", "anchorPoint": { "x": 128, "y": 248 } },
   "frames": {
     "idle_00": { "frame": { "x": 0, "y": 0, "w": 256, "h": 256 }, "rotated": false, "trimmed": false,
                  "spriteSourceSize": { "x": 0, "y": 0, "w": 256, "h": 256 }, "sourceSize": { "w": 256, "h": 256 },
-                 "pivot": { "x": 0.5, "y": 1.0 }, "duration": 125 }
+                 "pivot": { "x": 0.5, "y": 0.9688 }, "duration": 125 }
   },
   "animations": { "idle": ["idle_00", "idle_01"] }
 }
 ```
 
-`pivot` is `{0.5, 1.0}` for `anchor: bottom` and `{0.5, 0.5}` for `center`.
+`pivot` is the anchor point `align` measured, normalized by the cell —
+`{0.5, (H − pad) / H}` for `anchor: bottom`, `{0.5, 0.5}` for `center`, rounded
+to 4 decimals. `align --pad 8` puts a bottom anchor at `H − 8`, not on the cell
+floor, so on a 256px cell `pivot.y` is `0.9688`: declaring `1.0` would make any
+engine that pivots on the atlas hover the character 8px above the ground.
+`align` records the point in `<framesDir>/align.json`
+(`{ anchor, cell, pad, anchorPoint, smooth }`) because only that step knows it;
+`pack` reads it and also copies it into `meta.anchorPoint` in pixels (scaled
+with `--scale`, while the normalized pivot is scale-invariant). Frames packed
+without a usable record fall back to `{0.5, 1.0}` / `{0.5, 0.5}`, omit
+`meta.anchorPoint` and print the reason on stderr.
 `duration` is `round(1000 / fps)` ms. Frames are laid out row-major in the
 packed image, `cols` per row, no margin, no gutter.
 
@@ -820,7 +830,8 @@ validates unique asset ids; `createdAt`/`timestamp` from `Date.now()` unless
   `probe` reports alpha; `slice` yields four 64×64 RGBA files; `align --anchor bottom`
   produces identical bottom-center anchors (decode outputs with `readRgba`
   and compute bboxes); `pack` writes a 128×128 image and an `atlas.json`
-  matching the schema (four frames, pivot `{0.5,1}`, `duration 125`); `gif`
+  matching the schema (four frames, the pivot on the measured anchor point
+  `{0.5, (H − pad) / H}`, `duration 125`); `gif`
   produces a GIF (magic `GIF89a`) and, if libwebp is present, a WebP;
   `inspect` returns zero warnings on the clean sheet and flags an injected
   empty cell; `key` turns an opaque green-background sheet transparent
