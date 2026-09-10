@@ -165,23 +165,28 @@ model will not do any of them unless asked:
 | Flat solid pure chroma green (#00FF00) filling the frame, evenly lit | `from-video --key auto` reads the corner patches of frame 00; a gradient or a vignette leaves the plate half-keyed |
 | No floor, no cast shadow, no reflection, no green spill on the character | A shadow keys as part of the silhouette; spill turns the character's edge green |
 | Locked-off camera — no pan, no tilt, no zoom, no parallax, no cut | Every camera move is read as the character moving, and the aligner faithfully removes it |
-| Character centred, fully in frame, constant size | A pose leaving the frame is a clipped cell; a size change is scale drift |
-| Feet (or contact points) on one fixed baseline, no walking or turning | The anchor is the feet; a character that walks across the plate cannot be pinned |
+| Whole character and props inside the frame with margin, consistent proportions and camera scale | Crouching or turning may change silhouette dimensions; clipping and unintended rescaling are faults |
+| Explicit support contacts, facing changes and in-place or travelling movement | Pin contacts only while they support the body; the alignment step cannot infer which displacement is intentional |
 | One continuous performance, ending in the starting pose when the motion loops | The frames are sampled evenly, so the clip's arc *is* the animation's arc |
 
-The template — fill the bracket, keep the rest verbatim:
+Use the motion plan from `prompting.md` to fill this template. Adapt contacts,
+movement and ending to the action; planted feet are specific to a grounded
+idle, not a requirement for every clip. Read `pipeline.md`'s alignment limits
+when the action needs travel preserved in the exported frames.
 
 > One continuous [motion] of the character. The camera is locked off: no pan,
-> no tilt, no zoom, no parallax, no cut. The character stays centred and fully
-> inside the frame at a constant size, planted on one fixed baseline — no
-> walking, no turning, no stepping toward or away from the camera. The motion:
-> [what moves, in one or two clauses, with the secondary motion named]. The
-> background is a flat solid pure chroma green filling the whole frame, evenly
+> no tilt, no zoom, no parallax, no cut. The whole character and props stay
+> inside the frame with clear margins, consistent body proportions and
+> drawing scale. [Starting view, contact changes, and in-place or travelling
+> movement.] The motion: [related phases and their pacing, what leads, and
+> what follows]. The background is a flat solid pure chroma green filling
+> the whole frame, evenly
 > lit, no gradient, no floor, no cast shadow, no reflection, and no green
-> light spilling onto the character. The final frame returns to the opening
-> pose so the loop closes seamlessly.
+> light spilling onto the character. [Ending: return to the opening pose for
+> a continuous loop, or settle into the stated destination pose.]
 
-Drop the last sentence for a motion that does not loop.
+For a non-looping motion, use `--no-loop` when sampling and name the end pose
+in the prompt. The worked idle below is one grounded-loop example.
 
 The `--image` is the character on that same green plate: take a reference (or
 frame 00 of an existing motion) and `sprite-sheet.mjs flatten --bg "#00ff00"`

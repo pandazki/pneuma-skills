@@ -13,8 +13,12 @@ import { loadRoster, saveRoster } from "./domain.js";
 
 const spriteManifest: ModeManifest = {
   name: "sprite",
-  version: "0.1.0",
+  version: "0.1.1",
   changelog: {
+    "0.1.1": [
+      "Plan each motion around its own phases, contact points, movement and ending while keeping character identity consistent",
+      "Sheet and video prompts allow deliberate crouching and turning; visual checks distinguish intended pose changes from drift and explain alignment limits",
+    ],
     "0.1.0": [
       "Design a character once, then generate motions as GPT Image 2.5 sheets with the character references attached on a transparent background",
       "Every sheet is sliced, anchor-aligned and packed by ffmpeg into frames + sheet.png + atlas.json (TexturePacker JSON-hash, loads straight into Phaser or PixiJS) plus a GIF and WebP preview",

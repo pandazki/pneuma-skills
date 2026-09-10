@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.47.1] - 2026-09-10
+
+### Improved
+- **Sprite motion planning.** Each action gets its own phases, contact points, follow-through and ending. Sheet and video prompts preserve character identity while allowing deliberate crouching, turning and movement; loops, one-shot actions and pose transitions have distinct ending guidance.
+- **Sprite motion review.** The skill checks geometric warnings against the intended action before recommending a redraw or alignment change, and calls for visual checks of identity, phase transitions and loop seams. It also explains the current limits of vertical alignment and uniform frame timing.
+
 ## [3.47.0] - 2026-09-10
 
 ### Added

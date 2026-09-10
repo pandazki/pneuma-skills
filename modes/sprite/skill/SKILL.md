@@ -174,6 +174,14 @@ the *clips* become frames, and only those are cut out.
 
 ### B. Add a motion
 
+**Start with a brief motion plan.** Infer it from the request and references:
+the opening and ending poses, whether it loops, what leads and follows,
+which contacts stay planted or release, and how phases share the frames.
+Carry these choices into the generation prompt; no separate plan file or
+approval step is needed. Use `references/prompting.md`'s frame-to-frame
+continuity guidance for either source. Style, grid and frame count follow the
+task; a motion need not be an attack, pixel art, or a 16-frame loop.
+
 **Step 0 — pick the source, and ask.** A motion's frames come from one of two
 places, and the choice is the user's unless they already made it:
 
@@ -194,16 +202,25 @@ when the motion needs it and say why.
 | idle | 16, 4×4 | 6–7 (≈ 2.4 s cycle) | yes | bottom |
 | walk / run | 8, 4×2 or 16, 4×4 | 10–12 | yes | bottom |
 | attack | 16, 4×4 | 10 | no | bottom |
-| jump | 8, 4×2 | 10 | no | center |
+| jump poses | 8, 4×2 | 10 | no | center (see alignment limit below) |
 | story key poses | 9, 3×3 | 6 | no | bottom |
 
 **A looping motion's last frame must lead back into the first** — say so in
-the prompt, by cell number for a sheet and as "the final frame returns to the
-opening pose" for a clip. Nobody asks for this and every model forgets it.
+the prompt, by cell number for a sheet and as a return to the opening pose
+for a clip. The last sampled pose should flow into frame 1 without an
+unintended pause. A one-shot or transition ends at its intended destination;
+a turn does not have to turn back.
 
-**Every motion is drawn in the character's declared `facing`** unless the user
-asks for another view, and the prompt says which ("facing right in every
-cell"). `inspect` cannot see facing; only you can, by looking.
+**Keep identity and camera scale fixed, allow the planned motion.** Use the
+character's declared `facing` as the default starting view. When the action
+includes a turn, name the direction and end view. A crouch changes silhouette
+height; a jump releases ground contact. Neither changes body proportions.
+
+**Choose alignment for the intended movement.** `--x-from cell` preserves
+horizontal offsets already drawn in the source. Both vertical anchors
+reposition each frame: `center` gives airborne poses, not a preserved jump
+trajectory. If travel must survive into the exported frames, check the
+limits in `references/pipeline.md` before promising the result.
 
 **Step 2 — register the placeholder and say how long it takes.** Before any
 paid call: `add-motion --status planned --source …`, then the placeholder for
@@ -219,8 +236,8 @@ Then take one of the two legs.
 
 3. **Generate the sheet** — one `generate_image.mjs` call with **every**
    reference attached (`--image-urls` once each), the `character.style`
-   sentence first, the canonical 4×4 / 1024 / 256-cell spec, and the white
-   plate asked for in the prompt. Grammar, the five clauses that make the cut
+   sentence first, the canonical sheet spec adapted to the chosen grid, and
+   the white plate asked for in the prompt. Grammar, the five clauses that make the cut
    clean, the idle recipe and three worked prompts: `references/prompting.md`.
 4. **Run `set-sheet` again**, now without `--status`, so the same asset is
    measured and flips from `generating` to `ready`. Skip it and the sheet
@@ -254,6 +271,9 @@ Then take one of the two legs.
      --json > <character>/motions/<id>/run.json
    ```
 
+   The example is a loop; use the planned grid, fps and anchor, and
+   `--no-loop` for a one-shot or transition.
+
    It keeps the raw sliced cells at `<character>/motions/<id>/cells/NN.png`:
    not assets, but what `inspect` judges "leaves its grid cell" on and what
    `align` re-reads when only the alignment has to be redone.
@@ -272,8 +292,8 @@ Then take one of the two legs.
 5. **Shoot the clip** — one `seedance-video.mjs` call, `--duration 4
    --resolution 480p --no-audio`, with the chroma-green prompt template from
    `references/video-preview.md`. That template is not decoration: a locked
-   camera, a flat green plate with no floor or spill, a centred character on a
-   fixed baseline and a loop that closes are what make the frames usable.
+   camera, a flat green plate with no floor or spill, full-frame containment,
+   and the planned contacts, movement and ending make the frames usable.
    Then `set-video --status ready` (or `failed`, with `--notes`).
 6. **Sample it** —
 
@@ -287,7 +307,8 @@ Then take one of the two legs.
    `--key auto` (the default) measures the plate the model actually painted
    rather than the green you asked for. `--frames` is the frame count from the
    table in step 1; the packed atlas comes out as its own grid, so
-   `add-motion --rows/--cols` should describe that layout (16 → 4×4).
+   `add-motion --rows/--cols` should describe that layout (16 → 4×4). Use the
+   planned anchor and `--no-loop` for a one-shot or transition.
 
 #### Both legs end the same way
 
@@ -298,15 +319,19 @@ Then take one of the two legs.
    inspect summary into the motion and sets the status to `ready`.
 9. **Read the numbers, then look.** Report the inspect values, not "no
    warnings": `navigate-to` the motion, `play` it, `pause` + `capture` at two
-   or three frames, and check the facing while you are there.
+   or three phase boundaries. Check identity, contacts and motion direction;
+   inspect the last-to-first transition for a loop or the final pose for a
+   one-shot. `inspect` measures geometry, not identity, motion quality or the
+   loop seam, so an empty warning list does not prove those passed.
 10. **Keep it or fix it, and say which.** A warning you are keeping gets
     acknowledged with the reason, in one sentence the user reads:
     `set-motion --motion <id> --ack-warnings "the lantern swings out of the
-    bbox by design"`. Regenerate instead when the warning names **scale drift
-    over 15 %** or **a clipped cell on a sheet motion** — those are drawing
-    faults that no alignment fixes. Anchor drift or a jump is alignment: re-run
-    `align` from `cells/` with a different `--x-from` / `--smooth`, or re-run
-    the whole chain with the new flags. One bad cell on a sheet →
+    bbox by design"`. For **scale drift over 15 %**, check whether the
+    silhouette changed through crouching, turning or a moving prop, or the
+    character actually changed proportions. Regenerate actual scale errors
+    and **clipped cells on a sheet motion**. For unintended alignment drift,
+    re-run `align` from `cells/` with a different `--x-from` / `--smooth`;
+    preserve deliberate steps and weight shifts. One bad cell on a sheet →
     `edit_image.mjs` on that cell and re-run from step 5.
     `references/pipeline.md` and `references/prompting.md` spell both out.
 
@@ -382,10 +407,11 @@ naming the selected motion.
   motion id; `register-run` replaces the old frames and their edges, so the
   motion is updated, never duplicated.
 - **`fix-alignment`** — the character swims or jumps between frames. Read the
-  inspect warnings first: `bodyDrift` → re-run `align` with `--x-from feet`
-  (the default) or `cell`; `maxJump` → `--smooth` or the other anchor;
-  `scaleDrift` or "cell NN is clipped" → the drawing is the problem,
-  regenerate. `references/pipeline.md` has the table.
+  inspect warnings against the motion plan: unintended `bodyDrift` → re-run
+  `align` with `--x-from feet` or `cell`; unintended `maxJump` → `--smooth`
+  or the other anchor. Check whether `scaleDrift` is a pose or prop change
+  before regenerating; clipped cells need a drawing fix. Preserve intended
+  movement. `references/pipeline.md` has the table and alignment limits.
 
 <!-- pneuma:end -->
 
@@ -393,7 +419,7 @@ naming the selected motion.
 
 | Topic | File |
 |---|---|
-| Sheet prompt grammar, the idle recipe, the canonical sheet spec, worked prompts, fixing one cell | `references/prompting.md` |
+| Motion planning and continuity for either source; sheet grammar, recipes, worked prompts, fixing one cell | `references/prompting.md` |
 | Every `sprite-sheet.mjs` / `sprite-project.mjs` subcommand — `clean`, `from-video`, the atlas schema, inspect warnings | `references/pipeline.md` |
 | The chroma-green source clip (prompt template + worked call), Seedance and H3 Max flags, cost, latency, measured keying numbers (needs the fal key) | `references/video-preview.md` |
 | The `project.json` schema — craft fields, the sprite sidecar, asset id conventions | `references/project-json.md` |

@@ -146,15 +146,16 @@ the anchor point lands at the same coordinate in every frame.
 
 - `bottom` — the bbox's bottom edge, placed at `H − pad`. Use for anything
   standing on the ground.
-- `center` — the bbox centre, placed at `H/2`; for airborne motions (jump,
-  float) where the feet are not the reference.
+- `center` — the bbox centre, placed at `H/2`; for airborne pose sequences
+  where the feet are not the reference. This recentres the body each frame;
+  it does not preserve a jump's vertical trajectory.
 
 **x comes from `--x-from`**, and the three modes answer three different
 questions about where the character *is*:
 
 | `--x-from` | x is | Use when |
 |---|---|---|
-| `feet` (default) | the mean x of the alpha pixels in the bottom **10 %** of the bbox | Always, for a `bottom` anchor. It is where the character stands. |
+| `feet` (default) | the mean x of the alpha pixels in the bottom **10 %** of the bbox | Grounded poses intended to stay in place; use `cell` when deliberate lateral offsets should survive. |
 | `bbox` | the bbox centre — the behaviour before this flag existed | The drawing has no ground contact worth pinning, or you want the old frames back. It is also what a `center` anchor uses. |
 | `cell` | the centre of the grid cell the frame was cut from, i.e. **no horizontal re-placement at all** | The model already places the body consistently and you only want the vertical levelled. |
 
@@ -172,6 +173,13 @@ overshoot and the mean by a couple of pixels.
 Under `--anchor center` the `feet` default resolves to `bbox` — an airborne
 pose has no feet on the ground to pin — and `align.json` records `bbox`, which
 is what it used. `--x-from cell` is honoured under both anchors.
+
+**Preserving movement:** `cell` keeps horizontal offsets only. Neither
+vertical anchor preserves the source's full vertical travel; both reposition
+each frame. A jump's body poses can survive while its rise and fall disappear.
+Preserving that trajectory requires pipeline support beyond these flags, so
+do not claim the exported frames retain it. Compare source cells and aligned
+frames before treating a planned step, crouch or turn as jitter to remove.
 
 `--cell auto` sizes the cell around the anchor, not around the bbox: twice the
 worst frame's reach from its anchor, plus `2·pad`, rounded up to an even
@@ -251,10 +259,14 @@ Warning rules and what each one means:
 |---|---|---|
 | "frame NN is empty" | No pixel above threshold | A cell the model left blank. Edit that one cell (see `prompting.md`) and re-run. |
 | "frame NN is nearly empty" | Alpha coverage < 0.02 | Usually the key ate the character. Re-key with a lower `--similarity`. |
-| "body drifts sideways between frames — re-run align with --x-from feet/cell" | `bodyDrift > 0.05 · cellWidth` | The body slides during playback. Re-align from `cells/` with `--x-from feet` (or `cell` when the model already placed it well). |
-| "anchor jumps between frames NN and MM" | `maxJump > 0.08 · cellWidth` **and** the feet moved that far too | Try `align --smooth`, or the other anchor. If it persists, the pose genuinely teleports — fix the drawing. The feet condition is what keeps a swinging prop quiet: under `--x-from feet` the silhouette is *supposed* to move while the body does not. |
-| "character scale varies across frames — regenerate with a fixed-scale instruction" | `scaleDrift > 0.15` | Not fixable by alignment. Regenerate with the identical-height clause from `prompting.md`. |
+| "body drifts sideways between frames — re-run align with --x-from feet/cell" | `bodyDrift > 0.05 · cellWidth` | Check the motion plan first. For unintended sliding, re-align from `cells/` with `--x-from feet`; use `cell` to retain well-placed intentional lateral motion. |
+| "anchor jumps between frames NN and MM" | `maxJump > 0.08 · cellWidth` **and** the feet moved that far too | Compare the source poses with the plan. For unintended placement jumps, try `align --smooth` or the other anchor; fix discontinuous drawing when alignment cannot help. Preserve deliberate fast movement. |
+| "character scale varies across frames — regenerate with a fixed-scale instruction" | `scaleDrift > 0.15` | This measures silhouette height, including props. Check for intended crouching, turning or prop movement; acknowledge it when justified. Regenerate actual proportion or drawing-scale drift with the fixed-scale guidance in `prompting.md`. |
 | "cell NN is clipped — the drawing leaves its grid cell" | Bbox touches the cell edge before alignment | The pose is bigger than its cell. Regenerate with the "stays inside its own cell" clause. |
+
+These are geometric heuristics. `maxJump` does not include last-to-first, and
+the report does not judge identity, contacts or animation rhythm. Check those
+in playback, even when there are no warnings.
 
 ### `run <sheet-raw> --rows R --cols C --out <motionDir> --name <motionId> --fps N [--alpha <png>] [--force] [flags]`
 
@@ -376,17 +388,18 @@ provenance points at it.
 
 ### Fixing the alignment without regenerating the sheet
 
-The drawing is fine, the character just swims or jumps — that is an alignment
-problem, and the cells are still on disk, so nothing has to be re-sliced:
+Use this when the drawing is fine but placement drifts unintentionally.
+The cells are still on disk, so nothing has to be re-sliced:
 
 ```bash
 node {SKILL_PATH}/scripts/sprite-sheet.mjs align <character>/motions/<id>/cells \
   --out <character>/motions/<id>/frames --anchor center --smooth --json
 ```
 
-Read the inspect warnings first: `bodyDrift` says re-align with a different
-`--x-from` (the body is sliding), `maxJump` says try `--smooth` or the other
-`--anchor` (the pose lurches), `scaleDrift` says the drawing is the problem.
+Read the warning table above against the motion plan first. Change `--x-from`
+for unintended sliding and try `--smooth` or the other `--anchor` for
+placement jumps. A `scaleDrift` warning alone does not establish a drawing
+fault; check the poses before regenerating.
 
 `align` clears the old `NN.png` and the old `align.json` out of `--out` before
 writing, so the frames — and the anchor point recorded for them — are replaced,

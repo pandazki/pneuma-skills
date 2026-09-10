@@ -18,11 +18,11 @@ is the style.
    equal cells, read left to right, top to bottom." Say *strict* and *equal*;
    without it the model composes a poster.
 3. **Subject and continuity.** "The same character in all cells" plus the
-   identity facts that must not move: facing, proportions, palette,
-   distinguishing props.
-4. **The motion, cell by cell.** One clause per cell, or one clause per row
-   when the row is a phase. This is the part that makes the frames a motion
-   rather than sixteen poses.
+   identity facts that must not change: proportions, palette, costume and
+   distinguishing props. Specify the starting view and any intended turn.
+4. **The motion, in related phases.** Map phases to cell ranges, with the
+   contacts, trajectories and follow-through that connect them. Add individual
+   pose details where needed; phase boundaries need not follow grid rows.
 5. **Negative constraints.** A flat solid pure white background filling every
    cell, no gradient, no cell borders, no numbers, no drop shadow, no ground
    shadow, no motion blur, no effects leaving the cell. The white plate is
@@ -47,14 +47,15 @@ in order to work at all. Every sheet prompt carries all five.
   neighbour bleeds into it, and `inspect` will say so ("cell NN is clipped").
   The padding is what `clean` needs too: a fragment that reaches a border is
   the one thing it can safely identify as litter.
-- **A fixed baseline and identical alignment in every cell.** "The character
-  stands on the same ground line in every cell, the same distance from the
-  left edge of its cell, at identical height" — the aligner can move a
-  drawing, but it cannot tell a deliberate lunge from a cell drawn 20 px lower
-  than the rest.
-- **Close the loop** when the motion loops: "the last cell returns exactly to
-  the first cell's pose so the cycle repeats seamlessly". Nobody asks for this
-  and every model forgets it.
+- **A fixed camera and an explicit movement frame of reference.** Keep body
+  proportions and drawing scale consistent. For grounded phases, place
+  support contacts on one ground line; say when they lift or switch. Specify
+  whether the motion stays in place or travels within the cell. A fixed cell
+  origin does not freeze the body. The aligner cannot distinguish a planned
+  lunge from accidental drift; its limits are in `pipeline.md`.
+- **Close the loop** when the motion loops: "the last cell leads smoothly
+  into the first on the next beat, with compatible movement direction".
+  For a one-shot or transition, name the final pose instead.
 
 ## Drawing a character that is not a person
 
@@ -140,14 +141,15 @@ One shape covers most motions, and it is the one the pipeline is tuned for:
 
 > **A single 1024×1024 image, a strict 4×4 grid of 16 equal 256×256 cells,
 > read left to right, top to bottom. Each cell holds one frame of the
-> character, centred, with at least 16 px of empty background on every side —
+> character, with at least 16 px of empty background on every side —
 > including anything the character is holding or wearing that moves. The
-> character stands on the same baseline in every cell and is drawn at
-> identical height and identical distance from the camera. A flat solid pure
-> white background fills every cell, no gradient, no cell borders, no
-> numbers.**
+> camera is fixed, with consistent body proportions and drawing scale.
+> Ground contacts share a baseline during grounded phases; the pose and
+> movement follow the motion plan. A flat solid pure white background fills
+> every cell, no gradient, no cell borders, no numbers.**
 
-Paste that after the style anchor, then say what the sixteen frames *are*.
+Adapt the grid and cell dimensions to the chosen frame count, paste it after
+the style anchor, then say what the frames *are*.
 `--image-size 1024x1024` gives exactly the 256 px cell a character with
 `cell: 256×256` declares; go to `2048x2048` (a 512 px cell) when the frames
 are a hand-off to an engine or may be re-packed larger, and say why. The
@@ -156,8 +158,8 @@ quarter of the bytes on disk.
 
 ## The idle recipe
 
-Idle is the motion every character needs first and the one most easily got
-wrong — an idle that "does something" reads as a twitch. The recipe, as a
+For a quiet grounded idle, keep the primary motion small — an idle that
+"does something" can read as a twitch. A starting recipe, as a
 16-frame 4×4 sheet at 6–7 fps (a ≈ 2.4 s cycle):
 
 - **One gentle breathing rise and fall across the whole cycle.** The chest and
@@ -175,7 +177,7 @@ wrong — an idle that "does something" reads as a twitch. The recipe, as a
 - **No walking, no turning, no stepping toward the camera**, and no change of
   facing. Those are other motions.
 - **The last cell flows back into the first** — say it by number ("cell 16
-  returns exactly to the cell-1 pose").
+  leads into cell 1 on the next beat, without an extra hold").
 
 Written out, that is the first worked prompt below.
 
@@ -188,12 +190,12 @@ Written out, that is the first worked prompt below.
 > right, top to bottom. The same character in every cell, matching the
 > attached reference sheet exactly: short bob hair, oversized hooded cloak,
 > satchel, small floating paper lantern. Facing right, three-quarter view,
-> full body, identical height and identical distance from the camera in every
+> full body, consistent body proportions and fixed camera distance in every
 > cell. A 16-frame idle breathing loop: cells 1-4 the chest rises and the
 > cloak settles, cells 5-8 the rise peaks and the lantern drifts up, cells
-> 9-12 the chest falls, cells 13-16 return exactly to the cell-1 pose so the
-> loop closes seamlessly. A flat solid pure white background filling every
-> cell, no gradient. No grid lines, no cell borders, no numbers, no text, no
+> 9-12 the chest falls, cells 13-16 settle toward the opening pose, with cell
+> 16 leading smoothly into cell 1. A flat solid pure white background filling
+> every cell, no gradient. No grid lines, no cell borders, no numbers, no text, no
 > drop shadow, no ground shadow, no motion blur, nothing crossing between
 > cells.
 
@@ -203,9 +205,10 @@ Written out, that is the first worked prompt below.
 > anti-aliasing, no gradients. A single image laid out as a strict 4×2 grid of
 > 8 equal cells, read left to right, top to bottom. The same character in
 > every cell, matching the attached reference: green tunic, leather boots,
-> short sword on the back. Side view facing right, full body, identical pixel
-> height in every cell. An 8-frame walk cycle: contact, down, pass, up for the
-> left leg in cells 1-4 and the mirrored half for the right leg in cells 5-8,
+> short sword on the back. Side view facing right, full body, consistent body
+> proportions and pixel scale in every cell. An 8-frame in-place walk cycle:
+> contact, down, pass, up for the left leg in cells 1-4 and the mirrored half
+> for the right leg in cells 5-8,
 > arms swinging opposite the legs, the head bobbing one pixel. A flat solid
 > pure white background filling every cell, no gradient. No grid lines, no
 > numbers, no shadow, no anti-aliased halo around the sprite.
@@ -215,9 +218,9 @@ Written out, that is the first worked prompt below.
 > Crisp anime cel-shading, two-tone shadows, clean ink outline. A single image
 > laid out as a strict 4×4 grid of 16 equal cells, read left to right, top to
 > bottom. The same character in every cell, matching the attached references
-> exactly. Three-quarter view facing right, full body, identical height and
-> identical camera distance in every cell — the character must not grow or
-> shrink across the grid. A 16-frame sword attack: cells 1-4 wind up and
+> exactly. Three-quarter view facing right, full body, consistent body
+> proportions and fixed camera distance in every cell, allowing the knees
+> and torso to bend. A 16-frame sword attack: cells 1-4 wind up and
 > weight shifts back, cells 5-8 the step forward begins, cells 9-12 the swing
 > passes through the strike, cells 13-16 recover to a ready stance. The blade
 > stays inside its own cell at all times. A flat solid pure white background
@@ -228,14 +231,14 @@ Written out, that is the first worked prompt below.
 
 | Symptom | Cause | Fix in the prompt |
 |---|---|---|
-| Character faces left in some cells | No facing declared, or an ambiguous "turning" clause | "Facing right in every cell" — and never ask for a turn inside one sheet; make the turn its own motion |
-| Character grows or shrinks across the grid | The model treats each cell as its own composition | "Identical height and identical distance from the camera in every cell — the character must not grow or shrink across the grid" |
+| Character unexpectedly reverses facing | No facing declared, or an ambiguous turn | Declare the starting view; keep it fixed when no turn is intended, otherwise name the turn direction and end view |
+| Character proportions drift across the grid | The model treats each cell as its own composition | "Consistent body proportions and drawing scale, fixed camera distance" — a crouch or turn may legitimately change silhouette dimensions |
 | Numbers or letters in the corners | Grids read as contact sheets to the model | "No numbers, no labels, no text anywhere" |
 | A grey, tinted or gradient plate behind the sprite | The model drew its own backdrop instead of the flat white you asked for | Say "a flat solid pure white background filling every cell, no gradient" — a gradient is what makes the cut-out (workflow B step 6) leave a halo. A *flat* plate of any colour is fine; the keyer takes it |
 | Sprite clipped at a cell edge | The pose is bigger than the cell | "The whole character, including the weapon, stays inside its own cell with a clear margin" |
 | Ground shadow follows the sprite | Default illustration habit | "No ground shadow, no drop shadow, no contact shadow" — a shadow is opaque and it lands in the alpha, so the aligner treats it as part of the silhouette |
 | Effects bleed between cells | Motion blur, speed lines, glow | "Nothing crossing between cells, no motion blur, no speed lines, no glow" |
-| Frame 16 does not return to frame 1 | Nobody asked it to | "Cells 13-16 return exactly to the cell-1 pose so the loop closes seamlessly" |
+| Loop jumps from frame 16 to frame 1 | The closing transition was not specified | "Cells 13-16 settle toward the opening pose; cell 16 leads into cell 1 on the next beat" — check movement direction as well as pose similarity |
 
 Two of those — scale drift and cell clipping — the `inspect` report names for
 you (`scaleDrift`, "cell NN is clipped"). Read the report before rewriting the
@@ -243,19 +246,43 @@ prompt, so the rewrite targets the fault the pipeline actually measured.
 
 ## Frame-to-frame continuity
 
-The model does not animate; it draws sixteen pictures and you asked for them
-to be related. Give it the relation explicitly:
+Design the relationship between poses before mapping them to cells. The same
+plan guides a source clip, with phases described over time instead of cells.
 
-- **Name the phases, not the frames.** "Cells 1-4 wind up, 5-8 step through,
-  9-12 strike, 13-16 recover" produces a readable arc. Sixteen separate
-  sentences produce sixteen unrelated poses.
-- **Name what carries through.** The weight foot, the arc a weapon traces, the
-  direction a cloak lags. "The cloak lags one beat behind the body throughout"
-  buys more continuity than three extra pose descriptions.
-- **Close the loop explicitly** when `loop: true`, referencing cell 1 by
-  number.
-- **For a non-loop motion, name the end state** — "recover to a ready stance"
-  — or the last cell is wherever the swing happened to stop.
+- **Separate identity from motion.** Keep head-to-body proportions, costume
+  construction, palette and distinctive details consistent with the refs.
+  Preserve handedness and asymmetric accessories through a turn; visible
+  features can become occluded. Pose, facing and silhouette height may change
+  as the action requires.
+- **Choose phases for this action.** They need not be equally long or begin
+  on new rows. These examples are starting points, not required sequences:
+
+  | Motion | Possible phases | What connects them |
+  |---|---|---|
+  | Breathing | inhale, crest, exhale | planted support; hair or clothing lags the torso |
+  | Walking | contact, down, pass, up; alternate sides | support transfers between feet; arms counter-swing |
+  | Jumping | crouch, push-off, rise, fall, land | feet release and regain contact; knees absorb landing |
+  | Waving | raise, wave, lower | shoulder leads the lift; elbow and wrist carry the gesture |
+  | Turning | weight shift, pivot, settle | declare turn direction, support foot and final view |
+
+- **Name what leads and follows.** Describe the body or prop trajectory,
+  support changes and one relevant secondary motion. Use articulated pose
+  changes when the action needs them; translating or rotating one rigid pose
+  cannot stand in for walking or waving. Intentional holds and rigid motion
+  are valid when they belong to the requested action.
+- **Distribute frames for rhythm.** Smaller pose steps read as slower motion;
+  larger steps read as faster motion. Preserve deliberate holds. The current
+  viewer, atlas and GIF use one fps per motion, not per-frame durations: keep
+  the planned timing achievable with that frame budget and uniform interval.
+- **Choose the ending.** For a loop, the last sampled pose leads into the
+  first with compatible movement direction, without an unintended repeated
+  endpoint pause. For a one-shot or transition, name the destination pose;
+  a seated character can stay seated and a turn can finish facing away.
+
+Verify these relationships in playback, including phase boundaries and the
+loop seam. `inspect` checks geometry; it cannot establish identity, support
+contact or temporal continuity. Compare source cells with aligned frames when
+the processed motion loses a deliberate movement.
 
 ## Fixing one bad cell
 
