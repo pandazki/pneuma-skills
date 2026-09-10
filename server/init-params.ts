@@ -12,7 +12,10 @@
  *     with `options` filled in from disk (`core/init-param-resolver.ts`).
  *
  * Both launcher-scope and per-session `/api/launch/prepare` routes call this,
- * so the launcher grid and ProjectPanel's launch sheet cannot drift apart.
+ * so the launcher grid and ProjectPanel's launch sheet cannot drift apart. The
+ * CLI's own launch path reads the same store from the other end — see
+ * `resolveBackfilledParams`, which shares this module's name matching so a key
+ * saved through the launcher is still found by a `--no-prompt` CLI launch.
  */
 import type { InitParam } from "../core/types/mode-manifest.js";
 import {
@@ -44,6 +47,40 @@ export function matchStoredKey(
     }
   }
   return null;
+}
+
+/**
+ * The API-key params a mode's `envMapping` can answer out of the global store.
+ *
+ * The two launch paths reach `~/.pneuma/api-keys.json` from opposite ends. The
+ * launcher's prepare route knows only the *param* name (`falApiKey`) and so
+ * matches across the UPPER_SNAKE ↔ camelCase boundary — a key it stores lands
+ * under `FAL_API_KEY`. A mode's `envMapping`, by contrast, names the *env*
+ * variable it will write into the session `.env` (`FAL_KEY`), which no store
+ * entry ever spells. Keying the CLI backfill on the env name alone therefore
+ * misses exactly the keys the launcher saved, and a `--no-prompt` launch of
+ * sprite / plotwise / clipcraft starts with an empty `falApiKey`. So: try the
+ * declared env name first (an exact, mode-authored intent), then fall back to
+ * the param name through `matchStoredKey`.
+ *
+ * Returns ONLY the entries that were backfilled — an empty object means the
+ * caller has nothing to persist. A param that already carries a non-empty
+ * value is never overwritten: an answer the user gave outranks the store.
+ */
+export function resolveBackfilledParams(
+  resolvedParams: Record<string, number | string>,
+  envMapping: Record<string, string>,
+  globalKeys: Record<string, string>,
+): Record<string, string> {
+  const backfilled: Record<string, string> = {};
+  for (const [envVar, paramName] of Object.entries(envMapping)) {
+    const current = resolvedParams[paramName];
+    if (current !== undefined && String(current).trim() !== "") continue;
+    const value = globalKeys[envVar] || matchStoredKey(globalKeys, paramName) || "";
+    if (!value) continue;
+    backfilled[paramName] = value;
+  }
+  return backfilled;
 }
 
 /**

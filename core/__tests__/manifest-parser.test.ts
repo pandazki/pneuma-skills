@@ -165,6 +165,166 @@ describe("parseManifestTs — hidden boolean", () => {
   });
 });
 
+describe("parseManifestTs — hasInitParams (non-empty init.params array)", () => {
+  test("reports true for a non-empty init.params array", () => {
+    const src = `const m = {
+  name: "kami",
+  init: {
+    params: [
+      { name: "falApiKey", label: "fal.ai API Key", type: "string", sensitive: true },
+    ],
+  },
+};`;
+    expect(parseManifestTs(src).hasInitParams).toBe(true);
+  });
+
+  test("reports false for an explicitly empty init.params array", () => {
+    // cosmos declares `params: []` — "this mode asks nothing at launch" is a
+    // decision the manifest made, not an absence, so it reads as false.
+    const src = `const m = {
+  name: "cosmos",
+  init: {
+    contentCheckPattern: "**/cosmos.json",
+    params: [],
+  },
+};`;
+    expect(parseManifestTs(src).hasInitParams).toBe(false);
+  });
+
+  test("returns undefined when init declares no params at all", () => {
+    const src = `const m = {
+  name: "doc",
+  init: {
+    contentCheckPattern: "**/*.md",
+    seedFiles: { "modes/doc/seed/README.md": "README.md" },
+  },
+};`;
+    expect(parseManifestTs(src).hasInitParams).toBeUndefined();
+  });
+
+  test("returns undefined when the manifest has no init block", () => {
+    const src = `const m = { name: "evolve" };`;
+    expect(parseManifestTs(src).hasInitParams).toBeUndefined();
+  });
+
+  test("ignores a params object that lives outside init (viewerApi actions)", () => {
+    // `viewerApi.actions[].params` is an OBJECT of parameter descriptors and
+    // has nothing to do with launch-time init params. Every mode has them.
+    const src = `const m = {
+  name: "diagram",
+  init: {
+    contentCheckPattern: "**/*.drawio",
+  },
+  viewerApi: {
+    actions: [
+      { id: "focus-node", params: { nodeId: { type: "string", required: true } } },
+      { id: "fit-view", params: {} },
+    ],
+  },
+};`;
+    expect(parseManifestTs(src).hasInitParams).toBeUndefined();
+  });
+
+  test("ignores a nested params array that is not init's own key", () => {
+    // Depth matters: only init's OWN `params` counts, never one buried in a
+    // seed descriptor or any other nested object.
+    const src = `const m = {
+  name: "alpha",
+  init: {
+    seeds: [
+      { id: "sample", params: [{ name: "nope" }] },
+    ],
+  },
+};`;
+    expect(parseManifestTs(src).hasInitParams).toBeUndefined();
+  });
+
+  test("is not fooled by a params array that only appears in a comment", () => {
+    const src = `const m = {
+  name: "beta",
+  init: {
+    // params: [{ name: "removed", type: "string" }],
+    contentCheckPattern: "**/*.md",
+  },
+};`;
+    expect(parseManifestTs(src).hasInitParams).toBeUndefined();
+  });
+
+  test("does not mistake deriveParams for params", () => {
+    // illustrate declares `deriveParams:` immediately after `params:`; the
+    // key match must be whole-identifier, not a suffix match.
+    const src = `const m = {
+  name: "gamma",
+  init: {
+    deriveParams: (params) => ({ ...params, enabled: "true" }),
+  },
+};`;
+    expect(parseManifestTs(src).hasInitParams).toBeUndefined();
+  });
+
+  test("survives an apostrophe inside a comment in the init block", () => {
+    // Real shape from modes/plotwise/manifest.ts: a `//` comment between two
+    // param entries containing `viewer's`. A brace walker that treats that
+    // lone quote as a string opener loses track of the whole block.
+    const src = `const m = {
+  name: "plotwise",
+  init: {
+    params: [
+      { name: "perceivedDuration", type: "select", options: ["light", "deep"] },
+      // Visual style is not an init param: the learner settles it on the
+      // viewer's style board by confirming a sample the director shoots.
+      { name: "lookahead", type: "select", defaultValue: "2" },
+    ],
+  },
+};`;
+    expect(parseManifestTs(src).hasInitParams).toBe(true);
+  });
+
+  test("survives an unbalanced brace inside a string value", () => {
+    const src = `const m = {
+  name: "delta",
+  init: {
+    contentCheckPattern: "**/{a,b}/*.md",
+    params: [{ name: "x", description: "a } brace and a [ bracket" }],
+  },
+};`;
+    expect(parseManifestTs(src).hasInitParams).toBe(true);
+  });
+
+  test("treats a params array holding only a comment as empty", () => {
+    const src = `const m = {
+  name: "epsilon",
+  init: {
+    params: [
+      /* nothing yet */
+    ],
+  },
+};`;
+    expect(parseManifestTs(src).hasInitParams).toBe(false);
+  });
+
+  test("returns undefined when init.params is not an inline array literal", () => {
+    // The parser never evaluates TypeScript, so an indirected value is
+    // reported as "cannot tell" (undefined), not as a false negative claim.
+    const src = `const m = {
+  name: "zeta",
+  init: {
+    params: SHARED_PARAMS,
+  },
+};`;
+    expect(parseManifestTs(src).hasInitParams).toBeUndefined();
+  });
+
+  test("does not throw when the init block is truncated mid-object", () => {
+    const src = `const m = {
+  name: "eta",
+  init: {
+    params: [
+      { name: "x"`;
+    expect(() => parseManifestTs(src)).not.toThrow();
+  });
+});
+
 describe("parseManifestTs — result shape for absent fields", () => {
   test("every unset field comes back undefined for a minimal manifest", () => {
     const src = `const m = { name: "minimal" };`;
@@ -185,6 +345,7 @@ describe("parseManifestTs — result shape for absent fields", () => {
       layout: undefined,
       inspiredBy: undefined,
       hidden: undefined,
+      hasInitParams: undefined,
     };
     expect(parsed).toEqual(expected);
   });
@@ -279,6 +440,29 @@ describe("parseManifestTs — LocalizedString (displayName / description)", () =
   },
 };`;
     expect(parseManifestTs(src).description).toBe("Craft web pages");
+  });
+
+  test("survives an apostrophe inside a comment in the locale object", () => {
+    // A `//` comment is prose, and prose has apostrophes. A brace walker that
+    // reads that lone quote as a string opener loses every brace after it and
+    // reports the whole field as absent — the field does not degrade to the
+    // wrong locale, it vanishes. Same defect the `init.params` walker avoids;
+    // both now step over comments through the shared scanners.
+    const src = `const m = {
+  name: "sprite",
+  displayName: {
+    // the viewer's own name, kept short enough for the tile
+    en: "Sprite",
+    "zh-CN": "精灵",
+  },
+  description: {
+    /* the one-liner the gallery card shows — don't let it wrap */
+    en: "Animate a character",
+  },
+};`;
+    expect(parseManifestTs(src, "en").displayName).toBe("Sprite");
+    expect(parseManifestTs(src, "zh-CN").displayName).toBe("精灵");
+    expect(parseManifestTs(src, "en").description).toBe("Animate a character");
   });
 });
 

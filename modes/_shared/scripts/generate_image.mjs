@@ -12,7 +12,10 @@ export const DEFAULT_EDIT_IMAGE_MODEL = "openai/gpt-image-2.5-flare";
 export const IMAGE_MODELS = [DEFAULT_IMAGE_MODEL, DEFAULT_EDIT_IMAGE_MODEL];
 export const IMAGE_QUALITIES = ["auto", "low", "medium", "high", "xhigh", "max"];
 export const IMAGE_ASPECTS = ["auto", "21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"];
+export const IMAGE_BACKGROUNDS = ["auto", "transparent", "opaque"];
 const OUTPUT_FORMATS = ["png", "jpeg", "webp"];
+/** Output formats that can carry the alpha channel `transparent` asks for. */
+const ALPHA_FORMATS = ["png", "webp"];
 const IMAGE_ENDPOINT = "https://openrouter.ai/api/v1/images";
 const PRESET_SIZES = {
   square: "1024x1024", square_hd: "1024x1024",
@@ -84,15 +87,26 @@ export function imageReference(source) {
 
 export function buildImageRequest({
   prompt, model, numImages = 1, aspectRatio,
-  imageSize, quality = "high", outputFormat = "png", imageUrls = [], maskUrl,
+  imageSize, quality = "high", outputFormat = "png", imageUrls = [], maskUrl, background,
 }) {
   if (!prompt?.trim()) throw new Error("A nonempty prompt is required");
   if (!Number.isInteger(numImages) || numImages < 1 || numImages > 10) throw new Error("--num-images must be an integer from 1 to 10");
   if (!IMAGE_QUALITIES.includes(quality)) throw new Error(`Invalid --quality. Choices: ${IMAGE_QUALITIES.join(", ")}`);
   if (!OUTPUT_FORMATS.includes(outputFormat)) throw new Error(`Invalid --output-format. Choices: ${OUTPUT_FORMATS.join(", ")}`);
+  if (background != null) {
+    if (!IMAGE_BACKGROUNDS.includes(background)) throw new Error(`Invalid --background. Choices: ${IMAGE_BACKGROUNDS.join(", ")}`);
+    // A transparent render into a format without an alpha channel is paid
+    // for and comes back opaque — refuse it here, not at the far end.
+    if (background === "transparent" && !ALPHA_FORMATS.includes(outputFormat)) {
+      throw new Error(`--background transparent needs --output-format ${ALPHA_FORMATS.join(" or ")} (${outputFormat} has no alpha channel)`);
+    }
+  }
   if (maskUrl) throw new Error("GPT Image 2.5 on OpenRouter does not expose mask edits. Use --image-urls with edit instructions, or --annotation for a visual guide.");
   if (imageUrls.length > 16) throw new Error("At most 16 reference images are supported");
   const body = { model: resolveImageModel(model ?? (imageUrls.length ? DEFAULT_EDIT_IMAGE_MODEL : DEFAULT_IMAGE_MODEL)), prompt, n: numImages, quality, output_format: outputFormat };
+  // Omitted unless asked for: every caller that predates the flag keeps
+  // sending byte-identical requests.
+  if (background != null) body.background = background;
   if (imageSize) {
     const size = PRESET_SIZES[imageSize] ?? imageSize.toLowerCase();
     if (!/^[1-9]\d*x[1-9]\d*$/.test(size)) throw new Error("Invalid --image-size: expected WxH or a supported preset");
@@ -105,6 +119,53 @@ export function buildImageRequest({
   }
   if (imageUrls.length) body.input_references = imageUrls.map((source) => ({ type: "image_url", image_url: { url: imageReference(source) } }));
   return body;
+}
+
+const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+
+/**
+ * Whether these image bytes can carry transparency — read out of the
+ * container's own header, with no decoder and no ffmpeg:
+ *
+ *   PNG   colour type 4 (grey+alpha) or 6 (RGBA), or a `tRNS` chunk ahead
+ *         of the pixel data (a palette image with a transparent index);
+ *   WebP  the VP8X alpha flag, or the `alpha_is_used` bit of a VP8L header;
+ *   JPEG  never — it has no alpha channel at all.
+ *
+ * Unknown or truncated bytes answer `false`: this reports what is proven,
+ * never what is hoped for.
+ */
+export function hasAlphaChannel(image) {
+  if (!image?.length) return false;
+  const bytes = Buffer.isBuffer(image)
+    ? image
+    : ArrayBuffer.isView(image)
+      ? Buffer.from(image.buffer, image.byteOffset, image.byteLength)
+      : Buffer.from(image);
+
+  if (bytes.length >= 26 && bytes.subarray(0, 8).equals(PNG_SIGNATURE)) {
+    const colorType = bytes[25];
+    if (colorType === 4 || colorType === 6) return true;
+    for (let offset = 8; offset + 8 <= bytes.length; ) {
+      const length = bytes.readUInt32BE(offset);
+      const type = bytes.toString("ascii", offset + 4, offset + 8);
+      if (type === "tRNS") return true;
+      // tRNS must precede the pixel data; past IDAT there is nothing to find.
+      if (type === "IDAT" || type === "IEND") return false;
+      offset += 12 + length;
+    }
+    return false;
+  }
+
+  if (bytes.length >= 16 && bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP") {
+    const chunk = bytes.toString("ascii", 12, 16);
+    if (chunk === "VP8X") return bytes.length > 20 && (bytes[20] & 0x10) !== 0;
+    // VP8L: a 0x2f signature, then 14 bits width, 14 height, then alpha_is_used.
+    if (chunk === "VP8L") return bytes.length >= 25 && bytes[20] === 0x2f && ((bytes.readUInt32LE(21) >>> 28) & 1) === 1;
+    return false; // VP8 (lossy, no alpha) or a container we cannot read.
+  }
+
+  return false;
 }
 
 /** One request only: a lost response may still have incurred a generation charge. */
@@ -144,7 +205,15 @@ export async function generateImage(options, { fetchImpl = fetch } = {}) {
     console.error(`[openrouter] Saved: ${filepath}`);
     return filepath;
   });
-  return { backend: "openrouter", model: body.model, endpoint: IMAGE_ENDPOINT, files, urls: [], description: "", usage: result.usage };
+  const output = { backend: "openrouter", model: body.model, endpoint: IMAGE_ENDPOINT, files, urls: [], description: "", usage: result.usage };
+  if (body.background === "transparent") {
+    // The provider may ignore the request and hand back a flat background.
+    // Whoever cuts these frames up needs to know which one they got.
+    const opaque = decoded.flatMap(({ bytes }, i) => (hasAlphaChannel(bytes) ? [] : [files[i]]));
+    output.hasAlpha = opaque.length === 0;
+    if (opaque.length) console.error(`WARN: --background transparent was requested but ${opaque.join(", ")} came back without an alpha channel`);
+  }
+  return output;
 }
 
 export async function main(args = process.argv.slice(2)) {
@@ -153,6 +222,7 @@ export async function main(args = process.argv.slice(2)) {
     "num-images": { type: "string", default: "1" },
     "aspect-ratio": { type: "string" },
     "output-format": { type: "string", default: "png" },
+    background: { type: "string" },
     quality: { type: "string" },
     "image-size": { type: "string" },
     "image-urls": { type: "string", multiple: true },
@@ -173,6 +243,9 @@ export async function main(args = process.argv.slice(2)) {
   --image-size <preset|WxH>  Explicit size; overrides --aspect-ratio
   --quality <level>         ${IMAGE_QUALITIES.join(", ")} (default: high)
   --output-format <fmt>     png, jpeg, webp (default: png)
+  --background <mode>       ${IMAGE_BACKGROUNDS.join(", ")} (omitted unless passed)
+                            transparent requires --output-format png or webp; the
+                            JSON result then reports hasAlpha for what actually arrived
   --image-urls <source>     Reference URL, data URI, or local path (repeatable, up to 16)
   --style <sketch|photo>    sketch appends line-art direction; defaults quality to low
   --output-dir <path>       Output directory (default: .)
@@ -193,7 +266,7 @@ JSON stdout reports the actual model and saved file paths; progress goes to stde
     apiKey: loadEnvKeys().OPENROUTER_API_KEY,
     prompt, model: values.model, numImages: Number(values["num-images"]),
     aspectRatio: values["aspect-ratio"], imageSize: values["image-size"],
-    quality: values.quality ?? (sketch ? "low" : "high"), outputFormat: values["output-format"],
+    quality: values.quality ?? (sketch ? "low" : "high"), outputFormat: values["output-format"], background: values.background,
     imageUrls: values["image-urls"] ?? [], maskUrl: values["mask-url"],
     outputDir: values["output-dir"], filenamePrefix: values["filename-prefix"],
   });

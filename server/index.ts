@@ -830,7 +830,7 @@ export async function startServer(options: ServerOptions) {
     // their manifest and get filtered out below. The filter is the source
     // of truth; the omission-from-this-list pattern is fragile (forget to
     // add a hidden mode → it leaks).
-    const builtinNames = ["webcraft", "kami", "slide", "doc", "draw", "diagram", "illustrate", "remotion", "gridboard", "clipcraft", "cosmos", "wordtaste", "bansho", "eli5", "plotwise"];
+    const builtinNames = ["webcraft", "kami", "slide", "doc", "draw", "diagram", "illustrate", "remotion", "gridboard", "clipcraft", "cosmos", "wordtaste", "bansho", "eli5", "plotwise", "sprite"];
     const builtins = builtinNames
       .map((name) => {
         const manifestPath = join(projectRoot, "modes", name, "manifest.ts");
@@ -852,7 +852,9 @@ export async function startServer(options: ServerOptions) {
           version: "builtin",
           type: "builtin" as const,
           hidden: parsed.hidden === true,
-          ...((name === "slide" || name === "illustrate" || name === "kami") ? { hasInitParams: true } : {}),
+          // Read out of the manifest, never a list of names here: a mode that
+          // gains launch-time params says so in its own `init.params`.
+          ...(parsed.hasInitParams ? { hasInitParams: true } : {}),
           ...(showcase ? { showcase } : {}),
           ...(parsed.inspiredBy ? { inspiredBy: parsed.inspiredBy } : {}),
         };

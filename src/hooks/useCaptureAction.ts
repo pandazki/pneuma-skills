@@ -36,12 +36,25 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
  * vocabulary; each entry was added by the mode that coined it (`slide` by
  * slide, `nodeId` by diagram, `section`/`step` by bansho — where a step is
  * a MOMENT in a lecture, so reaching it is always a navigation; `audience`
- * by eli5, where each rung of the ladder is its own page). A mode
+ * by eli5, where each rung of the ladder is its own page; `motion`/`ref` by
+ * sprite, where a character's motion and its identity references are
+ * separate things to put on the stage — sprite's `frame` stays fine, since
+ * seeking inside the motion already on stage is an in-place move). A mode
  * whose coarse key is missing here does not fail loudly: `capture` would
  * silently screenshot whatever is on screen, which is why new coarse keys
  * belong in this list.
  */
-const COARSE_ADDRESS_KEYS = ["page", "file", "slide", "contentSet", "nodeId", "elementId", "image", "section", "step", "audience"];
+const COARSE_ADDRESS_KEYS = ["page", "file", "slide", "contentSet", "nodeId", "elementId", "image", "section", "step", "audience", "motion", "ref"];
+
+/**
+ * Whether an address names something outside the current view, so `capture`
+ * must navigate before it shoots. Exported for the test that pins the
+ * registry above — the silent failure mode (a plausible screenshot of the
+ * wrong object) is exactly the kind that needs a test, not a code read.
+ */
+export function isCoarseAddress(address: ViewerAddress | undefined): address is ViewerAddress {
+  return !!address && COARSE_ADDRESS_KEYS.some((k) => k in address);
+}
 
 /** Extract a CSS-selector-shaped fine handle from a mode address, if any. */
 function fineSelector(address: ViewerAddress | undefined): string | undefined {
@@ -89,7 +102,7 @@ export function useCaptureAction(
             : undefined;
 
       // Coarse part → drive the viewer there first, then shoot.
-      if (address && COARSE_ADDRESS_KEYS.some((k) => k in address)) {
+      if (isCoarseAddress(address)) {
         setNavigateRequest({ label: "capture", address });
         await sleep(1100); // React re-render + iframe/content reload + settle
         if (cancelled) return;

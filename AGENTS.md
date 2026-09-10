@@ -12,7 +12,7 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. Agents e
 
 **Version:** 3.46.4
 **Runtime:** Bun >= 1.3.14 (required, not Node.js)
-**Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `cosmos`, `wordtaste`, `bansho`, `eli5`, `plotwise`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`, `project-tidy`
+**Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `cosmos`, `wordtaste`, `bansho`, `eli5`, `plotwise`, `sprite`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`, `project-tidy`
 
 > Modes can set `hidden: true` to disappear from user-pickable lists (launcher grids, ProjectPanel mode-tile picker). Their sessions are also stamped `internal: true` by `scanProjectSessions` and filtered out of user-facing session lists (project panel, project cards, quick-resume). Internal modes (`evolve`, `project-evolve`, `project-onboard`, `project-tidy`) are hidden — triggered by specific UI affordances or programmatically, never by a "what mode to start?" choice.
 
@@ -224,7 +224,7 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 1. **Resolve** — 把 specifier(builtin / local / github / url)映射到含 `manifest.ts` 的磁盘路径(`core/mode-resolver.ts`)
 2. **Load manifest** — `loadModeManifest()` → ModeManifest
 3. **Session** — load 或 create `<sessionDir>/session.json`;quick session `sessionDir = workspace`,project session `sessionDir = <project>/.pneuma/sessions/<id>/`
-4. **Skill install** — 把 `modes/<mode>/skill/` 复制到 backend-appropriate 目录,应用 `{{key}}` / `{{viewerCapabilities}}` 模板,拼装 marker blocks 写到指令文件
+4. **Skill install** — 把 `modes/<mode>/skill/` 复制到 backend-appropriate 目录,应用 `{{key}}` / `{{#key}}…{{/key}}` 模板,拼装 marker blocks 写到指令文件
 5. **Server start** — Hono HTTP + WebSocket + backend transport bridge
 6. **Backend selection** — startup-only、workspace-locked
 7. **Agent launch** — stdio per backend
@@ -331,7 +331,7 @@ Skills 复制到 backend-appropriate 目录。每个 backend 的 `manifest.ts` �
 
 **Session-scoped workflow scripts**:同一条缝往上一层——`BackendModule` 另有可选的 `workflowsDir`(Claude Code = `.claude/workflows`,Codex / Kimi 留空)。Installer 发现 `<modeSourceDir>/workflows/*.js` 就复制到 `<installTarget>/<workflowsDir>/`,由 Claude Code 的 `Workflow` 工具按名调用。**来源是发现而非声明**(mode 不必在 manifest 里列),**gate 在 `workflowsDir` 字段**——server 端零 mode 知识、零 backend 条件判断。Workflow 与 slash command 的分工:command 是给用户的入口,workflow 是**强制一段工作顺序**(fan out → 评判 → 产出 → 批评),用在"prose 只能请求、脚本才能强制"的地方。先例是 `modes/bansho/workflows/plan-lecture.js`(讲稿动笔前先出设计)。铁律:**策略本身必须同时写在 mode 的 SKILL.md 里**——没有 workflow runner 的 backend 只剩那份散文,策略只活在脚本里就等于没给它们。
 
-模板变量 `{{key}}` / `{{viewerCapabilities}}` 替换后,指令文件由一组**命名 marker block** 拼装(`<!-- pneuma:start/end -->` 主体 + `<!-- pneuma:viewer-api:* -->` + `<!-- pneuma:preferences:* -->` + `<!-- pneuma:project:* -->`(项目 only)+ `<!-- pneuma:project-atlas:* -->`(项目 only,pointer 而非 inline)+ `<!-- pneuma:handoff:* -->`(项目 only)+ `<!-- pneuma:evolved:* -->`(Evolution 写入)+ `<!-- pneuma:resumed:* -->`(replay 续档))。Mode 版本写到 `skill-version.json`,resume 时与 manifest 比对,不同且未 dismiss 即 inline 提示 "Skill update: X → Y"。
+模板变量替换后(`applyTemplateParams` 只做两件事:`{{key}}` 填入 init / derived param 的值,`{{#key}}…{{/key}}` 按该值是否非空保留或删掉整段;没有反向段),指令文件由一组**命名 marker block** 拼装(`<!-- pneuma:start/end -->` 主体 + `<!-- pneuma:viewer-api:* -->` + `<!-- pneuma:preferences:* -->` + `<!-- pneuma:project:* -->`(项目 only)+ `<!-- pneuma:project-atlas:* -->`(项目 only,pointer 而非 inline)+ `<!-- pneuma:handoff:* -->`(项目 only)+ `<!-- pneuma:evolved:* -->`(Evolution 写入)+ `<!-- pneuma:resumed:* -->`(replay 续档))。Mode 版本写到 `skill-version.json`,resume 时与 manifest 比对,不同且未 dismiss 即 inline 提示 "Skill update: X → Y"。
 
 ## Project Lifecycle (3.0)
 

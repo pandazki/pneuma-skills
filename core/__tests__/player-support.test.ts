@@ -28,6 +28,7 @@ describe("WEB_PLAYER_SUPPORTED_MODES", () => {
       "cosmos",
       "bansho",
       "wordtaste",
+      "sprite",
     ]) {
       expect(WEB_PLAYER_SUPPORTED_MODES).toContain(mode);
     }
@@ -54,6 +55,7 @@ describe("isModeWebPlayable", () => {
   test("answers for listed and unlisted modes", () => {
     expect(isModeWebPlayable("bansho")).toBe(true);
     expect(isModeWebPlayable("wordtaste")).toBe(true);
+    expect(isModeWebPlayable("sprite")).toBe(true);
     expect(isModeWebPlayable("clipcraft")).toBe(false);
     expect(isModeWebPlayable("gridboard")).toBe(false);
   });
@@ -72,6 +74,9 @@ describe("isPackagePlayable", () => {
     // player build that CAN render it must not bounce it to the fallback.
     expect(isPackagePlayable("bansho", false)).toBe(true);
     expect(isPackagePlayable("wordtaste", false)).toBe(true);
+    // Every sprite package exported before this entry landed — including the
+    // one `scripts/smoke-sprite.ts` builds — carries supported: false.
+    expect(isPackagePlayable("sprite", false)).toBe(true);
   });
 
   test("a positive stamp is always trusted", () => {

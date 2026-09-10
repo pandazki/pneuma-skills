@@ -29,9 +29,16 @@ export interface ViewerFileContent {
  * each mode owns the keys and the granularity of its address vocabulary.
  *
  * Convention (documented per mode in its SKILL.md, not enforced here): an
- * address pairs a coarse "where" — `page` / `slide` / `file` / `contentSet` —
- * with an optional fine "within" — `anchor` / `selector` / `nodeId` /
+ * address pairs a coarse "where" — `page` / `slide` / `file` / `contentSet` /
+ * `nodeId` … — with an optional fine "within" — `anchor` / `selector` /
  * `lineRange`. A mode that needs only the coarse half simply omits the rest.
+ * Coarse vs fine is a registered fact, not a naming style: the keys that make
+ * `capture` navigate before it shoots are listed in
+ * `src/hooks/useCaptureAction.ts::COARSE_ADDRESS_KEYS`, `nodeId` among them —
+ * a diagram node is somewhere to go, not a region of the picture already on
+ * screen. A mode's new coarse key that is missing from that list fails
+ * silently, so the list is the one place to change when this sentence looks
+ * out of date.
  *
  * One noun, every verb: a `ViewerLocator` points the user at an address, the
  * `capture` action screenshots one, navigation moves the viewer to one, and a

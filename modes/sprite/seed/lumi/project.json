@@ -1,0 +1,1509 @@
+{
+  "$schema": "pneuma-craft/project/v1",
+  "title": "Lumi",
+  "composition": {
+    "settings": {
+      "width": 256,
+      "height": 256,
+      "fps": 8,
+      "aspectRatio": "1:1"
+    },
+    "tracks": [],
+    "transitions": []
+  },
+  "assets": [
+    {
+      "id": "ref-turnaround",
+      "type": "image",
+      "uri": "refs/turnaround.png",
+      "name": "Turnaround",
+      "metadata": {
+        "width": 1024,
+        "height": 1024
+      },
+      "createdAt": 1788955204092,
+      "status": "ready",
+      "tags": [
+        "ref"
+      ]
+    },
+    {
+      "id": "ref-portrait",
+      "type": "image",
+      "uri": "refs/portrait.png",
+      "name": "Portrait",
+      "metadata": {
+        "width": 1024,
+        "height": 1024
+      },
+      "createdAt": 1788955204204,
+      "status": "ready",
+      "tags": [
+        "ref"
+      ]
+    },
+    {
+      "id": "idle-sheet-raw",
+      "type": "image",
+      "uri": "motions/idle/sheet-raw.png",
+      "name": "idle sheet (raw)",
+      "metadata": {
+        "width": 1024,
+        "height": 1024
+      },
+      "createdAt": 1788955215819,
+      "status": "ready"
+    },
+    {
+      "id": "attack-sheet-raw",
+      "type": "image",
+      "uri": "motions/attack/sheet-raw.png",
+      "name": "attack sheet (raw)",
+      "metadata": {
+        "width": 1024,
+        "height": 1024
+      },
+      "createdAt": 1788955215897,
+      "status": "ready"
+    },
+    {
+      "id": "idle-sheet-alpha",
+      "type": "image",
+      "uri": "motions/idle/sheet-alpha.png",
+      "name": "idle sheet (alpha)",
+      "metadata": {
+        "width": 1024,
+        "height": 1024
+      },
+      "createdAt": 1788966225490,
+      "status": "ready"
+    },
+    {
+      "id": "idle-frame-00",
+      "type": "image",
+      "uri": "motions/idle/frames/00.png",
+      "name": "idle frame 00",
+      "metadata": {
+        "width": 186,
+        "height": 252
+      },
+      "createdAt": 1788966225490,
+      "status": "ready"
+    },
+    {
+      "id": "idle-frame-01",
+      "type": "image",
+      "uri": "motions/idle/frames/01.png",
+      "name": "idle frame 01",
+      "metadata": {
+        "width": 186,
+        "height": 252
+      },
+      "createdAt": 1788966225490,
+      "status": "ready"
+    },
+    {
+      "id": "idle-frame-02",
+      "type": "image",
+      "uri": "motions/idle/frames/02.png",
+      "name": "idle frame 02",
+      "metadata": {
+        "width": 186,
+        "height": 252
+      },
+      "createdAt": 1788966225490,
+      "status": "ready"
+    },
+    {
+      "id": "idle-frame-03",
+      "type": "image",
+      "uri": "motions/idle/frames/03.png",
+      "name": "idle frame 03",
+      "metadata": {
+        "width": 186,
+        "height": 252
+      },
+      "createdAt": 1788966225490,
+      "status": "ready"
+    },
+    {
+      "id": "idle-frame-04",
+      "type": "image",
+      "uri": "motions/idle/frames/04.png",
+      "name": "idle frame 04",
+      "metadata": {
+        "width": 186,
+        "height": 252
+      },
+      "createdAt": 1788966225490,
+      "status": "ready"
+    },
+    {
+      "id": "idle-frame-05",
+      "type": "image",
+      "uri": "motions/idle/frames/05.png",
+      "name": "idle frame 05",
+      "metadata": {
+        "width": 186,
+        "height": 252
+      },
+      "createdAt": 1788966225490,
+      "status": "ready"
+    },
+    {
+      "id": "idle-frame-06",
+      "type": "image",
+      "uri": "motions/idle/frames/06.png",
+      "name": "idle frame 06",
+      "metadata": {
+        "width": 186,
+        "height": 252
+      },
+      "createdAt": 1788966225490,
+      "status": "ready"
+    },
+    {
+      "id": "idle-frame-07",
+      "type": "image",
+      "uri": "motions/idle/frames/07.png",
+      "name": "idle frame 07",
+      "metadata": {
+        "width": 186,
+        "height": 252
+      },
+      "createdAt": 1788966225490,
+      "status": "ready"
+    },
+    {
+      "id": "idle-frame-08",
+      "type": "image",
+      "uri": "motions/idle/frames/08.png",
+      "name": "idle frame 08",
+      "metadata": {
+        "width": 186,
+        "height": 252
+      },
+      "createdAt": 1788966225490,
+      "status": "ready"
+    },
+    {
+      "id": "idle-frame-09",
+      "type": "image",
+      "uri": "motions/idle/frames/09.png",
+      "name": "idle frame 09",
+      "metadata": {
+        "width": 186,
+        "height": 252
+      },
+      "createdAt": 1788966225490,
+      "status": "ready"
+    },
+    {
+      "id": "idle-frame-10",
+      "type": "image",
+      "uri": "motions/idle/frames/10.png",
+      "name": "idle frame 10",
+      "metadata": {
+        "width": 186,
+        "height": 252
+      },
+      "createdAt": 1788966225490,
+      "status": "ready"
+    },
+    {
+      "id": "idle-frame-11",
+      "type": "image",
+      "uri": "motions/idle/frames/11.png",
+      "name": "idle frame 11",
+      "metadata": {
+        "width": 186,
+        "height": 252
+      },
+      "createdAt": 1788966225490,
+      "status": "ready"
+    },
+    {
+      "id": "idle-frame-12",
+      "type": "image",
+      "uri": "motions/idle/frames/12.png",
+      "name": "idle frame 12",
+      "metadata": {
+        "width": 186,
+        "height": 252
+      },
+      "createdAt": 1788966225490,
+      "status": "ready"
+    },
+    {
+      "id": "idle-frame-13",
+      "type": "image",
+      "uri": "motions/idle/frames/13.png",
+      "name": "idle frame 13",
+      "metadata": {
+        "width": 186,
+        "height": 252
+      },
+      "createdAt": 1788966225490,
+      "status": "ready"
+    },
+    {
+      "id": "idle-frame-14",
+      "type": "image",
+      "uri": "motions/idle/frames/14.png",
+      "name": "idle frame 14",
+      "metadata": {
+        "width": 186,
+        "height": 252
+      },
+      "createdAt": 1788966225490,
+      "status": "ready"
+    },
+    {
+      "id": "idle-frame-15",
+      "type": "image",
+      "uri": "motions/idle/frames/15.png",
+      "name": "idle frame 15",
+      "metadata": {
+        "width": 186,
+        "height": 252
+      },
+      "createdAt": 1788966225490,
+      "status": "ready"
+    },
+    {
+      "id": "idle-sheet",
+      "type": "image",
+      "uri": "motions/idle/sheet.png",
+      "name": "idle atlas image",
+      "metadata": {
+        "width": 744,
+        "height": 1008
+      },
+      "createdAt": 1788966225490,
+      "status": "ready"
+    },
+    {
+      "id": "idle-atlas",
+      "type": "text",
+      "uri": "motions/idle/atlas.json",
+      "name": "idle atlas",
+      "metadata": {},
+      "createdAt": 1788966225490,
+      "status": "ready"
+    },
+    {
+      "id": "idle-gif",
+      "type": "image",
+      "uri": "motions/idle/preview.gif",
+      "name": "idle preview",
+      "metadata": {
+        "width": 186,
+        "height": 252,
+        "fps": 8
+      },
+      "createdAt": 1788966225490,
+      "status": "ready"
+    },
+    {
+      "id": "idle-webp",
+      "type": "image",
+      "uri": "motions/idle/preview.webp",
+      "name": "idle preview (webp)",
+      "metadata": {
+        "width": 186,
+        "height": 252,
+        "fps": 8
+      },
+      "createdAt": 1788966225490,
+      "status": "ready"
+    },
+    {
+      "id": "attack-sheet-alpha",
+      "type": "image",
+      "uri": "motions/attack/sheet-alpha.png",
+      "name": "attack sheet (alpha)",
+      "metadata": {
+        "width": 1024,
+        "height": 1024
+      },
+      "createdAt": 1788966226221,
+      "status": "ready"
+    },
+    {
+      "id": "attack-frame-00",
+      "type": "image",
+      "uri": "motions/attack/frames/00.png",
+      "name": "attack frame 00",
+      "metadata": {
+        "width": 272,
+        "height": 262
+      },
+      "createdAt": 1788966226221,
+      "status": "ready"
+    },
+    {
+      "id": "attack-frame-01",
+      "type": "image",
+      "uri": "motions/attack/frames/01.png",
+      "name": "attack frame 01",
+      "metadata": {
+        "width": 272,
+        "height": 262
+      },
+      "createdAt": 1788966226221,
+      "status": "ready"
+    },
+    {
+      "id": "attack-frame-02",
+      "type": "image",
+      "uri": "motions/attack/frames/02.png",
+      "name": "attack frame 02",
+      "metadata": {
+        "width": 272,
+        "height": 262
+      },
+      "createdAt": 1788966226221,
+      "status": "ready"
+    },
+    {
+      "id": "attack-frame-03",
+      "type": "image",
+      "uri": "motions/attack/frames/03.png",
+      "name": "attack frame 03",
+      "metadata": {
+        "width": 272,
+        "height": 262
+      },
+      "createdAt": 1788966226221,
+      "status": "ready"
+    },
+    {
+      "id": "attack-frame-04",
+      "type": "image",
+      "uri": "motions/attack/frames/04.png",
+      "name": "attack frame 04",
+      "metadata": {
+        "width": 272,
+        "height": 262
+      },
+      "createdAt": 1788966226221,
+      "status": "ready"
+    },
+    {
+      "id": "attack-frame-05",
+      "type": "image",
+      "uri": "motions/attack/frames/05.png",
+      "name": "attack frame 05",
+      "metadata": {
+        "width": 272,
+        "height": 262
+      },
+      "createdAt": 1788966226221,
+      "status": "ready"
+    },
+    {
+      "id": "attack-frame-06",
+      "type": "image",
+      "uri": "motions/attack/frames/06.png",
+      "name": "attack frame 06",
+      "metadata": {
+        "width": 272,
+        "height": 262
+      },
+      "createdAt": 1788966226221,
+      "status": "ready"
+    },
+    {
+      "id": "attack-frame-07",
+      "type": "image",
+      "uri": "motions/attack/frames/07.png",
+      "name": "attack frame 07",
+      "metadata": {
+        "width": 272,
+        "height": 262
+      },
+      "createdAt": 1788966226221,
+      "status": "ready"
+    },
+    {
+      "id": "attack-frame-08",
+      "type": "image",
+      "uri": "motions/attack/frames/08.png",
+      "name": "attack frame 08",
+      "metadata": {
+        "width": 272,
+        "height": 262
+      },
+      "createdAt": 1788966226221,
+      "status": "ready"
+    },
+    {
+      "id": "attack-frame-09",
+      "type": "image",
+      "uri": "motions/attack/frames/09.png",
+      "name": "attack frame 09",
+      "metadata": {
+        "width": 272,
+        "height": 262
+      },
+      "createdAt": 1788966226221,
+      "status": "ready"
+    },
+    {
+      "id": "attack-frame-10",
+      "type": "image",
+      "uri": "motions/attack/frames/10.png",
+      "name": "attack frame 10",
+      "metadata": {
+        "width": 272,
+        "height": 262
+      },
+      "createdAt": 1788966226221,
+      "status": "ready"
+    },
+    {
+      "id": "attack-frame-11",
+      "type": "image",
+      "uri": "motions/attack/frames/11.png",
+      "name": "attack frame 11",
+      "metadata": {
+        "width": 272,
+        "height": 262
+      },
+      "createdAt": 1788966226221,
+      "status": "ready"
+    },
+    {
+      "id": "attack-frame-12",
+      "type": "image",
+      "uri": "motions/attack/frames/12.png",
+      "name": "attack frame 12",
+      "metadata": {
+        "width": 272,
+        "height": 262
+      },
+      "createdAt": 1788966226221,
+      "status": "ready"
+    },
+    {
+      "id": "attack-frame-13",
+      "type": "image",
+      "uri": "motions/attack/frames/13.png",
+      "name": "attack frame 13",
+      "metadata": {
+        "width": 272,
+        "height": 262
+      },
+      "createdAt": 1788966226221,
+      "status": "ready"
+    },
+    {
+      "id": "attack-frame-14",
+      "type": "image",
+      "uri": "motions/attack/frames/14.png",
+      "name": "attack frame 14",
+      "metadata": {
+        "width": 272,
+        "height": 262
+      },
+      "createdAt": 1788966226221,
+      "status": "ready"
+    },
+    {
+      "id": "attack-frame-15",
+      "type": "image",
+      "uri": "motions/attack/frames/15.png",
+      "name": "attack frame 15",
+      "metadata": {
+        "width": 272,
+        "height": 262
+      },
+      "createdAt": 1788966226221,
+      "status": "ready"
+    },
+    {
+      "id": "attack-sheet",
+      "type": "image",
+      "uri": "motions/attack/sheet.png",
+      "name": "attack atlas image",
+      "metadata": {
+        "width": 1088,
+        "height": 1048
+      },
+      "createdAt": 1788966226221,
+      "status": "ready"
+    },
+    {
+      "id": "attack-atlas",
+      "type": "text",
+      "uri": "motions/attack/atlas.json",
+      "name": "attack atlas",
+      "metadata": {},
+      "createdAt": 1788966226221,
+      "status": "ready"
+    },
+    {
+      "id": "attack-gif",
+      "type": "image",
+      "uri": "motions/attack/preview.gif",
+      "name": "attack preview",
+      "metadata": {
+        "width": 272,
+        "height": 262,
+        "fps": 10
+      },
+      "createdAt": 1788966226221,
+      "status": "ready"
+    },
+    {
+      "id": "attack-webp",
+      "type": "image",
+      "uri": "motions/attack/preview.webp",
+      "name": "attack preview (webp)",
+      "metadata": {
+        "width": 272,
+        "height": 262,
+        "fps": 10
+      },
+      "createdAt": 1788966226221,
+      "status": "ready"
+    },
+    {
+      "id": "attack-video-1",
+      "type": "video",
+      "uri": "motions/attack/video-seedance-1.mp4",
+      "name": "attack video 1 (seedance-2.5)",
+      "metadata": {
+        "duration": 4.042,
+        "width": 588,
+        "height": 716,
+        "fps": 24
+      },
+      "createdAt": 1788955126460,
+      "status": "ready"
+    }
+  ],
+  "provenance": [
+    {
+      "toAssetId": "ref-turnaround",
+      "fromAssetId": null,
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "timestamp": 1788955204092,
+        "params": {
+          "model": "openai/gpt-image-2.5-sunburst",
+          "prompt": "Clean anime-chibi line art, flat colors, thick uniform outline, no shading. A front view, a side view and a back view of the same character standing neutral, evenly spaced in one row, identical height and identical camera distance in all three. The character is a chibi lantern courier: short bob hair, an oversized hooded cloak with the hood down, a worn satchel on a strap across the body, short boots, and a small floating paper lantern hovering at shoulder height beside the character. The side view faces right. A flat solid pure white background, no gradient, no ground shadow, no drop shadow, no text, no labels, no numbers."
+        }
+      }
+    },
+    {
+      "toAssetId": "ref-portrait",
+      "fromAssetId": "ref-turnaround",
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "timestamp": 1788955204204,
+        "params": {
+          "model": "openai/gpt-image-2.5-flare",
+          "prompt": "Clean anime-chibi line art, flat colors, thick uniform outline, no shading. A head and shoulders portrait of the character in the attached reference sheet, matching it exactly: the same pale ash-blond bob hair with the small red clover hairpin, the same cream hooded cloak with dark red trim and diamond pattern, the same brown satchel strap across the chest. Three-quarter view facing right, calm friendly expression, the small floating paper lantern hovering beside the head. A flat solid pure white background, no gradient, no ground shadow, no drop shadow, no text, no labels, no numbers."
+        }
+      }
+    },
+    {
+      "toAssetId": "idle-sheet-raw",
+      "fromAssetId": "ref-turnaround",
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "timestamp": 1788955215819,
+        "params": {
+          "model": "openai/gpt-image-2.5-flare",
+          "prompt": "Clean anime-chibi line art, flat colors, thick uniform outline, no shading. A single image laid out as a strict 4x4 grid of 16 equal cells, read left to right, top to bottom. The same character in every cell, matching the attached references exactly: pale ash-blond bob hair with a small red clover hairpin, an oversized cream hooded cloak with dark red trim, a brown satchel on a strap across the body, brown boots, and a small floating paper lantern beside the character. Facing right, three-quarter view, full body, identical height and identical distance from the camera in every cell - the character must not grow or shrink across the grid, and the whole character including the lantern stays inside its own cell with a clear margin. A 16-frame idle breathing loop: cells 1-4 the chest rises and the cloak settles, cells 5-8 the rise peaks and the lantern drifts up, cells 9-12 the chest falls and the lantern drifts down, cells 13-16 return exactly to the cell-1 pose so the loop closes seamlessly. The feet stay planted on the same line in every cell. A flat solid pure white background filling every cell, no gradient. No grid lines, no cell borders, no numbers, no text, no drop shadow, no ground shadow, no motion blur, nothing crossing between cells.",
+          "background": "opaque",
+          "inputs": [
+            "ref-turnaround",
+            "ref-portrait"
+          ]
+        }
+      }
+    },
+    {
+      "toAssetId": "attack-sheet-raw",
+      "fromAssetId": "ref-turnaround",
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "timestamp": 1788955215897,
+        "params": {
+          "model": "openai/gpt-image-2.5-flare",
+          "prompt": "Clean anime-chibi line art, flat colors, thick uniform outline, no shading. A single image laid out as a strict 4x4 grid of 16 equal cells, read left to right, top to bottom. The same character in every cell, matching the attached references exactly: pale ash-blond bob hair with a small red clover hairpin, an oversized cream hooded cloak with dark red trim, a brown satchel on a strap across the body, brown boots, and a small paper lantern held on a short cord. Facing right, three-quarter view, full body, identical height and identical distance from the camera in every cell - the character must not grow or shrink across the grid, and the whole character including the lantern stays inside its own cell with a clear margin. A 16-frame lantern swing attack: cells 1-4 wind up, the weight shifts back and the lantern swings behind the shoulder; cells 5-8 the step forward begins and the lantern arcs up overhead; cells 9-12 the swing passes through the strike, the lantern sweeping down and forward past the front foot; cells 13-16 recover to a ready stance facing right. The feet stay on the same ground line in every cell. A flat solid pure white background filling every cell, no gradient. No grid lines, no cell borders, no numbers, no text, no drop shadow, no ground shadow, no motion blur, no speed lines, no impact flash, no glow, nothing crossing between cells.",
+          "background": "opaque",
+          "inputs": [
+            "ref-turnaround",
+            "ref-portrait"
+          ]
+        }
+      }
+    },
+    {
+      "toAssetId": "idle-sheet-alpha",
+      "fromAssetId": "idle-sheet-raw",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966225490,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "key"
+        }
+      }
+    },
+    {
+      "toAssetId": "idle-frame-00",
+      "fromAssetId": "idle-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966225490,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 0
+        }
+      }
+    },
+    {
+      "toAssetId": "idle-frame-01",
+      "fromAssetId": "idle-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966225490,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 1
+        }
+      }
+    },
+    {
+      "toAssetId": "idle-frame-02",
+      "fromAssetId": "idle-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966225490,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 2
+        }
+      }
+    },
+    {
+      "toAssetId": "idle-frame-03",
+      "fromAssetId": "idle-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966225490,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 3
+        }
+      }
+    },
+    {
+      "toAssetId": "idle-frame-04",
+      "fromAssetId": "idle-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966225490,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 4
+        }
+      }
+    },
+    {
+      "toAssetId": "idle-frame-05",
+      "fromAssetId": "idle-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966225490,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 5
+        }
+      }
+    },
+    {
+      "toAssetId": "idle-frame-06",
+      "fromAssetId": "idle-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966225490,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 6
+        }
+      }
+    },
+    {
+      "toAssetId": "idle-frame-07",
+      "fromAssetId": "idle-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966225490,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 7
+        }
+      }
+    },
+    {
+      "toAssetId": "idle-frame-08",
+      "fromAssetId": "idle-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966225490,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 8
+        }
+      }
+    },
+    {
+      "toAssetId": "idle-frame-09",
+      "fromAssetId": "idle-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966225490,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 9
+        }
+      }
+    },
+    {
+      "toAssetId": "idle-frame-10",
+      "fromAssetId": "idle-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966225490,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 10
+        }
+      }
+    },
+    {
+      "toAssetId": "idle-frame-11",
+      "fromAssetId": "idle-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966225490,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 11
+        }
+      }
+    },
+    {
+      "toAssetId": "idle-frame-12",
+      "fromAssetId": "idle-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966225490,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 12
+        }
+      }
+    },
+    {
+      "toAssetId": "idle-frame-13",
+      "fromAssetId": "idle-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966225490,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 13
+        }
+      }
+    },
+    {
+      "toAssetId": "idle-frame-14",
+      "fromAssetId": "idle-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966225490,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 14
+        }
+      }
+    },
+    {
+      "toAssetId": "idle-frame-15",
+      "fromAssetId": "idle-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966225490,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 15
+        }
+      }
+    },
+    {
+      "toAssetId": "idle-sheet",
+      "fromAssetId": "idle-frame-00",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966225490,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "pack",
+          "inputs": [
+            "idle-frame-00",
+            "idle-frame-01",
+            "idle-frame-02",
+            "idle-frame-03",
+            "idle-frame-04",
+            "idle-frame-05",
+            "idle-frame-06",
+            "idle-frame-07",
+            "idle-frame-08",
+            "idle-frame-09",
+            "idle-frame-10",
+            "idle-frame-11",
+            "idle-frame-12",
+            "idle-frame-13",
+            "idle-frame-14",
+            "idle-frame-15"
+          ]
+        }
+      }
+    },
+    {
+      "toAssetId": "idle-atlas",
+      "fromAssetId": "idle-sheet",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966225490,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "pack"
+        }
+      }
+    },
+    {
+      "toAssetId": "idle-gif",
+      "fromAssetId": "idle-frame-00",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966225490,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "gif",
+          "inputs": [
+            "idle-frame-00",
+            "idle-frame-01",
+            "idle-frame-02",
+            "idle-frame-03",
+            "idle-frame-04",
+            "idle-frame-05",
+            "idle-frame-06",
+            "idle-frame-07",
+            "idle-frame-08",
+            "idle-frame-09",
+            "idle-frame-10",
+            "idle-frame-11",
+            "idle-frame-12",
+            "idle-frame-13",
+            "idle-frame-14",
+            "idle-frame-15"
+          ]
+        }
+      }
+    },
+    {
+      "toAssetId": "idle-webp",
+      "fromAssetId": "idle-frame-00",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966225490,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "gif",
+          "inputs": [
+            "idle-frame-00",
+            "idle-frame-01",
+            "idle-frame-02",
+            "idle-frame-03",
+            "idle-frame-04",
+            "idle-frame-05",
+            "idle-frame-06",
+            "idle-frame-07",
+            "idle-frame-08",
+            "idle-frame-09",
+            "idle-frame-10",
+            "idle-frame-11",
+            "idle-frame-12",
+            "idle-frame-13",
+            "idle-frame-14",
+            "idle-frame-15"
+          ]
+        }
+      }
+    },
+    {
+      "toAssetId": "attack-sheet-alpha",
+      "fromAssetId": "attack-sheet-raw",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966226221,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "key"
+        }
+      }
+    },
+    {
+      "toAssetId": "attack-frame-00",
+      "fromAssetId": "attack-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966226221,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 0
+        }
+      }
+    },
+    {
+      "toAssetId": "attack-frame-01",
+      "fromAssetId": "attack-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966226221,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 1
+        }
+      }
+    },
+    {
+      "toAssetId": "attack-frame-02",
+      "fromAssetId": "attack-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966226221,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 2
+        }
+      }
+    },
+    {
+      "toAssetId": "attack-frame-03",
+      "fromAssetId": "attack-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966226221,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 3
+        }
+      }
+    },
+    {
+      "toAssetId": "attack-frame-04",
+      "fromAssetId": "attack-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966226221,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 4
+        }
+      }
+    },
+    {
+      "toAssetId": "attack-frame-05",
+      "fromAssetId": "attack-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966226221,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 5
+        }
+      }
+    },
+    {
+      "toAssetId": "attack-frame-06",
+      "fromAssetId": "attack-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966226221,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 6
+        }
+      }
+    },
+    {
+      "toAssetId": "attack-frame-07",
+      "fromAssetId": "attack-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966226221,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 7
+        }
+      }
+    },
+    {
+      "toAssetId": "attack-frame-08",
+      "fromAssetId": "attack-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966226221,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 8
+        }
+      }
+    },
+    {
+      "toAssetId": "attack-frame-09",
+      "fromAssetId": "attack-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966226221,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 9
+        }
+      }
+    },
+    {
+      "toAssetId": "attack-frame-10",
+      "fromAssetId": "attack-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966226221,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 10
+        }
+      }
+    },
+    {
+      "toAssetId": "attack-frame-11",
+      "fromAssetId": "attack-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966226221,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 11
+        }
+      }
+    },
+    {
+      "toAssetId": "attack-frame-12",
+      "fromAssetId": "attack-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966226221,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 12
+        }
+      }
+    },
+    {
+      "toAssetId": "attack-frame-13",
+      "fromAssetId": "attack-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966226221,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 13
+        }
+      }
+    },
+    {
+      "toAssetId": "attack-frame-14",
+      "fromAssetId": "attack-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966226221,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 14
+        }
+      }
+    },
+    {
+      "toAssetId": "attack-frame-15",
+      "fromAssetId": "attack-sheet-alpha",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966226221,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "run",
+          "cell": 15
+        }
+      }
+    },
+    {
+      "toAssetId": "attack-sheet",
+      "fromAssetId": "attack-frame-00",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966226221,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "pack",
+          "inputs": [
+            "attack-frame-00",
+            "attack-frame-01",
+            "attack-frame-02",
+            "attack-frame-03",
+            "attack-frame-04",
+            "attack-frame-05",
+            "attack-frame-06",
+            "attack-frame-07",
+            "attack-frame-08",
+            "attack-frame-09",
+            "attack-frame-10",
+            "attack-frame-11",
+            "attack-frame-12",
+            "attack-frame-13",
+            "attack-frame-14",
+            "attack-frame-15"
+          ]
+        }
+      }
+    },
+    {
+      "toAssetId": "attack-atlas",
+      "fromAssetId": "attack-sheet",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966226221,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "pack"
+        }
+      }
+    },
+    {
+      "toAssetId": "attack-gif",
+      "fromAssetId": "attack-frame-00",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966226221,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "gif",
+          "inputs": [
+            "attack-frame-00",
+            "attack-frame-01",
+            "attack-frame-02",
+            "attack-frame-03",
+            "attack-frame-04",
+            "attack-frame-05",
+            "attack-frame-06",
+            "attack-frame-07",
+            "attack-frame-08",
+            "attack-frame-09",
+            "attack-frame-10",
+            "attack-frame-11",
+            "attack-frame-12",
+            "attack-frame-13",
+            "attack-frame-14",
+            "attack-frame-15"
+          ]
+        }
+      }
+    },
+    {
+      "toAssetId": "attack-webp",
+      "fromAssetId": "attack-frame-00",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1788966226221,
+        "params": {
+          "tool": "sprite-sheet.mjs",
+          "step": "gif",
+          "inputs": [
+            "attack-frame-00",
+            "attack-frame-01",
+            "attack-frame-02",
+            "attack-frame-03",
+            "attack-frame-04",
+            "attack-frame-05",
+            "attack-frame-06",
+            "attack-frame-07",
+            "attack-frame-08",
+            "attack-frame-09",
+            "attack-frame-10",
+            "attack-frame-11",
+            "attack-frame-12",
+            "attack-frame-13",
+            "attack-frame-14",
+            "attack-frame-15"
+          ]
+        }
+      }
+    },
+    {
+      "toAssetId": "attack-video-1",
+      "fromAssetId": "attack-frame-00",
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "timestamp": 1788955126460,
+        "params": {
+          "model": "seedance-2.5",
+          "mode": "first-last",
+          "prompt": "The chibi lantern courier swings her paper lantern through one continuous arc: she winds up, steps forward, sweeps the lantern down past her front foot, and recovers to a ready stance. Flat cel-shaded anime style, plain light neutral background, static camera, no text.",
+          "duration": 4,
+          "inputs": [
+            "attack-frame-00",
+            "attack-frame-15"
+          ]
+        }
+      }
+    }
+  ],
+  "sprite": {
+    "version": 1,
+    "character": {
+      "name": "Lumi",
+      "description": "A chibi lantern courier who runs night deliveries between paper-lit villages. Short bob hair under an oversized hooded cloak, a worn satchel across the body, short boots, and a small paper lantern that floats at the shoulder like a pet.",
+      "style": "Clean anime-chibi line art, flat colors, thick uniform outline, no shading.",
+      "cell": {
+        "width": 256,
+        "height": 256
+      },
+      "facing": "right"
+    },
+    "refs": [
+      {
+        "id": "turnaround",
+        "asset": "ref-turnaround",
+        "role": "turnaround",
+        "label": "Turnaround"
+      },
+      {
+        "id": "portrait",
+        "asset": "ref-portrait",
+        "role": "portrait",
+        "label": "Portrait"
+      }
+    ],
+    "motions": [
+      {
+        "id": "idle",
+        "label": "Idle",
+        "prompt": "Clean anime-chibi line art, flat colors, thick uniform outline, no shading. A single image laid out as a strict 4x4 grid of 16 equal cells, read left to right, top to bottom. The same character in every cell, matching the attached references exactly: pale ash-blond bob hair with a small red clover hairpin, an oversized cream hooded cloak with dark red trim, a brown satchel on a strap across the body, brown boots, and a small floating paper lantern beside the character. Facing right, three-quarter view, full body, identical height and identical distance from the camera in every cell - the character must not grow or shrink across the grid, and the whole character including the lantern stays inside its own cell with a clear margin. A 16-frame idle breathing loop: cells 1-4 the chest rises and the cloak settles, cells 5-8 the rise peaks and the lantern drifts up, cells 9-12 the chest falls and the lantern drifts down, cells 13-16 return exactly to the cell-1 pose so the loop closes seamlessly. The feet stay planted on the same line in every cell. A flat solid pure white background filling every cell, no gradient. No grid lines, no cell borders, no numbers, no text, no drop shadow, no ground shadow, no motion blur, nothing crossing between cells.",
+        "grid": {
+          "rows": 4,
+          "cols": 4
+        },
+        "fps": 8,
+        "loop": true,
+        "anchor": "bottom",
+        "status": "ready",
+        "sheetRaw": "idle-sheet-raw",
+        "sheetAlpha": "idle-sheet-alpha",
+        "sheet": "idle-sheet",
+        "atlas": "idle-atlas",
+        "frames": [
+          "idle-frame-00",
+          "idle-frame-01",
+          "idle-frame-02",
+          "idle-frame-03",
+          "idle-frame-04",
+          "idle-frame-05",
+          "idle-frame-06",
+          "idle-frame-07",
+          "idle-frame-08",
+          "idle-frame-09",
+          "idle-frame-10",
+          "idle-frame-11",
+          "idle-frame-12",
+          "idle-frame-13",
+          "idle-frame-14",
+          "idle-frame-15"
+        ],
+        "gif": "idle-gif",
+        "webp": "idle-webp",
+        "videos": [],
+        "inspect": {
+          "frameCount": 16,
+          "cell": {
+            "width": 186,
+            "height": 252
+          },
+          "anchorPoint": {
+            "x": 93,
+            "y": 244
+          },
+          "anchorDrift": {
+            "x": 0.306,
+            "y": 0
+          },
+          "bodyDrift": 0.199,
+          "maxJump": 0.5,
+          "scaleDrift": 0.0085,
+          "emptyFrames": [],
+          "warnings": []
+        }
+      },
+      {
+        "id": "attack",
+        "label": "Attack",
+        "prompt": "Clean anime-chibi line art, flat colors, thick uniform outline, no shading. A single image laid out as a strict 4x4 grid of 16 equal cells, read left to right, top to bottom. The same character in every cell, matching the attached references exactly: pale ash-blond bob hair with a small red clover hairpin, an oversized cream hooded cloak with dark red trim, a brown satchel on a strap across the body, brown boots, and a small paper lantern held on a short cord. Facing right, three-quarter view, full body, identical height and identical distance from the camera in every cell - the character must not grow or shrink across the grid, and the whole character including the lantern stays inside its own cell with a clear margin. A 16-frame lantern swing attack: cells 1-4 wind up, the weight shifts back and the lantern swings behind the shoulder; cells 5-8 the step forward begins and the lantern arcs up overhead; cells 9-12 the swing passes through the strike, the lantern sweeping down and forward past the front foot; cells 13-16 recover to a ready stance facing right. The feet stay on the same ground line in every cell. A flat solid pure white background filling every cell, no gradient. No grid lines, no cell borders, no numbers, no text, no drop shadow, no ground shadow, no motion blur, no speed lines, no impact flash, no glow, nothing crossing between cells.",
+        "grid": {
+          "rows": 4,
+          "cols": 4
+        },
+        "fps": 10,
+        "loop": false,
+        "anchor": "bottom",
+        "status": "ready",
+        "sheetRaw": "attack-sheet-raw",
+        "sheetAlpha": "attack-sheet-alpha",
+        "sheet": "attack-sheet",
+        "atlas": "attack-atlas",
+        "frames": [
+          "attack-frame-00",
+          "attack-frame-01",
+          "attack-frame-02",
+          "attack-frame-03",
+          "attack-frame-04",
+          "attack-frame-05",
+          "attack-frame-06",
+          "attack-frame-07",
+          "attack-frame-08",
+          "attack-frame-09",
+          "attack-frame-10",
+          "attack-frame-11",
+          "attack-frame-12",
+          "attack-frame-13",
+          "attack-frame-14",
+          "attack-frame-15"
+        ],
+        "gif": "attack-gif",
+        "webp": "attack-webp",
+        "videos": [
+          {
+            "id": "video-1",
+            "asset": "attack-video-1",
+            "model": "seedance-2.5",
+            "mode": "first-last",
+            "prompt": "The chibi lantern courier swings her paper lantern through one continuous arc: she winds up, steps forward, sweeps the lantern down past her front foot, and recovers to a ready stance. Flat cel-shaded anime style, plain light neutral background, static camera, no text.",
+            "status": "ready"
+          }
+        ],
+        "inspect": {
+          "frameCount": 16,
+          "cell": {
+            "width": 272,
+            "height": 262
+          },
+          "anchorPoint": {
+            "x": 136,
+            "y": 254
+          },
+          "anchorDrift": {
+            "x": 17.373,
+            "y": 0
+          },
+          "bodyDrift": 0.263,
+          "maxJump": 50,
+          "scaleDrift": 0.126,
+          "emptyFrames": [],
+          "warnings": []
+        }
+      }
+    ]
+  }
+}
