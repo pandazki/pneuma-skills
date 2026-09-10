@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.47.3] - 2026-09-10
+
+### Improved
+- **WordTaste slop cleanup.** Adds a lightweight pass for common model-shaped filler, unsupported attribution, decorative formatting, and portable generic sentences while preserving distinctive Chinese voice and making only the minimum effective edit.
+
 ## [3.47.2] - 2026-09-10
 
 ### Fixed

@@ -34,6 +34,20 @@ Use the internal rubric to inspect:
 - incompatible metaphors in one sentence;
 - a metaphor introduced as if the reader had already seen it.
 
+Also flag common model-shaped filler when it appears in Chinese form:
+
+- throat-clearing openers and faux-insight setups;
+- empty importance claims or trailing commentary that tells the reader what
+  to think;
+- unsupported group attributions such as "experts agree" or "studies show";
+- synonym cycling when one clear term would do;
+- decorative formatting, dramatic fragments, and fake-profound endings.
+
+Use the portability test: if a sentence could move unchanged to another
+subject, ask whether it carries a concrete fact, mechanism, consequence, or
+judgment. If it carries none, quote it as an issue. Do not flag a pattern when
+it is clearly part of the writer's voice or performs real argumentative work.
+
 Do not expose codes or taxonomy names to the user. The orchestrator translates
 findings into ordinary language.
 

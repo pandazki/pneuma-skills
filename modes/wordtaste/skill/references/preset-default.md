@@ -10,6 +10,23 @@ banning that feature moves in the wrong direction.
 
 ## Included
 
+### Remove common model-shaped filler before polishing
+
+Apply a light slop pass before stylistic refinement. Remove throat-clearing
+openers, faux-insight setups, empty importance claims, unsupported group
+attributions, synonym cycling, decorative formatting, and dramatic fragments
+when they add no meaning. State the concrete fact or action directly. This is
+a directional cleanup, not a ban on any phrase: keep a pattern when it carries
+the writer's humor, uncertainty, cadence, or argument.
+
+### Make the minimum effective edit
+
+Leave strong, specific sentences alone. The amount of rewriting should match
+the amount of actual slop, and an edit should remain recognizable as the same
+writer. A generic sentence that could be moved to another subject should be
+cut or replaced with a subject-specific fact, mechanism, consequence, or
+judgment (the portability test).
+
 ### Use far fewer semicolons
 
 The measured model output used roughly 4.9 semicolons per thousand Chinese
