@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.47.0] - 2026-09-10
+
+### Added
+- **Sprite mode.** Design a character once, then produce consistent motion sheets and reference frames from it. Every sheet is generated with the character's turnaround and portrait attached, keyed, sliced, aligned so the feet land on the same pixel, and packed into `sheet.png` plus a TexturePacker-style `atlas.json` that Phaser and PixiJS read as-is, with GIF and WebP previews. The viewer is a motion stage: frame playback at the motion's fps, a scrubbable frame strip, onion skin, an inspect panel with thresholds, and GIF / Video / Atlas tabs. Ships with the Lumi seed character and a five-image showcase.
+- **Two motion sources, the user's choice.** A motion can come from one drawn sheet (GPT Image 2.5, cheap and instant, best for idle and other micro motions) or from a short Seedance 2.5 clip shot on chroma green and sampled into frames (smoother in-betweens, about a dollar and five to seven minutes). The skill asks before spending; both paths end on the same frames and atlas.
+- **Video previews from the stage.** A "Render video preview" button lets the user pick Seedance 2.5 or MiniMax H3 Max and an image-to-video, first-to-last, or reference mode; clips land in the Video tab beside the GIF.
+- **Shared scripts.** `seedance-video.mjs` (Seedance 2.5 text, image, and reference endpoints on the fal queue), `remove-background.mjs` (BiRefNet matting), and a `--background` flag on the image generator.
+- **Hosted player support for sprite.** Shared sprite sessions play read-only on the online player, verified against the seed package.
+
+### Fixed
+- **Shared links no longer go blank after a pause.** The player's content service worker lost its checkout map when the browser recycled the worker after ~30 s idle, so any asset fetched later answered 404. The map now survives worker restarts.
+- **Non-interactive launches see globally stored API keys.** `--no-prompt` sessions backfill keys by parameter name as well as env-var name, matching what the launcher form already did.
+
+### Improved
+- **Manifest parsing tolerates comments with apostrophes.** The regex manifest reader no longer loses a localized field when a `//` comment inside it contains a quote; the launcher registry also derives `hasInitParams` from the manifest instead of a hardcoded mode list.
+- **Capture pre-navigates on `motion` and `ref` addresses**, so an agent can screenshot a specific animation frame.
+
 ## [3.46.4] - 2026-09-09
 
 ### Improved
