@@ -143,7 +143,7 @@ session.
 ### Step 2: run the generator
 
 ```bash
-node .claude/skills/pneuma-clipcraft/scripts/generate-video.mjs \
+node "<SKILL_DIR>/scripts/generate-video.mjs" \
   --prompt "close-up of a giant panda happily eating bamboo, warm natural light" \
   --duration 4 \
   --aspect-ratio 16:9 \
@@ -310,7 +310,7 @@ For a variant that preserves the look of the source, use the
 That routes through `bytedance/seedance-2.0/image-to-video`:
 
 ```bash
-node .claude/skills/pneuma-clipcraft/scripts/generate-video.mjs from-image \
+node "<SKILL_DIR>/scripts/generate-video.mjs" from-image \
   --prompt "Same panda from behind, emphasize a slower exaggerated head droop; shoulders sag visibly; keep camera + lighting identical" \
   --image-url assets/clips/panda-sad-v1.mp4 \
   --duration 4 \
@@ -400,7 +400,7 @@ over to the audio clip).
 For `clip-caption-1` with text `"别跟我说话！"`:
 
 ```bash
-node .claude/skills/pneuma-clipcraft/scripts/generate-tts.mjs \
+node "<SKILL_DIR>/scripts/generate-tts.mjs" \
   --text "别跟我说话！" \
   --voice Kore \
   --output assets/audio/narration-caption-1.mp3
@@ -509,7 +509,7 @@ default for anything the user asked for as a deliverable.
 
 ```bash
 # 1. Run the generator. Prompt is POSITIONAL, not a flag.
-node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
+node "<SKILL_DIR>/scripts/generate_image.mjs" \
   "A sleepy panda on a moss log, soft overcast light, 35mm, shallow DOF" \
   --aspect-ratio 4:3 --quality high \
   --output-dir assets/image --filename-prefix panda-sleepy
@@ -649,7 +649,7 @@ Variant requests include a `source` field:
    Never use a random UUID.
 3. **Pick an output path** under the matching `assets/{kind}/` dir
    (`assets/image/*.jpg`, `assets/video/*.mp4`, `assets/audio/*.{wav,mp3}`).
-4. **Run the script** — prepend `node .claude/skills/pneuma-clipcraft/`
+4. **Run the script** — prepend `node <SKILL_DIR>/`
    to the `script` field, expand `script_args` into `--flag value`
    pairs, and append `--output <path>`. The script prints the output
    path on stdout + exits 0 on success.

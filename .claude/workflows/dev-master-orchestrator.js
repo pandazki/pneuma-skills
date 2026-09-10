@@ -34,7 +34,7 @@
 
 export const meta = {
   name: 'dev-master-orchestrator',
-  description: 'Master-orchestrator general 5-stage dev-loop: implement, then review ∥ verify in parallel, converge on no-blocker/major review plus all-green gates (bun run typecheck + bun test), otherwise amend and re-review; outer loop runs waves of tasks in parallel or serially. Review/verify/amend are parameterized by per-task kind, review dimensions, and gate command, so the loop adapts to contract, feature, viewer, or test-suite tasks.',
+  description: 'Master-orchestrator general 5-stage dev-loop: implement, then review ∥ verify in parallel, converge on no-blocker/major review plus all-green gates (bun run typecheck + scoped tests), otherwise amend and re-review; outer loop runs waves of tasks in parallel or serially. Review/verify/amend are parameterized by per-task kind, review dimensions, and gate command, so the loop adapts to contract, feature, viewer, or test-suite tasks.',
   phases: [{ title: 'Impl' }, { title: 'Review' }, { title: 'Verify' }, { title: 'Amend' }],
 }
 
@@ -119,7 +119,7 @@ const WAVES = A.waves || []
 const SPEC_DOC = A.specDoc
 // Global default test gate. A single task can narrow it via task.gateK, or fully
 // override it via task.gateCmd (see verifyPrompt).
-const TEST_CMD = A.testCmd || 'bun test'
+const TEST_CMD = A.testCmd || 'bun run test'
 const MAX_ROUNDS = A.maxRounds || 3
 // Global effort tier. 'ultracode' switches every task's impl/amend to the Fable-5
 // heavyweight variant (see useFable).
@@ -175,7 +175,7 @@ const DIMENSIONS_BY_KIND = {
   'contract': [
     'contract fidelity & backward compatibility — the changed contract (core/types or protocol surface) still honors what existing consumers depend on; any consumer-breaking change without a migration is a blocker',
     'thin-waist purity — no mode-specific or backend-specific knowledge leaks outside the registry seams (backends/index.ts for backend dispatch; ModeManifest-driven behavior elsewhere); server/ and bin/ stay mode-agnostic',
-    'propagation completeness — core/__tests__ updated for the contract change; docs/reference and the AGENTS.md/CLAUDE.md contracts table updated if the contract surface changed',
+    'propagation completeness — core/__tests__ updated for the contract change; docs/reference and the docs/reference/project-guide.md contracts table updated if the contract surface changed',
     'test coverage — the new/changed contract behaviors are pinned by tests, including the compat path for old consumers',
     'readability & taste — naming, type organization, JSDoc on the contract surface, no dead code',
   ],
@@ -226,7 +226,7 @@ function severityFor(task) {
 function implPrompt(WT, anchor) {
   return 'Implementation task. STEP 0: cd to the worktree ' + WT + ' and confirm the branch is NOT main. '
     + 'STEP 1: your full spec is in ' + SPEC_DOC + ' under the markdown heading "## ' + anchor + '" — Read THAT section only for requirements + acceptance. '
-    + 'STEP 2: implement with TDD, run every quality gate (bun run typecheck; bun test), return RAW output (do not claim green; verify re-runs independently).'
+    + 'STEP 2: implement with TDD, run bun run typecheck and the relevant suite from .claude/rules/testing.md, return RAW output (do not claim green; verify re-runs independently).'
 }
 
 // merge-base baseline: the worktree's true base is git merge-base HEAD main, not main's
@@ -261,7 +261,7 @@ function reviewPrompt(WT, reviewAnchor, task) {
 //     scoped suite, integration invocation, anything gateK cannot express);
 //   - otherwise task.gateK narrows the gate to "bun test <gateK>" (a bun test filter:
 //     positional file/path filter, or include flags like -t "<pattern>" inside gateK);
-//   - with neither, falls back to the global TEST_CMD (default "bun test").
+//   - with neither, falls back to the global TEST_CMD (default "bun run test").
 // Changed-file framing also goes through merge-base. Boundary guard: pneuma has no
 // import-linter — the contract-first rules are checked by inspecting the changed diff
 // for the three forbidden patterns listed in the prompt; any hit is a gate failure.
@@ -278,7 +278,7 @@ function verifyPrompt(WT, task) {
     + 'cd to ' + WT + ' (confirm branch is NOT main). '
     + 'Frame the changed file set against this worktree\'s true baseline: run "git merge-base HEAD main" to get BASE, then "git diff --name-only <BASE>" — do NOT use "git diff main" (main may have advanced). '
     + 'From inside the worktree run the gates: (1) typecheck gate: bun run typecheck — pass/fail from the ACTUAL exit code → boolean typecheck. '
-    + '(2) test gate: ' + testCmd + ' (redirect to a /tmp log, then tail) → boolean tests. Healthy bun test output looks like "NNNN pass / NN skip / 0 fail"; backend lifecycle suites report "(skip) ... binary not available" — skips are FINE and expected, but ANY fail is red. '
+    + '(2) test gate: ' + testCmd + ' (redirect to a /tmp log, then tail) → boolean tests. Read .claude/rules/testing.md and run any required impact suite this command does not cover (especially bun run test:backends for backend changes); tests is true only when all required suites pass. Healthy bun test output looks like "NNNN pass / NN skip / 0 fail"; backend lifecycle suites report "(skip) ... binary not available" — skips are FINE and expected, but ANY fail is red. '
     + '(3) Contract-first boundary check: inspect the diff of the changed files for these forbidden patterns — (a) any NEW "if (backendType === ...)"-style backend-type conditional outside backends/index.ts; (b) any React import inside a modes/*/manifest.ts (manifests are read by the Bun backend, which has no React); (c) any hardcoded mode name in server/ or bin/ (those layers must be ModeManifest-driven). List each hit in boundaryViolations with file + pattern; these violate pneuma\'s contract-first rules and count as a FAILED gate. '
     + 'Report each gate pass/fail truthfully from ACTUAL exit codes; allGreen = typecheck AND tests AND boundaryViolations is empty. '
     + 'Also return changedFiles: the FULL list from "git diff --name-only <BASE>" so the orchestrator can report which files this task touched. '
@@ -294,7 +294,7 @@ function amendPrompt(WT, review, verify, round, task) {
     + 'Review findings to resolve: ' + JSON.stringify((review && review.findings) || []) + '. '
     + 'Current gate status: ' + JSON.stringify(verify) + '. '
     + 'Fix each valid finding surgically (no scope creep): address exactly what the reviewer flagged for this finding — whether that is correcting behavior, adding missing test coverage, fixing a contract-first boundary violation, restoring design-token adherence, or pinning a contract. '
-    + 'For findings that point at out-of-scope source bugs you should NOT fix here, either pin them with a skipped/failing-marker test or mark the disposition ESCALATED with a note. Re-run gates (bun run typecheck; bun test). Return a per-finding disposition ledger (one entry per finding) as raw prose — convergence is re-tested by the next review ∥ verify round, not parsed from this output.'
+    + 'For findings that point at out-of-scope source bugs you should NOT fix here, either pin them with a skipped/failing-marker test or mark the disposition ESCALATED with a note. Re-run bun run typecheck and the affected suite from .claude/rules/testing.md. Return a per-finding disposition ledger (one entry per finding) as raw prose — convergence is re-tested by the next review ∥ verify round, not parsed from this output.'
 }
 
 function hasBlockerOrMajor(review) {

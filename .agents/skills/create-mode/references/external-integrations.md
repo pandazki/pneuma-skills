@@ -86,7 +86,7 @@ return <Card />;
 return renderCard();
 ```
 
-这条已经写在 `CLAUDE.md::Known Gotchas`。如果你的新 mode 也走 Babel/standalone，把这条复制到 mode 的 SKILL.md `## Core rules` 章节。
+这条已经写在 `.claude/rules/modes.md`。如果你的新 mode 也走 Babel/standalone，把这条复制到 mode 的 SKILL.md `## Core rules` 章节。
 
 ---
 
@@ -153,7 +153,7 @@ skill: {
     {
       name: "ffmpeg-helpers",
       command: "node",
-      args: ["{{SKILL_PATH}}/scripts/ffmpeg-mcp.js"],
+      args: ["/absolute/path/to/ffmpeg-mcp.js"],
       env: {
         FFMPEG_PATH: "${PATH}",
       },
@@ -162,7 +162,7 @@ skill: {
 }
 ```
 
-`{{SKILL_PATH}}` 是 skill-installer 替换的特殊变量，指向 `<sessionDir>/.claude/skills/pneuma-<name>/`。
+`{{SKILL_PATH}}` 不是内建模板变量；只有明确传入 init/derived params 的 key 才会替换。脚本示例可用 `<SKILL_DIR>` 表示当前 SKILL.md 所在目录，并要求 agent 代入真实安装路径。MCP 配置应使用服务实际支持的路径，不要假定 `.mcp.json` 会被 Codex 读取；同时提供可移植的脚本入口。
 
 ### 何时用 MCP，何时用 sharedScripts
 

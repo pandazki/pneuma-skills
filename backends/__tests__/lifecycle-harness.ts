@@ -10,7 +10,7 @@
  *
  *   1. boot         — observe `session_init`, verify model + capabilities
  *   2. greeting     — single user turn, observe assistant + result
- *   3. tool-flow    — Write tool call against a tmp file, verify file exists
+ *   3. tool-flow    — file-writing tool call, verify the resulting file content
  *   4. interrupt    — long-running prompt + interrupt, verify clean stop
  *   5. multi-turn   — two turns back-to-back, verify ordering + session id
  *   6. resume       — kill after one turn, relaunch with resumeSessionId
@@ -42,7 +42,7 @@
  */
 
 import { describe, it, expect } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ClaudeCodeBackend } from "../claude-code/index.js";
@@ -599,7 +599,7 @@ const SCENARIOS: Record<ScenarioName, ScenarioFn> = {
     }
     await sendPrompt(
       ctx,
-      `Use the Write tool to create a file at ${targetPath} with the exact content "hi". Then stop.`,
+      `Use your available file-writing tools to create ${targetPath} containing one line: hi, followed by a newline. Then stop.`,
     );
 
     // Wait for the result envelope (turn end). This indicates the agent has
@@ -616,6 +616,7 @@ const SCENARIOS: Record<ScenarioName, ScenarioFn> = {
       exists = existsSync(targetPath);
     }
     expect(exists).toBe(true);
+    expect(readFileSync(targetPath, "utf8")).toBe("hi\n");
   },
 
   interrupt: async (ctx) => {

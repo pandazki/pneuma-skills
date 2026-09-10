@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.47.2] - 2026-09-10
+
+### Fixed
+- **Mode skills load in Codex.** Added missing discovery metadata to six mode skills and corrected Bansho's YAML description. Script examples resolve the installed skill directory instead of assuming a Claude-only path, and shared session guidance reads the active backend's instructions file.
+
+### Improved
+- **Shared Claude Code and Codex development guidance.** Mode creation, development review, releases, showcases and ADRs now use one set of skill instructions with native entry points for both harnesses. Development roles share the same implementation and verification discipline, with an ordinary-tool workflow for hosts without Claude's Workflow runner.
+- **Complete startup guidance within Codex's instruction budget.** The root guide now routes to shared domain rules and on-demand architecture references, keeping release and development instructions visible. A guidance check validates skill metadata, entry-point consistency and the startup document size before releases.
+
 ## [3.47.1] - 2026-09-10
 
 ### Improved

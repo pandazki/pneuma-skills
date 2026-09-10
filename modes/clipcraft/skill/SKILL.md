@@ -5,6 +5,11 @@ description: AI-orchestrated video production on @pneuma-craft. Use whenever the
 
 # ClipCraft
 
+In script examples, `<SKILL_DIR>` means the actual directory containing this
+loaded `SKILL.md`. Substitute its full path and keep shell paths quoted. The
+runtime installs it under `.claude/skills` for Claude Code, `.agents/skills` for
+Codex, or `.kimi-code/skills` for Kimi; use the path given in your instructions.
+
 ClipCraft is a video-production mode where the **source of truth is a
 structured domain model**, not a file. The in-memory model is an
 event-sourced craft store from `@pneuma-craft`: an Asset registry, a
@@ -323,14 +328,14 @@ moodboards, illustrations the user just wants to look at),
 
 ```bash
 # Text-to-image (positional prompt)
-node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
+node "<SKILL_DIR>/scripts/generate_image.mjs" \
   "A dimly lit kitchen at 3am, kettle steam catching the overhead bulb, shot on 35mm" \
   --aspect-ratio 9:16 --quality high \
   --output-dir assets/image --filename-prefix kitchen-3am
 
 # Edit / reference — pass one or more URLs, data URIs, or local files.
 # Uses the same GPT Image 2.5 OpenRouter Images endpoint.
-node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
+node "<SKILL_DIR>/scripts/generate_image.mjs" \
   "Same character, now at a neon-lit ramen counter, back to camera" \
   --image-urls https://example.com/character-ref.png \
   --aspect-ratio 9:16 --quality high \
@@ -338,19 +343,19 @@ node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
 
 # Video first-frame — request the composition dimensions.
 # Verify actual output dimensions before using the image as an anchor.
-node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
+node "<SKILL_DIR>/scripts/generate_image.mjs" \
   "Overhead shot of a desk at 3am: laptop closed, spiral notebook, cold coffee ring, warm tungsten lamp in upper right" \
   --image-size 720x1280 --quality high \
   --output-dir assets/image --filename-prefix opening-desk
 
 # Multiple takes in one call — 1–10 per request.
-node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
+node "<SKILL_DIR>/scripts/generate_image.mjs" \
   "Four phone mockups of the app home screen, each with a different colorway" \
   --num-images 4 --aspect-ratio 9:16 \
   --output-dir assets/image --filename-prefix colorway-grid
 
 # Flare edit with a source image. Requires OPENROUTER_API_KEY.
-node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
+node "<SKILL_DIR>/scripts/generate_image.mjs" \
   "Watercolor of a city at dusk, soft bleeds, visible cold-press texture" \
   --image-urls assets/image/kitchen-3am.png --aspect-ratio 16:9 \
   --output-dir assets/image --filename-prefix dusk-watercolor

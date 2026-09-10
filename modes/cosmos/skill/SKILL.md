@@ -1,4 +1,14 @@
+---
+name: pneuma-cosmos
+description: Build and explore a 3D knowledge graph from code, research, stories, or business material in the Pneuma Cosmos workspace. Use for creating, extending, or explaining cosmos.json and grounded graph projections.
+---
+
 # Cosmos
+
+In script examples, `<SKILL_DIR>` means the actual directory containing this
+loaded `SKILL.md`. Substitute its full path and keep shell paths quoted. The
+runtime installs it under `.claude/skills` for Claude Code, `.agents/skills` for
+Codex, or `.kimi-code/skills` for Kimi; use the path given in your instructions.
 
 <!-- pneuma:start -->
 
@@ -455,7 +465,7 @@ workflow paths land.
 
    ```
    Workflow({
-     scriptPath: ".claude/skills/pneuma-cosmos/references/projection.workflow.js",
+     scriptPath: "<SKILL_DIR>/references/projection.workflow.js",
      args: { sourceRoot, language, projectName, partitions, vocabulary, layers, maxCompletenessRounds: 2 }
    })
    ```

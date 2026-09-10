@@ -109,11 +109,11 @@ Weak signals (don't refine on these alone):
 - The user is still in the discovery / interview phase (their intent isn't settled yet).
 - You wrote one file but the session's purpose is unclear.
 
-When you decide to refine proactively, use a **subagent** so the main turn isn't blocked. The Task tool composes a fresh worker that reads the project atlas + the conversation so far and writes the refined fields. Pattern:
+When you decide to refine proactively, use a **subagent** so the main turn isn't blocked. Use the active harness's delegation tool, when available, to create a fresh worker that reads the project atlas + the conversation so far and writes the refined fields. Pattern:
 
 ```
 1. Identify that a refine would be useful.
-2. Launch a Task subagent. Brief it:
+2. Launch a subagent with the available delegation tool. Brief it:
    - "Read $PNEUMA_PROJECT_ROOT/.pneuma/project.json and project-atlas.md."
    - "Read the current conversation transcript above this prompt."
    - "Compose displayName (≤40 chars) and description (≤280 chars) describing
@@ -124,7 +124,7 @@ When you decide to refine proactively, use a **subagent** so the main turn isn't
    unless the user asks. The row updates silently.
 ```
 
-If you don't have a Task tool available (rare; some backends), do the refine inline at a natural pause — between two unrelated turns, or right before you hand the conversation back to the user with a question. Don't refine mid-task; the user is watching you work.
+If delegation is unavailable in the active harness, do the refine inline at a natural pause — between two unrelated turns, or right before you hand the conversation back to the user with a question. Don't refine mid-task; the user is watching you work.
 
 ### Refine cadence
 
@@ -145,7 +145,7 @@ Compose the refined fields from these sources:
 1. **The conversation transcript above this prompt.** What did the user ask for? What did you build? What direction did the session take?
 2. **`$PNEUMA_PROJECT_ROOT/.pneuma/project.json`** (project sessions only). The project's `displayName` + `description` set the surrounding context. Your session is a *part* of this — refine accordingly. Don't repeat the project name verbatim in your session title; the row is already inside the project's scope.
 3. **`$PNEUMA_PROJECT_ROOT/.pneuma/project-atlas.md`** (project sessions only, when present). The atlas describes the project's whole landscape — anchors, deliverables, open questions. Use it to figure out which slice of the project this session is hitting.
-4. **The mode you're in.** Read `$PNEUMA_SESSION_DIR/.claude/skills/<mode>/SKILL.md` if you need a refresher on what the mode's job is. The title should still be domain-specific, not mode-specific.
+4. **The mode you're in.** Read the current mode's `SKILL.md` at the concrete backend-specific path named in your injected instructions if you need a refresher on what the mode's job is. The title should still be domain-specific, not mode-specific.
 
 You do **not** read other sibling sessions in the project. Cross-session inference is out of scope for this skill — each session refines itself.
 

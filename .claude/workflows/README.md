@@ -5,6 +5,10 @@ Code workflow**. Once on disk it can be invoked from any session with
 `Workflow({ name: "dev-master-orchestrator", args })` (or via `scriptPath` pointing at
 this file), completing the orchestrator toolchain alongside the `.claude/agents/` roster.
 
+The shared procedure and role instructions live in
+`.agents/skills/dev-workflow/`. This file documents the native Claude adapter;
+Codex and hosts without `Workflow` follow that shared skill with available tools.
+
 ---
 
 ## 1. Purpose
@@ -58,7 +62,7 @@ via `(typeof args === 'string') ? JSON.parse(args) : (args || {})`.
 | Field | Type | Required | Default | Meaning |
 |-------|------|----------|---------|---------|
 | `specDoc` | string (absolute path) | yes | — | Absolute path to the spec doc the agents Read for requirements and acceptance bars. |
-| `testCmd` | string | no | `'bun test'` | Global default test-gate command, used when a task sets neither `gateCmd` nor `gateK`. |
+| `testCmd` | string | no | `'bun run test'` | Global default test-gate command, used when a task sets neither `gateCmd` nor `gateK`. |
 | `maxRounds` | number | no | `3` | Max review rounds per task before `ESCALATED`. |
 | `effort` | string | no | — | Global engine tier. `'ultracode'` routes **every** task's Impl/Amend to the Fable-5 heavyweight variants (`pneuma-impl-fable` / `pneuma-amender-fable`); anything else (or absent) keeps the opus defaults. See §3.3. |
 | `waves` | array of wave objects | no | `[]` | Outer-loop wave list (see below). |
@@ -100,7 +104,7 @@ as blocker / major / minor) by this precedence:
    - `contract` — changes to `core/types/` or protocol surfaces: contract fidelity
      & backward compat, thin-waist purity (no mode/backend knowledge leaking
      outside the registry seams), propagation completeness (`core/__tests__`,
-     `docs/reference`, the AGENTS.md/CLAUDE.md contracts table), test coverage,
+     `docs/reference`, the `docs/reference/project-guide.md` contracts table), test coverage,
      readability/taste. **Blocker** = a contract change that breaks an existing
      consumer or leaks domain knowledge across the thin waist.
    - `feature` — correctness including failure paths, API & contract design,
@@ -130,10 +134,13 @@ against the worktree's **true baseline** (`git merge-base HEAD main`, never a ba
 
 1. **Typecheck gate** — `bun run typecheck` → boolean `typecheck`.
 2. **Test gate** — `gateCmd` / `bun test <gateK>` / global `testCmd` (default
-   `bun test`) → boolean `tests`. Healthy `bun test` output reads
+   `bun run test`) → boolean `tests`. Healthy `bun test` output reads
    `"NNNN pass / NN skip / 0 fail"`; the backend lifecycle suites report
    `"(skip) ... binary not available"` when a CLI binary is absent — **skips are
    fine, any fail is red**.
+   Read `.claude/rules/testing.md` and also run any required impact suite that
+   the configured command does not cover; backend changes require the backend
+   suite even when the default `bun run test` is green.
 3. **Contract-first boundary check** — the verifier inspects the changed diff for
    three forbidden patterns and lists every hit in `boundaryViolations`:
    - any **new** `if (backendType === ...)`-style conditional outside
@@ -216,7 +223,7 @@ Workflow({
   name: "dev-master-orchestrator",
   args: {
     specDoc: "/abs/path/docs/plans/my-feature-spec.md",
-    testCmd: "bun test",
+    testCmd: "bun run test",
     maxRounds: 3,
     waves: [
       {

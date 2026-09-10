@@ -70,6 +70,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Validate shared agent guidance
+        run: bun run check:guidance
+
       - name: Typecheck
         # Gate on `tsc --noEmit`: build (vite/esbuild) and test (bun) both strip
         # types without checking them, so this is the only step that enforces

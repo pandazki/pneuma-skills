@@ -23,7 +23,10 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 
 const projectEvolveManifest: ModeManifest = {
   name: "project-evolve",
-  version: "1.0.0",
+  version: "1.0.1",
+  changelog: {
+    "1.0.1": ["Make skill discovery and guidance portable across Claude Code and Codex"],
+  },
   displayName: {
     en: "Project Atlas",
     "zh-CN": "项目图谱",

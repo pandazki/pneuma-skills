@@ -1,3 +1,8 @@
+---
+name: pneuma-remotion
+description: Create and edit React video compositions in the Pneuma Remotion workspace. Use for composition code, animation timing, playback, and export tasks rendered in the live video viewer.
+---
+
 # Remotion Video Creation
 
 Create programmatic videos with React and Remotion inside the Pneuma workspace. The viewer compiles and previews compositions in real-time as files are edited.

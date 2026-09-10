@@ -83,7 +83,7 @@ describe("mode loading", () => {
 describe("manifest validation", () => {
   it("has all required top-level fields", () => {
     expect(webcraftManifest.name).toBe("webcraft");
-    expect(webcraftManifest.version).toBe("1.7.0");
+    expect(webcraftManifest.version).toBe("1.7.1");
     expect(resolveLocalized(webcraftManifest.displayName)).toBe("WebCraft");
     expect(resolveLocalized(webcraftManifest.description)).toContain("Impeccable");
     // Mode version bumps must carry a matching changelog entry (launcher

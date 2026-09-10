@@ -12,8 +12,9 @@ import { normalizeCosmos, type Cosmos } from "./types.js";
 
 const cosmosManifest: ModeManifest = {
   name: "cosmos",
-  version: "0.5.0",
+  version: "0.5.1",
   changelog: {
+    "0.5.1": ["Make skill discovery and guidance portable across Claude Code and Codex"],
     "0.5.0": [
       "Projection workflow: a partition can no longer vanish silently — every slice gets a contribution row (`stats.partitions[]`), and one that dies or comes back empty is re-dispatched once before being reported as `failed` / `empty`",
       "Overlapping partitions are named: a slice whose nodes were all claimed elsewhere reports `duplicate-only` instead of looking like a slice that found nothing",

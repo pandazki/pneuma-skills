@@ -386,7 +386,7 @@ Tile code runs in the browser. Direct `fetch()` to external APIs will fail due t
 
 ```
 Need to fetch data from an external API?
-  ├─ Is it already in the proxy list (see CLAUDE.md Proxy section)?
+  ├─ Is it already in the proxy list (see the Proxy section in CLAUDE.md / AGENTS.md)?
   │   └─ Yes → use /proxy/<name>/<path>
   └─ No → add it to proxy.json first, then use /proxy/<name>/<path>
 ```

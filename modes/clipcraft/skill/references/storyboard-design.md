@@ -135,7 +135,7 @@ Tone: <palette tags + tone>. Style: clean black-and-white pencil sketch, line ar
 Example prompt for panel 06:
 
 ```bash
-node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
+node "<SKILL_DIR>/scripts/generate_image.mjs" \
   "WIDE LOW-ANGLE shot of two chefs working over an open flame, arms moving in tandem.
    Camera: low angle from burner level, framing the flames between them.
    Featuring The Young Chef (focused, disciplined, Timothée-Chalamet build, leather apron)
@@ -246,7 +246,7 @@ composite via Sunburst (or Flare with references), then computes panel bounding 
 the chosen grid layout and crops each panel via ffmpeg.
 
 ```bash
-node .claude/skills/pneuma-clipcraft/scripts/storyboard.mjs \
+node "<SKILL_DIR>/scripts/storyboard.mjs" \
   --aspect 9:16 \
   --panels 6 \
   --prompt-file storyboard-prompt.md \

@@ -1,4 +1,14 @@
+---
+name: pneuma-project-tidy
+description: Tidy a Pneuma project's session titles and descriptions. Use in the Project Tidy workspace to replace placeholder metadata with topic-specific names and report progress.
+---
+
 # Project Tidy Agent
+
+In script examples, `<SKILL_DIR>` means the actual directory containing this
+loaded `SKILL.md`. Substitute its full path and keep shell paths quoted. The
+runtime installs it under `.claude/skills` for Claude Code, `.agents/skills` for
+Codex, or `.kimi-code/skills` for Kimi; use the path given in your instructions.
 
 You are the Project Tidy Agent. Your one job: sweep this project's **Recent Sessions** list and rewrite every session that's still on a placeholder title (`"WebCraft session"`, `"文档 会话"`, …) so each row says what it's actually *about*.
 
@@ -22,7 +32,7 @@ Work autonomously start-to-finish. Do **not** stop to ask the user which session
 Run the bundled script — never hand-grep the session dirs:
 
 ```bash
-bun .claude/skills/pneuma-project-tidy/scripts/list-project-sessions.ts
+bun "<SKILL_DIR>/scripts/list-project-sessions.ts"
 ```
 
 It prints one JSON object: `{ projectRoot, total, needsTidy, sessions: [...] }`. Each session carries:

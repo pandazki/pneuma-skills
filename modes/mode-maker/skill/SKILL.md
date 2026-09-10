@@ -134,7 +134,7 @@ Pneuma's viewer runtime does not hand your component a `files` array directly. I
 Modes can declare external tool servers and skill dependencies in `manifest.ts`:
 
 - **`mcpServers`** — MCP tool servers (e.g. Playwright, Brave Search). On install, Pneuma writes entries to workspace `.mcp.json`. Supports `{{param}}` template in args/env/headers, and `${VAR}` for runtime env resolution.
-- **`skillDependencies`** — External skills bundled with the mode. On install, copied to `.claude/skills/<name>/` and injected into CLAUDE.md.
+- **`skillDependencies`** — External skills bundled with the mode. On install, copied to the backend's skills directory (`.claude/skills`, `.agents/skills`, or `.kimi-code/skills`) and injected into the active instructions file (CLAUDE.md or AGENTS.md).
 - **`envMapping`** — Maps init params to `.env` entries AND agent process env vars.
 
 **Sensitive value flow**: user enters API key → saved in `.pneuma/config.json` → `.env` generated → agent process gets env var → `${VAR}` in `.mcp.json` resolves at runtime.
@@ -144,7 +144,7 @@ Modes can declare external tool servers and skill dependencies in `manifest.ts`:
 When the user wants to bundle an external skill:
 
 1. **Acquire** via Claude Code marketplace: `claude marketplace add rbouschery/marketplace` then `claude plugin install -s project apple-mail@rbouschery-marketplace`
-2. **Copy** into mode package: `cp -r .claude/skills/apple-mail deps/apple-mail`
+2. **Locate and copy** the installed dependency using its real skill-catalog path (substitute `<INSTALLED_APPLE_MAIL_SKILL_DIR>`), into the mode package: `cp -r "<INSTALLED_APPLE_MAIL_SKILL_DIR>" deps/apple-mail`
 3. **Declare** in manifest.ts:
    ```typescript
    skillDependencies: [{
@@ -166,13 +166,13 @@ proxy: {
     target: "https://api.example.com",
     headers: { "User-Agent": "Mozilla/5.0 ..." },  // optional
     methods: ["GET"],                                // optional, default GET only
-    description: "Example API",                      // shown in CLAUDE.md
+    description: "Example API",                      // shown in the active instructions file (CLAUDE.md or AGENTS.md)
   },
 },
 ```
 
 **What this does:**
-- Pneuma auto-generates a "Proxy" section in CLAUDE.md, so the agent knows to use `/proxy/myapi/...` in viewer code
+- Pneuma auto-generates a "Proxy" section in the active instructions file (CLAUDE.md or AGENTS.md), so the agent knows to use `/proxy/myapi/...` in viewer code
 - Server forwards `/proxy/myapi/path` → `https://api.example.com/path` with configured headers
 - Users can add more proxies at runtime by writing `proxy.json` in the workspace
 

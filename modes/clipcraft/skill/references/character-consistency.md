@@ -58,7 +58,7 @@ non-photographically**. That is the workflow below.
 
 ```bash
 # Deterministic shortcut:
-node .claude/skills/pneuma-clipcraft/scripts/make-character-sheet.mjs \
+node "<SKILL_DIR>/scripts/make-character-sheet.mjs" \
   --source-url assets/image/hero-photo.jpg \
   --outfit "Dark gray wool blazer, black crewneck, charcoal trousers, black leather loafers" \
   --traits "Age ~30, East Asian, calm professional, understated confidence" \
@@ -121,7 +121,7 @@ aesthetic.
 Call (from-scratch sheet, no source photo — gpt-image-2.5-sunburst t2i):
 
 ```bash
-node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
+node "<SKILL_DIR>/scripts/generate_image.mjs" \
   "<prompt above>" \
   --aspect-ratio 16:9 --quality high \
   --output-dir assets/image --filename-prefix character-sheet-<name>
@@ -144,7 +144,7 @@ for the pencil portrait in panel 4."`
 ## Step 2 — generate the video
 
 ```bash
-node .claude/skills/pneuma-clipcraft/scripts/generate-video.mjs reference \
+node "<SKILL_DIR>/scripts/generate-video.mjs" reference \
   --prompt "<see prompt rules below>" \
   --image-url assets/image/character-sheet-<name>.jpg \
   --duration 4 --aspect-ratio 3:4 --resolution 720p \

@@ -7,8 +7,9 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 
 const remotionManifest: ModeManifest = {
   name: "remotion",
-  version: "0.2.0",
+  version: "0.2.1",
   changelog: {
+    "0.2.1": ["Make skill discovery and guidance portable across Claude Code and Codex"],
     "0.2.0": [
       "Canonical skeleton inlined in SKILL.md — Root.tsx + Composition + tokens pattern",
       "Restores best-practice anchor agents used to read from auto-copied seed files",

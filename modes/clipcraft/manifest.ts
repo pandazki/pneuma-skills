@@ -13,8 +13,9 @@ import {
 
 const clipcraftManifest: ModeManifest = {
   name: "clipcraft",
-  version: "0.10.0",
+  version: "0.10.1",
   changelog: {
+    "0.10.1": ["Make skill discovery and guidance portable across Claude Code and Codex"],
     "0.10.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
   },
   displayName: {

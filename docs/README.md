@@ -9,8 +9,10 @@ Pneuma Skills 的文档分两类：**活文档**（与代码同步演进）和**
 | 顺序 | 文件 | 受众 |
 |------|------|------|
 | 1 | [`README.md`](../README.md) | 人类——项目是什么、怎么装、怎么用（[中文](../README.zh.md)） |
-| 2 | [`AGENTS.md`](../AGENTS.md) | 所有 code agent 的统一指引——哲学、架构、契约（`CLAUDE.md` 只是一行 `@AGENTS.md` import） |
+| 2 | [`AGENTS.md`](../AGENTS.md) | 所有 code agent 的统一启动指引——约束、领域规则、共享技能入口（`CLAUDE.md` 只是一行 `@AGENTS.md` import） |
 | 3 | [`.claude/rules/`](../.claude/rules/) | 按领域拆分的约束与 known gotchas——编辑对应目录前先读（Claude Code 按路径自动加载） |
+
+架构详情与完整契约目录在 [`reference/project-guide.md`](reference/project-guide.md)，按需读取；开发技能的唯一正文在 [`.agents/skills/`](../.agents/skills/)，Claude 入口转读同一份文件。`AGENTS.md` 保持在 24 KiB 以下，避免 Codex 默认 32 KiB 指令预算截断后段。 发现机制参考 [Codex AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md) 与 [Codex skills](https://learn.chatgpt.com/docs/build-skills)。
 
 `docs/` 下的所有内容都是补充材料。**实现细节让代码自己说话**——文档只在它能讲哲学、架构、契约的地方动笔。
 
@@ -37,6 +39,7 @@ docs/
 
 | 文档 | 说明 |
 |------|------|
+| [`project-guide.md`](reference/project-guide.md) | 技术栈、CLI、目录、完整契约目录与 runtime 生命周期；从根 AGENTS.md 按需进入 |
 | [`viewer-agent-protocol.md`](reference/viewer-agent-protocol.md) | Viewer–Agent–Server 三方协议：6 个通信方向 / Sources 抽象 / ViewerAddress 对象寻址 / 注入到 instructions 的 marker blocks |
 | [`steer-in.md`](reference/steer-in.md) | 排队消息的非中断插入契约：后端能力矩阵 / `steer_message` 与 `steer_result` / 幂等、回滚、重连语义 |
 | [`network-topology.md`](reference/network-topology.md) | 端口分配 / WS 路由 / 进程拓扑 / 环境变量传递链 |

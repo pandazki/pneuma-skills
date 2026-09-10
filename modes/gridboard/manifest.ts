@@ -7,7 +7,10 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 
 const gridboardManifest: ModeManifest = {
   name: "gridboard",
-  version: "0.1.0",
+  version: "0.1.1",
+  changelog: {
+    "0.1.1": ["Make skill discovery and guidance portable across Claude Code and Codex"],
+  },
   displayName: {
     en: "GridBoard",
     "zh-CN": "GridBoard",

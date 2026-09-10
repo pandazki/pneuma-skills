@@ -216,7 +216,7 @@ Three things make this template work where shorter prompts fail:
 # Save the prompt above (with your character substituted) to
 # setup/cast/<name>.prompt.md, then:
 
-node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
+node "<SKILL_DIR>/scripts/generate_image.mjs" \
   "$(cat setup/cast/anya.prompt.md)" \
   --aspect-ratio 16:9 \
   --quality high \

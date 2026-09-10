@@ -247,7 +247,7 @@ You must have confirmed design context before doing design work — and you cann
 
 Gathering order:
 
-1. **Current instructions (instant).** A **Design Context** section already in `CLAUDE.md` → proceed.
+1. **Current instructions (instant).** A **Design Context** section already in the active instructions file (`CLAUDE.md` or `AGENTS.md`) → proceed.
 2. **`PRODUCT.md` (fast).** Read `PRODUCT.md` from the project root, plus `DESIGN.md` when present; `.impeccable.md` is the accepted legacy single-file equivalent. Beyond audience and jobs, `PRODUCT.md` carries **positioning** (what this sits alongside and how it differs), **evidence on hand** (the proof, content, and assets that actually exist), and **brand commitments** (what may never change). If it holds the required context, proceed.
 3. **Run `init` (required).** If neither source has context, run the `init` command now, before anything else (reference: [cmd-init](references/cmd-init.md)). Do not skip it, and do not substitute inference from the codebase.
 
@@ -317,8 +317,8 @@ When the user invokes a command:
 
 1. Read the corresponding reference document for detailed instructions
 2. In the reference, replace `{{ask_instruction}}` with: STOP and ask the user using a normal message
-3. In the reference, replace `{{config_file}}` with: CLAUDE.md
-4. In the reference, replace `{{model}}` with: Claude
+3. In the reference, replace `{{config_file}}` with the actual instructions filename: `CLAUDE.md` for Claude Code, `AGENTS.md` for Codex/Kimi
+4. In the reference, replace `{{model}}` with the active assistant's name
 5. In the reference, replace `{{available_commands}}` with the list of 22 commands above
 6. References may point to "this skill" or to `references/*.md` files. Both live in the pneuma-webcraft skill — consult them directly; no separate `impeccable` skill needs to be invoked. [references/interaction-design.md](references/interaction-design.md) carries the forms, focus, and loading-pattern depth that the command references assume.
 7. Follow the reference instructions step by step

@@ -43,7 +43,7 @@ was never evaluated. Prompt rewording does NOT defeat this filter.
    `character-consistency.md`.
 
    ```bash
-   node .claude/skills/pneuma-clipcraft/scripts/make-character-sheet.mjs \
+   node "<SKILL_DIR>/scripts/make-character-sheet.mjs" \
      --source-url <the photo you tried to pass> \
      --outfit "comma, separated, outfit, items" \
      --traits "comma, separated, character, traits" \

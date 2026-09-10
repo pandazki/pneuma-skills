@@ -21,8 +21,8 @@ const manifest: ModeManifest = {
   // ── Skill injection (required) ─────────────────────────────────────
   skill: {
     sourceDir: "skill",                      // directory containing SKILL.md
-    installName: "pneuma-my-mode",           // installed under .claude/skills/<name>/
-    claudeMdSection: `...`,                  // injected into workspace CLAUDE.md (see below)
+    installName: "pneuma-my-mode",           // installed under the selected backend's skills directory
+    claudeMdSection: `...`,                  // injected into CLAUDE.md / AGENTS.md (see below)
 
     envMapping: {                            // init params → .env entries
       API_KEY: "apiKey",                     //   env var → init param name
@@ -94,7 +94,7 @@ const manifest: ModeManifest = {
     },
   },
 
-  // ── Viewer API — shown to the agent in CLAUDE.md (optional) ────────
+  // ── Viewer API — shown to the agent in the active instructions file (CLAUDE.md or AGENTS.md) (optional) ────────
   viewerApi: {
     workspace: {
       type: "all",              // "all" | "manifest" | "single"
@@ -131,7 +131,7 @@ const manifest: ModeManifest = {
         "User-Agent": "Mozilla/5.0 ...",
       },
       methods: ["GET", "POST"],                 // default: ["GET"]
-      description: "Example API — used for X",  // shown in CLAUDE.md
+      description: "Example API — used for X",  // shown in the active instructions file (CLAUDE.md or AGENTS.md)
     },
   },
 
@@ -188,7 +188,7 @@ export default manifest;
 
 ## claudeMdSection Best Practices
 
-`claudeMdSection` is injected into the workspace's `CLAUDE.md` and
+`claudeMdSection` is injected into the workspace's active instructions file (`CLAUDE.md` or `AGENTS.md`) and
 auto-loaded by the agent on every conversation turn. It's the **hook**
 that directs the agent to the full skill.
 
@@ -242,7 +242,7 @@ icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="
 | `"manifest"` | A single index file defines structure/order | Slide mode: `manifest.json` lists slide files |
 | `"single"` | One primary file owns the workspace | Draw mode: a single `.excalidraw` |
 
-The `type` in `manifest.viewerApi.workspace` shows up in CLAUDE.md to
+The `type` in `manifest.viewerApi.workspace` shows up in the active instructions file (CLAUDE.md or AGENTS.md) to
 tell the agent the shape. The matching `workspace` in `pneuma-mode.ts`
 (see `viewer-guide.md`) adds the runtime behaviors — TopBar tabs,
 `resolveItems`, `createEmpty`.

@@ -1,13 +1,13 @@
 # SKILL.md Patterns
 
-> 怎么写 `modes/<name>/skill/SKILL.md` —— agent 在每个 session 启动时通过 skill-installer 把它的内容拼到 CLAUDE.md/AGENTS.md/.kimi/AGENTS.md 里读到。SKILL.md 是 mode 的"agent project guide"。
+> 怎么写 `modes/<name>/skill/SKILL.md` —— skill-installer 安装技能目录，并在 CLAUDE.md/AGENTS.md 注入场景与读取入口；agent 按任务需要加载技能正文。SKILL.md 是 mode 的"agent project guide"。
 
 ## 角色
 
-SKILL.md 在 agent 的视角里类似项目根的 `CLAUDE.md`，但 scope 是单个 mode。每次 session 启动：
+SKILL.md 在 agent 的视角里类似项目根的 `AGENTS.md`，但 scope 是单个 mode。每次 session 启动：
 
-1. `server/skill-installer.ts` 把 `modes/<name>/skill/` 拷到 `<sessionDir>/.claude/skills/pneuma-<name>/`（或 Codex/Kimi 对应目录）
-2. SKILL.md 主体（用 `<!-- pneuma:start -->` 包裹）被注入到 instructions file 的 `pneuma:start/end` block
+1. `server/skill-installer.ts` 把 `modes/<name>/skill/` 拷到 `<sessionDir>/<skillsDir>/pneuma-<name>/`（Claude: `.claude/skills`; Codex: `.agents/skills`; Kimi: `.kimi-code/skills`）
+2. `mdScene` 与技能路径被注入到 instructions file 的 `pneuma:start/end` block；SKILL.md 正文不再整份内联
 3. `viewerApi.actions` / `commands` / `proxy` / `scaffold` 被渲染成结构化 markdown 注入到 `pneuma:viewer-api:start/end` block
 4. 用户在跨 session 间累积的偏好被注入到 `pneuma:preferences:*` block
 
@@ -18,6 +18,11 @@ SKILL.md 在 agent 的视角里类似项目根的 `CLAUDE.md`，但 scope 是单
 按这个顺序写，readers（agent + 你将来回头看）的认知路径最顺：
 
 ```markdown
+---
+name: pneuma-<mode-name>
+description: What this mode does and when to use the skill.
+---
+
 # <Mode displayName>
 
 ## Scene
@@ -163,5 +168,13 @@ evolution.directive 决定了 evolve 命令对这个 mode 的产出质量。花 
 - ❌ **SKILL.md 写成"功能介绍"**：把 mode 的对外宣传文案搬过来——agent 不需要营销文案，需要操作指引。
 - ❌ **把所有 references 都 inline**：SKILL.md 主体 >500 行就难以高效进入工作；切下沉。
 - ❌ **rules 只写 don'ts，不写 dos**：agent 读完 "don't do X" 不知道该做什么。配一对 do/don't。
-- ❌ **复制 CLAUDE.md 的内容**：CLAUDE.md 已经在 instructions 里了，SKILL.md 主体不要复述项目通则；只写 *这个 mode 特有的*。
+- ❌ **复制根指令的内容**：公共指令已经加载，SKILL.md 主体不要复述项目通则；只写 *这个 mode 特有的*。
 - ❌ **不写 ViewerAddress vocabulary 表**：agent 就只能猜 address 的 shape；选错了 navigate / capture 都会失败。
+
+## Harness portability
+
+- Begin every SKILL.md with YAML `name` and `description`; the name matches `skill.installName`. Keep the description concise and include when to use it. Codex skips skills without this metadata.
+- Use `<SKILL_DIR>` for the actual directory containing the loaded SKILL.md; quote substituted paths in shell commands. Do not hardcode `.claude/skills`.
+- `CLAUDE.md` is Claude's instructions file; `AGENTS.md` is Codex/Kimi's. Refer to the active instructions file when reading injected blocks.
+- Essential strategy belongs in SKILL.md. A Claude Workflow script is an optional execution adapter; document the ordinary-tool path for hosts without that runner.
+- Use the tools the host exposes. Questions, file edits, browser checks, and delegation must not depend on a Claude-specific tool name.

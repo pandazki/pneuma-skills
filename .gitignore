@@ -21,10 +21,10 @@ web/.deploy.env
 .worktrees/
 .claude/worktrees/
 
-# Claude Code local state (only .claude/commands/ + select project-level
-# skills under .claude/skills/ are tracked — exemptions below)
+# Claude Code local state; shared repository skill adapters are tracked below
 .claude/skills/*
-!.claude/skills/create-mode/
+!.claude/skills/create-mode
+!.claude/skills/dev-workflow
 .claude/e2e-*.png
 .claude/*.lock
 .claude/settings.local.json

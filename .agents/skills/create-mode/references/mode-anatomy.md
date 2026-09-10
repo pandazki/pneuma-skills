@@ -10,7 +10,7 @@ modes/<name>/
 ├── pneuma-mode.ts       ★ ModeDefinition 绑定（manifest + ViewerContract，仅 frontend 动态 import）
 ├── domain.ts            △ 当 sources 用 aggregate-file 时配它写 load/save 纯函数
 ├── skill/
-│   ├── SKILL.md         ★ Agent 的项目指引（per-mode 版的 CLAUDE.md）
+│   ├── SKILL.md         ★ Agent 的项目指引（per-mode 版的指令文件）
 │   ├── references/      ○ Progressive disclosure 的进阶资料
 │   ├── presets/         · 主题集（slide 用）
 │   ├── rules/           · 编译规则（remotion 用）
@@ -128,7 +128,7 @@ export default mode;
 ## 命名约定
 
 - **mode name**：kebab-case（`webcraft`, `mode-maker`），与目录名一致。
-- **installName**（`skill.installName`）：`pneuma-<name>`（如 `pneuma-webcraft`）。skill 安装后落在 `<sessionDir>/.claude/skills/pneuma-<name>/`。
+- **installName**（`skill.installName`）：`pneuma-<name>`（如 `pneuma-webcraft`）。skill 安装后落在 `<sessionDir>/<skillsDir>/pneuma-<name>/`；Claude 用 `.claude/skills`，Codex 用 `.agents/skills`，Kimi 用 `.kimi-code/skills`。
 - **PreviewComponent**：PascalCase + `Preview` 后缀（`WebPreview`、`SlidePreview`、`DiagramPreview`）。
 - **showcase 图片**：kebab-case（`design-commands.png`, `drag-reorder.png`），尺寸 1376×768。
 - **content set 目录**：`<purpose>` 或 `<locale>-<theme>`，前者如 `pneuma-brand` `feature-cards`，后者如 `en-light` `zh-dark`。

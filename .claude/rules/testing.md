@@ -34,6 +34,7 @@ paths:
 
 ## Gotchas
 
+- **Shared lifecycle prompts must use backend-neutral tasks.** The file-writing scenario asks for one newline-terminated line and verifies its exact content. Naming Claude's `Write` tool excludes other tool vocabularies; requiring no final newline also led Codex to retry an unsupported GNU patch marker until the scenario timed out. Keep the same task and filesystem assertion across backends.
 - **Hardcoded manifest versions**:`server/__tests__/` 与 backend lifecycle harness 有测试用字符串相等 pin `webcraftManifest.version` 之类。bump 任何 mode 版本前先 grep 旧字符串(见 `/bump` step 4b),否则本地静默、CI 在 release gate 上炸。
 - **Bun `os.homedir()` 启动时缓存**:测试里改 `process.env.HOME` 不影响 `homedir()`。需要 tmp home 的被测模块要读 `process.env.HOME ?? process.env.USERPROFILE ?? homedir()`(`core/agent-command-installer.ts` 是先例)。
 - **Shadow-git 测试**:checkpoint 操作必须串行(Promise chain),测试里也不要并行触发,防 `index.lock`。

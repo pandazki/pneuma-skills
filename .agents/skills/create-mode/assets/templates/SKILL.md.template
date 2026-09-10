@@ -1,3 +1,8 @@
+---
+name: pneuma-TODO-mode-name
+description: TODO — What the mode does and when the user should use this skill.
+---
+
 # <!-- TODO: Mode displayName -->
 
 <!-- pneuma:start -->
@@ -69,7 +74,7 @@ When the user asks for a new <TODO_NOUN>:
 
 1. **Read the relevant context.** <!-- TODO: which files / state to read first -->
 2. **Plan briefly** in chat, especially if it's a substantial change.
-3. **Edit the files.** Use Edit / Write — the viewer picks up changes
+3. **Edit the files.** Use the available file-editing tools — the viewer picks up changes
    automatically.
 4. **Verify visually.** Invoke `capture` against the address of the object
    you just made, then read the screenshot. If something looks off, fix

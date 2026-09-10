@@ -149,7 +149,7 @@ modes/<name>/showcase/
 
 ### 图片生成
 
-`/showcase` 命令（位于 `.claude/commands/showcase.md`）封装了图像生成流程，遵循 "Ethereal Tech Dark Mockup" 美学：
+`/showcase` 命令（位于 `.agents/skills/showcase/SKILL.md`）封装了图像生成流程，遵循 "Ethereal Tech Dark Mockup" 美学：
 
 - 深色背景（`#09090b` 到 `#18181b`，柔和 radial gradient）
 - 内容是**风格化 UI mockup**——不是真截图，是简化的概念示意
@@ -183,7 +183,7 @@ Seed 与 showcase 应当讲同一个故事：
 ## 反模式
 
 - ❌ **Seed 用 Lorem Ipsum**：用户进来看到占位符以为是 broken state；用真实内容（你自己产品的、知名 demo 的、虚构但可信的）。
-- ❌ **Showcase 用真实截图**：截图老旧、UI 一变就过时；用风格化 mockup（参考 `.claude/commands/showcase.md`）。
+- ❌ **Showcase 用真实截图**：截图老旧、UI 一变就过时；用风格化 mockup（参考 `.agents/skills/showcase/SKILL.md`）。
 - ❌ **Highlight title 写动词**：title 是 noun (Design Commands)；description 是动词的事。
 - ❌ **Seed 内容只覆盖一种用法**：用户会以为 mode 只能做这一种；至少 2-3 个 content set，每个示范一种用法。
 - ❌ **Tagline 用句号结尾**：tagline 是名词短语，不是句子。

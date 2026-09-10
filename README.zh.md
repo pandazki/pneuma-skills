@@ -318,6 +318,17 @@ Pneuma 支持在 session 之上的可选 Project 层 —— 用来锚定**一件
 - 前端按 session state 里的 `agent_capabilities` 做能力门控。Schedules、cost tracking 这类 Claude 独有的能力对其它后端会自动隐藏。
 - Agent 正在工作时，只要当前后端支持 steering，排队中的用户消息就能直接加入这一轮，而不用先打断它。Claude Code 与 Codex 目前支持；Kimi 的 ACP 连接会禁用这个控件，不用“取消后重发”来近似模拟。
 
+## 用 Claude Code 或 Codex 开发
+
+在任一 Harness 中打开仓库，从 [AGENTS.md](AGENTS.md) 开始。
+两边读取同一份领域规则与 [.agents/skills/](.agents/skills/) 中的开发流程。
+Claude 保留 `/create-mode`、`/dev-workflow`、`/bump`、`/showcase`、`/create-adr`；
+Codex 对应使用 `$create-mode`、`$dev-workflow`、`$bump`、`$showcase`、`$create-adr`，
+也可从 `/skills` 选择。
+
+修改指导文件后运行 `bun run check:guidance`，检查元数据、共享入口和启动指令体积。
+架构详情放在 [Project Guide](docs/reference/project-guide.md)，按任务需要读取。
+
 ## License
 
 [MIT](LICENSE)

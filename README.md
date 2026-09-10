@@ -317,6 +317,18 @@ Quick (project-less) sessions remain fully supported — projects are opt-in. Cr
 - Frontend features now read `agent_capabilities` from session state. Claude-only features such as Schedules and cost tracking are hidden for non-Claude backends.
 - While an agent is working, a queued user message can join the active turn without interrupting it when the selected backend supports steering. Claude Code and Codex support this today; Kimi's ACP connection leaves the control disabled instead of emulating it with cancel-and-resend.
 
+## Developing with Claude Code or Codex
+
+Open this repository in either harness and start with [AGENTS.md](AGENTS.md).
+Both use the same domain rules and development procedures in [.agents/skills/](.agents/skills/).
+Claude keeps `/create-mode`, `/dev-workflow`, `/bump`, `/showcase`, and `/create-adr`;
+Codex exposes the same procedures as `$create-mode`, `$dev-workflow`, `$bump`,
+`$showcase`, and `$create-adr` (also available through `/skills`).
+
+After editing guidance, run `bun run check:guidance` to check metadata, shared
+entry points, and the startup instruction budget. Architecture details live in
+[Project Guide](docs/reference/project-guide.md) and load only when needed.
+
 ## License
 
 [MIT](LICENSE)

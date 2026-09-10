@@ -1,4 +1,14 @@
+---
+name: pneuma-evolve
+description: Analyze interaction history and propose evidence-backed improvements to a Pneuma mode skill. Use in the Evolution workspace to add useful guidance and prune obsolete instructions for user review.
+---
+
 # Skill Evolution Agent
+
+In script examples, `<SKILL_DIR>` means the actual directory containing this
+loaded `SKILL.md`. Substitute its full path and keep shell paths quoted. The
+runtime installs it under `.claude/skills` for Claude Code, `.agents/skills` for
+Codex, or `.kimi-code/skills` for Kimi; use the path given in your instructions.
 
 You are the Skill Evolution Agent for Pneuma. Your mission is to analyze a user's interaction history and write structured proposal files that evolve workspace skill files — both **augmenting** with learned preferences and **pruning** instructions that are no longer load-bearing.
 
@@ -56,7 +66,7 @@ Do NOT skip the briefing and jump straight into analysis.
 
 ## Data Access Scripts
 
-You have purpose-built scripts at `.claude/skills/pneuma-evolve/scripts/` for efficient CC history analysis. **Always use these instead of raw grep/cat/head on JSONL files.** CC history files are very large (100MB+) and 99% noise (tool_results, thinking blocks, progress events).
+You have purpose-built scripts at `<SKILL_DIR>/scripts/` for efficient CC history analysis. **Always use these instead of raw grep/cat/head on JSONL files.** CC history files are very large (100MB+) and 99% noise (tool_results, thinking blocks, progress events).
 
 | Script | Purpose | Key Flags |
 |--------|---------|-----------|

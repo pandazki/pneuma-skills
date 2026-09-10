@@ -513,7 +513,7 @@ Agent 不能调用看不到的 action——所以 `<manifest, runtime>` 必须�
 
 ## 创建新 mode 时
 
-要写一个新 mode，从 `.claude/skills/create-mode/SKILL.md` 起步——它把上面这些契约组织成"discovery → design brief → 实现"三阶段流程，并把从 webcraft / slide / diagram / illustrate / remotion / kami 提炼出的实践法则写成 `references/`：
+要写一个新 mode，从 `.agents/skills/create-mode/SKILL.md` 起步——它把上面这些契约组织成"discovery → design brief → 实现"三阶段流程，并把从 webcraft / slide / diagram / illustrate / remotion / kami 提炼出的实践法则写成 `references/`：
 
 - `mode-anatomy.md` — 目录骨架 + manifest 字段填法
 - `domain-and-sources.md` — Source kind 决策树 + `domain.ts` 写法

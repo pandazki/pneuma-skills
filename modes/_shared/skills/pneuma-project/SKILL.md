@@ -55,7 +55,7 @@ If the user asks you to "make a project icon / cover / logo" and you produce an 
 
 ## The Project Atlas — your canonical briefing
 
-If your CLAUDE.md contains a `<!-- pneuma:project-atlas:start --> ... <!-- pneuma:project-atlas:end -->` block, the project has been atlas-seeded. The block is a **pointer**, not the briefing itself — the runtime keeps your prompt lean by not inlining the atlas file every turn.
+If your active instructions file (`CLAUDE.md` for Claude Code, `AGENTS.md` for Codex/Kimi) contains a `<!-- pneuma:project-atlas:start --> ... <!-- pneuma:project-atlas:end -->` block, the project has been atlas-seeded. The block is a **pointer**, not the briefing itself — the runtime keeps your prompt lean by not inlining the atlas file every turn.
 
 **On session start (or your first action of substance), Read** `$PNEUMA_PROJECT_ROOT/.pneuma/project-atlas.md`. Treat its contents as authoritative for:
 
@@ -70,7 +70,7 @@ You don't need to re-Read the atlas every turn — once is enough for a session 
 
 The atlas is maintained by the `project-evolve` mode (Project chip's Evolve sparkle). Never edit `project-atlas.md` yourself unless the user explicitly asks; let them trigger an evolution pass when the project context shifts. If you notice the atlas is missing details that would help your work, flag the gap — don't fabricate the missing parts.
 
-If no `pneuma:project-atlas` block is in your CLAUDE.md, the project hasn't been atlas-seeded yet. That's normal for fresh projects — work from `project.json` + the user's prompt instead, and you can suggest "we could run project-evolve to seed an atlas if this becomes a multi-session effort."
+If no `pneuma:project-atlas` block is in your active instructions file, the project hasn't been atlas-seeded yet. That's normal for fresh projects — work from `project.json` + the user's prompt instead, and you can suggest "we could run project-evolve to seed an atlas if this becomes a multi-session effort."
 
 ## You have siblings
 
@@ -90,7 +90,7 @@ This isolation isn't bureaucratic. It keeps each session focused, and makes the 
 
 - `profile.md` — cross-mode project preferences
 - `mode-{name}.md` — per-mode project preferences (create on demand)
-- `<!-- pneuma-critical:start --> ... <!-- pneuma-critical:end -->` — hard constraints, auto-injected into your CLAUDE.md `pneuma:project` block at session start
+- `<!-- pneuma-critical:start --> ... <!-- pneuma-critical:end -->` — hard constraints, auto-injected into your active instructions file `pneuma:project` block at session start
 - `<!-- changelog:start --> ... <!-- changelog:end -->` — your update log
 
 When updating: read first, then full-rewrite (last-writer-wins). Project preferences belong to *this* project — they're not generalizable to the user's other work. Personal preferences live in `~/.pneuma/preferences/` and are managed by the `pneuma-preferences` skill.
@@ -126,7 +126,7 @@ or, if you were spawned from an explicit Smart Handoff:
             inbound_path="/Users/.../.pneuma/sessions/<id>/.pneuma/inbound-handoff.json" />
 ```
 
-The `inbound_path` attribute on the `handed-off` form points at the raw structured payload on disk. You usually don't need to read it — the `pneuma:handoff` block in your CLAUDE.md already carries the parsed content as a system briefing. Reach for `inbound_path` only when you need the original JSON (e.g. to iterate `suggested_files` precisely, or to verify a field that the CLAUDE.md formatting elided).
+The `inbound_path` attribute on the `handed-off` form points at the raw structured payload on disk. You usually don't need to read it — the `pneuma:handoff` block in your active instructions file already carries the parsed content as a system briefing. Reach for `inbound_path` only when you need the original JSON (e.g. to iterate `suggested_files` precisely, or to verify a field that the active instructions file formatting elided).
 
 **`reason` semantics — adjust your behavior accordingly:**
 
@@ -139,7 +139,7 @@ The `inbound_path` attribute on the `handed-off` form points at the raw structur
   - **Don't read `$PNEUMA_PROJECT_ROOT/.pneuma/sessions/<from_session>/` internals** — that's the previous session's private workspace. Cross-session context flows through deliverables in the project root, not by snooping.
   - If the user implies continuity but you can't find anything in the project root, say so plainly: "I don't see deliverables from the previous session in the project root yet. Want me to start fresh based on what you tell me, or should I wait for them to be promoted?"
 
-- **`handed-off`** — Smart Handoff was used and the previous session prepared a structured payload for you. Your CLAUDE.md will also contain a `pneuma:handoff` block with intent / summary / suggested files / decisions / open questions. Treat that block as authoritative; see "Receiving a handoff" below.
+- **`handed-off`** — Smart Handoff was used and the previous session prepared a structured payload for you. Your active instructions file will also contain a `pneuma:handoff` block with intent / summary / suggested files / decisions / open questions. Treat that block as authoritative; see "Receiving a handoff" below.
 
 The `<pneuma:env>` tag is **informational, not directive**. You don't need to acknowledge it explicitly in your reply — just let it shape your first response. Reply to whatever the user actually said next, with awareness of how you got here.
 
@@ -223,7 +223,7 @@ Don't call `$PNEUMA_CLI handoff` autonomously — wait for the `<pneuma:request-
 
 ### Receiving a handoff
 
-If you were **spawned because someone handed off to you**, your CLAUDE.md will contain a `pneuma:handoff` block with the inbound payload, formatted like:
+If you were **spawned because someone handed off to you**, your active instructions file will contain a `pneuma:handoff` block with the inbound payload, formatted like:
 
 ```
 <!-- pneuma:handoff:start -->
@@ -313,7 +313,7 @@ A `status: "partial"` borrow still produced something useful but left open quest
 
 ### If you were borrowed (you are the borrowed mode)
 
-If you were spawned as a borrow target, your CLAUDE.md carries a `pneuma:handoff` block **framed as a borrow** (`<pneuma:env reason="borrow" .../>` on start). That block tells you the bounded job, the inputs, the expected deliverable, the `scope`, and — crucially — **the exact `pneuma borrow-return` call to make when you're done**, with the `borrow_id` + `host_server_url` pre-filled. Do the bounded job, write your deliverable(s) into your **own** session dir (for `scope: "return"`), then make that `borrow-return` call and `rm .pneuma/borrow-brief.json`. **Do not** treat it as a terminal handoff (you are not taking over) and **do not** start unrelated work — a borrow is one bounded job, then control returns to the host.
+If you were spawned as a borrow target, your active instructions file carries a `pneuma:handoff` block **framed as a borrow** (`<pneuma:env reason="borrow" .../>` on start). That block tells you the bounded job, the inputs, the expected deliverable, the `scope`, and — crucially — **the exact `pneuma borrow-return` call to make when you're done**, with the `borrow_id` + `host_server_url` pre-filled. Do the bounded job, write your deliverable(s) into your **own** session dir (for `scope: "return"`), then make that `borrow-return` call and `rm .pneuma/borrow-brief.json`. **Do not** treat it as a terminal handoff (you are not taking over) and **do not** start unrelated work — a borrow is one bounded job, then control returns to the host.
 
 ### Borrow vs handoff — which to use
 

@@ -28,8 +28,9 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 
 const projectOnboardManifest: ModeManifest = {
   name: "project-onboard",
-  version: "1.1.0",
+  version: "1.1.1",
   changelog: {
+    "1.1.1": ["Make skill discovery and guidance portable across Claude Code and Codex"],
     "1.1.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
   },
   displayName: {

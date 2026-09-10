@@ -1,6 +1,6 @@
 ---
 name: pneuma-bansho
-description: Explain something by writing it on a board. Use for ANY task in this workspace — writing or extending `board.md`, correcting or re-explaining a stretch of the lecture, giving it a voice, exporting subtitles, restyling `theme.css`. Trigger whenever the user wants a thing explained rather than documented: 板书, 讲一讲, 白板上讲, 讲透这个概念, 换个说法再讲一遍, "explain this on a whiteboard", "walk me through it", "teach me X", "turn this into a lecture", "why does X work" — and whenever they point at a step on the board and ask about it.
+description: "Explain something by writing it on a board. Use for ANY task in this workspace — writing or extending `board.md`, correcting or re-explaining a stretch of the lecture, giving it a voice, exporting subtitles, restyling `theme.css`. Trigger whenever the user wants a thing explained rather than documented: 板书, 讲一讲, 白板上讲, 讲透这个概念, 换个说法再讲一遍, \"explain this on a whiteboard\", \"walk me through it\", \"teach me X\", \"turn this into a lecture\", \"why does X work\" — and whenever they point at a step on the board and ask about it."
 ---
 
 # Bansho — board-writing explainer

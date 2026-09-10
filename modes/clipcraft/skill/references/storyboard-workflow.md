@@ -42,7 +42,7 @@ Decide N panels and their times. Density rule of thumb:
 For each panel:
 
 ```bash
-node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
+node "<SKILL_DIR>/scripts/generate_image.mjs" \
   "<panel description>" \
   --style sketch \
   --aspect-ratio 16:9 \
@@ -117,7 +117,7 @@ Decide the gen segments. Each seedance segment needs from-image (and optionally 
 For each gen boundary (typically at the start of each future clip — and optionally at the end for first-last-frame mode), generate a photoreal anchor:
 
 ```bash
-node .claude/skills/pneuma-clipcraft/scripts/generate_image.mjs \
+node "<SKILL_DIR>/scripts/generate_image.mjs" \
   "<the same panel description, possibly more detailed>" \
   --image-size 1280x720 \
   --quality high \
@@ -146,7 +146,7 @@ Second draft export → user reviews. If anchors look right, run seedance:
 
 ```bash
 # For each segment:
-node .claude/skills/pneuma-clipcraft/scripts/generate-video.mjs from-image \
+node "<SKILL_DIR>/scripts/generate-video.mjs" from-image \
   --prompt "<segment narration>" \
   --image-url assets/anchors/anchor-segment-01.png \
   --end-image-url assets/anchors/anchor-segment-02.png \
@@ -192,7 +192,7 @@ Pick by: panel count, internal continuity importance, budget tolerance.
 When the user wants a single 15s continuous shot with multiple internal beats (the Kōda latte art recipe), don't split into N seedance calls. Place anchors at the visible "beat moments" but at gen time issue **one** seedance call:
 
 ```bash
-node .claude/skills/pneuma-clipcraft/scripts/generate-video.mjs from-image \
+node "<SKILL_DIR>/scripts/generate-video.mjs" from-image \
   --prompt "<full 15s narration with embedded beat directions: 'first lift the milk pitcher, push in close, then [beat 2: tiny waves dancing in], [beat 3: foam goes round]…'>" \
   --image-url assets/anchors/anchor-start.png \
   --end-image-url assets/anchors/anchor-end.png \
@@ -231,7 +231,7 @@ The script does NOT touch `project.json` — the agent reads stdout and decides 
 ### Calling the script
 
 ```bash
-node .claude/skills/pneuma-clipcraft/scripts/storyboard.mjs \
+node "<SKILL_DIR>/scripts/storyboard.mjs" \
   --aspect 9:16 \
   --panels 6 \
   --prompt-file storyboard-prompt.md \
@@ -270,7 +270,7 @@ Step 5 — register the slices in `project.json` with the slice provenance (`fro
 Step 8 — when feeding sliced panels as references for a single-long-form seedance call, use the `reference` subcommand (not `from-image`):
 
 ```bash
-node .claude/skills/pneuma-clipcraft/scripts/generate-video.mjs reference \
+node "<SKILL_DIR>/scripts/generate-video.mjs" reference \
   --prompt "<long-form narration that references @image1 through @imageN as panel beats in order>" \
   --image-url assets/sketches/sb-opening/panel-01.png \
   --image-url assets/sketches/sb-opening/panel-02.png \

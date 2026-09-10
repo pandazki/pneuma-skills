@@ -7,11 +7,13 @@ paths:
 
 ## Baseline
 
-- **Creating a new mode?** Use the `create-mode` skill (`.claude/skills/create-mode/`) — discovery interview → design brief → skeleton. Do not hand-roll the structure.
+- **Creating a new mode?** Use the `create-mode` skill (`.agents/skills/create-mode/`) — discovery interview → design brief → skeleton. Do not hand-roll the structure.
 - **`manifest.ts` must have no React imports** — it is read by both the Bun backend and the frontend. React bindings live in `pneuma-mode.ts` (`ModeDefinition = { manifest, viewer }`); that split exists on purpose.
 - **Hidden modes**: `hidden: true` removes a mode from user-pickable lists (launcher grids, ProjectPanel tiles). Internal modes (`evolve`, `project-evolve`, `project-onboard`, `project-tidy`) are hidden — triggered by UI affordances or programmatically only.
 - **Shared assets**: global skills in `modes/_shared/skills/` (e.g. `pneuma-preferences`); shared scripts in `modes/_shared/scripts/` opted in via `SkillConfig.sharedScripts`, copied per-mode at install. Share *script sources* across modes, not SKILL.md guidance — each mode owns its own skill text.
 - **Language exception**: Chinese is allowed in mode seed templates (`zh-light/`, `zh-dark/`) and showcase content. Everything else stays English — `modes/wordtaste/skill/` included. That mode was written in Chinese for one release (0.5.0) because the orchestrator's own register leaked into everything it wrote in Chinese: the 2026-07-30 run carried 落点 / 收束 / 换挡 from English-term translations straight into the article. **0.6.0 removed the reason rather than the symptom** — the writer prompt (`scripts/compose_leaf_prompt.ts` + `compose_unit_parts.ts`), the judge brief (`compose_check_brief.ts`) and the planner prompt (`compose_plan_prompt.ts`) are all assembled by scripts out of English scaffolding plus the author's own material, and `validate_plan.ts` refuses any plan whose Chinese was composed rather than quoted. No model-facing prompt carries a sentence the orchestrator wrote, so the skill text went back to English. Chinese that reaches a model must be a verbatim human quote; Chinese that reaches the user lives in `seed/`, in the fixed label maps inside `project_plan.ts` / `project_check_cycle.ts`, and in the viewer's `viewer/studio-logic.ts` label maps (test-pinned equal to the script's).
+
+- **Harness portability**: every mode `skill/SKILL.md` needs YAML `name` (matching `skill.installName`) and a concise `description` with a use condition. Resolve helper paths from the loaded skill directory; do not hardcode `.claude/skills`. Read injected blocks from the active instructions file (`CLAUDE.md` or `AGENTS.md`). Essential workflow policy must also work without Claude's native `Workflow` / `Task` tool names.
 
 ## Gotchas
 

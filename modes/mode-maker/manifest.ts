@@ -9,7 +9,10 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 
 const modeMakerManifest: ModeManifest = {
   name: "mode-maker",
-  version: "1.1.0",
+  version: "1.1.1",
+  changelog: {
+    "1.1.1": ["Make skill discovery and guidance portable across Claude Code and Codex"],
+  },
   displayName: {
     en: "Mode Maker",
     "zh-CN": "Mode Maker",

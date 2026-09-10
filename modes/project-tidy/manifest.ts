@@ -22,7 +22,10 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 
 const projectTidyManifest: ModeManifest = {
   name: "project-tidy",
-  version: "1.0.0",
+  version: "1.0.1",
+  changelog: {
+    "1.0.1": ["Make skill discovery and guidance portable across Claude Code and Codex"],
+  },
   displayName: {
     en: "Tidy Sessions",
     "zh-CN": "整理会话",

@@ -11,8 +11,8 @@ paths:
 
 ## Baseline
 
-- **Bun APIs** over Node.js (`Bun.spawn`, `Bun.file`, `Bun.serve`, …). Runtime is Bun >= 1.3.5, not Node.
-- **Contract-first**: contract changes → update `core/types/` + `core/__tests__/` + `docs/reference/` + the contracts table in `AGENTS.md`, in the same change.
+- **Bun APIs** over Node.js (`Bun.spawn`, `Bun.file`, `Bun.serve`, …). Runtime is Bun >= 1.3.14, not Node.
+- **Contract-first**: contract changes → update `core/types/` + `core/__tests__/` + `docs/reference/` + the contracts table in `docs/reference/project-guide.md`, in the same change.
 - **No hardcoded mode knowledge** in server/CLI — everything driven by ModeManifest. **No backend conditionals** (`if (type === ...)`) outside `backends/index.ts`.
 
 ## Gotchas
