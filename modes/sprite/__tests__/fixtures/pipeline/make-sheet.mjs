@@ -176,12 +176,24 @@ export function alphaColorAudit(path, threshold = 16) {
 
 /**
  * A short clip of one square breathing up and down on a chroma-green plate —
- * the video fixture `from-video` samples.
+ * the video fixture `from-video` samples and `contact` reads the rhythm of.
  *
  * Encoded h264 / yuv420p on purpose: chroma subsampling and quantisation mean
  * the green that comes back off the decoder is never exactly the green that
  * went in, which is the whole reason the video keyer needs a wider similarity
  * than a flat generated sheet does.
+ *
+ * The box is moved by `overlay`, not by `drawbox`. That is the second ffmpeg
+ * gotcha this file exists to encode: **`drawbox` evaluates its `x`/`y`
+ * expressions once, at config time** (measured on ffmpeg 8.0 — every frame of
+ * a `drawbox=y=17+8*sin(2*PI*t)` clip came back byte-identical, max
+ * consecutive delta 0 over 20 frames). The clip looked like it was breathing
+ * and was in fact a still image, which no `from-video` assertion could see.
+ * `overlay` defaults to `eval=frame`, so its `y` really is a function of `t`.
+ *
+ * `amplitude` is the sine's half-travel in px and `holdSeconds` is how long
+ * the opening pose is held before it starts — the two knobs `contact`'s
+ * still-start and loop detection are measured against.
  */
 export function buildClip(outPath, {
   width = 64,
@@ -190,13 +202,20 @@ export function buildClip(outPath, {
   fps = 10,
   background = "0x00b140",
   box = { x: 22, y: 17, w: 20, h: 20, color: "red" },
+  amplitude = 2,
+  holdSeconds = 0,
 } = {}) {
+  // A comma inside a filter option value has to be escaped, or the filtergraph
+  // parser reads it as the start of the next filter.
+  const sine = `${box.y}+${amplitude}*sin(2*PI*(t-${holdSeconds}))`;
+  const y = holdSeconds > 0
+    ? `if(gte(t\\,${holdSeconds})\\,${sine}\\,${box.y})`
+    : `${box.y}+${amplitude}*sin(2*PI*t)`;
   const chain = [
-    `color=c=${background}:s=${width}x${height}:d=${seconds}:r=${fps}`,
-    // y rides a 2px sine so the frames differ without the body sliding
-    // sideways — a motion, not a drift.
-    `drawbox=x=${box.x}:y=${box.y}+2*sin(2*PI*t):w=${box.w}:h=${box.h}:color=${box.color}@1:t=fill:replace=1`,
-  ].join(",");
+    `color=c=${background}:s=${width}x${height}:d=${seconds}:r=${fps}[bg]`,
+    `color=c=${box.color}:s=${box.w}x${box.h}:d=${seconds}:r=${fps}[box]`,
+    `[bg][box]overlay=x=${box.x}:y=${y}`,
+  ].join(";");
   mkdirSync(dirname(outPath), { recursive: true });
   const r = spawnSync(
     "ffmpeg",

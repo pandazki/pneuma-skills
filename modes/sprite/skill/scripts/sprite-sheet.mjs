@@ -11,15 +11,17 @@
  * are read by decoding to `rawvideo`/`rgba` on stdout and doing the alpha
  * maths in JS; every image is written by an ffmpeg filter chain.
  *
- * Subcommands: probe, key, flatten, slice, align, pack, gif, inspect, run.
+ * Subcommands: probe, key, flatten, slice, align, pack, gif, inspect, run,
+ * contact, from-video.
  * `--json` prints exactly one JSON object on stdout; progress goes to stderr.
  */
 
 import { spawnSync } from "node:child_process";
 import {
-  copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync,
+  copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync,
   rmSync, statSync, unlinkSync, writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
@@ -79,6 +81,42 @@ const DEFAULT_VIDEO_SIMILARITY = 0.22;
 /** How far short of the clip's end the last sample is pulled, so a timestamp
  *  that lands exactly on the duration still decodes a frame. */
 const SAMPLE_TAIL = 0.001;
+
+// --- contact: looking at a clip before sampling it -------------------------
+/** Stills on a contact sheet, unless --count / --every say otherwise. */
+const DEFAULT_CONTACT_COUNT = 24;
+const DEFAULT_CONTACT_COLS = 8;
+const DEFAULT_CONTACT_WIDTH = 160;
+/** Gutter between tiles, and the neutral grey behind them. Grey rather than
+ *  black or white so neither a dark silhouette nor a blown-out highlight
+ *  disappears into the background of the picture. */
+const CONTACT_GUTTER = 2;
+const CONTACT_BACKGROUND = "0x808080";
+/** A contact sheet past this many stills is a wall of thumbnails nobody can
+ *  read, and a --every of the wrong order of magnitude produces it instantly. */
+const MAX_CONTACT_STILLS = 200;
+/** Width the silhouettes are compared at. The question is "did the pose
+ *  change", which survives a 96px raster; the answer costs one byte per pixel
+ *  per analysed frame, so this is what keeps a minute of video in memory. */
+const ANALYSIS_WIDTH = 96;
+/** Frames per second the analysis looks at. A gait cycle is ~1s, so 12
+ *  samples of it is plenty, and a 60fps clip costs no more than a 24fps one. */
+const MAX_ANALYSIS_FPS = 12;
+/** Seconds of the trimmed window that get analysed. Past this the answer stops
+ *  being about one motion, and the D^2 loop search stops being cheap. */
+const MAX_ANALYSIS_SECONDS = 60;
+/** Fraction of the combined ink that has to change before two silhouettes are
+ *  different poses rather than the same pose plus codec noise. */
+const STILL_DIFF = 0.05;
+/** A loop window has to move at least this much somewhere inside it, or a
+ *  stretch of held pose would score a perfect seam and win. */
+const LOOP_MOTION_DIFF = 0.25;
+/** Period range a walk / idle cycle is looked for in, in seconds. */
+const LOOP_PERIOD_MIN = 0.4;
+const LOOP_PERIOD_MAX = 2.5;
+/** Loop candidates reported. Three, because the best seam is a measurement
+ *  and the right cycle is a judgement — the agent needs alternatives. */
+const MAX_LOOPS = 3;
 /** Pre-align grid cells `run` leaves next to `frames/`: what `inspect` judges
  *  "leaves its grid cell" on, and what re-aligning a motion re-reads. */
 const CELLS_DIRNAME = "cells";
@@ -88,7 +126,7 @@ const ALIGN_RECORD = "align.json";
 
 const SUBCOMMANDS = [
   "probe", "key", "flatten", "slice", "clean", "align", "pack", "gif",
-  "inspect", "run", "from-video",
+  "inspect", "run", "contact", "from-video",
 ];
 
 const USAGE = `Usage: sprite-sheet.mjs <subcommand> [options]
@@ -177,7 +215,26 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       <motionDir>/sheet-alpha.png and sliced instead of keying.
       Cleaning runs by default; --no-clean skips it.
 
-  from-video <clip> --out <motionDir> --name <motionId> --frames N
+  contact <clip> --out <png> [--count ${DEFAULT_CONTACT_COUNT} | --every s] [--cols ${DEFAULT_CONTACT_COLS}] [--width ${DEFAULT_CONTACT_WIDTH}]
+      [--trim-start s] [--trim-end s] [--key auto|#rrggbb|none]
+      [--similarity ${DEFAULT_VIDEO_SIMILARITY}] [--blend ${DEFAULT_BLEND}] [--threshold ${DEFAULT_THRESHOLD}]
+      Look at a clip before sampling it. Writes ONE contact sheet: --count
+      stills spaced evenly across the (trimmed) clip (both ends included), or
+      one still every --every seconds from the trim start — the two are
+      mutually exclusive. Each still is --width px wide, timestamp burnt into
+      its corner, tiled --cols per row with a ${CONTACT_GUTTER}px grey gutter.
+      Also reports, from a deterministic silhouette analysis (no model):
+        stillStart / stillEnd — when the opening pose breaks and the closing
+          hold begins, i.e. the dead frames at either end;
+        loops[] — the best ${MAX_LOOPS} windows between ${LOOP_PERIOD_MIN}s and ${LOOP_PERIOD_MAX}s whose ends match,
+          each with its seam (how different the two ends are) and step (how
+          much a frame moves inside it): seam << step is a clean cycle;
+        profile.deltas — the frame-to-frame change series, the clip's rhythm.
+      The contact sheet is a working file for your eyes, not an asset: the
+      stills live in a temp dir that is removed, and nothing is written to a
+      motion directory or to project.json.
+
+  from-video <clip> --out <motionDir> --name <motionId> --frames N | --at t1,t2,…
       [--fps N] [--loop|--no-loop] [--anchor bottom|center]
       [--x-from feet|bbox|cell] [--key auto|#rrggbb|none]
       [--trim-start s] [--trim-end s] [--no-clean] [--cell auto|WxH]
@@ -197,6 +254,13 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       closing pose); --no-loop samples both ends.
       --fps defaults to frames / trimmed duration, so the preview plays at
       the speed the clip was shot at.
+      --at names the sample times yourself — a comma-separated list of
+      seconds, repeatable, 2 to ${MAX_FRAMES} strictly increasing entries inside the
+      clip (run 'contact' first to find them). It replaces the even schedule
+      and so excludes --frames, --trim-start and --trim-end; with --at,
+      --loop/--no-loop only decide the gif and the atlas, not the sampling.
+      --fps then defaults to the mean sampling rate, (N-1) / (last - first).
+      The JSON says which schedule ran: "even" or "explicit".
       The clip is only read: it is never copied or moved into <motionDir>.
 
 Exit code 0 on success, 1 on failure with a one-line ERROR: on stderr.`;
@@ -1613,7 +1677,14 @@ function probeDuration(path, label) {
  * frame at 1.9s, and a duration that is not a whole number of frames puts it
  * further back still.
  */
-function probeLastFrameTime(path, duration) {
+/**
+ * The video stream's own rate and frame count, or null for whichever of the
+ * two the container does not carry. Both `probeLastFrameTime` (which needs the
+ * rate to place the last seekable frame) and `contact` (which reports the rate
+ * and derives its analysis rate from it) ask the same one question, so they
+ * ask it in the same place.
+ */
+function probeVideoStream(path) {
   const r = spawnSync(
     "ffprobe",
     ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=nb_frames,r_frame_rate",
@@ -1628,9 +1699,16 @@ function probeLastFrameTime(path, duration) {
     }
   }
   const [numerator, denominator] = String(fields.r_frame_rate ?? "").split("/").map(Number);
-  const fps = numerator > 0 && denominator > 0 ? numerator / denominator : null;
   const frames = Number(fields.nb_frames);
-  if (fps && Number.isFinite(frames) && frames > 1) return (frames - 1) / fps;
+  return {
+    fps: numerator > 0 && denominator > 0 ? numerator / denominator : null,
+    frames: Number.isFinite(frames) && frames > 0 ? frames : null,
+  };
+}
+
+function probeLastFrameTime(path, duration) {
+  const { fps, frames } = probeVideoStream(path);
+  if (fps && frames !== null && frames > 1) return (frames - 1) / fps;
   if (fps) return Math.max(0, duration - 1 / fps);
   // Nothing measurable (a stream with neither count nor rate): 50 ms is longer
   // than one frame at any rate a clip is shot at.
@@ -1653,6 +1731,357 @@ function sampleTimes({ start, end, frames, loop, last }) {
 }
 
 /**
+ * One timestamp every `every` seconds from the window's start, both ends
+ * included, the last one clamped to `last` the same way the even schedule
+ * clamps its own — `--every 0.5` on a 3s clip means seven stills, and the
+ * seventh has to name a frame that exists.
+ */
+function everyTimes({ start, end, every, last }) {
+  // The epsilon is for the step that divides the window exactly: 6 * 0.5 is
+  // 2.9999999999999996, and without it the last still silently disappears.
+  const steps = Math.floor((end - start) / every + 1e-9);
+  return Array.from({ length: steps + 1 }, (_, i) => round(Math.min(start + i * every, last), 3));
+}
+
+/**
+ * The window a clip command works on, and the refusals that go with it.
+ * `contact` and `from-video` take the same two trim flags and have to mean
+ * exactly the same thing by them, down to the sentence they refuse with.
+ *
+ * `end` is NOT clamped to the duration here: the callers that need it clamped
+ * clamp it, and the ones that report the window the user asked for do not.
+ */
+function clipWindow(input, { trimStart, trimEnd, label }) {
+  const duration = probeDuration(input, label);
+  const start = trimStart ?? 0;
+  const end = trimEnd ?? duration;
+  if (end > duration + SAMPLE_TAIL) {
+    fail(`--trim-end ${end}s is past the end of a ${round(duration, 3)}s clip`);
+  }
+  if (!(end - start > SAMPLE_TAIL)) {
+    fail(`--trim-start ${start}s and --trim-end ${round(end, 3)}s leave nothing to sample`);
+  }
+  const last = Math.min(end - SAMPLE_TAIL, probeLastFrameTime(input, duration));
+  if (start > last) {
+    fail(`--trim-start ${start}s is past the last frame of a ${round(duration, 3)}s clip`);
+  }
+  return { duration, start, end, last };
+}
+
+/** Even height for a target width, keeping the source aspect. Even because
+ *  every encoder downstream of this wants it and nothing wants it odd. */
+function scaledHeight(source, width) {
+  return Math.max(2, 2 * Math.round((source.height * width) / source.width / 2));
+}
+
+/**
+ * How much of the combined ink changed between two silhouettes: 0 is the same
+ * pose, 1 is no overlap at all.
+ *
+ * The denominator is the UNION of the two masks, not the frame: a character
+ * that fills a tenth of a 16:9 plate would otherwise score ten times smaller
+ * than the same motion shot in close-up, and every threshold on this page
+ * would have to be re-tuned per clip. Alpha is compared at full 8-bit depth
+ * rather than thresholded, so an edge sliding by half a pixel registers as
+ * half a pixel of change instead of as nothing or as everything.
+ */
+function maskDiff(a, b) {
+  let delta = 0;
+  let union = 0;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (x > y) { delta += x - y; union += x; } else { delta += y - x; union += y; }
+  }
+  return delta / Math.max(1, union);
+}
+
+/**
+ * Re-base a luma frame on its own background, so an un-keyed clip can be
+ * compared by the same rule a keyed one is.
+ *
+ * `maskDiff` divides by the combined INK, which on an alpha mask is the
+ * character (the plate is 0) and on raw luma is the whole frame (a green plate
+ * is ~104 everywhere). Measured on the 3s fixture: the same box moving 5px
+ * scored 0.33 on the alpha mask and 0.026 on raw luma — under the 0.05 still
+ * threshold, so `--key none` confidently reported "the clip never moves" about
+ * a clip that plainly does. Subtracting the median (the plate, whatever colour
+ * it is) puts the background back at 0 and restores the scale. Only the
+ * un-keyed path needs this: an alpha mask already has a zero background, and
+ * a character covering more than half the frame would have its own median
+ * subtracted and come out inside-out.
+ */
+function subtractBackground(mask) {
+  const histogram = new Uint32Array(256);
+  for (let i = 0; i < mask.length; i++) histogram[mask[i]]++;
+  const half = mask.length >> 1;
+  let seen = 0;
+  let median = 0;
+  for (let v = 0; v < 256; v++) {
+    seen += histogram[v];
+    if (seen > half) { median = v; break; }
+  }
+  const out = Buffer.allocUnsafe(mask.length);
+  for (let i = 0; i < mask.length; i++) out[i] = Math.abs(mask[i] - median);
+  return out;
+}
+
+/**
+ * Decode the trimmed window to one gray silhouette per analysed frame, in a
+ * single ffmpeg pass.
+ *
+ * One pass, not one spawn per frame: the analysis looks at up to 12 frames a
+ * second, and paying a process for each of them would cost more than the
+ * decode. The frames come back as raw bytes with no container, so the buffer
+ * splits into fixed-size masks by arithmetic — which is why the scale is
+ * pinned to an exact WxH here rather than left to ffmpeg's `-2`.
+ */
+function decodeMasks(input, { start, span, key, similarity, blend, fps, size }) {
+  const height = scaledHeight(size, ANALYSIS_WIDTH);
+  // `fps` first so the decimation happens before the per-pixel work, and the
+  // key before `alphaextract` because the alpha plane IS the silhouette.
+  // Without a key there is no alpha, so the luma stands in: it says less about
+  // the character, but it says it about the same frames.
+  const chain = [`fps=${fps}`];
+  if (key) chain.push(`colorkey=${key}:${similarity}:${blend}`, "format=rgba", "alphaextract");
+  else chain.push("format=gray");
+  chain.push(`scale=${ANALYSIS_WIDTH}:${height}`);
+
+  const r = spawnSync("ffmpeg", [
+    "-v", "error", "-ss", String(start), "-t", String(span), "-i", input,
+    "-vf", chain.join(","), "-f", "rawvideo", "-pix_fmt", "gray", "-",
+  ], { maxBuffer: MAX_RAW_BYTES });
+  if (r.error) fail(`contact: could not decode ${input} (${r.error.message})`);
+  if (r.status !== 0) fail(`contact: could not decode ${input}\n${String(r.stderr ?? "").trim()}`);
+
+  const frameBytes = ANALYSIS_WIDTH * height;
+  const count = Math.floor((r.stdout?.length ?? 0) / frameBytes);
+  if (count < 2) {
+    fail(`contact: ${round(span, 3)}s from ${round(start, 3)}s of ${input} decoded to ${count} analysis frame(s) — nothing to compare`);
+  }
+  const masks = Array.from({ length: count }, (_, i) => r.stdout.subarray(i * frameBytes, (i + 1) * frameBytes));
+  return key ? masks : masks.map(subtractBackground);
+}
+
+/**
+ * What the silhouette series says about the clip: where the opening pose
+ * breaks, where the closing hold begins, and which windows close on
+ * themselves.
+ *
+ * The loop search is O(n · maxPeriod) diffs, not O(n²): a cycle longer than
+ * LOOP_PERIOD_MAX is not a cycle anyone would sample as one motion, so the
+ * inner loop stops there, and the "does this window actually move" test is a
+ * running prefix max of the diffs it already computed rather than a second
+ * sweep.
+ */
+function readMotion(masks, { fps, start }) {
+  const n = masks.length;
+  const at = (i) => round(start + i / fps, 3);
+
+  const deltas = [];
+  for (let i = 0; i + 1 < n; i++) deltas.push(maskDiff(masks[i], masks[i + 1]));
+
+  let startIndex = -1;
+  for (let i = 1; i < n; i++) {
+    if (maskDiff(masks[0], masks[i]) > STILL_DIFF) { startIndex = i; break; }
+  }
+  // The last frame that still differs from the final pose: everything after it
+  // is the closing hold.
+  let endIndex = -1;
+  for (let j = n - 2; j >= 0; j--) {
+    if (maskDiff(masks[n - 1], masks[j]) > STILL_DIFF) { endIndex = j; break; }
+  }
+
+  const loops = [];
+  if (startIndex >= 0) {
+    const kMin = Math.max(1, Math.ceil(LOOP_PERIOD_MIN * fps));
+    const kMax = Math.floor(LOOP_PERIOD_MAX * fps);
+    const cumulative = [0];
+    for (const d of deltas) cumulative.push(cumulative[cumulative.length - 1] + d);
+    for (let i = startIndex; i < n; i++) {
+      let motion = 0;
+      for (let k = 1; k <= kMax && i + k < n; k++) {
+        const seam = maskDiff(masks[i], masks[i + k]);
+        // `motion` is the largest departure from the start pose STRICTLY
+        // inside the window — a stretch of held pose has a perfect seam and
+        // would otherwise win every time.
+        if (k >= kMin && motion >= LOOP_MOTION_DIFF) {
+          loops.push({
+            start: at(i),
+            end: at(i + k),
+            period: round(k / fps, 3),
+            seam: round(seam, 4),
+            step: round((cumulative[i + k] - cumulative[i]) / k, 4),
+          });
+        }
+        if (seam > motion) motion = seam;
+      }
+    }
+    // Seam decides; the rest of the ordering is spelt out rather than left to
+    // insertion order, because ties are not rare. A silhouette diff cannot see
+    // DIRECTION, so any motion that retraces its own path — a breath, a
+    // pendulum, a bounce — scores a perfect seam on its half-period as well as
+    // on its period, and a perfectly cyclic clip scores one on every multiple.
+    // Among equals, take the window that starts earliest (it sits right after
+    // the opening hold, where the motion actually begins) and then the
+    // shortest one.
+    loops.sort((a, b) => a.seam - b.seam || a.start - b.start || a.period - b.period);
+    loops.length = Math.min(loops.length, MAX_LOOPS);
+  }
+
+  return {
+    stillStart: startIndex < 0 ? null : at(startIndex),
+    stillEnd: endIndex < 0 ? null : at(endIndex),
+    loops,
+    // 2 dp: this series is read, not computed on — it is the rhythm of the
+    // clip at a glance, and four decimals of codec noise only hide it.
+    deltas: deltas.map((d) => round(d, 2)),
+  };
+}
+
+/**
+ * Look at a clip before sampling it.
+ *
+ * A motion sampled from a clip is only as good as the window it came from,
+ * and until this existed the agent had no way to see the clip at all — it
+ * sampled N frames evenly across whatever it was handed and found out
+ * afterwards that two of them were the same opening pose. So: one picture of
+ * the whole clip, plus the three numbers that decide the window (where the
+ * opening hold ends, where the closing hold starts, which stretch loops).
+ *
+ * Nothing here is an asset. The stills are extracted into a temp directory
+ * that is removed on the way out, success or failure; the only file that
+ * survives is the contact sheet the caller named, and no motion directory or
+ * project.json is touched.
+ */
+function stepContact(clip, options) {
+  const input = resolve(clip);
+  if (!existsSync(input)) fail(`file not found: ${input}`);
+
+  const { duration, start, end, last } = clipWindow(input, { ...options, label: "contact" });
+  const windowEnd = Math.min(end, duration);
+  const size = probeSize(input, "contact");
+  const stream = probeVideoStream(input);
+  const warnings = [];
+
+  let times;
+  if (options.every === null) {
+    times = sampleTimes({ start, end: windowEnd, frames: options.count, loop: false, last });
+  } else {
+    // `--count` is capped where it is parsed; `--every` cannot be, because how
+    // many stills it asks for depends on the clip it is pointed at.
+    times = everyTimes({ start, end: windowEnd, every: options.every, last });
+    if (times.length > MAX_CONTACT_STILLS) {
+      fail(`--every ${options.every}s over a ${round(windowEnd - start, 3)}s window is ${times.length} stills — the limit is ${MAX_CONTACT_STILLS}`);
+    }
+  }
+
+  const cols = options.cols;
+  const rows = Math.ceil(times.length / cols);
+  const tileWidth = options.width;
+  const tileHeight = scaledHeight(size, tileWidth);
+  const fontSize = Math.max(8, Math.round(tileWidth / 10));
+
+  const stillsDir = mkdtempSync(join(tmpdir(), "sprite-contact-"));
+  let outPath;
+  let keyColor = null;
+  let motion;
+  let coverage;
+  try {
+    // The key colour is read off a RAW frame, not off a scaled and stamped
+    // still: the corner patches this measures are exactly where the timestamp
+    // box goes.
+    if (options.key === "auto") {
+      const frame = ffmpegTo(join(stillsDir, "key.png"), () => [
+        "-ss", String(times[0]), "-i", input, "-frames:v", "1", "-pix_fmt", "rgba",
+      ], "contact key frame");
+      keyColor = stepProbe(frame, options.threshold).cornerColor;
+    } else if (options.key !== "none") {
+      keyColor = normalizeColor(options.key, "--key");
+    }
+
+    // The numbers before the picture, so a window this cannot analyse leaves
+    // no half-answer on disk: either both halves are there or the command
+    // refused and wrote nothing.
+    const analysisFps = Math.min(stream.fps ?? MAX_ANALYSIS_FPS, MAX_ANALYSIS_FPS);
+    let span = windowEnd - start;
+    if (span > MAX_ANALYSIS_SECONDS) {
+      warnings.push(`the window is ${round(span, 3)}s — only its first ${MAX_ANALYSIS_SECONDS}s were analysed`);
+      span = MAX_ANALYSIS_SECONDS;
+    }
+    const masks = decodeMasks(input, {
+      start, span, key: keyColor, similarity: options.similarity, blend: options.blend,
+      fps: analysisFps, size,
+    });
+    motion = { fps: analysisFps, ...readMotion(masks, { fps: analysisFps, start }) };
+    if (motion.stillStart === null) warnings.push("the clip never moves");
+
+    let opaque = 0;
+    for (const mask of masks) {
+      for (let i = 0; i < mask.length; i++) if (mask[i] >= options.threshold) opaque++;
+    }
+    coverage = opaque / (masks.length * masks[0].length);
+    if (keyColor && coverage > KEYED_OPAQUE_ALERT) {
+      warnings.push(`keying ${keyColor} left ${(coverage * 100).toFixed(0)}% of each frame opaque — was the clip shot on a flat chroma background?`);
+    }
+
+    const stamp = (t) => `drawtext=text='${t.toFixed(3)}s':x=2:y=2:fontsize=${fontSize}:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=2`;
+    const extractStill = (t, index, labelled) => ffmpegTo(
+      join(stillsDir, `${String(index).padStart(3, "0")}.png`),
+      () => [
+        "-ss", String(t), "-i", input, "-frames:v", "1",
+        "-vf", [`scale=${tileWidth}:${tileHeight}`, ...(labelled ? [stamp(t)] : [])].join(","),
+        "-pix_fmt", "rgb24",
+      ],
+      `contact still ${index}`,
+    );
+
+    // Some ffmpeg builds ship without drawtext, and others ship it without a
+    // font to draw with. A label is worth a retry; it is never worth the
+    // command, so the first still decides for all of them and the retry
+    // proves the failure was the label rather than the seek.
+    let labelled = true;
+    try {
+      extractStill(times[0], 0, true);
+    } catch (error) {
+      if (!(error instanceof SpriteSheetError)) throw error;
+      extractStill(times[0], 0, false);
+      labelled = false;
+      warnings.push("ffmpeg's drawtext filter could not run here (missing, or no font to draw with) — the tiles carry no timestamps");
+    }
+    for (let i = 1; i < times.length; i++) extractStill(times[i], i, labelled);
+
+    outPath = ffmpegTo(options.out, () => [
+      "-framerate", "1", "-start_number", "0", "-i", join(stillsDir, "%03d.png"),
+      "-vf", `tile=${cols}x${rows}:padding=${CONTACT_GUTTER}:color=${CONTACT_BACKGROUND}`,
+      "-frames:v", "1", "-pix_fmt", "rgb24",
+    ], "contact");
+  } finally {
+    rmSync(stillsDir, { recursive: true, force: true });
+  }
+
+  return {
+    clip: input,
+    out: outPath,
+    duration: round(duration, 3),
+    fps: stream.fps === null ? null : round(stream.fps, 3),
+    trim: { start: round(start, 3), end: round(windowEnd, 3) },
+    tiles: times.map((t, index) => ({
+      index, t, row: Math.floor(index / cols), col: index % cols,
+    })),
+    grid: { rows, cols },
+    tile: { width: tileWidth, height: tileHeight },
+    ...(keyColor ? { keyColor } : {}),
+    alphaCoverage: round(coverage, 4),
+    stillStart: motion.stillStart,
+    stillEnd: motion.stillEnd,
+    loops: motion.loops,
+    profile: { fps: motion.fps, start: round(start, 3), deltas: motion.deltas },
+    warnings,
+  };
+}
+
+/**
  * The video source: sample the clip into cells, key the plate off every one of
  * them, then hand the cells to the same chain `run` drives.
  *
@@ -1667,25 +2096,51 @@ function stepFromVideo(clip, options) {
   const motionDir = resolve(options.out);
   mkdirSync(motionDir, { recursive: true });
 
-  const duration = probeDuration(input, "from-video");
-  const start = options.trimStart ?? 0;
-  const end = options.trimEnd ?? duration;
-  if (end > duration + SAMPLE_TAIL) {
-    fail(`--trim-end ${end}s is past the end of a ${round(duration, 3)}s clip`);
+  const window = clipWindow(input, { ...options, label: "from-video" });
+  const { duration, last } = window;
+
+  // Two schedules, one chain. Everything past this block is identical either
+  // way — `sampledAt[i]` is still where frame i came from, and `register-run`
+  // still reads it as that frame's provenance.
+  let times;
+  let start;
+  let end;
+  let fps;
+  const schedule = options.at ? "explicit" : "even";
+  if (options.at) {
+    for (const t of options.at) {
+      if (t > last) {
+        fail(`--at: ${t}s is past the last frame of a ${round(duration, 3)}s clip`);
+      }
+    }
+    times = options.at.map((t) => round(Math.min(t, last), 3));
+    // Strictly increasing was checked on what was typed; this checks what
+    // survived the millisecond rounding, because two times a microsecond apart
+    // name one frame and would leave the mean rate dividing by zero.
+    for (let i = 1; i < times.length; i++) {
+      if (times[i] <= times[i - 1]) {
+        fail(`--at: ${options.at[i]}s and ${options.at[i - 1]}s are the same frame to the millisecond`);
+      }
+    }
+    start = times[0];
+    end = times[times.length - 1];
+    // The mean sampling rate: N frames spread over N-1 intervals. Hand-picked
+    // times are rarely evenly spaced, so this is the honest average rather
+    // than a rate any one pair of frames was taken at. Unlike the even
+    // schedule it is NOT floored at 1 — two frames a minute apart really are a
+    // 0.033 fps motion — only at the resolution of the rounding, so a wide
+    // enough span cannot round the frame rate to zero.
+    fps = options.fps ?? Math.max(0.001, round((times.length - 1) / (end - start), 3));
+  } else {
+    start = window.start;
+    end = window.end;
+    times = sampleTimes({
+      start, end: Math.min(end, duration), frames: options.frames, loop: options.loop, last,
+    });
+    // Sampling N frames across D seconds and then playing them at N/D fps is
+    // the clip at its own speed; any other fps is a deliberate slow-down.
+    fps = options.fps ?? Math.max(1, round(options.frames / (end - start), 3));
   }
-  if (!(end - start > SAMPLE_TAIL)) {
-    fail(`--trim-start ${start}s and --trim-end ${round(end, 3)}s leave nothing to sample`);
-  }
-  const last = Math.min(end - SAMPLE_TAIL, probeLastFrameTime(input, duration));
-  if (start > last) {
-    fail(`--trim-start ${start}s is past the last frame of a ${round(duration, 3)}s clip`);
-  }
-  const times = sampleTimes({
-    start, end: Math.min(end, duration), frames: options.frames, loop: options.loop, last,
-  });
-  // Sampling N frames across D seconds and then playing them at N/D fps is
-  // the clip at its own speed; any other fps is a deliberate slow-down.
-  const fps = options.fps ?? Math.max(1, round(options.frames / (end - start), 3));
 
   const cellsDir = join(motionDir, CELLS_DIRNAME);
   resetFramesDir(cellsDir);
@@ -1762,6 +2217,7 @@ function stepFromVideo(clip, options) {
     source: "video",
     video: input,
     sampledAt: times,
+    schedule,
     trim: { start: round(start, 3), end: round(Math.min(end, duration), 3) },
     duration: round(duration, 3),
     grid: packed.grid,
@@ -1842,8 +2298,16 @@ const OPTIONS = {
     similarity: { type: "string" }, blend: { type: "string" },
     "no-clean": { type: "boolean", default: false },
   },
+  contact: {
+    out: { type: "string" }, count: { type: "string" }, every: { type: "string" },
+    cols: { type: "string" }, width: { type: "string" },
+    "trim-start": { type: "string" }, "trim-end": { type: "string" },
+    key: { type: "string" }, similarity: { type: "string" }, blend: { type: "string" },
+    threshold: { type: "string" },
+  },
   "from-video": {
     out: { type: "string" }, name: { type: "string" }, frames: { type: "string" },
+    at: { type: "string", multiple: true },
     fps: { type: "string" }, loop: { type: "boolean", default: false },
     "no-loop": { type: "boolean", default: false },
     anchor: { type: "string" }, "x-from": { type: "string" }, key: { type: "string" },
@@ -1889,6 +2353,34 @@ function pickXFrom(value) {
     fail(`--x-from: expected ${X_FROM_MODES.join(", ")}, got '${value}'`);
   }
   return xFrom;
+}
+
+/**
+ * The `--at` list: comma-separated, repeatable, flattened the same way
+ * `sprite-project.mjs::parseInputs` flattens `--from`, so
+ * `--at 0.2,0.7 --at 1.2` and `--at 0.2,0.7,1.2` are the same request.
+ *
+ * Everything checkable without the clip is checked here; "past the last
+ * frame" needs the clip and is checked where the clip is probed.
+ */
+function parseSampleTimes(raw) {
+  const times = raw
+    .flatMap((value) => String(value).split(","))
+    .map((v) => v.trim())
+    .filter(Boolean)
+    .map((v) => num(v, "--at", { min: 0 }));
+  if (times.length < 2) {
+    fail(`--at: a motion needs at least 2 times, got ${times.length}`);
+  }
+  if (times.length > MAX_FRAMES) {
+    fail(`--at lists ${times.length} times, over the ${MAX_FRAMES}-frame limit (frame files are two digits)`);
+  }
+  for (let i = 1; i < times.length; i++) {
+    if (times[i] <= times[i - 1]) {
+      fail(`--at: times must increase (${times[i]} after ${times[i - 1]})`);
+    }
+  }
+  return times;
 }
 
 function pickLoop(values, fallback = false) {
@@ -2083,10 +2575,58 @@ function main() {
       ]);
       break;
     }
+    case "contact": {
+      const key = values.key ?? "auto";
+      if (key !== "auto" && key !== "none") normalizeColor(key, "--key");
+      if (values.count !== undefined && values.every !== undefined) {
+        fail("--count and --every are two ways to space the stills — pass one");
+      }
+      const every = values.every === undefined ? null : num(values.every, "--every", { min: 0 });
+      if (every !== null && every <= 0) fail(`--every: expected a number > 0, got '${values.every}'`);
+      const count = num(values.count, "--count", { integer: true, min: 2, fallback: DEFAULT_CONTACT_COUNT });
+      if (count > MAX_CONTACT_STILLS) {
+        fail(`--count ${count} is over the ${MAX_CONTACT_STILLS}-still limit — a contact sheet is for reading`);
+      }
+      const out = stepContact(requirePositional(positionals, "<clip>"), {
+        out: requireFlag(values.out, "--out"),
+        count,
+        every,
+        cols: num(values.cols, "--cols", { integer: true, min: 1, fallback: DEFAULT_CONTACT_COLS }),
+        width: num(values.width, "--width", { integer: true, min: 16, fallback: DEFAULT_CONTACT_WIDTH }),
+        trimStart: num(values["trim-start"], "--trim-start", { min: 0, fallback: null }),
+        trimEnd: num(values["trim-end"], "--trim-end", { min: 0, fallback: null }),
+        key,
+        similarity: num(values.similarity, "--similarity", { min: 0, fallback: DEFAULT_VIDEO_SIMILARITY }),
+        blend: num(values.blend, "--blend", { min: 0, fallback: DEFAULT_BLEND }),
+        threshold,
+      });
+      const best = out.loops[0];
+      emit(values, out, [
+        `${out.tiles.length} stills of ${basename(out.clip)} → ${out.out}`,
+        out.stillStart === null
+          ? "never moves"
+          : `opening pose holds until ${out.stillStart}s`,
+        best
+          ? `best loop ${best.start}–${best.end}s (period ${best.period}s, seam ${best.seam} vs step ${best.step})`
+          : "no loop window found",
+        ...out.warnings,
+      ]);
+      break;
+    }
     case "from-video": {
       const key = values.key ?? "auto";
       if (key !== "auto" && key !== "none") normalizeColor(key, "--key");
-      const frames = num(requireFlag(values.frames, "--frames"), "--frames", { integer: true, min: 2 });
+      const at = values.at === undefined ? null : parseSampleTimes(values.at);
+      if (at) {
+        for (const flag of ["frames", "trim-start", "trim-end"]) {
+          if (values[flag] !== undefined) {
+            fail(`--at and --${flag} are two ways to say which frames — pass one`);
+          }
+        }
+      }
+      const frames = at
+        ? at.length
+        : num(requireFlag(values.frames, "--frames"), "--frames", { integer: true, min: 2 });
       if (frames > MAX_FRAMES) fail(`--frames ${frames} is over the ${MAX_FRAMES}-frame limit (frame files are two digits)`);
       const trimStart = num(values["trim-start"], "--trim-start", { min: 0, fallback: null });
       const trimEnd = num(values["trim-end"], "--trim-end", { min: 0, fallback: null });
@@ -2094,6 +2634,7 @@ function main() {
         out: requireFlag(values.out, "--out"),
         name: requireFlag(values.name, "--name"),
         frames,
+        at,
         fps: values.fps === undefined ? null : num(values.fps, "--fps", { min: 1 }),
         loop: pickLoop(values),
         anchor: pickAnchor(values.anchor),

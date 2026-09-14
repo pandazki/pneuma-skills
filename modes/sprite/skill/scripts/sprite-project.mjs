@@ -58,8 +58,17 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
 
   add-ref --id <refId> --file <path> --role ${REF_ROLES.join("|")}
           [--label <text>] [--prompt <text>] [--model <name>] [--from <assetId,…>]
+          [--uploaded | --derived-from <refId> [--op <word>]]
       Register an identity reference as asset ref-<refId>. Re-adding the same
-      id replaces the asset and its edge.
+      id replaces the asset and its edge, whatever type that edge had.
+      By default the image was generated here: a 'generate' edge carrying
+      --model / --prompt / --from.
+      --uploaded says the user brought this file: an 'upload' edge by the
+      human, with no parent and no params. It refuses --model / --prompt /
+      --from, because none of them happened.
+      --derived-from says you cut or cleaned this image out of another
+      registered reference: a 'derive' edge from that ref, with params.op
+      (--op, a single word, default 'crop').
 
   add-motion --id <motionId> --label <text> --rows R --cols C --fps N
              [--loop|--no-loop] [--anchor ${ANCHORS.join("|")}] [--prompt <text>]
@@ -401,12 +410,17 @@ function dropAssets(doc, ids) {
  * craft edges are single-parent, so a fan-in step names its first input as
  * the parent and lists the whole set in params.inputs. A single input is
  * fully described by fromAssetId and carries no list.
+ *
+ * `actor` is the agent for everything this pipeline makes. The one exception
+ * is a reference the user brought in: a human made that file, and an `upload`
+ * edge claiming the agent did would be the same lie as a model name nobody
+ * called.
  */
-function operation(type, timestamp, params, inputs) {
+function operation(type, timestamp, params, inputs, actor = "agent") {
   const merged = { ...params };
   if (inputs && inputs.length > 1) merged.inputs = inputs;
   for (const key of Object.keys(merged)) if (merged[key] === undefined) delete merged[key];
-  const op = { type, actor: "agent", timestamp };
+  const op = { type, actor, timestamp };
   if (Object.keys(merged).length) op.params = merged;
   return op;
 }
@@ -422,6 +436,83 @@ function findMotion(doc, id, flag = "--motion") {
     fail(`${flag}: no motion '${id}' in this character (known motions: ${known})`);
   }
   return motion;
+}
+
+/** The sidecar entry for a reference, by ref id (`turnaround`) or by its
+ *  asset id (`ref-turnaround`) — `--from` speaks asset ids, so both spellings
+ *  reach this and neither should be a puzzle. Unknown lists what it knows,
+ *  the way `findMotion` does. */
+function findRef(doc, key, flag) {
+  const ref = doc.sprite.refs.find((r) => r.id === key) ?? doc.sprite.refs.find((r) => r.asset === key);
+  if (!ref) {
+    const known = doc.sprite.refs.map((r) => r.id).join(", ") || "none";
+    fail(`${flag}: no reference '${key}' in this character (known refs: ${known})`);
+  }
+  return ref;
+}
+
+/** Flags that only describe an image this pipeline generated. */
+const GENERATE_ONLY = [["--model", "model"], ["--prompt", "prompt"], ["--from", "from"]];
+
+/**
+ * The provenance edge `add-ref` writes, which is the only thing the three
+ * origins disagree about — the asset entry is identical for all of them.
+ *
+ * A reference the user drew has no model and no prompt, and a pose cropped out
+ * of a design sheet has neither either: its history is the sheet. Recording
+ * those as `generate` edges is what forced the agent to either invent a model
+ * name or skip registration entirely, so the flags of one origin are refused
+ * by name for the others rather than quietly ignored.
+ */
+function refEdge(doc, values, id, now) {
+  const assetId = `ref-${id}`;
+  const derivedFrom = values["derived-from"];
+
+  if (values.uploaded && derivedFrom !== undefined) {
+    fail("--uploaded and --derived-from are mutually exclusive: the file was either brought in by the user or cut out of a registered reference");
+  }
+  if (values.op !== undefined && derivedFrom === undefined) {
+    fail("--op: only --derived-from records an operation — there is nothing to have cropped without it");
+  }
+
+  if (values.uploaded) {
+    for (const [flag, key] of GENERATE_ONLY) {
+      if (values[key] !== undefined) fail(`--uploaded: a user-supplied image has no ${flag} — nothing here generated it`);
+    }
+    return edge(assetId, [], operation("upload", now, {}, [], "human"));
+  }
+
+  if (derivedFrom !== undefined) {
+    for (const [flag, key] of GENERATE_ONLY) {
+      if (values[key] !== undefined) fail(`--derived-from: an image cut out of another reference has no ${flag} — its source is the reference it came from`);
+    }
+    const source = findRef(doc, derivedFrom, "--derived-from");
+    // A self-parent is a cycle the graph cannot mean anything by, and it is an
+    // easy typo when re-registering the same id.
+    if (source.asset === assetId) fail(`--derived-from: reference '${id}' cannot be derived from itself`);
+    const op = values.op === undefined ? "crop" : String(values.op).trim();
+    if (!op) fail("--op: expected a single word such as crop or cleanup");
+    return edge(assetId, [source.asset], operation("derive", now, { op }));
+  }
+
+  const inputs = parseInputs(doc, values.from, "--from");
+  return edge(assetId, inputs, operation("generate", now, {
+    model: values.model, prompt: values.prompt,
+  }, inputs));
+}
+
+/** How a reference came to be, read off its edge. `show` reports it because
+ *  whether an image was drawn here or brought in by the user decides what the
+ *  agent may regenerate. A ref with no edge at all is `unknown` — the honest
+ *  answer for a hand-written or half-migrated project.json. */
+const EDGE_ORIGINS = new Map([["generate", "generated"], ["upload", "uploaded"], ["derive", "derived"]]);
+
+function refOrigin(doc, assetId) {
+  const found = doc.provenance.find((e) => e.toAssetId === assetId);
+  // A Map, not an object literal: the type comes out of a file on disk, and
+  // an inherited key like `constructor` must answer `unknown` like any other
+  // operation this mode does not write.
+  return EDGE_ORIGINS.get(found?.operation?.type) ?? "unknown";
 }
 
 function parseInputs(doc, raw, flag) {
@@ -557,6 +648,7 @@ function summarize(doc, dir) {
     refs: doc.sprite.refs.map((ref) => ({
       id: ref.id,
       role: ref.role,
+      origin: refOrigin(doc, ref.asset),
       label: ref.label,
       uri: doc.assets.find((a) => a.id === ref.asset)?.uri ?? null,
     })),
@@ -598,6 +690,7 @@ const OPTIONS = {
   "add-ref": {
     id: { type: "string" }, file: { type: "string" }, role: { type: "string" }, label: { type: "string" },
     prompt: { type: "string" }, model: { type: "string" }, from: { type: "string", multiple: true },
+    uploaded: { type: "boolean", default: false }, "derived-from": { type: "string" }, op: { type: "string" },
   },
   "add-motion": {
     id: { type: "string" }, label: { type: "string" }, rows: { type: "string" }, cols: { type: "string" },
@@ -751,18 +844,18 @@ function main() {
       const role = oneOf(requireFlag(values.role, "--role"), REF_ROLES, "--role");
       const uri = toUri(dir, requireFlag(values.file, "--file"), "--file");
       const file = requireFile(dir, uri, "--file");
-      const inputs = parseInputs(doc, values.from, "--from");
       const label = values.label ?? titleCase(id);
       const assetId = `ref-${id}`;
+      // Every origin refusal lives in here, so building the edge first means a
+      // rejected flag combination exits before the document is touched at all.
+      const provenance = refEdge(doc, values, id, now);
 
       upsertAsset(doc, {
         id: assetId, type: "image", uri, name: label,
         metadata: imageMetadata(file, "--file"),
         createdAt: now, status: "ready", tags: ["ref"],
       }, `ref '${id}'`);
-      setEdge(doc, edge(assetId, inputs, operation("generate", now, {
-        model: values.model, prompt: values.prompt,
-      }, inputs)));
+      setEdge(doc, provenance);
 
       const existing = doc.sprite.refs.findIndex((r) => r.id === id);
       const entry = { id, asset: assetId, role, label };

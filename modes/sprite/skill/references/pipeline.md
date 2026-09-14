@@ -334,13 +334,87 @@ it is there and falls back to the cell edge when it is not — which with any
 before the point was recorded simply carry none; that absence is honest and the
 stage says "assumed" rather than guessing.
 
+### `contact <clip> --out <png> [--count 24 | --every s] [--cols 8] [--width 160] [flags]`
+
+Look at the clip before you sample it. A motion sampled from a clip is only as
+good as the window it came from, and without this there is no way to see the
+clip at all — `from-video` gets N frames spread across whatever it was handed,
+and the dead frames only show up in the preview.
+
+```bash
+node {SKILL_PATH}/scripts/sprite-sheet.mjs contact \
+  <character>/motions/<id>/video-seedance-1.mp4 \
+  --out <character>/motions/<id>/contact.png --json
+```
+
+**The picture.** One PNG: `--count` stills spaced evenly across the (trimmed)
+clip with **both ends included**, each scaled to `--width` px, its timestamp
+burnt into the corner, tiled `--cols` per row with a 2 px grey gutter. The last
+still is pulled back to the last frame that can be seeked to, the same clamp
+`from-video` applies. `--every s` is the alternative schedule — one still every
+s seconds from the trim start — and the two are mutually exclusive. Read it,
+then pass the times you picked to `from-video --at`.
+
+`--trim-start` / `--trim-end` window the clip exactly as they do for
+`from-video`. `--key`, `--similarity`, `--blend` and `--threshold` only affect
+the numbers below: the stills are always the clip as it was shot, plate and
+all, because that is what you need to look at.
+
+**The numbers**, measured deterministically, no model. The clip is decoded once
+into alpha silhouettes (keyed with `--key`, 96 px wide, at
+`min(clip fps, 12)` fps), and every pair of them is compared by
+**`Σ|a−b| / Σ max(a,b)`** — the fraction of the combined ink that changed, so
+0 is the same pose and the number means the same thing whether the character
+fills the frame or a tenth of it.
+
+| Key | What it says | The threshold behind it |
+|---|---|---|
+| `stillStart` | When the opening pose breaks — everything before it is the same picture N times | first frame with `diff(first, i) > 0.05`; `null` (plus a warning) when nothing ever differs |
+| `stillEnd` | Where the closing hold begins | last frame with `diff(last, j) > 0.05` |
+| `loops[]` | The windows that close on themselves: `{ start, end, period, seam, step }` | periods from 0.4 s to 2.5 s; **`seam`** is how different the two ends are, **`step`** how much a frame moves inside the window, so `seam ≪ step` is a clean cycle. A window only counts when it really moves (`max diff(start, ·) ≥ 0.25` inside it), or a held pose would score a perfect seam. Best 3 by seam |
+| `profile.deltas` | The rhythm: frame-to-frame change at `profile.fps`, from `profile.start` | none — read the zeros as holds and the plateaus as beats |
+| `alphaCoverage` | Mean opaque share after keying | over 0.9 raises the same "was this shot on a flat chroma background?" warning `from-video` raises |
+
+```json
+{ "clip": "<abs>", "out": "<abs png>", "duration": 4.0, "fps": 24,
+  "trim": { "start": 0, "end": 4.0 },
+  "tiles": [ { "index": 0, "t": 0, "row": 0, "col": 0 }, "…" ],
+  "grid": { "rows": 3, "cols": 8 }, "tile": { "width": 160, "height": 90 },
+  "keyColor": "#08f00d", "alphaCoverage": 0.29,
+  "stillStart": 0.458, "stillEnd": 3.9,
+  "loops": [ { "start": 0.917, "end": 2.292, "period": 1.375, "seam": 0.0553, "step": 0.08 } ],
+  "profile": { "fps": 12, "start": 0, "deltas": [0, 0, 0.04, "…"] },
+  "warnings": [] }
+```
+
+Three things worth knowing before you trust a number:
+
+- **A silhouette diff cannot see direction.** A motion that retraces its own
+  path scores a perfect seam on its half-period as well as on its period, and
+  a perfectly cyclic clip scores one on every multiple. Ties break towards the
+  earliest, then shortest window; when the top candidates differ by a factor of
+  two, look at the contact sheet and decide.
+- **`--key none` measures luma instead of alpha**, with the frame's own median
+  subtracted so the background still sits at zero. It works, but it is noisier
+  than a keyed clip and `keyColor` is omitted. The thresholds above were set on
+  keyed silhouettes.
+- Analysis stops after the first 60 s of the window and says so in a warning;
+  `drawtext` is missing or fontless in some ffmpeg builds, in which case the
+  tiles come out unlabelled with a warning naming the filter — never a failed
+  command over a caption.
+
+**The contact sheet is a working file, never an asset.** The stills are
+extracted into a temp directory that is removed on the way out (success or
+failure); the only thing left behind is the PNG you named. Nothing is written
+to a motion directory, and `register-run` / `project.json` never hear about it.
+
 ### `from-video <clip> --out <motionDir> --name <motionId> --frames N [flags]`
 
 The second motion source. There is no sheet: `--frames` frames are cut evenly
 out of the (trimmed) clip into `<motionDir>/cells/NN.png`, and from there it is
 the same chain `run` drives — clean → align → pack → gif (+webp) → inspect —
-so the JSON it prints is `run`'s plus three keys and `register-run` consumes it
-unchanged.
+so the JSON it prints is `run`'s plus the video keys, and `register-run`
+consumes it unchanged.
 
 ```bash
 node {SKILL_PATH}/scripts/sprite-sheet.mjs from-video \
@@ -350,7 +424,8 @@ node {SKILL_PATH}/scripts/sprite-sheet.mjs from-video \
 
 | Flag | Default | Notes |
 |---|---|---|
-| `--frames N` | **required** | 2–100. Sampled evenly across the trimmed clip |
+| `--frames N` | **required**, unless `--at` | 2–100. Sampled evenly across the trimmed clip |
+| `--at t1,t2,…` | — | Sample these times instead, see below |
 | `--fps N` | frames / trimmed duration | The default plays the motion at the speed the clip was shot at |
 | `--loop` / `--no-loop` | `--no-loop` | Decides the sampling schedule, see below |
 | `--trim-start` / `--trim-end` | 0 / the duration | **Timestamps** in seconds, like ffmpeg's `-ss` / `-to` — not durations |
@@ -367,11 +442,34 @@ the recovery pose is in the sheet. The last timestamp is clamped to the last
 frame that can actually be seeked to (`-ss` past it writes no file and still
 exits 0, which is why this is worth saying).
 
+**`--at` replaces the schedule with times you chose** — run `contact` first,
+read the holds and the loop off it, then name the frames:
+
+```bash
+node {SKILL_PATH}/scripts/sprite-sheet.mjs from-video <clip> \
+  --out <character>/motions/<id> --name <id> \
+  --at 0.917,1.003,1.089 --at 1.175,1.261 --loop --json
+```
+
+A comma-separated list of seconds, repeatable and flattened — the two `--at`
+flags above are one list of five times — 2 to 100 strictly increasing entries,
+each inside the clip. Everything is refused **by name**: a time past the last seekable frame,
+a list that goes backwards, one value, 101 values. It also excludes `--frames`,
+`--trim-start` and `--trim-end` — those are the other way of saying the same
+thing, and passing both says nothing. `--loop` / `--no-loop` keep their gif and
+atlas meaning but no longer touch the schedule: the times are the schedule.
+`trim` then reports the first and last time you gave, and `--fps` defaults to
+the **mean** sampling rate, `(N − 1) / (last − first)`.
+
+Nothing downstream changes: `sampledAt[i]` is still where frame `i` came from,
+so `register-run` hangs the same provenance off the same clip. The JSON gains
+`"schedule": "even" | "explicit"` so the run summary says which one ran.
+
 The extra keys on top of `run`'s JSON:
 
 ```json
 { "source": "video", "video": "<abs path to the clip>",
-  "sampledAt": [0, 0.253, 0.505, "…"],
+  "sampledAt": [0, 0.253, 0.505, "…"], "schedule": "even",
   "trim": { "start": 0, "end": 4.042 }, "duration": 4.042,
   "alphaCoverage": 0.4438, "keyColor": "#08f00d" }
 ```
@@ -482,7 +580,7 @@ come from `Date.now()` unless `--at <ms>` is passed.
 | Subcommand | Purpose |
 |---|---|
 | `init --name "Lumi" [--description] [--style] [--cell 256x256] [--facing right]` | Creates the character directory if it is not there yet, then writes `project.json`. Fails if one exists unless `--force`. |
-| `add-ref --id turnaround --file refs/turnaround.png --role turnaround [--label] [--prompt] [--model] [--from <assetId,…>]` | Registers `ref-<id>` with a `generate` edge. |
+| `add-ref --id turnaround --file refs/turnaround.png --role turnaround [--label] [--prompt] [--model] [--from <assetId,…>] [--uploaded \| --derived-from <refId> [--op crop]]` | Registers `ref-<id>` with a `generate` edge carrying the model and prompt you used. `--uploaded` instead records a file **the user brought**: an `upload` edge with `actor: "human"`, no parent and no params — it refuses `--model` / `--prompt` / `--from` by name, since none of them happened. `--derived-from <refId>` records an image you cut or cleaned out of another registered reference (a single pose out of an uploaded design sheet): a `derive` edge from that ref with `params.op` — `--op` is one word, default `crop`, and only valid here. Re-adding an id replaces its edge whatever its type. |
 | `add-motion --id idle --label Idle --rows 4 --cols 4 --fps 8 [--loop] [--anchor bottom] [--prompt] [--status planned]` | Adds the motion. Call it before you generate, so the stage shows a placeholder. |
 | `set-motion --motion idle [--label] [--fps] [--loop\|--no-loop] [--anchor] [--prompt] [--status] [--notes]` | Edits motion metadata. `--notes` is where a failure reason belongs. |
 | `set-sheet --motion idle --file motions/idle/sheet-raw.png --from ref-turnaround[,…] [--model] [--prompt] [--background opaque] [--status generating\|processing]` | Registers `<motion>-sheet-raw` with a `generate` edge. `--from` becomes the edge's `fromAssetId`; `params.inputs` lists the whole set **only when you attach two or more references** — with one, `fromAssetId` already says everything. Re-running replaces the previous raw sheet and its edges, keeping the id stable. Call it twice per sheet (see below). |
@@ -492,7 +590,7 @@ come from `Date.now()` unless `--at <ms>` is passed.
 | `add-video --motion idle --file motions/idle/video-seedance-1.mp4 --model seedance-2.5 --mode i2v --from idle-frame-00[,idle-frame-15] [--prompt] [--duration 4] [--status generating]` | Registers `<motion>-video-<n>` (n is the next free number) with a `generate` edge. |
 | `set-video --motion idle --video <id> --status ready\|failed [--notes]` | Closes out a video after the render returns. |
 | `remove-motion --motion idle` | Removes the motion, its assets and its edges. Files on disk are left alone; the orphaned paths are printed so you can delete them deliberately. |
-| `show [--motion id]` | Compact summary: name, refs, motions with status / grid / fps / frame count / warnings. The cheapest way to re-orient at the start of a turn. |
+| `show [--motion id]` | Compact summary: name, refs (each with `origin: generated \| uploaded \| derived`, read off its edge — whether an image was drawn here or brought in decides what you may regenerate), motions with status / grid / fps / frame count / warnings. The cheapest way to re-orient at the start of a turn. |
 
 ### `set-sheet` is called twice per sheet
 
