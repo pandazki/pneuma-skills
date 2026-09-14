@@ -413,6 +413,7 @@ number you give the user in step 2:
 | a sheet (2048², both refs attached) | ≈ 35 s |
 | `remove-background.mjs --model heavy --resolution 2048` | 10–20 s |
 | `sprite-sheet.mjs run` | ≈ 5 s |
+| `sprite-sheet.mjs contact` (4 s clip, 24 stills + analysis) | ≈ 2.5 s |
 | `sprite-sheet.mjs from-video` (16 frames, 640² clip) | ≈ 12 s |
 | **a 4 s Seedance 480p clip** | **≈ 400 s — nearly seven minutes** |
 
