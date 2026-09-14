@@ -2,6 +2,7 @@ import { Tray, Menu, nativeImage, app } from "electron";
 import path from "node:path";
 import { getLauncherUrl } from "./bun-process.js";
 import { showLogWindow } from "./log-window.js";
+import { trayIndicator } from "./update-state.js";
 
 let tray: Tray | null = null;
 
@@ -17,6 +18,7 @@ interface TrayCallbacks {
   onShowLauncher: () => void;
   onFocusSession: (pid: number, url?: string) => void;
   onCheckUpdates: () => void;
+  onRestartToUpdate: () => void;
   onQuit: () => void;
   onRevealBackgroundSession: (id: string) => void;
 }
@@ -24,6 +26,9 @@ interface TrayCallbacks {
 let callbacks: TrayCallbacks;
 
 let bgSessions: BackgroundSessionView[] = [];
+
+/** Set once the auto-updater has an installer waiting (see updater.ts). */
+let readyUpdate: { version: string } | null = null;
 
 // Animated "working" indicator for the tray title. A static glyph doesn't
 // read as activity — a cycling braille spinner makes a background session
@@ -64,7 +69,7 @@ export function createTray(cbs: TrayCallbacks) {
   }
 
   tray = new Tray(icon);
-  tray.setToolTip("Pneuma Skills");
+  renderTrayStatus();
 
   // Both left-click and right-click show the menu
   tray.on("click", () => showTrayMenu());
@@ -125,7 +130,18 @@ async function buildTrayMenu(): Promise<Electron.Menu> {
         ]
       : [];
 
+  const updateItems: Electron.MenuItemConstructorOptions[] = readyUpdate
+    ? [
+        {
+          label: `Restart to Update to v${readyUpdate.version}`,
+          click: () => callbacks.onRestartToUpdate(),
+        },
+        { type: "separator" },
+      ]
+    : [];
+
   return Menu.buildFromTemplate([
+    ...updateItems,
     {
       label: "Open Launcher",
       click: () => callbacks.onShowLauncher(),
@@ -149,43 +165,39 @@ async function buildTrayMenu(): Promise<Electron.Menu> {
   ]);
 }
 
-export function updateTrayMenu() {
-  // No-op — menu is built on demand when clicked
-}
-
 export function setBackgroundSessions(sessions: BackgroundSessionView[]): void {
   bgSessions = sessions;
   renderTrayStatus();
 }
 
 /**
- * Reflects background-session activity onto the tray title + tooltip. While
- * any session is working the title runs an animated spinner; otherwise it
- * shows a static ✓ (ready to view) or clears. Only invoked by
- * setBackgroundSessions — the raw setTrayTitle/setTrayTooltip remain
- * available for the auto-updater's download-progress display.
+ * A downloaded update waiting to install (or null to clear it). Outranks the
+ * "✓ ready to view" badge — restarting is the more consequential action —
+ * but not an in-progress session, which the user is actively waiting on.
+ */
+export function setUpdateReady(update: { version: string } | null): void {
+  readyUpdate = update;
+  renderTrayStatus();
+}
+
+/**
+ * Reflects background-session activity and a waiting update onto the tray
+ * title + tooltip. The precedence and the exact strings come from
+ * `trayIndicator()` (pure, unit-tested); the spinner animation stays here,
+ * because a working session needs a moving title rather than a static glyph.
  */
 function renderTrayStatus(): void {
   if (!tray) return;
   const running = bgSessions.filter((s) => s.status === "running").length;
   const done = bgSessions.filter((s) => s.status === "done").length;
+  const { title, tooltip } = trayIndicator({ running, done, update: readyUpdate });
 
+  tray.setToolTip(tooltip);
   if (running > 0) {
-    tray.setToolTip(
-      `Pneuma Skills — ${running} session${running > 1 ? "s" : ""} working…`,
-    );
     startSpinner();
   } else {
     stopSpinner();
-    if (done > 0) {
-      tray.setTitle("✓");
-      tray.setToolTip(
-        `Pneuma Skills — ${done} session${done > 1 ? "s" : ""} ready to view`,
-      );
-    } else {
-      tray.setTitle("");
-      tray.setToolTip("Pneuma Skills");
-    }
+    tray.setTitle(title);
   }
 }
 
@@ -208,14 +220,6 @@ function stopSpinner(): void {
     spinnerTimer = null;
   }
   spinnerFrame = 0;
-}
-
-export function setTrayTitle(title: string) {
-  if (tray) tray.setTitle(title);
-}
-
-export function setTrayTooltip(tooltip: string) {
-  if (tray) tray.setToolTip(tooltip);
 }
 
 function createFallbackIcon(): Electron.NativeImage {

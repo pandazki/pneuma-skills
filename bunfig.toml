@@ -1,3 +1,4 @@
 [test]
-# Exclude vendored Electron node_modules and release builds — their tests have missing deps
-pathIgnorePatterns = ["desktop/**"]
+# Exclude the vendored Electron dependencies and build/release output — their
+# bundled tests have missing deps. `desktop/__tests__/` is ours and must run.
+pathIgnorePatterns = ["desktop/node_modules/**", "desktop/dist-electron/**", "desktop/release/**"]

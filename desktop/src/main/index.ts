@@ -1,8 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell, Menu, nativeTheme } from "electron";
-import { autoUpdater } from "electron-updater";
 import { net } from "electron";
 import path from "node:path";
-import { createTray, updateTrayMenu, setTrayTitle, setTrayTooltip } from "./tray.js";
+import { createTray } from "./tray.js";
 import {
   createLauncherWindow,
   createModeWindow,
@@ -19,6 +18,7 @@ import { registerIpcHandlers } from "./ipc-handlers.js";
 import { initLogger } from "./logger.js";
 import { showLogWindow, revealLogFile } from "./log-window.js";
 import { initBackgroundSessions, startBackgroundSession, revealBackgroundSession } from "./background-sessions.js";
+import { initAutoUpdater, checkForUpdatesManual, restartToInstall } from "./updater.js";
 
 // ── App name (fixes "Electron" in macOS menu bar) ────────────────────────────
 app.setName("Pneuma Skills");
@@ -547,6 +547,7 @@ app.whenReady().then(async () => {
       }
     },
     onCheckUpdates: () => checkForUpdatesManual(),
+    onRestartToUpdate: () => restartToInstall(),
     onRevealBackgroundSession: revealBackgroundSession,
     onQuit: () => app.quit(),
   });
@@ -569,11 +570,9 @@ app.whenReady().then(async () => {
     pendingPneumaUrl = null;
   }
 
-  // Auto-update: silent check on startup (skip if platform asset not yet uploaded)
-  setupAutoUpdater();
-  isPlatformAssetReady().then((ready) => {
-    if (ready) autoUpdater.checkForUpdates().catch(() => {});
-  });
+  // Auto-update: silent periodic checks + silent download. The user only
+  // hears about it once the installer is on disk (badge / tray / notification).
+  initAutoUpdater();
 });
 
 // Stay alive in tray when all windows close
@@ -672,264 +671,6 @@ function getSplashLogoBase64(): string {
   } catch {
     return ""; // Fallback: empty image
   }
-}
-
-// ── Auto-updater with dialog UI ──────────────────────────────────────────────
-
-let isCheckingForUpdates = false;
-
-/**
- * Show a dialog attached to a visible window to avoid macOS app-modal freeze.
- * On macOS, dialog.showMessageBox() without a parent window creates an
- * app-modal dialog that freezes the entire process when no window is focused.
- * As a last resort we create a tiny off-screen window as the dialog parent.
- */
-function showUpdateDialog(options: Electron.MessageBoxOptions): Promise<Electron.MessageBoxReturnValue> {
-  const launcher = getLauncherWindow();
-  if (launcher && !launcher.isDestroyed()) {
-    if (!launcher.isVisible()) launcher.show();
-    return dialog.showMessageBox(launcher, options);
-  }
-  // Fallback: find any visible window
-  const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.isVisible());
-  if (win) return dialog.showMessageBox(win, options);
-
-  // Last resort: create a temporary hidden window as dialog parent to prevent
-  // macOS app-modal freeze when no windows exist
-  const tmp = new BrowserWindow({ width: 1, height: 1, show: false, skipTaskbar: true });
-  return dialog.showMessageBox(tmp, options).finally(() => {
-    if (!tmp.isDestroyed()) tmp.destroy();
-  });
-}
-
-/**
- * GitHub raw URL for the project CHANGELOG. Used to surface release
- * highlights in the auto-updater dialogs so users see *what* changed
- * before deciding to download — not just a version-number bump.
- */
-const CHANGELOG_RAW_URL =
-  "https://raw.githubusercontent.com/pandazki/pneuma-skills/main/CHANGELOG.md";
-const CHANGELOG_WEB_URL =
-  "https://github.com/pandazki/pneuma-skills/blob/main/CHANGELOG.md";
-
-function semverCmp(a: string, b: string): number {
-  const ap = a.split(".").map((n) => parseInt(n, 10) || 0);
-  const bp = b.split(".").map((n) => parseInt(n, 10) || 0);
-  const len = Math.max(ap.length, bp.length);
-  for (let i = 0; i < len; i++) {
-    const av = ap[i] ?? 0;
-    const bv = bp[i] ?? 0;
-    if (av !== bv) return av - bv;
-  }
-  return 0;
-}
-
-/**
- * Pull the bullet headlines (the **bolded** prefix of each `- **X** —`
- * line) from CHANGELOG.md sections strictly greater than `fromVer` and
- * up to and including `toVer`. Returns an empty array on any error so
- * the dialog falls back to the version-only message.
- */
-async function fetchChangelogHeadlines(
-  fromVer: string,
-  toVer: string,
-): Promise<string[]> {
-  try {
-    const res = await fetch(CHANGELOG_RAW_URL);
-    if (!res.ok) return [];
-    const text = await res.text();
-    const headlines: string[] = [];
-    let inRange = false;
-    for (const line of text.split("\n")) {
-      const versionMatch = line.match(/^##\s*\[(\d+\.\d+\.\d+)\]/);
-      if (versionMatch) {
-        const v = versionMatch[1];
-        inRange = semverCmp(v, fromVer) > 0 && semverCmp(v, toVer) <= 0;
-        continue;
-      }
-      if (!inRange) continue;
-      const bulletMatch = line.match(/^-\s*\*\*(.+?)\*\*/);
-      if (bulletMatch) headlines.push(bulletMatch[1].trim());
-    }
-    return headlines;
-  } catch {
-    return [];
-  }
-}
-
-function formatHighlightsBlock(headlines: string[], max = 6): string {
-  if (headlines.length === 0) return "";
-  const shown = headlines.slice(0, max);
-  const rest = headlines.length - shown.length;
-  let out = "\n\nWhat's new:\n" + shown.map((h) => `  • ${h}`).join("\n");
-  if (rest > 0) out += `\n  • …and ${rest} more`;
-  return out;
-}
-
-function setupAutoUpdater() {
-  autoUpdater.logger = console;
-  autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = true;
-
-  autoUpdater.on("update-available", async (info) => {
-    const currentVersion = app.getVersion();
-    const headlines = await fetchChangelogHeadlines(currentVersion, info.version);
-    const highlightsBlock = formatHighlightsBlock(headlines);
-    const buttons = headlines.length
-      ? ["Download", "View Changelog", "Later"]
-      : ["Download", "Later"];
-    const cancelId = headlines.length ? 2 : 1;
-    const { response } = await showUpdateDialog({
-      type: "info",
-      title: "Update Available",
-      message: `New version available: v${info.version}`,
-      detail: `Current version: v${currentVersion}${highlightsBlock}\n\nWould you like to download the update now?`,
-      buttons,
-      defaultId: 0,
-      cancelId,
-    });
-    if (response === 0) {
-      // Keep isCheckingForUpdates true during download so errors are shown
-      autoUpdater.downloadUpdate().catch((err) => {
-        console.error("[auto-updater] Download failed:", err.message);
-        showUpdateDialog({
-          type: "error",
-          title: "Download Failed",
-          message: "Failed to download update",
-          detail: err.message,
-          buttons: ["OK"],
-        });
-        isCheckingForUpdates = false;
-      });
-    } else if (headlines.length && response === 1) {
-      shell.openExternal(CHANGELOG_WEB_URL);
-      isCheckingForUpdates = false;
-    } else {
-      isCheckingForUpdates = false;
-    }
-  });
-
-  autoUpdater.on("update-not-available", () => {
-    if (isCheckingForUpdates) {
-      showUpdateDialog({
-        type: "info",
-        title: "No Updates",
-        message: "You're up to date!",
-        detail: `Current version: v${app.getVersion()}`,
-        buttons: ["OK"],
-      });
-      isCheckingForUpdates = false;
-    }
-  });
-
-  autoUpdater.on("download-progress", (progress) => {
-    const pct = Math.round(progress.percent);
-    setTrayTitle(`↓ ${pct}%`);
-    setTrayTooltip(`Pneuma Skills — Downloading update: ${pct}%`);
-    const launcher = getLauncherWindow();
-    if (launcher && !launcher.isDestroyed()) {
-      launcher.setProgressBar(progress.percent / 100);
-    }
-  });
-
-  autoUpdater.on("update-downloaded", async (info) => {
-    isCheckingForUpdates = false;
-    setTrayTitle("");
-    setTrayTooltip(`Pneuma Skills — Update v${info.version} ready`);
-    const launcher = getLauncherWindow();
-    if (launcher && !launcher.isDestroyed()) {
-      launcher.setProgressBar(-1); // Remove progress bar
-    }
-
-    const currentVersion = app.getVersion();
-    const headlines = await fetchChangelogHeadlines(currentVersion, info.version);
-    const highlightsBlock = formatHighlightsBlock(headlines);
-    const buttons = headlines.length
-      ? ["Restart Now", "View Changelog", "Later"]
-      : ["Restart Now", "Later"];
-    const cancelId = headlines.length ? 2 : 1;
-
-    const { response } = await showUpdateDialog({
-      type: "info",
-      title: "Update Ready",
-      message: `v${info.version} has been downloaded`,
-      detail: `The update will be installed when you restart the app.${highlightsBlock}`,
-      buttons,
-      defaultId: 0,
-      cancelId,
-    });
-    if (response === 0) {
-      autoUpdater.quitAndInstall();
-    } else if (headlines.length && response === 1) {
-      shell.openExternal(CHANGELOG_WEB_URL);
-    }
-  });
-
-  autoUpdater.on("error", (err) => {
-    setTrayTitle("");
-    setTrayTooltip("Pneuma Skills");
-    if (isCheckingForUpdates) {
-      showUpdateDialog({
-        type: "error",
-        title: "Update Error",
-        message: "Failed to check for updates",
-        detail: err.message,
-        buttons: ["OK"],
-      });
-      isCheckingForUpdates = false;
-    } else {
-      console.error("[auto-updater] Error:", err.message);
-    }
-  });
-}
-
-/**
- * Check if the platform-specific update metadata file exists on the latest release.
- * CI builds each platform artifact separately, so the release tag may exist
- * before the current platform's asset is uploaded (10+ min window).
- * Returns true if the asset is reachable, false otherwise.
- */
-async function isPlatformAssetReady(): Promise<boolean> {
-  const metaFile =
-    process.platform === "darwin"
-      ? "latest-mac.yml"
-      : process.platform === "win32"
-        ? "latest.yml"
-        : "latest-linux.yml";
-  const url = `https://github.com/pandazki/pneuma-skills/releases/latest/download/${metaFile}`;
-  try {
-    const resp = await net.fetch(url, { method: "HEAD" });
-    return resp.ok;
-  } catch {
-    return false;
-  }
-}
-
-function checkForUpdatesManual() {
-  isCheckingForUpdates = true;
-  isPlatformAssetReady().then((ready) => {
-    if (!ready) {
-      showUpdateDialog({
-        type: "info",
-        title: "No Updates",
-        message: "You're up to date!",
-        detail: `Current version: v${app.getVersion()}\n\n(A new release may be building — check back in a few minutes.)`,
-        buttons: ["OK"],
-      });
-      isCheckingForUpdates = false;
-      return;
-    }
-    autoUpdater.checkForUpdates().catch((err) => {
-      showUpdateDialog({
-        type: "error",
-        title: "Update Error",
-        message: "Failed to check for updates",
-        detail: err.message,
-        buttons: ["OK"],
-      });
-      isCheckingForUpdates = false;
-    });
-  });
 }
 
 // ── Setup wizard HTML ──────────────────────────────────────────────────────

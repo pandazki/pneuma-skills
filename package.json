@@ -40,7 +40,7 @@
     "start": "bun bin/pneuma.ts",
     "typecheck": "tsc --noEmit",
     "check:guidance": "bun scripts/check-agent-guidance.ts",
-    "test": "bun test core server bin snapshot plugins src modes",
+    "test": "bun test core server bin snapshot plugins src modes desktop/__tests__",
     "test:shard": "bun scripts/test-shard.ts core server bin snapshot plugins src modes",
     "test:all": "PNEUMA_TEST_LIVE=1 bun test",
     "test:frontend": "bun test src modes",
