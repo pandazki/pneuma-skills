@@ -13,8 +13,11 @@ import { loadRoster, saveRoster } from "./domain.js";
 
 const spriteManifest: ModeManifest = {
   name: "sprite",
-  version: "0.2.0",
+  version: "0.2.1",
   changelog: {
+    "0.2.1": [
+      "Measured the video workflow on the seed character's own green-screen walk: the contact window closes the loop where even sampling of the whole clip does not",
+    ],
     "0.2.0": [
       "Look at a clip before cutting it: `sprite-sheet.mjs contact` tiles a timestamped contact sheet and measures the opening hold, the closing hold and the best loop window, so a motion from video samples one cycle instead of the whole clip",
       "`from-video --at` samples hand-picked times when the beats are not evenly spaced",

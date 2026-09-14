@@ -368,3 +368,30 @@ So, for a clip: shoot it, `contact` it, sample `loops[0]` (a loop) or
 `stillStart`–`stillEnd` (a one-shot) with the frame budget from the SKILL's
 step 1 table, and only then `from-video`. When the beats are not evenly
 spaced, read the times off the contact sheet and pass them as `--at`.
+
+## Measured: the documented walk workflow on Lumi (2026-09-14)
+
+One Seedance 2.5 i2v clip of the seed's idle frame 00 flattened onto pure
+green, shot with the in-place walk prompt (locked camera, treadmill walk,
+flat chroma green, return to the opening pose), `--duration 4 --resolution
+480p --no-audio`: 556×754, 24 fps, 97 frames, 4.042 s, **355 s wall**.
+
+`contact` (2.6 s): plate `#04ed0a`; `stillStart` 0.167 — Seedance starts
+moving almost at once, so the half-second opening hold of the fox clip above
+is a property of that clip, not of every model; `stillEnd` 3.917; `loops[0]`
+= `{ start 2.083, end 3.75, period 1.667, seam 0.0035, step 0.066 }` — the
+window closes on itself twenty times more tightly than a normal frame step.
+The whole clip is about 2.4 of those cycles and does not end on its opening
+pose, prompt or no prompt.
+
+| | even 16 frames, whole clip | 16 frames, `loops[0]` | 12 frames, `loops[0]` |
+|---|---|---|---|
+| playback fps (the clip's own speed) | 3.96 | 9.6 | 7.2 |
+| frame-to-frame silhouette change | 0.056 – 0.143 | 0.024 – 0.087 | 0.042 – 0.074 |
+| seam, last frame → first | 0.126 — twice a step; the loop does not close | 0.036 — one step | 0.081 — one step |
+| `maxJump` | 34.5 px | 19.5 px | 16.5 px |
+| `bodyDrift` | 0.30 px | 0.31 px | 0.29 px |
+
+Same lesson as the fox clip, with the cleaner outcome a clip shot the way
+this page asks for gives: the window `contact` finds is the animation; the
+footage around it is not.
