@@ -319,3 +319,50 @@ for one that is partly green, where a wide key would eat the costume.
 character's cream palette better than white (which loses the cloak's edge) or
 black. The flattened `first.png` / `last.png` are working files, not assets —
 they are not registered in `project.json` and are not shipped in the seed.
+
+## Look before you sample: one cycle, not the clip
+
+`from-video` cuts frames evenly across whatever window it is given, and the
+default window is the whole clip. That default is wrong for almost every
+image-to-video clip, and the way to know the right window is to look —
+`sprite-sheet.mjs contact` (`pipeline.md`) is the free, deterministic look.
+
+Measured on a real image-to-video walk clip (4.0 s, 24 fps, 96 frames; the
+fox sample shipped with the character-animation-skill repository, keyed off
+its black plate), the same clip sampled two ways:
+
+| | Even 16 frames, whole clip | 16 frames, one detected cycle |
+|---|---|---|
+| window | 0 – 4.000 s | 0.917 – 2.292 s (`contact` → `loops[0]`) |
+| playback fps (the clip's own speed) | 4.0 | 11.6 |
+| gait cycles per loop | ≈ 2.6, plus the opening hold | 1 |
+| dead frames at the start | 2 (silhouette change 0.0006 and 0.032) | 0 |
+| frame-to-frame silhouette change | 0.0006 – 0.205 | 0.042 – 0.174 |
+| `maxJump` | 86 px | 63.5 px |
+| seam, last frame → first | 0.106 | 0.156 |
+
+(Silhouette change is `Σ|a−b| / Σ max(a,b)` over two frames' alpha — 0 is the
+same picture — measured with ffmpeg independently of the pipeline.)
+
+The two dead frames are the opening hold: the model held the first frame's
+pose for 0.458 s before the first step, and even sampling put two of sixteen
+frames inside it — a visible pause every time the loop came round. The rest
+of the clip walks about two and a half strides, so sixteen even samples land
+on different phases of different strides and the step sizes jitter between a
+near-still and a lunge. One cycle sampled at the same count moves evenly and
+plays at the clip's own stride rate. The seam did not improve, and that is
+honest: this clip carries a jump every fourth source frame (the model's
+keyframe cadence), the one-cycle window's last sample happens to straddle
+one, and every seam in the table is within a normal step for its own set.
+The wins are the rows above it.
+
+What `contact` reports for that clip, before a frame is cut: `stillStart`
+0.458 s, `loops[0]` = `{ start 0.917, end 2.292, period 1.375, seam 0.055,
+step ≈ 0.08 }`. The window's end differs from its start by less than one
+normal frame-to-frame change — that is what a loop that closes looks like
+in numbers, and it is the check to make before promising a seamless loop.
+
+So, for a clip: shoot it, `contact` it, sample `loops[0]` (a loop) or
+`stillStart`–`stillEnd` (a one-shot) with the frame budget from the SKILL's
+step 1 table, and only then `from-video`. When the beats are not evenly
+spaced, read the times off the contact sheet and pass them as `--at`.

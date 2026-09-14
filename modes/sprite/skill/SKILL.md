@@ -2,10 +2,11 @@
 name: pneuma-sprite
 description: >
   Pneuma Sprite Mode workspace guidelines. Use for ANY task in this workspace:
-  designing a character, writing motion prompts, generating sprite sheets,
-  slicing and aligning frames, packing atlases, rendering GIF or video
-  previews, diagnosing misaligned or empty frames, or handing assets to a game
-  engine. Defines the project.json contract, the pipeline scripts, and how to
+  designing a character or starting from the user's own character image,
+  writing motion prompts, generating sprite sheets, shooting and sampling
+  motion clips, slicing and aligning frames, packing atlases, rendering GIF
+  or video previews, diagnosing misaligned or empty frames, or handing assets
+  to a game engine. Defines the project.json contract, the pipeline scripts, and how to
   look through the viewer before claiming a motion is done.
   Consult before your first generation in a new conversation.
 ---
@@ -76,6 +77,9 @@ clickable card that takes the user there — or into the `capture` action's
 
 1. **Diagnose** — `sprite-sheet.mjs inspect`: deterministic, free, no model.
    Anchor drift, scale drift, empty frames, clipped cells. Read this first.
+   For a clip the same layer is `sprite-sheet.mjs contact`: a timestamped
+   contact sheet plus the opening hold, the closing hold and the best loop
+   window, measured before a single frame is cut.
 2. **Look** — `get-playback-state` + `capture`: the only way to see what the
    user sees.
 3. **Verify** — `play`, then `pause` + `capture` at two or three frames,
@@ -172,6 +176,38 @@ model's input, and the model reads a white plate fine — only the *sheets* and
 the *clips* become frames, and only those are cut out.
 {{/imageGenEnabled}}
 
+### A′. Start from the user's own image
+
+When the user brings a character — a drawing, a design sheet, a screenshot —
+that image *is* the identity. Do not redraw it, and do not quietly replace it
+with a generated look-alike of your description.
+
+1. **Validate it in one look.** One character, full body head to feet, limbs
+   unobstructed, a plain or flat background. A design sheet with several
+   views, expressions and props is the best case, not a problem: register the
+   whole sheet as one reference (role `custom`) so the model reads every
+   angle on it, and cut one clean full-body pose out of it as the working
+   reference a clip's first frame is built from. Cut with ffmpeg
+   (`ffmpeg -i <upload> -vf "crop=W:H:X:Y" <character>/refs/pose.png`) or,
+   when the pose needs cleaning up, `edit_image.mjs` — a white plate, generous
+   margin, nothing else in the frame.
+2. **Register it honestly.** A file the user handed you is
+   `add-ref … --uploaded`; a pose you cut out of it is
+   `add-ref … --derived-from <refId>`. Neither takes `--model` or `--prompt`,
+   and `show` reports each reference's origin, so a later turn knows which
+   references may be regenerated and which must never be.
+3. **Still hold the interview** — the name and, above all, the style
+   sentence. Write it from what you see (line weight, shading, palette,
+   proportions), read it back to the user in the same message as the other
+   questions, and only then `init`. Every prompt opens with that sentence; one
+   that contradicts the uploaded image makes the model split the difference.
+4. **Fill the gaps with the upload attached.** A missing portrait or view is
+   generated the way workflow A generates its second reference: the uploaded
+   image on `--image-urls`, the prompt naming what to match. The first
+   *generated* reference is the one that can drift, so compare it with the
+   upload before registering it.
+5. **Show them**, as in A step 5.
+
 ### B. Add a motion
 
 **Start with a brief motion plan.** Infer it from the request and references:
@@ -204,6 +240,13 @@ when the motion needs it and say why.
 | attack | 16, 4×4 | 10 | no | bottom |
 | jump poses | 8, 4×2 | 10 | no | center (see alignment limit below) |
 | story key poses | 9, 3×3 | 6 | no | bottom |
+
+**From a clip, budget one cycle, not the whole clip.** An image-to-video
+walk holds its opening pose for a third to half a second and then walks two
+or three strides; sampling 16 frames evenly across all of it spends two
+frames on the hold and crams every stride into a 4 fps loop. Sample **one**
+cycle — 8 to 12 frames for a walk or run, 12 to 16 for an idle breath — from
+the window `contact` finds (B-video step 6), and let the fps follow from it.
 
 **A looping motion's last frame must lead back into the first** — say so in
 the prompt, by cell number for a sheet and as a return to the opening pose
@@ -295,20 +338,45 @@ Then take one of the two legs.
    camera, a flat green plate with no floor or spill, full-frame containment,
    and the planned contacts, movement and ending make the frames usable.
    Then `set-video --status ready` (or `failed`, with `--notes`).
-6. **Sample it** —
+6. **Look at the clip before you cut it** —
+
+   ```bash
+   node {SKILL_PATH}/scripts/sprite-sheet.mjs contact \
+     <character>/motions/<id>/video-seedance-1.mp4 \
+     --out <character>/motions/<id>/contact.png --json
+   ```
+
+   Open `contact.png` and look at it, then read the numbers. `stillStart` is
+   how long the opening pose holds — image-to-video clips routinely hold it
+   for a third to half a second, and every even sample inside it is a dead
+   frame. `stillEnd` is where the closing hold begins. `loops[0]` is the
+   window that best returns to its own first frame: its `seam` (how far the
+   window's end is from its start) read against `step` (a normal
+   frame-to-frame change) — a seam at or under the step is a loop that closes.
+   A loop samples `loops[0].start`–`loops[0].end`; a one-shot samples
+   `stillStart`–`stillEnd`. When the clip never settles into a period, say so,
+   and pick the cleanest stretch you can see on the sheet. The contact sheet is
+   a working file for your eyes, not an asset; nothing registers it.
+
+7. **Sample that window** —
 
    ```bash
    node {SKILL_PATH}/scripts/sprite-sheet.mjs from-video \
      <character>/motions/<id>/video-seedance-1.mp4 \
-     --out <character>/motions/<id> --name <id> --frames 16 --loop \
+     --out <character>/motions/<id> --name <id> \
+     --trim-start <loops[0].start> --trim-end <loops[0].end> --frames 8 --loop \
      --json > <character>/motions/<id>/run.json
    ```
 
    `--key auto` (the default) measures the plate the model actually painted
-   rather than the green you asked for. `--frames` is the frame count from the
-   table in step 1; the packed atlas comes out as its own grid, so
-   `add-motion --rows/--cols` should describe that layout (16 → 4×4). Use the
-   planned anchor and `--no-loop` for a one-shot or transition.
+   rather than the green you asked for. `--frames` is the budget from step 1,
+   spent on one cycle; the packed atlas comes out as its own grid, so
+   `add-motion --rows/--cols` should describe that layout (8 → 4×2). Use the
+   planned anchor and `--no-loop` for a one-shot or transition. When the beats
+   you want are not evenly spaced — a hold you mean to keep, a strike that
+   needs its own frame — pass the exact times read off the contact sheet
+   instead of a count: `--at 0.917,1.09,1.26,…` replaces `--frames` and the
+   trim flags, and the fps follows from the times unless you set it.
 
 #### Both legs end the same way
 
@@ -420,6 +488,6 @@ naming the selected motion.
 | Topic | File |
 |---|---|
 | Motion planning and continuity for either source; sheet grammar, recipes, worked prompts, fixing one cell | `references/prompting.md` |
-| Every `sprite-sheet.mjs` / `sprite-project.mjs` subcommand — `clean`, `from-video`, the atlas schema, inspect warnings | `references/pipeline.md` |
+| Every `sprite-sheet.mjs` / `sprite-project.mjs` subcommand — `contact`, `clean`, `from-video` and `--at`, `add-ref --uploaded`, the atlas schema, inspect warnings | `references/pipeline.md` |
 | The chroma-green source clip (prompt template + worked call), Seedance and H3 Max flags, cost, latency, measured keying numbers (needs the fal key) | `references/video-preview.md` |
 | The `project.json` schema — craft fields, the sprite sidecar, asset id conventions | `references/project-json.md` |

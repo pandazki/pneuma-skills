@@ -13,8 +13,13 @@ import { loadRoster, saveRoster } from "./domain.js";
 
 const spriteManifest: ModeManifest = {
   name: "sprite",
-  version: "0.1.1",
+  version: "0.2.0",
   changelog: {
+    "0.2.0": [
+      "Look at a clip before cutting it: `sprite-sheet.mjs contact` tiles a timestamped contact sheet and measures the opening hold, the closing hold and the best loop window, so a motion from video samples one cycle instead of the whole clip",
+      "`from-video --at` samples hand-picked times when the beats are not evenly spaced",
+      "Start from the user's own character: uploaded images and poses cropped out of them are registered as such (`add-ref --uploaded` / `--derived-from`) and never redrawn",
+    ],
     "0.1.1": [
       "Plan each motion around its own phases, contact points, movement and ending while keeping character identity consistent",
       "Sheet and video prompts allow deliberate crouching and turning; visual checks distinguish intended pose changes from drift and explain alignment limits",
