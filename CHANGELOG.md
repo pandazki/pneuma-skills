@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.49.0] - 2026-09-14
+
+### Added
+- **The desktop app updates itself quietly.** It checks for a new release 15 seconds after launch, every four hours, and after waking from sleep, downloads it in the background with no dialog, and only then says so: a badge on the app icon, a ↑ in the tray with a "Restart to Update" item, and one notification. Clicking any of them restarts into the new version. "Check for Updates…" still answers with a dialog when asked.
+
+### Improved
+- **Sprite's clip workflow measured on its own seed character.** A green-screen walk of Lumi shot the way the skill asks: the loop window `contact` finds closes in one frame step, where sampling the whole clip left a two-step seam. Recorded in the skill's reference; mode 0.2.1.
+- **Desktop code is under test.** The test runner had excluded all of `desktop/`; it now skips only vendored dependencies and build output, and the updater's schedule and state table ship with tests that run in `bun run test`.
+
 ## [3.48.0] - 2026-09-14
 
 ### Added
