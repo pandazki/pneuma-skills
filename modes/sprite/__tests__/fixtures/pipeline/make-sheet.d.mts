@@ -67,7 +67,7 @@ export interface AlphaColorAudit {
 
 export declare function alphaColorAudit(path: string, threshold?: number): AlphaColorAudit;
 
-/** One box drawn per frame of a clip, at a y that rides a 2px sine over t. */
+/** One box overlaid per frame of a clip, at a y that rides a sine over t. */
 export interface ClipBox {
   x: number;
   y: number;
@@ -84,6 +84,10 @@ export interface BuildClipOptions {
   /** Any ffmpeg colour expression; the chroma plate `from-video` keys away. */
   background?: string;
   box?: ClipBox;
+  /** Half-travel of the box's vertical sine in px (default 2; 0 never moves). */
+  amplitude?: number;
+  /** Seconds the opening pose is held before the sine starts (default 0). */
+  holdSeconds?: number;
 }
 
 export declare function buildClip(outPath: string, options?: BuildClipOptions): string;

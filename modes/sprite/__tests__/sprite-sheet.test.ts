@@ -211,14 +211,14 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
     expect(r.code).toBe(0);
     for (const cmd of [
       "probe", "key", "flatten", "slice", "clean", "align", "pack", "gif",
-      "inspect", "run", "from-video",
+      "inspect", "run", "contact", "from-video",
     ]) {
       expect(r.out + r.err).toContain(cmd);
     }
   });
 
-  test("clean --help and from-video --help exit 0", () => {
-    for (const cmd of ["clean", "from-video"]) {
+  test("clean --help, contact --help and from-video --help exit 0", () => {
+    for (const cmd of ["clean", "contact", "from-video"]) {
       const r = run(cmd, "--help");
       expect({ cmd, code: r.code }).toEqual({ cmd, code: 0 });
     }
@@ -1223,6 +1223,144 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
     });
   });
 
+  describe("contact", () => {
+    /**
+     * A 3 s, 10 fps clip whose box holds the opening pose for 0.5 s and then
+     * rides a 1 s sine — the two things `contact` claims to be able to read
+     * back out of a clip it was never told anything about.
+     */
+    const holdClip = () => {
+      const key = "clip:hold";
+      if (!built.has(key)) {
+        built.set(key, buildClip(join(shared(), "hold.mp4"), {
+          seconds: 3, fps: 10, amplitude: 8, holdSeconds: 0.5,
+        }));
+      }
+      return built.get(key)!;
+    };
+
+    /** The same clip with the sine flattened: a still image with a duration. */
+    const stillClip = () => {
+      const key = "clip:still";
+      if (!built.has(key)) {
+        built.set(key, buildClip(join(shared(), "still.mp4"), {
+          seconds: 3, fps: 10, amplitude: 0,
+        }));
+      }
+      return built.get(key)!;
+    };
+
+    test("tiles evenly spaced stills into one grid and says where each came from", () => {
+      const ws = fresh();
+      const out = join(ws, "contact.png");
+      const json = runJson(
+        "contact", holdClip(), "--out", out, "--count", "24", "--cols", "8", "--width", "40",
+      );
+
+      expect(json.clip).toBe(holdClip());
+      expect(json.out).toBe(out);
+      expect(json.tiles).toHaveLength(24);
+      expect(json.grid).toEqual({ rows: 3, cols: 8 });
+      // Both ends are in the picture, and the last one still names a frame
+      // that exists.
+      expect(json.tiles[0].t).toBe(0);
+      expect(json.tiles[23].t).toBeLessThanOrEqual(json.duration);
+      expect(json.tiles[23].t).toBeGreaterThan(2.8);
+      expect(json.tiles[9]).toEqual({ index: 9, t: json.tiles[9].t, row: 1, col: 1 });
+      expect(json.tiles[23]).toEqual({ index: 23, t: json.tiles[23].t, row: 2, col: 7 });
+
+      // Measured off the written PNG, not off the JSON that claims it.
+      const sheet = readBbox(out);
+      expect(sheet.width).toBe(8 * json.tile.width + 7 * 2);
+      expect(sheet.height).toBe(3 * json.tile.height + 2 * 2);
+      expect(json.tile.width).toBe(40);
+    });
+
+    test("reads the opening hold, the closing hold and the loop out of the clip", () => {
+      const ws = fresh();
+      const json = runJson("contact", holdClip(), "--out", join(ws, "c.png"), "--count", "8");
+
+      // The box does not move until 0.5 s.
+      expect(json.stillStart).toBeGreaterThanOrEqual(0.4);
+      expect(json.stillStart).toBeLessThanOrEqual(0.7);
+      expect(json.stillEnd).not.toBeNull();
+
+      // The sine's period is exactly 1 s, and a window one period long closes
+      // on itself more tightly than two neighbouring frames differ.
+      expect(json.loops.length).toBeGreaterThan(0);
+      expect(json.loops[0].period).toBeGreaterThanOrEqual(0.9);
+      expect(json.loops[0].period).toBeLessThanOrEqual(1.1);
+      expect(json.loops[0].seam).toBeLessThan(json.loops[0].step);
+      expect(json.loops.length).toBeLessThanOrEqual(3);
+
+      // The rhythm, without a plot: flat through the hold, then moving.
+      expect(json.profile.fps).toBe(10);
+      expect(json.profile.start).toBe(0);
+      expect(json.profile.deltas.slice(0, 4)).toEqual([0, 0, 0, 0]);
+      expect(Math.max(...(json.profile.deltas as number[]))).toBeGreaterThan(0.1);
+
+      expect(json.keyColor).toMatch(/^#[0-9a-f]{6}$/);
+      expect(json.alphaCoverage).toBeGreaterThan(0);
+      expect(json.alphaCoverage).toBeLessThan(0.5);
+    });
+
+    test("--every spaces the stills by seconds instead of by count", () => {
+      const ws = fresh();
+      const json = runJson("contact", holdClip(), "--out", join(ws, "e.png"), "--every", "0.5");
+      expect(json.tiles).toHaveLength(7);
+      expect(json.tiles.map((t: { t: number }) => t.t).slice(0, 6)).toEqual([0, 0.5, 1, 1.5, 2, 2.5]);
+      // The step lands exactly on the duration, so the last one is pulled back
+      // to the last frame that can be seeked to.
+      expect(json.tiles[6].t).toBeGreaterThan(2.8);
+      expect(json.tiles[6].t).toBeLessThanOrEqual(3);
+    });
+
+    test("--count and --every together are refused by name", () => {
+      const ws = fresh();
+      const r = run(
+        "contact", holdClip(), "--out", join(ws, "x.png"),
+        "--count", "8", "--every", "0.5", "--json",
+      );
+      expect(r.code).toBe(1);
+      expect(r.err).toContain("--count");
+      expect(r.err).toContain("--every");
+    });
+
+    test("a clip that never moves says so instead of inventing a loop", () => {
+      const ws = fresh();
+      const json = runJson("contact", stillClip(), "--out", join(ws, "s.png"), "--count", "6");
+      expect(json.stillStart).toBeNull();
+      expect(json.stillEnd).toBeNull();
+      expect(json.loops).toEqual([]);
+      expect(json.warnings.join(" ")).toContain("never moves");
+    });
+
+    test("--json is one object; the human form names the hold and the loop", () => {
+      const ws = fresh();
+      const asJson = run("contact", holdClip(), "--out", join(ws, "j.png"), "--count", "4", "--json");
+      expect(asJson.code).toBe(0);
+      expect(asJson.out.trim().split("\n")).toHaveLength(1);
+      expect(() => JSON.parse(asJson.out)).not.toThrow();
+
+      const human = run("contact", holdClip(), "--out", join(ws, "h.png"), "--count", "6");
+      expect(human.code).toBe(0);
+      expect(human.out).toContain("6 stills of");
+      expect(human.out).toContain("opening pose holds until");
+      expect(human.out).toContain("best loop ");
+    });
+
+    test("the stills are scratch: nothing is left behind in the temp directory", () => {
+      const ws = fresh();
+      const before = readdirSync(tmpdir()).filter((f) => f.startsWith("sprite-contact-"));
+      const r = run("contact", holdClip(), "--out", join(ws, "t.png"), "--count", "4", "--json");
+      expect(r.code).toBe(0);
+      expect(readdirSync(tmpdir()).filter((f) => f.startsWith("sprite-contact-"))).toEqual(before);
+      // …and nothing was written next to the motion either: a contact sheet is
+      // a working file, not an asset.
+      expect(readdirSync(ws)).toEqual(["t.png"]);
+    });
+  });
+
   describe("from-video", () => {
     /** A 2 s, 10 fps green clip, drawn once like every other fixture. */
     const clip = () => {
@@ -1239,11 +1377,12 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
         "--frames", "4", "--loop",
       );
 
-      // The run summary is `run`'s shape plus the three video keys, so
+      // The run summary is `run`'s shape plus the video keys, so
       // `register-run` consumes it unchanged.
       expect(out.source).toBe("video");
       expect(out.video).toBe(clip());
       expect(out.sampledAt).toEqual([0, 0.5, 1, 1.5]);
+      expect(out.schedule).toBe("even");
       expect(out.frames).toHaveLength(4);
       expect(out.motionDir).toBe(motionDir);
       expect(out.sheet).toBe(join(motionDir, "sheet.png"));
@@ -1359,6 +1498,57 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       );
       expect(r.code).toBe(1);
       expect(r.err).toMatch(/ERROR: /);
+    });
+
+    test("--at samples the times it is given and reports the mean rate", () => {
+      const ws = fresh();
+      const out = runJson(
+        "from-video", clip(), "--out", join(ws, "at"), "--name", "hop",
+        "--at", "0.2,0.7,1.2", "--no-loop",
+      );
+      expect(out.sampledAt).toEqual([0.2, 0.7, 1.2]);
+      expect(out.frames).toHaveLength(3);
+      expect(out.inspect.frameCount).toBe(3);
+      // 3 frames across 1.0 s of clip: two intervals, so 2 fps.
+      expect(out.fps).toBe(2);
+      expect(out.trim).toEqual({ start: 0.2, end: 1.2 });
+      expect(out.schedule).toBe("explicit");
+      // Everything after sampling is the existing chain, so `register-run`
+      // still finds what it reads.
+      expect(out.source).toBe("video");
+      expect(out.video).toBe(clip());
+    });
+
+    test("--at repeats and flattens, like every other list flag here", () => {
+      const ws = fresh();
+      const out = runJson(
+        "from-video", clip(), "--out", join(ws, "at2"), "--name", "hop",
+        "--at", "0.2", "--at", "0.7,1.1",
+      );
+      expect(out.sampledAt).toEqual([0.2, 0.7, 1.1]);
+    });
+
+    test("--at refuses by name what it cannot sample", () => {
+      const ws = fresh();
+      const cases: Array<{ args: string[]; names: string[] }> = [
+        { args: ["--at", "0.2,0.7", "--frames", "4"], names: ["--at", "--frames"] },
+        { args: ["--at", "0.2,0.7", "--trim-start", "0.1"], names: ["--at", "--trim-start"] },
+        { args: ["--at", "0.2,0.7", "--trim-end", "1.5"], names: ["--at", "--trim-end"] },
+        { args: ["--at", "1.2,0.7"], names: ["--at"] },
+        { args: ["--at", "0.2,2.5"], names: ["--at"] },
+        { args: ["--at", "0.5"], names: ["--at"] },
+        {
+          args: ["--at", Array.from({ length: 101 }, (_, i) => (i * 0.01).toFixed(2)).join(",")],
+          names: ["--at", "100"],
+        },
+      ];
+      for (const { args, names } of cases) {
+        const r = run("from-video", clip(), "--out", join(ws, "no"), "--name", "x", ...args, "--json");
+        expect({ args, code: r.code }).toEqual({ args, code: 1 });
+        for (const name of names) {
+          expect({ args, contains: r.err.includes(name) }).toEqual({ args, contains: true });
+        }
+      }
     });
   });
 
