@@ -34,14 +34,14 @@
 
 | 契约 | 定义 | 实例化 | 消费 |
 |------|------|--------|------|
-| **`ViewerContract`** | `core/types/viewer-contract.ts` | 每 mode 的 `viewer/index.tsx` 默认导出 | `core/mode-loader.ts` 加载，runtime 通过 `PreviewComponent` 挂载 |
+| **`ViewerContract`** | `core/types/viewer-contract.ts` | The `viewer` field of each mode's `pneuma-mode.ts` default export (`ModeDefinition`) | Frontend mode loader; runtime mounts `PreviewComponent` |
 | **`ViewerPreviewProps`** | `core/types/viewer-contract.ts` | runtime 注入 props（sources / commands / actionRequest / …） | mode viewer 接收 |
 | **`ViewerAddress`** | `core/types/viewer-contract.ts` | 每 mode SKILL.md 定义自己的词表 | viewer selection 产出、`<viewer-locator>` 与 `capture` 消费 |
 | **`ViewerActionDescriptor`** + `ViewerActionRequest` / `Result` | `core/types/viewer-contract.ts` | mode `manifest.viewerApi.actions[]` 声明 | `server/skill-installer.ts` 注入指令文件；`server/ws-bridge-viewer.ts` 转发；`src/store/viewer-slice.ts` 派发 |
 | **`ViewerCommandDescriptor`** | `core/types/viewer-contract.ts` | mode `manifest.viewerApi.commands[]` 声明 | runtime 注入 viewer props.commands；viewer 点击经 `onNotifyAgent` 上行 |
-| **`ViewerSelectionContext`** + `extractContext()` | `core/types/viewer-contract.ts` | viewer 实现 `extractContext` | `server/ws-bridge.ts` 在每个 `user_message` 前缀注入 `<viewer-context>` 块 |
+| **`ViewerSelectionContext`** + `extractContext()` | `core/types/viewer-contract.ts` | Each mode's `ViewerContract.extractContext` | `src/ws.ts` prefixes ordinary user messages with viewer context; bare slash-command turns travel verbatim |
 | **`ViewerNotification`** | `core/types/viewer-contract.ts` | viewer 调 `onNotifyAgent()` | `server/ws-bridge.ts` 在 agent 空闲时 flush 为 system message |
-| **`ViewerLocator`** | `core/types/viewer-contract.ts` | agent 在 chat 输出 `<viewer-locator>` 标签 | `src/components/chat/*` 渲染卡片，点击触发 `navigateRequest`；viewer 的判定经 `onNavigateComplete(result)` 回到卡片旁 |
+| **`ViewerLocator`** | `core/types/viewer-contract.ts` | Agent emits a `<viewer-locator>` tag | `src/components/MessageBubble.tsx` renders cards; clicks dispatch `navigateRequest`; `onNavigateComplete(result)` reports failure through `navigateOutcome` beside the pressed card |
 | **`Source<T>`** + `SourceEvent<T>` + `SourceProvider` + `SourceContext` | `core/types/source.ts` | `core/source-registry.ts` 按 `manifest.sources[kind]` 选 provider 实例化 | viewer 用 `src/hooks/useSource.ts` 订阅；`core/sources/base.ts` 强制四不变量 |
 | **`FileChannel`** + `FileChangeEvent` | `core/types/source.ts` | 每 session 由 runtime 实例化一份 | file-backed provider 在 `core/sources/file-glob.ts` 等里订阅 |
 | **`SourceDescriptor`** | `core/types/source.ts` | `manifest.sources` 数组每一项 | `core/source-registry.ts` |
@@ -49,7 +49,7 @@
 | **`ModeDefinition`** = `{ manifest, viewer }` | `core/types/mode-definition.ts` | 每 mode 的 `pneuma-mode.ts` 默认导出，绑 manifest + ViewerContract | frontend `mode-loader` 动态 import（与 `manifest.ts` 分工：后者 backend + frontend 都读，前者只 frontend 读，可含 React 依赖） |
 | **`ModeShowcase`** | `core/types/mode-manifest.ts` | `modes/<name>/showcase/showcase.json`（sibling 文件，**非 inline 在 manifest.ts**） | `server/index.ts` `/api/modes/:name/showcase/*` 服；launcher gallery 卡片消费 |
 | **`AgentBackend`** + `AgentCapabilities` + `AgentSessionInfo` + `AgentLaunchOptions` | `core/types/agent-backend.ts` | 每 backend `manifest.ts::createBackend(port)` | `bin/pneuma.ts` 启动；`server/index.ts` 管会话 |
-| **`AgentProtocolAdapter`** | `core/types/agent-backend.ts` | Codex `codex-adapter.ts` / Kimi `kimi-adapter.ts` | `server/ws-bridge-{codex,kimi}.ts` |
+| **`AgentProtocolAdapter`** (reserved/unused) | `core/types/agent-backend.ts` | No production implementor | No production consumer; use `BridgeBackend` for backend integration |
 | **`BackendModule`** | `core/types/agent-backend.ts` | 每 backend 一份 `manifest.ts` | `backends/index.ts`（pure registry） |
 | **`BridgeBackend`** | `server/ws-bridge-backend.ts` | backend `manifest.ts::createBridgeBackend()` | `server/ws-bridge.ts` 中央桥根据 backend 类型分派 |
 | **`ToolFileRef`** | `backends/tool-file-ref.ts` | backend `manifest.ts::toolFileRef(name, input)` | `server/file-ref.ts::stampFileRefs` 给 tool_use 块加 `fileRef`；前端 `FilePreview` / `ToolFileActions` 消费 |
@@ -196,7 +196,13 @@ export interface ViewerActionResult {
 
 三类共享同一方向，机制不同：
 
-**上下文增强（被动）。** Runtime 在每条 `user_message` 前调 `ViewerContract.extractContext(selection, files)`，把返回的文本插到消息前缀作 `<viewer-context>` 块。Agent 借此理解"这个按钮""这里"等指代。块里带一行 `Address:`——选中对象的 `ViewerAddress`（JSON），agent 可逐字复制回 `capture` 或 `<viewer-locator>`。
+**Passive context enrichment.** The browser runtime in `src/ws.ts` calls
+`ViewerContract.extractContext(selection, files)` and prefixes ordinary user
+messages with the resulting `<viewer-context>` block. A selection's `Address:`
+line carries its `ViewerAddress` for reuse by `capture` or `<viewer-locator>`.
+Bare slash commands bypass context and user-action prefixes; the held context
+travels with the next ordinary message. The server separately folds queued
+`<pneuma:env>` tags into ordinary messages and preserves the same command bypass.
 
 ```ts
 // core/types/viewer-contract.ts
@@ -206,7 +212,9 @@ extractContext(
 ): string;
 ```
 
-实现链路：viewer 的 `index.tsx` 实现 `extractContext` 返回结构化文本；`server/ws-bridge.ts` 在 user message 经过时拼接。
+Implementation: the mode binds `extractContext` in `pneuma-mode.ts`;
+`src/ws.ts` adds viewer context and user actions, then
+`server/ws-bridge.ts::prepareIncomingUserMessage` handles queued environment tags.
 
 **命令触发（主动 - 用户点击）。** 用户点 viewer UI 上的命令按钮（命令在 manifest 里声明），viewer 调 `onNotifyAgent(notification)` 上行。
 
@@ -286,7 +294,7 @@ export type ViewerAddress = Record<string, unknown>;
 | **store + props** | `src/store/` + `src/App.tsx` | commands / actions / sources / workspace items 注入 viewer props |
 | **proxy middleware** | `server/index.ts` (`/proxy/<name>/*`) | `manifest.proxy` + workspace `proxy.json` 解析；GET 默认放行，其他方法需显式 `methods`；`proxy.json` 改动 chokidar 热加载 |
 | **WS bridge** | `server/ws-bridge.ts` + `server/ws-bridge-{viewer,codex,kimi}.ts` | 浏览器 JSON ↔ backend transport；非 Claude 后端经 `BridgeBackend` 接口拓展 |
-| **context injection** | `server/ws-bridge.ts` | `extractContext()` 返回值 → `<viewer-context>` 块注入到 user message |
+| **context injection** | `src/ws.ts` + `server/ws-bridge.ts::prepareIncomingUserMessage` | Browser adds viewer context and user actions; server adds queued environment tags; bare slash commands bypass both prefixes |
 
 ---
 
@@ -452,6 +460,7 @@ export interface AgentCapabilities {
   extras?: Record<string, unknown>;
 }
 
+// Reserved/unused sketch; production backend integration uses BridgeBackend.
 export interface AgentProtocolAdapter {
   parseIncoming(raw: string): unknown | null;
   encodeOutgoing(msg: unknown): string;
@@ -486,12 +495,12 @@ Agent 不能调用看不到的 action——所以 `<manifest, runtime>` 必须�
 
 | Marker | 来源 | 是否项目-only |
 |--------|------|--------------|
-| `<!-- pneuma:start --> ... <!-- pneuma:end -->` | Mode 的 SKILL.md 主体 | 否 |
-| `<!-- pneuma:viewer-api:start/end -->` | `manifest.viewerApi` → 渲染成 action 表 / command 表 / scaffold 描述 / proxy 描述 | 否 |
+| `<!-- pneuma:start --> ... <!-- pneuma:end -->` | Scene, runtime/backend identity, and a pointer to the mode's SKILL.md | No |
+| `<!-- pneuma:viewer-api:start/end -->` | Viewer API entry points and available actions, with pointers to mode guidance and proxy descriptions | No |
 | `<!-- pneuma:preferences:start/end -->` | `~/.pneuma/preferences/` 的 hard constraint 抽出 | 否 |
 | `<!-- pneuma:project:start/end -->` | `<root>/.pneuma/project.json` 摘要 + 项目偏好 critical | 是 |
 | `<!-- pneuma:project-atlas:start/end -->` | `<root>/.pneuma/project-atlas.md` 的 **pointer**（路径 + mtime + 摘要） | 是 |
-| `<!-- pneuma:handoff:start/end -->` | `<sessionDir>/.pneuma/inbound-handoff.json` 内容 | 是 |
+| `<!-- pneuma:handoff:start/end -->` | Rendered brief from `<sessionDir>/.pneuma/inbound-handoff.json`; a borrow brief takes precedence when present | No; handoffs support quick and project sessions |
 | `<!-- pneuma:evolved:start/end -->` | Evolution 系统学到的偏好 | 否 |
 | `<!-- pneuma:resumed:start/end -->` | Replay → Continue Work 续档上下文 | 否 |
 

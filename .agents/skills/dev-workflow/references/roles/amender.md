@@ -6,6 +6,9 @@ never silently drop a finding or expand into an unrelated refactor.
 
 Read the shared [implementation discipline](impl.md), root `AGENTS.md`, and the
 matching domain rules. Confirm the assigned checkout and baseline before edits.
+Apply [Engineering Judgment](../../../../../AGENTS.md#engineering-judgment) to
+the proposed remedy as well as the reported defect: a workaround must preserve
+the required invariant and make its failure and side-effect semantics explicit.
 
 For each finding:
 

@@ -14,6 +14,10 @@ Do not substitute a different design or stop at a partial workaround.
   `docs/reference/project-guide.md` to find contract definitions and consumers.
 - Check feasibility against real symbols and signatures with `rg`. Plan only
   as much as the task warrants, using the available planning tool or plain text.
+- Apply [Engineering Judgment](../../../../../AGENTS.md#engineering-judgment):
+  identify the invariant being changed or preserved, its owner, and the existing
+  implementation to reuse. A new dependency or abstraction needs a concrete
+  requirement that the simpler existing path cannot meet.
 - Preserve unrelated edits. Do not stash or discard someone else's work.
 
 ## Implement and validate
@@ -29,6 +33,13 @@ Do not substitute a different design or stop at a partial workaround.
 - Handle failure paths, timeouts, cleanup, path boundaries, bounded resources,
   and state-write serialization where the implementation requires them. Preserve
   intentional soft-error contracts; errors must remain observable.
+- Verify boundary mappings against their authoritative definition. For external
+  writes, trace retries and cancellation through the actual side effect; report
+  partial or uncertain completion honestly. Local state restoration cannot prove
+  that a remote action was undone.
+- Keep reproducible before/after measurements for performance-driven complexity.
+  Remove wrappers that add no behavior, contract, or boundary value within the
+  changed code; avoid unrelated cleanup.
 - Run `bun run typecheck` for code changes and the appropriate suite from
   `.claude/rules/testing.md`. The routine repository suite is `bun run test`;
   release validation is `bun run test:all`. Never equate bare `bun test` with

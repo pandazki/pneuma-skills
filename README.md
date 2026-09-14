@@ -59,7 +59,7 @@ When humans and code agents co-create content, they need more than a chat window
 | **Visual Environment** | Agent works directly in files on disk — its native surface. Viewers are live players for agent output rendered in domain terms, with optional human participation directly in the UI. |
 | **Skills** | Domain-specific knowledge and seed templates injected per mode. Sessions persist across runs — the agent picks up where it left off |
 | **User Preferences** | The agent builds and maintains a persistent portrait of your aesthetics, collaboration style, and per-mode habits — preferences survive across sessions, workspaces, and modes |
-| **Continuous Learning** | Evolution Agent mines conversation history to extract preferences, then augments skills with learned knowledge |
+| **Continuous Learning** | Evolution Agent analyzes conversation history and proposes evidence-backed additions and removals to skill guidance for user review |
 | **Distribution** | Build custom modes with AI via Mode Maker, publish to the marketplace, share with `pneuma mode add` |
 
 ## Built-in Modes

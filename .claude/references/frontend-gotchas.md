@@ -1,0 +1,111 @@
+# Frontend implementation records
+
+Detailed evidence linked from [the frontend rules](../rules/frontend.md). Read only
+the sections relevant to the task. Records preserve original diagnoses and
+subsequent corrections; dates, versions, and mode scope matter. Verify current
+behavior before reviving an older workaround. Shared engineering principles
+remain in [AGENTS.md](../../AGENTS.md#engineering-judgment).
+
+
+## Build and asset delivery
+
+- **Remote font CSS delays desktop windows, even with `display=swap`**: `BrowserWindow({ show: false })` waits for `ready-to-show`, and a stylesheet in the entry HTML blocks the first paint. Delaying Google Fonts CSS by 12 seconds reproduced a 12-second hidden window in Electron 41; `font-display` only governs font-file loading after CSS arrives. Keep `index.html` and `player.html` free of remote font stylesheets. Shared UI faces live in `src/fonts.css`, with unchanged WOFF2 files, OFL notices, and source checksums in `public/fonts/`. Verify both build outputs and the npm package retain the fonts and licenses when changing asset packaging. The hosted player deploy (`scripts/deploy-player.sh`) stages an explicit file list rather than all of `dist-player/` — it copies `fonts/` by name, so any new root-level asset directory the player CSS points at needs its own line there, or the request falls through to the landing page's catch-all.
+
+- **在 worktree 里跑 `bun run dev` 时 Vite 不做 HMR、也不重新 transform——它把整个 worktree 忽略掉了**(2026-09-09 sprite T5 实测,烧掉一次错误归因):`vite.config.ts` 的 `server.watch.ignored` 里有 `"**/.claude/worktrees/**"`(本意是让主 checkout 的 dev server 不去搅动旁边的 worktree)。可是 dev server **跑在 worktree 里**时,它自己的 root 就在这条 glob 底下——于是每一个源文件都被 watcher 忽略,改完文件浏览器拿到的仍是旧的 transform,`navigate_page --type reload --ignoreCache` 也没用(缓存不在浏览器,在 Vite 的 module graph)。失败形状极具误导性:代码看着没生效,于是你会去改代码;我当时按旧 bundle 的行为追了一条并不存在的 bug(以为 viewer 在某处重置了播放头,实际那行代码早已被我改掉)。**判断方法:`curl -s http://localhost:17996/<path-to-your-file>.tsx | grep <你刚加的标识符>`**——服务端返回的转译结果里没有你的新符号,就是这条坑,不是你的逻辑。做法:worktree 里每次改完前端源码**重启 dev server**(或临时删掉那条 ignored)。
+
+- **`import.meta.glob` 只能是一个裸调用表达式,别用 `typeof import.meta.glob` 守卫它**(2026-09-02 plotwise 风格看板实测):Vite 在构建期靠静态分析把这个调用整个替换掉,`typeof import.meta.glob === "function" ? import.meta.glob(...) : {}` 里的条件在浏览器运行时求值为 `"undefined"`——于是缩略图全部静默变成空 `src`,而 bun test 那边看起来"修好了"。要让 happy-dom 组件测试也能加载同一个模块,用 `try { thumbs = import.meta.glob(...) } catch { thumbs = {} }`:Vite 照常替换 try 里的调用,bun 里调用 undefined 抛错被接住。先例:`modes/plotwise/viewer/styleCatalog.ts`。
+
+- **react-resizable-panels v4.6**:`Group` 不是 `PanelGroup`,`Separator` 不是 `PanelResizeHandle`,`orientation` 不是 `direction`。
+
+- **Service worker 的模块级变量活不过 30 秒空闲——Chrome 会回收 worker 再冷启动,`controllerchange` 不会响**(2026-09-09 sprite 播放器验证时实测):`public/player-content-sw.js` 的 checkout 表原本只存在 `let active` 里,页面加载完 95 秒后同一个 `/content/*` URL 从 200 变 404。此前白名单里的 mode 都在首屏一次性拉完资源,所以没人踩到;sprite 是第一个"几分钟后按需拉帧/视频"的 mode。修法是把表镜像进 Cache API,新生命周期第一次请求时恢复;`src/player/__tests__/content-sw.test.ts` 用假的 `ServiceWorkerGlobalScope` 起两个生命周期来钉这个。**任何靠 SW 内存状态的功能都要按"随时会重启"设计。**
+
+
+## Layout and interaction
+
+- **`line-clamp` 需要 `display: -webkit-box`**,Tailwind `block` 在源码顺序中会覆盖:`block` 配 `line-clamp-N` 会静默失效。删掉 `block`;line-clamp 自带 display 规则。
+
+- **`backdrop-filter` containing block**:会为 fixed-position 子元素创建 containing block,在 Excalidraw 里造成坐标偏移。避开或显式处理。
+
+- **`backdrop-filter` 还会开一个 stacking context**(同一属性的第二个坑,2026-08-12 bansho transport 上实测):带 `backdrop-blur` 的容器里,子元素的 `z-*` 被**封死在容器内部**,压不过外面任何兄弟层——bansho 的 rate 菜单(transport bar 内 `z-20`)被 board 区里 `z-10` 的 WallMap 整个盖住。修法是给**那个带 backdrop-blur 的容器本身**在父级排序里赢(`relative z-30`),不是继续加子元素的 z。另一半:**CDP `Page.captureScreenshot` 对 backdrop-filter 的合成是错的**——截图里 95% 不透明的面板会显出底下内容,看着像透明度 bug 其实屏幕上没有。判断方法是临时 `style.backdropFilter='none'` 再截一张对比,别照着截图去调 opacity。
+
+- **一个 `z-index: 10000` 打不过一个 `z-30`——z 只跟兄弟争论**(2026-08-17 实测,`AppSettings` 被 bansho 板面 chrome 穿透):`AppSettings` 声明 `position:absolute; zIndex:10000`,却被板面 `absolute … z-30` 的角落盖住。原因**不是** backdrop-filter(实测那条祖先链上一个 `backdrop-filter` 都没有,别照着上一条坑猜),而是 `TopBar` 根自己是 `relative z-20`,外面还套着 `.session-shell-card relative z-10`——**TopBar 整棵子树作为一个整体在 z-20 那一格参与排序**,里面写多大都出不去;而板面 chrome 是**同一个 `session-shell-card` 上下文里更晚的兄弟**,`z-30 > z-20`,于是整条子树输掉,那个 10000 根本没进过比较。**判断方法:从弹层往上遍历祖先,打印每一层的 `position` / `zIndex` / `backdropFilter`**——第一个带非 auto z-index 或成栈上下文的祖先才是真正参与排序的那个人,弹层自己的 z 只在它内部有意义。修法是 **portal 到 `<body>`**(同文件的 `ShareDropdown` 早有先例),而不是去抬那个祖先的 z:portal 修的是对所有 viewer,抬 z 只修你恰好见过的那一个。
+
+- **用 `elementFromPoint` 验层叠时,采样点必须缩进到圆角以内**(同日实测,差点误报一次层叠失败):在 `border-radius: 10px` 的面板上按 2px 内缩取四角,**有两个角报告下面的元素在上面**——那里面板本来就没画东西,读数完全正确,但看起来跟层叠失败一模一样。几何:半径 r 的圆角上,内缩 d 的角点落在面板内当且仅当 `√2·(r−d) < r`,10px 圆角要 d ≥ 3px,取 6px 稳妥。配套:**CDP `Page.captureScreenshot` 对 backdrop-filter 合成是错的**(上一条已记),所以层叠结论一律以 `elementFromPoint` 的 JSON 为准,截图只作旁证。
+
+- **外壳占据窗口顶部 12px,往下全归 viewer**(`src/components/AppModeToggle.tsx::SHELL_EDGE_PX`,2026-08-19 立):viewing layout 的 Edit 入口是一条挂在窗口顶边的 tab,**它的显隐触发带和它允许绘制的范围是同一条线**——所以 viewer 可以放心把自己的 chrome 从 y=12 以下开始摆(bansho 用的是 `top-2`,即 20)。这条规则的由来是一次真事故:那个入口原本是一条**全宽 48px、`z-index: 9999`、完全透明**的横条,把 bansho 的 Board/Notes/主题按钮整排吞掉,而误点会把 `--viewing` session 翻成编辑态、拉起 agent、agent 接着就去改讲稿(服务器日志实录)。教训有两条:(a) **看不见的东西不许可点**,包括 Tab 可达;(b) 这种冲突要在**外壳层**用一条 viewer 可依赖的线解决,不是让 viewer 去躲——搬到另一个角只能撑到下一个 viewer 也往那儿放东西为止。
+
+- **TopBar drag region**:`TopBar` 根是 `WebkitAppRegion: "drag"`;三个 pill 子容器是 `no-drag`。launcher 复用 `BrowserWindow` 给 session,macOS Sequoia 的系统级 drag inset 会吃掉 TopBar pill 上沿点击。任何新加在 TopBar 根下的可点元素都要带 `no-drag`(或落在已有 `no-drag` 子容器里)。
+
+- **Empty shell 没有 `modeViewer`**:`?project=<root>`(无 `session`、无 `mode`)→ `EmptyShell` mount `TopBar` 但无 session。任何新 TopBar feature 都要防 `modeViewer` 为 null。
+
+- **Gallery dismissal sources**:empty-state gallery 只在 (a) `userContentCount > 0` 或 (b) 用户点"或直接开始对话 →"时清除。**没有** click-outside-to-close——TopBar 点击、chat focus 都不得 dismiss。
+
+- **Focus ring 用 `ring`,别用 `outline`**:`src/index.css` 里有全局 `*:focus { outline: none }`,它是 un-layered CSS,按 cascade layer 规则**无条件压过** `@layer utilities` 里的任何 Tailwind outline utility(`focus-visible:outline-*` 写了也白写、静默不生效)。焦点样式一律走 box-shadow 系的 `focus-visible:ring-*`(见 bansho `Timeline.tsx` 的 track)。
+
+
+## Rendering and measurement
+
+- **一段补间被"重定向"和被"取消"，在轨迹上长得完全不一样——静止那一帧只可能是重启**(2026-08-18 实测,bansho 相机滑行):现象是一段滑行**最后一帧最大**(全速被掐)、然后**恰好一帧零位移**、再接一小段慢吞吞的补移。当时有两个候选(canonical 接管 / 重建 effect 重跑),埋点跑完发现**两个都是 0 次**,真凶是补间自己的 retarget。判断方法在数据里就有,不用埋点也能推:**取消会画出一个不同的位姿,那是一个跳步;而重定向把新补间交给已排队的那一帧,那一帧画的是它的起点——正是屏幕上已有的位姿,于是零位移。** 所以"killed at speed + 恰好一帧静止 + 从零速度重新缓入"是 **restart 的结构指纹**,不是 stall。顺带一条设计教训:自动通道的"最新目标优先"在**重提交频率高于补间时长**时会让补间永远活在自己的缓入里(实测:759ms 的交还腿被每 150ms 一次的跟随重提交打断五次,一次都没跑完)。
+
+- **两宽度字节门的第一次捕获不稳,会报一个假的 DIFFERS——而原因不是字体**(2026-08-19 复测更正):浏览器刚起来的第一张捕获会让 `two-width.sh` 报 "the window is still in the canonical layout",但**唯一不稳的叶子是 back-reference 覆盖层的容器 rect**(冷:形如 `[44, 504.04, 565, 153]` 的「已摆好」子矩形;稳定后的真值:整块面板 `[0, 0, 1242, 894]`),而**冷捕获里每一条墨迹 path 的 `d` 字符串就已经逐字节正确**。字体若真在沉降,动的会是 path 和文本 rect——它们没动。所以这是**探针的首帧测量热身**,不是字体沉降(这条我先前写成"字体沉降",错了)。做法:浏览器启动后丢弃一张捕获再跑门,或直接 diff path(它从第一帧起就稳)。**别照着这个假 DIFFERS 去改排版代码。** 顺带,曾有一份验证报告称焐热后仍差两字节(`92.37` vs `92.38`),复测不复现:两个宽度都读 `92.38`,`md5` 完全相同——字节门是成立的。
+
+- **`CSSStyleDeclaration.prototype` 上没有 `transform` 的自有属性描述符**(2026-08-19 实测):想给"谁写了 transform"埋点的人会去 `Object.getOwnPropertyDescriptor(CSSStyleDeclaration.prototype, 'transform')` 拿 setter 再包一层——拿到的是 `undefined`,于是**静默装上一个会抛异常的访问器**,而现象是页面某处莫名其妙坏掉、跟你想量的东西毫无关系。要埋点走 `getPropertyValue` / `setProperty`。
+
+- **被遮挡的 Chrome 窗口会挂起 rAF,任何播放测量都会静默变成量空气**(2026-08-17 实测):窗口被别的窗口盖住 → `document.hidden` 为 true → 板停在 `0.0`,而 transport 还显示"Pause",看起来像驱动坏了而不是被节流。启动时带 `--disable-backgrounding-occluded-windows --disable-background-timer-throttling --disable-renderer-backgrounding --disable-features=CalculateNativeWinOcclusion`。
+
+- **CDP 的 CPU 节流量不出 CSS filter 的代价**——它只节流主线程,不碰 raster/compositor。所以拿 6× throttle 跑出来"没掉帧"是**空结果,不是余量证据**,别当成压力测试的通过。
+
+- **CSS filter 的作用区域按 object bounding box 算,而 bbox 不含 stroke 宽度**:细的近直线路径(bansho chart 的刻度 bbox 只有约 2px 高)会被默认的 `-10%/120%` 区间切掉圆角笔帽,线看起来更钝更细。放大看得见、1× 看不见时可以接受;要修就得放大区间,而那是**每一个被过滤的元素**都要付的栅格面积。这也是"就给那条 path 加个 filter"在发丝线上并不免费的原因。
+
+- **量擦除相关的帧预算前,先查那一轮 wipe 里到底有什么**:`@erase` 是**按板作用**的,把图放在板 1、擦除写在板 2,那一轮擦的就是别的东西——数字会漂亮地通过,而它什么都没量。先用 DOM 查询把 `[data-bansho-wiping]` 这一轮的孩子列出来,再相信任何 wipe 数字。
+
+- **Measured geometry 必须跟着"字体会变"的每一个输入失效**(bansho T8):viewer 里任何"量出来"的东西——ink overlay、back-reference anchor、对齐列宽——都是当前排版下的测量值。宽度变化有 ResizeObserver 兜底,**主题切换没有**:light/dark 的 `--hand` 是两套不同 face(Bradley Hand vs Chalkboard SE),字宽不同 → 文字重排、overlay 留在旧位置。而且 reconcile **看不见**它:字节没变、hash 全中、plan 是 no-op,所以只把 `theme` 加进 effect 依赖数组不管用——必须清缓存(`stateRef` / containers / label widths / itemByRef)再 tick 强制重建(`BoardCanvas.tsx::invalidateMeasurements`)。新的字体输入(seed `theme.css` 的 `--hand`、用户字号)照此办理。
+
+- **一个 client rect 的中线不是"字的中线"——尤其在 CJK 板上**(bansho G8-M,2026-08-12 实测):`span.getBoundingClientRect()` 量到的是 **line box**,高度是 line-height,而它的中心落在 baseline 上方 `(ascent − descent) / 2` 处——那是**字体 ascent/descent 不对称**的产物(拉丁字体给重音和升部留的顶部空间),不是"写下来的东西"的中心。实测 34px / line-height 1.5 的手写栈:box 中心在 baseline 上方 14.5px,而一个汉字的墨迹中心只在上方 10.9px,**任何按 box 中心摆的覆盖物都高 3.6px**。拉丁看不出来:小写墨迹只有 0.53em,压在 1.02em 的高亮带下面怎么偏都盖得住;汉字墨迹 1.04em——跟带子一样高——误差就全部落在每个字的下缘,黄带读起来像"从字中间划过的条纹"。**修法是要到 baseline**,而 DOM 给不出:client rect 和 line box 共享中心(half-leading 对称),任何 rect 组合都分不开 ascent 与 descent;唯一便宜且与 DOM 逐像素吻合的来源是 canvas `measureText().fontBoundingBoxAscent/Descent`(实测预测 40.00 对 DOM strut 40.00),属 layout 家族、transform 免疫。见 `modes/bansho/engine/factories/type-metrics.ts`。**任何"盖住/穿过/围住文字"的测量几何都要按 baseline 摆位,不要按 box 中心**。
+
+- **验证 bansho 板上的几何,只能读 `offset*`,不能读 `getBoundingClientRect()`——rect 是相机的意见**(2026-08-13 实测,两个 agent 各栽一次):stage 戴着 camera 的 transform,`getBoundingClientRect()` 会**乘上它**,`offsetWidth`/`offsetLeft` 不会(G8-J、layout 家族)。危险的地方在于失败形状**看起来像成功**:均匀缩放**精确保留宽高比**,所以一个溢出整块板的盒子从 rect 读出来是"624×468,标准 4:3",数字漂亮、比例分毫不差、于是被当成"这条路径是对的"。同一个节点 `offsetWidth` 读出来是 **1242 × 932**——整块板。实测复现:`z = 0.502415` 时 1242×932 的 rect 正好是 624×468。判断方法有两条:(a) 一律用 `offset*`;(b) 记住 canonical 板上**正确的盒子只可能是 region 宽度**(1242 板:face 1154、半宽 565),624 不是其中任何一个,凡是对不上 region 表的数字,先怀疑自己量错了而不是庆祝。**截图同理**——相机会裁板,合规的图看着像被切、被切的图看着像合规,所以视觉验证必须配一次 `offsetWidth` 测量,不能靠眼睛判。
+
+- **`mask-image` 的图片源受同源限制,跨源/`file://` 下静默画不出任何东西**(bansho 插图层,2026-08-13 实测):遮罩要读像素,所以浏览器按同源策略挡它——但失败形状是**完全没有输出**,而所有诊断都说一切正常:`getComputedStyle` 报 `mask-mode: luminance`、URL 解析正确、`CSS.supports('mask-mode','luminance')` 为 true、`new Image()` 也能把同一个文件加载到完整尺寸。**唯一能隔离它的对照是在同一个元素上换成 `linear-gradient` 遮罩**——渐变照常生效,图片不生效,才知道问题在源不在语法。产品路径是同源 HTTP 提供资产,所以只有本地测试页会踩(写在 `file://` 上的验证页会让你以为整个方案不成立)。
+
+- **CJK 的字宽不携带任何字体身份——"两个字体量出来一样宽"不是"它们是同一个字体"**(2026-08-17 实测,`document.fonts.check` 那条坑的邻居,而且两个 agent 加一个人各栽一次):汉字是**全角**,advance 精确等于 1 em,**几乎每一款中文字体都如此**——这是这门文字的排版约定,不是巧合。所以 `"Xingkai SC", monospace` 和 `monospace` 量 `板书手写` 都是 4×34 = **136**,`cursive`、`serif`、一个根本不存在的字体名,全是 136。据此判断"这两个都落到系统 fallback 了"是**错的**:那天 `CSS.getPlatformFontsForNode` 在真实 ink 节点上报的是 `STXingkaiSC-Light`,板上每一个字都是 Xingkai SC 写的。失败方向是最坏的那个:**把正在画的字体报成缺失**——于是 picker 警告一个用户肉眼看得见的字体不存在,§6.4-A chip 把整块板 312 个汉字全列成"fallback",`probeEnvCaps` 说手写体没生效。三条同时说谎,而板子渲染完全正确。
+  **判断方法:量墨,不要量宽。** 同一个 canvas 上把样本画两遍(`"<family>", <sentinel>` 与 `<sentinel>` 单独),比 `getImageData` 的 alpha 通道:不同的脸画出不同的墨。三个注意点:(a) `textBaseline` 必须用 `alphabetic`——`top` 是按**首个 family 的 ascent** 定位的,同一份墨经两个不同 stack 会落在两个高度,比出来的差异是假的;(b) 反指纹浏览器会扰动 readback,同一输入画两遍不一致就必须返回 "unknown",否则**每一个字体名都会被判成已安装**(错误方向);(c) 画不出墨的 host(happy-dom)所有签名都相等,返回 `false` 是凭空发明,同样返回 "unknown"。实现见 `modes/bansho/engine/factories/env.ts` 的 instrument 段;测试用的假字体机在 `modes/bansho/__tests__/fake-font-machine.ts`,它**把 advance 和 raster 分开建模**并故意让所有 CJK advance 相等——量宽的实现过不了那套测试。
+  顺带:**页面内没有任何 API 能告诉你"实际画字的是哪个 face"**——`document.fonts` 不说,computed style 只回声明。要么用 CDP `CSS.getPlatformFontsForNode`(调试期,一句话结案,别靠推理),要么用上面的 raster 比对反推(把整条 stack 的墨和每个候选单独的墨比,相等的那个就是正在画的那个)。
+
+- **SVG presentation attribute 不解析 `var()`**(bansho G8-D):`el.setAttribute("stroke", "var(--s1)")` **静默失效**——颜色直接丢、不报错;且 CSS 规则优先级高于 presentation attribute(`.chart text { fill }` 会盖掉 attribute 上的 `fill`)。token 颜色一律走 `element.style`(inline style 才盖得住)。bansho 的 `engine/factories/svg.ts::el()` 对 attrs 里的 fill/stroke/color/opacity 直接 throw,把这条规则做成了结构性约束——新 SVG 代码照抄这个模式。
+
+
+## Capture and browser verification
+
+- **`element.click()` 和 CDP 的可信输入在某些组件上行为不同**:实测 bansho transport 的 Replay,脚本 `.click()` 之后按钮显示"Pause"但时钟钉死不动,看起来像一个真 bug;换 `Input.dispatchMouseEvent`(`isTrusted: true`)一切正常。凡是断言交互后状态的探针脚本,用可信输入,别用 `element.click()`。
+
+- **`@zumer/snapdom`**:调用期间 capture iframe 必须 `display: none`——可见 iframe 会导致 foreignObject 文本 reflow。见 `useSlideThumbnails.ts` 和 `export.ts`。
+
+- **snapdom 必须在目标元素自己的 window 里跑**:用外层 window 的 snapdom 去栅格化*同源 iframe 内部*的元素时,iframe 文档里的 CSS 变量、`@font-face`、SVG 画笔服务器都解析不到。用 `src/utils/iframe-snapdom.ts::snapdomFor()`(往同源 iframe 注 `/vendor/snapdom.js`)。捕获主文档元素的(GridBoard、`useThumbnailCapture`)外层 snapdom 本就正确,不要改。
+
+- **Session thumbnail capture**(`src/hooks/useThumbnailCapture.ts`):优先级 viewer `captureViewport()` → Electron `pneumaDesktop.capturePage(rect)`(唯一能看到 iframe 内容的路径)→ snapdom(仅 browser dev)。空 Electron capture 不用 snapdom 补——后者把 iframe 渲染成白矩形,比 mode-icon fallback 更糟。
+
+- **`chrome-devtools` CLI 的"当前页"是全局的,别的会话开新标签会把它抢走**(2026-09-09 三个子代理并行用同一个浏览器实测):一条读数落在了别人的页面上,数字看着完全合理。每一条命令前 `list_pages` + `select_page <n>`,并核对 RootWebArea 的 URL;在 `--viewing` 会话里量,永远不要点到别人的编辑会话(它的 agent 会真的动手)。
+
+
+## Viewer and session contracts
+
+- **React key collision for same-named modes**:一个 builtin(`slide`)evolve 出的 local mode 通常仍 `name: "slide"`。任何 builtin + local 混排的列表把 key 组合成 `${source}::${path || name}`,不要用裸 `mode.name`。
+
+- **Empty assistant messages**:`MessageBubble` 在 content 为空时返回 null(纯 tool_use 消息)。
+
+- **modelUsage cumulative**:用 delta(current - previous)算 per-turn cost。
+
+- **`ViewerPreviewProps.files` is a deprecated compat shim**:新契约是 `sources` + `fileChannel`;`files` 只为 pre-2.29 外部 mode 保留。新 viewer 一律用 `useSource(sources.files)`。
+
+- **Locator navigation failures now have a return channel**: `src/store/viewer-slice.ts::setNavigateRequest` returns a sequence id; `onNavigateComplete(result)` feeds `navigateOutcome` through `resolveNavigate`; `src/components/MessageBubble.tsx::LocatorCardGroup` shows failures beside the pressed card. Viewers should report an unresolved address with `{ success: false, message }`. `src/store/navigate-plan.ts` rejects unknown content sets instead of redirecting to the currently open one. The 2026-08-20 incident predates this channel: its advice to implement separate viewer feedback because failures are discarded is obsolete. There is no automatic notification of this outcome to the agent.
+
+- **双缓冲 `<video>` 舞台:切换一开始就停旧层,切完就清旧层的 `src`,延迟回调(重试、`play()` 的 promise)必须重新确认自己拿的还是台上那一层**(2026-09-02 plotwise 实测,用户听到的是"两个同时在播"的回声):旧写法只在新片 `play()` resolve 之后才 `pause()` 旧层,而旧层的 `src` 一直留着;`onError` 里 `setTimeout(1200)` 的重试闭包捕获的是**出错时**的元素,1.2 秒后它可能已经被换下台,`load()+play()` 让它带着旧片重新出声——两层各放一份同一段片子,相差几秒。不变量要做成结构:**任何时刻只有台上那一层持有 `src`**(`modes/plotwise/viewer/VideoStage.tsx`,happy-dom 测试钉住)。`currentSrc` 在设 `src` 后是异步才有值的,判"这层有没有片"要同时看属性。
+
+- **viewer 通知里"用户最新的选择"这一类,必须带 `replaces: [<同类型>]`**(2026-09-02 plotwise 实测,用户来回点两个续段,输入框里堆出一排 `已选择:…` 待发送 chip):agent 忙的时候 `onNotifyAgent` 会排队(`chat-slice.ts::addPendingNotification`),每一次点击都是一条;而"用户现在在哪一段"这种状态只有最后一条有意义。`replaces` 让新通知先清掉队列里同类型的旧条目再入队——队列里永远只有一条。不是所有通知都该这样(每条都是一个真实请求的,比如"拍这一段",不能互相替换);判据是**旧的那条在新的发出之后是否还成立**。
+
+
+## GridBoard and Diagram
+
+- **GridBoard JSX tag limitation**:tile compiler(Babel + eval)不能把本地定义的 component 当 JSX tag 解析。用 `{renderMyComponent(...)}` 函数调用。
+
+- **Diagram viewer**:native events、SVG pointer-events、sketch injection、rough.js 加载顺序——见 `modes/diagram/viewer/DiagramPreview.tsx` 头部注释。

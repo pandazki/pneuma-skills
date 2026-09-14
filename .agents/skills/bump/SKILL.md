@@ -62,11 +62,11 @@ Review `README.md`, `README.zh.md`, `AGENTS.md`, and `docs/reference/project-gui
 
 Specifically check:
 - `AGENTS.md` `**Version:**` line → update to new version
-- `AGENTS.md` `**Builtin Modes:**` list → matches `core/mode-loader.ts` registrations
+- `AGENTS.md` mode-catalog link → resolves to the maintained README catalog; public entries match registered manifests and hidden modes stay out
 - `docs/reference/project-guide.md` tech stack table → matches `package.json` dependencies
 - `docs/reference/project-guide.md` project structure tree → reflects any new/moved directories
 - `docs/reference/project-guide.md` server API reference → includes any new endpoints
-- `.claude/rules/*.md` → add any newly discovered gotchas to the matching domain rule, remove resolved ones
+- `.claude/rules/*.md` → keep current constraints and topic routing concise; place longer evidence in linked references and correct or retire stale guidance
 - `README.md` mode table → matches manifest descriptions
 - `README.md` CLI help section → matches actual CLI output
 - `README.md` feature list / roadmap → reflects current state

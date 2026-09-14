@@ -2,7 +2,7 @@
  * T9 — the mode is actually registered, and the evolution agent knows what
  * to learn from it.
  *
- * Registration is three separate files consumed by three different
+ * Registration has three surfaces consumed by different
  * processes, and every one of them fails DIFFERENTLY and QUIETLY when it is
  * missed (`.claude/skills/create-mode/SKILL.md` Step 3):
  *
@@ -10,7 +10,7 @@
  *  - `server/index.ts::builtinNames` — miss it and `bun run dev bansho`
  *    still works, so nothing looks broken, but the launcher gallery never
  *    shows the mode. This is the one that actually gets missed;
- *  - the docs (`AGENTS.md` + both READMEs) — miss it and the mode exists
+ *  - the mode catalogs in both READMEs — miss it and the mode exists
  *    but is undiscoverable by anyone reading the project.
  *
  * So they are pinned here rather than trusted. `builtinNames` is a
@@ -107,14 +107,6 @@ describe("registration 2/3 — the launcher gallery registry", () => {
 });
 
 describe("registration 3/3 — the docs", () => {
-  test("`AGENTS.md` lists it on the Builtin Modes line", () => {
-    const line = read("AGENTS.md")
-      .split("\n")
-      .find((l) => l.startsWith("**Builtin Modes:**"));
-    expect(line).toBeDefined();
-    expect(line).toContain(`\`${MODE_NAME}\``);
-  });
-
   test("`CLAUDE.md` stays the one-line import — content there is the bug", () => {
     // The release contract: AGENTS.md is the single source of truth and
     // CLAUDE.md imports it. See this file's header for why the T9 spec's

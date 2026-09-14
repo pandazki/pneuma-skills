@@ -10,6 +10,10 @@ This is the shared development procedure for Claude Code and Codex. Read root
 Read `docs/reference/project-guide.md` for the affected contracts and their
 definition → instantiation → consumer chain. Paths here are repo-relative.
 
+[Engineering Judgment](../../../AGENTS.md#engineering-judgment) is the shared
+decision standard. Apply it through the questions below; keep its definitions
+in AGENTS.md rather than copying them into skills or harness adapters.
+
 ## Choose the work shape
 
 - A lookup or investigation uses [explore](references/roles/explore.md).
@@ -26,16 +30,23 @@ the active harness's model choices; Claude model aliases are not Codex model IDs
 
 ## Development loop
 
-1. **Define the task.** Identify the concrete behavior, affected contracts, test
-   scope, and acceptance bar. Use existing user decisions; resolve routine
-   implementation choices without asking again. Check the working tree and
-   preserve unrelated edits. Isolate concurrent writers in separate worktrees.
+1. **Define the task.** Identify the required behavior and invariants, affected
+   contracts, state owners, test scope, and acceptance bar. Inspect existing
+   implementations before choosing new abstractions or dependencies. Use
+   existing user decisions; resolve routine implementation choices without
+   asking again. Check the working tree and preserve unrelated edits. Isolate
+   concurrent writers in separate worktrees.
 2. **Implement.** Read the implementation role. For behavior changes, reproduce
    the defect or pin the new behavior, implement, and verify. Documentation,
    discovery metadata, and formatting do not need tests that merely repeat text.
+   Keep the model sufficient for the actual task. When introducing a boundary,
+   wrapper, or optimization, retain the reason and evidence for its cost.
 3. **Review.** Inspect the actual diff against the requirements and domain rules.
-   Check failure paths, compatibility, state ownership, and propagation through
-   consumers. For UI work, also inspect loading/empty/error states, interaction,
+   Trace each changed invariant through its consumers and boundary mappings.
+   Check compatibility, ownership, lifecycle, and observable failure behavior.
+   For external effects, check what retry, cancellation, recovery, or undo
+   actually guarantees. Challenge layers and dependencies without a concrete
+   role. For UI work, also inspect loading/empty/error states, interaction,
    design tokens, and browser evidence. Report concrete findings with location,
    impact, and severity; a missing review is not a passing review.
 4. **Verify.** Run the relevant suite from `.claude/rules/testing.md`, plus
@@ -43,7 +54,8 @@ the active harness's model choices; Claude model aliases are not Codex model IDs
    repository gate and `bun run test:all` for releases. Inspect the contract
    boundaries: no React in manifests, no new hardcoded mode knowledge in
    server/CLI, and backend differences behind the backend seam. UI changes need
-   a browser screenshot and interaction pass. Save command results and evidence.
+   a browser screenshot and interaction pass. Performance claims need a
+   reproducible baseline and comparison. Save command results and evidence.
 5. **Amend.** Read the amendment role, address each valid finding, and repeat the
    affected checks. Accept only when verification passes and review has no open
    blocker or major finding. Report unresolved issues honestly; never silently

@@ -140,7 +140,7 @@ pneuma-skills/
 ├── scripts/                   # Repo scripts — player deploy, reseed, smoke
 ├── public/ + dist-player/     # Static assets + built online-player output
 ├── .agents/                   # Shared development skills and role guidance (Codex-native discovery)
-├── .claude/                   # Shared domain rules + native Claude skill/command/agent adapters
+├── .claude/                   # Shared rules/ and topic references/ + native Claude adapters
 └── docs/                      # Supplementary docs (reference/, adr/, archive/, …) — see docs/README.md
 ```
 
@@ -180,7 +180,7 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 | **SharedHistoryPackage** | `core/types/shared-history.ts` | `pneuma history export/share` produces | `pneuma history open` + replay flow consumes |
 | **PluginManifest** | `core/types/plugin.ts` | Each plugin's `manifest.ts` (`plugins/<name>/`) | `core/plugin-registry.ts` (discovery + lifecycle), `core/hook-bus.ts` (waterfall events), `core/settings-manager.ts` (settings) |
 | **ProjectManifest** | `core/types/project-manifest.ts` | `<projectRoot>/.pneuma/project.json` | `core/project-loader.ts::detectWorkspaceKind()`; `server/handoff-routes.ts`; ProjectPanel / EmptyShell on front-end |
-| **`BorrowDispatchPayload` + `BorrowResult` + `BorrowLink`** (round-trip cross-mode handoff — see ADR-015) | `core/types/borrow.ts` (`isBorrowResult` guard + `normalizeBorrowScope` + `MAX_CONCURRENT_BORROWS_PER_SESSION`) | dispatch built by `bin/borrow-cli.ts` (`pneuma borrow`) → `server/borrow-routes.ts` `/api/borrows/dispatch` writes `<Bdir>/.pneuma/borrow-brief.json` + records `BorrowLink` in the per-session `Map<borrow_id, BorrowLink>`; result written by `pneuma borrow-return` → `/api/borrows/return` to `<Bdir>/borrow-result.json` | `server/skill-installer.ts` (brief → B's `pneuma:handoff` block); `bin/env-tag.ts` (`reason="borrow"` start signal); `server/ws-bridge.ts` (queued `<pneuma:borrow-returned>` return tag, idle-flush); `pneuma-project` skill (semantic layer, both sides). *Instantiation/consumption land in tasks B2–B5; the contract type + ADR ship first.* |
+| **`BorrowDispatchPayload` + `BorrowResult` + `BorrowLink`** (round-trip cross-mode handoff — see ADR-015) | `core/types/borrow.ts` (`isBorrowResult` guard + `normalizeBorrowScope` + `MAX_CONCURRENT_BORROWS_PER_SESSION`) | dispatch built by `bin/borrow-cli.ts` (`pneuma borrow`) → `server/borrow-routes.ts` `/api/borrows/dispatch` writes `<Bdir>/.pneuma/borrow-brief.json` + records `BorrowLink` in the per-session `Map<borrow_id, BorrowLink>`; result written atomically by `bin/borrow-return-cli.ts` to `<Bdir>/borrow-result.json`, then signaled to the host server at `/api/borrows/return` | `server/skill-installer.ts` (brief → B's `pneuma:handoff` block); `bin/env-tag.ts` (`reason="borrow"` start signal); `server/ws-bridge.ts` (queued `<pneuma:borrow-returned>` return tag, idle-flush); `pneuma-project` skill (semantic layer, both sides). |
 
 ### Plugin System
 
@@ -210,7 +210,7 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 
 1. **Resolve** — 把 specifier(builtin / local / github / url)映射到含 `manifest.ts` 的磁盘路径(`core/mode-resolver.ts`)
 2. **Load manifest** — `loadModeManifest()` → ModeManifest
-3. **Session** — load 或 create `<sessionDir>/session.json`;quick session `sessionDir = workspace`,project session `sessionDir = <project>/.pneuma/sessions/<id>/`
+3. **Session** — load or create `<stateDir>/session.json`. Quick sessions use `sessionDir = workspace`, `stateDir = workspace/.pneuma`; project sessions use `sessionDir = stateDir = <project>/.pneuma/sessions/<id>/`. Skills and instructions are installed under `sessionDir` (the agent CWD).
 4. **Skill install** — 把 `modes/<mode>/skill/` 复制到 backend-appropriate 目录,应用 `{{key}}` / `{{#key}}…{{/key}}` 模板,拼装 marker blocks 写到指令文件
 5. **Server start** — Hono HTTP + WebSocket + backend transport bridge
 6. **Backend selection** — startup-only、workspace-locked
@@ -318,7 +318,7 @@ Skills 复制到 backend-appropriate 目录。每个 backend 的 `manifest.ts` �
 
 **Session-scoped workflow scripts**:同一条缝往上一层——`BackendModule` 另有可选的 `workflowsDir`(Claude Code = `.claude/workflows`,Codex / Kimi 留空)。Installer 发现 `<modeSourceDir>/workflows/*.js` 就复制到 `<installTarget>/<workflowsDir>/`,由 Claude Code 的 `Workflow` 工具按名调用。**来源是发现而非声明**(mode 不必在 manifest 里列),**gate 在 `workflowsDir` 字段**——server 端零 mode 知识、零 backend 条件判断。Workflow 与 slash command 的分工:command 是给用户的入口,workflow 是**强制一段工作顺序**(fan out → 评判 → 产出 → 批评),用在"prose 只能请求、脚本才能强制"的地方。先例是 `modes/bansho/workflows/plan-lecture.js`(讲稿动笔前先出设计)。铁律:**策略本身必须同时写在 mode 的 SKILL.md 里**——没有 workflow runner 的 backend 只剩那份散文,策略只活在脚本里就等于没给它们。
 
-模板变量替换后(`applyTemplateParams` 只做两件事:`{{key}}` 填入 init / derived param 的值,`{{#key}}…{{/key}}` 按该值是否非空保留或删掉整段;没有反向段),指令文件由一组**命名 marker block** 拼装(`<!-- pneuma:start/end -->` 主体 + `<!-- pneuma:viewer-api:* -->` + `<!-- pneuma:preferences:* -->` + `<!-- pneuma:project:* -->`(项目 only)+ `<!-- pneuma:project-atlas:* -->`(项目 only,pointer 而非 inline)+ `<!-- pneuma:handoff:* -->`(项目 only)+ `<!-- pneuma:evolved:* -->`(Evolution 写入)+ `<!-- pneuma:resumed:* -->`(replay 续档))。Mode 版本写到 `skill-version.json`,resume 时与 manifest 比对,不同且未 dismiss 即 inline 提示 "Skill update: X → Y"。
+模板变量替换后(`applyTemplateParams` 只做两件事:`{{key}}` 填入 init / derived param 的值,`{{#key}}…{{/key}}` 按该值是否非空保留或删掉整段;没有反向段),指令文件由一组**命名 marker block** 拼装(`<!-- pneuma:start/end -->` 主体 + `<!-- pneuma:viewer-api:* -->` + `<!-- pneuma:preferences:* -->` + `<!-- pneuma:project:* -->`(项目 only)+ `<!-- pneuma:project-atlas:* -->`(项目 only,pointer 而非 inline)+ `<!-- pneuma:handoff:* -->`(quick + project)+ `<!-- pneuma:evolved:* -->`(Evolution 写入)+ `<!-- pneuma:resumed:* -->`(replay 续档))。Mode 版本写到 `skill-version.json`,resume 时与 manifest 比对,不同且未 dismiss 即 inline 提示 "Skill update: X → Y"。
 
 ## Project Lifecycle (3.0)
 
@@ -347,7 +347,26 @@ Project 是用户目录,由 `<root>/.pneuma/project.json` 标记。多个 sessio
 
 ### Borrow (round-trip cross-mode handoff)
 
-Handoff 是 **goto**(kill A、spawn B、控制权不回来);**borrow** 是 **subroutine call**——从活着的 session A 里借用 mode B 的能力做一件有界的事,**A 不死、不离前台**,B 在后台子 session 做完写出交付物 + 变更说明,控制权**返回** A。契约层(`core/types/borrow.ts`)定义三个形状:`BorrowDispatchPayload`(A→server 的 brief:`mode`+`brief` 必填,加 `inputs`/`expects`/`scope`/`in_place_targets`/`summary`/`language`/`return_via`)、`BorrowResult`(B 写进 `<Bdir>/borrow-result.json`、A 读:`produced[]`+`change_notes`+`status`+`applied_in_place?`+`open_questions?`)、`BorrowLink`(server 内存 `Map<borrow_id, BorrowLink>` 链接记录,磁盘是真相)。四个被批准的决策(ADR-015):(D1) borrow 是与 handoff 并列的独立原语而非它的 flag;(D2) 返回腿是磁盘文件 + 排队 chat tag、非同步响应(崩溃可幸存);(D3) 默认 `scope:"return"`(host 应用 diff、保住专长分工)、opt-in `in-place` 逃生口;(D4) B 默认继承 A 的 backend(单 backend 锁不破)。并发默认(`MAX_CONCURRENT_BORROWS_PER_SESSION = 1`):每 session 一个活跃 borrow,多余的排队。Server/CLI/env-tag/skill 集成属后续任务(B2–B5);契约类型 + ADR 先行。
+Borrow delegates a bounded task to a background mode session while the host
+session stays alive and in the foreground. Handoff transfers control to another
+session. The contracts in `core/types/borrow.ts` define `BorrowDispatchPayload`
+(the brief), `BorrowResult` (deliverables and change notes), and `BorrowLink`
+(the host server's in-memory link).
+
+The implementation is in `bin/borrow-cli.ts`, `bin/borrow-return-cli.ts`, and
+`server/borrow-routes.ts`: dispatch stages `<Bdir>/.pneuma/borrow-brief.json` before
+launch; the installer renders it into B's `pneuma:handoff` block. On completion,
+`pneuma borrow-return` atomically writes `<Bdir>/borrow-result.json`, then posts
+the completion signal directly to the **host** server. The host validates the
+file and queues a `<pneuma:borrow-returned>` pointer for its agent's idle boundary.
+
+The defaults from ADR-015 remain: `scope: "return"` lets the host apply the
+result; explicit `in-place` targets allow direct edits; B inherits the host's
+backend; one active borrow per host is allowed, with additional work queued.
+Results persist on disk, but live links and queues are process-local. The
+automatic boot reconciliation described in ADR-015 is not implemented by the
+current routes; an unknown borrow id returns 404 after the host loses its link.
+Do not infer automatic recovery from the existence of a durable result file.
 
 ## Agent Command Distribution (3.10.0)
 

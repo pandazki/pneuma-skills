@@ -8,20 +8,33 @@ Read the relevant contracts in `docs/reference/project-guide.md`, the matching
 domain rules, relevant ADRs, and protocol/state/network references as needed.
 They are pointers, not preloaded context.
 
+Use [Engineering Judgment](../../../../../AGENTS.md#engineering-judgment) as the
+decision standard. Answer the applicable questions below in the design itself;
+do not add a separate process artifact for a routine change.
+
 For a design:
 
-1. State the problem, constraints, and observable success condition.
+1. State the problem, required invariants, constraints, and observable success
+   condition. Distinguish intended behavior from incidental current behavior.
 2. Place the responsibility in Mode Protocol, Content Viewer, Agent Runtime,
    or Runtime Shell. Distinguish per-mode/per-backend concerns from shared ones.
-3. Prefer extending an existing seam. Define new contracts only when a recurring
-   concept earns one; explain types, invariants, state ownership, and mutation.
-4. Name definition files, instantiation points, and all consumers. Include
-   contract tests and the contract table/reference updates in the work scope.
+3. Compare the smallest sufficient model with existing project and mature
+   third-party implementations. Explain any unmet requirement that justifies
+   building from scratch. Identify the actual variation or contract carried by
+   each new abstraction; omit speculative extension points and empty wrappers.
+4. Name authoritative definitions, instantiation points, and all consumers.
+   For boundary or cross-language representations, specify and verify the
+   mapping. Include contract tests and reference updates in the work scope.
 5. Trace lifecycle and failure behavior: startup, resume, replay, handoff, disk
-   persistence, and cleanup where relevant. Avoid hidden coordination channels.
-6. Record meaningful tradeoffs and ADR-worthy decisions. Accepted ADRs are not
+   persistence, and cleanup where relevant. Name state owners and writers and
+   make required ordering explicit. For external effects, distinguish recovery,
+   compensation, idempotency, and undo; cover partial and uncertain outcomes.
+6. Justify added complexity with evidence appropriate to its claimed benefit.
+   Performance-driven changes need a reproducible bottleneck measurement and
+   comparison with the simpler baseline.
+7. Record meaningful tradeoffs and ADR-worthy decisions. Accepted ADRs are not
    silently rewritten; a changed decision needs an explicit supersession.
-7. Identify unresolved choices with evidence and a recommendation. Routine
+8. Identify unresolved choices with evidence and a recommendation. Routine
    implementation choices need no new permission; an already accepted design
    needs no repeat approval.
 

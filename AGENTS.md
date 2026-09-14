@@ -4,17 +4,121 @@
 >
 > This startup guide stays below 24 KiB so Codex can read it within its default instruction budget. Architecture details live in [Project Guide](docs/reference/project-guide.md). Before editing, read the matching domain rules below; their contents are shared by both harnesses.
 
-## Project Overview
+## Product and Architecture
 
-Pneuma Skills is co-creation infrastructure for humans and code agents. Agents edit files directly (Read/Edit/Write); files remain the canonical collaboration surface. Viewers are live **players** for agent output, rendering work in domain terms (a deck, a board, a project) so humans can watch, intervene in the UI, or hand structured guidance back. Four pillars: a **visual environment** (live players with optional participation), **skills** (domain knowledge + seed templates + session persistence), **continuous learning** (evolution agent for cross-session preference extraction), and **distribution** (mode marketplace, publishing, sharing). Multiple agent backends (Claude Code, Codex, Kimi CLI) selected at startup.
+Pneuma Skills is co-creation infrastructure for humans and code agents. It turns
+an agent's work into a domain-specific environment where a person can watch,
+participate, and carry the work forward. Four pillars support this: a **visual
+environment**, **skills**, **continuous learning**, and **distribution**.
+
+1. **Shared work, two ways to interact.** Agents use native file tools;
+   people see documents, decks, boards, and other domain objects. Files remain
+   the canonical surface for persistent work. Viewers consume typed Sources;
+   their optional edits return to the same files. Preserve the connection
+   between what the user points at, what the agent changes, and the visible
+   result. `ViewerAddress` is the shared object-reference contract.
+2. **The viewer is a live player for the task.** It renders work as it forms and
+   supports direct edits, structured guidance, and inspection where useful.
+   Design the experience around the person's task and the domain's units.
+   Creation and consumption can have different interactions; partial, waiting,
+   and failed states must remain understandable.
+3. **A mode packages a way of working.** Its domain model, skill, scripts, seeds,
+   viewer, and quality criteria belong together. The framework supplies shared
+   contracts and runtime services. Mode-specific knowledge stays in the mode;
+   backend-specific knowledge stays behind `BackendModule`. Capabilities are
+   explicit, so a backend need not pretend to support another backend's tools.
+4. **Spend agent judgment where it matters.** Interpretation, creation, and
+   tradeoffs need judgment. Established assembly, validation, scheduling, and
+   deterministic interaction paths belong in programs. Put repeatable mechanics
+   in scripts and explain their use in skills. Essential workflow policy must
+   remain usable across the supported harnesses.
+5. **Let collaboration accumulate.** Sessions persist; optional projects connect
+   work across modes through shared materials, context, and explicit handoffs.
+   Preference skills maintain personal and project memory. Evolution proposes
+   evidence-backed additions and removals to guidance for user review. Modes
+   can be customized and distributed with their working methods intact.
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
 **Version:** 3.47.3
 **Runtime:** Bun >= 1.3.14 (required, not Node.js)
-**Builtin Modes:** `webcraft`, `doc`, `slide`, `draw`, `diagram`, `illustrate`, `remotion`, `gridboard`, `kami`, `clipcraft`, `cosmos`, `wordtaste`, `bansho`, `eli5`, `plotwise`, `sprite`, `mode-maker`, `evolve`, `project-evolve`, `project-onboard`, `project-tidy`
 
-> Modes can set `hidden: true` to disappear from user-pickable lists (launcher grids, ProjectPanel mode-tile picker). Their sessions are also stamped `internal: true` by `scanProjectSessions` and filtered out of user-facing session lists (project panel, project cards, quick-resume). Internal modes (`evolve`, `project-evolve`, `project-onboard`, `project-tidy`) are hidden — triggered by specific UI affordances or programmatically, never by a "what mode to start?" choice.
+The mode catalog is in [README.md](README.md#built-in-modes); declarations live
+in `modes/*/manifest.ts`. Internal-mode visibility rules live in the mode rules.
+
+### Place responsibility before implementation
+
+| Concern | Starting point |
+|---------|----------------|
+| Domain knowledge, taste, creative strategy, quality criteria | Mode skill |
+| Repeatable execution, assembly, validation | Mode scripts |
+| Domain rendering, interaction, user feedback | Mode viewer |
+| Shared semantics across capabilities | Core contracts |
+| Transport, process lifecycle, persistence mechanisms | Runtime shell / server / CLI |
+| Backend dialect, capabilities, installation conventions | `BackendModule` and its implementation |
+
+These are responsibility boundaries, not a requirement to add layers. Extend an
+existing seam when it fits; introduce a shared abstraction only for a concrete
+contract or demonstrated variation.
+
+## Engineering Judgment
+
+Apply these principles in design, implementation, review, and amendment. Scale
+the explanation to the change; routine edits do not need a separate design
+document. The development skills operationalize these principles and link here
+for their authoritative definition.
+
+### Correctness and boundaries
+
+1. **Invariants before abstractions.** Identify and protect the invariants
+   required by the specification and explicit contracts. Verify them; existing
+   behavior is evidence, not proof of correctness. An abstraction must isolate
+   real variation or carry a clear contract or boundary.
+2. **One authority for each concept.** Reuse the authoritative semantic
+   definition across capabilities, services, and implementation languages.
+   Different representations are justified by different semantics or boundary
+   projections; name their mapping and verify consistency. This does not require
+   every language or process to share the same executable implementation.
+3. **Explicit state and effects.** Name state, its owner and writers, lifecycle,
+   failure behavior, and side effects. Shared state must have an explicit scope
+   and access contract. Required ordering belongs in an observable protocol or
+   control flow; do not depend on hidden globals or incidental call order.
+4. **Distinguish recovery, compensation, idempotency, and undo.** Recovery
+   restores the ability to proceed; compensation adds an operation to counter
+   an effect; idempotency prevents duplicate effects on repetition; undo reverses
+   a completed effect within a stated scope. Runtime mediation does not make an
+   external effect reversible. Cancellation or timeout does not prove that a
+   remote operation never happened. State what can be restored, by whom, and
+   what remains uncertain before choosing retry or rollback behavior.
+5. **Observable failures and explainable defaults.** Validate and report errors
+   at the earliest responsible boundary. Do not silently swallow failures or
+   report partial, failed, or uncertain outcomes as success. Recovery and
+   degradation need explicit semantics and an observable outcome. Expected
+   absence and no-op behavior may be valid when the contract defines them;
+   isolating a failure must still preserve the signal to its responsible caller.
+
+### Models and implementation
+
+6. **Start with the smallest correct model.** Satisfy the actual specification,
+   boundaries, and verification needs, then extend for demonstrated demand.
+   Do not prebuild frameworks, extension points, or options for imagined futures.
+7. **Prefer mature implementations that fit.** Inspect existing project code
+   and established third-party implementations before building from scratch.
+   Reuse must satisfy the specification, boundaries, runtime constraints, and
+   verifiability. Build from scratch when suitable existing implementations
+   cannot meet those requirements, and explain the concrete gap.
+8. **Compose and express behavior directly.** Remove wrappers with no independent
+   behavior, contract, or boundary value. A thin adapter that enforces a real
+   boundary can earn its place; forwarding alone is not a reason for another layer.
+
+### Complexity and evidence
+
+9. **Complexity must earn its cost.** Identify the real problem and verifiable
+   benefit of added complexity. Performance-motivated complexity requires a
+   reproducible bottleneck measurement and comparison against the simpler
+   baseline. Correctness, isolation, and maintainability benefits need their
+   own evidence, such as a failing case, contract test, or concrete dependency
+   analysis; they do not require inventing a performance benchmark.
 
 ## Development Toolchain
 
@@ -22,7 +126,9 @@ Pneuma Skills is co-creation infrastructure for humans and code agents. Agents e
 repository skills; Claude entries link or route to the same files. Domain rules
 remain in `.claude/rules/` so Claude's path-based loading keeps working. Codex
 reads those same rule files explicitly — a `.claude` pathname does not make the
-content Claude-only. Do not maintain a second copy of a skill or rule.
+content Claude-only. Longer records in `.claude/references/` are reached through
+the rules' topic links, outside the automatically loaded rules directory. Do not
+maintain a second copy of a skill or rule.
 
 ### Rules — read before editing
 
@@ -35,9 +141,16 @@ content Claude-only. Do not maintain a second copy of a skill or rule.
 | `**/__tests__/**`, `*.test.ts(x)` | [testing](.claude/rules/testing.md) |
 | `desktop/**` | [desktop](.claude/rules/desktop.md) |
 
-Read every applicable row, including when the task expands into another domain.
-Record newly discovered gotchas in the matching rule file. Rules apply equally
-whether auto-loaded by Claude or explicitly read by Codex.
+Read every applicable row, including when the task expands into another domain,
+then read the reference sections whose triggers match the work. Rules apply
+equally whether auto-loaded by Claude or explicitly read by Codex.
+
+Keep guidance current: record a gotcha's trigger, current rule, and short reason
+in the matching domain rule; put longer evidence and incident histories in its
+linked references. Give new constraints evidence and an explicit scope. Correct
+or retire stale guidance when its assumptions change, preserving useful history
+in the references or archive. Check the size of the applicable reading path as
+well as the root file; moving prose does not help if every task still loads it.
 
 ### Skills and command entry points
 
@@ -87,12 +200,19 @@ another harness. Keep the review/verification bar and report any missing evidenc
 Read the relevant sections when the task needs them; do not preload the entire
 reference library. Contract changes update the contract directory in Project Guide.
 
+Use source code to verify current behavior and maintained references for contract
+semantics. ADRs and archived proposals explain decisions at the time they were
+written; check their status and later changes before treating them as current
+implementation. When sources disagree, trace the implementation and identify
+whether the code or the reference has drifted. Correct stale references; a change
+to an accepted architectural decision needs an explicit supersession.
+
 ## Coding Conventions
 
 - **TypeScript strict**, ESNext modules, bundler resolution
 - **Bun APIs** over Node.js (Bun.spawn, Bun.file, etc.)
-- **Contract-first**: contract changes → update `core/types/` + `core/__tests__/` + `docs/reference/` + the contracts table in `docs/reference/project-guide.md`, in the same change. Recurring concepts get lifted to the protocol layer (thin waist) instead of being solved ad-hoc per feature.
-- **No hardcoded mode knowledge** in server/CLI — driven by ModeManifest
+- **Contract-first**: contract changes → update `core/types/` + `core/__tests__/` + `docs/reference/` + the contracts table in `docs/reference/project-guide.md`, in the same change. Lift shared concepts into the protocol layer when their concrete consumers justify it.
+- **Mode boundaries**: no React imports in `manifest.ts`; frontend bindings live in `pneuma-mode.ts`. No hardcoded mode knowledge in server/CLI — driven by ModeManifest.
 - **Backend selected at startup only** — no runtime backend switching in session UI
 - **Zustand** sliced store (`src/store/`), mode viewers in `modes/<mode>/viewer/`
 - **Design tokens**: "Ethereal Tech" theme via `cc-*` CSS custom properties (deep zinc bg `#09090b`, neon orange primary `#f97316`, glassmorphism surfaces with `backdrop-blur`)

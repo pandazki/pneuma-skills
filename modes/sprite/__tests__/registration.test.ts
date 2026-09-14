@@ -2,7 +2,7 @@
  * The mode is actually registered — and the evolution agent knows what to
  * learn from it.
  *
- * Registration is four files read by three different processes, and each one
+ * Registration has three surfaces read by different consumers, and each one
  * fails differently and quietly when it is missed (the shape of this suite
  * follows `modes/eli5/__tests__/registration.test.ts`, which follows
  * `modes/bansho/`, which paid for the lesson):
@@ -10,7 +10,7 @@
  *  - `core/mode-loader.ts` — miss it and the mode is "Unknown mode";
  *  - `server/index.ts::builtinNames` — miss it and `bun run dev sprite` still
  *    works, so nothing looks broken, but the launcher gallery never shows it;
- *  - the docs (`AGENTS.md` + both READMEs) — miss it and the mode exists but
+ *  - the mode catalogs in both READMEs — miss it and the mode exists but
  *    nobody reading the project can find it.
  *
  * `builtinNames` is a function-local array inside a route handler, so it is
@@ -102,14 +102,6 @@ describe("registration 2/3 — the launcher gallery registry", () => {
 });
 
 describe("registration 3/3 — the docs", () => {
-  test("`AGENTS.md` lists it on the Builtin Modes line", () => {
-    const line = read("AGENTS.md")
-      .split("\n")
-      .find((l) => l.startsWith("**Builtin Modes:**"));
-    expect(line).toBeDefined();
-    expect(line).toContain(`\`${MODE_NAME}\``);
-  });
-
   test("`CLAUDE.md` stays the one-line import — content there is the bug", () => {
     expect(read("CLAUDE.md")).toBe("@AGENTS.md\n");
   });
