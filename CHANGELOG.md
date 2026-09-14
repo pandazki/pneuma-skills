@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.48.0] - 2026-09-14
+
+### Added
+- **Sprite looks at a clip before cutting it.** `sprite-sheet.mjs contact` tiles a timestamped contact sheet of a motion clip and measures, with no model call, how long the opening pose holds, where the closing hold begins, and which window loops cleanly (start, end, period, and the seam against a normal frame step). Motions from video now sample one cycle instead of the whole clip. Measured on a real image-to-video walk: even sampling across the clip spent two frames on the opening hold and crammed two and a half strides into a 4 fps loop; the detected cycle gave sixteen evenly moving frames at 12 fps.
+- **Hand-picked sample times.** `from-video --at t1,t2,…` samples the exact timestamps read off the contact sheet, for motions whose beats are not evenly spaced; the run summary records which schedule was used.
+- **Start from your own character image.** A drawing or design sheet the user brings is registered as an upload, and a pose cropped out of it as a derivation, with no invented model or prompt; the project summary reports where each reference came from, and the sprite skill's new workflow validates, crops and registers the image instead of redrawing it.
+
+### Improved
+- **Unified product and engineering guidance.** The startup guide states the product philosophy and engineering judgment in one place, the domain rules are trimmed to current constraints, and the reference documents are back in line with the code.
+
+### Fixed
+- **Sprite's video test fixture actually moves.** ffmpeg 8 evaluates `drawbox` position expressions once, so the clip the video tests sampled was a still image with a duration; the fixture now animates through `overlay`, and the rule is recorded for other fixtures.
+
 ## [3.47.3] - 2026-09-10
 
 ### Improved
