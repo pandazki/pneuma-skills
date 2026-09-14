@@ -1,0 +1,8 @@
+# Dev-only updater config, read by electron-updater when the app runs unpackaged
+# with PNEUMA_DEV_UPDATE=1 (see src/main/updater.ts). Mirrors the `publish`
+# block of electron-builder.yml so a dev run resolves the same GitHub releases
+# a packaged build would. Not shipped: electron-builder's `files` list only
+# includes dist-electron/ and package.json.
+provider: github
+owner: pandazki
+repo: pneuma-skills
