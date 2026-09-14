@@ -89,6 +89,22 @@ and an empty `metadata` so the stage has something to show while the model
 draws, and the second `set-sheet` (after the image lands) measures it and flips
 the same id to `ready`.
 
+### References the user brought
+
+A `ref-<id>` carries one of three edges, and `add-ref` writes the one that
+actually happened. The default is `generate`, with the `--model` and `--prompt`
+that drew it. `--uploaded` writes an `upload` edge with `actor: "human"`,
+`fromAssetId: null` and **no `params`** — a design sheet or drawing the user
+brought has no model and no prompt to record, and inventing one is the only
+other way to get it into the project. `--derived-from <refId>` writes a
+`derive` edge from that reference carrying `params.op` (`--op`, default
+`crop`) — the single pose you cut out of an uploaded sheet. The asset entry is
+identical in all three cases (`tags: ["ref"]`, measured metadata, `ready`), and
+re-registering an id replaces its edge whatever its type, so a reference can
+move between origins without collecting duplicates. `show` reports the result
+as `origin: "generated" | "uploaded" | "derived"` per ref (`"unknown"` for a
+ref with no edge at all).
+
 ## The `sprite` sidecar
 
 Never dispatched as craft commands — it lives only in this mode.

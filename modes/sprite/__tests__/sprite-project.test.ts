@@ -607,7 +607,149 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       const { dir } = seedMini();
       const again = projectJson(dir, "add-ref", "--id", "portrait", "--file", "refs/portrait.png",
         "--role", "turnaround", "--at", String(T0));
-      expect(again.refs).toEqual([{ id: "portrait", role: "turnaround", label: "Portrait", uri: "refs/portrait.png" }]);
+      expect(again.refs).toEqual([
+        { id: "portrait", role: "turnaround", origin: "generated", label: "Portrait", uri: "refs/portrait.png" },
+      ]);
+    });
+  });
+
+  /**
+   * A reference the user brought, and one the agent cut out of it. Both are
+   * registered by the same `add-ref`, and the only difference that reaches
+   * project.json is the provenance edge — which is the point: the asset entry
+   * must not learn to lie about a model nobody called.
+   */
+  describe("references that were not generated here", () => {
+    /** A ref-sized image on disk, ready to register, returning its uri. */
+    function refFile(dir: string, name: string) {
+      buildSheet(join(dir, "refs", `${name}.png`), { cell: 256, rows: 1, cols: 1 });
+      return `refs/${name}.png`;
+    }
+
+    test("--uploaded writes an upload edge by a human, with no parent and no params", () => {
+      const { dir } = seedMini();
+      const uri = refFile(dir, "design-sheet");
+      projectJson(dir, "add-ref", "--id", "design-sheet", "--file", uri, "--role", "turnaround",
+        "--label", "Design sheet", "--uploaded", "--at", String(T2));
+
+      const doc = readProject(dir);
+      expect(doc.provenance.filter((e: any) => e.toAssetId === "ref-design-sheet")).toEqual([{
+        toAssetId: "ref-design-sheet",
+        fromAssetId: null,
+        operation: { type: "upload", actor: "human", timestamp: T2 },
+      }]);
+      // the asset entry is the one every reference gets — measured, ready, tagged
+      expect(doc.assets.find((a: any) => a.id === "ref-design-sheet")).toEqual({
+        id: "ref-design-sheet", type: "image", uri, name: "Design sheet",
+        metadata: { width: 256, height: 256 },
+        createdAt: T2, status: "ready", tags: ["ref"],
+      });
+      expect(doc.sprite.refs).toContainEqual({
+        id: "design-sheet", asset: "ref-design-sheet", role: "turnaround", label: "Design sheet",
+      });
+
+      const refs = projectJson(dir, "show").refs;
+      expect(refs.find((r: any) => r.id === "design-sheet").origin).toBe("uploaded");
+      // and the generated one next to it still says so
+      expect(refs.find((r: any) => r.id === "portrait").origin).toBe("generated");
+    });
+
+    test("--derived-from hangs the pose off the reference it was cut out of", () => {
+      const { dir } = seedMini();
+      projectJson(dir, "add-ref", "--id", "turnaround", "--file", refFile(dir, "turnaround"),
+        "--role", "turnaround", "--uploaded", "--at", String(T1));
+      projectJson(dir, "add-ref", "--id", "pose-a", "--file", refFile(dir, "pose-a"),
+        "--role", "custom", "--derived-from", "turnaround", "--op", "crop", "--at", String(T2));
+
+      expect(readProject(dir).provenance.filter((e: any) => e.toAssetId === "ref-pose-a")).toEqual([{
+        toAssetId: "ref-pose-a",
+        fromAssetId: "ref-turnaround",
+        // one parent, so no params.inputs — fromAssetId already says everything
+        operation: { type: "derive", actor: "agent", timestamp: T2, params: { op: "crop" } },
+      }]);
+      expect(projectJson(dir, "show").refs.find((r: any) => r.id === "pose-a").origin).toBe("derived");
+    });
+
+    test("--op defaults to crop and takes any word", () => {
+      const { dir } = seedMini();
+      projectJson(dir, "add-ref", "--id", "pose-a", "--file", refFile(dir, "pose-a"),
+        "--role", "custom", "--derived-from", "portrait", "--at", String(T2));
+      projectJson(dir, "add-ref", "--id", "pose-b", "--file", refFile(dir, "pose-b"),
+        "--role", "custom", "--derived-from", "portrait", "--op", "cleanup", "--at", String(T2));
+
+      const params = (id: string) =>
+        readProject(dir).provenance.find((e: any) => e.toAssetId === id).operation.params;
+      expect(params("ref-pose-a")).toEqual({ op: "crop" });
+      expect(params("ref-pose-b")).toEqual({ op: "cleanup" });
+    });
+
+    test("an unknown --derived-from is refused with the references it does know", () => {
+      const { dir } = seedMini();
+      const before = readProject(dir);
+      const r = project(dir, "add-ref", "--id", "pose-a", "--file", refFile(dir, "pose-a"),
+        "--role", "custom", "--derived-from", "turnaround", "--json");
+      expect(r.code).toBe(1);
+      expect(r.err).toMatch(/--derived-from.*turnaround.*portrait/);
+      expect(readProject(dir)).toEqual(before);
+    });
+
+    // Each of these names both flags in the refusal, because the agent has to
+    // learn which half of the command it should drop.
+    const refusals: Array<[string, string[], RegExp]> = [
+      ["--uploaded --model", ["--uploaded", "--model", "openai/gpt-image-2.5-sunburst"], /--uploaded.*--model/],
+      ["--uploaded --prompt", ["--uploaded", "--prompt", "a design sheet"], /--uploaded.*--prompt/],
+      ["--uploaded --from", ["--uploaded", "--from", "ref-portrait"], /--uploaded.*--from/],
+      ["--uploaded --derived-from", ["--uploaded", "--derived-from", "portrait"], /--uploaded.*--derived-from/],
+      ["--derived-from --prompt", ["--derived-from", "portrait", "--prompt", "a pose"], /--derived-from.*--prompt/],
+      ["--derived-from --model", ["--derived-from", "portrait", "--model", "openai/gpt-image-2.5-sunburst"], /--derived-from.*--model/],
+      ["--derived-from --from", ["--derived-from", "portrait", "--from", "ref-portrait"], /--derived-from.*--from/],
+      ["--op without --derived-from", ["--op", "crop"], /--op.*--derived-from/],
+    ];
+
+    for (const [name, extra, message] of refusals) {
+      test(`${name} is refused by name and nothing is written`, () => {
+        const { dir } = seedMini();
+        const before = readProject(dir);
+        const r = project(dir, "add-ref", "--id", "pose-a", "--file", refFile(dir, "pose-a"),
+          "--role", "custom", ...extra, "--json");
+        expect(r.code).toBe(1);
+        expect(r.err).toMatch(message);
+        expect(readProject(dir)).toEqual(before);
+      });
+    }
+
+    test("re-registering an id replaces the edge whatever its type", () => {
+      const { dir } = seedMini();
+      const uri = refFile(dir, "pose-a");
+      const edges = () => readProject(dir).provenance.filter((e: any) => e.toAssetId === "ref-pose-a");
+
+      projectJson(dir, "add-ref", "--id", "pose-a", "--file", uri, "--role", "custom",
+        "--model", "openai/gpt-image-2.5-sunburst", "--prompt", "a first pass", "--at", String(T1));
+      expect(edges()).toHaveLength(1);
+
+      projectJson(dir, "add-ref", "--id", "pose-a", "--file", uri, "--role", "custom",
+        "--uploaded", "--at", String(T2));
+      expect(edges()).toHaveLength(1);
+      expect(edges()[0].operation).toEqual({ type: "upload", actor: "human", timestamp: T2 });
+
+      projectJson(dir, "add-ref", "--id", "pose-a", "--file", uri, "--role", "custom",
+        "--derived-from", "portrait", "--at", String(T2));
+      expect(edges()).toHaveLength(1);
+      expect(edges()[0]).toEqual({
+        toAssetId: "ref-pose-a",
+        fromAssetId: "ref-portrait",
+        operation: { type: "derive", actor: "agent", timestamp: T2, params: { op: "crop" } },
+      });
+
+      projectJson(dir, "add-ref", "--id", "pose-a", "--file", uri, "--role", "custom",
+        "--model", "openai/gpt-image-2.5-sunburst", "--at", String(T2));
+      expect(edges()).toHaveLength(1);
+      expect(edges()[0].operation.type).toBe("generate");
+
+      // one asset and one sidecar entry throughout
+      const doc = readProject(dir);
+      expect(doc.assets.filter((a: any) => a.id === "ref-pose-a")).toHaveLength(1);
+      expect(doc.sprite.refs.filter((r: any) => r.id === "pose-a")).toHaveLength(1);
     });
   });
 
@@ -851,7 +993,9 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
         "--run", join(FIXTURES, "bounce-run.json"), "--at", String(T2));
       const out = projectJson(dir, "show");
       expect(out.character.name).toBe("Mini");
-      expect(out.refs).toEqual([{ id: "portrait", role: "portrait", label: "Portrait", uri: "refs/portrait.png" }]);
+      expect(out.refs).toEqual([
+        { id: "portrait", role: "portrait", origin: "generated", label: "Portrait", uri: "refs/portrait.png" },
+      ]);
       expect(out.motions).toEqual([{
         id: "bounce",
         label: "Bounce",
