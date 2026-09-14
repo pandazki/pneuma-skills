@@ -9,8 +9,10 @@ Pneuma Skills 的文档分两类：**活文档**（与代码同步演进）和**
 | 顺序 | 文件 | 受众 |
 |------|------|------|
 | 1 | [`README.md`](../README.md) | 人类——项目是什么、怎么装、怎么用（[中文](../README.zh.md)） |
-| 2 | [`AGENTS.md`](../AGENTS.md) | 所有 code agent 的统一启动指引——约束、领域规则、共享技能入口（`CLAUDE.md` 只是一行 `@AGENTS.md` import） |
-| 3 | [`.claude/rules/`](../.claude/rules/) | 按领域拆分的约束与 known gotchas——编辑对应目录前先读（Claude Code 按路径自动加载） |
+| 2 | [`AGENTS.md`](../AGENTS.md) | 所有 code agent 的统一启动指引——产品哲学、工程判断、责任边界、领域规则与共享技能入口（`CLAUDE.md` 只是一行 `@AGENTS.md` import） |
+| 3 | [`.claude/rules/`](../.claude/rules/) | 按领域拆分的当前约束与阅读入口——编辑对应目录前先读（Claude Code 按路径自动加载） |
+
+工程原则的权威定义在 [`AGENTS.md`](../AGENTS.md#engineering-judgment)，开发技能将它们落实到设计、实现与评审问题。前端和模式的详细故障记录放在 [`.claude/references/`](../.claude/references/)，由领域规则按任务主题引导读取；历史诊断保留适用范围，不自动成为所有任务的硬约束。
 
 架构详情与完整契约目录在 [`reference/project-guide.md`](reference/project-guide.md)，按需读取；开发技能的唯一正文在 [`.agents/skills/`](../.agents/skills/)，Claude 入口转读同一份文件。`AGENTS.md` 保持在 24 KiB 以下，避免 Codex 默认 32 KiB 指令预算截断后段。 发现机制参考 [Codex AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md) 与 [Codex skills](https://learn.chatgpt.com/docs/build-skills)。
 
@@ -63,7 +65,11 @@ docs/
 
 ### adr/ — 架构决策记录
 
-14 份 ADR 覆盖 2026-02 起的关键决策——整体架构、WebSocket、Backend 集成、Skill 安装、文件监听、Session 管理、权限、CLI、Slide MVP、Backend Registry、History 重放、用户偏好。每份独立成文，状态流转 `Proposed → Accepted → Deprecated/Superseded`，**不修改正文**，只追加 supersession note。
+ADRs record architectural decisions since 2026-02, including the runtime, modes,
+backends, persistence, preferences, and cross-mode handoffs. Each record is
+self-contained, with status `Proposed → Accepted → Deprecated/Superseded`.
+Preserve its body and append supersession notes when a later decision replaces it;
+use the index below for the current list.
 
 → [ADR 索引](adr/README.md)
 

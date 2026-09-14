@@ -137,9 +137,11 @@ export default mode;
 
 ## 注册步骤
 
-新 mode 创建后必须在两处声明：
-
-1. **`AGENTS.md`** —— `**Builtin Modes:**` 行追加 mode name。这是 agent 指令的**唯一源**；`CLAUDE.md` 只是一行 `@AGENTS.md` import，**永远不要往它写内容，更不要 `cp` 覆盖 AGENTS.md**（那会把整份指令抹成一行）。
-2. **`README.md` 与 `README.zh.md` 的 "Built-in Modes" 表** —— 各追加一行（除非 `hidden: true`）。两个语言版本都要改,zh 版没有自动化守卫。
+Follow Step 3 in [the shared procedure](../SKILL.md) for frontend registration,
+launcher discovery, public documentation, and conditional cloud surfaces.
+Public modes belong in the catalogs and CLI usage of both `README.md` and
+`README.zh.md`; hidden modes stay out of the public catalog. `AGENTS.md` links
+to that catalog instead of duplicating the list. `CLAUDE.md` remains the single
+`@AGENTS.md` import; never add content to it or copy it over AGENTS.md.
 
 `bin/pneuma.ts` 不需要硬编码 mode 名（所有 mode driven by ModeManifest）；`pneuma <name>` 启动会经 `core/mode-resolver.ts` 找到 `modes/<name>/manifest.ts`。

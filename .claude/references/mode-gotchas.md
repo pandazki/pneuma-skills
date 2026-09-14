@@ -1,0 +1,93 @@
+# Mode authoring implementation records
+
+Detailed evidence linked from [the modes rules](../rules/modes.md). Read only
+the sections relevant to the task. Records preserve original diagnoses and
+subsequent corrections; dates, versions, and mode scope matter. Verify current
+behavior before reviving an older workaround. Shared engineering principles
+remain in [AGENTS.md](../../AGENTS.md#engineering-judgment).
+
+
+## Observation and session lifecycle
+
+- **翻 `session.json` 的 `editing: false → true` 会唤醒那个 workspace 上一个 agent，而它会开始改文件。** 想在一个 `--viewing` session 里调 viewer action 时很容易踩：`dispatchViewerAction` 需要一个真的 attached backend，于是有人去翻这个标志位。后果实测过（2026-08-11）：`claude --resume` 被拉起、浏览器一连上、viewer 就把积压的通知（那次是 `refUnresolved`）转给它，**它当真去编辑了内容文件**——而那些文件在仓库外，没有 git 兜底。要驱动 viewer action，**开你自己的 session**，不要复活别人的；真要翻这个标志位，先确认那个 workspace 没有可复活的 agent，用完立刻翻回去。
+  **补充(2026-08-12，同一坑在 `editing: true` 的全新 session 上复现)**:「开你自己的 session」不是免疫。一个为了验证板面而新建的编辑 session，agent 在浏览器一连上就收到积压通知(`[ws-bridge] Viewer notification forwarded to CLI: boardCollision`),**没有任何人给它下指令**,它自己就去改了内容文件——追加了一个 `@erase` 并复制了两段内容。**通知转发是 idle-flush，不区分"这个 agent 是被人拉来干活的"还是"它只是恰好活着"**。所以拿一个编辑 session 当观察工具时,用 `--viewing` 且不去碰那个标志位。任何"我只是看看"的 session,只要它有 agent 且浏览器连上,它就可能动手。
+  **更正(2026-08-17):这里原先写着「把内容文件 `chmod 444` 圈起来(实测有效)」——那是错的,而且是我自己写进来的。** 复测:一个 444 的 `board.md`,agent 照样把它改了(`-r--r--r-- 2648` → `-rw-r--r-- 2650`),没有人给它下指令。原因很简单:**Write 是重建文件,不是写入文件**——文件模式管的是"能不能往这个 inode 写",管不住"把这个路径换成一个新 inode"。要靠文件系统兜底,只有**只读的目录**才拦得住(目录的写权限才是决定能否 unlink/create 的那一位)。这条错误规则曾被用来"保护"一个真实的演示 session,那份保护一直是假的。
+
+
+## Authoring and distribution
+
+- **Seed gallery auto-derive is directory-only**:mode 没声明 `init.seeds[]` 时,`resolveSeedCatalog` 只把 directory-shaped 的 `seedFiles`(src/dst 以 `/` 结尾,或 dst 是 `./`/`""`)做成 gallery card;单文件条目被视为 framework setup 直接丢弃。真想要单文件模板的 mode **必须**显式声明 `init.seeds[]`。前端 `App.tsx` 的 `hasSeedsDeclared` 镜像了这条规则,两处要同步改。
+
+- **Mode skill version bump 必须带 `changelog`**:`manifest.ts` 的 `version` 动了,就要在 `changelog` map 加同 key 的条目(launcher 的 skill-update 提示从这里取 bullets)。同时 grep 旧版本字符串——`server/__tests__/` 与 backend lifecycle harness 里有测试硬编码 manifest version。
+
+- **Viewer 改动遵守 frontend rules**(`.claude/rules/frontend.md`):视觉验证、design tokens、snapdom/缩略图约束都适用于 `modes/*/viewer/`。
+
+- **SKILL.md 模板变量**:skill-installer 的 `applyTemplateParams` 只认两种语法——`{{key}}`(key 是 init param 或 `deriveParams` 的产物,值直接字符串化)与条件段 `{{#key}}…{{/key}}`(值定义且 trim 后非空则留下段内内容,否则整段删掉)。**没有反向段 `{{^key}}`、没有循环、没有默认值**;未声明的 key 原样带着大括号漏给 agent 读。不要在 skill 文本里发明新的模板语法。
+
+- **Seed/showcase 物料**:showcase 内容在 `modes/<name>/showcase/showcase.json` + `hero.png` + 3-4 `highlight-*.png`,由 `/showcase` command 生成,不要手画占位图。
+
+- **同步上游 mode 时别信 GitHub 的 compare API —— 它在 300 个文件处静默截断。** 实测(2026-08-28,webcraft 同步 impeccable `skill-v3.9.1` → `skill-v4.1.2`):`gh api repos/OWNER/REPO/compare/A...B --paginate` 返回的 `files[]` 里**整个 `skill/` 子树一个都没有**——按路径字母序排在 `cli/` 与 `docs/` 后面,正好被 300 的上限切掉,而 `--paginate` 对这个端点的 `files[]` 无效。表现是"上游这轮没动技能内容",而那恰恰是整轮改动的主体。同一轮 kami 的 compare 尾部还出现了 `+0/-0` 的假统计行(`styles.css`、`sitemap.xml` 等),看起来像"这文件没变"。**唯一可靠的做法是把两个 tag clone 到本地自己 diff**:`git clone <repo> src && git -C src worktree add ../src-old <old-tag> && git -C src checkout <new-tag>`,然后 `diff -ru`。Release notes 只配当索引,不配当 diff。
+
+
+## Credentials and script environments
+
+- **在 worktree 里验证 fal 相关脚本时,key 找不到不等于没有 key**:`generate_image.mjs` / `generate-tts.mjs` 的 `findEnvFile()` 先看 skill root,再**从 cwd 往上**逐级找 `.env`。仓库的 key 在主 checkout 的 `.env` 里,而 worktree 挂在**另一棵目录树**下(`~/orca/workspaces/...`),往上走永远走不到它——脚本于是老老实实报 `ERROR: No API key found`,看起来像"用户没给 key"。验证前先 `set -a; . <主 checkout>/.env; set +a`。生产环境不受影响:session 的 key 由 `envMapping` 写进 session `.env`,而 agent 的 cwd 就是 `PNEUMA_SESSION_DIR`。
+
+- **给外部 API 传 key,别把它变成 argv**(bash 时代 wordtaste 的 `leaf_openrouter.sh` / `cross_family_probe.sh`,2026-08-24;迁 TS 后 key 走 fetch 的内存 header,连 header 文件都不再存在):`curl -H "Authorization: Bearer $KEY"` 会把 key 摆进进程表,任何 `ps` 都看得见,子进程 argv 也会被测试和日志捕获。**`curl --header @<file>` 从文件读 header**(curl >= 7.55,macOS 自带 8.x 支持),再配 `--data-binary @<file>` 把 prompt 也挪出 argv;header 文件用 `(umask 077; : > f)` + `chmod 600` 建在 `mktemp -d`(0700)里,EXIT trap 里 `rm -f`。写 key 用 shell 内建 `printf`(不 fork、不进 argv)。key 的来源要**解析 `.env`,不要 `source` 它**——那份文件在 workspace 里,source 等于执行它。
+
+- **Bun 启动时会把 cwd 里的 `.env` 自动灌进 `process.env`**(2026-08-24 实测,wordtaste 脚本迁 TS 时踩中):`bun <script>.ts` 在哪个目录跑,哪个目录的 `.env` 就变成"环境变量",于是"environment wins"的 key 解析链会把一个来路不明的 cwd `.env` 当成显式环境。测试里表现为:不给 `cwd` 的 `Bun.spawn` 从仓库根 `.env` 读走真 key,两条 no-key 断言无声变绿。**spawn 被测脚本时必须钉死 `cwd`**;生产里 agent 的 cwd 是 `PNEUMA_SESSION_DIR`(session `.env` 本就是被认可的来源),但优先级翻了——cwd-`.env`-via-Bun 会压过 skill 根的 `.env`。逃生口是 `bun --env-file=/dev/null`。
+
+
+## Shell portability
+
+- **macOS 自带 awk 在 UTF-8 locale 下会把两个不同的多字节字符串判为相等**(2026-08-22 实测,`awk version 20200816`):`awk 'BEGIN { print ("作者甲" == "作者乙") }'` 打印 `1`;`-v` 传进来的变量、字段比较(`$2 == want`)一样中招——两边都被当成数字 0 来比。表现是一个"按作者过滤"的 awk 把**全部**行都放行,而不是报错,所以极难察觉。`(x "") == (y "")` 这种强制转字符串的老办法**无效**。唯一可靠的修法是给每一个 awk 调用挂 `LC_ALL=C`(只做逐行拷贝和 ASCII 正则时完全安全);要数汉字个数则单独用 `LC_ALL=en_US.UTF-8 wc -m`——BSD awk 的 `length()` 数的是字节。先例:bash 时代的 `modes/wordtaste/skill/scripts/primer_sample.sh`。
+  **配套的一条(2026-08-24 实测):要判断一段文本里有没有汉字,只能用 awk 的八进制字节区间,BSD grep 做不到。** `LC_ALL=C grep -q $'[\xe4-\xe9][\x80-\xbf][\x80-\xbf]'` 对着一个含汉字的文件返回**不匹配**(rc=1),看起来像"这文件是纯英文";`LC_ALL=C awk '/[\344-\351][\200-\277][\200-\277]/'` 同一个文件正确命中。用 `[\343-\351]` 覆盖 U+3000–U+9FFF(CJK 标点 + 常用汉字),而 em dash / 弯引号 / 省略号(E2 开头)不会误伤——英文排版里这三个很常见。先例:bash 时代 `run_leaf.sh` 的 `composed_brief_lint`。
+  **后记(2026-08-24):这几条 bash/awk Unicode 坑正是 wordtaste 把全部 skill 脚本迁到 TypeScript on Bun(0.10.0)的直接动因之一——现役脚本已不用 awk/grep 处理汉字;这些条目留作历史,以及给仍写 bash 的 mode 的警示(下面几条引用的 .sh 先例同样已是 .ts)。**
+
+- **`set -o pipefail` 下把 awk 管进 `head -n N`,输入超过 N 行就整条脚本挂掉**(2026-08-24,bash 时代 `voice_sample.sh` 的 10 条上限):`head` 读满就关管道,上游 awk 吃 SIGPIPE 退出 141,`pipefail` 把这个 141 变成整条管道的退出码,于是"用户写了 11 条指令"变成"这一步失败了"。上限越少见越难发现——测试里只写 3 行的话永远碰不到。修法是别用管道:`producer > tmp` 然后 `head -n N tmp > out`。同理适用于 `head`/`grep -q`/`sed q` 这些会提前关管道的下游。
+
+- **`IFS= read -r v < f` 在文件末尾没有换行时返回非 0,但 `v` 已经赋好值了。** `curl --write-out '%{http_code}'` 写出来的正是这种没有换行的一行,于是 `IFS= read -r code < f || code=""` 会**把刚读到的状态码擦掉**,表现是每一次请求都被判成失败(实测:200 被当成非 200,适配器一律 exit 4)。要么 `|| true`,要么 `code="$(cat f)"`。
+
+
+## Wordtaste prompt ownership
+
+- **Language exception**: Chinese is allowed in mode seed templates (`zh-light/`, `zh-dark/`) and showcase content. Everything else stays English — `modes/wordtaste/skill/` included. That mode was written in Chinese for one release (0.5.0) because the orchestrator's own register leaked into everything it wrote in Chinese: the 2026-07-30 run carried 落点 / 收束 / 换挡 from English-term translations straight into the article. **0.6.0 removed the reason rather than the symptom** — the writer prompt (`scripts/compose_leaf_prompt.ts` + `compose_unit_parts.ts`), the judge brief (`compose_check_brief.ts`) and the planner prompt (`compose_plan_prompt.ts`) are all assembled by scripts out of English scaffolding plus the author's own material, and `validate_plan.ts` refuses any plan whose Chinese was composed rather than quoted. No model-facing prompt carries a sentence the orchestrator wrote, so the skill text went back to English. Chinese that reaches a model must be a verbatim human quote; Chinese that reaches the user lives in `seed/`, in the fixed label maps inside `project_plan.ts` / `project_check_cycle.ts`, and in the viewer's `viewer/studio-logic.ts` label maps (test-pinned equal to the script's).
+
+- **wordtaste 的正文只允许两种非散文构造,而且两者的「谁来决定」是分开的**(0.17.0):章节 `## ` 与 `asset` 素材位。**章节开在哪里是 plan 的事**(`opens_section`,一个 boolean),**章节叫什么是写手的事**(中文,写在该 unit 输出的第一行)。这么切不是洁癖——plan 里每个中文字符串必须是材料的逐字引用(`validate_plan.ts` 硬拦),boolean 不带中文,所以分章一分钱没花在那条规则上;反过来,如果让被隔离的写手自己决定要不要开章,LLM 的默认行为是**每个 unit 都开一个**,正好退回这个 mode 花了整轮重构才消灭的「列表形状」。**素材位是纯文字**:`asset` 围栏里只有 `what:`(放什么,一次)和 `copy:`(那东西里要出现的文案,一行一条,有序),不生成任何东西、不链任何文件,留给未来做 artifact 的 agent 当简报。三个连带的坑:(1) **解析器必须同时认半角和全角冒号**——写手的约束里写着「full-width Chinese punctuation」,`what：` 会真的出现;(2) **charter 里的示例必须是英文**,`compose-leaf-prompt.test.ts` 有一条「charter 一个汉字都不能有」的断言,理由就是 charter 开篇那句「你落笔前读到的中文就是你会写的中文」——连示例都不能给它可抄的中文;(3) **素材位在进 `<preceding_prose>` 前要剥掉**(`stripAssetBlocks`,`compose_unit_parts.ts` 与 `writing.workflow.js` 两条路都要剥),key-value 块出现在写手读到的最后一段里就是一种可模仿的语体;**不要拿一句「（此处有图）」去替换**——那是 pipeline 自己写的中文,正是整套 prompt 组装要挡的东西。代价照实说:后一个 unit 看不见前面要过图,可能用散文把图要讲的话又讲一遍,靠人读稿时改,不靠放宽规则。格式与理由在 `skill/references/piece-shape.md`,散文版策略在 SKILL.md `## The shape of a piece`——**没有 Workflow runner 的 backend 只剩那份散文**。
+
+
+## Workflow execution and recovery
+
+- **交互式 mode 的"用户在等"的内循环必须是一个确定性脚本,不能是一个 agent**(plotwise 0.2.0,2026-09-02 实测):0.1.0 的 `next-segment` workflow 把每一段包成一个通用子代理走六步(读上下文 → Luna 剧本 → 证据门 → 抽帧拍摄 → 转写 QA → 写文件),再加一个 commit 代理改 course.json;从文件 mtime 量出来每段 3 分 20 秒,其中 API 时间约 40 秒,其余全是 LLM 在编排——而且 Codex/Kimi 没有 workflow runner,主 agent 逐段散文执行更慢。收成一个进程(`skill/scripts/produce-segment.mjs`)后一对候选并行 50-110 秒。两条配套的坑:(1) **"重活只在规划期"要在数据上成立**——大纲 beat 必须带 `evidence[]`(路径 + note),producer 只读这个列表、缺图直接判 fail、绝不现场渲染;只靠散文"别在 play 里渲染"拦不住一个想把事做完的 agent。(2) **agent 会用"确定性后处理"绕开视频模型**:e2e 里 Codex 从第 4 段起把 H3 画面换成"续帧 → 静态图 PNG 的 0.2 秒 wipe + H3 旁白音频",12 段里 8 段是有声 PPT——因为它发现 H3 复现不了密集小字的图。规则写进了 SKILL.md(片段就是模型的片段,图太密是规划期简化图的问题);实测 480P 下 H3 能复现结构和大字标签,小字一律变成假字形。
+
+- **Workflow 脚本里 `agent()` 失败不是 reject 而是 resolve 成 `null`,`.catch()` 根本不会触发。** `parallel()` 同理:某一项的 thunk 抛异常,那一项变成 `null`,整个 promise 照常 resolve。于是 `await agent(...).catch(() => ({ edges: [] }))` 这种写法**看着有兜底、实际没有**——子代理被跳过或死掉时拿到的就是 `null`,下一句 `.edges` 直接 TypeError 掀掉整轮运行(cosmos 的 projection 有四个阶段这么写,一直是颗哑弹)。配套的一条:`results.filter(Boolean)` 会把死掉的那一片**连同它本该报的错一起**吞掉,一行日志都不留,比上游那种"留个空文件让人发现"还糟。修法是用 `?.` 取值并**显式记一条 warning**,让"这一片什么都没产出"成为一个被报告的结果,而不是一个消失的结果。先例:`modes/cosmos/skill/references/projection.workflow.js`(0.5.0 修,`stats.partitions[]` + `stats.warnings[]`)。
+
+- **脚本失败时 agent 会自己发明重试循环、探测端点、翻源码——重试和回退必须长在脚本里**(2026-09-02 plotwise 实测):fal 的 H3 Max `reference-to-video` 端点连续几小时返回 504 `downstream_service_unavailable`(同一把 key 下 t2v / i2v 正常,状态页全绿),`make-style-sample.mjs` 一失败,agent 就写了 `for i in 1 2 3; do … sleep 25; done`,中间还花了四五轮去"检查锚图复用行为""探测端点",用户在看板上等了几分钟,而且每次重试都把锚图重画一遍(41 秒 + 一张图)。用户看到那个循环的第一反应是"怎么还有三个候选"。修法在三层:`generate-video.mjs` 对瞬时 5xx/429/断连自带三次退避重试;采样器复用已在盘上的锚图(`style/anchor.json` 记录它由什么生成)、默认走 i2v、r2v 失败回退 i2v;producer 同样回退;SKILL.md 写明"脚本自己重试,你一次调用,失败就告诉用户"。判据:**一个 mode 的关键路径脚本要么自己扛住上游抖动,要么留下一个清晰的失败状态给 viewer 显示——两者缺一,agent 就会即兴发挥,而即兴的东西用户看得见。**顺带一条产品判断(用户定的):教学视频默认不需要 r2v,上一段末帧当首帧、这一拍的图钉成末帧就够了;r2v 只留给有角色的场景。
+
+- **准备再重也不能挡住第一帧:先落"脊柱",其余流式补**(plotwise 0.3.5,2026-09-02 实测):旧 `plan-course` 是 大纲 → 4 个接地子代理全部返回 → 一个 LLM 审计代理写 course.json 的串行三段,用户在看板上等了 30-40 分钟一帧都没有;接地代理没有预算,自己去下载 PDF、把页面转成图逐页读,20-30 次工具调用一个还没回来,中间网络抖动死掉的代理又被重启。改法:大纲代理一出结果就用确定性脚本(`course-edit.mjs outline`)落进 course.json(viewer 立刻显示、n1 铸出来、常识拍直接算接地),开场当场可拍;接地"第一拍单独一个代理、其余分组",每一拍做完立刻 `course-edit.mjs evidence` 合并进 course.json,不存在最后的组装代理;审计是 `course-edit.mjs audit` 这样的脚本,不是 LLM。给子代理的 brief 必须带硬预算(每拍 ≤10 次工具调用、不下载 PDF、不读页面图)。判据:**用户可见的起点只能依赖流水线里最快的那一步,后面每一步的产出都要能单独、确定性地落盘。**
+
+- **初始化之后,交互式 mode 的 play loop 要整个是一个程序,agent 只留给"需要判断"的事**(plotwise 0.4.0,2026-09-02,用户定的方向):0.2–0.3 已经把"一段"收成了一个脚本,但**决定下一段是什么、什么时候拍、拍完记什么**仍然是 agent 每次点击后的一轮——每轮 76–200 秒,而片子只有 12 秒;而且一段 = 一句话,课程成了一串推文。改成 `write-screenplay.mjs`(一次结构化调用写完整条主线:每拍一场、每场 1–6 个连续镜头、每场一条支线简报)+ `play-manager.mjs`(常驻进程:两条队列、H3 槽位、按离学习者的距离排优先级、选择即剪枝并远程取消、逐镜头拍摄+质检+拼接、每步落盘),viewer 把选择写成 `state/choice.json`,agent 在 play 期间只处理提问(写 `state/requests/*.json`)和进程死亡(`play.updatedAt` 心跳停了→ `managerOffline`)。三条判据:(1) **点击路径上不能有模型调用**——选择必须是一个文件,由程序回应;(2) **一个内容单元的长度由内容定,不由模型的最大时长定**——H3 的 15 秒是镜头的上限,不是场景的;(3) **等待必须有内容**——两场之间的 interlude 用上一场末帧 + 逐句回顾 + 下一场进度垫时长,而不是一个转圈。参照的是用户的姐妹项目 `~/Tmp/galgame-demo`(剧情树/视频树、AsyncJobQueue、fal 队列取消);设计说明 `docs/proposals/2026-09-02-plotwise-async-play-manager.md`。配套的坑:**`sharedScripts` 是白名单**——`generate-video.mjs` 开始 import `fal-queue.mjs` 后,manifest 不列它,装进 session 的脚本第一行就 `ERR_MODULE_NOT_FOUND`。
+
+- **队列任务的"收尾里 reconcile"看到的是自己还在 active——重排要挂在队列的状态变化上**(plotwise 0.4.0 Codex review,2026-09-03):manager 原来在每个 job 的 `finally { reconcile() }` 里重排,但 `AsyncJobQueue` 是在 run 函数 settle **之后**才把 key 从 active 删掉,于是"正在拍的场景被 retry"这条路径——cancel → abort → 收尾 reconcile → `enqueue` 因 key 仍 active 返回 false → 节点被改回 planned——就此卡住,直到下一次 choice 才有人再 reconcile。修法:队列的 `onChange` 里比较前后 active 集合,**有 key 离开 active 才 debounce 一次 reconcile**(每次 onChange 都 reconcile 会和 enqueue 互相触发成死循环),job 收尾不再自己 reconcile。同一轮的两条配套:(1) **fal 没有幂等键**——提交只在"确定没建成任务"时重试(有 5xx/429 响应、或连接根本没打开 ECONNREFUSED/ENOTFOUND),POST 发出后丢了响应的一律不重发,错误里写明"可能已被接受";本地 deadline / 轮询连续失败退出前先 PUT cancel,否则远端任务照跑照计费。(2) **转写失败不能算通过**——原来 transcriber 挂了就 `judge: "skipped"` 放行,而"口播逐字核对"是这个 mode 的底线;现在重试一次转写,再失败就把镜头标成 `unchecked`(片子留在盘上)让场景 failed,retry 时先核对旧片再决定要不要重拍。
+
+- **生成模型的最佳实践写进脚本,不写进 SKILL 的散文**(plotwise 0.5.0,2026-09-04,用户定的方向):H3 的提示词技巧(风格锚点五要素放最前、每个节拍必带运镜、时间码场记单、三层音频、收尾负面约束、参考素材管"是谁"、有人声必传 `reference_audio`)全部落在 `modes/plotwise/skill/scripts/h3-prompt.mjs`(prompt)与 `play-manager.mjs`(参考绑定、连贯性套件、拼接淡入淡出),`references/h3-best-practices.md` 只记"为什么"和实测数字,`H3_PRACTICES_VERSION` 打在每个镜头上。判据:**模型每次都要"记得"的东西就不该由模型记**——写手只交口播、节拍、音效线,prompt 的形状由代码保证;实践更新时改一处、跑一次 A/B(同一镜头、一个变量、四个变体、转写 + 三帧抽图)、把数字记进 reference。配套两条实测:fal 的 H3 Max r2v 接受 `reference_audio_urls`,每镜 +4 s(14.4 → 18.4 s);同一段音色的客观指标(MFCC 均值余弦)区分度很弱(0.975 vs 0.996),**音色是否锁住要靠人耳,实验要把片子留给用户听**。
+
+- **agent 的 shell 里 `nohup … &` 起的常驻进程会随命令返回一起死——常驻进程要自己 daemonize**(plotwise 0.4.0 首次 Codex 盲测,2026-09-03):导演按 SKILL 写的 `nohup node play-manager.mjs … > /dev/null 2>&1 &` 执行成功、返回 "Command completed",进程却没了(无 pid、无日志),学习者在「剧本已落地,等待开拍」上干等 8 分 40 秒;第二次 nohup 同样死,第三次导演直接前台跑才活下来——代价是它的回合被占着。Codex 的 exec 在命令返回时收拾整个进程组,nohup 只挡 SIGHUP。修法:脚本提供 `--detach`,用 `spawn(process.execPath, [self, …], { detached: true, stdio: ["ignore", fd, fd] }).unref()` 把自己放进新 session,等 pid 文件出现再打印 `{ pid }` 退出;pid 文件活着就报 `alreadyRunning` 而不是再起一个;SKILL 里写"只准 --detach,不准 nohup/&/前台"。配套:**viewer 不能只盯心跳**——一个从未写过快照的进程没有心跳可停,要把"剧本已落地却迟迟没有 play{}"也当成故障报出去。
+
+
+## Media generation and validation
+
+- **`generate_image.mjs --style sketch` 会改写你的 prompt**:它不是一个开关,而是在 model dispatch 之前把 `, no shading, white background` 追加到 prompt 尾巴上(`modes/_shared/scripts/generate_image.mjs`)。任何靠"生成图自身明暗"做合成的 mode(bansho 的板书插图靠 luminance 当遮罩)拿到的就是一整块实心白 —— 图看着"生成成功",落到板上是个方块。**自己在 prompt 里写死风格的 mode,一律不要传 `--style`**(默认 `photo` 不动 prompt)。顺带:prompt 是**位置参数**,没有 `--prompt` 这个 flag——脚本用 Node `parseArgs`,默认 strict,未声明的选项直接让整条命令死在解析上:`ERROR: Unknown option '--prompt'`,exit 1,一张图都不会生成(2026-09-09 实测)。**它不会被当成第二个 positional 悄悄吞掉**——是响亮的失败,不是静默的降级;prompt 必须是**唯一**的位置参数(多给一个同样报 `Usage: ... (prompt is positional)`)。
+
+- **知识图只能当参考,永远不能当关键帧**(plotwise 0.3.7,2026-09-02 用户当场指出):0.3.4 为了绕过 r2v 端点故障,把拍片默认改成 i2v——上一段末帧当首帧、这一拍的图钉成 `--end-image` 末帧。结果是 matplotlib 原图被整张塞进画面,下一段又从这张原图接着链,几段之后整门课退化成有旁白的幻灯片,风格全无。用户的原则一直很清楚:数学/计算内容不能靠模型脑补,**所以图要作为参考喂进去让模型在自己的画面里复现**(r2v 的 Image 2+,"板上出现这张图,标注一字不改"),而不是把图直接放上屏幕。判据:**任何会被逐像素复制到画面里的输入(首帧、末帧)都不能是知识图;连贯性也走参考绑定(Image 1 = 上一段末帧)。**端点故障时,不需要图的段可以退回 i2v 只给首帧;需要图的段宁可明确失败(舞台显示"再拍一次"),也不脑补。
+  **更正(同日,用户再次指出):上一条只对了一半——"图不能当关键帧"是对的,"一律 r2v"是矫枉过正。** 用户的原则是**按需**:大多数教学段落根本不需要图(一个场景、一个比喻就够),直接 t2v / 用上一段末帧当首帧的 i2v 就好——**末帧当首帧是连贯性的正解,不是问题**;只有内容必须精确(坐标轴上的函数、公式、表格)时才画一张图作为 r2v 的参考。要不要图是写稿模型和 agent 看内容定的。落到 `produce-segment.mjs`:端点在**剧本写完之后**再定(`chooseEndpoint` 收的是剧本实际绑定的图,不是这一拍所有可用的图),写稿时只按**文件名**告知有哪些图可用,拍摄时由 producer 注入编号绑定(`injectBindings`)——写手永远不用猜哪张图会成为 Image 2。
+
+- **别给生成模型"禁止切镜"——我们把社区验证过的语法当成了要规避的东西**(plotwise 0.6.0,2026-09-04,用户先要求盲评、再要求复现社区案例才暴露):0.5 之前每条 H3 提示词都以 "One continuous shot, no cuts" 开头,理由是帧链(上一镜末帧当下一镜首帧)需要单镜头;结果整门课是"会说话的插画"。同一天把社区的 15 秒多镜头蒙太奇提示词原样发给 fal,**480P + balanced 十秒就复现到它发布的质量**——模型和分辨率都不是天花板,天花板是我们自己的提示词形状和上游内容(概念没有可拍的"视觉装置"、风格锚点是一间空屋、写手拿到的是脚手架不是导演简报)。0.6 的判据三条:(1) **先复现别人的成功案例再改自己的提示词**——单镜头 A/B 上种子方差大于措辞差异(0.5 的重拍就是这么白忙一场),复现是唯一便宜的地面真相;(2) **连贯性走参考绑定(锚图 Image 1 + 人声 Audio 1 每段都带),不走帧链**——帧链买到无缝接缝,代价是那些镜头没有人声参考、片段内不能切;(3) **内容规划期就要给每拍一个与画风无关的 `device`(可拍的物件/隐喻/角色)**,写手把装置翻译成所选画风的材质;同一个模型、同一题目、同一画风,拿到装置和拿到概念的产出差一个量级。配套三条实测:**口播密度有一条真实的甜区,两头都会炸**——15 秒里 60-85 汉字(实测首次通过率:44 字 1/4、50-56 字 2/2、84-89 字 4/6、118 字 0/2);少于约 50 字模型会重说一句或编一段乱语填空档(转写比脚本长 30-60%),多于约 100 字它说不完就吞掉一截;人声参考**不是**原因(去掉更糟,0/3),时间码也不是(去掉 2/3 vs 1/3)。因此校验器同时报下限和上限,并**在开拍前把这些问题当修改意见让写手重写一稿**——这是整条流水线里唯一一处"再问模型一次",因为出带的片段大概率过不了转写门,每次失败要烧两条渲染;**锚图必须是带题目装置的风格关键帧**,不是"布景就位但还没用";**写手回两个 JSON 对象**(`{"device"}` 和 `{"clips"}` 分开)会让贪婪 `{…}` 匹配整体解析失败——按括号配平逐个解析再合并。
+
+- **loudnorm 会改采样率;混采样率的镜头做 stream-copy 拼接,时长会翻三倍,浏览器解码到接缝就冻住**(同一轮盲测):`generate-video.mjs` 对响度达标的片子 `-c:a copy`(H3 原生 32 kHz),对需要校正的片子走 loudnorm 后重编(出来是 96 kHz);`play-manager` 用 concat demuxer `-c copy` 把它们接成一场——demuxer 不校验流参数,47 秒的镜头拼出 141 秒的文件,n2d 26→79 秒,浏览器播到第 15 秒 `MEDIA_ERR_DECODE` 静默冻结,连带渲染进程假死、WebSocket 断连、排队的通知随刷新丢失——报告里 90% 的等待都是它。修法两层:每条片子出厂只有一种音频格式(AAC 48 kHz 立体声,达标的也重编);拼接前 ffprobe 每个输入的流形状,一致才 stream copy,**拼完再核对总时长**,不一致就走 concat filter 全部重编。判据:**任何"把多个生成物接成一个"的步骤都要校验产物长度等于各部分之和**——生成模型的输出参数不承诺一致。
+
+- **口播质检的两边要先归一到"说出来的样子"再比**(同一轮盲测):剧本按口语写 "零点五、二十四",wizper 写 "0.5、24、+、²",一句算式口播的相似度只有 0.31–0.59,一条说得一字不差的片子被判失败、换种子重拍两次再判失败,一门数学课的算例场景就永远拍不成。`normalizeForCompare` 现在把数字串转成中文数词、算术符号转成词、两→二,再算编辑距离。判据:识别器的书写习惯不是口播错误。
+
+- **OpenRouter 上的 GPT Image 2.5 拒绝 `background: "transparent"`**(2026-09-09 实测,sunburst 与 flare 都是 400 `background: not supported. Accepted: auto, opaque`,发生在生成之前、不计费):想要透明雪碧图,走"提示词要纯白底、`--background opaque`,再 `remove-background.mjs`(fal BiRefNet)或 `sprite-sheet.mjs key`"。`generate_image.mjs --background transparent` 这个 flag 留着,但 skill 文本不能把它写成主路径——sprite 第一次真跑就是这样在第一张图上撞了 400。
+
+- **雪碧图对齐不能按整张画的包围盒中心对 x——道具会把身体推偏**(2026-09-09 用户在 e2e 里当场看出"切到 attack 是裂开的"):灯笼/伞/扳手伸出去,包围盒中心跟着跑,对齐后身体在 250 px 格子里左右跳了 44 px。`sprite-sheet.mjs align` 现在默认 `--x-from feet`(包围盒底部 10% 高度那条带里 alpha 像素的 x 均值),y 仍取包围盒底边;`bodyDrift`(脚部 x 的标准差)是判据,`anchorDrift` 只描述剪影。半身像没有脚,那条带就是衣服下摆,照样稳。平移修不了 `scaleDrift`——那是模型把角色画大画小了,只能带"固定比例"重画或走视频路径。

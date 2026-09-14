@@ -9,6 +9,11 @@ A guided journey for adding a new mode to Pneuma Skills. The journey has **three
 
 This skill runs in Claude Code and Codex. Use the active harness's file, planning, browser, and question tools; native Claude tool names are not prerequisites. Resolve paths from this skill directory.
 
+Apply the root [product and architecture guidance](../../../AGENTS.md#product-and-architecture)
+and [Engineering Judgment](../../../AGENTS.md#engineering-judgment) to the brief:
+identify domain invariants and ownership before choosing Source kinds or actions,
+and inspect existing modes and mature implementations before building anew.
+
 The reference material in `references/` is where the **knowledge** lives — go read the relevant one whenever you're about to make a meaningful decision. SKILL.md is the **journey**, not the textbook.
 
 ---
@@ -39,7 +44,7 @@ Goal: fill the design brief from the user's request, existing decisions, and rep
 4. **Source kind** *(branch on Q2 + Q3)* — present `file-glob` / `json-file` / `aggregate-file` / `memory` with the one that fits Q2's domain pre-selected as "Recommended". Explain *why* it fits in the option's `description`. If `aggregate-file` wins, note that you'll also generate `domain.ts`.
 5. **Workspace model** *(when Q4 is not `memory`)* — `"all"` / `"manifest"` / `"single"`; do users author many independent files, an ordered/structured set, or one main document? See `references/viewer-contract-patterns.md` for the FileWorkspaceModel matrix.
 6. **ViewerAddress vocabulary** — "what's the smallest thing the user can point at?" Propose a draft `{ contentSet?, ... }` based on Q2's domain noun (slide / page / row / node / heading). Confirm with the user; explicitly name the coarse "where" key and any fine "within" key. See `references/viewer-contract-patterns.md::ViewerAddress`.
-7. **Initial action space** — propose 2–5 actions with id / label / category / agentInvocable. Almost every viewer needs a `navigate-to` (navigate); add `ui` and `custom` only if the user names a concrete need. Don't list `capture` — it's framework-built-in.
+7. **Initial action space** — propose the smallest sufficient set with id / label / category / agentInvocable, tying each action to a concrete task. Include `navigate-to` when users need addressable navigation; add `ui` and `custom` for demonstrated needs. Don't list `capture` — it's framework-built-in.
 8. **External integrations** *(conditional — only ask if Q2 or Q3 implied an external API / SDK / CDN / library / API key)* — does the viewer fetch external APIs (→ `proxy`)? does the agent or viewer need API keys (→ `init.params` with `sensitive: true` + `envMapping`)? does this need an MCP server (→ `skill.mcpServers`)? Read `references/external-integrations.md` for the proxy / Babel-JIT / NOTICE patterns.
 9. **Cloud surfaces** — resolve both choices in every brief; reuse existing decisions and ask only when unclear. Two independent questions, in this order: (a) *should a finished piece of work in this mode be shareable as a read-only page a stranger can open with no Pneuma installed?* — that's the hosted player, and it obligates the viewer to render from workspace files alone, with no live backend; (b) *does the mode produce a deployable static site?* — that's Vercel / Cloudflare Pages deploy. Put the real trade-off in each option's `description`: "yes" buys shareability and costs a read-only degradation path plus a browser verification pass on every viewer change; "no" costs nothing and can be revisited in a later release. Read `references/cloud-surfaces.md` before you ask — the compatibility checklist there is what "yes" actually commits to.
 10. **Seed strategy** — single file, multiple use-case content sets, or language×theme matrix? What's the *first* seed's narrative — what story does it tell to a brand-new user? See `references/seed-and-showcase.md`.
@@ -80,6 +85,12 @@ Present a concise brief in chat, or link the design document if the task already
 ## Domain
 <one paragraph — what the user is creating; what the viewer renders; what the agent does>
 
+## Invariants and implementation choice
+- required invariants: <what must remain true, and how it will be verified>
+- state and writers: <persistent work, transient UI state, and who may change each>
+- reuse: <existing mode / project implementation / library, or the concrete gap>
+- added abstraction or complexity: <its contract or real variation and benefit; omit if none>
+
 ## Source layer
 - kind: <file-glob | json-file | aggregate-file | memory>
 - domain type T: <the TypeScript type the viewer subscribes to, sketched>
@@ -119,6 +130,7 @@ Present a concise brief in chat, or link the design document if the task already
 - viewer.refreshStrategy: <"auto" | "manual">
 - NOTICE.md required: <yes | no — if yes, upstream name + license + version pinned>
 - inspiredBy: <none | { name, url }>
+- external effects (if any): <observable completion, retry/idempotency, cancellation, and recovery or undo limits>
 
 ## Cloud surfaces
 - hosted player: <yes | no — and the reason, in the vocabulary of references/cloud-surfaces.md>
@@ -181,25 +193,17 @@ For each file, fill in templates against the brief. Specifics:
 - **showcase/showcase.json** — from template, with brief's tagline + 3 highlight concept descriptions. *Images are generated in Step 4.*
 - **NOTICE.md** *(if required)* — pin upstream name + URL + license + version + sync date; include the "what we borrowed / what we adapted / what we dropped" mapping table. Template at `assets/templates/NOTICE.md.template`.
 
-### Step 3 — Register the mode (three places always, plus cloud if the brief said yes)
+### Step 3 — Register the mode and its supported surfaces
 
-A new builtin mode needs to be registered in **three** separate
-files for the runtime to find it. Skipping any one leaves it in a
-half-installed state — the dev server might run, but the launcher
-won't list it, or imports will fail in the frontend bundle. The
-three files are deliberately separate because they're consumed by
-different processes (backend / frontend / docs).
+Complete frontend registration (**3a**), launcher discovery (**3b**), and
+public documentation (**3c**) as applicable. These serve different consumers:
+a mode can launch successfully while remaining absent from the gallery or docs.
 
-Cloud registration (**3d**) is a fourth place, and unlike the first
-three it is **conditional** — it happens only when the brief's
-`## Cloud surfaces` section said yes, and only after the verification
-pass described there.
-
-Before adding code, ask the user whether the mode should appear in
-the launcher gallery at all, or be **hidden** (internal-only, like
-`evolve`, `project-evolve`, `project-onboard`). Hidden modes still
-need the first two registrations below but skip the README +
-gallery treatment.
+Use the visibility decision recorded in the brief. Public modes need all three;
+hidden modes still need frontend registration but stay out of public catalogs
+and may omit the gallery entry as described below. Resolve visibility only if
+it is still unknown. Cloud registration (**3d**) is conditional on the brief's
+`## Cloud surfaces` decision and the verification pass described there.
 
 #### 3a. Frontend dynamic-import registry — `core/mode-loader.ts`
 
@@ -243,16 +247,13 @@ filter is the safety net. Current practice omits them anyway, so a
 hidden mode needs no entry; add one only if you want the filter,
 rather than your memory, to be what keeps it out of the gallery.
 
-#### 3c. Docs — `CLAUDE.md` and `AGENTS.md`
+#### 3c. Docs — public mode catalogs
 
-Add the mode name to the `**Builtin Modes:**` line in **`AGENTS.md`** —
-the single source of agent instructions. `CLAUDE.md` is a one-line
-`@AGENTS.md` import: never write content into it, and never `cp` it
-over `AGENTS.md` (that collapses the whole instruction file to one
-line). If the mode is **not hidden**, also add a row to the
-"Built-in Modes" table in **both** `README.md` and `README.zh.md` —
-the Chinese README has no automated guard and has silently fallen
-months behind before. Hidden modes go in neither README.
+If the mode is **not hidden**, add its row to the "Built-in Modes" table
+and update CLI usage in **both** `README.md` and `README.zh.md`. Hidden
+modes stay out of the public catalog. `AGENTS.md` links to the catalog;
+it does not maintain another mode list. `CLAUDE.md` remains the one-line
+`@AGENTS.md` import: never add content to it or copy it over AGENTS.md.
 
 #### 3d. Cloud surfaces — *conditional*, driven by the brief
 
@@ -333,7 +334,7 @@ These show up in every existing mode; honor them in the one you're creating too.
 
 1. **Domain-first, transport later.** Define the domain type `T` before choosing how it serializes. Source kind is a *consequence* of T, not a prior decision.
 2. **One noun for "which object" — `ViewerAddress`.** Every action that takes an object reference, every notification that reports one, every locator card that points to one, must use the *same* address shape. Mode owns the vocabulary; framework owns the slot.
-3. **Action space is small.** Two to five actions covers almost every mode. If you're proposing seven, you're either modeling the wrong unit or surfacing UI as actions (Commands → ⑥ — handle there).
+3. **Each action serves a concrete task.** Start with the smallest sufficient action space; two to five actions is a common pattern, not a quota. Distinguish agent-to-viewer actions from user-to-agent commands (⑥), and reuse built-in actions.
 4. **`manifest.ts` declares; `pneuma-mode.ts` implements.** Keep the split. Manifest is read by skill-installer + backend; `pneuma-mode.ts` is read by the frontend mode-loader. Don't put React imports in `manifest.ts`.
 5. **`SKILL.md` is the agent's project guide for *this* mode** — it follows the same "scene → contract → rules → examples → references" rhythm as the root `AGENTS.md` does for the project. Put depth in `skill/references/<topic>.md` files, not in the main body.
 6. **Borrowed content needs a `NOTICE.md`; borrowed ideas don't.** Direct transcription, license excerpts, command tables, font subsets → declare upstream + license + version. Architectural metaphors, aesthetic direction, workflow philosophy → no notice needed.
