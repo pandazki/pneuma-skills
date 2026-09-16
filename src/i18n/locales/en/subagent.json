@@ -1,12 +1,14 @@
 {
   "strip": {
-    "main": "Main thread",
-    "unread": "New messages in the main thread",
+    "main": "Main conversation",
+    "unread": "New messages in the main conversation",
     "overflow": "+{{count}}",
-    "more": "Show every agent"
+    "more": "Show every agent",
+    "collapse": "Show fewer",
+    "less": "Show only the newest agents"
   },
   "view": {
-    "back": "Back to main thread",
+    "back": "Back to the main conversation",
     "breadcrumb": "Agent path",
     "readonly_note": "This is subagent {{label}}'s conversation — view only.",
     "no_output": "This subagent has not produced any output yet"

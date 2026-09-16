@@ -3,7 +3,9 @@
     "main": "Conversación principal",
     "unread": "Mensajes nuevos en la conversación principal",
     "overflow": "+{{count}}",
-    "more": "Mostrar todos los agentes"
+    "more": "Mostrar todos los agentes",
+    "collapse": "Mostrar menos",
+    "less": "Mostrar solo los agentes más recientes"
   },
   "view": {
     "back": "Volver a la principal",

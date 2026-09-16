@@ -3,7 +3,9 @@
     "main": "Hauptverlauf",
     "unread": "Neue Nachrichten im Hauptverlauf",
     "overflow": "+{{count}}",
-    "more": "Alle Agenten anzeigen"
+    "more": "Alle Agenten anzeigen",
+    "collapse": "Weniger",
+    "less": "Nur die neuesten Agenten zeigen"
   },
   "view": {
     "back": "Zurück zum Hauptverlauf",
@@ -13,7 +15,7 @@
   },
   "status": {
     "running": "läuft",
-    "idle": "wartet",
+    "idle": "inaktiv",
     "completed": "fertig",
     "failed": "fehlgeschlagen",
     "interrupted": "abgebrochen"

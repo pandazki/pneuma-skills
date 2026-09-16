@@ -1,5 +1,5 @@
 import type { StateCreator } from "zustand";
-import type { SubagentInfo } from "../types.js";
+import type { SubagentInfo, SubagentStatus } from "../types.js";
 import type { AppState, Activity } from "./types.js";
 
 /**
@@ -19,6 +19,28 @@ export function isAliveSubagent(entry: SubagentInfo): boolean {
   return ALIVE_STATUSES.has(entry.status);
 }
 
+/** Everything the roster owns, back at its empty state. */
+export type SubagentResetState = Pick<
+  SubagentSlice,
+  "subagents" | "viewingAgentId" | "streamingByAgent" | "activityByAgent" | "rootUnread"
+>;
+
+/**
+ * The single definition of "no team is known". `resetSubagents` is one caller;
+ * replay's enter / exit / seek are the others — a scrub rebuilds `messages`
+ * from scratch, so the roster and the open agent view have to start over with
+ * it or the rebuilt conversation inherits phantom cards from the future.
+ */
+export function subagentResetState(): SubagentResetState {
+  return {
+    subagents: new Map(),
+    viewingAgentId: null,
+    streamingByAgent: new Map(),
+    activityByAgent: new Map(),
+    rootUnread: false,
+  };
+}
+
 export interface SubagentSlice {
   /** Roster, keyed by the attribution key (`SubagentInfo.id`). */
   subagents: Map<string, SubagentEntry>;
@@ -32,8 +54,14 @@ export interface SubagentSlice {
   rootUnread: boolean;
 
   upsertSubagent: (info: SubagentInfo, timestamp: number) => void;
-  /** A message attributed to `id` arrived: create a fallback entry if missing, bump lastActivityAt. */
-  touchSubagent: (id: string, timestamp: number) => void;
+  /**
+   * A message attributed to `id` arrived: create a fallback entry if missing,
+   * bump lastActivityAt. `status` picks the status a *created* entry starts
+   * from (a live envelope means the agent is producing output right now;
+   * folding a persisted history does not — §3.4); an existing entry keeps
+   * whatever status the roster last reported.
+   */
+  touchSubagent: (id: string, timestamp: number, opts?: { status?: SubagentStatus }) => void;
   setViewingAgent: (id: string | null) => void;
   setAgentStreaming: (id: string, text: string | null) => void;
   setAgentActivity: (id: string, activity: Activity | null) => void;
@@ -46,11 +74,7 @@ export interface SubagentSlice {
 }
 
 export const createSubagentSlice: StateCreator<AppState, [], [], SubagentSlice> = (set) => ({
-  subagents: new Map(),
-  viewingAgentId: null,
-  streamingByAgent: new Map(),
-  activityByAgent: new Map(),
-  rootUnread: false,
+  ...subagentResetState(),
 
   // `subagent_update` is a state snapshot, never a delta (§3.1): the whole
   // `SubagentInfo` replaces the entry. Only the client-side clocks survive, so
@@ -64,14 +88,31 @@ export const createSubagentSlice: StateCreator<AppState, [], [], SubagentSlice> 
         firstSeenAt: prev?.firstSeenAt ?? timestamp,
         lastActivityAt: Math.max(prev?.lastActivityAt ?? 0, timestamp),
       });
-      return { subagents: next };
+      const patch: Partial<SubagentSlice> = { subagents: next };
+      // A terminal status is the end of that agent's output. Its streaming
+      // buffer and activity indicator would otherwise keep a "writing now"
+      // dot and a running elapsed clock on a finished agent until the whole
+      // turn ends (`clearAgentTransients`), which can be many minutes later.
+      if (!isAliveSubagent(info)) {
+        if (s.streamingByAgent.has(info.id)) {
+          const streaming = new Map(s.streamingByAgent);
+          streaming.delete(info.id);
+          patch.streamingByAgent = streaming;
+        }
+        if (s.activityByAgent.has(info.id)) {
+          const activity = new Map(s.activityByAgent);
+          activity.delete(info.id);
+          patch.activityByAgent = activity;
+        }
+      }
+      return patch;
     }),
 
   // Fallback derivation (§3.4): an attributed envelope may arrive before (or
   // entirely without) its roster snapshot — a pre-fix Claude history has the
   // `parent_tool_use_id` but no `subagent_update` at all. An entry with an
   // empty label renders as the generic 子代理.
-  touchSubagent: (id, timestamp) =>
+  touchSubagent: (id, timestamp, opts) =>
     set((s) => {
       const prev = s.subagents.get(id);
       const next = new Map(s.subagents);
@@ -80,7 +121,7 @@ export const createSubagentSlice: StateCreator<AppState, [], [], SubagentSlice> 
           id,
           parent_id: null,
           label: "",
-          status: "running",
+          status: opts?.status ?? "running",
           firstSeenAt: timestamp,
           lastActivityAt: timestamp,
         });
@@ -139,12 +180,5 @@ export const createSubagentSlice: StateCreator<AppState, [], [], SubagentSlice> 
       return { streamingByAgent: new Map(), activityByAgent: new Map() };
     }),
 
-  resetSubagents: () =>
-    set({
-      subagents: new Map(),
-      viewingAgentId: null,
-      streamingByAgent: new Map(),
-      activityByAgent: new Map(),
-      rootUnread: false,
-    }),
+  resetSubagents: () => set(subagentResetState()),
 });

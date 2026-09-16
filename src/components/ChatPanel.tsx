@@ -9,8 +9,12 @@ import PermissionBanner from "./PermissionBanner.js";
 import ChatInput from "./ChatInput.js";
 import SubagentCard from "./SubagentCard.js";
 import SubagentStrip from "./SubagentStrip.js";
-import { deriveSubagentLabel, orphanSubagentPlacements, subagentAncestry } from "./subagent-display.js";
-import { isAliveSubagent } from "../store/subagent-slice.js";
+import {
+  deriveSubagentLabel,
+  orphanSubagentPlacements,
+  stripChipEntries,
+  subagentAncestry,
+} from "./subagent-display.js";
 import type { ChatMessage } from "../types.js";
 
 interface ToolUseInfo {
@@ -146,13 +150,19 @@ const STATUS_EXPANDED_LS_KEY = "pneuma:chat-status-expanded";
 const PIN_THRESHOLD_PX = 60;
 
 /**
- * Floating status pill. Collapsed by default to just the status dot +
- * state label (the only thing most glances need); clicking expands it to
- * also show model / cost / context, and clicking again collapses. The
- * preference is remembered in localStorage. The inner reconnect button
- * stops propagation so it doesn't toggle the pill.
+ * Status pill. Collapsed by default to just the status dot + state label (the
+ * only thing most glances need); clicking expands it to also show model /
+ * cost / context, and clicking again collapses. The preference is remembered
+ * in localStorage. The inner reconnect button stops propagation so it doesn't
+ * toggle the pill.
+ *
+ * It floats over the conversation's top-right corner in a plain session. When
+ * the panel has a header row (the agent strip), the pill joins that row in
+ * normal flow instead: an expanded pill is wide, and two overlapping pieces
+ * of chrome fighting for the same corner is what the absolute position cost
+ * us the first time round.
  */
-function AgentStatusBar() {
+function AgentStatusBar({ inRow = false }: { inRow?: boolean } = {}) {
   const { t } = useTranslation("chat-panel");
   const [expanded, setExpanded] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -181,7 +191,7 @@ function AgentStatusBar() {
         }
       }}
       title={expanded ? t("status.collapse") : t("status.expand")}
-      className="absolute top-4 right-4 z-10 flex items-center gap-3 px-4 py-1.5 bg-cc-surface/60 backdrop-blur-md border border-white/5 rounded-full shadow-sm cursor-pointer select-none hover:bg-cc-surface/80 transition-colors"
+      className={`${inRow ? "shrink-0" : "absolute top-4 right-4 z-10"} flex items-center gap-3 px-4 py-1.5 bg-cc-surface/60 backdrop-blur-md border border-white/5 rounded-full shadow-sm cursor-pointer select-none hover:bg-cc-surface/80 transition-colors`}
     >
       <StatusDot />
       {expanded && <SessionInfo />}
@@ -330,6 +340,9 @@ export default function ChatPanel() {
   const activityByAgent = useStore((s) => s.activityByAgent);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // The chat subtree, so the global `Escape` listener can tell a keystroke
+  // aimed at this conversation from one aimed at anything else on screen.
+  const rootRef = useRef<HTMLDivElement>(null);
   // Pinned = the view follows the conversation tail. Any user scroll away
   // from the bottom unpins; returning to the bottom band (manually or via
   // the jump button) re-pins.
@@ -358,13 +371,22 @@ export default function ChatPanel() {
   // Every attribution key the session knows: roster entries plus anything a
   // message claims as its parent. `undefined` when there are none, so the
   // grouping in MessageBubble stays on its original path.
+  //
+  // Keyed on the roster's *keys*, not on the Map: a status or context-gauge
+  // snapshot for an agent already on the roster cannot change this set, and
+  // recomputing it would hand every `MessageBubble` a fresh `Set` and re-run
+  // its grouping memo for the whole conversation. `\u0000` cannot occur in a
+  // tool_use id, so the signature changes exactly when the key set does —
+  // `subagents` is read inside the second memo but is deliberately not one of
+  // its dependencies.
+  const rosterSignature = useMemo(() => [...subagents.keys()].join("\u0000"), [subagents]);
   const subagentIds = useMemo(() => {
     const ids = new Set<string>(subagents.keys());
     for (const m of messages) {
       if (m.parentToolUseId) ids.add(m.parentToolUseId);
     }
     return ids.size > 0 ? ids : undefined;
-  }, [messages, subagents]);
+  }, [messages, rosterSignature]);
 
   // Pre-fix Claude histories keep the subagent's reply and lose the `Task`
   // call that spawned it, so some roster entries have no anchor to render at
@@ -374,11 +396,18 @@ export default function ChatPanel() {
     [messages, subagents, viewingAgentId],
   );
 
-  const anyAgentAlive = useMemo(
-    () => [...subagents.values()].some(isAliveSubagent),
-    [subagents],
+  // Exactly the chips the strip would render (§2.4). Deriving the row's
+  // existence from the strip's own rule is what keeps the panel from holding
+  // a row open for a component that returns `null`.
+  const stripChips = useMemo(
+    () => stripChipEntries(subagents, viewingAgentId),
+    [subagents, viewingAgentId],
   );
-  const showStrip = anyAgentAlive || viewingAgentId !== null;
+  const showStrip = stripChips.length > 0;
+  // The header block: the view switcher and, in an agent view, that agent's
+  // ancestry. An agent view always has a header even if its roster entry went
+  // missing, so the way back stays reachable.
+  const showHeaderRow = showStrip || viewingAgentId !== null;
 
   const viewStreaming = viewingAgentId === null
     ? streaming
@@ -386,6 +415,20 @@ export default function ChatPanel() {
   const viewActivity = viewingAgentId === null
     ? activity
     : activityByAgent.get(viewingAgentId) ?? null;
+
+  // What an empty view says. An agent that has produced nothing says so in
+  // replay too; only the root conversation's live-session prompts ("send a
+  // message", "connecting") are suppressed there — hence two guards, not one.
+  const emptyNote =
+    visibleMessages.length > 0 || viewStreaming || viewActivity
+      ? null
+      : viewingAgentId !== null
+        ? tAgent("view.no_output")
+        : replayMode
+          ? null
+          : cliConnected
+            ? t("empty_send_message")
+            : t("empty_connecting");
 
   // Collapse a trailing run of same-reason `<pneuma:env>` banners.
   // Each fresh session spawn re-enqueues an `<pneuma:env reason="opened">`,
@@ -474,10 +517,26 @@ export default function ChatPanel() {
 
   // `Esc` leaves one level: a nested agent falls back to its spawner, a
   // top-level agent to the root conversation.
+  //
+  // The listener has to be global (the chat panel is not focused most of the
+  // time) but `Escape` is the most contested key in the app: the lightbox, the
+  // settings sheet, the project dialog, the content-set and editor pickers and
+  // two mode viewers all close on it, and none of them calls
+  // `preventDefault`. So the agent view only claims the key when nothing else
+  // can plausibly own it: no overlay is mounted, the keystroke is not being
+  // typed into a field, and it was aimed either at the chat subtree or at
+  // `<body>` (nothing focused at all).
   useEffect(() => {
     if (viewingAgentId === null) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
+      const target = e.target as (Node & { tagName?: string; isContentEditable?: boolean }) | null;
+      if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable) return;
+      // Any open modal / lightbox owns Escape — it is closing itself with it.
+      if (document.querySelector('[role="dialog"]')) return;
+      const root = rootRef.current;
+      const inChat = !!root && !!target && root.contains(target);
+      if (!inChat && target !== document.body) return;
       const state = useStore.getState();
       const current = state.viewingAgentId;
       if (current === null) return;
@@ -495,32 +554,39 @@ export default function ChatPanel() {
   }, [jumpToBottom]);
 
   return (
-    <div className="flex flex-col h-full relative">
-      {/* Agent status bar (floating pill) — hide in replay mode */}
-      {!replayMode && <AgentStatusBar />}
+    // The grid backdrop lives on the whole panel rather than on the scroller,
+    // so the header row below sits on the same continuous grid.
+    <div ref={rootRef} className="flex flex-col h-full relative bg-grid-pattern">
+      {/* One compact header block, outside the scroller: the view switcher and
+          the status pill share its first line, the ancestry breadcrumb its
+          second. Out of the scroller because a sticky bar inside it sat *on
+          top of* the conversation — messages passed underneath the chips and
+          an expanded status pill overlapped them. */}
+      {showHeaderRow ? (
+        <div className="shrink-0 px-4 pt-4 pb-1 space-y-1">
+          {/* Wrapping row: in a narrow panel (a 380px floating surface, or an
+              expanded pill next to a six-agent team) the pill drops to its own
+              line instead of squeezing the chips into a one-per-row column. */}
+          <div className="flex flex-wrap items-start gap-2">
+            {showStrip && <SubagentStrip />}
+            <div className="ml-auto shrink-0">
+              {!replayMode && <AgentStatusBar inRow />}
+            </div>
+          </div>
+          {viewingAgentId !== null && <AgentViewHeader agentId={viewingAgentId} />}
+        </div>
+      ) : (
+        /* Agent status bar (floating pill) — hide in replay mode */
+        !replayMode && <AgentStatusBar />
+      )}
       <div
         ref={scrollRef}
         onScroll={handleScroll}
         onWheel={handleWheel}
-        className="flex-1 overflow-y-auto bg-grid-pattern p-4 pt-16 space-y-4 pb-36"
+        className={`flex-1 overflow-y-auto p-4 ${showHeaderRow ? "pt-2" : "pt-16"} space-y-4 pb-36`}
       >
-        {/* Pinned to the top of the message list so the switcher is reachable
-            from the tail of a long conversation. The right inset keeps the bar
-            clear of the floating status pill, which owns that corner. */}
-        {showStrip && (
-          <div className="sticky top-0 z-[5] pr-[7.5rem] -mt-1">
-            <SubagentStrip />
-          </div>
-        )}
-        {viewingAgentId !== null && <AgentViewHeader agentId={viewingAgentId} />}
-        {visibleMessages.length === 0 && !viewStreaming && !viewActivity && !replayMode && (
-          <div className="text-cc-muted text-sm text-center mt-8">
-            {viewingAgentId !== null
-              ? tAgent("view.no_output")
-              : cliConnected
-                ? t("empty_send_message")
-                : t("empty_connecting")}
-          </div>
+        {emptyNote && (
+          <div className="text-cc-muted text-sm text-center mt-8">{emptyNote}</div>
         )}
         {visibleMessages.map((msg, i) => {
           if (hiddenMessageIds.has(msg.id)) return null;

@@ -3,7 +3,9 @@
     "main": "主对话",
     "unread": "主对话有新消息",
     "overflow": "+{{count}}",
-    "more": "显示全部子代理"
+    "more": "显示全部子代理",
+    "collapse": "收起",
+    "less": "只显示最近的子代理"
   },
   "view": {
     "back": "返回主对话",

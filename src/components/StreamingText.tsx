@@ -1,16 +1,14 @@
-import { useStore } from "../store.js";
 import { MarkdownContent } from "./MessageBubble.js";
 
 /**
- * The in-flight assistant bubble. Reads the root agent's buffer by default;
- * an agent view passes that agent's own buffer from `streamingByAgent`, so
- * each conversation shows only its own live text.
+ * The in-flight assistant bubble. The buffer is always passed in — the root
+ * agent's `streaming` in the root conversation, that agent's own entry from
+ * `streamingByAgent` in an agent view — so this component never subscribes to
+ * the root buffer it might not be showing (which would re-render an agent
+ * view on every root token).
  */
-export default function StreamingText({ text }: { text?: string | null } = {}) {
-  const rootStreaming = useStore((s) => s.streaming);
-  const value = text === undefined ? rootStreaming : text;
-
-  if (!value) return null;
+export default function StreamingText({ text }: { text: string | null }) {
+  if (!text) return null;
 
   return (
     <div className="flex items-start gap-3">
@@ -20,7 +18,7 @@ export default function StreamingText({ text }: { text?: string | null } = {}) {
         </svg>
       </div>
       <div className="flex-1 min-w-0">
-        <MarkdownContent text={value} showCursor />
+        <MarkdownContent text={text} showCursor />
       </div>
     </div>
   );

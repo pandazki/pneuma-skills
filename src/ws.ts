@@ -433,16 +433,23 @@ function compactBoundaryMessage(
  */
 function handleAgentStreamEvent(agentId: string, evt: Record<string, unknown>): void {
   const store = useStore.getState();
-  store.touchSubagent(agentId, Date.now());
 
   if (evt.type === "message_start") {
     agentStreamingPhase.delete(agentId);
+    store.touchSubagent(agentId, Date.now());
     store.setAgentStreaming(agentId, "");
     store.setAgentActivity(agentId, { phase: "thinking", startedAt: Date.now() });
     return;
   }
 
   if (evt.type !== "content_block_delta") return;
+  // §3.4 still holds — an attributed envelope guarantees a roster entry — but
+  // only the *creation* happens here. Bumping `lastActivityAt` per token would
+  // rebuild the roster Map on every delta, and every consumer keyed on it
+  // (`subagentIds`, the orphan placement scan, each `groupContentBlocks` memo,
+  // each card's `latestSubagentActivity`) would rescan the whole message list
+  // per token. Liveness is `streamingByAgent`, which this function sets anyway.
+  if (!store.subagents.has(agentId)) store.touchSubagent(agentId, Date.now());
   const delta = evt.delta as Record<string, unknown> | undefined;
   const phase = agentStreamingPhase.get(agentId);
   const current = store.streamingByAgent.get(agentId) || "";
@@ -1060,23 +1067,32 @@ export function handleParsedMessage(
               ...(!historyTurnUserInitiated ? { cronTriggered: inferCronPrompt(useStore.getState().cronJobs) } : {}),
             });
           }
-          // Claude persisted `parent_tool_use_id` long before the frontend
-          // read it, so a history recorded before this change still yields a
-          // roster: every attributed entry ensures a fallback entry (§3.4).
-          if (histMsg.parent_tool_use_id) {
-            store.touchSubagent(histMsg.parent_tool_use_id, histMsg.timestamp || Date.now());
-          }
-          extractTasksFromBlocks(msg.content);
-          extractCronJobsFromBlocks(msg.content);
-          // Mark AskUserQuestion blocks as answered for history replay
-          for (const block of msg.content) {
-            if (block.type === "tool_use" && block.name === "AskUserQuestion") {
-              const qs: Record<string, unknown>[] = Array.isArray(block.input?.questions) ? block.input.questions : [];
-              const pairs = qs.length > 0
-                ? qs.map((q) => ({ question: ((q as Record<string, unknown>).question as string) || "", answer: "(answered previously)" }))
-                : [{ question: (block.input?.question as string) || "", answer: "(answered previously)" }];
-              store.recordAnsweredQuestion(block.id, pairs);
+          if (histAgentId === null) {
+            // Root-only, exactly like the live path above: a subagent's
+            // `TodoWrite` is its own list (it must not replace the root task
+            // panel on reload), its `Bash`-scheduled cron jobs are not the
+            // session's, and its `AskUserQuestion` was never put to this user.
+            extractTasksFromBlocks(msg.content);
+            extractCronJobsFromBlocks(msg.content);
+            // Mark AskUserQuestion blocks as answered for history replay
+            for (const block of msg.content) {
+              if (block.type === "tool_use" && block.name === "AskUserQuestion") {
+                const qs: Record<string, unknown>[] = Array.isArray(block.input?.questions) ? block.input.questions : [];
+                const pairs = qs.length > 0
+                  ? qs.map((q) => ({ question: ((q as Record<string, unknown>).question as string) || "", answer: "(answered previously)" }))
+                  : [{ question: (block.input?.question as string) || "", answer: "(answered previously)" }];
+                store.recordAnsweredQuestion(block.id, pairs);
+              }
             }
+          } else {
+            // Claude persisted `parent_tool_use_id` long before the frontend
+            // read it, so a history recorded before this change still yields a
+            // roster: every attributed entry ensures a fallback entry (§3.4).
+            // A folded history is a record, not a live stream — an entry we
+            // only know from it starts `idle`, not `running`: it stays in the
+            // strip (alive) without claiming the agent is producing output.
+            // A real `subagent_update` in the same history overrides it.
+            store.touchSubagent(histAgentId, histMsg.timestamp || Date.now(), { status: "idle" });
           }
         } else if (histMsg.type === "result") {
           // Only mark as cron-eligible if no user interaction follows.

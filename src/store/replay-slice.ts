@@ -1,5 +1,6 @@
 import type { StateCreator } from "zustand";
 import type { AppState } from "./types.js";
+import { subagentResetState } from "./subagent-slice.js";
 
 export interface ReplaySlice {
   replayMode: boolean;
@@ -47,8 +48,12 @@ export const createReplaySlice: StateCreator<AppState, [], [], ReplaySlice> = (s
   staticPlayer: false,
   setStaticPlayer: (v) => set({ staticPlayer: v }),
 
+  // Entering and leaving replay both swap the whole conversation out, so the
+  // roster derived from the previous one goes with it — otherwise the first
+  // rendered frame carries the live session's agents.
   enterReplayMode: (data) =>
     set({
+      ...subagentResetState(),
       replayMode: true,
       replayMessages: data.messages,
       replayCheckpoints: data.checkpoints,
@@ -61,6 +66,7 @@ export const createReplaySlice: StateCreator<AppState, [], [], ReplaySlice> = (s
 
   exitReplayMode: () =>
     set({
+      ...subagentResetState(),
       replayMode: false,
       replayMessages: [],
       replayCheckpoints: [],

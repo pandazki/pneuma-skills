@@ -207,10 +207,14 @@ gets a case pinning the Claude mapping and the undefined default.
 
 For every message whose `parentToolUseId` is set, the client ensures a roster
 entry exists (`touchSubagent`): missing → create `{ id, parent_id: null,
-label: "", status: "running" }`; the UI renders an empty label as the generic
-子代理 and, when a `tool_use` block with that id exists in any message and the
-backend's card would know better, the label from that block's `input.description`
-(client already knows the Claude `Task` shape via `ToolBlock.getPreview`).
+label: "", status: "running" }`. A fallback entry created while folding
+`message_history` starts `idle` instead: a persisted record is not evidence
+that the agent is producing output right now, and `idle` still keeps it in the
+strip; only a fallback created from a live attributed envelope is `running`.
+The UI renders an empty label as the generic 子代理 and, when a `tool_use`
+block with that id exists in any message and the backend's card would know
+better, the label from that block's `input.description` (client already knows
+the Claude `Task` shape via `ToolBlock.getPreview`).
 Roster entries whose anchor `tool_use` block does not exist in any message
 (pre-fix Claude histories) get a synthetic card in the root view, placed
 before the first root message that follows the agent's first attributed

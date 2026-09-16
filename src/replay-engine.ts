@@ -250,8 +250,13 @@ export function seekTo(targetSeq: number) {
   const wasPlaying = store.isPlaying;
   if (wasPlaying) stopPlayback();
 
-  // Clear existing messages
+  // Clear existing messages — and everything derived from them. The roster,
+  // the open agent view and the unread flag are a projection of the messages
+  // that have been folded so far, so scrubbing back has to drop them too or
+  // the rebuilt conversation keeps cards for agents it has not spawned yet
+  // (orphan cards, since their anchors are gone with the messages).
   store.setMessages([]);
+  store.resetSubagents();
 
   // Display all messages up to targetSeq instantly
   for (let i = 0; i < targetSeq && i < store.replayMessages.length; i++) {

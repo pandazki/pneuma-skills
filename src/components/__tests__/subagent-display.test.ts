@@ -5,6 +5,7 @@ import {
   latestSubagentActivity,
   orphanSubagentPlacements,
   streamingTail,
+  stripChipEntries,
   subagentAncestry,
 } from "../subagent-display.js";
 import type { SubagentEntry } from "../../store/subagent-slice.js";
@@ -169,5 +170,57 @@ describe("orphanSubagentPlacements", () => {
     const outerPlacements = orphanSubagentPlacements(messages, map, "outer");
     expect(outerPlacements.beforeMessageId.get("m4")).toEqual(["inner"]);
     expect(outerPlacements.trailing).toEqual([]);
+  });
+});
+
+describe("an orphan that never said anything", () => {
+  test("trails the conversation instead of jumping to the top of it", () => {
+    // A roster entry with no anchor block *and* no attributed message has no
+    // position in the conversation to claim. Searching from index 0 put its
+    // card above the first message of the session — in front of history it
+    // had nothing to do with.
+    const messages = [
+      assistant("m1", null, { contentBlocks: [{ type: "text", text: "first" }] }),
+      assistant("m2", null, { contentBlocks: [{ type: "text", text: "second" }] }),
+    ];
+    const placements = orphanSubagentPlacements(messages, roster(entry({ id: "ghost" })), null);
+    expect(placements.beforeMessageId.size).toBe(0);
+    expect(placements.trailing).toEqual(["ghost"]);
+  });
+
+  test("it does not displace an orphan that did speak", () => {
+    const messages = [
+      assistant("m1", null),
+      assistant("m2", "spoke", { contentBlocks: [{ type: "text", text: "reply" }] }),
+      assistant("m3", null),
+    ];
+    const placements = orphanSubagentPlacements(
+      messages,
+      roster(entry({ id: "spoke", firstSeenAt: 1 }), entry({ id: "ghost", firstSeenAt: 2 })),
+      null,
+    );
+    expect(placements.beforeMessageId.get("m3")).toEqual(["spoke"]);
+    expect(placements.trailing).toEqual(["ghost"]);
+  });
+});
+
+describe("stripChipEntries", () => {
+  test("alive agents, oldest first, plus the open view even once it finished", () => {
+    const map = roster(
+      entry({ id: "a", firstSeenAt: 2, status: "running" }),
+      entry({ id: "b", firstSeenAt: 1, status: "idle" }),
+      entry({ id: "c", firstSeenAt: 3, status: "completed" }),
+      entry({ id: "d", firstSeenAt: 4, status: "failed" }),
+    );
+    expect(stripChipEntries(map, null).map((e) => e.id)).toEqual(["b", "a"]);
+    // Viewing the completed agent keeps its chip so the switcher can leave it.
+    expect(stripChipEntries(map, "c").map((e) => e.id)).toEqual(["b", "a", "c"]);
+  });
+
+  test("an empty roster produces no chips at all — the panel's header row rule", () => {
+    expect(stripChipEntries(new Map(), null)).toEqual([]);
+    // A view opened on an agent the roster never heard of is still chip-less;
+    // the ChatPanel keeps the header row for the breadcrumb in that case.
+    expect(stripChipEntries(new Map(), "unknown")).toEqual([]);
   });
 });

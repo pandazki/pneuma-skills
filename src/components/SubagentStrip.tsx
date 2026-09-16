@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "../store.js";
-import { isAliveSubagent, type SubagentEntry } from "../store/subagent-slice.js";
+import type { SubagentEntry } from "../store/subagent-slice.js";
 import type { SubagentStatus } from "../types.js";
-import { deriveSubagentLabel } from "./subagent-display.js";
+import { deriveSubagentLabel, stripChipEntries } from "./subagent-display.js";
 
 /** Chips shown before the overflow badge takes over. */
 const MAX_CHIPS = 3;
@@ -61,26 +61,24 @@ export default function SubagentStrip() {
 
   // The open view always has a chip, even after its agent finished.
   const chips = useMemo<SubagentEntry[]>(
-    () =>
-      [...subagents.values()]
-        .filter((entry) => isAliveSubagent(entry) || entry.id === viewingAgentId)
-        .sort((a, b) => a.firstSeenAt - b.firstSeenAt),
+    () => stripChipEntries(subagents, viewingAgentId),
     [subagents, viewingAgentId],
   );
 
   if (chips.length === 0) return null;
 
+  const overflowing = chips.length > MAX_CHIPS;
   const overflow = expanded ? 0 : Math.max(0, chips.length - MAX_CHIPS);
   const shown = overflow > 0 ? chips.slice(0, MAX_CHIPS) : chips;
 
-  // A compact floating chip cluster, not a full-width slab: it is pinned over
-  // the scrolling conversation, so it has to be opaque enough to read and
-  // narrow enough to leave the rest of the line to the messages — the same
-  // language as the status pill in the opposite corner.
+  // A compact chip cluster, not a full-width slab: it shares the panel's top
+  // row with the status pill, so it stays as narrow as its chips and wraps
+  // inside its own box rather than pushing the pill around. Same glass
+  // language as the pill next to it.
   return (
     <div
       data-subagent-strip
-      className="inline-flex w-fit max-w-full flex-wrap items-center gap-1.5 px-2 py-1.5 rounded-xl
+      className="inline-flex w-fit max-w-full shrink-0 flex-wrap items-center gap-1.5 px-2 py-1.5 rounded-xl
                  border border-cc-border/50 bg-cc-surface/90 backdrop-blur-xl
                  shadow-[0_4px_16px_rgba(0,0,0,0.35)]"
     >
@@ -111,15 +109,17 @@ export default function SubagentStrip() {
         );
       })}
 
-      {overflow > 0 && (
+      {/* Overflow toggles both ways: a team of eight expands to eight chips,
+          and the same button folds them back to three. */}
+      {overflowing && (
         <button
           type="button"
-          onClick={() => setExpanded(true)}
-          title={t("strip.more")}
+          onClick={() => setExpanded((prev) => !prev)}
+          title={expanded ? t("strip.less") : t("strip.more")}
           className="px-2 py-1 rounded-full border border-cc-border/60 bg-cc-card/40 text-[11px] leading-none
                      text-cc-muted hover:text-cc-fg hover:border-cc-border transition-colors cursor-pointer tabular-nums"
         >
-          {t("strip.overflow", { count: overflow })}
+          {expanded ? t("strip.collapse") : t("strip.overflow", { count: overflow })}
         </button>
       )}
     </div>

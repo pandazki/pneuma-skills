@@ -3,7 +3,9 @@
     "main": "메인 대화",
     "unread": "메인 대화에 새 메시지",
     "overflow": "+{{count}}",
-    "more": "모든 에이전트 표시"
+    "more": "모든 에이전트 표시",
+    "collapse": "접기",
+    "less": "최근 에이전트만 표시"
   },
   "view": {
     "back": "메인 대화로 돌아가기",
@@ -13,7 +15,7 @@
   },
   "status": {
     "running": "실행 중",
-    "idle": "대기",
+    "idle": "유휴",
     "completed": "완료",
     "failed": "실패",
     "interrupted": "중단됨"

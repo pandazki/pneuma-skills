@@ -144,3 +144,56 @@ describe("transients", () => {
     expect(s().activityByAgent.size).toBe(0);
   });
 });
+
+describe("a terminal status ends that agent's output", () => {
+  test("completing an agent drops its streaming buffer and its activity", () => {
+    const s = () => useStore.getState();
+    s().upsertSubagent(info({ id: "a1", label: "judge_01", status: "running" }), 1_000);
+    s().setAgentStreaming("a1", "half a sentence");
+    s().setAgentActivity("a1", { phase: "responding", startedAt: 10 });
+    // A second agent is still working — it must not be swept up.
+    s().setAgentStreaming("a2", "still going");
+    s().setAgentActivity("a2", { phase: "tool", toolName: "Read", startedAt: 10 });
+
+    s().upsertSubagent(info({ id: "a1", label: "judge_01", status: "completed" }), 2_000);
+
+    // Otherwise the finished agent's card keeps a "writing now" dot and a
+    // running elapsed clock until the whole turn ends, which can be minutes.
+    expect(s().streamingByAgent.has("a1")).toBe(false);
+    expect(s().activityByAgent.has("a1")).toBe(false);
+    expect(s().streamingByAgent.get("a2")).toBe("still going");
+    expect(s().activityByAgent.get("a2")?.toolName).toBe("Read");
+    expect(s().subagents.get("a1")!.status).toBe("completed");
+  });
+
+  test("failed clears too; interrupted is still alive and keeps its buffers", () => {
+    const s = () => useStore.getState();
+    s().setAgentStreaming("a1", "mid-sentence");
+    s().upsertSubagent(info({ id: "a1", status: "failed", detail: "tool denied" }), 1_000);
+    expect(s().streamingByAgent.has("a1")).toBe(false);
+
+    s().setAgentStreaming("a2", "mid-sentence");
+    s().upsertSubagent(info({ id: "a2", status: "interrupted" }), 1_000);
+    expect(s().streamingByAgent.get("a2")).toBe("mid-sentence");
+  });
+});
+
+describe("where a fallback entry starts", () => {
+  test("a live envelope creates it running; a folded history creates it idle", () => {
+    const s = () => useStore.getState();
+    s().touchSubagent("live-1", 1_000);
+    expect(s().subagents.get("live-1")!.status).toBe("running");
+
+    s().touchSubagent("hist-1", 1_000, { status: "idle" });
+    expect(s().subagents.get("hist-1")!.status).toBe("idle");
+    // Both are alive, so both keep their chip in the strip.
+    expect(isAliveSubagent(s().subagents.get("hist-1")!)).toBe(true);
+  });
+
+  test("the requested status only seeds a new entry — a known one keeps the roster's", () => {
+    const s = () => useStore.getState();
+    s().upsertSubagent(info({ id: "a1", label: "judge_01", status: "completed" }), 1_000);
+    s().touchSubagent("a1", 2_000, { status: "idle" });
+    expect(s().subagents.get("a1")).toMatchObject({ status: "completed", lastActivityAt: 2_000 });
+  });
+});

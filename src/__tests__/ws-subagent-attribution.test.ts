@@ -331,10 +331,13 @@ describe("the roster folds live and from history", () => {
     } as never);
 
     const s = useStore.getState();
+    // `idle`, not `running` (§3.4): a persisted record is not evidence that
+    // the agent is producing output right now. It stays alive, so it keeps
+    // its chip in the strip — it just doesn't claim to be mid-sentence.
     expect(s.subagents.get("task-gone")).toMatchObject({
       id: "task-gone",
       label: "",
-      status: "running",
+      status: "idle",
       lastActivityAt: 300,
     });
     // The root timeline is only the two root entries; the subagent's reply is
@@ -396,5 +399,172 @@ describe("turn end and disconnect clear the agent transients", () => {
     expect(s.streamingByAgent.size).toBe(0);
     expect(s.activityByAgent.size).toBe(0);
     expect(s.subagents.has("task-1")).toBe(true);
+  });
+});
+
+/**
+ * Review follow-ups (#152). Each case below is a defect that shipped in the
+ * first cut of the attribution routing and is now pinned.
+ */
+describe("the two conversations never write into each other", () => {
+  test("interleaved root and agent deltas keep separate buffers and separate phases", async () => {
+    const { handleParsedMessage } = await import("../ws.js");
+    const thinking = (text: string, parent: string | null) => ({
+      type: "stream_event" as const,
+      event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking: text } },
+      parent_tool_use_id: parent,
+    });
+
+    // Both start a message, then their tokens arrive interleaved and each
+    // switches from thinking to text at its own moment. The "*Thinking:*"
+    // prefix and the blank line before the answer come from a per-agent
+    // phase machine — one shared cursor would leak one agent's phase into
+    // the other's transcript.
+    handleParsedMessage({ type: "stream_event", event: { type: "message_start" }, parent_tool_use_id: null } as never);
+    handleParsedMessage({ type: "stream_event", event: { type: "message_start" }, parent_tool_use_id: "task-1" } as never);
+    handleParsedMessage(thinking("root weighs it", null) as never);
+    handleParsedMessage(thinking("agent weighs it", "task-1") as never);
+    handleParsedMessage(textDelta("root says hi", null) as never);
+    handleParsedMessage(textDelta("agent says hi", "task-1") as never);
+    handleParsedMessage(textDelta(" and more", "task-1") as never);
+    handleParsedMessage(textDelta(" and more", null) as never);
+
+    const s = useStore.getState();
+    expect(s.streaming).toBe("*Thinking:* root weighs it\n\nroot says hi and more");
+    expect(s.streamingByAgent.get("task-1")).toBe("*Thinking:* agent weighs it\n\nagent says hi and more");
+    expect(s.activity?.phase).toBe("responding");
+    expect(s.activityByAgent.get("task-1")?.phase).toBe("responding");
+  });
+
+  test("a message_start on one side never resets the other side's buffer", async () => {
+    const { handleParsedMessage } = await import("../ws.js");
+    handleParsedMessage(textDelta("root draft", null) as never);
+    handleParsedMessage(textDelta("agent draft", "task-1") as never);
+
+    // The root agent starts its next message while the subagent is mid-answer.
+    handleParsedMessage({ type: "stream_event", event: { type: "message_start" }, parent_tool_use_id: null } as never);
+    expect(useStore.getState().streaming).toBe("");
+    expect(useStore.getState().streamingByAgent.get("task-1")).toBe("agent draft");
+
+    // …and the other way round.
+    handleParsedMessage(textDelta("root again", null) as never);
+    handleParsedMessage({ type: "stream_event", event: { type: "message_start" }, parent_tool_use_id: "task-1" } as never);
+    expect(useStore.getState().streamingByAgent.get("task-1")).toBe("");
+    expect(useStore.getState().streaming).toBe("root again");
+  });
+
+  test("a subagent's streaming Write never drives the editor's live file preview", async () => {
+    const { handleParsedMessage } = await import("../ws.js");
+    const blockStart = (parent: string | null) => ({
+      type: "stream_event" as const,
+      event: { type: "content_block_start", content_block: { type: "tool_use", id: "w-1", name: "Write" } },
+      parent_tool_use_id: parent,
+    });
+    const jsonDelta = (partial: string, parent: string | null) => ({
+      type: "stream_event" as const,
+      event: { type: "content_block_delta", delta: { type: "input_json_delta", partial_json: partial } },
+      parent_tool_use_id: parent,
+    });
+
+    handleParsedMessage(blockStart("task-1") as never);
+    handleParsedMessage(jsonDelta('{"file_path": "/agent/secret.md", "content": "not the root', "task-1") as never);
+    // The live "agent is writing this file" surface belongs to the main
+    // conversation (§5.2) — a subagent's write must not take it over.
+    expect(useStore.getState().streamingFileWrite).toBeNull();
+
+    // The root agent's own streaming write still resolves, and the subagent's
+    // frames did not poison the accumulator it reads from.
+    handleParsedMessage(blockStart(null) as never);
+    handleParsedMessage(jsonDelta('{"file_path": "/site/index.html", "content": "hello', null) as never);
+    expect(useStore.getState().streamingFileWrite).toEqual({ path: "/site/index.html", content: "hello" });
+    handleParsedMessage({
+      type: "stream_event",
+      event: { type: "content_block_stop" },
+      parent_tool_use_id: null,
+    } as never);
+    expect(useStore.getState().streamingFileWrite).toBeNull();
+  });
+});
+
+describe("folding a history keeps a subagent's tool calls out of the session panels", () => {
+  test("an attributed TodoWrite does not replace the root task panel on reload", async () => {
+    const { handleParsedMessage } = await import("../ws.js");
+    const todo = (id: string, content: string) => ({
+      type: "tool_use",
+      id,
+      name: "TodoWrite",
+      input: { todos: [{ content, status: "pending", activeForm: content }] },
+    });
+
+    handleParsedMessage({
+      type: "message_history",
+      messages: [
+        { type: "user_message", id: "u1", content: "plan it", timestamp: 100 },
+        { ...assistantEnvelope("m1", "here is the plan", null, [todo("hist-root-todo", "root plan")]), timestamp: 200 },
+        {
+          ...assistantEnvelope("m2", "my own plan", "task-1", [
+            todo("hist-agent-todo", "subagent plan"),
+            { type: "tool_use", id: "hist-agent-cron", name: "CronCreate", input: { cron: "0 9 * * *", prompt: "agent cron" } },
+            { type: "tool_use", id: "hist-agent-ask", name: "AskUserQuestion", input: { question: "which one?" } },
+          ]),
+          timestamp: 300,
+        },
+      ],
+    } as never);
+
+    const s = useStore.getState();
+    // The root's list survives the subagent's, exactly as on the live path.
+    expect(s.tasks.map((t) => t.subject)).toEqual(["root plan"]);
+    // A subagent's schedule is not the session's schedule…
+    expect(s.cronJobs.some((j) => j.prompt === "agent cron")).toBe(false);
+    // …and a question it asked its own runtime was never put to this user.
+    expect(s.answeredQuestions.has("hist-agent-ask")).toBe(false);
+  });
+
+  test("a root AskUserQuestion in the same history is still marked answered", async () => {
+    const { handleParsedMessage } = await import("../ws.js");
+    handleParsedMessage({
+      type: "message_history",
+      messages: [
+        { type: "user_message", id: "u1", content: "ask me", timestamp: 100 },
+        {
+          ...assistantEnvelope("m1", "", null, [
+            { type: "tool_use", id: "hist-root-ask", name: "AskUserQuestion", input: { question: "which one?" } },
+          ]),
+          timestamp: 200,
+        },
+      ],
+    } as never);
+    expect(useStore.getState().answeredQuestions.has("hist-root-ask")).toBe(true);
+  });
+
+  test("a live attributed message still creates a running fallback entry", async () => {
+    const { handleParsedMessage } = await import("../ws.js");
+    handleParsedMessage(assistantEnvelope("m-live", "working on it", "task-live") as never);
+    expect(useStore.getState().subagents.get("task-live")?.status).toBe("running");
+  });
+
+  test("a history rebuild returns to the root view even when the open agent still exists", async () => {
+    const { handleParsedMessage } = await import("../ws.js");
+    handleParsedMessage({
+      type: "subagent_update",
+      agent: { id: "task-1", parent_id: null, label: "judge_01", status: "running" },
+      timestamp: 1_000,
+    } as never);
+    useStore.getState().setViewingAgent("task-1");
+
+    handleParsedMessage({
+      type: "message_history",
+      messages: [
+        { type: "user_message", id: "u1", content: "again", timestamp: 100 },
+        { type: "subagent_update", agent: { id: "task-1", parent_id: null, label: "judge_01", status: "running" }, timestamp: 150 },
+        { ...assistantEnvelope("m2", "still judging", "task-1"), timestamp: 300 },
+      ],
+    } as never);
+
+    // The roster still has the agent; the view does not follow it across a
+    // rebuild — `message_history` restarts the panel at the root conversation.
+    expect(useStore.getState().subagents.has("task-1")).toBe(true);
+    expect(useStore.getState().viewingAgentId).toBeNull();
   });
 });

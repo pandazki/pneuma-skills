@@ -5,7 +5,7 @@
  */
 
 import type { ChatMessage } from "../types.js";
-import type { SubagentEntry } from "../store/subagent-slice.js";
+import { isAliveSubagent, type SubagentEntry } from "../store/subagent-slice.js";
 
 /** Longest activity line the card shows before eliding. */
 const SNIPPET_MAX = 90;
@@ -33,6 +33,21 @@ export function deriveSubagentLabel(
   const subagentType = anchorInput?.subagent_type;
   if (typeof subagentType === "string" && subagentType.trim()) return subagentType.trim();
   return genericLabel;
+}
+
+/**
+ * Which agents the strip offers as views (§2.4): everyone still alive, plus
+ * the open view even after its agent finished, oldest first. The ChatPanel
+ * decides whether the header row exists from this same list — a row held open
+ * for a strip that renders nothing would be an empty gap.
+ */
+export function stripChipEntries(
+  subagents: Map<string, SubagentEntry>,
+  viewingAgentId: string | null,
+): SubagentEntry[] {
+  return [...subagents.values()]
+    .filter((entry) => isAliveSubagent(entry) || entry.id === viewingAgentId)
+    .sort((a, b) => a.firstSeenAt - b.firstSeenAt);
 }
 
 /**
@@ -126,7 +141,15 @@ export function orphanSubagentPlacements(
     const firstAttributed = messages.findIndex(
       (m) => (m.parentToolUseId ?? null) === entry.id,
     );
-    const from = firstAttributed === -1 ? 0 : firstAttributed + 1;
+    // Nothing anchors it and it has said nothing: there is no position in the
+    // conversation it can claim. The tail is the honest place — the roster
+    // learned about it last — and it is certainly not the top of the history,
+    // which is what searching from index 0 would have produced.
+    if (firstAttributed === -1) {
+      trailing.push(entry.id);
+      continue;
+    }
+    const from = firstAttributed + 1;
     let anchorId: string | null = null;
     for (let i = from; i < messages.length; i++) {
       if ((messages[i].parentToolUseId ?? null) === viewingAgentId) {

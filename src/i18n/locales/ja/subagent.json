@@ -3,7 +3,9 @@
     "main": "メイン会話",
     "unread": "メイン会話に新しいメッセージ",
     "overflow": "+{{count}}",
-    "more": "すべてのエージェントを表示"
+    "more": "すべてのエージェントを表示",
+    "collapse": "折りたたむ",
+    "less": "最近のエージェントだけ表示"
   },
   "view": {
     "back": "メイン会話に戻る",
@@ -13,7 +15,7 @@
   },
   "status": {
     "running": "実行中",
-    "idle": "待機中",
+    "idle": "アイドル",
     "completed": "完了",
     "failed": "失敗",
     "interrupted": "中断"

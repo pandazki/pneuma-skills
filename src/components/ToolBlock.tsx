@@ -33,7 +33,7 @@ const TOOL_ICONS: Record<string, string> = {
 };
 
 /** The collab family, in the adapter's snake_case wire spelling. */
-export const AGENT_TOOL_NAMES = [
+const AGENT_TOOL_NAMES = [
   "spawn_agent",
   "send_input",
   "wait_agent",
@@ -101,7 +101,7 @@ export function getPreview(name: string, input: Record<string, unknown>, t?: TFu
     if (input.description && typeof input.description === "string" && input.description.length <= 60) {
       return input.description;
     }
-    return input.command.length > 60 ? input.command.slice(0, 60) + "..." : input.command;
+    return input.command.length > 60 ? input.command.slice(0, 59) + "…" : input.command;
   }
   if ((name === "Read" || name === "Write" || name === "Edit") && input.file_path) {
     const path = String(input.file_path);
@@ -112,7 +112,7 @@ export function getPreview(name: string, input: Record<string, unknown>, t?: TFu
     const p = String(input.pattern);
     const suffix = input.path ? ` in ${String(input.path).split("/").slice(-2).join("/")}` : "";
     const full = p + suffix;
-    return full.length > 60 ? full.slice(0, 60) + "..." : full;
+    return full.length > 60 ? full.slice(0, 59) + "…" : full;
   }
   if (name === "WebSearch" && input.query) return String(input.query);
   if (name === "WebFetch" && input.url) {
@@ -143,7 +143,7 @@ export function getPreview(name: string, input: Record<string, unknown>, t?: TFu
     }
     if (typeof input.prompt === "string" && input.prompt.trim()) {
       const flat = input.prompt.replace(/\s+/g, " ").trim();
-      return flat.length > 60 ? `${flat.slice(0, 60)}...` : flat;
+      return flat.length > 60 ? `${flat.slice(0, 59)}…` : flat;
     }
     return "";
   }
