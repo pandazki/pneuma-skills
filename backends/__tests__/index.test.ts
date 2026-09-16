@@ -121,6 +121,46 @@ describe("module registry", () => {
     expect(getBackendModule("kimi-cli").workflowsDir).toBeUndefined();
   });
 
+  it("recognizes Claude Code's spawn tools and names the agent from the call", () => {
+    const m = getBackendModule("claude-code");
+    expect(m.subagentSpawn).toBeDefined();
+
+    // `description` is what the spawner wrote for this run — it wins the label;
+    // `subagent_type` is the persona, kept as the card's detail line.
+    expect(m.subagentSpawn!("Task", {
+      description: "judge round 3",
+      subagent_type: "pneuma-session",
+      prompt: "…",
+    })).toEqual({ label: "judge round 3", detail: "pneuma-session" });
+
+    // `Agent` is the newer alias for the same call.
+    expect(m.subagentSpawn!("Agent", {
+      description: "build the deck",
+      subagent_type: "general-purpose",
+    })).toEqual({ label: "build the deck", detail: "general-purpose" });
+
+    // No description → the persona names the agent, and still rides detail.
+    expect(m.subagentSpawn!("Task", { subagent_type: "pneuma-session" }))
+      .toEqual({ label: "pneuma-session", detail: "pneuma-session" });
+
+    // Neither field usable → the tool name, so a card is never nameless.
+    expect(m.subagentSpawn!("Task", { description: "", subagent_type: 7 }))
+      .toEqual({ label: "Task" });
+  });
+
+  it("returns undefined for a tool that does not spawn an agent", () => {
+    const m = getBackendModule("claude-code");
+    expect(m.subagentSpawn!("Read", { file_path: "/tmp/a.md" })).toBeUndefined();
+    expect(m.subagentSpawn!("Bash", { command: "ls" })).toBeUndefined();
+  });
+
+  it("leaves subagentSpawn undefined for backends that do not need the seam", () => {
+    // Codex reads its own thread ids and emits the roster itself; Kimi's ACP
+    // has no subagent notion at all. Neither may pretend to know a spawn tool.
+    expect(getBackendModule("codex").subagentSpawn).toBeUndefined();
+    expect(getBackendModule("kimi-cli").subagentSpawn).toBeUndefined();
+  });
+
   it("claude-code's createBridgeBackend returns null (legacy stdio path)", () => {
     const m = getBackendModule("claude-code");
     const result = m.createBridgeBackend(

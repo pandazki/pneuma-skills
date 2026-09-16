@@ -155,6 +155,17 @@ export interface ModelOption {
   icon: string;
 }
 
+/**
+ * Label for a tool call that spawns an agent, or `undefined` when the tool is
+ * not a spawn. The `tool_use.id` of that call IS the spawned agent's
+ * attribution key (`SubagentInfo.id`), so the caller needs nothing but a name
+ * to show on the card.
+ */
+export interface SubagentSpawnRef {
+  label: string;
+  detail?: string;
+}
+
 /** Result of `BackendModule.checkRequirements()` — binary availability probe. */
 export interface BackendRequirementResult {
   ok: boolean;
@@ -248,4 +259,15 @@ export interface BackendModule {
    * calls (graceful, no special-casing).
    */
   toolFileRef?(toolName: string, input: Record<string, unknown>): ToolFileRef | undefined;
+
+  /**
+   * Pure helper: given a tool_use block's name + input, return the label for
+   * the agent that call spawns, or undefined when the tool doesn't spawn one.
+   * Lets the bridge register a subagent roster entry (`SubagentInfo`, keyed by
+   * the block's own id) without knowing this backend's spawn-tool naming.
+   * Optional — a backend that emits its roster itself (Codex, from its own
+   * thread ids) or has no subagents at all (Kimi/ACP) leaves it undefined and
+   * simply never gets a spawn recognized here (graceful, no special-casing).
+   */
+  subagentSpawn?(toolName: string, input: Record<string, unknown>): SubagentSpawnRef | undefined;
 }

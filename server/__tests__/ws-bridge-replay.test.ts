@@ -201,6 +201,15 @@ describe("isHistoryBackedEvent", () => {
     expect(isHistoryBackedEvent(msg)).toBe(true);
   });
 
+  test("returns true for subagent_update so the roster survives reload and export", () => {
+    const msg = {
+      type: "subagent_update",
+      agent: { id: "toolu_1", parent_id: null, label: "judge_01", status: "running" },
+      timestamp: 1,
+    } as ReplayableBrowserIncomingMessage;
+    expect(isHistoryBackedEvent(msg)).toBe(true);
+  });
+
   test("returns false for system_event with hook_progress subtype", () => {
     const msg = {
       type: "system_event",
