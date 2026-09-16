@@ -11,7 +11,16 @@
     "Task": "サブエージェント",
     "TodoWrite": "タスク",
     "NotebookEdit": "ノートブック",
-    "SendMessage": "メッセージ"
+    "SendMessage": "メッセージ",
+    "spawn_agent": "エージェント起動",
+    "send_input": "入力送信",
+    "wait_agent": "エージェント待機",
+    "close_agent": "エージェント終了",
+    "resume_agent": "エージェント再開",
+    "send_message": "エージェントに送信",
+    "followup_task": "追加タスク",
+    "interrupt_agent": "エージェント中断",
+    "list_agents": "エージェント一覧"
   },
   "tasks_count_one": "{{count}} 件のタスク",
   "tasks_count_other": "{{count}} 件のタスク",

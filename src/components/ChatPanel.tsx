@@ -7,6 +7,10 @@ import StreamingText from "./StreamingText.js";
 import ActivityIndicator from "./ActivityIndicator.js";
 import PermissionBanner from "./PermissionBanner.js";
 import ChatInput from "./ChatInput.js";
+import SubagentCard from "./SubagentCard.js";
+import SubagentStrip from "./SubagentStrip.js";
+import { deriveSubagentLabel, orphanSubagentPlacements, subagentAncestry } from "./subagent-display.js";
+import { isAliveSubagent } from "../store/subagent-slice.js";
 import type { ChatMessage } from "../types.js";
 
 interface ToolUseInfo {
@@ -185,14 +189,145 @@ function AgentStatusBar() {
   );
 }
 
+/**
+ * Agent-view chrome: the ancestry breadcrumb (`主对话 / builder / judge`, every
+ * segment clickable) plus this agent's own status line. The floating status
+ * pill above always describes the root agent — this is the only place a
+ * subagent's status, model, and context share the header.
+ */
+function AgentViewHeader({ agentId }: { agentId: string }) {
+  const { t } = useTranslation("subagent");
+  const subagents = useStore((s) => s.subagents);
+  const setViewingAgent = useStore((s) => s.setViewingAgent);
+  const chain = subagentAncestry(subagents, agentId);
+  const current = subagents.get(agentId);
+  const status = current?.status ?? "running";
+  const generic = t("generic_label");
+  const parentId = current?.parent_id ?? null;
+
+  return (
+    <div className="rounded-xl border border-cc-border/40 bg-cc-surface/50 backdrop-blur-md px-2 py-1.5 space-y-1">
+      <div className="flex items-center gap-1.5 min-w-0">
+        <button
+          type="button"
+          onClick={() => setViewingAgent(parentId)}
+          title={t("view.back")}
+          aria-label={t("view.back")}
+          className="flex items-center justify-center w-5 h-5 rounded-md text-cc-muted hover:text-cc-fg hover:bg-cc-hover/60 transition-colors cursor-pointer shrink-0"
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5">
+            <path d="M10 4L6 8l4 4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+        <nav className="flex items-center gap-1 min-w-0 text-[11px] leading-none" aria-label={t("view.breadcrumb")}>
+          <button
+            type="button"
+            onClick={() => setViewingAgent(null)}
+            className="text-cc-muted hover:text-cc-fg transition-colors cursor-pointer shrink-0"
+          >
+            {t("strip.main")}
+          </button>
+          {chain.map((entry, i) => {
+            const last = i === chain.length - 1;
+            const label = deriveSubagentLabel(entry, undefined, generic);
+            return (
+              <span key={entry.id} className="flex items-center gap-1 min-w-0">
+                <span className="text-cc-border shrink-0">/</span>
+                {last ? (
+                  <span className="text-cc-fg font-medium truncate">{label}</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setViewingAgent(entry.id)}
+                    className="text-cc-muted hover:text-cc-fg transition-colors cursor-pointer truncate"
+                  >
+                    {label}
+                  </button>
+                )}
+              </span>
+            );
+          })}
+        </nav>
+        <span className="ml-auto flex items-center gap-1.5 text-[10px] text-cc-muted/80 shrink-0 tabular-nums">
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${
+              status === "running"
+                ? "bg-cc-warning animate-pulse"
+                : status === "completed"
+                  ? "bg-cc-success"
+                  : status === "failed"
+                    ? "bg-cc-error"
+                    : "bg-cc-muted/70"
+            }`}
+            aria-hidden="true"
+          />
+          <span>{t(`status.${status}`)}</span>
+          {current?.model && (
+            <>
+              <span className="text-cc-border">&middot;</span>
+              <span className="truncate max-w-[8rem]">{current.model}</span>
+            </>
+          )}
+          {current?.context_used_percent !== undefined && (
+            <>
+              <span className="text-cc-border">&middot;</span>
+              <span>ctx {current.context_used_percent}%</span>
+            </>
+          )}
+        </span>
+      </div>
+      {status === "failed" && current?.detail && (
+        <div className="px-1 text-[10px] leading-snug text-cc-error/90 break-words">{current.detail}</div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * What replaces the composer in an agent view. There is no user→subagent
+ * channel on any backend, so the honest affordance is a read-only note and
+ * the way back.
+ */
+function AgentViewFooter({ agentId }: { agentId: string }) {
+  const { t } = useTranslation("subagent");
+  const entry = useStore((s) => s.subagents.get(agentId));
+  const setViewingAgent = useStore((s) => s.setViewingAgent);
+  const label = deriveSubagentLabel(entry, undefined, t("generic_label"));
+
+  return (
+    <div className="flex items-center gap-2 rounded-xl border border-cc-border/50 bg-cc-surface/70 backdrop-blur-md px-3 py-2.5">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" className="w-3.5 h-3.5 text-cc-muted/70 shrink-0">
+        <path d="M8 3.5C4.5 3.5 2 8 2 8s2.5 4.5 6 4.5S14 8 14 8s-2.5-4.5-6-4.5z" />
+        <circle cx="8" cy="8" r="1.8" />
+      </svg>
+      <span className="text-[11px] leading-snug text-cc-muted min-w-0 flex-1">
+        {t("view.readonly_note", { label })}
+      </span>
+      <button
+        type="button"
+        onClick={() => setViewingAgent(null)}
+        className="shrink-0 px-2.5 py-1 rounded-full border border-cc-primary/40 bg-cc-primary/10 text-[11px] leading-none
+                   text-cc-primary hover:bg-cc-primary/20 transition-colors cursor-pointer"
+      >
+        {t("view.back")}
+      </button>
+    </div>
+  );
+}
+
 export default function ChatPanel() {
   const { t } = useTranslation("chat-panel");
+  const { t: tAgent } = useTranslation("subagent");
   const messages = useStore((s) => s.messages);
   const streaming = useStore((s) => s.streaming);
   const activity = useStore((s) => s.activity);
   const cliConnected = useStore((s) => s.cliConnected);
   const replayMode = useStore((s) => s.replayMode);
   const permSize = useStore((s) => s.pendingPermissions.size);
+  const subagents = useStore((s) => s.subagents);
+  const viewingAgentId = useStore((s) => s.viewingAgentId);
+  const streamingByAgent = useStore((s) => s.streamingByAgent);
+  const activityByAgent = useStore((s) => s.activityByAgent);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   // Pinned = the view follows the conversation tail. Any user scroll away
@@ -204,6 +339,53 @@ export default function ChatPanel() {
   const smoothScrollingRef = useRef(false);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const globalToolUseById = useMemo(() => buildGlobalToolUseMap(messages), [messages]);
+
+  // ── The view stack (§2.4) ────────────────────────────────────────────────
+  // One panel, two levels of chrome: the root conversation and one agent's
+  // conversation. Attribution alone decides what is visible, so a session
+  // with no subagents renders exactly the list it always did.
+  const visibleMessages = useMemo(
+    () =>
+      messages.filter((m) => {
+        if ((m.parentToolUseId ?? null) !== viewingAgentId) return false;
+        // Errors, compaction markers and command output belong to the session,
+        // not to any agent — they stay in the root conversation.
+        return viewingAgentId === null || m.role !== "system";
+      }),
+    [messages, viewingAgentId],
+  );
+
+  // Every attribution key the session knows: roster entries plus anything a
+  // message claims as its parent. `undefined` when there are none, so the
+  // grouping in MessageBubble stays on its original path.
+  const subagentIds = useMemo(() => {
+    const ids = new Set<string>(subagents.keys());
+    for (const m of messages) {
+      if (m.parentToolUseId) ids.add(m.parentToolUseId);
+    }
+    return ids.size > 0 ? ids : undefined;
+  }, [messages, subagents]);
+
+  // Pre-fix Claude histories keep the subagent's reply and lose the `Task`
+  // call that spawned it, so some roster entries have no anchor to render at
+  // (§3.4). They get a synthetic card in chronological position instead.
+  const orphans = useMemo(
+    () => orphanSubagentPlacements(messages, subagents, viewingAgentId),
+    [messages, subagents, viewingAgentId],
+  );
+
+  const anyAgentAlive = useMemo(
+    () => [...subagents.values()].some(isAliveSubagent),
+    [subagents],
+  );
+  const showStrip = anyAgentAlive || viewingAgentId !== null;
+
+  const viewStreaming = viewingAgentId === null
+    ? streaming
+    : streamingByAgent.get(viewingAgentId) ?? null;
+  const viewActivity = viewingAgentId === null
+    ? activity
+    : activityByAgent.get(viewingAgentId) ?? null;
 
   // Collapse a trailing run of same-reason `<pneuma:env>` banners.
   // Each fresh session spawn re-enqueues an `<pneuma:env reason="opened">`,
@@ -278,7 +460,32 @@ export default function ChatPanel() {
     if (!pinnedRef.current) return;
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages.length, streaming, activity, permSize]);
+  }, [visibleMessages.length, viewStreaming, viewActivity, permSize]);
+
+  // Switching views shows a different conversation in the same scroller:
+  // start it at its tail rather than at whatever offset the previous one had.
+  useEffect(() => {
+    pinnedRef.current = true;
+    smoothScrollingRef.current = false;
+    setShowJumpToBottom(false);
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [viewingAgentId]);
+
+  // `Esc` leaves one level: a nested agent falls back to its spawner, a
+  // top-level agent to the root conversation.
+  useEffect(() => {
+    if (viewingAgentId === null) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      const state = useStore.getState();
+      const current = state.viewingAgentId;
+      if (current === null) return;
+      state.setViewingAgent(state.subagents.get(current)?.parent_id ?? null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [viewingAgentId]);
 
   // The composer signals its own sends so the view returns to the tail
   // even when the user had scrolled up.
@@ -297,23 +504,47 @@ export default function ChatPanel() {
         onWheel={handleWheel}
         className="flex-1 overflow-y-auto bg-grid-pattern p-4 pt-16 space-y-4 pb-36"
       >
-        {messages.length === 0 && !streaming && !activity && !replayMode && (
-          <div className="text-cc-muted text-sm text-center mt-8">
-            {cliConnected ? t("empty_send_message") : t("empty_connecting")}
+        {/* Pinned to the top of the message list so the switcher is reachable
+            from the tail of a long conversation. The right inset keeps the bar
+            clear of the floating status pill, which owns that corner. */}
+        {showStrip && (
+          <div className="sticky top-0 z-[5] pr-[7.5rem] -mt-1">
+            <SubagentStrip />
           </div>
         )}
-        {messages.map((msg, i) => {
+        {viewingAgentId !== null && <AgentViewHeader agentId={viewingAgentId} />}
+        {visibleMessages.length === 0 && !viewStreaming && !viewActivity && !replayMode && (
+          <div className="text-cc-muted text-sm text-center mt-8">
+            {viewingAgentId !== null
+              ? tAgent("view.no_output")
+              : cliConnected
+                ? t("empty_send_message")
+                : t("empty_connecting")}
+          </div>
+        )}
+        {visibleMessages.map((msg, i) => {
           if (hiddenMessageIds.has(msg.id)) return null;
+          const precedingOrphans = orphans.beforeMessageId.get(msg.id);
           return (
             <React.Fragment key={msg.id}>
-              {msg.cronTriggered && (i === 0 || !messages[i - 1].cronTriggered || messages[i - 1].content?.trim()) && (
+              {precedingOrphans?.map((orphanId) => (
+                <SubagentCard key={orphanId} id={orphanId} />
+              ))}
+              {msg.cronTriggered && (i === 0 || !visibleMessages[i - 1].cronTriggered || visibleMessages[i - 1].content?.trim()) && (
                 <CronTriggerBubble prompt={msg.cronTriggered} />
               )}
-              <MessageBubble message={msg} globalToolUseById={globalToolUseById} />
+              <MessageBubble message={msg} globalToolUseById={globalToolUseById} subagentIds={subagentIds} />
             </React.Fragment>
           );
         })}
-        {streaming ? <StreamingText /> : activity ? <ActivityIndicator /> : null}
+        {orphans.trailing.map((orphanId) => (
+          <SubagentCard key={orphanId} id={orphanId} />
+        ))}
+        {viewStreaming ? (
+          <StreamingText text={viewStreaming} />
+        ) : viewActivity ? (
+          <ActivityIndicator activity={viewActivity} />
+        ) : null}
         <div ref={bottomRef} className="h-4" />
       </div>
       {showJumpToBottom && (
@@ -330,8 +561,18 @@ export default function ChatPanel() {
       )}
       {!replayMode && (
         <div className="absolute bottom-4 left-4 right-4 z-10 space-y-2">
+          {/* Permission banners stay visible in both views — a subagent's
+              request still blocks the whole session. */}
           <PermissionBanner />
-          <ChatInput />
+          {/* Hidden rather than unmounted in an agent view: there is no
+              user→subagent channel to offer, but a half-typed message to the
+              root agent (and its attachments) must survive a peek into an
+              agent's conversation. `display:none` also takes it out of the
+              tab order, so it cannot be reached while it is not offered. */}
+          <div className={viewingAgentId === null ? undefined : "hidden"}>
+            <ChatInput />
+          </div>
+          {viewingAgentId !== null && <AgentViewFooter agentId={viewingAgentId} />}
         </div>
       )}
     </div>

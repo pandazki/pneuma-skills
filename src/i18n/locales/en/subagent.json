@@ -1,0 +1,28 @@
+{
+  "strip": {
+    "main": "Main thread",
+    "unread": "New messages in the main thread",
+    "overflow": "+{{count}}",
+    "more": "Show every agent"
+  },
+  "view": {
+    "back": "Back to main thread",
+    "breadcrumb": "Agent path",
+    "readonly_note": "This is subagent {{label}}'s conversation — view only.",
+    "no_output": "This subagent has not produced any output yet"
+  },
+  "status": {
+    "running": "running",
+    "idle": "idle",
+    "completed": "completed",
+    "failed": "failed",
+    "interrupted": "interrupted"
+  },
+  "card": {
+    "view": "View conversation",
+    "waiting": "Waiting for output…",
+    "live": "Writing now"
+  },
+  "generic_label": "Subagent",
+  "permission_prefix": "Asked by {{label}}"
+}

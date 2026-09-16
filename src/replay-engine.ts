@@ -171,6 +171,10 @@ function displayMessage(raw: any) {
 
     // Note: auto-navigation to edited files is done in scheduleNext() AFTER checkpoint loads,
     // so content sets are up-to-date when we try to match paths.
+  } else if (raw.type === "subagent_update" && raw.agent) {
+    // Roster snapshot — replay, export, and the online player all rebuild the
+    // same cards from it (§3.2). `assistant` already carries the attribution.
+    store.upsertSubagent(raw.agent, raw.timestamp || Date.now());
   } else if (raw.type === "content_update" && raw.files) {
     // File updates — push to viewer
     store.updateFiles(raw.files);

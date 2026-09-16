@@ -1,0 +1,28 @@
+{
+  "strip": {
+    "main": "Hauptverlauf",
+    "unread": "Neue Nachrichten im Hauptverlauf",
+    "overflow": "+{{count}}",
+    "more": "Alle Agenten anzeigen"
+  },
+  "view": {
+    "back": "Zurück zum Hauptverlauf",
+    "breadcrumb": "Agentenpfad",
+    "readonly_note": "Das ist der Verlauf von Subagent {{label}} — nur zum Lesen.",
+    "no_output": "Dieser Subagent hat noch nichts ausgegeben"
+  },
+  "status": {
+    "running": "läuft",
+    "idle": "wartet",
+    "completed": "fertig",
+    "failed": "fehlgeschlagen",
+    "interrupted": "abgebrochen"
+  },
+  "card": {
+    "view": "Verlauf öffnen",
+    "waiting": "Warte auf Ausgabe…",
+    "live": "Schreibt gerade"
+  },
+  "generic_label": "Subagent",
+  "permission_prefix": "Angefragt von {{label}}"
+}
