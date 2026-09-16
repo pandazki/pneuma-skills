@@ -228,9 +228,12 @@ and every `permission_request` it raises, carries its anchor.
 already on the wire by the time a later source could disagree. Sources, in the
 order they normally arrive:
 
-1. `collabAgentToolCall` with `tool: "spawnAgent"` — `receiverThreadIds[0]` is
-   the child, anchor = the **item id**. The receiver may be absent on
-   `item/started` and set on `item/completed`.
+1. `collabAgentToolCall` with `tool: "spawnAgent"` naming **exactly one**
+   agent — anchor = the **item id**, which is also the card's block id, so the
+   click target in the chat and the attribution key on the wire are one value.
+   A spawn that names several agents proposes nothing: one card cannot be two
+   conversations, so each of them keeps its own fallback (source 4) and the
+   card keeps the item id, listing the team in `input.agents`.
 2. `subAgentActivity` — `agentThreadId`, with `agentPath` giving the label
    (basename) and the detail (full path).
 3. `thread/started` whose `thread.parentThreadId` is set — nickname / role
@@ -238,25 +241,50 @@ order they normally arrive:
 4. Any other notification from an unknown non-main thread — registered with
    the fallback anchor `thread:<threadId>`, empty label, parent = main. If a
    spawn item lands later, its card is emitted **with that fallback id** (the
-   ids of synthesised blocks are Pneuma's to choose); `emittedToolUseIds` still
-   dedupes on the Codex item id, which is a different string.
+   ids of synthesised blocks are Pneuma's to choose); the dedupe key stays the
+   Codex item id, which is a different string, and `ThreadState.collabCardIds`
+   remembers the mapping so the `tool_result` names the id the `tool_use` was
+   actually emitted with.
+
+`item/started` for a spawn can arrive before the agent exists
+(`receiverThreadIds` empty), and by `item/completed` the child may have
+registered itself under a fallback anchor. There is no identity to draw a card
+with in that window, so **the card waits for `item/completed`**, which names
+the receiver. Emitting early is what gave one agent two ids — a card under the
+item id, a roster entry and a `tool_result` under the fallback anchor — so the
+card never paired with its own result.
 
 A notification with no thread field belongs to the main thread: legacy servers
-omit it and have no second thread.
+omit it and have no second thread. A notification that *does* name a thread but
+arrives before `thread/start` / `thread/resume` has answered cannot be placed
+at all — it is queued (`preAdoptionNotifications`) and replayed once the main
+id is known. The window is real on the resume path: the RPC response and the
+replayed notifications share one stdout chunk, and `processBuffer` dispatches
+the rest of that chunk synchronously while the continuation that adopts the
+thread is still a queued microtask, so a replayed child `turn/completed` used
+to synthesize a root `result`.
 
 **What a child thread may and may not do.** A subagent never ends the root
 turn — that was the core of issue #152:
 
 | Child notification | Behaviour |
 |---|---|
-| `turn/started` | sets the child's `currentTurnId`, roster → `running`; **no** root `status_change` (and `turn/interrupt` keeps targeting the root turn) |
+| `turn/started` | sets the child's `currentTurnId`, roster → `running`; **no** root `status_change` (and `turn/interrupt` / `turn/steer` keep targeting the root turn) |
 | `turn/completed` | flushes the child's text / reasoning with its anchor, clears its dedupe set, roster status from `turn.status` and `turn.error.message` → `detail`; **no** `result`, **no** `num_turns++`, **no** root `status_change`, root buffers untouched |
 | `item/*`, deltas | the same handlers as the root, on the child's `ThreadState`, stamped with its anchor |
 | `thread/tokenUsage/updated` | roster `context_used_percent` / `model`; the session gauge keeps reporting the root thread |
 | `thread/status/changed` | ignored — the turn events carry per-thread lifecycle |
 | `error` | roster `detail` = message, status → `failed` unless `willRetry`; **no** root `error` envelope |
+| `codex/event/error`, `codex/event/stream_error` (legacy; the thread is `conversationId`) | roster `detail` = message, status untouched — these say nothing about whether the agent is dead; **no** root `error` envelope |
 | `contextCompaction` item | ignored — compaction bookkeeping belongs to the root session |
+| `thread/compacted` | ignored, for the same reason. It used to draw the **root's** `compact_boundary` — labelled `manual` whenever the user had armed `/compact`, carrying the root's `pre_tokens`, clearing `is_compacting`, and spending the one echo the root's own `thread/compacted` needed, so the real boundary emitted nothing |
+| `model/rerouted` | roster `model`; `activeModel` and the session's `model` are the root's, and writing a child's reroute there relabelled every later root `assistant` message |
 | approval request | `PermissionRequest.parent_tool_use_id` = the child's anchor (it still blocks the whole session; Codex approvals are per request) |
+
+A child's file edits **do** count toward the session's
+`total_lines_added` / `total_lines_removed`: subagents edit the same cwd, so
+those lines are really in the working tree. Its tokens do not — a context gauge
+describes one window, and the child's own occupancy is on its roster card.
 
 Nested agents follow the same rules: a grandchild's `parent_id` is the child's
 anchor, and the child's spawn card is emitted with the child's anchor as its
@@ -264,9 +292,11 @@ anchor, and the child's spawn card is emitted with the child's anchor as its
 
 Per-thread state lives in `ThreadState` (`threads: Map<threadId, ThreadState>`,
 the main thread being the record with `anchorId: null`): streaming text,
-reasoning, `currentTurnId`, `emittedToolUseIds`, `commandStartTimes`. There is
-no flat copy of any of them — one flat field is all it takes for a child to
-impersonate the root again.
+reasoning, `currentTurnId`, `emittedToolUseIds`, `collabCardIds`,
+`commandStartTimes`. Both id-keyed maps reset on `turn/completed`, because
+Codex item ids are only unique within a turn. There is no flat copy of any of
+them — one flat field is all it takes for a child to impersonate the root
+again.
 
 ### Permission round-trips (Codex → server, expects response)
 
@@ -295,13 +325,13 @@ must call `transport.respond(id, …)` once the user decides:
 | `assistant` (`tool_use`)| Synthesised on `item/started` for `commandExecution` / `fileChange` / `webSearch` / `mcpToolCall`. |
 | `assistant` (`tool_result`) | Synthesised on `item/completed` with the tool's output. |
 | `assistant` (`thinking`)| Synthesised on `item/completed` for `reasoning` items. |
-| `assistant` (`tool_use` / `tool_result`, collab) | Synthesised from a `collabAgentToolCall` item in the **sender's** conversation: name = snake_case of `tool` (`spawn_agent`, `send_input`, `wait_agent` for `wait`, `close_agent`, `resume_agent`, `send_message`, `followup_task`, `interrupt_agent`, `list_agents`), `input` = `{ agent?, agents?, prompt? (400 chars), model?, reasoning_effort? }` (labels omitted while unknown), block id = the spawned agent's anchor for a spawn / the item id otherwise. The `tool_result` on `item/completed` summarises `agentsStates` as `label: status — message` per agent, `is_error` when the item failed. |
+| `assistant` (`tool_use` / `tool_result`, collab) | Synthesised from a `collabAgentToolCall` item in the **sender's** conversation: name = snake_case of `tool` (`spawn_agent`, `send_input`, `wait_agent` for `wait`, `close_agent`, `resume_agent`, `send_message`, `followup_task`, `interrupt_agent`, `list_agents`), `input` = `{ agent?, agents?, prompt? (400 chars), model?, reasoning_effort? }` (labels omitted while unknown), block id = the spawned agent's anchor when the spawn names exactly one agent, the item id otherwise; the id is decided once per item (`collabCardIds`) so the `tool_result` on `item/completed` names it too. That `tool_result` summarises `agentsStates` as `label: status — message` per agent, `is_error` when the item failed. |
 | `subagent_update`       | **Synthesised** roster snapshot (`SubagentInfo`) whenever an agent's state changes — registration, status, `model`, `context_used_percent`, or a label refinement; never one per message. `label` = basename of `agentPath`, else `agentNickname`, else `""`; `detail` = full `agentPath` + `agentRole`, or the error / collab message. `subAgentActivity` items feed it and produce **no** chat bubble. |
 | `result`                | **Synthesised** on `turn/completed` of the **main** thread — Codex has no native equivalent, and a subagent's turn must never produce one. |
 | `permission_request`    | Synthesised from any of the seven approval-style JSON-RPC requests above, carrying `parent_tool_use_id` when the asking thread is a subagent. |
 | `session_update`        | Native-ish — adapter pushes one whenever model / cost / context-percent / available models change. |
 | `status_change`         | Synthesised from `thread/status/changed` and the main thread's turn events; child threads never move it. |
-| `system_event` (`compact_boundary`) | **Synthesised** once per compaction from `item/completed` (`contextCompaction`) / `thread/compacted` — the same envelope the Claude bridge forwards from `system.compact_boundary`, so the chat draws one marker for every backend. |
+| `system_event` (`compact_boundary`) | **Synthesised** once per compaction of the **main** thread, from its `item/completed` (`contextCompaction`) or `thread/compacted` — whichever the build sends, deduped. A subagent compacting its own window draws nothing. Same envelope the Claude bridge forwards from `system.compact_boundary`, so the chat draws one marker for every backend. |
 | `error`                 | Native `error` notification, text lifted from `params.error.message` (v2) or the legacy top-level fields; `(retrying)` appended when `willRetry` is set. A child thread's error goes to its roster entry instead. |
 
 ## Capabilities + why
