@@ -236,8 +236,17 @@ Anchor rule: **an agent's anchor id is fixed the first time its thread is
 seen and never rewritten.** Sources, in the order they normally arrive:
 
 1. `collabAgentToolCall` item (`tool: "spawnAgent"`) in the sender thread —
-   `receiverThreadIds[0]` names the child; anchor = `item.id`. On
-   `item/started` the receiver may be absent; on `item/completed` it is set.
+   anchor = `item.id` **only when the call names exactly one agent**
+   (`receiverThreadIds`, or `agentsStates` when receivers are absent). A
+   fan-out spawn naming several agents gives none of them the item id; each
+   keeps its `thread:<threadId>` fallback, because one card must map to one
+   agent (§2.3). On `item/started` the receiver may be absent; on
+   `item/completed` it is set — when the receiver is still unknown at
+   `item/started`, the spawn card is deferred to `item/completed`, so that the
+   card id, the `tool_result.tool_use_id`, and the roster id are one value
+   (review finding, 2026-09-16; the alternative — reserving the item id for
+   the next child registered under that parent — would pair by FIFO guesswork
+   under concurrent spawns and mis-attribute a conversation).
 2. `subAgentActivity` item in the parent — `agentThreadId`, `agentPath`
    (label = basename, detail = full path), `kind`.
 3. `thread/started` notification whose `thread.parentThreadId` is set —
