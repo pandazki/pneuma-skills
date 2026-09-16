@@ -15,6 +15,7 @@ import { createMockTransport, waitForInit, MAIN_THREAD_ID } from "./mock-transpo
  */
 
 const CHILD = "thr_child";
+const SIBLING = "thr_sibling";
 const GRANDCHILD = "thr_grandchild";
 
 /** Fresh adapter + recorded browser envelopes. */
@@ -716,5 +717,278 @@ describe("CodexAdapter subagent threads", () => {
 
     expect(messages.filter((m) => m.type === "status_change").length).toBe(0);
     expect(messages.filter((m) => m.type === "system_event").length).toBe(0);
+  });
+
+  test("a child's thread/compacted never draws the root's boundary", async () => {
+    const { transport, adapter, messages } = await startAdapter();
+
+    // The root's occupancy, then the user arms `/compact` on it: the boundary
+    // that eventually fires must read `manual` with these `pre_tokens`.
+    transport.simulateNotification("thread/tokenUsage/updated", {
+      threadId: MAIN_THREAD_ID,
+      tokenUsage: {
+        total: { totalTokens: 8000 },
+        last: { totalTokens: 8000 },
+        modelContextWindow: 10_000,
+      },
+    });
+    adapter.sendBrowserMessage({ type: "user_message", content: "/compact" });
+    await new Promise((r) => setTimeout(r, 10));
+
+    // A child compacts its own window while that is in flight.
+    transport.simulateNotification("thread/compacted", { threadId: CHILD });
+    expect(messages.filter((m) => m.type === "system_event").length).toBe(0);
+    expect(messages.some((m) => m.type === "session_update" && m.session.is_compacting === false)).toBe(false);
+
+    // The root's own compaction still reports exactly one boundary — the
+    // child used to spend it, leaving the real one silent.
+    transport.simulateNotification("thread/compacted", { threadId: MAIN_THREAD_ID });
+    const boundaries = messages.filter((m) => m.type === "system_event");
+    expect(boundaries.length).toBe(1);
+    expect(boundaries[0].type === "system_event" && boundaries[0].event).toMatchObject({
+      subtype: "compact_boundary",
+      compact_metadata: { trigger: "manual", pre_tokens: 8000 },
+    });
+    expect(messages.some((m) => m.type === "session_update" && m.session.is_compacting === false)).toBe(true);
+  });
+
+  test("a spawn whose receiver lands late still has one identity", async () => {
+    const { transport, messages } = await startAdapter();
+
+    // 1. The spawn call starts before the agent exists — no receiver yet.
+    transport.simulateNotification("item/started", {
+      threadId: MAIN_THREAD_ID,
+      turnId: "turn_root",
+      item: collabItem({ id: "call-spawn", tool: "spawnAgent", prompt: "judge the render" }),
+    });
+    // 2. The child announces itself and takes the fallback anchor. It is on
+    //    the wire from here on, so nothing may rewrite it.
+    transport.simulateNotification("thread/started", {
+      thread: { id: CHILD, parentThreadId: MAIN_THREAD_ID, agentNickname: "judge" },
+    });
+    // 3. Only now does the spawn call name its receiver.
+    transport.simulateNotification("item/completed", {
+      threadId: MAIN_THREAD_ID,
+      turnId: "turn_root",
+      item: collabItem({
+        id: "call-spawn",
+        tool: "spawnAgent",
+        status: "completed",
+        receiverThreadIds: [CHILD],
+        prompt: "judge the render",
+        agentsStates: { [CHILD]: { status: "running" } },
+      }),
+    });
+
+    // One agent, one id: the card, its result and the roster entry agree.
+    const anchor = `thread:${CHILD}`;
+    const cards = toolUses(messages).filter((t) => t.name === "spawn_agent");
+    expect(cards.length).toBe(1);
+    expect(cards[0].id).toBe(anchor);
+    expect(cards[0].input).toEqual({ agent: "judge", prompt: "judge the render" });
+    expect(toolResults(messages).map((r) => r.toolUseId)).toEqual([anchor]);
+    expect([...roster(messages).keys()]).toEqual([anchor]);
+
+    // And the agent's own words carry that same id.
+    transport.simulateNotification("item/started", {
+      threadId: CHILD,
+      item: { type: "agentMessage", id: "child-msg" },
+    });
+    transport.simulateNotification("item/agentMessage/delta", {
+      threadId: CHILD,
+      itemId: "child-msg",
+      delta: "verdict: ok",
+    });
+    transport.simulateNotification("item/completed", {
+      threadId: CHILD,
+      item: { type: "agentMessage", id: "child-msg" },
+    });
+    expect(assistantMessages(messages).find((m) => m.message.id === "child-msg")?.parent_tool_use_id)
+      .toBe(anchor);
+  });
+
+  test("one spawn naming two agents gives each its own identity", async () => {
+    const { transport, messages } = await startAdapter();
+
+    // Neither agent is known yet: the spawn item is the first thing the
+    // adapter sees about them, and it names both.
+    transport.simulateNotification("item/completed", {
+      threadId: MAIN_THREAD_ID,
+      item: collabItem({
+        id: "call-spawn",
+        tool: "spawnAgent",
+        status: "completed",
+        receiverThreadIds: [CHILD, SIBLING],
+        agentsStates: { [CHILD]: { status: "running" }, [SIBLING]: { status: "running" } },
+      }),
+    });
+
+    // Two agents, two roster entries — one card cannot be two conversations,
+    // so neither may take the item id as its anchor.
+    expect([...roster(messages).keys()].sort()).toEqual([`thread:${CHILD}`, `thread:${SIBLING}`].sort());
+    const card = toolUses(messages).find((t) => t.name === "spawn_agent");
+    expect(card?.id).toBe("call-spawn"); // the call's own id: it names a team
+    expect(toolResults(messages).map((r) => r.toolUseId)).toEqual(["call-spawn"]);
+
+    // Each agent's text carries its own anchor.
+    transport.simulateNotification("thread/started", {
+      thread: { id: CHILD, parentThreadId: MAIN_THREAD_ID, agentNickname: "judge" },
+    });
+    transport.simulateNotification("thread/started", {
+      thread: { id: SIBLING, parentThreadId: MAIN_THREAD_ID, agentNickname: "builder" },
+    });
+    for (const [thread, itemId, text] of [[CHILD, "c1", "from judge"], [SIBLING, "c2", "from builder"]] as const) {
+      transport.simulateNotification("item/started", { threadId: thread, item: { type: "agentMessage", id: itemId } });
+      transport.simulateNotification("item/agentMessage/delta", { threadId: thread, itemId, delta: text });
+      transport.simulateNotification("item/completed", { threadId: thread, item: { type: "agentMessage", id: itemId } });
+    }
+    expect(assistantMessages(messages).find((m) => m.message.id === "c1")?.parent_tool_use_id)
+      .toBe(`thread:${CHILD}`);
+    expect(assistantMessages(messages).find((m) => m.message.id === "c2")?.parent_tool_use_id)
+      .toBe(`thread:${SIBLING}`);
+
+    // A later call onto the same team lists them both on one card.
+    transport.simulateNotification("item/started", {
+      threadId: MAIN_THREAD_ID,
+      item: collabItem({ id: "call-wait", tool: "wait", receiverThreadIds: [CHILD, SIBLING] }),
+    });
+    expect(toolUses(messages).find((t) => t.name === "wait_agent")?.input)
+      .toEqual({ agents: ["judge", "builder"] });
+  });
+
+  test("a child's reroute lands on its card and never relabels the session", async () => {
+    const { transport, messages } = await startAdapter();
+
+    transport.simulateNotification("model/rerouted", {
+      threadId: CHILD,
+      fromModel: "o3-pro",
+      toModel: "gpt-5-mini",
+    });
+    expect(messages.some((m) => m.type === "session_update" && m.session.model === "gpt-5-mini")).toBe(false);
+    expect(roster(messages).get(`thread:${CHILD}`)?.model).toBe("gpt-5-mini");
+
+    // The root's later words still carry the session's own model.
+    transport.simulateNotification("item/started", {
+      threadId: MAIN_THREAD_ID,
+      item: { type: "agentMessage", id: "root-msg" },
+    });
+    transport.simulateNotification("item/agentMessage/delta", {
+      threadId: MAIN_THREAD_ID,
+      itemId: "root-msg",
+      delta: "hello",
+    });
+    transport.simulateNotification("item/completed", {
+      threadId: MAIN_THREAD_ID,
+      item: { type: "agentMessage", id: "root-msg" },
+    });
+    expect(assistantMessages(messages).find((m) => m.message.id === "root-msg")?.message.model).toBe("o3-pro");
+
+    // The root's own reroute still moves the session.
+    transport.simulateNotification("model/rerouted", { threadId: MAIN_THREAD_ID, toModel: "gpt-6-astra" });
+    expect(messages.filter((m) => m.type === "session_update" && m.session.model === "gpt-6-astra").length).toBe(1);
+  });
+
+  test("a child's codex/event error updates its card instead of the chat", async () => {
+    const { transport, messages } = await startAdapter();
+
+    // Legacy `codex/event/*` carries the thread as `conversationId`.
+    transport.simulateNotification("codex/event/stream_error", {
+      conversationId: CHILD,
+      msg: { message: "child stream stalled" },
+    });
+    expect(messages.filter((m) => m.type === "error").length).toBe(0);
+    expect(roster(messages).get(`thread:${CHILD}`)?.detail).toBe("child stream stalled");
+
+    transport.simulateNotification("codex/event/error", {
+      threadId: CHILD,
+      msg: { message: "child stream died" },
+    });
+    expect(messages.filter((m) => m.type === "error").length).toBe(0);
+    const entry = roster(messages).get(`thread:${CHILD}`);
+    expect(entry?.detail).toBe("child stream died");
+    // Status is left to the turn events; these events do not say whether the
+    // agent is dead, and inventing `failed` would be a guess.
+    expect(entry?.status).toBe("running");
+
+    // The root's own still reaches the chat.
+    transport.simulateNotification("codex/event/error", {
+      threadId: MAIN_THREAD_ID,
+      msg: { message: "root stream died" },
+    });
+    expect(messages.filter((m) => m.type === "error").map((m) => (m.type === "error" ? m.message : "")))
+      .toEqual(["root stream died"]);
+  });
+
+  test("a notification that beats the main thread's adoption is attributed after it", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    // The window is real: `initialize()` is suspended on an await, so
+    // `threadId` is still null while `processBuffer` keeps dispatching the
+    // rest of the stdout chunk the `thread/start` response arrived in. A
+    // resume replays a thread that already had subagents, so a child's
+    // `turn/completed` can land here — and used to synthesize a root
+    // `result` (issue #152 on the resume path).
+    transport.simulateNotification("item/started", {
+      threadId: CHILD,
+      item: { type: "agentMessage", id: "child-msg" },
+    });
+    transport.simulateNotification("item/agentMessage/delta", {
+      threadId: CHILD,
+      itemId: "child-msg",
+      delta: "early",
+    });
+    transport.simulateNotification("turn/completed", {
+      threadId: CHILD,
+      turn: { id: "turn_child", status: "completed" },
+    });
+    // Nothing is attributed while the thread is unknown.
+    expect(messages.filter((m) => m.type === "stream_event" || m.type === "result").length).toBe(0);
+
+    await waitForInit();
+
+    const anchor = `thread:${CHILD}`;
+    expect(messages.filter((m) => m.type === "result").length).toBe(0);
+    const streamEvents = messages.filter((m) => m.type === "stream_event");
+    expect(streamEvents.length).toBe(1);
+    expect(streamEvents[0].type === "stream_event" && streamEvents[0].parent_tool_use_id).toBe(anchor);
+    expect(assistantMessages(messages).find((m) => m.message.id === "child-msg")?.parent_tool_use_id).toBe(anchor);
+    expect(roster(messages).get(anchor)?.status).toBe("completed");
+
+    // A queued notification naming the thread that turns out to be the main
+    // one is still the root's: the queue delays attribution, never drops it.
+    const after = messages.length;
+    transport.simulateNotification("turn/completed", {
+      threadId: MAIN_THREAD_ID,
+      turn: { id: "turn_root", status: "completed" },
+    });
+    expect(messages.slice(after).filter((m) => m.type === "result").length).toBe(1);
+  });
+
+  test("interrupt and steer keep targeting the root turn while a child turn is open", async () => {
+    const { transport, adapter } = await startAdapter();
+
+    adapter.sendBrowserMessage({ type: "user_message", content: "review this" });
+    await new Promise((r) => setTimeout(r, 20));
+    // A child opens its own turn inside the root's.
+    transport.simulateNotification("turn/started", {
+      threadId: CHILD,
+      turn: { id: "turn_child", status: "inProgress" },
+    });
+
+    await adapter.steerUserMessage("also check the CSS");
+    adapter.sendBrowserMessage({ type: "interrupt" });
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(transport._callHistory.find((c) => c.method === "turn/steer")?.params).toMatchObject({
+      threadId: MAIN_THREAD_ID,
+      expectedTurnId: "turn_1",
+    });
+    expect(transport._callHistory.find((c) => c.method === "turn/interrupt")?.params).toEqual({
+      threadId: MAIN_THREAD_ID,
+      turnId: "turn_1",
+    });
   });
 });

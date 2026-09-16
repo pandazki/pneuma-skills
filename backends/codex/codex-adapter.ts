@@ -108,6 +108,14 @@ interface ThreadState {
   reasoningItemId: string | null;
   /** Codex **item** ids a `tool_use` block was already emitted for. */
   emittedToolUseIds: Set<string>;
+  /**
+   * Codex `collabAgentToolCall` **item** id → the block id its card was
+   * emitted with. A collab card's id is not always the item id (a spawn card
+   * carries the spawned agent's anchor), and the two sightings of one item
+   * (`item/started`, `item/completed`) do not know the same things — without
+   * this memo the `tool_result` could name an id no `tool_use` ever had.
+   */
+  collabCardIds: Map<string, string>;
   commandStartTimes: Map<string, number>;
 }
 
@@ -121,6 +129,7 @@ function createThreadState(threadId: string, anchorId: string | null): ThreadSta
     reasoningText: "",
     reasoningItemId: null,
     emittedToolUseIds: new Set<string>(),
+    collabCardIds: new Map<string, string>(),
     commandStartTimes: new Map<string, number>(),
   };
 }
@@ -230,6 +239,19 @@ function mapChildTurnStatus(status: string | undefined): SubagentStatus {
     default:
       return "completed";
   }
+}
+
+/**
+ * The thread a payload names, or null when it names none.
+ *
+ * Codex stamps `threadId` on every notification that has a thread; the legacy
+ * `execCommandApproval` / `applyPatchApproval` requests call the same value
+ * `conversationId`.
+ */
+function threadIdOf(params: Record<string, unknown>): string | null {
+  if (typeof params.threadId === "string" && params.threadId) return params.threadId;
+  if (typeof params.conversationId === "string" && params.conversationId) return params.conversationId;
+  return null;
 }
 
 /** Basename of a Codex `agentPath`, tolerating either separator and a trailing one. */
@@ -587,6 +609,22 @@ export class CodexAdapter {
    */
   private readonly mainThread: ThreadState = createThreadState("", null);
   private readonly threads = new Map<string, ThreadState>();
+
+  /**
+   * Notifications that named a thread before `thread/start` / `thread/resume`
+   * answered, in arrival order.
+   *
+   * Until the main thread id is known an explicit `threadId` cannot be
+   * attributed: it is either the thread being started or a child of it, and
+   * guessing "root" is exactly the issue #152 defect on the resume path — a
+   * replayed child `turn/completed` would synthesize a root `result`. The
+   * window is real rather than theoretical: the RPC response and the
+   * following notifications share one stdout chunk, and `processBuffer`
+   * dispatches the rest of that chunk synchronously while the continuation
+   * that adopts the thread is still a queued microtask. `adoptMainThread`
+   * drains this in order; a failed initialization discards it.
+   */
+  private readonly preAdoptionNotifications: { method: string; params: Record<string, unknown> }[] = [];
 
   /** Roster of spawned agents, keyed by their Codex thread id. */
   private readonly subagents = new Map<string, SubagentRecord>();
@@ -948,6 +986,8 @@ export class CodexAdapter {
       this.initFailed = true;
       this.connected = false;
       this.pendingOutgoing.length = 0;
+      // No thread will ever be adopted, so nothing can attribute these.
+      this.preAdoptionNotifications.length = 0;
       this.emit({ type: "error", message: errorMsg });
       this.initErrorCb?.(errorMsg);
     } finally {
@@ -1197,27 +1237,32 @@ export class CodexAdapter {
     this.threadId = threadId;
     this.mainThread.threadId = threadId;
     this.threads.set(threadId, this.mainThread);
+    // Anything that named a thread before this moment can be attributed now.
+    // Drained in arrival order, and re-entrant only downwards: `threadId` is
+    // set, so `handleNotification` no longer queues.
+    const queued = this.preAdoptionNotifications.splice(0);
+    for (const notification of queued) {
+      this.handleNotification(notification.method, notification.params);
+    }
   }
 
   /**
    * The thread a notification (or approval request) belongs to.
    *
-   * Codex stamps `threadId` on every notification that has a thread; the
-   * legacy `execCommandApproval` / `applyPatchApproval` requests call the same
-   * value `conversationId`. Absence means the server predates the field, and
-   * such a server has no second thread — so it is the main thread, not an
-   * unknown child. An unknown non-main thread is registered on the spot
-   * (anchor rule source 4) rather than dropped.
+   * Absence of a thread field means the server predates it, and such a server
+   * has no second thread — so it is the main thread, not an unknown child. An
+   * unknown non-main thread is registered on the spot (anchor rule source 4)
+   * rather than dropped.
+   *
+   * A named thread arriving before the main id is known is unattributable;
+   * notifications take the `preAdoptionNotifications` queue instead of this
+   * path. Approval **requests** cannot be queued — Codex blocks on the
+   * response — and there is no turn to approve that early, so they fall back
+   * to the root here.
    */
   private resolveThread(params: Record<string, unknown>): ThreadState {
-    const raw = typeof params.threadId === "string" && params.threadId
-      ? params.threadId
-      : typeof params.conversationId === "string" && params.conversationId
-        ? params.conversationId
-        : null;
+    const raw = threadIdOf(params);
     if (!raw) return this.mainThread;
-    // Before `thread/start` answers there is no main id to compare against;
-    // inventing a child for those would be worse than attributing to the root.
     if (this.threadId === null || raw === this.threadId) return this.mainThread;
     const known = this.threads.get(raw);
     if (known) return known;
@@ -1348,6 +1393,15 @@ export class CodexAdapter {
   // ── Notification handling (Codex → Browser) ─────────────────────────────
 
   private handleNotification(method: string, params: Record<string, unknown>): void {
+    // A notification that names a thread we cannot yet place waits for the
+    // main id rather than being charged to the root (see
+    // `preAdoptionNotifications`). Notifications with no thread field are
+    // legacy and have no second thread, so they proceed.
+    if (this.threadId === null && threadIdOf(params) !== null) {
+      this.preAdoptionNotifications.push({ method, params });
+      return;
+    }
+
     // Which agent produced this? Everything below operates on that thread's
     // state, and a child thread must never end the root turn, move the root
     // status, touch the root buffers, or move the root context gauge.
@@ -1430,7 +1484,11 @@ export class CodexAdapter {
         this.flushStreamingText(thread);
         this.flushReasoningText(thread);
         thread.currentTurnId = null;
+        // Codex item ids are only unique within a turn, so both id-keyed
+        // maps reset together — a stale collab card id would outlive the
+        // card it belongs to.
         thread.emittedToolUseIds.clear();
+        thread.collabCardIds.clear();
 
         if (isChild) {
           // Everything below is the root turn ending, and a subagent never
@@ -1530,19 +1588,29 @@ export class CodexAdapter {
       // ── Codex stream events ──
       case "codex/event/stream_error": {
         const msg = params.msg as { message?: string } | undefined;
-        if (msg?.message) {
-          console.log(`[codex-adapter] Stream error: ${msg.message}`);
-          this.emit({ type: "error", message: msg.message } as BrowserIncomingMessage);
+        if (!msg?.message) break;
+        console.log(`[codex-adapter] Stream error: ${msg.message}`);
+        if (isChild) {
+          // Same rule as the `error` notification: a subagent's failure is
+          // its card's business, not a root bubble claiming the main agent
+          // broke. No status change — these legacy events say nothing about
+          // whether the turn is dead; `turn/completed` / `error` do.
+          this.updateSubagent(thread.threadId, { detail: msg.message });
+          break;
         }
+        this.emit({ type: "error", message: msg.message } as BrowserIncomingMessage);
         break;
       }
 
       case "codex/event/error": {
         const msg = params.msg as { message?: string } | undefined;
-        if (msg?.message) {
-          console.error(`[codex-adapter] Codex error: ${msg.message}`);
-          this.emit({ type: "error", message: msg.message } as BrowserIncomingMessage);
+        if (!msg?.message) break;
+        console.error(`[codex-adapter] Codex error: ${msg.message}`);
+        if (isChild) {
+          this.updateSubagent(thread.threadId, { detail: msg.message });
+          break;
         }
+        this.emit({ type: "error", message: msg.message } as BrowserIncomingMessage);
         break;
       }
 
@@ -1574,16 +1642,29 @@ export class CodexAdapter {
       // v0.114+: model rerouted — update active model
       case "model/rerouted": {
         const toModel = params.toModel as string | undefined;
-        if (toModel) {
-          this.activeModel = toModel;
-          this.emitSessionUpdate({ model: toModel });
+        if (!toModel) break;
+        if (isChild) {
+          // A reroute on a child thread reroutes that agent. Writing it to
+          // `activeModel` would relabel the session and stamp the child's
+          // model on every later root `assistant` message.
+          this.updateSubagent(thread.threadId, { model: toModel });
+          break;
         }
+        this.activeModel = toModel;
+        this.emitSessionUpdate({ model: toModel });
         break;
       }
 
       // v0.114+: context compacted via notification (not just item). Both
       // arrive for one compaction; `emitCompactBoundary` echoes it once.
       case "thread/compacted":
+        // Compaction bookkeeping is the root session's, exactly as for the
+        // `contextCompaction` item. A child compacting its own window used to
+        // draw the ROOT boundary — labelled `manual` whenever the user had
+        // armed `/compact`, carrying the root's `pre_tokens`, clearing
+        // `is_compacting`, and spending the one echo the root's own
+        // `thread/compacted` needed, so the real boundary emitted nothing.
+        if (isChild) break;
         this.emitCompactBoundary();
         break;
 
@@ -2027,9 +2108,23 @@ export class CodexAdapter {
    *
    * A `spawnAgent` card is emitted with the new agent's anchor as its block
    * id, so the click target in the chat and the attribution key on the wire
-   * are one value (§2.3). The dedupe set is keyed on the Codex **item** id,
-   * which is not the same string when the child registered itself first and
-   * kept a `thread:<id>` fallback anchor.
+   * are one value (§2.3). The dedupe key is the Codex **item** id, which is
+   * not the same string when the child registered itself first and kept a
+   * `thread:<id>` fallback anchor — `thread.collabCardIds` holds the mapping
+   * so the `tool_result` names the id the `tool_use` was actually emitted
+   * with.
+   *
+   * Two consequences of "one card is one agent":
+   *
+   * - A spawn that has not named its receiver yet (`item/started` can arrive
+   *   before the child exists) has no identity to put on a card, so the card
+   *   waits for `item/completed`, which does name it. Emitting early is what
+   *   gave one agent two ids: a card under the item id and a roster entry
+   *   under the anchor the child had meanwhile registered.
+   * - A spawn that names several receivers creates several agents from one
+   *   call. None of them can own the card, so it keeps the item id (its
+   *   `input.agents` lists the team) and every receiver keeps its own
+   *   fallback anchor; the frontend derives a card per agent (§3.4).
    */
   private handleCollabAgentToolCall(item: CodexItem, thread: ThreadState, completed: boolean): void {
     const tool = typeof item.tool === "string" ? item.tool : "";
@@ -2040,22 +2135,35 @@ export class CodexAdapter {
     const receivers = Array.isArray(item.receiverThreadIds)
       ? item.receiverThreadIds.filter((id): id is string => typeof id === "string" && id.length > 0)
       : [];
+    // `agentsStates` is the call's outcome per agent — the roster update and
+    // the tool_result summary come from the same reading.
+    const agentsStates = item.agentsStates && typeof item.agentsStates === "object"
+      ? item.agentsStates as Record<string, { status?: unknown; message?: unknown } | undefined>
+      : {};
+    // The agents this one call is about, from whichever field carries them.
+    const named = receivers.length > 0 ? receivers : Object.keys(agentsStates);
 
-    // Register every receiver. Only the spawn call may name a fresh agent's
-    // anchor; the other collab tools refer to agents that already exist.
+    // Register every receiver. Only a spawn that names exactly one agent may
+    // propose its item id as that agent's anchor; a fan-out spawn's agents
+    // each keep their own fallback, and the other collab tools refer to
+    // agents that already exist.
+    const proposeAnchor = isSpawn && named.length === 1;
     const records = new Map<string, SubagentRecord>();
     for (const receiver of receivers) {
       const record = this.updateSubagent(receiver, {
-        anchorId: isSpawn ? item.id : undefined,
+        anchorId: proposeAnchor ? item.id : undefined,
         parentThreadId: senderThreadId,
       });
       if (record) records.set(receiver, record);
     }
 
-    const primary = receivers.length === 1 ? records.get(receivers[0]) : undefined;
-    const cardId = isSpawn ? (primary?.anchorId ?? item.id) : item.id;
-
-    if (!thread.emittedToolUseIds.has(item.id)) {
+    // The card's id is decided once per Codex item and reused for its result.
+    let cardId = thread.collabCardIds.get(item.id);
+    if (cardId === undefined) {
+      if (isSpawn && named.length === 0 && !completed) return; // no agent to name yet
+      const anchor = proposeAnchor ? this.subagents.get(named[0])?.anchorId : undefined;
+      cardId = anchor ?? item.id;
+      thread.collabCardIds.set(item.id, cardId);
       thread.emittedToolUseIds.add(item.id);
       this.emitToolUse(
         cardId,
@@ -2067,11 +2175,6 @@ export class CodexAdapter {
 
     if (!completed) return;
 
-    // `agentsStates` is the call's outcome per agent — the roster update and
-    // the tool_result summary come from the same reading.
-    const agentsStates = item.agentsStates && typeof item.agentsStates === "object"
-      ? item.agentsStates as Record<string, { status?: unknown; message?: unknown } | undefined>
-      : {};
     const lines: string[] = [];
     for (const [agentThreadId, state] of Object.entries(agentsStates)) {
       const wireStatus = typeof state?.status === "string" ? state.status : "unknown";
@@ -2079,7 +2182,7 @@ export class CodexAdapter {
       const record = this.updateSubagent(
         agentThreadId,
         {
-          anchorId: isSpawn ? item.id : undefined,
+          anchorId: proposeAnchor ? item.id : undefined,
           parentThreadId: senderThreadId,
           detail: message,
         },
