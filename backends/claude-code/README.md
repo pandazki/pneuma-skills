@@ -90,6 +90,10 @@ Inbound (CLI → server, one JSON object per `\n`-delimited line):
 
 // stream_event — partial-content deltas (gated on `--include-partial-messages`).
 // system.status / system.compact_boundary / system.task_notification — runtime status updates.
+// system.status carries a CLI-side phase, wider than the browser union: besides
+// "compacting" and null, 2.1.273 emits "requesting" at the start of every API
+// request (after the user message, after each tool result). The bridge folds
+// anything that is not "compacting" into idle/running from `session.cliIdle`.
 // control_request:can_use_tool — permission prompt (only when not in bypass mode).
 ```
 

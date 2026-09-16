@@ -807,9 +807,21 @@ export class WsBridge {
         session.state.permissionMode = msg.permissionMode;
       }
 
+      // The CLI's status vocabulary is wider than the browser union, so
+      // normalise here — one authority, no frontend special-casing. Claude
+      // Code 2.1.273 emits `status: "requesting"` at the start of every API
+      // request (after the user message, after each tool result); forwarding
+      // it raw fell through `StatusDot`'s mapping to the idle label, so the
+      // root pill read "Idle" for the entire turn. A `null` frame (compaction
+      // end) has the same shape of problem mid-turn. Only `compacting` is a
+      // real browser status; anything else is just "the CLI said something
+      // about its phase", and `session.cliIdle` is what actually knows
+      // whether a turn is in flight.
       this.broadcastToBrowsers(session, {
         type: "status_change",
-        status: msg.status ?? null,
+        status: msg.status === "compacting"
+          ? "compacting"
+          : session.cliIdle ? "idle" : "running",
       });
       return;
     }

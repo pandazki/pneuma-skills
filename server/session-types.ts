@@ -32,7 +32,11 @@ export interface CLISystemInitMessage {
 export interface CLISystemStatusMessage {
   type: "system";
   subtype: "status";
-  status: "compacting" | null;
+  /**
+   * `requesting` = an API request is in flight, seen on 2.1.273; the bridge
+   * folds anything that is not `compacting` into running/idle from `cliIdle`.
+   */
+  status: "compacting" | "requesting" | null;
   permissionMode?: string;
   uuid: string;
   session_id: string;
