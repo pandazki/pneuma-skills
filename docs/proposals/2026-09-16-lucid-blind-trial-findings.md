@@ -106,13 +106,49 @@ all confirmed and amended in the same change set:
 | P2 | Budget exhaustion was not reported before the first judged round | the clock is checked whenever a budget has started |
 | P3 | judging.md said unmeasured fps → `optimize-fps`; the script says `continue` with a reason | table aligned with the script |
 
-## 5. Open after this trial
+## 5. Second trial (2026-09-17, production build, 90-minute budget, stopped by an external cause)
 
-- The trial ended at `stall-approaching` after one rethink round (4.25);
-  `done` and `stalled` have not been observed live. Both are covered by tests.
-- Asset rungs 2 and 3 (image-to-3D, Blender) were not exercised live by the
-  agent — it chose procedural for a voxel brief. A second trial with a
-  non-voxel brief (a hero character, an ornate prop) is the way to measure
-  them.
+Same zero-leak procedure, served from `bun run build` so no HMR could touch
+the page; a non-voxel brief (a ruined shrine courtyard at dusk,
+stylized-realistic) with "don't download assets from the internet" kept, to
+test whether the rewritten ladder is walked. It was, unaided:
+
+| Rung | Used | Evidence (`~/lucid-blind-2/dusk-shrine/`) |
+|---|---|---|
+| image-to-3D | 5 script calls, 4 jobs downloaded | `assets/fal-jobs.json`: `saint`, `traveler`, `portal`, `fern` via the `hero` recipe (`auto_size`, `align_image`, detailed) with a per-asset `face_limit` |
+| Blender kit | `run` ×1, `prep` ×6, `render-views` ×2 | `assets/masonry.py` (~300 lines, `import kit`: voussoir arches, fluted columns, bevels) → `arch/column/lantern/pedestal/slab.glb`; every generated model went through `prep --height … --merge` |
+| textures | `texture.mjs` normal + roughness from the generated stone albedo | `scene/textures/stone-normal.png`, `stone-rough.png` |
+| starter loader | `assets.js` copied by `init` and used | `scene/world.js`, `traveler.js` |
+| ledger | four entries with rungs and states | `lucid.json` `assets[]` |
+
+Round 1 at 35 minutes scored **4.85** (trial 1 at the same point: 3.35) with
+a real hooded statue, kit-built columns and arches, lit lanterns, banners and
+a normal-mapped wet floor; the judge brief travelled as a file and the
+verdict was ingested by its default path. Round 2 was under way — a finer
+shrine portal and ferns generated and prepped — when the Codex workspace
+ran out of credits (`Your workspace is out of credits`) and the turn ended
+with `error_during_execution` at ~00:30; no REPORT.md was written. The
+session is resumable from the workspace once credits are refilled.
+
+Findings from the transcript (no tool call failed):
+
+- The bridge's `errors[]` does not see shader compile failures — three.js
+  reports them through `console.error`, not `window.onerror`; the agent
+  noticed a silent black material, added its own diagnostic and fixed the
+  shader. Fix: hook `console.error` and `renderer.debug.onShaderError` into
+  `errors[]`.
+- The agent still reached for a temporary in-page check module and then
+  removed it, as the skill says; `notes` carried the result.
+- The judge subagent's `fileChange` (writing `verdict.json`) and its final
+  text rendered in the main conversation — issue #152 again, cosmetic here.
+
+## 6. Open after both trials
+
+- `done` and `stalled` have not been observed live (trial 1 ended at
+  `stall-approaching` after one rethink round; trial 2 was cut off by
+  credits after round 1). Both are covered by tests.
+- Trial 2 proved the image-to-3D and Blender rungs are used unaided; whether
+  the score reaches a passing level with them needs the trial to run to its
+  budget.
 - The report's suggestion of a page-level capture (`capture-interface`) and a
   supported input-dispatch channel is recorded, not built.
