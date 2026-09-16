@@ -3,6 +3,7 @@ import type {
   BrowserIncomingMessage,
   PermissionRequest,
   SessionState,
+  SubagentInfo,
   BufferedBrowserEvent,
 } from "./session-types.js";
 import type { AgentBackendType } from "../core/types/agent-backend.js";
@@ -75,6 +76,18 @@ export interface Session {
    */
   pendingSystemSignals: string[];
   messageHistory: BrowserIncomingMessage[];
+  /**
+   * Live roster of the agents this session's agent spawned, keyed by
+   * `SubagentInfo.id` — the spawning `tool_use` block's own id, which is the
+   * `parent_tool_use_id` every envelope from that agent carries. Written by
+   * the Claude path of `ws-bridge.ts` (a spawn block registers an entry, the
+   * matching `tool_result` closes it) and by `CodexBridge` when the Codex
+   * adapter emits its own roster. The persistence surface is the
+   * `subagent_update` entries in `messageHistory`, which is what a reload,
+   * `history.json`, an export, and the online player rebuild from; this map
+   * is the bridge's own index for the frames it still has to answer.
+   */
+  subagents: Map<string, SubagentInfo>;
   /**
    * `<pneuma:env>` tags accumulate here until the user actually types
    * something. Then the next outbound `handleUserMessage` prepends them to

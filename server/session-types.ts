@@ -239,10 +239,16 @@ export interface CLIControlResponseMessage {
   };
 }
 
-/** CLI echoes slash-command output back as a user message wrapping <local-command-stdout> */
+/**
+ * CLI `user` frames come in two shapes. String content is the slash-command
+ * stdout echo wrapping `<local-command-stdout>`. Block content is the
+ * synthetic echo that carries `tool_result`s back into the conversation —
+ * that is where a spawned agent's completion shows up, on the `tool_use_id`
+ * of the `Task` / `Agent` call that created it.
+ */
 export interface CLIUserMessage {
   type: "user";
-  message: { role: "user"; content: string };
+  message: { role: "user"; content: string | ContentBlock[] };
 }
 
 export interface CLIRateLimitMessage {
@@ -614,6 +620,12 @@ export interface PermissionRequest {
   permission_suggestions?: PermissionUpdate[];
   description?: string;
   tool_use_id: string;
+  /**
+   * Whatever the CLI called the asking agent in its permission payload — a
+   * display name, never an identity: it is not stable, not unique, and does
+   * not appear on any other envelope. Attribution is `parent_tool_use_id`;
+   * use this only as banner text when it is present.
+   */
   agent_id?: string;
   title?: string;
   display_name?: string;
