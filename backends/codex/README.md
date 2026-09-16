@@ -22,7 +22,7 @@ Lifecycle gotchas).
 | `index.ts`          | `CodexBackend` — implements `AgentBackend`. Wraps `CodexCliLauncher` and exposes the additional `onAdapterCreated` / `getAdapter` hooks the bridge needs to attach. |
 | `cli-launcher.ts`   | `CodexCliLauncher` — owns the `node:child_process` spawn (with sibling-`node`-script handling for npm-installed codex), wires the `StdioTransport` between the process pipes and the adapter, and propagates exit / disconnect events. |
 | `codex-adapter.ts`  | `CodexAdapter` + `StdioTransport` — the heart of the integration. Handshakes via `initialize` → `initialized` → `thread/start` (or `thread/resume`), translates every Codex notification (`item/started`, `item/completed`, `thread/tokenUsage/updated`, etc.) into a Pneuma envelope, manages permission requests as JSON-RPC requests with ids, and synthesises a `result` envelope per turn since Codex doesn't have a single "turn end" message of its own. |
-| `__tests__/`        | `manifest.test.ts` (manifest shape), `codex-adapter.test.ts` (adapter unit tests), `lifecycle.test.ts` (six shared scenarios). |
+| `__tests__/`        | `manifest.test.ts` (manifest shape), `codex-adapter.test.ts` (adapter unit tests), `codex-adapter-subagents.test.ts` (thread attribution + roster), `mock-transport.ts` (the shared `ICodexTransport` fake both adapter suites drive), `lifecycle.test.ts` (six shared scenarios). |
 
 ## Protocol shape
 
@@ -176,6 +176,98 @@ RPC (`fetchAvailableModels`); skills come from `skills/list`.
 } }
 ```
 
+### Multi-agent threads (subagents)
+
+`codex app-server --enable multi_agent` lets the agent spawn other agents.
+They run on **their own threads over the same transport**, and every
+notification that has a thread carries its id:
+
+| Notification / request | Thread field | Payload facts (codex-cli 0.154.0-alpha.3, protocol v2) |
+|---|---|---|
+| `item/started` / `item/completed` | `threadId` | `{ threadId, turnId, item, startedAtMs \| completedAtMs }` |
+| `turn/started` / `turn/completed` | `threadId` | `{ threadId, turn }` |
+| `item/agentMessage/delta` | `threadId` | `{ threadId, turnId, itemId, delta }` |
+| `item/reasoning/textDelta` | `threadId` | as above plus `contentIndex` |
+| `thread/tokenUsage/updated` | `threadId` | `{ threadId, turnId, tokenUsage }` |
+| `thread/status/changed` | `threadId` | `{ threadId, status }` |
+| `thread/started` | `thread.id` | `{ thread }`; `Thread` has `id`, `parentThreadId` ("only set if this thread is a subagent"), `agentNickname`, `agentRole`, `model` |
+| `error` | `threadId` | plus `error.message` / `willRetry` |
+| `item/commandExecution/requestApproval`, `item/fileChange/requestApproval`, `item/permissions/requestApproval`, `item/tool/requestUserInput` | `threadId` | the modern approvals |
+| `execCommandApproval`, `applyPatchApproval` | `conversationId` | legacy name for the same value |
+
+Two item types describe the team, both on the **parent's** thread:
+
+```jsonc
+// The spawner's own tool call. `agentsStates` is the per-agent outcome.
+{ "method": "item/completed", "params": { "threadId": "thr_root", "item": {
+    "type": "collabAgentToolCall", "id": "itm_call", "status": "completed",
+    "tool": "spawnAgent",            // sendInput | resumeAgent | wait | closeAgent
+                                     // | sendMessage | followupTask | interruptAgent | listAgents
+    "prompt": "judge captures/round-3.png", "model": "gpt-6-astra", "reasoningEffort": "high",
+    "senderThreadId": "thr_root", "receiverThreadIds": ["thr_child"],
+    "agentsStates": { "thr_child": { "status": "running", "message": null } }
+                     // pendingInit | running | interrupted | completed | errored | shutdown | notFound
+} } }
+
+// The parent's view of what one of its agents is doing.
+{ "method": "item/completed", "params": { "threadId": "thr_root", "item": {
+    "type": "subAgentActivity", "id": "itm_act", "agentThreadId": "thr_child",
+    "agentPath": "/Users/dev/.codex/agents/judge_01",
+    "kind": "started"                // interacted | interrupted | completed
+} } }
+```
+
+**Attribution.** The adapter maps all of this onto the one cross-backend key,
+`parent_tool_use_id` (see `SubagentInfo` in `server/session-types.ts`): the
+`tool_use.id`, in the spawning agent's conversation, of the call that created
+the agent that produced an envelope — `null` for the root agent. Every
+`assistant` / `stream_event` / `tool_progress` synthesised for a child thread,
+and every `permission_request` it raises, carries its anchor.
+
+**The anchor rule — fixed at first sight, never rewritten**, because it is
+already on the wire by the time a later source could disagree. Sources, in the
+order they normally arrive:
+
+1. `collabAgentToolCall` with `tool: "spawnAgent"` — `receiverThreadIds[0]` is
+   the child, anchor = the **item id**. The receiver may be absent on
+   `item/started` and set on `item/completed`.
+2. `subAgentActivity` — `agentThreadId`, with `agentPath` giving the label
+   (basename) and the detail (full path).
+3. `thread/started` whose `thread.parentThreadId` is set — nickname / role
+   fill the label and detail while no path is known.
+4. Any other notification from an unknown non-main thread — registered with
+   the fallback anchor `thread:<threadId>`, empty label, parent = main. If a
+   spawn item lands later, its card is emitted **with that fallback id** (the
+   ids of synthesised blocks are Pneuma's to choose); `emittedToolUseIds` still
+   dedupes on the Codex item id, which is a different string.
+
+A notification with no thread field belongs to the main thread: legacy servers
+omit it and have no second thread.
+
+**What a child thread may and may not do.** A subagent never ends the root
+turn — that was the core of issue #152:
+
+| Child notification | Behaviour |
+|---|---|
+| `turn/started` | sets the child's `currentTurnId`, roster → `running`; **no** root `status_change` (and `turn/interrupt` keeps targeting the root turn) |
+| `turn/completed` | flushes the child's text / reasoning with its anchor, clears its dedupe set, roster status from `turn.status` and `turn.error.message` → `detail`; **no** `result`, **no** `num_turns++`, **no** root `status_change`, root buffers untouched |
+| `item/*`, deltas | the same handlers as the root, on the child's `ThreadState`, stamped with its anchor |
+| `thread/tokenUsage/updated` | roster `context_used_percent` / `model`; the session gauge keeps reporting the root thread |
+| `thread/status/changed` | ignored — the turn events carry per-thread lifecycle |
+| `error` | roster `detail` = message, status → `failed` unless `willRetry`; **no** root `error` envelope |
+| `contextCompaction` item | ignored — compaction bookkeeping belongs to the root session |
+| approval request | `PermissionRequest.parent_tool_use_id` = the child's anchor (it still blocks the whole session; Codex approvals are per request) |
+
+Nested agents follow the same rules: a grandchild's `parent_id` is the child's
+anchor, and the child's spawn card is emitted with the child's anchor as its
+`parent_tool_use_id`.
+
+Per-thread state lives in `ThreadState` (`threads: Map<threadId, ThreadState>`,
+the main thread being the record with `anchorId: null`): streaming text,
+reasoning, `currentTurnId`, `emittedToolUseIds`, `commandStartTimes`. There is
+no flat copy of any of them — one flat field is all it takes for a child to
+impersonate the root again.
+
 ### Permission round-trips (Codex → server, expects response)
 
 These are **JSON-RPC requests with an `id`**, not notifications — the adapter
@@ -203,12 +295,14 @@ must call `transport.respond(id, …)` once the user decides:
 | `assistant` (`tool_use`)| Synthesised on `item/started` for `commandExecution` / `fileChange` / `webSearch` / `mcpToolCall`. |
 | `assistant` (`tool_result`) | Synthesised on `item/completed` with the tool's output. |
 | `assistant` (`thinking`)| Synthesised on `item/completed` for `reasoning` items. |
-| `result`                | **Synthesised** on `turn/completed` — Codex has no native equivalent. |
-| `permission_request`    | Synthesised from any of the seven approval-style JSON-RPC requests above. |
+| `assistant` (`tool_use` / `tool_result`, collab) | Synthesised from a `collabAgentToolCall` item in the **sender's** conversation: name = snake_case of `tool` (`spawn_agent`, `send_input`, `wait_agent` for `wait`, `close_agent`, `resume_agent`, `send_message`, `followup_task`, `interrupt_agent`, `list_agents`), `input` = `{ agent?, agents?, prompt? (400 chars), model?, reasoning_effort? }` (labels omitted while unknown), block id = the spawned agent's anchor for a spawn / the item id otherwise. The `tool_result` on `item/completed` summarises `agentsStates` as `label: status — message` per agent, `is_error` when the item failed. |
+| `subagent_update`       | **Synthesised** roster snapshot (`SubagentInfo`) whenever an agent's state changes — registration, status, `model`, `context_used_percent`, or a label refinement; never one per message. `label` = basename of `agentPath`, else `agentNickname`, else `""`; `detail` = full `agentPath` + `agentRole`, or the error / collab message. `subAgentActivity` items feed it and produce **no** chat bubble. |
+| `result`                | **Synthesised** on `turn/completed` of the **main** thread — Codex has no native equivalent, and a subagent's turn must never produce one. |
+| `permission_request`    | Synthesised from any of the seven approval-style JSON-RPC requests above, carrying `parent_tool_use_id` when the asking thread is a subagent. |
 | `session_update`        | Native-ish — adapter pushes one whenever model / cost / context-percent / available models change. |
-| `status_change`         | Synthesised from `thread/status/changed`. |
+| `status_change`         | Synthesised from `thread/status/changed` and the main thread's turn events; child threads never move it. |
 | `system_event` (`compact_boundary`) | **Synthesised** once per compaction from `item/completed` (`contextCompaction`) / `thread/compacted` — the same envelope the Claude bridge forwards from `system.compact_boundary`, so the chat draws one marker for every backend. |
-| `error`                 | Native `error` notification, text lifted from `params.error.message` (v2) or the legacy top-level fields; `(retrying)` appended when `willRetry` is set. |
+| `error`                 | Native `error` notification, text lifted from `params.error.message` (v2) or the legacy top-level fields; `(retrying)` appended when `willRetry` is set. A child thread's error goes to its roster entry instead. |
 
 ## Capabilities + why
 
