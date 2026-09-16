@@ -871,6 +871,8 @@ interface FakeCanvas {
 
 interface Harness {
   root: Record<string, unknown> & {
+    /** The page's console, which the bridge wraps to see three.js's output. */
+    console: { error: (...args: unknown[]) => void; warn: (...args: unknown[]) => void };
     lucid: {
       register: (parts: unknown) => boolean;
       setLoading: (value: boolean) => void;
@@ -899,6 +901,12 @@ interface Harness {
   renders: (renderer: FakeRenderer, timestamps: number[], passes?: number) => void;
   /** Fire a listener the bridge registered on the window. */
   fire: (type: string, event: unknown) => void;
+  /**
+   * Everything the UNDERLYING console method received. The bridge wraps
+   * console.error / console.warn, so this is the spy that proves the page's
+   * own logging still happens.
+   */
+  consoleCalls: Array<{ method: string; args: unknown[] }>;
 }
 
 const BRIDGE_SOURCE = readFileSync(BRIDGE, "utf-8");
@@ -916,6 +924,7 @@ function loadBridge(pageCanvas: FakeCanvas | null = null): Harness {
   const pending: Array<(t: number) => void> = [];
   const toParent: Array<Record<string, unknown>> = [];
   const listeners: Record<string, Array<(event: unknown) => void>> = {};
+  const consoleCalls: Array<{ method: string; args: unknown[] }> = [];
   // The page clock. rAF callbacks carry their own timestamp; a render is
   // timed by the bridge itself, so `renders` moves this before each call.
   let clock = 0;
@@ -923,6 +932,13 @@ function loadBridge(pageCanvas: FakeCanvas | null = null): Harness {
   const root = {
     devicePixelRatio: 2,
     performance: { now: () => clock },
+    // The real console the bridge wraps. Recording here — inside the
+    // ORIGINAL method — is what lets a test prove the wrapper called through.
+    console: {
+      error: (...args: unknown[]) => consoleCalls.push({ method: "error", args }),
+      warn: (...args: unknown[]) => consoleCalls.push({ method: "warn", args }),
+      log: (...args: unknown[]) => consoleCalls.push({ method: "log", args }),
+    },
     document: {
       querySelector: (selector: string) => (selector === "canvas" ? pageCanvas : null),
     },
@@ -957,6 +973,7 @@ function loadBridge(pageCanvas: FakeCanvas | null = null): Harness {
     fire: (type, event) => {
       for (const callback of listeners[type] ?? []) callback(event);
     },
+    consoleCalls,
   };
 }
 
@@ -967,6 +984,12 @@ function fakeRenderer(element: FakeCanvas = canvas()) {
   return {
     domElement: element,
     info: { render: { calls: 42, triangles: 123_456 }, memory: { textures: 7, geometries: 9 } },
+    // WebGLRenderer always carries `debug`; `onShaderError` is null until
+    // somebody installs one, which is exactly what `register` does.
+    debug: { checkShaderErrors: true, onShaderError: null } as {
+      checkShaderErrors: boolean;
+      onShaderError: ((...args: unknown[]) => void) | null;
+    },
     render(scene?: unknown, camera?: unknown): string {
       rendered.push({ scene, camera });
       return "drawn";
@@ -1145,6 +1168,7 @@ describe("lucid-bridge.js state", () => {
       textures: null,
       geometries: null,
       errors: [],
+      errorSources: { window: 0, unhandledrejection: 0, console: 0, shader: 0 },
       notes: {},
       viewport: { width: 0, height: 0, pixelRatio: 2 },
     });
@@ -1214,6 +1238,176 @@ describe("lucid-bridge.js errors", () => {
     const errors = harness.root.__lucidBridge.state().errors as string[];
     expect(errors).toHaveLength(20);
     expect(errors[19]).toBe("+21 more distinct errors (suppressed)");
+  });
+});
+
+// The second blind trial (2026-09-17) built a scene whose material rendered
+// black while the bridge reported NO errors: three.js prints a failed shader
+// link through console.error and returns, so window.onerror never fires. The
+// builder had to write its own diagnostic to see what the bridge should have
+// handed it. These pin the two channels that close that hole.
+describe("lucid-bridge.js console and shader errors", () => {
+  const stateOf = (harness: Harness) => harness.root.__lucidBridge.state();
+  const errorsOf = (harness: Harness) => stateOf(harness).errors as string[];
+  const sourcesOf = (harness: Harness) => stateOf(harness).errorSources as Record<string, number>;
+
+  /** A GL context as far as the shader hook is concerned. */
+  function fakeGl(programLog: string, fragmentLog = "", vertexLog = "") {
+    return {
+      getProgramInfoLog: (program: unknown) => (program === "program" ? programLog : ""),
+      getShaderInfoLog: (shader: unknown) => (shader === "fs" ? fragmentLog : vertexLog),
+    };
+  }
+
+  test("a three.js shader error printed to console.error lands in errors[], counted as console", () => {
+    const harness = loadBridge();
+    harness.root.console.error(
+      "THREE.WebGLProgram: Shader Error 0x0502 - VALIDATE_STATUS false\n\nProgram Info Log: \nERROR: unresolved symbol",
+    );
+
+    expect(errorsOf(harness)[0]).toBe(
+      "THREE.WebGLProgram: Shader Error 0x0502 - VALIDATE_STATUS false Program Info Log: ERROR: unresolved symbol",
+    );
+    expect(sourcesOf(harness)).toEqual({ window: 0, unhandledrejection: 0, console: 1, shader: 0 });
+    expect(harness.toParent.filter((m) => m.type === "pneuma:lucid:error")).toHaveLength(1);
+
+    // The page's own logging is untouched: the original still ran, with the
+    // arguments it was given.
+    expect(harness.consoleCalls).toHaveLength(1);
+    expect(harness.consoleCalls[0].method).toBe("error");
+    expect(String(harness.consoleCalls[0].args[0])).toContain("VALIDATE_STATUS");
+  });
+
+  test("console.warn is captured only when three.js is the one warning", () => {
+    const harness = loadBridge();
+    harness.root.console.warn("[vite] connected.");
+    harness.root.console.warn("THREE.WebGLRenderer: Texture marked for update but no image data found.");
+
+    // three.js hands the console an Error rather than a string on its
+    // stack-trace path (`three.core.js` warn/error), and the text lives in
+    // `message` — a summary that only read strings would lose it.
+    harness.root.console.warn(new Error("THREE.TSL: node not found"));
+
+    expect(errorsOf(harness)).toEqual([
+      "warn: THREE.WebGLRenderer: Texture marked for update but no image data found.",
+      "warn: THREE.TSL: node not found",
+    ]);
+    expect(sourcesOf(harness).console).toBe(2);
+    // Ignored or not, every warn reached the real console.
+    expect(harness.consoleCalls.map((c) => c.method)).toEqual(["warn", "warn", "warn"]);
+  });
+
+  test("a console call is summarized to one line: objects by message or short JSON, capped at 240", () => {
+    const harness = loadBridge();
+    harness.root.console.error("load failed", new Error("lantern.glb 404"), { url: "lantern.glb" });
+    expect(errorsOf(harness)[0]).toBe('load failed lantern.glb 404 {"url":"lantern.glb"}');
+
+    harness.root.console.error("THREE.WebGLProgram: Shader Error\n" + "x".repeat(1_000));
+    const long = errorsOf(harness)[1];
+    expect(long).toHaveLength(240);
+    expect(long.startsWith("THREE.WebGLProgram: Shader Error x")).toBe(true);
+    expect(long.endsWith("…")).toBe(true);
+    expect(long).not.toContain("\n");
+
+    // An empty call says nothing and is not an error.
+    harness.root.console.error();
+    expect(errorsOf(harness)).toHaveLength(2);
+  });
+
+  test("register installs onShaderError: the info log is reported and the scene's own handler still runs", () => {
+    const harness = loadBridge();
+    const renderer = fakeRenderer();
+    const seen: unknown[][] = [];
+    renderer.debug.onShaderError = (...args: unknown[]) => {
+      seen.push(args);
+    };
+
+    harness.root.lucid.register({ renderer, scene: { id: "scene" }, camera: { id: "camera" } });
+    // Registering twice must not install the hook twice.
+    harness.root.lucid.register({ renderer, scene: { id: "scene" }, camera: { id: "camera" } });
+    const hook = renderer.debug.onShaderError!;
+    const gl = fakeGl("ERROR: 0:42 'vNormal' : undeclared identifier\nERROR: 1 compilation error");
+    hook(gl, "program", "vs", "fs");
+
+    expect(errorsOf(harness)).toEqual(["shader: ERROR: 0:42 'vNormal' : undeclared identifier"]);
+    expect(sourcesOf(harness)).toEqual({ window: 0, unhandledrejection: 0, console: 0, shader: 1 });
+    expect(seen).toEqual([[gl, "program", "vs", "fs"]]);
+    // A scene with its own handler had already replaced three.js's report,
+    // so the bridge has nothing to put back.
+    expect(harness.consoleCalls).toEqual([]);
+  });
+
+  test("an empty program log falls back to the shader log, and a silent failure still says so", () => {
+    const harness = loadBridge();
+    const renderer = readyBridge(harness);
+    renderer.debug.onShaderError!(fakeGl("", "ERROR: 0:7 syntax error"), "program", "vs", "fs");
+    renderer.debug.onShaderError!(fakeGl(""), "program", "vs", "fs");
+
+    expect(errorsOf(harness)).toEqual([
+      "shader: ERROR: 0:7 syntax error",
+      "shader: program link failed with no info log",
+    ]);
+    expect(sourcesOf(harness).shader).toBe(2);
+  });
+
+  // three.js's WebGLProgram calls onShaderError INSTEAD of printing its own
+  // report, so a hook that only fed errors[] would take the driver's logs
+  // away from devtools — the most useful message in the engine, gone because
+  // the bridge was watching.
+  test("the hook puts three.js's displaced report back in the page console, without a second entry", () => {
+    const harness = loadBridge();
+    const renderer = readyBridge(harness);
+    renderer.debug.onShaderError!(
+      fakeGl("ERROR: link failed", "ERROR: 0:7 'vUv' : undeclared identifier", "ERROR: 0:3 syntax"),
+      "program",
+      "vs",
+      "fs",
+    );
+
+    expect(harness.consoleCalls).toHaveLength(1);
+    const logged = String(harness.consoleCalls[0].args[0]);
+    expect(logged).toContain("Program Info Log: ERROR: link failed");
+    expect(logged).toContain("Fragment Shader Info Log: ERROR: 0:7 'vUv' : undeclared identifier");
+    expect(logged).toContain("Vertex Shader Info Log: ERROR: 0:3 syntax");
+
+    // It went through console.error as it was BEFORE the wrap, so the page
+    // keeps its message and the failure is still filed exactly once.
+    expect(errorsOf(harness)).toEqual(["shader: ERROR: link failed"]);
+    expect(sourcesOf(harness)).toEqual({ window: 0, unhandledrejection: 0, console: 0, shader: 1 });
+  });
+
+  test("a renderer with no debug object registers normally, it just cannot see shader failures", () => {
+    const harness = loadBridge();
+    const renderer = fakeRenderer();
+    delete (renderer as { debug?: unknown }).debug;
+    expect(harness.root.lucid.register({ renderer, scene: {}, camera: {} })).toBe(true);
+    expect(errorsOf(harness)).toEqual([]);
+  });
+
+  test("errorSources names the channel while dedupe and the 20-entry cap stay as they were", () => {
+    const harness = loadBridge();
+    harness.fire("error", { message: "boom" });
+    harness.fire("unhandledrejection", { reason: new Error("texture fetch rejected") });
+    harness.root.console.error("THREE.WebGLProgram: Shader Error");
+    harness.root.console.error("THREE.WebGLProgram: Shader Error"); // same line, already seen
+    harness.root.lucid.report("hero asset is still a placeholder");
+
+    expect(errorsOf(harness)).toEqual([
+      "boom",
+      "texture fetch rejected",
+      "THREE.WebGLProgram: Shader Error",
+      "hero asset is still a placeholder",
+    ]);
+    // `report` is the scene talking, not a channel the bridge watches.
+    expect(sourcesOf(harness)).toEqual({ window: 1, unhandledrejection: 1, console: 1, shader: 0 });
+
+    // Past the cap the list still samples, and the counter still counts every
+    // DISTINCT line the channel produced — including the suppressed ones.
+    for (let i = 0; i < 40; i += 1) harness.root.console.error(`three.js is unhappy ${i}`);
+    const errors = errorsOf(harness);
+    expect(errors).toHaveLength(20);
+    expect(errors[19]).toBe("+25 more distinct errors (suppressed)");
+    expect(sourcesOf(harness).console).toBe(41);
   });
 });
 

@@ -924,6 +924,7 @@ describe("parseSceneState", () => {
       frameMs: null,
       framesRendered: null,
       passesPerFrame: null,
+      errorSources: null,
       drawCalls: null,
       triangles: null,
       textures: null,
@@ -932,6 +933,18 @@ describe("parseSceneState", () => {
       notes: {},
       viewport: null,
     });
+  });
+
+  test("errorSources come through per channel, and an old bridge reports null", () => {
+    // A failed shader is not an error event — three.js only prints it — so
+    // the channel counts are how the agent tells a black material from a
+    // script that threw. A bridge that predates the field yields null, not
+    // four zeros pretending to have looked.
+    expect(parseSceneState({ errorSources: { window: 1, unhandledrejection: 0, console: 2, shader: 1 } }).errorSources)
+      .toEqual({ window: 1, unhandledrejection: 0, console: 2, shader: 1 });
+    expect(parseSceneState({ errorSources: { console: "3" } }).errorSources)
+      .toEqual({ window: 0, unhandledrejection: 0, console: 0, shader: 0 });
+    expect(parseSceneState({}).errorSources).toBeNull();
   });
 
   test("the scene's notes come through as they are, minus the shape guesses", () => {

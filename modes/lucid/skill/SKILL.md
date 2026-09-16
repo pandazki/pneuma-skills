@@ -63,8 +63,11 @@ selected — `navigate-to` `{ "view": "live" }` first when you mean the scene.
   on it in Split.
 - **`get-scene-state`** — read what the stage and the scene report:
   `{ stage: { width, height, aspect }, bridge, registered, ready, loading,
-  fps, fpsSource, frameMs, drawCalls, triangles, textures, errors, notes,
-  lastCapture, viewport }`. `stage` is always there, even before a scene
+  fps, fpsSource, frameMs, passesPerFrame, drawCalls, triangles, textures,
+  errors, errorSources, notes, lastCapture, viewport }`. `errors` includes
+  what three.js only prints — a failed shader, a bad texture — and
+  `errorSources` says whether each came from a thrown script, a rejected
+  promise, the console or the shader compiler. `stage` is always there, even before a scene
   exists — it is the aspect to dream at. `bridge: false` means the page does
   not load `lucid-bridge.js`; `registered: false` means `main.js` never called
   `window.lucid.register(...)`. Either way you are blind — fix it first.

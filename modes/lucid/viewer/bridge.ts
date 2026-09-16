@@ -96,6 +96,14 @@ export interface SceneState {
    * work went instead of hiding it.
    */
   passesPerFrame: number | null;
+  /**
+   * Which channel each distinct error came from — `window` (a script threw),
+   * `unhandledrejection`, `console` (every console.error plus `THREE.`
+   * warnings) and `shader` (renderer.debug.onShaderError). A failed shader
+   * is not an error event: three.js only prints it, so without the console
+   * and shader channels a black material reads as "no errors".
+   */
+  errorSources: { window: number; unhandledrejection: number; console: number; shader: number } | null;
   drawCalls: number | null;
   triangles: number | null;
   textures: number | null;
@@ -235,6 +243,19 @@ function parseNotes(raw: unknown): Record<string, unknown> {
 }
 
 /** Defensive: the scene is user-editable code and may post anything. */
+/** The bridge's per-channel error counts; null when the bridge predates them. */
+function errorSourcesOf(raw: unknown): SceneState["errorSources"] {
+  if (typeof raw !== "object" || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  const count = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+  return {
+    window: count(r.window),
+    unhandledrejection: count(r.unhandledrejection),
+    console: count(r.console),
+    shader: count(r.shader),
+  };
+}
+
 export function parseSceneState(raw: unknown): SceneState {
   const r = isRecord(raw) ? raw : {};
   const viewportRaw = isRecord(r.viewport) ? r.viewport : null;
@@ -249,6 +270,7 @@ export function parseSceneState(raw: unknown): SceneState {
     frameMs: num(r.frameMs),
     framesRendered: num(r.framesRendered),
     passesPerFrame: num(r.passesPerFrame),
+    errorSources: errorSourcesOf(r.errorSources),
     drawCalls: num(r.drawCalls),
     triangles: num(r.triangles),
     textures: num(r.textures),
