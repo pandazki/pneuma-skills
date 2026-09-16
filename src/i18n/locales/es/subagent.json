@@ -1,0 +1,28 @@
+{
+  "strip": {
+    "main": "Conversación principal",
+    "unread": "Mensajes nuevos en la conversación principal",
+    "overflow": "+{{count}}",
+    "more": "Mostrar todos los agentes"
+  },
+  "view": {
+    "back": "Volver a la principal",
+    "breadcrumb": "Ruta del agente",
+    "readonly_note": "Esta es la conversación del subagente {{label}}: solo lectura.",
+    "no_output": "Este subagente todavía no ha producido nada"
+  },
+  "status": {
+    "running": "en curso",
+    "idle": "inactivo",
+    "completed": "completado",
+    "failed": "con error",
+    "interrupted": "interrumpido"
+  },
+  "card": {
+    "view": "Ver conversación",
+    "waiting": "Esperando salida…",
+    "live": "Escribiendo ahora"
+  },
+  "generic_label": "Subagente",
+  "permission_prefix": "Solicitado por {{label}}"
+}

@@ -1,0 +1,28 @@
+{
+  "strip": {
+    "main": "메인 대화",
+    "unread": "메인 대화에 새 메시지",
+    "overflow": "+{{count}}",
+    "more": "모든 에이전트 표시"
+  },
+  "view": {
+    "back": "메인 대화로 돌아가기",
+    "breadcrumb": "에이전트 경로",
+    "readonly_note": "서브에이전트 {{label}}의 대화입니다. 보기 전용입니다.",
+    "no_output": "이 서브에이전트는 아직 출력이 없습니다"
+  },
+  "status": {
+    "running": "실행 중",
+    "idle": "대기",
+    "completed": "완료",
+    "failed": "실패",
+    "interrupted": "중단됨"
+  },
+  "card": {
+    "view": "대화 보기",
+    "waiting": "출력 대기 중…",
+    "live": "출력 중"
+  },
+  "generic_label": "서브에이전트",
+  "permission_prefix": "{{label}}의 요청"
+}

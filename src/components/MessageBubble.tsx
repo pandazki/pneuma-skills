@@ -6,6 +6,7 @@ import type { ChatMessage, ContentBlock, SelectionContext, Annotation, Permissio
 import { useStore } from "../store.js";
 import { sendPermissionResponse } from "../ws.js";
 import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon } from "./ToolBlock.js";
+import SubagentCard from "./SubagentCard.js";
 import { FilePreview, isInlinePreviewable } from "./FilePreview.js";
 import { parsePneumaTag, PneumaSignalPill } from "./PneumaSignalPill.js";
 import type { ViewerLocator } from "../../core/types/viewer-contract.js";
@@ -150,6 +151,7 @@ function formatTokenCount(n: number): string {
 export default function MessageBubble({
   message,
   globalToolUseById,
+  subagentIds,
 }: {
   message: ChatMessage;
   /**
@@ -162,6 +164,8 @@ export default function MessageBubble({
    * lookup also works there; this is the more general fallback.
    */
   globalToolUseById?: Map<string, ToolUseInfo>;
+  /** Attribution keys of every known agent — see `groupContentBlocks`. */
+  subagentIds?: Set<string>;
 }) {
   const { t } = useTranslation("message-bubble");
   if (message.role === "system") {
@@ -280,7 +284,7 @@ export default function MessageBubble({
 
   return (
     <div className="animate-[fadeSlideIn_0.2s_ease-out]">
-      <AssistantMessage message={message} globalToolUseById={globalToolUseById} />
+      <AssistantMessage message={message} globalToolUseById={globalToolUseById} subagentIds={subagentIds} />
     </div>
   );
 }
@@ -455,7 +459,9 @@ interface ToolUseInfo {
 type GroupedBlock =
   | { kind: "content"; block: ContentBlock }
   | { kind: "tool_group"; name: string; items: ToolGroupItem[] }
-  | { kind: "ask_user_question"; id: string; input: Record<string, unknown> };
+  | { kind: "ask_user_question"; id: string; input: Record<string, unknown> }
+  /** A call that spawned an agent — rendered as a SubagentCard, never grouped. */
+  | { kind: "subagent"; id: string; name: string; input: Record<string, unknown> };
 
 // ─── Block grouping ────────────────────────────────────────────────────────
 
@@ -469,11 +475,25 @@ function isEmptyAssistantMessage(message: ChatMessage): boolean {
   return !hasVisibleBlock && !message.content?.trim();
 }
 
-function groupContentBlocks(blocks: ContentBlock[]): GroupedBlock[] {
+/**
+ * `subagentIds` carries every attribution key the session knows about (roster
+ * entries plus any message's `parentToolUseId`). A `tool_use` whose id is one
+ * of them IS an agent, so it gets its own SubagentCard and is never collapsed
+ * into a `ToolGroupBlock` — Claude fanning out three `Task` calls in one
+ * message must read as three agents, not "Subagent ×3".
+ */
+export function groupContentBlocks(
+  blocks: ContentBlock[],
+  subagentIds?: Set<string>,
+): GroupedBlock[] {
   const groups: GroupedBlock[] = [];
 
   for (const block of blocks) {
     if (block.type === "tool_use") {
+      if (subagentIds?.has(block.id)) {
+        groups.push({ kind: "subagent", id: block.id, name: block.name, input: block.input });
+        continue;
+      }
       if (block.name === "AskUserQuestion") {
         groups.push({ kind: "ask_user_question", id: block.id, input: block.input });
         continue;
@@ -511,13 +531,15 @@ function mapToolUsesById(blocks: ContentBlock[]): Map<string, ToolUseInfo> {
 function AssistantMessage({
   message,
   globalToolUseById,
+  subagentIds,
 }: {
   message: ChatMessage;
   globalToolUseById?: Map<string, ToolUseInfo>;
+  subagentIds?: Set<string>;
 }) {
   const blocks = message.contentBlocks || [];
 
-  const grouped = useMemo(() => groupContentBlocks(blocks), [blocks]);
+  const grouped = useMemo(() => groupContentBlocks(blocks, subagentIds), [blocks, subagentIds]);
   const toolUseById = useMemo(() => {
     const local = mapToolUsesById(blocks);
     if (!globalToolUseById || globalToolUseById.size === 0) return local;
@@ -553,6 +575,9 @@ function AssistantMessage({
           }
           if (group.kind === "content") {
             return <ContentBlockRenderer key={i} block={group.block} toolUseById={toolUseById} />;
+          }
+          if (group.kind === "subagent") {
+            return <SubagentCard key={i} id={group.id} anchorInput={group.input} />;
           }
           if (group.items.length === 1) {
             const item = group.items[0];

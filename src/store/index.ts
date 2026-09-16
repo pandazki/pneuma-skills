@@ -7,6 +7,7 @@ import { saveSurfacePrefs } from "./agent-surface-persistence.js";
 import { createSessionSlice } from "./session-slice.js";
 import { createAgentDataSlice } from "./agent-data-slice.js";
 import { createChatSlice } from "./chat-slice.js";
+import { createSubagentSlice } from "./subagent-slice.js";
 import { createModeSlice } from "./mode-slice.js";
 import { createViewerSlice } from "./viewer-slice.js";
 import { createWorkspaceSlice } from "./workspace-slice.js";
@@ -21,6 +22,7 @@ export const useStore = create<AppState>()((...a) => ({
   ...createSessionSlice(...a),
   ...createAgentDataSlice(...a),
   ...createChatSlice(...a),
+  ...createSubagentSlice(...a),
   ...createModeSlice(...a),
   ...createViewerSlice(...a),
   ...createWorkspaceSlice(...a),
