@@ -226,6 +226,12 @@ export class CodexBridge implements BridgeBackend {
       // reads Codex's thread ids), the bridge owns history. Without this push
       // a refresh loses the whole team while the subagents' messages stay.
       // Mirrors `WsBridge.publishSubagentUpdate` on the Claude path.
+      //
+      // `session.subagents` is the session-level index every backend keeps
+      // current — the same map `WsBridge.loadMessageHistory` rehydrates on
+      // reopen — so `getSession(...).subagents` answers "who is on this
+      // team" identically whichever backend is attached. No Codex code path
+      // reads it back today; keeping it uniform is the point.
       this.session.subagents.set(msg.agent.id, msg.agent);
       this.session.messageHistory.push({ ...msg, timestamp: msg.timestamp || Date.now() });
     }

@@ -287,13 +287,28 @@ describe("multi-block assistant history", () => {
     expect(persisted[0].message.content).toEqual([spawn, { type: "text", text: "Spawned the judge." }]);
     expect(persisted[0].parent_tool_use_id).toBeNull();
 
-    // The frame that merged broadcasts the merged entry (the browser merges
-    // by `message.id` too, so both views agree).
-    const lastAssistant = frames.filter((f) => f.type === "assistant").at(-1);
-    expect(lastAssistant && lastAssistant.type === "assistant" && lastAssistant.message.content).toEqual([
-      spawn,
-      { type: "text", text: "Spawned the judge." },
+    // Each frame broadcasts ITSELF — the browser folds them by `message.id`
+    // with the same rule, and re-shipping blocks 1…k-1 on frame k would cost
+    // O(N²) bytes per message. Late browsers are served by `message_history`.
+    const broadcast = frames.filter((f) => f.type === "assistant");
+    expect(broadcast.map((f) => f.type === "assistant" && f.message.content)).toEqual([
+      [spawn],
+      [{ type: "text", text: "Spawned the judge." }],
     ]);
+  });
+
+  test("the merged entry keeps the FIRST frame's timestamp", () => {
+    const { bridge } = bridgeWithCli();
+    bridge.feedCLIMessage(SID, assistantFrame(spawnBlock("toolu_judge", "Judge round 3")));
+    const first = bridge.getMessageHistory(SID).find((m) => m.type === "assistant")!;
+    const firstTimestamp = (first as Extract<BrowserIncomingMessage, { type: "assistant" }>).timestamp;
+
+    bridge.feedCLIMessage(SID, assistantFrame({ type: "text", text: "Spawned the judge." }));
+
+    const merged = bridge.getMessageHistory(SID)
+      .find((m): m is Extract<BrowserIncomingMessage, { type: "assistant" }> => m.type === "assistant")!;
+    expect(merged.message.content).toHaveLength(2);
+    expect(merged.timestamp).toBe(firstTimestamp);
   });
 
   test("message_history replays both blocks to a browser that joins later", () => {
@@ -349,5 +364,218 @@ describe("multi-block assistant history", () => {
     expect(persisted).toHaveLength(1);
     expect(persisted[0].message.id).toBe("msg_b");
     expect(persisted[0].message.content).toEqual([{ type: "text", text: "Done." }]);
+  });
+});
+
+describe("resume dedup is attribution-scoped", () => {
+  test("two agents that answer with the same text both survive", () => {
+    const { bridge } = bridgeWithCli();
+    bridge.feedCLIMessage(SID, assistantFrame(spawnBlock("toolu_a", "Judge A")));
+    bridge.feedCLIMessage(SID, assistantFrame(spawnBlock("toolu_b", "Judge B")));
+
+    bridge.feedCLIMessage(SID, assistantFrame({ type: "text", text: "PASS" }, { id: "msg_a", parent: "toolu_a" }));
+    bridge.feedCLIMessage(SID, assistantFrame({ type: "text", text: "PASS" }, { id: "msg_b", parent: "toolu_b" }));
+
+    const persisted = bridge.getMessageHistory(SID)
+      .filter((m): m is Extract<BrowserIncomingMessage, { type: "assistant" }> => m.type === "assistant");
+    expect(persisted.map((m) => [m.message.id, m.parent_tool_use_id])).toEqual([
+      ["msg_root", null],
+      ["msg_a", "toolu_a"],
+      ["msg_b", "toolu_b"],
+    ]);
+  });
+
+  test("a subagent repeating the root's text leaves the root entry (and its spawn anchor) alone", () => {
+    const { bridge } = bridgeWithCli();
+    const spawn = spawnBlock("toolu_judge", "Judge round 3");
+    bridge.feedCLIMessage(SID, assistantFrame(spawn));
+    bridge.feedCLIMessage(SID, assistantFrame({ type: "text", text: "Judging round 3." }));
+
+    // The judge happens to say exactly what the root said.
+    bridge.feedCLIMessage(SID, assistantFrame(
+      { type: "text", text: "Judging round 3." },
+      { id: "msg_sub", parent: "toolu_judge" },
+    ));
+
+    const persisted = bridge.getMessageHistory(SID)
+      .filter((m): m is Extract<BrowserIncomingMessage, { type: "assistant" }> => m.type === "assistant");
+    expect(persisted).toHaveLength(2);
+    expect(persisted[0].message.id).toBe("msg_root");
+    expect(persisted[0].parent_tool_use_id).toBeNull();
+    expect(persisted[0].message.content).toEqual([spawn, { type: "text", text: "Judging round 3." }]);
+    expect(persisted[1].message.id).toBe("msg_sub");
+    expect(persisted[1].parent_tool_use_id).toBe("toolu_judge");
+  });
+
+  test("a root re-emit does not collapse into the newest SUBAGENT entry", () => {
+    const { bridge } = bridgeWithCli();
+    bridge.feedCLIMessage(SID, assistantFrame(spawnBlock("toolu_judge", "Judge round 3")));
+    bridge.feedCLIMessage(SID, assistantFrame({ type: "text", text: "Done." }));
+    bridge.feedCLIMessage(SID, assistantFrame({ type: "text", text: "sub says other" }, { id: "msg_sub", parent: "toolu_judge" }));
+
+    // `--resume` re-emits the last ROOT reply under a fresh id.
+    bridge.feedCLIMessage(SID, assistantFrame({ type: "text", text: "Done." }, { id: "msg_resume" }));
+
+    const persisted = bridge.getMessageHistory(SID)
+      .filter((m): m is Extract<BrowserIncomingMessage, { type: "assistant" }> => m.type === "assistant");
+    expect(persisted.map((m) => [m.message.id, m.parent_tool_use_id])).toEqual([
+      ["msg_resume", null],
+      ["msg_sub", "toolu_judge"],
+    ]);
+  });
+});
+
+describe("resume re-emit keeps non-text blocks", () => {
+  test("the overwrite carries the persisted entry's tool_use blocks across", () => {
+    const { bridge } = bridgeWithCli();
+    const spawn = spawnBlock("toolu_judge", "Judge round 3");
+    bridge.feedCLIMessage(SID, assistantFrame(spawn));
+    bridge.feedCLIMessage(SID, assistantFrame({ type: "text", text: "Judging round 3." }));
+
+    // Resume replays the same reply, text only, under a fresh id.
+    bridge.feedCLIMessage(SID, assistantFrame({ type: "text", text: "Judging round 3." }, { id: "msg_y" }));
+
+    const persisted = bridge.getMessageHistory(SID)
+      .filter((m): m is Extract<BrowserIncomingMessage, { type: "assistant" }> => m.type === "assistant");
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0].message.id).toBe("msg_y");
+    expect(persisted[0].message.content).toEqual([spawn, { type: "text", text: "Judging round 3." }]);
+  });
+
+  test("a per-block resume re-emit (tool_use frame first) appends no spurious entry", () => {
+    const { bridge, frames } = bridgeWithCli();
+    const spawn = spawnBlock("toolu_judge", "Judge round 3");
+    bridge.feedCLIMessage(SID, assistantFrame(spawn));
+    bridge.feedCLIMessage(SID, assistantFrame({ type: "text", text: "Judging round 3." }));
+
+    // Resume replays block by block under a fresh id: tool_use frame first.
+    bridge.feedCLIMessage(SID, assistantFrame(spawn, { id: "msg_y" }));
+    const afterToolUse = bridge.getMessageHistory(SID)
+      .filter((m) => m.type === "assistant");
+    expect(afterToolUse).toHaveLength(1);
+    // The frame is still broadcast — only history treats it as a no-op.
+    expect(frames.filter((f) => f.type === "assistant")).toHaveLength(3);
+
+    bridge.feedCLIMessage(SID, assistantFrame({ type: "text", text: "Judging round 3." }, { id: "msg_y" }));
+    const persisted = bridge.getMessageHistory(SID)
+      .filter((m): m is Extract<BrowserIncomingMessage, { type: "assistant" }> => m.type === "assistant");
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0].message.id).toBe("msg_y");
+    expect(persisted[0].message.content).toEqual([spawn, { type: "text", text: "Judging round 3." }]);
+  });
+});
+
+describe("loadMessageHistory rebuilds the roster", () => {
+  const runningJudge: SubagentInfo = {
+    id: "toolu_judge", parent_id: null, label: "Judge round 3", status: "running", detail: "general-purpose",
+  };
+
+  function persistedHistory(): BrowserIncomingMessage[] {
+    return [
+      {
+        type: "assistant",
+        message: {
+          id: "msg_root", type: "message", role: "assistant", model: "claude-opus-5",
+          content: [spawnBlock("toolu_judge", "Judge round 3", "general-purpose")],
+          stop_reason: null,
+          usage: { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        timestamp: 1,
+      },
+      { type: "subagent_update", agent: runningJudge, timestamp: 2 },
+      { type: "subagent_update", agent: { ...runningJudge, status: "completed", detail: "PASS" }, timestamp: 3 },
+    ] as BrowserIncomingMessage[];
+  }
+
+  test("the last snapshot per agent id wins", () => {
+    const bridge = new WsBridge();
+    bridge.loadMessageHistory(SID, persistedHistory());
+
+    expect([...bridge.getSession(SID)!.subagents.values()]).toEqual([
+      { ...runningJudge, status: "completed", detail: "PASS" },
+    ]);
+  });
+
+  test("a re-emitted spawn block after reopen publishes no second running snapshot", () => {
+    const bridge = new WsBridge();
+    bridge.loadMessageHistory(SID, persistedHistory());
+    const { frames } = attachRecordingBrowser(bridge, SID);
+    bridge.attachCLITransport(SID, { send: () => {}, close: () => {} });
+
+    bridge.feedCLIMessage(SID, assistantFrame(spawnBlock("toolu_judge", "Judge round 3", "general-purpose")));
+
+    expect(rosterFrames(frames)).toEqual([]);
+    expect(rosterHistory(bridge).map((a) => a.status)).toEqual(["running", "completed"]);
+  });
+
+  test("a tool_result that arrives after reopen still completes a pre-reopen agent", () => {
+    const bridge = new WsBridge();
+    bridge.loadMessageHistory(SID, [persistedHistory()[0], persistedHistory()[1]]);
+    const { frames } = attachRecordingBrowser(bridge, SID);
+    bridge.attachCLITransport(SID, { send: () => {}, close: () => {} });
+
+    bridge.feedCLIMessage(SID, toolResultFrame("toolu_judge", "PASS"));
+
+    expect(rosterFrames(frames)).toEqual([
+      { ...runningJudge, status: "completed", detail: "PASS" },
+    ]);
+  });
+});
+
+describe("roster snapshot idempotency", () => {
+  test("a re-delivered tool_result does not append a byte-identical snapshot", () => {
+    const { bridge, frames } = bridgeWithCli();
+    bridge.feedCLIMessage(SID, assistantFrame(spawnBlock("toolu_judge", "Judge round 3")));
+    bridge.feedCLIMessage(SID, toolResultFrame("toolu_judge", "PASS"));
+    bridge.feedCLIMessage(SID, toolResultFrame("toolu_judge", "PASS"));
+
+    expect(rosterHistory(bridge).map((a) => a.status)).toEqual(["running", "completed"]);
+    expect(rosterFrames(frames).map((a) => a.status)).toEqual(["running", "completed"]);
+  });
+});
+
+describe("what does NOT move the roster", () => {
+  test("tool_progress without the field is attributed to the root", () => {
+    const { bridge, frames } = bridgeWithCli();
+
+    bridge.feedCLIMessage(SID, JSON.stringify({
+      type: "tool_progress",
+      tool_use_id: "toolu_bash",
+      tool_name: "Bash",
+      elapsed_time_seconds: 3,
+      uuid: "u-progress",
+      session_id: SID,
+    }));
+
+    expect(frames.filter((f) => f.type === "tool_progress")).toMatchObject([
+      { tool_use_id: "toolu_bash", tool_name: "Bash", elapsed_time_seconds: 3, parent_tool_use_id: null },
+    ]);
+  });
+
+  test("a turn `result` leaves the roster untouched (a background Agent outlives the turn)", () => {
+    const { bridge, frames } = bridgeWithCli();
+    bridge.feedCLIMessage(SID, assistantFrame(spawnBlock("toolu_bg", "Background build")));
+
+    bridge.feedCLIMessage(SID, JSON.stringify({
+      type: "result", subtype: "success", total_cost_usd: 0, num_turns: 1, session_id: SID,
+    }));
+
+    expect(rosterHistory(bridge).map((a) => a.status)).toEqual(["running"]);
+    expect(rosterFrames(frames).map((a) => a.status)).toEqual(["running"]);
+    expect(bridge.getSession(SID)!.subagents.get("toolu_bg")!.status).toBe("running");
+  });
+
+  test("a user frame whose blocks are all text changes nothing and emits no command_output", () => {
+    const { bridge, frames } = bridgeWithCli();
+    bridge.feedCLIMessage(SID, assistantFrame(spawnBlock("toolu_judge", "Judge round 3")));
+
+    bridge.feedCLIMessage(SID, JSON.stringify({
+      type: "user",
+      message: { role: "user", content: [{ type: "text", text: "just some text" }] },
+    }));
+
+    expect(rosterHistory(bridge).map((a) => a.status)).toEqual(["running"]);
+    expect(frames.filter((f) => f.type === "command_output")).toEqual([]);
   });
 });

@@ -119,12 +119,14 @@ Outbound (server → CLI stdin, one JSON object per `\n`-delimited line):
 ## Subagents
 
 The CLI spawns agents with the `Task` / `Agent` tools and attributes their
-output with **`parent_tool_use_id`** on `assistant`, `stream_event`,
-`streamlined_text`, `tool_progress`, and `user`: the value is *the `tool_use.id`,
-in the spawning agent's conversation, of the call that created the agent that
-produced this envelope* — `null` for the root agent. That id is the agent's
-identity everywhere in Pneuma (`SubagentInfo.id`, `server/session-types.ts`);
-no second name is introduced.
+output with **`parent_tool_use_id`** on exactly four envelopes — `assistant`,
+`stream_event`, `streamlined_text`, `tool_progress` — where the value is *the
+`tool_use.id`, in the spawning agent's conversation, of the call that created
+the agent that produced this envelope*, `null` for the root agent. That id is
+the agent's identity everywhere in Pneuma (`SubagentInfo.id`,
+`server/session-types.ts`); no second name is introduced. The `user` frame
+that carries a subagent's `tool_result` does **not** carry the field: its
+attribution is the `tool_use_id` inside the block.
 
 Three frames, and only these three, describe a subagent's life:
 
@@ -149,19 +151,41 @@ signal, which has two consequences:
   but no `subagent_update` entries, so the client derives fallback entries
   from `parent_tool_use_id` alone.
 
+**A permission request cannot be attributed.** `control_request.can_use_tool`
+carries `agent_id` and nothing else: a display name the CLI chose, not stable,
+not unique, and absent from every other envelope. There is no way to map it
+back to a roster entry, so a Claude permission banner names the tool, not the
+agent. The one exception is Pneuma's own synthetic AskUserQuestion permission
+(`handleAssistantMessage`), which is built from an `assistant` frame and
+therefore does carry that frame's `parent_tool_use_id`.
+
 **One frame per content block.** An `assistant` message is delivered as
 several frames that all share `message.id`, one content block each (`tool_use`,
 then `text`, …). The bridge therefore **merges** blocks into the persisted
 entry — existing blocks first, then incoming blocks not already present by
-JSON identity — instead of replacing it, and broadcasts the merged entry for
-that frame (the browser applies the same rule in
-`src/store/helpers.ts::mergeContentBlocks`). Replacing is what the bridge used
-to do, and it kept only the last block: across four persisted histories
-(34 / 732 / 415 / 208 assistant entries) not one entry held two blocks, and a
-`Task` tool_use followed by text lost the tool card — i.e. the anchor of the
-subagent it spawned — on every reload while the subagent's reply survived.
-Anything that touches this code path must keep the merge; it is the reason a
-spawn card survives a refresh.
+JSON identity — instead of replacing it. That rule lives in
+`core/utils/content-blocks.ts` because the browser folds the same frames the
+same way (`src/store/helpers.ts::mergeContentBlocks`). Replacing is what the
+bridge used to do, and it kept only the last block: across four persisted
+histories (34 / 732 / 415 / 208 assistant entries) not one entry held two
+blocks, and a `Task` tool_use followed by text lost the tool card — i.e. the
+anchor of the subagent it spawned — on every reload while the subagent's reply
+survived. Anything that touches this code path must keep the merge; it is the
+reason a spawn card survives a refresh. Each frame is broadcast **as itself**,
+not as the merged entry: the browser merges too, and a browser that joins or
+reconnects later is caught up by `message_history` / the replay ring.
+
+**`--resume` re-emits, and the dedup is per conversation.** On resume the CLI
+replays the tail of the ROOT transcript under a fresh `message.id`, so the
+bridge overwrites the last root entry instead of appending a duplicate. Two
+rules keep that from eating real messages: the comparison only ever looks at
+root-attributed entries (a frame with `parent_tool_use_id` set is never a
+resume re-emit, and two agents that both answer "PASS" must both survive), and
+the overwrite carries the persisted entry's non-text blocks across (the
+re-emit is text-only, so a wholesale replace would wipe the spawn anchor the
+merge above exists to preserve). The re-emit also arrives block by block, so a
+`tool_use`-only frame whose blocks are already persisted is a no-op for
+history.
 
 ## Capabilities + why
 
@@ -307,7 +331,7 @@ Pneuma:
 - `core/types/agent-backend.ts` — `AgentBackend` + `BackendModule` contract this backend implements
 - `server/ws-bridge.ts:510` (`routeCLIMessage`) — the switch claude-code envelopes feed into
 - `server/ws-bridge.ts:583` (`handleSystemMessage`) — concrete handling of `system.init` / `status` / `compact_boundary`
-- `subagent-spawn.ts` + `server/ws-bridge.ts` (`registerSubagentSpawns`, `applySubagentToolResults`, `mergeContentBlocks`) — the Subagents section above in code; `server/__tests__/ws-bridge-subagents.test.ts` pins it
+- `subagent-spawn.ts` + `server/ws-bridge.ts` (`registerSubagentSpawns`, `applySubagentToolResults`, `handleAssistantMessage`) + `core/utils/content-blocks.ts` — the Subagents section above in code; `server/__tests__/ws-bridge-subagents.test.ts` pins it
 - `docs/proposals/2026-09-16-subagent-threads.md` — the attribution / roster design these frames implement
 - `server/skill-installer.ts` + `manifest.skillsDir`/`instructionsFile` — how the `.claude/skills` + `CLAUDE.md` layout is materialised
 - `bin/pneuma.ts` — wires `CliLauncher.setHandlers` into `WsBridge.attachCLITransport` / `feedCLIMessage`
