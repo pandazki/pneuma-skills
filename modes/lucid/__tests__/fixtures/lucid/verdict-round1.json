@@ -1,0 +1,22 @@
+{
+  "composition": 1.5,
+  "lighting": 1.0,
+  "materials": 0.8,
+  "details": 0.2,
+  "total": 3.5,
+  "summary": "The camera is close but the scene reads as daylight, not dusk, and every surface is untextured.",
+  "gaps": [
+    {
+      "id": "flat-sky",
+      "area": "lighting",
+      "issue": "The background is a flat light grey; the target has a graded dusk sky with a warm band at the horizon.",
+      "fix": "Replace the solid background with a gradient environment and drop the exposure by about a stop."
+    },
+    {
+      "id": "stone-too-clean",
+      "area": "materials",
+      "issue": "The courtyard stone is a single matte grey with no wetness; the target's stone is wet and reflects the lanterns.",
+      "fix": "Add a roughness map with puddle masks and raise the clearcoat on the flagstones."
+    }
+  ]
+}

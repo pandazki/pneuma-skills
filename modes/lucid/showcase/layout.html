@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lucid showcase</title>
+  <style>
+    @font-face{font-family:DM;src:url('/fonts/dmsans/v17-normal-latin.woff2');font-weight:300 700}
+    @font-face{font-family:DMi;src:url('/fonts/dmsans/v17-italic-latin.woff2');font-weight:300 700;font-style:italic}
+    @font-face{font-family:Fraunces;src:url('/fonts/fraunces/v38-normal-latin.woff2');font-weight:400}
+    *{box-sizing:border-box}
+    body{margin:0;width:1376px;height:768px;overflow:hidden;background:#09090b;color:#f4f2ef;font-family:DM,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+    body:before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 74% -10%,#5a341f24,transparent 60%),radial-gradient(ellipse at 8% 108%,#18181b,transparent 64%);pointer-events:none}
+    .page{position:relative;width:1376px;height:768px;padding:32px 48px 28px;display:none}
+    .page.active{display:block}
+
+    /* ── shared chrome ─────────────────────────────────────────────────── */
+    .brand{display:flex;align-items:center;gap:12px;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#a5a1a0}
+    .brand b{color:#f4f2ef;font-weight:600}
+    .brand i{height:17px;width:1px;background:#454044;margin:0 3px}
+    .dot{width:7px;height:7px;background:#f97316;border-radius:50%}
+    .folio{margin-left:auto;letter-spacing:1.6px;color:#aaa09b;font-size:12px}
+    h1{font:400 42px/1.08 Fraunces,Georgia,serif;letter-spacing:-1.4px;margin:22px 0 9px}
+    p{margin:0;color:#a6a2a1;font-size:15px;line-height:1.55}
+    .topline{display:flex;justify-content:space-between;align-items:flex-end;gap:36px}
+    .topline>p{font-size:14px;padding-bottom:8px;text-align:right;flex:none;max-width:430px}
+    .eyebrow{font-size:11px;letter-spacing:1.8px;color:#8d8783;text-transform:uppercase}
+    .foot{position:absolute;bottom:17px;left:48px;right:48px;display:flex;justify-content:space-between;color:#8d8783;font-size:12px}
+    .caption{position:absolute;bottom:44px;left:48px;right:48px;text-align:center;font:400 15px/1.4 Fraunces,Georgia,serif;font-style:italic;color:#cfc6bd}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;letter-spacing:-.1px}
+    .accent{color:#f9a665}
+
+    /* ── surfaces ──────────────────────────────────────────────────────── */
+    .window{border:1px solid #322e31;border-radius:13px;overflow:hidden;background:#0e0e10;box-shadow:0 25px 50px #0006}
+    .bar{height:44px;background:#171618;border-bottom:1px solid #2b282b;display:flex;align-items:center;gap:10px;padding:0 16px 0 20px;font-size:12.5px;color:#ddd7d3}
+    .bar .muted{color:#918a86;margin-left:6px}
+    .bar .right{margin-left:auto;display:flex;align-items:center;gap:12px}
+    .pill{padding:4px 9px;border:1px solid #4a3a2e;border-radius:5px;color:#ffb47c;background:#f973160e;font-size:11.5px}
+    .pill.quiet{border-color:#3a3639;color:#b0a8a3;background:#ffffff05}
+    .seg{display:flex;border:1px solid #3a3639;border-radius:6px;overflow:hidden}
+    .seg span{padding:4px 11px;font-size:11.5px;color:#9c9490;border-right:1px solid #2f2c2f}
+    .seg span:last-child{border-right:0}
+    .seg span.on{background:#f9731618;color:#f9be92;box-shadow:inset 0 0 0 1px #c4753d55}
+
+    /* stage composite: the wipe */
+    .stage{position:relative;overflow:hidden;border:1px solid #2b282b;border-radius:9px;background:#08080a}
+    .stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+    .stage .over{position:absolute;inset:0;overflow:hidden}
+    .stage .seam{position:absolute;top:0;bottom:0;width:1px;background:#f97316b3;box-shadow:0 0 10px #f9731655}
+    .stage .knob{position:absolute;top:50%;left:50%;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;border:1px solid #f97316b3;background:#09090bcc;backdrop-filter:blur(4px)}
+    .stage .knob:after{content:"";position:absolute;inset:0;margin:auto;width:1px;height:9px;background:#f9a665;box-shadow:-3px 0 0 #f9a665,3px 0 0 #f9a665}
+    .corner{position:absolute;top:9px;padding:2px 9px;border-radius:999px;border:1px solid #3a3639;background:#09090bb3;font-size:10.5px;color:#c8c1bb;backdrop-filter:blur(3px)}
+    .corner.l{left:9px}
+    .corner.r{right:9px}
+
+    /* ── 00 hero ───────────────────────────────────────────────────────── */
+    .hero .window{margin-top:12px;height:526px}
+    .hero .board{height:482px;display:grid;grid-template-columns:1fr 330px}
+    .hero .col{padding:14px 16px;display:flex;flex-direction:column;min-width:0}
+    .hero .stage{height:368px}
+    .hero .rail{display:flex;align-items:center;gap:7px;margin-top:11px;height:34px}
+    .hero .chip{display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid #2f2b2e;border-radius:6px;background:#111113;font-size:11.5px;color:#b0a8a3;white-space:nowrap}
+    .hero .chip b{font-weight:500;color:#ded7d1}
+    .hero .chip.best{border-color:#c4753d;background:#f973160f}
+    .hero .chip.best b{color:#f9be92}
+    .hero .chip small{color:#7e7874;font-size:10.5px}
+    .hero .chip .star{color:#f97316;font-size:10px}
+    .hero .spark{margin-left:auto;display:flex;align-items:center;gap:9px;font-size:10.5px;color:#7e7874}
+    .hero .strip{display:flex;align-items:center;gap:11px;margin-top:11px;padding-top:10px;border-top:1px solid #232023;font-size:11.5px;color:#8d8783}
+    .hero .statechip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;border:1px solid #a1620633;background:#eab30812;color:#e9b872;font-size:11px}
+    .hero .statechip s{width:6px;height:6px;border-radius:50%;background:currentColor}
+    .hero .strip .vit{font-variant-numeric:tabular-nums}
+    .hero .strip .vit b{color:#c8c1bb;font-weight:500}
+    .hero .aside{border-left:1px solid #262327;padding:14px 15px;display:flex;flex-direction:column;min-width:0;overflow:hidden}
+    .hero .aside .eyebrow{display:flex;align-items:center;gap:7px;margin-bottom:10px}
+    .hero .aside .count{border:1px solid #2f2b2e;border-radius:999px;padding:1px 7px;font-size:10px;letter-spacing:0;color:#918a86}
+    .hero .arow{border:1px solid #2b282b;border-radius:8px;background:#111113;padding:9px 10px;margin-bottom:8px}
+    .hero .arow .top{display:flex;align-items:baseline;gap:8px}
+    .hero .arow .top b{font-size:12px;font-weight:500;color:#ded7d1}
+    .hero .arow .st{margin-left:auto;border:1px solid #16a34a44;color:#69c58e;border-radius:999px;padding:1px 7px;font-size:10px}
+    .hero .arow .meta{margin-top:4px;font-size:11px;color:#8d8783}
+    .hero .arow .files{margin-top:4px;font-size:10px;color:#6f6a66;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .hero .tex{display:flex;gap:6px;margin-top:4px}
+    .hero .tex figure{margin:0;flex:1;min-width:0;border:1px solid #2b282b;border-radius:6px;overflow:hidden;background:#0c0c0e}
+    .hero .tex img{display:block;width:100%;height:42px;object-fit:cover}
+    .hero .tex figcaption{padding:3px 5px;font-size:9px;color:#6f6a66;border-top:1px solid #1d1b1e;text-align:center;letter-spacing:.3px}
+    .hero .ledgernote{margin-top:10px;padding-top:10px;border-top:1px solid #232023;font-size:10.5px;line-height:1.6;color:#7e7874}
+
+    /* ── 01 locked target ──────────────────────────────────────────────── */
+    .lock .content{display:grid;grid-template-columns:372px 132px 1fr;gap:0;margin-top:18px;align-items:stretch}
+    .lock .brief{border:1px solid #2f2b2e;border-radius:10px;background:#101012;padding:15px 16px 14px;display:flex;flex-direction:column}
+    .lock .brief .spacer{flex:1;min-height:10px}
+    .lock .dream{margin-top:13px;padding-top:12px;border-top:1px solid #232023;font-size:11px;color:#8d8783;line-height:1.7}
+    .lock .dream .kv{display:flex;gap:10px}
+    .lock .dream .kv span{color:#6f6a66;width:92px;flex:none}
+    .lock .dream .kv b{color:#c8c1bb;font-weight:500}
+    .lock .brief q{display:block;quotes:none;font:400 15px/1.72 Fraunces,Georgia,serif;color:#ded7d1}
+    .lock .brief .who{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+    .lock .steps{margin-top:14px;padding-top:12px;border-top:1px solid #232023;font-size:11px;color:#8d8783;line-height:1.85}
+    .lock .steps b{color:#c8c1bb;font-weight:500}
+    .lock .steps i{font-style:normal;color:#5c5652;margin:0 5px}
+    .lock .link{text-align:center;padding:0 14px;display:flex;flex-direction:column;justify-content:center}
+    .lock .link .cap{font-size:10.5px;letter-spacing:1.5px;color:#c98a52;text-transform:uppercase;margin-bottom:12px}
+    .lock .link .line{position:relative;height:1px;background:linear-gradient(90deg,#7a4c2c,#f97316)}
+    .lock .link .line:after{content:"";width:8px;height:8px;border-top:1.5px solid #f9a665;border-right:1.5px solid #f9a665;transform:rotate(45deg);position:absolute;right:0;top:-4px}
+    .lock .link p{font-size:11px;margin-top:12px;color:#8d8783;line-height:1.5}
+    .lock .shot{border:1px solid #322e31;border-radius:11px;overflow:hidden;background:#0e0e10;box-shadow:0 22px 44px #0007}
+    .lock .shot img{display:block;width:100%;height:418px;object-fit:cover;object-position:center 42%}
+    .lock .shot .plabel{display:flex;align-items:center;gap:9px;padding:9px 12px;background:#151416;border-top:1px solid #262327;font-size:11.5px;color:#c8c1bb}
+    .lock .shot .plabel small{color:#8d8783}
+    .lock .shot .plabel .lk{margin-left:auto;display:inline-flex;align-items:center;gap:6px;border:1px solid #c4753d;border-radius:999px;padding:2px 10px;color:#f9be92;font-size:11px;background:#f973160f}
+    .lock .hist{margin-top:9px;border:1px dashed #302c30;border-radius:8px;padding:9px 12px;font-size:11px;color:#807a76;display:flex;align-items:center;gap:10px}
+    .lock .hist .tag{border:1px solid #2f2b2e;border-radius:4px;padding:2px 7px;font-size:10px;color:#6f6a66;letter-spacing:.4px}
+
+    /* ── 02 wipe ───────────────────────────────────────────────────────── */
+    .wipe .ctrls{display:flex;align-items:center;gap:10px;margin-top:17px;font-size:11.5px;color:#918a86}
+    .wipe .ctrls .roundchips{display:flex;gap:6px;margin-left:14px}
+    .wipe .ctrls .rc{border:1px solid #2f2b2e;border-radius:5px;padding:4px 9px;background:#111113;color:#9c9490;font-size:11px}
+    .wipe .ctrls .rc.on{border-color:#c4753d;color:#f9be92;background:#f973160f}
+    .wipe .ctrls .wv{margin-left:auto;color:#7e7874}
+    .wipe .stage{height:468px;margin-top:13px}
+    .wipe .legend{display:flex;margin-top:12px;font-size:11.5px;color:#8d8783;gap:14px;align-items:center}
+    .wipe .legend b{color:#ded7d1;font-weight:500}
+    .wipe .legend .sp{margin-left:auto;text-align:right}
+
+    /* ── 03 judge ──────────────────────────────────────────────────────── */
+    .judge .content{display:grid;grid-template-columns:1fr 408px;gap:20px;margin-top:16px;height:502px;align-items:stretch}
+    .judge .card{border:1px solid #2f2b2e;border-radius:11px;background:#0e0e10;padding:15px 17px 16px;display:flex;flex-direction:column}
+    .judge .chead{display:flex;align-items:center;gap:10px;margin-bottom:13px}
+    .judge .chead b{font-size:13px;font-weight:500;color:#ded7d1}
+    .judge .chip{margin-left:auto;display:inline-flex;align-items:center;gap:7px;border:1px solid #4a3a2e;border-radius:999px;padding:3px 11px;background:#f973160d;color:#f9be92;font-size:11px}
+    .judge .chip .mono{color:#c98a52;font-size:10.5px}
+    .judge .axes{display:flex;flex-direction:column;gap:9px}
+    .judge .ax{display:flex;align-items:center;gap:11px;font-size:11.5px;color:#a29a95}
+    .judge .ax span{width:86px;flex:none}
+    .judge .ax .track{flex:1;height:6px;border-radius:3px;background:#1d1b1e;overflow:hidden}
+    .judge .ax .fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#b4622c,#f97316)}
+    .judge .ax em{font-style:normal;width:64px;text-align:right;flex:none;color:#ded7d1;font-variant-numeric:tabular-nums}
+    .judge .ax em i{font-style:normal;color:#6f6a66}
+    .judge .total{display:flex;align-items:baseline;gap:11px;margin:14px 0 13px;padding-top:13px;border-top:1px solid #232023}
+    .judge .total b{font:400 32px/1 Fraunces,Georgia,serif;color:#f4ece4}
+    .judge .total i{font-style:normal;font-size:13px;color:#6f6a66}
+    .judge .total .note{margin-left:auto;font-size:11px;color:#8d8783;text-align:right;line-height:1.5}
+    .judge .gaps{display:flex;flex-direction:column;gap:8px;flex:1;justify-content:center}
+    .judge .gap{border:1px solid #2b282b;border-radius:8px;background:#111113;padding:9px 11px}
+    .judge .gap .gh{display:flex;align-items:baseline;gap:9px;margin-bottom:4px}
+    .judge .gap .gh b{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;font-weight:400;color:#f9be92}
+    .judge .gap .gh .area{border:1px solid #3a3639;border-radius:4px;padding:1px 6px;font-size:10px;color:#918a86;letter-spacing:.3px}
+    .judge .gap p{font-size:11px;line-height:1.55;color:#8d8783}
+    .judge .gap p em{font-style:normal;color:#a29a95}
+    .judge .gap .fix{margin-top:3px;color:#7e7874}
+    .judge .gap .fix b{font-weight:400;color:#c98a52}
+    .judge .more{margin-top:9px;font-size:11px;color:#6f6a66;text-align:center}
+    .judge .side{display:flex;flex-direction:column;gap:11px}
+    .judge .shot{border:1px solid #2b282b;border-radius:9px;overflow:hidden;background:#0c0c0e}
+    .judge .shot img{display:block;width:100%;height:128px;object-fit:cover;object-position:center 44%}
+    .judge .shot .cap{padding:7px 11px;background:#141315;border-top:1px solid #232023;font-size:11px;color:#918a86;display:flex;gap:8px}
+    .judge .shot .cap b{color:#c8c1bb;font-weight:500}
+    .judge .summary{border:1px solid #2b282b;border-radius:9px;background:#111113;padding:13px 14px}
+    .judge .summary q{display:block;quotes:none;font:400 12.5px/1.6 Fraunces,Georgia,serif;color:#c8c1bb}
+    .judge .trend{border:1px solid #2b282b;border-radius:9px;background:#111113;padding:13px 14px}
+    .judge .trend .row{display:flex;align-items:center;gap:9px;font-size:11.5px;color:#8d8783}
+    .judge .trend .row b{color:#ded7d1;font-weight:500;font-variant-numeric:tabular-nums}
+    .judge .trend .row .to{color:#5c5652}
+    .judge .trend .row .hi{color:#f9be92}
+    .judge .exit{border:1px solid #a1620633;border-radius:9px;background:#eab3080a;padding:13px 14px;flex:none;margin-top:auto}
+    .judge .exit .eh{display:inline-flex;align-items:center;gap:7px;color:#e9b872;font-size:12px;margin-bottom:9px}
+    .judge .exit .eh s{width:6px;height:6px;border-radius:50%;background:currentColor}
+    .judge .exit ul{margin:0;padding-left:15px;font-size:11px;line-height:1.6;color:#8d8783}
+    .judge .exit li{margin-bottom:6px}
+    .judge .exit li b{color:#c8c1bb;font-weight:500}
+    .judge .exit .src{margin-top:8px;font-size:10px;color:#5c5652;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+    /* ── 04 ladder ─────────────────────────────────────────────────────── */
+    .ladder .content{display:grid;grid-template-columns:1fr 470px;gap:22px;margin-top:17px}
+    .ladder .rung{display:flex;align-items:flex-start;gap:13px;border:1px solid #2b282b;border-radius:9px;background:#0f0f11;padding:11px 13px;margin-bottom:8px}
+    .ladder .rung .n{width:22px;height:22px;flex:none;border-radius:6px;border:1px solid #3a3639;display:flex;align-items:center;justify-content:center;font-size:11px;color:#918a86;margin-top:1px}
+    .ladder .rung .body{min-width:0;flex:1}
+    .ladder .rung b{display:block;font-size:12.5px;font-weight:500;color:#ded7d1;margin-bottom:3px}
+    .ladder .rung p{font-size:11px;line-height:1.5;color:#8d8783}
+    .ladder .rung .tag{margin-left:auto;flex:none;border:1px solid #3a3639;border-radius:999px;padding:2px 9px;font-size:10px;color:#8d8783;margin-top:2px}
+    .ladder .rung.optin{border-style:dashed;background:transparent}
+    .ladder .rung.optin b,.ladder .rung.optin p{color:#6f6a66}
+    .ladder .rung.chosen{border-color:#c4753d;background:#f973160c;box-shadow:0 0 0 1px #f9731620}
+    .ladder .rung.chosen .n{border-color:#c4753d;color:#f9be92}
+    .ladder .rung.chosen b{color:#f9be92}
+    .ladder .rung.chosen .tag{border-color:#c4753d;color:#f9be92}
+    .ladder .rung .mono{color:#7e7874;display:block;margin-top:4px}
+    .ladder .doctor{margin-top:11px;border:1px solid #2b282b;border-radius:8px;background:#111113;padding:10px 12px;display:flex;align-items:center;gap:10px}
+    .ladder .doctor .ok{border:1px solid #16a34a44;color:#69c58e;border-radius:999px;padding:1px 8px;font-size:10px;flex:none}
+    .ladder .doctor .mono{color:#918a86;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .ladder .panel{border:1px solid #2f2b2e;border-radius:11px;background:#0e0e10;overflow:hidden}
+    .ladder .panel .ph{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid #262327;background:#151416}
+    .ladder .panel .ph b{font-size:12px;font-weight:500;color:#ded7d1}
+    .ladder .panel .ph .count{border:1px solid #2f2b2e;border-radius:999px;padding:1px 7px;font-size:10px;color:#918a86}
+    .ladder table{width:100%;border-collapse:collapse}
+    .ladder th{font-size:10px;letter-spacing:1.3px;text-transform:uppercase;color:#6f6a66;font-weight:400;text-align:left;padding:8px 14px 6px}
+    .ladder td{font-size:11.5px;color:#a29a95;padding:7px 14px;border-top:1px solid #1d1b1e;vertical-align:top}
+    .ladder td.id{color:#ded7d1;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
+    .ladder td .st{border:1px solid #16a34a44;color:#69c58e;border-radius:999px;padding:1px 7px;font-size:10px}
+    .ladder .why{padding:11px 14px;border-top:1px solid #1d1b1e;font-size:11px;line-height:1.55;color:#8d8783;background:#0c0c0e}
+    .ladder .why b{color:#c8c1bb;font-weight:500}
+    .ladder .tex{display:flex;gap:9px;margin-top:11px}
+    .ladder .tex figure{margin:0;flex:1;border:1px solid #2b282b;border-radius:8px;overflow:hidden;background:#0c0c0e}
+    .ladder .tex img{display:block;width:100%;height:112px;object-fit:cover}
+    .ladder .tex figcaption{padding:5px 8px;font-size:10px;color:#807a76;border-top:1px solid #1d1b1e;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .ladder .vit{margin-top:11px;display:flex;align-items:center;gap:11px;border-top:1px solid #232023;padding-top:11px;font-size:11.5px;color:#8d8783;font-variant-numeric:tabular-nums}
+    .ladder .vit b{color:#c8c1bb;font-weight:500}
+    .ladder .vit .statechip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;border:1px solid #16a34a44;background:#16a34a10;color:#69c58e;font-size:11px}
+    .ladder .vit .statechip s{width:6px;height:6px;border-radius:50%;background:currentColor}
+    .ladder .note{margin-top:12px;font-size:11.5px;line-height:1.65;color:#8d8783}
+    .ladder .note em{color:#a29a95;font-style:normal}
+    .ladder .onstage{margin-top:13px;border:1px solid #2b282b;border-radius:9px;overflow:hidden;background:#0c0c0e}
+    .ladder .onstage img{display:block;width:100%;height:118px;object-fit:cover;object-position:center 42%}
+    .ladder .onstage .cap{display:flex;gap:9px;padding:7px 11px;background:#141315;border-top:1px solid #232023;font-size:11px;color:#918a86}
+    .ladder .onstage .cap b{color:#c8c1bb;font-weight:500;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px}
+  </style>
+</head>
+<body>
+
+<!-- ══════════════ HERO ══════════════ -->
+<section class="page hero" data-view="hero">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Lucid</b><span class="folio">DREAM IT FIRST · THEN BUILD TO IT</span></div>
+  <div class="topline">
+    <h1>Build until the pixels agree.</h1>
+    <p>One locked target. Every round scored against it.</p>
+  </div>
+  <div class="window">
+    <div class="bar">Ember Abbey <span class="muted">isometric voxel dark fantasy · 3 rounds · target v1 locked</span>
+      <div class="right">
+        <div class="seg"><span>Live</span><span>Target</span><span class="on">Split</span></div>
+        <span class="pill">Capture &amp; judge</span>
+      </div>
+    </div>
+    <div class="board">
+      <div class="col">
+        <div class="stage">
+          <img src="/art/r03.png" style="object-position:center 40%">
+          <div class="over" style="clip-path:inset(0 47% 0 0)"><img src="/art/target.png" style="object-position:center 42%"></div>
+          <div class="seam" style="left:53%"><span class="knob"></span></div>
+          <span class="corner l">Target</span>
+          <span class="corner r">Live</span>
+        </div>
+        <div class="rail">
+          <div class="chip"><b>R1</b> 3.35</div>
+          <div class="chip"><b>R2</b> 4.0</div>
+          <div class="chip best"><b>R3</b> 4.25 <span class="star">◆</span><small>rethink</small></div>
+          <div class="spark">
+            <span>trajectory</span>
+            <svg width="128" height="32" viewBox="0 0 128 32" fill="none">
+              <path d="M0 2.5 H128" stroke="#2a262a" stroke-width="1" stroke-dasharray="2 3"/>
+              <path d="M0 29.5 H128" stroke="#2a262a" stroke-width="1"/>
+              <text x="0" y="12" fill="#5c5652" font-size="8" font-family="DM,Arial">10</text>
+              <text x="0" y="27" fill="#5c5652" font-size="8" font-family="DM,Arial">0</text>
+              <path d="M20 20.4 L72 18.7 L124 18.0" stroke="#f97316" stroke-width="1.6" stroke-linejoin="round"/>
+              <circle cx="20" cy="20.4" r="2" fill="#7a4c2c"/><circle cx="72" cy="18.7" r="2" fill="#b4622c"/><circle cx="124" cy="18" r="2.6" fill="#f97316"/>
+            </svg>
+            <span>rubric scale</span>
+          </div>
+        </div>
+        <div class="strip">
+          <span class="statechip"><s></s>Stall approaching</span>
+          <span class="vit"><b>120</b> fps · <b>8.3</b> ms · <b>240</b> draws · <b>1.66M</b> tris · <b>11</b> textures</span>
+          <span style="margin-left:auto">42 min budget</span>
+        </div>
+      </div>
+      <div class="aside">
+        <div class="eyebrow">Asset ledger<span class="count">4</span></div>
+        <div class="arow"><div class="top"><b>masonry</b><span class="st">placed</span></div>
+          <div class="meta">environment · procedural</div>
+          <div class="files">scene/textures/slate.png</div></div>
+        <div class="arow"><div class="top"><b>knight</b><span class="st">placed</span></div>
+          <div class="meta">hero · procedural</div>
+          <div class="files">scene/textures/heraldic-cloth.png</div></div>
+        <div class="arow"><div class="top"><b>wet-floor</b><span class="st">placed</span></div>
+          <div class="meta">environment · procedural</div>
+          <div class="files">scene/main.js</div></div>
+        <div class="arow"><div class="top"><b>atmosphere</b><span class="st">placed</span></div>
+          <div class="meta">environment · procedural</div>
+          <div class="files">scene/textures/storm-sky.png</div></div>
+        <div class="tex">
+          <figure><img src="/art/tex/slate.png"><figcaption>slate</figcaption></figure>
+          <figure><img src="/art/tex/sanctuary-door.png"><figcaption>door</figcaption></figure>
+          <figure><img src="/art/tex/heraldic-cloth.png"><figcaption>cloth</figcaption></figure>
+          <figure><img src="/art/tex/storm-sky.png"><figcaption>sky</figcaption></figure>
+        </div>
+        <p class="ledgernote">Which rung it came from, and how far it got —
+          for every model on stage.</p>
+      </div>
+    </div>
+  </div>
+  <div class="caption">The dream on the left, what you built on the right, and the distance between them as a number.</div>
+  <div class="foot"><span>Three.js in the browser · capture through the scene's own renderer · a judge with a fresh context</span><span>Stylized panel · real target, real captures, real verdicts</span></div>
+</section>
+
+<!-- ══════════════ 01 LOCKED TARGET ══════════════ -->
+<section class="page lock" data-view="locked-target">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Lucid</b><span class="folio">01 / THE TARGET</span></div>
+  <div class="topline">
+    <h1>The target is dreamed before a line of code.</h1>
+    <p>Then it is locked, and every round is scored against that same picture.</p>
+  </div>
+  <div class="content">
+    <div class="brief">
+      <div class="who"><span class="eyebrow">The brief, in the user's words</span></div>
+      <q>“Isometric voxel-ish dark fantasy graphics demo with realistic shading, reflective wet floors, a character, expansive living environment and bounded click-to-move exploration. Lazy-follow camera, drag rotation, scroll zoom. Three.js, 60 fps, no downloaded art assets, no gameplay. 45 minute time limit.”</q>
+      <div class="spacer"></div>
+      <div class="steps">
+        <b>1</b> init the project <i>›</i> <b>2</b> read the stage — 1091 × 738<br>
+        <b>3</b> dream the target at that aspect <i>›</i> <b>4</b> lock it
+      </div>
+      <div class="dream">
+        <div class="kv"><span>dreamed</span><b>by the agent's own image tool, from the brief</b></div>
+        <div class="kv"><span>locked</span><b>08:02:09, before any scene code</b></div>
+        <div class="kv"><span>scored against</span><b>3 rounds · 3.35 → 4.0 → 4.25</b></div>
+      </div>
+    </div>
+    <div class="link">
+      <div class="cap">One image</div>
+      <div class="line"></div>
+      <p>generated, never<br>fetched</p>
+    </div>
+    <div style="display:flex;flex-direction:column">
+      <div class="shot">
+        <img src="/art/target.png">
+        <div class="plabel">target.png <small>1456 × 819</small>
+          <span class="lk">v1 · locked</span></div>
+      </div>
+      <div class="hist"><span class="tag">HISTORY</span> Empty — v1 was never replaced. A new target archives the old one here, with the round it was swapped at.</div>
+    </div>
+  </div>
+  <div class="caption">A trajectory needs a fixed point. This is it.</div>
+  <div class="foot"><span>Ember Abbey · the target this project locked at 08:02, three rounds before the loop stopped</span><span>Real brief and real target from the mode's own run</span></div>
+</section>
+
+<!-- ══════════════ 02 WIPE ══════════════ -->
+<section class="page wipe" data-view="wipe-compare">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Lucid</b><span class="folio">02 / THE STAGE</span></div>
+  <div class="topline">
+    <h1>Judge it on the same pixels.</h1>
+    <p>Drag the seam. The dream is on the left, what you built is on the right.</p>
+  </div>
+  <div class="ctrls">
+    <div class="seg"><span>Live</span><span>Target</span><span class="on">Split</span></div>
+    <div class="roundchips"><span class="rc">Live</span><span class="rc">R1 3.35</span><span class="rc on">R2 4.0</span><span class="rc">R3 4.25</span></div>
+    <span class="wv">wipe 45%</span>
+  </div>
+  <div class="stage">
+    <img src="/art/r02.png" style="object-position:center 42%">
+    <div class="over" style="clip-path:inset(0 55% 0 0)"><img src="/art/target.png" style="object-position:center 44%"></div>
+    <div class="seam" style="left:45%"><span class="knob"></span></div>
+    <span class="corner l">Target</span>
+    <span class="corner r">Round 2</span>
+  </div>
+  <div class="legend">
+    <span><b>target.png</b> · v1 · locked</span>
+    <span class="sp"><b>rounds/02/capture.png</b> · the renderer's own frame · 4.0 / 10</span>
+  </div>
+  <div class="caption">A lighting change becomes something you can see, not something you remember.</div>
+  <div class="foot"><span>Live, Target or Split at any time · any past round's capture against the same dream</span><span>Real round-2 capture, uncropped except by this frame</span></div>
+</section>
+
+<!-- ══════════════ 03 FRESH JUDGE ══════════════ -->
+<section class="page judge" data-view="fresh-judge">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Lucid</b><span class="folio">03 / THE JUDGE</span></div>
+  <div class="topline">
+    <h1>A judge that has never seen your code.</h1>
+    <p>It gets two images and a rubric. The agent that built the scene never grades it.</p>
+  </div>
+  <div class="content">
+    <div class="card">
+      <div class="chead"><b>Round 3 verdict</b>
+        <span class="chip">fresh context<span class="mono">/root/judge_03</span></span></div>
+      <div class="axes">
+        <div class="ax"><span>Composition</span><div class="track"><div class="fill" style="width:48.3%"></div></div><em>1.45<i> / 3</i></em></div>
+        <div class="ax"><span>Lighting</span><div class="track"><div class="fill" style="width:43.3%"></div></div><em>1.3<i> / 3</i></em></div>
+        <div class="ax"><span>Materials</span><div class="track"><div class="fill" style="width:40%"></div></div><em>1.2<i> / 3</i></em></div>
+        <div class="ax"><span>Details</span><div class="track"><div class="fill" style="width:30%"></div></div><em>0.3<i> / 1</i></em></div>
+      </div>
+      <div class="total"><b>4.25</b><i>/ 10</i>
+        <span class="note">“The goal is for both images to be identical.”<br>Upstream's rubric, kept as it was written.</span></div>
+      <div class="gaps">
+        <div class="gap">
+          <div class="gh"><b>camera-framing</b><span class="area">composition</span></div>
+          <p><em>Steeper and taller than the target; it exposes the platform perimeter and an empty foreground strip.</em></p>
+          <p class="fix"><b>Fix</b> — use the target's ~16:9 frame, lower the camera, move the framing inward so the boundaries fall outside the edges.</p>
+        </div>
+        <div class="gap">
+          <div class="gh"><b>reflection-character</b><span class="area">materials</span></div>
+          <p><em>Reflections are smooth elongated patches on uniform paving; the target has irregular puddles, dry islands and fine glints.</em></p>
+          <p class="fix"><b>Fix</b> — puddle masks, multiscale normals, per-paver wetness; break reflections at raised edges.</p>
+        </div>
+        <div class="gap">
+          <div class="gh"><b>character-silhouette</b><span class="area">details</span></div>
+          <p><em>Still a square-headed block figure with a broad flat cape and no readable sword.</em></p>
+          <p class="fix"><b>Fix</b> — refine helmet and shoulders, articulate the limbs, add a sword angled down, taper the cape into torn folds.</p>
+        </div>
+      </div>
+      <div class="more">3 of the 19 gaps this verdict named — each with an id, an area, a symptom and a fix</div>
+    </div>
+    <div class="side">
+      <div class="shot">
+        <img src="/art/r03.png">
+        <div class="cap"><b>rounds/03/capture.png</b><span>what the judge was shown</span></div>
+      </div>
+      <div class="summary">
+        <div class="eyebrow" style="margin-bottom:8px">In its own words</div>
+        <q>“The broad visual ingredients are present, but the build remains a
+          tidy, steeply viewed enclosed platform with an oversized door and
+          repetitive towers. Those structural and material differences still
+          dominate.”</q>
+      </div>
+      <div class="trend">
+        <div class="eyebrow" style="margin-bottom:9px">Trajectory</div>
+        <div class="row"><b>3.35</b><span class="to">→</span><b>4.0</b><span class="to">→</span><b class="hi">4.25</b>
+          <svg width="96" height="26" viewBox="0 0 96 26" fill="none" style="margin-left:auto">
+            <path d="M2 17.3 L47 15.6 L94 15.0" stroke="#f97316" stroke-width="1.6"/>
+            <circle cx="2" cy="17.3" r="2" fill="#7a4c2c"/><circle cx="47" cy="15.6" r="2" fill="#b4622c"/><circle cx="94" cy="15" r="2.6" fill="#f97316"/>
+          </svg>
+        </div>
+      </div>
+      <div class="exit">
+        <div class="eh"><s></s>stall-approaching</div>
+        <ul>
+          <li>The judge named <b>the same 18 gaps</b> in two verdicts in a row.</li>
+          <li>The best of the last two rounds is <b>4.25/10</b>, less than a full point over the <b>3.35/10</b> before them.</li>
+        </ul>
+        <div class="src">lucid.mjs status · evaluation.exit</div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">The same gap named twice is not a to-do. It is a signal to redesign.</div>
+  <div class="foot"><span>Composition 0–3 · Lighting 0–3 · Materials 0–3 · Details 0–1 — a repeated gap is what triggers a rethink</span><span>Real verdict JSON from round 3 of the Ember Abbey run</span></div>
+</section>
+
+<!-- ══════════════ 04 ASSET LADDER ══════════════ -->
+<section class="page ladder" data-view="asset-ladder">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Lucid</b><span class="folio">04 / THE ASSETS</span></div>
+  <div class="topline">
+    <h1>Every model comes down a ladder.</h1>
+    <p>And the ledger says which rung it came from, and how far it got.</p>
+  </div>
+  <div class="content">
+    <div>
+      <div class="rung optin">
+        <span class="n">1</span>
+        <div class="body"><b>Download existing art</b>
+          <p>Only when the user has said so. Unspecified means no.</p></div>
+        <span class="tag">opt-in</span>
+      </div>
+      <div class="rung">
+        <span class="n">2</span>
+        <div class="body"><b>Image-to-3D, from your own cut-out of the target</b>
+          <p>Heroes, architecture, characters, trees — not a download.</p>
+          <span class="mono">tripo3d/h3.1/image-to-3d ≈ $0.30 · fal-ai/trellis ≈ $0.02</span></div>
+        <span class="tag">needs a fal key</span>
+      </div>
+      <div class="rung">
+        <span class="n">3</span>
+        <div class="body"><b>Headless Blender</b>
+          <p>Modelling a specific hard-surface object, conversion, armatures, normal bakes — never opened interactively.</p>
+          <span class="mono">blender.mjs run &lt;script.py&gt;</span></div>
+        <span class="tag">local</span>
+      </div>
+      <div class="rung chosen">
+        <span class="n">4</span>
+        <div class="body"><b>Procedural geometry, textured by the image tool</b>
+          <p>The last rung — and the faithful one when the brief says voxel, low-poly or blocky.</p></div>
+        <span class="tag">chosen here</span>
+      </div>
+      <div class="doctor">
+        <span class="ok">found</span>
+        <span class="mono">blender 5.2.1 at /Applications/Blender.app/Contents/MacOS/Blender (found via platform)</span>
+      </div>
+      <div class="eyebrow" style="margin:14px 0 8px">Textures, always — from the image tool, never from noise</div>
+      <div class="tex">
+        <figure><img src="/art/tex/slate.png"><figcaption>slate.png</figcaption></figure>
+        <figure><img src="/art/tex/sanctuary-door.png"><figcaption>sanctuary-door.png</figcaption></figure>
+        <figure><img src="/art/tex/heraldic-cloth.png"><figcaption>heraldic-cloth.png</figcaption></figure>
+        <figure><img src="/art/tex/storm-sky.png"><figcaption>storm-sky.png</figcaption></figure>
+      </div>
+    </div>
+    <div>
+      <div class="panel">
+        <div class="ph"><b>Asset ledger</b><span class="count">4</span><span style="margin-left:auto;font-size:11px;color:#8d8783">Ember Abbey</span></div>
+        <table>
+          <tr><th>id</th><th>role</th><th>source</th><th>state</th></tr>
+          <tr><td class="id">masonry</td><td>environment</td><td>procedural</td><td><span class="st">placed</span></td></tr>
+          <tr><td class="id">knight</td><td>hero</td><td>procedural</td><td><span class="st">placed</span></td></tr>
+          <tr><td class="id">wet-floor</td><td>environment</td><td>procedural</td><td><span class="st">placed</span></td></tr>
+          <tr><td class="id">atmosphere</td><td>environment</td><td>procedural</td><td><span class="st">placed</span></td></tr>
+        </table>
+        <div class="why"><b>knight</b> — “Articulated voxel knight, height 1.85 scene units, forward +Z; block construction matches style and enables independent gait.”</div>
+      </div>
+      <div class="vit">
+        <span class="statechip"><s></s>fps target 60 · met</span>
+        <span><b>120</b> fps · <b>8.3</b> ms · <b>240</b> draws · <b>1.66M</b> tris · <b>11</b> textures</span>
+      </div>
+      <p class="note">
+        Four assets, all on rung 4 — the brief asked for voxel, so primitives
+        <em>are</em> the faithful rendering of that style, and the ledger note
+        says so. Geometry is only half of it: the stone, the door, the heraldry
+        and the sky are all generated images, because a material without a
+        texture is a <span class="mono" style="color:#c98a52">materials</span>
+        gap the judge will name every round.
+      </p>
+      <div class="onstage">
+        <img src="/art/r03.png">
+        <div class="cap"><b>rounds/03/capture.png</b><span>all four, on stage</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Nothing on stage arrived from nowhere.</div>
+  <div class="foot"><span>The ledger is written by the agent through lucid.mjs · the strip is read from the scene's own renderer</span><span>Real ledger rows and real scene vitals</span></div>
+</section>
+
+<script>
+  const view = new URLSearchParams(location.search).get('view') || 'hero';
+  const page = Array.from(document.querySelectorAll('[data-view]')).find(el => el.dataset.view === view);
+  if (page) page.classList.add('active');
+  document.title = `Lucid — ${view}`;
+</script>
+</body>
+</html>

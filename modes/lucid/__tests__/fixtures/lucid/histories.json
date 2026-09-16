@@ -1,0 +1,94 @@
+{
+  "_README": [
+    "Synthetic loop histories, one per exit rule in lucid.mjs.",
+    "The test REPLAYS each one through the real CLI (init -> target -> round add",
+    "--verdict) rather than writing lucid.json directly, because the whole point",
+    "of these scenarios is what the script computes from a history it wrote.",
+    "`scores` is [composition, lighting, materials, details]; the total is their",
+    "sum, which is what the expectations below are stated in."
+  ],
+
+  "improving": {
+    "why": "totals 2.7 -> 4.5 -> 6.4, distinct gaps every round: still gaining",
+    "fpsTarget": 60,
+    "expect": "continue",
+    "rounds": [
+      { "fps": 61, "scores": [1.0, 1.0, 0.5, 0.2], "gaps": ["flat-sky:lighting"] },
+      { "fps": 60, "scores": [1.5, 1.5, 1.2, 0.3], "gaps": ["stone-too-clean:materials"] },
+      { "fps": 59, "scores": [2.2, 2.0, 1.8, 0.4], "gaps": ["lantern-glow-missing:lighting"] }
+    ]
+  },
+
+  "done": {
+    "why": "last verdict 8.5/10 at 60 fps against a 60 fps target",
+    "fpsTarget": 60,
+    "expect": "done",
+    "rounds": [
+      { "fps": 60, "scores": [2.0, 1.5, 1.3, 0.2], "gaps": ["flat-sky:lighting"] },
+      { "fps": 60, "scores": [2.8, 2.6, 2.5, 0.6], "gaps": ["gravel-tiling:materials"] }
+    ]
+  },
+
+  "slow": {
+    "why": "same 8.5/10 but 30 fps, under the 54 fps bar",
+    "fpsTarget": 60,
+    "expect": "optimize-fps",
+    "rounds": [
+      { "fps": 60, "scores": [2.0, 1.5, 1.3, 0.2], "gaps": ["flat-sky:lighting"] },
+      { "fps": 30, "scores": [2.8, 2.6, 2.5, 0.6], "gaps": ["gravel-tiling:materials"] }
+    ]
+  },
+
+  "unmeasured": {
+    "why": "same 8.5/10 with no fps recorded — not done, and it must say why",
+    "fpsTarget": 60,
+    "expect": "continue",
+    "rounds": [
+      { "fps": 60, "scores": [2.0, 1.5, 1.3, 0.2], "gaps": ["flat-sky:lighting"] },
+      { "scores": [2.8, 2.6, 2.5, 0.6], "gaps": ["gravel-tiling:materials"] }
+    ]
+  },
+
+  "plateau": {
+    "why": "5.0 -> 5.4 -> 5.6: three judged rounds, less than a full point gained",
+    "fpsTarget": 60,
+    "expect": "stall-approaching",
+    "rounds": [
+      { "fps": 60, "scores": [2.0, 1.5, 1.3, 0.2], "gaps": ["flat-sky:lighting"] },
+      { "fps": 60, "scores": [2.1, 1.6, 1.4, 0.3], "gaps": ["stone-too-clean:materials"] },
+      { "fps": 60, "scores": [2.2, 1.6, 1.5, 0.3], "gaps": ["camera-too-high:composition"] }
+    ]
+  },
+
+  "repeated-gap": {
+    "why": "the score jumped 3.0 -> 5.0, but the judge named flat-sky twice running",
+    "fpsTarget": 60,
+    "expect": "stall-approaching",
+    "rounds": [
+      { "fps": 60, "scores": [1.0, 1.0, 0.8, 0.2], "gaps": ["flat-sky:lighting"] },
+      { "fps": 60, "scores": [2.0, 1.5, 1.3, 0.2], "gaps": ["flat-sky:lighting", "stone-too-clean:materials"] }
+    ]
+  },
+
+  "rethink-no-gain": {
+    "why": "the big redesign scored 6.0, below the 6.5 it was meant to beat",
+    "fpsTarget": 60,
+    "expect": "stalled",
+    "rounds": [
+      { "fps": 60, "scores": [2.0, 1.5, 1.3, 0.2], "gaps": ["flat-sky:lighting"] },
+      { "fps": 60, "scores": [2.5, 2.0, 1.7, 0.3], "gaps": ["stone-too-clean:materials"] },
+      { "fps": 60, "kind": "rethink", "scores": [2.3, 1.9, 1.6, 0.2], "gaps": ["camera-too-high:composition"] }
+    ]
+  },
+
+  "two-rethinks": {
+    "why": "5.0 -> 5.5 -> 5.7, both rethinks, neither gained a full point",
+    "fpsTarget": 60,
+    "expect": "stalled",
+    "rounds": [
+      { "fps": 60, "scores": [2.0, 1.5, 1.3, 0.2], "gaps": ["flat-sky:lighting"] },
+      { "fps": 60, "kind": "rethink", "scores": [2.2, 1.6, 1.4, 0.3], "gaps": ["stone-too-clean:materials"] },
+      { "fps": 60, "kind": "rethink", "scores": [2.3, 1.7, 1.4, 0.3], "gaps": ["camera-too-high:composition"] }
+    ]
+  }
+}

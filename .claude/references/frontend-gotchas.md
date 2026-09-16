@@ -84,6 +84,8 @@ remain in [AGENTS.md](../../AGENTS.md#engineering-judgment).
 
 - **Session thumbnail capture**(`src/hooks/useThumbnailCapture.ts`):优先级 viewer `captureViewport()` → Electron `pneumaDesktop.capturePage(rect)`(唯一能看到 iframe 内容的路径)→ snapdom(仅 browser dev)。空 Electron capture 不用 snapdom 补——后者把 iframe 渲染成白矩形,比 mode-icon fallback 更糟。
 
+- **A WebGL canvas inside a same-origin iframe snapshots BLACK under snapdom, and the mode's own `captureViewport` is the only path that can produce a real frame** (2026-09-16, lucid's Three.js scene served from `/content/<project>/scene/index.html`). snapdom rasterizes the DOM and reads the canvas back with `toDataURL`; a WebGL context created without `preserveDrawingBuffer: true` has an undefined (in practice cleared) drawing buffer outside its own `requestAnimationFrame` callback, so the read-back is a black rectangle — with no error, at the right size, which is exactly the capture failure that looks like success. Rule: for a FULL capture `src/utils/viewer-capture.ts::captureViewer` asks `opts.captureViewport` before the snapdom-on-iframe path; a mode whose scene renders in WebGL must expose one (lucid asks its in-page bridge to draw one frame and hand back the canvas PNG) and must not rely on the generic rasterizer. `null`/throw from the renderer still falls through to the old order, and a REGION capture (a selector was given) never consults it — a viewport renderer cannot honor a selector.
+
 - **`chrome-devtools` CLI 的"当前页"是全局的,别的会话开新标签会把它抢走**(2026-09-09 三个子代理并行用同一个浏览器实测):一条读数落在了别人的页面上,数字看着完全合理。每一条命令前 `list_pages` + `select_page <n>`,并核对 RootWebArea 的 URL;在 `--viewing` 会话里量,永远不要点到别人的编辑会话(它的 agent 会真的动手)。
 
 

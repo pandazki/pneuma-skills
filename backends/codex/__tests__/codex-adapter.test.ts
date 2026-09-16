@@ -3,6 +3,15 @@ import { CodexAdapter, describeErrorNotification } from "../codex-adapter.js";
 import type { BrowserIncomingMessage } from "../../../server/session-types.js";
 import { createMockTransport, waitForInit } from "./mock-transport.js";
 
+/**
+ * Every content block from the assistant envelopes emitted so far, in arrival
+ * order. Codex splits a tool call across two envelopes (`msg-<id>` then
+ * `result-<id>`), so ordering assertions need the flattened view.
+ */
+function assistantBlocks(messages: BrowserIncomingMessage[]): any[] {
+  return messages.flatMap((m) => (m.type === "assistant" ? (m.message?.content ?? []) : []));
+}
+
 describe("CodexAdapter", () => {
   test("initializes with JSON-RPC handshake and thread start", async () => {
     const transport = createMockTransport();
@@ -551,6 +560,179 @@ describe("CodexAdapter", () => {
       ),
     );
     expect(hasWebSearch).toBe(true);
+  });
+
+  test("maps imageGeneration to an ImageGeneration tool_use and a saved-path result", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    await waitForInit();
+
+    transport.simulateNotification("item/started", {
+      item: { type: "imageGeneration", id: "img-1", status: "inProgress", result: "", transparentBackground: true },
+    });
+    transport.simulateNotification("item/completed", {
+      item: {
+        type: "imageGeneration",
+        id: "img-1",
+        status: "completed",
+        result: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB",
+        revisedPrompt: "An isometric shrine courtyard at dusk, lanterns on wet stone",
+        savedPath: "/tmp/test/target.png",
+        transparentBackground: true,
+      },
+    });
+
+    const toolUse = assistantBlocks(messages).find((b) => b.type === "tool_use" && b.name === "ImageGeneration");
+    expect(toolUse).toBeDefined();
+    expect(toolUse.id).toBe("img-1");
+    // `revisedPrompt` is absent at start time — only the field Codex actually sent.
+    expect(toolUse.input).toEqual({ transparentBackground: true });
+
+    const result = assistantBlocks(messages).find((b) => b.type === "tool_result" && b.tool_use_id === "img-1");
+    expect(result).toBeDefined();
+    expect(result.is_error).toBe(false);
+    expect(result.content).toBe(
+      "Saved image to /tmp/test/target.png\nRevised prompt: An isometric shrine courtyard at dusk, lanterns on wet stone",
+    );
+  });
+
+  test("reports an imageGeneration usage-limit failure as an error result", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    await waitForInit();
+
+    transport.simulateNotification("item/started", {
+      item: { type: "imageGeneration", id: "img-2", status: "inProgress", result: "" },
+    });
+    transport.simulateNotification("item/completed", {
+      item: {
+        type: "imageGeneration",
+        id: "img-2",
+        status: "failed",
+        result: "",
+        failure: { type: "usageLimitExceeded", limitId: "image_daily", resetsAt: 1_789_000_000 },
+      },
+    });
+
+    const result = assistantBlocks(messages).find((b) => b.type === "tool_result" && b.tool_use_id === "img-2");
+    expect(result).toBeDefined();
+    expect(result.is_error).toBe(true);
+    expect(result.content).toBe(
+      `Image generation failed: usage limit exceeded (limit image_daily, resets at ${new Date(1_789_000_000_000).toISOString()})`,
+    );
+  });
+
+  test("emits the ImageGeneration tool_use even when item/completed arrives alone", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    await waitForInit();
+
+    transport.simulateNotification("item/completed", {
+      item: {
+        type: "imageGeneration",
+        id: "img-3",
+        status: "completed",
+        result: "",
+        revisedPrompt: "A paper lantern, transparent background",
+        savedPath: "/tmp/test/lantern.png",
+      },
+    });
+
+    const blocks = assistantBlocks(messages);
+    const useIndex = blocks.findIndex((b) => b.type === "tool_use" && b.name === "ImageGeneration");
+    const resultIndex = blocks.findIndex((b) => b.type === "tool_result" && b.tool_use_id === "img-3");
+    expect(useIndex).toBeGreaterThanOrEqual(0);
+    // The card must open before it closes, or the chat renders an orphan result.
+    expect(resultIndex).toBeGreaterThan(useIndex);
+    expect(blocks[useIndex].input).toEqual({ revisedPrompt: "A paper lantern, transparent background" });
+    expect(blocks[resultIndex].content).toBe(
+      "Saved image to /tmp/test/lantern.png\nRevised prompt: A paper lantern, transparent background",
+    );
+  });
+
+  test("never echoes the opaque imageGeneration result payload", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    await waitForInit();
+
+    // `result` can be a multi-megabyte base64 image. It must not reach the chat.
+    const payload = `iVBORw0KGgoAAAANSUhEUg${"QUJEZg".repeat(4000)}`;
+    transport.simulateNotification("item/started", {
+      item: { type: "imageGeneration", id: "img-4", status: "inProgress", result: payload },
+    });
+    transport.simulateNotification("item/completed", {
+      item: { type: "imageGeneration", id: "img-4", status: "completed", result: payload, savedPath: "/tmp/test/big.png" },
+    });
+
+    const serialized = JSON.stringify(messages);
+    expect(serialized.includes(payload)).toBe(false);
+    expect(serialized.includes(payload.slice(0, 48))).toBe(false);
+    // The card still opened and closed.
+    const result = assistantBlocks(messages).find((b) => b.type === "tool_result" && b.tool_use_id === "img-4");
+    expect(result?.content).toBe("Saved image to /tmp/test/big.png");
+  });
+
+  test("reports an imageGeneration that saved nothing", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    await waitForInit();
+
+    transport.simulateNotification("item/completed", {
+      item: { type: "imageGeneration", id: "img-5", status: "completed", result: "" },
+    });
+    transport.simulateNotification("item/completed", {
+      item: { type: "imageGeneration", id: "img-6", status: "refused", result: "" },
+    });
+
+    const blocks = assistantBlocks(messages);
+    const ok = blocks.find((b) => b.type === "tool_result" && b.tool_use_id === "img-5");
+    expect(ok.is_error).toBe(false);
+    expect(ok.content).toBe("Image generated (no saved path reported)");
+
+    const refused = blocks.find((b) => b.type === "tool_result" && b.tool_use_id === "img-6");
+    expect(refused.is_error).toBe(true);
+    expect(refused.content).toBe("Image generation failed (status: refused)");
+  });
+
+  test("maps imageView to an ImageView tool_use and closes the card", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    await waitForInit();
+
+    transport.simulateNotification("item/started", {
+      item: { type: "imageView", id: "iv-1", path: "/tmp/test/rounds/02/capture.png" },
+    });
+    transport.simulateNotification("item/completed", {
+      item: { type: "imageView", id: "iv-1", path: "/tmp/test/rounds/02/capture.png" },
+    });
+
+    const blocks = assistantBlocks(messages);
+    const toolUse = blocks.find((b) => b.type === "tool_use" && b.name === "ImageView");
+    expect(toolUse).toBeDefined();
+    expect(toolUse.input).toEqual({ path: "/tmp/test/rounds/02/capture.png" });
+
+    const result = blocks.find((b) => b.type === "tool_result" && b.tool_use_id === "iv-1");
+    expect(result).toBeDefined();
+    expect(result.is_error).toBe(false);
+    expect(result.content).toBe("Viewed /tmp/test/rounds/02/capture.png");
   });
 
   test("handles MCP tool call approval requests", async () => {

@@ -110,6 +110,13 @@ const builtinModes: Record<string, ModeSource> = {
     definitionLoader: () =>
       import("../modes/sprite/pneuma-mode.js").then((m) => m.default),
   },
+  lucid: {
+    type: "builtin",
+    manifestLoader: () =>
+      import("../modes/lucid/manifest.js").then((m) => m.default),
+    definitionLoader: () =>
+      import("../modes/lucid/pneuma-mode.js").then((m) => m.default),
+  },
   kami: {
     type: "builtin",
     manifestLoader: () =>

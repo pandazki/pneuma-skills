@@ -25,6 +25,7 @@ describe("isCoarseAddress — coarse keys drive a navigation first", () => {
     ["eli5 audience rung", { audience: "child" }],
     ["sprite motion", { motion: "attack" }],
     ["sprite reference", { ref: "turnaround" }],
+    ["lucid round", { round: 3 }],
   ];
 
   for (const [label, address] of coarse) {
@@ -47,6 +48,13 @@ describe("isCoarseAddress — fine keys resolve in place", () => {
 
   test("sprite's frame is fine — seeking inside the open motion is in-place", () => {
     expect(isCoarseAddress({ frame: 7 })).toBe(false);
+  });
+
+  test("lucid's view is fine — Live / Target / Split re-dress the same stage", () => {
+    // `round` swaps a recorded capture onto the stage and must navigate first;
+    // `view` only changes how what is already there is shown.
+    expect(isCoarseAddress({ view: "split" })).toBe(false);
+    expect(isCoarseAddress({ round: 2, view: "split" })).toBe(true);
   });
 
   test("an empty or absent address shoots the current viewport", () => {

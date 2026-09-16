@@ -1,0 +1,118 @@
+{
+  "format": "pneuma-lucid/v1",
+  "title": "Lantern shrine",
+  "brief": "an isometric shrine courtyard at dusk, lanterns on wet stone",
+  "status": "looping",
+  "createdAt": "2026-09-16T09:00:00.000Z",
+  "updatedAt": "2026-09-16T09:52:00.000Z",
+  "fpsTarget": 60,
+  "budget": { "minutes": 45, "startedAt": "2026-09-16T09:05:00.000Z" },
+  "target": {
+    "path": "target.png",
+    "version": 1,
+    "lockedAt": "2026-09-16T09:05:00.000Z",
+    "history": []
+  },
+  "rounds": [
+    {
+      "index": 1,
+      "kind": "iterate",
+      "targetVersion": 1,
+      "at": "2026-09-16T09:24:00.000Z",
+      "capture": "rounds/01/capture.png",
+      "fps": 60,
+      "verdict": {
+        "composition": 1.5,
+        "lighting": 1,
+        "materials": 1.5,
+        "details": 0.5,
+        "total": 4.5,
+        "summary": "The massing reads, the light does not.",
+        "judgedAt": "2026-09-16T09:25:00.000Z",
+        "gaps": [
+          {
+            "id": "wet-stone-flat",
+            "area": "materials",
+            "issue": "The stone is matte; the target's ground is wet and reflects the lanterns.",
+            "fix": "Lower roughness and add a reflective floor or an env map."
+          },
+          {
+            "id": "no-lantern-falloff",
+            "area": "lighting",
+            "issue": "Lanterns emit no visible falloff, so dusk reads as flat ambient.",
+            "fix": "Add point lights with a short decay at each lantern."
+          }
+        ]
+      }
+    },
+    {
+      "index": 2,
+      "kind": "iterate",
+      "targetVersion": 1,
+      "at": "2026-09-16T09:50:00.000Z",
+      "capture": "rounds/02/capture.png",
+      "fps": 58,
+      "verdict": {
+        "composition": 2.5,
+        "lighting": 2,
+        "materials": 1.5,
+        "details": 0.8,
+        "total": 6.8,
+        "summary": "Light landed; the ground is still dry.",
+        "judgedAt": "2026-09-16T09:51:00.000Z",
+        "gaps": [
+          {
+            "id": "wet-stone-flat",
+            "area": "materials",
+            "issue": "The stone still reads dry under the new lanterns.",
+            "fix": "Add a roughness map and a subtle normal map to the courtyard slab."
+          },
+          {
+            "id": "empty-background",
+            "area": "composition",
+            "issue": "Nothing occupies the upper third; the target has a treeline.",
+            "fix": "Add silhouette geometry behind the shrine."
+          }
+        ]
+      }
+    }
+  ],
+  "assets": [
+    {
+      "id": "shrine-arch",
+      "role": "hero",
+      "source": "blender",
+      "state": "placed",
+      "files": ["scene/models/shrine-arch.glb"],
+      "note": "Modelled headless, decimated to 8k tris.",
+      "updatedAt": "2026-09-16T09:20:00.000Z"
+    },
+    {
+      "id": "courtyard-ground",
+      "role": "environment",
+      "source": "procedural",
+      "state": "placed",
+      "files": ["scene/main.js"],
+      "updatedAt": "2026-09-16T09:12:00.000Z"
+    },
+    {
+      "id": "stone-lantern",
+      "role": "prop",
+      "source": "image-to-3d",
+      "state": "generating",
+      "files": ["assets/stone-lantern.png"],
+      "updatedAt": "2026-09-16T09:48:00.000Z"
+    }
+  ],
+  "evaluation": {
+    "exit": "continue",
+    "reasons": ["best score 6.8 is below 8", "gap wet-stone-flat repeated"],
+    "targetVersion": 1,
+    "best": { "index": 2, "total": 6.8 },
+    "last": { "index": 2, "total": 6.8 },
+    "trend": [4.5, 6.8],
+    "repeatedGaps": ["wet-stone-flat"],
+    "fpsOk": true,
+    "computedAt": "2026-09-16T09:52:00.000Z"
+  }
+}

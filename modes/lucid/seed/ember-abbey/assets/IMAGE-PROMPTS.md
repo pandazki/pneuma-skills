@@ -1,0 +1,23 @@
+# Generated image assets
+
+All five assets were generated with the built-in `image_gen.imagegen` tool, not its CLI fallback. The scene uses only the four material/environment assets; the target is used only for evaluation. Generated originals were copied into the workspace without deleting the originals.
+
+## target.png
+
+Generate one target image, 16:9 landscape 1536x864. A screenshot of a running Three.js browser graphics demo, orthographic isometric camera at elevated three-quarter view, stylized voxel-ish modular dark fantasy architecture with realistic PBR shading. An expansive ruined gothic monastery courtyard in rain at blue hour. Foreground and center wet dark slate rectangular paving tiles with clear amber fire reflections and cool blue reflections in shallow puddles. Small but readable voxel armored knight in crimson cape at lower center, helmet, sword, approx 8% image height. To back center a monumental broken pointed gothic arch on thick stepped square stone pillars, glowing amber sealed door inside, worn stairs. On left and right ruined column arcades, collapsed masonry, iron braziers with golden flames, dark crimson hanging pennants, small clumps of muted grass. Beyond the elevated courtyard, enormous shadowed cathedral towers and layered ruined walls disappearing into teal blue fog, making world feel expansive. Foreground broken low parapets frame scene without blocking knight. Detailed stepped/blocky silhouettes, visibly voxel inspired, not smooth sculpted realism. Moody dramatic warm amber versus desaturated teal, bright readable edges, realistic contact shadows, wet reflective floor is prominent, rain and a few floating embers. This must look like feasible real time WebGL, no depth of field, no text, no UI, no logos. Strong coherent spatial composition with floor taking lower half and architecture upper half.
+
+## scene/textures/slate.png
+
+Asset type: seamless game material albedo texture. Generate a square 1024x1024 flat orthographic top-down tileable texture of worn dark blue-gray medieval slate stone, fine pitted rock grain, subtle chipped areas and delicate thin mineral veins, damp basalt. Uniform flat neutral lighting, NO cast shadows, NO directional light, NO perspective, NO text, NO tile grout lines, NO objects. Low contrast cool gray stone texture, physically based material base color. Entire image is the stone surface.
+
+## scene/textures/storm-sky.png
+
+Asset type: game environment sky texture. Generate one wide 16:9 image of a dark fantasy storm sky at blue hour. Only layered storm clouds, no land, no architecture, no objects, no moon, no lightning, no text. Cool desaturated slate blue, dark navy lower edge, a few softly luminous silver teal openings toward the upper center, subtle atmospheric cloud complexity. Photorealistic sky texture for a Three.js environment backdrop. Not a scene screenshot, absolutely no buildings or landscape. Clouds should be readable but restrained, low contrast, dark moody evening.
+
+## scene/textures/sanctuary-door.png
+
+Create a flat front-facing game texture for an ancient dark fantasy cathedral double door, aspect ratio portrait 2:3. Fill the entire image with the door surface, no frame, no arch, no surrounding wall, no perspective. Old very dark charcoal oxidized bronze and ebony with intricate shallow Gothic relief carving: slender pointed lancet motifs, engraved filigree, weathered raised ribs, a pale tarnished gold branching cross at upper center. The double door has a thin bright ember orange vertical seam exactly in the middle and small amber fissures, warm glowing edge accents. The upper quarter also contains the same intricate carvings, not blank. Dark gritty aged material, fine dense relief but graphic strong silhouette. Flat-lit albedo game material; no directional spotlight, no heavy baked shadows. No text or lettering. This will be UV mapped onto a real pointed Gothic door in a voxel-ish Three.js dark fantasy scene.
+
+## scene/textures/heraldic-cloth.png
+
+Generate a game albedo texture: a single medieval dark burgundy cloth banner, full-bleed rectangular portrait 1:3. Front view, flat laid fabric, no background, no pole, no wall, no perspective. Very weathered wine red cloth with subtle woven texture, faded abrasion, darker folds. At upper middle an ornate pale antique ivory embroidered branching cross shaped like a sacred tree, symmetrical and vertically elongated, fine worn gold accents. Tiny thread frays and soot stains near the lower part. Keep strong readable emblem and dark burgundy background. No text or letters. Entire canvas must be fabric for use as a texture on animated 3D cloth.

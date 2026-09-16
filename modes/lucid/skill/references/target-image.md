@@ -1,0 +1,67 @@
+# The target image — dreaming well
+
+The target is the whole loop's contract. Every round is scored against it, so
+a bad target costs every round that follows. Spend judgment here before you
+spend any on code.
+
+## What the target is
+
+An **in-engine screenshot of the finished product**, as the user will see it
+in the browser at the viewer's aspect ratio. Not concept art, not a cinematic
+still, not a painting, not "an artist's interpretation". You will try to match
+it down to the pixel, so it must be something a real-time renderer can
+plausibly produce: one camera, one exposure, materials that exist, a UI layer
+only if the product has one.
+
+Prompt it that way. Say *"a screenshot of a running Three.js game, isometric
+camera, 16:9"* and describe the scene, lighting, palette, materials and mood
+concretely. Avoid the words *concept art*, *illustration*, *painting*,
+*cinematic*, *render of* — the model reads them as permission to invent what
+an engine cannot do.
+
+## Fresh vs existing product
+
+- **Fresh** — generate the target directly from the user's brief.
+- **Existing product** — capture the current scene first and feed that capture
+  to the image tool as the baseline, asking for a refined version that keeps
+  the composition and improves what the user pointed at. The target must be an
+  *improvement of what exists*, not a divergence; a divergent target makes
+  every asset and camera decision already taken look wrong to the judge.
+
+Re-dreaming later (the `re-dream` command) follows the same rule: start from
+the latest capture, not from a blank prompt.
+
+## Match the viewer — read the stage first
+
+Run `lucid.mjs init` before you dream, then `get-scene-state`: `stage`
+gives the exact size and aspect the stage renders at, even before your scene
+does anything. Generate the target at that aspect. A 16:9 dream judged against
+a 3:2 stage is letterboxing the scene can never reproduce, and it costs every
+round that follows. Image tools do not honour requested pixel sizes exactly —
+the aspect is what matters.
+
+## Say the style, not just the subject
+
+The model will happily upgrade "voxel-ish, real-time" into a painterly
+perspective render with photographic weathering, and the judge will then
+punish you for the style the user actually asked for. Put the requested
+rendering style in the prompt in plain words — *orthographic isometric camera*,
+*blocky voxel construction*, *stylized real-time lighting*, *a screenshot from
+a running Three.js game* — and if the first result drifts from the brief,
+dream once more rather than accepting a contract you cannot honour.
+
+## Lock it
+
+Store the image through `lucid.mjs target <project> --set <png>`. The loop's clock starts at
+the first lock, the previous target is archived on replacement, and the score
+trajectory always says which target it was measured against. Never overwrite
+`target.png` by hand.
+
+## Ask the user, or not
+
+If the user supplies a target, use it directly. If the user said "don't ask
+me, just go", do not show the target for approval — lock it and start. If they
+said nothing about that and the brief is ambiguous in a way that changes the
+picture (isometric vs first-person, day vs night, painterly vs realistic),
+show the target once with a `<viewer-locator>` to `{ view: "target" }` and ask
+one question. One.

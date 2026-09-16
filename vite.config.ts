@@ -191,6 +191,15 @@ export default defineConfig({
       "react-dom": path.dirname(require.resolve("react-dom/package.json")),
     },
   },
+  optimizeDeps: {
+    // Limit the dependency scan to the app entries. Vite otherwise crawls
+    // every `*.html` under the root, including mode-owned static scenes such
+    // as `modes/lucid/skill/scripts/scene-starter/index.html`, whose bare
+    // `three` specifier resolves only through the scene's own importmap —
+    // the scan then fails and pre-bundling is skipped for the whole dev
+    // server (measured 2026-09-16).
+    entries: ["index.html", "player.html"],
+  },
   build: {
     rollupOptions: {
       // Don't resolve runtime-only URLs used by external mode loading in production

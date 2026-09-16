@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ember Abbey — a rainy sanctuary</title>
+    <style>
+      /* Full-bleed: the capture is the whole page, so nothing may add margin
+         or letterbox the canvas. */
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #142832;
+      }
+      canvas {
+        display: block; /* an inline canvas leaves a baseline gap at the bottom */
+        width: 100%;
+        height: 100%;
+      }
+    
+      .hud { position:fixed; inset:0; pointer-events:none; color:#e7ded0; font-family:Georgia,serif; z-index:3; }
+      .identity { position:absolute; top:28px; left:32px; text-shadow:0 2px 15px #000; }
+      .eyebrow { font-family:Arial,sans-serif; font-size:9px; letter-spacing:3.7px; color:#bca985; margin-bottom:10px; }
+      h1 { font-weight:400; font-size:25px; letter-spacing:2px; margin:0; }
+      .sub { font-size:11px; letter-spacing:2px; color:#aeb8bb; margin-top:9px; }
+      .controls { position:absolute; bottom:23px; left:32px; font:10px/1.8 Arial,sans-serif; letter-spacing:1.1px; color:#a8b3b8; text-shadow:0 2px 8px #000; }
+      .controls b { font-weight:400; color:#d9c6a4; margin-right:5px; }
+      .controls span { margin-right:19px; white-space:nowrap; }
+      #fps { position:absolute; right:27px; top:27px; font:10px Arial,sans-serif; letter-spacing:1.3px; color:#a8b3b8; }
+      .hidden {display:none;}
+      @media(max-width:650px){.identity{top:19px;left:20px}h1{font-size:20px}.controls{left:20px;bottom:13px;font-size:9px}.controls span{margin-right:9px}.sub{font-size:9px}}
+    </style>
+
+    <!-- The bridge loads BEFORE the module graph so `window.lucid` already
+         exists when main.js runs and registers the renderer. -->
+    <script src="./lucid-bridge.js"></script>
+
+    <!-- Every specifier resolves inside this directory. That is what lets the
+         page run from /content/<project>/scene/index.html, from a file://
+         path, or from any sub-path a future deploy puts it under, with no dev
+         server and no build step. Keep the trailing slash on
+         "three/addons/" — it is a prefix mapping, not a file. -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./vendor/three.module.js",
+          "three/addons/": "./vendor/addons/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div class="hud">
+      <div class="identity"><div class="eyebrow">A SANCTUARY AFTER THE FALL</div><h1>余烬修道院</h1><div class="sub">EMBER ABBEY · 雨夜</div></div>
+      <div id="fps"></div>
+      <div class="controls"><span><b>点击</b> 行走</span><span><b>拖动</b> 环视</span><span><b>滚轮</b> 缩放</span><span><b>R</b> 复位</span><span><b>H</b> 隐藏界面</span></div>
+    </div>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

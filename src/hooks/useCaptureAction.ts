@@ -39,12 +39,15 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
  * by eli5, where each rung of the ladder is its own page; `motion`/`ref` by
  * sprite, where a character's motion and its identity references are
  * separate things to put on the stage — sprite's `frame` stays fine, since
- * seeking inside the motion already on stage is an in-place move). A mode
- * whose coarse key is missing here does not fail loudly: `capture` would
- * silently screenshot whatever is on screen, which is why new coarse keys
- * belong in this list.
+ * seeking inside the motion already on stage is an in-place move; `round` by
+ * lucid, where naming a round swaps a RECORDED capture onto the stage in
+ * place of the live scene, so reaching it is a navigation — lucid's `view`
+ * stays fine, since Live / Target / Split re-dresses whatever is already
+ * there). A mode whose coarse key is missing here does not fail loudly:
+ * `capture` would silently screenshot whatever is on screen, which is why
+ * new coarse keys belong in this list.
  */
-const COARSE_ADDRESS_KEYS = ["page", "file", "slide", "contentSet", "nodeId", "elementId", "image", "section", "step", "audience", "motion", "ref"];
+const COARSE_ADDRESS_KEYS = ["page", "file", "slide", "contentSet", "nodeId", "elementId", "image", "section", "step", "audience", "motion", "ref", "round"];
 
 /**
  * Whether an address names something outside the current view, so `capture`

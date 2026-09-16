@@ -175,7 +175,8 @@ async function primeScrollReveals(iframe: HTMLIFrameElement): Promise<void> {
  * @param previewEl  The element wrapping the mode's PreviewComponent.
  * @param opts.selector  Optional CSS selector — capture just that element.
  * @param opts.captureViewport  The mode viewer's domain renderer, if any
- *   (diagram/draw expose one); used for full captures of non-iframe modes.
+ *   (diagram/draw/sprite/lucid expose one); tried FIRST for a full capture,
+ *   before the iframe and Electron strategies.
  */
 export async function captureViewer(
   previewEl: HTMLElement,
@@ -282,6 +283,25 @@ export async function captureViewer(
   }
 
   // ── Full-viewer capture ───────────────────────────────────────────────────
+  // A viewer-supplied domain renderer goes first (diagram exports the diagram,
+  // sprite draws the stage canvas, lucid asks its scene bridge for a frame).
+  //
+  // It used to be consulted only when the viewer had NO iframe, on the theory
+  // that a same-origin iframe is always better snapshotted whole. That is
+  // false for a WebGL canvas: snapdom rasterizes the DOM, and a `<canvas>`
+  // whose context was created without `preserveDrawingBuffer` reads back as
+  // an empty (black) buffer outside its own draw call — so the mode that CAN
+  // render a real frame was the one path never asked. A mode that declares a
+  // renderer is stating it knows better than a generic rasterizer what its
+  // viewport means; `null` or a throw is not a failure, it just falls through
+  // to the same order as before. Region captures (a selector was given) are
+  // unaffected — a renderer answers for the whole viewport, not a sub-element.
+  if (opts.captureViewport) {
+    try {
+      const r = await opts.captureViewport();
+      if (r?.data) return finalize(`data:${r.media_type};base64,${r.data}`, "viewer-captureViewport");
+    } catch { /* fall through */ }
+  }
   // Same-origin iframe: snapshot the inner document — full page incl. scroll.
   if (iframe && innerDoc) {
     await primeScrollReveals(iframe);
@@ -289,13 +309,6 @@ export async function captureViewer(
     const png = root ? await snapdomToPng(root) : null;
     if (png) return finalize(png, "snapdom-iframe");
     // fall through to Electron
-  }
-  // A viewer-supplied domain renderer (diagram exports the diagram, etc.).
-  if (opts.captureViewport && !iframe) {
-    try {
-      const r = await opts.captureViewport();
-      if (r?.data) return finalize(`data:${r.media_type};base64,${r.data}`, "viewer-captureViewport");
-    } catch { /* fall through */ }
   }
   // Electron real screenshot of the on-screen preview region.
   if (capturePage) {
