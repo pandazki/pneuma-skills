@@ -221,6 +221,13 @@ export class CodexBridge implements BridgeBackend {
       // carries them, so persist here or a refresh loses the marker. Mirrors
       // `WsBridge.forwardSystemEvent` on the Claude path.
       this.session.messageHistory.push({ ...msg, timestamp: msg.timestamp ?? Date.now() });
+    } else if (msg.type === "subagent_update") {
+      // Same deal for roster snapshots — the adapter owns the roster (it
+      // reads Codex's thread ids), the bridge owns history. Without this push
+      // a refresh loses the whole team while the subagents' messages stay.
+      // Mirrors `WsBridge.publishSubagentUpdate` on the Claude path.
+      this.session.subagents.set(msg.agent.id, msg.agent);
+      this.session.messageHistory.push({ ...msg, timestamp: msg.timestamp || Date.now() });
     }
 
     // Track message history for replay.

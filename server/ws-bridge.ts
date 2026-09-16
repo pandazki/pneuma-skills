@@ -20,8 +20,10 @@ import type {
   CLIPromptSuggestionMessage,
   BrowserOutgoingMessage,
   BrowserIncomingMessage,
+  ContentBlock,
   PermissionRequest,
   SteerFailureReason,
+  SubagentInfo,
 } from "./session-types.js";
 import type {
   CLITransport,
@@ -32,7 +34,7 @@ import type {
 } from "./ws-bridge-types.js";
 import { makeDefaultState } from "./ws-bridge-types.js";
 import type { AgentBackendType } from "../core/types/agent-backend.js";
-import { getBackendCapabilities } from "../backends/index.js";
+import { getBackendCapabilities, getBackendModule } from "../backends/index.js";
 import { isPneumaMarkerOnly } from "../core/utils/pneuma-markers.js";
 export type { SocketData } from "./ws-bridge-types.js";
 import {
@@ -374,6 +376,7 @@ export class WsBridge {
         pendingNotifications: [],
         pendingSystemSignals: [],
         messageHistory: [],
+        subagents: new Map(),
         pendingEnvContext: [],
         suppressingPostAskq: false,
         pendingMessages: [],
@@ -951,18 +954,43 @@ export class WsBridge {
     if (Array.isArray(msg.message?.content)) {
       stampFileRefs(msg.message.content, "claude-code", this.workspace);
     }
-    const browserMsg: BrowserIncomingMessage = {
+    // Register any agent this message spawns before the history bookkeeping
+    // below, so every exit path (merge, resume re-emit, append) has already
+    // published the roster entry the spawn card needs.
+    this.registerSubagentSpawns(session, msg);
+    const incoming: Extract<BrowserIncomingMessage, { type: "assistant" }> = {
       type: "assistant",
       message: msg.message,
       parent_tool_use_id: msg.parent_tool_use_id,
       timestamp: Date.now(),
     };
+    // What this frame broadcasts: the merged entry when it extends a message
+    // already in history, the frame itself otherwise. The browser merges by
+    // `message.id` as well, so sending the merged view is consistent either
+    // way and a browser that joined late sees the same blocks.
+    let browserMsg: BrowserIncomingMessage = incoming;
     // CLI sends multiple assistant messages with the same ID (thinking then text blocks).
-    // Replace existing history entry to avoid duplicates on replay.
     const existingIdx = session.messageHistory.findLastIndex(
       (h) => h.type === "assistant" && h.message.id === msg.message.id,
     );
     if (existingIdx !== -1) {
+      // Claude Code emits ONE assistant frame per content block, all sharing
+      // `message.id`. Replacing the persisted entry kept only the last block:
+      // a `Task` tool_use followed by text lost the tool card (and with it
+      // the anchor of the subagent it spawned) on every reload — across four
+      // persisted histories not a single entry held two blocks. Merge instead
+      // and keep the attribution; the timestamp moves to the latest frame.
+      const existing = session.messageHistory[existingIdx] as Extract<
+        BrowserIncomingMessage,
+        { type: "assistant" }
+      >;
+      browserMsg = {
+        ...incoming,
+        message: {
+          ...incoming.message,
+          content: WsBridge.mergeContentBlocks(existing.message.content, incoming.message.content),
+        },
+      };
       session.messageHistory[existingIdx] = browserMsg;
     } else {
       // On `--resume`, the CLI replays the conversation and re-emits the
@@ -1015,6 +1043,115 @@ export class WsBridge {
       // model resumes cleanly.
       handleInterrupt(session, this.sendToCLI.bind(this));
     }
+  }
+
+  /**
+   * Merge the content blocks of two frames of the same assistant message:
+   * existing blocks first, then incoming blocks not already present by JSON
+   * identity. Deliberately the same rule the browser applies in
+   * `src/store/helpers.ts::mergeContentBlocks` — one semantic definition, two
+   * representations, because `server/` must not import from `src/`. Change
+   * one and change the other.
+   */
+  private static mergeContentBlocks(prev: ContentBlock[], next: ContentBlock[]): ContentBlock[] {
+    const prevBlocks = Array.isArray(prev) ? prev : [];
+    const nextBlocks = Array.isArray(next) ? next : [];
+    const merged: ContentBlock[] = [];
+    const seen = new Set<string>();
+    for (const block of [...prevBlocks, ...nextBlocks]) {
+      const key = JSON.stringify(block);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(block);
+    }
+    return merged;
+  }
+
+  /**
+   * Register a roster entry for every `tool_use` block in this assistant
+   * message that the backend recognises as an agent spawn
+   * (`BackendModule.subagentSpawn` — Claude's `Task` / `Agent`; backends that
+   * emit their own roster or have no subagents leave it undefined and nothing
+   * happens here). The block's own id IS the spawned agent's attribution key,
+   * so a nested spawn — a subagent calling `Task` itself — takes `parent_id`
+   * from this frame's own `parent_tool_use_id`, the same value its children
+   * will carry.
+   *
+   * Idempotent per block id: `--resume` re-emits the last assistant message,
+   * and re-publishing a snapshot we already sent would only grow history. The
+   * lifecycle transitions come from the `tool_result` path instead.
+   */
+  private registerSubagentSpawns(session: Session, msg: CLIAssistantMessage): void {
+    const content = msg.message?.content;
+    if (!Array.isArray(content)) return;
+    const mod = getBackendModule(session.state.backend_type);
+    if (!mod.subagentSpawn) return;
+    for (const block of content) {
+      const b = block as { type?: string; id?: string; name?: string; input?: Record<string, unknown> };
+      if (b.type !== "tool_use" || !b.id || !b.name) continue;
+      if (session.subagents.has(b.id)) continue;
+      const ref = mod.subagentSpawn(b.name, b.input ?? {});
+      if (!ref) continue;
+      this.publishSubagentUpdate(session, {
+        id: b.id,
+        parent_id: msg.parent_tool_use_id ?? null,
+        label: ref.label,
+        status: "running",
+        ...(ref.detail !== undefined ? { detail: ref.detail } : {}),
+      });
+    }
+  }
+
+  /**
+   * Publish a roster snapshot: index it for the frames still to come, push it
+   * to `messageHistory` BEFORE broadcasting (it is history-backed, so the
+   * replay ring skips it and a reload / export / player would otherwise lose
+   * the whole team), then broadcast.
+   */
+  private publishSubagentUpdate(session: Session, agent: SubagentInfo): void {
+    session.subagents.set(agent.id, agent);
+    const browserMsg: BrowserIncomingMessage = {
+      type: "subagent_update",
+      agent,
+      timestamp: Date.now(),
+    };
+    session.messageHistory.push(browserMsg);
+    this.broadcastToBrowsers(session, browserMsg);
+  }
+
+  /**
+   * Close out roster entries from the `tool_result` blocks of a CLI `user`
+   * frame. A Claude subagent has no lifecycle envelope of its own: the only
+   * report of its fate is the `tool_result` of the `Task` / `Agent` call that
+   * spawned it, carried on the same id we registered the agent under.
+   */
+  private applySubagentToolResults(session: Session, content: unknown[]): void {
+    for (const block of content) {
+      const b = block as { type?: string; tool_use_id?: string; content?: unknown; is_error?: boolean };
+      if (b.type !== "tool_result" || !b.tool_use_id) continue;
+      const agent = session.subagents.get(b.tool_use_id);
+      if (!agent) continue;
+      const detail = WsBridge.toolResultText(b.content).trim().slice(0, 200);
+      this.publishSubagentUpdate(session, {
+        ...agent,
+        status: b.is_error ? "failed" : "completed",
+        // An empty result keeps whatever the spawn already said
+        // (Claude's `subagent_type`) rather than blanking the card.
+        ...(detail ? { detail } : {}),
+      });
+    }
+  }
+
+  /** Flatten a `tool_result.content` (string, or blocks) into plain text. */
+  private static toolResultText(content: unknown): string {
+    if (typeof content === "string") return content;
+    if (!Array.isArray(content)) return "";
+    const parts: string[] = [];
+    for (const block of content) {
+      const b = block as { type?: string; text?: string };
+      if (b.type === "text" && typeof b.text === "string") parts.push(b.text);
+    }
+    return parts.join("\n");
   }
 
   private static assistantTextContent(content: unknown): string {
@@ -1185,6 +1322,9 @@ export class WsBridge {
       tool_use_id: msg.tool_use_id,
       tool_name: msg.tool_name,
       elapsed_time_seconds: msg.elapsed_time_seconds,
+      // Forward the attribution the CLI frame already carries — a subagent's
+      // long tool run used to drive the ROOT activity indicator.
+      parent_tool_use_id: msg.parent_tool_use_id ?? null,
     });
   }
 
@@ -1197,8 +1337,20 @@ export class WsBridge {
   }
 
   private handleCLIUserEcho(session: Session, msg: CLIUserMessage) {
-    // CLI echoes slash-command output as a user message with <local-command-stdout>
-    const raw = typeof msg.message.content === "string" ? msg.message.content : "";
+    // A CLI `user` frame is one of two things. With block content it is the
+    // synthetic echo that carries `tool_result`s — the only place a Claude
+    // subagent's completion is reported (see `applySubagentToolResults`).
+    // The blocks are NOT forwarded to the browser and never were: the CLI
+    // resolves tool results internally and the agent narrates the outcome
+    // (`src/ws.ts` records the same finding), so the roster is the only
+    // consumer here.
+    const blocks = msg.message?.content;
+    if (Array.isArray(blocks)) {
+      this.applySubagentToolResults(session, blocks);
+      return;
+    }
+    // With string content it is the slash-command stdout echo.
+    const raw = typeof blocks === "string" ? blocks : "";
     const match = raw.match(/<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/);
     let content = match ? match[1].trim() : raw.trim();
     if (!content) return;

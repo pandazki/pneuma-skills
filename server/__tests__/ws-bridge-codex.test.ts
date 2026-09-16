@@ -334,4 +334,47 @@ describe("WsBridge Codex integration", () => {
     const broadcast = frames.find((f) => f.type === "system_event");
     expect((broadcast?.event as { subtype?: string } | undefined)?.subtype).toBe("compact_boundary");
   });
+
+  /**
+   * Same contract for roster snapshots: the adapter owns the roster (it reads
+   * Codex's thread ids), the bridge owns history. `subagent_update` is
+   * history-backed, so the replay ring skips it — without the push a refresh
+   * would lose the whole team while the subagents' messages stayed.
+   */
+  test("persists adapter subagent_update into messageHistory and broadcasts it", () => {
+    const bridge = new WsBridge();
+    const session = bridge.getOrCreateSession("codex-roster", "codex");
+    const frames = attachRecordingBrowser(session);
+    const { adapter, emitFromAdapter } = makeFakeCodexAdapter();
+    bridge.attachCodexAdapter("codex-roster", adapter);
+
+    emitFromAdapter({
+      type: "subagent_update",
+      agent: {
+        id: "item_spawn_1",
+        parent_id: null,
+        label: "judge_01",
+        status: "running",
+        detail: "agents/judge_01 — reviewer",
+      },
+      timestamp: 1_700_000_000_001,
+    });
+    emitFromAdapter({
+      type: "subagent_update",
+      agent: { id: "item_spawn_1", parent_id: null, label: "judge_01", status: "completed" },
+      timestamp: 0,
+    });
+
+    const persisted = session.messageHistory.filter((m) => m.type === "subagent_update");
+    expect(persisted.map((m) => m.type === "subagent_update" && m.agent.status)).toEqual([
+      "running",
+      "completed",
+    ]);
+    expect(persisted[0].type === "subagent_update" && persisted[0].timestamp).toBe(1_700_000_000_001);
+    // A missing/zero timestamp is defaulted rather than persisted as 0.
+    expect(persisted[1].type === "subagent_update" && persisted[1].timestamp).toBeGreaterThan(0);
+    // The bridge's own roster index tracks the latest snapshot per agent id.
+    expect(session.subagents.get("item_spawn_1")?.status).toBe("completed");
+    expect(frames.filter((f) => f.type === "subagent_update")).toHaveLength(2);
+  });
 });

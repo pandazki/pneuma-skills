@@ -94,6 +94,11 @@ in-flight prompt then resolves with `stopReason:"cancelled"`.
 | `current_mode_update` **(0.38.0)** | active ACP session mode → `SessionState.permissionMode` |
 | `session_info_update` **(0.38.0)** | agent-generated conversation title — consumed silently, see below |
 
+**No subagent signal exists in ACP**: no `session/update` kind names another
+agent and there is no thread id, so the adapter emits `parent_tool_use_id:
+null` on every envelope and never a `subagent_update` — nothing is attributed
+here, and nothing is dropped either.
+
 **The tool-argument streaming trap.** A single `toolCallId` fires many
 `tool_call_update` frames whose `content[].content.text` is a *growing
 partial JSON string* of the arguments (status already `in_progress`), and
