@@ -246,6 +246,19 @@ order they normally arrive:
    remembers the mapping so the `tool_result` names the id the `tool_use` was
    actually emitted with.
 
+Observed live (codex-cli 0.154.0-alpha.3, 2026-09-16, `spawn_agent` → `wait_agent`
+→ `close_agent` prompt through Pneuma and again against a bare `codex
+app-server --enable multi_agent`): the spawn call did **not** surface as a
+`collabAgentToolCall` item at all, and no `thread/started` arrived for the
+child. The parent thread carried only `subAgentActivity { kind: "started",
+agentPath: "/root/write_judge" }` and a `collabAgentToolCall { tool: "wait" }`
+with empty `receiverThreadIds` / `agentsStates`. Sources 2 and 4 were therefore
+the whole path — the agent's anchor is `thread:<threadId>`, its label comes from
+`agentPath`, and the chat still draws its card because the frontend derives a
+card from the roster when no spawn block exists (spec §3.4). Source 1 stays
+implemented for builds that do emit the spawn item (issue #152's blind trial
+listed `spawn_agent` items in the parent rollout).
+
 `item/started` for a spawn can arrive before the agent exists
 (`receiverThreadIds` empty), and by `item/completed` the child may have
 registered itself under a fallback anchor. There is no identity to draw a card
