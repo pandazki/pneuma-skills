@@ -7,6 +7,12 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
+// The loader that ships with every project. `studioEnv` is used below; the
+// rest are imported ready for the commented example further down — that block
+// is the shortest path from a GLB to a frame, and the reason a scene never has
+// to be built out of primitives alone. `disposeModel` is in there too.
+import { instance, loadModel, playClip, studioEnv, textureFrom } from "./assets.js";
+
 // FIXED: antialias on, pixel ratio capped at 2. Uncapped devicePixelRatio on
 // a 3x display triples the fill cost and is the most common reason a scene
 // that "looks fine" reports 20 fps to the loop.
@@ -26,55 +32,10 @@ camera.position.set(4.5, 3, 6.5);
 // keeps the page working when it is opened without the bridge.
 window.lucid?.register({ renderer, scene, camera });
 
-/**
- * A studio environment map drawn in a canvas — no HDR file to ship.
- *
- * WHY this exists: PBR materials reflect the environment. With no
- * `scene.environment`, anything with metalness renders near-black on a light
- * background and the judge will (correctly) call the materials fake.
- * WHY the gradient has a dark bottom: a uniformly bright environment washes
- * metals out into flat grey — the contrast between a bright top and a dark
- * floor is what reads as a reflection.
- * WHY no tone mapping: ACES on a light background crushes the whites into
- * grey. Leave `renderer.toneMapping` alone unless the target is genuinely a
- * dark, high-dynamic-range scene.
- */
-function studioEnv(renderer) {
-  const canvas = document.createElement("canvas");
-  canvas.width = 128;
-  canvas.height = 128;
-  const ctx = canvas.getContext("2d");
-
-  const sky = ctx.createLinearGradient(0, 0, 0, 128);
-  sky.addColorStop(0, "#ffffff"); // overhead
-  sky.addColorStop(0.55, "#9a948c"); // warm grey horizon
-  sky.addColorStop(1, "#0d0d0f"); // near-black floor
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, 128, 128);
-
-  // A soft white ellipse: the "softbox" whose reflection gives glossy
-  // surfaces a highlight with a shape instead of a flat sheen.
-  ctx.save();
-  ctx.translate(64, 34);
-  ctx.scale(1, 0.55);
-  const softbox = ctx.createRadialGradient(0, 0, 0, 0, 0, 34);
-  softbox.addColorStop(0, "rgba(255,255,255,1)");
-  softbox.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.fillStyle = softbox;
-  ctx.beginPath();
-  ctx.arc(0, 0, 34, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-
-  const equirect = new THREE.CanvasTexture(canvas);
-  equirect.mapping = THREE.EquirectangularReflectionMapping;
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const environment = pmrem.fromEquirectangular(equirect).texture;
-  equirect.dispose(); // the intermediates are not needed once PMREM has run
-  pmrem.dispose();
-  return environment;
-}
-
+// FIXED, and the single most common reason a scene looks broken: PBR materials
+// reflect the environment, and with `scene.environment` unset anything with
+// metalness renders near-black on a light background. `studioEnv` lives in
+// assets.js (with the full explanation) so a rewritten main.js keeps it.
 scene.environment = studioEnv(renderer);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -102,6 +63,34 @@ const placeholder = new THREE.Mesh(
 );
 placeholder.position.y = 1;
 scene.add(placeholder);
+
+// ── Loading a real model ───────────────────────────────────────────────────
+// Uncomment and point at a GLB under scene/models/. loadModel measures the
+// file (AI-generated GLBs arrive normalized to longest-edge 1.0, NOT to
+// height), normalizes it by the one dimension you name, puts its feet on
+// y = 0, and returns the animation clips. Delete the placeholder above once
+// something real is in frame.
+//
+// const hero = await loadModel("./models/hero.glb", { height: 1.8 });
+// scene.add(hero.root);
+// console.log(hero.sourceSize, hero.rigged, hero.clips.map((c) => c.name));
+//
+// A crowd from one rigged model — SkeletonUtils clone, one mixer each, and a
+// phase offset per copy, or all of them march in step:
+//
+// const clock = new THREE.Clock();
+// const crowd = [[-2, 0, 1], [1.5, 0, -2]].map((position, i) => {
+//   const walker = instance(hero, { position, yawDeg: 180, phase: i * 0.37 });
+//   playClip(walker.mixer, hero.clips, "Walk");
+//   scene.add(walker.root);
+//   return walker;
+// });
+// …and inside the animation loop below:
+//   const delta = clock.getDelta();
+//   for (const walker of crowd) walker.mixer.update(delta);
+//
+// Textures: `textureFrom(url, { srgb: false })` for normal/roughness maps.
+// ───────────────────────────────────────────────────────────────────────────
 
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;

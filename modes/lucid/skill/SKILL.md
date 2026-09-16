@@ -189,21 +189,38 @@ to keep. Its camera, placeholder content and controls are yours to replace.
 
 ### Build toward the target
 
-1. List what the picture needs — hero objects, props, environment, camera,
-   lighting, atmosphere, motion — and register each asset in the ledger
-   (`lucid.mjs asset <project> add …`) with the rung you will source it from;
-   update its state as it lands. `references/assets.md` is the ladder; walk it
-   for every asset that matters.
-2. Source assets in parallel with building: submit image-to-3D jobs as each
-   cut-out exists, run Blender scripts headless, and keep writing the scene
-   while they run. Before any model enters the scene, run the checklist at
-   the end of `references/assets.md` (inspect, resize, six views, yaw, scale
-   basis).
-3. Write the scene with `references/three-scene.md` open: environment map,
-   normalize by the aligning dimension, `SkeletonUtils.clone` for rigged
-   models, textures from the image tool, textures before triangles for
-   performance.
-4. After each batch of edits: `reload-scene`, `get-scene-state` (ready, no
+1. **Write the asset plan from the picture, and give every hero element a
+   rung.** List what the target shows — hero objects, characters, props,
+   environment, camera, lighting, atmosphere, motion — and register each asset
+   (`lucid.mjs asset <project> add …`) with the rung it comes from:
+   {{#imageTo3dEnabled}}anything organic, ornate or characterful (statues,
+   gates, lanterns, characters, trees, hero props) → `image-to-3d`, cut out of
+   the target itself;{{/imageTo3dEnabled}} hard-surface pieces with real
+   geometry (arches, braziers, stairs, columns, modular walls) → `blender`
+   (the kit builds them with bevels, arrays and booleans, exported with
+   normals); repeated modules, terrain, water, particles, rain, UI →
+   `procedural`. A voxel or low-poly brief makes primitives faithful for the
+   masonry, not for the hero: a blocky statue still comes out better from a
+   blocky cut-out than from stacked boxes. `references/assets.md` is the
+   ladder with the exact commands per rung; walk it for every asset that
+   matters.
+2. **Source in parallel with building.** Cut the hero elements out of the
+   target with the image tool, plan them with
+   `node {SKILL_PATH}/scripts/image-to-3d.mjs recipe hero` (or
+   `hero-multiview`, `prop`), `check` → `submit`, and keep writing the scene
+   while the jobs run; `collect` a minute or two later. Build the Blender
+   pieces headless (`blender.mjs run` on a copy of `make_prop.py`). Every
+   model, whatever its source, goes through `blender.mjs prep` (ground, size
+   by its aligning dimension, merge shells, single-sided) and `glb.mjs
+   inspect` before it enters the scene.
+3. **Textures, then maps.** Albedo from the image tool; normal, roughness and
+   ORM from `node {SKILL_PATH}/scripts/texture.mjs`; `tile-check` before you
+   trust "seamless". A material with only an albedo reads flat.
+4. **Write the scene on the starter with `references/three-scene.md` open**:
+   load models through `assets.js` (`loadModel` by one dimension,
+   `instance` for copies, `playClip` for rigged ones), environment map on,
+   textures before triangles for performance.
+5. After each batch of edits: `reload-scene`, `get-scene-state` (ready, no
    errors, fps), `capture`, look. Fix what you see before you spend a verdict.
    Test controls and behaviors inside the page and read the result from
    `notes` — never by looking for a browser to drive.

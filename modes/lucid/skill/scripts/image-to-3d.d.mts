@@ -21,10 +21,19 @@ export interface FalFetchInit {
 
 export type FalFetch = (url: string, init: FalFetchInit) => Promise<Response>;
 
+/** The container a collected job landed in. `quad` topology returns FBX. */
+export type ModelFormat = "glb" | "fbx";
+
 /** One reported job. `check` fills only `id`, `state`, `request_id`, `error`. */
 export interface JobRow {
   id: string;
   state?: string;
+  /** Set once a file has landed: what it actually is. */
+  format?: ModelFormat;
+  /** Echo of `input.auto_size` — whether the model is in real-world metres. */
+  auto_size?: boolean;
+  /** The path written, which is the requested one unless the format differs. */
+  output?: string;
   request_id?: string;
   bytes?: number;
   error?: string;
@@ -42,6 +51,8 @@ export interface RunBatchOptions {
   key?: string;
   /** Back-off between download attempts, injected so a test does not spend it. */
   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
+  /** Side notes that are not job state; defaults to stderr. */
+  onNote?: (message: string) => void;
 }
 
 export declare function runBatch(
@@ -49,3 +60,24 @@ export declare function runBatch(
   filename: string,
   options?: RunBatchOptions,
 ): Promise<JobRow[]>;
+
+/** One preset: the endpoint and the input the skill quotes for that role. */
+export interface Recipe {
+  summary: string;
+  endpoint: string;
+  multiview?: boolean;
+  input: Record<string, string | number | boolean>;
+}
+
+/** The named presets `--help` prints and `recipe <name>` renders. */
+export declare const RECIPES: Record<string, Recipe>;
+
+/** One preset as a pasteable job, with `<placeholder>` id, image and output. */
+export declare function recipeJob(name: string): {
+  id: string;
+  endpoint: string;
+  image?: string;
+  images?: string[];
+  output: string;
+  input: Record<string, string | number | boolean>;
+};

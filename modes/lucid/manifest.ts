@@ -23,6 +23,8 @@ const lucidManifest: ModeManifest = {
       "Every round is scored by a judge that has never seen the previous ones, on composition, lighting, materials and details, with named gaps and fixes",
       "The loop knows when to stop: the exit rule reads the score trajectory, the repeated gaps, the measured fps and the time budget instead of the agent's optimism",
       "Assets come down a ladder — image-to-3D first (Tripo H3.1 for heroes, Trellis for props, when a fal key is configured), headless Blender for what only a modeller can do, procedural geometry last — every model recorded in a ledger with its origin",
+      "Every rung is a program: `image-to-3d.mjs recipe hero|hero-multiview|prop` plans a fal job with real-world size and image-aligned orientation, `blender.mjs prep` grounds, sizes, merges and single-sides any model in one pass, a Blender kit builds hard-surface props with bevels, arrays and booleans, and `texture.mjs` derives normal, roughness and ORM maps from the albedo the image tool gives you",
+      "Every new project ships `assets.js`: a loader that scales by one aligning dimension, measures rigged meshes correctly, grounds the feet, clones rigs with their own mixers and strips root motion",
     ],
   },
   displayName: {

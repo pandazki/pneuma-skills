@@ -20,6 +20,9 @@ Three.js: each one has a symptom that looks like something else.
 - Never load models over `file://` and never point the importmap at a CDN for
   the product — the viewer, the hosted player and any sub-path host all serve
   relative paths; a CDN is one more machine that has to be up.
+- The starter ships `assets.js` beside `main.js`: the model loader, instancing,
+  clip playback, texture loading and the environment map. Keep it; import
+  from it.
 - Register with the bridge the moment the renderer exists:
   `window.lucid?.register({ renderer, scene, camera })`, and wrap asset loading
   in `window.lucid?.setLoading(true)` … `setLoading(false)`. Without the
@@ -41,54 +44,67 @@ tone mapping (it presses the background to grey). The other honest route is
 `material.metalness = 0; material.roughness ≈ 0.9` — a matte look is a real
 look; black is not.
 
-## Scale and origin: measure, never assume
+## Scale and origin: the loader does it, by one dimension
 
 AI-generated GLBs arrive normalized to **longest edge ≈ 1.0 unit** — not
-height: a bench is 1.0 × 0.55 × 0.41, a taxi 0.52 × 0.57 × 1.0. Their origins
-also differ: some sit at the geometric centre, some at the feet. Treat every
-asset as unknown and normalize on load:
+height: a bench is 1.0 × 0.55 × 0.41, a taxi 0.52 × 0.57 × 1.0 — and their
+origins differ (geometric centre, or the feet). The starter's `assets.js`
+loads every model through the same discipline, so do not hand-roll it:
 
 ```js
-const box = new THREE.Box3().setFromObject(root);
-const size = box.getSize(new THREE.Vector3());
-const center = box.getCenter(new THREE.Vector3());
-root.position.sub(new THREE.Vector3(center.x, box.min.y, center.z)); // feet to y = 0
-root.scale.setScalar(targetHeight / size.y);
+import { loadModel, instance, playClip, textureFrom, disposeModel } from './assets.js';
+
+const statue = await loadModel('./models/statue.glb', { height: 2.4 });  // feet at y = 0, centred
+scene.add(statue.root);                                                 // statue.size, .bounds, .rigged, .sourceSize
+
+const knight = await loadModel('./models/knight.glb', { height: 1.8, yawDeg: 180 });
+const { root, mixer } = instance(knight, { position: [0, 0, 4], phase: 0.35 });
+playClip(mixer, knight.clips, 'walk');            // root motion stripped; drive movement from code
+scene.add(root);                                  // mixer.update(delta) in your loop
 ```
+
+`loadModel` scales by exactly ONE of `height` / `width` / `longest` (two at
+once throws), measures skinned meshes through their bind matrices (the naive
+`Box3.setFromObject` reads the bind pose or a stale cache and can scale a
+character until only its shoes show), grounds the feet, makes materials
+single-sided except names you list in `thinNames`, and wraps the load in
+`window.lucid.setLoading` so `ready` stays honest. `instance` uses
+`SkeletonUtils.clone` for rigged models and gives every copy its own mixer;
+`playClip` strips root-motion position tracks. `textureFrom` sets the colour
+space (`srgb: false` for normal / roughness maps).
 
 Then ask: **which dimension aligns this asset with its neighbours?** A street
 tree aligns by crown width (spacing), a building by façade width, a character
-by eye height. Normalizing a round-crowned tree by height turned a row of trees
-into a solid hedge. And check `glb.mjs inspect` for `thin-pole-height`: a
-bounding box carried by an umbrella pole or an antenna makes the real body
-half size when normalized by total height.
+by eye height. Normalizing a round-crowned tree by height turned a row of
+trees into a solid hedge. `glb.mjs inspect` warns `thin-pole-height` when a
+bounding box is carried by an umbrella pole or an antenna — never normalize
+such a model by total height. Models that came through `blender.mjs prep`
+are already grounded and sized; load them with no dimension at all.
 
-`Box3.setFromObject` on a **SkinnedMesh** is stale — its bounds cache does not
-follow the pose, so a rigged character can be scaled until only its shoes are
-visible. Read the true size from the GLB (`glb.mjs inspect` prints the
-POSITION bounds) and scale from a known number.
-
-## Orientation: only a picture can tell you
+## Orientation: ask for it, then verify with a picture
 
 Bounding boxes cannot tell front from back — a 90° yaw swaps X and Z and a
-180° yaw changes nothing. Different asset families face different ways
-(+Z, −Z, +X are all common, and rigged presets differ from static ones).
-Render six views with `blender.mjs render-views` (front/back/left/right/top/
-iso) and read the yaw off the sheet; then **bake the rotation into the
-vertices** (`blender.mjs convert --yaw`) rather than leaving it in a node
-matrix — a loader that measures with node matrices but normalizes raw geometry
-silently misplaces a rotated node, with a clean console.
+180° yaw changes nothing. For image-to-3D the `hero` recipe already sets
+`orientation: "align_image"`, so the model faces the way your cut-out does;
+give it a cut-out facing the way you want it to face in the scene. For any
+other source — an FBX, a Blender export, a user's file — render six views
+with `blender.mjs render-views` (front/back/left/right/top/iso) and read the
+yaw off the sheet; then bake the rotation into the vertices
+(`blender.mjs prep --yaw`, or `blender.mjs convert --yaw` for FBX input)
+rather than leaving it in a node matrix — a loader that measures with node
+matrices but normalizes raw geometry silently misplaces a rotated node, with
+a clean console. One capture after placement confirms it either way.
 
 ## Rigged models
 
-- Clone with `SkeletonUtils.clone()`, never `object.clone()` — plain clones
+- Copies come from `instance(...)`, never `object.clone()` — plain clones
   share one skeleton and every instance moves in lock-step like a parade.
-- One `AnimationMixer` per instance, and offset the phase
-  (`mixer.setTime((x * 0.37 + z * 0.11) % clip.duration)`) or the parade is
-  back.
-- Strip root-motion position tracks from walk cycles and let gameplay code
-  move the character; a clip with a 1.3-unit hip translation on a 1-unit
-  person snaps back to its origin at every loop.
+- Give every copy a different `phase` or the parade is back.
+- Root-motion translation is stripped by `playClip` by default; gameplay code
+  moves the character. Pass `stripRootMotion: false` only for a clip that is
+  meant to travel.
+- A rigged model's natural facing is not guaranteed; check one capture and
+  fix it with `yawDeg` once, on load.
 
 ## Performance: it is the textures
 

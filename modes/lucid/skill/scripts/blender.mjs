@@ -50,7 +50,11 @@ const KILL_GRACE_MS = 5000;
  *  check inside `doctor`, not a dependency of anything here. */
 const GLTF_PROBE_TIMEOUT_MS = 15_000;
 
-const SUBCOMMANDS = ["doctor", "run", "render-views", "convert", "probe"];
+const SUBCOMMANDS = ["doctor", "run", "kit", "prep", "render-views", "convert", "probe"];
+
+/** The one dimension `prep` normalizes by. Two of them cannot both be met by
+ *  one uniform scale, so asking for two is a refusal, not a preference. */
+const PREP_DIMENSIONS = ["height", "longest", "width"];
 
 const USAGE = `Usage: blender.mjs <subcommand> [options]
 
@@ -62,15 +66,21 @@ directory.
       Report how Blender was found, or every place that was looked at and came
       up empty. Exits 0 as a report; --strict exits 1 when Blender is missing.
 
-  run <script.py> [--timeout ${DEFAULT_TIMEOUT_SECONDS}] [--json] [-- <args…>]
-      <blender> --background --factory-startup --python <script.py> -- <args…>
+  run <script.py> [--no-kit] [--timeout ${DEFAULT_TIMEOUT_SECONDS}] [--json] [-- <args…>]
+      <blender> --background --factory-startup
+                --python-expr <put blender/ on sys.path>   (unless --no-kit)
+                --python <script.py> -- <args…>
       Blender's stdout/stderr stream through with a [blender] prefix and the
       child's exit code is propagated. With --json the stream goes to stderr
       and one JSON summary lands on stdout.
 
       Writing a script for this:
+        * 'import kit' works — that is what --kit (the default) is for. Run
+          'blender.mjs kit' for its API; it covers import, orientation,
+          grounding, scale, decimation, welding, materials, bevel/array/boolean
+          and export. --no-kit leaves sys.path untouched.
         * arguments arrive after a literal '--', so read them with
-          sys.argv[sys.argv.index('--') + 1:]
+          sys.argv[sys.argv.index('--') + 1:] (or kit.script_args())
         * print a line per step. --background has no UI, no progress bar and
           no error dialog; the printed log is the only observability there is.
         * there is NO OpenGL context in --background, so there are no viewport
@@ -79,6 +89,29 @@ directory.
         * exit non-zero (sys.exit(1)) on refusal, after an ERROR: line on
           stderr. Blender exits 0 after an uncaught Python exception in some
           versions, so the wrapper also checks the files you claim to write.
+        * blender/make_prop.py is a template to copy: a bevelled, arrayed,
+          boolean-cut prop is the thing procedural three.js cannot build.
+
+  kit [--json]
+      Print blender/kit.py's API, one line per function, and how a script
+      imports it. Needs no Blender.
+
+  prep <in> <out.glb> [--yaw <deg>] [--height <m> | --longest <m> | --width <m>]
+       [--decimate <ratio>] [--merge] [--thin <name,name>]
+       [--timeout ${DEFAULT_TIMEOUT_SECONDS}] [--json]
+      Everything an incoming model needs before it enters a scene, in one
+      pass, via blender/prep_asset.py:
+        import (.glb/.gltf/.fbx/.obj) -> optional merge of loose shells
+        -> yaw -> bake rotation+scale into the vertices -> feet to y = 0 and
+        centred in x/z -> normalize by ONE dimension -> optional decimate
+        -> backface culling on (except --thin parts) -> export
+      Then it inspects the output and prints the same checklist as 'convert'.
+      --height/--longest/--width are mutually exclusive: one uniform scale
+      cannot satisfy two of them, so two is refused before Blender starts.
+      Pick the dimension that aligns this asset with its neighbours — a tree
+      by crown width, a building by façade width, a character by height.
+      --thin takes object-name patterns (substring or glob, case-insensitive)
+      for leaves, flags and signs, which stay double-sided.
 
   render-views <glb> <out.png> [--size 512] [--timeout ${DEFAULT_TIMEOUT_SECONDS}] [--json]
       Six orthographic views on one 3x2 sheet, via blender/render_views.py:
@@ -127,7 +160,17 @@ const COMMON_OPTIONS = {
 
 const OPTIONS = {
   doctor: { strict: { type: "boolean" }, "no-gltf-probe": { type: "boolean" } },
-  run: {},
+  run: { kit: { type: "boolean" }, "no-kit": { type: "boolean" } },
+  kit: {},
+  prep: {
+    yaw: { type: "string" },
+    height: { type: "string" },
+    longest: { type: "string" },
+    width: { type: "string" },
+    decimate: { type: "string" },
+    merge: { type: "boolean" },
+    thin: { type: "string" },
+  },
   "render-views": { size: { type: "string" } },
   convert: {
     yaw: { type: "string" },
@@ -331,6 +374,60 @@ function requireBlender(flagPath) {
 }
 
 // ---------------------------------------------------------------------------
+// The Python kit
+// ---------------------------------------------------------------------------
+
+const KIT_MODULE = join(PYTHON_DIR, "kit.py");
+
+/**
+ * The expression that makes `import kit` work inside an agent's script.
+ *
+ * Blender's embedded Python ignores $PYTHONPATH unless it is started with
+ * `--python-use-system-env`, and that flag would also pull in the developer's
+ * site-packages and user scripts — exactly what `--factory-startup` is here to
+ * keep out. `--python-expr` runs before the `--python` script (Blender
+ * executes them in command-line order) and touches nothing else.
+ *
+ * The path is embedded with JSON.stringify: its escaping of backslashes and
+ * quotes is valid Python string syntax too, which matters on Windows.
+ *
+ * `dont_write_bytecode` is not a detail: without it the first `import kit`
+ * drops a `__pycache__/` into the installed skill directory, which is a
+ * directory the mode ships and never cleans up. Blender only honours
+ * $PYTHONDONTWRITEBYTECODE under --python-use-system-env, so it is set here
+ * instead, before any import can happen.
+ */
+function kitPathExpression() {
+  return `import sys; sys.dont_write_bytecode = True; sys.path.insert(0, ${JSON.stringify(PYTHON_DIR)})`;
+}
+
+/**
+ * Read kit.py's public API out of kit.py.
+ *
+ * Derived rather than transcribed: a hand-written copy of the function list in
+ * this file would drift from the module the moment either side is edited, and
+ * the whole value of `blender.mjs kit` is that what it prints is callable.
+ * Names starting with `_` are internals and are not advertised.
+ */
+function readKitApi() {
+  if (!existsSync(KIT_MODULE)) fail(`kit: missing ${KIT_MODULE}`);
+  const lines = readFileSync(KIT_MODULE, "utf-8").split("\n");
+  const functions = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const signature = /^def ([a-z][A-Za-z0-9_]*)\((.*)\):\s*$/.exec(lines[index]);
+    if (!signature) continue;
+    const doc = /^\s*"""(.*?)(?:"""|$)/.exec(lines[index + 1] ?? "");
+    functions.push({
+      name: signature[1],
+      signature: `${signature[1]}(${signature[2]})`,
+      summary: (doc?.[1] ?? "").trim(),
+    });
+  }
+  if (!functions.length) fail(`kit: found no functions in ${KIT_MODULE}`);
+  return functions;
+}
+
+// ---------------------------------------------------------------------------
 // Running Blender
 // ---------------------------------------------------------------------------
 
@@ -367,10 +464,16 @@ function linePrefixer(prefix, write) {
  * @param {string[]} options.args    passed after the literal `--`
  * @param {number} options.timeoutMs
  * @param {"stdout"|"stderr"} options.streamTo where Blender's output is echoed
+ * @param {boolean} [options.kit] put `blender/` on sys.path so `import kit` works
  */
-function runBlenderScript({ blender, script, args, timeoutMs, streamTo }) {
+function runBlenderScript({ blender, script, args, timeoutMs, streamTo, kit = true }) {
   return new Promise((resolvePromise) => {
-    const argv = ["--background", "--factory-startup", "--python", script, "--", ...args];
+    const argv = [
+      "--background",
+      "--factory-startup",
+      ...(kit ? ["--python-expr", kitPathExpression()] : []),
+      "--python", script, "--", ...args,
+    ];
     const started = Date.now();
     const child = spawn(blender, argv, { stdio: ["ignore", "pipe", "pipe"] });
     const collected = { stdout: "", stderr: "" };
@@ -448,6 +551,53 @@ async function runHelper(blender, scriptName, args, timeoutMs, label) {
     fail(`${label}: Blender exited ${result.code}${tail ? `\n${tail}` : ""}`);
   }
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// The checklist on a produced GLB
+// ---------------------------------------------------------------------------
+
+/**
+ * What a subcommand that wrote a GLB has to be able to prove about it.
+ *
+ * `convert` and `prep` both hand a file to Blender and get one back, and the
+ * only thing that distinguishes "it worked" from "it produced the wrong file"
+ * is this list of measurements. One reader, one shape, one set of lines.
+ */
+function glbChecklist(absOut) {
+  const report = inspectGlb(absOut);
+  const largest = report.images.reduce((best, image) => {
+    const edge = Math.max(image.width ?? 0, image.height ?? 0);
+    return edge > (best ? Math.max(best.width ?? 0, best.height ?? 0) : 0) ? image : best;
+  }, null);
+  return {
+    report,
+    checklist: {
+      triangles: report.triangles,
+      vertices: report.vertices,
+      bbox: report.bbox,
+      size: report.size,
+      longestAxis: report.longestAxis,
+      materials: report.materials.count,
+      doubleSidedMaterials: report.materials.doubleSided,
+      extensionsRequired: report.extensionsRequired,
+      largestTexture: largest ? `${largest.width}x${largest.height}` : "none",
+    },
+  };
+}
+
+function checklistLines({ report, checklist }) {
+  return [
+    `  triangles  ${report.triangles} (${report.vertices} verts)`,
+    `  bbox       ${report.bbox ? `min [${report.bbox.min.join(", ")}] max [${report.bbox.max.join(", ")}]` : "unavailable"}`,
+    `  size       ${report.size ? report.size.join(" x ") : "?"}  longest ${report.longestAxis ?? "?"}`,
+    `  materials  ${report.materials.count}, doubleSided ${report.materials.doubleSided}`,
+    `  required   ${report.extensionsRequired.length ? report.extensionsRequired.join(", ") : "none"}`,
+    `  texture    ${checklist.largestTexture}`,
+    ...(report.warnings.length
+      ? report.warnings.map((warning) => `  ! ${warning.code}: ${warning.message}`)
+      : ["  no warnings"]),
+  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -549,6 +699,8 @@ async function main() {
 
     case "run": {
       const scriptPath = existingFile(requirePositional(positionals, 0, "<script.py>"), "<script.py>");
+      if (values.kit === true && values["no-kit"] === true) fail("run: --kit and --no-kit contradict each other");
+      const withKit = values["no-kit"] !== true;
       const blender = requireBlender(values.blender);
       const result = await runBlenderScript({
         blender: blender.path,
@@ -556,6 +708,7 @@ async function main() {
         args: passthrough,
         timeoutMs,
         streamTo: values.json ? "stderr" : "stdout",
+        kit: withKit,
       });
       if (result.spawnError) fail(`run: could not start ${blender.path} (${result.spawnError})`);
       if (values.json) {
@@ -564,6 +717,7 @@ async function main() {
           command: "run",
           script: scriptPath,
           args: passthrough,
+          kit: withKit ? PYTHON_DIR : null,
           blender: { path: blender.path, version: blender.version, source: blender.source },
           exitCode: result.code,
           timedOut: result.timedOut,
@@ -647,11 +801,8 @@ async function main() {
       const helper = parseHelperSummary(helperRun.stdout, "fbx_to_glb");
       // The checklist is the point: a conversion that cannot say what it
       // produced is indistinguishable from one that produced the wrong thing.
-      const report = inspectGlb(absOut);
-      const largest = report.images.reduce((best, image) => {
-        const edge = Math.max(image.width ?? 0, image.height ?? 0);
-        return edge > (best ? Math.max(best.width ?? 0, best.height ?? 0) : 0) ? image : best;
-      }, null);
+      const measured = glbChecklist(absOut);
+      const { report, checklist } = measured;
       const payload = {
         ok: true,
         command: "convert",
@@ -661,17 +812,7 @@ async function main() {
         yaw,
         textureSize,
         doubleSided,
-        checklist: {
-          triangles: report.triangles,
-          vertices: report.vertices,
-          bbox: report.bbox,
-          size: report.size,
-          longestAxis: report.longestAxis,
-          materials: report.materials.count,
-          doubleSidedMaterials: report.materials.doubleSided,
-          extensionsRequired: report.extensionsRequired,
-          largestTexture: largest ? `${largest.width}x${largest.height}` : "none",
-        },
+        checklist,
         helper,
         warnings: report.warnings,
         blender: { path: blender.path, version: blender.version },
@@ -681,15 +822,109 @@ async function main() {
         ...(yaw !== null && helper && helper.yawBaked === false
           ? [`  ! the ${yaw} deg yaw was NOT baked into the vertices (parented or shared meshes); it stays on the node transform — see the [blender] log`]
           : []),
-        `  triangles  ${report.triangles} (${report.vertices} verts)`,
-        `  bbox       ${report.bbox ? `min [${report.bbox.min.join(", ")}] max [${report.bbox.max.join(", ")}]` : "unavailable"}`,
-        `  size       ${report.size ? report.size.join(" x ") : "?"}  longest ${report.longestAxis ?? "?"}`,
-        `  materials  ${report.materials.count}, doubleSided ${report.materials.doubleSided}`,
-        `  required   ${report.extensionsRequired.length ? report.extensionsRequired.join(", ") : "none"}`,
-        `  texture    ${payload.checklist.largestTexture}`,
-        ...(report.warnings.length
-          ? report.warnings.map((warning) => `  ! ${warning.code}: ${warning.message}`)
-          : ["  no warnings"]),
+        ...checklistLines(measured),
+      ]);
+      break;
+    }
+
+    case "kit": {
+      const functions = readKitApi();
+      // Aligned, but capped: two long signatures must not push every summary
+      // off the right of an 80-column terminal.
+      const column = Math.min(Math.max(...functions.map((entry) => entry.signature.length)) + 2, 50);
+      const payload = {
+        ok: true,
+        command: "kit",
+        module: KIT_MODULE,
+        importLine: "import kit",
+        functions,
+        note: "blender.mjs run puts this directory on sys.path (--kit, on by default); --no-kit turns that off",
+      };
+      emit(values, payload, [
+        `kit.py  ${KIT_MODULE}`,
+        "",
+        "  In a script run by 'blender.mjs run', write:  import kit",
+        "  sys.path already carries this directory. --no-kit turns that off.",
+        "",
+        ...functions.map((entry) => `  ${entry.signature.padEnd(column)} ${entry.summary}`),
+        "",
+        "  Measuring and placing (world_bbox, ground, normalize) speaks glTF axes",
+        "  (Y up); building (array offset, cutter locations) speaks Blender axes",
+        "  (Z up). Every log line names the space of the vector it prints.",
+        `  Copy ${join(PYTHON_DIR, "make_prop.py")} to start a hard-surface prop.`,
+      ]);
+      break;
+    }
+
+    case "prep": {
+      const input = existingFile(requirePositional(positionals, 0, "<in>"), "<in>");
+      const outPath = requirePositional(positionals, 1, "<out.glb>");
+      const yaw = values.yaw === undefined ? null : num(values.yaw, "--yaw", { min: -360, max: 360 });
+      // Refused here, before Blender is started: the answer does not depend on
+      // the model, and a two-minute import is a long way to go for a typo.
+      const asked = PREP_DIMENSIONS.filter((name) => values[name] !== undefined);
+      if (asked.length > 1) {
+        fail(`prep: normalize by exactly one dimension — ${asked.map((name) => `--${name}`).join(" and ")} were given together, and one uniform scale cannot satisfy two of them. Pick the dimension that aligns this asset with its neighbours.`);
+      }
+      const dimension = asked[0] ?? null;
+      let target = null;
+      if (dimension !== null) {
+        target = num(values[dimension], `--${dimension}`, { min: 0 });
+        if (target === 0) fail(`prep: --${dimension} must be greater than 0 — a zero target scales the model out of existence`);
+      }
+      let decimate = null;
+      if (values.decimate !== undefined) {
+        // 0 would delete the mesh and anything over 1 is not a ratio; Blender's
+        // DECIMATE clamps silently, which is how a bad ratio becomes a no-op.
+        decimate = num(values.decimate, "--decimate", { min: 0, max: 1 });
+        if (decimate === 0) fail("prep: --decimate must be inside (0, 1] — 0 collapses the mesh to nothing");
+      }
+      const thin = (values.thin ?? "").split(",").map((name) => name.trim()).filter(Boolean);
+      const merge = values.merge === true;
+
+      const blender = requireBlender(values.blender);
+      const absOut = resolve(outPath);
+      const helperRun = await runHelper(blender, "prep_asset.py", [
+        input, absOut,
+        ...(yaw === null ? [] : ["--yaw", String(yaw)]),
+        ...(dimension === null ? [] : [`--${dimension}`, String(target)]),
+        ...(decimate === null ? [] : ["--decimate", String(decimate)]),
+        ...(merge ? ["--merge"] : []),
+        ...(thin.length ? ["--thin", thin.join(",")] : []),
+      ], timeoutMs, "prep");
+
+      if (!existsSync(absOut)) fail(`prep: Blender exited 0 but wrote no file at ${outPath}`);
+      const helper = parseHelperSummary(helperRun.stdout, "prep_asset");
+      const measured = glbChecklist(absOut);
+      const { report, checklist } = measured;
+      const payload = {
+        ok: true,
+        command: "prep",
+        in: input,
+        out: outPath,
+        bytes: report.bytes,
+        yaw,
+        normalize: dimension === null ? null : { dimension, target },
+        decimate,
+        merge,
+        thin,
+        checklist,
+        helper,
+        warnings: report.warnings,
+        blender: { path: blender.path, version: blender.version },
+      };
+      emit(values, payload, [
+        `${outPath}  ${(report.bytes / 1024).toFixed(1)} KB`,
+        ...(helper && helper.before
+          ? [`  was        ${helper.before.triangles} tris, ${helper.before.objects} object(s), size ${helper.before.size.map((value) => Number(value.toFixed(4))).join(" x ")}`]
+          : []),
+        ...checklistLines(measured),
+        ...(dimension === null
+          ? ["  ! no --height/--longest/--width: this model kept whatever scale it arrived with, which for an image-to-3D asset is a 1-unit longest edge, not a size."]
+          : []),
+        ...(yaw === null
+          ? ["  ! no --yaw: orientation is whatever the file had. Render six views (blender.mjs render-views) before trusting it."]
+          : []),
       ]);
       break;
     }

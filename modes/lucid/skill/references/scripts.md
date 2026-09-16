@@ -91,6 +91,24 @@ distribution (and so `thin-pole-height`) is skipped until you `unpack`; and
 `optimize` prunes solid-colour textures by default, so `largestTexture` can
 honestly go from `4096x4096` to `none`.
 
+## `texture.mjs` — the maps an image model does not produce
+
+`node {SKILL_PATH}/scripts/texture.mjs info|normal|roughness|tile-check|make-tileable|resize|pack-orm …`
+
+Deterministic pixel arithmetic, Node built-ins only (its own PNG codec: 8-bit
+and 16-bit greyscale/RGB/RGBA, non-interlaced; palette and interlaced files
+are refused by name).
+
+| Subcommand | What it does |
+|---|---|
+| `info <png>` | Size, bit depth, colour type, alpha, bytes, and the whole tile-check estimate. |
+| `normal <albedo> <out> [--strength 2] [--blur 1] [--invert-y]` | Tangent-space normal map from luminance (Sobel, wrap sampling; flat = `(128,128,255)`; OpenGL/glTF +Y up, `--invert-y` for DirectX). `--strength=-2` (with the `=`) inverts relief for pale-mortar / light-grout surfaces; `relief` under 1 means no usable relief. |
+| `roughness <albedo> <out> [--min 0.35] [--max 0.95] [--invert]` | Darker and busier → rougher (`0.65·(1−L) + 0.35·detail`), mapped into `[min, max]`. |
+| `tile-check <png>` | `seamScore` (edge step relative to the mean interior step; 0 = perfect wrap, threshold 2), `tileable`, `worstEdge`, and `structured` when the seam is the texture's own structure (bricks, planks) rather than a defect. |
+| `make-tileable <in> <out> [--blend 0.12]` | Half-offset + mirror cross-fade over `blend × size`; warns on a structured or already-tileable input (it would smear real structure). |
+| `resize <in> <out> --size N` | Box-filter downscale only; non-power-of-two sizes are a warning, upscaling is refused. |
+| `pack-orm <ao\|-> <roughness> <metallic\|-> <out>` | R = AO (255 when `-`), G = roughness, B = metallic (0 when `-`): the glTF metallicRoughness layout. |
+
 ## `blender.mjs` — headless Blender, the only way in
 
 `node {SKILL_PATH}/scripts/blender.mjs doctor|run|render-views|convert|probe …`
@@ -98,7 +116,9 @@ honestly go from `4096x4096` to `none`.
 | Subcommand | What it does |
 |---|---|
 | `doctor [--json] [--strict]` | How Blender was found (flag → `$BLENDER_PATH` → PATH → platform locations), its version, and whether gltf-transform is cached. Exit 0 as a report; `--strict` exits 1 when Blender is missing. |
-| `run <script.py> [--timeout 600] [--json] [-- <args…>]` | `<blender> --background --factory-startup --python <script.py> -- <args…>`; Blender's output streams through with a `[blender]` prefix and its exit code is propagated (124 on timeout). |
+| `run <script.py> [--no-kit] [--timeout 600] [--json] [-- <args…>]` | `<blender> --background --factory-startup --python <script.py> -- <args…>` with `blender/` on `sys.path` so the script can `import kit` (`--no-kit` leaves the path alone); Blender's output streams through with a `[blender]` prefix and its exit code is propagated (124 on timeout). |
+| `prep <in> <out.glb> [--yaw <deg>] [--height <m> \| --longest <m> \| --width <m>] [--decimate <ratio>] [--merge] [--thin <name,name>]` | The entry checklist in one pass: import (glb/gltf/fbx/obj) → optional merge of loose shells → yaw → bake rotation and scale → feet to y = 0, centred → normalize by exactly one dimension → optional decimate → backface culling on except `--thin` parts → export, then the inspect checklist. Two dimensions are refused before Blender starts. |
+| `kit` | Prints `blender/kit.py`'s API (20 functions: `reset`, `import_model`, `mesh_objects`, `world_bbox`, `yaw`, `apply_transforms`, `ground`, `normalize`, `decimate`, `single_sided`, `merge_fragments`, `bevel`, `array`, `boolean`, `set_material`, `export_glb`, …) and how a script imports it. Needs no Blender. `blender/make_prop.py` is the template to copy for a hard-surface prop. |
 | `render-views <glb> <out.png> [--size 512]` | Six orthographic views on one 3×2 sheet plus a `<out.png>.json` sidecar with the tile order. Verifies the sheet is over 10 KB. |
 | `convert <fbx> <out.glb> [--yaw <deg>] [--texture-size 1024] [--double-sided]` | FBX → GLB with the yaw baked into the vertices and backface culling on; then inspects the result and prints the checklist. `helper.yawBaked: false` means the rotation stayed on a node (parented or shared meshes) — read the `!` line. |
 | `probe <glb\|fbx>` | What Blender sees after import: objects with triangle counts (and whether they are the importer's own `glTF_not_exported` helpers), armatures and bones, world bbox in glTF axes, images. |
@@ -108,8 +128,10 @@ Writing a script for `run`: read arguments with
 after an `ERROR:` line on refusal, and verify the files you write by size —
 Blender can exit 0 after an uncaught exception. `--background` has no OpenGL
 context: Workbench and EEVEE render, viewport overlays do not. Probe an
-operator with `bpy.types.<MODULE>_OT_<name>`; `hasattr(bpy.ops.wm, x)` is
-always true.
+operator with `kit.operator_exists("wm.fbx_import")` (it calls
+`bpy.ops.<mod>.<name>.get_rna_type()`, which raises `KeyError` when the
+operator is missing); `hasattr(bpy.ops.wm, x)` is always true, and
+`bpy.types.<MODULE>_OT_<name>` misses every built-in C++ operator.
 
 Reading the six-view sheet: a tile's name (`-Z front`, `+X right`, `+Z back`,
 `-X left`, `+Y top`, `iso`) is the glTF direction from the model's centre TO

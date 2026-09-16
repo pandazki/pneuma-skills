@@ -16,10 +16,11 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { FAL_QUEUE_URL, runBatch } from "../skill/scripts/image-to-3d.mjs";
+import { FAL_QUEUE_URL, RECIPES, recipeJob, runBatch } from "../skill/scripts/image-to-3d.mjs";
 import type { FalFetch, FalFetchInit } from "../skill/scripts/image-to-3d.mjs";
 
 const H3 = "tripo3d/h3.1/image-to-3d";
+const MULTIVIEW = "tripo3d/h3.1/multiview-to-3d";
 const SUBMIT_URL = `https://queue.fal.run/${H3}`;
 
 type JobRecord = Record<string, any>;
@@ -76,6 +77,17 @@ function glb(): Buffer<ArrayBuffer> {
   bytes.write("JSON", 16);
   body.copy(bytes, 20);
   return bytes;
+}
+
+/**
+ * A binary FBX, which is what H3.1 returns for `quad: true`. The header is
+ * the whole point: it is what tells a GLB from an FBX on disk.
+ */
+function fbx(): Buffer<ArrayBuffer> {
+  const header = Buffer.from("Kaydara FBX Binary  \0\u001a\0", "latin1");
+  const version = Buffer.alloc(4);
+  version.writeUInt32LE(7400, 0);
+  return Buffer.concat([header, version, Buffer.alloc(64, 7)]);
 }
 
 /** A submitted job, as the file looks after fal accepted it. */
@@ -536,5 +548,293 @@ describe("image-to-3d.mjs", () => {
 
     await runBatch("submit", f.filename, config);
     expect(posts).toBe(0);
+  });
+
+  test("every H3.1 option is checked by name and by value before anything is paid for", async () => {
+    const f = fixture(1);
+    let calls = 0;
+    const config = {
+      key: "",
+      fetchFn: (async () => {
+        calls++;
+        throw new Error("check must stay offline");
+      }) as FalFetch,
+    };
+    const withInput = (input: Record<string, unknown>, endpoint = H3) => {
+      const job: JobRecord = { id: "asset-0", endpoint, output: "models/0.glb", input };
+      if (endpoint === MULTIVIEW) job.images = ["input.png", "input.png"];
+      else job.image = "input.png";
+      f.write({ jobs: [job] });
+    };
+    const rejects = async (input: Record<string, unknown>, pattern: RegExp, endpoint = H3) => {
+      withInput(input, endpoint);
+      await expect(runBatch("check", f.filename, config)).rejects.toThrow(pattern);
+    };
+
+    // Every enum, on both H3.1 endpoints — the multiview model takes the
+    // same options, so a value refused for one must be refused for the other.
+    for (const endpoint of [H3, MULTIVIEW]) {
+      await rejects({ texture_quality: "high" }, /texture_quality must be "standard" or "detailed"/, endpoint);
+      await rejects({ geometry_quality: "ultra" }, /geometry_quality must be "standard" or "detailed"/, endpoint);
+      await rejects({ texture_alignment: "image" }, /texture_alignment must be "original_image" or "geometry"/, endpoint);
+      await rejects({ orientation: "auto" }, /orientation must be "default" or "align_image"/, endpoint);
+      await rejects({ auto_size: "yes" }, /auto_size must be true or false/, endpoint);
+      await rejects({ quad: 1 }, /quad must be true or false/, endpoint);
+      await rejects({ texture: "true" }, /texture must be true or false/, endpoint);
+      await rejects({ face_limit: 0 }, /face_limit must be a positive integer/, endpoint);
+      await rejects({ model_seed: 1.5 }, /model_seed must be an integer/, endpoint);
+      await rejects({ texture_seed: "7" }, /texture_seed must be an integer/, endpoint);
+      // A misspelling fal would accept and silently ignore.
+      await rejects({ auto_scale: true }, /auto_scale is not an option of .*It takes .*auto_size/s, endpoint);
+    }
+
+    // Neither model may be given the other's options.
+    await rejects({ texture_size: 1024 }, /texture_size is a Trellis option, not an H3\.1 option/);
+    await rejects({ quad: true }, /quad is an H3\.1 option, not a Trellis option/, "fal-ai/trellis");
+    await rejects({ mesh_simplify: 0.95, samples: 12 }, /samples is not an option of fal-ai\/trellis/, "fal-ai/trellis");
+    await rejects({ image_urls: ["data:image/png;base64,AAAA"] }, /the helper supplies image_urls/, MULTIVIEW);
+
+    // The whole H3.1 table, accepted together.
+    withInput({
+      texture: true,
+      pbr: false,
+      face_limit: 200000,
+      model_seed: 7,
+      texture_seed: 8,
+      texture_quality: "detailed",
+      geometry_quality: "standard",
+      texture_alignment: "original_image",
+      orientation: "align_image",
+      auto_size: true,
+      quad: false,
+    });
+    expect((await runBatch("check", f.filename, config))[0]?.state).toBe("ready");
+    expect(calls).toBe(0);
+  });
+
+  test("a multiview job sends its views as image_urls, in the order the file lists them", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "lucid-multiview-"));
+    workspaces.push(dir);
+    const filename = join(dir, "jobs.json");
+    // Four distinguishable PNGs: same header, different tail, so the order
+    // the model receives can be read back out of the payload.
+    const views = ["front", "left", "back", "right"];
+    for (const view of views) writeFileSync(join(dir, `${view}.png`), Buffer.concat([TINY_PNG, Buffer.from(view)]));
+    writeFileSync(
+      filename,
+      JSON.stringify({
+        jobs: [
+          {
+            id: "idol",
+            endpoint: MULTIVIEW,
+            images: views.map((view) => `${view}.png`),
+            output: "models/idol.glb",
+            input: { texture: true, pbr: true },
+          },
+        ],
+      }),
+    );
+
+    expect((await runBatch("check", filename, { key: "" }))[0]?.state).toBe("ready");
+
+    let body: Record<string, any> = {};
+    const rows = await runBatch("submit", filename, {
+      key: "test-only-key",
+      fetchFn: (async (url, init) => {
+        expect(url).toBe(`https://queue.fal.run/${MULTIVIEW}`);
+        body = JSON.parse(init.body ?? "{}");
+        return json({
+          request_id: "mv",
+          status_url: "https://queue.fal.run/mv/status",
+          response_url: "https://queue.fal.run/mv/result",
+        });
+      }) as FalFetch,
+    });
+
+    expect(rows[0]?.state).toBe("IN_QUEUE");
+    expect(body.image_url).toBeUndefined();
+    expect(body.image_urls).toHaveLength(4);
+    expect(
+      body.image_urls.map((uri: string) => Buffer.from(uri.slice(uri.indexOf(",") + 1), "base64").subarray(TINY_PNG.length).toString()),
+    ).toEqual(views);
+    expect(body.texture).toBe(true);
+  });
+
+  test("multiview refuses a turnaround that is not one, and says which endpoint takes one image", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "lucid-multiview-bad-"));
+    workspaces.push(dir);
+    const filename = join(dir, "jobs.json");
+    writeFileSync(join(dir, "input.png"), TINY_PNG);
+    const plan = (job: JobRecord) =>
+      writeFileSync(filename, JSON.stringify({ jobs: [{ id: "idol", output: "models/idol.glb", ...job }] }));
+    const config = {
+      key: "test-only-key",
+      fetchFn: (async () => {
+        throw new Error("the paid API must not be called");
+      }) as FalFetch,
+    };
+    const both = async (job: JobRecord, pattern: RegExp) => {
+      plan(job);
+      await expect(runBatch("check", filename, { key: "" })).rejects.toThrow(pattern);
+      await expect(runBatch("submit", filename, config)).rejects.toThrow(pattern);
+    };
+
+    const four = ["input.png", "input.png", "input.png", "input.png"];
+    await both({ endpoint: MULTIVIEW, image: "input.png" }, /needs 2 to 4 views in images.*One image goes to tripo3d\/h3\.1\/image-to-3d/s);
+    await both({ endpoint: MULTIVIEW, images: ["input.png"] }, /images takes 2 to 4 files, in the order front, left, back, right/);
+    await both({ endpoint: MULTIVIEW, images: [...four, "input.png"] }, /images takes 2 to 4 files/);
+    await both({ endpoint: MULTIVIEW, images: ["", "input.png", "input.png"] }, /first entry of images is the front view/);
+    await both({ endpoint: MULTIVIEW, images: ["input.png", 7] }, /images\[1\] \(left\) must be a path relative to the job file/);
+    await both(
+      { endpoint: MULTIVIEW, images: ["input.png", "https://files.example/left.png"] },
+      /images\[1\] \(left\) must be a path relative to the job file, not a URL/,
+    );
+    await both({ endpoint: H3, images: four }, /images is only for tripo3d\/h3\.1\/multiview-to-3d/);
+    await both({ endpoint: MULTIVIEW, image: "input.png", images: four }, /give either image or images, not both/);
+
+    // Every view has to exist before the turnaround is worth paying for.
+    plan({ endpoint: MULTIVIEW, images: ["input.png", "missing.png"] });
+    expect((await runBatch("check", filename, { key: "" }))[0]?.state).toBe("waiting-for-image");
+    expect((await runBatch("submit", filename, config))[0]?.state).toBe("waiting-for-image");
+
+    writeFileSync(join(dir, "broken.png"), "");
+    plan({ endpoint: MULTIVIEW, images: ["input.png", "broken.png"] });
+    expect((await runBatch("check", filename, { key: "" }))[0]).toMatchObject({
+      state: "invalid-image",
+      error: expect.stringContaining("idol left"),
+    });
+    expect((await runBatch("submit", filename, config))[0]?.error).toContain("nonempty PNG");
+  });
+
+  test("a quad job lands as the FBX it is, reports the file it wrote, and says how to convert it", async () => {
+    const f = fixture(1);
+    const data = f.read();
+    accepted(data.jobs[0]!).input = { quad: true, auto_size: true };
+    f.write(data);
+
+    const notes: string[] = [];
+    const config = {
+      key: "test-only-key",
+      onNote: (message: string) => notes.push(message),
+      fetchFn: (async (url) => {
+        if (url.endsWith("/status")) return json({ status: "COMPLETED" });
+        // A quad result carries no GLB: the mesh and the named entry are FBX.
+        if (url.endsWith("/result")) {
+          return json({
+            model_mesh: { url: "https://files.example/model.fbx" },
+            model_urls: { fbx: { url: "https://files.example/model.fbx" } },
+          });
+        }
+        return new Response(fbx());
+      }) as FalFetch,
+    };
+
+    const rows = await runBatch("collect", f.filename, config);
+    expect(rows[0]).toMatchObject({
+      state: "downloaded",
+      format: "fbx",
+      auto_size: true,
+      output: "models/0.fbx",
+      bytes: fbx().length,
+    });
+    // The requested .glb name is not written; the FBX is, beside it.
+    expect(existsSync(f.output(0))).toBe(false);
+    expect(readFileSync(join(f.dir, "models", "0.fbx"))).toEqual(fbx());
+    expect(notes.join("\n")).toContain("blender.mjs convert models/0.fbx models/0.glb");
+    // The job file records the container, so a re-run knows it is done.
+    expect(f.read().jobs[0]).toMatchObject({ format: "fbx", output_written: "models/0.fbx" });
+  });
+
+  test("a quad job that is handed a GLB is a download-error, not a mislabelled file", async () => {
+    const f = fixture(1);
+    const data = f.read();
+    accepted(data.jobs[0]!).input = { quad: true };
+    f.write(data);
+
+    const rows = await runBatch("collect", f.filename, {
+      key: "test-only-key",
+      onNote: () => {},
+      fetchFn: (async (url) => {
+        if (url.endsWith("/status")) return json({ status: "COMPLETED" });
+        if (url.endsWith("/result")) return json({ model_mesh: { url: "https://files.example/model.fbx" } });
+        return new Response(glb());
+      }) as FalFetch,
+    });
+
+    expect(rows[0]).toMatchObject({ state: "download-error", error_stage: "download" });
+    expect(rows[0]?.error).toContain("binary FBX");
+    expect(existsSync(join(f.dir, "models", "0.fbx"))).toBe(false);
+    expect(existsSync(`${join(f.dir, "models", "0.fbx")}.part`)).toBe(false);
+  });
+
+  test("a job that asked for no quad topology still reports its GLB, its name and its units", async () => {
+    const f = fixture(1);
+    const data = f.read();
+    accepted(data.jobs[0]!).input = { texture: true, auto_size: false };
+    f.write(data);
+
+    const rows = await runBatch("collect", f.filename, {
+      key: "test-only-key",
+      fetchFn: (async (url) => {
+        if (url.endsWith("/status")) return json({ status: "COMPLETED" });
+        if (url.endsWith("/result")) return json({ model_mesh: { url: "https://files.example/model.glb" } });
+        return new Response(glb());
+      }) as FalFetch,
+    });
+
+    expect(rows[0]).toMatchObject({ state: "downloaded", format: "glb", auto_size: false, output: "models/0.glb" });
+    expect(readFileSync(f.output(0))).toEqual(glb());
+    expect(existsSync(join(f.dir, "models", "0.fbx"))).toBe(false);
+  });
+
+  test("each recipe prints as a job the plan checks accept", async () => {
+    expect(Object.keys(RECIPES)).toEqual(["hero", "hero-multiview", "prop"]);
+    expect(RECIPES.hero).toMatchObject({
+      endpoint: H3,
+      input: {
+        texture: true,
+        pbr: true,
+        auto_size: true,
+        orientation: "align_image",
+        geometry_quality: "detailed",
+        texture_quality: "detailed",
+      },
+    });
+    expect(RECIPES["hero-multiview"]).toMatchObject({ endpoint: MULTIVIEW, input: RECIPES.hero!.input });
+    expect(RECIPES.prop).toMatchObject({ endpoint: "fal-ai/trellis", input: { mesh_simplify: 0.95, texture_size: 1024 } });
+
+    // What `recipe hero` prints: JSON, and the preset inside it.
+    const printed = JSON.parse(JSON.stringify(recipeJob("hero"), null, 2));
+    expect(printed).toEqual({
+      id: "<asset-id>",
+      endpoint: H3,
+      image: "<asset-id>.png",
+      output: "../scene/models/<asset-id>.glb",
+      input: RECIPES.hero!.input,
+    });
+    expect(JSON.parse(JSON.stringify(recipeJob("hero-multiview"), null, 2)).images).toEqual([
+      "<asset-id>-front.png",
+      "<asset-id>-left.png",
+      "<asset-id>-back.png",
+      "<asset-id>-right.png",
+    ]);
+    expect(() => recipeJob("heroic")).toThrow(/Unknown recipe: heroic\. Use hero, hero-multiview, prop\./);
+
+    // A plan pasted from the recipes passes the same checks a hand-written
+    // one does — the presets cannot drift out of what the script accepts.
+    const dir = mkdtempSync(join(tmpdir(), "lucid-recipes-"));
+    workspaces.push(dir);
+    const filename = join(dir, "jobs.json");
+    writeFileSync(join(dir, "cut.png"), TINY_PNG);
+    const jobs = Object.keys(RECIPES).map((name, index) => {
+      const job = recipeJob(name) as JobRecord;
+      job.id = name;
+      job.output = `models/${index}.glb`;
+      if (job.images) job.images = job.images.map(() => "cut.png");
+      else job.image = "cut.png";
+      return job;
+    });
+    writeFileSync(filename, JSON.stringify({ jobs }));
+    expect((await runBatch("check", filename, { key: "" })).map((row) => row.state)).toEqual(["ready", "ready", "ready"]);
   });
 });

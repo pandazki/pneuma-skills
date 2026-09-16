@@ -20,7 +20,7 @@
  * `request_id`, is `submitting`, or is `submission-uncertain`. A job that
  * left and lost its answer is reported, never repeated.
  *
- * The three commands:
+ * The commands:
  *
  *   check    offline, no key. Validates the plan and reports a per-job
  *            state. Never touches the file.
@@ -29,6 +29,13 @@
  *   collect  one status / result / download pass. Re-run it; errors are
  *            staged (`result-error`, `download-error`) so a failed
  *            download never means "generate the model again".
+ *   recipe   offline. Prints one of the three presets as a pasteable job.
+ *
+ * A job carries one cut-out in `image`, or — on the multiview endpoint —
+ * two to four views in `images`, ordered front, left, back, right. What
+ * lands is a GLB, unless the job asked H3.1 for `quad` topology: that comes
+ * back as FBX, is written with a `.fbx` extension, and is reported as
+ * `format: "fbx"` so nothing downstream mistakes it for a GLB.
  *
  * One deliberate difference from upstream: which submit failures are
  * retryable is decided by fal-queue's `neverReached`, not by a local code
@@ -70,12 +77,118 @@ const { downloadFalFile, falMediaUrl, loadFalKey, neverReached, toQueueUrl } = a
 /** The only host this script will ever call for queue operations. */
 const QUEUE_HOST = "queue.fal.run";
 
-/** The two image-to-3D recipes this mode uses, and their exclusive inputs. */
+/** The three image-to-3D endpoints this mode uses. */
 const H3_ENDPOINT = "tripo3d/h3.1/image-to-3d";
+const H3_MULTIVIEW_ENDPOINT = "tripo3d/h3.1/multiview-to-3d";
 const TRELLIS_ENDPOINT = "fal-ai/trellis";
-const H3_ONLY_FIELDS = ["face_limit", "texture", "pbr"];
-const TRELLIS_ONLY_FIELDS = ["mesh_simplify", "texture_size"];
-const TRELLIS_TEXTURE_SIZES = [512, 1024, 2048];
+const H3_ENDPOINTS = [H3_ENDPOINT, H3_MULTIVIEW_ENDPOINT];
+
+/** The fixed order of a multiview turnaround; the front is required. */
+const MULTIVIEW_ORDER = ["front", "left", "back", "right"];
+
+/**
+ * Every option each model accepts, with the rule that decides whether a
+ * value is one. Written down once because it answers three questions that
+ * used to be answered in three places: what may be sent, what a wrong value
+ * looks like, and what the help text should offer. Anything not listed here
+ * is refused before a paid call — fal would accept the request and quietly
+ * ignore the misspelled key.
+ *
+ * Checked against the fal model pages on 2026-09-16.
+ */
+const BOOLEAN = { kind: "boolean", describe: "true or false" };
+const INTEGER = { kind: "integer", describe: "an integer" };
+const enumOf = (...values) => {
+  const literals = values.map((value) => JSON.stringify(value));
+  const describe = literals.length > 2 ? `${literals.slice(0, -1).join(", ")}, or ${literals.at(-1)}` : literals.join(" or ");
+  return { kind: "enum", values, describe };
+};
+
+const H3_OPTIONS = {
+  texture: BOOLEAN,
+  pbr: BOOLEAN,
+  face_limit: { kind: "positive-integer", describe: "a positive integer" },
+  model_seed: INTEGER,
+  texture_seed: INTEGER,
+  texture_quality: enumOf("standard", "detailed"),
+  geometry_quality: enumOf("standard", "detailed"),
+  texture_alignment: enumOf("original_image", "geometry"),
+  orientation: enumOf("default", "align_image"),
+  auto_size: BOOLEAN,
+  quad: BOOLEAN,
+};
+
+const TRELLIS_OPTIONS = {
+  mesh_simplify: { kind: "unit-fraction", describe: "a number above 0 and at most 1" },
+  texture_size: enumOf(512, 1024, 2048),
+};
+
+const H3_ONLY_FIELDS = Object.keys(H3_OPTIONS);
+const TRELLIS_ONLY_FIELDS = Object.keys(TRELLIS_OPTIONS);
+
+/**
+ * The three presets the skill quotes. They are the script's own authority
+ * for "what should I send": `--help` prints them, `recipe <name>` prints a
+ * pasteable job, and the tests submit them through the same validation a
+ * hand-written job meets.
+ */
+export const RECIPES = {
+  hero: {
+    summary: "Architecture, characters, hero props — one cut-out",
+    endpoint: H3_ENDPOINT,
+    input: {
+      texture: true,
+      pbr: true,
+      auto_size: true,
+      orientation: "align_image",
+      geometry_quality: "detailed",
+      texture_quality: "detailed",
+    },
+  },
+  "hero-multiview": {
+    summary: "The same asset from 2-4 views — front first, then left, back, right",
+    endpoint: H3_MULTIVIEW_ENDPOINT,
+    multiview: true,
+    input: {
+      texture: true,
+      pbr: true,
+      auto_size: true,
+      orientation: "align_image",
+      geometry_quality: "detailed",
+      texture_quality: "detailed",
+    },
+  },
+  prop: {
+    summary: "Small props and set dressing — cheap and fast",
+    endpoint: TRELLIS_ENDPOINT,
+    input: { mesh_simplify: 0.95, texture_size: 1024 },
+  },
+};
+
+/**
+ * One preset as a job the caller can paste into the job file. Placeholders
+ * are angle-bracketed so an unedited skeleton fails `check` loudly instead
+ * of submitting a job named after the recipe.
+ *
+ * @param {string} name
+ * @returns {object} A job object, ready for the `jobs` array.
+ */
+export function recipeJob(name) {
+  const recipe = Object.hasOwn(RECIPES, name) ? RECIPES[name] : undefined;
+  if (!recipe) {
+    const lead = name ? `Unknown recipe: ${name}.` : "A recipe name is required.";
+    throw new Error(`${lead} Use ${Object.keys(RECIPES).join(", ")}.`);
+  }
+  return {
+    id: "<asset-id>",
+    endpoint: recipe.endpoint,
+    ...(recipe.multiview
+      ? { images: MULTIVIEW_ORDER.map((view) => `<asset-id>-${view}.png`) }
+      : { image: "<asset-id>.png" }),
+    output: "../scene/models/<asset-id>.glb",
+    input: { ...recipe.input },
+  };
+}
 
 /** Answers that mean fal refused the request itself — fix it and resubmit. */
 const REJECTED_STATUSES = new Set([400, 401, 403, 404, 405, 422]);
@@ -88,26 +201,37 @@ const SAFE_MESSAGE = /^fal\.ai HTTP \d+$|^model download HTTP \d+$/;
 
 const COMMANDS = ["check", "submit", "collect"];
 
+/** JSON whose continuation lines line up under the first one. */
+function indentJson(value, pad) {
+  return JSON.stringify(value, null, 2).split("\n").join(`\n${" ".repeat(pad)}`);
+}
+
+const RECIPE_HELP = Object.entries(RECIPES)
+  .map(([name, recipe]) => {
+    const lines = [`  ${name.padEnd(14)}  ${recipe.summary}`, `    endpoint    ${recipe.endpoint}`];
+    if (recipe.multiview) {
+      lines.push(`    images      [${MULTIVIEW_ORDER.map((view) => `"${view}.png"`).join(", ")}]  <- front first, 2 to 4`);
+    }
+    lines.push(`    input       ${indentJson(recipe.input, 16)}`);
+    return lines.join("\n");
+  })
+  .join("\n\n");
+
 const JOB_FILE_EXAMPLE = {
   jobs: [
+    { ...recipeJob("hero"), id: "arch", image: "arch.png", output: "../scene/models/arch.glb" },
     {
-      id: "arch",
-      endpoint: H3_ENDPOINT,
-      image: "arch.png",
-      output: "../scene/models/arch.glb",
-      input: { texture: true, pbr: true, face_limit: 200000 },
+      ...recipeJob("hero-multiview"),
+      id: "idol",
+      images: ["idol-front.png", "idol-left.png", "idol-back.png", "idol-right.png"],
+      output: "../scene/models/idol.glb",
     },
-    {
-      id: "rubble",
-      endpoint: TRELLIS_ENDPOINT,
-      image: "rubble.png",
-      output: "../scene/models/rubble.glb",
-      input: { mesh_simplify: 0.95, texture_size: 1024 },
-    },
+    { ...recipeJob("prop"), id: "rubble", image: "rubble.png", output: "../scene/models/rubble.glb" },
   ],
 };
 
 const HELP = `Usage: node image-to-3d.mjs check|submit|collect <jobs.json> [--concurrency 4]
+       node image-to-3d.mjs recipe ${Object.keys(RECIPES).join("|")}
 
   check    Offline. No API key, no network, no writes. Validates the plan
            and reports each job's state.
@@ -116,29 +240,122 @@ const HELP = `Usage: node image-to-3d.mjs check|submit|collect <jobs.json> [--co
            it again as cut-outs appear.
   collect  One status / result / download pass over the submitted jobs.
            Re-run it after doing other work.
+  recipe   Prints one preset as a JSON job to paste into the job file.
 
 Paths inside the job file are relative to the job file itself. The file is
 always left resumable: a job that has reached fal is never sent twice, and
 a failed download never regenerates an accepted model.
 
-Recipes (checked against the model schemas on 2026-09-09):
+Recipes (checked against the model schemas on 2026-09-16):
 
-  Architecture, characters, hero props
-    endpoint  ${H3_ENDPOINT}
-    input     {"texture": true, "pbr": true, "face_limit": 200000}
+${RECIPE_HELP}
 
-  Small props and set dressing
-    endpoint  ${TRELLIS_ENDPOINT}            <- no /image-to-3d suffix
-    input     {"mesh_simplify": 0.95, "texture_size": 1024}
-              texture_size is 512, 1024 or 2048; mesh_simplify is above 0
-              and at most 1.
+H3.1 options — both H3.1 endpoints take the same ones:
 
-The two models take different inputs. Do not copy one model's input
-wholesale to the other. Never put image_url in input — this script builds
-it from the local image.
+  texture, pbr        booleans. Leave both on unless you want bare geometry.
+  orientation         "align_image" points the model the way the cut-out
+                      faces, so there is less yaw to fix in the scene;
+                      "default" is the model's own guess.
+  auto_size           true scales the model to real-world metres. collect
+                      echoes auto_size back, so you know whether the file
+                      that landed is already in metres or needs a scale.
+  geometry_quality    "standard" | "detailed"
+  texture_quality     "standard" | "detailed"
+  texture_alignment   "original_image" keeps the texture on the cut-out's
+                      framing; "geometry" wraps it to the mesh.
+  face_limit          a positive integer. H3.1's own count can be very
+                      dense; pick for screen size and instance count.
+  model_seed          integers. The same seed reproduces the same model
+  texture_seed        and the same texture.
+  quad                true asks for quad topology, and the result is an FBX,
+                      not a GLB. collect writes <output>.fbx and reports
+                      format "fbx"; turn it into a GLB with
+                      \`blender.mjs convert <file>.fbx <file>.glb\`.
+
+Multiview (${H3_MULTIVIEW_ENDPOINT}) takes 2 to 4 cut-outs of
+the same object in "images", in the order front, left, back, right. The
+front is required. One image belongs on ${H3_ENDPOINT}.
+
+Trellis (${TRELLIS_ENDPOINT} — no /image-to-3d suffix) takes only
+mesh_simplify (above 0, at most 1) and texture_size (512, 1024 or 2048).
+
+The models take different inputs. Do not copy one model's input wholesale
+to the other, and do not invent option names: an unknown key is refused
+here, because fal would accept the request and ignore it. Never put
+image_url or image_urls in input — this script builds them from the local
+files.
 
 Job file:
 ${JSON.stringify(JOB_FILE_EXAMPLE, null, 2)}`;
+
+/** Whether a job carries a multiview turnaround rather than one cut-out. */
+function isMultiview(job) {
+  return job.images !== undefined;
+}
+
+/**
+ * The local image paths of a job, in the order the model wants them.
+ * Structural only: existence is `check`'s and `submit`'s business, and
+ * which endpoint may take how many is `validatePlan`'s.
+ */
+function jobImages(job) {
+  const relative = (value, label) => {
+    if (typeof value !== "string" || !value) throw new Error(`${job.id}: ${label} must be a path relative to the job file.`);
+    if (/^[a-z][a-z0-9+.-]*:/i.test(value)) {
+      throw new Error(`${job.id}: ${label} must be a path relative to the job file, not a URL.`);
+    }
+    return value;
+  };
+
+  if (!isMultiview(job)) return [relative(job.image, "image")];
+  if (job.image !== undefined) throw new Error(`${job.id}: give either image or images, not both.`);
+  if (!Array.isArray(job.images) || job.images.length < 2 || job.images.length > 4) {
+    throw new Error(`${job.id}: images takes 2 to 4 files, in the order ${MULTIVIEW_ORDER.join(", ")}.`);
+  }
+  if (typeof job.images[0] !== "string" || !job.images[0]) {
+    throw new Error(`${job.id}: the first entry of images is the front view, and it is required.`);
+  }
+  return job.images.map((value, index) => relative(value, `images[${index}] (${MULTIVIEW_ORDER[index]})`));
+}
+
+/** The label a payload error carries, so it names the view that is wrong. */
+function imageLabel(job, index, total) {
+  return total > 1 ? `${job.id} ${MULTIVIEW_ORDER[index]}` : job.id;
+}
+
+/**
+ * One job's `input` against the model's own option table. Three refusals,
+ * in the order that produces the most useful message: an option belonging
+ * to the other model, an option belonging to no model, then a value the
+ * option cannot take.
+ */
+function validateInput(job, input) {
+  const trellis = job.endpoint === TRELLIS_ENDPOINT;
+  const options = trellis ? TRELLIS_OPTIONS : H3_OPTIONS;
+  const foreign = trellis ? H3_ONLY_FIELDS : TRELLIS_ONLY_FIELDS;
+  const [foreignName, ownName] = trellis ? ["an H3.1", "a Trellis"] : ["a Trellis", "an H3.1"];
+
+  for (const field of foreign) {
+    if (field in input) throw new Error(`${job.id}: ${field} is ${foreignName} option, not ${ownName} option.`);
+  }
+  for (const [field, value] of Object.entries(input)) {
+    const spec = options[field];
+    if (!spec) {
+      throw new Error(`${job.id}: ${field} is not an option of ${job.endpoint}. It takes ${Object.keys(options).join(", ")}.`);
+    }
+    const ok =
+      spec.kind === "boolean"
+        ? typeof value === "boolean"
+        : spec.kind === "integer"
+          ? Number.isInteger(value)
+          : spec.kind === "positive-integer"
+            ? Number.isInteger(value) && value > 0
+            : spec.kind === "unit-fraction"
+              ? typeof value === "number" && value > 0 && value <= 1
+              : spec.values.includes(value);
+    if (!ok) throw new Error(`${job.id}: ${field} must be ${spec.describe}.`);
+  }
+}
 
 /**
  * Structural validation, run before any paid call. `inputChecks` is off for
@@ -156,42 +373,28 @@ function validatePlan(data, { inputChecks = true } = {}) {
     if (typeof job.endpoint !== "string" || !/^[\w.-]+\/[\w./-]+$/.test(job.endpoint) || job.endpoint.includes("..")) {
       throw new Error(`Invalid endpoint: ${job.id}`);
     }
-    if (typeof job.image !== "string" || !job.image || typeof job.output !== "string" || !job.output) {
-      throw new Error(`Missing image/output: ${job.id}`);
-    }
-    if (/^[a-z][a-z0-9+.-]*:/i.test(job.image)) {
-      throw new Error(`${job.id}: image must be a path relative to the job file, not a URL.`);
-    }
+    if (typeof job.output !== "string" || !job.output) throw new Error(`Missing image/output: ${job.id}`);
+    // Throws on a malformed image / images field, whichever the job carries.
+    jobImages(job);
     if (!inputChecks || job.request_id) continue;
 
     if (job.endpoint === `${TRELLIS_ENDPOINT}/image-to-3d`) {
       throw new Error(`${job.id}: single-image Trellis uses ${TRELLIS_ENDPOINT} (no /image-to-3d suffix).`);
     }
+    if (isMultiview(job) && job.endpoint !== H3_MULTIVIEW_ENDPOINT) {
+      throw new Error(`${job.id}: images is only for ${H3_MULTIVIEW_ENDPOINT}; ${job.endpoint} takes a single image.`);
+    }
+    if (!isMultiview(job) && job.endpoint === H3_MULTIVIEW_ENDPOINT) {
+      throw new Error(
+        `${job.id}: ${H3_MULTIVIEW_ENDPOINT} needs 2 to 4 views in images (${MULTIVIEW_ORDER.join(", ")}). One image goes to ${H3_ENDPOINT}.`,
+      );
+    }
     const input = job.input ?? {};
     if (typeof input !== "object" || Array.isArray(input)) throw new Error(`${job.id}: input must be an object.`);
-    if ("image_url" in input) throw new Error(`${job.id}: use the local image field; the helper supplies image_url.`);
-    if (job.endpoint === TRELLIS_ENDPOINT) {
-      for (const field of H3_ONLY_FIELDS) {
-        if (field in input) throw new Error(`${job.id}: ${field} is an H3.1 option, not a Trellis option.`);
-      }
-      if ("texture_size" in input && !TRELLIS_TEXTURE_SIZES.includes(input.texture_size)) {
-        throw new Error(`${job.id}: Trellis texture_size must be 512, 1024, or 2048.`);
-      }
-      if (
-        "mesh_simplify" in input &&
-        !(typeof input.mesh_simplify === "number" && input.mesh_simplify > 0 && input.mesh_simplify <= 1)
-      ) {
-        throw new Error(`${job.id}: mesh_simplify must be a number above 0 and at most 1.`);
-      }
+    for (const field of ["image_url", "image_urls"]) {
+      if (field in input) throw new Error(`${job.id}: use the local image field; the helper supplies ${field}.`);
     }
-    if (job.endpoint === H3_ENDPOINT) {
-      for (const field of TRELLIS_ONLY_FIELDS) {
-        if (field in input) throw new Error(`${job.id}: ${field} is a Trellis option, not an H3.1 option.`);
-      }
-      if ("face_limit" in input && !(Number.isInteger(input.face_limit) && input.face_limit > 0)) {
-        throw new Error(`${job.id}: face_limit must be a positive integer.`);
-      }
-    }
+    if (job.endpoint === TRELLIS_ENDPOINT || H3_ENDPOINTS.includes(job.endpoint)) validateInput(job, input);
   }
 }
 
@@ -200,11 +403,12 @@ function validatePlan(data, { inputChecks = true } = {}) {
  * claim; this is the evidence, and it is what keeps an empty or truncated
  * file out of a paid request.
  */
-function imageMime(bytes) {
+function imageMime(bytes, label) {
   if (bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return "image/png";
   if (bytes[0] === 255 && bytes[1] === 216) return "image/jpeg";
   if (bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP") return "image/webp";
-  throw new Error("Input must be a nonempty PNG, JPEG, or WebP.");
+  // Labelled, because in a turnaround only one of four views is the bad one.
+  throw new Error(`${label}: the image must be a nonempty PNG, JPEG, or WebP.`);
 }
 
 /**
@@ -213,9 +417,9 @@ function imageMime(bytes) {
  * file's type, and the two have to agree — a `.png` holding a JPEG would
  * otherwise be announced to fal as something it is not.
  */
-function imagePayload(file, label) {
-  const actual = imageMime(readFileSync(file));
-  const uri = falMediaUrl(file, { label });
+function imagePayload(file, label, onNote) {
+  const actual = imageMime(readFileSync(file), label);
+  const uri = falMediaUrl(file, { label, ...(onNote ? { onNote } : {}) });
   const declared = uri.slice("data:".length, uri.indexOf(";"));
   if (declared !== actual) {
     throw new Error(`${label}: the file is ${actual} but its name declares ${declared}; rename it so the two agree.`);
@@ -294,6 +498,38 @@ function assertCompleteGlb(bytes) {
   }
 }
 
+/** The first bytes of every binary FBX: the magic, its terminator and marker. */
+const FBX_MAGIC = Buffer.from("Kaydara FBX Binary  \0\u001a\0", "latin1");
+
+/** A binary FBX header, plus the version word that has to follow it. */
+function assertBinaryFbx(bytes) {
+  if (bytes.length < FBX_MAGIC.length + 4 || !bytes.subarray(0, FBX_MAGIC.length).equals(FBX_MAGIC)) {
+    throw new Error("Output is not a binary FBX file.");
+  }
+}
+
+/**
+ * Which file a completed result offers, and what it is. `quad: true` asks
+ * H3.1 for quad topology, and quad topology comes back as FBX — so the
+ * named `model_urls` entries decide the format when they are there, and the
+ * job's own `quad` flag decides what the unnamed `model_mesh` must be.
+ */
+function chooseModelFile(result, quad) {
+  const urls = result?.model_urls ?? {};
+  if (urls.glb?.url) return { file: urls.glb, format: "glb" };
+  if (urls.fbx?.url) return { file: urls.fbx, format: "fbx" };
+  if (result?.model_mesh?.url) return { file: result.model_mesh, format: quad ? "fbx" : "glb" };
+  throw new Error("Completed result has no model file URL.");
+}
+
+/** The requested output path carrying the extension the file actually has. */
+function outputFor(output, format) {
+  const wanted = `.${format}`;
+  const current = /\.[^./\\]*$/.exec(output)?.[0];
+  if (current?.toLowerCase() === wanted) return output;
+  return `${current ? output.slice(0, -current.length) : output}${wanted}`;
+}
+
 function clearError(job) {
   delete job.error;
   delete job.error_detail;
@@ -301,10 +537,31 @@ function clearError(job) {
   delete job.connection_error;
 }
 
-/** The compact row this script reports, in a stable field order. */
+/**
+ * The compact row this script reports, in a stable field order.
+ *
+ * `output` is the path that was written once one was — a quad job asked for
+ * a GLB and received an FBX, and the caller has to be told which file to
+ * open. `format` and `auto_size` answer the two questions that decide what
+ * happens next: whether the file needs converting, and whether its units
+ * are already metres.
+ */
 function compactRow(job) {
   const { id, state, request_id, bytes, error, error_stage, error_detail, connection_error } = job;
-  return { id, state, request_id, bytes, error, error_stage, error_detail, connection_error };
+  const input = job.input && typeof job.input === "object" ? job.input : {};
+  return {
+    id,
+    state,
+    format: job.format,
+    auto_size: typeof input.auto_size === "boolean" ? input.auto_size : undefined,
+    output: job.output_written ?? job.output,
+    request_id,
+    bytes,
+    error,
+    error_stage,
+    error_detail,
+    connection_error,
+  };
 }
 
 function readPlan(absolute) {
@@ -332,9 +589,16 @@ function readPlan(absolute) {
  * @param {string} [options.key]           fal API key; discovered through `loadFalKey` when omitted.
  * @param {(ms: number, signal?: AbortSignal) => Promise<void>} [options.sleep]
  *        Back-off between download attempts; injected so a test does not spend it.
+ * @param {(message: string) => void} [options.onNote]
+ *        Side notes that are not job state — an oversized payload, an FBX that
+ *        still needs converting. Goes to stderr; stdout stays the rows.
  * @returns {Promise<Array<object>>} One compact row per job.
  */
-export async function runBatch(command, filename, { concurrency = 4, fetchFn = fetch, key, sleep } = {}) {
+export async function runBatch(
+  command,
+  filename,
+  { concurrency = 4, fetchFn = fetch, key, sleep, onNote = (message) => console.error(message) } = {},
+) {
   if (!COMMANDS.includes(command)) throw new Error("Use check, submit or collect.");
   if (typeof filename !== "string" || !filename) throw new Error("A job file path is required.");
   const absolute = resolve(filename);
@@ -345,16 +609,19 @@ export async function runBatch(command, filename, { concurrency = 4, fetchFn = f
     validatePlan(data);
     return data.jobs.map((job) => {
       const checked = (state, error) => ({ id: job.id, state, request_id: job.request_id, error });
-      const file = resolve(base, job.image);
+      const images = jobImages(job);
       try {
         if (!job.request_id && (job.status_url || job.response_url || job.cancel_url)) {
           return checked("missing-request-id", "Recover the original request_id before proceeding.");
         }
         if (job.state === "submitting" || job.state === "submission-uncertain") return checked(job.state);
-        if (!existsSync(file)) return checked("waiting-for-image");
+        // Every view has to be there: a turnaround submitted without its
+        // back is a paid job that answers a different question.
+        const files = images.map((image) => resolve(base, image));
+        if (files.some((file) => !existsSync(file))) return checked("waiting-for-image");
         // Exactly what `submit` would build, so a file that cannot become a
         // payload is found here rather than one command later.
-        imagePayload(file, job.id);
+        files.forEach((file, index) => imagePayload(file, imageLabel(job, index, files.length), onNote));
         return checked(job.request_id ? "already-submitted" : "ready");
       } catch (error) {
         return checked("invalid-image", error.message);
@@ -426,13 +693,15 @@ export async function runBatch(command, filename, { concurrency = 4, fetchFn = f
           if (job.status_url || job.response_url || job.cancel_url) {
             throw new Error("Existing queue URLs have no request_id. Recover the original record; do not submit it again.");
           }
-          const imagePath = resolve(base, job.image);
-          if (!existsSync(imagePath)) {
+          const files = jobImages(job).map((image) => resolve(base, image));
+          if (files.some((file) => !existsSync(file))) {
             job.state = "waiting-for-image";
             save();
             return;
           }
-          const imageUrl = imagePayload(imagePath, job.id);
+          // Each view is inlined on its own, so `falMediaUrl`'s size ceiling
+          // applies per image and the error names the view that broke it.
+          const urls = files.map((file, index) => imagePayload(file, imageLabel(job, index, files.length), onNote));
 
           // On disk before the POST: if this process dies mid-request, the
           // next run sees `submitting` and refuses to pay twice.
@@ -443,7 +712,9 @@ export async function runBatch(command, filename, { concurrency = 4, fetchFn = f
 
           const result = await request(toQueueUrl(`https://fal.run/${job.endpoint}`), {
             ...job.input,
-            image_url: imageUrl,
+            // The multiview model reads the turnaround positionally: the
+            // order in the job file is the order it is sent.
+            ...(isMultiview(job) ? { image_urls: urls } : { image_url: urls[0] }),
           });
           // Whatever came back is kept verbatim, and kept first: an
           // incomplete envelope still identifies a job we must not repeat.
@@ -471,8 +742,8 @@ export async function runBatch(command, filename, { concurrency = 4, fetchFn = f
 
           stage = "result";
           const result = await request(job.response_url);
-          const file = result.model_urls?.glb || result.model_mesh;
-          if (!file?.url) throw new Error("Completed result has no model file URL.");
+          const quad = job.input && typeof job.input === "object" && job.input.quad === true;
+          const { file, format } = chooseModelFile(result, quad);
           const target = new URL(file.url);
           if (target.protocol !== "https:" || target.username || target.password) {
             throw new Error("Unexpected model download URL.");
@@ -493,8 +764,13 @@ export async function runBatch(command, filename, { concurrency = 4, fetchFn = f
               { cause: error },
             );
           }
-          assertCompleteGlb(bytes);
-          const output = resolve(base, job.output);
+          if (format === "fbx") assertBinaryFbx(bytes);
+          else assertCompleteGlb(bytes);
+          // A GLB is written exactly where it was asked for. An FBX cannot
+          // be: the extension has to tell the truth about the container, so
+          // a quad job that asked for a .glb gets the .fbx beside it.
+          const written = format === "glb" ? job.output : outputFor(job.output, format);
+          const output = resolve(base, written);
           mkdirSync(dirname(output), { recursive: true });
           const part = `${output}.part`;
           try {
@@ -504,7 +780,18 @@ export async function runBatch(command, filename, { concurrency = 4, fetchFn = f
             rmSync(part, { force: true });
             throw error;
           }
-          Object.assign(job, { state: "downloaded", bytes: bytes.length, downloaded_at: new Date().toISOString() });
+          Object.assign(job, {
+            state: "downloaded",
+            format,
+            output_written: written,
+            bytes: bytes.length,
+            downloaded_at: new Date().toISOString(),
+          });
+          if (format === "fbx") {
+            onNote(
+              `${job.id}: this result is an FBX, not a GLB — wrote ${written}. Convert it with: blender.mjs convert ${written} ${outputFor(written, "glb")}`,
+            );
+          }
         }
       } catch (error) {
         const code = connectionCode(error);
@@ -562,8 +849,15 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
 
     if (values.help) {
       console.log(HELP);
+    } else if (command === "recipe") {
+      // Prints a job, not a run: no key, no file, nothing to resume.
+      try {
+        console.log(JSON.stringify(recipeJob(file), null, 2));
+      } catch (error) {
+        fail(error.message);
+      }
     } else if (!command || !file) {
-      fail(!command ? "A command is required: check, submit or collect." : "A job file path is required.");
+      fail(!command ? "A command is required: check, submit, collect or recipe." : "A job file path is required.");
     } else if (!Number.isInteger(concurrency) || concurrency < 1) {
       fail("--concurrency must be a positive integer.");
     } else {

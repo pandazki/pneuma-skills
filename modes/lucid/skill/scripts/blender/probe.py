@@ -25,6 +25,16 @@ import sys
 import bpy
 from mathutils import Vector
 
+# kit.py sits next to this file and is the one definition of the shared checks.
+# `blender.mjs` already puts this directory on sys.path (that is what --kit
+# does); these two lines add it again so the helper also runs standalone under
+# a bare `blender --python`, and keep the import from dropping a __pycache__
+# into the installed skill directory.
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import kit
+
 TAG = "[probe]"
 MARKER = "LUCID_PROBE_JSON"
 NOT_EXPORTED = "glTF_not_exported"
@@ -50,36 +60,23 @@ def blender_to_gltf(point):
     return [point[0], point[2], -point[1]]
 
 
-def operator_exists(module, name):
-    """Is `bpy.ops.<module>.<name>` actually registered?
-
-    `bpy.ops` resolves lazily, so `hasattr(bpy.ops.wm, "anything")` is True for
-    every name and proves nothing - measured on Blender 5.2.1, where the
-    hasattr said yes and the call raised 'could not be found'. The registered
-    operator type is the only evidence. (The same five lines appear in
-    render_views.py and fbx_to_glb.py: these scripts are run individually by
-    Blender and share no import path.)
-    """
-    return hasattr(bpy.types, "%s_OT_%s" % (module.upper(), name))
-
-
 def import_file(path):
     extension = os.path.splitext(path)[1].lower()
     if extension == ".glb" or extension == ".gltf":
-        if operator_exists("import_scene", "gltf"):
+        if kit.operator_exists("import_scene", "gltf"):
             bpy.ops.import_scene.gltf(filepath=path)
             return "import_scene.gltf"
-        if operator_exists("wm", "gltf_import"):
+        if kit.operator_exists("wm", "gltf_import"):
             bpy.ops.wm.gltf_import(filepath=path)
             return "wm.gltf_import"
         die("this Blender has no glTF importer")
     if extension == ".fbx":
-        # A future Blender may move FBX import to a built-in C++ operator under
-        # a different name; 5.2.1 still registers the Python add-on's.
-        if operator_exists("import_scene", "fbx"):
+        # Blender 5.2.1 registers BOTH: the add-on's import_scene.fbx and
+        # the built-in wm.fbx_import.
+        if kit.operator_exists("import_scene", "fbx"):
             bpy.ops.import_scene.fbx(filepath=path)
             return "import_scene.fbx"
-        if operator_exists("wm", "fbx_import"):
+        if kit.operator_exists("wm", "fbx_import"):
             bpy.ops.wm.fbx_import(filepath=path)
             return "wm.fbx_import"
         die("this Blender has no FBX importer. Enable the 'Import-Export: FBX format' "

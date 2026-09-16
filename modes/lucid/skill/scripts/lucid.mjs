@@ -770,6 +770,9 @@ function copyStarter(dir) {
   const sources = [
     { from: join(HERE, "scene-starter", "index.html"), to: "index.html" },
     { from: join(HERE, "scene-starter", "main.js"), to: "main.js" },
+    // The loader. Without it in every new project a scene gets built out of
+    // primitives, because loading a GLB is the step nobody writes from memory.
+    { from: join(HERE, "scene-starter", "assets.js"), to: "assets.js" },
     { from: join(HERE, "lucid-bridge.js"), to: "lucid-bridge.js" },
   ];
   for (const source of sources) {
@@ -1260,8 +1263,10 @@ compares the budget against); without it the wall clock is used.
   init <dir> --title "<name>" --brief "<the user's direction, verbatim>"
        [--fps-target ${DEFAULT_FPS_TARGET}] [--budget-minutes N] [--no-vendor] [--version <semver>]
       Create lucid.json (status dreaming, target version 0), rounds/, assets/
-      and a runnable scene/: index.html + main.js from the starter plus
-      lucid-bridge.js. Existing files of those names are kept, not clobbered.
+      and a runnable scene/: index.html + main.js + assets.js (the GLB/texture
+      loader: measure, normalize by ONE dimension, ground, clone rigged models)
+      from the starter, plus lucid-bridge.js. Existing files of those names are
+      kept, not clobbered.
       Then vendor three.js unless --no-vendor; a vendoring failure is reported
       as vendor.ok = false and does NOT fail init — the project and the scene
       exist, and you can run vendor-three later.

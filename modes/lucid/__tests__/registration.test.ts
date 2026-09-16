@@ -373,11 +373,11 @@ describe("the skill text the installer ships", () => {
     }
   });
 
-  test("each of the four mode scripts is shown in that form at least once", () => {
+  test("each of the five mode scripts is shown in that form at least once", () => {
     const corpus = skillMarkdown()
       .map((file) => readFileSync(file, "utf-8"))
       .join("\n");
-    for (const name of ["lucid.mjs", "image-to-3d.mjs", "glb.mjs", "blender.mjs"]) {
+    for (const name of ["lucid.mjs", "image-to-3d.mjs", "glb.mjs", "blender.mjs", "texture.mjs"]) {
       expect({ name, shown: corpus.includes(`node {SKILL_PATH}/scripts/${name}`) }).toEqual({
         name,
         shown: true,

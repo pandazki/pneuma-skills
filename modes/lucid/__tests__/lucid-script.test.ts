@@ -164,7 +164,11 @@ describe("lucid.mjs init", () => {
 
     expect(result.ok).toBe(true);
     expect(result.vendor).toMatchObject({ ok: false, skipped: true, reason: "--no-vendor" });
-    for (const relative of ["rounds", "assets", "scene/index.html", "scene/main.js", "scene/lucid-bridge.js"]) {
+    const layout = [
+      "rounds", "assets",
+      "scene/index.html", "scene/main.js", "scene/assets.js", "scene/lucid-bridge.js",
+    ];
+    for (const relative of layout) {
       expect(existsSync(join(cwd, "shrine", relative))).toBe(true);
     }
     // The starter page must load the bridge before its module graph, and
@@ -191,6 +195,38 @@ describe("lucid.mjs init", () => {
       assets: [],
     });
     expect(manifest.evaluation.exit).toBe("dreaming");
+  });
+
+  /**
+   * The two starter modules never RUN in this suite — there is no importmap,
+   * no canvas and no WebGL here — so they are parsed instead. Bun's transpiler
+   * is a real ES module parser, and its scan reports exactly the two things
+   * that break this pair silently in a browser: a specifier the starter's
+   * importmap cannot resolve (blank page, one console error, no loader), and a
+   * renamed export (main.js's import throws before the bridge ever registers,
+   * so the loop sees a dead scene rather than a bad one).
+   */
+  test("the starter modules parse, and import and export only what the page can resolve", () => {
+    const cwd = workspace();
+    json(cwd, [...INIT, "--now", T(0)]);
+    const transpiler = new Bun.Transpiler({ loader: "js" });
+    const scan = (file: string) =>
+      transpiler.scan(readFileSync(join(cwd, "shrine", "scene", file), "utf-8"));
+
+    const assets = scan("assets.js");
+    // The loader API the mode skill documents. Renaming one is a mode-skill
+    // change, not a refactor.
+    expect([...assets.exports].sort()).toEqual([
+      "disposeModel", "instance", "loadModel", "playClip", "studioEnv", "textureFrom",
+    ]);
+    // Only addons `vendor-three` actually copies: an import of, say,
+    // DRACOLoader.js resolves through the importmap prefix and then 404s.
+    expect(assets.imports.map((entry) => entry.path).sort()).toEqual([
+      "three", "three/addons/loaders/GLTFLoader.js", "three/addons/utils/SkeletonUtils.js",
+    ]);
+    expect(scan("main.js").imports.map((entry) => entry.path).sort()).toEqual([
+      "./assets.js", "three", "three/addons/controls/OrbitControls.js",
+    ]);
   });
 
   test("refuses to overwrite an existing lucid.json", () => {
