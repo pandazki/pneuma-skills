@@ -599,6 +599,7 @@ describe("lucid.mjs status — the exit rules", () => {
     const cwd = looping();
     const result = json(cwd, ["status", "shrine", "--now", T(10)]);
     expect(result.scene.bridge).toBe(true);
+    expect(result.scene.bridgeCurrent).toBe(true);
     expect(result.scene.vendor.ok).toBe(false);
     expect(result.scene.vendor.missing).toContain("three.module.js");
     expect(result.scene.vendor.missing).toContain("VERSION");
@@ -843,6 +844,15 @@ describe("lucid.mjs judge-prompt", () => {
     expect(result.out).toContain("## The previous verdict (round 2)");
     expect(result.out).toContain("stone-too-clean");
     expect(result.out).toContain("REUSE that gap's `id` verbatim");
+    // Ids and issues travel; the numbers do not — a judge that reads 4.5
+    // before looking scores around 4.5.
+    expect(result.out).toContain("scores are withheld");
+    const previousSection = result.out.slice(result.out.indexOf("## The previous verdict"), result.out.indexOf("## Output"));
+    expect(previousSection).toContain('"id": "stone-too-clean"');
+    expect(previousSection).toContain('"issue"');
+    for (const withheld of ['"total"', '"composition"', '"summary"', '"fix"']) {
+      expect(previousSection).not.toContain(withheld);
+    }
     expect(result.out).toContain(join(cwd, "shrine", "rounds", "03", "capture.png"));
   });
 
@@ -869,6 +879,8 @@ describe("lucid.mjs bridge --refresh", () => {
     const cwd = looping();
     const installed = join(cwd, "shrine", "scene", "lucid-bridge.js");
     writeFileSync(installed, "// an old bridge from a previous skill version\n");
+    // status says so before anyone trusts what that bridge reports.
+    expect(json(cwd, ["status", "shrine"]).scene.bridgeCurrent).toBe(false);
 
     const result = json(cwd, ["bridge", "shrine", "--refresh"]);
     expect(result.path).toBe(installed);

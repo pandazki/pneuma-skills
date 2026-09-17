@@ -81,6 +81,9 @@ selected — `navigate-to` `{ "view": "live" }` first when you mean the scene.
   two seconds (`sinceLastRenderMs`) is reported as no measurement.
   `viewport.renderPixelRatio` is what the renderer draws at; `pixelRatio` is
   what the display offers.
+- **`status.scene.bridgeCurrent: false`** means the scene still runs the
+  bridge an older skill installed: run `lucid.mjs bridge <project> --refresh`
+  before trusting what the state reports.
 - **`reload-scene`** — restart the iframe after a batch of edits or a new
   model. The viewer also reloads on its own 1.5 s after the last scene CODE
   file change; swapping a texture or a GLB under the same name reloads

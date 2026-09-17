@@ -51,7 +51,7 @@ the script detects repetition.
 | `optimize-fps` | total ≥ 8, fps measured below 90 % of target | Lossless optimizations first (textures, shadows, bloom), then minimal-impact ones; re-judge to prove no visual regression |
 | `continue` with reason "fps unmeasured" | total ≥ 8 but the round carries no fps | Record the next round with `--fps` from `get-scene-state`; nothing else changes |
 | `stall-approaching` | Best score gained < 1 point over two rounds, or the same gap named in three verdicts running (two in a row is normal — you carry ids forward — and is only reported as `repeatedGaps`) | Stop tweaking. Rethink the whole approach — assets, camera, lighting model — and make one dramatic change as a `--kind rethink` round |
-| `stalled` | The rethink did not help | Stop spending. Show best and latest to the user and ask whether the current state is good enough or something is fundamentally off |
+| `stalled` | The rethink gained less than a full point over the best before it | Stop spending. Show best and latest to the user and ask whether the current state is good enough or something is fundamentally off |
 | `budget-exhausted` | The user's time budget is used up | First check it is real: after a pause the wall clock kept counting, so credit the pause (`budget <project> --pause-credit <minutes>`) and re-run `status`. If it is real, finish the current fix, judge once more, report |
 
 When the user said not to ask questions, `done` and `stalled` end with a
@@ -64,9 +64,10 @@ with meaningful, beautiful progress than to finish something rough.
 
 - Give it nothing but the brief file. Your notes, your excuses and your plan
   bias it; a fresh context is the point. The brief does include the previous
-  verdict — deliberately: the judge keeps a persisting gap's `id`, and the
-  exit rules read that repetition. Consistency across rounds is what makes
-  the trend a trend; it is not a leak of your opinion.
+  judge's gap ids and issues — deliberately: the judge keeps a persisting
+  gap's `id`, and the exit rules read that repetition. The previous SCORES
+  are withheld, so each total is that judge's own reading; "fresh" means
+  both a clean context and no number to anchor on.
 - The judge scores the WebGL frame against the target. Controls, HUD text and
   behaviour are not in the picture and are not what the score measures; test
   those inside the page and read the result from `notes`.

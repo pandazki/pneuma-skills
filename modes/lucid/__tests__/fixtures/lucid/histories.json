@@ -306,8 +306,55 @@
       }
     ]
   },
+  "rethink-small-gain": {
+    "why": "4.85 -> 5.75 -> 5.95 as a rethink: a 0.2 gain from a redesign is inside the judge's noise — the second blind trial's exact trajectory, which the old 'no better than' bar answered with another rethink",
+    "fpsTarget": 60,
+    "expect": "stalled",
+    "rounds": [
+      {
+        "fps": 60,
+        "scores": [
+          1.6,
+          1.6,
+          1.3,
+          0.35
+        ],
+        "gaps": [
+          "camera-too-high:composition",
+          "flat-sky:lighting"
+        ]
+      },
+      {
+        "fps": 60,
+        "scores": [
+          1.85,
+          1.85,
+          1.65,
+          0.4
+        ],
+        "gaps": [
+          "camera-too-high:composition",
+          "flat-sky:lighting"
+        ]
+      },
+      {
+        "fps": 60,
+        "kind": "rethink",
+        "scores": [
+          1.9,
+          1.9,
+          1.7,
+          0.45
+        ],
+        "gaps": [
+          "camera-too-high:composition",
+          "flat-sky:lighting"
+        ]
+      }
+    ]
+  },
   "two-rethinks": {
-    "why": "5.0 -> 5.5 -> 5.7, both rethinks, neither gained a full point",
+    "why": "5.0 -> 5.5 (rethink) -> 5.7 (rethink): the first rethink already gained less than a full point, so the loop stalled there and stays stalled",
     "fpsTarget": 60,
     "expect": "stalled",
     "rounds": [

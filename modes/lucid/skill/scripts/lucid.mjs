@@ -160,9 +160,10 @@ less.
 
 You should lastly also provide a total score out of 10 by summing these up.
 
-If a previous verdict and screenshot are provided, maintain consistency with
-prior judgment, but do not feel obligated to match or increase score. If the
-product regressed, it should score worse.`;
+If the previous judge's gaps are listed, reuse a gap's id when the same
+problem is still present, and score the frame on its own merits — the previous
+scores are withheld so that yours are your own. If the product regressed, it
+should score worse.`;
 
 /** The exact JSON the judge must answer with. */
 const JUDGE_SCHEMA = `{
@@ -384,24 +385,18 @@ function evaluate(loop, now, { withClock = false } = {}) {
     return { exit: "continue", ...base };
   }
 
-  // ── stalled: the big redesign was tried and it did not pay.
-  if (last.kind === "rethink" && bestBefore !== null && last.verdict.total <= bestBefore) {
+  // ── stalled: the big redesign was tried and it did not pay. "Did not
+  // pay" is the same bar as everywhere else in this file — a full point over
+  // the best before it. A rethink that scores 0.2 higher is inside the
+  // judge's noise, and the second blind trial showed what the old
+  // "no better than" bar does with it: asks for another rethink.
+  if (last.kind === "rethink" && bestBefore !== null && last.verdict.total < bestBefore + STALL_MIN_GAIN) {
     reasons.push(
-      `round ${last.index} was a rethink and scored ${last.verdict.total}/10, no better than the ${bestBefore}/10 before it`,
+      last.verdict.total <= bestBefore
+        ? `round ${last.index} was a rethink and scored ${last.verdict.total}/10, no better than the ${bestBefore}/10 before it`
+        : `round ${last.index} was a rethink and scored ${last.verdict.total}/10, only ${round2(last.verdict.total - bestBefore)} over the ${bestBefore}/10 before it — less than the full point a redesign has to earn`,
     );
     return { exit: "stalled", ...base };
-  }
-  if (judged.length >= 2) {
-    const prev = judged[judged.length - 2];
-    const prevBest = bestTotalBefore(judged, judged.length - 2);
-    const gainless = (r, before) =>
-      r.kind === "rethink" && before !== null && r.verdict.total < before + STALL_MIN_GAIN;
-    if (gainless(last, bestBefore) && gainless(prev, prevBest)) {
-      reasons.push(
-        `rounds ${prev.index} and ${last.index} were both rethinks and neither gained a full point`,
-      );
-      return { exit: "stalled", ...base };
-    }
   }
 
   // ── stall approaching: the score has plateaued, or the judge keeps naming
@@ -435,6 +430,18 @@ function evaluate(loop, now, { withClock = false } = {}) {
     `round ${last.index} scored ${last.verdict.total}/10; the loop is still gaining`,
   );
   return { exit: "continue", ...base };
+}
+
+/** Whether `scene/lucid-bridge.js` is byte-for-byte the bridge this skill
+ *  ships; null when the scene has none. */
+function bridgeIsCurrent(dir) {
+  const installed = join(resolve(dir), "scene", "lucid-bridge.js");
+  if (!existsSync(installed)) return null;
+  try {
+    return readFileSync(installed, "utf-8") === readFileSync(join(HERE, "lucid-bridge.js"), "utf-8");
+  } catch {
+    return false;
+  }
 }
 
 /** Gap ids present in every one of the last `count` verdicts (in the order
@@ -1074,7 +1081,13 @@ function cmdStatus(dir, now) {
     assetsPending: loop.assets
       .filter((a) => a.state !== "placed")
       .map((a) => ({ id: a.id, state: a.state })),
-    scene: { vendor: vendorReport(dir), bridge: existsSync(join(resolve(dir), "scene", "lucid-bridge.js")) },
+    scene: {
+      vendor: vendorReport(dir),
+      bridge: existsSync(join(resolve(dir), "scene", "lucid-bridge.js")),
+      // A skill update ships a new bridge, but the scene keeps the copy init
+      // made. False means `bridge <dir> --refresh` before trusting the state.
+      bridgeCurrent: bridgeIsCurrent(dir),
+    },
     budget: loop.budget
       ? {
           minutes: loop.budget.minutes,
@@ -1227,17 +1240,25 @@ function cmdJudgePrompt(dir, opts) {
   ];
 
   if (previous) {
+    // Ids and issues only. The previous scores, summary and fixes are
+    // withheld on purpose: a judge that reads "5.75" before looking scores
+    // around 5.75. The ids are what the exit rules need; the numbers have to
+    // be this judge's own.
+    const previousGaps = previous.verdict.gaps.map((g) => ({ id: g.id, area: g.area, issue: g.issue }));
     lines.push(
       `## The previous verdict (round ${previous.index})`,
       "",
+      "The previous judge named these gaps. Its scores are withheld so that",
+      "yours are your own: score this frame on what you see, and a regression",
+      "must score lower than you would otherwise have given it.",
+      "",
       "```json",
-      JSON.stringify(previous.verdict, null, 2),
+      JSON.stringify(previousGaps, null, 2),
       "```",
       "",
-      "Stay consistent with it, but do not feel obliged to match or raise the",
-      "score — a regression should score lower. When a gap it named is still",
-      "present, REUSE that gap's `id` verbatim; that is how this loop detects",
-      "that the same problem survived another round.",
+      "When a gap listed here is still present, REUSE that gap's `id` verbatim;",
+      "that is how this loop detects that the same problem survived another",
+      "round. Drop the ones that are fixed; add new ids for what you see.",
       "",
     );
   } else if (record.targetVersion > 1) {
@@ -1456,9 +1477,9 @@ only over the rounds whose targetVersion matches the locked target.version:
                      named the same gap id in ${STUBBORN_VERDICTS} verdicts in a row
                      (evaluation.stubbornGaps; repeatedGaps = two in a row, reported
                      but not a signal — the judge is told to carry ids forward)
-  stalled            the last round was a rethink and did not beat the best
-                     score before it, or two rethinks in a row each gained
-                     less than ${STALL_MIN_GAIN.toFixed(1)} point
+  stalled            the last round was a rethink and gained less than
+                     ${STALL_MIN_GAIN.toFixed(1)} point over the best score before it — a
+                     redesign inside the judge's noise did not pay
   budget-exhausted   the budget is spent (status only; it overrides continue
                      and stall-approaching from the moment the clock starts,
                      including before the first verdict, never done)
