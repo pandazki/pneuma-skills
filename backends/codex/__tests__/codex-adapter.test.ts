@@ -441,6 +441,38 @@ describe("CodexAdapter", () => {
     }
   });
 
+  // The session's cumulative counts travel raw: a mode's cost panel prices
+  // them, a subscription reads them as quota. Only the v0.114+ shape carries a
+  // total; the legacy flat shape is one request and says nothing cumulative.
+  test("reports the session's cumulative token usage from tokenUsage.total, unpriced", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    await waitForInit();
+
+    transport.simulateNotification("thread/tokenUsage/updated", {
+      tokenUsage: {
+        total: { inputTokens: 10_016_821, cachedInputTokens: 9_651_328, outputTokens: 48_712, reasoningOutputTokens: 14_991, totalTokens: 10_065_533 },
+        last: { inputTokens: 166_319, cachedInputTokens: 12_160, outputTokens: 237, reasoningOutputTokens: 23, totalTokens: 166_556 },
+        modelContextWindow: 258_400,
+      },
+    });
+    const update = messages.find((m) => m.type === "session_update" && "token_usage" in m.session);
+    expect(update?.type === "session_update" ? update.session.token_usage : null).toEqual({
+      input_tokens: 10_016_821, cached_input_tokens: 9_651_328, output_tokens: 48_712, reasoning_output_tokens: 14_991,
+    });
+    expect(update?.type === "session_update" ? update.session.total_cost_usd : null).toBe(0);
+
+    const legacy = createMockTransport();
+    const legacyMessages: BrowserIncomingMessage[] = [];
+    const legacyAdapter = new CodexAdapter(legacy, "test-session-legacy", { cwd: "/tmp/test" });
+    legacyAdapter.onBrowserMessage((msg) => legacyMessages.push(msg));
+    await waitForInit();
+    legacy.simulateNotification("thread/tokenUsage/updated", { inputTokens: 5000, outputTokens: 1000, modelContextWindow: 200000 });
+    expect(legacyMessages.some((m) => m.type === "session_update" && "token_usage" in m.session)).toBe(false);
+  });
+
   /**
    * These pin the v0.114+ `tokenUsage` shape, which shipped untested and let
    * the ctx gauge read a session-cumulative number: real sessions rendered

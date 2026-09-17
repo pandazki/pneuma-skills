@@ -33,6 +33,18 @@ export function LayersIcon({ size = 14 }: { size?: number }) {
   );
 }
 
+/** Two stacked coins: the cost panel. */
+export function CoinsIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg {...base} width={size} height={size} aria-hidden="true">
+      <ellipse cx="9" cy="7" rx="6" ry="2.5" />
+      <path d="M3 7v4c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5V7" />
+      <path d="M9 13.5v4c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-4" />
+      <path d="M15 11c3.3 0 6 1.1 6 2.5S18.3 16 15 16s-6-1.1-6-2.5" />
+    </svg>
+  );
+}
+
 export function AlertIcon({ size = 12 }: { size?: number }) {
   return (
     <svg {...base} width={size} height={size} aria-hidden="true">

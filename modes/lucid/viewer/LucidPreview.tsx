@@ -48,6 +48,8 @@ import { getApiBase } from "../../../src/utils/api.js";
 import type { Loop, Loops, RoundRecord } from "../domain.js";
 import { setLucidStageCapture } from "../pneuma-mode.js";
 import { AssetLedger } from "./AssetLedger.js";
+import { CostPanel } from "./CostPanel.js";
+import { summarizeCosts } from "../skill/scripts/costs.mjs";
 import {
   BRIDGE_TIMEOUT_MS,
   SceneBridgeChannel,
@@ -60,7 +62,7 @@ import {
   type CaptureRecord,
   type SceneState,
 } from "./bridge.js";
-import { LayersIcon, ReloadIcon } from "./icons.js";
+import { CoinsIcon, LayersIcon, ReloadIcon } from "./icons.js";
 import { RoundsRail } from "./RoundsRail.js";
 import {
   bestPoint,
@@ -120,6 +122,14 @@ export default function LucidPreview(props: ViewerPreviewProps) {
   const { value: sceneFiles } = useSource(
     props.sources.sceneFiles as Source<ViewerFileContent[]> | undefined,
   );
+  const { value: falJobFiles } = useSource(
+    props.sources.falJobs as Source<ViewerFileContent[]> | undefined,
+  );
+  // The cost panel's other two inputs live on the session, not in files:
+  // image generations are tool calls in the transcript, tokens are what the
+  // backend reported for the whole session.
+  const messages = useStore((s) => s.messages);
+  const session = useStore((s) => s.session);
   const activeContentSet = useStore((s) => s.activeContentSet);
   const contentSets = useStore((s) => s.contentSets);
   const setActiveContentSet = useStore((s) => s.setActiveContentSet);
@@ -128,12 +138,50 @@ export default function LucidPreview(props: ViewerPreviewProps) {
 
   const loop = useMemo(() => selectLoop(loops, activeContentSet), [loops, activeContentSet]);
   const dir = loop?.dir ?? "";
+  const costSummary = useMemo(() => {
+    const jobFile = (falJobFiles ?? []).find((f) => f.path === (dir ? `${dir}/assets/fal-jobs.json` : "assets/fal-jobs.json"));
+    let jobs: Array<Record<string, unknown>> = [];
+    if (jobFile) {
+      try {
+        const parsed = JSON.parse(jobFile.content) as { jobs?: unknown } | unknown[];
+        jobs = Array.isArray(parsed) ? (parsed as Array<Record<string, unknown>>) : Array.isArray((parsed as { jobs?: unknown }).jobs) ? ((parsed as { jobs: Array<Record<string, unknown>> }).jobs) : [];
+      } catch {
+        jobs = [];
+      }
+    }
+    // Image generations are session-wide, not per file: a project owns the
+    // ones made while it was the newest project in the workspace — from its
+    // creation until the next project's. One session, two stages: the
+    // second stage's images do not land on the first one's bill.
+    const created = Date.parse(loop?.createdAt ?? "");
+    const next = Object.values(loops?.projects ?? {})
+      .map((l) => Date.parse(l.createdAt ?? ""))
+      .filter((t) => Number.isFinite(t) && Number.isFinite(created) && t > created)
+      .sort((a, b) => a - b)[0] ?? Infinity;
+    const from = Number.isFinite(created) ? created : -Infinity;
+    const imageTimestamps: number[] = [];
+    for (const m of messages) {
+      if (m.role !== "assistant" || !m.contentBlocks) continue;
+      if (!(m.timestamp >= from && m.timestamp < next)) continue;
+      for (const block of m.contentBlocks) {
+        if (block.type === "tool_use" && block.name === "ImageGeneration") imageTimestamps.push(m.timestamp);
+      }
+    }
+    return summarizeCosts({
+      jobs,
+      imageTimestamps,
+      tokenUsage: session?.token_usage ?? null,
+      model: session?.model ?? "",
+      rounds: loop?.rounds ?? [],
+    });
+  }, [falJobFiles, dir, messages, session?.token_usage, session?.model, loop?.rounds, loop?.createdAt, loops]);
 
   // ── Stage state ──────────────────────────────────────────────────────────
   const [view, setView] = useState<ViewMode>("live");
   const [wipe, setWipe] = useState(0.5);
   const [roundIndex, setRoundIndex] = useState<number | null>(null);
   const [ledgerOpen, setLedgerOpen] = useState(false);
+  const [costOpen, setCostOpen] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(1);
   const [now, setNow] = useState(() => new Date());
 
@@ -828,6 +876,20 @@ export default function LucidPreview(props: ViewerPreviewProps) {
           <LayersIcon size={14} />
         </button>
 
+        <button
+          type="button"
+          onClick={() => setCostOpen((open) => !open)}
+          aria-pressed={costOpen}
+          title={`Cost so far: $${costSummary.total.toFixed(2)} (list-price estimate)`}
+          className={`rounded p-1.5 transition-colors focus-visible:ring-2 focus-visible:ring-cc-primary/60 ${
+            costOpen
+              ? "bg-cc-primary/15 text-cc-primary"
+              : "text-cc-muted hover:bg-cc-hover hover:text-cc-fg"
+          }`}
+        >
+          <CoinsIcon size={14} />
+        </button>
+
         {commandsEnabled && props.commands?.length
           ? props.commands.map((command) => (
               <button
@@ -907,6 +969,11 @@ export default function LucidPreview(props: ViewerPreviewProps) {
           assets={loop.assets}
           open={ledgerOpen}
           onClose={() => setLedgerOpen(false)}
+        />
+        <CostPanel
+          summary={costSummary}
+          open={costOpen}
+          onClose={() => setCostOpen(false)}
         />
       </div>
 

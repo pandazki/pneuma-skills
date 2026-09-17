@@ -131,7 +131,9 @@ RPC (`fetchAvailableModels`); skills come from `skills/list`.
 // nested under `tokenUsage`, legacy was flat. Adapter handles both.
 // `total` = cumulative session spend, `last` = the most recent request.
 // The ctx gauge measures `last` against the window; only cumulative
-// counters read `total`. See "Two token numbers" below.
+// counters read `total`. See "Two token numbers" below. `total` is also
+// forwarded raw as `session_update.token_usage` (input / cached / output /
+// reasoning) — unpriced on purpose; a mode's cost panel prices it.
 { "method": "thread/tokenUsage/updated", "params": {
     "tokenUsage": {
       "total": { "inputTokens": 23245850, "outputTokens": 74081, "totalTokens": 23319931 },

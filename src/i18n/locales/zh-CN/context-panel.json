@@ -5,6 +5,8 @@
   "version": "版本",
   "working_dir": "工作目录",
   "cost": "费用",
+  "tokens": "Token",
+  "tokens_detail": "输入 {{input}} · 缓存命中 {{cached}} · 输出 {{output}}",
   "turns": "轮次",
   "lines": "代码行",
   "tasks": "任务",

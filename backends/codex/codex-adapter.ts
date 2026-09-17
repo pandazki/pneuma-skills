@@ -741,6 +741,8 @@ export class CodexAdapter {
   private cumulativeInputTokens = 0;
   private cumulativeOutputTokens = 0;
   private cumulativeCostUsd = 0;
+  /** Cumulative counts from the last `thread/tokenUsage/updated.total`; null until one arrives. */
+  private tokenUsage: import("../../server/session-types.js").SessionTokenUsage | null = null;
   private turnCount = 0;
   private totalLinesAdded = 0;
   private totalLinesRemoved = 0;
@@ -2524,6 +2526,14 @@ export class CodexAdapter {
       // running counters rather than adding to them.
       this.cumulativeInputTokens = tokenUsage.total.inputTokens ?? 0;
       this.cumulativeOutputTokens = tokenUsage.total.outputTokens ?? 0;
+      // The session's whole spend so far, as raw counts; the price is the
+      // reader's business (a mode's cost panel, a subscription's quota).
+      this.tokenUsage = {
+        input_tokens: tokenUsage.total.inputTokens ?? 0,
+        cached_input_tokens: tokenUsage.total.cachedInputTokens ?? 0,
+        output_tokens: tokenUsage.total.outputTokens ?? 0,
+        reasoning_output_tokens: tokenUsage.total.reasoningOutputTokens ?? 0,
+      };
       modelContextWindow = tokenUsage.modelContextWindow ?? DEFAULT_CONTEXT_WINDOW;
       // `last` is absent until the first request completes; until then `total`
       // *is* the last request, so it is the honest fallback.
@@ -2552,6 +2562,7 @@ export class CodexAdapter {
       model: this.activeModel,
       context_used_percent: contextPercent(contextTokens, modelContextWindow),
       total_cost_usd: this.cumulativeCostUsd,
+      ...(this.tokenUsage ? { token_usage: this.tokenUsage } : {}),
     });
   }
 

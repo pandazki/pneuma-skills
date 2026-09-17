@@ -36,6 +36,7 @@ const lucidManifest: ModeManifest = {
       "The look pass ships in the starter — `look.js` (ACES, bloom, fog, vignette) over the vendored post chain — and the workflow does it on the blockout before any model lands; the bridge captures through `render`, so the judge sees the same passes the user does",
       "Submit every generation job first: a Tripo job is ten to twenty minutes, and the first trials spent half a budget waiting on one",
       "The dream prompt writes the light, not just the objects; the ledger knows a `image` source for backdrops and textures",
+      "A cost panel: every fal job priced per endpoint and option, every image generation and the session's tokens at public list price, in total and per round — an estimate, labelled as one, from a price table the script shares (`status.costs`)",
       "`auto_size` is documented as a hint and the no-UV warning no longer claims a model cannot be textured (triplanar can)",
       "`--yaw -90` parses: every script joins a negative number onto its option before parsing; `blender.mjs prep --thin` names parts before the merge erases their names; `status` lists the ledger entries not yet placed",
     ],
@@ -133,6 +134,15 @@ const lucidManifest: ModeManifest = {
           "**/scene/**/*.json",
         ],
         ignore: ["**/scene/vendor/**"],
+      },
+    },
+    // The fal job file, for the cost panel: every image-to-3D job with its
+    // endpoint, options and submission time, priced by the same table
+    // `lucid.mjs status` uses. Small JSON; shipping its bytes is fine.
+    falJobs: {
+      kind: "file-glob",
+      config: {
+        patterns: ["**/assets/fal-jobs.json"],
       },
     },
   },

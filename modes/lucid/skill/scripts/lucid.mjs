@@ -42,6 +42,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { joinNegativeNumbers } from "./argv.mjs";
+import { summarizeCosts } from "./costs.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -443,6 +444,26 @@ function evaluate(loop, now, { withClock = false } = {}) {
     `round ${last.index} scored ${last.verdict.total}/10; the loop is still gaining`,
   );
   return { exit: "continue", ...base };
+}
+
+/** The fal jobs of this project priced at list price, or null without a job file. */
+function falCosts(dir, loop) {
+  const path = join(resolve(dir), "assets", "fal-jobs.json");
+  if (!existsSync(path)) return null;
+  let jobs = [];
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf-8"));
+    jobs = Array.isArray(parsed) ? parsed : Array.isArray(parsed.jobs) ? parsed.jobs : [];
+  } catch {
+    return { error: `${path} is not valid JSON` };
+  }
+  const summary = summarizeCosts({ jobs, rounds: loop.rounds });
+  return {
+    basis: summary.basis,
+    asOf: summary.asOf,
+    fal: { count: summary.fal.count, usd: summary.fal.usd, unpriced: summary.fal.unpriced, jobs: summary.fal.jobs },
+    byRound: summary.byRound.map((w) => ({ round: w.index, falUsd: w.fal.usd, falJobs: w.fal.count })),
+  };
 }
 
 /** Whether `scene/lucid-bridge.js` is byte-for-byte the bridge this skill
@@ -1090,6 +1111,10 @@ function cmdStatus(dir, now) {
       (r) => r.verdict && r.targetVersion === loop.target.version,
     ).length,
     assets: loop.assets.length,
+    // What the outside services have been asked for so far, at list price.
+    // Only the fal jobs are visible from here; the viewer's cost panel adds
+    // image generations and tokens from the session.
+    costs: falCosts(dir, loop),
     // The ledger entries not yet on stage, so the thing blocking the next
     // ready frame is read here rather than inferred from loader logs.
     assetsPending: loop.assets

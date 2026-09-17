@@ -328,3 +328,31 @@ Not changed, and worth saying: the rubric ("not a single pixel different"
 from a photoreal or concept-grade image) makes 8/10 a different kind of
 project for a real-time scene; the scores are trend signals, not grades.
 
+## 8. The bill
+
+The user's next request after the comparison: this is an expensive mode,
+and the viewer should say what it costs. Three things cost money and each is
+read from a different place, so the framework and the mode split the work:
+
+- **Tokens** are the backend's to report. `SessionState.token_usage`
+  (cumulative input / cached / output / reasoning) now travels on
+  `session_update`; the codex adapter fills it from
+  `thread/tokenUsage/updated.total`. Raw counts, deliberately unpriced — a
+  subscription pays in quota. The context panel shows the total.
+- **fal jobs** are in `assets/fal-jobs.json`, priced per endpoint and option
+  by `prices.mjs` (fal's own list: Tripo $0.20 base, +$0.10 textures, +$0.10
+  HD, +$0.20 detailed geometry, +$0.05 quad; Trellis $0.02) through
+  `costs.mjs`, which `lucid.mjs status` (`costs`) and the viewer share.
+- **Image generations** are tool calls in the transcript, counted per project
+  (from its creation until the next project's) at a flat $0.15 — gpt-image
+  bills per output token and the tool does not report them.
+
+The cost panel (coins button on the stage bar) shows the total, the three
+lines, a per-round table (jobs and images attributed to the round they
+preceded, tokens session-level only) and the job list, labelled "estimate ·
+list price" with the price date. Checked in a browser on the stage
+workspace: $2.44 for the clouds stage — two Trellis jobs and sixteen image
+generations; the third trial's real bill was the tokens (about 17M input,
+mostly cached, per stage), which the panel prices at GPT-6 Astra's list
+rate when a live session reports them.
+

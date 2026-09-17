@@ -551,6 +551,14 @@ export interface BufferedBrowserEvent {
 
 // ─── Session State ────────────────────────────────────────────────────────────
 
+/** Cumulative token counts for a session's main thread. */
+export interface SessionTokenUsage {
+  input_tokens: number;
+  cached_input_tokens: number;
+  output_tokens: number;
+  reasoning_output_tokens: number;
+}
+
 export interface SessionState {
   session_id: string;
   backend_type: AgentBackendType;
@@ -566,6 +574,13 @@ export interface SessionState {
   slash_commands: string[];
   skills: string[];
   total_cost_usd: number;
+  /**
+   * Cumulative token usage of the main thread, when the backend reports one
+   * (codex: `thread/tokenUsage/updated.total`). Raw counts, deliberately no
+   * price: what a token costs depends on the plan, and a mode that wants a
+   * figure applies its own price table (lucid's cost panel does).
+   */
+  token_usage?: SessionTokenUsage;
   num_turns: number;
   context_used_percent: number;
   is_compacting: boolean;

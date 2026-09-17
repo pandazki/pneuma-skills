@@ -42,6 +42,22 @@ function SessionStatsSection() {
           </>
         )}
 
+        {session.token_usage && (
+          <>
+            <span className="text-cc-muted">{t("tokens")}</span>
+            <span
+              className="text-cc-fg truncate"
+              title={t("tokens_detail", {
+                input: session.token_usage.input_tokens.toLocaleString(),
+                cached: session.token_usage.cached_input_tokens.toLocaleString(),
+                output: session.token_usage.output_tokens.toLocaleString(),
+              })}
+            >
+              {formatTokens(session.token_usage.input_tokens + session.token_usage.output_tokens)}
+            </span>
+          </>
+        )}
+
         <span className="text-cc-muted">{t("turns")}</span>
         <span className="text-cc-fg">{session.num_turns}</span>
 
@@ -279,3 +295,11 @@ export default function ContextPanel() {
     </div>
   );
 }
+
+/** 17,393,159 → "17.4M"; 48,712 → "48.7k"; below a thousand, the number. */
+function formatTokens(count: number): string {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
+  return String(count);
+}
+

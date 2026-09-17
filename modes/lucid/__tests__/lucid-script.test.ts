@@ -759,6 +759,20 @@ describe("lucid.mjs asset", () => {
     expect(manifestOf(cwd).assets).toHaveLength(1);
   });
 
+  test("status prices the project's fal jobs at list price, per round", () => {
+    const cwd = looping();
+    expect(json(cwd, ["status", "shrine"]).costs).toBeNull();
+    writeFileSync(join(cwd, "shrine", "assets", "fal-jobs.json"), JSON.stringify({ jobs: [
+      { id: "saint", endpoint: "tripo3d/h3.1/image-to-3d", state: "downloaded", submitted_at: T(2), input: { texture: true, texture_quality: "detailed", geometry_quality: "detailed" } },
+      { id: "fern", endpoint: "fal-ai/trellis", state: "submitted", submitted_at: T(8), input: {} },
+    ] }));
+    const costs = json(cwd, ["status", "shrine"]).costs;
+    expect(costs.fal).toMatchObject({ count: 2, usd: 0.62, unpriced: [] });
+    expect(costs.basis).toContain("list prices");
+    writeFileSync(join(cwd, "shrine", "assets", "fal-jobs.json"), "{not json");
+    expect(json(cwd, ["status", "shrine"]).costs.error).toContain("not valid JSON");
+  });
+
   test("status lists the entries not yet on stage", () => {
     const cwd = looping();
     json(cwd, ["asset", "shrine", "add", "--id", "saint", "--role", "hero", "--source", "image-to-3d", "--state", "generating", "--now", T(10)]);

@@ -5,6 +5,8 @@
   "version": "バージョン",
   "working_dir": "作業ディレクトリ",
   "cost": "コスト",
+  "tokens": "トークン",
+  "tokens_detail": "入力 {{input}} · キャッシュ {{cached}} · 出力 {{output}}",
   "turns": "ターン",
   "lines": "行数",
   "tasks": "タスク",
