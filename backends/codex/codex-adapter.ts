@@ -646,6 +646,12 @@ export class StdioTransport implements ICodexTransport {
 
 export interface CodexAdapterOptions {
   model?: string;
+  /**
+   * Reasoning effort for every turn (`turn/start.effort`). `thread/start`
+   * has no such field, so it travels per turn; unset leaves the effort to
+   * Codex's own config, which defaults to medium.
+   */
+  reasoningEffort?: string;
   cwd?: string;
   approvalMode?: string;
   sandbox?: "workspace-write" | "danger-full-access";
@@ -1091,6 +1097,7 @@ export class CodexAdapter {
         approvalPolicy: this.mapApprovalPolicy(this.currentPermissionMode),
         sandboxPolicy: this.mapSandboxPolicyObject(this.currentPermissionMode),
         model: this.activeModel || undefined,
+        ...(this.options.reasoningEffort ? { effort: this.options.reasoningEffort } : {}),
       };
       const result = await this.transport.call("turn/start", turnParams) as { turn: { id: string } };
       this.mainThread.currentTurnId = result.turn.id;

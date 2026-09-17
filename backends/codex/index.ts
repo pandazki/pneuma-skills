@@ -39,6 +39,7 @@ export class CodexBackend implements AgentBackend {
       cwd: options.cwd,
       permissionMode: options.permissionMode,
       model: options.model,
+      reasoningEffort: options.reasoningEffort,
       sessionId: options.sessionId,
       resumeThreadId: options.resumeSessionId,
       env: options.env,

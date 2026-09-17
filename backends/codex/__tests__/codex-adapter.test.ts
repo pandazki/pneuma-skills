@@ -98,6 +98,31 @@ describe("CodexAdapter", () => {
     expect(turnCall?.params.input).toEqual([{ type: "text", text: "Hello Codex" }]);
   });
 
+  // `thread/start` has no effort field; it travels on every turn. Unset means
+  // Codex's own config decides (medium by default), and a mode whose quality
+  // is taste (lucid) says high through `ModeManifest.agent.reasoningEffort`.
+  test("turn/start carries the session's reasoning effort, and nothing when unset", async () => {
+    const withEffort = createMockTransport();
+    const adapter = new CodexAdapter(withEffort, "test-session", {
+      model: "gpt-6-astra",
+      cwd: "/tmp/test",
+      reasoningEffort: "high",
+    });
+    await waitForInit();
+    adapter.sendBrowserMessage({ type: "user_message", content: "dream" });
+    await new Promise((r) => setTimeout(r, 20));
+    const start = withEffort._callHistory.find((c) => c.method === "turn/start");
+    expect(start?.params).toMatchObject({ effort: "high" });
+    expect(withEffort._callHistory.find((c) => c.method === "thread/start")?.params).not.toHaveProperty("effort");
+
+    const without = createMockTransport();
+    const plain = new CodexAdapter(without, "test-session-2", { model: "gpt-6-astra", cwd: "/tmp/test" });
+    await waitForInit();
+    plain.sendBrowserMessage({ type: "user_message", content: "dream" });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(without._callHistory.find((c) => c.method === "turn/start")?.params).not.toHaveProperty("effort");
+  });
+
   test("steers an active turn with turn/steer without starting or interrupting a turn", async () => {
     const transport = createMockTransport();
     const adapter = new CodexAdapter(transport, "test-session", {

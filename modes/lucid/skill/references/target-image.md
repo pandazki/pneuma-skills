@@ -50,6 +50,18 @@ rendering style in the prompt in plain words — *orthographic isometric camera*
 a running Three.js game* — and if the first result drifts from the brief,
 dream once more rather than accepting a contract you cannot honour.
 
+Write the light as carefully as the objects — the target's beauty is decided
+here, and a prompt that lists objects gets a catalogue render: evenly lit,
+saturated, nothing in shadow. Say where the light comes from and how much
+of the frame is dark (*low-key, a single warm key from the lanterns, deep
+blue shadow, rim light on the character*), what glows (*lantern glass
+blooming, wet stone reflecting the flames*), what the air does (*mist in
+the distance, rain streaks catching the light*), and what the surfaces are
+(*worn, chipped, moss in the joints*). Even a bright, gentle brief has a
+light: *soft late-afternoon key from the left, long warm shadows, hazy
+backlight*. The judge scores lighting and materials as two of the four
+areas; a target without a lighting idea has already given those points away.
+
 Check the camera before you lock. An orthographic or isometric brief locked
 against a dream with a horizon and perspective convergence makes every later
 round chase a camera the user did not ask for: distant geometry that reads

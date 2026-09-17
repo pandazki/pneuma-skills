@@ -198,7 +198,9 @@ node {SKILL_PATH}/scripts/lucid.mjs target <project> --set <path/to/generated.pn
 ```
 
 `navigate-to` `{ "contentSet": "<project>", "view": "target" }` and tell the
-user in one line what you are about to build. Do not ask for approval when the
+user in one line what you are about to build. A project created seconds ago
+can take a moment to reach the viewer; if `navigate-to` says there is no such
+project, wait a few seconds and call it once more. Do not ask for approval when the
 user said to just go.
 
 The starter's anchors — relative imports, the environment map, the pixel-ratio
@@ -207,7 +209,18 @@ to keep. Its camera, placeholder content and controls are yours to replace.
 
 ### Build toward the target
 
-1. **Write the asset plan from the picture, and give every hero element a
+0. **Submit every generation job before you build anything.** Cut the hero
+   elements out of the target, `recipe` → `check` → `submit` — a Tripo job is
+   ten to twenty minutes of wall clock, and the first trials spent half their
+   budget waiting for one. Build while they run; `collect` later.
+1. **Then the look, on a blockout, before any model lands.** Boxes where the
+   masonry goes, a plane for the floor, and the light: key + fill + the
+   practicals, ACES exposure, fog the colour of the sky, a glossy wet ground,
+   bloom on what glows (`look.js` is wired in the starter;
+   `references/three-scene.md` → "The look"). Capture it and look: a scene lit
+   right with boxes beats a catalogue of generated models under flat light,
+   and the judge scores lighting and materials as half the rubric.
+2. **Write the asset plan from the picture, and give every hero element a
    rung.** List what the target shows — hero objects, characters, props,
    environment, camera, lighting, atmosphere, motion — and register each asset
    (`lucid.mjs asset <project> add …`) with the rung it comes from:
@@ -222,23 +235,20 @@ to keep. Its camera, placeholder content and controls are yours to replace.
    blocky cut-out than from stacked boxes. `references/assets.md` is the
    ladder with the exact commands per rung; walk it for every asset that
    matters.
-2. **Source in parallel with building.** Cut the hero elements out of the
-   target with the image tool, plan them with
-   `node {SKILL_PATH}/scripts/image-to-3d.mjs recipe hero` (or
-   `hero-multiview`, `prop`), `check` → `submit`, and keep writing the scene
-   while the jobs run; `collect` a minute or two later. Build the Blender
-   pieces headless (`blender.mjs run` on a copy of `make_prop.py`). Every
-   model, whatever its source, goes through `blender.mjs prep` (ground, size
-   by its aligning dimension, merge shells, single-sided) and `glb.mjs
-   inspect` before it enters the scene.
-3. **Textures, then maps.** Albedo from the image tool; normal, roughness and
+3. **Land the models as they arrive.** `collect`; build the Blender pieces
+   headless (`blender.mjs run` on a copy of `make_prop.py`). Every model,
+   whatever its source, goes through `blender.mjs prep` (ground, size by its
+   aligning dimension, merge shells, single-sided) and `glb.mjs inspect`
+   before it enters the scene — and enters the light you already set, not a
+   new one.
+4. **Textures, then maps.** Albedo from the image tool; normal, roughness and
    ORM from `node {SKILL_PATH}/scripts/texture.mjs`; `tile-check` before you
    trust "seamless". A material with only an albedo reads flat.
-4. **Write the scene on the starter with `references/three-scene.md` open**:
+5. **Write the scene on the starter with `references/three-scene.md` open**:
    load models through `assets.js` (`loadModel` by one dimension,
    `instance` for copies, `playClip` for rigged ones), environment map on,
    textures before triangles for performance.
-5. After each batch of edits: `reload-scene`, `get-scene-state` (ready, no
+6. After each batch of edits: `reload-scene`, `get-scene-state` (ready, no
    errors, fps), `capture`, look. Fix what you see before you spend a verdict.
    Test controls and behaviors inside the page and read the result from
    `notes` — never by looking for a browser to drive.

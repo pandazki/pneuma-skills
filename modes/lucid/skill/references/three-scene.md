@@ -12,7 +12,8 @@ Three.js: each one has a symptom that looks like something else.
   (`"three": "./vendor/three.module.js"`, `"three/addons/": "./vendor/addons/"`),
   then `./main.js` as a module. All paths relative — the page runs from a
   sub-path in the viewer and must keep running from any host.
-- Vendor exactly the six files `lucid.mjs vendor-three` copies, from one
+- Vendor exactly the files `lucid.mjs vendor-three` copies (three core, the
+  loader, controls, utils and the post chain `look.js` imports), from one
   version. `BufferGeometryUtils.js` is not optional even if you never import
   it: `GLTFLoader` imports it, and the failure looks like a blank page with one
   404, not like a missing loader. `SkeletonUtils.js` is what lets you clone
@@ -28,6 +29,59 @@ Three.js: each one has a symptom that looks like something else.
   in `window.lucid?.setLoading(true)` … `setLoading(false)`. Without the
   registration the viewer cannot capture a real frame or measure fps, and the
   loop is blind.
+
+## The look: light before geometry
+
+Light is the cheapest detail there is, and it is what the upstream demos are
+made of: a dark scene, three or four warm practicals, a wet floor that
+reflects them, rain, bloom — the geometry underneath is modular boxes and
+arches. Darkness hides polygons; light sells materials; bloom is what makes a
+lantern a light source instead of a yellow sphere. The first trials did the
+opposite — flat bright ambient over everything — and every seam, every
+plain column, every uniform floor was on display for the judge.
+
+Do the look pass on the blockout, before a single model lands, and capture
+it: a scene lit right with boxes on the floor beats a catalogue of generated
+models under flat light. The starter wires it:
+
+```js
+import { makeLook } from "./look.js";
+const look = makeLook(renderer, scene, camera, {
+  exposure: 0.9,                                        // ACES; < 1 for a night scene
+  bloom: { strength: 0.6, radius: 0.5, threshold: 0.8 }, // only emissive / specular cross 0.8
+  fog: { color: 0x0b0d16, near: 14, far: 60 },          // the sky colour; distance = depth
+  vignette: 0.35,
+});
+window.lucid?.register({ renderer, scene, camera, render: look.render });
+renderer.setAnimationLoop(() => { controls.update(); look.render(); });
+```
+
+The recipe, in order of how much it changes the picture:
+
+1. **Key, fill, practicals — and not much of any.** One directional key with
+   shadows (`shadow.mapSize` 2048, bias -0.0005), an ambient or hemisphere
+   fill at a tenth of it, then the practicals: `PointLight`s inside the
+   lanterns, torches, windows, with `emissive` on the fixture's material so
+   bloom picks it up. Two or three lights at most cast shadows.
+2. **Exposure and tone mapping** (`makeLook`): ACES at 0.8–1.2. Exposure is
+   the dial for "too dark / too bright" — not a brighter ambient.
+3. **Fog** the colour of the sky or the background: it is depth, atmosphere
+   and a free level-of-detail for everything far away.
+4. **Wet or glossy ground**: `roughness` 0.15–0.35 with a normal map for the
+   ripples; the practicals reflect in it. That single material does more for
+   "atmosphere" than any model.
+5. **Bloom** on what should glow, at a threshold only they cross; a
+   **vignette** to hold the eye. Both are already in the chain.
+6. **Shadows on**: `renderer.shadowMap.enabled = true` (PCF is the default;
+   `PCFSoftShadowMap` no longer exists in r186), `castShadow` on heroes and
+   `receiveShadow` on the ground; contact is what makes a model stand on the
+   floor rather than float.
+7. **Environment at a fraction**: `scene.environmentIntensity = 0.2–0.4` in
+   a low-key scene. The map is for the PBR response, not the exposure; at
+   full strength it floods everything with grey studio light.
+
+Read the target for its key: where the light comes from, how dark the darks
+are, what glows. Match those three before matching any object.
 
 ## Lighting: the environment map is not optional
 

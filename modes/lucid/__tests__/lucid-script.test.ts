@@ -225,7 +225,18 @@ describe("lucid.mjs init", () => {
       "three", "three/addons/loaders/GLTFLoader.js", "three/addons/utils/SkeletonUtils.js",
     ]);
     expect(scan("main.js").imports.map((entry) => entry.path).sort()).toEqual([
-      "./assets.js", "three", "three/addons/controls/OrbitControls.js",
+      "./assets.js", "./look.js", "three", "three/addons/controls/OrbitControls.js",
+    ]);
+    // The post chain look.js wires, every file of it in VENDOR_FILES.
+    const look = scan("look.js");
+    expect([...look.exports]).toEqual(["makeLook"]);
+    expect(look.imports.map((entry) => entry.path).sort()).toEqual([
+      "three",
+      "three/addons/postprocessing/EffectComposer.js",
+      "three/addons/postprocessing/OutputPass.js",
+      "three/addons/postprocessing/RenderPass.js",
+      "three/addons/postprocessing/ShaderPass.js",
+      "three/addons/postprocessing/UnrealBloomPass.js",
     ]);
   });
 
@@ -1248,6 +1259,27 @@ describe("lucid-bridge.js state", () => {
       notes: {},
       viewport: { width: 0, height: 0, pixelRatio: 2 },
     });
+  });
+
+  // A scene with a post chain draws through a composer; a capture that calls
+  // the bare renderer.render would hand the judge a frame without bloom, fog
+  // or tone mapping — a picture the user never sees.
+  test("a capture draws through the registered render callback when the scene gave one", () => {
+    const harness = loadBridge();
+    const renderer = fakeRenderer();
+    const drawn: string[] = [];
+    harness.root.lucid.register({
+      renderer, scene: { id: "scene" }, camera: { id: "camera" },
+      render: () => { drawn.push("chain"); renderer.render("chain-scene", "chain-camera"); },
+    });
+    harness.renders(renderer, Array.from({ length: 12 }, (_, i) => i * 16));
+    const before = renderer.rendered.length;
+    const r: Array<Record<string, unknown>> = [];
+    harness.root.__lucidBridge.handleMessage({ type: "pneuma:lucid:capture", id: "c-chain" }, (m) => r.push(m));
+    expect(r[0]).toMatchObject({ ok: true, registered: true });
+    expect(drawn).toEqual(["chain"]);
+    // The chain's own draw went through the wrapper — counted, not bypassed.
+    expect(renderer.rendered.slice(before)).toEqual([{ scene: "chain-scene", camera: "chain-camera" }]);
   });
 
   // The browser pauses animation frames in a background tab: nothing draws,

@@ -58,7 +58,7 @@ const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const ROUND_KINDS = ["iterate", "rethink"];
 const GAP_AREAS = ["composition", "lighting", "materials", "details"];
 const ASSET_ROLES = ["hero", "prop", "environment"];
-const ASSET_SOURCES = ["image-to-3d", "blender", "procedural", "user"];
+const ASSET_SOURCES = ["image-to-3d", "image", "blender", "procedural", "user"];
 const ASSET_STATES = ["planned", "generating", "ready", "placed", "failed"];
 
 /** The six files a scene needs from one three.js release, and where they
@@ -73,6 +73,19 @@ const VENDOR_FILES = [
   { from: "examples/jsm/controls/OrbitControls.js", to: "addons/controls/OrbitControls.js" },
   { from: "examples/jsm/utils/BufferGeometryUtils.js", to: "addons/utils/BufferGeometryUtils.js" },
   { from: "examples/jsm/utils/SkeletonUtils.js", to: "addons/utils/SkeletonUtils.js" },
+  // The look: a post chain is what turns "plausible meshes" into a picture —
+  // bloom on the practicals, tone mapping, output. Vendored so an agent that
+  // may not download anything still has it (`scene-starter/look.js` wires it).
+  { from: "examples/jsm/postprocessing/Pass.js", to: "addons/postprocessing/Pass.js" },
+  { from: "examples/jsm/postprocessing/MaskPass.js", to: "addons/postprocessing/MaskPass.js" },
+  { from: "examples/jsm/postprocessing/EffectComposer.js", to: "addons/postprocessing/EffectComposer.js" },
+  { from: "examples/jsm/postprocessing/RenderPass.js", to: "addons/postprocessing/RenderPass.js" },
+  { from: "examples/jsm/postprocessing/ShaderPass.js", to: "addons/postprocessing/ShaderPass.js" },
+  { from: "examples/jsm/postprocessing/UnrealBloomPass.js", to: "addons/postprocessing/UnrealBloomPass.js" },
+  { from: "examples/jsm/postprocessing/OutputPass.js", to: "addons/postprocessing/OutputPass.js" },
+  { from: "examples/jsm/shaders/CopyShader.js", to: "addons/shaders/CopyShader.js" },
+  { from: "examples/jsm/shaders/LuminosityHighPassShader.js", to: "addons/shaders/LuminosityHighPassShader.js" },
+  { from: "examples/jsm/shaders/OutputShader.js", to: "addons/shaders/OutputShader.js" },
 ];
 
 const SUBCOMMANDS = [
@@ -816,6 +829,7 @@ function copyStarter(dir) {
   const sources = [
     { from: join(HERE, "scene-starter", "index.html"), to: "index.html" },
     { from: join(HERE, "scene-starter", "main.js"), to: "main.js" },
+    { from: join(HERE, "scene-starter", "look.js"), to: "look.js" },
     // The loader. Without it in every new project a scene gets built out of
     // primitives, because loading a GLB is the step nobody writes from memory.
     { from: join(HERE, "scene-starter", "assets.js"), to: "assets.js" },
@@ -1356,8 +1370,9 @@ compares the budget against); without it the wall clock is used.
       Create lucid.json (status dreaming, target version 0), rounds/, assets/
       and a runnable scene/: index.html + main.js + assets.js (the GLB/texture
       loader: measure, normalize by ONE dimension, ground, clone rigged models)
-      from the starter, plus lucid-bridge.js. Existing files of those names are
-      kept, not clobbered.
+      + look.js (the look pass: tone mapping, bloom, fog, vignette, wired to
+      the bridge's capture) from the starter, plus lucid-bridge.js. Existing
+      files of those names are kept, not clobbered.
       Then vendor three.js unless --no-vendor; a vendoring failure is reported
       as vendor.ok = false and does NOT fail init — the project and the scene
       exist, and you can run vendor-three later.
@@ -1371,11 +1386,14 @@ compares the budget against); without it the wall clock is used.
       copy exactly six files into scene/vendor/:
         three.module.js, three.core.js, addons/loaders/GLTFLoader.js,
         addons/controls/OrbitControls.js, addons/utils/BufferGeometryUtils.js,
-        addons/utils/SkeletonUtils.js
+        addons/utils/SkeletonUtils.js, and the post chain look.js imports:
+        addons/postprocessing/{Pass,MaskPass,EffectComposer,RenderPass,
+        ShaderPass,UnrealBloomPass,OutputPass}.js,
+        addons/shaders/{CopyShader,LuminosityHighPassShader,OutputShader}.js
       plus scene/vendor/VERSION. All six come from ONE version or none is
       written: the download is staged and only swapped in when complete, so a
       failure never leaves a mixed vendor directory. Needs the network;
-      offline is a loud failure. A vendor directory missing any one of the seven
+      offline is a loud failure. A vendor directory missing any one of the listed
       files reads as not ok in 'status'.
 
   target <dir> --set <png> [--reason "<why it changed>"]

@@ -32,6 +32,10 @@ const lucidManifest: ModeManifest = {
       "The next judge sees the previous gap ids and issues, never the previous scores — the ids are what the exit rules need, the numbers anchor",
       "A rethink that gains less than a full point is `stalled`, not another rethink: a 0.2-point redesign is inside the judge's noise",
       "`status.scene.bridgeCurrent` says whether the scene still runs an older skill's bridge",
+      "The mode asks Codex for high reasoning effort (`agent.reasoningEffort`): upstream's showcase ran at high, the first trials at Codex's default medium, and the difference was the whole look",
+      "The look pass ships in the starter — `look.js` (ACES, bloom, fog, vignette) over the vendored post chain — and the workflow does it on the blockout before any model lands; the bridge captures through `render`, so the judge sees the same passes the user does",
+      "Submit every generation job first: a Tripo job is ten to twenty minutes, and the first trials spent half a budget waiting on one",
+      "The dream prompt writes the light, not just the objects; the ledger knows a `image` source for backdrops and textures",
       "`auto_size` is documented as a hint and the no-UV warning no longer claims a model cannot be textured (triplanar can)",
       "`--yaw -90` parses: every script joins a negative number onto its option before parsing; `blender.mjs prep --thin` names parts before the merge erases their names; `status` lists the ledger entries not yet placed",
     ],
@@ -203,6 +207,11 @@ const lucidManifest: ModeManifest = {
 
   agent: {
     permissionMode: "bypassPermissions",
+    // The loop's quality is taste — lighting, materials, what to build first.
+    // Upstream's showcase ran GPT-6 Astra at high effort; the same model at
+    // Codex's default medium produced the flat, catalogue-lit scenes of the
+    // first trials.
+    reasoningEffort: "high",
     greeting: `<system-info pneuma-mode="Pneuma Lucid Mode" skill="pneuma-lucid" session="new"></system-info>
 The user just opened the lucid workspace. Greet them briefly (1-2 sentences): say that you start by dreaming a target screenshot with your image tool from whatever they describe, then build a Three.js scene toward it while a fresh judge scores each round. If this session's model has no image-generation tool, say so in the same breath and ask them to switch to a model that has one (GPT-6 Astra in Codex) — the loop cannot start without a target.`,
   },

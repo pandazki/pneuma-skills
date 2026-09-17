@@ -163,6 +163,14 @@ export interface AgentPreferences {
   permissionMode?: string;
   /** Greeting template for new sessions (Agent generates a response) */
   greeting?: string;
+  /**
+   * Reasoning effort the mode asks its model for. A backend that exposes one
+   * (codex: `turn/start.effort`) passes it on every turn; the others ignore
+   * it. Unset means the backend's own default — for codex that is
+   * `~/.codex/config.toml`'s `model_reasoning_effort`, which is what a mode
+   * whose quality depends on taste (lucid) must not be left to.
+   */
+  reasoningEffort?: "low" | "medium" | "high" | "xhigh";
 }
 
 /**

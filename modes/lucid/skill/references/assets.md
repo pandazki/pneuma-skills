@@ -16,6 +16,15 @@ asset. Record every asset in
 the ledger (`lucid.mjs asset <project> add …` / `update …`) so the viewer and the user can see
 where each thing came from and whether it landed.
 
+## Submit first, build meanwhile
+
+A Tripo job takes ten to twenty minutes of wall clock; two of the first
+trials spent half their budget waiting for one. The moment the target is
+locked and the asset plan exists, cut the hero elements out and `submit`
+every job — then do the blockout and the look pass while they run, and
+`collect` when a capture says the scene is ready for them. Never wait on a
+job; never let one gate the first capture.
+
 ## 1. Download an existing asset
 
 Only if the user explicitly allowed downloading assets. If unspecified, assume

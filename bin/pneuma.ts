@@ -2739,6 +2739,7 @@ async function main() {
         cwd: sessionDir,
         sessionId: sessionId,
         permissionMode: manifest.agent?.permissionMode,
+        reasoningEffort: manifest.agent?.reasoningEffort,
         env: agentEnv,
       });
       console.log(`[pneuma] Agent launched: ${agentSession.sessionId}`);
@@ -2950,6 +2951,7 @@ async function main() {
           cwd: sessionDir,
           sessionId,
           permissionMode,
+          reasoningEffort: manifest.agent?.reasoningEffort,
           env: agentEnv,
         });
 
@@ -3000,6 +3002,7 @@ async function main() {
       const session = backend.launch({
         cwd: sessionDir,
         permissionMode,
+        reasoningEffort: manifest.agent?.reasoningEffort,
         ...(launchSessionId ? { sessionId: launchSessionId } : {}),
         ...(existing?.agentSessionId
           ? { resumeSessionId: existing.agentSessionId }
@@ -3125,6 +3128,7 @@ async function main() {
             cwd: sessionDir,
             sessionId,
             permissionMode,
+            reasoningEffort: manifest.agent?.reasoningEffort,
             env: freshEnv,
           });
 

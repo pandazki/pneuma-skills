@@ -95,7 +95,7 @@ describe("the seed scene", () => {
     expect(main).not.toContain("interaction-check");
   });
 
-  test("vendors the complete six-file three.js set from one release", () => {
+  test("vendors the complete three.js set from one release, post chain included", () => {
     const vendor = join(SEED, "scene/vendor");
     for (const rel of [
       "three.module.js",
@@ -104,6 +104,16 @@ describe("the seed scene", () => {
       "addons/controls/OrbitControls.js",
       "addons/utils/BufferGeometryUtils.js",
       "addons/utils/SkeletonUtils.js",
+      "addons/postprocessing/Pass.js",
+      "addons/postprocessing/MaskPass.js",
+      "addons/postprocessing/EffectComposer.js",
+      "addons/postprocessing/RenderPass.js",
+      "addons/postprocessing/ShaderPass.js",
+      "addons/postprocessing/UnrealBloomPass.js",
+      "addons/postprocessing/OutputPass.js",
+      "addons/shaders/CopyShader.js",
+      "addons/shaders/LuminosityHighPassShader.js",
+      "addons/shaders/OutputShader.js",
       "VERSION",
     ]) {
       expect({ rel, exists: existsSync(join(vendor, rel)) }).toEqual({ rel, exists: true });

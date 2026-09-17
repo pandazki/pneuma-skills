@@ -15,6 +15,7 @@ import { CloseIcon } from "./icons.js";
 
 const SOURCE_LABEL: Record<AssetSource, string> = {
   "image-to-3d": "image-to-3D",
+  image: "generated image",
   blender: "Blender",
   procedural: "procedural",
   user: "from the user",

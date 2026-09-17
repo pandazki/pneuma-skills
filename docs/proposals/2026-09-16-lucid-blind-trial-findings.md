@@ -300,3 +300,31 @@ later).
   budget.
 - The report's suggestion of a page-level capture (`capture-interface`) and a
   supported input-dispatch channel is recorded, not built.
+
+## 7. Why the upstream demo looks better — and what changed because of it
+
+The user's verdict on the third trial (two fairy-tale stages, 5.45 and
+5.75): the targets were ordinary and the scenes plain. Compared against the
+upstream demo (Vesper, screenshotted from dream-loop-demo.anshu.dev): same
+model — the README says "GPT-6 Astra on high effort in Codex" — same rubric,
+the same one hour, and a picture in a different league. Four differences,
+with evidence:
+
+| | Upstream | Ours (trials 1–3) | Change |
+|---|---|---|---|
+| Reasoning effort | high (README) | medium — `~/.codex/config.toml` `model_reasoning_effort = "medium"`; Pneuma passed nothing on `turn/start` | `ModeManifest.agent.reasoningEffort` → codex `turn/start.effort` (the protocol has the field; `thread/start` does not); lucid asks for `high` |
+| The look | Dark, three warm practicals, a wet floor reflecting them, rain, bloom — modular geometry made rich by light | Flat bright ambient over everything; no tone mapping, bloom, fog or vignette; the postprocessing addons were not even vendored, and the agent may not download | `look.js` in the starter (ACES, bloom, fog, vignette) over a vendored post chain; the bridge captures through `render`; three-scene.md "The look: light before geometry"; the workflow does the look pass on the blockout before any model lands |
+| Where the hour went | On the scene and the light | 10–20 min per Tripo job, six-view checks, prep — half a 40-minute budget waiting; generated models with baked textures under a light they were not made for ("assembled diorama") | Step 0: submit every job first, build meanwhile; models enter the light already set |
+| The dream prompt | (same "in-engine screenshot, not concept art" rule) | The agent's prompt was a list of objects — a catalogue render, evenly lit | target-image.md: write the light (key, darks, what glows, what the air does) as carefully as the objects |
+
+Verified in a browser: the new starter (`init` → open) registers, reaches
+ready at 60 fps with no errors, and reads as a low-key study — a warm
+practical blooming, a contact shadow, its reflection in the glossy ground.
+Two things it taught on the way: `PCFSoftShadowMap` is gone in r186, and a
+full-strength environment map floods a dark scene with grey studio light
+(`scene.environmentIntensity = 0.3`).
+
+Not changed, and worth saying: the rubric ("not a single pixel different"
+from a photoreal or concept-grade image) makes 8/10 a different kind of
+project for a real-time scene; the scores are trend signals, not grades.
+

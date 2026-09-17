@@ -139,7 +139,8 @@ export interface BudgetState {
 }
 
 export type AssetRole = "hero" | "prop" | "environment";
-export type AssetSource = "image-to-3d" | "blender" | "procedural" | "user";
+/** `image` is a generated picture used as-is: a backdrop matte, a texture, a sky. */
+export type AssetSource = "image-to-3d" | "image" | "blender" | "procedural" | "user";
 export type AssetState = "planned" | "generating" | "ready" | "placed" | "failed";
 
 export interface AssetEntry {
@@ -238,7 +239,7 @@ const EXIT_STATES: ReadonlySet<string> = new Set([
 ]);
 const GAP_AREAS: ReadonlySet<string> = new Set(["composition", "lighting", "materials", "details"]);
 const ASSET_ROLES: ReadonlySet<string> = new Set(["hero", "prop", "environment"]);
-const ASSET_SOURCES: ReadonlySet<string> = new Set(["image-to-3d", "blender", "procedural", "user"]);
+const ASSET_SOURCES: ReadonlySet<string> = new Set(["image-to-3d", "image", "blender", "procedural", "user"]);
 const ASSET_STATES: ReadonlySet<string> = new Set(["planned", "generating", "ready", "placed", "failed"]);
 
 function parseGap(raw: unknown): Gap | null {

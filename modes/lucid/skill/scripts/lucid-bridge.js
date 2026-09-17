@@ -16,8 +16,13 @@
  * vendored but three.js itself.
  *
  * ── Scene → bridge, on `window.lucid` ───────────────────────────────────────
- *   window.lucid.register({ renderer, scene, camera })
- *       The three.js objects. The bridge reads renderer.domElement and
+ *   window.lucid.register({ renderer, scene, camera, render? })
+ *       The three.js objects. `render`, when given, is the function that
+ *       draws one whole frame (a post-processing chain: `look.render`); a
+ *       capture calls it so the picture goes through the same passes the
+ *       user sees. Without it a capture draws renderer.render(scene, camera)
+ *       — a bare frame, which is wrong the moment a composer is in use.
+ *       The bridge reads renderer.domElement and
  *       renderer.info, WRAPS renderer.render (the original stays bound and is
  *       called first), which is what turns fps into a measurement of real
  *       frames, and installs renderer.debug.onShaderError so a shader that
@@ -668,7 +673,10 @@
       // Draw and read in ONE task: a WebGL drawing buffer is cleared as soon
       // as control returns to the browser unless preserveDrawingBuffer is on.
       try {
-        registered.renderer.render(registered.scene, registered.camera);
+        // The scene's own frame function when it gave one (a post chain),
+        // else a bare draw. Either way the wrapper below counts it.
+        if (registered.render) registered.render();
+        else registered.renderer.render(registered.scene, registered.camera);
         var element = registered.renderer.domElement;
         var dataUrl = element.toDataURL("image/png");
         reply({
@@ -750,7 +758,12 @@
         pushError("window.lucid.register needs { renderer, scene, camera }");
         return false;
       }
-      registered = { renderer: parts.renderer, scene: parts.scene, camera: parts.camera };
+      registered = {
+        renderer: parts.renderer,
+        scene: parts.scene,
+        camera: parts.camera,
+        render: typeof parts.render === "function" ? parts.render : null,
+      };
       // Counting starts at the wrapper, so fps describes frames this renderer
       // actually drew — including the one `capture` draws to read the buffer.
       wrapRender(parts.renderer);

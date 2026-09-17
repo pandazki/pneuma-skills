@@ -45,6 +45,8 @@ export interface AgentLaunchOptions {
   permissionMode?: string;
   /** Model */
   model?: string;
+  /** Reasoning effort (`ModeManifest.agent.reasoningEffort`); backends without one ignore it */
+  reasoningEffort?: string;
   /** Reuse an existing server session ID (instead of generating a new one) */
   sessionId?: string;
   /** Agent's internal session ID (for resuming a previous session) */
