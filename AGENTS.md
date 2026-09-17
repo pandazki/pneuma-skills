@@ -40,7 +40,7 @@ environment**, **skills**, **continuous learning**, and **distribution**.
 
 **Formula:** `ModeManifest(skill + viewer + agent_config) × AgentBackend × RuntimeShell`
 
-**Version:** 3.49.0
+**Version:** 3.50.0
 **Runtime:** Bun >= 1.3.14 (required, not Node.js)
 
 The mode catalog is in [README.md](README.md#built-in-modes); declarations live

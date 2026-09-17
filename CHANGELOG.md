@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.50.0] - 2026-09-17
+
+### Added
+- **Lucid mode.** Describe a scene and the agent dreams one target screenshot with its image tool, locks it, and builds a static Three.js scene toward it round by round; every round is captured through the scene's own renderer and scored by a judge with a fresh context on composition, lighting, materials and details, and the loop stops itself — a gap named in three verdicts running calls for a rethink, a rethink that gains less than a full point is `stalled`, a spent budget is reported, and a pause is credited back to the clock. Codex only (image generation and subagents come with it), high reasoning effort by default. Inspired by achimala/dream-loop (MIT, credited in the mode's NOTICE).
+- **An asset ladder that is used, not described.** Image-to-3D on fal (Tripo H3.1 for heroes, Trellis for props) from cut-outs of the target, headless Blender through a kit of twenty primitives with a one-pass `prep` (ground, size by one dimension, merge, single-side) and six-view orientation sheets, generated albedos with derived normal, roughness and ORM maps, and a starter loader that scales models by one dimension and clones rigs. Every model is recorded in a ledger with its rung and state.
+- **The look pass in the starter.** Every new scene opens as a low-key study — ACES tone mapping, bloom on the practicals, fog, vignette — over a vendored post chain, captured through the same passes the user sees; the workflow lights the blockout before any model lands.
+- **A cost panel for lucid.** Every fal job priced per endpoint and option, every image generation and the session's tokens at public list price, in total and per round, labelled as the estimate it is; `lucid.mjs status` prints the same fal bill.
+- **The agent view.** A subagent's output no longer merges into the main conversation on any backend: a card where the spawn call sits (label, status, elapsed, latest activity, context), a strip of alive agents at the top of the chat, and a read-only view of each agent's conversation with a breadcrumb over its parent chain.
+- **Session token usage.** The context panel shows the session's cumulative tokens (input, cached, output) when the backend reports them; Codex does, from its own usage notifications, unpriced.
+
+### Fixed
+- **Subagent turns no longer end the root turn.** On Codex a child thread's completion used to synthesize a root result, bump the turn count, retarget interrupts and overwrite the context gauge; on Claude Code the frontend never read the attribution the wire already carried. Both attribute by the spawning call's id now.
+- **Multi-block Claude messages survive a reload.** The history kept only the last content block of a message, which is how the spawning `Task` card vanished on every reload.
+- **The status pill stays "running" through a Claude turn.** Claude Code 2.1.273 reports a `requesting` status at the start of every API request; the bridge now folds it into running / idle instead of showing idle.
+
+### Improved
+- **A mode can ask for a reasoning effort.** `ModeManifest.agent.reasoningEffort` travels through the launch options to the Codex adapter, which sends it on every turn; unset keeps the backend's own default.
+- **Codex image generation shows in the transcript.** Image-generation and image-view items render as tool calls with the saved file, like any other tool.
+- **Full-viewport captures honour the mode.** A mode's `captureViewport` decides what a full capture shoots, and `round` is a coarse address key.
+
 ## [3.49.0] - 2026-09-14
 
 ### Added
