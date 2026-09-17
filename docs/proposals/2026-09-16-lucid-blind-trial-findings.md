@@ -194,6 +194,47 @@ items; the actionable ones and where they went):
 | Image-to-3D character is a static mesh; walking was vertex deformation | assets.md says so before it becomes the pipeline; Tripo rig stays out (needs its own key) |
 | Orthographic brief locked against a perspective-looking dream | target-image.md: check the camera before locking; the user's words are the contract |
 | Image tool returns a huge base64 payload if printed | Codex's tool, not ours — noted only |
+| A "fresh" judge still received the previous scores and summary (report item 23) | the brief now carries the previous gap ids, areas and issues only; scores withheld |
+| A rethink that gained 0.2 was answered with "make another rethink" (item 24) | a rethink below a full point is `stalled`; `rethink-small-gain` scenario |
+| The scene kept the bridge init installed after the skill changed | `status.scene.bridgeCurrent` + a SKILL rule to `bridge --refresh` |
+
+### Outcome of the second trial
+
+| Round | Kind | Score | fps | Note |
+|---|---|---|---|---|
+| 1 | iterate | 4.85 | 120 (user's 120 Hz tab) | 35 min in |
+| 2 | iterate | 5.75 | 59.6 (windowless Chrome, 60 Hz cap) | after the resume |
+| 3 | rethink | 5.95 | 59.8 | camera lowered, courtyard opened, foreground banner, stone relief halo, column drums |
+
+The agent stopped at the budget with `stall-approaching` on the old rule
+(the new rules read the same history as `stalled`: the rethink gained
+0.2), wrote a 19.6 KB REPORT.md (24 items) and left a working demo with
+click-to-walk, drag-orbit, wheel zoom, rain, reflections and a control
+self-test (`assets/control-check-result.json`). It never asked a question
+after the brief, never had a tool call fail, and used every rung of the
+ladder unaided.
+
+### Trial hygiene, second incident
+
+Restarting the server re-installs the mode skill from the source tree
+(`[skill-installer] Updated …`). The 11:15 restart (moving the viewer to a
+windowless Chrome on a new port) shipped the pause-credit commit into the
+workspace mid-trial; the agent found `--pause-credit` "on a final reread"
+and could not tell whether the text had changed. Nothing else it saw
+changed (the later commits landed after that restart), and it affected only
+how it normalised the budget in its last minute. Rule, added to the
+blind-trial memory: a trial's server must be restarted from a pinned
+worktree, never from the tree being edited.
+
+## 5b. Extension (2026-09-17 11:55, 60 more minutes, current skill)
+
+After the report, the user line "工具更新了一版（版本号没变）。再给你 60
+分钟…" restarted the loop on the CURRENT skill (every fix above installed,
+dist rebuilt, same windowless Chrome). This is not zero-leak — it is the
+continuation a real user would run after an update — and its purpose is to
+see how far the score goes and whether the new rules (`stalled` at a
+small-gain rethink, `bridgeCurrent`, `assetsPending`, visibility) hold up
+in use. Results below when it ends.
 
 ## 6. Open after both trials
 
