@@ -25,6 +25,7 @@ function makeDefaultSession(id = "test-session"): Session {
     pendingPermissions: new Map(),
     pendingControlRequests: new Map(),
     messageHistory: [],
+    subagents: new Map(),
     pendingMessages: [],
     nextEventSeq: 1,
     eventBuffer: [],

@@ -85,14 +85,27 @@ export const createChatSlice: StateCreator<AppState, [], [], ChatSlice> = (set, 
       // once from the live re-emit). Walk back over `<pneuma:*>` markers,
       // system events, and the env-tag user message; if the previous
       // *real* assistant turn has the same trimmed text, overwrite it.
-      if (msg.role === "assistant" && s.messages.length > 0) {
+      //
+      // The guard is ROOT-ONLY, in both directions. A subagent message is
+      // never a `--resume` re-emit (only the root turn is resumed), and two
+      // agents answering the same question with the same word — "PASS" —
+      // are two answers, not one. Deduping across attribution would delete
+      // one agent's reply, or overwrite the root message that carries the
+      // spawn anchor with a subagent's echo of it.
+      if (msg.role === "assistant" && (msg.parentToolUseId ?? null) === null && s.messages.length > 0) {
         const newText = (msg.content || "").trim();
         if (newText.length > 0) {
           let lastAssistantIdx = -1;
           let blockedByMeaningfulInput = false;
           for (let i = s.messages.length - 1; i >= 0; i--) {
             const m = s.messages[i];
-            if (m.role === "assistant") { lastAssistantIdx = i; break; }
+            if (m.role === "assistant") {
+              // A subagent's message never stands for the root agent's last
+              // turn — keep walking past it to the root conversation.
+              if ((m.parentToolUseId ?? null) !== null) continue;
+              lastAssistantIdx = i;
+              break;
+            }
             if (m.role === "user") {
               const c = (m.content || "").trim();
               if (!isPneumaMarkerOnly(c) && c.length > 0) {
@@ -108,7 +121,10 @@ export const createChatSlice: StateCreator<AppState, [], [], ChatSlice> = (set, 
               updated[lastAssistantIdx] = mergeAssistantMessage(last, msg);
               // Drop everything between the deduped assistant and now —
               // those are stale env / system markers from the same resume.
-              const trimmed = updated.slice(0, lastAssistantIdx + 1);
+              // Subagent messages are not: they are another conversation's
+              // record, so they survive the collapse of this one.
+              const trimmed = updated.slice(0, lastAssistantIdx + 1)
+                .concat(updated.slice(lastAssistantIdx + 1).filter((m) => m.parentToolUseId));
               return { messages: trimmed };
             }
           }

@@ -11,7 +11,16 @@
     "Task": "서브에이전트",
     "TodoWrite": "작업",
     "NotebookEdit": "노트북",
-    "SendMessage": "메시지"
+    "SendMessage": "메시지",
+    "spawn_agent": "에이전트 생성",
+    "send_input": "입력 전송",
+    "wait_agent": "에이전트 대기",
+    "close_agent": "에이전트 종료",
+    "resume_agent": "에이전트 재개",
+    "send_message": "에이전트에 메시지",
+    "followup_task": "후속 작업",
+    "interrupt_agent": "에이전트 중단",
+    "list_agents": "에이전트 목록"
   },
   "tasks_count_one": "작업 {{count}}개",
   "tasks_count_other": "작업 {{count}}개",

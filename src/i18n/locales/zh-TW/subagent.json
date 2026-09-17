@@ -1,0 +1,30 @@
+{
+  "strip": {
+    "main": "主對話",
+    "unread": "主對話有新訊息",
+    "overflow": "+{{count}}",
+    "more": "顯示全部子代理",
+    "collapse": "收起",
+    "less": "只顯示最近的子代理"
+  },
+  "view": {
+    "back": "返回主對話",
+    "breadcrumb": "子代理層級",
+    "readonly_note": "這是子代理 {{label}} 的對話，僅供查看。",
+    "no_output": "子代理尚未產生輸出"
+  },
+  "status": {
+    "running": "執行中",
+    "idle": "閒置",
+    "completed": "已完成",
+    "failed": "失敗",
+    "interrupted": "已中斷"
+  },
+  "card": {
+    "view": "查看對話",
+    "waiting": "等待輸出…",
+    "live": "正在輸出"
+  },
+  "generic_label": "子代理",
+  "permission_prefix": "來自子代理 {{label}}"
+}

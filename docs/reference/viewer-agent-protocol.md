@@ -124,6 +124,24 @@ export interface ViewerLocator {
 - content set 这个**框架级坐标**由 store 自己裁决(`src/store/navigate-plan.ts`,纯函数):地址点名一个不存在的 board 时**拒绝派发**——旧行为是跳过切换、把余下的地址照发给**当前打开的 board**,一次看起来像成功的错误移动;
 - **不通知 agent**。排队通知会唤醒 idle agent 让它自己动手改文件(见 `.claude/rules/modes.md`),而读者按一张死卡片不是在请谁开工。这条失败只对**人**说。
 
+#### 子代理归属（subagent attribution）
+
+一个 agent 可以派出别的 agent,它们的输出走同一条传输通道。**谁说的这件事必须写在 envelope 上**,不然子代理的话会顶着主 agent 的名字出现在对话里。
+
+**归属键只有一个。** `assistant` / `stream_event` / `streamlined_text` / `tool_progress` 上的 `parent_tool_use_id`,读作:**在派出方的对话里,生成这个 agent 的那次调用的 `tool_use.id`**;主 agent 恒为 `null`。这是 Claude 的原生语义,Codex adapter 映射到同一个含义(拿 `collabAgentToolCall` 的 item id,并且它为这次派出合成的 `tool_use` 块也用这个 id)。**不再加第二个身份字段**——一次派出调用 ↔ 一个 agent,两个 backend 都成立。
+
+**子代理不能结束主 turn。** 任何非主线程都不得引出 `result`、主 `status_change`、`num_turns` 自增、主流式缓冲 flush,也不得改动主 agent 的上下文仪表。
+
+**队伍是看得见的、也是有归属的。** 派出动作在派出方的对话里就是一张工具卡;每个被派出的 agent 有一条 roster 条目(label + 生命周期状态),它自己的对话能进去、也能退回来。子代理说的话永远不渲染成主 agent 的话。
+
+**单 agent 会话一切照旧,旧历史照样能读。** Claude 早就把 `parent_tool_use_id` 持久化在 `history.json` 里,回溯即生效;没有 `subagent_update` 可依的 roster 条目由前端兜底派生。
+
+**roster 是状态快照,不是增量。** `subagent_update { agent: SubagentInfo; timestamp }` 带整条 `SubagentInfo`,消费端按 `agent.id` 整条替换。发送方在每次状态变化时发一条,`model` / `context_used_percent` 变了也可以发,**但不按消息发**。它与该 agent 自己的消息之间**不保证先后**——消费端必须容忍一条 `parent_tool_use_id` 指向一个还没有 roster 条目的 agent。
+
+**两条 bridge 都在广播前把它压进 `messageHistory`**(与 `result` / `system_event` 同一待遇),所以刷新、`history.json`、`pneuma history export` 和在线 player 都重建出同一份 roster。
+
+交互设计(SubagentCard、agent strip、agent view、只读语义)见 [子代理线程提案](../proposals/2026-09-16-subagent-threads.md)。
+
 ### ⑤ Agent → Viewer · Action（action space 的主舞台）
 
 这是契约面**最大**的方向——agent 把 viewer 当成一个可调用 API 用。

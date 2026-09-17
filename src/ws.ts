@@ -25,6 +25,13 @@ let socket: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let lastSeq = 0;
 let streamingPhase: "thinking" | "text" | null = null;
+/**
+ * Per-subagent twin of `streamingPhase` (the root agent keeps the module-level
+ * one). Keyed by the attribution key, so a subagent switching between thinking
+ * and text deltas gets the same separators the root bubble gets without
+ * touching the root phase.
+ */
+const agentStreamingPhase = new Map<string, "thinking" | "text">();
 /** Tracks whether the current turn was initiated by a user message (false = cron-triggered) */
 let currentTurnUserInitiated = true;
 
@@ -417,6 +424,53 @@ function compactBoundaryMessage(
   };
 }
 
+/**
+ * A `stream_event` attributed to a subagent (§5.2). Text and thinking deltas
+ * feed that agent's own buffer in `streamingByAgent` / `activityByAgent`; the
+ * root `streaming` / `activity` are never touched. The `input_json_delta`
+ * file-write preview is deliberately root-only: it drives the editor's live
+ * "agent is writing this file" surface, which belongs to the main conversation.
+ */
+function handleAgentStreamEvent(agentId: string, evt: Record<string, unknown>): void {
+  const store = useStore.getState();
+
+  if (evt.type === "message_start") {
+    agentStreamingPhase.delete(agentId);
+    store.touchSubagent(agentId, Date.now());
+    store.setAgentStreaming(agentId, "");
+    store.setAgentActivity(agentId, { phase: "thinking", startedAt: Date.now() });
+    return;
+  }
+
+  if (evt.type !== "content_block_delta") return;
+  // §3.4 still holds — an attributed envelope guarantees a roster entry — but
+  // only the *creation* happens here. Bumping `lastActivityAt` per token would
+  // rebuild the roster Map on every delta, and every consumer keyed on it
+  // (`subagentIds`, the orphan placement scan, each `groupContentBlocks` memo,
+  // each card's `latestSubagentActivity`) would rescan the whole message list
+  // per token. Liveness is `streamingByAgent`, which this function sets anyway.
+  if (!store.subagents.has(agentId)) store.touchSubagent(agentId, Date.now());
+  const delta = evt.delta as Record<string, unknown> | undefined;
+  const phase = agentStreamingPhase.get(agentId);
+  const current = store.streamingByAgent.get(agentId) || "";
+  const startedAt = store.activityByAgent.get(agentId)?.startedAt || Date.now();
+
+  if (delta?.type === "text_delta" && typeof delta.text === "string") {
+    agentStreamingPhase.set(agentId, "text");
+    store.setAgentStreaming(agentId, current + (phase === "thinking" ? "\n\n" : "") + delta.text);
+    store.setAgentActivity(agentId, { phase: "responding", startedAt });
+    return;
+  }
+  if (delta?.type === "thinking_delta" && typeof delta.thinking === "string") {
+    const prefix = phase !== "thinking" ? "*Thinking:* " : "";
+    agentStreamingPhase.set(agentId, "thinking");
+    store.setAgentStreaming(agentId, current + prefix + delta.thinking);
+    if (store.activityByAgent.get(agentId)?.phase !== "thinking") {
+      store.setAgentActivity(agentId, { phase: "thinking", startedAt });
+    }
+  }
+}
+
 export function handleParsedMessage(
   data: BrowserIncomingMessage,
   opts: { replayed?: boolean } = {},
@@ -470,12 +524,37 @@ export function handleParsedMessage(
     case "assistant": {
       const msg = data.message;
       const textContent = extractTextFromBlocks(msg.content);
+      const agentId = data.parent_tool_use_id ?? null;
+      const timestamp = data.timestamp || Date.now();
+
+      // A subagent's message is its own conversation's (§5.2). It must not
+      // end the root turn, flush the root bubble, adopt the root's
+      // cron attribution, or feed the root's task / process / cron panels —
+      // a subagent's `TodoWrite` is its own list, and its file writes are
+      // reported by the watcher, not by this envelope.
+      if (agentId !== null) {
+        store.appendMessage({
+          id: msg.id,
+          role: "assistant",
+          content: textContent,
+          contentBlocks: msg.content,
+          timestamp,
+          parentToolUseId: agentId,
+          model: msg.model,
+          stopReason: msg.stop_reason,
+        });
+        store.touchSubagent(agentId, timestamp);
+        store.setAgentStreaming(agentId, null);
+        agentStreamingPhase.delete(agentId);
+        break;
+      }
+
       const chatMsg: ChatMessage = {
         id: msg.id,
         role: "assistant",
         content: textContent,
         contentBlocks: msg.content,
-        timestamp: data.timestamp || Date.now(),
+        timestamp,
         parentToolUseId: data.parent_tool_use_id,
         model: msg.model,
         stopReason: msg.stop_reason,
@@ -490,6 +569,9 @@ export function handleParsedMessage(
       store.setStreaming(null);
       streamingPhase = null;
       store.setSessionStatus("running");
+      // A root message landing while the user is reading a subagent's
+      // conversation is the only "unread" the chat tracks.
+      if (store.viewingAgentId !== null) store.setRootUnread(true);
       // Don't clear activity here — agent is still working (tools to run, more thinking).
       // Activity is only cleared on "result".
       break;
@@ -497,6 +579,11 @@ export function handleParsedMessage(
 
     case "stream_event": {
       const evt = data.event as Record<string, unknown>;
+      const streamAgentId = data.parent_tool_use_id ?? null;
+      if (streamAgentId !== null) {
+        if (evt && typeof evt === "object") handleAgentStreamEvent(streamAgentId, evt);
+        break;
+      }
       if (evt && typeof evt === "object") {
         if (evt.type === "message_start") {
           streamingPhase = null;
@@ -600,6 +687,10 @@ export function handleParsedMessage(
       store.updateSession(sessionUpdates);
       store.setStreaming(null);
       store.setActivity(null);
+      // The root turn is over, so no subagent of it is still producing output.
+      // Their roster statuses stay as last reported (§6).
+      store.clearAgentTransients();
+      agentStreamingPhase.clear();
       streamingPhase = null;
       store.setSessionStatus("idle");
       store.setTurnInProgress(false);
@@ -684,11 +775,29 @@ export function handleParsedMessage(
     }
 
     case "tool_progress": {
+      // A subagent's long tool run drives that agent's indicator, not the
+      // root one (the defect §1 records: attribution was dropped on the wire).
+      const progressAgentId = data.parent_tool_use_id ?? null;
+      if (progressAgentId !== null) {
+        const ts = Date.now();
+        store.touchSubagent(progressAgentId, ts);
+        store.setAgentActivity(progressAgentId, {
+          phase: "tool",
+          toolName: data.tool_name,
+          startedAt: store.activityByAgent.get(progressAgentId)?.startedAt || ts,
+        });
+        break;
+      }
       store.setActivity({
         phase: "tool",
         toolName: data.tool_name,
         startedAt: store.activity?.startedAt || Date.now(),
       });
+      break;
+    }
+
+    case "subagent_update": {
+      store.upsertSubagent(data.agent, data.timestamp || Date.now());
       break;
     }
 
@@ -763,6 +872,10 @@ export function handleParsedMessage(
       if (store.activity !== null) {
         store.setActivity(null);
       }
+      // Same for every subagent buffer — a half-written bubble from an agent
+      // whose transport just died would otherwise sit there forever.
+      store.clearAgentTransients();
+      agentStreamingPhase.clear();
       streamingPhase = null;
       // Notify user if CLI disconnected mid-execution
       if (wasWorking) {
@@ -859,6 +972,10 @@ export function handleParsedMessage(
     case "message_history": {
       const chatMessages: ChatMessage[] = [];
       let historyTurnUserInitiated = true;
+      // The roster rides `messageHistory` like every other history-backed
+      // envelope (§3.2), so a reload rebuilds it from scratch. Transient view
+      // state (which agent was open, what was unread) resets to root (§6).
+      store.resetSubagents();
       for (const histMsg of data.messages) {
         if (histMsg.type === "user_message") {
           historyTurnUserInitiated = true;
@@ -890,14 +1007,26 @@ export function handleParsedMessage(
           // separated only by env markers. Walk back over `<pneuma:*>`
           // markers; if the previous *real* assistant turn has the same
           // trimmed text, replace it instead of appending.
+          //
+          // Root-only, in both directions — see the note on the live twin in
+          // `chat-slice.ts`: two agents that answer "PASS" are two answers,
+          // and a subagent echoing the root's line must not overwrite the
+          // root message that carries the spawn anchor.
+          const histAgentId = histMsg.parent_tool_use_id ?? null;
           let prevAssistantIdx = -1;
           let blocked = false;
-          for (let k = chatMessages.length - 1; k >= 0; k--) {
-            const m = chatMessages[k];
-            if (m.role === "assistant") { prevAssistantIdx = k; break; }
-            if (m.role === "user") {
-              const c = (m.content || "").trim();
-              if (!isPneumaMarkerOnly(c) && c.length > 0) { blocked = true; break; }
+          if (histAgentId === null) {
+            for (let k = chatMessages.length - 1; k >= 0; k--) {
+              const m = chatMessages[k];
+              if (m.role === "assistant") {
+                if ((m.parentToolUseId ?? null) !== null) continue;
+                prevAssistantIdx = k;
+                break;
+              }
+              if (m.role === "user") {
+                const c = (m.content || "").trim();
+                if (!isPneumaMarkerOnly(c) && c.length > 0) { blocked = true; break; }
+              }
             }
           }
           if (
@@ -906,6 +1035,10 @@ export function handleParsedMessage(
             newText.length > 0 &&
             (chatMessages[prevAssistantIdx].content || "").trim() === newText
           ) {
+            // The collapsed span is stale env / system markers from the same
+            // resume — except for subagent messages, which belong to another
+            // conversation and survive.
+            const preserved = chatMessages.slice(prevAssistantIdx + 1).filter((m) => m.parentToolUseId);
             chatMessages.length = prevAssistantIdx;
             chatMessages.push({
               id: msg.id,
@@ -918,6 +1051,9 @@ export function handleParsedMessage(
               stopReason: msg.stop_reason,
               ...(!historyTurnUserInitiated ? { cronTriggered: inferCronPrompt(useStore.getState().cronJobs) } : {}),
             });
+            // Re-emitted root turn takes the place of its twin; the subagent
+            // messages that followed it keep their place behind it.
+            chatMessages.push(...preserved);
           } else {
             chatMessages.push({
               id: msg.id,
@@ -931,17 +1067,32 @@ export function handleParsedMessage(
               ...(!historyTurnUserInitiated ? { cronTriggered: inferCronPrompt(useStore.getState().cronJobs) } : {}),
             });
           }
-          extractTasksFromBlocks(msg.content);
-          extractCronJobsFromBlocks(msg.content);
-          // Mark AskUserQuestion blocks as answered for history replay
-          for (const block of msg.content) {
-            if (block.type === "tool_use" && block.name === "AskUserQuestion") {
-              const qs: Record<string, unknown>[] = Array.isArray(block.input?.questions) ? block.input.questions : [];
-              const pairs = qs.length > 0
-                ? qs.map((q) => ({ question: ((q as Record<string, unknown>).question as string) || "", answer: "(answered previously)" }))
-                : [{ question: (block.input?.question as string) || "", answer: "(answered previously)" }];
-              store.recordAnsweredQuestion(block.id, pairs);
+          if (histAgentId === null) {
+            // Root-only, exactly like the live path above: a subagent's
+            // `TodoWrite` is its own list (it must not replace the root task
+            // panel on reload), its `Bash`-scheduled cron jobs are not the
+            // session's, and its `AskUserQuestion` was never put to this user.
+            extractTasksFromBlocks(msg.content);
+            extractCronJobsFromBlocks(msg.content);
+            // Mark AskUserQuestion blocks as answered for history replay
+            for (const block of msg.content) {
+              if (block.type === "tool_use" && block.name === "AskUserQuestion") {
+                const qs: Record<string, unknown>[] = Array.isArray(block.input?.questions) ? block.input.questions : [];
+                const pairs = qs.length > 0
+                  ? qs.map((q) => ({ question: ((q as Record<string, unknown>).question as string) || "", answer: "(answered previously)" }))
+                  : [{ question: (block.input?.question as string) || "", answer: "(answered previously)" }];
+                store.recordAnsweredQuestion(block.id, pairs);
+              }
             }
+          } else {
+            // Claude persisted `parent_tool_use_id` long before the frontend
+            // read it, so a history recorded before this change still yields a
+            // roster: every attributed entry ensures a fallback entry (§3.4).
+            // A folded history is a record, not a live stream — an entry we
+            // only know from it starts `idle`, not `running`: it stays in the
+            // strip (alive) without claiming the agent is producing output.
+            // A real `subagent_update` in the same history overrides it.
+            store.touchSubagent(histAgentId, histMsg.timestamp || Date.now(), { status: "idle" });
           }
         } else if (histMsg.type === "result") {
           // Only mark as cron-eligible if no user interaction follows.
@@ -959,6 +1110,11 @@ export function handleParsedMessage(
               });
             }
           }
+        } else if (histMsg.type === "subagent_update") {
+          // Roster snapshot — folded in order, and NOT a user-interaction
+          // marker (it is produced by the agent, so it must not reset the
+          // cron-attribution flag the surrounding entries carry).
+          store.upsertSubagent(histMsg.agent, histMsg.timestamp || Date.now());
         } else {
           // Any other message type (command_output, system_event, etc.) indicates
           // browser/user interaction — not a cron trigger.
@@ -1007,15 +1163,21 @@ export function handleParsedMessage(
 
     case "streamlined_text": {
       // Render as a lightweight assistant message
+      const streamlinedAgentId = data.parent_tool_use_id ?? null;
       const streamlinedMsg: ChatMessage = {
         id: `streamlined-${Date.now()}`,
         role: "assistant",
         content: data.text,
         contentBlocks: [{ type: "text", text: data.text }],
         timestamp: Date.now(),
-        parentToolUseId: data.parent_tool_use_id ?? null,
+        parentToolUseId: streamlinedAgentId,
       };
       store.appendMessage(streamlinedMsg);
+      if (streamlinedAgentId !== null) {
+        store.touchSubagent(streamlinedAgentId, streamlinedMsg.timestamp);
+      } else if (store.viewingAgentId !== null) {
+        store.setRootUnread(true);
+      }
       break;
     }
 

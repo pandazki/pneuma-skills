@@ -1,27 +1,26 @@
 import type { ContentBlock } from "../types.js";
 import type { ChatMessage } from "../types.js";
+import { mergeContentBlocks as mergeBlocks } from "../../core/utils/content-blocks.js";
 
 let idCounter = 0;
 export function nextId(): string {
   return `msg-${Date.now()}-${++idCounter}`;
 }
 
-/** Merge content blocks from two assistant messages, deduplicating by JSON identity. */
+/**
+ * Merge content blocks from two assistant messages, deduplicating by JSON
+ * identity — the shared rule in `core/utils/content-blocks.ts`, which the
+ * bridge applies to `messageHistory` on the same frames.
+ *
+ * The one thing that is local to the chat store: `ChatMessage.contentBlocks`
+ * is optional, and "no blocks at all" must stay `undefined` rather than
+ * become an empty array (a text-only message that never carried blocks would
+ * otherwise start rendering as a message with zero blocks). Dedupe can never
+ * empty a non-empty input, so an empty merge means both inputs were empty.
+ */
 export function mergeContentBlocks(prev?: ContentBlock[], next?: ContentBlock[]): ContentBlock[] | undefined {
-  const prevBlocks = prev || [];
-  const nextBlocks = next || [];
-  if (prevBlocks.length === 0 && nextBlocks.length === 0) return undefined;
-  const merged: ContentBlock[] = [];
-  const seen = new Set<string>();
-  for (const block of prevBlocks) {
-    const key = JSON.stringify(block);
-    if (!seen.has(key)) { seen.add(key); merged.push(block); }
-  }
-  for (const block of nextBlocks) {
-    const key = JSON.stringify(block);
-    if (!seen.has(key)) { seen.add(key); merged.push(block); }
-  }
-  return merged;
+  const merged = mergeBlocks(prev, next);
+  return merged.length > 0 ? merged : undefined;
 }
 
 export function extractTextContent(blocks: ContentBlock[]): string {

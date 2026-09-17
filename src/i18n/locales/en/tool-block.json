@@ -11,7 +11,16 @@
     "Task": "Subagent",
     "TodoWrite": "Tasks",
     "NotebookEdit": "Notebook",
-    "SendMessage": "Message"
+    "SendMessage": "Message",
+    "spawn_agent": "Spawn Agent",
+    "send_input": "Send Input",
+    "wait_agent": "Wait for Agent",
+    "close_agent": "Close Agent",
+    "resume_agent": "Resume Agent",
+    "send_message": "Message Agent",
+    "followup_task": "Follow-up Task",
+    "interrupt_agent": "Interrupt Agent",
+    "list_agents": "List Agents"
   },
   "tasks_count_one": "{{count}} task",
   "tasks_count_other": "{{count}} tasks",

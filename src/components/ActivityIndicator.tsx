@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { useStore } from "../store.js";
+import type { Activity } from "../store/types.js";
 import { getToolLabel } from "./ToolBlock.js";
 
 function formatElapsed(ms: number): string {
@@ -20,10 +20,15 @@ function getPhaseLabel(phase: string, toolName: string | undefined, t: TFunction
   return t("working");
 }
 
-export default function ActivityIndicator() {
+/**
+ * "Thinking / writing / running <tool>" with an elapsed clock. The entry is
+ * always passed in — the root agent's `activity` in the root conversation,
+ * that agent's own entry from `activityByAgent` in an agent view — so this
+ * component never subscribes to root activity it might not be showing.
+ */
+export default function ActivityIndicator({ activity }: { activity: Activity | null }) {
   const { t } = useTranslation("activity-indicator");
   const { t: tTool } = useTranslation("tool-block");
-  const activity = useStore((s) => s.activity);
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {

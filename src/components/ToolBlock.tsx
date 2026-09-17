@@ -19,16 +19,53 @@ const TOOL_ICONS: Record<string, string> = {
   TaskCreate: "list",
   TaskUpdate: "list",
   SendMessage: "message",
+  // Codex's collab tool family (`collabAgentToolCall`) — every one of these
+  // is an operation on the agent team, so they all wear the agent icon.
+  spawn_agent: "agent",
+  send_input: "agent",
+  wait_agent: "agent",
+  close_agent: "agent",
+  resume_agent: "agent",
+  send_message: "agent",
+  followup_task: "agent",
+  interrupt_agent: "agent",
+  list_agents: "agent",
 };
+
+/** The collab family, in the adapter's snake_case wire spelling. */
+const AGENT_TOOL_NAMES = [
+  "spawn_agent",
+  "send_input",
+  "wait_agent",
+  "close_agent",
+  "resume_agent",
+  "send_message",
+  "followup_task",
+  "interrupt_agent",
+  "list_agents",
+] as const;
 
 export function getToolIcon(name: string): string {
   return TOOL_ICONS[name] || "tool";
 }
 
-const KNOWN_TOOL_NAMES = new Set([
+const KNOWN_TOOL_NAMES = new Set<string>([
   "Bash", "Read", "Write", "Edit", "Glob", "Grep",
   "WebSearch", "WebFetch", "Task", "TodoWrite", "NotebookEdit", "SendMessage",
+  ...AGENT_TOOL_NAMES,
 ]);
+
+const AGENT_TOOL_FALLBACK_LABELS: Record<string, string> = {
+  spawn_agent: "Spawn Agent",
+  send_input: "Send Input",
+  wait_agent: "Wait for Agent",
+  close_agent: "Close Agent",
+  resume_agent: "Resume Agent",
+  send_message: "Message Agent",
+  followup_task: "Follow-up Task",
+  interrupt_agent: "Interrupt Agent",
+  list_agents: "List Agents",
+};
 
 /**
  * Translate a tool name into its user-facing label. Accepts an optional
@@ -52,6 +89,9 @@ export function getToolLabel(name: string, t?: TFunction): string {
   if (name === "TodoWrite") return "Tasks";
   if (name === "NotebookEdit") return "Notebook";
   if (name === "SendMessage") return "Message";
+  // `hasOwn`, not truthiness: a tool literally named `constructor` would
+  // otherwise resolve against `Object.prototype` and return a function.
+  if (Object.hasOwn(AGENT_TOOL_FALLBACK_LABELS, name)) return AGENT_TOOL_FALLBACK_LABELS[name];
   if (name.startsWith("mcp__")) return name.split("__").slice(1).join(":");
   return name;
 }
@@ -61,7 +101,7 @@ export function getPreview(name: string, input: Record<string, unknown>, t?: TFu
     if (input.description && typeof input.description === "string" && input.description.length <= 60) {
       return input.description;
     }
-    return input.command.length > 60 ? input.command.slice(0, 60) + "..." : input.command;
+    return input.command.length > 60 ? input.command.slice(0, 59) + "…" : input.command;
   }
   if ((name === "Read" || name === "Write" || name === "Edit") && input.file_path) {
     const path = String(input.file_path);
@@ -72,7 +112,7 @@ export function getPreview(name: string, input: Record<string, unknown>, t?: TFu
     const p = String(input.pattern);
     const suffix = input.path ? ` in ${String(input.path).split("/").slice(-2).join("/")}` : "";
     const full = p + suffix;
-    return full.length > 60 ? full.slice(0, 60) + "..." : full;
+    return full.length > 60 ? full.slice(0, 59) + "…" : full;
   }
   if (name === "WebSearch" && input.query) return String(input.query);
   if (name === "WebFetch" && input.url) {
@@ -93,6 +133,19 @@ export function getPreview(name: string, input: Record<string, unknown>, t?: TFu
   }
   if (name === "SendMessage" && input.recipient) {
     return `\u2192 ${String(input.recipient)}`;
+  }
+  if (Object.hasOwn(AGENT_TOOL_FALLBACK_LABELS, name)) {
+    // The collab cards are only useful if they name the receiver(s); the
+    // prompt is the next best thing for a spawn with no label yet.
+    if (typeof input.agent === "string" && input.agent) return input.agent;
+    if (Array.isArray(input.agents) && input.agents.length > 0) {
+      return input.agents.map((a) => String(a)).join(", ");
+    }
+    if (typeof input.prompt === "string" && input.prompt.trim()) {
+      const flat = input.prompt.replace(/\s+/g, " ").trim();
+      return flat.length > 60 ? `${flat.slice(0, 59)}…` : flat;
+    }
+    return "";
   }
   return "";
 }

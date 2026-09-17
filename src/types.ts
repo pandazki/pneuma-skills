@@ -5,10 +5,12 @@ import type {
   BrowserIncomingMessage,
   BrowserOutgoingMessage,
   SteerFailureReason,
+  SubagentInfo,
+  SubagentStatus,
 } from "../server/session-types.js";
 import type { ViewerAddress } from "../core/types/viewer-contract.js";
 
-export type { SessionState, PermissionRequest, ContentBlock, BrowserIncomingMessage, BrowserOutgoingMessage, SteerFailureReason };
+export type { SessionState, PermissionRequest, ContentBlock, BrowserIncomingMessage, BrowserOutgoingMessage, SteerFailureReason, SubagentInfo, SubagentStatus };
 
 export type SelectionType =
   | "heading" | "paragraph" | "list" | "code" | "blockquote" | "image" | "table" | "text-range"

@@ -55,6 +55,9 @@ export function isHistoryBackedEvent(msg: ReplayableBrowserIncomingMessage): boo
   return msg.type === "assistant"
     || msg.type === "result"
     || msg.type === "user_message"
+    // Roster snapshots ride messageHistory like every other history-backed
+    // envelope, so reload / export / replay / player rebuild the same roster.
+    || msg.type === "subagent_update"
     || (msg.type === "system_event" && msg.event.subtype !== "hook_progress")
     || msg.type === "error";
 }

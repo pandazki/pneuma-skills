@@ -26,6 +26,7 @@ function makeDefaultSession(id = "test-session"): Session {
     pendingPermissions: new Map(),
     pendingControlRequests: new Map(),
     messageHistory: [],
+    subagents: new Map(),
     pendingMessages: [],
     nextEventSeq: 1,
     eventBuffer: [],
@@ -198,6 +199,15 @@ describe("isHistoryBackedEvent", () => {
 
   test("returns true for error message", () => {
     const msg = { type: "error" } as ReplayableBrowserIncomingMessage;
+    expect(isHistoryBackedEvent(msg)).toBe(true);
+  });
+
+  test("returns true for subagent_update so the roster survives reload and export", () => {
+    const msg = {
+      type: "subagent_update",
+      agent: { id: "toolu_1", parent_id: null, label: "judge_01", status: "running" },
+      timestamp: 1,
+    } as ReplayableBrowserIncomingMessage;
     expect(isHistoryBackedEvent(msg)).toBe(true);
   });
 

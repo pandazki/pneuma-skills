@@ -32,7 +32,11 @@ export interface CLISystemInitMessage {
 export interface CLISystemStatusMessage {
   type: "system";
   subtype: "status";
-  status: "compacting" | null;
+  /**
+   * `requesting` = an API request is in flight, seen on 2.1.273; the bridge
+   * folds anything that is not `compacting` into running/idle from `cliIdle`.
+   */
+  status: "compacting" | "requesting" | null;
   permissionMode?: string;
   uuid: string;
   session_id: string;
@@ -239,10 +243,16 @@ export interface CLIControlResponseMessage {
   };
 }
 
-/** CLI echoes slash-command output back as a user message wrapping <local-command-stdout> */
+/**
+ * CLI `user` frames come in two shapes. String content is the slash-command
+ * stdout echo wrapping `<local-command-stdout>`. Block content is the
+ * synthetic echo that carries `tool_result`s back into the conversation —
+ * that is where a spawned agent's completion shows up, on the `tool_use_id`
+ * of the `Task` / `Agent` call that created it.
+ */
 export interface CLIUserMessage {
   type: "user";
-  message: { role: "user"; content: string };
+  message: { role: "user"; content: string | ContentBlock[] };
 }
 
 export interface CLIRateLimitMessage {
@@ -369,12 +379,56 @@ export type BrowserOutgoingMessage =
   | { type: "stop_task" }
   | { type: "update_environment_variables"; variables: Record<string, string> };
 
+/** Lifecycle of a spawned agent, backend-neutral. */
+export type SubagentStatus = "running" | "idle" | "completed" | "failed" | "interrupted";
+
+/**
+ * One spawned agent in a session's roster. Broadcast as a `subagent_update`
+ * state snapshot (never a delta): consumers replace the entry for `agent.id`.
+ * Emitters send one on every status change and may send one when `model` /
+ * `context_used_percent` changes; they do not send one per message.
+ */
+export interface SubagentInfo {
+  /**
+   * Attribution key: the `tool_use.id`, in the spawning agent's conversation,
+   * of the call that created this agent. Every envelope this agent produces
+   * carries the same value as `parent_tool_use_id` (`null` for the root
+   * agent). Claude: the `Task`/`Agent` tool_use id. Codex: the
+   * `collabAgentToolCall` (spawnAgent) item id, which the adapter also uses
+   * as the id of the `tool_use` block it emits for that call — so the click
+   * target in the chat and the attribution key on the wire are one value on
+   * both backends.
+   */
+  id: string;
+  /** Attribution key of the agent that spawned this one; null when spawned by the root agent. */
+  parent_id: string | null;
+  /** Codex: basename of `agentPath` (`judge_01`), else `agentNickname`. Claude: `Task.input.description`. */
+  label: string;
+  status: SubagentStatus;
+  /** Free text for the card: Codex full `agentPath` + `agentRole`, error text, last collab message; Claude `subagent_type`. */
+  detail?: string;
+  model?: string;
+  /** This agent's own window occupancy, when the backend reports per-thread usage (Codex). */
+  context_used_percent?: number;
+}
+
 /** Messages the bridge sends to the browser */
 export type BrowserIncomingMessageBase =
   | { type: "session_init"; session: SessionState }
   | { type: "session_update"; session: Partial<SessionState> }
-  | { type: "assistant"; message: CLIAssistantMessage["message"]; parent_tool_use_id: string | null; timestamp?: number }
-  | { type: "stream_event"; event: unknown; parent_tool_use_id: string | null }
+  | {
+    type: "assistant";
+    message: CLIAssistantMessage["message"];
+    /** Cross-backend subagent attribution key — see `SubagentInfo.id`; `null` for the root agent. */
+    parent_tool_use_id: string | null;
+    timestamp?: number;
+  }
+  | {
+    type: "stream_event";
+    event: unknown;
+    /** Cross-backend subagent attribution key — see `SubagentInfo.id`; `null` for the root agent. */
+    parent_tool_use_id: string | null;
+  }
   | {
     type: "system_event";
     event:
@@ -389,7 +443,14 @@ export type BrowserIncomingMessageBase =
   | { type: "result"; data: CLIResultMessage }
   | { type: "permission_request"; request: PermissionRequest }
   | { type: "permission_cancelled"; request_id: string }
-  | { type: "tool_progress"; tool_use_id: string; tool_name: string; elapsed_time_seconds: number }
+  | {
+    type: "tool_progress";
+    tool_use_id: string;
+    tool_name: string;
+    elapsed_time_seconds: number;
+    /** Cross-backend subagent attribution key — see `SubagentInfo.id`; `null`/absent for the root agent. */
+    parent_tool_use_id?: string | null;
+  }
   | { type: "tool_use_summary"; summary: string; tool_use_ids: string[] }
   | { type: "status_change"; status: "compacting" | "idle" | "running" | null }
   | { type: "auth_status"; isAuthenticating: boolean; output: string[]; error?: string }
@@ -415,7 +476,12 @@ export type BrowserIncomingMessageBase =
   | { type: "content_update"; files: { path: string; content: string }[] }
   | { type: "viewer_action_request"; request_id: string; action_id: string; params?: Record<string, unknown> }
   | { type: "prompt_suggestion"; suggestions: string[] }
-  | { type: "streamlined_text"; text: string; parent_tool_use_id?: string | null }
+  | {
+    type: "streamlined_text";
+    text: string;
+    /** Cross-backend subagent attribution key — see `SubagentInfo.id`; `null`/absent for the root agent. */
+    parent_tool_use_id?: string | null;
+  }
   | { type: "streamlined_tool_use_summary"; summary: string; tool_use_ids: string[] }
   | {
     type: "handoff_proposed";
@@ -461,6 +527,17 @@ export type BrowserIncomingMessageBase =
      */
     type: "libraries_updated";
     ts: number;
+  }
+  | {
+    /**
+     * Roster snapshot for one spawned agent (see `SubagentInfo`). Emitted by
+     * the Codex adapter and by the Claude path of `server/ws-bridge.ts`, and
+     * pushed to `session.messageHistory` before broadcast so reload,
+     * `history.json`, export, and the online player rebuild the same roster.
+     */
+    type: "subagent_update";
+    agent: SubagentInfo;
+    timestamp: number;
   };
 
 export type BrowserIncomingMessage = BrowserIncomingMessageBase & { seq?: number };
@@ -547,10 +624,22 @@ export interface PermissionRequest {
   permission_suggestions?: PermissionUpdate[];
   description?: string;
   tool_use_id: string;
+  /**
+   * Whatever the CLI called the asking agent in its permission payload — a
+   * display name, never an identity: it is not stable, not unique, and does
+   * not appear on any other envelope. Attribution is `parent_tool_use_id`;
+   * use this only as banner text when it is present.
+   */
   agent_id?: string;
   title?: string;
   display_name?: string;
   blocked_path?: string;
   decision_reason?: string;
+  /**
+   * Cross-backend subagent attribution key — see `SubagentInfo.id`. Set when
+   * the asking agent is a subagent, so the permission banner can name it;
+   * `null`/absent for the root agent.
+   */
+  parent_tool_use_id?: string | null;
   timestamp: number;
 }

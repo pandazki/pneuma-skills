@@ -1,0 +1,30 @@
+{
+  "strip": {
+    "main": "メイン会話",
+    "unread": "メイン会話に新しいメッセージ",
+    "overflow": "+{{count}}",
+    "more": "すべてのエージェントを表示",
+    "collapse": "折りたたむ",
+    "less": "最近のエージェントだけ表示"
+  },
+  "view": {
+    "back": "メイン会話に戻る",
+    "breadcrumb": "エージェント階層",
+    "readonly_note": "サブエージェント {{label}} の会話です。閲覧のみ。",
+    "no_output": "このサブエージェントはまだ何も出力していません"
+  },
+  "status": {
+    "running": "実行中",
+    "idle": "アイドル",
+    "completed": "完了",
+    "failed": "失敗",
+    "interrupted": "中断"
+  },
+  "card": {
+    "view": "会話を見る",
+    "waiting": "出力を待っています…",
+    "live": "出力中"
+  },
+  "generic_label": "サブエージェント",
+  "permission_prefix": "{{label}} からの要求"
+}

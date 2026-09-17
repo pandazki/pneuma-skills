@@ -61,7 +61,10 @@ Inbound (CLI → server, one JSON object per `\n`-delimited line):
   "session_id": "9c…"
 }
 
-// user — synthetic echoes that include tool_result blocks.
+// user — synthetic echoes that include tool_result blocks. `message.content`
+// is an ARRAY here; the slash-command stdout echo uses the same envelope with
+// a plain string. A `tool_result` whose `tool_use_id` is a `Task` / `Agent`
+// call is how a spawned agent reports that it ended (see Subagents below).
 {
   "type": "user",
   "message": {
@@ -87,6 +90,10 @@ Inbound (CLI → server, one JSON object per `\n`-delimited line):
 
 // stream_event — partial-content deltas (gated on `--include-partial-messages`).
 // system.status / system.compact_boundary / system.task_notification — runtime status updates.
+// system.status carries a CLI-side phase, wider than the browser union: besides
+// "compacting" and null, 2.1.273 emits "requesting" at the start of every API
+// request (after the user message, after each tool result). The bridge folds
+// anything that is not "compacting" into idle/running from `session.cliIdle`.
 // control_request:can_use_tool — permission prompt (only when not in bypass mode).
 ```
 
@@ -112,6 +119,77 @@ Outbound (server → CLI stdin, one JSON object per `\n`-delimited line):
 // model-list discovery, answered with { commands, agents, models, … }:
 { "type": "control_request", "request_id": "…", "request": { "subtype": "initialize" } }
 ```
+
+## Subagents
+
+The CLI spawns agents with the `Task` / `Agent` tools and attributes their
+output with **`parent_tool_use_id`** on exactly four envelopes — `assistant`,
+`stream_event`, `streamlined_text`, `tool_progress` — where the value is *the
+`tool_use.id`, in the spawning agent's conversation, of the call that created
+the agent that produced this envelope*, `null` for the root agent. That id is
+the agent's identity everywhere in Pneuma (`SubagentInfo.id`,
+`server/session-types.ts`); no second name is introduced. The `user` frame
+that carries a subagent's `tool_result` does **not** carry the field: its
+attribution is the `tool_use_id` inside the block.
+
+Three frames, and only these three, describe a subagent's life:
+
+| Frame | What it means | Bridge behaviour |
+|---|---|---|
+| `assistant` with a `Task` / `Agent` `tool_use` block | the spawn | `subagentSpawn` (`manifest.ts` → `subagent-spawn.ts`) recognises the tool; the block's own id becomes the roster key, `input.description` the label, `input.subagent_type` the detail. Registers `status: "running"`, pushes a `subagent_update` into `messageHistory`, broadcasts it. A subagent that spawns its own agent gets `parent_id` from ITS frame's `parent_tool_use_id`, so nesting needs no extra signal. |
+| any envelope with `parent_tool_use_id` set | that agent's output | forwarded verbatim; the frontend routes it to the agent's own conversation instead of the root bubble |
+| `user` frame with a `tool_result` on the spawn's `tool_use_id` | the agent ended | roster → `completed`, or `failed` on `is_error`; `detail` = first 200 characters of the result text |
+
+There is **no `result` envelope for a subagent turn** and no other lifecycle
+signal, which has two consequences:
+
+- `handleResultMessage` makes no roster change. A **background `Agent`
+  outlives the turn that started it**: its immediate `tool_result` says
+  "started in background", so the roster entry reads `completed` while its
+  output keeps arriving. Marking it anything else would be a guess. The card's
+  live-activity line (driven by that agent's own messages) still reflects the
+  truth. Mapping `system.task_notification.task_id` back to the spawning call
+  would fix it, but the CLI does not expose that link.
+- A roster entry is only as good as the frames that produced it; a
+  `history.json` written before this roster existed has attributed messages
+  but no `subagent_update` entries, so the client derives fallback entries
+  from `parent_tool_use_id` alone.
+
+**A permission request cannot be attributed.** `control_request.can_use_tool`
+carries `agent_id` and nothing else: a display name the CLI chose, not stable,
+not unique, and absent from every other envelope. There is no way to map it
+back to a roster entry, so a Claude permission banner names the tool, not the
+agent. The one exception is Pneuma's own synthetic AskUserQuestion permission
+(`handleAssistantMessage`), which is built from an `assistant` frame and
+therefore does carry that frame's `parent_tool_use_id`.
+
+**One frame per content block.** An `assistant` message is delivered as
+several frames that all share `message.id`, one content block each (`tool_use`,
+then `text`, …). The bridge therefore **merges** blocks into the persisted
+entry — existing blocks first, then incoming blocks not already present by
+JSON identity — instead of replacing it. That rule lives in
+`core/utils/content-blocks.ts` because the browser folds the same frames the
+same way (`src/store/helpers.ts::mergeContentBlocks`). Replacing is what the
+bridge used to do, and it kept only the last block: across four persisted
+histories (34 / 732 / 415 / 208 assistant entries) not one entry held two
+blocks, and a `Task` tool_use followed by text lost the tool card — i.e. the
+anchor of the subagent it spawned — on every reload while the subagent's reply
+survived. Anything that touches this code path must keep the merge; it is the
+reason a spawn card survives a refresh. Each frame is broadcast **as itself**,
+not as the merged entry: the browser merges too, and a browser that joins or
+reconnects later is caught up by `message_history` / the replay ring.
+
+**`--resume` re-emits, and the dedup is per conversation.** On resume the CLI
+replays the tail of the ROOT transcript under a fresh `message.id`, so the
+bridge overwrites the last root entry instead of appending a duplicate. Two
+rules keep that from eating real messages: the comparison only ever looks at
+root-attributed entries (a frame with `parent_tool_use_id` set is never a
+resume re-emit, and two agents that both answer "PASS" must both survive), and
+the overwrite carries the persisted entry's non-text blocks across (the
+re-emit is text-only, so a wholesale replace would wipe the spawn anchor the
+merge above exists to preserve). The re-emit also arrives block by block, so a
+`tool_use`-only frame whose blocks are already persisted is a no-op for
+history.
 
 ## Capabilities + why
 
@@ -257,6 +335,8 @@ Pneuma:
 - `core/types/agent-backend.ts` — `AgentBackend` + `BackendModule` contract this backend implements
 - `server/ws-bridge.ts:510` (`routeCLIMessage`) — the switch claude-code envelopes feed into
 - `server/ws-bridge.ts:583` (`handleSystemMessage`) — concrete handling of `system.init` / `status` / `compact_boundary`
+- `subagent-spawn.ts` + `server/ws-bridge.ts` (`registerSubagentSpawns`, `applySubagentToolResults`, `handleAssistantMessage`) + `core/utils/content-blocks.ts` — the Subagents section above in code; `server/__tests__/ws-bridge-subagents.test.ts` pins it
+- `docs/proposals/2026-09-16-subagent-threads.md` — the attribution / roster design these frames implement
 - `server/skill-installer.ts` + `manifest.skillsDir`/`instructionsFile` — how the `.claude/skills` + `CLAUDE.md` layout is materialised
 - `bin/pneuma.ts` — wires `CliLauncher.setHandlers` into `WsBridge.attachCLITransport` / `feedCLIMessage`
 - `backends/__tests__/lifecycle-harness.ts` — the six shared scenarios this backend's `lifecycle.test.ts` re-uses

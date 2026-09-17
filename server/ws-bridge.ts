@@ -20,8 +20,10 @@ import type {
   CLIPromptSuggestionMessage,
   BrowserOutgoingMessage,
   BrowserIncomingMessage,
+  ContentBlock,
   PermissionRequest,
   SteerFailureReason,
+  SubagentInfo,
 } from "./session-types.js";
 import type {
   CLITransport,
@@ -32,8 +34,9 @@ import type {
 } from "./ws-bridge-types.js";
 import { makeDefaultState } from "./ws-bridge-types.js";
 import type { AgentBackendType } from "../core/types/agent-backend.js";
-import { getBackendCapabilities } from "../backends/index.js";
+import { getBackendCapabilities, getBackendModule } from "../backends/index.js";
 import { isPneumaMarkerOnly } from "../core/utils/pneuma-markers.js";
+import { mergeContentBlocks, containsAllBlocks } from "../core/utils/content-blocks.js";
 export type { SocketData } from "./ws-bridge-types.js";
 import {
   isDuplicateClientMessage,
@@ -374,6 +377,7 @@ export class WsBridge {
         pendingNotifications: [],
         pendingSystemSignals: [],
         messageHistory: [],
+        subagents: new Map(),
         pendingEnvContext: [],
         suppressingPostAskq: false,
         pendingMessages: [],
@@ -421,10 +425,22 @@ export class WsBridge {
     // persistence at write time; this strips any that landed before the fix.
     const deduped: BrowserIncomingMessage[] = [];
     const assistantIdToIdx = new Map<string, number>();
+    // The roster is rebuilt from the same walk. `session.subagents` is the
+    // bridge's index for the frames still to come, and history is its only
+    // authority after a reopen: without this, a `--resume` re-emit of the
+    // spawn block looked like a brand-new agent and published a THIRD
+    // snapshot (`running, completed, running` — the client then shows a
+    // finished agent as running forever), and a `tool_result` for an agent
+    // spawned before the reopen found no entry and was dropped. Last
+    // snapshot per id wins, matching the replace-by-`agent.id` contract.
+    session.subagents.clear();
     for (const msg of history) {
       if (msg.type === "system_event") {
         const sub = (msg as { event?: { subtype?: string } }).event?.subtype;
         if (sub === "hook_started" || sub === "hook_response" || sub === "hook_progress") continue;
+      }
+      if (msg.type === "subagent_update" && msg.agent?.id) {
+        session.subagents.set(msg.agent.id, msg.agent);
       }
       if (msg.type === "assistant" && msg.message?.id) {
         const existing = assistantIdToIdx.get(msg.message.id);
@@ -791,9 +807,21 @@ export class WsBridge {
         session.state.permissionMode = msg.permissionMode;
       }
 
+      // The CLI's status vocabulary is wider than the browser union, so
+      // normalise here — one authority, no frontend special-casing. Claude
+      // Code 2.1.273 emits `status: "requesting"` at the start of every API
+      // request (after the user message, after each tool result); forwarding
+      // it raw fell through `StatusDot`'s mapping to the idle label, so the
+      // root pill read "Idle" for the entire turn. A `null` frame (compaction
+      // end) has the same shape of problem mid-turn. Only `compacting` is a
+      // real browser status; anything else is just "the CLI said something
+      // about its phase", and `session.cliIdle` is what actually knows
+      // whether a turn is in flight.
       this.broadcastToBrowsers(session, {
         type: "status_change",
-        status: msg.status ?? null,
+        status: msg.status === "compacting"
+          ? "compacting"
+          : session.cliIdle ? "idle" : "running",
       });
       return;
     }
@@ -938,6 +966,10 @@ export class WsBridge {
           tool_name: "AskUserQuestion",
           input: b.input ?? {},
           tool_use_id: b.id,
+          // This picker is synthesised from an assistant frame, so unlike a
+          // CLI `can_use_tool` request (which only carries a display name in
+          // `agent_id`) we know exactly which agent is asking.
+          parent_tool_use_id: msg.parent_tool_use_id ?? null,
           timestamp: Date.now(),
         };
         session.pendingPermissions.set(synthId, perm);
@@ -951,49 +983,122 @@ export class WsBridge {
     if (Array.isArray(msg.message?.content)) {
       stampFileRefs(msg.message.content, "claude-code", this.workspace);
     }
-    const browserMsg: BrowserIncomingMessage = {
+    // Register any agent this message spawns before the history bookkeeping
+    // below, so every exit path (merge, resume re-emit, append) has already
+    // published the roster entry the spawn card needs.
+    this.registerSubagentSpawns(session, msg);
+    const incoming: Extract<BrowserIncomingMessage, { type: "assistant" }> = {
       type: "assistant",
       message: msg.message,
       parent_tool_use_id: msg.parent_tool_use_id,
       timestamp: Date.now(),
     };
+    const attribution = msg.parent_tool_use_id ?? null;
+    // History bookkeeping below decides where this frame LANDS. What it
+    // BROADCASTS is the frame itself (the one exception is called out inline):
+    // the browser folds frames of one `message.id` with the same rule the
+    // merge below applies (`core/utils/content-blocks.ts`), and a browser
+    // that joins or reconnects later is caught up by `message_history` / the
+    // replay ring — not by this broadcast. Sending the merged entry instead
+    // would re-ship blocks 1…k-1 on every frame k, i.e. O(N²) bytes per
+    // message, for a "late browser" that does not exist on this path.
+    //
     // CLI sends multiple assistant messages with the same ID (thinking then text blocks).
-    // Replace existing history entry to avoid duplicates on replay.
     const existingIdx = session.messageHistory.findLastIndex(
       (h) => h.type === "assistant" && h.message.id === msg.message.id,
     );
     if (existingIdx !== -1) {
-      session.messageHistory[existingIdx] = browserMsg;
+      // Claude Code emits ONE assistant frame per content block, all sharing
+      // `message.id`. Replacing the persisted entry kept only the last block:
+      // a `Task` tool_use followed by text lost the tool card (and with it
+      // the anchor of the subagent it spawned) on every reload — across four
+      // persisted histories not a single entry held two blocks. Merge instead
+      // and keep the attribution. The entry keeps its ORIGINAL timestamp: it
+      // is one message, its time is when it started, and the browser's
+      // `mergeAssistantMessage` keeps `prev.timestamp` for the same reason.
+      const existing = session.messageHistory[existingIdx] as Extract<
+        BrowserIncomingMessage,
+        { type: "assistant" }
+      >;
+      session.messageHistory[existingIdx] = {
+        ...incoming,
+        timestamp: existing.timestamp ?? incoming.timestamp,
+        message: {
+          ...incoming.message,
+          content: mergeContentBlocks(existing.message.content, incoming.message.content),
+        },
+      };
     } else {
       // On `--resume`, the CLI replays the conversation and re-emits the
       // last assistant message with a fresh `message.id`. Without a content
       // check the persisted history grows a duplicate every reopen (the
-      // same reply rendered twice in chat). If the new message text matches
-      // the last persisted assistant message AND no real user / tool turn
-      // has happened since (system events / env tags don't count), treat
-      // it as a resume re-emit and overwrite that entry rather than append.
-      const lastAssistantIdx = session.messageHistory.findLastIndex((h) => h.type === "assistant");
-      if (lastAssistantIdx !== -1) {
-        const lastAssistant = session.messageHistory[lastAssistantIdx] as Extract<
+      // same reply rendered twice in chat).
+      //
+      // The comparison is scoped to ONE conversation. A re-emit always
+      // belongs to the same agent it came from, so a frame from a subagent
+      // may never be measured against a root entry and vice versa — and a
+      // subagent frame is never a resume re-emit at all (the CLI replays the
+      // root transcript, not a finished agent's private turn). Unscoped,
+      // this branch was a data-loss bug with two shapes: two agents that
+      // both answer "PASS" collapsed into one entry, and a subagent echoing
+      // the root's words OVERWROTE the root entry — taking the spawn
+      // `tool_use` anchor with it.
+      const resumeCandidateIdx = attribution === null
+        ? session.messageHistory.findLastIndex(
+          (h) => h.type === "assistant" && (h.parent_tool_use_id ?? null) === null,
+        )
+        : -1;
+      if (resumeCandidateIdx !== -1) {
+        const lastAssistant = session.messageHistory[resumeCandidateIdx] as Extract<
           BrowserIncomingMessage,
           { type: "assistant" }
         >;
-        const sameText =
-          WsBridge.assistantTextContent(lastAssistant.message.content) ===
-          WsBridge.assistantTextContent(msg.message.content as unknown[]);
+        const freshId = lastAssistant.message.id !== msg.message.id;
         const hasMeaningfulInputSince = WsBridge.hasMeaningfulUserInputSince(
           session.messageHistory,
-          lastAssistantIdx,
+          resumeCandidateIdx,
         );
-        if (sameText && !hasMeaningfulInputSince && lastAssistant.message.id !== msg.message.id) {
-          session.messageHistory[lastAssistantIdx] = browserMsg;
-          this.broadcastToBrowsers(session, browserMsg);
-          return;
+        const incomingText = WsBridge.assistantTextContent(msg.message.content as unknown[]);
+        const sameText = WsBridge.assistantTextContent(lastAssistant.message.content) === incomingText;
+        if (freshId && !hasMeaningfulInputSince) {
+          if (sameText) {
+            // Overwrite, carrying the persisted entry's NON-text blocks
+            // across: the re-emit is text-only (Claude replays the reply,
+            // not the tool calls), so a wholesale replace would wipe exactly
+            // the `tool_use` blocks the merge above works to preserve.
+            const merged: BrowserIncomingMessage = {
+              ...incoming,
+              timestamp: lastAssistant.timestamp ?? incoming.timestamp,
+              message: {
+                ...incoming.message,
+                content: mergeContentBlocks(
+                  WsBridge.nonTextBlocks(lastAssistant.message.content),
+                  incoming.message.content,
+                ),
+              },
+            };
+            session.messageHistory[resumeCandidateIdx] = merged;
+            // Broadcast the merged view here, not the frame: this is the one
+            // place where the persisted entry changes id, so the browser
+            // needs the blocks that came with the old id.
+            this.broadcastToBrowsers(session, merged);
+            return;
+          }
+          if (!incomingText && containsAllBlocks(lastAssistant.message.content, incoming.message.content)) {
+            // The per-block shape of the same re-emit: frame 1 carries only
+            // the `tool_use`, so `sameText` compares "" against the reply and
+            // fails. Its blocks are already in the persisted entry (JSON
+            // identity, and a genuinely new call would have a new id), so
+            // appending would leave a duplicate entry behind for frame 2 to
+            // fill in. No-op for history; the frame still broadcasts.
+            this.broadcastToBrowsers(session, incoming);
+            return;
+          }
         }
       }
-      session.messageHistory.push(browserMsg);
+      session.messageHistory.push(incoming);
     }
-    this.broadcastToBrowsers(session, browserMsg);
+    this.broadcastToBrowsers(session, incoming);
     // The message that just delivered an AskUserQuestion to the user
     // opens the suppression window — any model output that arrives next
     // (before the user clicks an answer) is the SDK-auto-deny reaction
@@ -1015,6 +1120,111 @@ export class WsBridge {
       // model resumes cleanly.
       handleInterrupt(session, this.sendToCLI.bind(this));
     }
+  }
+
+  /**
+   * Register a roster entry for every `tool_use` block in this assistant
+   * message that the backend recognises as an agent spawn
+   * (`BackendModule.subagentSpawn` — Claude's `Task` / `Agent`; backends that
+   * emit their own roster or have no subagents leave it undefined and nothing
+   * happens here). The block's own id IS the spawned agent's attribution key,
+   * so a nested spawn — a subagent calling `Task` itself — takes `parent_id`
+   * from this frame's own `parent_tool_use_id`, the same value its children
+   * will carry.
+   *
+   * Idempotent per block id: `--resume` re-emits the last assistant message,
+   * and re-publishing a snapshot we already sent would only grow history. The
+   * lifecycle transitions come from the `tool_result` path instead.
+   */
+  private registerSubagentSpawns(session: Session, msg: CLIAssistantMessage): void {
+    const content = msg.message?.content;
+    if (!Array.isArray(content)) return;
+    const mod = getBackendModule(session.state.backend_type);
+    if (!mod.subagentSpawn) return;
+    for (const block of content) {
+      const b = block as { type?: string; id?: string; name?: string; input?: Record<string, unknown> };
+      if (b.type !== "tool_use" || !b.id || !b.name) continue;
+      if (session.subagents.has(b.id)) continue;
+      const ref = mod.subagentSpawn(b.name, b.input ?? {});
+      if (!ref) continue;
+      this.publishSubagentUpdate(session, {
+        id: b.id,
+        parent_id: msg.parent_tool_use_id ?? null,
+        label: ref.label,
+        status: "running",
+        ...(ref.detail !== undefined ? { detail: ref.detail } : {}),
+      });
+    }
+  }
+
+  /**
+   * Publish a roster snapshot: index it for the frames still to come, push it
+   * to `messageHistory` BEFORE broadcasting (it is history-backed, so the
+   * replay ring skips it and a reload / export / player would otherwise lose
+   * the whole team), then broadcast.
+   *
+   * A snapshot that says exactly what the current one says is dropped. The
+   * envelope is a state snapshot, not an event, so re-publishing it tells no
+   * consumer anything — but the CLI does re-deliver a `tool_result` (resume
+   * replays the transcript), and an unconditional push grows `history.json`
+   * by one byte-identical `completed` entry every time.
+   */
+  private publishSubagentUpdate(session: Session, agent: SubagentInfo): void {
+    const current = session.subagents.get(agent.id);
+    if (current && JSON.stringify(current) === JSON.stringify(agent)) return;
+    session.subagents.set(agent.id, agent);
+    const browserMsg: BrowserIncomingMessage = {
+      type: "subagent_update",
+      agent,
+      timestamp: Date.now(),
+    };
+    session.messageHistory.push(browserMsg);
+    this.broadcastToBrowsers(session, browserMsg);
+  }
+
+  /**
+   * Close out roster entries from the `tool_result` blocks of a CLI `user`
+   * frame. A Claude subagent has no lifecycle envelope of its own: the only
+   * report of its fate is the `tool_result` of the `Task` / `Agent` call that
+   * spawned it, carried on the same id we registered the agent under.
+   */
+  private applySubagentToolResults(session: Session, content: unknown[]): void {
+    for (const block of content) {
+      const b = block as { type?: string; tool_use_id?: string; content?: unknown; is_error?: boolean };
+      if (b.type !== "tool_result" || !b.tool_use_id) continue;
+      const agent = session.subagents.get(b.tool_use_id);
+      if (!agent) continue;
+      const detail = WsBridge.toolResultText(b.content).trim().slice(0, 200);
+      this.publishSubagentUpdate(session, {
+        ...agent,
+        status: b.is_error ? "failed" : "completed",
+        // An empty result keeps whatever the spawn already said
+        // (Claude's `subagent_type`) rather than blanking the card.
+        ...(detail ? { detail } : {}),
+      });
+    }
+  }
+
+  /**
+   * The blocks of a persisted entry that a text-only re-emit cannot replace.
+   * Tolerant of a malformed `content` because `loadMessageHistory` takes
+   * whatever `history.json` holds (`bin/pneuma.ts` passes it through `as any`).
+   */
+  private static nonTextBlocks(content: unknown): ContentBlock[] {
+    if (!Array.isArray(content)) return [];
+    return (content as ContentBlock[]).filter((b) => b?.type !== "text");
+  }
+
+  /** Flatten a `tool_result.content` (string, or blocks) into plain text. */
+  private static toolResultText(content: unknown): string {
+    if (typeof content === "string") return content;
+    if (!Array.isArray(content)) return "";
+    const parts: string[] = [];
+    for (const block of content) {
+      const b = block as { type?: string; text?: string };
+      if (b.type === "text" && typeof b.text === "string") parts.push(b.text);
+    }
+    return parts.join("\n");
   }
 
   private static assistantTextContent(content: unknown): string {
@@ -1185,6 +1395,9 @@ export class WsBridge {
       tool_use_id: msg.tool_use_id,
       tool_name: msg.tool_name,
       elapsed_time_seconds: msg.elapsed_time_seconds,
+      // Forward the attribution the CLI frame already carries — a subagent's
+      // long tool run used to drive the ROOT activity indicator.
+      parent_tool_use_id: msg.parent_tool_use_id ?? null,
     });
   }
 
@@ -1197,8 +1410,20 @@ export class WsBridge {
   }
 
   private handleCLIUserEcho(session: Session, msg: CLIUserMessage) {
-    // CLI echoes slash-command output as a user message with <local-command-stdout>
-    const raw = typeof msg.message.content === "string" ? msg.message.content : "";
+    // A CLI `user` frame is one of two things. With block content it is the
+    // synthetic echo that carries `tool_result`s — the only place a Claude
+    // subagent's completion is reported (see `applySubagentToolResults`).
+    // The blocks are NOT forwarded to the browser and never were: the CLI
+    // resolves tool results internally and the agent narrates the outcome
+    // (`src/ws.ts` records the same finding), so the roster is the only
+    // consumer here.
+    const blocks = msg.message?.content;
+    if (Array.isArray(blocks)) {
+      this.applySubagentToolResults(session, blocks);
+      return;
+    }
+    // With string content it is the slash-command stdout echo.
+    const raw = typeof blocks === "string" ? blocks : "";
     const match = raw.match(/<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/);
     let content = match ? match[1].trim() : raw.trim();
     if (!content) return;
