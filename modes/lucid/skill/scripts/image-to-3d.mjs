@@ -258,9 +258,10 @@ H3.1 options — both H3.1 endpoints take the same ones:
   orientation         "align_image" points the model the way the cut-out
                       faces, so there is less yaw to fix in the scene;
                       "default" is the model's own guess.
-  auto_size           true scales the model to real-world metres. collect
-                      echoes auto_size back, so you know whether the file
-                      that landed is already in metres or needs a scale.
+  auto_size           true asks for real-world metres — a hint, not a
+                      guarantee (props have come back unit-normalised).
+                      collect echoes auto_size back; blender.mjs prep by
+                      one dimension is what sets the size that counts.
   geometry_quality    "standard" | "detailed"
   texture_quality     "standard" | "detailed"
   texture_alignment   "original_image" keeps the texture on the cut-out's

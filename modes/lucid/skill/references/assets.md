@@ -45,7 +45,9 @@ project-relative):
    (or `hero-multiview`, or `prop` for small dressing) prints the job JSON;
    paste it into `<project>/assets/fal-jobs.json` with the id, image and
    `output` (`../scene/models/<id>.glb`) filled in. The hero recipe already
-   sets `auto_size` (real-world metres — no guessing the scale),
+   sets `auto_size` (asks for real-world metres — a hint, not a guarantee:
+   a lamp came back normalised to one unit and a column at 2.5 m in the
+   second trial, so the size that counts is the one `prep` sets),
    `orientation: "align_image"` (the model's front follows the cut-out's,
    which is NOT the same as facing +Z — one `blender.mjs render-views` sheet
    still confirms the yaw before you bake it), and `detailed` geometry and

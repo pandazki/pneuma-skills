@@ -278,6 +278,18 @@ gaps freely, and let `verdict` match a new gap to a previous one itself
 (normalised id tokens, area, issue overlap) and record the carried id.
 That is the next change to make before trusting `stubbornGaps`.
 
+The agent's final REPORT.md (29 KB, 36 items) adds, from the extension:
+`bridgeCurrent` and `bridge --refresh` worked; the refreshed bridge surfaced
+a three.js shadow-map warning nobody had seen; the retroactive `stalled`
+on round 3 was noticed and understood; `auto_size` returned a lamp
+normalised to one unit and a column at 2.5 m (now documented as a hint);
+the no-UV warning overstated itself (triplanar works; reworded); a
+Blender-exported stair kept 103 material primitives after `--merge`
+(object merge is not draw-call merge — open: a `prep` option to join
+materials); the reflection camera must not reuse a screen-fixed matte as
+its background (the agent's own fix, worth a line in three-scene.md
+later).
+
 ## 6. Open after both trials
 
 - `done` and `stalled` have not been observed live (trial 1 ended at

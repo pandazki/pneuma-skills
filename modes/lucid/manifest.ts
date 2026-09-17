@@ -32,6 +32,7 @@ const lucidManifest: ModeManifest = {
       "The next judge sees the previous gap ids and issues, never the previous scores — the ids are what the exit rules need, the numbers anchor",
       "A rethink that gains less than a full point is `stalled`, not another rethink: a 0.2-point redesign is inside the judge's noise",
       "`status.scene.bridgeCurrent` says whether the scene still runs an older skill's bridge",
+      "`auto_size` is documented as a hint and the no-UV warning no longer claims a model cannot be textured (triplanar can)",
       "`--yaw -90` parses: every script joins a negative number onto its option before parsing; `blender.mjs prep --thin` names parts before the merge erases their names; `status` lists the ledger entries not yet placed",
     ],
   },

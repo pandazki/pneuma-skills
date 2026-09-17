@@ -142,7 +142,7 @@ Paths are resolved against the current working directory.
                            meshopt at all — run 'unpack' first
         quantized          KHR_mesh_quantization (informational; no decoder
                            needed, this is the compression to prefer)
-        no-uv              no TEXCOORD_0: nothing downstream can texture it
+        no-uv              no TEXCOORD_0: UV-sampled maps cannot apply (triplanar can)
         no-materials       no materials at all
         thin-pole-height   the ${THIN_POLE_PERCENTILE * 100}th-percentile vertex height is under
                            ${THIN_POLE_RATIO} of the box height — an antenna or a pole is
@@ -839,7 +839,7 @@ function inspectGlb(pathArg) {
   if (primitives > 0 && !hasUv) {
     warnings.push({
       code: "no-uv",
-      message: "no TEXCOORD_0 on any primitive — nothing downstream can put a texture on this model. Unwrap it in Blender or accept a flat material.",
+      message: "no TEXCOORD_0 on any primitive — a UV-sampled texture map cannot be applied. Unwrap it in Blender, or map it in world space (triplanar) as the kit's masonry does.",
     });
   }
   if (materialList.length === 0) {
