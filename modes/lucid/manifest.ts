@@ -26,6 +26,7 @@ const lucidManifest: ModeManifest = {
       "Every rung is a program: `image-to-3d.mjs recipe hero|hero-multiview|prop` plans a fal job with real-world size and image-aligned orientation, `blender.mjs prep` grounds, sizes, merges and single-sides any model in one pass, a Blender kit builds hard-surface props with bevels, arrays and booleans, and `texture.mjs` derives normal, roughness and ORM maps from the albedo the image tool gives you",
       "Every new project ships `assets.js`: a loader that scales by one aligning dimension, measures rigged meshes correctly, grounds the feet, clones rigs with their own mixers and strips root motion",
       "The scene's `errors[]` now sees what three.js only prints — failed shaders, console errors and `THREE.` warnings — tagged by channel in `errorSources`",
+      "The time budget survives a pause: the wall clock never stops, so after a resume the agent credits the pause back with `lucid.mjs budget --pause-credit` instead of inventing a bigger budget",
     ],
   },
   displayName: {

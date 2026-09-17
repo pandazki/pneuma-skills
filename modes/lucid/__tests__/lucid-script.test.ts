@@ -521,7 +521,8 @@ describe("lucid.mjs status — the exit rules", () => {
     const spent = json(improving, ["status", "shrine", "--now", T(90)]);
     expect(spent.evaluation.exit).toBe("budget-exhausted");
     expect(spent.budget).toEqual({
-      minutes: 45, startedAt: T(40), elapsedMinutes: 50, remainingMinutes: 0,
+      minutes: 45, startedAt: T(40), pausedMinutes: 0, elapsedMinutes: 50, remainingMinutes: 0,
+      sinceLastWriteMinutes: 50,
     });
     expect(spent.evaluation.reasons.join(" ")).toContain("45-minute budget is spent");
     // A report never writes: the stored evaluation is time-independent.
@@ -530,6 +531,35 @@ describe("lucid.mjs status — the exit rules", () => {
     const finished = replay("done").cwd;
     json(finished, ["budget", "shrine", "--minutes", "1", "--now", T(40)]);
     expect(json(finished, ["status", "shrine", "--now", T(300)]).evaluation.exit).toBe("done");
+  });
+
+  // The wall clock keeps counting while credits are out or the machine sleeps,
+  // and the clock never pauses on its own: the agent credits the pause after
+  // the resume, reading it from the span since the manifest was last written.
+  test("a credited pause gives the wall clock back to the budget", () => {
+    const cwd = replay("improving").cwd;
+    json(cwd, ["budget", "shrine", "--minutes", "45", "--now", T(40)]);
+    const spent = json(cwd, ["status", "shrine", "--now", T(700)]);
+    expect(spent.evaluation.exit).toBe("budget-exhausted");
+    // `status` never writes, so the span since the last write IS the pause.
+    expect(spent.budget).toMatchObject({ pausedMinutes: 0, sinceLastWriteMinutes: 660 });
+
+    const credited = json(cwd, ["budget", "shrine", "--pause-credit", "650", "--now", T(700)]);
+    expect(credited.pauseCreditedMinutes).toBe(650);
+    expect(credited.budget).toEqual({ minutes: 45, startedAt: T(40), pausedMinutes: 650 });
+    expect(credited.elapsedMinutes).toBe(10);
+
+    const resumed = json(cwd, ["status", "shrine", "--now", T(700)]);
+    expect(resumed.evaluation.exit).toBe("continue");
+    expect(resumed.budget).toMatchObject({ pausedMinutes: 650, elapsedMinutes: 10, remainingMinutes: 35 });
+
+    // Credits accumulate and survive a --minutes change; nothing shrinks them.
+    json(cwd, ["budget", "shrine", "--pause-credit", "10", "--minutes", "60", "--now", T(700)]);
+    expect(manifestOf(cwd).budget).toEqual({ minutes: 60, startedAt: T(40), pausedMinutes: 660 });
+    expect(json(cwd, ["status", "shrine", "--now", T(700)]).budget.remainingMinutes).toBe(60);
+
+    expect(run(cwd, ["budget", "shrine", "--pause-credit", "0"]).err).toContain("positive");
+    expect(run(looping(), ["budget", "shrine", "--pause-credit", "5"]).err).toContain("no running budget");
   });
 
   // The clock is spent whether or not a verdict exists. A loop that burned its
@@ -652,7 +682,8 @@ describe("lucid.mjs budget", () => {
     json(cwd, ["target", "shrine", "--set", "dream.png", "--now", T(12)]);
     expect(manifestOf(cwd).budget).toEqual({ minutes: 45, startedAt: T(0) });
     expect(json(cwd, ["status", "shrine", "--now", T(20)]).budget).toEqual({
-      minutes: 45, startedAt: T(0), elapsedMinutes: 20, remainingMinutes: 25,
+      minutes: 45, startedAt: T(0), pausedMinutes: 0, elapsedMinutes: 20, remainingMinutes: 25,
+      sinceLastWriteMinutes: 8,
     });
   });
 

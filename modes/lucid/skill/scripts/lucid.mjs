@@ -184,7 +184,7 @@ const ADVICE = {
   stalled:
     "The redesign did not move the score. Do not spend more tokens guessing — show the user where it stands and ask them to weigh in.",
   "budget-exhausted":
-    "The time budget is spent. Show the user the best round against the target and ask whether to continue.",
+    "The time budget is spent. If the session was paused (credits ran out, the tab was closed, the machine slept) the wall clock kept counting: credit the pause with `budget <dir> --pause-credit <minutes>` (status shows budget.sinceLastWriteMinutes) and re-run status. Otherwise show the user the best round against the target and ask whether to continue.",
 };
 
 /**
@@ -436,11 +436,28 @@ function bestTotalBefore(judged, index) {
   return best;
 }
 
+/** Minutes the budget has consumed: wall clock since the start, minus every
+ *  pause the agent credited back (`budget --pause-credit`). The clock itself
+ *  never pauses — a pause is a fact the agent asserts after the resume. */
 function elapsedMinutes(loop, now) {
   if (!loop.budget || !loop.budget.startedAt) return null;
   const started = Date.parse(loop.budget.startedAt);
   if (!Number.isFinite(started)) return null;
-  return round2(Math.max(0, (Date.parse(now) - started) / 60_000));
+  const paused = pausedMinutesOf(loop.budget);
+  return round2(Math.max(0, (Date.parse(now) - started) / 60_000 - paused));
+}
+
+function pausedMinutesOf(budget) {
+  const paused = budget && budget.pausedMinutes;
+  return typeof paused === "number" && Number.isFinite(paused) && paused > 0 ? paused : 0;
+}
+
+/** Wall-clock minutes since the last mutation wrote the manifest; `status`
+ *  never writes, so this is the span an agent reads a pause from. */
+function sinceLastWriteMinutes(loop, now) {
+  const at = Date.parse(loop.updatedAt ?? "");
+  if (!Number.isFinite(at)) return null;
+  return round2(Math.max(0, (Date.parse(now) - at) / 60_000));
 }
 
 function budgetExhausted(loop, now) {
@@ -1035,8 +1052,12 @@ function cmdStatus(dir, now) {
       ? {
           minutes: loop.budget.minutes,
           startedAt: loop.budget.startedAt,
+          pausedMinutes: pausedMinutesOf(loop.budget),
           elapsedMinutes: elapsed,
           remainingMinutes: elapsed === null ? null : round2(Math.max(0, loop.budget.minutes - elapsed)),
+          // How long since anything was written: a resumed session reads the
+          // pause it must credit from here, before it writes anything else.
+          sinceLastWriteMinutes: sinceLastWriteMinutes(loop, now),
         }
       : null,
     evaluation,
@@ -1045,21 +1066,43 @@ function cmdStatus(dir, now) {
 }
 
 function cmdBudget(dir, opts, now) {
-  if (opts.minutes === undefined) fail("budget needs --minutes N (0 removes the budget)");
-  const minutes = num(opts.minutes, "--minutes", { min: 0 });
+  if (opts.minutes === undefined && opts["pause-credit"] === undefined) {
+    fail("budget needs --minutes N (0 removes the budget) and/or --pause-credit <minutes>");
+  }
   const loop = loadLoop(dir);
   let startedAtSource = "none";
-  if (minutes === 0) {
-    loop.budget = null;
-  } else {
-    // A budget starts counting the moment it is asked for. An existing start
-    // is KEPT, so raising or lowering the budget never buys more wall clock.
-    const existing = loop.budget && loop.budget.startedAt ? loop.budget.startedAt : null;
-    startedAtSource = existing ? "budget" : "now";
-    loop.budget = { minutes, startedAt: existing ?? now };
+  if (opts.minutes !== undefined) {
+    const minutes = num(opts.minutes, "--minutes", { min: 0 });
+    if (minutes === 0) {
+      loop.budget = null;
+    } else {
+      // A budget starts counting the moment it is asked for. An existing start
+      // is KEPT, so raising or lowering the budget never buys more wall clock;
+      // credited pauses are kept for the same reason.
+      const existing = loop.budget && loop.budget.startedAt ? loop.budget.startedAt : null;
+      startedAtSource = existing ? "budget" : "now";
+      const paused = pausedMinutesOf(loop.budget);
+      loop.budget = { minutes, startedAt: existing ?? now, ...(paused > 0 ? { pausedMinutes: paused } : {}) };
+    }
+  }
+  let pauseCredited = 0;
+  if (opts["pause-credit"] !== undefined) {
+    // A pause is asserted by the agent after the resume — the clock cannot
+    // see one. It only ever adds: nothing here can take credited time back.
+    pauseCredited = num(opts["pause-credit"], "--pause-credit", { min: 0 });
+    if (pauseCredited === 0) fail("--pause-credit needs a positive number of minutes");
+    if (!loop.budget || !loop.budget.startedAt) fail("no running budget to credit a pause against");
+    loop.budget.pausedMinutes = round2(pausedMinutesOf(loop.budget) + pauseCredited);
   }
   const saved = saveLoop(dir, loop, now);
-  emit({ dir: resolve(dir), budget: saved.budget, startedAtSource, evaluation: saved.evaluation });
+  emit({
+    dir: resolve(dir),
+    budget: saved.budget,
+    startedAtSource,
+    pauseCreditedMinutes: pauseCredited,
+    elapsedMinutes: elapsedMinutes(saved, now),
+    evaluation: saved.evaluation,
+  });
 }
 
 function cmdAsset(dir, action, opts, now) {
@@ -1335,11 +1378,16 @@ compares the budget against); without it the wall clock is used.
       applies from the moment a budget starts, including before the first
       verdict — it overrides continue and stall-approaching, never done.
 
-  budget <dir> --minutes N
+  budget <dir> [--minutes N] [--pause-credit <minutes>]
       Set or update the time budget; --minutes 0 removes it. A budget that has
       no clock yet starts counting NOW (startedAtSource: "now"); an existing
       start is kept (startedAtSource: "budget"), so raising the budget never
       buys back wall clock and lowering it never restarts the clock.
+      --pause-credit gives back minutes the wall clock counted while nobody
+      was working (credits ran out, the session was closed, the machine
+      slept): the clock itself never pauses, so after a resume read
+      status.budget.sinceLastWriteMinutes and credit the part that was a
+      pause. Credits only accumulate; --minutes keeps them.
 
   asset <dir> add --id <id> --role ${ASSET_ROLES.join("|")}
                   --source ${ASSET_SOURCES.join("|")}
@@ -1411,6 +1459,7 @@ const OPTIONS = {
   file: { type: "string" },
   replace: { type: "boolean" },
   minutes: { type: "string" },
+  "pause-credit": { type: "string" },
   id: { type: "string" },
   role: { type: "string" },
   source: { type: "string" },

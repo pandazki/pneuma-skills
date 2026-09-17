@@ -142,6 +142,28 @@ Findings from the transcript (no tool call failed):
 - The judge subagent's `fileChange` (writing `verdict.json`) and its final
   text rendered in the main conversation — issue #152 again, cosmetic here.
 
+### Resumed after the refill (2026-09-17 10:45, same workspace, rebased build)
+
+The branch was rebased onto `main` (which now carries the #152 fix), `dist`
+rebuilt, and the server restarted on the same workspace: the Codex thread
+resumed with its 216 messages and one user line ("额度已经恢复了，继续。")
+continued the loop. Two things surfaced in the first minute:
+
+- **The budget is wall clock, and a pause is not.** `status` reported
+  `budget-exhausted` with "652 minutes elapsed" for a 90-minute budget — the
+  ten-hour credit outage had been counted. The agent read the situation
+  correctly, said so to the user, and kept its 55 remaining minutes by
+  setting `budget --minutes 708`, which is honest arithmetic but a hack the
+  script invited. Fix: `budget --pause-credit <minutes>` accumulates
+  `budget.pausedMinutes`; `status` prints `budget.sinceLastWriteMinutes`
+  (the manifest's last mutation — `status` never writes) so the pause is
+  read, not remembered; `budget-exhausted` advice, `judging.md` and SKILL.md
+  say to credit a pause before acting on the exit.
+- The resumed turn logged five `Reconnecting… n/5 … Broken pipe` lines from
+  the Codex model stream plus one `write_stdin failed: Unknown process id`
+  (a background process of the previous app-server). The turn survived both;
+  the work continued without a tool error.
+
 ## 6. Open after both trials
 
 - `done` and `stalled` have not been observed live (trial 1 ended at

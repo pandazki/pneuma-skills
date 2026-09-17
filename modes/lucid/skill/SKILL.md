@@ -173,7 +173,12 @@ node {SKILL_PATH}/scripts/lucid.mjs init <project> --title "…" --brief "<the u
 
 `init` writes the manifest, a runnable starter `scene/` and vendors three.js.
 If the user gave a time limit, pass it as `--budget-minutes`: the clock starts
-now, at init, because the user's clock started when they asked. Then
+now, at init, because the user's clock started when they asked. The clock is
+wall time and never pauses on its own: when a session resumes after a pause
+(credits ran out, the tab was closed — the env block says `reason="opened"`),
+`status` shows `budget.sinceLastWriteMinutes`; credit the part that was a pause
+with `lucid.mjs budget <project> --pause-credit <minutes>` before you act on
+`budget-exhausted`. Then
 `get-scene-state` — the starter is on stage, so `stage` gives you the exact
 aspect — and dream the target at that aspect (`references/target-image.md`),
 unless the user supplied one. Lock it:

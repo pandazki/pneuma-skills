@@ -130,6 +130,12 @@ export interface BudgetState {
    * Null only for a project whose budget was written without one.
    */
   startedAt: string | null;
+  /**
+   * Minutes credited back by `budget --pause-credit` after a pause the wall
+   * clock counted (credits ran out, the machine slept). Absent until the
+   * first credit; the clock never pauses on its own.
+   */
+  pausedMinutes?: number;
 }
 
 export type AssetRole = "hero" | "prop" | "environment";
@@ -363,7 +369,13 @@ export function parseLoop(dir: string, text: string): Loop | null {
   };
 
   const budget: BudgetState | null = isRecord(raw.budget)
-    ? { minutes: asNumber(raw.budget.minutes, 0), startedAt: asNullableString(raw.budget.startedAt) }
+    ? {
+        minutes: asNumber(raw.budget.minutes, 0),
+        startedAt: asNullableString(raw.budget.startedAt),
+        ...(typeof raw.budget.pausedMinutes === "number" && Number.isFinite(raw.budget.pausedMinutes) && raw.budget.pausedMinutes > 0
+          ? { pausedMinutes: raw.budget.pausedMinutes }
+          : {}),
+      }
     : null;
 
   const rounds = Array.isArray(raw.rounds)
@@ -428,8 +440,8 @@ export function budgetRemainingMinutes(loop: Loop, now: Date = new Date()): numb
   if (!loop.budget || !loop.budget.startedAt) return null;
   const started = Date.parse(loop.budget.startedAt);
   if (!Number.isFinite(started)) return null;
-  const elapsed = (now.getTime() - started) / 60_000;
-  return Math.max(0, loop.budget.minutes - elapsed);
+  const elapsed = (now.getTime() - started) / 60_000 - (loop.budget.pausedMinutes ?? 0);
+  return Math.max(0, loop.budget.minutes - Math.max(0, elapsed));
 }
 
 /**

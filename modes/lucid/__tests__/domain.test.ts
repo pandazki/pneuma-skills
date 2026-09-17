@@ -314,6 +314,20 @@ describe("budgetRemainingMinutes", () => {
     expect(budgetRemainingMinutes(loop, at(50))).toBe(0);
     expect(budgetRemainingMinutes(loop, at(600))).toBe(0);
   });
+
+  test("a credited pause gives the wall clock back", () => {
+    const loop = parseLoop("shrine", loopJson({ budget: { minutes: 45, startedAt: T(5), pausedMinutes: 600 } }))!;
+    expect(loop.budget).toEqual({ minutes: 45, startedAt: T(5), pausedMinutes: 600 });
+    expect(budgetRemainingMinutes(loop, at(605))).toBe(45);
+    expect(budgetRemainingMinutes(loop, at(635))).toBe(15);
+    // A credit larger than the clock so far cannot mint time beyond the budget.
+    expect(budgetRemainingMinutes(loop, at(100))).toBe(45);
+    // Zero or junk credit reads as none.
+    const none = parseLoop("shrine", loopJson({ budget: { minutes: 45, startedAt: T(5), pausedMinutes: 0 } }))!;
+    expect(none.budget).toEqual({ minutes: 45, startedAt: T(5) });
+    const junk = parseLoop("shrine", loopJson({ budget: { minutes: 45, startedAt: T(5), pausedMinutes: "lots" } }))!;
+    expect(junk.budget).toEqual({ minutes: 45, startedAt: T(5) });
+  });
 });
 
 describe("bestRound", () => {
