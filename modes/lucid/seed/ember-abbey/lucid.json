@@ -1,0 +1,501 @@
+{
+  "format": "pneuma-lucid/v1",
+  "title": "余烬修道院 · Ember Abbey",
+  "brief": "Isometric voxel-ish dark fantasy graphics demo with realistic shading, reflective wet floors, a character, expansive living environment and bounded click-to-move exploration. Lazy-follow camera, drag rotation, scroll zoom. Three.js, 60 fps, no downloaded art assets, no gameplay. 45 minute time limit.",
+  "status": "looping",
+  "createdAt": "2026-09-16T08:01:16.781Z",
+  "updatedAt": "2026-09-16T08:45:44.152Z",
+  "fpsTarget": 60,
+  "budget": null,
+  "target": {
+    "path": "target.png",
+    "version": 1,
+    "lockedAt": "2026-09-16T08:02:09.625Z",
+    "history": []
+  },
+  "rounds": [
+    {
+      "index": 1,
+      "kind": "iterate",
+      "targetVersion": 1,
+      "at": "2026-09-16T08:10:24.041Z",
+      "capture": "rounds/01/capture.png",
+      "fps": 119.88,
+      "verdict": {
+        "composition": 1.15,
+        "lighting": 1.05,
+        "materials": 0.95,
+        "details": 0.2,
+        "total": 3.35,
+        "summary": "The build establishes the basic courtyard, Gothic entrance, red banners, fire pedestals, rain, reflective paving, and central character. However, it reads as a small, clean tabletop diorama viewed steeply from above, while the target is an immersive ruined terrace embedded in an enormous cathedral city. The largest improvements require a lower and closer camera, a substantial layered skyline, irregular masonry, more convincing wet stone, and a luminous recessed doorway.",
+        "gaps": [
+          {
+            "id": "camera-framing",
+            "area": "composition",
+            "issue": "The camera is much higher and farther out than the target, revealing the complete rectangular platform and its underside. The target crops foreground ruins and shows substantially more vertical architecture.",
+            "fix": "Lower camera elevation, move closer, and frame the entrance near the upper middle with the character around 75% down the image. Crop the platform front and sides beyond the frame."
+          },
+          {
+            "id": "cathedral-city-background",
+            "area": "composition",
+            "issue": "The expansive city is missing. A few oversized plain blocks at the top replace the target's many cathedral towers, cliff terraces, bridges, and distant spires.",
+            "fix": "Build multiple depth layers of detailed Gothic tower silhouettes, flying bridges, retaining cliffs, arched windows, and smaller spires extending across the entire background."
+          },
+          {
+            "id": "courtyard-proportions",
+            "area": "composition",
+            "issue": "The courtyard feels narrow and compact, with braziers occupying its walking area. The target has a broad open terrace and fires positioned along its perimeter.",
+            "fix": "Widen the courtyard, move its side boundaries outward, and relocate intermediate braziers toward the edges so the central paving forms a spacious uninterrupted foreground."
+          },
+          {
+            "id": "foreground-ruins",
+            "area": "composition",
+            "issue": "The target's large cropped foreground pillars, broken crenellations, rubble, and left hanging banner are absent, leaving a clean slab edge.",
+            "fix": "Add near-camera broken masonry towers and parapet fragments of varied heights, including a substantial left banner pole and cloth, and compose them as partial framing elements."
+          },
+          {
+            "id": "entrance-architecture",
+            "area": "composition",
+            "issue": "The entrance is a broad exposed rectangular grille below a thin triangular arch. The target has a narrow recessed glowing pointed door surrounded by many nested stone archivolts and massive ruined buttresses.",
+            "fix": "Replace the grille silhouette with a pointed recessed door, add nested segmented arch rings, thicken its flanking buttresses, and break their upper outlines."
+          },
+          {
+            "id": "side-arcade-layout",
+            "area": "composition",
+            "issue": "Both sides have similarly ordered, tall arcades, whereas the target has a substantial continuous left ruin and one isolated right arch opening onto the distant city.",
+            "fix": "Consolidate the left arcade into a thicker ruined wall, reduce the right arcade to one main surviving arch, and open the right background view."
+          },
+          {
+            "id": "warm-cool-lighting",
+            "area": "lighting",
+            "issue": "The overall lighting is muted and uniformly blue-green. The target has brighter blue atmospheric light, deep shadow pockets, and strong amber illumination spreading over walls and paving.",
+            "fix": "Increase directional cool sky illumination and local warm fire illumination, restore deeper contact shadows, and tune exposure so illuminated stone is bright without flattening the dark recesses."
+          },
+          {
+            "id": "portal-glow",
+            "area": "lighting",
+            "issue": "The doorway has a small white hotspot and otherwise dark bars instead of the target's intense amber door outline and radiant threshold.",
+            "fix": "Add a gold emissive pointed perimeter, decorative cross, bright base strip, and warm light illuminating every inner arch layer and the upper steps."
+          },
+          {
+            "id": "atmospheric-depth",
+            "area": "lighting",
+            "issue": "The surroundings are a nearly uniform dark void with rain streaks. The target includes illuminated storm clouds and several progressively bluer layers of distant architecture.",
+            "fix": "Introduce a procedural cloudy sky and distance-dependent blue haze, maintaining dark near ruins while progressively lifting and desaturating distant silhouettes."
+          },
+          {
+            "id": "reflection-character",
+            "area": "materials",
+            "issue": "The paving reflects banners and architecture as broad smooth mirrored patches with regular wavy distortions. The target has fragmented, sharply varying wet highlights and irregular puddles interrupted by rough stone.",
+            "fix": "Break up reflectivity with multiscale roughness and puddle masks, vary distortion spatially, and preserve sharp reflections only in localized pools."
+          },
+          {
+            "id": "stone-block-scale",
+            "area": "materials",
+            "issue": "Architecture uses large flat slabs and pristine continuous trim; the target is built from many smaller individual irregular stones with deep mortar seams and chipped edges.",
+            "fix": "Subdivide visible piers, arches, trim, stairs, and parapets into smaller offset blocks, vary dimensions and color subtly, and introduce missing corners and individual protruding stones."
+          },
+          {
+            "id": "stone-surface-weathering",
+            "area": "materials",
+            "issue": "Walls, steps, and floor are too smooth and uniform. The target shows pitted stone, broken paving, accumulated grime, and dark wet joints.",
+            "fix": "Use procedural normal and roughness variation, add cracks and grime near joints, darken crevices, and vary individual paver height and edge damage."
+          },
+          {
+            "id": "banner-fabric",
+            "area": "materials",
+            "issue": "Banners are rigid flat red rectangles with simple symmetrical notches and minimal crosses. The target cloth is dark burgundy, folded, torn unevenly, and decorated with elaborate pale heraldry.",
+            "fix": "Add cloth folds and uneven sag, ragged hems and holes, darken and weather the fabric, and replace simple crosses with branching heraldic motifs."
+          },
+          {
+            "id": "character-silhouette",
+            "area": "details",
+            "issue": "The character resembles a small gray segmented robot without the target's prominent burgundy cape, recognizable armored anatomy, and sword.",
+            "fix": "Refine the helmet, shoulder plates, arms, and leg proportions; add a large folded burgundy cape with pale heraldry and a visible hand-held sword."
+          },
+          {
+            "id": "braziers-and-fire",
+            "area": "details",
+            "issue": "Braziers use clean black-and-gold tapered pedestals and a few triangular flame spikes. The target has rough stone plinths, iron bowls, intricate tongues of fire, and drifting embers.",
+            "fix": "Replace the pedestal bodies with stacked weathered blocks, add open metal baskets or bowls, and increase the variation and layering of flame shapes and ember particles."
+          },
+          {
+            "id": "ruin-scatter",
+            "area": "details",
+            "issue": "Rubble is concentrated in neat edge piles of similarly sized blocks, while sparse grass appears as straight tan rods. The target has scattered chips, collapsed arch pieces, tangled dry plants, and varied debris.",
+            "fix": "Scatter several scales of stone fragments beyond the perimeter piles, add partly buried pieces, and replace rods with branching or tufted vegetation in cracks."
+          },
+          {
+            "id": "hooded-statues",
+            "area": "details",
+            "issue": "The target's clearly readable hooded stone figures in the left arcade are missing or reduced to narrow indistinct dark forms.",
+            "fix": "Add two larger hooded statues with recessed faces, folded robes, hands, and individual bases under the left arches, lit by nearby fires."
+          },
+          {
+            "id": "distant-window-lights",
+            "area": "details",
+            "issue": "The city lacks the target's many tiny amber window lights and illuminated bridge details that establish its enormous scale.",
+            "fix": "Populate distant buildings with sparse narrow emissive Gothic windows at multiple heights and scales, with occasional warm lights along bridges."
+          }
+        ],
+        "judgedAt": "2026-09-16T08:15:31.571Z"
+      }
+    },
+    {
+      "index": 2,
+      "kind": "iterate",
+      "targetVersion": 1,
+      "at": "2026-09-16T08:23:30.340Z",
+      "capture": "rounds/02/capture.png",
+      "fps": 120,
+      "verdict": {
+        "composition": 1.3,
+        "lighting": 1.3,
+        "materials": 1.15,
+        "details": 0.25,
+        "total": 4,
+        "summary": "The pointed decorated doorway, brighter warm lighting, stone surface variation, clouds, and visible cape improve the match. However, the build still reads as a tidy enclosed courtyard viewed from steeply above. The target's dominant qualities remain missing: an expansive cathedral city, enormous depth, irregular ruined masonry, broad wet terrace, and richly fragmented reflections. The entrance is now disproportionately large, and the background clouds replace architecture rather than supporting it.",
+        "gaps": [
+          {
+            "id": "camera-framing",
+            "area": "composition",
+            "issue": "The build remains steeply overhead, with the character and architecture showing much more of their top surfaces. The target uses a lower viewpoint, a wider landscape composition, and foreground ruins cropped against the frame.",
+            "fix": "Lower camera elevation substantially, use a target-matching landscape aspect ratio, and frame the character near the lower center while cropping the platform boundaries beyond the image."
+          },
+          {
+            "id": "cathedral-city-background",
+            "area": "composition",
+            "issue": "The background contains several huge plain towers on the left and open clouds on the right. The target contains dense cathedral towers, cliff terraces, bridges, and spires across the entire background.",
+            "fix": "Replace the oversized tiered blocks with several depth layers of smaller Gothic buildings, cathedral masses, narrow spires, rocky retaining structures, and arched bridges. Fill the right half with distant architecture."
+          },
+          {
+            "id": "courtyard-proportions",
+            "area": "composition",
+            "issue": "The doorway and stairs dominate the frame while the courtyard remains a narrow enclosed corridor. In the target, the broad terrace occupies most of the lower half and the entrance is relatively smaller.",
+            "fix": "Widen the terrace, reduce the apparent width and height of the door, spread perimeter fires outward, and preserve a large uninterrupted central walking area."
+          },
+          {
+            "id": "foreground-ruins",
+            "area": "composition",
+            "issue": "Foreground walls are orderly low parapets and capped piers. The target has substantial broken towers, uneven block piles, and a large cropped hanging banner at lower left.",
+            "fix": "Add tall irregular near-camera masonry fragments, a large foreground banner and support pole, and overlapping collapsed blocks that partially obscure the terrace edges."
+          },
+          {
+            "id": "entrance-architecture",
+            "area": "composition",
+            "issue": "The door is excessively broad and tall, with a shallow pair of smooth arch bands. Its symmetrical capped towers look intact. The target has a narrow deeply recessed door beneath numerous nested arch rings and broken buttresses.",
+            "fix": "Narrow the door, deepen the portal recess, add several segmented archivolt layers, increase surrounding masonry mass, and break the flanking towers into uneven ruined silhouettes."
+          },
+          {
+            "id": "side-arcade-layout",
+            "area": "composition",
+            "issue": "Both sides retain isolated similar arches and the back is closed by a regular wall. The target's left arcade is a substantial multi-bay ruin, while the right has a single arch overlooking the city.",
+            "fix": "Extend the left arcade into multiple connected bays, remove much of the enclosing right and rear wall, and retain one prominent right arch with open background views."
+          },
+          {
+            "id": "warm-cool-lighting",
+            "area": "lighting",
+            "issue": "Warm light appears mainly as isolated floor spots, while architectural faces receive relatively flat subdued illumination. The target has strong amber light wrapping individual stones and bright cool highlights across wet surfaces.",
+            "fix": "Increase warm lighting on the arcade columns, stairs, and portal stones; add stronger cool directional illumination and contact shadows; tune fire placement so reflected highlights correspond to visible sources."
+          },
+          {
+            "id": "portal-glow",
+            "area": "lighting",
+            "issue": "The door has a large central yellow hotspot and thin pale arch outline. The target concentrates amber emission along the pointed perimeter, cross, seams, and threshold, illuminating the entire recess.",
+            "fix": "Reduce the central hotspot, strengthen the amber perimeter and threshold strips, and light the nested arch stones with several restrained warm sources."
+          },
+          {
+            "id": "atmospheric-depth",
+            "area": "lighting",
+            "issue": "Clouds are now visible, but their sharp high-contrast texture occupies most of the distant scene. The few buildings have little atmospheric separation.",
+            "fix": "Place the cloud texture behind a layered skyline, soften its contrast, and apply progressively lighter blue haze to successive architecture layers."
+          },
+          {
+            "id": "reflection-character",
+            "area": "materials",
+            "issue": "The floor still behaves like a largely uniform mirror with smooth elongated light blobs and a conspicuous continuous door reflection. The target has broken irregular reflections interrupted by gritty stone and puddle boundaries.",
+            "fix": "Use irregular puddle masks and multiscale roughness, fragment reflected highlights across individual pavers, and reduce reflection strength on raised or dry stone."
+          },
+          {
+            "id": "stone-block-scale",
+            "area": "materials",
+            "issue": "Many walls now show seams, but arches, steps, pier caps, and tower tops remain oversized pristine slabs with straight edges and repeated dimensions.",
+            "fix": "Divide these surfaces into smaller offset blocks, introduce chipped corners and missing stones, and vary dimensions, depth, rotation, and coloration without losing structural alignment."
+          },
+          {
+            "id": "stone-surface-weathering",
+            "area": "materials",
+            "issue": "Stone has fine texture but remains evenly colored and clean at joints. Stairs are uninterrupted polished strips, and paving is a highly regular grid.",
+            "fix": "Darken mortar and crevices, add localized grime and pitting, break step edges into individual damaged stones, and introduce cracked, displaced, and missing pavers."
+          },
+          {
+            "id": "banner-fabric",
+            "area": "materials",
+            "issue": "Banners remain mostly flat red sheets with simple geometric gold symbols and evenly cut hems. The target has dark burgundy folded fabric, irregular tears, and pale branching heraldry.",
+            "fix": "Add stronger folds and sag, varied ragged hems and holes, mottled dark fabric shading, and a detailed pale heraldic emblem shared by banners and cape."
+          },
+          {
+            "id": "character-silhouette",
+            "area": "details",
+            "issue": "The visible cape improves recognition, but the character still has a square torso, tiny indistinct helmet, block limbs, and no clearly readable sword. Its cape is a flat rectangular panel.",
+            "fix": "Refine helmet and shoulder armor, separate arms and legs, add a visible sword, and shape the cape into several folded tapering sections with a torn hem and pale heraldry."
+          },
+          {
+            "id": "braziers-and-fire",
+            "area": "details",
+            "issue": "Braziers remain clean black pedestals outlined with gold seams, supporting simple triangular flames. The target uses weathered masonry plinths and open iron bowls with lively fire tongues.",
+            "fix": "Replace black-and-gold bodies with irregular stone stacks, add iron basket rims and supports, and layer varied translucent flame shapes with small drifting embers."
+          },
+          {
+            "id": "ruin-scatter",
+            "area": "details",
+            "issue": "Debris consists mainly of similarly angular blocks arranged along the boundary. Vegetation is sparse straight spikes, while added candle groups are more conspicuous than the target's natural rubble.",
+            "fix": "Scatter small chips, larger fallen arch segments, partly buried blocks, and branching dry plants across cracks and perimeter transitions; reduce conspicuous repeated candle clusters."
+          },
+          {
+            "id": "hooded-statues",
+            "area": "details",
+            "issue": "The two substantial hooded stone figures visible beneath the target's left arches are absent.",
+            "fix": "Add two readable robed statues with recessed hood faces, folded garments, hands, and separate bases, and illuminate their silhouettes with nearby fires."
+          },
+          {
+            "id": "distant-window-lights",
+            "area": "details",
+            "issue": "The left towers have a few large straight yellow bars. The target uses numerous tiny amber Gothic windows at several depths and heights.",
+            "fix": "Populate the rebuilt skyline with sparse narrow pointed windows and clustered cathedral tracery, varying brightness and scale with distance."
+          }
+        ],
+        "judgedAt": "2026-09-16T08:30:35.815Z"
+      }
+    },
+    {
+      "index": 3,
+      "kind": "rethink",
+      "targetVersion": 1,
+      "at": "2026-09-16T08:40:05.545Z",
+      "capture": "rounds/03/capture.png",
+      "fps": 119.94,
+      "note": "Rebuilt the background as a dense layered cathedral city, narrowed and scaled the portal, changed camera elevation, rebuilt small masonry and step courses, added textured heraldic cloth and fragmented wet reflections.",
+      "verdict": {
+        "composition": 1.45,
+        "lighting": 1.3,
+        "materials": 1.2,
+        "details": 0.3,
+        "total": 4.25,
+        "summary": "The denser skyline, textured heraldic banners, and additional architectural detail improve the resemblance slightly. The broad visual ingredients are present, but the build remains a tidy, steeply viewed enclosed platform with an oversized door and repetitive towers. The target has a much lower and wider composition, layered cathedral city, deeply weathered ruins, and richly broken wet reflections. Those structural and material differences still dominate.",
+        "gaps": [
+          {
+            "id": "camera-framing",
+            "area": "composition",
+            "issue": "The build uses a taller frame and substantially steeper view than the target. It exposes the platform perimeter and a large empty foreground strip, while the target crops through substantial foreground ruins.",
+            "fix": "Use the target's approximately 16:9 frame, lower camera elevation, and move the framing inward so the platform boundaries disappear beyond the edges and the character sits near the lower center."
+          },
+          {
+            "id": "cathedral-city-background",
+            "area": "composition",
+            "issue": "More background towers are present, but they are repeated tapering stacks with enormous plain facades. There are no convincing cliff terraces, cathedral complexes, or high arched bridges.",
+            "fix": "Build distinct large cathedral masses with clustered buttresses and fine spires, connect different elevations with arched bridges, and support the city on irregular rocky terraces. Vary silhouettes and distances rather than repeating the same tower."
+          },
+          {
+            "id": "courtyard-proportions",
+            "area": "composition",
+            "issue": "The entrance remains overwhelmingly large relative to the small central walking area. The target dedicates most of its lower half to a broad open terrace.",
+            "fix": "Reduce the portal's apparent width and height, expand the terrace laterally, and spread the fires and side architecture toward the frame edges."
+          },
+          {
+            "id": "foreground-ruins",
+            "area": "composition",
+            "issue": "The foreground consists of a regular parapet and pristine capped piers. The target has overlapping collapsed masonry and a large near-camera banner at lower left.",
+            "fix": "Replace the regular front boundary with tall broken wall fragments and irregular block piles; add a large cropped burgundy banner and horizontal support pole in the lower-left foreground."
+          },
+          {
+            "id": "entrance-architecture",
+            "area": "composition",
+            "issue": "The door fills nearly its entire enclosing arch and has little architectural depth. The surrounding towers retain clean stacked caps, while the target has a narrow door inside several deep arch rings and jagged ruined buttresses.",
+            "fix": "Narrow the door, recess it deeply, add several independently segmented nested pointed arches, thicken the surrounding wall, and break the flanking tower silhouettes."
+          },
+          {
+            "id": "side-arcade-layout",
+            "area": "composition",
+            "issue": "The left side has an isolated narrow arch rather than the target's substantial connected arcade. Solid rear and right walls still enclose the platform.",
+            "fix": "Create several connected left arcade bays and remove most right-side enclosing masonry, leaving one prominent arch overlooking the distant city."
+          },
+          {
+            "id": "warm-cool-lighting",
+            "area": "lighting",
+            "issue": "Architectural surfaces have relatively flat gray-brown lighting, and warm light mostly creates smooth floor patches. The target has strong amber illumination climbing individual columns and steps, contrasted with crisp cool wet highlights.",
+            "fix": "Increase localized warm illumination on stone beside each fire and around the doorway, strengthen cool directional highlights, and retain deeper occlusion in joints and recesses."
+          },
+          {
+            "id": "portal-glow",
+            "area": "lighting",
+            "issue": "Two large diffuse yellow hotspots obscure the door detail. The target concentrates light along the pointed perimeter, cross, door seams, and bright threshold.",
+            "fix": "Reduce broad central door illumination, use controlled amber emission on the perimeter and seam details, and light the recessed archivolts and threshold separately."
+          },
+          {
+            "id": "atmospheric-depth",
+            "area": "lighting",
+            "issue": "The dense towers have similar darkness and sharpness across depth, while high-contrast cloud texture remains conspicuous between them. The target's city recedes through successive blue haze layers.",
+            "fix": "Separate architecture into several depth groups with progressively lighter, lower-contrast blue shading, and soften the cloud texture behind the skyline."
+          },
+          {
+            "id": "reflection-character",
+            "area": "materials",
+            "issue": "Reflections remain smooth elongated light patches on uniformly paved ground. The target has bright irregular puddles, rough dry islands, fragmented reflections, and fine high-frequency glints.",
+            "fix": "Introduce irregular puddle masks, stronger multiscale normal variation, and per-paver wetness variation; break reflections at raised edges and dry sections while retaining sharp glints inside wet depressions."
+          },
+          {
+            "id": "stone-block-scale",
+            "area": "materials",
+            "issue": "Arch blocks, steps, pier caps, and parapets still have straight pristine edges and repeated dimensions. The background uses conspicuous regular horizontal tiers.",
+            "fix": "Subdivide large slabs, vary stone depth and dimensions, chip corners, remove occasional blocks, and introduce uneven broken silhouettes without uniformly displacing every stone."
+          },
+          {
+            "id": "stone-surface-weathering",
+            "area": "materials",
+            "issue": "The masonry remains uniformly clean and the paving forms a regular uninterrupted brick pattern. Target stones have cracked faces, dirt-filled joints, damaged edges, and substantial accumulated grime.",
+            "fix": "Add localized crevice grime and pitting, vary block coloration more naturally, split steps into damaged stones, and replace some pavers with cracked, sunken, or missing pieces."
+          },
+          {
+            "id": "banner-fabric",
+            "area": "materials",
+            "issue": "The new cloth imagery and heraldry improve the banners, but their silhouettes remain mostly flat with simple pointed hems. The target has long irregular tears and visibly folded, hanging fabric.",
+            "fix": "Add geometric folds and sag, uneven torn strips and holes, and replace the ornate branching symbol with the target's simpler pale cross-like heraldry."
+          },
+          {
+            "id": "character-silhouette",
+            "area": "details",
+            "issue": "The character still reads as a square-headed block figure with a broad flat cape, minimally separated limbs, and no clearly readable sword.",
+            "fix": "Refine the helmet and shoulder armor, articulate the arms and legs, add an obvious sword angled down to one side, and taper the cape into folded torn sections."
+          },
+          {
+            "id": "braziers-and-fire",
+            "area": "details",
+            "issue": "The braziers remain black rectangular stacks with gold seams and simple triangular flame shapes. The target uses weathered stone plinths supporting shallow open iron bowls.",
+            "fix": "Replace the black stacks with irregular gray stone pedestals, add bowl rims and iron supports, and use layered flame tongues with varied height, translucency, and scattered embers."
+          },
+          {
+            "id": "ruin-scatter",
+            "area": "details",
+            "issue": "Debris is concentrated into tidy perimeter clusters of similarly shaped blocks, and plants are sparse angular spikes. Repeated candle clusters are more prominent than in the target.",
+            "fix": "Distribute varied chips, fallen arch segments, partly buried slabs, and branching dry weeds across the transitions between architecture and paving; reduce the repeated candle groupings."
+          },
+          {
+            "id": "hooded-statues",
+            "area": "details",
+            "issue": "The left-side forms are squared pillar-like figures with little readable robe or hood anatomy. The target has two substantial hooded statues under separate arcade bays.",
+            "fix": "Create two distinct statues with recessed hood faces, sloping shoulders, folded robes, hands held near the waist, and separate stone bases under the expanded arcade."
+          },
+          {
+            "id": "distant-window-lights",
+            "area": "details",
+            "issue": "Background windows are mostly large repeated straight yellow bars, making the skyline resemble stacked building modules.",
+            "fix": "Replace bars with smaller pointed Gothic windows, vary their spacing and brightness, and add clustered tracery to a few major cathedral facades."
+          },
+          {
+            "id": "rain-scale",
+            "area": "details",
+            "issue": "The build's rain appears as long conspicuous streaks across the sky and architecture. The target's rain is finer and less visually dominant.",
+            "fix": "Shorten and thin the rain streaks, reduce opacity, and vary visibility with lighting so only a subset catches bright light."
+          }
+        ],
+        "judgedAt": "2026-09-16T08:45:44.152Z"
+      }
+    }
+  ],
+  "assets": [
+    {
+      "id": "masonry",
+      "role": "environment",
+      "source": "procedural",
+      "state": "placed",
+      "files": [
+        "scene/main.js",
+        "scene/textures/slate.png"
+      ],
+      "note": "Repeated voxel masonry, locally authored gothic arches, towers and distant city; alignment by block course height.",
+      "updatedAt": "2026-09-16T08:39:20.198Z"
+    },
+    {
+      "id": "knight",
+      "role": "hero",
+      "source": "procedural",
+      "state": "placed",
+      "files": [
+        "scene/main.js",
+        "scene/textures/heraldic-cloth.png"
+      ],
+      "note": "Articulated voxel knight, height 1.85 scene units, forward +Z; block construction matches style and enables independent gait.",
+      "updatedAt": "2026-09-16T08:39:20.237Z"
+    },
+    {
+      "id": "wet-floor",
+      "role": "environment",
+      "source": "procedural",
+      "state": "placed",
+      "files": [
+        "scene/main.js",
+        "scene/textures/slate.png"
+      ],
+      "note": "Image-generated stone texture plus real planar reflected scene and animated rain ripples.",
+      "updatedAt": "2026-09-16T08:39:20.274Z"
+    },
+    {
+      "id": "atmosphere",
+      "role": "environment",
+      "source": "procedural",
+      "state": "placed",
+      "files": [
+        "scene/main.js",
+        "scene/textures/storm-sky.png",
+        "scene/textures/sanctuary-door.png",
+        "scene/textures/heraldic-cloth.png"
+      ],
+      "note": "Local rain, embers, cloth flags, fog and fire geometry; no imported assets.",
+      "updatedAt": "2026-09-16T08:39:20.311Z"
+    }
+  ],
+  "evaluation": {
+    "exit": "stall-approaching",
+    "reasons": [
+      "the judge named the same gap in two verdicts in a row: camera-framing, cathedral-city-background, courtyard-proportions, foreground-ruins, entrance-architecture, side-arcade-layout, warm-cool-lighting, portal-glow, atmospheric-depth, reflection-character, stone-block-scale, stone-surface-weathering, banner-fabric, character-silhouette, braziers-and-fire, ruin-scatter, hooded-statues, distant-window-lights",
+      "the best of the last 2 rounds is 4.25/10, less than a full point over the 3.35/10 before them"
+    ],
+    "targetVersion": 1,
+    "best": {
+      "index": 3,
+      "total": 4.25
+    },
+    "last": {
+      "index": 3,
+      "total": 4.25
+    },
+    "trend": [
+      3.35,
+      4,
+      4.25
+    ],
+    "repeatedGaps": [
+      "camera-framing",
+      "cathedral-city-background",
+      "courtyard-proportions",
+      "foreground-ruins",
+      "entrance-architecture",
+      "side-arcade-layout",
+      "warm-cool-lighting",
+      "portal-glow",
+      "atmospheric-depth",
+      "reflection-character",
+      "stone-block-scale",
+      "stone-surface-weathering",
+      "banner-fabric",
+      "character-silhouette",
+      "braziers-and-fire",
+      "ruin-scatter",
+      "hooded-statues",
+      "distant-window-lights"
+    ],
+    "fpsOk": true,
+    "computedAt": "2026-09-16T08:45:44.152Z"
+  }
+}

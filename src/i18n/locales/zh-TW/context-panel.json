@@ -5,6 +5,8 @@
   "version": "版本",
   "working_dir": "工作目錄",
   "cost": "費用",
+  "tokens": "Token",
+  "tokens_detail": "輸入 {{input}} · 快取命中 {{cached}} · 輸出 {{output}}",
   "turns": "回合",
   "lines": "行數",
   "tasks": "任務",

@@ -5,6 +5,8 @@
   "version": "Version",
   "working_dir": "Arbeitsverzeichnis",
   "cost": "Kosten",
+  "tokens": "Tokens",
+  "tokens_detail": "Eingabe {{input}} · gecacht {{cached}} · Ausgabe {{output}}",
   "turns": "Runden",
   "lines": "Zeilen",
   "tasks": "Aufgaben",

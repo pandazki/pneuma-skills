@@ -48,7 +48,7 @@ before applying an old command, endpoint, or prompt recipe.
 | Shell pipelines, Unicode, status-code parsing | [Shell portability](../references/mode-gotchas.md#shell-portability) |
 | Wordtaste planning, writer prompts, chapter/asset ownership | [Wordtaste prompt ownership](../references/mode-gotchas.md#wordtaste-prompt-ownership) |
 | Workflow results, interactive pipelines, retries, queues, background processes | [Workflow execution and recovery](../references/mode-gotchas.md#workflow-execution-and-recovery) |
-| Image/video generation, knowledge figures, audio, transcript QA, sprite alignment | [Media generation and validation](../references/mode-gotchas.md#media-generation-and-validation) |
+| Image/video generation, knowledge figures, audio, transcript QA, sprite alignment, headless Blender, GLB cleaning, WebGL capture | [Media generation and validation](../references/mode-gotchas.md#media-generation-and-validation) |
 
 Keep this file focused on authoring rules and routing. Add detailed evidence to
 the matching reference section and identify its mode/version scope; an incident

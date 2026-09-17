@@ -28,6 +28,8 @@ export interface CodexSessionInfo {
 
 export interface CodexLaunchOptions {
   model?: string;
+  /** Sent as `effort` on every `turn/start`; unset leaves Codex's config default. */
+  reasoningEffort?: string;
   permissionMode?: string;
   cwd?: string;
   codexBinary?: string;
@@ -173,6 +175,7 @@ export class CodexCliLauncher {
     // Create adapter with the transport directly
     const adapterOptions: CodexAdapterOptions = {
       model: options.model,
+      reasoningEffort: options.reasoningEffort,
       cwd: info.cwd,
       approvalMode: options.permissionMode,
       sandbox: options.sandbox,

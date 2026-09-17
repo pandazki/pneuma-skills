@@ -42,7 +42,23 @@ interface JsonRpcResponse {
 
 type JsonRpcMessage = JsonRpcRequest | JsonRpcNotification | JsonRpcResponse;
 
-// Codex item types
+/**
+ * One thread item. `type` selects the shape; every other field is read per
+ * case in `handleItemStarted` / `handleItemCompleted`, which is why this stays
+ * an index signature instead of a union — upstream reshapes these payloads
+ * every few releases (see the v0.114 notes in the README).
+ *
+ * Handled today: `agentMessage`, `reasoning`, `userMessage`,
+ * `commandExecution`, `fileChange`, `webSearch`, `mcpToolCall`,
+ * `contextCompaction`, `imageGeneration`, `imageView`.
+ *
+ * `imageGeneration` (codex-cli 0.154, `image_generation` feature) carries
+ * `{ status, result, revisedPrompt?, savedPath?, transparentBackground?,
+ * failure? }`. **`result` is an opaque string that may be a multi-megabyte
+ * base64 image — never copy it into an envelope or a log.** `savedPath` is the
+ * absolute path of the file Codex wrote and is the only part worth showing.
+ * `imageView` carries `{ path }`.
+ */
 interface CodexItem {
   type: string;
   id: string;
@@ -260,6 +276,61 @@ function basenameOf(agentPath: string): string {
   const cut = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
   return cut >= 0 ? trimmed.slice(cut + 1) : trimmed;
 }
+
+/** `imageGeneration` statuses that mean the model finished the picture. */
+const IMAGE_GENERATION_SUCCESS_STATUSES = new Set(["completed", "success"]);
+
+/**
+ * Input for the `ImageGeneration` tool_use card. Both fields normally arrive
+ * only with `item/completed`, so the started card is usually empty — include a
+ * field only when the item really carries it rather than rendering
+ * `{"revisedPrompt":""}` as noise (same rule as `webSearch.query`).
+ *
+ * `item.result` is deliberately never read here: it is the opaque, possibly
+ * huge payload documented on `CodexItem`.
+ */
+function imageGenerationInput(item: CodexItem): Record<string, unknown> {
+  const input: Record<string, unknown> = {};
+  if (typeof item.transparentBackground === "boolean") {
+    input.transparentBackground = item.transparentBackground;
+  }
+  if (typeof item.revisedPrompt === "string" && item.revisedPrompt.length > 0) {
+    input.revisedPrompt = item.revisedPrompt;
+  }
+  return input;
+}
+
+/** The path an `imageView` item refers to, or `""` when the field is missing. */
+function imageViewPath(item: CodexItem): string {
+  return typeof item.path === "string" ? item.path : "";
+}
+
+/** ISO text for a unix-seconds timestamp; `null` when it isn't a usable date. */
+function isoFromUnixSeconds(seconds: unknown): string | null {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds)) return null;
+  const date = new Date(seconds * 1000);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+/**
+ * Human text for an `imageGeneration` failure, e.g.
+ * `Image generation failed: usage limit exceeded (limit image_daily, resets at
+ * 2026-09-16T…Z)`. `usageLimitExceeded` is the only variant the schema names
+ * today; an unknown `type` is spaced out rather than dropped so a new variant
+ * still reads as English instead of vanishing.
+ */
+function describeImageGenerationFailure(failure: Record<string, unknown>): string {
+  const rawType = typeof failure.type === "string" ? failure.type : "";
+  const kind = rawType
+    ? rawType.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase()
+    : "unknown failure";
+  const details: string[] = [];
+  if (typeof failure.limitId === "string" && failure.limitId.length > 0) {
+    details.push(`limit ${failure.limitId}`);
+  }
+  const resetsAt = isoFromUnixSeconds(failure.resetsAt);
+  if (resetsAt) details.push(`resets at ${resetsAt}`);
+  return `Image generation failed: ${kind}${details.length > 0 ? ` (${details.join(", ")})` : ""}`;}
 
 /** Safely extract a string kind from a Codex file change entry. */
 function safeKind(kind: unknown): string {
@@ -575,6 +646,12 @@ export class StdioTransport implements ICodexTransport {
 
 export interface CodexAdapterOptions {
   model?: string;
+  /**
+   * Reasoning effort for every turn (`turn/start.effort`). `thread/start`
+   * has no such field, so it travels per turn; unset leaves the effort to
+   * Codex's own config, which defaults to medium.
+   */
+  reasoningEffort?: string;
   cwd?: string;
   approvalMode?: string;
   sandbox?: "workspace-write" | "danger-full-access";
@@ -664,6 +741,8 @@ export class CodexAdapter {
   private cumulativeInputTokens = 0;
   private cumulativeOutputTokens = 0;
   private cumulativeCostUsd = 0;
+  /** Cumulative counts from the last `thread/tokenUsage/updated.total`; null until one arrives. */
+  private tokenUsage: import("../../server/session-types.js").SessionTokenUsage | null = null;
   private turnCount = 0;
   private totalLinesAdded = 0;
   private totalLinesRemoved = 0;
@@ -1020,6 +1099,7 @@ export class CodexAdapter {
         approvalPolicy: this.mapApprovalPolicy(this.currentPermissionMode),
         sandboxPolicy: this.mapSandboxPolicyObject(this.currentPermissionMode),
         model: this.activeModel || undefined,
+        ...(this.options.reasoningEffort ? { effort: this.options.reasoningEffort } : {}),
       };
       const result = await this.transport.call("turn/start", turnParams) as { turn: { id: string } };
       this.mainThread.currentTurnId = result.turn.id;
@@ -1919,6 +1999,27 @@ export class CodexAdapter {
         break;
       }
 
+      case "imageGeneration": {
+        // Drawing an image takes tens of seconds. Without this card the user
+        // watches the agent "think" with nothing on screen to explain why.
+        const toolUseId = item.id;
+        if (!thread.emittedToolUseIds.has(toolUseId)) {
+          thread.emittedToolUseIds.add(toolUseId);
+          this.emitToolUse(toolUseId, "ImageGeneration", imageGenerationInput(item), thread.anchorId);
+        }
+        break;
+      }
+
+      case "imageView": {
+        const toolUseId = item.id;
+        if (!thread.emittedToolUseIds.has(toolUseId)) {
+          thread.emittedToolUseIds.add(toolUseId);
+          const path = imageViewPath(item);
+          this.emitToolUse(toolUseId, "ImageView", path ? { path } : {}, thread.anchorId);
+        }
+        break;
+      }
+
       case "mcpToolCall": {
         const toolUseId = item.id;
         if (!thread.emittedToolUseIds.has(toolUseId)) {
@@ -2051,6 +2152,54 @@ export class CodexAdapter {
         if (typeof output === "string" && output.length > 0) {
           this.emitToolResult(toolUseId, output, false, thread.anchorId);
         }
+        break;
+      }
+
+      case "imageGeneration": {
+        const toolUseId = item.id;
+        if (!thread.emittedToolUseIds.has(toolUseId)) {
+          thread.emittedToolUseIds.add(toolUseId);
+          this.emitToolUse(toolUseId, "ImageGeneration", imageGenerationInput(item), thread.anchorId);
+        }
+
+        // A failure outranks `status`: it is the only field that says why.
+        const failure = item.failure as Record<string, unknown> | null | undefined;
+        if (failure && typeof failure === "object") {
+          this.emitToolResult(toolUseId, describeImageGenerationFailure(failure), true, thread.anchorId);
+          break;
+        }
+
+        const savedPath = typeof item.savedPath === "string" ? item.savedPath : "";
+        if (savedPath) {
+          // The absolute path IS the payload worth sending: `stampFileRefs`
+          // (server/file-ref.ts) lifts it out of this text and the chat renders
+          // a thumbnail when the file lives inside the session workspace.
+          const revisedPrompt = typeof item.revisedPrompt === "string" ? item.revisedPrompt : "";
+          const suffix = revisedPrompt ? `\nRevised prompt: ${revisedPrompt}` : "";
+          this.emitToolResult(toolUseId, `Saved image to ${savedPath}${suffix}`, false, thread.anchorId);
+          break;
+        }
+
+        const status = typeof item.status === "string" ? item.status : "";
+        if (status && !IMAGE_GENERATION_SUCCESS_STATUSES.has(status.toLowerCase())) {
+          this.emitToolResult(toolUseId, `Image generation failed (status: ${status})`, true, thread.anchorId);
+          break;
+        }
+
+        // Succeeded but wrote nothing we can point at — say so rather than
+        // leaving the card open forever. `result` stays out of the chat.
+        this.emitToolResult(toolUseId, "Image generated (no saved path reported)", false, thread.anchorId);
+        break;
+      }
+
+      case "imageView": {
+        const toolUseId = item.id;
+        const path = imageViewPath(item);
+        if (!thread.emittedToolUseIds.has(toolUseId)) {
+          thread.emittedToolUseIds.add(toolUseId);
+          this.emitToolUse(toolUseId, "ImageView", path ? { path } : {}, thread.anchorId);
+        }
+        this.emitToolResult(toolUseId, path ? `Viewed ${path}` : "Viewed image", false, thread.anchorId);
         break;
       }
 
@@ -2377,6 +2526,14 @@ export class CodexAdapter {
       // running counters rather than adding to them.
       this.cumulativeInputTokens = tokenUsage.total.inputTokens ?? 0;
       this.cumulativeOutputTokens = tokenUsage.total.outputTokens ?? 0;
+      // The session's whole spend so far, as raw counts; the price is the
+      // reader's business (a mode's cost panel, a subscription's quota).
+      this.tokenUsage = {
+        input_tokens: tokenUsage.total.inputTokens ?? 0,
+        cached_input_tokens: tokenUsage.total.cachedInputTokens ?? 0,
+        output_tokens: tokenUsage.total.outputTokens ?? 0,
+        reasoning_output_tokens: tokenUsage.total.reasoningOutputTokens ?? 0,
+      };
       modelContextWindow = tokenUsage.modelContextWindow ?? DEFAULT_CONTEXT_WINDOW;
       // `last` is absent until the first request completes; until then `total`
       // *is* the last request, so it is the honest fallback.
@@ -2405,6 +2562,7 @@ export class CodexAdapter {
       model: this.activeModel,
       context_used_percent: contextPercent(contextTokens, modelContextWindow),
       total_cost_usd: this.cumulativeCostUsd,
+      ...(this.tokenUsage ? { token_usage: this.tokenUsage } : {}),
     });
   }
 

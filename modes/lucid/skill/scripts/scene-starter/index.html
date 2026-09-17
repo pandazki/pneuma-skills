@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lucid scene</title>
+    <style>
+      /* Full-bleed: the capture is the whole page, so nothing may add margin
+         or letterbox the canvas. */
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #eceff3;
+      }
+      canvas {
+        display: block; /* an inline canvas leaves a baseline gap at the bottom */
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+
+    <!-- The bridge loads BEFORE the module graph so `window.lucid` already
+         exists when main.js runs and registers the renderer. -->
+    <script src="./lucid-bridge.js"></script>
+
+    <!-- Every specifier resolves inside this directory. That is what lets the
+         page run from /content/<project>/scene/index.html, from a file://
+         path, or from any sub-path a future deploy puts it under, with no dev
+         server and no build step. Keep the trailing slash on
+         "three/addons/" — it is a prefix mapping, not a file. -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./vendor/three.module.js",
+          "three/addons/": "./vendor/addons/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

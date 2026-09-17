@@ -131,7 +131,9 @@ RPC (`fetchAvailableModels`); skills come from `skills/list`.
 // nested under `tokenUsage`, legacy was flat. Adapter handles both.
 // `total` = cumulative session spend, `last` = the most recent request.
 // The ctx gauge measures `last` against the window; only cumulative
-// counters read `total`. See "Two token numbers" below.
+// counters read `total`. See "Two token numbers" below. `total` is also
+// forwarded raw as `session_update.token_usage` (input / cached / output /
+// reasoning) — unpriced on purpose; a mode's cost panel prices it.
 { "method": "thread/tokenUsage/updated", "params": {
     "tokenUsage": {
       "total": { "inputTokens": 23245850, "outputTokens": 74081, "totalTokens": 23319931 },
@@ -139,6 +141,24 @@ RPC (`fetchAvailableModels`); skills come from `skills/list`.
       "modelContextWindow": 258400
     }
 } }
+
+// Image generation (codex-cli 0.154, `image_generation` feature) — the model
+// draws for tens of seconds, so the started item opens an `ImageGeneration`
+// tool_use card and the completed item closes it. See "Image items" below.
+{ "method": "item/started", "params": { "item": {
+    "type": "imageGeneration", "id": "itm_…", "status": "inProgress", "result": ""
+} } }
+{ "method": "item/completed", "params": { "item": {
+    "type": "imageGeneration", "id": "itm_…", "status": "completed",
+    "result": "<opaque, possibly multi-MB base64 — never echoed>",
+    "revisedPrompt": "An isometric shrine courtyard at dusk",
+    "savedPath": "/abs/path/target.png", "transparentBackground": false,
+    "failure": null
+} } }
+
+// The model looking at an image it (or the user) produced.
+{ "method": "item/started",   "params": { "item": { "type": "imageView", "id": "itm_…", "path": "/abs/path/target.png" } } }
+{ "method": "item/completed", "params": { "item": { "type": "imageView", "id": "itm_…", "path": "/abs/path/target.png" } } }
 
 // turn/completed — adapter then SYNTHESISES a Pneuma `result` envelope
 // (Codex has no native "all done with this turn" message that matches
@@ -335,7 +355,7 @@ must call `transport.respond(id, …)` once the user decides:
 |-------------------------|--------|
 | `session_init`          | **Synthesised** by the adapter after `thread/start` succeeds. |
 | `assistant` (text)      | Synthesised on `item/completed` (or on `turn/completed` flush) from accumulated `streamingText`. |
-| `assistant` (`tool_use`)| Synthesised on `item/started` for `commandExecution` / `fileChange` / `webSearch` / `mcpToolCall`. |
+| `assistant` (`tool_use`)| Synthesised on `item/started` for `commandExecution` / `fileChange` / `webSearch` / `mcpToolCall` / `imageGeneration` / `imageView`. |
 | `assistant` (`tool_result`) | Synthesised on `item/completed` with the tool's output. |
 | `assistant` (`thinking`)| Synthesised on `item/completed` for `reasoning` items. |
 | `assistant` (`tool_use` / `tool_result`, collab) | Synthesised from a `collabAgentToolCall` item in the **sender's** conversation: name = snake_case of `tool` (`spawn_agent`, `send_input`, `wait_agent` for `wait`, `close_agent`, `resume_agent`, `send_message`, `followup_task`, `interrupt_agent`, `list_agents`), `input` = `{ agent?, agents?, prompt? (400 chars), model?, reasoning_effort? }` (labels omitted while unknown), block id = the spawned agent's anchor when the spawn names exactly one agent, the item id otherwise; the id is decided once per item (`collabCardIds`) so the `tool_result` on `item/completed` names it too. That `tool_result` summarises `agentsStates` as `label: status — message` per agent, `is_error` when the item failed. |
@@ -346,6 +366,40 @@ must call `transport.respond(id, …)` once the user decides:
 | `status_change`         | Synthesised from `thread/status/changed` and the main thread's turn events; child threads never move it. |
 | `system_event` (`compact_boundary`) | **Synthesised** once per compaction of the **main** thread, from its `item/completed` (`contextCompaction`) or `thread/compacted` — whichever the build sends, deduped. A subagent compacting its own window draws nothing. Same envelope the Claude bridge forwards from `system.compact_boundary`, so the chat draws one marker for every backend. |
 | `error`                 | Native `error` notification, text lifted from `params.error.message` (v2) or the legacy top-level fields; `(retrying)` appended when `willRetry` is set. A child thread's error goes to its roster entry instead. |
+
+### Image items (`imageGeneration`, `imageView`)
+
+Both used to land in the `default:` branch of `handleItemStarted` /
+`handleItemCompleted` and disappear: the user watched the agent "think" for
+half a minute with nothing on screen while a picture was being drawn. They are
+now surfaced exactly like `webSearch` — a `tool_use` on `item/started`, a
+`tool_result` on `item/completed`, and the `emittedToolUseIds` guard so a
+completion that arrives without a started still opens the card first.
+
+- **`result` is never read.** It is an opaque string that can be a
+  multi-megabyte base64 image. It must not reach an envelope or a log; the
+  adapter only reports `savedPath`.
+- **Tool-use input is sparse on purpose.** `revisedPrompt` and
+  `transparentBackground` usually arrive only at completion, so the card shows
+  a field only when the item actually carries it (same rule as `webSearch`'s
+  suppressed `query`).
+- **Result text.** `failure` first → `Image generation failed: usage limit
+  exceeded (limit <limitId>, resets at <ISO>)` as an error (`resetsAt` is unix
+  **seconds**); else `savedPath` → `Saved image to <path>` plus an optional
+  `Revised prompt: …` line; else a non-`completed`/`success` status → an error
+  naming the status; else `Image generated (no saved path reported)`.
+  `imageView` closes its card with `Viewed <path>`.
+- **`savedPath` and `imageView.path` are absolute.** That is what makes the
+  thumbnail work: the tool_result renderer is *not* text-only —
+  `stampFileRefs` (`server/file-ref.ts`) scans result text for absolute image
+  paths that are inside the session workspace *and* exist on disk, and
+  `ToolResultBlock` renders each as a `FilePreview` thumbnail
+  (`src/components/MessageBubble.tsx`, `src/components/FilePreview.tsx`). So a
+  generated image that lands in the workspace already previews in the chat
+  through the ordinary path, with no image-specific block type.
+- **Follow-up.** An image Codex saves *outside* the workspace (or with no
+  `savedPath` at all) stays text-only; there is no preview that carries pixels
+  in the envelope, and decoding `result` for one is deliberately not done.
 
 ## Capabilities + why
 

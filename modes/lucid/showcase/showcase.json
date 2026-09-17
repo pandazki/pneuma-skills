@@ -1,0 +1,66 @@
+{
+  "tagline": {
+    "en": "Dream the screenshot first, then build until it matches",
+    "zh-CN": "先把成品截图梦出来，再一轮轮建到它那里",
+    "ja": "先に完成図を夢に見て、そこへ組み上げる"
+  },
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": {
+        "en": "The Target Is Dreamed, Then Locked",
+        "zh-CN": "目标先梦出来，然后锁死",
+        "ja": "目標は夢に見て、そして固定する"
+      },
+      "description": {
+        "en": "Describe the scene you want and the agent generates one target screenshot before it writes a line of code, then locks it. Every later round is scored against that same picture, so progress is a trajectory and not a series of opinions — replacing the target archives the old one and says so on the record.",
+        "zh-CN": "你把想要的画面说出来，agent 先用图像生成画出一张目标截图，然后把它锁住，才开始写代码。之后每一轮都对着这同一张图打分，所以进展是一条可比较的曲线，而不是一串各说各话的评价；换目标会归档旧的那张，并留下记录。",
+        "ja": "欲しい画面を言葉にすると、エージェントはコードを書く前にまず目標スクリーンショットを 1 枚生成し、それを固定します。以降のラウンドはすべて同じ絵に対して採点されるので、進捗は感想の羅列ではなく一本の軌跡になります。差し替えれば旧目標は履歴に残ります。"
+      },
+      "media": "highlight-locked-target.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "Wipe The Render Over The Dream",
+        "zh-CN": "把渲染和梦叠在一起擦",
+        "ja": "レンダーを夢の上でワイプする"
+      },
+      "description": {
+        "en": "The stage runs your Three.js scene live in the browser and puts the target over it under a draggable wipe, so a lighting change is judged on the same pixels instead of from memory. Switch to Live, Target or Split at any time, and pick any past round to compare its recorded capture against the same dream.",
+        "zh-CN": "舞台上是在浏览器里真跑起来的 Three.js 场景，目标图叠在上面，用一条可拖的分割线擦开——灯光改了多少，是在同一块像素上比出来的，不是靠记忆。Live、Target、Split 随时切，点任意一轮，就用那一轮存下来的截图跟同一张梦对比。",
+        "ja": "ステージではあなたの Three.js シーンがブラウザ上で実際に動き、その上に目標画像がドラッグ可能なワイプで重なります。ライティングの変化は記憶ではなく同じピクセル上で判定されます。Live / Target / Split はいつでも切り替えられ、過去のラウンドを選べばその記録キャプチャを同じ夢と比べられます。"
+      },
+      "media": "highlight-wipe-compare.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "A Judge With No Memory",
+        "zh-CN": "一个没有记忆的评审",
+        "ja": "記憶を持たない審査役"
+      },
+      "description": {
+        "en": "Every round is captured through the scene's own renderer and handed to a judge with a fresh context and no previous scores, which grades composition, lighting, materials and details and names the gaps it wants closed. The agent that built the scene never grades its own work; a gap named in three verdicts running calls for a rethink, and a rethink that gains less than a full point stops the loop rather than starting another.",
+        "zh-CN": "每一轮都由场景自己的渲染器截图，交给一个上下文全新、看不到上一轮分数的评审：给构图、光照、材质、细节打分，并点名下一步要补的缺口。建场景的那个 agent 从不给自己判卷；同一个缺口连续三轮被点名，触发重新构思；重新构思涨不到一分，循环就停下来问你，而不是再来一轮。",
+        "ja": "各ラウンドはシーン自身のレンダラーで撮影され、文脈をまっさらにし前回の点数も見ていない審査役に渡されます。構図・ライティング・マテリアル・ディテールを採点し、埋めるべきギャップを名指しします。作った本人が自作を採点することはなく、同じギャップが 3 回続けば作り直しの合図、作り直しても 1 点届かなければループは次に進まず立ち止まります。"
+      },
+      "media": "highlight-fresh-judge.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "An Asset Ladder, Not A Black Box",
+        "zh-CN": "素材是一架阶梯，不是黑箱",
+        "ja": "素材は階段であり、ブラックボックスではない"
+      },
+      "description": {
+        "en": "Every model comes down a ladder: image-to-3D first — Tripo H3.1 for heroes, Trellis for props — when a fal key is configured, headless Blender for what only a modeller can do, procedural geometry as the last rung. The ledger records every model's role, where it came from and how far it got; the strip keeps fps, frame time, triangles and textures in view so the scene stays playable as it gets prettier; and a cost panel prices every job, image and token at list price, in total and per round.",
+        "zh-CN": "每个模型都沿一架阶梯往下走：配了 key 就先用图生 3D——主角用 Tripo H3.1，配景用 Trellis；只有真需要建模的东西才进无头 Blender；程序化几何是最后一级。台账记下每个模型的角色、来路和进度；状态条一直显示帧率、帧耗时、三角面和贴图数，保证场景越做越好看的同时还跑得动；成本面板按标价把每个任务、每张图、每个 token 算清楚，总计和逐轮都有。",
+        "ja": "どのモデルも階段を上から下へ降りていきます。キーを設定すればまず画像から 3D（ヒーローは Tripo H3.1、小物は Trellis）、本物のモデリングが要るものだけヘッドレス Blender、プロシージャル形状は最後の段です。台帳が各モデルの役割・出自・進捗を記録し、ステータス行は fps・フレーム時間・三角形数・テクスチャ数を出し続け、コストパネルはジョブ・画像・トークンを定価で合計とラウンド別に示します。"
+      },
+      "media": "highlight-asset-ladder.png",
+      "mediaType": "image"
+    }
+  ]
+}

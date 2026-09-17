@@ -3,6 +3,15 @@ import { CodexAdapter, describeErrorNotification } from "../codex-adapter.js";
 import type { BrowserIncomingMessage } from "../../../server/session-types.js";
 import { createMockTransport, waitForInit } from "./mock-transport.js";
 
+/**
+ * Every content block from the assistant envelopes emitted so far, in arrival
+ * order. Codex splits a tool call across two envelopes (`msg-<id>` then
+ * `result-<id>`), so ordering assertions need the flattened view.
+ */
+function assistantBlocks(messages: BrowserIncomingMessage[]): any[] {
+  return messages.flatMap((m) => (m.type === "assistant" ? (m.message?.content ?? []) : []));
+}
+
 describe("CodexAdapter", () => {
   test("initializes with JSON-RPC handshake and thread start", async () => {
     const transport = createMockTransport();
@@ -87,6 +96,31 @@ describe("CodexAdapter", () => {
     expect(turnCall).toBeDefined();
     expect(turnCall?.params.threadId).toBe("thr_test");
     expect(turnCall?.params.input).toEqual([{ type: "text", text: "Hello Codex" }]);
+  });
+
+  // `thread/start` has no effort field; it travels on every turn. Unset means
+  // Codex's own config decides (medium by default), and a mode whose quality
+  // is taste (lucid) says high through `ModeManifest.agent.reasoningEffort`.
+  test("turn/start carries the session's reasoning effort, and nothing when unset", async () => {
+    const withEffort = createMockTransport();
+    const adapter = new CodexAdapter(withEffort, "test-session", {
+      model: "gpt-6-astra",
+      cwd: "/tmp/test",
+      reasoningEffort: "high",
+    });
+    await waitForInit();
+    adapter.sendBrowserMessage({ type: "user_message", content: "dream" });
+    await new Promise((r) => setTimeout(r, 20));
+    const start = withEffort._callHistory.find((c) => c.method === "turn/start");
+    expect(start?.params).toMatchObject({ effort: "high" });
+    expect(withEffort._callHistory.find((c) => c.method === "thread/start")?.params).not.toHaveProperty("effort");
+
+    const without = createMockTransport();
+    const plain = new CodexAdapter(without, "test-session-2", { model: "gpt-6-astra", cwd: "/tmp/test" });
+    await waitForInit();
+    plain.sendBrowserMessage({ type: "user_message", content: "dream" });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(without._callHistory.find((c) => c.method === "turn/start")?.params).not.toHaveProperty("effort");
   });
 
   test("steers an active turn with turn/steer without starting or interrupting a turn", async () => {
@@ -407,6 +441,38 @@ describe("CodexAdapter", () => {
     }
   });
 
+  // The session's cumulative counts travel raw: a mode's cost panel prices
+  // them, a subscription reads them as quota. Only the v0.114+ shape carries a
+  // total; the legacy flat shape is one request and says nothing cumulative.
+  test("reports the session's cumulative token usage from tokenUsage.total, unpriced", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    await waitForInit();
+
+    transport.simulateNotification("thread/tokenUsage/updated", {
+      tokenUsage: {
+        total: { inputTokens: 10_016_821, cachedInputTokens: 9_651_328, outputTokens: 48_712, reasoningOutputTokens: 14_991, totalTokens: 10_065_533 },
+        last: { inputTokens: 166_319, cachedInputTokens: 12_160, outputTokens: 237, reasoningOutputTokens: 23, totalTokens: 166_556 },
+        modelContextWindow: 258_400,
+      },
+    });
+    const update = messages.find((m) => m.type === "session_update" && "token_usage" in m.session);
+    expect(update?.type === "session_update" ? update.session.token_usage : null).toEqual({
+      input_tokens: 10_016_821, cached_input_tokens: 9_651_328, output_tokens: 48_712, reasoning_output_tokens: 14_991,
+    });
+    expect(update?.type === "session_update" ? update.session.total_cost_usd : null).toBe(0);
+
+    const legacy = createMockTransport();
+    const legacyMessages: BrowserIncomingMessage[] = [];
+    const legacyAdapter = new CodexAdapter(legacy, "test-session-legacy", { cwd: "/tmp/test" });
+    legacyAdapter.onBrowserMessage((msg) => legacyMessages.push(msg));
+    await waitForInit();
+    legacy.simulateNotification("thread/tokenUsage/updated", { inputTokens: 5000, outputTokens: 1000, modelContextWindow: 200000 });
+    expect(legacyMessages.some((m) => m.type === "session_update" && "token_usage" in m.session)).toBe(false);
+  });
+
   /**
    * These pin the v0.114+ `tokenUsage` shape, which shipped untested and let
    * the ctx gauge read a session-cumulative number: real sessions rendered
@@ -551,6 +617,179 @@ describe("CodexAdapter", () => {
       ),
     );
     expect(hasWebSearch).toBe(true);
+  });
+
+  test("maps imageGeneration to an ImageGeneration tool_use and a saved-path result", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    await waitForInit();
+
+    transport.simulateNotification("item/started", {
+      item: { type: "imageGeneration", id: "img-1", status: "inProgress", result: "", transparentBackground: true },
+    });
+    transport.simulateNotification("item/completed", {
+      item: {
+        type: "imageGeneration",
+        id: "img-1",
+        status: "completed",
+        result: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB",
+        revisedPrompt: "An isometric shrine courtyard at dusk, lanterns on wet stone",
+        savedPath: "/tmp/test/target.png",
+        transparentBackground: true,
+      },
+    });
+
+    const toolUse = assistantBlocks(messages).find((b) => b.type === "tool_use" && b.name === "ImageGeneration");
+    expect(toolUse).toBeDefined();
+    expect(toolUse.id).toBe("img-1");
+    // `revisedPrompt` is absent at start time — only the field Codex actually sent.
+    expect(toolUse.input).toEqual({ transparentBackground: true });
+
+    const result = assistantBlocks(messages).find((b) => b.type === "tool_result" && b.tool_use_id === "img-1");
+    expect(result).toBeDefined();
+    expect(result.is_error).toBe(false);
+    expect(result.content).toBe(
+      "Saved image to /tmp/test/target.png\nRevised prompt: An isometric shrine courtyard at dusk, lanterns on wet stone",
+    );
+  });
+
+  test("reports an imageGeneration usage-limit failure as an error result", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    await waitForInit();
+
+    transport.simulateNotification("item/started", {
+      item: { type: "imageGeneration", id: "img-2", status: "inProgress", result: "" },
+    });
+    transport.simulateNotification("item/completed", {
+      item: {
+        type: "imageGeneration",
+        id: "img-2",
+        status: "failed",
+        result: "",
+        failure: { type: "usageLimitExceeded", limitId: "image_daily", resetsAt: 1_789_000_000 },
+      },
+    });
+
+    const result = assistantBlocks(messages).find((b) => b.type === "tool_result" && b.tool_use_id === "img-2");
+    expect(result).toBeDefined();
+    expect(result.is_error).toBe(true);
+    expect(result.content).toBe(
+      `Image generation failed: usage limit exceeded (limit image_daily, resets at ${new Date(1_789_000_000_000).toISOString()})`,
+    );
+  });
+
+  test("emits the ImageGeneration tool_use even when item/completed arrives alone", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    await waitForInit();
+
+    transport.simulateNotification("item/completed", {
+      item: {
+        type: "imageGeneration",
+        id: "img-3",
+        status: "completed",
+        result: "",
+        revisedPrompt: "A paper lantern, transparent background",
+        savedPath: "/tmp/test/lantern.png",
+      },
+    });
+
+    const blocks = assistantBlocks(messages);
+    const useIndex = blocks.findIndex((b) => b.type === "tool_use" && b.name === "ImageGeneration");
+    const resultIndex = blocks.findIndex((b) => b.type === "tool_result" && b.tool_use_id === "img-3");
+    expect(useIndex).toBeGreaterThanOrEqual(0);
+    // The card must open before it closes, or the chat renders an orphan result.
+    expect(resultIndex).toBeGreaterThan(useIndex);
+    expect(blocks[useIndex].input).toEqual({ revisedPrompt: "A paper lantern, transparent background" });
+    expect(blocks[resultIndex].content).toBe(
+      "Saved image to /tmp/test/lantern.png\nRevised prompt: A paper lantern, transparent background",
+    );
+  });
+
+  test("never echoes the opaque imageGeneration result payload", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    await waitForInit();
+
+    // `result` can be a multi-megabyte base64 image. It must not reach the chat.
+    const payload = `iVBORw0KGgoAAAANSUhEUg${"QUJEZg".repeat(4000)}`;
+    transport.simulateNotification("item/started", {
+      item: { type: "imageGeneration", id: "img-4", status: "inProgress", result: payload },
+    });
+    transport.simulateNotification("item/completed", {
+      item: { type: "imageGeneration", id: "img-4", status: "completed", result: payload, savedPath: "/tmp/test/big.png" },
+    });
+
+    const serialized = JSON.stringify(messages);
+    expect(serialized.includes(payload)).toBe(false);
+    expect(serialized.includes(payload.slice(0, 48))).toBe(false);
+    // The card still opened and closed.
+    const result = assistantBlocks(messages).find((b) => b.type === "tool_result" && b.tool_use_id === "img-4");
+    expect(result?.content).toBe("Saved image to /tmp/test/big.png");
+  });
+
+  test("reports an imageGeneration that saved nothing", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    await waitForInit();
+
+    transport.simulateNotification("item/completed", {
+      item: { type: "imageGeneration", id: "img-5", status: "completed", result: "" },
+    });
+    transport.simulateNotification("item/completed", {
+      item: { type: "imageGeneration", id: "img-6", status: "refused", result: "" },
+    });
+
+    const blocks = assistantBlocks(messages);
+    const ok = blocks.find((b) => b.type === "tool_result" && b.tool_use_id === "img-5");
+    expect(ok.is_error).toBe(false);
+    expect(ok.content).toBe("Image generated (no saved path reported)");
+
+    const refused = blocks.find((b) => b.type === "tool_result" && b.tool_use_id === "img-6");
+    expect(refused.is_error).toBe(true);
+    expect(refused.content).toBe("Image generation failed (status: refused)");
+  });
+
+  test("maps imageView to an ImageView tool_use and closes the card", async () => {
+    const transport = createMockTransport();
+    const messages: BrowserIncomingMessage[] = [];
+
+    const adapter = new CodexAdapter(transport, "test-session", { cwd: "/tmp/test" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+    await waitForInit();
+
+    transport.simulateNotification("item/started", {
+      item: { type: "imageView", id: "iv-1", path: "/tmp/test/rounds/02/capture.png" },
+    });
+    transport.simulateNotification("item/completed", {
+      item: { type: "imageView", id: "iv-1", path: "/tmp/test/rounds/02/capture.png" },
+    });
+
+    const blocks = assistantBlocks(messages);
+    const toolUse = blocks.find((b) => b.type === "tool_use" && b.name === "ImageView");
+    expect(toolUse).toBeDefined();
+    expect(toolUse.input).toEqual({ path: "/tmp/test/rounds/02/capture.png" });
+
+    const result = blocks.find((b) => b.type === "tool_result" && b.tool_use_id === "iv-1");
+    expect(result).toBeDefined();
+    expect(result.is_error).toBe(false);
+    expect(result.content).toBe("Viewed /tmp/test/rounds/02/capture.png");
   });
 
   test("handles MCP tool call approval requests", async () => {

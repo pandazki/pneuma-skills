@@ -1,0 +1,15 @@
+{
+  "composition": 1.5,
+  "lighting": 1.5,
+  "materials": 1.5,
+  "details": 0.5,
+  "total": 9,
+  "summary": "The judge's arithmetic is wrong and one gap has no id.",
+  "gaps": [
+    {
+      "area": "composition",
+      "issue": "Camera is too high — the shrine roof hides the courtyard.",
+      "fix": "Drop the camera to eye level and shorten the focal length."
+    }
+  ]
+}

@@ -5,6 +5,8 @@
   "version": "버전",
   "working_dir": "작업 디렉터리",
   "cost": "비용",
+  "tokens": "토큰",
+  "tokens_detail": "입력 {{input}} · 캐시 {{cached}} · 출력 {{output}}",
   "turns": "턴",
   "lines": "줄",
   "tasks": "작업",

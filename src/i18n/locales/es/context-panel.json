@@ -5,6 +5,8 @@
   "version": "Versión",
   "working_dir": "Directorio de trabajo",
   "cost": "Costo",
+  "tokens": "Tokens",
+  "tokens_detail": "entrada {{input}} · en caché {{cached}} · salida {{output}}",
   "turns": "Turnos",
   "lines": "Líneas",
   "tasks": "Tareas",
