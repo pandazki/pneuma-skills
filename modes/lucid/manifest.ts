@@ -28,6 +28,7 @@ const lucidManifest: ModeManifest = {
       "The scene's `errors[]` now sees what three.js only prints — failed shaders, console errors and `THREE.` warnings — tagged by channel in `errorSources`",
       "The time budget survives a pause: the wall clock never stops, so after a resume the agent credits the pause back with `lucid.mjs budget --pause-credit` instead of inventing a bigger budget",
       "A tab in the background is not a slow scene: the bridge reports `visibility` and `sinceLastRenderMs`, and a measurement older than two seconds is no measurement",
+      "A gap the judge names twice is no longer a stall — the judge is told to carry ids forward, so that is every real scene one round in; the signal is a gap named in three verdicts running (`stubbornGaps`), and `repeatedGaps` is only reported",
       "`--yaw -90` parses: every script joins a negative number onto its option before parsing; `blender.mjs prep --thin` names parts before the merge erases their names; `status` lists the ledger entries not yet placed",
     ],
   },

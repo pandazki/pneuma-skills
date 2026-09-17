@@ -52,8 +52,8 @@ export type GapArea = "composition" | "lighting" | "materials" | "details";
 /**
  * One actionable gap named by the judge. `id` is a stable slug the judge
  * carries over from the previous verdict when the same gap persists — that
- * is how "the judge named the same gap twice in a row" is detected without
- * fuzzy text matching.
+ * is how "the judge keeps naming the same gap" is detected without fuzzy
+ * text matching.
  */
 export interface Gap {
   id: string;
@@ -169,7 +169,10 @@ export interface LoopEvaluation {
   /** Totals in round order, one entry per judged round OF THIS TARGET VERSION. */
   trend: number[];
   /** Gap ids present in both of the last two verdicts. */
+  /** Named in the last two verdicts: what persisted, reported, not a signal. */
   repeatedGaps: string[];
+  /** Named in three verdicts running — survived two rounds of work: the stall signal. */
+  stubbornGaps: string[];
   /** null when the last round carries no fps measurement. */
   fpsOk: boolean | null;
   computedAt: string;
@@ -323,6 +326,9 @@ function parseEvaluation(raw: unknown): LoopEvaluation | null {
     trend: Array.isArray(raw.trend) ? raw.trend.filter((t): t is number => typeof t === "number") : [],
     repeatedGaps: Array.isArray(raw.repeatedGaps)
       ? raw.repeatedGaps.filter((g): g is string => typeof g === "string")
+      : [],
+    stubbornGaps: Array.isArray(raw.stubbornGaps)
+      ? raw.stubbornGaps.filter((g): g is string => typeof g === "string")
       : [],
     fpsOk: typeof raw.fpsOk === "boolean" ? raw.fpsOk : null,
     computedAt: asString(raw.computedAt, ""),

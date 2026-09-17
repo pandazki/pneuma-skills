@@ -164,6 +164,37 @@ continued the loop. Two things surfaced in the first minute:
   (a background process of the previous app-server). The turn survived both;
   the work continued without a tool error.
 
+Round 2 (judged at ~11:30, from the windowless Chrome, 59.6 fps) scored
+**5.75** — and `status` answered `stall-approaching`, not because of the
+score (a 0.9-point gain) but because the judge had carried seventeen gap
+ids forward, and the rule fired on any id named twice running. The judge is
+*told* to carry a persisting id forward, so two-in-a-row is the normal state
+of every real scene one round in; the rule was converting the loop into
+"rethink after every second round". Fix: the stall signal is now a gap named
+in **three** verdicts running (`evaluation.stubbornGaps`, constant
+`STUBBORN_VERDICTS`); `repeatedGaps` is still reported but no longer decides.
+The `repeated-gap` scenario flips to `continue` and a `stubborn-gap`
+scenario pins the new signal. The trial itself ran on the old rule, so its
+round 3 is a `rethink` the new rule would not have asked for.
+
+Two more from the interim REPORT.md the agent wrote at 11:15 (22 numbered
+items; the actionable ones and where they went):
+
+| Report item | Where it went |
+|---|---|
+| Budget has no pause semantics; SKILL and target-image.md disagree on when the clock starts | `budget --pause-credit`; target-image.md now says the clock started at init |
+| Null fps in a hidden tab is indistinguishable from a broken scene | bridge reports `visibility` + `sinceLastRenderMs`, drops samples older than 2 s; SKILL/manifest say what to do |
+| `align_image` did not remove the yaw check; both figures faced +X | assets.md: "not the same as facing +Z — one render-views sheet still confirms it" |
+| `--yaw -90` refused as ambiguous | `argv.mjs` joins negative numbers onto their option in all five scripts |
+| `--thin mesh` had no effect after `--merge` | prep names thin parts before the merge |
+| Replaced `vista.png` still showed the old image after reload | assets.md + reload-scene: a same-name binary swap reloads nothing (only code files are watched); call `reload-scene` |
+| A model referenced before it existed reloaded into a 404 | assets.md: reference a file once `collect` says `downloaded` |
+| Reported DPR 2 while rendering at 1.5 | `viewport.renderPixelRatio` |
+| No consolidated view of which asset blocks the next frame | `status.assetsPending` |
+| Image-to-3D character is a static mesh; walking was vertex deformation | assets.md says so before it becomes the pipeline; Tripo rig stays out (needs its own key) |
+| Orthographic brief locked against a perspective-looking dream | target-image.md: check the camera before locking; the user's words are the contract |
+| Image tool returns a huge base64 payload if printed | Codex's tool, not ours — noted only |
+
 ## 6. Open after both trials
 
 - `done` and `stalled` have not been observed live (trial 1 ended at

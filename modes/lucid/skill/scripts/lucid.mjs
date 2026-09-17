@@ -108,6 +108,17 @@ const STALL_MIN_ROUNDS = 3;
 /** How many recent rounds the plateau test looks at. */
 const STALL_WINDOW = 2;
 
+/**
+ * How many consecutive verdicts must name a gap before it counts as stubborn.
+ * The judge is TOLD to carry a persisting gap's id forward, so two in a row
+ * is the normal state of any real scene one round after its first verdict —
+ * the second blind trial hit "stall-approaching" at round 2 with a 0.9-point
+ * gain and seventeen carried ids. Three in a row means the gap survived two
+ * rounds of work aimed at it, which is what "small tweaks are not closing
+ * it" actually looks like.
+ */
+const STUBBORN_VERDICTS = 3;
+
 /** How far the judge's own arithmetic may drift from the sum before we say so. */
 const TOTAL_TOLERANCE = 0.05;
 
@@ -297,15 +308,12 @@ function evaluate(loop, now, { withClock = false } = {}) {
     if (!bestRound || r.verdict.total > bestRound.verdict.total) bestRound = r;
   }
 
-  // Gap ids the judge named in BOTH of the last two verdicts. Ids, not fuzzy
-  // text: that is why the judge is told to carry an id forward.
-  let repeatedGaps = [];
-  if (judged.length >= 2) {
-    const a = new Set(judged[judged.length - 2].verdict.gaps.map((g) => g.id));
-    repeatedGaps = judged[judged.length - 1].verdict.gaps
-      .map((g) => g.id)
-      .filter((id) => a.has(id));
-  }
+  // Gap ids the judge named in BOTH of the last two verdicts — reported so
+  // the agent sees what persisted — and the ones named in the last
+  // STUBBORN_VERDICTS verdicts running, which is the stall signal. Ids, not
+  // fuzzy text: that is why the judge is told to carry an id forward.
+  const repeatedGaps = gapsNamedInLast(judged, 2);
+  const stubbornGaps = gapsNamedInLast(judged, STUBBORN_VERDICTS);
 
   // fps of the last judged round, against the project's target.
   let fpsOk = null;
@@ -320,6 +328,7 @@ function evaluate(loop, now, { withClock = false } = {}) {
     last: last ? { index: last.index, total: last.verdict.total } : null,
     trend,
     repeatedGaps,
+    stubbornGaps,
     fpsOk,
     computedAt: now,
   };
@@ -398,9 +407,9 @@ function evaluate(loop, now, { withClock = false } = {}) {
   // ── stall approaching: the score has plateaued, or the judge keeps naming
   // the same gap. Either way small tweaks are not going to close it.
   let approaching = false;
-  if (repeatedGaps.length > 0) {
+  if (stubbornGaps.length > 0) {
     reasons.push(
-      `the judge named the same gap in two verdicts in a row: ${repeatedGaps.join(", ")}`,
+      `the judge named the same gap in ${STUBBORN_VERDICTS} verdicts in a row: ${stubbornGaps.join(", ")}`,
     );
     approaching = true;
   }
@@ -426,6 +435,17 @@ function evaluate(loop, now, { withClock = false } = {}) {
     `round ${last.index} scored ${last.verdict.total}/10; the loop is still gaining`,
   );
   return { exit: "continue", ...base };
+}
+
+/** Gap ids present in every one of the last `count` verdicts (in the order
+ *  the latest verdict lists them); empty until that many verdicts exist. */
+function gapsNamedInLast(judged, count) {
+  if (judged.length < count) return [];
+  const recent = judged.slice(-count);
+  const earlier = recent.slice(0, -1).map((r) => new Set(r.verdict.gaps.map((g) => g.id)));
+  return recent[recent.length - 1].verdict.gaps
+    .map((g) => g.id)
+    .filter((id) => earlier.every((set) => set.has(id)));
 }
 
 /** Best total among judged rounds strictly before `index`, or null. */
@@ -1433,7 +1453,9 @@ only over the rounds whose targetVersion matches the locked target.version:
   optimize-fps       last verdict >= ${DONE_TOTAL}/10 but fps below that bar
   stall-approaching  >= ${STALL_MIN_ROUNDS} judged rounds and the best of the last ${STALL_WINDOW} gained less
                      than ${STALL_MIN_GAIN.toFixed(1)} point over the best before them, OR the judge
-                     named the same gap id in two verdicts in a row
+                     named the same gap id in ${STUBBORN_VERDICTS} verdicts in a row
+                     (evaluation.stubbornGaps; repeatedGaps = two in a row, reported
+                     but not a signal — the judge is told to carry ids forward)
   stalled            the last round was a rethink and did not beat the best
                      score before it, or two rethinks in a row each gained
                      less than ${STALL_MIN_GAIN.toFixed(1)} point

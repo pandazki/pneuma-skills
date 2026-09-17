@@ -500,10 +500,26 @@ describe("lucid.mjs status — the exit rules", () => {
     expect(result.evaluation.reasons.join(" ")).toContain("fps unmeasured");
   });
 
-  test("a repeated gap id is reported, not just implied", () => {
+  test("a repeated gap id is reported, not just implied — and two in a row is not a stall", () => {
     const { cwd } = replay("repeated-gap");
     const result = json(cwd, ["status", "shrine", "--now", T(60)]);
     expect(result.evaluation.repeatedGaps).toEqual(["flat-sky"]);
+    expect(result.evaluation.stubbornGaps).toEqual([]);
+    expect(result.evaluation.exit).toBe("continue");
+  });
+
+  // The judge is told to carry a persisting gap's id forward, so "named twice"
+  // is every real scene one round in; the second blind trial hit
+  // stall-approaching at round 2 with a 0.9-point gain and seventeen carried
+  // ids. Three verdicts running is a gap that survived two rounds of work.
+  test("a gap named in three verdicts running is the stall signal, whatever the score did", () => {
+    const { cwd } = replay("stubborn-gap");
+    const result = json(cwd, ["status", "shrine", "--now", T(60)]);
+    expect(result.evaluation.trend).toEqual([3, 5, 6.5]);
+    expect(result.evaluation.repeatedGaps).toEqual(["flat-sky"]);
+    expect(result.evaluation.stubbornGaps).toEqual(["flat-sky"]);
+    expect(result.evaluation.exit).toBe("stall-approaching");
+    expect(result.evaluation.reasons.join(" ")).toContain("3 verdicts in a row: flat-sky");
   });
 
   test("done and the coarse status agree", () => {

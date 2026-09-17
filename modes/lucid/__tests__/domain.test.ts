@@ -274,14 +274,15 @@ describe("what lucid.mjs writes", () => {
       id: "flat-sky", area: "lighting", issue: "flat grey sky", fix: "grade the sky",
     });
     // The evaluation the viewer displays is the one the script computed. The
-    // rethink DID gain (2.7 -> 6.0), so this is not stalled — but the judge
-    // named flat-sky twice running, which is a stall approaching.
+    // rethink DID gain (2.7 -> 6.0), so this is not stalled; the judge named
+    // flat-sky twice running, which is reported as persisting and is not yet
+    // a stall signal (three running would be).
     expect(loop.evaluation).toMatchObject({
-      exit: "stall-approaching", targetVersion: 1, trend: [2.7, 6], repeatedGaps: ["flat-sky"],
+      exit: "continue", targetVersion: 1, trend: [2.7, 6], repeatedGaps: ["flat-sky"], stubbornGaps: [],
       fpsOk: true, computedAt: T(20),
     });
     expect(loop.evaluation!.reasons).toEqual([
-      "the judge named the same gap in two verdicts in a row: flat-sky",
+      "round 2 scored 6/10; the loop is still gaining",
     ]);
     expect(loop.evaluation!.best).toEqual({ index: 2, total: 6 });
     expect(loop.evaluation!.last).toEqual({ index: 2, total: 6 });

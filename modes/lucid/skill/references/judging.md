@@ -50,7 +50,7 @@ the script detects repetition.
 | `done` | total ≥ 8 and fps ≥ 90 % of target | Show the round, ask whether they want more |
 | `optimize-fps` | total ≥ 8, fps measured below 90 % of target | Lossless optimizations first (textures, shadows, bloom), then minimal-impact ones; re-judge to prove no visual regression |
 | `continue` with reason "fps unmeasured" | total ≥ 8 but the round carries no fps | Record the next round with `--fps` from `get-scene-state`; nothing else changes |
-| `stall-approaching` | Best score gained < 1 point over two rounds, or a gap repeated | Stop tweaking. Rethink the whole approach — assets, camera, lighting model — and make one dramatic change as a `--kind rethink` round |
+| `stall-approaching` | Best score gained < 1 point over two rounds, or the same gap named in three verdicts running (two in a row is normal — you carry ids forward — and is only reported as `repeatedGaps`) | Stop tweaking. Rethink the whole approach — assets, camera, lighting model — and make one dramatic change as a `--kind rethink` round |
 | `stalled` | The rethink did not help | Stop spending. Show best and latest to the user and ask whether the current state is good enough or something is fundamentally off |
 | `budget-exhausted` | The user's time budget is used up | First check it is real: after a pause the wall clock kept counting, so credit the pause (`budget <project> --pause-credit <minutes>`) and re-run `status`. If it is real, finish the current fix, judge once more, report |
 
