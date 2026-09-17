@@ -277,15 +277,15 @@ describe("texture.mjs normal", () => {
     const dir = fresh();
     put(dir, "ramp.png", horizontalRampRgb(32, 8));
     const report = runJson(dir, "normal", "ramp.png", "up.png", "--strength", "2");
-    // Written with '=': parseArgs reads a bare '--strength -2' as a missing
-    // argument. The help text says so, and the refusal below pins that it does.
     const inverted = runJson(dir, "normal", "ramp.png", "down.png", "--strength=-2");
     expect(report.strength).toBe(2);
     expect(inverted.strength).toBe(-2);
 
-    const spaced = run(dir, "normal", "ramp.png", "nope.png", "--strength", "-2");
-    expect(spaced.code).toBe(1);
-    expect(spaced.err).toContain("--strength=-XYZ");
+    // A bare '--strength -2' is what an agent writes first; parseArgs alone
+    // would refuse it as ambiguous, so the scripts join the number onto the
+    // option before parsing (argv.mjs) and both spellings mean the same thing.
+    const spaced = runJson(dir, "normal", "ramp.png", "spaced.png", "--strength", "-2");
+    expect(spaced.strength).toBe(-2);
     const up = readOut(dir, "up.png");
     const down = readOut(dir, "down.png");
     for (let x = 4; x < 28; x += 1) {

@@ -41,6 +41,8 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
+import { joinNegativeNumbers } from "./argv.mjs";
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 // ---------------------------------------------------------------------------
@@ -1047,6 +1049,11 @@ function cmdStatus(dir, now) {
       (r) => r.verdict && r.targetVersion === loop.target.version,
     ).length,
     assets: loop.assets.length,
+    // The ledger entries not yet on stage, so the thing blocking the next
+    // ready frame is read here rather than inferred from loader logs.
+    assetsPending: loop.assets
+      .filter((a) => a.state !== "placed")
+      .map((a) => ({ id: a.id, state: a.state })),
     scene: { vendor: vendorReport(dir), bridge: existsSync(join(resolve(dir), "scene", "lucid-bridge.js")) },
     budget: loop.budget
       ? {
@@ -1478,7 +1485,7 @@ function nowStamp(opts) {
 function main() {
   let parsed;
   try {
-    parsed = parseArgs({ args: process.argv.slice(2), options: OPTIONS, allowPositionals: true });
+    parsed = parseArgs({ args: joinNegativeNumbers(process.argv.slice(2)), options: OPTIONS, allowPositionals: true });
   } catch (error) {
     fail(`${error.message}\n\n${USAGE}`);
   }

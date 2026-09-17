@@ -731,6 +731,15 @@ describe("lucid.mjs asset", () => {
     expect(manifestOf(cwd).assets).toHaveLength(1);
   });
 
+  test("status lists the entries not yet on stage", () => {
+    const cwd = looping();
+    json(cwd, ["asset", "shrine", "add", "--id", "saint", "--role", "hero", "--source", "image-to-3d", "--state", "generating", "--now", T(10)]);
+    json(cwd, ["asset", "shrine", "add", "--id", "lantern", "--role", "prop", "--source", "blender", "--state", "placed", "--now", T(10)]);
+    expect(json(cwd, ["status", "shrine"]).assetsPending).toEqual([{ id: "saint", state: "generating" }]);
+    json(cwd, ["asset", "shrine", "update", "--id", "saint", "--state", "placed", "--now", T(20)]);
+    expect(json(cwd, ["status", "shrine"]).assetsPending).toEqual([]);
+  });
+
   test("refuses a duplicate id, an unknown id, and an invalid enum", () => {
     const cwd = looping();
     json(cwd, ["asset", "shrine", "add", "--id", "lantern", "--role", "prop", "--source", "blender", "--now", T(10)]);
@@ -922,6 +931,8 @@ interface Harness {
   toParent: Array<Record<string, unknown>>;
   /** Advance the rAF sampler; each entry is one callback timestamp in ms. */
   frames: (timestamps: number[]) => void;
+  /** Move the page clock WITHOUT an animation frame: a hidden tab. */
+  advance: (t: number) => void;
   /**
    * Draw real frames: each entry is ONE animation frame — the page clock
    * moves, the rAF sampler turns, and then `renderer.render` is called
@@ -971,6 +982,7 @@ function loadBridge(pageCanvas: FakeCanvas | null = null): Harness {
       log: (...args: unknown[]) => consoleCalls.push({ method: "log", args }),
     },
     document: {
+      visibilityState: "visible",
       querySelector: (selector: string) => (selector === "canvas" ? pageCanvas : null),
     },
     requestAnimationFrame: (callback: (t: number) => void) => pending.push(callback),
@@ -990,6 +1002,9 @@ function loadBridge(pageCanvas: FakeCanvas | null = null): Harness {
         clock = t;
         for (const callback of pending.splice(0, pending.length)) callback(t);
       }
+    },
+    advance: (t) => {
+      clock = t;
     },
     renders: (renderer, timestamps, passes = 1) => {
       for (const t of timestamps) {
@@ -1014,6 +1029,8 @@ function fakeRenderer(element: FakeCanvas = canvas()) {
   const rendered: Array<{ scene: unknown; camera: unknown }> = [];
   return {
     domElement: element,
+    // Capped below the display's 2: the number a performance decision hides.
+    getPixelRatio: () => 1.5,
     info: { render: { calls: 42, triangles: 123_456 }, memory: { textures: 7, geometries: 9 } },
     // WebGLRenderer always carries `debug`; `onShaderError` is null until
     // somebody installs one, which is exactly what `register` does.
@@ -1203,6 +1220,33 @@ describe("lucid-bridge.js state", () => {
       notes: {},
       viewport: { width: 0, height: 0, pixelRatio: 2 },
     });
+  });
+
+  // The browser pauses animation frames in a background tab: nothing draws,
+  // and the samples the bridge still holds are from before the pause. Sixty
+  // fps an hour later is the number that sends an agent hunting for a
+  // performance bug that does not exist.
+  test("a tab in the background reports no measurement, and says why", () => {
+    const harness = loadBridge();
+    const renderer = readyBridge(harness);
+    const live = harness.root.__lucidBridge.state() as Record<string, any>;
+    expect(live.fps).not.toBeNull();
+    expect(live.visibility).toBe("visible");
+    expect(live.sinceLastRenderMs).toBe(0);
+    expect(live.viewport).toEqual({ width: 1280, height: 720, pixelRatio: 2, renderPixelRatio: 1.5 });
+
+    (harness.root.document as { visibilityState: string }).visibilityState = "hidden";
+    harness.advance(11 * 16 + 3000);
+    const hidden = harness.root.__lucidBridge.state() as Record<string, any>;
+    expect(hidden).toMatchObject({
+      fps: null, frameMs: null, rafFps: null, visibility: "hidden", sinceLastRenderMs: 3000,
+      ready: true, registered: true,
+    });
+    expect(hidden.framesRendered).toBe(live.framesRendered);
+
+    // Frames again: the measurement comes back with them.
+    harness.renders(renderer, [3200, 3216, 3232, 3248]);
+    expect((harness.root.__lucidBridge.state() as Record<string, any>).fps).not.toBeNull();
   });
 
   test("a registered, drawing scene becomes ready once and reports the renderer's counters", () => {

@@ -64,7 +64,11 @@ export const LUCID_MESSAGE_PREFIX = "pneuma:lucid:";
 export interface SceneViewport {
   width: number;
   height: number;
+  /** The window's devicePixelRatio — what the display offers. */
   pixelRatio: number;
+  /** What the renderer draws at (`renderer.getPixelRatio()`); null before a
+   *  renderer is registered or from a bridge that predates the field. */
+  renderPixelRatio: number | null;
 }
 
 /** Exactly what `pneuma:lucid:state:result` carries. */
@@ -104,6 +108,14 @@ export interface SceneState {
    * and shader channels a black material reads as "no errors".
    */
   errorSources: { window: number; unhandledrejection: number; console: number; shader: number } | null;
+  /**
+   * `document.visibilityState` of the scene: `"hidden"` is a tab in the
+   * background, where the browser pauses animation frames — the reason a
+   * null fps is not a slow scene. Null from a bridge that predates the field.
+   */
+  visibility: string | null;
+  /** Milliseconds since the last counted render; null before the first one. */
+  sinceLastRenderMs: number | null;
   drawCalls: number | null;
   triangles: number | null;
   textures: number | null;
@@ -271,6 +283,8 @@ export function parseSceneState(raw: unknown): SceneState {
     framesRendered: num(r.framesRendered),
     passesPerFrame: num(r.passesPerFrame),
     errorSources: errorSourcesOf(r.errorSources),
+    visibility: typeof r.visibility === "string" ? r.visibility : null,
+    sinceLastRenderMs: num(r.sinceLastRenderMs),
     drawCalls: num(r.drawCalls),
     triangles: num(r.triangles),
     textures: num(r.textures),
@@ -286,6 +300,7 @@ export function parseSceneState(raw: unknown): SceneState {
           width: num(viewportRaw.width) ?? 0,
           height: num(viewportRaw.height) ?? 0,
           pixelRatio: num(viewportRaw.pixelRatio) ?? 1,
+          renderPixelRatio: num(viewportRaw.renderPixelRatio),
         }
       : null,
   };

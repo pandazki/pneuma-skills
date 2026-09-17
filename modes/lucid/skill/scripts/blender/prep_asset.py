@@ -159,6 +159,10 @@ def main():
     before = census(objs, "before")
 
     steps = []
+    # Before the merge: --thin names OBJECTS, and a merge leaves one object
+    # with one name, so a leaf named after the merge would never match. The
+    # decision lives on the materials, which the merge keeps.
+    kit.single_sided(objs, thin_names=args["thin"])
     if args["merge"]:
         objs = kit.merge_fragments(objs)
         steps.append("merge")
@@ -191,7 +195,6 @@ def main():
     else:
         log("no --decimate: triangle count left as imported")
 
-    kit.single_sided(objs, thin_names=args["thin"])
     steps.append("single-sided")
 
     after = census(objs, "after")

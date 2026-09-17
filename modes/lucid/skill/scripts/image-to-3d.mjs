@@ -63,6 +63,8 @@ import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
+import { joinNegativeNumbers } from "./argv.mjs";
+
 // Installed sessions keep shared scripts beside this CLI (the manifest lists
 // `fal-queue.mjs` in `skill.sharedScripts`); a source checkout resolves the
 // same module from `modes/_shared/scripts/`. Exported so a test can pin
@@ -834,7 +836,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   let parsed = null;
   try {
     parsed = parseArgs({
-      args: process.argv.slice(2),
+      args: joinNegativeNumbers(process.argv.slice(2)),
       options: { concurrency: { type: "string" }, help: { type: "boolean", short: "h" } },
       allowPositionals: true,
     });

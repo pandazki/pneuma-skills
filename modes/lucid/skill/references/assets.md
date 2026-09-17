@@ -46,8 +46,10 @@ project-relative):
    paste it into `<project>/assets/fal-jobs.json` with the id, image and
    `output` (`../scene/models/<id>.glb`) filled in. The hero recipe already
    sets `auto_size` (real-world metres — no guessing the scale),
-   `orientation: "align_image"` (the model faces the way the cut-out does —
-   no six-view yaw hunt), and `detailed` geometry and texture.
+   `orientation: "align_image"` (the model's front follows the cut-out's,
+   which is NOT the same as facing +Z — one `blender.mjs render-views` sheet
+   still confirms the yaw before you bake it), and `detailed` geometry and
+   texture.
 3. `node {SKILL_PATH}/scripts/image-to-3d.mjs check <project>/assets/fal-jobs.json`
    (offline) → `submit` → keep building → `collect` a minute or two later.
    `downloaded` means a valid file landed; `format: "fbx"` (a `quad` job)
@@ -84,6 +86,16 @@ Not available in this session (no fal.ai key). Say so once if the target
 needs organic or ornate assets that only this rung produces well, and move to
 rung 3; the user can add a key in the launcher.
 {{/imageTo3dDisabled}}
+
+### What comes back is a static mesh
+
+Image-to-3D returns a textured mesh with no skeleton and no clips. When the
+brief asks for a moving character, say so before that mesh becomes the
+character pipeline: the honest options are vertex deformation for a gait and
+cloth, a procedural rig you build in `main.js`, or a rigged model the user
+supplies. Auto-weighting a fragmented generated mesh in Blender is the
+thing `assets.md` warns against, and Tripo's own rig/retarget API is not
+on this ladder. Record the limitation in the ledger note and in the report.
 
 ## 3. Blender, headless, through `blender.mjs` only
 
@@ -154,7 +166,7 @@ the pixels, no model, no binary):
    look at a 2×2 preview before you "fix" it.
 2. `texture.mjs normal albedo.png normal.png --strength 2` — look at the
    result: if grooves read as ridges (pale mortar, light grout) re-run with
-   `--strength=-2`. `relief` under 1 in the report means the albedo has no
+   `--strength -2`. `relief` under 1 in the report means the albedo has no
    usable relief.
 3. `texture.mjs roughness albedo.png rough.png` — darker and busier reads
    rougher; `--invert` for polished dark stone.
@@ -176,3 +188,19 @@ the pixels, no model, no binary):
    scene units, then `blender.mjs prep … --height|--width|--longest <m>`
    (with `--yaw` when needed); write both into the ledger note.
 5. `lucid.mjs asset <project> update --id <id> --state placed` once it renders in the capture.
+
+## Files before references, and what a reload does not do
+
+The viewer reloads the scene on its own when a scene CODE file changes
+(html, js, mjs, css, json), 1.5 s after the last write. Two consequences:
+
+- Reference a model or texture from code only once the file is on disk. A
+  `main.js` that names a GLB still being generated reloads into a 404 that
+  looks like broken work; write the reference when `collect` reports
+  `downloaded`, or keep it behind a guard until then.
+- Replacing a texture or a model under `scene/` with the same name reloads
+  nothing: the running scene keeps the old bytes in GPU memory, and a capture
+  shows the old picture even though the new file is on disk. After swapping
+  a binary, call `reload-scene`; or give the new file a new name and change
+  the reference, which reloads anyway.
+

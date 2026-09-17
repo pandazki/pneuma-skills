@@ -27,6 +27,8 @@ import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
+import { joinNegativeNumbers } from "./argv.mjs";
+
 /** Pinned so a run months from now decimates the way today's run did. */
 const GLTF_TRANSFORM_PACKAGE = "@gltf-transform/cli@4.5.0";
 
@@ -1025,7 +1027,7 @@ function main() {
   let parsed;
   try {
     parsed = parseArgs({
-      args: argv.slice(1),
+      args: joinNegativeNumbers(argv.slice(1)),
       options: { ...COMMON_OPTIONS, ...OPTIONS[command] },
       allowPositionals: true,
       strict: true,

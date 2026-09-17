@@ -30,6 +30,8 @@ import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
+import { joinNegativeNumbers } from "./argv.mjs";
+
 import { inspectGlb } from "./glb.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -649,7 +651,7 @@ async function main() {
   let parsed;
   try {
     parsed = parseArgs({
-      args: ours,
+      args: joinNegativeNumbers(ours),
       options: { ...COMMON_OPTIONS, ...OPTIONS[command] },
       allowPositionals: true,
       strict: true,

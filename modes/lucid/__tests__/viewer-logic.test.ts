@@ -925,6 +925,8 @@ describe("parseSceneState", () => {
       framesRendered: null,
       passesPerFrame: null,
       errorSources: null,
+      visibility: null,
+      sinceLastRenderMs: null,
       drawCalls: null,
       triangles: null,
       textures: null,
@@ -933,6 +935,19 @@ describe("parseSceneState", () => {
       notes: {},
       viewport: null,
     });
+  });
+
+  test("visibility, the time since the last render and the render pixel ratio come through, and an old bridge reports null", () => {
+    const fresh = parseSceneState({
+      visibility: "hidden", sinceLastRenderMs: 4120.5,
+      viewport: { width: 800, height: 600, pixelRatio: 2, renderPixelRatio: 1.5 },
+    });
+    expect(fresh).toMatchObject({ visibility: "hidden", sinceLastRenderMs: 4120.5 });
+    expect(fresh.viewport).toEqual({ width: 800, height: 600, pixelRatio: 2, renderPixelRatio: 1.5 });
+    const old = parseSceneState({ viewport: { width: 800, height: 600, pixelRatio: 2 } });
+    expect(old).toMatchObject({ visibility: null, sinceLastRenderMs: null });
+    expect(old.viewport).toEqual({ width: 800, height: 600, pixelRatio: 2, renderPixelRatio: null });
+    expect(parseSceneState({ visibility: 3, sinceLastRenderMs: "soon" })).toMatchObject({ visibility: null, sinceLastRenderMs: null });
   });
 
   test("errorSources come through per channel, and an old bridge reports null", () => {

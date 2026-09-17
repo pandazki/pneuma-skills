@@ -74,10 +74,17 @@ selected — `navigate-to` `{ "view": "live" }` first when you mean the scene.
   `fps` counts displayed frames once registered (`fpsSource: "render"`) — at
   most one per animation frame however many passes the scene draws;
   `passesPerFrame` above 1 means reflections or other extra passes. Before
-  registration `fps` is only the animation-frame cadence.
+  registration `fps` is only the animation-frame cadence. `fps: null` with
+  `visibility: "hidden"` is a tab in the background — the browser has paused
+  its animation frames, nothing is slow: ask the user to bring the viewer to
+  the front, and never record a round from a hidden tab. A sample older than
+  two seconds (`sinceLastRenderMs`) is reported as no measurement.
+  `viewport.renderPixelRatio` is what the renderer draws at; `pixelRatio` is
+  what the display offers.
 - **`reload-scene`** — restart the iframe after a batch of edits or a new
-  model. The viewer also reloads on its own 1.5 s after the last scene file
-  change.
+  model. The viewer also reloads on its own 1.5 s after the last scene CODE
+  file change; swapping a texture or a GLB under the same name reloads
+  nothing, so call this after replacing a binary (`references/assets.md`).
 - **`capture`** — framework built-in. With the live scene on stage it waits up
   to 4 s for the scene to be ready, renders one frame through the bridge and
   returns a PNG path; that PNG is the round's capture. It is the WebGL frame

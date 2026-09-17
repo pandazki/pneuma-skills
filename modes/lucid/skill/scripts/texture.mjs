@@ -32,6 +32,8 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+
+import { joinNegativeNumbers } from "./argv.mjs";
 import { deflateSync, inflateSync } from "node:zlib";
 
 // ---------------------------------------------------------------------------
@@ -151,8 +153,7 @@ alpha.
       a light plaster channel in dark stucco. Derived straight, such a wall
       comes out with its grooves standing proud of the bricks. Look at the
       map before you ship it; if the grooves read as ridges, re-run with
-      --strength=-2 -- written with the '=', because a bare '--strength -2'
-      is ambiguous to the argument parser and will be refused.
+      --strength -2 (or --strength=-2; both parse).
 
   roughness <albedo.png> <out.png> [--min ${ROUGHNESS_MIN_DEFAULT}] [--max ${ROUGHNESS_MAX_DEFAULT}] [--invert] [--json]
       Roughness from the albedo by the two cues an albedo actually carries: a
@@ -1054,7 +1055,7 @@ function main() {
   let parsed;
   try {
     parsed = parseArgs({
-      args: argv.slice(1),
+      args: joinNegativeNumbers(argv.slice(1)),
       options: { ...COMMON_OPTIONS, ...OPTIONS[command] },
       allowPositionals: true,
       strict: true,

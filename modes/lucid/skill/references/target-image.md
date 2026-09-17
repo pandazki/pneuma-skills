@@ -50,12 +50,24 @@ rendering style in the prompt in plain words — *orthographic isometric camera*
 a running Three.js game* — and if the first result drifts from the brief,
 dream once more rather than accepting a contract you cannot honour.
 
+Check the camera before you lock. An orthographic or isometric brief locked
+against a dream with a horizon and perspective convergence makes every later
+round chase a camera the user did not ask for: distant geometry that reads
+as far away in the picture can only be drawn far away in an orthographic
+scene by being huge, and the judge will keep scoring the difference. If the
+dream has the wrong camera, dream again with the camera named first and the
+subject second. If the second try still drifts, keep the user's camera, lock
+the closer of the two, and write the mismatch into the round notes: the
+target is evidence, the user's words are the contract.
+
 ## Lock it
 
-Store the image through `lucid.mjs target <project> --set <png>`. The loop's clock starts at
-the first lock, the previous target is archived on replacement, and the score
-trajectory always says which target it was measured against. Never overwrite
-`target.png` by hand.
+Store the image through `lucid.mjs target <project> --set <png>`. The
+previous target is archived on replacement, and the score trajectory always
+says which target it was measured against. Never overwrite `target.png` by
+hand. Locking does not start the budget clock — that started at `init`, when
+the user asked, so a target that took ten minutes to dream has already spent
+ten minutes of it.
 
 ## Ask the user, or not
 

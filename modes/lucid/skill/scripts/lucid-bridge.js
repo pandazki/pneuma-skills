@@ -157,6 +157,11 @@
   /** Displayed frames: at most one counted per animation frame. */
   var renderFrames = 0;
   var renderTimes = [];
+  /** When the last render was counted (ms, performance clock); null before one. */
+  var lastRenderAt = null;
+  /** Older than this and a sample says nothing about now: a tab in the
+   *  background stops animating without ever reporting a slow frame. */
+  var STALE_FRAME_MS = 2000;
   /** Every renderer.render call the wrapper saw, extra passes included. */
   var renderCalls = 0;
   /** Bumped once per animation frame by the rAF sampler below. */
@@ -282,6 +287,7 @@
     countedToken = frameToken;
     renderFrames += 1;
     push(renderTimes);
+    lastRenderAt = nowMs();
     announceReady();
   }
 
@@ -583,11 +589,19 @@
   function viewport() {
     var element = firstCanvas();
     var pixelRatio = root.devicePixelRatio || 1;
-    if (!element) return { width: 0, height: 0, pixelRatio: pixelRatio };
+    // The window's ratio is what the display offers; the renderer's is what
+    // the scene actually draws at — a cap at 1.5 on a 2× screen is a
+    // performance decision the numbers must not hide.
+    var renderPixelRatio =
+      registered && registered.renderer && typeof registered.renderer.getPixelRatio === "function"
+        ? registered.renderer.getPixelRatio()
+        : null;
+    if (!element) return { width: 0, height: 0, pixelRatio: pixelRatio, renderPixelRatio: renderPixelRatio };
     return {
       width: element.clientWidth || element.width || 0,
       height: element.clientHeight || element.height || 0,
       pixelRatio: pixelRatio,
+      renderPixelRatio: renderPixelRatio,
     };
   }
 
@@ -597,6 +611,14 @@
     // before that there are none to count, so the rAF sampler stands in and
     // fpsSource says so rather than letting cadence pass as rendering.
     var live = registered ? frameStats(renderTimes) : rafStats;
+    // A background tab stops animating without a single slow frame: the
+    // window of samples still says 60 fps an hour later. Anything older than
+    // STALE_FRAME_MS is reported as no measurement, and `visibility` says why.
+    var now = nowMs();
+    var lastRaf = rafTimes.length ? rafTimes[rafTimes.length - 1] : null;
+    var lastLive = registered ? lastRenderAt : lastRaf;
+    var liveStale = lastLive === null || now - lastLive > STALE_FRAME_MS;
+    var rafStale = lastRaf === null || now - lastRaf > STALE_FRAME_MS;
     var info = registered && registered.renderer ? registered.renderer.info : null;
     var render = info && info.render ? info.render : null;
     var memory = info && info.memory ? info.memory : null;
@@ -605,10 +627,14 @@
       registered: Boolean(registered),
       ready: isReady(),
       loading: loading,
-      fps: live.fps,
+      fps: liveStale ? null : live.fps,
       fpsSource: registered ? "render" : "raf",
-      rafFps: rafStats.fps,
-      frameMs: live.frameMs,
+      rafFps: rafStale ? null : rafStats.fps,
+      frameMs: liveStale ? null : live.frameMs,
+      // "hidden" is a tab in the background: the browser has paused animation
+      // frames, so a null fps here is not a performance problem.
+      visibility: root.document && root.document.visibilityState ? root.document.visibilityState : null,
+      sinceLastRenderMs: lastRenderAt === null ? null : round2(now - lastRenderAt),
       framesRendered: registered ? renderFrames : rafFrames,
       // Render calls per counted frame, averaged over the session: 1 for a
       // single-pass scene, 2 for one that draws a reflection first. Null

@@ -117,7 +117,7 @@ are refused by name).
 |---|---|
 | `doctor [--json] [--strict]` | How Blender was found (flag → `$BLENDER_PATH` → PATH → platform locations), its version, and whether gltf-transform is cached. Exit 0 as a report; `--strict` exits 1 when Blender is missing. |
 | `run <script.py> [--no-kit] [--timeout 600] [--json] [-- <args…>]` | `<blender> --background --factory-startup --python <script.py> -- <args…>` with `blender/` on `sys.path` so the script can `import kit` (`--no-kit` leaves the path alone); Blender's output streams through with a `[blender]` prefix and its exit code is propagated (124 on timeout). |
-| `prep <in> <out.glb> [--yaw <deg>] [--height <m> \| --longest <m> \| --width <m>] [--decimate <ratio>] [--merge] [--thin <name,name>]` | The entry checklist in one pass: import (glb/gltf/fbx/obj) → optional merge of loose shells → yaw → bake rotation and scale → feet to y = 0, centred → normalize by exactly one dimension → optional decimate → backface culling on except `--thin` parts → export, then the inspect checklist. Two dimensions are refused before Blender starts. |
+| `prep <in> <out.glb> [--yaw <deg>] [--height <m> \| --longest <m> \| --width <m>] [--decimate <ratio>] [--merge] [--thin <name,name>] (`--thin` matches object names as imported, before `--merge` fuses them; the decision lives on the materials and survives the merge)` | The entry checklist in one pass: import (glb/gltf/fbx/obj) → optional merge of loose shells → yaw → bake rotation and scale → feet to y = 0, centred → normalize by exactly one dimension → optional decimate → backface culling on except `--thin` parts → export, then the inspect checklist. Two dimensions are refused before Blender starts. |
 | `kit` | Prints `blender/kit.py`'s API (20 functions: `reset`, `import_model`, `mesh_objects`, `world_bbox`, `yaw`, `apply_transforms`, `ground`, `normalize`, `decimate`, `single_sided`, `merge_fragments`, `bevel`, `array`, `boolean`, `set_material`, `export_glb`, …) and how a script imports it. Needs no Blender. `blender/make_prop.py` is the template to copy for a hard-surface prop. |
 | `render-views <glb> <out.png> [--size 512]` | Six orthographic views on one 3×2 sheet plus a `<out.png>.json` sidecar with the tile order. Verifies the sheet is over 10 KB. |
 | `convert <fbx> <out.glb> [--yaw <deg>] [--texture-size 1024] [--double-sided]` | FBX → GLB with the yaw baked into the vertices and backface culling on; then inspects the result and prints the checklist. `helper.yawBaked: false` means the rotation stayed on a node (parented or shared meshes) — read the `!` line. |
@@ -139,3 +139,11 @@ the camera — the tile shows the face that points that way. The model's front
 is whichever tile shows its face; write that direction down as the yaw to
 bake. `front`/`back` in the tile names are nominal, not a claim about the
 model.
+
+## Negative numbers on the command line
+
+`--yaw -90` works: every script joins a negative number onto the option
+before it parses, so `--yaw -90` and `--yaw=-90` mean the same thing. A
+negative value directly after a boolean flag (`--merge -5`) is still joined
+onto that flag and rejected, which is the right answer.
+
