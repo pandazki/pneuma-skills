@@ -234,7 +234,49 @@ dist rebuilt, same windowless Chrome). This is not zero-leak — it is the
 continuation a real user would run after an update — and its purpose is to
 see how far the score goes and whether the new rules (`stalled` at a
 small-gain rethink, `bridgeCurrent`, `assetsPending`, visibility) hold up
-in use. Results below when it ends.
+in use. What happened, in 35 minutes:
+
+- On "再给你 60 分钟" the agent read the updated skill, credited the
+  11-minute gap since the last write with `budget --pause-credit`, raised
+  the budget, saw `bridgeCurrent: false` and ran `bridge --refresh`; the
+  next `get-scene-state` carried `visibility: "visible"`. Every new rule
+  was used without a hint. Two calls to `asset add --label` were refused
+  (the option is `--note`); the agent corrected itself.
+- It walked the ladder again, aimed at the "tidy kit geometry" gaps:
+  three reference images → two Tripo H3.1 models (a carved lamp pedestal,
+  a fluted carved column, both yaw-checked on a six-view sheet), a second
+  Blender kit script (balustrade, broken column, column stump, carved
+  plinth, new stairs), a tileable paving albedo with normal and roughness
+  maps, and softer reflections. Twelve ledger entries by the end.
+- Round 4 (a `rethink`): **6.10** — composition 2.05, lighting 1.95,
+  materials 1.65, details 0.45. Under the new rule that is `stalled`
+  (0.15 over the best before it), and the user stopped the loop there.
+
+| Round | Kind | Score | What moved it |
+|---|---|---|---|
+| 1 | iterate | 4.85 | the whole scene, from nothing, in 35 min |
+| 2 | iterate | 5.75 | generated valley matte for the sky; Tripo portal for the plain arch; ferns; irregular paving |
+| 3 | rethink | 5.95 | code only: camera lower, courtyard opened, foreground banner, rubble |
+| 4 | rethink | 6.10 | kit columns and lamps replaced by Tripo carved ones; paving textures; ruin walls |
+
+Reading: the score is bought with generated detail (the +0.9 round was a
+matte and a hero model), and the judge's remaining complaints are about
+whatever is still procedural — regular paving, orderly stairs, mirror
+reflections, a "clean elevated stage". Swapping kit parts for generated
+ones moved it 0.15. For this brief, this loop's ceiling with today's
+ladder sits around 6 to 6.5 in a few hours; the rubric ("not a single
+pixel different" from a photoreal concept image) makes 8 a different kind
+of project.
+
+**Open, with evidence: the judge copies the gap list.** Rounds 2, 3 and 4
+carry the *same seventeen gap ids in the same order* — including round 4,
+whose brief already withheld the previous scores and said "drop the ones
+that are fixed". Scores moved; the list did not. The ids are the stall
+signal, so a copied list reads as seventeen stubborn gaps whatever the
+picture did. The brief should stop handing the judge any ids: let it name
+gaps freely, and let `verdict` match a new gap to a previous one itself
+(normalised id tokens, area, issue overlap) and record the carried id.
+That is the next change to make before trusting `stubbornGaps`.
 
 ## 6. Open after both trials
 
