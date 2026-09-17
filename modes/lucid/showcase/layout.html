@@ -211,7 +211,7 @@
     .ladder .note{margin-top:12px;font-size:11.5px;line-height:1.65;color:#8d8783}
     .ladder .note em{color:#a29a95;font-style:normal}
     .ladder .onstage{margin-top:13px;border:1px solid #2b282b;border-radius:9px;overflow:hidden;background:#0c0c0e}
-    .ladder .onstage img{display:block;width:100%;height:118px;object-fit:cover;object-position:center 42%}
+    .ladder .onstage img{display:block;width:100%;height:96px;object-fit:cover;object-position:center 45%}
     .ladder .onstage .cap{display:flex;gap:9px;padding:7px 11px;background:#141315;border-top:1px solid #232023;font-size:11px;color:#918a86}
     .ladder .onstage .cap b{color:#c8c1bb;font-weight:500;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px}
   </style>
@@ -226,7 +226,7 @@
     <p>One locked target. Every round scored against it.</p>
   </div>
   <div class="window">
-    <div class="bar">Ember Abbey <span class="muted">isometric voxel dark fantasy · 3 rounds · target v1 locked</span>
+    <div class="bar">The Weeping Sanctuary <span class="muted">stylized-realistic ruined shrine at dusk · 4 rounds · target v1 locked</span>
       <div class="right">
         <div class="seg"><span>Live</span><span>Target</span><span class="on">Split</span></div>
         <span class="pill">Capture &amp; judge</span>
@@ -235,16 +235,17 @@
     <div class="board">
       <div class="col">
         <div class="stage">
-          <img src="/art/r03.png" style="object-position:center 40%">
-          <div class="over" style="clip-path:inset(0 47% 0 0)"><img src="/art/target.png" style="object-position:center 42%"></div>
+          <img src="/art/r04.png" style="object-position:center 45%">
+          <div class="over" style="clip-path:inset(0 47% 0 0)"><img src="/art/target.png" style="object-position:center 45%"></div>
           <div class="seam" style="left:53%"><span class="knob"></span></div>
           <span class="corner l">Target</span>
           <span class="corner r">Live</span>
         </div>
         <div class="rail">
-          <div class="chip"><b>R1</b> 3.35</div>
-          <div class="chip"><b>R2</b> 4.0</div>
-          <div class="chip best"><b>R3</b> 4.25 <span class="star">◆</span><small>rethink</small></div>
+          <div class="chip"><b>R1</b> 4.85</div>
+          <div class="chip"><b>R2</b> 5.75</div>
+          <div class="chip"><b>R3</b> 5.95 <small>rethink</small></div>
+          <div class="chip best"><b>R4</b> 6.10 <span class="star">◆</span><small>rethink</small></div>
           <div class="spark">
             <span>trajectory</span>
             <svg width="128" height="32" viewBox="0 0 128 32" fill="none">
@@ -252,37 +253,37 @@
               <path d="M0 29.5 H128" stroke="#2a262a" stroke-width="1"/>
               <text x="0" y="12" fill="#5c5652" font-size="8" font-family="DM,Arial">10</text>
               <text x="0" y="27" fill="#5c5652" font-size="8" font-family="DM,Arial">0</text>
-              <path d="M20 20.4 L72 18.7 L124 18.0" stroke="#f97316" stroke-width="1.6" stroke-linejoin="round"/>
-              <circle cx="20" cy="20.4" r="2" fill="#7a4c2c"/><circle cx="72" cy="18.7" r="2" fill="#b4622c"/><circle cx="124" cy="18" r="2.6" fill="#f97316"/>
+              <path d="M16 16.4 L52 14.0 L88 13.4 L124 13.0" stroke="#f97316" stroke-width="1.6" stroke-linejoin="round"/>
+              <circle cx="16" cy="16.4" r="2" fill="#7a4c2c"/><circle cx="52" cy="14.0" r="2" fill="#a0562a"/><circle cx="88" cy="13.4" r="2" fill="#b4622c"/><circle cx="124" cy="13.0" r="2.6" fill="#f97316"/>
             </svg>
             <span>rubric scale</span>
           </div>
         </div>
         <div class="strip">
-          <span class="statechip"><s></s>Stall approaching</span>
-          <span class="vit"><b>120</b> fps · <b>8.3</b> ms · <b>240</b> draws · <b>1.66M</b> tris · <b>11</b> textures</span>
-          <span style="margin-left:auto">42 min budget</span>
+          <span class="statechip"><s></s>Stalled · a rethink under a full point</span>
+          <span class="vit"><b>60</b> fps · <b>16.6</b> ms · <b>249</b> draws · <b>3.68M</b> tris · <b>22</b> textures</span>
+          <span style="margin-left:auto">budget spent</span>
         </div>
       </div>
       <div class="aside">
-        <div class="eyebrow">Asset ledger<span class="count">4</span></div>
+        <div class="eyebrow">Asset ledger<span class="count">12</span></div>
+        <div class="arow"><div class="top"><b>saint</b><span class="st">placed</span></div>
+          <div class="meta">hero · image-to-3D</div>
+          <div class="files">scene/models/saint.glb</div></div>
+        <div class="arow"><div class="top"><b>portal</b><span class="st">placed</span></div>
+          <div class="meta">hero · image-to-3D</div>
+          <div class="files">scene/models/portal.glb</div></div>
         <div class="arow"><div class="top"><b>masonry</b><span class="st">placed</span></div>
+          <div class="meta">environment · Blender</div>
+          <div class="files">scene/models/arch.glb · column.glb</div></div>
+        <div class="arow"><div class="top"><b>environment</b><span class="st">placed</span></div>
           <div class="meta">environment · procedural</div>
-          <div class="files">scene/textures/slate.png</div></div>
-        <div class="arow"><div class="top"><b>knight</b><span class="st">placed</span></div>
-          <div class="meta">hero · procedural</div>
-          <div class="files">scene/textures/heraldic-cloth.png</div></div>
-        <div class="arow"><div class="top"><b>wet-floor</b><span class="st">placed</span></div>
-          <div class="meta">environment · procedural</div>
-          <div class="files">scene/main.js</div></div>
-        <div class="arow"><div class="top"><b>atmosphere</b><span class="st">placed</span></div>
-          <div class="meta">environment · procedural</div>
-          <div class="files">scene/textures/storm-sky.png</div></div>
+          <div class="files">scene/world.js · weather.js</div></div>
         <div class="tex">
-          <figure><img src="/art/tex/slate.png"><figcaption>slate</figcaption></figure>
-          <figure><img src="/art/tex/sanctuary-door.png"><figcaption>door</figcaption></figure>
-          <figure><img src="/art/tex/heraldic-cloth.png"><figcaption>cloth</figcaption></figure>
-          <figure><img src="/art/tex/storm-sky.png"><figcaption>sky</figcaption></figure>
+          <figure><img src="/art/tex/stone.png"><figcaption>stone</figcaption></figure>
+          <figure><img src="/art/tex/paving.png"><figcaption>paving</figcaption></figure>
+          <figure><img src="/art/tex/stone-normal.png"><figcaption>normal</figcaption></figure>
+          <figure><img src="/art/tex/banner.png"><figcaption>banner</figcaption></figure>
         </div>
         <p class="ledgernote">Which rung it came from, and how far it got —
           for every model on stage.</p>
@@ -303,16 +304,16 @@
   <div class="content">
     <div class="brief">
       <div class="who"><span class="eyebrow">The brief, in the user's words</span></div>
-      <q>“Isometric voxel-ish dark fantasy graphics demo with realistic shading, reflective wet floors, a character, expansive living environment and bounded click-to-move exploration. Lazy-follow camera, drag rotation, scroll zoom. Three.js, 60 fps, no downloaded art assets, no gameplay. 45 minute time limit.”</q>
+      <q>“Isometric stylized-realistic fantasy ruined shrine courtyard at dusk, weathered materials, reflective wet floors, character, statues, lanterns, banners, moss and rubble. Click move, lazy follow, drag rotate, scroll zoom. Alive animated expansive setting, limited movement. No downloaded art assets. 60 fps.”</q>
       <div class="spacer"></div>
       <div class="steps">
-        <b>1</b> init the project <i>›</i> <b>2</b> read the stage — 1091 × 738<br>
+        <b>1</b> init the project <i>›</i> <b>2</b> read the stage — 1100 × 733<br>
         <b>3</b> dream the target at that aspect <i>›</i> <b>4</b> lock it
       </div>
       <div class="dream">
         <div class="kv"><span>dreamed</span><b>by the agent's own image tool, from the brief</b></div>
-        <div class="kv"><span>locked</span><b>08:02:09, before any scene code</b></div>
-        <div class="kv"><span>scored against</span><b>3 rounds · 3.35 → 4.0 → 4.25</b></div>
+        <div class="kv"><span>locked</span><b>23:57:50, before any scene code</b></div>
+        <div class="kv"><span>scored against</span><b>4 rounds · 4.85 → 5.75 → 5.95 → 6.10</b></div>
       </div>
     </div>
     <div class="link">
@@ -323,14 +324,14 @@
     <div style="display:flex;flex-direction:column">
       <div class="shot">
         <img src="/art/target.png">
-        <div class="plabel">target.png <small>1456 × 819</small>
+        <div class="plabel">target.png <small>1524 × 1032</small>
           <span class="lk">v1 · locked</span></div>
       </div>
       <div class="hist"><span class="tag">HISTORY</span> Empty — v1 was never replaced. A new target archives the old one here, with the round it was swapped at.</div>
     </div>
   </div>
   <div class="caption">A trajectory needs a fixed point. This is it.</div>
-  <div class="foot"><span>Ember Abbey · the target this project locked at 08:02, three rounds before the loop stopped</span><span>Real brief and real target from the mode's own run</span></div>
+  <div class="foot"><span>The Weeping Sanctuary · the target this project locked at 23:57, four rounds before the loop stalled</span><span>Real brief and real target from the mode's own run</span></div>
 </section>
 
 <!-- ══════════════ 02 WIPE ══════════════ -->
@@ -342,22 +343,22 @@
   </div>
   <div class="ctrls">
     <div class="seg"><span>Live</span><span>Target</span><span class="on">Split</span></div>
-    <div class="roundchips"><span class="rc">Live</span><span class="rc">R1 3.35</span><span class="rc on">R2 4.0</span><span class="rc">R3 4.25</span></div>
+    <div class="roundchips"><span class="rc">Live</span><span class="rc">R1 4.85</span><span class="rc">R2 5.75</span><span class="rc">R3 5.95</span><span class="rc on">R4 6.10</span></div>
     <span class="wv">wipe 45%</span>
   </div>
   <div class="stage">
-    <img src="/art/r02.png" style="object-position:center 42%">
-    <div class="over" style="clip-path:inset(0 55% 0 0)"><img src="/art/target.png" style="object-position:center 44%"></div>
+    <img src="/art/r04.png" style="object-position:center 45%">
+    <div class="over" style="clip-path:inset(0 55% 0 0)"><img src="/art/target.png" style="object-position:center 45%"></div>
     <div class="seam" style="left:45%"><span class="knob"></span></div>
     <span class="corner l">Target</span>
-    <span class="corner r">Round 2</span>
+    <span class="corner r">Round 4</span>
   </div>
   <div class="legend">
     <span><b>target.png</b> · v1 · locked</span>
-    <span class="sp"><b>rounds/02/capture.png</b> · the renderer's own frame · 4.0 / 10</span>
+    <span class="sp"><b>rounds/04/capture.png</b> · the renderer's own frame, through its post chain · 6.10 / 10</span>
   </div>
   <div class="caption">A lighting change becomes something you can see, not something you remember.</div>
-  <div class="foot"><span>Live, Target or Split at any time · any past round's capture against the same dream</span><span>Real round-2 capture, uncropped except by this frame</span></div>
+  <div class="foot"><span>Live, Target or Split at any time · any past round's capture against the same dream</span><span>Real round-4 capture, uncropped except by this frame</span></div>
 </section>
 
 <!-- ══════════════ 03 FRESH JUDGE ══════════════ -->
@@ -369,68 +370,68 @@
   </div>
   <div class="content">
     <div class="card">
-      <div class="chead"><b>Round 3 verdict</b>
-        <span class="chip">fresh context<span class="mono">/root/judge_03</span></span></div>
+      <div class="chead"><b>Round 4 verdict</b>
+        <span class="chip">fresh context<span class="mono">no history · no scores</span></span></div>
       <div class="axes">
-        <div class="ax"><span>Composition</span><div class="track"><div class="fill" style="width:48.3%"></div></div><em>1.45<i> / 3</i></em></div>
-        <div class="ax"><span>Lighting</span><div class="track"><div class="fill" style="width:43.3%"></div></div><em>1.3<i> / 3</i></em></div>
-        <div class="ax"><span>Materials</span><div class="track"><div class="fill" style="width:40%"></div></div><em>1.2<i> / 3</i></em></div>
-        <div class="ax"><span>Details</span><div class="track"><div class="fill" style="width:30%"></div></div><em>0.3<i> / 1</i></em></div>
+        <div class="ax"><span>Composition</span><div class="track"><div class="fill" style="width:68.3%"></div></div><em>2.05<i> / 3</i></em></div>
+        <div class="ax"><span>Lighting</span><div class="track"><div class="fill" style="width:65%"></div></div><em>1.95<i> / 3</i></em></div>
+        <div class="ax"><span>Materials</span><div class="track"><div class="fill" style="width:55%"></div></div><em>1.65<i> / 3</i></em></div>
+        <div class="ax"><span>Details</span><div class="track"><div class="fill" style="width:45%"></div></div><em>0.45<i> / 1</i></em></div>
       </div>
-      <div class="total"><b>4.25</b><i>/ 10</i>
+      <div class="total"><b>6.10</b><i>/ 10</i>
         <span class="note">“The goal is for both images to be identical.”<br>Upstream's rubric, kept as it was written.</span></div>
       <div class="gaps">
         <div class="gap">
-          <div class="gh"><b>camera-framing</b><span class="area">composition</span></div>
-          <p><em>Steeper and taller than the target; it exposes the platform perimeter and an empty foreground strip.</em></p>
-          <p class="fix"><b>Fix</b> — use the target's ~16:9 frame, lower the camera, move the framing inward so the boundaries fall outside the edges.</p>
+          <div class="gh"><b>camera-elevation-and-framing</b><span class="area">composition</span></div>
+          <p><em>Seen more steeply than the target, exposing a broad upper landing and leaving the character smaller and higher in the frame.</em></p>
+          <p class="fix"><b>Fix</b> — lower the camera and aim it so the character sits in the lower central quarter and the steps read frontally; keep the cropped shrine crown.</p>
         </div>
         <div class="gap">
-          <div class="gh"><b>reflection-character</b><span class="area">materials</span></div>
-          <p><em>Reflections are smooth elongated patches on uniform paving; the target has irregular puddles, dry islands and fine glints.</em></p>
-          <p class="fix"><b>Fix</b> — puddle masks, multiscale normals, per-paver wetness; break reflections at raised edges.</p>
+          <div class="gh"><b>stair-too-pristine</b><span class="area">materials</span></div>
+          <p><em>Identical uninterrupted black risers with straight light edges and little wear.</em></p>
+          <p class="fix"><b>Fix</b> — vary tread corners and slab joints, chip the edges, sag and break sections, add puddles, moss and amber reflected streaks.</p>
         </div>
         <div class="gap">
-          <div class="gh"><b>character-silhouette</b><span class="area">details</span></div>
-          <p><em>Still a square-headed block figure with a broad flat cape and no readable sword.</em></p>
-          <p class="fix"><b>Fix</b> — refine helmet and shoulders, articulate the limbs, add a sword angled down, taper the cape into torn folds.</p>
+          <div class="gh"><b>insufficient-foreground-occlusion</b><span class="area">composition</span></div>
+          <p><em>The foreground lamps and plinths take far less of the frame than in the target; the right column is a narrow small element.</em></p>
+          <p class="fix"><b>Fix</b> — bring the two front lamp pedestals closer and enlarge them; move the right column forward with a heavier shaft and base.</p>
         </div>
       </div>
-      <div class="more">3 of the 19 gaps this verdict named — each with an id, an area, a symptom and a fix</div>
+      <div class="more">3 of the 17 gaps this verdict named — each with an id, an area, a symptom and a fix</div>
     </div>
     <div class="side">
       <div class="shot">
-        <img src="/art/r03.png">
-        <div class="cap"><b>rounds/03/capture.png</b><span>what the judge was shown</span></div>
+        <img src="/art/r04.png">
+        <div class="cap"><b>rounds/04/capture.png</b><span>what the judge was shown</span></div>
       </div>
       <div class="summary">
         <div class="eyebrow" style="margin-bottom:8px">In its own words</div>
-        <q>“The broad visual ingredients are present, but the build remains a
-          tidy, steeply viewed enclosed platform with an oversized door and
-          repetitive towers. Those structural and material differences still
-          dominate.”</q>
+        <q>“The ornate stone assets are strong, but the courtyard still reads
+          as a clean, elevated stage with regular paving, orderly stairs and
+          small isolated lamps. The target has much richer wet reflections and
+          irregular accumulated ruin detail.”</q>
       </div>
       <div class="trend">
         <div class="eyebrow" style="margin-bottom:9px">Trajectory</div>
-        <div class="row"><b>3.35</b><span class="to">→</span><b>4.0</b><span class="to">→</span><b class="hi">4.25</b>
+        <div class="row"><b>4.85</b><span class="to">→</span><b>5.75</b><span class="to">→</span><b>5.95</b><span class="to">→</span><b class="hi">6.10</b>
           <svg width="96" height="26" viewBox="0 0 96 26" fill="none" style="margin-left:auto">
-            <path d="M2 17.3 L47 15.6 L94 15.0" stroke="#f97316" stroke-width="1.6"/>
-            <circle cx="2" cy="17.3" r="2" fill="#7a4c2c"/><circle cx="47" cy="15.6" r="2" fill="#b4622c"/><circle cx="94" cy="15" r="2.6" fill="#f97316"/>
+            <path d="M2 13.4 L33 11.1 L64 10.5 L94 10.1" stroke="#f97316" stroke-width="1.6"/>
+            <circle cx="2" cy="13.4" r="2" fill="#7a4c2c"/><circle cx="33" cy="11.1" r="2" fill="#a0562a"/><circle cx="64" cy="10.5" r="2" fill="#b4622c"/><circle cx="94" cy="10.1" r="2.6" fill="#f97316"/>
           </svg>
         </div>
       </div>
       <div class="exit">
-        <div class="eh"><s></s>stall-approaching</div>
+        <div class="eh"><s></s>stalled</div>
         <ul>
-          <li>The judge named <b>the same 18 gaps</b> in two verdicts in a row.</li>
-          <li>The best of the last two rounds is <b>4.25/10</b>, less than a full point over the <b>3.35/10</b> before them.</li>
+          <li>Round 4 was a rethink and scored <b>6.10/10</b>, only <b>0.15</b> over the 5.95/10 before it — less than the full point a redesign has to earn.</li>
+          <li>Seventeen gaps have now been named in <b>three verdicts running</b>: the stall signal, not a to-do list.</li>
         </ul>
         <div class="src">lucid.mjs status · evaluation.exit</div>
       </div>
     </div>
   </div>
-  <div class="caption">The same gap named twice is not a to-do. It is a signal to redesign.</div>
-  <div class="foot"><span>Composition 0–3 · Lighting 0–3 · Materials 0–3 · Details 0–1 — a repeated gap is what triggers a rethink</span><span>Real verdict JSON from round 3 of the Ember Abbey run</span></div>
+  <div class="caption">A redesign that does not earn a full point is not another round. It is the loop telling you to stop and ask.</div>
+  <div class="foot"><span>Composition 0–3 · Lighting 0–3 · Materials 0–3 · Details 0–1 — three verdicts naming a gap is a stall approaching; a rethink under a full point is stalled</span><span>Real verdict JSON from round 4 of The Weeping Sanctuary</span></div>
 </section>
 
 <!-- ══════════════ 04 ASSET LADDER ══════════════ -->
@@ -448,65 +449,65 @@
           <p>Only when the user has said so. Unspecified means no.</p></div>
         <span class="tag">opt-in</span>
       </div>
-      <div class="rung">
+      <div class="rung chosen">
         <span class="n">2</span>
         <div class="body"><b>Image-to-3D, from your own cut-out of the target</b>
-          <p>Heroes, architecture, characters, trees — not a download.</p>
-          <span class="mono">tripo3d/h3.1/image-to-3d ≈ $0.30 · fal-ai/trellis ≈ $0.02</span></div>
-        <span class="tag">needs a fal key</span>
-      </div>
-      <div class="rung">
-        <span class="n">3</span>
-        <div class="body"><b>Headless Blender</b>
-          <p>Modelling a specific hard-surface object, conversion, armatures, normal bakes — never opened interactively.</p>
-          <span class="mono">blender.mjs run &lt;script.py&gt;</span></div>
-        <span class="tag">local</span>
+          <p>The saint, the traveler, the carved portal, the lamps, the columns, the tree; a Trellis fern. Yaw checked on a six-view sheet, sized by one dimension, grounded — then into the light already set.</p>
+          <span class="mono">tripo3d/h3.1 detailed ≈ $0.60 · fal-ai/trellis $0.02 · seven models</span></div>
+        <span class="tag">7 models</span>
       </div>
       <div class="rung chosen">
+        <span class="n">3</span>
+        <div class="body"><b>Headless Blender, through the kit</b>
+          <p>Bevelled masonry and lanterns, chipped stair slabs and broken balustrades, a ridged sword — never opened interactively.</p>
+          <span class="mono">blender.mjs run masonry.py · ruin-kit-v2.py · sword.py</span></div>
+        <span class="tag">3 models</span>
+      </div>
+      <div class="rung">
         <span class="n">4</span>
         <div class="body"><b>Procedural geometry, textured by the image tool</b>
-          <p>The last rung — and the faithful one when the brief says voxel, low-poly or blocky.</p></div>
-        <span class="tag">chosen here</span>
+          <p>The last rung: terraces, paving, rain, embers, mist, the planar reflection — and the valley matte the image tool painted.</p></div>
+        <span class="tag">the rest</span>
       </div>
       <div class="doctor">
         <span class="ok">found</span>
         <span class="mono">blender 5.2.1 at /Applications/Blender.app/Contents/MacOS/Blender (found via platform)</span>
       </div>
-      <div class="eyebrow" style="margin:14px 0 8px">Textures, always — from the image tool, never from noise</div>
+      <div class="eyebrow" style="margin:14px 0 8px">Textures from the image tool — the maps from texture.mjs</div>
       <div class="tex">
-        <figure><img src="/art/tex/slate.png"><figcaption>slate.png</figcaption></figure>
-        <figure><img src="/art/tex/sanctuary-door.png"><figcaption>sanctuary-door.png</figcaption></figure>
-        <figure><img src="/art/tex/heraldic-cloth.png"><figcaption>heraldic-cloth.png</figcaption></figure>
-        <figure><img src="/art/tex/storm-sky.png"><figcaption>storm-sky.png</figcaption></figure>
+        <figure><img src="/art/tex/stone.png"><figcaption>stone.png</figcaption></figure>
+        <figure><img src="/art/tex/stone-normal.png"><figcaption>stone-normal.png</figcaption></figure>
+        <figure><img src="/art/tex/paving.png"><figcaption>paving.png</figcaption></figure>
+        <figure><img src="/art/tex/banner.png"><figcaption>banner.png</figcaption></figure>
       </div>
     </div>
     <div>
       <div class="panel">
-        <div class="ph"><b>Asset ledger</b><span class="count">4</span><span style="margin-left:auto;font-size:11px;color:#8d8783">Ember Abbey</span></div>
+        <div class="ph"><b>Asset ledger</b><span class="count">12</span><span style="margin-left:auto;font-size:11px;color:#8d8783">The Weeping Sanctuary · $3.02 image-to-3D at list price</span></div>
         <table>
           <tr><th>id</th><th>role</th><th>source</th><th>state</th></tr>
-          <tr><td class="id">masonry</td><td>environment</td><td>procedural</td><td><span class="st">placed</span></td></tr>
-          <tr><td class="id">knight</td><td>hero</td><td>procedural</td><td><span class="st">placed</span></td></tr>
-          <tr><td class="id">wet-floor</td><td>environment</td><td>procedural</td><td><span class="st">placed</span></td></tr>
-          <tr><td class="id">atmosphere</td><td>environment</td><td>procedural</td><td><span class="st">placed</span></td></tr>
+          <tr><td class="id">saint</td><td>hero</td><td>image-to-3D</td><td><span class="st">placed</span></td></tr>
+          <tr><td class="id">portal</td><td>hero</td><td>image-to-3D</td><td><span class="st">placed</span></td></tr>
+          <tr><td class="id">traveler</td><td>hero</td><td>image-to-3D</td><td><span class="st">placed</span></td></tr>
+          <tr><td class="id">masonry</td><td>environment</td><td>Blender</td><td><span class="st">placed</span></td></tr>
+          <tr><td class="id">ruin-kit-v2</td><td>environment</td><td>Blender</td><td><span class="st">placed</span></td></tr>
         </table>
-        <div class="why"><b>knight</b> — “Articulated voxel knight, height 1.85 scene units, forward +Z; block construction matches style and enables independent gait.”</div>
+        <div class="why"><b>saint</b> — “Prepared to 6 m height, yaw -90 based on six-view inspection, 2048px textures, three instances.” · seven more rows</div>
       </div>
       <div class="vit">
         <span class="statechip"><s></s>fps target 60 · met</span>
-        <span><b>120</b> fps · <b>8.3</b> ms · <b>240</b> draws · <b>1.66M</b> tris · <b>11</b> textures</span>
+        <span><b>60</b> fps · <b>16.6</b> ms · <b>249</b> draws · <b>3.68M</b> tris · <b>22</b> textures</span>
       </div>
       <p class="note">
-        Four assets, all on rung 4 — the brief asked for voxel, so primitives
-        <em>are</em> the faithful rendering of that style, and the ledger note
-        says so. Geometry is only half of it: the stone, the door, the heraldry
-        and the sky are all generated images, because a material without a
-        texture is a <span class="mono" style="color:#c98a52">materials</span>
-        gap the judge will name every round.
+        Twelve assets across three rungs — seven generated from cut-outs of the
+        target, three authored headless in Blender, the rest procedural — and
+        every one through <em>prep</em> before it entered the light. Stone and
+        paving are generated images with derived maps: without them a
+        <span class="mono" style="color:#c98a52">materials</span> gap is named every round.
       </p>
       <div class="onstage">
-        <img src="/art/r03.png">
-        <div class="cap"><b>rounds/03/capture.png</b><span>all four, on stage</span></div>
+        <img src="/art/r04.png">
+        <div class="cap"><b>rounds/04/capture.png</b><span>all twelve, on stage</span></div>
       </div>
     </div>
   </div>
