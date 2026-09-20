@@ -97,6 +97,7 @@
     "remark-math": "^6.0.0",
     "remotion": "4.0.438",
     "tailwindcss": "^4.0.0",
+    "three": "^0.182.0",
     "trash": "^10.1.1",
     "vite": "^7.3.1",
     "zod": "^4.4.3",
@@ -109,6 +110,7 @@
     "@types/pako": "^2.0.4",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.182.0",
     "happy-dom": "^20.11.1",
     "typescript": "^5.9.3"
   },

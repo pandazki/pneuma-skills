@@ -76,6 +76,9 @@ export interface SeedanceResult {
   requested_duration: number | "auto";
   resolution: string;
   seed?: number;
+  /** fal's queue id for this render, when the queue reported one. Absent
+   *  rather than null, so "no id" is distinguishable from "id unknown". */
+  request_id?: string;
 }
 
 export interface SeedanceDependencies {

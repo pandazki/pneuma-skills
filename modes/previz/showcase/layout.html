@@ -1,0 +1,786 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Previz showcase</title>
+  <style>
+    @font-face{font-family:DM;src:url('/fonts/dmsans/v17-normal-latin.woff2');font-weight:300 700}
+    @font-face{font-family:DMi;src:url('/fonts/dmsans/v17-italic-latin.woff2');font-weight:300 700;font-style:italic}
+    @font-face{font-family:Fraunces;src:url('/fonts/fraunces/v38-normal-latin.woff2');font-weight:400}
+    *{box-sizing:border-box}
+    body{margin:0;width:1376px;height:768px;overflow:hidden;background:#09090b;color:#f4f2ef;font-family:DM,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+    body:before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 74% -10%,#5a341f24,transparent 60%),radial-gradient(ellipse at 8% 108%,#18181b,transparent 64%);pointer-events:none}
+    .page{position:relative;width:1376px;height:768px;padding:30px 48px 26px;display:none}
+    .page.active{display:block}
+
+    /* ── shared chrome ─────────────────────────────────────────────────── */
+    .brand{display:flex;align-items:center;gap:12px;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#a5a1a0}
+    .brand b{color:#f4f2ef;font-weight:600}
+    .brand i{height:17px;width:1px;background:#454044;margin:0 3px}
+    .dot{width:7px;height:7px;background:#f97316;border-radius:50%}
+    .folio{margin-left:auto;letter-spacing:1.6px;color:#aaa09b;font-size:12px}
+    h1{font:400 40px/1.08 Fraunces,Georgia,serif;letter-spacing:-1.3px;margin:20px 0 8px}
+    p{margin:0;color:#a6a2a1;font-size:15px;line-height:1.55}
+    .topline{display:flex;justify-content:space-between;align-items:flex-end;gap:36px}
+    .topline>p{font-size:14px;padding-bottom:7px;text-align:right;flex:none;max-width:470px}
+    .eyebrow{font-size:11px;letter-spacing:1.8px;color:#8d8783;text-transform:uppercase}
+    .foot{position:absolute;bottom:16px;left:48px;right:48px;display:flex;justify-content:space-between;color:#8d8783;font-size:12px}
+    .caption{position:absolute;bottom:42px;left:48px;right:48px;text-align:center;font:400 15px/1.4 Fraunces,Georgia,serif;font-style:italic;color:#cfc6bd}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;letter-spacing:-.1px}
+
+    /* ── surfaces ──────────────────────────────────────────────────────── */
+    .window{border:1px solid #322e31;border-radius:13px;overflow:hidden;background:#0e0e10;box-shadow:0 25px 50px #0006}
+    .bar{height:42px;background:#171618;border-bottom:1px solid #2b282b;display:flex;align-items:center;gap:10px;padding:0 14px 0 18px;font-size:12.5px;color:#ddd7d3}
+    .bar .muted{color:#918a86;margin-left:4px;font-size:11.5px}
+    .bar .right{margin-left:auto;display:flex;align-items:center;gap:10px}
+    .pill{padding:4px 9px;border:1px solid #4a3a2e;border-radius:6px;color:#ffb47c;background:#f973160e;font-size:11.5px}
+    .seg{display:flex;align-items:center;gap:6px}
+    .seg em{font-style:normal;font-size:9.5px;letter-spacing:1.4px;color:#6f6a66;text-transform:uppercase;margin-right:1px}
+    .seg span{padding:3px 9px;font-size:11px;color:#9c9490;border:1px solid transparent;border-radius:999px}
+    .seg span.on{border-color:#c4753d;background:#f9731618;color:#f9be92}
+
+    /* lanes */
+    .lane{border:1px solid #2b282b;border-radius:9px;overflow:hidden;background:#0c0c0e;min-width:0}
+    .lane .lh{padding:6px 9px 7px;background:#151416;border-bottom:1px solid #232023}
+    .lane .lh .t{display:flex;align-items:center;gap:8px;font-size:11px;color:#ded7d1}
+    .lane .lh .f{margin-top:2px;font-size:9.5px;color:#7e7874;font-variant-numeric:tabular-nums}
+    .lane .lh .ctl{margin-left:auto;display:flex;align-items:center;gap:5px}
+    .chipctl{display:inline-flex;align-items:center;gap:4px;border:1px solid #33302f;border-radius:999px;padding:2px 8px;font-size:9.5px;color:#9c9490;background:#141315}
+    .chipctl.on{border-color:#c4753d;background:#f9731618;color:#f9be92}
+    .lane img{display:block;width:100%;object-fit:cover}
+    .role{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:1px 8px;font-size:9.5px;letter-spacing:.4px}
+    .role.block{border:1px solid #4a3a2e;background:#f973160f;color:#f9be92}
+    .role.act{border:1px solid #3b4a63;background:#60a5fa12;color:#9dc0ea}
+
+    /* stage composite: the wipe */
+    .stage{position:relative;overflow:hidden;border:1px solid #2b282b;border-radius:9px;background:#08080a}
+    .stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+    .stage .over{position:absolute;inset:0;overflow:hidden}
+    .stage .seam{position:absolute;top:0;bottom:0;width:1px;background:#f97316b3;box-shadow:0 0 10px #f9731655}
+    .stage .knob{position:absolute;top:50%;left:50%;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;border:1px solid #f97316b3;background:#09090bcc}
+    .stage .knob:after{content:"";position:absolute;inset:0;margin:auto;width:1px;height:9px;background:#f9a665;box-shadow:-3px 0 0 #f9a665,3px 0 0 #f9a665}
+    .corner{position:absolute;top:8px;padding:2px 9px;border-radius:999px;border:1px solid #3a3639;background:#09090bcc;font-size:10px;color:#c8c1bb}
+    .corner.l{left:8px}
+    .corner.r{right:8px}
+    .corner.b{top:auto;bottom:8px}
+
+    /* transport */
+    .tp{display:flex;align-items:center;gap:7px;height:30px;font-size:10.5px;color:#9c9490}
+    .tp .play{width:21px;height:21px;border-radius:50%;border:1px solid #c4753d;background:#f9731614;display:flex;align-items:center;justify-content:center}
+    .tp .k{border:1px solid #2f2b2e;border-radius:999px;padding:2px 8px;background:#121113;color:#9c9490}
+    .tp .k.on{border-color:#c4753d;background:#f9731618;color:#f9be92}
+    .tp .k.mark{border-color:#c4753d;color:#f9be92;background:#f9731612}
+    .tp .icon{color:#8d8783;display:flex;align-items:center}
+    .tp .div{width:1px;height:14px;background:#2b282b;margin:0 3px}
+    .tp .pos{margin-left:auto;font-size:11.5px;color:#ded7d1;font-variant-numeric:tabular-nums}
+
+    /* beat timeline */
+    .tl{position:relative;padding-top:4px}
+    .tl .row{display:flex;align-items:center;height:18px;margin-bottom:3px}
+    .tl .rl{width:54px;flex:none;font-size:8.5px;letter-spacing:1.2px;color:#6f6a66;text-transform:uppercase}
+    .tl .track{position:relative;flex:1;height:16px}
+    .tl .beat{position:absolute;top:0;height:16px;border-radius:3px;border:1px solid;padding:0 5px;font-size:9px;line-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .tl .beat.action{border-color:#f9731680;background:#f9731636;color:#f2e7de}
+    .tl .beat.trigger{border-color:#eab30899;background:#eab30830;color:#f2e7de}
+    .tl .beat.camera{border-color:#3a3639;background:#272430;color:#cfc8c3}
+    .tl .beat.hold{border-color:#2f2b2e;background:#1a181c;color:#8d8783}
+    .tl .scale{display:flex;justify-content:space-between;padding-left:54px;font-size:9px;color:#6f6a66;margin-top:3px;font-variant-numeric:tabular-nums}
+    .tl .ov{position:absolute;left:54px;right:0;top:0;bottom:16px;pointer-events:none}
+    .tl .head{position:absolute;top:0;bottom:0;width:1px;background:#f4f2ef}
+    .tl .head:before{content:"";position:absolute;top:-3px;left:-3.5px;width:8px;height:8px;background:#f4f2ef;transform:rotate(45deg)}
+    .tl .mark{position:absolute;top:2px;bottom:2px;border-left:1px solid #f97316b3;border-right:1px solid #f97316b3;background:#f9731619}
+    .tl .conn{position:absolute;top:13px;height:21px;border-left:1px dashed #eab308aa}
+    .tl .conn:before{content:"";position:absolute;top:-2px;left:-3px;width:5px;height:5px;border-radius:50%;background:#f97316}
+    .tl .conn:after{content:"";position:absolute;bottom:-2px;left:0;width:5px;height:5px;border-top:1px solid #eab308;border-right:1px solid #eab308;transform:rotate(45deg)}
+
+    /* status chips */
+    .st{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:1px 7px;font-size:9px;letter-spacing:.6px;text-transform:uppercase;white-space:nowrap}
+    .st.pass{border:1px solid #16a34a55;background:#16a34a14;color:#69c58e}
+    .st.fail{border:1px solid #ef444470;background:#ef444414;color:#f08a8a}
+    .st.unv{border:1px solid #eab30870;background:#eab30814;color:#e9b872}
+    .st.done{border:1px solid #16a34a55;background:#16a34a14;color:#69c58e}
+
+    /* check rows (panel + acceptance) */
+    .tabs{display:flex;align-items:center;gap:9px;font-size:10.5px;color:#8d8783;border-bottom:1px solid #232023;padding-bottom:7px}
+    .tabs .on{color:#f9be92}
+    .grp{margin-top:8px;display:flex;align-items:baseline;gap:7px}
+    .grp b{font-size:10.5px;font-weight:500;color:#ded7d1}
+    .grp span{font-size:9.5px;color:#7e7874;font-variant-numeric:tabular-nums}
+    .crow{margin-top:5px;border:1px solid #2b282b;border-radius:7px;background:#111113;padding:5px 7px}
+    .crow .ch{display:flex;align-items:center;gap:6px}
+    .crow .ch .lb{min-width:0;flex:1;font-size:10px;color:#ded7d1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .crow .ch .rg{flex:none;font-size:8.5px;color:#7e7874;font-variant-numeric:tabular-nums}
+    .crow .nt{margin-top:2px;font-size:9px;line-height:1.45;color:#8d8783}
+    .crow .id{font-size:8.5px;color:#a0937f;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+    /* ══ 00 hero ══════════════════════════════════════════════════════════ */
+    .hero .window{margin-top:11px;height:522px}
+    .hero .board{height:479px;display:grid;grid-template-columns:128px 1fr 288px}
+    .hero .rail{border-right:1px solid #232023;padding:10px 9px}
+    .hero .rail .ph{font-size:10.5px;color:#ded7d1}
+    .hero .rail .ph small{display:block;font-size:9px;color:#7e7874}
+    .hero .rail .sc{margin-top:9px;border:1px solid #c4753d80;border-radius:7px;overflow:hidden;background:#f973160d}
+    .hero .rail .sc .thumb{position:relative;height:62px}
+    .hero .rail .sc .thumb img{display:block;width:100%;height:100%;object-fit:cover}
+    .hero .rail .sc .thumb span{position:absolute;padding:0 3px;border-radius:3px;background:#000000a6;font-size:8.5px;color:#ffffffe6}
+    .hero .rail .sc .thumb .n{left:4px;top:4px}
+    .hero .rail .sc .thumb .d{right:4px;bottom:4px}
+    .hero .rail .sc .m{padding:5px 6px 6px}
+    .hero .rail .sc .m b{display:block;font-size:10px;font-weight:400;color:#ded7d1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .hero .rail .sc .m i{display:block;font-style:normal;font-size:8.5px;color:#7e7874;margin-top:1px}
+    .hero .rail .sc .dots{display:flex;align-items:center;gap:3px;margin-top:5px}
+    .hero .rail .sc .dots s{width:6px;height:6px;border-radius:50%;background:#f97316}
+    .hero .rail .sc .dots .ok{margin-left:auto;color:#69c58e;display:flex}
+    .hero .col{padding:11px 13px;display:flex;flex-direction:column;min-width:0}
+    .hero .lanes{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+    .hero .lane img{height:228px}
+    .hero .vitals{display:flex;align-items:center;gap:10px;margin-top:11px;padding-top:9px;border-top:1px solid #232023;font-size:10.5px;color:#8d8783;font-variant-numeric:tabular-nums}
+    .hero .vitals b{color:#c8c1bb;font-weight:500}
+    .hero .vitals .sep{color:#3f3b3e}
+    .hero .panel{border-left:1px solid #232023;padding:9px 11px;min-width:0;overflow:hidden}
+
+    /* ══ 01 greybox → take ════════════════════════════════════════════════ */
+    .strip .times{display:grid;grid-template-columns:70px repeat(6,1fr);gap:8px;margin-top:22px;font-size:10px;color:#8d8783;font-variant-numeric:tabular-nums}
+    .strip .times b{font-weight:500;color:#c8c1bb}
+    .strip .rowg{display:grid;grid-template-columns:70px repeat(6,1fr);gap:8px;margin-top:5px;align-items:center}
+    .strip .rl{font-size:9px;color:#7e7874;line-height:1.55;font-variant-numeric:tabular-nums}
+    .strip .rl b{display:block;color:#c8c1bb;letter-spacing:1.2px;font-weight:500;text-transform:uppercase;font-size:9.5px;margin-bottom:3px}
+    .strip .rl .role{margin-bottom:3px}
+    .strip .cell{position:relative;border:1px solid #2b282b;border-radius:6px;overflow:hidden;background:#08080a}
+    .strip .cell img{display:block;width:100%;height:114px;object-fit:cover}
+    .strip .cell.mark{border-color:#c4753d;box-shadow:0 0 0 1px #f9731633}
+    .strip .cell .tag{position:absolute;right:4px;bottom:4px;border-radius:3px;background:#1a1210e0;border:1px solid #c4753d;color:#f9be92;font-size:8.5px;padding:1px 5px}
+    .strip .band{display:grid;grid-template-columns:1.2fr 1fr;gap:14px;margin-top:20px}
+    .strip .band .stackr{display:flex;flex-direction:column;gap:10px}
+    .strip .b1{border:1px solid #2b282b;border-radius:9px;background:#0f0f11;padding:11px 13px}
+    .strip .b1 .eyebrow{margin-bottom:8px}
+    .strip .b1 p{font-size:10.5px;line-height:1.55;color:#8d8783}
+    .strip .b1 .hd{display:flex;align-items:center;gap:6px;margin-bottom:5px}
+    .strip .b1 .hd b{font-size:10.5px;font-weight:500;color:#ded7d1}
+    .strip .split{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+    .strip .split ul{margin:6px 0 0;padding-left:14px;font-size:10.5px;line-height:1.65;color:#a29a95}
+    .strip .split li{margin-bottom:1px}
+    .strip .q{margin-top:10px;padding-top:9px;border-top:1px solid #232023;font:400 11.5px/1.6 Fraunces,Georgia,serif;color:#d8cfc7}
+    .strip .q em{font-style:normal;color:#f9be92}
+
+    /* ══ 02 one clock ═════════════════════════════════════════════════════ */
+    .clock .ctrls{display:flex;align-items:center;gap:12px;margin-top:14px}
+    .clock .ctrls .facts{margin-left:auto;display:flex;gap:16px;font-size:10.5px;color:#8d8783;font-variant-numeric:tabular-nums}
+    .clock .ctrls .facts b{color:#ded7d1;font-weight:500}
+    .clock .main{display:grid;grid-template-columns:770px 1fr;gap:16px;margin-top:11px}
+    .clock .stage{height:432px}
+    .clock .side{display:flex;flex-direction:column;gap:10px}
+    .clock .tile{border:1px solid #2b282b;border-radius:9px;background:#0f0f11;overflow:hidden}
+    .clock .tile .th{display:flex;align-items:center;gap:7px;padding:6px 9px;border-bottom:1px solid #232023;font-size:10px;color:#9c9490}
+    .clock .tile .th b{color:#ded7d1;font-weight:500;font-size:10.5px}
+    .clock .tile .th .mono{margin-left:auto;color:#7e7874}
+    .clock .tile .two{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:6px}
+    .clock .tile .two .f{position:relative;border-radius:4px;overflow:hidden;background:#08080a}
+    .clock .tile .two img{display:block;width:100%;height:132px;object-fit:cover}
+    .clock .tile .two .f span{position:absolute;left:4px;top:4px;border-radius:3px;background:#000000a6;font-size:8.5px;padding:0 4px;color:#ffffffdd}
+    .clock .tile .blend{position:relative;margin:6px;height:148px;border-radius:4px;overflow:hidden;background:#08080a}
+    .clock .tile .blend img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+    .clock .tile .bar2{display:flex;align-items:center;gap:8px;padding:0 9px 8px;font-size:9.5px;color:#7e7874}
+    .clock .tile .bar2 .track{position:relative;flex:1;height:4px;border-radius:2px;background:#232023}
+    .clock .tile .bar2 .track s{position:absolute;left:0;top:0;bottom:0;width:50%;border-radius:2px;background:#c4753d}
+    .clock .tile .bar2 .track i{position:absolute;left:50%;top:-4px;width:11px;height:11px;margin-left:-5.5px;border-radius:50%;border:1px solid #f97316;background:#0e0e10}
+    .clock .note{border:1px solid #2b282b;border-radius:9px;background:#0f0f11;padding:10px 12px;font-size:10.5px;line-height:1.6;color:#8d8783}
+    .clock .note b{color:#ded7d1;font-weight:500}
+    .clock .note .mono{color:#a0937f}
+    .clock .bottom{margin-top:11px;border-top:1px solid #232023;padding-top:7px}
+
+    /* ══ 03 3d inspection ═════════════════════════════════════════════════ */
+    .insp .main{display:grid;grid-template-columns:1fr 372px;gap:16px;margin-top:13px}
+    .insp .lane .shotbox{position:relative;line-height:0}
+    .insp .lane .shotbox img{height:475px}
+    .insp .callout{position:absolute;display:flex;align-items:center;gap:6px;font-size:10px;line-height:1;color:#f7dcc4;background:#0b0b0de6;border:1px solid #c4753d;border-radius:999px;padding:4px 9px;white-space:nowrap}
+    .insp .callout s{width:5px;height:5px;border-radius:50%;background:#f97316;text-decoration:none}
+    .insp .leaders{position:absolute;inset:0;pointer-events:none}
+    .insp .side{display:flex;flex-direction:column;gap:10px}
+    .insp .tile{border:1px solid #2b282b;border-radius:9px;background:#0f0f11;overflow:hidden}
+    .insp .tile .th{display:flex;align-items:center;gap:7px;padding:6px 9px;border-bottom:1px solid #232023;font-size:10px;color:#9c9490}
+    .insp .tile .th b{color:#ded7d1;font-weight:500;font-size:10.5px}
+    .insp .tile img{display:block;width:100%;height:198px;object-fit:contain;background:#000}
+    .insp .tile p{padding:7px 9px;font-size:10px;line-height:1.55;color:#8d8783}
+    .insp .legend{border:1px solid #2b282b;border-radius:9px;background:#0f0f11;padding:9px 11px}
+    .insp .legend .lg{display:flex;align-items:flex-start;gap:8px;font-size:10px;color:#8d8783;line-height:1.5;margin-bottom:6px}
+    .insp .legend .lg:last-child{margin-bottom:0}
+    .insp .legend .lg b{color:#ded7d1;font-weight:500}
+    .insp .legend .sw{width:22px;flex:none;margin-top:4px}
+    .insp .warn{border:1px solid #4a3a2e;border-radius:9px;background:#f973160c;padding:9px 11px;font-size:10.5px;line-height:1.55;color:#d9c2ad}
+    .insp .warn b{color:#f9be92;font-weight:500}
+
+    /* ══ 04 acceptance ════════════════════════════════════════════════════ */
+    .acc .main{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:12px}
+    .acc .rec{border:1px solid #2b282b;border-radius:10px;background:#0f0f11;padding:11px 13px 12px}
+    .acc .rec.b{border-color:#4a3a2e}
+    .acc .rh{display:flex;align-items:baseline;gap:8px;padding-bottom:8px;border-bottom:1px solid #232023}
+    .acc .rh b{font-size:12px;font-weight:500;color:#ded7d1}
+    .acc .rh .mono{color:#a0937f}
+    .acc .rh .tag{margin-left:auto;border:1px solid #3a3639;border-radius:999px;padding:1px 8px;font-size:9.5px;color:#918a86}
+    .acc .rec.b .rh .tag{border-color:#a1620655;color:#e9b872}
+    .acc .sub{margin-top:7px;font-size:10px;line-height:1.5;color:#7e7874}
+    .acc .crow{margin-top:5px}
+    .acc .crow .ch .lb{font-size:10.5px}
+    .acc .more{margin-top:6px;font-size:9.5px;color:#6f6a66}
+    .acc .legend3{margin-top:11px;border:1px solid #2b282b;border-radius:10px;background:#0f0f11;padding:9px 13px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+    .acc .legend3 .l{display:flex;align-items:flex-start;gap:8px;font-size:10px;line-height:1.5;color:#8d8783}
+    .acc .legend3 .l b{color:#ded7d1;font-weight:500}
+    .acc .tlwrap{margin-top:9px;border:1px solid #2b282b;border-radius:9px;background:#0f0f11;padding:10px 15px 5px;display:grid;grid-template-columns:1fr 430px;gap:20px}
+    .acc .tlwrap .hd{display:flex;align-items:center;gap:10px;font-size:10.5px;color:#8d8783;margin-bottom:7px}
+    .acc .tlwrap .hd b{color:#ded7d1;font-weight:500}
+    .acc .tlwrap .hd .rt{margin-left:auto;color:#f9be92}
+    .acc .tlwrap .why{font-size:10.5px;line-height:1.6;color:#8d8783;border-left:1px solid #232023;padding-left:20px}
+    .acc .tlwrap .why b{color:#ded7d1;font-weight:500}
+
+    /* ══ 05 cost ══════════════════════════════════════════════════════════ */
+    .cost .main{display:grid;grid-template-columns:400px 1fr 392px;gap:16px;margin-top:15px}
+    .cost .box{border:1px solid #2b282b;border-radius:10px;background:#0f0f11;padding:15px 17px;min-height:292px}
+    .cost .box h3{margin:0 0 9px;font-size:11px;font-weight:500;color:#ded7d1}
+    .cost .big{display:flex;align-items:baseline;gap:10px}
+    .cost .big b{font:400 44px/1 Fraunces,Georgia,serif;color:#f4ece4}
+    .cost .big i{font-style:normal;font-size:12px;color:#7e7874}
+    .cost .basis{margin-top:9px;border:1px dashed #3a3639;border-radius:7px;padding:8px 10px;font-size:11px;color:#c8bdb2;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .cost .kv{display:flex;align-items:baseline;font-size:11px;color:#8d8783;margin-top:7px}
+    .cost .kv b{margin-left:auto;color:#ded7d1;font-weight:500;font-variant-numeric:tabular-nums}
+    .cost .fine{margin-top:9px;padding-top:9px;border-top:1px solid #232023;font-size:10px;line-height:1.6;color:#7e7874}
+    .cost table{width:100%;border-collapse:collapse}
+    .cost th{font-size:9px;letter-spacing:1.1px;text-transform:uppercase;color:#6f6a66;font-weight:400;text-align:left;padding:0 0 6px}
+    .cost th.r{text-align:right}
+    .cost td{font-size:11px;color:#ded7d1;padding:7px 0;border-top:1px solid #232023;font-variant-numeric:tabular-nums}
+    .cost td.r{text-align:right}
+    .cost .rec{margin-top:11px;padding-top:10px;border-top:1px solid #232023;font-size:10px;line-height:1.75;color:#8d8783}
+    .cost .rec span{color:#6f6a66;display:inline-block;width:74px}
+    .cost .rec b{color:#c8c1bb;font-weight:400;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px}
+    .cost .four{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:8px}
+    .cost .four .c{border:1px solid #2b282b;border-radius:9px;background:#0f0f11;padding:12px 14px}
+    .cost .four .c.on{border-color:#c4753d;background:#f973160c}
+    .cost .four .c .hd{display:flex;align-items:baseline;gap:7px;font-size:10.5px;color:#8d8783}
+    .cost .four .c .hd b{font-size:11px;color:#ded7d1;font-weight:500}
+    .cost .four .c.on .hd b{color:#f9be92}
+    .cost .four .c .v{margin-top:6px;display:flex;align-items:baseline;gap:8px}
+    .cost .four .c .v b{font:400 24px/1 Fraunces,Georgia,serif;color:#e9e1d9;font-variant-numeric:tabular-nums}
+    .cost .four .c.on .v b{color:#f9be92}
+    .cost .four .c .v i{font-style:normal;font-size:10px;color:#7e7874}
+    .cost .four .c .m{margin-top:5px;font-size:9.5px;color:#7e7874;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .cost .bandhd{display:flex;align-items:baseline;gap:10px;margin-top:14px}
+    .cost .bandhd b{font-size:11px;font-weight:500;color:#ded7d1}
+    .cost .bandhd span{font-size:10.5px;color:#7e7874}
+    .cost .ladder{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:13px}
+    .cost .rung{display:flex;align-items:flex-start;gap:11px;border:1px solid #2b282b;border-radius:9px;background:#0f0f11;padding:13px 15px}
+    .cost .rung .n{width:21px;height:21px;flex:none;border-radius:6px;border:1px solid #3a3639;display:flex;align-items:center;justify-content:center;font-size:10.5px;color:#918a86}
+    .cost .rung.on{border-color:#c4753d;background:#f973160c}
+    .cost .rung.on .n{border-color:#c4753d;color:#f9be92}
+    .cost .rung b{display:block;font-size:11px;font-weight:500;color:#ded7d1;margin-bottom:3px}
+    .cost .rung.on b{color:#f9be92}
+    .cost .rung p{font-size:10px;line-height:1.5;color:#8d8783}
+    .cost .rung .mono{color:#a0937f}
+  </style>
+</head>
+<body>
+
+<!-- ══════════════ HERO ══════════════ -->
+<section class="page hero" data-view="hero">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Previz</b><span class="folio">BLOCK THE SHOT · THEN PAINT IT</span></div>
+  <div class="topline">
+    <h1>A pawn on the left. A person on the right.</h1>
+    <p>One playhead over both. The greybox says where, when and from which camera — the prompt says what the body does.</p>
+  </div>
+  <div class="window">
+    <div class="bar">First Light <span class="muted">· The researcher wakes the device · lab-walk · greybox rev 1 · take 01 selected</span>
+      <div class="right">
+        <div class="seg"><em>Layout</em><span class="on">Side</span><span>Wipe</span><span>Blend</span><span>Solo</span></div>
+        <span class="pill">Generate a take</span>
+      </div>
+    </div>
+    <div class="board">
+      <div class="rail">
+        <div class="ph">First Light<small>1 shot</small></div>
+        <div class="sc">
+          <div class="thumb"><img src="/art/g-42.png"><span class="n">01</span><span class="d">8.0 s</span></div>
+          <div class="m"><b>The researcher wakes th…</b><i>lab-walk</i>
+            <div class="dots"><s></s><s></s><s></s><s></s>
+              <span class="ok"><svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.3 4.8 8.6 9.5 3.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="lanes">
+          <div class="lane">
+            <div class="lh">
+              <div class="t">Greybox<span class="ctl"><span class="chipctl on">Render</span><span class="chipctl">3D</span></span></div>
+              <div class="f">1280×720 · 24 fps · 192 f · 8.00 s · rev 1</div>
+            </div>
+            <img src="/art/g-29.png">
+          </div>
+          <div class="lane">
+            <div class="lh">
+              <div class="t">Take 01<span class="ctl"><span class="chipctl on">Take 01</span><span class="chipctl"><svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 4.5h2L6.5 2v8L4 7.5H2Z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/><path d="M8.5 4 11 8M11 4 8.5 8" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg></span></span></div>
+              <div class="f">854×480 · 24 fps · 193 f · 8.04 s</div>
+            </div>
+            <img src="/art/t-29.png">
+          </div>
+        </div>
+        <div class="tp" style="margin-top:9px">
+          <span class="play"><svg width="8" height="9" viewBox="0 0 8 9" fill="none"><path d="M1 1 7 4.5 1 8Z" stroke="#f9a665" stroke-width="1.1" stroke-linejoin="round"/></svg></span>
+          <span class="icon"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M3 2v8M10 2 4.5 6 10 10Z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg></span>
+          <span class="icon"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M9 2v8M2 2l5.5 4L2 10Z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg></span>
+          <span class="div"></span>
+          <span class="k">0.25×</span><span class="k">0.5×</span><span class="k on">1×</span>
+          <span class="div"></span>
+          <span class="icon"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M2 5h8l-2-2M12 9H4l2 2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span class="k">Shot</span><span class="k">Beat</span>
+          <span class="pos">02.90 s · f 71 / 192</span>
+        </div>
+        <div class="tl">
+          <div class="row"><span class="rl">Action</span><span class="track">
+            <span class="beat action" style="left:6.25%;width:41.25%">Walks to the console</span>
+            <span class="beat action" style="left:47.5%;width:8.75%">Slows and stands</span>
+            <span class="beat action" style="left:56.25%;width:12.5%">Raises a hand to the button</span>
+          </span></div>
+          <div class="row"><span class="rl">Trigger</span><span class="track">
+            <span class="beat trigger" style="left:68.75%;width:25%">Device brightens blue</span>
+          </span></div>
+          <div class="row"><span class="rl">Camera</span><span class="track">
+            <span class="beat camera" style="left:0;width:93.75%">Camera pushes in, settles</span>
+          </span></div>
+          <div class="row"><span class="rl">Hold</span><span class="track">
+            <span class="beat hold" style="left:0;width:6.25%">Doo…</span>
+            <span class="beat hold" style="left:93.75%;width:6.25%">Ever…</span>
+          </span></div>
+          <div class="scale"><span>0.00 s</span><span>08.00 s</span></div>
+          <div class="ov">
+            <span class="conn" style="left:68.75%"></span>
+            <span class="head" style="left:36.25%"></span>
+          </div>
+        </div>
+        <div class="vitals">
+          <span><b>7</b> beats <span class="sep">·</span> <b>192</b> frames <span class="sep">·</span> rendered in <b>9.4 s</b></span>
+          <span class="sep">|</span>
+          <span><b>13</b> checks <span class="sep">·</span> <b>13</b> pass</span>
+          <span class="sep">|</span>
+          <span>take 01 <b>done</b> <span class="sep">·</span> <b>$2.12</b> estimate</span>
+          <span style="margin-left:auto;color:#6f6a66">one shot, one clock</span>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="tabs"><span>Plan</span><span class="on">Checks</span><span>Prompt</span><span>Takes 1</span><span>Cost</span></div>
+        <div class="grp"><b>Greybox</b><span>8 pass · 0 fail · 0 unverified</span></div>
+        <div class="crow"><div class="ch"><span class="st pass">pass</span><span class="lb">Every subject is where the plan…</span><span class="rg">00.50–04.50 s</span></div>
+          <div class="nt"><span class="id">blocking</span> · enters frame right by 2.9 s, beside the console by 4.2 s</div></div>
+        <div class="crow"><div class="ch"><span class="st pass">pass</span><span class="lb">Subjects cover their distances…</span><span class="rg">00.50–04.50 s</span></div>
+          <div class="nt"><span class="id">pace</span> · travel log: 5.55 m over 0.5-4.5 s, cruise 1.59 m/s - a brisk walk</div></div>
+        <div class="crow"><div class="ch"><span class="st pass">pass</span><span class="lb">No effect starts before its cause</span><span class="rg">05.30–05.90 s</span></div>
+          <div class="nt"><span class="id">trigger-order</span> · device still grey through 5.5 s, first tint after 5.75 s</div></div>
+        <div class="grp" style="margin-top:11px"><b>Take 01</b><span>5 pass · 0 fail · 0 unverified</span></div>
+        <div class="crow"><div class="ch"><span class="st pass">pass</span><span class="lb">The body moves naturally: real…</span><span class="rg">02.60–03.40 s</span></div>
+          <div class="nt"><span class="id">take-body</span> · strip 2.58-3.42 s of the take: real alternating steps, arms swinging, no gliding</div></div>
+        <div class="crow"><div class="ch"><span class="st pass">pass</span><span class="lb">The person follows the greybox's…</span></div>
+          <div class="nt"><span class="id">take-motion</span> · on the pawn's path and seconds, stops at the pedestal by 4.5 s</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">02.90 s in both lanes: the greybox says a body is here, facing this way, now. The walk is the model's own.</div>
+  <div class="foot"><span>Blender renders the blocking headless · Seedance 2.5 paints on top of that exact MP4 · both play on one clock</span><span>Real frames from the shipped seed — greybox.mp4 and takes/take-01.mp4 at 2.90 s</span></div>
+</section>
+
+<!-- ══════════════ 01 GREYBOX → TAKE ══════════════ -->
+<section class="page strip" data-view="greybox-take">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Previz</b><span class="folio">01 / WHAT THE MODEL SEES</span></div>
+  <div class="topline">
+    <h1>Pawns, not puppets.</h1>
+    <p>The greybox carries where a body is, which way it faces and when it gets there.
+      The walking, the reaching and the press are written in the prompt.</p>
+  </div>
+  <div class="times">
+    <span></span>
+    <span><b>0.25</b> s</span><span><b>2.90</b> s</span><span><b>4.20</b> s</span><span><b>5.40</b> s</span><span><b>5.90</b> s</span><span><b>7.80</b> s</span>
+  </div>
+  <div class="rowg">
+    <span class="rl"><span class="role block">blocked</span><b>Greybox</b>1280×720<br>192 f · rev 1</span>
+    <span class="cell"><img src="/art/g-025.png"></span>
+    <span class="cell"><img src="/art/g-29.png"></span>
+    <span class="cell"><img src="/art/g-42.png"></span>
+    <span class="cell"><img src="/art/g-54.png"><span class="tag">the pawn just stands</span></span>
+    <span class="cell"><img src="/art/g-59.png"></span>
+    <span class="cell"><img src="/art/g-78.png"></span>
+  </div>
+  <div class="rowg">
+    <span class="rl"><span class="role act">acted</span><b>Take 01</b>854×480<br>193 f · 8.04 s</span>
+    <span class="cell"><img src="/art/t-025.png"></span>
+    <span class="cell mark"><img src="/art/t-29.png"><span class="tag">real steps</span></span>
+    <span class="cell"><img src="/art/t-42.png"></span>
+    <span class="cell mark"><img src="/art/t-54.png"><span class="tag">hand on the button</span></span>
+    <span class="cell mark"><img src="/art/t-59.png"><span class="tag">first blue</span></span>
+    <span class="cell"><img src="/art/t-78.png"></span>
+  </div>
+  <div class="band">
+    <div class="b1">
+      <div class="eyebrow">Where each thing lives — from the shot plan</div>
+      <div class="split">
+        <div>
+          <span class="role block">blocked</span>
+          <ul>
+            <li>the path and where it stops</li>
+            <li>the pace — 5.55 m at 1.59 m/s</li>
+            <li>which way the body faces</li>
+            <li>the camera, 28 mm, and its push</li>
+            <li>the glow, only after the press</li>
+          </ul>
+        </div>
+        <div>
+          <span class="role act">acted only</span>
+          <ul>
+            <li>the walk itself — real steps</li>
+            <li>arms, weight, the last step</li>
+            <li>the hand that reaches</li>
+            <li>the press at the button</li>
+            <li>every surface and every light</li>
+          </ul>
+        </div>
+      </div>
+      <div class="q">“Show the scientist walking with a natural, relaxed human gait
+        <em>along the pawn's path</em> — real steps, arms swinging, never gliding … stopping at
+        the pedestal <em>exactly where and when the pawn stops</em>.”</div>
+    </div>
+    <div class="stackr">
+      <div class="b1">
+        <div class="hd"><span class="st pass">pass</span><b>take-motion</b></div>
+        <p>“on the pawn's path and seconds, stops at the pedestal by 4.5 s, left hand on the button at 5.0-5.4 s”</p>
+      </div>
+      <div class="b1">
+        <div class="hd"><span class="st pass">pass</span><b>take-body</b> <span class="mono" style="color:#7e7874">02.60–03.40 s</span></div>
+        <p>“strip 2.58-3.42 s of the take: real alternating steps, arms swinging, no gliding”</p>
+      </div>
+      <div class="b1" style="border-color:#33302f;background:#0c0c0e">
+        <p style="color:#a29a95">Nothing in the greybox moved a limb. The gait is the model's —
+          which is the one thing a video model is genuinely good at.</p>
+      </div>
+    </div>
+  </div>
+  <div class="caption">Six instants, two clips, the same seconds — a placeholder and the person it stood in for.</div>
+  <div class="foot"><span>The greybox is geometry with a clock; the prompt is the direction — and neither pretends to do the other's job</span><span>ffmpeg stills from the shipped seed's greybox.mp4 and takes/take-01.mp4</span></div>
+</section>
+
+<!-- ══════════════ 02 ONE CLOCK ══════════════ -->
+<section class="page clock" data-view="one-clock">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Previz</b><span class="folio">02 / ONE CLOCK</span></div>
+  <div class="topline">
+    <h1>Every lane on one playhead.</h1>
+    <p>Side by side, under a draggable wipe, or blended for silhouettes — the same second in every lane.</p>
+  </div>
+  <div class="ctrls">
+    <div class="seg"><em>Layout</em><span>Side</span><span class="on">Wipe</span><span>Blend</span><span>Solo</span></div>
+    <div class="facts">
+      <span>Greybox <b>1280×720 · 24 fps · 192 f · 8.00 s</b></span>
+      <span>Take 01 <b>854×480 · 24 fps · 193 f · 8.04 s</b></span>
+    </div>
+  </div>
+  <div class="main">
+    <div>
+      <div class="stage">
+        <img src="/art/t-54.png">
+        <div class="over" style="clip-path:inset(0 55% 0 0)"><img src="/art/g-54.png"></div>
+        <div class="seam" style="left:45%"><span class="knob"></span></div>
+        <span class="corner l">Greybox</span>
+        <span class="corner r">Take 01</span>
+        <span class="corner b l">05.40 s · f 131 / 192</span>
+      </div>
+      <div class="bottom">
+        <div class="tp">
+          <span class="play"><svg width="8" height="9" viewBox="0 0 8 9" fill="none"><path d="M1 1 7 4.5 1 8Z" stroke="#f9a665" stroke-width="1.1" stroke-linejoin="round"/></svg></span>
+          <span class="icon"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M3 2v8M10 2 4.5 6 10 10Z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg></span>
+          <span class="icon"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M9 2v8M2 2l5.5 4L2 10Z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg></span>
+          <span class="div"></span>
+          <span class="k">[</span><span class="k">]</span>
+          <span class="div"></span>
+          <span class="k">0.25×</span><span class="k">0.5×</span><span class="k on">1×</span>
+          <span class="div"></span>
+          <span class="icon"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M2 5h8l-2-2M12 9H4l2 2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span class="k">Shot</span><span class="k on">Beat</span>
+          <span style="margin-left:12px;color:#7e7874">step a frame · jump to a beat edge · loop one beat</span>
+          <span class="pos">05.40 s · f 131 / 192</span>
+        </div>
+      </div>
+    </div>
+    <div class="side">
+      <div class="tile">
+        <div class="th"><b>Side</b>both lanes, full frame<span class="mono">05.40 s</span></div>
+        <div class="two">
+          <span class="f"><img src="/art/g-54.png"><span>Greybox</span></span>
+          <span class="f"><img src="/art/t-54.png"><span>Take 01</span></span>
+        </div>
+      </div>
+      <div class="tile">
+        <div class="th"><b>Blend</b>silhouette matching<span class="mono">05.40 s</span></div>
+        <div class="blend">
+          <img src="/art/g-54.png">
+          <img src="/art/t-54.png" style="opacity:.5">
+        </div>
+        <div class="bar2"><span>Greybox</span><span class="track"><s></s><i></i></span><span>Take</span></div>
+      </div>
+      <div class="note">
+        The take was <b>measured</b>, not assumed: ffprobe read <span class="mono">8.0417 s</span>
+        against a greybox rendered to exactly <span class="mono">8.00 s</span>. The shorter lane holds
+        its own last frame instead of drifting, so a mismatch is something you see rather than
+        something you remember.
+      </div>
+    </div>
+  </div>
+  <div class="caption">Drag the seam and the two clips stay on the same frame of the same second.</div>
+  <div class="foot"><span>Side · Wipe · Blend · Solo — one clock, every lane, frame-accurate stepping and beat loops</span><span>Real frames at 5.40 s; the probe figures are the ones ffprobe wrote into shot.json</span></div>
+</section>
+
+<!-- ══════════════ 03 3D INSPECTION ══════════════ -->
+<section class="page insp" data-view="3d-inspection">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Previz</b><span class="folio">03 / WALK AROUND IT</span></div>
+  <div class="topline">
+    <h1>Walk around the blocking.</h1>
+    <p>The greybox lane switches from the Render to the same scene in 3D — without opening Blender.</p>
+  </div>
+  <div class="main">
+    <div class="lane">
+      <div class="lh">
+        <div class="t">Greybox
+          <span class="ctl">
+            <span class="chipctl">Render</span><span class="chipctl on">3D</span>
+            <span style="width:6px"></span>
+            <span class="chipctl">Shot camera</span><span class="chipctl on">Free</span>
+          </span>
+        </div>
+        <div class="f">1280×720 · 24 fps · 192 f · 8.00 s · rev 1 &nbsp;·&nbsp; scene.glb &nbsp;·&nbsp; 02.40 s · f 59 / 192</div>
+      </div>
+      <div class="shotbox">
+        <img src="/art/free3d.png">
+        <svg class="leaders" viewBox="0 0 890 475" preserveAspectRatio="none" fill="none">
+          <path d="M108 212 L142 260" stroke="#f97316" stroke-width="1" stroke-dasharray="3 3"/>
+          <path d="M244 166 L233 226" stroke="#f97316" stroke-width="1" stroke-dasharray="3 3"/>
+          <path d="M432 268 L386 292" stroke="#f97316" stroke-width="1" stroke-dasharray="3 3"/>
+          <path d="M272 402 L332 385" stroke="#f97316" stroke-width="1" stroke-dasharray="3 3"/>
+          <path d="M744 366 L788 394" stroke="#f97316" stroke-width="1" stroke-dasharray="3 3"/>
+          <circle cx="144" cy="266" r="3.4" fill="#f97316"/>
+          <circle cx="386" cy="294" r="3.4" fill="#f97316"/>
+          <circle cx="334" cy="384" r="3.4" fill="#f97316"/>
+          <circle cx="790" cy="396" r="3.4" fill="#f97316"/>
+        </svg>
+        <span class="callout" style="left:34px;top:190px"><s></s>camera path</span>
+        <span class="callout" style="left:200px;top:146px"><s></s>shot camera as a frustum</span>
+        <span class="callout" style="left:436px;top:256px"><s></s>the pawn — position, facing, timing</span>
+        <span class="callout" style="left:134px;top:392px"><s></s>its floor trail</span>
+        <span class="callout" style="left:666px;top:348px"><s></s>ground grid</span>
+      </div>
+    </div>
+    <div class="side">
+      <div class="tile">
+        <div class="th"><b>Shot camera</b>letterboxed to the shot<span class="mono" style="margin-left:auto;color:#7e7874">02.40 s</span></div>
+        <img src="/art/shotcam.png">
+        <p>Rendered through the exported camera, at the shot's aspect — the framing is the MP4's
+          framing, so a 3D check is a check of the shot and not of some other view.</p>
+      </div>
+      <div class="legend">
+        <div class="lg"><span class="sw"><svg width="22" height="8"><path d="M1 4h20" stroke="#f97316" stroke-width="1.4" stroke-dasharray="3 3"/><circle cx="1.5" cy="4" r="2" fill="#f97316"/></svg></span>
+          <span><b>Camera path</b> — every keyed position of the shot camera, with the playhead's own position travelling it.</span></div>
+        <div class="lg"><span class="sw"><svg width="22" height="12" fill="none"><path d="M2 6 20 1v10Z" stroke="#f97316" stroke-width="1.2" stroke-linejoin="round"/></svg></span>
+          <span><b>Frustum gizmo</b> — what the lens actually covers at this frame.</span></div>
+        <div class="lg"><span class="sw"><svg width="22" height="8"><path d="M1 6c5-1 9-3 20-4" stroke="#6f6a66" stroke-width="1.2" stroke-dasharray="2 2" fill="none"/></svg></span>
+          <span><b>Subject trail</b> — where the pawn's feet went, so a re-route or a rushed metre is visible from above.</span></div>
+        <div class="lg"><span class="sw" style="margin-top:1px"><span class="chipctl on" style="font-size:8.5px;padding:1px 6px">3D</span></span>
+          <span><b>Render ⇄ 3D</b> switches the lane between the MP4 the model was given and the
+            exported <span class="mono" style="color:#a0937f">scene.glb</span>, on the same playhead.</span></div>
+      </div>
+      <div class="warn">
+        The lane captions itself on every frame of the 3D view: <b>the model received the Render,
+        not this</b>. Nothing you orbit to here was ever sent to the video model, and the picture
+        says so without anyone having to remember it.
+      </div>
+    </div>
+  </div>
+  <div class="caption">Orbit the blocking, then go back to the frame the model was given.</div>
+  <div class="foot"><span>Render ⇄ 3D on the greybox lane · Shot camera ⇄ Free · the exported scene.glb, played on the same clock</span><span>Real WebGL captures of this seed's scene.glb, taken from the previz viewer</span></div>
+</section>
+
+<!-- ══════════════ 04 ACCEPTANCE ══════════════ -->
+<section class="page acc" data-view="acceptance">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Previz</b><span class="folio">04 / NOTHING PASSES UNSEEN</span></div>
+  <div class="topline">
+    <h1>Nothing is passed unseen.</h1>
+    <p>Pass, fail or unverified — and a check nobody looked at stays visibly not green.</p>
+  </div>
+  <div class="main">
+    <div class="rec">
+      <div class="rh"><b>lab-walk</b><span class="mono">shot.json · rev 1</span>
+        <span class="tag">13 pass · 0 fail · 0 unverified</span></div>
+      <div class="sub">The shipped seed, after someone went through every line — each check carries the evidence it was read off.</div>
+      <div class="grp"><b>Greybox</b><span>8 pass</span></div>
+      <div class="crow"><div class="ch"><span class="st pass">pass</span><span class="lb">Every subject is where the plan says, facing what it says</span><span class="rg">00.50–04.50 s</span></div>
+        <div class="nt"><span class="id">blocking</span> · sheet 0.25-7.8 s: enters frame right by 2.9 s, beside the console by 4.2 s, stands facing the device from 4.5 s</div></div>
+      <div class="crow"><div class="ch"><span class="st pass">pass</span><span class="lb">Subjects cover their distances at a speed a body can move at</span><span class="rg">00.50–04.50 s</span></div>
+        <div class="nt"><span class="id">pace</span> · travel log: 5.55 m over 0.5-4.5 s, cruise 1.59 m/s - a brisk walk</div></div>
+      <div class="crow"><div class="ch"><span class="st pass">pass</span><span class="lb">No effect starts before its cause</span><span class="rg">05.30–05.90 s</span></div>
+        <div class="nt"><span class="id">trigger-order</span> · strip 5.29-5.92 s: device still grey through 5.5 s, first tint after 5.75 s</div></div>
+      <div class="more">frame-count · framing · penetration · camera-smooth · end-hold — five more, each with its own evidence line</div>
+      <div class="grp" style="margin-top:9px"><b>Take 01</b><span>5 pass</span>
+        <span style="margin-left:auto;font-size:9.5px;color:#7e7874">done · selected</span></div>
+      <div class="crow"><div class="ch"><span class="st pass">pass</span><span class="lb">The body moves naturally: real steps, no gliding</span><span class="rg">02.60–03.40 s</span></div>
+        <div class="nt"><span class="id">take-body</span> · strip 2.58-3.42 s of the take: real alternating steps, arms swinging, no gliding</div></div>
+      <div class="more">take-motion · take-camera · take-order · take-integrity — four more, all looked at</div>
+    </div>
+    <div class="rec b">
+      <div class="rh"><b>fridge-light</b><span class="mono">another project · rev 3</span>
+        <span class="tag">8 pass · 0 fail · 5 unverified</span></div>
+      <div class="sub">A second shot, caught the moment its take landed — <b style="color:#e9b872;font-weight:500">nothing on the take is green until someone looks at it</b>.</div>
+      <div class="grp"><b>Greybox</b><span>8 pass</span></div>
+      <div class="crow"><div class="ch"><span class="st pass">pass</span><span class="lb">Subjects cover their distances at a speed a body can move at</span></div>
+        <div class="nt"><span class="id">pace</span> · Blender travel log: 3.71 m in 0.65-4.375 s, cruise 1.15 m/s; ramp 0.3 s, settle 0.7 s</div></div>
+      <div class="grp" style="margin-top:9px"><b>Take 01</b><span>0 pass · 0 fail · 5 unverified</span>
+        <span style="margin-left:auto;font-size:9.5px;color:#7e7874">done · landed 12:01:52Z</span></div>
+      <div class="crow" style="border-color:#eab30845"><div class="ch"><span class="st unv">unverified</span><span class="lb">The person follows the greybox's path and timing</span></div></div>
+      <div class="crow" style="border-color:#eab30845"><div class="ch"><span class="st unv">unverified</span><span class="lb">The body moves naturally: real steps, no gliding</span></div></div>
+      <div class="crow" style="border-color:#eab30845"><div class="ch"><span class="st unv">unverified</span><span class="lb">The take keeps the greybox's camera move</span></div></div>
+      <div class="crow" style="border-color:#eab30845"><div class="ch"><span class="st unv">unverified</span><span class="lb">The take keeps cause before effect</span></div></div>
+      <div class="crow" style="border-color:#eab30845"><div class="ch"><span class="st unv">unverified</span><span class="lb">One person, whole limbs, no invented cut, no captions</span></div></div>
+    </div>
+  </div>
+  <div class="legend3">
+    <div class="l"><span class="st pass">pass</span><span><b>Somebody looked</b> and wrote down what they looked at.</span></div>
+    <div class="l"><span class="st fail">fail</span><span><b>Looked at, and it did not hold.</b> A failure with a range paints that span red under the beats.</span></div>
+    <div class="l"><span class="st unv">unverified</span><span><b>Nobody has looked yet</b> — not green, never counted as a pass.</span></div>
+  </div>
+  <div class="tlwrap">
+      <div>
+        <div class="hd"><b>lab-walk, on the timeline</b><span>a check with a range marks its own span</span><span class="rt">marked 05.30–05.90 s · trigger-order</span></div>
+        <div class="tl">
+          <div class="row"><span class="rl">Action</span><span class="track">
+            <span class="beat action" style="left:6.25%;width:41.25%">Walks to the console</span>
+            <span class="beat action" style="left:47.5%;width:8.75%">Slows and stands</span>
+            <span class="beat action" style="left:56.25%;width:12.5%">Raises a hand to the button</span>
+          </span></div>
+          <div class="row"><span class="rl">Trigger</span><span class="track">
+            <span class="beat trigger" style="left:68.75%;width:25%">Device brightens blue</span>
+          </span></div>
+          <div class="row"><span class="rl">Camera</span><span class="track">
+            <span class="beat camera" style="left:0;width:93.75%">Camera pushes in, settles</span>
+          </span></div>
+          <div class="row"><span class="rl">Hold</span><span class="track">
+            <span class="beat hold" style="left:0;width:6.25%">Doo…</span>
+            <span class="beat hold" style="left:93.75%;width:6.25%">Ever…</span>
+          </span></div>
+          <div class="scale"><span>0.00 s</span><span>08.00 s</span></div>
+          <div class="ov">
+            <span class="mark" style="left:66.25%;width:7.5%"></span>
+            <span class="conn" style="left:68.75%"></span>
+            <span class="head" style="left:67.5%"></span>
+          </div>
+        </div>
+      </div>
+      <div class="why">
+        Click a check with a range and the playhead goes there, the span is marked and the stage
+        switches to the lane the check is about — so “still grey through 5.5 s” arrives with its
+        own frames.<br><br>
+        The dotted hop is the trigger link, <b>touch</b> → <b>glow</b> at 5.50 s: an effect that
+        started before its cause would be visible right there.
+      </div>
+  </div>
+  <div class="caption">A check nobody looked at is an open question, not a pass with a different colour.</div>
+  <div class="foot"><span>Thirteen checks on the seed, all with their evidence · five open questions on a take that landed four minutes ago</span><span>Two real acceptance records, verbatim</span></div>
+</section>
+
+<!-- ══════════════ 05 COST ══════════════ -->
+<section class="page cost" data-view="cost">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Previz</b><span class="folio">05 / PRICED FIRST</span></div>
+  <div class="topline">
+    <h1>Priced before you spend it.</h1>
+    <p>Every take is costed from a per-second table and written down as submitted before the request leaves.</p>
+  </div>
+  <div class="main">
+    <div class="box">
+      <h3>This shot</h3>
+      <div class="big"><b>$2.12</b><i>estimate at list price</i></div>
+      <div class="basis">(8 s out + 8 s ref) x $0.1323/s at 480p</div>
+      <div class="kv">Every shot in the film · 1 shot<b>$2.12</b></div>
+      <div class="fine">Estimate at list price, from what the script priced before it submitted. A submitted
+        take counts: the job is paid on acceptance, not on delivery.</div>
+      <div class="fine" style="border:0;padding-top:0;margin-top:7px">
+        The reference endpoint bills the reference clip's duration alongside the output's, so an
+        8 s take conditioned on an 8 s greybox is billed as 16 s. That is why the basis line names
+        both.
+      </div>
+    </div>
+    <div class="box">
+      <h3>Per take</h3>
+      <table>
+        <tr><th>Take</th><th>Status</th><th class="r">Res</th><th class="r">Sec</th><th class="r">$</th></tr>
+        <tr><td>Take 01</td><td><span class="st done">done</span></td><td class="r">480p</td><td class="r">8 +8</td><td class="r">$2.12</td></tr>
+      </table>
+      <div class="rec">
+        <div><span>model</span><b>bytedance/seedance-2.5</b></div>
+        <div><span>endpoint</span><b>reference</b></div>
+        <div><span>request</span><b>01a0bea2-b238-7ef0-a6ac-a7aaf5bdd257</b></div>
+        <div><span>submitted</span><b>11:45:26Z</b> <span style="width:auto;margin-left:6px">finished</span> <b>11:49:03Z</b></div>
+        <div><span>greybox</span><b>revision 1</b> <span style="width:auto;margin-left:6px">selected</span> <b>yes</b></div>
+      </div>
+      <div class="fine">A take is recorded as <em style="font-style:normal;color:#c8c1bb">submitted</em> before the request
+        leaves and ends <em style="font-style:normal;color:#c8c1bb">done</em> or
+        <em style="font-style:normal;color:#c8c1bb">failed</em> with its request id — so a job that
+        left this machine is never invisible, whether or not its file arrived.</div>
+    </div>
+    <div class="box">
+      <h3>Seedance 2.5 · per second</h3>
+      <table>
+        <tr><th>Resolution</th><th class="r">with a reference</th><th class="r">no reference</th></tr>
+        <tr><td>480p</td><td class="r" style="color:#f9be92">$0.1323</td><td class="r">$0.2205</td></tr>
+        <tr><td>720p</td><td class="r">$0.2838</td><td class="r">$0.4730</td></tr>
+      </table>
+      <div class="fine">fal.ai public list prices for bytedance/seedance-2.5; on the reference endpoint the
+        reference clip's duration is billed alongside the output's. Read 2026-09-20; the script's
+        own table is the authority.</div>
+      <div class="fine" style="border:0;padding-top:0;margin-top:7px">One table for the script and the
+        panel, so the estimate you approve and the number the panel shows cannot disagree. A
+        resolution the table has no row for is refused rather than guessed.</div>
+    </div>
+  </div>
+  <div class="bandhd"><b>This same 8 s shot, priced from that table</b><span>every figure below is the table times the billed seconds — nothing else</span></div>
+  <div class="four">
+    <div class="c on">
+      <div class="hd"><b>480p</b>with a reference</div>
+      <div class="v"><b>$2.12</b><i>what take 01 cost</i></div>
+      <div class="m">(8 + 8) s × $0.1323</div>
+    </div>
+    <div class="c">
+      <div class="hd"><b>480p</b>no reference</div>
+      <div class="v"><b>$1.76</b><i>and no blocking</i></div>
+      <div class="m">8 s × $0.2205</div>
+    </div>
+    <div class="c">
+      <div class="hd"><b>720p</b>with a reference</div>
+      <div class="v"><b>$4.54</b><i>the same shot, finer</i></div>
+      <div class="m">(8 + 8) s × $0.2838</div>
+    </div>
+    <div class="c">
+      <div class="hd"><b>720p</b>no reference</div>
+      <div class="v"><b>$3.78</b><i>a guess at your shot</i></div>
+      <div class="m">8 s × $0.4730</div>
+    </div>
+  </div>
+  <div class="ladder">
+    <div class="rung on"><span class="n">1</span><div><b>The first take is inside the request</b>
+      <p>When the user asked for a generated video and a key is configured, a draft-resolution take needs no second conversation.</p></div></div>
+    <div class="rung"><span class="n">2</span><div><b>A second take needs a named fix</b>
+      <p>Not “try again”: a concrete sentence about what must change, passed as <span class="mono">--fix</span> and kept with the take.</p></div></div>
+    <div class="rung"><span class="n">3</span><div><b>A third needs your explicit yes</b>
+      <p>Money past two takes is the user's call — <span class="mono">--user-approved</span>, with the service, the material and the price named.</p></div></div>
+  </div>
+  <div class="caption">The price is on the table before the job leaves, not on the invoice after it lands.</div>
+  <div class="foot"><span>prices.mjs is the single table · previz.mjs generate --estimate prints it before anything is submitted</span><span>Real cost record and request id from the shipped seed's take-01</span></div>
+</section>
+
+<script>
+  const view = new URLSearchParams(location.search).get('view') || 'hero';
+  const page = Array.from(document.querySelectorAll('[data-view]')).find(el => el.dataset.view === view);
+  if (page) page.classList.add('active');
+  document.title = `Previz — ${view}`;
+</script>
+</body>
+</html>

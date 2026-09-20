@@ -830,7 +830,7 @@ export async function startServer(options: ServerOptions) {
     // their manifest and get filtered out below. The filter is the source
     // of truth; the omission-from-this-list pattern is fragile (forget to
     // add a hidden mode → it leaks).
-    const builtinNames = ["webcraft", "kami", "slide", "doc", "draw", "diagram", "illustrate", "remotion", "gridboard", "clipcraft", "cosmos", "wordtaste", "bansho", "eli5", "plotwise", "sprite", "lucid"];
+    const builtinNames = ["webcraft", "kami", "slide", "doc", "draw", "diagram", "illustrate", "remotion", "gridboard", "clipcraft", "cosmos", "wordtaste", "bansho", "eli5", "plotwise", "sprite", "lucid", "previz"];
     const builtins = builtinNames
       .map((name) => {
         const manifestPath = join(projectRoot, "modes", name, "manifest.ts");
@@ -3365,7 +3365,7 @@ export async function startServer(options: ServerOptions) {
             const content = readFileSync(join(workspace, rel), "utf-8");
             registerSelfWrite(rel, content);
           } catch {
-            // Binary files (matched by BINARY_EXT_RE in seed-installer)
+            // Binary files (matched by `isBinarySeedFile` in seed-installer)
             // are copied byte-for-byte; the chokidar echo won't carry a
             // text payload to match anyway. Skip silently.
           }

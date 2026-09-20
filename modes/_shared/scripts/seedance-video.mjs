@@ -249,6 +249,13 @@ export async function generateSeedanceVideo(
     resolution: body.resolution,
   };
   if (job?.data?.seed != null) result.seed = job.data.seed;
+  // fal's queue id for this render, when the queue reported one. It is the
+  // only handle a caller has on a job after this process exits — a finished
+  // render whose download was lost is still recoverable through it, and a
+  // caller that records paid work needs something to record. Absent rather
+  // than null when the queue did not give one, so a caller can tell "no id"
+  // from "id unknown".
+  if (typeof job?.requestId === "string" && job.requestId) result.request_id = job.requestId;
   return result;
 }
 

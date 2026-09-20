@@ -83,6 +83,7 @@
 | **plotwise** | 量身定制的学习片场 —— 用 MiniMax H3 Max 提前一场一场拍出来的剧情式课程：继续、走支线、或提问，每个知识点都由代码渲染的图、可查的引用和逐字核对的口播兜底 |
 | **sprite** | 角色动作素材 —— 角色只定一次，按动作设计阶段、接触点与结束姿势，从角色参考图引导的精灵图或视频生成素材；自动抠背景、切帧、对齐，打包成游戏引擎可读的帧序列与 `atlas.json`，提供 GIF/WebP 和可选的视频预览。也能做界面上那种循环不断的透明小动画：一张关键帧，一段首尾同图、自己接得上的片子，逐帧导出 WebP、APNG、WebM 和 Lottie |
 | **lucid** | 一场画面与程序之间的闭环 —— agent 先用图像生成把成品截图「梦」出来并锁死，再用 Three.js 静态场景一轮轮往那张图上追；每一轮都由一个没看过前情的评审按构图、光照、材质、细节打分，直到实时画面真的对上；素材阶梯上还有 Blender 与图生 3D。移植自 [achimala/dream-loop](https://github.com/achimala/dream-loop)（MIT） |
+| **previz** | 先用 3D 把镜头摆出来 —— 无头 Blender 渲一段白模动画，把空间、动作和运镜定死，验收清单就对着这段片子逐条过；过了，才让视频模型在它之上把质感画出来。可以从一个想法开始，也可以照着一段参考视频重做。做法改编自 [modengsir/blender-video-workflows](https://github.com/modengsir/blender-video-workflows)（MIT） |
 | **mode-maker** | 用 AI 做自定义 mode —— fork、Play 试跑、发布 |
 | **evolve** | Evolution Agent —— 分析历史、提出技能改进、apply / 回滚 |
 
@@ -173,6 +174,7 @@ Modes:
   plotwise                     量身定制的学习片场
   sprite                       角色雪碧图、动作素材与界面循环动画
   lucid                        梦出目标截图，用 Three.js 追着建
+  previz                       先用 3D 摆镜头，再渲质感
   mode-maker                   用 AI 做自定义 mode
   evolve                       启动 Evolution Agent
   /path/to/mode                从本地目录加载

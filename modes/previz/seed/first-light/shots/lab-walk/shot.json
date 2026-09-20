@@ -1,0 +1,302 @@
+{
+  "version": 1,
+  "id": "lab-walk",
+  "title": "The researcher wakes the device",
+  "entry": "original",
+  "spec": {
+    "seconds": 8,
+    "fps": 24,
+    "width": 1280,
+    "height": 720,
+    "frames": 192
+  },
+  "assumptions": [
+    "8 s / 24 fps / 1280x720 are the project defaults — the user gave none"
+  ],
+  "beats": [
+    {
+      "id": "establish",
+      "label": "Doorway establishes",
+      "from": 0,
+      "to": 0.5,
+      "kind": "hold"
+    },
+    {
+      "id": "walk",
+      "label": "Walks to the console",
+      "from": 0.5,
+      "to": 3.8,
+      "kind": "action"
+    },
+    {
+      "id": "settle",
+      "label": "Slows and stands",
+      "from": 3.8,
+      "to": 4.5,
+      "kind": "action"
+    },
+    {
+      "id": "touch",
+      "label": "Raises a hand to the button",
+      "from": 4.5,
+      "to": 5.5,
+      "kind": "action"
+    },
+    {
+      "id": "glow",
+      "label": "Device brightens blue",
+      "from": 5.5,
+      "to": 7.5,
+      "kind": "trigger",
+      "causedBy": "touch"
+    },
+    {
+      "id": "push",
+      "label": "Camera pushes in, settles",
+      "from": 0,
+      "to": 7.5,
+      "kind": "camera"
+    },
+    {
+      "id": "hold",
+      "label": "Everything holds",
+      "from": 7.5,
+      "to": 8,
+      "kind": "hold"
+    }
+  ],
+  "reference": null,
+  "greybox": {
+    "revision": 1,
+    "preview": null,
+    "final": {
+      "file": "greybox/greybox.mp4",
+      "revision": 1,
+      "scale": 1,
+      "probe": {
+        "codec": "h264",
+        "pixFmt": "yuv420p",
+        "width": 1280,
+        "height": 720,
+        "fps": 24,
+        "frames": 192,
+        "seconds": 8,
+        "bytes": 888065
+      },
+      "renderedAt": "2026-09-20T11:44:18.354Z",
+      "renderSeconds": 9.4
+    },
+    "script": "greybox/scene.py",
+    "glb": "greybox/scene.glb",
+    "meta": "greybox/scene.meta.json",
+    "blend": "greybox/scene.blend",
+    "sheet": "greybox/sheet.png"
+  },
+  "checks": [
+    {
+      "id": "frame-count",
+      "label": "The render is exactly the spec's frame count at the spec's fps",
+      "target": "greybox",
+      "status": "pass",
+      "range": null,
+      "note": "ffprobe: 192 frames, 8.00 s, 24 fps, 1280x720",
+      "revision": 1,
+      "at": "2026-09-20T11:45:06.511Z",
+      "history": []
+    },
+    {
+      "id": "blocking",
+      "label": "Every subject is where the plan says, facing what it says, at the second it says",
+      "target": "greybox",
+      "status": "pass",
+      "range": [
+        0.5,
+        4.5
+      ],
+      "note": "sheet 0.25-7.8 s: enters frame right by 2.9 s, beside the console by 4.2 s, stands facing the device from 4.5 s",
+      "revision": 1,
+      "at": "2026-09-20T11:45:06.548Z",
+      "history": []
+    },
+    {
+      "id": "pace",
+      "label": "Subjects cover their distances at a speed a body can move at",
+      "target": "greybox",
+      "status": "pass",
+      "range": [
+        0.5,
+        4.5
+      ],
+      "note": "travel log: 5.55 m over 0.5-4.5 s, cruise 1.59 m/s - a brisk walk",
+      "revision": 1,
+      "at": "2026-09-20T11:45:06.585Z",
+      "history": []
+    },
+    {
+      "id": "framing",
+      "label": "The subject, the prop and the reaction are in frame when the shot is about them",
+      "target": "greybox",
+      "status": "pass",
+      "range": null,
+      "note": "sheet: device, console and figure share the frame from 2.9 s to the end; the device is whole at 7.8 s",
+      "revision": 1,
+      "at": "2026-09-20T11:45:06.620Z",
+      "history": []
+    },
+    {
+      "id": "penetration",
+      "label": "Nothing passes through anything: figure/prop, figure/wall, prop/prop",
+      "target": "greybox",
+      "status": "pass",
+      "range": null,
+      "note": "stills 4.2 / 5.4 / 7.8 s: the figure stands beside the console, not in it",
+      "revision": 1,
+      "at": "2026-09-20T11:45:06.659Z",
+      "history": []
+    },
+    {
+      "id": "trigger-order",
+      "label": "No effect starts before its cause",
+      "target": "greybox",
+      "status": "pass",
+      "range": [
+        5.3,
+        5.9
+      ],
+      "note": "strip 5.29-5.92 s: device still grey through 5.5 s, first tint after 5.75 s",
+      "revision": 1,
+      "at": "2026-09-20T11:45:06.701Z",
+      "history": []
+    },
+    {
+      "id": "camera-smooth",
+      "label": "The camera move has no jitter and no overshoot",
+      "target": "greybox",
+      "status": "pass",
+      "range": [
+        7.2,
+        8
+      ],
+      "note": "strip 7.21-7.96 s: the push eases out, framing identical from f181 to f192; no jitter",
+      "revision": 1,
+      "at": "2026-09-20T11:45:25.920Z",
+      "history": []
+    },
+    {
+      "id": "end-hold",
+      "label": "The last half second is settled unless the user asked for motion",
+      "target": "greybox",
+      "status": "pass",
+      "range": [
+        7.5,
+        8
+      ],
+      "note": "strip 7.21-7.96 s: camera, figure and device still over the last 12 frames",
+      "revision": 1,
+      "at": "2026-09-20T11:45:25.957Z",
+      "history": []
+    },
+    {
+      "id": "take-motion",
+      "label": "The person follows the greybox's path and timing and performs the prompted action",
+      "target": "take-01",
+      "status": "pass",
+      "range": null,
+      "note": "compare at 0.25/2.9/4.2/5.0/5.4/5.9/6.6/7.8 s: on the pawn's path and seconds, stops at the pedestal by 4.5 s, left hand on the button at 5.0-5.4 s",
+      "revision": 1,
+      "at": "2026-09-20T11:49:55.503Z",
+      "history": []
+    },
+    {
+      "id": "take-body",
+      "label": "The body moves naturally: real steps, no gliding, no stiff or extra limbs in motion",
+      "target": "take-01",
+      "status": "pass",
+      "range": [
+        2.6,
+        3.4
+      ],
+      "note": "strip 2.58-3.42 s of the take: real alternating steps, arms swinging, no gliding",
+      "revision": 1,
+      "at": "2026-09-20T11:49:55.542Z",
+      "history": []
+    },
+    {
+      "id": "take-camera",
+      "label": "The take keeps the greybox's camera move",
+      "target": "take-01",
+      "status": "pass",
+      "range": null,
+      "note": "compare sheet: push-in matches, ends medium-wide with the whole device in shot",
+      "revision": 1,
+      "at": "2026-09-20T11:49:55.582Z",
+      "history": []
+    },
+    {
+      "id": "take-order",
+      "label": "The take keeps cause before effect",
+      "target": "take-01",
+      "status": "pass",
+      "range": [
+        5.4,
+        6.6
+      ],
+      "note": "sphere dull grey at 5.4 s with the hand on the button, first blue at 5.9 s, bright by 7.8 s",
+      "revision": 1,
+      "at": "2026-09-20T11:49:55.624Z",
+      "history": []
+    },
+    {
+      "id": "take-integrity",
+      "label": "One person, whole limbs, no invented cut, no captions",
+      "target": "take-01",
+      "status": "pass",
+      "range": null,
+      "note": "8 stills and a 21-frame strip: one person, whole limbs, no captions; ffmpeg scene detection found 0 cuts",
+      "revision": 1,
+      "at": "2026-09-20T11:49:55.662Z",
+      "history": []
+    }
+  ],
+  "stuck": [],
+  "prompt": {
+    "file": "prompts.md"
+  },
+  "takes": [
+    {
+      "id": "take-01",
+      "status": "done",
+      "model": "bytedance/seedance-2.5",
+      "endpoint": "reference",
+      "resolution": "480p",
+      "seconds": 8,
+      "refSeconds": 8,
+      "greyboxRevision": 1,
+      "requestId": "01a0bea2-b238-7ef0-a6ac-a7aaf5bdd257",
+      "file": "takes/take-01.mp4",
+      "promptFile": "takes/take-01.prompt.txt",
+      "probe": {
+        "codec": "h264",
+        "pixFmt": "yuv420p",
+        "width": 854,
+        "height": 480,
+        "fps": 24,
+        "frames": 193,
+        "seconds": 8.0417,
+        "bytes": 847424
+      },
+      "cost": {
+        "usd": 2.1168,
+        "basis": "(8 s out + 8 s ref) x $0.1323/s at 480p",
+        "estimate": true
+      },
+      "submittedAt": "2026-09-20T11:45:26.060Z",
+      "finishedAt": "2026-09-20T11:49:03.631Z",
+      "fix": null,
+      "allowFailing": null,
+      "selected": true,
+      "note": "",
+      "url": "https://v3b.fal.media/files/b/0aab2d9d/T-6oXR7kVATaJ9063Qzcz_video.mp4"
+    }
+  ]
+}

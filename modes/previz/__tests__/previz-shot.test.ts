@@ -1,0 +1,427 @@
+/**
+ * What `shot.json` means — the invariants, without a render.
+ *
+ * `shot.mjs` is pure, so every rule the mode is built on can be exercised
+ * here: the frame-exact spec, cause before effect, "nothing is passed
+ * unseen", the stuck rule, the take-policy gate, and the stage order that
+ * `status` reports as `next`.
+ */
+
+import { describe, expect, test } from "bun:test";
+
+import type { Check, CheckStatus } from "../skill/scripts/shot.d.mts";
+import {
+  computeStuck,
+  findCheck,
+  makeSpec,
+  nextStage,
+  nextTakeId,
+  normalizeShot,
+  parsePromptPack,
+  parseSize,
+  PROMPT_TEMPLATE_BODY,
+  recordCheck,
+  revisionOfTarget,
+  seedChecklist,
+  shotStatus,
+  slugId,
+  STANDARD_CHECKS,
+  summarizeChecks,
+  takePolicy,
+  validateBeats,
+  newShot,
+} from "../skill/scripts/shot.mjs";
+
+const SPEC = makeSpec({ seconds: 8, fps: 24, width: 1280, height: 720 });
+const T = (n: number) => new Date(Date.UTC(2026, 8, 20, 10, n)).toISOString();
+
+function shotWith(overrides: Record<string, unknown> = {}) {
+  const shot = newShot({ id: "lab-walk", title: "The researcher wakes the device", spec: SPEC });
+  seedChecklist(shot);
+  return normalizeShot({ ...shot, ...overrides });
+}
+
+/** A shot whose greybox has been rendered and fully accepted. */
+function acceptedShot() {
+  const shot = shotWith();
+  shot.beats = validateBeats(
+    [
+      { id: "establish", label: "Doorway", from: 0, to: 0.5, kind: "hold" },
+      { id: "walk", label: "Walks", from: 0.5, to: 3.8, kind: "action" },
+      { id: "touch", label: "Hand", from: 4.5, to: 5.5, kind: "action" },
+      { id: "glow", label: "Brightens", from: 5.5, to: 7.5, kind: "trigger", causedBy: "touch" },
+    ],
+    SPEC,
+  );
+  shot.greybox.revision = 2;
+  shot.greybox.preview = { file: "greybox/preview.mp4", revision: 1, probe: null, renderedAt: T(1), renderSeconds: 4.1 };
+  shot.greybox.final = { file: "greybox/greybox.mp4", revision: 2, probe: null, renderedAt: T(2), renderSeconds: 11.2 };
+  for (const check of STANDARD_CHECKS.greybox) {
+    recordCheck(shot, { id: check.id, status: "pass", target: "greybox", at: T(3) });
+  }
+  return shot;
+}
+
+describe("the spec", () => {
+  test("refuses a duration whose seconds x fps is not a whole frame count", () => {
+    expect(makeSpec({ seconds: 8, fps: 24 })).toEqual({ seconds: 8, fps: 24, width: 1280, height: 720, frames: 192 });
+    expect(makeSpec({ seconds: 7.5, fps: 24 }).frames).toBe(180);
+    expect(() => makeSpec({ seconds: 7.9, fps: 24 })).toThrow(/189.6 frames, which is not whole/);
+    // The refusal offers the nearest duration that does work.
+    expect(() => makeSpec({ seconds: 7.9, fps: 24 })).toThrow(/use 7.9167 s \(190 frames\)/);
+    expect(() => makeSpec({ seconds: 8, fps: 23.5 })).toThrow(/fps must be a whole number/);
+  });
+
+  test("sizes and ids are parsed or refused by name", () => {
+    expect(parseSize("1280x720")).toEqual({ width: 1280, height: 720 });
+    expect(parseSize(" 854 X 480 ")).toEqual({ width: 854, height: 480 });
+    expect(() => parseSize("big", "--size")).toThrow(/--size must look like 1280x720/);
+    expect(slugId("Lab Walk — take 2")).toBe("lab-walk-take-2");
+    expect(() => slugId("!!!", "shot id")).toThrow(/no letters or digits/);
+  });
+});
+
+describe("beats", () => {
+  test("every problem is reported at once, not one round trip at a time", () => {
+    let message = "";
+    try {
+      validateBeats(
+        [
+          { id: "touch", label: "Hand", from: 6, to: 6.5, kind: "action" },
+          { id: "glow", label: "Glow", from: 5.5, to: 9.5, kind: "trigger", causedBy: "touch" },
+          { id: "glow", label: "Dup", from: 1, to: 2, kind: "nope" },
+          { id: "late", label: "Late", from: 3, to: 1, kind: "action" },
+        ],
+        SPEC,
+      );
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain("to 9.5 is past the shot's 8 s");
+    expect(message).toContain('duplicate id "glow"');
+    expect(message).toContain("kind must be one of action|trigger|camera|hold");
+    expect(message).toContain("to 1 is before from 3");
+    expect(message).toContain('an effect cannot precede its cause');
+  });
+
+  test("a trigger's cause must exist, not be itself, and not run in a circle", () => {
+    expect(() => validateBeats([{ id: "glow", from: 1, to: 2, kind: "trigger", causedBy: "nobody" }], SPEC)).toThrow(
+      /causedBy "nobody" is not a beat in this list/,
+    );
+    expect(() => validateBeats([{ id: "glow", from: 1, to: 2, kind: "trigger", causedBy: "glow" }], SPEC)).toThrow(
+      /causedBy points at itself/,
+    );
+    expect(() =>
+      validateBeats(
+        [
+          { id: "a", from: 1, to: 2, kind: "trigger", causedBy: "b" },
+          { id: "b", from: 1, to: 2, kind: "trigger", causedBy: "a" },
+        ],
+        SPEC,
+      ),
+    ).toThrow(/runs in a circle/);
+  });
+
+  test("a cause that starts at the same second as its effect is allowed", () => {
+    const beats = validateBeats(
+      [
+        { id: "touch", from: 4.5, to: 5.5, kind: "action" },
+        { id: "glow", from: 4.5, to: 7.5, kind: "trigger", causedBy: "touch" },
+      ],
+      SPEC,
+    );
+    expect(beats).toHaveLength(2);
+    expect(beats[1].causedBy).toBe("touch");
+    expect(beats[0].kind).toBe("action");
+  });
+});
+
+describe("the acceptance record", () => {
+  test("the standard list is seeded unverified, and re-seeding never overwrites a verdict", () => {
+    const shot = shotWith();
+    expect(shot.checks).toHaveLength(STANDARD_CHECKS.greybox.length);
+    expect(shot.checks.every((check) => check.status === "unverified")).toBe(true);
+    shot.greybox.revision = 1;
+    recordCheck(shot, { id: "blocking", status: "fail", target: "greybox", at: T(1) });
+    expect(seedChecklist(shot)).toEqual([]);
+    expect(findCheck(shot, "blocking", "greybox")?.status).toBe("fail");
+  });
+
+  test("a recreate shot also carries the reference checks", () => {
+    const shot = normalizeShot(newShot({ id: "s", title: "s", entry: "recreate", spec: SPEC }));
+    seedChecklist(shot);
+    expect(shot.checks.map((check) => check.id)).toContain("ref-framing");
+    expect(shot.checks.map((check) => check.id)).toContain("ref-timing");
+  });
+
+  test("recording moves the previous state into history", () => {
+    const shot = shotWith();
+    shot.greybox.revision = 1;
+    recordCheck(shot, { id: "pace", status: "fail", target: "greybox", note: "skates at the stop", at: T(1) });
+    shot.greybox.revision = 2;
+    const second = recordCheck(shot, { id: "pace", status: "pass", target: "greybox", range: [3.5, 4.5], note: "0.4 mm/frame", at: T(2) });
+    expect(second.status).toBe("pass");
+    expect(second.revision).toBe(2);
+    expect(second.range).toEqual([3.5, 4.5]);
+    expect(second.history).toEqual([{ revision: 1, status: "fail", note: "skates at the stop", at: T(1) }]);
+  });
+
+  test("checking before there is anything to look at is refused", () => {
+    const shot = shotWith();
+    expect(() => recordCheck(shot, { id: "blocking", status: "pass", target: "greybox" })).toThrow(
+      /no greybox render to check yet/,
+    );
+    shot.greybox.revision = 1;
+    expect(() => recordCheck(shot, { id: "take-motion", status: "pass", target: "take-09" })).toThrow(
+      /neither "greybox" nor a recorded take/,
+    );
+    expect(() => recordCheck(shot, { id: "blocking", status: "looks-ok" as CheckStatus, target: "greybox" })).toThrow(
+      /--status must be one of pass\|fail\|unverified/,
+    );
+  });
+
+  test("unverified is counted apart from fail, and an empty record is not acceptance", () => {
+    const shot = shotWith();
+    shot.greybox.revision = 1;
+    recordCheck(shot, { id: "blocking", status: "pass", target: "greybox", at: T(1) });
+    recordCheck(shot, { id: "pace", status: "fail", target: "greybox", at: T(1) });
+    const summary = summarizeChecks(shot, "greybox");
+    expect(summary.pass).toBe(1);
+    expect(summary.fail).toBe(1);
+    expect(summary.unverified).toBe(STANDARD_CHECKS.greybox.length - 2);
+    expect(summary.failIds).toEqual(["pace"]);
+    expect(summary.accepted).toBe(false);
+
+    const empty = normalizeShot(newShot({ id: "s", title: "s", spec: SPEC }));
+    expect(summarizeChecks(empty, "greybox").accepted).toBe(false);
+  });
+
+  test("a check recorded before the current revision is reported stale, but does not gate", () => {
+    const shot = acceptedShot();
+    shot.greybox.revision = 3;
+    const summary = summarizeChecks(shot, "greybox");
+    expect(summary.accepted).toBe(true);
+    expect(summary.staleIds).toHaveLength(STANDARD_CHECKS.greybox.length);
+  });
+
+  test("a take's revision is its own number, so two bad takes in a row are stuck too", () => {
+    const shot = acceptedShot();
+    expect(revisionOfTarget(shot, "greybox")).toBe(2);
+    expect(revisionOfTarget(shot, "take-03")).toBe(3);
+    expect(revisionOfTarget(shot, "reference")).toBeNull();
+  });
+});
+
+describe("the stuck rule", () => {
+  const trail = (entries: Array<[number, CheckStatus]>): Check[] => {
+    const history = entries.slice(0, -1).map(([revision, status]) => ({ revision, status, note: "", at: null }));
+    const [revision, status] = entries[entries.length - 1];
+    return [{ id: "blocking", label: "", target: "greybox", status, range: null, note: "", revision, at: null, history }];
+  };
+
+  test("two distinct revisions ending fail is stuck; one is not", () => {
+    expect(computeStuck(trail([[1, "fail"]]))).toEqual([]);
+    expect(computeStuck(trail([[1, "fail"], [2, "fail"]]))).toEqual(["blocking"]);
+    expect(computeStuck(trail([[1, "fail"], [2, "pass"]]))).toEqual([]);
+    expect(computeStuck(trail([[1, "pass"], [2, "fail"]]))).toEqual([]);
+  });
+
+  test("distinct, not adjacent: revisions 3 and 5 count, revision 4 does not have to exist", () => {
+    expect(computeStuck(trail([[3, "fail"], [5, "fail"]]))).toEqual(["blocking"]);
+  });
+
+  test("within one revision the LAST word wins", () => {
+    // Looked again and changed the answer: that is a different answer, not
+    // a second one.
+    expect(computeStuck(trail([[1, "fail"], [1, "pass"], [2, "fail"]]))).toEqual([]);
+    expect(computeStuck(trail([[1, "pass"], [1, "fail"], [2, "fail"]]))).toEqual(["blocking"]);
+  });
+
+  test("only the last two distinct revisions matter", () => {
+    expect(computeStuck(trail([[1, "fail"], [2, "fail"], [3, "pass"], [4, "fail"]]))).toEqual([]);
+  });
+
+  test("a check nobody has recorded has no trail and cannot be stuck", () => {
+    const shot = shotWith();
+    expect(computeStuck(shot.checks)).toEqual([]);
+  });
+});
+
+describe("the prompt pack", () => {
+  test("takes the FIRST fenced prompt block and stops at its closing fence", () => {
+    const markdown = [
+      "# Pack",
+      "",
+      "```prompt",
+      "Follow [Video1] exactly. A lab at night.",
+      "```",
+      "",
+      "## Negative",
+      "",
+      "```text",
+      "no crowds",
+      "```",
+    ].join("\n");
+    const parsed = parsePromptPack(markdown);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.prompt).toBe("Follow [Video1] exactly. A lab at night.");
+    // The rest of the file must not leak in — that is how a prompt ends up
+    // carrying a mode's own instructions to the model.
+    expect(parsed.prompt).not.toContain("Negative");
+  });
+
+  test("refuses a missing block, an empty one, and one that never addresses the greybox", () => {
+    expect(parsePromptPack("# Pack\n\nno fences here")).toMatchObject({ prompt: null, ok: false });
+    expect(parsePromptPack("```prompt\n\n```")).toMatchObject({ ok: false });
+    expect(parsePromptPack("```prompt\nA lab at night.\n```")).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("[Video1]"),
+    });
+  });
+
+  test("the scaffolded placeholder does not satisfy its own gate", () => {
+    const untouched = parsePromptPack(`# Pack\n\n\`\`\`prompt\n${PROMPT_TEMPLATE_BODY}\n\`\`\`\n`);
+    expect(untouched.ok).toBe(false);
+    expect(untouched.reason).toContain("scaffolded placeholder");
+    // Re-wrapping it is still the placeholder.
+    expect(parsePromptPack(`\`\`\`prompt\n${PROMPT_TEMPLATE_BODY.replace(/\n/g, " ")}\n\`\`\``).ok).toBe(false);
+  });
+
+  test("a tilde fence works and closes on tildes", () => {
+    expect(parsePromptPack("~~~prompt\nFollow [Video1] into the dark.\n~~~\ntail").prompt).toBe(
+      "Follow [Video1] into the dark.",
+    );
+  });
+});
+
+describe("the take policy", () => {
+  test("refuses without a final greybox at the current revision", () => {
+    const shot = acceptedShot();
+    shot.greybox.final = null;
+    expect(takePolicy(shot).errors[0]).toContain("no final greybox");
+    shot.greybox.final = { file: "greybox/greybox.mp4", revision: 1, probe: null, renderedAt: null, renderSeconds: null };
+    shot.greybox.revision = 4;
+    expect(takePolicy(shot).errors[0]).toContain("revision 1 but the scene is at revision 4");
+  });
+
+  test("a failing greybox check blocks a paid job until a reason is named", () => {
+    const shot = acceptedShot();
+    recordCheck(shot, { id: "penetration", status: "fail", target: "greybox", at: T(4) });
+    expect(takePolicy(shot).ok).toBe(false);
+    expect(takePolicy(shot).failingChecks).toEqual(["penetration"]);
+    expect(takePolicy(shot, { allowFailing: "the hand clips a prop the model repaints anyway" }).ok).toBe(true);
+  });
+
+  test("first take free, second needs --fix, third needs --user-approved as well", () => {
+    const shot = acceptedShot();
+    expect(takePolicy(shot)).toMatchObject({ ok: true, takeNumber: 1, takeId: "take-01" });
+
+    shot.takes.push({ id: "take-01", status: "done" } as never);
+    expect(takePolicy(shot).ok).toBe(false);
+    expect(takePolicy(shot).errors[0]).toContain('--fix "<what this take changes>"');
+    expect(takePolicy(shot, { fix: "the hand missed the button" })).toMatchObject({ ok: true, takeNumber: 2, takeId: "take-02" });
+
+    shot.takes.push({ id: "take-02", status: "failed" } as never);
+    // A failed take still counts: its request left this machine.
+    expect(takePolicy(shot, { fix: "again" }).ok).toBe(false);
+    expect(takePolicy(shot, { fix: "again" }).errors[0]).toContain("--user-approved");
+    expect(takePolicy(shot, { fix: "again", userApproved: true })).toMatchObject({ ok: true, takeNumber: 3 });
+    expect(nextTakeId(shot)).toBe("take-03");
+  });
+
+  test("unverified greybox checks are reported but do not block", () => {
+    const shot = acceptedShot();
+    recordCheck(shot, { id: "end-hold", status: "unverified", target: "greybox", at: T(5) });
+    const policy = takePolicy(shot);
+    expect(policy.ok).toBe(true);
+    expect(policy.unverifiedChecks).toEqual(["end-hold"]);
+  });
+});
+
+describe("where the shot stands", () => {
+  test("next walks the stages in order and names the command that closes each", () => {
+    const shot = shotWith();
+    expect(nextStage(shot).stage).toBe("plan");
+
+    shot.beats = validateBeats([{ id: "walk", from: 0, to: 3, kind: "action" }], SPEC);
+    expect(nextStage(shot).stage).toBe("greybox-preview");
+
+    shot.greybox.revision = 1;
+    shot.greybox.preview = { file: "greybox/preview.mp4", revision: 1, probe: null, renderedAt: null, renderSeconds: null };
+    expect(nextStage(shot)).toMatchObject({ stage: "checks" });
+    expect(nextStage(shot).reason).toContain("unverified");
+
+    for (const check of STANDARD_CHECKS.greybox) recordCheck(shot, { id: check.id, status: "pass", target: "greybox", at: T(1) });
+    expect(nextStage(shot).stage).toBe("final-render");
+
+    shot.greybox.revision = 2;
+    shot.greybox.final = { file: "greybox/greybox.mp4", revision: 2, probe: null, renderedAt: null, renderSeconds: null };
+    expect(nextStage(shot).stage).toBe("prompt");
+    expect(nextStage(shot, { promptOk: true }).stage).toBe("take");
+
+    shot.takes.push({ id: "take-01", status: "done", selected: false } as never);
+    seedChecklist(shot);
+    expect(nextStage(shot, { promptOk: true }).stage).toBe("take-checks");
+
+    for (const check of STANDARD_CHECKS.take) recordCheck(shot, { id: check.id, status: "pass", target: "take-01", at: T(2) });
+    expect(nextStage(shot, { promptOk: true }).stage).toBe("select");
+
+    shot.takes[0].selected = true;
+    expect(nextStage(shot, { promptOk: true })).toEqual({
+      stage: null,
+      reason: "every stage is closed — this shot is delivered",
+      command: null,
+    });
+  });
+
+  test("a failing TAKE check asks for a named fix or a report, never a blind re-shoot", () => {
+    const shot = acceptedShot();
+    shot.takes.push({ id: "take-01", status: "done", selected: false } as never);
+    seedChecklist(shot);
+    for (const check of STANDARD_CHECKS.take) recordCheck(shot, { id: check.id, status: "pass", target: "take-01", at: T(2) });
+    recordCheck(shot, { id: "take-camera", status: "fail", target: "take-01", note: "the camera drifts right from 5 s", at: T(3) });
+
+    const next = nextStage(shot, { promptOk: true });
+    expect(next.stage).toBe("take-checks");
+    expect(next.reason).toContain("take-camera");
+    // The move after a failing take is another take WITH a fix, or telling
+    // the user what deviated — the scene is not what is wrong.
+    expect(next.reason).toContain("named fix");
+    expect(next.reason).toContain("report");
+    expect(next.command).toContain('generate <shot-dir> --fix "<what this take changes>"');
+    expect(next.command).toContain("keep take-01");
+    expect(next.command).not.toContain("--user-approved");
+
+    // A third take needs the user's yes as well, and the command says so.
+    shot.takes.push({ id: "take-02", status: "failed" } as never);
+    expect(nextStage(shot, { promptOk: true }).command).toContain('--fix "<what this take changes>" --user-approved');
+  });
+
+  test("a failing check reopens checks with the ids, even after a take exists", () => {
+    const shot = acceptedShot();
+    recordCheck(shot, { id: "framing", status: "fail", target: "greybox", at: T(6) });
+    const next = nextStage(shot, { promptOk: true });
+    expect(next.stage).toBe("checks");
+    expect(next.reason).toContain("framing");
+  });
+
+  test("a recreate shot cuts its reference before anything else", () => {
+    const shot = normalizeShot(newShot({ id: "s", title: "s", entry: "recreate", spec: SPEC }));
+    seedChecklist(shot);
+    expect(nextStage(shot).stage).toBe("reference");
+    shot.reference = { file: "reference/source.mp4" };
+    expect(nextStage(shot).stage).toBe("plan");
+  });
+
+  test("status never calls a shot accepted while a check is not pass", () => {
+    const shot = acceptedShot();
+    recordCheck(shot, { id: "camera-smooth", status: "unverified", target: "greybox", at: T(7) });
+    const status = shotStatus(shot, { promptOk: true }) as Record<string, any>;
+    expect(status.checks.byTarget.greybox.accepted).toBe(false);
+    expect(status.checks.byTarget.greybox.unverified).toBe(1);
+    expect(status.checks.byTarget.greybox.fail).toBe(0);
+    expect(status.next.stage).toBe("checks");
+    expect(status.greybox.finalIsCurrent).toBe(true);
+    expect(status.selected).toBeNull();
+  });
+});

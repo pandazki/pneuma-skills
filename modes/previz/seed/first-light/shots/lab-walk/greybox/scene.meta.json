@@ -1,0 +1,31 @@
+{
+  "fps": 24,
+  "frames": 192,
+  "seconds": 8.0,
+  "width": 1280,
+  "height": 720,
+  "camera": "cam",
+  "subjects": [
+    "root",
+    "button"
+  ],
+  "accents": [
+    {
+      "objects": [
+        "device_core",
+        "device_ring_0",
+        "device_ring_1",
+        "device_ring_2"
+      ],
+      "from": 5.5,
+      "to": 7.5,
+      "color": [
+        0.08,
+        0.42,
+        1.0
+      ]
+    }
+  ],
+  "blender": "5.2.1",
+  "engine": "BLENDER_WORKBENCH"
+}
