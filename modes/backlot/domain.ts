@@ -1,11 +1,11 @@
 /**
- * Previz domain types + aggregate-file load/save.
+ * Backlot domain types + aggregate-file load/save.
  *
- * A `Film` value is the whole previz workspace: every `previz.json` found
+ * A `Film` value is the whole backlot workspace: every `backlot.json` found
  * under a top-level directory (the content set = one short film project),
  * each carrying the `shot.json` files under its own `shots/` directory.
  *
- * `previz.json` and `shot.json` are written ONLY by
+ * `backlot.json` and `shot.json` are written ONLY by
  * `skill/scripts/previz.mjs` (invariant 2 of the design brief). The agent
  * authors the prose (`shot-plan.md`, `prompts.md`, `comparison.md`) and the
  * Blender script; the viewer writes nothing at all, which is why `saveFilm`
@@ -21,7 +21,7 @@ import type { ViewerFileContent } from "../../core/types/viewer-contract.js";
 
 // ── On-disk contract ────────────────────────────────────────────────────────
 
-export const PREVIZ_MANIFEST = "previz.json" as const;
+export const BACKLOT_MANIFEST = "backlot.json" as const;
 export const SHOT_MANIFEST = "shot.json" as const;
 export const SCENE_META = "scene.meta.json" as const;
 
@@ -181,7 +181,7 @@ export interface Project {
   dir: string;
   title: string;
   defaults: ProjectDefaults;
-  /** Shots in `previz.json` order; shots found on disk but unlisted come last. */
+  /** Shots in `backlot.json` order; shots found on disk but unlisted come last. */
   shots: Shot[];
   warnings: string[];
 }
@@ -526,13 +526,13 @@ export function parseSceneMeta(text: string): SceneMeta | null {
 // ── Path helpers ────────────────────────────────────────────────────────────
 
 /**
- * Content-set prefix for a `previz.json` path, or null when the path is not
- * one. Only a direct top-level directory is a project: `a/b/previz.json`
+ * Content-set prefix for a `backlot.json` path, or null when the path is not
+ * one. Only a direct top-level directory is a project: `a/b/backlot.json`
  * would be invisible to the content-set resolver, so it is not offered.
  */
 export function projectDirOf(path: string): string | null {
-  if (path === PREVIZ_MANIFEST) return "";
-  const suffix = `/${PREVIZ_MANIFEST}`;
+  if (path === BACKLOT_MANIFEST) return "";
+  const suffix = `/${BACKLOT_MANIFEST}`;
   if (!path.endsWith(suffix)) return null;
   const dir = path.slice(0, -suffix.length);
   if (dir.includes("/") || dir.startsWith(".")) return null;
@@ -586,7 +586,7 @@ export function loadFilm(files: ReadonlyArray<ViewerFileContent>): Film | null {
     } catch {
       // A half-written manifest still names a project — the directory is
       // there and its shots are readable. Say so rather than dropping it.
-      warnings.push("previz.json could not be parsed, shots listed in discovery order");
+      warnings.push("backlot.json could not be parsed, shots listed in discovery order");
     }
     projects[dir] = { dir, title, defaults, shots: [], warnings };
     order[dir] = shotIds;
@@ -613,7 +613,7 @@ export function loadFilm(files: ReadonlyArray<ViewerFileContent>): Film | null {
     });
     for (const id of listed) {
       if (!project.shots.some((s) => s.id === id)) {
-        project.warnings.push(`shot "${id}" is listed in previz.json but has no shot.json`);
+        project.warnings.push(`shot "${id}" is listed in backlot.json but has no shot.json`);
       }
     }
   }
@@ -622,7 +622,7 @@ export function loadFilm(files: ReadonlyArray<ViewerFileContent>): Film | null {
 }
 
 /**
- * The previz viewer is strictly read-only (invariant 2). `previz.json` and
+ * The backlot viewer is strictly read-only (invariant 2). `backlot.json` and
  * `shot.json` are written only by `skill/scripts/previz.mjs`, which owns the
  * revision counter, the acceptance record and the take ledger. When
  * write-back ever lands, replace this with a real decomposer rather than
@@ -633,7 +633,7 @@ export function saveFilm(
   _current: ReadonlyArray<ViewerFileContent>,
 ): { writes: Array<{ path: string; content: string }>; deletes: string[] } {
   throw new Error(
-    "previz viewer is read-only; previz.json and shot.json are written by scripts/previz.mjs",
+    "backlot viewer is read-only; backlot.json and shot.json are written by scripts/previz.mjs",
   );
 }
 

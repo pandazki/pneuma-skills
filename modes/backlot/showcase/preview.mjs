@@ -4,7 +4,7 @@ import { resolve, dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const artwork = resolve(process.argv[2] ?? ".tmp-previz-showcase");
+const artwork = resolve(process.argv[2] ?? ".tmp-backlot-showcase");
 const fonts = resolve(here, "../../../public/fonts");
 const server = Bun.serve({
   hostname: "127.0.0.1", port: Number(process.env.SHOWCASE_PORT ?? 18347),

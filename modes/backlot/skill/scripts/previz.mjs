@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * previz.mjs — the only writer of `previz.json` and every `shot.json`.
+ * previz.mjs — the only writer of `backlot.json` and every `shot.json`.
  *
  * The practice this mode automates is: block the shot in 3D first, then let a
  * video model paint the look on top of it. That practice has exactly two
@@ -91,7 +91,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const KIT_DIR = join(HERE, "blender");
 const STARTER_DIR = join(HERE, "scene-starter");
 
-const PROJECT_FILE = "previz.json";
+const PROJECT_FILE = "backlot.json";
 const SHOT_FILE = "shot.json";
 
 const SUBCOMMANDS = [
@@ -1659,7 +1659,7 @@ function cmdStatus(dir) {
 
 const USAGE = `Usage: previz.mjs <subcommand> [<dir> …] [options]
 
-The only writer of <project>/previz.json and <project>/shots/<id>/shot.json.
+The only writer of <project>/backlot.json and <project>/shots/<id>/shot.json.
 The agent writes the prose (shot-plan.md, prompts.md, comparison.md) and the
 Blender scene (greybox/scene.py); the viewer only reads. Directories are
 absolute or relative to the CURRENT directory — this script never cds.
@@ -1674,8 +1674,8 @@ stderr. --json is accepted everywhere and is already the default.
       reachable (never printed), and which stages that leaves open.
 
   init <project> [--title "<name>"] [--seconds 8] [--fps 24] [--size 1280x720]
-      Write previz.json and shots/. The spec here is the default every shot
-      starts from. Refuses a directory that already has a previz.json.
+      Write backlot.json and shots/. The spec here is the default every shot
+      starts from. Refuses a directory that already has a backlot.json.
 
   shot <project> <id> --title "<what happens>" [--entry original|recreate]
        [--seconds --fps --size]

@@ -1,12 +1,13 @@
 /**
- * Previz Mode Manifest — pure data, no React deps.
+ * Backlot Mode Manifest — pure data, no React deps.
  *
- * Block the shot in 3D first: a headless-Blender greybox animation fixes
- * space, action and camera, and a video model then paints the look on top of
- * that exact MP4. `previz.mjs` owns every piece of machine state — the
- * revision counter, the acceptance record, the take ledger — and the viewer
- * is the shot's player: the lanes on one clock, the plan's beats on the
- * timeline, and what the whole thing cost.
+ * The backlot's greybox stage is the part that ships today: block the shot in
+ * 3D first, so a headless-Blender greybox animation fixes space, action and
+ * camera, and a video model then paints the look on top of that exact MP4.
+ * `previz.mjs` owns every piece of machine state — the revision counter, the
+ * acceptance record, the take ledger — and the viewer is the shot's player:
+ * the lanes on one clock, the plan's beats on the timeline, and what the
+ * whole thing cost.
  *
  * Practice adapted from modengsir/blender-video-workflows (MIT) — see
  * `inspiredBy` and NOTICE.md.
@@ -15,12 +16,12 @@
 import type { ModeManifest } from "../../core/types/mode-manifest.js";
 import { loadFilm, saveFilm } from "./domain.js";
 
-const previzManifest: ModeManifest = {
-  name: "previz",
+const backlotManifest: ModeManifest = {
+  name: "backlot",
   version: "0.1.0",
   changelog: {
     "0.1.0": [
-      "Block the shot in 3D before anything is generated: a Blender greybox animation fixes the room, the action and the camera move, and the video model only paints the look on top of that exact clip",
+      "The backlot opens with its greybox stage: block the shot in 3D before anything is generated, so a Blender greybox animation fixes the room, the action and the camera move, and the video model only paints the look on top of that exact clip",
       "Start from an idea or from a video you already have — the recreate entry trims the segment you point at, reads its cuts and adopts its duration, frame rate and size into the shot spec",
       "One shot is the unit of everything: plan, greybox, acceptance, prompt pack, takes and cost all live in one `shots/<id>/` directory with a single writer",
       "The player runs every lane on one clock — reference, greybox and takes side by side, under a wipe, or blended for silhouette matching — so a drift is seen at a frame, not remembered",
@@ -38,15 +39,15 @@ const previzManifest: ModeManifest = {
     ],
   },
   displayName: {
-    en: "Previz",
-    "zh-CN": "预演",
-    ja: "プリビズ",
+    en: "Backlot",
+    "zh-CN": "片场",
+    ja: "バックロット",
   },
   description: {
-    en: "Block the shot in 3D first — a Blender greybox animation fixes space, action and camera, and a video model then renders the look on top of it. Start from an idea or from a reference video.",
+    en: "From an idea to a finished cut — screenplay, character and set bible, storyboard frames, 3D greybox previz, model-rendered takes, dialogue and music. The creator approves every stage before the next one starts.",
     "zh-CN":
-      "先用 3D 把镜头摆出来：Blender 的白模动画把空间、动作和运镜定死，再让视频模型在这段画面之上把质感画出来。可以从一个想法开始，也可以照着一段参考视频重做。",
-    ja: "まず 3D でショットを組む —— Blender のグレーボックスアニメーションが空間・動き・カメラを確定させ、その上に映像モデルがルックを描く。アイデアからでも、手元のリファレンス映像からでも始められます。",
+      "从一个念头拍到成片：剧本、人物与场景设定、分镜画稿、3D 白模预演、模型渲染的镜头、台词与配乐。每一道工序都要你点头，才进下一道。",
+    ja: "アイデアから完成尺まで —— 脚本、キャラクターとセットのバイブル、絵コンテ、3D グレーボックスのプリビズ、モデルが描くテイク、セリフと音楽。各ステージはあなたが承認してから次へ進みます。",
   },
   // A camera frustum looking at a small cube standing on a ground line —
   // the greybox before anything is rendered.
@@ -63,7 +64,7 @@ const previzManifest: ModeManifest = {
 
   skill: {
     sourceDir: "skill",
-    installName: "pneuma-previz",
+    installName: "pneuma-backlot",
     mdScene: `You and the user are shooting a short film the way a previz department does: every shot is blocked in 3D first. You write a shot plan with timed beats, build the blocking as a Blender script, render it headless into a greybox MP4 — untextured geometry, one light, the real camera — and go through the acceptance list on that clip before anything is generated. Only then does a video model paint the look on top of that exact file. In front of the user is the shot's player: the lanes on one clock, the beats drawn on the timeline, the acceptance record, the prompt pack, and what each take cost.`,
     envMapping: {
       BLENDER_PATH: "blenderPath",
@@ -95,7 +96,7 @@ const previzManifest: ModeManifest = {
     // Image cache-busting also survives: the watcher's image branch fires
     // before the pattern filter, so a new PNG still bumps `imageVersion`.
     watchPatterns: [
-      "**/previz.json",
+      "**/backlot.json",
       "**/shots/*/shot.json",
       "**/shots/*/*.md",
       "**/shots/*/greybox/*.json",
@@ -117,7 +118,7 @@ const previzManifest: ModeManifest = {
     film: {
       kind: "aggregate-file",
       config: {
-        patterns: ["**/previz.json", "**/shots/*/shot.json"],
+        patterns: ["**/backlot.json", "**/shots/*/shot.json"],
         load: loadFilm,
         save: saveFilm,
       },
@@ -150,7 +151,7 @@ const previzManifest: ModeManifest = {
       multiFile: true,
       ordered: true,
       hasActiveFile: false,
-      manifestFile: "previz.json",
+      manifestFile: "backlot.json",
       supportsContentSets: true,
       // The shots rail is the navigation and it lives beside the stage it
       // drives. A TopBar item selector would be a second, stage-blind copy.
@@ -202,26 +203,28 @@ const previzManifest: ModeManifest = {
 
   agent: {
     permissionMode: "bypassPermissions",
-    // Blocking is judgement: where the camera stands, how long the walk
-    // takes, whether a defect is a fix or a redesign. The upstream practice
-    // is a list of rules whose whole value is in applying them carefully.
-    reasoningEffort: "high",
-    greeting: `<system-info pneuma-mode="Pneuma Previz Mode" skill="pneuma-previz" session="new"></system-info>
-The user just opened the previz workspace. Greet them briefly (1-2 sentences): say that you block every shot in 3D first — a Blender greybox that fixes the room, the action and the camera — and only then let a video model paint the look on top of that exact clip. Ask what the shot is, or offer to recreate a video they already have. If Blender is not configured, say so in the same breath and name what is still possible without it.`,
+    // Blocking is judgement — where the camera stands, how long the walk
+    // takes, whether a defect is a fix or a redesign — but the acceptance
+    // baseline this mode is held to is Codex GPT-6 Astra at medium, and blind
+    // trials 2 and 3 passed at that setting. Asking for more than the level
+    // the work was proven at buys latency, not judgement.
+    reasoningEffort: "medium",
+    greeting: `<system-info pneuma-mode="Pneuma Backlot Mode" skill="pneuma-backlot" session="new"></system-info>
+The user just opened the backlot workspace. Greet them briefly (1-2 sentences): say that you block every shot in 3D first — a Blender greybox that fixes the room, the action and the camera — and only then let a video model paint the look on top of that exact clip. Ask what the shot is, or offer to recreate a video they already have. If Blender is not configured, say so in the same breath and name what is still possible without it.`,
   },
 
   init: {
-    contentCheckPattern: "**/previz.json",
+    contentCheckPattern: "**/backlot.json",
     // The seed is a real run: a real greybox render, its GLB and sidecar, the
     // acceptance record it earned, and the Seedance take it became. An
     // invented seed would teach the mode's own workflow wrong.
     seedFiles: {
-      "modes/previz/seed/first-light/": "first-light/",
+      "modes/backlot/seed/first-light/": "first-light/",
     },
     seeds: [
       {
         id: "first-light",
-        sourceKey: "modes/previz/seed/first-light/",
+        sourceKey: "modes/backlot/seed/first-light/",
         thumbnail: "first-light.png",
         displayName: {
           en: "First Light — one shot, blocked and rendered",
@@ -279,4 +282,4 @@ while explicit instructions still win.`,
   },
 };
 
-export default previzManifest;
+export default backlotManifest;

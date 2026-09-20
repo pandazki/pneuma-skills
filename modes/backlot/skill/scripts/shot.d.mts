@@ -1,5 +1,5 @@
 // Type declarations for shot.mjs (plain JS so an installed skill runs it
-// under bare `node`). The shapes here mirror `modes/previz/domain.ts`; that
+// under bare `node`). The shapes here mirror `modes/backlot/domain.ts`; that
 // file is the viewer's reading of the same JSON and stays the contract of
 // record.
 

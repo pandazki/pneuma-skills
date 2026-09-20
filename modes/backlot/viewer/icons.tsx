@@ -1,5 +1,5 @@
 /**
- * Stroke icons for the previz viewer.
+ * Stroke icons for the backlot viewer.
  *
  * Inline SVG, 24×24 viewBox, `currentColor` — no emoji anywhere in this
  * viewer (the repository's frontend rule) and no icon font to load beside a

@@ -2,6 +2,8 @@
 
 **Status:** built and trialled (2026-09-20) · **Branch:** `feat/previz-mode` · experiment record: [2026-09-20-previz-experiments.md](2026-09-20-previz-experiments.md) — read its last section before extending this brief: the mode's scope is about to widen from previz to the whole creative flow.
 
+Superseded by [2026-09-20-backlot-mode.md](2026-09-20-backlot-mode.md) (the mode was renamed `backlot`; previz is its greybox stage).
+
 Reproduces the practice of [modengsir/blender-video-workflows](https://github.com/modengsir/blender-video-workflows)
 (MIT, commit `8dbcdc4b`, 2026-09-20): block the shot in 3D first, then let a video
 model paint the look on top of it.

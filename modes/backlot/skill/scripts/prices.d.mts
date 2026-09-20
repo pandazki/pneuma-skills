@@ -1,6 +1,6 @@
 // Type declarations for prices.mjs, which is plain JS so `node` can run it
 // from an installed skill with no build step. These stubs exist so the
-// TypeScript tests in `modes/previz/__tests__/` type-check.
+// TypeScript tests in `modes/backlot/__tests__/` type-check.
 
 export interface PrizeTable {
   asOf: string;

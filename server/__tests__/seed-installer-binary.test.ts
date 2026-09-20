@@ -3,7 +3,7 @@
  *
  * The original rule was an extension *allowlist of binaries*: anything
  * not on the list was read as UTF-8, run through `applyTemplateParams`,
- * and written back — so any unlisted binary (previz ships `scene.glb`
+ * and written back — so any unlisted binary (backlot ships `scene.glb`
  * and `scene.blend`, and every mode with init params hits this path)
  * came out the other side with its non-UTF-8 bytes replaced by U+FFFD.
  * These tests pin the inverted default: unknown extension + NUL byte in
@@ -152,7 +152,7 @@ describe("copySeedEntry — binary preservation with params present", () => {
     const blend = Buffer.from([0x42, 0x4c, 0x45, 0x4e, 0x44, 0x45, 0x52, 0x00, 0x90, 0xfe]);
     await writeFile(join(seedBase, "first-light", "shots", "scene.glb"), glb);
     await writeFile(join(seedBase, "first-light", "scene.blend"), blend);
-    await writeFile(join(seedBase, "first-light", "previz.json"), '{"title":"{{title}}"}');
+    await writeFile(join(seedBase, "first-light", "backlot.json"), '{"title":"{{title}}"}');
 
     const result = copySeedEntry({
       workspace,
@@ -165,7 +165,7 @@ describe("copySeedEntry — binary preservation with params present", () => {
     expect(result).not.toBeNull();
     expect(readFileSync(join(workspace, "shots", "scene.glb"))).toEqual(glb);
     expect(readFileSync(join(workspace, "scene.blend"))).toEqual(blend);
-    expect(readFileSync(join(workspace, "previz.json"), "utf-8")).toBe('{"title":"First Light"}');
+    expect(readFileSync(join(workspace, "backlot.json"), "utf-8")).toBe('{"title":"First Light"}');
   });
 });
 

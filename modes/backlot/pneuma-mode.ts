@@ -1,5 +1,5 @@
 /**
- * Previz Mode — ModeDefinition binding manifest + viewer.
+ * Backlot Mode — ModeDefinition binding manifest + viewer.
  *
  * Loaded by the frontend via mode-loader's dynamic import; the Bun backend
  * reads `manifest.ts` directly, which is why React only appears here.
@@ -28,14 +28,14 @@ import {
   type Project,
   type Shot,
 } from "./domain.js";
-import previzManifest from "./manifest.js";
-import PrevizPreview from "./viewer/PrevizPreview.js";
+import backlotManifest from "./manifest.js";
+import BacklotPreview from "./viewer/BacklotPreview.js";
 import { formatSeconds, probeFacts, selectProject, takeLabel } from "./viewer/stage-model.js";
 
 // ── Content sets ───────────────────────────────────────────────────────────
 
 /**
- * A project is a directory holding a `previz.json`.
+ * A project is a directory holding a `backlot.json`.
  *
  * The generic directory resolver would offer `node_modules/` and every stray
  * folder, and it hides a LONE directory on the theory that one set is not
@@ -43,7 +43,7 @@ import { formatSeconds, probeFacts, selectProject, takeLabel } from "./viewer/st
  * single project still has to be surfaced so the store activates it and every
  * `/content/<dir>/…` URL the stage builds resolves.
  */
-export function resolvePrevizContentSets(files: ViewerFileContent[]): ContentSet[] {
+export function resolveBacklotContentSets(files: ViewerFileContent[]): ContentSet[] {
   const sets: ContentSet[] = [];
   const seen = new Set<string>();
 
@@ -72,8 +72,8 @@ function activeProject(files: ViewerFileContent[]): Project | null {
   return selectProject(loadFilm(files), null);
 }
 
-/** Workspace items = one per shot, in `previz.json` order. */
-export function resolvePrevizItems(files: ViewerFileContent[]): WorkspaceItem[] {
+/** Workspace items = one per shot, in `backlot.json` order. */
+export function resolveBacklotItems(files: ViewerFileContent[]): WorkspaceItem[] {
   const project = activeProject(files);
   if (!project) return [];
   return project.shots.map((shot, index) => ({
@@ -116,7 +116,7 @@ function addressNumber(
  * agent must not be able to read "accepted" here and `unverified` from
  * `previz.mjs status`.
  */
-export function extractPrevizContext(
+export function extractBacklotContext(
   selection: ViewerSelectionContext | null,
   files: ViewerFileContent[],
 ): string {
@@ -218,20 +218,20 @@ function wrap(
   // The Address line is the machine-routable handle: verbatim JSON the agent
   // copies straight into `navigate-to` or a <viewer-locator>.
   if (selection?.address) lines.push(`Address: ${JSON.stringify(selection.address)}`);
-  const attrs = [`mode="previz"`];
+  const attrs = [`mode="backlot"`];
   if (project.dir) attrs.push(`content-set="${project.dir}"`);
   return `<viewer-context ${attrs.join(" ")}>\n${lines.join("\n")}\n</viewer-context>`;
 }
 
 // ── Mode Definition ────────────────────────────────────────────────────────
 
-const workspace = previzManifest.viewerApi!.workspace!;
+const workspace = backlotManifest.viewerApi!.workspace!;
 
-const previzMode: ModeDefinition = {
-  manifest: previzManifest,
+const backlotMode: ModeDefinition = {
+  manifest: backlotManifest,
 
   viewer: {
-    PreviewComponent: PrevizPreview,
+    PreviewComponent: BacklotPreview,
 
     workspace: {
       type: workspace.type,
@@ -240,12 +240,12 @@ const previzMode: ModeDefinition = {
       hasActiveFile: workspace.hasActiveFile,
       manifestFile: workspace.manifestFile,
       topBarNavigation: workspace.topBarNavigation,
-      resolveContentSets: resolvePrevizContentSets,
-      resolveItems: resolvePrevizItems,
+      resolveContentSets: resolveBacklotContentSets,
+      resolveItems: resolveBacklotItems,
 
       /**
        * No "new project" button. A film starts with `previz.mjs init`, which
-       * writes `previz.json` with the defaults the user was asked for; a shot
+       * writes `backlot.json` with the defaults the user was asked for; a shot
        * starts with `previz.mjs shot`, which scaffolds a Blender script that
        * already renders and an acceptance list. An empty skeleton written
        * from here would be a project the script did not set up.
@@ -253,14 +253,14 @@ const previzMode: ModeDefinition = {
       createEmpty: () => null,
     },
 
-    extractContext: extractPrevizContext,
+    extractContext: extractBacklotContext,
 
     // The manifest is the single source of truth for the action space —
     // re-listing them here is how modes end up declaring two different sets.
-    actions: previzManifest.viewerApi?.actions,
+    actions: backlotManifest.viewerApi?.actions,
 
     updateStrategy: "incremental",
   },
 };
 
-export default previzMode;
+export default backlotMode;

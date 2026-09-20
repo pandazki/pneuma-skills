@@ -83,7 +83,7 @@ When humans and code agents co-create content, they need more than a chat window
 | **plotwise** | Custom-tailored learning videos — a visual-novel course shot scene by scene on MiniMax H3 Max ahead of you: continue, take the detour, or ask a question; every fact grounded by code-rendered figures, cited evidence and word-for-word narration QA |
 | **sprite** | Character-centric motion assets — design a character once, plan each motion's phases, contacts and ending, then generate from reference-guided sheets or video; key, slice, align and pack frames + `atlas.json` for game engines, with GIF/WebP and optional video previews. Or shoot a seamless transparent loop for a UI — a keyframe, a first-last clip that closes on itself, and every frame exported as WebP, APNG, WebM and Lottie |
 | **lucid** | A closed loop between a picture and a program — the agent dreams a target screenshot with image generation, locks it, builds a static Three.js scene toward it, and a fresh-context judge scores composition, lighting, materials and details every round until the live frame matches; Blender and image-to-3D sit on the asset ladder. Ported from [achimala/dream-loop](https://github.com/achimala/dream-loop) (MIT) |
-| **previz** | Block the shot in 3D first — a headless Blender greybox fixes space, action and camera, the acceptance list is gone through on that exact clip, and only then does a video model paint the look on top of it; start from an idea or from a reference video. Practice adapted from [modengsir/blender-video-workflows](https://github.com/modengsir/blender-video-workflows) (MIT) |
+| **backlot** | From an idea to a finished cut — screenplay, character and set bible, storyboard frames, 3D greybox previz, model-rendered takes, dialogue and music; the creator approves every stage before the next one starts, and the greybox stage is what fixes space, action and camera before any video model paints the look. Practice adapted from [modengsir/blender-video-workflows](https://github.com/modengsir/blender-video-workflows) (MIT) |
 | **mode-maker** | Create custom modes with AI — fork, play-test, publish |
 | **evolve** | Evolution Agent — analyze history, propose skill improvements, apply/rollback |
 
@@ -173,7 +173,7 @@ Modes:
   plotwise                     Custom-tailored learning videos
   sprite                       Character sprite sheets, motion and UI loops
   lucid                        Dream a screenshot, build it in Three.js
-  previz                       Block the shot in 3D, then render the look
+  backlot                      From an idea to a finished cut
   mode-maker                   Create custom modes with AI
   evolve                       Launch the Evolution Agent
   /path/to/mode                Load from a local directory

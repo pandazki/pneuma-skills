@@ -1,5 +1,5 @@
 /**
- * shot.mjs — what `previz.json` and `shot.json` mean.
+ * shot.mjs — what `backlot.json` and `shot.json` mean.
  *
  * `previz.mjs` is the only writer of those two files; this module is the only
  * place that decides what they may contain and what they imply. Everything

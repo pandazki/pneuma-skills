@@ -117,7 +117,7 @@ describe("init and shot", () => {
     const scene = readFileSync(join(cwd, "film", "shots", "lab-walk", "greybox", "scene.py"), "utf-8");
     expect(scene).toContain("pv.setup(seconds=6, fps=24, width=854, height=480)");
 
-    const project = JSON.parse(readFileSync(join(cwd, "film", "previz.json"), "utf-8"));
+    const project = JSON.parse(readFileSync(join(cwd, "film", "backlot.json"), "utf-8"));
     expect(project.shots).toEqual(["lab-walk"]);
 
     const shot = shotFile(cwd);
@@ -565,7 +565,7 @@ describe("status", () => {
   test("a directory that holds neither file is a named refusal, and status never writes", () => {
     const cwd = workspace();
     scaffold(cwd);
-    expect(run(cwd, ["status", "."]).err).toContain("holds neither previz.json nor shot.json");
+    expect(run(cwd, ["status", "."]).err).toContain("holds neither backlot.json nor shot.json");
     const before = readFileSync(join(cwd, "film", "shots", "lab-walk", "shot.json"), "utf-8");
     json(cwd, ["status", "film/shots/lab-walk"]);
     expect(readFileSync(join(cwd, "film", "shots", "lab-walk", "shot.json"), "utf-8")).toBe(before);

@@ -52,7 +52,7 @@ const SNIFF_BYTES = 8192;
  *     zip, .blend, wasm, …) has one inside its header. This is the safety
  *     net that makes "unknown extension" default to *preserve the bytes*
  *     rather than to "mangle them into U+FFFD" — the previous behavior,
- *     which silently corrupted `previz`'s `scene.glb`.
+ *     which silently corrupted `backlot`'s `scene.glb`.
  *
  * `path` should point at an existing, readable file; the sniff is skipped
  * when it cannot be opened (the caller's own read/copy reports that

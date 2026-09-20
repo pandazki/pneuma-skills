@@ -197,7 +197,7 @@ describe("seedance download and result", () => {
   });
 
   test("the queue's request id travels into the result, and is absent when there was none", async () => {
-    // A caller that records paid work (previz.mjs's take ledger) needs a
+    // A caller that records paid work (backlot's previz.mjs take ledger) needs a
     // handle on the job after this process exits: a finished render whose
     // download was lost is still recoverable through the request id.
     const withId = await generateSeedanceVideo(

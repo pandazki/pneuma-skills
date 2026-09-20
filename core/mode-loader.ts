@@ -117,12 +117,12 @@ const builtinModes: Record<string, ModeSource> = {
     definitionLoader: () =>
       import("../modes/lucid/pneuma-mode.js").then((m) => m.default),
   },
-  previz: {
+  backlot: {
     type: "builtin",
     manifestLoader: () =>
-      import("../modes/previz/manifest.js").then((m) => m.default),
+      import("../modes/backlot/manifest.js").then((m) => m.default),
     definitionLoader: () =>
-      import("../modes/previz/pneuma-mode.js").then((m) => m.default),
+      import("../modes/backlot/pneuma-mode.js").then((m) => m.default),
   },
   kami: {
     type: "builtin",

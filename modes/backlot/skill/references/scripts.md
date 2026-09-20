@@ -14,7 +14,7 @@ relative to the current directory. `<shot-dir>` is `<project>/shots/<id>`.
 | subcommand | use it to |
 |---|---|
 | `doctor` | learn which stages exist here: Blender (path, version), ffmpeg, ffprobe, whether a fal key is reachable (never printed) |
-| `init <project> [--title --seconds --fps --size]` | create `previz.json`; its spec is the default for new shots |
+| `init <project> [--title --seconds --fps --size]` | create `backlot.json`; its spec is the default for new shots |
 | `shot <project> <id> --title … [--entry original\|recreate] [--seconds --fps --size]` | scaffold a shot: `shot.json` with the acceptance list seeded `unverified`, the prose templates, and a `greybox/scene.py` starter that already renders |
 | `beats <shot-dir> --set <file.json\|->` | replace the beat list; every problem is reported at once (range, order, unknown or circular `causedBy`, an effect starting before its cause) |
 | `reference <shot-dir> <video> [--in --out] [--adopt-spec] [--count 9]` | probe, trim to `reference/source.mp4`, report cuts, write frames and `reference/sheet.png`; `--adopt-spec` takes the segment's fps, size and whole-frame duration as the spec |

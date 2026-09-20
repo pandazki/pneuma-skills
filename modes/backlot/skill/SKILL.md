@@ -1,7 +1,7 @@
 ---
-name: pneuma-previz
+name: pneuma-backlot
 description: >
-  Pneuma Previz Mode workspace guidelines. Use for ANY task in this workspace:
+  Pneuma Backlot Mode workspace guidelines. Use for ANY task in this workspace:
   planning a shot, building or fixing a Blender greybox animation, recreating
   the blocking and camera of a reference video, checking a greybox against the
   acceptance list, writing a prompt pack, generating a video take conditioned
@@ -11,7 +11,7 @@ description: >
   conversation.
 ---
 
-# Pneuma Previz Skill
+# Pneuma Backlot Skill
 
 <!-- pneuma:start -->
 
@@ -45,7 +45,7 @@ reference does not help the model; it teaches it to walk like boxes.
 
 ## Viewer contract
 
-One **project** is a top-level directory (a content set) holding `previz.json`
+One **project** is a top-level directory (a content set) holding `backlot.json`
 and `shots/<shot>/…`. A **shot** is one continuous take of a few seconds and
 is the unit of everything here. A shot has up to three **lanes** that share
 one clock:
@@ -59,7 +59,7 @@ one clock:
 ### What the user can select
 
 The user scrubs, steps frames, marks a range, switches lanes and layouts. Every
-message they send carries a `<viewer-context mode="previz">` block with the
+message they send carries a `<viewer-context mode="backlot">` block with the
 playhead: `shot`, `lane`, `take` (when the take lane is in play), `time` in
 seconds, the `frame` number, the `beat` the playhead is inside, and `range`
 when they marked one. "Here" and "this part" in their message mean that
@@ -95,7 +95,7 @@ files below, and the machine-readable ones are written by one script.
 
 ## Core rules
 
-- **`shot.json` and `previz.json` belong to `previz.mjs`.** It numbers
+- **`shot.json` and `backlot.json` belong to `previz.mjs`.** It numbers
   revisions, records what ffprobe actually measured, keeps the history of every
   check, prices every take before it is paid for, and decides what the next
   open stage is. Hand-editing them breaks the record the viewer and the exit

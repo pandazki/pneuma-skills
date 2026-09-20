@@ -1,5 +1,5 @@
 /**
- * Every byte the previz stage shows comes through here.
+ * Every byte the backlot stage shows comes through here.
  *
  * A project is a content set (a top-level directory) and every path recorded
  * in `shot.json` — `greybox/greybox.mp4`, `takes/take-01.mp4`,

@@ -28,7 +28,7 @@ import {
 
 type File = { path: string; content: string };
 
-const PREVIZ_JSON = JSON.stringify({
+const BACKLOT_JSON = JSON.stringify({
   version: 1,
   title: "First Light",
   defaults: { seconds: 8, fps: 24, width: 1280, height: 720 },
@@ -93,19 +93,19 @@ function shotJson(overrides: Record<string, unknown> = {}): string {
 }
 
 const BASE_FILES: File[] = [
-  { path: "first-light/previz.json", content: PREVIZ_JSON },
+  { path: "first-light/backlot.json", content: BACKLOT_JSON },
   { path: "first-light/shots/lab-walk/shot.json", content: shotJson() },
 ];
 
 describe("paths", () => {
-  test("a project is a top-level directory holding previz.json", () => {
-    expect(projectDirOf("first-light/previz.json")).toBe("first-light");
-    expect(projectDirOf("previz.json")).toBe("");
+  test("a project is a top-level directory holding backlot.json", () => {
+    expect(projectDirOf("first-light/backlot.json")).toBe("first-light");
+    expect(projectDirOf("backlot.json")).toBe("");
     // Nested and dot directories are not content sets, so they cannot be a
     // project: the resolver would never offer them and every /content URL
     // built from one would 404.
-    expect(projectDirOf("a/b/previz.json")).toBeNull();
-    expect(projectDirOf(".pneuma/previz.json")).toBeNull();
+    expect(projectDirOf("a/b/backlot.json")).toBeNull();
+    expect(projectDirOf(".pneuma/backlot.json")).toBeNull();
     expect(projectDirOf("first-light/shot.json")).toBeNull();
   });
 
@@ -222,7 +222,7 @@ describe("loadFilm", () => {
     expect(film.projects["first-light"].shots.map((s) => s.id)).toEqual(["lab-walk"]);
   });
 
-  test("shots come back in previz.json order, strays last", () => {
+  test("shots come back in backlot.json order, strays last", () => {
     const film = loadFilm([
       ...BASE_FILES,
       { path: "first-light/shots/zeta/shot.json", content: shotJson({ id: "zeta" }) },
@@ -248,13 +248,13 @@ describe("loadFilm", () => {
     expect(film.projects["first-light"].shots.map((s) => s.id)).toEqual(["lab-walk"]);
   });
 
-  test("a half-written previz.json still names the project and keeps its shots", () => {
+  test("a half-written backlot.json still names the project and keeps its shots", () => {
     const film = loadFilm([
-      { path: "first-light/previz.json", content: '{ "title": "First' },
+      { path: "first-light/backlot.json", content: '{ "title": "First' },
       BASE_FILES[1],
     ])!;
     expect(film.projects["first-light"].shots).toHaveLength(1);
-    expect(film.projects["first-light"].warnings.join(" ")).toContain("previz.json");
+    expect(film.projects["first-light"].warnings.join(" ")).toContain("backlot.json");
   });
 
   test("a shot whose project manifest is absent is skipped, not orphaned", () => {
@@ -262,7 +262,7 @@ describe("loadFilm", () => {
     expect(film.projects).toEqual({});
   });
 
-  test("the viewer cannot write — previz.json belongs to the script", () => {
+  test("the viewer cannot write — backlot.json belongs to the script", () => {
     // Invariant 2: one writer for machine state.
     expect(() => saveFilm({ projects: {} }, [])).toThrow(/read-only/);
   });

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Previz showcase</title>
+  <title>Backlot showcase</title>
   <style>
     @font-face{font-family:DM;src:url('/fonts/dmsans/v17-normal-latin.woff2');font-weight:300 700}
     @font-face{font-family:DMi;src:url('/fonts/dmsans/v17-italic-latin.woff2');font-weight:300 700;font-style:italic}
@@ -282,7 +282,7 @@
 
 <!-- ══════════════ HERO ══════════════ -->
 <section class="page hero" data-view="hero">
-  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Previz</b><span class="folio">BLOCK THE SHOT · THEN PAINT IT</span></div>
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Backlot</b><span class="folio">BLOCK THE SHOT · THEN PAINT IT</span></div>
   <div class="topline">
     <h1>A pawn on the left. A person on the right.</h1>
     <p>One playhead over both. The greybox says where, when and from which camera — the prompt says what the body does.</p>
@@ -388,7 +388,7 @@
 
 <!-- ══════════════ 01 GREYBOX → TAKE ══════════════ -->
 <section class="page strip" data-view="greybox-take">
-  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Previz</b><span class="folio">01 / WHAT THE MODEL SEES</span></div>
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Backlot</b><span class="folio">01 / WHAT THE MODEL SEES</span></div>
   <div class="topline">
     <h1>Pawns, not puppets.</h1>
     <p>The greybox carries where a body is, which way it faces and when it gets there.
@@ -466,7 +466,7 @@
 
 <!-- ══════════════ 02 ONE CLOCK ══════════════ -->
 <section class="page clock" data-view="one-clock">
-  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Previz</b><span class="folio">02 / ONE CLOCK</span></div>
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Backlot</b><span class="folio">02 / ONE CLOCK</span></div>
   <div class="topline">
     <h1>Every lane on one playhead.</h1>
     <p>Side by side, under a draggable wipe, or blended for silhouettes — the same second in every lane.</p>
@@ -535,7 +535,7 @@
 
 <!-- ══════════════ 03 3D INSPECTION ══════════════ -->
 <section class="page insp" data-view="3d-inspection">
-  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Previz</b><span class="folio">03 / WALK AROUND IT</span></div>
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Backlot</b><span class="folio">03 / WALK AROUND IT</span></div>
   <div class="topline">
     <h1>Walk around the blocking.</h1>
     <p>The greybox lane switches from the Render to the same scene in 3D — without opening Blender.</p>
@@ -598,12 +598,12 @@
     </div>
   </div>
   <div class="caption">Orbit the blocking, then go back to the frame the model was given.</div>
-  <div class="foot"><span>Render ⇄ 3D on the greybox lane · Shot camera ⇄ Free · the exported scene.glb, played on the same clock</span><span>Real WebGL captures of this seed's scene.glb, taken from the previz viewer</span></div>
+  <div class="foot"><span>Render ⇄ 3D on the greybox lane · Shot camera ⇄ Free · the exported scene.glb, played on the same clock</span><span>Real WebGL captures of this seed's scene.glb, taken from the backlot viewer</span></div>
 </section>
 
 <!-- ══════════════ 04 ACCEPTANCE ══════════════ -->
 <section class="page acc" data-view="acceptance">
-  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Previz</b><span class="folio">04 / NOTHING PASSES UNSEEN</span></div>
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Backlot</b><span class="folio">04 / NOTHING PASSES UNSEEN</span></div>
   <div class="topline">
     <h1>Nothing is passed unseen.</h1>
     <p>Pass, fail or unverified — and a check nobody looked at stays visibly not green.</p>
@@ -689,7 +689,7 @@
 
 <!-- ══════════════ 05 COST ══════════════ -->
 <section class="page cost" data-view="cost">
-  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Previz</b><span class="folio">05 / PRICED FIRST</span></div>
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Backlot</b><span class="folio">05 / PRICED FIRST</span></div>
   <div class="topline">
     <h1>Priced before you spend it.</h1>
     <p>Every take is costed from a per-second table and written down as submitted before the request leaves.</p>
@@ -780,7 +780,7 @@
   const view = new URLSearchParams(location.search).get('view') || 'hero';
   const page = Array.from(document.querySelectorAll('[data-view]')).find(el => el.dataset.view === view);
   if (page) page.classList.add('active');
-  document.title = `Previz — ${view}`;
+  document.title = `Backlot — ${view}`;
 </script>
 </body>
 </html>

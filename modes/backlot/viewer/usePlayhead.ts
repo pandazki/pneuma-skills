@@ -1,5 +1,5 @@
 /**
- * ONE CLOCK. Everything on the previz stage reads this and nothing else.
+ * ONE CLOCK. Everything on the backlot stage reads this and nothing else.
  *
  * A shot's lanes are different files with different real durations — a
  * greybox rendered to exactly 8.00 s next to a take ffprobe measured at

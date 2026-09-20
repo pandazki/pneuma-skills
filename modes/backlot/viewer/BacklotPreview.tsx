@@ -1,5 +1,5 @@
 /**
- * Previz viewer — the shot's player.
+ * Backlot viewer — the shot's player.
  *
  * Three conventions worth knowing before changing anything:
  *
@@ -9,7 +9,7 @@
  *    anything here that needs the current second asks `clock.getTime()`
  *    rather than reading a render-old copy.
  *
- * 2. NOTHING HERE WRITES. `previz.json`, `shot.json` and every file under a
+ * 2. NOTHING HERE WRITES. `backlot.json`, `shot.json` and every file under a
  *    shot belong to `skill/scripts/previz.mjs` (invariant 2). The stage
  *    position, the layout and the marked range are session-local and
  *    deliberately not persisted; a user request that would change a file goes
@@ -71,7 +71,7 @@ interface LaneLoadState {
   error: string | null;
 }
 
-export default function PrevizPreview(props: ViewerPreviewProps) {
+export default function BacklotPreview(props: ViewerPreviewProps) {
   const { value: film } = useSource(props.sources.film as Source<Film> | undefined);
   const { value: docFiles } = useSource(
     props.sources.docs as Source<ViewerFileContent[]> | undefined,
@@ -336,7 +336,7 @@ export default function PrevizPreview(props: ViewerPreviewProps) {
     if (!shot || !project) {
       return {
         success: true,
-        message: "No shot is open — this workspace has no previz.json with shots yet.",
+        message: "No shot is open — this workspace has no backlot.json with shots yet.",
         data: { contentSet: project?.dir ?? null, shot: null, shots: [] },
       };
     }
@@ -556,13 +556,13 @@ export default function PrevizPreview(props: ViewerPreviewProps) {
       const failing = shot.checks.filter((c) => c.status === "fail").map((c) => c.id);
       const unverified = shot.checks.filter((c) => c.status === "unverified").map((c) => c.id);
       props.onNotifyAgent({
-        type: `previz-command:${id}`,
+        type: `backlot-command:${id}`,
         severity: "warning",
         summary: `/${id} · ${shot.title}`,
         // `description` is the hint the USER was shown, not an instruction;
         // the agent's briefing for these two lives in SKILL.md's Commands.
         message: [
-          `The user pressed "${label}" on the previz stage.`,
+          `The user pressed "${label}" on the backlot stage.`,
           `command: ${id} · project: ${project.dir || "(root)"} · shot: ${shot.id}`,
           `greybox: ${shot.greybox.final ? `revision ${shot.greybox.final.revision}` : "not rendered"}`,
           `playhead: ${playheadLabel(time, shot.spec)} on the ${laneRef.current} lane`,

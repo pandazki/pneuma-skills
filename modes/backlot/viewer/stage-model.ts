@@ -1,5 +1,5 @@
 /**
- * Everything the previz stage decides that is not React.
+ * Everything the backlot stage decides that is not React.
  *
  * Lane resolution, the layout algebra, address parsing/resolution, timeline
  * geometry and the small formatters live here so the same rules answer the
@@ -338,7 +338,7 @@ export function prevEdge(edges: ReadonlyArray<number>, t: number): number {
 
 // ── Addresses ───────────────────────────────────────────────────────────────
 
-export interface PrevizAddress {
+export interface BacklotAddress {
   contentSet?: string;
   shot?: string;
   lane?: LaneId;
@@ -357,10 +357,10 @@ function isLayout(value: unknown): value is LayoutId {
 }
 
 /** Read whatever the agent sent; unknown keys and wrong types are ignored. */
-export function parseAddress(raw: unknown): PrevizAddress {
+export function parseAddress(raw: unknown): BacklotAddress {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
   const source = raw as Record<string, unknown>;
-  const address: PrevizAddress = {};
+  const address: BacklotAddress = {};
   if (typeof source.contentSet === "string" && source.contentSet.length > 0) {
     address.contentSet = source.contentSet;
   }
@@ -403,7 +403,7 @@ export interface AddressContext {
  * moves: a refusal that had already switched the project would leave the
  * stage somewhere the answer does not describe.
  */
-export function resolveAddress(ctx: AddressContext, address: PrevizAddress): AddressOutcome {
+export function resolveAddress(ctx: AddressContext, address: BacklotAddress): AddressOutcome {
   let contentSet = ctx.contentSet;
   let switchTo: string | null = null;
   if (address.contentSet !== undefined && address.contentSet !== contentSet) {
@@ -420,7 +420,7 @@ export function resolveAddress(ctx: AddressContext, address: PrevizAddress): Add
 
   const project = ctx.projects[contentSet];
   if (!project) {
-    return { ok: false, message: `Project "${contentSet || "(root)"}" has no previz.json loaded yet.` };
+    return { ok: false, message: `Project "${contentSet || "(root)"}" has no backlot.json loaded yet.` };
   }
 
   const shotId = address.shot ?? ctx.position.shot;

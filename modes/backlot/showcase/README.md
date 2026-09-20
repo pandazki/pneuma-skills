@@ -1,12 +1,12 @@
-# Previz showcase
+# Backlot showcase
 
-The six 1376 × 768 gallery PNGs are stylized dark mockups of the previz player
+The six 1376 × 768 gallery PNGs are stylized dark mockups of the backlot player
 composed around **real assets that already existed**. Not one pixel was
 generated for the showcase: every frame is an `ffmpeg` still out of the shipped
 seed's own two clips, both 3D pictures are WebGL captures of the real viewer
 driving the seed's own `scene.glb`, and every number, label, check id, note and
 price is read out of
-`modes/previz/seed/first-light/shots/lab-walk/` (`shot.json`, `comparison.md`,
+`modes/backlot/seed/first-light/shots/lab-walk/` (`shot.json`, `comparison.md`,
 `prompts.md`, `shot-plan.md`) or `skill/scripts/prices.mjs`.
 
 They were re-made after the mode moved to **pawns** (commits `5a86d00e` +
@@ -17,6 +17,11 @@ of a design that no longer exists.
 ## Status
 
 All five highlights are captured.
+
+**Stale since the rename (2026-09-20):** the six shipped PNGs were shot while
+the mode was called `previz`, so their brand chip still reads *Previz*.
+`layout.html` already says *Backlot*; a re-shoot per the steps below is what
+makes the pictures agree with it.
 
 | `showcase.json` media | `?view=` |
 |---|---|
@@ -79,7 +84,7 @@ reports either.
 
 - **Real, unretouched captures:** every greybox and take frame (`ffmpeg -ss`, no
   colour work, no crop beyond the CSS frame), and both 3D pictures — they are
-  screenshots of the previz viewer in a `--viewing` session over a scratch copy
+  screenshots of the backlot viewer in a `--viewing` session over a scratch copy
   of this seed, in Solo → Greybox → 3D, one in Shot camera and one in Free after
   orbiting to where the pawn, its trail, the camera path and the frustum are all
   in view. The caption chip inside the Free picture is the viewer's own.
@@ -97,12 +102,12 @@ Stage the artwork into an ignored directory — these are stills, not files the
 repository needs to carry twice:
 
 ```sh
-S=modes/previz/seed/first-light/shots/lab-walk
-mkdir -p .tmp-previz-showcase
+S=modes/backlot/seed/first-light/shots/lab-walk
+mkdir -p .tmp-backlot-showcase
 for t in 0.25 2.9 4.2 5.4 5.9 7.8; do
   n=$(echo "$t" | tr -d '.')
-  ffmpeg -nostdin -loglevel error -ss "$t" -i "$S/greybox/greybox.mp4" -frames:v 1 -y ".tmp-previz-showcase/g-$n.png"
-  ffmpeg -nostdin -loglevel error -ss "$t" -i "$S/takes/take-01.mp4"  -frames:v 1 -y ".tmp-previz-showcase/t-$n.png"
+  ffmpeg -nostdin -loglevel error -ss "$t" -i "$S/greybox/greybox.mp4" -frames:v 1 -y ".tmp-backlot-showcase/g-$n.png"
+  ffmpeg -nostdin -loglevel error -ss "$t" -i "$S/takes/take-01.mp4"  -frames:v 1 -y ".tmp-backlot-showcase/t-$n.png"
 done
 ```
 
@@ -110,8 +115,8 @@ done
 scratch workspace, open it read-only on a port of your own, and drive the lane:
 
 ```sh
-cp -R modes/previz/seed/first-light/. /tmp/previz-ws/
-bun bin/pneuma.ts previz --dev --workspace /tmp/previz-ws --viewing --no-open --no-prompt
+cp -R modes/backlot/seed/first-light/. /tmp/backlot-ws/
+bun bin/pneuma.ts backlot --dev --workspace /tmp/backlot-ws --viewing --no-open --no-prompt
 # In the session: collapse the agent surface, Solo → Greybox → 3D,
 # seek to 2.40 s, capture Shot camera, then Free (wheel-zoom until the pawn,
 # its trail, the camera path and the frustum are all in frame).
@@ -121,7 +126,7 @@ bun bin/pneuma.ts previz --dev --workspace /tmp/previz-ws --viewing --no-open --
 Then, from the repository root:
 
 ```sh
-bun modes/previz/showcase/preview.mjs .tmp-previz-showcase   # 127.0.0.1:18347
+bun modes/backlot/showcase/preview.mjs .tmp-backlot-showcase   # 127.0.0.1:18347
 ```
 
 `preview.mjs` serves only the staged artwork, `layout.html` and the
@@ -135,7 +140,7 @@ profile:
 ```sh
 for v in hero greybox-take one-clock 3d-inspection acceptance cost; do
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-    --headless=new --user-data-dir="/tmp/previz-shot-$v" --no-first-run \
+    --headless=new --user-data-dir="/tmp/backlot-shot-$v" --no-first-run \
     --hide-scrollbars --force-device-scale-factor=1 --window-size=1376,768 \
     --virtual-time-budget=5000 --screenshot="/tmp/$v.png" \
     "http://127.0.0.1:18347/?view=$v"
@@ -152,7 +157,7 @@ Rename to the `showcase.json` media names and compress in place:
 
 ```sh
 pngquant --quality=85-100 --speed 1 --ext .png --force \
-  modes/previz/showcase/hero.png modes/previz/showcase/highlight-*.png
+  modes/backlot/showcase/hero.png modes/backlot/showcase/highlight-*.png
 ```
 
 That lands these six between 95 KB and 235 KB (≈ 870 KB for the six) —
