@@ -185,37 +185,63 @@ describe("the skill install surface", () => {
     expect(backlotManifest.agent?.greeting).toContain("<system-info");
   });
 
-  test("both external tools are mapped to the env vars the scripts read", () => {
+  test("all three external tools are mapped to the env vars the scripts read", () => {
+    // fal buys the takes, the voices and the transcripts; OpenRouter buys
+    // the bible frames, the board frames and the music.
     expect(backlotManifest.skill.envMapping).toEqual({
       BLENDER_PATH: "blenderPath",
       FAL_KEY: "falApiKey",
+      OPENROUTER_API_KEY: "openrouterApiKey",
     });
     const params = backlotManifest.init!.params!;
-    // The fal key buys inference and is cleared from snapshots; a Blender
-    // path is a local filename and marking it sensitive would hide the one
-    // value a user most often needs to check.
+    // Both keys buy inference and are cleared from snapshots; a Blender path
+    // is a local filename and marking it sensitive would hide the one value
+    // a user most often needs to check.
     expect(params.find((p) => p.name === "falApiKey")?.sensitive).toBe(true);
+    expect(params.find((p) => p.name === "openrouterApiKey")?.sensitive).toBe(true);
     expect(params.find((p) => p.name === "blenderPath")?.sensitive).toBeUndefined();
-  });
-
-  test("the shared video scripts are whitelisted, transport included", () => {
-    // `sharedScripts` is a whitelist and it is transitive: seedance-video.mjs
-    // drives fal through fal-queue.mjs, so the transport has to be listed even
-    // though the agent never invokes it directly. A missing entry dies on its
-    // first import line, in the user's session, with ERR_MODULE_NOT_FOUND.
-    expect(backlotManifest.skill.sharedScripts).toEqual(["seedance-video.mjs", "fal-queue.mjs"]);
-    for (const script of backlotManifest.skill.sharedScripts!) {
-      expect(existsSync(join(REPO_ROOT, "modes/_shared/scripts", script))).toBe(true);
+    // Every mapped env var has a param to fill it, or the installer writes
+    // an .env line with nothing in it.
+    for (const param of Object.values(backlotManifest.skill.envMapping!)) {
+      expect(params.some((p) => p.name === param)).toBe(true);
     }
   });
 
-  test("deriveParams gates the skill's conditional blocks on the fal key", () => {
+  test("every shared script the mode runs is whitelisted, transport and adapters included", () => {
+    // `sharedScripts` is a whitelist and it is transitive: seedance-video.mjs
+    // drives fal through fal-queue.mjs and edit_image.mjs imports
+    // generate_image.mjs, so both have to be listed even though the agent
+    // never invokes them directly. A missing entry dies on its first import
+    // line, in the user's session, with ERR_MODULE_NOT_FOUND.
+    expect(backlotManifest.skill.sharedScripts).toEqual([
+      "seedance-video.mjs",
+      "fal-queue.mjs",
+      "generate_image.mjs",
+      "edit_image.mjs",
+      "generate-tts.mjs",
+      "generate-bgm.mjs",
+      "transcribe.mjs",
+    ]);
+    for (const script of backlotManifest.skill.sharedScripts!) {
+      expect(existsSync(join(REPO_ROOT, "modes/_shared/scripts", script))).toBe(true);
+    }
+    // The three the SCRIPTS spawn by name: a rename upstream would leave the
+    // gate answering for a command that can no longer run.
+    for (const spawned of ["generate-tts.mjs", "generate-bgm.mjs", "transcribe.mjs"]) {
+      expect(backlotManifest.skill.sharedScripts).toContain(spawned);
+      expect(read("modes/backlot/skill/scripts/backlot.mjs") + read("modes/backlot/skill/scripts/previz.mjs")).toContain(spawned);
+    }
+  });
+
+  test("deriveParams gates the skill's conditional blocks on each key", () => {
     // `videoDisabled` is the complement of `videoEnabled`, not a second
     // opinion: the template engine has no inverted section, so the "that
     // stage is closed, tell the user why" paragraph needs its own truthy key.
     const derive = backlotManifest.init!.deriveParams!;
     expect(derive({ falApiKey: "k" })).toMatchObject({ videoEnabled: "true", videoDisabled: "" });
     expect(derive({ falApiKey: "" })).toMatchObject({ videoEnabled: "", videoDisabled: "true" });
+    expect(derive({ openrouterApiKey: "k" })).toMatchObject({ imagesEnabled: "true", imagesDisabled: "" });
+    expect(derive({ openrouterApiKey: "" })).toMatchObject({ imagesEnabled: "", imagesDisabled: "true" });
     expect(derive({ blenderPath: "/x" }).blenderConfigured).toBe("true");
   });
 });
@@ -244,9 +270,13 @@ describe("the viewer surface", () => {
     expect(actions[0].params?.address?.required).toBe(true);
   });
 
-  test("the two user commands are declared with one-line hints", () => {
+  test("the three user commands are declared with one-line hints", () => {
     const commands = backlotManifest.viewerApi!.commands!;
-    expect(commands.map((c) => c.id)).toEqual(["check-greybox", "generate-take"]);
+    // `approve-stage` is the stage rail's button, and it is a COMMAND TO THE
+    // AGENT: the viewer writes nothing, the agent runs `backlot.mjs approve`
+    // and the approval is recorded with the hash of what was seen.
+    expect(commands.map((c) => c.id)).toEqual(["approve-stage", "check-greybox", "generate-take"]);
+    expect(commands[0].label).toBe("Approve this stage");
     for (const command of commands) {
       // The description is the hover hint the USER reads — never a script,
       // a flag or a file name.

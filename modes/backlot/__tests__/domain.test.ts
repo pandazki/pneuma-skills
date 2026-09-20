@@ -14,17 +14,30 @@ import {
   beatAt,
   checkTally,
   checkTargets,
+  fovForLens,
   frameAt,
+  lensAt,
   loadFilm,
+  nextOpenStage,
+  parseCharacter,
+  parseCut,
+  parseMusic,
   parseSceneMeta,
+  parseSetPiece,
   parseShot,
   projectDirOf,
+  recordRev,
+  resolveLinePath,
   saveFilm,
+  segmentAt,
   selectedTake,
   shotDir,
   shotRefOf,
   shotStages,
+  stageLabel,
+  type Project,
 } from "../domain.js";
+import { hashStage } from "../skill/scripts/stage-state.mjs";
 
 type File = { path: string; content: string };
 
@@ -416,4 +429,586 @@ describe("parseSceneMeta", () => {
     expect(parseSceneMeta(JSON.stringify({ camera: "cam" }))).toBeNull();
     expect(parseSceneMeta("not json")).toBeNull();
   });
+
+  test("the focal curve is read, sorted, and cleaned of impossible lenses", () => {
+    // glTF carries no lens animation, so a dolly zoom would read as a plain
+    // dolly without this. A lens of zero is not a wide lens, it is a broken
+    // record, and a broken record must not be flown through.
+    const meta = parseSceneMeta(
+      JSON.stringify({
+        fps: 24,
+        frames: 48,
+        camera_lens: [
+          { frame: 10, mm: 24 },
+          { frame: 1, mm: 50 },
+          { frame: 5, mm: 0 },
+          { frame: 7 },
+        ],
+      }),
+    )!;
+    expect(meta.cameraLens).toEqual([
+      { frame: 1, mm: 50 },
+      { frame: 10, mm: 24 },
+    ]);
+    expect(parseSceneMeta(JSON.stringify({ fps: 24, frames: 48 }))!.cameraLens).toEqual([]);
+  });
+
+  test("the lens in force is STEPPED — the curve is keyed on every frame", () => {
+    const keys = [
+      { frame: 1, mm: 50 },
+      { frame: 10, mm: 24 },
+    ];
+    expect(lensAt(keys, 1)).toBe(50);
+    expect(lensAt(keys, 9)).toBe(50);
+    expect(lensAt(keys, 10)).toBe(24);
+    expect(lensAt(keys, 999)).toBe(24);
+    // Before the first key the first key holds; an empty track is "no answer".
+    expect(lensAt(keys, -5)).toBe(50);
+    expect(lensAt([], 3)).toBeNull();
+  });
+
+  test("a focal length becomes the vertical angle Three needs", () => {
+    // Blender's default 36 mm sensor across the long side: a 50 mm lens is
+    // 2·atan(36/100) = 39.60° horizontally, and on 16:9 that is
+    // 2·atan(0.36 · 9/16) = 22.90° vertically — the number Three's camera
+    // takes.
+    expect(fovForLens(50, 1280, 720)).toBeCloseTo(22.9, 1);
+    // Wider lens, wider angle — and the dolly zoom's whole point.
+    expect(fovForLens(24, 1280, 720)).toBeGreaterThan(fovForLens(50, 1280, 720));
+  });
 });
+
+// ── The whole film: eight stages, a bible, sound and a cut ─────────────────
+
+const CHARACTER_JSON = JSON.stringify({
+  version: 1,
+  id: "kai",
+  name: "小凯",
+  description: "The night-shift researcher.",
+  look: "mid-twenties, grey hoodie, tired",
+  sheet: { file: "sheet.png", revision: 2, cost: { usd: 0.13, basis: "reported" } },
+  voice: {
+    model: "seed-speech",
+    voiceId: "zh_male_01",
+    style: "flat, quiet",
+    sample: { file: "voice.mp3", text: "还开着吗？", seconds: 2.2, cost: { usd: 0.01, basis: "table" } },
+  },
+});
+
+const SET_JSON = JSON.stringify({
+  version: 1,
+  id: "lab",
+  name: "实验室",
+  description: "One bench, one door, one device.",
+  look: "cold fluorescents, concrete",
+  concept: { file: "concept.png", revision: 1, cost: { usd: 0.12, basis: "reported" } },
+});
+
+const SOUND_JSON = JSON.stringify({
+  version: 1,
+  music: {
+    file: "music.mp3",
+    prompt: "low drone, one piano figure",
+    model: "google/lyria-3-pro-preview",
+    seconds: 26,
+    cost: { usd: 0.4, basis: "reported" },
+  },
+});
+
+const EDL_JSON = JSON.stringify({
+  version: 1,
+  kind: "reel",
+  file: "reel.mp4",
+  seconds: 16,
+  builtAt: 1758380000000,
+  segments: [
+    { shot: "lab-walk", source: "take-01", offset: 0, seconds: 8 },
+    { shot: "corridor", source: "greybox", offset: 8, seconds: 8 },
+  ],
+  vo: [{ shot: "lab-walk", line: "l2", at: 0.8, file: "shots/lab-walk/sound/l2.mp3" }],
+  music: { file: "sound/music.mp3", gainDb: -18, fadeOutSeconds: 2 },
+});
+
+const FILM_MANIFEST = (extra: Record<string, unknown> = {}) =>
+  JSON.stringify({
+    version: 1,
+    title: "First Light",
+    logline: "A researcher wakes a device that was not asleep.",
+    defaults: { seconds: 8, fps: 24, width: 1280, height: 720 },
+    gates: "closed",
+    scenes: [
+      { id: "sc1", number: 1, heading: "INT. 实验室 — 夜", summary: "Kai comes back for the device." },
+      { id: "sc2", number: 2, heading: "INT. 走廊 — 夜", summary: "The corridor answers." },
+    ],
+    characters: ["kai"],
+    sets: ["lab"],
+    shots: ["lab-walk", "corridor"],
+    ...extra,
+  });
+
+const FILM_SHOT = (id: string, extra: Record<string, unknown> = {}) =>
+  JSON.stringify({
+    version: 1,
+    id,
+    title: id === "lab-walk" ? "The researcher wakes the device" : "The corridor",
+    entry: "original",
+    spec: { seconds: 8, fps: 24, width: 1280, height: 720, frames: 192 },
+    scene: id === "lab-walk" ? "sc1" : "sc2",
+    characters: ["kai"],
+    set: "lab",
+    board: {
+      file: "board.png",
+      revision: 1,
+      prompt: "wide, the door at frame left",
+      refs: ["bible/characters/kai/sheet.png"],
+      at: 1758370000000,
+      cost: { usd: 0.11, basis: "reported" },
+    },
+    lines: [
+      { id: "l1", speaker: "kai", kind: "spoken", text: "还开着吗？", at: 5.2, file: null, seconds: null, cost: null },
+      {
+        id: "l2",
+        speaker: "narrator",
+        kind: "vo",
+        text: "凌晨三点。",
+        at: 0.8,
+        file: "sound/l2.mp3",
+        seconds: 3.1,
+        cost: { usd: 0.02, basis: "table" },
+      },
+    ],
+    greybox: { revision: 1, final: { file: "greybox/greybox.mp4", revision: 1 } },
+    checks: [{ id: "frames", label: "192 frames", target: "greybox", status: "pass", revision: 1 }],
+    takes:
+      id === "lab-walk"
+        ? [
+            {
+              id: "take-01",
+              status: "done",
+              model: "bytedance/seedance-2.5",
+              file: "takes/take-01.mp4",
+              selected: true,
+              submittedAt: 1758375000000,
+              cost: { usd: 2.12, basis: "table" },
+              refs: [
+                { kind: "video", index: 1, file: "greybox/greybox.mp4" },
+                { kind: "image", index: 1, file: "board.png" },
+              ],
+            },
+          ]
+        : [],
+    ...extra,
+  });
+
+const FILM_FILES: File[] = [
+  { path: "first-light/backlot.json", content: FILM_MANIFEST() },
+  { path: "first-light/idea.md", content: "# First Light\n\nA device that was not asleep.\n" },
+  { path: "first-light/screenplay.md", content: "## INT. 实验室 — 夜\n\nKai opens the door.\n" },
+  { path: "first-light/bible/characters/kai/character.json", content: CHARACTER_JSON },
+  { path: "first-light/bible/sets/lab/set.json", content: SET_JSON },
+  { path: "first-light/shots/lab-walk/shot.json", content: FILM_SHOT("lab-walk") },
+  { path: "first-light/shots/corridor/shot.json", content: FILM_SHOT("corridor") },
+  { path: "first-light/sound/sound.json", content: SOUND_JSON },
+  { path: "first-light/cut/edl.json", content: EDL_JSON },
+];
+
+/** The project-relative text map `loadFilm` hands to `stage-state.mjs`. */
+function textsOf(files: File[], dir: string): Record<string, string> {
+  const texts: Record<string, string> = {};
+  for (const file of files) {
+    if (!file.path.startsWith(`${dir}/`)) continue;
+    texts[file.path.slice(dir.length + 1)] = file.content;
+  }
+  return texts;
+}
+
+function filmProject(files: File[] = FILM_FILES): Project {
+  return loadFilm(files)!.projects["first-light"];
+}
+
+describe("the project manifest", () => {
+  test("reads the fields the eight stages hang off", () => {
+    const project = filmProject();
+    expect(project.title).toBe("First Light");
+    expect(project.logline).toContain("researcher");
+    expect(project.gates).toBe("closed");
+    expect(project.scenes.map((s) => s.id)).toEqual(["sc1", "sc2"]);
+    expect(project.characters.map((c) => c.id)).toEqual(["kai"]);
+    expect(project.sets.map((s) => s.id)).toEqual(["lab"]);
+    expect(project.idea).toContain("First Light");
+    expect(project.screenplay).toContain("实验室");
+    expect(project.warnings).toEqual([]);
+  });
+
+  test("THE OLD SEED STILL LOADS — missing project fields default, nothing is invented", () => {
+    // `first-light/backlot.json` predates scenes, gates, approvals and the
+    // bible. A loader that required them would blank the shipped seed.
+    const project = loadFilm(BASE_FILES)!.projects["first-light"];
+    expect(project.logline).toBe("");
+    expect(project.gates).toBe("closed");
+    expect(project.approvals).toEqual({});
+    expect(project.scenes).toEqual([]);
+    expect(project.characters).toEqual([]);
+    expect(project.sets).toEqual([]);
+    expect(project.sound).toEqual({ music: null, lines: [] });
+    expect(project.cut).toBeNull();
+    expect(project.idea).toBeNull();
+    expect(project.stages.map((s) => s.status)).toEqual([
+      "empty",
+      "empty",
+      "empty",
+      "draft",
+      "draft",
+      "draft",
+      "empty",
+      "empty",
+    ]);
+    // The only warning is the one the old fixture earns on its own.
+    expect(project.warnings.join(" ")).toContain("corridor");
+  });
+
+  test("gates nobody can read are CLOSED, and the guess is written down", () => {
+    const project = filmProject([
+      { path: "first-light/backlot.json", content: FILM_MANIFEST({ gates: "ajar" }) },
+    ]);
+    expect(project.gates).toBe("closed");
+    expect(project.warnings.join(" ")).toContain("ajar");
+  });
+
+  test("an unknown manifest version is read as 1 and reported", () => {
+    const project = filmProject([
+      { path: "first-light/backlot.json", content: FILM_MANIFEST({ version: 7 }) },
+    ]);
+    expect(project.title).toBe("First Light");
+    expect(project.warnings.join(" ")).toContain("version 7");
+  });
+
+  test("a scene with no id is dropped by name rather than drawn blank", () => {
+    const project = filmProject([
+      {
+        path: "first-light/backlot.json",
+        content: FILM_MANIFEST({ scenes: [{ number: 1, heading: "INT. NOWHERE" }] }),
+      },
+    ]);
+    expect(project.scenes).toEqual([]);
+    expect(project.warnings.join(" ")).toContain("no id");
+  });
+
+  test("a listed character with no record is a named warning", () => {
+    const project = filmProject(FILM_FILES.filter((f) => !f.path.includes("/characters/")));
+    expect(project.characters).toEqual([]);
+    expect(project.warnings.join(" ")).toContain('character "kai"');
+  });
+
+  test("a scene carries the shots broken out of it, in shot order", () => {
+    const project = filmProject();
+    expect(project.scenes[0].shots).toEqual(["lab-walk"]);
+    expect(project.scenes[1].shots).toEqual(["corridor"]);
+  });
+
+  test("a shot naming a scene that does not exist is reported", () => {
+    const project = filmProject([
+      ...FILM_FILES.filter((f) => !f.path.includes("shots/corridor")),
+      {
+        path: "first-light/shots/corridor/shot.json",
+        content: FILM_SHOT("corridor", { scene: "sc9" }),
+      },
+    ]);
+    expect(project.warnings.join(" ")).toContain("sc9");
+  });
+});
+
+describe("bible, sound and cut records", () => {
+  test("a character carries its sheet, its voice and where it lives", () => {
+    const project = filmProject();
+    const kai = project.characters[0];
+    expect(kai.name).toBe("小凯");
+    expect(kai.dir).toBe("first-light/bible/characters/kai");
+    expect(kai.sheet).toEqual({ file: "sheet.png", revision: 2, cost: { usd: 0.13, basis: "reported" } });
+    expect(kai.voice?.sample?.seconds).toBe(2.2);
+  });
+
+  test("a set is a place, with its concept frame", () => {
+    const lab = filmProject().sets[0];
+    expect(lab.name).toBe("实验室");
+    expect(lab.concept?.file).toBe("concept.png");
+    expect(lab.dir).toBe("first-light/bible/sets/lab");
+  });
+
+  test("a half-written bible record is skipped with a warning, not thrown on", () => {
+    const project = filmProject([
+      ...FILM_FILES.filter((f) => !f.path.includes("/characters/")),
+      { path: "first-light/bible/characters/kai/character.json", content: "{ half" },
+    ]);
+    expect(project.characters).toEqual([]);
+    expect(project.warnings.join(" ")).toContain("bible/characters/kai");
+    // The rest of the film still loads.
+    expect(project.shots).toHaveLength(2);
+  });
+
+  test("parseCharacter and parseSetPiece default what is missing", () => {
+    const bare = parseCharacter("d", "kai", JSON.stringify({ version: 1 }))!;
+    expect(bare.id).toBe("kai");
+    expect(bare.name).toBe("kai");
+    expect(bare.sheet).toBeNull();
+    expect(bare.voice).toBeNull();
+    expect(parseSetPiece("d", "lab", "not json")).toBeNull();
+  });
+
+  test("a voice block with no sample is a voice choice, not a recording", () => {
+    const character = parseCharacter(
+      "d",
+      "kai",
+      JSON.stringify({ id: "kai", voice: { model: "seed-speech", voiceId: "v1" } }),
+    )!;
+    expect(character.voice?.voiceId).toBe("v1");
+    expect(character.voice?.sample).toBeNull();
+  });
+
+  test("every line of every shot arrives in the sound state, with its shot", () => {
+    const sound = filmProject().sound;
+    expect(sound.lines.map((l) => `${l.shot}:${l.id}`)).toEqual([
+      "lab-walk:l1",
+      "lab-walk:l2",
+      "corridor:l1",
+      "corridor:l2",
+    ]);
+    expect(sound.lines[0].kind).toBe("spoken");
+    expect(sound.lines[1].file).toBe("sound/l2.mp3");
+    expect(sound.music?.model).toBe("google/lyria-3-pro-preview");
+  });
+
+  test("a line whose kind cannot be read is voice-over, never spoken", () => {
+    // `spoken` claims the video model will render the mouth. That claim is
+    // never made on the strength of a field nobody could parse.
+    const shot = parseShot("d", "s", shotJson({ lines: [{ id: "l1", kind: "shouted" }] }))!;
+    expect(shot.lines[0].kind).toBe("vo");
+  });
+
+  test("a take records the references it was rendered against", () => {
+    const project = filmProject();
+    const take = project.shots[0].takes[0];
+    expect(take.refs).toEqual([
+      { kind: "video", index: 1, file: "greybox/greybox.mp4" },
+      { kind: "image", index: 1, file: "board.png" },
+    ]);
+    // A take from before references were recorded has none, not undefined.
+    expect(parseShot("d", "s", shotJson())!.takes[0].refs).toEqual([]);
+  });
+
+  test("the cut is read as its edit list, and a reel says so", () => {
+    const cut = filmProject().cut!;
+    expect(cut.kind).toBe("reel");
+    expect(cut.segments.map((s) => s.shot)).toEqual(["lab-walk", "corridor"]);
+    expect(cut.vo[0].at).toBe(0.8);
+    expect(cut.music?.gainDb).toBe(-18);
+  });
+
+  test("a `final` that still stands a greybox in is demoted to a reel", () => {
+    // The label is a claim about what the user is watching; the segment list
+    // is the evidence, and the evidence wins.
+    const cut = parseCut(
+      JSON.stringify({
+        kind: "final",
+        file: "final.mp4",
+        segments: [{ shot: "a", source: "greybox", offset: 0, seconds: 4 }],
+      }),
+    )!;
+    expect(cut.kind).toBe("reel");
+    expect(cut.seconds).toBe(4);
+  });
+
+  test("a cut with every take in place stays a final", () => {
+    const cut = parseCut(
+      JSON.stringify({
+        kind: "final",
+        file: "final.mp4",
+        seconds: 8,
+        segments: [{ shot: "a", source: "take-02", offset: 0, seconds: 8 }],
+      }),
+    )!;
+    expect(cut.kind).toBe("final");
+  });
+
+  test("music with no file is no music at all", () => {
+    expect(parseMusic(JSON.stringify({ music: { prompt: "x" } }))).toBeNull();
+    expect(parseMusic("{")).toBeNull();
+  });
+
+  test("segmentAt finds the shot playing at a second", () => {
+    const cut = filmProject().cut!;
+    expect(segmentAt(cut, 0)?.shot).toBe("lab-walk");
+    expect(segmentAt(cut, 7.99)?.shot).toBe("lab-walk");
+    // A boundary belongs to the shot that STARTS there.
+    expect(segmentAt(cut, 8)?.shot).toBe("corridor");
+    // The last frame of the film is still the last shot.
+    expect(segmentAt(cut, 16)?.shot).toBe("corridor");
+    expect(segmentAt(cut, -1)).toBeNull();
+    expect(segmentAt(null, 1)).toBeNull();
+  });
+
+  test("a line file is resolved project-relative or shot-relative, as written", () => {
+    expect(resolveLinePath("first-light", "first-light/shots/s01", "sound/l2.mp3")).toBe(
+      "first-light/sound/l2.mp3",
+    );
+    expect(resolveLinePath("first-light", "first-light/shots/s01", "shots/s01/sound/l2.mp3")).toBe(
+      "first-light/shots/s01/sound/l2.mp3",
+    );
+    expect(resolveLinePath("first-light", "first-light/shots/s01", "l2.mp3")).toBe(
+      "first-light/shots/s01/l2.mp3",
+    );
+  });
+
+  test("recordRev changes exactly when the record does", () => {
+    const sample = { file: "voice.mp3", seconds: 2.2 };
+    expect(recordRev(sample)).toBe(recordRev({ seconds: 2.2, file: "voice.mp3" }));
+    expect(recordRev(sample)).not.toBe(recordRev({ ...sample, seconds: 2.3 }));
+  });
+});
+
+describe("stage state", () => {
+  test("an empty stage is empty, a written one is a draft", () => {
+    const project = filmProject();
+    const status = Object.fromEntries(project.stages.map((s) => [s.id, s.status]));
+    expect(status).toEqual({
+      idea: "draft",
+      script: "draft",
+      bible: "draft",
+      boards: "draft",
+      previz: "draft",
+      takes: "draft",
+      sound: "draft",
+      cut: "draft",
+    });
+  });
+
+  test("an approval whose hash matches is APPROVED; one that does not is CHANGED", () => {
+    // The hash is computed by the module `backlot.mjs` gates its spending
+    // with, over the SAME project-relative map `loadFilm` builds — this is
+    // the test that the viewer's prefix stripping agrees with the script.
+    const texts = textsOf(FILM_FILES, "first-light");
+    const files: File[] = [
+      {
+        path: "first-light/backlot.json",
+        content: FILM_MANIFEST({
+          approvals: {
+            script: { at: 1758380000000, hash: hashStage("script", { ...texts, "backlot.json": FILM_MANIFEST() }) },
+            idea: { at: 1758370000000, hash: "deadbeef" },
+          },
+        }),
+      },
+      ...FILM_FILES.slice(1),
+    ];
+    // `script` hashes the screenplay plus the manifest's scenes, and the
+    // manifest text changes when approvals are added — so the hash is taken
+    // against the manifest WITHOUT them, exactly as `stage-state.mjs`
+    // projects it (only `scenes` enter the script hash).
+    const project = loadFilm(files)!.projects["first-light"];
+    const status = Object.fromEntries(project.stages.map((s) => [s.id, s.status]));
+    expect(status.script).toBe("approved");
+    expect(status.idea).toBe("changed");
+    expect(project.approvals.script?.at).toBe(1758380000000);
+    expect(project.stages.find((s) => s.id === "script")?.approvedAt).toBe(1758380000000);
+    expect(project.stages.find((s) => s.id === "bible")?.approvedAt).toBeNull();
+  });
+
+  test("the next open stage is the first one the creator has not approved", () => {
+    const texts = textsOf(FILM_FILES, "first-light");
+    const approvals = {
+      idea: { at: 1, hash: hashStage("idea", texts) },
+      script: { at: 2, hash: hashStage("script", texts) },
+    };
+    const files: File[] = [
+      { path: "first-light/backlot.json", content: FILM_MANIFEST({ approvals }) },
+      ...FILM_FILES.slice(1),
+    ];
+    const project = loadFilm(files)!.projects["first-light"];
+    // `script` hashes `backlot.json#scenes`, which does not change when
+    // approvals are added, so both approvals still hold.
+    expect(project.stages.find((s) => s.id === "idea")?.status).toBe("approved");
+    expect(nextOpenStage(project)?.id).toBe("bible");
+  });
+
+  test("a changed stage is open again — the creator has not seen this version", () => {
+    const texts = textsOf(FILM_FILES, "first-light");
+    const files: File[] = [
+      {
+        path: "first-light/backlot.json",
+        content: FILM_MANIFEST({ approvals: { idea: { at: 1, hash: hashStage("idea", texts) } } }),
+      },
+      ...FILM_FILES.slice(1).filter((f) => !f.path.endsWith("idea.md")),
+      { path: "first-light/idea.md", content: "# First Light\n\nRewritten after approval.\n" },
+    ];
+    const project = loadFilm(files)!.projects["first-light"];
+    expect(project.stages.find((s) => s.id === "idea")?.status).toBe("changed");
+    expect(nextOpenStage(project)?.id).toBe("idea");
+  });
+
+  test("stage labels exist in both languages, and the Chinese is film-crew Chinese", () => {
+    expect(stageLabel("previz")).toBe("Previz");
+    expect(stageLabel("previz", "zh")).toBe("白模");
+    expect(stageLabel("cut", "zh")).toBe("成片");
+  });
+});
+
+describe("cost", () => {
+  test("every paid record is aggregated to the stage that spent it", () => {
+    const project = filmProject();
+    const byStage = Object.fromEntries(project.stages.map((s) => [s.id, s.usd]));
+    // bible: sheet 0.13 + voice 0.01 + concept 0.12
+    expect(byStage.bible).toBeCloseTo(0.26, 5);
+    // boards: two board frames at 0.11
+    expect(byStage.boards).toBeCloseTo(0.22, 5);
+    // takes: one take
+    expect(byStage.takes).toBeCloseTo(2.12, 5);
+    // sound: two vo lines at 0.02 + the music
+    expect(byStage.sound).toBeCloseTo(0.44, 5);
+    expect(byStage.idea).toBe(0);
+    expect(byStage.previz).toBe(0);
+  });
+
+  test("a cost line names what it paid for and how the figure was got", () => {
+    // The lines come from `skill/scripts/cost.mjs`, the module `backlot.mjs
+    // cost` prints from — the viewer must not keep a second opinion about
+    // money. Refs are project-relative, as that module writes them.
+    const project = filmProject();
+    const take = project.cost.find((line) => line.kind === "take")!;
+    expect(take).toMatchObject({
+      stage: "takes",
+      source: "table",
+      usd: 2.12,
+      ref: "shots/lab-walk/takes/take-01.mp4",
+      at: 1758375000000,
+    });
+    const sheet = project.cost.find((line) => line.ref.endsWith("sheet.png"))!;
+    expect(sheet).toMatchObject({ stage: "bible", kind: "image", source: "reported" });
+    const music = project.cost.find((line) => line.kind === "music")!;
+    expect(music.ref).toBe("sound/music.mp3");
+  });
+
+  test("the lines come back in stage order — the order the money was spent in", () => {
+    const stages = filmProject().cost.map((line) => line.stage);
+    expect(stages).toEqual([...stages].sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b)));
+  });
+
+  test("a take with no recorded price is LISTED unpriced, never counted", () => {
+    // Paid work is recorded before the request leaves (invariant 6), so a
+    // take whose price nobody wrote down still has to appear — as a dash.
+    // Inventing a number for it is the one thing a bill must not do.
+    const project = filmProject([
+      ...FILM_FILES.filter((f) => !f.path.includes("shots/lab-walk")),
+      {
+        path: "first-light/shots/lab-walk/shot.json",
+        content: FILM_SHOT("lab-walk", {
+          takes: [{ id: "take-01", status: "done", file: "takes/take-01.mp4" }],
+        }),
+      },
+    ]);
+    expect(project.stages.find((s) => s.id === "takes")?.usd).toBe(0);
+    const take = project.cost.find((line) => line.kind === "take")!;
+    expect(take.usd).toBeNull();
+    expect(take.source).toBeNull();
+  });
+});
+
+const ORDER = ["idea", "script", "bible", "boards", "previz", "takes", "sound", "cut"];

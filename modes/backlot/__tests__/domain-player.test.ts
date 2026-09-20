@@ -9,7 +9,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { parseShot, type Shot } from "../domain.js";
+import { parseShot, type Project, type Shot } from "../domain.js";
 import {
   beatEdges,
   beatLinks,
@@ -19,6 +19,7 @@ import {
   failedRanges,
   fitBox,
   formatSeconds,
+  isPlayerStage,
   laneOfTarget,
   laneViews,
   nextEdge,
@@ -29,10 +30,13 @@ import {
   prevEdge,
   probeFacts,
   resolveAddress,
+  stagePair,
   takeLabel,
   visibleLanes,
-  type StagePosition,
-} from "../viewer/stage-model.js";
+  withStageDefaults,
+  type PlayerPosition,
+  type ViewPosition,
+} from "../viewer/player-model.js";
 import { Playhead } from "../viewer/usePlayhead.js";
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
@@ -86,21 +90,46 @@ function shot(overrides: Record<string, unknown> = {}): Shot {
   )!;
 }
 
-const PROJECT = (s: Shot) => ({
+const PROJECT = (s: Shot, extra: Partial<Project> = {}): Project => ({
   dir: "first-light",
   title: "First Light",
+  logline: "",
   defaults: { seconds: 8, fps: 24, width: 1280, height: 720 },
+  gates: "closed",
+  approvals: {},
+  stages: [],
+  scenes: [],
+  characters: [],
+  sets: [],
   shots: [s],
+  sound: { music: null, lines: [] },
+  cut: null,
+  cost: [],
+  idea: null,
+  screenplay: null,
   warnings: [],
+  ...extra,
 });
 
-const HERE: StagePosition = {
+const PLAYER_HERE: PlayerPosition = {
   shot: "lab-walk",
   lane: "greybox",
   take: "take-01",
   layout: "side",
   time: 2,
   range: null,
+};
+
+/** The whole viewer's position, with the player pointed at `PLAYER_HERE`. */
+const HERE: ViewPosition = {
+  stage: "previz",
+  scene: null,
+  character: null,
+  set: null,
+  line: null,
+  segment: null,
+  cutTime: 0,
+  player: PLAYER_HERE,
 };
 
 // ── Lanes ───────────────────────────────────────────────────────────────────
@@ -348,31 +377,36 @@ describe("addresses", () => {
   test("naming a take means showing it", () => {
     const outcome = resolveAddress(ctx, { take: "take-01" });
     expect(outcome.ok).toBe(true);
-    if (outcome.ok) expect(outcome.position.lane).toBe("take");
+    if (outcome.ok) expect(outcome.position.player.lane).toBe("take");
   });
 
   test("time is clamped to the shot, never past its end", () => {
     const outcome = resolveAddress(ctx, { time: 99 });
     expect(outcome.ok).toBe(true);
-    if (outcome.ok) expect(outcome.position.time).toBe(8);
+    if (outcome.ok) expect(outcome.position.player.time).toBe(8);
   });
 
   test("a reference lane on a shot that has none lands on the greybox and says so", () => {
     const outcome = resolveAddress(ctx, { lane: "reference" });
     expect(outcome.ok).toBe(true);
-    if (outcome.ok) expect(outcome.position.lane).toBe("greybox");
+    if (outcome.ok) expect(outcome.position.player.lane).toBe("greybox");
   });
 
-  test("an address that changes nothing keeps the stage where it is", () => {
+  test("an address that changes nothing keeps the viewer where it is", () => {
     const outcome = resolveAddress(ctx, {});
     expect(outcome.ok).toBe(true);
     if (outcome.ok) expect(outcome.position).toEqual(HERE);
   });
 
   test("the reported address carries the frame, not only the second", () => {
-    const address = positionAddress("first-light", { ...HERE, time: 3.8 }, s.spec);
+    const address = positionAddress(
+      "first-light",
+      { ...HERE, player: { ...PLAYER_HERE, time: 3.8 } },
+      s.spec,
+    );
     expect(address).toMatchObject({
       contentSet: "first-light",
+      stage: "previz",
       shot: "lab-walk",
       lane: "greybox",
       take: "take-01",
@@ -383,8 +417,188 @@ describe("addresses", () => {
   });
 
   test("a marked range rides along when there is one", () => {
-    expect(positionAddress("", { ...HERE, range: [1, 2] }, s.spec).range).toEqual([1, 2]);
+    expect(
+      positionAddress("", { ...HERE, player: { ...PLAYER_HERE, range: [1, 2] } }, s.spec).range,
+    ).toEqual([1, 2]);
     expect(positionAddress("", HERE, s.spec).range).toBeUndefined();
+  });
+});
+
+// ── The eight stages ────────────────────────────────────────────────────────
+
+describe("stage addressing", () => {
+  const s = shot({
+    scene: "sc1",
+    board: { file: "board.png", revision: 1, prompt: "the doorway", refs: [], at: 10 },
+    lines: [{ id: "l1", speaker: "kai", kind: "vo", text: "It is late.", at: 0.5, file: "sound/l1.mp3" }],
+  });
+  const project = PROJECT(s, {
+    scenes: [{ id: "sc1", number: 1, heading: "INT. LAB — NIGHT", summary: "", shots: ["lab-walk"] }],
+    characters: [
+      { id: "kai", name: "Kai", description: "", look: "", sheet: null, voice: null, dir: "first-light/bible/characters/kai" },
+    ],
+    sets: [
+      { id: "lab", name: "The lab", description: "", look: "", concept: null, dir: "first-light/bible/sets/lab" },
+    ],
+    sound: {
+      music: null,
+      lines: [
+        {
+          id: "l1",
+          speaker: "kai",
+          kind: "vo",
+          text: "It is late.",
+          at: 0.5,
+          file: "sound/l1.mp3",
+          seconds: 1.4,
+          cost: null,
+          shot: "lab-walk",
+          shotTitle: s.title,
+          shotDir: s.dir,
+        },
+      ],
+    },
+    cut: {
+      kind: "reel",
+      file: "reel.mp4",
+      seconds: 16,
+      builtAt: 7,
+      probe: null,
+      segments: [
+        { shot: "lab-walk", source: "take-01", offset: 0, seconds: 8 },
+        { shot: "corridor", source: "greybox", offset: 8, seconds: 8 },
+      ],
+      vo: [],
+      music: null,
+    },
+  });
+  const ctx = {
+    contentSet: "first-light",
+    projects: { "first-light": project },
+    contentSets: ["first-light"],
+    position: HERE,
+  };
+
+  test("an address with no stage is a PREVIZ address — every old one still lands", () => {
+    // The brief's appendix: `stage` defaults to previz when absent, which is
+    // what keeps the addresses written before the other seven stages working.
+    const outcome = resolveAddress({ ...ctx, position: { ...HERE, stage: "cut" } }, { time: 3 });
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) {
+      expect(outcome.position.stage).toBe("previz");
+      expect(outcome.position.player.time).toBe(3);
+    }
+  });
+
+  test("parseAddress reads every key of the vocabulary", () => {
+    expect(
+      parseAddress({
+        stage: "bible",
+        character: "kai",
+        set: "lab",
+        line: "l1",
+        segment: "lab-walk",
+        scene: 2,
+      }),
+    ).toEqual({ stage: "bible", character: "kai", set: "lab", line: "l1", segment: "lab-walk", scene: 2 });
+    expect(parseAddress({ stage: "nowhere" })).toEqual({});
+  });
+
+  test("a scene can be named by its id or by its number", () => {
+    for (const scene of ["sc1", 1] as const) {
+      const outcome = resolveAddress(ctx, { stage: "script", scene });
+      expect(outcome.ok).toBe(true);
+      if (outcome.ok) expect(outcome.position.scene).toBe("sc1");
+    }
+  });
+
+  test("an unknown scene, character, set, line or segment is refused BY NAME", () => {
+    const cases: Array<[Record<string, unknown>, string]> = [
+      [{ scene: "sc9" }, "sc9"],
+      [{ character: "nobody" }, "nobody"],
+      [{ set: "nowhere" }, "nowhere"],
+      [{ line: "l9" }, "l9"],
+      [{ segment: "missing" }, "missing"],
+    ];
+    for (const [address, needle] of cases) {
+      const outcome = resolveAddress(ctx, address);
+      expect(outcome.ok).toBe(false);
+      if (!outcome.ok) expect(outcome.message).toContain(needle);
+    }
+  });
+
+  test("naming a cut segment parks the cut's playhead where it starts", () => {
+    const outcome = resolveAddress(ctx, { stage: "cut", segment: "corridor" });
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) {
+      expect(outcome.position.segment).toBe("corridor");
+      expect(outcome.position.cutTime).toBe(8);
+      // The shot clock is a different clock and does not move.
+      expect(outcome.position.player.time).toBe(HERE.player.time);
+    }
+  });
+
+  test("a second on the cut stage is a second of the CUT, not of the shot", () => {
+    const outcome = resolveAddress(ctx, { stage: "cut", time: 12 });
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) {
+      expect(outcome.position.cutTime).toBe(12);
+      expect(outcome.position.player.time).toBe(HERE.player.time);
+    }
+    const past = resolveAddress(ctx, { stage: "cut", time: 99 });
+    if (past.ok) expect(past.position.cutTime).toBe(16);
+  });
+
+  test("the reported address only carries keys that mean something on the stage", () => {
+    const bible = positionAddress("first-light", { ...HERE, stage: "bible", character: "kai" }, s.spec);
+    expect(bible).toEqual({ contentSet: "first-light", stage: "bible", character: "kai" });
+
+    const cut = positionAddress(
+      "first-light",
+      { ...HERE, stage: "cut", segment: "corridor", cutTime: 8.5 },
+      s.spec,
+    );
+    expect(cut).toEqual({
+      contentSet: "first-light",
+      stage: "cut",
+      segment: "corridor",
+      time: 8.5,
+    });
+  });
+
+  test("a shot with a board gets a board lane; a still, not a player", () => {
+    const lanes = laneViews(s, null);
+    expect(lanes.map((l) => l.id)).toEqual(["board", "greybox", "take"]);
+    expect(lanes[0].kind).toBe("image");
+    expect(lanes[0].file).toBe("board.png");
+  });
+
+  test("Takes opens with the take over the greybox; Previz opens on the greybox", () => {
+    const toTakes = withStageDefaults({ ...HERE, stage: "takes" }, "previz", {});
+    expect(toTakes.player.lane).toBe("take");
+    expect(toTakes.player.layout).toBe("wipe");
+    expect(stagePair("takes", laneViews(s, null))).toEqual({ a: "take", b: "greybox" });
+
+    const back = withStageDefaults({ ...toTakes, stage: "previz" }, "takes", {});
+    expect(back.player.lane).toBe("greybox");
+    expect(back.player.layout).toBe("side");
+  });
+
+  test("an explicit lane or layout is never overridden by a stage default", () => {
+    const named = withStageDefaults({ ...HERE, stage: "takes" }, "previz", {
+      lane: "greybox",
+      layout: "solo",
+    });
+    expect(named.player.lane).toBe("greybox");
+    expect(named.player.layout).toBe("solo");
+  });
+
+  test("only previz and takes are player stages", () => {
+    expect(isPlayerStage("previz")).toBe(true);
+    expect(isPlayerStage("takes")).toBe(true);
+    for (const stage of ["idea", "script", "bible", "boards", "sound", "cut"] as const) {
+      expect(isPlayerStage(stage)).toBe(false);
+    }
   });
 });
 

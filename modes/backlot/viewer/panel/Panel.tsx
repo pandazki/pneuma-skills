@@ -7,7 +7,7 @@
 
 import { useState } from "react";
 
-import type { Check, Shot } from "../../domain.js";
+import type { Check, Project, Shot } from "../../domain.js";
 import { CoinsIcon } from "../icons.js";
 import { ChecksTab } from "./ChecksTab.js";
 import { CostTab } from "./CostTab.js";
@@ -28,12 +28,18 @@ const TABS: Array<{ id: PanelTab; label: string }> = [
 export interface PanelProps {
   shot: Shot;
   allShots: Shot[];
+  project: Project;
   planMarkdown: string | null;
   promptMarkdown: string | null;
   dark: boolean;
   selectedLaneTake: string | null;
   onFocusCheck: (check: Check) => void;
   onShowTake: (id: string) => void;
+  /**
+   * Which check group the Checks tab opens on. The takes stage is about the
+   * take, so its checks come first there; previz opens on the greybox.
+   */
+  checkFocus: "greybox" | "take";
 }
 
 export function Panel(props: PanelProps) {
@@ -76,7 +82,11 @@ export function Panel(props: PanelProps) {
           <PlanTab shot={props.shot} markdown={props.planMarkdown} dark={props.dark} />
         ) : null}
         {tab === "checks" ? (
-          <ChecksTab shot={props.shot} onFocusCheck={props.onFocusCheck} />
+          <ChecksTab
+            shot={props.shot}
+            onFocusCheck={props.onFocusCheck}
+            first={props.checkFocus}
+          />
         ) : null}
         {tab === "prompt" ? (
           <PromptTab markdown={props.promptMarkdown} dark={props.dark} />
@@ -88,7 +98,9 @@ export function Panel(props: PanelProps) {
             onShowTake={props.onShowTake}
           />
         ) : null}
-        {tab === "cost" ? <CostTab shot={props.shot} allShots={props.allShots} /> : null}
+        {tab === "cost" ? (
+          <CostTab shot={props.shot} allShots={props.allShots} project={props.project} />
+        ) : null}
       </div>
     </aside>
   );

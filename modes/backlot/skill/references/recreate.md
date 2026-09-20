@@ -1,11 +1,35 @@
 # Recreating a reference video
 
-The job is to turn what can be *observed* in a video — framing, spatial
-relations, the rhythm of the action, the camera move — into an editable
-greybox, and then generate a new video in the look the user wants. It is a
-reconstruction in 3D. Feeding the original to a model and restyling it is a
+Some shots do not start from a written beat — they start from a video the
+creator hands you and wants rebuilt. The job is to turn what can be *observed*
+in that video — framing, spatial relations, the rhythm of the action, the
+camera move — into an editable greybox, and then generate a new video in the
+look they want. It is a reconstruction in 3D.
+
+**Do not rotoscope.** Feeding the original to a model and restyling it is a
 different job, and calling that a recreation would be a lie about what was
-made.
+made. The reference is something you study; the video model never receives it
+as the motion source.
+
+## Where it sits in the eight stages
+
+A recreate shot replaces the *planning* half of one shot, not the film:
+
+- **Stages 1–3 still apply when the shot belongs to a film.** The people in
+  the reference are still characters with sheets and voices; the place is
+  still a set with a concept frame. That is what makes a recreated shot cut
+  together with the shots around it.
+- **Stage 4** — instead of inventing the timeline, you read it off the
+  reference (below) and write the same `shot-plan.md` and beats. The board
+  frame is still worth generating: it is where the creator's *look* is decided,
+  and the reference decides only the blocking.
+- **Stages 5–8 are unchanged.** The greybox gains two extra acceptance checks,
+  `ref-framing` and `ref-timing`, and the shot gains a fourth lane so the
+  player can run reference, greybox and take on one clock.
+
+When the creator brings a single reference video and no film — "rebuild this
+shot" — say plainly which stages you are skipping and that the result is one
+shot, not a film.
 
 ## Read the video first
 
@@ -22,12 +46,14 @@ node {SKILL_PATH}/scripts/previz.mjs reference <shot-dir> <video> [--in s --out 
   you may prepare the project and its parameters. You may not describe shots
   you have not seen — a title is not footage.
 - **One shot per continuous take.** A reference with cuts becomes several
-  shots, in the original's order, unless the user picked a segment. Ask only
-  when an ambiguity such as the segment's range actually blocks the work.
+  shots, in the original's order, registered with `backlot.mjs shot add` like
+  any others, unless the creator picked a segment. Ask only when an ambiguity
+  such as the segment's range actually blocks the work.
 - `--adopt-spec` takes the reference's duration, fps and size as the shot's
-  spec (duration rounded to whole frames). Use it unless the user gave their
-  own.
-- If the user named no target look, finish the greybox first; for the final
+  spec (duration rounded to whole frames). Use it unless the creator gave
+  their own. Remember the floor: Seedance will not return less than 4 s, so a
+  2-second reference segment becomes a 4-second shot or part of a longer one.
+- If the creator named no target look, finish the greybox first; for the final
   generation assume a clean, restrained look, and write that assumption down.
 
 ## What to extract into the plan
@@ -36,8 +62,8 @@ For each shot: time range; composition (where the subject sits in frame and how
 large — head-to-toe as a fraction of frame height is the most useful single
 number); the ground plane and where the props stand on it; the path the
 subject travels, where it stops and which way it faces; the camera — static,
-pan, tilt, push, track, handheld — with direction and rough speed. Those are
-what the greybox rebuilds.
+pan, tilt, push, track, orbit, crane, handheld — with direction and rough
+speed. Those are what the greybox rebuilds.
 
 What the body does — the gait, a hand on a rail, a look over the shoulder —
 you describe in words, with its second, for the prompt's action timeline. Do
@@ -54,7 +80,9 @@ reconstruction.
 
 1. **Scale from something you know.** A door is about 2.0–2.1 m, a standing
    adult 1.6–1.85 m, a table 0.72–0.76 m, a car about 4.5 m long. Pick one,
-   state it as the scale assumption, size everything else from it.
+   state it as the scale assumption, size everything else from it. If the shot
+   belongs to a set that already has a bible record, its dimensions win —
+   reconcile the reference to them rather than building a second room.
 2. **Lens from perspective.** Strong convergence and large foreground objects
    mean a wide lens (18–28 mm); flat, compressed depth means a long one
    (70 mm+); an unremarkable interior is usually 28–40 mm. Start there.
@@ -89,5 +117,5 @@ the phrase is how framing and timing errors get waved through.
 
 Record `ref-framing` and `ref-timing` with `check` like any other item.
 
-When the user asks for a simplified version, keep the action and the camera
+When the creator asks for a simplified version, keep the action and the camera
 rhythm and drop decoration — never the other way round.

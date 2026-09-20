@@ -36,8 +36,9 @@ import type * as ThreeT from "three";
 import type { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 import type { SceneMeta } from "../domain.js";
+import { fovForLens, lensAt } from "../domain.js";
 import type { Clock } from "./usePlayhead.js";
-import { fitBox } from "./stage-model.js";
+import { fitBox } from "./player-model.js";
 
 export interface GreyboxSceneProps {
   /** `/content/…/scene.glb?rev=<n>` — null when the shot has no GLB. */
@@ -421,6 +422,36 @@ export function GreyboxScene({
         }
       };
 
+      /**
+       * The lens: the SECOND animation glTF could not carry.
+       *
+       * Without this a dolly zoom reads as a plain dolly in the 3D lane —
+       * the camera would travel and the framing would not fight back, which
+       * is the whole point of the move. The curve is keyed on every frame,
+       * so the value is stepped, never interpolated. An empty track means the
+       * lens never moved and the exported camera's own fov stands.
+       */
+      const lensKeys = metaNow?.cameraLens ?? [];
+      const lensWidth = metaNow?.width ?? 0;
+      const lensHeight = metaNow?.height ?? 0;
+      let lastLensMm = -1;
+      const applyLens = (frameNumber: number) => {
+        if (lensKeys.length === 0 || !shotCamera) return;
+        const mm = lensAt(lensKeys, frameNumber);
+        if (mm === null || mm === lastLensMm) return;
+        lastLensMm = mm;
+        const fov = fovForLens(mm, lensWidth, lensHeight);
+        shotCamera.fov = fov;
+        shotCamera.updateProjectionMatrix();
+        // The gizmo is a short copy of the same camera; a frustum drawn at
+        // the wrong angle would misreport what the shot camera can see.
+        if (gizmoCamera) {
+          gizmoCamera.fov = fov;
+          gizmoCamera.updateProjectionMatrix();
+        }
+      };
+      applyLens(1);
+
       // ── Size, letterbox and the loop ─────────────────────────────────────
       const resize = () => {
         const box = host.getBoundingClientRect();
@@ -458,6 +489,7 @@ export function GreyboxScene({
         if (mixerTime !== lastMixerTime) {
           mixer.setTime(mixerTime);
           applyAccents(t);
+          applyLens(1 + Math.round(t * fps));
           lastMixerTime = mixerTime;
         }
         const free = cameraModeRef.current === "free";

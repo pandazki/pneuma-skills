@@ -13,7 +13,7 @@ import { useEffect, useState } from "react";
 import type { SceneMeta } from "../domain.js";
 import { GreyboxScene } from "./GreyboxScene.js";
 import { CameraIcon, CubeIcon, FilmIcon, OrbitIcon, SoundOffIcon, SoundOnIcon } from "./icons.js";
-import type { GreyboxMode, CameraMode, LaneView } from "./stage-model.js";
+import type { GreyboxMode, CameraMode, LaneView } from "./player-model.js";
 import { useVideoClock, type Clock } from "./usePlayhead.js";
 
 export interface LaneSurfaceProps {
@@ -65,6 +65,22 @@ export function LaneSurface({
         aspect={aspect}
         onLoadedChange={(loaded, error) => onLoadedChange?.(lane.id, loaded, error)}
       />
+    );
+  }
+
+  if (lane.kind === "image" && url) {
+    // A board frame is a still. It takes no clock and no decoder — binding it
+    // to the playhead would only pretend it moves.
+    return (
+      <div className="relative h-full w-full bg-black/60">
+        <img
+          src={url}
+          alt={lane.note ?? lane.label}
+          className="h-full w-full object-contain"
+          onLoad={() => onLoadedChange?.(lane.id, true, null)}
+          onError={() => onLoadedChange?.(lane.id, false, `${lane.file} could not be loaded`)}
+        />
+      </div>
     );
   }
 

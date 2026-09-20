@@ -18,11 +18,16 @@ Upstream is two instruction-only Codex skills — `original-from-text` and
 `VALIDATION.md`, no end-to-end run. What it contributes is the **practice**:
 block the shot in 3D first, then condition a video model on that greybox.
 
+**Scope.** That practice is this mode's *previz* and *takes* stages. The six
+other stages — idea, screenplay, bible, boards, sound, cut — and the stage
+approval machine around them have no upstream counterpart; they are this
+mode's own design, and where they reuse anything it is named below.
+
 ## What we borrowed
 
 | Pneuma file | Upstream source | Note |
 |---|---|---|
-| `skill/SKILL.md` (workflow order: plan → block → render → accept → prompt → generate) | `original-from-text/SKILL.md` | The order of the steps and the insistence that the greybox is accepted BEFORE any generation. Rewritten in this mode's own words and wired to `previz.mjs` subcommands upstream does not have. |
+| `skill/SKILL.md` (the previz → takes workflow: plan → block → render → accept → prompt → generate) | `original-from-text/SKILL.md` | The order of the steps and the insistence that the greybox is accepted BEFORE any generation. Rewritten in this mode's own words, wired to `previz.mjs` subcommands upstream does not have, and re-homed as stages 4–6 of an eight-stage film flow. |
 | `skill/SKILL.md` + `skill/references/greybox.md` (the acceptance list) | both upstream skills' acceptance sections | The list of what to check — frame count, (upstream's contralateral gait phase, foot slide, penetration, contact, trigger order, camera smoothness, end hold, and the take-side motion/camera/order/integrity checks. Short rule phrasings are close to upstream because they are the rule; everything around them (three-valued status, per-revision history, the `stuck` rule) is ours. |
 | `skill/references/greybox.md` (greybox grammar) | `original-from-text/SKILL.md` → scene construction | Untextured primitives, one simple light, the real camera, a blue emissive standing in for "the device is triggered". |
 | `skill/references/recreate.md` | `recreate-from-reference/SKILL.md` | The recreate entry: trim the segment, read its framing and timing, rebuild it as blocking, compare against the source. |
@@ -51,19 +56,47 @@ No upstream file is vendored into this repository.
 
 Everything executable. Upstream ships no code.
 
-- `skill/scripts/previz.mjs` — the whole CLI (`doctor`, `init`, `shot`,
-  `beats`, `reference`, `render`, `sheet`, `compare`, `check`, `checklist`,
-  `generate`, `select`, `status`).
+- `skill/scripts/backlot.mjs` — the film: the project manifest, the eight
+  stages with their approvals and gates, the scene list and shot order, the
+  bible records, the music record and the ffmpeg cut (`init`, `status`,
+  `approve`, `gates`, `gate`, `scene`, `shot add`, `character`, `set`,
+  `music`, `cut`, `cost`).
+- `skill/scripts/stage-state.mjs` — the stage/approval/gate algorithm, pure
+  and shared by the two scripts and the viewer's `domain.ts` so the CLI and
+  the rail cannot disagree about whether a stage was approved.
+- `skill/scripts/previz.mjs` — the shot CLI (`doctor`, `meta`, `beats`,
+  `lines`, `board`, `reference`, `render`, `sheet`, `compare`, `check`,
+  `checklist`, `generate`, `vo`, `select`, `status`).
 - `skill/scripts/blender/previz_kit.py` — the greybox grammar as an importable
   Python module: rooms and primitives, a limbless pawn figure, eased root travel with a
   pace check, hinged props, eased camera moves, accents that
   record themselves, and a `finish()` that validates the range and exports
   GLB + `scene.meta.json`.
-- The video stage — Seedance 2.5 reference-to-video through
-  `modes/_shared/scripts/seedance-video.mjs`, priced before submission and
-  recorded `submitted` before the request leaves.
-- The viewer — the shot's player: every lane on one clock, the beats on the
-  timeline, the acceptance record, the prompt pack and the bill.
+- The viewer — the stage rail over the shot's player: every lane on one clock,
+  the beats on the timeline, the acceptance record, the prompt pack, the cut's
+  segment strip and the bill.
+
+### Generation services, and where each one comes from
+
+None of these is upstream's; all are repository-shared scripts this mode opts
+into through `skill.sharedScripts`, which copies them into the installed
+skill's `scripts/`. They are listed here because they are what the mode spends
+money on and who it sends the creator's material to.
+
+| script (in `modes/_shared/scripts/`) | service | what this mode uses it for | provenance |
+|---|---|---|---|
+| `seedance-video.mjs` (+ `fal-queue.mjs`) | ByteDance Seedance 2.5 reference-to-video, on fal.ai | every take: the greybox as `@Video1`, the board and bible sheets as `@Image…`, the voice samples as `@Audio…` | already shared in this repository; priced before submission and recorded `submitted` before the request leaves |
+| `generate_image.mjs` | GPT-Image via OpenRouter | character sheets, set concepts and one board frame per shot, with `--image-urls` carrying continuity between them | already shared; used here with the bible-as-reference pattern proven in plotwise |
+| `generate-tts.mjs` | two fal.ai TTS vendors (Gemini Flash TTS, ByteDance Seed-Speech) | each character's voice sample, and every voice-over line | already shared with clipcraft and bansho; unmodified |
+| `transcribe.mjs` | Whisper v3 ("wizper") on fal.ai | the evidence for the `take-lines` check — what a take with a spoken line actually said | already shared; the generate → transcribe → compare → re-shoot gate is **plotwise's pattern**, re-implemented here against this mode's acceptance record rather than imported |
+| `generate-bgm.mjs` | Google Lyria 3 Pro (preview) via OpenRouter | the film's score, from a written brief (genre, tempo, instruments, mood, length) | **copied from `modes/clipcraft/skill/scripts/` into `modes/_shared/scripts/`** for this release. ClipCraft is not modified by this change and keeps its own copy; it can switch to the shared one in its own release |
+
+Two more patterns come from sibling modes in this repository rather than from
+upstream, and are re-implemented here as mode-owned code rather than imported:
+plotwise's **continuity-by-reference-image** (a designed look travels as an
+attached image, never as an adjective) and its **ffmpeg concat + placed
+voice-over + music bed** assembly, which `backlot.mjs cut` rebuilds around this
+mode's `edl.json`.
 
 ## What we dropped
 

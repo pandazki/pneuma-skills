@@ -51,6 +51,13 @@ pv.hold(walker, ARRIVE, S)
 
 # --- camera ----------------------------------------------------------------
 # A slow push-in; `settle` pulls the last key back so the tail is still.
+# The other three camera moves take the same handle and the same seconds:
+#   pv.orbit(cam, (x, y), radius, height, deg_from, deg_to, start, end)
+#   pv.zoom(cam, mm_from, mm_to, start, end)
+#   pv.dolly_zoom(cam, subject, dist_from, dist_to, start, end)
+# `examples/duel_orbit.py`, `duel_dolly_zoom.py` and `duel_crane.py` are one
+# worked shot each; `examples/duel_collage.py` is why three angles of one
+# moment are three shots and not one scene.
 cam = pv.camera(35, location=(-4.2, -6.6, 2.00), look_at=(0.0, -2.4, 1.00))
 pv.camera_move(cam, [
     (0.0, (-4.2, -6.6, 2.00), (0.0, -2.4, 1.00)),

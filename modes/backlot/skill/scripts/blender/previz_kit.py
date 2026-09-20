@@ -26,6 +26,38 @@ directory, the preview scale and the expected frame range after a literal
 works. Raw `bpy` stays available throughout: the kit is a starting vocabulary,
 not a fence.
 
+## The vocabulary
+
+Times are SECONDS; the kit converts them to frames. Everything is metres.
+
+* `setup(seconds, fps, width, height)` - empty the file, fix the shot's clock
+  and size, build the Workbench greybox look
+* `box(name, size, location, material, parent)` · `cylinder(name, radius,
+  depth, ...)` · `sphere(name, radius, ...)` · `plane(name, size, ...)` ·
+  `room(width, depth, height, door=(x, w))` - the space
+* `material(name, rgb)` · `accent_material(name, rgb)` · `WHITE`/`GREY`/`DARK`
+* `figure(name, height, location, yaw, material)` - a person-sized pawn
+* `travel(fig, path, start, end, settle, ramp, pace="walk")` - walk or run a
+  ground path; the cruise speed is checked against `pace`
+* `dash(fig, path, start, end, pace="leap", settle, ramp, arc=None)` - the
+  same path machinery at burst speed, with an optional parabolic leap arc
+* `turn(fig, to_yaw, start, end)` · `hold(fig, start, end)` ·
+  `pose_at(fig, seconds)` - where a figure is and faces at any shot time,
+  answered from its tracks before anything is baked
+* `hinge(name, location, axis)` + `swing(pivot, keys)` - a prop that pivots
+* `move(obj, keys, ease)` - eased location/rotation keys for a prop
+* `camera(lens, name, location, look_at)` - the shot camera, TRACK_TO aimed
+* `camera_move(cam, keys, settle)` - eased camera keys that end settled
+* `orbit(cam, center, radius, height, deg_from, deg_to, start, end, look_at,
+  ease)` - an arc around a point, aim held on the middle
+* `zoom(cam, mm_from, mm_to, start, end, ease)` - animate the focal length
+* `dolly_zoom(cam, subject, dist_from, dist_to, start, end, ease)` - travel
+  the camera's own sightline while the lens holds the subject's size
+* `accent(objects, start, end, color)` - the one colour event
+* `set_interpolation(obj, mode, ease)` · `F(seconds)` · `T(frame)` ·
+  `shot()` · `runner_args()` · `log(text)` · `die(reason)`
+* `finish(render=True)` - bake, validate, render, save, export, write meta
+
 ## Axes
 
 Everything here speaks BLENDER axes: Z up, and the ground plane is XY. A
@@ -72,6 +104,18 @@ and a raise is therefore not a reliable refusal.
   The camera's TRACK_TO constraint arrives baked as translation + rotation.
 * glTF carries no Workbench material colour animation, which is why `accent`
   records what it recoloured into `scene.meta.json` for the 3D lane to replay.
+* glTF carries no FOCAL LENGTH animation either, and for the same kind of
+  reason. Measured: with these export options an animated camera `lens`
+  produces no channel at all - the camera's animation is `translation` +
+  `rotation` only, and `cameras[0].perspective.yfov` is the lens at FRAME 1,
+  frozen. Blender 5.2.1 can write the curve as `KHR_animation_pointer`
+  (`export_pointer_animation=True` emits a second animation, also named after
+  the camera, pointing at `/cameras/0/perspective/yfov`), but that is a
+  non-core extension three.js's GLTFLoader does not read, and the duplicate
+  animation name would break "one animation per object". So `zoom` and
+  `dolly_zoom` record their focal keys in `scene.meta.json` as
+  `camera_lens: [{frame, mm}]` - the Workbench render (the MP4 the video model
+  is conditioned on) shows the zoom either way.
 """
 
 import json
@@ -129,6 +173,7 @@ _SHOT = None
 _FIGURES = []
 _ACCENTS = []
 _SUBJECTS = []
+_LENS = []
 
 WHITE = None
 GREY = None
@@ -156,7 +201,7 @@ def T(frame):
 
 def setup(seconds=8.0, fps=24, width=1280, height=720, world=(0.82, 0.83, 0.85)):
     """Empty the file, set the shot's clock and size, and build the Workbench look."""
-    global _SHOT, _FIGURES, _ACCENTS, _SUBJECTS, WHITE, GREY, DARK
+    global _SHOT, _FIGURES, _ACCENTS, _SUBJECTS, _LENS, WHITE, GREY, DARK
     args = runner_args()
     frames = int(round(float(seconds) * int(fps)))
     if abs(float(seconds) * int(fps) - frames) > 1e-6:
@@ -225,6 +270,7 @@ def setup(seconds=8.0, fps=24, width=1280, height=720, world=(0.82, 0.83, 0.85))
     _FIGURES = []
     _ACCENTS = []
     _SUBJECTS = []
+    _LENS = []
     WHITE = material("white", (0.90, 0.90, 0.90))
     GREY = material("grey", (0.62, 0.63, 0.65))
     DARK = material("dark", (0.35, 0.36, 0.38))
@@ -444,6 +490,17 @@ _HEADING_WINDOW = 0.7
 # gait can honestly be animated at.
 _PACES = {"walk": (0.7, 1.9), "run": (2.5, 6.5)}
 
+# `dash`'s own table, kept SEPARATE on purpose. A leap is not a fast walk, and
+# the way to let one through must never be to widen the speeds a walk is
+# checked against - a 4 m/s "walk" would come back as a skate whatever the
+# story needed.
+_DASH_PACES = {"leap": (4.0, 12.0), "burst": (2.5, 6.0)}
+
+# The tallest arc `dash` will put under a leap. Higher than this and the pawn
+# is not leaping, it is flying, and the clip stops being a statement about
+# where a body goes.
+_MAX_ARC = 3.0
+
 
 def _ease(t):
     """Smoothstep on [0, 1]."""
@@ -503,6 +560,70 @@ def _cruise_speed(length, span, ramp, settle):
     return length / max(1e-6, ramp / 2.0 + max(1e-6, span - ramp - settle) + settle / 2.0)
 
 
+def _ground_move(label, paces, fig, path, start, end, settle, ramp, pace, arc):
+    """The one path-and-speed machine behind `travel` and `dash`.
+
+    Both verbs mean the same thing to the scene - a root crossing the ground
+    between two times - and differ only in the speeds they accept and in
+    whether the path leaves the floor. Keeping one implementation is what
+    stops a future fix to the easing or the heading from landing in one verb
+    and not the other.
+    """
+    state = shot()
+    if len(path) < 2:
+        die("%s: needs a path of at least two (x, y) points" % label)
+    if end <= start:
+        die("%s: end (%s) must be after start (%s)" % (label, end, start))
+    if end <= 0.0:
+        die("%s: end (%s s) is at or before the shot's first frame - none of it would be seen" % (label, end))
+    if end > state["seconds"] + 1e-6:
+        die("%s: end %s s is past the shot's %s s" % (label, end, state["seconds"]))
+    span = float(end) - float(start)
+    settle = max(0.0, min(float(settle), span * 0.6))
+    ramp = max(0.0, min(float(ramp), (span - settle) * 0.5))
+    points = [(float(point[0]), float(point[1])) for point in path]
+    length = _path_length(points)
+    if length <= 1e-6:
+        die("%s: the path has zero length - a figure that stays put needs hold(), not %s()" % (label, label))
+    rise = 0.0 if arc in (None, 0, 0.0) else float(arc)
+    if rise < 0.0 or rise > _MAX_ARC:
+        die("%s: arc=%s m must be a rise between 0 and %.1f m - that is a leap; anything taller is a "
+            "flight, and the clip stops saying where the body goes" % (label, arc, _MAX_ARC))
+    speed = _cruise_speed(length, span, ramp, settle)
+    if pace is not None:
+        key = str(pace).lower()
+        if key not in paces:
+            die("%s: pace must be %s, or None to skip the check (got %r)"
+                % (label, " or ".join('"%s"' % name for name in sorted(paces)), pace))
+        low, high = paces[key]
+        if speed < low or speed > high:
+            die(
+                "%s: %s covers %.2f m between %s s and %s s, which cruises at %.2f m/s "
+                "(%.2f s ramp + %.2f s cruise + %.2f s settle) - a %s is %.1f-%.1f m/s. "
+                "Give it more seconds, a shorter path, or the pace it really is; the video "
+                "model animates the gait at the speed this clip shows."
+                % (label, fig["name"], length, start, end, speed, ramp, max(0.0, span - ramp - settle),
+                   settle, key, low, high)
+            )
+    fig["tracks"].append({
+        "kind": "travel",
+        "path": points,
+        "start": float(start),
+        "end": float(end),
+        "settle": settle,
+        "ramp": ramp,
+        "length": length,
+        "arc": rise,
+    })
+    x, y, _ = _point_along(points, length)
+    yaw = math.degrees(_heading_at(points, length, length)) + 0.0
+    yaw = 0.0 if abs(yaw) < 1e-9 else yaw
+    log("%s %s %.2f m over %.2f-%.2f s at %.2f m/s (%s%s), arrives (%.2f, %.2f) facing %.0f deg"
+        % (label, fig["name"], length, start, end, speed, pace,
+           ", arc %.2f m" % rise if rise else "", x, y, yaw))
+    return (x, y, yaw)
+
+
 def travel(fig, path, start, end, settle=0.7, ramp=0.3, pace="walk"):
     """Move a figure along a ground path between two times; returns the arrival (x, y, yaw degrees).
 
@@ -519,55 +640,32 @@ def travel(fig, path, start, end, settle=0.7, ramp=0.3, pace="walk"):
     `pace` is a claim about the speed, and the claim is CHECKED. The video
     model animates a gait at whatever speed this clip shows, so a walk that
     cruises at 3 m/s comes back as a skate or a sprint. Pass `pace=None` when
-    the subject is not a person on foot.
+    the subject is not a person on foot. A burst that is genuinely faster than
+    a run is `dash`, which has its own speeds - never a loosened `pace` here.
     """
-    state = shot()
-    if len(path) < 2:
-        die("travel: needs a path of at least two (x, y) points")
-    if end <= start:
-        die("travel: end (%s) must be after start (%s)" % (end, start))
-    if end <= 0.0:
-        die("travel: end (%s s) is at or before the shot's first frame - none of it would be seen" % end)
-    if end > state["seconds"] + 1e-6:
-        die("travel: end %s s is past the shot's %s s" % (end, state["seconds"]))
-    span = float(end) - float(start)
-    settle = max(0.0, min(float(settle), span * 0.6))
-    ramp = max(0.0, min(float(ramp), (span - settle) * 0.5))
-    points = [(float(point[0]), float(point[1])) for point in path]
-    length = _path_length(points)
-    if length <= 1e-6:
-        die("travel: the path has zero length - a figure that stays put needs hold(), not travel()")
-    speed = _cruise_speed(length, span, ramp, settle)
-    if pace is not None:
-        key = str(pace).lower()
-        if key not in _PACES:
-            die("travel: pace must be %s, or None to skip the check (got %r)"
-                % (" or ".join('"%s"' % name for name in sorted(_PACES)), pace))
-        low, high = _PACES[key]
-        if speed < low or speed > high:
-            die(
-                "travel: %s covers %.2f m between %s s and %s s, which cruises at %.2f m/s "
-                "(%.2f s ramp + %.2f s cruise + %.2f s settle) - a %s is %.1f-%.1f m/s. "
-                "Give it more seconds, a shorter path, or the pace it really is; the video "
-                "model animates the gait at the speed this clip shows."
-                % (fig["name"], length, start, end, speed, ramp, max(0.0, span - ramp - settle),
-                   settle, key, low, high)
-            )
-    fig["tracks"].append({
-        "kind": "travel",
-        "path": points,
-        "start": float(start),
-        "end": float(end),
-        "settle": settle,
-        "ramp": ramp,
-        "length": length,
-    })
-    x, y, _ = _point_along(points, length)
-    yaw = math.degrees(_heading_at(points, length, length)) + 0.0
-    yaw = 0.0 if abs(yaw) < 1e-9 else yaw
-    log("travel %s %.2f m over %.2f-%.2f s at %.2f m/s (%s), arrives (%.2f, %.2f) facing %.0f deg"
-        % (fig["name"], length, start, end, speed, pace, x, y, yaw))
-    return (x, y, yaw)
+    return _ground_move("travel", _PACES, fig, path, start, end, settle, ramp, pace, 0.0)
+
+
+def dash(fig, path, start, end, pace="leap", settle=0.2, ramp=0.15, arc=None):
+    """A burst along a ground path - a leap, a lunge, a charge; returns the arrival (x, y, yaw degrees).
+
+    Everything `travel` does, at the speeds a body can be thrown across a
+    space rather than walked across it: `"leap"` is 4-12 m/s and `"burst"` is
+    2.5-6 m/s, checked the same way and kept in their own table so the walking
+    speeds never have to be widened to let a fight through. The ramp and
+    settle default short, because a burst does not ease out of the floor the
+    way a walk does.
+
+    `arc=<metres>` lifts the root on a parabola that peaks halfway ALONG THE
+    PATH and is back on the floor at the end - the leap itself. It is keyed
+    against distance travelled, not time, so the landing happens on the frame
+    the figure arrives rather than a few frames either side of it.
+
+    The body in the air is still the prompt's job: this fixes where the leap
+    starts, how high it goes, where it lands and when. "Springs off the step,
+    sword low, lands in a crouch" is a sentence, not a pawn.
+    """
+    return _ground_move("dash", _DASH_PACES, fig, path, start, end, settle, ramp, pace, arc)
 
 
 def turn(fig, to_yaw, start, end):
@@ -618,49 +716,56 @@ def _travel_distance(track, t):
     return speed * ramp / 2.0 + speed * cruise + speed * settle * (w - w * w / 2.0)
 
 
-def _locomotion(fig):
-    """Per-frame [x, y, yaw] from the figure's tracks.
+def pose_at(fig, seconds):
+    """Where a figure is and which way it faces at shot time `seconds`: (x, y, z, yaw radians).
+
+    A pure function of the tracks, so it answers before `finish` has baked
+    anything - which is how a camera can be aimed at where somebody WILL be
+    standing rather than at the mark they were built on.
 
     Tracks CARRY FORWARD: a travel that has ended still holds its arrival, so
     a `turn` or a `hold` after it sees where the figure stopped without anyone
-    restating it, and each frame is a pure function of the shot time - which
-    is what lets `start` be negative.
+    restating it, and every time is answered from scratch - which is what lets
+    a travel's `start` be negative.
     """
-    state = shot()
-    tracks = sorted([t for t in fig["tracks"] if t["kind"] in ("travel", "turn", "hold")], key=lambda t: t["start"])
-    frames = []
-    for frame in range(1, state["frames"] + 1):
-        t = T(frame)
-        x, y, yaw = fig["base"]
-        for track in tracks:
-            if t < track["start"]:
-                continue
-            if track["kind"] == "travel":
-                walked = _travel_distance(track, t)
-                px, py, _ = _point_along(track["path"], walked)
-                heading = _heading_at(track["path"], track["length"], walked)
-                into = 1.0 if track["ramp"] <= 1e-6 else _ease((t - track["start"]) / track["ramp"])
-                x, y = px, py
-                # Written as heading PLUS a decaying offset, not as a blend
-                # towards the heading: once the ramp is over the yaw is the
-                # heading itself, so a path that turns a corner never leaves
-                # the figure carrying a wound-up 270 where -90 was meant.
-                yaw = heading + _shortest(yaw - heading) * (1.0 - into)
-            elif track["kind"] == "turn":
-                w = _ease((t - track["start"]) / max(1e-6, track["end"] - track["start"]))
-                yaw = yaw + (track["yaw"] - yaw) * w
-        frames.append([x, y, yaw])
-    return frames
+    t = float(seconds)
+    tracks = sorted([track for track in fig["tracks"] if track["kind"] in ("travel", "turn", "hold")],
+                    key=lambda track: track["start"])
+    x, y, yaw = fig["base"]
+    z = 0.0
+    for track in tracks:
+        if t < track["start"]:
+            continue
+        if track["kind"] == "travel":
+            walked = _travel_distance(track, t)
+            px, py, _ = _point_along(track["path"], walked)
+            heading = _heading_at(track["path"], track["length"], walked)
+            into = 1.0 if track["ramp"] <= 1e-6 else _ease((t - track["start"]) / track["ramp"])
+            x, y = px, py
+            # The leap: a parabola in DISTANCE along the path, so the feet
+            # leave the floor at the start and are back on it exactly when
+            # the figure arrives, whatever the easing did to the timing.
+            rise = track.get("arc", 0.0)
+            along = min(1.0, max(0.0, walked / max(1e-6, track["length"])))
+            z = rise * 4.0 * along * (1.0 - along) if rise else 0.0
+            # Written as heading PLUS a decaying offset, not as a blend
+            # towards the heading: once the ramp is over the yaw is the
+            # heading itself, so a path that turns a corner never leaves
+            # the figure carrying a wound-up 270 where -90 was meant.
+            yaw = heading + _shortest(yaw - heading) * (1.0 - into)
+        elif track["kind"] == "turn":
+            w = _ease((t - track["start"]) / max(1e-6, track["end"] - track["start"]))
+            yaw = yaw + (track["yaw"] - yaw) * w
+    return (x, y, z, yaw)
 
 
 def _bake_figure(fig):
     """Key the root on every frame; the profile is already eased, so the keys are LINEAR."""
     state = shot()
     root = fig["root"]
-    loco = _locomotion(fig)
-    for index, frame in enumerate(range(1, state["frames"] + 1)):
-        x, y, yaw = loco[index]
-        root.location = (x, y, 0.0)
+    for frame in range(1, state["frames"] + 1):
+        x, y, z, yaw = pose_at(fig, T(frame))
+        root.location = (x, y, z)
         root.rotation_euler = (0.0, 0.0, yaw)
         root.keyframe_insert("location", frame=frame)
         root.keyframe_insert("rotation_euler", frame=frame)
@@ -864,6 +969,368 @@ def camera_move(cam, keys, settle=0.5, ease="EASE_IN_OUT"):
     return cam
 
 
+# ---------------------------------------------------------------------------
+# Camera moves a video model cannot invent: orbit, zoom, dolly zoom
+# ---------------------------------------------------------------------------
+
+# A lens is a real piece of glass. Outside this range the number is a mistake
+# rather than a style - and `dolly_zoom` can compute its way out of it, which
+# is exactly the case the check exists for.
+_LENS_MM = (4.0, 400.0)
+
+
+def _camera_parts(cam, label):
+    """The (object, target, data) of a camera handle, or a refusal that says so."""
+    if not isinstance(cam, dict) or not all(key in cam for key in ("object", "target", "data")):
+        die("%s: the first argument is the handle previz_kit.camera(...) returned, not a bare object" % label)
+    return cam["object"], cam["target"], cam["data"]
+
+
+def _window(label, start, end):
+    """Validate a move's [start, end] seconds; returns (first frame, last frame, start, end).
+
+    `start` may be NEGATIVE for the same reason `travel`'s may: the move began
+    before the shot did, so frame 1 opens already inside it.
+    """
+    state = shot()
+    start, end = float(start), float(end)
+    if end <= start:
+        die("%s: end (%s s) must be after start (%s s)" % (label, end, start))
+    if end <= 0.0:
+        die("%s: end (%s s) is at or before the shot's first frame - none of it would be seen" % (label, end))
+    if end > state["seconds"] + 1e-6:
+        die("%s: end %s s is past the shot's %s s - shorten the move, or give the shot more seconds "
+            "(previz.mjs shot ... --seconds)" % (label, end, state["seconds"]))
+    return F(start), F(end), start, end
+
+
+def _progress(frame, start, end, ease):
+    """How far through a move `frame` is, 0..1, eased unless told otherwise."""
+    u = max(0.0, min(1.0, (T(frame) - start) / (end - start)))
+    return _ease(u) if ease else u
+
+
+def _shape_keys(obj, mode, ease, frames):
+    """`set_interpolation` over ONE frame range.
+
+    A camera usually carries keys from an earlier `camera_move`. Re-shaping
+    every key it owns because this move samples its own curve would silently
+    flatten somebody else's eased move, so this only touches the keys the
+    caller just wrote.
+    """
+    low, high = frames
+    for curve in _fcurves(obj):
+        for point in curve.keyframe_points:
+            if not (low - 0.5 <= point.co.x <= high + 0.5):
+                continue
+            point.interpolation = mode
+            if ease:
+                point.easing = ease
+
+
+def _point3(value, label, default_z=0.0, at=0.0):
+    """A world point from (x, y), (x, y, z), a `figure` handle or a Blender object.
+
+    A figure resolves to its CHEST at shot time `at` - the position its own
+    tracks put it in, not the mark it was built on, because a camera told to
+    hold "the challenger" has to be aimed at where he lands. A prop object
+    resolves to its origin as the scene stands; a prop that is keyed should be
+    passed as the point the shot is about.
+    """
+    if isinstance(value, dict) and "root" in value and "dims" in value:
+        x, y, z, _yaw = pose_at(value, at)
+        # Plus the root's own height: a figure caught mid-leap has its chest
+        # where the leap has taken it, not where it would be standing.
+        return (float(x), float(y), float(z) + float(value["dims"]["shoulder_z"]) * 0.85)
+    if isinstance(value, bpy.types.Object):
+        bpy.context.view_layer.update()
+        return _translation(value)
+    try:
+        point = [float(number) for number in value]
+    except (TypeError, ValueError):
+        return die("%s: expected (x, y), (x, y, z), a figure or an object (got %r)" % (label, value))
+    if len(point) == 2:
+        return (point[0], point[1], float(default_z))
+    if len(point) == 3:
+        return (point[0], point[1], point[2])
+    return die("%s: expected (x, y) or (x, y, z) (got %r)" % (label, value))
+
+
+def _translation(obj):
+    """An object's world position as a plain tuple."""
+    where = obj.matrix_world.translation
+    return (float(where[0]), float(where[1]), float(where[2]))
+
+
+def _focal_length(obj):
+    """A camera object's focal length in mm."""
+    return float(obj.data.lens)
+
+
+def _evaluated(obj, frame, read):
+    """What `read` sees on `frame` once the curves have been evaluated."""
+    scene = bpy.context.scene
+    was = scene.frame_current
+    scene.frame_set(int(frame))
+    value = read(obj.evaluated_get(bpy.context.evaluated_depsgraph_get()))
+    scene.frame_set(was)
+    return value
+
+
+def _keyed(obj, data_path):
+    """Whether something already owns this channel of this object."""
+    return any(curve.data_path == data_path for curve in _fcurves(obj))
+
+
+def _opening_frame(obj, data_path, first):
+    """The frame a move should start keying from - 1 when nothing owns the channel yet.
+
+    A move that begins at 2 s on a camera nobody has keyed would otherwise
+    leave the camera parked wherever it was built until frame 48 and then POP
+    onto the start of the move. Owning the channel from frame 1 holds the
+    opening station instead, which is the shot the author drew. When somebody
+    else does own it - a `camera_move` that brings the camera in - the move
+    keeps its hands off the frames before its own window.
+    """
+    return first if _keyed(obj, data_path) else 1
+
+
+def _refuse_cut(label, what, frame, found, wanted, fix):
+    """Refuse a move that would start somewhere other than where the shot already is."""
+    die("%s: on frame %d the camera's %s is already animated to %s, but this move opens at %s - the shot "
+        "would cut there. %s" % (label, frame, what, found, wanted, fix))
+
+
+def _key_lens(data, frame, mm):
+    """Key the focal length AND record it for `scene.meta.json`.
+
+    Both, always: the Workbench render reads the f-curve and the viewer's 3D
+    lane reads the sidecar, because glTF carries no lens animation (see the
+    measured note at the top of this file).
+    """
+    data.lens = float(mm)
+    data.keyframe_insert("lens", frame=int(frame))
+    _LENS.append({"frame": int(frame), "mm": round(float(mm), 4)})
+
+
+def _lens_track():
+    """The recorded focal keys, one per frame, in order - what `finish` writes."""
+    byframe = {}
+    for entry in _LENS:
+        byframe[entry["frame"]] = entry
+    return [byframe[frame] for frame in sorted(byframe)]
+
+
+def orbit(cam, center, radius, height, deg_from, deg_to, start, end, look_at=None, ease=True):
+    """Fly the camera around `center` on a circle while it keeps looking at the middle.
+
+    The one move a video model will not invent from a sentence: the space has
+    to hold still and be seen from every side of it, which is what makes an
+    orbit worth greyboxing at all. `center` is (x, y) (or a figure, or an
+    object); the camera stands `radius` metres out at `height` metres up and
+    sweeps from `deg_from` to `deg_to`. Angles are the ordinary mathematical
+    ones in the ground plane - 0 deg is the +X side of the centre, 90 deg the
+    +Y side - and they are ABSOLUTE, so `deg_from=0, deg_to=540` is a full
+    turn and a half the long way round, and a negative sweep goes the other
+    way.
+
+    `look_at` defaults to the centre at whatever height the camera's target
+    already sits at, so the tilt you set in `camera(..., look_at=...)` is kept.
+
+    Keyed on EVERY frame of the window and left LINEAR, because the easing is
+    already in the samples: two eased keys would cut the chord across the arc
+    and the camera would pass through the middle of the shot. `start` may be
+    negative - the orbit was already running when the shot began. When nothing
+    has keyed the camera yet, the first station is held from frame 1, so an
+    orbit that begins at 2 s opens on its own start instead of popping into
+    it; when a `camera_move` owns those frames, the orbit has to begin where
+    that move left the camera and says so if it does not.
+
+    Returns the camera handle.
+    """
+    obj, target, _data = _camera_parts(cam, "orbit")
+    first, last, start, end = _window("orbit", start, end)
+    middle = _point3(center, "orbit: center", at=max(0.0, start))
+    radius = float(radius)
+    if radius < 0.2:
+        die("orbit: radius %s m is not an orbit - give it the metres the camera stands off the centre "
+            "(a duel filmed from 6-9 m reads; from 0 m the camera is inside the fight)" % radius)
+    sweep = float(deg_to) - float(deg_from)
+    if abs(sweep) < 1e-6:
+        die("orbit: deg_from and deg_to are both %s - an orbit that does not travel is a still camera, "
+            "which is pv.camera(..., location=...) on its own" % deg_from)
+    tilt = float(target.location[2])
+    aim = ((middle[0], middle[1], tilt) if look_at is None
+           else _point3(look_at, "orbit: look_at", default_z=tilt, at=max(0.0, start)))
+
+    def station(degrees):
+        angle = math.radians(degrees)
+        return (middle[0] + radius * math.cos(angle), middle[1] + radius * math.sin(angle), float(height))
+
+    opening = _opening_frame(obj, "location", first)
+    if opening == first and first > 1:
+        was = _evaluated(obj, first, _translation)
+        gap = math.dist(was, station(float(deg_from)))
+        if gap > 0.05:
+            _refuse_cut("orbit", "position", first,
+                        "(%.2f, %.2f, %.2f)" % was,
+                        "(%.2f, %.2f, %.2f), %.2f m away" % (station(float(deg_from)) + (gap,)),
+                        "Start the orbit at the angle and radius the camera already stands at, or let "
+                        "camera_move bring it to that station first.")
+
+    for frame in range(opening, last + 1):
+        obj.location = station(float(deg_from) + sweep * _progress(frame, start, end, ease))
+        obj.keyframe_insert("location", frame=frame)
+    _shape_keys(obj, "LINEAR", None, (opening, last))
+    target.location = aim
+    target.keyframe_insert("location", frame=opening)
+    target.keyframe_insert("location", frame=last)
+    _shape_keys(target, "LINEAR", None, (opening, last))
+    log("orbit %s %.0f -> %.0f deg (%.0f deg of arc) around (%.2f, %.2f) at r=%.2f m, z=%.2f m, "
+        "%.2f-%.2f s, %d keys from frame %d, looking at (%.2f, %.2f, %.2f)"
+        % (obj.name, float(deg_from), float(deg_to), abs(sweep), middle[0], middle[1], radius, float(height),
+           start, end, last - opening + 1, opening, aim[0], aim[1], aim[2]))
+    return cam
+
+
+def zoom(cam, mm_from, mm_to, start, end, ease=True):
+    """Animate the focal length from `mm_from` to `mm_to` between two times.
+
+    The lens on its own: the camera does not move, the frame closes in or
+    opens out. Keyed on every frame and LINEAR, like `orbit`, so the eased
+    curve is in the samples.
+
+    glTF carries NO lens animation, so the keys are also written to
+    `scene.meta.json` as `camera_lens: [{frame, mm}]` for the viewer's 3D lane
+    to apply. The Workbench render - the MP4 the video model is conditioned
+    on - shows the zoom either way.
+
+    Like `orbit`, a zoom on a lens nobody has keyed holds `mm_from` from frame
+    1 rather than popping onto it, and a zoom that follows another lens move
+    has to start on the focal length that move left behind.
+
+    Returns the camera handle.
+    """
+    obj, _target, data = _camera_parts(cam, "zoom")
+    first, last, start, end = _window("zoom", start, end)
+    mm_from, mm_to = float(mm_from), float(mm_to)
+    for label, mm in (("mm_from", mm_from), ("mm_to", mm_to)):
+        if mm < _LENS_MM[0] or mm > _LENS_MM[1]:
+            die("zoom: %s is %.1f mm, outside the %.0f-%.0f mm a lens exists in - 18-24 mm is wide, "
+                "35-50 mm is normal, 85 mm and up is long" % (label, mm, _LENS_MM[0], _LENS_MM[1]))
+    if abs(mm_to - mm_from) < 1e-6:
+        die("zoom: mm_from and mm_to are both %.1f mm - a zoom needs two focal lengths; set the lens once "
+            "with pv.camera(%.0f) instead" % (mm_from, mm_from))
+    opening = _opening_frame(data, "lens", first)
+    if opening == first and first > 1:
+        was = _evaluated(obj, first, _focal_length)
+        if abs(was - mm_from) > 0.5:
+            _refuse_cut("zoom", "focal length", first, "%.1f mm" % was, "%.1f mm" % mm_from,
+                        "Start this zoom on the focal length the last one ended at, or move the earlier "
+                        "zoom's end to match.")
+    for frame in range(opening, last + 1):
+        _key_lens(data, frame, mm_from + (mm_to - mm_from) * _progress(frame, start, end, ease))
+    _shape_keys(data, "LINEAR", None, (opening, last))
+    log("zoom %s %.1f -> %.1f mm over %.2f-%.2f s, %d keys from frame %d (also recorded in "
+        "scene.meta.json camera_lens - glTF carries no lens animation)"
+        % (data.name, mm_from, mm_to, start, end, last - opening + 1, opening))
+    return cam
+
+
+def dolly_zoom(cam, subject, dist_from, dist_to, start, end, ease=True):
+    """Hitchcock: travel the camera's own sightline while the lens holds the subject's size.
+
+    The camera moves along the line it already stands on towards (or away
+    from) `subject` - a point, an object, or a figure, which resolves to its
+    CHEST where its own tracks put it at `start`, not the mark it was built
+    on - from `dist_from` to `dist_to` metres, and the focal length is scaled
+    by the same ratio (mm is proportional to distance), so the subject keeps
+    the height on screen it had and everything behind it rushes in or falls
+    away. It is the one shot whose whole content is the relationship between
+    two numbers, which is why it belongs in the greybox and not in a prompt.
+
+    The lens at `dist_from` is the camera's CURRENT focal length, so set it
+    with `pv.camera(50, ...)`; the compensated end of the move is computed and
+    refused if it lands outside a real lens.
+
+    The sightline is read from where the camera stands when you call this, and
+    the move owns the camera from frame 1 unless something else already does:
+    the opening station is held until `start`, so the shot begins on the wide
+    end instead of popping onto it. If a `camera_move` already owns those
+    frames, the position it leaves the camera at has to match `dist_from` -
+    otherwise the shot would cut, and that is refused rather than rendered.
+
+    Returns the camera handle.
+    """
+    obj, target, data = _camera_parts(cam, "dolly_zoom")
+    first, last, start, end = _window("dolly_zoom", start, end)
+    point = _point3(subject, "dolly_zoom: subject", at=max(0.0, start))
+    dist_from, dist_to = float(dist_from), float(dist_to)
+    for label, metres in (("dist_from", dist_from), ("dist_to", dist_to)):
+        if metres < 0.3:
+            die("dolly_zoom: %s is %.2f m - closer than 0.3 m the camera is inside the body it is "
+                "filming; give it the metres from the subject it should stand at" % (label, metres))
+    if abs(dist_to - dist_from) < 1e-3:
+        die("dolly_zoom: dist_from and dist_to are both %.2f m - the camera never moves, so nothing is "
+            "compensated; that is pv.zoom(...)" % dist_from)
+
+    # The sightline, read where the camera will BE when the move starts: the
+    # keyed position if a camera_move owns those frames, the built one if not.
+    opening = _opening_frame(obj, "location", first)
+    if opening == 1:
+        bpy.context.view_layer.update()
+        here = _translation(obj)
+    else:
+        here = _evaluated(obj, first, _translation)
+    away = (here[0] - point[0], here[1] - point[1], here[2] - point[2])
+    span = math.sqrt(away[0] ** 2 + away[1] ** 2 + away[2] ** 2)
+    if span < 1e-3:
+        die("dolly_zoom: the camera is standing on the subject, so there is no line to travel - place it "
+            "with pv.camera(..., location=...) before asking for a dolly zoom")
+    unit = (away[0] / span, away[1] / span, away[2] / span)
+
+    # A camera somebody else already keyed has to BE at dist_from when this
+    # starts, or the audience sees a cut nobody asked for.
+    if opening == first and first > 1 and abs(span - dist_from) > 0.05:
+        _refuse_cut("dolly_zoom", "position", first, "%.2f m from the subject" % span,
+                    "dist_from = %.2f m" % dist_from,
+                    "Match dist_from to where the camera already is, or let camera_move bring it to the "
+                    "dolly's start station first.")
+
+    # The lens this compensates FROM is whatever the camera is actually on
+    # when the move starts - the value an earlier `zoom` left there, not the
+    # last number anybody assigned.
+    lens_opening = _opening_frame(data, "lens", first)
+    base_mm = float(data.lens) if lens_opening == 1 else _evaluated(obj, first, _focal_length)
+    end_mm = base_mm * dist_to / dist_from
+    if end_mm < _LENS_MM[0] or end_mm > _LENS_MM[1]:
+        die("dolly_zoom: holding the subject's size from %.2f m to %.2f m takes the %.0f mm lens to "
+            "%.1f mm, outside %.0f-%.0f mm - dolly a smaller ratio, or start from a different lens"
+            % (dist_from, dist_to, base_mm, end_mm, _LENS_MM[0], _LENS_MM[1]))
+
+    def station(metres):
+        return (point[0] + unit[0] * metres, point[1] + unit[1] * metres, point[2] + unit[2] * metres)
+
+    for frame in range(min(opening, lens_opening), last + 1):
+        metres = dist_from + (dist_to - dist_from) * _progress(frame, start, end, ease)
+        if frame >= opening:
+            obj.location = station(metres)
+            obj.keyframe_insert("location", frame=frame)
+        if frame >= lens_opening:
+            _key_lens(data, frame, base_mm * metres / dist_from)
+    _shape_keys(obj, "LINEAR", None, (opening, last))
+    _shape_keys(data, "LINEAR", None, (lens_opening, last))
+    target.location = point
+    target.keyframe_insert("location", frame=opening)
+    target.keyframe_insert("location", frame=last)
+    _shape_keys(target, "LINEAR", None, (opening, last))
+    log("dolly_zoom %s %.2f -> %.2f m from (%.2f, %.2f, %.2f), lens %.1f -> %.1f mm over %.2f-%.2f s, "
+        "%d keys from frame %d (subject height held; camera_lens goes to scene.meta.json)"
+        % (obj.name, dist_from, dist_to, point[0], point[1], point[2], base_mm, end_mm, start, end,
+           last - opening + 1, opening))
+    return cam
+
+
 def accent(objects, start, end, color, name="accent"):
     """Key a Workbench colour change and record it for the 3D lane to replay.
 
@@ -976,6 +1443,10 @@ def finish(render=True):
         "camera": scene.camera.name,
         "subjects": list(_SUBJECTS),
         "accents": list(_ACCENTS),
+        # The second thing glTF drops on the floor, after the accent colours:
+        # the focal length curve. `[]` when the lens never moved, in which
+        # case the exported camera's own yfov is the whole truth.
+        "camera_lens": _lens_track(),
         "blender": _blender_version(),
         "engine": scene.render.engine,
     }
@@ -1003,5 +1474,10 @@ def finish(render=True):
         log("rendering %d frames to %s" % (state["frames"], state["out"]))
         bpy.ops.render.render(animation=True)
 
-    log("summary %s" % json.dumps(meta, sort_keys=True))
+    # The summary line is the headless log's one machine-readable record, and
+    # a focal curve is one key per frame - counted here, kept in full in
+    # scene.meta.json, which is the file the viewer reads.
+    overview = {key: value for key, value in meta.items() if key != "camera_lens"}
+    overview["camera_lens_keys"] = len(meta["camera_lens"])
+    log("summary %s" % json.dumps(overview, sort_keys=True))
     return meta

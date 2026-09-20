@@ -1,0 +1,177 @@
+# The bible — cast and places
+
+Stage 3. Every person who appears gets a **character sheet** and, if they
+speak, a **voice**; every place gets a **set concept**. These images are not
+illustrations of the script — they are the continuity mechanism for the rest
+of the film.
+
+**Continuity comes from images, never from adjectives alone.** "A weathered
+swordsman in a grey travelling coat" produces a different man in every shot,
+however carefully you word it. The same `sheet.png` attached as a reference
+produces the same man. This is the lesson plotwise paid for: the text of a
+prompt controls what happens, and an attached image controls who it happens
+to. So the bible is generated once, approved once, and then travels — into
+every board frame, and into every take — as an `@Image` reference.
+
+Everything on this stage is **paid and gated**. The `script` stage must be
+`approved` before a sheet, a concept or a voice sample may be bought.
+`character look`, `set look` and `character voice` check the gate themselves;
+`generate_image.mjs` does not know what a stage is, so ask before you run it:
+
+```bash
+node {SKILL_PATH}/scripts/backlot.mjs gate <project> bible-image
+node {SKILL_PATH}/scripts/backlot.mjs gate <project> voice
+```
+
+## Characters
+
+### 1. Write the record first
+
+```bash
+node {SKILL_PATH}/scripts/backlot.mjs character add <project> challenger \
+  --name "The Challenger" \
+  --description "Mid-thirties, lean, a straight sword still sheathed. Came up the south path in one night." \
+  --look "grey travelling coat over dark trousers, cloth wrapped forearms, road dust, hair tied back, no ornament"
+```
+
+`description` is who they are (the creator reads it); `look` is what a model
+needs to draw them — clothing, silhouette, hair, age, build, distinguishing
+marks. Keep `look` concrete and finite: five to eight visual facts. A
+paragraph of mood produces variety, which is the one thing the bible exists to
+prevent.
+
+### 2. Generate the sheet
+
+One image, one frame, three views of the same person:
+
+```bash
+node {SKILL_PATH}/scripts/generate_image.mjs \
+  "Character reference sheet of one person on a flat neutral grey background: \
+three full-body views of the SAME person side by side in one frame — \
+three-quarter view, front view, and profile — standing in a relaxed neutral \
+pose, identical face, identical costume and proportions in all three. \
+<the character's look sentence>. Even, soft studio lighting, no shadows cast \
+on the background, no text, no labels, no logos, no border, no extra people." \
+  --aspect-ratio 16:9 --quality high \
+  --output-dir bible/characters/challenger --filename-prefix sheet
+```
+
+The spec, and why each part is there:
+
+| requirement | why |
+|---|---|
+| **neutral grey background** | the sheet is a reference for a person, not for a place; a background travels into every take that uses it |
+| **three-quarter + front + profile, one frame** | the model conditioning a later take sees the head from more than one angle, so the face survives a camera that orbits |
+| **full body** | the take needs the costume's full silhouette, not a portrait crop |
+| **the same face in all three** | say it in the prompt. Without it the generator draws three siblings |
+| **no text, labels or borders** | any text in a reference tends to reappear, baked into a take |
+| **16:9 or 3:2** | three full-body figures side by side need the width |
+
+Look at the file before you register it. Three views, one person, the costume
+from the record, nothing written on it — if any of those fails, fix the prompt
+and generate again rather than registering a sheet you would not use.
+
+### 3. Register it
+
+```bash
+node {SKILL_PATH}/scripts/backlot.mjs character look <project> challenger \
+  --file bible/characters/challenger/sheet.png \
+  --prompt "<the prompt you actually sent>" \
+  --cost-usd 0.13 --cost-basis reported
+```
+
+`backlot.mjs` copies the file in, bumps its revision and writes
+`character.json` — the record, the prompt and the cost the shared script
+reported. The prompt is kept because a second character made "in the same
+style" is made from it. `--move` moves the file instead of copying it.
+
+### 4. Give a speaking character a voice
+
+Pick a voice **once**, per character, and never change it silently — a
+character whose voice moves between shots is a different person to a listener.
+`character voice` does the synthesis itself; you choose the voice and the
+sentence:
+
+```bash
+node {SKILL_PATH}/scripts/backlot.mjs character voice <project> challenger \
+  --text "<one sentence this character would say, in the film's language>" \
+  --model seed-speech --voice <voice-id> --style "low, unhurried, dry"
+```
+
+- **Read `generate-tts.mjs`'s header for the real model and voice lists**
+  before you pass `--model` / `--voice`. It ships two vendors with different
+  voice names, different `--language` spellings and different output formats,
+  and each refuses the other's. Do not guess a voice id from memory; the
+  header is the list.
+- **Match the voice to the language.** A voice trained on one language reading
+  another is immediately audible.
+- **The sample sentence should be in the character's language and about four
+  seconds** (roughly ten to twelve words). Four seconds is long enough for a
+  timbre to be recognisable and short enough to attach to a take as an
+  `@Audio` reference without eating the prompt's budget. A sentence from the
+  screenplay is ideal — the creator hears the character, not a test phrase.
+- The measured length and the cost are recorded for you; play the file before
+  you show it to the creator.
+
+## Sets (the places)
+
+```bash
+node {SKILL_PATH}/scripts/backlot.mjs set add <project> courtyard \
+  --name "Ruined temple courtyard" \
+  --description "The terrace where the duel happens. Half the colonnade has fallen." \
+  --look "cracked stone terrace 12 m across, broken stone columns along the north side, \
+a bell tower at the east corner, a leaning tree over it, prayer flags, scattered blocks"
+```
+
+The concept frame is a **wide establishing shot of the place, from roughly
+where the scene's main camera will stand**:
+
+```bash
+node {SKILL_PATH}/scripts/generate_image.mjs \
+  "Wide establishing shot of <the set's look sentence>. Empty of people. \
+Eye-level camera about 1.6 m high, 28 mm lens, looking across the terrace \
+from the south. Dusk, low warm side light, long shadows. Photographic, no \
+text, no people, no logos." \
+  --aspect-ratio 16:9 --quality high \
+  --output-dir bible/sets/courtyard --filename-prefix concept
+
+node {SKILL_PATH}/scripts/backlot.mjs set look <project> courtyard \
+  --file bible/sets/courtyard/concept.png --prompt "…" \
+  --cost-usd 0.13 --cost-basis reported
+```
+
+Two things make a concept frame useful rather than decorative:
+
+1. **It is shot from the film's camera**, so the boards and the greybox agree
+   with it instead of describing a place nobody will photograph.
+2. **Its dimensions are the greybox's dimensions.** The `look` sentence carries
+   real metres — a 12 m terrace, a 2.1 m doorway, a 0.9 m counter — and
+   `scene.py` builds those same numbers. When the concept says "wide terrace"
+   and the greybox builds 6 m, the take is fighting two different rooms.
+   Write the numbers into the set record and reuse them in `scene.py`.
+
+Empty of people: the people come from the character sheets, and a figure baked
+into the set concept turns up as an extra in a take.
+
+## How the bible travels
+
+| stage | what it attaches |
+|---|---|
+| `boards` | `generate_image.mjs --image-urls <sheet> --image-urls <concept>` — the board frame is generated *from* the bible, so the shot list already shows the right faces in the right place |
+| `takes` | `previz.mjs generate` attaches the greybox as `@Video1`, the board as `@Image1`, then the sheets of the shot's `characters` and the set concept as `@Image2…`, then the voice samples of any spoken line's speaker as `@Audio1…` |
+
+That order is fixed and the prompt must address the indices as attached — see
+`video-generation.md`. This is also why `shot.characters` and `shot.set`
+matter: they are the list `generate` reads to decide which sheets go along.
+
+## Revisions, cost and honesty
+
+- Every regenerated sheet is a new revision on the record; the old file is not
+  silently overwritten, and boards made from the old one still say which
+  revision they used.
+- Each image is a paid call. Record what the shared script reported
+  (`usage.cost` → `basis: "reported"`), not a guess, and tell the creator the
+  running total when you show them the bible.
+- A character with no sheet, or a set with no concept, is shown to the creator
+  as exactly that — an empty card on the bible grid. Do not describe a look
+  you have not generated as though it exists.

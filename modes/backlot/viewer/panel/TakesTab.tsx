@@ -11,7 +11,7 @@
  */
 
 import type { Shot, Take } from "../../domain.js";
-import { probeFacts, takeLabel } from "../stage-model.js";
+import { probeFacts, takeLabel } from "../player-model.js";
 
 export interface TakesTabProps {
   shot: Shot;

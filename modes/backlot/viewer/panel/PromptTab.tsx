@@ -13,7 +13,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { CopyIcon, CheckIcon } from "../icons.js";
-import { extractPromptBlock } from "../stage-model.js";
+import { extractPromptBlock } from "../player-model.js";
 
 export interface PromptTabProps {
   markdown: string | null;

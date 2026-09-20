@@ -1,5 +1,5 @@
 /**
- * The stage — the shot's lanes, laid out four ways.
+ * The player — the shot's lanes, laid out four ways.
  *
  * Side puts every lane the shot has next to each other; Wipe and Blend put
  * ONE PAIR on the same pixels, which is the only way a silhouette or a camera
@@ -7,6 +7,10 @@
  *
  * Every layout draws the same `LaneSurface` components, and every surface
  * reads the same clock — a layout change never restarts anything.
+ *
+ * NAMING: in this mode a *stage* is one of the eight pipeline steps
+ * (`idea … cut`). The picture area is the PLAYER, and this file owns it; the
+ * rail that switches pipeline stages is `StageRail.tsx`.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -25,18 +29,18 @@ import {
   type LaneId,
   type LaneView,
   type LayoutId,
-} from "./stage-model.js";
+} from "./player-model.js";
 import type { Clock } from "./usePlayhead.js";
 
-/** `p-2` on the stage box, `gap-2` between cards, and a two-row lane header. */
-const STAGE_PADDING = 16;
+/** `p-2` on the player box, `gap-2` between cards, and a two-row lane header. */
+const PLAYER_PADDING = 16;
 const LANE_GAP = 8;
 const LANE_HEADER_H = 46;
 /** Blend's opacity strip under the surface; reserved in both two-up layouts
  *  so switching Wipe → Blend does not resize the picture. */
 const BLEND_BAR_H = 30;
 
-export interface StageProps {
+export interface PlayerProps {
   lanes: LaneView[];
   /** Shot-relative path → `/content/…` URL. */
   urlFor: (path: string | null, revision: number) => string | null;
@@ -61,7 +65,7 @@ export interface StageProps {
   onLoadedChange: (laneId: string, loaded: boolean, error: string | null) => void;
 }
 
-export function Stage(props: StageProps) {
+export function Player(props: PlayerProps) {
   const { lanes, layout, laneA, laneB, aspect } = props;
   const shown = visibleLanes(lanes, layout, laneA, laneB);
   const a = shown[0] ?? null;
@@ -82,7 +86,7 @@ export function Stage(props: StageProps) {
     return () => observer.disconnect();
   }, []);
   const { direction, laneWidth } = planSideLayout(box.width, box.height, aspect, lanes.length, {
-    padding: STAGE_PADDING,
+    padding: PLAYER_PADDING,
     gap: LANE_GAP,
     header: LANE_HEADER_H,
   });
@@ -91,8 +95,8 @@ export function Stage(props: StageProps) {
   const overlayWidth = Math.max(
     240,
     Math.min(
-      box.width - STAGE_PADDING,
-      Math.max(0, box.height - STAGE_PADDING - LANE_HEADER_H - BLEND_BAR_H) * aspect,
+      box.width - PLAYER_PADDING,
+      Math.max(0, box.height - PLAYER_PADDING - LANE_HEADER_H - BLEND_BAR_H) * aspect,
     ),
   );
 
@@ -148,7 +152,7 @@ function LayoutBar({
   laneB,
   onLaneA,
   onLaneB,
-}: StageProps) {
+}: PlayerProps) {
   const twoUp = layout === "wipe" || layout === "blend";
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-cc-border bg-cc-surface/30 px-3 py-1.5 backdrop-blur">
@@ -202,7 +206,7 @@ function LaneCard({
   active,
   fixedWidth = null,
   ...props
-}: StageProps & { lane: LaneView; active: boolean; fixedWidth?: number | null }) {
+}: PlayerProps & { lane: LaneView; active: boolean; fixedWidth?: number | null }) {
   return (
     <section
       className={`flex max-h-full min-w-0 flex-col overflow-hidden rounded-md border border-cc-border bg-cc-card ${
@@ -233,7 +237,7 @@ function LaneCard({
   );
 }
 
-function headerProps(lane: LaneView, props: StageProps) {
+function headerProps(lane: LaneView, props: PlayerProps) {
   if (lane.id === "greybox") {
     return {
       greyboxMode: props.greyboxMode,
@@ -266,7 +270,7 @@ function OverlayPair({
   mode,
   width,
   ...props
-}: StageProps & {
+}: PlayerProps & {
   a: LaneView | null;
   b: LaneView | null;
   mode: "wipe" | "blend";
@@ -492,4 +496,4 @@ function BlendSlider({ value, onChange }: { value: number; onChange: (v: number)
   );
 }
 
-export default Stage;
+export default Player;

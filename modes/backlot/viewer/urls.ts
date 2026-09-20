@@ -42,9 +42,27 @@ export function shotAssetUrl(
   base: string,
   shotDir: string,
   path: string | null | undefined,
-  revision: number,
+  revision: number | string,
 ): string | null {
   if (!path) return null;
   const prefix = shotDir ? `${encodeContentPath(shotDir)}/` : "";
   return `${base}/content/${prefix}${encodeContentPath(path)}?rev=${revision}`;
+}
+
+/**
+ * A workspace-relative asset (`first-light/bible/characters/kai/sheet.png`,
+ * `first-light/cut/reel.mp4`).
+ *
+ * Same rule as `shotAssetUrl`, one level up: the bible, the sound and the cut
+ * hang off the PROJECT, not off a shot. `rev` may be a number (a record's
+ * revision) or a string (a hash of the record, for the files whose schema
+ * carries no revision) — either way it changes exactly when the bytes do.
+ */
+export function assetUrl(
+  base: string,
+  path: string | null | undefined,
+  rev: number | string,
+): string | null {
+  if (!path) return null;
+  return `${base}/content/${encodeContentPath(path)}?rev=${rev}`;
 }

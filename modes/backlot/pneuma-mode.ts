@@ -22,15 +22,18 @@ import {
   checkTally,
   frameAt,
   loadFilm,
+  nextOpenStage,
   projectDirOf,
   selectedTake,
   shotStages,
+  stageLabel,
+  totalCost,
   type Project,
   type Shot,
 } from "./domain.js";
 import backlotManifest from "./manifest.js";
 import BacklotPreview from "./viewer/BacklotPreview.js";
-import { formatSeconds, probeFacts, selectProject, takeLabel } from "./viewer/stage-model.js";
+import { formatSeconds, probeFacts, selectProject, takeLabel } from "./viewer/player-model.js";
 
 // ── Content sets ───────────────────────────────────────────────────────────
 
@@ -109,12 +112,18 @@ function addressNumber(
 /**
  * What the user is looking at, written for the agent.
  *
- * The playhead is the point of this block: an address carries the shot, the
- * lane, the take, the second and the frame, so "the hand goes through the
- * console here" arrives with its moment instead of a pronoun. The acceptance
- * summary is the script's own tally quoted back, never a second opinion — the
- * agent must not be able to read "accepted" here and `unverified` from
- * `previz.mjs status`.
+ * Two things are the point of this block. THE STAGE STATE: which of the eight
+ * stages hold something, which of them the creator has approved, which have
+ * MOVED since they approved them, whether the gates are open and what the
+ * film has cost so far — the same derivation `backlot.mjs` refuses to spend
+ * against, so the agent can never read "approved" here and be refused there.
+ * THE PLAYHEAD: an address carries the stage, the shot, the lane, the take,
+ * the second and the frame, so "the hand goes through the console here"
+ * arrives with its moment instead of a pronoun.
+ *
+ * The acceptance summary is the script's own tally quoted back, never a
+ * second opinion — the agent must not be able to read "accepted" here and
+ * `unverified` from `previz.mjs status`.
  */
 export function extractBacklotContext(
   selection: ViewerSelectionContext | null,
@@ -126,9 +135,49 @@ export function extractBacklotContext(
   if (!project) return "";
 
   const lines: string[] = [];
-  lines.push(`Project: "${project.title}" · ${project.shots.length} shot(s)`);
+  const spent = totalCost(project.cost);
+  lines.push(
+    `Project: "${project.title}" · ${project.shots.length} shot(s) · gates ${project.gates} · $${spent.toFixed(2)} spent`,
+  );
 
+  // One line for all eight. `changed` is shouted because it is the state the
+  // creator cannot see from the files alone: they approved something else,
+  // and the gate in front of the next paid command is closed again.
+  lines.push(
+    `Stages: ${project.stages
+      .map((stage) => {
+        const status = stage.status === "changed" ? "CHANGED" : stage.status;
+        return `${stage.id} ${status}${stage.usd > 0 ? ` $${stage.usd.toFixed(2)}` : ""}`;
+      })
+      .join(" · ")}`,
+  );
+  const open = nextOpenStage(project);
+  lines.push(
+    open
+      ? `Next open stage: ${open.id} (${open.status}${
+          open.status === "changed" ? " — approved once, the files have moved since" : ""
+        })${
+          project.gates === "open"
+            ? " — gates are open, so paid work may run through"
+            : " — paid work in the stage after it waits for this approval"
+        }`
+      : "Next open stage: none — every stage is approved.",
+  );
+  // An address with no `stage` is a previz address — the brief's appendix.
+  const stageOnScreen = addressString(address, "stage") ?? "previz";
+  const stageIndex = project.stages.findIndex((s) => s.id === stageOnScreen);
+  lines.push(
+    `On screen: ${stageOnScreen}${stageIndex >= 0 ? ` — stage ${stageIndex + 1} of 8, ${stageLabel(project.stages[stageIndex].id)}` : ""}`,
+  );
+  for (const focus of describeStageFocus(project, stageOnScreen, address)) lines.push(focus);
+
+  // The shot block belongs to the stages that are ABOUT a shot, or to an
+  // address that names one. On the bible or the cut, describing a shot
+  // nobody is looking at would give "this one" a second referent.
   const shotId = addressString(address, "shot");
+  const shotStage = ["boards", "previz", "takes"].includes(stageOnScreen);
+  if (!shotStage && !shotId) return wrap(project, lines, selection);
+
   const shot: Shot | null =
     (shotId ? project.shots.find((s) => s.id === shotId) : null) ?? project.shots[0] ?? null;
 
@@ -208,6 +257,95 @@ export function extractBacklotContext(
   }
 
   return wrap(project, lines, selection);
+}
+
+/**
+ * What the OPEN stage has in focus, when it is not one of the shot stages.
+ *
+ * Each line is what that stage's body actually shows — the scene the user is
+ * reading, the card they clicked, the line they highlighted, the second of
+ * the cut they parked on — so a question about "this one" has a referent.
+ */
+function describeStageFocus(
+  project: Project,
+  stage: string,
+  address: Record<string, unknown> | undefined,
+): string[] {
+  const lines: string[] = [];
+  switch (stage) {
+    case "idea":
+      if (project.logline) lines.push(`Logline: ${project.logline}`);
+      break;
+    case "script": {
+      lines.push(
+        `Scenes: ${
+          project.scenes.length === 0
+            ? "none registered"
+            : project.scenes
+                .map((s) => `${s.number}:${s.id} (${s.shots.length} shot(s))`)
+                .join(" · ")
+        }`,
+      );
+      const scene = addressString(address, "scene");
+      const focused = project.scenes.find((s) => s.id === scene);
+      if (focused) {
+        lines.push(`Scene in focus: ${focused.number} — ${focused.heading}. ${focused.summary}`);
+      }
+      break;
+    }
+    case "bible": {
+      lines.push(
+        `Bible: ${project.characters.length} character(s) — ${
+          project.characters.map((c) => `${c.id}${c.sheet ? "" : " (no sheet)"}${c.voice?.sample ? "" : " (no voice)"}`).join(", ") || "none"
+        }; ${project.sets.length} set(s) — ${
+          project.sets.map((s) => `${s.id}${s.concept ? "" : " (no concept)"}`).join(", ") || "none"
+        }`,
+      );
+      const character = addressString(address, "character");
+      const set = addressString(address, "set");
+      if (character) lines.push(`Card in focus: character "${character}"`);
+      else if (set) lines.push(`Card in focus: set "${set}"`);
+      break;
+    }
+    case "sound": {
+      const { lines: spoken, music } = project.sound;
+      lines.push(
+        `Sound: ${spoken.length} line(s) — ${spoken.filter((l) => l.kind === "vo").length} vo, ${spoken.filter((l) => l.kind === "spoken").length} spoken; music ${music ? `${music.file}${music.seconds ? ` (${music.seconds.toFixed(1)} s)` : ""}` : "not generated"}`,
+      );
+      const line = addressString(address, "line");
+      const focused = spoken.find((l) => l.id === line);
+      if (focused) {
+        lines.push(
+          `Line in focus: ${focused.id} · ${focused.speaker} · ${focused.kind} · "${focused.text}" (shot ${focused.shot})`,
+        );
+      }
+      break;
+    }
+    case "cut": {
+      const cut = project.cut;
+      if (!cut) {
+        lines.push("Cut: nothing assembled yet.");
+        break;
+      }
+      const standIns = cut.segments.filter((s) => s.source === "greybox").length;
+      lines.push(
+        `Cut: ${cut.kind} · ${cut.file} · ${cut.seconds.toFixed(1)} s · ${cut.segments.length} segment(s)${
+          standIns > 0 ? ` · ${standIns} greybox stand-in(s)` : ""
+        }`,
+      );
+      const segment = addressString(address, "segment");
+      const focused = cut.segments.find((s) => s.shot === segment);
+      if (focused) {
+        lines.push(
+          `Segment in focus: ${focused.shot} from ${focused.source} at ${focused.offset.toFixed(1)}–${(focused.offset + focused.seconds).toFixed(1)} s`,
+        );
+      }
+      break;
+    }
+    default:
+      break;
+  }
+  return lines;
 }
 
 function wrap(

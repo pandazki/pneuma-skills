@@ -23,7 +23,7 @@ import {
   failedRanges,
   formatSeconds,
   type BeatRow,
-} from "./stage-model.js";
+} from "./player-model.js";
 import { useClock, type Clock } from "./usePlayhead.js";
 
 const ROW_HEIGHT = 20;

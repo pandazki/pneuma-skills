@@ -8,7 +8,7 @@
 import type { Shot } from "../domain.js";
 import { PauseIcon, PlayIcon, StepBackIcon, StepForwardIcon, LoopIcon } from "./icons.js";
 import { Segment } from "./Lane.js";
-import { PLAY_RATES, formatSeconds, playheadLabel } from "./stage-model.js";
+import { PLAY_RATES, formatSeconds, playheadLabel } from "./player-model.js";
 import { useClock, type Clock, type LoopMode } from "./usePlayhead.js";
 
 export interface TransportProps {

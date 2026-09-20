@@ -9,16 +9,21 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { Check, CheckStatus } from "../skill/scripts/shot.d.mts";
+import type { Check, CheckStatus, Line } from "../skill/scripts/shot.d.mts";
 import {
   computeStuck,
   findCheck,
+  hasSpokenLine,
   makeSpec,
+  makeTrim,
+  newProject,
   nextStage,
   nextTakeId,
   normalizeShot,
+  normalizeSpeech,
   parsePromptPack,
   parseSize,
+  promptReferences,
   PROMPT_TEMPLATE_BODY,
   recordCheck,
   revisionOfTarget,
@@ -28,7 +33,10 @@ import {
   STANDARD_CHECKS,
   summarizeChecks,
   takePolicy,
+  transcriptCoverage,
   validateBeats,
+  validateLines,
+  validatePromptRefs,
   newShot,
 } from "../skill/scripts/shot.mjs";
 
@@ -253,7 +261,7 @@ describe("the prompt pack", () => {
       "# Pack",
       "",
       "```prompt",
-      "Follow [Video1] exactly. A lab at night.",
+      "Follow @Video1 exactly. A lab at night.",
       "```",
       "",
       "## Negative",
@@ -264,7 +272,7 @@ describe("the prompt pack", () => {
     ].join("\n");
     const parsed = parsePromptPack(markdown);
     expect(parsed.ok).toBe(true);
-    expect(parsed.prompt).toBe("Follow [Video1] exactly. A lab at night.");
+    expect(parsed.prompt).toBe("Follow @Video1 exactly. A lab at night.");
     // The rest of the file must not leak in — that is how a prompt ends up
     // carrying a mode's own instructions to the model.
     expect(parsed.prompt).not.toContain("Negative");
@@ -275,7 +283,7 @@ describe("the prompt pack", () => {
     expect(parsePromptPack("```prompt\n\n```")).toMatchObject({ ok: false });
     expect(parsePromptPack("```prompt\nA lab at night.\n```")).toMatchObject({
       ok: false,
-      reason: expect.stringContaining("[Video1]"),
+      reason: expect.stringContaining("@Video1"),
     });
   });
 
@@ -288,9 +296,189 @@ describe("the prompt pack", () => {
   });
 
   test("a tilde fence works and closes on tildes", () => {
-    expect(parsePromptPack("~~~prompt\nFollow [Video1] into the dark.\n~~~\ntail").prompt).toBe(
-      "Follow [Video1] into the dark.",
+    expect(parsePromptPack("~~~prompt\nFollow @Video1 into the dark.\n~~~\ntail").prompt).toBe(
+      "Follow @Video1 into the dark.",
     );
+  });
+
+  test("[Video1] is read as @Video1 and reported as the deprecated spelling", () => {
+    // Seedance documents @Video1; this mode shipped brackets first, and a
+    // pack written then must not stop working silently.
+    const parsed = parsePromptPack("```prompt\nFollow [Video1] exactly. Neon rain.\n```");
+    expect(parsed.ok).toBe(true);
+    expect(parsed.refs?.video).toEqual([1]);
+    expect(parsed.refs?.legacy).toEqual(["[Video1]"]);
+    expect(parsePromptPack("```prompt\nFollow @Video1 exactly. Neon rain.\n```").refs?.legacy).toEqual([]);
+  });
+
+  test("every reference index a prompt names is collected, in both spellings", () => {
+    const refs = promptReferences("Match @Video1, dress her like @Image2 and [Image1], voice of @Audio1.");
+    expect(refs).toMatchObject({ video: [1], image: [1, 2], audio: [1], legacy: ["[Image1]"] });
+  });
+
+  test("a prompt that names a reference nothing was attached at is refused BY INDEX", () => {
+    // The failure this prevents does not error at fal: the job renders, is
+    // billed, and comes back conditioned on something else.
+    const refs = promptReferences("@Video1 with @Image3 and @Audio1");
+    expect(validatePromptRefs(refs, { video: 1, image: 2, audio: 1 })).toMatchObject({ ok: false });
+    expect(validatePromptRefs(refs, { video: 1, image: 2, audio: 1 }).errors[0]).toContain("@Image3");
+    expect(validatePromptRefs(refs, { video: 1, image: 2, audio: 1 }).errors[0]).toContain("only 2 image reference(s)");
+    expect(validatePromptRefs(refs, { video: 1, image: 3, audio: 1 }).ok).toBe(true);
+    // Nothing attached at all is its own sentence — "only 0" reads as a bug.
+    expect(validatePromptRefs(promptReferences("@Video1 @Audio1"), { video: 1, image: 0, audio: 0 }).errors[0]).toContain(
+      "no audio reference is attached",
+    );
+  });
+});
+
+describe("lines", () => {
+  const spec = makeSpec({ seconds: 8, fps: 24 });
+  const LINES = [
+    { id: "l1", speaker: "kai", kind: "spoken", text: "还开着吗？", at: 5.2 },
+    { id: "l2", speaker: "narrator", kind: "vo", text: "凌晨三点。", at: 0.8 },
+  ];
+
+  test("validates the whole list at once and normalizes what it keeps", () => {
+    const { lines } = validateLines(LINES, spec);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatchObject({ id: "l1", kind: "spoken", at: 5.2, file: null, seconds: null, cost: null });
+  });
+
+  test("every problem is reported together, not one round trip at a time", () => {
+    let message = "";
+    try {
+      validateLines(
+        [
+          { id: "l1", speaker: "kai", kind: "shouted", text: "hi", at: 1 },
+          { id: "l1", speaker: "", kind: "vo", text: "", at: 99 },
+        ],
+        spec,
+      );
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain("kind must be one of spoken|vo");
+    expect(message).toContain('duplicate id "l1"');
+    expect(message).toContain("speaker is required");
+    expect(message).toContain("text is required");
+    expect(message).toContain("outside the shot's 8 s");
+  });
+
+  test("a re-set keeps the recording of a line whose text did not change", () => {
+    const previous: Line[] = [
+      { id: "l2", speaker: "narrator", kind: "vo", text: "凌晨三点。", at: 0.8, file: "sound/l2.mp3", seconds: 3.1, cost: { usd: 0.01, basis: "table" } },
+    ];
+    const same = validateLines(LINES, spec, previous);
+    expect(same.kept).toEqual(["l2"]);
+    expect(same.lines[1]).toMatchObject({ file: "sound/l2.mp3", seconds: 3.1, cost: { usd: 0.01 } });
+
+    // An edited line is a line the old audio does not say: the file goes,
+    // the cost stays (the money was spent), and the change is reported.
+    const edited = validateLines(
+      [{ ...LINES[1], text: "凌晨四点。" }],
+      spec,
+      previous,
+    );
+    expect(edited.stale).toEqual(["l2"]);
+    expect(edited.lines[0].file).toBeNull();
+    expect(edited.lines[0].seconds).toBeNull();
+    expect(edited.lines[0].cost).toMatchObject({ usd: 0.01 });
+  });
+
+  test("a spoken line adds take-lines to a finished take, a silent shot never sees it", () => {
+    const silent = shotWith();
+    silent.takes.push({ id: "take-01", status: "done" } as never);
+    seedChecklist(silent);
+    expect(silent.checks.some((check) => check.id === "take-lines")).toBe(false);
+    expect(hasSpokenLine(silent)).toBe(false);
+
+    const talking = shotWith();
+    talking.lines = validateLines(LINES, SPEC).lines;
+    talking.takes.push({ id: "take-01", status: "done" } as never);
+    const added = seedChecklist(talking);
+    expect(hasSpokenLine(talking)).toBe(true);
+    expect(added).toContain("take-01:take-lines");
+    expect(findCheck(talking, "take-lines", "take-01")?.label).toBe("Spoken lines are audible and correct");
+    // …and it is unverified until a transcript answers it.
+    expect(findCheck(talking, "take-lines", "take-01")?.status).toBe("unverified");
+  });
+});
+
+describe("the trim", () => {
+  const spec = makeSpec({ seconds: 4, fps: 24 });
+
+  test("a shot starts whole, and a trim is a range inside its own clock", () => {
+    expect(shotWith().trim).toBeNull();
+    expect(makeTrim({ in: 0.4, out: 1.6 }, spec)).toEqual({ in: 0.4, out: 1.6 });
+    expect(makeTrim({ in: 0, out: 4 }, spec)).toEqual({ in: 0, out: 4 });
+    // Rounded like every other second this mode records.
+    expect(makeTrim({ in: 0.40001234, out: 1.6 }, spec).in).toBe(0.4);
+  });
+
+  test("refuses a range the shot does not have, or one of no length", () => {
+    expect(() => makeTrim({ in: 0.4, out: 9 }, spec)).toThrow(/past the shot's 4 s/);
+    expect(() => makeTrim({ in: 3, out: 1 }, spec)).toThrow(/must be later than --trim-in 3/);
+    expect(() => makeTrim({ in: 1, out: 1 }, spec)).toThrow(/a segment of no length/);
+    expect(() => makeTrim({ in: -1, out: 2 }, spec)).toThrow(/--trim-in must be a second from 0/);
+    expect(() => makeTrim({ in: 0, out: "soon" as unknown as number }, spec)).toThrow(/--trim-out must be a second/);
+  });
+
+  test("a trim survives normalizeShot and is reported by status", () => {
+    const shot = normalizeShot({ ...shotWith(), trim: { in: 0.4, out: 1.6 } });
+    expect(shot.trim).toEqual({ in: 0.4, out: 1.6 });
+    expect((shotStatus(shot) as Record<string, any>).trim).toEqual({ in: 0.4, out: 1.6 });
+    // An older file with no trim reads as the whole shot, not as broken.
+    expect(normalizeShot({ id: "x" }).trim).toBeNull();
+  });
+});
+
+describe("the transcript check", () => {
+  test("punctuation, case and spacing are not what a line is judged on", () => {
+    expect(normalizeSpeech("还开着吗？")).toBe("还开着吗");
+    expect(normalizeSpeech("Are you still OPEN?")).toBe("areyoustillopen");
+    // Whisper re-punctuates and re-spaces; the line is still the line.
+    const coverage = transcriptCoverage("还开着吗... 我们打烊了。", [
+      { id: "l1", text: "还开着吗？" },
+      { id: "l3", text: "我们打烊了" },
+    ]);
+    expect(coverage.ok).toBe(true);
+    expect(coverage.found).toEqual(["l1", "l3"]);
+  });
+
+  test("a line the take never said is named, so the next take is not a guess", () => {
+    const coverage = transcriptCoverage("我们打烊了。", [
+      { id: "l1", text: "还开着吗？" },
+      { id: "l3", text: "我们打烊了" },
+    ]);
+    expect(coverage.ok).toBe(false);
+    expect(coverage.missing).toEqual([{ id: "l1", text: "还开着吗？" }]);
+  });
+
+  test("an empty transcript is not acceptance", () => {
+    expect(transcriptCoverage("", [{ id: "l1", text: "hello" }]).ok).toBe(false);
+    // No lines at all is not a pass either — the caller never asks.
+    expect(transcriptCoverage("anything", []).ok).toBe(false);
+  });
+});
+
+describe("the film's manifest", () => {
+  test("a new project stores only approvals, and starts with the gates closed", () => {
+    const project = newProject({ title: "Last Customer", logline: "A clerk waits", defaults: { seconds: 6, fps: 24, width: 640, height: 360 } });
+    expect(project).toEqual({
+      version: 1,
+      title: "Last Customer",
+      logline: "A clerk waits",
+      defaults: { seconds: 6, fps: 24, width: 640, height: 360 },
+      gates: "closed",
+      approvals: {},
+      scenes: [],
+      characters: [],
+      sets: [],
+      shots: [],
+    });
+    // No stage statuses are stored: they are derived, so the viewer and the
+    // scripts cannot disagree about what the creator has seen.
+    expect(Object.keys(project)).not.toContain("stages");
   });
 });
 

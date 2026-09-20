@@ -69,11 +69,27 @@ const backlotManifest: ModeManifest = {
     envMapping: {
       BLENDER_PATH: "blenderPath",
       FAL_KEY: "falApiKey",
+      OPENROUTER_API_KEY: "openrouterApiKey",
     },
     // sharedScripts is a WHITELIST and it is transitive: seedance-video.mjs
     // drives fal through fal-queue.mjs, so the transport primitive has to be
     // listed even though the agent never invokes it directly.
-    sharedScripts: ["seedance-video.mjs", "fal-queue.mjs"],
+    //
+    // fal buys the video, the voices and the transcripts; OpenRouter buys
+    // the bible frames, the board frames and the music. `generate_image.mjs`
+    // and `edit_image.mjs` are run BY THE AGENT — `backlot.mjs` deliberately
+    // does not wrap them, so the agent can look at what came back before
+    // registering it — while `generate-tts.mjs`, `generate-bgm.mjs` and
+    // `transcribe.mjs` are spawned by the scripts.
+    sharedScripts: [
+      "seedance-video.mjs",
+      "fal-queue.mjs",
+      "generate_image.mjs",
+      "edit_image.mjs",
+      "generate-tts.mjs",
+      "generate-bgm.mjs",
+      "transcribe.mjs",
+    ],
   },
 
   viewer: {
@@ -97,9 +113,15 @@ const backlotManifest: ModeManifest = {
     // before the pattern filter, so a new PNG still bumps `imageVersion`.
     watchPatterns: [
       "**/backlot.json",
+      "**/idea.md",
+      "**/screenplay.md",
+      "**/bible/characters/*/character.json",
+      "**/bible/sets/*/set.json",
       "**/shots/*/shot.json",
       "**/shots/*/*.md",
       "**/shots/*/greybox/*.json",
+      "**/sound/sound.json",
+      "**/cut/edl.json",
     ],
     ignorePatterns: [
       "node_modules/**",
@@ -112,13 +134,24 @@ const backlotManifest: ModeManifest = {
   },
 
   sources: {
-    // A film is ONE object assembled from a project manifest plus a shot file
-    // per shot: a missing `shot.json` changes what the rail can show, so the
-    // viewer needs them loaded together, not as an unordered file list.
+    // A film is ONE object assembled from the project manifest, the stage
+    // files (idea, screenplay, bible records, sound, cut) and a shot file per
+    // shot: the stage rail derives every status from these texts together
+    // (stage-state.mjs), so they load as one aggregate, not as a file list.
+    // Text only — media identity travels in the JSON records' `{file, revision}`.
     film: {
       kind: "aggregate-file",
       config: {
-        patterns: ["**/backlot.json", "**/shots/*/shot.json"],
+        patterns: [
+          "**/backlot.json",
+          "**/idea.md",
+          "**/screenplay.md",
+          "**/bible/characters/*/character.json",
+          "**/bible/sets/*/set.json",
+          "**/shots/*/shot.json",
+          "**/sound/sound.json",
+          "**/cut/edl.json",
+        ],
         load: loadFilm,
         save: saveFilm,
       },
@@ -189,6 +222,15 @@ const backlotManifest: ModeManifest = {
     // these two lives in the skill's Commands section.
     commands: [
       {
+        id: "approve-stage",
+        label: "Approve this stage",
+        // The stage rail's button. Approval is a COMMAND TO THE AGENT, never
+        // a write: the viewer sends the message, the agent runs
+        // `backlot.mjs approve <stage>`, and the approval is recorded with a
+        // hash of exactly what the creator was looking at.
+        description: "Sign off on this stage so the next one can start",
+      },
+      {
         id: "check-greybox",
         label: "Check this greybox",
         description: "Go through the acceptance list on this greybox and record what you find",
@@ -253,7 +295,16 @@ The user just opened the backlot workspace. Greet them briefly (1-2 sentences): 
         name: "falApiKey",
         label: "fal.ai API Key",
         description:
-          "Optional — enables video takes (Seedance 2.5 reference-to-video). Without it you still get the plan, the greybox and the prompt pack.",
+          "Optional — enables video takes (Seedance 2.5 reference-to-video), character voices and the transcript check on spoken lines. Without it you still get the plan, the greybox and the prompt pack.",
+        type: "string",
+        defaultValue: "",
+        sensitive: true,
+      },
+      {
+        name: "openrouterApiKey",
+        label: "OpenRouter API Key",
+        description:
+          "Optional — enables the character sheets and set concepts of the bible, the storyboard frames, and the music bed (GPT Image 2.5 and Lyria 3). Without it the film is still written, blocked and shot; it just has no look frames and no music.",
         type: "string",
         defaultValue: "",
         sensitive: true,
@@ -267,6 +318,8 @@ The user just opened the backlot workspace. Greet them briefly (1-2 sentences): 
       ...params,
       videoEnabled: params.falApiKey ? "true" : "",
       videoDisabled: params.falApiKey ? "" : "true",
+      imagesEnabled: params.openrouterApiKey ? "true" : "",
+      imagesDisabled: params.openrouterApiKey ? "" : "true",
       blenderConfigured: params.blenderPath ? "true" : "",
     }),
   },

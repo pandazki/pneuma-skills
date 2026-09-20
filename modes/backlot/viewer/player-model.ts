@@ -1,10 +1,10 @@
 /**
- * Everything the backlot stage decides that is not React.
+ * Everything the backlot player decides that is not React.
  *
  * Lane resolution, the layout algebra, address parsing/resolution, timeline
  * geometry and the small formatters live here so the same rules answer the
  * user's click, the agent's `navigate-to` and `get-player-state`. A second
- * copy inside the component is how a stage and its report start disagreeing.
+ * copy inside the component is how a player and its report start disagreeing.
  */
 
 import type {
@@ -15,18 +15,19 @@ import type {
   Probe,
   Project,
   Shot,
+  StageId,
   Take,
 } from "../domain.js";
-import { frameAt, selectedTake } from "../domain.js";
+import { STAGES, frameAt, selectedTake } from "../domain.js";
 
 // ── Vocabulary ──────────────────────────────────────────────────────────────
 
-export type LaneId = "reference" | "greybox" | "take";
+export type LaneId = "reference" | "board" | "greybox" | "take";
 export type LayoutId = "side" | "wipe" | "blend" | "solo";
 export type GreyboxMode = "render" | "3d";
 export type CameraMode = "shot" | "free";
 
-export const LANE_IDS: ReadonlyArray<LaneId> = ["reference", "greybox", "take"];
+export const LANE_IDS: ReadonlyArray<LaneId> = ["reference", "board", "greybox", "take"];
 export const LAYOUT_IDS: ReadonlyArray<LayoutId> = ["side", "wipe", "blend", "solo"];
 export const PLAY_RATES: ReadonlyArray<number> = [0.25, 0.5, 1];
 
@@ -37,8 +38,15 @@ export const LAYOUT_LABEL: Record<LayoutId, string> = {
   solo: "Solo",
 };
 
-/** What the stage is currently pointed at. One value, two consumers. */
-export interface StagePosition {
+/** The two stages whose body is the player; everything else has its own view. */
+export const PLAYER_STAGES: ReadonlyArray<StageId> = ["previz", "takes"];
+
+export function isPlayerStage(stage: StageId): boolean {
+  return (PLAYER_STAGES as ReadonlyArray<string>).includes(stage);
+}
+
+/** What the player is currently pointed at. One value, two consumers. */
+export interface PlayerPosition {
   shot: string;
   lane: LaneId;
   /** Which take the take lane plays; null when the shot has none. */
@@ -49,10 +57,32 @@ export interface StagePosition {
   range: [number, number] | null;
 }
 
+/**
+ * Where the whole viewer is: which stage is open, what that stage has in
+ * focus, and — for the two stages that show the player — the player's own
+ * position. One value answers the user's click, `navigate-to` and
+ * `get-player-state`, so the screen and the report cannot drift apart.
+ */
+export interface ViewPosition {
+  stage: StageId;
+  /** Script stage: the scene id in focus. */
+  scene: string | null;
+  /** Bible stage: the character / set card in focus. */
+  character: string | null;
+  set: string | null;
+  /** Sound stage: the line in focus. */
+  line: string | null;
+  /** Cut stage: the segment in focus, named by its shot id. */
+  segment: string | null;
+  /** Seconds on the CUT's clock — a different film from the shot's. */
+  cutTime: number;
+  player: PlayerPosition;
+}
+
 // ── Lanes ───────────────────────────────────────────────────────────────────
 
-/** `video` plays; the other three are named states, never a broken player. */
-export type LaneKind = "video" | "waiting" | "failed" | "empty";
+/** `video` plays, `image` is a still; the rest are named states. */
+export type LaneKind = "video" | "image" | "waiting" | "failed" | "empty";
 
 export interface LaneView {
   id: LaneId;
@@ -150,11 +180,13 @@ function takeLane(take: Take | null, greyboxRevision: number): LaneView {
 }
 
 /**
- * The lanes this shot has, in stage order.
+ * The lanes this shot has, in story order.
  *
- * Reference appears ONLY when the shot has one (a recreate shot); greybox and
+ * Reference appears ONLY when the shot has one (a recreate shot) and the
+ * board ONLY when one was drawn — a named empty lane for either would cost
+ * the comparison half its width on every shot that has neither. Greybox and
  * take are always present, as a named empty lane when their file is not there
- * yet.
+ * yet, because those two are what the whole mode is about.
  */
 export function laneViews(shot: Shot, takeId: string | null): LaneView[] {
   const lanes: LaneView[] = [];
@@ -176,6 +208,22 @@ export function laneViews(shot: Shot, takeId: string | null): LaneView[] {
       note: ref.cuts.length > 0 ? `${ref.cuts.length} cut(s) detected inside the segment` : null,
       takeId: null,
       revision,
+    });
+  }
+
+  if (shot.board) {
+    lanes.push({
+      id: "board",
+      label: "Board",
+      // A still, on the same clock as everything else: it simply does not
+      // move, which is exactly what a storyboard frame is.
+      kind: "image",
+      file: shot.board.file,
+      facts: shot.board.refs.length > 0 ? `${shot.board.refs.length} reference(s)` : "board frame",
+      duration: null,
+      note: shot.board.prompt || null,
+      takeId: null,
+      revision: shot.board.revision,
     });
   }
 
@@ -340,12 +388,21 @@ export function prevEdge(edges: ReadonlyArray<number>, t: number): number {
 
 export interface BacklotAddress {
   contentSet?: string;
+  /** One of the eight pipeline stages. ABSENT MEANS `previz` — see below. */
+  stage?: StageId;
   shot?: string;
+  /** A scene id, or the scene NUMBER the screenplay prints. */
+  scene?: string | number;
+  character?: string;
+  set?: string;
   lane?: LaneId;
   take?: string;
   time?: number;
   range?: [number, number];
   layout?: LayoutId;
+  line?: string;
+  /** A cut segment, named by the shot it plays. */
+  segment?: string;
 }
 
 function isLane(value: unknown): value is LaneId {
@@ -356,17 +413,32 @@ function isLayout(value: unknown): value is LayoutId {
   return typeof value === "string" && (LAYOUT_IDS as ReadonlyArray<string>).includes(value);
 }
 
+function isStageId(value: unknown): value is StageId {
+  return typeof value === "string" && (STAGES as ReadonlyArray<string>).includes(value);
+}
+
 /** Read whatever the agent sent; unknown keys and wrong types are ignored. */
 export function parseAddress(raw: unknown): BacklotAddress {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
   const source = raw as Record<string, unknown>;
   const address: BacklotAddress = {};
-  if (typeof source.contentSet === "string" && source.contentSet.length > 0) {
-    address.contentSet = source.contentSet;
+  const text = (key: string): string | undefined => {
+    const value = source[key];
+    return typeof value === "string" && value.length > 0 ? value : undefined;
+  };
+  if (text("contentSet") !== undefined) address.contentSet = text("contentSet");
+  if (isStageId(source.stage)) address.stage = source.stage;
+  if (text("shot") !== undefined) address.shot = text("shot");
+  if (text("character") !== undefined) address.character = text("character");
+  if (text("set") !== undefined) address.set = text("set");
+  if (text("line") !== undefined) address.line = text("line");
+  if (text("segment") !== undefined) address.segment = text("segment");
+  if (text("scene") !== undefined) address.scene = text("scene");
+  else if (typeof source.scene === "number" && Number.isFinite(source.scene)) {
+    address.scene = source.scene;
   }
-  if (typeof source.shot === "string" && source.shot.length > 0) address.shot = source.shot;
   if (isLane(source.lane)) address.lane = source.lane;
-  if (typeof source.take === "string" && source.take.length > 0) address.take = source.take;
+  if (text("take") !== undefined) address.take = text("take");
   if (typeof source.time === "number" && Number.isFinite(source.time)) address.time = source.time;
   if (isLayout(source.layout)) address.layout = source.layout;
   if (Array.isArray(source.range) && source.range.length >= 2) {
@@ -385,7 +457,7 @@ export type AddressOutcome =
       contentSet: string;
       /** The content set to activate, or null when it is already active. */
       switchTo: string | null;
-      position: StagePosition;
+      position: ViewPosition;
     }
   | { ok: false; message: string };
 
@@ -395,13 +467,17 @@ export interface AddressContext {
   projects: Record<string, Project>;
   /** Every content-set prefix the store knows about. */
   contentSets: ReadonlyArray<string>;
-  position: StagePosition;
+  position: ViewPosition;
 }
 
 /**
  * Resolve an address against the film. Validated IN FULL before anything
  * moves: a refusal that had already switched the project would leave the
- * stage somewhere the answer does not describe.
+ * viewer somewhere the answer does not describe.
+ *
+ * AN ADDRESS WITH NO `stage` IS A PREVIZ ADDRESS. Every address written
+ * before the film grew its other seven stages named a shot, a lane and a
+ * moment, and those all still land where they always did.
  */
 export function resolveAddress(ctx: AddressContext, address: BacklotAddress): AddressOutcome {
   let contentSet = ctx.contentSet;
@@ -423,47 +499,140 @@ export function resolveAddress(ctx: AddressContext, address: BacklotAddress): Ad
     return { ok: false, message: `Project "${contentSet || "(root)"}" has no backlot.json loaded yet.` };
   }
 
-  const shotId = address.shot ?? ctx.position.shot;
-  const shot = project.shots.find((s) => s.id === shotId);
-  if (!shot) {
+  const stage: StageId = address.stage ?? "previz";
+  const samePlace = switchTo === null;
+
+  // ── The shot ────────────────────────────────────────────────────────────
+  // A named shot must exist. An inherited one that does not (a stale
+  // position after a project switch) is replaced by the first shot rather
+  // than refused: the user asked for a stage, not for that shot.
+  const named = address.shot;
+  if (named !== undefined && !project.shots.some((s) => s.id === named)) {
     const known = project.shots.map((s) => s.id).join(", ") || "none";
     return {
       ok: false,
-      message: `There is no shot "${shotId}" in "${project.title}". Shots here: ${known}.`,
+      message: `There is no shot "${named}" in "${project.title}". Shots here: ${known}.`,
     };
   }
+  const inherited = samePlace ? ctx.position.player.shot : "";
+  const shot =
+    project.shots.find((s) => s.id === (named ?? inherited)) ?? project.shots[0] ?? null;
+  const sameShot = shot !== null && shot.id === ctx.position.player.shot && samePlace;
 
-  let take = shotId === ctx.position.shot ? ctx.position.take : (selectedTake(shot)?.id ?? null);
-  let lane = address.lane ?? (shotId === ctx.position.shot ? ctx.position.lane : "greybox");
-
-  if (address.take !== undefined) {
-    if (!shot.takes.some((t) => t.id === address.take)) {
-      const known = shot.takes.map((t) => t.id).join(", ") || "none";
+  // ── The fine keys, each refused BY NAME ─────────────────────────────────
+  let scene = samePlace ? ctx.position.scene : null;
+  if (address.scene !== undefined) {
+    const wanted = address.scene;
+    const match = project.scenes.find((s) =>
+      typeof wanted === "number" ? s.number === wanted : s.id === wanted || s.number === Number(wanted),
+    );
+    if (!match) {
+      const known = project.scenes.map((s) => `${s.number}:${s.id}`).join(", ") || "none";
       return {
         ok: false,
-        message: `Shot "${shot.id}" has no take "${address.take}". Takes here: ${known}.`,
+        message: `There is no scene "${wanted}" in "${project.title}". Scenes here: ${known}.`,
+      };
+    }
+    scene = match.id;
+  }
+
+  let character = samePlace ? ctx.position.character : null;
+  if (address.character !== undefined) {
+    if (!project.characters.some((c) => c.id === address.character)) {
+      const known = project.characters.map((c) => c.id).join(", ") || "none";
+      return {
+        ok: false,
+        message: `There is no character "${address.character}" in the bible. Characters here: ${known}.`,
+      };
+    }
+    character = address.character;
+  }
+
+  let set = samePlace ? ctx.position.set : null;
+  if (address.set !== undefined) {
+    if (!project.sets.some((s) => s.id === address.set)) {
+      const known = project.sets.map((s) => s.id).join(", ") || "none";
+      return {
+        ok: false,
+        message: `There is no set "${address.set}" in the bible. Sets here: ${known}.`,
+      };
+    }
+    set = address.set;
+  }
+
+  let line = samePlace ? ctx.position.line : null;
+  if (address.line !== undefined) {
+    if (!project.sound.lines.some((l) => l.id === address.line)) {
+      const known = project.sound.lines.map((l) => l.id).join(", ") || "none";
+      return {
+        ok: false,
+        message: `There is no line "${address.line}" in this film. Lines here: ${known}.`,
+      };
+    }
+    line = address.line;
+  }
+
+  let segment = samePlace ? ctx.position.segment : null;
+  if (address.segment !== undefined) {
+    const match = project.cut?.segments.find((s) => s.shot === address.segment);
+    if (!match) {
+      const known = project.cut?.segments.map((s) => s.shot).join(", ") || "none";
+      return {
+        ok: false,
+        message: `The cut has no segment for "${address.segment}". Segments here: ${known}.`,
+      };
+    }
+    segment = match.shot;
+  }
+
+  // ── The player ──────────────────────────────────────────────────────────
+  let take = sameShot ? ctx.position.player.take : (shot ? selectedTake(shot)?.id ?? null : null);
+  let lane: LaneId = address.lane ?? (sameShot ? ctx.position.player.lane : "greybox");
+
+  if (address.take !== undefined) {
+    if (!shot || !shot.takes.some((t) => t.id === address.take)) {
+      const known = shot?.takes.map((t) => t.id).join(", ") || "none";
+      return {
+        ok: false,
+        message: `Shot "${shot?.id ?? "(none)"}" has no take "${address.take}". Takes here: ${known}.`,
       };
     }
     take = address.take;
     // Naming a take means "show me that take" — asking for one and landing
     // on the greybox would be an answer nobody can act on.
     if (address.lane === undefined) lane = "take";
-  } else if (take === null || !shot.takes.some((t) => t.id === take)) {
+  } else if (shot && (take === null || !shot.takes.some((t) => t.id === take))) {
     take = selectedTake(shot)?.id ?? null;
   }
 
   // A lane the shot does not have is not a refusal — the address is legal,
-  // the shot simply has no reference — but the stage must not claim to show
+  // the shot simply has no reference — but the player must not claim to show
   // it, so it falls back to the greybox and the report says where it landed.
-  if (lane === "reference" && !shot.reference) lane = "greybox";
+  if (lane === "reference" && !shot?.reference) lane = "greybox";
+  if (lane === "board" && !shot?.board) lane = "greybox";
 
-  const duration = shot.spec.seconds;
-  const time = clamp(address.time ?? (shotId === ctx.position.shot ? ctx.position.time : 0), 0, duration);
+  // ── Time: two clocks, and the stage decides which one is meant ──────────
+  const duration = shot?.spec.seconds ?? 0;
+  const cutSeconds = project.cut?.seconds ?? 0;
+  const onCut = stage === "cut";
+  const inheritedTime = sameShot ? ctx.position.player.time : 0;
+  const time = onCut
+    ? inheritedTime
+    : clamp(address.time ?? inheritedTime, 0, Math.max(duration, 0));
+  let cutTime = samePlace ? ctx.position.cutTime : 0;
+  if (onCut && address.time !== undefined) cutTime = clamp(address.time, 0, Math.max(cutSeconds, 0));
+  // Naming a segment lands the cut's playhead where that segment starts,
+  // unless the caller also named the second they meant.
+  if (segment !== null && address.segment !== undefined && address.time === undefined) {
+    const match = project.cut?.segments.find((s) => s.shot === segment);
+    if (match) cutTime = match.offset;
+  }
+
   const range =
     address.range !== undefined
       ? ([clamp(address.range[0], 0, duration), clamp(address.range[1], 0, duration)] as [number, number])
-      : shotId === ctx.position.shot
-        ? ctx.position.range
+      : sameShot
+        ? ctx.position.player.range
         : null;
 
   return {
@@ -471,31 +640,121 @@ export function resolveAddress(ctx: AddressContext, address: BacklotAddress): Ad
     contentSet,
     switchTo,
     position: {
-      shot: shot.id,
-      lane,
-      take,
-      layout: address.layout ?? ctx.position.layout,
-      time,
-      range,
+      stage,
+      scene,
+      character,
+      set,
+      line,
+      segment,
+      cutTime,
+      player: {
+        shot: shot?.id ?? "",
+        lane,
+        take,
+        layout: address.layout ?? ctx.position.player.layout,
+        time,
+        range,
+      },
     },
   };
 }
 
-/** The address the viewer reports back for the current stage position. */
+/**
+ * The lane and layout a stage opens on when you ARRIVE at it.
+ *
+ * Previz and Takes are the same player pointed at two different questions:
+ * previz asks "is the blocking right", so it opens on the greybox with every
+ * lane side by side; takes asks "did the model keep it", so it opens with the
+ * take wiped over the greybox. Naming a lane or a layout in the address wins
+ * — an explicit request is never overridden by a default — and staying on
+ * the stage you are already on changes nothing.
+ */
+export function withStageDefaults(
+  next: ViewPosition,
+  fromStage: StageId,
+  address: BacklotAddress,
+): ViewPosition {
+  if (next.stage === fromStage) return next;
+  if (next.stage === "takes") {
+    return {
+      ...next,
+      player: {
+        ...next.player,
+        lane: address.lane ?? "take",
+        layout: address.layout ?? "wipe",
+      },
+    };
+  }
+  if (next.stage === "previz") {
+    return {
+      ...next,
+      player: {
+        ...next.player,
+        lane: address.lane ?? "greybox",
+        layout: address.layout ?? "side",
+      },
+    };
+  }
+  return next;
+}
+
+/** The A/B pair a stage opens with, when the shot has both lanes. */
+export function stagePair(stage: StageId, lanes: ReadonlyArray<LaneView>): { a: LaneId; b: LaneId } {
+  const ids = lanes.map((l) => l.id);
+  if (stage === "takes" && ids.includes("take") && ids.includes("greybox")) {
+    return { a: "take", b: "greybox" };
+  }
+  return defaultPair(lanes);
+}
+
+/**
+ * The address the viewer reports back for where it is now.
+ *
+ * Only the keys that MEAN something on the open stage are included: a bible
+ * card has no playhead, and a cut has no lane. The block the agent reads and
+ * the address it can send back are therefore the same vocabulary.
+ */
 export function positionAddress(
   contentSet: string,
-  position: StagePosition,
-  spec: Shot["spec"],
+  position: ViewPosition,
+  spec: Shot["spec"] | null,
 ): Record<string, unknown> {
   const address: Record<string, unknown> = {};
   if (contentSet) address.contentSet = contentSet;
-  address.shot = position.shot;
-  address.lane = position.lane;
-  if (position.take) address.take = position.take;
-  address.time = round(position.time, 3);
-  address.frame = frameAt(position.time, spec);
-  address.layout = position.layout;
-  if (position.range) address.range = [round(position.range[0], 3), round(position.range[1], 3)];
+  address.stage = position.stage;
+  const { player } = position;
+
+  switch (position.stage) {
+    case "script":
+      if (position.scene) address.scene = position.scene;
+      break;
+    case "bible":
+      if (position.character) address.character = position.character;
+      if (position.set) address.set = position.set;
+      break;
+    case "boards":
+      if (player.shot) address.shot = player.shot;
+      break;
+    case "previz":
+    case "takes":
+      if (player.shot) address.shot = player.shot;
+      address.lane = player.lane;
+      if (player.take) address.take = player.take;
+      address.time = round(player.time, 3);
+      if (spec) address.frame = frameAt(player.time, spec);
+      address.layout = player.layout;
+      if (player.range) address.range = [round(player.range[0], 3), round(player.range[1], 3)];
+      break;
+    case "sound":
+      if (position.line) address.line = position.line;
+      break;
+    case "cut":
+      if (position.segment) address.segment = position.segment;
+      address.time = round(position.cutTime, 3);
+      break;
+    default:
+      break;
+  }
   return address;
 }
 
@@ -542,7 +801,7 @@ export function fitBox(
 
 /** Chrome the Side layout has to pay for, in CSS px. */
 export interface SideChrome {
-  /** `p-2` on the stage box, both sides. */
+  /** `p-2` on the player box, both sides. */
   padding: number;
   /** `gap-2` between two cards. */
   gap: number;
@@ -561,9 +820,9 @@ export interface SidePlan {
  *
  * Whichever makes each lane BIGGER — the comparison the layout exists for is
  * the one you can see. Measured 2026-09-20 in a 1800×1172 window: with the
- * chat panel open the stage is 680×700 and three 16:9 cards in a row are
+ * chat panel open the player is 680×700 and three 16:9 cards in a row are
  * 216 px across while the same three stacked are 314; collapse the chat and
- * the stage is 1240×700, where a row gives 403 and a stack still 314. So the
+ * the player is 1240×700, where a row gives 403 and a stack still 314. So the
  * answer flips with the pane, and it has to be computed rather than chosen.
  *
  * Stacked cards are sized by HEIGHT: three aspect-ratio boxes at `w-full`

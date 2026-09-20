@@ -28,6 +28,15 @@ export const ENTRIES = ["original", "recreate"];
 export const BEAT_KINDS = ["action", "trigger", "camera", "hold"];
 export const CHECK_STATUSES = ["pass", "fail", "unverified"];
 export const TAKE_STATUSES = ["submitted", "done", "failed"];
+/**
+ * A line is spoken ON SCREEN or it is voice-over, and the two are made by
+ * different machines: a `spoken` line is rendered by the video model (the
+ * take carries the text and the character's voice sample, and the take is
+ * checked against a transcript), a `vo` line is a TTS file the cut mixes in.
+ * Laying TTS over a mouth the model animated is the lip-sync failure these
+ * two kinds exist to prevent.
+ */
+export const LINE_KINDS = ["spoken", "vo"];
 
 export const DEFAULT_SPEC = { seconds: 8, fps: 24, width: 1280, height: 720 };
 
@@ -35,9 +44,9 @@ export const DEFAULT_SPEC = { seconds: 8, fps: 24, width: 1280, height: 720 };
  * Upstream's acceptance list, as this mode records it.
  *
  * `target` is what the check is about, not a shot-specific id: `greybox`
- * checks are seeded by `shot` / `checklist`, and the `take` ones are seeded
- * against a take's id the moment that take finishes, so a take can never be
- * delivered with an empty acceptance record.
+ * checks are seeded by `shot add` / `checklist`, and the `take` ones are
+ * seeded against a take's id the moment that take finishes, so a take can
+ * never be delivered with an empty acceptance record.
  */
 export const STANDARD_CHECKS = {
   greybox: [
@@ -61,6 +70,13 @@ export const STANDARD_CHECKS = {
     { id: "ref-framing", label: "The greybox frames the subject the way the reference does" },
     { id: "ref-timing", label: "The greybox's beats land when the reference's do" },
   ],
+  /**
+   * Only seeded when the shot has a line spoken ON SCREEN. Its evidence is
+   * a `transcribe.mjs` transcript stored beside the take, so "the model said
+   * the line" is measured rather than remembered — and a shot with no spoken
+   * line never carries a check nobody can answer.
+   */
+  lines: [{ id: "take-lines", label: "Spoken lines are audible and correct" }],
 };
 
 // ---------------------------------------------------------------------------
@@ -117,20 +133,74 @@ export function slugId(text, label = "shot id") {
 // New files
 // ---------------------------------------------------------------------------
 
-export function newProject({ title, defaults }) {
-  return { version: PROJECT_VERSION, title: String(title), defaults: specDefaults(defaults), shots: [] };
+/**
+ * A new `backlot.json`.
+ *
+ * Only APPROVALS are stored, never statuses: a stage's status is derived
+ * from the files that define it (`stage-state.mjs`), so the viewer and the
+ * scripts can never disagree about what the creator has seen. `gates` starts
+ * `"closed"` — the creator approves each stage before the next one spends.
+ */
+export function newProject({ title, logline = "", defaults }) {
+  return {
+    version: PROJECT_VERSION,
+    title: String(title),
+    logline: String(logline ?? ""),
+    defaults: specDefaults(defaults),
+    gates: "closed",
+    approvals: {},
+    scenes: [],
+    characters: [],
+    sets: [],
+    shots: [],
+  };
 }
 
-export function newShot({ id, title, entry = "original", spec, assumptions = [] }) {
+/**
+ * The sub-range of this shot the CUT uses, validated against its spec.
+ *
+ * A shot is not always shown whole. A three-angle collage of one 1.2 s
+ * strike needs three takes of at least Seedance's four-second floor, and the
+ * film shows ~1.2 s of each. The greybox, the take and the beats stay on the
+ * SHOT's clock — the trim only says which part of it reaches the film — so
+ * everything already recorded about the shot keeps its meaning.
+ *
+ * `0 <= in < out <= spec.seconds`. Throws naming the flag.
+ */
+export function makeTrim({ in: start, out: end }, spec) {
+  const seconds = Number(spec?.seconds);
+  const from = Number(start);
+  const to = Number(end);
+  if (!Number.isFinite(from) || from < 0) throw new Error(`--trim-in must be a second from 0 (got: ${start})`);
+  if (!Number.isFinite(to)) throw new Error(`--trim-out must be a second on the shot's clock (got: ${end})`);
+  if (Number.isFinite(seconds) && to > seconds + 1e-6) {
+    throw new Error(`--trim-out ${to} is past the shot's ${seconds} s — the cut can only use time the shot has`);
+  }
+  if (to <= from + 1e-6) throw new Error(`--trim-out ${to} must be later than --trim-in ${from} — a segment of no length is not a segment`);
+  return { in: round4(from), out: round4(to) };
+}
+
+export function newShot({ id, title, entry = "original", spec, assumptions = [], scene = null, characters = [], set = null }) {
   if (!ENTRIES.includes(entry)) throw new Error(`--entry must be one of ${ENTRIES.join("|")} (got: ${entry})`);
   return {
     version: SHOT_VERSION,
     id,
     title: String(title),
+    // Where this shot sits in the film: its scene, the bible ids present in
+    // it, and the place it happens. `generate` reads them to attach the
+    // right sheets and voices, so a typo here is a reference that never
+    // reaches the paid job.
+    scene: scene === null || scene === undefined || scene === "" ? null : String(scene),
+    characters: [...characters].map(String),
+    set: set === null || set === undefined || set === "" ? null : String(set),
     entry,
     spec,
     assumptions: [...assumptions],
     beats: [],
+    // Null means "the whole shot reaches the film".
+    trim: null,
+    board: null,
+    lines: [],
     reference: null,
     greybox: {
       revision: 0,
@@ -159,6 +229,12 @@ export function normalizeShot(doc) {
   shot.takes = Array.isArray(shot.takes) ? shot.takes : [];
   shot.assumptions = Array.isArray(shot.assumptions) ? shot.assumptions : [];
   shot.stuck = Array.isArray(shot.stuck) ? shot.stuck : [];
+  shot.scene = shot.scene ?? null;
+  shot.characters = Array.isArray(shot.characters) ? shot.characters.map(String) : [];
+  shot.set = shot.set ?? null;
+  shot.trim = shot.trim ?? null;
+  shot.board = shot.board ?? null;
+  shot.lines = Array.isArray(shot.lines) ? shot.lines : [];
   shot.greybox = { revision: 0, preview: null, final: null, ...(shot.greybox ?? {}) };
   shot.reference = shot.reference ?? null;
   shot.prompt = shot.prompt ?? { file: "prompts.md" };
@@ -261,6 +337,108 @@ function causeCycle(startId, byId) {
 }
 
 // ---------------------------------------------------------------------------
+// Lines — what is said in this shot, and by which machine
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate a whole line list against the spec, carrying the PAID half over.
+ *
+ * `previz.mjs lines --set` replaces the list, and a replacement that dropped
+ * `{ file, seconds, cost }` would erase the record of TTS somebody already
+ * paid for. So a line whose id AND text are unchanged keeps its recording;
+ * a line whose TEXT changed keeps its cost (the money was spent) but loses
+ * the file (the audio says something else now) and is reported in `stale`.
+ *
+ * Throws with EVERY problem it found, for the same reason `validateBeats`
+ * does: a hand-written list usually has the same mistake three times.
+ */
+export function validateLines(lines, spec, previous = []) {
+  if (!Array.isArray(lines)) throw new Error("lines must be a JSON array");
+  const problems = [];
+  const seen = new Set();
+  const normalized = [];
+  const kept = [];
+  const stale = [];
+  const before = new Map((Array.isArray(previous) ? previous : []).filter((l) => l && l.id).map((l) => [String(l.id), l]));
+
+  lines.forEach((raw, index) => {
+    const where = `line ${index + 1}`;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      problems.push(`${where}: not an object`);
+      return;
+    }
+    let id;
+    try {
+      id = slugId(raw.id, `${where} id`);
+    } catch (error) {
+      problems.push(error.message);
+      return;
+    }
+    if (seen.has(id)) problems.push(`${where}: duplicate id "${id}"`);
+    seen.add(id);
+    const kind = raw.kind ?? "spoken";
+    if (!LINE_KINDS.includes(kind)) problems.push(`${where} "${id}": kind must be one of ${LINE_KINDS.join("|")} (got: ${kind})`);
+    const speaker = String(raw.speaker ?? "").trim();
+    if (!speaker) problems.push(`${where} "${id}": speaker is required (a bible character id, or a name like "narrator" for voice-over)`);
+    const text = String(raw.text ?? "").trim();
+    if (!text) problems.push(`${where} "${id}": text is required — the line is what the model or the voice has to say`);
+    let at = null;
+    if (raw.at != null && raw.at !== "") {
+      at = Number(raw.at);
+      if (!Number.isFinite(at)) {
+        problems.push(`${where} "${id}": at must be a second inside the shot`);
+        at = null;
+      } else if (at < 0 || at > (spec?.seconds ?? Infinity) + 1e-6) {
+        problems.push(`${where} "${id}": at ${raw.at} is outside the shot's ${spec?.seconds} s`);
+      }
+    }
+
+    const old = before.get(id);
+    const sameText = old ? String(old.text ?? "").trim() === text : false;
+    if (old && sameText) kept.push(id);
+    if (old && !sameText && old.file) stale.push(id);
+    const line = {
+      id,
+      speaker,
+      kind,
+      text,
+      at: at === null ? null : round4(at),
+      // The recording follows the text, never the id: an edited line is a
+      // line the old audio does not say.
+      file: old && sameText ? (old.file ?? null) : null,
+      seconds: old && sameText ? (old.seconds ?? null) : null,
+      // The money was spent whatever the text says now.
+      cost: old ? (old.cost ?? null) : null,
+    };
+    // Everything else the recording carried travels with it, and leaves
+    // with it: a line with no file has no voice and no recording time.
+    if (line.file) {
+      if (old?.voice) line.voice = old.voice;
+      if (old?.recordedAt != null) line.recordedAt = old.recordedAt;
+    }
+    normalized.push(line);
+  });
+
+  if (problems.length) throw new Error(`lines rejected:\n  - ${[...new Set(problems)].join("\n  - ")}`);
+  return { lines: normalized, kept, stale };
+}
+
+/** The lines this shot speaks on screen — what the video model must say. */
+export function spokenLines(shot) {
+  return (shot.lines ?? []).filter((line) => line && line.kind === "spoken" && String(line.text ?? "").trim());
+}
+
+/** Whether the take has to carry dialogue at all. */
+export function hasSpokenLine(shot) {
+  return spokenLines(shot).length > 0;
+}
+
+/** The voice-over lines that have a recording the cut can lay in. */
+export function voiceOverLines(shot) {
+  return (shot.lines ?? []).filter((line) => line && line.kind === "vo" && line.file);
+}
+
+// ---------------------------------------------------------------------------
 // Checks — the acceptance record
 // ---------------------------------------------------------------------------
 
@@ -271,6 +449,7 @@ export function labelForCheck(id, target) {
   const known = STANDARD_CHECKS[family]?.find((check) => check.id === id)
     ?? STANDARD_CHECKS.greybox.find((check) => check.id === id)
     ?? STANDARD_CHECKS.take.find((check) => check.id === id)
+    ?? STANDARD_CHECKS.lines.find((check) => check.id === id)
     ?? STANDARD_CHECKS.reference.find((check) => check.id === id);
   return known?.label ?? id;
 }
@@ -288,9 +467,14 @@ export function seedChecklist(shot) {
     ...STANDARD_CHECKS.greybox.map((check) => ({ ...check, target: "greybox" })),
     ...(shot.entry === "recreate" ? STANDARD_CHECKS.reference.map((check) => ({ ...check, target: "greybox" })) : []),
   ];
+  const spoken = hasSpokenLine(shot);
   for (const take of shot.takes ?? []) {
     if (take?.status !== "done") continue;
     for (const check of STANDARD_CHECKS.take) want.push({ ...check, target: take.id });
+    // Dialogue only: the transcript check is meaningless on a silent shot,
+    // and an unanswerable check would sit `unverified` forever, blocking
+    // `select` on a question nobody can answer.
+    if (spoken) for (const check of STANDARD_CHECKS.lines) want.push({ ...check, target: take.id });
   }
   for (const wanted of want) {
     if (findCheck(shot, wanted.id, wanted.target)) continue;
@@ -493,17 +677,49 @@ export function takePolicy(shot, { fix = null, userApproved = false, allowFailin
  * its own gate is a gate that passes before anybody has written anything,
  * which is exactly the "nothing is passed unseen" failure in prompt form.
  */
-export const PROMPT_TEMPLATE_BODY = `Follow the motion, staging and camera of [Video1] exactly.
+export const PROMPT_TEMPLATE_BODY = `Follow the motion, staging and camera of @Video1 exactly.
 
 (Replace this block. Describe the LOOK the greybox cannot carry: who the
 subject is, what the room is made of, the light, the lens feel, the palette.
-Do not re-describe the blocking — that is what [Video1] is for.)`;
+Do not re-describe the blocking — that is what @Video1 is for. Address the
+other attached references by modality and order: @Image1 is the board frame,
+then the character sheets and the set concept, @Audio1… the voice samples.)`;
+
+export const REF_KINDS = ["image", "video", "audio"];
+
+/**
+ * Every reference index a prompt names, in both spellings.
+ *
+ * `seedance-video.mjs` documents `@Image1 / @Video1 / @Audio1` — that is the
+ * syntax the model is actually told to resolve. This mode shipped `[Video1]`
+ * first; those packs still parse, and `legacy` reports them so the caller can
+ * say so once rather than silently accepting a syntax the vendor does not
+ * document.
+ */
+export function promptReferences(text) {
+  const prompt = String(text ?? "");
+  const found = { image: new Set(), video: new Set(), audio: new Set() };
+  const legacy = [];
+  for (const match of prompt.matchAll(/@(Image|Video|Audio)(\d+)/g)) {
+    found[match[1].toLowerCase()].add(Number(match[2]));
+  }
+  for (const match of prompt.matchAll(/\[(Image|Video|Audio)(\d+)\]/g)) {
+    found[match[1].toLowerCase()].add(Number(match[2]));
+    legacy.push(match[0]);
+  }
+  return {
+    image: [...found.image].sort((a, b) => a - b),
+    video: [...found.video].sort((a, b) => a - b),
+    audio: [...found.audio].sort((a, b) => a - b),
+    legacy: [...new Set(legacy)],
+  };
+}
 
 /** The prompt block a take is conditioned on, out of `prompts.md`.
  *
  *  The FIRST fenced block tagged `prompt` — a pack usually carries several
  *  fenced blocks (a look note, a negative list, an alternate take) and the
- *  one that reaches fal has to be unambiguous. `[Video1]` is how the prompt
+ *  one that reaches fal has to be unambiguous. `@Video1` is how the prompt
  *  addresses the greybox that is attached as the video reference; a prompt
  *  that never mentions it would be a text-to-video shot wearing a previz
  *  mode's clothes. */
@@ -525,19 +741,88 @@ export function parsePromptPack(markdown) {
   }
   const prompt = body.join("\n").trim();
   if (open === null || !prompt) {
-    return { prompt: null, ok: false, reason: "prompts.md has no fenced ```prompt block with text in it" };
+    return { prompt: null, ok: false, reason: "prompts.md has no fenced ```prompt block with text in it", refs: null };
   }
-  if (!prompt.includes("[Video1]")) {
+  const refs = promptReferences(prompt);
+  if (!refs.video.includes(1)) {
     return {
       prompt,
+      refs,
       ok: false,
-      reason: "the prompt never mentions [Video1] — the greybox is attached as the video reference and the prompt has to address it",
+      reason: "the prompt never mentions @Video1 — the greybox is attached as the video reference and the prompt has to address it",
     };
   }
   if (squash(prompt) === squash(PROMPT_TEMPLATE_BODY)) {
-    return { prompt, ok: false, reason: "prompts.md still holds the scaffolded placeholder — write the shot's look prompt in the ```prompt block" };
+    return { prompt, refs, ok: false, reason: "prompts.md still holds the scaffolded placeholder — write the shot's look prompt in the ```prompt block" };
   }
-  return { prompt, ok: true, reason: null };
+  return { prompt, refs, ok: true, reason: null };
+}
+
+/**
+ * Whether a prompt only names references that were actually attached.
+ *
+ * A prompt that says `@Image3` when two images went with the job does not
+ * fail at fal — it is rendered, billed, and comes back conditioned on
+ * something else. So the mismatch is caught here, before the request.
+ * `attached` is `{ image, video, audio }` counts.
+ */
+export function validatePromptRefs(refs, attached = {}) {
+  const errors = [];
+  for (const kind of REF_KINDS) {
+    const count = Number(attached[kind] ?? 0);
+    for (const index of refs?.[kind] ?? []) {
+      if (index >= 1 && index <= count) continue;
+      errors.push(
+        count === 0
+          ? `the prompt names @${capitalize(kind)}${index} but no ${kind} reference is attached to this shot`
+          : `the prompt names @${capitalize(kind)}${index} but only ${count} ${kind} reference(s) are attached (@${capitalize(kind)}1..${count})`,
+      );
+    }
+  }
+  return { ok: errors.length === 0, errors };
+}
+
+function capitalize(word) {
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+// ---------------------------------------------------------------------------
+// Transcript QA — did the model actually say the line?
+// ---------------------------------------------------------------------------
+
+/**
+ * Text as a transcript can be compared to it: case-folded, with punctuation,
+ * symbols and every space removed.
+ *
+ * Whisper punctuates where it likes and hears "还开着吗？" as "还开着吗",
+ * so comparing raw strings answers "fail" on a take that said the line
+ * perfectly. Spaces go too, which is what lets the same rule serve Chinese
+ * (no spaces) and English (a transcript that re-breaks them).
+ */
+export function normalizeSpeech(text) {
+  return String(text ?? "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\p{P}\p{S}\p{Z}\s]+/gu, "");
+}
+
+/**
+ * Whether every spoken line appears in the transcript.
+ *
+ * Reports the lines it could not find rather than a bare verdict: the note
+ * on a failing `take-lines` check has to say WHICH line went missing, or the
+ * next take is a guess.
+ */
+export function transcriptCoverage(transcript, lines = []) {
+  const haystack = normalizeSpeech(transcript);
+  const missing = [];
+  const found = [];
+  for (const line of lines) {
+    const needle = normalizeSpeech(line?.text);
+    if (needle && haystack.includes(needle)) found.push(line.id);
+    else missing.push({ id: line?.id ?? null, text: line?.text ?? "" });
+  }
+  return { ok: missing.length === 0 && lines.length > 0, found, missing, transcript: String(transcript ?? "") };
 }
 
 // ---------------------------------------------------------------------------
@@ -632,6 +917,12 @@ export function shotStatus(shot, { promptOk = false, promptReason = null, costs 
     id: shot.id,
     title: shot.title,
     entry: shot.entry,
+    scene: shot.scene ?? null,
+    characters: shot.characters ?? [],
+    set: shot.set ?? null,
+    trim: shot.trim ?? null,
+    board: shot.board ?? null,
+    lines: shot.lines ?? [],
     spec: shot.spec,
     assumptions: shot.assumptions ?? [],
     beats: {

@@ -12,15 +12,23 @@
 import type { Check, Shot } from "../../domain.js";
 import { checkTally, checkTargets } from "../../domain.js";
 import { AlertIcon, CheckIcon, CrossIcon, QuestionIcon } from "../icons.js";
-import { formatSeconds, takeLabel } from "../stage-model.js";
+import { formatSeconds, takeLabel } from "../player-model.js";
 
 export interface ChecksTabProps {
   shot: Shot;
   onFocusCheck: (check: Check) => void;
+  /**
+   * Which group is listed first. `checkTargets` puts the greybox first
+   * because that is the order the work happens in; on the takes stage the
+   * user is looking at a take, and its checks should not be below the fold.
+   */
+  first?: "greybox" | "take";
 }
 
-export function ChecksTab({ shot, onFocusCheck }: ChecksTabProps) {
-  const targets = checkTargets(shot.checks);
+export function ChecksTab({ shot, onFocusCheck, first = "greybox" }: ChecksTabProps) {
+  const ordered = checkTargets(shot.checks);
+  const targets =
+    first === "take" ? [...ordered.filter((t) => t !== "greybox"), ...ordered.filter((t) => t === "greybox")] : ordered;
 
   return (
     <div className="flex flex-col gap-3">

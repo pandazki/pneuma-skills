@@ -64,13 +64,29 @@ import {
 } from "./media.mjs";
 import { PRICED_RESOLUTIONS, PRICES, priceTake, summarizeTakeCosts } from "./prices.mjs";
 import {
+  findProjectRoot,
+  gateRefusal,
+  lastJsonObject,
+  projectGate,
+  PROJECT_FILE,
+  projectPathOf,
+  readManifest,
+  relFromProject,
+  runNodeScript,
+  sharedScript,
+  SHOT_FILE,
+  shotPathOf,
+} from "./project.mjs";
+import {
   checkTargets,
   CHECK_STATUSES,
   computeStuck,
   DEFAULT_SPEC,
   ENTRIES,
+  hasSpokenLine,
+  LINE_KINDS,
   makeSpec,
-  newProject,
+  makeTrim,
   newShot,
   nextStage,
   nextTakeId,
@@ -82,22 +98,31 @@ import {
   seedChecklist,
   shotStatus,
   slugId,
+  spokenLines,
   summarizeChecks,
   takePolicy,
+  transcriptCoverage,
   validateBeats,
+  validateLines,
+  validatePromptRefs,
 } from "./shot.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const KIT_DIR = join(HERE, "blender");
 const STARTER_DIR = join(HERE, "scene-starter");
 
-const PROJECT_FILE = "backlot.json";
-const SHOT_FILE = "shot.json";
-
 const SUBCOMMANDS = [
-  "doctor", "init", "shot", "beats", "reference", "render",
+  "doctor", "meta", "beats", "board", "lines", "vo", "reference", "render",
   "sheet", "compare", "check", "checklist", "generate", "select", "status",
 ];
+
+/** Moved to `backlot.mjs` when the shot grew a film around it. A refusal
+ *  that names the new command costs one round trip; a second writer of
+ *  `backlot.json` costs a corrupted film. */
+const MOVED = {
+  init: 'backlot.mjs init <project> --title "…" --logline "…"',
+  shot: 'backlot.mjs shot add <project> <id> --title "…"',
+};
 
 const DEFAULT_RENDER_TIMEOUT_S = 900;
 const KILL_GRACE_MS = 5000;
@@ -162,7 +187,11 @@ function writeJsonAtomic(path, value) {
   }
 }
 
-const SHOT_KEYS = ["version", "id", "title", "entry", "spec", "assumptions", "beats", "reference", "greybox", "checks", "stuck", "prompt", "takes"];
+const SHOT_KEYS = [
+  "version", "id", "title", "scene", "characters", "set", "entry", "spec",
+  "assumptions", "beats", "trim", "board", "lines", "reference", "greybox",
+  "checks", "stuck", "prompt", "takes",
+];
 
 function inKeyOrder(value, keys) {
   const ordered = {};
@@ -172,25 +201,29 @@ function inKeyOrder(value, keys) {
 }
 
 function projectPath(dir) {
-  return join(dir, PROJECT_FILE);
+  return projectPathOf(dir);
 }
 
 function shotPath(dir) {
-  return join(dir, SHOT_FILE);
+  return shotPathOf(dir);
 }
 
+/** The project a shot belongs to, with its defaults filled in. Read-only
+ *  here: `backlot.mjs` is the only writer of `backlot.json`. */
 function loadProject(dir) {
-  const path = projectPath(dir);
-  if (!existsSync(path)) fail(`no ${PROJECT_FILE} in ${dir} — run 'previz.mjs init <project> --title "…"' first`);
-  const doc = readJson(path, PROJECT_FILE);
-  doc.shots = Array.isArray(doc.shots) ? doc.shots : [];
+  let doc;
+  try {
+    doc = readManifest(dir);
+  } catch (error) {
+    return fail(error.message);
+  }
   doc.defaults = { ...DEFAULT_SPEC, ...(doc.defaults ?? {}) };
   return doc;
 }
 
 function loadShot(dir) {
   const path = shotPath(dir);
-  if (!existsSync(path)) fail(`no ${SHOT_FILE} in ${dir} — is that a shot directory? (previz.mjs shot <project> <id> --title "…")`);
+  if (!existsSync(path)) fail(`no ${SHOT_FILE} in ${dir} — is that a shot directory? (backlot.mjs shot add <project> <id> --title "…")`);
   try {
     return normalizeShot(readJson(path, SHOT_FILE));
   } catch (error) {
@@ -720,11 +753,42 @@ async function cmdDoctor(opts) {
   const fal = await falKeyPresent();
   const drawtext = ffmpeg.found ? drawtextSupported() : { ok: false, reason: "ffmpeg not found" };
 
+  // The scripts this mode SPAWNS by name. A missing one is a stage that
+  // cannot run, and it is better said here than at the moment somebody is
+  // about to pay for it.
+  const shared = Object.fromEntries(
+    [
+      ["generate-tts.mjs", "BACKLOT_TTS_MODULE"],
+      ["generate-bgm.mjs", "BACKLOT_BGM_MODULE"],
+      ["transcribe.mjs", "BACKLOT_TRANSCRIBE_MODULE"],
+      ["seedance-video.mjs", "PREVIZ_SEEDANCE_MODULE"],
+    ].map(([name, envVar]) => {
+      const found = sharedScript(name, envVar);
+      return [name, { found: Boolean(found.path), path: found.path, source: found.source, overridden: found.overridden }];
+    }),
+  );
+  for (const [name, entry] of Object.entries(shared)) {
+    if (!entry.found) {
+      note(`WARN: ${name} is not installed beside this skill — the stage that runs it is closed`);
+    } else if (entry.overridden) {
+      note(`WARN: ${entry.source} is set — ${name} comes from ${entry.path}, not from the shared script`);
+    }
+  }
+
   const stages = {
     plan: { open: true, needs: [] },
     greybox: { open: blender.found && ffmpeg.found && ffprobe.found, needs: [...(blender.found ? [] : ["blender"]), ...(ffmpeg.found ? [] : ["ffmpeg"]), ...(ffprobe.found ? [] : ["ffprobe"])] },
     sheets: { open: ffmpeg.found, needs: ffmpeg.found ? [] : ["ffmpeg"] },
     take: { open: fal.present && ffprobe.found, needs: [...(fal.present ? [] : ["FAL_KEY"]), ...(ffprobe.found ? [] : ["ffprobe"])] },
+    voice: {
+      open: fal.present && shared["generate-tts.mjs"].found,
+      needs: [...(fal.present ? [] : ["FAL_KEY"]), ...(shared["generate-tts.mjs"].found ? [] : ["generate-tts.mjs"])],
+    },
+    music: {
+      open: shared["generate-bgm.mjs"].found,
+      needs: shared["generate-bgm.mjs"].found ? [] : ["generate-bgm.mjs"],
+    },
+    cut: { open: ffmpeg.found && ffprobe.found, needs: [...(ffmpeg.found ? [] : ["ffmpeg"]), ...(ffprobe.found ? [] : ["ffprobe"])] },
   };
   const blocked = Object.entries(stages).filter(([, stage]) => !stage.open);
   for (const [name, stage] of blocked) note(`WARN: stage "${name}" is blocked — missing ${stage.needs.join(", ")}`);
@@ -738,6 +802,7 @@ async function cmdDoctor(opts) {
     ffmpeg: { found: ffmpeg.found, path: ffmpeg.path, version: ffmpeg.version, drawtext: drawtext.ok, drawtextNote: drawtext.reason },
     ffprobe: { found: ffprobe.found, path: ffprobe.path, version: ffprobe.version },
     falKey: { present: fal.present, source: fal.source },
+    shared,
     kit: { dir: KIT_DIR, present: existsSync(join(KIT_DIR, "previz_kit.py")) },
     starter: { dir: STARTER_DIR, present: existsSync(join(STARTER_DIR, "scene.py")) },
     stages,
@@ -747,7 +812,7 @@ async function cmdDoctor(opts) {
 }
 
 // ---------------------------------------------------------------------------
-// init / shot
+// Scaffolding a shot — called by `backlot.mjs shot add`
 // ---------------------------------------------------------------------------
 
 function specFromOpts(opts, defaults) {
@@ -757,15 +822,6 @@ function specFromOpts(opts, defaults) {
   } catch (error) {
     return fail(error.message);
   }
-}
-
-function cmdInit(dir, opts) {
-  if (existsSync(projectPath(dir))) fail(`${projectPath(dir)} already exists — pick another directory`);
-  const spec = specFromOpts(opts, DEFAULT_SPEC);
-  const project = newProject({ title: opts.title ?? basename(dir), defaults: spec });
-  mkdirSync(join(dir, "shots"), { recursive: true });
-  writeJsonAtomic(projectPath(dir), project);
-  return emit({ command: "init", dir, file: relPath(dir, projectPath(dir)), project });
 }
 
 const SHOT_PLAN_TEMPLATE = (shot) => `# ${shot.title}
@@ -804,9 +860,13 @@ Load this timeline into shot.json with:
 const PROMPTS_TEMPLATE = (shot) => `# Prompt pack — ${shot.title}
 
 The greybox MP4 is attached to the paid job as the video reference, and the
-prompt addresses it as **[Video1]**. \`previz.mjs generate\` reads the FIRST
-fenced block tagged \`prompt\` below and refuses a prompt that never mentions
-[Video1].
+prompt addresses it as **@Video1** — the syntax Seedance documents.
+\`previz.mjs generate\` reads the FIRST fenced block tagged \`prompt\` below,
+refuses a prompt that never mentions @Video1, and refuses one that names a
+reference index it did not attach. The other references it attaches, in
+order: @Image1 the board frame, then this shot's character sheets and its
+set concept, then @Audio1… the voice sample of each character with a spoken
+line.
 
 \`\`\`prompt
 ${PROMPT_TEMPLATE_BODY}
@@ -821,7 +881,19 @@ ${PROMPT_TEMPLATE_BODY}
 - (what the model keeps adding that this shot must not have)
 `;
 
-function cmdShot(projectDir, idArg, opts) {
+/**
+ * Scaffold `shots/<id>/` and write its first `shot.json`.
+ *
+ * Exported because `backlot.mjs shot add` is the command an agent runs — the
+ * film's shot ORDER is `backlot.json`'s, and that file has one writer. The
+ * bytes of `shot.json` still come from here, so the two scripts cannot grow
+ * two ideas of what a new shot is. The caller registers the id afterwards;
+ * this function never touches `backlot.json`.
+ *
+ * Refuses (through `fail`, exiting non-zero) an id that already exists, a
+ * fractional frame count, an unknown entry kind, or a missing starter scene.
+ */
+export function createShot(projectDir, idArg, opts = {}) {
   const project = loadProject(projectDir);
   let id;
   try { id = slugId(idArg, "shot id"); } catch (error) { return fail(error.message); }
@@ -837,7 +909,18 @@ function cmdShot(projectDir, idArg, opts) {
   }
 
   let shot;
-  try { shot = newShot({ id, title: opts.title ?? id, entry, spec, assumptions }); } catch (error) { return fail(error.message); }
+  try {
+    shot = newShot({
+      id,
+      title: opts.title ?? id,
+      entry,
+      spec,
+      assumptions,
+      scene: opts.scene ?? null,
+      characters: opts.characters ?? [],
+      set: opts.set ?? null,
+    });
+  } catch (error) { return fail(error.message); }
   const seeded = seedChecklist(shot);
 
   mkdirSync(join(dir, "greybox"), { recursive: true });
@@ -862,22 +945,112 @@ function cmdShot(projectDir, idArg, opts) {
   writeFileSync(join(dir, "comparison.md"), `# Comparison — ${shot.title}\n\n<!-- What you saw when you looked at the sheets. -->\n`);
   saveShot(dir, shot);
 
-  if (!project.shots.includes(id)) {
-    project.shots.push(id);
-    writeJsonAtomic(projectPath(projectDir), project);
-  }
-
-  return emit({
-    command: "shot",
+  return {
     dir,
     id,
     file: relPath(dir, shotPath(dir)),
     spec,
     entry,
+    scene: shot.scene,
+    characters: shot.characters,
+    set: shot.set,
     seededChecks: seeded.length,
     wrote: ["shot.json", "shot-plan.md", "prompts.md", "comparison.md", "greybox/scene.py"],
     next: nextStage(shot),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// meta — where this shot sits in the film
+// ---------------------------------------------------------------------------
+
+/** `--characters kai,clerk` → ["kai", "clerk"]; "" clears the list. */
+function parseIdList(value, label) {
+  const parts = String(value)
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts.map((part) => {
+    try { return slugId(part, label); } catch (error) { return fail(error.message); }
   });
+}
+
+/** Warn — never refuse — about ids the bible does not carry yet. The bible
+ *  can be written after the shot list, and a refusal here would force an
+ *  order the creator did not ask for. `generate` reports the same gap again
+ *  at the moment it would actually cost something. */
+function warnUnknownIds(projectRoot, { scene = null, characters = [], set = null }) {
+  if (!projectRoot) return [];
+  let manifest;
+  try { manifest = readManifest(projectRoot); } catch { return []; }
+  const unknown = [];
+  if (scene && !manifest.scenes.some((entry) => entry && entry.id === scene)) unknown.push(`scene "${scene}"`);
+  for (const id of characters) {
+    if (!manifest.characters.includes(id)) unknown.push(`character "${id}"`);
+  }
+  if (set && !manifest.sets.includes(set)) unknown.push(`set "${set}"`);
+  for (const item of unknown) {
+    note(`WARN: ${item} is not in ${PROJECT_FILE} yet — add it with backlot.mjs, or the take will be generated without that reference`);
+  }
+  return unknown;
+}
+
+function cmdMeta(dir, opts) {
+  const touchesTrim = opts["trim-in"] !== undefined || opts["trim-out"] !== undefined || opts["no-trim"];
+  if (opts.scene === undefined && opts.characters === undefined && opts.set === undefined && !touchesTrim) {
+    fail('meta needs at least one of --scene <id>, --characters <a,b>, --set <id>, --trim-in/--trim-out, --no-trim (pass "" to clear an id)');
+  }
+  if (opts["no-trim"] && (opts["trim-in"] !== undefined || opts["trim-out"] !== undefined)) {
+    fail("--no-trim clears the trim; pass it alone, or give --trim-in/--trim-out instead");
+  }
+  const projectRoot = findProjectRoot(dir);
+  const { shot } = commitShot(dir, (fresh) => {
+    if (opts.scene !== undefined) fresh.scene = opts.scene === "" ? null : slugId(opts.scene, "--scene");
+    if (opts.characters !== undefined) fresh.characters = opts.characters === "" ? [] : parseIdList(opts.characters, "--characters");
+    if (opts.set !== undefined) fresh.set = opts.set === "" ? null : slugId(opts.set, "--set");
+    if (opts["no-trim"]) {
+      fresh.trim = null;
+      return;
+    }
+    if (opts["trim-in"] === undefined && opts["trim-out"] === undefined) return;
+    // One flag alone edits the range that is there, starting from the whole
+    // shot: `--trim-out 1.6` on an untrimmed shot means 0 .. 1.6.
+    const current = fresh.trim ?? { in: 0, out: fresh.spec?.seconds };
+    try {
+      fresh.trim = makeTrim(
+        {
+          in: opts["trim-in"] === undefined ? current.in : Number(opts["trim-in"]),
+          out: opts["trim-out"] === undefined ? current.out : Number(opts["trim-out"]),
+        },
+        fresh.spec,
+      );
+    } catch (error) { fail(error.message); }
+  });
+  const unknown = warnUnknownIds(projectRoot, { scene: shot.scene, characters: shot.characters, set: shot.set });
+  if (shot.trim) {
+    const outside = (shot.lines ?? []).filter((line) => line?.at != null && (line.at < shot.trim.in - 1e-6 || line.at > shot.trim.out + 1e-6));
+    note(
+      `[previz] the cut uses ${shot.trim.in}–${shot.trim.out} s of this shot (${round4(shot.trim.out - shot.trim.in)} s of film); ` +
+        "the greybox, the take and the beats still run on the shot's own clock",
+    );
+    for (const line of outside) {
+      note(`WARN: line "${line.id}" lands at ${line.at} s, outside the trim — it will be dropped from the cut`);
+    }
+  }
+  return emit({
+    command: "meta",
+    dir,
+    scene: shot.scene,
+    characters: shot.characters,
+    set: shot.set,
+    trim: shot.trim,
+    unknown,
+    next: nextStage(shot, promptState(dir, shot)),
+  });
+}
+
+function round4(value) {
+  return Math.round(Number(value) * 10000) / 10000;
 }
 
 // ---------------------------------------------------------------------------
@@ -954,6 +1127,258 @@ function cmdSelect(dir, takeId) {
   for (const entry of shot.takes) entry.selected = entry.id === takeId;
   saveShot(dir, shot);
   return emit({ command: "select", dir, selected: takeId, checks: summary, next: nextStage(shot, promptState(dir, shot)) });
+}
+
+// ---------------------------------------------------------------------------
+// The gate, the cost record, and the media a shot registers
+// ---------------------------------------------------------------------------
+
+/** The film this shot belongs to. A paid shot command is gated on the
+ *  project's approvals, so a shot with no film above it is a refusal — not
+ *  a shot that spends unsupervised. */
+function requireProjectRoot(dir, why) {
+  const root = findProjectRoot(dir);
+  if (!root) {
+    fail(`no ${PROJECT_FILE} above ${dir} — ${why} is gated on the film's approvals, and this shot has no film`);
+  }
+  return root;
+}
+
+/** Refuse a paid command whose gate is not open, with the gate's own reason
+ *  and the two ways past it. Returns the manifest for the caller to reuse. */
+function requireGate(command, projectRoot) {
+  const gate = projectGate(command, projectRoot);
+  if (!gate.ok) fail(`refusing to spend on "${command}":\n${gateRefusal(gate, projectRoot)}`);
+  return gate;
+}
+
+const COST_BASES = ["table", "reported", "estimate"];
+
+/**
+ * The `{ usd, basis }` a paid record carries, or null when the caller
+ * recorded no price.
+ *
+ * `--cost-basis` is REQUIRED beside `--cost-usd`: where a number came from
+ * is part of the number. Guessing a default would turn somebody's estimate
+ * into a vendor's report at the next reader.
+ */
+function costFromOpts(opts, label) {
+  if (opts["cost-usd"] === undefined) {
+    note(`NOTE: no price recorded for this ${label} — pass --cost-usd <n> --cost-basis ${COST_BASES.join("|")} and the Cost view can total it`);
+    return null;
+  }
+  const usd = Number(opts["cost-usd"]);
+  if (!Number.isFinite(usd) || usd < 0) fail(`--cost-usd must be a non-negative number of dollars (got: ${opts["cost-usd"]})`);
+  const basis = opts["cost-basis"];
+  if (!basis) fail(`--cost-usd needs --cost-basis ${COST_BASES.join("|")} — "reported" is the vendor's own usage.cost, "table" a published price, "estimate" your arithmetic`);
+  if (!COST_BASES.includes(basis)) fail(`--cost-basis must be one of ${COST_BASES.join("|")} (got: ${basis})`);
+  return { usd: Math.round(usd * 10000) / 10000, basis };
+}
+
+/** A generated still, checked and copied into the place its record names.
+ *  Refuses anything that is not a readable PNG: the record says `.png`, and
+ *  a JPEG wearing that name is a reference the viewer cannot draw. */
+function adoptPng(source, destination, label) {
+  const from = resolveInput(source);
+  if (!existsSync(from)) fail(`${label}: no such file: ${from}`);
+  const size = pngSize(readFileSync(from));
+  if (!size) fail(`${label}: ${from} is not a readable PNG — generate_image.mjs writes PNG by default (--output-format png)`);
+  mkdirSync(dirname(destination), { recursive: true });
+  copyFileSync(from, destination);
+  return size;
+}
+
+/** Seconds of an audio (or video) file, measured. Returns null when ffprobe
+ *  cannot say — the record then carries null rather than a guess. */
+function probeSeconds(file) {
+  const ffprobe = requireTool("ffprobe");
+  const result = runTool(
+    ffprobe.path,
+    ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", file],
+    { label: "ffprobe" },
+  );
+  if (result.code !== 0) return null;
+  let doc;
+  try { doc = JSON.parse(result.stdout); } catch { return null; }
+  const fromFormat = Number(doc?.format?.duration);
+  if (Number.isFinite(fromFormat) && fromFormat > 0) return Math.round(fromFormat * 10000) / 10000;
+  for (const stream of Array.isArray(doc?.streams) ? doc.streams : []) {
+    const seconds = Number(stream?.duration);
+    if (Number.isFinite(seconds) && seconds > 0) return Math.round(seconds * 10000) / 10000;
+  }
+  return null;
+}
+
+/** One shared script, resolved and announced. A run that came from an
+ *  override says so on stderr: a file made by something other than the
+ *  vendor must never be mistaken for one that was. */
+function requireSharedScript(name, envVar, why) {
+  const found = sharedScript(name, envVar);
+  if (!found.path) {
+    fail(`${name} is not installed beside this skill and is not in the source checkout — ${why} needs it (add it to the mode's skill.sharedScripts)`);
+  }
+  if (found.overridden) note(`WARN: ${envVar} is set — ${name} comes from ${found.path}, not from the shared script`);
+  return found.path;
+}
+
+// ---------------------------------------------------------------------------
+// board / lines / vo
+// ---------------------------------------------------------------------------
+
+function cmdBoard(dir, opts, now) {
+  const shot = loadShot(dir);
+  if (!opts.file) fail('board needs --file <png> (generate it with generate_image.mjs, then register it here)');
+  if (!opts.prompt) fail('board needs --prompt "<the prompt the frame was made from>" — a frame nobody can regenerate is a frame nobody can fix');
+  const projectRoot = requireProjectRoot(dir, "registering a board frame");
+  requireGate("board", projectRoot);
+
+  const revision = Number(shot.board?.revision ?? 0) + 1;
+  adoptPng(opts.file, join(dir, "board.png"), "--file");
+  const refs = opts.refs
+    ? String(opts.refs).split(",").map((part) => part.trim()).filter(Boolean).map((part) => {
+        const absolute = resolveInput(part);
+        return existsSync(absolute) ? relFromProject(projectRoot, absolute) : part;
+      })
+    : [];
+  const cost = costFromOpts(opts, "board frame");
+  // Epoch milliseconds, as `backlot.json`'s approvals and `cut/edl.json`
+  // spell a time; the ISO strings in this file belong to the render and
+  // check records that predate the film around them.
+  const record = { file: "board.png", revision, prompt: String(opts.prompt), refs, at: Date.parse(now), cost };
+
+  const { shot: saved } = commitShot(dir, (fresh) => { fresh.board = record; });
+  return emit({ command: "board", dir, board: record, next: nextStage(saved, promptState(dir, saved)) });
+}
+
+function readLineSpec(value) {
+  const text = value === "-"
+    ? readFileSync(0, "utf-8")
+    : String(value).trim().startsWith("[")
+      ? String(value)
+      : readFileSync(resolveInput(value), "utf-8");
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    return fail(`--set: not valid JSON (${error.message}) — pass a JSON array inline, a file path, or '-' for stdin`);
+  }
+}
+
+function cmdLines(dir, opts) {
+  const shot = loadShot(dir);
+  if (!opts.set) fail(`lines needs --set '<json array>' — each line is { id, speaker, kind: ${LINE_KINDS.join("|")}, text, at }`);
+  const parsed = readLineSpec(opts.set);
+  const list = Array.isArray(parsed) ? parsed : parsed?.lines;
+  // Validate against the copy read at startup FIRST, so a bad list is
+  // refused without touching the file at all.
+  try {
+    validateLines(list, shot.spec, shot.lines ?? []);
+  } catch (error) { return fail(error.message); }
+
+  let result;
+  const { shot: saved } = commitShot(dir, (fresh) => {
+    // Then re-validate against what is on disk NOW: a `vo` that landed
+    // while this command was being typed recorded a file, and the list this
+    // process read at startup would drop it.
+    result = validateLines(list, fresh.spec, fresh.lines ?? []);
+    fresh.lines = result.lines;
+  });
+  for (const id of result.stale) {
+    note(`WARN: line "${id}" changed its text — the recording it had no longer says it and was unlinked (its cost stays on the record). Re-run 'previz.mjs vo <shot-dir> ${id}'.`);
+  }
+  const spoken = spokenLines(saved);
+  if (spoken.length) {
+    note(`NOTE: ${spoken.length} line(s) are SPOKEN on screen — the take carries the text and the speaker's voice sample, and 'take-lines' is checked against a transcript. Voice-over is a separate kind.`);
+  }
+  return emit({
+    command: "lines",
+    dir,
+    count: saved.lines.length,
+    lines: saved.lines,
+    kept: result.kept,
+    stale: result.stale,
+    spoken: spoken.map((line) => line.id),
+    next: nextStage(saved, promptState(dir, saved)),
+  });
+}
+
+/**
+ * The voice a character speaks in, out of the bible. Read-only: the bible is
+ * `backlot.mjs`'s to write, and a shot command that "fixed" a character's
+ * voice would change every other shot that speaks it.
+ */
+function bibleVoice(projectRoot, speaker) {
+  if (!projectRoot || !speaker) return null;
+  const path = join(projectRoot, "bible", "characters", speaker, "character.json");
+  if (!existsSync(path)) return null;
+  try {
+    const doc = JSON.parse(readFileSync(path, "utf-8"));
+    return doc && typeof doc === "object" && doc.voice && typeof doc.voice === "object" ? doc.voice : null;
+  } catch {
+    return null;
+  }
+}
+
+function cmdVo(dir, lineId, opts, now) {
+  const shot = loadShot(dir);
+  if (!lineId) fail("vo needs a line id: previz.mjs vo <shot-dir> l2");
+  const line = (shot.lines ?? []).find((entry) => entry.id === lineId);
+  if (!line) fail(`no line "${lineId}" on this shot (${(shot.lines ?? []).map((l) => l.id).join(", ") || "none recorded"}) — load them with 'previz.mjs lines --set'`);
+  if (line.kind !== "vo") {
+    fail(
+      `line "${lineId}" is SPOKEN on screen, not voice-over — the video model renders it and the take is checked against a transcript. ` +
+        "Laying a TTS file over a mouth the model animated is the lip-sync failure the two kinds exist to avoid.",
+    );
+  }
+  const projectRoot = requireProjectRoot(dir, "a voice-over line");
+  requireGate("vo", projectRoot);
+
+  const voice = bibleVoice(projectRoot, line.speaker);
+  const model = opts.model ?? voice?.model ?? null;
+  const voiceId = opts.voice ?? voice?.voiceId ?? null;
+  const style = opts.style ?? voice?.style ?? null;
+  if (!opts.voice && voiceId) note(`[previz] ${line.speaker}'s recorded voice (${voiceId}${model ? ` on ${model}` : ""}) — --voice overrides it`);
+
+  const script = requireSharedScript("generate-tts.mjs", "BACKLOT_TTS_MODULE", "a voice-over line");
+  const rel = `sound/${lineId}.mp3`;
+  const output = join(dir, rel);
+  mkdirSync(dirname(output), { recursive: true });
+  const args = ["--text", line.text, "--output", output, "--json"];
+  if (model) args.push("--model", model);
+  if (voiceId) args.push("--voice", voiceId);
+  if (style) args.push("--style", style);
+
+  note(`[previz] synthesizing ${lineId} (${line.text.length} chars) — the request is leaving now`);
+  const run = runNodeScript(script, args);
+  if (run.code !== 0 || !existsSync(output)) {
+    fail(`generate-tts.mjs failed (exit ${run.code}):\n${tail(run.stderr)}`);
+  }
+  const reported = lastJsonObject(run.stdout);
+  const seconds = Number.isFinite(Number(reported?.seconds))
+    ? Math.round(Number(reported.seconds) * 10000) / 10000
+    : probeSeconds(output);
+  if (seconds === null) note("WARN: neither the TTS script nor ffprobe could measure this clip — the cut cannot place a line whose length is unknown");
+  const cost = costFromOpts(opts, "voice-over line");
+
+  const { shot: saved } = commitShot(dir, (fresh) => {
+    const current = (fresh.lines ?? []).find((entry) => entry.id === lineId);
+    if (!current) fail(`line "${lineId}" is no longer in ${relPath(dir, shotPath(dir))} — the audio is at ${rel}; re-load the lines and run vo again`);
+    current.file = rel;
+    current.seconds = seconds;
+    current.cost = cost;
+    current.voice = { model, voiceId, style };
+    // `at` is WHERE the line lands in the shot, in seconds; when it was
+    // recorded is a different fact and gets its own field.
+    current.recordedAt = Date.parse(now);
+  });
+  return emit({
+    command: "vo",
+    dir,
+    line: (saved.lines ?? []).find((entry) => entry.id === lineId),
+    file: rel,
+    seconds,
+    cost,
+    next: nextStage(saved, promptState(dir, saved)),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1388,9 +1813,18 @@ function cmdReference(dir, videoArg, opts) {
 
 function promptState(dir, shot) {
   const file = join(dir, shot.prompt?.file ?? "prompts.md");
-  if (!existsSync(file)) return { promptOk: false, promptReason: `${relPath(dir, file)} does not exist` };
+  if (!existsSync(file)) return { promptOk: false, promptReason: `${relPath(dir, file)} does not exist`, refs: null };
   const parsed = parsePromptPack(readFileSync(file, "utf-8"));
-  return { promptOk: parsed.ok, promptReason: parsed.reason, prompt: parsed.prompt };
+  return { promptOk: parsed.ok, promptReason: parsed.reason, prompt: parsed.prompt, refs: parsed.refs };
+}
+
+/** "@Video1 greybox/greybox.mp4, @Image1 …" — what actually went with the
+ *  job, in the words the prompt addresses them by. */
+function describeRefs(refs) {
+  if (!refs.length) return "nothing";
+  return refs
+    .map((ref) => `@${ref.kind.charAt(0).toUpperCase()}${ref.kind.slice(1)}${ref.index} ${ref.file}`)
+    .join(", ");
 }
 
 /**
@@ -1435,6 +1869,159 @@ function orphanTake(dir, take, reason) {
   return 1;
 }
 
+/**
+ * Everything the paid job is conditioned on besides the prompt, gathered from
+ * the film rather than from the agent's memory.
+ *
+ * The order IS the addressing: `@Video1` the greybox, `@Image1` the board
+ * frame, then this shot's character sheets and its set concept in bible
+ * order, then `@Audio1…` the voice sample of each character with a spoken
+ * line. A reference the bible does not have yet is reported, not invented —
+ * and the prompt check afterwards refuses a pack that addresses an index
+ * nothing was attached at.
+ */
+function gatherReferences(dir, shot, projectRoot, greyboxFile) {
+  const refs = [];
+  const videos = [];
+  const images = [];
+  const audios = [];
+  const warnings = [];
+  const rel = (absolute) => (projectRoot ? relFromProject(projectRoot, absolute) : absolute);
+
+  videos.push(greyboxFile);
+  refs.push({ kind: "video", index: 1, file: rel(greyboxFile) });
+
+  const boardFile = shot.board?.file ? join(dir, shot.board.file) : null;
+  if (boardFile && existsSync(boardFile)) {
+    images.push(boardFile);
+    refs.push({ kind: "image", index: images.length, file: rel(boardFile) });
+  } else if (shot.board?.file) {
+    warnings.push(`the board frame ${shot.board.file} is recorded but missing from disk — the take goes without it`);
+  }
+
+  let manifest = null;
+  if (projectRoot) {
+    try { manifest = readManifest(projectRoot); } catch { manifest = null; }
+  }
+  // Bible order, so two shots that carry the same cast address the same
+  // character at the same index.
+  const wanted = shot.characters ?? [];
+  const inBible = (manifest?.characters ?? []).filter((id) => wanted.includes(id));
+  const ordered = [...inBible, ...wanted.filter((id) => !inBible.includes(id))];
+  for (const id of ordered) {
+    const record = readBibleRecord(projectRoot, "characters", id);
+    const file = record?.sheet?.file ? join(projectRoot, "bible", "characters", id, record.sheet.file) : null;
+    if (!file || !existsSync(file)) {
+      warnings.push(`character "${id}" has no sheet in the bible — the take goes without their look`);
+      continue;
+    }
+    images.push(file);
+    refs.push({ kind: "image", index: images.length, file: rel(file) });
+  }
+  if (shot.set) {
+    const record = readBibleRecord(projectRoot, "sets", shot.set);
+    const file = record?.concept?.file ? join(projectRoot, "bible", "sets", shot.set, record.concept.file) : null;
+    if (file && existsSync(file)) {
+      images.push(file);
+      refs.push({ kind: "image", index: images.length, file: rel(file) });
+    } else {
+      warnings.push(`set "${shot.set}" has no concept frame in the bible — the take goes without it`);
+    }
+  }
+
+  // One sample per SPEAKER, in the order their first line is spoken.
+  const speakers = [];
+  for (const line of spokenLines(shot)) {
+    if (line.speaker && !speakers.includes(line.speaker)) speakers.push(line.speaker);
+  }
+  for (const speaker of speakers) {
+    const record = readBibleRecord(projectRoot, "characters", speaker);
+    const sample = record?.voice?.sample?.file
+      ? join(projectRoot, "bible", "characters", speaker, record.voice.sample.file)
+      : null;
+    if (!sample || !existsSync(sample)) {
+      warnings.push(`"${speaker}" speaks on screen but has no voice sample in the bible — the model picks a voice of its own`);
+      continue;
+    }
+    audios.push(sample);
+    refs.push({ kind: "audio", index: audios.length, file: rel(sample) });
+  }
+
+  return { refs, videos, images, audios, warnings };
+}
+
+function readBibleRecord(projectRoot, family, id) {
+  if (!projectRoot || !id) return null;
+  const path = join(projectRoot, "bible", family, id, family === "characters" ? "character.json" : "set.json");
+  if (!existsSync(path)) return null;
+  try {
+    const doc = JSON.parse(readFileSync(path, "utf-8"));
+    return doc && typeof doc === "object" && !Array.isArray(doc) ? doc : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Transcribe the take that landed and answer `take-lines` from what it
+ * actually says.
+ *
+ * Runs after the money is spent, so nothing here may lose the take: every
+ * failure ends as `unverified` with the reason in the note, never as a
+ * thrown error over a recorded take.
+ */
+function verifySpokenLines(dir, shot, take, now) {
+  const lines = spokenLines(shot);
+  if (lines.length === 0) return null;
+  const file = join(dir, take.file);
+  const transcriptRel = `takes/${take.id}.transcript.json`;
+  let status = "unverified";
+  let note_ = "";
+  let coverage = null;
+  let transcript = null;
+
+  const script = sharedScript("transcribe.mjs", "BACKLOT_TRANSCRIBE_MODULE");
+  if (!script.path) {
+    note_ = "transcribe.mjs is not installed beside this skill — the spoken lines were not verified";
+  } else {
+    if (script.overridden) note(`WARN: BACKLOT_TRANSCRIBE_MODULE is set — the transcript comes from ${script.path}, not from transcribe.mjs`);
+    const run = runNodeScript(script.path, ["--input", file, "--json"], { timeoutMs: 600_000 });
+    const reported = run.code === 0 ? lastJsonObject(run.stdout) : null;
+    if (run.code !== 0 || typeof reported?.text !== "string") {
+      note_ = `transcription failed (exit ${run.code}): ${tail(run.stderr, 3) || "no transcript"}`;
+    } else {
+      transcript = reported;
+      coverage = transcriptCoverage(reported.text, lines);
+      status = coverage.ok ? "pass" : "fail";
+      note_ = coverage.ok
+        ? `every spoken line is in the transcript (${lines.length})`
+        : `missing from the transcript: ${coverage.missing.map((entry) => `"${entry.text}"`).join(", ")} — what it said: "${String(reported.text).slice(0, 200)}"`;
+    }
+  }
+
+  if (transcript) {
+    try {
+      writeJsonAtomic(join(dir, transcriptRel), {
+        take: take.id,
+        at: now,
+        lines: lines.map((line) => ({ id: line.id, speaker: line.speaker, text: line.text })),
+        missing: coverage?.missing ?? [],
+        text: transcript.text,
+        chunks: transcript.chunks ?? [],
+      });
+    } catch (error) {
+      note(`WARN: could not write ${transcriptRel} (${error.message}) — the verdict below is recorded, its evidence is not`);
+    }
+  }
+  if (status !== "pass") note(`WARN: take-lines is "${status}" on ${take.id} — ${note_}`);
+
+  const { shot: saved } = commitShot(dir, (fresh) => {
+    seedChecklist(fresh);
+    recordCheck(fresh, { id: "take-lines", status, target: take.id, note: note_, at: now });
+  });
+  return { status, note: note_, file: transcript ? transcriptRel : null, missing: coverage?.missing ?? [], shot: saved };
+}
+
 async function cmdGenerate(dir, opts, now) {
   const shot = loadShot(dir);
   const resolution = opts.resolution ?? "480p";
@@ -1456,6 +2043,35 @@ async function cmdGenerate(dir, opts, now) {
   if (!existsSync(greyboxFile)) fail(`shot.json names ${greyboxRel} as the final greybox but the file is gone — re-render`);
   const refSeconds = shot.greybox.final.probe?.seconds ?? shot.spec.seconds;
 
+  // The film's own gate: a take is the expensive half of the mode, and the
+  // creator has to have approved the previz stage (or opened the gates) for
+  // it to run. Checked before the price, so an estimate is refused too —
+  // "what would it cost" is asked at exactly the moment this matters.
+  const projectRoot = requireProjectRoot(dir, "a paid take");
+  requireGate("generate", projectRoot);
+
+  // Everything the job carries besides the prompt, gathered from the film.
+  const references = gatherReferences(dir, shot, projectRoot, greyboxFile);
+  for (const warning of references.warnings) note(`WARN: ${warning}`);
+  const attached = { video: references.videos.length, image: references.images.length, audio: references.audios.length };
+  const refCheck = validatePromptRefs(prompt.refs, attached);
+  if (!refCheck.ok) {
+    fail(
+      `the prompt pack addresses a reference this shot did not attach:\n  - ${refCheck.errors.join("\n  - ")}\n` +
+        `Attached: ${describeRefs(references.refs)}. Fix prompts.md, or give the shot the reference it names ` +
+        "(previz.mjs meta --characters/--set, previz.mjs board --file, backlot.mjs character voice).",
+    );
+  }
+  if (prompt.refs?.legacy?.length) {
+    note(`WARN: prompts.md still addresses ${prompt.refs.legacy.join(", ")} — Seedance documents @Video1/@Image1/@Audio1; the bracket form is read as the same reference but will stop being accepted`);
+  }
+
+  // A shot with a line spoken on screen has to come back with sound, or the
+  // transcript check has nothing to listen to.
+  const spoken = hasSpokenLine(shot);
+  const wantAudio = Boolean(opts.audio) || spoken;
+  if (spoken && !opts.audio) note(`[previz] ${spokenLines(shot).length} line(s) are spoken on screen — generating WITH audio so take-lines can be checked`);
+
   const wantedSeconds = opts.seconds === undefined ? Math.round(shot.spec.seconds) : Number(opts.seconds);
   if (!Number.isInteger(wantedSeconds) || wantedSeconds < 4 || wantedSeconds > 30) {
     fail(`--seconds must be a whole number from 4 to 30 (got: ${opts.seconds ?? wantedSeconds}) — Seedance bills and renders in whole seconds`);
@@ -1466,6 +2082,15 @@ async function cmdGenerate(dir, opts, now) {
 
   let price;
   try { price = priceTake({ seconds: wantedSeconds, refSeconds, resolution }); } catch (error) { return fail(error.message); }
+  // The shared table prices the OUTPUT and the video reference's duration.
+  // It says nothing about what a still, a voice sample or generated audio
+  // adds, and inventing a number would be worse than saying so: the record
+  // stays the table's, and the gap is reported.
+  const extraRefs = references.images.length + references.audios.length;
+  const priceNote = extraRefs > 0 || wantAudio
+    ? `the price table covers the output and the video reference; this job also carries ${references.images.length} image and ${references.audios.length} audio reference(s)${wantAudio ? " with audio generation on" : ""}, which the table does not price — the recorded cost is the table's figure, not a bill`
+    : null;
+  if (priceNote) note(`NOTE: ${priceNote}`);
 
   const takeId = policy.takeId;
   if (opts.estimate) {
@@ -1474,7 +2099,12 @@ async function cmdGenerate(dir, opts, now) {
       model: "bytedance/seedance-2.5", endpoint: "reference", resolution,
       seconds: wantedSeconds, refSeconds, greybox: greyboxRel, greyboxRevision: shot.greybox.revision,
       cost: price, prices: PRICES, promptChars: prompt.prompt.length,
-      warnings: policy.unverifiedChecks.length ? [`${policy.unverifiedChecks.length} greybox check(s) are still unverified: ${policy.unverifiedChecks.join(", ")}`] : [],
+      refs: references.refs, audio: wantAudio, priceNote,
+      warnings: [
+        ...(policy.unverifiedChecks.length ? [`${policy.unverifiedChecks.length} greybox check(s) are still unverified: ${policy.unverifiedChecks.join(", ")}`] : []),
+        ...references.warnings,
+        ...(priceNote ? [priceNote] : []),
+      ],
     });
   }
 
@@ -1511,7 +2141,11 @@ async function cmdGenerate(dir, opts, now) {
     file: null,
     promptFile: promptRel,
     probe: null,
-    cost: { usd: price.usd, basis: price.basis, estimate: true },
+    cost: { usd: price.usd, basis: price.basis, estimate: true, ...(priceNote ? { note: priceNote } : {}) },
+    // What the job was conditioned on, recorded BEFORE the request: a bible
+    // edited afterwards must not be able to rewrite what a take saw.
+    refs: references.refs,
+    audio: wantAudio,
     submittedAt: now,
     finishedAt: null,
     fix: opts.fix ?? null,
@@ -1545,12 +2179,15 @@ async function cmdGenerate(dir, opts, now) {
       output: join(dir, takeRel),
       apiKey,
       endpoint: "reference",
-      refVideos: [greyboxFile],
+      refVideos: references.videos,
+      refImages: references.images,
+      refAudios: references.audios,
       duration: String(wantedSeconds),
       resolution,
-      // A greybox has no sound design, and a previz take is looked at rather
-      // than listened to. `--audio` turns fal's default back on.
-      audio: Boolean(opts.audio),
+      // A greybox has no sound design, and a silent previz take is looked at
+      // rather than listened to. `--audio` turns fal's default back on, and
+      // a spoken line turns it on by itself.
+      audio: wantAudio,
       signal: controller.signal,
       deadlineMs: Math.max(60, Number(opts.timeout ?? 1800)) * 1000,
     });
@@ -1571,9 +2208,20 @@ async function cmdGenerate(dir, opts, now) {
     }
     const merged = mergeTake(dir, takeId, landed, { seed: true });
     if (!merged.ok) return orphanTake(dir, { ...take, ...landed }, merged.reason);
+    // The take is on record; everything below is evidence, and a failure to
+    // gather it leaves the take alone.
+    let lines = null;
+    try {
+      lines = verifySpokenLines(dir, merged.shot, merged.take, now);
+    } catch (error) {
+      note(`WARN: the spoken-line check could not run (${error instanceof Error ? error.message : String(error)}) — take-lines stays unverified`);
+    }
+    const after = lines?.shot ?? merged.shot;
     return emit({
       command: "generate", dir, take: merged.take, cost: merged.take.cost, seededChecks: merged.seeded.length,
-      next: nextStage(merged.shot, promptState(dir, merged.shot)),
+      refs: references.refs,
+      lines: lines ? { status: lines.status, note: lines.note, transcript: lines.file, missing: lines.missing } : null,
+      next: nextStage(after, promptState(dir, after)),
     });
   } catch (error) {
     const landed = {
@@ -1627,42 +2275,26 @@ function cmdStatus(dir) {
     if (status.stuck.length) note(`WARN: stuck — ${status.stuck.join(", ")} failed on two revisions. Save this version and report instead of re-rendering.`);
     return emit({ command: "status", kind: "shot", ...status });
   }
-  if (!existsSync(projectPath(dir))) fail(`${dir} holds neither ${PROJECT_FILE} nor ${SHOT_FILE}`);
-  const project = loadProject(dir);
-  const shots = [];
-  for (const id of project.shots) {
-    const shotDir = join(dir, "shots", id);
-    if (!existsSync(shotPath(shotDir))) {
-      shots.push({ id, dir: shotDir, missing: true });
-      continue;
-    }
-    shots.push(statusOfShot(shotDir, loadShot(shotDir)));
+  // The film's status is the stage rail, the gates and the cost by stage —
+  // none of which this script can see. One report, one owner.
+  if (existsSync(projectPath(dir))) {
+    fail(`${dir} is a film, not a shot — run 'backlot.mjs status ${dir}' for the stages, the gates and the cost, or point this at a shot directory`);
   }
-  const allTakes = shots.flatMap((entry) => entry.takes ?? []);
-  const open = shots.find((entry) => entry.next?.stage);
-  return emit({
-    command: "status",
-    kind: "project",
-    dir,
-    title: project.title,
-    defaults: project.defaults,
-    shots,
-    stuck: shots.flatMap((entry) => (entry.stuck ?? []).map((id) => `${entry.id}:${id}`)),
-    costs: summarizeTakeCosts(allTakes),
-    next: open ? { shot: open.id, ...open.next } : { shot: null, stage: null, reason: "every shot is delivered", command: null },
-  });
+  fail(`${dir} holds neither ${PROJECT_FILE} nor ${SHOT_FILE}`);
 }
 
 // ---------------------------------------------------------------------------
 // Usage and argv
 // ---------------------------------------------------------------------------
 
-const USAGE = `Usage: previz.mjs <subcommand> [<dir> …] [options]
+const USAGE = `Usage: previz.mjs <subcommand> <shot-dir> [options]
 
-The only writer of <project>/backlot.json and <project>/shots/<id>/shot.json.
-The agent writes the prose (shot-plan.md, prompts.md, comparison.md) and the
-Blender scene (greybox/scene.py); the viewer only reads. Directories are
-absolute or relative to the CURRENT directory — this script never cds.
+The only writer of <project>/shots/<id>/shot.json. The film around it —
+backlot.json, the bible, the sound and the cut — belongs to backlot.mjs, and
+'backlot.mjs init' / 'backlot.mjs shot add' are what create a project and a
+shot. The agent writes the prose (shot-plan.md, prompts.md, comparison.md)
+and the Blender scene (greybox/scene.py); the viewer only reads. Directories
+are absolute or relative to the CURRENT directory — this script never cds.
 
 Every subcommand prints ONE JSON object on stdout and exits 0. A refusal
 prints one "ERROR: …" line on stderr and exits non-zero, leaving the shot
@@ -1673,17 +2305,42 @@ stderr. --json is accepted everywhere and is already the default.
       Blender (path, version), ffmpeg, ffprobe, whether a fal key is
       reachable (never printed), and which stages that leaves open.
 
-  init <project> [--title "<name>"] [--seconds 8] [--fps 24] [--size 1280x720]
-      Write backlot.json and shots/. The spec here is the default every shot
-      starts from. Refuses a directory that already has a backlot.json.
+  meta <shot-dir> [--scene sc1] [--characters kai,clerk] [--set store]
+       [--trim-in 0.4 --trim-out 1.6] [--no-trim]
+      Where this shot sits in the film: its scene, the bible characters in
+      it, and the place it happens. 'generate' reads them to attach the
+      right sheets and voices. Pass "" to clear one. An id the bible does
+      not carry yet is a warning, not a refusal — the bible can come later.
+      --trim-in/--trim-out name the sub-range of this shot the CUT uses, in
+      seconds on the shot's own clock (0 <= in < out <= the spec's seconds).
+      Everything else — the greybox, the take, the beats, a line's second —
+      still runs on that clock; only the film sees less of it. A collage of
+      one strike from three angles is three 4 s takes and three ~1.2 s
+      segments. One flag alone edits the range that is there; --no-trim
+      clears it and the whole shot reaches the film again.
 
-  shot <project> <id> --title "<what happens>" [--entry original|recreate]
-       [--seconds --fps --size]
-      Scaffold shots/<id>/: shot.json (with the standard acceptance list
-      seeded as unverified), shot-plan.md, prompts.md, comparison.md, and a
-      greybox/scene.py starter that ALREADY RENDERS — so 'render --preview'
-      succeeds before you have written a line of it.
-      Refuses a duration whose seconds x fps is not a whole frame count.
+  board <shot-dir> --file <frame.png> --prompt "<what it was made from>"
+        [--refs a.png,b.png] [--cost-usd 0.13 --cost-basis reported]
+      Register the concept frame for this shot (generate it yourself with
+      generate_image.mjs, using the bible sheets as --image-urls). Copies it
+      to board.png, bumps its revision, and records the prompt, the
+      references and what it cost. Gated: the bible must be approved.
+
+  lines <shot-dir> --set '<json array>'
+      What is said in this shot. Each line is
+        { id, speaker, kind: ${LINE_KINDS.join("|")}, text, at }
+      A "spoken" line is rendered BY THE VIDEO MODEL — the take carries the
+      text and the speaker's voice sample, and 'take-lines' is checked
+      against a transcript. A "vo" line is TTS the cut mixes in. A line
+      whose text is unchanged keeps its recording; a line whose text changed
+      loses it (the audio says something else now) and says so.
+
+  vo <shot-dir> <line-id> [--model --voice --style]
+     [--cost-usd 0.01 --cost-basis table]
+      Synthesize ONE voice-over line through generate-tts.mjs into
+      sound/<line>.mp3 and record its file, measured length and cost. The
+      voice defaults to the speaker's recorded voice in the bible. Refuses a
+      line that is spoken on screen. Gated: takes must be approved.
 
   beats <shot-dir> --set <file.json|->
       Replace the beat list. Each beat is
@@ -1742,28 +2399,44 @@ stderr. --json is accepted everywhere and is already the default.
            [--fix "<what this take changes>"] [--user-approved]
            [--allow-failing "<why a failing greybox is acceptable>"]
            [--estimate] [--audio] [--timeout 1800]
-      Seedance 2.5 reference-to-video with the FINAL greybox as [Video1] and
-      the first fenced \`prompt\` block of prompts.md as the prompt.
-      Refuses: without a final greybox at the current revision; while a
-      greybox check is failing (unless --allow-failing "<reason>"); a second
-      take without --fix; a third or later without --user-approved as well.
-      --estimate prices the job and stops. Otherwise the take is recorded
-      "submitted" — with the exact prompt saved to takes/<id>.prompt.txt —
-      BEFORE the request leaves, and ends "done" (file, probe, request id,
-      cost, timestamps) or "failed" (reason). The key is never printed.
+      Seedance 2.5 reference-to-video, conditioned on everything this shot
+      has, in the order the prompt addresses it by:
+        @Video1  the FINAL greybox
+        @Image1  board.png, when the shot has one
+        @Image2… this shot's character sheets, then its set concept, in
+                 bible order
+        @Audio1… the voice sample of each character with a spoken line
+      The prompt is the first fenced \`prompt\` block of prompts.md; it must
+      address @Video1, and a pack that names a reference index nothing was
+      attached at is REFUSED before the request ([Video1] is read as @Video1
+      and warned about).
+      Refuses: while the film's previz stage is not approved (backlot.mjs
+      approve / gates open); without a final greybox at the current
+      revision; while a greybox check is failing (unless --allow-failing
+      "<reason>"); a second take without --fix; a third or later without
+      --user-approved as well.
+      --estimate prices the job, lists what would be attached, and stops.
+      Otherwise the take is recorded "submitted" — with the exact prompt
+      saved to takes/<id>.prompt.txt and the references it carries — BEFORE
+      the request leaves, and ends "done" (file, probe, request id, cost,
+      timestamps) or "failed" (reason). A shot with a spoken line is
+      generated WITH audio and transcribed when it lands: the transcript is
+      stored at takes/<id>.transcript.json and 'take-lines' passes only if
+      every line is in it. The key is never printed.
 
   select <shot-dir> <take>
       Mark the take this shot delivers. Refuses a take that is not done or
       that has a failing check.
 
-  status <project|shot-dir>
+  status <shot-dir>
       Spec, beats, greybox (revision and which renders exist), the acceptance
       record grouped by target with unverified counted APART from fail, stuck,
       takes, costs (per take and total, labelled an estimate) and "next" — the
       first open stage of:
         reference (recreate only) -> plan -> greybox-preview -> checks ->
         final-render -> prompt -> take -> take-checks -> select
-      Never writes, always exits 0. It is a report, not a gate.
+      Never writes, always exits 0. It is a report, not a gate. Pointed at a
+      film it says so: the stage rail is 'backlot.mjs status'.
 
 Frame arithmetic, everywhere: frames = seconds x fps, numbered 1..frames.
 Prices (fal list, ${PRICES.asOf}), per billed second, reference duration billed
@@ -1806,6 +2479,19 @@ const OPTIONS = {
   "allow-failing": { type: "string" },
   estimate: { type: "boolean" },
   audio: { type: "boolean" },
+  scene: { type: "string" },
+  characters: { type: "string" },
+  "trim-in": { type: "string" },
+  "trim-out": { type: "string" },
+  "no-trim": { type: "boolean" },
+  file: { type: "string" },
+  prompt: { type: "string" },
+  refs: { type: "string" },
+  model: { type: "string" },
+  voice: { type: "string" },
+  style: { type: "string" },
+  "cost-usd": { type: "string" },
+  "cost-basis": { type: "string" },
 };
 
 export async function main(argv = process.argv.slice(2)) {
@@ -1822,6 +2508,9 @@ export async function main(argv = process.argv.slice(2)) {
     process.stdout.write(`${USAGE}\n`);
     return 0;
   }
+  if (MOVED[subcommand]) {
+    fail(`'previz.mjs ${subcommand}' moved to backlot.mjs — the film's manifest has one writer. Use: ${MOVED[subcommand]}`);
+  }
   if (!SUBCOMMANDS.includes(subcommand)) {
     fail(`unknown subcommand "${subcommand ?? ""}" (expected: ${SUBCOMMANDS.join(", ")})\n\n${USAGE}`);
   }
@@ -1831,8 +2520,10 @@ export async function main(argv = process.argv.slice(2)) {
   const dir = resolveInput(first);
 
   switch (subcommand) {
-    case "init": return cmdInit(dir, opts);
-    case "shot": return cmdShot(dir, second, opts);
+    case "meta": return cmdMeta(dir, opts);
+    case "board": return cmdBoard(dir, opts, now);
+    case "lines": return cmdLines(dir, opts);
+    case "vo": return cmdVo(dir, second, opts, now);
     case "beats": return cmdBeats(dir, opts);
     case "reference": return cmdReference(dir, second, opts);
     case "render": return cmdRender(dir, opts);

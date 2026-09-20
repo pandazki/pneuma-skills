@@ -206,6 +206,9 @@ const PROJECTIONS = {
         spec: s.spec ?? null,
         beats: Array.isArray(s.beats) ? s.beats : [],
         board: isRecord(s.board) ? mediaRef(s.board) : null,
+        // Which part of the shot the film shows is a boards decision: a
+        // re-trim must re-open the shot list, not wait for the next cut.
+        trim: isRecord(s.trim) ? { in: s.trim.in ?? null, out: s.trim.out ?? null } : null,
       })),
     );
     return inputs;

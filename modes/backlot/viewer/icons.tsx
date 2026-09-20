@@ -158,6 +158,43 @@ export function AlertIcon({ size = 12 }: { size?: number }) {
   );
 }
 
+export function ImageIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg {...base} width={size} height={size} aria-hidden="true">
+      <rect x="3" y="4.5" width="18" height="15" rx="1.5" />
+      <circle cx="8.5" cy="9.5" r="1.5" />
+      <path d="m3.5 17 5-5 4.5 4.5 3-3 4.5 4.5" />
+    </svg>
+  );
+}
+
+export function MusicIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg {...base} width={size} height={size} aria-hidden="true">
+      <path d="M9 18V5l11-2v13" />
+      <circle cx="6.5" cy="18" r="2.5" />
+      <circle cx="17.5" cy="16" r="2.5" />
+    </svg>
+  );
+}
+
+export function VoiceIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg {...base} width={size} height={size} aria-hidden="true">
+      <path d="M4 10.5v3M8 7v10M12 4.5v15M16 8.5v7M20 11v2" />
+    </svg>
+  );
+}
+
+export function SceneIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg {...base} width={size} height={size} aria-hidden="true">
+      <rect x="3.5" y="3.5" width="17" height="17" rx="1.5" />
+      <path d="M3.5 9h17M9 9v11.5" />
+    </svg>
+  );
+}
+
 export function CoinsIcon({ size = 14 }: { size?: number }) {
   return (
     <svg {...base} width={size} height={size} aria-hidden="true">
