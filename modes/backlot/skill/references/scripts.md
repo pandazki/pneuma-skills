@@ -83,8 +83,8 @@ revision }` record its JSON carries.
 | `idea` | `idea.md` |
 | `script` | `screenplay.md` + the scene records |
 | `bible` | every `character.json` and `set.json` (name, description, look, sheet/concept ref, voice) |
-| `boards` | the shot order + each shot's `title, scene, characters, set, spec, beats, board, trim` |
-| `previz` | each shot's final greybox revision + its greybox check statuses |
+| `boards` | the shot order + each shot's `title, scene, characters, set, spec, beats` (their `detail` included), `board, trim, continuity` |
+| `previz` | each shot's final greybox revision + its greybox check statuses + its anchors |
 | `takes` | each shot's selected take id + that take's check statuses |
 | `sound` | `sound.json` + every line's file |
 | `cut` | `edl.json` |
@@ -104,13 +104,15 @@ creator approved *something*, and nobody can say it was this.
 | `bible-image` (character/set look) | `script` |
 | `voice` (a character's TTS sample) | `script` |
 | `board` (a shot's frame) | `bible` |
+| `anchor` (a shot's anchor frame) | `bible` — plus a final greybox to anchor |
 | `generate` (a take) | `previz` |
 | `vo` (a voice-over line) | `takes` |
 | `music` | `takes` |
 | `cut-final` | `sound` |
 
-Anything not in that table — `render`, `check`, `sheet`, `compare`,
-`cut --reel` — needs no approval at all. `gates: "open"` satisfies every gate.
+Anything not in that table — `render`, `check`, `sheet`, `compare`, `lineup`,
+`prompt-skeleton`, `cut --reel` — needs no approval at all. `gates: "open"`
+satisfies every gate.
 
 `backlot.mjs` and `previz.mjs` check their own gates and refuse by name.
 `generate_image.mjs` does not — it knows nothing about stages — so **you** are
@@ -123,23 +125,29 @@ frame.
 | subcommand | use it to |
 |---|---|
 | `doctor [--verbose]` | learn which stages exist here: Blender (path, version), ffmpeg, ffprobe, whether a fal key is reachable (never printed) |
-| `meta <shot-dir> [--scene --characters --set] [--trim-in 0.4 --trim-out 1.6] [--no-trim]` | where the shot sits in the film — the list `generate` reads to attach the right sheets and voices. `""` clears an id; an id the bible does not carry yet is a warning, not a refusal. `--trim-in`/`--trim-out` name the sub-range of this shot's own clock the **cut** uses (`0 ≤ in < out ≤ the spec's seconds`); one flag alone edits the range that is there, and `--no-trim` clears it so the whole shot reaches the film again |
-| `beats <shot-dir> --set <file.json\|->` | replace the beat list; every problem is reported at once (range, order, unknown or circular `causedBy`, an effect starting before its cause) |
+| `meta <shot-dir> [--scene --characters --set] [--trim-in 0.4 --trim-out 1.6] [--no-trim] [--continues-from <shot>] [--entry "…"] [--exit "…"] [--no-continuity]` | where the shot sits in the film — the list `generate` and `anchor` read to attach the right sheets and voices. `""` clears an id; an id the bible does not carry yet is a warning, not a refusal. `--trim-in`/`--trim-out` name the sub-range of this shot's own clock the **cut** uses (`0 ≤ in < out ≤ the spec's seconds`); one flag alone edits the range that is there, and `--no-trim` clears it so the whole shot reaches the film again. `--continues-from` declares the hand-off (an **earlier** shot in `backlot.json.shots`), `--entry`/`--exit` are the first and last half second in words — an `--exit` alone is legitimate and is how the shot before a hand-off says what the next one opens on — and `--no-continuity` clears the block |
+| `beats <shot-dir> --set <file.json\|->` | replace the beat list; every problem is reported at once (range, order, unknown or circular `causedBy`, an effect starting before its cause). Each beat may carry `detail` — the designed picture of those seconds, in English — which is what `prompt-skeleton` turns into the prompt's timeline |
 | `lines <shot-dir> --set '<json array>'` | replace the shot's lines: `{ id, speaker, kind: "spoken"\|"vo", text, at }`. A line whose text is unchanged keeps its recording; a line whose text changed loses it and says so |
 | `board <shot-dir> --file <png> --prompt "…" [--refs a.png,b.png] [--cost-usd --cost-basis]` | register the concept frame you generated with `generate_image.mjs`; copies it to `board.png`, bumps its revision, records the prompt, refs and cost. Gated on `bible` |
 | `reference <shot-dir> <video> [--in --out] [--adopt-spec] [--count 9]` | probe, trim to `reference/source.mp4`, report cuts, write frames and `reference/sheet.png`; `--adopt-spec` takes the segment's fps, size and whole-frame duration as the spec |
 | `render <shot-dir> [--preview] [--keep-frames] [--timeout s]` | run `scene.py` headless → PNG sequence → MP4 → full decode → ffprobe; also `scene.blend`, `scene.glb`, `scene.meta.json`, `sheet.png`; bumps the revision; **discards the encode and refuses** when frames, fps or size disagree with the spec, or when another render or an adopted spec moved the shot while Blender ran. `greybox/frames/` is deleted once the MP4 has passed |
+| `anchor <shot-dir> [--at 0] [--id first] [--prompt "…" \| --prompt-file <f>] [--aspect-ratio 16:9] [--quality high] [--cost-usd --cost-basis]` | the **anchor frame**: cuts the *final* greybox's frame at `--at` and hands it to `generate_image.mjs` as the composition-and-camera reference together with the board, this shot's character sheets and its set concept, prompted from the beat `detail` at that second and the film's look. Writes `anchors/<id>.png` and records `{ id, at, file, revision, prompt, refs, cost }`; re-running an id bumps its revision. `first` is the opening frame and becomes the take's `@Image1`; a `last` anchor gives the next shot a look-continuous picture to continue from. Paid, priced from the vendor's own `usage.cost`; gated on `bible`. Part of the `previz` stage's content |
+| `lineup <shot-dir> [--at s] [--id first] [--out <path.png>]` | board \| anchor \| greybox frame side by side with the beats written underneath — the joint review before any video is bought. Whatever is missing is left out and named. Free |
 | `sheet <shot-dir> [--lane greybox\|preview\|reference\|take-01] [--at s,s,…] [--strip from,to] [--count 6]` | the pictures you judge from: key moments, or every consecutive frame of a range. Tiles carry time and frame number when this ffmpeg has `drawtext`; the JSON says when it does not |
-| `compare <shot-dir> --a greybox --b reference\|take-01 [--at …] [--blend]` | two lanes at the same seconds, stacked, or averaged 50 % for silhouette matching |
+| `compare <shot-dir> --a greybox --b reference\|take-01 [--at …] [--blend]` · `compare <shot-dir> --handoff [--take take-02]` | two lanes at the same seconds, stacked, or averaged 50 % for silhouette matching. `--handoff` instead writes `takes/qa/<take>/handoff.png` — the previous shot's out-frame beside this take's in-frame — which is the evidence for `take-handoff` |
+| `prompt-skeleton <shot-dir> [--write]` | the v2 prompt pack, pre-filled from the record: assignment lines with the indices `generate` will attach, the entry line when the shot declares `continuity`, one `Seconds a–b: <detail>` line per beat, spoken lines quoted at their second, the trim, and `no music`. The text comes back in the JSON's `skeleton`; `--write` puts it in **`prompts.skeleton.md`** and never touches `prompts.md` — copy the filled block in yourself. Free, and the way every pack starts |
 | `check <shot-dir> --id <check> --status pass\|fail\|unverified [--target greybox\|take-01] [--range a,b] [--note "…"]` | record one acceptance item against the target's current revision; the old state moves to `history`; two failing revisions in a row → `stuck` |
 | `checklist <shot-dir>` | seed missing standard checks as `unverified` (never touches a recorded one) |
-| `generate <shot-dir> [--resolution 480p\|720p] [--seconds n] [--fix "…"] [--user-approved] [--allow-failing "…"] [--estimate] [--audio] [--timeout 1800]` | price, then run Seedance 2.5 reference-to-video with the references gathered from the shot's record (see `video-generation.md`) and the first fenced `prompt` block of `prompts.md`. Refuses while the film's `previz` stage is not approved, without a final greybox at the current revision, while a greybox check is failing (unless `--allow-failing "<reason>"`), a second take without `--fix`, a third or later without `--user-approved` as well, or a prompt naming a reference index nothing was attached at. `--estimate` prices the job, lists what would be attached, and stops. Otherwise the take is recorded `submitted` — with the prompt at `takes/<id>.prompt.txt` — before the request leaves, and ends `done` or `failed`. A shot with a spoken line is generated with audio and transcribed on arrival to `takes/<id>.transcript.json`; `take-lines` passes only if every line is in it. When images or audio are attached it prints a `priceNote`: the table prices the output and the video reference only, so the recorded figure is the table's and **not a bill** |
+| `generate <shot-dir> [--resolution 480p\|720p] [--seconds n] [--fix "…"] [--user-approved] [--allow-failing "…"] [--no-handoff] [--estimate] [--audio] [--timeout 1800]` | price, then run Seedance 2.5 reference-to-video with the references gathered from the shot's record (see `video-generation.md`) and the first fenced `prompt` block of `prompts.md`. Refuses while the film's `previz` stage is not approved, without a final greybox at the current revision, while a greybox check is failing (unless `--allow-failing "<reason>"`), a second take without `--fix`, a third or later without `--user-approved` as well, a prompt naming a reference index nothing was attached at, **a prompt that leaves an attached reference unassigned**, or — when the shot declares `continuity.from` — while the shot it continues has no selected take (`--no-handoff` generates without that frame and records `"skipped"` on the take). With a hand-off it cuts the previous take's frame at that shot's trim `out` into `takes/handoff-in.png` and attaches it as the last image reference, `role: "handoff"`. A `Seconds a–b:` line past the shot or running backwards is warned about, never refused. `--estimate` prices the job, lists what would be attached, and stops. Otherwise the take is recorded `submitted` — with the prompt at `takes/<id>.prompt.txt` — before the request leaves, and ends `done` or `failed`. A shot with a spoken line is generated with audio and transcribed on arrival to `takes/<id>.transcript.json`; `take-lines` passes only if every line is in it. When images or audio are attached it prints a `priceNote`: the table prices the output and the video reference only, so the recorded figure is the table's and **not a bill** |
 | `vo <shot-dir> <line-id> [--model --voice --style] [--cost-usd --cost-basis]` | synthesise ONE `vo` line through `generate-tts.mjs` into `sound/<line>.mp3` with the speaker's recorded voice; records file, measured length and cost. Refuses a line spoken on screen. Gated on `takes` |
 | `select <shot-dir> <take>` | mark the take the shot delivers; refuses one that is not done or has a failing check |
 | `status <shot-dir>` | the shot's whole record — spec, beats, lines, board, greybox, checks (with `unverified` counted apart from `fail`), `stuck`, takes, `costs` — and `next`, the first open step. Never writes. The film-level report is `backlot.mjs status` |
 
 `status.next` walks: `reference` (recreate only) → `plan` → `greybox-preview`
 → `checks` → `final-render` → `prompt` → `take` → `take-checks` → `select`.
+**The anchor and its lineup are not steps in that walk** — they sit between
+`final-render` and `prompt`, and `next` will happily say `prompt` while the
+shot has no anchor. That one you remember, or read from `status.anchors`.
 It is a report, not a gate: read it when you resume a session or lose the
 thread, and believe it over your memory of what you did. A failing check at
 `checks` means fix the scene and render again; a failing check at
@@ -165,7 +173,7 @@ environment or the mode's `.env`, and never prints it.
 
 | script | what it does | called by |
 |---|---|---|
-| `generate_image.mjs "<prompt>" [--image-urls <ref>]… [--aspect-ratio --quality --output-dir --filename-prefix]` | GPT-Image through OpenRouter. `--image-urls` takes local paths, data URIs or URLs, up to 16, and is how the bible holds continuity | you, for sheets, concepts and board frames |
+| `generate_image.mjs "<prompt>" [--image-urls <ref>]… [--aspect-ratio --quality --output-dir --filename-prefix]` | GPT-Image through OpenRouter. `--image-urls` takes local paths, data URIs or URLs, up to 16, and is how the bible holds continuity — and how an anchor frame is made image-to-image from a greybox frame | you, for sheets, concepts and board frames; `previz.mjs anchor` for anchors |
 | `generate-tts.mjs --text … --output … [--model --voice --style --language --speed] --json` | two fal TTS vendors with different voice lists — **read its header**, do not guess a voice id. `--json` reports the measured `seconds` | `backlot.mjs character voice`, `previz.mjs vo` |
 | `generate-bgm.mjs --prompt … --output … [--duration N]` | Lyria through OpenRouter, streamed to an MP3 | `backlot.mjs music` |
 | `transcribe.mjs --input <media> [--language] --json` | Whisper on fal; the transcript that `take-lines` is checked against | `previz.mjs generate`, automatically, for a take with a spoken line |

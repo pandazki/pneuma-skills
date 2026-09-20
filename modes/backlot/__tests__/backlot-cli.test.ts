@@ -465,7 +465,7 @@ describe("music", () => {
 });
 
 /** A film with one shot that has a greybox, and optionally a selected take. */
-function withShot(cwd: string, { take = false, vo = false } = {}) {
+function withShot(cwd: string, { take = false, vo = false, anchor = false } = {}) {
   film(cwd);
   json(cwd, ["shot", "add", "film", "s01", "--title", "He comes in", "--scene", "sc1"]);
   const shotDir = join(cwd, "film", "shots", "s01");
@@ -479,6 +479,24 @@ function withShot(cwd: string, { take = false, vo = false } = {}) {
       id: "take-01", status: "done", file: "takes/take-01.mp4", selected: true,
       cost: { usd: 2.1168, basis: "(8 s out + 8 s ref) x $0.1323/s at 480p", estimate: true },
       submittedAt: "2026-09-20T10:20:00.000Z",
+    }];
+  }
+  if (anchor) {
+    // The anchor frame `previz.mjs anchor` records: a paid image beside the
+    // greybox it was composed from.
+    mkdirSync(join(shotDir, "anchors"), { recursive: true });
+    fixturePng(shotDir, join("anchors", "first.png"));
+    shot.anchors = [{
+      id: "first",
+      at: 0,
+      file: "anchors/first.png",
+      revision: 1,
+      prompt: "the doorway, cold blue",
+      refs: ["shots/s01/anchors/first.greybox.png"],
+      greybox: { file: "anchors/first.greybox.png", source: "greybox/greybox.mp4", revision: 1, frame: 1 },
+      model: "openai/gpt-image-2.5-sunburst",
+      cost: { usd: 0.1904, basis: "reported" },
+      createdAt: 1758380500000,
     }];
   }
   if (vo) {
@@ -721,7 +739,7 @@ function volumeDb(file: string, from?: number, seconds?: number): number {
 describe("cost", () => {
   test.skipIf(!HAS_FFMPEG)("totals what the artefacts themselves record, by stage, and names what is unpriced", () => {
     const cwd = workspace();
-    withShot(cwd, { take: true, vo: true });
+    withShot(cwd, { take: true, vo: true, anchor: true });
     const env = vendors(cwd);
     json(cwd, ["gates", "film", "open"]);
     json(cwd, ["character", "add", "film", "kai", "--name", "小凯"]);
@@ -731,9 +749,11 @@ describe("cost", () => {
     json(cwd, ["music", "film", "--prompt", "drums", "--seconds", "2", "--cost-usd", "0.4", "--cost-basis", "reported"], env);
 
     const cost = json(cwd, ["cost", "film"]);
-    expect(cost.byStage).toEqual({ bible: 0.13, takes: 2.1168, sound: 0.41 });
-    expect(cost.byKind).toEqual({ image: 0.13, take: 2.1168, tts: 0.01, music: 0.4 });
-    expect(cost.total).toBeCloseTo(0.13 + 2.1168 + 0.01 + 0.4, 4);
+    // The anchor frame is a paid image of the PREVIZ stage — the picture the
+    // creator approves there — and it is counted where it was spent.
+    expect(cost.byStage).toEqual({ bible: 0.13, previz: 0.1904, takes: 2.1168, sound: 0.41 });
+    expect(cost.byKind).toEqual({ image: 0.3204, take: 2.1168, tts: 0.01, music: 0.4 });
+    expect(cost.total).toBeCloseTo(0.13 + 0.1904 + 2.1168 + 0.01 + 0.4, 4);
     expect(cost.estimate).toBe(true);
     // The set concept was registered without a price: listed as unpriced,
     // never folded into the total as zero.
@@ -741,6 +761,20 @@ describe("cost", () => {
     expect(cost.priced).toBe(cost.count - 1);
     const takeLine = cost.lines.find((line: any) => line.kind === "take");
     expect(takeLine).toMatchObject({ stage: "takes", label: "s01 — take-01", ref: "shots/s01/takes/take-01.mp4" });
+    const anchorLine = cost.lines.find((line: any) => line.ref === "shots/s01/anchors/first.png");
+    expect(anchorLine).toMatchObject({
+      stage: "previz",
+      kind: "image",
+      label: "s01 — anchor first",
+      usd: 0.1904,
+      source: "reported",
+      at: 1758380500000,
+    });
+    // …and the lines stay in stage order, so previz sits between the bible
+    // and the takes.
+    expect(cost.lines.map((line: any) => line.stage)).toEqual([...cost.lines.map((line: any) => line.stage)].sort(
+      (a: string, b: string) => ["bible", "boards", "previz", "takes", "sound"].indexOf(a) - ["bible", "boards", "previz", "takes", "sound"].indexOf(b),
+    ));
   });
 });
 

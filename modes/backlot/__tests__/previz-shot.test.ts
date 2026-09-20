@@ -14,9 +14,12 @@ import {
   computeStuck,
   findCheck,
   hasSpokenLine,
+  makeContinuity,
   makeSpec,
   makeTrim,
   newProject,
+  parsePromptTimeline,
+  promptAssignments,
   nextStage,
   nextTakeId,
   normalizeShot,
@@ -33,10 +36,12 @@ import {
   STANDARD_CHECKS,
   summarizeChecks,
   takePolicy,
+  timelineProblems,
   transcriptCoverage,
   validateBeats,
   validateLines,
   validatePromptRefs,
+  validateReferenceAssignments,
   newShot,
 } from "../skill/scripts/shot.mjs";
 
@@ -128,6 +133,34 @@ describe("beats", () => {
         SPEC,
       ),
     ).toThrow(/runs in a circle/);
+  });
+
+  test("a beat carries its DESIGNED detail, and a beat without one says so", () => {
+    // The detail is written at the boards stage, before the greybox exists:
+    // the greybox is built from it and can only carry its geometry and its
+    // clock, so the prompt hands the design back to the model at the
+    // greybox's seconds. The label stays short — it is what a rail shows.
+    const beats = validateBeats(
+      [
+        {
+          id: "walk",
+          label: "Walks to the console",
+          from: 0.5,
+          to: 3.8,
+          kind: "action",
+          detail: "  four heavy steps, coat dripping, eyes on the console; he does not look back  ",
+        },
+        { id: "touch", label: "Hand", from: 4.5, to: 5.5, kind: "action" },
+        { id: "glow", label: "Glow", from: 5.5, to: 7.5, kind: "trigger", causedBy: "touch", detail: "" },
+      ],
+      SPEC,
+    );
+    expect(beats[0].detail).toBe("four heavy steps, coat dripping, eyes on the console; he does not look back");
+    expect(beats[0].label).toBe("Walks to the console");
+    // Absent and empty are the same fact, and it is stated rather than missing.
+    expect(beats[1].detail).toBeNull();
+    expect(beats[2].detail).toBeNull();
+    expect(beats[2].causedBy).toBe("touch");
   });
 
   test("a cause that starts at the same second as its effect is allowed", () => {
@@ -328,6 +361,128 @@ describe("the prompt pack", () => {
     expect(validatePromptRefs(promptReferences("@Video1 @Audio1"), { video: 1, image: 0, audio: 0 }).errors[0]).toContain(
       "no audio reference is attached",
     );
+  });
+});
+
+describe("the prompt pack v2", () => {
+  test("a reference is ASSIGNED by =, : or is — naming it is not giving it a job", () => {
+    const assigned = promptAssignments(
+      "@Video1 = layout only. @Image1: the opening frame. @Image2 is her appearance. @Audio1 — her voice. @Image3 appears somewhere.",
+    );
+    expect(assigned).toMatchObject({ video: [1], image: [1, 2], audio: [1] });
+    // @Image3 is NAMED, not assigned: it is the one that bleeds.
+    const only = promptAssignments("@Video1 = layout only. @Image3 also shows up.");
+    expect(only.image).toEqual([]);
+    // The bracket spelling assigns too — a pack written before @Video1 was
+    // the documented form must not silently lose its jobs.
+    expect(promptAssignments("[Video1] = layout only.").video).toEqual([1]);
+    // …and a word that merely starts with "is" does not.
+    expect(promptAssignments("@Image1 island in the rain").image).toEqual([]);
+  });
+
+  test("every attached reference must have a job, and the missing ones are named", () => {
+    const prompt = "@Video1 = layout only. @Image1 = the board.";
+    expect(validateReferenceAssignments(prompt, { video: 1, image: 1, audio: 0 }).ok).toBe(true);
+    const short = validateReferenceAssignments(prompt, { video: 1, image: 3, audio: 1 });
+    expect(short.ok).toBe(false);
+    expect(short.missing).toEqual(["@Image2", "@Image3", "@Audio1"]);
+    expect(short.errors[0]).toContain("bleeds");
+    // Nothing attached is nothing to assign.
+    expect(validateReferenceAssignments("anything", {}).ok).toBe(true);
+  });
+
+  test("a time-coded timeline is read, and disagreements with the clock are warnings", () => {
+    const timeline = parsePromptTimeline(
+      [
+        "@Video1 = layout only.",
+        "Seconds 0.0–0.5: he stops in the doorway.",
+        "Seconds 0.5-3.8: he crosses the room.",
+        "Seconds 5.2: kai says \"还开着吗？\"",
+        "Look: cold blue.",
+      ].join("\n"),
+    );
+    expect(timeline.map((row) => [row.from, row.to])).toEqual([[0, 0.5], [0.5, 3.8], [5.2, 5.2]]);
+    expect(timelineProblems(timeline, { seconds: 8 })).toEqual([]);
+
+    const broken = parsePromptTimeline(["Seconds 0.0–0.5: a", "Seconds 5.5–9.0: b", "Seconds 1.0–2.0: c"].join("\n"));
+    const problems = timelineProblems(broken, { seconds: 8 });
+    expect(problems.some((line) => line.includes("runs past the shot's 8 s"))).toBe(true);
+    expect(problems.some((line) => line.includes("goes backwards"))).toBe(true);
+    // Prose is not a timeline.
+    expect(parsePromptTimeline("It takes about 8 seconds: he walks.")).toEqual([]);
+  });
+});
+
+describe("the hand-off", () => {
+  const ORDER = ["s01-enter", "s02-fridge", "s03-counter"];
+
+  test("a shot continues an EARLIER shot of the same film, never itself", () => {
+    const block = makeContinuity(
+      { from: "s01-enter", entry: "mid-stride through the door", exit: "hand on the fridge handle" },
+      { id: "s02-fridge", order: ORDER },
+    );
+    expect(block).toEqual({
+      from: "s01-enter",
+      entry: "mid-stride through the door",
+      exit: "hand on the fridge handle",
+    });
+
+    expect(() => makeContinuity({ from: "s02-fridge", entry: "a", exit: "b" }, { id: "s02-fridge", order: ORDER })).toThrow(
+      /this shot itself/,
+    );
+    // Contiguous shots are shot in order: the frame this one opens on has to
+    // exist already.
+    expect(() => makeContinuity({ from: "s03-counter", entry: "a", exit: "b" }, { id: "s02-fridge", order: ORDER })).toThrow(
+      /comes AFTER "s02-fridge"/,
+    );
+    expect(() => makeContinuity({ from: "s09-nowhere", entry: "a", exit: "b" }, { id: "s02-fridge", order: ORDER })).toThrow(
+      /not a shot in this film/,
+    );
+    // A shot the film has never registered has no "earlier" to speak of.
+    expect(() => makeContinuity({ from: "s01-enter", entry: "a", exit: "b" }, { id: "stray", order: ORDER })).toThrow(
+      /not in the film's shot list/,
+    );
+  });
+
+  test("a hand-off owes both ends; an exit alone is allowed on any shot", () => {
+    expect(() => makeContinuity({ from: "s01-enter", exit: "b" }, { id: "s02-fridge", order: ORDER })).toThrow(/--entry/);
+    expect(() => makeContinuity({ from: "s01-enter", entry: "a" }, { id: "s02-fridge", order: ORDER })).toThrow(/--exit/);
+    // A shot with no hand-off may still say how it ends, for a later shot to
+    // pick up. That is what `exit` is for.
+    expect(makeContinuity({ exit: "blades in contact" }, { id: "s02-fridge", order: ORDER })).toEqual({
+      from: null,
+      entry: null,
+      exit: "blades in contact",
+    });
+    // An entry with nothing to continue describes a frame that has no
+    // predecessor.
+    expect(() => makeContinuity({ entry: "mid-lunge" }, { id: "s02-fridge", order: ORDER })).toThrow(/--continues-from/);
+    // Nothing declared is the default, and the default is NO hand-off.
+    expect(makeContinuity({}, { id: "s02-fridge", order: ORDER })).toBeNull();
+    expect(makeContinuity({ from: "", entry: "", exit: "  " }, { id: "s02-fridge", order: ORDER })).toBeNull();
+    expect(shotWith().continuity).toBeNull();
+    expect(normalizeShot({ id: "x" }).continuity).toBeNull();
+  });
+
+  test("take-handoff is seeded only for a shot that declares one", () => {
+    const alone = shotWith();
+    alone.takes.push({ id: "take-01", status: "done" } as never);
+    seedChecklist(alone);
+    expect(alone.checks.some((check) => check.id === "take-handoff")).toBe(false);
+
+    const continued = shotWith({
+      continuity: { from: "s01-enter", entry: "mid-stride", exit: "hand on the handle" },
+    });
+    continued.takes.push({ id: "take-01", status: "done" } as never);
+    const added = seedChecklist(continued);
+    expect(added).toContain("take-01:take-handoff");
+    expect(findCheck(continued, "take-handoff", "take-01")?.label).toBe(
+      "First frame continues the previous shot's last used frame — positions, facing, weapons, action",
+    );
+    expect(findCheck(continued, "take-handoff", "take-01")?.status).toBe("unverified");
+    // A shot whose hand-off was dropped keeps the verdicts it already has —
+    // seeding never removes, it only adds what is missing.
+    expect(seedChecklist(continued)).toEqual([]);
   });
 });
 
@@ -544,6 +699,13 @@ describe("where the shot stands", () => {
 
     shot.greybox.revision = 2;
     shot.greybox.final = { file: "greybox/greybox.mp4", revision: 2, probe: null, renderedAt: null, renderSeconds: null };
+    // The picture before the video: an accepted greybox with no anchor asks
+    // for one, and the lineup is how it is looked at.
+    expect(nextStage(shot)).toMatchObject({ stage: "anchor" });
+    expect(nextStage(shot).command).toContain("previz.mjs anchor");
+    expect(nextStage(shot).command).toContain("lineup");
+
+    shot.anchors.push({ id: "first", at: 0, file: "anchors/first.png", revision: 1 } as never);
     expect(nextStage(shot).stage).toBe("prompt");
     expect(nextStage(shot, { promptOk: true }).stage).toBe("take");
 
@@ -560,6 +722,18 @@ describe("where the shot stands", () => {
       reason: "every stage is closed — this shot is delivered",
       command: null,
     });
+  });
+
+  test("the anchor step is a suggestion, not a gate — a shot that went straight to video moves on", () => {
+    // Some shots are bought without a picture first, on purpose (the skill
+    // says when). A step that never closed would make every later `next` a
+    // lie about where the shot stands.
+    const shot = acceptedShot();
+    expect(shot.anchors).toEqual([]);
+    expect(nextStage(shot, { promptOk: true }).stage).toBe("anchor");
+    shot.takes.push({ id: "take-01", status: "done", selected: false } as never);
+    seedChecklist(shot);
+    expect(nextStage(shot, { promptOk: true }).stage).toBe("take-checks");
   });
 
   test("a failing TAKE check asks for a named fix or a report, never a blind re-shoot", () => {

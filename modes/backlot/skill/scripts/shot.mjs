@@ -77,6 +77,20 @@ export const STANDARD_CHECKS = {
    * line never carries a check nobody can answer.
    */
   lines: [{ id: "take-lines", label: "Spoken lines are audible and correct" }],
+  /**
+   * Only seeded when the shot DECLARES a hand-off (`continuity.from`). A cut
+   * that deliberately breaks continuity — an ellipsis, a jump cut, a montage
+   * — must not carry a check that says it failed; and a shot that claims one
+   * continuous action seen from a new camera has to be looked at frame 1
+   * against the frame it continues. `compare --handoff` is the picture that
+   * answers it.
+   */
+  handoff: [
+    {
+      id: "take-handoff",
+      label: "First frame continues the previous shot's last used frame — positions, facing, weapons, action",
+    },
+  ],
 };
 
 // ---------------------------------------------------------------------------
@@ -180,6 +194,94 @@ export function makeTrim({ in: start, out: end }, spec) {
   return { in: round4(from), out: round4(to) };
 }
 
+/**
+ * The hand-off this shot declares, validated against the film's shot order.
+ *
+ * Hand-off is OPT-IN, and it serves the expression: some cuts exist to BREAK
+ * continuity — an ellipsis, a jump cut, a montage, a deliberate mismatch — and
+ * a shot without a `continuity` block is generated exactly as it was before
+ * this existed. A shot that declares one is saying "this is one continuous
+ * action seen from a new camera", and everything downstream (the hand-off
+ * frame, the `take-handoff` check, the entry line in the prompt) follows from
+ * that claim.
+ *
+ * `from` must be an EARLIER shot in `backlot.json`'s order — contiguous shots
+ * are shot in order, so the frame this one opens on has to exist already.
+ * `entry` and `exit` are free text, deliberately: what "the same moment"
+ * means is a sentence about bodies, weapons and facing, not a schema.
+ *
+ *  - `from` set   → `entry` AND `exit` are required (either given now or
+ *    already on the record). The exit is what the NEXT shot picks up.
+ *  - `from` null  → `exit` alone is allowed on any shot; an `entry` with
+ *    nothing to continue is refused, because it describes a frame that has
+ *    no predecessor.
+ *
+ * Returns the block, or null when nothing was declared. Throws naming the
+ * flag; `previz.mjs` turns that into its one-line refusal.
+ */
+export function makeContinuity(input = {}, { id = null, order = null } = {}) {
+  const clean = (value) => {
+    if (value === null || value === undefined) return null;
+    const text = String(value).trim();
+    return text === "" ? null : text;
+  };
+  const from = clean(input.from);
+  const entry = clean(input.entry);
+  const exit = clean(input.exit);
+
+  if (!from) {
+    if (entry) {
+      throw new Error(
+        '--entry describes the frame this shot OPENS on, which only means something when it continues another shot — ' +
+          'pass --continues-from <shot> as well, or record how this shot ENDS with --exit "…"',
+      );
+    }
+    // A shot with no hand-off may still say how it ends, for a later shot to
+    // pick up. That is the whole point of `exit` standing alone.
+    return exit ? { from: null, entry: null, exit } : null;
+  }
+
+  if (id && from === id) {
+    throw new Error(`--continues-from "${from}" is this shot itself — a shot continues an EARLIER one`);
+  }
+  if (Array.isArray(order)) {
+    const list = order.map(String);
+    const there = list.indexOf(from);
+    if (there === -1) {
+      throw new Error(
+        `--continues-from "${from}" is not a shot in this film (${list.join(", ") || "no shots registered"}) — ` +
+          "add it with 'backlot.mjs shot add', or name one of those",
+      );
+    }
+    const here = id ? list.indexOf(id) : -1;
+    if (here === -1) {
+      throw new Error(
+        `this shot ("${id}") is not in the film's shot list (${list.join(", ") || "none"}), so "earlier" has no meaning here — ` +
+          "register it with 'backlot.mjs shot add' before declaring a hand-off",
+      );
+    }
+    if (there > here) {
+      throw new Error(
+        `--continues-from "${from}" comes AFTER "${id}" in the film (${list.join(", ")}) — ` +
+          "a shot continues an earlier one; contiguous shots are shot in order",
+      );
+    }
+  }
+  if (!entry) {
+    throw new Error(
+      '--continues-from needs --entry "<the frame this shot opens on: positions, facing, weapons, distance>" — ' +
+        "the model is told to open exactly there, and nothing else in the shot says where that is",
+    );
+  }
+  if (!exit) {
+    throw new Error(
+      '--continues-from needs --exit "<how this shot ends, for the next one to pick up>" — ' +
+        "a shot inside a continuous action owes the next shot its last frame",
+    );
+  }
+  return { from, entry, exit };
+}
+
 export function newShot({ id, title, entry = "original", spec, assumptions = [], scene = null, characters = [], set = null }) {
   if (!ENTRIES.includes(entry)) throw new Error(`--entry must be one of ${ENTRIES.join("|")} (got: ${entry})`);
   return {
@@ -199,7 +301,15 @@ export function newShot({ id, title, entry = "original", spec, assumptions = [],
     beats: [],
     // Null means "the whole shot reaches the film".
     trim: null,
+    // Null means "this shot is generated alone" — the default, and the right
+    // answer for every cut that is not one continuous action.
+    continuity: null,
     board: null,
+    // The stills that say what this shot LOOKS like, made from the greybox
+    // frame (composition and camera) plus the bible (appearance). They are
+    // what the creator reviews before a video is bought, and the take's
+    // @Image1.
+    anchors: [],
     lines: [],
     reference: null,
     greybox: {
@@ -233,7 +343,9 @@ export function normalizeShot(doc) {
   shot.characters = Array.isArray(shot.characters) ? shot.characters.map(String) : [];
   shot.set = shot.set ?? null;
   shot.trim = shot.trim ?? null;
+  shot.continuity = shot.continuity ?? null;
   shot.board = shot.board ?? null;
+  shot.anchors = Array.isArray(shot.anchors) ? shot.anchors : [];
   shot.lines = Array.isArray(shot.lines) ? shot.lines : [];
   shot.greybox = { revision: 0, preview: null, final: null, ...(shot.greybox ?? {}) };
   shot.reference = shot.reference ?? null;
@@ -288,7 +400,20 @@ export function validateBeats(beats, spec) {
     if (from < 0) problems.push(`${where} "${id}": from ${from} is before the shot starts`);
     if (to > spec.seconds + 1e-6) problems.push(`${where} "${id}": to ${to} is past the shot's ${spec.seconds} s`);
     if (to < from) problems.push(`${where} "${id}": to ${to} is before from ${from}`);
-    const beat = { id, label: String(raw.label ?? id), from: round4(from), to: round4(to), kind };
+    const beat = {
+      id,
+      label: String(raw.label ?? id),
+      from: round4(from),
+      to: round4(to),
+      kind,
+      // The DESIGNED picture of this beat, written at the boards stage before
+      // the greybox exists: body action, expression, wardrobe and material,
+      // the physical consequence, the tempo word. The greybox is built from
+      // it and can only carry its geometry and its clock; the prompt hands
+      // the model the design back, at the greybox's seconds. `label` stays
+      // short — it is what a rail, a sheet label and a beat row can show.
+      detail: raw.detail == null || String(raw.detail).trim() === "" ? null : String(raw.detail).trim(),
+    };
     if (raw.causedBy != null && raw.causedBy !== "") beat.causedBy = String(raw.causedBy);
     if (raw.note != null && raw.note !== "") beat.note = String(raw.note);
     seen.set(id, beat);
@@ -450,6 +575,7 @@ export function labelForCheck(id, target) {
     ?? STANDARD_CHECKS.greybox.find((check) => check.id === id)
     ?? STANDARD_CHECKS.take.find((check) => check.id === id)
     ?? STANDARD_CHECKS.lines.find((check) => check.id === id)
+    ?? STANDARD_CHECKS.handoff.find((check) => check.id === id)
     ?? STANDARD_CHECKS.reference.find((check) => check.id === id);
   return known?.label ?? id;
 }
@@ -468,6 +594,7 @@ export function seedChecklist(shot) {
     ...(shot.entry === "recreate" ? STANDARD_CHECKS.reference.map((check) => ({ ...check, target: "greybox" })) : []),
   ];
   const spoken = hasSpokenLine(shot);
+  const continues = Boolean(shot.continuity?.from);
   for (const take of shot.takes ?? []) {
     if (take?.status !== "done") continue;
     for (const check of STANDARD_CHECKS.take) want.push({ ...check, target: take.id });
@@ -475,6 +602,10 @@ export function seedChecklist(shot) {
     // and an unanswerable check would sit `unverified` forever, blocking
     // `select` on a question nobody can answer.
     if (spoken) for (const check of STANDARD_CHECKS.lines) want.push({ ...check, target: take.id });
+    // Hand-off only: a shot that never claimed to continue another one has
+    // no frame to be judged against, and a cut that breaks continuity on
+    // purpose must not be marked as having failed at it.
+    if (continues) for (const check of STANDARD_CHECKS.handoff) want.push({ ...check, target: take.id });
   }
   for (const wanted of want) {
     if (findCheck(shot, wanted.id, wanted.target)) continue;
@@ -677,13 +808,15 @@ export function takePolicy(shot, { fix = null, userApproved = false, allowFailin
  * its own gate is a gate that passes before anybody has written anything,
  * which is exactly the "nothing is passed unseen" failure in prompt form.
  */
-export const PROMPT_TEMPLATE_BODY = `Follow the motion, staging and camera of @Video1 exactly.
+export const PROMPT_TEMPLATE_BODY = `@Video1 = layout, positions, timing and the single camera move only; its grey shapes are placeholders, not the look.
 
-(Replace this block. Describe the LOOK the greybox cannot carry: who the
-subject is, what the room is made of, the light, the lens feel, the palette.
-Do not re-describe the blocking — that is what @Video1 is for. Address the
-other attached references by modality and order: @Image1 is the board frame,
-then the character sheets and the set concept, @Audio1… the voice samples.)`;
+(Replace this block. Run 'previz.mjs prompt-skeleton <shot-dir> --write' to
+get it with THIS shot's references, its beats as a time-coded timeline and
+its hand-off, then fill it in. Every attached reference needs one assignment
+sentence — an unassigned reference bleeds its own lighting and framing into
+the shot — and the look the greybox cannot carry is what the prose is for:
+who the subject is, what the room is made of, the light, the lens, the
+palette. Do not re-describe the blocking; that is what @Video1 is for.)`;
 
 export const REF_KINDS = ["image", "video", "audio"];
 
@@ -786,6 +919,107 @@ function capitalize(word) {
   return word.charAt(0).toUpperCase() + word.slice(1);
 }
 
+/**
+ * The reference indices a prompt gives a JOB to, in both spellings.
+ *
+ * An assignment is the tag followed by `=`, `:` or `is` — `@Image2 = the
+ * keeper's appearance only`, `@Video1: layout and timing`, `@Audio1 is the
+ * keeper's voice`. Merely NAMING a reference is not assigning it: a reference
+ * that is attached but never given a job bleeds its own lighting, framing and
+ * palette into the shot, which is the failure mode the fal.ai guidance and
+ * the community guides both describe.
+ */
+export function promptAssignments(text) {
+  const prompt = String(text ?? "");
+  const found = { image: new Set(), video: new Set(), audio: new Set() };
+  const collect = (pattern) => {
+    for (const match of prompt.matchAll(pattern)) found[match[1].toLowerCase()].add(Number(match[2]));
+  };
+  collect(/@(Image|Video|Audio)(\d+)\s*(?:[=:—-]|\s+is\b)/gi);
+  collect(/\[(Image|Video|Audio)(\d+)\]\s*(?:[=:—-]|\s+is\b)/gi);
+  return {
+    image: [...found.image].sort((a, b) => a - b),
+    video: [...found.video].sort((a, b) => a - b),
+    audio: [...found.audio].sort((a, b) => a - b),
+  };
+}
+
+/**
+ * Whether every reference the job CARRIES has a job in the prompt.
+ *
+ * `validatePromptRefs` answers the opposite question — a prompt that names
+ * a reference nothing was attached at. Both are needed: one catches a prompt
+ * pointing at nothing, this one catches a reference pointing at nobody.
+ * `attached` is `{ image, video, audio }` counts.
+ */
+export function validateReferenceAssignments(prompt, attached = {}) {
+  const assigned = promptAssignments(prompt);
+  const missing = [];
+  for (const kind of REF_KINDS) {
+    const count = Number(attached[kind] ?? 0);
+    for (let index = 1; index <= count; index += 1) {
+      if (assigned[kind].includes(index)) continue;
+      missing.push(`@${capitalize(kind)}${index}`);
+    }
+  }
+  const errors = missing.length
+    ? [
+        `${missing.join(", ")} ${missing.length === 1 ? "is attached but is" : "are attached but are"} never given a job — ` +
+          'write one assignment sentence per reference ("@Image2 = the keeper\'s appearance only — hold it"). ' +
+          "An unassigned reference bleeds its own lighting and framing into the shot.",
+      ]
+    : [];
+  return { ok: errors.length === 0, errors, missing, assigned };
+}
+
+/**
+ * The time-coded timeline a v2 prompt pack carries, as `{ from, to }` ranges.
+ *
+ * Above ~8 s the vendor's own guidance is a timeline rather than a paragraph,
+ * and this mode's beats are already that timeline — the greybox is the clock.
+ * A line is `Seconds 0.0–0.5: …` (any dash, or `to`) or a single `Seconds
+ * 5.2: …` for a moment. Everything else in the prompt is prose and is left
+ * alone.
+ */
+export function parsePromptTimeline(text) {
+  const rows = [];
+  for (const raw of String(text ?? "").split(/\r?\n/)) {
+    const line = raw.trim();
+    const range = /^seconds?\s+(\d+(?:\.\d+)?)\s*(?:[–—-]|\.\.|to)\s*(\d+(?:\.\d+)?)\s*[::]/i.exec(line);
+    if (range) {
+      rows.push({ from: Number(range[1]), to: Number(range[2]), line });
+      continue;
+    }
+    const point = /^seconds?\s+(\d+(?:\.\d+)?)\s*[::]/i.exec(line);
+    if (point) rows.push({ from: Number(point[1]), to: Number(point[1]), line });
+  }
+  return rows;
+}
+
+/**
+ * What is wrong with a timeline, as sentences. WARNINGS, never refusals: the
+ * mode does not own how a prompt is phrased, and a timeline that disagrees
+ * with the clock is worth saying out loud without stopping a take the agent
+ * may have good reason to send.
+ */
+export function timelineProblems(timeline, spec) {
+  const seconds = Number(spec?.seconds);
+  const problems = [];
+  let previous = null;
+  for (const row of timeline ?? []) {
+    const where = `"${String(row.line).slice(0, 60)}"`;
+    if (row.to < row.from - 1e-6) problems.push(`the timeline line ${where} ends before it starts`);
+    if (Number.isFinite(seconds) && row.to > seconds + 1e-6) {
+      problems.push(`the timeline line ${where} runs past the shot's ${seconds} s — the take is only that long`);
+    }
+    if (previous && row.from < previous.from - 1e-6) {
+      problems.push(`the timeline goes backwards at ${where} (the line before it starts at ${previous.from} s)`);
+    }
+    previous = row;
+  }
+  return problems;
+}
+
 // ---------------------------------------------------------------------------
 // Transcript QA — did the model actually say the line?
 // ---------------------------------------------------------------------------
@@ -836,7 +1070,7 @@ export function transcriptCoverage(transcript, lines = []) {
  * the plan of a recreate is written FROM the reference; every other stage is
  * the order the design brief lists.
  */
-export const STAGES = ["reference", "plan", "greybox-preview", "checks", "final-render", "prompt", "take", "take-checks", "select"];
+export const STAGES = ["reference", "plan", "greybox-preview", "checks", "final-render", "anchor", "prompt", "take", "take-checks", "select"];
 
 export function nextStage(shot, { promptOk = false, promptReason = null } = {}) {
   const greybox = shot.greybox ?? {};
@@ -864,6 +1098,20 @@ export function nextStage(shot, { promptOk = false, promptReason = null } = {}) 
   }
   if (!greybox.final || Number(greybox.final.revision) !== Number(greybox.revision)) {
     return stage("final-render", "the accepted greybox has no full-resolution render at the current revision", "previz.mjs render <shot-dir>");
+  }
+  // The picture before the video. An image model takes direction about camera
+  // and composition that a video model will not, so the look is settled — and
+  // reviewed with the creator — while a frame still costs cents.
+  //
+  // Only while no take exists: a shot may go straight to video on purpose
+  // (the skill says when), and a suggestion that never closes would make
+  // every later `next` a lie about where the shot stands.
+  if ((shot.anchors ?? []).length === 0 && takes.length === 0) {
+    return stage(
+      "anchor",
+      "the greybox is accepted and this shot has no anchor frame — make the picture, look at it beside the board and the greybox, and only then buy the video",
+      "previz.mjs anchor <shot-dir>   then   previz.mjs lineup <shot-dir>",
+    );
   }
   if (!promptOk) {
     return stage("prompt", promptReason ?? "prompts.md has no usable prompt block", "write the ```prompt block in prompts.md");
@@ -921,7 +1169,9 @@ export function shotStatus(shot, { promptOk = false, promptReason = null, costs 
     characters: shot.characters ?? [],
     set: shot.set ?? null,
     trim: shot.trim ?? null,
+    continuity: shot.continuity ?? null,
     board: shot.board ?? null,
+    anchors: shot.anchors ?? [],
     lines: shot.lines ?? [],
     spec: shot.spec,
     assumptions: shot.assumptions ?? [],

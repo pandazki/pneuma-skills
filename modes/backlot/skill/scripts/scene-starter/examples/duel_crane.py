@@ -1,4 +1,4 @@
-"""Five seconds: one exchange, and the camera climbs away over the terrace.
+"""Five seconds: one exchange, the blades meet, and the camera climbs away.
 
 The shot a fight ends on. `camera_move` does the crane - two eased keys, the
 last one pulled back so the final half second is still - and `zoom` opens the
@@ -6,9 +6,21 @@ lens from 30 mm to 21 mm on the way up, so the courtyard arrives in frame as
 the ground drops away rather than by the camera flying twice as far.
 
     0.6-1.2  the challenger bursts forward 2.2 m (a lunge, not a leap: no arc)
+    1.2      CONTACT - `impact` shoves the camera 0.15 m down its sightline
     1.3-2.1  the master gives ground, one step back
     0.0-4.5  the crane: 1.7 m -> 8.4 m, eased, settled by 4.5 s
     0.4-4.2  30 mm -> 21 mm
+
+There is no `slowmo` here, so the two clocks are the same clock and these are
+both action and shot seconds. `impact` would be stated in SHOT seconds either
+way: a hit is a fact about the clip.
+
+The hit is the reason this angle is worth cutting to. `impact` does not
+replace the crane - it reads the crane's own path frame by frame and adds the
+shove and the ring-down on top, back on the path within a quarter second - so
+the camera is climbing AND is jolted in towards the blades on the frame they
+meet. Six frames of that in the greybox is what makes the video model paint a
+collision rather than two bodies passing each other.
 
 glTF carries no lens animation, so the zoom's keys also land in
 `scene.meta.json` as `camera_lens` - the MP4 shows it either way, and the
@@ -46,5 +58,9 @@ pv.camera_move(cam, [
     (4.5, (1.4, -10.2, 8.40), (CENTER[0], CENTER[1], 0.60)),
 ], settle=0.5)
 pv.zoom(cam, 30, 21, 0.4, 4.2)
+# The contact, on the frame the lunge arrives. Defaults: 0.15 m of push and
+# 0.02 m of shake over a quarter second - a hit at this distance, not a
+# camera being thrown.
+pv.impact(cam, 1.2)
 
 pv.finish()

@@ -10,6 +10,12 @@ Every move below still needs its **final framing named in the prompt**. The one
 camera failure that survived the blind trials was a model that kept pushing
 past the reference's last frame, and the fix was a sentence, not a key.
 
+And a clip gets **one** primary move. Two moves stacked in a single shot is
+what made the first acceptance run's takes cut to a new angle halfway through:
+asked for two camera behaviours, the model resolved the contradiction the way
+an editor would. A second move is a second shot — see the collage below and
+`video-generation.md`.
+
 ## Two behaviours that hold for every camera call
 
 1. **A move owns its channel from frame 1 when nobody else does.** A move that
@@ -127,6 +133,96 @@ Rise slowly — under about 1.5 m/s — keep the target on the ground action so 
 horizon tilts rather than the subject sliding out of frame, and let the last
 half second settle. A crane at the end of a film is a closing gesture: name the
 final wide framing in the prompt so the model does not keep climbing.
+
+## Tension — the hold, the ramp, the hit
+
+A fight that moves at one speed from frame 1 reads as a scuffle. What makes a
+strike land is the *shape* of the time around it, and that shape is built
+here, in the greybox, because the greybox is the clock the model follows.
+
+**The hold before the strike.** 0.3–0.6 s in which nothing moves — not the
+fighters, not the camera. `pv.hold(fig, start, end)` on each figure and no
+camera key in that window. In the prompt it is a beat with its own line:
+*"held still, weight back, only the dust moving."* Without it the audience has
+nothing to measure the strike against.
+
+**The low angle at contact.** A camera at 0.5–0.9 m looking slightly up makes
+a body heavy and a blade large; the same moment from 1.6 m is a report of an
+event. Remember rule one of the collage: this is *another shot*, not a second
+move inside the wide one.
+
+**The speed ramp into the hit.**
+
+```python
+pv.slowmo(2.1, 2.9, 3.0)   # 0.8 s of the finished clip carries 0.27 s of action
+pv.impact(cam, 2.1)        # the hit itself: push, shake, ring down
+```
+
+`pv.slowmo(start, end, factor)` registers a ramp and applies it once, at
+`finish()`, through **one piecewise-linear time curve over the whole scene** —
+objects, cameras, lenses, materials — so everything slows together and nothing
+drifts out of sync. `start` and `end` are **shot seconds**: where the ramp sits
+in the finished clip. `factor` is how much slower the action runs inside it —
+2 is half speed, 4 a quarter, and a value under 1 is a speed-up (0.5 runs it
+twice as fast); the accepted band is 0.25–8. Ramps may sit end to end but
+never overlap, and the call refuses an overlap rather than guessing.
+
+**Understand the cost before you use it.** A ramp of length `L` eats
+`L × (1 − 1/factor)` seconds of action, and *everything after it lands that
+much later in the clip*. `slowmo(0.9, 1.9, 2)` costs 0.5 s: a camera move
+written to end at 3.2 s is now seen ending at 3.7 s, and the last half second
+of a 4 s shot's action is not in the clip at all. The call logs exactly what
+the final frame ends up showing — read that line. Write the blocking, add the
+ramp, then shorten the action if the ramp pushed its tail off the end.
+
+`pv.impact(cam, at, push=0.15, shake=0.02, seconds=0.25)` is the hit: at shot
+second `at` the camera is driven `push` metres down its own sightline over the
+first fifth of the window and rings back to exactly zero by `at + seconds`,
+with a decaying `shake` jitter across the frame. It is **added on top** of
+whatever the camera was already doing, so an `orbit` or a `dolly_zoom`
+underneath survives, and it is composed **after** the time warp — a hit inside
+a `slowmo` stays as sharp as it was written, which is the whole point of having
+both: the action crawls, the camera does not. Bands: `push` 0–1.5 m (0.15 m
+reads as a hit at 6 m), `shake` 0–0.5 m, `seconds` 0.08–2.0. The ring-down must
+finish inside the clip or the call refuses, because a shot whose last frames
+are still off the camera's path fails `end-hold`. One hit per contact; two in a
+shot reads as a broken camera.
+
+**The two clocks, and the conversion you must not skip.**
+
+```python
+pv.shot_time(2.6)     # action second → the second of the clip it is seen on
+pv.action_time(3.6)   # clip second   → what the action is doing then
+```
+
+Blocking is written in **action seconds** — `travel`, `dash`, `swing`,
+`camera_move` all key the unwarped action. Beats, the trim, `sheet --at`, the
+prompt's timeline and `slowmo`'s own window are **shot seconds**, the clock of
+the finished clip. With no ramp the two are identical and the helpers are the
+identity; the moment a shot warps time they are not, and a beat list registered
+from the Python numbers points at the wrong frames — so every check, every
+strip and the whole prompt timeline is taken at the wrong second. **Run every
+beat edge through `shot_time()` before `beats --set`, and copy those numbers
+into the prompt.** An answer past the shot's `seconds` is a real answer: that
+beat was pushed off the end of the clip. `scene.meta.json` records the ramps as
+`time_warp: [{ from, to, factor }]`, which is what lets the viewer draw the
+tempo row under the beats.
+
+**The whip is its own shot.** A whip pan, a snap zoom or a sudden reframe is a
+second camera behaviour, and one clip gets one move — ask for both and the
+model resolves it by cutting. Register the whip as its own ≥ 4 s shot and trim
+it to the third of a second the film uses, exactly like a collage angle.
+
+**Say the tempo in the prompt, per segment.** The greybox's slow seconds are
+ambiguous on their own: a model can read them as slow motion or as actors
+moving sluggishly, and it will pick the second one unless told. Write the
+result, not the speed — *"the lunge in a blur, then the blades meet in slow
+motion, dust hanging in the air"* — and never a bare "fast" or "high speed",
+which buys smearing and costs detail. `travel` and `dash` validate their pace
+on the action clock, before the warp, which is the honest reading: the body
+really does move at a human speed, and the slow motion belongs to the camera.
+A greybox that moves at one speed comes back as a take that moves at one
+speed, whatever the prompt claimed.
 
 ## Aiming at where somebody *will* be
 

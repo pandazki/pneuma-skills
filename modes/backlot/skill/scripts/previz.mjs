@@ -47,9 +47,11 @@ import { parseArgs } from "node:util";
 import {
   evenlySpacedTimes,
   evenSize,
+  firstFrameFrom,
   frameAtTime,
   gridFor,
   hasDrawtext,
+  lastFrameBefore,
   parseProbe,
   parseRange,
   parseSceneCuts,
@@ -85,6 +87,7 @@ import {
   ENTRIES,
   hasSpokenLine,
   LINE_KINDS,
+  makeContinuity,
   makeSpec,
   makeTrim,
   newShot,
@@ -92,6 +95,7 @@ import {
   nextTakeId,
   normalizeShot,
   parsePromptPack,
+  parsePromptTimeline,
   parseSize,
   PROMPT_TEMPLATE_BODY,
   recordCheck,
@@ -101,10 +105,12 @@ import {
   spokenLines,
   summarizeChecks,
   takePolicy,
+  timelineProblems,
   transcriptCoverage,
   validateBeats,
   validateLines,
   validatePromptRefs,
+  validateReferenceAssignments,
 } from "./shot.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -113,7 +119,8 @@ const STARTER_DIR = join(HERE, "scene-starter");
 
 const SUBCOMMANDS = [
   "doctor", "meta", "beats", "board", "lines", "vo", "reference", "render",
-  "sheet", "compare", "check", "checklist", "generate", "select", "status",
+  "anchor", "lineup", "sheet", "compare", "check", "checklist",
+  "prompt-skeleton", "generate", "select", "status",
 ];
 
 /** Moved to `backlot.mjs` when the shot grew a film around it. A refusal
@@ -189,8 +196,8 @@ function writeJsonAtomic(path, value) {
 
 const SHOT_KEYS = [
   "version", "id", "title", "scene", "characters", "set", "entry", "spec",
-  "assumptions", "beats", "trim", "board", "lines", "reference", "greybox",
-  "checks", "stuck", "prompt", "takes",
+  "assumptions", "beats", "trim", "continuity", "board", "anchors", "lines",
+  "reference", "greybox", "checks", "stuck", "prompt", "takes",
 ];
 
 function inKeyOrder(value, keys) {
@@ -633,19 +640,43 @@ function escapeText(text) {
  * how ffmpeg spells "or" here, and `-fps_mode passthrough` stops it from
  * duplicating frames to keep a constant rate. Output numbering follows the
  * selection order, so the frames go in ascending.
+ *
+ * `width: null` keeps the source resolution — a frame that is about to be a
+ * REFERENCE for a paid job (the hand-off frame, an anchor's composition)
+ * must not be handed over at contact-sheet size.
  */
 function extractFrames(file, frames, outDir, { width = TILE_WIDTH } = {}) {
   const ffmpeg = requireTool("ffmpeg");
   mkdirSync(outDir, { recursive: true });
   const ordered = [...new Set(frames)].sort((a, b) => a - b);
   const select = ordered.map((frame) => `eq(n\\,${frame - 1})`).join("+");
-  const filter = `select='${select}',scale=${width}:-2:flags=bicubic`;
+  const filter = [`select='${select}'`, ...(width ? [`scale=${width}:-2:flags=bicubic`] : [])].join(",");
   runToolOrFail(
     ffmpeg.path,
     ["-y", "-v", "error", "-i", file, "-vf", filter, "-fps_mode", "passthrough", "-frames:v", String(ordered.length), join(outDir, "tile_%03d.png")],
     { label: "ffmpeg frame extract" },
   );
   return ordered.map((frame, index) => ({ frame, path: join(outDir, `tile_${String(index + 1).padStart(3, "0")}.png`) }));
+}
+
+/**
+ * ONE frame of a clip, at its own resolution, landed at `outPath`.
+ *
+ * `scratchIn` is the directory the scratch is cut in — this shot's, whatever
+ * clip the frame came from, because a hand-off reads the shot BEFORE it and
+ * must not leave scratch behind in somebody else's directory.
+ */
+function extractOneFrame(scratchIn, file, frame, outPath, { width = null, scratch = "frame" } = {}) {
+  const work = scratchDir(scratchIn, scratch);
+  try {
+    const [tile] = extractFrames(file, [frame], work, { width });
+    if (!tile || !existsSync(tile.path)) fail(`ffmpeg produced no frame ${frame} of ${file}`);
+    mkdirSync(dirname(outPath), { recursive: true });
+    copyFileSync(tile.path, outPath);
+    return outPath;
+  } finally {
+    dropScratch(scratchIn);
+  }
 }
 
 /** Burn the timestamp into a tile. Returns false when this ffmpeg cannot —
@@ -761,6 +792,7 @@ async function cmdDoctor(opts) {
       ["generate-tts.mjs", "BACKLOT_TTS_MODULE"],
       ["generate-bgm.mjs", "BACKLOT_BGM_MODULE"],
       ["transcribe.mjs", "BACKLOT_TRANSCRIBE_MODULE"],
+      ["generate_image.mjs", "BACKLOT_IMAGE_MODULE"],
       ["seedance-video.mjs", "PREVIZ_SEEDANCE_MODULE"],
     ].map(([name, envVar]) => {
       const found = sharedScript(name, envVar);
@@ -779,6 +811,10 @@ async function cmdDoctor(opts) {
     plan: { open: true, needs: [] },
     greybox: { open: blender.found && ffmpeg.found && ffprobe.found, needs: [...(blender.found ? [] : ["blender"]), ...(ffmpeg.found ? [] : ["ffmpeg"]), ...(ffprobe.found ? [] : ["ffprobe"])] },
     sheets: { open: ffmpeg.found, needs: ffmpeg.found ? [] : ["ffmpeg"] },
+    anchor: {
+      open: ffmpeg.found && shared["generate_image.mjs"].found,
+      needs: [...(ffmpeg.found ? [] : ["ffmpeg"]), ...(shared["generate_image.mjs"].found ? [] : ["generate_image.mjs"])],
+    },
     take: { open: fal.present && ffprobe.found, needs: [...(fal.present ? [] : ["FAL_KEY"]), ...(ffprobe.found ? [] : ["ffprobe"])] },
     voice: {
       open: fal.present && shared["generate-tts.mjs"].found,
@@ -861,12 +897,20 @@ const PROMPTS_TEMPLATE = (shot) => `# Prompt pack — ${shot.title}
 
 The greybox MP4 is attached to the paid job as the video reference, and the
 prompt addresses it as **@Video1** — the syntax Seedance documents.
-\`previz.mjs generate\` reads the FIRST fenced block tagged \`prompt\` below,
-refuses a prompt that never mentions @Video1, and refuses one that names a
-reference index it did not attach. The other references it attaches, in
-order: @Image1 the board frame, then this shot's character sheets and its
-set concept, then @Audio1… the voice sample of each character with a spoken
-line.
+\`previz.mjs generate\` reads the FIRST fenced block tagged \`prompt\` below.
+It refuses a prompt that never mentions @Video1, one that names a reference
+index it did not attach, and one that leaves an ATTACHED reference without a
+job ("@Image2 = the keeper's appearance only"). The other references it
+attaches, in order: the 'first' anchor frame, the board frame, this shot's
+character sheets and its set concept, any other anchors, the hand-off frame
+last, then @Audio1… the voice sample of each character with a spoken line.
+
+Do not write this block from memory — run
+
+    previz.mjs prompt-skeleton <shot-dir> --write
+
+and fill in \`prompts.skeleton.md\`: it carries THIS shot's indices, its beats
+as a time-coded timeline, its lines and its hand-off.
 
 \`\`\`prompt
 ${PROMPT_TEMPLATE_BODY}
@@ -997,17 +1041,56 @@ function warnUnknownIds(projectRoot, { scene = null, characters = [], set = null
 
 function cmdMeta(dir, opts) {
   const touchesTrim = opts["trim-in"] !== undefined || opts["trim-out"] !== undefined || opts["no-trim"];
-  if (opts.scene === undefined && opts.characters === undefined && opts.set === undefined && !touchesTrim) {
-    fail('meta needs at least one of --scene <id>, --characters <a,b>, --set <id>, --trim-in/--trim-out, --no-trim (pass "" to clear an id)');
+  const touchesContinuity =
+    opts["continues-from"] !== undefined || opts.entry !== undefined || opts.exit !== undefined || opts["no-continuity"];
+  if (opts.scene === undefined && opts.characters === undefined && opts.set === undefined && !touchesTrim && !touchesContinuity) {
+    fail(
+      'meta needs at least one of --scene <id>, --characters <a,b>, --set <id>, --trim-in/--trim-out, --no-trim, ' +
+        '--continues-from <shot> --entry "…" --exit "…", --no-continuity (pass "" to clear an id)',
+    );
   }
   if (opts["no-trim"] && (opts["trim-in"] !== undefined || opts["trim-out"] !== undefined)) {
     fail("--no-trim clears the trim; pass it alone, or give --trim-in/--trim-out instead");
   }
+  if (opts["no-continuity"] && (opts["continues-from"] !== undefined || opts.entry !== undefined || opts.exit !== undefined)) {
+    fail("--no-continuity drops the hand-off; pass it alone, or give --continues-from/--entry/--exit instead");
+  }
+  if (opts["continues-from"] === "") {
+    fail('--continues-from needs the id of an earlier shot; pass --no-continuity to drop the hand-off instead of clearing it');
+  }
   const projectRoot = findProjectRoot(dir);
+  // The film's shot ORDER is what "earlier" means, and `backlot.json` has one
+  // writer — this is a read.
+  let order = null;
+  if (opts["continues-from"] !== undefined) {
+    const root = requireProjectRoot(dir, "a hand-off");
+    try {
+      order = readManifest(root).shots.map(String);
+    } catch (error) {
+      return fail(error.message);
+    }
+  }
   const { shot } = commitShot(dir, (fresh) => {
     if (opts.scene !== undefined) fresh.scene = opts.scene === "" ? null : slugId(opts.scene, "--scene");
     if (opts.characters !== undefined) fresh.characters = opts.characters === "" ? [] : parseIdList(opts.characters, "--characters");
     if (opts.set !== undefined) fresh.set = opts.set === "" ? null : slugId(opts.set, "--set");
+    if (opts["no-continuity"]) {
+      fresh.continuity = null;
+    } else if (touchesContinuity) {
+      const current = fresh.continuity ?? { from: null, entry: null, exit: null };
+      try {
+        fresh.continuity = makeContinuity(
+          {
+            from: opts["continues-from"] === undefined ? current.from : opts["continues-from"],
+            entry: opts.entry === undefined ? current.entry : opts.entry,
+            exit: opts.exit === undefined ? current.exit : opts.exit,
+          },
+          { id: fresh.id, order },
+        );
+      } catch (error) {
+        fail(error.message);
+      }
+    }
     if (opts["no-trim"]) {
       fresh.trim = null;
       return;
@@ -1037,6 +1120,18 @@ function cmdMeta(dir, opts) {
       note(`WARN: line "${line.id}" lands at ${line.at} s, outside the trim — it will be dropped from the cut`);
     }
   }
+  if (touchesContinuity) {
+    if (shot.continuity?.from) {
+      note(
+        `[previz] this shot continues "${shot.continuity.from}": 'generate' will cut that shot's last used frame into ` +
+          "takes/handoff-in.png, attach it as the LAST image reference, and seed the 'take-handoff' check on every take",
+      );
+    } else if (shot.continuity?.exit) {
+      note("[previz] no hand-off — this shot is generated alone; its --exit is recorded for a later shot to continue from");
+    } else {
+      note("[previz] the hand-off is gone — this shot is generated alone again");
+    }
+  }
   return emit({
     command: "meta",
     dir,
@@ -1044,6 +1139,7 @@ function cmdMeta(dir, opts) {
     characters: shot.characters,
     set: shot.set,
     trim: shot.trim,
+    continuity: shot.continuity,
     unknown,
     next: nextStage(shot, promptState(dir, shot)),
   });
@@ -1633,10 +1729,143 @@ function cmdSheet(dir, opts) {
   });
 }
 
+/**
+ * The joint of two shots, as one picture: the previous shot's last used
+ * frame beside the first frame this take opens on.
+ *
+ * `take-handoff` is a question about two frames, and the only honest way to
+ * answer it is to look at them together. The left frame is the one the take
+ * was actually CONDITIONED on when the record says so (`take.handoff`), and
+ * the shot's current continuity otherwise — a re-selected previous take must
+ * not quietly redraw the evidence for a take that never saw it.
+ */
+function cmdCompareHandoff(dir, opts) {
+  const shot = loadShot(dir);
+  const projectRoot = requireProjectRoot(dir, "a hand-off comparison");
+  const ffmpeg = requireTool("ffmpeg");
+
+  const takes = shot.takes ?? [];
+  const wanted = opts.take
+    ? takes.find((entry) => entry.id === opts.take)
+    : (takes.find((entry) => entry.selected === true) ?? [...takes].reverse().find((entry) => entry.status === "done"));
+  if (!wanted) {
+    fail(
+      opts.take
+        ? `no take "${opts.take}" on this shot (${takes.map((t) => t.id).join(", ") || "none recorded"})`
+        : `this shot has no finished take to compare (${takes.map((t) => `${t.id} (${t.status})`).join(", ") || "none recorded"})`,
+    );
+  }
+  if (wanted.status !== "done" || !wanted.file) fail(`${wanted.id} is "${wanted.status}" and has no file to look at`);
+  const takeFile = join(dir, wanted.file);
+  if (!existsSync(takeFile)) fail(`${wanted.file} is recorded on ${wanted.id} but missing from disk`);
+
+  // The left half is cut from THIS take's own record — the shot, the take and
+  // the frame it was conditioned on — into a file of its own under the take's
+  // QA directory. `takes/handoff-in.png` is one path per shot and the next
+  // take overwrites it, so reading it back would eventually answer
+  // `take-handoff` with a frame this take never saw.
+  const recorded = wanted.handoff && typeof wanted.handoff === "object" ? wanted.handoff : null;
+  const qaDir = join(dir, "takes", "qa", wanted.id);
+  let left = null;
+  let leftLabel = "";
+  let source = null;
+  if (recorded) {
+    const peerTakeFile = recorded.source ? join(projectRoot, ...String(recorded.source).split("/")) : null;
+    if (peerTakeFile && existsSync(peerTakeFile) && Number.isFinite(Number(recorded.frame))) {
+      source = `takes/qa/${wanted.id}/handoff-out.png`;
+      left = extractOneFrame(dir, peerTakeFile, Number(recorded.frame), join(dir, source), { width: null, scratch: "handoff-out" });
+    } else if (recorded.file && existsSync(join(dir, recorded.file))) {
+      // The clip it came from is gone; the frame that was attached is not.
+      note(`NOTE: ${recorded.source ?? "the previous take"} is no longer on disk — the left frame is the PNG ${wanted.id} was given`);
+      left = join(dir, recorded.file);
+      source = recorded.file;
+    } else {
+      fail(`${wanted.id} was conditioned on frame ${recorded.frame} of ${recorded.source}, and neither that clip nor ${recorded.file} is on disk`);
+    }
+    leftLabel = `${recorded.from ?? "previous"} ${recorded.take ?? ""} out ${stamp(recorded.at ?? 0)}`.replace(/\s+/g, " ").trim();
+  } else {
+    // A take generated with --no-handoff, or one that predates the record:
+    // the pair is drawn against what this shot SAYS it continues now, and
+    // says so.
+    if (!shot.continuity?.from) {
+      fail(
+        `${wanted.id} carries no hand-off frame and this shot continues nothing — there is no pair to compare. ` +
+          'Declare one with \'previz.mjs meta <shot-dir> --continues-from <shot> --entry "…" --exit "…"\'.',
+      );
+    }
+    if (wanted.handoff === "skipped") {
+      note(`NOTE: ${wanted.id} was generated with --no-handoff — the left frame is the one this shot SHOULD have continued, not one it was shown`);
+    }
+    const resolved = resolveHandoff(dir, shot, projectRoot, { skip: false });
+    left = resolved.file;
+    leftLabel = `${resolved.from} ${resolved.take} out ${stamp(resolved.at)}`;
+    source = resolved.rel;
+  }
+  mkdirSync(qaDir, { recursive: true });
+
+  // The take's own clock: what it MEASURED, falling back to the spec it was
+  // ordered at.
+  const fps = Number(wanted.probe?.fps) || shot.spec.fps;
+  const frames = Number(wanted.probe?.frames) || shot.spec.frames;
+  const inSeconds = shot.trim?.in != null ? Number(shot.trim.in) : 0;
+  const inFrame = firstFrameFrom(inSeconds, fps, frames);
+  const inAt = round4(timeOfFrame(inFrame, fps));
+
+  const work = scratchDir(dir, "handoff-compare");
+  try {
+    const [tile] = extractFrames(takeFile, [inFrame], join(work, "in"), { width: null });
+    const leftSize = pngSize(readFileSync(left));
+    if (!leftSize) fail(`${source} is not a readable PNG — re-cut it with 'previz.mjs generate', or delete it and generate again`);
+    // Labelling writes on the file, and the left one is a RECORDED reference
+    // — what the take was made from. Label the copy.
+    const leftCopy = copyInto(left, join(work, "out.png"));
+    const labelled = labelTile(leftCopy, leftLabel);
+    const labels = labelTile(tile.path, `${wanted.id} in ${stamp(inAt)}  f ${inFrame}/${frames}`) && labelled;
+    const outPath = opts.out ? resolveInput(opts.out) : join(dir, "takes", "qa", wanted.id, "handoff.png");
+    mkdirSync(dirname(outPath), { recursive: true });
+    const scaled = `scale=${leftSize.width}:${leftSize.height}`;
+    runToolOrFail(
+      ffmpeg.path,
+      ["-y", "-v", "error", "-i", leftCopy, "-i", tile.path,
+        "-filter_complex", `[0:v]${scaled}[a];[1:v]${scaled}[b];[a][b]hstack=inputs=2`,
+        "-frames:v", "1", outPath],
+      { label: "ffmpeg handoff pair" },
+    );
+    if (!labels) note(`NOTE: ${drawtextSupported().reason} — the pair has no labels burnt in.`);
+    const size = pngSize(readFileSync(outPath));
+    return emit({
+      command: "compare",
+      dir,
+      mode: "handoff",
+      take: wanted.id,
+      from: recorded?.from ?? shot.continuity?.from ?? null,
+      out: { file: source, label: leftLabel, at: recorded?.at ?? null, frame: recorded?.frame ?? null, recorded: Boolean(recorded) },
+      in: { file: wanted.file, frame: inFrame, at: inAt, trimmed: shot.trim ?? null },
+      tile: leftSize,
+      size,
+      labels,
+      labelNote: labels ? null : drawtextSupported().reason,
+      entry: shot.continuity?.entry ?? null,
+      file: relPath(dir, outPath),
+    });
+  } finally {
+    dropScratch(dir);
+  }
+}
+
+/** Copy into the scratch so labelling never writes on a recorded reference —
+ *  `takes/handoff-in.png` is what a take was made from. */
+function copyInto(from, to) {
+  mkdirSync(dirname(to), { recursive: true });
+  copyFileSync(from, to);
+  return to;
+}
+
 function cmdCompare(dir, opts) {
+  if (opts.handoff) return cmdCompareHandoff(dir, opts);
   const shot = loadShot(dir);
   const a = laneFile(dir, shot, opts.a ?? "greybox");
-  if (!opts.b) fail("compare needs --b <reference|take-01|greybox>");
+  if (!opts.b) fail("compare needs --b <reference|take-01|greybox>, or --handoff for the joint with the shot before it");
   const b = laneFile(dir, shot, opts.b);
   const clock = laneClock(shot, a);
   const clockB = laneClock(shot, b);
@@ -1685,6 +1914,301 @@ function cmdCompare(dir, opts) {
       mode: blend ? "blend" : "stacked",
       times: times.map((t) => Math.round(t * 10000) / 10000),
       grid, labels, labelNote: labels ? null : drawtextSupported().reason,
+      file: relPath(dir, outPath),
+    });
+  } finally {
+    dropScratch(dir);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// anchor / lineup — the picture before the video
+// ---------------------------------------------------------------------------
+
+/** How tall each panel of a lineup is. Three 16:9 panels at this height is a
+ *  ~1920 px PNG: one screen, and every face still readable. */
+const LINEUP_HEIGHT = 360;
+
+/** The aspect ratios GPT Image accepts (mirrors `generate_image.mjs`'s
+ *  `IMAGE_ASPECTS`; that module may not be installed when this runs). */
+const IMAGE_ASPECTS = ["21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"];
+
+/** The listed aspect closest to the shot's own frame. An anchor in the wrong
+ *  shape fights the composition it was made to hold. */
+function nearestAspect(width, height) {
+  const target = Number(width) / Number(height);
+  if (!Number.isFinite(target) || target <= 0) return "16:9";
+  let best = IMAGE_ASPECTS[1];
+  let bestGap = Infinity;
+  for (const aspect of IMAGE_ASPECTS) {
+    const [w, h] = aspect.split(":").map(Number);
+    const gap = Math.abs(w / h - target);
+    if (gap < bestGap) { best = aspect; bestGap = gap; }
+  }
+  return best;
+}
+
+/** The greybox lane an anchor and a lineup read: the final render when there
+ *  is one, otherwise the preview, and a named refusal when there is neither. */
+function greyboxLane(dir, shot, { finalOnly = false } = {}) {
+  const greybox = shot.greybox ?? {};
+  const record = finalOnly ? greybox.final : (greybox.final ?? greybox.preview);
+  if (!record) {
+    fail(
+      finalOnly
+        ? "there is no FINAL greybox — an anchor frame is made from the render the take will be conditioned on ('previz.mjs render <shot-dir>')"
+        : "the greybox has never been rendered — run 'previz.mjs render <shot-dir> --preview'",
+    );
+  }
+  const file = join(dir, record.file);
+  if (!existsSync(file)) fail(`shot.json names ${record.file} as the greybox but the file is gone — re-render`);
+  const fps = Number(record.probe?.fps) || shot.spec.fps;
+  const frames = Number(record.probe?.frames) || shot.spec.frames;
+  return { record, file, rel: record.file, fps, frames };
+}
+
+/**
+ * The prompt an anchor is made from, when the agent gives none.
+ *
+ * It is the shot's OWN design read back: the beat details covering that
+ * second (written at the boards stage, before the greybox existed), who is in
+ * frame and where it happens, and the one instruction that makes this an
+ * image-to-image job rather than a new invention — the first reference is the
+ * composition and the camera, and its grey shapes are placeholders.
+ */
+function anchorPrompt(shot, projectRoot, at) {
+  const covering = (shot.beats ?? []).filter((beat) => at >= beat.from - 1e-6 && at <= beat.to + 1e-6);
+  const beats = (covering.length ? covering : (shot.beats ?? []).slice(0, 1))
+    .map((beat) => beat.detail || beat.label)
+    .filter(Boolean);
+  const people = (shot.characters ?? []).map((id) => {
+    const record = readBibleRecord(projectRoot, "characters", id);
+    return { id, name: record?.name || id, look: record?.look ?? "" };
+  });
+  const setRecord = shot.set ? readBibleRecord(projectRoot, "sets", shot.set) : null;
+  const setName = setRecord?.name || shot.set;
+
+  const lines = [
+    `One finished film frame: ${shot.title}, at ${round4(at)} s.`,
+    "",
+    "The FIRST reference image is the exact composition, camera angle, lens and staging to keep — it is a grey 3D blocking render, " +
+      "so its grey shapes are PLACEHOLDERS, not the look: render them as the real people and the real set, in the same positions, " +
+      "at the same size in frame, seen from the same camera.",
+  ];
+  if (people.length) {
+    lines.push(
+      `The other reference images hold appearance. Keep ${people.map((person) => person.name).join(" and ")} exactly as the sheets show them — ` +
+        "face, hair, wardrobe.",
+    );
+  }
+  if (setName) lines.push(`Keep ${setName}'s materials, colours and light from its concept frame.`);
+  if (beats.length) lines.push(`What is happening in this frame: ${beats.join("; ")}.`);
+  const looks = [setRecord?.look, ...people.map((person) => person.look)].filter(Boolean);
+  if (looks.length) lines.push(`Look: ${looks.join(" ")}`);
+  lines.push("Photographic, cinematic light, no text, no captions, no watermark, no split screen, no collage, no extra frames.");
+  return lines.join("\n");
+}
+
+/**
+ * Render the anchor frame: the still that says what this shot LOOKS like.
+ *
+ * Seedance leans on an anchor image, and an image model takes direction about
+ * camera and composition that a video model will not. So the picture is made
+ * first — image-to-image from the greybox frame, with the bible for
+ * appearance — and it becomes the take's `@Image1` and half of the lineup the
+ * creator approves at the previz gate.
+ */
+function cmdAnchor(dir, opts, now) {
+  const shot = loadShot(dir);
+  let id;
+  try { id = slugId(opts.id ?? "first", "--id"); } catch (error) { return fail(error.message); }
+  const at = opts.at === undefined ? 0 : Number(opts.at);
+  if (!Number.isFinite(at) || at < 0 || at > shot.spec.seconds + 1e-6) {
+    fail(`--at must be a second inside this shot's ${shot.spec.seconds} s (got: ${opts.at})`);
+  }
+  const projectRoot = requireProjectRoot(dir, "an anchor frame");
+  requireGate("anchor", projectRoot);
+  const greybox = greyboxLane(dir, shot, { finalOnly: true });
+  requireTool("ffmpeg");
+
+  // The composition reference: this shot's own greybox, at that second.
+  const frame = frameAtTime(at, greybox.fps, greybox.frames);
+  const compositionRel = `anchors/${id}.greybox.png`;
+  extractOneFrame(dir, greybox.file, frame, join(dir, compositionRel), { width: null, scratch: "anchor" });
+
+  // Appearance, in the order the image model reads them: composition first,
+  // then the board, then the people and the place.
+  const references = [join(dir, compositionRel)];
+  if (shot.board?.file && existsSync(join(dir, shot.board.file))) references.push(join(dir, shot.board.file));
+  for (const character of shot.characters ?? []) {
+    const record = readBibleRecord(projectRoot, "characters", character);
+    const sheet = record?.sheet?.file ? join(projectRoot, "bible", "characters", character, record.sheet.file) : null;
+    if (sheet && existsSync(sheet)) references.push(sheet);
+    else note(`WARN: character "${character}" has no sheet in the bible — the anchor invents their look`);
+  }
+  if (shot.set) {
+    const record = readBibleRecord(projectRoot, "sets", shot.set);
+    const concept = record?.concept?.file ? join(projectRoot, "bible", "sets", shot.set, record.concept.file) : null;
+    if (concept && existsSync(concept)) references.push(concept);
+    else note(`WARN: set "${shot.set}" has no concept frame in the bible — the anchor invents the place`);
+  }
+
+  if (opts.prompt !== undefined && opts["prompt-file"] !== undefined) {
+    fail("--prompt and --prompt-file are two prompts for one frame — pass whichever one you mean");
+  }
+  if (opts["prompt-file"] !== undefined && !existsSync(resolveInput(opts["prompt-file"]))) {
+    fail(`--prompt-file: no such file: ${resolveInput(opts["prompt-file"])}`);
+  }
+  const prompt = opts["prompt-file"]
+    ? readFileSync(resolveInput(opts["prompt-file"]), "utf-8").trim()
+    : (opts.prompt ?? anchorPrompt(shot, projectRoot, at));
+  if (!prompt) fail("the prompt is empty — an anchor frame is made from a prompt somebody can read afterwards");
+
+  const script = requireSharedScript("generate_image.mjs", "BACKLOT_IMAGE_MODULE", "an anchor frame");
+  const outDir = join(dir, "anchors");
+  mkdirSync(outDir, { recursive: true });
+  const args = [
+    prompt,
+    "--output-dir", outDir,
+    "--filename-prefix", id,
+    "--output-format", "png",
+    "--aspect-ratio", opts["aspect-ratio"] ?? nearestAspect(shot.spec.width, shot.spec.height),
+    ...(opts.quality ? ["--quality", opts.quality] : []),
+    ...references.flatMap((file) => ["--image-urls", file]),
+  ];
+  note(`[previz] anchor "${id}" at ${round4(at)} s — greybox frame ${frame}/${greybox.frames} plus ${references.length - 1} appearance reference(s); the request is leaving now`);
+  const run = runNodeScript(script, args);
+  const reported = run.code === 0 ? lastJsonObject(run.stdout) : null;
+  const produced = Array.isArray(reported?.files) ? reported.files[0] : null;
+  if (run.code !== 0 || !produced || !existsSync(produced)) {
+    fail(`generate_image.mjs failed (exit ${run.code}):\n${tail(run.stderr)}`);
+  }
+
+  // Record what came back, not what was ordered: a provider that ignored
+  // --output-format leaves a JPEG, and a record that says otherwise is a
+  // reference nobody can open.
+  const size = pngSize(readFileSync(produced));
+  const extension = size ? "png" : (/\.([A-Za-z0-9]+)$/.exec(produced)?.[1] ?? "png").toLowerCase();
+  if (!size) note(`WARN: the image came back as .${extension}, not PNG — it is recorded under that name`);
+  const rel = `anchors/${id}.${extension}`;
+  if (resolve(produced) !== resolve(join(dir, rel))) {
+    copyFileSync(produced, join(dir, rel));
+    rmSync(produced, { force: true });
+  }
+
+  // The vendor's own number when it reports one; anything else is labelled
+  // for what it is.
+  const usd = Number(reported?.usage?.cost);
+  const cost = Number.isFinite(usd) && usd >= 0 ? { usd: round4(usd), basis: "reported" } : costFromOpts(opts, "anchor frame");
+
+  let record;
+  const { shot: saved } = commitShot(dir, (fresh) => {
+    const anchors = Array.isArray(fresh.anchors) ? fresh.anchors : [];
+    const previous = anchors.find((entry) => entry && entry.id === id);
+    record = {
+      id,
+      at: round4(at),
+      file: rel,
+      revision: Number(previous?.revision ?? 0) + 1,
+      prompt,
+      refs: references.map((file) => relFromProject(projectRoot, file)),
+      greybox: { file: compositionRel, source: greybox.rel, revision: Number(fresh.greybox?.revision ?? 0), frame },
+      model: reported?.model ?? null,
+      cost,
+      createdAt: Date.parse(now),
+    };
+    fresh.anchors = [...anchors.filter((entry) => !entry || entry.id !== id), record].filter(Boolean);
+  });
+  note(`[previz] anchor "${id}" revision ${record.revision} → ${rel}. Look at it beside the board and the greybox: previz.mjs lineup <shot-dir>`);
+  return emit({
+    command: "anchor",
+    dir,
+    anchor: record,
+    anchors: saved.anchors.map((entry) => ({ id: entry.id, at: entry.at, revision: entry.revision, file: entry.file })),
+    size,
+    next: nextStage(saved, promptState(dir, saved)),
+  });
+}
+
+/**
+ * The joint review, as one picture: board | anchor | greybox frame.
+ *
+ * This is what the creator looks at before any video is bought — the drawing,
+ * the finished-look still, and the blocking that carries the timing — with
+ * the shot's beats written under them.
+ */
+function cmdLineup(dir, opts) {
+  const shot = loadShot(dir);
+  const ffmpeg = requireTool("ffmpeg");
+  let wantedAnchor = "first";
+  if (opts.id !== undefined) {
+    try { wantedAnchor = slugId(opts.id, "--id"); } catch (error) { return fail(error.message); }
+  }
+  const anchor = anchorById(shot, wantedAnchor)
+    ?? (opts.id === undefined ? (shot.anchors ?? []).find((entry) => entry && entry.file) ?? null : null);
+  if (opts.id !== undefined && !anchor) {
+    fail(`no anchor "${wantedAnchor}" on this shot (${(shot.anchors ?? []).map((entry) => entry.id).join(", ") || "none recorded"})`);
+  }
+  const at = opts.at === undefined ? Number(anchor?.at ?? 0) : Number(opts.at);
+  if (!Number.isFinite(at) || at < 0 || at > shot.spec.seconds + 1e-6) {
+    fail(`--at must be a second inside this shot's ${shot.spec.seconds} s (got: ${opts.at})`);
+  }
+  const greybox = greyboxLane(dir, shot);
+  const frame = frameAtTime(at, greybox.fps, greybox.frames);
+
+  const panels = [];
+  const missing = [];
+  const boardFile = shot.board?.file ? join(dir, shot.board.file) : null;
+  if (boardFile && existsSync(boardFile)) panels.push({ kind: "board", file: boardFile, label: `board · rev ${shot.board.revision ?? 1}` });
+  else missing.push("board");
+  if (anchor?.file && existsSync(join(dir, anchor.file))) {
+    panels.push({ kind: "anchor", file: join(dir, anchor.file), label: `anchor ${anchor.id} · rev ${anchor.revision ?? 1} · ${stamp(anchor.at ?? 0)}` });
+  } else missing.push("anchor");
+
+  const work = scratchDir(dir, "lineup");
+  try {
+    const [tile] = extractFrames(greybox.file, [frame], join(work, "greybox"), { width: null });
+    panels.push({ kind: "greybox", file: tile.path, label: `greybox · ${stamp(at)} · f ${frame}/${greybox.frames}` });
+    for (const item of missing) note(`NOTE: this shot has no ${item} yet — the lineup shows what exists`);
+
+    // Label the COPIES: the board and the anchor are records.
+    let labels = true;
+    const staged = panels.map((panel, index) => {
+      const path = copyInto(panel.file, join(work, `panel_${index}.png`));
+      if (labels && !labelTile(path, panel.label)) labels = false;
+      return path;
+    });
+
+    const footer = (shot.beats ?? []).map((beat) => `${round4(beat.from)}–${round4(beat.to)} ${beat.label}`).join("  ·  ").slice(0, 220);
+    const scale = staged.map((_, index) => `[${index}:v]scale=-2:${LINEUP_HEIGHT}[p${index}]`).join(";");
+    const joined = staged.length > 1
+      ? `${scale};${staged.map((_, index) => `[p${index}]`).join("")}hstack=inputs=${staged.length}[row]`
+      : `${scale};[p0]null[row]`;
+    const font = fontFile();
+    const canLabel = drawtextSupported().ok && Boolean(footer);
+    const graph = canLabel
+      ? `${joined};[row]pad=iw:ih+44:0:0:color=0x111113,drawtext=text='${escapeText(footer)}'${font ? `:fontfile='${escapeText(font)}'` : ""}:fontsize=20:fontcolor=white:x=12:y=h-32[out]`
+      : `${joined};[row]null[out]`;
+    const outPath = opts.out ? resolveInput(opts.out) : join(dir, "lineup.png");
+    mkdirSync(dirname(outPath), { recursive: true });
+    runToolOrFail(
+      ffmpeg.path,
+      ["-y", "-v", "error", ...staged.flatMap((path) => ["-i", path]), "-filter_complex", graph, "-map", "[out]", "-frames:v", "1", outPath],
+      { label: "ffmpeg lineup" },
+    );
+    if (!labels || !canLabel) note(`NOTE: ${drawtextSupported().reason ?? "there are no beats to write under the panels"} — the lineup is unlabelled.`);
+    return emit({
+      command: "lineup",
+      dir,
+      panels: panels.map((panel) => ({ kind: panel.kind, label: panel.label })),
+      missing,
+      at: round4(at),
+      frame,
+      beats: (shot.beats ?? []).map((beat) => ({ id: beat.id, label: beat.label, from: beat.from, to: beat.to, detail: beat.detail ?? null })),
+      continuity: shot.continuity ?? null,
+      height: LINEUP_HEIGHT,
+      size: pngSize(readFileSync(outPath)),
+      labels: labels && canLabel,
       file: relPath(dir, outPath),
     });
   } finally {
@@ -1818,13 +2342,17 @@ function promptState(dir, shot) {
   return { promptOk: parsed.ok, promptReason: parsed.reason, prompt: parsed.prompt, refs: parsed.refs };
 }
 
-/** "@Video1 greybox/greybox.mp4, @Image1 …" — what actually went with the
- *  job, in the words the prompt addresses them by. */
+/** `@Image2` — how the prompt addresses one attached reference. */
+function refTag(ref) {
+  return `@${ref.kind.charAt(0).toUpperCase()}${ref.kind.slice(1)}${ref.index}`;
+}
+
+/** "@Video1 greybox/greybox.mp4 (greybox), @Image1 …" — what actually went
+ *  with the job, in the words the prompt addresses them by, and what each
+ *  one is there to hold. */
 function describeRefs(refs) {
   if (!refs.length) return "nothing";
-  return refs
-    .map((ref) => `@${ref.kind.charAt(0).toUpperCase()}${ref.kind.slice(1)}${ref.index} ${ref.file}`)
-    .join(", ");
+  return refs.map((ref) => `${refTag(ref)} ${ref.file}${ref.role ? ` (${ref.role})` : ""}`).join(", ");
 }
 
 /**
@@ -1869,32 +2397,65 @@ function orphanTake(dir, take, reason) {
   return 1;
 }
 
+/** The anchor frame with this id, or null. `first` is the opening frame and
+ *  the one `generate` leads with. */
+function anchorById(shot, id) {
+  return (shot.anchors ?? []).find((entry) => entry && entry.id === id) ?? null;
+}
+
 /**
  * Everything the paid job is conditioned on besides the prompt, gathered from
  * the film rather than from the agent's memory.
  *
- * The order IS the addressing: `@Video1` the greybox, `@Image1` the board
- * frame, then this shot's character sheets and its set concept in bible
- * order, then `@Audio1…` the voice sample of each character with a spoken
- * line. A reference the bible does not have yet is reported, not invented —
- * and the prompt check afterwards refuses a pack that addresses an index
- * nothing was attached at.
+ * THE ORDER IS THE ADDRESSING, and this function is its single authority:
+ * `generate` attaches what it returns and `prompt-skeleton` writes the
+ * assignment sentences from the same list, so the pack and the job can never
+ * name different pictures.
+ *
+ *   @Video1   the final greybox — layout, positions, timing, camera
+ *   @Image1   the `first` anchor frame when the shot has one (composition
+ *             AND look), then the board frame,
+ *   @Image…   this shot's character sheets and its set concept, in bible
+ *             order, so two shots with the same cast address the same
+ *             character at the same index,
+ *   @Image…   any other anchor frames,
+ *   @Image…   the hand-off frame LAST, when this shot continues another,
+ *   @Audio1…  the voice sample of each character with a spoken line.
+ *
+ * A reference the bible does not have yet is reported, not invented. `plan`
+ * carries the display names the skeleton needs; `refs` is the record shape
+ * that goes onto the take — `{ kind, index, file, role }`.
  */
-function gatherReferences(dir, shot, projectRoot, greyboxFile) {
-  const refs = [];
+function planReferences(dir, shot, projectRoot, { greyboxFile, handoff = null } = {}) {
+  const plan = [];
   const videos = [];
   const images = [];
   const audios = [];
   const warnings = [];
   const rel = (absolute) => (projectRoot ? relFromProject(projectRoot, absolute) : absolute);
+  const attach = (kind, absolute, role, name = null) => {
+    const bucket = kind === "video" ? videos : kind === "image" ? images : audios;
+    bucket.push(absolute);
+    plan.push({ kind, index: bucket.length, file: rel(absolute), role, name });
+  };
 
-  videos.push(greyboxFile);
-  refs.push({ kind: "video", index: 1, file: rel(greyboxFile) });
+  attach("video", greyboxFile, "greybox");
+
+  const anchors = (shot.anchors ?? []).filter((entry) => entry && entry.file);
+  const leadAnchor = anchorById(shot, "first");
+  const attachAnchor = (record) => {
+    const file = join(dir, record.file);
+    if (!existsSync(file)) {
+      warnings.push(`anchor "${record.id}" is recorded as ${record.file} but the file is gone — the take goes without it`);
+      return;
+    }
+    attach("image", file, `anchor:${record.id}`, record.id);
+  };
+  if (leadAnchor && leadAnchor.file) attachAnchor(leadAnchor);
 
   const boardFile = shot.board?.file ? join(dir, shot.board.file) : null;
   if (boardFile && existsSync(boardFile)) {
-    images.push(boardFile);
-    refs.push({ kind: "image", index: images.length, file: rel(boardFile) });
+    attach("image", boardFile, "board");
   } else if (shot.board?.file) {
     warnings.push(`the board frame ${shot.board.file} is recorded but missing from disk — the take goes without it`);
   }
@@ -1915,18 +2476,26 @@ function gatherReferences(dir, shot, projectRoot, greyboxFile) {
       warnings.push(`character "${id}" has no sheet in the bible — the take goes without their look`);
       continue;
     }
-    images.push(file);
-    refs.push({ kind: "image", index: images.length, file: rel(file) });
+    attach("image", file, `character:${id}`, record?.name || id);
   }
   if (shot.set) {
     const record = readBibleRecord(projectRoot, "sets", shot.set);
     const file = record?.concept?.file ? join(projectRoot, "bible", "sets", shot.set, record.concept.file) : null;
     if (file && existsSync(file)) {
-      images.push(file);
-      refs.push({ kind: "image", index: images.length, file: rel(file) });
+      attach("image", file, `set:${shot.set}`, record?.name || shot.set);
     } else {
       warnings.push(`set "${shot.set}" has no concept frame in the bible — the take goes without it`);
     }
+  }
+  for (const record of anchors) {
+    if (record.id === "first") continue;
+    attachAnchor(record);
+  }
+
+  // The frame this shot opens on, LAST: it is the most specific instruction
+  // the job carries, and adherence decays with position.
+  if (handoff && handoff.file) {
+    attach("image", handoff.file, "handoff", handoff.from ?? null);
   }
 
   // One sample per SPEAKER, in the order their first line is spoken.
@@ -1943,11 +2512,119 @@ function gatherReferences(dir, shot, projectRoot, greyboxFile) {
       warnings.push(`"${speaker}" speaks on screen but has no voice sample in the bible — the model picks a voice of its own`);
       continue;
     }
-    audios.push(sample);
-    refs.push({ kind: "audio", index: audios.length, file: rel(sample) });
+    attach("audio", sample, `voice:${speaker}`, record?.name || speaker);
   }
 
-  return { refs, videos, images, audios, warnings };
+  return { plan, refs: plan.map(({ kind, index, file, role }) => ({ kind, index, file, role })), videos, images, audios, warnings };
+}
+
+/** Another shot of the same film, read-only. `previz.mjs` writes exactly one
+ *  `shot.json` per run — the one it was pointed at. */
+function readPeerShot(projectRoot, id, why) {
+  const dir = join(projectRoot, "shots", id);
+  const path = shotPathOf(dir);
+  if (!existsSync(path)) {
+    fail(`${why}: there is no ${relFromProject(projectRoot, path)} — "${id}" is named as an earlier shot but has no shot directory`);
+  }
+  try {
+    return { dir, shot: normalizeShot(readJson(path, `shots/${id}/shot.json`)) };
+  } catch (error) {
+    return fail(`${path}: ${error.message}`);
+  }
+}
+
+/** The take a shot DELIVERS, or null. Only a selected, finished take with a
+ *  file counts: that is the one that reaches the cut. */
+function deliveredTake(shot) {
+  const take = (shot.takes ?? []).find((entry) => entry?.selected === true);
+  return take && take.status === "done" && take.file ? take : null;
+}
+
+/**
+ * Cut the frame this shot OPENS on out of the shot it continues.
+ *
+ * The frame is the last one of the previous shot that reaches the FILM — its
+ * trim's `out`, not its render's end — because that is the picture the
+ * audience sees immediately before this shot starts. It is written to
+ * `takes/handoff-in.png` and attached as the last image reference.
+ *
+ * Refuses when the previous shot has no selected take: a hand-off from a take
+ * nobody chose is a hand-off from a frame that will not be in the film.
+ * `--no-handoff` overrides that, and the take records that it did.
+ */
+function resolveHandoff(dir, shot, projectRoot, { skip = false } = {}) {
+  const from = shot.continuity?.from ?? null;
+  if (!from) {
+    if (skip) note("NOTE: --no-handoff does nothing here — this shot declares no continuity, so no frame was going to be handed over");
+    return null;
+  }
+  if (skip) {
+    note(
+      `WARN: --no-handoff — this shot says it continues "${from}", but the take is being generated WITHOUT that frame. ` +
+        "It is recorded on the take as skipped, and 'take-handoff' still has to be answered by eye.",
+    );
+    return { skipped: true, from };
+  }
+
+  const { dir: peerDir, shot: peer } = readPeerShot(projectRoot, from, "hand-off");
+  const take = deliveredTake(peer);
+  if (!take) {
+    const recorded = (peer.takes ?? []).map((entry) => `${entry.id} (${entry.status}${entry.selected ? ", selected" : ""})`);
+    fail(
+      `this shot continues "${from}", and "${from}" has no selected take — the hand-off frame is the last frame of the take ` +
+        `that actually reaches the cut, so there has to be one. Takes on "${from}": ${recorded.join(", ") || "none"}.\n` +
+        `  - previz.mjs select ${peerDir} <take>   (once its checks pass)\n` +
+        "  - or previz.mjs generate <shot-dir> --no-handoff   (generates without that frame and records it on the take)",
+    );
+  }
+  const source = join(peerDir, take.file);
+  if (!existsSync(source)) {
+    fail(`"${from}" delivers ${take.id}, but ${relFromProject(projectRoot, source)} is gone — re-generate that shot, or pass --no-handoff`);
+  }
+
+  const probe = Number.isFinite(Number(take.probe?.fps)) && Number.isFinite(Number(take.probe?.frames))
+    ? take.probe
+    : probeVideo(source);
+  const fps = Number(probe.fps) || peer.spec?.fps || shot.spec.fps;
+  const frames = Number(probe.frames) || peer.spec?.frames || null;
+  if (!frames) fail(`ffprobe could not count the frames of ${relFromProject(projectRoot, source)} — the hand-off frame cannot be cut from a clip of unknown length`);
+  const end = peer.trim?.out != null ? Number(peer.trim.out) : (probe.seconds ?? frames / fps);
+  const frame = lastFrameBefore(end, fps, frames);
+  const at = round4(timeOfFrame(frame, fps));
+
+  const rel = "takes/handoff-in.png";
+  const file = join(dir, rel);
+  extractOneFrame(dir, source, frame, file, { width: null, scratch: "handoff" });
+  note(
+    `[previz] hand-off: frame ${frame}/${frames} of ${from}/${take.id} (${stamp(at)}${peer.trim ? `, the last frame its trim uses` : ""}) ` +
+      `→ ${rel}, attached as the LAST image reference`,
+  );
+  return {
+    from,
+    take: take.id,
+    source: relFromProject(projectRoot, source),
+    frame,
+    at,
+    trimmed: peer.trim ? { in: peer.trim.in, out: peer.trim.out } : null,
+    file,
+    rel,
+  };
+}
+
+/** The hand-off as a take records it and a report prints it: `"skipped"`,
+ *  the frame it used, or null when the shot continues nothing. */
+function handoffRecord(handoff) {
+  if (!handoff) return null;
+  if (handoff.skipped) return "skipped";
+  return {
+    from: handoff.from,
+    take: handoff.take,
+    source: handoff.source,
+    frame: handoff.frame,
+    at: handoff.at,
+    trimmed: handoff.trimmed,
+    file: handoff.rel,
+  };
 }
 
 function readBibleRecord(projectRoot, family, id) {
@@ -2022,6 +2699,179 @@ function verifySpokenLines(dir, shot, take, now) {
   return { status, note: note_, file: transcript ? transcriptRel : null, missing: coverage?.missing ?? [], shot: saved };
 }
 
+// ---------------------------------------------------------------------------
+// prompt-skeleton — the pack, with this shot's own indices
+// ---------------------------------------------------------------------------
+
+/** Seconds as a prompt writes them: one decimal for a whole number, so a
+ *  timeline reads `0.0–0.5` rather than `0–0.5`. */
+function sec(value) {
+  const n = round4(Number(value));
+  return Number.isInteger(n) ? n.toFixed(1) : String(n);
+}
+
+/** The job one attached reference is there to do, in the sentence the model
+ *  reads. The ROLE decides it, so the skeleton and `generate` can never
+ *  describe the same picture differently. */
+function assignmentFor(ref, shot) {
+  const tag = refTag(ref);
+  const role = String(ref.role ?? "");
+  if (role === "greybox") {
+    return `${tag} = layout, positions, timing and the single camera move only; its grey shapes are placeholders, not the look.`;
+  }
+  if (role === "anchor:first") {
+    return `${tag} = the exact composition, camera and look of the opening frame (anchor) — hold it.`;
+  }
+  if (role.startsWith("anchor:")) {
+    const record = anchorById(shot, role.slice("anchor:".length));
+    return `${tag} = the look of this shot at ${sec(record?.at ?? 0)} s (anchor "${record?.id ?? ref.name}") — hold it.`;
+  }
+  if (role === "board") return `${tag} = the composition of the opening frame (storyboard).`;
+  if (role.startsWith("character:")) return `${tag} = ${ref.name ?? role.slice("character:".length)}'s appearance only — hold it.`;
+  if (role.startsWith("set:")) return `${tag} = the ${ref.name ?? role.slice("set:".length)}'s appearance only.`;
+  if (role === "handoff") {
+    return `${tag} = the last frame of the previous shot (${ref.name ?? shot.continuity?.from ?? "?"}): this shot opens exactly here.`;
+  }
+  if (role.startsWith("voice:")) return `${tag} = ${ref.name ?? role.slice("voice:".length)}'s voice.`;
+  return `${tag} = <TODO: what this reference is for, and nothing else>`;
+}
+
+/**
+ * The prompt pack v2, built mechanically from the shot.
+ *
+ * Everything here is already written down somewhere — the references
+ * `generate` will attach, the beats and their designed detail, the spoken
+ * lines and their seconds, the trim, the hand-off. The agent's judgement goes
+ * into the sentences the skeleton leaves open, not into re-deriving the
+ * indices. Front-loaded on purpose: adherence decays with position, so the
+ * reference assignments and the entry state come first.
+ */
+function buildSkeleton(dir, shot, projectRoot) {
+  const greybox = shot.greybox ?? {};
+  const greyboxRel = greybox.final?.file ?? greybox.preview?.file ?? "greybox/greybox.mp4";
+  const handoff = shot.continuity?.from
+    ? { from: shot.continuity.from, file: join(dir, "takes", "handoff-in.png") }
+    : null;
+  const planned = planReferences(dir, shot, projectRoot, { greyboxFile: join(dir, greyboxRel), handoff });
+  const warnings = [...planned.warnings];
+  if (!greybox.final) warnings.push("there is no final greybox yet — @Video1 is the file 'generate' will attach once there is one");
+
+  // The PLAN, not the stripped record: the assignment sentences need the
+  // bible's display names ("小凯's appearance only"), and the record that goes
+  // on a take carries only what the take was conditioned on.
+  const body = [];
+  for (const ref of planned.plan) body.push(assignmentFor(ref, shot));
+  body.push("");
+  body.push("Subject: <TODO: who or what this shot is about, in a few words>");
+  body.push(
+    shot.continuity?.entry
+      ? `Entry (frame 1): ${shot.continuity.entry}`
+      : "Entry (frame 1): <TODO: the frame this shot opens on — positions, facing, distance>",
+  );
+  body.push("");
+
+  const trim = shot.trim ? `used in the cut: ${sec(shot.trim.in)}–${sec(shot.trim.out)}` : "the whole shot reaches the cut";
+  body.push(`Timeline (this shot's own clock, ${sec(shot.spec.seconds)} s; ${trim}):`);
+  const rows = [
+    ...(shot.beats ?? []).map((beat) => {
+      // A camera beat is marked as one: it shares the clock with the action
+      // but it is not a thing a body does, and the `Camera:` line below names
+      // the same move as the primary one.
+      const lead = beat.kind === "camera" ? "camera — " : "";
+      const open = beat.kind === "camera"
+        ? "<TODO: the move, and the frame it ends on>"
+        : "<TODO: verbs with a physical consequence; a tempo word>";
+      return {
+        at: beat.from,
+        rank: 0,
+        text: `Seconds ${sec(beat.from)}–${sec(beat.to)}: ${lead}${beat.detail ? beat.detail : `${beat.label} — ${open}`}`,
+      };
+    }),
+    ...spokenLines(shot)
+      .filter((line) => line.at != null)
+      .map((line) => ({ at: Number(line.at), rank: 1, text: `Seconds ${sec(line.at)}: ${line.speaker} says "${line.text}"` })),
+  ].sort((a, b) => a.at - b.at || a.rank - b.rank);
+  if (rows.length === 0) {
+    body.push(`Seconds 0.0–${sec(shot.spec.seconds)}: <TODO: load the beats first — previz.mjs beats <shot-dir> --set beats.json>`);
+  }
+  for (const row of rows) body.push(row.text);
+  body.push("");
+
+  const cameraBeats = (shot.beats ?? []).filter((beat) => beat.kind === "camera");
+  if (cameraBeats.length) {
+    // The LABEL, not the detail: the move is already written out in the
+    // timeline row above, and ~150 words cannot afford it twice.
+    const move = cameraBeats[0];
+    body.push(`Camera: ${move.label} (${sec(move.from)}–${sec(move.to)} s) — one move only; it ends <TODO: the frame it settles on>.`);
+    if (cameraBeats.length > 1) {
+      warnings.push(
+        `this shot has ${cameraBeats.length} camera beats (${cameraBeats.map((beat) => beat.id).join(", ")}) — one clip holds ONE move; ` +
+          "the skeleton names the first and leaves the rest to the cut",
+      );
+    }
+  } else {
+    body.push("Camera: <TODO: one move only — what it does and where it ends>.");
+  }
+  body.push("Look: <TODO: materials, light, time of day, lens feel, palette — the greybox is grey on purpose>.");
+  const voiceOver = (shot.lines ?? []).filter((line) => line && line.kind === "vo");
+  body.push(
+    `Audio: named sounds — <TODO: the two or three sounds this shot actually makes>; no music.${
+      voiceOver.length ? " The voice-over is laid in during the CUT, not in this take." : ""
+    }${hasSpokenLine(shot) ? " The dialogue above is spoken on screen, in this take." : ""}`,
+  );
+  if (shot.continuity?.exit) body.push(`Exit (last used frame): ${shot.continuity.exit}`);
+
+  const markdown = [
+    `# Prompt skeleton — ${shot.title}`,
+    "",
+    "Written by `previz.mjs prompt-skeleton` from this shot's own record: the",
+    "reference lines below are exactly what `generate` will attach, in the same",
+    "order and at the same indices, and the timeline is this shot's beats on the",
+    "greybox's clock. Fill the block in place, then copy it into the fenced",
+    "prompt block of `prompts.md` — that file is the one `generate` reads.",
+    "",
+    "```prompt",
+    ...body,
+    "```",
+    "",
+    `Aim for ~120–180 words inside the block. Adherence decays with position, so`,
+    "the non-negotiables are already first: what each reference is for, then the",
+    "entry state, then the clock.",
+    "",
+  ].join("\n");
+
+  return { markdown, body: body.join("\n"), refs: planned.refs, warnings, rows: rows.length };
+}
+
+function cmdPromptSkeleton(dir, opts) {
+  const shot = loadShot(dir);
+  const projectRoot = findProjectRoot(dir);
+  const skeleton = buildSkeleton(dir, shot, projectRoot);
+  for (const warning of skeleton.warnings) note(`WARN: ${warning}`);
+
+  let wrote = null;
+  if (opts.write) {
+    // NEVER prompts.md: that file is the agent's, and a take is made from
+    // what is in it. The skeleton lands beside it and is copied in by hand.
+    wrote = "prompts.skeleton.md";
+    writeFileSync(join(dir, wrote), skeleton.markdown);
+    note(`[previz] wrote ${wrote} — fill its \`\`\`prompt block and copy it into prompts.md (never overwritten by this command)`);
+  } else {
+    note("[previz] the skeleton is the `skeleton` field below; --write puts it in prompts.skeleton.md");
+  }
+  return emit({
+    command: "prompt-skeleton",
+    dir,
+    file: wrote,
+    refs: skeleton.refs,
+    timelineRows: skeleton.rows,
+    continuity: shot.continuity ?? null,
+    budget: { minWords: 120, maxWords: 180 },
+    warnings: skeleton.warnings,
+    skeleton: skeleton.markdown,
+  });
+}
+
 async function cmdGenerate(dir, opts, now) {
   const shot = loadShot(dir);
   const resolution = opts.resolution ?? "480p";
@@ -2050,8 +2900,16 @@ async function cmdGenerate(dir, opts, now) {
   const projectRoot = requireProjectRoot(dir, "a paid take");
   requireGate("generate", projectRoot);
 
+  // The frame this shot opens on, when it says it continues another. Cut
+  // before anything is priced: a hand-off that cannot be cut is a refusal,
+  // not a take that quietly starts somewhere else.
+  const handoff = resolveHandoff(dir, shot, projectRoot, { skip: Boolean(opts["no-handoff"]) });
+
   // Everything the job carries besides the prompt, gathered from the film.
-  const references = gatherReferences(dir, shot, projectRoot, greyboxFile);
+  const references = planReferences(dir, shot, projectRoot, {
+    greyboxFile,
+    handoff: handoff && !handoff.skipped ? handoff : null,
+  });
   for (const warning of references.warnings) note(`WARN: ${warning}`);
   const attached = { video: references.videos.length, image: references.images.length, audio: references.audios.length };
   const refCheck = validatePromptRefs(prompt.refs, attached);
@@ -2062,9 +2920,35 @@ async function cmdGenerate(dir, opts, now) {
         "(previz.mjs meta --characters/--set, previz.mjs board --file, backlot.mjs character voice).",
     );
   }
+  // …and the other half of the same rule: a reference that was attached and
+  // never given a job bleeds its own lighting and framing into the shot.
+  const assignments = validateReferenceAssignments(prompt.prompt, attached);
+  if (!assignments.ok) {
+    fail(
+      `the prompt pack leaves an attached reference unassigned:\n  - ${assignments.errors.join("\n  - ")}\n` +
+        `Attached: ${describeRefs(references.refs)}.\n` +
+        "Run 'previz.mjs prompt-skeleton <shot-dir> --write' for the assignment lines with this shot's own indices.",
+    );
+  }
   if (prompt.refs?.legacy?.length) {
     note(`WARN: prompts.md still addresses ${prompt.refs.legacy.join(", ")} — Seedance documents @Video1/@Image1/@Audio1; the bracket form is read as the same reference but will stop being accepted`);
   }
+  // A time-coded timeline is the vendor's own advice above ~8 s, and this
+  // mode's beats are already that timeline. Whether it AGREES with the shot's
+  // clock is worth saying; it is not worth refusing a take over.
+  const timeline = parsePromptTimeline(prompt.prompt);
+  const timelineWarnings = timelineProblems(timeline, shot.spec);
+  // A skeleton that was pasted in and not filled would be sent as it is, and
+  // paid for. Said out loud rather than refused: the phrase is the skeleton's,
+  // not a rule about how a prompt may be written.
+  const placeholders = [...String(prompt.prompt).matchAll(/<TODO[^>]*>/g)].map((match) => match[0]);
+  if (placeholders.length) {
+    timelineWarnings.push(
+      `the prompt still carries ${placeholders.length} unfilled skeleton placeholder(s), starting with "${placeholders[0].slice(0, 60)}" — ` +
+        "the model is sent exactly this text",
+    );
+  }
+  for (const warning of timelineWarnings) note(`WARN: ${warning}`);
 
   // A shot with a line spoken on screen has to come back with sound, or the
   // transcript check has nothing to listen to.
@@ -2100,9 +2984,12 @@ async function cmdGenerate(dir, opts, now) {
       seconds: wantedSeconds, refSeconds, greybox: greyboxRel, greyboxRevision: shot.greybox.revision,
       cost: price, prices: PRICES, promptChars: prompt.prompt.length,
       refs: references.refs, audio: wantAudio, priceNote,
+      handoff: handoffRecord(handoff),
+      timeline: timeline.map((row) => ({ from: row.from, to: row.to })),
       warnings: [
         ...(policy.unverifiedChecks.length ? [`${policy.unverifiedChecks.length} greybox check(s) are still unverified: ${policy.unverifiedChecks.join(", ")}`] : []),
         ...references.warnings,
+        ...timelineWarnings,
         ...(priceNote ? [priceNote] : []),
       ],
     });
@@ -2145,6 +3032,9 @@ async function cmdGenerate(dir, opts, now) {
     // What the job was conditioned on, recorded BEFORE the request: a bible
     // edited afterwards must not be able to rewrite what a take saw.
     refs: references.refs,
+    // "skipped" is a fact about this take, not about the shot: the shot still
+    // says it continues another one, and `take-handoff` is still asked.
+    ...(handoff ? { handoff: handoff.skipped ? "skipped" : handoffRecord(handoff) } : {}),
     audio: wantAudio,
     submittedAt: now,
     finishedAt: null,
@@ -2217,9 +3107,13 @@ async function cmdGenerate(dir, opts, now) {
       note(`WARN: the spoken-line check could not run (${error instanceof Error ? error.message : String(error)}) — take-lines stays unverified`);
     }
     const after = lines?.shot ?? merged.shot;
+    if (handoff) {
+      note(`[previz] look at the hand-off before accepting ${takeId}: previz.mjs compare <shot-dir> --handoff --take ${takeId}`);
+    }
     return emit({
       command: "generate", dir, take: merged.take, cost: merged.take.cost, seededChecks: merged.seeded.length,
       refs: references.refs,
+      handoff: handoffRecord(handoff),
       lines: lines ? { status: lines.status, note: lines.note, transcript: lines.file, missing: lines.missing } : null,
       next: nextStage(after, promptState(dir, after)),
     });
@@ -2319,6 +3213,20 @@ stderr. --json is accepted everywhere and is already the default.
       segments. One flag alone edits the range that is there; --no-trim
       clears it and the whole shot reaches the film again.
 
+  meta <shot-dir> --continues-from <shot> --entry "…" --exit "…"
+  meta <shot-dir> --exit "…"        |  meta <shot-dir> --no-continuity
+      The HAND-OFF, and it is opt-in. A shot with a continuity block is
+      saying "this is one continuous action, seen from a new camera": the
+      shot it names must be EARLIER in backlot.json's order and must have a
+      selected take by the time this one is generated, --entry is the frame
+      this shot opens on and --exit how it ends. Then 'generate' cuts that
+      shot's last used frame into takes/handoff-in.png, attaches it as the
+      LAST image reference, and every take carries the 'take-handoff' check.
+      Say nothing for a cut that exists to BREAK continuity — an ellipsis, a
+      jump cut, a montage, a deliberate mismatch. --exit alone is allowed on
+      any shot: it is how a shot tells the next one where it ended.
+      --no-continuity drops the block.
+
   board <shot-dir> --file <frame.png> --prompt "<what it was made from>"
         [--refs a.png,b.png] [--cost-usd 0.13 --cost-basis reported]
       Register the concept frame for this shot (generate it yourself with
@@ -2344,7 +3252,15 @@ stderr. --json is accepted everywhere and is already the default.
 
   beats <shot-dir> --set <file.json|->
       Replace the beat list. Each beat is
-        { id, label, from, to, kind: action|trigger|camera|hold, causedBy? }
+        { id, label, from, to, kind: action|trigger|camera|hold,
+          causedBy?, detail? }
+      'label' is short — it is what a rail, a sheet and a beat row show.
+      'detail' is the DESIGNED picture of the beat, written at the boards
+      stage before the greybox exists: the body action, the expression, the
+      wardrobe and material, the physical consequence, the tempo word. The
+      greybox is built from it and can only carry its geometry and its
+      clock; 'prompt-skeleton' hands the same sentence back to the video
+      model as that beat's timeline line, at the greybox's seconds.
       Validated: inside [0, seconds]; to >= from; ids unique; a causedBy
       that exists, is not itself, starts no later than its effect, and does
       not run in a circle. Every problem is reported at once.
@@ -2372,6 +3288,32 @@ stderr. --json is accepted everywhere and is already the default.
       after the MP4 encodes, decodes and probes clean (192 frames of 720p is
       ~163 MB). --keep-frames keeps them; a render that failed always does.
 
+  anchor <shot-dir> [--at 0] [--id first] [--prompt "…" | --prompt-file <f>]
+         [--aspect-ratio 16:9] [--quality high] [--cost-usd --cost-basis]
+      The ANCHOR FRAME: the still that says what this shot looks like. Cuts
+      the FINAL greybox's frame at --at, hands it to generate_image.mjs as
+      the composition-and-camera reference together with the board, this
+      shot's character sheets and its set concept, and records the result as
+      anchors/<id>.png with its prompt, its references and what it cost.
+      'first' is the opening frame and becomes the take's @Image1; a 'last'
+      anchor gives the next shot a look-continuous picture to continue from.
+      Re-running an id bumps its revision. Gated: the bible must be approved.
+      The price comes from the vendor's own usage.cost when it reports one.
+
+  lineup <shot-dir> [--at s] [--id first] [--out <path.png>]
+      board | anchor | greybox frame, side by side, with the beats written
+      underneath: the joint review before any video is bought. Whatever is
+      missing is left out and named.
+
+  prompt-skeleton <shot-dir> [--write]
+      The prompt pack v2, built from this shot: one assignment line per
+      reference 'generate' WILL attach (same order, same indices), the entry
+      state when the shot continues another, the beats as a time-coded
+      timeline with their designed detail, the spoken lines quoted at their
+      second, the trim, and 'no music'. Prints it in the JSON's 'skeleton'
+      field; --write puts it in prompts.skeleton.md. It NEVER writes
+      prompts.md — copy the filled block in yourself.
+
   sheet <shot-dir> [--lane greybox|preview|reference|take-01] [--at 0.5,3.8,…]
         [--strip from,to] [--count 6] [--out <path.png>]
       A contact sheet at named seconds, or a STRIP of every consecutive frame
@@ -2383,6 +3325,14 @@ stderr. --json is accepted everywhere and is already the default.
           [--count 6] [--out <path.png>]
       The two lanes at the same timestamps, stacked, or 50 % averaged for
       silhouette matching. Different sizes are scaled to a common width.
+
+  compare <shot-dir> --handoff [--take take-01] [--out <path.png>]
+      The JOINT: the previous shot's last used frame beside the first frame
+      this take opens on, side by side and labelled, at
+      takes/qa/<take>/handoff.png. That picture is how 'take-handoff' is
+      answered. The left frame is the one the take was actually conditioned
+      on when its record says so, not whatever the previous shot delivers
+      now.
 
   check <shot-dir> --id <check> --status ${CHECK_STATUSES.join("|")}
         [--target greybox|take-01] [--range a,b] [--note "<what you saw>"]
@@ -2398,18 +3348,26 @@ stderr. --json is accepted everywhere and is already the default.
   generate <shot-dir> [--resolution ${PRICED_RESOLUTIONS.join("|")}] [--seconds n]
            [--fix "<what this take changes>"] [--user-approved]
            [--allow-failing "<why a failing greybox is acceptable>"]
-           [--estimate] [--audio] [--timeout 1800]
+           [--estimate] [--audio] [--no-handoff] [--timeout 1800]
       Seedance 2.5 reference-to-video, conditioned on everything this shot
       has, in the order the prompt addresses it by:
         @Video1  the FINAL greybox
-        @Image1  board.png, when the shot has one
-        @Image2… this shot's character sheets, then its set concept, in
-                 bible order
+        @Image1  the 'first' anchor frame, when the shot has one
+        @Image…  board.png, then this shot's character sheets and its set
+                 concept in bible order, then any other anchors
+        @Image…  takes/handoff-in.png LAST, when this shot continues another
         @Audio1… the voice sample of each character with a spoken line
       The prompt is the first fenced \`prompt\` block of prompts.md; it must
-      address @Video1, and a pack that names a reference index nothing was
-      attached at is REFUSED before the request ([Video1] is read as @Video1
-      and warned about).
+      address @Video1, every attached reference must be GIVEN A JOB there
+      ("@Image2 = the keeper's appearance only"), and a pack that names a
+      reference index nothing was attached at is REFUSED before the request
+      ([Video1] is read as @Video1 and warned about). A 'Seconds a–b:'
+      timeline that runs past the shot or goes backwards is warned about,
+      never refused. 'previz.mjs prompt-skeleton' writes the pack with this
+      shot's own indices.
+      A shot that declares continuity refuses while the shot it continues has
+      no selected take; --no-handoff generates without that frame and records
+      "skipped" on the take.
       Refuses: while the film's previz stage is not approved (backlot.mjs
       approve / gates open); without a final greybox at the current
       revision; while a greybox check is failing (unless --allow-failing
@@ -2484,8 +3442,18 @@ const OPTIONS = {
   "trim-in": { type: "string" },
   "trim-out": { type: "string" },
   "no-trim": { type: "boolean" },
+  "continues-from": { type: "string" },
+  exit: { type: "string" },
+  "no-continuity": { type: "boolean" },
+  "no-handoff": { type: "boolean" },
+  handoff: { type: "boolean" },
+  take: { type: "string" },
+  write: { type: "boolean" },
   file: { type: "string" },
   prompt: { type: "string" },
+  "prompt-file": { type: "string" },
+  "aspect-ratio": { type: "string" },
+  quality: { type: "string" },
   refs: { type: "string" },
   model: { type: "string" },
   voice: { type: "string" },
@@ -2527,10 +3495,13 @@ export async function main(argv = process.argv.slice(2)) {
     case "beats": return cmdBeats(dir, opts);
     case "reference": return cmdReference(dir, second, opts);
     case "render": return cmdRender(dir, opts);
+    case "anchor": return cmdAnchor(dir, opts, now);
+    case "lineup": return cmdLineup(dir, opts);
     case "sheet": return cmdSheet(dir, opts);
     case "compare": return cmdCompare(dir, opts);
     case "check": return cmdCheck(dir, opts, now);
     case "checklist": return cmdChecklist(dir);
+    case "prompt-skeleton": return cmdPromptSkeleton(dir, opts);
     case "generate": return cmdGenerate(dir, opts, now);
     case "select": return cmdSelect(dir, second);
     case "status": return cmdStatus(dir);

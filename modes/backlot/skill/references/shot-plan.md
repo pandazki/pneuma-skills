@@ -6,13 +6,22 @@ copied from it, and the take is checked against it. Write it before you touch
 Blender; an action you have not timed on paper will be timed by accident in
 the scene.
 
+**Design the picture first, then build the greybox, then hand the model the
+design.** This stage is where the film is actually directed: what each beat
+*looks* like — the body, the face, the cloth, the dust, the speed — is written
+here, in words, before a single Blender primitive exists. The greybox is built
+from this plan, and at the takes stage the prompt is assembled *from these same
+words* plus what the greybox cannot express plus the bible references. Nothing
+about the picture is invented fresh in `prompts.md`; a shot designed at the
+takes stage is a shot the creator never approved.
+
 Every line of the timeline lands in one of two places, and the plan says
 which. **Blocked** lines are the greybox's: where a person is, the path they
 travel, when they start and stop, which way they face, a door that swings, a
 light that comes on, the camera. **Acted** lines are the prompt's: how the
 body does it — the gait, the raised hand, the sword form, the glance, the
 expression. A greybox person is a pawn; nothing in the acted column is ever
-animated.
+animated — which is exactly why the acted column has to be *written*.
 
 ## What `shots/<id>/shot-plan.md` holds
 
@@ -26,16 +35,25 @@ animated.
    is, the main props and their positions, where each subject starts and ends.
    Real distances, because the timeline is computed from them, and the set's
    own dimensions come from the bible record — do not invent a second room.
-4. **Timeline** — a table in seconds: what happens from when to when, with a
-   column saying whether the line is *blocked* (greybox) or *acted* (prompt).
+4. **Timeline** — a table in seconds: what happens from when to when, a column
+   saying whether the line is *blocked* (greybox) or *acted* (prompt), and a
+   **detail** column holding the designed picture of that beat in one sentence.
    The shot's lines sit on this table too, at the second each one starts.
 5. **Camera** — lens, start position and what it looks at, the move (see the
-   camera vocabulary in `camera.md`), its speed, and how it ends.
+   camera vocabulary in `camera.md`), its speed, and how it ends. **One move
+   per shot**: a second move is a second shot.
 6. **Triggers** — every cause → effect pair, with the second the cause lands
    and the second the effect starts.
-7. **End state** — what is on screen in the last half second.
-8. **Assumptions** — every value the creator did not give and you chose.
-   Default duration, size and frame rate always appear here when you used them.
+7. **Entry state** — what is on screen in the first half second: each body's
+   position, facing, weapon and any contact. When this shot continues the
+   previous one's action, this sentence *is* the previous shot's exit sentence.
+8. **Exit state** — the last half second in the same grammar, because the next
+   shot's entry is written from it and, for a hand-off, the model is shown the
+   frame it produced.
+9. **Continuity decision** — how this shot is cut *into*, one of the five
+   below, with the one-line reason.
+10. **Assumptions** — every value the creator did not give and you chose.
+    Default duration, size and frame rate always appear here when you used them.
 
 In a recreate job add two columns to the timeline — *observed* and *estimated*
 — and keep them honest: what is behind the subject, any depth, anything
@@ -78,19 +96,29 @@ the body time to arrive: *walk → settle → gesture → contact → reaction �
 Six seconds, 24 fps, 144 frames — the challenger crosses the terrace and the
 keeper turns to meet him:
 
-| s | what happens | where it lives |
-|---|---|---|
-| 0.0–0.5 | the terrace establishes; nobody moves | blocked |
-| 0.5–3.2 | the challenger crosses 3.6 m from the stair to the terrace centre | blocked (path, pace) · acted (an unhurried walk, coat moving) |
-| 1.4–2.9 | the keeper's line, `l1` | acted (spoken — the model renders it) |
-| 3.2–3.8 | he slows and stops, facing the keeper | blocked (the stop) · acted (the last step) |
-| 3.8–4.6 | his right hand settles on the sword hilt | **acted only** — no limb exists in the greybox |
-| 4.4–5.2 | the keeper turns to face him | blocked (a `turn`) |
-| 0.0–5.5 | the camera orbits 40° around the pair and settles | blocked |
-| 5.5–6.0 | both hold; the camera is still | blocked |
+| s | what happens | where it lives | detail — the designed picture |
+|---|---|---|---|
+| 0.0–0.5 | the terrace establishes; nobody moves | blocked | dusk, dust drifting through low side light; the keeper motionless under the tree |
+| 0.5–3.2 | the challenger crosses 3.6 m from the stair to the terrace centre | blocked (path, pace) · acted (the gait) | an unhurried weighted walk, real steps, never gliding; the travelling coat swings behind him, dust off each heel |
+| 1.4–2.9 | the keeper's line, `l1` | acted (spoken — the model renders it) | said low and flat, jaw barely moving, eyes on the challenger's sword hand |
+| 3.2–3.8 | he slows and stops, facing the keeper | blocked (the stop) · acted (the last step) | the last step shortens and plants; the coat keeps going for a beat, then settles |
+| 3.8–4.6 | his right hand settles on the sword hilt | **acted only** — no limb exists in the greybox | the hand rises slowly and closes on the hilt without drawing; knuckles tighten |
+| 4.4–5.2 | the keeper turns to face him | blocked (a `turn`) | the head goes first, then the shoulders; his robe lifts and falls back |
+| 0.0–5.5 | the camera orbits 40° around the pair and settles | blocked | slow, level, the pair held mid-frame; ends on a wide two-shot, both fully in frame |
+| 5.5–6.0 | both hold; the camera is still | blocked | nothing moves but the dust and the flags |
 
 The times move with distance and pace. They do not move to make a crowded
 plan fit.
+
+The **detail** column is the film's picture, and it is the column that reaches
+the model: at the takes stage `prompt-skeleton` prints one
+`Seconds a.a–b.b: <detail>` line per beat, in order, and that *is* the prompt's
+timeline. So write it as direction, not as a label — bodies as verbs with
+physical consequences ("dust lifts on the landing"), the wardrobe and the
+material where they read, the expression where the face is legible, and the
+tempo word for the segment ("in a blur", "in slow motion, dust hanging").
+Written here it is cheap and the creator sees it on the shot list; written for
+the first time in `prompts.md` it is a second design nobody approved.
 
 ## Beats
 
@@ -103,13 +131,20 @@ node {SKILL_PATH}/scripts/previz.mjs beats <shot-dir> --set beats.json
 
 ```json
 [
-  { "id": "establish", "label": "The terrace holds", "from": 0, "to": 0.5, "kind": "hold" },
-  { "id": "cross", "label": "The challenger crosses", "from": 0.5, "to": 3.2, "kind": "action" },
-  { "id": "settle", "label": "He stops, facing the keeper", "from": 3.2, "to": 3.8, "kind": "action" },
-  { "id": "hilt", "label": "His hand settles on the hilt", "from": 3.8, "to": 4.6, "kind": "action" },
-  { "id": "turn", "label": "The keeper turns to meet him", "from": 4.4, "to": 5.2, "kind": "trigger", "causedBy": "settle" },
-  { "id": "orbit", "label": "Camera orbits and settles", "from": 0, "to": 5.5, "kind": "camera" },
-  { "id": "hold", "label": "Both hold", "from": 5.5, "to": 6, "kind": "hold" }
+  { "id": "establish", "label": "The terrace holds", "from": 0, "to": 0.5, "kind": "hold",
+    "detail": "Dusk, dust drifting through low side light; the keeper motionless under the tree." },
+  { "id": "cross", "label": "The challenger crosses", "from": 0.5, "to": 3.2, "kind": "action",
+    "detail": "He crosses with an unhurried, weighted walk — real steps, never gliding — the travelling coat swinging behind him, dust off each heel." },
+  { "id": "settle", "label": "He stops, facing the keeper", "from": 3.2, "to": 3.8, "kind": "action",
+    "detail": "The last step shortens and plants; the coat keeps going for a beat, then settles." },
+  { "id": "hilt", "label": "His hand settles on the hilt", "from": 3.8, "to": 4.6, "kind": "action",
+    "detail": "His right hand rises slowly and closes on the hilt without drawing; the knuckles tighten." },
+  { "id": "turn", "label": "The keeper turns to meet him", "from": 4.4, "to": 5.2, "kind": "trigger", "causedBy": "settle",
+    "detail": "The head goes first, then the shoulders; the robe lifts and falls back." },
+  { "id": "orbit", "label": "Camera orbits and settles", "from": 0, "to": 5.5, "kind": "camera",
+    "detail": "The camera orbits slowly left around the pair and settles, ending on a wide two-shot with both fighters fully in frame." },
+  { "id": "hold", "label": "Both hold", "from": 5.5, "to": 6, "kind": "hold",
+    "detail": "Nothing moves but the dust and the flags." }
 ]
 ```
 
@@ -119,16 +154,81 @@ An acted-only beat (the hand on the hilt) is still a beat: the viewer draws
 it, the prompt copies its seconds, and `take-motion` is checked against it.
 Labels are what the creator reads on the timeline: short, in their language.
 
+`detail` is optional and is the beat's designed picture, in the **prompt's
+language** (English — the `label` stays short and in the film's language, for
+the rail and the sheet tiles). Write one for **every** beat, the `camera` beat
+included: `prompt-skeleton` turns each beat's `detail` into a timeline line and
+the *first camera beat's* `detail` into the prompt's camera sentence. A beat
+with no `detail` comes back as its label plus a `<TODO>` you have to fill in
+by hand, which is the same work done later and worse. Give a shot **one**
+camera beat: a second one is warned about, because one clip holds one move.
+
 When the plan changes, change the beats in the same breath — a timeline the
 viewer draws that the greybox no longer follows is worse than none. The beats
 are part of the `boards` stage's content, so editing them after approval turns
 that stage `changed` and closes the gate in front of `generate` until the
 creator has seen the new version.
 
+## The cut into the shot: continuity, or not
+
+Every shot but the first is cut *into* from another one, and the plan says how.
+Pick one of five, and write the one-line reason next to it:
+
+| decision | what it is | gets a `continuity` block? |
+|---|---|---|
+| **continuous action** | one motion seen from a new camera: the bodies are where the previous shot left them, the blade is still where it was, the dust is still in the air | **yes**, on the later shot |
+| **match cut** | another time or place, but a pose, a shape or a movement carries across the join | yes, when the pose is what makes the cut work |
+| **ellipsis / time jump** | time has passed and the film skips over it | no |
+| **montage** | a rhythmic series that never claims to be continuous | no |
+| **deliberate mismatch** | the join is meant to jar — a jump cut, a hard smash | no |
+
+**The hand-off is opt-in, and that is the design.** Some cuts exist precisely
+*to* break continuity, and a blanket "every shot continues the last one" would
+make the ellipsis, the jump cut and the montage inexpressible — as well as
+spending a reference slot and a constraint on shots that do not want either. A
+shot with no `continuity` block is generated exactly as it was before this
+existed. So the decision is yours to make per cut, here, in the plan, where the
+creator can read it and disagree for free.
+
+Declare one when the two shots are **one continuous action** — a fight
+exchange, a fall, a hand-off of an object, anything the audience must read as
+uninterrupted — or when a **match cut** only lands if the pose survives it.
+
+Then write the two sentences and register them:
+
+```bash
+node {SKILL_PATH}/scripts/previz.mjs meta <shot-dir> \
+  --continues-from s03-orbit \
+  --entry "challenger mid-lunge, blade extended at chest height, 1.2 m from the keeper, facing screen right" \
+  --exit  "blades in contact, keeper's blade turning the thrust aside, both weight forward"
+```
+
+- `--continues-from` must name an **earlier** shot in `backlot.json.shots`.
+- `--entry` is the first half second of *this* shot, and it is the same
+  sentence as the previous shot's `--exit`. Write it once and paste it.
+- `--exit` is worth recording even on a shot that continues nothing: it is how
+  the shot *before* a hand-off tells the next one what to open on.
+- `--no-continuity` clears the block — the honest way to change your mind.
+- Positions in a hand-off sentence are named **as they read on screen**
+  (screen left/right), never from a character's point of view.
+
+**Contiguous shots are shot in order.** `generate` extracts the hand-off frame
+from the previous shot's *selected* take, so a shot that continues another one
+cannot be generated until that one has a take the creator kept. Plan the order,
+generate in it, and select as you go. `--no-handoff` generates out of order and
+records that on the take; it is the creator's call to accept the join, not a
+way around the queue.
+
+A `continuity` block is part of the `boards` stage's content, exactly like the
+beats and the trim: changing a hand-off turns that stage `changed` and the
+creator re-approves the shot list before anything else is bought.
+
 ## Then the board
 
 The plan says what happens; the board frame shows what it looks like. Generate
-one still per shot from the bible images (`bible.md`), register it with
+one still per shot from the bible images (`bible.md`) — in the same illustrated
+or 3D-design idiom as the sheets, never as a photoreal portrait, which is the
+image fal's likeness filter refuses — register it with
 `previz.mjs board <shot-dir> --file board.png --prompt "…" --refs …`, and put
 the board's composition and the plan's layout in the same room: if the board
 frames the pair from a low angle and the plan puts the camera at 1.6 m, one of

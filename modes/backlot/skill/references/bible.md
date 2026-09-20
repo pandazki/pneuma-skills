@@ -13,6 +13,30 @@ prompt controls what happens, and an attached image controls who it happens
 to. So the bible is generated once, approved once, and then travels — into
 every board frame, and into every take — as an `@Image` reference.
 
+## One rule before any of it: design, not photography
+
+Every image on this stage — and every board frame and anchor frame made from
+it — is drawn as an **illustrated or 3D-animation production design**, never
+as a photograph of a person. Say so in the prompt, in the same sentence as the
+look: *"rendered as stylised 3D animation production art"*, *"painted
+concept-art illustration"*, whichever idiom the film is in.
+
+This is not taste, it is a gate. In the first acceptance run fal's likeness
+filter refused a shot twice with **HTTP 422**, and the reference it choked on
+was a photoreal, low-angle close-up board frame of a face — an image that
+reads to a safety filter as a real person. The cost of the idiom rule is
+nothing; the cost of ignoring it is a shot you cannot buy.
+
+- **Never a photoreal portrait, and especially never a photoreal facial
+  close-up.** A close-up board is the highest-risk image in the whole film.
+- **When a 422 comes back, regenerate the offending reference in the design
+  idiom and try again.** Resubmitting the same pack spends the same money on
+  the same refusal, and neither the prompt nor the retry counter is the thing
+  that needs changing.
+- **The take's look should agree with the idiom the references were drawn in.**
+  References bleed their rendering style; a stylised bible and a "photographic,
+  shallow depth of field" prompt are two films arguing inside one take.
+
 Everything on this stage is **paid and gated**. The `script` stage must be
 `approved` before a sheet, a concept or a voice sample may be bought.
 `character look`, `set look` and `character voice` check the gate themselves;
@@ -46,7 +70,8 @@ One image, one frame, three views of the same person:
 
 ```bash
 node {SKILL_PATH}/scripts/generate_image.mjs \
-  "Character reference sheet of one person on a flat neutral grey background: \
+  "Character reference sheet of one person on a flat neutral grey background, \
+drawn as stylised 3D-animation production design — not a photograph: \
 three full-body views of the SAME person side by side in one frame — \
 three-quarter view, front view, and profile — standing in a relaxed neutral \
 pose, identical face, identical costume and proportions in all three. \
@@ -66,6 +91,7 @@ The spec, and why each part is there:
 | **the same face in all three** | say it in the prompt. Without it the generator draws three siblings |
 | **no text, labels or borders** | any text in a reference tends to reappear, baked into a take |
 | **16:9 or 3:2** | three full-body figures side by side need the width |
+| **an illustrated / 3D-design idiom** | a photoreal face is what the likeness filter refuses, and the sheet travels into every board, anchor and take that uses it |
 
 Look at the file before you register it. Three views, one person, the costume
 from the record, nothing written on it — if any of those fails, fix the prompt
@@ -130,8 +156,8 @@ where the scene's main camera will stand**:
 node {SKILL_PATH}/scripts/generate_image.mjs \
   "Wide establishing shot of <the set's look sentence>. Empty of people. \
 Eye-level camera about 1.6 m high, 28 mm lens, looking across the terrace \
-from the south. Dusk, low warm side light, long shadows. Photographic, no \
-text, no people, no logos." \
+from the south. Dusk, low warm side light, long shadows. Rendered as stylised \
+3D-animation production design, no text, no people, no logos." \
   --aspect-ratio 16:9 --quality high \
   --output-dir bible/sets/courtyard --filename-prefix concept
 
@@ -158,11 +184,15 @@ into the set concept turns up as an extra in a take.
 | stage | what it attaches |
 |---|---|
 | `boards` | `generate_image.mjs --image-urls <sheet> --image-urls <concept>` — the board frame is generated *from* the bible, so the shot list already shows the right faces in the right place |
-| `takes` | `previz.mjs generate` attaches the greybox as `@Video1`, the board as `@Image1`, then the sheets of the shot's `characters` and the set concept as `@Image2…`, then the voice samples of any spoken line's speaker as `@Audio1…` |
+| `previz` | `previz.mjs anchor` sends the greybox frame for the composition and the board, the sheets and the concept for the appearance — the same faces again, now in the shot's real framing (`greybox.md`) |
+| `takes` | `previz.mjs generate` attaches the greybox as `@Video1`, the anchor as `@Image1`, the board as `@Image2`, then the sheets of the shot's `characters` and the set concept as `@Image3…`, the hand-off frame last, and the voice samples of any spoken line's speaker as `@Audio1…` |
 
 That order is fixed and the prompt must address the indices as attached — see
 `video-generation.md`. This is also why `shot.characters` and `shot.set`
-matter: they are the list `generate` reads to decide which sheets go along.
+matter: they are the list `generate` and `anchor` read to decide which sheets
+go along. The likeness rule follows the sheet everywhere it goes: an anchor is
+an image of a face made from your sheet, and if the sheet is photoreal the
+anchor is the call that gets refused.
 
 ## Revisions, cost and honesty
 

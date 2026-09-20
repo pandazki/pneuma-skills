@@ -6,6 +6,10 @@
  * specified by nobody: "8 s / 24 fps / 1280×720" is what the mode chose when
  * the user gave no numbers, and it is far cheaper to correct here than after
  * a paid take.
+ *
+ * The hand-off block is shown ONLY when the shot declares one. Its absence is
+ * not a gap — most cuts are meant to break continuity — so nothing is drawn
+ * to mark it.
  */
 
 import ReactMarkdown from "react-markdown";
@@ -13,6 +17,7 @@ import remarkGfm from "remark-gfm";
 
 import type { Shot } from "../../domain.js";
 import { AlertIcon } from "../icons.js";
+import { ContinuityNote } from "./ContinuityNote.js";
 
 export interface PlanTabProps {
   shot: Shot;
@@ -40,6 +45,8 @@ export function PlanTab({ shot, markdown, dark }: PlanTabProps) {
             : "not rendered yet"}
         </dd>
       </dl>
+
+      <ContinuityNote continuity={shot.continuity} />
 
       {shot.assumptions.length > 0 ? (
         <section className="rounded-md border border-cc-warning/40 bg-cc-warning/10 px-2.5 py-2">

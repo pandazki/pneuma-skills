@@ -53,6 +53,14 @@ Times are SECONDS; the kit converts them to frames. Everything is metres.
 * `zoom(cam, mm_from, mm_to, start, end, ease)` - animate the focal length
 * `dolly_zoom(cam, subject, dist_from, dist_to, start, end, ease)` - travel
   the camera's own sightline while the lens holds the subject's size
+* `slowmo(start, end, factor)` - a scene-wide time remap: between two SHOT
+  seconds the action runs at 1/factor speed (2 = half speed, 0.5 = twice as
+  fast), baked through every curve at `finish()`
+* `shot_time(action_time)` · `action_time(shot_time)` - the two clocks a
+  `slowmo` splits apart, converted; BEATS ARE SHOT SECONDS
+* `impact(cam, at, push=0.15, shake=0.02, seconds=0.25)` - the hit: a push
+  down the sightline and a decaying shake, added on top of whatever the
+  camera was already doing, stated in SHOT time
 * `accent(objects, start, end, color)` - the one colour event
 * `set_interpolation(obj, mode, ease)` · `F(seconds)` · `T(frame)` ·
   `shot()` · `runner_args()` · `log(text)` · `die(reason)`
@@ -64,6 +72,45 @@ Everything here speaks BLENDER axes: Z up, and the ground plane is XY. A
 figure's forward is its local +Y, which is why `travel` yaws the root to the
 path tangent and why a yaw of 0 faces +Y. That one sentence is the whole sign
 convention.
+
+## Two clocks: shot time and action time
+
+Without a `slowmo` there is one clock and this section says nothing: shot
+time IS action time. A `slowmo` splits them.
+
+* SHOT time is the clip's own clock. It runs 0 to `seconds`, one frame every
+  1/fps, and it is what the audience, the trim, the beats table, the
+  `time_warp` sidecar and `impact` all speak.
+* ACTION time is the clock the blocking is written on. Every `travel`,
+  `dash`, `turn`, `hold`, `swing`, `move`, `camera_move`, `orbit`, `zoom`,
+  `dolly_zoom` and `accent` second is an ACTION second.
+
+`slowmo(start, end, factor)` says that between shot seconds `start` and `end`
+the action advances at 1/factor of its usual rate. `finish()` then puts every
+animated curve in the scene through one piecewise-linear map
+`t_action = W(t_shot)` - slope 1 outside the segments, 1/factor inside,
+continuous at the joins - and rebakes it. The shot's `seconds` and frame count
+never change: a 4 s shot is 96 frames before and after the ramp.
+
+What DOES change is where a later beat lands. A segment of length L at factor
+f eats `L * (1 - 1/f)` seconds of action, and everything after it slides that
+far LATER in the clip. `slowmo(0.9, 1.9, 2)` costs 0.5 s, so an action written
+at 3.2 s is seen at 3.7 s, and the last 0.5 s of what you wrote falls off the
+end of the clip. Write the blocking first, add the ramp, then check the tail:
+
+    pv.shot_time(3.2)    # 3.7 - the second of the CLIP a beat written at 3.2 lands on
+    pv.action_time(3.7)  # 3.2 - what the action is doing at second 3.7 of the clip
+
+**Beats are shot seconds.** The rows of `shot-plan.md` and the JSON
+`previz.mjs beats --set` loads describe the clip the viewer scrubs and the
+trim cuts out, so a beat written in action time goes through `pv.shot_time()`
+before it is written down. `scene.meta.json` carries the segments themselves
+as `time_warp: [{from, to, factor}]` in shot seconds, which is what lets the
+viewer draw the ramp under the same timeline.
+
+`impact` is the exception that proves the rule: a hit is a fact about the
+CLIP, so its `at` is a shot second and it is composed after the remap - a
+strike stays as sharp as it was written even inside a slowmo segment.
 
 ## What the greybox states, and what it leaves to the model
 
@@ -116,6 +163,13 @@ and a raise is therefore not a reliable refusal.
   `dolly_zoom` record their focal keys in `scene.meta.json` as
   `camera_lens: [{frame, mm}]` - the Workbench render (the MP4 the video model
   is conditioned on) shows the zoom either way.
+* An f-curve extrapolates CONSTANT outside its keys, which is what makes the
+  time warp safe at both ends: a speed-up that runs the action past the last
+  key holds the last value instead of flying off it.
+* A camera shake is sampled at `fps`, so it cannot oscillate faster than the
+  clip can show it. `impact` swings on a four-frame cycle across the frame and
+  a three-frame cycle up it - both under Nyquist. Anything faster aliases into
+  a slow wobble that is in the curve and not in the picture.
 """
 
 import json
@@ -174,6 +228,8 @@ _FIGURES = []
 _ACCENTS = []
 _SUBJECTS = []
 _LENS = []
+_WARPS = []
+_IMPACTS = []
 
 WHITE = None
 GREY = None
@@ -201,7 +257,7 @@ def T(frame):
 
 def setup(seconds=8.0, fps=24, width=1280, height=720, world=(0.82, 0.83, 0.85)):
     """Empty the file, set the shot's clock and size, and build the Workbench look."""
-    global _SHOT, _FIGURES, _ACCENTS, _SUBJECTS, _LENS, WHITE, GREY, DARK
+    global _SHOT, _FIGURES, _ACCENTS, _SUBJECTS, _LENS, _WARPS, _IMPACTS, WHITE, GREY, DARK
     args = runner_args()
     frames = int(round(float(seconds) * int(fps)))
     if abs(float(seconds) * int(fps) - frames) > 1e-6:
@@ -271,6 +327,8 @@ def setup(seconds=8.0, fps=24, width=1280, height=720, world=(0.82, 0.83, 0.85))
     _ACCENTS = []
     _SUBJECTS = []
     _LENS = []
+    _WARPS = []
+    _IMPACTS = []
     WHITE = material("white", (0.90, 0.90, 0.90))
     GREY = material("grey", (0.62, 0.63, 0.65))
     DARK = material("dark", (0.35, 0.36, 0.38))
@@ -717,7 +775,13 @@ def _travel_distance(track, t):
 
 
 def pose_at(fig, seconds):
-    """Where a figure is and which way it faces at shot time `seconds`: (x, y, z, yaw radians).
+    """Where a figure is and which way it faces at ACTION time `seconds`: (x, y, z, yaw radians).
+
+    Action time, not shot time - the two are the same second until a `slowmo`
+    exists, and after one they are not (see "Two clocks" at the top of this
+    file). The tracks were written in action seconds, so this reads them in
+    action seconds; `pv.shot_time()` says which frame of the clip the answer
+    is seen on.
 
     A pure function of the tracks, so it answers before `finish` has baked
     anything - which is how a camera can be aimed at where somebody WILL be
@@ -760,17 +824,26 @@ def pose_at(fig, seconds):
 
 
 def _bake_figure(fig):
-    """Key the root on every frame; the profile is already eased, so the keys are LINEAR."""
+    """Key the root on every frame; the profile is already eased, so the keys are LINEAR.
+
+    Each frame asks the tracks where the figure is at the ACTION time that
+    frame of the clip shows, so a `slowmo` is baked in exactly rather than
+    resampled out of an already-baked curve: the pawn is the one thing in the
+    scene whose motion is an analytic function of the time, and a remap of an
+    analytic function is still analytic.
+    """
     state = shot()
     root = fig["root"]
     for frame in range(1, state["frames"] + 1):
-        x, y, z, yaw = pose_at(fig, T(frame))
+        x, y, z, yaw = pose_at(fig, action_time(T(frame)))
         root.location = (x, y, z)
         root.rotation_euler = (0.0, 0.0, yaw)
         root.keyframe_insert("location", frame=frame)
         root.keyframe_insert("rotation_euler", frame=frame)
     set_interpolation(root, "LINEAR", None)
-    log("baked %s over %d frames" % (fig["name"], state["frames"]))
+    log("baked %s over %d frames%s"
+        % (fig["name"], state["frames"],
+           " through %d time-warp segment(s)" % len(_WARPS) if _WARPS else ""))
 
 
 # ---------------------------------------------------------------------------
@@ -1121,6 +1194,39 @@ def _lens_track():
     return [byframe[frame] for frame in sorted(byframe)]
 
 
+def _rebake_lens_track(camera):
+    """Re-read the focal curve after a time warp moved it.
+
+    `_key_lens` recorded the frames the zoom was WRITTEN on, which are action
+    frames; once the curve has been through `W(t)` those numbers describe a
+    lens the clip no longer shows. The sidecar has to agree with the render,
+    so the track is read back off the warped curve itself.
+    """
+    if not _WARPS or not _LENS or camera is None:
+        return
+    curves = [curve for curve in _fcurves(camera.data) if curve.data_path == "lens"]
+    if not curves:
+        return
+    del _LENS[:]
+    for frame in range(1, shot()["frames"] + 1):
+        _LENS.append({"frame": frame, "mm": round(float(curves[0].evaluate(frame)), 4)})
+
+
+def _accent_track():
+    """The accents in SHOT seconds - the clock the viewer replays them against."""
+    if not _WARPS:
+        return list(_ACCENTS)
+    return [dict(entry, **{"from": round(shot_time(entry["from"]), 4),
+                           "to": round(shot_time(entry["to"]), 4)})
+            for entry in _ACCENTS]
+
+
+def _warp_track():
+    """The registered ramps, in SHOT seconds - `[]` when the clip runs at one speed."""
+    return [{"from": round(segment["from"], 4), "to": round(segment["to"], 4),
+             "factor": round(segment["factor"], 4)} for segment in _WARPS]
+
+
 def orbit(cam, center, radius, height, deg_from, deg_to, start, end, look_at=None, ease=True):
     """Fly the camera around `center` on a circle while it keeps looking at the middle.
 
@@ -1331,6 +1437,413 @@ def dolly_zoom(cam, subject, dist_from, dist_to, start, end, ease=True):
     return cam
 
 
+# ---------------------------------------------------------------------------
+# Tempo: the greybox is the clock the video model follows
+# ---------------------------------------------------------------------------
+
+# How far a remap is allowed to go. Below 0.25 the clip runs the action at
+# four times speed, which reads as dropped frames rather than as a fast cut;
+# above 8 the action barely moves and the model paints a freeze instead of
+# slow motion. Both ends are refusals rather than clamps, because a factor of
+# 20 is a typo for 2.0 often enough to be worth saying so out loud.
+_SLOWMO_FACTOR = (0.25, 8.0)
+
+# A hit is a quarter of a second of camera, give or take. Anything longer is
+# not a hit, it is a move, and a move is `camera_move`.
+_IMPACT_SECONDS = (0.08, 2.0)
+# A shove of more than a metre and a half, or a shake with half a metre of
+# amplitude, is not a camera being hit - it is a camera being thrown.
+_IMPACT_PUSH = 1.5
+_IMPACT_SHAKE = 0.5
+# The shove lands over this fraction of the window and rings down over the
+# rest: a push that eased in over half its window is a nudge, not a hit.
+_IMPACT_ATTACK = 0.18
+_IMPACT_DECAY = 4.0
+# The shake's two periods, in FRAMES rather than in Hz, and both longer than
+# two frames - the clip samples at `fps`, so a faster oscillation aliases into
+# a slow wobble that is in the curve and absent from the picture. Two periods
+# that do not divide each other keep the jitter from tracing a straight line.
+_IMPACT_ACROSS_FRAMES = 4.0
+_IMPACT_LIFT_FRAMES = 3.0
+
+# The ID collections whose keys the warp rewrites: objects (blocking, props,
+# the camera and its target), camera data (the focal curve `zoom` writes),
+# materials (the colour curve `accent` writes), and lights and worlds because
+# an author reaching for raw `bpy` can key those too.
+_WARPABLE = ("objects", "cameras", "materials", "lights", "worlds")
+
+
+def slowmo(start, end, factor):
+    """Run the ACTION at 1/factor speed between two SHOT seconds; returns the segment.
+
+    The greybox is the clock the video model follows, so tempo has to live in
+    the greybox: a fight whose greybox moves at one speed comes back as a take
+    that moves at one speed, whatever the prompt said about slow motion.
+
+    `start` and `end` are SHOT seconds - where the ramp sits in the finished
+    clip. `factor` is how much slower the action runs inside it: 2 is half
+    speed, 4 is quarter speed, and a factor below 1 is a speed-up (0.5 runs
+    the action twice as fast). The shot's `seconds` and frame count do not
+    change; the segment is registered here and applied once, at `finish()`,
+    to every animated curve in the scene through one piecewise-linear map.
+
+    The cost, which is the whole thing to understand before using it: a
+    segment of length L eats `L * (1 - 1/factor)` seconds of action, and
+    EVERYTHING AFTER IT LANDS THAT MUCH LATER IN THE CLIP. `slowmo(0.9, 1.9,
+    2)` costs 0.5 s, so a camera move written to end at 3.2 s is seen ending
+    at 3.7 s, and the last 0.5 s of the action written for a 4 s shot is not
+    in the clip at all. Write the blocking, add the ramp, then check the tail
+    with `pv.shot_time(...)` and shorten the action if the ramp pushed it past
+    the clock. The one line this function logs says what the last frame of the
+    clip is showing, in action seconds, for exactly that reason.
+
+    Segments may be laid end to end but never overlapped - two ramps over the
+    same second have no single answer, and the refusal says so. Beats are shot
+    seconds: convert with `pv.shot_time()` before writing the timeline down.
+    """
+    state = shot()
+    start, end, factor = float(start), float(end), float(factor)
+    if end <= start:
+        die("slowmo: end (%s s) must be after start (%s s)" % (end, start))
+    if start < -1e-6:
+        die("slowmo: start (%s s) is before the clip's first frame - a ramp is stated in SHOT seconds, "
+            "and the clip runs 0-%s s" % (start, state["seconds"]))
+    if end > state["seconds"] + 1e-6:
+        die("slowmo: end %s s is past the shot's %s s - a ramp is stated in SHOT seconds, so it has to fit "
+            "inside the clip; shorten it, or give the shot more seconds (previz.mjs shot ... --seconds)"
+            % (end, state["seconds"]))
+    if abs(factor - 1.0) < 1e-9:
+        die("slowmo: a factor of 1 is no remap at all - drop the call, or say how much slower the action "
+            "should run (2 = half speed, 0.5 = twice as fast)")
+    if factor < _SLOWMO_FACTOR[0] or factor > _SLOWMO_FACTOR[1]:
+        die("slowmo: factor %s is outside %.2f-%.1f - past those the clip stops reading as a speed ramp "
+            "(a freeze at one end, dropped frames at the other); if the action really is that slow, give "
+            "the shot more seconds and write it slower" % (factor, _SLOWMO_FACTOR[0], _SLOWMO_FACTOR[1]))
+    for other in _WARPS:
+        if start < other["to"] - 1e-9 and other["from"] < end - 1e-9:
+            die("slowmo: %.2f-%.2f s overlaps the segment already registered at %.2f-%.2f s - the whole "
+                "scene passes through ONE time curve, and two ramps over the same second have no single "
+                "answer. Lay them end to end, or merge them into one segment."
+                % (start, end, other["from"], other["to"]))
+    segment = {"from": start, "to": end, "factor": factor}
+    _WARPS.append(segment)
+    _WARPS.sort(key=lambda entry: entry["from"])
+    cost = (end - start) * (1.0 - 1.0 / factor)
+    log("slowmo %.2f-%.2f s at 1/%g speed: %.2f s of clip carries %.2f s of action, so everything after it "
+        "lands %.2f s %s and the clip's last frame shows %.2f s of action (of the %.2f s written)"
+        % (start, end, factor, end - start, (end - start) / factor, abs(cost),
+           "later" if cost >= 0 else "earlier", action_time(state["seconds"]), state["seconds"]))
+    return dict(segment)
+
+
+def action_time(shot_seconds):
+    """SHOT second -> ACTION second: what the action is doing at that second of the clip.
+
+    The identity until a `slowmo` exists. This is `W(t)` itself - the map the
+    whole scene is baked through at `finish()`.
+    """
+    t = float(shot_seconds)
+    out = t
+    for segment in _WARPS:
+        if t <= segment["from"]:
+            break
+        inside = min(t, segment["to"]) - segment["from"]
+        out -= inside * (1.0 - 1.0 / segment["factor"])
+    return out
+
+
+def shot_time(action_seconds):
+    """ACTION second -> SHOT second: which second of the clip a beat written at `t` is seen on.
+
+    The inverse of `action_time`, and the function a beats table goes through:
+    `previz.mjs beats` describes the clip, and the clip is shot time. An
+    answer past the shot's `seconds` is a real answer and means what it says -
+    the ramp pushed that beat off the end of the clip.
+    """
+    a = float(action_seconds)
+    lag = 0.0
+    for segment in _WARPS:
+        opens = segment["from"] - lag
+        if a <= opens:
+            break
+        length = segment["to"] - segment["from"]
+        closes = opens + length / segment["factor"]
+        if a <= closes:
+            return segment["from"] + (a - opens) * segment["factor"]
+        lag += length * (1.0 - 1.0 / segment["factor"])
+    return a + lag
+
+
+def _action_frame(frame):
+    """The (fractional) frame of the UNWARPED animation that shot `frame` shows."""
+    return 1.0 + action_time(T(frame)) * shot()["fps"]
+
+
+def _animated(holder):
+    """Whether this datablock owns an action at all."""
+    animation = getattr(holder, "animation_data", None)
+    return bool(animation and animation.action)
+
+
+def _assign(holder, data_path, index, value):
+    """Set one channel of one property; returns the index `keyframe_insert` wants.
+
+    Blender refuses an index for a property that is not an array (`lens` is
+    the one this kit hits), so the shape of the property decides the call.
+    """
+    owner_path, _, prop = data_path.rpartition(".")
+    owner = holder.path_resolve(owner_path) if owner_path else holder
+    current = getattr(owner, prop)
+    try:
+        current[index] = value
+    except TypeError:
+        setattr(owner, prop, value)
+        return -1
+    return index
+
+
+def _resample(holder, frames):
+    """Rewrite every curve of `holder` so frame f carries what it had at `_action_frame(f)`.
+
+    Every channel is SAMPLED first and WRITTEN second: a curve read after its
+    own rewrite would be reading the answer it had just produced. The result
+    is one key per frame, LINEAR, exactly like `orbit` and the figure bake -
+    the easing is in the samples, and the glTF exporter force-samples anyway.
+    """
+    curves = _fcurves(holder)
+    if not curves:
+        return 0
+    plan = [(curve.data_path, curve.array_index,
+             [curve.evaluate(_action_frame(frame)) for frame in range(1, frames + 1)])
+            for curve in curves]
+    for data_path, index, samples in plan:
+        for frame, value in enumerate(samples, start=1):
+            slot = _assign(holder, data_path, index, value)
+            holder.keyframe_insert(data_path, index=slot, frame=frame)
+    _shape_keys(holder, "LINEAR", None, (1, frames))
+    return len(plan)
+
+
+def _apply_time_warp(skip):
+    """Put every keyed channel in the file through `W(t)`. A no-op with no segments.
+
+    `skip` is the set of datablocks that have already been baked through the
+    map (the figures), addressed by pointer because a material and an object
+    are allowed to share a name.
+    """
+    if not _WARPS:
+        return
+    state = shot()
+    touched, channels = [], 0
+    for collection in _WARPABLE:
+        for holder in getattr(bpy.data, collection, []):
+            if holder.as_pointer() in skip or not _animated(holder):
+                continue
+            count = _resample(holder, state["frames"])
+            if count:
+                # Named by collection: a camera's object and its data share a
+                # name, and "cam, cam" in a log is not an observation.
+                touched.append("%s/%s" % (collection, holder.name))
+                channels += count
+    log("time warp: %d segment(s) %s, %d channel(s) on %d datablock(s) resampled (%s), clip's last frame "
+        "shows %.2f s of action"
+        % (len(_WARPS), ", ".join("%.2f-%.2f s at 1/%g" % (seg["from"], seg["to"], seg["factor"])
+                                  for seg in _WARPS),
+           channels, len(touched), ", ".join(touched) if touched else "none",
+           action_time(state["seconds"])))
+
+
+def _report_tail(camera):
+    """After a remap, say whether the clip still ends on a settled camera.
+
+    `camera_move` pulls its last key back so the tail is still - but it does
+    that in ACTION seconds, and a ramp registered afterwards can push the
+    settle off the end of the clip and take the `end-hold` guarantee with it.
+    This is not refused: a shot that deliberately ends mid-move is legal, and
+    the check is an acceptance judgement rather than an invariant. It must not
+    go UNSAID, though, which is what this line is for.
+    """
+    if not _WARPS or camera is None:
+        return
+    state = shot()
+    tail = max(1, state["frames"] - int(round(0.5 * state["fps"])))
+    channels = _channels(camera)
+    travelled = math.dist(_keyed_location(camera, channels, tail),
+                          _keyed_location(camera, channels, state["frames"]))
+    log("end-hold after the remap: %s moves %.3f m over the clip's last %.2f s%s"
+        % (camera.name, travelled, (state["frames"] - tail) / float(state["fps"]),
+           "" if travelled <= 0.02 else
+           " - the ramp pushed the settle past the end of the clip, so the shot finishes on a moving "
+           "camera; shorten the action, move the ramp, or say the motion was wanted"))
+
+
+def _cross(a, b):
+    return (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])
+
+
+def _unit(vector):
+    """A unit vector, or None when there is no direction to be had."""
+    length = math.sqrt(vector[0] ** 2 + vector[1] ** 2 + vector[2] ** 2)
+    if length < 1e-9:
+        return None
+    return (vector[0] / length, vector[1] / length, vector[2] / length)
+
+
+def _channels(obj):
+    """This object's curves by (data_path, index), for reading a path without moving it."""
+    return dict(((curve.data_path, curve.array_index), curve) for curve in _fcurves(obj))
+
+
+def _keyed_location(obj, channels, frame):
+    """Where an object's own curves put it on `frame` - its built location when nothing keys it."""
+    point = list(obj.location)
+    for axis in range(3):
+        curve = channels.get(("location", axis))
+        if curve is not None:
+            point[axis] = curve.evaluate(frame)
+    return (float(point[0]), float(point[1]), float(point[2]))
+
+
+def _impact_envelope(u):
+    """1 at the hit, EXACTLY 0 at the end of the window, exponential in between.
+
+    The subtracted tail is what makes the zero exact. A bare exponential never
+    reaches zero, so the camera would end the window a millimetre or two off
+    the path it is supposed to have returned to, and "returns to its path"
+    would be a claim nobody could measure.
+    """
+    return math.exp(-_IMPACT_DECAY * u) - u * math.exp(-_IMPACT_DECAY)
+
+
+def _impact_push(u):
+    """0 -> 1 over the attack, then the ring-down back to exactly 0."""
+    if u <= _IMPACT_ATTACK:
+        return _ease(u / _IMPACT_ATTACK)
+    return _impact_envelope((u - _IMPACT_ATTACK) / (1.0 - _IMPACT_ATTACK))
+
+
+def impact(cam, at, push=0.15, shake=0.02, seconds=0.25):
+    """The hit: at SHOT second `at` the camera is shoved down its own sightline and rings down.
+
+    A strike lands on ONE frame, and the clip has to say so or the model
+    paints two bodies passing each other. `push` metres is how far the camera
+    is driven towards what it is looking at - it lands over the first fifth of
+    the window and recovers over the rest - and `shake` metres is the
+    amplitude of a decaying jitter across and up the frame, both back to
+    exactly zero by `at + seconds`.
+
+    It is ADDED to whatever the camera was already doing: the base path is
+    read from the camera's own curves frame by frame and the offset is laid on
+    top, so a `camera_move`, an `orbit` or a `dolly_zoom` underneath is kept,
+    not overwritten. Two hits close together simply add up.
+
+    `at` is a SHOT second and the offset is composed AFTER the time warp, so a
+    hit inside a `slowmo` segment stays as sharp as it was written - which is
+    the point of having both: the action around it crawls, the camera does
+    not. `at` may be negative for the same reason `travel`'s start may be: the
+    clip opens mid-ring-down. The recovery has to finish inside the clip,
+    because a shot that ends with the camera still off its path fails
+    `end-hold`, so that is refused rather than rendered.
+
+    The sightline is read at the hit's first frame and held for the window;
+    over a quarter of a second a moving camera's aim does not turn enough to
+    matter, and a fixed direction is what makes "push along the sightline"
+    a number anybody can measure off the export.
+
+    Returns the camera handle.
+    """
+    obj, target, _data = _camera_parts(cam, "impact")
+    state = shot()
+    at, push, shake, seconds = float(at), float(push), float(shake), float(seconds)
+    if seconds < _IMPACT_SECONDS[0] or seconds > _IMPACT_SECONDS[1]:
+        die("impact: seconds=%s is outside %.2f-%.1f s - a hit is a quarter of a second of camera; "
+            "anything longer is a move, and a move is pv.camera_move(...)"
+            % (seconds, _IMPACT_SECONDS[0], _IMPACT_SECONDS[1]))
+    if push < 0.0 or push > _IMPACT_PUSH:
+        die("impact: push=%s m is outside 0-%.1f m - that is the camera being thrown, not hit; the "
+            "default 0.15 m reads as a hit at 6 m" % (push, _IMPACT_PUSH))
+    if shake < 0.0 or shake > _IMPACT_SHAKE:
+        die("impact: shake=%s m is outside 0-%.1f m of amplitude - the default 0.02 m is already a visible "
+            "jitter at 6 m" % (shake, _IMPACT_SHAKE))
+    if push <= 1e-6 and shake <= 1e-6:
+        die("impact: push and shake are both 0, so nothing would happen - give it the metres the camera "
+            "should be shoved, or drop the call")
+    if at + seconds > state["seconds"] + 1e-6:
+        die("impact: the hit at %s s rings down until %.2f s, past the shot's %s s - the clip would end "
+            "with the camera still off its path, which is the end-hold check. Move the hit earlier, "
+            "shorten seconds=, or give the shot more seconds (previz.mjs shot ... --seconds)"
+            % (at, at + seconds, state["seconds"]))
+    first, last, at, _stop = _window("impact", at, at + seconds)
+    if last <= first:
+        die("impact: %s s at %s fps is less than the two frames a hit needs - one frame is a jump cut, "
+            "not a hit; give it at least %.2f s" % (seconds, state["fps"], 2.0 / state["fps"]))
+    _IMPACTS.append({
+        "object": obj,
+        "target": target,
+        "at": at,
+        "first": first,
+        "last": last,
+        "push": push,
+        "shake": shake,
+    })
+    log("impact on %s at %.2f s (frames %d-%d): %.2f m down the sightline, %.3f m of shake, back on the "
+        "path by %.2f s" % (obj.name, at, first, last, push, shake, T(last)))
+    return cam
+
+
+def _apply_impacts():
+    """Lay every registered hit on top of the camera path it belongs to."""
+    if not _IMPACTS:
+        return
+    state = shot()
+    frames = state["frames"]
+    cameras = []
+    grouped = {}
+    for hit in _IMPACTS:
+        name = hit["object"].name
+        if name not in grouped:
+            grouped[name] = []
+            cameras.append(name)
+        grouped[name].append(hit)
+    for name in cameras:
+        hits = grouped[name]
+        obj, target = hits[0]["object"], hits[0]["target"]
+        channels, aim = _channels(obj), _channels(target)
+        base = [_keyed_location(obj, channels, frame) for frame in range(1, frames + 1)]
+        offsets = [[0.0, 0.0, 0.0] for _ in range(frames)]
+        for hit in hits:
+            here = base[hit["first"] - 1]
+            there = _keyed_location(target, aim, hit["first"])
+            forward = _unit((there[0] - here[0], there[1] - here[1], there[2] - here[2]))
+            if forward is None:
+                die("impact: at %.2f s the camera is standing on what it is looking at, so there is no "
+                    "sightline to be pushed down - place it with pv.camera(..., location=...)" % hit["at"])
+            # Straight down is the one aim with no "across the frame": any
+            # level axis will do, and +X is the one the scene is built on.
+            right = _unit(_cross(forward, (0.0, 0.0, 1.0))) or (1.0, 0.0, 0.0)
+            up = _cross(right, forward)
+            span = max(1e-6, T(hit["last"]) - hit["at"])
+            for frame in range(hit["first"], hit["last"] + 1):
+                elapsed = T(frame) - hit["at"]
+                u = max(0.0, min(1.0, elapsed / span))
+                shove = hit["push"] * _impact_push(u)
+                ring = hit["shake"] * _impact_envelope(u)
+                beats = elapsed * state["fps"]
+                across = ring * math.sin(2.0 * math.pi * beats / _IMPACT_ACROSS_FRAMES)
+                lift = ring * math.sin(2.0 * math.pi * beats / _IMPACT_LIFT_FRAMES + 1.1)
+                row = offsets[frame - 1]
+                for axis in range(3):
+                    row[axis] += forward[axis] * shove + right[axis] * across + up[axis] * lift
+        for frame in range(1, frames + 1):
+            station, row = base[frame - 1], offsets[frame - 1]
+            obj.location = (station[0] + row[0], station[1] + row[1], station[2] + row[2])
+            obj.keyframe_insert("location", frame=frame)
+        _shape_keys(obj, "LINEAR", None, (1, frames))
+        moved = max(math.dist((0.0, 0.0, 0.0), tuple(offset)) for offset in offsets)
+        log("impact: %d hit(s) composed onto %s's path over %d frames, furthest %.3f m off it"
+            % (len(hits), name, frames, moved))
+
+
 def accent(objects, start, end, color, name="accent"):
     """Key a Workbench colour change and record it for the 3D lane to replay.
 
@@ -1338,6 +1851,10 @@ def accent(objects, start, end, color, name="accent"):
     `scene.meta.json` instead. A material shared with objects OUTSIDE this
     list is COPIED first: an accent that also turned the floor blue would be
     a defect nobody would think to check for.
+
+    `start` and `end` are ACTION seconds like every other beat, and the
+    sidecar records where a `slowmo` moved them to in SHOT seconds - the
+    viewer replays the colour against the clip, not against the blocking.
     """
     state = shot()
     objects = list(objects)
@@ -1414,8 +1931,17 @@ def finish(render=True):
     scene = bpy.context.scene
     args = runner_args()
 
+    # Order matters, and it is the whole of the tempo design: the figures bake
+    # through the time map analytically, everything else is resampled through
+    # the same map, and only then are the impacts laid on top - because an
+    # impact is stated in SHOT seconds and must not be remapped with the
+    # action it punctuates.
     for fig in _FIGURES:
         _bake_figure(fig)
+    _apply_time_warp(set(fig["root"].as_pointer() for fig in _FIGURES))
+    _apply_impacts()
+    _rebake_lens_track(scene.camera)
+    _report_tail(scene.camera)
 
     if scene.frame_start != 1 or scene.frame_end != state["frames"]:
         die(
@@ -1442,11 +1968,14 @@ def finish(render=True):
         "height": state["height"],
         "camera": scene.camera.name,
         "subjects": list(_SUBJECTS),
-        "accents": list(_ACCENTS),
+        "accents": _accent_track(),
         # The second thing glTF drops on the floor, after the accent colours:
         # the focal length curve. `[]` when the lens never moved, in which
         # case the exported camera's own yfov is the whole truth.
         "camera_lens": _lens_track(),
+        # The speed ramps, in shot seconds, so the viewer can draw a tempo row
+        # under the beats timeline. `[]` when the clip runs at one speed.
+        "time_warp": _warp_track(),
         "blender": _blender_version(),
         "engine": scene.render.engine,
     }

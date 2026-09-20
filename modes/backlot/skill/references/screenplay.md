@@ -105,8 +105,29 @@ Rules of thumb that hold for this pipeline:
 | what makes a shot too long? | anything over 8 s doubles the bill (the greybox is billed alongside the output) and gives the model more room to drift |
 | can the film show less than a whole shot? | yes — that is the **trim** (`previz.mjs meta --trim-in/--trim-out`). The shot is still built and generated at its full length; only the cut takes a sub-range of it |
 
-Write the breakdown into the scene's shot list, then register each shot. The
-id carries its order so a directory listing reads as the film:
+**Write the breakdown as a table, and decide the cuts in it.** One row per
+shot, in order:
+
+| shot | what it is | s | camera (one move) | cut into it |
+|---|---|---|---|---|
+| `s03-lunge` | the challenger commits | 4 | orbit left 40°, ends wide | ellipsis — a beat of stillness has passed |
+| `s04-clash` | the blades meet, low angle | 4 | push in from knee height | **continuous action** — one motion, new camera |
+| `s05-apart` | they break apart | 5 | locked-off | match cut on the blade line |
+
+The last column is the **continuity decision**, one of *continuous action*,
+*match cut*, *ellipsis / time jump*, *montage* or *deliberate mismatch*, with
+its one-line reason. Only the first — and a match cut when the pose has to
+carry — becomes a `continuity` block on the later shot; the hand-off is opt-in
+precisely because some cuts exist to break continuity. The mechanics and the
+entry/exit sentences are in `shot-plan.md`.
+
+The breakdown is also where the film's *pictures* start: each shot's row
+becomes a plan whose beats carry a `detail` — the designed picture of those
+seconds — written before any greybox and carried into the take's prompt
+unchanged (`shot-plan.md`). Design first, then block, then buy.
+
+Then register each shot. The id carries its order so a directory listing reads
+as the film:
 
 ```bash
 node {SKILL_PATH}/scripts/backlot.mjs shot add <project> s01-arrival \
@@ -147,6 +168,12 @@ node {SKILL_PATH}/scripts/previz.mjs meta <shot-dir> --trim-in 1.9 --trim-out 3.
 The cut plays the trims back-to-back. A re-trim turns the `boards` stage
 `changed`, so the creator re-approves the shot list before anything else is
 bought.
+
+A collage is the clearest case of **continuous action**: the same exchange
+from three cameras is one motion, so angles two and three normally declare a
+`continuity` block on the angle before them and are generated in order
+(`shot-plan.md`). A montage — three unrelated moments in rhythm — is the
+opposite, and declares nothing.
 
 ## The lines
 

@@ -195,6 +195,27 @@ export function SceneIcon({ size = 14 }: { size?: number }) {
   );
 }
 
+/** A chain link — one shot continuing another. */
+export function LinkIcon({ size = 12 }: { size?: number }) {
+  return (
+    <svg {...base} width={size} height={size} aria-hidden="true">
+      <path d="M10 13.5a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1.4 1.4" />
+      <path d="M14 10.5a4 4 0 0 0-5.66 0l-3 3a4 4 0 1 0 5.66 5.66l1.4-1.4" />
+    </svg>
+  );
+}
+
+/** A broken link — a clean cut, where nothing is claimed to continue. */
+export function CutIcon({ size = 12 }: { size?: number }) {
+  return (
+    <svg {...base} width={size} height={size} aria-hidden="true">
+      <path d="M10.5 13a4 4 0 0 0 4.9.6l2.8-2.8a4 4 0 0 0-5.3-5.9" />
+      <path d="M13.5 11a4 4 0 0 0-4.9-.6l-2.8 2.8a4 4 0 0 0 5.3 5.9" />
+      <path d="M3 3l18 18" />
+    </svg>
+  );
+}
+
 export function CoinsIcon({ size = 14 }: { size?: number }) {
   return (
     <svg {...base} width={size} height={size} aria-hidden="true">

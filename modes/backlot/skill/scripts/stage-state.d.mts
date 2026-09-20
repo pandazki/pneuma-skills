@@ -2,7 +2,15 @@
 
 export type StageId = "idea" | "script" | "bible" | "boards" | "previz" | "takes" | "sound" | "cut";
 export type StageStatus = "empty" | "draft" | "approved" | "changed";
-export type GatedCommand = "bible-image" | "voice" | "board" | "generate" | "vo" | "music" | "cut-final";
+export type GatedCommand =
+  | "bible-image"
+  | "voice"
+  | "board"
+  | "anchor"
+  | "generate"
+  | "vo"
+  | "music"
+  | "cut-final";
 
 export const STAGES: readonly StageId[];
 export const STAGE_STATUSES: readonly StageStatus[];

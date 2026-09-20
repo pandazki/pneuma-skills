@@ -705,6 +705,15 @@ export default function BacklotPreview(props: ViewerPreviewProps) {
     [clock],
   );
 
+  /** Park the playhead on a second — what a beat click in the panel means. */
+  const seekTo = useCallback(
+    (seconds: number) => {
+      clock.pause();
+      clock.seek(seconds);
+    },
+    [clock],
+  );
+
   const onFocusCheck = useCallback(
     (check: Check) => {
       const { lane: targetLane, take } = laneOfTarget(check.target);
@@ -963,6 +972,7 @@ export default function BacklotPreview(props: ViewerPreviewProps) {
                 markedRange={markedRange}
                 onMarkRange={onMarkRange}
                 onBeatFocus={onBeatFocus}
+                timeWarp={meta?.timeWarp ?? []}
               />
 
               {commandsEnabled && shotCommands.length > 0 ? (
@@ -998,6 +1008,9 @@ export default function BacklotPreview(props: ViewerPreviewProps) {
               onFocusCheck={onFocusCheck}
               onShowTake={onSelectTake}
               checkFocus={stage === "takes" ? "take" : "greybox"}
+              urlFor={urlFor}
+              clock={clock}
+              onSeek={seekTo}
             />
           </>
         )}

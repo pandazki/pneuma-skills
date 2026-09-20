@@ -14,6 +14,7 @@ import {
   beatAt,
   checkTally,
   checkTargets,
+  cutPoints,
   fovForLens,
   frameAt,
   lensAt,
@@ -25,6 +26,7 @@ import {
   parseSceneMeta,
   parseSetPiece,
   parseShot,
+  primaryAnchor,
   projectDirOf,
   recordRev,
   resolveLinePath,
@@ -313,8 +315,8 @@ describe("beatAt", () => {
 
   test("prefers the narrowest beat when they overlap", () => {
     const wide = [
-      { id: "push", label: "", from: 0, to: 8, kind: "camera" as const, causedBy: null },
-      { id: "walk", label: "", from: 1, to: 2, kind: "action" as const, causedBy: null },
+      { id: "push", label: "", from: 0, to: 8, kind: "camera" as const, causedBy: null, detail: null },
+      { id: "walk", label: "", from: 1, to: 2, kind: "action" as const, causedBy: null, detail: null },
     ];
     expect(beatAt(wide, 1.5)?.id).toBe("walk");
   });
@@ -591,7 +593,7 @@ const FILM_SHOT = (id: string, extra: Record<string, unknown> = {}) =>
               submittedAt: 1758375000000,
               cost: { usd: 2.12, basis: "table" },
               refs: [
-                { kind: "video", index: 1, file: "greybox/greybox.mp4" },
+                { kind: "video", index: 1, file: "greybox/greybox.mp4", role: "layout" },
                 { kind: "image", index: 1, file: "board.png" },
               ],
             },
@@ -785,15 +787,77 @@ describe("bible, sound and cut records", () => {
     expect(shot.lines[0].kind).toBe("vo");
   });
 
-  test("a take records the references it was rendered against", () => {
+  test("a take records the references it was rendered against, and their jobs", () => {
     const project = filmProject();
     const take = project.shots[0].takes[0];
     expect(take.refs).toEqual([
-      { kind: "video", index: 1, file: "greybox/greybox.mp4" },
-      { kind: "image", index: 1, file: "board.png" },
+      { kind: "video", index: 1, file: "greybox/greybox.mp4", role: "layout" },
+      // A reference written before roles existed has none, not undefined:
+      // "nobody assigned this one a job" is exactly what null has to mean.
+      { kind: "image", index: 1, file: "board.png", role: null },
     ]);
     // A take from before references were recorded has none, not undefined.
     expect(parseShot("d", "s", shotJson())!.takes[0].refs).toEqual([]);
+  });
+
+  test("a `handoff` role is kept verbatim — the viewer never narrows the vocabulary", () => {
+    const shot = parseShot(
+      "d",
+      "s",
+      shotJson({
+        takes: [
+          {
+            id: "take-01",
+            status: "done",
+            refs: [
+              { kind: "image", index: 3, file: "takes/handoff-in.png", role: "handoff" },
+              { kind: "image", index: 4, file: "sheet.png", role: 42 },
+            ],
+          },
+        ],
+      }),
+    )!;
+    expect(shot.takes[0].refs.map((r) => r.role)).toEqual(["handoff", null]);
+  });
+
+  test("a take records the hand-off it was given, or that it was skipped", () => {
+    const shot = parseShot(
+      "d",
+      "s",
+      shotJson({
+        takes: [
+          { id: "take-01", status: "done", handoff: "skipped" },
+          {
+            id: "take-02",
+            status: "done",
+            handoff: { from: "s02", take: "take-01", frame: 192, at: 7.96, file: "takes/handoff-in.png" },
+          },
+          { id: "take-03", status: "done" },
+          { id: "take-04", status: "done", handoff: "yes please" },
+        ],
+      }),
+    )!;
+    expect(shot.takes[0].handoff).toEqual({
+      skipped: true,
+      from: null,
+      take: null,
+      frame: null,
+      at: null,
+      file: null,
+    });
+    expect(shot.takes[1].handoff).toEqual({
+      skipped: false,
+      from: "s02",
+      take: "take-01",
+      frame: 192,
+      at: 7.96,
+      file: "takes/handoff-in.png",
+    });
+    // No record, and an unreadable one, are both "nothing was handed over":
+    // being given the previous frame is never inferred from a field nobody
+    // could parse.
+    expect(shot.takes[2].handoff).toBeNull();
+    expect(shot.takes[3].handoff).toBeNull();
   });
 
   test("the cut is read as its edit list, and a reel says so", () => {
@@ -863,6 +927,306 @@ describe("bible, sound and cut records", () => {
     const sample = { file: "voice.mp3", seconds: 2.2 };
     expect(recordRev(sample)).toBe(recordRev({ seconds: 2.2, file: "voice.mp3" }));
     expect(recordRev(sample)).not.toBe(recordRev({ ...sample, seconds: 2.3 }));
+  });
+});
+
+// ── Continuity, anchors and the designed picture ────────────────────────────
+
+describe("continuity", () => {
+  test("a declared hand-off is read whole", () => {
+    const shot = parseShot(
+      "d",
+      "s",
+      shotJson({
+        continuity: {
+          from: "s03-orbit",
+          entry: "challenger mid-lunge, blade at chest height",
+          exit: "blades in contact, both weight forward",
+        },
+      }),
+    )!;
+    expect(shot.continuity).toEqual({
+      from: "s03-orbit",
+      entry: "challenger mid-lunge, blade at chest height",
+      exit: "blades in contact, both weight forward",
+    });
+  });
+
+  test("no block, an empty block and a non-object are all 'no hand-off'", () => {
+    // HAND-OFF IS OPT-IN: most cuts exist to break continuity, so the
+    // absence of a declaration is the normal case and never a half-read one.
+    expect(parseShot("d", "s", shotJson())!.continuity).toBeNull();
+    expect(parseShot("d", "s", shotJson({ continuity: null }))!.continuity).toBeNull();
+    expect(parseShot("d", "s", shotJson({ continuity: {} }))!.continuity).toBeNull();
+    expect(parseShot("d", "s", shotJson({ continuity: "yes" }))!.continuity).toBeNull();
+    expect(
+      parseShot("d", "s", shotJson({ continuity: { from: null, entry: null, exit: null } }))!
+        .continuity,
+    ).toBeNull();
+  });
+
+  test("an exit alone is kept — a shot may say how it ends without continuing anything", () => {
+    // `shot.mjs::makeContinuity` allows exactly this shape, for a later shot
+    // to pick up. It is NOT a hand-off and must not be read as one.
+    const shot = parseShot(
+      "d",
+      "s",
+      shotJson({ continuity: { from: null, entry: null, exit: "blade low, guard open" } }),
+    )!;
+    expect(shot.continuity).toEqual({ from: null, entry: null, exit: "blade low, guard open" });
+  });
+});
+
+describe("the designed picture", () => {
+  test("a beat carries its design, and a beat written before details has none", () => {
+    const shot = parseShot(
+      "d",
+      "s",
+      shotJson({
+        beats: [
+          { id: "lunge", label: "Lunges", from: 0, to: 2, kind: "action", detail: "  weight through the front foot, dust off the flagstones  " },
+          { id: "hold", label: "Holds", from: 2, to: 3, kind: "hold" },
+          { id: "blank", label: "Blank", from: 3, to: 4, kind: "action", detail: "   " },
+        ],
+      }),
+    )!;
+    expect(shot.beats.map((b) => b.detail)).toEqual([
+      "  weight through the front foot, dust off the flagstones  ",
+      null,
+      null,
+    ]);
+  });
+
+  test("anchors are read in order; one with no id or no file is dropped", () => {
+    const shot = parseShot(
+      "d",
+      "s",
+      shotJson({
+        anchors: [
+          {
+            id: "first",
+            file: "anchors/first.png",
+            revision: 2,
+            at: 0,
+            prompt: "the keeper turning the thrust aside",
+            refs: ["bible/characters/kai/sheet.png"],
+            createdAt: 1758370000000,
+            cost: { usd: 0.11, basis: "reported" },
+          },
+          { id: "impact", file: "anchors/impact.png", revision: 1, at: 3.2 },
+          { file: "anchors/nameless.png", revision: 1 },
+          { id: "fileless", revision: 1 },
+        ],
+      }),
+    )!;
+    expect(shot.anchors.map((a) => a.id)).toEqual(["first", "impact"]);
+    expect(shot.anchors[0].at).toBe(0);
+    expect(shot.anchors[0].cost?.usd).toBe(0.11);
+    expect(shot.anchors[1].prompt).toBe("");
+    expect(shot.anchors[1].createdAt).toBeNull();
+    // A shot from before anchors existed has none, not undefined.
+    expect(parseShot("d", "s", shotJson())!.anchors).toEqual([]);
+  });
+
+  test("the lineup's anchor is `first` by name, else the earliest moment", () => {
+    const named = parseShot(
+      "d",
+      "s",
+      shotJson({
+        anchors: [
+          { id: "impact", file: "a.png", at: 3.2 },
+          { id: "first", file: "b.png", at: 5 },
+        ],
+      }),
+    )!;
+    expect(primaryAnchor(named)?.id).toBe("first");
+
+    const unnamed = parseShot(
+      "d",
+      "s",
+      shotJson({
+        anchors: [
+          { id: "impact", file: "a.png", at: 3.2 },
+          { id: "open", file: "b.png", at: 0.4 },
+        ],
+      }),
+    )!;
+    expect(primaryAnchor(unnamed)?.id).toBe("open");
+
+    // Nothing placed on the clock: whatever was written first.
+    const unplaced = parseShot(
+      "d",
+      "s",
+      shotJson({ anchors: [{ id: "a", file: "a.png" }, { id: "b", file: "b.png" }] }),
+    )!;
+    expect(primaryAnchor(unplaced)?.id).toBe("a");
+    expect(primaryAnchor(parseShot("d", "s", shotJson())!)).toBeNull();
+  });
+});
+
+describe("time_warp", () => {
+  const meta = (extra: Record<string, unknown>) =>
+    parseSceneMeta(JSON.stringify({ fps: 24, frames: 192, seconds: 8, ...extra }))!;
+
+  test("the tempo spans are read and ordered", () => {
+    expect(
+      meta({
+        time_warp: [
+          { from: 5.5, to: 6.5, factor: 0.5 },
+          { from: 1, to: 2, factor: 2 },
+        ],
+      }).timeWarp,
+    ).toEqual([
+      { from: 1, to: 2, factor: 2 },
+      { from: 5.5, to: 6.5, factor: 0.5 },
+    ]);
+  });
+
+  test("a zero factor, a negative one and an empty span are broken records, not tempos", () => {
+    expect(
+      meta({
+        time_warp: [
+          { from: 1, to: 2, factor: 0 },
+          { from: 1, to: 2, factor: -0.5 },
+          { from: 2, to: 2, factor: 0.5 },
+          { from: 3, to: 2, factor: 0.5 },
+          { from: 1, factor: 0.5 },
+          "nope",
+        ],
+      }).timeWarp,
+    ).toEqual([]);
+  });
+
+  test("a scene rendered before slowmo existed has no tempo row", () => {
+    expect(meta({}).timeWarp).toEqual([]);
+    expect(meta({ time_warp: "half" }).timeWarp).toEqual([]);
+  });
+});
+
+describe("cutPoints", () => {
+  const CONTINUITY_EDL = JSON.stringify({
+    version: 1,
+    kind: "final",
+    file: "final.mp4",
+    seconds: 16,
+    segments: [
+      { shot: "lab-walk", source: "take-01", offset: 0, seconds: 8 },
+      { shot: "corridor", source: "take-02", offset: 8, seconds: 8 },
+    ],
+  });
+
+  const filesWith = (corridorExtra: Record<string, unknown>): File[] => [
+    { path: "first-light/backlot.json", content: FILM_MANIFEST() },
+    { path: "first-light/shots/lab-walk/shot.json", content: FILM_SHOT("lab-walk") },
+    {
+      path: "first-light/shots/corridor/shot.json",
+      content: FILM_SHOT("corridor", {
+        takes: [
+          { id: "take-02", status: "done", file: "takes/take-02.mp4", selected: true },
+        ],
+        ...corridorExtra,
+      }),
+    },
+    { path: "first-light/cut/edl.json", content: CONTINUITY_EDL },
+  ];
+
+  const HANDOFF = {
+    continuity: { from: "lab-walk", entry: "hand still on the door", exit: "hand off the door" },
+    checks: [
+      {
+        id: "take-handoff",
+        label: "First frame continues the previous shot's last used frame",
+        target: "take-02",
+        status: "pass",
+        note: "same hand, same door",
+      },
+    ],
+  };
+
+  test("one point per boundary, with both sides resolved", () => {
+    const project = filmProject(filesWith(HANDOFF));
+    const points = cutPoints(project, project.cut);
+    expect(points).toHaveLength(1);
+    const [point] = points;
+    expect(point.index).toBe(0);
+    expect(point.fromShot?.id).toBe("lab-walk");
+    expect(point.toShot?.id).toBe("corridor");
+    expect(point.fromTake?.id).toBe("take-01");
+    expect(point.toTake?.id).toBe("take-02");
+    // The boundary on the CUT's clock, and the last frame INSIDE the
+    // outgoing source: `seconds` itself is one frame past the end.
+    expect(point.at).toBe(8);
+    expect(point.outTime).toBeCloseTo(8 - 1 / 24, 5);
+    expect(point.inTime).toBe(0);
+  });
+
+  test("a declared hand-off carries its verdict; anything else is a plain cut", () => {
+    const declared = cutPoints(
+      filmProject(filesWith(HANDOFF)),
+      filmProject(filesWith(HANDOFF)).cut,
+    )[0];
+    expect(declared.continuity).toBe(true);
+    expect(declared.handoffCheck?.status).toBe("pass");
+
+    // No declaration: a cut, and NO judgement — most cuts exist to break
+    // continuity, so an absent hand-off is never reported as unverified.
+    const plainFiles = filesWith({});
+    const plain = cutPoints(filmProject(plainFiles), filmProject(plainFiles).cut)[0];
+    expect(plain.continuity).toBe(false);
+    expect(plain.handoffCheck).toBeNull();
+  });
+
+  test("a hand-off that names the WRONG shot is not continuous here", () => {
+    // The declaration is about `s99`; the frame before this one is
+    // `lab-walk`. What the audience sees is a cut, and so is the badge.
+    const files = filesWith({ ...HANDOFF, continuity: { from: "s99", entry: "x", exit: "y" } });
+    const point = cutPoints(filmProject(files), filmProject(files).cut)[0];
+    expect(point.continuity).toBe(false);
+  });
+
+  test("the verdict comes from the take the segment PLAYS, not from any take", () => {
+    // A pass recorded on take-01 says nothing about the take-02 frame the
+    // cut actually shows.
+    const files = filesWith({
+      ...HANDOFF,
+      checks: [
+        { id: "take-handoff", label: "x", target: "take-01", status: "pass" },
+        { id: "take-handoff", label: "x", target: "take-02", status: "fail", note: "hand jumps" },
+      ],
+    });
+    const point = cutPoints(filmProject(files), filmProject(files).cut)[0];
+    expect(point.handoffCheck?.status).toBe("fail");
+    expect(point.handoffCheck?.note).toBe("hand jumps");
+  });
+
+  test("a greybox stand-in has no take, and a one-shot cut has no joins", () => {
+    const project = filmProject();
+    const points = cutPoints(project, project.cut);
+    expect(points).toHaveLength(1);
+    expect(points[0].toTake).toBeNull();
+    expect(points[0].continuity).toBe(false);
+    expect(cutPoints(project, null)).toEqual([]);
+    expect(
+      cutPoints(project, {
+        ...project.cut!,
+        segments: [project.cut!.segments[0]],
+      }),
+    ).toEqual([]);
+  });
+
+  test("a segment naming a shot the film no longer has is still a boundary", () => {
+    const project = filmProject();
+    const points = cutPoints(project, {
+      ...project.cut!,
+      segments: [
+        { shot: "deleted", source: "take-01", offset: 0, seconds: 4 },
+        { shot: "corridor", source: "greybox", offset: 4, seconds: 4 },
+      ],
+    });
+    expect(points[0].fromShot).toBeNull();
+    expect(points[0].continuity).toBe(false);
+    // Still 24 fps: the fallback clock, not a crash and not a NaN.
+    expect(points[0].outTime).toBeCloseTo(4 - 1 / 24, 5);
   });
 });
 

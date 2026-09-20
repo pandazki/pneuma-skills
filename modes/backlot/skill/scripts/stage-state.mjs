@@ -44,6 +44,10 @@ export const GATES = Object.freeze({
   "bible-image": "script",
   voice: "script",
   board: "bible",
+  // An anchor frame is the bible speaking into one shot: it renders the
+  // greybox's composition with the characters' and the set's recorded look,
+  // so the look it holds has to have been approved first.
+  anchor: "bible",
   generate: "previz",
   vo: "takes",
   music: "takes",
@@ -204,11 +208,21 @@ const PROJECTIONS = {
         characters: Array.isArray(s.characters) ? s.characters : [],
         set: s.set ?? null,
         spec: s.spec ?? null,
+        // Whole beats, `detail` included: the designed picture of a beat is
+        // boards content — it is written before the greybox and it is what
+        // the prompt's timeline is made of, so editing it re-opens the shot
+        // list exactly as moving the beat's seconds does.
         beats: Array.isArray(s.beats) ? s.beats : [],
         board: isRecord(s.board) ? mediaRef(s.board) : null,
         // Which part of the shot the film shows is a boards decision: a
         // re-trim must re-open the shot list, not wait for the next cut.
         trim: isRecord(s.trim) ? { in: s.trim.in ?? null, out: s.trim.out ?? null } : null,
+        // And so is whether this shot continues the one before it: a
+        // hand-off changes what the shot IS, what its first frame has to be
+        // and what the model is shown, long before any take exists.
+        continuity: isRecord(s.continuity)
+          ? { from: s.continuity.from ?? null, entry: s.continuity.entry ?? null, exit: s.continuity.exit ?? null }
+          : null,
       })),
     );
     return inputs;
@@ -223,6 +237,14 @@ const PROJECTIONS = {
       id: s.id ?? null,
       greyboxRevision: isRecord(s.greybox) && isRecord(s.greybox.final) ? s.greybox.final.revision ?? null : null,
       checks: checksFor(s, "greybox"),
+      // The anchor frames belong to this stage: the lineup the creator
+      // approves at the previz gate is board | anchor | greybox, so a new
+      // anchor re-opens previz exactly as a re-render does.
+      anchors: (Array.isArray(s.anchors) ? s.anchors.filter(isRecord) : []).map((a) => ({
+        id: a.id ?? null,
+        at: a.at ?? null,
+        revision: a.revision ?? null,
+      })),
     }));
   },
 

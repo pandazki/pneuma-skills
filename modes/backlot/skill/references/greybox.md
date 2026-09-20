@@ -19,7 +19,9 @@ two different places.
 `greybox/scene.py` is yours. `previz.mjs render` runs it in headless Blender
 and produces everything else: `preview.mp4` or `greybox.mp4`, `scene.blend`
 (the editable project — part of the delivery), `scene.glb` +
-`scene.meta.json` (what the viewer's 3D lane plays), and `sheet.png`. The PNG
+`scene.meta.json` (what the viewer's 3D lane plays, plus the two things glTF
+cannot carry: `camera_lens` from `zoom` and `time_warp` from `slowmo`), and
+`sheet.png`. The PNG
 sequence it encodes from lives in `greybox/frames/` and is **deleted once the
 MP4 has encoded, decoded and probed clean** — 192 frames of 720p is ~163 MB
 per shot, and the MP4 is the artefact. `--keep-frames` keeps them; a render
@@ -54,6 +56,9 @@ and every take.
 | `pv.dolly_zoom(cam, subject, dist_from, dist_to, start, end, ease=True)` | Hitchcock: travels the camera along its own sightline to `subject` (a point, an object, or a figure → its chest where its tracks put it at `start`) from `dist_from` to `dist_to` m while mm scales by the same ratio, so the subject's on-screen height holds and the background rushes. Compensates from the camera's current focal length |
 | `pv.pose_at(fig, seconds)` | where a figure is and faces at any shot time, `(x, y, z, yaw_radians)`, straight off its tracks before `finish` bakes anything — so a camera can be aimed at the mark somebody *arrives* on |
 | `pv.accent_material(name)` + `pv.accent(objects, start, end, (r,g,b))` | a colour event: keys the Workbench colour from grey to the accent over `[start, end]` and records it so the 3D lane replays it |
+| `pv.slowmo(start, end, factor)` | tempo: a ramp applied once at `finish()` through **one time curve over the whole scene**, so everything slows together. `start`/`end` are **shot** seconds — where the ramp sits in the finished clip — and `factor` is how much slower the action runs inside it (2 = half speed, under 1 speeds up; band 0.25–8). It eats `L × (1 − 1/factor)` seconds of action, so **everything after it lands that much later** and the tail can fall off the end; the log line says what the last frame ends up showing. Ramps may not overlap. Recorded as `time_warp` in `scene.meta.json` |
+| `pv.impact(cam, at, push=0.15, shake=0.02, seconds=0.25)` | the hit at shot second `at`: the camera is driven `push` m down its sightline and rings back to zero by `at + seconds`, with a decaying `shake` jitter. **Added on top** of the move underneath and composed **after** the warp, so a hit inside a `slowmo` stays sharp. Bands 0–1.5 m, 0–0.5 m, 0.08–2.0 s; the ring-down must finish inside the clip (`end-hold`). One per contact |
+| `pv.shot_time(t)` · `pv.action_time(s)` | action second → clip second, and back. Blocking is written in action seconds; beats, the trim, `sheet --at` and the prompt are clip seconds. Identity until something calls `slowmo` |
 | `pv.set_interpolation(obj, mode="BEZIER", ease="EASE_IN_OUT")` | force the curve shape on something you keyed by hand with raw `bpy` — `"LINEAR"` for keys that are already a sampled curve |
 | `pv.finish()` | checks the frame range against the spec, renders the PNG sequence, saves `scene.blend`, exports `scene.glb`, writes `scene.meta.json`. Always the last line |
 
@@ -175,9 +180,17 @@ Each layer is checked before the next hides its mistakes.
    starts after its cause has visibly begun, never on the same frame. A blue
    accent material is enough to say "it is on"; do not depend on glow
    post-processing.
-4. **Camera, last** — `references/camera.md`. Slow, eased, no interpolation
-   overshoot. By default the camera and the main action are still for the last
-   half second; when the creator wants motion through the end, that wins.
+4. **Camera, one move** — `references/camera.md`. Slow, eased, no
+   interpolation overshoot, and exactly one primary move per shot: a second
+   move is a second shot. By default the camera and the main action are still
+   for the last half second; when the creator wants motion through the end,
+   that wins.
+5. **Tempo, last of all.** `slowmo` and `impact` (`camera.md`, "Tension") come
+   after everything they warp and before `finish()`. Read `slowmo`'s log line:
+   it says what the clip's last frame ends up showing, and a ramp pushes the
+   tail of the action off the end. Then convert every beat edge with
+   `pv.shot_time()` and register *those* seconds — the beats, the trim and the
+   prompt run on the clip's clock, not on the one you wrote the blocking on.
 
 Nothing in a greybox bends. If you find yourself wanting an arm so the reach
 "reads", write the reach into the prompt with its second instead — that is
@@ -219,12 +232,80 @@ where it will actually come from.
 | `take-camera` | the take keeps the camera move and its ending | `compare --b take-NN` at the last beat | the prompt's camera sentence, the final-framing sentence |
 | `take-order` | cause still precedes effect in the take, and the action before it can be seen | a strip of the take around the trigger | state the order, the visibility and the ramp duration in the prompt |
 | `take-integrity` | the same number of people, whole limbs, no cut, no captions; each character wears the costume their sheet gave them | the take's own sheet | the structure sentence, and which pawn is who by colour |
+| `take-handoff` *(hand-off shots)* | the first frame continues the previous shot's last frame: positions, facing, weapons, the action | `compare --handoff` writes the out-frame and in-frame side by side | the entry sentence, the hand-off assignment line — or accept the join and record it |
 | `take-lines` *(spoken lines)* | the take says the line | `transcribe.mjs --input <take> --json`, stored beside the take | the line's placement, the voice reference, or move the line to `vo` |
 
 Statuses are `pass`, `fail` and `unverified`. A `pass` names what was looked
 at (`--note "sheet 0.25–7.8 s"`). Anything not actually examined stays
 `unverified` — writing "all passed" over it is the one thing this record
 exists to prevent.
+
+## From greybox frame to anchor
+
+A greybox that passes its checks is correct and unreadable: it proves the
+geometry and says nothing about what the shot *looks* like. The last step of
+this stage turns one of its frames into the picture the film is actually
+after — an **anchor frame**.
+
+```bash
+node {SKILL_PATH}/scripts/previz.mjs anchor <shot-dir> [--at 0.0] [--id first]
+```
+
+It is an image-to-image call: the greybox frame at `--at` carries the exact
+composition, camera height, lens and blocking; the board, the character sheets
+and the set concept carry the appearance; and the prompt is written from the
+shot's own design — the `detail` of the beat that second falls in, plus the
+film's look. Two reasons this step exists rather than leaving it all to the
+video model: an image model follows camera and composition language far more
+reliably than a video model does, and Seedance leans hard on its first image
+reference — so the cheapest way to fix a take's framing and look is to fix a
+still first.
+
+`--id first` is the default. A second anchor (`--id last`, `--at` near the
+end) is worth it when the next shot hands off from this one: it gives that
+shot a look-continuous picture to continue from, not only a grey one.
+
+The anchor prompt carries the film's look, and the film's look here is an
+**illustrated or 3D-design idiom** — the anchor is made from the character
+sheets, and a photoreal face is the image fal's likeness filter refuses
+(`bible.md`). A 422 on an anchor means regenerate it in the idiom, not retry.
+
+It is a **paid** call, recorded on the shot as
+`anchors: [{ id, at, file, revision, prompt, refs, cost }]` with its price
+like a board's, gated on the `bible` stage and refused without a **final**
+greybox — there is nothing to anchor before the composition is settled. A
+character with no sheet or a set with no concept is a warning, not a refusal,
+and the warning says exactly what it means: the anchor invents that look.
+Anchors belong to the `previz` stage's content, so a new anchor turns that
+stage `changed` and the creator sees it.
+
+`status.next` does not know about anchors — it will say `prompt` while the
+shot has none. Check `status.anchors` before you write a pack.
+
+### The lineup, and the joint review
+
+```bash
+node {SKILL_PATH}/scripts/previz.mjs lineup <shot-dir>
+```
+
+`lineup.png` is **board | anchor | greybox frame** side by side. Open it.
+Three pictures of one shot that disagree are three pictures of three shots:
+
+| what disagrees | what is usually wrong |
+|---|---|
+| anchor vs greybox — different angle, height, distance, or somebody has moved | the anchor prompt let the image model re-stage the shot; say the camera and the positions again, and re-run `anchor` |
+| anchor vs board — different costume, palette, time of day, or a face that is not the sheet's | the anchor prompt, or an appearance reference that was not attached |
+| board vs greybox — the board frames low and the greybox stands at 1.6 m | the plan; one of the two was designed without the other, and it is the cheapest possible moment to find out |
+
+Fix the anchor first — it is one image. Change the greybox only when the
+greybox is the thing that is wrong.
+
+Then present the whole stage at once, because this is the review the creator
+is actually being asked for: **the bible, the anchor, the greybox and the shot
+plan together**. Per shot, the lineup, the beat details, the continuity
+decision and the seconds; across the film, `cut --reel`. That is the set of
+things the `previz` approval covers, and it is the last free moment — after it
+every mistake is a take.
 
 ## When to stop
 

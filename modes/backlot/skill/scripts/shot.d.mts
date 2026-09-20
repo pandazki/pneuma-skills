@@ -15,9 +15,13 @@ export const DEFAULT_SPEC: { seconds: number; fps: number; width: number; height
 export const STAGES: string[];
 export const LINE_KINDS: string[];
 export const REF_KINDS: string[];
-/** `lines` is seeded only when the shot HAS a spoken line: an unanswerable
- *  check would sit unverified forever and block `select`. */
-export const STANDARD_CHECKS: Record<"greybox" | "take" | "reference" | "lines", Array<{ id: string; label: string }>>;
+/** `lines` is seeded only when the shot HAS a spoken line and `handoff` only
+ *  when it declares continuity: an unanswerable check would sit unverified
+ *  forever and block `select`. */
+export const STANDARD_CHECKS: Record<
+  "greybox" | "take" | "reference" | "lines" | "handoff",
+  Array<{ id: string; label: string }>
+>;
 
 export type BeatKind = "action" | "trigger" | "camera" | "hold";
 export type CheckStatus = "pass" | "fail" | "unverified";
@@ -61,12 +65,71 @@ export interface Line {
   voice?: { model: string | null; voiceId: string | null; style: string | null } | null;
 }
 
-/** A reference attached to a take, in the order the prompt addresses it by
- *  (`@Video1`, `@Image1`, `@Audio1`). Paths are project-relative. */
+/**
+ * A reference attached to a take, in the order the prompt addresses it by
+ * (`@Video1`, `@Image1`, `@Audio1`). Paths are project-relative.
+ *
+ * `role` says what the reference is there to hold, and it is what the prompt
+ * skeleton writes its assignment sentence from:
+ * `greybox` | `anchor:<id>` | `board` | `character:<id>` | `set:<id>` |
+ * `handoff` | `voice:<id>`.
+ */
 export interface TakeRef {
   kind: RefKind;
   index: number;
   file: string;
+  role: string;
+}
+
+/**
+ * The frame a take was told to open on — the previous shot's last used frame
+ * — or `"skipped"` when it was generated with `--no-handoff`. Absent on a
+ * shot that continues nothing.
+ */
+export interface TakeHandoff {
+  from: string;
+  take: string;
+  /** The previous shot's take, project-relative. */
+  source: string;
+  frame: number;
+  at: number;
+  trimmed: Trim | null;
+  /** `takes/handoff-in.png`, relative to THIS shot. */
+  file: string;
+}
+
+/**
+ * What this shot continues, and how it ends. Opt-in: a shot with no block is
+ * generated alone, which is the right answer for every cut that exists to
+ * break continuity. `from` names an EARLIER shot in `backlot.json`'s order;
+ * `entry` and `exit` are free text about bodies, weapons and facing.
+ * `exit` may stand alone — that is how a shot tells the next one where it
+ * ended.
+ */
+export interface Continuity {
+  from: string | null;
+  entry: string | null;
+  exit: string | null;
+}
+
+/**
+ * An anchor frame: the still that says what the shot LOOKS like, made
+ * image-to-image from the greybox frame at `at` (composition and camera) plus
+ * the bible (appearance). `first` is the opening frame and the take's
+ * `@Image1`.
+ */
+export interface Anchor {
+  id: string;
+  at: number;
+  file: string;
+  revision: number;
+  prompt: string;
+  /** Everything handed to the image model, project-relative, composition first. */
+  refs: string[];
+  greybox: { file: string; source: string; revision: number; frame: number };
+  model: string | null;
+  cost: Cost | null;
+  createdAt: number | null;
 }
 
 /**
@@ -81,10 +144,19 @@ export interface Trim {
 
 export interface Beat {
   id: string;
+  /** Short — what a rail, a sheet label or a beat row can show. */
   label: string;
   from: number;
   to: number;
   kind: BeatKind;
+  /**
+   * The DESIGNED picture of this beat, written at the boards stage before the
+   * greybox exists: body action, expression, wardrobe and material, the
+   * physical consequence, the tempo word. The greybox is built from it and
+   * carries only its geometry and its clock; `prompt-skeleton` hands it back
+   * to the model as the timeline, at the greybox's seconds.
+   */
+  detail: string | null;
   causedBy?: string;
   note?: string;
 }
@@ -132,6 +204,7 @@ export interface Take {
   probe: Probe | null;
   cost: Cost | null;
   refs?: TakeRef[];
+  handoff?: TakeHandoff | "skipped";
   audio?: boolean;
   submittedAt: string | null;
   finishedAt: string | null;
@@ -157,7 +230,10 @@ export interface Shot {
   beats: Beat[];
   /** Null means the whole shot reaches the film. */
   trim: Trim | null;
+  /** Null means this shot is generated alone — the default. */
+  continuity: Continuity | null;
   board: MediaRecord | null;
+  anchors: Anchor[];
   lines: Line[];
   reference: Record<string, unknown> | null;
   greybox: {
@@ -224,6 +300,15 @@ export function parseSize(value: string, label?: string): { width: number; heigh
 /** A validated cut range on the shot's clock, or a thrown refusal naming
  *  the flag: `0 <= in < out <= spec.seconds`. */
 export function makeTrim(input: { in: number; out: number }, spec: { seconds: number }): Trim;
+/**
+ * A validated hand-off, or null when nothing was declared. `from` must be an
+ * EARLIER shot of `order` and not `id`; `entry` and `exit` are both required
+ * beside it; `exit` may stand alone. Throws naming the flag.
+ */
+export function makeContinuity(
+  input?: { from?: string | null; entry?: string | null; exit?: string | null },
+  context?: { id?: string | null; order?: string[] | null },
+): Continuity | null;
 export function slugId(text: string, label?: string): string;
 export function newProject(input: { title: string; logline?: string; defaults?: Partial<ShotSpec> }): Project;
 export function newShot(input: {
@@ -309,6 +394,26 @@ export function validatePromptRefs(
   refs: PromptRefs | null,
   attached?: Partial<Record<RefKind, number>>,
 ): { ok: boolean; errors: string[] };
+
+/** The reference indices a prompt gives a JOB to — the tag followed by `=`,
+ *  `:` or `is`. Naming a reference is not assigning it. */
+export function promptAssignments(text: string): Record<RefKind, number[]>;
+/** The other half of the rule: every reference the job CARRIES must have a
+ *  job in the prompt, or it bleeds its own lighting and framing into the
+ *  shot. */
+export function validateReferenceAssignments(
+  prompt: string,
+  attached?: Partial<Record<RefKind, number>>,
+): { ok: boolean; errors: string[]; missing: string[]; assigned: Record<RefKind, number[]> };
+
+/** The `Seconds a–b:` rows of a v2 prompt pack. A bare `Seconds a:` moment
+ *  is read as the range `[a, a]`. */
+export function parsePromptTimeline(text: string): Array<{ from: number; to: number; line: string }>;
+/** What is wrong with a timeline, as sentences — WARNINGS, never refusals. */
+export function timelineProblems(
+  timeline: Array<{ from: number; to: number; line: string }>,
+  spec: { seconds: number },
+): string[];
 
 /** Case-folded, with punctuation, symbols and spacing removed — what a
  *  transcript can honestly be compared against. */

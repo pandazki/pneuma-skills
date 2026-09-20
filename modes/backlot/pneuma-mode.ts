@@ -20,9 +20,11 @@ import type {
 import {
   beatAt,
   checkTally,
+  cutPoints,
   frameAt,
   loadFilm,
   nextOpenStage,
+  primaryAnchor,
   projectDirOf,
   selectedTake,
   shotStages,
@@ -200,6 +202,28 @@ export function extractBacklotContext(
     }`,
   );
 
+  // The hand-off, when there is one. Its ABSENCE is never reported: a shot
+  // that declares no continuity is the default and the right answer for
+  // every cut meant to break it, and a line saying so would read as a gap.
+  if (shot.continuity?.from) {
+    lines.push(
+      `Hand-off: continues "${shot.continuity.from}" · entry: ${shot.continuity.entry ?? "(not written)"}${
+        shot.continuity.exit ? ` · exit: ${shot.continuity.exit}` : ""
+      }`,
+    );
+  } else if (shot.continuity?.exit) {
+    lines.push(`Exit state on record (no hand-off): ${shot.continuity.exit}`);
+  }
+
+  if (shot.anchors.length > 0) {
+    const primary = primaryAnchor(shot);
+    lines.push(
+      `Anchors: ${shot.anchors
+        .map((a) => `${a.id}${a.at === null ? "" : ` @ ${a.at} s`}${a.id === primary?.id ? " (lineup)" : ""}`)
+        .join(" · ")}`,
+    );
+  }
+
   const greyboxChecks = shot.checks.filter((c) => c.target === "greybox");
   const tally = checkTally(greyboxChecks);
   lines.push(
@@ -235,6 +259,10 @@ export function extractBacklotContext(
       }`,
     );
     if (beat?.causedBy) lines.push(`  that beat is caused by "${beat.causedBy}"`);
+    // The design, not the handle: `label` is what fits on a beat block, and
+    // judging a greybox against the handle is how a designed picture goes
+    // missing between the boards and the take.
+    if (beat?.detail) lines.push(`  designed as: ${beat.detail}`);
   }
 
   const range = address?.range;
@@ -333,6 +361,31 @@ function describeStageFocus(
           standIns > 0 ? ` · ${standIns} greybox stand-in(s)` : ""
         }`,
       );
+      // The joins, in the same words the cut view badges them with. Only the
+      // boundaries that DECLARE a hand-off carry a verdict; the rest are
+      // cuts, which is an editing decision and not a defect.
+      const points = cutPoints(project, cut);
+      const declared = points.filter((p) => p.continuity);
+      if (declared.length > 0) {
+        lines.push(
+          `Cut points claiming continuity: ${declared
+            .map(
+              (p) =>
+                `${p.fromSegment.shot}→${p.toSegment.shot} at ${p.at.toFixed(1)} s (take-handoff ${
+                  p.handoffCheck?.status ?? "unverified"
+                })`,
+            )
+            .join(" · ")}`,
+        );
+      }
+      if (points.length > declared.length) {
+        lines.push(
+          `Plain cuts (no hand-off declared, which is a choice, not a gap): ${points
+            .filter((p) => !p.continuity)
+            .map((p) => `${p.fromSegment.shot}→${p.toSegment.shot}`)
+            .join(" · ")}`,
+        );
+      }
       const segment = addressString(address, "segment");
       const focused = cut.segments.find((s) => s.shot === segment);
       if (focused) {

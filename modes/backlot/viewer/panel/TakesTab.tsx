@@ -8,9 +8,15 @@
  * its estimate; a `failed` one shows why. Paid work is recorded before it
  * leaves, so a card exists for a request whose file never arrived
  * (invariant 6).
+ *
+ * THE REFERENCES CARRY THEIR JOBS. Every reference attached to a request is
+ * listed in the index order the prompt addresses it by, with the job the pack
+ * assigned it. A reference with no job is called out: an unassigned reference
+ * bleeds its own lighting, framing and palette into the shot, and the only
+ * place a person can notice that is beside the picture it paid for.
  */
 
-import type { Shot, Take } from "../../domain.js";
+import type { Shot, Take, TakeRef } from "../../domain.js";
 import { probeFacts, takeLabel } from "../player-model.js";
 
 export interface TakesTabProps {
@@ -94,6 +100,18 @@ function TakeCard({
         <dd className="truncate font-mono text-[9px] text-cc-muted">{take.requestId ?? "—"}</dd>
       </dl>
 
+      <RefList refs={take.refs} />
+
+      {take.handoff?.skipped ? (
+        // `take-handoff` is still seeded and still has to be answered by eye,
+        // so the card has to say that the frame it is judged against is one
+        // this take was never shown.
+        <p className="mt-1 text-[10px] leading-relaxed text-cc-warning">
+          generated with <code>--no-handoff</code> — the previous shot&rsquo;s frame was not
+          attached, so the hand-off is judged against a frame this take never saw.
+        </p>
+      ) : null}
+
       {take.fix ? (
         <p className="mt-1 text-[10px] leading-relaxed text-cc-fg">
           <span className="text-cc-muted">made to fix: </span>
@@ -110,6 +128,75 @@ function TakeCard({
         <p className="mt-1 text-[9px] text-cc-muted/80">{take.cost.basis}</p>
       ) : null}
     </button>
+  );
+}
+
+/**
+ * `@Image2` — the tag the prompt pack addresses this reference by, spelled
+ * the way `previz.mjs::refTag` spells it.
+ *
+ * Not exported: a non-component export from a file of components breaks
+ * React Fast Refresh, and the only caller is right here.
+ */
+function refTag(ref: TakeRef): string {
+  const kind = ref.kind.charAt(0).toUpperCase() + ref.kind.slice(1);
+  return `@${kind}${ref.index}`;
+}
+
+/** The order the prompt pack lists its references in. */
+const KIND_ORDER: ReadonlyArray<string> = ["video", "image", "audio"];
+
+function kindRank(kind: string): number {
+  const rank = KIND_ORDER.indexOf(kind.toLowerCase());
+  // A kind this viewer has never heard of goes last rather than being
+  // dropped or alphabetised into the middle of the known ones.
+  return rank === -1 ? KIND_ORDER.length : rank;
+}
+
+/**
+ * Every reference of one request, in the order the prompt addresses them.
+ *
+ * Kind order is the pack's own (video, then images, then audio) and not
+ * alphabetical: a person reads this list against the prompt they wrote, and
+ * `@Video1` is the first line of that prompt.
+ */
+function RefList({ refs }: { refs: TakeRef[] }) {
+  if (refs.length === 0) return null;
+  const ordered = [...refs].sort((a, b) =>
+    a.kind === b.kind ? a.index - b.index : kindRank(a.kind) - kindRank(b.kind),
+  );
+  const unassigned = ordered.filter((ref) => !ref.role?.trim()).length;
+
+  return (
+    <div className="mt-1.5">
+      <div className="flex flex-wrap items-center gap-1">
+        {ordered.map((ref) => {
+          const role = ref.role?.trim() ?? "";
+          return (
+            <span
+              key={`${ref.kind}${ref.index}`}
+              title={`${refTag(ref)} · ${ref.file}${role ? `` : " — no job assigned in the prompt pack"}`}
+              className={`inline-flex max-w-full items-baseline gap-1 rounded-full border px-1.5 py-0.5 text-[9px] ${
+                role
+                  ? "border-cc-border bg-cc-hover/50 text-cc-muted"
+                  : "border-cc-warning/55 bg-cc-warning/10 text-cc-warning"
+              }`}
+            >
+              <span className="shrink-0 font-mono text-cc-fg">{refTag(ref)}</span>
+              <span className="truncate">{role || "unassigned"}</span>
+            </span>
+          );
+        })}
+      </div>
+      {unassigned > 0 ? (
+        <p className="mt-1 text-[9px] leading-relaxed text-cc-warning/90">
+          {unassigned === 1
+            ? "1 reference carries no job"
+            : `${unassigned} references carry no job`}{" "}
+          — an unassigned reference bleeds its own lighting and framing into the shot.
+        </p>
+      ) : null}
+    </div>
   );
 }
 

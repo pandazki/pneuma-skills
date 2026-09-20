@@ -41,6 +41,32 @@ export function timeOfFrame(frame, fps) {
 }
 
 /**
+ * The two frames a CUT actually shows at the edges of `[start, end)`.
+ *
+ * A trim is a half-open range of time — ffmpeg's `trim=start=a:end=b` keeps
+ * the frames whose timestamp is in `[a, b)` — so the edges are not
+ * `frameAtTime` of either end: a range that stops exactly on a frame
+ * boundary must not include the frame that starts there, and one that stops
+ * mid-frame must include the frame it stops inside. Frame `i` (0-based)
+ * covers `[i/fps, (i+1)/fps)`, so the last shown frame is
+ * `ceil(end x fps) - 1` and the first is `ceil(start x fps)`, both 1-based
+ * here and clamped into the clip.
+ *
+ * This is what the hand-off is cut at: the frame a later shot has to open on
+ * is the last frame of the previous one that reached the film, not the last
+ * frame it rendered.
+ */
+export function firstFrameFrom(start, fps, frames) {
+  const raw = Math.ceil(Number(start) * fps - 1e-6) + 1;
+  return Math.min(frames, Math.max(1, raw));
+}
+
+export function lastFrameBefore(end, fps, frames) {
+  const raw = Math.ceil(Number(end) * fps - 1e-6);
+  return Math.min(frames, Math.max(1, raw));
+}
+
+/**
  * A duration rounded to a whole number of frames.
  *
  * `reference --adopt-spec` uses this: a 7.93 s segment at 24 fps becomes

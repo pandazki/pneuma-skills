@@ -121,6 +121,11 @@ export function costLines(texts = {}) {
     if (isRecord(shot.board)) {
       lines.push(line("boards", "image", `${id} — board frame`, `shots/${id}/${shot.board.file ?? "board.png"}`, shot.board.cost, shot.board.at));
     }
+    // Anchor frames are rendered from the accepted greybox, so they are
+    // previz-stage spend: a paid call the cost view must never lose.
+    for (const anchor of Array.isArray(shot.anchors) ? shot.anchors.filter(isRecord) : []) {
+      lines.push(line("previz", "image", `${id} — anchor ${anchor.id ?? "?"}`, `shots/${id}/${anchor.file ?? `anchors/${anchor.id ?? "first"}.png`}`, anchor.cost, anchor.createdAt ?? null));
+    }
     for (const take of Array.isArray(shot.takes) ? shot.takes.filter(isRecord) : []) {
       // A `failed` take is still a paid one: its request left the machine.
       lines.push(

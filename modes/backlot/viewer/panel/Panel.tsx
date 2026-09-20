@@ -1,24 +1,28 @@
 /**
  * The panel — everything about the shot that is not a moving picture.
  *
- * Five tabs, one per artefact the workflow produces: the plan the beats came
- * from, the acceptance record, the prompt pack, the takes and the bill.
+ * Six tabs, one per artefact the workflow produces: the plan the beats came
+ * from, the lineup the previz gate is decided on, the acceptance record, the
+ * prompt pack, the takes and the bill.
  */
 
 import { useState } from "react";
 
 import type { Check, Project, Shot } from "../../domain.js";
 import { CoinsIcon } from "../icons.js";
+import type { Clock } from "../usePlayhead.js";
 import { ChecksTab } from "./ChecksTab.js";
 import { CostTab } from "./CostTab.js";
+import { LineupTab } from "./LineupTab.js";
 import { PlanTab } from "./PlanTab.js";
 import { PromptTab } from "./PromptTab.js";
 import { TakesTab } from "./TakesTab.js";
 
-export type PanelTab = "plan" | "checks" | "prompt" | "takes" | "cost";
+export type PanelTab = "plan" | "lineup" | "checks" | "prompt" | "takes" | "cost";
 
 const TABS: Array<{ id: PanelTab; label: string }> = [
   { id: "plan", label: "Plan" },
+  { id: "lineup", label: "Lineup" },
   { id: "checks", label: "Checks" },
   { id: "prompt", label: "Prompt" },
   { id: "takes", label: "Takes" },
@@ -40,6 +44,12 @@ export interface PanelProps {
    * take, so its checks come first there; previz opens on the greybox.
    */
   checkFocus: "greybox" | "take";
+  /** Shot-relative path + cache buster → `/content/…` URL, for QA stills. */
+  urlFor: (path: string, rev: number | string) => string | null;
+  /** The shot's one clock — the lineup's greybox tile follows it. */
+  clock: Clock;
+  /** Park the playhead (a beat click in the lineup). */
+  onSeek: (seconds: number) => void;
 }
 
 export function Panel(props: PanelProps) {
@@ -81,11 +91,20 @@ export function Panel(props: PanelProps) {
         {tab === "plan" ? (
           <PlanTab shot={props.shot} markdown={props.planMarkdown} dark={props.dark} />
         ) : null}
+        {tab === "lineup" ? (
+          <LineupTab
+            shot={props.shot}
+            urlFor={props.urlFor}
+            clock={props.clock}
+            onSeek={props.onSeek}
+          />
+        ) : null}
         {tab === "checks" ? (
           <ChecksTab
             shot={props.shot}
             onFocusCheck={props.onFocusCheck}
             first={props.checkFocus}
+            urlFor={props.urlFor}
           />
         ) : null}
         {tab === "prompt" ? (

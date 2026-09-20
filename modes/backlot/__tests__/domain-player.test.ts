@@ -18,6 +18,7 @@ import {
   extractPromptBlock,
   failedRanges,
   fitBox,
+  formatFactor,
   formatSeconds,
   isPlayerStage,
   laneOfTarget,
@@ -32,6 +33,7 @@ import {
   resolveAddress,
   stagePair,
   takeLabel,
+  tempoSpans,
   visibleLanes,
   withStageDefaults,
   type PlayerPosition,
@@ -308,6 +310,43 @@ describe("timeline geometry", () => {
     expect(nextEdge(edges, 8)).toBe(8);
     expect(prevEdge(edges, 8)).toBe(7.5);
     expect(prevEdge(edges, 0)).toBe(0);
+  });
+
+  test("the tempo row draws the greybox's own time remap, in the shot's clock", () => {
+    // The shot still runs 8 s — `slowmo` stretches the ACTION, not the
+    // shot — so the row is spans on the same axis as the beats, never a
+    // rescaling of them.
+    const spans = tempoSpans(
+      [
+        { from: 5.5, to: 6.5, factor: 0.5 },
+        { from: 1, to: 2, factor: 2 },
+      ],
+      8,
+    );
+    expect(spans.map((s) => [s.from, s.to, s.label, s.slow])).toEqual([
+      [1, 2, "2×", false],
+      [5.5, 6.5, "½×", true],
+    ]);
+  });
+
+  test("a warp is clamped to the shot, and one entirely outside it is dropped", () => {
+    // Pinning an out-of-range warp to the edge would draw a ramp the render
+    // does not have; a zero-width block is not a tempo.
+    expect(tempoSpans([{ from: 6, to: 12, factor: 0.5 }], 8).map((s) => [s.from, s.to])).toEqual([
+      [6, 8],
+    ]);
+    expect(tempoSpans([{ from: 9, to: 12, factor: 0.5 }], 8)).toEqual([]);
+    // A factor of 1 remaps nothing, and drawing "1×" would suggest the rest
+    // of the shot is not.
+    expect(tempoSpans([{ from: 1, to: 2, factor: 1 }], 8)).toEqual([]);
+    expect(tempoSpans([], 8)).toEqual([]);
+  });
+
+  test("factors are printed the way an editor says them", () => {
+    expect(formatFactor(0.5)).toBe("½×");
+    expect(formatFactor(0.25)).toBe("¼×");
+    expect(formatFactor(2)).toBe("2×");
+    expect(formatFactor(1.25)).toBe("1.25×");
   });
 
   test("a check's target picks the lane the user is sent to", () => {

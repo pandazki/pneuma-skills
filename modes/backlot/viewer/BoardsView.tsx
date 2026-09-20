@@ -103,8 +103,17 @@ function BoardCard({
       <div className="px-2.5 py-2">
         <p className="truncate text-[12px] leading-tight text-cc-fg">{shot.title}</p>
         <p className="truncate text-[9px] text-cc-muted">{shot.id}</p>
-        <div className="mt-1.5 flex items-center gap-1.5">
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
           <ShotBadge shot={shot} />
+          {/* A separate chip, not part of the progress badge: an anchor is a
+              designed frame, not a rung of the pipeline, and a shot can have
+              one at any stage. */}
+          {shot.anchors.length > 0 ? (
+            <Chip tone="primary">
+              anchor{shot.anchors.length > 1 ? ` ×${shot.anchors.length}` : ""}
+            </Chip>
+          ) : null}
+          {shot.continuity?.from ? <Chip tone="muted">continues {shot.continuity.from}</Chip> : null}
           {shot.lines.length > 0 ? (
             <span className="text-[9px] text-cc-muted">
               {shot.lines.length} line{shot.lines.length === 1 ? "" : "s"}

@@ -19,9 +19,11 @@
  */
 
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { pngSize } from "../skill/scripts/media.mjs";
 
 const SCRIPT = join(import.meta.dir, "..", "skill", "scripts", "previz.mjs");
 const BACKLOT = join(import.meta.dir, "..", "skill", "scripts", "backlot.mjs");
@@ -82,30 +84,44 @@ function scaffold(cwd: string, extra: string[] = []) {
 }
 
 /** Fake a render the way `render` records one, so the file-only commands
- *  downstream of it can be exercised without Blender. */
-function fakeRender(cwd: string, { revision = 1, final = false } = {}) {
-  const path = join(cwd, "film", "shots", "lab-walk", "shot.json");
+ *  downstream of it can be exercised without Blender. `video` puts a real
+ *  clip there instead of a stand-in string, for the commands that decode it. */
+function fakeRender(cwd: string, { revision = 1, final = false, id = "lab-walk", video = "" } = {}) {
+  const path = join(cwd, "film", "shots", id, "shot.json");
   const shot = JSON.parse(readFileSync(path, "utf-8"));
   shot.greybox.revision = revision;
   const record = {
     file: final ? "greybox/greybox.mp4" : "greybox/preview.mp4",
     revision,
     scale: final ? 1 : 0.5,
-    probe: { codec: "h264", pixFmt: "yuv420p", width: 1280, height: 720, fps: 24, frames: 192, seconds: 8, bytes: 1 },
+    probe: video
+      ? { codec: "h264", pixFmt: "yuv420p", width: 64, height: 64, fps: 24, frames: 24, seconds: 1, bytes: 1 }
+      : { codec: "h264", pixFmt: "yuv420p", width: 1280, height: 720, fps: 24, frames: 192, seconds: 8, bytes: 1 },
     renderedAt: T(1),
     renderSeconds: 9.7,
   };
   if (final) shot.greybox.final = record;
   else shot.greybox.preview = record;
   writeFileSync(path, `${JSON.stringify(shot, null, 2)}\n`);
-  writeFileSync(join(cwd, "film", "shots", "lab-walk", record.file), "not really an mp4");
+  if (video) copyFileSync(video, join(cwd, "film", "shots", id, record.file));
+  else writeFileSync(join(cwd, "film", "shots", id, record.file), "not really an mp4");
 }
 
-function writePrompt(cwd: string, body: string) {
-  const path = join(cwd, "film", "shots", "lab-walk", "prompts.md");
+function writePrompt(cwd: string, body: string, id = "lab-walk") {
+  const path = join(cwd, "film", "shots", id, "prompts.md");
   const markdown = readFileSync(path, "utf-8").replace(/```prompt\n[\s\S]*?\n```/, `\`\`\`prompt\n${body}\n\`\`\``);
   writeFileSync(path, markdown);
 }
+
+/**
+ * A prompt that gives every attached reference a job.
+ *
+ * `generate` refuses a pack that leaves one unassigned — an unassigned
+ * reference bleeds its own lighting and framing into the shot — so the packs
+ * these tests write say what each one is for, exactly as the skeleton does.
+ */
+const GREYBOX_ONLY =
+  "@Video1 = layout, positions, timing and the single camera move only; its grey shapes are placeholders, not the look. A research lab at night.";
 
 const BEATS = [
   { id: "establish", label: "Doorway establishes", from: 0, to: 0.5, kind: "hold" },
@@ -285,15 +301,15 @@ describe("check and checklist", () => {
 });
 
 /** A shot whose greybox is rendered, accepted, and has a real prompt. */
-function ready(cwd: string) {
-  scaffold(cwd);
+function ready(cwd: string, { id = "lab-walk", scaffolded = false, video = "" } = {}) {
+  if (!scaffolded) scaffold(cwd);
   writeFileSync(join(cwd, "beats.json"), JSON.stringify(BEATS));
-  json(cwd, ["beats", "film/shots/lab-walk", "--set", "beats.json"]);
-  fakeRender(cwd, { revision: 1, final: true });
-  for (const id of ["frame-count", "blocking", "pace", "penetration", "framing", "trigger-order", "camera-smooth", "end-hold"]) {
-    json(cwd, ["check", "film/shots/lab-walk", "--id", id, "--status", "pass", "--now", T(1)]);
+  json(cwd, ["beats", `film/shots/${id}`, "--set", "beats.json"]);
+  fakeRender(cwd, { revision: 1, final: true, id, video });
+  for (const check of ["frame-count", "blocking", "pace", "penetration", "framing", "trigger-order", "camera-smooth", "end-hold"]) {
+    json(cwd, ["check", `film/shots/${id}`, "--id", check, "--status", "pass", "--now", T(1)]);
   }
-  writePrompt(cwd, "Follow the motion, staging and camera of @Video1 exactly. A research lab at night.");
+  writePrompt(cwd, GREYBOX_ONLY, id);
 }
 
 describe("generate --estimate", () => {
@@ -363,7 +379,7 @@ describe("generate --estimate", () => {
   test("[Video1] still works and is warned about — Seedance documents @Video1", () => {
     const cwd = workspace();
     ready(cwd);
-    writePrompt(cwd, "Follow [Video1] exactly. A research lab at night.");
+    writePrompt(cwd, "[Video1] = layout, positions and timing only. A research lab at night.");
     const estimate = run(cwd, ["generate", "film/shots/lab-walk", "--estimate"]);
     expect(estimate.code).toBe(0);
     expect(estimate.err).toContain("[Video1]");
@@ -649,6 +665,17 @@ describe("status", () => {
     expect(status.prompt.ok).toBe(false);
   });
 
+  test("an accepted greybox with no anchor asks for the picture before the video", () => {
+    const cwd = workspace();
+    ready(cwd);
+    const status = json(cwd, ["status", "film/shots/lab-walk"]);
+    expect(status.next.stage).toBe("anchor");
+    expect(status.next.command).toContain("previz.mjs anchor");
+    // …and the report carries the two new facts about where a shot sits.
+    expect(status.anchors).toEqual([]);
+    expect(status.continuity).toBeNull();
+  });
+
   test("pointed at a film it says whose report that is — one owner per report", () => {
     const cwd = workspace();
     scaffold(cwd);
@@ -704,9 +731,9 @@ function ttsSeam(cwd: string) {
   return { BACKLOT_TTS_MODULE: path, FAKE_TTS_ARGV: join(cwd, "tts-argv.jsonl") };
 }
 
-function pngFixture(cwd: string, name = "frame.png") {
+function pngFixture(cwd: string, name = "frame.png", size = "64x64") {
   const path = join(cwd, name);
-  const made = Bun.spawnSync(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=teal:s=64x64:d=1", "-frames:v", "1", path]);
+  const made = Bun.spawnSync(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", `color=c=teal:s=${size}:d=1`, "-frames:v", "1", path]);
   if (made.exitCode !== 0) throw new Error(made.stderr.toString());
   return path;
 }
@@ -852,15 +879,23 @@ describe("the references a take carries", () => {
     const cwd = workspace();
     const env = ttsSeam(cwd);
     dressed(cwd, env);
-    writePrompt(cwd, "Follow @Video1 exactly; the frame is @Image1, he looks like @Image2 in @Image3, voice @Audio1.");
+    writePrompt(cwd, [
+      "@Video1 = layout, positions and timing only.",
+      "@Image1 = the composition of the opening frame.",
+      "@Image2 = his appearance only.",
+      "@Image3 = the store's appearance only.",
+      "@Audio1 = his voice.",
+    ].join("\n"));
 
     const estimate = json(cwd, ["generate", "film/shots/lab-walk", "--estimate"], env);
+    // Every reference says what it is FOR: the role is what the skeleton
+    // writes its assignment sentence from, and what a viewer labels.
     expect(estimate.refs).toEqual([
-      { kind: "video", index: 1, file: "shots/lab-walk/greybox/greybox.mp4" },
-      { kind: "image", index: 1, file: "shots/lab-walk/board.png" },
-      { kind: "image", index: 2, file: "bible/characters/kai/sheet.png" },
-      { kind: "image", index: 3, file: "bible/sets/store/concept.png" },
-      { kind: "audio", index: 1, file: "bible/characters/kai/voice.mp3" },
+      { kind: "video", index: 1, file: "shots/lab-walk/greybox/greybox.mp4", role: "greybox" },
+      { kind: "image", index: 1, file: "shots/lab-walk/board.png", role: "board" },
+      { kind: "image", index: 2, file: "bible/characters/kai/sheet.png", role: "character:kai" },
+      { kind: "image", index: 3, file: "bible/sets/store/concept.png", role: "set:store" },
+      { kind: "audio", index: 1, file: "bible/characters/kai/voice.mp3", role: "voice:kai" },
     ]);
     // A line spoken on screen turns the take's audio on by itself.
     expect(estimate.audio).toBe(true);
@@ -878,15 +913,65 @@ describe("the references a take carries", () => {
     ready(cwd);
     backlot(cwd, ["character", "add", "film", "kai", "--name", "小凯"]);
     json(cwd, ["meta", "film/shots/lab-walk", "--characters", "kai", "--set", "store"]);
-    writePrompt(cwd, "Follow @Video1 exactly. A research lab at night.");
+    writePrompt(cwd, GREYBOX_ONLY);
 
     const estimate = run(cwd, ["generate", "film/shots/lab-walk", "--estimate"], env);
     expect(estimate.code).toBe(0);
     expect(estimate.err).toContain('character "kai" has no sheet in the bible');
     expect(estimate.err).toContain('set "store" has no concept frame');
     expect(JSON.parse(estimate.out).refs).toEqual([
-      { kind: "video", index: 1, file: "shots/lab-walk/greybox/greybox.mp4" },
+      { kind: "video", index: 1, file: "shots/lab-walk/greybox/greybox.mp4", role: "greybox" },
     ]);
+  });
+
+  test.skipIf(!HAS_FFMPEG)("a reference that is attached and never given a job is refused, by index", () => {
+    const cwd = workspace();
+    const env = ttsSeam(cwd);
+    dressed(cwd, env);
+    // Names every index, assigns only the first: the rest would still be sent
+    // and would still bleed their lighting and framing into the shot.
+    writePrompt(cwd, "@Video1 = layout and timing only. Then @Image1, @Image2, @Image3 and @Audio1 are in it somewhere.");
+
+    const refused = run(cwd, ["generate", "film/shots/lab-walk", "--estimate"], env);
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain("leaves an attached reference unassigned");
+    expect(refused.err).toContain("@Image1, @Image2, @Image3, @Audio1");
+    expect(refused.err).toContain("prompt-skeleton");
+    // Nothing was recorded by the refusal.
+    expect(shotFile(cwd).takes).toEqual([]);
+
+    // `=`, `:` and `is` all assign.
+    writePrompt(cwd, [
+      "@Video1 = layout and timing only.",
+      "@Image1: the composition of the opening frame.",
+      "@Image2 is his appearance only.",
+      "@Image3 — the store's appearance only.",
+      "@Audio1 = his voice.",
+    ].join("\n"));
+    expect(json(cwd, ["generate", "film/shots/lab-walk", "--estimate"], env).wouldBe).toBe("take-01");
+  });
+
+  test("a timeline that disagrees with the clock is WARNED about, never refused", () => {
+    const cwd = workspace();
+    ready(cwd);
+    writePrompt(cwd, [
+      GREYBOX_ONLY,
+      "Seconds 0.0–0.5: he stops in the doorway.",
+      "Seconds 5.5–9.0: the device brightens.",
+      "Seconds 1.0–2.0: he walks.",
+    ].join("\n"));
+
+    const estimate = run(cwd, ["generate", "film/shots/lab-walk", "--estimate"]);
+    expect(estimate.code).toBe(0);
+    expect(estimate.err).toContain("runs past the shot's 8 s");
+    expect(estimate.err).toContain("the timeline goes backwards");
+    const parsed = JSON.parse(estimate.out);
+    expect(parsed.timeline).toEqual([
+      { from: 0, to: 0.5 },
+      { from: 5.5, to: 9 },
+      { from: 1, to: 2 },
+    ]);
+    expect(parsed.warnings.join(" ")).toContain("runs past the shot's 8 s");
   });
 });
 
@@ -975,6 +1060,516 @@ describe("take-lines", () => {
     const landed = json(cwd, ["generate", "film/shots/lab-walk", "--now", T(20)], env);
     expect(landed.lines).toBeNull();
     expect(shotFile(cwd).checks.some((entry: any) => entry.id === "take-lines")).toBe(false);
+  });
+});
+
+/**
+ * Continuity — the opt-in hand-off.
+ *
+ * Every take in the first acceptance run was generated alone, so the body
+ * action a model invents in shot N ended in a pose shot N+1 never saw. A
+ * shot may now say it continues an earlier one; then the frame that shot
+ * actually delivers to the film is cut out and handed to the model as the
+ * last image reference. A shot that says nothing is generated exactly as
+ * before — some cuts exist to BREAK continuity.
+ */
+const FAKE_IMAGE = `#!/usr/bin/env node
+import { spawnSync } from "node:child_process";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { parseArgs } from "node:util";
+const { values, positionals } = parseArgs({ allowPositionals: true, options: {
+  "output-dir": { type: "string" }, "filename-prefix": { type: "string" }, "output-format": { type: "string" },
+  "aspect-ratio": { type: "string" }, quality: { type: "string" }, "image-urls": { type: "string", multiple: true },
+} });
+writeFileSync(process.env.FAKE_IMAGE_ARGV, JSON.stringify({ prompt: positionals[0], ...values }) + "\\n", { flag: "a" });
+mkdirSync(values["output-dir"], { recursive: true });
+const out = join(values["output-dir"], values["filename-prefix"] + "." + (values["output-format"] ?? "png"));
+const made = spawnSync("ffmpeg", ["-y", "-v", "error", "-f", "lavfi", "-i", "color=c=orange:s=96x54:d=1", "-frames:v", "1", out], { encoding: "utf-8" });
+if (made.status !== 0) { console.error(made.stderr); process.exit(1); }
+console.log(JSON.stringify({ backend: "openrouter", model: "openai/gpt-image-2.5-sunburst", files: [out], usage: { cost: 0.1904 } }));
+`;
+
+function imageSeam(cwd: string) {
+  const path = join(cwd, "fake-image.mjs");
+  writeFileSync(path, FAKE_IMAGE);
+  return { BACKLOT_IMAGE_MODULE: path, FAKE_IMAGE_ARGV: join(cwd, "image-argv.jsonl") };
+}
+
+function seedanceSeam(cwd: string, extra: Record<string, string> = {}) {
+  const path = join(cwd, "fake-seedance.mjs");
+  writeFileSync(path, FAKE_SEEDANCE);
+  return { FAL_KEY: "test-key-never-sent", PREVIZ_SEEDANCE_MODULE: path, FAKE_PREVIZ: SCRIPT, FAKE_CWD: cwd, ...extra };
+}
+
+/** One second of colour bars at 24 fps: 24 real frames to cut a hand-off
+ *  out of, and something ffprobe can tell the truth about. */
+function mp4Fixture(cwd: string, name = "fixture.mp4") {
+  const path = join(cwd, name);
+  const made = Bun.spawnSync([
+    "ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=64x64:rate=24:duration=1",
+    "-c:v", "libx264", "-pix_fmt", "yuv420p", path,
+  ]);
+  if (made.exitCode !== 0) throw new Error(made.stderr.toString());
+  return path;
+}
+
+/** A film with two shots, in order: the second one can continue the first. */
+function twoShots(cwd: string) {
+  scaffold(cwd);
+  return backlot(cwd, ["shot", "add", "film", "counter", "--title", "The clerk looks up"]);
+}
+
+/** Give a shot a selected, finished take with a real clip behind it — the
+ *  state a hand-off reads. */
+function deliver(cwd: string, id: string, clip: string) {
+  const path = join(cwd, "film", "shots", id, "shot.json");
+  const shot = JSON.parse(readFileSync(path, "utf-8"));
+  shot.takes = [{
+    id: "take-01",
+    status: "done",
+    file: "takes/take-01.mp4",
+    selected: true,
+    probe: { codec: "h264", pixFmt: "yuv420p", width: 64, height: 64, fps: 24, frames: 24, seconds: 1, bytes: 1 },
+  }];
+  writeFileSync(path, `${JSON.stringify(shot, null, 2)}\n`);
+  mkdirSync(join(cwd, "film", "shots", id, "takes"), { recursive: true });
+  copyFileSync(clip, join(cwd, "film", "shots", id, "takes", "take-01.mp4"));
+}
+
+const CONTINUES = [
+  "@Video1 = layout, positions and timing only.",
+  "@Image1 = the last frame of the previous shot (lab-walk): this shot opens exactly here.",
+  "Mid-stride, weight on the front foot.",
+].join("\n");
+
+describe("meta --continues-from", () => {
+  test("records the hand-off, and refuses one the film cannot have", () => {
+    const cwd = workspace();
+    twoShots(cwd);
+    const set = json(cwd, ["meta", "film/shots/counter", "--continues-from", "lab-walk",
+      "--entry", "mid-stride through the door, facing screen right",
+      "--exit", "hand flat on the counter, eyes up"]);
+    expect(set.continuity).toEqual({
+      from: "lab-walk",
+      entry: "mid-stride through the door, facing screen right",
+      exit: "hand flat on the counter, eyes up",
+    });
+    expect(shotFile(cwd, "film", "counter").continuity.from).toBe("lab-walk");
+
+    // A shot continues an EARLIER one — never itself, never one after it.
+    expect(run(cwd, ["meta", "film/shots/counter", "--continues-from", "counter", "--entry", "a", "--exit", "b"]).err)
+      .toContain("this shot itself");
+    expect(run(cwd, ["meta", "film/shots/lab-walk", "--continues-from", "counter", "--entry", "a", "--exit", "b"]).err)
+      .toContain('comes AFTER "lab-walk"');
+    expect(run(cwd, ["meta", "film/shots/counter", "--continues-from", "ghost", "--entry", "a", "--exit", "b"]).err)
+      .toContain("not a shot in this film");
+    // Both ends are owed — and a shot that already has them keeps them.
+    const fresh = workspace();
+    twoShots(fresh);
+    expect(run(fresh, ["meta", "film/shots/counter", "--continues-from", "lab-walk", "--exit", "b"]).err).toContain("--entry");
+    expect(run(fresh, ["meta", "film/shots/counter", "--continues-from", "lab-walk", "--entry", "a"]).err).toContain("--exit");
+    expect(shotFile(fresh, "film", "counter").continuity).toBeNull();
+    // A refusal leaves the record exactly as it was.
+    expect(shotFile(cwd, "film", "counter").continuity.entry).toBe("mid-stride through the door, facing screen right");
+    expect(shotFile(cwd).continuity).toBeNull();
+  });
+
+  test("an exit alone is allowed on any shot, and --no-continuity drops the block", () => {
+    const cwd = workspace();
+    twoShots(cwd);
+    // A shot that continues nothing may still say how it ends, for a later
+    // shot to pick up.
+    const ends = json(cwd, ["meta", "film/shots/lab-walk", "--exit", "blades in contact, both weight forward"]);
+    expect(ends.continuity).toEqual({ from: null, entry: null, exit: "blades in contact, both weight forward" });
+
+    json(cwd, ["meta", "film/shots/counter", "--continues-from", "lab-walk", "--entry", "a", "--exit", "b"]);
+    const cleared = json(cwd, ["meta", "film/shots/counter", "--no-continuity"]);
+    expect(cleared.continuity).toBeNull();
+    expect(shotFile(cwd, "film", "counter").continuity).toBeNull();
+
+    expect(run(cwd, ["meta", "film/shots/counter", "--no-continuity", "--continues-from", "lab-walk"]).err)
+      .toContain("--no-continuity drops the hand-off");
+    expect(run(cwd, ["meta", "film/shots/counter", "--continues-from", ""]).err).toContain("--no-continuity");
+    // An entry with nothing to continue is a frame with no predecessor.
+    expect(run(cwd, ["meta", "film/shots/counter", "--entry", "mid-lunge"]).err).toContain("--continues-from");
+  });
+});
+
+describe("the hand-off a take is generated with", () => {
+  /** The continuing shot, ready to generate, with a prompt that gives the
+   *  hand-off frame its job. */
+  function continuing(cwd: string) {
+    twoShots(cwd);
+    ready(cwd, { id: "counter", scaffolded: true });
+    json(cwd, ["meta", "film/shots/counter", "--continues-from", "lab-walk",
+      "--entry", "mid-stride, weight on the front foot", "--exit", "hand flat on the counter"]);
+    writePrompt(cwd, CONTINUES, "counter");
+  }
+
+  test.skipIf(!HAS_FFMPEG)("refuses while the shot it continues has no selected take, and names both ways out", () => {
+    const cwd = workspace();
+    continuing(cwd);
+    const refused = run(cwd, ["generate", "film/shots/counter", "--estimate"]);
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain('"lab-walk" has no selected take');
+    // The fix is a command that can be pasted: an absolute directory, not a
+    // project-relative one the agent would have to re-root.
+    expect(refused.err).toContain(`previz.mjs select ${join(cwd, "film", "shots", "lab-walk")}`);
+    expect(refused.err).toContain("--no-handoff");
+    expect(existsSync(join(cwd, "film", "shots", "counter", "takes", "handoff-in.png"))).toBe(false);
+
+    // --no-handoff is the override, and it says so out loud.
+    const skipped = run(cwd, ["generate", "film/shots/counter", "--estimate", "--no-handoff"]);
+    expect(skipped.code).toBe(1); // the prompt still addresses @Image1, which is now attached to nothing
+    expect(skipped.err).toContain("generated WITHOUT that frame");
+    expect(skipped.err).toContain("@Image1");
+  });
+
+  test.skipIf(!HAS_FFMPEG)("cuts the previous shot's last USED frame and attaches it last", () => {
+    const cwd = workspace();
+    continuing(cwd);
+    const clip = mp4Fixture(cwd);
+    deliver(cwd, "lab-walk", clip);
+    // The film only shows the first half second of lab-walk, so the frame
+    // this shot opens on is that frame — not the one lab-walk rendered last.
+    json(cwd, ["meta", "film/shots/lab-walk", "--trim-out", "0.5"]);
+
+    const estimate = json(cwd, ["generate", "film/shots/counter", "--estimate"]);
+    expect(estimate.handoff).toMatchObject({
+      from: "lab-walk",
+      take: "take-01",
+      source: "shots/lab-walk/takes/take-01.mp4",
+      frame: 12,
+      file: "takes/handoff-in.png",
+      trimmed: { in: 0, out: 0.5 },
+    });
+    const frame = join(cwd, "film", "shots", "counter", "takes", "handoff-in.png");
+    expect(existsSync(frame)).toBe(true);
+    // Cut at the clip's own resolution: this is a reference for a paid job,
+    // not a contact sheet.
+    expect(pngSize(readFileSync(frame))).toEqual({ width: 64, height: 64 });
+    expect(estimate.refs).toEqual([
+      { kind: "video", index: 1, file: "shots/counter/greybox/greybox.mp4", role: "greybox" },
+      { kind: "image", index: 1, file: "shots/counter/takes/handoff-in.png", role: "handoff" },
+    ]);
+    // An untrimmed previous shot hands over its last frame instead.
+    json(cwd, ["meta", "film/shots/lab-walk", "--no-trim"]);
+    expect(json(cwd, ["generate", "film/shots/counter", "--estimate"]).handoff).toMatchObject({ frame: 24, trimmed: null });
+  });
+
+  test.skipIf(!HAS_FFMPEG)("the take records what it was shown, and carries take-handoff", () => {
+    const cwd = workspace();
+    continuing(cwd);
+    const clip = mp4Fixture(cwd);
+    deliver(cwd, "lab-walk", clip);
+    const env = seedanceSeam(cwd, { FAKE_TAKE_SOURCE: clip });
+
+    const landed = json(cwd, ["generate", "film/shots/counter", "--now", T(20)], env);
+    expect(landed.take.status).toBe("done");
+    expect(landed.take.refs.at(-1)).toMatchObject({ kind: "image", role: "handoff", file: "shots/counter/takes/handoff-in.png" });
+    expect(landed.take.handoff).toMatchObject({ from: "lab-walk", take: "take-01", frame: 24 });
+
+    const shot = shotFile(cwd, "film", "counter");
+    const check = shot.checks.find((entry: any) => entry.id === "take-handoff" && entry.target === "take-01");
+    expect(check).toMatchObject({
+      status: "unverified",
+      label: "First frame continues the previous shot's last used frame — positions, facing, weapons, action",
+    });
+    // …and a shot that continues nothing never grows that check.
+    const alone = workspace();
+    ready(alone);
+    json(alone, ["generate", "film/shots/lab-walk", "--now", T(20)], seedanceSeam(alone, { FAKE_TAKE_SOURCE: mp4Fixture(alone) }));
+    expect(shotFile(alone).checks.some((entry: any) => entry.id === "take-handoff")).toBe(false);
+  });
+
+  test.skipIf(!HAS_FFMPEG)("--no-handoff records 'skipped' on the take, and the shot still asks the question", () => {
+    const cwd = workspace();
+    continuing(cwd);
+    const clip = mp4Fixture(cwd);
+    deliver(cwd, "lab-walk", clip);
+    // The pack must not address a reference that is no longer attached.
+    writePrompt(cwd, "@Video1 = layout, positions and timing only. A convenience store at 3 a.m.", "counter");
+    const env = seedanceSeam(cwd, { FAKE_TAKE_SOURCE: clip });
+
+    const landed = run(cwd, ["generate", "film/shots/counter", "--no-handoff", "--now", T(20)], env);
+    expect(landed.code).toBe(0);
+    expect(landed.err).toContain("generated WITHOUT that frame");
+    const take = JSON.parse(landed.out).take;
+    expect(take.handoff).toBe("skipped");
+    expect(take.refs).toEqual([{ kind: "video", index: 1, file: "shots/counter/greybox/greybox.mp4", role: "greybox" }]);
+    expect(existsSync(join(cwd, "film", "shots", "counter", "takes", "handoff-in.png"))).toBe(false);
+    // The shot still says it continues something, so the check is still asked.
+    expect(shotFile(cwd, "film", "counter").checks.some((entry: any) => entry.id === "take-handoff")).toBe(true);
+  });
+
+  test.skipIf(!HAS_FFMPEG)("compare --handoff draws the joint: out-frame | in-frame", () => {
+    const cwd = workspace();
+    continuing(cwd);
+    const clip = mp4Fixture(cwd);
+    deliver(cwd, "lab-walk", clip);
+    const env = seedanceSeam(cwd, { FAKE_TAKE_SOURCE: clip });
+    json(cwd, ["generate", "film/shots/counter", "--now", T(20)], env);
+
+    const pair = json(cwd, ["compare", "film/shots/counter", "--handoff"]);
+    expect(pair).toMatchObject({ mode: "handoff", take: "take-01", from: "lab-walk" });
+    expect(pair.file).toBe("takes/qa/take-01/handoff.png");
+    expect(pair.in).toMatchObject({ frame: 1, at: 0 });
+    expect(pair.entry).toBe("mid-stride, weight on the front foot");
+    const drawn = join(cwd, "film", "shots", "counter", "takes", "qa", "take-01", "handoff.png");
+    expect(existsSync(drawn)).toBe(true);
+    // Two frames of the same size, side by side.
+    expect(pngSize(readFileSync(drawn))).toEqual({ width: pair.tile.width * 2, height: pair.tile.height });
+
+    // The left frame is cut from what the TAKE recorded — the shot, the take
+    // and the frame number — not read back from takes/handoff-in.png, which
+    // is one path per shot and which the next take overwrites. Replacing it
+    // with something else must not change what take-01 is judged against.
+    expect(pair.out).toMatchObject({ file: "takes/qa/take-01/handoff-out.png", frame: 24, recorded: true });
+    copyFileSync(pngFixture(cwd, "other.png", "96x54"), join(cwd, "film", "shots", "counter", "takes", "handoff-in.png"));
+    const again = json(cwd, ["compare", "film/shots/counter", "--handoff"]);
+    expect(again.tile).toEqual({ width: 64, height: 64 });
+    expect(again.tile).toEqual(pair.tile);
+
+    expect(run(cwd, ["compare", "film/shots/counter", "--handoff", "--take", "take-09"]).err).toContain('no take "take-09"');
+    // A shot that continues nothing has no pair to draw.
+    const alone = workspace();
+    ready(alone);
+    json(alone, ["generate", "film/shots/lab-walk", "--now", T(20)], seedanceSeam(alone, { FAKE_TAKE_SOURCE: mp4Fixture(alone) }));
+    expect(run(alone, ["compare", "film/shots/lab-walk", "--handoff"]).err).toContain("continues nothing");
+  });
+});
+
+describe("prompt-skeleton", () => {
+  test.skipIf(!HAS_FFMPEG)("writes the pack with the indices generate will actually attach", () => {
+    const cwd = workspace();
+    const env = { ...ttsSeam(cwd), ...imageSeam(cwd) };
+    const png = pngFixture(cwd);
+    ready(cwd);
+    backlot(cwd, ["character", "add", "film", "kai", "--name", "小凯"]);
+    backlot(cwd, ["character", "look", "film", "kai", "--file", png, "--prompt", "sheet"]);
+    backlot(cwd, ["character", "voice", "film", "kai", "--text", "还开着吗？", "--model", "seed-speech"], env);
+    backlot(cwd, ["set", "add", "film", "store", "--name", "便利店"]);
+    backlot(cwd, ["set", "look", "film", "store", "--file", png, "--prompt", "wide"]);
+    json(cwd, ["board", "film/shots/lab-walk", "--file", png, "--prompt", "the doorway"]);
+    json(cwd, ["meta", "film/shots/lab-walk", "--characters", "kai", "--set", "store", "--trim-in", "0.4", "--trim-out", "6"]);
+    json(cwd, ["meta", "film/shots/lab-walk", "--exit", "hand still on the console"]);
+    json(cwd, ["lines", "film/shots/lab-walk", "--set", JSON.stringify([
+      { id: "l1", speaker: "kai", kind: "spoken", text: "还开着吗？", at: 5.2 },
+      { id: "l2", speaker: "narrator", kind: "vo", text: "凌晨三点。", at: 0.8 },
+    ])]);
+    // A beat with its designed detail: the prompt's timeline is that design,
+    // at the greybox's seconds.
+    writeFileSync(join(cwd, "detailed.json"), JSON.stringify([
+      ...BEATS.slice(0, 1),
+      { ...BEATS[1], detail: "four heavy steps, coat dripping, eyes on the console" },
+      BEATS[2],
+      { ...BEATS[3], kind: "camera" },
+    ]));
+    json(cwd, ["beats", "film/shots/lab-walk", "--set", "detailed.json"]);
+
+    const skeleton = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"], env);
+    expect(skeleton.file).toBeNull();
+    // Pasted in as it comes — placeholders and all — the skeleton satisfies
+    // every rule `generate` enforces: it assigns every attached reference and
+    // its timeline lies on the shot's clock.
+    const block = /```prompt\n([\s\S]*?)\n```/.exec(skeleton.skeleton as string)![1];
+    writePrompt(cwd, block);
+    const asPasted = run(cwd, ["generate", "film/shots/lab-walk", "--estimate"], env);
+    expect(asPasted.code).toBe(0);
+    // …and it says, loudly, that nobody has filled it in yet: the model is
+    // sent exactly this text.
+    expect(asPasted.err).toContain("unfilled skeleton placeholder");
+    const estimate = JSON.parse(asPasted.out);
+    // THE point of the shared planner: the pack and the job cannot name
+    // different pictures.
+    expect(skeleton.refs).toEqual(estimate.refs);
+
+    const text = skeleton.skeleton as string;
+    expect(text).toContain("@Video1 = layout, positions, timing and the single camera move only");
+    expect(text).toContain("@Image1 = the composition of the opening frame (storyboard).");
+    expect(text).toContain("@Image2 = 小凯's appearance only — hold it.");
+    expect(text).toContain("@Image3 = the 便利店's appearance only.");
+    expect(text).toContain("@Audio1 = 小凯's voice.");
+    // The timeline is the beats, in order, with the designed detail where
+    // there is one and a TODO where there is not.
+    expect(text).toContain("Timeline (this shot's own clock, 8.0 s; used in the cut: 0.4–6.0):");
+    expect(text).toContain("Seconds 0.5–3.8: four heavy steps, coat dripping, eyes on the console");
+    expect(text).toContain("Seconds 0.0–0.5: Doorway establishes — <TODO");
+    // A spoken line lands at its second, quoted, with who says it.
+    expect(text).toContain('Seconds 5.2: kai says "还开着吗？"');
+    expect(text.indexOf("Seconds 4.5–5.5")).toBeLessThan(text.indexOf("Seconds 5.2: kai"));
+    // One camera move, the look, the sounds, and the voice-over's place.
+    expect(text).toContain("Camera: Device brightens blue (5.5–7.5 s) — one move only");
+    expect(text).toContain("Look: <TODO");
+    expect(text).toContain("no music.");
+    expect(text).toContain("The voice-over is laid in during the CUT");
+    expect(text).toContain("Exit (last used frame): hand still on the console");
+    expect(text).toContain("~120–180 words");
+    expect(skeleton.budget).toEqual({ minWords: 120, maxWords: 180 });
+  });
+
+  test("--write lands beside prompts.md and never on top of it", () => {
+    const cwd = workspace();
+    ready(cwd);
+    const promptsPath = join(cwd, "film", "shots", "lab-walk", "prompts.md");
+    const before = readFileSync(promptsPath, "utf-8");
+
+    const written = json(cwd, ["prompt-skeleton", "film/shots/lab-walk", "--write"]);
+    expect(written.file).toBe("prompts.skeleton.md");
+    const skeletonPath = join(cwd, "film", "shots", "lab-walk", "prompts.skeleton.md");
+    expect(readFileSync(skeletonPath, "utf-8")).toBe(written.skeleton);
+    expect(readFileSync(skeletonPath, "utf-8")).toContain("```prompt");
+    // The pack a take is made from is the agent's, and this command never
+    // touches it.
+    expect(readFileSync(promptsPath, "utf-8")).toBe(before);
+  });
+
+  test("a shot that continues another opens on its entry, and the hand-off gets the last index", () => {
+    const cwd = workspace();
+    twoShots(cwd);
+    ready(cwd, { id: "counter", scaffolded: true });
+    json(cwd, ["meta", "film/shots/counter", "--continues-from", "lab-walk",
+      "--entry", "mid-stride, weight on the front foot, 1.2 m from the counter",
+      "--exit", "hand flat on the counter"]);
+
+    const text = json(cwd, ["prompt-skeleton", "film/shots/counter"]).skeleton as string;
+    expect(text).toContain("@Image1 = the last frame of the previous shot (lab-walk): this shot opens exactly here.");
+    expect(text).toContain("Entry (frame 1): mid-stride, weight on the front foot, 1.2 m from the counter");
+    expect(text).toContain("Exit (last used frame): hand flat on the counter");
+    // …and a shot with no hand-off leaves the entry open.
+    expect(json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]).skeleton).toContain("Entry (frame 1): <TODO");
+  });
+});
+
+describe("anchor and lineup", () => {
+  /** A shot whose greybox is a real clip, so a frame can be cut out of it. */
+  function anchored(cwd: string) {
+    const clip = mp4Fixture(cwd);
+    ready(cwd, { video: clip });
+    const png = pngFixture(cwd);
+    backlot(cwd, ["character", "add", "film", "kai", "--name", "小凯"]);
+    backlot(cwd, ["character", "look", "film", "kai", "--file", png, "--prompt", "sheet"]);
+    backlot(cwd, ["set", "add", "film", "store", "--name", "便利店"]);
+    backlot(cwd, ["set", "look", "film", "store", "--file", png, "--prompt", "wide"]);
+    json(cwd, ["board", "film/shots/lab-walk", "--file", png, "--prompt", "the doorway"]);
+    json(cwd, ["meta", "film/shots/lab-walk", "--characters", "kai", "--set", "store"]);
+    writeFileSync(join(cwd, "detailed.json"), JSON.stringify([
+      { ...BEATS[0], detail: "he stops in the doorway, rain still on his shoulders" },
+      ...BEATS.slice(1),
+    ]));
+    json(cwd, ["beats", "film/shots/lab-walk", "--set", "detailed.json"]);
+  }
+
+  test.skipIf(!HAS_FFMPEG)("makes the picture from the greybox frame plus the bible, and records what it cost", () => {
+    const cwd = workspace();
+    const env = imageSeam(cwd);
+    anchored(cwd);
+
+    const made = json(cwd, ["anchor", "film/shots/lab-walk", "--now", T(3)], env);
+    expect(made.anchor).toMatchObject({
+      id: "first",
+      at: 0,
+      file: "anchors/first.png",
+      revision: 1,
+      model: "openai/gpt-image-2.5-sunburst",
+      cost: { usd: 0.1904, basis: "reported" },
+      createdAt: Date.parse(T(3)),
+    });
+    expect(existsSync(join(cwd, "film", "shots", "lab-walk", "anchors", "first.png"))).toBe(true);
+    // The composition reference is this shot's own greybox frame, kept.
+    expect(made.anchor.greybox).toMatchObject({ file: "anchors/first.greybox.png", frame: 1, source: "greybox/greybox.mp4" });
+    expect(existsSync(join(cwd, "film", "shots", "lab-walk", "anchors", "first.greybox.png"))).toBe(true);
+
+    const call = JSON.parse(readFileSync(env.FAKE_IMAGE_ARGV, "utf-8").trim().split("\n").at(-1)!);
+    // Composition FIRST, then the board, then who and where.
+    expect(call["image-urls"].map((path: string) => path.split("/").slice(-2).join("/"))).toEqual([
+      "anchors/first.greybox.png",
+      "lab-walk/board.png",
+      "kai/sheet.png",
+      "store/concept.png",
+    ]);
+    expect(call["aspect-ratio"]).toBe("16:9");
+    expect(call["output-format"]).toBe("png");
+    // The prompt is the shot's own design read back, and it says what the
+    // grey shapes are.
+    expect(call.prompt).toContain("PLACEHOLDERS");
+    expect(call.prompt).toContain("he stops in the doorway, rain still on his shoulders");
+    expect(call.prompt).toContain("小凯");
+    expect(call.prompt).toContain("便利店");
+    expect(made.anchor.refs[0]).toBe("shots/lab-walk/anchors/first.greybox.png");
+
+    // Re-shooting the same anchor bumps its revision; a second id is a
+    // second anchor.
+    expect(json(cwd, ["anchor", "film/shots/lab-walk", "--prompt", "colder"], env).anchor.revision).toBe(2);
+    const last = json(cwd, ["anchor", "film/shots/lab-walk", "--id", "last", "--at", "0.5"], env);
+    expect(last.anchor).toMatchObject({ id: "last", at: 0.5, revision: 1 });
+    expect(last.anchors.map((entry: any) => entry.id).sort()).toEqual(["first", "last"]);
+  });
+
+  test.skipIf(!HAS_FFMPEG)("the anchor leads the references, and the skeleton gives it its job", () => {
+    const cwd = workspace();
+    const env = imageSeam(cwd);
+    anchored(cwd);
+    json(cwd, ["anchor", "film/shots/lab-walk"], env);
+    json(cwd, ["anchor", "film/shots/lab-walk", "--id", "last", "--at", "0.9"], env);
+
+    const text = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"], env).skeleton as string;
+    expect(text).toContain("@Image1 = the exact composition, camera and look of the opening frame (anchor) — hold it.");
+    expect(text).toContain('@Image5 = the look of this shot at 0.9 s (anchor "last") — hold it.');
+    writePrompt(cwd, /```prompt\n([\s\S]*?)\n```/.exec(text)![1]);
+
+    const estimate = json(cwd, ["generate", "film/shots/lab-walk", "--estimate"], env);
+    expect(estimate.refs).toEqual([
+      { kind: "video", index: 1, file: "shots/lab-walk/greybox/greybox.mp4", role: "greybox" },
+      { kind: "image", index: 1, file: "shots/lab-walk/anchors/first.png", role: "anchor:first" },
+      { kind: "image", index: 2, file: "shots/lab-walk/board.png", role: "board" },
+      { kind: "image", index: 3, file: "bible/characters/kai/sheet.png", role: "character:kai" },
+      { kind: "image", index: 4, file: "bible/sets/store/concept.png", role: "set:store" },
+      { kind: "image", index: 5, file: "shots/lab-walk/anchors/last.png", role: "anchor:last" },
+    ]);
+  });
+
+  test.skipIf(!HAS_FFMPEG)("waits for the bible, and for a final greybox", () => {
+    const cwd = workspace();
+    const env = imageSeam(cwd);
+    anchored(cwd);
+    backlot(cwd, ["gates", "film", "closed"]);
+    const refused = run(cwd, ["anchor", "film/shots/lab-walk"], env);
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain('stage "bible"');
+    expect(existsSync(join(cwd, "film", "shots", "lab-walk", "anchors", "first.png"))).toBe(false);
+
+    backlot(cwd, ["gates", "film", "open"]);
+    const other = workspace();
+    scaffold(other);
+    expect(run(other, ["anchor", "film/shots/lab-walk"], imageSeam(other)).err).toContain("no FINAL greybox");
+    expect(run(cwd, ["anchor", "film/shots/lab-walk", "--at", "99"], env).err).toContain("--at must be a second inside");
+  });
+
+  test.skipIf(!HAS_FFMPEG)("lineup puts the board, the anchor and the greybox side by side", () => {
+    const cwd = workspace();
+    const env = imageSeam(cwd);
+    anchored(cwd);
+    json(cwd, ["anchor", "film/shots/lab-walk"], env);
+
+    const lined = json(cwd, ["lineup", "film/shots/lab-walk"]);
+    expect(lined.panels.map((panel: any) => panel.kind)).toEqual(["board", "anchor", "greybox"]);
+    expect(lined.missing).toEqual([]);
+    expect(lined.file).toBe("lineup.png");
+    const drawn = join(cwd, "film", "shots", "lab-walk", "lineup.png");
+    const size = pngSize(readFileSync(drawn))!;
+    // Three panels, one height, plus the footer the beats are written in.
+    expect(size.height).toBe(lined.height + 44);
+    expect(size.width).toBeGreaterThan(lined.height);
+    expect(lined.beats[0]).toMatchObject({ id: "establish", detail: "he stops in the doorway, rain still on his shoulders" });
+
+    // Whatever is missing is left out and named, never faked.
+    const bare = workspace();
+    ready(bare, { video: mp4Fixture(bare) });
+    const alone = json(bare, ["lineup", "film/shots/lab-walk"]);
+    expect(alone.panels.map((panel: any) => panel.kind)).toEqual(["greybox"]);
+    expect(alone.missing).toEqual(["board", "anchor"]);
   });
 });
 

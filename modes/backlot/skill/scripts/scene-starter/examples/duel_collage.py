@@ -48,14 +48,27 @@ own 4 s clock. Three takes are paid for instead of one; the trim is free.
 5. Prompt each take with the SAME action sentence and its own framing
    sentence. The action is what has to match across the cut; the framing is
    what makes the three clips worth cutting.
+6. Put the same TEMPO in all three, and read the trims off the shot clock.
+   A `pv.slowmo` is blocking, not camera: it changes what second of the
+   action each frame of the clip is showing, so an angle that runs the strike
+   at full speed cannot be cut against one that halves it - the film would
+   change speed on the cut. Copy the identical `slowmo` line into all three
+   files, above the camera block. `pv.impact` is the other way round, because
+   a hit is a fact about the CAMERA: each angle gets its own, at the same
+   shot second, and the three cameras can be shoved by different amounts.
+   Remember that a ramp moves the strike in the clip - `previz.mjs meta
+   --trim-in/--trim-out` takes SHOT seconds, so the trims come from
+   `pv.shot_time(<the action second of the strike>)` and not from the
+   blocking. Write the ramp into all three before anyone writes a trim.
 
 ## The vocabulary these three would use
 
 `duel_orbit.py`, `duel_dolly_zoom.py` and `duel_crane.py` are the worked
-angles - a 160 deg orbit, a Hitchcock dolly zoom, and a crane rise with a
-`camera_move` plus a `zoom`. A collage borrows those camera blocks over
-blocking that does not change between them: three 4 s shots, each rendered
-and taken in full, and a trim on each that hands the film its second.
+angles - a 160 deg orbit, a Hitchcock dolly zoom with a speed ramp under the
+landing, and a crane rise with a `camera_move`, a `zoom` and an `impact` on
+the contact. A collage borrows those camera blocks over blocking that does
+not change between them: three 4 s shots, each rendered and taken in full,
+and a trim on each that hands the film its second.
 
 Run this file and it says so and stops; render one of the three instead.
 """

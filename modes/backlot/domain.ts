@@ -91,6 +91,17 @@ export interface Beat {
   kind: BeatKind;
   /** A trigger beat names the beat that caused it (invariant 5). */
   causedBy: string | null;
+  /**
+   * The DESIGNED picture of this beat — body action, expression, wardrobe and
+   * material, the physical consequence, the tempo word — written at the
+   * boards stage, before the greybox exists.
+   *
+   * `label` stays short because a rail, a sheet label and a beat row all have
+   * to show it; the design that the greybox can only carry as geometry and a
+   * clock lives here, and the prompt hands it back to the model. Null on
+   * every beat written before details existed.
+   */
+  detail: string | null;
 }
 
 /** ffprobe facts about a media file — what was MEASURED, never what was asked for. */
@@ -183,11 +194,39 @@ export type TakeCost = Cost;
  * `kind` is the vocabulary `seedance-video.mjs` documents and `previz.mjs`
  * records; it is kept verbatim rather than narrowed, so a reference kind this
  * viewer has never heard of is still shown instead of silently dropped.
+ *
+ * `role` is the JOB the prompt pack assigns the reference (`handoff` for the
+ * previous shot's out-frame, `look`, `layout`, `voice`…). It is kept as
+ * written for the same reason as `kind`, and is null on every take generated
+ * before roles were recorded.
  */
 export interface TakeRef {
   kind: string;
   index: number;
   file: string;
+  role: string | null;
+}
+
+/**
+ * What the take was handed from the shot before it — or that it was not.
+ *
+ * `previz.mjs` writes the string `"skipped"` when `--no-handoff` overrode a
+ * declared hand-off, and the record otherwise. Both matter to a reader:
+ * `take-handoff` still has to be answered by eye on a skipped take, and the
+ * judgement is about a frame that take was never shown, which is exactly the
+ * thing a `pass` next to it must not quietly imply.
+ */
+export interface TakeHandoff {
+  /** `--no-handoff`: generated WITHOUT the frame it should have continued. */
+  skipped: boolean;
+  /** The shot the frame came from, and the take and frame it was cut from. */
+  from: string | null;
+  take: string | null;
+  frame: number | null;
+  /** Seconds into that shot. */
+  at: number | null;
+  /** Shot-relative path of the handed-over still. */
+  file: string | null;
 }
 
 export interface Take {
@@ -214,6 +253,8 @@ export interface Take {
   error: string | null;
   /** The references this take was rendered against, in attachment order. */
   refs: TakeRef[];
+  /** The hand-off frame it was given, or that it was generated without one. */
+  handoff: TakeHandoff | null;
 }
 
 /**
@@ -235,6 +276,25 @@ export interface BoardRecord extends MediaRecord {
   refs: string[];
   /** When it was generated (epoch ms), not where it sits in the shot. */
   at: number | null;
+}
+
+/**
+ * An ANCHOR: the designed picture of one moment of the shot, generated as a
+ * still before any video model is paid.
+ *
+ * A board frame answers "what is this shot"; an anchor answers "what does
+ * THIS second look like" — the frame the greybox is blocked against and the
+ * take is judged against. `at` is the second it depicts on the shot's clock,
+ * so the greybox can be seeked to exactly that moment beside it.
+ */
+export interface AnchorRecord extends MediaRecord {
+  id: string;
+  /** Seconds into the shot, or null when the agent has not placed it. */
+  at: number | null;
+  prompt: string;
+  refs: string[];
+  /** When it was generated (epoch ms) — NOT where it sits in the shot. */
+  createdAt: number | null;
 }
 
 /** A character's TTS sample — what the voice sounds like, before any line. */
@@ -273,6 +333,31 @@ export interface Line {
   cost: Cost | null;
 }
 
+/**
+ * The hand-off this shot declares: it continues the last used frame of an
+ * earlier shot, so the cut reads as ONE motion seen from a new camera.
+ *
+ * HAND-OFF IS OPT-IN. Most cuts exist to break continuity — an ellipsis, a
+ * jump cut, a montage — and a shot with no `continuity` block is generated
+ * exactly as before. So the absence of this block is never a defect and the
+ * viewer must never badge it as one: a boundary with no declaration is a
+ * `cut`, which is a fact, not a verdict.
+ */
+export interface ShotContinuity {
+  /** The earlier shot whose last used frame this one continues, or null. */
+  from: string | null;
+  /** The state the first frame must be in ("challenger mid-lunge, …"). */
+  entry: string | null;
+  /**
+   * The state the last frame leaves for whatever follows.
+   *
+   * `shot.mjs::makeContinuity` allows this ALONE, with no `from`: a shot that
+   * continues nothing may still record how it ends, for a later shot to pick
+   * up. Such a block is not a hand-off and must not be badged as one.
+   */
+  exit: string | null;
+}
+
 /** Exactly what one `shot.json` holds, plus where it lives. */
 export interface Shot {
   id: string;
@@ -295,7 +380,11 @@ export interface Shot {
   /** The bible set (a place) this shot is played in. */
   set: string | null;
   board: BoardRecord | null;
+  /** Designed frames for named moments, in the order they were written. */
+  anchors: AnchorRecord[];
   lines: Line[];
+  /** The hand-off this shot declares, or null when the cut is a clean cut. */
+  continuity: ShotContinuity | null;
   /** Workspace-relative shot directory (`first-light/shots/lab-walk`). */
   dir: string;
   /** Loader-level caveats (missing fields defaulted, unknown version). */
@@ -466,6 +555,26 @@ export interface LensKey {
   mm: number;
 }
 
+/**
+ * One stretch of the shot whose ACTION runs at `factor` speed.
+ *
+ * The greybox is the clock the video model follows, so tempo is baked into
+ * the greybox: the kit's `slowmo(start, end, factor)` passes every key
+ * through one piecewise-linear time curve at `finish()`. The shot's
+ * `seconds` never changes — a half-speed stretch shows half as much action
+ * in the same seconds — which is why this is a SEPARATE row on the timeline
+ * rather than a rescaling of the beats.
+ *
+ * `from`/`to` are seconds on the shot's clock, the same clock the beats and
+ * the accents use.
+ */
+export interface TimeWarp {
+  from: number;
+  to: number;
+  /** < 1 is slow motion, > 1 is a speed-up. Never 0 or negative. */
+  factor: number;
+}
+
 export interface SceneMeta {
   fps: number;
   frames: number;
@@ -479,6 +588,8 @@ export interface SceneMeta {
   accents: SceneAccent[];
   /** Empty when the lens never moved — then the glTF camera is the truth. */
   cameraLens: LensKey[];
+  /** Empty when the shot runs at one speed; ordered, non-overlapping spans. */
+  timeWarp: TimeWarp[];
   blender: string | null;
   engine: string | null;
 }
@@ -506,6 +617,19 @@ function asString(value: unknown, fallback: string): string {
 
 function asNullableString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+/**
+ * Prose the agent wrote, or null when there is none.
+ *
+ * Blankness, not emptiness, is the test: `shot.mjs` trims a beat's `detail`
+ * and a continuity block's `entry`/`exit` to null before writing, and a
+ * hand-edited `"   "` has to mean the same thing here — a blank paragraph
+ * under a beat label reads as a design nobody can see rather than one nobody
+ * wrote. The text itself is kept exactly as written.
+ */
+function asProse(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
 }
 
 function asNumber(value: unknown, fallback: number): number {
@@ -573,6 +697,7 @@ function parseBeat(raw: unknown): Beat | null {
     to: Math.max(from, to),
     kind: (BEAT_KINDS.has(kind) ? kind : "action") as BeatKind,
     causedBy: asNullableString(raw.causedBy),
+    detail: asProse(raw.detail),
   };
 }
 
@@ -617,8 +742,30 @@ function parseTakeRefs(raw: unknown): TakeRef[] {
     const file = asNullableString(entry.file);
     const kind = asNullableString(entry.kind);
     if (!file || !kind) return [];
-    return [{ kind, index: asNumber(entry.index, 1), file }];
+    return [{ kind, index: asNumber(entry.index, 1), file, role: asNullableString(entry.role) }];
   });
+}
+
+/**
+ * `take.handoff` → what was handed over, or null when nothing was.
+ *
+ * The string `"skipped"` is a claim in its own right and is kept as one; an
+ * unreadable value is null, because "this take was given the previous frame"
+ * is never inferred from a field nobody could parse.
+ */
+function parseTakeHandoff(raw: unknown): TakeHandoff | null {
+  if (raw === "skipped") {
+    return { skipped: true, from: null, take: null, frame: null, at: null, file: null };
+  }
+  if (!isRecord(raw)) return null;
+  return {
+    skipped: false,
+    from: asNullableString(raw.from),
+    take: asNullableString(raw.take),
+    frame: asNullableNumber(raw.frame),
+    at: asNullableNumber(raw.at),
+    file: asNullableString(raw.file),
+  };
 }
 
 function parseTake(raw: unknown): Take | null {
@@ -650,6 +797,7 @@ function parseTake(raw: unknown): Take | null {
     note: asString(raw.note, ""),
     error: asNullableString(raw.error),
     refs: parseTakeRefs(raw.refs),
+    handoff: parseTakeHandoff(raw.handoff),
   };
 }
 
@@ -669,6 +817,32 @@ function parseBoard(raw: unknown): BoardRecord | null {
     refs: asStringArray(raw.refs),
     at: asNullableNumber(raw.at),
   };
+}
+
+/**
+ * `shot.json.anchors` → the designed frames, defensively.
+ *
+ * An entry with no id or no file is dropped rather than shown as a blank
+ * tile: the lineup is a comparison, and a tile with nothing in it would read
+ * as "the picture was generated and is broken" instead of "nobody made one".
+ */
+function parseAnchors(raw: unknown): AnchorRecord[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(isRecord).flatMap((entry): AnchorRecord[] => {
+    const media = parseMedia(entry);
+    const id = asNullableString(entry.id);
+    if (!media || !id) return [];
+    return [
+      {
+        ...media,
+        id,
+        at: asNullableNumber(entry.at),
+        prompt: asString(entry.prompt, ""),
+        refs: asStringArray(entry.refs),
+        createdAt: asNullableNumber(entry.createdAt),
+      },
+    ];
+  });
 }
 
 function parseLines(raw: unknown): Line[] {
@@ -692,6 +866,25 @@ function parseLines(raw: unknown): Line[] {
       },
     ];
   });
+}
+
+/**
+ * `shot.json.continuity` → a hand-off, or null.
+ *
+ * A block that names no source shot AND carries no prose declares nothing,
+ * so it is read as "no hand-off" rather than drawn as an empty one — the
+ * viewer's `continuous` badge is a claim about a declaration, and an empty
+ * object is not one. `from` is NOT validated against the shot list here;
+ * `cutPoints` compares it to the segment that actually precedes it, which is
+ * the only place the answer means anything.
+ */
+function parseContinuity(raw: unknown): ShotContinuity | null {
+  if (!isRecord(raw)) return null;
+  const from = asNullableString(raw.from);
+  const entry = asProse(raw.entry);
+  const exit = asProse(raw.exit);
+  if (from === null && entry === null && exit === null) return null;
+  return { from, entry, exit };
 }
 
 function parseGreybox(raw: unknown, warnings: string[]): GreyboxState {
@@ -817,7 +1010,9 @@ export function parseShot(dir: string, fallbackId: string, text: string): Shot |
     characters: asStringArray(raw.characters),
     set: asNullableString(raw.set),
     board: parseBoard(raw.board),
+    anchors: parseAnchors(raw.anchors),
     lines: parseLines(raw.lines),
+    continuity: parseContinuity(raw.continuity),
     dir,
     warnings,
   };
@@ -1004,6 +1199,22 @@ export function parseSceneMeta(text: string): SceneMeta | null {
             return frame === null || mm === null || mm <= 0 ? [] : [{ frame, mm }];
           })
           .sort((a, b) => a.frame - b.frame)
+      : [],
+    timeWarp: Array.isArray(raw.time_warp)
+      ? raw.time_warp
+          .filter(isRecord)
+          .flatMap((span): TimeWarp[] => {
+            const from = asNullableNumber(span.from);
+            const to = asNullableNumber(span.to);
+            const factor = asNullableNumber(span.factor);
+            // A zero or negative factor is not a tempo, it is a broken
+            // record, and an empty span remaps nothing — either would draw a
+            // tempo row that claims something the render never did.
+            if (from === null || to === null || factor === null) return [];
+            if (!(factor > 0) || !(to > from)) return [];
+            return [{ from, to, factor }];
+          })
+          .sort((a, b) => a.from - b.from)
       : [],
     blender: asNullableString(raw.blender),
     engine: asNullableString(raw.engine),
@@ -1454,6 +1665,25 @@ export function selectedTake(shot: Shot): Take | null {
 }
 
 /**
+ * The anchor the lineup stands beside the board: the one named `first`, else
+ * the earliest moment on the clock, else whatever was written first.
+ *
+ * `first` is the frame the take opens on, which is the one a hand-off and a
+ * prompt's opening sentence are both about — so it wins by name when it is
+ * there, and the shot's earliest anchor is the honest stand-in when it is not.
+ */
+export function primaryAnchor(shot: Shot): AnchorRecord | null {
+  if (shot.anchors.length === 0) return null;
+  const named = shot.anchors.find((a) => a.id === "first");
+  if (named) return named;
+  const placed = shot.anchors.filter((a) => a.at !== null);
+  if (placed.length > 0) {
+    return placed.reduce((best, a) => ((a.at as number) < (best.at as number) ? a : best));
+  }
+  return shot.anchors[0];
+}
+
+/**
  * The acceptance summary, honest by construction (invariant 4). A shot is
  * only `accepted` when EVERY check of that target passed.
  */
@@ -1561,6 +1791,94 @@ export function segmentAt(cut: CutState | null, t: number): CutSegment | null {
   }
   const last = cut.segments[cut.segments.length - 1];
   return t >= last.offset + last.seconds ? last : null;
+}
+
+/**
+ * The acceptance check that answers "does this shot's first frame continue
+ * the previous shot's last frame". Written by `previz.mjs`, read here and by
+ * the cut view's badge — one id, one meaning.
+ */
+export const HANDOFF_CHECK = "take-handoff" as const;
+
+/**
+ * One boundary between two cut segments: the frame that leaves and the frame
+ * that arrives, and whether anybody claimed they are the same motion.
+ *
+ * `outTime` / `inTime` are seconds INSIDE their own source file, not on the
+ * cut's clock — they are what a `<video>` element is seeked to in order to
+ * show the real frame. `at` is the boundary on the cut's clock, which is what
+ * a click seeks the cut player to.
+ */
+export interface CutPoint {
+  /** The boundary between segment `index` and segment `index + 1`. */
+  index: number;
+  fromSegment: CutSegment;
+  toSegment: CutSegment;
+  /** Null when the EDL names a shot this project no longer has. */
+  fromShot: Shot | null;
+  toShot: Shot | null;
+  /** The take the segment plays, or null when a greybox stands in. */
+  fromTake: Take | null;
+  toTake: Take | null;
+  /** Last frame of the outgoing source, in that source's own seconds. */
+  outTime: number;
+  /** First frame of the incoming source; 0 — the EDL records no source trim. */
+  inTime: number;
+  /** Seconds on the CUT's clock where the two meet. */
+  at: number;
+  /** The incoming shot declares it continues the outgoing one. */
+  continuity: boolean;
+  /** `take-handoff` on the take that arrives here, or null when there is none. */
+  handoffCheck: Check | null;
+}
+
+/**
+ * Every boundary in a cut, with both sides resolved.
+ *
+ * `continuity` is TRUE only when the incoming shot names the outgoing shot —
+ * not merely when it declares some hand-off. A shot that continues `s03` but
+ * was cut in after `s07` is a mismatch the strip has to show as a plain cut,
+ * because that is what the audience will see.
+ *
+ * The check is looked up on the take the segment ACTUALLY plays (falling back
+ * to the shot's selected take when a greybox stands in): a pass badge next to
+ * a frame from a different take would be a verdict about something else.
+ */
+export function cutPoints(project: Project, cut: CutState | null): CutPoint[] {
+  if (!cut || cut.segments.length < 2) return [];
+  const shotOf = (id: string): Shot | null => project.shots.find((s) => s.id === id) ?? null;
+  const takeOf = (shot: Shot | null, source: string): Take | null =>
+    shot?.takes.find((t) => t.id === source) ?? null;
+
+  const points: CutPoint[] = [];
+  for (let index = 0; index < cut.segments.length - 1; index += 1) {
+    const fromSegment = cut.segments[index];
+    const toSegment = cut.segments[index + 1];
+    const fromShot = shotOf(fromSegment.shot);
+    const toShot = shotOf(toSegment.shot);
+    const toTake = takeOf(toShot, toSegment.source);
+    const arriving = toTake ?? (toShot ? selectedTake(toShot) : null);
+    const fps = fromShot?.spec.fps || 24;
+    points.push({
+      index,
+      fromSegment,
+      toSegment,
+      fromShot,
+      toShot,
+      fromTake: takeOf(fromShot, fromSegment.source),
+      toTake,
+      // The frame the cut actually shows last: `seconds` is one frame past
+      // the end of the segment, and seeking there lands on black or clamps.
+      outTime: Math.max(0, fromSegment.seconds - 1 / fps),
+      inTime: 0,
+      at: toSegment.offset,
+      continuity: fromShot !== null && toShot?.continuity?.from === fromShot.id,
+      handoffCheck: arriving
+        ? (toShot?.checks.find((c) => c.id === HANDOFF_CHECK && c.target === arriving.id) ?? null)
+        : null,
+    });
+  }
+  return points;
 }
 
 /**

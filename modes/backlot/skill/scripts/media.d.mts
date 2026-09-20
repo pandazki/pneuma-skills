@@ -24,6 +24,10 @@ export interface Probe {
 export function framesForSpec(spec: { seconds: number; fps: number }): number;
 export function frameAtTime(t: number, fps: number, frames: number): number;
 export function timeOfFrame(frame: number, fps: number): number;
+/** The 1-based frames a cut over the half-open range `[start, end)` shows at
+ *  its edges — what a hand-off is cut at. */
+export function firstFrameFrom(start: number, fps: number, frames: number): number;
+export function lastFrameBefore(end: number, fps: number, frames: number): number;
 export function snapSeconds(seconds: number, fps: number): { frames: number; seconds: number };
 export function evenSize(width: number, height: number): { width: number; height: number };
 export function previewSize(width: number, height: number): { width: number; height: number };

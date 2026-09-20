@@ -9,19 +9,24 @@
  * track underneath — the acceptance record on the same axis as the thing it
  * is about.
  *
+ * A `tempo` row appears when the greybox was time-remapped: the greybox IS
+ * the clock the video model follows, so a half-speed stretch is a fact about
+ * the render, drawn on the same axis as the beats it slows down.
+ *
  * Click seeks. Drag scrubs. Shift-drag marks a range, which is what travels
  * to the agent with the user's next sentence.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { Beat, BeatKind, Shot } from "../domain.js";
+import type { Beat, BeatKind, Shot, TimeWarp } from "../domain.js";
 import {
   beatLinks,
   beatRows,
   clamp,
   failedRanges,
   formatSeconds,
+  tempoSpans,
   type BeatRow,
 } from "./player-model.js";
 import { useClock, type Clock } from "./usePlayhead.js";
@@ -29,6 +34,7 @@ import { useClock, type Clock } from "./usePlayhead.js";
 const ROW_HEIGHT = 20;
 const ROW_GAP = 3;
 const CHECK_TRACK = 7;
+const TEMPO_TRACK = 12;
 
 const KIND_LABEL: Record<BeatKind, string> = {
   action: "action",
@@ -51,13 +57,23 @@ export interface TimelineProps {
   onMarkRange: (range: [number, number] | null) => void;
   /** A beat click also arms the beat loop window. */
   onBeatFocus: (beat: Beat | null) => void;
+  /** `scene.meta.json`'s `time_warp`; empty when the shot runs at one speed. */
+  timeWarp?: ReadonlyArray<TimeWarp>;
 }
 
-export function Timeline({ shot, clock, markedRange, onMarkRange, onBeatFocus }: TimelineProps) {
+export function Timeline({
+  shot,
+  clock,
+  markedRange,
+  onMarkRange,
+  onBeatFocus,
+  timeWarp = [],
+}: TimelineProps) {
   const duration = Math.max(shot.spec.seconds, 1e-3);
   const rows = beatRows(shot.beats);
   const links = beatLinks(rows);
   const failures = failedRanges(shot.checks);
+  const tempo = tempoSpans(timeWarp, duration);
 
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
@@ -154,6 +170,14 @@ export function Timeline({ shot, clock, markedRange, onMarkRange, onBeatFocus }:
               {KIND_LABEL[row.kind]}
             </span>
           ))}
+          {tempo.length > 0 ? (
+            <span
+              className="flex items-center text-[9px] uppercase tracking-wide text-cc-primary"
+              style={{ height: TEMPO_TRACK }}
+            >
+              tempo
+            </span>
+          ) : null}
           {failures.length > 0 ? (
             <span
               className="flex items-center text-[9px] uppercase tracking-wide text-cc-error"
@@ -223,6 +247,35 @@ export function Timeline({ shot, clock, markedRange, onMarkRange, onBeatFocus }:
             </svg>
           ) : null}
 
+          {tempo.length > 0 ? (
+            <div
+              className="relative mt-[3px] overflow-hidden rounded-sm bg-cc-hover"
+              style={{ height: TEMPO_TRACK }}
+            >
+              {tempo.map((span) => (
+                <span
+                  key={`${span.from}:${span.to}:${span.factor}`}
+                  className={`absolute inset-y-0 flex items-center justify-center overflow-hidden rounded-sm border text-[8px] leading-none ${
+                    span.slow
+                      ? "border-cc-primary/50 bg-cc-primary/25 text-cc-primary"
+                      : "border-cc-warning/55 bg-cc-warning/20 text-cc-warning"
+                  }`}
+                  style={{
+                    left: pct(span.from),
+                    width: `calc(${pct(span.to - span.from)} + 1px)`,
+                  }}
+                  title={`${span.label} — the greybox remaps ${formatSeconds(span.from)}–${formatSeconds(
+                    span.to,
+                  )} s to ${span.slow ? "slow motion" : "a speed-up"}; the shot still runs ${formatSeconds(
+                    duration,
+                  )} s`}
+                >
+                  {span.label}
+                </span>
+              ))}
+            </div>
+          ) : null}
+
           {failures.length > 0 ? (
             <div
               className="relative mt-[3px] overflow-hidden rounded-sm bg-cc-hover"
@@ -288,9 +341,11 @@ function BeatRowView({
               clock.seek(beat.from);
               onBeatFocus(beat);
             }}
+            // The label is what fits on the block; the DESIGN is what the
+            // greybox is judged against, so hovering has to give it back.
             title={`${beat.label} · ${formatSeconds(beat.from)}–${formatSeconds(beat.to)} s${
               beat.causedBy ? ` · caused by "${beat.causedBy}"` : ""
-            }`}
+            }${beat.detail ? `\n${beat.detail}` : ""}`}
             className={`absolute inset-y-0 min-w-[2px] overflow-hidden rounded-sm border px-1 text-left text-[9px] leading-[18px] transition-colors hover:brightness-125 ${KIND_CLASS[beat.kind]}`}
             style={{ left: `${left}%`, width: `calc(${width}% + 1px)` }}
           >

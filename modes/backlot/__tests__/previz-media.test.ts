@@ -12,9 +12,11 @@ import { describe, expect, test } from "bun:test";
 import {
   evenlySpacedTimes,
   evenSize,
+  firstFrameFrom,
   frameAtTime,
   framesForSpec,
   gridFor,
+  lastFrameBefore,
   hasDrawtext,
   parseProbe,
   parseRange,
@@ -47,6 +49,27 @@ describe("the frame contract", () => {
   test("a duration that is not a whole frame count is refused, not rounded in silence", () => {
     expect(() => framesForSpec({ seconds: 0, fps: 24 })).toThrow(/positive number/);
     expect(() => framesForSpec({ seconds: 8, fps: 0 })).toThrow(/positive number/);
+  });
+
+  test("a cut's edge frames come from the half-open range, not from rounding", () => {
+    // `trim=start=a:end=b` keeps the frames whose timestamp is in [a, b), so
+    // the LAST frame a trim of 0.4–1.6 shows is 39 (it starts at 1.5833) and
+    // the first is 11 (0.4167). This is the frame a later shot has to open
+    // on, so it is exact rather than nearly right.
+    expect(lastFrameBefore(1.6, 24, 192)).toBe(39);
+    expect(firstFrameFrom(0.4, 24, 192)).toBe(11);
+    // A range that ends exactly on a frame boundary must NOT include the
+    // frame that starts there.
+    expect(lastFrameBefore(39 / 24, 24, 192)).toBe(39);
+    expect(firstFrameFrom(10 / 24, 24, 192)).toBe(11);
+    // "the end, minus one frame": an untrimmed shot hands over its last frame.
+    expect(lastFrameBefore(8, 24, 192)).toBe(192);
+    expect(lastFrameBefore(1, 24, 24)).toBe(24);
+    // Clamped into the clip, whatever it is asked for.
+    expect(lastFrameBefore(99, 24, 192)).toBe(192);
+    expect(lastFrameBefore(0, 24, 192)).toBe(1);
+    expect(firstFrameFrom(0, 24, 192)).toBe(1);
+    expect(firstFrameFrom(99, 24, 192)).toBe(192);
   });
 
   test("snapSeconds rounds a reference segment to a whole number of frames", () => {

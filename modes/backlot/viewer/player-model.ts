@@ -359,6 +359,56 @@ export function beatLinks(rows: ReadonlyArray<BeatRow>): BeatLink[] {
   return links.sort((a, b) => a.fromTime - b.fromTime);
 }
 
+// ── Tempo ───────────────────────────────────────────────────────────────────
+
+/** One drawn stretch of the tempo row, already clamped to the shot. */
+export interface TempoSpan {
+  from: number;
+  to: number;
+  factor: number;
+  /** `½×`, `2×` — what the row prints. */
+  label: string;
+  /** Slow motion reads differently from a speed-up, so it is coloured apart. */
+  slow: boolean;
+}
+
+/** `0.5` → `½×`, `2` → `2×`, `1.25` → `1.25×`. */
+export function formatFactor(factor: number): string {
+  const VULGAR: Record<string, string> = { "0.5": "½", "0.25": "¼", "0.75": "¾", "0.33": "⅓" };
+  const key = String(round(factor, 2));
+  if (VULGAR[key]) return `${VULGAR[key]}×`;
+  return `${round(factor, 2)}×`;
+}
+
+/**
+ * The tempo row's spans: `scene.meta.json`'s `time_warp` clamped to the shot.
+ *
+ * A warp entirely outside the shot is dropped rather than pinned to an edge —
+ * a zero-width block at 0 s would claim a ramp that is not in the render. A
+ * factor of exactly 1 is also dropped: it remaps nothing, and a row that
+ * draws "1×" invites the reading that everything else is not.
+ */
+export function tempoSpans(
+  warps: ReadonlyArray<{ from: number; to: number; factor: number }>,
+  duration: number,
+): TempoSpan[] {
+  const spans: TempoSpan[] = [];
+  for (const warp of warps) {
+    if (warp.factor === 1) continue;
+    const from = clamp(warp.from, 0, duration);
+    const to = clamp(warp.to, 0, duration);
+    if (!(to > from)) continue;
+    spans.push({
+      from,
+      to,
+      factor: warp.factor,
+      label: formatFactor(warp.factor),
+      slow: warp.factor < 1,
+    });
+  }
+  return spans.sort((a, b) => a.from - b.from);
+}
+
 /** Beat edges, sorted and de-duplicated — what `[` and `]` jump between. */
 export function beatEdges(beats: ReadonlyArray<Beat>, duration: number): number[] {
   const edges = new Set<number>([0, duration]);

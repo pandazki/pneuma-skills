@@ -153,6 +153,62 @@ describe("the hash", () => {
     expect(hashStage("bible", priced)).toBe(hashStage("bible", before));
   });
 
+  test("a hand-off is a BOARDS decision — declaring one re-opens the shot list", () => {
+    const before = FILM();
+    const continued = {
+      ...before,
+      "shots/s01-enter/shot.json": shot({
+        continuity: { from: "s00-street", entry: "mid-stride through the door", exit: "hand on the fridge handle" },
+      }),
+    };
+    expect(hashStage("boards", continued)).not.toBe(hashStage("boards", before));
+    // …and so is changing what it says: the entry is what the take's first
+    // frame is judged against.
+    const reworded = {
+      ...before,
+      "shots/s01-enter/shot.json": shot({
+        continuity: { from: "s00-street", entry: "already inside, turning", exit: "hand on the fridge handle" },
+      }),
+    };
+    expect(hashStage("boards", reworded)).not.toBe(hashStage("boards", continued));
+    // It is not a PREVIZ decision: the greybox and its checks are untouched.
+    expect(hashStage("previz", continued)).toBe(hashStage("previz", before));
+  });
+
+  test("a beat's designed detail is boards content too — the prompt's timeline is made of it", () => {
+    const before = FILM();
+    const detailed = {
+      ...before,
+      "shots/s01-enter/shot.json": shot({
+        beats: [{ id: "walk", from: 0, to: 3, kind: "action", detail: "he crosses the aisle in four heavy steps, coat dripping" }],
+      }),
+    };
+    expect(hashStage("boards", detailed)).not.toBe(hashStage("boards", before));
+  });
+
+  test("an anchor frame belongs to previz — the lineup is what the previz gate approves", () => {
+    const before = FILM();
+    const anchored = {
+      ...before,
+      "shots/s01-enter/shot.json": shot({ anchors: [{ id: "first", at: 0, file: "anchors/first.png", revision: 1 }] }),
+    };
+    expect(hashStage("previz", anchored)).not.toBe(hashStage("previz", before));
+    // A re-render of the same anchor moves it again…
+    const reshot = {
+      ...before,
+      "shots/s01-enter/shot.json": shot({ anchors: [{ id: "first", at: 0, file: "anchors/first.png", revision: 2 }] }),
+    };
+    expect(hashStage("previz", reshot)).not.toBe(hashStage("previz", anchored));
+    // …while the prompt it was made from, and its cost, are not the look.
+    const priced = {
+      ...before,
+      "shots/s01-enter/shot.json": shot({
+        anchors: [{ id: "first", at: 0, file: "anchors/first.png", revision: 1, prompt: "a colder version", cost: { usd: 0.19, basis: "reported" } }],
+      }),
+    };
+    expect(hashStage("previz", priced)).toBe(hashStage("previz", anchored));
+  });
+
   test("markdown is hashed verbatim — a reworded screenplay is a new script", () => {
     const before = FILM();
     const after = { ...before, "screenplay.md": `${before["screenplay.md"]}KAI\n  还开着吗？\n` };
@@ -208,6 +264,9 @@ describe("the gate", () => {
       "bible-image": "script",
       voice: "script",
       board: "bible",
+      // An anchor frame renders the bible into one shot: the look it holds
+      // has to have been approved before it is paid for.
+      anchor: "bible",
       generate: "previz",
       vo: "takes",
       music: "takes",

@@ -426,6 +426,112 @@ silent), places VO at `segment.offset + line.at`, lays music under at
 `gainDb` with a fade-out, and writes `edl.json` last. `--final` refuses
 while any shot lacks a selected take.
 
+### Continuity across shots (added 2026-09-21 after the first acceptance run)
+
+The first run proved the flow and exposed the gap: every take was generated
+alone, so the body action a model invents in shot N ends in a pose shot N+1
+never sees. Fights need the cut to be *one* motion seen from two cameras.
+Two mechanisms, both in the mode:
+
+**Hand-off is opt-in, and serves the expression** (user, 2026-09-21: some
+cuts exist to break continuity — an ellipsis, a jump cut, a montage; the
+contract must never be a blanket requirement). A shot without a
+`continuity` block is generated exactly as before. The skill says when to
+declare one (one continuous action seen from a new camera; a match cut) and
+when not to (a time jump, a change of place, a rhythmic montage, a
+deliberate mismatch), and the agent decides per cut in the shot plan.
+
+**Prompt pack v2 — aligned with Seedance's own guidance** (fal.ai guide and
+the community guides, read 2026-09-21): lead with subject and motion, one
+primary camera move per clip with its end state (our collage design already
+gives every shot exactly one move), **assign a job to every reference**
+(`@Video1 = layout, positions, timing and the camera move only — its grey
+shapes are placeholders, not the look; @Image2 = the keeper's appearance
+only, hold it; @Audio1 = the keeper's voice`) because an unassigned
+reference bleeds its lighting and framing, quote dialogue, name the sounds
+and say `no music` when the cut will lay music, write motion as verbs with
+physical consequences, prefer affirmative phrasing, and above ~8 s use a
+**time-coded timeline** (`Seconds 0.0–0.5: …`) whose ranges are the shot's
+beats — the greybox clock — rather than a paragraph. Front-load the
+non-negotiables; adherence decays with position. `previz.mjs
+prompt-skeleton <shot-dir>` emits this skeleton mechanically (reference
+assignments with the indices `generate` will attach, one timeline line per
+beat with its seconds, the entry line when a hand-off exists, spoken lines
+quoted, `no music` by default) for the agent to fill; `generate` refuses a
+pack that leaves an attached reference unassigned.
+
+**Design first, carried forward** (user, 2026-09-21: "先想好怎么设计分镜和画面，才做白模；进 Seedance 时把原始设计画面的详细描述 + 白模无法表达的细节 + 设定一并给进去"). The prompt is not written fresh at the takes stage. At the boards stage every beat gets a `detail` — the designed picture for those seconds: body action, expression, wardrobe and material notes, physical consequence, tempo — written before the greybox; the greybox is built from that plan; `prompt-skeleton` emits `Seconds a–b: <detail>` from the beats, and the agent adds only what is still missing (reference assignments, look, camera end state, entry/exit). `Beat.detail?: string` is part of the `boards` stage hash.
+
+**Anchor frames and the joint review** (user, 2026-09-21: Seedance leans
+hard on anchor shots and reference images; use GPT-Image 2.5's camera
+language to make the picture first, then review 设定 / 锚点图 / 白模 /
+剧本与分镜 together before any video is bought). Once a shot's greybox is
+accepted, `previz.mjs anchor <shot-dir> [--at s] [--id first]` renders an
+**anchor frame**: GPT-Image 2.5 image-to-image with the greybox frame at
+`at` as the composition reference plus the board, the character sheets and
+the set concept as appearance references, prompted from the shot's design
+(beat details at that second, look). It is stored as `anchors/<id>.png` with
+a record `anchors: [{ id, at, file, revision, prompt, refs, cost }]` on
+`shot.json`; several anchors per shot are allowed (`first` by default; a
+`last` anchor gives the next shot a look-continuous hand-off picture). The
+anchor is the composition and look truth for the take: `generate` attaches
+it as `@Image1` (role `anchor:first`), the board after it (role `board`),
+then sheets, concept, hand-off; the skeleton assigns their jobs
+accordingly. `previz.mjs lineup <shot-dir>` writes `lineup.png` — board |
+anchor | greybox frame side by side — and the viewer's previz stage shows
+the same **lineup** per shot with the beat details and the continuity
+decision: that lineup is what the creator approves at the previz gate, and
+it is the joint review the user asked for. Anchors belong to the `previz`
+stage (its hash includes them; the `generate` gate is unchanged); their
+cost is recorded like a board's. Gate for `anchor`: `bible` approved and a
+final greybox present.
+
+**Hand-off.** `shot.json` gains
+
+```jsonc
+"continuity": {
+  "from": "s03-orbit" | null,          // the shot whose last used frame this shot continues
+  "entry": "challenger mid-lunge, blade extended at chest height, 1.2 m from the keeper, facing screen right",
+  "exit":  "blades in contact, keeper's blade turning the thrust aside, both weight forward"
+} | null
+```
+
+set by `previz.mjs meta <shot-dir> --continues-from <shot> --entry "…" --exit "…"`
+(`--no-continuity` clears). `from` must be an earlier shot in `backlot.json.shots`.
+Rules enforced by `previz.mjs generate` when `continuity.from` is set:
+
+1. the previous shot must have a **selected** take, else refuse (`--no-handoff`
+   overrides and records it on the take) — contiguous shots are shot in order;
+2. the script extracts the previous take's frame at that shot's trim `out`
+   (or its end) into `takes/handoff-in.png` and attaches it as the LAST image
+   reference, reported in `refs` as `{ kind: "image", index: n, role: "handoff" }`;
+3. the prompt pack must mention that index and the word/phrase the skill
+   prescribes for it; the pack's first sentence describes the entry state;
+4. the take checks gain `take-handoff` ("First frame continues the previous
+   shot's last frame — positions, facing, weapons, action"), and
+   `previz.mjs compare <shot-dir> --handoff` writes `takes/qa/<take>/handoff.png`:
+   previous out-frame | this in-frame side by side, for the agent to look at.
+
+The beats also gain the entry: `hashStage("boards")` includes `continuity`, so
+changing a hand-off re-opens the shot list.
+
+**Tempo.** The greybox is the clock the model follows, so tempo lives in the
+greybox: the kit gains `slowmo(start, end, factor)` — a scene-wide time
+remap baked at `finish()` (all object, camera and accent keys pass through
+one piecewise-linear time curve; the shot's `seconds` stays the shot's
+seconds, the *action* stretches) — and `impact(cam, at, push=0.15,
+shake=0.02, seconds=0.25)` for the hit. `scene.meta.json` records
+`time_warp: [{from, to, factor}]` so the viewer can draw a tempo row on the
+beats timeline. The skill's camera reference gains a "tension" section: the
+hold before the strike, the low angle at contact, the speed ramp into the
+hit, the whip, and how each is written in the prompt ("slow motion, dust
+hanging") so the model reads the greybox's slow seconds as slow motion
+rather than as slow actors.
+
+**Viewer.** The cut view draws, at each segment boundary, the out-frame and
+in-frame pair with the `take-handoff` status; the beats timeline gains a
+`tempo` row from `time_warp`.
+
 ### Domain type (domain.ts)
 
 ```ts
