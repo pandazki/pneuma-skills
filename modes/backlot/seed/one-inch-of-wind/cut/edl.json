@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "kind": "final",
+  "file": "final.mp4",
+  "seconds": 30,
+  "builtAt": 1789940541148,
+  "probe": {
+    "codec": "h264",
+    "pixFmt": "yuv420p",
+    "width": 854,
+    "height": 480,
+    "fps": 24,
+    "frames": 720,
+    "seconds": 30,
+    "bytes": 2842888
+  },
+  "segments": [
+    {
+      "shot": "s01-arrival",
+      "source": "take-01",
+      "offset": 0,
+      "seconds": 6,
+      "in": 0,
+      "out": 6
+    },
+    {
+      "shot": "s02-landing",
+      "source": "take-01",
+      "offset": 6,
+      "seconds": 6,
+      "in": 0,
+      "out": 6
+    },
+    {
+      "shot": "s03-orbit",
+      "source": "take-01",
+      "offset": 12,
+      "seconds": 6,
+      "in": 0,
+      "out": 6
+    },
+    {
+      "shot": "s04-strike-start",
+      "source": "take-01",
+      "offset": 18,
+      "seconds": 1,
+      "in": 0,
+      "out": 1
+    },
+    {
+      "shot": "s05-strike-close",
+      "source": "take-02",
+      "offset": 19,
+      "seconds": 1,
+      "in": 0.375,
+      "out": 1.375
+    },
+    {
+      "shot": "s06-strike-stop",
+      "source": "take-02",
+      "offset": 20,
+      "seconds": 4,
+      "in": 0,
+      "out": 4
+    },
+    {
+      "shot": "s07-rise",
+      "source": "take-01",
+      "offset": 24,
+      "seconds": 6,
+      "in": 0,
+      "out": 6
+    }
+  ],
+  "vo": [
+    {
+      "shot": "s07-rise",
+      "line": "final-vo",
+      "at": 1,
+      "start": 25,
+      "file": "shots/s07-rise/sound/final-vo.mp3"
+    }
+  ],
+  "droppedVo": [],
+  "music": {
+    "file": "sound/music.mp3",
+    "gainDb": -18,
+    "fadeOutSeconds": 2
+  }
+}

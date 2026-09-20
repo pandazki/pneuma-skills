@@ -123,7 +123,7 @@ describe("copySeedEntry — binary preservation with params present", () => {
       seedBase,
       src: "scene.glb",
       dst: "scene.glb",
-      params: { title: "First Light", shots: 3 },
+      params: { title: "One Inch of Wind", shots: 3 },
       locale: "en",
     });
     expect(result).not.toBeNull();
@@ -139,7 +139,7 @@ describe("copySeedEntry — binary preservation with params present", () => {
       seedBase,
       src: "rig.pneumarig",
       dst: "rig.pneumarig",
-      params: { title: "First Light" },
+      params: { title: "One Inch of Wind" },
       locale: "en",
     });
     expect(result).not.toBeNull();
@@ -147,25 +147,25 @@ describe("copySeedEntry — binary preservation with params present", () => {
   });
 
   it("copies binaries inside a seed directory byte-for-byte", async () => {
-    await mkdir(join(seedBase, "first-light", "shots"), { recursive: true });
+    await mkdir(join(seedBase, "one-inch-of-wind", "shots"), { recursive: true });
     const glb = glbBytes();
     const blend = Buffer.from([0x42, 0x4c, 0x45, 0x4e, 0x44, 0x45, 0x52, 0x00, 0x90, 0xfe]);
-    await writeFile(join(seedBase, "first-light", "shots", "scene.glb"), glb);
-    await writeFile(join(seedBase, "first-light", "scene.blend"), blend);
-    await writeFile(join(seedBase, "first-light", "backlot.json"), '{"title":"{{title}}"}');
+    await writeFile(join(seedBase, "one-inch-of-wind", "shots", "scene.glb"), glb);
+    await writeFile(join(seedBase, "one-inch-of-wind", "scene.blend"), blend);
+    await writeFile(join(seedBase, "one-inch-of-wind", "backlot.json"), '{"title":"{{title}}"}');
 
     const result = copySeedEntry({
       workspace,
       seedBase,
-      src: "first-light/",
+      src: "one-inch-of-wind/",
       dst: "./",
-      params: { title: "First Light" },
+      params: { title: "One Inch of Wind" },
       locale: "en",
     });
     expect(result).not.toBeNull();
     expect(readFileSync(join(workspace, "shots", "scene.glb"))).toEqual(glb);
     expect(readFileSync(join(workspace, "scene.blend"))).toEqual(blend);
-    expect(readFileSync(join(workspace, "backlot.json"), "utf-8")).toBe('{"title":"First Light"}');
+    expect(readFileSync(join(workspace, "backlot.json"), "utf-8")).toBe('{"title":"One Inch of Wind"}');
   });
 });
 
@@ -179,7 +179,7 @@ describe("copySeedEntry — text substitution is unchanged", () => {
       seedBase,
       src: "README.md",
       dst: "README.md",
-      params: { title: "First Light", author: "Pandazki", count: 3 },
+      params: { title: "One Inch of Wind", author: "Pandazki", count: 3 },
       locale: "en",
     });
     copySeedEntry({
@@ -187,12 +187,12 @@ describe("copySeedEntry — text substitution is unchanged", () => {
       seedBase,
       src: "config.json",
       dst: "config.json",
-      params: { title: "First Light", author: "Pandazki", count: 3 },
+      params: { title: "One Inch of Wind", author: "Pandazki", count: 3 },
       locale: "en",
     });
 
-    expect(readFileSync(join(workspace, "README.md"), "utf-8")).toBe("# First Light\n\nby Pandazki\n");
-    expect(readFileSync(join(workspace, "config.json"), "utf-8")).toBe('{"name":"First Light","n":3}');
+    expect(readFileSync(join(workspace, "README.md"), "utf-8")).toBe("# One Inch of Wind\n\nby Pandazki\n");
+    expect(readFileSync(join(workspace, "config.json"), "utf-8")).toBe('{"name":"One Inch of Wind","n":3}');
   });
 
   it("still substitutes params across every text extension in a directory", async () => {
@@ -217,12 +217,12 @@ describe("copySeedEntry — text substitution is unchanged", () => {
       seedBase,
       src: "tpl/",
       dst: "tpl",
-      params: { title: "First Light" },
+      params: { title: "One Inch of Wind" },
       locale: "en",
     });
     expect(result).not.toBeNull();
     for (const n of names) {
-      expect(readFileSync(join(workspace, "tpl", n), "utf-8")).toBe("<<First Light>>");
+      expect(readFileSync(join(workspace, "tpl", n), "utf-8")).toBe("<<One Inch of Wind>>");
     }
   });
 
@@ -233,9 +233,9 @@ describe("copySeedEntry — text substitution is unchanged", () => {
       seedBase,
       src: "zh.md",
       dst: "zh.md",
-      params: { title: "初光" },
+      params: { title: "一寸止风" },
       locale: "en",
     });
-    expect(readFileSync(join(workspace, "zh.md"), "utf-8")).toBe("# 初光\n\n中文内容 — 漢字、絵文字\n");
+    expect(readFileSync(join(workspace, "zh.md"), "utf-8")).toBe("# 一寸止风\n\n中文内容 — 漢字、絵文字\n");
   });
 });

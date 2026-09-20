@@ -78,3 +78,74 @@ a concrete technical hook already paid for: Seedance reference-to-video accepts 
 can condition the same take as `[Image1]…` while the greybox stays `[Video1]`, and
 `modes/_shared/scripts/` already carries image generation, image edit and TTS. The formal build
 starts from a new brief around that flow; this branch is its proven core, not its final shape.
+
+## 5. Backlot acceptance runs (2026-09-21, Codex GPT-6 Astra, medium)
+
+The mode was renamed `backlot` and widened to the eight-stage flow
+([brief](2026-09-20-backlot-mode.md)). Two acceptance runs on the same wuxia
+brief (《一寸止风》, seven shots, ~30 s, 480p), the user's creative direction:
+an open, landmark-rich ruined temple courtyard, two fighters, a wide orbit, a
+dolly zoom on the landing, a three-angle collage of one strike, a crane rise.
+
+### Round 1 — the flow holds, the joins do not
+
+- Every gate held. The agent stopped at idea, screenplay, bible, boards,
+  previz (with a free greybox reel) and asked before spending past $15 and
+  before a third submit. Stage `changed` fired when beats were added after
+  the shot list was approved — the creator re-approved, as designed.
+- It found the collage/floor conflict on its own (three angles of a 1.2 s
+  strike vs Seedance's 4 s minimum) and proposed the trim mechanism before
+  it existed in the scripts; `trim` was added the same night.
+- Six of seven takes came back with one bible (character sheets + set
+  concept + board as `@Image` references beside the greybox `@Video1`):
+  faces, wardrobe and the courtyard held across every take. The seventh, a
+  photoreal low-angle close-up board, was refused twice by fal's likeness
+  filter (HTTP 422) — the text "original fictional characters" did not help.
+- What failed: shots did not connect (each take invented its own body
+  action, so a pose at the end of shot N never met shot N+1); no tempo (one
+  speed); the model cut to a new angle inside two 6 s shots; a dolly zoom
+  became a dissolve; a light-handed 250-word prompt lost the camera lock.
+  Recorded cost ≈ $11.6 at table price (cancelled and 422 jobs counted
+  conservatively; four re-shots were SIGINT-cancelled before landing).
+
+### Round 2 — design carried forward, anchors, hand-offs, tempo
+
+Same idea/screenplay/bible re-used (approvals kept). New in the mode: beat
+`detail` written at boards; opt-in `continuity {from, entry, exit}` per cut
+with the previous take's last used frame attached and `take-handoff`
+checked; `anchor` frames (GPT-Image i2i from the greybox frame + bible) and
+the `lineup` joint review at the previz gate; `slowmo`/`impact` in the kit;
+`prompt-skeleton` with time-coded beats and a job for every reference.
+
+- Boards: 41 beats with details, six cuts each with a coordinate-level
+  entry/exit and a written decision (all "continuous action" — this film is
+  one duel; the opt-in rule was honoured by reasoning, not skipped).
+- Previz: 2 of 7 shots hit the `stuck` rule (same framing check failing
+  twice); the agent stopped and asked for a camera change; one was resolved,
+  one left as a stated trade-off the creator accepted. Anchors: 14 images,
+  $2.15. Observation: GPT-Image weighted the rendered board over the grey
+  frame — several anchors follow the board's composition, not the greybox's.
+- Takes (in hand-off order): 01 passed 5/5; 01→02 hand-off visibly worked
+  (same courtyard, the challenger carried from the stair top to the
+  landing) though pose matching was judged partial; 02 and 03 still
+  contained a model-inserted cut in a 6 s two-character shot; 04 struck
+  early; 05 hit the likeness filter again until its board and anchors were
+  redrawn in an explicit anime-illustration idiom.
+- 05 passed 6/6 after the redraw (the filter is about the picture, not the
+  words); 06 and 07 landed with model-inserted cuts and timing drift and
+  were left failed-but-selected by the creator's decision to finish the run.
+- Sound and cut: one Lyria music bed ($0.08), one VO line (TTS, the keeper's
+  recorded voice), `cut --final` → 30.0 s, 854×480, 24 fps, AAC 48 kHz; VO
+  measured at −26 dB against −37 dB ambience at 25 s, music under at −18 dB
+  with a 2 s fade. Recorded cost $15.68 at table price (36 paid records,
+  all priced; the two 422 refusals counted).
+- Verdict: the eight-stage flow runs end to end with a Codex agent at
+  medium effort, every gate and stop behaving as specified, and the
+  bible + anchor + greybox references hold look and layout across a whole
+  film. The open problem is now the video model's own behaviour inside a
+  6 s two-character shot — it inserts a cut of its own in roughly half of
+  them regardless of "one continuous shot" — and pose-exact hand-offs,
+  which the frame reference improves but does not guarantee. Next
+  experiments: 4–5 s shots for two-character action, hand-off with a `last`
+  anchor as well as the frame, and anchor prompts that weight the greybox
+  frame over the board.

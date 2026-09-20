@@ -1,13 +1,16 @@
 /**
  * Backlot Mode Manifest — pure data, no React deps.
  *
- * The backlot's greybox stage is the part that ships today: block the shot in
- * 3D first, so a headless-Blender greybox animation fixes space, action and
- * camera, and a video model then paints the look on top of that exact MP4.
- * `previz.mjs` owns every piece of machine state — the revision counter, the
- * acceptance record, the take ledger — and the viewer is the shot's player:
- * the lanes on one clock, the plan's beats on the timeline, and what the
- * whole thing cost.
+ * A short film moves through eight stages — idea, screenplay, bible, boards,
+ * previz, takes, sound, cut — and the creator approves each before the next
+ * starts. The previz stage is the heart: block the shot in 3D first, so a
+ * headless-Blender greybox animation fixes space, action, tempo and camera,
+ * and a video model then paints the look on top of that exact MP4 with the
+ * bible, the anchor frame and the previous shot's hand-off as references.
+ * `backlot.mjs` owns the film's machine state (backlot.json, bible, sound,
+ * cut) and `previz.mjs` owns each shot's (shot.json); stage status is derived
+ * by `stage-state.mjs` in both the scripts and the viewer. The viewer is the
+ * stage rail plus a body per stage, with the shot player at its centre.
  *
  * Practice adapted from modengsir/blender-video-workflows (MIT) — see
  * `inspiredBy` and NOTICE.md.
@@ -210,7 +213,7 @@ const backlotManifest: ModeManifest = {
           address: {
             type: "object",
             description:
-              'ViewerAddress, e.g. `{ "contentSet": "first-light", "shot": "lab-walk", "lane": "greybox", "time": 4.2 }`. `shot` is the shot id (required unless you only change the moment on the shot already open). `lane` is `"reference"`, `"greybox"` or `"take"`. `take` is a take id (`"take-01"`) and implies the take lane. `time` is seconds on the shared clock. `range` is `[from, to]` in seconds and marks that span on the timeline. `layout` is `"side"`, `"wipe"`, `"blend"` or `"solo"`.',
+              'ViewerAddress, e.g. `{ "contentSet": "one-inch-of-wind", "shot": "s03-orbit", "lane": "greybox", "time": 4.2 }`. `shot` is the shot id (required unless you only change the moment on the shot already open). `lane` is `"reference"`, `"greybox"` or `"take"`. `take` is a take id (`"take-01"`) and implies the take lane. `time` is seconds on the shared clock. `range` is `[from, to]` in seconds and marks that span on the timeline. `layout` is `"side"`, `"wipe"`, `"blend"` or `"solo"`.',
             required: true,
           },
         },
@@ -267,29 +270,43 @@ The user just opened the backlot workspace. Greet them briefly (1-2 sentences): 
 
   init: {
     contentCheckPattern: "**/backlot.json",
-    // The seed is a real run: a real greybox render, its GLB and sidecar, the
-    // acceptance record it earned, and the Seedance take it became. An
-    // invented seed would teach the mode's own workflow wrong.
+    // The seed is one real run of the whole flow, kept as it ended: the idea
+    // and screenplay the creator approved, the bible, seven boards, seven
+    // greyboxes with their GLBs and acceptance records, the seven takes that
+    // were delivered — failing checks and all — the music bed, the voice-over
+    // and the 30-second cut. An invented seed would teach the mode's own
+    // workflow wrong, and a seed with every check green would teach it to lie.
+    //
+    // Slimmed for distribution (17 MB, from 317 MB): the working files a
+    // finished film does not need are not shipped — the .blend beside each
+    // GLB, the half-scale preview render, the contact sheets and QA strips,
+    // the takes that were not selected, the board-image sources, the second
+    // (`board`) anchor of each shot, and the story reel the final cut
+    // replaced. Stills are 720 px wide (427 for the grey anchor frames) and
+    // quantized, every take and the cut are re-encoded at CRF 30, and every
+    // `{ file, revision }` record still points at a file that is here with
+    // the size it records. The greybox MP4s and the GLBs are untouched: they
+    // are what the model was given and what the 3D lane reads.
     seedFiles: {
-      "modes/backlot/seed/first-light/": "first-light/",
+      "modes/backlot/seed/one-inch-of-wind/": "one-inch-of-wind/",
     },
     seeds: [
       {
-        id: "first-light",
-        sourceKey: "modes/backlot/seed/first-light/",
-        thumbnail: "first-light.png",
+        id: "one-inch-of-wind",
+        sourceKey: "modes/backlot/seed/one-inch-of-wind/",
+        thumbnail: "one-inch-of-wind.png",
         displayName: {
-          en: "First Light — one shot, blocked and rendered",
-          "zh-CN": "初光 · 一个镜头，从白模到成片",
-          ja: "ファーストライト — ショット 1 本、ブロッキングからレンダーまで",
+          en: "One Inch of Wind — a 30-second film, all eight stages",
+          "zh-CN": "一寸止风 · 三十秒短片，八道工序俱全",
+          ja: "一寸止風 —— 30 秒の短編、八つのステージすべて",
         },
         description: {
-          en: "An eight-second lab shot with everything it took: the timed plan, the Blender script, the greybox MP4 the model received, its acceptance record, the prompt pack and the take that came back.",
+          en: "A duel in a ruined mountain temple, finished: the approved idea and screenplay, two characters and one set in the bible, seven storyboard frames, seven Blender greyboxes with their acceptance records, the seven takes that were delivered — the failing checks kept as they were recorded — the music, the voice-over and the assembled cut.",
           "zh-CN":
-            "一个八秒的实验室镜头，连同它的全部工序：带时间线的分镜计划、Blender 脚本、交给模型的那段白模 MP4、验收记录、提示词包，以及最后生成的成片。",
-          ja: "8 秒のラボのショットと、それに要したすべて —— 時間割つきのプラン、Blender スクリプト、モデルに渡したグレーボックス MP4、その受け入れ記録、プロンプトパック、そして返ってきたテイク。",
+            "一场在山中古寺的对决，拍完了：通过的念头与剧本、设定里的两个人物和一处场景、七张分镜画稿、七段 Blender 白模和它们的验收记录、交付的七条镜头（没通过的检查原样保留）、配乐、旁白，以及剪好的成片。",
+          ja: "山中の廃寺での立ち合い、完成まで —— 承認されたアイデアと脚本、バイブルの登場人物 2 人とセット 1 つ、絵コンテ 7 枚、受け入れ記録つきの Blender グレーボックス 7 本、納品された 7 テイク（不合格のチェックも記録のまま）、音楽、ナレーション、そして仕上がった本編。",
         },
-        tags: ["blender", "seedance"],
+        tags: ["blender", "seedance", "wuxia"],
       },
     ],
     params: [

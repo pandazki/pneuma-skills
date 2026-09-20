@@ -45,7 +45,7 @@ type File = { path: string; content: string };
 
 const BACKLOT_JSON = JSON.stringify({
   version: 1,
-  title: "First Light",
+  title: "One Inch of Wind",
   defaults: { seconds: 8, fps: 24, width: 1280, height: 720 },
   shots: ["lab-walk", "corridor"],
 });
@@ -108,41 +108,41 @@ function shotJson(overrides: Record<string, unknown> = {}): string {
 }
 
 const BASE_FILES: File[] = [
-  { path: "first-light/backlot.json", content: BACKLOT_JSON },
-  { path: "first-light/shots/lab-walk/shot.json", content: shotJson() },
+  { path: "one-inch-of-wind/backlot.json", content: BACKLOT_JSON },
+  { path: "one-inch-of-wind/shots/lab-walk/shot.json", content: shotJson() },
 ];
 
 describe("paths", () => {
   test("a project is a top-level directory holding backlot.json", () => {
-    expect(projectDirOf("first-light/backlot.json")).toBe("first-light");
+    expect(projectDirOf("one-inch-of-wind/backlot.json")).toBe("one-inch-of-wind");
     expect(projectDirOf("backlot.json")).toBe("");
     // Nested and dot directories are not content sets, so they cannot be a
     // project: the resolver would never offer them and every /content URL
     // built from one would 404.
     expect(projectDirOf("a/b/backlot.json")).toBeNull();
     expect(projectDirOf(".pneuma/backlot.json")).toBeNull();
-    expect(projectDirOf("first-light/shot.json")).toBeNull();
+    expect(projectDirOf("one-inch-of-wind/shot.json")).toBeNull();
   });
 
   test("a shot is `<project>/shots/<id>/shot.json`", () => {
-    expect(shotRefOf("first-light/shots/lab-walk/shot.json")).toEqual({
-      project: "first-light",
+    expect(shotRefOf("one-inch-of-wind/shots/lab-walk/shot.json")).toEqual({
+      project: "one-inch-of-wind",
       shot: "lab-walk",
     });
     expect(shotRefOf("shots/lab-walk/shot.json")).toEqual({ project: "", shot: "lab-walk" });
-    expect(shotRefOf("first-light/shots/lab-walk/takes/shot.json")).toBeNull();
-    expect(shotRefOf("first-light/shot.json")).toBeNull();
+    expect(shotRefOf("one-inch-of-wind/shots/lab-walk/takes/shot.json")).toBeNull();
+    expect(shotRefOf("one-inch-of-wind/shot.json")).toBeNull();
   });
 
   test("shotDir composes the same path back", () => {
-    expect(shotDir("first-light", "lab-walk")).toBe("first-light/shots/lab-walk");
+    expect(shotDir("one-inch-of-wind", "lab-walk")).toBe("one-inch-of-wind/shots/lab-walk");
     expect(shotDir("", "lab-walk")).toBe("shots/lab-walk");
   });
 });
 
 describe("parseShot", () => {
   test("reads the whole record", () => {
-    const shot = parseShot("first-light/shots/lab-walk", "lab-walk", shotJson())!;
+    const shot = parseShot("one-inch-of-wind/shots/lab-walk", "lab-walk", shotJson())!;
     expect(shot.id).toBe("lab-walk");
     expect(shot.spec.frames).toBe(192);
     expect(shot.beats).toHaveLength(2);
@@ -232,18 +232,18 @@ describe("parseShot", () => {
 describe("loadFilm", () => {
   test("assembles projects and their shots", () => {
     const film = loadFilm(BASE_FILES)!;
-    expect(Object.keys(film.projects)).toEqual(["first-light"]);
-    expect(film.projects["first-light"].title).toBe("First Light");
-    expect(film.projects["first-light"].shots.map((s) => s.id)).toEqual(["lab-walk"]);
+    expect(Object.keys(film.projects)).toEqual(["one-inch-of-wind"]);
+    expect(film.projects["one-inch-of-wind"].title).toBe("One Inch of Wind");
+    expect(film.projects["one-inch-of-wind"].shots.map((s) => s.id)).toEqual(["lab-walk"]);
   });
 
   test("shots come back in backlot.json order, strays last", () => {
     const film = loadFilm([
       ...BASE_FILES,
-      { path: "first-light/shots/zeta/shot.json", content: shotJson({ id: "zeta" }) },
-      { path: "first-light/shots/corridor/shot.json", content: shotJson({ id: "corridor" }) },
+      { path: "one-inch-of-wind/shots/zeta/shot.json", content: shotJson({ id: "zeta" }) },
+      { path: "one-inch-of-wind/shots/corridor/shot.json", content: shotJson({ id: "corridor" }) },
     ])!;
-    expect(film.projects["first-light"].shots.map((s) => s.id)).toEqual([
+    expect(film.projects["one-inch-of-wind"].shots.map((s) => s.id)).toEqual([
       "lab-walk",
       "corridor",
       "zeta",
@@ -252,24 +252,24 @@ describe("loadFilm", () => {
 
   test("a listed shot with no shot.json is a named warning", () => {
     const film = loadFilm(BASE_FILES)!;
-    expect(film.projects["first-light"].warnings.join(" ")).toContain("corridor");
+    expect(film.projects["one-inch-of-wind"].warnings.join(" ")).toContain("corridor");
   });
 
   test("one broken shot does not blank its siblings", () => {
     const film = loadFilm([
       ...BASE_FILES,
-      { path: "first-light/shots/broken/shot.json", content: "{ oh no" },
+      { path: "one-inch-of-wind/shots/broken/shot.json", content: "{ oh no" },
     ])!;
-    expect(film.projects["first-light"].shots.map((s) => s.id)).toEqual(["lab-walk"]);
+    expect(film.projects["one-inch-of-wind"].shots.map((s) => s.id)).toEqual(["lab-walk"]);
   });
 
   test("a half-written backlot.json still names the project and keeps its shots", () => {
     const film = loadFilm([
-      { path: "first-light/backlot.json", content: '{ "title": "First' },
+      { path: "one-inch-of-wind/backlot.json", content: '{ "title": "First' },
       BASE_FILES[1],
     ])!;
-    expect(film.projects["first-light"].shots).toHaveLength(1);
-    expect(film.projects["first-light"].warnings.join(" ")).toContain("backlot.json");
+    expect(film.projects["one-inch-of-wind"].shots).toHaveLength(1);
+    expect(film.projects["one-inch-of-wind"].warnings.join(" ")).toContain("backlot.json");
   });
 
   test("a shot whose project manifest is absent is skipped, not orphaned", () => {
@@ -534,7 +534,7 @@ const EDL_JSON = JSON.stringify({
 const FILM_MANIFEST = (extra: Record<string, unknown> = {}) =>
   JSON.stringify({
     version: 1,
-    title: "First Light",
+    title: "One Inch of Wind",
     logline: "A researcher wakes a device that was not asleep.",
     defaults: { seconds: 8, fps: 24, width: 1280, height: 720 },
     gates: "closed",
@@ -603,15 +603,15 @@ const FILM_SHOT = (id: string, extra: Record<string, unknown> = {}) =>
   });
 
 const FILM_FILES: File[] = [
-  { path: "first-light/backlot.json", content: FILM_MANIFEST() },
-  { path: "first-light/idea.md", content: "# First Light\n\nA device that was not asleep.\n" },
-  { path: "first-light/screenplay.md", content: "## INT. 实验室 — 夜\n\nKai opens the door.\n" },
-  { path: "first-light/bible/characters/kai/character.json", content: CHARACTER_JSON },
-  { path: "first-light/bible/sets/lab/set.json", content: SET_JSON },
-  { path: "first-light/shots/lab-walk/shot.json", content: FILM_SHOT("lab-walk") },
-  { path: "first-light/shots/corridor/shot.json", content: FILM_SHOT("corridor") },
-  { path: "first-light/sound/sound.json", content: SOUND_JSON },
-  { path: "first-light/cut/edl.json", content: EDL_JSON },
+  { path: "one-inch-of-wind/backlot.json", content: FILM_MANIFEST() },
+  { path: "one-inch-of-wind/idea.md", content: "# One Inch of Wind\n\nA device that was not asleep.\n" },
+  { path: "one-inch-of-wind/screenplay.md", content: "## INT. 实验室 — 夜\n\nKai opens the door.\n" },
+  { path: "one-inch-of-wind/bible/characters/kai/character.json", content: CHARACTER_JSON },
+  { path: "one-inch-of-wind/bible/sets/lab/set.json", content: SET_JSON },
+  { path: "one-inch-of-wind/shots/lab-walk/shot.json", content: FILM_SHOT("lab-walk") },
+  { path: "one-inch-of-wind/shots/corridor/shot.json", content: FILM_SHOT("corridor") },
+  { path: "one-inch-of-wind/sound/sound.json", content: SOUND_JSON },
+  { path: "one-inch-of-wind/cut/edl.json", content: EDL_JSON },
 ];
 
 /** The project-relative text map `loadFilm` hands to `stage-state.mjs`. */
@@ -625,27 +625,27 @@ function textsOf(files: File[], dir: string): Record<string, string> {
 }
 
 function filmProject(files: File[] = FILM_FILES): Project {
-  return loadFilm(files)!.projects["first-light"];
+  return loadFilm(files)!.projects["one-inch-of-wind"];
 }
 
 describe("the project manifest", () => {
   test("reads the fields the eight stages hang off", () => {
     const project = filmProject();
-    expect(project.title).toBe("First Light");
+    expect(project.title).toBe("One Inch of Wind");
     expect(project.logline).toContain("researcher");
     expect(project.gates).toBe("closed");
     expect(project.scenes.map((s) => s.id)).toEqual(["sc1", "sc2"]);
     expect(project.characters.map((c) => c.id)).toEqual(["kai"]);
     expect(project.sets.map((s) => s.id)).toEqual(["lab"]);
-    expect(project.idea).toContain("First Light");
+    expect(project.idea).toContain("One Inch of Wind");
     expect(project.screenplay).toContain("实验室");
     expect(project.warnings).toEqual([]);
   });
 
   test("THE OLD SEED STILL LOADS — missing project fields default, nothing is invented", () => {
-    // `first-light/backlot.json` predates scenes, gates, approvals and the
+    // `one-inch-of-wind/backlot.json` predates scenes, gates, approvals and the
     // bible. A loader that required them would blank the shipped seed.
-    const project = loadFilm(BASE_FILES)!.projects["first-light"];
+    const project = loadFilm(BASE_FILES)!.projects["one-inch-of-wind"];
     expect(project.logline).toBe("");
     expect(project.gates).toBe("closed");
     expect(project.approvals).toEqual({});
@@ -671,7 +671,7 @@ describe("the project manifest", () => {
 
   test("gates nobody can read are CLOSED, and the guess is written down", () => {
     const project = filmProject([
-      { path: "first-light/backlot.json", content: FILM_MANIFEST({ gates: "ajar" }) },
+      { path: "one-inch-of-wind/backlot.json", content: FILM_MANIFEST({ gates: "ajar" }) },
     ]);
     expect(project.gates).toBe("closed");
     expect(project.warnings.join(" ")).toContain("ajar");
@@ -679,16 +679,16 @@ describe("the project manifest", () => {
 
   test("an unknown manifest version is read as 1 and reported", () => {
     const project = filmProject([
-      { path: "first-light/backlot.json", content: FILM_MANIFEST({ version: 7 }) },
+      { path: "one-inch-of-wind/backlot.json", content: FILM_MANIFEST({ version: 7 }) },
     ]);
-    expect(project.title).toBe("First Light");
+    expect(project.title).toBe("One Inch of Wind");
     expect(project.warnings.join(" ")).toContain("version 7");
   });
 
   test("a scene with no id is dropped by name rather than drawn blank", () => {
     const project = filmProject([
       {
-        path: "first-light/backlot.json",
+        path: "one-inch-of-wind/backlot.json",
         content: FILM_MANIFEST({ scenes: [{ number: 1, heading: "INT. NOWHERE" }] }),
       },
     ]);
@@ -712,7 +712,7 @@ describe("the project manifest", () => {
     const project = filmProject([
       ...FILM_FILES.filter((f) => !f.path.includes("shots/corridor")),
       {
-        path: "first-light/shots/corridor/shot.json",
+        path: "one-inch-of-wind/shots/corridor/shot.json",
         content: FILM_SHOT("corridor", { scene: "sc9" }),
       },
     ]);
@@ -725,7 +725,7 @@ describe("bible, sound and cut records", () => {
     const project = filmProject();
     const kai = project.characters[0];
     expect(kai.name).toBe("小凯");
-    expect(kai.dir).toBe("first-light/bible/characters/kai");
+    expect(kai.dir).toBe("one-inch-of-wind/bible/characters/kai");
     expect(kai.sheet).toEqual({ file: "sheet.png", revision: 2, cost: { usd: 0.13, basis: "reported" } });
     expect(kai.voice?.sample?.seconds).toBe(2.2);
   });
@@ -734,13 +734,13 @@ describe("bible, sound and cut records", () => {
     const lab = filmProject().sets[0];
     expect(lab.name).toBe("实验室");
     expect(lab.concept?.file).toBe("concept.png");
-    expect(lab.dir).toBe("first-light/bible/sets/lab");
+    expect(lab.dir).toBe("one-inch-of-wind/bible/sets/lab");
   });
 
   test("a half-written bible record is skipped with a warning, not thrown on", () => {
     const project = filmProject([
       ...FILM_FILES.filter((f) => !f.path.includes("/characters/")),
-      { path: "first-light/bible/characters/kai/character.json", content: "{ half" },
+      { path: "one-inch-of-wind/bible/characters/kai/character.json", content: "{ half" },
     ]);
     expect(project.characters).toEqual([]);
     expect(project.warnings.join(" ")).toContain("bible/characters/kai");
@@ -912,14 +912,14 @@ describe("bible, sound and cut records", () => {
   });
 
   test("a line file is resolved project-relative or shot-relative, as written", () => {
-    expect(resolveLinePath("first-light", "first-light/shots/s01", "sound/l2.mp3")).toBe(
-      "first-light/sound/l2.mp3",
+    expect(resolveLinePath("one-inch-of-wind", "one-inch-of-wind/shots/s01", "sound/l2.mp3")).toBe(
+      "one-inch-of-wind/sound/l2.mp3",
     );
-    expect(resolveLinePath("first-light", "first-light/shots/s01", "shots/s01/sound/l2.mp3")).toBe(
-      "first-light/shots/s01/sound/l2.mp3",
+    expect(resolveLinePath("one-inch-of-wind", "one-inch-of-wind/shots/s01", "shots/s01/sound/l2.mp3")).toBe(
+      "one-inch-of-wind/shots/s01/sound/l2.mp3",
     );
-    expect(resolveLinePath("first-light", "first-light/shots/s01", "l2.mp3")).toBe(
-      "first-light/shots/s01/l2.mp3",
+    expect(resolveLinePath("one-inch-of-wind", "one-inch-of-wind/shots/s01", "l2.mp3")).toBe(
+      "one-inch-of-wind/shots/s01/l2.mp3",
     );
   });
 
@@ -1116,10 +1116,10 @@ describe("cutPoints", () => {
   });
 
   const filesWith = (corridorExtra: Record<string, unknown>): File[] => [
-    { path: "first-light/backlot.json", content: FILM_MANIFEST() },
-    { path: "first-light/shots/lab-walk/shot.json", content: FILM_SHOT("lab-walk") },
+    { path: "one-inch-of-wind/backlot.json", content: FILM_MANIFEST() },
+    { path: "one-inch-of-wind/shots/lab-walk/shot.json", content: FILM_SHOT("lab-walk") },
     {
-      path: "first-light/shots/corridor/shot.json",
+      path: "one-inch-of-wind/shots/corridor/shot.json",
       content: FILM_SHOT("corridor", {
         takes: [
           { id: "take-02", status: "done", file: "takes/take-02.mp4", selected: true },
@@ -1127,7 +1127,7 @@ describe("cutPoints", () => {
         ...corridorExtra,
       }),
     },
-    { path: "first-light/cut/edl.json", content: CONTINUITY_EDL },
+    { path: "one-inch-of-wind/cut/edl.json", content: CONTINUITY_EDL },
   ];
 
   const HANDOFF = {
@@ -1250,10 +1250,10 @@ describe("stage state", () => {
     // The hash is computed by the module `backlot.mjs` gates its spending
     // with, over the SAME project-relative map `loadFilm` builds — this is
     // the test that the viewer's prefix stripping agrees with the script.
-    const texts = textsOf(FILM_FILES, "first-light");
+    const texts = textsOf(FILM_FILES, "one-inch-of-wind");
     const files: File[] = [
       {
-        path: "first-light/backlot.json",
+        path: "one-inch-of-wind/backlot.json",
         content: FILM_MANIFEST({
           approvals: {
             script: { at: 1758380000000, hash: hashStage("script", { ...texts, "backlot.json": FILM_MANIFEST() }) },
@@ -1267,7 +1267,7 @@ describe("stage state", () => {
     // manifest text changes when approvals are added — so the hash is taken
     // against the manifest WITHOUT them, exactly as `stage-state.mjs`
     // projects it (only `scenes` enter the script hash).
-    const project = loadFilm(files)!.projects["first-light"];
+    const project = loadFilm(files)!.projects["one-inch-of-wind"];
     const status = Object.fromEntries(project.stages.map((s) => [s.id, s.status]));
     expect(status.script).toBe("approved");
     expect(status.idea).toBe("changed");
@@ -1277,16 +1277,16 @@ describe("stage state", () => {
   });
 
   test("the next open stage is the first one the creator has not approved", () => {
-    const texts = textsOf(FILM_FILES, "first-light");
+    const texts = textsOf(FILM_FILES, "one-inch-of-wind");
     const approvals = {
       idea: { at: 1, hash: hashStage("idea", texts) },
       script: { at: 2, hash: hashStage("script", texts) },
     };
     const files: File[] = [
-      { path: "first-light/backlot.json", content: FILM_MANIFEST({ approvals }) },
+      { path: "one-inch-of-wind/backlot.json", content: FILM_MANIFEST({ approvals }) },
       ...FILM_FILES.slice(1),
     ];
-    const project = loadFilm(files)!.projects["first-light"];
+    const project = loadFilm(files)!.projects["one-inch-of-wind"];
     // `script` hashes `backlot.json#scenes`, which does not change when
     // approvals are added, so both approvals still hold.
     expect(project.stages.find((s) => s.id === "idea")?.status).toBe("approved");
@@ -1294,16 +1294,16 @@ describe("stage state", () => {
   });
 
   test("a changed stage is open again — the creator has not seen this version", () => {
-    const texts = textsOf(FILM_FILES, "first-light");
+    const texts = textsOf(FILM_FILES, "one-inch-of-wind");
     const files: File[] = [
       {
-        path: "first-light/backlot.json",
+        path: "one-inch-of-wind/backlot.json",
         content: FILM_MANIFEST({ approvals: { idea: { at: 1, hash: hashStage("idea", texts) } } }),
       },
       ...FILM_FILES.slice(1).filter((f) => !f.path.endsWith("idea.md")),
-      { path: "first-light/idea.md", content: "# First Light\n\nRewritten after approval.\n" },
+      { path: "one-inch-of-wind/idea.md", content: "# One Inch of Wind\n\nRewritten after approval.\n" },
     ];
-    const project = loadFilm(files)!.projects["first-light"];
+    const project = loadFilm(files)!.projects["one-inch-of-wind"];
     expect(project.stages.find((s) => s.id === "idea")?.status).toBe("changed");
     expect(nextOpenStage(project)?.id).toBe("idea");
   });
@@ -1362,7 +1362,7 @@ describe("cost", () => {
     const project = filmProject([
       ...FILM_FILES.filter((f) => !f.path.includes("shots/lab-walk")),
       {
-        path: "first-light/shots/lab-walk/shot.json",
+        path: "one-inch-of-wind/shots/lab-walk/shot.json",
         content: FILM_SHOT("lab-walk", {
           takes: [{ id: "take-01", status: "done", file: "takes/take-01.mp4" }],
         }),

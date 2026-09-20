@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "music": {
+    "file": "music.mp3",
+    "prompt": "An instrumental Chinese wuxia animated-film cue, about32seconds, sparse then driving then still. Acoustic guqin plucked harmonics and low frame drums, with a very soft bamboo flute only in the last section. Around72BPM with increasingly close drum accents, no western orchestra, synthesizers, vocals, choir, lyrics or speech. Start immediately with a single clear guqin harmonic over restrained air, no long fade-in. Seconds0–6 tense space between isolated guqin notes. Around7seconds a low drum accent marks a landing, then restrained pulse. Seconds12–18 build a compact rhythmic approach, not a heroic melody. Seconds18–21 two sharp accents and a brief surge, then a decisive percussion stop at21seconds. Seconds21–24 leave suspended quiet guqin resonance. Seconds24–32 a low guqin string and very sparse flute breath resolve gently; keep plenty of space for a spoken sentence at25–28seconds. Small intimate ensemble, dry and tactile, ancient ruined mountain courtyard at dusk, disciplined tension ending in acceptance. End cleanly with a decaying low string, not a loud cadence.\n",
+    "model": "google/lyria-3-pro-preview",
+    "requestedSeconds": 32,
+    "seconds": 118.6481,
+    "at": 1789940479833,
+    "cost": {
+      "usd": 0.08,
+      "basis": "table"
+    }
+  }
+}

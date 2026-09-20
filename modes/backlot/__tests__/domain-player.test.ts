@@ -45,7 +45,7 @@ import { Playhead } from "../viewer/usePlayhead.js";
 
 function shot(overrides: Record<string, unknown> = {}): Shot {
   return parseShot(
-    "first-light/shots/lab-walk",
+    "one-inch-of-wind/shots/lab-walk",
     "lab-walk",
     JSON.stringify({
       version: 1,
@@ -93,8 +93,8 @@ function shot(overrides: Record<string, unknown> = {}): Shot {
 }
 
 const PROJECT = (s: Shot, extra: Partial<Project> = {}): Project => ({
-  dir: "first-light",
-  title: "First Light",
+  dir: "one-inch-of-wind",
+  title: "One Inch of Wind",
   logline: "",
   defaults: { seconds: 8, fps: 24, width: 1280, height: 720 },
   gates: "closed",
@@ -380,9 +380,9 @@ describe("readouts", () => {
 describe("addresses", () => {
   const s = shot();
   const ctx = {
-    contentSet: "first-light",
-    projects: { "first-light": PROJECT(s) },
-    contentSets: ["first-light"],
+    contentSet: "one-inch-of-wind",
+    projects: { "one-inch-of-wind": PROJECT(s) },
+    contentSets: ["one-inch-of-wind"],
     position: HERE,
   };
 
@@ -410,7 +410,7 @@ describe("addresses", () => {
   test("an unknown project is refused, and the known ones are listed", () => {
     const outcome = resolveAddress(ctx, { contentSet: "nowhere" });
     expect(outcome.ok).toBe(false);
-    if (!outcome.ok) expect(outcome.message).toContain("first-light");
+    if (!outcome.ok) expect(outcome.message).toContain("one-inch-of-wind");
   });
 
   test("naming a take means showing it", () => {
@@ -439,12 +439,12 @@ describe("addresses", () => {
 
   test("the reported address carries the frame, not only the second", () => {
     const address = positionAddress(
-      "first-light",
+      "one-inch-of-wind",
       { ...HERE, player: { ...PLAYER_HERE, time: 3.8 } },
       s.spec,
     );
     expect(address).toMatchObject({
-      contentSet: "first-light",
+      contentSet: "one-inch-of-wind",
       stage: "previz",
       shot: "lab-walk",
       lane: "greybox",
@@ -474,10 +474,10 @@ describe("stage addressing", () => {
   const project = PROJECT(s, {
     scenes: [{ id: "sc1", number: 1, heading: "INT. LAB — NIGHT", summary: "", shots: ["lab-walk"] }],
     characters: [
-      { id: "kai", name: "Kai", description: "", look: "", sheet: null, voice: null, dir: "first-light/bible/characters/kai" },
+      { id: "kai", name: "Kai", description: "", look: "", sheet: null, voice: null, dir: "one-inch-of-wind/bible/characters/kai" },
     ],
     sets: [
-      { id: "lab", name: "The lab", description: "", look: "", concept: null, dir: "first-light/bible/sets/lab" },
+      { id: "lab", name: "The lab", description: "", look: "", concept: null, dir: "one-inch-of-wind/bible/sets/lab" },
     ],
     sound: {
       music: null,
@@ -512,9 +512,9 @@ describe("stage addressing", () => {
     },
   });
   const ctx = {
-    contentSet: "first-light",
-    projects: { "first-light": project },
-    contentSets: ["first-light"],
+    contentSet: "one-inch-of-wind",
+    projects: { "one-inch-of-wind": project },
+    contentSets: ["one-inch-of-wind"],
     position: HERE,
   };
 
@@ -589,16 +589,16 @@ describe("stage addressing", () => {
   });
 
   test("the reported address only carries keys that mean something on the stage", () => {
-    const bible = positionAddress("first-light", { ...HERE, stage: "bible", character: "kai" }, s.spec);
-    expect(bible).toEqual({ contentSet: "first-light", stage: "bible", character: "kai" });
+    const bible = positionAddress("one-inch-of-wind", { ...HERE, stage: "bible", character: "kai" }, s.spec);
+    expect(bible).toEqual({ contentSet: "one-inch-of-wind", stage: "bible", character: "kai" });
 
     const cut = positionAddress(
-      "first-light",
+      "one-inch-of-wind",
       { ...HERE, stage: "cut", segment: "corridor", cutTime: 8.5 },
       s.spec,
     );
     expect(cut).toEqual({
-      contentSet: "first-light",
+      contentSet: "one-inch-of-wind",
       stage: "cut",
       segment: "corridor",
       time: 8.5,

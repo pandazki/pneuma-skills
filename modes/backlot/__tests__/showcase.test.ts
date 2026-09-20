@@ -29,9 +29,9 @@ function pngSize(file: string): { width: number; height: number } {
 
 describe("showcase copy", () => {
   test("five highlights with localized titles and non-placeholder copy", () => {
-    // Five, not three: what the model is conditioned on, the shared clock, the
-    // 3D inspection, the acceptance record and the price are five independent
-    // claims — none of them implies another.
+    // Five, not three: the approved stages, the previz gate's lineup, what the
+    // model is conditioned on, the joins of the cut and the price are five
+    // independent claims — none of them implies another.
     expect(showcase.hero).toBe("hero.png");
     expect(showcase.highlights).toHaveLength(5);
     expect(Object.keys(showcase.tagline).sort()).toEqual(["en", "ja", "zh-CN"]);
@@ -62,12 +62,20 @@ describe("showcase art", () => {
     expect(sizes).toEqual(referenced.map((media) => ({ media, width: 1376, height: 768 })));
   });
 
-  test("the compositions that produced them are shipped beside them", () => {
-    // `layout.html` + `preview.mjs` are how these are re-captured; losing them
-    // turns the gallery into six PNGs nobody can reproduce or correct.
+  test("the script that produced them is shipped beside them", () => {
+    // These are screenshots of the viewer over the shipped seed, so the thing
+    // that has to survive is the drive: `shoot.mjs` holds the session URL
+    // contract, the seek times and the crop rectangles. Losing it turns the
+    // gallery into six PNGs nobody can reproduce or correct.
     const onDisk = new Set(readdirSync(SHOWCASE_DIR));
-    expect(onDisk.has("layout.html")).toBe(true);
-    expect(onDisk.has("preview.mjs")).toBe(true);
+    expect(onDisk.has("shoot.mjs")).toBe(true);
     expect(onDisk.has("README.md")).toBe(true);
+  });
+
+  test("no picture of the retired seed is left in the directory", () => {
+    // The gallery is served off disk by name; an orphan from the previous set
+    // is dead weight in the npm package and a tempting wrong reference.
+    const pngs = readdirSync(SHOWCASE_DIR).filter((f) => f.endsWith(".png"));
+    expect(pngs.sort()).toEqual([...referenced].sort());
   });
 });

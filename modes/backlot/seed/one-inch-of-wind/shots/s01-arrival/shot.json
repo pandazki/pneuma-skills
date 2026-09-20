@@ -1,0 +1,385 @@
+{
+  "version": 1,
+  "id": "s01-arrival",
+  "title": "古寺对峙",
+  "scene": "sc1",
+  "characters": [
+    "keeper",
+    "challenger"
+  ],
+  "set": "courtyard",
+  "entry": "original",
+  "spec": {
+    "seconds": 6,
+    "fps": 24,
+    "width": 854,
+    "height": 480,
+    "frames": 144
+  },
+  "assumptions": [],
+  "beats": [
+    {
+      "id": "still",
+      "label": "古寺静场",
+      "from": 0,
+      "to": 1,
+      "kind": "hold",
+      "detail": "In stillness, the white-robed keeper stands grounded, gaze lifted; the teal challenger watches from the north landing, only sash and flags breathing."
+    },
+    {
+      "id": "load",
+      "label": "压膝蓄势",
+      "from": 1,
+      "to": 3.5,
+      "kind": "action",
+      "detail": "Slowly, the challenger bends his knees and draws his sword behind his hip, jaw tightening; the red sash pulls taut in the breeze."
+    },
+    {
+      "id": "look",
+      "label": "抬眼待招",
+      "from": 3.5,
+      "to": 5.5,
+      "kind": "action",
+      "detail": "Deliberately, the keeper raises his eyes without stepping, his low blade steady; pale robe folds settle while the challenger holds compressed readiness."
+    },
+    {
+      "id": "handoff",
+      "label": "蓄势停驻",
+      "from": 5.5,
+      "to": 6,
+      "kind": "hold",
+      "detail": "Hold the loaded pose, both soles fixed and blades separated; determined challenger and composed keeper remain still as the flags move."
+    },
+    {
+      "id": "camera",
+      "label": "单一机位",
+      "from": 0,
+      "to": 6,
+      "kind": "camera",
+      "detail": "A single slow dolly forward ends in a still wide two-shot with the north landing visible; one continuous shot, no cut."
+    }
+  ],
+  "trim": {
+    "in": 0,
+    "out": 6
+  },
+  "continuity": {
+    "from": null,
+    "entry": null,
+    "exit": "Challenger screen left on the north landing (0,8.4,1.2), facing south, knees compressed, right-hand sword behind his hip; keeper screen right at (0,0,0.15), facing north, right-hand sword lowered; no contact."
+  },
+  "board": {
+    "file": "board.png",
+    "revision": 2,
+    "prompt": "Create ONE cinematic storyboard still, 16:9, premium painterly 3D Chinese wuxia animated feature, not a photo. Reference 1 = white keeper identity and clothing ONLY; reference 2 = teal challenger identity and clothing ONLY; reference 3 = courtyard architecture, materials and dusk palette ONLY, not its camera or exact staircase count. Exactly two adult men except when specified offscreen. One plain straight jian each, empty scabbards, no extra weapon. Same grey stone low dais, muted red flags, warm western rim light. No captions, text, panel layout or montage. Wide establishing view from southwest, camera 2.8m high, 28mm lens facing northeast across dais. White keeper full body central foreground screen right, teal challenger small screen left on the distant north stair landing, knees compressed, blade behind hip. Clear large separation. West broken columns frame left; bell tower distant northeast, tree southeast. Eight shallow steps, no giant staircase.\nCRITICAL SPATIAL CORRECTION: The white keeper stands at the CENTER of the circular stone dais, both boots ON its flat top, NOT outside the dais, NOT on its front edge. The circular dais extends several metres around and in FRONT of his feet. Compose smaller keeper, wider camera, elevated 2.8m looking modestly down so the top surface and his central position are unmistakable. Challenger remains on distant stair landing screen left. Only EIGHT shallow risers, total height 1.2m, not a grand long staircase.\nSpatial correction takes priority over the environment reference composition. Preserve illustrated cinematic quality. Draw a fresh composition from the specified side.",
+    "refs": [
+      "bible/characters/keeper/sheet.png",
+      "bible/characters/challenger/sheet.png",
+      "bible/sets/courtyard/concept.png"
+    ],
+    "at": 1789930232873,
+    "cost": {
+      "usd": 0.1299,
+      "basis": "reported"
+    }
+  },
+  "anchors": [
+    {
+      "id": "first",
+      "at": 0,
+      "file": "anchors/first.png",
+      "revision": 2,
+      "prompt": "EDIT IMAGE 1, the greybox, as the actual canvas. Paint its surfaces and replace its TWO pawns with adult swordsmen, without changing camera, cropping, body positions or sizes. Do NOT copy image 2 composition: it is a DIFFERENT viewpoint or time. ivory pawn = keeper: crown at (60.8% from left, 43.5% from top), feet at (60.6%, 63.7%). Preserve this EXACT full-body size and position; grey-white robe, black topknot, lowered straight sword. blue-grey pawn = challenger: crown at (37.6% from left, 30.5% from top), feet at (37.7%, 43.6%). Preserve this EXACT full-body size and position; dark teal robe, red sash, high ponytail, straight sword. The figures must occupy those pixel locations on the canvas, not a prettier arrangement. Keep the white and blue identities attached to the correct pawn positions, even if their screen order differs from image2. Keep the original dais ellipse, stair silhouette, bell-tower and wall positions from image1. Image2 supplies mood only; image3 the keeper identity; image4 challenger identity; image5 architecture materials only. Rich painterly 3D wuxia animated-film finish, dusk stone textures, not a photograph. Remove all pawn/diagram artifacts, no captions. Current moment: In stillness, the white-robed keeper stands grounded, gaze lifted; the teal challenger watches from the north landing, only sash and flags breathing. STRUCTURAL VISIBILITY: bell tower centre is around (66% from left, 27% from top), only its portion shown in image1 is visible. north temple and staircase centre is around (38% from left, 33% from top), only its portion shown in image1 is visible. big tree centre is around (134% from left, 7% from top), only its portion shown in image1 is visible.",
+      "refs": [
+        "shots/s01-arrival/anchors/first.greybox.png",
+        "shots/s01-arrival/board.png",
+        "bible/characters/keeper/sheet.png",
+        "bible/characters/challenger/sheet.png",
+        "bible/sets/courtyard/concept.png"
+      ],
+      "greybox": {
+        "file": "anchors/first.greybox.png",
+        "source": "greybox/greybox.mp4",
+        "revision": 4,
+        "frame": 1
+      },
+      "model": "openai/gpt-image-2.5-flare",
+      "cost": {
+        "usd": 0.1611,
+        "basis": "reported"
+      },
+      "costHistory": [
+        {
+          "usd": 0.0804,
+          "basis": "reported",
+          "revision": 1,
+          "at": 1789931692555
+        },
+        {
+          "usd": 0.0807,
+          "basis": "reported",
+          "revision": 2,
+          "at": 1789932393392
+        }
+      ],
+      "createdAt": 1789932393392
+    }
+  ],
+  "lines": [],
+  "reference": null,
+  "greybox": {
+    "revision": 4,
+    "final": {
+      "file": "greybox/greybox.mp4",
+      "revision": 4,
+      "scale": 1,
+      "probe": {
+        "codec": "h264",
+        "pixFmt": "yuv420p",
+        "width": 854,
+        "height": 480,
+        "fps": 24,
+        "frames": 144,
+        "seconds": 6,
+        "bytes": 344692
+      },
+      "renderedAt": "2026-09-20T19:10:41.253Z",
+      "renderSeconds": 5.2
+    },
+    "script": "greybox/scene.py",
+    "glb": "greybox/scene.glb",
+    "meta": "greybox/scene.meta.json"
+  },
+  "checks": [
+    {
+      "id": "frame-count",
+      "label": "The render is exactly the spec's frame count at the spec's fps",
+      "target": "greybox",
+      "status": "pass",
+      "range": null,
+      "note": "Final render revision 4: ffprobe and full decode report 144 frames, 6s, 24fps, 854x480 H.264 yuv420p.",
+      "revision": 4,
+      "at": "2026-09-20T19:13:56.221Z",
+      "history": []
+    },
+    {
+      "id": "blocking",
+      "label": "Every subject is where the plan says, facing what it says, at the second it says",
+      "target": "greybox",
+      "status": "pass",
+      "range": null,
+      "note": "Opened greybox/qa-keys.png at every beat edge; compared baked positions and yaw in qa-geometry.json with shared marks. Only rigid pawn root blocking checked; limbs, sword form and expressions are acted prompt work.",
+      "revision": 4,
+      "at": "2026-09-20T19:13:56.255Z",
+      "history": []
+    },
+    {
+      "id": "pace",
+      "label": "Subjects cover their distances at a speed a body can move at",
+      "target": "greybox",
+      "status": "pass",
+      "range": null,
+      "note": "All-frame baked root samples in qa-geometry.json: peak translational speed 0.000m/s; held or short controlled travel as designed. No gait animation claimed.",
+      "revision": 4,
+      "at": "2026-09-20T19:13:56.291Z",
+      "history": []
+    },
+    {
+      "id": "framing",
+      "label": "The subject, the prop and the reaction are in frame when the shot is about them",
+      "target": "greybox",
+      "status": "pass",
+      "range": null,
+      "note": "Opened final qa-keys.png and relevant action strips; intended subjects remain readable. All-frame projection and head-ray checks supplement the inspected pictures; framing correction judged on current final revision.",
+      "revision": 4,
+      "at": "2026-09-20T19:13:56.328Z",
+      "history": []
+    },
+    {
+      "id": "penetration",
+      "label": "Nothing passes through anything: figure/prop, figure/wall, prop/prop",
+      "target": "greybox",
+      "status": "pass",
+      "range": null,
+      "note": "Opened qa-keys.png and close-event strips where present. All-frame minimum root separation 8.465m exceeds combined pawn shoulder envelope 0.474m; foot clearance never below -0.001m. No limbs exist to penetrate.",
+      "revision": 4,
+      "at": "2026-09-20T19:13:56.363Z",
+      "history": []
+    },
+    {
+      "id": "trigger-order",
+      "label": "No effect starts before its cause",
+      "target": "greybox",
+      "status": "pass",
+      "range": null,
+      "note": "No spatial trigger in this shot. Opened qa-keys.png: held pawns and camera push only; loaded knees and gaze are acted-only.",
+      "revision": 4,
+      "at": "2026-09-20T19:13:56.400Z",
+      "history": []
+    },
+    {
+      "id": "camera-smooth",
+      "label": "The camera move has no jitter and no overshoot",
+      "target": "greybox",
+      "status": "pass",
+      "range": null,
+      "note": "Opened qa-tail.png (all last-half-second frames) and changing-camera/action strips where present. Baked camera is one continuous move, no switches; analytic path and lens samples checked, with only the designed contact impact where specified.",
+      "revision": 4,
+      "at": "2026-09-20T19:13:56.436Z",
+      "history": []
+    },
+    {
+      "id": "end-hold",
+      "label": "The last half second is settled unless the user asked for motion",
+      "target": "greybox",
+      "status": "pass",
+      "range": null,
+      "note": "Opened qa-tail.png, 5.50–5.958s: camera and pawn roots settled, no trailing drift. Full source tail checked even when trim uses less.",
+      "revision": 4,
+      "at": "2026-09-20T19:13:56.470Z",
+      "history": []
+    },
+    {
+      "id": "take-motion",
+      "label": "The person follows the greybox's path and timing and performs the prompted action",
+      "target": "take-01",
+      "status": "pass",
+      "range": null,
+      "note": "Opened beats.png at0/1/3.5/5.5/5.958s and overview at0.25s intervals: challenger remains on landing, bends into loaded stance during1–3.5s; keeper stays on dais with blade low; final loaded pose held. Facial microexpression is too small to certify in this wide frame.",
+      "revision": 1,
+      "at": "2026-09-20T20:12:36.074Z",
+      "history": []
+    },
+    {
+      "id": "take-body",
+      "label": "The body moves naturally: real steps, no gliding, no stiff or extra limbs in motion",
+      "target": "take-01",
+      "status": "pass",
+      "range": null,
+      "note": "Opened strip-0 at1–1.5s and strip-1 at5.5–6s: controlled knee/torso loading, no floating translation or extra limbs; soles stable in held tail. No walking is required in this shot.",
+      "revision": 1,
+      "at": "2026-09-20T20:12:36.113Z",
+      "history": []
+    },
+    {
+      "id": "take-camera",
+      "label": "The take keeps the greybox's camera move",
+      "target": "take-01",
+      "status": "pass",
+      "range": null,
+      "note": "Opened overview0–6s and all tail frames5.5–6s against greybox: one gentle forward move, ends as wide two-shot; no new angle or visible jump, subjects remain framed. Architecture rendered in the approved anchor look, not pixel-identical greybox detail.",
+      "revision": 1,
+      "at": "2026-09-20T20:12:36.159Z",
+      "history": []
+    },
+    {
+      "id": "take-order",
+      "label": "The take keeps cause before effect",
+      "target": "take-01",
+      "status": "pass",
+      "range": null,
+      "note": "Opened beats and overview: preparation precedes held readiness; no premature leap, clash, flash or recoil. Keeper maintains low blade.",
+      "revision": 1,
+      "at": "2026-09-20T20:12:36.199Z",
+      "history": []
+    },
+    {
+      "id": "take-integrity",
+      "label": "One person, whole limbs, no invented cut, no captions",
+      "target": "take-01",
+      "status": "pass",
+      "range": null,
+      "note": "Opened whole-shot quarter-second overview plus contiguous loading/tail strips: exactly two fighters, keeper ivory and challenger teal, stable costumes and whole silhouettes; no inserted cut or text. Native probe854x48024fps145frames6.0417s; edit uses144frames as planned.",
+      "revision": 1,
+      "at": "2026-09-20T20:12:36.240Z",
+      "history": []
+    }
+  ],
+  "stuck": [],
+  "prompt": {
+    "file": "prompts.md"
+  },
+  "takes": [
+    {
+      "id": "take-01",
+      "status": "done",
+      "model": "bytedance/seedance-2.5",
+      "endpoint": "reference",
+      "resolution": "480p",
+      "seconds": 6,
+      "refSeconds": 6,
+      "greyboxRevision": 4,
+      "requestId": "01a0c06e-1193-7a80-b5cd-01fb9232f4dc",
+      "file": "takes/take-01.mp4",
+      "promptFile": "takes/take-01.prompt.txt",
+      "probe": {
+        "codec": "h264",
+        "pixFmt": "yuv420p",
+        "width": 854,
+        "height": 480,
+        "fps": 24,
+        "frames": 145,
+        "seconds": 6.0417,
+        "bytes": 419774
+      },
+      "cost": {
+        "usd": 1.5876,
+        "basis": "(6 s out + 6 s ref) x $0.1323/s at 480p",
+        "estimate": true,
+        "note": "the price table covers the output and the video reference; this job also carries 6 image and 0 audio reference(s), which the table does not price — the recorded cost is the table's figure, not a bill"
+      },
+      "refs": [
+        {
+          "kind": "video",
+          "index": 1,
+          "file": "shots/s01-arrival/greybox/greybox.mp4",
+          "role": "greybox"
+        },
+        {
+          "kind": "image",
+          "index": 1,
+          "file": "shots/s01-arrival/anchors/first.png",
+          "role": "anchor:first"
+        },
+        {
+          "kind": "image",
+          "index": 2,
+          "file": "shots/s01-arrival/board.png",
+          "role": "board"
+        },
+        {
+          "kind": "image",
+          "index": 3,
+          "file": "bible/characters/keeper/sheet.png",
+          "role": "character:keeper"
+        },
+        {
+          "kind": "image",
+          "index": 4,
+          "file": "bible/characters/challenger/sheet.png",
+          "role": "character:challenger"
+        },
+        {
+          "kind": "image",
+          "index": 5,
+          "file": "bible/sets/courtyard/concept.png",
+          "role": "set:courtyard"
+        },
+        {
+          "kind": "image",
+          "index": 6,
+          "file": "shots/s01-arrival/anchors/board.png",
+          "role": "anchor:board"
+        }
+      ],
+      "audio": false,
+      "submittedAt": "2026-09-20T20:07:09.972Z",
+      "finishedAt": "2026-09-20T20:10:45.625Z",
+      "fix": null,
+      "allowFailing": null,
+      "selected": true,
+      "note": "",
+      "url": "https://v3b.fal.media/files/b/0aab395f/jsgznYOgWWvMwjof1gneS_video.mp4"
+    }
+  ]
+}

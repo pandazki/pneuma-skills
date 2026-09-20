@@ -1,0 +1,33 @@
+{
+  "fps": 24,
+  "frames": 96,
+  "seconds": 4.0,
+  "width": 854,
+  "height": 480,
+  "camera": "cam",
+  "subjects": [
+    "challenger",
+    "keeper"
+  ],
+  "accents": [],
+  "camera_lens": [],
+  "time_warp": [
+    {
+      "from": 0.0,
+      "to": 0.5,
+      "factor": 4.0
+    },
+    {
+      "from": 0.5,
+      "to": 0.75,
+      "factor": 0.5
+    },
+    {
+      "from": 0.75,
+      "to": 1.0,
+      "factor": 5.0
+    }
+  ],
+  "blender": "5.2.1",
+  "engine": "BLENDER_WORKBENCH"
+}

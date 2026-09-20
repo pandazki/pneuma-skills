@@ -34,7 +34,7 @@ export function contentBase(base: string, dir: string): string {
 /**
  * A shot-relative asset (`greybox/greybox.mp4`, `takes/take-01.mp4`).
  *
- * `shotDir` is workspace-relative (`first-light/shots/lab-walk`), so it is
+ * `shotDir` is workspace-relative (`one-inch-of-wind/shots/s03-orbit`), so it is
  * appended to `/content` directly. Returns null for a missing path so callers
  * render a named empty lane rather than requesting `/content/<dir>/null`.
  */
@@ -50,8 +50,8 @@ export function shotAssetUrl(
 }
 
 /**
- * A workspace-relative asset (`first-light/bible/characters/kai/sheet.png`,
- * `first-light/cut/reel.mp4`).
+ * A workspace-relative asset (`one-inch-of-wind/bible/characters/keeper/sheet.png`,
+ * `one-inch-of-wind/cut/final.mp4`).
  *
  * Same rule as `shotAssetUrl`, one level up: the bible, the sound and the cut
  * hang off the PROJECT, not off a shot. `rev` may be a number (a record's

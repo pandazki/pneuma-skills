@@ -1,0 +1,14 @@
+@Video1 = geometry, timing, camera only; replace grey placeholders.
+@Image1 = opening look; @Image2 = storyboard intent.
+@Image3 = ivory keeper; @Image4 = teal challenger; preserve identities.
+@Image5 = courtyard materials; @Image6 = keyframe look.
+@Image7 = previous used out-frame; continue its pose in this camera.
+Camera: Locked-off rear-side medium two-shot, one tiny contact impact settles immediately; end on the held neck gap, one continuous shot, no cut. Northwest camera fixed; preserve accepted opening blade occlusion, then reveal safe neck gap.
+Painted 3D wuxia, dusk stone courtyard. Blue-grey pawn=challenger; ivory pawn=keeper.
+Open at blade contact; accepted rear-side occlusion lasts 0–0.5s.
+Seconds 0–0.5: Contact at0s; slow-motion redirect, glint afterward, dust suspended; accepted blade occlusion.
+Seconds 0.5–0.75: Sudden speed release; thrust passes shoulder, coat whips, eyes surprised.
+Seconds 0.75–1: Slow-motion tip stops3cm from side neck; wide-eyed freeze, cloth travels, no injury.
+Seconds 1–2.5: Tip stationary; challenger slowly lowers sword to thigh, jaw releases, cloth settles.
+Seconds 2.5–4: Hold staggered stances and safe gap; keeper composed, challenger accepting, breathing and flags only.
+Whole limbs, weighted steps, no text. Sound: steel ring, cloth, stone steps; no music, no speech.

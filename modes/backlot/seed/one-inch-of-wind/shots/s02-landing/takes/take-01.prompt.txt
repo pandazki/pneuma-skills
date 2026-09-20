@@ -1,0 +1,14 @@
+@Video1 = geometry, timing, camera only; replace grey placeholders.
+@Image1 = opening look; @Image2 = storyboard intent.
+@Image3 = ivory keeper; @Image4 = teal challenger; preserve identities.
+@Image5 = courtyard materials; @Image6 = keyframe look.
+@Image7 = previous used out-frame; continue its pose in this camera.
+Painted 3D wuxia, dusk stone courtyard. Blue-grey pawn=challenger; ivory pawn=keeper.
+Open on the loaded challenger atop the stairs; keeper stays offscreen.
+Seconds 0–1.25: Explosively, challenger leaps south from loaded knees; eyes ahead, ponytail and sash streaming.
+Seconds 1.25–1.5: Soles contact dais at1.25s; knees compress, dust follows impact, jaw clenched.
+Seconds 1.5–2.5: Deliberately rise, lower sword, plant feet; coat settles, gaze steady.
+Seconds 2.5–5.5: Hold torso and expression; background compresses, dust subsides, sash settles.
+Seconds 5.5–6: Hold three metres apart, sword down; controlled breathing, no step.
+Camera: One dolly zoom after landing holds torso scale and ends still, background compressed; one continuous shot, no cut.
+Whole limbs, weighted steps, stable costumes; no text. No music. No speech.

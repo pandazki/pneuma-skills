@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { listBuiltinModes } from "../../../core/mode-loader.js";
@@ -20,6 +20,16 @@ import backlotManifest from "../manifest.js";
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..");
 const read = (rel: string) => readFileSync(join(REPO_ROOT, rel), "utf-8");
+
+/** Total bytes of every file under `dir` — what npm packs, not disk blocks. */
+function dirBytes(dir: string): number {
+  let total = 0;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    total += entry.isDirectory() ? dirBytes(path) : statSync(path).size;
+  }
+  return total;
+}
 
 const MODE_NAME = "backlot";
 
@@ -316,15 +326,48 @@ describe("the viewer surface", () => {
 describe("the seed and the evolution directive", () => {
   test("the declared seed points at a directory that exists", () => {
     const seedFiles = backlotManifest.init!.seedFiles!;
-    expect(seedFiles).toEqual({ "modes/backlot/seed/first-light/": "first-light/" });
-    expect(existsSync(join(REPO_ROOT, "modes/backlot/seed/first-light"))).toBe(true);
+    expect(seedFiles).toEqual({ "modes/backlot/seed/one-inch-of-wind/": "one-inch-of-wind/" });
+    expect(existsSync(join(REPO_ROOT, "modes/backlot/seed/one-inch-of-wind"))).toBe(true);
   });
 
-  test("the seed card names the same key", () => {
+  test("the seed card names the same key and ships its thumbnail", () => {
     const seed = backlotManifest.init!.seeds![0];
-    expect(seed.sourceKey).toBe("modes/backlot/seed/first-light/");
-    expect(seed.id).toBe("first-light");
+    expect(seed.sourceKey).toBe("modes/backlot/seed/one-inch-of-wind/");
+    expect(seed.id).toBe("one-inch-of-wind");
     expect((seed.displayName as Record<string, string>)["zh-CN"]).toBeTruthy();
+    // The gallery serves `seed-gallery/<thumbnail>` straight off disk, so a
+    // renamed seed with a stale thumbnail is a 404 on the card and nothing
+    // else reports it.
+    expect(
+      existsSync(join(REPO_ROOT, "modes/backlot/seed-gallery", seed.thumbnail!)),
+    ).toBe(true);
+  });
+
+  test("the seed is a film that reached the cut, and it fits in the package", () => {
+    const root = join(REPO_ROOT, "modes/backlot/seed/one-inch-of-wind");
+    // Every stage of the flow has to be openable from the seed, or the mode's
+    // own example teaches half a workflow.
+    for (const path of [
+      "backlot.json",
+      "idea.md",
+      "screenplay.md",
+      "bible/characters/keeper/character.json",
+      "bible/sets/courtyard/set.json",
+      "shots/s03-orbit/shot.json",
+      "shots/s03-orbit/greybox/greybox.mp4",
+      "shots/s03-orbit/greybox/scene.glb",
+      "shots/s03-orbit/takes/take-01.mp4",
+      "sound/sound.json",
+      "sound/music.mp3",
+      "cut/edl.json",
+      "cut/final.mp4",
+    ]) {
+      expect(existsSync(join(root, path))).toBe(true);
+    }
+    // A seed is shipped in the npm package, which has hit the registry's
+    // payload limit before; the film was slimmed to 17 MB to fit and this is
+    // the line that says so out loud (see the `seedFiles` comment).
+    expect(dirBytes(root)).toBeLessThan(18 * 1024 * 1024);
   });
 
   test("a content check pattern exists so the gallery knows an empty workspace", () => {

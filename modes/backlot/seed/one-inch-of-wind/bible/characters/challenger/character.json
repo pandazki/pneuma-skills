@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "id": "challenger",
+  "name": "挑战者",
+  "description": "约二十五岁的成年男性，身高1.78米，精瘦敏捷；从台阶跃下发起挑战，不安排对白。",
+  "look": "Character reference sheet on flat neutral grey background. Exactly three full-body views of the SAME one person side by side: three-quarter, front, right profile. Identical facial features, costume and proportions across views. Relaxed neutral standing pose, entire head and boots visible with generous margins. Soft even studio lighting, no environment, no text, no labels, no logos, no borders. Premium Chinese wuxia animated feature production design, elegant painterly 3D animation, restrained graphic shading, finely drawn fabric folds, anatomically credible adult proportions, not a photograph, no plastic game-character gloss. One Chinese man aged 25, 178cm tall, lean athletic build, youthful narrow face, sharp eyebrows, clean shaven, black hair in a high ponytail. Ink-blue teal fitted cross-collar outer robe ending at knees with split side panels, narrow sleeves, muted dark vermilion waist sash with two 45cm trailing ends, black trousers, wrapped shins and cloth boots. Plain Chinese straight jian with 78cm steel blade and 20cm dark grip, small simple straight guard, held lowered in right hand; empty black scabbard at left hip. No armor, jewelry, cape or ornate embroidery. Taut alert presence.",
+  "sheet": {
+    "file": "sheet.png",
+    "revision": 1,
+    "prompt": "Character reference sheet on flat neutral grey background. Exactly three full-body views of the SAME one person side by side: three-quarter, front, right profile. Identical facial features, costume and proportions across views. Relaxed neutral standing pose, entire head and boots visible with generous margins. Soft even studio lighting, no environment, no text, no labels, no logos, no borders. Premium Chinese wuxia animated feature production design, elegant painterly 3D animation, restrained graphic shading, finely drawn fabric folds, anatomically credible adult proportions, not a photograph, no plastic game-character gloss. One Chinese man aged 25, 178cm tall, lean athletic build, youthful narrow face, sharp eyebrows, clean shaven, black hair in a high ponytail. Ink-blue teal fitted cross-collar outer robe ending at knees with split side panels, narrow sleeves, muted dark vermilion waist sash with two 45cm trailing ends, black trousers, wrapped shins and cloth boots. Plain Chinese straight jian with 78cm steel blade and 20cm dark grip, small simple straight guard, held lowered in right hand; empty black scabbard at left hip. No armor, jewelry, cape or ornate embroidery. Taut alert presence.",
+    "width": 1024,
+    "height": 576,
+    "at": 1789921589326,
+    "cost": {
+      "usd": 0.0336,
+      "basis": "reported"
+    }
+  },
+  "voice": null
+}

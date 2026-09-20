@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "id": "keeper",
+  "name": "守剑人",
+  "description": "约四十岁的成年男性，身高1.80米，清瘦沉稳；守住石台中央。唯一旁白声音。",
+  "look": "Character reference sheet on flat neutral grey background. Exactly three full-body views of the SAME one person side by side: three-quarter, front, right profile. Identical facial features, costume and proportions across views. Relaxed neutral standing pose, entire head and boots visible with generous margins. Soft even studio lighting, no environment, no text, no labels, no logos, no borders. Premium Chinese wuxia animated feature production design, elegant painterly 3D animation, restrained graphic shading, finely drawn fabric folds, anatomically credible adult proportions, not a photograph, no plastic game-character gloss. One Chinese man aged 40, 180cm tall, lean, long angular face, straight eyebrows, clean shaven, black hair in a compact high topknot with subtly grey temples. Grey-white cross-collar long robe to mid calf, limestone grey inner collar, charcoal narrow belt, dark grey trousers and cloth boots. Sleeves moderately fitted to keep sword action readable. Plain Chinese straight jian with 78cm steel blade and 20cm dark grip, small simple straight guard, held lowered in right hand; empty black scabbard at left hip. No armor, jewelry, cape or ornate embroidery. Quiet grounded presence.",
+  "sheet": {
+    "file": "sheet.png",
+    "revision": 1,
+    "prompt": "Character reference sheet on flat neutral grey background. Exactly three full-body views of the SAME one person side by side: three-quarter, front, right profile. Identical facial features, costume and proportions across views. Relaxed neutral standing pose, entire head and boots visible with generous margins. Soft even studio lighting, no environment, no text, no labels, no logos, no borders. Premium Chinese wuxia animated feature production design, elegant painterly 3D animation, restrained graphic shading, finely drawn fabric folds, anatomically credible adult proportions, not a photograph, no plastic game-character gloss. One Chinese man aged 40, 180cm tall, lean, long angular face, straight eyebrows, clean shaven, black hair in a compact high topknot with subtly grey temples. Grey-white cross-collar long robe to mid calf, limestone grey inner collar, charcoal narrow belt, dark grey trousers and cloth boots. Sleeves moderately fitted to keep sword action readable. Plain Chinese straight jian with 78cm steel blade and 20cm dark grip, small simple straight guard, held lowered in right hand; empty black scabbard at left hip. No armor, jewelry, cape or ornate embroidery. Quiet grounded presence.",
+    "width": 1024,
+    "height": 576,
+    "at": 1789921589279,
+    "cost": {
+      "usd": 0.0336,
+      "basis": "reported"
+    }
+  },
+  "voice": {
+    "model": "seed-speech",
+    "voiceId": "felix_zh",
+    "style": "成熟男性中低音，沉静克制，中文武侠动画的内心旁白；胜负之后略停顿，整句约三秒，不吼叫，不刻意沙哑。",
+    "language": "zh",
+    "sample": {
+      "file": "voice.mp3",
+      "text": "胜负，只在一寸之间。",
+      "seconds": 2.832,
+      "at": 1789921548704,
+      "cost": {
+        "usd": 0.0003,
+        "basis": "estimate"
+      }
+    }
+  }
+}

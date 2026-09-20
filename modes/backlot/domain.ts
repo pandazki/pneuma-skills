@@ -385,7 +385,7 @@ export interface Shot {
   lines: Line[];
   /** The hand-off this shot declares, or null when the cut is a clean cut. */
   continuity: ShotContinuity | null;
-  /** Workspace-relative shot directory (`first-light/shots/lab-walk`). */
+  /** Workspace-relative shot directory (`one-inch-of-wind/shots/s03-orbit`). */
   dir: string;
   /** Loader-level caveats (missing fields defaulted, unknown version). */
   warnings: string[];
@@ -416,7 +416,7 @@ export interface Character {
   look: string;
   sheet: MediaRecord | null;
   voice: VoiceRecord | null;
-  /** Workspace-relative directory (`first-light/bible/characters/kai`). */
+  /** Workspace-relative directory (`one-inch-of-wind/bible/characters/keeper`). */
   dir: string;
 }
 
@@ -504,7 +504,7 @@ export interface StageState {
 
 /** One project = one content set = one short film. */
 export interface Project {
-  /** Content-set prefix (`"first-light"`, `""` for a root-level project). */
+  /** Content-set prefix (`"one-inch-of-wind"`, `""` for a root-level project). */
   dir: string;
   title: string;
   logline: string;
@@ -1339,9 +1339,10 @@ interface ManifestFacts {
 const DEFAULT_SPEC: ProjectDefaults = { seconds: 8, fps: 24, width: 1280, height: 720 };
 
 /**
- * Read `backlot.json` v1. Everything except the title is optional, because
- * the `first-light` seed predates the project fields and a film that has only
- * reached its first shot has no scenes, no bible and no approvals either.
+ * Read `backlot.json` v1. Everything except the title is optional: a project
+ * written before the film fields existed carries none of them, and a film
+ * that has only reached its first shot has no scenes, no bible and no
+ * approvals either.
  *
  * Only what the loader had to GUESS is warned about: an absent field is the
  * schema working as designed, a malformed one is not.
