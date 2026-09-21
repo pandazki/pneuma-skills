@@ -231,3 +231,16 @@ the `lineup` joint review at the previz gate; `slowmo`/`impact` in the kit;
   the model cannot do alone matters (establishing orbit, crane, dolly zoom,
   the geometric "one inch"); fight and charm beats are shot free or hybrid.
   Conditioning is decided PER SHOT in the shot plan.
+- Trial 4 《雨停之前》 (2026-09-22, fully autonomous, gates open): after the
+  wuxia v4 takes were still judged weak, the user asked for a different
+  theme and a hands-off run. Urban youth: a summer downpour, a convenience-
+  store awning, a girl on a bike and a delivery boy in a yellow raincoat, a
+  shared raincoat dash across the crosswalk, the rain stopping at the bus
+  stop, one voice-over line. The agent ran idea → cut --final in about 90
+  minutes with no approvals: bible as design briefs + a style key frame,
+  seven shots with per-shot conditioning (4 free, 2 greybox, 1 hybrid),
+  four re-shoots each with a named reason (an orbit that drifted, a raincoat
+  that never came off, a phone insert, a crane that put the shop on the
+  wrong side of the street), music and VO mixed, 30 s at 720p, $25.29. The
+  flow, the gates-open path, the free/hybrid split and the re-shoot
+  discipline all held without a human in the loop.
