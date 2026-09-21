@@ -198,3 +198,17 @@ the `lineup` joint review at the previz gate; `slowmo`/`impact` in the kit;
   built; pictures now derive from the greybox as key frames (boards stage =
   shot plan, free). Spent ≈ $14 on the abandoned first pass; the redesigned
   run was paused before any take.
+- The simplification (2026-09-21 evening): re-reading the upstream project
+  settled it — its flow is shot plan → greybox → prompt → video model, with
+  the greybox as the ONLY picture of layout and behaviour and key frames
+  only as "a weak constraint for image-only models". Every image reference
+  this mode had added beside the greybox (storyboards, GPT-Image anchors,
+  set concept) carried its own composition and fought the greybox; none
+  could be made to obey a grey frame. The user's call, and the new default:
+  a take receives the greybox, the character sheets, one project style key
+  frame (and the hand-off frame when continuity is declared); the set and
+  the body are words. First test (s02, low-angle landing into water, 720p,
+  four references, Chinese v3 prompt from the beat details) was the first
+  take judged right across three rounds: one real jump and landing, splash
+  after contact, hair and ribbon in slow motion, manhua look, locked camera,
+  straight sword in the right hand.

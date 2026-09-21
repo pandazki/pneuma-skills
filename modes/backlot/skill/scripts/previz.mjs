@@ -2078,7 +2078,13 @@ function cmdAnchor(dir, opts, now) {
     const record = readBibleRecord(projectRoot, "sets", shot.set);
     const concept = record?.concept?.file ? join(projectRoot, "bible", "sets", shot.set, record.concept.file) : null;
     if (concept && existsSync(concept)) references.push(concept);
-    else note(`WARN: set "${shot.set}" has no concept frame in the bible — the key frame invents the place`);
+    // A set concept is optional — a place may be carried by the words in its
+    // bible record, which `anchorPrompt` puts in the prompt's "Look:" line.
+    else if (String(record?.look || record?.description || "").trim()) {
+      note(`[previz] set "${shot.set}" has no concept frame — the place comes from the words in its bible record`);
+    } else {
+      note(`WARN: set "${shot.set}" has neither a concept frame nor a written look — the key frame invents the place`);
+    }
   }
   const style = styleKeyframe(projectRoot);
   if (style && !style.path) {
@@ -2495,29 +2501,41 @@ function anchorById(shot, id) {
  * assignment sentences from the same list, so the pack and the job can never
  * name different pictures.
  *
- *   @Video1   the final greybox — layout, positions, timing, camera
- *   @Image1   the `first` key frame (`anchors/first.png`) — THIS shot's
- *             storyboard, rendered from the greybox, so composition and look
- *             agree with @Video1 by construction,
- *   @Image…   the shot's other key frames,
- *   @Image…   this shot's character sheets and its set concept, in bible
- *             order, so two shots with the same cast address the same
- *             character at the same index,
+ *   @Video1   the final greybox — layout, positions, timing, camera,
+ *   @Image…   this shot's character sheets, in bible order, so two shots
+ *             with the same cast address the same character at the same
+ *             index,
+ *   @Image…   the film's ONE style key frame (`backlot.mjs style`),
  *   @Image…   the hand-off frame LAST, when this shot continues another,
  *   @Audio1…  the voice sample of each character with a spoken line.
  *
- * A LEGACY `board.png` is attached only when the shot has no key frame at
- * all, and then it stands in the anchor's place. Boards are no longer drawn
- * (round 3, 2026-09-21: eight frames drawn from text before the greybox
- * contradicted each other and the greybox could not satisfy them), and a
- * board beside an anchor would be a second, older composition for the same
- * second — the take would average the two.
+ * FEWER PICTURES, AND ONLY ONE OF THEM IS A COMPOSITION. Three acceptance
+ * rounds (2026-09-21) added a picture beside the greybox each time — a
+ * storyboard drawing, then a key frame rendered from the greybox, then a set
+ * concept — and every one of them brought its own framing and fought the
+ * greybox for it. The upstream practice this mode reproduces never had them:
+ * the greybox is the only picture of layout, behaviour and camera; the words
+ * carry the look; a key frame is a weak fallback for a model that takes no
+ * video reference at all ("仅支持图片时导出关键帧并明确这是弱约束",
+ * `upstream/.../references/video-generation.md`). So a sheet says a face, the
+ * style frame says an idiom, the hand-off says a pose — and nothing else has
+ * a composition of its own.
+ *
+ * The key frames, a legacy board and the set concept are therefore OPT-IN
+ * (`generate --with-anchors` / `--with-board` / `--with-concept`). The set's
+ * appearance travels as TEXT, out of its bible record and into the pack's
+ * global block.
  *
  * A reference the bible does not have yet is reported, not invented. `plan`
  * carries the display names the skeleton needs; `refs` is the record shape
  * that goes onto the take — `{ kind, index, file, role }`.
  */
-function planReferences(dir, shot, projectRoot, { greyboxFile, handoff = null } = {}) {
+function planReferences(
+  dir,
+  shot,
+  projectRoot,
+  { greyboxFile, handoff = null, withAnchors = false, withBoard = false, withConcept = false } = {},
+) {
   const plan = [];
   const videos = [];
   const images = [];
@@ -2532,33 +2550,45 @@ function planReferences(dir, shot, projectRoot, { greyboxFile, handoff = null } 
 
   attach("video", greyboxFile, "greybox");
 
-  const anchors = (shot.anchors ?? []).filter((entry) => entry && entry.file);
-  const leadAnchor = anchorById(shot, "first");
+  // OPT-IN, and never by default: a key frame has a composition of its own,
+  // and a second composition of the same second is what a model averages.
   let attachedAnchors = 0;
-  const attachAnchor = (record) => {
-    const file = join(dir, record.file);
-    if (!existsSync(file)) {
-      warnings.push(`key frame "${record.id}" is recorded as ${record.file} but the file is gone — the take goes without it`);
-      return;
+  if (withAnchors) {
+    const anchors = (shot.anchors ?? []).filter((entry) => entry && entry.file);
+    const leadAnchor = anchorById(shot, "first");
+    const attachAnchor = (record) => {
+      const file = join(dir, record.file);
+      if (!existsSync(file)) {
+        warnings.push(`key frame "${record.id}" is recorded as ${record.file} but the file is gone — the take goes without it`);
+        return;
+      }
+      attachedAnchors += 1;
+      attach("image", file, `anchor:${record.id}`, record.id);
+    };
+    if (leadAnchor && leadAnchor.file) attachAnchor(leadAnchor);
+    for (const record of anchors) {
+      if (record.id === "first") continue;
+      attachAnchor(record);
     }
-    attachedAnchors += 1;
-    attach("image", file, `anchor:${record.id}`, record.id);
-  };
-  if (leadAnchor && leadAnchor.file) attachAnchor(leadAnchor);
-  for (const record of anchors) {
-    if (record.id === "first") continue;
-    attachAnchor(record);
+    if (attachedAnchors === 0) {
+      warnings.push("--with-anchors was asked for and this shot has no key frame on disk — the take goes with the greybox alone");
+    }
   }
 
-  // Compatibility only. A film shot before the key frames existed has a
-  // board and no anchor; it keeps the picture it has. A film with a key
-  // frame does not also send the board — two compositions of the same
-  // second is what the model averages.
-  const boardFile = shot.board?.file ? join(dir, shot.board.file) : null;
-  if (attachedAnchors === 0 && boardFile && existsSync(boardFile)) {
-    attach("image", boardFile, "board");
-  } else if (attachedAnchors === 0 && shot.board?.file) {
-    warnings.push(`the board frame ${shot.board.file} is recorded but missing from disk — the take goes without it`);
+  // Compatibility only, and opt-in too: a film shot before the key frames
+  // existed may still have a drawing. Boards are not drawn any more.
+  if (withBoard) {
+    const boardFile = shot.board?.file ? join(dir, shot.board.file) : null;
+    if (boardFile && existsSync(boardFile)) {
+      attach("image", boardFile, "board");
+      if (attachedAnchors > 0) {
+        warnings.push("this take carries a legacy board AND a key frame — two compositions of the same second, which the model averages; send one of them");
+      }
+    } else if (shot.board?.file) {
+      warnings.push(`the board frame ${shot.board.file} is recorded but missing from disk — the take goes without it`);
+    } else {
+      warnings.push("--with-board was asked for and this shot has no board — boards are not drawn any more (the greybox is the composition)");
+    }
   }
 
   let manifest = null;
@@ -2579,14 +2609,29 @@ function planReferences(dir, shot, projectRoot, { greyboxFile, handoff = null } 
     }
     attach("image", file, `character:${id}`, record?.name || id);
   }
-  if (shot.set) {
+  // The set travels as WORDS by default (its bible `look`, carried into the
+  // pack's global block): a concept frame is a wide establishing picture with
+  // a camera of its own, and the camera is the greybox's.
+  if (withConcept && shot.set) {
     const record = readBibleRecord(projectRoot, "sets", shot.set);
     const file = record?.concept?.file ? join(projectRoot, "bible", "sets", shot.set, record.concept.file) : null;
     if (file && existsSync(file)) {
       attach("image", file, `set:${shot.set}`, record?.name || shot.set);
     } else {
-      warnings.push(`set "${shot.set}" has no concept frame in the bible — the take goes without it`);
+      warnings.push(`--with-concept was asked for and set "${shot.set}" has no concept frame in the bible — the take goes without it`);
     }
+  }
+
+  // The film's ONE style key frame: how this film is rendered, and nothing
+  // about what is in the frame. It is what carries the look now that no
+  // other picture is allowed a composition.
+  const style = projectRoot ? styleKeyframe(projectRoot) : null;
+  if (style && style.path) {
+    attach("image", style.path, "style");
+  } else if (style) {
+    warnings.push(`backlot.json names ${style.rel} as the film's style reference but the file is gone — the take goes without the one picture that says how this film is rendered`);
+  } else {
+    warnings.push("this film has no style key frame — the take is told its look in words only. Register one with 'backlot.mjs style <project> --keyframe <png>'");
   }
 
   // The frame this shot opens on, LAST: it is the most specific instruction
@@ -2970,6 +3015,7 @@ const PACK_TEXT = {
     todoEntry: "<TODO: 第一帧上有什么——每个人的位置、朝向、手里的东西、彼此的距离>",
     todoExit: "<TODO: 最后半秒停在什么状态——下一镜要从这里接>",
     todoStyle: "<TODO: 风格一句话，例如「写实东方电影感，变形宽银幕，细腻胶片颗粒，浅景深」>",
+    todoSet: "<TODO: 这个地方长什么样——材质、颜色、尺度与陈设，写在 bible 的 set 记录里>",
     todoStyleShort: "<TODO: 风格>",
     todoSubject: "<TODO: 这一镜一句话讲什么>",
     todoLight: "<TODO: 光源方向、时间与色温；白模那层平光不算数>",
@@ -3000,6 +3046,7 @@ const PACK_TEXT = {
     todoEntry: "<TODO: what is on screen in frame 1 — each body's position, facing, what is in their hands, the distance between them>",
     todoExit: "<TODO: what the last half second settles on — the next shot is cut from here>",
     todoStyle: "<TODO: the look in one phrase, e.g. \"realistic cinematic, anamorphic widescreen, fine film grain, shallow depth of field\">",
+    todoSet: "<TODO: what this place looks like — materials, colours, scale and dressing; write it into the set's bible record>",
     todoStyleShort: "<TODO: the look>",
     todoSubject: "<TODO: what this one shot is about, in one line>",
     todoLight: "<TODO: the light — direction, time of day, colour temperature; the greybox's flat studio light does not count>",
@@ -3081,8 +3128,16 @@ function assignmentFor(ref, shot, language = "en", context = {}) {
   if (role.startsWith("set:")) {
     const name = ref.name ?? role.slice("set:".length);
     return zh
-      ? `${lead}场景结构以白模空间为准，只参考这张里${name}的材质、色调与光线方向，不用图中人物。`
-      : `${lead}the set's structure comes from the greybox space; use only this frame's materials, palette and light direction for the ${name} — not the people in it.`;
+      ? `${lead}场景结构以白模空间为准，只参考这张里${name}的材质、色调与光线方向，不用图中人物，也不用它的构图。`
+      : `${lead}the set's structure comes from the greybox space; use only this frame's materials, palette and light direction for the ${name} — not the people in it, and not its composition.`;
+  }
+  if (role === "style") {
+    // The film's one style picture. It says HOW the film is drawn and
+    // nothing about what is in the frame — the moment it is allowed a
+    // composition it is competing with @Video1.
+    return zh
+      ? `${lead}全片画风参考，只参考画风、线条与上色方式，不参考构图与人物。`
+      : `${lead}the film's style reference: use only the rendering idiom, the line and the colouring — not its composition and not the people in it.`;
   }
   if (role === "handoff") {
     const from = ref.name ?? shot.continuity?.from ?? "?";
@@ -3118,13 +3173,13 @@ function assignmentFor(ref, shot, language = "en", context = {}) {
  * whole.** There is no word budget: a cap copied from text-to-video guides is
  * what made the first acceptance run delete the design.
  */
-function buildSkeleton(dir, shot, projectRoot) {
+function buildSkeleton(dir, shot, projectRoot, attachments = {}) {
   const greybox = shot.greybox ?? {};
   const greyboxRel = greybox.final?.file ?? greybox.preview?.file ?? "greybox/greybox.mp4";
   const handoff = shot.continuity?.from
     ? { from: shot.continuity.from, file: join(dir, "takes", "handoff-in.png") }
     : null;
-  const planned = planReferences(dir, shot, projectRoot, { greyboxFile: join(dir, greyboxRel), handoff });
+  const planned = planReferences(dir, shot, projectRoot, { greyboxFile: join(dir, greyboxRel), handoff, ...attachments });
   const warnings = [...planned.warnings];
   if (!greybox.final) warnings.push("there is no final greybox yet — @Video1 is the file 'generate' will attach once there is one");
 
@@ -3183,6 +3238,27 @@ function buildSkeleton(dir, shot, projectRoot) {
     : L.todoEnd;
   body.push(L.global);
   body.push(zh ? `风格：${L.todoStyle}。` : `Style: ${L.todoStyle}.`);
+  // THE SET IS WORDS. Its structure is the greybox's; what it is made of,
+  // what colour it is and what the light does to it come out of the bible
+  // record as text, because a concept frame is a wide establishing picture
+  // with a camera of its own and the camera is @Video1's.
+  const setRecord = shot.set && projectRoot ? readBibleRecord(projectRoot, "sets", shot.set) : null;
+  if (shot.set) {
+    const setName = setRecord?.name || shot.set;
+    const written = String(setRecord?.look || setRecord?.description || "").trim();
+    const described = written || L.todoSet;
+    body.push(
+      zh
+        ? `场景：${setName}——${described.replace(/[。.]+$/, "")}。空间结构以 @Video1 为准。`
+        : `Set: ${setName} — ${described.replace(/[.]+$/, "")}. The spatial structure is @Video1's.`,
+    );
+    if (!written) {
+      warnings.push(
+        `set "${shot.set}" has no written look in the bible — the set now reaches the model as TEXT only, so write it ` +
+          `('backlot.mjs set set <project> ${shot.set} --look "…"') instead of leaving the placeholder in the pack`,
+      );
+    }
+  }
   body.push(zh ? `光线：${L.todoLight}。` : `Light: ${L.todoLight}.`);
   body.push(
     zh
@@ -3349,10 +3425,21 @@ function buildSkeleton(dir, shot, projectRoot) {
   };
 }
 
+/** The opt-in pictures, read the same way by `prompt-skeleton` and
+ *  `generate` — the pack has to be written for the job that will run. */
+function attachmentOpts(opts) {
+  return {
+    withAnchors: Boolean(opts["with-anchors"]),
+    withBoard: Boolean(opts["with-board"]),
+    withConcept: Boolean(opts["with-concept"]),
+  };
+}
+
 function cmdPromptSkeleton(dir, opts) {
   const shot = loadShot(dir);
   const projectRoot = findProjectRoot(dir);
-  const skeleton = buildSkeleton(dir, shot, projectRoot);
+  const attachments = attachmentOpts(opts);
+  const skeleton = buildSkeleton(dir, shot, projectRoot, attachments);
   for (const warning of skeleton.warnings) note(`WARN: ${warning}`);
 
   let wrote = null;
@@ -3370,6 +3457,10 @@ function cmdPromptSkeleton(dir, opts) {
     dir,
     file: wrote,
     language: skeleton.language,
+    // What this pack was written FOR: a pack scaffolded without the opt-in
+    // pictures does not assign them, and `generate` would refuse the job
+    // that carries them. Said out loud so the two commands stay paired.
+    attachments,
     refs: skeleton.refs,
     segments: skeleton.segments,
     maxSegments: skeleton.maxSegments,
@@ -3534,9 +3625,13 @@ async function cmdGenerate(dir, opts, now) {
   const handoff = resolveHandoff(dir, shot, projectRoot, { skip: Boolean(opts["no-handoff"]) });
 
   // Everything the job carries besides the prompt, gathered from the film.
+  // The default is the greybox, the sheets, the style frame and the hand-off
+  // — every other picture is an explicit `--with-…`.
+  const attachments = attachmentOpts(opts);
   const references = planReferences(dir, shot, projectRoot, {
     greyboxFile,
     handoff: handoff && !handoff.skipped ? handoff : null,
+    ...attachments,
   });
   for (const warning of references.warnings) note(`WARN: ${warning}`);
   const attached = { video: references.videos.length, image: references.images.length, audio: references.audios.length };
@@ -3615,7 +3710,7 @@ async function cmdGenerate(dir, opts, now) {
       model: "bytedance/seedance-2.5", endpoint: "reference", resolution,
       seconds: wantedSeconds, refSeconds, greybox: greyboxRel, greyboxRevision: shot.greybox.revision,
       cost: price, prices: PRICES, promptChars: prompt.prompt.length,
-      refs: references.refs, audio: wantAudio, priceNote,
+      refs: references.refs, attachments, audio: wantAudio, priceNote,
       handoff: handoffRecord(handoff),
       timeline: timeline.map((row) => ({ from: row.from, to: row.to })),
       warnings: [
@@ -3924,27 +4019,30 @@ stderr. --json is accepted everywhere and is already the default.
 
   anchor <shot-dir> [--at 0] [--id first] [--prompt "…" | --prompt-file <f>]
          [--aspect-ratio 16:9] [--quality high] [--cost-usd --cost-basis]
-      The KEY FRAME — this shot's storyboard, and it comes FROM the greybox.
-      Cuts the FINAL greybox's frame at --at and hands it to
-      generate_image.mjs as the composition, the camera and the staging,
-      together with this shot's character sheets and its set concept for
-      appearance and the film's style reference ('backlot.mjs style') for the
-      idiom. Records anchors/<id>.png with its prompt, its references and
-      what it cost. 'first' is the opening frame and becomes the take's
-      @Image1; a second id ('key', 'last') is another designed moment, and a
-      'last' one gives the next shot a look-continuous picture to continue
-      from. Re-running an id bumps its revision. Gated: the bible must be
-      approved, and there must be a final greybox to render from.
-      The price comes from the vendor's own usage.cost when it reports one.
+      OPTIONAL — A PICTURE FOR THE CREATOR, not a reference the take receives
+      unless 'generate --with-anchors'. Cuts the FINAL greybox's frame at --at
+      and hands it to generate_image.mjs as the composition, the camera and
+      the staging, together with this shot's character sheets, its set concept
+      when it has one, and the film's style reference ('backlot.mjs style')
+      for the idiom. Use it to SEE what a shot will look like before buying
+      the video; a key frame sent to the take is a second composition beside
+      @Video1, which is the thing three acceptance rounds could not make the
+      greybox win. Records anchors/<id>.png with its prompt, its references
+      and what it cost; re-running an id bumps its revision. Paid. Gated: the
+      bible must be approved, and there must be a final greybox to render
+      from. The price comes from the vendor's own usage.cost when it reports
+      one.
 
   lineup <shot-dir> [--at s] [--id first] [--out <path.png>]
-      The key frames beside the greybox frames they were rendered from, side
-      by side, with the beats written underneath: the joint review before any
-      video is bought. Every key frame gets its own greybox frame at its own
-      second unless --at names one moment for all of them; a legacy board is
-      shown last. Whatever is missing is left out and named.
+      OPTIONAL, and free: the key frames beside the greybox frames they were
+      rendered from, with the beats written underneath — a picture for the
+      creator, not a reference the take receives. Every key frame gets its own
+      greybox frame at its own second unless --at names one moment for all of
+      them; a legacy board is shown last. Whatever is missing is left out and
+      named.
 
   prompt-skeleton <shot-dir> [--write]
+                  [--with-anchors] [--with-board] [--with-concept]
       The prompt pack v3, built from this shot, in the block order
       'references/prompting.md' documents:
         the replacement sentence (the greybox's blocks become the subjects,
@@ -3964,6 +4062,8 @@ stderr. --json is accepted everywhere and is already the default.
       text in the JSON's 'skeleton' field; --write puts it in
       prompts.skeleton.md. It NEVER writes prompts.md — copy the filled
       block in yourself.
+      The --with-… flags mean the same here as on 'generate', and they have
+      to MATCH it: the pack assigns exactly the references the job attaches.
 
   sheet <shot-dir> [--lane greybox|preview|reference|take-01] [--at 0.5,3.8,…]
         [--strip from,to] [--count 6] [--out <path.png>]
@@ -4000,15 +4100,20 @@ stderr. --json is accepted everywhere and is already the default.
            [--fix "<what this take changes>"] [--user-approved]
            [--allow-failing "<why a failing greybox is acceptable>"]
            [--estimate] [--audio] [--no-handoff] [--timeout 1800]
+           [--with-anchors] [--with-board] [--with-concept]
       Seedance 2.5 reference-to-video, conditioned on everything this shot
       has, in the order the prompt addresses it by:
-        @Video1  the FINAL greybox
-        @Image1  the 'first' key frame, when the shot has one
-        @Image…  this shot's other key frames, then its character sheets and
-                 its set concept in bible order (a LEGACY board.png takes
-                 @Image1 only on a shot that has no key frame at all)
+        @Video1  the FINAL greybox — the ONLY picture of layout, behaviour
+                 and camera
+        @Image…  this shot's character sheets, in bible order
+        @Image…  the film's style key frame ('backlot.mjs style --keyframe')
         @Image…  takes/handoff-in.png LAST, when this shot continues another
         @Audio1… the voice sample of each character with a spoken line
+      OPT-IN, and off by default because each brings a composition of its own
+      and fights @Video1 for it: --with-anchors (this shot's key frames,
+      leading the images), --with-board (a legacy drawing) and --with-concept
+      (the set concept). The set's appearance travels as TEXT, from its bible
+      'look' into the pack's global block.
       The prompt is the first fenced \`prompt\` block of prompts.md; it must
       address @Video1, every attached reference must be GIVEN A JOB there
       ("@Image2 = the keeper's appearance only"), and a pack that names a
@@ -4053,6 +4158,8 @@ stderr. --json is accepted everywhere and is already the default.
         final-render -> prompt -> take -> take-checks -> select
       Never writes, always exits 0. It is a report, not a gate. Pointed at a
       film it says so: the stage rail is 'backlot.mjs status'.
+      There is no key-frame step in that walk: 'anchor' and 'lineup' are
+      optional pictures for the creator, not rungs of the pipeline.
 
 Frame arithmetic, everywhere: frames = seconds x fps, numbered 1..frames.
 Prices (fal list, ${PRICES.asOf}), per billed second, reference duration billed
@@ -4095,6 +4202,9 @@ const OPTIONS = {
   "allow-failing": { type: "string" },
   estimate: { type: "boolean" },
   audio: { type: "boolean" },
+  "with-anchors": { type: "boolean" },
+  "with-board": { type: "boolean" },
+  "with-concept": { type: "boolean" },
   scene: { type: "string" },
   characters: { type: "string" },
   "trim-in": { type: "string" },

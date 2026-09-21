@@ -683,15 +683,18 @@ describe("the take policy", () => {
 });
 
 describe("where the shot stands", () => {
-  test("the walk has no board step — the pictures come from the greybox", () => {
-    // Round 3 (2026-09-21): boards drawn from the text before the greybox
-    // existed contradicted each other, so the only picture step is the key
-    // frame, and it sits AFTER the greybox is accepted and rendered.
+  test("the walk has no picture step at all — the greybox IS the picture", () => {
+    // Three acceptance rounds (2026-09-21) each added a still beside the
+    // greybox — a drawn board, then a key frame rendered from the greybox,
+    // then a set concept — and each one brought its own composition and
+    // fought @Video1 for it. So no drawing step and no key-frame step: an
+    // accepted greybox goes straight to the pack.
     expect(STAGES).toEqual([
-      "reference", "plan", "greybox-preview", "checks", "final-render", "anchor", "prompt", "take", "take-checks", "select",
+      "reference", "plan", "greybox-preview", "checks", "final-render", "prompt", "take", "take-checks", "select",
     ]);
     expect(STAGES).not.toContain("board");
-    expect(STAGES.indexOf("anchor")).toBeGreaterThan(STAGES.indexOf("final-render"));
+    expect(STAGES).not.toContain("anchor");
+    expect(STAGES.indexOf("prompt")).toBe(STAGES.indexOf("final-render") + 1);
   });
 
   test("next walks the stages in order and names the command that closes each", () => {
@@ -715,12 +718,10 @@ describe("where the shot stands", () => {
 
     shot.greybox.revision = 2;
     shot.greybox.final = { file: "greybox/greybox.mp4", revision: 2, probe: null, renderedAt: null, renderSeconds: null };
-    // The picture before the video: an accepted greybox with no anchor asks
-    // for one, and the lineup is how it is looked at.
-    expect(nextStage(shot)).toMatchObject({ stage: "anchor" });
-    expect(nextStage(shot).command).toContain("previz.mjs anchor");
-    expect(nextStage(shot).command).toContain("lineup");
-
+    // Straight to the pack: an accepted greybox needs no picture rendered
+    // beside it, and a key frame does not change where the shot stands.
+    expect(shot.anchors).toEqual([]);
+    expect(nextStage(shot).stage).toBe("prompt");
     shot.anchors.push({ id: "first", at: 0, file: "anchors/first.png", revision: 1 } as never);
     expect(nextStage(shot).stage).toBe("prompt");
     expect(nextStage(shot, { promptOk: true }).stage).toBe("take");
@@ -740,13 +741,18 @@ describe("where the shot stands", () => {
     });
   });
 
-  test("the anchor step is a suggestion, not a gate — a shot that went straight to video moves on", () => {
-    // Some shots are bought without a picture first, on purpose (the skill
-    // says when). A step that never closed would make every later `next` a
-    // lie about where the shot stands.
+  test("a key frame is an optional picture, never a rung — with or without one the walk is the same", () => {
+    // `anchor` is still there for a creator who wants to see the look
+    // before buying the video. It is not a step: a shot with no key frame
+    // is not behind, and a shot with one is not ahead.
     const shot = acceptedShot();
     expect(shot.anchors).toEqual([]);
-    expect(nextStage(shot, { promptOk: true }).stage).toBe("anchor");
+    expect(nextStage(shot, { promptOk: true }).stage).toBe("take");
+
+    const withPicture = acceptedShot();
+    withPicture.anchors.push({ id: "first", at: 0, file: "anchors/first.png", revision: 1 } as never);
+    expect(nextStage(withPicture, { promptOk: true }).stage).toBe("take");
+
     shot.takes.push({ id: "take-01", status: "done", selected: false } as never);
     seedChecklist(shot);
     expect(nextStage(shot, { promptOk: true }).stage).toBe("take-checks");

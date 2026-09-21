@@ -8,11 +8,12 @@
  * accepted here and fail there.
  *
  * NOTHING IS DRAWN AT THIS STAGE. The plan is text — beats with their
- * designed detail, the camera, the continuity decision — and the pictures
- * are derived from it through the greybox one stage later. So a card shows
- * the shot's key frame when there is one, its greybox when there is not,
- * and a grey card that says what is missing when there is neither: never
- * nothing, and never a promise of a frame nobody is going to draw.
+ * designed detail, the camera, the continuity decision — and the picture
+ * comes one stage later, as the greybox. So a card shows this shot's
+ * greybox when it has been rendered, a key frame when somebody rendered one
+ * before there was a greybox, and a grey card that says what is missing
+ * when there is neither: never nothing, and never a promise of a frame
+ * nobody is going to draw.
  *
  * Clicking a card opens that shot on the previz stage, which is where the
  * work continues.
@@ -111,8 +112,7 @@ function BoardCard({
           <span className="flex h-full w-full flex-col items-center justify-center gap-1 px-4 text-center text-cc-muted">
             <ImageIcon size={16} />
             <span className="text-[9px] leading-relaxed">
-              No picture yet — this shot is blocked in 3D first, and its key frame is rendered from
-              that greybox.
+              No picture yet — this shot is blocked in 3D first, and that greybox is the picture.
             </span>
           </span>
         )}
@@ -129,9 +129,9 @@ function BoardCard({
         <p className="truncate text-[9px] text-cc-muted">{shot.id}</p>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
           <ShotBadge shot={shot} />
-          {/* A separate chip, not part of the progress badge: an anchor is a
-              designed frame, not a rung of the pipeline, and a shot can have
-              one at any stage. */}
+          {/* A separate chip, not part of the progress badge: a key frame is
+              an optional picture somebody rendered to look at, not a rung of
+              the pipeline, and a shot can have one at any stage. */}
           {shot.anchors.length > 0 ? (
             <Chip tone="primary">
               anchor{shot.anchors.length > 1 ? ` ×${shot.anchors.length}` : ""}

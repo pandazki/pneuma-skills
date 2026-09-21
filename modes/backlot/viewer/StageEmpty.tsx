@@ -16,13 +16,13 @@ export const STAGE_BLURB: Record<StageId, string> = {
   script:
     "Once the idea is approved the agent writes the screenplay: scenes with their headings, the action, and every line of dialogue — plus the scene list this stage is checked against.",
   bible:
-    "Every character and every place gets a written look, a generated sheet or concept frame, and — for the characters who speak — a voice sample. This is what keeps the same face across shots.",
+    "Two sheets and one style frame are what a take receives; the set is words. Every character gets a written look and a generated sheet — plus a voice sample if they speak — the film gets one style key frame that says how it is drawn, and every place gets its materials, colours and size written down.",
   boards:
-    "The scenes are broken into shots: the shot list, the beats and camera of each one, and the designed picture of every beat in words. Nothing is drawn here — the pictures come from the greybox in the next stage.",
+    "The scenes are broken into shots: the shot list, the beats and camera of each one, and the designed picture of every beat in words. Nothing is drawn here — the picture is the greybox, in the next stage.",
   previz:
-    "The shot is blocked in 3D first: a timed plan, a Blender script, and a greybox render that fixes the room, the action and the camera — the exact clip the video model is conditioned on. Then its key frames are rendered from that greybox, and that is the storyboard you approve.",
+    "Greybox → checks → reel; pictures are optional. The shot is blocked in 3D: a timed plan, a Blender script, and a greybox render that fixes the room, the action and the camera — the exact clip the video model is conditioned on, and the only picture of layout it gets. A key frame can be rendered from it to see the look first, but nothing else is drawn.",
   takes:
-    "An accepted greybox is sent to the video model with the board and the bible as references. Every take is checked, and one is selected as the shot's delivery.",
+    "An accepted greybox is sent to the video model as the layout, with the character sheets and the film's style frame for the look. Every take is checked, and one is selected as the shot's delivery.",
   sound:
     "Voice-over lines are recorded as TTS and the music is generated from a written brief. The takes' own audio stays as ambience; nothing is dubbed over a mouth the model animated.",
   cut: "The selected takes are assembled in shot order with the voice-over placed and the music laid under. A reel with greybox stand-ins can be built for free at any time.",

@@ -1065,25 +1065,33 @@ describe("the designed picture", () => {
   });
 
   /**
-   * The shot list's thumbnail, after round 3 moved the picture.
+   * The shot list's thumbnail, after three acceptance rounds removed every
+   * picture that competed with the greybox.
    *
-   * Nothing is drawn at the shot-plan stage any more, so a card falls back
-   * through the pictures that actually exist — the key frame first, because
-   * it IS the shot's look, then the greybox it was rendered from.
+   * Nothing is drawn at the shot-plan stage, and the greybox is the one
+   * picture of layout the take receives — so it leads, and the optional
+   * stills only stand in while there is no render.
    */
-  test("a shot card shows its key frame, else the greybox, else a grey card", () => {
+  test("a shot card shows its greybox, else a key frame, else a grey card", () => {
+    // THE GREYBOX IS THE PICTURE, and it wins over every optional still:
+    // it is the shot's actual space, staging and camera, and the only
+    // picture the take is conditioned on. An MP4, drawn as a poster.
     const anchored = parseShot("d", "s", shotJson({
       anchors: [{ id: "first", file: "anchors/first.png", revision: 3, at: 0 }],
       board: { file: "board.png", revision: 1, prompt: "the doorway", refs: [], at: 1 },
     }))!;
-    // The key frame wins over a legacy board: it is the picture the take
-    // will actually be conditioned on.
-    expect(shotThumbnail(anchored)).toEqual({ kind: "anchor", file: "anchors/first.png", rev: 3 });
+    expect(shotThumbnail(anchored)).toEqual({ kind: "greybox", file: "greybox/greybox.mp4", rev: 2 });
 
-    // No key frame yet — the greybox render, which is an MP4 and is drawn
-    // as a poster, not an <img>.
     const blocked = parseShot("d", "s", shotJson())!;
     expect(shotThumbnail(blocked)).toEqual({ kind: "greybox", file: "greybox/greybox.mp4", rev: 2 });
+
+    // No render yet, but somebody rendered a key frame from an earlier one:
+    // that still stands in rather than a grey card.
+    const stillOnly = parseShot("d", "s", shotJson({
+      greybox: { revision: 1, script: "greybox/scene.py", preview: null, final: null },
+      anchors: [{ id: "first", file: "anchors/first.png", revision: 3, at: 0 }],
+    }))!;
+    expect(shotThumbnail(stillOnly)).toEqual({ kind: "anchor", file: "anchors/first.png", rev: 3 });
 
     // Not rendered yet: the contact sheet, then the legacy board, then a
     // grey card — `none` is a state, not a missing case.

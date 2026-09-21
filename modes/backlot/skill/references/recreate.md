@@ -17,13 +17,13 @@ A recreate shot replaces the *planning* half of one shot, not the film:
 
 - **Stages 1–3 still apply when the shot belongs to a film.** The people in
   the reference are still characters with sheets and voices; the place is
-  still a set with a concept frame. That is what makes a recreated shot cut
-  together with the shots around it.
+  still a set with its look written down, and the film still has one style
+  key frame. That is what makes a recreated shot cut together with the shots
+  around it.
 - **Stage 4** — instead of inventing the timeline, you read it off the
   reference (below) and write the same `shot-plan.md` and beats. Nothing is
   drawn here either: the reference decides the blocking, and the *look* is
-  decided at the key frame, which is rendered from the greybox once it passes
-  (`greybox.md`).
+  decided in the pack's words, against the film's style frame.
 - **Stages 5–8 are unchanged.** The greybox gains two extra acceptance checks,
   `ref-framing` and `ref-timing`, and the shot gains a fourth lane so the
   player can run reference, greybox and take on one clock.

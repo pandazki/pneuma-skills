@@ -2,8 +2,8 @@
 
 Stages 1 and 2. Everything downstream is built from these two files: the bible
 designs the people and places the screenplay names, the shot plan breaks the
-screenplay into shots, the greybox blocks them, the key frames are rendered
-from the greybox, and the cut assembles them in that order. A story decision that never reaches
+screenplay into shots, the greybox blocks them, the video model paints them,
+and the cut assembles them in that order. A story decision that never reaches
 `screenplay.md` does not reach the film.
 
 Both files are written in the **film's language**. You answer the creator in

@@ -1,22 +1,24 @@
-# The bible — cast and places
+# The bible — cast, look and places
 
-Stage 3. Every person who appears gets a **character sheet** and, if they
-speak, a **voice**; every place gets a **set concept**. These images are not
-illustrations of the script — they are the continuity mechanism for the rest
-of the film.
+Stage 3, and it produces exactly **two kinds of picture a take receives**: a
+**character sheet** per person, and **one style key frame** for the whole
+film. Speaking characters also get a **voice**. Every place gets its
+appearance **written down**; a concept frame is optional and is not sent to a
+take.
 
-**Continuity comes from images, never from adjectives alone.** "A weathered
-swordsman in a grey travelling coat" produces a different man in every shot,
-however carefully you word it. The same `sheet.png` attached as a reference
-produces the same man. This is the lesson plotwise paid for: the text of a
-prompt controls what happens, and an attached image controls who it happens
-to. So the bible is generated once, approved once, and then travels — into
-every key frame, and into every take — as an `@Image` reference.
+**A face comes from an image; everything else can come from words.** "A
+weathered swordsman in a grey travelling coat" produces a different man in
+every shot, however carefully you word it — the same `sheet.png` attached as
+a reference produces the same man. That is the lesson plotwise paid for, and
+it is about *identity*. It does not generalise to places: a set concept is a
+wide establishing picture with a camera of its own, and the camera belongs to
+the greybox (three acceptance rounds, 2026-09-21 — `prompting.md`). So the
+bible's pictures are the faces and the idiom, and the place is a sentence.
 
 ## One rule before any of it: design, not photography
 
-Every image on this stage — and every key frame made from it — is drawn as an
-**illustrated or 3D-animation production design**, never
+Every image on this stage — and every key frame made from one — is drawn as
+an **illustrated or 3D-animation production design**, never
 as a photograph of a person. Say so in the prompt, in the same sentence as the
 look: *"rendered as stylised 3D animation production art"*, *"painted
 concept-art illustration"*, whichever idiom the film is in.
@@ -155,7 +157,36 @@ node {SKILL_PATH}/scripts/backlot.mjs character voice <project> challenger \
 - The measured length and the cost are recorded for you; play the file before
   you show it to the creator.
 
-## Sets (the places)
+## The film's style key frame — the second essential picture
+
+One picture for the whole film that says **how it is drawn** — idiom,
+palette, light quality, finish — and **nothing about what is in the frame**.
+It is what carries the look now that no other still is allowed a composition,
+it costs one image, and `generate` warns when a film has none.
+
+```bash
+node {SKILL_PATH}/scripts/backlot.mjs style <project> --keyframe style.png \
+  --prompt "<the prompt it was made from>"
+```
+
+How to make one:
+
+1. **Pick one key moment of the film** — the image a poster would use. A real
+   moment, with real people in it, in a real place: an idiom is easiest to
+   read off a picture that had to solve something.
+2. **Generate it in the intended idiom, at `--quality xhigh`**, from the
+   screenplay and the sheets. One image, one frame, no text.
+3. **Generate two or three directions and let the creator choose.** This is
+   the film's look; it is their call, it is free to look at, and a direction
+   nobody chose is a look nobody approved.
+4. Register the chosen one. It is copied to `style/keyframe.png`, and from
+   then on every take — and every key frame `previz.mjs anchor` renders —
+   carries it with the job *"only the idiom, never the composition"*.
+
+Because it travels into every take, the likeness rule applies to it exactly
+as to a sheet: an illustrated or 3D-design idiom, never a photoreal face.
+
+## Sets (the places) — written, not drawn
 
 ```bash
 node {SKILL_PATH}/scripts/backlot.mjs set add <project> courtyard \
@@ -165,8 +196,18 @@ node {SKILL_PATH}/scripts/backlot.mjs set add <project> courtyard \
 a bell tower at the east corner, a leaning tree over it, prayer flags, scattered blocks"
 ```
 
-The concept frame is a **wide establishing shot of the place, from roughly
-where the scene's main camera will stand**:
+**`--look` is the set's picture.** It is pre-filled into the prompt pack's
+【全局设定】 as the 场景 line, and it is the only thing that tells the model
+what this place is made of. `set add` warns when it is missing. Write it the
+way the sheets are written: five to eight concrete visual facts, with **real
+metres** — a 12 m terrace, a 2.1 m doorway, a 0.9 m counter. Those same
+numbers are what `scene.py` builds, so the words and the greybox describe one
+room rather than two.
+
+A concept frame is **optional**, and it is not attached to a take unless the
+job is asked for it (`generate --with-concept`). It is still worth generating
+when the creator wants to *see* the place, or when a set is hard to describe
+and the greybox needs a target to be built against:
 
 ```bash
 node {SKILL_PATH}/scripts/generate_image.mjs \
@@ -182,33 +223,23 @@ node {SKILL_PATH}/scripts/backlot.mjs set look <project> courtyard \
   --cost-usd 0.13 --cost-basis reported
 ```
 
-Two things make a concept frame useful rather than decorative:
-
-1. **It is shot from the film's camera**, so the greybox and the key frames
-   agree with it instead of describing a place nobody will photograph.
-2. **Its dimensions are the greybox's dimensions.** The `look` sentence carries
-   real metres — a 12 m terrace, a 2.1 m doorway, a 0.9 m counter — and
-   `scene.py` builds those same numbers. When the concept says "wide terrace"
-   and the greybox builds 6 m, the take is fighting two different rooms.
-   Write the numbers into the set record and reuse them in `scene.py`.
-
 Empty of people: the people come from the character sheets, and a figure baked
-into the set concept turns up as an extra in a take.
+into a set concept turns up as an extra in any take that carries it.
 
 ## How the bible travels
 
 | stage | what it attaches |
 |---|---|
-| `boards` | nothing. The shot plan is text and makes no image — the pictures come from the greybox one stage later |
-| `previz` | `previz.mjs anchor` sends the greybox frame for the composition and the sheets and the concept for the appearance (plus the film's style reference, when there is one) — the same faces again, now in the shot's real framing (`greybox.md`) |
-| `takes` | `previz.mjs generate` attaches the greybox as `@Video1`, the `first` key frame as `@Image1`, the shot's other key frames next, then the sheets of its `characters` and the set concept, the hand-off frame last, and the voice samples of any spoken line's speaker as `@Audio1…` |
+| `boards` | nothing. The shot plan is text and makes no image — the picture is the greybox, one stage later |
+| `previz` | optional. `previz.mjs anchor` renders a key frame for the creator to look at, from the greybox frame plus the sheets, the set concept if there is one, and the style reference last (`greybox.md`) |
+| `takes` | `previz.mjs generate` attaches the greybox as `@Video1`, then the sheets of the shot's `characters` in bible order, then the style key frame, then the hand-off frame, then the voice samples as `@Audio1…`. The set travels as text |
 
 That order is fixed and the prompt must address the indices as attached — see
-`video-generation.md`. This is also why `shot.characters` and `shot.set`
-matter: they are the list `generate` and `anchor` read to decide which sheets
-go along. The likeness rule follows the sheet everywhere it goes: a key frame
-is an image of a face made from your sheet, and if the sheet is photoreal the
-key frame is the call that gets refused.
+`video-generation.md`. This is also why `shot.characters` matters: it is the
+list `generate` and `anchor` read to decide which sheets go along. The
+likeness rule follows a sheet everywhere it goes: a key frame is an image of
+a face made from your sheet, and if the sheet is photoreal the key frame is
+the call that gets refused.
 
 ## Revisions, cost and honesty
 
@@ -218,6 +249,7 @@ key frame is the call that gets refused.
 - Each image is a paid call. Record what the shared script reported
   (`usage.cost` → `basis: "reported"`), not a guess, and tell the creator the
   running total when you show them the bible.
-- A character with no sheet, or a set with no concept, is shown to the creator
-  as exactly that — an empty card on the bible grid. Do not describe a look
-  you have not generated as though it exists.
+- A character with no sheet is shown to the creator as exactly that — an
+  empty card on the bible grid. Do not describe a look you have not
+  generated as though it exists. A set with no concept frame is **not** a
+  gap: its card carries the written look, which is what a take receives.

@@ -435,6 +435,45 @@ describe("the bible", () => {
     expect(edited.record.description).toBe("and the rain outside");
     expect(manifestOf(cwd).sets).toEqual(["store"]);
   });
+
+  /**
+   * A SET'S `look` IS ITS PICTURE. The concept frame is optional and is not
+   * attached to a take any more — a wide establishing shot carries a camera
+   * of its own, and the camera is the greybox's — so those words are the
+   * only thing that tells the model what the place is made of.
+   */
+  test.skipIf(!HAS_FFMPEG)("a set with no written look is warned about, and an optional concept never overwrites one", () => {
+    const cwd = workspace();
+    film(cwd);
+    json(cwd, ["approve", "film", "script"]);
+
+    const bare = run(cwd, ["set", "add", "film", "store", "--name", "便利店", "--description", "fluorescent, 3 a.m."]);
+    expect(bare.code).toBe(0);
+    expect(bare.err).toContain('set "store" has no --look');
+    expect(bare.err).toContain("set set");
+    // Clearing it later says so too.
+    expect(run(cwd, ["set", "set", "film", "store", "--look", ""]).err).toContain("no written look");
+
+    const WRITTEN = "a narrow convenience store, cold white strip lights, wet lino, a fridge wall down one side";
+    json(cwd, ["set", "set", "film", "store", "--look", WRITTEN]);
+    // Registering the optional concept keeps the authored sentence; the
+    // prompt that made the picture lives on the picture.
+    const look = json(cwd, ["set", "look", "film", "store", "--file", fixturePng(cwd), "--prompt", "wide establishing frame"]);
+    expect(look.record.look).toBe(WRITTEN);
+    expect(look.record.concept.prompt).toBe("wide establishing frame");
+
+    // A character is the other way round: the sheet is the carrier, and its
+    // prompt is the look.
+    json(cwd, ["character", "add", "film", "kai", "--name", "小凯", "--look", "grey coat"]);
+    const sheet = json(cwd, ["character", "look", "film", "kai", "--file", fixturePng(cwd), "--prompt", "three-quarter sheet"]);
+    expect(sheet.record.look).toBe("three-quarter sheet");
+
+    // A set with no written look at all still takes the concept's prompt
+    // rather than staying blank.
+    json(cwd, ["set", "add", "film", "alley", "--name", "巷子"]);
+    expect(json(cwd, ["set", "look", "film", "alley", "--file", fixturePng(cwd), "--prompt", "a wet alley"]).record.look)
+      .toBe("a wet alley");
+  });
 });
 
 describe("the style reference", () => {

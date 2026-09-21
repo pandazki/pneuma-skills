@@ -436,13 +436,13 @@ function cmdGates(dir, mode) {
 // ---------------------------------------------------------------------------
 
 /**
- * Register the film's STYLE REFERENCE.
+ * Register the film's STYLE REFERENCE, and it is not optional any more.
  *
- * Every key frame is rendered from a greybox frame (composition) plus the
- * bible (appearance), and both of those are about *what is in the picture*.
- * Nothing in them says how the film is drawn — the idiom, the palette, the
- * light quality, the finish — so a project that cares about that keeps one
- * picture for it and `previz.mjs anchor` attaches it to every key frame.
+ * A take receives one picture of layout — the greybox — and one picture per
+ * face. Neither says how the film is DRAWN: the idiom, the palette, the
+ * light quality, the finish. That is this picture's whole job, and it is the
+ * only other still the take carries, so a film without one is a film whose
+ * look reaches the model in words alone (`previz.mjs generate` says so).
  *
  * Free: the image is one the creator gave you or one you already generated
  * and they approved. It is copied into the project so the record cannot
@@ -489,7 +489,7 @@ function cmdStyle(dir, opts) {
       ...(opts.prompt === undefined ? {} : { prompt: String(opts.prompt) }),
     };
   });
-  note(`[backlot] the style reference is ${STYLE_KEYFRAME_FILE} — every key frame 'previz.mjs anchor' renders from now on carries it`);
+  note(`[backlot] the style reference is ${STYLE_KEYFRAME_FILE} — every take, and every key frame 'previz.mjs anchor' renders, carries it from now on`);
   return emit({ command: "style", dir, style: manifest.style, file: STYLE_KEYFRAME_FILE, size });
 }
 
@@ -627,6 +627,16 @@ function cmdBibleAdd(family, dir, idArg, opts) {
   if (existsSync(biblePath(dir, family, id))) {
     fail(`${word} "${id}" is already in the bible — edit it with 'backlot.mjs ${word} set ${dir} ${id} …'`);
   }
+  // A SET'S LOOK IS ITS ONLY PICTURE. The concept frame is optional and is
+  // not attached to a take any more (a wide establishing shot carries a
+  // camera of its own and the camera is the greybox's), so these words are
+  // what reaches the model — through the pack's global block.
+  if (family === "sets" && !String(opts.look ?? "").trim()) {
+    note(
+      `WARN: set "${id}" has no --look — that sentence is now the ONLY thing that tells a take what this place ` +
+        `is made of, what colour it is and how big it is. Write it: 'backlot.mjs set set ${dir} ${id} --look "…"'`,
+    );
+  }
   const record = {
     version: 1,
     id,
@@ -663,6 +673,9 @@ function cmdBibleSet(family, dir, idArg, opts) {
     if (opts.description !== undefined) fresh.description = String(opts.description);
     if (opts.look !== undefined) fresh.look = String(opts.look);
   });
+  if (family === "sets" && !String(record.look ?? "").trim()) {
+    note(`WARN: set "${id}" now has no written look — that sentence is the only thing that tells a take what this place looks like`);
+  }
   return emit({ command: `${word} set`, dir, id, record });
 }
 
@@ -718,7 +731,12 @@ function cmdBibleLook(family, dir, idArg, opts) {
   const at = nowMs(opts);
   const record = commitBible(dir, family, id, (fresh) => {
     const revision = Number(fresh[key]?.revision ?? 0) + 1;
-    fresh.look = String(opts.prompt);
+    // A CHARACTER's `look` is the sheet's prompt — the sheet is the carrier
+    // and the two say the same thing. A SET's `look` is the authored
+    // sentence that reaches a take as text (the concept frame is optional
+    // and is not attached), so registering an optional picture must not
+    // overwrite it; the prompt that made the picture lives on the picture.
+    if (family !== "sets" || !String(fresh.look ?? "").trim()) fresh.look = String(opts.prompt);
     fresh[key] = {
       file: FAMILIES[family].mediaFile,
       revision,
@@ -1377,19 +1395,26 @@ said to run through. Image generation is not wrapped by this script — ask
   character voice <project> <id> --text "<a line in their voice>"
                   [--model --voice --style --language]
                   [--cost-usd --cost-basis]
-  set add|set|look <project> <id> …        (a "set" is a place)
-      The bible. 'look' registers a frame you generated with
-      generate_image.mjs (gated: the script must be approved) and bumps its
-      revision; 'voice' synthesizes the sample a take is conditioned on
+  set add|set|look <project> <id> --name "…" [--description --look]
+                                             (a "set" is a place)
+      The bible. A character's sheet is essential — it is the face every
+      take is conditioned on. A SET'S --look IS ITS PICTURE: the concept
+      frame ('set look') is optional and is not sent to a take any more, so
+      those words are what tells the model what the place is made of, what
+      colour it is and how big it is. 'look' registers a frame you generated
+      with generate_image.mjs (gated: the script must be approved) and bumps
+      its revision; 'voice' synthesizes the sample a take is conditioned on
       (gated: the script must be approved).
 
   style <project> [--keyframe <picture.png>] [--prompt "…"] | --clear
-      The film's STYLE REFERENCE: one picture that says how this film is
-      rendered — idiom, palette, light quality, finish — and nothing about
-      what is in the frame. Copied to ${STYLE_KEYFRAME_FILE} and recorded in
-      backlot.json; 'previz.mjs anchor' then attaches it to every key frame
-      as the LAST reference and names its job in the prompt. With no flags
-      it prints the one that is registered. Free.
+      The film's STYLE REFERENCE, and it is ESSENTIAL: one picture that says
+      how this film is rendered — idiom, palette, light quality, finish —
+      and nothing about what is in the frame. Copied to ${STYLE_KEYFRAME_FILE}
+      and recorded in backlot.json; every take carries it as an @Image
+      reference (and so does every key frame 'previz.mjs anchor' renders),
+      with the job "only the idiom, never the composition". 'generate' warns
+      when a film has none. With no flags it prints the one that is
+      registered. Free.
 
   music <project> --prompt "<the brief>" [--seconds 30]
         [--cost-usd --cost-basis]

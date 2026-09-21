@@ -1,20 +1,19 @@
 # The shot plan
 
 Stage 4, per shot, and **it makes no image**. The plan is the contract between
-the lanes: the greybox is built from it, the key frames are rendered from the
-greybox, the prompt's timeline is copied from it, and the take is checked
-against it. Write it before you touch Blender; an action you have not timed on
-paper will be timed by accident in the scene.
+the lanes: the greybox is built from it, the prompt's timeline is copied from
+it, and the take is checked against it. Write it before you touch Blender; an
+action you have not timed on paper will be timed by accident in the scene.
 
-**Design the picture in words first, then build the greybox, then render the
-picture from the greybox, then hand the model the design.** This stage is where
-the film is actually directed: what each beat *looks* like — the body, the
-face, the cloth, the dust, the speed — is written here, in words, before a
-single Blender primitive exists. The greybox is built from this plan, the key
-frames come out of the greybox, and at the takes stage the prompt is assembled
-*from these same words* plus what the greybox cannot express plus the bible
-references. Nothing about the picture is invented fresh in `prompts.md`; a shot
-designed at the takes stage is a shot the creator never approved.
+**Design the picture in words first, then build the greybox, then hand the
+model that block and those words.** This stage is where the film is actually
+directed: what each beat *looks* like — the body, the face, the cloth, the
+dust, the speed — is written here, in words, before a single Blender
+primitive exists. The greybox is built from this plan, and at the takes stage
+the prompt is assembled *from these same words* plus what the greybox cannot
+express plus the bible's faces and the film's style frame. Nothing about the
+picture is invented fresh in `prompts.md`; a shot designed at the takes stage
+is a shot the creator never approved.
 
 Every line of the timeline lands in one of two places, and the plan says
 which. **Blocked** lines are the greybox's: where a person is, the path they
@@ -240,23 +239,23 @@ A `continuity` block is part of the `boards` stage's content, exactly like the
 beats and the trim: changing a hand-off turns that stage `changed` and the
 creator re-approves the shot list before anything else is bought.
 
-## Then the greybox — the pictures come after
+## Then the greybox — and it is the picture
 
 **Do not draw a frame here.** The plan says what happens and what it looks
-like, in words; the picture is made one stage later, out of the greybox
-(`greybox.md`). Once the plan is approved, block the shot, and once the
-greybox passes its checks, `previz.mjs anchor` re-renders its frames in the
-film's real look — those **key frames are the storyboard**, and they are the
-`@Image` references the take receives.
+like, in words; the picture is the greybox, one stage later (`greybox.md`).
+Once the plan is approved, block the shot, check it, and the take is
+conditioned on that clip plus the faces and the film's style frame.
 
-Round 3 (2026-09-21) is why. Every shot got a storyboard frame drawn from its
-plan and the bible before anything was blocked: eight pictures, eight invented
-rooms, eight cameras, no two of them the same space — and the greybox, which
-is one space with one camera, could not be built to satisfy any of them. The
-board argued with the blocking on every shot. The greybox is the only place
-this film's space and camera exist, so the picture is derived from it rather
-than drawn beside it, and there is nothing left for a board to disagree with.
+Round 3 (2026-09-21) is why nothing is drawn here. Every shot got a
+storyboard frame drawn from its plan and the bible before anything was
+blocked: eight pictures, eight invented rooms, eight cameras, no two of them
+the same space — and the greybox, which is one space with one camera, could
+not be built to satisfy any of them. Rendering the picture *from* the
+greybox instead fixed the contradiction and left the cost: a still is a
+composition, and a take given two averages them. So the design stays in
+words here, and the one picture is the block.
 
-`previz.mjs board` still exists for a film shot under the old order; it is not
-part of the flow, and a shot that has a key frame never sends its board to a
-take.
+`previz.mjs anchor` can still render a key frame from an accepted greybox for
+the creator to *look at*, and `previz.mjs board` still exists for a film shot
+under the old order. Neither reaches a take unless that take is generated
+with `--with-anchors` / `--with-board`.

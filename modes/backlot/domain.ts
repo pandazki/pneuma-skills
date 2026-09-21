@@ -1687,12 +1687,11 @@ export function primaryAnchor(shot: Shot): AnchorRecord | null {
 /**
  * What one shot LOOKS like, for a card that has room for exactly one frame.
  *
- * In the order the pictures are made: the `first` key frame is this shot's
- * storyboard (rendered from the greybox, so it is the shot's real look), the
- * greybox render is the shot before anybody painted it, and the contact
- * sheet is the last resort before a grey card. A board is drawn only on a
- * film shot before the key frames existed, so it comes after both — and
- * `kind: "none"` is a real state, not a missing case.
+ * THE GREYBOX FIRST. It is the picture the shot actually is — the space, the
+ * staging and the camera — and the only one the take is conditioned on. A key
+ * frame is an optional picture somebody rendered to look at, so it stands in
+ * only when there is no render yet; then the contact sheet, then a legacy
+ * board, then `kind: "none"`, which is a real state and not a missing case.
  *
  * `kind` says what the caller is drawing: a `greybox` is an MP4 and needs a
  * `<video>` poster, everything else is a still.
@@ -1706,10 +1705,10 @@ export interface ShotThumbnail {
 }
 
 export function shotThumbnail(shot: Shot): ShotThumbnail {
-  const anchor = primaryAnchor(shot);
-  if (anchor) return { kind: "anchor", file: anchor.file, rev: anchor.revision };
   const greybox = shot.greybox.final;
   if (greybox) return { kind: "greybox", file: greybox.file, rev: greybox.revision };
+  const anchor = primaryAnchor(shot);
+  if (anchor) return { kind: "anchor", file: anchor.file, rev: anchor.revision };
   if (shot.greybox.sheet) return { kind: "sheet", file: shot.greybox.sheet, rev: shot.greybox.revision };
   if (shot.board) return { kind: "board", file: shot.board.file, rev: shot.board.revision };
   return { kind: "none", file: null, rev: 0 };

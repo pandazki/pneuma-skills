@@ -1,17 +1,16 @@
 # Writing the prompt
 
 Stage 6, per shot, and the most important page in this skill. The greybox is
-accepted, its key frames are approved beside it, the bible exists — and now
-one block of text decides whether the paid take is the film you designed or a
-different one.
+accepted, the bible exists — and now one block of text decides whether the
+paid take is the film you designed or a different one.
 
 **The prompt is not composed here. It is the design, carried forward.** Every
 beat's picture was written at the shot-plan stage into its `detail`
-(`shot-plan.md`), before any Blender file existed; the greybox was built from
-it and the key frames were rendered from the greybox. `prompt-skeleton` turns
-the same beats into the pack; you add only what they cannot carry. Arriving at
-this stage with an empty `prompts.md` and inventing the shot again is how a
-take stops matching the film the creator approved.
+(`shot-plan.md`), before any Blender file existed, and the greybox was built
+from it. `prompt-skeleton` turns the same beats into the pack; you add only
+what they cannot carry. Arriving at this stage with an empty `prompts.md` and
+inventing the shot again is how a take stops matching the film the creator
+approved.
 
 ```bash
 node {SKILL_PATH}/scripts/previz.mjs prompt-skeleton <shot-dir> --write
@@ -21,19 +20,49 @@ Three things meet in the block, and the split is what makes it work:
 
 | what says it | where it comes from |
 |---|---|
-| space, blocking, prop events, timing, the one camera move | the greybox (`@Video1`) |
-| what this shot's opening frame looks like, finished | the `first` key frame (`@Image1`), rendered from that same greybox frame |
-| who these people are, what this place looks like | the bible (`@Image…`) |
-| bodies, faces, materials, light, tempo — everything grey cannot show | **the words** |
+| space, blocking, prop events, timing, the one camera move | the greybox (`@Video1`), and nothing else |
+| who these people are | the character sheets (`@Image…`) |
+| how this film is drawn | the film's one style key frame (`@Image…`) |
+| what this place is made of, bodies, faces, materials, light, tempo | **the words** |
+
+## One picture of the shot, and it is the greybox
 
 **The reference order is fixed, and one function owns it** (`planReferences`
-in `previz.mjs`): `@Video1` the greybox → `@Image1` the `first` key frame →
-this shot's other key frames → the character sheets in bible order → the set
-concept → the hand-off frame last → `@Audio1…` the voice samples. A **board**
-is attached only on a film shot before the key frames existed *and* only while
-that shot has no key frame at all; it then stands at `@Image1` in the key
-frame's place. Never count the indices by hand — `prompt-skeleton` writes the
-assignment lines at the indices `generate` will actually attach.
+in `previz.mjs`):
+
+`@Video1` the greybox → the character sheets in bible order → the film's style
+key frame → the hand-off frame when this shot declares continuity → `@Audio1…`
+the voice samples.
+
+That is the whole list. Never count the indices by hand — `prompt-skeleton`
+writes the assignment lines at the indices `generate` will actually attach.
+
+**Every other picture is opt-in, and the reason is three acceptance rounds.**
+Round 3 drew a storyboard frame per shot before the greybox existed: eight
+pictures, eight invented rooms, no shared camera. The fix — rendering the key
+frame *from* the greybox — removed the contradiction and kept the problem: a
+still is still a composition, and a model given two of them averages them.
+The set concept was the same argument in a wider lens. The practice this mode
+reproduces never had any of them — in the upstream skill the greybox is the
+only picture of layout, behaviour and camera, the look is text, and a key
+frame appears only as a fallback for a model that cannot take a video at all:
+
+> 仅支持图片时导出关键帧并明确这是弱约束，不能保证完整动作复刻。
+> — `upstream/blender-video-workflows/skills/blender-video-original/references/video-generation.md`
+
+So a key frame, a legacy board and the set concept attach **only** when the
+job is asked for them by name, and the pack has to be scaffolded for the same
+job:
+
+```bash
+previz.mjs prompt-skeleton <shot-dir> --with-anchors --write
+previz.mjs generate <shot-dir> --with-anchors
+```
+
+`--with-anchors` (this shot's key frames, leading the images) ·
+`--with-board` (a legacy drawing) · `--with-concept` (the set concept).
+Reach for one when the words have already failed on a re-shoot, and say in
+the report that the take carried it.
 
 ## There is no word limit
 
@@ -74,11 +103,11 @@ template, merged with what a **greybox** reference-to-video job needs on top.
 【素材映射】
 @Video1：只参考运镜、构图、切点、主体轨迹、相对比例与遮挡关系；
 不要继承灰白材质、空场景、几何体外形与 Viewport 叠加物。
-@Image1：本镜的分镜稿，由 @Video1 的第一帧渲染而来：只参考开场的构图、机位、
-人物位置与整体画风，不用它当成全程动作——动作照时间戳与白模。
-@ImageN：白模中名为「…」的体块（颜色 / 第 1 帧位置）就是<角色>，
+@Image1：白模中名为「…」的体块（颜色 / 第 1 帧位置）就是<角色>，
 只参考这张的脸型、发型、服装与配饰，不用背景。
-@ImageM：场景结构以白模空间为准，只参考这张里<地点>的材质、色调与光线方向，不用图中人物。
+@Image2：（下一个角色，同样一行）
+@Image3：全片画风参考，只参考画风、线条与上色方式，不参考构图与人物。
+@Image4：只参考上一镜结束时每个人的位置、朝向与手里的东西（有接戏时才有这一张）。
 …（每一个附上的引用一行，都要「只参考…，不用…」）
 
 【一句话成片】
@@ -86,6 +115,7 @@ template, merged with what a **greybox** reference-to-video job needs on top.
 
 【全局设定】
 风格：<画面质感、镜头、颗粒、景深>。
+场景：<地点>——<材质、颜色、尺度与陈设，来自 bible 里 set 的 look>。空间结构以 @Video1 为准。
 光线：<光源方向、时间、色温>。
 运镜总原则：一镜到底，只有一个运镜动作——<这一个运镜，和它停在哪>。
 镜头轨迹、机位与景别严格照 @Video1，全片不切、不加转场。
@@ -127,6 +157,7 @@ shortening is the design deleted.
 | the replacement sentence | the job is not "make a video like this" but "these grey blocks *are* those people, and this camera is the camera". Said first, before the model has decided anything |
 | 【素材映射】 | a reference nobody gave a job to is not ignored — it is averaged in, and it brings its own light, framing and palette. Each line needs a **positive scope and an explicit exclusion**: 只参考…，不用…. `generate` refuses a pack that leaves an attached reference unassigned |
 | the `@Video1` exclusion | the greybox's grey material, empty set and viewport overlays are inherited unless they are explicitly disinherited. Unassigned, its flat studio light becomes the look of the take |
+| 场景, in 【全局设定】 | the place is the one thing in this film that travels as **text**. Its structure is already in `@Video1`; its materials, colours and scale are the set's bible `look`, pre-filled here — a concept frame would only add a second camera |
 | 【一句话成片】 | the model is told what it is making before it is told the seconds. Length and aspect belong here because they frame everything after |
 | 【全局设定】 | style and light are global, not per second; and the **one** camera move is said here, once — with its end state, or `locked-off / 机位固定` in so many words when the camera does not move at all |
 | 【时间戳分镜】 | above a few seconds the vendor's own advice is a timeline, and this mode's beats already are one, on the greybox's clock |
@@ -213,11 +244,11 @@ Read the warnings; each one is a take that came back wrong once:
 
 ## A worked example — the courtyard duel
 
-`s02-landing` of the seed film: 6 s, 16:9, eight references (the greybox, six
-stills and a voice), a hand-off from `s01-arrival`, five designed beats and one
-dolly zoom. (The film it was shot on drew a board; a film shot now carries the
-same count with a second key frame in its place.) Nothing here is invented at this stage; every timeline sentence is
-that beat's `detail`, carried whole.
+`s02-landing` of the seed film: 6 s, 16:9, six references (the greybox, two
+character sheets, the film's style frame, the hand-off from `s01-arrival` and
+one voice), five designed beats and one dolly zoom. The courtyard itself is in
+【全局设定】 as a sentence. Nothing here is invented at this stage; every
+timeline sentence is that beat's `detail`, carried whole.
 
 ````markdown
 ```prompt
@@ -225,12 +256,10 @@ that beat's `detail`, carried whole.
 
 【素材映射】
 @Video1：只参考运镜、构图、切点、主体轨迹、相对比例与遮挡关系；不要继承灰白材质、空场景、几何体外形与 Viewport 叠加物。
-@Image1：本镜的分镜稿，由 @Video1 的第一帧渲染而来：只参考开场的构图、机位、人物位置与整体画风，不用它当成全程动作——动作照时间戳与白模。
-@Image2：第 5.5 秒的分镜稿：只参考那一刻的光线、色调与质感，不用它的构图。
-@Image3：白模中名为「keeper」的体块（乳白色，画右石台中央、面朝北）就是守剑人，只参考这张的脸型、发型、服装与配饰，不用背景。
-@Image4：白模中名为「challenger」的体块（青灰色，第 1 帧在画左北面高台上）就是挑战者，只参考这张的脸型、发型、服装与配饰，不用背景。
-@Image5：场景结构以白模空间为准，只参考这张里山中古寺庭院的青石、朱红旗幡与暮色光线方向，不用图中人物。
-@Image6：只参考上一镜（s01-arrival）结束时每个人的位置、朝向与手里的剑，本镜第一帧从这里接上，不用它的画质瑕疵。
+@Image1：白模中名为「keeper」的体块（乳白色，画右石台中央、面朝北）就是守剑人，只参考这张的脸型、发型、服装与配饰，不用背景。
+@Image2：白模中名为「challenger」的体块（青灰色，第 1 帧在画左北面高台上）就是挑战者，只参考这张的脸型、发型、服装与配饰，不用背景。
+@Image3：全片画风参考，只参考画风、线条与上色方式，不参考构图与人物。
+@Image4：只参考上一镜（s01-arrival）结束时每个人的位置、朝向与手里的剑，本镜第一帧从这里接上，不用它的画质瑕疵。
 @Audio1：只参考守剑人的音色与语速，不用其中的内容与环境声。
 
 【一句话成片】
@@ -238,6 +267,7 @@ that beat's `detail`, carried whole.
 
 【全局设定】
 风格：写实东方武侠，厚涂三维动画电影质感，细腻胶片颗粒，浅景深；不是照片。
+场景：山中古寺庭院——十二米见方的青石露台，北侧断裂的石柱列，东角一座钟楼与一棵斜出的老树，朱红旗幡，散落的石块。空间结构以 @Video1 为准。
 光线：暮色，西侧低角度暖光侧逆，长影铺在青石上，空气里有浮尘。
 运镜总原则：一镜到底，只有一个运镜动作——落地之后一次 dolly zoom，人在画面里的大小保持不变，背景被压近，最后停住不动。
 镜头轨迹、机位与景别严格照 @Video1，全片不切、不加转场。
@@ -297,16 +327,19 @@ each naming the greybox as the authority for its own layer (路线 / 站位 /
 
 ## Cautions the trials paid for
 
-- **Storyboards drawn from the text before the greybox contradicted each other,
-  and the greybox could not satisfy them.** Round 3, 2026-09-21: every shot got
-  a frame drawn from its plan and the bible before anything was blocked, and
-  the eight pictures shared no space and no camera — each one had invented its
-  own room and its own lens, so the one greybox that had to serve them all
-  disagreed with every board. **Pictures are derived from the greybox**: the
-  shot-plan stage writes the design in words and draws nothing, and the key
-  frames are rendered from the greybox frames they belong to. That is also why
-  a board is never attached beside a key frame — two compositions of the same
-  second is what a model averages.
+- **Every picture added beside the greybox fought it, and the greybox lost.**
+  Three acceptance rounds, 2026-09-21. Round 3 drew a storyboard frame per
+  shot from the plan and the bible before anything was blocked: eight
+  pictures, eight invented rooms, no two of them the same space, and the one
+  greybox that had to serve them all disagreed with every board. Rendering
+  the key frame *from* the greybox removed the contradiction and left the
+  problem — a still carries a composition, and the take kept resolving the
+  two against each other. The set concept was the same argument at a wider
+  lens. **The greybox is the only picture of layout, behaviour and camera a
+  take receives**; a sheet is a face, the style frame is an idiom, and each
+  is told so in its own line. When you do send a key frame
+  (`--with-anchors`), you are choosing to spend a composition on it; say so
+  when you report the take.
 - **A word budget copied from text-to-video guides made the agent delete the
   design.** Second acceptance run, 2026-09-21: the packs were structurally
   right and starved, because this page told the agent to fit 120–180 words.
@@ -336,9 +369,11 @@ each naming the greybox as the authority for its own layer (路线 / 站位 /
   kind of movement it is, with its second — the sword form, the stance, which
   hand, whether the blade is drawn.
 - **The likeness filter reads photoreal faces as real people.** A 422 from fal
-  is almost always a reference image, not the prompt: keep sheets and key
-  frames in an illustrated or 3D-animation idiom (`bible.md`) and regenerate
-  the offending one rather than resubmitting the same pack.
-- **More references is not more control.** Every attached still is averaged in;
-  eight with clear, exclusive roles beat twelve with vague ones. `generate`
-  attaches what the shot's record says it has — trim the record, not the pack.
+  is almost always a reference image, not the prompt: keep the sheets and the
+  style frame in an illustrated or 3D-animation idiom (`bible.md`) and
+  regenerate the offending one rather than resubmitting the same pack.
+- **More references is not more control — it is less.** Every attached still
+  is averaged in, and the ones that carry a composition are averaged against
+  `@Video1`. Four references with exclusive roles beat eight with careful
+  ones. `generate` attaches what the default says plus what you asked for by
+  name: the way to send fewer is to ask for none.

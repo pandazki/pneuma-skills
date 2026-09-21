@@ -237,9 +237,10 @@ const PROJECTIONS = {
       id: s.id ?? null,
       greyboxRevision: isRecord(s.greybox) && isRecord(s.greybox.final) ? s.greybox.final.revision ?? null : null,
       checks: checksFor(s, "greybox"),
-      // The anchor frames belong to this stage: the lineup the creator
-      // approves at the previz gate is board | anchor | greybox, so a new
-      // anchor re-opens previz exactly as a re-render does.
+      // A key frame belongs to this stage when a shot has one: it is an
+      // optional picture the creator looks at beside the greybox, so a new
+      // one re-opens previz exactly as a re-render does. Most shots have
+      // none, and the stage is defined, hashed and approvable without any.
       anchors: (Array.isArray(s.anchors) ? s.anchors.filter(isRecord) : []).map((a) => ({
         id: a.id ?? null,
         at: a.at ?? null,

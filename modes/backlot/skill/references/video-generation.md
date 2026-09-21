@@ -1,8 +1,8 @@
 # From greybox to video model
 
-Stage 6, per shot. The greybox is accepted, its **key frames** were approved
-beside it at the previz gate (`greybox.md`), the bible exists, and now one
-paid call turns all of it into a take.
+Stage 6, per shot. The greybox is accepted and reviewed at the previz gate
+(`greybox.md`), the bible exists, and now one paid call turns all of it into
+a take.
 
 **How the prompt itself is written lives in `prompting.md`** — the template,
 its block order, the timeline rules and two worked examples. This page is the
@@ -80,31 +80,44 @@ own record, in a fixed order, and passes them to `seedance-video.mjs`:
 
 | index | what | from |
 |---|---|---|
-| `@Video1` | the final greybox render | `shots/<id>/greybox/greybox.mp4` |
-| `@Image1` | the **`first` key frame** — this shot's storyboard, rendered from the greybox's own opening frame, so its composition and its look are both already correct | `shots/<id>/anchors/first.png` |
-| `@Image2…` | the shot's **other key frames** (a `key` or a `last` one), in the order they were written | `shots/<id>/anchors/**` |
-| `@Image…` | one character sheet per id in `shot.characters`, in bible order, then the set concept for `shot.set` | `bible/**` |
+| `@Video1` | the final greybox render — **the only picture of layout, behaviour and camera the take gets** | `shots/<id>/greybox/greybox.mp4` |
+| `@Image…` | one character sheet per id in `shot.characters`, in bible order | `bible/characters/<id>/sheet.png` |
+| `@Image…` | the film's **style key frame** — how this film is drawn, and nothing about what is in the frame | `style/keyframe.png` (`backlot.mjs style`) |
 | the **last** `@Image` | the hand-off frame, when the shot declares `continuity.from` — the previous shot's last used frame, cut by `generate` into `takes/handoff-in.png` | the previous shot's selected take |
 | `@Audio1…` | the voice sample of each character with a `spoken` line in this shot | `bible/characters/<id>/voice.mp3` |
 
-**A LEGACY BOARD is attached only when the shot has no key frame at all**, and
-then it stands at `@Image1` in the key frame's place. Boards are not drawn any
-more (`shot-plan.md`): a drawing made before the greybox existed is a second
-composition for the same second, and a model given two averages them.
+**The set is not in that list.** Its structure is already in `@Video1`, and
+its materials, colours and scale reach the model as text: `prompt-skeleton`
+pre-fills 【全局设定】's 场景 line from the set's bible `look`. That sentence
+is now the set's only carrier — write it (`backlot.mjs set set --look "…"`),
+and `generate` warns when a film has no style key frame, because then the look
+has no picture at all.
 
-**The key frame leads the images on purpose.** It is the only reference that
-shows *this* shot's framing in the film's own look, and it cannot disagree
-with the greybox because it was rendered from it. The sheets show the people,
-the greybox shows the geometry and the clock. Seedance leans hard on its first
-image reference, so the closest thing to the finished frame goes there
-(`greybox.md`, "Key frames: the storyboard is rendered from the greybox").
+**Three pictures were tried beside the greybox and all three were removed**
+(2026-09-21, three acceptance rounds): a storyboard drawing per shot, a key
+frame rendered from the greybox, and the set concept. Each one carries a
+composition, and a model given two compositions of the same second averages
+them — the greybox always lost. The upstream practice this mode reproduces
+never attached them either; there, a key frame exists only as a **weak
+constraint** for a model that cannot take a video reference at all.
+
+So they are opt-in, per call, and the pack must be scaffolded for the same
+call (`prompt-skeleton` takes the same flags):
+
+| flag | attaches | where |
+|---|---|---|
+| `--with-anchors` | this shot's key frames — `first` then the others | leading the images |
+| `--with-board` | a legacy `board.png` | leading the images |
+| `--with-concept` | the set concept for `shot.set` | after the sheets |
+
+Use one when the words have already failed on a re-shoot, never as a default,
+and name it in the report: that take was conditioned on a second composition.
 
 Three consequences worth internalising:
 
-1. **The indices depend on the shot's record.** A shot with two key frames,
-   two characters and a set has `@Image1` and `@Image2` key frames, `@Image3`
-   and `@Image4` sheets, `@Image5` concept; a shot with no key frame and a
-   legacy board starts the board at `@Image1`. Never count them by hand —
+1. **The indices depend on the shot's record.** A shot with two characters and
+   a style frame has `@Image1` and `@Image2` sheets and `@Image3` style; add
+   `--with-anchors` and every index moves. Never count them by hand —
    `prompt-skeleton` writes the assignment lines at the indices `generate`
    will actually attach, and `generate --estimate` prices the job, lists
    exactly what it would attach, and stops.
@@ -163,11 +176,19 @@ line carries any more; a missing 【全局锁】/【Locks】 block; an `@Video1`
 with no exclusion; an unfilled `<TODO: …>` placeholder. Read them — a timeline
 that overruns the clip is usually a `slowmo` whose cost you did not subtract,
 and a missing detail is usually the design being deleted.
-## What the two acceptance runs paid for (2026-09-21)
+## What the three acceptance runs paid for (2026-09-21)
 
 The lessons about the *prompt* — the invented cut, the missing tempo, the
 swapped identities, the starved timeline — are in `prompting.md`, where the
-rule that fixes each of them lives. Three that are about this machinery:
+rule that fixes each of them lives. Four that are about this machinery:
+
+0. **Each round added a picture beside the greybox, and each one fought it.**
+   A drawn storyboard first (eight shots, eight invented rooms), then a key
+   frame rendered from the greybox — which agreed with the blocking and still
+   competed for the composition — then the set concept, which brought a wide
+   camera of its own. The fix is arithmetic, not phrasing: **one composition
+   per take**. The greybox is it; everything else says a face, an idiom or a
+   pose, and says so in its own line.
 
 1. **Shot-to-shot the action did not connect.** Each take invented its own
    body positions, so the pose shot N ended on was not the pose shot N+1
@@ -179,9 +200,9 @@ rule that fixes each of them lives. Three that are about this machinery:
 2. **fal's likeness filter rejected a shot twice with HTTP 422.** The trigger
    was almost certainly a reference image, not the prompt: a photoreal,
    low-angle close-up frame of a face reads to the filter as a real
-   person. Keep character sheets and key frames in an **illustrated or
-   3D-animation design idiom** — never a photographic portrait, and especially
-   never a photoreal facial close-up (`bible.md`). When a 422 comes back,
+   person. Keep the character sheets and the style frame in an **illustrated
+   or 3D-animation design idiom** — never a photographic portrait, and
+   especially never a photoreal facial close-up (`bible.md`). When a 422 comes back,
    **regenerate the offending reference in that idiom and try again**;
    resubmitting the same pack spends the same money on the same refusal.
 3. **What comes back is one frame longer than the request.** A 6 s request

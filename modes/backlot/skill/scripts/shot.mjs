@@ -1079,7 +1079,7 @@ export function transcriptCoverage(transcript, lines = []) {
  * derived from it through the greybox (`plan` → greybox → checks → the key
  * frame), so nothing between the plan and the blocking asks for a drawing.
  */
-export const STAGES = ["reference", "plan", "greybox-preview", "checks", "final-render", "anchor", "prompt", "take", "take-checks", "select"];
+export const STAGES = ["reference", "plan", "greybox-preview", "checks", "final-render", "prompt", "take", "take-checks", "select"];
 
 export function nextStage(shot, { promptOk = false, promptReason = null } = {}) {
   const greybox = shot.greybox ?? {};
@@ -1108,23 +1108,13 @@ export function nextStage(shot, { promptOk = false, promptReason = null } = {}) 
   if (!greybox.final || Number(greybox.final.revision) !== Number(greybox.revision)) {
     return stage("final-render", "the accepted greybox has no full-resolution render at the current revision", "previz.mjs render <shot-dir>");
   }
-  // The picture comes AFTER the greybox, and it comes FROM it: the greybox
-  // is the only place this film's space and camera exist, so the storyboard
-  // is rendered from one of its frames rather than drawn beside it. An image
-  // model takes direction about camera and composition that a video model
-  // will not, so the look is settled — and reviewed with the creator — while
-  // a frame still costs cents.
-  //
-  // Only while no take exists: a shot may go straight to video on purpose
-  // (the skill says when), and a suggestion that never closes would make
-  // every later `next` a lie about where the shot stands.
-  if ((shot.anchors ?? []).length === 0 && takes.length === 0) {
-    return stage(
-      "anchor",
-      "the greybox is accepted and this shot has no key frame — render the picture from the greybox, look at the two side by side, and only then buy the video",
-      "previz.mjs anchor <shot-dir>   then   previz.mjs lineup <shot-dir>",
-    );
-  }
+  // NO PICTURE STEP. An accepted greybox goes straight to the pack: the
+  // greybox is the only picture of layout, behaviour and camera the take
+  // receives, and every other picture brings a composition that fights it
+  // (three acceptance rounds, 2026-09-21). `anchor` and `lineup` are still
+  // there as optional pictures for the creator — they are not a rung of
+  // this walk, and a suggestion that never closes would make every later
+  // `next` a lie about where the shot stands.
   if (!promptOk) {
     return stage("prompt", promptReason ?? "prompts.md has no usable prompt block", "write the ```prompt block in prompts.md");
   }

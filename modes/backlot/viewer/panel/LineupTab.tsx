@@ -1,16 +1,19 @@
 /**
- * Lineup — the surface the creator approves at the previz gate.
+ * Lineup — an OPTIONAL look at what a shot will become.
  *
- * The pictures of this shot, in the order they were made:
+ * The pictures of this shot, in the order `previz.mjs lineup` stacks them:
  *
- *   KEY FRAME(S)  what this SECOND looks like — rendered FROM the greybox
- *                 frame at that second, so it is the storyboard
- *   GREYBOX       what was actually built — the same second out of the render
+ *   KEY FRAME(S)  an optional rendering of one second in the film's look,
+ *                 made from the greybox frame at that second. A picture for
+ *                 the creator; the take does not receive it unless it was
+ *                 generated with `--with-anchors`
+ *   GREYBOX       what was actually built, and the one picture of layout,
+ *                 behaviour and camera every take IS conditioned on
  *   BOARD         a drawing from before the key frames existed; shown only
  *                 when an old film has one
  *
- * Side by side, because the only question the previz gate asks is whether
- * they are the same picture. The greybox can carry geometry and a clock and
+ * Side by side, because the question a key frame answers is whether the two
+ * are the same picture. The greybox can carry geometry and a clock and
  * nothing else, so a mismatch here is either a blocking defect to fix before
  * a paid take, or a design the prompt will have to carry on its own — and
  * the creator is the one who decides which.
@@ -56,19 +59,17 @@ export function LineupTab({ shot, urlFor, clock, onSeek }: LineupTabProps) {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-[10px] leading-relaxed text-cc-muted">
-        {anchors.length === 0 ? "No key frame yet — " : `The key frame${anchors.length > 1 ? "s" : ""} and the greybox at `}
         {anchors.length === 0
-          ? "the storyboard is rendered from the greybox."
-          : at === null
-            ? "the playhead."
-            : `${formatSeconds(at)} s.`}{" "}
-        The previz gate is the moment somebody says these are the same picture.
+          ? "No key frame — optional. The greybox is the picture this take is made from; a key frame is rendered from it only when somebody wants to see the look first."
+          : `${anchors.length > 1 ? "Key frames" : "A key frame"} and the greybox at ${
+              at === null ? "the playhead" : `${formatSeconds(at)} s`
+            }. Optional pictures: the take receives the greybox, and a key frame only when it was generated with --with-anchors.`}
       </p>
 
       <div className="flex gap-1">
         {anchors.length === 0 ? (
-          <Tile label="Key frame" note="none">
-            <Missing>not rendered yet</Missing>
+          <Tile label="Key frame" note="optional">
+            <Missing>none — the greybox is the picture</Missing>
           </Tile>
         ) : (
           anchors.map((anchor) => (
