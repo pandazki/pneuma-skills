@@ -66,20 +66,36 @@ prevent.
 
 ### 2. Generate the sheet
 
-One image, one frame, three views of the same person:
+**Write the sheet as a design brief, not a spec sheet.** The first film's
+sheets were technically correct turnarounds and the creator called them
+「一般」; the redesign that replaced them (2026-09-21) differed only in the
+prompt: a one-line temperament, the face feature by feature, the hair and
+what holds it, every costume layer with its material and how it hangs, the
+weapon, a large lit portrait beside the three views, and a named idiom
+(today's best 国风 animation — stylised forms, ink-wash texture, bold
+silhouettes, one accent colour — never photoreal, never cute anime). Default
+`--quality xhigh`; a sheet is made once and travels into every board, anchor
+and take, so it is the cheapest place to spend. One image, one frame:
 
 ```bash
 node {SKILL_PATH}/scripts/generate_image.mjs \
-  "Character reference sheet of one person on a flat neutral grey background, \
-drawn as stylised 3D-animation production design — not a photograph: \
-three full-body views of the SAME person side by side in one frame — \
-three-quarter view, front view, and profile — standing in a relaxed neutral \
-pose, identical face, identical costume and proportions in all three. \
-<the character's look sentence>. Even, soft studio lighting, no shadows cast \
-on the background, no text, no labels, no logos, no border, no extra people." \
-  --aspect-ratio 16:9 --quality high \
-  --output-dir bible/characters/challenger --filename-prefix sheet
+  "Character design sheet for a contemporary Chinese animated wuxia feature — \
+stylised 3D forms with hand-painted ink-wash texture, bold graphic silhouettes, \
+dramatic chiaroscuro, one saturated accent colour; NOT photoreal, NOT cute anime. \
+ONE character: <name, age, one line of temperament>. Face: <eyes, brows, nose, \
+mouth, skin, one mark>. Hair: <length, style, what holds it>. Costume: <each layer, \
+its material and colour, how it hangs, sash, footwear>. Weapon: <what, how held>. \
+Layout: left, three full-body views on one ground line (three-quarter, front, \
+profile), identical face and costume; right, a large head-and-shoulders portrait \
+lit by <the character's light>. Soft warm-grey studio gradient behind the views. \
+No text, no labels, no scenery." \
+  --aspect-ratio 16:9 --quality xhigh \
+  --output-dir bible/characters/<id> --filename-prefix sheet
 ```
+
+Give the two leads opposite lights and opposite palettes — the colour
+relationship between the sheets is the story's relationship, and it will
+carry into every frame the two share.
 
 The spec, and why each part is there:
 
