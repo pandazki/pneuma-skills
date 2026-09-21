@@ -161,3 +161,26 @@ the `lineup` joint review at the previz gate; `slowmo`/`impact` in the kit;
   when a designed detail no longer survives in the pack. The doctrine lives
   in `skill/references/prompting.md`. Beat details are written in the
   film's language from the boards stage on.
+- A/B on s03 (2026-09-21 midday, same greybox and reference set, 480p unless
+  noted): A = round-2 prompt; B, B2 = v3 template (two seeds); C = v3 at 720p;
+  D1, D2 = v3 with the board and the second anchor removed; E = v3 with
+  every segment's 景别 held at 中全景 under the one orbit. Findings: v3 fixed
+  the environment (the temple set from frame 1 where A showed a bare wall),
+  put the blade contact on its designed second and ended on the designed
+  wide two-shot; 720p sharpened faces and cloth but C's own inserted
+  close-up read as incoherent; fewer references did not reduce cuts and
+  lost the set again (the board and second anchor were anchoring it); all
+  five v3 samples cut at 2.0 s — the segment where the pack's 景别 changed
+  from 中全景 to 中景偏近. E, with the shot size held constant, read as one
+  camera passing round the fighters. Rule recorded in prompting.md: in a
+  one-take shot the 景别 column describes what the single move yields at
+  that second and never varies on its own; a 景别 change is a cut and
+  belongs only to 按时间戳切镜. Cost of the A/B ≈ $13.
+- Bible redesign (user: "整个人设有点一般", then a new story — a female cult
+  leader who spares the righteous executor she loves and is wounded):
+  art-directed GPT-Image 2.5 sheets at `--quality xhigh` (three views on one
+  ground line plus a large lit portrait; face, hair, every costume layer
+  and material, weapon, one-line temperament, a contemporary 国风 animation
+  idiom — stylised forms, ink-wash texture, one accent colour) were judged
+  far above the first bible's technical turnarounds. Rule for bible.md:
+  write the sheet as a design brief, not a spec; default xhigh.

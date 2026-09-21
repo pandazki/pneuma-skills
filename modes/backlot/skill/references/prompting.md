@@ -134,11 +134,20 @@ Six rules, each of which cost a take:
    When the beats are denser than that, `prompt-skeleton` **merges adjacent
    beats into one segment and concatenates their details**: the merge moves
    boundaries, it never deletes a sentence.
-4. **景别 + 构图 first, then the action.** `景别 + 构图 + 主体动作 + 关键细节`.
-   A line with no shot size is a line the model frames however it likes — the
-   v2 lines carried neither, and the takes reframed themselves. The camera
-   *move* is not repeated per segment (it is in 运镜总原则); if a segment must
-   mention it, one move only — 同一段不要互相打架.
+4. **景别 + 构图 first, then the action — and in a one-take shot the 景别 is
+   what the single move yields, never a free choice.** `景别 + 构图 + 主体动作 +
+   关键细节`. A line with no shot size is a line the model frames however it
+   likes — the v2 lines carried neither, and the takes reframed themselves.
+   But a shot size that *changes* between segments is read as a **cut**: in
+   the s03 A/B (2026-09-21) all five packs whose 2.0 s segment said 中景偏近
+   after 中全景 cut to a close-up at exactly 2.0 s, and the one pack that held
+   「同一环绕机位下的中全景（不切、不推近）」 in every segment came back as one
+   camera passing round the fighters. So under 一镜到底, write the 景别 the
+   move produces at that second (an orbit at constant radius keeps it; a push
+   tightens it gradually — say so), and say 不切、不推近 where the model would
+   be tempted. A 景别 jump belongs only to 按时间戳切镜. The camera *move* is
+   not repeated per segment (it is in 运镜总原则); if a segment must mention
+   it, one move only — 同一段不要互相打架.
 5. **按白模路线 / 站位 / 轨迹.** Say, in the segment, that the path, the
    position and the timing are the greybox's. The blocks give the *where* and
    the *when*; the sentence keeps the model from re-choreographing them.
