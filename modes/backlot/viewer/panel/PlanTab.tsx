@@ -16,6 +16,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import type { Shot } from "../../domain.js";
+import { conditioningChip } from "../../domain.js";
+import { ConditioningChip } from "../ConditioningChip.js";
 import { AlertIcon } from "../icons.js";
 import { ContinuityNote } from "./ContinuityNote.js";
 
@@ -38,11 +40,23 @@ export function PlanTab({ shot, markdown, dark }: PlanTabProps) {
         <dd className="text-cc-fg">
           {shot.entry === "recreate" ? "recreate from a reference video" : "original, from an idea"}
         </dd>
+        {/* The plan's conditioning decision, with the sentence behind it:
+            it is what the take is made from, and on a free shot it is why
+            there is no greybox to look at. */}
+        <dt className="text-cc-muted">Conditioning</dt>
+        <dd className="flex flex-wrap items-baseline gap-1.5 text-cc-fg">
+          <ConditioningChip shot={shot} />
+          <span className="text-[10px] leading-relaxed text-cc-muted">
+            {conditioningChip(shot).title}
+          </span>
+        </dd>
         <dt className="text-cc-muted">Greybox</dt>
         <dd className="text-cc-fg">
           {shot.greybox.final
             ? `revision ${shot.greybox.final.revision}`
-            : "not rendered yet"}
+            : shot.conditioning === "free"
+              ? "free shot — no greybox"
+              : "not rendered yet"}
         </dd>
       </dl>
 

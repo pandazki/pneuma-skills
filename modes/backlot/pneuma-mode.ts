@@ -20,6 +20,7 @@ import type {
 import {
   beatAt,
   checkTally,
+  conditioningChip,
   cutPoints,
   frameAt,
   loadFilm,
@@ -194,11 +195,16 @@ export function extractBacklotContext(
   lines.push(
     `Shot: "${shot.title}" (${shot.id}) · ${shot.entry} · ${shot.spec.seconds} s · ${shot.spec.fps} fps · ${shot.spec.width}×${shot.spec.height} · ${shot.spec.frames} frames`,
   );
+  // WHAT THIS TAKE IS MADE FROM. Without it the agent reads an empty
+  // greybox lane on a free shot as work it still owes.
+  lines.push(`Conditioning: ${conditioningChip(shot).title}`);
   lines.push(
     `Greybox: ${
       shot.greybox.final
         ? `revision ${shot.greybox.final.revision} — ${probeFacts(shot.greybox.final.probe)}`
-        : "not rendered yet"
+        : shot.conditioning === "free"
+          ? "none, and none is expected — this shot is shot free"
+          : "not rendered yet"
     }`,
   );
 

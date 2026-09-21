@@ -25,6 +25,33 @@ export const SHOT_VERSION = 1;
 export const PROJECT_VERSION = 1;
 
 export const ENTRIES = ["original", "recreate"];
+/**
+ * HOW THIS SHOT IS CONDITIONED — decided per shot, in the shot plan.
+ *
+ * Round 3's eight-take run (2026-09-21 night) was consistent and had no
+ * 亮点: every shot was locked off, the pawns barely moved, and the climax
+ * was four near-identical inserts with the exchange itself elided. The
+ * control test the same night — the same exchange shot FREE, with the
+ * sheets and the style frame and a dynamic prompt — came back with a real
+ * fight. The greybox is a tool, not the film:
+ *
+ *  - `greybox` — space, geography or a camera move the model cannot do
+ *    alone (the establishing orbit, the crane, the dolly zoom, the geometric
+ *    "one inch"). `@Video1` is attached and the prompt inherits its layout
+ *    and camera.
+ *  - `free` — the fight beats and the charm beats. No `@Video1`: the
+ *    references are the character sheets and the style frame, and the prompt
+ *    is written for spectacle. A greybox may still exist for the reel and
+ *    for continuity of positions, but it is not sent.
+ *  - `hybrid` — `@Video1` for positions and the camera path, with the prompt
+ *    explicitly allowing dynamic body action and camera acceleration inside
+ *    that layout.
+ *
+ * `greybox` is the default, and the value a file written before this
+ * existed is read as.
+ */
+export const CONDITIONINGS = ["greybox", "free", "hybrid"];
+export const DEFAULT_CONDITIONING = "greybox";
 export const BEAT_KINDS = ["action", "trigger", "camera", "hold"];
 export const CHECK_STATUSES = ["pass", "fail", "unverified"];
 export const TAKE_STATUSES = ["submitted", "done", "failed"];
@@ -92,6 +119,42 @@ export const STANDARD_CHECKS = {
     },
   ],
 };
+
+/**
+ * The two take checks whose SUBJECT is the greybox, reworded for a shot that
+ * never sends one.
+ *
+ * A `free` take has no block to be compared against, and "does it keep the
+ * greybox's camera" is then a question nobody can answer — it would sit
+ * `unverified` forever and block `select`. What a free take IS answerable
+ * against is the plan: the beats and their seconds, and the camera sentence
+ * the pack was written from.
+ */
+const FREE_TAKE_LABELS = {
+  "take-motion": "The person follows the PLAN's beats and their seconds and performs the prompted action",
+  "take-camera": "The camera follows the plan's camera sentence — the move, its speed and where it ends",
+};
+
+/** The take acceptance list this conditioning carries. */
+export function takeChecks(conditioning = DEFAULT_CONDITIONING) {
+  if (conditioning !== "free") return STANDARD_CHECKS.take;
+  return STANDARD_CHECKS.take.map((check) =>
+    FREE_TAKE_LABELS[check.id] ? { ...check, label: FREE_TAKE_LABELS[check.id] } : check,
+  );
+}
+
+/** How this shot is conditioned, defaulting a file that predates the field
+ *  — or one somebody hand-edited — to `greybox`. */
+export function conditioningOf(shot) {
+  const value = shot?.conditioning;
+  return CONDITIONINGS.includes(value) ? value : DEFAULT_CONDITIONING;
+}
+
+/** Whether the greybox is SENT to the model for this shot. `hybrid` sends it
+ *  exactly as `greybox` does; only `free` does not. */
+export function usesGreybox(shot) {
+  return conditioningOf(shot) !== "free";
+}
 
 // ---------------------------------------------------------------------------
 // The spec
@@ -296,6 +359,10 @@ export function newShot({ id, title, entry = "original", spec, assumptions = [],
     characters: [...characters].map(String),
     set: set === null || set === undefined || set === "" ? null : String(set),
     entry,
+    // How this shot is conditioned — a shot-plan decision, changed with
+    // `previz.mjs meta --conditioning`. The greybox is the default because
+    // it is the mode's practice; the plan says per shot when it is not.
+    conditioning: DEFAULT_CONDITIONING,
     spec,
     assumptions: [...assumptions],
     beats: [],
@@ -340,6 +407,10 @@ export function normalizeShot(doc) {
   shot.assumptions = Array.isArray(shot.assumptions) ? shot.assumptions : [];
   shot.stuck = Array.isArray(shot.stuck) ? shot.stuck : [];
   shot.scene = shot.scene ?? null;
+  // A file written before conditioning existed is a greybox shot: that is
+  // what it was made as, and reading it as anything else would change what
+  // an old take was conditioned on.
+  shot.conditioning = conditioningOf(shot);
   shot.characters = Array.isArray(shot.characters) ? shot.characters.map(String) : [];
   shot.set = shot.set ?? null;
   shot.trim = shot.trim ?? null;
@@ -568,12 +639,15 @@ export function voiceOverLines(shot) {
 // ---------------------------------------------------------------------------
 
 /** The label the standard list gives an id, or the id itself for a check the
- *  agent invented for this shot. */
-export function labelForCheck(id, target) {
+ *  agent invented for this shot. The conditioning decides what `take-motion`
+ *  and `take-camera` are about, so it travels with the lookup. */
+export function labelForCheck(id, target, conditioning = DEFAULT_CONDITIONING) {
   const family = target === "greybox" ? "greybox" : target === "reference" ? "reference" : "take";
-  const known = STANDARD_CHECKS[family]?.find((check) => check.id === id)
+  const take = takeChecks(conditioning);
+  const lists = { greybox: STANDARD_CHECKS.greybox, reference: STANDARD_CHECKS.reference, take };
+  const known = lists[family]?.find((check) => check.id === id)
     ?? STANDARD_CHECKS.greybox.find((check) => check.id === id)
-    ?? STANDARD_CHECKS.take.find((check) => check.id === id)
+    ?? take.find((check) => check.id === id)
     ?? STANDARD_CHECKS.lines.find((check) => check.id === id)
     ?? STANDARD_CHECKS.handoff.find((check) => check.id === id)
     ?? STANDARD_CHECKS.reference.find((check) => check.id === id);
@@ -589,15 +663,21 @@ export function labelForCheck(id, target) {
  */
 export function seedChecklist(shot) {
   const added = [];
+  const conditioning = conditioningOf(shot);
+  // A FREE shot sends no greybox, so it carries no greybox acceptance list:
+  // eight checks about a clip nobody will look at would sit `unverified`
+  // forever. A greybox rendered anyway — for the reel — is not the take's
+  // reference, and checks already recorded are never removed.
+  const blocked = usesGreybox(shot);
   const want = [
-    ...STANDARD_CHECKS.greybox.map((check) => ({ ...check, target: "greybox" })),
-    ...(shot.entry === "recreate" ? STANDARD_CHECKS.reference.map((check) => ({ ...check, target: "greybox" })) : []),
+    ...(blocked ? STANDARD_CHECKS.greybox.map((check) => ({ ...check, target: "greybox" })) : []),
+    ...(blocked && shot.entry === "recreate" ? STANDARD_CHECKS.reference.map((check) => ({ ...check, target: "greybox" })) : []),
   ];
   const spoken = hasSpokenLine(shot);
   const continues = Boolean(shot.continuity?.from);
   for (const take of shot.takes ?? []) {
     if (take?.status !== "done") continue;
-    for (const check of STANDARD_CHECKS.take) want.push({ ...check, target: take.id });
+    for (const check of takeChecks(conditioning)) want.push({ ...check, target: take.id });
     // Dialogue only: the transcript check is meaningless on a silent shot,
     // and an unanswerable check would sit `unverified` forever, blocking
     // `select` on a question nobody can answer.
@@ -663,7 +743,7 @@ export function recordCheck(shot, { id, status, target = "greybox", range = null
 
   let check = findCheck(shot, id, target);
   if (!check) {
-    check = { id, label: label ?? labelForCheck(id, target), target, status: "unverified", range: null, note: "", revision: null, at: null, history: [] };
+    check = { id, label: label ?? labelForCheck(id, target, conditioningOf(shot)), target, status: "unverified", range: null, note: "", revision: null, at: null, history: [] };
     shot.checks.push(check);
   }
   check.history = Array.isArray(check.history) ? check.history : [];
@@ -763,22 +843,30 @@ export function nextTakeId(shot) {
  */
 export function takePolicy(shot, { fix = null, userApproved = false, allowFailing = null } = {}) {
   const errors = [];
+  const conditioning = conditioningOf(shot);
+  const blocked = conditioning !== "free";
   const greybox = shot.greybox ?? {};
-  if (!greybox.final) {
-    errors.push("no final greybox — run 'previz.mjs render <shot-dir>' (without --preview) first");
-  } else if (Number(greybox.final.revision) !== Number(greybox.revision)) {
-    errors.push(
-      `the final greybox is revision ${greybox.final.revision} but the scene is at revision ${greybox.revision} — ` +
-        "re-render before conditioning a paid take on a stale file",
-    );
-  }
-
   const summary = summarizeChecks(shot, "greybox");
-  if (summary.fail > 0 && !allowFailing) {
-    errors.push(
-      `the greybox has failing checks (${summary.failIds.join(", ")}) — fix them, or say why they are acceptable ` +
-        'with --allow-failing "<reason>"',
-    );
+
+  // A FREE shot is not conditioned on a greybox, so there is nothing here to
+  // be stale or to have failed: the only gate left is the film's own previz
+  // approval, which `previz.mjs` asks the manifest for. A greybox that
+  // happens to exist (for the reel) is neither required nor checked.
+  if (blocked) {
+    if (!greybox.final) {
+      errors.push("no final greybox — run 'previz.mjs render <shot-dir>' (without --preview) first");
+    } else if (Number(greybox.final.revision) !== Number(greybox.revision)) {
+      errors.push(
+        `the final greybox is revision ${greybox.final.revision} but the scene is at revision ${greybox.revision} — ` +
+          "re-render before conditioning a paid take on a stale file",
+      );
+    }
+    if (summary.fail > 0 && !allowFailing) {
+      errors.push(
+        `the greybox has failing checks (${summary.failIds.join(", ")}) — fix them, or say why they are acceptable ` +
+          'with --allow-failing "<reason>"',
+      );
+    }
   }
 
   const taken = (shot.takes ?? []).length;
@@ -795,8 +883,11 @@ export function takePolicy(shot, { fix = null, userApproved = false, allowFailin
     errors,
     takeNumber: number,
     takeId: nextTakeId(shot),
-    failingChecks: summary.failIds,
-    unverifiedChecks: summary.unverifiedIds,
+    conditioning,
+    // Reported so a caller can warn about them; on a free shot the greybox
+    // record says nothing about the take, so there is nothing to report.
+    failingChecks: blocked ? summary.failIds : [],
+    unverifiedChecks: blocked ? summary.unverifiedIds : [],
     allowFailing: allowFailing ?? null,
   };
 }
@@ -855,8 +946,11 @@ export function promptReferences(text) {
  *  one that reaches fal has to be unambiguous. `@Video1` is how the prompt
  *  addresses the greybox that is attached as the video reference; a prompt
  *  that never mentions it would be a text-to-video shot wearing a previz
- *  mode's clothes. */
-export function parsePromptPack(markdown) {
+ *  mode's clothes — UNLESS the shot is conditioned `free`, where a
+ *  text-to-video shot is exactly what was asked for and no video reference
+ *  is attached at all. `requireVideo` is that decision, and the caller
+ *  reads it off the shot. */
+export function parsePromptPack(markdown, { requireVideo = true } = {}) {
   const lines = String(markdown ?? "").split(/\r?\n/);
   let open = null;
   const body = [];
@@ -877,7 +971,7 @@ export function parsePromptPack(markdown) {
     return { prompt: null, ok: false, reason: "prompts.md has no fenced ```prompt block with text in it", refs: null };
   }
   const refs = promptReferences(prompt);
-  if (!refs.video.includes(1)) {
+  if (requireVideo && !refs.video.includes(1)) {
     return {
       prompt,
       refs,
@@ -1078,6 +1172,10 @@ export function transcriptCoverage(transcript, lines = []) {
  * THERE IS NO BOARD STEP. The plan's text is the design; the pictures are
  * derived from it through the greybox (`plan` → greybox → checks → the key
  * frame), so nothing between the plan and the blocking asks for a drawing.
+ *
+ * A `free` shot SKIPS the three greybox rungs entirely — it is not
+ * conditioned on a block, so `plan` is followed by `prompt`. A greybox it
+ * renders anyway (for the reel) does not put them back.
  */
 export const STAGES = ["reference", "plan", "greybox-preview", "checks", "final-render", "prompt", "take", "take-checks", "select"];
 
@@ -1085,6 +1183,7 @@ export function nextStage(shot, { promptOk = false, promptReason = null } = {}) 
   const greybox = shot.greybox ?? {};
   const takes = shot.takes ?? [];
   const done = takes.filter((take) => take.status === "done");
+  const blocked = usesGreybox(shot);
 
   if (shot.entry === "recreate" && !shot.reference) {
     return stage("reference", "this is a recreate shot and no reference segment has been cut yet", "previz.mjs reference <shot-dir> <video> --in <s> --out <s>");
@@ -1092,11 +1191,11 @@ export function nextStage(shot, { promptOk = false, promptReason = null } = {}) 
   if (!Array.isArray(shot.beats) || shot.beats.length === 0) {
     return stage("plan", "the shot has no beats — write shot-plan.md and load its timeline", "previz.mjs beats <shot-dir> --set beats.json");
   }
-  if (!greybox.preview && !greybox.final) {
+  if (blocked && !greybox.preview && !greybox.final) {
     return stage("greybox-preview", "nothing has been rendered yet", "previz.mjs render <shot-dir> --preview");
   }
   const greyboxChecks = summarizeChecks(shot, "greybox");
-  if (!greyboxChecks.accepted) {
+  if (blocked && !greyboxChecks.accepted) {
     return stage(
       "checks",
       greyboxChecks.fail > 0
@@ -1105,7 +1204,7 @@ export function nextStage(shot, { promptOk = false, promptReason = null } = {}) 
       "previz.mjs sheet <shot-dir> --strip <from>,<to>   then   previz.mjs check <shot-dir> --id <check> --status pass|fail",
     );
   }
-  if (!greybox.final || Number(greybox.final.revision) !== Number(greybox.revision)) {
+  if (blocked && (!greybox.final || Number(greybox.final.revision) !== Number(greybox.revision))) {
     return stage("final-render", "the accepted greybox has no full-resolution render at the current revision", "previz.mjs render <shot-dir>");
   }
   // NO PICTURE STEP. An accepted greybox goes straight to the pack: the
@@ -1122,25 +1221,29 @@ export function nextStage(shot, { promptOk = false, promptReason = null } = {}) 
     return stage("take", "no take has finished yet", "previz.mjs generate <shot-dir> --estimate   then   previz.mjs generate <shot-dir>");
   }
   const newest = done[done.length - 1];
-  const takeChecks = summarizeChecks(shot, newest.id);
-  if (takeChecks.fail > 0) {
+  const takeSummary = summarizeChecks(shot, newest.id);
+  if (takeSummary.fail > 0) {
     // A failing take is not a render to redo: the model, not the scene, put
     // the defect there, and the next take is paid for. So the move is one
     // more take with a fix you can name, or telling the user what deviated.
     const approval = takes.length >= 2 ? ' --user-approved' : "";
     return stage(
       "take-checks",
-      `${takeChecks.fail} check(s) fail on ${newest.id}: ${takeChecks.failIds.join(", ")} — ` +
+      `${takeSummary.fail} check(s) fail on ${newest.id}: ${takeSummary.failIds.join(", ")} — ` +
         "a failing take is re-shot ONCE with a named fix, or reported: tell the user which seconds deviate, " +
-        `keep ${newest.id} and its request id, and deliver the greybox`,
+        `keep ${newest.id} and its request id, and deliver the ${blocked ? "greybox" : "plan"}`,
       `previz.mjs generate <shot-dir> --fix "<what this take changes>"${approval}   or   report the deviation and keep ${newest.id}`,
     );
   }
-  if (!takeChecks.accepted) {
+  if (!takeSummary.accepted) {
     return stage(
       "take-checks",
-      `${takeChecks.unverified} check(s) on ${newest.id} are unverified: ${takeChecks.unverifiedIds.join(", ")}`,
-      `previz.mjs compare <shot-dir> --a greybox --b ${newest.id}   then   previz.mjs check <shot-dir> --target ${newest.id} --id <check> --status pass|fail`,
+      `${takeSummary.unverified} check(s) on ${newest.id} are unverified: ${takeSummary.unverifiedIds.join(", ")}`,
+      // A free take has no greybox to be compared against: the picture to
+      // look at is the take itself, against the plan's beats.
+      blocked
+        ? `previz.mjs compare <shot-dir> --a greybox --b ${newest.id}   then   previz.mjs check <shot-dir> --target ${newest.id} --id <check> --status pass|fail`
+        : `previz.mjs sheet <shot-dir> --lane ${newest.id} --count 8   then   previz.mjs check <shot-dir> --target ${newest.id} --id <check> --status pass|fail`,
     );
   }
   if (!takes.some((take) => take.selected === true)) {
@@ -1167,6 +1270,7 @@ export function shotStatus(shot, { promptOk = false, promptReason = null, costs 
     id: shot.id,
     title: shot.title,
     entry: shot.entry,
+    conditioning: conditioningOf(shot),
     scene: shot.scene ?? null,
     characters: shot.characters ?? [],
     set: shot.set ?? null,

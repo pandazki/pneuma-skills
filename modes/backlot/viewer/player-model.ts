@@ -241,17 +241,34 @@ export function laneViews(shot: Shot, takeId: string | null): LaneView[] {
           takeId: null,
           revision: final.revision,
         }
-      : {
-          id: "greybox",
-          label: "Greybox",
-          kind: "empty",
-          file: null,
-          facts: "not rendered yet",
-          duration: null,
-          note: "No greybox has been rendered for this shot.",
-          takeId: null,
-          revision,
-        },
+      : shot.conditioning === "free"
+        ? {
+            // A free shot never owed this lane a file: the take is made
+            // from the sheets, the style frame and the words, and an empty
+            // greybox lane here is the plan working, not a missing step.
+            id: "greybox",
+            label: "Greybox",
+            kind: "empty",
+            file: null,
+            facts: "free shot — no greybox",
+            duration: null,
+            note:
+              "free shot — no greybox. This shot is conditioned on the character sheets and the film's style frame, "
+              + "and the plan's beats are what the take is judged against. A greybox may still be rendered for the reel.",
+            takeId: null,
+            revision,
+          }
+        : {
+            id: "greybox",
+            label: "Greybox",
+            kind: "empty",
+            file: null,
+            facts: "not rendered yet",
+            duration: null,
+            note: "No greybox has been rendered for this shot.",
+            takeId: null,
+            revision,
+          },
   );
 
   const take = takeId ? (shot.takes.find((t) => t.id === takeId) ?? null) : selectedTake(shot);

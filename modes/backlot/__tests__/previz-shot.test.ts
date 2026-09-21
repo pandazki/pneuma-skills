@@ -12,6 +12,7 @@ import { describe, expect, test } from "bun:test";
 import type { Check, CheckStatus, Line } from "../skill/scripts/shot.d.mts";
 import {
   computeStuck,
+  conditioningOf,
   findCheck,
   hasSpokenLine,
   makeContinuity,
@@ -36,6 +37,7 @@ import {
   STAGES,
   STANDARD_CHECKS,
   summarizeChecks,
+  takeChecks,
   takePolicy,
   timelineProblems,
   transcriptCoverage,
@@ -635,6 +637,105 @@ describe("the film's manifest", () => {
     // No stage statuses are stored: they are derived, so the viewer and the
     // scripts cannot disagree about what the creator has seen.
     expect(Object.keys(project)).not.toContain("stages");
+  });
+});
+
+/**
+ * CONDITIONING — whether this shot's take is made from the block at all.
+ *
+ * Round 3's eight-take run was consistent and had no 亮点; the same
+ * exchange shot free had one. So the decision is per shot, and everything
+ * that assumed a greybox has to ask first.
+ */
+describe("conditioning", () => {
+  test("greybox is the default, and what a file written before the field says", () => {
+    expect(newShot({ id: "s", title: "s", spec: SPEC }).conditioning).toBe("greybox");
+    // normalizeShot fills in an older record without inventing a decision:
+    // that shot WAS made with a block.
+    const older = normalizeShot({ id: "s", title: "s", spec: SPEC, greybox: {} });
+    expect(older.conditioning).toBe("greybox");
+    // …and so is anything unreadable. A typo must not quietly drop the
+    // video reference from a paid job.
+    expect(conditioningOf({ conditioning: "liberated" })).toBe("greybox");
+    expect(conditioningOf({ conditioning: null })).toBe("greybox");
+    expect(conditioningOf(normalizeShot({ id: "s", title: "s", spec: SPEC, conditioning: "free" }))).toBe("free");
+  });
+
+  test("a free shot carries no greybox acceptance list, and its take checks are about the PLAN", () => {
+    const free = normalizeShot({ ...newShot({ id: "s", title: "s", spec: SPEC }), conditioning: "free" });
+    expect(seedChecklist(free)).toEqual([]);
+    expect(free.checks).toEqual([]);
+
+    free.takes.push({ id: "take-01", status: "done" } as never);
+    seedChecklist(free);
+    const labels = Object.fromEntries(free.checks.map((c) => [c.id, c.label]));
+    expect(labels["take-motion"]).toContain("PLAN's beats");
+    expect(labels["take-camera"]).toContain("plan's camera sentence");
+    expect(labels["take-camera"]).not.toContain("greybox");
+    // Every take check is still asked — only two of them changed subject.
+    expect(free.checks.map((c) => c.id).sort()).toEqual(
+      STANDARD_CHECKS.take.map((c) => c.id).sort(),
+    );
+    // And a blocked shot's labels are untouched.
+    expect(takeChecks("greybox")).toEqual(STANDARD_CHECKS.take);
+    expect(takeChecks("hybrid")).toEqual(STANDARD_CHECKS.take);
+  });
+
+  test("a free shot needs no greybox to spend, and hybrid needs one exactly as greybox does", () => {
+    const free = normalizeShot({ ...newShot({ id: "s", title: "s", spec: SPEC }), conditioning: "free" });
+    expect(free.greybox.final).toBeNull();
+    expect(takePolicy(free)).toMatchObject({ ok: true, conditioning: "free", failingChecks: [], unverifiedChecks: [] });
+
+    // A greybox rendered for the reel is not the take's, so neither its
+    // staleness nor its failures gate the job.
+    free.greybox.revision = 4;
+    free.greybox.final = { file: "greybox/greybox.mp4", revision: 1, probe: null, renderedAt: null, renderSeconds: null };
+    recordCheck(free, { id: "penetration", status: "fail", target: "greybox", at: T(1) });
+    expect(takePolicy(free).ok).toBe(true);
+
+    const hybrid = normalizeShot({ ...newShot({ id: "s", title: "s", spec: SPEC }), conditioning: "hybrid" });
+    expect(takePolicy(hybrid).errors[0]).toContain("no final greybox");
+    expect(takePolicy(hybrid).conditioning).toBe("hybrid");
+  });
+
+  test("a free shot's walk goes plan → prompt: the three greybox rungs are not its rungs", () => {
+    const free = normalizeShot({ ...newShot({ id: "s", title: "s", spec: SPEC }), conditioning: "free" });
+    expect(nextStage(free).stage).toBe("plan");
+    free.beats = validateBeats([{ id: "thrust", from: 0, to: 3, kind: "action" }], SPEC);
+    expect(nextStage(free).stage).toBe("prompt");
+    expect(nextStage(free, { promptOk: true }).stage).toBe("take");
+
+    // The same shot conditioned on a block waits for one.
+    const blocked = normalizeShot({ ...free, conditioning: "greybox" });
+    expect(nextStage(blocked).stage).toBe("greybox-preview");
+  });
+
+  test("a free take's unverified checks send you to the take itself, not to a comparison", () => {
+    const free = normalizeShot({ ...newShot({ id: "s", title: "s", spec: SPEC }), conditioning: "free" });
+    free.beats = validateBeats([{ id: "thrust", from: 0, to: 3, kind: "action" }], SPEC);
+    free.takes.push({ id: "take-01", status: "done", selected: false } as never);
+    seedChecklist(free);
+    const next = nextStage(free, { promptOk: true });
+    expect(next.stage).toBe("take-checks");
+    // `compare --a greybox` would refuse on this shot; the command must not
+    // send the agent at it.
+    expect(next.command).not.toContain("--a greybox");
+    expect(next.command).toContain("sheet <shot-dir> --lane take-01");
+  });
+
+  test("a free pack does not have to address @Video1 — and a blocked one still does", () => {
+    const pack = "```prompt\n@Image1: her face only. She thrusts through the water.\n```";
+    expect(parsePromptPack(pack)).toMatchObject({ ok: false });
+    expect(parsePromptPack(pack).reason).toContain("@Video1");
+    expect(parsePromptPack(pack, { requireVideo: false })).toMatchObject({ ok: true, reason: null });
+    // The placeholder is still a placeholder, whatever the conditioning.
+    const scaffold = `\`\`\`prompt\n${PROMPT_TEMPLATE_BODY}\n\`\`\``;
+    expect(parsePromptPack(scaffold, { requireVideo: false })).toMatchObject({ ok: false });
+  });
+
+  test("shotStatus reports the decision", () => {
+    const free = normalizeShot({ ...newShot({ id: "s", title: "s", spec: SPEC }), conditioning: "free" });
+    expect((shotStatus(free) as Record<string, unknown>).conditioning).toBe("free");
   });
 });
 

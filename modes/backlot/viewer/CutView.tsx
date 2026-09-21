@@ -27,7 +27,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { CutPoint, CutState, Project, Shot, Take } from "../domain.js";
-import { cutPoints, segmentAt } from "../domain.js";
+import { conditioningChip, cutPoints, segmentAt } from "../domain.js";
+import { ConditioningChip } from "./ConditioningChip.js";
 import { CutIcon, LinkIcon, MusicIcon, PauseIcon, PlayIcon, VoiceIcon } from "./icons.js";
 import { StatusChip } from "./panel/ChecksTab.js";
 import { clamp, formatSeconds } from "./player-model.js";
@@ -165,6 +166,7 @@ export function CutView({
 
       <EdlStrip
         cut={cut}
+        shots={project.shots}
         duration={duration}
         time={time}
         selected={selectedSegment}
@@ -185,12 +187,15 @@ export function CutView({
 
 function EdlStrip({
   cut,
+  shots,
   duration,
   time,
   selected,
   onSeek,
 }: {
   cut: CutState;
+  /** The film's shots, for the conditioning each segment was made under. */
+  shots: ReadonlyArray<Shot>;
   duration: number;
   time: number;
   selected: string | null;
@@ -228,14 +233,26 @@ function EdlStrip({
         <div className="relative min-w-0 flex-1">
           <div ref={trackRef} className="relative h-6 w-full overflow-hidden rounded-sm bg-cc-hover">
             {cut.segments.map((segment) => {
-              const standIn = segment.source === "greybox";
+              // A card stands in exactly as a greybox does — a free shot
+              // with no block still owes the reel its seconds.
+              const standIn = segment.source === "greybox" || segment.source === "card";
               const active = segment.shot === selected;
+              const shot = shots.find((s) => s.id === segment.shot) ?? null;
+              const chip = shot ? conditioningChip(shot) : null;
+              // WHICH SHOT IT IS COMES FIRST. A 1 s segment of a 30 s film
+              // is a few pixels wide, and a chip that keeps its width there
+              // pushes the shot id out of a strip whose whole job is saying
+              // which shot plays when. So the chip is drawn only where it
+              // fits beside the name; the title carries it either way.
+              const roomForChip = segment.seconds / duration >= 0.09;
               return (
                 <button
                   key={`${segment.shot}:${segment.offset}`}
                   type="button"
                   onClick={() => onSeek(segment.offset, segment.shot)}
-                  title={`${segment.shot} · ${segment.source} · ${segment.offset.toFixed(1)}–${(segment.offset + segment.seconds).toFixed(1)} s`}
+                  title={`${segment.shot} · ${segment.source} · ${segment.offset.toFixed(1)}–${(segment.offset + segment.seconds).toFixed(1)} s${
+                    chip ? `\n${chip.title}` : ""
+                  }`}
                   className={`absolute inset-y-0 overflow-hidden border-r border-cc-bg/70 px-1 text-left text-[9px] leading-6 transition-colors ${
                     active ? "ring-1 ring-inset ring-cc-primary" : ""
                   } ${
@@ -256,9 +273,12 @@ function EdlStrip({
                       : {}),
                   }}
                 >
-                  <span className="block truncate">
-                    {segment.shot}
-                    {standIn ? " · greybox" : ""}
+                  <span className="flex items-center overflow-hidden whitespace-nowrap">
+                    <span className="truncate">
+                      {segment.shot}
+                      {standIn ? ` · ${segment.source}` : ""}
+                    </span>
+                    {shot && roomForChip ? <ConditioningChip shot={shot} compact /> : null}
                   </span>
                 </button>
               );
@@ -360,7 +380,13 @@ function mediaOf(
   shot: Shot | null,
   take: Take | null,
   source: string,
-): { path: string | null; rev: number; standIn: boolean; label: string } {
+): { path: string | null; rev: number; standIn: boolean; label: string; missing?: string } {
+  // A card is generated into the reel and nowhere else: there is no file
+  // under the shot to decode, and saying "no file on record" would read as
+  // a defect rather than as the black card it is.
+  if (source === "card") {
+    return { path: null, rev: 0, standIn: true, label: "card", missing: "black card — free shot, no greybox" };
+  }
   if (source === "greybox" || !take) {
     const final = shot?.greybox.final ?? null;
     return {
@@ -414,8 +440,8 @@ function CutPointCard({
       }`}
     >
       <div className="flex gap-px bg-cc-border/60">
-        <CutFrame path={out.path} rev={out.rev} time={point.outTime} label="out" urlFor={urlFor} />
-        <CutFrame path={into.path} rev={into.rev} time={point.inTime} label="in" urlFor={urlFor} />
+        <CutFrame path={out.path} rev={out.rev} time={point.outTime} label="out" missing={out.missing} urlFor={urlFor} />
+        <CutFrame path={into.path} rev={into.rev} time={point.inTime} label="in" missing={into.missing} urlFor={urlFor} />
       </div>
       <div className="px-2 py-1.5">
         <p className="truncate text-[10px] leading-tight text-cc-fg">
@@ -460,12 +486,15 @@ function CutFrame({
   rev,
   time,
   label,
+  missing,
   urlFor,
 }: {
   path: string | null;
   rev: number;
   time: number;
   label: string;
+  /** What this side IS when there is no file — a black card is not a gap. */
+  missing?: string;
   urlFor: CutViewProps["urlFor"];
 }) {
   const url = path ? urlFor(path, rev) : null;
@@ -491,7 +520,7 @@ function CutFrame({
         />
       ) : (
         <span className="flex h-full w-full items-center justify-center px-1 text-center text-[8px] leading-tight text-cc-muted">
-          {url ? "could not be decoded" : "no file on record"}
+          {url ? "could not be decoded" : (missing ?? "no file on record")}
         </span>
       )}
       <span className="absolute left-0.5 top-0.5 rounded bg-black/65 px-1 text-[8px] uppercase tracking-wide text-white/85">

@@ -9,6 +9,7 @@
 
 import type { Shot } from "../domain.js";
 import { shotStages } from "../domain.js";
+import { ConditioningChip } from "./ConditioningChip.js";
 import { CheckIcon } from "./icons.js";
 
 export interface ShotsRailProps {
@@ -129,7 +130,12 @@ function ShotCard({
       </div>
       <div className="px-2 py-1.5">
         <p className="truncate text-[11px] leading-tight text-cc-fg">{shot.title}</p>
-        <p className="truncate text-[9px] text-cc-muted">{shot.id}</p>
+        <div className="flex items-center gap-1">
+          <p className="min-w-0 truncate text-[9px] text-cc-muted">{shot.id}</p>
+          {/* The plan's conditioning decision, where the rail can show it
+              without another row: a free shot has no greybox lane to miss. */}
+          <ConditioningChip shot={shot} />
+        </div>
         <div className="mt-1 flex items-center gap-1">
           {STAGE_LABEL.map(([key, label]) => (
             <span

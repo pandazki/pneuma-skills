@@ -26,6 +26,9 @@ animated — which is exactly why the acted column has to be *written*.
 ## What `shots/<id>/shot-plan.md` holds
 
 1. **Idea** — one sentence. If it needs two, it is probably two shots.
+1b. **Conditioning** — `greybox`, `free` or `hybrid`, with the one-line
+   reason. The section below is the rule; register it with
+   `previz.mjs meta <shot-dir> --conditioning <…>`.
 2. **Ties** — the scene it belongs to, the characters in frame, the set. The
    same values you register with `backlot.mjs shot add` or
    `previz.mjs meta --scene --characters --set`; `generate` reads them to
@@ -60,6 +63,57 @@ animated — which is exactly why the acted column has to be *written*.
 In a recreate job add two columns to the timeline — *observed* and *estimated*
 — and keep them honest: what is behind the subject, any depth, anything
 occluded is an estimate.
+
+## Conditioning: is this shot made from the block, or from the words?
+
+**The greybox is a tool, not the film.** Round 3 (2026-09-21) blocked every
+shot of a duel and bought eight consistent 720p takes: locked-off cameras,
+pawns that barely moved, and a climax of four near-identical close inserts
+with the exchange itself elided. The creator's verdict was
+「完全没有亮点，为了环境一致性把 seedance 的强项完全放弃了」. The control test
+the same night — the same exchange shot **free**, with the character sheets,
+the style frame and a prompt written for the action — came back with his
+thrust kicking water lines, her spin with hair and ribbon in arcs, the blades
+crossing in a splash and a slow-motion stop one inch from his throat: the
+first shot of the project with a 亮点.
+
+So every shot declares how it is conditioned:
+
+| conditioning | what the take gets | choose it for |
+|---|---|---|
+| **`greybox`** | `@Video1` + sheets + style frame | space, geography, or a camera move the model cannot do alone: the establishing orbit, the crane, the dolly zoom, the geometric "one inch", two bodies whose exact distance is the point |
+| **`free`** | sheets + style frame only | the fight beats and the charm beats — anything whose value is the *performance*: an exchange, a fall, a look, a laugh |
+| **`hybrid`** | `@Video1` + sheets + style frame, and the pack says the body and the camera may move inside it | a shot that needs the positions fixed *and* real action: the entrance into a fight, a chase through a known space |
+
+```bash
+node {SKILL_PATH}/scripts/previz.mjs meta <shot-dir> --conditioning free
+```
+
+**One hard thing per shot still holds — but "hard thing" means the MODEL's
+job.** The rule was written about the block (a big camera move over a still
+body, or fine action under a locked camera, never both), and it is still
+true *of a greybox shot*. It was never a licence to cut the drama up into
+inserts: **a fight exchange in one locked medium shot is one hard thing;
+four static inserts of a sword at a throat is no scene at all.** When you
+find yourself splitting an action into pieces so each piece can be blocked,
+the answer is a free shot, not four shots.
+
+Two consequences, both mechanical:
+
+- A free shot needs **no greybox and no greybox checks** — `next` goes plan →
+  prompt, and the gate in front of `generate` is the film's `previz` approval
+  alone. It is also priced on the **no-reference row** (no reference clip's
+  duration to bill, so 480p is $0.2205/s of output instead of $0.1323/s of
+  output *and* reference — a 6 s take is $1.32 free against $1.59 blocked).
+- A free shot **may still have a greybox** — for the reel, and for your own
+  arithmetic about positions. It is not sent. If it has none, `cut --reel`
+  gives it a black card with its title so the rest of the film still cuts in
+  time.
+
+`take-motion` and `take-camera` are reworded on a free shot: they ask whether
+the take follows **the plan's** beats and camera sentence, because there is no
+block to compare it with. `compare --a greybox` refuses by name on a free shot
+with no greybox — look at the take itself (`sheet --lane <take> --strip a,b`).
 
 ## Timing arithmetic
 
@@ -260,12 +314,14 @@ A `continuity` block is part of the `boards` stage's content, exactly like the
 beats and the trim: changing a hand-off turns that stage `changed` and the
 creator re-approves the shot list before anything else is bought.
 
-## Then the greybox — and it is the picture
+## Then the greybox — where the shot asked for one
 
 **Do not draw a frame here.** The plan says what happens and what it looks
-like, in words; the picture is the greybox, one stage later (`greybox.md`).
-Once the plan is approved, block the shot, check it, and the take is
-conditioned on that clip plus the faces and the film's style frame.
+like, in words; the picture is the greybox, one stage later (`greybox.md`) —
+for the shots whose conditioning asks for one. A `free` shot goes from this
+plan straight to its pack. Once the plan is approved, block the shots that
+are blocked, check them, and each take is conditioned on what its own
+`conditioning` says plus the faces and the film's style frame.
 
 Round 3 (2026-09-21) is why nothing is drawn here. Every shot got a
 storyboard frame drawn from its plan and the bible before anything was

@@ -16,6 +16,17 @@ set's real dimensions come from its bible record: build the room its `look`
 sentence states, at those metres, or the take is fighting two descriptions
 of one place.
 
+**Only the shots that asked for one are blocked.** The greybox is a tool,
+not the film: the shot plan declares each shot's `conditioning`, and this
+stage is about the `greybox` and `hybrid` ones. A `free` shot has no
+greybox to build, no greybox checks and no previz rung — it goes from its
+plan to its pack. You may still block one for the reel or for your own
+arithmetic about positions; it is not sent, and `cut --reel` gives a free
+shot with no block a black title card instead. Eight locked-off shots came
+back consistent and with no 亮点 (2026-09-21); the same exchange shot free
+had one. Spend the block where the geography or the camera is the hard
+thing.
+
 ## Files
 
 `greybox/scene.py` is yours. `previz.mjs render` runs it in headless Blender

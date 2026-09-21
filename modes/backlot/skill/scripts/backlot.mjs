@@ -53,7 +53,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { costLines, costOfStage, summarizeCost } from "./cost.mjs";
-import { parseProbe, pngSize } from "./media.mjs";
+import { hasDrawtext, parseProbe, pngSize } from "./media.mjs";
 import { createShot } from "./previz.mjs";
 import {
   gateRefusal,
@@ -70,7 +70,7 @@ import {
   shotPathOf,
   STYLE_KEYFRAME_FILE,
 } from "./project.mjs";
-import { DEFAULT_SPEC, makeSpec, newProject, normalizeShot, parseSize, slugId } from "./shot.mjs";
+import { conditioningOf, DEFAULT_SPEC, makeSpec, newProject, normalizeShot, parseSize, slugId } from "./shot.mjs";
 import { GATES, hashStage, isStage, STAGES, stageStatus, stageStatuses } from "./stage-state.mjs";
 
 const SUBCOMMANDS = [
@@ -992,6 +992,13 @@ function segmentSeconds(file, fps) {
  * the edit list exists to prevent. A `--reel` falls back to the greybox and
  * labels that segment `greybox`, so the strip shows which seconds are still
  * stand-ins.
+ *
+ * A shot conditioned `free` may have no greybox at all — it was never going
+ * to send one — and a reel that refused to build because of that would make
+ * the free shots invisible at exactly the stage the creator is judging the
+ * film's timing. Such a shot gets a BLACK CARD with its title, for its own
+ * seconds, recorded in the edit list as `source: "card"`. It is a stand-in
+ * like the greybox is, and it is counted as one.
  */
 function planSegments(dir, manifest, kind) {
   const segments = [];
@@ -1035,9 +1042,80 @@ function planSegments(dir, manifest, kind) {
       segments.push({ ...common, source: "greybox", file: greybox, rel: relFromProject(dir, greybox), silent: true });
       continue;
     }
+    if (conditioningOf(shot) === "free") {
+      // A free shot owes the reel no greybox. The card holds its place and
+      // its seconds so the rest of the film is still cut in time.
+      segments.push({
+        ...common,
+        source: "card",
+        file: null,
+        rel: null,
+        silent: true,
+        card: { title: shot.title || id, seconds: Number(shot.spec?.seconds) || null },
+      });
+      continue;
+    }
     missing.push(`${id}: neither a selected take nor a final greybox`);
   }
   return { segments, missing };
+}
+
+/**
+ * The black card a free shot with no greybox contributes to a reel.
+ *
+ * Built at the FILM's spec and at the SHOT's full length, so the trim that
+ * applies to every other source applies to it unchanged. The title is burnt
+ * in when this ffmpeg has drawtext and a font with the glyphs; without one
+ * the card is plain black and says so — a reel is judged on timing, and a
+ * missing caption must not stop it being built.
+ */
+function cardSegment(ffmpeg, segment, spec, output) {
+  const seconds = Number(segment.card?.seconds) || Number(spec.seconds) || 1;
+  const filters = [];
+  const font = cardFont();
+  if (font && cardDrawtextSupported(ffmpeg)) {
+    const title = String(segment.card?.title ?? segment.shot)
+      .replace(/\\/g, "\\\\")
+      .replace(/:/g, "\\:")
+      .replace(/'/g, "\u2019")
+      .replace(/%/g, "\\%");
+    filters.push(
+      `drawtext=fontfile=${font}:text='${title}':fontcolor=white@0.72:fontsize=${Math.max(14, Math.round(spec.height / 14))}` +
+        ":x=(w-text_w)/2:y=(h-text_h)/2",
+    );
+  } else {
+    note(`NOTE: ${segment.shot}'s card has no burnt-in title (this ffmpeg has no usable drawtext font) — it is a plain black card`);
+  }
+  runToolOrFail(
+    ffmpeg.path,
+    ["-y", "-v", "error",
+      "-f", "lavfi", "-i", `color=c=black:s=${spec.width}x${spec.height}:r=${spec.fps}:d=${round4(seconds)}`,
+      ...(filters.length ? ["-vf", filters.join(",")] : []),
+      "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", output],
+    { label: `ffmpeg card ${segment.shot}` },
+  );
+  return output;
+}
+
+const CARD_FONTS = [
+  "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+  "/System/Library/Fonts/Supplemental/Arial.ttf",
+  "/System/Library/Fonts/Helvetica.ttc",
+  "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+  "/usr/share/fonts/TTF/DejaVuSans.ttf",
+  "C:/Windows/Fonts/arial.ttf",
+];
+
+function cardFont() {
+  return CARD_FONTS.find(isFile) ?? null;
+}
+
+let cardDrawtext = null;
+function cardDrawtextSupported(ffmpeg) {
+  if (cardDrawtext !== null) return cardDrawtext;
+  const listing = runTool(ffmpeg.path, ["-v", "quiet", "-filters"], { label: "ffmpeg -filters" });
+  cardDrawtext = hasDrawtext(listing.stdout);
+  return cardDrawtext;
 }
 
 /**
@@ -1132,6 +1210,11 @@ function cmdCut(dir, opts) {
       const normalized = join(work, `seg_${String(index + 1).padStart(3, "0")}.mp4`);
       const range = segment.trim ? ` [${segment.trim.in}–${segment.trim.out} s of the shot]` : "";
       note(`[backlot] ${segment.shot}: ${segment.source}${range} → ${spec.width}x${spec.height} @ ${spec.fps}`);
+      // A card has no source file: it is generated here, at the shot's full
+      // length, and then normalised (and trimmed) like any other source.
+      if (segment.card) {
+        segment.file = cardSegment(ffmpeg, segment, spec, join(work, `card_${String(index + 1).padStart(3, "0")}.mp4`));
+      }
       normalizeSegment(ffmpeg, segment, spec, normalized);
       const seconds = segmentSeconds(normalized, spec.fps);
       // `in`/`out` are the shot-clock range this segment shows; `seconds` is
@@ -1281,9 +1364,13 @@ function cmdCut(dir, opts) {
     };
     writeJsonAtomic(join(dir, "cut", "edl.json"), edlDoc);
 
-    const standIns = edl.filter((entry) => entry.source === "greybox").map((entry) => entry.shot);
+    const standIns = edl.filter((entry) => entry.source === "greybox" || entry.source === "card").map((entry) => entry.shot);
+    const cards = edl.filter((entry) => entry.source === "card").map((entry) => entry.shot);
     if (standIns.length) {
-      note(`NOTE: ${standIns.length} segment(s) are greybox stand-ins (${standIns.join(", ")}) — this is a REEL, never call it the film`);
+      note(`NOTE: ${standIns.length} segment(s) are stand-ins (${standIns.join(", ")}) — this is a REEL, never call it the film`);
+    }
+    if (cards.length) {
+      note(`NOTE: ${cards.length} of them are BLACK CARDS (${cards.join(", ")}): free shots with no greybox, holding their seconds`);
     }
     return emit({
       command: "cut",
@@ -1294,6 +1381,7 @@ function cmdCut(dir, opts) {
       probe,
       segments: edl,
       standIns,
+      cards,
       trimmed: segments.filter((segment) => segment.trim).map((segment) => segment.shot),
       vo: edlDoc.vo,
       droppedVo,
@@ -1435,7 +1523,10 @@ said to run through. Image generation is not wrapped by this script — ask
       listed, with the reason, in the report and the edit list. A negative
       decibel value needs the '=' spelling: --music-db=-22.
       --reel stands the greybox in for any shot without a selected take and
-      labels those segments; --final REFUSES while any shot lacks one.
+      labels those segments; a shot conditioned 'free' that has no greybox
+      gets a BLACK CARD with its title for its own seconds, recorded as
+      source "card" — it never owed the reel a block. --final REFUSES while
+      any shot lacks a selected take.
       Gated (--final only): sound must be approved.
 
   cost <project>

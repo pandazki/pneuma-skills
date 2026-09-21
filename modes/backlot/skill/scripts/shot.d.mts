@@ -8,6 +8,11 @@ import type { Probe, ShotSpec } from "./media.d.mts";
 export const SHOT_VERSION: number;
 export const PROJECT_VERSION: number;
 export const ENTRIES: string[];
+/** `greybox` | `free` | `hybrid` — how a shot is conditioned, decided per
+ *  shot in the plan. `greybox` is the default and what a file written before
+ *  the field existed means. */
+export const CONDITIONINGS: string[];
+export const DEFAULT_CONDITIONING: string;
 export const BEAT_KINDS: string[];
 export const CHECK_STATUSES: string[];
 export const TAKE_STATUSES: string[];
@@ -24,6 +29,16 @@ export const STANDARD_CHECKS: Record<
 >;
 
 export type BeatKind = "action" | "trigger" | "camera" | "hold";
+/**
+ * How the take is conditioned:
+ *  - `greybox` — `@Video1` is attached and the prompt inherits its layout,
+ *    timing and camera (space, geography, a camera move the model cannot do);
+ *  - `free` — no `@Video1`: the sheets and the style frame are the whole
+ *    reference set and the prompt is written for the action itself;
+ *  - `hybrid` — `@Video1` for the positions and the camera path, with the
+ *    prompt allowing dynamic body action and camera speed inside it.
+ */
+export type Conditioning = "greybox" | "free" | "hybrid";
 export type CheckStatus = "pass" | "fail" | "unverified";
 export type TakeStatus = "submitted" | "done" | "failed";
 export type LineKind = "spoken" | "vo";
@@ -225,6 +240,8 @@ export interface Shot {
   characters: string[];
   set: string | null;
   entry: "original" | "recreate";
+  /** How this shot is conditioned; `greybox` when the file predates it. */
+  conditioning: Conditioning;
   spec: ShotSpec;
   assumptions: string[];
   beats: Beat[];
@@ -338,7 +355,16 @@ export function validateLines(
 export function spokenLines(shot: Shot): Line[];
 export function hasSpokenLine(shot: Shot): boolean;
 export function voiceOverLines(shot: Shot): Line[];
-export function labelForCheck(id: string, target: string): string;
+/** The take acceptance list this conditioning carries: on a `free` shot
+ *  `take-motion` and `take-camera` are about the PLAN, not the greybox. */
+export function takeChecks(conditioning?: Conditioning): Array<{ id: string; label: string }>;
+/** How a shot is conditioned, defaulting an older or hand-edited file to
+ *  `greybox`. */
+export function conditioningOf(shot: unknown): Conditioning;
+/** Whether the greybox is SENT for this shot — true for `greybox` and
+ *  `hybrid`, false for `free`. */
+export function usesGreybox(shot: unknown): boolean;
+export function labelForCheck(id: string, target: string, conditioning?: Conditioning): string;
 export function seedChecklist(shot: Shot): string[];
 export function findCheck(shot: Shot, id: string, target: string): Check | null;
 export function revisionOfTarget(shot: Shot, target: string): number | null;
@@ -366,6 +392,7 @@ export function takePolicy(
   errors: string[];
   takeNumber: number;
   takeId: string;
+  conditioning: Conditioning;
   failingChecks: string[];
   unverifiedChecks: string[];
   allowFailing: string | null;
@@ -382,7 +409,9 @@ export interface PromptRefs {
 }
 
 export function promptReferences(text: string): PromptRefs;
-export function parsePromptPack(markdown: string): {
+/** `requireVideo` is false for a `free` shot: no video reference is
+ *  attached, so a pack that never says `@Video1` is correct. */
+export function parsePromptPack(markdown: string, options?: { requireVideo?: boolean }): {
   prompt: string | null;
   ok: boolean;
   reason: string | null;

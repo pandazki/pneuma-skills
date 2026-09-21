@@ -25,6 +25,26 @@ Three things meet in the block, and the split is what makes it work:
 | how this film is drawn | the film's one style key frame (`@Image…`) |
 | what this place is made of, bodies, faces, materials, light, tempo, **and the join with the shot before** | **the words** |
 
+## First: is this shot blocked at all?
+
+The pack's shape follows the shot's **conditioning** (`shot-plan.md`), and
+`prompt-skeleton` emits the right one from the record — you never assemble
+it by hand:
+
+| | `greybox` | `hybrid` | `free` |
+|---|---|---|---|
+| replacement sentence | yes | yes | **no** |
+| opening block | 【素材映射】 after it | same | **【一句话成片】 first** |
+| `@Video1` line | yes | yes | **none — no video is attached** |
+| 运镜总原则 | 一镜到底, one move, 严格照 @Video1 | the same **plus** 「在白模给定的位置与机位路径内，允许身体动作与镜头速度有动态变化。」 | the camera is words: 「镜头由文字决定——…」 and 「镜头随动作运动，允许加速与减速，最快处进入慢动作」 |
+| timeline segments | 景别 + 构图 + detail + 按白模路线/站位 | the same | 景别 + 构图 + detail + **the body and camera verbs** (no 按白模…) |
+| closing line | 重新生成自然的…，不迁移方块滑行 | the same | 重新生成自然的…，动作有真实的重量、惯性与速度变化 |
+| 【全局锁】 | 不保留白模质感; 禁止 白模方块、坐标轴、视锥体… | the same | none of those — the model never saw a block |
+
+A free shot is not a weaker pack; it is a pack whose whole job is the
+action. Everything the greybox used to say — where they stand, how far
+apart, when the blade lands — has to be **in the words**, at its second.
+
 ## One picture of the shot, and it is the greybox
 
 **The reference order is fixed, and one function owns it** (`planReferences`
@@ -33,8 +53,10 @@ in `previz.mjs`):
 `@Video1` the greybox → the character sheets in bible order → the film's style
 key frame → `@Audio1…` the voice samples.
 
-That is the whole list. Never count the indices by hand — `prompt-skeleton`
-writes the assignment lines at the indices `generate` will actually attach.
+That is the whole list, and on a **free** shot the first line of it is gone:
+the sheets start at `@Image1`. Never count the indices by hand —
+`prompt-skeleton` writes the assignment lines at the indices `generate` will
+actually attach.
 
 **Every other picture is opt-in, and the reason is three acceptance rounds.**
 Round 3 drew a storyboard frame per shot before the greybox existed: eight
@@ -328,6 +350,57 @@ Five segments for six seconds — the density rule — each one main event, the
 clock covered end to end with no gap, every `detail` whole, one camera move
 named once, and the prohibitions last.
 
+## A worked FREE example — the same duel, shot for the exchange
+
+`s03-exchange`, 6 s, 16:9, **conditioning `free`**: two sheets and the style
+frame, no `@Video1`, no greybox required. This is the control shot that came
+back with the project's first 亮点. Read it against the pack above: the
+blocks are gone, and everything they carried is now a sentence at its second
+— who is where, how far apart, when the blades meet, and what the camera
+does while it happens.
+
+````markdown
+```prompt
+【一句话成片】
+《一寸止风》· 交手：水面对刺：武侠漫剧（干净线条、赛璐璐上色、可读剪影）的 6 秒、16:9 成片——挑战者踏水前刺，守剑人旋身格开，剑尖在离咽喉一寸处停住。
+
+【素材映射】
+@Image1：这是挑战者，只参考这张的脸型、发型、服装与配饰，不用它的姿势、构图与背景。
+@Image2：这是守剑人，只参考这张的脸型、发型、服装与配饰，不用它的姿势、构图与背景。
+@Image3：全片画风参考，只参考画风、线条与上色方式，不参考构图与人物。
+
+【全局设定】
+风格：武侠漫剧，干净线条、赛璐璐上色、可读剪影，浅景深，不是照片。
+场景：山中古寺庭院——青石露台上浅浅一层积水，断裂的石柱列，朱红旗幡，暮色。
+光线：西侧低角度暖光侧逆，水面反光，空气里有浮尘。
+运镜总原则：镜头由文字决定——贴着水面的低机位跟拍，随前刺加速逼近两人之间，在剑刃相交处甩过去，最后慢下来停在剑尖与咽喉之间。
+镜头随动作运动，允许加速与减速，最快处进入慢动作；全片一镜到底，不切、不加转场。
+
+【时间戳分镜】（共 6 秒，严格按这些秒数演出；整条都进成片）
+第一帧：挑战者在画左，面朝画右，直剑收在右胯后，重心压在后脚；守剑人在画右三米外，面朝画左，剑尖下垂；两人之间是一层浅水。
+0.0–1.6秒：中全景，两人分踞画面左右；挑战者蹬水前刺，鞋底踢起两道水线，剑尖直取咽喉，剑身上有一道细长的光；镜头随他的前冲加速逼近；水花在逆光里发亮，衣摆被风拉直；真实的蹬地、送胯与前压，不是平移。
+1.6–3.2秒：中景，两人进入同一景框；守剑人半步侧身、旋身格开，长发与红绦在空中划出弧线，裙摆带起一圈水雾；镜头绕到两人之间；暖光扫过刀脊与湿透的衣料；旋身是从脚跟拧起来的整劲，不是上半身摆动。
+3.2–4.4秒：中近景，两剑占画面中心；两剑在水花里交错相击，火星与水珠同时炸开，两人重心都压向前；镜头在这一击上甩过去又收住；金属反光与水珠一起亮起来；接触的一瞬两人的手腕都被震得一沉。
+4.4–6.0秒：近景，剑尖与咽喉在同一画面；剑尖在离咽喉一寸处停住，进入慢动作，水珠悬在空中，两人对视不动；镜头慢下来停住；暮色压在两张脸上，呼吸看得见；身体只剩呼吸的起伏与衣料的余动。
+最后一帧：剑尖停在守剑人咽喉前一寸，两人对视，水珠悬在空中未落。
+
+声音：环境声 山风、水面轻响；对白 无；音效 踏水、衣袂、金属相击。不要配乐——配乐在成片阶段统一铺。
+
+重新生成自然的踏水前刺、旋身格开、剑刃相击与急停，动作有真实的重量、惯性与速度变化。
+
+【全局锁】
+不增加画面里没有说到的人物与道具，不删除说到的。
+画面里只有 2 个人：挑战者、守剑人；每人只有一把直剑，不出现第二件兵器、动物或路人。
+禁止：刚性滑行、塑料皮肤、变脸、额外人物、字幕、自带 BGM、突然跳切、人物变形。
+```
+````
+
+Four segments for six seconds, one main event each, the clock covered end to
+end — the density rule does not change. What changes is what the segments
+owe: **the geography** (画左/画右, 三米, 同一景框), because no block carries
+it now, and **the tempo** (加速逼近, 甩过去, 慢下来), because the camera is
+allowed to have one.
+
 ## A second genre — the creator's own rooftop example
 
 The same template on a modern action shot, 18 s, crude blocks and three
@@ -420,6 +493,14 @@ each naming the greybox as the authority for its own layer (路线 / 站位 /
   is almost always a reference image, not the prompt: keep the sheets and the
   style frame in an illustrated or 3D-animation idiom (`bible.md`) and
   regenerate the offending one rather than resubmitting the same pack.
+- **A blocked shot buys consistency with the performance, and that is a
+  price you choose per shot.** Eight blocked 720p takes (2026-09-21 night)
+  held the space and the look across a whole film and had no 亮点: a pawn's
+  body moves in proportion to its displacement, so a locked camera over a
+  short path is a stiff actor. The same exchange shot free had one. Spend
+  the block where the geography or the camera is the hard thing, and shoot
+  the performance free — the decision lives in the shot plan, per shot, and
+  `prompt-skeleton` writes whichever pack it says.
 - **More references is not more control — it is less.** Every attached still
   is averaged in, and the ones that carry a composition are averaged against
   `@Video1`. Four references with exclusive roles beat eight with careful

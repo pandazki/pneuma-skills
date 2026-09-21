@@ -159,6 +159,26 @@ describe("lanes", () => {
     expect(lane.note).toContain("No greybox");
   });
 
+  test("a FREE shot's empty greybox lane says the plan worked, not that a step is missing", () => {
+    // "Not rendered yet" on a shot that will never be blocked reads as
+    // work still owed. It is not: the take is made from the sheets, the
+    // style frame and the words.
+    const lane = laneViews(shot({ conditioning: "free", greybox: { revision: 0 } }), null)[0];
+    expect(lane.kind).toBe("empty");
+    expect(lane.facts).toBe("free shot — no greybox");
+    expect(lane.note).toContain("free shot — no greybox");
+    expect(lane.note).not.toContain("No greybox has been rendered");
+    // A free shot that DID render one for the reel plays it as usual.
+    const forTheReel = laneViews(
+      shot({
+        conditioning: "free",
+        greybox: { revision: 1, final: { file: "greybox/greybox.mp4", revision: 1, probe: null } },
+      }),
+      null,
+    )[0];
+    expect(forTheReel.kind).toBe("video");
+  });
+
   test("a submitted take shows its state and its estimate, not a player", () => {
     // Invariant 6: paid work is recorded before it leaves, so the user must
     // be able to see the job that is running and what it will cost.

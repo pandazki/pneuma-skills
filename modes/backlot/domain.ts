@@ -358,11 +358,27 @@ export interface ShotContinuity {
   exit: string | null;
 }
 
+/**
+ * How a shot is conditioned — a shot-plan decision, one per shot.
+ *
+ * `greybox` sends the block as `@Video1` (space, geography, a camera move
+ * the model cannot do alone); `free` sends no video at all — the character
+ * sheets and the film's style frame are the whole reference set and the
+ * prompt carries the action; `hybrid` sends the block for positions and the
+ * camera path while the pack allows dynamic body and camera speed inside it.
+ *
+ * A `shot.json` written before the field existed is read as `greybox`: that
+ * is what it was made as.
+ */
+export type ShotConditioning = "greybox" | "free" | "hybrid";
+
 /** Exactly what one `shot.json` holds, plus where it lives. */
 export interface Shot {
   id: string;
   title: string;
   entry: ShotEntry;
+  /** How the take is conditioned; `greybox` unless the plan says otherwise. */
+  conditioning: ShotConditioning;
   spec: ShotSpec;
   assumptions: string[];
   beats: Beat[];
@@ -455,7 +471,11 @@ export interface SoundState {
 
 export interface CutSegment {
   shot: string;
-  /** `take-02` — or `greybox`, which makes the whole cut a reel. */
+  /**
+   * `take-02` — or a STAND-IN, which makes the whole cut a reel: `greybox`
+   * when the block held the place, `card` when a free shot had no block to
+   * hold it with and a black title card held its seconds instead.
+   */
   source: string;
   offset: number;
   seconds: number;
@@ -645,6 +665,7 @@ function asStringArray(value: unknown): string[] {
 }
 
 const BEAT_KINDS: ReadonlySet<string> = new Set(["action", "trigger", "camera", "hold"]);
+const CONDITIONINGS: ReadonlySet<string> = new Set(["greybox", "free", "hybrid"]);
 const CHECK_STATUSES: ReadonlySet<string> = new Set(["pass", "fail", "unverified"]);
 const TAKE_STATUSES: ReadonlySet<string> = new Set(["submitted", "done", "failed"]);
 
@@ -968,6 +989,9 @@ export function parseShot(dir: string, fallbackId: string, text: string): Shot |
   }
 
   const entry = asString(raw.entry, "original");
+  // `greybox` is the default AND the fallback: a value nobody recognises is
+  // not a licence to drop the block from a shot that was made with one.
+  const conditioning = asString(raw.conditioning, "greybox");
   const beats = Array.isArray(raw.beats)
     ? raw.beats.map(parseBeat).filter((b): b is Beat => b !== null)
     : [];
@@ -987,6 +1011,7 @@ export function parseShot(dir: string, fallbackId: string, text: string): Shot |
     id: asString(raw.id, fallbackId),
     title: asString(raw.title, fallbackId),
     entry: (entry === "recreate" ? "recreate" : "original") as ShotEntry,
+    conditioning: (CONDITIONINGS.has(conditioning) ? conditioning : "greybox") as ShotConditioning,
     spec: {
       seconds,
       fps,
@@ -1113,7 +1138,9 @@ export function parseCut(text: string): CutState | null {
         ];
       })
     : [];
-  const standIn = segments.some((s) => s.source === "greybox");
+  // A card stands in exactly as a greybox does: a cut that still contains
+  // one is a reel, whatever `kind` claims.
+  const standIn = segments.some((s) => s.source === "greybox" || s.source === "card");
   const declared = raw.kind === "final" ? "final" : "reel";
   const musicRaw = isRecord(raw.music) ? raw.music : null;
   const musicFile = musicRaw ? asNullableString(musicRaw.file) : null;
@@ -1712,6 +1739,48 @@ export function shotThumbnail(shot: Shot): ShotThumbnail {
   if (shot.greybox.sheet) return { kind: "sheet", file: shot.greybox.sheet, rev: shot.greybox.revision };
   if (shot.board) return { kind: "board", file: shot.board.file, rev: shot.board.revision };
   return { kind: "none", file: null, rev: 0 };
+}
+
+/**
+ * How a shot is conditioned, as a chip: one word and the sentence behind it.
+ *
+ * ONE AUTHORITY FOR THE WORD. The shot card, the rail, the cut strip and the
+ * Plan tab all show the same decision, and a viewer that called a free shot
+ * "no greybox" in one place and "free" in another would be describing two
+ * things. The `title` is what the creator reads on hover, and it says what
+ * the decision COSTS — which references the take gets — rather than
+ * repeating the label.
+ */
+export interface ConditioningChip {
+  id: ShotConditioning;
+  label: string;
+  title: string;
+}
+
+const CONDITIONING_CHIPS: Record<ShotConditioning, ConditioningChip> = {
+  greybox: {
+    id: "greybox",
+    label: "greybox",
+    title:
+      "Conditioned on the greybox: the block is sent as @Video1 and the take inherits its layout, timing and camera move.",
+  },
+  free: {
+    id: "free",
+    label: "free",
+    title:
+      "Shot free: no greybox is sent. The character sheets and the film's style frame are the whole reference set, and the plan's beats are what the take is judged against.",
+  },
+  hybrid: {
+    id: "hybrid",
+    label: "hybrid",
+    title:
+      "Hybrid: the greybox gives the positions and the camera path, and the prompt lets the body action and the camera speed move inside it.",
+  },
+};
+
+export function conditioningChip(shot: Shot | ShotConditioning): ConditioningChip {
+  const id = typeof shot === "string" ? shot : shot.conditioning;
+  return CONDITIONING_CHIPS[id] ?? CONDITIONING_CHIPS.greybox;
 }
 
 /**

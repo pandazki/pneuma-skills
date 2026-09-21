@@ -175,6 +175,24 @@ describe("the hash", () => {
     expect(hashStage("previz", continued)).toBe(hashStage("previz", before));
   });
 
+  test("conditioning is a BOARDS decision — shooting a shot free re-opens the shot list", () => {
+    // Whether the take is made from the block or from the words is decided
+    // with the beats, and it changes what the shot IS. The creator approved
+    // a shot list where this was a greybox shot.
+    const before = FILM();
+    const free = { ...before, "shots/s01-enter/shot.json": shot({ conditioning: "free" }) };
+    expect(hashStage("boards", free)).not.toBe(hashStage("boards", before));
+    const hybrid = { ...before, "shots/s01-enter/shot.json": shot({ conditioning: "hybrid" }) };
+    expect(hashStage("boards", hybrid)).not.toBe(hashStage("boards", free));
+    // Writing the DEFAULT down is not a change: a file that predates the
+    // field was already a greybox shot, and `previz.mjs` adds the field on
+    // the next write of any command.
+    const explicit = { ...before, "shots/s01-enter/shot.json": shot({ conditioning: "greybox" }) };
+    expect(hashStage("boards", explicit)).toBe(hashStage("boards", before));
+    // And it is not a previz decision: no greybox and no check moved.
+    expect(hashStage("previz", free)).toBe(hashStage("previz", before));
+  });
+
   test("the shot plan defines the boards stage with no picture at all", () => {
     // Round 3 (2026-09-21) stopped drawing boards: the stage is the shot
     // list, its beats and its cameras, and it must be approvable — and

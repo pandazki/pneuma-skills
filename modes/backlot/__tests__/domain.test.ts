@@ -14,6 +14,7 @@ import {
   beatAt,
   checkTally,
   checkTargets,
+  conditioningChip,
   cutPoints,
   fovForLens,
   frameAt,
@@ -975,6 +976,33 @@ describe("continuity", () => {
       shotJson({ continuity: { from: null, entry: null, exit: "blade low, guard open" } }),
     )!;
     expect(shot.continuity).toEqual({ from: null, entry: null, exit: "blade low, guard open" });
+  });
+});
+
+describe("conditioning", () => {
+  test("is read whole, and anything unreadable is the greybox it was made as", () => {
+    expect(parseShot("d", "s", shotJson())!.conditioning).toBe("greybox");
+    expect(parseShot("d", "s", shotJson({ conditioning: "free" }))!.conditioning).toBe("free");
+    expect(parseShot("d", "s", shotJson({ conditioning: "hybrid" }))!.conditioning).toBe("hybrid");
+    // A typo must not make the viewer claim a shot was shot free when the
+    // take on record was conditioned on a block.
+    expect(parseShot("d", "s", shotJson({ conditioning: "liberated" }))!.conditioning).toBe("greybox");
+    expect(parseShot("d", "s", shotJson({ conditioning: 3 }))!.conditioning).toBe("greybox");
+  });
+
+  test("the chip is one word and one sentence, and every surface reads the same ones", () => {
+    const free = parseShot("d", "s", shotJson({ conditioning: "free" }))!;
+    expect(conditioningChip(free)).toEqual({
+      id: "free",
+      label: "free",
+      title: conditioningChip("free").title,
+    });
+    expect(conditioningChip(free).title).toContain("no greybox is sent");
+    expect(conditioningChip("greybox").label).toBe("greybox");
+    expect(conditioningChip("hybrid").label).toBe("hybrid");
+    expect(conditioningChip("hybrid").title).toContain("positions and the camera path");
+    // A shot and its bare id answer identically: one authority for the word.
+    expect(conditioningChip(free)).toEqual(conditioningChip("free"));
   });
 });
 

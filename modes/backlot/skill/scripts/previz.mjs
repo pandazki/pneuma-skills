@@ -84,6 +84,8 @@ import {
   checkTargets,
   CHECK_STATUSES,
   computeStuck,
+  CONDITIONINGS,
+  conditioningOf,
   DEFAULT_SPEC,
   ENTRIES,
   hasSpokenLine,
@@ -108,6 +110,7 @@ import {
   takePolicy,
   timelineProblems,
   transcriptCoverage,
+  usesGreybox,
   validateBeats,
   validateLines,
   validatePromptRefs,
@@ -196,8 +199,8 @@ function writeJsonAtomic(path, value) {
 }
 
 const SHOT_KEYS = [
-  "version", "id", "title", "scene", "characters", "set", "entry", "spec",
-  "assumptions", "beats", "trim", "continuity", "board", "anchors", "lines",
+  "version", "id", "title", "scene", "characters", "set", "entry", "conditioning",
+  "spec", "assumptions", "beats", "trim", "continuity", "board", "anchors", "lines",
   "reference", "greybox", "checks", "stuck", "prompt", "takes",
 ];
 
@@ -749,6 +752,17 @@ function laneFile(dir, shot, lane) {
   const greybox = shot.greybox ?? {};
   if (lane === "greybox") {
     const record = greybox.final ?? greybox.preview;
+    // A free shot is not conditioned on a block, so "compare it with the
+    // greybox" is a question about a file that was never meant to exist.
+    // Say that, rather than sending the agent off to render one.
+    if (!record && !usesGreybox(shot)) {
+      fail(
+        "this shot is conditioned FREE: no greybox was sent to the model and none has been rendered, so there is " +
+          "nothing to compare the take against. The plan's beats are the reference — look at the take itself " +
+          "('previz.mjs sheet <shot-dir> --lane <take> --strip <from>,<to>'). Render one with 'previz.mjs render " +
+          "<shot-dir>' only if you want the reel to show a stand-in.",
+      );
+    }
     if (!record) fail("the greybox has never been rendered — run 'previz.mjs render <shot-dir> --preview'");
     return { lane, file: join(dir, record.file), rel: record.file, probe: record.probe, label: greybox.final ? "greybox" : "greybox (preview)" };
   }
@@ -1046,10 +1060,22 @@ function cmdMeta(dir, opts) {
   const touchesTrim = opts["trim-in"] !== undefined || opts["trim-out"] !== undefined || opts["no-trim"];
   const touchesContinuity =
     opts["continues-from"] !== undefined || opts.entry !== undefined || opts.exit !== undefined || opts["no-continuity"];
-  if (opts.scene === undefined && opts.characters === undefined && opts.set === undefined && !touchesTrim && !touchesContinuity) {
+  const touchesConditioning = opts.conditioning !== undefined;
+  if (
+    opts.scene === undefined && opts.characters === undefined && opts.set === undefined
+    && !touchesTrim && !touchesContinuity && !touchesConditioning
+  ) {
     fail(
-      'meta needs at least one of --scene <id>, --characters <a,b>, --set <id>, --trim-in/--trim-out, --no-trim, ' +
-        '--continues-from <shot> --entry "…" --exit "…", --no-continuity (pass "" to clear an id)',
+      'meta needs at least one of --scene <id>, --characters <a,b>, --set <id>, --conditioning greybox|free|hybrid, ' +
+        '--trim-in/--trim-out, --no-trim, --continues-from <shot> --entry "…" --exit "…", --no-continuity ' +
+        '(pass "" to clear an id)',
+    );
+  }
+  if (touchesConditioning && !CONDITIONINGS.includes(opts.conditioning)) {
+    fail(
+      `--conditioning must be one of ${CONDITIONINGS.join("|")} (got: ${opts.conditioning}) — ` +
+        "greybox sends the block as @Video1, free sends no video at all (the sheets and the style frame are the whole " +
+        "reference set), hybrid sends the block and lets the body and the camera move inside it",
     );
   }
   if (opts["no-trim"] && (opts["trim-in"] !== undefined || opts["trim-out"] !== undefined)) {
@@ -1073,7 +1099,29 @@ function cmdMeta(dir, opts) {
       return fail(error.message);
     }
   }
-  const { shot } = commitShot(dir, (fresh) => {
+  const { shot, result } = commitShot(dir, (fresh) => {
+    const changed = { dropped: [], seeded: [] };
+    if (touchesConditioning) {
+      fresh.conditioning = opts.conditioning;
+      if (opts.conditioning === "free") {
+        // A greybox check nobody has answered, about a greybox this shot
+        // will never send, is not a record — it is a question that no
+        // longer applies, and leaving it would sit `unverified` in every
+        // report for ever. Anything ANYBODY LOOKED AT stays: a recorded
+        // verdict is history, and history is not deleted by a decision.
+        const stays = (check) =>
+          check.target !== "greybox"
+          || check.status !== "unverified"
+          || check.revision != null
+          || (Array.isArray(check.history) && check.history.length > 0);
+        changed.dropped = (fresh.checks ?? []).filter((check) => !stays(check)).map((check) => check.id);
+        fresh.checks = (fresh.checks ?? []).filter(stays);
+      } else {
+        // …and back again: a shot that is blocked once more owes the
+        // acceptance list it was going to be judged by.
+        changed.seeded = seedChecklist(fresh);
+      }
+    }
     if (opts.scene !== undefined) fresh.scene = opts.scene === "" ? null : slugId(opts.scene, "--scene");
     if (opts.characters !== undefined) fresh.characters = opts.characters === "" ? [] : parseIdList(opts.characters, "--characters");
     if (opts.set !== undefined) fresh.set = opts.set === "" ? null : slugId(opts.set, "--set");
@@ -1096,9 +1144,9 @@ function cmdMeta(dir, opts) {
     }
     if (opts["no-trim"]) {
       fresh.trim = null;
-      return;
+      return changed;
     }
-    if (opts["trim-in"] === undefined && opts["trim-out"] === undefined) return;
+    if (opts["trim-in"] === undefined && opts["trim-out"] === undefined) return changed;
     // One flag alone edits the range that is there, starting from the whole
     // shot: `--trim-out 1.6` on an untrimmed shot means 0 .. 1.6.
     const current = fresh.trim ?? { in: 0, out: fresh.spec?.seconds };
@@ -1111,8 +1159,44 @@ function cmdMeta(dir, opts) {
         fresh.spec,
       );
     } catch (error) { fail(error.message); }
+    return changed;
   });
   const unknown = warnUnknownIds(projectRoot, { scene: shot.scene, characters: shot.characters, set: shot.set });
+  if (touchesConditioning) {
+    const conditioning = conditioningOf(shot);
+    if (conditioning === "free") {
+      note(
+        "[previz] this shot is FREE: no greybox is sent — the references are the character sheets and the film's " +
+          "style frame, the first image is @Image1, and the prompt carries the action itself. 'generate' no longer " +
+          "waits for a greybox or its checks (the previz-stage approval is still the gate), and 'take-motion' / " +
+          "'take-camera' are judged against the PLAN. A greybox rendered anyway is for the reel and is not sent.",
+      );
+      if (result.dropped.length) {
+        note(
+          `[previz] dropped ${result.dropped.length} unanswered greybox check(s) (${result.dropped.join(", ")}) — ` +
+            "nobody had looked at them and there will be no greybox to look at. Anything with a recorded verdict was kept.",
+        );
+      }
+      const recorded = summarizeChecks(shot, "greybox");
+      if (recorded.total > 0) {
+        note(
+          `NOTE: ${recorded.total} answered greybox check(s) are still on this shot's record (${recorded.pass} pass, ` +
+            `${recorded.fail} fail) — they are history now, not a gate`,
+        );
+      }
+    } else if (conditioning === "hybrid") {
+      note(
+        "[previz] this shot is HYBRID: the greybox is sent as @Video1 for the positions and the camera path, and the " +
+          "pack says the body action and the camera speed may vary inside it. Everything the greybox rules require — " +
+          "a final render at the current revision, its checks — still applies.",
+      );
+    } else {
+      note("[previz] this shot is conditioned on its greybox: @Video1 is the layout, the timing and the camera move.");
+    }
+    if (result.seeded.length) {
+      note(`[previz] seeded ${result.seeded.length} acceptance check(s) this conditioning asks for: ${result.seeded.join(", ")}`);
+    }
+  }
   if (shot.trim) {
     const outside = (shot.lines ?? []).filter((line) => line?.at != null && (line.at < shot.trim.in - 1e-6 || line.at > shot.trim.out + 1e-6));
     note(
@@ -1143,6 +1227,11 @@ function cmdMeta(dir, opts) {
     scene: shot.scene,
     characters: shot.characters,
     set: shot.set,
+    conditioning: conditioningOf(shot),
+    // What changing the conditioning did to the acceptance record, so a
+    // report can say it rather than the agent having to diff the file.
+    droppedChecks: result?.dropped ?? [],
+    seededChecks: result?.seeded ?? [],
     trim: shot.trim,
     continuity: shot.continuity,
     unknown,
@@ -2429,7 +2518,9 @@ function cmdReference(dir, videoArg, opts) {
 function promptState(dir, shot) {
   const file = join(dir, shot.prompt?.file ?? "prompts.md");
   if (!existsSync(file)) return { promptOk: false, promptReason: `${relPath(dir, file)} does not exist`, refs: null };
-  const parsed = parsePromptPack(readFileSync(file, "utf-8"));
+  // A free shot attaches no video, so a pack that never says `@Video1` is
+  // the correct pack — the requirement follows the conditioning.
+  const parsed = parsePromptPack(readFileSync(file, "utf-8"), { requireVideo: usesGreybox(shot) });
   return { promptOk: parsed.ok, promptReason: parsed.reason, prompt: parsed.prompt, refs: parsed.refs };
 }
 
@@ -2503,7 +2594,10 @@ function anchorById(shot, id) {
  * assignment sentences from the same list, so the pack and the job can never
  * name different pictures.
  *
- *   @Video1   the final greybox — layout, positions, timing, camera,
+ *   @Video1   the final greybox — layout, positions, timing, camera, and
+ *             ONLY when the shot is conditioned on one (`greybox`, `hybrid`);
+ *             a `free` shot attaches no video at all and its first image is
+ *             `@Image1`,
  *   @Image…   this shot's character sheets, in bible order, so two shots
  *             with the same cast address the same character at the same
  *             index,
@@ -2541,11 +2635,20 @@ function anchorById(shot, id) {
  * carries the display names the skeleton needs; `refs` is the record shape
  * that goes onto the take — `{ kind, index, file, role }`.
  */
+/**
+ * A `free` shot is the round-3 verdict in the reference list: eight
+ * consistent shots and no 亮点, because a block a pawn cannot act in
+ * constrains the body in proportion to its displacement. Shot free — the
+ * same exchange, the sheets, the style frame and a prompt written for the
+ * action — came back with the first 亮点 of the project. So the video
+ * reference is a per-shot decision, and `free` means the first image is
+ * `@Image1`.
+ */
 function planReferences(
   dir,
   shot,
   projectRoot,
-  { greyboxFile, handoff = null, withAnchors = false, withBoard = false, withConcept = false, withHandoff = false } = {},
+  { greyboxFile = null, handoff = null, withAnchors = false, withBoard = false, withConcept = false, withHandoff = false } = {},
 ) {
   const plan = [];
   const videos = [];
@@ -2559,7 +2662,10 @@ function planReferences(
     plan.push({ kind, index: bucket.length, file: rel(absolute), role, name });
   };
 
-  attach("video", greyboxFile, "greybox");
+  // The block, when this shot is conditioned on one. `free` sends none, and
+  // then every index below moves up by one — which is exactly why the
+  // skeleton and `generate` read the list from this one function.
+  if (usesGreybox(shot) && greyboxFile) attach("video", greyboxFile, "greybox");
 
   // OPT-IN, and never by default: a key frame has a composition of its own,
   // and a second composition of the same second is what a model averages.
@@ -3060,12 +3166,16 @@ const PACK_TEXT = {
     todoStyleShort: "<TODO: 风格>",
     todoSubject: "<TODO: 这一镜一句话讲什么>",
     todoLight: "<TODO: 光源方向、时间与色温；白模那层平光不算数>",
+    todoLightFree: "<TODO: 光源方向、时间与色温>",
     todoEnd: "<TODO: 这一下运镜停在什么画面上>",
     todoSize: "<TODO: 景别>",
     todoFrame: "<TODO: 构图>",
     todoGrow: "<TODO: 这一段的材质与光影怎么长出来>",
     todoBody: "<TODO: 肢体怎么自然化——真实的步子与重心，不是滑行>",
     todoBeat: "<TODO: 这一段发生了什么，写成看得见的动作与后果>",
+    // A free shot has no block to be "naturalised" away from: what the
+    // segment still owes is the verbs — of the body and of the camera.
+    todoBodyFree: "<TODO: 这一段身体与镜头的动作动词——蹬、转、落、停、跟、甩，以及重量与惯性>",
     todoRoom: "<TODO: 这一场专属的禁止项，例如多余的武器、道具或动物>",
     todoActions: "<TODO: 这一镜真正发生的动作，例如「起跳、落地卸力、站定对峙」>",
     todoAmbience: "<TODO: 两三种这一镜真的会响的环境声>",
@@ -3091,12 +3201,14 @@ const PACK_TEXT = {
     todoStyleShort: "<TODO: the look>",
     todoSubject: "<TODO: what this one shot is about, in one line>",
     todoLight: "<TODO: the light — direction, time of day, colour temperature; the greybox's flat studio light does not count>",
+    todoLightFree: "<TODO: the light — direction, time of day, colour temperature>",
     todoEnd: "<TODO: the frame this move settles on>",
     todoSize: "<TODO: shot size>",
     todoFrame: "<TODO: composition>",
     todoGrow: "<TODO: how the materials and the light grow in over this segment>",
     todoBody: "<TODO: how the body becomes natural — real steps and real weight, not a sliding block>",
     todoBeat: "<TODO: what happens here, as visible action with a physical consequence>",
+    todoBodyFree: "<TODO: the body and camera verbs of this segment — push, turn, land, stop, follow, whip — with their weight and inertia>",
     todoRoom: "<TODO: what this shot in particular must not contain — an extra weapon, prop or animal>",
     todoActions: "<TODO: the actions this shot really contains, e.g. \"the leap, the landing, the settle\">",
     todoAmbience: "<TODO: the two or three sounds this shot actually makes>",
@@ -3132,6 +3244,10 @@ function assignmentFor(ref, shot, language = "en", context = {}) {
   const tag = refTag(ref);
   const role = String(ref.role ?? "");
   const lead = `${tag}${zh ? "：" : ": "}`;
+  // A free shot has no block to point at, so no line may send the model
+  // looking for one: the sheet is a face, the set is a sentence, and the
+  // camera is words.
+  const blocked = usesGreybox(shot);
   if (role === "greybox") return `${lead}${L.greybox}`;
   if (role === "anchor:first") {
     // The key frame IS this shot's storyboard, rendered from the same
@@ -3158,6 +3274,11 @@ function assignmentFor(ref, shot, language = "en", context = {}) {
   if (role.startsWith("character:")) {
     const id = role.slice("character:".length);
     const name = ref.name ?? id;
+    if (!blocked) {
+      return zh
+        ? `${lead}这是${name}，只参考这张的脸型、发型、服装与配饰，不用它的姿势、构图与背景。`
+        : `${lead}this is ${name}; use only this sheet's face, hair, clothing and accessories — not its pose, its framing or its background.`;
+    }
     const pawn = context.pawns?.[id] ?? null;
     const block = zh
       ? (pawn ? `白模中名为「${pawn}」的体块（<TODO: 它的颜色与第 1 帧位置>）就是${name}，` : `白模中的 <TODO: 哪一个体块——颜色与第 1 帧位置> 就是${name}，`)
@@ -3168,6 +3289,11 @@ function assignmentFor(ref, shot, language = "en", context = {}) {
   }
   if (role.startsWith("set:")) {
     const name = ref.name ?? role.slice("set:".length);
+    if (!blocked) {
+      return zh
+        ? `${lead}只参考这张里${name}的材质、色调与光线方向，不用图中人物，也不用它的构图与机位。`
+        : `${lead}use only this frame's materials, palette and light direction for the ${name} — not the people in it, and not its composition or camera.`;
+    }
     return zh
       ? `${lead}场景结构以白模空间为准，只参考这张里${name}的材质、色调与光线方向，不用图中人物，也不用它的构图。`
       : `${lead}the set's structure comes from the greybox space; use only this frame's materials, palette and light direction for the ${name} — not the people in it, and not its composition.`;
@@ -3185,9 +3311,12 @@ function assignmentFor(ref, shot, language = "en", context = {}) {
     // carries the camera now: the frame's own viewpoint is the thing it
     // smuggled into three shots of the eight-take run.
     const from = ref.name ?? shot.continuity?.from ?? "?";
+    const camera = zh
+      ? (blocked ? "（那些以 @Video1 为准）" : "（本镜的机位由下面的文字决定）")
+      : (blocked ? " (those are @Video1's)" : " (this shot's camera is the one the text below describes)");
     return zh
-      ? `${lead}只参考上一镜（${from}）结束时每个人的位置、朝向与手里的东西，本镜第一帧从这里接上；不用它的机位、景别与构图（那些以 @Video1 为准），也不用它的画质瑕疵。`
-      : `${lead}use only where everybody stands, which way they face and what is in their hands at the end of the previous shot (${from}) — this shot's frame 1 continues from exactly that. Not its camera position, shot size or framing (those are @Video1's), and not its compression artefacts.`;
+      ? `${lead}只参考上一镜（${from}）结束时每个人的位置、朝向与手里的东西，本镜第一帧从这里接上；不用它的机位、景别与构图${camera}，也不用它的画质瑕疵。`
+      : `${lead}use only where everybody stands, which way they face and what is in their hands at the end of the previous shot (${from}) — this shot's frame 1 continues from exactly that. Not its camera position, shot size or framing${camera}, and not its compression artefacts.`;
   }
   if (role.startsWith("voice:")) {
     const name = ref.name ?? role.slice("voice:".length);
@@ -3216,16 +3345,26 @@ function assignmentFor(ref, shot, language = "en", context = {}) {
  * lines and their seconds, the trim, the hand-off. **The detail is carried
  * whole.** There is no word budget: a cap copied from text-to-video guides is
  * what made the first acceptance run delete the design.
+ *
+ * A `free` shot is the same pack with the greybox taken out of it: no
+ * replacement sentence, no `@Video1` line, no 按白模路线, no 白模 in the
+ * locks — and a camera that is allowed to move with the action, which is
+ * the whole reason the shot was taken out of the block. A `hybrid` shot is
+ * the greybox pack plus the sentence that lets the body and the camera
+ * accelerate inside the given layout.
  */
 function buildSkeleton(dir, shot, projectRoot, attachments = {}) {
   const greybox = shot.greybox ?? {};
+  const conditioning = conditioningOf(shot);
+  const free = conditioning === "free";
+  const hybrid = conditioning === "hybrid";
   const greyboxRel = greybox.final?.file ?? greybox.preview?.file ?? "greybox/greybox.mp4";
   const handoff = shot.continuity?.from
     ? { from: shot.continuity.from, file: join(dir, "takes", "handoff-in.png") }
     : null;
   const planned = planReferences(dir, shot, projectRoot, { greyboxFile: join(dir, greyboxRel), handoff, ...attachments });
   const warnings = [...planned.warnings];
-  if (!greybox.final) warnings.push("there is no final greybox yet — @Video1 is the file 'generate' will attach once there is one");
+  if (!free && !greybox.final) warnings.push("there is no final greybox yet — @Video1 is the file 'generate' will attach once there is one");
   // Whether continuity reaches the model as a PICTURE or as WORDS. Read off
   // the plan rather than the flag, so the pack can never describe an
   // attachment the job will not make.
@@ -3249,30 +3388,47 @@ function buildSkeleton(dir, shot, projectRoot, attachments = {}) {
   }
 
   const body = [];
-  // 1 — the replacement instruction, before anything else.
-  body.push(L.replace);
-  body.push("");
+  // 1 — the replacement instruction, before anything else. A free shot has
+  // no placeholders to replace, and its opening is the film sentence.
+  if (!free) {
+    body.push(L.replace);
+    body.push("");
+  }
 
-  // 2 — 【素材映射】: one line per attached reference, in the order and at the
-  // indices `generate` will attach them, each with its scope AND its exclusion.
-  body.push(L.mapping);
-  for (const ref of planned.plan) body.push(assignmentFor(ref, shot, language, { pawns }));
-  body.push("");
-
-  // 3 — 【一句话成片】: the whole clip in one sentence, so the model knows what
-  // it is making before it is told the seconds.
+  // 【一句话成片】: the whole clip in one sentence, so the model knows what it
+  // is making before it is told the seconds. On a free shot this is the
+  // OPENING — subject and motion first is the vendor's own advice, and there
+  // is no replacement sentence in front of it any more.
   const aspect = aspectLabel(shot.spec);
   let filmTitle = "";
   if (projectRoot) {
     try { filmTitle = String(readManifest(projectRoot).title ?? ""); } catch { filmTitle = ""; }
   }
-  body.push(L.brief);
-  body.push(
-    zh
-      ? `${filmTitle ? `《${filmTitle}》· ` : ""}${shot.title}：把白模渲染成${L.todoStyleShort}的 ${dur(seconds)} 秒、${aspect} 成片——${L.todoSubject}。`
-      : `${filmTitle ? `"${filmTitle}" — ` : ""}${shot.title}: render the greybox as a ${dur(seconds)} s, ${aspect} film in ${L.todoStyleShort} — ${L.todoSubject}.`,
-  );
-  body.push("");
+  const brief = [
+    L.brief,
+    free
+      ? (zh
+          ? `${filmTitle ? `《${filmTitle}》· ` : ""}${shot.title}：${L.todoStyleShort}的 ${dur(seconds)} 秒、${aspect} 成片——${L.todoSubject}。`
+          : `${filmTitle ? `"${filmTitle}" — ` : ""}${shot.title}: a ${dur(seconds)} s, ${aspect} film in ${L.todoStyleShort} — ${L.todoSubject}.`)
+      : (zh
+          ? `${filmTitle ? `《${filmTitle}》· ` : ""}${shot.title}：把白模渲染成${L.todoStyleShort}的 ${dur(seconds)} 秒、${aspect} 成片——${L.todoSubject}。`
+          : `${filmTitle ? `"${filmTitle}" — ` : ""}${shot.title}: render the greybox as a ${dur(seconds)} s, ${aspect} film in ${L.todoStyleShort} — ${L.todoSubject}.`),
+    "",
+  ];
+  if (free) body.push(...brief);
+
+  // 2 — 【素材映射】: one line per attached reference, in the order and at the
+  // indices `generate` will attach them, each with its scope AND its exclusion.
+  // A free shot with no sheets and no style frame carries nothing, and an
+  // empty block is a heading the model has to interpret — so it is left out
+  // and the missing style frame is already a warning.
+  if (planned.plan.length > 0) {
+    body.push(L.mapping);
+    for (const ref of planned.plan) body.push(assignmentFor(ref, shot, language, { pawns }));
+    body.push("");
+  }
+
+  if (!free) body.push(...brief);
 
   // 4 — 【全局设定】: style, light and THE ONE CAMERA MOVE. The camera beat's
   // designed sentence is carried here in full; it is not a timeline line,
@@ -3295,10 +3451,12 @@ function buildSkeleton(dir, shot, projectRoot, attachments = {}) {
     const setName = setRecord?.name || shot.set;
     const written = String(setRecord?.look || setRecord?.description || "").trim();
     const described = written || L.todoSet;
+    // With a block, the structure of the place is @Video1's and only its
+    // materials are words. Free, the sentence is the whole place.
     body.push(
       zh
-        ? `场景：${setName}——${described.replace(/[。.]+$/, "")}。空间结构以 @Video1 为准。`
-        : `Set: ${setName} — ${described.replace(/[.]+$/, "")}. The spatial structure is @Video1's.`,
+        ? `场景：${setName}——${described.replace(/[。.]+$/, "")}。${free ? "" : "空间结构以 @Video1 为准。"}`.trimEnd()
+        : `Set: ${setName} — ${described.replace(/[.]+$/, "")}.${free ? "" : " The spatial structure is @Video1's."}`,
     );
     if (!written) {
       warnings.push(
@@ -3307,23 +3465,52 @@ function buildSkeleton(dir, shot, projectRoot, attachments = {}) {
       );
     }
   }
-  body.push(zh ? `光线：${L.todoLight}。` : `Light: ${L.todoLight}.`);
-  body.push(
-    zh
-      ? `运镜总原则：一镜到底，只有一个运镜动作——${cameraSentence}${/[。.!?！？]$/.test(cameraSentence) ? "" : "。"}`
-      : `Camera: one continuous take, one move and no more — ${cameraSentence}${/[.!?]$/.test(cameraSentence) ? "" : "."}`,
-  );
-  body.push(zh
-    ? "镜头轨迹、机位与景别严格照 @Video1，全片不切、不加转场。"
-    : "The camera path, the camera position and the shot sizes are @Video1's exactly; no cut and no transition.");
+  const todoLight = free ? L.todoLightFree : L.todoLight;
+  body.push(zh ? `光线：${todoLight}。` : `Light: ${todoLight}.`);
+  const stop = (text) => (zh ? (/[。.!?！？]$/.test(text) ? "" : "。") : (/[.!?]$/.test(text) ? "" : "."));
+  if (free) {
+    // THE POINT OF A FREE SHOT. Locked to a block, a pawn's body moves in
+    // proportion to its displacement and the camera cannot accelerate; the
+    // round-3 film was consistent and had no 亮点. Here the camera is words,
+    // and it is allowed to chase the action.
+    body.push(
+      zh
+        ? `运镜总原则：镜头由文字决定——${cameraSentence}${stop(cameraSentence)}`
+        : `Camera: the camera is described here in words — ${cameraSentence}${stop(cameraSentence)}`,
+    );
+    body.push(zh
+      ? "镜头随动作运动，允许加速与减速，最快处进入慢动作；全片一镜到底，不切、不加转场。"
+      : "The camera moves with the action and may accelerate and decelerate; at the fastest moment it may fall into slow motion. One continuous take: no cut and no transition.");
+  } else {
+    body.push(
+      zh
+        ? `运镜总原则：一镜到底，只有一个运镜动作——${cameraSentence}${stop(cameraSentence)}`
+        : `Camera: one continuous take, one move and no more — ${cameraSentence}${stop(cameraSentence)}`,
+    );
+    body.push(zh
+      ? "镜头轨迹、机位与景别严格照 @Video1，全片不切、不加转场。"
+      : "The camera path, the camera position and the shot sizes are @Video1's exactly; no cut and no transition.");
+    // HYBRID: the block gives the geography, not the performance. Without
+    // this sentence the model reads a pawn's even displacement as the
+    // tempo of the body and the camera, which is what made round 3 stiff.
+    if (hybrid) {
+      body.push(zh
+        ? "在白模给定的位置与机位路径内，允许身体动作与镜头速度有动态变化。"
+        : "Within the positions and the camera path the greybox gives, the body action and the camera speed may vary dynamically.");
+    }
+  }
   // A continuing shot is the one place a model has a SECOND camera to copy:
   // the shot before it. Said in the global block because that is where the
   // camera is decided, and only when the pack carries the join as words —
   // with the frame attached, its own assignment line says the same thing.
   if (shot.continuity?.from && !handoffAttached) {
     body.push(zh
-      ? "机位与景别以本镜白模 @Video1 为准，不沿用上一镜的机位。"
-      : "The camera position and the shot size are this shot's own greybox @Video1; do not carry over the previous shot's camera.");
+      ? (free
+          ? "机位与景别按本镜上面写的运镜，不沿用上一镜的机位。"
+          : "机位与景别以本镜白模 @Video1 为准，不沿用上一镜的机位。")
+      : (free
+          ? "The camera position and the shot size are the ones described above for this shot; do not carry over the previous shot's camera."
+          : "The camera position and the shot size are this shot's own greybox @Video1; do not carry over the previous shot's camera."));
   }
   if (cameraBeats.length > 1) {
     warnings.push(
@@ -3342,8 +3529,12 @@ function buildSkeleton(dir, shot, projectRoot, attachments = {}) {
     : (zh ? "整条都进成片" : "the whole clip reaches the cut");
   body.push(
     zh
-      ? `${L.timeline}（严格对齐白模秒数：共 ${dur(seconds)} 秒；${trim}）`
-      : `${L.timeline} (locked to the greybox clock: ${dur(seconds)} s in total; ${trim})`,
+      ? (free
+          ? `${L.timeline}（共 ${dur(seconds)} 秒，严格按这些秒数演出；${trim}）`
+          : `${L.timeline}（严格对齐白模秒数：共 ${dur(seconds)} 秒；${trim}）`)
+      : (free
+          ? `${L.timeline} (${dur(seconds)} s in total, played to these seconds exactly; ${trim})`
+          : `${L.timeline} (locked to the greybox clock: ${dur(seconds)} s in total; ${trim})`),
   );
   // 第一帧: the entry state — and, when the model is NOT shown the frame it
   // continues, the sentence that has to carry the join on its own.
@@ -3378,13 +3569,17 @@ function buildSkeleton(dir, shot, projectRoot, attachments = {}) {
     pieces.push(opening);
     pieces.push(designed);
     // The greybox's own two lies, closed per segment: grey surfacing, and a
-    // block that slides instead of walking.
+    // block that slides instead of walking. A free shot has neither — there
+    // is no path to follow and nothing grey to disinherit, so the segment
+    // owes its verbs instead.
     const kind = segment.beats[0]?.kind ?? "action";
-    pieces.push(zh
-      ? (kind === "hold" ? "按白模站位" : kind === "trigger" ? "按白模时机" : "按白模路线与时机")
-      : (kind === "hold" ? "hold the greybox's position" : kind === "trigger" ? "at the greybox's moment" : "follow the greybox's path and timing"));
+    if (!free) {
+      pieces.push(zh
+        ? (kind === "hold" ? "按白模站位" : kind === "trigger" ? "按白模时机" : "按白模路线与时机")
+        : (kind === "hold" ? "hold the greybox's position" : kind === "trigger" ? "at the greybox's moment" : "follow the greybox's path and timing"));
+    }
     if (!SAYS_LOOK.test(designed)) pieces.push(L.todoGrow);
-    if (!SAYS_BODY.test(designed)) pieces.push(L.todoBody);
+    if (!SAYS_BODY.test(designed)) pieces.push(free ? L.todoBodyFree : L.todoBody);
     // A line spoken on screen is quoted at its second, inside the segment that
     // holds that second — the partition stays contiguous.
     for (const line of spoken) {
@@ -3429,11 +3624,16 @@ function buildSkeleton(dir, shot, projectRoot, attachments = {}) {
   );
   body.push("");
 
-  // 7 — regenerate the movement rather than transfer it.
+  // 7 — regenerate the movement rather than transfer it. With no block to
+  // transfer from, the sentence asks for the weight instead.
   body.push(
-    zh
-      ? `重新生成自然的${L.todoActions}，不迁移方块滑行或机械摆动。`
-      : `Regenerate natural ${L.todoActions}; do not carry over block sliding or mechanical swing.`,
+    free
+      ? (zh
+          ? `重新生成自然的${L.todoActions}，动作有真实的重量、惯性与速度变化。`
+          : `Regenerate natural ${L.todoActions}, with real weight, inertia and changes of speed.`)
+      : (zh
+          ? `重新生成自然的${L.todoActions}，不迁移方块滑行或机械摆动。`
+          : `Regenerate natural ${L.todoActions}; do not carry over block sliding or mechanical swing.`),
   );
   body.push("");
 
@@ -3444,23 +3644,41 @@ function buildSkeleton(dir, shot, projectRoot, attachments = {}) {
     return record?.name || id;
   });
   body.push(L.locks);
-  body.push(zh
-    ? "不新增不删除物体，不改镜头轨迹，不保留白模质感。"
-    : "Add no object and remove none; do not change the camera path; keep none of the greybox's grey surfacing.");
+  // The greybox-specific locks only exist because a greybox was sent: a free
+  // pack that forbids 白模方块 is telling the model about a file it never
+  // saw, and a lock nobody can break is noise in the one block that has to
+  // still be in the model's attention when it renders.
+  body.push(free
+    ? (zh
+        ? "不增加画面里没有说到的人物与道具，不删除说到的。"
+        : "Add no person or prop the pack has not named, and remove none that it has.")
+    : (zh
+        ? "不新增不删除物体，不改镜头轨迹，不保留白模质感。"
+        : "Add no object and remove none; do not change the camera path; keep none of the greybox's grey surfacing."));
   body.push(zh
     ? `${cast.length ? `画面里只有 ${cast.length} 个人：${cast.join("、")}；` : ""}${L.todoRoom}。`
     : `${cast.length ? `Only ${cast.length} ${cast.length === 1 ? "person is" : "people are"} in frame: ${cast.join(", ")}. ` : ""}${L.todoRoom}.`);
-  body.push(zh
-    ? "禁止：白模方块、刚性滑行、塑料皮肤、变脸、额外人物、字幕、自带 BGM、突然跳切、人物变形、坐标轴、视锥体。"
-    : "Forbidden: greybox blocks, rigid sliding, plastic skin, face drift, extra people, on-screen text, built-in music, a sudden cut, deformed bodies, coordinate axes, view frustums.");
+  body.push(free
+    ? (zh
+        ? "禁止：刚性滑行、塑料皮肤、变脸、额外人物、字幕、自带 BGM、突然跳切、人物变形。"
+        : "Forbidden: rigid sliding, plastic skin, face drift, extra people, on-screen text, built-in music, a sudden cut, deformed bodies.")
+    : (zh
+        ? "禁止：白模方块、刚性滑行、塑料皮肤、变脸、额外人物、字幕、自带 BGM、突然跳切、人物变形、坐标轴、视锥体。"
+        : "Forbidden: greybox blocks, rigid sliding, plastic skin, face drift, extra people, on-screen text, built-in music, a sudden cut, deformed bodies, coordinate axes, view frustums."));
 
   const markdown = [
     `# Prompt skeleton — ${shot.title}`,
     "",
     "Written by `previz.mjs prompt-skeleton` from this shot's own record: the",
     "reference lines are exactly what `generate` will attach, in the same order",
-    "and at the same indices; the timeline is this shot's beats, whole, on the",
-    "greybox's clock. Fill the `<TODO: …>` slots in place, then copy the block",
+    "and at the same indices; the timeline is this shot's beats, whole, on",
+    free ? "the plan's clock." : "the greybox's clock.",
+    free
+      ? "This shot is conditioned **free**: no greybox is sent, so the pack has no @Video1 line and the camera is the words below."
+      : hybrid
+        ? "This shot is conditioned **hybrid**: the greybox gives the positions and the camera path, and the pack says the body and the camera may move inside it."
+        : "This shot is conditioned on its **greybox**: @Video1 is the layout, the timing and the camera move.",
+    "Fill the `<TODO: …>` slots in place, then copy the block",
     "into the fenced prompt block of `prompts.md` — that file is the one",
     "`generate` reads.",
     "",
@@ -3469,7 +3687,9 @@ function buildSkeleton(dir, shot, projectRoot, attachments = {}) {
     "```",
     "",
     "**There is no word limit.** Seedance documents none, and the pack has to",
-    "carry the whole designed beat plus everything the greybox cannot show.",
+    free
+      ? "carry the whole designed beat — here it is the only thing that says what happens."
+      : "carry the whole designed beat plus everything the greybox cannot show.",
     "What is capped is vagueness, not length: one main event per segment, one",
     "camera move for the clip, visible details instead of adjectives, and the",
     "prohibitions last. See `references/prompting.md`.",
@@ -3481,6 +3701,7 @@ function buildSkeleton(dir, shot, projectRoot, attachments = {}) {
     body: body.join("\n"),
     refs: planned.refs,
     warnings,
+    conditioning,
     language,
     segments: plan.segments.map((segment) => ({ from: round4(segment.from), to: round4(segment.to), beats: segment.beats.map((beat) => beat.id) })),
     merged: plan.merged,
@@ -3520,6 +3741,7 @@ function cmdPromptSkeleton(dir, opts) {
     command: "prompt-skeleton",
     dir,
     file: wrote,
+    conditioning: skeleton.conditioning,
     language: skeleton.language,
     // What this pack was written FOR: a pack scaffolded without the opt-in
     // pictures does not assign them, and `generate` would refuse the job
@@ -3644,13 +3866,17 @@ function packProblems(prompt, shot, timeline) {
 
   // The two blocks the greybox itself makes necessary.
   if (!/【全局锁】|【\s*locks\s*】/i.test(text)) {
-    problems.push("the pack has no 【全局锁】 / 【Locks】 block — that is where the greybox is disinherited (no added or removed objects, no changed camera path, none of its grey surfacing) and where the prohibitions belong, last");
+    problems.push("the pack has no 【全局锁】 / 【Locks】 block — that is where the prohibitions belong, last (and, on a blocked shot, where the greybox is disinherited: no added or removed objects, no changed camera path, none of its grey surfacing)");
   }
   // Any line that addresses the greybox may carry the exclusion — the pack
   // usually says it twice, in the replacement sentence and in the assignment.
-  const videoLines = text.split(/\r?\n/).filter((line) => /@Video1|\[Video1\]/.test(line)).join("\n");
-  if (!/不要|不用|不参考|不继承|不保留|不提供|不复制|不迁移|\bnot\b|\bnever\b|\bno\b|\bexclude/i.test(videoLines)) {
-    problems.push("the @Video1 line says what to take from the greybox but not what to leave — say it excludes the grey material, the empty set, the block shapes and the viewport overlays, or the model paints grey");
+  // A free shot attaches no greybox, so there is no line to carry it and
+  // nothing grey to inherit.
+  if (usesGreybox(shot)) {
+    const videoLines = text.split(/\r?\n/).filter((line) => /@Video1|\[Video1\]/.test(line)).join("\n");
+    if (!/不要|不用|不参考|不继承|不保留|不提供|不复制|不迁移|\bnot\b|\bnever\b|\bno\b|\bexclude/i.test(videoLines)) {
+      problems.push("the @Video1 line says what to take from the greybox but not what to leave — say it excludes the grey material, the empty set, the block shapes and the viewport overlays, or the model paints grey");
+    }
   }
   return problems;
 }
@@ -3671,10 +3897,22 @@ async function cmdGenerate(dir, opts, now) {
   const prompt = promptState(dir, shot);
   if (!prompt.promptOk) fail(`${relPath(dir, join(dir, shot.prompt?.file ?? "prompts.md"))}: ${prompt.promptReason}`);
 
-  const greyboxRel = shot.greybox.final.file;
-  const greyboxFile = join(dir, greyboxRel);
-  if (!existsSync(greyboxFile)) fail(`shot.json names ${greyboxRel} as the final greybox but the file is gone — re-render`);
-  const refSeconds = shot.greybox.final.probe?.seconds ?? shot.spec.seconds;
+  // THE VIDEO REFERENCE IS A PER-SHOT DECISION. A `free` shot sends none:
+  // no file is required, `refSeconds` is 0, and the job is priced on the
+  // dearer no-reference row because fal bills a reference clip's duration
+  // alongside the output's and there is no reference here.
+  const conditioning = conditioningOf(shot);
+  const blocked = conditioning !== "free";
+  const greyboxRel = blocked ? shot.greybox.final.file : null;
+  const greyboxFile = greyboxRel ? join(dir, greyboxRel) : null;
+  if (blocked && !existsSync(greyboxFile)) fail(`shot.json names ${greyboxRel} as the final greybox but the file is gone — re-render`);
+  const refSeconds = blocked ? (shot.greybox.final.probe?.seconds ?? shot.spec.seconds) : 0;
+  if (!blocked && shot.greybox?.final?.file) {
+    note(
+      `[previz] this shot is conditioned FREE: ${shot.greybox.final.file} exists but is NOT sent — it is the reel's ` +
+        "stand-in. The references are the sheets and the style frame, and the first image is @Image1.",
+    );
+  }
 
   // The film's own gate: a take is the expensive half of the mode, and the
   // creator has to have approved the previz stage (or opened the gates) for
@@ -3775,7 +4013,7 @@ async function cmdGenerate(dir, opts, now) {
   // stays the table's, and the gap is reported.
   const extraRefs = references.images.length + references.audios.length;
   const priceNote = extraRefs > 0 || wantAudio
-    ? `the price table covers the output and the video reference; this job also carries ${references.images.length} image and ${references.audios.length} audio reference(s)${wantAudio ? " with audio generation on" : ""}, which the table does not price — the recorded cost is the table's figure, not a bill`
+    ? `the price table covers the output${blocked ? " and the video reference" : " (this shot sends no video reference)"}; this job also carries ${references.images.length} image and ${references.audios.length} audio reference(s)${wantAudio ? " with audio generation on" : ""}, which the table does not price — the recorded cost is the table's figure, not a bill`
     : null;
   if (priceNote) note(`NOTE: ${priceNote}`);
 
@@ -3783,7 +4021,7 @@ async function cmdGenerate(dir, opts, now) {
   if (opts.estimate) {
     return emit({
       command: "generate", dir, estimate: true, wouldBe: takeId,
-      model: "bytedance/seedance-2.5", endpoint: "reference", resolution,
+      model: "bytedance/seedance-2.5", endpoint: "reference", resolution, conditioning,
       seconds: wantedSeconds, refSeconds, greybox: greyboxRel, greyboxRevision: shot.greybox.revision,
       cost: price, prices: PRICES, promptChars: prompt.prompt.length,
       refs: references.refs, attachments, audio: wantAudio, priceNote,
@@ -3824,6 +4062,10 @@ async function cmdGenerate(dir, opts, now) {
     model: "bytedance/seedance-2.5",
     endpoint: "reference",
     resolution,
+    // How this take was conditioned, on the take rather than only on the
+    // shot: the shot's decision can change afterwards, and what a take was
+    // made from must stay readable from the take.
+    conditioning,
     seconds: wantedSeconds,
     refSeconds: Math.round(refSeconds * 10000) / 10000,
     greyboxRevision: shot.greybox.revision,
@@ -4006,6 +4248,26 @@ stderr. --json is accepted everywhere and is already the default.
       Blender (path, version), ffmpeg, ffprobe, whether a fal key is
       reachable (never printed), and which stages that leaves open.
 
+  meta <shot-dir> --conditioning ${CONDITIONINGS.join("|")}
+      HOW THIS SHOT IS CONDITIONED, decided per shot in the plan. Default
+      'greybox' (and what a shot written before this field is read as).
+        greybox  the block is @Video1: space, geography, or a camera move
+                 the model cannot do alone — the orbit, the crane, the
+                 dolly zoom, the geometric "one inch"
+        free     no @Video1 at all: the references are the character sheets
+                 and the film's style frame, the first image is @Image1,
+                 and the prompt is written for the action itself. No
+                 greybox is required and its checks are not asked for; the
+                 gate is still the film's previz approval. A greybox may
+                 still be rendered for the reel — it is not sent
+        hybrid   @Video1 for the positions and the camera path, plus a
+                 sentence allowing dynamic body action and camera speed
+                 inside it. Everything the greybox rules require applies
+      Eight locked-off shots came back consistent and with no 亮点
+      (2026-09-21); the same exchange shot free came back with one. Fight
+      and charm beats are free or hybrid; space and camera moves are the
+      block's.
+
   meta <shot-dir> [--scene sc1] [--characters kai,clerk] [--set store]
        [--trim-in 0.4 --trim-out 1.6] [--no-trim]
       Where this shot sits in the film: its scene, the bible characters in
@@ -4143,6 +4405,12 @@ stderr. --json is accepted everywhere and is already the default.
         声音         named sounds, and no music (the cut lays the score)
         【全局锁】   last: nothing added or removed, the camera path
                       unchanged, none of the greybox's grey surfacing
+      A 'free' shot gets the same pack with the greybox taken out of it:
+      no replacement sentence, the 成片 sentence as the opening, 素材映射
+      with the sheets and the style frame only, a camera that is words and
+      may move with the action, no 按白模路线 in the timeline, and locks
+      with no 白模 in them. A 'hybrid' shot keeps the greybox pack and adds
+      the sentence that lets the body and the camera move inside the block.
       Chinese scaffolding for a film written in CJK, English otherwise —
       read off screenplay.md/idea.md. There is NO word budget. Prints the
       text in the JSON's 'skeleton' field; --write puts it in
@@ -4190,7 +4458,9 @@ stderr. --json is accepted everywhere and is already the default.
       Seedance 2.5 reference-to-video, conditioned on everything this shot
       has, in the order the prompt addresses it by:
         @Video1  the FINAL greybox — the ONLY picture of layout, behaviour
-                 and camera
+                 and camera. NOT on a shot conditioned 'free': it sends no
+                 video, needs no greybox and no greybox checks, is priced
+                 on the no-reference row, and its first image is @Image1
         @Image…  this shot's character sheets, in bible order
         @Image…  the film's style key frame ('backlot.mjs style --keyframe')
         @Audio1… the voice sample of each character with a spoken line
@@ -4226,7 +4496,8 @@ stderr. --json is accepted everywhere and is already the default.
       approve / gates open); without a final greybox at the current
       revision; while a greybox check is failing (unless --allow-failing
       "<reason>"); a second take without --fix; a third or later without
-      --user-approved as well.
+      --user-approved as well. On a 'free' shot the two greybox refusals do
+      not apply — there is no greybox in the job to be stale or to fail.
       --estimate prices the job, lists what would be attached, and stops.
       Otherwise the take is recorded "submitted" — with the exact prompt
       saved to takes/<id>.prompt.txt and the references it carries — BEFORE
@@ -4247,14 +4518,18 @@ stderr. --json is accepted everywhere and is already the default.
       first open stage of:
         reference (recreate only) -> plan -> greybox-preview -> checks ->
         final-render -> prompt -> take -> take-checks -> select
+      A 'free' shot skips the three greybox rungs: plan is followed by
+      prompt, because no block is sent.
       Never writes, always exits 0. It is a report, not a gate. Pointed at a
       film it says so: the stage rail is 'backlot.mjs status'.
       There is no key-frame step in that walk: 'anchor' and 'lineup' are
       optional pictures for the creator, not rungs of the pipeline.
 
 Frame arithmetic, everywhere: frames = seconds x fps, numbered 1..frames.
-Prices (fal list, ${PRICES.asOf}), per billed second, reference duration billed
-alongside the output's: 480p $${PRICES.seedance.withReference["480p"]}, 720p $${PRICES.seedance.withReference["720p"]}.`;
+Prices (fal list, ${PRICES.asOf}), per billed second. With a video reference its
+duration is billed alongside the output's: 480p $${PRICES.seedance.withReference["480p"]}, 720p $${PRICES.seedance.withReference["720p"]}. A 'free'
+shot sends none and is billed on the dearer row, output seconds only:
+480p $${PRICES.seedance.withoutReference["480p"]}, 720p $${PRICES.seedance.withoutReference["720p"]}.`;
 
 const OPTIONS = {
   help: { type: "boolean", short: "h" },
@@ -4299,6 +4574,7 @@ const OPTIONS = {
   "with-handoff": { type: "boolean" },
   scene: { type: "string" },
   characters: { type: "string" },
+  conditioning: { type: "string" },
   "trim-in": { type: "string" },
   "trim-out": { type: "string" },
   "no-trim": { type: "boolean" },

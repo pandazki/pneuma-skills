@@ -207,6 +207,13 @@ const PROJECTIONS = {
         scene: s.scene ?? null,
         characters: Array.isArray(s.characters) ? s.characters : [],
         set: s.set ?? null,
+        // HOW THE SHOT IS CONDITIONED IS A SHOT-PLAN DECISION: whether the
+        // take is made from the block, from the words, or from both is
+        // decided with the beats and changes what the shot IS long before
+        // any greybox exists. A file written before the field says
+        // `greybox`, which is what it was made as — so recording that
+        // default explicitly does not re-open an approved shot list.
+        conditioning: typeof s.conditioning === "string" ? s.conditioning : "greybox",
         spec: s.spec ?? null,
         // Whole beats, `detail` included: the designed picture of a beat is
         // boards content — it is written before the greybox and it is what

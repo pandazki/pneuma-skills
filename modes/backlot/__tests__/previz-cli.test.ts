@@ -180,6 +180,49 @@ describe("meta", () => {
     expect(run(cwd, ["meta", "film/shots/lab-walk"]).err).toContain("at least one of");
   });
 
+  test("--conditioning records how the shot is made, and greybox is the default", () => {
+    const cwd = workspace();
+    scaffold(cwd);
+    // A shot is blocked unless the plan says otherwise, and the scaffold
+    // seeds the greybox acceptance list that decision implies.
+    expect(shotFile(cwd).conditioning).toBe("greybox");
+    expect(shotFile(cwd).checks).toHaveLength(8);
+
+    const freed = run(cwd, ["meta", "film/shots/lab-walk", "--conditioning", "free"]);
+    expect(freed.code).toBe(0);
+    expect(JSON.parse(freed.out).conditioning).toBe("free");
+    expect(freed.err).toContain("this shot is FREE");
+    expect(shotFile(cwd).conditioning).toBe("free");
+    // The greybox list nobody had answered goes with the decision — those
+    // eight questions no longer have a subject — and `next` skips the
+    // rungs that were about the block.
+    expect(shotFile(cwd).checks).toEqual([]);
+    expect(JSON.parse(freed.out).droppedChecks).toHaveLength(8);
+    expect(JSON.parse(freed.out).next.stage).toBe("plan");
+
+    // Back again, and the list it will be judged by comes back with it.
+    const blocked = run(cwd, ["meta", "film/shots/lab-walk", "--conditioning", "hybrid"]);
+    expect(JSON.parse(blocked.out).conditioning).toBe("hybrid");
+    expect(JSON.parse(blocked.out).seededChecks).toHaveLength(8);
+    expect(shotFile(cwd).checks).toHaveLength(8);
+
+    const refused = run(cwd, ["meta", "film/shots/lab-walk", "--conditioning", "liberated"]);
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain("--conditioning must be one of greybox|free|hybrid");
+    expect(shotFile(cwd).conditioning).toBe("hybrid");
+  });
+
+  test("an answered greybox check survives the switch to free — history is not a gate to delete", () => {
+    const cwd = workspace();
+    scaffold(cwd);
+    fakeRender(cwd, { revision: 1 });
+    json(cwd, ["check", "film/shots/lab-walk", "--id", "blocking", "--status", "pass", "--note", "looked at 0–2 s", "--now", T(1)]);
+    json(cwd, ["meta", "film/shots/lab-walk", "--conditioning", "free"]);
+    const checks = shotFile(cwd).checks;
+    expect(checks).toHaveLength(1);
+    expect(checks[0]).toMatchObject({ id: "blocking", status: "pass", note: "looked at 0–2 s" });
+  });
+
   test("--trim-in/--trim-out name the range the CUT uses, on the shot's own clock", () => {
     const cwd = workspace();
     scaffold(cwd);
@@ -1024,6 +1067,94 @@ describe("the references a take carries", () => {
     expect(json(cwd, ["generate", "film/shots/lab-walk", "--estimate"], env).wouldBe).toBe("take-01");
   });
 
+  /**
+   * A FREE SHOT SENDS NO VIDEO, and everything downstream of that follows:
+   * the first image is @Image1, the price moves to the no-reference row,
+   * and no greybox is required for the job to start.
+   */
+  test.skipIf(!HAS_FFMPEG)("free attaches no @Video1 — the sheets and the style frame are the whole list", () => {
+    const cwd = workspace();
+    const env = ttsSeam(cwd);
+    dressed(cwd, env);
+    json(cwd, ["meta", "film/shots/lab-walk", "--conditioning", "free"]);
+    writePrompt(cwd, [
+      "@Image1 = his appearance only.",
+      "@Image2 = the film's drawing idiom only.",
+      "@Audio1 = his voice.",
+      "He crosses the lab and presses the button.",
+    ].join("\n"));
+
+    const estimate = json(cwd, ["generate", "film/shots/lab-walk", "--estimate"], env);
+    expect(estimate.conditioning).toBe("free");
+    expect(estimate.refs).toEqual([
+      { kind: "image", index: 1, file: "bible/characters/kai/sheet.png", role: "character:kai" },
+      { kind: "image", index: 2, file: "style/keyframe.png", role: "style" },
+      { kind: "audio", index: 1, file: "bible/characters/kai/voice.mp3", role: "voice:kai" },
+    ]);
+    // No video reference means no reference duration to bill, and the
+    // dearer row: 8 s x $0.2205 rather than (8 + 8) x $0.1323.
+    expect(estimate.refSeconds).toBe(0);
+    expect(estimate.greybox).toBeNull();
+    expect(estimate.cost.usd).toBeCloseTo(8 * 0.2205, 4);
+    expect(estimate.cost.basis).toContain("$0.2205/s at 480p");
+    expect(estimate.priceNote).toContain("sends no video reference");
+
+    // Hybrid is the greybox job exactly: the block is back at @Video1 and
+    // so is the reference price.
+    json(cwd, ["meta", "film/shots/lab-walk", "--conditioning", "hybrid"]);
+    writePrompt(cwd, [
+      "@Video1 = layout, positions and timing only; do not inherit the grey surfacing.",
+      "@Image1 = his appearance only.",
+      "@Image2 = the film's drawing idiom only.",
+      "@Audio1 = his voice.",
+    ].join("\n"));
+    const hybrid = json(cwd, ["generate", "film/shots/lab-walk", "--estimate"], env);
+    expect(hybrid.conditioning).toBe("hybrid");
+    expect(hybrid.refs[0]).toEqual({ kind: "video", index: 1, file: "shots/lab-walk/greybox/greybox.mp4", role: "greybox" });
+    expect(hybrid.refSeconds).toBe(8);
+    expect(hybrid.cost.basis).toContain("$0.1323/s at 480p");
+  });
+
+  test.skipIf(!HAS_FFMPEG)("a free shot with NO greybox generates: nothing here is waiting for a block", () => {
+    const cwd = workspace();
+    scaffold(cwd);
+    writeFileSync(join(cwd, "beats.json"), JSON.stringify(BEATS));
+    json(cwd, ["beats", "film/shots/lab-walk", "--set", "beats.json"]);
+    json(cwd, ["meta", "film/shots/lab-walk", "--conditioning", "free"]);
+    backlot(cwd, ["style", "film", "--keyframe", pngFixture(cwd, "style.png")]);
+    writePrompt(cwd, "@Image1 = the film's drawing idiom only. He crosses the lab and presses the button.");
+    // The state a blocked shot would refuse in: no render, no checks.
+    expect(shotFile(cwd).greybox.final).toBeNull();
+    expect(shotFile(cwd).checks).toEqual([]);
+    expect(json(cwd, ["status", "film/shots/lab-walk"]).next.stage).toBe("take");
+
+    const env = seedanceSeam(cwd, { FAKE_TAKE_SOURCE: mp4Fixture(cwd) });
+    const landed = json(cwd, ["generate", "film/shots/lab-walk", "--now", T(20)], env);
+    expect(landed.take).toMatchObject({
+      id: "take-01",
+      status: "done",
+      conditioning: "free",
+      refSeconds: 0,
+      file: "takes/take-01.mp4",
+    });
+    expect(landed.take.cost.usd).toBeCloseTo(8 * 0.2205, 4);
+    expect(landed.take.cost.basis).toContain("8 s out x $0.2205/s at 480p");
+    expect(landed.refs.some((ref: any) => ref.kind === "video")).toBe(false);
+
+    // The take's acceptance list is the free one: it is judged against the
+    // plan, because there is no block to be judged against.
+    const checks = shotFile(cwd).checks.filter((c: any) => c.target === "take-01");
+    expect(checks.find((c: any) => c.id === "take-camera").label).toContain("plan's camera sentence");
+    expect(shotFile(cwd).checks.some((c: any) => c.target === "greybox")).toBe(false);
+
+    // And the comparison that has no subject says so instead of sending
+    // the agent off to render one.
+    const compared = run(cwd, ["compare", "film/shots/lab-walk", "--a", "greybox", "--b", "take-01"]);
+    expect(compared.code).toBe(1);
+    expect(compared.err).toContain("conditioned FREE");
+    expect(compared.err).toContain("nothing to compare the take against");
+  });
+
   test("a timeline that disagrees with the clock is WARNED about, never refused", () => {
     const cwd = workspace();
     ready(cwd);
@@ -1735,6 +1866,102 @@ describe("prompt-skeleton", () => {
     expect(text).toContain("不要配乐——配乐在成片阶段统一铺。");
     expect(text).toContain("不新增不删除物体，不改镜头轨迹，不保留白模质感。");
     expect(text).toContain("禁止：白模方块、刚性滑行、塑料皮肤、变脸、额外人物、字幕、自带 BGM、突然跳切、人物变形、坐标轴、视锥体。");
+  });
+
+  test.skipIf(!HAS_FFMPEG)("a FREE pack is the same pack with the greybox taken out of it", () => {
+    const cwd = workspace();
+    scaffold(cwd, ["--seconds", "6"]);
+    writeFileSync(join(cwd, "film", "screenplay.md"), "# 一寸止风\n\n暮色，庭院。挑战者踏水前刺，守剑人旋身格开。\n");
+    backlot(cwd, ["style", "film", "--keyframe", pngFixture(cwd, "style.png")]);
+    json(cwd, ["meta", "film/shots/lab-walk", "--conditioning", "free"]);
+    writeFileSync(join(cwd, "beats.json"), JSON.stringify([
+      { id: "thrust", label: "前刺", from: 0, to: 3, kind: "action", detail: "挑战者蹬水前刺，鞋底踢起两道水线，剑尖直取咽喉" },
+      { id: "cam", label: "低机位跟拍", from: 0, to: 6, kind: "camera", detail: "镜头贴着水面低机位跟拍，随前刺加速逼近，最后慢下来停在剑尖与咽喉之间" },
+    ]));
+    json(cwd, ["beats", "film/shots/lab-walk", "--set", "beats.json"]);
+
+    const skeleton = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]);
+    expect(skeleton.conditioning).toBe("free");
+    expect(skeleton.language).toBe("zh");
+    const text = skeleton.skeleton as string;
+    const order = blockOrder(text, ["【一句话成片】", "【素材映射】", "【全局设定】", "【时间戳分镜】", "声音：环境声", "重新生成自然的", "【全局锁】"]);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(order.every((at) => at >= 0)).toBe(true);
+    // No replacement sentence, and nothing anywhere addresses a video
+    // reference the job will not carry.
+    expect(text).not.toContain("将 @Video1 中的几何占位体按对应关系替换");
+    expect(text.split("```prompt")[1]).not.toContain("@Video1");
+    // The opening is the film sentence, and it does not say "render the
+    // greybox as".
+    expect(text).not.toContain("把白模渲染成");
+    expect(text).toContain("《First Light》· The researcher wakes the device：<TODO: 风格>的 6 秒、16:9 成片");
+    // The style frame is the one picture a free shot still carries, and it
+    // is assigned like any other.
+    expect(text).toContain("@Image1：全片画风参考，只参考画风、线条与上色方式，不参考构图与人物。");
+    // The camera may move with the action — that is the whole point of a
+    // free shot, and it is the sentence the locked pack does not have.
+    expect(text).toContain("运镜总原则：镜头由文字决定——镜头贴着水面低机位跟拍");
+    expect(text).toContain("镜头随动作运动，允许加速与减速，最快处进入慢动作；全片一镜到底，不切、不加转场。");
+    expect(text).not.toContain("镜头轨迹、机位与景别严格照 @Video1");
+    // The timeline carries the design and asks for verbs, not for a path
+    // to follow.
+    expect(text).toContain("0.0–6.0秒：<TODO: 景别>，<TODO: 构图>；挑战者蹬水前刺，鞋底踢起两道水线，剑尖直取咽喉；");
+    expect(text).not.toContain("按白模路线与时机");
+    expect(text).toContain("这一段身体与镜头的动作动词");
+    // …and the locks forbid nothing about a file the model never saw.
+    expect(text).toContain("不增加画面里没有说到的人物与道具，不删除说到的。");
+    expect(text).toContain("禁止：刚性滑行、塑料皮肤、变脸、额外人物、字幕、自带 BGM、突然跳切、人物变形。");
+    expect(text).not.toContain("白模方块");
+    expect(text).not.toContain("坐标轴");
+    expect(text).not.toContain("不保留白模质感");
+    expect(text).toContain("动作有真实的重量、惯性与速度变化。");
+
+    // The English half of the same rules, on a film that is not in CJK.
+    const latin = workspace();
+    scaffold(latin, ["--seconds", "6"]);
+    json(latin, ["meta", "film/shots/lab-walk", "--conditioning", "free"]);
+    writeFileSync(join(latin, "beats.json"), JSON.stringify([
+      { id: "thrust", label: "Thrust", from: 0, to: 6, kind: "action", detail: "he drives off the back foot, the water kicking up in two lines" },
+    ]));
+    json(latin, ["beats", "film/shots/lab-walk", "--set", "beats.json"]);
+    const english = json(latin, ["prompt-skeleton", "film/shots/lab-walk"]).skeleton as string;
+    expect(english).toContain("【One-line brief】");
+    expect(english).not.toContain("Replace the geometric placeholders");
+    expect(english).toContain("The camera moves with the action and may accelerate and decelerate; at the fastest moment it may fall into slow motion.");
+    expect(english).not.toContain("follow the greybox's path and timing");
+    expect(english).toContain("Forbidden: rigid sliding, plastic skin");
+    expect(english).not.toContain("greybox blocks");
+  });
+
+  test("a HYBRID pack keeps the block and lets the body and the camera move inside it", () => {
+    const cwd = workspace();
+    scaffold(cwd, ["--seconds", "6"]);
+    writeFileSync(join(cwd, "film", "screenplay.md"), "# 一寸止风\n\n暮色，庭院。两人隔水对峙。\n");
+    json(cwd, ["meta", "film/shots/lab-walk", "--conditioning", "hybrid"]);
+    writeFileSync(join(cwd, "beats.json"), JSON.stringify([
+      { id: "thrust", label: "前刺", from: 0, to: 6, kind: "action", detail: "挑战者蹬水前刺，鞋底踢起两道水线" },
+    ]));
+    json(cwd, ["beats", "film/shots/lab-walk", "--set", "beats.json"]);
+
+    const skeleton = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]);
+    expect(skeleton.conditioning).toBe("hybrid");
+    const text = skeleton.skeleton as string;
+    // Everything the greybox pack says, still said…
+    expect(text).toContain("将 @Video1 中的几何占位体按对应关系替换");
+    expect(text).toContain("镜头轨迹、机位与景别严格照 @Video1，全片不切、不加转场。");
+    expect(text).toContain("按白模路线与时机");
+    expect(text).toContain("禁止：白模方块、刚性滑行");
+    // …plus the one sentence that is the whole difference.
+    expect(text).toContain("在白模给定的位置与机位路径内，允许身体动作与镜头速度有动态变化。");
+
+    // And a plain greybox shot does NOT get that licence.
+    const locked = workspace();
+    scaffold(locked, ["--seconds", "6"]);
+    writeFileSync(join(locked, "film", "screenplay.md"), "# 一寸止风\n\n暮色，庭院。两人隔水对峙。\n");
+    writeFileSync(join(locked, "beats.json"), readFileSync(join(cwd, "beats.json"), "utf-8"));
+    json(locked, ["beats", "film/shots/lab-walk", "--set", "beats.json"]);
+    const plain = json(locked, ["prompt-skeleton", "film/shots/lab-walk"]).skeleton as string;
+    expect(plain).not.toContain("允许身体动作与镜头速度有动态变化");
   });
 
   test("more beats than a clip can hold are MERGED, never shortened", () => {

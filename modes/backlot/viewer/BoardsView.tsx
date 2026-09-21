@@ -21,6 +21,7 @@
 
 import type { Project, Shot } from "../domain.js";
 import { checkTally, selectedTake, shotStages, shotThumbnail } from "../domain.js";
+import { ConditioningChip } from "./ConditioningChip.js";
 import { ImageIcon } from "./icons.js";
 import { StageEmpty } from "./StageEmpty.js";
 
@@ -129,6 +130,9 @@ function BoardCard({
         <p className="truncate text-[9px] text-cc-muted">{shot.id}</p>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
           <ShotBadge shot={shot} />
+          {/* How this shot is conditioned — a plan decision, and the one
+              that says whether a greybox is even expected here. */}
+          <ConditioningChip shot={shot} />
           {/* A separate chip, not part of the progress badge: a key frame is
               an optional picture somebody rendered to look at, not a rung of
               the pipeline, and a shot can have one at any stage. */}

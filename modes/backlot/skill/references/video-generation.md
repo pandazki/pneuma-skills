@@ -35,7 +35,10 @@ returns, which aspect ratios and resolutions, and how large an input may be.
 | without | $0.2205 | $0.4730 |
 
 A 6-second take from a 6-second greybox is (6 + 6) × $0.1323 ≈ **$1.6** at
-480p and ≈ **$3.4** at 720p, and takes about five minutes. Draft at 480p; go
+480p and ≈ **$3.4** at 720p, and takes about five minutes. A **free** shot
+sends no reference clip, so it is billed on the second row for its output
+seconds only: 6 × $0.2205 ≈ **$1.3** at 480p, 6 × $0.4730 ≈ **$2.8** at 720p
+— cheaper than the blocked take, not dearer. Draft at 480p; go
 to 720p once a draft has shown that the motion holds. These are list prices
 and an estimate; the script's table is the one the cost panel uses, and what
 fal actually billed is what happened. **The table prices output seconds and
@@ -65,7 +68,8 @@ pack, build the reel, and state plainly that no take has been generated.
   creator's explicit yes (`--user-approved`) as well.
 - A failing greybox check blocks generation. `--allow-failing "<reason>"`
   overrides it and the reason is recorded — use it when the creator has
-  accepted a known deviation, not to get past your own unfinished work.
+  accepted a known deviation, not to get past your own unfinished work. On a
+  `free` shot neither rule applies: no greybox is in the job.
 - **A shot that declares `continuity.from` waits for the shot it continues.**
   The hand-off frame is extracted from that shot's *selected* take, so
   contiguous shots are generated in order and `generate` refuses until the
@@ -79,9 +83,17 @@ pack, build the reel, and state plainly that no take has been generated.
 You do not attach references by hand. `generate` gathers them from the shot's
 own record, in a fixed order, and passes them to `seedance-video.mjs`:
 
+**How much of this list a shot gets is its `conditioning`** (`shot-plan.md`):
+`greybox` and `hybrid` send the block, `free` sends no video at all and its
+first image is `@Image1`. On a free shot there is no greybox to be missing,
+no greybox check to fail and nothing stale to re-render — the gate is the
+film's `previz` approval alone — and the job is priced on the **no-reference
+row** (no reference duration to bill). `take-motion` and `take-camera` are
+then asked about the PLAN, and `compare --a greybox` refuses by name.
+
 | index | what | from |
 |---|---|---|
-| `@Video1` | the final greybox render — **the only picture of layout, behaviour and camera the take gets** | `shots/<id>/greybox/greybox.mp4` |
+| `@Video1` | the final greybox render — **the only picture of layout, behaviour and camera the take gets**; absent on a `free` shot | `shots/<id>/greybox/greybox.mp4` |
 | `@Image…` | one character sheet per id in `shot.characters`, in bible order | `bible/characters/<id>/sheet.png` |
 | `@Image…` | the film's **style key frame** — how this film is drawn, and nothing about what is in the frame | `style/keyframe.png` (`backlot.mjs style`) |
 | `@Audio1…` | the voice sample of each character with a `spoken` line in this shot | `bible/characters/<id>/voice.mp3` |

@@ -800,6 +800,46 @@ describe("cut", () => {
     expect(JSON.parse(result.out).vo).toEqual([]);
   });
 
+  test.skipIf(!HAS_FFMPEG)("a free shot with no greybox gets a black card, and the reel is still built", () => {
+    // A free shot never owed the reel a block. Refusing to build would hide
+    // the free shots at exactly the stage the creator judges the film's
+    // timing — so the card holds its seconds and is labelled a stand-in.
+    const cwd = workspace();
+    json(cwd, ["init", "film", "--title", "Two", "--logline", "x", "--seconds", "2", "--width", "320", "--height", "180"]);
+    json(cwd, ["gates", "film", "open"]);
+    json(cwd, ["shot", "add", "film", "a", "--title", "The greybox one"]);
+    json(cwd, ["shot", "add", "film", "b", "--title", "The exchange"]);
+    fixtureMp4(join(cwd, "film", "shots", "a", "greybox", "greybox.mp4"), { seconds: 1, size: "320x180" });
+    const a = shotOf(cwd, "a");
+    a.greybox.revision = 1;
+    a.greybox.final = { file: "greybox/greybox.mp4", revision: 1, probe: null };
+    writeFileSync(join(cwd, "film", "shots", "a", "shot.json"), `${JSON.stringify(a, null, 2)}\n`);
+    previzJson(cwd, ["meta", "film/shots/b", "--conditioning", "free"]);
+
+    const result = run(cwd, ["cut", "film", "--reel"]);
+    expect(result.code).toBe(0);
+    const cut = JSON.parse(result.out);
+    expect(cut.segments.map((s: any) => [s.shot, s.source])).toEqual([["a", "greybox"], ["b", "card"]]);
+    expect(cut.cards).toEqual(["b"]);
+    // A card is a stand-in like the greybox: this is a reel, and the
+    // report counts both.
+    expect(cut.standIns).toEqual(["a", "b"]);
+    expect(result.err).toContain("BLACK CARDS (b)");
+    // The card runs for the shot's own seconds, so everything after it is
+    // still cut in time.
+    expect(cut.segments[1].seconds).toBeCloseTo(2, 1);
+    expect(cut.segments[1].offset).toBe(cut.segments[0].seconds);
+    expect(JSON.parse(readFileSync(join(cwd, "film", "cut", "edl.json"), "utf-8")).segments[1].source).toBe("card");
+    expect(existsSync(join(cwd, "film", "cut", "reel.mp4"))).toBe(true);
+
+    // A BLOCKED shot with nothing to show is still a refusal: that one is
+    // missing work, not expressing a decision.
+    previzJson(cwd, ["meta", "film/shots/b", "--conditioning", "greybox"]);
+    const refused = run(cwd, ["cut", "film", "--reel"]);
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain("b: neither a selected take nor a final greybox");
+  });
+
   test("cut refuses without a kind, with both kinds, and with no shots at all", () => {
     const cwd = workspace();
     film(cwd);
