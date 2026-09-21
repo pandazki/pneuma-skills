@@ -212,3 +212,22 @@ the `lineup` joint review at the previz gate; `slowmo`/`impact` in the kit;
   take judged right across three rounds: one real jump and landing, splash
   after contact, hair and ribbon in slow motion, manhua look, locked camera,
   straight sword in the right hand.
+- Round 3 takes (2026-09-21 night, eight 720p shots, $20.43): consistent
+  across the film, but two failures of the METHOD, not of the model. (1) The
+  hand-off frame carried the previous shot's camera into the next shot
+  (s02 kept s01's high viewpoint, s04/s05 kept s03's over-the-shoulder) —
+  an image with its own composition fights the greybox exactly as boards
+  and anchors did; hand-off becomes opt-in, continuity is text. (2) The user's
+  verdict: 「完全没有亮点，为了环境一致性把 seedance 的强项完全放弃了」 — every
+  shot was locked-off, the pawns barely moved, the climax was four near-
+  identical close inserts with the exchange itself elided, and the causal
+  chain of the fight was unreadable. Control test the same night: the s03
+  exchange shot FREE (character sheets + style frame + a dynamic Chinese
+  prompt; no greybox, 6 s, 720p) came back with a real exchange — his thrust
+  kicking water lines, her spin with hair and ribbon in arcs, blades
+  crossing in a splash, a slow-motion stop one inch from his throat — the
+  first shot of the project with a 亮点. Conclusion for the mode: the
+  greybox is a tool for the shots where space, geography or a camera move
+  the model cannot do alone matters (establishing orbit, crane, dolly zoom,
+  the geometric "one inch"); fight and charm beats are shot free or hybrid.
+  Conditioning is decided PER SHOT in the shot plan.

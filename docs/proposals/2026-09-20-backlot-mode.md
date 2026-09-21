@@ -445,6 +445,35 @@ The design-first principle is unchanged: the design is the plan's text; the
 pictures are derived from the plan through the greybox, not drawn beside it.
 Boards-stage cost drops to zero; anchor cost stays in previz.
 
+### Conditioning is decided per shot (added 2026-09-21 night, user)
+
+Round 3 proved the cost of "greybox everywhere": eight consistent shots and
+no 亮点 — locked cameras, still pawns, the fight elided. The greybox is a
+tool, not the film. Each shot in the plan declares its `conditioning`:
+
+- `greybox` — space, geography or a camera move the model cannot do alone
+  (the establishing orbit, the crane, the dolly zoom, the geometric "one
+  inch"). `@Video1` attached; the prompt inherits layout and camera from it.
+- `free` — the fight beats and the charm beats. No `@Video1`; references are
+  the character sheets and the style frame; the prompt is written for
+  spectacle (the exchange as verbs, the camera as a move that follows the
+  action, slow motion at the peak). A greybox may still exist for the reel
+  and for continuity of positions, but it is not sent.
+- `hybrid` — `@Video1` attached for positions and the camera path, with the
+  prompt explicitly allowing dynamic body action and camera acceleration
+  inside that layout.
+
+`previz.mjs meta --conditioning greybox|free|hybrid` records it (default
+`greybox` for old projects); `planReferences` omits `@Video1` for `free`;
+`prompt-skeleton` emits the matching opening sentence and camera block; the
+greybox checks are not required for a `free` shot (the gate for `generate`
+on a `free` shot is the previz stage approval only); the viewer marks the
+conditioning on the shot card and the cut's segment strip. The shot-plan
+reference gains the decision rule: one hard thing per shot still holds, but
+"hard thing" means the model's job — a fight exchange in one locked medium
+shot is one hard thing; four static inserts of a sword at a throat is no
+scene at all.
+
 ### Continuity across shots (added 2026-09-21 after the first acceptance run)
 
 The first run proved the flow and exposed the gap: every take was generated

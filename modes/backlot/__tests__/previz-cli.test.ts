@@ -919,7 +919,7 @@ describe("the references a take carries", () => {
       { kind: "image", index: 2, file: "style/keyframe.png", role: "style" },
       { kind: "audio", index: 1, file: "bible/characters/kai/voice.mp3", role: "voice:kai" },
     ]);
-    expect(estimate.attachments).toEqual({ withAnchors: false, withBoard: false, withConcept: false });
+    expect(estimate.attachments).toEqual({ withAnchors: false, withBoard: false, withConcept: false, withHandoff: false });
     // A line spoken on screen turns the take's audio on by itself.
     expect(estimate.audio).toBe(true);
     // The table prices the output and the video reference. It says nothing
@@ -952,7 +952,7 @@ describe("the references a take carries", () => {
       { kind: "image", index: 4, file: "style/keyframe.png", role: "style" },
       { kind: "audio", index: 1, file: "bible/characters/kai/voice.mp3", role: "voice:kai" },
     ]);
-    expect(estimate.attachments).toEqual({ withAnchors: false, withBoard: true, withConcept: true });
+    expect(estimate.attachments).toEqual({ withAnchors: false, withBoard: true, withConcept: true, withHandoff: false });
   });
 
   test.skipIf(!HAS_FFMPEG)("a film with no style key frame is warned about — its look reaches the model in words only", () => {
@@ -1326,6 +1326,16 @@ function deliver(cwd: string, id: string, clip: string) {
   copyFileSync(clip, join(cwd, "film", "shots", id, "takes", "take-01.mp4"));
 }
 
+/** The pack of a continuing shot as it is written by DEFAULT: the join is
+ *  carried by the entry sentence, and the only picture is the greybox. */
+const CONTINUES_IN_WORDS = [
+  "@Video1 = layout, positions and timing only; do not inherit the grey surfacing.",
+  "First frame: continuing from the end of the previous shot (lab-walk): mid-stride, weight on the front foot.",
+  "The camera position and the shot size are this shot's own greybox @Video1; do not carry over the previous shot's camera.",
+].join("\n");
+
+/** …and the pack of a job that was asked for the frame by name
+ *  (`--with-handoff`), which then has to give it a job. */
 const CONTINUES = [
   "@Video1 = layout, positions and timing only.",
   "@Image1 = the last frame of the previous shot (lab-walk): this shot opens exactly here.",
@@ -1385,15 +1395,24 @@ describe("meta --continues-from", () => {
   });
 });
 
+/**
+ * The hand-off, after the eight-take run (2026-09-21 night, 720p): the previous
+ * shot's frame is CUT and JUDGED AGAINST, and by default it is not sent to
+ * the model. Every continuing shot that carried it inherited that shot's
+ * camera instead of its own greybox's — s02 kept s01's high viewpoint over
+ * its designed low angle, s04 and s05 kept s03's over-the-shoulder framing —
+ * and the shots generated without one followed their block. So continuity
+ * travels as the entry/exit text, and `--with-handoff` is the opt-in.
+ */
 describe("the hand-off a take is generated with", () => {
-  /** The continuing shot, ready to generate, with a prompt that gives the
-   *  hand-off frame its job. */
-  function continuing(cwd: string) {
+  /** The continuing shot, ready to generate. `pack` is the prompt: the
+   *  words-only default, or one that gives the frame a job. */
+  function continuing(cwd: string, pack: string = CONTINUES_IN_WORDS) {
     twoShots(cwd);
     ready(cwd, { id: "counter", scaffolded: true });
     json(cwd, ["meta", "film/shots/counter", "--continues-from", "lab-walk",
       "--entry", "mid-stride, weight on the front foot", "--exit", "hand flat on the counter"]);
-    writePrompt(cwd, CONTINUES, "counter");
+    writePrompt(cwd, pack, "counter");
   }
 
   test.skipIf(!HAS_FFMPEG)("refuses while the shot it continues has no selected take, and names both ways out", () => {
@@ -1407,15 +1426,24 @@ describe("the hand-off a take is generated with", () => {
     expect(refused.err).toContain(`previz.mjs select ${join(cwd, "film", "shots", "lab-walk")}`);
     expect(refused.err).toContain("--no-handoff");
     expect(existsSync(join(cwd, "film", "shots", "counter", "takes", "handoff-in.png"))).toBe(false);
+    // The ORDER OF SHOOTING is the half of the hand-off that survives the
+    // frame no longer being attached: asking for it by name refuses too.
+    expect(run(cwd, ["generate", "film/shots/counter", "--estimate", "--with-handoff"]).err)
+      .toContain('"lab-walk" has no selected take');
 
-    // --no-handoff is the override, and it says so out loud.
+    // --no-handoff is the override, and it says out loud what it gives up.
     const skipped = run(cwd, ["generate", "film/shots/counter", "--estimate", "--no-handoff"]);
-    expect(skipped.code).toBe(1); // the prompt still addresses @Image1, which is now attached to nothing
-    expect(skipped.err).toContain("generated WITHOUT that frame");
-    expect(skipped.err).toContain("@Image1");
+    expect(skipped.code).toBe(0);
+    expect(skipped.err).toContain("OUT OF ORDER");
+    expect(skipped.err).toContain("compare --handoff");
+
+    // …and the two flags ask for opposite things.
+    const both = run(cwd, ["generate", "film/shots/counter", "--estimate", "--no-handoff", "--with-handoff"]);
+    expect(both.code).toBe(1);
+    expect(both.err).toContain("opposite things");
   });
 
-  test.skipIf(!HAS_FFMPEG)("cuts the previous shot's last USED frame and attaches it last", () => {
+  test.skipIf(!HAS_FFMPEG)("cuts the previous shot's last USED frame — and does NOT send it", () => {
     const cwd = workspace();
     continuing(cwd);
     const clip = mp4Fixture(cwd);
@@ -1432,19 +1460,49 @@ describe("the hand-off a take is generated with", () => {
       frame: 12,
       file: "takes/handoff-in.png",
       trimmed: { in: 0, out: 0.5 },
+      // The whole point of the change: cut, recorded, and not sent.
+      attached: false,
     });
     const frame = join(cwd, "film", "shots", "counter", "takes", "handoff-in.png");
     expect(existsSync(frame)).toBe(true);
-    // Cut at the clip's own resolution: this is a reference for a paid job,
-    // not a contact sheet.
+    // Cut at the clip's own resolution: this is the evidence `take-handoff`
+    // is answered from, not a contact sheet.
     expect(pngSize(readFileSync(frame))).toEqual({ width: 64, height: 64 });
+    // The greybox is the only picture this take receives. A continuing shot
+    // is exactly the shot with a second camera available to copy.
     expect(estimate.refs).toEqual([
       { kind: "video", index: 1, file: "shots/counter/greybox/greybox.mp4", role: "greybox" },
-      { kind: "image", index: 1, file: "shots/counter/takes/handoff-in.png", role: "handoff" },
     ]);
     // An untrimmed previous shot hands over its last frame instead.
     json(cwd, ["meta", "film/shots/lab-walk", "--no-trim"]);
     expect(json(cwd, ["generate", "film/shots/counter", "--estimate"]).handoff).toMatchObject({ frame: 24, trimmed: null });
+  });
+
+  test.skipIf(!HAS_FFMPEG)("--with-handoff attaches it last, and the take says it was shown", () => {
+    const cwd = workspace();
+    continuing(cwd, CONTINUES);
+    const clip = mp4Fixture(cwd);
+    deliver(cwd, "lab-walk", clip);
+
+    const estimate = json(cwd, ["generate", "film/shots/counter", "--estimate", "--with-handoff"]);
+    expect(estimate.refs).toEqual([
+      { kind: "video", index: 1, file: "shots/counter/greybox/greybox.mp4", role: "greybox" },
+      { kind: "image", index: 1, file: "shots/counter/takes/handoff-in.png", role: "handoff" },
+    ]);
+    expect(estimate.handoff).toMatchObject({ from: "lab-walk", frame: 24, attached: true });
+    expect(estimate.attachments).toMatchObject({ withHandoff: true });
+
+    const env = seedanceSeam(cwd, { FAKE_TAKE_SOURCE: clip });
+    const landed = json(cwd, ["generate", "film/shots/counter", "--with-handoff", "--now", T(20)], env);
+    expect(landed.take.refs.at(-1)).toMatchObject({ kind: "image", role: "handoff", file: "shots/counter/takes/handoff-in.png" });
+    expect(landed.take.handoff).toMatchObject({ from: "lab-walk", take: "take-01", frame: 24, attached: true });
+
+    // A shot that continues nothing has no frame to ask for, and is told so
+    // rather than silently given the flag's word for it.
+    const alone = workspace();
+    ready(alone);
+    expect(run(alone, ["generate", "film/shots/lab-walk", "--estimate", "--with-handoff"]).err)
+      .toContain("this shot continues nothing");
   });
 
   test.skipIf(!HAS_FFMPEG)("the take records what it was shown, and carries take-handoff", () => {
@@ -1454,10 +1512,16 @@ describe("the hand-off a take is generated with", () => {
     deliver(cwd, "lab-walk", clip);
     const env = seedanceSeam(cwd, { FAKE_TAKE_SOURCE: clip });
 
-    const landed = json(cwd, ["generate", "film/shots/counter", "--now", T(20)], env);
-    expect(landed.take.status).toBe("done");
-    expect(landed.take.refs.at(-1)).toMatchObject({ kind: "image", role: "handoff", file: "shots/counter/takes/handoff-in.png" });
-    expect(landed.take.handoff).toMatchObject({ from: "lab-walk", take: "take-01", frame: 24 });
+    const landed = run(cwd, ["generate", "film/shots/counter", "--now", T(20)], env);
+    expect(landed.code).toBe(0);
+    const take = JSON.parse(landed.out).take;
+    expect(take.status).toBe("done");
+    // Not shown the frame, and the record says which frame it will be judged
+    // against anyway — a `take-handoff` pass means the WORDS carried it.
+    expect(take.refs.map((ref: any) => ref.role)).toEqual(["greybox"]);
+    expect(take.handoff).toMatchObject({ from: "lab-walk", take: "take-01", frame: 24, attached: false });
+    expect(landed.err).toContain("NOT sent to the model");
+    expect(landed.err).toContain("compare <shot-dir> --handoff --take take-01");
 
     const shot = shotFile(cwd, "film", "counter");
     const check = shot.checks.find((entry: any) => entry.id === "take-handoff" && entry.target === "take-01");
@@ -1477,16 +1541,16 @@ describe("the hand-off a take is generated with", () => {
     continuing(cwd);
     const clip = mp4Fixture(cwd);
     deliver(cwd, "lab-walk", clip);
-    // The pack must not address a reference that is no longer attached.
-    writePrompt(cwd, "@Video1 = layout, positions and timing only. A convenience store at 3 a.m.", "counter");
     const env = seedanceSeam(cwd, { FAKE_TAKE_SOURCE: clip });
 
     const landed = run(cwd, ["generate", "film/shots/counter", "--no-handoff", "--now", T(20)], env);
     expect(landed.code).toBe(0);
-    expect(landed.err).toContain("generated WITHOUT that frame");
+    expect(landed.err).toContain("OUT OF ORDER");
     const take = JSON.parse(landed.out).take;
     expect(take.handoff).toBe("skipped");
     expect(take.refs).toEqual([{ kind: "video", index: 1, file: "shots/counter/greybox/greybox.mp4", role: "greybox" }]);
+    // Nothing was cut, so there is no out-frame this take can be judged
+    // against — which is the difference from the default.
     expect(existsSync(join(cwd, "film", "shots", "counter", "takes", "handoff-in.png"))).toBe(false);
     // The shot still says it continues something, so the check is still asked.
     expect(shotFile(cwd, "film", "counter").checks.some((entry: any) => entry.id === "take-handoff")).toBe(true);
@@ -1498,6 +1562,8 @@ describe("the hand-off a take is generated with", () => {
     const clip = mp4Fixture(cwd);
     deliver(cwd, "lab-walk", clip);
     const env = seedanceSeam(cwd, { FAKE_TAKE_SOURCE: clip });
+    // The default take — the one that was NOT shown the frame. The QA
+    // picture is exactly how a join asked for in words is checked.
     json(cwd, ["generate", "film/shots/counter", "--now", T(20)], env);
 
     const pair = json(cwd, ["compare", "film/shots/counter", "--handoff"]);
@@ -1606,7 +1672,7 @@ describe("prompt-skeleton", () => {
     // the job: one composition per take, and it is @Video1's.
     expect(text).not.toContain("legacy storyboard drawing");
     expect(text).not.toContain("the set's structure comes from the greybox space");
-    expect(skeleton.attachments).toEqual({ withAnchors: false, withBoard: false, withConcept: false });
+    expect(skeleton.attachments).toEqual({ withAnchors: false, withBoard: false, withConcept: false, withHandoff: false });
     // THE SET IS WORDS: its written look is pre-filled into the global
     // block, where it costs no composition.
     expect(text).toContain("Set: 便利店 — a narrow convenience store, cold white strip lights, wet lino, a fridge wall down one side. The spatial structure is @Video1's.");
@@ -1713,7 +1779,7 @@ describe("prompt-skeleton", () => {
     expect(readFileSync(promptsPath, "utf-8")).toBe(before);
   });
 
-  test("a shot that continues another opens on its entry, and the hand-off gets the last index", () => {
+  test("a continuing shot carries the join in WORDS — the frame is not in the pack", () => {
     const cwd = workspace();
     twoShots(cwd);
     ready(cwd, { id: "counter", scaffolded: true });
@@ -1721,12 +1787,33 @@ describe("prompt-skeleton", () => {
       "--entry", "mid-stride, weight on the front foot, 1.2 m from the counter",
       "--exit", "hand flat on the counter"]);
 
-    const text = json(cwd, ["prompt-skeleton", "film/shots/counter"]).skeleton as string;
-    expect(text).toContain("@Image1: use only where everybody stands, which way they face and what is in their hands at the end of the previous shot (lab-walk) — this shot's frame 1 continues from exactly that");
-    expect(text).toContain("First frame: mid-stride, weight on the front foot, 1.2 m from the counter");
+    const plain = json(cwd, ["prompt-skeleton", "film/shots/counter"]);
+    const text = plain.skeleton as string;
+    // No picture of the previous shot: the greybox is the only composition,
+    // and the join is two sentences.
+    expect((plain.refs as Array<{ role: string }>).map((ref) => ref.role)).toEqual(["greybox"]);
+    expect(text).not.toContain("at the end of the previous shot (lab-walk)");
+    expect(text).toContain("First frame: continuing from the end of the previous shot (lab-walk): mid-stride, weight on the front foot, 1.2 m from the counter");
     expect(text).toContain("Last frame: hand flat on the counter");
-    // …and a shot with no hand-off leaves the entry open.
-    expect(json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]).skeleton).toContain("First frame: <TODO");
+    // …and the camera the model would otherwise copy is named and refused,
+    // in the block where the camera is decided.
+    expect(text).toContain("The camera position and the shot size are this shot's own greybox @Video1; do not carry over the previous shot's camera.");
+
+    // Asked for by name, the frame is back at the last image index, with its
+    // job — and the two sentences the words version needed are gone, because
+    // the assignment line says them.
+    const asked = json(cwd, ["prompt-skeleton", "film/shots/counter", "--with-handoff"]);
+    const withFrame = asked.skeleton as string;
+    expect((asked.refs as Array<{ role: string }>).map((ref) => ref.role)).toEqual(["greybox", "handoff"]);
+    expect(withFrame).toContain("@Image1: use only where everybody stands, which way they face and what is in their hands at the end of the previous shot (lab-walk) — this shot's frame 1 continues from exactly that. Not its camera position, shot size or framing (those are @Video1's)");
+    expect(withFrame).toContain("First frame: mid-stride, weight on the front foot, 1.2 m from the counter");
+    expect(withFrame).not.toContain("do not carry over the previous shot's camera");
+    expect(asked.attachments).toMatchObject({ withHandoff: true });
+
+    // …and a shot with no hand-off leaves the entry open and says neither.
+    const alone = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]).skeleton as string;
+    expect(alone).toContain("First frame: <TODO");
+    expect(alone).not.toContain("do not carry over the previous shot's camera");
   });
 });
 

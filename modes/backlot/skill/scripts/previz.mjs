@@ -1126,8 +1126,10 @@ function cmdMeta(dir, opts) {
   if (touchesContinuity) {
     if (shot.continuity?.from) {
       note(
-        `[previz] this shot continues "${shot.continuity.from}": 'generate' will cut that shot's last used frame into ` +
-          "takes/handoff-in.png, attach it as the LAST image reference, and seed the 'take-handoff' check on every take",
+        `[previz] this shot continues "${shot.continuity.from}": it is generated AFTER that shot has a selected take, ` +
+          "'generate' cuts that take's last used frame into takes/handoff-in.png for 'compare --handoff', and every take " +
+          "carries the 'take-handoff' check. The frame is NOT sent to the model — the join travels as the --entry/--exit " +
+          "text in the pack — unless 'generate --with-handoff' asks for it",
       );
     } else if (shot.continuity?.exit) {
       note("[previz] no hand-off — this shot is generated alone; its --exit is recorded for a later shot to continue from");
@@ -2506,7 +2508,6 @@ function anchorById(shot, id) {
  *             with the same cast address the same character at the same
  *             index,
  *   @Image…   the film's ONE style key frame (`backlot.mjs style`),
- *   @Image…   the hand-off frame LAST, when this shot continues another,
  *   @Audio1…  the voice sample of each character with a spoken line.
  *
  * FEWER PICTURES, AND ONLY ONE OF THEM IS A COMPOSITION. Three acceptance
@@ -2517,14 +2518,24 @@ function anchorById(shot, id) {
  * the greybox is the only picture of layout, behaviour and camera; the words
  * carry the look; a key frame is a weak fallback for a model that takes no
  * video reference at all ("仅支持图片时导出关键帧并明确这是弱约束",
- * `upstream/.../references/video-generation.md`). So a sheet says a face, the
- * style frame says an idiom, the hand-off says a pose — and nothing else has
- * a composition of its own.
+ * `upstream/.../references/video-generation.md`). So a sheet says a face and
+ * the style frame says an idiom — and nothing else has a composition of its
+ * own.
  *
- * The key frames, a legacy board and the set concept are therefore OPT-IN
- * (`generate --with-anchors` / `--with-board` / `--with-concept`). The set's
- * appearance travels as TEXT, out of its bible record and into the pack's
- * global block.
+ * THE HAND-OFF FRAME IS THE SAME ARGUMENT, and it took a whole film to see
+ * it. Eight 720p takes (round 3's night run, 2026-09-21): every shot that
+ * carried a hand-off frame inherited the PREVIOUS shot's camera, not its own
+ * greybox's — s02 kept s01's high viewpoint over its designed low angle, s04
+ * and s05 kept s03's over-the-shoulder framing over the side two-shot and the
+ * profile close-up. The shots generated without one followed their greybox.
+ * A hand-off is a picture with a composition, so it fights @Video1 exactly
+ * like a board does. Continuity travels as WORDS instead — the pack's
+ * 第一帧/最后一帧 lines — and the frame is opt-in (`--with-handoff`).
+ *
+ * The key frames, a legacy board, the set concept and the hand-off frame are
+ * therefore OPT-IN (`generate --with-anchors` / `--with-board` /
+ * `--with-concept` / `--with-handoff`). The set's appearance travels as TEXT,
+ * out of its bible record and into the pack's global block.
  *
  * A reference the bible does not have yet is reported, not invented. `plan`
  * carries the display names the skeleton needs; `refs` is the record shape
@@ -2534,7 +2545,7 @@ function planReferences(
   dir,
   shot,
   projectRoot,
-  { greyboxFile, handoff = null, withAnchors = false, withBoard = false, withConcept = false } = {},
+  { greyboxFile, handoff = null, withAnchors = false, withBoard = false, withConcept = false, withHandoff = false } = {},
 ) {
   const plan = [];
   const videos = [];
@@ -2634,10 +2645,20 @@ function planReferences(
     warnings.push("this film has no style key frame — the take is told its look in words only. Register one with 'backlot.mjs style <project> --keyframe <png>'");
   }
 
-  // The frame this shot opens on, LAST: it is the most specific instruction
-  // the job carries, and adherence decays with position.
-  if (handoff && handoff.file) {
-    attach("image", handoff.file, "handoff", handoff.from ?? null);
+  // The frame this shot opens on — OPT-IN, and LAST when it is asked for:
+  // it is the most specific instruction the job carries, and adherence decays
+  // with position. Off by default because it brought the previous shot's
+  // CAMERA with it in every continuing shot of the eight-take run; the entry
+  // sentence says the same thing without a composition.
+  if (withHandoff) {
+    if (handoff && handoff.file) {
+      attach("image", handoff.file, "handoff", handoff.from ?? null);
+    } else {
+      warnings.push(
+        "--with-handoff was asked for and this shot continues nothing — there is no frame to hand over " +
+          "(declare it with 'previz.mjs meta <shot-dir> --continues-from <shot> --entry \"…\" --exit \"…\"')",
+      );
+    }
   }
 
   // One sample per SPEAKER, in the order their first line is spoken.
@@ -2688,13 +2709,20 @@ function deliveredTake(shot) {
  * The frame is the last one of the previous shot that reaches the FILM — its
  * trim's `out`, not its render's end — because that is the picture the
  * audience sees immediately before this shot starts. It is written to
- * `takes/handoff-in.png` and attached as the last image reference.
+ * `takes/handoff-in.png`.
+ *
+ * IT IS NOT SENT TO THE MODEL unless `--with-handoff` asks for it: the frame
+ * carried the previous shot's camera into every continuing shot of the
+ * eight-take run (2026-09-21 night). Cut anyway, because it is the evidence
+ * `take-handoff` is answered from (`compare --handoff`), and because the
+ * ORDER OF SHOOTING is the other half of the hand-off: a shot that claims
+ * one continuous action still waits for the shot it continues.
  *
  * Refuses when the previous shot has no selected take: a hand-off from a take
  * nobody chose is a hand-off from a frame that will not be in the film.
  * `--no-handoff` overrides that, and the take records that it did.
  */
-function resolveHandoff(dir, shot, projectRoot, { skip = false } = {}) {
+function resolveHandoff(dir, shot, projectRoot, { skip = false, attached = false } = {}) {
   const from = shot.continuity?.from ?? null;
   if (!from) {
     if (skip) note("NOTE: --no-handoff does nothing here — this shot declares no continuity, so no frame was going to be handed over");
@@ -2702,8 +2730,9 @@ function resolveHandoff(dir, shot, projectRoot, { skip = false } = {}) {
   }
   if (skip) {
     note(
-      `WARN: --no-handoff — this shot says it continues "${from}", but the take is being generated WITHOUT that frame. ` +
-        "It is recorded on the take as skipped, and 'take-handoff' still has to be answered by eye.",
+      `WARN: --no-handoff — this shot says it continues "${from}", and the take is being generated OUT OF ORDER: ` +
+        "that shot's frame is not cut at all. It is recorded on the take as skipped, 'take-handoff' still has to be " +
+        "answered by eye, and there is no recorded out-frame for 'compare --handoff' to judge it against.",
     );
     return { skipped: true, from };
   }
@@ -2739,7 +2768,11 @@ function resolveHandoff(dir, shot, projectRoot, { skip = false } = {}) {
   extractOneFrame(dir, source, frame, file, { width: null, scratch: "handoff" });
   note(
     `[previz] hand-off: frame ${frame}/${frames} of ${from}/${take.id} (${stamp(at)}${peer.trim ? `, the last frame its trim uses` : ""}) ` +
-      `→ ${rel}, attached as the LAST image reference`,
+      `→ ${rel}` +
+      (attached
+        ? ", attached as the LAST image reference (--with-handoff)"
+        : " — NOT sent to the model: continuity travels as the pack's 第一帧/最后一帧 text, and this frame is what " +
+          "'compare --handoff' answers 'take-handoff' from. '--with-handoff' attaches it as well."),
   );
   return {
     from,
@@ -2753,9 +2786,16 @@ function resolveHandoff(dir, shot, projectRoot, { skip = false } = {}) {
   };
 }
 
-/** The hand-off as a take records it and a report prints it: `"skipped"`,
- *  the frame it used, or null when the shot continues nothing. */
-function handoffRecord(handoff) {
+/**
+ * The hand-off as a take records it and a report prints it: `"skipped"`, the
+ * frame it was measured against, or null when the shot continues nothing.
+ *
+ * `attached` is the part a reader cannot recover afterwards: the frame is cut
+ * for `compare --handoff` either way, and whether the MODEL was shown it is
+ * what decides how a `take-handoff` pass may be read. A record written before
+ * `--with-handoff` existed has no field and was attached.
+ */
+function handoffRecord(handoff, attached = false) {
   if (!handoff) return null;
   if (handoff.skipped) return "skipped";
   return {
@@ -2766,6 +2806,7 @@ function handoffRecord(handoff) {
     at: handoff.at,
     trimmed: handoff.trimmed,
     file: handoff.rel,
+    attached: Boolean(attached),
   };
 }
 
@@ -3140,10 +3181,13 @@ function assignmentFor(ref, shot, language = "en", context = {}) {
       : `${lead}the film's style reference: use only the rendering idiom, the line and the colouring — not its composition and not the people in it.`;
   }
   if (role === "handoff") {
+    // Only on a job asked for it by name (`--with-handoff`). The exclusion
+    // carries the camera now: the frame's own viewpoint is the thing it
+    // smuggled into three shots of the eight-take run.
     const from = ref.name ?? shot.continuity?.from ?? "?";
     return zh
-      ? `${lead}只参考上一镜（${from}）结束时每个人的位置、朝向与手里的东西，本镜第一帧从这里接上，不用它的画质瑕疵。`
-      : `${lead}use only where everybody stands, which way they face and what is in their hands at the end of the previous shot (${from}) — this shot's frame 1 continues from exactly that, not from its compression artefacts.`;
+      ? `${lead}只参考上一镜（${from}）结束时每个人的位置、朝向与手里的东西，本镜第一帧从这里接上；不用它的机位、景别与构图（那些以 @Video1 为准），也不用它的画质瑕疵。`
+      : `${lead}use only where everybody stands, which way they face and what is in their hands at the end of the previous shot (${from}) — this shot's frame 1 continues from exactly that. Not its camera position, shot size or framing (those are @Video1's), and not its compression artefacts.`;
   }
   if (role.startsWith("voice:")) {
     const name = ref.name ?? role.slice("voice:".length);
@@ -3182,6 +3226,10 @@ function buildSkeleton(dir, shot, projectRoot, attachments = {}) {
   const planned = planReferences(dir, shot, projectRoot, { greyboxFile: join(dir, greyboxRel), handoff, ...attachments });
   const warnings = [...planned.warnings];
   if (!greybox.final) warnings.push("there is no final greybox yet — @Video1 is the file 'generate' will attach once there is one");
+  // Whether continuity reaches the model as a PICTURE or as WORDS. Read off
+  // the plan rather than the flag, so the pack can never describe an
+  // attachment the job will not make.
+  const handoffAttached = planned.plan.some((ref) => ref.role === "handoff");
 
   const language = filmLanguage(projectRoot);
   const L = PACK_TEXT[language];
@@ -3268,6 +3316,15 @@ function buildSkeleton(dir, shot, projectRoot, attachments = {}) {
   body.push(zh
     ? "镜头轨迹、机位与景别严格照 @Video1，全片不切、不加转场。"
     : "The camera path, the camera position and the shot sizes are @Video1's exactly; no cut and no transition.");
+  // A continuing shot is the one place a model has a SECOND camera to copy:
+  // the shot before it. Said in the global block because that is where the
+  // camera is decided, and only when the pack carries the join as words —
+  // with the frame attached, its own assignment line says the same thing.
+  if (shot.continuity?.from && !handoffAttached) {
+    body.push(zh
+      ? "机位与景别以本镜白模 @Video1 为准，不沿用上一镜的机位。"
+      : "The camera position and the shot size are this shot's own greybox @Video1; do not carry over the previous shot's camera.");
+  }
   if (cameraBeats.length > 1) {
     warnings.push(
       `this shot has ${cameraBeats.length} camera beats (${cameraBeats.map((beat) => beat.id).join(", ")}) — one clip holds ONE move; ` +
@@ -3288,7 +3345,13 @@ function buildSkeleton(dir, shot, projectRoot, attachments = {}) {
       ? `${L.timeline}（严格对齐白模秒数：共 ${dur(seconds)} 秒；${trim}）`
       : `${L.timeline} (locked to the greybox clock: ${dur(seconds)} s in total; ${trim})`,
   );
-  body.push(`${L.firstFrame}${zh ? "：" : ": "}${shot.continuity?.entry ?? L.todoEntry}`);
+  // 第一帧: the entry state — and, when the model is NOT shown the frame it
+  // continues, the sentence that has to carry the join on its own.
+  const entryText = shot.continuity?.entry ?? L.todoEntry;
+  const entryLead = shot.continuity?.from && !handoffAttached
+    ? (zh ? `承接上一镜（${shot.continuity.from}）的结束状态：` : `continuing from the end of the previous shot (${shot.continuity.from}): `)
+    : "";
+  body.push(`${L.firstFrame}${zh ? "：" : ": "}${entryLead}${entryText}`);
   const spoken = spokenLines(shot).filter((line) => line.at != null);
   // A second on a boundary belongs to the LATER segment; a second at the very
   // end of the clip belongs to the last one, which has nowhere to hand it on.
@@ -3432,6 +3495,7 @@ function attachmentOpts(opts) {
     withAnchors: Boolean(opts["with-anchors"]),
     withBoard: Boolean(opts["with-board"]),
     withConcept: Boolean(opts["with-concept"]),
+    withHandoff: Boolean(opts["with-handoff"]),
   };
 }
 
@@ -3619,20 +3683,32 @@ async function cmdGenerate(dir, opts, now) {
   const projectRoot = requireProjectRoot(dir, "a paid take");
   requireGate("generate", projectRoot);
 
+  // Everything the job carries besides the prompt, gathered from the film.
+  // The default is the greybox, the sheets, the style frame and the voices —
+  // every picture with a composition of its own is an explicit `--with-…`.
+  const attachments = attachmentOpts(opts);
+  if (attachments.withHandoff && opts["no-handoff"]) {
+    fail("--with-handoff and --no-handoff ask for opposite things: one attaches the previous shot's frame, the other does not even cut it");
+  }
+
   // The frame this shot opens on, when it says it continues another. Cut
   // before anything is priced: a hand-off that cannot be cut is a refusal,
-  // not a take that quietly starts somewhere else.
-  const handoff = resolveHandoff(dir, shot, projectRoot, { skip: Boolean(opts["no-handoff"]) });
-
-  // Everything the job carries besides the prompt, gathered from the film.
-  // The default is the greybox, the sheets, the style frame and the hand-off
-  // — every other picture is an explicit `--with-…`.
-  const attachments = attachmentOpts(opts);
+  // not a take that quietly starts somewhere else. It is only SENT with
+  // --with-handoff; without it the frame is the evidence `take-handoff` is
+  // answered from, and the join travels as the pack's entry/exit text.
+  const handoff = resolveHandoff(dir, shot, projectRoot, {
+    skip: Boolean(opts["no-handoff"]),
+    attached: attachments.withHandoff,
+  });
   const references = planReferences(dir, shot, projectRoot, {
     greyboxFile,
     handoff: handoff && !handoff.skipped ? handoff : null,
     ...attachments,
   });
+  // What the take records: the frame it was measured against, and whether the
+  // model was shown it.
+  const handoffAttached = references.refs.some((ref) => ref.role === "handoff");
+  const handoffRecorded = handoffRecord(handoff, handoffAttached);
   for (const warning of references.warnings) note(`WARN: ${warning}`);
   const attached = { video: references.videos.length, image: references.images.length, audio: references.audios.length };
   const refCheck = validatePromptRefs(prompt.refs, attached);
@@ -3711,7 +3787,7 @@ async function cmdGenerate(dir, opts, now) {
       seconds: wantedSeconds, refSeconds, greybox: greyboxRel, greyboxRevision: shot.greybox.revision,
       cost: price, prices: PRICES, promptChars: prompt.prompt.length,
       refs: references.refs, attachments, audio: wantAudio, priceNote,
-      handoff: handoffRecord(handoff),
+      handoff: handoffRecorded,
       timeline: timeline.map((row) => ({ from: row.from, to: row.to })),
       warnings: [
         ...(policy.unverifiedChecks.length ? [`${policy.unverifiedChecks.length} greybox check(s) are still unverified: ${policy.unverifiedChecks.join(", ")}`] : []),
@@ -3759,9 +3835,10 @@ async function cmdGenerate(dir, opts, now) {
     // What the job was conditioned on, recorded BEFORE the request: a bible
     // edited afterwards must not be able to rewrite what a take saw.
     refs: references.refs,
-    // "skipped" is a fact about this take, not about the shot: the shot still
-    // says it continues another one, and `take-handoff` is still asked.
-    ...(handoff ? { handoff: handoff.skipped ? "skipped" : handoffRecord(handoff) } : {}),
+    // "skipped" and `attached: false` are facts about this take, not about
+    // the shot: the shot still says it continues another one, and
+    // `take-handoff` is still asked either way.
+    ...(handoff ? { handoff: handoffRecorded } : {}),
     audio: wantAudio,
     submittedAt: now,
     finishedAt: null,
@@ -3835,12 +3912,15 @@ async function cmdGenerate(dir, opts, now) {
     }
     const after = lines?.shot ?? merged.shot;
     if (handoff) {
-      note(`[previz] look at the hand-off before accepting ${takeId}: previz.mjs compare <shot-dir> --handoff --take ${takeId}`);
+      note(
+        `[previz] look at the hand-off before accepting ${takeId}: previz.mjs compare <shot-dir> --handoff --take ${takeId}` +
+          (handoffAttached ? "" : " — this take was NOT shown that frame; the join was asked for in words, and this is where you find out whether it landed"),
+      );
     }
     return emit({
       command: "generate", dir, take: merged.take, cost: merged.take.cost, seededChecks: merged.seeded.length,
       refs: references.refs,
-      handoff: handoffRecord(handoff),
+      handoff: handoffRecorded,
       lines: lines ? { status: lines.status, note: lines.note, transcript: lines.file, missing: lines.missing } : null,
       next: nextStage(after, promptState(dir, after)),
     });
@@ -3947,8 +4027,12 @@ stderr. --json is accepted everywhere and is already the default.
       shot it names must be EARLIER in backlot.json's order and must have a
       selected take by the time this one is generated, --entry is the frame
       this shot opens on and --exit how it ends. Then 'generate' cuts that
-      shot's last used frame into takes/handoff-in.png, attaches it as the
-      LAST image reference, and every take carries the 'take-handoff' check.
+      shot's last used frame into takes/handoff-in.png and every take carries
+      the 'take-handoff' check.
+      THE JOIN TRAVELS AS WORDS: --entry and --exit become the pack's
+      第一帧 / 最后一帧 lines, and the frame itself is NOT sent to the model
+      unless 'generate --with-handoff' asks for it — it carried the previous
+      shot's camera into every continuing shot of the eight-take run.
       Say nothing for a cut that exists to BREAK continuity — an ellipsis, a
       jump cut, a montage, a deliberate mismatch. --exit alone is allowed on
       any shot: it is how a shot tells the next one where it ended.
@@ -4043,6 +4127,7 @@ stderr. --json is accepted everywhere and is already the default.
 
   prompt-skeleton <shot-dir> [--write]
                   [--with-anchors] [--with-board] [--with-concept]
+                  [--with-handoff]
       The prompt pack v3, built from this shot, in the block order
       'references/prompting.md' documents:
         the replacement sentence (the greybox's blocks become the subjects,
@@ -4053,7 +4138,8 @@ stderr. --json is accepted everywhere and is already the default.
         【全局设定】 style, light, and THE ONE camera move, whole
         【时间戳分镜】 a contiguous partition of the clip — no gaps, no
                       overlaps, one main event per segment, each carrying
-                      its beat's designed detail in full
+                      its beat's designed detail in full, opening on 第一帧
+                      (which carries the join when the frame is not attached)
         声音         named sounds, and no music (the cut lays the score)
         【全局锁】   last: nothing added or removed, the camera path
                       unchanged, none of the greybox's grey surfacing
@@ -4100,20 +4186,22 @@ stderr. --json is accepted everywhere and is already the default.
            [--fix "<what this take changes>"] [--user-approved]
            [--allow-failing "<why a failing greybox is acceptable>"]
            [--estimate] [--audio] [--no-handoff] [--timeout 1800]
-           [--with-anchors] [--with-board] [--with-concept]
+           [--with-anchors] [--with-board] [--with-concept] [--with-handoff]
       Seedance 2.5 reference-to-video, conditioned on everything this shot
       has, in the order the prompt addresses it by:
         @Video1  the FINAL greybox — the ONLY picture of layout, behaviour
                  and camera
         @Image…  this shot's character sheets, in bible order
         @Image…  the film's style key frame ('backlot.mjs style --keyframe')
-        @Image…  takes/handoff-in.png LAST, when this shot continues another
         @Audio1… the voice sample of each character with a spoken line
       OPT-IN, and off by default because each brings a composition of its own
       and fights @Video1 for it: --with-anchors (this shot's key frames,
-      leading the images), --with-board (a legacy drawing) and --with-concept
-      (the set concept). The set's appearance travels as TEXT, from its bible
-      'look' into the pack's global block.
+      leading the images), --with-board (a legacy drawing), --with-concept
+      (the set concept) and --with-handoff (takes/handoff-in.png, LAST). The
+      set's appearance travels as TEXT, from its bible 'look' into the pack's
+      global block, and the join travels as the 第一帧 / 最后一帧 lines: eight
+      720p takes (2026-09-21) showed every shot handed the previous frame
+      inheriting ITS camera instead of its own greybox's.
       The prompt is the first fenced \`prompt\` block of prompts.md; it must
       address @Video1, every attached reference must be GIVEN A JOB there
       ("@Image2 = the keeper's appearance only"), and a pack that names a
@@ -4129,8 +4217,11 @@ stderr. --json is accepted everywhere and is already the default.
       'previz.mjs prompt-skeleton' writes the pack with this shot's own
       indices and none of those faults.
       A shot that declares continuity refuses while the shot it continues has
-      no selected take; --no-handoff generates without that frame and records
-      "skipped" on the take.
+      no selected take — contiguous shots are shot in order — and cuts that
+      take's last used frame into takes/handoff-in.png for 'compare --handoff'
+      whether or not the model is shown it (the take records
+      handoff.attached). --no-handoff generates out of order, cuts nothing and
+      records "skipped"; --with-handoff attaches the frame as the last image.
       Refuses: while the film's previz stage is not approved (backlot.mjs
       approve / gates open); without a final greybox at the current
       revision; while a greybox check is failing (unless --allow-failing
@@ -4205,6 +4296,7 @@ const OPTIONS = {
   "with-anchors": { type: "boolean" },
   "with-board": { type: "boolean" },
   "with-concept": { type: "boolean" },
+  "with-handoff": { type: "boolean" },
   scene: { type: "string" },
   characters: { type: "string" },
   "trim-in": { type: "string" },

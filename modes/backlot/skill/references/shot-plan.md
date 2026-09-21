@@ -46,10 +46,12 @@ animated — which is exactly why the acted column has to be *written*.
    and the second the effect starts.
 7. **Entry state** — what is on screen in the first half second: each body's
    position, facing, weapon and any contact. When this shot continues the
-   previous one's action, this sentence *is* the previous shot's exit sentence.
+   previous one's action, this sentence *is* the previous shot's exit sentence
+   — and it is the **only** thing the model is told about the join, so write
+   it as a picture rather than as a label.
 8. **Exit state** — the last half second in the same grammar, because the next
-   shot's entry is written from it and, for a hand-off, the model is shown the
-   frame it produced.
+   shot's entry is written from it, and because the frame it produces is what
+   `take-handoff` is judged against.
 9. **Continuity decision** — how this shot is cut *into*, one of the five
    below, with the one-line reason.
 10. **Assumptions** — every value the creator did not give and you chose.
@@ -228,12 +230,31 @@ node {SKILL_PATH}/scripts/previz.mjs meta <shot-dir> \
 - Positions in a hand-off sentence are named **as they read on screen**
   (screen left/right), never from a character's point of view.
 
-**Contiguous shots are shot in order.** `generate` extracts the hand-off frame
-from the previous shot's *selected* take, so a shot that continues another one
-cannot be generated until that one has a take the creator kept. Plan the order,
-generate in it, and select as you go. `--no-handoff` generates out of order and
-records that on the take; it is the creator's call to accept the join, not a
-way around the queue.
+**The model is NOT shown the frame it continues. Those two sentences are the
+hand-off.** `prompt-skeleton` opens the pack's 第一帧 line with 「承接上一镜
+（sXX）的结束状态：」 followed by the `--entry` text, and adds 「机位与景别以
+本镜白模 @Video1 为准，不沿用上一镜的机位。」 to the global block. That is the
+whole contract, so the two sentences have to carry it: each body's position,
+facing, what is in their hands, the distance between them.
+
+The eight-take run is why (2026-09-21 night, 720p). While the previous shot's
+out-frame *was* attached, every continuing shot came back with the **previous
+shot's camera** — `s02` from `s01`'s high viewpoint instead of its designed
+low angle, `s04` and `s05` in `s03`'s over-the-shoulder framing instead of the
+side two-shot and the profile close-up — while the shots without one followed
+their block. A hand-off frame is a composition, and it is the most persuasive
+one there is: the same action, one moment earlier. `generate --with-handoff`
+attaches it when a join has already failed in words, and the report says the
+take carried it.
+
+**Contiguous shots are still shot in order.** `generate` extracts the
+hand-off frame from the previous shot's *selected* take — into
+`takes/handoff-in.png`, for `compare --handoff` and the `take-handoff` check —
+so a shot that continues another one cannot be generated until that one has a
+take the creator kept. Plan the order, generate in it, and select as you go.
+`--no-handoff` generates out of order and cuts nothing, and records
+`"skipped"` on the take; it is the creator's call to accept the join unseen,
+not a way around the queue.
 
 A `continuity` block is part of the `boards` stage's content, exactly like the
 beats and the trim: changing a hand-off turns that stage `changed` and the

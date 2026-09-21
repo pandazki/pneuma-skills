@@ -234,7 +234,7 @@ where it will actually come from.
 | `take-camera` | the take keeps the camera move and its ending | `compare --b take-NN` at the last beat | the prompt's camera sentence, the final-framing sentence |
 | `take-order` | cause still precedes effect in the take, and the action before it can be seen | a strip of the take around the trigger | state the order, the visibility and the ramp duration in the prompt |
 | `take-integrity` | the same number of people, whole limbs, no cut, no captions; each character wears the costume their sheet gave them | the take's own sheet | the structure sentence, and which pawn is who by colour |
-| `take-handoff` *(hand-off shots)* | the first frame continues the previous shot's last frame: positions, facing, weapons, the action | `compare --handoff` writes the out-frame and in-frame side by side | the entry sentence, the hand-off assignment line — or accept the join and record it |
+| `take-handoff` *(hand-off shots)* | the first frame continues the previous shot's last frame: positions, facing, weapons, the action — the take was asked for this **in words**, not shown the frame | `compare --handoff` writes the out-frame and in-frame side by side | a sharper `--entry` sentence, then `generate --with-handoff` — or accept the join and record it |
 | `take-lines` *(spoken lines)* | the take says the line | `transcribe.mjs --input <take> --json`, stored beside the take | the line's placement, the voice reference, or move the line to `vo` |
 
 Statuses are `pass`, `fail` and `unverified`. A `pass` names what was looked

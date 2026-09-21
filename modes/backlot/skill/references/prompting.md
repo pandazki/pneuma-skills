@@ -23,7 +23,7 @@ Three things meet in the block, and the split is what makes it work:
 | space, blocking, prop events, timing, the one camera move | the greybox (`@Video1`), and nothing else |
 | who these people are | the character sheets (`@Image…`) |
 | how this film is drawn | the film's one style key frame (`@Image…`) |
-| what this place is made of, bodies, faces, materials, light, tempo | **the words** |
+| what this place is made of, bodies, faces, materials, light, tempo, **and the join with the shot before** | **the words** |
 
 ## One picture of the shot, and it is the greybox
 
@@ -31,8 +31,7 @@ Three things meet in the block, and the split is what makes it work:
 in `previz.mjs`):
 
 `@Video1` the greybox → the character sheets in bible order → the film's style
-key frame → the hand-off frame when this shot declares continuity → `@Audio1…`
-the voice samples.
+key frame → `@Audio1…` the voice samples.
 
 That is the whole list. Never count the indices by hand — `prompt-skeleton`
 writes the assignment lines at the indices `generate` will actually attach.
@@ -50,9 +49,19 @@ frame appears only as a fallback for a model that cannot take a video at all:
 > 仅支持图片时导出关键帧并明确这是弱约束，不能保证完整动作复刻。
 > — `upstream/blender-video-workflows/skills/blender-video-original/references/video-generation.md`
 
-So a key frame, a legacy board and the set concept attach **only** when the
-job is asked for them by name, and the pack has to be scaffolded for the same
-job:
+Round 3's own takes found the last one: **the hand-off frame is a composition
+too**. Eight 720p takes on that night, and every shot that carried the
+previous shot's out-frame came back with the previous shot's *camera*: `s02`
+kept `s01`'s high viewpoint instead of its designed low angle, `s04` and `s05`
+kept `s03`'s over-the-shoulder framing instead of the side two-shot and the
+profile close-up. The two shots generated without one (`s01`, and an earlier
+isolated `s02`) followed their greybox. So the join travels as **words** now —
+the 第一帧 / 最后一帧 lines, which were always in the pack — and the frame is
+opt-in like the rest.
+
+So a key frame, a legacy board, the set concept and the hand-off frame attach
+**only** when the job is asked for them by name, and the pack has to be
+scaffolded for the same job:
 
 ```bash
 previz.mjs prompt-skeleton <shot-dir> --with-anchors --write
@@ -60,9 +69,30 @@ previz.mjs generate <shot-dir> --with-anchors
 ```
 
 `--with-anchors` (this shot's key frames, leading the images) ·
-`--with-board` (a legacy drawing) · `--with-concept` (the set concept).
+`--with-board` (a legacy drawing) · `--with-concept` (the set concept) ·
+`--with-handoff` (the previous shot's out-frame, last).
 Reach for one when the words have already failed on a re-shoot, and say in
 the report that the take carried it.
+
+## A continuing shot carries the join in words
+
+A shot with a `continuity` block still waits for the shot it continues —
+`generate` cuts that take's last used frame into `takes/handoff-in.png`, and
+`compare --handoff` is still how `take-handoff` is answered. What changed is
+that the model is not shown it. `prompt-skeleton` writes the join instead:
+
+- the 第一帧 line opens `承接上一镜（<from>）的结束状态：` (in English,
+  `continuing from the end of the previous shot (<from>):`) followed by the
+  `--entry` sentence — so the entry state has to be written as a **picture**:
+  each body's position, facing, what is in their hands, the distance between
+  them, as they read **on screen**;
+- 【全局设定】 gains one sentence — 「机位与景别以本镜白模 @Video1 为准，不沿用
+  上一镜的机位。」 — because a continuing shot is the one shot with a second
+  camera available to copy;
+- and there is no 素材映射 line for a frame nobody attached.
+
+Write `--exit` on the earlier shot and paste it as the later shot's `--entry`
+(`shot-plan.md`). Those two sentences are now the whole contract of the join.
 
 ## There is no word limit
 
@@ -107,7 +137,6 @@ template, merged with what a **greybox** reference-to-video job needs on top.
 只参考这张的脸型、发型、服装与配饰，不用背景。
 @Image2：（下一个角色，同样一行）
 @Image3：全片画风参考，只参考画风、线条与上色方式，不参考构图与人物。
-@Image4：只参考上一镜结束时每个人的位置、朝向与手里的东西（有接戏时才有这一张）。
 …（每一个附上的引用一行，都要「只参考…，不用…」）
 
 【一句话成片】
@@ -119,9 +148,10 @@ template, merged with what a **greybox** reference-to-video job needs on top.
 光线：<光源方向、时间、色温>。
 运镜总原则：一镜到底，只有一个运镜动作——<这一个运镜，和它停在哪>。
 镜头轨迹、机位与景别严格照 @Video1，全片不切、不加转场。
+机位与景别以本镜白模 @Video1 为准，不沿用上一镜的机位。（只有接戏镜头有这一句）
 
 【时间戳分镜】（严格对齐白模秒数：共 N 秒）
-第一帧：<每个人的位置、朝向、手里的东西、彼此的距离>
+第一帧：<接戏时：承接上一镜（sXX）的结束状态：><每个人的位置、朝向、手里的东西、彼此的距离>
 a–b秒：景别，构图；<这一段设计好的画面>；按白模路线与时机；
        <材质与光影怎么长出来>；<肢体怎么自然化>。
 b–c秒：……
@@ -208,8 +238,9 @@ Six rules, each of which cost a take:
 A spoken line is quoted verbatim inside the segment that holds its second,
 with its speaker; `take-lines` compares the transcript against exactly those
 words. `第一帧` and `最后一帧` carry the shot's entry and exit states
-(`shot-plan.md`) — they are what makes a hand-off usable and what stops the
-model drifting past the end of the move.
+(`shot-plan.md`) — on a continuing shot they **are** the hand-off, since the
+frame itself is not sent, and they are what stops the model drifting past the
+end of the move.
 
 ## What the script does for you, and what it warns about
 
@@ -244,11 +275,12 @@ Read the warnings; each one is a take that came back wrong once:
 
 ## A worked example — the courtyard duel
 
-`s02-landing` of the seed film: 6 s, 16:9, six references (the greybox, two
-character sheets, the film's style frame, the hand-off from `s01-arrival` and
-one voice), five designed beats and one dolly zoom. The courtyard itself is in
-【全局设定】 as a sentence. Nothing here is invented at this stage; every
-timeline sentence is that beat's `detail`, carried whole.
+`s02-landing` of the seed film: 6 s, 16:9, five references (the greybox, two
+character sheets, the film's style frame and one voice), five designed beats
+and one dolly zoom. It continues `s01-arrival`, so the join is in the 第一帧
+line and in the camera sentence — not in a sixth reference. The courtyard
+itself is in 【全局设定】 as a sentence. Nothing here is invented at this
+stage; every timeline sentence is that beat's `detail`, carried whole.
 
 ````markdown
 ```prompt
@@ -259,7 +291,6 @@ timeline sentence is that beat's `detail`, carried whole.
 @Image1：白模中名为「keeper」的体块（乳白色，画右石台中央、面朝北）就是守剑人，只参考这张的脸型、发型、服装与配饰，不用背景。
 @Image2：白模中名为「challenger」的体块（青灰色，第 1 帧在画左北面高台上）就是挑战者，只参考这张的脸型、发型、服装与配饰，不用背景。
 @Image3：全片画风参考，只参考画风、线条与上色方式，不参考构图与人物。
-@Image4：只参考上一镜（s01-arrival）结束时每个人的位置、朝向与手里的剑，本镜第一帧从这里接上，不用它的画质瑕疵。
 @Audio1：只参考守剑人的音色与语速，不用其中的内容与环境声。
 
 【一句话成片】
@@ -271,9 +302,10 @@ timeline sentence is that beat's `detail`, carried whole.
 光线：暮色，西侧低角度暖光侧逆，长影铺在青石上，空气里有浮尘。
 运镜总原则：一镜到底，只有一个运镜动作——落地之后一次 dolly zoom，人在画面里的大小保持不变，背景被压近，最后停住不动。
 镜头轨迹、机位与景别严格照 @Video1，全片不切、不加转场。
+机位与景别以本镜白模 @Video1 为准，不沿用上一镜的机位。
 
 【时间戳分镜】（严格对齐白模秒数：共 6 秒；整条都进成片）
-第一帧：挑战者在画左北面平台（0,8.4,1.2），面朝南，双膝压低，右手剑收在胯后；守剑人在画右（0,0,0.15），面朝北，右手剑下垂；两人未接触。
+第一帧：承接上一镜（s01-arrival）的结束状态：挑战者在画左北面平台（0,8.4,1.2），面朝南，双膝压低，右手剑收在胯后；守剑人在画右（0,0,0.15），面朝北，右手剑下垂；两人未接触。
 0.0–1.25秒：中全景，石阶自画左上斜切下来；挑战者猛地蹬开压紧的双膝，向南跃出平台，目光锁死前方，马尾与红绦被风拉直在身后；按白模路线与时机；青石与衣料在暖侧光里显出真实质感，跃起时衣摆背光透出薄红；真实的蹬地、腾空与身体前倾，不是方块平移。
 1.25–1.5秒：中景，人压在画面下三分之一；常速下他的鞋底在第 1.25 秒踏上北侧石台，双膝深压吃住冲力，接触之后才扬起一团紧实的尘，牙关咬住；按白模时机；尘在逆光里发亮，石面被踩出细碎的灰；落地是真实的屈膝卸力，不是硬着陆停格。
 1.5–2.5秒：中景，人居画面中线偏左；他从落地的深蹲里从容起身，压下剑锋，双脚站定；外袍先冲过头再回落，目光始终没有移开；按白模路线与时机；衣料的重量在回落里看得见，暖光扫过肩线；起身是一节一节的真实发力，不是整体上移。
@@ -340,6 +372,22 @@ each naming the greybox as the authority for its own layer (路线 / 站位 /
   is told so in its own line. When you do send a key frame
   (`--with-anchors`), you are choosing to spend a composition on it; say so
   when you report the take.
+- **The hand-off frame carried the previous shot's camera into three shots —
+  continuity is words, the frame is opt-in.** Eight 720p takes on the night of
+  2026-09-21, with the reference set already down to the greybox, the sheets,
+  the style frame and that one frame. Every shot that carried it inherited
+  the camera of the shot it continued: `s02` came back from `s01`'s
+  high viewpoint although its greybox is a low angle; `s04` and `s05` came
+  back in `s03`'s over-the-shoulder framing although their greyboxes are a
+  side two-shot and a profile close-up. `s01`, which continues nothing, and an
+  earlier isolated `s02` both obeyed their block. It is the same arithmetic as
+  the board and the key frame: **the frame is a composition, and it is the one
+  composition that is a *plausible* answer** — it is genuinely this action,
+  one moment earlier, so the model has no reason to distrust it. The entry and
+  exit sentences were already carrying the join; now they carry it alone, the
+  camera line says 不沿用上一镜的机位, and `--with-handoff` is there for the
+  join a re-shoot could not land in words. `compare --handoff` is unchanged:
+  the frame is still cut and `take-handoff` is still answered from it.
 - **A word budget copied from text-to-video guides made the agent delete the
   design.** Second acceptance run, 2026-09-21: the packs were structurally
   right and starved, because this page told the agent to fit 120–180 words.

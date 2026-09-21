@@ -69,9 +69,10 @@ pack, build the reel, and state plainly that no take has been generated.
 - **A shot that declares `continuity.from` waits for the shot it continues.**
   The hand-off frame is extracted from that shot's *selected* take, so
   contiguous shots are generated in order and `generate` refuses until the
-  earlier one is selected. `--no-handoff` generates it alone and records that
-  on the take — the creator's decision to shoot out of order and accept the
-  join, not a way around the queue.
+  earlier one is selected — even though the frame is no longer sent to the
+  model by default. `--no-handoff` generates it alone, cuts nothing and
+  records `"skipped"` on the take — the creator's decision to shoot out of
+  order and accept the join unseen, not a way around the queue.
 
 ## The references `generate` attaches
 
@@ -83,7 +84,6 @@ own record, in a fixed order, and passes them to `seedance-video.mjs`:
 | `@Video1` | the final greybox render — **the only picture of layout, behaviour and camera the take gets** | `shots/<id>/greybox/greybox.mp4` |
 | `@Image…` | one character sheet per id in `shot.characters`, in bible order | `bible/characters/<id>/sheet.png` |
 | `@Image…` | the film's **style key frame** — how this film is drawn, and nothing about what is in the frame | `style/keyframe.png` (`backlot.mjs style`) |
-| the **last** `@Image` | the hand-off frame, when the shot declares `continuity.from` — the previous shot's last used frame, cut by `generate` into `takes/handoff-in.png` | the previous shot's selected take |
 | `@Audio1…` | the voice sample of each character with a `spoken` line in this shot | `bible/characters/<id>/voice.mp3` |
 
 **The set is not in that list.** Its structure is already in `@Video1`, and
@@ -93,13 +93,22 @@ is now the set's only carrier — write it (`backlot.mjs set set --look "…"`),
 and `generate` warns when a film has no style key frame, because then the look
 has no picture at all.
 
-**Three pictures were tried beside the greybox and all three were removed**
+**Nor is the hand-off frame.** A shot that declares `continuity.from` still
+waits for the shot it continues and `generate` still cuts that take's last
+used frame into `takes/handoff-in.png` — but for `compare --handoff` and the
+`take-handoff` check, not for the model. The join reaches the model as the
+pack's 第一帧 / 最后一帧 sentences plus 「机位与景别以本镜白模 @Video1 为准，
+不沿用上一镜的机位。」. The take records which it was:
+`handoff.attached: false` on a take the frame was only measured against.
+
+**Four pictures were tried beside the greybox and all four were removed**
 (2026-09-21, three acceptance rounds): a storyboard drawing per shot, a key
-frame rendered from the greybox, and the set concept. Each one carries a
-composition, and a model given two compositions of the same second averages
-them — the greybox always lost. The upstream practice this mode reproduces
-never attached them either; there, a key frame exists only as a **weak
-constraint** for a model that cannot take a video reference at all.
+frame rendered from the greybox, the set concept, and the hand-off frame.
+Each one carries a composition, and a model given two compositions of the
+same second averages them — the greybox always lost. The upstream practice
+this mode reproduces never attached any of them; there, a key frame exists
+only as a **weak constraint** for a model that cannot take a video reference
+at all.
 
 So they are opt-in, per call, and the pack must be scaffolded for the same
 call (`prompt-skeleton` takes the same flags):
@@ -109,6 +118,7 @@ call (`prompt-skeleton` takes the same flags):
 | `--with-anchors` | this shot's key frames — `first` then the others | leading the images |
 | `--with-board` | a legacy `board.png` | leading the images |
 | `--with-concept` | the set concept for `shot.set` | after the sheets |
+| `--with-handoff` | the previous shot's out-frame, `takes/handoff-in.png` | **last** of the images |
 
 Use one when the words have already failed on a re-shoot, never as a default,
 and name it in the report: that take was conditioned on a second composition.
@@ -163,8 +173,9 @@ Refused, before anything is paid for:
 - **no attached reference is left without an assignment sentence** — the tag
   followed by `=`, `:`, `：` or `is`;
 - when the shot declares `continuity.from`, the shot it continues has a
-  selected take (`--no-handoff` generates without the frame and records
-  `"skipped"` on the take);
+  selected take (`--no-handoff` generates out of order, cuts nothing and
+  records `"skipped"` on the take; `--with-handoff` and `--no-handoff`
+  together are refused as opposite requests);
 - the film's `previz` stage is approved, a final greybox exists at the current
   revision, no greybox check is failing, and the retry rules are satisfied.
 
@@ -176,7 +187,7 @@ line carries any more; a missing 【全局锁】/【Locks】 block; an `@Video1`
 with no exclusion; an unfilled `<TODO: …>` placeholder. Read them — a timeline
 that overruns the clip is usually a `slowmo` whose cost you did not subtract,
 and a missing detail is usually the design being deleted.
-## What the three acceptance runs paid for (2026-09-21)
+## What the acceptance runs paid for (2026-09-21)
 
 The lessons about the *prompt* — the invented cut, the missing tempo, the
 swapped identities, the starved timeline — are in `prompting.md`, where the
@@ -186,17 +197,23 @@ rule that fixes each of them lives. Four that are about this machinery:
    A drawn storyboard first (eight shots, eight invented rooms), then a key
    frame rendered from the greybox — which agreed with the blocking and still
    competed for the composition — then the set concept, which brought a wide
-   camera of its own. The fix is arithmetic, not phrasing: **one composition
-   per take**. The greybox is it; everything else says a face, an idiom or a
-   pose, and says so in its own line.
+   camera of its own, and finally the hand-off frame, which brought the
+   previous shot's camera (below). The fix is arithmetic, not phrasing: **one
+   composition per take**. The greybox is it; everything else says a face, an
+   idiom or a pose, and says so in its own line.
 
-1. **Shot-to-shot the action did not connect.** Each take invented its own
-   body positions, so the pose shot N ended on was not the pose shot N+1
-   opened on, and a fight cut from them reads as three unrelated fights. The
-   answer is the **hand-off** — entry and exit states in the plan, the previous
-   take's out-frame attached as the last image reference — and it is **opt-in**,
-   because plenty of cuts exist to break continuity. `shot-plan.md` holds the
-   decision.
+1. **Shot-to-shot the action did not connect — and then the fix brought the
+   wrong camera.** Each take first invented its own body positions, so the
+   pose shot N ended on was not the pose shot N+1 opened on and a fight cut
+   from them read as three unrelated fights. The answer is the **hand-off**:
+   entry and exit states in the plan, written once and pasted between the two
+   shots. Attaching the previous take's out-frame as well looked like the
+   same answer and was not — in the eight-take night run every shot that
+   carried it came back with the *previous shot's camera* instead of its own
+   greybox's, while the shots without one obeyed their block. So the frame is
+   opt-in (`--with-handoff`), the words carry the join, and the whole
+   mechanism stays **opt-in per cut**, because plenty of cuts exist to break
+   continuity. `shot-plan.md` holds the decision.
 2. **fal's likeness filter rejected a shot twice with HTTP 422.** The trigger
    was almost certainly a reference image, not the prompt: a photoreal,
    low-angle close-up frame of a face reads to the filter as a real
@@ -232,8 +249,11 @@ rule that fixes each of them lives. Four that are about this machinery:
   previous take's out-frame beside this take's in-frame — and `take-handoff`
   is answered from that picture: same positions, same facing, same weapons,
   the action continuing. Open it; a hand-off you did not look at is a hand-off
-  you cannot claim. When it fails, the fix is the entry sentence or the
-  hand-off assignment line, not a new greybox.
+  you cannot claim. **The take was asked for that join in words, not shown
+  the frame** (`handoff.attached: false`), so this is where you find out
+  whether the sentence landed: when it fails, the first fix is a sharper
+  `--entry`, the second is `--with-handoff` on the re-shoot — never a new
+  greybox, and never a `pass` written from the plan instead of the picture.
 - **A shot with a spoken line is generated with audio and transcribed on
   arrival.** `generate` stores the transcript at
   `takes/<id>.transcript.json`, and `take-lines` passes only if every line is

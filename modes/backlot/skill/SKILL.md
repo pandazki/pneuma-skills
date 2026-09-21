@@ -31,15 +31,12 @@ Blender animation — a *greybox* — fixes the space, who is where and when, wh
 the props do and what the camera does, and then a video model paints that clip.
 
 **The greybox is the only picture of layout, behaviour and camera; every other
-picture a take gets is an appearance.** Three acceptance rounds each added a
-still beside it — a storyboard drawing per shot (eight invented rooms, no
-shared camera), then a key frame rendered from the greybox, then the set
-concept — and each carried a composition the take had to reconcile with the
-block. The upstream practice this mode reproduces never had them: the greybox
-is the picture, the look is text, and a key frame is only a weak fallback for
-a model that takes no video reference. So a take carries the greybox, the
-sheets, one style key frame and (on a continuous cut) the hand-off frame, each
-told in the pack what it is *not* for.
+picture a take gets is an appearance.** Every still tried beside it — a drawn
+storyboard, a key frame rendered from the greybox, the set concept, the
+previous shot's out-frame — brought a composition that fought the block, and
+the model settled it by averaging; upstream had none of them. So a take
+carries the greybox, the sheets and one style key frame, each told in the pack
+what it is *not* for, and a join between two shots travels as words.
 
 Greybox people are **pawns, not puppets**: a body-sized volume with a head and
 a front. A video model is a brilliant painter and a fine actor, and an
@@ -171,19 +168,21 @@ you*: it arrives in chat as `approve <stage>`, and you answer it by running
     shortened. The next section is how it is written.
 11. **Fewer references.** The greybox is the only picture of layout a take
     receives; every other picture is an appearance or a style and **must be
-    told so**, in its own 素材映射 line, with what it is not for. A picture
+    told so** in its own 素材映射 line, with what it is not for. A picture
     with a composition of its own fights the greybox and the model settles it
-    by averaging — three acceptance rounds (2026-09-21) proved that with a
-    drawn board, a key frame rendered from the greybox and a set concept. A
-    take carries the greybox, the sheets, the style key frame and the
-    hand-off; anything else is asked for by name (`generate
-    --with-anchors|--with-board|--with-concept`) and reported. A place travels
-    as **words**, out of its bible `look`.
-12. **Continuity is decided per cut, and is never the default.** The shot plan
-    calls every cut *continuous action*, *match cut*, *ellipsis*, *montage* or
-    *deliberate mismatch*, with the reason. Only the first two declare a
-    `continuity` block and carry a hand-off frame, and those shots are
-    generated in order, each after the one before it is selected.
+    by averaging — the 2026-09-21 acceptance runs proved it with a drawn
+    board, a key frame, a set concept and a hand-off frame. A take carries the
+    greybox, the sheets and the style key frame; anything else is asked for by
+    name (`--with-anchors|--with-board|--with-concept|--with-handoff`) and
+    reported. A place travels as **words**, out of its bible `look`.
+12. **Continuity is decided per cut, is never the default, and travels as
+    words.** The shot plan calls every cut *continuous action*, *match cut*,
+    *ellipsis*, *montage* or *deliberate mismatch*, with the reason; only the
+    first two declare a `continuity` block, and those shots are generated in
+    order. The previous frame is cut for `compare --handoff` and **not sent**
+    — every shot given it in the eight-take run inherited that camera — so the
+    `--entry`/`--exit` sentences are the join, and `--with-handoff` is for a
+    join that already failed in words.
 13. **Cost lives beside the artifact, and you quote it in dollars.** Every paid
     call — sheet, style frame, key frame, take, TTS line, music — is recorded
     in the JSON of the thing it paid for as `{ usd, basis }`, and `--cost-usd`
@@ -212,9 +211,9 @@ this block order, in the film's language:
 | block | what it must say |
 |---|---|
 | the replacement sentence, first | the blocks in @Video1 *are* these subjects; inherit its camera, shot sizes, timing, positions and paths, and take no body reference from them |
-| **【素材映射】** | one line per attached reference, at the index `generate` will attach it, each with a positive scope **and** an explicit exclusion (`只参考…，不用…`). In order: `@Video1` the greybox — it must disinherit the grey material, the empty set, the block shapes and the viewport overlays, or the model paints grey; one line per sheet (`白模中的<颜色>体块 = <角色>，只参考脸型、发型、服装与配饰，不用背景`); the style key frame (`只参考画风、线条与上色方式，不参考构图与人物`); the hand-off frame; `@Audio…` the voices. Nothing else unless the job was asked for it |
+| **【素材映射】** | one line per attached reference, at the index `generate` will attach it, each with a positive scope **and** an explicit exclusion (`只参考…，不用…`). In order: `@Video1` the greybox — it must disinherit the grey material, the empty set, the block shapes and the viewport overlays, or the model paints grey; one line per sheet (`白模中的<颜色>体块 = <角色>，只参考脸型、发型、服装与配饰，不用背景`); the style key frame (`只参考画风、线条与上色方式，不参考构图与人物`); `@Audio…` the voices. Nothing else unless the job was asked for it |
 | **【一句话成片】**, then **【全局设定】** | the clip in one sentence with its seconds and aspect; then 风格 / 场景 / 光线 / 运镜总原则. 场景 is the set's bible `look`, pre-filled — the place travels as text and its structure is @Video1's. 运镜 is **one** camera move, carried whole, with where it ends, and `一镜到底 / one continuous shot, no cut` |
-| **【时间戳分镜】** | a **contiguous** partition of the clip: no gaps, no overlaps, one main event per segment, about one per 1–1.5 s (4 in a 4 s shot, 5 in a 6 s, never more than 7). Each line is 景别 + 构图 + the beat's designed `detail` **whole** + 按白模路线/站位/轨迹 + how the materials and the light grow in + how the body becomes a body (真实的步子与重心，不是滑行). Visible details, never adjectives: not 「很悲伤」 but 「鼻翼一紧、泪在下睑停住」. Spoken lines quoted at their second; 第一帧 / 最后一帧 carry the entry and exit states |
+| **【时间戳分镜】** | a **contiguous** partition of the clip: no gaps, no overlaps, one main event per segment, about one per 1–1.5 s (4 in a 4 s shot, 5 in a 6 s, never more than 7). Each line is 景别 + 构图 + the beat's designed `detail` **whole** + 按白模路线/站位/轨迹 + how the materials and the light grow in + how the body becomes a body (真实的步子与重心，不是滑行). Visible details, never adjectives: not 「很悲伤」 but 「鼻翼一紧、泪在下睑停住」. Spoken lines quoted at their second; 第一帧 / 最后一帧 carry the entry and exit states, and on a continuing shot the 第一帧 line opens `承接上一镜（sXX）的结束状态：` — that sentence, plus `不沿用上一镜的机位`, **is** the hand-off |
 | **声音**, then the regeneration line | named sounds and `不要配乐` (the cut lays the score); then 重新生成自然的<这一镜的动作>，不迁移方块滑行或机械摆动。 |
 | **【全局锁】**, last | 不新增不删除物体，不改镜头轨迹，不保留白模质感; who may be in frame; then 禁止：白模方块、刚性滑行、塑料皮肤、变脸、额外人物、字幕、自带 BGM、突然跳切… |
 
@@ -222,8 +221,8 @@ this block order, in the film's language:
 names one that was not attached; it **warns** about a gap, an overlap, two
 camera moves in one segment, a designed `detail` no line carries, a missing
 【全局锁】, an unexcluded `@Video1` and a film with no style key frame — each
-of those is a take that came back wrong once. `prompt-skeleton` takes the same
-`--with-…` flags as `generate`, and the two must match.
+a take that came back wrong once. `prompt-skeleton` takes the same `--with-…`
+flags as `generate`, and the two must match.
 
 ## Workflow
 
@@ -286,9 +285,9 @@ the continuity decision and the seconds; across the film, the reel from
 free, ungated, and the first time anybody sees whether the film *works*. Say
 plainly that it is a reel. Bible, greybox and breakdown are approved
 **together**: the last free moment. **Pictures here are optional** —
-`previz.mjs anchor <shot-dir>` re-renders one greybox frame in the film's look
-and `lineup` stands the two side by side, paid, for the creator to look at,
-and no take receives it unless you pass `--with-anchors`.
+`previz.mjs anchor` re-renders one greybox frame in the film's look and
+`lineup` stands the two side by side, paid, for the creator to look at; no
+take receives one unless you pass `--with-anchors`.
 
 **6. Takes.** Read `references/prompting.md` for the pack and
 `references/video-generation.md` for the machinery. Never write `prompts.md`
@@ -297,12 +296,13 @@ template from the record — the reference lines with their exclusions, the
 set's written look, the one-line brief, the camera move, the contiguous
 timeline carrying every beat's `detail` whole, the quoted lines, the entry and
 exit, the locks. You add the style, the light, the 景别/构图 per segment, how
-the materials and the body come alive, the sounds and this shot's own
-prohibitions, then copy the finished block into `prompts.md`. **The references
-are the greybox, the sheets, the style key frame and the hand-off** — nothing
-else unless you pass a `--with-…` flag to *both* commands. `--estimate` prices
-the job and lists what it attaches. Then compare the take with the greybox
-(`compare --handoff`), record its checks, and `select` the one it delivers.
+materials and body come alive, the sounds and this shot's own prohibitions,
+then copy the block into `prompts.md`. **The references are the greybox, the
+sheets and the style key frame** — nothing else unless you pass a `--with-…`
+flag to *both* commands; `--estimate` prices the job and lists what it
+attaches. Then look at the take against the greybox, and at `compare
+--handoff` on a continuing shot (its join was asked for in words); record the
+checks and `select` the one it delivers.
 {{#videoEnabled}}A fal key is configured here, so takes can be
 generated.{{/videoEnabled}}{{#videoDisabled}}No fal key: finish the greyboxes,
 the `.blend` files and the packs, build the reel, and say plainly that no take
@@ -359,10 +359,10 @@ Every subcommand takes the project directory as its first argument.
 | `meta <shot-dir> [--scene --characters --set] [--trim-in 0.4 --trim-out 1.6] [--no-trim] [--continues-from <shot> --entry "…" --exit "…"] [--no-continuity]` | tie a shot to its scene, its characters and its place; `--trim-*` names the sub-range of the shot's clock the **cut** uses (one flag alone edits the range that is there, `--no-trim` clears it); `--continues-from/--entry/--exit` declare the hand-off into this shot, and `--exit` alone records what the *next* shot opens on |
 | `beats <shot-dir> --set <file.json>` · `lines <shot-dir> --set '<json array>'` | replace the beat list — each beat may carry `detail`, the designed picture of those seconds, which becomes the prompt's timeline — or the shot's lines (`spoken` or `vo`, with the second each lands) |
 | `anchor <shot-dir> [--at 0] [--id first] [--prompt "…"]` · `lineup <shot-dir>` | **optional — a picture for the creator, not a reference the take receives unless `--with-anchors`.** The final greybox's frame at `--at`, re-rendered in the film's look: composition, framing, positions and scale from that frame exactly, appearance from the sheets, idiom from the style reference. `lineup.png` stands each key frame beside the greybox second it came from. `anchor` is paid and gated on `bible` plus a final greybox; `lineup` is free. `board <shot-dir> --file …` is the legacy drawn frame: not part of the flow, and it reaches a take only through `--with-board` |
-| `prompt-skeleton <shot-dir> [--write] [--with-anchors\|--with-board\|--with-concept]` | the whole prompt pack in the documented block order, pre-filled with this shot's own indices, its beats whole, its lines and its set's written look, in the film's language. The `--with-…` flags must match the `generate` call that will run. `--write` puts it in `prompts.skeleton.md`, never in `prompts.md` — you copy the filled block across. Start every pack here |
+| `prompt-skeleton <shot-dir> [--write] [--with-anchors\|--with-board\|--with-concept\|--with-handoff]` | the whole prompt pack in the documented block order, pre-filled with this shot's own indices, its beats whole, its lines and its set's written look, in the film's language. The `--with-…` flags must match the `generate` call that will run. `--write` puts it in `prompts.skeleton.md`, never in `prompts.md` — you copy the filled block across. Start every pack here |
 | `sheet <shot-dir> [--lane …] [--at s,s] [--strip a,b]` · `compare <shot-dir> --a greybox --b reference\|take-01 [--at …] [--blend]` · `compare --handoff` | the pictures you judge from: key moments or every consecutive frame of a range; two lanes at the same seconds, stacked or blended; `--handoff` pairs the previous shot's out-frame with this take's in-frame |
 | `check <shot-dir> --id … --status pass\|fail\|unverified [--target …] [--note …]` · `checklist <shot-dir>` | record one acceptance item against the current revision, or seed the missing ones as `unverified` |
-| `generate <shot-dir> [--resolution 480p] [--fix "…"] [--user-approved] [--allow-failing "…"] [--no-handoff] [--estimate] [--audio] [--with-anchors\|--with-board\|--with-concept]` | price, then run Seedance with the greybox, the character sheets, the film's style key frame and the voice references attached — plus the previous shot's out-frame when this one hands off, which is why it refuses until that shot has a selected take (`--no-handoff` overrides and is recorded). A key frame, a legacy board or the set concept only with its `--with-…` flag. `--estimate` lists what it would attach and stops. When it attaches images or audio it prints a `priceNote`: the table does not price those, so the recorded figure is the table's, **not a bill** — quote it that way |
+| `generate <shot-dir> [--resolution 480p] [--fix "…"] [--user-approved] [--allow-failing "…"] [--no-handoff] [--estimate] [--audio] [--with-anchors\|--with-board\|--with-concept\|--with-handoff]` | price, then run Seedance with the greybox, the character sheets, the film's style key frame and the voice references attached. A continuing shot still waits for the shot it continues to have a selected take, and its out-frame is cut into `takes/handoff-in.png` for `compare --handoff` (`--no-handoff` overrides the wait and is recorded as `skipped`); the model sees that frame only with `--with-handoff`. A key frame, a legacy board or the set concept only with its own `--with-…` flag. `--estimate` lists what it would attach and stops. When it attaches images or audio it prints a `priceNote`: the table does not price those, so the recorded figure is the table's, **not a bill** — quote it that way |
 | `vo <shot-dir> <line-id>` · `select <shot-dir> <take>` · `status <shot-dir>` | synthesise a voice-over line in the speaker's registered voice and record its file, seconds and cost; mark the take the shot delivers; print the shot's whole record and its `next` open step (the film's is `backlot.mjs status`) |
 
 ### Shared scripts (paid — check the gate first)
