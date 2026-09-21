@@ -1685,6 +1685,37 @@ export function primaryAnchor(shot: Shot): AnchorRecord | null {
 }
 
 /**
+ * What one shot LOOKS like, for a card that has room for exactly one frame.
+ *
+ * In the order the pictures are made: the `first` key frame is this shot's
+ * storyboard (rendered from the greybox, so it is the shot's real look), the
+ * greybox render is the shot before anybody painted it, and the contact
+ * sheet is the last resort before a grey card. A board is drawn only on a
+ * film shot before the key frames existed, so it comes after both — and
+ * `kind: "none"` is a real state, not a missing case.
+ *
+ * `kind` says what the caller is drawing: a `greybox` is an MP4 and needs a
+ * `<video>` poster, everything else is a still.
+ */
+export interface ShotThumbnail {
+  kind: "anchor" | "greybox" | "sheet" | "board" | "none";
+  /** Shot-relative path, or null for `none`. */
+  file: string | null;
+  /** The cache buster the record carries — `urlFor(shot, file, rev)`. */
+  rev: number;
+}
+
+export function shotThumbnail(shot: Shot): ShotThumbnail {
+  const anchor = primaryAnchor(shot);
+  if (anchor) return { kind: "anchor", file: anchor.file, rev: anchor.revision };
+  const greybox = shot.greybox.final;
+  if (greybox) return { kind: "greybox", file: greybox.file, rev: greybox.revision };
+  if (shot.greybox.sheet) return { kind: "sheet", file: shot.greybox.sheet, rev: shot.greybox.revision };
+  if (shot.board) return { kind: "board", file: shot.board.file, rev: shot.board.revision };
+  return { kind: "none", file: null, rev: 0 };
+}
+
+/**
  * The acceptance summary, honest by construction (invariant 4). A shot is
  * only `accepted` when EVERY check of that target passed.
  */
@@ -1765,7 +1796,9 @@ const STAGE_LABELS: Record<StageId, { en: string; zh: string }> = {
   idea: { en: "Idea", zh: "构思" },
   script: { en: "Screenplay", zh: "剧本" },
   bible: { en: "Bible", zh: "设定" },
-  boards: { en: "Boards", zh: "分镜" },
+  // Not "Boards": nothing is drawn here any more. The stage is the shot
+  // list, its beats and its cameras — the pictures come from the greybox.
+  boards: { en: "Shot plan", zh: "分镜" },
   previz: { en: "Previz", zh: "白模" },
   takes: { en: "Takes", zh: "成片镜头" },
   sound: { en: "Sound", zh: "声音" },

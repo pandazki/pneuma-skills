@@ -1074,6 +1074,10 @@ export function transcriptCoverage(transcript, lines = []) {
  * `reference` is only a stage for a recreate shot, and it comes first because
  * the plan of a recreate is written FROM the reference; every other stage is
  * the order the design brief lists.
+ *
+ * THERE IS NO BOARD STEP. The plan's text is the design; the pictures are
+ * derived from it through the greybox (`plan` → greybox → checks → the key
+ * frame), so nothing between the plan and the blocking asks for a drawing.
  */
 export const STAGES = ["reference", "plan", "greybox-preview", "checks", "final-render", "anchor", "prompt", "take", "take-checks", "select"];
 
@@ -1104,9 +1108,12 @@ export function nextStage(shot, { promptOk = false, promptReason = null } = {}) 
   if (!greybox.final || Number(greybox.final.revision) !== Number(greybox.revision)) {
     return stage("final-render", "the accepted greybox has no full-resolution render at the current revision", "previz.mjs render <shot-dir>");
   }
-  // The picture before the video. An image model takes direction about camera
-  // and composition that a video model will not, so the look is settled — and
-  // reviewed with the creator — while a frame still costs cents.
+  // The picture comes AFTER the greybox, and it comes FROM it: the greybox
+  // is the only place this film's space and camera exist, so the storyboard
+  // is rendered from one of its frames rather than drawn beside it. An image
+  // model takes direction about camera and composition that a video model
+  // will not, so the look is settled — and reviewed with the creator — while
+  // a frame still costs cents.
   //
   // Only while no take exists: a shot may go straight to video on purpose
   // (the skill says when), and a suggestion that never closes would make
@@ -1114,7 +1121,7 @@ export function nextStage(shot, { promptOk = false, promptReason = null } = {}) 
   if ((shot.anchors ?? []).length === 0 && takes.length === 0) {
     return stage(
       "anchor",
-      "the greybox is accepted and this shot has no anchor frame — make the picture, look at it beside the board and the greybox, and only then buy the video",
+      "the greybox is accepted and this shot has no key frame — render the picture from the greybox, look at the two side by side, and only then buy the video",
       "previz.mjs anchor <shot-dir>   then   previz.mjs lineup <shot-dir>",
     );
   }

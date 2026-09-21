@@ -36,6 +36,7 @@ import {
   shotDir,
   shotRefOf,
   shotStages,
+  shotThumbnail,
   stageLabel,
   type Project,
 } from "../domain.js";
@@ -1061,6 +1062,46 @@ describe("the designed picture", () => {
     )!;
     expect(primaryAnchor(unplaced)?.id).toBe("a");
     expect(primaryAnchor(parseShot("d", "s", shotJson())!)).toBeNull();
+  });
+
+  /**
+   * The shot list's thumbnail, after round 3 moved the picture.
+   *
+   * Nothing is drawn at the shot-plan stage any more, so a card falls back
+   * through the pictures that actually exist — the key frame first, because
+   * it IS the shot's look, then the greybox it was rendered from.
+   */
+  test("a shot card shows its key frame, else the greybox, else a grey card", () => {
+    const anchored = parseShot("d", "s", shotJson({
+      anchors: [{ id: "first", file: "anchors/first.png", revision: 3, at: 0 }],
+      board: { file: "board.png", revision: 1, prompt: "the doorway", refs: [], at: 1 },
+    }))!;
+    // The key frame wins over a legacy board: it is the picture the take
+    // will actually be conditioned on.
+    expect(shotThumbnail(anchored)).toEqual({ kind: "anchor", file: "anchors/first.png", rev: 3 });
+
+    // No key frame yet — the greybox render, which is an MP4 and is drawn
+    // as a poster, not an <img>.
+    const blocked = parseShot("d", "s", shotJson())!;
+    expect(shotThumbnail(blocked)).toEqual({ kind: "greybox", file: "greybox/greybox.mp4", rev: 2 });
+
+    // Not rendered yet: the contact sheet, then the legacy board, then a
+    // grey card — `none` is a state, not a missing case.
+    const unrendered = parseShot("d", "s", shotJson({
+      greybox: { revision: 1, script: "greybox/scene.py", preview: null, final: null, sheet: "greybox/sheet.png" },
+    }))!;
+    expect(shotThumbnail(unrendered)).toEqual({ kind: "sheet", file: "greybox/sheet.png", rev: 1 });
+
+    const legacy = parseShot("d", "s", shotJson({
+      greybox: { revision: 0, script: "greybox/scene.py", preview: null, final: null },
+      board: { file: "board.png", revision: 2, prompt: "the doorway", refs: [], at: 1 },
+    }))!;
+    expect(shotThumbnail(legacy)).toEqual({ kind: "board", file: "board.png", rev: 2 });
+
+    const nothing = parseShot("d", "s", shotJson({
+      greybox: { revision: 0, script: "greybox/scene.py", preview: null, final: null },
+    }))!;
+    expect(shotThumbnail(nothing)).toEqual({ kind: "none", file: null, rev: 0 });
   });
 });
 

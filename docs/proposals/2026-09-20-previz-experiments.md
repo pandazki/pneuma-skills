@@ -184,3 +184,17 @@ the `lineup` joint review at the previz gate; `slowmo`/`impact` in the kit;
   idiom — stylised forms, ink-wash texture, one accent colour) were judged
   far above the first bible's technical turnarounds. Rule for bible.md:
   write the sheet as a design brief, not a spec; default xhigh.
+- Round 3 (2026-09-21 afternoon, new story: a female cult leader spares the
+  executor she loves and is wounded): three findings changed the mode. (1)
+  Style must be decided before the bible — painterly/ink directions looked
+  "artistic" but hid the body; the user's call was 武侠漫剧 (clean line art,
+  cel shading, readable silhouettes), and the bible was regenerated with a
+  style key frame as reference. (2) The first 720p take (an orbit with fine
+  sword work) was stiff and the sword swapped hands under the orbit: a
+  greybox constrains bodies in proportion to their displacement, so a shot
+  gets ONE hard thing — a big camera move over a still/walking body, or a
+  fine action under a locked camera, never both. (3) Storyboard frames drawn
+  from text before the greybox contradicted each other and could not be
+  built; pictures now derive from the greybox as key frames (boards stage =
+  shot plan, free). Spent ≈ $14 on the abandoned first pass; the redesigned
+  run was paused before any take.

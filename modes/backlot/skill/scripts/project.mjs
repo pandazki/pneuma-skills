@@ -160,6 +160,13 @@ function normalizeManifest(doc) {
   manifest.title = manifest.title ?? "";
   manifest.logline = manifest.logline ?? "";
   manifest.gates = manifest.gates === "open" ? "open" : "closed";
+  // Absent stays absent — a film that never registered a style reference
+  // should not grow a `"style": null` line the next time anything is
+  // written. Anything that is not an object is read as "none".
+  if (manifest.style !== undefined) {
+    const record = manifest.style;
+    manifest.style = record && typeof record === "object" && !Array.isArray(record) ? record : null;
+  }
   manifest.approvals = manifest.approvals && typeof manifest.approvals === "object" && !Array.isArray(manifest.approvals)
     ? manifest.approvals
     : {};
@@ -167,6 +174,33 @@ function normalizeManifest(doc) {
     manifest[key] = Array.isArray(manifest[key]) ? manifest[key] : [];
   }
   return manifest;
+}
+
+/** Where `backlot.mjs style` puts the film's style reference. */
+export const STYLE_KEYFRAME_FILE = "style/keyframe.png";
+
+/**
+ * The film's STYLE REFERENCE: one picture that says how this film is
+ * rendered — idiom, palette, light quality, finish — and nothing about what
+ * is in the frame.
+ *
+ * `backlot.mjs style` writes the record (`backlot.json.style.keyframe`) and
+ * `previz.mjs anchor` attaches the file to every key frame, so both scripts
+ * read the path the same way. Returns `null` when the project declares none;
+ * `{ rel, path: null }` when it declares one whose file is gone, because a
+ * reference that quietly disappears is a look that quietly changes.
+ */
+export function styleKeyframe(projectDir) {
+  let manifest;
+  try {
+    manifest = readManifest(projectDir);
+  } catch {
+    return null;
+  }
+  const rel = manifest.style?.keyframe;
+  if (typeof rel !== "string" || rel.trim().length === 0) return null;
+  const path = projectFile(projectDir, rel);
+  return { rel, path: isFile(path) ? path : null };
 }
 
 // ---------------------------------------------------------------------------

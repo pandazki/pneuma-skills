@@ -175,6 +175,21 @@ describe("the hash", () => {
     expect(hashStage("previz", continued)).toBe(hashStage("previz", before));
   });
 
+  test("the shot plan defines the boards stage with no picture at all", () => {
+    // Round 3 (2026-09-21) stopped drawing boards: the stage is the shot
+    // list, its beats and its cameras, and it must be approvable — and
+    // hashable — with `board: null`, or the gate in front of the greybox
+    // could never open on a film shot the current way.
+    const planned = { ...FILM(), "shots/s01-enter/shot.json": shot({ board: null }) };
+    expect(stageInputs("boards", planned)).toHaveLength(2);
+    expect(hashStage("boards", planned)).not.toBeNull();
+    expect(stageStatus("boards", planned, null)).toBe("draft");
+    expect(stageStatus("boards", planned, { boards: { at: 1, hash: hashStage("boards", planned)! } })).toBe("approved");
+    // And a board that appears afterwards is still boards content — a
+    // legacy film that re-registers one has changed its shot list.
+    expect(hashStage("boards", FILM())).not.toBe(hashStage("boards", planned));
+  });
+
   test("a beat's designed detail is boards content too — the prompt's timeline is made of it", () => {
     const before = FILM();
     const detailed = {

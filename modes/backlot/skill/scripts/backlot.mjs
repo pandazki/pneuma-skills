@@ -68,13 +68,14 @@ import {
   runNodeScript,
   sharedScript,
   shotPathOf,
+  STYLE_KEYFRAME_FILE,
 } from "./project.mjs";
 import { DEFAULT_SPEC, makeSpec, newProject, normalizeShot, parseSize, slugId } from "./shot.mjs";
 import { GATES, hashStage, isStage, STAGES, stageStatus, stageStatuses } from "./stage-state.mjs";
 
 const SUBCOMMANDS = [
   "init", "status", "approve", "gates", "gate", "scene", "shot",
-  "character", "set", "music", "cut", "cost",
+  "character", "set", "style", "music", "cut", "cost",
 ];
 
 /** The three provenances a recorded price may have. Never guessed. */
@@ -129,7 +130,7 @@ function writeJsonAtomic(path, value) {
   }
 }
 
-const MANIFEST_KEYS = ["version", "title", "logline", "defaults", "gates", "approvals", "scenes", "characters", "sets", "shots"];
+const MANIFEST_KEYS = ["version", "title", "logline", "defaults", "style", "gates", "approvals", "scenes", "characters", "sets", "shots"];
 
 function inKeyOrder(value, keys) {
   const ordered = {};
@@ -309,8 +310,10 @@ const STAGE_HINTS = {
   idea: "write idea.md",
   script: "write screenplay.md, then backlot.mjs scene add",
   bible: "backlot.mjs character add / set add, then generate_image.mjs and character look / set look",
-  boards: "backlot.mjs shot add, then generate_image.mjs and previz.mjs board",
-  previz: "write greybox/scene.py, then previz.mjs render / check",
+  // The shot plan, and no picture: the pictures come from the greybox one
+  // stage later (previz.mjs anchor).
+  boards: "backlot.mjs shot add, then write shot-plan.md and previz.mjs beats / meta",
+  previz: "write greybox/scene.py, then previz.mjs render / check / anchor",
   takes: "previz.mjs generate, then previz.mjs check / select",
   sound: "previz.mjs vo and backlot.mjs music",
   cut: "backlot.mjs cut --reel, then --final",
@@ -345,6 +348,7 @@ function cmdStatus(dir) {
     title: manifest.title,
     logline: manifest.logline,
     defaults: manifest.defaults,
+    style: manifest.style ?? null,
     gates: manifest.gates,
     stages: statuses,
     scenes: manifest.scenes,
@@ -425,6 +429,68 @@ function cmdGates(dir, mode) {
     );
   }
   return emit({ command: "gates", dir, gates: manifest.gates });
+}
+
+// ---------------------------------------------------------------------------
+// style — one picture that says how this film is rendered
+// ---------------------------------------------------------------------------
+
+/**
+ * Register the film's STYLE REFERENCE.
+ *
+ * Every key frame is rendered from a greybox frame (composition) plus the
+ * bible (appearance), and both of those are about *what is in the picture*.
+ * Nothing in them says how the film is drawn — the idiom, the palette, the
+ * light quality, the finish — so a project that cares about that keeps one
+ * picture for it and `previz.mjs anchor` attaches it to every key frame.
+ *
+ * Free: the image is one the creator gave you or one you already generated
+ * and they approved. It is copied into the project so the record cannot
+ * point outside the film.
+ */
+function cmdStyle(dir, opts) {
+  requireProject(dir);
+  const destination = join(dir, ...STYLE_KEYFRAME_FILE.split("/"));
+
+  if (opts.clear) {
+    if (opts.keyframe !== undefined) fail("style takes --keyframe <png> or --clear, not both");
+    const { manifest } = commitProject(dir, (fresh) => { fresh.style = null; });
+    note(`[backlot] the style reference is cleared — ${relPath(dir, destination)} is left on disk`);
+    return emit({ command: "style", dir, style: manifest.style ?? null, file: null });
+  }
+
+  if (!opts.keyframe) {
+    const current = loadManifest(dir).style ?? null;
+    return emit({
+      command: "style",
+      dir,
+      style: current,
+      file: current?.keyframe ?? null,
+      exists: Boolean(current?.keyframe) && existsSync(join(dir, ...String(current.keyframe).split("/"))),
+      note: 'pass --keyframe <png> to register one, or --clear to drop it',
+    });
+  }
+
+  const source = resolveInput(opts.keyframe);
+  if (!existsSync(source)) fail(`--keyframe: no such file: ${source}`);
+  const size = pngSize(readFileSync(source));
+  if (!size) fail(`--keyframe: ${source} is not a readable PNG — generate_image.mjs writes PNG by default (--output-format png)`);
+  mkdirSync(dirname(destination), { recursive: true });
+  copyFileSync(source, destination);
+
+  const at = nowMs(opts);
+  const { manifest } = commitProject(dir, (fresh) => {
+    fresh.style = {
+      ...(fresh.style && typeof fresh.style === "object" && !Array.isArray(fresh.style) ? fresh.style : {}),
+      keyframe: STYLE_KEYFRAME_FILE,
+      width: size.width,
+      height: size.height,
+      at,
+      ...(opts.prompt === undefined ? {} : { prompt: String(opts.prompt) }),
+    };
+  });
+  note(`[backlot] the style reference is ${STYLE_KEYFRAME_FILE} — every key frame 'previz.mjs anchor' renders from now on carries it`);
+  return emit({ command: "style", dir, style: manifest.style, file: STYLE_KEYFRAME_FILE, size });
 }
 
 // ---------------------------------------------------------------------------
@@ -1317,6 +1383,14 @@ said to run through. Image generation is not wrapped by this script — ask
       revision; 'voice' synthesizes the sample a take is conditioned on
       (gated: the script must be approved).
 
+  style <project> [--keyframe <picture.png>] [--prompt "…"] | --clear
+      The film's STYLE REFERENCE: one picture that says how this film is
+      rendered — idiom, palette, light quality, finish — and nothing about
+      what is in the frame. Copied to ${STYLE_KEYFRAME_FILE} and recorded in
+      backlot.json; 'previz.mjs anchor' then attaches it to every key frame
+      as the LAST reference and names its job in the prompt. With no flags
+      it prints the one that is registered. Free.
+
   music <project> --prompt "<the brief>" [--seconds 30]
         [--cost-usd --cost-basis]
       Generate the music bed through generate-bgm.mjs into sound/music.mp3
@@ -1378,6 +1452,8 @@ const OPTIONS = {
   style: { type: "string" },
   language: { type: "string" },
   note: { type: "string" },
+  keyframe: { type: "string" },
+  clear: { type: "boolean" },
   "cost-usd": { type: "string" },
   "cost-basis": { type: "string" },
   reel: { type: "boolean" },
@@ -1444,6 +1520,7 @@ export async function main(argv = process.argv.slice(2)) {
     case "approve": return cmdApprove(dir, third, opts);
     case "gates": return cmdGates(dir, third);
     case "gate": return cmdGate(dir, third);
+    case "style": return cmdStyle(dir, opts);
     case "music": return cmdMusic(dir, opts);
     case "cut": return cmdCut(dir, opts);
     case "cost": return cmdCost(dir);

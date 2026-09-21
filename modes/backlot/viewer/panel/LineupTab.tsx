@@ -1,11 +1,13 @@
 /**
  * Lineup — the surface the creator approves at the previz gate.
  *
- * Three pictures of the same moment, in the order they were made:
+ * The pictures of this shot, in the order they were made:
  *
- *   BOARD     what this shot is        — one frame for the whole shot
- *   ANCHOR    what this SECOND is      — the designed picture, still, unpaid
- *   GREYBOX   what was actually built  — the same second out of the render
+ *   KEY FRAME(S)  what this SECOND looks like — rendered FROM the greybox
+ *                 frame at that second, so it is the storyboard
+ *   GREYBOX       what was actually built — the same second out of the render
+ *   BOARD         a drawing from before the key frames existed; shown only
+ *                 when an old film has one
  *
  * Side by side, because the only question the previz gate asks is whether
  * they are the same picture. The greybox can carry geometry and a clock and
@@ -27,6 +29,14 @@ import { formatSeconds } from "../player-model.js";
 import { useVideoClock, type Clock } from "../usePlayhead.js";
 import { ContinuityNote } from "./ContinuityNote.js";
 
+/** `first` leads — it is the frame the take opens on — then the rest in the
+ *  order the agent wrote them. Same order as `previz.mjs lineup`. */
+function orderedAnchors(shot: Shot): AnchorRecord[] {
+  const lead = primaryAnchor(shot);
+  if (!lead) return [];
+  return [lead, ...shot.anchors.filter((a) => a !== lead)];
+}
+
 export interface LineupTabProps {
   shot: Shot;
   /** Shot-relative path + cache buster → `/content/…` URL. */
@@ -38,44 +48,39 @@ export interface LineupTabProps {
 }
 
 export function LineupTab({ shot, urlFor, clock, onSeek }: LineupTabProps) {
-  const anchor = primaryAnchor(shot);
+  const anchors = orderedAnchors(shot);
+  const lead = anchors[0] ?? null;
   const final = shot.greybox.final;
-  const at = anchor?.at ?? null;
+  const at = lead?.at ?? null;
 
   return (
     <div className="flex flex-col gap-3">
       <p className="text-[10px] leading-relaxed text-cc-muted">
-        The board, the designed frame and the greybox at{" "}
-        {at === null ? "the playhead" : `${formatSeconds(at)} s`} — the previz gate is the moment
-        somebody says these are the same picture.
+        {anchors.length === 0 ? "No key frame yet — " : `The key frame${anchors.length > 1 ? "s" : ""} and the greybox at `}
+        {anchors.length === 0
+          ? "the storyboard is rendered from the greybox."
+          : at === null
+            ? "the playhead."
+            : `${formatSeconds(at)} s.`}{" "}
+        The previz gate is the moment somebody says these are the same picture.
       </p>
 
       <div className="flex gap-1">
-        <Tile label="Board" note="the whole shot">
-          {shot.board ? (
-            <Still
-              url={urlFor(shot.board.file, shot.board.revision)}
-              alt={`Board frame for ${shot.title}`}
-            />
-          ) : (
-            <Missing>no board</Missing>
-          )}
-        </Tile>
-
-        <Tile
-          label="Anchor"
-          note={
-            anchor
-              ? `${anchor.id}${anchor.at === null ? "" : ` · ${formatSeconds(anchor.at)} s`}`
-              : "none"
-          }
-        >
-          {anchor ? (
-            <Still url={urlFor(anchor.file, anchor.revision)} alt={anchorAlt(anchor, shot)} />
-          ) : (
-            <Missing>no anchor</Missing>
-          )}
-        </Tile>
+        {anchors.length === 0 ? (
+          <Tile label="Key frame" note="none">
+            <Missing>not rendered yet</Missing>
+          </Tile>
+        ) : (
+          anchors.map((anchor) => (
+            <Tile
+              key={anchor.id}
+              label={`Key frame ${anchor.id}`}
+              note={anchor.at === null ? `rev ${anchor.revision}` : `${formatSeconds(anchor.at)} s · rev ${anchor.revision}`}
+            >
+              <Still url={urlFor(anchor.file, anchor.revision)} alt={anchorAlt(anchor, shot)} />
+            </Tile>
+          ))
+        )}
 
         <Tile
           label="Greybox"
@@ -93,12 +98,23 @@ export function LineupTab({ shot, urlFor, clock, onSeek }: LineupTabProps) {
             <Missing>not rendered</Missing>
           )}
         </Tile>
+
+        {/* Only a film shot before the key frames existed has one, and it is
+            never expected: an absent board is not a gap. */}
+        {shot.board ? (
+          <Tile label="Board" note="legacy drawing">
+            <Still
+              url={urlFor(shot.board.file, shot.board.revision)}
+              alt={`Board frame for ${shot.title}`}
+            />
+          </Tile>
+        ) : null}
       </div>
 
-      {anchor?.prompt ? (
+      {lead?.prompt ? (
         <p className="rounded-md border border-cc-border bg-cc-card px-2 py-1.5 text-[10px] leading-relaxed text-cc-muted">
-          <span className="text-cc-fg">Anchor prompt · </span>
-          {anchor.prompt}
+          <span className="text-cc-fg">Key frame prompt · </span>
+          {lead.prompt}
         </p>
       ) : null}
 
@@ -129,8 +145,8 @@ export function LineupTab({ shot, urlFor, clock, onSeek }: LineupTabProps) {
 
 function anchorAlt(anchor: AnchorRecord, shot: Shot): string {
   return anchor.at === null
-    ? `Anchor "${anchor.id}" of ${shot.title}`
-    : `Anchor "${anchor.id}" of ${shot.title} at ${anchor.at} s`;
+    ? `Key frame "${anchor.id}" of ${shot.title}`
+    : `Key frame "${anchor.id}" of ${shot.title} at ${anchor.at} s`;
 }
 
 function Tile({

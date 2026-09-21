@@ -1,15 +1,17 @@
 # Writing the prompt
 
 Stage 6, per shot, and the most important page in this skill. The greybox is
-accepted, the anchor is approved, the bible exists — and now one block of text
-decides whether the paid take is the film you designed or a different one.
+accepted, its key frames are approved beside it, the bible exists — and now
+one block of text decides whether the paid take is the film you designed or a
+different one.
 
 **The prompt is not composed here. It is the design, carried forward.** Every
-beat's picture was written at the boards stage into its `detail`
-(`shot-plan.md`), before any Blender file existed. `prompt-skeleton` turns
-those into the pack; you add only what the beats cannot carry. Arriving at this
-stage with an empty `prompts.md` and inventing the shot again is how a take
-stops matching the film the creator approved.
+beat's picture was written at the shot-plan stage into its `detail`
+(`shot-plan.md`), before any Blender file existed; the greybox was built from
+it and the key frames were rendered from the greybox. `prompt-skeleton` turns
+the same beats into the pack; you add only what they cannot carry. Arriving at
+this stage with an empty `prompts.md` and inventing the shot again is how a
+take stops matching the film the creator approved.
 
 ```bash
 node {SKILL_PATH}/scripts/previz.mjs prompt-skeleton <shot-dir> --write
@@ -20,8 +22,18 @@ Three things meet in the block, and the split is what makes it work:
 | what says it | where it comes from |
 |---|---|
 | space, blocking, prop events, timing, the one camera move | the greybox (`@Video1`) |
-| who these people are, what this place looks like | the bible, the board, the anchor (`@Image…`) |
+| what this shot's opening frame looks like, finished | the `first` key frame (`@Image1`), rendered from that same greybox frame |
+| who these people are, what this place looks like | the bible (`@Image…`) |
 | bodies, faces, materials, light, tempo — everything grey cannot show | **the words** |
+
+**The reference order is fixed, and one function owns it** (`planReferences`
+in `previz.mjs`): `@Video1` the greybox → `@Image1` the `first` key frame →
+this shot's other key frames → the character sheets in bible order → the set
+concept → the hand-off frame last → `@Audio1…` the voice samples. A **board**
+is attached only on a film shot before the key frames existed *and* only while
+that shot has no key frame at all; it then stands at `@Image1` in the key
+frame's place. Never count the indices by hand — `prompt-skeleton` writes the
+assignment lines at the indices `generate` will actually attach.
 
 ## There is no word limit
 
@@ -62,6 +74,8 @@ template, merged with what a **greybox** reference-to-video job needs on top.
 【素材映射】
 @Video1：只参考运镜、构图、切点、主体轨迹、相对比例与遮挡关系；
 不要继承灰白材质、空场景、几何体外形与 Viewport 叠加物。
+@Image1：本镜的分镜稿，由 @Video1 的第一帧渲染而来：只参考开场的构图、机位、
+人物位置与整体画风，不用它当成全程动作——动作照时间戳与白模。
 @ImageN：白模中名为「…」的体块（颜色 / 第 1 帧位置）就是<角色>，
 只参考这张的脸型、发型、服装与配饰，不用背景。
 @ImageM：场景结构以白模空间为准，只参考这张里<地点>的材质、色调与光线方向，不用图中人物。
@@ -101,7 +115,7 @@ Chinese for a film whose `screenplay.md` is CJK and in English otherwise
 `【Locks】`). Seedance is a ByteDance model and reads Chinese natively. The
 reference tags stay `@Video1 / @Image1 / @Audio1` in both — that is what fal
 documents and what `seedance-video.mjs` sends; do not write `@图片1`. Beat
-`detail`s are written in the film's language at the boards stage for exactly
+`detail`s are written in the film's language at the shot-plan stage for exactly
 this reason — they paste in whole. A `detail` that is in another language
 (an older project) is translated **in full, in place**; translating by
 shortening is the design deleted.
@@ -201,7 +215,8 @@ Read the warnings; each one is a take that came back wrong once:
 
 `s02-landing` of the seed film: 6 s, 16:9, eight references (the greybox, six
 stills and a voice), a hand-off from `s01-arrival`, five designed beats and one
-dolly zoom. Nothing here is invented at this stage; every timeline sentence is
+dolly zoom. (The film it was shot on drew a board; a film shot now carries the
+same count with a second key frame in its place.) Nothing here is invented at this stage; every timeline sentence is
 that beat's `detail`, carried whole.
 
 ````markdown
@@ -210,13 +225,12 @@ that beat's `detail`, carried whole.
 
 【素材映射】
 @Video1：只参考运镜、构图、切点、主体轨迹、相对比例与遮挡关系；不要继承灰白材质、空场景、几何体外形与 Viewport 叠加物。
-@Image1：只参考开场的构图、机位、色调与整体画风，不用其中人物的具体姿态。
-@Image2：只参考开场构图与画面意图（分镜稿），不用它的笔触与画质。
+@Image1：本镜的分镜稿，由 @Video1 的第一帧渲染而来：只参考开场的构图、机位、人物位置与整体画风，不用它当成全程动作——动作照时间戳与白模。
+@Image2：第 5.5 秒的分镜稿：只参考那一刻的光线、色调与质感，不用它的构图。
 @Image3：白模中名为「keeper」的体块（乳白色，画右石台中央、面朝北）就是守剑人，只参考这张的脸型、发型、服装与配饰，不用背景。
 @Image4：白模中名为「challenger」的体块（青灰色，第 1 帧在画左北面高台上）就是挑战者，只参考这张的脸型、发型、服装与配饰，不用背景。
 @Image5：场景结构以白模空间为准，只参考这张里山中古寺庭院的青石、朱红旗幡与暮色光线方向，不用图中人物。
-@Image6：只参考第 5.5 秒的光线、色调与质感，不用它的构图。
-@Image7：只参考上一镜（s01-arrival）结束时每个人的位置、朝向与手里的剑，本镜第一帧从这里接上，不用它的画质瑕疵。
+@Image6：只参考上一镜（s01-arrival）结束时每个人的位置、朝向与手里的剑，本镜第一帧从这里接上，不用它的画质瑕疵。
 @Audio1：只参考守剑人的音色与语速，不用其中的内容与环境声。
 
 【一句话成片】
@@ -283,6 +297,16 @@ each naming the greybox as the authority for its own layer (路线 / 站位 /
 
 ## Cautions the trials paid for
 
+- **Storyboards drawn from the text before the greybox contradicted each other,
+  and the greybox could not satisfy them.** Round 3, 2026-09-21: every shot got
+  a frame drawn from its plan and the bible before anything was blocked, and
+  the eight pictures shared no space and no camera — each one had invented its
+  own room and its own lens, so the one greybox that had to serve them all
+  disagreed with every board. **Pictures are derived from the greybox**: the
+  shot-plan stage writes the design in words and draws nothing, and the key
+  frames are rendered from the greybox frames they belong to. That is also why
+  a board is never attached beside a key frame — two compositions of the same
+  second is what a model averages.
 - **A word budget copied from text-to-video guides made the agent delete the
   design.** Second acceptance run, 2026-09-21: the packs were structurally
   right and starved, because this page told the agent to fit 120–180 words.
@@ -312,7 +336,7 @@ each naming the greybox as the authority for its own layer (路线 / 站位 /
   kind of movement it is, with its second — the sword form, the stance, which
   hand, whether the blade is drawn.
 - **The likeness filter reads photoreal faces as real people.** A 422 from fal
-  is almost always a reference image, not the prompt: keep sheets and board
+  is almost always a reference image, not the prompt: keep sheets and key
   frames in an illustrated or 3D-animation idiom (`bible.md`) and regenerate
   the offending one rather than resubmitting the same pack.
 - **More references is not more control.** Every attached still is averaged in;

@@ -426,6 +426,25 @@ silent), places VO at `segment.offset + line.at`, lays music under at
 `gainDb` with a fade-out, and writes `edl.json` last. `--final` refuses
 while any shot lacks a selected take.
 
+### Pictures come from the greybox (added 2026-09-21 evening, user)
+
+Round 3 exposed that storyboard frames drawn from text + bible before the
+greybox are not continuous with each other — eight pictures with no shared
+space or camera — while the greybox is exactly that shared source. The user's
+call: **greybox first, then key frames from it.** The `boards` stage therefore
+becomes the **shot plan** — shots registered, beats with `detail`, camera,
+continuity decision, trim — with no paid image; `board.png` is no longer
+produced (the field stays readable for old projects and is not attached to
+takes). The `previz` stage renders the greybox and then the **key frames**
+(`previz.mjs anchor`, ids `first` and `key`) from the greybox frame as
+composition plus the bible as appearance; those are the storyboard the
+creator reviews in the lineup (key frame | greybox frame) and the `@Image`
+references the take receives. Reference order becomes `@Video1` greybox →
+`@Image1` anchor first → other anchors → sheets → concept → hand-off.
+The design-first principle is unchanged: the design is the plan's text; the
+pictures are derived from the plan through the greybox, not drawn beside it.
+Boards-stage cost drops to zero; anchor cost stays in previz.
+
 ### Continuity across shots (added 2026-09-21 after the first acceptance run)
 
 The first run proved the flow and exposed the gap: every take was generated

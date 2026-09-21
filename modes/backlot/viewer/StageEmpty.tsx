@@ -18,9 +18,9 @@ export const STAGE_BLURB: Record<StageId, string> = {
   bible:
     "Every character and every place gets a written look, a generated sheet or concept frame, and — for the characters who speak — a voice sample. This is what keeps the same face across shots.",
   boards:
-    "The scenes are broken into shots, and each shot gets one concept frame generated from the bible images, so the wardrobe and the set dressing hold before a single take is bought.",
+    "The scenes are broken into shots: the shot list, the beats and camera of each one, and the designed picture of every beat in words. Nothing is drawn here — the pictures come from the greybox in the next stage.",
   previz:
-    "The shot is blocked in 3D first: a timed plan, a Blender script, and a greybox render that fixes the room, the action and the camera — the exact clip the video model is conditioned on.",
+    "The shot is blocked in 3D first: a timed plan, a Blender script, and a greybox render that fixes the room, the action and the camera — the exact clip the video model is conditioned on. Then its key frames are rendered from that greybox, and that is the storyboard you approve.",
   takes:
     "An accepted greybox is sent to the video model with the board and the bible as references. Every take is checked, and one is selected as the shot's delivery.",
   sound:

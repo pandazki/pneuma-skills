@@ -20,9 +20,10 @@ A recreate shot replaces the *planning* half of one shot, not the film:
   still a set with a concept frame. That is what makes a recreated shot cut
   together with the shots around it.
 - **Stage 4** — instead of inventing the timeline, you read it off the
-  reference (below) and write the same `shot-plan.md` and beats. The board
-  frame is still worth generating: it is where the creator's *look* is decided,
-  and the reference decides only the blocking.
+  reference (below) and write the same `shot-plan.md` and beats. Nothing is
+  drawn here either: the reference decides the blocking, and the *look* is
+  decided at the key frame, which is rendered from the greybox once it passes
+  (`greybox.md`).
 - **Stages 5–8 are unchanged.** The greybox gains two extra acceptance checks,
   `ref-framing` and `ref-timing`, and the shot gains a fourth lane so the
   player can run reference, greybox and take on one clock.

@@ -33,6 +33,7 @@ import {
   seedChecklist,
   shotStatus,
   slugId,
+  STAGES,
   STANDARD_CHECKS,
   summarizeChecks,
   takePolicy,
@@ -682,11 +683,26 @@ describe("the take policy", () => {
 });
 
 describe("where the shot stands", () => {
+  test("the walk has no board step — the pictures come from the greybox", () => {
+    // Round 3 (2026-09-21): boards drawn from the text before the greybox
+    // existed contradicted each other, so the only picture step is the key
+    // frame, and it sits AFTER the greybox is accepted and rendered.
+    expect(STAGES).toEqual([
+      "reference", "plan", "greybox-preview", "checks", "final-render", "anchor", "prompt", "take", "take-checks", "select",
+    ]);
+    expect(STAGES).not.toContain("board");
+    expect(STAGES.indexOf("anchor")).toBeGreaterThan(STAGES.indexOf("final-render"));
+  });
+
   test("next walks the stages in order and names the command that closes each", () => {
     const shot = shotWith();
     expect(nextStage(shot).stage).toBe("plan");
 
     shot.beats = validateBeats([{ id: "walk", from: 0, to: 3, kind: "action" }], SPEC);
+    // Straight from the plan to the blocking: NOTHING asks for a drawing in
+    // between. The plan's text is the design and the pictures are derived
+    // from it through the greybox (round 3, 2026-09-21).
+    expect(shot.board).toBeNull();
     expect(nextStage(shot).stage).toBe("greybox-preview");
 
     shot.greybox.revision = 1;

@@ -1,18 +1,25 @@
 /**
- * The boards — the shot list as a strip of frames.
+ * The shot plan — the shot list as a strip.
  *
- * One card per shot in `backlot.json` order: the board frame (or a grey card
- * saying what is missing — never nothing), the scene it belongs to, the
- * title, its length, and a badge saying how far that shot has actually got.
- * The badge is read from the same helpers the shots rail and the Checks tab
- * use, so a shot cannot look accepted here and fail there.
+ * One card per shot in `backlot.json` order: the picture the shot has right
+ * now, the scene it belongs to, the title, its length, and a badge saying
+ * how far that shot has actually got. The badge is read from the same
+ * helpers the shots rail and the Checks tab use, so a shot cannot look
+ * accepted here and fail there.
+ *
+ * NOTHING IS DRAWN AT THIS STAGE. The plan is text — beats with their
+ * designed detail, the camera, the continuity decision — and the pictures
+ * are derived from it through the greybox one stage later. So a card shows
+ * the shot's key frame when there is one, its greybox when there is not,
+ * and a grey card that says what is missing when there is neither: never
+ * nothing, and never a promise of a frame nobody is going to draw.
  *
  * Clicking a card opens that shot on the previz stage, which is where the
  * work continues.
  */
 
 import type { Project, Shot } from "../domain.js";
-import { checkTally, selectedTake, shotStages } from "../domain.js";
+import { checkTally, selectedTake, shotStages, shotThumbnail } from "../domain.js";
 import { ImageIcon } from "./icons.js";
 import { StageEmpty } from "./StageEmpty.js";
 
@@ -69,8 +76,8 @@ function BoardCard({
   onOpen: () => void;
   urlFor: BoardsViewProps["urlFor"];
 }) {
-  const board = shot.board;
-  const url = board ? urlFor(shot, board.file, board.revision) : null;
+  const thumbnail = shotThumbnail(shot);
+  const url = thumbnail.file ? urlFor(shot, thumbnail.file, thumbnail.rev) : null;
   return (
     <button
       type="button"
@@ -82,13 +89,30 @@ function BoardCard({
       }`}
     >
       <div className="relative aspect-video w-full overflow-hidden bg-black/45">
-        {url ? (
-          <img src={url} alt={shot.title} className="h-full w-full object-cover" loading="lazy" />
+        {url && thumbnail.kind === "greybox" ? (
+          // The greybox's own opening second, asked for with a media
+          // fragment: one range request, and it is a frame of this shot
+          // rather than a cell of a contact sheet whose grid to guess at.
+          <video
+            src={`${url}#t=0.1`}
+            preload="metadata"
+            muted
+            playsInline
+            className="h-full w-full object-cover"
+          />
+        ) : url ? (
+          <img
+            src={url}
+            alt={shot.title}
+            className={`h-full w-full object-cover${thumbnail.kind === "sheet" ? " object-left-top" : ""}`}
+            loading="lazy"
+          />
         ) : (
           <span className="flex h-full w-full flex-col items-center justify-center gap-1 px-4 text-center text-cc-muted">
             <ImageIcon size={16} />
             <span className="text-[9px] leading-relaxed">
-              No board frame yet — one concept frame per shot, generated from the bible.
+              No picture yet — this shot is blocked in 3D first, and its key frame is rendered from
+              that greybox.
             </span>
           </span>
         )}

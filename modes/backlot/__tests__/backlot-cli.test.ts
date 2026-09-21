@@ -437,6 +437,49 @@ describe("the bible", () => {
   });
 });
 
+describe("the style reference", () => {
+  test.skipIf(!HAS_FFMPEG)("one picture for the whole film, copied in and readable back", () => {
+    const cwd = workspace();
+    film(cwd);
+    // A film starts with none, and says so rather than inventing one.
+    expect(json(cwd, ["style", "film"])).toMatchObject({ style: null, file: null });
+
+    const registered = json(cwd, ["style", "film", "--keyframe", fixturePng(cwd, "style.png"), "--prompt", "ink-wash dusk", "--now", "1700000000000"]);
+    expect(registered.file).toBe("style/keyframe.png");
+    expect(registered.style).toEqual({
+      keyframe: "style/keyframe.png",
+      width: 64,
+      height: 64,
+      at: 1700000000000,
+      prompt: "ink-wash dusk",
+    });
+    // Inside the project, so the record cannot point outside the film.
+    expect(existsSync(join(cwd, "film", "style", "keyframe.png"))).toBe(true);
+    expect(manifestOf(cwd).style.keyframe).toBe("style/keyframe.png");
+    expect(json(cwd, ["status", "film"]).style.keyframe).toBe("style/keyframe.png");
+    expect(json(cwd, ["style", "film"]).exists).toBe(true);
+
+    // Free and ungated — the picture was already paid for or given.
+    expect(json(cwd, ["style", "film"]).style.keyframe).toBe("style/keyframe.png");
+
+    const cleared = json(cwd, ["style", "film", "--clear"]);
+    expect(cleared.style).toBeNull();
+    expect(manifestOf(cwd).style).toBeNull();
+    // Clearing the record leaves the file: it is evidence of what the film
+    // looked like, not scratch.
+    expect(existsSync(join(cwd, "film", "style", "keyframe.png"))).toBe(true);
+  });
+
+  test("refuses what it cannot attach, and never half-writes the record", () => {
+    const cwd = workspace();
+    film(cwd);
+    expect(run(cwd, ["style", "film", "--keyframe", join(cwd, "nope.png")]).err).toContain("no such file");
+    writeFileSync(join(cwd, "not.png"), "nope");
+    expect(run(cwd, ["style", "film", "--keyframe", join(cwd, "not.png")]).err).toContain("not a readable PNG");
+    expect(manifestOf(cwd).style).toBeUndefined();
+  });
+});
+
 describe("music", () => {
   test.skipIf(!HAS_FFMPEG)("waits for the takes, then records the bed it measured", () => {
     const cwd = workspace();

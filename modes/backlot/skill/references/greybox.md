@@ -9,10 +9,11 @@ video model should *not* have to guess — where things are, who moves when,
 what the camera does — is decided here; everything it is good at — surfaces,
 light, faces, bodies — is left out on purpose.
 
-The shot plan (`shot-plan.md`) and the board frame (`bible.md`) are the inputs.
-The set's real dimensions come from its bible record: build the room the
-concept frame shows, at the metres that record states, or the take is fighting
-two different places.
+The shot plan (`shot-plan.md`) and the bible (`bible.md`) are the inputs —
+there is no board: the pictures are rendered from this greybox afterwards,
+not drawn before it. The set's real dimensions come from its bible record:
+build the room the concept frame shows, at the metres that record states, or
+the take is fighting two different places.
 
 ## Files
 
@@ -240,47 +241,61 @@ at (`--note "sheet 0.25–7.8 s"`). Anything not actually examined stays
 `unverified` — writing "all passed" over it is the one thing this record
 exists to prevent.
 
-## From greybox frame to anchor
+## Key frames: the storyboard is rendered from the greybox
 
 A greybox that passes its checks is correct and unreadable: it proves the
 geometry and says nothing about what the shot *looks* like. The last step of
-this stage turns one of its frames into the picture the film is actually
-after — an **anchor frame**.
+this stage turns its frames into the pictures the film is actually after —
+this shot's **key frames**, and they *are* the storyboard.
 
 ```bash
 node {SKILL_PATH}/scripts/previz.mjs anchor <shot-dir> [--at 0.0] [--id first]
 ```
 
-It is an image-to-image call: the greybox frame at `--at` carries the exact
-composition, camera height, lens and blocking; the board, the character sheets
-and the set concept carry the appearance; and the prompt is written from the
-shot's own design — the `detail` of the beat that second falls in, plus the
-film's look. Two reasons this step exists rather than leaving it all to the
-video model: an image model follows camera and composition language far more
-reliably than a video model does, and Seedance leans hard on its first image
-reference — so the cheapest way to fix a take's framing and look is to fix a
-still first.
+**The picture comes from the greybox, never beside it.** Round 3 (2026-09-21)
+drew a storyboard frame per shot from the text before anything was blocked:
+the pictures shared no space and no camera, and the greybox could not satisfy
+them. The greybox is the one place this film's space, staging and camera
+exist, so every picture is derived from it — which also means a key frame and
+the blocking can never disagree about where anybody stands.
 
-`--id first` is the default. A second anchor (`--id last`, `--at` near the
-end) is worth it when the next shot hands off from this one: it gives that
-shot a look-continuous picture to continue from, not only a grey one.
+It is an image-to-image call, and the jobs are split by authority:
 
-The anchor prompt carries the film's look, and the film's look here is an
-**illustrated or 3D-design idiom** — the anchor is made from the character
-sheets, and a photoreal face is the image fal's likeness filter refuses
-(`bible.md`). A 422 on an anchor means regenerate it in the idiom, not retry.
+| this says | and nothing else |
+|---|---|
+| the greybox frame at `--at` (image 1) | composition, framing, camera, who stands where, how big they are |
+| the character sheets and the set concept | appearance — face, hair, wardrobe, materials, light direction |
+| the film's style reference, when there is one (`backlot.mjs style --keyframe`) | the rendering idiom, the palette, the finish |
+| the beat `detail` at that second | what is happening in the picture |
+
+Two reasons this step exists rather than leaving it all to the video model: an
+image model follows camera and composition language far more reliably than a
+video model does, and Seedance leans hard on its first image reference — so
+the cheapest way to fix a take's framing and look is to fix a still first.
+
+`--id first` is the default and is the frame the take opens on. Give a shot a
+second key frame (`--id key`, `--at` the moment it turns on) when one picture
+cannot carry the shot, and a `--id last` one when the next shot hands off from
+this one: it gives that shot a look-continuous picture to continue from, not
+only a grey one.
+
+The key frame's prompt carries the film's look, and the film's look here is an
+**illustrated or 3D-design idiom** — it is made from the character sheets, and
+a photoreal face is the image fal's likeness filter refuses (`bible.md`). A
+422 on a key frame means regenerate it in the idiom, not retry.
 
 It is a **paid** call, recorded on the shot as
-`anchors: [{ id, at, file, revision, prompt, refs, cost }]` with its price
-like a board's, gated on the `bible` stage and refused without a **final**
-greybox — there is nothing to anchor before the composition is settled. A
-character with no sheet or a set with no concept is a warning, not a refusal,
-and the warning says exactly what it means: the anchor invents that look.
-Anchors belong to the `previz` stage's content, so a new anchor turns that
-stage `changed` and the creator sees it.
+`anchors: [{ id, at, file, revision, prompt, refs, cost }]` with its price,
+gated on the `bible` stage and refused without a **final** greybox — there is
+nothing to render from before the composition is settled. A character with no
+sheet or a set with no concept is a warning, not a refusal, and the warning
+says exactly what it means: the key frame invents that look. Key frames belong
+to the `previz` stage's content, so a new one turns that stage `changed` and
+the creator sees it.
 
-`status.next` does not know about anchors — it will say `prompt` while the
-shot has none. Check `status.anchors` before you write a pack.
+`status.next` asks for the first key frame once the greybox is accepted, and
+stops asking once the shot has one or a take exists. Read `status.anchors`
+before you write a pack.
 
 ### The lineup, and the joint review
 
@@ -288,21 +303,22 @@ shot has none. Check `status.anchors` before you write a pack.
 node {SKILL_PATH}/scripts/previz.mjs lineup <shot-dir>
 ```
 
-`lineup.png` is **board | anchor | greybox frame** side by side. Open it.
-Three pictures of one shot that disagree are three pictures of three shots:
+`lineup.png` is **every key frame beside the greybox second it was rendered
+from** (a legacy board, if the film has one, comes last). Open it. Two
+pictures of one moment that disagree are two pictures of two shots:
 
 | what disagrees | what is usually wrong |
 |---|---|
-| anchor vs greybox — different angle, height, distance, or somebody has moved | the anchor prompt let the image model re-stage the shot; say the camera and the positions again, and re-run `anchor` |
-| anchor vs board — different costume, palette, time of day, or a face that is not the sheet's | the anchor prompt, or an appearance reference that was not attached |
-| board vs greybox — the board frames low and the greybox stands at 1.6 m | the plan; one of the two was designed without the other, and it is the cheapest possible moment to find out |
+| the key frame vs its greybox frame — different angle, height, distance, or somebody has moved | the key frame's prompt let the image model re-stage the shot; say the camera and the positions again, and re-run `anchor` |
+| the key frame vs the bible — a costume, a palette, a time of day, or a face that is not the sheet's | the prompt, or an appearance reference that was not attached |
+| the greybox vs the plan — the plan frames the pair low and the greybox stands at 1.6 m | the blocking; it is the cheapest possible moment to find out |
 
-Fix the anchor first — it is one image. Change the greybox only when the
+Fix the key frame first — it is one image. Change the greybox only when the
 greybox is the thing that is wrong.
 
 Then present the whole stage at once, because this is the review the creator
-is actually being asked for: **the bible, the anchor, the greybox and the shot
-plan together**. Per shot, the lineup, the beat details, the continuity
+is actually being asked for: **the bible, the key frames, the greybox and the
+shot plan together**. Per shot, the lineup, the beat details, the continuity
 decision and the seconds; across the film, `cut --reel`. That is the set of
 things the `previz` approval covers, and it is the last free moment — after it
 every mistake is a take.

@@ -1468,6 +1468,9 @@ describe("prompt-skeleton", () => {
     backlot(cwd, ["character", "voice", "film", "kai", "--text", "还开着吗？", "--model", "seed-speech"], env);
     backlot(cwd, ["set", "add", "film", "store", "--name", "便利店"]);
     backlot(cwd, ["set", "look", "film", "store", "--file", png, "--prompt", "wide"]);
+    // A LEGACY film: it has a drawn board and no key frame, so the board is
+    // still the picture the pack addresses. A film shot under the current
+    // order has a key frame at @Image1 and no board at all (below).
     json(cwd, ["board", "film/shots/lab-walk", "--file", png, "--prompt", "the doorway"]);
     json(cwd, ["meta", "film/shots/lab-walk", "--characters", "kai", "--set", "store", "--trim-in", "0.4", "--trim-out", "6"]);
     json(cwd, ["meta", "film/shots/lab-walk", "--exit", "hand still on the console"]);
@@ -1516,7 +1519,7 @@ describe("prompt-skeleton", () => {
     // Every reference carries its scope AND its exclusion, at the index
     // `generate` will attach it to.
     expect(text).toContain("@Video1: use only the camera move, the framing, the cut points, the subjects' paths, the relative scale and what occludes what; do not inherit the grey surfacing");
-    expect(text).toContain("@Image1: use only the opening composition and the intent of the frame (storyboard) — not its brushwork");
+    expect(text).toContain("@Image1: use only the opening composition and the intent of the frame (a legacy storyboard drawing) — not its brushwork");
     expect(text).toContain("@Image2: <TODO: which block — its colour and where it stands at frame 1> in the greybox is 小凯; use only this sheet's face, hair, clothing and accessories — not its background.");
     expect(text).toContain("@Image3: the set's structure comes from the greybox space; use only this frame's materials, palette and light direction for the 便利店 — not the people in it.");
     expect(text).toContain("@Audio1: use only 小凯's timbre and pace — not the words in it or the room it was recorded in.");
@@ -1640,9 +1643,18 @@ describe("prompt-skeleton", () => {
   });
 });
 
-describe("anchor and lineup", () => {
+/**
+ * The key frames, and the lineup they are reviewed in.
+ *
+ * ROUND 3 (2026-09-21) MOVED THE PICTURE. Storyboard frames drawn from the
+ * text before the greybox existed shared no space and no camera, and the
+ * greybox could not satisfy them — so the `boards` stage is the shot plan
+ * and nothing is drawn there; the storyboard is RENDERED from the greybox,
+ * one key frame at a time, and the board survives only as a legacy record.
+ */
+describe("key frames and the lineup", () => {
   /** A shot whose greybox is a real clip, so a frame can be cut out of it. */
-  function anchored(cwd: string) {
+  function anchored(cwd: string, { board = false } = {}) {
     const clip = mp4Fixture(cwd);
     ready(cwd, { video: clip });
     const png = pngFixture(cwd);
@@ -1650,7 +1662,8 @@ describe("anchor and lineup", () => {
     backlot(cwd, ["character", "look", "film", "kai", "--file", png, "--prompt", "sheet"]);
     backlot(cwd, ["set", "add", "film", "store", "--name", "便利店"]);
     backlot(cwd, ["set", "look", "film", "store", "--file", png, "--prompt", "wide"]);
-    json(cwd, ["board", "film/shots/lab-walk", "--file", png, "--prompt", "the doorway"]);
+    // Only a film shot under the old order has one.
+    if (board) json(cwd, ["board", "film/shots/lab-walk", "--file", png, "--prompt", "the doorway"]);
     json(cwd, ["meta", "film/shots/lab-walk", "--characters", "kai", "--set", "store"]);
     writeFileSync(join(cwd, "detailed.json"), JSON.stringify([
       { ...BEATS[0], detail: "he stops in the doorway, rain still on his shoulders" },
@@ -1659,7 +1672,7 @@ describe("anchor and lineup", () => {
     json(cwd, ["beats", "film/shots/lab-walk", "--set", "detailed.json"]);
   }
 
-  test.skipIf(!HAS_FFMPEG)("makes the picture from the greybox frame plus the bible, and records what it cost", () => {
+  test.skipIf(!HAS_FFMPEG)("renders the picture FROM the greybox frame, with the bible for appearance only", () => {
     const cwd = workspace();
     const env = imageSeam(cwd);
     anchored(cwd);
@@ -1680,32 +1693,70 @@ describe("anchor and lineup", () => {
     expect(existsSync(join(cwd, "film", "shots", "lab-walk", "anchors", "first.greybox.png"))).toBe(true);
 
     const call = JSON.parse(readFileSync(env.FAKE_IMAGE_ARGV, "utf-8").trim().split("\n").at(-1)!);
-    // Composition FIRST, then the board, then who and where.
+    // Composition FIRST — the greybox frame — then who and where. Nothing
+    // else: a second composition of the same second is a second design.
     expect(call["image-urls"].map((path: string) => path.split("/").slice(-2).join("/"))).toEqual([
       "anchors/first.greybox.png",
-      "lab-walk/board.png",
       "kai/sheet.png",
       "store/concept.png",
     ]);
     expect(call["aspect-ratio"]).toBe("16:9");
     expect(call["output-format"]).toBe("png");
-    // The prompt is the shot's own design read back, and it says what the
-    // grey shapes are.
+    // The prompt splits the job by authority, and says which is which.
+    expect(call.prompt).toContain("IMAGE 1 IS THE GREYBOX FRAME OF THIS EXACT MOMENT, and it is the composition.");
     expect(call.prompt).toContain("PLACEHOLDERS");
+    expect(call.prompt).toContain("Appearance comes ONLY from the character sheets");
     expect(call.prompt).toContain("he stops in the doorway, rain still on his shoulders");
     expect(call.prompt).toContain("小凯");
     expect(call.prompt).toContain("便利店");
     expect(made.anchor.refs[0]).toBe("shots/lab-walk/anchors/first.greybox.png");
 
-    // Re-shooting the same anchor bumps its revision; a second id is a
-    // second anchor.
+    // Re-shooting the same key frame bumps its revision; a second id is a
+    // second key frame.
     expect(json(cwd, ["anchor", "film/shots/lab-walk", "--prompt", "colder"], env).anchor.revision).toBe(2);
     const last = json(cwd, ["anchor", "film/shots/lab-walk", "--id", "last", "--at", "0.5"], env);
     expect(last.anchor).toMatchObject({ id: "last", at: 0.5, revision: 1 });
     expect(last.anchors.map((entry: any) => entry.id).sort()).toEqual(["first", "last"]);
   });
 
-  test.skipIf(!HAS_FFMPEG)("the anchor leads the references, and the skeleton gives it its job", () => {
+  test.skipIf(!HAS_FFMPEG)("a legacy board is not an appearance reference — the greybox is the composition", () => {
+    const cwd = workspace();
+    const env = imageSeam(cwd);
+    anchored(cwd, { board: true });
+    json(cwd, ["anchor", "film/shots/lab-walk"], env);
+    const call = JSON.parse(readFileSync(env.FAKE_IMAGE_ARGV, "utf-8").trim().split("\n").at(-1)!);
+    expect(call["image-urls"].map((path: string) => path.split("/").slice(-2).join("/"))).not.toContain("lab-walk/board.png");
+  });
+
+  test.skipIf(!HAS_FFMPEG)("the film's style reference goes LAST, and the prompt gives it that job", () => {
+    const cwd = workspace();
+    const env = imageSeam(cwd);
+    anchored(cwd);
+    // Registered once for the whole film: what says how this film is
+    // rendered, and nothing about what is in the frame.
+    backlot(cwd, ["style", "film", "--keyframe", pngFixture(cwd, "style.png")]);
+
+    json(cwd, ["anchor", "film/shots/lab-walk"], env);
+    const call = JSON.parse(readFileSync(env.FAKE_IMAGE_ARGV, "utf-8").trim().split("\n").at(-1)!);
+    expect(call["image-urls"].map((path: string) => path.split("/").slice(-2).join("/"))).toEqual([
+      "anchors/first.greybox.png",
+      "kai/sheet.png",
+      "store/concept.png",
+      "style/keyframe.png",
+    ]);
+    expect(call.prompt).toContain("THE LAST REFERENCE IMAGE IS THE FILM'S STYLE REFERENCE");
+
+    // A film without one says nothing about a style reference — a job
+    // assigned to a picture that was not sent is a picture the model invents.
+    const plain = workspace();
+    const plainEnv = imageSeam(plain);
+    anchored(plain);
+    json(plain, ["anchor", "film/shots/lab-walk"], plainEnv);
+    const bare = JSON.parse(readFileSync(plainEnv.FAKE_IMAGE_ARGV, "utf-8").trim().split("\n").at(-1)!);
+    expect(bare.prompt).not.toContain("STYLE REFERENCE");
+  });
+
+  test.skipIf(!HAS_FFMPEG)("the key frames lead the references, and the skeleton gives each its job", () => {
     const cwd = workspace();
     const env = imageSeam(cwd);
     anchored(cwd);
@@ -1713,19 +1764,53 @@ describe("anchor and lineup", () => {
     json(cwd, ["anchor", "film/shots/lab-walk", "--id", "last", "--at", "0.9"], env);
 
     const text = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"], env).skeleton as string;
-    expect(text).toContain("@Image1: use only the opening framing, the camera, the palette and the overall style — not the exact pose of anybody in it.");
-    expect(text).toContain("@Image5: use only the light, the palette and the surfaces at 0.9 s — not its composition.");
+    expect(text).toContain("@Image1: this shot's storyboard, rendered from @Video1's own opening frame: use the opening composition, the camera, where each person stands and the overall style — not the motion, which follows the timeline and the greybox.");
+    expect(text).toContain("@Image2: the key frame at 0.9 s: use only the light, the palette and the surfaces of that moment — not its composition.");
     writePrompt(cwd, /```prompt\n([\s\S]*?)\n```/.exec(text)![1]);
 
+    // THE ORDER: greybox, the opening key frame, the other key frames, the
+    // sheets, the concept. No board — this film never drew one.
     const estimate = json(cwd, ["generate", "film/shots/lab-walk", "--estimate"], env);
     expect(estimate.refs).toEqual([
       { kind: "video", index: 1, file: "shots/lab-walk/greybox/greybox.mp4", role: "greybox" },
       { kind: "image", index: 1, file: "shots/lab-walk/anchors/first.png", role: "anchor:first" },
-      { kind: "image", index: 2, file: "shots/lab-walk/board.png", role: "board" },
+      { kind: "image", index: 2, file: "shots/lab-walk/anchors/last.png", role: "anchor:last" },
       { kind: "image", index: 3, file: "bible/characters/kai/sheet.png", role: "character:kai" },
       { kind: "image", index: 4, file: "bible/sets/store/concept.png", role: "set:store" },
-      { kind: "image", index: 5, file: "shots/lab-walk/anchors/last.png", role: "anchor:last" },
     ]);
+  });
+
+  test.skipIf(!HAS_FFMPEG)("a legacy board is attached only while the shot has no key frame", () => {
+    const cwd = workspace();
+    const env = imageSeam(cwd);
+    anchored(cwd, { board: true });
+    writePrompt(cwd, [
+      "@Video1 = layout, positions and timing only; do not inherit the grey surfacing.",
+      "@Image1 = the opening composition only.",
+      "@Image2 = his appearance only.",
+      "@Image3 = the store's appearance only.",
+    ].join("\n"));
+
+    // No key frame yet: the old drawing stands in, at @Image1.
+    const before = json(cwd, ["generate", "film/shots/lab-walk", "--estimate"], env);
+    expect(before.refs).toEqual([
+      { kind: "video", index: 1, file: "shots/lab-walk/greybox/greybox.mp4", role: "greybox" },
+      { kind: "image", index: 1, file: "shots/lab-walk/board.png", role: "board" },
+      { kind: "image", index: 2, file: "bible/characters/kai/sheet.png", role: "character:kai" },
+      { kind: "image", index: 3, file: "bible/sets/store/concept.png", role: "set:store" },
+    ]);
+
+    // Once the picture has been rendered from the greybox, the drawing is
+    // not sent: two compositions of the same second is what a model averages.
+    json(cwd, ["anchor", "film/shots/lab-walk"], env);
+    const after = json(cwd, ["generate", "film/shots/lab-walk", "--estimate"], env);
+    expect(after.refs).toEqual([
+      { kind: "video", index: 1, file: "shots/lab-walk/greybox/greybox.mp4", role: "greybox" },
+      { kind: "image", index: 1, file: "shots/lab-walk/anchors/first.png", role: "anchor:first" },
+      { kind: "image", index: 2, file: "bible/characters/kai/sheet.png", role: "character:kai" },
+      { kind: "image", index: 3, file: "bible/sets/store/concept.png", role: "set:store" },
+    ]);
+    expect(existsSync(join(cwd, "film", "shots", "lab-walk", "board.png"))).toBe(true);
   });
 
   test.skipIf(!HAS_FFMPEG)("waits for the bible, and for a final greybox", () => {
@@ -1745,29 +1830,56 @@ describe("anchor and lineup", () => {
     expect(run(cwd, ["anchor", "film/shots/lab-walk", "--at", "99"], env).err).toContain("--at must be a second inside");
   });
 
-  test.skipIf(!HAS_FFMPEG)("lineup puts the board, the anchor and the greybox side by side", () => {
+  test.skipIf(!HAS_FFMPEG)("lineup puts every key frame beside the greybox second it came from", () => {
     const cwd = workspace();
     const env = imageSeam(cwd);
     anchored(cwd);
     json(cwd, ["anchor", "film/shots/lab-walk"], env);
+    json(cwd, ["anchor", "film/shots/lab-walk", "--id", "key", "--at", "0.5"], env);
 
     const lined = json(cwd, ["lineup", "film/shots/lab-walk"]);
-    expect(lined.panels.map((panel: any) => panel.kind)).toEqual(["board", "anchor", "greybox"]);
+    // The pictures, then the blocking they were rendered from — one greybox
+    // frame per key frame, at that key frame's own second.
+    expect(lined.panels.map((panel: any) => panel.kind)).toEqual(["anchor", "anchor", "greybox", "greybox"]);
+    expect(lined.panels[0].label).toContain("key frame first");
+    expect(lined.panels[1].label).toContain("key frame key");
+    expect(lined.greybox.map((entry: any) => entry.at)).toEqual([0, 0.5]);
     expect(lined.missing).toEqual([]);
     expect(lined.file).toBe("lineup.png");
     const drawn = join(cwd, "film", "shots", "lab-walk", "lineup.png");
     const size = pngSize(readFileSync(drawn))!;
-    // Three panels, one height, plus the footer the beats are written in.
+    // Four panels, one height, plus the footer the beats are written in.
     expect(size.height).toBe(lined.height + 44);
-    expect(size.width).toBeGreaterThan(lined.height);
+    expect(size.width).toBeGreaterThan(lined.height * 3);
     expect(lined.beats[0]).toMatchObject({ id: "establish", detail: "he stops in the doorway, rain still on his shoulders" });
+  });
 
-    // Whatever is missing is left out and named, never faked.
+  test.skipIf(!HAS_FFMPEG)("a shot with no board has no board column, and one with no key frame says so", () => {
+    // The shot plan draws nothing, so a missing board is not a gap: the
+    // lineup that matters is the key frame beside its greybox second.
+    const cwd = workspace();
+    const env = imageSeam(cwd);
+    anchored(cwd);
+    json(cwd, ["anchor", "film/shots/lab-walk"], env);
+    const lined = json(cwd, ["lineup", "film/shots/lab-walk"]);
+    expect(lined.panels.map((panel: any) => panel.kind)).toEqual(["anchor", "greybox"]);
+    expect(lined.missing).toEqual([]);
+
+    // A legacy board is shown, last, and labelled for what it is.
+    const old = workspace();
+    anchored(old, { board: true });
+    json(old, ["anchor", "film/shots/lab-walk"], imageSeam(old));
+    const legacy = json(old, ["lineup", "film/shots/lab-walk"]);
+    expect(legacy.panels.map((panel: any) => panel.kind)).toEqual(["anchor", "greybox", "board"]);
+    expect(legacy.panels[2].label).toContain("legacy");
+
+    // Nothing rendered yet: the greybox alone, and it is named.
     const bare = workspace();
     ready(bare, { video: mp4Fixture(bare) });
     const alone = json(bare, ["lineup", "film/shots/lab-walk"]);
     expect(alone.panels.map((panel: any) => panel.kind)).toEqual(["greybox"]);
-    expect(alone.missing).toEqual(["board", "anchor"]);
+    expect(alone.missing).toEqual(["anchor"]);
+    expect(run(bare, ["lineup", "film/shots/lab-walk"]).err).toContain("no key frame yet");
   });
 });
 

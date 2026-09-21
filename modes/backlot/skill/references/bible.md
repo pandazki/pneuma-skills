@@ -11,24 +11,24 @@ however carefully you word it. The same `sheet.png` attached as a reference
 produces the same man. This is the lesson plotwise paid for: the text of a
 prompt controls what happens, and an attached image controls who it happens
 to. So the bible is generated once, approved once, and then travels — into
-every board frame, and into every take — as an `@Image` reference.
+every key frame, and into every take — as an `@Image` reference.
 
 ## One rule before any of it: design, not photography
 
-Every image on this stage — and every board frame and anchor frame made from
-it — is drawn as an **illustrated or 3D-animation production design**, never
+Every image on this stage — and every key frame made from it — is drawn as an
+**illustrated or 3D-animation production design**, never
 as a photograph of a person. Say so in the prompt, in the same sentence as the
 look: *"rendered as stylised 3D animation production art"*, *"painted
 concept-art illustration"*, whichever idiom the film is in.
 
 This is not taste, it is a gate. In the first acceptance run fal's likeness
 filter refused a shot twice with **HTTP 422**, and the reference it choked on
-was a photoreal, low-angle close-up board frame of a face — an image that
+was a photoreal, low-angle close-up frame of a face — an image that
 reads to a safety filter as a real person. The cost of the idiom rule is
 nothing; the cost of ignoring it is a shot you cannot buy.
 
 - **Never a photoreal portrait, and especially never a photoreal facial
-  close-up.** A close-up board is the highest-risk image in the whole film.
+  close-up.** A close-up key frame is the highest-risk image in the whole film.
 - **When a 422 comes back, regenerate the offending reference in the design
   idiom and try again.** Resubmitting the same pack spends the same money on
   the same refusal, and neither the prompt nor the retry counter is the thing
@@ -74,8 +74,8 @@ what holds it, every costume layer with its material and how it hangs, the
 weapon, a large lit portrait beside the three views, and a named idiom
 (today's best 国风 animation — stylised forms, ink-wash texture, bold
 silhouettes, one accent colour — never photoreal, never cute anime). Default
-`--quality xhigh`; a sheet is made once and travels into every board, anchor
-and take, so it is the cheapest place to spend. One image, one frame:
+`--quality xhigh`; a sheet is made once and travels into every key frame and
+every take, so it is the cheapest place to spend. One image, one frame:
 
 ```bash
 node {SKILL_PATH}/scripts/generate_image.mjs \
@@ -107,7 +107,7 @@ The spec, and why each part is there:
 | **the same face in all three** | say it in the prompt. Without it the generator draws three siblings |
 | **no text, labels or borders** | any text in a reference tends to reappear, baked into a take |
 | **16:9 or 3:2** | three full-body figures side by side need the width |
-| **an illustrated / 3D-design idiom** | a photoreal face is what the likeness filter refuses, and the sheet travels into every board, anchor and take that uses it |
+| **an illustrated / 3D-design idiom** | a photoreal face is what the likeness filter refuses, and the sheet travels into every key frame and every take that uses it |
 
 Look at the file before you register it. Three views, one person, the costume
 from the record, nothing written on it — if any of those fails, fix the prompt
@@ -184,8 +184,8 @@ node {SKILL_PATH}/scripts/backlot.mjs set look <project> courtyard \
 
 Two things make a concept frame useful rather than decorative:
 
-1. **It is shot from the film's camera**, so the boards and the greybox agree
-   with it instead of describing a place nobody will photograph.
+1. **It is shot from the film's camera**, so the greybox and the key frames
+   agree with it instead of describing a place nobody will photograph.
 2. **Its dimensions are the greybox's dimensions.** The `look` sentence carries
    real metres — a 12 m terrace, a 2.1 m doorway, a 0.9 m counter — and
    `scene.py` builds those same numbers. When the concept says "wide terrace"
@@ -199,21 +199,21 @@ into the set concept turns up as an extra in a take.
 
 | stage | what it attaches |
 |---|---|
-| `boards` | `generate_image.mjs --image-urls <sheet> --image-urls <concept>` — the board frame is generated *from* the bible, so the shot list already shows the right faces in the right place |
-| `previz` | `previz.mjs anchor` sends the greybox frame for the composition and the board, the sheets and the concept for the appearance — the same faces again, now in the shot's real framing (`greybox.md`) |
-| `takes` | `previz.mjs generate` attaches the greybox as `@Video1`, the anchor as `@Image1`, the board as `@Image2`, then the sheets of the shot's `characters` and the set concept as `@Image3…`, the hand-off frame last, and the voice samples of any spoken line's speaker as `@Audio1…` |
+| `boards` | nothing. The shot plan is text and makes no image — the pictures come from the greybox one stage later |
+| `previz` | `previz.mjs anchor` sends the greybox frame for the composition and the sheets and the concept for the appearance (plus the film's style reference, when there is one) — the same faces again, now in the shot's real framing (`greybox.md`) |
+| `takes` | `previz.mjs generate` attaches the greybox as `@Video1`, the `first` key frame as `@Image1`, the shot's other key frames next, then the sheets of its `characters` and the set concept, the hand-off frame last, and the voice samples of any spoken line's speaker as `@Audio1…` |
 
 That order is fixed and the prompt must address the indices as attached — see
 `video-generation.md`. This is also why `shot.characters` and `shot.set`
 matter: they are the list `generate` and `anchor` read to decide which sheets
-go along. The likeness rule follows the sheet everywhere it goes: an anchor is
-an image of a face made from your sheet, and if the sheet is photoreal the
-anchor is the call that gets refused.
+go along. The likeness rule follows the sheet everywhere it goes: a key frame
+is an image of a face made from your sheet, and if the sheet is photoreal the
+key frame is the call that gets refused.
 
 ## Revisions, cost and honesty
 
 - Every regenerated sheet is a new revision on the record; the old file is not
-  silently overwritten, and boards made from the old one still say which
+  silently overwritten, and key frames made from the old one still say which
   revision they used.
 - Each image is a paid call. Record what the shared script reported
   (`usage.cost` → `basis: "reported"`), not a guess, and tell the creator the
