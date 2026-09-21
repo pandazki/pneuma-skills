@@ -1857,7 +1857,7 @@ describe("prompt-skeleton", () => {
     const skeleton = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]);
     expect(skeleton.language).toBe("zh");
     const text = skeleton.skeleton as string;
-    const order = blockOrder(text, ["将 @Video1 中的几何占位体按对应关系替换", "【素材映射】", "【一句话成片】", "【全局设定】", "【时间戳分镜】", "声音：环境声", "重新生成自然的", "【全局锁】"]);
+    const order = blockOrder(text, ["以 @Video1 为空间、站位与机位的参考", "【素材映射】", "【一句话成片】", "【全局设定】", "【时间戳分镜】", "声音：环境声", "重新生成自然的", "【全局锁】"]);
     expect(order).toEqual([...order].sort((a, b) => a - b));
     expect(order.every((at) => at >= 0)).toBe(true);
     expect(text).toContain("@Video1：只参考运镜、构图、切点、主体轨迹、相对比例与遮挡关系；不要继承灰白材质、空场景、几何体外形与 Viewport 叠加物。");
@@ -1889,7 +1889,7 @@ describe("prompt-skeleton", () => {
     expect(order.every((at) => at >= 0)).toBe(true);
     // No replacement sentence, and nothing anywhere addresses a video
     // reference the job will not carry.
-    expect(text).not.toContain("将 @Video1 中的几何占位体按对应关系替换");
+    expect(text).not.toContain("以 @Video1 为空间、站位与机位的参考");
     expect(text.split("```prompt")[1]).not.toContain("@Video1");
     // The opening is the film sentence, and it does not say "render the
     // greybox as".
@@ -1947,7 +1947,7 @@ describe("prompt-skeleton", () => {
     expect(skeleton.conditioning).toBe("hybrid");
     const text = skeleton.skeleton as string;
     // Everything the greybox pack says, still said…
-    expect(text).toContain("将 @Video1 中的几何占位体按对应关系替换");
+    expect(text).toContain("以 @Video1 为空间、站位与机位的参考");
     expect(text).toContain("镜头轨迹、机位与景别严格照 @Video1，全片不切、不加转场。");
     expect(text).toContain("按白模路线与时机");
     expect(text).toContain("禁止：白模方块、刚性滑行");

@@ -149,7 +149,7 @@ template, merged with what a **greybox** reference-to-video job needs on top.
 
 ````markdown
 ```prompt
-将 @Video1 中的几何占位体按对应关系替换，严格继承摄影机运动、景别、切镜时间、
+以 @Video1 为空间、站位与机位的参考：几何占位体按下列对应关系就是这些人物，严格继承其摄影机运动、景别、
 整体位置、空间关系与运动路径。几何体只表示位置和移动方向，不提供肢体参考。
 
 【素材映射】
@@ -216,6 +216,18 @@ shortening is the design deleted.
 | 声音 | Seedance scores an open prompt by default, and the cut lays its own score: two pieces of music in one film is a re-shot |
 | 重新生成自然的… | the sentence that tells the model to *re-animate* rather than transfer the block's rigid motion |
 | 【全局锁】 | negatives go last, where they are still in the model's attention when it renders. This is also where the greybox itself is locked out |
+
+## Words that make Seedance refuse
+
+Seedance's front door classifies the request before it renders. The words
+**替换 / 编辑 / 剪辑 / 剪入 / 修改这段视频** (and the English *replace / edit /
+cut into*) can make it decide the job is *video editing* and return HTTP 422
+("Seedance identified this request as video editing … set aspect_ratio and
+duration to auto, or reword"). The eight-take run lost s07 to this. So the
+opening sentence says **以 @Video1 为空间、站位与机位的参考** — the greybox is a
+reference, never something the model is asked to edit — and the pack never
+speaks of replacing, editing or cutting. If a 422 with that message still
+comes back, reword first; only then retry once with `--duration auto`.
 
 ## The timeline, in detail
 
@@ -306,7 +318,7 @@ stage; every timeline sentence is that beat's `detail`, carried whole.
 
 ````markdown
 ```prompt
-将 @Video1 中的几何占位体按对应关系替换，严格继承摄影机运动、景别、切镜时间、整体位置、空间关系与运动路径。几何体只表示位置和移动方向，不提供肢体参考。
+以 @Video1 为空间、站位与机位的参考：几何占位体按下列对应关系就是这些人物，严格继承其摄影机运动、景别、整体位置、空间关系与运动路径。几何体只表示位置和移动方向，不提供肢体参考。
 
 【素材映射】
 @Video1：只参考运镜、构图、切点、主体轨迹、相对比例与遮挡关系；不要继承灰白材质、空场景、几何体外形与 Viewport 叠加物。
@@ -408,7 +420,7 @@ pursuers. It is worth reading because it shows how little the shape changes
 between genres, and how blunt the body clauses are allowed to be:
 
 ```text
-将 @Video1 中的几何占位体按对应关系替换，严格继承摄影机运动、景别、切镜时间、整体位置、空间关系与抛物线路径。几何体只表示位置和移动方向，不提供肢体参考。
+以 @Video1 为空间、站位与机位的参考：几何占位体按下列对应关系就是这些人物，严格继承其摄影机运动、景别、整体位置、空间关系与抛物线路径。几何体只表示位置和移动方向，不提供肢体参考。
 
 【映射】
 浅青长方体 = 女主，外观严格参考 @Image1（脸、发型、红夹克、靴）。
