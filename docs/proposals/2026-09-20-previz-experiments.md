@@ -149,3 +149,15 @@ the `lineup` joint review at the previz gate; `slowmo`/`impact` in the kit;
   experiments: 4–5 s shots for two-character action, hand-off with a `last`
   anchor as well as the frame, and anchor prompts that weight the greybox
   frame over the board.
+- Correction (2026-09-21 morning, user review of the round-2 prompts): the
+  skill's "120–180 words" prompt budget was my extrapolation from community
+  text-to-video guides; fal documents no word limit. The agent obeyed the
+  cap and deleted the designed beat details down to clauses. The budget is
+  gone; the pack is now the user's greybox template (替换句 → 素材映射
+  只参考…不用… → 一句话成片 → 全局设定 → 时间戳分镜 one event per
+  contiguous segment with 景别/构图/按白模路线/材质光影/肢体自然化 → 声音 →
+  重新生成自然的… → 全局锁 last), scaffolded by `prompt-skeleton` in the
+  film's language with every `detail` carried whole, and `generate` warns
+  when a designed detail no longer survives in the pack. The doctrine lives
+  in `skill/references/prompting.md`. Beat details are written in the
+  film's language from the boards stage on.

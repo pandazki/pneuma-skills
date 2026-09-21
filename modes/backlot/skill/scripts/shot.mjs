@@ -922,12 +922,17 @@ function capitalize(word) {
 /**
  * The reference indices a prompt gives a JOB to, in both spellings.
  *
- * An assignment is the tag followed by `=`, `:` or `is` — `@Image2 = the
- * keeper's appearance only`, `@Video1: layout and timing`, `@Audio1 is the
- * keeper's voice`. Merely NAMING a reference is not assigning it: a reference
- * that is attached but never given a job bleeds its own lighting, framing and
- * palette into the shot, which is the failure mode the fal.ai guidance and
- * the community guides both describe.
+ * An assignment is the tag followed by `=`, `:`, `：` or `is` — `@Image2 =
+ * the keeper's appearance only`, `@Video1: layout and timing`, `@Image3：只参
+ * 考脸型与服装`, `@Audio1 is the keeper's voice`. Merely NAMING a reference is
+ * not assigning it: a reference that is attached but never given a job bleeds
+ * its own lighting, framing and palette into the shot, which is the failure
+ * mode the fal.ai guidance and the community guides both describe.
+ *
+ * The FULL-WIDTH colon and equals are here because a pack for a Chinese film
+ * is written in Chinese punctuation — `@Image3：…` is the same assignment as
+ * `@Image3: …`, and reading only the ASCII one would refuse every pack the
+ * skeleton writes for such a film.
  */
 export function promptAssignments(text) {
   const prompt = String(text ?? "");
@@ -935,8 +940,8 @@ export function promptAssignments(text) {
   const collect = (pattern) => {
     for (const match of prompt.matchAll(pattern)) found[match[1].toLowerCase()].add(Number(match[2]));
   };
-  collect(/@(Image|Video|Audio)(\d+)\s*(?:[=:—-]|\s+is\b)/gi);
-  collect(/\[(Image|Video|Audio)(\d+)\]\s*(?:[=:—-]|\s+is\b)/gi);
+  collect(/@(Image|Video|Audio)(\d+)\s*(?:[=:：＝—-]|\s+is\b)/gi);
+  collect(/\[(Image|Video|Audio)(\d+)\]\s*(?:[=:：＝—-]|\s+is\b)/gi);
   return {
     image: [...found.image].sort((a, b) => a - b),
     video: [...found.video].sort((a, b) => a - b),

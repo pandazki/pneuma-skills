@@ -975,6 +975,116 @@ describe("the references a take carries", () => {
   });
 });
 
+/**
+ * The shape of the pack that came back wrong.
+ *
+ * The second acceptance run's packs were structurally right and starved: a
+ * word budget copied out of a text-to-video guide made the agent delete the
+ * designed beats down to clauses. None of this is a refusal — the mode owns
+ * what a take is conditioned on, not how a sentence is phrased — but none of
+ * it is silent either.
+ */
+describe("what a finished pack is warned about", () => {
+  const DETAILS = {
+    establish: "the doorway holds, rain on the glass behind him, nothing moves but the drip off his coat",
+    walk: "four heavy steps across the wet floor, the coat dripping, his eyes fixed on the console the whole way",
+    touch: "his right hand rises slowly and settles flat on the pedestal, the knuckles whitening as he presses",
+    glow: "the camera pushes in slowly from knee height and settles on the pedestal, both hands in frame",
+  };
+
+  /** A shot whose beats carry a designed picture, so a pack can be caught
+   *  having thrown one away. */
+  function designed(cwd: string) {
+    scaffold(cwd);
+    writeFileSync(join(cwd, "beats.json"), JSON.stringify([
+      { ...BEATS[0], detail: DETAILS.establish },
+      { ...BEATS[1], detail: DETAILS.walk },
+      { ...BEATS[2], detail: DETAILS.touch },
+      { ...BEATS[3], kind: "camera", causedBy: undefined, detail: DETAILS.glow },
+    ]));
+    json(cwd, ["beats", "film/shots/lab-walk", "--set", "beats.json"]);
+    fakeRender(cwd, { revision: 1, final: true });
+    for (const check of ["frame-count", "blocking", "pace", "penetration", "framing", "trigger-order", "camera-smooth", "end-hold"]) {
+      json(cwd, ["check", "film/shots/lab-walk", "--id", check, "--status", "pass", "--now", T(1)]);
+    }
+  }
+
+  test("a starved pack is named fault by fault — and the skeleton's own is not", () => {
+    const cwd = workspace();
+    designed(cwd);
+    // What the second acceptance run produced: every beat cut to a clause, a
+    // hole in the clock, two camera moves in one segment, no locks, and an
+    // @Video1 line that says what to take and not what to leave.
+    writePrompt(cwd, [
+      "@Video1: layout and timing.",
+      "0.0–0.5s: wide, he stops in the doorway.",
+      "1.0–4.0s: medium, he walks; the camera pushes in and orbits half a turn.",
+      "4.0–6.0s: close, he presses the button.",
+    ].join("\n"));
+
+    const starved = run(cwd, ["generate", "film/shots/lab-walk", "--estimate"]);
+    expect(starved.code).toBe(0);
+    const warnings = (JSON.parse(starved.out).warnings as string[]).join("\n");
+    expect(warnings).toContain("the timeline leaves 0.5–1 s undirected");
+    expect(warnings).toContain("the timeline stops at 6 s but the clip is 8 s");
+    expect(warnings).toContain("names more than one camera move");
+    expect(warnings).toContain('beat "walk" was designed as');
+    expect(warnings).toContain("a shortened detail is design deleted");
+    expect(warnings).toContain('the camera beat "glow" was designed as');
+    expect(warnings).toContain("no 【全局锁】 / 【Locks】 block");
+    expect(warnings).toContain("says what to take from the greybox but not what to leave");
+    // …and every warning is on stderr too, where the agent reads them.
+    expect(starved.err).toContain("design deleted");
+
+    // The same shot, with the design carried forward: not one of those fires.
+    writePrompt(cwd, [
+      "@Video1: use only the camera move and the paths; do not inherit the grey surfacing or the empty set.",
+      `0.0–0.5s: wide, the door in frame left; ${DETAILS.establish}.`,
+      `0.5–4.5s: medium; ${DETAILS.walk}.`,
+      `4.5–8.0s: close on the pedestal; ${DETAILS.touch}.`,
+      `Camera: one continuous take — ${DETAILS.glow}.`,
+      "【Locks】 add no object and remove none; no on-screen text, no music.",
+    ].join("\n"));
+    const carried = run(cwd, ["generate", "film/shots/lab-walk", "--estimate"]);
+    expect(carried.code).toBe(0);
+    expect(JSON.parse(carried.out).warnings).toEqual([]);
+  });
+
+  test("a pack whose timeline overlaps itself says where", () => {
+    const cwd = workspace();
+    designed(cwd);
+    writePrompt(cwd, [
+      "@Video1: use only the paths and the timing; do not inherit the grey surfacing.",
+      `0.0–4.0s: wide; ${DETAILS.establish}; ${DETAILS.walk}.`,
+      `3.0–8.0s: close; ${DETAILS.touch}.`,
+      `Camera: one continuous take — ${DETAILS.glow}.`,
+      "【Locks】 nothing added, nothing removed.",
+    ].join("\n"));
+
+    const warnings = (JSON.parse(run(cwd, ["generate", "film/shots/lab-walk", "--estimate"]).out).warnings as string[]).join("\n");
+    expect(warnings).toContain("the timeline overlaps at");
+    expect(warnings).toContain("the line before it runs to 4 s");
+    expect(warnings).not.toContain("design deleted");
+  });
+
+  test("a Chinese pack assigns its references with a full-width colon", () => {
+    const cwd = workspace();
+    designed(cwd);
+    // `@Image1：…` is the same assignment as `@Image1: …`; reading only the
+    // ASCII colon would refuse every pack written for a Chinese film.
+    writePrompt(cwd, [
+      "@Video1：只参考运镜、主体轨迹与时机；不要继承灰白材质与空场景。",
+      `0.0–8.0秒：中景，门在画左；${DETAILS.establish}；${DETAILS.walk}；${DETAILS.touch}。`,
+      `运镜总原则：一镜到底——${DETAILS.glow}。`,
+      "【全局锁】不新增不删除物体，不保留白模质感。禁止：字幕、自带 BGM。",
+    ].join("\n"));
+
+    const estimate = run(cwd, ["generate", "film/shots/lab-walk", "--estimate"]);
+    expect(estimate.code).toBe(0);
+    expect(JSON.parse(estimate.out).warnings).toEqual([]);
+  });
+});
+
 describe("take-lines", () => {
   const SPOKEN = JSON.stringify([{ id: "l1", speaker: "kai", kind: "spoken", text: "还开着吗？", at: 1 }]);
 
@@ -1341,6 +1451,13 @@ describe("the hand-off a take is generated with", () => {
 });
 
 describe("prompt-skeleton", () => {
+  /** The order of a v3 pack, top to bottom. The prohibitions are LAST: a
+   *  negative read early is a negative the model has forgotten by the time it
+   *  matters, and the non-negotiables have to be first. */
+  function blockOrder(text: string, marks: string[]) {
+    return marks.map((mark) => text.indexOf(mark));
+  }
+
   test.skipIf(!HAS_FFMPEG)("writes the pack with the indices generate will actually attach", () => {
     const cwd = workspace();
     const env = { ...ttsSeam(cwd), ...imageSeam(cwd) };
@@ -1360,53 +1477,134 @@ describe("prompt-skeleton", () => {
     ])]);
     // A beat with its designed detail: the prompt's timeline is that design,
     // at the greybox's seconds.
+    const WALK_DETAIL = "four heavy steps, the coat dripping onto the floor, his eyes fixed on the console";
+    const GLOW_DETAIL = "the camera pushes in slowly and settles on the pedestal, the blue glow rising over two seconds";
     writeFileSync(join(cwd, "detailed.json"), JSON.stringify([
       ...BEATS.slice(0, 1),
-      { ...BEATS[1], detail: "four heavy steps, coat dripping, eyes on the console" },
+      { ...BEATS[1], detail: WALK_DETAIL },
       BEATS[2],
-      { ...BEATS[3], kind: "camera" },
+      { ...BEATS[3], kind: "camera", detail: GLOW_DETAIL },
     ]));
     json(cwd, ["beats", "film/shots/lab-walk", "--set", "detailed.json"]);
 
     const skeleton = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"], env);
     expect(skeleton.file).toBeNull();
     // Pasted in as it comes — placeholders and all — the skeleton satisfies
-    // every rule `generate` enforces: it assigns every attached reference and
-    // its timeline lies on the shot's clock.
+    // every rule `generate` checks: it assigns every attached reference, its
+    // timeline partitions the shot's clock with no gap and no overlap, it
+    // carries every designed detail, and it locks the greybox out.
     const block = /```prompt\n([\s\S]*?)\n```/.exec(skeleton.skeleton as string)![1];
     writePrompt(cwd, block);
     const asPasted = run(cwd, ["generate", "film/shots/lab-walk", "--estimate"], env);
     expect(asPasted.code).toBe(0);
+    const estimate = JSON.parse(asPasted.out);
+    const complaints = (estimate.warnings as string[]).filter((warning) => !/unfilled skeleton placeholder|does not price/.test(warning));
+    expect(complaints).toEqual([]);
     // …and it says, loudly, that nobody has filled it in yet: the model is
     // sent exactly this text.
     expect(asPasted.err).toContain("unfilled skeleton placeholder");
-    const estimate = JSON.parse(asPasted.out);
     // THE point of the shared planner: the pack and the job cannot name
     // different pictures.
     expect(skeleton.refs).toEqual(estimate.refs);
 
     const text = skeleton.skeleton as string;
-    expect(text).toContain("@Video1 = layout, positions, timing and the single camera move only");
-    expect(text).toContain("@Image1 = the composition of the opening frame (storyboard).");
-    expect(text).toContain("@Image2 = 小凯's appearance only — hold it.");
-    expect(text).toContain("@Image3 = the 便利店's appearance only.");
-    expect(text).toContain("@Audio1 = 小凯's voice.");
-    // The timeline is the beats, in order, with the designed detail where
-    // there is one and a TODO where there is not.
-    expect(text).toContain("Timeline (this shot's own clock, 8.0 s; used in the cut: 0.4–6.0):");
-    expect(text).toContain("Seconds 0.5–3.8: four heavy steps, coat dripping, eyes on the console");
-    expect(text).toContain("Seconds 0.0–0.5: Doorway establishes — <TODO");
-    // A spoken line lands at its second, quoted, with who says it.
-    expect(text).toContain('Seconds 5.2: kai says "还开着吗？"');
-    expect(text.indexOf("Seconds 4.5–5.5")).toBeLessThan(text.indexOf("Seconds 5.2: kai"));
-    // One camera move, the look, the sounds, and the voice-over's place.
-    expect(text).toContain("Camera: Device brightens blue (5.5–7.5 s) — one move only");
-    expect(text).toContain("Look: <TODO");
-    expect(text).toContain("no music.");
-    expect(text).toContain("The voice-over is laid in during the CUT");
-    expect(text).toContain("Exit (last used frame): hand still on the console");
-    expect(text).toContain("~120–180 words");
-    expect(skeleton.budget).toEqual({ minWords: 120, maxWords: 180 });
+    // An English film gets English scaffolding, in the documented order.
+    expect(skeleton.language).toBe("en");
+    const order = blockOrder(text, ["Replace the geometric placeholders", "【References】", "【One-line brief】", "【Global】", "【Timeline】", "Sound: ambience", "Regenerate natural", "【Locks】"]);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(order.every((at) => at >= 0)).toBe(true);
+    // Every reference carries its scope AND its exclusion, at the index
+    // `generate` will attach it to.
+    expect(text).toContain("@Video1: use only the camera move, the framing, the cut points, the subjects' paths, the relative scale and what occludes what; do not inherit the grey surfacing");
+    expect(text).toContain("@Image1: use only the opening composition and the intent of the frame (storyboard) — not its brushwork");
+    expect(text).toContain("@Image2: <TODO: which block — its colour and where it stands at frame 1> in the greybox is 小凯; use only this sheet's face, hair, clothing and accessories — not its background.");
+    expect(text).toContain("@Image3: the set's structure comes from the greybox space; use only this frame's materials, palette and light direction for the 便利店 — not the people in it.");
+    expect(text).toContain("@Audio1: use only 小凯's timbre and pace — not the words in it or the room it was recorded in.");
+    // The clip in one sentence, with the seconds and the aspect it renders at.
+    expect(text).toContain('"First Light" — The researcher wakes the device: render the greybox as a 8 s, 16:9 film in <TODO: the look>');
+    // The camera beat is NOT a timeline line: one move, said once, whole.
+    expect(text).toContain(`Camera: one continuous take, one move and no more — ${GLOW_DETAIL}.`);
+    expect(text).not.toContain(`s: ${GLOW_DETAIL}`);
+    // The timeline is a contiguous partition of the WHOLE clip — the trim is
+    // marked, not cut out, because every second is still rendered.
+    expect(text).toContain("【Timeline】 (locked to the greybox clock: 8 s in total; the cut uses 0.4–6.0 s; the rest is still rendered and still needs directing)");
+    expect(skeleton.segments).toEqual([
+      { from: 0, to: 0.5, beats: ["establish"] },
+      { from: 0.5, to: 4.5, beats: ["walk"] },
+      { from: 4.5, to: 8, beats: ["touch"] },
+    ]);
+    // The designed detail is carried WHOLE, with 景别 + 构图 in front of it.
+    expect(text).toContain(`0.5–4.5s: <TODO: shot size>, <TODO: composition>; ${WALK_DETAIL}; follow the greybox's path and timing;`);
+    expect(text).toContain("0.0–0.5s: <TODO: shot size>, <TODO: composition>; Doorway establishes — <TODO");
+    // A spoken line is quoted at its second, inside the segment that holds it.
+    expect(text).toContain('at 5.2 s kai says "还开着吗？"');
+    // The two clauses a greybox always needs, where the design does not
+    // already supply them.
+    expect(text).toContain("<TODO: how the materials and the light grow in over this segment>");
+    expect(text).toContain("<TODO: how the body becomes natural — real steps and real weight, not a sliding block>");
+    expect(text).toContain("follow the greybox's path and timing");
+    // Sound, the regeneration line, and the locks — last.
+    expect(text).toContain("No music — the score is laid under the whole film in the cut.");
+    expect(text).toContain("The voice-over is not in this take either.");
+    expect(text).toContain("do not carry over block sliding or mechanical swing.");
+    expect(text).toContain("Add no object and remove none; do not change the camera path; keep none of the greybox's grey surfacing.");
+    expect(text).toContain("Only 1 person is in frame: 小凯.");
+    expect(text).toContain("Forbidden: greybox blocks, rigid sliding, plastic skin, face drift, extra people, on-screen text, built-in music, a sudden cut, deformed bodies, coordinate axes, view frustums.");
+    expect(text).toContain("Last frame: hand still on the console");
+    // No word budget — the cap is what deleted the design.
+    expect(text).toContain("**There is no word limit.**");
+    expect(text).not.toContain("120–180");
+    expect(skeleton.budget).toBeUndefined();
+  });
+
+  test("a film written in Chinese gets a Chinese pack", () => {
+    const cwd = workspace();
+    scaffold(cwd);
+    writeFileSync(join(cwd, "film", "screenplay.md"), "# 便利店\n\n凌晨三点，男人推门进来，站在冷柜前。他伸手按下按钮，灯亮了。\n");
+    writeFileSync(join(cwd, "beats.json"), JSON.stringify([
+      { ...BEATS[1], detail: "他走四步到操作台前，外套滴着水，眼睛盯着控制台" },
+      { ...BEATS[3], kind: "camera", causedBy: undefined, detail: "镜头缓慢推近，最后停在控制台上，蓝光在两秒里升起来" },
+    ]));
+    json(cwd, ["beats", "film/shots/lab-walk", "--set", "beats.json"]);
+
+    const skeleton = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]);
+    expect(skeleton.language).toBe("zh");
+    const text = skeleton.skeleton as string;
+    const order = blockOrder(text, ["将 @Video1 中的几何占位体按对应关系替换", "【素材映射】", "【一句话成片】", "【全局设定】", "【时间戳分镜】", "声音：环境声", "重新生成自然的", "【全局锁】"]);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(order.every((at) => at >= 0)).toBe(true);
+    expect(text).toContain("@Video1：只参考运镜、构图、切点、主体轨迹、相对比例与遮挡关系；不要继承灰白材质、空场景、几何体外形与 Viewport 叠加物。");
+    expect(text).toContain("运镜总原则：一镜到底，只有一个运镜动作——镜头缓慢推近，最后停在控制台上，蓝光在两秒里升起来。");
+    expect(text).toContain("0.0–8.0秒：<TODO: 景别>，<TODO: 构图>；他走四步到操作台前，外套滴着水，眼睛盯着控制台；按白模路线与时机；");
+    expect(text).toContain("不要配乐——配乐在成片阶段统一铺。");
+    expect(text).toContain("不新增不删除物体，不改镜头轨迹，不保留白模质感。");
+    expect(text).toContain("禁止：白模方块、刚性滑行、塑料皮肤、变脸、额外人物、字幕、自带 BGM、突然跳切、人物变形、坐标轴、视锥体。");
+  });
+
+  test("more beats than a clip can hold are MERGED, never shortened", () => {
+    const cwd = workspace();
+    scaffold(cwd, ["--seconds", "4"]);
+    // Six designed beats in four seconds: one main event per segment means at
+    // most four, so two merges happen — and every sentence survives them.
+    const details = ["he pushes off the rear foot", "the blade comes up tight to the ribs", "the tip reaches the chest line", "the keeper slides east", "the blades meet, dust hanging", "he lowers the sword to his thigh"];
+    writeFileSync(join(cwd, "beats.json"), JSON.stringify(details.map((detail, index) => ({
+      id: `b${index}`, label: `beat ${index}`, from: index * 0.5, to: index * 0.5 + 0.5, kind: "action", detail,
+    }))));
+    json(cwd, ["beats", "film/shots/lab-walk", "--set", "beats.json"]);
+
+    const skeleton = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]);
+    expect(skeleton.maxSegments).toBe(4);
+    expect(skeleton.merged).toBe(2);
+    expect((skeleton.segments as Array<{ from: number; to: number }>).length).toBe(4);
+    // Contiguous, covering the whole clip, in order.
+    const segments = skeleton.segments as Array<{ from: number; to: number }>;
+    expect(segments[0].from).toBe(0);
+    expect(segments.at(-1)!.to).toBe(4);
+    for (let index = 1; index < segments.length; index += 1) expect(segments[index].from).toBe(segments[index - 1].to);
+    // Every designed sentence is still in the pack: a merge moves boundaries,
+    // it does not delete design.
+    for (const detail of details) expect(skeleton.skeleton as string).toContain(detail);
+    expect((skeleton.warnings as string[]).join(" ")).toContain("merged into 4 timeline segments");
   });
 
   test("--write lands beside prompts.md and never on top of it", () => {
@@ -1434,11 +1632,11 @@ describe("prompt-skeleton", () => {
       "--exit", "hand flat on the counter"]);
 
     const text = json(cwd, ["prompt-skeleton", "film/shots/counter"]).skeleton as string;
-    expect(text).toContain("@Image1 = the last frame of the previous shot (lab-walk): this shot opens exactly here.");
-    expect(text).toContain("Entry (frame 1): mid-stride, weight on the front foot, 1.2 m from the counter");
-    expect(text).toContain("Exit (last used frame): hand flat on the counter");
+    expect(text).toContain("@Image1: use only where everybody stands, which way they face and what is in their hands at the end of the previous shot (lab-walk) — this shot's frame 1 continues from exactly that");
+    expect(text).toContain("First frame: mid-stride, weight on the front foot, 1.2 m from the counter");
+    expect(text).toContain("Last frame: hand flat on the counter");
     // …and a shot with no hand-off leaves the entry open.
-    expect(json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]).skeleton).toContain("Entry (frame 1): <TODO");
+    expect(json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]).skeleton).toContain("First frame: <TODO");
   });
 });
 
@@ -1515,8 +1713,8 @@ describe("anchor and lineup", () => {
     json(cwd, ["anchor", "film/shots/lab-walk", "--id", "last", "--at", "0.9"], env);
 
     const text = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"], env).skeleton as string;
-    expect(text).toContain("@Image1 = the exact composition, camera and look of the opening frame (anchor) — hold it.");
-    expect(text).toContain('@Image5 = the look of this shot at 0.9 s (anchor "last") — hold it.');
+    expect(text).toContain("@Image1: use only the opening framing, the camera, the palette and the overall style — not the exact pose of anybody in it.");
+    expect(text).toContain("@Image5: use only the light, the palette and the surfaces at 0.9 s — not its composition.");
     writePrompt(cwd, /```prompt\n([\s\S]*?)\n```/.exec(text)![1]);
 
     const estimate = json(cwd, ["generate", "film/shots/lab-walk", "--estimate"], env);

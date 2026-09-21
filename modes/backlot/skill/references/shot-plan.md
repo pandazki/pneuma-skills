@@ -111,14 +111,23 @@ The times move with distance and pace. They do not move to make a crowded
 plan fit.
 
 The **detail** column is the film's picture, and it is the column that reaches
-the model: at the takes stage `prompt-skeleton` prints one
-`Seconds a.a–b.b: <detail>` line per beat, in order, and that *is* the prompt's
-timeline. So write it as direction, not as a label — bodies as verbs with
-physical consequences ("dust lifts on the landing"), the wardrobe and the
-material where they read, the expression where the face is legible, and the
-tempo word for the segment ("in a blur", "in slow motion, dust hanging").
-Written here it is cheap and the creator sees it on the shot list; written for
-the first time in `prompts.md` it is a second design nobody approved.
+the model: at the takes stage `prompt-skeleton` carries each one **whole** into
+the prompt's timeline, at that beat's seconds, and that *is* the prompt's
+timeline (`prompting.md`). So write it as direction, not as a label — bodies as
+verbs with physical consequences ("dust lifts on the landing"), the wardrobe
+and the material where they read, the expression where the face is legible
+(not 「很悲伤」 but 「鼻翼一紧、泪在下睑停住」), and the tempo word for the
+segment ("in a blur", "in slow motion, dust hanging"). Written here it is cheap
+and the creator sees it on the shot list; written for the first time in
+`prompts.md` it is a second design nobody approved.
+
+**Length is not a constraint — there is no word budget on the prompt.** Write
+the picture you mean. What *is* constrained is the number of segments the
+prompt can hold: about one per 1–1.5 s of clip (four in a 4 s shot, five in a
+6 s), because one segment must hold one main event. Beats denser than that are
+merged into one segment whose text concatenates their details, so nothing is
+lost — but a shot planned as eight half-second beats will read as four or five
+segments to the model, and it is better to know that here.
 
 ## Beats
 
@@ -154,14 +163,21 @@ An acted-only beat (the hand on the hilt) is still a beat: the viewer draws
 it, the prompt copies its seconds, and `take-motion` is checked against it.
 Labels are what the creator reads on the timeline: short, in their language.
 
-`detail` is optional and is the beat's designed picture, in the **prompt's
-language** (English — the `label` stays short and in the film's language, for
-the rail and the sheet tiles). Write one for **every** beat, the `camera` beat
-included: `prompt-skeleton` turns each beat's `detail` into a timeline line and
-the *first camera beat's* `detail` into the prompt's camera sentence. A beat
-with no `detail` comes back as its label plus a `<TODO>` you have to fill in
-by hand, which is the same work done later and worse. Give a shot **one**
-camera beat: a second one is warned about, because one clip holds one move.
+`detail` is optional and is the beat's designed picture, written in the
+**film's language** — it is carried into the video pack verbatim, and a
+translation step is a place for the design to get shortened (the `label`
+stays short, for the rail and the sheet tiles). Write one for **every** beat, the `camera` beat included:
+`prompt-skeleton` carries each `detail` whole into the timeline and the *first
+camera beat's* `detail` whole into the prompt's 运镜总原则. A beat with no
+`detail` comes back as its label plus a `<TODO>` you fill in by hand, which is
+the same work done later and worse. Give a shot **one** camera beat: a second
+is warned about, because one clip holds one move.
+
+The pack is scaffolded in the film's language, so a `detail` written in that
+language is pasted as it is. If a `detail` was written in another language
+(an older project), translate it **in full, in place** as it is carried across
+— never by shortening: `generate` warns when a designed `detail` no longer
+survives in any timeline line, and that warning is the design being deleted.
 
 When the plan changes, change the beats in the same breath — a timeline the
 viewer draws that the greybox no longer follows is worse than none. The beats

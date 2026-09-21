@@ -910,7 +910,9 @@ Do not write this block from memory — run
     previz.mjs prompt-skeleton <shot-dir> --write
 
 and fill in \`prompts.skeleton.md\`: it carries THIS shot's indices, its beats
-as a time-coded timeline, its lines and its hand-off.
+as a contiguous time-coded timeline, its lines and its hand-off, in the block
+order \`references/prompting.md\` documents. There is no word limit; carry the
+design whole and cut vagueness, not length.
 
 \`\`\`prompt
 ${PROMPT_TEMPLATE_BODY}
@@ -2700,7 +2702,7 @@ function verifySpokenLines(dir, shot, take, now) {
 }
 
 // ---------------------------------------------------------------------------
-// prompt-skeleton — the pack, with this shot's own indices
+// prompt-skeleton — the pack, with this shot's own indices (v3)
 // ---------------------------------------------------------------------------
 
 /** Seconds as a prompt writes them: one decimal for a whole number, so a
@@ -2710,41 +2712,311 @@ function sec(value) {
   return Number.isInteger(n) ? n.toFixed(1) : String(n);
 }
 
-/** The job one attached reference is there to do, in the sentence the model
- *  reads. The ROLE decides it, so the skeleton and `generate` can never
- *  describe the same picture differently. */
-function assignmentFor(ref, shot) {
-  const tag = refTag(ref);
-  const role = String(ref.role ?? "");
-  if (role === "greybox") {
-    return `${tag} = layout, positions, timing and the single camera move only; its grey shapes are placeholders, not the look.`;
+/** A DURATION as a sentence says it: "6 秒", not "6.0 秒". */
+function dur(value) {
+  return String(round4(Number(value)));
+}
+
+const CJK_CHAR = /[㐀-䶿一-鿿぀-ヿ가-힯]/g;
+const LATIN_CHAR = /[A-Za-z]/g;
+
+/**
+ * Chinese or English scaffolding, decided by the FILM and not by a flag.
+ *
+ * Seedance is a ByteDance model and reads Chinese natively; a Chinese film
+ * whose prompt is scaffolded in English makes the creator read a pack in a
+ * language their film is not in. The vote is taken over `screenplay.md` and
+ * `idea.md` — a CJK character carries about as much as three Latin letters,
+ * so that is the weight used — and falls back to the film's title and
+ * logline for a project that has neither file yet.
+ */
+function filmLanguage(projectRoot) {
+  let sample = "";
+  if (projectRoot) {
+    for (const rel of ["screenplay.md", "idea.md"]) {
+      const file = join(projectRoot, rel);
+      if (!existsSync(file)) continue;
+      try { sample += `${readFileSync(file, "utf-8")}\n`; } catch { /* unreadable is not CJK evidence */ }
+    }
+    if (!sample.trim()) {
+      try {
+        const manifest = readManifest(projectRoot);
+        sample = `${manifest.title ?? ""} ${manifest.logline ?? ""}`;
+      } catch { /* no manifest — English is the safe default */ }
+    }
   }
-  if (role === "anchor:first") {
-    return `${tag} = the exact composition, camera and look of the opening frame (anchor) — hold it.`;
+  const cjk = (sample.match(CJK_CHAR) ?? []).length;
+  const latin = (sample.match(LATIN_CHAR) ?? []).length;
+  return cjk > 0 && cjk * 3 >= latin ? "zh" : "en";
+}
+
+/** The aspect ratio Seedance names, nearest to what this shot renders. */
+const SEEDANCE_ASPECTS = [[21, 9], [16, 9], [4, 3], [1, 1], [3, 4], [9, 16]];
+function aspectLabel(spec) {
+  const ratio = Number(spec?.width) / Number(spec?.height);
+  if (!Number.isFinite(ratio) || ratio <= 0) return "16:9";
+  let best = [16, 9];
+  let bestError = Infinity;
+  for (const [w, h] of SEEDANCE_ASPECTS) {
+    const error = Math.abs(Math.log(ratio / (w / h)));
+    if (error < bestError) { bestError = error; best = [w, h]; }
   }
-  if (role.startsWith("anchor:")) {
-    const record = anchorById(shot, role.slice("anchor:".length));
-    return `${tag} = the look of this shot at ${sec(record?.at ?? 0)} s (anchor "${record?.id ?? ref.name}") — hold it.`;
-  }
-  if (role === "board") return `${tag} = the composition of the opening frame (storyboard).`;
-  if (role.startsWith("character:")) return `${tag} = ${ref.name ?? role.slice("character:".length)}'s appearance only — hold it.`;
-  if (role.startsWith("set:")) return `${tag} = the ${ref.name ?? role.slice("set:".length)}'s appearance only.`;
-  if (role === "handoff") {
-    return `${tag} = the last frame of the previous shot (${ref.name ?? shot.continuity?.from ?? "?"}): this shot opens exactly here.`;
-  }
-  if (role.startsWith("voice:")) return `${tag} = ${ref.name ?? role.slice("voice:".length)}'s voice.`;
-  return `${tag} = <TODO: what this reference is for, and nothing else>`;
+  return `${best[0]}:${best[1]}`;
 }
 
 /**
- * The prompt pack v2, built mechanically from the shot.
+ * How many timeline segments a clip of this length may carry.
+ *
+ * One segment, one main event: a segment that walks, changes location and
+ * explodes is a segment the model rushes or drops. At the 4–8 s the mode
+ * works in this is a segment every 1–1.3 s (4 s → 4, 6 s → 5, 8 s → 6), and
+ * it is capped at 7 because past that a long clip loses the identity of its
+ * people and its rhythm — the creator's own number for 30 s is 5–7.
+ */
+function segmentBudget(seconds) {
+  const n = Number(seconds);
+  if (!Number.isFinite(n) || n <= 0) return 1;
+  return Math.max(1, Math.min(7, Math.round(2 + n / 2)));
+}
+
+/**
+ * The beats as a CONTIGUOUS, non-overlapping partition of the whole clip.
+ *
+ * Three rules, each paid for by a take:
+ *
+ * 1. The camera beat is not a segment. It is one move over the whole clip and
+ *    it is said once, in the global block; written per segment it reads as
+ *    several moves and the model resolves that by cutting.
+ * 2. No gaps and no overlaps. Every second of the clip is rendered whether or
+ *    not the pack describes it, so a gap is a second the model invents, and
+ *    an overlap is two instructions for the same second.
+ * 3. Never more than the budget above, and a merge CONCATENATES the designed
+ *    details rather than shortening them — the merge moves boundaries, it
+ *    does not delete design.
+ */
+function planSegments(shot) {
+  const seconds = Number(shot.spec?.seconds) || 0;
+  const clamp = (value) => Math.min(Math.max(round4(Number(value) || 0), 0), seconds);
+  const beats = (shot.beats ?? [])
+    .filter((beat) => beat && beat.kind !== "camera")
+    .map((beat) => ({ ...beat, from: clamp(beat.from), to: clamp(beat.to) }))
+    .sort((a, b) => a.from - b.from || a.to - b.to);
+  const budget = segmentBudget(seconds);
+  if (!beats.length) return { segments: [{ from: 0, to: seconds, beats: [] }], budget, merged: 0, beats: 0 };
+
+  // The partition: each designed beat owns the clock from where it starts to
+  // where the next one starts. A gap between two beats belongs to the earlier
+  // one (something is happening there, and it is that beat settling); an
+  // overlap is cut at the later beat's start.
+  const bounds = [0];
+  for (let index = 1; index < beats.length; index += 1) {
+    bounds.push(Math.min(Math.max(beats[index].from, bounds[index - 1]), seconds));
+  }
+  bounds.push(seconds);
+  let segments = beats.map((beat, index) => ({ from: bounds[index], to: bounds[index + 1], beats: [beat] }));
+
+  const join = (index) => {
+    segments.splice(index, 2, {
+      from: segments[index].from,
+      to: segments[index + 1].to,
+      beats: [...segments[index].beats, ...segments[index + 1].beats],
+    });
+  };
+  // A zero-length segment is two beats sharing a second; the clock cannot
+  // show them apart, so the pack should not pretend it can.
+  for (let index = 0; index + 1 < segments.length;) {
+    if (segments[index].to - segments[index].from < 1e-6) join(index);
+    else index += 1;
+  }
+  const designed = segments.length;
+  while (segments.length > budget) {
+    let at = 0;
+    let span = Infinity;
+    for (let index = 0; index + 1 < segments.length; index += 1) {
+      const combined = segments[index + 1].to - segments[index].from;
+      if (combined < span - 1e-9) { span = combined; at = index; }
+    }
+    join(at);
+  }
+  return { segments, budget, merged: designed - segments.length, beats: beats.length };
+}
+
+/** Does this text already say what the segment's own scaffolding would ask
+ *  for? A designed detail that names the shot size, the light or the body
+ *  does not need a placeholder telling the agent to add one. */
+const SAYS_SHOT_SIZE = /全景|中景|近景|特写|远景|过肩|大景|中全|wide|medium shot|close-?up|long shot|two-?shot|establishing|over-the-shoulder/i;
+const SAYS_LOOK = /材质|质感|光|影|色|布|纱|金属|石|木|尘|烟|雾|texture|material|light|shadow|colou?r|dust|smoke|fabric|cloth|metal|stone|wood|grain|glow/i;
+const SAYS_BODY = /步|走|跑|跳|跃|落|手|臂|腿|膝|肩|指|头|转身|呼吸|表情|眼|脸|姿|站|蹲|step|walk|run|leap|jump|land|hand|arm|leg|knee|shoulder|finger|head|turn|breath|face|eyes|stance|crouch|rise|grip|weight/i;
+/** The camera vocabulary, for the "two moves in one segment" warning. Each
+ *  entry is one MOVE; two of them in one line is the contradiction the model
+ *  resolves by cutting. */
+const CAMERA_MOVES = [
+  /推近|推进|推镜/, /拉远|拉镜/, /摇镜|横摇|摇到/, /平移|横移|移镜/, /跟拍|跟随/, /环绕|绕拍/, /升镜|上升|升起/, /降镜|下降/, /变焦|变形焦|推拉变焦/, /俯拍|仰拍/,
+  /\bdolly\b/i, /\bpan(?:s|ning)?\b/i, /\btilt(?:s|ing)?\b/i, /\btrack(?:s|ing)?\b/i, /\borbit(?:s|ing)?\b/i, /\bcrane\b/i, /\bpush(?:es|ing)? in\b/i, /\bpull(?:s|ing)? (?:out|back)\b/i, /\bzoom(?:s|ing)?\b/i, /\bhandheld\b/i,
+];
+
+/** The shared scaffolding of a v3 pack, in the two languages the mode writes.
+ *  Kept in one table so the Chinese and the English pack can be read against
+ *  each other in one screen — they have to say the same thing. */
+const PACK_TEXT = {
+  zh: {
+    replace:
+      "将 @Video1 中的几何占位体按对应关系替换，严格继承摄影机运动、景别、切镜时间、整体位置、空间关系与运动路径。几何体只表示位置和移动方向，不提供肢体参考。",
+    mapping: "【素材映射】",
+    brief: "【一句话成片】",
+    global: "【全局设定】",
+    timeline: "【时间戳分镜】",
+    locks: "【全局锁】",
+    greybox:
+      "只参考运镜、构图、切点、主体轨迹、相对比例与遮挡关系；不要继承灰白材质、空场景、几何体外形与 Viewport 叠加物。",
+    todoRef: "<TODO: 这一张只提供什么，不提供什么>",
+    firstFrame: "第一帧",
+    lastFrame: "最后一帧",
+    todoEntry: "<TODO: 第一帧上有什么——每个人的位置、朝向、手里的东西、彼此的距离>",
+    todoExit: "<TODO: 最后半秒停在什么状态——下一镜要从这里接>",
+    todoStyle: "<TODO: 风格一句话，例如「写实东方电影感，变形宽银幕，细腻胶片颗粒，浅景深」>",
+    todoStyleShort: "<TODO: 风格>",
+    todoSubject: "<TODO: 这一镜一句话讲什么>",
+    todoLight: "<TODO: 光源方向、时间与色温；白模那层平光不算数>",
+    todoEnd: "<TODO: 这一下运镜停在什么画面上>",
+    todoSize: "<TODO: 景别>",
+    todoFrame: "<TODO: 构图>",
+    todoGrow: "<TODO: 这一段的材质与光影怎么长出来>",
+    todoBody: "<TODO: 肢体怎么自然化——真实的步子与重心，不是滑行>",
+    todoBeat: "<TODO: 这一段发生了什么，写成看得见的动作与后果>",
+    todoRoom: "<TODO: 这一场专属的禁止项，例如多余的武器、道具或动物>",
+    todoActions: "<TODO: 这一镜真正发生的动作，例如「起跳、落地卸力、站定对峙」>",
+    todoAmbience: "<TODO: 两三种这一镜真的会响的环境声>",
+    todoEffects: "<TODO: 这一下该有的音效>",
+  },
+  en: {
+    replace:
+      "Replace the geometric placeholders in @Video1 with the subjects they map to, strictly inheriting the camera move, the shot sizes, the cut points, the overall positions, the spatial relationships and the motion paths. The blocks carry position and direction of travel only; they are not a body reference.",
+    mapping: "【References】",
+    brief: "【One-line brief】",
+    global: "【Global】",
+    timeline: "【Timeline】",
+    locks: "【Locks】",
+    greybox:
+      "use only the camera move, the framing, the cut points, the subjects' paths, the relative scale and what occludes what; do not inherit the grey surfacing, the empty set, the block shapes or any viewport overlay.",
+    todoRef: "<TODO: what this reference is for, and what it is not for>",
+    firstFrame: "First frame",
+    lastFrame: "Last frame",
+    todoEntry: "<TODO: what is on screen in frame 1 — each body's position, facing, what is in their hands, the distance between them>",
+    todoExit: "<TODO: what the last half second settles on — the next shot is cut from here>",
+    todoStyle: "<TODO: the look in one phrase, e.g. \"realistic cinematic, anamorphic widescreen, fine film grain, shallow depth of field\">",
+    todoStyleShort: "<TODO: the look>",
+    todoSubject: "<TODO: what this one shot is about, in one line>",
+    todoLight: "<TODO: the light — direction, time of day, colour temperature; the greybox's flat studio light does not count>",
+    todoEnd: "<TODO: the frame this move settles on>",
+    todoSize: "<TODO: shot size>",
+    todoFrame: "<TODO: composition>",
+    todoGrow: "<TODO: how the materials and the light grow in over this segment>",
+    todoBody: "<TODO: how the body becomes natural — real steps and real weight, not a sliding block>",
+    todoBeat: "<TODO: what happens here, as visible action with a physical consequence>",
+    todoRoom: "<TODO: what this shot in particular must not contain — an extra weapon, prop or animal>",
+    todoActions: "<TODO: the actions this shot really contains, e.g. \"the leap, the landing, the settle\">",
+    todoAmbience: "<TODO: the two or three sounds this shot actually makes>",
+    todoEffects: "<TODO: the effects this moment needs>",
+  },
+};
+
+/** The greybox's own subject names, so a pawn can be named to the model by
+ *  the object it is in the file rather than by a colour nobody wrote down. */
+function greyboxSubjects(dir, shot) {
+  const file = join(dir, shot.greybox?.meta ?? "greybox/scene.meta.json");
+  if (!existsSync(file)) return [];
+  try {
+    const meta = JSON.parse(readFileSync(file, "utf-8"));
+    return Array.isArray(meta?.subjects) ? meta.subjects.map((name) => String(name)) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The job one attached reference is there to do — POSITIVE SCOPE AND EXPLICIT
+ * EXCLUSION, in the sentence the model reads.
+ *
+ * The ROLE decides it, so the skeleton and `generate` can never describe the
+ * same picture differently. Every line starts with the tag and a colon: that
+ * is what `validateReferenceAssignments` reads, and a reference nobody gave a
+ * job to is averaged into the shot with its own light and framing.
+ */
+function assignmentFor(ref, shot, language = "en", context = {}) {
+  const L = PACK_TEXT[language] ?? PACK_TEXT.en;
+  const zh = language === "zh";
+  const tag = refTag(ref);
+  const role = String(ref.role ?? "");
+  const lead = `${tag}${zh ? "：" : ": "}`;
+  if (role === "greybox") return `${lead}${L.greybox}`;
+  if (role === "anchor:first") {
+    return zh
+      ? `${lead}只参考开场的构图、机位、色调与整体画风，不用其中人物的具体姿态。`
+      : `${lead}use only the opening framing, the camera, the palette and the overall style — not the exact pose of anybody in it.`;
+  }
+  if (role.startsWith("anchor:")) {
+    const record = anchorById(shot, role.slice("anchor:".length));
+    const at = sec(record?.at ?? 0);
+    return zh
+      ? `${lead}只参考第 ${at} 秒的光线、色调与质感，不用它的构图。`
+      : `${lead}use only the light, the palette and the surfaces at ${at} s — not its composition.`;
+  }
+  if (role === "board") {
+    return zh
+      ? `${lead}只参考开场构图与画面意图（分镜稿），不用它的笔触与画质。`
+      : `${lead}use only the opening composition and the intent of the frame (storyboard) — not its brushwork or its resolution.`;
+  }
+  if (role.startsWith("character:")) {
+    const id = role.slice("character:".length);
+    const name = ref.name ?? id;
+    const pawn = context.pawns?.[id] ?? null;
+    const block = zh
+      ? (pawn ? `白模中名为「${pawn}」的体块（<TODO: 它的颜色与第 1 帧位置>）就是${name}，` : `白模中的 <TODO: 哪一个体块——颜色与第 1 帧位置> 就是${name}，`)
+      : (pawn ? `the block named "${pawn}" in the greybox (<TODO: its colour and where it stands at frame 1>) is ${name}; ` : `<TODO: which block — its colour and where it stands at frame 1> in the greybox is ${name}; `);
+    return zh
+      ? `${lead}${block}只参考这张的脸型、发型、服装与配饰，不用背景。`
+      : `${lead}${block}use only this sheet's face, hair, clothing and accessories — not its background.`;
+  }
+  if (role.startsWith("set:")) {
+    const name = ref.name ?? role.slice("set:".length);
+    return zh
+      ? `${lead}场景结构以白模空间为准，只参考这张里${name}的材质、色调与光线方向，不用图中人物。`
+      : `${lead}the set's structure comes from the greybox space; use only this frame's materials, palette and light direction for the ${name} — not the people in it.`;
+  }
+  if (role === "handoff") {
+    const from = ref.name ?? shot.continuity?.from ?? "?";
+    return zh
+      ? `${lead}只参考上一镜（${from}）结束时每个人的位置、朝向与手里的东西，本镜第一帧从这里接上，不用它的画质瑕疵。`
+      : `${lead}use only where everybody stands, which way they face and what is in their hands at the end of the previous shot (${from}) — this shot's frame 1 continues from exactly that, not from its compression artefacts.`;
+  }
+  if (role.startsWith("voice:")) {
+    const name = ref.name ?? role.slice("voice:".length);
+    return zh
+      ? `${lead}只参考${name}的音色与语速，不用其中的内容与环境声。`
+      : `${lead}use only ${name}'s timbre and pace — not the words in it or the room it was recorded in.`;
+  }
+  return `${lead}${L.todoRef}`;
+}
+
+/**
+ * The prompt pack v3, built mechanically from the shot.
+ *
+ * The block order is the doctrine in `references/prompting.md`, and it is the
+ * order the creator's own Seedance template uses:
+ *
+ *   the replacement sentence → 【素材映射】 → 【一句话成片】 → 【全局设定】
+ *   → 【时间戳分镜】 → 声音 → the "regenerate naturally" line → 【全局锁】
+ *
+ * Front-loaded because adherence decays with position: what may not be
+ * negotiated (what each reference is for, and that the grey surfacing is not
+ * the look) is first, and the prohibitions are last where a negative belongs.
  *
  * Everything here is already written down somewhere — the references
  * `generate` will attach, the beats and their designed detail, the spoken
- * lines and their seconds, the trim, the hand-off. The agent's judgement goes
- * into the sentences the skeleton leaves open, not into re-deriving the
- * indices. Front-loaded on purpose: adherence decays with position, so the
- * reference assignments and the entry state come first.
+ * lines and their seconds, the trim, the hand-off. **The detail is carried
+ * whole.** There is no word budget: a cap copied from text-to-video guides is
+ * what made the first acceptance run delete the design.
  */
 function buildSkeleton(dir, shot, projectRoot) {
   const greybox = shot.greybox ?? {};
@@ -2756,91 +3028,225 @@ function buildSkeleton(dir, shot, projectRoot) {
   const warnings = [...planned.warnings];
   if (!greybox.final) warnings.push("there is no final greybox yet — @Video1 is the file 'generate' will attach once there is one");
 
-  // The PLAN, not the stripped record: the assignment sentences need the
-  // bible's display names ("小凯's appearance only"), and the record that goes
-  // on a take carries only what the take was conditioned on.
+  const language = filmLanguage(projectRoot);
+  const L = PACK_TEXT[language];
+  const zh = language === "zh";
+  const seconds = Number(shot.spec?.seconds) || 0;
+
+  // The pawn names the greybox actually carries, matched to the bible ids, so
+  // a mapping line can point at a block rather than at a colour nobody wrote
+  // down. What colour that block is, only the picture knows — that stays a
+  // placeholder the agent fills after looking at the frame.
+  const subjects = greyboxSubjects(dir, shot);
+  const pawns = {};
+  for (const id of shot.characters ?? []) {
+    const match = subjects.find((name) => name.toLowerCase() === String(id).toLowerCase())
+      ?? subjects.find((name) => name.toLowerCase().includes(String(id).toLowerCase()));
+    if (match) pawns[id] = match;
+  }
+
   const body = [];
-  for (const ref of planned.plan) body.push(assignmentFor(ref, shot));
+  // 1 — the replacement instruction, before anything else.
+  body.push(L.replace);
   body.push("");
-  body.push("Subject: <TODO: who or what this shot is about, in a few words>");
+
+  // 2 — 【素材映射】: one line per attached reference, in the order and at the
+  // indices `generate` will attach them, each with its scope AND its exclusion.
+  body.push(L.mapping);
+  for (const ref of planned.plan) body.push(assignmentFor(ref, shot, language, { pawns }));
+  body.push("");
+
+  // 3 — 【一句话成片】: the whole clip in one sentence, so the model knows what
+  // it is making before it is told the seconds.
+  const aspect = aspectLabel(shot.spec);
+  let filmTitle = "";
+  if (projectRoot) {
+    try { filmTitle = String(readManifest(projectRoot).title ?? ""); } catch { filmTitle = ""; }
+  }
+  body.push(L.brief);
   body.push(
-    shot.continuity?.entry
-      ? `Entry (frame 1): ${shot.continuity.entry}`
-      : "Entry (frame 1): <TODO: the frame this shot opens on — positions, facing, distance>",
+    zh
+      ? `${filmTitle ? `《${filmTitle}》· ` : ""}${shot.title}：把白模渲染成${L.todoStyleShort}的 ${dur(seconds)} 秒、${aspect} 成片——${L.todoSubject}。`
+      : `${filmTitle ? `"${filmTitle}" — ` : ""}${shot.title}: render the greybox as a ${dur(seconds)} s, ${aspect} film in ${L.todoStyleShort} — ${L.todoSubject}.`,
   );
   body.push("");
 
-  const trim = shot.trim ? `used in the cut: ${sec(shot.trim.in)}–${sec(shot.trim.out)}` : "the whole shot reaches the cut";
-  body.push(`Timeline (this shot's own clock, ${sec(shot.spec.seconds)} s; ${trim}):`);
-  const rows = [
-    ...(shot.beats ?? []).map((beat) => {
-      // A camera beat is marked as one: it shares the clock with the action
-      // but it is not a thing a body does, and the `Camera:` line below names
-      // the same move as the primary one.
-      const lead = beat.kind === "camera" ? "camera — " : "";
-      const open = beat.kind === "camera"
-        ? "<TODO: the move, and the frame it ends on>"
-        : "<TODO: verbs with a physical consequence; a tempo word>";
-      return {
-        at: beat.from,
-        rank: 0,
-        text: `Seconds ${sec(beat.from)}–${sec(beat.to)}: ${lead}${beat.detail ? beat.detail : `${beat.label} — ${open}`}`,
-      };
-    }),
-    ...spokenLines(shot)
-      .filter((line) => line.at != null)
-      .map((line) => ({ at: Number(line.at), rank: 1, text: `Seconds ${sec(line.at)}: ${line.speaker} says "${line.text}"` })),
-  ].sort((a, b) => a.at - b.at || a.rank - b.rank);
-  if (rows.length === 0) {
-    body.push(`Seconds 0.0–${sec(shot.spec.seconds)}: <TODO: load the beats first — previz.mjs beats <shot-dir> --set beats.json>`);
+  // 4 — 【全局设定】: style, light and THE ONE CAMERA MOVE. The camera beat's
+  // designed sentence is carried here in full; it is not a timeline line,
+  // because a move written per segment reads as several moves.
+  const cameraBeats = (shot.beats ?? []).filter((beat) => beat && beat.kind === "camera");
+  const move = cameraBeats[0] ?? null;
+  const cameraSentence = move
+    ? (move.detail
+        ? String(move.detail).trim()
+        : (zh ? `${move.label}（${sec(move.from)}–${sec(move.to)} 秒）——${L.todoEnd}` : `${move.label} (${sec(move.from)}–${sec(move.to)} s) — ${L.todoEnd}`))
+    : L.todoEnd;
+  body.push(L.global);
+  body.push(zh ? `风格：${L.todoStyle}。` : `Style: ${L.todoStyle}.`);
+  body.push(zh ? `光线：${L.todoLight}。` : `Light: ${L.todoLight}.`);
+  body.push(
+    zh
+      ? `运镜总原则：一镜到底，只有一个运镜动作——${cameraSentence}${/[。.!?！？]$/.test(cameraSentence) ? "" : "。"}`
+      : `Camera: one continuous take, one move and no more — ${cameraSentence}${/[.!?]$/.test(cameraSentence) ? "" : "."}`,
+  );
+  body.push(zh
+    ? "镜头轨迹、机位与景别严格照 @Video1，全片不切、不加转场。"
+    : "The camera path, the camera position and the shot sizes are @Video1's exactly; no cut and no transition.");
+  if (cameraBeats.length > 1) {
+    warnings.push(
+      `this shot has ${cameraBeats.length} camera beats (${cameraBeats.map((beat) => beat.id).join(", ")}) — one clip holds ONE move; ` +
+        "the skeleton carries the first and leaves the rest to the cut",
+    );
   }
-  for (const row of rows) body.push(row.text);
   body.push("");
 
-  const cameraBeats = (shot.beats ?? []).filter((beat) => beat.kind === "camera");
-  if (cameraBeats.length) {
-    // The LABEL, not the detail: the move is already written out in the
-    // timeline row above, and ~150 words cannot afford it twice.
-    const move = cameraBeats[0];
-    body.push(`Camera: ${move.label} (${sec(move.from)}–${sec(move.to)} s) — one move only; it ends <TODO: the frame it settles on>.`);
-    if (cameraBeats.length > 1) {
-      warnings.push(
-        `this shot has ${cameraBeats.length} camera beats (${cameraBeats.map((beat) => beat.id).join(", ")}) — one clip holds ONE move; ` +
-          "the skeleton names the first and leaves the rest to the cut",
-      );
+  // 5 — 【时间戳分镜】: a contiguous partition of the whole clip, every segment
+  // one main event, each carrying its designed detail WHOLE.
+  const plan = planSegments(shot);
+  const trim = shot.trim
+    ? (zh ? `成片只用 ${sec(shot.trim.in)}–${sec(shot.trim.out)} 秒，其余秒数照样会生成，也要有交代`
+          : `the cut uses ${sec(shot.trim.in)}–${sec(shot.trim.out)} s; the rest is still rendered and still needs directing`)
+    : (zh ? "整条都进成片" : "the whole clip reaches the cut");
+  body.push(
+    zh
+      ? `${L.timeline}（严格对齐白模秒数：共 ${dur(seconds)} 秒；${trim}）`
+      : `${L.timeline} (locked to the greybox clock: ${dur(seconds)} s in total; ${trim})`,
+  );
+  body.push(`${L.firstFrame}${zh ? "：" : ": "}${shot.continuity?.entry ?? L.todoEntry}`);
+  const spoken = spokenLines(shot).filter((line) => line.at != null);
+  // A second on a boundary belongs to the LATER segment; a second at the very
+  // end of the clip belongs to the last one, which has nowhere to hand it on.
+  const holdsSecond = (segment, at, isLast) =>
+    at >= segment.from - 1e-6 && (at < segment.to - 1e-6 || (isLast && at <= segment.to + 1e-6));
+  for (const [index, segment] of plan.segments.entries()) {
+    const pieces = [];
+    const details = [];
+    for (const beat of segment.beats) {
+      if (beat.detail && String(beat.detail).trim()) details.push(String(beat.detail).trim());
+      else details.push(zh ? `${beat.label}——${L.todoBeat}` : `${beat.label} — ${L.todoBeat}`);
     }
-  } else {
-    body.push("Camera: <TODO: one move only — what it does and where it ends>.");
+    if (!details.length) {
+      details.push(zh
+        ? "<TODO: 先把 beats 装进来——previz.mjs beats <shot-dir> --set beats.json>"
+        : "<TODO: load the beats first — previz.mjs beats <shot-dir> --set beats.json>");
+    }
+    // The sentence-final stop goes: the detail is one clause of a longer line
+    // now, and "…streaming behind.；按白模路线" is not a sentence.
+    const designed = details.map((text) => text.replace(/[。.]+$/, "")).join(zh ? "；" : " ");
+    // 景别 and 构图 are named on every line: v2's lines carried neither, and a
+    // line with no shot size is a line the model frames however it likes.
+    const opening = SAYS_SHOT_SIZE.test(designed) ? L.todoFrame : `${L.todoSize}${zh ? "，" : ", "}${L.todoFrame}`;
+    pieces.push(opening);
+    pieces.push(designed);
+    // The greybox's own two lies, closed per segment: grey surfacing, and a
+    // block that slides instead of walking.
+    const kind = segment.beats[0]?.kind ?? "action";
+    pieces.push(zh
+      ? (kind === "hold" ? "按白模站位" : kind === "trigger" ? "按白模时机" : "按白模路线与时机")
+      : (kind === "hold" ? "hold the greybox's position" : kind === "trigger" ? "at the greybox's moment" : "follow the greybox's path and timing"));
+    if (!SAYS_LOOK.test(designed)) pieces.push(L.todoGrow);
+    if (!SAYS_BODY.test(designed)) pieces.push(L.todoBody);
+    // A line spoken on screen is quoted at its second, inside the segment that
+    // holds that second — the partition stays contiguous.
+    for (const line of spoken) {
+      const at = Number(line.at);
+      if (!holdsSecond(segment, at, index === plan.segments.length - 1)) continue;
+      pieces.push(zh
+        ? `第 ${sec(at)} 秒${line.speaker}开口说："${line.text}"`
+        : `at ${sec(at)} s ${line.speaker} says "${line.text}"`);
+    }
+    body.push(`${sec(segment.from)}–${sec(segment.to)}${zh ? "秒：" : "s: "}${pieces.join(zh ? "；" : "; ")}${zh ? "。" : "."}`);
   }
-  body.push("Look: <TODO: materials, light, time of day, lens feel, palette — the greybox is grey on purpose>.");
+  body.push(`${L.lastFrame}${zh ? "：" : ": "}${shot.continuity?.exit ?? L.todoExit}`);
+  // A detail written in the other language is carried through as it stands —
+  // translating is the agent's call, and the trap is translating by
+  // shortening. Say it once, not once per beat.
+  const details = (shot.beats ?? []).map((beat) => String(beat?.detail ?? "")).join(" ");
+  const detailIsCjk = (details.match(CJK_CHAR) ?? []).length * 3 >= (details.match(LATIN_CHAR) ?? []).length;
+  if (details.trim() && detailIsCjk !== zh) {
+    warnings.push(
+      `this film's pack is scaffolded in ${zh ? "Chinese" : "English"} and the beat details are written in ${detailIsCjk ? "Chinese" : "English"} — ` +
+        "translate each one IN FULL where it sits, keeping every designed picture; shortening a detail to translate it is the design deleted",
+    );
+  }
+  if (plan.merged > 0) {
+    warnings.push(
+      `${plan.beats} designed beats were merged into ${plan.segments.length} timeline segments (a ${dur(seconds)} s clip holds at most ${plan.budget}) — ` +
+        "every detail is still there, only the boundaries moved; one main event per segment is what keeps the model from rushing or dropping one",
+    );
+  }
+  body.push("");
+
+  // 6 — sound. Named sounds, and no score: the cut lays one, and two pieces of
+  // music in one film is a re-shot.
   const voiceOver = (shot.lines ?? []).filter((line) => line && line.kind === "vo");
+  const dialogue = hasSpokenLine(shot)
+    ? (zh ? "见时间戳，由模型在画面里念出" : "as timed above, spoken on screen by the model")
+    : (zh ? "无" : "none");
   body.push(
-    `Audio: named sounds — <TODO: the two or three sounds this shot actually makes>; no music.${
-      voiceOver.length ? " The voice-over is laid in during the CUT, not in this take." : ""
-    }${hasSpokenLine(shot) ? " The dialogue above is spoken on screen, in this take." : ""}`,
+    zh
+      ? `声音：环境声 ${L.todoAmbience}；对白 ${dialogue}；音效 ${L.todoEffects}。不要配乐——配乐在成片阶段统一铺。${voiceOver.length ? "旁白也不在这一条里。" : ""}`
+      : `Sound: ambience ${L.todoAmbience}; dialogue ${dialogue}; effects ${L.todoEffects}. No music — the score is laid under the whole film in the cut.${voiceOver.length ? " The voice-over is not in this take either." : ""}`,
   );
-  if (shot.continuity?.exit) body.push(`Exit (last used frame): ${shot.continuity.exit}`);
+  body.push("");
+
+  // 7 — regenerate the movement rather than transfer it.
+  body.push(
+    zh
+      ? `重新生成自然的${L.todoActions}，不迁移方块滑行或机械摆动。`
+      : `Regenerate natural ${L.todoActions}; do not carry over block sliding or mechanical swing.`,
+  );
+  body.push("");
+
+  // 8 — 【全局锁】, LAST: negatives belong at the end, and this block is what
+  // disinherits the greybox itself.
+  const cast = (shot.characters ?? []).map((id) => {
+    const record = projectRoot ? readBibleRecord(projectRoot, "characters", id) : null;
+    return record?.name || id;
+  });
+  body.push(L.locks);
+  body.push(zh
+    ? "不新增不删除物体，不改镜头轨迹，不保留白模质感。"
+    : "Add no object and remove none; do not change the camera path; keep none of the greybox's grey surfacing.");
+  body.push(zh
+    ? `${cast.length ? `画面里只有 ${cast.length} 个人：${cast.join("、")}；` : ""}${L.todoRoom}。`
+    : `${cast.length ? `Only ${cast.length} ${cast.length === 1 ? "person is" : "people are"} in frame: ${cast.join(", ")}. ` : ""}${L.todoRoom}.`);
+  body.push(zh
+    ? "禁止：白模方块、刚性滑行、塑料皮肤、变脸、额外人物、字幕、自带 BGM、突然跳切、人物变形、坐标轴、视锥体。"
+    : "Forbidden: greybox blocks, rigid sliding, plastic skin, face drift, extra people, on-screen text, built-in music, a sudden cut, deformed bodies, coordinate axes, view frustums.");
 
   const markdown = [
     `# Prompt skeleton — ${shot.title}`,
     "",
     "Written by `previz.mjs prompt-skeleton` from this shot's own record: the",
-    "reference lines below are exactly what `generate` will attach, in the same",
-    "order and at the same indices, and the timeline is this shot's beats on the",
-    "greybox's clock. Fill the block in place, then copy it into the fenced",
-    "prompt block of `prompts.md` — that file is the one `generate` reads.",
+    "reference lines are exactly what `generate` will attach, in the same order",
+    "and at the same indices; the timeline is this shot's beats, whole, on the",
+    "greybox's clock. Fill the `<TODO: …>` slots in place, then copy the block",
+    "into the fenced prompt block of `prompts.md` — that file is the one",
+    "`generate` reads.",
     "",
     "```prompt",
     ...body,
     "```",
     "",
-    `Aim for ~120–180 words inside the block. Adherence decays with position, so`,
-    "the non-negotiables are already first: what each reference is for, then the",
-    "entry state, then the clock.",
+    "**There is no word limit.** Seedance documents none, and the pack has to",
+    "carry the whole designed beat plus everything the greybox cannot show.",
+    "What is capped is vagueness, not length: one main event per segment, one",
+    "camera move for the clip, visible details instead of adjectives, and the",
+    "prohibitions last. See `references/prompting.md`.",
     "",
   ].join("\n");
 
-  return { markdown, body: body.join("\n"), refs: planned.refs, warnings, rows: rows.length };
+  return {
+    markdown,
+    body: body.join("\n"),
+    refs: planned.refs,
+    warnings,
+    language,
+    segments: plan.segments.map((segment) => ({ from: round4(segment.from), to: round4(segment.to), beats: segment.beats.map((beat) => beat.id) })),
+    merged: plan.merged,
+    maxSegments: plan.budget,
+  };
 }
 
 function cmdPromptSkeleton(dir, opts) {
@@ -2863,13 +3269,135 @@ function cmdPromptSkeleton(dir, opts) {
     command: "prompt-skeleton",
     dir,
     file: wrote,
+    language: skeleton.language,
     refs: skeleton.refs,
-    timelineRows: skeleton.rows,
+    segments: skeleton.segments,
+    maxSegments: skeleton.maxSegments,
+    merged: skeleton.merged,
     continuity: shot.continuity ?? null,
-    budget: { minWords: 120, maxWords: 180 },
     warnings: skeleton.warnings,
     skeleton: skeleton.markdown,
   });
+}
+
+// ---------------------------------------------------------------------------
+// What a finished pack is checked for, before a request is paid for
+// ---------------------------------------------------------------------------
+
+/** A v3 timeline line: `0–6秒：…`, `0.0–6.0s: …`, or a moment, `5.2秒：…`.
+ *  `parsePromptTimeline` in `shot.mjs` owns the older `Seconds a–b:` spelling
+ *  and is asked first, so one line is never counted twice. */
+const PACK_RANGE = /^(\d+(?:\.\d+)?)\s*(?:[–—~-]|\.\.|to)\s*(\d+(?:\.\d+)?)\s*(?:秒|s|sec|secs|seconds?)\s*[:：]/i;
+const PACK_MOMENT = /^(\d+(?:\.\d+)?)\s*(?:秒|s|sec|secs|seconds?)\s*[:：]/i;
+
+function parsePackTimeline(text) {
+  const rows = [];
+  for (const raw of String(text ?? "").split(/\r?\n/)) {
+    const legacy = parsePromptTimeline(raw);
+    if (legacy.length) { rows.push(legacy[0]); continue; }
+    const line = raw.trim();
+    const range = PACK_RANGE.exec(line);
+    if (range) { rows.push({ from: Number(range[1]), to: Number(range[2]), line }); continue; }
+    const moment = PACK_MOMENT.exec(line);
+    if (moment) rows.push({ from: Number(moment[1]), to: Number(moment[1]), line });
+  }
+  return rows;
+}
+
+/** Text as coverage can be measured over it: every CJK character is a unit,
+ *  every run of letters or digits is a unit. One rule for both languages,
+ *  because a pack is written in one of them and a beat's detail may still be
+ *  in the other. */
+function packTokens(text) {
+  return String(text ?? "").toLowerCase().match(/[㐀-䶿一-鿿぀-ヿ가-힯]|[a-z0-9]+/g) ?? [];
+}
+
+/** How much of `detail` survives in `line`, 0…1. */
+function detailCoverage(detail, line) {
+  const wanted = new Set(packTokens(detail));
+  if (!wanted.size) return 1;
+  const have = new Set(packTokens(line));
+  let hit = 0;
+  for (const token of wanted) if (have.has(token)) hit += 1;
+  return hit / wanted.size;
+}
+
+/** How many DIFFERENT camera moves one line names. Two is the contradiction
+ *  the model resolves by cutting. */
+function cameraMovesIn(line) {
+  return CAMERA_MOVES.filter((pattern) => pattern.test(line)).length;
+}
+
+/**
+ * Everything worth saying about a finished pack that the reference and
+ * timeline-range checks do not already say. All WARNINGS: the mode owns what
+ * a take is conditioned on, not how a sentence is phrased, and an agent with
+ * a reason to write the pack differently should not have to fight the script
+ * for it. A silent omission, though, is exactly what the first acceptance run
+ * paid for.
+ */
+function packProblems(prompt, shot, timeline) {
+  const problems = [];
+  const text = String(prompt ?? "");
+
+  // The clock, as a partition: a gap is a second nobody directed and the model
+  // fills it; an overlap is two instructions for the same second.
+  for (let index = 1; index < timeline.length; index += 1) {
+    const previous = timeline[index - 1];
+    const row = timeline[index];
+    const where = `"${String(row.line).slice(0, 40)}"`;
+    if (row.from > previous.to + 1e-6) {
+      problems.push(`the timeline leaves ${round4(previous.to)}–${round4(row.from)} s undirected before ${where} — every second is rendered, so a gap is a second the model invents`);
+    } else if (row.from < previous.to - 1e-6 && row.from >= previous.from - 1e-6) {
+      problems.push(`the timeline overlaps at ${where}: the line before it runs to ${round4(previous.to)} s — one second, one instruction`);
+    }
+  }
+  const seconds = Number(shot.spec?.seconds);
+  if (timeline.length && Number.isFinite(seconds)) {
+    const first = timeline[0];
+    const last = timeline[timeline.length - 1];
+    if (first.from > 1e-6) {
+      problems.push(`the timeline starts at ${round4(first.from)} s — seconds 0–${round4(first.from)} are rendered too, and nothing directs them`);
+    }
+    if (last.to < seconds - 1e-6) {
+      problems.push(`the timeline stops at ${round4(last.to)} s but the clip is ${seconds} s — the tail is rendered, and nothing directs it`);
+    }
+  }
+  for (const row of timeline) {
+    if (cameraMovesIn(row.line) > 1) {
+      problems.push(`the timeline line "${String(row.line).slice(0, 40)}" names more than one camera move — one clip holds ONE move, said once in the global block; the model resolves two by cutting`);
+    }
+  }
+
+  // The design, carried forward — or deleted. This is the check the second
+  // acceptance run needed: the beats were designed, and the pack shortened
+  // them into clauses.
+  for (const beat of shot.beats ?? []) {
+    if (!beat || !beat.detail || !String(beat.detail).trim()) continue;
+    const detail = String(beat.detail).trim();
+    if (beat.kind === "camera") {
+      if (detailCoverage(detail, text) < 0.5) {
+        problems.push(`the camera beat "${beat.id}" was designed as "${detail.slice(0, 50)}…" and the pack does not carry it — the move belongs in the global block, whole`);
+      }
+      continue;
+    }
+    const best = timeline.reduce((score, row) => Math.max(score, detailCoverage(detail, row.line)), 0);
+    if (best < 0.5) {
+      problems.push(`beat "${beat.id}" was designed as "${detail.slice(0, 50)}…" and no timeline line carries it — the prompt is the design carried forward, and a shortened detail is design deleted (fix the design with 'beats --set', not by cutting it here)`);
+    }
+  }
+
+  // The two blocks the greybox itself makes necessary.
+  if (!/【全局锁】|【\s*locks\s*】/i.test(text)) {
+    problems.push("the pack has no 【全局锁】 / 【Locks】 block — that is where the greybox is disinherited (no added or removed objects, no changed camera path, none of its grey surfacing) and where the prohibitions belong, last");
+  }
+  // Any line that addresses the greybox may carry the exclusion — the pack
+  // usually says it twice, in the replacement sentence and in the assignment.
+  const videoLines = text.split(/\r?\n/).filter((line) => /@Video1|\[Video1\]/.test(line)).join("\n");
+  if (!/不要|不用|不参考|不继承|不保留|不提供|不复制|不迁移|\bnot\b|\bnever\b|\bno\b|\bexclude/i.test(videoLines)) {
+    problems.push("the @Video1 line says what to take from the greybox but not what to leave — say it excludes the grey material, the empty set, the block shapes and the viewport overlays, or the model paints grey");
+  }
+  return problems;
 }
 
 async function cmdGenerate(dir, opts, now) {
@@ -2933,11 +3461,15 @@ async function cmdGenerate(dir, opts, now) {
   if (prompt.refs?.legacy?.length) {
     note(`WARN: prompts.md still addresses ${prompt.refs.legacy.join(", ")} — Seedance documents @Video1/@Image1/@Audio1; the bracket form is read as the same reference but will stop being accepted`);
   }
-  // A time-coded timeline is the vendor's own advice above ~8 s, and this
-  // mode's beats are already that timeline. Whether it AGREES with the shot's
-  // clock is worth saying; it is not worth refusing a take over.
-  const timeline = parsePromptTimeline(prompt.prompt);
-  const timelineWarnings = timelineProblems(timeline, shot.spec);
+  // A time-coded timeline is the vendor's own advice and this mode's beats
+  // are already that timeline. Whether it AGREES with the shot's clock, its
+  // partition, its design and its camera is worth saying; none of it is worth
+  // refusing a take over — see `packProblems`.
+  const timeline = parsePackTimeline(prompt.prompt);
+  const timelineWarnings = [
+    ...timelineProblems(timeline, shot.spec),
+    ...packProblems(prompt.prompt, shot, timeline),
+  ];
   // A skeleton that was pasted in and not filled would be sent as it is, and
   // paid for. Said out loud rather than refused: the phrase is the skeleton's,
   // not a rule about how a prompt may be written.
@@ -3306,13 +3838,25 @@ stderr. --json is accepted everywhere and is already the default.
       missing is left out and named.
 
   prompt-skeleton <shot-dir> [--write]
-      The prompt pack v2, built from this shot: one assignment line per
-      reference 'generate' WILL attach (same order, same indices), the entry
-      state when the shot continues another, the beats as a time-coded
-      timeline with their designed detail, the spoken lines quoted at their
-      second, the trim, and 'no music'. Prints it in the JSON's 'skeleton'
-      field; --write puts it in prompts.skeleton.md. It NEVER writes
-      prompts.md — copy the filled block in yourself.
+      The prompt pack v3, built from this shot, in the block order
+      'references/prompting.md' documents:
+        the replacement sentence (the greybox's blocks become the subjects,
+        its camera and paths are inherited, its materials are not)
+        【素材映射】 one line per reference 'generate' WILL attach, same
+                     order and indices, each with its scope AND its exclusion
+        【一句话成片】 the clip in one sentence, with its seconds and aspect
+        【全局设定】 style, light, and THE ONE camera move, whole
+        【时间戳分镜】 a contiguous partition of the clip — no gaps, no
+                      overlaps, one main event per segment, each carrying
+                      its beat's designed detail in full
+        声音         named sounds, and no music (the cut lays the score)
+        【全局锁】   last: nothing added or removed, the camera path
+                      unchanged, none of the greybox's grey surfacing
+      Chinese scaffolding for a film written in CJK, English otherwise —
+      read off screenplay.md/idea.md. There is NO word budget. Prints the
+      text in the JSON's 'skeleton' field; --write puts it in
+      prompts.skeleton.md. It NEVER writes prompts.md — copy the filled
+      block in yourself.
 
   sheet <shot-dir> [--lane greybox|preview|reference|take-01] [--at 0.5,3.8,…]
         [--strip from,to] [--count 6] [--out <path.png>]
@@ -3361,10 +3905,16 @@ stderr. --json is accepted everywhere and is already the default.
       address @Video1, every attached reference must be GIVEN A JOB there
       ("@Image2 = the keeper's appearance only"), and a pack that names a
       reference index nothing was attached at is REFUSED before the request
-      ([Video1] is read as @Video1 and warned about). A 'Seconds a–b:'
-      timeline that runs past the shot or goes backwards is warned about,
-      never refused. 'previz.mjs prompt-skeleton' writes the pack with this
-      shot's own indices.
+      ([Video1] is read as @Video1 and warned about; '@Image3：' with a
+      full-width colon assigns exactly like '@Image3:').
+      WARNED about, never refused — read them, they are the shape of a pack
+      that came back wrong before: a timeline that runs past the shot, goes
+      backwards, leaves a gap or overlaps itself; a segment naming two camera
+      moves; a beat whose designed 'detail' no timeline line carries any
+      more; a missing 【全局锁】/【Locks】 block; an @Video1 line that says
+      what to take from the greybox but not what to leave.
+      'previz.mjs prompt-skeleton' writes the pack with this shot's own
+      indices and none of those faults.
       A shot that declares continuity refuses while the shot it continues has
       no selected take; --no-handoff generates without that frame and records
       "skipped" on the take.

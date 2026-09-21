@@ -1,0 +1,311 @@
+# Writing the prompt
+
+Stage 6, per shot, and the most important page in this skill. The greybox is
+accepted, the anchor is approved, the bible exists — and now one block of text
+decides whether the paid take is the film you designed or a different one.
+
+**The prompt is not composed here. It is the design, carried forward.** Every
+beat's picture was written at the boards stage into its `detail`
+(`shot-plan.md`), before any Blender file existed. `prompt-skeleton` turns
+those into the pack; you add only what the beats cannot carry. Arriving at this
+stage with an empty `prompts.md` and inventing the shot again is how a take
+stops matching the film the creator approved.
+
+```bash
+node {SKILL_PATH}/scripts/previz.mjs prompt-skeleton <shot-dir> --write
+```
+
+Three things meet in the block, and the split is what makes it work:
+
+| what says it | where it comes from |
+|---|---|
+| space, blocking, prop events, timing, the one camera move | the greybox (`@Video1`) |
+| who these people are, what this place looks like | the bible, the board, the anchor (`@Image…`) |
+| bodies, faces, materials, light, tempo — everything grey cannot show | **the words** |
+
+## There is no word limit
+
+fal's own Seedance guide documents none. The earlier version of this page
+imposed "120–180 words", extrapolated from community text-to-video guides, and
+the second acceptance run paid for it: the agent obeyed the cap, deleted the
+designed beat `detail`s down to short clauses, and collapsed eight reference
+roles into `@Image2 = storyboard intent`. The pack was structurally perfect and
+starved.
+
+**Never cap the timeline. Cap vagueness.** The pack carries the whole designed
+beat plus everything the greybox cannot show, and what gets cut is adjectives,
+repetition and mood words — never a designed picture. Position still matters:
+adherence decays down the block, so the non-negotiables are first and the
+prohibitions are last.
+
+## Visible details, not adjectives
+
+> 写看得见的细节：不是「很悲伤」，而是「鼻翼一紧、泪在下睑停住」。
+
+That is the whole rule. "Sad", "tense", "atmospheric", "cinematic" and "epic"
+are the words that produce the generic average of everything; a nose wing
+tightening and a tear held on the lower lid are a picture the model can paint.
+Bodies as verbs with physical consequences — *dust lifts on the landing*, *the
+coat snaps round on the turn* — never *he moves dramatically*.
+
+## The template
+
+The order below is what `prompt-skeleton` emits, and the fenced `prompt` block
+in `prompts.md` is expected to be in it. It is the creator's own Seedance
+template, merged with what a **greybox** reference-to-video job needs on top.
+
+````markdown
+```prompt
+将 @Video1 中的几何占位体按对应关系替换，严格继承摄影机运动、景别、切镜时间、
+整体位置、空间关系与运动路径。几何体只表示位置和移动方向，不提供肢体参考。
+
+【素材映射】
+@Video1：只参考运镜、构图、切点、主体轨迹、相对比例与遮挡关系；
+不要继承灰白材质、空场景、几何体外形与 Viewport 叠加物。
+@ImageN：白模中名为「…」的体块（颜色 / 第 1 帧位置）就是<角色>，
+只参考这张的脸型、发型、服装与配饰，不用背景。
+@ImageM：场景结构以白模空间为准，只参考这张里<地点>的材质、色调与光线方向，不用图中人物。
+…（每一个附上的引用一行，都要「只参考…，不用…」）
+
+【一句话成片】
+《片名》· <本镜标题>：把白模渲染成<风格>的 N 秒、<画幅>成片——<这一镜一句话讲什么>。
+
+【全局设定】
+风格：<画面质感、镜头、颗粒、景深>。
+光线：<光源方向、时间、色温>。
+运镜总原则：一镜到底，只有一个运镜动作——<这一个运镜，和它停在哪>。
+镜头轨迹、机位与景别严格照 @Video1，全片不切、不加转场。
+
+【时间戳分镜】（严格对齐白模秒数：共 N 秒）
+第一帧：<每个人的位置、朝向、手里的东西、彼此的距离>
+a–b秒：景别，构图；<这一段设计好的画面>；按白模路线与时机；
+       <材质与光影怎么长出来>；<肢体怎么自然化>。
+b–c秒：……
+最后一帧：<最后半秒停在什么状态>
+
+声音：环境声 …；对白 …；音效 …。不要配乐——配乐在成片阶段统一铺。
+
+重新生成自然的<这一镜真正发生的动作>，不迁移方块滑行或机械摆动。
+
+【全局锁】
+不新增不删除物体，不改镜头轨迹，不保留白模质感。
+画面里只有 N 个人：…；<这一场专属的禁止项>。
+禁止：白模方块、刚性滑行、塑料皮肤、变脸、额外人物、字幕、自带 BGM、
+突然跳切、人物变形、坐标轴、视锥体。
+```
+````
+
+**The pack is written in the film's language.** `prompt-skeleton` scaffolds in
+Chinese for a film whose `screenplay.md` is CJK and in English otherwise
+(`【References】`, `【One-line brief】`, `【Global】`, `【Timeline】`,
+`【Locks】`). Seedance is a ByteDance model and reads Chinese natively. The
+reference tags stay `@Video1 / @Image1 / @Audio1` in both — that is what fal
+documents and what `seedance-video.mjs` sends; do not write `@图片1`. Beat
+`detail`s are written in the film's language at the boards stage for exactly
+this reason — they paste in whole. A `detail` that is in another language
+(an older project) is translated **in full, in place**; translating by
+shortening is the design deleted.
+
+### Why each block is there
+
+| block | it exists because |
+|---|---|
+| the replacement sentence | the job is not "make a video like this" but "these grey blocks *are* those people, and this camera is the camera". Said first, before the model has decided anything |
+| 【素材映射】 | a reference nobody gave a job to is not ignored — it is averaged in, and it brings its own light, framing and palette. Each line needs a **positive scope and an explicit exclusion**: 只参考…，不用…. `generate` refuses a pack that leaves an attached reference unassigned |
+| the `@Video1` exclusion | the greybox's grey material, empty set and viewport overlays are inherited unless they are explicitly disinherited. Unassigned, its flat studio light becomes the look of the take |
+| 【一句话成片】 | the model is told what it is making before it is told the seconds. Length and aspect belong here because they frame everything after |
+| 【全局设定】 | style and light are global, not per second; and the **one** camera move is said here, once — with its end state, or `locked-off / 机位固定` in so many words when the camera does not move at all |
+| 【时间戳分镜】 | above a few seconds the vendor's own advice is a timeline, and this mode's beats already are one, on the greybox's clock |
+| 声音 | Seedance scores an open prompt by default, and the cut lays its own score: two pieces of music in one film is a re-shot |
+| 重新生成自然的… | the sentence that tells the model to *re-animate* rather than transfer the block's rigid motion |
+| 【全局锁】 | negatives go last, where they are still in the model's attention when it renders. This is also where the greybox itself is locked out |
+
+## The timeline, in detail
+
+Six rules, each of which cost a take:
+
+1. **One main event per segment.** 一段里又走路、又换景、又爆炸，模型会赶戏或漏戏。
+2. **Contiguous, no gaps, no overlaps.** `0–4秒 / 4–9秒 / 9–15秒`. Every second
+   of the clip is rendered whether or not the pack mentions it, so a gap is a
+   second the model invents and an overlap is two instructions for one second.
+3. **Density.** About one segment per 1–1.5 s for the short clips this mode
+   works in — at most 4 in a 4 s shot, 5 in a 6 s shot, 6 in an 8 s — and never
+   more than 7 for any clip (30 秒建议 5–7 段；再密，后半段容易崩身份或节奏).
+   When the beats are denser than that, `prompt-skeleton` **merges adjacent
+   beats into one segment and concatenates their details**: the merge moves
+   boundaries, it never deletes a sentence.
+4. **景别 + 构图 first, then the action.** `景别 + 构图 + 主体动作 + 关键细节`.
+   A line with no shot size is a line the model frames however it likes — the
+   v2 lines carried neither, and the takes reframed themselves. The camera
+   *move* is not repeated per segment (it is in 运镜总原则); if a segment must
+   mention it, one move only — 同一段不要互相打架.
+5. **按白模路线 / 站位 / 轨迹.** Say, in the segment, that the path, the
+   position and the timing are the greybox's. The blocks give the *where* and
+   the *when*; the sentence keeps the model from re-choreographing them.
+6. **The two clauses a greybox always needs**, per segment:
+   - **材质与光影怎么长出来** — the grey has to become stone, cloth, skin and
+     dusk light *at that second*, or the model keeps the grey. This is also
+     where every grey object is named for what it **is**: "the box in front of
+     him is a slim control pedestal", "the low slab is a stone dais".
+   - **肢体如何自然化** — 真实奔跑与重心前倾，不是滑行. This is the clause
+     that prevents block-sliding: the pawn has no legs, so unless the words
+     ask for real steps and real weight, the model transfers the rigid slide.
+
+A spoken line is quoted verbatim inside the segment that holds its second,
+with its speaker; `take-lines` compares the transcript against exactly those
+words. `第一帧` and `最后一帧` carry the shot's entry and exit states
+(`shot-plan.md`) — they are what makes a hand-off usable and what stops the
+model drifting past the end of the move.
+
+## What the script does for you, and what it warns about
+
+`prompt-skeleton` writes the whole block above already filled with everything
+the record knows: the assignment lines at the indices `generate` will actually
+attach, the one-line brief with the shot's real seconds and aspect, the camera
+beat's designed sentence, the contiguous timeline with every `detail` **whole**,
+the spoken lines at their seconds, the entry and exit, the locks. It prints the
+text in the JSON's `skeleton` field and `--write` puts it in
+`prompts.skeleton.md` — deliberately not `prompts.md`, which is yours.
+
+What is left for you is only what the beats cannot carry: the style phrase, the
+light, the shot size and composition per segment, how the materials grow in,
+how the body becomes a body, the named sounds, the shot's own prohibitions.
+
+`generate` then **refuses** a pack that has no fenced `prompt` block, never
+addresses `@Video1`, names an index nothing was attached at, or leaves an
+attached reference without a job. Everything else it **warns** about and sends
+— the mode owns what a take is conditioned on, not how a sentence is phrased.
+Read the warnings; each one is a take that came back wrong once:
+
+- a timeline line that runs past the shot, goes backwards, leaves a gap, or
+  overlaps the line before it;
+- a segment that names more than one camera move;
+- **a beat whose designed `detail` no timeline line carries any more** — the
+  starvation check. If the detail was wrong, fix it with `beats --set` so the
+  viewer, the greybox and the take keep saying the same thing; do not quietly
+  rewrite it in the prompt;
+- a missing 【全局锁】/【Locks】 block, or an `@Video1` line that says what to
+  take from the greybox but not what to leave;
+- an unfilled `<TODO: …>` placeholder — the model is sent exactly this text.
+
+## A worked example — the courtyard duel
+
+`s02-landing` of the seed film: 6 s, 16:9, eight references (the greybox, six
+stills and a voice), a hand-off from `s01-arrival`, five designed beats and one
+dolly zoom. Nothing here is invented at this stage; every timeline sentence is
+that beat's `detail`, carried whole.
+
+````markdown
+```prompt
+将 @Video1 中的几何占位体按对应关系替换，严格继承摄影机运动、景别、切镜时间、整体位置、空间关系与运动路径。几何体只表示位置和移动方向，不提供肢体参考。
+
+【素材映射】
+@Video1：只参考运镜、构图、切点、主体轨迹、相对比例与遮挡关系；不要继承灰白材质、空场景、几何体外形与 Viewport 叠加物。
+@Image1：只参考开场的构图、机位、色调与整体画风，不用其中人物的具体姿态。
+@Image2：只参考开场构图与画面意图（分镜稿），不用它的笔触与画质。
+@Image3：白模中名为「keeper」的体块（乳白色，画右石台中央、面朝北）就是守剑人，只参考这张的脸型、发型、服装与配饰，不用背景。
+@Image4：白模中名为「challenger」的体块（青灰色，第 1 帧在画左北面高台上）就是挑战者，只参考这张的脸型、发型、服装与配饰，不用背景。
+@Image5：场景结构以白模空间为准，只参考这张里山中古寺庭院的青石、朱红旗幡与暮色光线方向，不用图中人物。
+@Image6：只参考第 5.5 秒的光线、色调与质感，不用它的构图。
+@Image7：只参考上一镜（s01-arrival）结束时每个人的位置、朝向与手里的剑，本镜第一帧从这里接上，不用它的画质瑕疵。
+@Audio1：只参考守剑人的音色与语速，不用其中的内容与环境声。
+
+【一句话成片】
+《一寸止风》· 跃下入局：把白模渲染成写实东方武侠、厚涂三维动画质感的 6 秒、16:9 成片——挑战者从北面高台一跃而下，落地卸力站稳，与守剑人隔三米对峙。
+
+【全局设定】
+风格：写实东方武侠，厚涂三维动画电影质感，细腻胶片颗粒，浅景深；不是照片。
+光线：暮色，西侧低角度暖光侧逆，长影铺在青石上，空气里有浮尘。
+运镜总原则：一镜到底，只有一个运镜动作——落地之后一次 dolly zoom，人在画面里的大小保持不变，背景被压近，最后停住不动。
+镜头轨迹、机位与景别严格照 @Video1，全片不切、不加转场。
+
+【时间戳分镜】（严格对齐白模秒数：共 6 秒；整条都进成片）
+第一帧：挑战者在画左北面平台（0,8.4,1.2），面朝南，双膝压低，右手剑收在胯后；守剑人在画右（0,0,0.15），面朝北，右手剑下垂；两人未接触。
+0.0–1.25秒：中全景，石阶自画左上斜切下来；挑战者猛地蹬开压紧的双膝，向南跃出平台，目光锁死前方，马尾与红绦被风拉直在身后；按白模路线与时机；青石与衣料在暖侧光里显出真实质感，跃起时衣摆背光透出薄红；真实的蹬地、腾空与身体前倾，不是方块平移。
+1.25–1.5秒：中景，人压在画面下三分之一；常速下他的鞋底在第 1.25 秒踏上北侧石台，双膝深压吃住冲力，接触之后才扬起一团紧实的尘，牙关咬住；按白模时机；尘在逆光里发亮，石面被踩出细碎的灰；落地是真实的屈膝卸力，不是硬着陆停格。
+1.5–2.5秒：中景，人居画面中线偏左；他从落地的深蹲里从容起身，压下剑锋，双脚站定；外袍先冲过头再回落，目光始终没有移开；按白模路线与时机；衣料的重量在回落里看得见，暖光扫过肩线；起身是一节一节的真实发力，不是整体上移。
+2.5–5.5秒：中近景，人始终占同样大小，背景被压近；保持他挺直的上身与专注的神情不动，背后的庭院在透视里压过来；浮尘落定，红绦失去惯性；按白模站位；暮色继续沉，石面与旗幡的颜色被压到更深的暖褐；身体只有呼吸的起伏与衣料的余动，不是完全凝固的塑像。
+5.5–6.0秒：中近景，两人三米相隔，守剑人在画右边缘；保持站定的姿态，剑尖朝下，呼吸受控，不多走一步、不起攻势；按白模站位；最后半秒光线与尘都稳住；重心沉在双脚之间，肩线放松而不松垮。
+最后一帧：挑战者在（0,3,0.15）面朝南，落地后站直，右手剑下垂，双脚踏实；守剑人在（0,0,0.15）面朝北，剑下垂；相隔三米，尘已落定，两人未接触。
+
+声音：环境声 山风、远处旗幡的布声；对白 无；音效 鞋底擦石、落地闷响、衣料摆动。不要配乐——配乐在成片阶段统一铺。
+
+重新生成自然的起跳、腾空、落地卸力与站定，不迁移方块滑行或机械摆动。
+
+【全局锁】
+不新增不删除物体，不改镜头轨迹，不保留白模质感。
+画面里只有 2 个人：守剑人、挑战者；每人只有一把直剑，不出现第二件兵器、弓箭、动物或路人。
+禁止：白模方块、刚性滑行、塑料皮肤、变脸、额外人物、字幕、自带 BGM、突然跳切、人物变形、坐标轴、视锥体。
+```
+````
+
+Five segments for six seconds — the density rule — each one main event, the
+clock covered end to end with no gap, every `detail` whole, one camera move
+named once, and the prohibitions last.
+
+## A second genre — the creator's own rooftop example
+
+The same template on a modern action shot, 18 s, crude blocks and three
+pursuers. It is worth reading because it shows how little the shape changes
+between genres, and how blunt the body clauses are allowed to be:
+
+```text
+将 @Video1 中的几何占位体按对应关系替换，严格继承摄影机运动、景别、切镜时间、整体位置、空间关系与抛物线路径。几何体只表示位置和移动方向，不提供肢体参考。
+
+【映射】
+浅青长方体 = 女主，外观严格参考 @Image1（脸、发型、红夹克、靴）。
+三个深灰长方体 = 三名男性特工，外观参考 @Image2。
+场景结构参考白模空间，视觉质感参考 @Image3 的夜东京天台。
+
+生成 18 秒、16:9 电影级都市奇幻动作：女主踹门冲上高楼露台，被三名特工逼到楼沿后纵身跃下。
+
+0–4秒：女主按白模路线踹开天台门，真实奔跑与重心前倾，不是滑行。
+4–9秒：三名特工按白模站位追入，女主急停、探身张望，衣摆与头发有惯性。
+9–13秒：她按白模起跳轨迹跃出楼沿，镜头沿白模下坠路径跟随。
+13–18秒：下坠中振翅展开（按白模体块放大方向），特工停在楼沿。
+
+重新生成自然的奔跑、急停、起跳、振翅，不迁移方块滑行或机械摆动。
+禁止：白模方块、刚性滑行、塑料皮肤、变脸、额外人物、枪械、字幕、BGM。
+```
+
+Four segments for 18 s — coarser than ours, because the events are coarser —
+each naming the greybox as the authority for its own layer (路线 / 站位 /
+轨迹 / 下坠路径) and then asking for the body to be re-animated.
+
+## Cautions the trials paid for
+
+- **A word budget copied from text-to-video guides made the agent delete the
+  design.** Second acceptance run, 2026-09-21: the packs were structurally
+  right and starved, because this page told the agent to fit 120–180 words.
+  **Never cap the timeline; cap only vagueness.** If a pack feels too long,
+  the thing to remove is an adjective, never a designed beat — and if it is
+  genuinely too much to happen in one clip, the shot is two shots.
+- **Two pawns are two costumes waiting to be swapped.** Name which block is
+  which character, by colour and by frame-1 position, in the mapping line, and
+  repeat the identity when you describe an action ("青灰色的挑战者上步"). Without
+  it the model reassigns them, sometimes mid-shot.
+- **The camera cuts when you contradict it.** Both packs of the first
+  acceptance run described more than one camera behaviour ("orbits … and pushes
+  in") and the model resolved it the way an editor would — by cutting. One
+  primary move, its end state, and `一镜到底 / one continuous shot, no cut`
+  next to the camera sentence, not at the bottom.
+- **A dark look hides the cause.** In a night interior the model will render
+  the reach and the door in shadow, and then nobody can see that cause came
+  before effect. Say the action stays readable *before* the light event.
+- **A light that "comes on" snaps.** Give the ramp in words and seconds ("the
+  glow rises slowly over two seconds"), and say what the object looks like
+  before it.
+- **Tempo is named per segment**, never as a bare "fast": *"the lunge in a
+  blur, then the blades meet in slow motion, dust hanging"*. Tempo is built in
+  the greybox (`slowmo`, `impact` — `camera.md`) and described here.
+- **Fast action: the greybox owns the timing, the prompt owns the technique.**
+  `dash` fixes when the leap leaves the ground and lands; the prompt says what
+  kind of movement it is, with its second — the sword form, the stance, which
+  hand, whether the blade is drawn.
+- **The likeness filter reads photoreal faces as real people.** A 422 from fal
+  is almost always a reference image, not the prompt: keep sheets and board
+  frames in an illustrated or 3D-animation idiom (`bible.md`) and regenerate
+  the offending one rather than resubmitting the same pack.
+- **More references is not more control.** Every attached still is averaged in;
+  eight with clear, exclusive roles beat twelve with vague ones. `generate`
+  attaches what the shot's record says it has — trim the record, not the pack.

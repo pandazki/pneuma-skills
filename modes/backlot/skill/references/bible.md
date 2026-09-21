@@ -133,8 +133,8 @@ node {SKILL_PATH}/scripts/backlot.mjs character voice <project> challenger \
   another is immediately audible.
 - **The sample sentence should be in the character's language and about four
   seconds** (roughly ten to twelve words). Four seconds is long enough for a
-  timbre to be recognisable and short enough to attach to a take as an
-  `@Audio` reference without eating the prompt's budget. A sentence from the
+  timbre to be recognisable and short enough that the model reads it as a
+  voice sample rather than as a line to perform. A sentence from the
   screenplay is ideal — the creator hears the character, not a test phrase.
 - The measured length and the cost are recorded for you; play the file before
   you show it to the creator.

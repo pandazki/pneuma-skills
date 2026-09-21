@@ -4,6 +4,11 @@ Stage 6, per shot. The greybox is accepted, its **anchor frame** was approved
 beside it at the previz gate (`greybox.md`), the board frame and the bible
 exist, and now one paid call turns all of it into a take.
 
+**How the prompt itself is written lives in `prompting.md`** — the template,
+its block order, the timeline rules and two worked examples. This page is the
+machinery around it: what the model accepts, what it costs, who may spend, what
+`generate` attaches and checks, and what to do with the clip that comes back.
+
 ## Match the capability, do not guess it
 
 A model's name says nothing about what it accepts. Before planning a take,
@@ -109,223 +114,63 @@ Three consequences worth internalising:
    framing and palette with it. The greybox is the worst offender: unassigned,
    its flat grey studio light becomes the look of the take.
 
-## The prompt pack — `prompts.md` (v2)
+## The prompt pack — `prompts.md`
 
 The greybox already says *where*, *when* and *from which camera*, and the
 references already say *who* and *what they look like*. The greybox
 deliberately says nothing about bodies: its people are pawns. The prompt is
 the only place a walk, a reach, a sword form, a turn of the head, an
-expression or a **tempo** exists — so the prompt is a screenplay for the body
-as much as a look.
+expression or a **tempo** exists.
 
-**This is version 2 of the pack**, rewritten 2026-09-21 from fal.ai's own
-Seedance prompting guide, the community guides, and our first acceptance run.
-The v1 packs were ~250 words of well-meaning prose, and two of them came back
-having cut to a new angle halfway through. Two facts explain most of it:
-**adherence decays with position** — what must not be negotiated goes first —
-and **every attached reference is used whether or not you explained it**.
-
-### The skeleton, in this order
-
-1. **Reference assignments** — one clause per attached index, naming the job
-   *and its limits*: `@Video1 = layout, positions, timing and the camera move
-   only — its grey shapes are placeholders, not the look. @Image1 = this
-   shot's composition and look; match it. @Image2 = the board's framing.
-   @Image3 = the challenger's appearance, hold it. @Audio1 = the keeper's
-   voice.` Keep each to a clause so the subject still arrives in the opening
-   lines. `generate` refuses a pack that leaves an attached reference
-   unassigned.
-2. **Subject and motion** — the sentence the whole clip is about, first:
-   *"Two swordsmen fight on a cracked stone terrace at dusk."* Then which pawn
-   is who, by colour and by sheet (`greybox.md`): a model that is not told
-   assigns the two costumes at random and sometimes swaps them mid-shot.
-3. **Entry state** — only when the shot has a `continuity` block: the first
-   half-second in the same words the plan used, in or straight after the
-   subject sentence, before any timeline line. See `shot-plan.md`.
-4. **Time-coded timeline** — one `Seconds a.a–b.b: …` line per beat, its
-   ranges copied from the registered beats (the greybox clock, after any
-   `slowmo` — `camera.md`) and **its words copied from each beat's `detail`,
-   written back at the boards stage**. You are not composing this at the takes
-   stage; you are carrying the designed picture forward (`shot-plan.md`). What
-   a good `detail` reads like: bodies as verbs with physical consequences
-   (*"dust lifts on the landing"*, *"the coat snaps round on the turn"*, never
-   *"he moves dramatically"*), `never gliding` where somebody walks — the pawn
-   glides, and that phrase is what turns it into steps — and the tempo named
-   *per segment*: *"the lunge in a blur, then the blades meet in slow motion,
-   dust hanging."* A spoken line is quoted verbatim on the line of the second
-   it lands, with its speaker and its `@Audio` index; `take-lines` compares
-   the transcript against those exact words. A paragraph is acceptable only
-   for a single-beat clip under about 5 s; anything longer gets the timeline.
-5. **Camera — one move, with its end state.** Exactly one primary move per
-   clip, its speed, and where it ends (*"ending on a wide two-shot with both
-   fighters fully in frame"*). When the camera does not move, say
-   `locked-off`; when it must not cut, say `one continuous shot, no cut`.
-   Stacked moves are what made the model change direction — and then angle —
-   mid-clip. A whip, a snap-zoom or a second angle is **another shot**
-   (`camera.md`).
-6. **Look** — materials, colour, light, era, and the rendering idiom the
-   bible and the boards were drawn in, so the references agree with the words.
-   Translate every grey object into what it *is* ("the box in front of the
-   person is a slim control pedestal"). Named, concrete visual facts only:
-   "atmospheric", "cinematic" and "epic" are the words that produce the
-   generic average of everything.
-7. **Audio** — name the sounds you want (*"blade ring, boots on stone, cloth"*)
-   and write **`no music`**. Seedance scores an open prompt by default, and the
-   cut lays its own score under the film; two pieces of music in one film is a
-   re-shot. Voice-over is never asked for here — it is added in the cut.
-8. **Exit state** — the last half second, in the same grammar as the entry.
-   It is what makes the frame the *next* shot hands off from usable, and it
-   stops the model from drifting past the end of the move.
-9. **Guardrails, affirmatively.** *"Two fighters only, whole limbs, no
-   on-screen text."* Say what must be true rather than listing what must not
-   happen; Seedance has no negative-prompt field, so a negative is just a
-   sentence and an affirmative one reads better. Keep the list to the few
-   doors this model actually walks through: an extra person, an invented cut,
-   a caption, a camera that keeps pushing.
-
-### The prompt is not written here — it is the design, carried forward
-
-**Think out the shots and the pictures first, build the greybox from them, and
-then hand the video model the designed picture plus what the greybox cannot
-express plus the bible.** That is the order this mode exists to enforce, and
-the prompt is where the three meet. By the time you reach this stage the
-picture of every beat already exists: it was written at the boards stage, into
-each beat's `detail` (`shot-plan.md`), *before* any Blender file. Arriving here
-with an empty `prompts.md` and inventing the shot again is how a take stops
-matching the film the creator approved.
+**Read `prompting.md` before writing one** — the template and its block order,
+the contiguous timeline, the density rule, the two clauses a greybox always
+needs, and two worked examples. Start every pack at
 
 ```bash
-node {SKILL_PATH}/scripts/previz.mjs prompt-skeleton <shot-dir>
 node {SKILL_PATH}/scripts/previz.mjs prompt-skeleton <shot-dir> --write
 ```
 
-It emits the slots above already filled with everything the record knows: the
-assignment lines with the indices `generate` will actually attach, one
-`Seconds a.a–b.b: <detail>` line per registered beat, the entry line when the
-shot declares `continuity`, each spoken line quoted at its second with its
-`@Audio` index, the trim, and `no music`. It prints the text in the JSON's
-`skeleton` field, and `--write` puts it in **`prompts.skeleton.md`** —
-deliberately not `prompts.md`, which is yours. Fill the block in there or in
-the pack, then copy the finished fenced block into `prompts.md`, which is the
-only file `generate` reads.
-
-What is left for you is only what the beats do not carry: the reference
-assignments' wording, the subject sentence, the look, the camera's one move
-and its end state, the exit, the guardrails — and any detail the greybox
-cannot express that the design assumed (a material, an expression, a prop's
-weight). A `detail` that was written badly at the boards stage is fixed with
-`beats --set`, not silently rewritten in the prompt: the beats are what the
-viewer draws and what `take-motion` is checked against, and the two must say
-the same thing.
+which writes `prompts.skeleton.md` — never `prompts.md`, which is yours. There
+is **no word limit**: the pack carries the whole designed beat plus what the
+greybox cannot show, and what gets cut is vagueness, never length.
 
 ### What `generate` checks before the request leaves
+
+Refused, before anything is paid for:
 
 - there is a fenced `prompt` block (it sends the **first** one, verbatim) and
   it addresses `@Video1`;
 - no index is named that was not attached;
-- **no attached reference is left without an assignment sentence**;
+- **no attached reference is left without an assignment sentence** — the tag
+  followed by `=`, `:`, `：` or `is`;
 - when the shot declares `continuity.from`, the shot it continues has a
   selected take (`--no-handoff` generates without the frame and records
   `"skipped"` on the take);
 - the film's `previz` stage is approved, a final greybox exists at the current
   revision, no greybox check is failing, and the retry rules are satisfied.
 
-A `Seconds a–b:` line that runs past the shot or goes backwards is **warned
-about, not refused** — the script cannot know whether you meant it. Read the
-warnings; a timeline that overruns the clip is usually a `slowmo` whose cost
-you did not subtract.
+**Warned about and sent** — the script cannot know whether you meant it, and
+each of these is a take that came back wrong once: a timeline line that runs
+past the shot, goes backwards, leaves a gap or overlaps the one before it; a
+segment naming two camera moves; a beat whose designed `detail` no timeline
+line carries any more; a missing 【全局锁】/【Locks】 block; an `@Video1` line
+with no exclusion; an unfilled `<TODO: …>` placeholder. Read them — a timeline
+that overruns the clip is usually a `slowmo` whose cost you did not subtract,
+and a missing detail is usually the design being deleted.
+## What the two acceptance runs paid for (2026-09-21)
 
-### Word budget
+The lessons about the *prompt* — the invented cut, the missing tempo, the
+swapped identities, the starved timeline — are in `prompting.md`, where the
+rule that fixes each of them lives. Three that are about this machinery:
 
-**120–180 words in the fenced block** for a reference-to-video shot, and never
-much over 200. The references are carrying the look and the layout; the words
-are there to direct bodies, tempo and the one camera move. Our v1 packs ran to
-~250 words and the camera instruction, sitting at the bottom, lost. If the
-pack will not fit, the shot is trying to be two shots.
-
-````markdown
-```prompt
-@Video1 = layout, positions, timing and the camera move only — grey
-placeholders, not the look. @Image1 = this shot's composition and look; match
-it. @Image2 = the board's framing. @Image3 = the challenger, @Image4 = the
-keeper — hold both. @Image5 = the courtyard. @Image6 = the previous shot's last
-frame; open on exactly this position.
-Two swordsmen on a cracked stone terrace at dusk; the blue-grey pawn is the
-challenger, the rust pawn the keeper. The clip opens mid-lunge, his blade
-extended at chest height, a metre from the keeper.
-Seconds 0.0–0.6: the lunge drives in, in a blur, coat snapping, dust lifting.
-Seconds 0.6–2.4: the blades meet in slow motion, the keeper turning the thrust
-aside, dust hanging.
-Seconds 2.4–4.0: both hold, weight forward, blades in contact.
-Camera: one slow push in from knee height, ending tight on the locked blades,
-both faces in frame. One continuous shot, no cut.
-Low warm side light, long shadows, drifting dust; stylised 3D animation.
-Sound: blades ringing, boots scraping stone, cloth. No music.
-Two fighters only, whole limbs, no on-screen text.
-```
-````
-
-That is about 180 words — the top of the budget, for a shot carrying six
-references and a hand-off. Drop the two hand-off elements (the `@Image6`
-assignment and the clause that opens on the entry state) and the same pack is
-about 165. Every one of the six attached references has a job, and the camera
-has exactly one move with its end state.
-
-## Sentences the trials paid for
-
-Three from the blind trials, each worth a re-shot:
-
-- **A dark look hides the cause.** In a night interior the model will happily
-  render the reach and the first movement of the door in shadow, and then
-  nobody can see that cause came before effect. Say that the action stays
-  readable *before* the light event ("the store is dim but the man and the
-  door handle are clearly visible throughout").
-- **A light that "comes on" snaps.** Give the ramp in words and seconds ("the
-  glow rises slowly over two seconds"), and say what the object looks like
-  before it ("dull grey metal until the press").
-- **The camera keeps pushing.** Name the final framing, not only the move.
-
-Two more the fight material demands:
-
-- **Two pawns are two costumes waiting to be swapped.** Name which colour is
-  which fighter, in the same sentence as their sheet index, and repeat the
-  identity when you describe an action ("the blue-grey pawn — the challenger —
-  steps in"). Without it the model reassigns them, sometimes mid-shot.
-- **Fast action: the greybox owns the timing, the prompt owns the technique.**
-  `dash` fixes when the leap leaves the ground and when it lands; the prompt
-  says *what kind of movement it is*, with its second — the sword form, the
-  stance, which hand, whether the blade is drawn ("at 2.1 s he pushes off into
-  a low forward leap, drawing on the rise, and lands in a braced low stance at
-  2.9 s"). Neither half works alone: timing without technique gives you a
-  floating body, technique without timing gives you a different fight.
-
-## What the first acceptance run paid for (2026-09-21)
-
-The first film made with this mode reached a cut, and five things it got wrong
-are now rules rather than hopes.
-
-1. **The model cut to a new angle inside the clip — twice.** Both packs
-   described more than one camera behaviour ("orbits … and pushes in", "rises
-   and settles"), and the model resolved the contradiction the way an editor
-   would: by cutting. **One primary move per clip, with its end state**, and
-   `locked-off` in so many words when the camera is static. Say *"one
-   continuous shot, no cut"* near the camera sentence, not at the bottom of the
-   pack. A whip, a snap-zoom or a second size is another shot and another take
-   (`camera.md`, the collage).
-2. **Shot-to-shot the action did not connect.** Each take invented its own
+1. **Shot-to-shot the action did not connect.** Each take invented its own
    body positions, so the pose shot N ended on was not the pose shot N+1
    opened on, and a fight cut from them reads as three unrelated fights. The
    answer is the **hand-off** — entry and exit states in the plan, the previous
    take's out-frame attached as the last image reference — and it is **opt-in**,
    because plenty of cuts exist to break continuity. `shot-plan.md` holds the
    decision.
-3. **Nothing had a tempo, so everything moved at one speed.** A fight needs the
-   hold, the blur and the slow beat of contact. Tempo is built in the greybox
-   (`slowmo`, `impact` — `camera.md`) and *named per segment* in the prompt:
-   *"the lunge in a blur, then the blades meet in slow motion, dust hanging."*
-   Do not write a bare "fast" or "high speed": on its own it buys smearing and
-   loses detail. Name what is fast and what the result looks like.
-4. **fal's likeness filter rejected a shot twice with HTTP 422.** The trigger
+2. **fal's likeness filter rejected a shot twice with HTTP 422.** The trigger
    was almost certainly a reference image, not the prompt: a photoreal,
    low-angle close-up board frame of a face reads to the filter as a real
    person. Keep character sheets and board frames in an **illustrated or
@@ -333,7 +178,7 @@ are now rules rather than hopes.
    never a photoreal facial close-up (`bible.md`). When a 422 comes back,
    **regenerate the offending reference in that idiom and try again**;
    resubmitting the same pack spends the same money on the same refusal.
-5. **What comes back is one frame longer than the request.** A 6 s request
+3. **What comes back is one frame longer than the request.** A 6 s request
    returned 145 frames and a 4 s request 97 — seconds × fps + 1. That is the
    model's file, not a fault, and it is why the cut works from the **trim** and
    the plan rather than from the take's own duration. Report the measured
