@@ -14,7 +14,7 @@ import { useSystemPreferences } from "../hooks/useSystemPreferences.js";
 import { useAppTheme } from "../hooks/useAppTheme.js";
 import { selectBestContentSet } from "../../core/utils/content-set-matcher.js";
 import { isPackagePlayable } from "../../core/player-support.js";
-import { loadMode } from "../../core/mode-loader.js";
+import { loadPlayerMode } from "./player-modes.js";
 import { resolveLocalized } from "../../core/types/mode-manifest.js";
 import { fetchPlayIndex } from "../replay/provider.js";
 import { loadStaticReplay } from "../replay-engine.js";
@@ -73,7 +73,10 @@ export default function PlayerApp() {
           return;
         }
 
-        const def = await loadMode(idx.mode);
+        // The player's own registry, not the app's builtin one: most
+        // playable modes are catalog modes a released app downloads, and
+        // this build is static. See src/player/player-modes.ts.
+        const def = await loadPlayerMode(idx.mode);
         if (cancelled) return;
         const store = useStore.getState();
         store.setModeViewer(def.viewer);

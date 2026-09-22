@@ -7,7 +7,9 @@
  * follows `modes/eli5/__tests__/registration.test.ts`, which follows
  * `modes/bansho/`, which paid for the lesson):
  *
- *  - `core/mode-loader.ts` — miss it and the mode is "Unknown mode";
+ *  - the mode's source, found by `core/mode-catalog.ts` and handed to the
+ *    loader by `registerExternalMode` — miss it and the mode is "Unknown
+ *    mode" (a CATALOG mode is not in the builtin registry by design);
  *  - `server/index.ts::builtinNames` — miss it and `bun run dev sprite` still
  *    works, so nothing looks broken, but the launcher gallery never shows it;
  *  - the mode catalogs in both READMEs — miss it and the mode exists but
@@ -23,6 +25,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { listBuiltinModes } from "../../../core/mode-loader.js";
+import { isCatalogMode, resolveCatalogMode } from "../../../core/mode-catalog.js";
 import { applyTemplateParams } from "../../../server/skill-installer.js";
 import spriteManifest from "../manifest.js";
 
@@ -42,14 +45,28 @@ function skillMarkdown(): string[] {
 const MODE_NAME = "sprite";
 
 describe("registration 1/3 — the frontend dynamic-import registry", () => {
-  test("`core/mode-loader.ts` knows the mode by name", () => {
-    expect(listBuiltinModes()).toContain(MODE_NAME);
+  // This is a CATALOG mode (`modes/distribution.json`): the npm package does
+  // not ship it, so it is deliberately NOT in the builtin registry — that
+  // registry is what Vite follows into `dist/`, and a viewer bundled without
+  // its source is dead weight. It loads through `registerExternalMode` from
+  // whatever directory the catalog resolved: `modes/<name>/` here in the
+  // repo, `~/.pneuma/catalog/<name>/` after a release downloads it. Same
+  // code path both times, which is why the repo exercises the shipped shape.
+  test("`core/mode-catalog.ts` resolves the mode, and it is not a builtin", () => {
+    expect(listBuiltinModes()).not.toContain(MODE_NAME);
+    expect(isCatalogMode(MODE_NAME)).toBe(true);
+    const resolved = resolveCatalogMode(MODE_NAME);
+    expect(resolved?.source).toBe("in-tree");
+    expect(resolved?.modeDir).toBe(join(REPO_ROOT, "modes", MODE_NAME));
   });
 
   test("the manifest it resolves to is this mode's own", async () => {
-    // Not a tautology: the loader entry is two hand-written import paths, and
-    // a copy-paste pointing at the wrong mode would still list the right name.
-    const { loadModeManifest } = await import("../../../core/mode-loader.js");
+    // Not a tautology: registration hands the loader a directory, and a
+    // path pointing at the wrong mode would still carry the right name.
+    const { registerExternalMode, loadModeManifest } = await import(
+      "../../../core/mode-loader.js"
+    );
+    registerExternalMode(MODE_NAME, resolveCatalogMode(MODE_NAME)!.modeDir);
     const manifest = await loadModeManifest(MODE_NAME);
     expect(manifest.name).toBe(MODE_NAME);
     expect(manifest.skill?.installName).toBe(spriteManifest.skill?.installName);
