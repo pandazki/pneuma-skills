@@ -625,7 +625,7 @@ Say the price and the wait before you start one.
    |---|---|---|---|
    | **`topaz`** — `interpolate-video.mjs --target-fps 60` | Exactly 60 fps, the sharpest in-betweens measured | ≈ $0.10 per 5 s clip, 49–69 s | **Not closed** — it interpolates the clip as a clip and never sees the last frame against the first; `loop --seam-fill` handles the seam afterwards |
    | **`rife`** — `interpolate-video.mjs --model rife --between 1 --loop` | Learned in-betweens that MULTIPLY the rate: 24 fps becomes 48 | ≈ $0.03 per 5 s clip; 20 s of compute, but the queue can hold it for minutes | **Closed** — `loop: true` interpolates the wrap too (measured seam 0.0107 against a step of 0.0275) |
-   | **`ffmpeg`** — `sprite-sheet.mjs loop --fps 60`, no extra call | Block-matching `minterpolate`, loop-wrapped | free | Closed |
+   | **`ffmpeg`** — `sprite-sheet.mjs loop --fps 60`, no extra call | Block-matching `minterpolate`, loop-wrapped | free | **Half closed** — the wrap gets in-betweens, but on the trial clip the seam was still 3.7 steps (0.0186 against 0.0050); `--seam-fill` finishes the job |
 
    The owner's position: **Topaz's ten cents is acceptable**, and the free
    `minterpolate` is the fallback for a session with no fal key — not the

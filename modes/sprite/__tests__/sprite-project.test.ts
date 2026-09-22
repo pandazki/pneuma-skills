@@ -1448,7 +1448,10 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
 
       // A report that never carried the number leaves the key off entirely —
       // absent is "nobody measured", and the viewer renders that correctly.
-      const older = JSON.parse(registerLoop(dir, summary).out);
+      // The fixture mirrors what `loop --json` emits today (`seamFill: 0`),
+      // so the older shape is built by removing the key, not by trusting it.
+      const { seamFill: _measured, ...inspectWithoutFill } = summary.inspect;
+      const older = JSON.parse(registerLoop(dir, { ...summary, inspect: inspectWithoutFill }).out);
       expect("seamFill" in older.inspect).toBe(false);
 
       // And a broken one is dropped rather than carried as NaN.
