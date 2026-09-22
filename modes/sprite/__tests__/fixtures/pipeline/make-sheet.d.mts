@@ -132,3 +132,35 @@ export declare function edgeLuma(
   path: string,
   bounds?: { min?: number; max?: number },
 ): EdgeLumaReport;
+
+/** `loop`'s own seam/step scale: changed alpha over combined alpha, 0..1. */
+export declare function silhouetteDiff(pathA: string, pathB: string): number;
+
+export interface WebpFrame {
+  /** Rectangle this frame paints, in canvas pixels. */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  durationMs: number;
+  /** 0 = alpha-blend onto the canvas, 1 = overwrite it. */
+  blend: 0 | 1;
+  /** 0 = leave the canvas, 1 = clear this rect to the background after. */
+  dispose: 0 | 1;
+}
+
+export interface WebpAnimation {
+  /** VP8X canvas size; null when the file has no VP8X chunk. */
+  canvas: { width: number; height: number } | null;
+  /** VP8X alpha flag: does the file declare it carries transparency. */
+  declaresAlpha: boolean;
+  /** ANIM loop count, 0 = forever; null when the file is not animated. */
+  loops: number | null;
+  frames: WebpFrame[];
+}
+
+export declare function webpAnimation(path: string): WebpAnimation;
+
+/** Indices of the frames written as a full-canvas alpha blend over a canvas
+ *  nothing cleared — the still encoder's shape, the one that ghosts. */
+export declare function webpStackedFrames(path: string): number[];

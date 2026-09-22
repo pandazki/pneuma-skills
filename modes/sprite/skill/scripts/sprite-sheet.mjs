@@ -124,15 +124,23 @@ const MAX_LOOPS = 3;
 // --- loop: a seamless transparent animation for a UI ------------------------
 /** Deliverables `loop` can write, and the default set. */
 const LOOP_FORMATS = ["webp", "apng", "webm", "lottie"];
-/** Floor under the hold threshold: below this two silhouettes are the same
- *  pose plus codec noise however slowly the clip moves. */
-const MIN_HOLD_DIFF = 0.005;
 /** A frame that moves less than this share of the median step is a held pose,
- *  not a frame of animation. */
+ *  not a frame of animation. Relative to the clip's OWN rhythm and nothing
+ *  else: an absolute floor under it (there was a 0.005 one) is a number tuned
+ *  on one clip deciding what "held" means on every other. Measured
+ *  2026-09-22 on the reference flame, whose keyed-alpha median step is 0.0043:
+ *  the floor dropped 12 leading and 1 trailing frame of a clip that holds
+ *  nothing. A clip whose silhouette never moves has median 0, so nothing is
+ *  dropped — which is the honest answer, and the step and seam it then
+ *  reports (both 0) say plainly that there was no motion to trim. */
 const HOLD_STEP_FRACTION = 0.25;
 /** A seam worth more than this many normal steps is a loop that does not
  *  close: the last frame visibly snaps back to the first. */
 const SEAM_STEP_LIMIT = 2;
+/** Most in-betweens `--seam-fill auto` will synthesise at the wrap. Four,
+ *  because past that the wrap is no longer a seam to smooth but a chunk of
+ *  motion nobody shot, and inventing it silently is worse than the tick. */
+const MAX_AUTO_SEAM_FILL = 4;
 /** Under this many frames a "loop" is a slideshow. */
 const MIN_LOOP_FRAMES = 8;
 /** A Lottie past this is too much JSON to hand a browser; --width is the fix. */
@@ -291,7 +299,8 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
   loop <clip> --out <motionDir> --name <motionId>
       [--trim-start s] [--trim-end s] [--key auto|#rrggbb|none|alpha]
       [--similarity ${DEFAULT_VIDEO_SIMILARITY}] [--blend ${DEFAULT_BLEND}] [--despill|--no-despill]
-      [--trim-holds|--no-trim-holds] [--crop union|none] [--pad ${DEFAULT_PAD}] [--width W]
+      [--trim-holds|--no-trim-holds] [--seam-fill auto|none|N]
+      [--crop union|none] [--pad ${DEFAULT_PAD}] [--width W]
       [--fps N] [--formats ${LOOP_FORMATS.join(",")}] [--threshold ${DEFAULT_THRESHOLD}]
       A seamless transparent animation for a UI, not an atlas for an engine.
       EVERY frame of the (trimmed) window is decoded in ONE pass — no
@@ -311,6 +320,13 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       --trim-holds (default on) drops the closing frames that have frozen
       back onto the first frame, and the opening frames that have not moved
       yet (keeping the last frame of the freeze).
+      --seam-fill auto (default) interpolates in-betweens into the wrap from
+      the last frame back to the first — the one transition the model never
+      drew — when the seam is worth more than ${SEAM_STEP_LIMIT} normal steps: ${MAX_AUTO_SEAM_FILL} at most,
+      enough to bring the wrap back to about one step. The loop gets that
+      many frames longer, their sampledAt is null, and the reported seam
+      becomes the worst step across the filled wrap. N forces a count,
+      none exports the wrap exactly as it was shot.
       --crop union crops every frame to one rect — the union of the kept
       frames' alpha bboxes plus --pad — so relative motion is preserved.
       --width scales in PREMULTIPLIED alpha, so soft edges do not darken.
@@ -1279,7 +1295,8 @@ function stepPack(framesDir, { out, atlas, name, fps, loop, anchor, cols, scale,
  * An export whose encoder is missing is a warning, not a failure — a build
  * without libvpx still produces the WebP and the APNG — so every encoder is
  * asked for by name before it is used. The names are matched exactly: a
- * substring test would accept `libwebp_anim` for `libwebp`.
+ * substring test for `libwebp` would also accept a build that carries only
+ * the STILL encoder, which is not the one an animation needs (`hasLibwebp`).
  */
 const codecTables = new Map();
 function codecNames(kind) {
@@ -1298,7 +1315,31 @@ function codecNames(kind) {
 }
 const hasEncoder = (name) => codecNames("encoders").has(name);
 const hasDecoder = (name) => codecNames("decoders").has(name);
-const hasLibwebp = () => hasEncoder("libwebp");
+
+/**
+ * `libwebp_anim`, NOT `libwebp` — the difference is whether the animation
+ * ghosts.
+ *
+ * ffmpeg's still `libwebp` encoder hands the webp muxer one full-canvas image
+ * per frame and the muxer writes every ANMF with blend = ALPHA-BLEND and
+ * dispose = none. A compositing decoder — libwebp's own WebPAnimDecoder,
+ * every browser — therefore paints frame i on TOP of the canvas frame i-1
+ * left behind, and a transparent pixel of frame i shows the older silhouette
+ * through. `libwebp_anim` drives libwebp's WebPAnimEncoder, which writes each
+ * frame as a sub-rectangle with the blend/dispose pair that makes the
+ * composited canvas equal the frame it was given.
+ *
+ * Measured 2026-09-22, ffmpeg 8.0, on the 119 keyed flame frames of the loop
+ * trial (512x596) and on this suite's 24-frame orbit fixture, decoded back
+ * through libwebp's animation decoder and compared with the source PNGs:
+ *
+ *   encoder        worst mean |alpha - source|   max   size
+ *   libwebp        12.73 (flame) / 73.93 (orbit) 255    3421390 B
+ *   libwebp_anim    0.037 (flame) /  0.00 (orbit)  1    3307530 B
+ *
+ * so the animated encoder is also 3% smaller and no slower (4.4s vs 4.6s).
+ */
+const hasLibwebp = () => hasEncoder("libwebp_anim");
 
 function stepGif(framesDir, { out, fps, loop, webp, width }) {
   const dir = resolve(framesDir);
@@ -1335,11 +1376,11 @@ function stepGif(framesDir, { out, fps, loop, webp, width }) {
         "-start_number", "0",
         "-i", pattern,
         ...(width ? ["-vf", `scale=${outWidth}:${outHeight}:flags=neighbor`] : []),
-        "-c:v", "libwebp", "-pix_fmt", "yuva420p", "-q:v", "85",
+        "-c:v", "libwebp_anim", "-pix_fmt", "yuva420p", "-q:v", "85",
         "-loop", loop ? "0" : "1",
       ], "webp");
     } else {
-      warnings.push("libwebp encoder is not available in this ffmpeg build — skipped the WebP preview");
+      warnings.push("libwebp_anim encoder is not available in this ffmpeg build — skipped the WebP preview");
     }
   }
 
@@ -2448,13 +2489,14 @@ function sequenceCount(dir, label) {
  * both index into this list and into the frames that get written, and a
  * resampling difference between two decodes would silently misalign them.
  */
-function decodeLoopMasks(dir, count, size, alphaBased, label) {
+function decodeLoopMasks(dir, count, size, alphaBased, label, start = 0) {
   const height = scaledHeight(size, ANALYSIS_WIDTH);
   const chain = alphaBased
     ? ["alphaextract", `scale=${ANALYSIS_WIDTH}:${height}`]
     : ["format=gray", `scale=${ANALYSIS_WIDTH}:${height}`];
   const r = spawnSync("ffmpeg", [
-    "-v", "error", "-start_number", "0", "-i", join(dir, "%03d.png"),
+    "-v", "error", "-start_number", String(start), "-i", join(dir, "%03d.png"),
+    "-frames:v", String(count),
     "-vf", chain.join(","), "-f", "rawvideo", "-pix_fmt", "gray", "-",
   ], { maxBuffer: MAX_RAW_BYTES });
   if (r.error) fail(`${label}: could not analyse the decoded frames (${r.error.message})`);
@@ -2502,12 +2544,12 @@ function loopFrameBoxes(dir, first, count, size, threshold, label) {
 /**
  * Which frames of the window are animation and which are a held pose.
  *
- * `HOLD = max(0.005, 0.25 · median step)` — a quarter of a normal frame's
- * change, floored at the point where two silhouettes differ only by codec
- * noise. Trailing frames go while the last one has frozen back onto the first
- * (a Seedance first-last clip closes on a duplicate of the keyframe); leading
- * frames go while nothing has moved yet, and the LAST frame of that freeze is
- * kept, because it is the pose the loop starts from.
+ * `HOLD = 0.25 · median step` — a quarter of a normal frame's change, in this
+ * clip's own units and no one else's. Trailing frames go while the last one
+ * has frozen back onto the first (a Seedance first-last clip closes on a
+ * duplicate of the keyframe); leading frames go while nothing has moved yet,
+ * and the LAST frame of that freeze is kept, because it is the pose the loop
+ * starts from.
  */
 function holdWindow(masks, steps, hold) {
   let first = 0;
@@ -2520,23 +2562,86 @@ function holdWindow(masks, steps, hold) {
 function trimHolds(masks, enabled) {
   const steps = [];
   for (let i = 0; i + 1 < masks.length; i++) steps.push(maskDiff(masks[i], masks[i + 1]));
-  const med = median(steps);
-  const relative = HOLD_STEP_FRACTION * med;
-  const hold = Math.max(MIN_HOLD_DIFF, relative);
-  if (!enabled) return { first: 0, last: masks.length - 1, steps, med, hold, floorCost: null };
+  const hold = HOLD_STEP_FRACTION * median(steps);
+  if (!enabled) return { first: 0, last: masks.length - 1, steps };
+  return { ...holdWindow(masks, steps, hold), steps };
+}
 
-  const applied = holdWindow(masks, steps, hold);
-  // The floor is an absolute number on a relative measure, so it only means
-  // "codec noise" while the silhouette moves as much as the clip it was tuned
-  // on. A subject whose COLOUR moves more than its outline — a flame, a glow —
-  // scores well under it everywhere, and then the floor, not the clip, decides
-  // what counts as a held pose. Measuring the difference is the only way to
-  // tell the caller which of the two answered.
-  const own = relative < MIN_HOLD_DIFF ? holdWindow(masks, steps, relative) : applied;
-  const floorCost = own.first === applied.first && own.last === applied.last
-    ? null
-    : { leading: applied.first - own.first, trailing: own.last - applied.last, relative: round(relative, 4) };
-  return { ...applied, steps, med, hold, floorCost };
+/**
+ * How many in-betweens to synthesise at the wrap, given the seam and the step.
+ *
+ * `auto` fills only a seam the eye can already see — over `SEAM_STEP_LIMIT`
+ * steps, the same line the warning is drawn at — and fills it just enough to
+ * bring the wrap back to about one step: a seam of `k` steps needs `k - 1`
+ * frames in the gap, capped at `MAX_AUTO_SEAM_FILL`. A clip whose median step
+ * is 0 (nothing moves) has no scale to measure a seam against, so it gets
+ * nothing. An explicit count is obeyed as given — that is what it is for.
+ */
+function planSeamFill(request, seam, step) {
+  if (request === "none") return 0;
+  if (request !== "auto") return request;
+  if (!(step > 0) || seam <= SEAM_STEP_LIMIT * step) return 0;
+  return Math.min(MAX_AUTO_SEAM_FILL, Math.ceil(seam / step) - 1);
+}
+
+/**
+ * The in-betweens for the one transition the model never drew.
+ *
+ * A first-last clip closes on its keyframe, so every step inside the window
+ * was rendered — except the wrap from the last frame back to the first, which
+ * exists only because we play it in a ring. Measured 2026-09-22 on the trial
+ * flame (VEED matte, `--key alpha`): a 0.0429 seam against a 0.0131 median
+ * step, i.e. a one-frame tick every cycle.
+ *
+ * FOUR frames go in, not two — `[last-1, last, first, first+1]`. `minterpolate`
+ * is bidirectional: it needs a real frame on each side of every in-between,
+ * and the two outer frames are what give the wrap the same motion vectors the
+ * rest of the loop was interpolated with. At `fps · (fills + 1)` an output
+ * frame lands on input `k` exactly at index `k · (fills + 1)` (measured), so
+ * `last` is output `fills + 1`, `first` is output `2·(fills + 1)`, and the
+ * frames STRICTLY between them are `fills + 2 … 2·fills + 1`.
+ *
+ * Interpolated in `yuva444p`, i.e. the RGBA frames directly, alpha included:
+ * `minterpolate` accepts that format natively (it converts anything else to
+ * it — `format=gbrap` shows up as an auto-inserted `gbrap → yuva444p` scale),
+ * so the premultiply / alphamerge detour is not needed. The RGBA → yuva444p →
+ * RGBA round trip costs mean |ΔRGB| 0.249 (max 2) and mean |Δalpha| 0.031
+ * (max 1) on a real keyed flame frame. Working on the already-keyed frames is
+ * also what makes this work the same way for a keyed plate and for `--key
+ * alpha`: by this point both are the same RGBA sequence.
+ */
+function fillSeamFrames(srcDir, work, { first, last, fills, fps }) {
+  const ringDir = join(work, "seam");
+  const outDir = join(work, "seam-fill");
+  for (const dir of [ringDir, outDir]) {
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+  }
+  // `Math.max` / `Math.min` for the two-frame loop, where `last - 1` is
+  // `first` and `first + 1` is `last`: the ring is then [f, l, f, l], which is
+  // still a real frame on both sides of the wrap.
+  const ring = [Math.max(first, last - 1), last, first, Math.min(last, first + 1)];
+  ring.forEach((index, i) => {
+    copyFileSync(join(srcDir, loopFrameName(index)), join(ringDir, loopFrameName(i)));
+  });
+
+  ffmpeg([
+    "-framerate", String(fps), "-start_number", "0", "-i", join(ringDir, "%03d.png"),
+    "-vf", `format=yuva444p,minterpolate=fps=${fps * (fills + 1)}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1,format=rgba`,
+    "-frames:v", String(2 * fills + 2),
+    "-start_number", "0", "-pix_fmt", "rgba", "--", join(outDir, "%03d.png"),
+  ], "loop seam fill");
+
+  // Straight into the source sequence, right after the last kept frame: the
+  // crop/scale pass reads ONE contiguous `%03d.png` run, and whatever sits at
+  // those indices is a frame hold trimming already dropped.
+  for (let i = 0; i < fills; i++) {
+    const from = join(outDir, loopFrameName(fills + 2 + i));
+    if (!existsSync(from)) {
+      fail(`--seam-fill ${fills}: minterpolate returned no in-between for the wrap (expected ${2 * fills + 2} frames at ${fps * (fills + 1)}fps, got ${sequenceCount(outDir, "loop")}). Pass --seam-fill none to export the wrap as shot.`);
+    }
+    copyFileSync(from, join(srcDir, loopFrameName(last + 1 + i)));
+  }
 }
 
 /**
@@ -2592,11 +2697,13 @@ function writeLoopExports(motionDir, framesDir, { fps, formats, name, cell, fram
   if (formats.includes("webp")) {
     // The `gif` step's webp args, minus `flags=neighbor`: a 3D icon is not
     // pixel art, and the frames were already scaled to their final size.
-    if (hasEncoder("libwebp")) {
+    // `libwebp_anim` rather than `libwebp` — see `hasLibwebp`; the still
+    // encoder's output ghosts every previous frame through the transparency.
+    if (hasLibwebp()) {
       paths.webp = ffmpegTo(join(motionDir, "loop.webp"), () => [
-        ...input, "-c:v", "libwebp", "-pix_fmt", "yuva420p", "-q:v", "85", "-loop", "0",
+        ...input, "-c:v", "libwebp_anim", "-pix_fmt", "yuva420p", "-q:v", "85", "-loop", "0",
       ], "loop webp");
-    } else missing("loop.webp", "libwebp");
+    } else missing("loop.webp", "libwebp_anim");
   }
   if (formats.includes("apng")) {
     if (hasEncoder("apng")) {
@@ -2841,23 +2948,41 @@ function stepLoop(clip, options) {
 
     // --- 4. holds, and 5. the seam ----------------------------------------
     const masks = decodeLoopMasks(srcDir, decoded, size, keying || alphaSource, "loop");
-    const { first, last, floorCost, med, steps } = trimHolds(masks, options.trimHolds);
-    const count = last - first + 1;
-    if (count < 2) {
-      fail(`--trim-holds left ${count} of ${decoded} frames — the clip holds one pose throughout. Pass --no-trim-holds to keep every frame, or shoot a clip that moves.`);
+    const { first, last, steps } = trimHolds(masks, options.trimHolds);
+    const shot = last - first + 1;
+    if (shot < 2) {
+      fail(`--trim-holds left ${shot} of ${decoded} frames — the clip holds one pose throughout. Pass --no-trim-holds to keep every frame, or shoot a clip that moves.`);
     }
     const kept = steps.slice(first, last);
     const step = round(median(kept), 4);
     const maxStep = round(Math.max(...kept), 4);
-    const seam = round(maskDiff(masks[last], masks[first]), 4);
     const dropped = { leading: first, trailing: decoded - 1 - last };
+    let seam = round(maskDiff(masks[last], masks[first]), 4);
+
+    // --- 5b. fill the seam -------------------------------------------------
+    // Before the crop, so the in-betweens are inside the union bbox and go
+    // through the same scale and the same alpha zeroing as every other frame.
+    const seamFill = planSeamFill(options.seamFill, seam, step);
+    if (shot + seamFill > MAX_LOOP_FRAMES) {
+      fail(`--seam-fill ${seamFill} on top of ${shot} frames is over the ${MAX_LOOP_FRAMES} frame limit — narrow the window with --trim-start/--trim-end, or pass --seam-fill none`);
+    }
+    if (seamFill > 0) {
+      fillSeamFrames(srcDir, work, { first, last, fills: seamFill, fps });
+      // The seam is now the WORST step across the wrap, not the gap it used to
+      // be: an in-between that lands badly must not be able to hide behind the
+      // two ends having been brought closer together.
+      const wrap = [masks[last], ...decodeLoopMasks(srcDir, seamFill, size, keying || alphaSource, "loop", last + 1), masks[first]];
+      let worst = 0;
+      for (let i = 0; i + 1 < wrap.length; i++) worst = Math.max(worst, maskDiff(wrap[i], wrap[i + 1]));
+      seam = round(worst, 4);
+    }
+    const count = shot + seamFill;
 
     const warnings = [];
-    if (floorCost) {
-      warnings.push(`--trim-holds dropped ${floorCost.leading} leading and ${floorCost.trailing} trailing frames more than this clip's own rhythm calls for: the ${MIN_HOLD_DIFF} noise floor is above a quarter of its median silhouette step (${floorCost.relative} of ${round(med, 4)}), so the floor decided what counts as held. Look at the contact sheet and pass --no-trim-holds if that motion is real — a subject whose colour moves more than its outline is the usual case`);
-    }
     if (seam > SEAM_STEP_LIMIT * step) {
-      warnings.push(`the loop does not close — the last frame is ${seam} from the first against a normal step of ${step}; shoot again with the same image at both ends, or pass --trim-start/--trim-end from the contact sheet`);
+      warnings.push(seamFill > 0
+        ? `the loop does not close — even with ${seamFill} interpolated frame(s) at the wrap the worst step there is ${seam} against a normal step of ${step}; shoot again with the same image at both ends, or pass --trim-start/--trim-end from the contact sheet`
+        : `the loop does not close — the last frame is ${seam} from the first against a normal step of ${step}; shoot again with the same image at both ends, or pass --trim-start/--trim-end from the contact sheet`);
     }
 
     // --- 6. crop and scale -------------------------------------------------
@@ -2959,13 +3084,19 @@ function stepLoop(clip, options) {
       ...(keyColor ? { keyColor } : {}),
       emptyFrames,
       dropped,
+      seamFill,
       exports: sizes,
       warnings,
     };
     writeJsonFile(join(motionDir, "inspect.json"), inspect);
 
     // --- 9. the run summary `register-run` consumes ------------------------
-    const sampledAt = Array.from({ length: count }, (_, i) => round(start + (first + i) / fps, 3));
+    // `null` for a filled frame: it has a place in the loop but no source
+    // timestamp, and a made-up one would put a frame the clip never contained
+    // on a provenance edge as if it had been sampled from it.
+    const sampledAt = Array.from({ length: count }, (_, i) => (
+      i < shot ? round(start + (first + i) / fps, 3) : null
+    ));
     return {
       kind: "loop",
       source: "video",
@@ -2978,6 +3109,7 @@ function stepLoop(clip, options) {
       duration: round(count / fps, 3),
       trim: { start: round(start, 3), end: round(windowEnd, 3) },
       dropped,
+      seamFill,
       ...(keyColor ? { keyColor } : {}),
       ...(despill ? { despill } : {}),
       alphaCoverage,
@@ -3077,10 +3209,18 @@ const OPTIONS = {
     key: { type: "string" }, similarity: { type: "string" }, blend: { type: "string" },
     despill: { type: "boolean", default: false }, "no-despill": { type: "boolean", default: false },
     "trim-holds": { type: "boolean", default: false }, "no-trim-holds": { type: "boolean", default: false },
+    "seam-fill": { type: "string" },
     crop: { type: "string" }, pad: { type: "string" }, width: { type: "string" },
     fps: { type: "string" }, formats: { type: "string" }, threshold: { type: "string" },
   },
 };
+
+/** `--seam-fill auto|none|<N>` — "auto", "none", or how many in-betweens. */
+function pickSeamFill(value) {
+  if (value === undefined || value === "auto") return "auto";
+  if (value === "none") return "none";
+  return num(value, "--seam-fill", { integer: true, min: 0 });
+}
 
 function num(value, flag, { integer = false, min = -Infinity, fallback } = {}) {
   if (value === undefined) return fallback;
@@ -3460,6 +3600,7 @@ function main() {
         blend: num(values.blend, "--blend", { min: 0, fallback: DEFAULT_BLEND }),
         despill: pickToggle(values, "despill", true),
         trimHolds: pickToggle(values, "trim-holds", true),
+        seamFill: pickSeamFill(values["seam-fill"]),
         crop,
         pad: num(values.pad, "--pad", { integer: true, min: 0, fallback: DEFAULT_PAD }),
         width: values.width === undefined ? null : num(values.width, "--width", { integer: true, min: 2 }),
@@ -3469,7 +3610,7 @@ function main() {
       });
       emit(values, out, [
         `${out.name}: ${out.frames.length} frames of ${out.cell.width}x${out.cell.height} at ${out.fps}fps (${out.duration}s) from ${basename(out.video)} → ${out.motionDir}`,
-        `seam ${out.inspect.seam} vs step ${out.inspect.step} (max ${out.inspect.maxStep}), dropped ${out.dropped.leading} leading / ${out.dropped.trailing} trailing`,
+        `seam ${out.inspect.seam} vs step ${out.inspect.step} (max ${out.inspect.maxStep}), dropped ${out.dropped.leading} leading / ${out.dropped.trailing} trailing, seam-fill ${out.seamFill}`,
         ...Object.entries(out.inspect.exports).map(([format, bytes]) => `${format} ${(bytes / 1e6).toFixed(2)} MB`),
         ...(out.warnings.length ? out.warnings : ["no warnings"]),
       ]);
