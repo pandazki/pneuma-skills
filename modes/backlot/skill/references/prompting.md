@@ -155,7 +155,9 @@ template, merged with what a **greybox** reference-to-video job needs on top.
 【素材映射】
 @Video1：只参考运镜、构图、切点、主体轨迹、相对比例与遮挡关系；
 不要继承灰白材质、空场景、几何体外形与 Viewport 叠加物。
-@Image1：白模中名为「…」的体块（颜色 / 第 1 帧位置）就是<角色>，
+@Video1 中的红体块 = 便利店雨棚。
+@Video1 中的蓝体块 = 公交站牌。（每个 landmark 一行，按 scene.meta.json 的顺序）
+@Image1：白模中名为「xia」的白色体块就是<角色>，
 只参考这张的脸型、发型、服装与配饰，不用背景。
 @Image2：（下一个角色，同样一行）
 @Image3：全片画风参考，只参考画风、线条与上色方式，不参考构图与人物。
@@ -167,6 +169,7 @@ template, merged with what a **greybox** reference-to-video job needs on top.
 【全局设定】
 风格：<画面质感、镜头、颗粒、景深>。
 场景：<地点>——<材质、颜色、尺度与陈设，来自 bible 里 set 的 look>。空间结构以 @Video1 为准。
+地理：<角色>身后是<地点 A>（结束时身后是<地点 B>）；<角色>身后是<地点 B>；画面里没有<地点 C>。
 光线：<光源方向、时间、色温>。
 运镜总原则：一镜到底，只有一个运镜动作——<这一个运镜，和它停在哪>。
 镜头轨迹、机位与景别严格照 @Video1，全片不切、不加转场。
@@ -209,6 +212,7 @@ shortening is the design deleted.
 | the replacement sentence | the job is not "make a video like this" but "these grey blocks *are* those people, and this camera is the camera". Said first, before the model has decided anything |
 | 【素材映射】 | a reference nobody gave a job to is not ignored — it is averaged in, and it brings its own light, framing and palette. Each line needs a **positive scope and an explicit exclusion**: 只参考…，不用…. `generate` refuses a pack that leaves an attached reference unassigned |
 | the `@Video1` exclusion | the greybox's grey material, empty set and viewport overlays are inherited unless they are explicitly disinherited. Unassigned, its flat studio light becomes the look of the take |
+| the landmark lines and 地理 | a grey block is a shape, not a place. Conditioned on seven grey lumps the model decides which is the shop **once per take**, and seven takes of one street came back disagreeing. Both lines are written from `scene.meta.json` by `pv.landmark(...)`, so the colour in the picture, the sentence in the pack and the block in the file cannot drift apart |
 | 场景, in 【全局设定】 | the place is the one thing in this film that travels as **text**. Its structure is already in `@Video1`; its materials, colours and scale are the set's bible `look`, pre-filled here — a concept frame would only add a second camera |
 | 【一句话成片】 | the model is told what it is making before it is told the seconds. Length and aspect belong here because they frame everything after |
 | 【全局设定】 | style and light are global, not per second; and the **one** camera move is said here, once — with its end state, or `locked-off / 机位固定` in so many words when the camera does not move at all |

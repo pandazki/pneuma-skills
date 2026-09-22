@@ -90,11 +90,12 @@ function film(cwd: string, extra: string[] = []) {
   json(cwd, ["scene", "add", "film", "--id", "sc1", "--heading", "INT. 便利店 — 夜", "--summary", "one customer"]);
 }
 
-/** A real PNG, because `look` refuses anything that is not one. */
-function fixturePng(cwd: string, name = "sheet.png"): string {
+/** A real PNG, because `look` refuses anything that is not one. `colour`
+ *  exists for the cases that need two pictures which are not the same bytes. */
+function fixturePng(cwd: string, name = "sheet.png", colour = "slategray"): string {
   const path = join(cwd, name);
   const made = Bun.spawnSync([
-    "ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=slategray:s=64x64:d=1", "-frames:v", "1", path,
+    "ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", `color=c=${colour}:s=64x64:d=1`, "-frames:v", "1", path,
   ]);
   if (made.exitCode !== 0) throw new Error(`could not build the fixture PNG: ${made.stderr.toString()}`);
   return path;
@@ -507,6 +508,59 @@ describe("the style reference", () => {
     // Clearing the record leaves the file: it is evidence of what the film
     // looked like, not scratch.
     expect(existsSync(join(cwd, "film", "style", "keyframe.png"))).toBe(true);
+  });
+
+
+  /**
+   * The style frame is attached to EVERY take, so a place in it is a place
+   * the model paints into shots that place is not in. Trial 4's one style
+   * frame was a girl under a shop awning, and the awning came back in shots
+   * where the shop was behind the camera. Three tells, none of them fatal —
+   * the creator may still mean it — so each one is a note, not a refusal.
+   */
+  test.skipIf(!HAS_FFMPEG)("warns when the picture is a set's concept frame, by path, by bytes or by prompt", () => {
+    const cwd = workspace();
+    film(cwd);
+    json(cwd, ["set", "add", "film", "store", "--name", "便利店", "--look", "a narrow convenience store"]);
+    json(cwd, ["approve", "film", "script"]);
+    const concept = fixturePng(cwd, "concept.png");
+    json(cwd, ["set", "look", "film", "store", "--file", concept, "--prompt", "wide establishing"]);
+    const LEAK = "the style key frame looks like a set concept";
+    const WHY = "a place in it leaks into shots where that place is behind the camera";
+
+    // (a) the file the record itself points at.
+    const byPath = run(cwd, ["style", "film", "--keyframe", join(cwd, "film", "bible", "sets", "store", "concept.png"), "--prompt", "ink wash"]);
+    expect(byPath.code).toBe(0);
+    expect(byPath.err).toContain(LEAK);
+    expect(byPath.err).toContain('it is inside the bible record of set "store"');
+    expect(byPath.err).toContain(WHY);
+    expect(byPath.err).toContain("a character bust, a texture study, an empty sky");
+
+    // (b) the same bytes, renamed and moved out of the way.
+    const byBytes = run(cwd, ["style", "film", "--keyframe", concept, "--prompt", "ink wash"]);
+    expect(byBytes.code).toBe(0);
+    expect(byBytes.err).toContain('its bytes are set "store"\'s concept frame');
+
+    // (c) a different picture, but a prompt that names the place.
+    const byPrompt = run(cwd, ["style", "film", "--keyframe", fixturePng(cwd, "other.png", "darkgreen"), "--prompt", "便利店 at 3 a.m., ink wash"]);
+    expect(byPrompt.code).toBe(0);
+    expect(byPrompt.err).toContain('--prompt names the set "便利店"');
+
+    // It is a note, not a refusal: the picture is still registered.
+    expect(manifestOf(cwd).style.keyframe).toBe("style/keyframe.png");
+  });
+
+  test.skipIf(!HAS_FFMPEG)("a location-neutral picture is registered in silence, and the note says why that matters", () => {
+    const cwd = workspace();
+    film(cwd);
+    json(cwd, ["set", "add", "film", "store", "--name", "便利店", "--look", "a narrow convenience store"]);
+    const neutral = run(cwd, ["style", "film", "--keyframe", fixturePng(cwd, "bust.png", "darkgreen"), "--prompt", "a character bust, ink wash, warm rim light"]);
+    expect(neutral.code).toBe(0);
+    expect(neutral.err).not.toContain("looks like a set concept");
+    // The note the creator DOES get says the frame rides on every take, which
+    // is the reason the neutrality rule exists at all.
+    expect(neutral.err).toContain("EVERY take");
+    expect(neutral.err).toContain("it has to be location-neutral");
   });
 
   test("refuses what it cannot attach, and never half-writes the record", () => {

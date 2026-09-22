@@ -53,6 +53,8 @@ const backlotManifest: ModeManifest = {
       "A reel before a bill: `cut --reel` assembles the film with the greybox standing in for every missing take, so the creator judges timing and blocking for free, and `cut --final` refuses while any shot lacks a selected take",
       "Sound is two kinds of line: a spoken line is rendered by the video model with the character's voice sample as a reference and checked against a transcript, a voice-over is synthesised and mixed in the cut; music comes from a brief and sits under the film at a stated level",
       "Every paid call is recorded beside the artifact it paid for, with the vendor's reported figure when there is one, and the Cost tab sums them by stage — an unpriced call is listed as unpriced, never as free",
+      "The greybox names its places: a landmark paints the shop, the bus stop or the gate one saturated colour of its own, and the prompt is written from it — which colour is which place, which colour each character's block is, and who is standing in front of what at the first and the last frame, so seven takes of one street can no longer each invent their own geography",
+      "The film's style key frame has to be a look, not a location — it rides on every take, so a place inside it gets painted into shots that place is not in, and registering one warns when the picture is really a set's concept frame",
     ],
   },
   displayName: {

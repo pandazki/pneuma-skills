@@ -184,9 +184,9 @@ function toBlender(point: number[]): [number, number, number] {
  */
 const KIT_API = [
   "F", "T", "accent", "accent_material", "action_time", "box", "camera", "camera_move", "cylinder",
-  "dash", "die", "dolly_zoom", "figure", "finish", "hinge", "hold", "impact", "log", "material",
-  "move", "orbit", "plane", "pose_at", "room", "runner_args", "set_interpolation", "setup", "shot",
-  "shot_time", "slowmo", "sphere", "swing", "travel", "turn", "zoom",
+  "dash", "die", "dolly_zoom", "figure", "finish", "hinge", "hold", "impact", "landmark", "log",
+  "material", "move", "orbit", "plane", "pose_at", "room", "runner_args", "set_interpolation",
+  "setup", "shot", "shot_time", "slowmo", "sphere", "swing", "travel", "turn", "zoom",
 ];
 
 /**
@@ -219,6 +219,22 @@ describe("previz_kit's module docstring is its API index", () => {
     ]) {
       expect(vocabulary).toContain(signature);
     }
+  });
+
+  /**
+   * A landmark is the one piece of vocabulary whose whole value is in the
+   * SIDECAR: the colour is in the picture, but what the colour MEANS, whether
+   * the camera sees it and who stands in front of it only reach the prompt
+   * through `scene.meta.json`. An agent who does not find that in the file it
+   * reads before writing a scene writes a greybox nobody can read.
+   */
+  test("landmarks are documented with their signature and the two arrays they write", () => {
+    expect(vocabulary).toContain("landmark(name, objects, label=None, color=None)");
+    const places = source.slice(source.indexOf("## Landmarks, and the two things"), source.indexOf("## Every function prints one line"));
+    expect(places.length).toBeGreaterThan(400);
+    expect(places).toContain("landmarks: [{name, label, color, rgb, objects, in_frame: {first, last}}]");
+    expect(places).toContain("subjects_detail: [{name, color, rgb, behind}]");
+    expect(places).toContain("behind: null");
   });
 
   test("the measured glTF note explains why focal length travels in the sidecar", () => {
@@ -256,6 +272,8 @@ stderr captured; the scene is rebuilt from scratch for every case.
 import contextlib
 import io
 import json
+
+import bpy
 
 import previz_kit as pv
 
@@ -492,6 +510,75 @@ def _impact_ok():
     pv.impact(cam, 1.0)
 
 
+def blocks(count, first=0):
+    return [pv.box("place_%d" % index, (1.0, 1.0, 2.0), (index * 2.0, 8.0, 1.0))
+            for index in range(first, first + count)]
+
+
+@case("landmark-duplicate-name")
+def _landmark_duplicate():
+    scene()
+    one, two = blocks(2)
+    pv.landmark("shop", one)
+    pv.landmark("shop", two)
+
+
+@case("landmark-colour-reuse")
+def _landmark_colour_reuse():
+    scene()
+    one, two = blocks(2)
+    pv.landmark("shop", one, color="red")
+    pv.landmark("stop", two, color="red")
+
+
+@case("landmark-rgb-reuse")
+def _landmark_rgb_reuse():
+    scene()
+    one, two = blocks(2)
+    pv.landmark("shop", one, color=(0.11, 0.22, 0.33))
+    pv.landmark("stop", two, color=(0.11, 0.22, 0.33))
+
+
+@case("landmark-ninth")
+def _landmark_ninth():
+    scene()
+    for index, block in enumerate(blocks(9)):
+        pv.landmark("place_%d" % index, block)
+
+
+@case("landmark-object-twice")
+def _landmark_object_twice():
+    scene()
+    one = blocks(1)[0]
+    pv.landmark("shop", one)
+    pv.landmark("stop", one)
+
+
+@case("landmark-unknown-colour")
+def _landmark_unknown_colour():
+    scene()
+    pv.landmark("shop", blocks(1)[0], color="chartreuse")
+
+
+@case("landmark-nothing-to-paint")
+def _landmark_no_material():
+    scene()
+    pv.landmark("shop", pv.hinge("door", (0.0, 2.0)))
+
+
+@case("landmark-parts-dict")
+def _landmark_parts_dict():
+    scene()
+    pv.landmark("room", pv.room(6.0, 8.0, 3.0))
+
+
+@case("landmark-eight-is-accepted")
+def _landmark_eight():
+    scene()
+    for index, block in enumerate(blocks(8)):
+        pv.landmark("place_%d" % index, block)
+
+
 results = []
 for name, fn in CASES:
     captured = io.StringIO()
@@ -524,6 +611,32 @@ print("[test] clocks " + json.dumps({
     "shot_of_action": [[t, pv.shot_time(t)] for t in SAMPLES],
     "round_trip": [pv.action_time(pv.shot_time(t)) for t in SAMPLES],
 }))
+
+# One street, decided entirely by geometry. A is 12 m down the camera's
+# sightline with the figure standing at 4 m, between the two; B is 14 m the
+# OTHER side of the camera. Then the camera turns 80-odd degrees away, so A
+# leaves the frame it opened in and both ends of the clip have to be read
+# separately to get the answer right.
+pv.setup(seconds=2.0, fps=24, width=320, height=180)
+pv.plane("floor", (40, 40), (0, 0, 0), pv.GREY)
+shop = pv.box("shop", (2.0, 2.0, 3.0), (0.0, 12.0, 1.5))
+stop = pv.box("stop", (2.0, 2.0, 3.0), (0.0, -14.0, 1.5))
+pv.landmark("A", shop, label="the shop awning")
+pv.landmark("B", [stop], label="the bus stop", color="blue")
+xia = pv.figure("xia", location=(0.0, 4.0))
+pv.hold(xia, 0.0, 2.0)
+street_cam = pv.camera(35, location=(0.0, -6.0, 1.6), look_at=(0.0, 4.0, 1.2))
+pv.camera_move(street_cam, [(0.0, (0.0, -6.0, 1.6), (0.0, 4.0, 1.2)),
+                            (1.2, (0.0, -6.0, 1.6), (40.0, -4.0, 1.2))], settle=0.5)
+street = pv.finish(render=False)
+print("[test] street " + json.dumps({
+    "landmarks": street["landmarks"],
+    "subjects": street["subjects"],
+    "subjects_detail": street["subjects_detail"],
+    "materials": sorted(m.name for m in bpy.data.materials),
+    "painted": [list(shop.data.materials[0].diffuse_color)[:3],
+                list(stop.data.materials[0].diffuse_color)[:3]],
+}))
 `;
 
 interface Clocks {
@@ -532,10 +645,26 @@ interface Clocks {
   round_trip: number[];
 }
 
+interface Street {
+  landmarks: {
+    name: string;
+    label: string;
+    color: string;
+    rgb: number[];
+    objects: string[];
+    in_frame: { first: boolean; last: boolean };
+  }[];
+  subjects: string[];
+  subjects_detail: { name: string; color: string | null; rgb: number[] | null; behind: { first: string[]; last: string[] } | null }[];
+  materials: string[];
+  painted: number[][];
+}
+
 let refusalRun: {
   cases: Record<string, { died: boolean; message: string }>;
   api: string[];
   clocks: Clocks;
+  street: Street;
 } | null = null;
 
 function refusals() {
@@ -546,7 +675,12 @@ function refusals() {
   const rows = payload(run, "refusals") as { case: string; died: boolean; message: string }[];
   const cases: Record<string, { died: boolean; message: string }> = {};
   for (const row of rows) cases[row.case] = { died: row.died, message: row.message };
-  refusalRun = { cases, api: payload(run, "api") as string[], clocks: payload(run, "clocks") as Clocks };
+  refusalRun = {
+    cases,
+    api: payload(run, "api") as string[],
+    clocks: payload(run, "clocks") as Clocks,
+    street: payload(run, "street") as Street,
+  };
   return refusalRun;
 }
 
@@ -677,6 +811,74 @@ describe(`previz_kit — refusals that name the fix ${LIVE_TIER_LABEL}`, () => {
     refused("impact-thrown-camera", "push=4.0 m is outside 0-1.5 m", "thrown, not hit");
     refused("impact-not-a-camera", "the handle previz_kit.camera(...) returned");
     expect(refusals().cases["impact-is-accepted"].died).toBe(false);
+  }, SLOW);
+});
+
+describe(`previz_kit landmark — refusals that keep the colours readable ${LIVE_TIER_LABEL}`, () => {
+  test.skipIf(!HAS_BLENDER)("one name, one colour, one owner per object", () => {
+    refused("landmark-duplicate-name", '"shop" is already declared', "one record per place");
+    refused("landmark-colour-reuse", 'red is already landmark "shop"', "two places in one colour");
+    refused("landmark-rgb-reuse", 'is already landmark "shop"', "two places in one colour");
+    refused("landmark-object-twice", 'place_0 is already part of landmark "shop"', "one object is one place");
+  }, SLOW);
+
+  test.skipIf(!HAS_BLENDER)("the palette is the ceiling: eight places, never nine", () => {
+    // Eight is the whole list, so the eighth is accepted and the ninth is the
+    // refusal — not "roughly eight" and a colour reused in silence.
+    expect(refusals().cases["landmark-eight-is-accepted"].died).toBe(false);
+    refused("landmark-ninth", 'landmark: "place_8" would be number 9', "the palette has 8 colours",
+      "merge two of them or drop one");
+  }, SLOW);
+
+  test.skipIf(!HAS_BLENDER)("a colour nobody can name, and a thing nobody can paint, are refused", () => {
+    refused("landmark-unknown-colour", '"chartreuse" is not a palette colour', "red, blue, yellow");
+    refused("landmark-nothing-to-paint", "door carries no material", "not its hinge or its parent");
+    // `room()` hands back a dict of parts, which is the likeliest thing to
+    // pass by mistake — so the refusal shows the call that works.
+    refused("landmark-parts-dict", "that is a dict of parts (what `room` returns)", 'parts["back"]');
+  }, SLOW);
+});
+
+describe(`previz_kit landmark — what the sidecar says about the street ${LIVE_TIER_LABEL}`, () => {
+  test.skipIf(!HAS_BLENDER)("each place is one saturated colour nobody else has", () => {
+    const { landmarks, materials, painted } = refusals().street;
+    expect(landmarks.map((entry) => [entry.name, entry.label, entry.color])).toEqual([
+      ["A", "the shop awning", "red"],
+      ["B", "the bus stop", "blue"],
+    ]);
+    // Omitted, the colour is the next unused palette entry; named, it is the
+    // one that was named. Both are the palette's own rgb.
+    expect(landmarks[0].rgb).toEqual([0.85, 0.15, 0.12]);
+    expect(landmarks[1].rgb).toEqual([0.15, 0.35, 0.85]);
+    expect(landmarks[0].objects).toEqual(["shop"]);
+    expect(landmarks[1].objects).toEqual(["stop"]);
+    // And it is really ON the blocks — the render the model is conditioned on
+    // reads `diffuse_color`, so a record with nothing painted would be a lie.
+    expect(materials).toContain("A_landmark");
+    expect(materials).toContain("B_landmark");
+    expect(painted[0].map((channel) => Math.round(channel * 100) / 100)).toEqual([0.85, 0.15, 0.12]);
+    expect(painted[1].map((channel) => Math.round(channel * 100) / 100)).toEqual([0.15, 0.35, 0.85]);
+  }, SLOW);
+
+  test.skipIf(!HAS_BLENDER)("in_frame is answered at BOTH ends, from where the camera actually looks", () => {
+    const { landmarks } = refusals().street;
+    // A opens the clip dead centre and is off the edge by the last frame,
+    // because the camera turned away; B was behind the camera throughout.
+    expect(landmarks[0].in_frame).toEqual({ first: true, last: false });
+    expect(landmarks[1].in_frame).toEqual({ first: false, last: false });
+  }, SLOW);
+
+  test.skipIf(!HAS_BLENDER)("what is behind the figure is the geography the prompt owes", () => {
+    const { subjects, subjects_detail: detail } = refusals().street;
+    // One row per subject, in `subjects` order — that is what lets the pack
+    // read the two arrays together.
+    expect(detail.map((entry) => entry.name)).toEqual(subjects);
+    expect(detail[0].name).toBe("xia");
+    expect(detail[0].color).toBe("white");
+    expect(detail[0].rgb).toEqual([0.9, 0.9, 0.9]);
+    // A is farther from the camera than the figure and on the same line; B is
+    // the other side of the lens, so it is in front of nobody.
+    expect(detail[0].behind).toEqual({ first: ["A"], last: ["A"] });
   }, SLOW);
 });
 
@@ -1461,6 +1663,51 @@ describe(`previz_kit examples — the duel renders end to end ${LIVE_TIER_LABEL}
     // is still craning after the camera is back on its path.
     expect(Math.max(...jerk)).toBeGreaterThan(0.1);
     expect(Math.max(...jerk.slice(frameOf(1.45)))).toBeLessThan(0.01);
+  }, SLOW);
+
+  /**
+   * Three angles of one fight in one place: whichever way the camera goes,
+   * the tower is red and the tree is blue, so the three takes cannot disagree
+   * about which end of the terrace each one is on.
+   */
+  test.skipIf(!HAS_BLENDER)("the courtyard names its two places, and the sidecar is where they travel", () => {
+    for (const entry of DUEL) {
+      const meta = duel()[entry.id].payload.meta;
+      expect(meta.landmarks.map((place: any) => [place.name, place.label, place.color])).toEqual([
+        ["tower", "the bell tower", "red"],
+        ["tree", "the great tree", "blue"],
+      ]);
+      expect(meta.landmarks[0].objects).toEqual(["tower", "tower_top"]);
+      expect(meta.landmarks[1].objects).toEqual(["trunk", "canopy", "canopy_low"]);
+      for (const place of meta.landmarks) {
+        expect(Object.keys(place.in_frame).sort()).toEqual(["first", "last"]);
+        expect(typeof place.in_frame.first).toBe("boolean");
+        expect(typeof place.in_frame.last).toBe("boolean");
+      }
+      // One row per subject, in order, and both fighters answer the geography.
+      expect(meta.subjects_detail.map((row: any) => row.name)).toEqual(meta.subjects);
+      for (const row of meta.subjects_detail) {
+        expect(Array.isArray(row.behind.first)).toBe(true);
+        expect(Array.isArray(row.behind.last)).toBe(true);
+      }
+    }
+  }, SLOW);
+
+  /**
+   * MEASURED (Blender 5.2.1): the exporter writes a node-less Workbench
+   * material at the default 0.8 grey whatever its `diffuse_color` is — which
+   * is the same reason an accent's colour travels in `scene.meta.json`. So
+   * the landmark rgb is in the sidecar on purpose, not by accident, and this
+   * is the test that fails the day the exporter changes its mind.
+   */
+  test.skipIf(!HAS_BLENDER)("glTF drops the landmark colour, exactly as it drops an accent's", () => {
+    const glb = readGlb(join(duel().orbit.dir, "scene.glb"));
+    const painted = glb.json.materials.find((entry: any) => entry.name === "tower_landmark");
+    expect(painted).toBeDefined();
+    for (const channel of painted.pbrMetallicRoughness.baseColorFactor.slice(0, 3)) {
+      expect(channel).toBeCloseTo(0.8, 4);
+    }
+    expect(duel().orbit.payload.meta.landmarks[0].rgb).toEqual([0.85, 0.15, 0.12]);
   }, SLOW);
 
   test.skipIf(!HAS_BLENDER)("duel_collage.py refuses to be a scene, and says which files are", () => {

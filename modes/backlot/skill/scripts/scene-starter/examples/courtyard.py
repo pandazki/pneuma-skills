@@ -18,6 +18,11 @@ The plan, in metres, Blender axes (Z up, the ground is XY):
         .............. the duel happens at CENTER ..............
     -Y  ......... the terrace edge and two steps at y = -9
 
+The bell tower and the great tree are declared as LANDMARKS, so they come out
+of the render red and blue instead of grey and the prompt can name them. That
+is what stops three angles of one fight from disagreeing about which end of
+the terrace the tower is on - see `references/greybox.md`.
+
 Nothing here moves. Prayer flags are geometry, not cloth simulation: the
 video model paints the flutter, the greybox says where the lines hang.
 """
@@ -150,6 +155,17 @@ def build_courtyard():
                                      (TREE[0] - 0.4, TREE[1] + 0.3, 5.0))
     parts["flags_column"] = _flag_line("flags_column", (TOWER[0] + 1.9, TOWER[1] + 1.2, 6.4),
                                        (0.0, COLONNADE_Y, 4.4), sag=0.7, flags=4)
+
+    # THE TWO PLACES THE STORY CARES ABOUT THE SIDE OF. Grey, the tower and
+    # the tree are two more lumps and the model decides per take which side of
+    # the terrace each one is on; painted, `@Video1` shows a red mass at one
+    # end and a blue one at the other, and the prompt can say which is which.
+    # `finish()` records both, with whether the camera sees them at each end of
+    # the clip and which of them is standing behind each fighter.
+    pv.landmark("tower", [parts["tower"], parts["tower_top"]],
+                label="the bell tower", color="red")
+    pv.landmark("tree", [parts["trunk"], parts["canopy"], parts["canopy_low"]],
+                label="the great tree", color="blue")
 
     pv.log("courtyard %.0fx%.0f m terrace, %d named parts" % (width, depth, len(parts)))
     return parts

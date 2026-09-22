@@ -169,11 +169,23 @@ node {SKILL_PATH}/scripts/backlot.mjs style <project> --keyframe style.png \
   --prompt "<the prompt it was made from>"
 ```
 
+**It must be location-neutral.** This is the one picture attached to EVERY
+take of the film, so a recognisable place in it is a place the model paints
+into shots that place is not in. In the urban trial (2026-09-22) the style
+frame was a girl under a shop awning, and the awning came back in takes where
+the shop was behind the camera. A character bust, a texture study, a patch of
+sky, a hand on a wet railing — anything whose subject is the RENDERING. A set
+concept frame is the one thing it must never be, and `backlot.mjs style` warns
+when the file is one (it is inside a set's bible record, its bytes are a
+registered concept frame, or `--prompt` names a set the film has).
+
 How to make one:
 
 1. **Pick one key moment of the film** — the image a poster would use. A real
-   moment, with real people in it, in a real place: an idiom is easiest to
-   read off a picture that had to solve something.
+   moment, with real people in it, but **not a picture of a place**: frame it
+   so the idiom is what the picture is about. An idiom is easiest to read off
+   a picture that had to solve something; it is hardest to keep out of a shot
+   when the picture also solved a street.
 2. **Generate it in the intended idiom, at `--quality xhigh`**, from the
    screenplay and the sheets. One image, one frame, no text.
 3. **Generate two or three directions and let the creator choose.** This is
@@ -181,7 +193,9 @@ How to make one:
    nobody chose is a look nobody approved.
 4. Register the chosen one. It is copied to `style/keyframe.png`, and from
    then on every take — and every key frame `previz.mjs anchor` renders —
-   carries it with the job *"only the idiom, never the composition"*.
+   carries it with the job *"only the idiom, never the composition"*. That
+   sentence is not enough on its own: a place inside the frame arrives anyway,
+   which is why the picture has to be location-neutral before it is registered.
 
 Because it travels into every take, the likeness rule applies to it exactly
 as to a sheet: an illustrated or 3D-design idiom, never a photoreal face.

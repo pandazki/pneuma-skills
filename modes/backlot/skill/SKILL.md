@@ -210,8 +210,8 @@ dynamic body and camera speed inside the block**:
 | block | what it must say |
 |---|---|
 | the replacement sentence, first | the blocks in @Video1 *are* these subjects; inherit its camera, shot sizes, timing, positions and paths, and take no body reference from them |
-| **【素材映射】** | one line per attached reference, at the index `generate` will attach it, each with a positive scope **and** an explicit exclusion (`只参考…，不用…`). In order: `@Video1` the greybox — it must disinherit the grey material, the empty set, the block shapes and the viewport overlays, or the model paints grey; one line per sheet (`白模中的<颜色>体块 = <角色>，只参考脸型、发型、服装与配饰，不用背景`); the style key frame (`只参考画风、线条与上色方式，不参考构图与人物`); `@Audio…` the voices. Nothing else unless the job was asked for it |
-| **【一句话成片】**, then **【全局设定】** | the clip in one sentence with its seconds and aspect; then 风格 / 场景 / 光线 / 运镜总原则. 场景 is the set's bible `look`, pre-filled — the place travels as text and its structure is @Video1's. 运镜 is **one** camera move, carried whole, with where it ends, and `一镜到底 / one continuous shot, no cut` |
+| **【素材映射】** | one line per attached reference, at the index `generate` will attach it, each with a positive scope **and** an explicit exclusion (`只参考…，不用…`). In order: `@Video1` the greybox — it must disinherit the grey material, the empty set, the block shapes and the viewport overlays, or the model paints grey; one line per landmark (`@Video1 中的红体块 = 便利店雨棚`), so a colour in the picture means a place; one line per sheet (`白模中的<颜色>体块 = <角色>，只参考脸型、发型、服装与配饰，不用背景`); the style key frame (`只参考画风、线条与上色方式，不参考构图与人物`); `@Audio…` the voices. Nothing else unless the job was asked for it |
+| **【一句话成片】**, then **【全局设定】** | the clip in one sentence with its seconds and aspect; then 风格 / 场景 / 光线 / 运镜总原则. 场景 is the set's bible `look`, pre-filled — the place travels as text and its structure is @Video1's; 地理 is measured off the block and says who is in front of what, and what is not in frame. 运镜 is **one** camera move, carried whole, with where it ends, and `一镜到底 / one continuous shot, no cut` |
 | **【时间戳分镜】** | a **contiguous** partition of the clip: no gaps, no overlaps, one main event per segment, about one per 1–1.5 s (4 in a 4 s shot, 5 in a 6 s, never more than 7). Each line is 景别 + 构图 + the beat's designed `detail` **whole** + 按白模路线/站位/轨迹 + how the materials and the light grow in + how the body becomes a body (真实的步子与重心，不是滑行). Visible details, never adjectives: not 「很悲伤」 but 「鼻翼一紧、泪在下睑停住」. Spoken lines quoted at their second; 第一帧 / 最后一帧 carry the entry and exit states, and on a continuing shot the 第一帧 line opens `承接上一镜（sXX）的结束状态：` — that sentence, plus `不沿用上一镜的机位`, **is** the hand-off |
 | **声音**, the regeneration line, then **【全局锁】** last | named sounds and `不要配乐` (the cut lays the score); 重新生成自然的<这一镜的动作>，不迁移方块滑行或机械摆动; then 不新增不删除物体，不改镜头轨迹，不保留白模质感, who may be in frame, and 禁止：白模方块、刚性滑行、塑料皮肤、变脸、额外人物、字幕、自带 BGM、突然跳切… |
 
@@ -248,7 +248,10 @@ which moves the `boards` stage, not this one.
 brief, and **one style key frame for the film** (`backlot.mjs style
 --keyframe`): a key moment in the intended idiom at `xhigh`, chosen by the
 creator among two or three directions, saying how the film is drawn and
-nothing about what is in it. Those are the only pictures a take gets from
+nothing about what is in it — and **location-neutral** (a bust, a texture, a
+patch of sky): it rides on EVERY take, so a place in it is painted into shots
+that place is not in, and `style --keyframe` warns when it looks like a set
+concept. Those are the only pictures a take gets from
 here, so ask `gate <project> bible-image` before `generate_image.mjs` (it
 knows nothing about stages), then register with `character look`. Each
 speaking character gets one voice, chosen once; illustrated or 3D design,
@@ -273,7 +276,10 @@ Read `references/greybox.md` — the kit, the build order and the acceptance
 list — and `references/camera.md` before any camera block. **A `free` shot has
 nothing to do here**; it goes from its plan to its pack. For each blocked
 shot: layout → blocking → prop events → camera (one move) → tempo, each layer
-checked before the next hides its mistakes. `render --preview`, look at sheets
+checked before the next hides its mistakes. **Name the places**: every spot
+the beats mention gets a `pv.landmark(...)`, one saturated colour each, eight
+at most — grey lumps make the model invent the geography once per take (seven
+takes of one street disagreed about which side the shop was on). `render --preview`, look at sheets
 and strips, `check` every item, fix what fails, then `render` for the final
 `greybox.mp4` + `scene.blend` + `scene.glb`. Blender is only ever started by
 `previz.mjs render`, headless; never ask the creator to open it.

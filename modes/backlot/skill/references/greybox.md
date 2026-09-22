@@ -69,6 +69,7 @@ and every take.
 | `pv.dolly_zoom(cam, subject, dist_from, dist_to, start, end, ease=True)` | Hitchcock: travels the camera along its own sightline to `subject` (a point, an object, or a figure → its chest where its tracks put it at `start`) from `dist_from` to `dist_to` m while mm scales by the same ratio, so the subject's on-screen height holds and the background rushes. Compensates from the camera's current focal length |
 | `pv.pose_at(fig, seconds)` | where a figure is and faces at any shot time, `(x, y, z, yaw_radians)`, straight off its tracks before `finish` bakes anything — so a camera can be aimed at the mark somebody *arrives* on |
 | `pv.accent_material(name)` + `pv.accent(objects, start, end, (r,g,b))` | a colour event: keys the Workbench colour from grey to the accent over `[start, end]` and records it so the 3D lane replays it |
+| `pv.landmark(name, objects, label=…, color=…)` | a named PLACE, painted one saturated palette colour nobody else has, so the prompt can say which block is the shop. Recorded in `scene.meta.json` with whether the camera sees it at each end of the clip and who is standing in front of it. At most eight |
 | `pv.slowmo(start, end, factor)` | tempo: a ramp applied once at `finish()` through **one time curve over the whole scene**, so everything slows together. `start`/`end` are **shot** seconds — where the ramp sits in the finished clip — and `factor` is how much slower the action runs inside it (2 = half speed, under 1 speeds up; band 0.25–8). It eats `L × (1 − 1/factor)` seconds of action, so **everything after it lands that much later** and the tail can fall off the end; the log line says what the last frame ends up showing. Ramps may not overlap. Recorded as `time_warp` in `scene.meta.json` |
 | `pv.impact(cam, at, push=0.15, shake=0.02, seconds=0.25)` | the hit at shot second `at`: the camera is driven `push` m down its sightline and rings back to zero by `at + seconds`, with a decaying `shake` jitter. **Added on top** of the move underneath and composed **after** the warp, so a hit inside a `slowmo` stays sharp. Bands 0–1.5 m, 0–0.5 m, 0.08–2.0 s; the ring-down must finish inside the clip (`end-hold`). One per contact |
 | `pv.shot_time(t)` · `pv.action_time(s)` | action second → clip second, and back. Blocking is written in action seconds; beats, the trim, `sheet --at` and the prompt are clip seconds. Identity until something calls `slowmo` |
@@ -158,6 +159,63 @@ still reads.
 Check the pair for penetration where they close: two pawns 0.46 m across need
 their roots more than 0.46 m apart at every frame, and a strike that lands is
 still a strike that stops short in the greybox. Contact is the prompt's job.
+
+### Landmarks the model can read
+
+Two pawns in one shot need two colours; so do two PLACES. A grey shop and a
+grey bus stop are two lumps, and a model conditioned on two lumps decides for
+itself which is which — **once per take**. In the urban trial (2026-09-22)
+seven takes of one street disagreed about where the convenience store was,
+and the pack said nothing that could have settled it.
+
+```python
+awning = pv.box("shop_awning", (4.2, 1.6, 0.25), (-3.1, 2.4, 2.6), pv.WHITE)
+front  = pv.box("shop_front",  (4.2, 0.3, 3.2),  (-3.1, 3.1, 1.6), pv.WHITE)
+pv.landmark("shop", [awning, front], label="便利店雨棚")            # red, the next free colour
+pv.landmark("bus_stop", pole, label="公交站牌", color="blue")
+```
+
+* **`objects`** is one object or a list of them. Every one gets the same flat
+  material, so the whole place reads as one colour.
+* **`color`** is a palette name or an `(r, g, b)`; omitted, the next unused
+  palette colour is taken. The palette is
+  `red · blue · yellow · green · magenta · cyan · orange · purple`, and it is
+  also the ceiling: **eight landmarks, and the ninth is refused**, because past
+  that the colours stop being tellable apart. A duplicate name, a colour
+  already used, or an object already inside another landmark is refused too.
+  A colour of your own is allowed but the pack can only call it
+  `<TODO: 颜色>`, and `prompt-skeleton` warns about it — use a palette name.
+* **`label`** is the prose the prompt uses (`便利店雨棚`), in the film's
+  language. It defaults to `name`.
+
+**When.** Any shot where the story cares which side something is on, and every
+place the beats name. A single-wall reaction shot needs none; a street with a
+shop on one side and a stop on the other needs both. Keep the same colour for
+the same place across every shot of the film, exactly as with the pawns — put
+them in the shared set module (`courtyard.py` does) and every angle agrees.
+
+**What `finish()` writes**, on top of the picture itself:
+
+```json
+"landmarks": [{"name": "shop", "label": "便利店雨棚", "color": "red",
+               "rgb": [0.85, 0.15, 0.12], "objects": ["shop_awning", "shop_front"],
+               "in_frame": {"first": true, "last": false}}],
+"subjects_detail": [{"name": "xia", "color": "white", "rgb": [0.9, 0.9, 0.9],
+                     "behind": {"first": ["shop"], "last": ["bus_stop"]}}]
+```
+
+`in_frame` is whether the place's centre projects inside the camera view on
+frame 1 and on the last frame. `behind` is the landmarks farther from the
+camera than that pawn and within 25° of the camera's line to it, nearest
+first — a prop added by `move`/`swing` is a subject too and carries
+`behind: null`.
+
+**What the prompt does with it** (`prompt-skeleton`, automatically): one
+`@Video1 中的红体块 = 便利店雨棚。` line per landmark under the `@Video1` line,
+the pawn's own colour filled into its character line
+(`白模中名为「xia」的白色体块就是夏`), and a `地理：` sentence in 【全局设定】
+that says who is standing in front of what and which places are **not** in the
+picture. A blocked shot whose greybox declares no landmarks is warned about.
 
 ## The camera
 

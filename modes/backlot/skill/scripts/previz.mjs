@@ -3161,6 +3161,11 @@ const PACK_TEXT = {
     greybox:
       "只参考运镜、构图、切点、主体轨迹、相对比例与遮挡关系；不要继承灰白材质、空场景、几何体外形与 Viewport 叠加物。",
     todoRef: "<TODO: 这一张只提供什么，不提供什么>",
+    // The geography line's own two fixed words: the label 【全局设定】 hangs
+    // the sentence on, and the placeholder a landmark with a colour outside
+    // the palette leaves behind.
+    geography: "地理",
+    todoColour: "<TODO: 颜色>",
     firstFrame: "第一帧",
     lastFrame: "最后一帧",
     todoEntry: "<TODO: 第一帧上有什么——每个人的位置、朝向、手里的东西、彼此的距离>",
@@ -3196,6 +3201,8 @@ const PACK_TEXT = {
     greybox:
       "use only the camera move, the framing, the cut points, the subjects' paths, the relative scale and what occludes what; do not inherit the grey surfacing, the empty set, the block shapes or any viewport overlay.",
     todoRef: "<TODO: what this reference is for, and what it is not for>",
+    geography: "Geography",
+    todoColour: "<TODO: colour>",
     firstFrame: "First frame",
     lastFrame: "Last frame",
     todoEntry: "<TODO: what is on screen in frame 1 — each body's position, facing, what is in their hands, the distance between them>",
@@ -3220,17 +3227,44 @@ const PACK_TEXT = {
   },
 };
 
-/** The greybox's own subject names, so a pawn can be named to the model by
- *  the object it is in the file rather than by a colour nobody wrote down. */
-function greyboxSubjects(dir, shot) {
+/** The colour names the pack says out loud, in the two languages it writes.
+ *  `previz_kit.LANDMARK_PALETTE` is the authority for which eight exist; this
+ *  is only how each one is SPELLED to the model. */
+const COLOUR_WORDS = {
+  zh: { red: "红", blue: "蓝", yellow: "黄", green: "绿", magenta: "品红", cyan: "青", orange: "橙", purple: "紫", white: "白", grey: "灰", dark: "深灰" },
+  en: { red: "red", blue: "blue", yellow: "yellow", green: "green", magenta: "magenta", cyan: "cyan", orange: "orange", purple: "purple", white: "white", grey: "grey", dark: "dark grey" },
+};
+
+/**
+ * What the greybox's sidecar says about the picture the take will carry.
+ *
+ * `subjects` names the pawns, `landmarks` says what each colour in the frame
+ * MEANS, and `subjectsDetail` says which colour each pawn is and what is
+ * standing behind it at the first and last frame. One reader, so the mapping
+ * lines and the geography sentence can never disagree with each other.
+ */
+function greyboxMeta(dir, shot) {
+  const empty = { present: false, subjects: [], landmarks: [], subjectsDetail: [] };
   const file = join(dir, shot.greybox?.meta ?? "greybox/scene.meta.json");
-  if (!existsSync(file)) return [];
+  if (!existsSync(file)) return empty;
   try {
     const meta = JSON.parse(readFileSync(file, "utf-8"));
-    return Array.isArray(meta?.subjects) ? meta.subjects.map((name) => String(name)) : [];
+    return {
+      present: true,
+      subjects: Array.isArray(meta?.subjects) ? meta.subjects.map((name) => String(name)) : [],
+      landmarks: Array.isArray(meta?.landmarks) ? meta.landmarks.filter((entry) => entry && typeof entry === "object") : [],
+      subjectsDetail: Array.isArray(meta?.subjects_detail) ? meta.subjects_detail.filter((entry) => entry && typeof entry === "object") : [],
+    };
   } catch {
-    return [];
+    return empty;
   }
+}
+
+/** A landmark's prose name — what `landmark(..., label=...)` was given, or
+ *  its id when nobody wrote one. */
+function landmarkLabel(entry) {
+  const label = String(entry?.label ?? "").trim();
+  return label || String(entry?.name ?? "");
 }
 
 /**
@@ -3284,9 +3318,17 @@ function assignmentFor(ref, shot, language = "en", context = {}) {
         : `${lead}this is ${name}; use only this sheet's face, hair, clothing and accessories — not its pose, its framing or its background.`;
     }
     const pawn = context.pawns?.[id] ?? null;
+    // The pawn's COLOUR is a fact the greybox already recorded, so the
+    // skeleton fills it instead of asking the agent to go and look at a
+    // frame — which is what left `<TODO: 它的颜色…>` vague in trial 4. Only
+    // the position is still a placeholder, because only the picture knows it.
+    const colour = pawn ? (context.pawnColours?.[id] ?? null) : null;
+    const painted = zh
+      ? (colour ? `白模中名为「${pawn}」的${colour}色体块就是${name}，` : `白模中名为「${pawn}」的体块（<TODO: 它的颜色与第 1 帧位置>）就是${name}，`)
+      : (colour ? `the ${colour} block named "${pawn}" in the greybox is ${name}; ` : `the block named "${pawn}" in the greybox (<TODO: its colour and where it stands at frame 1>) is ${name}; `);
     const block = zh
-      ? (pawn ? `白模中名为「${pawn}」的体块（<TODO: 它的颜色与第 1 帧位置>）就是${name}，` : `白模中的 <TODO: 哪一个体块——颜色与第 1 帧位置> 就是${name}，`)
-      : (pawn ? `the block named "${pawn}" in the greybox (<TODO: its colour and where it stands at frame 1>) is ${name}; ` : `<TODO: which block — its colour and where it stands at frame 1> in the greybox is ${name}; `);
+      ? (pawn ? painted : `白模中的 <TODO: 哪一个体块——颜色与第 1 帧位置> 就是${name}，`)
+      : (pawn ? painted : `<TODO: which block — its colour and where it stands at frame 1> in the greybox is ${name}; `);
     return zh
       ? `${lead}${block}只参考这张的脸型、发型、服装与配饰，不用背景。`
       : `${lead}${block}use only this sheet's face, hair, clothing and accessories — not its background.`;
@@ -3381,14 +3423,37 @@ function buildSkeleton(dir, shot, projectRoot, attachments = {}) {
 
   // The pawn names the greybox actually carries, matched to the bible ids, so
   // a mapping line can point at a block rather than at a colour nobody wrote
-  // down. What colour that block is, only the picture knows — that stays a
-  // placeholder the agent fills after looking at the frame.
-  const subjects = greyboxSubjects(dir, shot);
+  // down — and the colour the kit painted that block, so the line does not
+  // leave the agent to go and read it off a frame.
+  const { present, subjects, landmarks, subjectsDetail } = greyboxMeta(dir, shot);
+  const words = COLOUR_WORDS[language] ?? COLOUR_WORDS.en;
   const pawns = {};
+  const pawnColours = {};
   for (const id of shot.characters ?? []) {
     const match = subjects.find((name) => name.toLowerCase() === String(id).toLowerCase())
       ?? subjects.find((name) => name.toLowerCase().includes(String(id).toLowerCase()));
-    if (match) pawns[id] = match;
+    if (!match) continue;
+    pawns[id] = match;
+    const detail = subjectsDetail.find((entry) => String(entry?.name ?? "") === match);
+    const word = words[String(detail?.color ?? "")];
+    if (word) pawnColours[id] = word;
+  }
+  // A blocked shot whose RENDERED greybox names no places is a take the
+  // model will geography for itself, one invention per shot. Said here rather
+  // than left to a reviewer, because the pack looks complete without it. A
+  // shot not rendered yet already carries the "no final greybox" warning.
+  if (!free && present && landmarks.length === 0) {
+    warnings.push(
+      "the greybox declares no landmarks — nothing in @Video1 tells the model what is behind whom; " +
+        "declare them with previz_kit.landmark(...) and re-render",
+    );
+  }
+  for (const entry of landmarks) {
+    if (String(entry?.color ?? "") !== "custom") continue;
+    warnings.push(
+      `landmark "${entry?.name}" was given a colour of its own rather than a palette one, so the pack names it ` +
+        "by a placeholder — use a palette colour (previz_kit.LANDMARK_PALETTE) so the prompt can say which block it is",
+    );
   }
 
   const body = [];
@@ -3428,7 +3493,22 @@ function buildSkeleton(dir, shot, projectRoot, attachments = {}) {
   // and the missing style frame is already a warning.
   if (planned.plan.length > 0) {
     body.push(L.mapping);
-    for (const ref of planned.plan) body.push(assignmentFor(ref, shot, language, { pawns }));
+    for (const ref of planned.plan) {
+      body.push(assignmentFor(ref, shot, language, { pawns, pawnColours }));
+      // WHAT EACH COLOUR IN @Video1 MEANS, directly under the line that says
+      // what @Video1 is for. Without these the model sees coloured lumps and
+      // decides per take which one is the shop — seven takes of one street in
+      // trial 4 disagreed about exactly that.
+      if (free || ref.role !== "greybox") continue;
+      for (const entry of landmarks) {
+        const colour = String(entry?.color ?? "");
+        const word = colour === "custom" ? null : words[colour];
+        const said = word ?? L.todoColour;
+        body.push(zh
+          ? `@Video1 中的${said}体块 = ${landmarkLabel(entry)}。`
+          : `The ${said} block in @Video1 is the ${landmarkLabel(entry)}.`);
+      }
+    }
     body.push("");
   }
 
@@ -3467,6 +3547,61 @@ function buildSkeleton(dir, shot, projectRoot, attachments = {}) {
         `set "${shot.set}" has no written look in the bible — the set now reaches the model as TEXT only, so write it ` +
           `('backlot.mjs set set <project> ${shot.set} --look "…"') instead of leaving the placeholder in the pack`,
       );
+    }
+  }
+  // GEOGRAPHY, said in words, from what the greybox already measured. The
+  // block says where everything is; this says which of it is behind whom, so
+  // the model cannot put the shop behind a character the shop is in front of
+  // — and names the places that are NOT in the picture, which is what it
+  // otherwise paints in anyway.
+  if (!free && landmarks.length > 0) {
+    const labelOf = (name) => {
+      const entry = landmarks.find((item) => String(item?.name ?? "") === String(name));
+      return entry ? landmarkLabel(entry) : String(name);
+    };
+    const names = zh ? (list) => list.map(labelOf).join("、") : (list) => list.map((n) => `the ${labelOf(n)}`).join(" and ");
+    // The name the rest of the pack calls this person by — the bible name
+    // where the pawn is a character, the pawn's own name otherwise.
+    const displayOf = (subject) => {
+      const id = Object.keys(pawns).find((key) => pawns[key] === subject);
+      if (!id) return subject;
+      // The bible, not the plan: a character whose sheet is missing is still
+      // called by their name in every other line of this pack.
+      const record = projectRoot ? readBibleRecord(projectRoot, "characters", id) : null;
+      return String(record?.name || id);
+    };
+    const clauses = [];
+    for (const entry of subjectsDetail) {
+      const behind = entry?.behind;
+      if (!behind || typeof behind !== "object") continue;
+      const first = Array.isArray(behind.first) ? behind.first : [];
+      const last = Array.isArray(behind.last) ? behind.last : [];
+      if (first.length === 0 && last.length === 0) continue;
+      const who = displayOf(String(entry.name ?? ""));
+      if (first.length === 0) {
+        // Nothing behind them as the clip opens, something by the end — a
+        // walk into a place, said as the arrival it is.
+        clauses.push(zh ? `${who}结束时身后是${names(last)}` : `by the end, behind ${who} is ${names(last)}`);
+        continue;
+      }
+      const moved = last.join("\u0000") !== first.join("\u0000");
+      const tail = !moved
+        ? ""
+        : zh
+          ? (last.length ? `（结束时身后是${names(last)}）` : "（结束时身后什么也没有）")
+          : (last.length ? ` (by the end, behind ${who} is ${names(last)})` : ` (by the end nothing is behind ${who})`);
+      clauses.push(zh ? `${who}身后是${names(first)}${tail}` : `behind ${who} is ${names(first)}${tail}`);
+    }
+    const absent = landmarks
+      .filter((entry) => entry?.in_frame && entry.in_frame.first === false && entry.in_frame.last === false)
+      .map((entry) => String(entry.name ?? ""));
+    if (absent.length > 0) {
+      clauses.push(zh
+        ? `画面里没有${names(absent)}`
+        : `${names(absent)} ${absent.length > 1 ? "are" : "is"} not in frame`);
+    }
+    if (clauses.length > 0) {
+      body.push(zh ? `${L.geography}：${clauses.join("；")}。` : `${L.geography}: ${clauses.join("; ")}.`);
     }
   }
   const todoLight = free ? L.todoLightFree : L.todoLight;
@@ -3707,6 +3842,11 @@ function buildSkeleton(dir, shot, projectRoot, attachments = {}) {
     warnings,
     conditioning,
     language,
+    // The greybox facts the pack was written FROM, so a reader of the JSON
+    // can check the mapping lines and the geography sentence against the
+    // sidecar rather than against the prose.
+    landmarks,
+    subjectsDetail,
     segments: plan.segments.map((segment) => ({ from: round4(segment.from), to: round4(segment.to), beats: segment.beats.map((beat) => beat.id) })),
     merged: plan.merged,
     maxSegments: plan.budget,
@@ -3756,6 +3896,10 @@ function cmdPromptSkeleton(dir, opts) {
     maxSegments: skeleton.maxSegments,
     merged: skeleton.merged,
     continuity: shot.continuity ?? null,
+    // What @Video1 says, in the sidecar's own words: which colour is which
+    // place, and who is standing in front of what at each end of the clip.
+    landmarks: skeleton.landmarks,
+    subjectsDetail: skeleton.subjectsDetail,
     warnings: skeleton.warnings,
     skeleton: skeleton.markdown,
   });

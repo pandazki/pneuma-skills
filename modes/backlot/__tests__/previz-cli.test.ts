@@ -2053,6 +2053,226 @@ describe("prompt-skeleton", () => {
  * and nothing is drawn there; the storyboard is RENDERED from the greybox,
  * one key frame at a time, and the board survives only as a legacy record.
  */
+/**
+ * The greybox's sidecar, as `previz_kit.finish()` writes it: which colour in
+ * the picture is which place, whether the camera sees each one at the two
+ * ends of the clip, and what is standing behind each pawn there.
+ *
+ * Written by hand rather than rendered — Blender is `previz-kit.test.ts`'s
+ * job. What is under test here is the pack the skeleton writes FROM it.
+ */
+function withLandmarks(cwd: string, id = "lab-walk", extra: Record<string, unknown> = {}) {
+  const dir = join(cwd, "film", "shots", id, "greybox");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "scene.meta.json"), `${JSON.stringify({
+    fps: 24,
+    frames: 192,
+    seconds: 8,
+    width: 1280,
+    height: 720,
+    camera: "cam",
+    subjects: ["kai", "shutter"],
+    accents: [],
+    landmarks: [
+      { name: "shop", label: "便利店雨棚", color: "red", rgb: [0.85, 0.15, 0.12], objects: ["shop_awning", "shop_front"], in_frame: { first: true, last: true } },
+      { name: "bus_stop", label: "公交站牌", color: "blue", rgb: [0.15, 0.35, 0.85], objects: ["bus_stop"], in_frame: { first: true, last: true } },
+      { name: "tower", label: "远处的水塔", color: "yellow", rgb: [0.92, 0.8, 0.1], objects: ["tower"], in_frame: { first: false, last: false } },
+    ],
+    subjects_detail: [
+      { name: "kai", color: "white", rgb: [0.9, 0.9, 0.9], behind: { first: ["shop"], last: ["bus_stop"] } },
+      { name: "shutter", color: "grey", rgb: [0.62, 0.63, 0.65], behind: null },
+    ],
+    camera_lens: [],
+    time_warp: [],
+    blender: "5.2.1",
+    engine: "BLENDER_WORKBENCH",
+    ...extra,
+  }, null, 2)}\n`);
+}
+
+/**
+ * The geography the greybox knows and the picture cannot say.
+ *
+ * Seven takes of one street in trial 4 disagreed about where the shop was,
+ * because @Video1 showed seven grey lumps and nothing in the pack said which
+ * lump was which. These are the three sentences that close it: what each
+ * colour means, which colour each pawn is, and who is standing in front of
+ * what at the two ends of the clip.
+ */
+describe("the landmarks the pack reads off the greybox", () => {
+  test.skipIf(!HAS_FFMPEG)("a Chinese pack names every colour, the pawn's own colour, and the geography", () => {
+    const cwd = workspace();
+    scaffold(cwd);
+    writeFileSync(join(cwd, "film", "screenplay.md"), "# 便利店\n\n凌晨三点，男人推门进来，站在冷柜前。\n");
+    backlot(cwd, ["character", "add", "film", "kai", "--name", "小凯"]);
+    backlot(cwd, ["character", "look", "film", "kai", "--file", pngFixture(cwd), "--prompt", "sheet"]);
+    json(cwd, ["meta", "film/shots/lab-walk", "--characters", "kai"]);
+    withLandmarks(cwd);
+
+    const skeleton = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]);
+    const text = skeleton.skeleton as string;
+
+    // 1 — one line per landmark, in meta order, directly under @Video1's own
+    // line: the colour is in the picture, what it MEANS is only here.
+    const mapping = text.split("【素材映射】")[1].split("\n\n")[0].trim().split("\n");
+    expect(mapping[0].startsWith("@Video1：")).toBe(true);
+    expect(mapping.slice(1, 4)).toEqual([
+      "@Video1 中的红体块 = 便利店雨棚。",
+      "@Video1 中的蓝体块 = 公交站牌。",
+      "@Video1 中的黄体块 = 远处的水塔。",
+    ]);
+
+    // 2 — the pawn's colour is a fact the greybox recorded, so the character
+    // line states it instead of leaving `<TODO: 它的颜色…>` for the agent.
+    expect(text).toContain("@Image1：白模中名为「kai」的白色体块就是小凯，只参考这张的脸型、发型、服装与配饰，不用背景。");
+    expect(text).not.toContain("<TODO: 它的颜色与第 1 帧位置>");
+
+    // 3 — the geography sentence, in 【全局设定】, right after 场景 (there is
+    // no set here, so right after 风格). It carries the end state where it
+    // differs, and says out loud what is NOT in the picture.
+    expect(text).toContain("地理：小凯身后是便利店雨棚（结束时身后是公交站牌）；画面里没有远处的水塔。");
+    const order = ["【全局设定】", "风格：", "地理：", "光线："].map((mark) => text.indexOf(mark));
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(order.every((at) => at >= 0)).toBe(true);
+
+    // The prop is a subject with no geography, and it is not made into one.
+    expect(text).not.toContain("shutter");
+    expect(skeleton.landmarks.map((entry: any) => entry.name)).toEqual(["shop", "bus_stop", "tower"]);
+    expect(skeleton.subjectsDetail.map((entry: any) => entry.name)).toEqual(["kai", "shutter"]);
+    expect((skeleton.warnings as string[]).join(" ")).not.toContain("declares no landmarks");
+  });
+
+  test.skipIf(!HAS_FFMPEG)("an English pack says the same three things in English", () => {
+    const cwd = workspace();
+    scaffold(cwd);
+    backlot(cwd, ["character", "add", "film", "kai", "--name", "Kai"]);
+    backlot(cwd, ["character", "look", "film", "kai", "--file", pngFixture(cwd), "--prompt", "sheet"]);
+    json(cwd, ["meta", "film/shots/lab-walk", "--characters", "kai"]);
+    withLandmarks(cwd);
+
+    const text = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]).skeleton as string;
+    expect(text).toContain("The red block in @Video1 is the 便利店雨棚.");
+    expect(text).toContain("The yellow block in @Video1 is the 远处的水塔.");
+    expect(text).toContain('@Image1: the white block named "kai" in the greybox is Kai; use only this sheet\'s face');
+    expect(text).toContain("Geography: behind Kai is the 便利店雨棚 (by the end, behind Kai is the 公交站牌); the 远处的水塔 is not in frame.");
+    expect(text).not.toContain("<TODO: its colour and where it stands at frame 1>");
+  });
+
+  test("a landmark that never leaves the frame gets no 画面里没有 clause, and a pawn that never moves gets no suffix", () => {
+    const cwd = workspace();
+    scaffold(cwd);
+    writeFileSync(join(cwd, "film", "screenplay.md"), "# 便利店\n\n凌晨三点。\n");
+    backlot(cwd, ["character", "add", "film", "kai", "--name", "小凯"]);
+    json(cwd, ["meta", "film/shots/lab-walk", "--characters", "kai"]);
+    withLandmarks(cwd, "lab-walk", {
+      landmarks: [
+        { name: "shop", label: "便利店雨棚", color: "red", rgb: [0.85, 0.15, 0.12], objects: ["shop_awning"], in_frame: { first: true, last: true } },
+      ],
+      subjects_detail: [
+        { name: "kai", color: "white", rgb: [0.9, 0.9, 0.9], behind: { first: ["shop"], last: ["shop"] } },
+      ],
+      subjects: ["kai"],
+    });
+
+    const text = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]).skeleton as string;
+    expect(text).toContain("地理：小凯身后是便利店雨棚。");
+    expect(text).not.toContain("画面里没有");
+    expect(text).not.toContain("结束时身后是");
+  });
+
+  test("a pawn with nothing behind it is left out rather than given an empty clause", () => {
+    const cwd = workspace();
+    scaffold(cwd);
+    writeFileSync(join(cwd, "film", "screenplay.md"), "# 便利店\n\n凌晨三点。\n");
+    withLandmarks(cwd, "lab-walk", {
+      subjects: ["kai"],
+      subjects_detail: [{ name: "kai", color: "white", rgb: [0.9, 0.9, 0.9], behind: { first: [], last: [] } }],
+    });
+
+    const text = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]).skeleton as string;
+    expect(text).toContain("地理：画面里没有远处的水塔。");
+    expect(text).not.toContain("身后是");
+  });
+
+  test("a pawn with nothing behind it at the start still says what is behind it by the end", () => {
+    const cwd = workspace();
+    scaffold(cwd);
+    writeFileSync(join(cwd, "film", "screenplay.md"), "# 便利店\n\n凌晨三点。\n");
+    backlot(cwd, ["character", "add", "film", "kai", "--name", "小凯"]);
+    json(cwd, ["meta", "film/shots/lab-walk", "--characters", "kai"]);
+    withLandmarks(cwd, "lab-walk", {
+      subjects: ["kai"],
+      subjects_detail: [{ name: "kai", color: "white", rgb: [0.9, 0.9, 0.9], behind: { first: [], last: ["bus_stop"] } }],
+    });
+
+    const text = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]).skeleton as string;
+    expect(text).toContain("地理：小凯结束时身后是公交站牌；画面里没有远处的水塔。");
+  });
+
+  test("a blocked shot whose RENDERED greybox names no places is warned about, by name", () => {
+    const cwd = workspace();
+    scaffold(cwd);
+    withLandmarks(cwd, "lab-walk", { landmarks: [], subjects_detail: [] });
+    const skeleton = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]);
+    expect((skeleton.warnings as string[]).join(" ")).toContain(
+      "the greybox declares no landmarks — nothing in @Video1 tells the model what is behind whom; " +
+        "declare them with previz_kit.landmark(...) and re-render",
+    );
+    expect(skeleton.skeleton as string).not.toContain("地理：");
+    expect(skeleton.landmarks).toEqual([]);
+  });
+
+  test("a shot not rendered yet is not told twice — the missing greybox is the one warning", () => {
+    const cwd = workspace();
+    scaffold(cwd);
+    const skeleton = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]);
+    const warnings = (skeleton.warnings as string[]).join(" ");
+    expect(warnings).toContain("there is no final greybox yet");
+    expect(warnings).not.toContain("declares no landmarks");
+  });
+
+  test("a colour outside the palette leaves a placeholder, and says so", () => {
+    const cwd = workspace();
+    scaffold(cwd);
+    writeFileSync(join(cwd, "film", "screenplay.md"), "# 便利店\n\n凌晨三点。\n");
+    withLandmarks(cwd, "lab-walk", {
+      landmarks: [
+        { name: "shop", label: "便利店雨棚", color: "custom", rgb: [0.11, 0.22, 0.33], objects: ["shop_awning"], in_frame: { first: true, last: true } },
+      ],
+      subjects: ["kai"],
+      subjects_detail: [{ name: "kai", color: "white", rgb: [0.9, 0.9, 0.9], behind: { first: ["shop"], last: ["shop"] } }],
+    });
+
+    const skeleton = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]);
+    expect(skeleton.skeleton as string).toContain("@Video1 中的<TODO: 颜色>体块 = 便利店雨棚。");
+    expect((skeleton.warnings as string[]).join(" ")).toContain(
+      'landmark "shop" was given a colour of its own rather than a palette one',
+    );
+  });
+
+  test.skipIf(!HAS_FFMPEG)("a FREE shot carries none of it — there is no @Video1 to name a colour in", () => {
+    const cwd = workspace();
+    scaffold(cwd);
+    writeFileSync(join(cwd, "film", "screenplay.md"), "# 便利店\n\n凌晨三点。\n");
+    backlot(cwd, ["character", "add", "film", "kai", "--name", "小凯"]);
+    backlot(cwd, ["character", "look", "film", "kai", "--file", pngFixture(cwd), "--prompt", "sheet"]);
+    json(cwd, ["meta", "film/shots/lab-walk", "--characters", "kai"]);
+    withLandmarks(cwd);
+    json(cwd, ["meta", "film/shots/lab-walk", "--conditioning", "free"]);
+
+    const skeleton = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]);
+    const text = skeleton.skeleton as string;
+    expect(skeleton.conditioning).toBe("free");
+    expect(text).not.toContain("中的红体块");
+    expect(text).not.toContain("地理：");
+    expect(text).not.toContain("白模中名为");
+    expect((skeleton.warnings as string[]).join(" ")).not.toContain("declares no landmarks");
+    // The free-shot rule stands: the geography a free take gets is the beat
+    // detail, which `shot-plan.md` requires to name what is behind each body.
+    expect(skeleton.landmarks.map((entry: any) => entry.name)).toEqual(["shop", "bus_stop", "tower"]);
+  });
+});
+
 describe("key frames and the lineup", () => {
   /** A shot whose greybox is a real clip, so a frame can be cut out of it. */
   function anchored(cwd: string, { board = false } = {}) {

@@ -38,6 +38,7 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   copyFileSync,
   existsSync,
@@ -448,6 +449,50 @@ function cmdGates(dir, mode) {
  * and they approved. It is copied into the project so the record cannot
  * point outside the film.
  */
+/**
+ * Why this picture looks like a PLACE rather than an idiom, or `null`.
+ *
+ * A style frame is attached to every take of the film, so a set in it is a
+ * set the model paints into shots that set is not in — trial 4's one style
+ * frame was a girl under a shop awning, and the awning turned up in shots
+ * where the shop was behind the camera. Three tells, cheapest first: the file
+ * sits in a set's bible directory, its bytes ARE a registered concept frame,
+ * or the prompt names a set the film has.
+ */
+function setConceptTell(dir, source, bytes, prompt) {
+  const sets = loadManifest(dir).sets ?? [];
+  for (const id of sets) {
+    const home = bibleDir(dir, "sets", id);
+    const inner = relative(home, source);
+    if (inner && !inner.startsWith("..") && !isAbsolute(inner)) {
+      return `it is inside the bible record of set "${id}"`;
+    }
+  }
+  let digest = null;
+  for (const id of sets) {
+    const record = readBible(dir, "sets", id);
+    if (!record?.concept?.file) continue;
+    const concept = join(bibleDir(dir, "sets", id), String(record.concept.file));
+    if (!existsSync(concept)) continue;
+    digest = digest ?? createHash("sha256").update(bytes).digest("hex");
+    if (createHash("sha256").update(readFileSync(concept)).digest("hex") === digest) {
+      return `its bytes are set "${id}"'s concept frame`;
+    }
+  }
+  const words = String(prompt ?? "").toLowerCase();
+  if (words.trim()) {
+    for (const id of sets) {
+      const record = readBible(dir, "sets", id);
+      for (const token of [String(record?.name ?? ""), id]) {
+        if (token.length >= 2 && words.includes(token.toLowerCase())) {
+          return `--prompt names the set "${token}"`;
+        }
+      }
+    }
+  }
+  return null;
+}
+
 function cmdStyle(dir, opts) {
   requireProject(dir);
   const destination = join(dir, ...STYLE_KEYFRAME_FILE.split("/"));
@@ -473,8 +518,17 @@ function cmdStyle(dir, opts) {
 
   const source = resolveInput(opts.keyframe);
   if (!existsSync(source)) fail(`--keyframe: no such file: ${source}`);
-  const size = pngSize(readFileSync(source));
+  const bytes = readFileSync(source);
+  const size = pngSize(bytes);
   if (!size) fail(`--keyframe: ${source} is not a readable PNG — generate_image.mjs writes PNG by default (--output-format png)`);
+  const why = setConceptTell(dir, source, bytes, opts.prompt);
+  if (why) {
+    note(
+      `[backlot] WARN: the style key frame looks like a set concept (${why}) — the style frame is attached to EVERY take, ` +
+        "so a place in it leaks into shots where that place is behind the camera; use a location-neutral picture " +
+        "(a character bust, a texture study, an empty sky)",
+    );
+  }
   mkdirSync(dirname(destination), { recursive: true });
   copyFileSync(source, destination);
 
@@ -489,7 +543,11 @@ function cmdStyle(dir, opts) {
       ...(opts.prompt === undefined ? {} : { prompt: String(opts.prompt) }),
     };
   });
-  note(`[backlot] the style reference is ${STYLE_KEYFRAME_FILE} — every take, and every key frame 'previz.mjs anchor' renders, carries it from now on`);
+  note(
+    `[backlot] the style reference is ${STYLE_KEYFRAME_FILE} — EVERY take, and every key frame 'previz.mjs anchor' renders, ` +
+      "carries it from now on, which is why it has to be location-neutral: a place in this one picture is painted into shots " +
+      "where that place is behind the camera",
+  );
   return emit({ command: "style", dir, style: manifest.style, file: STYLE_KEYFRAME_FILE, size });
 }
 

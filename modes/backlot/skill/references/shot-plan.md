@@ -113,6 +113,16 @@ one wall. And every shot's `detail`, free or not, names **what is behind
 each character** (from the set's layout, not from taste), because that
 sentence is the only geography a free take ever gets.
 
+**A greybox or hybrid shot has a mechanism for the same thing, and it is not
+prose:** `pv.landmark(...)` paints each named place one saturated colour, and
+`prompt-skeleton` turns that into `@Video1 中的红体块 = 便利店雨棚。` plus a
+`地理：` sentence measured off the block — who is in front of what at the
+first and last frame, and which places are not in the picture at all. Declare
+one for every place the beats name (`references/greybox.md`). Grey blocks and
+a `detail` that names the geography in words is the same take the seven-take
+street came back as: the words are there, and nothing in `@Video1` agrees
+with them.
+
 Two consequences, both mechanical:
 
 - A free shot needs **no greybox and no greybox checks** — `next` goes plan →

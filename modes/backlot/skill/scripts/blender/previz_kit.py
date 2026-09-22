@@ -62,6 +62,9 @@ Times are SECONDS; the kit converts them to frames. Everything is metres.
   down the sightline and a decaying shake, added on top of whatever the
   camera was already doing, stated in SHOT time
 * `accent(objects, start, end, color)` - the one colour event
+* `landmark(name, objects, label=None, color=None)` - a named place the model
+  has to be able to READ: one flat palette colour over its blocks, recorded in
+  `scene.meta.json` with what is in frame and who is standing in front of it
 * `set_interpolation(obj, mode, ease)` · `F(seconds)` · `T(frame)` ·
   `shot()` · `runner_args()` · `log(text)` · `die(reason)`
 * `finish(render=True)` - bake, validate, render, save, export, write meta
@@ -133,6 +136,33 @@ cruise speed against the pace you declare and refuses an implausible one: a
 Props are the other way round. A door opening is a spatial event, not a limb,
 so it stays in the greybox: `hinge` gives the pivot, `swing` keys the angle.
 
+## Landmarks, and the two things the sidecar carries for the prompt
+
+A grey block is a shape, not a place. Conditioned on seven grey blocks the
+model cannot tell the shop from the bus stop, so it decides for itself once
+per take and seven takes of one street disagree about where the shop is. A
+`landmark` is the fix: it paints one named place in one saturated palette
+colour nobody else has, so `@Video1` shows a RED block and the prompt can say
+"the red block is the convenience store's awning".
+
+`finish()` writes two arrays the prompt skeleton reads and the picture cannot
+carry on its own - the same reason `camera_lens` and `time_warp` are in the
+sidecar rather than in the glTF:
+
+* `landmarks: [{name, label, color, rgb, objects, in_frame: {first, last}}]` -
+  what each colour means, and whether that place projects inside the camera
+  view on the first and the last frame. A landmark that is in frame at neither
+  end is one the prompt has to say is NOT in the picture, or the model paints
+  it anyway. The rgb and the object names are here for the same reason the
+  accents are: glTF carries no Workbench material colour, so the picture has
+  it and the 3D lane has to be told.
+* `subjects_detail: [{name, color, rgb, behind}]` - one entry per subject, in
+  `subjects` order. For a figure, `behind.first` / `behind.last` are the
+  landmarks standing behind it from the camera at those two frames (farther
+  away, within 25 degrees of the camera's line to the figure, nearest first),
+  which is the geography sentence the prompt owes. A prop added by `move` or
+  `swing` is a subject too and carries `behind: null`.
+
 ## Every function prints one line
 
 `--background` has no UI and no error dialog; the printed log is the only
@@ -178,6 +208,11 @@ import os
 import sys
 
 import bpy
+
+# Aliased under an underscore so the kit's own API index - "every public name
+# this module defines" - never picks up something it merely imported.
+from bpy_extras.object_utils import world_to_camera_view as _world_to_camera_view
+from mathutils import Vector as _Vector
 
 # ---------------------------------------------------------------------------
 # Refusals and the log
@@ -226,6 +261,7 @@ def runner_args():
 _SHOT = None
 _FIGURES = []
 _ACCENTS = []
+_LANDMARKS = []
 _SUBJECTS = []
 _LENS = []
 _WARPS = []
@@ -257,7 +293,7 @@ def T(frame):
 
 def setup(seconds=8.0, fps=24, width=1280, height=720, world=(0.82, 0.83, 0.85)):
     """Empty the file, set the shot's clock and size, and build the Workbench look."""
-    global _SHOT, _FIGURES, _ACCENTS, _SUBJECTS, _LENS, _WARPS, _IMPACTS, WHITE, GREY, DARK
+    global _SHOT, _FIGURES, _ACCENTS, _LANDMARKS, _SUBJECTS, _LENS, _WARPS, _IMPACTS, WHITE, GREY, DARK
     args = runner_args()
     frames = int(round(float(seconds) * int(fps)))
     if abs(float(seconds) * int(fps) - frames) > 1e-6:
@@ -325,6 +361,7 @@ def setup(seconds=8.0, fps=24, width=1280, height=720, world=(0.82, 0.83, 0.85))
     }
     _FIGURES = []
     _ACCENTS = []
+    _LANDMARKS = []
     _SUBJECTS = []
     _LENS = []
     _WARPS = []
@@ -1898,6 +1935,275 @@ def accent(objects, start, end, color, name="accent"):
 
 
 # ---------------------------------------------------------------------------
+# Landmarks: the places the model has to be able to READ
+# ---------------------------------------------------------------------------
+
+# Eight saturated colours, far apart from each other and from the kit's three
+# greys, so "the red block" is unambiguous in a 640-wide preview. Eight is the
+# whole list on purpose: past that the colours stop being tellable apart and a
+# greybox with nine named places is not one anybody can read anyway.
+LANDMARK_PALETTE = [
+    ("red",     (0.85, 0.15, 0.12)),
+    ("blue",    (0.15, 0.35, 0.85)),
+    ("yellow",  (0.92, 0.80, 0.10)),
+    ("green",   (0.15, 0.65, 0.25)),
+    ("magenta", (0.80, 0.15, 0.70)),
+    ("cyan",    (0.10, 0.70, 0.75)),
+    ("orange",  (0.95, 0.50, 0.10)),
+    ("purple",  (0.45, 0.20, 0.75)),
+]
+
+# The kit's own three, named, so a pawn left the default colour is reported as
+# "white" rather than as the nearest thing in the landmark palette.
+_KIT_COLOURS = [
+    ("white", (0.90, 0.90, 0.90)),
+    ("grey", (0.62, 0.63, 0.65)),
+    ("dark", (0.35, 0.36, 0.38)),
+]
+
+# How far off the camera's line to a figure a landmark may sit and still count
+# as being BEHIND that figure. A half-angle, in the ground plane.
+_BEHIND_DEGREES = 25.0
+
+
+def _landmark_meshes(objects):
+    """`objects` as a flat list of things that can carry a material."""
+    if isinstance(objects, dict):
+        die("landmark: that is a dict of parts (what `room` returns), not an object - pass the parts "
+            "this place is made of, e.g. [parts[\"back\"], parts[\"left\"]]")
+    items = list(objects) if isinstance(objects, (list, tuple)) else [objects]
+    if not items:
+        die("landmark: needs at least one object - the blocks that ARE this place")
+    for obj in items:
+        data = getattr(obj, "data", None)
+        if data is None or not hasattr(data, "materials"):
+            die("landmark: %s carries no material, so it cannot be painted a colour the model can "
+                "read - name the box or cylinder that stands for the place, not its hinge or its parent"
+                % getattr(obj, "name", obj))
+    return items
+
+
+def landmark(name, objects, label=None, color=None):
+    """Declare a named place the model must be able to READ in the greybox.
+
+    `objects` is one object or a list of them (blocks, cylinders, a `room`
+    part). Every one of them gets ONE flat material of a distinct saturated
+    palette colour, so the render shows the place in a colour nobody else has
+    and the prompt can say which block is the shop. `color` is a palette name
+    ("red") or an (r, g, b); omitted, the next unused palette entry is taken.
+    `label` is the prose the prompt will use ("the shop awning"); it defaults
+    to `name`.
+
+    Declare one for every place the beats name, and for any place whose SIDE
+    the story cares about. Without them the model decides per take which grey
+    block is which, and two takes of one street disagree.
+
+    Returns the landmark record; `finish()` writes them all to
+    `scene.meta.json` with what is in frame and who stands in front of them.
+    """
+    shot()
+    name = str(name)
+    if not name.strip():
+        die("landmark: needs a name - the id the prompt and the beats call this place")
+    for entry in _LANDMARKS:
+        if entry["name"] == name:
+            die('landmark: "%s" is already declared (%s) - one record per place; give this one its '
+                "own name or add its blocks to the first call" % (name, entry["label"]))
+    if len(_LANDMARKS) >= len(LANDMARK_PALETTE):
+        die("landmark: \"%s\" would be number %d and the palette has %d colours - a greybox with more "
+            "named places is one nobody can read; merge two of them or drop one"
+            % (name, len(_LANDMARKS) + 1, len(LANDMARK_PALETTE)))
+
+    items = _landmark_meshes(objects)
+    owner = {}
+    for entry in _LANDMARKS:
+        for other in entry["objects"]:
+            owner[other] = entry["name"]
+    for obj in items:
+        if obj.name in owner:
+            die('landmark: %s is already part of landmark "%s" - one object is one place, so the '
+                "colour the model reads stays unambiguous" % (obj.name, owner[obj.name]))
+
+    palette = dict(LANDMARK_PALETTE)
+    taken_names = set(entry["color"] for entry in _LANDMARKS)
+    taken_rgb = set(tuple(entry["rgb"]) for entry in _LANDMARKS)
+    if color is None:
+        color_name, rgb = next((pair for pair in LANDMARK_PALETTE if pair[0] not in taken_names))
+    elif isinstance(color, str):
+        color_name = color
+        if color_name not in palette:
+            die('landmark: "%s" is not a palette colour - use one of %s, or pass an (r, g, b)'
+                % (color_name, ", ".join(entry[0] for entry in LANDMARK_PALETTE)))
+        rgb = palette[color_name]
+    else:
+        try:
+            rgb = tuple(float(channel) for channel in color)
+        except (TypeError, ValueError):
+            rgb = ()
+        if len(rgb) != 3:
+            die("landmark: color must be a palette name or an (r, g, b) (got %r)" % (color,))
+        color_name = "custom"
+    rgb = tuple(round(float(channel), 4) for channel in rgb)
+    if color_name != "custom" and color_name in taken_names:
+        used = next(entry["name"] for entry in _LANDMARKS if entry["color"] == color_name)
+        die('landmark: %s is already landmark "%s" - two places in one colour is the thing the '
+            "colours exist to prevent; pick another of %s"
+            % (color_name, used, ", ".join(entry[0] for entry in LANDMARK_PALETTE if entry[0] not in taken_names) or "none left"))
+    if rgb in taken_rgb:
+        used = next(entry["name"] for entry in _LANDMARKS if tuple(entry["rgb"]) == rgb)
+        die('landmark: rgb%s is already landmark "%s" - two places in one colour is the thing the '
+            "colours exist to prevent" % (rgb, used))
+
+    # One material for the whole place, put into every slot of every object -
+    # the same path `accent` recolours through. The Workbench render (the MP4
+    # the video model is conditioned on) reads `diffuse_color`, so the colour
+    # is in the picture; glTF drops a node-less material's colour on the floor
+    # (measured: every material exports at the default 0.8 grey), which is
+    # exactly why the rgb and the object names also travel in the sidecar.
+    mat = material("%s_landmark" % name, rgb)
+    for obj in items:
+        slots = obj.data.materials
+        if len(slots) == 0:
+            slots.append(mat)
+        else:
+            for slot in range(len(slots)):
+                slots[slot] = mat
+
+    record = {
+        "name": name,
+        "label": str(label) if label is not None else name,
+        "color": color_name,
+        "rgb": [rgb[0], rgb[1], rgb[2]],
+        "objects": [obj.name for obj in items],
+        "handles": items,
+    }
+    _LANDMARKS.append(record)
+    log("landmark %s = %s, %s rgb%s on %d object(s): %s"
+        % (name, record["label"], color_name, rgb, len(items), ", ".join(record["objects"])))
+    return record
+
+
+def _world_centre(objects, depsgraph):
+    """The centre of the union of `objects`' world bounding boxes, at the
+    frame the scene is currently on."""
+    low = None
+    high = None
+    for obj in objects:
+        evaluated = obj.evaluated_get(depsgraph)
+        matrix = evaluated.matrix_world
+        for corner in evaluated.bound_box:
+            point = matrix @ _Vector(corner)
+            if low is None:
+                low = [point.x, point.y, point.z]
+                high = [point.x, point.y, point.z]
+                continue
+            for axis in range(3):
+                low[axis] = min(low[axis], point[axis])
+                high[axis] = max(high[axis], point[axis])
+    return tuple((low[axis] + high[axis]) / 2.0 for axis in range(3))
+
+
+def _nearest_colour(rgb):
+    """The colour NAME closest to `rgb` - the kit's three greys or the palette."""
+    if rgb is None:
+        return None
+    best = None
+    for name, value in list(_KIT_COLOURS) + list(LANDMARK_PALETTE):
+        distance = sum((float(rgb[axis]) - value[axis]) ** 2 for axis in range(3))
+        if best is None or distance < best[1]:
+            best = (name, distance)
+    return best[0]
+
+
+def _first_rgb(obj):
+    """An object's own colour, as the three rounded channels, or None."""
+    data = getattr(obj, "data", None) if obj is not None else None
+    slots = getattr(data, "materials", None) if data is not None else None
+    if not slots or slots[0] is None:
+        return None
+    return [round(float(channel), 4) for channel in tuple(slots[0].diffuse_color)[:3]]
+
+
+def _frame_facts(scene, frame):
+    """At `frame`: each landmark's centre and whether the camera sees it, and
+    the landmarks standing behind each figure."""
+    scene.frame_set(frame)
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    camera = scene.camera.evaluated_get(depsgraph)
+    eye = camera.matrix_world.translation
+    places = {}
+    for entry in _LANDMARKS:
+        centre = _world_centre(entry["handles"], depsgraph)
+        view = _world_to_camera_view(scene, camera, _Vector(centre))
+        places[entry["name"]] = {
+            "centre": centre,
+            "in_frame": bool(0.0 <= view.x <= 1.0 and 0.0 <= view.y <= 1.0 and view.z > 0.0),
+        }
+    # BEHIND is a fact about the ground plane: a landmark is behind a figure
+    # when it is farther from the camera and within a narrow cone of the
+    # camera's line to that figure. Z is ignored on purpose - an awning three
+    # metres up is still behind the person under it.
+    limit = math.cos(math.radians(_BEHIND_DEGREES))
+    behind = {}
+    for fig in _FIGURES:
+        here = fig["root"].evaluated_get(depsgraph).matrix_world.translation
+        to_figure = (here.x - eye.x, here.y - eye.y)
+        span = math.hypot(*to_figure)
+        found = []
+        if span > 1e-6:
+            for entry in _LANDMARKS:
+                centre = places[entry["name"]]["centre"]
+                to_place = (centre[0] - eye.x, centre[1] - eye.y)
+                reach = math.hypot(*to_place)
+                if reach <= span or reach < 1e-6:
+                    continue
+                cosine = (to_figure[0] * to_place[0] + to_figure[1] * to_place[1]) / (span * reach)
+                if cosine >= limit:
+                    found.append((reach, entry["name"]))
+        behind[fig["root"].name] = [name for _, name in sorted(found)]
+    return {"landmarks": places, "behind": behind}
+
+
+def _landmark_track(first, last):
+    """The landmarks, with what the camera sees of them at both ends."""
+    return [
+        {
+            "name": entry["name"],
+            "label": entry["label"],
+            "color": entry["color"],
+            "rgb": list(entry["rgb"]),
+            "objects": list(entry["objects"]),
+            "in_frame": {
+                "first": first["landmarks"][entry["name"]]["in_frame"],
+                "last": last["landmarks"][entry["name"]]["in_frame"],
+            },
+        }
+        for entry in _LANDMARKS
+    ]
+
+
+def _subjects_detail(first, last):
+    """One entry per subject, in `subjects` order - a figure carries what is
+    behind it, a prop carries `behind: null`."""
+    figures = {fig["root"].name: fig for fig in _FIGURES}
+    rows = []
+    for name in _SUBJECTS:
+        fig = figures.get(name)
+        if fig is None:
+            rgb = _first_rgb(bpy.data.objects.get(name))
+            rows.append({"name": name, "color": _nearest_colour(rgb), "rgb": rgb, "behind": None})
+            continue
+        rgb = _first_rgb(fig["body"])
+        rows.append({
+            "name": name,
+            "color": _nearest_colour(rgb),
+            "rgb": rgb,
+            "behind": {"first": first["behind"][name], "last": last["behind"][name]},
+        })
+    return rows
+
+
+# ---------------------------------------------------------------------------
 # finish
 # ---------------------------------------------------------------------------
 
@@ -1960,6 +2266,14 @@ def finish(render=True):
         if key in args and int(round(float(args[key]))) != int(mine):
             die("scene has %s=%s, shot.json expects %s=%s" % (label, mine, label, args[key]))
 
+    # The two ends of the clip, read off the BAKED scene: where every landmark
+    # is, whether the camera sees it, and who is standing in front of it. It
+    # has to be after the bake, the warp and the impacts - the answer is about
+    # the frames the model will be conditioned on, not about what was written.
+    first = _frame_facts(scene, 1)
+    last = _frame_facts(scene, state["frames"])
+    scene.frame_set(1)
+
     meta = {
         "fps": state["fps"],
         "frames": state["frames"],
@@ -1969,6 +2283,10 @@ def finish(render=True):
         "camera": scene.camera.name,
         "subjects": list(_SUBJECTS),
         "accents": _accent_track(),
+        # What each colour in the picture MEANS, and who is in front of it.
+        # A grey block is a shape; only this says it is the shop.
+        "landmarks": _landmark_track(first, last),
+        "subjects_detail": _subjects_detail(first, last),
         # The second thing glTF drops on the floor, after the accent colours:
         # the focal length curve. `[]` when the lens never moved, in which
         # case the exported camera's own yfov is the whole truth.
@@ -2006,7 +2324,9 @@ def finish(render=True):
     # The summary line is the headless log's one machine-readable record, and
     # a focal curve is one key per frame - counted here, kept in full in
     # scene.meta.json, which is the file the viewer reads.
-    overview = {key: value for key, value in meta.items() if key != "camera_lens"}
+    overview = {key: value for key, value in meta.items()
+                if key not in ("camera_lens", "landmarks", "subjects_detail")}
     overview["camera_lens_keys"] = len(meta["camera_lens"])
+    overview["landmarks"] = [entry["name"] for entry in meta["landmarks"]]
     log("summary %s" % json.dumps(overview, sort_keys=True))
     return meta
