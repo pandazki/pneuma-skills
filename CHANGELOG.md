@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.51.0] - 2026-09-22
+
+### Added
+- **Backlot mode (片场).** A creator flow from an idea to a finished short film — idea → script → bible → boards → previz → takes → sound → cut — with the creator approving every stage before the next one starts. Previz is a greybox blocked out in headless Blender (`previz_kit.py`: pawns, camera moves, tempo, lens keys, and coloured named landmarks the video model can read); each shot then becomes a Seedance 2.5 take conditioned on the block, on sheets alone, or both, from a prompt pack generated out of the shot record; spoken lines are rendered with voice references and checked by transcript, and `backlot.mjs cut --final` mixes music and VO into the reel. Stage state is derived, never stored, so paid commands gate on approval and `gates open` runs unattended. The viewer carries a stage rail, script / bible / boards / sound / cut views, a greybox player with a 3D inspection lane, lineup, checks and a cost panel. Ships with the `one-inch-of-wind` seed (a wuxia duel); the greybox approach is adapted from modengsir/blender-video-workflows (MIT). Known gap: the idea and script stages have no quality criteria yet, so an unattended run makes a flat film.
+- **Sprite seamless loops.** A seamless loop is now a kind of motion: one keyframe → a Seedance 2.5 first-last clip shot with the same image at both ends → optional interpolation (Topaz by default, RIFE or ffmpeg `minterpolate` on request) → green-screen matting → `sprite-sheet.mjs loop`, which cuts every frame and exports `loop.webp`, `loop.apng`, `loop.webm` (VP9 alpha) and `loop.json` (Lottie). The seam is measured against the median frame step and, when nearly closed, filled with in-between frames at the wrap. A brief gate records the user's duration, width and interpolator before any paid clip, and `retime` is a real derived clip with provenance. The viewer gains a Loop tab (animated WebP, seam verdict, sized downloads) and the keyframe on stage. Two shared scripts arrive with it: `remove-video-background.mjs` (VEED / Bria) and `interpolate-video.mjs` (Topaz / RIFE).
+
+### Fixed
+- **Sprite previews no longer ghost.** Every animated WebP preview was encoded through ffmpeg's `libwebp` instead of `libwebp_anim`; seed previews are re-rendered. `probeLastFrameTime` was also off by one frame on 24 fps clips.
+- **Skill text that contradicted the code it describes.** A repo-wide prompt audit fixed the drift: kami's fit loop reads the report the viewer actually writes (`delta_safe_mm`, five statuses including `loose` and `bleed`); slide's `{{slideWidth-128}}` placeholders were never substituted and are now real `contentWidth` / `contentHeight` params; clipcraft's image-reference cap is the 9 its script enforces rather than 4, and a nonexistent `--generate-audio` flag is gone; cosmos's lens catalog uses the live `steps[]` shape; webcraft's overdrive command no longer demands browser automation the mode forbids; the handoff template's Bun floor and mode list are current.
+- **Seed files decide "binary" in one place.** `pneuma init` used its own extension regex, so a seed file with a binary type outside that list was read and rewritten as UTF-8; it now shares `isBinarySeedFile` with the gallery copy path.
+
+### Improved
+- **Mode skills say what is true now.** The same audit removed version archaeology across bansho, plotwise, sprite, wordtaste, cosmos, clipcraft, kami, illustrate, eli5, mode-maker and project-evolve — rules written as changes from earlier versions, incident stories whose rule now stands alone, `MUST` / `CRITICAL` emphasis and one-line reply clamps — and moved the server rule's incident records into `.claude/references/server-gotchas.md`. Nineteen mode skills carry a patch bump with changelog entries so the launcher offers the update.
+- **One roster agent per role.** `pneuma-impl-fable` and `pneuma-amender-fable` are gone; the engine is a per-call `model` override on `pneuma-impl` / `pneuma-amender`, and the dev-master orchestrator passes it.
+
 ## [3.50.0] - 2026-09-17
 
 ### Added

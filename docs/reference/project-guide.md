@@ -14,6 +14,7 @@ Architecture and runtime reference for Pneuma Skills. Start with [AGENTS.md](../
 | Drawing | @excalidraw/excalidraw 0.18 |
 | Diagramming | draw.io viewer-static.min.js (CDN) + rough.js 4.6 |
 | Video | remotion 4.0 + @remotion/player + @remotion/web-renderer + @babel/standalone |
+| 3D | three 0.182 (backlot's greybox player) |
 | Desktop | Electron 41 + electron-builder + electron-updater |
 | Agent | Claude Code CLI stdio stream-json; Codex CLI `app-server` stdio JSON-RPC; Moonshot Kimi Code CLI ACP stdio JSON-RPC (`kimi acp`) — all via `node:child_process` |
 
