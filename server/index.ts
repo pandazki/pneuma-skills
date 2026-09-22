@@ -37,6 +37,7 @@ import { mountHandoffRoutes } from "./handoff-routes.js";
 import { mountBorrowRoutes } from "./borrow-routes.js";
 import { enumerateLocalModes } from "../core/local-modes.js";
 import { registerLibraryRoutes } from "./library-routes.js";
+import { registerCatalogRoutes } from "./catalog-routes.js";
 import {
   registerAgentCommandRoutes,
   bootstrapAutoUpdate as bootstrapAgentCommandAutoUpdate,
@@ -2051,6 +2052,14 @@ export async function startServer(options: ServerOptions) {
       invalidateRegistry: () => {
         registryCache.clear();
       },
+    });
+
+    // Catalog modes (`/api/catalog`, `/api/catalog/install`) — the modes this
+    // release lists but does not ship. Installing one changes what the
+    // registry can launch, so drop its cache on the same tick.
+    registerCatalogRoutes(app, {
+      projectRoot: options.projectRoot || resolve(dirname(import.meta.path), ".."),
+      onInstalled: () => registryCache.clear(),
     });
 
     // ── Favorites (launcher-scope) ─────────────────────────────────────
