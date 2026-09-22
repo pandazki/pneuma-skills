@@ -809,6 +809,57 @@ function inspectSummary(value) {
 /** Four decimals — the scale the loop's seam and step are reported at. */
 const round4 = (value) => Math.round(value * 1e4) / 1e4;
 
+/** A handful of names, said the way a person says them: "a and b", "a, b and
+ *  c". Three unanswered questions joined by "and" twice read like a stutter. */
+const listOf = (names) => names.length <= 2
+  ? names.join(" and ")
+  : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+
+/**
+ * The motion's brief, if it is a whole one.
+ *
+ * `set-motion` only ever writes all of it at once, but `project.json` is a
+ * file: a half-written record arrives from a hand edit or a turn that stopped
+ * mid-way, and the paid-clip gate used to open on the word `brief` alone — a
+ * `{ "duration": 4 }` bought a clip and printed "undefinedpx" afterwards. All
+ * four answers or none, which is the rule `domain.ts` already applies to the
+ * document the viewer reads (`parseLoopBrief`) and `references/project-json.md`
+ * states; this is the same rule in the one place the money is spent.
+ *
+ * `{ brief }` when the record answers everything, `{ missing }` naming what it
+ * leaves unanswered, `{}` when there is no record — a brief nobody has written
+ * yet and a brief written wrong need different sentences.
+ */
+function readBrief(motion) {
+  const raw = motion?.brief;
+  if (!raw || typeof raw !== "object") return {};
+  const duration = finiteNumber(raw.duration);
+  const width = finiteNumber(raw.width);
+  const recordedAt = typeof raw.recordedAt === "string" && raw.recordedAt.trim() !== ""
+    ? raw.recordedAt
+    : undefined;
+  const missing = [
+    duration === undefined || duration <= 0 ? "--brief-duration" : null,
+    width === undefined || width <= 0 ? "--brief-width" : null,
+    LOOP_INTERPOLATORS.includes(raw.interpolator) ? null : "--brief-interpolator",
+    // Not a flag anybody types — `set-motion` stamps it — but a brief with no
+    // hour on it was not recorded by this command, and the rest of it is
+    // whatever was typed into the file by hand.
+    recordedAt === undefined ? "recordedAt" : null,
+  ].filter(Boolean);
+  if (missing.length) return { missing };
+  const budgetUsd = finiteNumber(raw.budgetUsd);
+  return {
+    brief: {
+      duration,
+      width,
+      interpolator: raw.interpolator,
+      ...(budgetUsd === undefined || budgetUsd < 0 ? {} : { budgetUsd }),
+      recordedAt,
+    },
+  };
+}
+
 /** The brief, as one line for `show` — the cheapest place a later turn can
  *  read what it is working to. */
 function briefLine(brief) {
@@ -843,7 +894,10 @@ function setLoopBrief(motion, values, now) {
     fail(`--brief-*: '${motion.id}' is not a loop motion — the brief is a loop's interview (cycle length, UI width, interpolator), and a sheet motion answers none of it. Use add-motion --kind loop for a UI loop.`);
   }
 
-  const current = motion.brief && typeof motion.brief === "object" ? motion.brief : {};
+  // Only a WHOLE brief is something to change one answer of. A half-written
+  // record is no brief, so completing it from the outside is completing
+  // nothing: the three answers are asked again, together.
+  const current = readBrief(motion).brief ?? {};
   const duration = given.duration === undefined
     ? finiteNumber(current.duration)
     : num(given.duration, "--brief-duration", { min: 0.1 });
@@ -860,7 +914,7 @@ function setLoopBrief(motion, values, now) {
     interpolator === undefined ? "--brief-interpolator" : null,
   ].filter(Boolean);
   if (missing.length) {
-    fail(`--brief-*: motion '${motion.id}' has no brief yet, so the first one needs ${missing.join(" and ")} as well — the three answers are recorded together, and any one of them can be changed later`);
+    fail(`--brief-*: motion '${motion.id}' has no brief yet, so the first one needs ${listOf(missing)} as well — the three answers are recorded together, and any one of them can be changed later`);
   }
 
   const budgetUsd = given.budget === undefined
@@ -902,9 +956,11 @@ function motionLines(motion) {
   if (motion.kind === "loop") {
     lines.push(`${motion.id} (${motion.label}) — loop, ${motion.status}, ${frameCount} frames @ ${motion.fps}fps`);
     // The brief first: it is what everything below is judged against, and a
-    // loop that has none cannot be shot yet.
-    lines.push(motion.brief
-      ? briefLine(motion.brief)
+    // loop that has none cannot be shot yet. A half-written one is none, and
+    // says so rather than printing "undefinedpx" as if it were an answer.
+    const { brief, missing } = readBrief(motion);
+    lines.push(brief ? briefLine(brief) : missing
+      ? `  brief: incomplete, missing ${listOf(missing)} — re-record it before the clip (set-motion --brief-duration … --brief-width … --brief-interpolator …)`
       : "  brief: none — ask the user before the clip (set-motion --brief-duration … --brief-width … --brief-interpolator …)");
     const seam = motion.inspect?.seam;
     const step = motion.inspect?.step;
@@ -945,6 +1001,7 @@ function summarize(doc, dir) {
 }
 
 function compactMotion(motion) {
+  const { brief } = readBrief(motion);
   return {
     id: motion.id,
     label: motion.label,
@@ -953,9 +1010,10 @@ function compactMotion(motion) {
     // line is not: its grid column is padded to seven so `loop` can stand
     // where `4x4` does, which moves the columns after it.)
     ...(motion.kind ? { kind: motion.kind } : {}),
-    // Loop motions only, and only once recorded — the same rule `kind`
-    // follows, so a sprite motion's summary is byte-for-byte what it was.
-    ...(motion.brief ? { brief: motion.brief } : {}),
+    // Loop motions only, and only once recorded WHOLE — the same rule `kind`
+    // follows, so a sprite motion's summary is byte-for-byte what it was, and
+    // the summary never hands a later turn half an answer to work to.
+    ...(brief ? { brief } : {}),
     status: motion.status,
     grid: motion.grid,
     fps: motion.fps,
@@ -1609,7 +1667,7 @@ function main() {
       // nothing else in the chain compares the two numbers. Two pixels of
       // slack, because the crop rect is rounded to even sides.
       const warnings = [];
-      const briefWidth = loopRun ? finiteNumber(motion.brief?.width) : undefined;
+      const briefWidth = loopRun ? readBrief(motion).brief?.width : undefined;
       const cutWidth = finiteNumber(motion.inspect?.cell?.width);
       if (briefWidth !== undefined && cutWidth !== undefined && Math.abs(cutWidth - briefWidth) > 2) {
         warnings.push(`frames are ${cutWidth} px wide but the brief said ${briefWidth} — pass --width to loop`);
@@ -1619,12 +1677,18 @@ function main() {
       // The motion, plus what this registration noticed. `warnings` is only
       // there when there is something to say: the payload is the motion, and
       // an always-present empty array would read as a field of it.
+      //
+      // Once per channel. This comparison goes to stderr for a human and to
+      // the payload's own `warnings` for `--json`; it is deliberately NOT
+      // copied into the stdout lines, nor into `motion.inspect.warnings` —
+      // that list is the MEASUREMENT of the frames, which is what the viewer
+      // shows and what `set-motion --ack-warnings` accepts, and this is a
+      // comparison against the brief instead.
       emit(values, warnings.length ? { ...motion, warnings } : motion, [
         loopRun
           ? `${motion.id}: ${frameIds.length} loop frames cut from ${videoAssetId} @ ${motion.fps}fps, ${Object.keys(exportIds).join(" + ") || "no exports"} registered (ready)`
           : `${motion.id}: ${frameIds.length} frames${fromVideo ? ` sampled from ${videoAssetId}` : ""}, atlas + preview registered (ready)`,
         ...(motion.inspect?.warnings ?? []),
-        ...warnings,
       ]);
       for (const warning of warnings) console.error(`WARN: ${warning}`);
       break;
@@ -1642,8 +1706,14 @@ function main() {
       // agent skipped the interview and spent $2.61 on a loop twice as long
       // as the UI wanted. A DERIVED clip is exempt because that money is
       // already gone: refusing to record it would only lose its provenance.
-      if (motion.kind === "loop" && derivedFrom === undefined && !motion.brief) {
-        fail(`add-video: loop '${motion.id}' has no brief — record the user's answers first: set-motion --brief-duration … --brief-width … --brief-interpolator …`);
+      if (motion.kind === "loop" && derivedFrom === undefined) {
+        const { brief, missing } = readBrief(motion);
+        if (!brief) {
+          const record = "record the user's answers first: set-motion --brief-duration … --brief-width … --brief-interpolator …";
+          fail(missing
+            ? `add-video: loop '${motion.id}' has an incomplete brief, missing ${listOf(missing)} — ${record}`
+            : `add-video: loop '${motion.id}' has no brief — ${record}`);
+        }
       }
       // The two legs are registered at opposite ends of their wait. A SHOT
       // clip is booked before the model runs, so the stage can show a chip

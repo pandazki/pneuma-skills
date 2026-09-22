@@ -311,9 +311,11 @@ them — before the first paid render:
 
 It is a gate, not a note: `add-video` refuses a generated clip on a loop motion
 that has none, and `register-run` compares `brief.width` with the width that
-actually landed. The parser is all-or-nothing — a brief missing any of the
-three required answers is read as no brief at all, because half a brief would
-open the gate while answering none of the question. A sprite motion never
+actually landed. Both readers are all-or-nothing — a record missing any of the
+three answers or its `recordedAt` is read as no brief at all, by the viewer's
+loader and by the scripts alike, because half a brief would open the gate while
+answering none of the question. `add-video` and `show` say which answers are
+missing rather than reading half a record out loud. A sprite motion never
 carries one; the loader drops it there the way it drops every other loop-only
 field.
 
