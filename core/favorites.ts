@@ -14,7 +14,11 @@
  * inseparable — pinning one pinned the other.
  *
  * Legacy compatibility: entries without a `::` separator are
- * interpreted as `"builtin::<entry>"` on read. The next write persists
+ * interpreted as `"builtin::<entry>"` on read. A first-party mode's bucket
+ * follows THIS release's `modes/distribution.json`, not the one that wrote
+ * the file: a mode that moved out of the package keeps its star as
+ * `"catalog::<name>"`, and one that moved back in returns to
+ * `"builtin::<name>"` (see `rebucketFirstPartyKeys`). The next write persists
  * the normalized form, so legacy files migrate themselves the first
  * time the user toggles anything. All shipped defaults are builtins,
  * so the legacy → builtin coercion never mis-attributes a user's pin.
@@ -37,6 +41,8 @@ import {
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
+
+import { bundledModeNames, isCatalogMode, type CatalogEnv } from "./mode-catalog.js";
 
 /**
  * First-run favorites. Order matters — these are surfaced in this order
@@ -69,6 +75,36 @@ function normalizeFavoriteKey(raw: unknown): string | null {
   return `builtin::${trimmed}`;
 }
 
+/**
+ * Re-bucket first-party keys against the current distribution.
+ *
+ * `builtin` and `catalog` are not properties of a mode — they are where THIS
+ * release ships it (`modes/distribution.json`). A favorites file written by
+ * an earlier release holds `"builtin::sprite"` for a mode this one downloads
+ * on demand, and the launcher composes `"catalog::sprite"` for the same card,
+ * so the star would silently vanish. Both directions are handled: a mode that
+ * moves back into the package returns to `builtin::`.
+ *
+ * Only `builtin::` and `catalog::` keys are touched. `local::` and
+ * `published::` carry a path or a URL, not a first-party mode name.
+ */
+export function rebucketFirstPartyKeys(keys: string[], env?: CatalogEnv): string[] {
+  if (!keys.some((k) => k.startsWith("builtin::") || k.startsWith("catalog::"))) {
+    return keys;
+  }
+  const bundled = new Set(bundledModeNames(env));
+  return keys.map((key) => {
+    const sep = key.indexOf("::");
+    const source = key.slice(0, sep);
+    const name = key.slice(sep + 2);
+    if (source === "builtin" && !bundled.has(name) && isCatalogMode(name, env)) {
+      return `catalog::${name}`;
+    }
+    if (source === "catalog" && bundled.has(name)) return `builtin::${name}`;
+    return key;
+  });
+}
+
 export interface FavoritesFile {
   version: 1;
   modes: string[];
@@ -92,12 +128,17 @@ export function readFavorites(): string[] {
     const raw = readFileSync(path, "utf-8");
     const parsed = JSON.parse(raw) as Partial<FavoritesFile>;
     if (parsed && Array.isArray(parsed.modes)) {
-      // Normalize legacy entries, drop invalid, dedupe while preserving order.
+      // Normalize legacy entries, re-bucket against this release's
+      // distribution, drop invalid, dedupe while preserving order. Dedupe
+      // runs last on purpose: an old `builtin::x` and a new `catalog::x`
+      // collapse into one star rather than two rows for one mode.
       const seen = new Set<string>();
       const out: string[] = [];
-      for (const entry of parsed.modes) {
-        const key = normalizeFavoriteKey(entry);
-        if (!key || seen.has(key)) continue;
+      const normalized = parsed.modes
+        .map(normalizeFavoriteKey)
+        .filter((k): k is string => k !== null);
+      for (const key of rebucketFirstPartyKeys(normalized)) {
+        if (seen.has(key)) continue;
         seen.add(key);
         out.push(key);
       }
@@ -121,9 +162,11 @@ export function writeFavorites(modes: string[]): void {
   // instead of re-seeding defaults silently).
   const seen = new Set<string>();
   const cleaned: string[] = [];
-  for (const entry of modes) {
-    const key = normalizeFavoriteKey(entry);
-    if (!key || seen.has(key)) continue;
+  const normalized = modes
+    .map(normalizeFavoriteKey)
+    .filter((k): k is string => k !== null);
+  for (const key of rebucketFirstPartyKeys(normalized)) {
+    if (seen.has(key)) continue;
     seen.add(key);
     cleaned.push(key);
   }

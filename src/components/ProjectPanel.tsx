@@ -33,6 +33,24 @@ import { useAnimatedMount } from "../utils/useAnimatedMount.js";
 import { CoverImage, type ProjectCoverEntry } from "./ProjectCover.js";
 import { ModeIcon } from "./ModeIcon.js";
 import { useFavorites, favoriteKey } from "../hooks/useFavorites.js";
+import {
+  useCatalogInstallStore,
+  installPercent,
+  formatBytes,
+  type CatalogInstall,
+} from "../store/catalog-install.js";
+import {
+  DownloadGlyph,
+  RefreshGlyph,
+  InstallProgressBar,
+} from "./CatalogInstall.js";
+import type { ModeInstallState } from "../../core/types/mode-catalog.js";
+import {
+  mergeRegistryModes,
+  needsDownload,
+  type ModeInfo,
+  type RegistryPayload,
+} from "../utils/mode-picker.js";
 import { InitParamForm, type InitParamWithAutoFill } from "./InitParamForm.js";
 import EditorPickerButton from "./EditorPickerButton.js";
 import {
@@ -77,24 +95,6 @@ interface SessionRef {
    * list: it's Pneuma's own machinery, not content the user created.
    */
   internal?: boolean;
-}
-
-interface ModeInfo {
-  name: string;
-  displayName?: string;
-  description?: string;
-  icon?: string;
-  /**
-   * Origin — needed to derive the favorites composite key so an evolved
-   * local fork doesn't share a star with its builtin parent. ProjectPanel
-   * dedupes its picker by name (builtins win), so in practice we only
-   * see one entry per name today, but the key has to be stable across
-   * surfaces — Quick Start, gallery, and this picker all read the same
-   * favorites file. Builtins omit `path`; local + library modes carry
-   * the absolute mode dir.
-   */
-  source: "builtin" | "local";
-  path?: string;
 }
 
 interface ProjectPanelProps {
@@ -185,42 +185,8 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
           setSessions(pData.sessions ?? []);
         }
         if (mRes && mRes.ok) {
-          const reg = (await mRes.json()) as {
-            builtins?: Array<{ name: string; displayName?: string; description?: string; icon?: string }>;
-            local?: Array<{ name: string; displayName?: string; description?: string; icon?: string; path?: string }>;
-          };
-          // Dedupe by name — local copies of builtins share names; builtins
-          // win since they appear first. Mirrors ModeSwitcherDropdown:81-89.
-          // We stamp `source` (and `path` for locals) on each entry so the
-          // favorites check can compose the same composite key the launcher
-          // writes — without these, a builtin and its evolved local fork
-          // would resolve to the same key and re-introduce the bug.
-          const seen = new Set<string>();
-          const merged: ModeInfo[] = [];
-          for (const m of reg.builtins ?? []) {
-            if (seen.has(m.name)) continue;
-            seen.add(m.name);
-            merged.push({
-              name: m.name,
-              displayName: m.displayName,
-              description: m.description,
-              icon: m.icon,
-              source: "builtin",
-            });
-          }
-          for (const m of reg.local ?? []) {
-            if (seen.has(m.name)) continue;
-            seen.add(m.name);
-            merged.push({
-              name: m.name,
-              displayName: m.displayName,
-              description: m.description,
-              icon: m.icon,
-              source: "local",
-              path: m.path,
-            });
-          }
-          setModes(merged);
+          const reg = (await mRes.json()) as RegistryPayload;
+          setModes(mergeRegistryModes(reg));
         }
         if (listRes && listRes.ok) {
           try {
@@ -281,12 +247,50 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
   // Smart Handoff toggle, and only fires `/api/launch` (or dispatches the
   // request-handoff tag) on Confirm. `null` means "show the grid".
   const [launchTarget, setLaunchTarget] = useState<ModeInfo | null>(null);
+
   const [sheetParams, setSheetParams] = useState<InitParamWithAutoFill[]>([]);
   const [sheetValues, setSheetValues] = useState<Record<string, string | number>>({});
   const [sheetPreparing, setSheetPreparing] = useState(false);
   const [sheetError, setSheetError] = useState<string | null>(null);
   const [smartHandoff, setSmartHandoff] = useState(false);
   const [handoffIntent, setHandoffIntent] = useState("");
+
+  // Catalog installs. The record is keyed by mode name in a standalone store
+  // (see `src/store/catalog-install.ts`) because the same download can be
+  // started from the launcher and from here, and both have to show the same
+  // progress rather than start two downloads.
+  const installs = useCatalogInstallStore((s) => s.installs);
+  const startInstall = useCatalogInstallStore((s) => s.install);
+  const clearInstall = useCatalogInstallStore((s) => s.clear);
+  const { t: tc } = useTranslation("launcher");
+
+  /**
+   * Pick a mode tile. A catalog mode that is not on this machine (or was
+   * installed by another core release) is downloaded first, and the launch
+   * sheet opens only once the install reported `done` — a failure leaves the
+   * reason on the tile instead of opening a sheet that would fail again.
+   */
+  const pickMode = async (m: ModeInfo): Promise<void> => {
+    if (needsDownload(m)) {
+      const ok = await startInstall(m.name);
+      if (!ok) return;
+      clearInstall(m.name);
+      setModes((prev) =>
+        prev.map((x) =>
+          x.name === m.name && x.source === "catalog"
+            ? { ...x, installState: "installed" as ModeInstallState }
+            : x,
+        ),
+      );
+    }
+    // Open the sheet instead of launching directly. The user fills in init
+    // params (or just confirms an empty form) and decides whether to use
+    // Smart Handoff before the actual launch fires.
+    setLaunchTarget(m);
+    setSheetError(null);
+    setSmartHandoff(false);
+    setHandoffIntent("");
+  };
   // Backend picker for new sessions. Mirrors the launcher's
   // BackendLaunchDialog — defaults to the server's `defaultBackendType` once
   // /api/backends responds, otherwise falls back to "codex" matching
@@ -1022,21 +1026,16 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                   <div className="grid grid-cols-2 gap-2">
                     {visibleModes.map((m) => {
                       const count = sessionCountByMode.get(m.name) ?? 0;
+                      const install: CatalogInstall | undefined = installs[m.name];
+                      const installing = install?.phase === "installing";
+                      const wantsDownload = needsDownload(m);
+                      const percent = installPercent(install);
                       return (
                         <button
                           key={m.name}
                           type="button"
-                          disabled={launching}
-                          onClick={() => {
-                            // Open the sheet instead of launching directly.
-                            // The user fills in init params (or just confirms
-                            // an empty form) and decides whether to use Smart
-                            // Handoff before the actual launch fires.
-                            setLaunchTarget(m);
-                            setSheetError(null);
-                            setSmartHandoff(false);
-                            setHandoffIntent("");
-                          }}
+                          disabled={launching || installing}
+                          onClick={() => void pickMode(m)}
                           className="bg-cc-bg/40 border border-cc-border rounded-md p-3 hover:border-cc-primary/40 hover:bg-cc-primary/5 transition-colors cursor-pointer disabled:opacity-50 text-left flex flex-col gap-1.5 min-h-[88px]"
                         >
                           <div className="flex items-center gap-2">
@@ -1071,6 +1070,49 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                             <p className="text-[11px] text-cc-muted/70 line-clamp-2 leading-snug">
                               {m.description}
                             </p>
+                          ) : null}
+                          {/* A catalog mode that is not on this machine says
+                              so before it is picked: the size up front, the
+                              stream's own progress while it downloads, and
+                              the server's reason when it fails. Clicking
+                              again retries — the installer only publishes a
+                              directory after the archive verifies. */}
+                          {installing ? (
+                            <div className="mt-auto pt-1" aria-live="polite">
+                              <div className="flex items-baseline justify-between gap-2 mb-1">
+                                <span className="text-[10px] text-cc-primary/90">
+                                  {percent === null
+                                    ? tc("catalog.preparing")
+                                    : tc("catalog.downloading_percent", { percent })}
+                                </span>
+                                {install.total > 0 ? (
+                                  <span className="text-[10px] text-cc-muted/50 font-mono">
+                                    {formatBytes(install.total)}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <InstallProgressBar percent={percent} />
+                            </div>
+                          ) : install?.phase === "error" ? (
+                            <p
+                              className="mt-auto pt-1 text-[10px] text-cc-error/90 line-clamp-2 leading-snug"
+                              role="alert"
+                            >
+                              {install.error || tc("catalog.failed")}
+                            </p>
+                          ) : wantsDownload ? (
+                            <span className="mt-auto pt-1 inline-flex items-center gap-1 text-[10px] text-cc-muted/60">
+                              {m.installState === "stale" ? (
+                                <RefreshGlyph className="w-2.5 h-2.5" />
+                              ) : (
+                                <DownloadGlyph className="w-2.5 h-2.5" />
+                              )}
+                              {m.installState === "stale"
+                                ? tc("catalog.update_and_open")
+                                : tc("catalog.tile_needs_download", {
+                                    size: formatBytes(m.unpackedSize || 0),
+                                  })}
+                            </span>
                           ) : null}
                         </button>
                       );
