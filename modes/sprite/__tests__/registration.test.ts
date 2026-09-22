@@ -357,12 +357,13 @@ describe("the skill install surface", () => {
 });
 
 describe("showcase copy", () => {
-  test("four highlights with localized titles and non-placeholder copy", () => {
-    // Four, not three: the sheet-vs-video choice and the style/grid range are
-    // separate claims, and neither is implied by the other two.
+  test("five highlights with localized titles and non-placeholder copy", () => {
+    // Five, not three: the sheet-vs-video choice, the style/grid range and the
+    // seamless-loop workflow are separate claims, and none is implied by the
+    // others.
     const showcase = JSON.parse(read("modes/sprite/showcase/showcase.json"));
     expect(showcase.hero).toBe("hero.png");
-    expect(showcase.highlights).toHaveLength(4);
+    expect(showcase.highlights).toHaveLength(5);
     expect(Object.keys(showcase.tagline).sort()).toEqual(["en", "ja", "zh-CN"]);
     for (const highlight of showcase.highlights) {
       expect(Object.keys(highlight.title).sort()).toEqual(["en", "ja", "zh-CN"]);

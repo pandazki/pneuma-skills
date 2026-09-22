@@ -156,6 +156,46 @@
     .range .card.sel .who small{color:#c98a52}
     .range .style{padding:11px 12px 12px;font-size:11px;line-height:1.6;color:#8d8783;font-style:italic;border-top:1px solid #201e21;min-height:72px}
     .range .style span{display:block;font-style:normal;color:#a29a95;margin-top:7px}
+
+    /* --- 05 seamless-loop --- */
+    .loop .ribbon{display:flex;align-items:center;gap:8px;margin-top:22px;font-size:11.5px;color:#918a86}
+    .loop .ribbon span{border:1px solid #2f2b2e;border-radius:5px;padding:5px 11px;background:#111113;white-space:nowrap}
+    .loop .ribbon span.on{border-color:#c4753d;color:#f9be92;background:#f973160f}
+    .loop .ribbon i{font-style:normal;color:#5c5652}
+    .loop .head{display:flex;align-items:baseline;justify-content:space-between;margin-top:20px}
+    .loop .head .meta{font-size:11.5px;color:#8d8783}
+    .loop .head .meta b{color:#c8c1bb;font-weight:500}
+    .loop .film{position:relative;margin-top:9px;border:1px solid #2f2b2e;border-radius:10px;padding:15px 14px 12px;height:214px;display:flex;gap:7px;align-items:flex-end}
+    .loop .film .cell{flex:1;position:relative;display:flex;align-items:flex-end;justify-content:center}
+    .loop .film .cell img{height:176px;max-width:100%;object-fit:contain}
+    .loop .film .cell b{position:absolute;top:-4px;left:0;font-size:10.5px;font-weight:400;color:#6b6561}
+    .loop .film .cell em{position:absolute;top:-6px;left:27px;font-style:normal;font-size:9px;letter-spacing:.7px;color:#c98a52;border:1px solid #4a3a2e;border-radius:3px;padding:1px 5px;background:#f9731612}
+    .loop .film .cell.fill b{color:#c98a52}
+    .loop .film .seam{position:relative;width:56px;flex:none;align-self:stretch}
+    .loop .film .seam:before{content:"";position:absolute;top:-8px;bottom:-6px;left:50%;border-left:1px dashed #f97316bb}
+    .loop .film .seam u{position:absolute;top:-6px;left:50%;transform:translateX(-50%);text-decoration:none;font-size:9px;letter-spacing:1.3px;color:#f9a665;background:#0e0e10;padding:1px 5px}
+    .loop .film .seam s{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-decoration:none;width:31px;height:31px;border-radius:50%;border:1px solid #c4753d;background:#120f0e;color:#f9a665;display:flex;align-items:center;justify-content:center;font-size:16px;line-height:1}
+    .loop .seambar{display:flex;align-items:center;gap:12px;margin-top:10px;border:1px solid #2b282b;border-radius:8px;background:#111113;padding:8px 14px;font-size:12px;color:#8d8783}
+    .loop .seambar .k{font-size:10.5px;letter-spacing:1.5px;text-transform:uppercase;color:#8d8783}
+    .loop .seambar .v{font:400 19px/1 Fraunces,Georgia,serif;color:#f9be92}
+    .loop .seambar .sep{width:1px;height:19px;background:#302c30}
+    .loop .seambar .ok{margin-left:auto;border:1px solid #c4753d;border-radius:5px;padding:4px 12px;color:#f9be92;background:#f973160f;font-size:11.5px;letter-spacing:1.3px;text-transform:uppercase}
+    .loop .below{display:grid;grid-template-columns:556px 1fr;gap:24px;margin-top:16px}
+    .loop .below .head{margin-top:0}
+    .loop .prep{display:flex;gap:8px;margin-top:9px}
+    .loop .prep .panel{flex:1}
+    .loop .prep .thumb{height:74px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .loop .prep .thumb img{height:66px}
+    .loop .prep .plabel{height:40px;padding:0 11px;flex-direction:column;align-items:flex-start;justify-content:center;gap:2px;font-size:11.5px}
+    .loop .prep .plabel small{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:-.2px;color:#8d8783}
+    .loop .prep .panel.sel .plabel small{color:#c98a52}
+    .loop .etiles{display:flex;gap:8px;margin-top:9px}
+    .loop .etile{flex:1;border:1px solid #2b282b;border-radius:7px;padding:12px 13px;background:#111113;height:114px;display:flex;flex-direction:column;justify-content:center}
+    .loop .etile.sel{border-color:#c4753d;background:#f9731608}
+    .loop .etile b{display:block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;font-weight:400;color:#918a86;margin-bottom:7px}
+    .loop .etile span{display:block;font:400 21px/1 Fraunces,Georgia,serif;color:#e6ddd5;margin-bottom:7px}
+    .loop .etile.sel span{color:#f9be92}
+    .loop .etile small{font-size:10.5px;color:#7e7874;line-height:1.5}
   </style>
 </head>
 <body>
@@ -372,6 +412,67 @@
   </div>
   <div class="caption">Four characters, four style sentences, one unchanged pipeline.</div>
   <div class="foot"><span>Actual sheets from four separate runs of the mode</span><span>Conceptual interface · actual generated sprites</span></div>
+</section>
+
+<!-- ══════════════ SEAMLESS LOOP ══════════════ -->
+<section class="page loop" data-view="seamless-loop">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">05 / LOOP</span></div>
+  <h1>The last frame lands on the first.</h1>
+  <p>One keyframe goes in at both ends of the clip — and the wrap comes back as a number, not a promise.</p>
+  <div class="ribbon">
+    <span>keyframe</span><i>›</i><span>cut out</span><i>›</i><span>green plate</span><i>›</i>
+    <span>Seedance · first = last</span><i>›</i><span>matte</span><i>›</i>
+    <span class="on">loop · measure · seam-fill</span><i>›</i><span>webp · apng · webm · lottie</span>
+  </div>
+
+  <div class="head">
+    <span class="eyebrow">The wrap — frames 117 … 001</span>
+    <span class="meta"><b>122 frames</b> · 24 fps · 5.08 s · 512 × 596 · 119 sampled + 3 seam fills · alpha coverage 0.41</span>
+  </div>
+  <div class="film chk">
+    <div class="cell"><b>117</b><img src="/art/flame/frames/117.png"></div>
+    <div class="cell"><b>118</b><img src="/art/flame/frames/118.png"></div>
+    <div class="cell fill"><b>119</b><em>FILL</em><img src="/art/flame/frames/119.png"></div>
+    <div class="cell fill"><b>120</b><em>FILL</em><img src="/art/flame/frames/120.png"></div>
+    <div class="cell fill"><b>121</b><em>FILL</em><img src="/art/flame/frames/121.png"></div>
+    <div class="seam"><u>WRAP</u><s>↻</s></div>
+    <div class="cell"><b>000</b><img src="/art/flame/frames/000.png"></div>
+    <div class="cell"><b>001</b><img src="/art/flame/frames/001.png"></div>
+  </div>
+  <div class="seambar">
+    <span class="k">Seam</span><span class="v">0.0120</span><span class="sep"></span>
+    <span class="k">Median step</span><span class="v">0.0131</span><span class="sep"></span>
+    <span>limit 0.0262 &nbsp;·&nbsp; two steps across the wrap</span>
+    <span class="ok">Closes</span>
+  </div>
+
+  <div class="below">
+    <div class="source">
+      <div class="head"><span class="eyebrow">One image, two roles</span>
+        <span class="meta">36 s of prep, before any video call</span></div>
+      <div class="prep">
+        <div class="panel"><div class="thumb"><img class="art" src="/art/flame/keyframe.png"></div>
+          <div class="plabel">keyframe.png<small>1024 × 1024</small></div></div>
+        <div class="panel"><div class="thumb chk"><img class="art" src="/art/flame/keyframe-alpha.png"></div>
+          <div class="plabel">cut out<small>coverage 0.397</small></div></div>
+        <div class="panel sel"><div class="thumb"><img class="art" src="/art/flame/first-green.png"></div>
+          <div class="plabel">green plate<small>--image = --end-image</small></div></div>
+      </div>
+    </div>
+    <div class="exports">
+      <div class="head"><span class="eyebrow">Exports — every frame, four ways</span>
+        <span class="meta">one <b>loop</b> call, no re-render</span></div>
+      <div class="etiles">
+        <div class="etile"><b>loop.webp</b><span>3.4 MB</span><small>animated, alpha</small></div>
+        <div class="etile"><b>loop.apng</b><span>21.5 MB</span><small>lossless, alpha</small></div>
+        <div class="etile sel"><b>loop.webm</b><span>368 KB</span><small>VP9 alpha · UI-ready</small></div>
+        <div class="etile"><b>loop.json</b><span>29.2 MB</span><small>Lottie · size warned</small></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="caption">A loop is only called a loop once the wrap is measured — 0.0120 against a 0.0262 limit.</div>
+  <div class="foot"><span>Flame · flicker · one paid Seedance call ≈ $1.1 · every number read off that motion's run.json</span><span>Conceptual interface · actual generated sprites</span></div>
 </section>
 
 <script>

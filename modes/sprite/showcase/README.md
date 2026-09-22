@@ -7,7 +7,7 @@ output from a run of the mode that happened for its own reasons.
 
 ## Status
 
-All four highlights are captured.
+All five highlights are captured.
 
 | `showcase.json` media | `?view=` |
 |---|---|
@@ -16,6 +16,7 @@ All four highlights are captured.
 | `highlight-auto-slice-align.png` | `slice-align` |
 | `highlight-sheet-or-video.png` | `sheet-or-video` |
 | `highlight-any-style-any-grid.png` | `any-style` |
+| `highlight-seamless-loop.png` | `seamless-loop` |
 
 `registration.test.ts` fails if `showcase.json` ever names a file that is not
 on disk — the launcher serves `showcase/*` straight off disk, so that would be
@@ -30,12 +31,15 @@ a 404 on a gallery card and nothing else would report it.
 | `highlight-auto-slice-align.png` | Rivet's `walk` motion — all 8 aligned frames, with the numbers (0.22 px anchor drift, 0.5 px max jump, 0 empty frames) and the `atlas.json` excerpt taken verbatim from that motion's real output |
 | `highlight-sheet-or-video.png` | left path: Lumi's `attack/sheet.png` and four of its frames. Right path: one raw frame of a Seedance 2.5 clip shot on a chroma-green plate, plus four frames that `from-video` sampled, keyed and aligned out of that clip — labelled with the run's real numbers (640 × 640, 4.04 s; 16 frames sampled in 12.4 s; 2.9 px anchor drift, 0 warnings) |
 | `highlight-any-style-any-grid.png` | Four packed sheets and four style sentences quoted from `project.json`: Lumi `idle` 4 × 4, Rivet `walk` 2 × 4, Ame `attack` 4 × 4, Mio `pickup-letter` 3 × 3 |
+| `highlight-seamless-loop.png` | Flame's `flicker` loop motion: the keyframe (`keyframe.png`), its cut-out (`keyframe-alpha.png`) and the flattened green plate (`first-green.png`) that went into Seedance as both `--image` and `--end-image`; then seven real frames across the wrap — `117`, `118`, the three seam-fill frames `119`–`121`, `000` and `001` — with every number read off that motion's `run.json` / `inspect.json` (122 frames = 119 sampled + 3 seam fills, 24 fps, 5.08 s, cell 512 × 596, alpha coverage 0.41, seam 0.0120 against a 0.0262 limit → closes, exports 3.4 MB / 21.5 MB / 368 KB / 29.2 MB) |
 
 Lumi ships in the repo. Rivet (flat-vector cat knight), Ame (128px pixel art)
 and Mio (semi-realistic) come from three end-to-end runs of the mode, and the
 green-screen clip from a fourth — the `from-video` validation run, whose one
 paid Seedance render (≈ $1, ≈ 7 min) was bought to prove the path, not to
-illustrate it. All of them live outside the repo; only the frames used above
+illustrate it. Flame comes from a fifth, the loop-workflow trial: one paid
+Seedance first-last clip (≈ $1.1, 3 min 19 s) plus a VEED green-screen matte,
+cut with `sprite-sheet.mjs loop --key alpha --width 512`. All of them live outside the repo; only the frames used above
 were copied into the ignored working directory, never into `modes/`.
 
 Reference images (`turnaround.png`, `portrait.png`) are drawn on white, so the
@@ -53,8 +57,9 @@ come from the matching `inspect.json` / `atlas.json` / `project.json`.
 `.tmp-sprite-showcase/` is an ignored working directory (`.tmp-*/` is in the
 repo's `.gitignore`). Stage it with the assets listed above — one flat
 directory per character (`lumi/`, `rivet/`, `ame/`, `mio/`) plus
-`video-source/{clip-still.png,frames/00,03,06,09.png}`, using the filenames
-referenced from `layout.html` — then, from
+`video-source/{clip-still.png,frames/00,03,06,09.png}` and
+`flame/{keyframe.png,keyframe-alpha.png,first-green.png,frames/{000,001,117,118,119,120,121}.png}`,
+using the filenames referenced from `layout.html` — then, from
 the repository root:
 
 ```sh
@@ -90,6 +95,9 @@ pngquant --quality=85-100 --speed 1 --ext .png --force modes/sprite/showcase/*.p
 That runs roughly 400 KB per image down to 90–180 KB with no visible banding —
 worth doing, because the launcher ships every mode's showcase inside the npm
 package.
+
+`preview.mjs` honours `SHOWCASE_PORT`; use a free port when another preview or
+session is already running.
 
 Note that `hero.png` embeds a live `preview.gif`, so the exact frame that lands
 in the screenshot varies between runs. That is cosmetic; any frame of the loop
