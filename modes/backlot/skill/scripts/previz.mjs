@@ -2951,7 +2951,11 @@ function verifySpokenLines(dir, shot, take, now) {
     note_ = "transcribe.mjs is not installed beside this skill — the spoken lines were not verified";
   } else {
     if (script.overridden) note(`WARN: BACKLOT_TRANSCRIBE_MODULE is set — the transcript comes from ${script.path}, not from transcribe.mjs`);
-    const run = runNodeScript(script.path, ["--input", file, "--json"], { timeoutMs: 600_000 });
+    // Transcribe in the film's language: left to detect, wizper returned an
+    // English rendering of Chinese lines and every spoken line read as
+    // missing (trial 4, 2026-09-22).
+    const language = filmLanguage(findProjectRoot(dir));
+    const run = runNodeScript(script.path, ["--input", file, "--language", language, "--json"], { timeoutMs: 600_000 });
     const reported = run.code === 0 ? lastJsonObject(run.stdout) : null;
     if (run.code !== 0 || typeof reported?.text !== "string") {
       note_ = `transcription failed (exit ${run.code}): ${tail(run.stderr, 3) || "no transcript"}`;
