@@ -162,6 +162,10 @@ describe("the skill install surface", () => {
       "fal-queue.mjs",
       "seedance-video.mjs",
       "remove-background.mjs",
+      // The loop workflow's two paid steps: matting a clip to alpha, and
+      // interpolating it to 60 fps. Both drive fal through fal-queue.mjs.
+      "remove-video-background.mjs",
+      "interpolate-video.mjs",
     ]) {
       expect({ script, declared: declared.includes(script) }).toEqual({
         script,

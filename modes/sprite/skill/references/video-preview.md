@@ -1,6 +1,6 @@
-# Video: the second motion source, and the preview
+# Video: the motion source, the preview, and the loop
 
-A clip does two jobs in this mode, and they are not the same job.
+A clip does three jobs in this mode, and they are not the same job.
 
 1. **A motion source.** A clip shot on a flat chroma-green plate is sampled
    into frames by `sprite-sheet.mjs from-video`, keyed, cleaned, aligned and
@@ -10,6 +10,11 @@ A clip does two jobs in this mode, and they are not the same job.
    per motion.
 2. **A preview.** A clip rendered *from* finished frames, so the user can feel
    the motion. That clip is never sampled back into frames.
+3. **A seamless loop.** A clip shot first-last with the same image at both
+   ends, whose every frame becomes the transparent animation a UI plays
+   forever (workflow E). Same price as job 1, a different prompt, and a
+   different question asked of it: not "is this one cycle?" but "do the two
+   ends match?". It has its own section below.
 
 The rule that used to read "video clips are previews, never sources" is now
 about job 2 only: a clip you rendered from the frames must not become the
@@ -23,6 +28,11 @@ Two scripts, deliberately the same CLI shape so one grammar covers both:
 |---|---|---|
 | `{SKILL_PATH}/scripts/seedance-video.mjs` | ByteDance Seedance 2.5 on fal | cheap, quick, all three endpoints |
 | `{SKILL_PATH}/scripts/generate-video.mjs` | MiniMax H3 Max on fal | stronger motion, slower, ≥ 5 s |
+
+Two more fal scripts work on a clip that already exists rather than making one
+— `remove-video-background.mjs` (matting to alpha) and `interpolate-video.mjs`
+(frame interpolation). Both belong to the loop workflow and are documented
+under *The seamless loop clip* below.
 
 Invoked like everything else in this skill — `node {SKILL_PATH}/scripts/<name>.mjs`
 from the workspace, no `cd`, every path workspace-relative. Unlike
@@ -42,7 +52,7 @@ report the failure and stop.
 | Endpoint | Use when | How the motion gets in |
 |---|---|---|
 | `image` (i2v) | The default preview. You want the character to start exactly as drawn. | `--image <flattened frame 00>`; the prompt describes the motion |
-| `image` + `--end-image` (first-last) | The motion has a definite end pose, or it loops and must land back where it started | first frame and last frame pin both ends; the model fills between |
+| `image` + `--end-image` (first-last) | The motion has a definite end pose, or it loops and must land back where it started | first frame and last frame pin both ends; the model fills between. A seamless loop passes the **same** file to both |
 | `reference` (r2v) | The clip must perform *these* beats, not a reinterpretation | `--ref-image <character>/refs/turnaround.png --ref-image <character>/motions/<id>/sheet.png`, addressed in the prompt as `@Image1` / `@Image2` |
 | `text` | Almost never here — you have a character and you want it kept | — |
 
@@ -242,6 +252,212 @@ Registering before the call is what puts a "rendering" chip on the stage; a
 user who sees nothing for forty seconds assumes you did not hear them. And
 registering the failure is what stops the next turn from believing a clip
 exists.
+
+## The seamless loop clip
+
+A third job for a clip, and the only one where the *ends* matter more than the
+middle: a loop for a UI (workflow E). It is shot **first-last with the same
+image at both ends** — `--image` and `--end-image` naming the same file — so
+the last frame is the first frame and the loop closes by construction rather
+than by luck. Nothing downstream can manufacture that; a clip whose ends differ
+produces a visible jump on every cycle, and the only fix is another clip.
+
+The model still has to be told not to wander on the way, so the template pins
+the camera, the scale and the return:
+
+> One continuous [motion verb] of the [subject]. The camera is locked off: no
+> pan, no tilt, no zoom, no parallax, no cut. The [subject] stays centred at a
+> constant size, fully inside the frame with clear margins — it does not
+> travel, turn away, or change scale. The motion: [the organic movement in one
+> sentence: what leads, what follows, how many beats]. The background is a flat
+> solid pure chroma green filling the whole frame, evenly lit, no gradient, no
+> floor, no cast shadow, no reflection, and no green light spilling onto the
+> subject. The motion slows and settles back into exactly the opening pose
+> over the final second, so the loop closes seamlessly.
+
+The last sentence is not a formality — it is what turns a four-second
+performance into a cycle, and it is the one clause worth re-reading before you
+spend the dollar. **Ask for the settle, not just the return**: on the measured
+clip below Seedance spent its final three frames hurrying back to the keyframe,
+at about twice the median step, which reads as a flinch right where the loop
+joins. Two beats need five seconds; one needs four.
+
+The worked call, from the cut-out keyframe to the clip:
+
+```bash
+node {SKILL_PATH}/scripts/sprite-sheet.mjs flatten \
+  <character>/motions/<id>/keyframe-alpha.png \
+  --out <character>/motions/<id>/first-green.png --bg "#00ff00" --json
+
+node {SKILL_PATH}/scripts/seedance-video.mjs \
+  --prompt "One continuous flicker of the clay flame. The camera is locked off: no pan, no tilt, no zoom, no parallax, no cut. The flame stays centred at a constant size, fully inside the frame with clear margins — it does not travel, turn away, or change scale. The motion: the flame sways slowly to the left and back, its tip curling a beat behind the body, in two soft breaths. The background is a flat solid pure chroma green filling the whole frame, evenly lit, no gradient, no floor, no cast shadow, no reflection, and no green light spilling onto the flame. The motion slows and settles back into exactly the opening pose over the final second, so the loop closes seamlessly." \
+  --image <character>/motions/<id>/first-green.png \
+  --end-image <character>/motions/<id>/first-green.png \
+  --duration 5 --resolution 480p --no-audio \
+  --output <character>/motions/<id>/video-seedance-1.mp4 --json
+```
+
+Cost is the same tier as any Seedance clip — ≈ $0.22 per second of 480p
+output, so ≈ $0.9 for four seconds and ≈ $1.1 for five. Flatten onto pure green
+rather than a neutral: the whole point of the plate is that `loop --key auto`
+can measure and remove it.
+
+### Matting the clip: `remove-video-background.mjs`
+
+The colour key that `loop` applies by default is free and good on a flat plate,
+but it cuts by colour distance, so a soft 3D edge keeps a green rim. The two
+paid alternatives cut on the silhouette and hand back a clip that *carries*
+alpha, which `loop --key alpha` then decodes instead of keying.
+
+```bash
+node {SKILL_PATH}/scripts/remove-video-background.mjs \
+  --input <character>/motions/<id>/video-seedance-1.mp4 \
+  --output <character>/motions/<id>/video-veed-2.webm \
+  --model veed --json
+```
+
+| Flag | Values | Default | Notes |
+|---|---|---|---|
+| `--input` | path or URL | **required** | local files are inlined as data URIs (30 MB max) |
+| `--output` | path | **required** | must end `.webm` for `veed`, `.mov` for `bria` — the codec is not negotiable |
+| `--model` | `veed` \| `bria` | `veed` | see the table below |
+| `--person` | flag | off | VEED only: `subject_is_person: true`. An icon is not a person; leave it off |
+| `--no-refine` | flag | refinement on | VEED only: skips edge refinement, cheaper and softer |
+| `--deadline-s` | seconds | | as the other fal scripts |
+| `--json` | flag | | `{ path, url, file_size, model, endpoint, alpha: true }` |
+
+| Model | Endpoint | Price | Output | Limits |
+|---|---|---|---|---|
+| `veed` | `veed/video-background-removal` | **$0.0225 per 30 frames** with edge refinement, **$0.015** without | VP9 `.webm` with alpha | — |
+| `bria` | `bria/video/background-removal` | **$0.14 per second** | ProRes 4444 `.mov`, `Transparent` background | ≤ 30 s, ≤ 4000² |
+
+On a 121-frame clip VEED is about **$0.09** and Bria about **$0.70** — a factor
+of eight. **VEED is the documented default when the session has a fal key**: on
+the trial clip it produced the best edge of everything tried (soft, zero green
+pixels, no dark rim) for nine cents. Bria stays the alternative to reach for if
+VEED's edge ever fails a subject; it has not been run here.
+
+### Interpolating to 60 fps: `interpolate-video.mjs`
+
+Seedance renders at 24 fps. A UI loop at 60 fps reads noticeably smoother, and
+there are two ways to get there: free ffmpeg `minterpolate` inside
+`sprite-sheet.mjs loop --fps 60` (loop-wrapped, so the wrap between the last
+frame and the first is interpolated too), or Topaz on fal, which is what the
+reference clip's author used.
+
+```bash
+node {SKILL_PATH}/scripts/interpolate-video.mjs \
+  --input <character>/motions/<id>/video-seedance-1.mp4 \
+  --output <character>/motions/<id>/video-topaz-2.mp4 \
+  --target-fps 60 --json
+```
+
+| Flag | Values | Default | Notes |
+|---|---|---|---|
+| `--input` / `--output` | paths | **required** | `--output` is an `.mp4` (H.264) |
+| `--target-fps` | 16–60 | `60` | outside the range is refused |
+| `--upscale` | factor | `1` | 1 keeps the frame size; the trial confirms fal accepts it |
+| `--model` | `proteus` | `proteus` | sent as `Proteus` |
+| `--deadline-s` | seconds | | |
+| `--json` | flag | | `{ path, url, file_size, target_fps, upscale_factor }` |
+
+Endpoint `fal-ai/topaz/upscale/video`, **$0.01 per second at ≤ 720p, doubled at
+60 fps** — so ≈ $0.10 for a five-second clip taken to 60 fps. `--upscale 1` is
+accepted (measured): the frame size is kept and only the frame rate changes.
+
+**Prefer the free `loop --fps 60` for a loop.** Topaz's in-betweens are clean,
+but it interpolates the clip as a clip, so the one pair a loop cares about most
+— the last frame against the first — is the pair it never sees. Measured on the
+trial clip: the 24 fps original closes (seam 0.028 against a median step of
+0.046) and the Topaz 60 fps version does not (seam 0.067 against a step of
+0.029, past the 2× line). `loop --fps 60` interpolates with a copy of frame 0
+appended, so the wrap is filled in too. Reach for Topaz when the free
+in-betweens look mushy at 1:1, and re-read the seam afterwards.
+
+### The order: interpolate, then matte
+
+Interpolation invents in-between frames by looking at colour motion, and it
+wants opaque pixels; run it on the **plate** clip, before anything is cut out.
+Matting is the last step, because after it there is nothing left to interpolate
+honestly — `loop` refuses `--fps` on an alpha clip and says so rather than
+quietly producing blended half-transparent frames.
+
+So the chain, when you want both:
+
+```
+video-1 (Seedance, green plate, 24 fps)
+  → interpolate → video-2 (plate, 60 fps)
+    → matte → video-3 (alpha, 60 fps)   → loop --key alpha
+```
+
+### Bookkeeping around a derived clip
+
+Each derived clip is registered like any other, with the parent named instead
+of a prompt:
+
+```bash
+node {SKILL_PATH}/scripts/sprite-project.mjs add-video --dir <character> \
+  --motion <id> --file motions/<id>/video-topaz-2.mp4 \
+  --derived-from <id>-video-1 --op interpolate --model topaz --json
+
+node {SKILL_PATH}/scripts/sprite-project.mjs add-video --dir <character> \
+  --motion <id> --file motions/<id>/video-veed-3.webm \
+  --derived-from <id>-video-2 --op matte --model veed --json
+```
+
+`--derived-from` writes a `derive` edge from the parent clip's asset carrying
+`params: { op, model }`, and the sidecar entry records `mode: "derived"`. There
+is no `--mode`, no `--prompt` and no `--from` on a derived clip — nothing was
+prompted, and inventing a prompt to fill the field is how a later turn comes to
+believe a clip was generated. `show` prints the chain as
+`video-3 ← video-2 (matte, veed)`. Then `register-run --video <the clip the
+frames were actually cut from>`, which with a chain is not the newest clip by
+default.
+
+### Measured: the loop clip (Flame trial, 2026-09-22)
+
+One real first-last Seedance clip from a claymation flame keyframe — the same
+subject as the reference clip this workflow was built against — with each
+post-processing path run against it.
+
+| Step | Wall time | Cost | Result |
+|---|---|---|---|
+| keyframe (GPT Image, 1024², `--quality high`) | **29 s** | $0.05 | one flame on white |
+| `remove-background.mjs --model heavy --resolution 1024` | **6 s** | | the cut-out |
+| clip, first-last, same image both ends (`--duration 5 --resolution 480p --no-audio`) | **199 s** (3 min 19 s) | ≈ $1.1 | 640×640, h264, 24 fps, **121 frames**, 5.04 s, 366 KB |
+| `remove-video-background.mjs --model veed` | **22.6 s** (17 s inference) | ≈ $0.09 | VP9 webm carrying alpha |
+| `interpolate-video.mjs --target-fps 60 --upscale 1` | **49 s** (43 s inference) | ≈ $0.10 | 300 frames, 4.3 MB h264, the green plate kept |
+| `--model bria` | not run | | VEED was eight times cheaper and good enough; Bria stays documented, unmeasured |
+
+**The edge, three ways, compared at 1:1:**
+
+| Path | Cost | Edge |
+|---|---|---|
+| VEED matte → `loop --key alpha` | ≈ $0.09 | **the best of the three** — soft, zero green pixels, no dark rim |
+| `loop --key auto` (colorkey **then** despill) | free | acceptable: a faint 1 px dark rim |
+| colorkey with `--no-despill` | free | **not acceptable** — a visible 1–2 px green fringe at 640² |
+
+So: **with a fal key, matte with VEED and cut with `loop --key alpha`; without
+one, `loop --key auto` and its despill**, which is honest at UI size. Never ship
+a chroma-plate loop keyed with `--no-despill` — a loop is rendered at the size
+it was cut at, so there is no downscale further along to hide the fringe the
+way a sprite motion has.
+
+**Seam, as a worked verdict.** `loop` measured the Seedance clip at seam
+**0.028** against a median step of **0.046** — the last frame is closer to the
+first than a normal frame is to its neighbour, which is a loop that closes. The
+Topaz 60 fps version of the same clip came back at seam **0.067** against a step
+of **0.029**: past the 2× line, and the warning fires. Nothing about the
+subject changed; only the wrap did.
+
+**Budget three to seven minutes for the clip.** 199 s here against 404 s for the
+4 s i2v clip measured above — the spread is the fal queue, not the duration, so
+quote the range and register the placeholder before you call.
+
+Still unmeasured, and still worth filling in: `sprite-sheet.mjs loop`'s own wall
+time, the four export sizes on a real loop, and Bria against VEED at 1:1. Until
+those land, the `loop` row in `SKILL.md`'s wall-time table says "measured in the
+trial" — say that too, rather than guessing a number for the user.
 
 ## Measured (Lumi seed, 2026-09-09)
 

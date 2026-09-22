@@ -257,6 +257,18 @@ describe("the definition and the manifest agree", () => {
     expect(actions.map((a) => a.id)).not.toContain("capture");
   });
 
+  test("get-playback-state advertises `kind`, the loop discriminator", () => {
+    // The stage reports `kind: "loop"` for a loop motion and omits it for a
+    // sprite motion. The agent reads the shape out of this description and
+    // nowhere else, so a field the viewer sends and the description hides is
+    // a field nobody looks at — and a loop's whole verdict hangs off knowing
+    // which kind it is looking at.
+    const state = spriteManifest
+      .viewerApi!.actions!.find((a) => a.id === "get-playback-state")!;
+    expect(state.description).toContain("kind");
+    expect(state.description).toContain('"loop"');
+  });
+
   test("the three commands the design commissions are declared", () => {
     const commands = spriteManifest.viewerApi!.commands!;
     expect(commands.map((c) => c.id)).toEqual([

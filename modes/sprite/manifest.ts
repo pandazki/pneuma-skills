@@ -6,6 +6,10 @@
  * character references attached, which a deterministic ffmpeg pipeline turns
  * into aligned frames, a packed atlas, a GIF/WebP preview, and — on request —
  * a short clip from a video model.
+ *
+ * A motion can also be a `loop`: a keyframe, a first-last clip with the same
+ * image at both ends, and every frame of the cycle cut into one seamless
+ * transparent animation (WebP / APNG / WebM / Lottie) for a UI.
  */
 
 import type { ModeManifest } from "../../core/types/mode-manifest.js";
@@ -13,8 +17,13 @@ import { loadRoster, saveRoster } from "./domain.js";
 
 const spriteManifest: ModeManifest = {
   name: "sprite",
-  version: "0.2.1",
+  version: "0.3.0",
   changelog: {
+    "0.3.0": [
+      "Seamless transparent loops for a UI: a 3D-icon keyframe, a first-last clip with the same image at both ends so the loop closes by construction, then `sprite-sheet.mjs loop` cuts every frame of the cycle into `loop.webp`, `loop.apng`, `loop.webm` (VP9 with alpha) and a Lottie JSON",
+      "A `loop` motion is judged on its seam against a normal frame step — not on anchor drift, which a bobbing icon is supposed to have; the frames stay unaligned and uncleaned because the movement is the content",
+      "Video matting (VEED or Bria) and frame interpolation (Topaz, or free ffmpeg `minterpolate`) turn the plate clip transparent and take it to 60 fps — interpolate first, matte second",
+    ],
     "0.2.1": [
       "Measured the video workflow on the seed character's own green-screen walk: the contact window closes the loop where even sampling of the whole clip does not",
     ],
@@ -40,10 +49,10 @@ const spriteManifest: ModeManifest = {
     ja: "スプライト",
   },
   description: {
-    en: "Design a character once, then generate consistent sprite sheets and motion reference frames with GPT Image 2.5 — auto-keyed, sliced, aligned, packed; previewed as GIF or a video clip.",
+    en: "Design a character once, then generate consistent sprite sheets and motion reference frames with GPT Image 2.5 — auto-keyed, sliced, aligned, packed, previewed as GIF or a video clip. Or shoot a seamless transparent loop for a UI and export it as WebP, APNG, WebM and Lottie.",
     "zh-CN":
-      "先定角色，再用 GPT Image 2.5 产出前后一致的雪碧图与动作参考帧；自动抠背景、切帧、对齐、打包，GIF 或视频模型预览。",
-    ja: "キャラクターを一度設計すれば、あとは GPT Image 2.5 で一貫したスプライトシートとモーション参考フレームを生成 —— 背景抜き・分割・整列・パックまで自動、GIF や動画クリップでプレビュー。",
+      "先定角色，再用 GPT Image 2.5 产出前后一致的雪碧图与动作参考帧；自动抠背景、切帧、对齐、打包，GIF 或视频模型预览。也可以做界面上那种循环不断的透明小动画，一次导出 WebP、APNG、WebM 和 Lottie。",
+    ja: "キャラクターを一度設計すれば、あとは GPT Image 2.5 で一貫したスプライトシートとモーション参考フレームを生成 —— 背景抜き・分割・整列・パックまで自動、GIF や動画クリップでプレビュー。UI に置く継ぎ目のない透過ループも作れて、WebP・APNG・WebM・Lottie で書き出せます。",
   },
   // A 3×3 grid with one cell filled — a sheet with one frame picked out.
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/><rect x="9" y="9" width="6" height="6" fill="currentColor" stroke="none"/></svg>`,
@@ -58,8 +67,9 @@ const spriteManifest: ModeManifest = {
     },
     // sharedScripts is a WHITELIST: every script a listed script imports must
     // itself be listed, or the copied script dies on its first import line.
-    // seedance-video.mjs and remove-background.mjs both drive fal through
-    // fal-queue.mjs; generate_image.mjs / edit_image.mjs are the sheet path.
+    // seedance-video.mjs, remove-background.mjs, remove-video-background.mjs
+    // and interpolate-video.mjs all drive fal through fal-queue.mjs;
+    // generate_image.mjs / edit_image.mjs are the sheet and keyframe path.
     sharedScripts: [
       "generate_image.mjs",
       "edit_image.mjs",
@@ -67,6 +77,8 @@ const spriteManifest: ModeManifest = {
       "fal-queue.mjs",
       "seedance-video.mjs",
       "remove-background.mjs",
+      "remove-video-background.mjs",
+      "interpolate-video.mjs",
     ],
   },
 
@@ -167,7 +179,7 @@ const spriteManifest: ModeManifest = {
           },
         },
         description:
-          "Read back what the stage is actually showing: `{ contentSet, motion, frame, frameCount, fps, loop, playing, source: \"frames\" | \"raw-sheet\" | \"none\", warnings }`. Call it after a pipeline run — `source: \"raw-sheet\"` or a frameCount that disagrees with the grid means the run did not land, whatever the script printed.",
+          "Read back what the stage is actually showing: `{ contentSet, motion, kind, frame, frameCount, fps, loop, playing, source: \"frames\" | \"raw-sheet\" | \"none\", warnings }`. Call it after a pipeline run — `source: \"raw-sheet\"` or a frameCount that disagrees with the grid means the run did not land, whatever the script printed. `kind` is `\"loop\"` on a loop motion and absent on a sprite motion.",
       },
     ],
     // User → agent. The viewer renders these only while `editing !== false`,
@@ -249,7 +261,7 @@ The user just opened the sprite workspace. Greet them briefly (1-2 sentences) an
         name: "falApiKey",
         label: "fal.ai API Key",
         description:
-          "Optional — enables video previews (Seedance 2.5 / MiniMax H3 Max) and fal background removal for sheets that come back opaque",
+          "Optional — enables video previews and loop clips (Seedance 2.5 / MiniMax H3 Max), video matting and frame interpolation for a loop, and fal background removal for sheets that come back opaque",
         type: "string",
         defaultValue: "",
         sensitive: true,
