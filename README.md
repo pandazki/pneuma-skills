@@ -89,6 +89,8 @@ When humans and code agents co-create content, they need more than a chat window
 
 > Each mode versions independently. Per-mode versions surface in the launcher and on the mode marketplace — they're not duplicated here to avoid drift.
 
+> A few of these ship inside the package; the rest arrive on first use. Their card in the launcher shows the download size, and opening one fetches it and then starts as usual. Which modes are which is a property of the release (`modes/distribution.json`), not of the mode — so a mode can move between the two without anything changing for the person using it.
+
 Image tools across modes use GPT Image 2.5 through OpenRouter: Sunburst for new images, Flare for edits and reference-based generation. Configure an OpenRouter API key to enable them; modes with video or speech tools may also need a fal.ai key.
 
 ## First Run — Pneuma Walks You Through It
