@@ -117,6 +117,13 @@ const builtinModes: Record<string, ModeSource> = {
     definitionLoader: () =>
       import("../modes/lucid/pneuma-mode.js").then((m) => m.default),
   },
+  backlot: {
+    type: "builtin",
+    manifestLoader: () =>
+      import("../modes/backlot/manifest.js").then((m) => m.default),
+    definitionLoader: () =>
+      import("../modes/backlot/pneuma-mode.js").then((m) => m.default),
+  },
   kami: {
     type: "builtin",
     manifestLoader: () =>

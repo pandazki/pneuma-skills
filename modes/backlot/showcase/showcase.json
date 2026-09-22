@@ -1,0 +1,80 @@
+{
+  "tagline": {
+    "en": "From an idea to a finished cut, one approved stage at a time",
+    "zh-CN": "从一个念头到一条成片，每道工序都等你点头",
+    "ja": "アイデアから完成尺まで、ステージごとにあなたの承認で進む"
+  },
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": {
+        "en": "Eight Stages, Each Approved",
+        "zh-CN": "八道工序，逐站点头",
+        "ja": "八つのステージ、一つずつ承認"
+      },
+      "description": {
+        "en": "Idea, screenplay, bible, boards, previz, takes, sound, cut — in that order, each leaving a file you can read. Only your approvals are stored; every status is derived from a hash of the files that define the stage, by one algorithm the scripts and the viewer both run. Edit the screenplay after approving it and the stage reads changed, and the paid commands behind it refuse until you have seen the new version.",
+        "zh-CN": "念头、剧本、设定、分镜、白模、成片、声音、剪辑 —— 按这个次序走，每一站都留下一份你能读的文件。存下来的只有你的点头：每一站的状态，都是从定义它的那几个文件算出来的哈希，脚本和播放器跑的是同一套算法。剧本通过之后又改了，这一站就变回「已改动」，它后面要花钱的命令会一直拒绝，直到你看过新的那一版。",
+        "ja": "アイデア、脚本、バイブル、絵コンテ、プリビズ、テイク、サウンド、カット —— この順に進み、各ステージが読めるファイルを残します。保存されるのは承認だけ。状態はステージを定義するファイルのハッシュから導かれ、スクリプトとビューアは同じアルゴリズムを実行します。承認後に脚本を直せばステージは「変更あり」に戻り、その先の有料コマンドは新しい版をあなたが見るまで拒否します。"
+      },
+      "media": "highlight-stages.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "Board, Anchor, Greybox",
+        "zh-CN": "分镜 · 锚点 · 白模",
+        "ja": "絵コンテ・アンカー・グレーボックス"
+      },
+      "description": {
+        "en": "The previz gate asks one question: are these three the same picture? The storyboard frame for the whole shot, the anchor painted onto the greybox's own frame with the bible's faces and set, and the greybox at that same second. A mismatch is either a defect to fix before a paid take, or a design the prompt will have to carry on its own — and you are the one who decides which.",
+        "zh-CN": "白模这一关只问一个问题：这三张是不是同一幅画面？整条镜头的分镜稿、在白模自己那一帧上按设定的人物与场景画出来的锚点帧，还有白模在同一秒的样子。对不上，要么是花钱开拍前该修的毛病，要么是只能交给提示词去补的设计 —— 由你来定是哪一种。",
+        "ja": "プリビズのゲートが問うのは一つだけ —— この三枚は同じ絵か。ショット全体の絵コンテ、グレーボックス自身のフレームの上にバイブルの顔とセットで描かれたアンカー、そして同じ秒のグレーボックス。食い違いは、有料テイクの前に直す欠陥か、プロンプトが自力で担う設計か —— どちらかを決めるのはあなたです。"
+      },
+      "media": "highlight-lineup.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "Pawns, Not Puppets",
+        "zh-CN": "是棋子，不是木偶",
+        "ja": "パペットではなくポーン"
+      },
+      "description": {
+        "en": "The greybox is built in Blender and rendered headless: untextured geometry, one simple light, the real camera — and the people are pawns. A pawn carries only where a body is, which way it faces and when it gets there; the walking, the sword and the face are the prompt's job. That exact MP4 is what conditions the video model, and afterwards both lanes play from one playhead — side by side, under a draggable wipe, or blended — with what ffprobe measured in each header: 144 frames at 6.00 s against the take's 145 at 6.04.",
+        "zh-CN": "白模在 Blender 里搭出来、无头渲染：没有贴图的几何体、一盏简单的灯、真正的那台摄影机 —— 而人是棋子。棋子只交代身体在哪、朝哪边、第几秒到位；走路、出剑、神情是提示词的活。交给视频模型的就是这段 MP4。之后两条轨道由同一个播放头驱动 —— 并排、用可拖的分割线擦开，或者叠在一起 —— 每条轨道的抬头写着 ffprobe 量到的数：白模 144 帧、6.00 秒，成片 145 帧、6.04 秒。",
+        "ja": "グレーボックスは Blender で組み、ヘッドレスでレンダリングします。テクスチャのない形状、シンプルな照明 1 灯、本物のカメラ —— そして人はポーン（駒）です。ポーンが担うのは体の位置、向き、到達の秒だけ。歩きも剣も表情もプロンプトの仕事です。その MP4 そのものが映像モデルを条件づけ、以後は二つのレーンがひとつのプレイヘッドで動きます —— 並べて、ドラッグできるワイプで、あるいはブレンドで。各ヘッダには ffprobe の実測が並びます。グレーボックスは 144 フレーム 6.00 秒、テイクは 145 フレーム 6.04 秒。"
+      },
+      "media": "highlight-greybox-take.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "Every Join, Both Frames",
+        "zh-CN": "每个接点，两帧摆出来",
+        "ja": "つなぎ目ごとに二枚のフレーム"
+      },
+      "description": {
+        "en": "The cut assembles the selected takes in shot order, places the voice-over and lays the music under the film at a stated level. At each join the frame that leaves and the frame that arrives are put side by side — continuous only where the next shot declares that it continues this one, with the hand-off's verdict beside it. Two of this film's six joins did not pass; they are on the card rather than behind a green total.",
+        "zh-CN": "剪辑把选定的那几条按镜头顺序接起来，把旁白放到位，再以写明的电平把音乐垫在片子底下。每一个接点都把「走的那一帧」和「来的那一帧」并排摆出来 —— 只有下一条镜头声明自己承接上一条时才算连续，承接的判定就写在旁边。这部片子六个接点里有两个没过：它们写在卡片上，而不是被一个绿色的总数盖住。",
+        "ja": "カットは選ばれたテイクをショット順に組み、ナレーションを置き、音楽を明示したレベルで下に敷きます。各つなぎ目では、去るフレームと来るフレームを並べます。連続と呼ぶのは次のショットが「これを継ぐ」と宣言したときだけで、ハンドオフの判定がその横に出ます。この作品の 6 つのつなぎ目のうち 2 つは不合格 —— 緑の合計の陰ではなく、カードにそう書いてあります。"
+      },
+      "media": "highlight-cut-points.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "Priced Before You Spend It",
+        "zh-CN": "花之前先算清楚",
+        "ja": "使う前に値段が出る"
+      },
+      "description": {
+        "en": "Every paid call is recorded beside the artifact it paid for, with the vendor's reported figure when there is one, and the Cost tab sums them by stage: of this film's $14.42, the takes are $11.64. A take is priced from the per-second table and written down as submitted before the request leaves, so a job that came back unusable still counts — it is paid on acceptance, not on delivery.",
+        "zh-CN": "每一笔花出去的钱都记在它买下的那件东西旁边，厂商报了数就记厂商的数，Cost 面板按工序汇总：这部片子一共 14.42 美元，其中成片这一站 11.64。每条成片在请求发出之前就按每秒单价算好、先记成 submitted，所以拿回来没法用的那次照样算钱 —— 这笔钱是受理时付的，不是交付时付的。",
+        "ja": "支払いは、それが買った成果物のそばに記録されます。ベンダーの申告値があればその値で。Cost タブはステージごとに合計します。この作品の 14.42 ドルのうち、テイクは 11.64 ドル。テイクは秒単価の表で見積もられ、リクエストが出る前に submitted として記録されるので、使えない結果が返ってきた回も数に入ります —— 料金は納品時ではなく受理時に発生するからです。"
+      },
+      "media": "highlight-cost.png",
+      "mediaType": "image"
+    }
+  ]
+}

@@ -36,6 +36,7 @@ import {
 } from "../core/init-param-options.js";
 import type { AgentBackendType } from "../core/types/agent-backend.js";
 import { applyTemplateParams } from "../server/skill-installer.js";
+import { isBinarySeedFile } from "../server/seed-installer.js";
 import {
   resolveMode as resolveModeSource,
   resolveModeOrLibrary,
@@ -2448,7 +2449,9 @@ async function main() {
         if (statSync(fileSrc).isDirectory()) continue;
         const fileDst = join(workspace, dst, relFile);
         mkdirSync(dirname(fileDst), { recursive: true });
-        const isBinary = /\.(png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|mp[34]|wav|ogg|zip|gz|tar|pdf)$/i.test(relFile);
+        // Same authority as the gallery copy path — see
+        // `server/seed-installer.ts::isBinarySeedFile`.
+        const isBinary = isBinarySeedFile(fileSrc);
         if (hasParams && !isBinary) {
           let content = readFileSync(fileSrc, "utf-8");
           content = applyTemplateParams(content, resolvedParams);

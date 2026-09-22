@@ -196,6 +196,29 @@ describe("seedance download and result", () => {
     expect(readdirSync(join(workspace, "clips"))).toEqual(["shot.mp4"]);
   });
 
+  test("the queue's request id travels into the result, and is absent when there was none", async () => {
+    // A caller that records paid work (backlot's previz.mjs take ledger) needs a
+    // handle on the job after this process exits: a finished render whose
+    // download was lost is still recoverable through the request id.
+    const withId = await generateSeedanceVideo(
+      { prompt: "A knight idles", output: join(workspace, "ided", "shot.mp4"), apiKey: "fixture-key", remux: false },
+      {
+        runJob: async () => ({ data: { video: { url: "https://cdn.fal.ai/clip.mp4" } }, apiMs: 10, attempts: 1, requestId: "req_7f3" }),
+        download: async () => Buffer.from("bytes"),
+      },
+    );
+    expect(withId.request_id).toBe("req_7f3");
+
+    const withoutId = await generateSeedanceVideo(
+      { prompt: "A knight idles", output: join(workspace, "anon", "shot.mp4"), apiKey: "fixture-key", remux: false },
+      {
+        runJob: async () => ({ data: { video: { url: "https://cdn.fal.ai/clip.mp4" } }, apiMs: 10, attempts: 1 }),
+        download: async () => Buffer.from("bytes"),
+      },
+    );
+    expect("request_id" in withoutId).toBe(false);
+  });
+
   test("file_size is the file on disk after the remux, not the bytes fal delivered", async () => {
     const output = join(workspace, "remuxed", "shot.mp4");
     const delivered = Buffer.from("fal delivered these bytes");

@@ -1,0 +1,4 @@
+interface:
+  display_name: "视频复刻白模工作流"
+  short_description: "自动完成参考视频复刻、Blender 白模动画、提示词与视频模型成片"
+  default_prompt: "使用 $blender-video-recreate 完成视频复刻白模工作流，自动制作、检查动作并导出结果。"

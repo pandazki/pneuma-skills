@@ -1,0 +1,45 @@
+/**
+ * What an empty stage says.
+ *
+ * A stage with nothing in it is a normal state of this mode — the film moves
+ * through eight of them in order and seven are empty on the first day. So it
+ * gets a sentence naming what the agent will produce here, never a blank
+ * pane the user has to interpret (the brief's "partial states are drawn as
+ * such").
+ */
+
+import type { StageId } from "../domain.js";
+import { stageLabel } from "../domain.js";
+
+export const STAGE_BLURB: Record<StageId, string> = {
+  idea: "Tell the agent what the film is — the agent writes the logline, the tone, the length and who it is for, and you read it back here before anything else starts.",
+  script:
+    "Once the idea is approved the agent writes the screenplay: scenes with their headings, the action, and every line of dialogue — plus the scene list this stage is checked against.",
+  bible:
+    "Two sheets and one style frame are what a take receives; the set is words. Every character gets a written look and a generated sheet — plus a voice sample if they speak — the film gets one style key frame that says how it is drawn, and every place gets its materials, colours and size written down.",
+  boards:
+    "The scenes are broken into shots: the shot list, the beats and camera of each one, and the designed picture of every beat in words. Nothing is drawn here — the picture is the greybox, in the next stage.",
+  previz:
+    "Greybox → checks → reel; pictures are optional. The shot is blocked in 3D: a timed plan, a Blender script, and a greybox render that fixes the room, the action and the camera — the exact clip the video model is conditioned on, and the only picture of layout it gets. A key frame can be rendered from it to see the look first, but nothing else is drawn.",
+  takes:
+    "An accepted greybox is sent to the video model as the layout, with the character sheets and the film's style frame for the look. Every take is checked, and one is selected as the shot's delivery.",
+  sound:
+    "Voice-over lines are recorded as TTS and the music is generated from a written brief. The takes' own audio stays as ambience; nothing is dubbed over a mouth the model animated.",
+  cut: "The selected takes are assembled in shot order with the voice-over placed and the music laid under. A reel with greybox stand-ins can be built for free at any time.",
+};
+
+export function StageEmpty({ stage, note }: { stage: StageId; note?: string | null }) {
+  return (
+    <div className="flex h-full w-full items-center justify-center p-8 text-center">
+      <div className="max-w-md">
+        <p className="text-[10px] uppercase tracking-[0.2em] text-cc-muted">
+          {stageLabel(stage)} — nothing yet
+        </p>
+        <p className="mt-2 text-sm leading-relaxed text-cc-muted">{STAGE_BLURB[stage]}</p>
+        {note ? <p className="mt-2 text-[11px] leading-relaxed text-cc-warning">{note}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+export default StageEmpty;

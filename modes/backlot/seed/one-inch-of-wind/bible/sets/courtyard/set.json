@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "id": "courtyard",
+  "name": "山中古寺庭院",
+  "description": "开阔的荒寺庭院，北阶、西断廊、东北钟楼、东南大树共同标定空间；中央石台与外围通路留空。",
+  "look": "Premium Chinese wuxia animated feature production design, elegant painterly 3D animation, restrained graphic shading, finely drawn fabric folds, anatomically credible adult proportions, not a photograph, no plastic game-character gloss. Wide cinematic environment concept, empty ruined Chinese mountain temple courtyard at dusk, no people or animals. Camera at south courtyard edge facing north, 1.6m eye height, 24mm lens, wide 16:9 frame. Courtyard 24m east-west by 22m north-south, cracked grey stone paving. Central circular stone fighting dais diameter 8m, only 0.15m high, flat bare top. North background centered stairs 4m wide with eight shallow 0.15m risers to a small ruined temple landing. On WEST (image left), broken roofless stone colonnade with 2 to 3.5m columns. NORTHEAST (image upper right) one 7m wooden bell tower on a 4m square base with a clearly visible bronze bell. SOUTHEAST (image right foreground) one large 10m old broadleaf tree, trunk beyond the clear central area, crown at upper right. Scattered rubble at far edges only. Three sparse strings of faded ochre-red prayer flags between peripheral columns, never above the central dais. Keep entire central dais and a clear 4m wide ring around it free of obstacles for camera movement. Cool blue-grey stone, dark green canopy, faded red fabric, restrained warm sunset rim light from west, distant layered ink-wash mountains visible above ruined walls. Readable foreground, middle ground and background, rich architectural detail and atmospheric depth, no massive staircase in foreground, no labels or text.",
+  "concept": {
+    "file": "concept.png",
+    "revision": 1,
+    "prompt": "Premium Chinese wuxia animated feature production design, elegant painterly 3D animation, restrained graphic shading, finely drawn fabric folds, anatomically credible adult proportions, not a photograph, no plastic game-character gloss. Wide cinematic environment concept, empty ruined Chinese mountain temple courtyard at dusk, no people or animals. Camera at south courtyard edge facing north, 1.6m eye height, 24mm lens, wide 16:9 frame. Courtyard 24m east-west by 22m north-south, cracked grey stone paving. Central circular stone fighting dais diameter 8m, only 0.15m high, flat bare top. North background centered stairs 4m wide with eight shallow 0.15m risers to a small ruined temple landing. On WEST (image left), broken roofless stone colonnade with 2 to 3.5m columns. NORTHEAST (image upper right) one 7m wooden bell tower on a 4m square base with a clearly visible bronze bell. SOUTHEAST (image right foreground) one large 10m old broadleaf tree, trunk beyond the clear central area, crown at upper right. Scattered rubble at far edges only. Three sparse strings of faded ochre-red prayer flags between peripheral columns, never above the central dais. Keep entire central dais and a clear 4m wide ring around it free of obstacles for camera movement. Cool blue-grey stone, dark green canopy, faded red fabric, restrained warm sunset rim light from west, distant layered ink-wash mountains visible above ruined walls. Readable foreground, middle ground and background, rich architectural detail and atmospheric depth, no massive staircase in foreground, no labels or text.",
+    "width": 1024,
+    "height": 576,
+    "at": 1789921589369,
+    "cost": {
+      "usd": 0.0341,
+      "basis": "reported"
+    }
+  }
+}

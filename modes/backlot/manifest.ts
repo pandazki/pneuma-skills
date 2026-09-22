@@ -1,0 +1,372 @@
+/**
+ * Backlot Mode Manifest — pure data, no React deps.
+ *
+ * A short film moves through eight stages — idea, screenplay, bible, boards,
+ * previz, takes, sound, cut — and the creator approves each before the next
+ * starts. The previz stage is the heart: block the shot in 3D first, so a
+ * headless-Blender greybox animation fixes space, action, tempo and camera,
+ * and a video model then paints the look on top of that exact MP4 with the
+ * bible, the anchor frame and the previous shot's hand-off as references.
+ * `backlot.mjs` owns the film's machine state (backlot.json, bible, sound,
+ * cut) and `previz.mjs` owns each shot's (shot.json); stage status is derived
+ * by `stage-state.mjs` in both the scripts and the viewer. The viewer is the
+ * stage rail plus a body per stage, with the shot player at its centre.
+ *
+ * Practice adapted from modengsir/blender-video-workflows (MIT) — see
+ * `inspiredBy` and NOTICE.md.
+ */
+
+import type { ModeManifest } from "../../core/types/mode-manifest.js";
+import { loadFilm, saveFilm } from "./domain.js";
+
+const backlotManifest: ModeManifest = {
+  name: "backlot",
+  version: "0.1.0",
+  changelog: {
+    "0.1.0": [
+      "The backlot opens with its greybox stage: block the shot in 3D before anything is generated, so a Blender greybox animation fixes the room, the action and the camera move, and the video model only paints the look on top of that exact clip",
+      "Start from an idea or from a video you already have — the recreate entry trims the segment you point at, reads its cuts and adopts its duration, frame rate and size into the shot spec",
+      "One shot is the unit of everything: plan, greybox, acceptance, prompt pack, takes and cost all live in one `shots/<id>/` directory with a single writer",
+      "The player runs every lane on one clock — reference, greybox and takes side by side, under a wipe, or blended for silhouette matching — so a drift is seen at a frame, not remembered",
+      "The greybox lane switches between the Render the model received and a 3D inspection view of the same scene: the shot camera with its real framing, or a free orbit with the camera path, a moving frustum and each subject's floor trail",
+      "Frame arithmetic is exact: `frames = seconds × fps`, frames 1 to N, and `render` refuses a scene whose range disagrees with the shot spec instead of quietly producing a 193-frame eight-second clip",
+      "Nothing is passed unseen — every acceptance check is pass, fail or unverified, a check nobody looked at stays unverified, and the status line never summarises as accepted while one is not green",
+      "Cause before effect: a trigger beat names the beat that caused it, the timeline draws the link, and the prompt keeps that order so the device never lights before the hand arrives",
+      "The same defect twice stops the loop: a check that fails on two consecutive greybox revisions is reported as stuck, and the agent saves the version and asks instead of rendering again",
+      "Paid work is submitted once — a take is written down before the request leaves, ends done or failed with its request id, a second take needs a named fix and a third needs your approval",
+      "A take is never called 1080p unless ffprobe says so: every lane header shows what was measured, not what was ordered",
+      "Cost is priced before you spend it: `generate --estimate` prices the job from the fal per-second table, and the Cost tab shows each take and the total, labelled an estimate",
+      "No fal key is a reported gap, not a silent success — you still get the plan, the greybox, the .blend and the prompt pack, and the mode says which stage is closed",
+      "A Blender kit ships the greybox grammar: rooms, props, hinged doors and lids, a person-sized figure that travels a ground path, eased camera moves that do not overshoot, and accents that record themselves",
+      "The greybox blocks the body and never acts for it: the subject is a pawn with an unambiguous front, so space, timing and facing are fixed while the walk, the reach and the press stay in the prompt where the video model is good at them — and `travel` refuses a cruise speed no walk or run could have, because the model animates the gait at whatever speed the clip shows",
+      "The backlot is the whole film, not one shot: idea, screenplay, bible, boards, previz, takes, sound and cut run in that order, every stage leaves a file the creator can read, and the agent stops at the end of each one until the creator says go",
+      "Only approvals are stored; every status is derived from a hash of the stage's text files by one algorithm the scripts and the viewer both run — so a screenplay edited after approval shows `changed`, and a paid command refuses until the stage it depends on is approved again or the creator opens the gates",
+      "The design comes first and is carried forward: every beat holds the designed picture (`detail`), the greybox is built from that plan, and `prompt-skeleton` turns the same beats into the time-coded prompt the video model reads — the prompt is never written fresh at the takes stage",
+      "Seedance leans on anchors and references, so it gets them: an anchor frame rendered by GPT-Image from the greybox's own frame plus the bible, the storyboard frame, the character sheets, the set concept and — for a continuous cut — the previous shot's last used frame, each attached in a fixed order and each assigned its job in the prompt",
+      "The pictures come from the greybox: the shot-plan stage is text and costs nothing, and the storyboard is rendered out of the accepted greybox as key frames in the film's real look — so the picture, the blocking and the camera can never be three different shots, which is exactly what drawing them beforehand produced",
+      "Fewer references: the greybox is the only picture of layout, behaviour and camera a take receives — the character sheets say the faces, one project style key frame says how the film is drawn, the set travels as words, and a key frame, a legacy board or a set concept is attached only when `generate --with-anchors|--with-board|--with-concept` asks for it, because a picture with a composition of its own fights the greybox and the model settles it by averaging",
+      "The greybox is a tool, not the film: each shot declares in the plan whether its take is conditioned on the block (space, geography, a camera move the model cannot do alone), shot free (no video reference at all — the sheets and the style frame, and a prompt written for the action) or hybrid (the block's positions with the body and the camera allowed to move inside it), because eight blocked takes came back consistent with no 亮点 and the same exchange shot free had one",
+      "A join between two shots is carried by words, not by a picture: the previous shot's out-frame is still cut and is still what `take-handoff` is judged against, but the model is shown the entry sentence and told not to reuse the previous camera — eight takes showed that every shot handed the frame came back with the camera of the shot before it, and `generate --with-handoff` is the opt-in for a join that words could not land",
+      "Continuity is a decision, not a rule: a shot declares `continuity` only when the cut carries one action into a new camera, and then it is shot after the previous one, its prompt opens on that shot's exit state, and `take-handoff` is checked from an out-frame | in-frame strip — an ellipsis or a montage declares nothing",
+      "Tempo lives in the greybox because the greybox is the clock the model follows: `slowmo` remaps action time inside the clip, `impact` shoves the camera on contact, and the beats timeline draws the tempo row",
+      "The camera can do what a video model cannot on its own: orbit a duel, zoom, hold a subject's size through a dolly zoom, rise on a crane — and a collage of one strike is several short shots trimmed in the cut, because the model's floor is four seconds",
+      "A reel before a bill: `cut --reel` assembles the film with the greybox standing in for every missing take, so the creator judges timing and blocking for free, and `cut --final` refuses while any shot lacks a selected take",
+      "Sound is two kinds of line: a spoken line is rendered by the video model with the character's voice sample as a reference and checked against a transcript, a voice-over is synthesised and mixed in the cut; music comes from a brief and sits under the film at a stated level",
+      "Every paid call is recorded beside the artifact it paid for, with the vendor's reported figure when there is one, and the Cost tab sums them by stage — an unpriced call is listed as unpriced, never as free",
+      "The greybox names its places: a landmark paints the shop, the bus stop or the gate one saturated colour of its own, and the prompt is written from it — which colour is which place, which colour each character's block is, and who is standing in front of what at the first and the last frame, so seven takes of one street can no longer each invent their own geography",
+      "The film's style key frame has to be a look, not a location — it rides on every take, so a place inside it gets painted into shots that place is not in, and registering one warns when the picture is really a set's concept frame",
+      "The greybox measures which side of the frame each place is on and the pack says it — 画左是便利店雨棚，画右是公交站牌, with where they end up when the camera turns — because saying only what is behind whom let a whole street come back mirrored",
+    ],
+  },
+  displayName: {
+    en: "Backlot",
+    "zh-CN": "片场",
+    ja: "バックロット",
+  },
+  description: {
+    en: "From an idea to a finished cut — screenplay, character and set bible, storyboard frames, 3D greybox previz, model-rendered takes, dialogue and music. The creator approves every stage before the next one starts.",
+    "zh-CN":
+      "从一个念头拍到成片：剧本、人物与场景设定、分镜画稿、3D 白模预演、模型渲染的镜头、台词与配乐。每一道工序都要你点头，才进下一道。",
+    ja: "アイデアから完成尺まで —— 脚本、キャラクターとセットのバイブル、絵コンテ、3D グレーボックスのプリビズ、モデルが描くテイク、セリフと音楽。各ステージはあなたが承認してから次へ進みます。",
+  },
+  // A camera frustum looking at a small cube standing on a ground line —
+  // the greybox before anything is rendered.
+  icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 19h19"/><rect x="1.5" y="10" width="3" height="4" rx="0.8"/><path d="M4.5 10.5 10 8v8l-5.5-2.5z"/><path d="m16 11 3.5 2-3.5 2-3.5-2z"/><path d="M12.5 13v4L16 19l3.5-2v-4"/><path d="M16 15v4"/></svg>`,
+
+  // Everything here is a script the agent runs and an image it reads back.
+  // No model-side image or video tool is required, so both harnesses qualify.
+  supportedBackends: ["claude-code", "codex"],
+
+  inspiredBy: {
+    name: "modengsir/blender-video-workflows",
+    url: "https://github.com/modengsir/blender-video-workflows",
+  },
+
+  skill: {
+    sourceDir: "skill",
+    installName: "pneuma-backlot",
+    mdScene: `You and the user are shooting a short film the way a previz department does: every shot is blocked in 3D first. You write a shot plan with timed beats, build the blocking as a Blender script, render it headless into a greybox MP4 — untextured geometry, one light, the real camera — and go through the acceptance list on that clip before anything is generated. Only then does a video model paint the look on top of that exact file. In front of the user is the shot's player: the lanes on one clock, the beats drawn on the timeline, the acceptance record, the prompt pack, and what each take cost.`,
+    envMapping: {
+      BLENDER_PATH: "blenderPath",
+      FAL_KEY: "falApiKey",
+      OPENROUTER_API_KEY: "openrouterApiKey",
+    },
+    // sharedScripts is a WHITELIST and it is transitive: seedance-video.mjs
+    // drives fal through fal-queue.mjs, so the transport primitive has to be
+    // listed even though the agent never invokes it directly.
+    //
+    // fal buys the video, the voices and the transcripts; OpenRouter buys
+    // the bible frames, the board frames and the music. `generate_image.mjs`
+    // and `edit_image.mjs` are run BY THE AGENT — `backlot.mjs` deliberately
+    // does not wrap them, so the agent can look at what came back before
+    // registering it — while `generate-tts.mjs`, `generate-bgm.mjs` and
+    // `transcribe.mjs` are spawned by the scripts.
+    sharedScripts: [
+      "seedance-video.mjs",
+      "fal-queue.mjs",
+      "generate_image.mjs",
+      "edit_image.mjs",
+      "generate-tts.mjs",
+      "generate-bgm.mjs",
+      "transcribe.mjs",
+    ],
+  },
+
+  viewer: {
+    // EVERY pattern here must end in a literal extension — the watcher derives
+    // its file-type allowlist from these globs
+    // (`server/file-watcher.ts::extractWatchExtensions`) and a directory glob
+    // contributes nothing to it.
+    //
+    // THIS LIST IS THE VIEWER'S TEXT INPUTS AND NOTHING ELSE. Every match is
+    // read with `readFileSync(path, "utf-8")` — by the watcher AND by
+    // `GET /api/files` on cold start (`server/routes/export.ts`) — and shipped
+    // to the browser inside one JSON payload. Media does not belong here:
+    // plotwise froze a tab with a 1.17 GB snapshot that way, and measured here
+    // on 2026-09-20, adding `.png` for the contact sheets made `/api/files`
+    // 4.1 MB of mangled binary against 17 KB with them removed.
+    //
+    // No media pattern is needed. `previz.mjs` bumps `greybox.revision` on
+    // every render and appends the take to `shot.json`, which IS watched, and
+    // the viewer's `/content/…?rev=<n>` URLs bust the cache off that number.
+    // Image cache-busting also survives: the watcher's image branch fires
+    // before the pattern filter, so a new PNG still bumps `imageVersion`.
+    watchPatterns: [
+      "**/backlot.json",
+      "**/idea.md",
+      "**/screenplay.md",
+      "**/bible/characters/*/character.json",
+      "**/bible/sets/*/set.json",
+      "**/shots/*/shot.json",
+      "**/shots/*/*.md",
+      "**/shots/*/greybox/*.json",
+      "**/sound/sound.json",
+      "**/cut/edl.json",
+    ],
+    ignorePatterns: [
+      "node_modules/**",
+      ".pneuma/**",
+      // Per-frame PNG scratch: a render writes hundreds of them and they are
+      // never read by the viewer — the MP4 is.
+      "**/frames/**",
+    ],
+    serveDir: ".",
+  },
+
+  sources: {
+    // A film is ONE object assembled from the project manifest, the stage
+    // files (idea, screenplay, bible records, sound, cut) and a shot file per
+    // shot: the stage rail derives every status from these texts together
+    // (stage-state.mjs), so they load as one aggregate, not as a file list.
+    // Text only — media identity travels in the JSON records' `{file, revision}`.
+    film: {
+      kind: "aggregate-file",
+      config: {
+        patterns: [
+          "**/backlot.json",
+          "**/idea.md",
+          "**/screenplay.md",
+          "**/bible/characters/*/character.json",
+          "**/bible/sets/*/set.json",
+          "**/shots/*/shot.json",
+          "**/sound/sound.json",
+          "**/cut/edl.json",
+        ],
+        load: loadFilm,
+        save: saveFilm,
+      },
+    },
+    // The agent's prose, read as text by the Plan and Prompt tabs.
+    docs: {
+      kind: "file-glob",
+      config: {
+        patterns: [
+          "**/shots/*/shot-plan.md",
+          "**/shots/*/prompts.md",
+          "**/shots/*/comparison.md",
+        ],
+      },
+    },
+    // The Blender kit's sidecar: what the 3D lane needs that glTF cannot
+    // carry — the camera's node name, the subjects to trail, and the accent
+    // colour animation Workbench materials do not export.
+    metas: {
+      kind: "file-glob",
+      config: {
+        patterns: ["**/shots/*/greybox/scene.meta.json"],
+      },
+    },
+  },
+
+  viewerApi: {
+    workspace: {
+      type: "manifest",
+      multiFile: true,
+      ordered: true,
+      hasActiveFile: false,
+      manifestFile: "backlot.json",
+      supportsContentSets: true,
+      // The shots rail is the navigation and it lives beside the stage it
+      // drives. A TopBar item selector would be a second, stage-blind copy.
+      topBarNavigation: false,
+    },
+    actions: [
+      {
+        id: "navigate-to",
+        label: "Show shot / lane / moment",
+        category: "navigate",
+        agentInvocable: true,
+        params: {
+          address: {
+            type: "object",
+            description:
+              'ViewerAddress, e.g. `{ "contentSet": "one-inch-of-wind", "shot": "s03-orbit", "lane": "greybox", "time": 4.2 }`. `shot` is the shot id (required unless you only change the moment on the shot already open). `lane` is `"reference"`, `"greybox"` or `"take"`. `take` is a take id (`"take-01"`) and implies the take lane. `time` is seconds on the shared clock. `range` is `[from, to]` in seconds and marks that span on the timeline. `layout` is `"side"`, `"wipe"`, `"blend"` or `"solo"`.',
+            required: true,
+          },
+        },
+        description:
+          "Put the player on the shot, lane and moment you are talking about, so the user is looking at the frame your sentence is about instead of hunting for it. Call it before you describe a defect (`{ shot, time }` lands the playhead on the frame; add `range` to mark the span you checked) and after a render or a take lands (`{ shot, lane: \"take\", take: \"take-02\" }`). A shot or take that does not exist is refused BY NAME and nothing moves; the reply's `data` always says where the stage actually ended up — shot, lane, take, layout, time and frame.",
+      },
+      {
+        id: "get-player-state",
+        label: "Read what the player shows",
+        category: "custom",
+        agentInvocable: true,
+        params: {},
+        description:
+          "Read the stage exactly as the user sees it: `{ contentSet, shot, shots[], layout, laneA, laneB, greyboxMode, cameraMode, lanes[], playhead, markedRange, selectedTake, playing, rate, loop }`. `lanes[]` is one entry per lane with `{ id, label, kind, file, loaded, error, probe }` — `loaded` is whether that lane's media actually decoded in the browser, so a lane whose file is missing or unreadable is knowable rather than merely blank, and `kind` is `\"video\"`, `\"waiting\"` (a submitted take), `\"failed\"` or `\"empty\"`. `playhead` is `{ time, frame, beat }` on the shared clock — `frame` is 1-based and clamped to the spec, so it is the frame number to quote at the user. `markedRange` is the span the user shift-dragged on the timeline, or null. Call it before answering a question that starts with \"here\" or \"this\": it is the only way to know which lane and which frame \"here\" means.",
+      },
+    ],
+    // User → agent. `description` is the ONE-LINE HINT THE USER READS on
+    // hover — never a script, a flag or a file name. The agent's briefing for
+    // these two lives in the skill's Commands section.
+    commands: [
+      {
+        id: "approve-stage",
+        label: "Approve this stage",
+        // The stage rail's button. Approval is a COMMAND TO THE AGENT, never
+        // a write: the viewer sends the message, the agent runs
+        // `backlot.mjs approve <stage>`, and the approval is recorded with a
+        // hash of exactly what the creator was looking at.
+        description: "Sign off on this stage so the next one can start",
+      },
+      {
+        id: "check-greybox",
+        label: "Check this greybox",
+        description: "Go through the acceptance list on this greybox and record what you find",
+      },
+      {
+        id: "generate-take",
+        label: "Generate a take",
+        description: "Render a take from this greybox with the prompt pack",
+      },
+    ],
+  },
+
+  agent: {
+    permissionMode: "bypassPermissions",
+    // Blocking is judgement — where the camera stands, how long the walk
+    // takes, whether a defect is a fix or a redesign — but the acceptance
+    // baseline this mode is held to is Codex GPT-6 Astra at medium, and blind
+    // trials 2 and 3 passed at that setting. Asking for more than the level
+    // the work was proven at buys latency, not judgement.
+    reasoningEffort: "medium",
+    greeting: `<system-info pneuma-mode="Pneuma Backlot Mode" skill="pneuma-backlot" session="new"></system-info>
+The user just opened the backlot workspace. Greet them briefly (1-2 sentences): say that you block every shot in 3D first — a Blender greybox that fixes the room, the action and the camera — and only then let a video model paint the look on top of that exact clip. Ask what the shot is, or offer to recreate a video they already have. If Blender is not configured, say so in the same breath and name what is still possible without it.`,
+  },
+
+  init: {
+    contentCheckPattern: "**/backlot.json",
+    // The seed is one real run of the whole flow, kept as it ended: the idea
+    // and screenplay the creator approved, the bible, seven boards, seven
+    // greyboxes with their GLBs and acceptance records, the seven takes that
+    // were delivered — failing checks and all — the music bed, the voice-over
+    // and the 30-second cut. An invented seed would teach the mode's own
+    // workflow wrong, and a seed with every check green would teach it to lie.
+    //
+    // Slimmed for distribution (17 MB, from 317 MB): the working files a
+    // finished film does not need are not shipped — the .blend beside each
+    // GLB, the half-scale preview render, the contact sheets and QA strips,
+    // the takes that were not selected, the board-image sources, the second
+    // (`board`) anchor of each shot, and the story reel the final cut
+    // replaced. Stills are 720 px wide (427 for the grey anchor frames) and
+    // quantized, every take and the cut are re-encoded at CRF 30, and every
+    // `{ file, revision }` record still points at a file that is here with
+    // the size it records. The greybox MP4s and the GLBs are untouched: they
+    // are what the model was given and what the 3D lane reads.
+    seedFiles: {
+      "modes/backlot/seed/one-inch-of-wind/": "one-inch-of-wind/",
+    },
+    seeds: [
+      {
+        id: "one-inch-of-wind",
+        sourceKey: "modes/backlot/seed/one-inch-of-wind/",
+        thumbnail: "one-inch-of-wind.png",
+        displayName: {
+          en: "One Inch of Wind — a 30-second film, all eight stages",
+          "zh-CN": "一寸止风 · 三十秒短片，八道工序俱全",
+          ja: "一寸止風 —— 30 秒の短編、八つのステージすべて",
+        },
+        description: {
+          en: "A duel in a ruined mountain temple, finished: the approved idea and screenplay, two characters and one set in the bible, seven storyboard frames, seven Blender greyboxes with their acceptance records, the seven takes that were delivered — the failing checks kept as they were recorded — the music, the voice-over and the assembled cut.",
+          "zh-CN":
+            "一场在山中古寺的对决，拍完了：通过的念头与剧本、设定里的两个人物和一处场景、七张分镜画稿、七段 Blender 白模和它们的验收记录、交付的七条镜头（没通过的检查原样保留）、配乐、旁白，以及剪好的成片。",
+          ja: "山中の廃寺での立ち合い、完成まで —— 承認されたアイデアと脚本、バイブルの登場人物 2 人とセット 1 つ、絵コンテ 7 枚、受け入れ記録つきの Blender グレーボックス 7 本、納品された 7 テイク（不合格のチェックも記録のまま）、音楽、ナレーション、そして仕上がった本編。",
+        },
+        tags: ["blender", "seedance", "wuxia"],
+      },
+    ],
+    params: [
+      {
+        name: "blenderPath",
+        label: "Blender executable",
+        description:
+          "Leave blank to auto-detect: PATH, /Applications/Blender.app, Program Files. Only the mode's render script runs it.",
+        type: "string",
+        defaultValue: "",
+      },
+      {
+        name: "falApiKey",
+        label: "fal.ai API Key",
+        description:
+          "Optional — enables video takes (Seedance 2.5 reference-to-video), character voices and the transcript check on spoken lines. Without it you still get the plan, the greybox and the prompt pack.",
+        type: "string",
+        defaultValue: "",
+        sensitive: true,
+      },
+      {
+        name: "openrouterApiKey",
+        label: "OpenRouter API Key",
+        description:
+          "Optional — enables the character sheets and set concepts of the bible, the storyboard frames, and the music bed (GPT Image 2.5 and Lyria 3). Without it the film is still written, blocked and shot; it just has no look frames and no music.",
+        type: "string",
+        defaultValue: "",
+        sensitive: true,
+      },
+    ],
+    // The installer's template engine has `{{#key}}` sections and no inverted
+    // form, so "no fal key" needs its own truthy key — otherwise the sentence
+    // that tells the agent the stage is closed sits outside the gate, where a
+    // session that CAN generate reads it too.
+    deriveParams: (params) => ({
+      ...params,
+      videoEnabled: params.falApiKey ? "true" : "",
+      videoDisabled: params.falApiKey ? "" : "true",
+      imagesEnabled: params.openrouterApiKey ? "true" : "",
+      imagesDisabled: params.openrouterApiKey ? "" : "true",
+      blenderConfigured: params.blenderPath ? "true" : "",
+    }),
+  },
+
+  evolution: {
+    directive: `Learn the user's shot habits: their default duration, aspect and frame rate,
+how they describe camera moves, which looks they ask the video model for, how
+strict they are at greybox acceptance, and what they are willing to spend per
+take. Evidence comes from session history, the shot.json files (spec, beats,
+checks and their history, takes and costs) and the prompt packs. Write them
+back as this skill's defaults so a new shot starts from the user's house style
+while explicit instructions still win.`,
+  },
+};
+
+export default backlotManifest;

@@ -8,17 +8,76 @@
  * this helper per user click, scoped to one `seedFiles` entry at a
  * time.
  *
- * Locale resolution, template substitution, binary detection, and
- * directory-vs-file branching are preserved verbatim — only the
- * "loop over all entries" framing changed.
+ * Locale resolution, template substitution, and directory-vs-file
+ * branching are preserved verbatim — only the "loop over all entries"
+ * framing changed. Binary detection now lives in `isBinarySeedFile`,
+ * the single authority shared with the `_`-prefixed re-sync loop in
+ * `bin/pneuma.ts`.
  */
 
-import { existsSync, statSync, readFileSync, writeFileSync, copyFileSync, mkdirSync } from "node:fs";
+import {
+  existsSync,
+  statSync,
+  readFileSync,
+  writeFileSync,
+  copyFileSync,
+  mkdirSync,
+  openSync,
+  readSync,
+  closeSync,
+} from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { applyTemplateParams } from "./skill-installer.js";
 import type { SeedDescriptor } from "../core/types/mode-manifest.js";
 
-const BINARY_EXT_RE = /\.(png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|mp[34]|wav|ogg|zip|gz|tar|pdf)$/i;
+/**
+ * Known-binary extensions — a fast path that avoids touching the disk.
+ * Not an exhaustive list, and deliberately not the only test: an unknown
+ * extension falls through to the content sniff below.
+ */
+const BINARY_EXT_RE =
+  /\.(png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|otf|eot|mp[34]|m4a|wav|ogg|flac|webm|mov|glb|blend|bin|wasm|zip|gz|tar|7z|pdf)$/i;
+
+/** How much of an unknown-extension file we read before deciding. */
+const SNIFF_BYTES = 8192;
+
+/**
+ * Is this seed file binary — i.e. must it be copied byte-for-byte instead
+ * of being read as UTF-8, template-substituted, and written back?
+ *
+ * Two tests, in order:
+ *  1. `BINARY_EXT_RE` — a cheap allowlist of extensions we already know.
+ *  2. A content sniff: the first {@link SNIFF_BYTES} bytes contain a NUL.
+ *     Text never contains NUL; every binary container we ship (glTF, PNG,
+ *     zip, .blend, wasm, …) has one inside its header. This is the safety
+ *     net that makes "unknown extension" default to *preserve the bytes*
+ *     rather than to "mangle them into U+FFFD" — the previous behavior,
+ *     which silently corrupted `backlot`'s `scene.glb`.
+ *
+ * `path` should point at an existing, readable file; the sniff is skipped
+ * when it cannot be opened (the caller's own read/copy reports that
+ * failure), leaving the extension verdict.
+ */
+export function isBinarySeedFile(path: string): boolean {
+  if (BINARY_EXT_RE.test(path)) return true;
+  return hasNulByte(path);
+}
+
+function hasNulByte(path: string): boolean {
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, "r");
+    const buf = Buffer.allocUnsafe(SNIFF_BYTES);
+    const read = readSync(fd, buf, 0, SNIFF_BYTES, 0);
+    return buf.subarray(0, read).includes(0);
+  } catch {
+    // Unreadable or missing: nothing to sniff. The copy that follows
+    // surfaces the real error.
+    return false;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
 
 export interface SeedCopyOptions {
   /** Workspace root (destination prefix). */
@@ -76,7 +135,7 @@ export function copySeedEntry(opts: SeedCopyOptions): SeedCopyResult | null {
       const dstRel = join(opts.dst, relFile);
       const fileDst = join(opts.workspace, dstRel);
       mkdirSync(dirname(fileDst), { recursive: true });
-      const isBinary = BINARY_EXT_RE.test(relFile);
+      const isBinary = isBinarySeedFile(fileSrc);
       if (hasParams && !isBinary) {
         const content = applyTemplateParams(readFileSync(fileSrc, "utf-8"), opts.params);
         writeFileSync(fileDst, content, "utf-8");
@@ -89,7 +148,7 @@ export function copySeedEntry(opts: SeedCopyOptions): SeedCopyResult | null {
   } else {
     const dstPath = join(opts.workspace, opts.dst);
     mkdirSync(dirname(dstPath), { recursive: true });
-    const isBinary = BINARY_EXT_RE.test(resolvedSrc);
+    const isBinary = isBinarySeedFile(srcPath);
     if (hasParams && !isBinary) {
       const content = applyTemplateParams(readFileSync(srcPath, "utf-8"), opts.params);
       writeFileSync(dstPath, content, "utf-8");
