@@ -123,6 +123,20 @@
     "from_library": "Aus {{name}}",
     "synced_at": "synchronisiert {{when}}"
   },
+  "catalog": {
+    "size_hint": "{{size}} Download",
+    "download_and_open": "Herunterladen und öffnen",
+    "update_and_open": "Aktualisieren und öffnen",
+    "download_and_create": "Herunterladen und erstellen",
+    "preparing": "Download wird gestartet…",
+    "downloading_percent": "Wird heruntergeladen… {{percent}}%",
+    "retry": "Erneut versuchen",
+    "failed": "Download fehlgeschlagen",
+    "needs_download_aria": "Wird beim ersten Öffnen heruntergeladen",
+    "tile_needs_download": "Noch nicht heruntergeladen — {{size}}",
+    "first_open_hint": "Beim ersten Öffnen werden {{size}} heruntergeladen; danach startet der Modus wie jeder andere.",
+    "stale_hint": "Für eine ältere Pneuma-Version installiert — beim Öffnen wird der passende Build für diese Version geladen."
+  },
   "launch_dialog": {
     "workspace_label": "Arbeitsbereichspfad",
     "browse_tooltip": "Verzeichnisse durchsuchen",

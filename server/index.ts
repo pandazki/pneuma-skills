@@ -31,6 +31,7 @@ import { SettingsManager } from "../core/settings-manager.js";
 import { HookBus } from "../core/hook-bus.js";
 import { createProxyMiddleware, mergeProxyConfig, type ProxyConfigRef } from "./proxy-middleware.js";
 import { resolveLocalized, type ModeManifest, type ProxyRoute } from "../core/types/mode-manifest.js";
+import type { ModeCatalogEntry, ModeInstallState } from "../core/types/mode-catalog.js";
 import { startProxyWatcher, registerSelfWrite, registerSelfDelete } from "./file-watcher.js";
 import { copySeedEntry, resolveSeedCatalog, runPostSeedInstall } from "./seed-installer.js";
 import { mountHandoffRoutes } from "./handoff-routes.js";
@@ -719,6 +720,38 @@ export async function startServer(options: ServerOptions) {
     reason?: string;
   }
 
+  /** Localized showcase payload shared by the `builtins` and `catalog` buckets. */
+  interface RegistryShowcase {
+    tagline?: string;
+    hero?: string;
+    highlights?: Array<{ title: string; description: string; media: string; mediaType?: string }>;
+  }
+
+  /**
+   * One catalog mode as the launcher sees it before anything is downloaded:
+   * the introduction copied into `modes/catalog.json` at pack time, the
+   * `showcase/` images that stayed in the package, the install size, and
+   * where this machine stands (`state`).
+   *
+   * A catalog mode that is present in the tree (a repo checkout) is NOT
+   * listed here — it runs from source and is reported in `builtins`.
+   */
+  interface RegistryCatalogEntry {
+    name: string;
+    displayName: string;
+    description?: string;
+    icon?: string;
+    /** The mode's own manifest version, as pinned by this core's catalog. */
+    version: string;
+    /** Bytes on disk after extraction — what the card quotes as the install size. */
+    unpackedSize: number;
+    /** Compressed archive bytes — the denominator the install stream counts to. */
+    downloadSize: number;
+    /** `not-installed` | `installed` | `stale` (installed from another core's build). */
+    state: ModeInstallState;
+    showcase?: RegistryShowcase;
+  }
+
   interface RegistryResponse {
     /** Pneuma runtime version this server is running. Convenient for UI display. */
     runtimeVersion: string;
@@ -770,6 +803,12 @@ export async function startServer(options: ServerOptions) {
        */
       compat?: RegistryCompat;
     }>;
+    /**
+     * Modes this core release knows about but does not ship — downloaded
+     * from the CDN on first use. Empty on a core without a generated
+     * catalog (a repo checkout), where every mode is in `builtins`.
+     */
+    catalog: RegistryCatalogEntry[];
   }
 
   const registryCache: Map<string, { value: RegistryResponse; fetchedAt: number }> = new Map();
@@ -810,6 +849,67 @@ export async function startServer(options: ServerOptions) {
     return out;
   };
 
+  /** A catalog entry joined with this machine's install state. */
+  type CatalogModeListing = ModeCatalogEntry & { state: ModeInstallState };
+
+  /**
+   * Catalog access seam.
+   *
+   * `core/mode-catalog.ts` owns the packaged catalog and the install-state
+   * decision (does `~/.pneuma/catalog/<name>/` hold the archive THIS core
+   * pins?). The registry only joins that answer with the showcase images
+   * that stayed in the package.
+   *
+   * The specifier is held in a variable on purpose: a core built before the
+   * catalog module existed — and a repo checkout with no generated
+   * `modes/catalog.json` — must still serve a registry. A missing module or
+   * a missing catalog is the normal "everything ships in the tree" case, not
+   * an error, so it degrades to an empty catalog bucket and every mode stays
+   * reachable through `builtins`. A module that throws for any other reason
+   * is logged once rather than taking the whole registry down with it.
+   */
+  const CATALOG_MODULE = "../core/mode-catalog.js";
+  let catalogModuleUnavailable = false;
+  const loadCatalogListings = async (): Promise<CatalogModeListing[]> => {
+    if (catalogModuleUnavailable) return [];
+    try {
+      const mod = (await import(CATALOG_MODULE)) as {
+        listCatalogModes?: () => CatalogModeListing[] | Promise<CatalogModeListing[]>;
+      };
+      if (typeof mod.listCatalogModes !== "function") {
+        catalogModuleUnavailable = true;
+        return [];
+      }
+      return (await mod.listCatalogModes()) ?? [];
+    } catch (err) {
+      catalogModuleUnavailable = true;
+      const reason = err instanceof Error ? err.message : String(err);
+      if (!/Cannot find module|Could not resolve/i.test(reason)) {
+        console.warn(`[registry] catalog unavailable: ${reason}`);
+      }
+      return [];
+    }
+  };
+
+  /**
+   * The names this distribution ships inside the package, in the order the
+   * launcher should lead with. Read from `modes/distribution.json` — the one
+   * authority for the split (see `core/types/mode-catalog.ts`). A malformed
+   * or missing file degrades to "no declared order", which leaves the
+   * on-disk modes alphabetical rather than hiding any of them.
+   */
+  const readBundledModeNames = (root: string): string[] => {
+    try {
+      const raw = JSON.parse(readFileSync(join(root, "modes", "distribution.json"), "utf-8")) as {
+        bundled?: unknown;
+      };
+      if (!Array.isArray(raw.bundled)) return [];
+      return raw.bundled.filter((n): n is string => typeof n === "string");
+    } catch {
+      return [];
+    }
+  };
+
   const buildRegistry = async (locale: string): Promise<RegistryResponse> => {
     const { parseManifestTs } = await import("../core/utils/manifest-parser.js");
     const { checkCompat } = await import("../core/version-compat.js");
@@ -822,15 +922,44 @@ export async function startServer(options: ServerOptions) {
       if (typeof pkg.version === "string") runtimeVersion = pkg.version;
     } catch { /* leave as 0.0.0; UI will fall back to "unknown" compat */ }
 
-    // The launcher's user-pickable mode grid is driven from this curated
-    // order. Modes that exist on disk but should never be offered as a
-    // user choice (evolve, project-evolve, project-onboard — all are
-    // triggered by specific UI affordances or by Pneuma itself, never by
-    // "what mode would you like to start?") declare `hidden: true` in
-    // their manifest and get filtered out below. The filter is the source
-    // of truth; the omission-from-this-list pattern is fragile (forget to
-    // add a hidden mode → it leaks).
-    const builtinNames = ["webcraft", "kami", "slide", "doc", "draw", "diagram", "illustrate", "remotion", "gridboard", "clipcraft", "cosmos", "wordtaste", "bansho", "eli5", "plotwise", "sprite", "lucid", "backlot"];
+    // `builtins` = every mode whose source is present in this installation.
+    // In a released package that is exactly the bundled set; in a repo
+    // checkout it is every mode directory, because an in-tree catalog mode
+    // runs from source with no network (proposal D8).
+    //
+    // The list is derived, never written here: the server must carry no
+    // mode knowledge. Order = `modes/distribution.json` first (the modes
+    // this distribution leads with), then the catalog's own order, then
+    // anything left over alphabetically — so a new mode directory appears
+    // without an edit to this file.
+    //
+    // Modes that exist on disk but should never be offered as a user choice
+    // (evolve, project-evolve, project-onboard — all triggered by a specific
+    // UI affordance or by Pneuma itself, never by "what mode would you like
+    // to start?") declare `hidden: true` in their manifest and are filtered
+    // out below. That flag is the only filter; nothing is excluded by being
+    // absent from a list.
+    const modesRoot = join(projectRoot, "modes");
+    let onDiskModes: string[] = [];
+    try {
+      onDiskModes = readdirSync(modesRoot)
+        .filter((dir) => existsSync(join(modesRoot, dir, "manifest.ts")))
+        .sort();
+    } catch { /* no modes dir (minimal test harness) — leave empty */ }
+
+    const catalogListings = await loadCatalogListings();
+    const declaredOrder = new Map<string, number>();
+    for (const name of [...readBundledModeNames(projectRoot), ...catalogListings.map((e) => e.name)]) {
+      if (!declaredOrder.has(name)) declaredOrder.set(name, declaredOrder.size);
+    }
+    const builtinNames = onDiskModes.slice().sort((a, b) => {
+      const ai = declaredOrder.get(a);
+      const bi = declaredOrder.get(b);
+      if (ai !== undefined && bi !== undefined) return ai - bi;
+      if (ai !== undefined) return -1;
+      if (bi !== undefined) return 1;
+      return a.localeCompare(b);
+    });
     const builtins = builtinNames
       .map((name) => {
         const manifestPath = join(projectRoot, "modes", name, "manifest.ts");
@@ -861,6 +990,37 @@ export async function startServer(options: ServerOptions) {
       })
       .filter((m) => !m.hidden)
       .map(({ hidden: _hidden, ...rest }) => rest); // strip the diagnostic field before serializing
+
+    // Catalog bucket — the modes this release does not ship. An entry whose
+    // source IS in the tree was already reported as a builtin above, so it
+    // never shows up twice. Introduction and icon come from the catalog
+    // (copied out of the manifest at pack time); the preview images come
+    // from `modes/<name>/showcase/`, which survives the split, so the card
+    // is complete before a single archive byte is downloaded.
+    const onDiskSet = new Set(onDiskModes);
+    const catalog: RegistryCatalogEntry[] = catalogListings
+      .filter((entry) => !onDiskSet.has(entry.name))
+      .map((entry) => {
+        let showcase: RegistryShowcase | undefined;
+        try {
+          const showcasePath = join(modesRoot, entry.name, "showcase", "showcase.json");
+          if (existsSync(showcasePath)) {
+            showcase = localizeShowcase(JSON.parse(readFileSync(showcasePath, "utf-8")), locale);
+          }
+        } catch { /* a mode with no showcase in the package still gets a card */ }
+        const description = pickLocalized(entry.description, locale);
+        return {
+          name: entry.name,
+          displayName: pickLocalized(entry.displayName, locale) || entry.name,
+          ...(description ? { description } : {}),
+          ...(entry.icon ? { icon: entry.icon } : {}),
+          version: entry.version,
+          unpackedSize: entry.unpackedSize,
+          downloadSize: entry.archive?.size ?? 0,
+          state: entry.state,
+          ...(showcase ? { showcase } : {}),
+        };
+      });
 
     let published: RegistryResponse["published"] = [];
     try {
@@ -953,7 +1113,7 @@ export async function startServer(options: ServerOptions) {
       }
     } catch { /* library subsystem failure should not break the registry */ }
 
-    return { runtimeVersion, builtins, published, local };
+    return { runtimeVersion, builtins, catalog, published, local };
   };
 
   /**

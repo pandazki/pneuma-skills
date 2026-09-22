@@ -123,6 +123,20 @@
     "from_library": "From {{name}}",
     "synced_at": "synced {{when}}"
   },
+  "catalog": {
+    "size_hint": "{{size}} download",
+    "download_and_open": "Download and open",
+    "update_and_open": "Update and open",
+    "download_and_create": "Download and create",
+    "preparing": "Starting download…",
+    "downloading_percent": "Downloading… {{percent}}%",
+    "retry": "Retry",
+    "failed": "Download failed",
+    "needs_download_aria": "Downloads on first open",
+    "tile_needs_download": "Not downloaded yet — {{size}}",
+    "first_open_hint": "Opening this mode downloads {{size}} once; after that it starts like any other.",
+    "stale_hint": "Installed for an earlier Pneuma version — opening it downloads the build that matches this one."
+  },
   "launch_dialog": {
     "workspace_label": "Workspace path",
     "browse_tooltip": "Browse directories",
