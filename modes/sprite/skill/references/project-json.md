@@ -33,7 +33,29 @@ correctly on disk.
     inspect.json                  # latest inspect report
 ```
 
-Frame files are two-digit zero-padded; a motion has at most 100 frames.
+A **loop motion** (workflow E) has a different shape inside `motions/<id>/`:
+
+```
+<character>/motions/<id>/
+  keyframe.png                  # GPT Image, white plate, as generated
+  keyframe-alpha.png            # remove-background.mjs (BiRefNet) cut-out
+  first-green.png               # flatten --bg "#00ff00" — a working file, no id
+  video-seedance-1.mp4          # the first-last clip, both ends the same image
+  video-topaz-2.mp4             # optional: 60 fps of video-1  (derived, interpolate)
+  video-veed-3.webm             # optional: matte of video-2   (derived, matte)
+  contact.png                   # working file
+  frames/000.png … NNN.png      # every frame of the loop, unaligned, uncleaned
+  loop.webp  loop.apng  loop.webm  loop.json
+  inspect.json                  # the loop-shaped report
+  run.json                      # `loop --json`, consumed by register-run
+```
+
+No `cells/`, no `frames/align.json`, no `sheet.png`, no `atlas.json` and no
+GIF: nothing about a loop is aligned or packed, so none of those files exist.
+
+Frame files are **two-digit** zero-padded on a sprite motion (at most 100
+frames) and **three-digit** on a loop motion (at most 400). The loader accepts
+either width, so an older motion keeps loading.
 
 ## Craft-owned fields
 
@@ -71,8 +93,12 @@ video, a sheet generated from one reference) is fully described by
 | `<motion>-frame-NN` | One aligned frame |
 | `<motion>-sheet` | The packed atlas image |
 | `<motion>-atlas` | `atlas.json` (type `text`) |
-| `<motion>-gif` / `<motion>-webp` | The previews |
-| `<motion>-video-<n>` | A video clip, n from 1 |
+| `<motion>-gif` / `<motion>-webp` | The previews. A loop has no GIF; its `<motion>-webp` is `loop.webp` |
+| `<motion>-video-<n>` | A video clip, n from 1 — including a derived one |
+| `<motion>-keyframe` | A loop's keyframe, as generated (white plate) |
+| `<motion>-keyframe-alpha` | The same keyframe cut out, a `derive` edge (`step: "key"`) from it |
+| `<motion>-frame-NNN` | One frame of a loop — three digits, unaligned |
+| `<motion>-apng` (image) / `<motion>-webm` (video) / `<motion>-lottie` (text) | A loop's other three exports |
 
 Ids are stable across re-runs: `register-run` removes the previous frame
 assets and their edges before writing the new ones, so re-running a motion
@@ -87,7 +113,14 @@ but they are not part of what the character *is*, so `register-run` ignores the
 does: `set-sheet --status generating` reserves it with `status: "generating"`
 and an empty `metadata` so the stage has something to show while the model
 draws, and the second `set-sheet` (after the image lands) measures it and flips
-the same id to `ready`.
+the same id to `ready`. `<motion>-keyframe` is the loop's copy of exactly that
+arrangement, through `set-keyframe`.
+
+The three loop exports carry **`metadata.size`** in bytes, measured when they
+are registered, so the viewer can print "4.2 MB" beside a download link without
+fetching the file to find out. A Lottie is the one that grows fastest — it
+embeds every frame as base64 — which is why the size is on the asset rather
+than left for the browser to discover.
 
 ### References the user brought
 
@@ -136,15 +169,32 @@ interface Motion {
   sheetRaw?: string; sheetAlpha?: string; sheet?: string; atlas?: string;
   frames: string[];               // asset ids in playback order
   gif?: string; webp?: string;
-  videos: Array<{ id: string; asset: string;
-                  model: "seedance-2.5" | "h3-max";
-                  mode: "i2v" | "first-last" | "r2v";
-                  prompt: string;
-                  status: "generating" | "ready" | "failed" }>;
+  videos: MotionVideo[];
   inspect?: InspectSummary;       // copied from inspect.json by register-run
   source?: "sheet" | "video";     // how the frames were obtained; absent means
                                   // "sheet" (set by add-motion --source and by
                                   // register-run for a from-video run)
+  kind?: "loop";                  // what the motion is FOR; absent = a sprite
+                                  // motion. `source` still says how the frames
+                                  // were obtained ("video" for a loop)
+  keyframe?: string;              // asset id, `<motion>-keyframe`
+  keyframeAlpha?: string;         // asset id, `<motion>-keyframe-alpha`
+  exports?: {                     // asset ids; the WebP stays `motion.webp`
+    apng?: string; webm?: string; lottie?: string;
+  };
+}
+
+type VideoModel = "seedance-2.5" | "h3-max" | "veed" | "bria" | "topaz";
+type VideoMode  = "i2v" | "first-last" | "r2v" | "derived";
+
+interface MotionVideo {
+  id: string; asset: string;
+  model: VideoModel;
+  mode: VideoMode;
+  prompt: string;                 // "" on a derived clip — nothing was prompted
+  status: "generating" | "ready" | "failed";
+  derivedFrom?: string;           // the parent clip's asset id
+  op?: "matte" | "interpolate";   // what was done to it
 }
 
 interface InspectSummary {
@@ -164,6 +214,14 @@ interface InspectSummary {
   maxJump: number;                          // largest step between neighbours
   scaleDrift: number;                       // (max h − min h) / mean
   emptyFrames: number[];
+  seam?: number;                            // loop only: how far the last frame
+                                            // is from the first, in the same
+                                            // silhouette-diff units as `step`
+  step?: number;                            // loop only: the median frame-to-
+                                            // frame change. `seam < step` is a
+                                            // loop that closes; both are absent
+                                            // unless the report carried finite
+                                            // numbers
   warnings: string[];                       // human sentences
   acknowledged?: { reason: string; at: number }; // written by
                                             // `set-motion --ack-warnings`; the
@@ -183,6 +241,19 @@ Three things the shapes are quietly telling you:
   `generating` (before the image call) → `processing` (sheet saved, pipeline
   running) → `ready` (register-run landed) or `failed` (with `notes`). Skipping
   the intermediate states means the user watches a still list while you work.
+
+### Derived clips
+
+A clip made **from another clip** — a matte, an interpolation — is registered
+with `add-video --derived-from <videoId> --op matte|interpolate --model
+veed|bria|topaz`. It gets a `derive` edge from the parent clip's asset carrying
+`params: { op, model }`, and its sidecar entry reads
+`{ mode: "derived", derivedFrom, op, prompt: "" }`. There is no prompt because
+nothing was prompted; the empty string is the honest record, and a sentence
+invented to fill it is what makes a later turn treat the clip as a generation
+it could re-roll. `show` prints the chain — `video-3 ← video-2 (matte, veed)` —
+so which clip the frames were cut from is answerable without reading the edges
+by hand.
 
 ## Character identity vs content set
 

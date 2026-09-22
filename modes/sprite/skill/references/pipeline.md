@@ -484,6 +484,147 @@ The clip is only ever read. Unlike a sheet it is not copied into the motion
 directory, because it is already an asset in its own right and the frames'
 provenance points at it.
 
+### `loop <clip> --out <motionDir> --name <motionId> [flags]`
+
+The third way frames come into existence, and the only one whose deliverable is
+an animation rather than an atlas. `from-video` samples a cycle out of a clip
+and aligns it; `loop` keeps **every** frame of the window, unaligned and
+uncleaned, and writes four UI-ready exports beside them. There is no sheet, no
+atlas and no GIF, and nothing here re-centres a frame — a bobbing icon is
+supposed to bob.
+
+```bash
+node {SKILL_PATH}/scripts/sprite-sheet.mjs loop \
+  <character>/motions/<id>/video-seedance-1.mp4 \
+  --out <character>/motions/<id> --name <id> --width 512 --json \
+  > <character>/motions/<id>/run.json
+```
+
+| Flag | Default | Notes |
+|---|---|---|
+| `--trim-start` / `--trim-end` | 0 / the duration | **Timestamps** in seconds, exactly as for `from-video` and `contact` |
+| `--key auto\|#rrggbb\|none\|alpha` | `auto` | `auto` measures frame 0's corner plate and keys that colour. `alpha` = the clip carries its own alpha (a VEED `.webm`, a Bria `.mov`): decode it, key nothing. `none` = opaque frames, no plate, and a warning saying so |
+| `--similarity` / `--blend` | **0.22** / 0.05 | `colorkey`, the video defaults (`video-preview.md` has the sweep behind them) |
+| `--despill` / `--no-despill` | on whenever it keys | ffmpeg `despill` on the plate hue, applied **after** the key |
+| `--trim-holds` / `--no-trim-holds` | on | Drops a frozen opening or closing, see below |
+| `--crop union\|none` / `--pad 8` | `union` / 8 | One rect, computed over every kept frame, applied to all of them |
+| `--width W` | the source width | Scales in premultiplied space, aspect kept |
+| `--fps N` | the clip's own fps | `minterpolate`, loop-wrapped. **Refused with `--key alpha`** |
+| `--formats webp,apng,webm,lottie` | all four | |
+| `--threshold 16` / `--json` | | as elsewhere |
+
+**What it does, in order.** The order is the contract — several of these steps
+are wrong if they move:
+
+1. **Probe** the clip. For `--key alpha` it looks for a real alpha plane: a
+   `pix_fmt` carrying one, ProRes 4444, or a VP9 webm with `alpha_mode=1`
+   (decoded with `-c:v libvpx-vp9`, because the native `vp9` decoder drops
+   alpha on the floor and hands back opaque frames).
+2. **Decode the whole window in one pass** — `-ss start -to end` on the input,
+   no per-frame seek. This is the difference from `from-video`, which seeks
+   once per sample: a UI loop wants all 100–300 frames, and 300 seeks are both
+   slower and exposed to the last-frame clamp that a single decode pass simply
+   never has to make.
+3. **Interpolate** (`--fps N`, plate clips only). The kept window plus a copy of
+   frame 0 appended, `minterpolate=fps=N:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1`
+   over the *plate* frames, then the trailing frames that came from the
+   appended copy are dropped. Interpolating with the wrap in the window is what
+   makes the last frame lead back into the first as smoothly as any other pair —
+   and it is the reason this free path is the default road to 60 fps. Topaz
+   (`interpolate-video.mjs`) has cleaner in-betweens but interpolates the clip
+   as a clip: measured 2026-09-22 on the same subject, its 60 fps output opened
+   the seam to 0.067 against a step of 0.029, where the untouched 24 fps clip
+   closed at 0.028 against 0.046.
+4. **Key, then despill, then zero the keyed RGB.** `colorkey` with the measured
+   plate colour runs first; `despill` takes the green rim off what survives;
+   then every pixel under the alpha threshold has its RGB zeroed — the same
+   rule `key` and `from-video` apply, because transparency is all four bytes.
+
+   **The order is the opposite of the intuitive one, and it was measured.**
+   Despilling first recolours the plate, so the colour measured on frame 0's
+   corners no longer matches the pixels it is aimed at and the key misses:
+   on a real Seedance clip (2026-09-22) the plate came out **opaque and nearly
+   black**, with no error and no warning. Keying first and despilling the
+   remainder is also what removes the **1–2 px green fringe** a plain key
+   leaves on a soft 3D edge at 640² — which is why `--despill` is on by default
+   here and why a loop cannot rely on the sprite path's "it disappears when you
+   downscale": a loop is rendered at the size it was cut at. The best edge
+   measured so far is not this path at all but a VEED matte read back with
+   `--key alpha` (`video-preview.md`); key-then-despill is what you use when
+   there is no fal key, and it is good enough at UI size.
+5. **Trim holds** (`--trim-holds`, default on). Silhouette masks for every
+   frame, `toFirst[i] = diff(mask0, maski)`, `step[i] = diff(maski, maski+1)`,
+   `med = median(step)`, `HOLD = max(0.005, 0.25·med)`. **Trailing** frames go
+   while `toFirst[last] < HOLD` — that is the return to the keyframe, held —
+   and **leading** frames go while `step[0] < HOLD`, keeping the last frame of
+   the freeze. A first-last clip's duplicate closing keyframe is exactly what
+   this removes; report it as `dropped: { leading, trailing }`.
+6. **Seam.** `seam = diff(mask[lastKept], mask[0])` against `step` (the median)
+   and `maxStep`. This is the number a loop lives or dies on, and it is printed
+   whether or not it trips the warning.
+7. **Crop and scale.** The union of every kept frame's alpha bounding box, plus
+   `--pad`, as **one** rectangle applied identically to every frame — a
+   per-frame crop would silently re-centre the motion, which is the one thing a
+   loop must not do. `--width` then scales in premultiplied space, so soft
+   edges do not darken.
+8. **Write `frames/NNN.png` and the exports.** Three digits, up to **400**
+   frames (a sprite motion's two-digit frames still load; the contiguity check
+   is unchanged). Each export is skipped with a warning, never a failed command,
+   when its encoder is missing:
+
+   | File | How |
+   |---|---|
+   | `loop.webp` | `libwebp`, `yuva420p`, `-q:v 85`, `-loop 0` — and **no** `flags=neighbor`: a 3D icon is not pixel art |
+   | `loop.apng` | `-f apng -plays 0 -pred mixed`, rgba. Served as `image/apng`, so it keeps its honest extension |
+   | `loop.webm` | `libvpx-vp9 -pix_fmt yuva420p -auto-alt-ref 0 -b:v 0 -crf 30 -row-mt 1`; `-auto-alt-ref 0` is required for alpha |
+   | `loop.json` | Lottie, one image layer per frame with the PNG base64-embedded. Plays in lottie-web and dotLottie players; warns past 8 MB, and `--width` is the remedy |
+
+**`inspect.json` for a loop** is a different report, written by `loop` itself
+and returned as `inspect` in the JSON:
+
+```json
+{ "kind": "loop", "frameCount": 96, "cell": { "width": 520, "height": 600 },
+  "fps": 24, "duration": 4.0, "seam": 0.0065, "step": 0.020, "maxStep": 0.069,
+  "alphaCoverage": 0.31, "keyColor": "#08f00d", "emptyFrames": [],
+  "dropped": { "leading": 0, "trailing": 1 },
+  "exports": { "webp": 1843201, "apng": 9120033, "webm": 612330, "lottie": 12400021 },
+  "warnings": [] }
+```
+
+No `anchorDrift`, `bodyDrift`, `maxJump` or `scaleDrift`: a loop is not judged
+on any of them, and a number nobody judges is noise on the stage. What replaces
+them is `seam` read against `step` — the reference clip this workflow was built
+against measures 0.0065 against a step of 0.020, a seam a third of a normal
+frame.
+
+| Warning | Trigger | What to do |
+|---|---|---|
+| "the loop does not close — the last frame is 0.13 from the first against a normal step of 0.02" | `seam > 2·step` | Shoot again with the same image at both ends, or pass `--trim-start` / `--trim-end` read off the contact sheet. No post-processing closes a seam |
+| "was it shot on a flat plate?" | `alphaCoverage > 0.9` after keying | The key did nothing — the plate is not flat, or `--key` names the wrong colour. Check `keyColor` against the contact sheet |
+| "frames are opaque" | `--key none` | Deliberate only when the clip already has no plate. A UI loop with opaque frames is a video, not a loop |
+| "frame NNN is empty" | No pixel above the alpha threshold | Usually the key ate the subject; lower `--similarity` |
+| "only N frames" | `frameCount < 8` | The window is too short, or hold trimming ate it. Check `dropped` and the trim timestamps |
+| "<encoder> is missing — <file> was not written" | ffmpeg has no encoder for that format | Install it or drop the format from `--formats`; the other three still land |
+| "loop.json is 12.4 MB" | Lottie over 8 MB | `--width`. A Lottie carries every frame as a base64 PNG, so it is the format that grows fastest |
+
+**`--json`** is what `register-run` consumes:
+
+```json
+{ "kind": "loop", "source": "video", "video": "<abs clip>", "motionDir": "<abs>",
+  "frames": ["<abs>/frames/000.png", "…"], "sampledAt": [0, 0.0417, "…"],
+  "fps": 24, "duration": 4.0, "trim": { "start": 0, "end": 4.042 },
+  "dropped": { "leading": 0, "trailing": 1 }, "keyColor": "#08f00d", "alphaCoverage": 0.31,
+  "cell": { "width": 520, "height": 600 },
+  "webp": "<abs>/loop.webp", "apng": "<abs>/loop.apng", "webm": "<abs>/loop.webm",
+  "lottie": "<abs>/loop.json", "inspect": { "…": "as above" }, "warnings": [] }
+```
+
+`sampledAt[i]` is the source timestamp of frame `i` — after interpolation,
+`i / N` from the window start. There is no `sheet`, `atlas`, `gif` or `cells`
+key, and `register-run` does not ask for them on a run whose `kind` is `loop`.
+As with `from-video`, the clip is only ever read: it is already an asset, and
+the frames' provenance points at it.
+
 ### Fixing the alignment without regenerating the sheet
 
 Use this when the drawing is fine but placement drifts unintentionally.
@@ -585,12 +726,15 @@ come from `Date.now()` unless `--at <ms>` is passed.
 | `set-motion --motion idle [--label] [--fps] [--loop\|--no-loop] [--anchor] [--prompt] [--status] [--notes]` | Edits motion metadata. `--notes` is where a failure reason belongs. |
 | `set-sheet --motion idle --file motions/idle/sheet-raw.png --from ref-turnaround[,…] [--model] [--prompt] [--background opaque] [--status generating\|processing]` | Registers `<motion>-sheet-raw` with a `generate` edge. `--from` becomes the edge's `fromAssetId`; `params.inputs` lists the whole set **only when you attach two or more references** — with one, `fromAssetId` already says everything. Re-running replaces the previous raw sheet and its edges, keeping the id stable. Call it twice per sheet (see below). |
 | `add-motion … [--source sheet\|video]` | Records how the frames will be obtained, before anything is generated. Absent means `sheet`. |
+| `add-motion … [--kind loop]` | Declares a **loop motion** (workflow E). `--rows/--cols` become optional (1×1 is recorded), `source` defaults to `video`, and `set-keyframe` is accepted only here. A sprite motion is unchanged. |
+| `set-keyframe --motion <id> --file motions/<id>/keyframe.png [--alpha motions/<id>/keyframe-alpha.png] [--model] [--prompt] [--from <refIds>] [--status generating\|processing\|ready]` | The loop's `set-sheet`. Registers `<motion>-keyframe` with a `generate` edge carrying the model and prompt; `--alpha` registers `<motion>-keyframe-alpha` with a `derive` edge (`step: "key"`) from it. Refused on a motion that is not `--kind loop`. Called twice per keyframe, as `set-sheet` is. |
+| `add-video … --derived-from <videoId> --op matte\|interpolate --model veed\|bria\|topaz [--file] [--status]` | Registers a clip made **from another clip**: a `derive` edge from the parent's asset with `params: { op, model }`, and a sidecar entry with `mode: "derived"`. It takes no `--mode`, `--prompt` or `--from` — nothing was prompted, and a prompt invented to fill the field is what makes a later turn believe the clip was generated. |
 | `set-motion … [--ack-warnings "<reason>"] [--clear-ack]` | Accepts the motion's remaining inspect warnings with a one-sentence reason the user reads on the stage; the numbers stay visible and the badge dims. `--clear-ack` takes it back. Refused when the motion has no inspect report, and refused with an empty reason — the acknowledgement *is* the reason. |
-| `register-run --motion idle --run <run.json \| -> [--video <videoId>]` | Consumes `sprite-sheet.mjs run` output: registers the alpha sheet (if any), every frame, the packed sheet, atlas, gif and webp with `derive` edges; **removes** the previous frame assets and edges for that motion; copies `inspect` into the motion (including the measured `anchorPoint`, which is what the viewer's pivot guide stands on); sets status `ready`. A `from-video` summary derives the frames from the clip asset instead (`--video` names which, the newest is used with a note on stderr) and sets `motion.source`. Any acknowledgement goes with the measurement it covered. |
+| `register-run --motion idle --run <run.json \| -> [--video <videoId>]` | Consumes `sprite-sheet.mjs run` output: registers the alpha sheet (if any), every frame, the packed sheet, atlas, gif and webp with `derive` edges; **removes** the previous frame assets and edges for that motion; copies `inspect` into the motion (including the measured `anchorPoint`, which is what the viewer's pivot guide stands on); sets status `ready`. A `from-video` summary derives the frames from the clip asset instead (`--video` names which, the newest is used with a note on stderr) and sets `motion.source`. A summary with `"kind": "loop"` has no sheet, atlas or gif — those become optional, and a sprite run still requires them — and registers the webp plus `<motion>-apng`, `<motion>-webm` and `<motion>-lottie` instead; it sets `motion.kind = "loop"`, `motion.exports`, `motion.source = "video"`, `motion.fps` from the run (interpolation changes it) and `grid = {1,1}`, and the inspect summary it copies carries `seam` and `step`. Any acknowledgement goes with the measurement it covered. |
 | `add-video --motion idle --file motions/idle/video-seedance-1.mp4 --model seedance-2.5 --mode i2v --from idle-frame-00[,idle-frame-15] [--prompt] [--duration 4] [--status generating]` | Registers `<motion>-video-<n>` (n is the next free number) with a `generate` edge. |
 | `set-video --motion idle --video <id> --status ready\|failed [--notes]` | Closes out a video after the render returns. |
 | `remove-motion --motion idle` | Removes the motion, its assets and its edges. Files on disk are left alone; the orphaned paths are printed so you can delete them deliberately. |
-| `show [--motion id]` | Compact summary: name, refs (each with `origin: generated \| uploaded \| derived`, read off its edge — whether an image was drawn here or brought in decides what you may regenerate), motions with status / grid / fps / frame count / warnings. The cheapest way to re-orient at the start of a turn. |
+| `show [--motion id]` | Compact summary: name, refs (each with `origin: generated \| uploaded \| derived`, read off its edge — whether an image was drawn here or brought in decides what you may regenerate), motions with status / grid / fps / frame count / warnings, and derived clips as `video-3 \u2190 video-2 (matte, veed)`. The cheapest way to re-orient at the start of a turn. |
 
 ### `set-sheet` is called twice per sheet
 
@@ -623,6 +767,14 @@ dimensions — same id, same edge slot, nothing duplicated. **Skipping this seco
 call leaves the sheet asset stuck at `generating` with no dimensions forever**;
 `register-run` writes the frames and the atlas but never revisits the raw sheet.
 A missing file under any status other than `generating` is still a hard error.
+
+`set-keyframe` repeats the arrangement for a loop motion, with one addition:
+the second call also takes `--alpha motions/<id>/keyframe-alpha.png`, which
+registers `<motion>-keyframe-alpha` with a `derive` edge (`step: "key"`) from
+the keyframe. The green flatten the clip is actually shot from
+(`first-green.png`) is deliberately *not* registered — it is a working file,
+the same rule `first.png` follows — so the clip's `--from` names the cut-out
+keyframe, which is the last thing in the chain that is an asset.
 
 ## `atlas.json`
 
