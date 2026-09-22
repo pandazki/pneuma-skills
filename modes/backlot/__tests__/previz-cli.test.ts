@@ -572,7 +572,7 @@ describe("a take in flight never rewinds the shot", () => {
     expect(shot.takes[0].note).toContain("fal delivered 64x64");
   });
 
-  test("a check recorded while the take runs survives the take FAILING", () => {
+  test.skipIf(!HAS_FFMPEG)("a check recorded while the take runs survives the take FAILING", () => {
     const cwd = workspace();
     ready(cwd);
     const env = generator(cwd, { FAKE_MIDFLIGHT: MIDFLIGHT, FAKE_THROW: "fal said no" });
@@ -590,7 +590,7 @@ describe("a take in flight never rewinds the shot", () => {
     expect(shot.takes).toMatchObject([{ id: "take-01", status: "failed", note: "fal said no" }]);
   });
 
-  test("a take whose record vanished mid-flight is reported, never silently re-appended", () => {
+  test.skipIf(!HAS_FFMPEG)("a take whose record vanished mid-flight is reported, never silently re-appended", () => {
     const cwd = workspace();
     ready(cwd);
     const shotJson = join(cwd, "film", "shots", "lab-walk", "shot.json");
@@ -611,7 +611,7 @@ describe("a take in flight never rewinds the shot", () => {
       .toMatchObject({ id: "take-01", status: "failed" });
   });
 
-  test("the injected generator announces itself — a fake take is never mistaken for a real one", () => {
+  test.skipIf(!HAS_FFMPEG)("the injected generator announces itself — a fake take is never mistaken for a real one", () => {
     const cwd = workspace();
     ready(cwd);
     const env = generator(cwd, { FAKE_THROW: "fal said no" });
