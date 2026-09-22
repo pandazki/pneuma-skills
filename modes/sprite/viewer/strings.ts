@@ -117,9 +117,12 @@ export interface SpriteStrings {
   referenceTitle: (label: string, role: string) => string;
   refRole: Record<"turnaround" | "portrait" | "expression" | "custom", string>;
   missingAsset: string;
+  /** The rail's second line. `cols`/`rows` are null for a loop: a loop has no
+   *  grid, and the 1×1 `register-run` records is a placeholder, not a fact
+   *  about the animation. */
   motionMeta: (m: {
-    cols: number;
-    rows: number;
+    cols: number | null;
+    rows: number | null;
     frames: number;
     fps: number;
     loop: boolean;
@@ -144,19 +147,24 @@ export interface SpriteStrings {
   noAtlasForLoop: (m: { frames: number; width: number; height: number }) => string;
   atlasNote: (note: AtlasNote) => string;
   noLoopYet: string;
-  /** frames · fps · duration · does it close. */
+  /** frames · fps · duration · does it close · what it cost to close it.
+   *  `seamFill` is the in-between frames `loop --seam-fill` inserted at the
+   *  wrap; 0 and null both say nothing, because a flag that did not fire is
+   *  not news. */
   loopMeta: (m: {
     frames: number;
     fps: number;
     duration: number | null;
     seam: "closes" | "open" | null;
+    seamFill: number | null;
   }) => string;
   /** File formats are proper nouns; only the row they sit in is copy. */
   exportLabel: Record<LoopFormat, string>;
   exportLink: (label: string, size: string | null) => string;
-  /** What a derived clip is: `matte of video-1 · veed`. */
+  /** What a derived clip is: `matte of video-1 · veed`. The op's own word is
+   *  inside this phrase and nowhere else — a second table for it would be a
+   *  second place the same word could be translated differently. */
   derivedClip: (parent: string, op: "matte" | "interpolate", model: string) => string;
-  videoOp: Record<"matte" | "interpolate", string>;
   factSheet: string;
   factGrid: string;
   factCell: string;
@@ -304,7 +312,14 @@ const en: SpriteStrings = {
   },
   missingAsset: "missing",
   motionMeta: (m) =>
-    `${m.cols}×${m.rows} · ${m.frames} frame${m.frames === 1 ? "" : "s"} · ${m.fps} fps · ${m.loop ? "loop" : "once"}`,
+    [
+      m.cols === null || m.rows === null ? null : `${m.cols}×${m.rows}`,
+      `${m.frames} frame${m.frames === 1 ? "" : "s"}`,
+      `${m.fps} fps`,
+      m.loop ? "loop" : "once",
+    ]
+      .filter(Boolean)
+      .join(" · "),
   status: {
     planned: "planned",
     generating: "generating",
@@ -339,6 +354,9 @@ const en: SpriteStrings = {
       `${m.fps} fps`,
       m.duration === null ? null : `${m.duration.toFixed(2)} s`,
       m.seam === null ? null : m.seam === "closes" ? "closes" : "does not close",
+      m.seamFill !== null && m.seamFill > 0
+        ? `${m.seamFill} seam frame${m.seamFill === 1 ? "" : "s"}`
+        : null,
     ]
       .filter(Boolean)
       .join(" · "),
@@ -346,7 +364,6 @@ const en: SpriteStrings = {
   exportLink: (label, size) => (size ? `${label} · ${size}` : label),
   derivedClip: (parent, op, model) =>
     `${op === "matte" ? "matte" : "interpolation"} of ${parent} · ${model}`,
-  videoOp: { matte: "matte", interpolate: "interpolate" },
   atlasNote: (note) => {
     switch (note.kind) {
       case "unmeasured":
@@ -529,7 +546,14 @@ const zhCN: SpriteStrings = {
   },
   missingAsset: "缺文件",
   motionMeta: (m) =>
-    `${m.cols}×${m.rows} · ${m.frames} 帧 · ${m.fps} fps · ${m.loop ? "循环" : "一次"}`,
+    [
+      m.cols === null || m.rows === null ? null : `${m.cols}×${m.rows}`,
+      `${m.frames} 帧`,
+      `${m.fps} fps`,
+      m.loop ? "循环" : "一次",
+    ]
+      .filter(Boolean)
+      .join(" · "),
   status: zhStatus,
   acknowledgedTitle: (reason) => `已确认保留 —— ${reason}`,
 
@@ -556,6 +580,7 @@ const zhCN: SpriteStrings = {
       `${m.fps} fps`,
       m.duration === null ? null : `${m.duration.toFixed(2)} 秒`,
       m.seam === null ? null : m.seam === "closes" ? "接得上" : "接不上",
+      m.seamFill !== null && m.seamFill > 0 ? `补了 ${m.seamFill} 帧接缝` : null,
     ]
       .filter(Boolean)
       .join(" · "),
@@ -563,7 +588,6 @@ const zhCN: SpriteStrings = {
   exportLink: (label, size) => (size ? `${label} · ${size}` : label),
   derivedClip: (parent, op, model) =>
     `${parent} 的${op === "matte" ? "抠像" : "补帧"} · ${model}`,
-  videoOp: { matte: "抠像", interpolate: "补帧" },
   atlasNote: (note) => {
     switch (note.kind) {
       case "unmeasured":

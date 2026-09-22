@@ -33,12 +33,17 @@ import {
   loopLine,
   maxJumpVerdict,
   scaleDriftVerdict,
+  seamFillOf,
   seamOf,
   seamVerdict,
   sizeLine,
   stepOf,
 } from "../viewer/metrics.js";
-import { commandLabel, commandTooltip } from "../viewer/CommandPopovers.js";
+import {
+  commandLabel,
+  commandTooltip,
+  motionCommands,
+} from "../viewer/CommandPopovers.js";
 import {
   defaultTab,
   loopExports,
@@ -1314,6 +1319,14 @@ describe("loop motions", () => {
         ...over,
       }) as any;
 
+    test("seamFill is carried finite-or-absent, like every other loop number", () => {
+      expect(seamFillOf(inspect({ seamFill: 3 }))).toBe(3);
+      // 0 is the reading of a loop that closed on its own — it must survive.
+      expect(seamFillOf(inspect({ seamFill: 0 }))).toBe(0);
+      expect(seamFillOf(inspect())).toBeNull();
+      expect(seamFillOf(inspect({ seamFill: Number.NaN }))).toBeNull();
+    });
+
     test("the bar is twice the step, so it moves with the motion", () => {
       // The reference clip: a seam a third of a normal step — it closes.
       expect(seamVerdict(inspect())).toEqual({ limit: 0.04, over: false });
@@ -1347,6 +1360,38 @@ describe("loop motions", () => {
     });
   });
 
+  describe("what the rail and the command bar offer", () => {
+    test("a loop's rail line drops the grid it does not have", () => {
+      const en = spriteStrings("en");
+      // The 1×1 in the sidecar is what `register-run` writes because the
+      // field exists, not a fact about the animation.
+      expect(en.motionMeta({ cols: null, rows: null, frames: 119, fps: 24, loop: true }))
+        .toBe("119 frames · 24 fps · loop");
+      expect(spriteStrings("zh").motionMeta({ cols: null, rows: null, frames: 119, fps: 24, loop: true }))
+        .toBe("119 帧 · 24 fps · 循环");
+      // A sprite motion is unchanged: its grid is the whole point.
+      expect(en.motionMeta({ cols: 4, rows: 4, frames: 16, fps: 8, loop: true }))
+        .toBe("4×4 · 16 frames · 8 fps · loop");
+    });
+
+    test("\"frames are misaligned\" is not offered on a loop", () => {
+      const commands = [
+        { id: "render-video", label: "Render a clip" },
+        { id: "regenerate-motion", label: "Redraw" },
+        { id: "fix-alignment", label: "Frames are misaligned" },
+      ];
+      const p = loopProject("ready");
+      // A loop is never aligned — its frames stay where the clip put them —
+      // so the button would ask the agent for a step that cannot happen.
+      expect(motionCommands(commands, flame(p)).map((c) => c.id))
+        .toEqual(["render-video", "regenerate-motion"]);
+      // A sprite motion keeps all three, and so does an empty stage: with no
+      // motion selected the bar is how a user learns what it can do.
+      expect(motionCommands(commands, motionOf(p)).map((c) => c.id)).toHaveLength(3);
+      expect(motionCommands(commands, null).map((c) => c.id)).toHaveLength(3);
+    });
+  });
+
   describe("what the header says", () => {
     test("a loop prints its measured size and its cycle, in both languages", () => {
       const p = loopProject("ready");
@@ -1366,16 +1411,35 @@ describe("loop motions", () => {
 
     test("the loop meta line says whether it closes", () => {
       const en = spriteStrings("en");
-      expect(en.loopMeta({ frames: 96, fps: 24, duration: 4, seam: "closes" }))
+      expect(en.loopMeta({ frames: 96, fps: 24, duration: 4, seam: "closes", seamFill: 0 }))
         .toBe("96 frames · 24 fps · 4.00 s · closes");
-      expect(en.loopMeta({ frames: 96, fps: 24, duration: 4, seam: "open" }))
+      expect(en.loopMeta({ frames: 96, fps: 24, duration: 4, seam: "open", seamFill: 0 }))
         .toContain("does not close");
       // An unmeasured loop says the facts it has and no verdict.
-      expect(en.loopMeta({ frames: 12, fps: 12, duration: null, seam: null }))
+      expect(en.loopMeta({ frames: 12, fps: 12, duration: null, seam: null, seamFill: null }))
         .toBe("12 frames · 12 fps");
-      expect(spriteStrings("zh").loopMeta({ frames: 96, fps: 24, duration: 4, seam: "closes" }))
+      expect(spriteStrings("zh").loopMeta({ frames: 96, fps: 24, duration: 4, seam: "closes", seamFill: 0 }))
         .toBe("96 帧 · 24 fps · 4.00 秒 · 接得上");
     });
+
+    test("frames the wrap needed are counted out loud, and only when there were any", () => {
+      const en = spriteStrings("en");
+      // `--seam-fill auto` grew the loop to close it: the frame count above
+      // is no longer the clip's own, and this is the only place that says so.
+      expect(en.loopMeta({ frames: 99, fps: 24, duration: 4.13, seam: "closes", seamFill: 3 }))
+        .toBe("99 frames · 24 fps · 4.13 s · closes · 3 seam frames");
+      expect(en.loopMeta({ frames: 97, fps: 24, duration: 4.04, seam: "closes", seamFill: 1 }))
+        .toEndWith("· 1 seam frame");
+      // A flag that did not fire is not news, and neither is a run that
+      // predates it — both stay off the line.
+      expect(en.loopMeta({ frames: 96, fps: 24, duration: 4, seam: "closes", seamFill: 0 }))
+        .not.toContain("seam frame");
+      expect(en.loopMeta({ frames: 96, fps: 24, duration: 4, seam: "closes", seamFill: null }))
+        .not.toContain("seam frame");
+      expect(spriteStrings("zh").loopMeta({ frames: 99, fps: 24, duration: 4.13, seam: "closes", seamFill: 3 }))
+        .toBe("99 帧 · 24 fps · 4.13 秒 · 接得上 · 补了 3 帧接缝");
+    });
+
 
     test("a derived clip is described by what it is made of", () => {
       expect(spriteStrings("en").derivedClip("video-1", "matte", "veed"))

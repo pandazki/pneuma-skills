@@ -13,9 +13,10 @@
  *   node remove-video-background.mjs --input clip.mp4 --output clip.webm \
  *     --model veed|bria [--person] [--no-refine] [--deadline-s 600] [--json]
  *
- * Two endpoints, deliberately both: neither has a track record in this
- * repository, and they disagree about what "transparent video" means, so
- * the choice belongs to whoever compares two crops at 1:1.
+ * Three endpoints, deliberately all three: they disagree about what
+ * "transparent video" means, and which one wins depends on the plate the
+ * clip was shot on, so the choice belongs to whoever compares two crops at
+ * 1:1.
  *
  *   veed → https://fal.run/veed/video-background-removal
  *     { video_url, output_codec: "vp9", refine_foreground_edges, subject_is_person }
@@ -51,9 +52,24 @@
  * the opposite of fal's default: what this pipeline mattes is a 3D icon or
  * a stylized character, not a photographed person. `--person` puts it back.
  *
- * Not wired here, but documented by VEED at $0.015 per 30 frames and worth
- * a look when the plate is already flat chroma green:
- * `veed/video-background-removal/green-screen` (and `/fast`).
+ *   veed-gs → https://fal.run/veed/video-background-removal/green-screen
+ *     { video_url, output_codec: "vp9", spill_suppression_strength }
+ *     Answers `video: [File, …]`, the same list shape as `veed`, and the
+ *     same VP9-with-alpha WebM, so `--output` must end `.webm`.
+ *     $0.015 per 30 frames — there is no edge-refinement tier to pay for.
+ *     Source: https://fal.ai/models/veed/video-background-removal/green-screen
+ *     MEASURED 2026-09-22 on the same 640² 24 fps 121-frame trial clip:
+ *     617 KB of VP9 with `ALPHA_MODE=1`, 18.7 s of inference, 30 s wall,
+ *     ≈ $0.06 — zero green pixels left, and a SOFTER edge than plain
+ *     `veed` on the same frame (8535 partial-alpha pixels against 6198).
+ *     It knows the plate is chroma green, so it has no subject hint and no
+ *     refinement switch: `--person` and `--no-refine` are refused here,
+ *     and `--spill` (its only knob) is refused on the other two.
+ *
+ * **Pick by the plate.** A clip shot on flat chroma green — which is what
+ * this pipeline's own loop clips are — goes to `veed-gs`. Any other plate
+ * goes to `veed`, which cuts on the silhouette rather than on a colour.
+ * `bria` is the alternative to reach for when VEED's edge fails a subject.
  *
  * A local clip is UPLOADED to fal storage (`fal-queue.mjs::uploadFalFile`)
  * and the hosted URL is what travels in `video_url`. It is never inlined:
@@ -96,6 +112,13 @@ export const MATTE_MODELS = {
     /** fal's schema: `video` is `list<File>`. */
     resultIsList: true,
   },
+  "veed-gs": {
+    url: "https://fal.run/veed/video-background-removal/green-screen",
+    extension: ".webm",
+    label: "VEED green-screen background removal",
+    /** Same `list<File>` shape as its sibling. */
+    resultIsList: true,
+  },
   bria: {
     url: "https://fal.run/bria/video/background-removal",
     extension: ".mov",
@@ -106,6 +129,12 @@ export const MATTE_MODELS = {
 };
 
 export const DEFAULT_MATTE_MODEL = "veed";
+
+/**
+ * `spill_suppression_strength` for `veed-gs` when `--spill` is not given.
+ * fal's own default for the field; the trial ran at it and left no green.
+ */
+export const DEFAULT_SPILL_SUPPRESSION = 0.8;
 
 /** Bria's documented input ceiling: "duration less than 30s". */
 export const BRIA_MAX_DURATION_S = 30;
@@ -149,7 +178,7 @@ export function probeVideoFile(path) {
  * without the network.
  */
 export async function buildRemoveVideoBackgroundRequest(
-  { input, output, model = DEFAULT_MATTE_MODEL, person = false, refine = true, apiKey, signal } = {},
+  { input, output, model = DEFAULT_MATTE_MODEL, person = false, refine = true, spill, apiKey, signal } = {},
   { probe = probeVideoFile, upload = uploadFalFile, onNote = (message) => console.error(message) } = {},
 ) {
   if (typeof input !== "string" || !input.trim()) throw new Error("--input is required");
@@ -162,10 +191,22 @@ export async function buildRemoveVideoBackgroundRequest(
   }
 
   // A flag that quietly does nothing is worse than a refused run: it makes
-  // the report of what was asked for untrue.
+  // the report of what was asked for untrue. The green-screen endpoint is
+  // told the plate up front, so it has neither a subject hint nor an
+  // edge-refinement tier; `--spill` is the knob only it has.
   if (model !== "veed") {
     if (person) throw new Error(`--person applies to --model veed only (--model ${model} has no subject hint)`);
     if (refine === false) throw new Error(`--no-refine applies to --model veed only (--model ${model} has no edge-refinement switch)`);
+  }
+  if (model !== "veed-gs" && spill !== undefined) {
+    throw new Error(`--spill applies to --model veed-gs only (--model ${model} does not suppress plate spill — it is not told there is a plate)`);
+  }
+  // Only the shape is this script's business: the range belongs to fal, and
+  // refusing a value fal would have accepted is the same kind of lie as
+  // sending one it will not.
+  const spillStrength = spill === undefined ? DEFAULT_SPILL_SUPPRESSION : Number(spill);
+  if (!Number.isFinite(spillStrength) || spillStrength < 0) {
+    throw new Error(`--spill must be a number >= 0 (got: ${spill})`);
   }
 
   if (/^data:/.test(input)) {
@@ -184,12 +225,18 @@ export async function buildRemoveVideoBackgroundRequest(
         refine_foreground_edges: refine !== false,
         subject_is_person: person === true,
       }
-    : {
-        video_url,
-        background_color: "Transparent",
-        output_container_and_codec: "mov_proresks",
-        preserve_audio: false,
-      };
+    : model === "veed-gs"
+      ? {
+          video_url,
+          output_codec: "vp9",
+          spill_suppression_strength: spillStrength,
+        }
+      : {
+          video_url,
+          background_color: "Transparent",
+          output_container_and_codec: "mov_proresks",
+          preserve_audio: false,
+        };
 
   return { url: endpoint.url, model, body };
 }
@@ -307,9 +354,12 @@ const HELP = `Usage: remove-video-background.mjs --input <clip> --output <path> 
                          .webm for --model veed, .mov for --model bria
   --model <name>         ${Object.keys(MATTE_MODELS).join(", ")} (default: ${DEFAULT_MATTE_MODEL})
                          veed: VP9+alpha WebM, $0.0225 / 30 frames refined ($0.015 without)
+                         veed-gs: VP9+alpha WebM, $0.015 / 30 frames — for a clip
+                                  shot on flat chroma green; softest edge measured
                          bria: ProRes+alpha MOV, $0.14 / second; input < ${BRIA_MAX_DURATION_S}s and < ${BRIA_MAX_DIMENSION}x${BRIA_MAX_DIMENSION}
   --person               The subject is a person (veed only; default: not a person)
   --no-refine            Skip edge refinement (veed only; cheaper, softer edges)
+  --spill <n>            Plate spill suppression (veed-gs only; default: ${DEFAULT_SPILL_SUPPRESSION})
   --json                 Print one JSON object on stdout
   --deadline-s <n>       Give up on the job after this many seconds (default: 600)
   --help, -h             This text
@@ -329,6 +379,7 @@ export async function main(argv = process.argv.slice(2)) {
       model: { type: "string", default: DEFAULT_MATTE_MODEL },
       person: { type: "boolean", default: false },
       "no-refine": { type: "boolean", default: false },
+      spill: { type: "string" },
       json: { type: "boolean", default: false },
       "deadline-s": { type: "string", default: "600" },
       help: { type: "boolean", short: "h", default: false },
@@ -368,6 +419,7 @@ export async function main(argv = process.argv.slice(2)) {
       model: values.model,
       person: values.person,
       refine: !values["no-refine"],
+      spill: values.spill,
       apiKey,
       signal: controller.signal,
       deadlineMs: Math.max(30, Number(values["deadline-s"]) || 600) * 1000,

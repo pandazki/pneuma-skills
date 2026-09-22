@@ -213,13 +213,13 @@ describe("the skill install surface", () => {
     // video read "video preview is off" right under the steps for doing it.
     const skill = read("modes/sprite/skill/SKILL.md");
     const enabled = applyTemplateParams(skill, {
-      defaultVideoModel: "seedance-2.5",
+      ...defaultInitParams(),
       imageGenEnabled: "true",
       videoGenEnabled: "true",
       videoGenDisabled: "",
     });
     const disabled = applyTemplateParams(skill, {
-      defaultVideoModel: "seedance-2.5",
+      ...defaultInitParams(),
       imageGenEnabled: "true",
       videoGenEnabled: "",
       videoGenDisabled: "true",
@@ -236,6 +236,21 @@ describe("the skill install surface", () => {
     }
   });
 
+  /**
+   * Every declared init param at its default, which is what the installer
+   * hands `deriveParams`. Built from the manifest rather than listed here:
+   * a param added to the mode and forgotten in this file would make the two
+   * tests below pass while the skill they check has an unsubstituted
+   * `{{…}}` in it.
+   */
+  const defaultInitParams = (): Record<string, string> =>
+    Object.fromEntries(
+      (spriteManifest.init!.params ?? []).map((param) => [
+        param.name,
+        String(param.defaultValue ?? "x") || "x",
+      ]),
+    );
+
   test("every conditional block in SKILL.md closes, and uses a real flag", () => {
     // `{{#key}}…{{/key}}` is the only section syntax the installer supports —
     // an inverted `{{^key}}` block would be silently left in the agent's
@@ -245,13 +260,7 @@ describe("the skill install surface", () => {
     const opens = [...skill.matchAll(/\{\{#(\w+)\}\}/g)].map((m) => m[1]);
     const closes = [...skill.matchAll(/\{\{\/(\w+)\}\}/g)].map((m) => m[1]);
     expect(opens.sort()).toEqual(closes.sort());
-    const derived = Object.keys(
-      spriteManifest.init!.deriveParams!({
-        openrouterApiKey: "x",
-        falApiKey: "x",
-        defaultVideoModel: "seedance-2.5",
-      }),
-    );
+    const derived = Object.keys(spriteManifest.init!.deriveParams!(defaultInitParams()));
     for (const key of opens) {
       expect({ key, known: derived.includes(key) }).toEqual({ key, known: true });
     }
@@ -262,13 +271,7 @@ describe("the skill install surface", () => {
     // included — an unknown key there survives into the agent's reading as
     // literal `{{…}}`, which is how a reference silently stops being advice.
     const known = new Set(
-      Object.keys(
-        spriteManifest.init!.deriveParams!({
-          openrouterApiKey: "x",
-          falApiKey: "x",
-          defaultVideoModel: "seedance-2.5",
-        }),
-      ),
+      Object.keys(spriteManifest.init!.deriveParams!(defaultInitParams())),
     );
     // The installer's `applyTemplateParams` substitutes only init params and
     // `deriveParams` output — there is no framework-supplied key beyond them

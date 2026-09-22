@@ -35,11 +35,15 @@ const VIDEO_STATUSES = ["generating", "ready", "failed"];
 /** Models that MAKE a clip out of images and a prompt. */
 const VIDEO_MODELS = ["seedance-2.5", "h3-max"];
 const VIDEO_MODES = ["i2v", "first-last", "r2v"];
-/** Models that make a clip out of ANOTHER clip: video matting (veed, bria)
- *  and frame interpolation (topaz). They generate nothing of their own, so
- *  they live in their own list — `--mode i2v --model veed` is not a take
- *  anybody can shoot, and refusing it here is cheaper than explaining it. */
-const DERIVE_VIDEO_MODELS = ["veed", "bria", "topaz"];
+/** Models that make a clip out of ANOTHER clip: video matting (veed, its
+ *  green-screen endpoint veed-gs, bria) and frame interpolation (topaz,
+ *  rife). They generate nothing of their own, so they live in their own
+ *  list — `--mode i2v --model veed` is not a take anybody can shoot, and
+ *  refusing it here is cheaper than explaining it. `veed-gs` and `rife` are
+ *  names of their own because each is a different endpoint at a different
+ *  price: recording one under its sibling's name would name a model nobody
+ *  called. */
+const DERIVE_VIDEO_MODELS = ["veed", "veed-gs", "bria", "topaz", "rife"];
 const VIDEO_OPS = ["matte", "interpolate"];
 const ANCHORS = ["bottom", "center"];
 /** What a motion is FOR. Absent means a sprite motion — an atlas for a game
@@ -129,7 +133,12 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       The loop-motion mirror of set-sheet: registers the generated keyframe as
       <motion>-keyframe (the image the clip starts AND ends on), and with
       --alpha its cut-out as <motion>-keyframe-alpha, derived from it.
-      '--status generating' is the same placeholder leg set-sheet has.
+      '--status generating' is the same placeholder leg set-sheet has; the
+      closing call needs only --file (and --alpha), because an omitted
+      --model / --prompt / --from KEEPS what the reserving call recorded
+      rather than blanking it. Once --alpha has reserved the cut-out, a
+      closing call without --alpha is refused: the stage prefers the cut-out,
+      so leaving it a placeholder leaves a broken image on screen.
       Refused on a motion that is not --kind loop.
 
   register-run --motion <motionId> --run <run.json|-> [--video <videoId>] [--at <ms>]
@@ -161,8 +170,10 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       motion — a matte (transparent) or an interpolation (more frames). It
       writes a 'derive' edge from that clip and refuses --mode / --prompt /
       --from, because nothing here was shot: its history is the take it came
-      from. register-run --video then names which clip the frames were cut
-      from.
+      from. Its --status defaults to 'ready', not 'generating': the script
+      that made it has already written the file, so there is no wait to show.
+      A shot clip still defaults to 'generating'. register-run --video then
+      names which clip the frames were cut from.
   set-video --motion <motionId> --video <videoId|assetId>
             --status ${VIDEO_STATUSES.join("|")} [--notes <text>]
       --notes lands on the motion (the failure reason a human reads).
@@ -486,6 +497,37 @@ function edge(toAssetId, inputs, op) {
   return { toAssetId, fromAssetId: inputs && inputs.length ? inputs[0] : null, operation: op };
 }
 
+/**
+ * The `generate` edge for an asset that is registered TWICE — reserved before
+ * the image call, measured after it — merged with the one already on file.
+ *
+ * `--model` and `--prompt` are known at the reserving call and nowhere after
+ * it: the closing call carries the file that landed, not the prompt that was
+ * sent. Rebuilding the edge from bare flags therefore wrote `params: {}` over
+ * a real model and prompt (measured on the trial project, where the keyframe's
+ * edge came out empty), and dropped the parent with them. So an absent flag
+ * KEEPS what the earlier call recorded; a present one replaces it. An edge
+ * that is not a `generate` — there is none today, but a hand-edited file can
+ * carry one — is replaced outright rather than half-merged.
+ */
+function keptGenerateEdge(doc, assetId, values, inputs, now) {
+  const previous = doc.provenance.find((e) => e.toAssetId === assetId);
+  const kept = previous?.operation?.type === "generate" ? previous : null;
+  const keptParams = kept?.operation?.params ?? {};
+  const keptInputs = !kept
+    ? []
+    : Array.isArray(keptParams.inputs)
+      ? keptParams.inputs
+      : kept.fromAssetId
+        ? [kept.fromAssetId]
+        : [];
+  const merged = values.from === undefined ? keptInputs : inputs;
+  return edge(assetId, merged, operation("generate", now, {
+    model: values.model ?? keptParams.model,
+    prompt: values.prompt ?? keptParams.prompt,
+  }, merged));
+}
+
 function findMotion(doc, id, flag = "--motion") {
   const motion = doc.sprite.motions.find((m) => m.id === id);
   if (!motion) {
@@ -710,6 +752,10 @@ function inspectSummary(value) {
   // missing instead of arriving as a confident 0.
   const seam = finiteNumber(value.seam);
   const step = finiteNumber(value.step);
+  // How many in-between frames `--seam-fill` inserted at the wrap. 0 is a
+  // real reading — the loop closed on its own — so the same finite-or-absent
+  // rule applies: absent means the report predates the flag.
+  const seamFill = finiteNumber(value.seamFill);
   const alphaCoverage = finiteNumber(value.alphaCoverage);
   return {
     frameCount: value.frameCount,
@@ -725,6 +771,7 @@ function inspectSummary(value) {
     warnings: value.warnings ?? [],
     ...(seam === undefined ? {} : { seam }),
     ...(step === undefined ? {} : { step }),
+    ...(seamFill === undefined ? {} : { seamFill }),
     ...(alphaCoverage === undefined ? {} : { alphaCoverage }),
   };
 }
@@ -788,8 +835,10 @@ function compactMotion(motion) {
   return {
     id: motion.id,
     label: motion.label,
-    // Absent for a sprite motion, so a summary of the motions this mode has
-    // always made is byte-for-byte what it was.
+    // Absent for a sprite motion, so the JSON summary of the motions this
+    // mode has always made is byte-for-byte what it was. (`show`'s HUMAN
+    // line is not: its grid column is padded to seven so `loop` can stand
+    // where `4x4` does, which moves the columns after it.)
     ...(motion.kind ? { kind: motion.kind } : {}),
     status: motion.status,
     grid: motion.grid,
@@ -1144,19 +1193,30 @@ function main() {
       const placeholder = status === "generating";
       const file = placeholder ? null : requireFile(dir, uri, "--file");
 
+      const alphaAssetId = `${motion.id}-keyframe-alpha`;
+      // The cut-out is reserved by the same placeholder leg as the keyframe,
+      // and only a later `--alpha` measures it. A closing call that leaves it
+      // reserved leaves the STAGE pointing at it — `resolveFrameSource`
+      // prefers `keyframeAlpha` over `keyframe` — so the loop would show a
+      // broken image until the run lands. Say which flag fixes it instead.
+      if (values.alpha === undefined) {
+        const reserved = doc.assets.find((a) => a.id === alphaAssetId);
+        if (reserved?.status === "generating") {
+          fail(`reserved ${alphaAssetId} is still a placeholder — pass --alpha <path> so it can be measured (the stage shows it instead of the keyframe)`);
+        }
+      }
+
       upsertAsset(doc, {
         id: assetId, type: "image", uri, name: `${motion.id} keyframe`,
         metadata: placeholder ? {} : imageMetadata(file, "--file"),
         createdAt: now, status: placeholder ? "generating" : "ready",
       }, owner);
-      setEdge(doc, edge(assetId, inputs, operation("generate", now, {
-        model: values.model, prompt: values.prompt,
-      }, inputs)));
+      setEdge(doc, keptGenerateEdge(doc, assetId, values, inputs, now));
       motion.keyframe = assetId;
 
       let alphaId;
       if (values.alpha !== undefined) {
-        alphaId = `${motion.id}-keyframe-alpha`;
+        alphaId = alphaAssetId;
         const alphaUri = toUri(dir, values.alpha, "--alpha");
         const alphaFile = placeholder ? null : requireFile(dir, alphaUri, "--alpha");
         upsertAsset(doc, {
@@ -1341,11 +1401,23 @@ function main() {
           const exportUri = toUri(dir, path, label);
           const exportFile = requireFile(dir, exportUri, label);
           const id = `${motion.id}-${spec.suffix}`;
-          const measured = spec.probe === "image"
-            ? imageMetadata(exportFile, label, cell)
-            : spec.probe === "video"
-              ? videoMetadata(exportFile).metadata
-              : {};
+          // `videoMetadata` is best-effort and says so in `warning` — without
+          // ffprobe the WebM is registered with no dimensions at all, and
+          // ffprobe writes nothing to stderr of its own. Dropping that
+          // warning made the empty metadata silent. It goes to STDERR, where
+          // `imageMetadata`'s own fallback warning already goes two lines
+          // above: every caller of this command passes `--json`, and a line
+          // routed through `emit` would be swallowed by exactly that flag.
+          let measured;
+          if (spec.probe === "image") {
+            measured = imageMetadata(exportFile, label, cell);
+          } else if (spec.probe === "video") {
+            const probed = videoMetadata(exportFile);
+            if (probed.warning) console.error(`WARN: ${probed.warning}`);
+            measured = probed.metadata;
+          } else {
+            measured = {};
+          }
           upsertAsset(doc, {
             id, type: spec.type, uri: exportUri, name: `${motion.id} ${spec.label}`,
             metadata: {
@@ -1417,9 +1489,22 @@ function main() {
       const doc = loadProject(dir);
       const motion = findMotion(doc, requireFlag(values.motion, "--motion"));
       const uri = toUri(dir, requireFlag(values.file, "--file"), "--file");
-      const status = oneOf(values.status ?? "generating", VIDEO_STATUSES, "--status");
-      const duration = num(values.duration, "--duration", { min: 0 });
       const derivedFrom = values["derived-from"];
+      // The two legs are registered at opposite ends of their wait. A SHOT
+      // clip is booked before the model runs, so the stage can show a chip
+      // for the seven minutes it takes — its file does not exist yet, and
+      // `generating` is the truth. A DERIVED clip is the other way round:
+      // `remove-video-background.mjs` / `interpolate-video.mjs` have already
+      // written the file by the time there is anything to register, so
+      // `generating` would describe a wait that is over (measured on the
+      // trial project: three derived clips sat at `generating` with their
+      // files on disk). It is measured here instead; `--status` overrides.
+      const status = oneOf(
+        values.status ?? (derivedFrom === undefined ? "generating" : "ready"),
+        VIDEO_STATUSES,
+        "--status",
+      );
+      const duration = num(values.duration, "--duration", { min: 0 });
 
       motion.videos ??= [];
       const used = new Set(motion.videos.map((v) => v.id));

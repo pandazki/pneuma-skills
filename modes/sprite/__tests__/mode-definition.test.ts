@@ -269,6 +269,36 @@ describe("the definition and the manifest agree", () => {
     expect(state.description).toContain('"loop"');
   });
 
+  test("the session picks its default interpolator, and Topaz is it", () => {
+    // Three ways to reach 60 fps and the user owns the choice; the session
+    // default is what the agent uses unless asked otherwise, the same
+    // arrangement `defaultVideoModel` has. The skill reads it as
+    // `{{defaultInterpolator}}`, so the VALUES are the contract — a label
+    // change is cosmetic, a value change silently rewrites a command line.
+    const param = spriteManifest.init!.params!.find(
+      (p) => p.name === "defaultInterpolator",
+    )!;
+    expect(param.type).toBe("select");
+    expect(param.defaultValue).toBe("topaz");
+    // `InitParamOption | string` in the contract; this mode writes objects,
+    // because the description is where the price is said.
+    const options = param.options!.map((o) =>
+      typeof o === "string" ? { value: o, description: "" } : o,
+    );
+    expect(options.map((o) => o.value)).toEqual(["topaz", "rife", "ffmpeg"]);
+    // Every option says what it costs — the choice is a price as much as a
+    // quality, and the picker is the only place the user sees both.
+    for (const option of options) {
+      expect((option.description ?? "").length).toBeGreaterThan(20);
+    }
+    // And the skill really reads it, rather than hardcoding one of the three.
+    const skill = readFileSync(
+      join(import.meta.dir, "..", "skill", "SKILL.md"),
+      "utf-8",
+    );
+    expect(skill).toContain("{{defaultInterpolator}}");
+  });
+
   test("the three commands the design commissions are declared", () => {
     const commands = spriteManifest.viewerApi!.commands!;
     expect(commands.map((c) => c.id)).toEqual([

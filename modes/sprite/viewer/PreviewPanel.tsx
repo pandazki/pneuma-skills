@@ -42,6 +42,7 @@ import {
   loopDuration,
   maxJumpVerdict,
   scaleDriftVerdict,
+  seamFillOf,
   seamOf,
   seamVerdict,
   stepOf,
@@ -269,6 +270,11 @@ function LoopTab({
           fps: motion.fps,
           duration: loopDuration(frames, motion.fps),
           seam: seamWord(motion),
+          // `--seam-fill` grew this loop by N frames to close the wrap, so
+          // the frame count above is not the clip's own. Saying how many is
+          // what lets a user tell a shot that closed from one that was made
+          // to; 0 says nothing, because the flag did not fire.
+          seamFill: inspect ? seamFillOf(inspect) : null,
         })}
       </p>
       <div className="flex flex-wrap gap-2">

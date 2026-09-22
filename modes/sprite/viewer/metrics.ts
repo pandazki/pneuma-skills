@@ -168,6 +168,19 @@ export function alphaCoverageOf(inspect: InspectSummary): number | null {
 }
 
 /**
+ * In-between frames `loop --seam-fill` added at the wrap, or null when the
+ * report carried no number.
+ *
+ * Distinguished from 0 on purpose, and this one is read by a sentence rather
+ * than a row: 0 means the loop closed without help and the meta line says
+ * nothing, while null means nobody measured. Printing "0 seam frames" would
+ * put a flag that did not fire in front of the user on every loop.
+ */
+export function seamFillOf(inspect: InspectSummary): number | null {
+  return finite(inspect.seamFill);
+}
+
+/**
  * Does the loop close?
  *
  * The bar is the pipeline's own: a seam worth more than TWICE the median

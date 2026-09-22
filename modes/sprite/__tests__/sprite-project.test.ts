@@ -1162,6 +1162,64 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       expect(early.err).toMatch(/not found/);
     });
 
+    test("the closing set-keyframe keeps the model and prompt the first one recorded", () => {
+      const { dir } = seedLoop({ clip: false });
+      projectJson(dir, "set-keyframe", "--motion", "flame",
+        "--file", "motions/flame/keyframe.png", "--alpha", "motions/flame/keyframe-alpha.png",
+        "--from", "ref-portrait", "--model", "openai/gpt-image-2.5-flare",
+        "--prompt", "a clay flame, white plate", "--status", "generating", "--at", String(T1));
+
+      // The closing call carries the FILE that landed, not the prompt that was
+      // sent — those are known at the first call and nowhere afterwards.
+      // Rebuilding the edge from bare flags wrote `params: {}` over them.
+      projectJson(dir, "set-keyframe", "--motion", "flame",
+        "--file", "motions/flame/keyframe.png",
+        "--alpha", "motions/flame/keyframe-alpha.png", "--at", String(T2));
+      const edge = readProject(dir).provenance.find((e: any) => e.toAssetId === "flame-keyframe");
+      expect(edge).toMatchObject({
+        fromAssetId: "ref-portrait",
+        operation: {
+          type: "generate",
+          timestamp: T2,
+          params: { model: "openai/gpt-image-2.5-flare", prompt: "a clay flame, white plate" },
+        },
+      });
+
+      // A flag that IS passed replaces its own field and leaves the rest.
+      projectJson(dir, "set-keyframe", "--motion", "flame",
+        "--file", "motions/flame/keyframe.png",
+        "--alpha", "motions/flame/keyframe-alpha.png",
+        "--prompt", "a clay flame, redrawn", "--at", String(T2));
+      expect(readProject(dir).provenance
+        .find((e: any) => e.toAssetId === "flame-keyframe").operation.params).toEqual({
+        model: "openai/gpt-image-2.5-flare", prompt: "a clay flame, redrawn",
+      });
+    });
+
+    test("a closing set-keyframe may not strand the reserved cut-out", () => {
+      const { dir } = seedLoop({ clip: false });
+      projectJson(dir, "set-keyframe", "--motion", "flame",
+        "--file", "motions/flame/keyframe.png", "--alpha", "motions/flame/keyframe-alpha.png",
+        "--model", "openai/gpt-image-2.5-flare", "--status", "generating", "--at", String(T1));
+
+      // The stage prefers the cut-out over the keyframe, so leaving it a
+      // placeholder leaves a broken image on screen until the run lands.
+      const before = readProject(dir);
+      const stranded = project(dir, "set-keyframe", "--motion", "flame",
+        "--file", "motions/flame/keyframe.png", "--json", "--at", String(T2));
+      expect(stranded.code).toBe(1);
+      expect(stranded.err).toMatch(/flame-keyframe-alpha is still a placeholder.*--alpha/);
+      expect(readProject(dir)).toEqual(before);
+
+      // With --alpha it measures both and the refusal is gone for good.
+      projectJson(dir, "set-keyframe", "--motion", "flame",
+        "--file", "motions/flame/keyframe.png",
+        "--alpha", "motions/flame/keyframe-alpha.png", "--at", String(T2));
+      expect(projectJson(dir, "set-keyframe", "--motion", "flame",
+        "--file", "motions/flame/keyframe.png", "--at", String(T2)).keyframeAlpha)
+        .toBe("flame-keyframe-alpha");
+    });
+
     test("add-video --derived-from hangs a matte off the clip it was made from", () => {
       const { dir } = seedLoop();
       writeFileSync(join(dir, "motions", "flame", "video-veed-2.webm"), "");
@@ -1194,6 +1252,58 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       expect(projectJson(dir, "show", "--motion", "flame").videos[1]).toMatchObject({
         derivedFrom: "video-1", op: "matte",
       });
+    });
+
+    test("a derived clip is registered after it exists, so it lands ready", () => {
+      const { dir } = seedLoop();
+      writeFileSync(join(dir, "motions", "flame", "video-veed-2.webm"), "");
+      // No --status: the matting script had already written this file before
+      // there was anything to register, so `generating` would describe a wait
+      // that is over. A SHOT clip is the other way round and keeps its own
+      // default — it is booked before the model runs.
+      const derived = projectJson(dir, "add-video", "--motion", "flame",
+        "--file", "motions/flame/video-veed-2.webm", "--derived-from", "video-1",
+        "--op", "matte", "--model", "veed", "--at", String(T2));
+      expect(derived.videos[1]).toMatchObject({ id: "video-2", status: "ready" });
+      expect(readProject(dir).assets.find((a: any) => a.id === "flame-video-2").status)
+        .toBe("ready");
+
+      writeFileSync(join(dir, "motions", "flame", "video-seedance-4.mp4"), "");
+      const shot = projectJson(dir, "add-video", "--motion", "flame",
+        "--file", "motions/flame/video-seedance-4.mp4",
+        "--model", "seedance-2.5", "--mode", "i2v", "--at", String(T2));
+      expect(shot.videos[2].status).toBe("generating");
+
+      // `--status` still overrides — a matte that came back broken is failed.
+      writeFileSync(join(dir, "motions", "flame", "video-veed-5.webm"), "");
+      const failed = projectJson(dir, "add-video", "--motion", "flame",
+        "--file", "motions/flame/video-veed-5.webm", "--derived-from", "video-1",
+        "--op", "matte", "--model", "veed", "--status", "failed", "--at", String(T2));
+      expect(failed.videos[3].status).toBe("failed");
+    });
+
+    test("every endpoint that can make a clip out of a clip can be recorded as one", () => {
+      const { dir } = seedLoop();
+      // The bookkeeping has to be able to name the endpoint that really ran.
+      // A `veed-gs` matte recorded as `veed`, or a RIFE retime as `topaz`,
+      // is a model nobody called — and the price and the parameters differ.
+      const derived: Array<[string, string]> = [
+        ["veed", "matte"], ["veed-gs", "matte"], ["bria", "matte"],
+        ["topaz", "interpolate"], ["rife", "interpolate"],
+      ];
+      for (const [model, op] of derived) {
+        const file = `motions/flame/video-${model}.mp4`;
+        writeFileSync(join(dir, file), "");
+        const motion = projectJson(dir, "add-video", "--motion", "flame",
+          "--file", file, "--derived-from", "video-1",
+          "--op", op, "--model", model, "--at", String(T2));
+        expect(motion.videos.at(-1)).toMatchObject({ model, op, mode: "derived" });
+      }
+      const unknown = project(dir, "add-video", "--motion", "flame",
+        "--file", "motions/flame/video-veed.mp4", "--derived-from", "video-1",
+        "--op", "matte", "--model", "rmbg", "--json");
+      expect(unknown.code).toBe(1);
+      expect(unknown.err).toMatch(/--model/);
     });
 
     // Nothing here was SHOT, so each of these flags is refused by name rather
@@ -1308,6 +1418,42 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       expect(edge.fromAssetId).toBe("flame-frame-000");
       expect(edge.operation.params).toMatchObject({ tool: "sprite-sheet.mjs", step: "loop" });
       expect(edge.operation.params.inputs).toHaveLength(12);
+    });
+
+    test("a WebM nobody could measure says so instead of losing its dimensions", () => {
+      const { dir, run: summary } = seedLoop();
+      // Exactly what a machine without ffprobe produces for every export:
+      // `videoMetadata` answers `{}` plus a warning, and dropping that
+      // warning was what made the empty metadata silent.
+      writeFileSync(join(dir, "motions", "flame", "loop.webm"), "not a matroska file");
+      const r = registerLoop(dir, summary);
+      expect(r.code).toBe(0);
+      expect(r.out + r.err).toMatch(/WARN: ffprobe could not read loop\.webm/);
+      const asset = readProject(dir).assets.find((a: any) => a.id === "flame-webm");
+      // The size still lands — that one is a stat, not a probe.
+      expect(asset.metadata).toEqual({ fps: 12, size: "not a matroska file".length });
+      expect(asset.status).toBe("ready");
+    });
+
+    test("the seam frames the wrap needed travel into the sidecar", () => {
+      const { dir, run: summary } = seedLoop();
+      // `--seam-fill auto` inserts N in-betweens at the wrap and reports how
+      // many; the panel says so beside the frame count, which is no longer
+      // the clip's own. 0 is a real reading (the loop closed by itself).
+      const filled = { ...summary, inspect: { ...summary.inspect, seamFill: 3 } };
+      expect(JSON.parse(registerLoop(dir, filled).out).inspect.seamFill).toBe(3);
+
+      const closed = { ...summary, inspect: { ...summary.inspect, seamFill: 0 } };
+      expect(JSON.parse(registerLoop(dir, closed).out).inspect.seamFill).toBe(0);
+
+      // A report that never carried the number leaves the key off entirely —
+      // absent is "nobody measured", and the viewer renders that correctly.
+      const older = JSON.parse(registerLoop(dir, summary).out);
+      expect("seamFill" in older.inspect).toBe(false);
+
+      // And a broken one is dropped rather than carried as NaN.
+      const broken = { ...summary, inspect: { ...summary.inspect, seamFill: "three" } };
+      expect("seamFill" in JSON.parse(registerLoop(dir, broken).out).inspect).toBe(false);
     });
 
     test("the frames are cut from the clip, with the timestamp of each one", () => {

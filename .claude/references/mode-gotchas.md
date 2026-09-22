@@ -100,4 +100,6 @@ remain in [AGENTS.md](../../AGENTS.md#engineering-judgment).
 
 - **OpenRouter 上的 GPT Image 2.5 拒绝 `background: "transparent"`**(2026-09-09 实测,sunburst 与 flare 都是 400 `background: not supported. Accepted: auto, opaque`,发生在生成之前、不计费):想要透明雪碧图,走"提示词要纯白底、`--background opaque`,再 `remove-background.mjs`(fal BiRefNet)或 `sprite-sheet.mjs key`"。`generate_image.mjs --background transparent` 这个 flag 留着,但 skill 文本不能把它写成主路径——sprite 第一次真跑就是这样在第一张图上撞了 400。
 
+- **ffmpeg 用 `libwebp` 写动图 WebP,每一帧都会叠在上一帧上——透明动画会拖着自己的残影**(sprite 0.3.0,2026-09-22 实测):`libwebp` 只编码单帧,不做动画帧合成,`-loop 0` 照样输出、退出码 0、没有任何警告,所以这个 bug 在 sprite 的每一张 `preview.webp` 上存在了整整一个 release,谁也没察觉——直到透明的 loop 把残影摆到了棋盘格上。**要写动图 WebP,编码器写 `libwebp_anim`**(同一套 `-pix_fmt yuva420p -q:v 85 -loop 0` 参数);同一串帧实测每帧 alpha 平均误差 9.8 → 0.03。适用范围:任何用 ffmpeg 写动图 WebP 的 mode,不止 sprite——GIF/APNG/WebM 没有这个问题,只有 WebP 分了两个编码器。判据:动图格式的产物要逐帧比对源帧,别信退出码。
+
 - **雪碧图对齐不能按整张画的包围盒中心对 x——道具会把身体推偏**(2026-09-09 用户在 e2e 里当场看出"切到 attack 是裂开的"):灯笼/伞/扳手伸出去,包围盒中心跟着跑,对齐后身体在 250 px 格子里左右跳了 44 px。`sprite-sheet.mjs align` 现在默认 `--x-from feet`(包围盒底部 10% 高度那条带里 alpha 像素的 x 均值),y 仍取包围盒底边;`bodyDrift`(脚部 x 的标准差)是判据,`anchorDrift` 只描述剪影。半身像没有脚,那条带就是衣服下摆,照样稳。平移修不了 `scaleDrift`——那是模型把角色画大画小了,只能带"固定比例"重画或走视频路径。

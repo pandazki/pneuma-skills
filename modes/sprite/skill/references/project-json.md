@@ -184,7 +184,9 @@ interface Motion {
   };
 }
 
-type VideoModel = "seedance-2.5" | "h3-max" | "veed" | "bria" | "topaz";
+type VideoModel = "seedance-2.5" | "h3-max"          // shot
+                | "veed" | "veed-gs" | "bria"        // matted
+                | "topaz" | "rife";                  // interpolated
 type VideoMode  = "i2v" | "first-last" | "r2v" | "derived";
 
 interface MotionVideo {
@@ -193,7 +195,11 @@ interface MotionVideo {
   mode: VideoMode;
   prompt: string;                 // "" on a derived clip — nothing was prompted
   status: "generating" | "ready" | "failed";
-  derivedFrom?: string;           // the parent clip's asset id
+  derivedFrom?: string;           // the parent clip's SIDECAR id ("video-1"),
+                                  // not its asset id — the panel says "matte
+                                  // of video-1" without walking the graph.
+                                  // The provenance edge carries the same fact
+                                  // in asset ids
   op?: "matte" | "interpolate";   // what was done to it
 }
 
@@ -218,10 +224,22 @@ interface InspectSummary {
                                             // is from the first, in the same
                                             // silhouette-diff units as `step`
   step?: number;                            // loop only: the median frame-to-
-                                            // frame change. `seam < step` is a
-                                            // loop that closes; both are absent
-                                            // unless the report carried finite
-                                            // numbers
+                                            // frame change. `seam <= 2 * step`
+                                            // is a loop that closes — the one
+                                            // rule, the same in SKILL.md step
+                                            // 10, `pipeline.md` and the
+                                            // viewer's SEAM_STEP_FACTOR
+  seamFill?: number;                        // loop only: in-between frames
+                                            // `loop --seam-fill` inserted at
+                                            // the wrap, after which `seam` is
+                                            // the largest step across it. 0 is
+                                            // "the loop closed on its own"
+  alphaCoverage?: number;                   // loop only: fraction of the frame
+                                            // area that is opaque, averaged
+                                            // over the frames
+                                            // All four are absent unless the
+                                            // report carried finite numbers —
+                                            // 0 is a reading, not an absence
   warnings: string[];                       // human sentences
   acknowledged?: { reason: string; at: number }; // written by
                                             // `set-motion --ack-warnings`; the
@@ -246,12 +264,16 @@ Three things the shapes are quietly telling you:
 
 A clip made **from another clip** — a matte, an interpolation — is registered
 with `add-video --derived-from <videoId> --op matte|interpolate --model
-veed|bria|topaz`. It gets a `derive` edge from the parent clip's asset carrying
+veed|veed-gs|bria|topaz|rife`. It gets a `derive` edge from the parent clip's asset carrying
 `params: { op, model }`, and its sidecar entry reads
-`{ mode: "derived", derivedFrom, op, prompt: "" }`. There is no prompt because
+`{ mode: "derived", derivedFrom, op, prompt: "" }` — `derivedFrom` is the
+parent's sidecar id (`video-1`), the same spelling `--derived-from` accepts.
+Its `--status` defaults to **`ready`**, not `generating`: the script that made
+it wrote the file before there was anything to register, so there is no wait
+to show. There is no prompt because
 nothing was prompted; the empty string is the honest record, and a sentence
 invented to fill it is what makes a later turn treat the clip as a generation
-it could re-roll. `show` prints the chain — `video-3 ← video-2 (matte, veed)` —
+it could re-roll. `show` prints the chain — `video-3 ← video-2 (matte, veed-gs)` —
 so which clip the frames were cut from is answerable without reading the edges
 by hand.
 

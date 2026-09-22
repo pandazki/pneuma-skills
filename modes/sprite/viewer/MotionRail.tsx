@@ -237,9 +237,13 @@ function MotionRow({
           <StatusChip status={motion.status} t={t} />
         </span>
         <span className="text-[11px] text-cc-muted">
+          {/* A loop's grid is the 1×1 `register-run` writes because the
+              sidecar has the field, not because anything is 1×1 — printing
+              it puts a number nobody can act on in front of the two that
+              matter. The chip above already says this is a loop. */}
           {t.motionMeta({
-            cols: motion.grid.cols,
-            rows: motion.grid.rows,
+            cols: motion.kind === "loop" ? null : motion.grid.cols,
+            rows: motion.kind === "loop" ? null : motion.grid.rows,
             frames: motion.frames.length,
             fps: motion.fps,
             loop: motion.loop,

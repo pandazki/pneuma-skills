@@ -71,12 +71,14 @@ clickable card that takes the user there — or into the `capture` action's
 - **`pause`** — stop on the current frame. Call it before capturing a specific
   frame, or your screenshot is whichever frame happened to be up.
 - **`get-playback-state`** — read back what the stage actually shows:
-  `{ contentSet, motion, kind, frame, frameCount, fps, loop, playing, source, warnings }`.
+  `{ contentSet, motion, kind, frame, frameCount, fps, loop, playing, source, warnings }`,
+  where `source` is `"frames" | "raw-sheet" | "keyframe" | "none"`.
   A `source` of `"raw-sheet"` (the unprocessed sheet) or a `frameCount` that
   disagrees with the grid means the pipeline did not land — whatever the
   script printed. `kind` is `"loop"` on a loop motion (workflow E) and absent
-  on a sprite motion; on a loop before its frames exist, `raw-sheet` is the
-  keyframe standing in, which is expected rather than a fault.
+  on a sprite motion; a loop before its frames exist reports
+  `source: "keyframe"` — the image its clip starts and ends on, standing in,
+  which is expected rather than a fault.
 - **`capture`** — framework built-in. Screenshot an address and look at it.
 
 ### Three sensing layers, in cost order
@@ -435,14 +437,15 @@ number you give the user in step 2:
 | `remove-background.mjs --model heavy --resolution 1024` | ≈ 6 s |
 | **a 5 s Seedance 480p first-last loop clip** | **≈ 200 s — but budget seven minutes** |
 | `remove-video-background.mjs --model veed` (121 frames) | ≈ 23 s |
-| `interpolate-video.mjs --target-fps 60` (5 s clip) | ≈ 50 s |
-| `sprite-sheet.mjs loop` (≈ 100 frames + four exports) | measured in the trial |
+| `remove-video-background.mjs --model veed-gs` (121 frames) | ≈ 30 s |
+| `interpolate-video.mjs --target-fps 60` (Topaz, 5 s clip) | ≈ 50 s |
+| `interpolate-video.mjs --model rife --between 1 --loop` (5 s clip) | 21 s of compute — but 231 s wall on a cold queue |
+| `sprite-sheet.mjs loop` (119 frames, 512×596, four exports) | ≈ 24 s |
 
 The Seedance row is the one to quote as a **range**: 199 s and 404 s have both
 been measured on this queue, and the difference was the queue, not the clip.
-"Measured in the trial" on the last row means nobody has timed it yet — say
-*that* rather than inventing a number. The numbers behind these rows, and what
-each step's output looked like, are in `references/video-preview.md`.
+The numbers behind these rows, and what each step's output looked like, are in
+`references/video-preview.md`.
 
 The clip is the one that looks broken and is not: fal queues it, then renders.
 Say so before you start one, register the placeholder, and then wait — no
@@ -531,14 +534,17 @@ Say the price and the wait before you start one.
    ```bash
    node {SKILL_PATH}/scripts/sprite-project.mjs set-keyframe --dir <character> \
      --motion <id> --file motions/<id>/keyframe.png \
-     --model openai/gpt-image-2.5-flare --prompt "<the prompt you are about to send>" \
-     --status generating --json
+     --prompt "<the prompt you are about to send>" --status generating --json
    ```
 
    Then one `generate_image.mjs` call — 1024×1024, `--quality high`,
    `--background opaque`, a white plate asked for in the prompt, and
    `--image-urls` once per reference when the subject is the character. The
    exact invocation and the 3D-icon prompt are in `references/prompting.md`.
+   It picks the model itself — Sunburst without references, Flare with them —
+   and reports which one it used in its JSON `model` field. Pass **the model
+   the JSON reported** to the closing `set-keyframe`; naming one here would
+   record a model nobody called.
    Cut it out and register both halves:
 
    ```bash
@@ -549,12 +555,16 @@ Say the price and the wait before you start one.
 
    node {SKILL_PATH}/scripts/sprite-project.mjs set-keyframe --dir <character> \
      --motion <id> --file motions/<id>/keyframe.png \
-     --alpha motions/<id>/keyframe-alpha.png --json
+     --alpha motions/<id>/keyframe-alpha.png --model "<the model the JSON reported>" --json
    ```
 
    The second `set-keyframe` measures the files and flips the same ids to
    `ready` — skip it and the keyframe stays a placeholder forever, exactly as a
-   sheet does. Then flatten the cut-out onto the plate the clip will be shot
+   sheet does. It needs only `--file` and `--alpha`: an omitted `--model` /
+   `--prompt` / `--from` keeps what the reserving call recorded. `--alpha` is
+   not optional here — once the cut-out is reserved, a closing call without it
+   is refused, because the stage shows the cut-out and a placeholder there is
+   a broken image. Then flatten the cut-out onto the plate the clip will be shot
    on, and *look* at what you drew:
 
    ```bash
@@ -601,11 +611,25 @@ Say the price and the wait before you start one.
    back to the opening pose? A long `stillEnd` hold is the duplicate closing
    keyframe (step 8 trims it); `loops[0].seam` well under `step` says the
    return landed.
-7. **Optional, and in this order: interpolate, then matte.** Both are paid,
-   both are skippable, and the order is not a preference: interpolation reads
-   opaque pixels, so it runs on the **plate** clip; matting is what makes a
-   clip transparent, and after it `loop --fps` is refused because there is
-   nothing left to interpolate honestly.
+7. **Optional, and in this order: interpolate, then matte.** Both are
+   skippable, and the order is not a preference: interpolation reads opaque
+   pixels, so it runs on the **plate** clip; matting is what makes a clip
+   transparent, and after it `loop --fps` is refused because there is nothing
+   left to interpolate honestly.
+
+   **Interpolation is the user's choice, not yours — put the three in one
+   message and take the answer.** This session's default is
+   **`{{defaultInterpolator}}`**; use it unless the user asks for another.
+
+   | | What it does | Cost | The wrap |
+   |---|---|---|---|
+   | **`topaz`** — `interpolate-video.mjs --target-fps 60` | Exactly 60 fps, the sharpest in-betweens measured | ≈ $0.10 per 5 s clip, 49–69 s | **Not closed** — it interpolates the clip as a clip and never sees the last frame against the first; `loop --seam-fill` handles the seam afterwards |
+   | **`rife`** — `interpolate-video.mjs --model rife --between 1 --loop` | Learned in-betweens that MULTIPLY the rate: 24 fps becomes 48 | ≈ $0.03 per 5 s clip; 20 s of compute, but the queue can hold it for minutes | **Closed** — `loop: true` interpolates the wrap too (measured seam 0.0107 against a step of 0.0275) |
+   | **`ffmpeg`** — `sprite-sheet.mjs loop --fps 60`, no extra call | Block-matching `minterpolate`, loop-wrapped | free | Closed |
+
+   The owner's position: **Topaz's ten cents is acceptable**, and the free
+   `minterpolate` is the fallback for a session with no fal key — not the
+   recommendation. Say the price with the choice; it is the user's money.
 
    ```bash
    node {SKILL_PATH}/scripts/interpolate-video.mjs \
@@ -620,25 +644,33 @@ Say the price and the wait before you start one.
    node {SKILL_PATH}/scripts/remove-video-background.mjs \
      --input <character>/motions/<id>/video-topaz-2.mp4 \
      --output <character>/motions/<id>/video-veed-3.webm \
-     --model veed --json
+     --model veed-gs --json
 
    node {SKILL_PATH}/scripts/sprite-project.mjs add-video --dir <character> \
      --motion <id> --file motions/<id>/video-veed-3.webm \
-     --derived-from <id>-video-2 --op matte --model veed --json
+     --derived-from <id>-video-2 --op matte --model veed-gs --json
    ```
 
-   Each clip is registered the moment it exists, with the parent named instead
-   of a prompt; the number in the id is just the next free one, so a matte on
-   its own is `--derived-from <id>-video-1` and lands as `<id>-video-2`.
+   Each clip is registered once the script that made it has written the file —
+   `--status` defaults to `ready` on a derived clip for exactly that reason —
+   with the parent named instead of a prompt, and `--model` naming the
+   endpoint that really cut it (`veed-gs`, `veed`, `bria`, `topaz`, `rife`). The
+   number in the id is just the next free one, so a matte on its own is
+   `--derived-from <id>-video-1` and lands as `<id>-video-2`.
 
    **Of the two, the matte is the one worth paying for.** Measured: VEED's
-   ≈ $0.09 matte gave the best edge of anything tried, while `loop`'s free
+   matte gave the best edge of anything tried, while `loop`'s free
    key-then-despill leaves a faint 1 px dark rim (acceptable) and a key with
-   `--no-despill` leaves a visible green fringe (not). Interpolation runs the
-   other way — Topaz never sees the wrap and *opened* the seam on the trial
-   clip, where the loop-wrapped `loop --fps 60` is free and does not. So:
-   **matte with VEED, and take 60 fps from `loop --fps 60`.** The numbers,
-   prices and flags: `references/video-preview.md`.
+   `--no-despill` leaves a visible green fringe (not). **Pick the endpoint by
+   the plate**: a clip shot on flat chroma green — which is what step 5 shoots
+   — goes to `--model veed-gs` (≈ $0.06 for 121 frames, zero green pixels, the
+   softest edge measured); any other plate goes to `--model veed` (≈ $0.09),
+   and `bria` is the alternative if VEED's edge ever fails a subject.
+   Interpolation is the choice above, and whichever the user picks, **read
+   the seam again afterwards**: Topaz opened it on the trial clip (0.067
+   against a step of 0.029) because it never sees the wrap, and
+   `--seam-fill` is what closes that. The numbers, prices and flags:
+   `references/video-preview.md`.
 8. **Cut the loop.** Hand it the clip whose pixels you want — the **last** one
    in the chain, not the one you registered first:
 
@@ -655,6 +687,25 @@ Say the price and the wait before you start one.
    despills the rim afterwards. Frames land at `frames/000.png` (three digits,
    up to 400) with the four exports beside them. Every flag, every warning and
    what fixes it: `references/pipeline.md`.
+
+   **Choose `--width` from the size the UI renders at** (double it for retina),
+   not from the clip. Measured on 119 frames of 512×596 at 24 fps: WebP 3.4 MB,
+   APNG 21 MB, WebM 367 KB, Lottie 28 MB — the Lottie warning fired. At
+   `--width 256` the Lottie comes down to about 7 MB and the APNG to about
+   5 MB; the WebM is small at any width. `loop` also keeps its working PNGs
+   under `<motionDir>/.loop-work` while it runs — roughly
+   frames × W × H × 4 bytes, about 600 MB for a 122-frame 1440² clip — so pass
+   `--width` on a large clip rather than after it fills the disk.
+
+   **`--seam-fill auto|none|<N>`** (default `auto`) is the one flag that
+   changes what lands. When the seam is worse than `2·step`, `auto` inserts
+   `N = min(4, ceil(seam/step) − 1)` in-between frames at the wrap with ffmpeg
+   `minterpolate`, appended after the last frame — so the loop grows by N
+   frames, `duration` grows by N/fps, and those frames have no `sampledAt`.
+   The run summary and `inspect.json` carry `"seamFill": N` (0 when none), and
+   the seam is re-measured across the filled wrap. On the trial clip that was
+   N = 3. It closes a seam that is *nearly* closed; it does not rescue a clip
+   that ends somewhere else — that is still a reshoot.
 9. **Record the run.**
 
    ```bash
@@ -668,14 +719,15 @@ Say the price and the wait before you start one.
    a different one; the run's clip path is checked against the asset's uri, so
    a mismatch is reported rather than quietly recorded.
 10. **Read the seam, then look at it.** Report `seam` against `step`, in
-    numbers: a seam under a normal frame-to-frame step is a loop that closes,
-    and `2·step` is where the script starts warning. Then `navigate-to` the
-    motion, `play` it, and check the seam with your own eyes — `pause` and
-    `capture` the **last** frame, then `navigate-to` frame 0 and `capture`
-    that. Two screenshots a step apart is what a seam looks like; anything
-    further apart is a jump the user will see on every cycle. Close with the
-    frame count, fps, duration and the four export sizes — a 12 MB Lottie is a
-    deliverable nobody can ship, and `--width` is the remedy.
+    numbers: `seam ≤ 2·step` is a loop that closes, and past that is where the
+    script warns. Say `seamFill` too when it is not 0 — those frames are the
+    wrap being filled in, so the frame count is no longer the clip's own. Then
+    `navigate-to` the motion, `play` it, and check the seam with your own eyes
+    — `pause` and `capture` the **last** frame, then `navigate-to` frame 0 and
+    `capture` that. Two screenshots a step apart is what a seam looks like;
+    anything further apart is a jump the user will see on every cycle. Close
+    with the frame count, fps, duration and the four export sizes — a 28 MB
+    Lottie is a deliverable nobody can ship, and `--width` is the remedy.
 {{/videoGenEnabled}}
 
 {{#videoGenDisabled}}

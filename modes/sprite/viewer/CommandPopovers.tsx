@@ -63,6 +63,29 @@ const ICON_FOR: Record<string, (p: IconProps) => React.ReactElement> = {
   "fix-alignment": CrosshairIcon,
 };
 
+/** Commands that only make sense for a sprite motion, by id. */
+const SPRITE_ONLY_COMMANDS = new Set(["fix-alignment"]);
+
+/**
+ * The commands that apply to the motion on stage.
+ *
+ * "Frames are misaligned" asks the agent to re-run `align` — and a loop is
+ * never aligned: its frames are kept exactly where the clip put them, because
+ * the movement IS the content. Offering the button anyway is an offer to
+ * break the deliverable, and a user who pressed it would get an agent
+ * explaining why it cannot do the thing the UI just proposed.
+ *
+ * With no motion selected every command is listed and disabled — the bar is
+ * how a user learns what this stage can do, and a loop is not yet on it.
+ */
+export function motionCommands(
+  commands: ViewerCommandDescriptor[],
+  motion: Motion | null,
+): ViewerCommandDescriptor[] {
+  if (motion?.kind !== "loop") return commands;
+  return commands.filter((command) => !SPRITE_ONLY_COMMANDS.has(command.id));
+}
+
 /** Model and mode names are the API's own, so they are not translated — the
  *  sentence explaining each one is (see `strings.ts`).
  *
@@ -127,7 +150,8 @@ export function CommandBar({
     };
   }, [open]);
 
-  if (commands.length === 0) return null;
+  const visible = motionCommands(commands, motion);
+  if (visible.length === 0) return null;
 
   const send = (
     command: ViewerCommandDescriptor,
@@ -160,7 +184,7 @@ export function CommandBar({
 
   return (
     <div ref={rootRef} className="flex items-center gap-1.5">
-      {commands.map((command) => {
+      {visible.map((command) => {
         const Icon = ICON_FOR[command.id] ?? SparkIcon;
         const disabled = !motion;
         return (

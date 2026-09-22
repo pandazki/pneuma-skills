@@ -28,6 +28,7 @@ import {
   BRIA_MAX_DIMENSION,
   BRIA_MAX_DURATION_S,
   buildRemoveVideoBackgroundRequest,
+  DEFAULT_SPILL_SUPPRESSION,
   MATTE_MODELS,
   mattedFile,
   probeVideoFile,
@@ -105,6 +106,50 @@ describe("video matting request bodies", () => {
       subject_is_person: false,
       refine_foreground_edges: false,
     });
+  });
+
+  test("veed-gs asks the green-screen endpoint for VP9 with alpha and a spill strength", async () => {
+    const request = await buildRemoveVideoBackgroundRequest(
+      { input: clip, output: join(workspace, "gs.webm"), model: "veed-gs" },
+      quiet,
+    );
+    expect(request.url).toBe("https://fal.run/veed/video-background-removal/green-screen");
+    expect(request.model).toBe("veed-gs");
+    // The endpoint is TOLD the plate is chroma green, so it carries neither
+    // `subject_is_person` nor `refine_foreground_edges`: sending either would
+    // be a field the schema does not have.
+    expect(request.body).toEqual({
+      video_url: HOSTED,
+      output_codec: "vp9",
+      spill_suppression_strength: DEFAULT_SPILL_SUPPRESSION,
+    });
+    expect(MATTE_MODELS["veed-gs"].extension).toBe(".webm");
+  });
+
+  test("--spill is the one knob veed-gs has, and it is a number", async () => {
+    const out = join(workspace, "gs.webm");
+    const gs = (spill: unknown) =>
+      buildRemoveVideoBackgroundRequest({ input: clip, output: out, model: "veed-gs", spill } as any, quiet);
+    expect((await gs("0.35")).body).toMatchObject({ spill_suppression_strength: 0.35 });
+    expect((await gs(0)).body).toMatchObject({ spill_suppression_strength: 0 });
+    await expect(gs("aggressive")).rejects.toThrow("--spill");
+    await expect(gs(-1)).rejects.toThrow("--spill");
+  });
+
+  test("the flags the other endpoints have are refused on veed-gs, and --spill on them", async () => {
+    const gs = join(workspace, "gs.webm");
+    await expect(buildRemoveVideoBackgroundRequest(
+      { input: clip, output: gs, model: "veed-gs", person: true }, quiet,
+    )).rejects.toThrow("--person");
+    await expect(buildRemoveVideoBackgroundRequest(
+      { input: clip, output: gs, model: "veed-gs", refine: false }, quiet,
+    )).rejects.toThrow("--no-refine");
+    await expect(buildRemoveVideoBackgroundRequest(
+      { input: clip, output: join(workspace, "out.webm"), model: "veed", spill: 0.5 } as any, quiet,
+    )).rejects.toThrow("--spill");
+    await expect(buildRemoveVideoBackgroundRequest(
+      { input: clip, output: join(workspace, "out.mov"), model: "bria", spill: 0.5 } as any, quiet,
+    )).rejects.toThrow("--spill");
   });
 
   test("bria asks for a transparent ProRes MOV and drops the audio", async () => {
@@ -248,6 +293,11 @@ describe("Bria's documented input limits are measured before the paid call", () 
 });
 
 describe("which file in the response is the matte", () => {
+  test("veed-gs answers the same list shape as its sibling", () => {
+    const file = { url: "https://v3.fal.media/files/gs.webm" };
+    expect(mattedFile({ video: [file] }, "veed-gs", { onNote: () => {} })).toBe(file);
+  });
+
   test("veed's list and bria's single file are each taken as documented", () => {
     // Measured 2026-09-22: VEED's entry carries content_type
     // "application/octet-stream", so the pick must not depend on it.
@@ -404,12 +454,14 @@ describe("remove-video-background CLI guard rails", () => {
     const help = runCli(["--help"]);
     expect(help.code).toBe(0);
     const text = help.err + help.out;
-    for (const flag of ["--input", "--output", "--model", "--person", "--no-refine", "--json", "--deadline-s"]) {
+    for (const flag of ["--input", "--output", "--model", "--person", "--no-refine", "--spill", "--json", "--deadline-s"]) {
       expect(text).toContain(flag);
     }
     expect(text).toContain(".webm");
     expect(text).toContain(".mov");
+    expect(text).toContain("veed-gs");
     expect(text).toContain("$0.0225");
+    expect(text).toContain("$0.015");
     expect(text).toContain("$0.14");
   });
 
@@ -433,5 +485,9 @@ describe("remove-video-background CLI guard rails", () => {
     const wrongFlag = runCli(["--input", clip, "--output", join(workspace, "o.mov"), "--model", "bria", "--person"]);
     expect(wrongFlag.code).toBe(1);
     expect(wrongFlag.err).toContain("--person");
+
+    const spillOnVeed = runCli(["--input", clip, "--output", join(workspace, "o.webm"), "--model", "veed", "--spill", "0.5"]);
+    expect(spillOnVeed.code).toBe(1);
+    expect(spillOnVeed.err).toContain("--spill");
   });
 });

@@ -120,10 +120,15 @@ export type MotionStatus = (typeof MOTION_STATUSES)[number];
 export type GeneratedVideoModel = "seedance-2.5" | "h3-max";
 
 /** Models that make a clip out of ANOTHER CLIP — video matting (`veed`,
- *  `bria`) and frame interpolation (`topaz`). They generate nothing of their
- *  own, which is why they are a separate union: the render-video popover must
- *  not be able to offer one, and a `derived` clip must not claim a prompt. */
-export type DerivedVideoModel = "veed" | "bria" | "topaz";
+ *  `veed-gs` on its green-screen endpoint, `bria`) and frame interpolation
+ *  (`topaz`, `rife`). They generate nothing of their own, which is why they
+ *  are a separate union: the render-video popover must not be able to offer
+ *  one, and a `derived` clip must not claim a prompt. `veed-gs` is its own
+ *  name rather than a flag on `veed`, and `rife` its own rather than a flag
+ *  on `topaz`: each is a different endpoint with different parameters and a
+ *  different price, and a clip recorded under its sibling's name is a model
+ *  nobody called. */
+export type DerivedVideoModel = "veed" | "veed-gs" | "bria" | "topaz" | "rife";
 
 export type VideoModel = GeneratedVideoModel | DerivedVideoModel;
 
@@ -209,6 +214,14 @@ export interface InspectSummary {
   seam?: number;
   /** Median frame-to-frame silhouette distance — what `seam` is judged against. */
   step?: number;
+  /**
+   * How many in-between frames `loop --seam-fill` inserted at the wrap, after
+   * which `seam` is the largest step across it. 0 means the loop closed on its
+   * own — a real reading, not an absence — which is why this follows the same
+   * finite-or-absent rule as its neighbours; absent means the report predates
+   * the flag.
+   */
+  seamFill?: number;
   /** Fraction of the frame area that is opaque, averaged over the frames. */
   alphaCoverage?: number;
 }
@@ -411,6 +424,7 @@ function parseInspect(value: unknown): InspectSummary | undefined {
   const bodyDrift = parseFinite(value.bodyDrift);
   const seam = parseFinite(value.seam);
   const step = parseFinite(value.step);
+  const seamFill = parseFinite(value.seamFill);
   const alphaCoverage = parseFinite(value.alphaCoverage);
   return {
     frameCount: num(value.frameCount, 0),
@@ -434,6 +448,7 @@ function parseInspect(value: unknown): InspectSummary | undefined {
     // result the pipeline can report.
     ...(seam === undefined ? {} : { seam }),
     ...(step === undefined ? {} : { step }),
+    ...(seamFill === undefined ? {} : { seamFill }),
     ...(alphaCoverage === undefined ? {} : { alphaCoverage }),
   };
 }
@@ -469,8 +484,10 @@ const VIDEO_MODELS: readonly VideoModel[] = [
   "seedance-2.5",
   "h3-max",
   "veed",
+  "veed-gs",
   "bria",
   "topaz",
+  "rife",
 ];
 
 const VIDEO_MODES: readonly VideoMode[] = ["i2v", "first-last", "r2v", "derived"];

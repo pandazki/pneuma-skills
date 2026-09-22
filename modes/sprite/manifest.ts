@@ -22,7 +22,8 @@ const spriteManifest: ModeManifest = {
     "0.3.0": [
       "Seamless transparent loops for a UI: a 3D-icon keyframe, a first-last clip with the same image at both ends so the loop closes by construction, then `sprite-sheet.mjs loop` cuts every frame of the cycle into `loop.webp`, `loop.apng`, `loop.webm` (VP9 with alpha) and a Lottie JSON",
       "A `loop` motion is judged on its seam against a normal frame step — not on anchor drift, which a bobbing icon is supposed to have; the frames stay unaligned and uncleaned because the movement is the content",
-      "Video matting (VEED or Bria) and frame interpolation (Topaz, or free ffmpeg `minterpolate`) turn the plate clip transparent and take it to 60 fps — interpolate first, matte second",
+      "Video matting (VEED, its green-screen endpoint, or Bria) turns the plate clip transparent, and frame interpolation takes it to a higher rate — Topaz on fal by default, RIFE (which also closes the wrap) or free ffmpeg `minterpolate` when the user picks them. Interpolate first, matte second",
+      "Fixed: every animated WebP this mode writes — the sprite `preview.webp` as well as the loop — ghosted its previous frames, because ffmpeg's `libwebp` encoder does not composite animation frames. Encoding with `libwebp_anim` took the mean alpha error from 9.8 to 0.03 per frame",
     ],
     "0.2.1": [
       "Measured the video workflow on the seed character's own green-screen walk: the contact window closes the loop where even sampling of the whole clip does not",
@@ -179,7 +180,7 @@ const spriteManifest: ModeManifest = {
           },
         },
         description:
-          "Read back what the stage is actually showing: `{ contentSet, motion, kind, frame, frameCount, fps, loop, playing, source: \"frames\" | \"raw-sheet\" | \"none\", warnings }`. Call it after a pipeline run — `source: \"raw-sheet\"` or a frameCount that disagrees with the grid means the run did not land, whatever the script printed. `kind` is `\"loop\"` on a loop motion and absent on a sprite motion.",
+          "Read back what the stage is actually showing: `{ contentSet, motion, kind, frame, frameCount, fps, loop, playing, source: \"frames\" | \"raw-sheet\" | \"keyframe\" | \"none\", warnings }`. Call it after a pipeline run — `source: \"raw-sheet\"` or a frameCount that disagrees with the grid means the run did not land, whatever the script printed. `kind` is `\"loop\"` on a loop motion and absent on a sprite motion; `source: \"keyframe\"` is a loop showing the image its clip starts and ends on because no frames exist yet, which is expected while the clip renders.",
       },
     ],
     // User → agent. The viewer renders these only while `editing !== false`,
@@ -286,6 +287,34 @@ The user just opened the sprite workspace. Greet them briefly (1-2 sentences) an
           },
         ],
         defaultValue: "seedance-2.5",
+      },
+      {
+        name: "defaultInterpolator",
+        label: "Default frame interpolation",
+        description:
+          "Which path takes a loop clip to a higher frame rate when the user asks for one",
+        type: "select",
+        options: [
+          {
+            value: "topaz",
+            label: "Topaz on fal",
+            description:
+              "Exactly 60 fps, sharpest in-betweens, ≈ $0.10 per 5 s clip",
+          },
+          {
+            value: "rife",
+            label: "RIFE on fal",
+            description:
+              "2× or 3× the rate, closes the wrap, cheaper — ≈ $0.03 per 5 s clip",
+          },
+          {
+            value: "ffmpeg",
+            label: "ffmpeg minterpolate",
+            description:
+              "Free, inside `sprite-sheet.mjs loop --fps`; the weakest in-betweens",
+          },
+        ],
+        defaultValue: "topaz",
       },
     ],
     // The installer's template engine has `{{#key}}` sections and no inverted

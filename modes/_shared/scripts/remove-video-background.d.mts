@@ -16,8 +16,11 @@ export interface MatteModel {
   resultIsList: boolean;
 }
 
+/** Keys: `veed`, `veed-gs` (the chroma-green endpoint), `bria`. */
 export const MATTE_MODELS: Record<string, MatteModel>;
 export const DEFAULT_MATTE_MODEL: string;
+/** fal's own default for `spill_suppression_strength` (veed-gs). */
+export const DEFAULT_SPILL_SUPPRESSION: number;
 
 /** Bria's documented input ceiling: "duration less than 30s". */
 export const BRIA_MAX_DURATION_S: number;
@@ -36,12 +39,14 @@ export interface RemoveVideoBackgroundOptions {
   input?: string;
   /** Destination path; `.webm` for veed, `.mov` for bria. */
   output?: string;
-  /** A key of `MATTE_MODELS` (veed | bria). */
+  /** A key of `MATTE_MODELS` (veed | veed-gs | bria). */
   model?: string;
   /** veed only: sends `subject_is_person`. Defaults to false — an icon, not a person. */
   person?: boolean;
   /** veed only: false sends `refine_foreground_edges: false` (cheaper, softer edges). */
   refine?: boolean;
+  /** veed-gs only: `spill_suppression_strength`. Defaults to `DEFAULT_SPILL_SUPPRESSION`. */
+  spill?: string | number;
 }
 
 /** VEED's field names — the only spelling that reaches that endpoint. */
@@ -52,6 +57,14 @@ export interface VeedMatteRequestBody {
   subject_is_person: boolean;
 }
 
+/** The green-screen endpoint's field names — it is told the plate up front,
+ *  so it has no subject hint and no refinement tier. */
+export interface VeedGreenScreenMatteRequestBody {
+  video_url: string;
+  output_codec: "vp9";
+  spill_suppression_strength: number;
+}
+
 /** Bria's field names — the only spelling that reaches that endpoint. */
 export interface BriaMatteRequestBody {
   video_url: string;
@@ -60,7 +73,10 @@ export interface BriaMatteRequestBody {
   preserve_audio: false;
 }
 
-export type RemoveVideoBackgroundRequestBody = VeedMatteRequestBody | BriaMatteRequestBody;
+export type RemoveVideoBackgroundRequestBody =
+  | VeedMatteRequestBody
+  | VeedGreenScreenMatteRequestBody
+  | BriaMatteRequestBody;
 
 export interface RemoveVideoBackgroundRequest {
   url: string;
@@ -125,9 +141,9 @@ export function probeVideoFile(path: string): ProbedVideo | null;
  * to fal storage first (never inlined — these endpoints cap `video_url` at
  * 2083 characters), which is why this is async. Throws — naming the flag —
  * for an unknown model, an output extension the model cannot write, a
- * veed-only flag on another model, a data URI, a missing file, or a clip
- * past Bria's documented size/duration limits; every one of those is
- * checked before the upload starts.
+ * veed-only flag on another model, `--spill` on anything but `veed-gs`, a
+ * data URI, a missing file, or a clip past Bria's documented size/duration
+ * limits; every one of those is checked before the upload starts.
  */
 export function buildRemoveVideoBackgroundRequest(
   options?: RemoveVideoBackgroundOptions & { apiKey?: string; signal?: AbortSignal },
@@ -139,7 +155,8 @@ export function buildRemoveVideoBackgroundRequest(
 ): Promise<RemoveVideoBackgroundRequest>;
 
 /**
- * The matted clip in a finished job: `video[0]` for veed, `video` for bria.
+ * The matted clip in a finished job: `video[0]` for the two VEED endpoints,
+ * `video` for bria.
  * The other shape is returned with a warning rather than dropped — this runs
  * after the render is paid for. Null when neither shape carries a URL.
  */

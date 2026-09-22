@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 
 /**
- * Frame interpolation (and optional upscaling) — Topaz Video AI on fal.ai.
+ * Frame interpolation (and optional upscaling) — Topaz Video AI or RIFE on
+ * fal.ai.
  *
  * One clip in, one clip at a higher frame rate out. A 24 fps loop retimed
- * to 60 fps stops stepping in a UI; `sprite-sheet.mjs loop --fps 60` does
- * the same thing for free with ffmpeg's `minterpolate`, and this is the
- * paid comparison — Topaz generates the in-between frames with a model
- * (Apollo v8) instead of block motion compensation.
+ * to 60 fps stops stepping in a UI. There are three ways to get there and
+ * the user picks one; two of them are here, and the third is free:
+ * `sprite-sheet.mjs loop --fps 60` does it with ffmpeg's `minterpolate`
+ * (block motion compensation, loop-wrapped) at no cost. Both endpoints here
+ * invent the in-between frames with a model instead.
  *
  * Interpolation runs BEFORE matting: an alpha channel does not survive a
  * codec that has none, and the in-betweens should be invented from the
@@ -15,14 +17,44 @@
  *
  * Usage:
  *   node interpolate-video.mjs --input clip.mp4 --output clip-60.mp4 \
- *     [--target-fps 60] [--upscale 1] [--model proteus|gaia-2] \
+ *     [--model proteus|gaia-2|rife] \
+ *     [--target-fps 60] [--upscale 1]              # Topaz only
+ *     [--between 1] [--loop] [--scene-detect] [--fps N]   # RIFE only
  *     [--deadline-s 900] [--json]
  *
- * Endpoint: https://fal.run/fal-ai/topaz/upscale/video
- *   { video_url, model, upscale_factor, target_fps, H264_output: true }
- *   Answers `video: File`. `H264_output: true` is sent because the default
- *   is H265, which ffmpeg builds and browsers handle less uniformly; the
- *   container is MP4 either way, so `--output` must end `.mp4`.
+ * The two endpoints do not mean the same thing by a frame rate, which is
+ * why their flags are exclusive and each is refused on the other:
+ *
+ *   topaz (`--model proteus` | `gaia-2`, the default)
+ *     https://fal.run/fal-ai/topaz/upscale/video
+ *     { video_url, model, upscale_factor, target_fps, H264_output: true }
+ *     Answers `video: File`. It is TOLD the rate it must hit, so it can put
+ *     a clip at exactly 60 fps. `H264_output: true` is sent because the
+ *     default is H265, which ffmpeg builds and browsers handle less
+ *     uniformly; the container is MP4 either way, so `--output` must end
+ *     `.mp4`. Sharpest in-betweens measured, and the most expensive.
+ *     It interpolates the clip AS A CLIP: the one pair a loop cares about
+ *     most — the last frame against the first — is the pair it never sees.
+ *
+ *   rife (`--model rife`)
+ *     https://fal.run/fal-ai/rife/video
+ *     { video_url, num_frames, use_scene_detection, use_calculated_fps,
+ *       loop, fps? }
+ *     Answers `video: File` — a single object, the same shape as Topaz.
+ *     It MULTIPLIES the rate: `num_frames: 1` turns 24 fps into 48, `2`
+ *     into 72, so there is no target rate to name and `--target-fps` is
+ *     refused. $0.0013 per compute second.
+ *     `loop: true` is documented by fal as "the final frame will be looped
+ *     back to the first frame to create a seamless loop" — RIFE
+ *     interpolates the WRAP, which is exactly the pair Topaz misses.
+ *     MEASURED 2026-09-22 on the 640² 24 fps 121-frame trial clip with
+ *     `{ num_frames: 1, use_scene_detection: false, use_calculated_fps:
+ *     true, loop: true }`: out came 640² h264 **48 fps, 243 frames**,
+ *     5.06 s, 570 KB; **21.0 s of inference but 231 s wall** on a cold
+ *     queue, ≈ **$0.03**. Its silhouette profile: median step 0.0275 (half
+ *     the 24 fps clip's 0.046, as expected) and a seam of **0.0107** —
+ *     under half a step, so `loop: true` really does close the wrap, where
+ *     Topaz's wrap came back at 6.5× its own step.
  *
  * Price: $0.01 per second of output up to 720p, $0.02 for 720p–1080p,
  * $0.08 above 1080p — DOUBLED for 60 fps output. Gaia 2 costs half.
@@ -46,11 +78,13 @@
  * `--model` takes a short alias only — fal's enum strings have spaces and
  * digits ("Gaia 2"), which no caller should have to spell into a shell,
  * and an unknown alias is refused here rather than travelling into a paid
- * request. Two of the endpoint's nineteen documented values are wired:
- * `proteus` (fal's own default, "fits most footage") and `gaia-2`
- * ("animation and motion graphics at 2x", and half price). The rest are
- * denoise and generative-restoration families this pipeline has no use
- * for; they are listed at the source URL above.
+ * request. Two of Topaz's nineteen documented values are wired: `proteus`
+ * (fal's own default, "fits most footage") and `gaia-2` ("animation and
+ * motion graphics at 2x", and half price). The rest are denoise and
+ * generative-restoration families this pipeline has no use for; they are
+ * listed at the source URL above. `rife` names the other endpoint rather
+ * than a Topaz model, because from a caller's side the question is one
+ * question — who invents the in-between frames.
  *
  * A local clip is UPLOADED to fal storage (`fal-queue.mjs::uploadFalFile`)
  * and the hosted URL is what travels in `video_url`. It is never inlined:
@@ -66,10 +100,13 @@
  * is an intermediate that ffmpeg reads whole, and the loop exports are
  * what a browser ever plays.
  *
- * `--json` prints exactly one object:
- *   { path, url, file_size, target_fps, upscale_factor, model }
- * `model` is fal's own spelling, as sent. Progress and warnings go to
- * stderr; exit 1 on failure, 130 on interrupt.
+ * `--json` prints exactly one object, shaped by the endpoint that ran —
+ * each reports what it was really given, and nothing it was not:
+ *   topaz: { path, url, file_size, target_fps, upscale_factor, model }
+ *           `model` is fal's own spelling, as sent ("Proteus").
+ *   rife:  { path, url, file_size, model: "rife", between, loop, fps? }
+ *           `fps` only when `--fps` pinned one.
+ * Progress and warnings go to stderr; exit 1 on failure, 130 on interrupt.
  *
  * Environment: FAL_KEY, from the environment or a `.env` discovered by
  * `fal-queue.mjs::loadFalKey`. Never printed, never an argv.
@@ -83,23 +120,55 @@ import { parseArgs } from "node:util";
 import { DOWNLOAD_ATTEMPTS, downloadFalFile, loadFalKey, runFalJob, uploadFalFile } from "./fal-queue.mjs";
 
 export const TOPAZ_URL = "https://fal.run/fal-ai/topaz/upscale/video";
+export const RIFE_URL = "https://fal.run/fal-ai/rife/video";
 
-/** Short alias → the exact string fal's `model` enum accepts. */
+/** Topaz model alias → the exact string fal's `model` enum accepts. */
 export const MODEL_ALIASES = {
   proteus: "Proteus",
   "gaia-2": "Gaia 2",
+};
+
+/**
+ * Every `--model` value, and which ENDPOINT it names.
+ *
+ * Two families behind one flag, because from the caller's side the question
+ * is one question — "who invents the in-between frames" — and the answer
+ * decides the rest of the command line. They do not take the same arguments
+ * and they do not even mean the same thing by a frame rate: Topaz is told
+ * the rate it must hit (`target_fps`), while RIFE MULTIPLIES the rate it is
+ * given (`num_frames: 1` turns 24 fps into 48, `2` into 72). So `--target-fps`
+ * belongs to Topaz alone and `--between` to RIFE alone, and each is refused
+ * on the other rather than silently ignored.
+ */
+export const INTERPOLATORS = {
+  proteus: "topaz",
+  "gaia-2": "topaz",
+  rife: "rife",
 };
 
 export const DEFAULT_MODEL = "proteus";
 export const DEFAULT_TARGET_FPS = 60;
 /** No resize by default: a loop is retimed, not enlarged. */
 export const DEFAULT_UPSCALE = 1;
+/** RIFE's own default: one invented frame between each pair — 24 fps → 48. */
+export const DEFAULT_BETWEEN = 1;
 
 /** This script's own range; fal documents output up to 120 fps. */
 export const TARGET_FPS_MIN = 16;
 export const TARGET_FPS_MAX = 60;
 /** fal: "Supports up to 8x upscaling". */
 export const MAX_UPSCALE = 8;
+
+/** Flags that belong to exactly one endpoint, by the option name a caller
+ *  types. A flag the chosen endpoint does not have is refused by name: one
+ *  that travels as a no-op makes the report of what was asked for untrue. */
+const TOPAZ_ONLY = [["--target-fps", "targetFps"], ["--upscale", "upscale"]];
+const RIFE_ONLY = [
+  ["--between", "between"],
+  ["--loop", "loop"],
+  ["--scene-detect", "sceneDetect"],
+  ["--fps", "fps"],
+];
 
 /**
  * The exact request Topaz is sent, or a thrown refusal naming the flag at
@@ -110,36 +179,33 @@ export const MAX_UPSCALE = 8;
  * Async because a local clip has to reach fal storage first; `upload` is
  * injected so the builder runs without the network.
  */
-export async function buildInterpolateRequest(
-  {
-    input,
-    output,
-    targetFps = DEFAULT_TARGET_FPS,
-    upscale = DEFAULT_UPSCALE,
-    model = DEFAULT_MODEL,
-    apiKey,
-    signal,
-  } = {},
-  { upload = uploadFalFile, onNote = (message) => console.error(message) } = {},
-) {
+export async function buildInterpolateRequest(options = {}, { upload = uploadFalFile, onNote = (message) => console.error(message) } = {}) {
+  const { input, output, model = DEFAULT_MODEL, apiKey, signal } = options;
   if (typeof input !== "string" || !input.trim()) throw new Error("--input is required");
   if (typeof output !== "string" || !output.trim()) throw new Error("--output is required");
-  // `H264_output: true` makes this an H.264 MP4; a path called .webm or
-  // .mov would be a lie on disk, and ffmpeg downstream trusts the name.
+  // Both endpoints write H.264 MP4 (`H264_output: true` for Topaz, MP4 by
+  // construction for RIFE); a path called .webm or .mov would be a lie on
+  // disk, and ffmpeg downstream trusts the name.
   if (extname(output).toLowerCase() !== ".mp4") throw new Error(`--output must be a .mp4 path (got: ${output})`);
 
-  const falModel = MODEL_ALIASES[model];
-  if (!falModel) throw new Error(`--model must be one of: ${Object.keys(MODEL_ALIASES).join(", ")} (got: ${model})`);
+  const family = INTERPOLATORS[model];
+  if (!family) throw new Error(`--model must be one of: ${Object.keys(INTERPOLATORS).join(", ")} (got: ${model})`);
 
-  const fps = Number(targetFps);
-  if (!Number.isInteger(fps) || fps < TARGET_FPS_MIN || fps > TARGET_FPS_MAX) {
-    throw new Error(`--target-fps must be a whole number from ${TARGET_FPS_MIN} to ${TARGET_FPS_MAX} (got: ${targetFps})`);
+  // Every flag is checked against the endpoint that will receive it, and
+  // checked BEFORE the clip is uploaded: a paid 422 teaches nothing this can
+  // say for free, and a typo should not cost a transfer either.
+  const wrongFlags = family === "topaz" ? RIFE_ONLY : TOPAZ_ONLY;
+  const owner = family === "topaz" ? "rife" : Object.keys(MODEL_ALIASES).join(" / ");
+  for (const [flag, key] of wrongFlags) {
+    if (options[key] !== undefined) {
+      throw new Error(`${flag} applies to --model ${owner} only (--model ${model} has no such parameter)`);
+    }
   }
 
-  const factor = Number(upscale);
-  if (!Number.isFinite(factor) || factor <= 0 || factor > MAX_UPSCALE) {
-    throw new Error(`--upscale must be a number greater than 0 and at most ${MAX_UPSCALE} (got: ${upscale})`);
-  }
+  // `model` is passed separately: it carries the DEFAULT, which `options`
+  // does not, and a Topaz body built from a missing alias would send
+  // `model: undefined` to a paid endpoint.
+  const body = family === "topaz" ? topazBody(options, model) : rifeBody(options);
 
   if (/^data:/.test(input)) {
     throw new Error("--input must be a file path or an http(s) URL — this endpoint answers `Invalid URL: URL too long` to a data URI; a local clip is uploaded to fal storage instead");
@@ -147,17 +213,58 @@ export async function buildInterpolateRequest(
   const hosted = /^https?:/.test(input);
   if (!hosted && !existsSync(input)) throw new Error(`--input: file not found: ${input}`);
 
+  const video_url = hosted ? input : await upload(input, { key: apiKey, label: "--input", signal, onNote });
   return {
-    url: TOPAZ_URL,
+    url: family === "topaz" ? TOPAZ_URL : RIFE_URL,
     model,
-    body: {
-      video_url: hosted ? input : await upload(input, { key: apiKey, label: "--input", signal, onNote }),
-      model: falModel,
-      upscale_factor: factor,
-      target_fps: fps,
-      H264_output: true,
-    },
+    family,
+    body: { video_url, ...body },
   };
+}
+
+/** Topaz: told the rate it must hit, and optionally a resize factor. */
+function topazBody({ targetFps = DEFAULT_TARGET_FPS, upscale = DEFAULT_UPSCALE }, model) {
+  const fps = Number(targetFps);
+  if (!Number.isInteger(fps) || fps < TARGET_FPS_MIN || fps > TARGET_FPS_MAX) {
+    throw new Error(`--target-fps must be a whole number from ${TARGET_FPS_MIN} to ${TARGET_FPS_MAX} (got: ${targetFps})`);
+  }
+  const factor = Number(upscale);
+  if (!Number.isFinite(factor) || factor <= 0 || factor > MAX_UPSCALE) {
+    throw new Error(`--upscale must be a number greater than 0 and at most ${MAX_UPSCALE} (got: ${upscale})`);
+  }
+  return { model: MODEL_ALIASES[model], upscale_factor: factor, target_fps: fps, H264_output: true };
+}
+
+/**
+ * RIFE: told how many frames to invent BETWEEN each pair, which multiplies
+ * the rate rather than setting it. `use_calculated_fps` is how fal spells
+ * "work the output rate out from the multiplier"; it is only turned off when
+ * the caller pins `--fps`, and `fps` is sent only then — sending it beside
+ * `use_calculated_fps: true` would be a number nothing reads.
+ *
+ * `loop: true` is the reason this endpoint is here at all: fal documents it
+ * as "the final frame will be looped back to the first frame to create a
+ * seamless loop", so RIFE interpolates the WRAP, which Topaz never sees.
+ */
+function rifeBody({ between = DEFAULT_BETWEEN, sceneDetect = false, loop = false, fps }) {
+  const num = Number(between);
+  if (!Number.isInteger(num) || num < 1) {
+    throw new Error(`--between must be a whole number >= 1 (got: ${between})`);
+  }
+  const body = {
+    num_frames: num,
+    use_scene_detection: sceneDetect === true,
+    use_calculated_fps: fps === undefined,
+    loop: loop === true,
+  };
+  if (fps !== undefined) {
+    const pinned = Number(fps);
+    if (!Number.isInteger(pinned) || pinned < TARGET_FPS_MIN || pinned > TARGET_FPS_MAX) {
+      throw new Error(`--fps must be a whole number from ${TARGET_FPS_MIN} to ${TARGET_FPS_MAX} (got: ${fps})`);
+    }
+    body.fps = pinned;
+  }
+  return body;
 }
 
 /**
@@ -171,14 +278,14 @@ export async function interpolateVideo(options, { runJob = runFalJob, download =
   const { output, apiKey, signal, deadlineMs = 900_000 } = options;
   if (!apiKey) throw new Error("No API key found. Set FAL_KEY in the environment or a .env file.");
 
-  const { url, body } = await buildInterpolateRequest(options, { upload });
+  const { url, model, family, body } = await buildInterpolateRequest(options, { upload });
 
   const job = await runJob({
     url,
     body,
     key: apiKey,
     signal,
-    label: "Topaz video upscale/interpolation",
+    label: family === "topaz" ? "Topaz video upscale/interpolation" : "RIFE frame interpolation",
     deadlineMs,
     onRetry: ({ attempt, attempts, delayMs, reason }) => {
       console.error(`WARN: ${String(reason).slice(0, 160)} — retrying in ${delayMs / 1000}s (attempt ${attempt} of ${attempts})`);
@@ -204,35 +311,53 @@ export async function interpolateVideo(options, { runJob = runFalJob, download =
   writeFileSync(staged, bytes);
   renameSync(staged, output);
 
-  return {
-    path: output,
-    url: file.url,
-    file_size: statSync(output).size,
-    target_fps: body.target_fps,
-    upscale_factor: body.upscale_factor,
-    model: body.model,
-  };
+  // The two families report what they were actually asked for. Topaz was
+  // given a rate and a resize factor; RIFE was given a multiplier and a wrap
+  // flag, and has no target rate at all unless one was pinned. Printing a
+  // `target_fps` for a RIFE run would be a number nobody set.
+  const common = { path: output, url: file.url, file_size: statSync(output).size };
+  return family === "topaz"
+    ? { ...common, target_fps: body.target_fps, upscale_factor: body.upscale_factor, model: body.model }
+    : {
+      ...common,
+      model,
+      between: body.num_frames,
+      loop: body.loop,
+      ...(body.fps === undefined ? {} : { fps: body.fps }),
+    };
 }
 
 const HELP = `Usage: interpolate-video.mjs --input <clip> --output <path.mp4> [options]
 
   --input <path|url>     Source clip (required)
   --output <path.mp4>    Where the retimed clip is written (required)
-  --target-fps <n>       ${TARGET_FPS_MIN}-${TARGET_FPS_MAX} (default: ${DEFAULT_TARGET_FPS})
-  --upscale <n>          Resize factor, up to ${MAX_UPSCALE} (default: ${DEFAULT_UPSCALE} — retime only, unverified against fal)
-  --model <alias>        ${Object.keys(MODEL_ALIASES).join(", ")} (default: ${DEFAULT_MODEL})
-                         → ${Object.values(MODEL_ALIASES).join(", ")}
+  --model <alias>        ${Object.keys(INTERPOLATORS).join(", ")} (default: ${DEFAULT_MODEL})
+                         proteus / gaia-2 → Topaz (${Object.values(MODEL_ALIASES).join(" / ")});
                          gaia-2 targets animation and bills at half price, at 2x
+                         rife → fal-ai/rife/video
+
+  Topaz only:
+  --target-fps <n>       ${TARGET_FPS_MIN}-${TARGET_FPS_MAX} (default: ${DEFAULT_TARGET_FPS})
+  --upscale <n>          Resize factor, up to ${MAX_UPSCALE} (default: ${DEFAULT_UPSCALE} — retime only, accepted by fal)
+
+  RIFE only (it MULTIPLIES the rate; there is no target to name):
+  --between <n>          Frames invented between each pair (default: ${DEFAULT_BETWEEN} — 24 fps becomes 48)
+  --loop                 Interpolate the WRAP too, so the last frame leads back into the first
+  --scene-detect         Do not interpolate across a cut
+  --fps <n>              Pin the output rate instead of calculating it
+
   --json                 Print one JSON object on stdout
   --deadline-s <n>       Give up on the job after this many seconds (default: 900)
   --help, -h             This text
 
-Price: $0.01 per second of output up to 720p, $0.02 for 720p-1080p, doubled
-for 60 fps output. Interpolate BEFORE matting — alpha does not survive a
-codec without it. A local clip is uploaded to fal storage first (an http(s)
-URL is used as given; a data URI is refused — this endpoint caps the length
-of video_url). Requires FAL_KEY (environment or .env). Progress goes to
-stderr; with --json, stdout carries exactly one object.`;
+Price: Topaz $0.01 per second of output up to 720p, $0.02 for 720p-1080p,
+doubled for 60 fps output (≈ $0.10 for a 5 s clip at 60 fps). RIFE $0.0013
+per compute second (≈ $0.03 for the same clip). Interpolate BEFORE matting —
+alpha does not survive a codec without it. A local clip is uploaded to fal
+storage first (an http(s) URL is used as given; a data URI is refused — both
+endpoints cap the length of video_url). Requires FAL_KEY (environment or
+.env). Progress goes to stderr; with --json, stdout carries exactly one
+object.`;
 
 export async function main(argv = process.argv.slice(2)) {
   const { values } = parseArgs({
@@ -240,8 +365,16 @@ export async function main(argv = process.argv.slice(2)) {
     options: {
       input: { type: "string" },
       output: { type: "string" },
-      "target-fps": { type: "string", default: String(DEFAULT_TARGET_FPS) },
-      upscale: { type: "string", default: String(DEFAULT_UPSCALE) },
+      // No `default:` on the per-endpoint flags: the builder has to be able
+      // to tell "not given" from "given", or a default would trip the
+      // other endpoint's refusal on every run. The defaults live in the
+      // builder, where the endpoint is known.
+      "target-fps": { type: "string" },
+      upscale: { type: "string" },
+      between: { type: "string" },
+      loop: { type: "boolean" },
+      "scene-detect": { type: "boolean" },
+      fps: { type: "string" },
       model: { type: "string", default: DEFAULT_MODEL },
       json: { type: "boolean", default: false },
       "deadline-s": { type: "string", default: "900" },
@@ -281,6 +414,10 @@ export async function main(argv = process.argv.slice(2)) {
       output: values.output,
       targetFps: values["target-fps"],
       upscale: values.upscale,
+      between: values.between,
+      loop: values.loop,
+      sceneDetect: values["scene-detect"],
+      fps: values.fps,
       model: values.model,
       apiKey,
       signal: controller.signal,

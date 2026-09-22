@@ -368,31 +368,38 @@ describe("loop motions", () => {
     }
   });
 
-  test("seam, step and alpha coverage survive — including a perfect 0", () => {
+  test("seam, step, seam fill and alpha coverage survive — including a perfect 0", () => {
     const inspectWith = (over: Record<string, unknown>) =>
       motionWith((m) => { m.inspect = { ...m.inspect, ...over }; }).inspect!;
 
-    const measured = inspectWith({ seam: 0.0065, step: 0.02, alphaCoverage: 0.31 });
+    const measured = inspectWith({ seam: 0.0065, step: 0.02, seamFill: 3, alphaCoverage: 0.31 });
     expect(measured.seam).toBe(0.0065);
     expect(measured.step).toBe(0.02);
+    // `loop --seam-fill auto` inserted three in-betweens at the wrap; the
+    // panel says so beside a frame count that is no longer the clip's own.
+    expect(measured.seamFill).toBe(3);
     expect(measured.alphaCoverage).toBe(0.31);
 
     // 0 is the seam of a loop that closes exactly, which is the whole point of
-    // the workflow — it must not be mistaken for "not measured".
-    const perfect = inspectWith({ seam: 0, step: 0, alphaCoverage: 0 });
+    // the workflow — it must not be mistaken for "not measured". A seamFill of
+    // 0 is the same statement: the wrap needed no help.
+    const perfect = inspectWith({ seam: 0, step: 0, seamFill: 0, alphaCoverage: 0 });
     expect("seam" in perfect).toBe(true);
     expect(perfect.seam).toBe(0);
     expect(perfect.step).toBe(0);
+    expect("seamFill" in perfect).toBe(true);
+    expect(perfect.seamFill).toBe(0);
     expect(perfect.alphaCoverage).toBe(0);
 
     for (const broken of [undefined, null, "0.0065", Number.NaN, {}, [0.0065], true]) {
-      const parsed = inspectWith({ seam: broken, step: broken, alphaCoverage: broken });
+      const parsed = inspectWith({ seam: broken, step: broken, seamFill: broken, alphaCoverage: broken });
       expect({
         broken,
         seam: "seam" in parsed,
         step: "step" in parsed,
+        seamFill: "seamFill" in parsed,
         alpha: "alphaCoverage" in parsed,
-      }).toEqual({ broken, seam: false, step: false, alpha: false });
+      }).toEqual({ broken, seam: false, step: false, seamFill: false, alpha: false });
     }
 
     // A sheet motion carries none of the three, and the anchor numbers it does

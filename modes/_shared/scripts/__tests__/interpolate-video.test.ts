@@ -1,5 +1,5 @@
 /**
- * interpolate-video.mjs — Topaz Video AI on fal.ai.
+ * interpolate-video.mjs — Topaz Video AI or RIFE on fal.ai.
  *
  * The mapping from this CLI's short aliases to fal's enum, and every range
  * refusal that must happen BEFORE a paid submit (and before the upload),
@@ -9,6 +9,11 @@
  * `upscale_factor: 1` gets its own case: it is the default a loop wants,
  * fal documents the default as 2, and a silent coercion would double the
  * bill and quadruple the pixels behind the caller's back.
+ *
+ * The two endpoints share one `--model` flag and nothing else: Topaz is
+ * told the rate it must hit, RIFE multiplies the rate it is given. A flag
+ * of one reaching the other would be a field the schema does not have, so
+ * the cross-refusals are pinned in both directions.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -19,10 +24,13 @@ import { fileURLToPath } from "node:url";
 
 import {
   buildInterpolateRequest,
+  DEFAULT_BETWEEN,
   DEFAULT_UPSCALE,
+  INTERPOLATORS,
   interpolateVideo,
   MAX_UPSCALE,
   MODEL_ALIASES,
+  RIFE_URL,
   TARGET_FPS_MAX,
   TARGET_FPS_MIN,
   TOPAZ_URL,
@@ -38,6 +46,14 @@ const out = join(workspace, "out.mp4");
 /** What `uploadFalFile` hands back: a clip fal can fetch, not a data URI. */
 const HOSTED = "https://v3b.fal.media/files/b/0a847700/clip.mp4";
 const quiet = { upload: async () => HOSTED, onNote: () => {} };
+
+/** A Topaz body, without the union narrowing every assertion would need. */
+const topazBody = async (over: Record<string, unknown> = {}) =>
+  (await buildInterpolateRequest({ input: clip, output: out, ...over }, quiet)).body as unknown as Record<string, unknown>;
+
+/** The same for RIFE. */
+const rifeBody = async (over: Record<string, unknown> = {}) =>
+  (await buildInterpolateRequest({ input: clip, output: out, model: "rife", ...over }, quiet)).body as unknown as Record<string, unknown>;
 
 const SCRIPT = join(fileURLToPath(new URL("..", import.meta.url)), "interpolate-video.mjs");
 
@@ -75,18 +91,19 @@ describe("topaz request bodies", () => {
     expect(MODEL_ALIASES).toEqual({ proteus: "Proteus", "gaia-2": "Gaia 2" });
     for (const [alias, falName] of Object.entries(MODEL_ALIASES)) {
       const request = await buildInterpolateRequest({ input: clip, output: out, model: alias }, quiet);
-      expect(request.body.model).toBe(falName);
+      expect(request.body).toMatchObject({ model: falName });
       expect(request.model).toBe(alias);
+      expect(request.family).toBe("topaz");
     }
     await expect(buildInterpolateRequest({ input: clip, output: out, model: "Proteus" }, quiet)).rejects.toThrow("--model");
     await expect(buildInterpolateRequest({ input: clip, output: out, model: "apollo" }, quiet)).rejects.toThrow("--model");
   });
 
   test("target-fps is a whole number inside the supported range, or a refusal naming the flag", async () => {
-    expect((await buildInterpolateRequest({ input: clip, output: out, targetFps: TARGET_FPS_MIN }, quiet)).body.target_fps).toBe(16);
-    expect((await buildInterpolateRequest({ input: clip, output: out, targetFps: TARGET_FPS_MAX }, quiet)).body.target_fps).toBe(60);
+    expect(await topazBody({ targetFps: TARGET_FPS_MIN })).toMatchObject({ target_fps: 16 });
+    expect(await topazBody({ targetFps: TARGET_FPS_MAX })).toMatchObject({ target_fps: 60 });
     // The CLI hands strings through; the body must still carry a number.
-    expect((await buildInterpolateRequest({ input: clip, output: out, targetFps: "30" }, quiet)).body.target_fps).toBe(30);
+    expect(await topazBody({ targetFps: "30" })).toMatchObject({ target_fps: 30 });
     await expect(buildInterpolateRequest({ input: clip, output: out, targetFps: 15 }, quiet)).rejects.toThrow("--target-fps");
     await expect(buildInterpolateRequest({ input: clip, output: out, targetFps: 61 }, quiet)).rejects.toThrow("--target-fps");
     await expect(buildInterpolateRequest({ input: clip, output: out, targetFps: 59.94 }, quiet)).rejects.toThrow("--target-fps");
@@ -98,10 +115,10 @@ describe("topaz request bodies", () => {
     // returns the source size, so this is the loop's default and it travels
     // exactly as given.
     expect(DEFAULT_UPSCALE).toBe(1);
-    expect((await buildInterpolateRequest({ input: clip, output: out, upscale: 1 }, quiet)).body.upscale_factor).toBe(1);
-    expect((await buildInterpolateRequest({ input: clip, output: out, upscale: "1" }, quiet)).body.upscale_factor).toBe(1);
-    expect((await buildInterpolateRequest({ input: clip, output: out, upscale: 1.5 }, quiet)).body.upscale_factor).toBe(1.5);
-    expect((await buildInterpolateRequest({ input: clip, output: out, upscale: MAX_UPSCALE }, quiet)).body.upscale_factor).toBe(8);
+    expect(await topazBody({ upscale: 1 })).toMatchObject({ upscale_factor: 1 });
+    expect(await topazBody({ upscale: "1" })).toMatchObject({ upscale_factor: 1 });
+    expect(await topazBody({ upscale: 1.5 })).toMatchObject({ upscale_factor: 1.5 });
+    expect(await topazBody({ upscale: MAX_UPSCALE })).toMatchObject({ upscale_factor: 8 });
     await expect(buildInterpolateRequest({ input: clip, output: out, upscale: 0 }, quiet)).rejects.toThrow("--upscale");
     await expect(buildInterpolateRequest({ input: clip, output: out, upscale: -2 }, quiet)).rejects.toThrow("--upscale");
     await expect(buildInterpolateRequest({ input: clip, output: out, upscale: 9 }, quiet)).rejects.toThrow("--upscale");
@@ -137,6 +154,68 @@ describe("topaz request bodies", () => {
     await expect(buildInterpolateRequest({ output: out }, counted)).rejects.toThrow("--input");
     await expect(buildInterpolateRequest({ input: clip }, counted)).rejects.toThrow("--output");
     await expect(buildInterpolateRequest({ input: join(workspace, "gone.mp4"), output: out }, counted)).rejects.toThrow("not found");
+    expect(uploads).toBe(0);
+  });
+});
+
+describe("rife request bodies", () => {
+  test("rife names its own endpoint and multiplies the rate rather than setting one", async () => {
+    const request = await buildInterpolateRequest({ input: clip, output: out, model: "rife" }, quiet);
+    expect(request.url).toBe(RIFE_URL);
+    expect(RIFE_URL).toBe("https://fal.run/fal-ai/rife/video");
+    expect(request.model).toBe("rife");
+    expect(request.family).toBe("rife");
+    expect(INTERPOLATORS).toEqual({ proteus: "topaz", "gaia-2": "topaz", rife: "rife" });
+    // `num_frames: 1` turns 24 fps into 48 — there is no target rate here,
+    // so no `fps` travels and `use_calculated_fps` says to work it out.
+    expect(DEFAULT_BETWEEN).toBe(1);
+    expect(request.body).toEqual({
+      video_url: HOSTED,
+      num_frames: 1,
+      use_scene_detection: false,
+      use_calculated_fps: true,
+      loop: false,
+    });
+  });
+
+  test("--loop is the flag the wrap needs, and --scene-detect the one a cut needs", async () => {
+    // fal documents `loop: true` as "the final frame will be looped back to
+    // the first frame to create a seamless loop" — the one pair Topaz never
+    // sees. Measured on the trial clip: seam 0.0107 against a step of
+    // 0.0275, under half a step.
+    expect(await rifeBody({ loop: true })).toMatchObject({ loop: true });
+    expect(await rifeBody({ sceneDetect: true })).toMatchObject({ use_scene_detection: true });
+    expect(await rifeBody({ between: "2" })).toMatchObject({ num_frames: 2 });
+    expect(await rifeBody({ between: 3 })).toMatchObject({ num_frames: 3 });
+  });
+
+  test("--fps pins the rate, and only then does an fps field travel", async () => {
+    expect(await rifeBody({ fps: "48" })).toMatchObject({ use_calculated_fps: false, fps: 48 });
+    expect(await rifeBody()).not.toHaveProperty("fps");
+    await expect(buildInterpolateRequest({ input: clip, output: out, model: "rife", fps: 120 }, quiet)).rejects.toThrow("--fps");
+    await expect(buildInterpolateRequest({ input: clip, output: out, model: "rife", fps: "quick" }, quiet)).rejects.toThrow("--fps");
+  });
+
+  test("--between is a whole number of invented frames, at least one", async () => {
+    await expect(buildInterpolateRequest({ input: clip, output: out, model: "rife", between: 0 }, quiet)).rejects.toThrow("--between");
+    await expect(buildInterpolateRequest({ input: clip, output: out, model: "rife", between: 1.5 }, quiet)).rejects.toThrow("--between");
+    await expect(buildInterpolateRequest({ input: clip, output: out, model: "rife", between: "lots" }, quiet)).rejects.toThrow("--between");
+  });
+
+  test("each endpoint refuses the other's flags by name, before any upload", async () => {
+    let uploads = 0;
+    const counted = { ...quiet, upload: async () => { uploads += 1; return HOSTED; } };
+    const refuse = (over: Record<string, unknown>) =>
+      buildInterpolateRequest({ input: clip, output: out, ...over }, counted);
+
+    // Topaz has no multiplier and no wrap flag …
+    await expect(refuse({ between: 2 })).rejects.toThrow("--between");
+    await expect(refuse({ loop: true })).rejects.toThrow("--loop");
+    await expect(refuse({ sceneDetect: true })).rejects.toThrow("--scene-detect");
+    await expect(refuse({ fps: 48 })).rejects.toThrow("--fps");
+    // … and RIFE has no target rate and no resize.
+    await expect(refuse({ model: "rife", targetFps: 60 })).rejects.toThrow("--target-fps");
+    await expect(refuse({ model: "rife", upscale: 2 })).rejects.toThrow("--upscale");
     expect(uploads).toBe(0);
   });
 });
@@ -192,6 +271,39 @@ describe("topaz download and result", () => {
       },
     );
     expect(result.url).toBe("https://cdn.fal.ai/upscaled.mp4");
+  });
+
+  test("a rife run reports the multiplier and the wrap, not a target rate", async () => {
+    const output = join(workspace, "rife", "loop-48.mp4");
+    const bytes = Buffer.from("fake h264 payload");
+    const submitted: unknown[] = [];
+    const result = await interpolateVideo(
+      { input: clip, output, apiKey: "fixture-key", model: "rife", between: "1", loop: true },
+      {
+        upload,
+        runJob: async (options: { url: string; body: unknown }) => {
+          submitted.push({ url: options.url, body: options.body });
+          // The shape fal really answered on the trial clip: one object.
+          return { data: { video: { url: "https://cdn.fal.ai/rife.mp4", content_type: "video/mp4", file_size: 570_000 } }, apiMs: 10, attempts: 1 };
+        },
+        download: async () => bytes,
+      },
+    );
+    expect(result).toEqual({
+      path: output,
+      url: "https://cdn.fal.ai/rife.mp4",
+      file_size: bytes.length,
+      model: "rife",
+      between: 1,
+      loop: true,
+    });
+    // No `target_fps` and no `upscale_factor`: nobody set either of them.
+    expect(result).not.toHaveProperty("target_fps");
+    expect(submitted).toEqual([{
+      url: RIFE_URL,
+      body: { video_url: HOSTED, num_frames: 1, use_scene_detection: false, use_calculated_fps: true, loop: true },
+    }]);
+    expect(readFileSync(output)).toEqual(bytes);
   });
 
   test("a response with no video URL fails loudly and writes nothing", async () => {
@@ -257,12 +369,14 @@ describe("interpolate-video CLI guard rails", () => {
     const help = runCli(["--help"]);
     expect(help.code).toBe(0);
     const text = help.err + help.out;
-    for (const flag of ["--input", "--output", "--target-fps", "--upscale", "--model", "--json", "--deadline-s"]) {
+    for (const flag of ["--input", "--output", "--target-fps", "--upscale", "--model", "--between", "--loop", "--scene-detect", "--json", "--deadline-s"]) {
       expect(text).toContain(flag);
     }
     expect(text).toContain("proteus");
     expect(text).toContain("gaia-2");
+    expect(text).toContain("rife");
     expect(text).toContain("$0.01");
+    expect(text).toContain("$0.0013");
   });
 
   test("missing arguments and a missing key die before any network I/O", () => {
