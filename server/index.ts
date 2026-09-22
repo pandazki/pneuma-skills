@@ -14,6 +14,7 @@ import type { TerminalSocketData } from "./ws-bridge-types.js";
 import type { ServerWebSocket } from "bun";
 import { TerminalManager } from "./terminal-manager.js";
 import { registerModeMakerRoutes } from "./mode-maker-routes.js";
+import { HOST_ABI_VENDOR_SHIMS, hostAbiImportMap } from "../snapshot/mode-build.js";
 import { registerEvolutionRoutes } from "./evolution-routes.js";
 import { openPath, revealPath, openUrl } from "./system-bridge.js";
 import { pathStartsWith, isWin } from "./utils.js";
@@ -4070,49 +4071,15 @@ export async function startServer(options: ServerOptions) {
   if (options.modeBundleDir) {
     const bundleDir = options.modeBundleDir;
 
-    // Vendor shims — re-export React from window globals set by main bundle
-    const REACT_SHIM = `const R = window.__PNEUMA_REACT__;
-export default R;
-export const { useState, useEffect, useCallback, useMemo, useRef, useContext, createContext, forwardRef, memo, Fragment, createElement, cloneElement, Children, isValidElement, Component, PureComponent, Suspense, lazy, startTransition, useTransition, useDeferredValue, useId, useSyncExternalStore, useImperativeHandle, useLayoutEffect, useDebugValue, useReducer } = R;`;
-
-    const JSX_RUNTIME_SHIM = `const J = window.__PNEUMA_JSX_RUNTIME__;
-export const { jsx, jsxs, Fragment } = J;`;
-
-    // Bun.build uses jsx-dev-runtime (jsxDEV) due to a Bun v1.3+ regression.
-    // jsxDEV(type, props, key, isStatic, source, self) is signature-compatible
-    // with jsx(type, props, key) — extra dev args are simply ignored.
-    const JSX_DEV_RUNTIME_SHIM = `const J = window.__PNEUMA_JSX_RUNTIME__;
-export const jsxDEV = J.jsx;
-export const Fragment = J.Fragment;`;
-
-    app.get("/vendor/react.js", (c) => new Response(REACT_SHIM, { headers: { "Content-Type": "application/javascript" } }));
-    // react-dom exports forwarded to published mode bundles. Keep in sync
-    // with what react-dom actually exports — missing an export here causes
-    // a runtime SyntaxError when a bundle imports it (since this shim is
-    // an ES module, any named import that isn't re-exported fails hard).
-    // unstable_batchedUpdates in particular is still pulled in by @dnd-kit
-    // and a few other deps; React 18+ auto-batches so a fallback identity
-    // shim is safe if the runtime ever stops providing it.
-    const REACT_DOM_SHIM = `const RD = window.__PNEUMA_REACT_DOM__;
-export default RD;
-export const { createPortal, flushSync, createRoot, hydrateRoot, version } = RD;
-export const unstable_batchedUpdates = RD.unstable_batchedUpdates || ((fn, ...args) => fn(...args));`;
-    app.get("/vendor/react-dom.js", (c) => new Response(REACT_DOM_SHIM, { headers: { "Content-Type": "application/javascript" } }));
-    app.get("/vendor/react-jsx-runtime.js", (c) => new Response(JSX_RUNTIME_SHIM, { headers: { "Content-Type": "application/javascript" } }));
-    app.get("/vendor/react-jsx-dev-runtime.js", (c) => new Response(JSX_DEV_RUNTIME_SHIM, { headers: { "Content-Type": "application/javascript" } }));
-
-    // Host store shim — re-exports `useStore` from the HOST's single Zustand
-    // instance. Without this, Bun.build inlines the entire src/store.ts
-    // tree into every published mode bundle, and the mode ends up with its
-    // own parallel store that never talks to the host. The visible symptom
-    // is anything that crosses the mode/host boundary (activeContentSet,
-    // activeFile, selection) silently failing because writes go to the
-    // mode's bundled copy while the host reads from its own.
-    const PNEUMA_STORE_SHIM = `const S = window.__PNEUMA_STORE__;
-if (!S) throw new Error("__PNEUMA_STORE__ not set — pneuma-skills host didn't expose useStore before loading the mode bundle");
-export const useStore = S;
-export default S;`;
-    app.get("/vendor/pneuma-store.js", (c) => new Response(PNEUMA_STORE_SHIM, { headers: { "Content-Type": "application/javascript" } }));
+    // Vendor shims — the host ABI declared in snapshot/mode-build.ts. Each
+    // shim re-exports a host singleton from a window global that
+    // src/main.tsx sets before the mode bundle loads, and the importmap
+    // below maps the bare specifiers Bun.build left external onto these
+    // URLs. Both tables come from the builder so a bundle can never be
+    // compiled against an ABI this server does not serve.
+    for (const [url, source] of Object.entries(HOST_ABI_VENDOR_SHIMS)) {
+      app.get(url, () => new Response(source, { headers: { "Content-Type": "application/javascript" } }));
+    }
 
     // Serve compiled mode bundle (JS + CSS)
     app.get("/mode-assets/*", async (c) => {
@@ -4158,7 +4125,7 @@ export default S;`;
 
       if (hasModeBundleDir) {
         const importMap = `<script type="importmap">
-{"imports":{"react":"/vendor/react.js","react-dom":"/vendor/react-dom.js","react/jsx-runtime":"/vendor/react-jsx-runtime.js","react/jsx-dev-runtime":"/vendor/react-jsx-dev-runtime.js","pneuma-skills/src/store.js":"/vendor/pneuma-store.js","pneuma-skills/src/store.ts":"/vendor/pneuma-store.js"}}
+${JSON.stringify(hostAbiImportMap())}
 </script>`;
         // Inject <link> tags for any CSS files produced by Bun.build()
         let cssLinks = "";

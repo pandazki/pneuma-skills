@@ -9,7 +9,7 @@
  */
 
 import { resolve, dirname, join, basename, sep } from "node:path";
-import { existsSync, copyFileSync, cpSync, mkdirSync, readFileSync, writeFileSync, statSync, realpathSync, readdirSync, rmSync, unlinkSync } from "node:fs";
+import { existsSync, copyFileSync, cpSync, mkdirSync, readFileSync, writeFileSync, statSync, readdirSync, rmSync, unlinkSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import * as p from "@clack/prompts";
 import { t } from "./i18n.js";
@@ -2480,6 +2480,10 @@ async function main() {
   }
 
   // 2.5 Pre-compile external mode viewer for production serving
+  //     Same builder, same host ABI as publish and the release pack step —
+  //     see snapshot/mode-build.ts. A private build config here is how an
+  //     external mode used to end up with its own inlined copy of the host
+  //     store while a published one did not.
   let modeBundleDir: string | undefined;
   if (!isDev && resolved.type !== "builtin") {
     const existingBuild = join(resolved.path, ".build", "pneuma-mode.js");
@@ -2487,59 +2491,21 @@ async function main() {
       // Use pre-built bundle from publish (third-party deps already inlined)
       modeBundleDir = join(resolved.path, ".build");
       p.log.step(t("pneuma.using_prebuilt_viewer"));
-    } else {
+    } else if (
+      existsSync(join(resolved.path, "pneuma-mode.ts")) ||
+      existsSync(join(resolved.path, "manifest.ts"))
+    ) {
       // Build from source (local development, unpublished modes)
-      const buildDir = join(resolved.path, ".build");
-      const modeEntry = join(resolved.path, "pneuma-mode.ts");
-      const manifestEntry = join(resolved.path, "manifest.ts");
-      const entrypoints = [modeEntry, manifestEntry].filter((e) => existsSync(e));
-      if (entrypoints.length > 0) {
-        p.log.step(t("pneuma.compiling_viewer"));
-        // Resolve symlinks (macOS /tmp → /private/tmp) so importer paths match
-        const realModePath = realpathSync(resolved.path);
-        const result = await Bun.build({
-          entrypoints,
-          outdir: buildDir,
-          target: "browser",
-          format: "esm",
-          external: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
-          throw: false,
-          plugins: [{
-            name: "pneuma-mode-resolve",
-            setup(build) {
-              // Redirect imports from external mode files to pneuma project root
-              const externals = new Set(["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"]);
-              build.onResolve({ filter: /.+/ }, (args) => {
-                if (!args.importer || (!args.importer.startsWith(realModePath) && !args.importer.startsWith(resolved.path))) return;
-                if (!args.path.startsWith(".") && !args.path.startsWith("/")) {
-                  // Let Bun handle external modules (don't resolve them to file paths)
-                  if (externals.has(args.path)) return;
-                  // Bare specifier — resolve from project's or mode's node_modules
-                  try {
-                    return { path: require.resolve(args.path, { paths: [resolved.path, join(PROJECT_ROOT, "node_modules")] }) };
-                  } catch { /* let Bun handle it */ }
-                  return;
-                }
-                const abs = resolve(dirname(args.importer), args.path);
-                // Redirect imports that reference pneuma project internals (core/, src/)
-                for (const prefix of ["/core/", "/src/"]) {
-                  const idx = abs.indexOf(prefix);
-                  if (idx !== -1 && !abs.startsWith(PROJECT_ROOT)) {
-                    return { path: PROJECT_ROOT + abs.slice(idx) };
-                  }
-                }
-              });
-            },
-          }],
-        });
-        if (result.success) {
-          modeBundleDir = buildDir;
-          p.log.step(t("pneuma.viewer_compiled"));
-        } else {
-          p.log.warn(t("pneuma.viewer_compile_failed"));
-          for (const log of result.logs) {
-            p.log.warn(`  ${log.message}`);
-          }
+      p.log.step(t("pneuma.compiling_viewer"));
+      const { buildModeViewer } = await import("../snapshot/mode-build.js");
+      const result = await buildModeViewer(resolved.path, { projectRoot: PROJECT_ROOT });
+      if (result.success) {
+        modeBundleDir = result.buildDir;
+        p.log.step(t("pneuma.viewer_compiled"));
+      } else {
+        p.log.warn(t("pneuma.viewer_compile_failed"));
+        for (const message of result.errors) {
+          p.log.warn(`  ${message}`);
         }
       }
     }
