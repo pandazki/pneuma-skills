@@ -515,9 +515,10 @@ export async function generateSeedanceVideo({ output }) {
 }
 `;
 
-const HAS_FFMPEG =
-  Bun.spawnSync(["ffmpeg", "-version"], { stdout: "ignore", stderr: "ignore" }).exitCode === 0 &&
-  Bun.spawnSync(["ffprobe", "-version"], { stdout: "ignore", stderr: "ignore" }).exitCode === 0;
+// `Bun.which`, not `Bun.spawnSync(["ffmpeg", "-version"])`: spawnSync throws
+// "Executable not found in $PATH" on a machine without ffmpeg (the CI runner),
+// which killed this whole file at collection instead of skipping its tests.
+const HAS_FFMPEG = !!Bun.which("ffmpeg") && !!Bun.which("ffprobe");
 
 describe("a take in flight never rewinds the shot", () => {
   const SHOT = "film/shots/lab-walk";

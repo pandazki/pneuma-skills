@@ -24,9 +24,10 @@ const SCRIPTS = join(import.meta.dir, "..", "skill", "scripts");
 const BACKLOT = join(SCRIPTS, "backlot.mjs");
 const PREVIZ = join(SCRIPTS, "previz.mjs");
 
-const HAS_FFMPEG =
-  Bun.spawnSync(["ffmpeg", "-version"], { stdout: "ignore", stderr: "ignore" }).exitCode === 0 &&
-  Bun.spawnSync(["ffprobe", "-version"], { stdout: "ignore", stderr: "ignore" }).exitCode === 0;
+// `Bun.which`, not `Bun.spawnSync(["ffmpeg", "-version"])`: spawnSync throws
+// "Executable not found in $PATH" on a machine without ffmpeg (the CI runner),
+// which killed this whole file at collection instead of skipping its tests.
+const HAS_FFMPEG = !!Bun.which("ffmpeg") && !!Bun.which("ffprobe");
 
 const workspaces: string[] = [];
 afterAll(() => {
