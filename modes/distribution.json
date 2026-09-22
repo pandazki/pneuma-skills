@@ -1,0 +1,17 @@
+{
+  "$comment": "Release packaging of modes. `bundled` modes ship inside the npm package and the desktop installers; every other mode directory with a manifest.ts is a CATALOG mode — the package keeps only its showcase/ images plus an entry in the generated modes/catalog.json, and the mode itself is downloaded from the CDN on first use. This is a decision of this distribution, not a property a mode declares about itself, which is why it lives here and not in ModeManifest. Design: docs/proposals/2026-09-22-mode-distribution.md. Invariants are pinned by core/__tests__/mode-distribution.test.ts: every name is a real mode directory, every DEFAULT_FAVORITES entry is bundled, every hidden mode is bundled, and _shared is bundled.",
+  "bundled": [
+    "_shared",
+    "cosmos",
+    "diagram",
+    "evolve",
+    "illustrate",
+    "kami",
+    "project-evolve",
+    "project-onboard",
+    "project-tidy",
+    "remotion",
+    "slide",
+    "webcraft"
+  ]
+}
