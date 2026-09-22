@@ -33,6 +33,7 @@ import { HookBus } from "../core/hook-bus.js";
 import { createProxyMiddleware, mergeProxyConfig, type ProxyConfigRef } from "./proxy-middleware.js";
 import { resolveLocalized, type ModeManifest, type ProxyRoute } from "../core/types/mode-manifest.js";
 import type { ModeCatalogEntry, ModeInstallState } from "../core/types/mode-catalog.js";
+import { listCatalogModes } from "../core/mode-catalog.js";
 import { startProxyWatcher, registerSelfWrite, registerSelfDelete } from "./file-watcher.js";
 import { copySeedEntry, resolveSeedCatalog, runPostSeedInstall } from "./seed-installer.js";
 import { mountHandoffRoutes } from "./handoff-routes.js";
@@ -855,43 +856,14 @@ export async function startServer(options: ServerOptions) {
   type CatalogModeListing = ModeCatalogEntry & { state: ModeInstallState };
 
   /**
-   * Catalog access seam.
-   *
-   * `core/mode-catalog.ts` owns the packaged catalog and the install-state
-   * decision (does `~/.pneuma/catalog/<name>/` hold the archive THIS core
-   * pins?). The registry only joins that answer with the showcase images
-   * that stayed in the package.
-   *
-   * The specifier is held in a variable on purpose: a core built before the
-   * catalog module existed — and a repo checkout with no generated
-   * `modes/catalog.json` — must still serve a registry. A missing module or
-   * a missing catalog is the normal "everything ships in the tree" case, not
-   * an error, so it degrades to an empty catalog bucket and every mode stays
-   * reachable through `builtins`. A module that throws for any other reason
-   * is logged once rather than taking the whole registry down with it.
+   * Catalog modes as the launcher sees them before anything is downloaded.
+   * `listCatalogModes` answers `[]` for a repo checkout (no generated
+   * `modes/catalog.json`), where every mode is reachable from the tree and
+   * belongs in `builtins` instead — an empty bucket here is the normal
+   * development case, not a degraded one.
    */
-  const CATALOG_MODULE = "../core/mode-catalog.js";
-  let catalogModuleUnavailable = false;
-  const loadCatalogListings = async (): Promise<CatalogModeListing[]> => {
-    if (catalogModuleUnavailable) return [];
-    try {
-      const mod = (await import(CATALOG_MODULE)) as {
-        listCatalogModes?: () => CatalogModeListing[] | Promise<CatalogModeListing[]>;
-      };
-      if (typeof mod.listCatalogModes !== "function") {
-        catalogModuleUnavailable = true;
-        return [];
-      }
-      return (await mod.listCatalogModes()) ?? [];
-    } catch (err) {
-      catalogModuleUnavailable = true;
-      const reason = err instanceof Error ? err.message : String(err);
-      if (!/Cannot find module|Could not resolve/i.test(reason)) {
-        console.warn(`[registry] catalog unavailable: ${reason}`);
-      }
-      return [];
-    }
-  };
+  const loadCatalogListings = async (root: string): Promise<CatalogModeListing[]> =>
+    listCatalogModes({ projectRoot: root });
 
   /**
    * The names this distribution ships inside the package, in the order the
@@ -949,7 +921,7 @@ export async function startServer(options: ServerOptions) {
         .sort();
     } catch { /* no modes dir (minimal test harness) — leave empty */ }
 
-    const catalogListings = await loadCatalogListings();
+    const catalogListings = await loadCatalogListings(projectRoot);
     const declaredOrder = new Map<string, number>();
     for (const name of [...readBundledModeNames(projectRoot), ...catalogListings.map((e) => e.name)]) {
       if (!declaredOrder.has(name)) declaredOrder.set(name, declaredOrder.size);

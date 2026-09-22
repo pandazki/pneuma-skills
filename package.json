@@ -36,7 +36,6 @@
     "modes/webcraft/",
     "modes/*/showcase/**",
     "!modes/*/harness/",
-    "!**/__tests__/",
     "snapshot/",
     "dist/",
     "public/fonts/",
@@ -44,7 +43,8 @@
     "vendor/",
     "vite.config.ts",
     "index.html",
-    "README.md"
+    "README.md",
+    "!**/__tests__/**"
   ],
   "engines": {
     "bun": ">=1.3.14"
