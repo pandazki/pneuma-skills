@@ -500,13 +500,6 @@ export async function buildModeViewer(
 }
 
 /**
- * Name the publish path (`snapshot/mode-publish.ts`,
- * `server/mode-maker-routes.ts`) still calls the builder by. Same function —
- * publishing is one of the callers, not a separate build configuration.
- */
-export const buildModeForPublish = buildModeViewer;
-
-/**
  * Remove .build/ directory from a mode workspace.
  */
 export function cleanModeBuild(modeDir: string): void {

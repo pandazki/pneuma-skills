@@ -29,7 +29,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createModeArchive } from "../snapshot/archive.js";
-import { buildModeForPublish, cleanModeBuild } from "../snapshot/mode-build.js";
+import { buildModeViewer, cleanModeBuild } from "../snapshot/mode-build.js";
 import { loadCredentials, checkR2KeyExists, uploadToR2, uploadJsonToR2 } from "../snapshot/r2.js";
 import type { R2Credentials } from "../snapshot/types.js";
 import { parseManifestTs } from "../core/utils/manifest-parser.js";
@@ -140,6 +140,12 @@ export interface Distribution {
   bundled: string[];
 }
 
+/**
+ * Strict on purpose, which is why this is not
+ * `core/mode-catalog.ts::bundledModeNames`: that one degrades to `[]` so a
+ * running installation still starts, while a release that cannot read the
+ * split would silently publish every mode as a catalog mode.
+ */
 export function readDistribution(modesDir: string): Distribution {
   const raw = readFileSync(join(modesDir, "distribution.json"), "utf-8");
   const parsed = JSON.parse(raw) as Partial<Distribution>;
@@ -302,7 +308,7 @@ async function packMode(
   // node_modules, and some of them only resolve from inside it:
   // `modes/draw` imports `@excalidraw/excalidraw/index.css`, a conditional
   // `exports` alias `Bun.resolveSync` cannot follow from an outside path.
-  const built = await buildModeForPublish(modeDir);
+  const built = await buildModeViewer(modeDir);
   if (!built.success) {
     throw new Error(`${name}: viewer build failed\n  ${built.errors.join("\n  ")}`);
   }

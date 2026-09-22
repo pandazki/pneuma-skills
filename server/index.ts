@@ -33,7 +33,7 @@ import { HookBus } from "../core/hook-bus.js";
 import { createProxyMiddleware, mergeProxyConfig, type ProxyConfigRef } from "./proxy-middleware.js";
 import { resolveLocalized, type ModeManifest, type ProxyRoute } from "../core/types/mode-manifest.js";
 import type { ModeCatalogEntry, ModeInstallState } from "../core/types/mode-catalog.js";
-import { listCatalogModes } from "../core/mode-catalog.js";
+import { bundledModeNames, listCatalogModes } from "../core/mode-catalog.js";
 import { startProxyWatcher, registerSelfWrite, registerSelfDelete } from "./file-watcher.js";
 import { copySeedEntry, resolveSeedCatalog, runPostSeedInstall } from "./seed-installer.js";
 import { mountHandoffRoutes } from "./handoff-routes.js";
@@ -865,25 +865,6 @@ export async function startServer(options: ServerOptions) {
   const loadCatalogListings = async (root: string): Promise<CatalogModeListing[]> =>
     listCatalogModes({ projectRoot: root });
 
-  /**
-   * The names this distribution ships inside the package, in the order the
-   * launcher should lead with. Read from `modes/distribution.json` — the one
-   * authority for the split (see `core/types/mode-catalog.ts`). A malformed
-   * or missing file degrades to "no declared order", which leaves the
-   * on-disk modes alphabetical rather than hiding any of them.
-   */
-  const readBundledModeNames = (root: string): string[] => {
-    try {
-      const raw = JSON.parse(readFileSync(join(root, "modes", "distribution.json"), "utf-8")) as {
-        bundled?: unknown;
-      };
-      if (!Array.isArray(raw.bundled)) return [];
-      return raw.bundled.filter((n): n is string => typeof n === "string");
-    } catch {
-      return [];
-    }
-  };
-
   const buildRegistry = async (locale: string): Promise<RegistryResponse> => {
     const { parseManifestTs } = await import("../core/utils/manifest-parser.js");
     const { checkCompat } = await import("../core/version-compat.js");
@@ -923,7 +904,12 @@ export async function startServer(options: ServerOptions) {
 
     const catalogListings = await loadCatalogListings(projectRoot);
     const declaredOrder = new Map<string, number>();
-    for (const name of [...readBundledModeNames(projectRoot), ...catalogListings.map((e) => e.name)]) {
+    // `bundledModeNames` reads `modes/distribution.json`, the one authority
+    // for the split (see `core/types/mode-catalog.ts`). A malformed or missing
+    // file degrades to "no declared order", which leaves the on-disk modes
+    // alphabetical rather than hiding any of them.
+    const declared = [...bundledModeNames({ projectRoot }), ...catalogListings.map((e) => e.name)];
+    for (const name of declared) {
       if (!declaredOrder.has(name)) declaredOrder.set(name, declaredOrder.size);
     }
     const builtinNames = onDiskModes.slice().sort((a, b) => {

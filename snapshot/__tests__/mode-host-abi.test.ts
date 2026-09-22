@@ -23,7 +23,6 @@ import {
   hostAbiImportMap,
   resolveHostAbiExternal,
   buildModeViewer,
-  buildModeForPublish,
 } from "../mode-build.js";
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -302,9 +301,5 @@ export default function FixturePreview() {
     // not leave resolution scaffolding (a linked node_modules, a lockfile)
     // next to the sources.
     expect(readdirSync(modeDir).sort()).toEqual([".build", "manifest.ts", "pneuma-mode.ts", "viewer"]);
-  });
-
-  test("buildModeForPublish is the same builder", () => {
-    expect(buildModeForPublish).toBe(buildModeViewer);
   });
 });
