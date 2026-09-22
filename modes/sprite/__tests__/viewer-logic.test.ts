@@ -67,8 +67,11 @@ import {
   resolveFrameSource,
   selectActiveCharacter,
   stageWarnings,
+  nearestStripFrame,
+  stripFrames,
   transportIntent,
   typingTarget,
+  STRIP_MAX_THUMBS,
   type PlaybackState,
 } from "../viewer/playback.js";
 import { contentUrl, encodeContentPath } from "../viewer/urls.js";
@@ -337,6 +340,88 @@ describe("resolveFrameSource", () => {
     expect(source.kind).toBe("frames");
     if (source.kind !== "frames") return;
     expect(source.frames[0]).toBe("/content/motions/bounce/frames/00.png?v=2");
+  });
+});
+
+// ── The strip of a long motion ─────────────────────────────────────────────
+
+/**
+ * A video-model loop is hundreds of frames long (the Kiki idle is 355 at
+ * 532x460), and the strip used to mount one `<img>` per frame: the renderer
+ * stopped answering and the tab had to be killed. The row is a sample now, so
+ * what these pin is that the sample never becomes a lie — the stage still has
+ * every frame, and every thumbnail still carries its own true index.
+ */
+describe("stripFrames", () => {
+  test("a sprite-sheet motion is shown whole", () => {
+    expect(stripFrames(8)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(stripFrames(STRIP_MAX_THUMBS).length).toBe(STRIP_MAX_THUMBS);
+    expect(stripFrames(STRIP_MAX_THUMBS).at(-1)).toBe(STRIP_MAX_THUMBS - 1);
+  });
+
+  test("a long loop is sampled, and both ends of the seam are in it", () => {
+    const shown = stripFrames(355);
+    expect(shown.length).toBe(STRIP_MAX_THUMBS);
+    expect(shown[0]).toBe(0);
+    expect(shown.at(-1)).toBe(354);
+  });
+
+  test("the sample is even and never repeats or goes backwards", () => {
+    const shown = stripFrames(355);
+    const steps = shown.slice(1).map((value, i) => value - (shown[i] as number));
+    expect(Math.min(...steps)).toBeGreaterThan(0);
+    // An even stride: no gap is more than one frame off any other.
+    expect(Math.max(...steps) - Math.min(...steps)).toBeLessThanOrEqual(1);
+  });
+
+  test("nothing to show is an empty row, not a row of blanks", () => {
+    expect(stripFrames(0)).toEqual([]);
+    expect(stripFrames(-4)).toEqual([]);
+    expect(stripFrames(Number.NaN)).toEqual([]);
+  });
+
+  test("the sample is display only — the stage keeps every frame", () => {
+    const shown = stripFrames(355);
+    // 213 is not a thumbnail...
+    expect(shown).not.toContain(213);
+    // ...and `navigate-to` still lands on exactly 213.
+    const p = mutate((body) => {
+      const bounce = body.sprite.motions[0];
+      bounce.frames = Array.from({ length: 355 }, () => bounce.frames[0]);
+    });
+    const r = resolveAddress(p, { motion: "bounce", frame: 213 }, null);
+    expect(r.ok).toBe(true);
+    expect(r.target).toEqual({ kind: "motion", motionId: "bounce", frame: 213 });
+  });
+});
+
+describe("the strip says when it is sampling", () => {
+  test("both locales name the two counts, so the row is never a silent lie", () => {
+    for (const text of Object.values(SPRITE_STRING_TABLES)) {
+      const line = text.stripSampled(96, 355);
+      expect(line).toContain("96");
+      expect(line).toContain("355");
+      expect(text.stripSampledTitle.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("nearestStripFrame", () => {
+  test("the playhead marks the thumbnail it is nearest", () => {
+    const shown = [0, 4, 8, 12];
+    expect(nearestStripFrame(shown, 0)).toBe(0);
+    expect(nearestStripFrame(shown, 5)).toBe(4);
+    expect(nearestStripFrame(shown, 7)).toBe(8);
+    expect(nearestStripFrame(shown, 99)).toBe(12);
+  });
+
+  test("a tie marks the earlier frame, so the mark never runs ahead", () => {
+    expect(nearestStripFrame([0, 4, 8], 2)).toBe(0);
+    expect(nearestStripFrame([0, 4, 8], 6)).toBe(4);
+  });
+
+  test("an empty row has no mark at all", () => {
+    expect(nearestStripFrame([], 3)).toBeNull();
   });
 });
 
@@ -955,6 +1040,18 @@ describe("inspect thresholds", () => {
       warnings: [],
       ...over,
     }) as any;
+
+  test("the bar beside a value reads as a bar, not as another measurement", () => {
+    // "SEAM 0.0022 · closes max 0.0036" put the word `max` next to a report
+    // that also prints `maxJump`, and the threshold read as a second reading
+    // of the motion. Both locales must say "at most this", in one glance.
+    for (const [locale, text] of Object.entries(SPRITE_STRING_TABLES)) {
+      const limit = text.limit("0.0036");
+      expect(limit).toContain("0.0036");
+      expect(limit.toLowerCase()).not.toContain("max");
+      expect(locale === "en" ? limit.startsWith("\u2264") : limit.startsWith("\u4e0a\u9650")).toBe(true);
+    }
+  });
 
   test("scale drift is judged at 15 %, not at whatever looks big", () => {
     expect(scaleDriftVerdict(inspect({ scaleDrift: 0.126 })).over).toBe(false);

@@ -12,9 +12,14 @@
  * atlas (which bakes `duration` per frame) out of step with the file it came
  * from. The stored value is shown next to the override so the difference is
  * never invisible.
+ *
+ * A long motion is SAMPLED here and only here (`stripFrames`). One `<img>` per
+ * frame is affordable for a 24-frame sprite sheet and fatal for a 355-frame
+ * loop; the stage keeps playing every frame either way, and the row says out
+ * loud how many of them it is showing.
  */
 
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 
 import { frameRect, type StageImages } from "./frame-render.js";
 import {
@@ -25,7 +30,7 @@ import {
   StepBackIcon,
   StepForwardIcon,
 } from "./icons.js";
-import type { FrameSource } from "./playback.js";
+import { nearestStripFrame, stripFrames, type FrameSource } from "./playback.js";
 import type { SpriteStrings } from "./strings.js";
 
 const MIN_FPS = 1;
@@ -57,6 +62,13 @@ export function FrameStrip(props: FrameStripProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLButtonElement>(null);
 
+  // The thumbnails depend on how many frames there are, not on where the
+  // playhead is — recomputing this per animation frame would rebuild the whole
+  // row 48 times a second for a loop that never changed length.
+  const shown = useMemo(() => stripFrames(count), [count]);
+  const sampled = shown.length < count;
+  const activeFrame = nearestStripFrame(shown, frame);
+
   // Keep the playhead visible without dragging any ancestor around
   // (`scrollIntoView` scrolls every scrollable ancestor, including the pane).
   useEffect(() => {
@@ -70,7 +82,7 @@ export function FrameStrip(props: FrameStripProps) {
     } else if (right > scroller.scrollLeft + scroller.clientWidth) {
       scroller.scrollLeft = right - scroller.clientWidth + 24;
     }
-  }, [frame]);
+  }, [activeFrame]);
 
   const disabled = count === 0;
   const fpsDiffers = props.fps !== props.motionFps;
@@ -106,6 +118,15 @@ export function FrameStrip(props: FrameStripProps) {
           {String(disabled ? 0 : frame).padStart(2, "0")}
           <span className="text-cc-muted"> / {String(count).padStart(2, "0")}</span>
         </span>
+
+        {sampled ? (
+          <span
+            className="rounded border border-cc-border px-1.5 py-0.5 text-[10px] text-cc-muted"
+            title={t.stripSampledTitle}
+          >
+            {t.stripSampled(shown.length, count)}
+          </span>
+        ) : null}
 
         <span className="mx-1 h-4 w-px bg-cc-border" />
 
@@ -174,16 +195,16 @@ export function FrameStrip(props: FrameStripProps) {
             {t.noFramesYet}
           </span>
         ) : (
-          Array.from({ length: count }, (_, index) => (
+          shown.map((index) => (
             <FrameThumb
               key={index}
-              ref={index === frame ? activeRef : undefined}
+              ref={index === activeFrame ? activeRef : undefined}
               index={index}
-              active={index === frame}
+              active={index === activeFrame}
               source={props.source}
               images={props.images}
               t={t}
-              onClick={() => props.onSeek(index)}
+              onSeek={props.onSeek}
             />
           ))
         )}
@@ -225,15 +246,21 @@ function TransportButton({
 
 const THUMB_PX = 46;
 
-/** One frame, drawn from whichever source the stage is using. */
-const FrameThumb = ({
+/**
+ * One frame, drawn from whichever source the stage is using.
+ *
+ * Memoised, and handed `onSeek` + `index` rather than a fresh closure, so the
+ * playhead moving does not re-render every thumbnail in the row — only the two
+ * whose `active` flips. `onSeek` is the shell's own stable callback.
+ */
+const FrameThumb = memo(({
   ref,
   index,
   active,
   source,
   images,
   t,
-  onClick,
+  onSeek,
 }: {
   ref?: React.Ref<HTMLButtonElement>;
   index: number;
@@ -241,7 +268,7 @@ const FrameThumb = ({
   source: FrameSource;
   images: StageImages;
   t: SpriteStrings;
-  onClick: () => void;
+  onSeek: (frame: number) => void;
 }) => {
   const rect = frameRect(source, images, index);
   const aspect = rect ? rect.sw / rect.sh : 1;
@@ -265,7 +292,7 @@ const FrameThumb = ({
     <button
       ref={ref}
       type="button"
-      onClick={onClick}
+      onClick={() => onSeek(index)}
       role="option"
       aria-selected={active}
       title={t.frameTitle(String(index).padStart(2, "0"))}
@@ -291,6 +318,11 @@ const FrameThumb = ({
             <img
               src={source.frames[index] as string}
               alt=""
+              // The row is a horizontal scroller: without these the browser
+              // fetches and decodes every thumbnail the moment the strip
+              // mounts, whether or not it is anywhere near the visible part.
+              loading="lazy"
+              decoding="async"
               className="max-h-full max-w-full object-contain"
               style={{ imageRendering: "pixelated" }}
               draggable={false}
@@ -313,4 +345,6 @@ const FrameThumb = ({
       </span>
     </button>
   );
-};
+});
+
+FrameThumb.displayName = "FrameThumb";

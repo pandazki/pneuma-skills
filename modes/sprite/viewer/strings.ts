@@ -105,6 +105,9 @@ export interface SpriteStrings {
   storedPlayback: (fps: number, loop: boolean) => string;
   storedPlaybackTitle: string;
   framesList: string;
+  /** The strip is showing a sample of a long motion, not every frame. */
+  stripSampled: (shown: number, total: number) => string;
+  stripSampledTitle: string;
   noFramesYet: string;
   frameTitle: (frame: string) => string;
   noAsset: string;
@@ -294,6 +297,9 @@ const en: SpriteStrings = {
     `file: ${fps} fps · ${loop ? "loop" : "once"} — reset`,
   storedPlaybackTitle: "Playback settings differ from the motion's stored values",
   framesList: "Frames",
+  stripSampled: (shown, total) => `${shown} of ${total}`,
+  stripSampledTitle:
+    "Too many frames to show one thumbnail each: the strip samples them evenly, first and last included. The stage still plays every frame.",
   noFramesYet: "No frames to step through yet.",
   frameTitle: (frame) => `Frame ${frame}`,
   noAsset: "no asset",
@@ -398,7 +404,7 @@ const en: SpriteStrings = {
   factAlpha: "Alpha",
   seamVerdict: { closes: "closes", open: "does not close" },
   none: "none",
-  limit: (text) => `max ${text}`,
+  limit: (text) => `≤ ${text}`,
   acknowledged: (reason) => `Accepted — ${reason}`,
 
   // English comes from the manifest — label and hint both — so this table
@@ -529,6 +535,9 @@ const zhCN: SpriteStrings = {
     `文件里是 ${fps} fps · ${loop ? "循环" : "一次"} —— 恢复`,
   storedPlaybackTitle: "当前播放设置和动作存在文件里的值不一样",
   framesList: "帧",
+  stripSampled: (shown, total) => `${total} 帧抽 ${shown} 帧`,
+  stripSampledTitle:
+    "帧太多，排不下每帧一张缩略图：这一条按等间隔抽样，首帧和末帧一定在里面。舞台照样逐帧播放。",
   noFramesYet: "还没有可以逐帧看的内容。",
   frameTitle: (frame) => `第 ${frame} 帧`,
   noAsset: "缺文件",
