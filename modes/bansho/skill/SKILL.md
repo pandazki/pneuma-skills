@@ -1,6 +1,6 @@
 ---
 name: pneuma-bansho
-description: "Explain something by writing it on a board. Use for ANY task in this workspace — writing or extending `board.md`, correcting or re-explaining a stretch of the lecture, giving it a voice, exporting subtitles, restyling `theme.css`. Trigger whenever the user wants a thing explained rather than documented: 板书, 讲一讲, 白板上讲, 讲透这个概念, 换个说法再讲一遍, \"explain this on a whiteboard\", \"walk me through it\", \"teach me X\", \"turn this into a lecture\", \"why does X work\" — and whenever they point at a step on the board and ask about it."
+description: "Explain something by writing it on a board. Use for ANY task in this workspace — writing or extending `board.md`, correcting or re-explaining a stretch of the lecture, giving it a voice, exporting subtitles, restyling `theme.css`. Trigger whenever the user wants a thing explained rather than documented — in Chinese (板书 / 讲一讲) or English (\"explain this on a whiteboard\", \"teach me X\") — and whenever they point at a step on the board and ask about it."
 ---
 
 # Bansho — board-writing explainer
@@ -137,9 +137,9 @@ A lecture written straight into prose is written well sentence by sentence
 and never designed. Every passage becomes a paragraph, because a paragraph
 is what prose makes; nothing gets drawn, because a figure has to be chosen
 BEFORE the sentences exist — afterwards everything already looks like
-prose. Measured on a real board: four faces, three of them at 46% of their
-width, zero figures, in a lecture whose central idea was a picture. Nobody
-chose that. It is what happens when there is no design.
+prose. A real lecture written this way came out as four half-filled faces
+with zero figures, though its central idea was a picture. Nobody chose
+that. It is what happens when there is no design.
 
 So the first move is not a move on the board. **Write the design down in
 `plan.md`, beside `board.md` in the content set** — not inside `board.md`,

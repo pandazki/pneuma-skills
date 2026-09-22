@@ -23,14 +23,14 @@
 // below. The task fields taskKind / reviewDimensions / gateK / gateCmd are optional
 // with sensible defaults.
 //
-// Engine selection (opus default vs Fable-5 heavyweight) — see useFable() below:
-//   - args.effort === 'ultracode'  → every task's impl/amend runs on the Fable-5 heavyweight
-//     variant (pneuma-impl-fable / pneuma-amender-fable) instead of the opus default.
+// Engine selection (opus default vs fable heavyweight) — see useFable() below:
+//   - args.effort === 'ultracode'  → every task's impl/amend runs on fable.
 //   - task.engine === 'fable' | task.heavy === true → that ONE task uses fable even when the
 //     global effort is not ultracode (the orchestrator marks a long-horizon / complex / high-
 //     stakes task heavy). task.engine === 'opus' forces opus back even under global ultracode.
-//   Both variants share identical discipline (gates / TDD / forbidden actions); only the
-//   underlying model and turn budget differ. Omit effort/engine → opus everywhere.
+//   The engine is a per-call `model` override on the same pneuma-impl / pneuma-amender
+//   roster agents; discipline (gates / TDD / forbidden actions) does not fork by model.
+//   Omit effort/engine → opus everywhere.
 
 export const meta = {
   name: 'dev-master-orchestrator',
@@ -121,31 +121,28 @@ const SPEC_DOC = A.specDoc
 // override it via task.gateCmd (see verifyPrompt).
 const TEST_CMD = A.testCmd || 'bun run test'
 const MAX_ROUNDS = A.maxRounds || 3
-// Global effort tier. 'ultracode' switches every task's impl/amend to the Fable-5
-// heavyweight variant (see useFable).
+// Global effort tier. 'ultracode' switches every task's impl/amend to fable (see useFable).
 const EFFORT = String(A.effort || '').toLowerCase()
 log('dev-master-orchestrator start — waves=' + WAVES.length + ' testCmd=' + TEST_CMD + ' maxRounds=' + MAX_ROUNDS + ' effort=' + (EFFORT || 'default'))
 
-// ── Engine routing: opus (default) vs fable (Fable-5 heavyweight variant) ──
-// The master orchestrator picks the Fable-5 heavyweight impl/amender variants
-// (pneuma-impl-fable / pneuma-amender-fable) under any of these conditions, otherwise
-// the default opus versions (pneuma-impl / pneuma-amender):
+// ── Engine routing: opus (default) vs fable ──
+// The master orchestrator runs impl/amend on fable under any of these conditions,
+// otherwise on opus; both go through the same pneuma-impl / pneuma-amender agents with
+// a per-call `model` override:
 //   - global tier maxed: A.effort === 'ultracode' — every task in the run uses fable;
 //   - single task marked heavy: task.engine === 'fable' or task.heavy === true — the
 //     master judges that task long-horizon / structurally complex / multi-step /
 //     high-stakes and upgrades just that one even when the global tier is not ultracode.
 // Reverse escape hatch: task.engine === 'opus' forces that task back onto opus even
 // under global ultracode — used to keep individual trivial tasks on the lighter engine
-// inside an ultracode run. The fable/opus variants share identical discipline
-// (gates / TDD / forbidden actions / no-silent-failure do not fork by model); only the
-// underlying model and turn budget differ.
+// inside an ultracode run. Discipline (gates / TDD / forbidden actions / no-silent-failure)
+// does not fork by model.
 function useFable(task) {
   if (task && task.engine === 'opus') return false
   if (task && (task.engine === 'fable' || task.heavy === true)) return true
   return EFFORT === 'ultracode'
 }
-function implAgentType(task) { return useFable(task) ? 'pneuma-impl-fable' : 'pneuma-impl' }
-function amendAgentType(task) { return useFable(task) ? 'pneuma-amender-fable' : 'pneuma-amender' }
+function engineModel(task) { return useFable(task) ? 'fable' : 'opus' }
 
 // ── StructuredOutput hard close-out ──
 // review/verify are dispatched to general-purpose agents; after running a pile of gate
@@ -330,8 +327,8 @@ async function runTask(task) {
     // runTask fills it from verify at report time. Forcing IMPL_SCHEMA here would only
     // make pneuma-impl (which has no StructuredOutput tool) finish the work yet leave
     // the run without structured output, silently dropping impl metadata.
-    log('task=' + task.id + ' engine=' + (useFable(task) ? 'fable' : 'opus') + ' (impl=' + implAgentType(task) + ')')
-    const implRaw = await agent(implPrompt(WT, task.anchor), { agentType: implAgentType(task), label: 'impl:' + task.id, phase: 'Impl' })
+    log('task=' + task.id + ' engine=' + engineModel(task))
+    const implRaw = await agent(implPrompt(WT, task.anchor), { agentType: 'pneuma-impl', model: engineModel(task), label: 'impl:' + task.id, phase: 'Impl' })
     if (!implRaw) return { taskId: task.id, status: 'FAILED', reason: 'impl returned null' }
     impl = { filesChanged: [], summary: typeof implRaw === 'string' ? implRaw : '', foundBug: '' }
   }
@@ -366,7 +363,7 @@ async function runTask(task) {
     // pneuma-amender, like pneuma-impl, returns raw prose (never calls StructuredOutput);
     // run schemaless. The disposition ledger is prose and is not parsed — convergence is
     // re-tested by the next review ∥ verify round, not read from amend output.
-    const amend = await agent(amendPrompt(WT, review, verify, round, task), { agentType: amendAgentType(task), label: 'amend:' + task.id + ':r' + round, phase: 'Amend' })
+    const amend = await agent(amendPrompt(WT, review, verify, round, task), { agentType: 'pneuma-amender', model: engineModel(task), label: 'amend:' + task.id + ':r' + round, phase: 'Amend' })
     amendLog.push({ round, amend })
     // loop back → re-review ∥ re-verify
   }

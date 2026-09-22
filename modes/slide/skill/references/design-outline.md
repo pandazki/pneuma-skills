@@ -74,7 +74,7 @@ For each slide, plan the **content → composition → visual** as one spatial d
 1. **Be specific about content**: Don't just write "data slide" — specify which data points, what chart type, what conclusion to draw
 2. **Think about flow**: Each slide should logically lead to the next. The narrative should work without a presenter
 3. **Plan density carefully**: One key idea per slide for presentations; more density OK for read-along decks
-4. **Composition is a per-slide decision**: Think about how much content you have and where it belongs in the 592px vertical space. A slide with 2 cards needs different spatial treatment than one with 8 items. See `{SKILL_PATH}/references/layout-patterns.md` → Composition
+4. **Composition is a per-slide decision**: Think about how much content you have and where it belongs in the {{contentHeight}}px vertical space. A slide with 2 cards needs different spatial treatment than one with 8 items. See `{SKILL_PATH}/references/layout-patterns.md` → Composition
 5. **Plan visuals alongside layout**: A "split: text left, chart right" slide needs to know the chart exists at outline time — the visual is part of the composition, not an afterthought
 6. **Use image generation when available**: If you have access to AI image generation (check the Image Handling section in SKILL.md), proactively plan generated images in the outline — cover hero images, section mood visuals, illustrative photos. Write concrete descriptions in "Images to generate" rather than defaulting to "none". A deck with well-chosen images is significantly more engaging than CSS-only.
 7. **Specify language explicitly**: If the user writes in Chinese but wants English slides (or vice versa), note this clearly

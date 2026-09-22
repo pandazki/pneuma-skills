@@ -156,7 +156,7 @@ questions about where the character *is*:
 | `--x-from` | x is | Use when |
 |---|---|---|
 | `feet` (default) | the mean x of the alpha pixels in the bottom **10 %** of the bbox | Grounded poses intended to stay in place; use `cell` when deliberate lateral offsets should survive. |
-| `bbox` | the bbox centre — the behaviour before this flag existed | The drawing has no ground contact worth pinning, or you want the old frames back. It is also what a `center` anchor uses. |
+| `bbox` | the bbox centre, props included | The drawing has no ground contact worth pinning. It is also what a `center` anchor uses. |
 | `cell` | the centre of the grid cell the frame was cut from, i.e. **no horizontal re-placement at all** | The model already places the body consistently and you only want the vertical levelled. |
 
 **Why `feet` is the default.** The bbox is the whole drawing, props included.
@@ -185,7 +185,7 @@ frames before treating a planned step, crouch or turn as jitter to remove.
 worst frame's reach from its anchor, plus `2·pad`, rounded up to an even
 number (`cell` mode keeps the source grid cell's width, since shrinking it
 would shift the very offsets that mode preserves). Under `bbox` that is
-exactly the old `max bbox + 2·pad`; under `feet` it is wider whenever the pose
+`max bbox + 2·pad`; under `feet` it is wider whenever the pose
 hangs off one side, and it has to be — a narrower cell clamps every frame
 against the edge and puts the body back where it was.
 
@@ -301,10 +301,6 @@ lose it.** Where the input sheet lives decides what happens to it:
 | `<motionDir>/sheet-raw.png` | Uses it where it lies. Nothing is copied. |
 | `<motionDir>/sheet-alpha.png` | Uses it as the already-keyed sheet (same as `--alpha`): no probe, no key, `sheet-raw.png` untouched. |
 | Any other file inside `<motionDir>` | Refused, naming the two accepted in-place names. |
-
-That table is the fix for a real data loss: `run <motionDir>/sheet-alpha.png
---out <motionDir>` used to copy the keyed sheet over `sheet-raw.png`, so the
-un-keyed original was gone and `<motion>-sheet-raw` pointed at a keyed file.
 
 It also keeps the pre-align cells at `<motionDir>/cells/NN.png` (see `slice`),
 which is what makes the fix-alignment path below possible.
@@ -973,20 +969,3 @@ character's size). A 4×4 sheet at 2048² gives 512 px grid cells and, after
 `--cell auto` tightens to the silhouette plus `--pad 8`, frames of 304×484
 (idle) / 416×506 (attack).
 
-**Sheet resolution drives seed size more than anything else.** At 2048 the two
-finished motions plus refs came to 11 MB after pruning and 5 MB was needed;
-re-running the same two commands from 1024² sheets (`ffmpeg -vf scale=1024:1024`
-→ `set-sheet` again → `run --alpha` → `register-run`) gives 256 px grid cells —
-the character's own declared `cell` — and lands the whole seed at 5.0 MB with
-every referenced asset kept. Re-running `set-sheet` and `register-run` after a
-resolution change is what keeps `project.json`'s recorded dimensions honest;
-both are idempotent on the same ids.
-
-**`init` used to die on a character directory that did not exist yet.**
-`sprite-project.mjs init --dir lumi` in a workspace with no `lumi/` threw a raw
-Node `ENOENT` stack out of `saveProject`. Fixed the same day: `init` now
-`mkdir -p`s the directory it is initialising, and every filesystem failure in
-`saveProject` comes back as the one-line `ERROR:` the rest of the script
-promises. You no longer sequence a `mkdir` before it — but the lesson stands
-for any new writer added here: a stack trace is not a message the agent can
-act on.

@@ -65,7 +65,7 @@ See `core/types/viewer-contract.ts` for the full authoritative shape.
 
 ## Reading files — use `useSource`
 
-Files never arrive as a raw array anymore. Subscribe to the `files` source
+Files arrive through a Source, not as a raw array. Subscribe to the `files` source
 (the default source every mode gets unless it declares its own sources):
 
 ```tsx

@@ -83,7 +83,7 @@ describe("mode loading", () => {
 describe("manifest validation", () => {
   it("has all required top-level fields", () => {
     expect(webcraftManifest.name).toBe("webcraft");
-    expect(webcraftManifest.version).toBe("1.7.1");
+    expect(webcraftManifest.version).toBe("1.7.2");
     expect(resolveLocalized(webcraftManifest.displayName)).toBe("WebCraft");
     expect(resolveLocalized(webcraftManifest.description)).toContain("Impeccable");
     // Mode version bumps must carry a matching changelog entry (launcher
@@ -431,7 +431,7 @@ describe("reference file completeness", () => {
 
     const refsDir = join(ws, ".claude", "skills", "pneuma-webcraft", "references");
     const folded: Array<[string, string]> = [
-      ["cmd-adapt.md", "previously `responsive-design.md`"],
+      ["cmd-adapt.md", "### Responsive Design"],
       ["cmd-critique.md", "Heuristics Scoring Guide"],
       ["cmd-critique.md", "Persona-Based Design Testing"],
       ["cmd-critique.md", "Cognitive Load Assessment"],

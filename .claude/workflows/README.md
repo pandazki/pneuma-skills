@@ -39,9 +39,8 @@ Verify / Amend step is a dispatched sub-agent.
 ## 2. Prerequisites
 
 - **Roster agents installed.** The workflow dispatches to `pneuma-impl` (Impl),
-  `pneuma-amender` (Amend) — plus their Fable-5 heavyweight variants
-  `pneuma-impl-fable` / `pneuma-amender-fable` — and `general-purpose` (Review and
-  Verify). These must already live in `.claude/agents/`. If you just authored a
+  `pneuma-amender` (Amend) and `general-purpose` (Review and Verify); the engine
+  (opus or fable) is a per-call `model` override on the first two. These must already live in `.claude/agents/`. If you just authored a
   new agent, run `/reload-plugins`: **the agent registry is a session snapshot**, so
   a newly created agent is not dispatchable until the registry reloads.
 - **Worktrees pre-built.** The orchestrator pre-creates each task's git worktree on
@@ -64,7 +63,7 @@ via `(typeof args === 'string') ? JSON.parse(args) : (args || {})`.
 | `specDoc` | string (absolute path) | yes | — | Absolute path to the spec doc the agents Read for requirements and acceptance bars. |
 | `testCmd` | string | no | `'bun run test'` | Global default test-gate command, used when a task sets neither `gateCmd` nor `gateK`. |
 | `maxRounds` | number | no | `3` | Max review rounds per task before `ESCALATED`. |
-| `effort` | string | no | — | Global engine tier. `'ultracode'` routes **every** task's Impl/Amend to the Fable-5 heavyweight variants (`pneuma-impl-fable` / `pneuma-amender-fable`); anything else (or absent) keeps the opus defaults. See §3.3. |
+| `effort` | string | no | — | Global engine tier. `'ultracode'` runs **every** task's Impl/Amend on fable; anything else (or absent) keeps the opus default. See §3.3. |
 | `waves` | array of wave objects | no | `[]` | Outer-loop wave list (see below). |
 
 ### Wave object
@@ -88,7 +87,7 @@ via `(typeof args === 'string') ? JSON.parse(args) : (args || {})`.
 | `gateK` | string | no | Per-task `bun test` filter. When set (and `gateCmd` is not), Verify runs `bun test <gateK>` — `gateK` can be a positional file/path filter (e.g. `core/__tests__/source-registry.test.ts`) or include flags such as `-t "<name pattern>"`. When absent, falls back to the global `testCmd`. |
 | `gateCmd` | string | no | **Full override** of the test-gate command. When set it takes precedence over both `gateK` and the global `testCmd` — use it for a custom runner, a scoped suite, or anything `gateK` cannot express. The typecheck gate (`bun run typecheck`) and the boundary check still run independently. |
 | `engine` | `'fable'` \| `'opus'` | no | Per-task engine routing override. See §3.3. |
-| `heavy` | boolean | no | `true` marks this one task long-horizon / complex / high-stakes → Fable-5 variants, regardless of global `effort`. See §3.3. |
+| `heavy` | boolean | no | `true` marks this one task long-horizon / complex / high-stakes → fable, regardless of global `effort`. See §3.3. |
 | `preSeeded` | boolean | no | Debug/demo only — skip Impl and drive the loop from a pre-committed worktree state (see §7). Normal tasks omit it. |
 | `seededFiles` | array of strings | no | Only meaningful with `preSeeded`; the fallback file list reported as the (skipped) impl's `filesChanged` when the verify leg surfaces no `changedFiles`. |
 
@@ -158,21 +157,19 @@ allGreen = typecheck AND tests AND boundaryViolations is empty
 orchestrator reports which files the task touched (Impl runs schemaless and
 reports no file list of its own).
 
-### 3.3. Engine routing — opus default vs Fable-5 heavyweight
+### 3.3. Engine routing — opus default vs fable
 
-Impl and Amend dispatch to one of two variants per task:
+Impl and Amend always dispatch to `pneuma-impl` / `pneuma-amender`; the engine is
+the `model` override passed on that call:
 
-- **`args.effort === 'ultracode'`** → every task uses `pneuma-impl-fable` /
-  `pneuma-amender-fable`.
-- **`task.engine === 'fable'` or `task.heavy === true`** → that one task uses the
-  fable variants even when the global effort is not ultracode.
-- **`task.engine === 'opus'`** → forces that task back onto `pneuma-impl` /
-  `pneuma-amender` even under global ultracode (escape hatch for trivial tasks in
-  a heavyweight run).
+- **`args.effort === 'ultracode'`** → every task runs on fable.
+- **`task.engine === 'fable'` or `task.heavy === true`** → that one task runs on
+  fable even when the global effort is not ultracode.
+- **`task.engine === 'opus'`** → forces that task back onto opus even under global
+  ultracode (escape hatch for trivial tasks in a heavyweight run).
 
-Both variants share identical discipline (gates / TDD / forbidden actions /
-no-silent-failure); only the underlying model and turn budget differ. Omitting
-`effort`/`engine`/`heavy` keeps opus everywhere.
+Discipline (gates / TDD / forbidden actions / no-silent-failure) does not fork by
+model. Omitting `effort`/`engine`/`heavy` keeps opus everywhere.
 
 ---
 
@@ -232,7 +229,7 @@ Workflow({
         tasks: [
           {
             // a contract task: contract-kind review dimensions + severity,
-            // marked heavy → Fable-5 impl/amend even without global ultracode
+            // marked heavy → fable impl/amend even without global ultracode
             id: "T1",
             taskKind: "contract",
             heavy: true,
@@ -276,7 +273,7 @@ Workflow({
 ```
 
 `w1` runs `T1` and `T2` concurrently; once both settle, `w2` runs `T3` serially.
-`T1` uses the `contract` review dimensions on the Fable-5 engine, `T2` takes the
+`T1` uses the `contract` review dimensions on the fable engine, `T2` takes the
 generic defaults but a fully custom gate command, and `T3` supplies explicit
 `reviewDimensions` (overriding the `viewer` defaults) while keeping the `viewer`
 severity calibration.

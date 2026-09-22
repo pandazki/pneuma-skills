@@ -23,8 +23,9 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 
 const projectEvolveManifest: ModeManifest = {
   name: "project-evolve",
-  version: "1.0.1",
+  version: "1.0.2",
   changelog: {
+    "1.0.2": ["Role line no longer names Pneuma 3.0"],
     "1.0.1": ["Make skill discovery and guidance portable across Claude Code and Codex"],
   },
   displayName: {

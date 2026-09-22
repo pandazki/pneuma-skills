@@ -5,11 +5,11 @@ argument-hint: "[target]"
 user-invocable: true
 ---
 
-Designs that only work with perfect data aren't production-ready. Harden the interface against the inputs, errors, languages, and network conditions that real users will throw at it.
+**CRITICAL**: Designs that only work with perfect data aren't production-ready. Harden the interface against the inputs, errors, languages, and network conditions that real users will throw at it.
 
-## MANDATORY PREPARATION
+## Before you start
 
-Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it carries the setup steps, the visitor modes, and the Context Gathering Protocol. The quality floor and the ban list live in [craft-floor.md](craft-floor.md); load it immediately before you edit UI. If no design context exists yet, you MUST run the `init` command first (see [cmd-init](cmd-init.md)).
+Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it carries the setup steps, the visitor modes, and the Context Gathering Protocol. The quality floor and the ban list live in [craft-floor.md](craft-floor.md); load it immediately before you edit UI. If no design context exists yet, run the `init` command first (see [cmd-init](cmd-init.md)).
 
 ---
 
@@ -41,7 +41,7 @@ Identify weaknesses and edge cases:
    - Number formats (1,000 vs 1.000)
    - Currency symbols
 
-**CRITICAL**: Designs that only work with perfect data aren't production-ready. Harden against reality.
+Designs that only work with perfect data aren't production-ready. Harden against reality.
 
 ## Hardening Dimensions
 
@@ -338,23 +338,18 @@ const throttledScroll = throttle(handleScroll, 100);
 
 ## Testing Strategies
 
-**Manual testing**:
-- Test with extreme data (very long, very short, empty)
-- Test in different languages
-- Test offline
-- Test slow connection (throttle to 3G)
-- Test with screen reader
-- Test keyboard-only navigation
-- Test on old browsers
+**What you can exercise here**: put extreme data into the page's real
+content (100+ character names, emoji, CJK, a `dir="rtl"` pass), render
+the empty, loading and error states the page defines, walk the keyboard
+tab order in the markup, and `capture` each of those. Screen readers, old
+browsers, offline mode and throttled networks are the user's own QA —
+name them in the closing note.
 
-**Automated testing**:
-- Unit tests for edge cases
-- Integration tests for error scenarios
-- E2E tests for critical paths
-- Visual regression tests
-- Accessibility tests (axe, WAVE)
+**Automated testing** (when the project has a test harness): unit tests
+for edge cases, integration tests for error scenarios, E2E tests for
+critical paths, visual regression tests, accessibility tests (axe, WAVE).
 
-**IMPORTANT**: Hardening is about expecting the unexpected. Real users will do things you never imagined.
+Hardening is about expecting the unexpected. Real users will do things you never imagined.
 
 **NEVER**:
 - Assume perfect input (validate everything)
@@ -368,16 +363,13 @@ const throttledScroll = throttle(handleScroll, 100);
 
 ## Verify Hardening
 
-Test thoroughly with edge cases:
+Check each of these in the shipped page, with a `capture` where it renders:
 
-- **Long text**: Try names with 100+ characters
-- **Emoji**: Use emoji in all text fields
-- **RTL**: Test with Arabic or Hebrew
-- **CJK**: Test with Chinese/Japanese/Korean
-- **Network issues**: Disable internet, throttle connection
-- **Large datasets**: Test with 1000+ items
-- **Concurrent actions**: Click submit 10 times rapidly
-- **Errors**: Force API errors, test all error states
-- **Empty**: Remove all data, test empty states
+- **Long text**: names with 100+ characters
+- **Emoji / CJK / RTL**: in every text field and label
+- **Large datasets**: 1000+ items
+- **Concurrent actions**: a double submit is guarded
+- **Errors**: every error state the page defines has copy and a recovery
+- **Empty**: every empty state has a next action
 
 When edge cases are covered, hand off to the `polish` command (see [cmd-polish](cmd-polish.md)) for the final pass.

@@ -32,8 +32,7 @@ Two halves, two tempos. **Preparation is where your judgment goes**: read
 the source material properly (a project's docs AND its code, a paper's
 derivations), decide what the learner must take away, decide what the
 audience will SEE carrying each idea ("The visual layer", below), verify
-every fact, render every figure. Be as thorough as the topic deserves —
-a course that skims its subject cannot teach it. **Play is a program**:
+every fact, render every figure. **Play is a program**:
 once the outline carries its references and the screenplay is landed,
 one long-running process (`play-manager.mjs`) owns everything the learner
 sees change — writing detours ahead of them, shooting scenes ahead of
@@ -48,6 +47,8 @@ top-level directory per course, marked by its `course.json`). Files you
 edit appear immediately. The user can select a segment; their next message
 then carries a `<viewer-context>` block with an `Address:` line — the
 machine-routable handle for that exact scene.
+
+The viewer is the user's surface. Your chat replies are short status notes — what you just did and what is being waited on — never the deliverable.
 
 ### ViewerAddress vocabulary
 
@@ -80,7 +81,7 @@ address='{…}' />` cards and into the `capture` action's `params.address`.
 | `styleAdjust` | The user wants the sample changed | Revise the recipe (`--recipe`) and/or hook, re-run `make-style-sample.mjs` once |
 | `styleConfirmed` | The user confirmed the sample | `course-edit.mjs confirm-style`, then **Start** (below): outline → screenplay → manager |
 | `userQuestion` | The user typed a question mid-course | **A learner's question** (below): ground it, then hand it to the manager as a request file |
-| `managerOffline` | The manager never started after the screenplay landed, or its heartbeat (`play.updatedAt`) stopped while scenes are pending | Start it with `--detach` (**Play**, below) and say so in one line. Do not produce anything by hand |
+| `managerOffline` | The manager never started after the screenplay landed, or its heartbeat (`play.updatedAt`) stopped while scenes are pending | Start it with `--detach` (**Play**, below) and say so. Do not produce anything by hand |
 | `courseComplete` | The learner reached the end of the spine (`play.state` is `complete`) and no summary exists yet | **Finale** (below): write `summary.md` from the path they took, register it |
 
 Choices, retries and "continue" never reach you: the viewer writes them
@@ -203,8 +204,8 @@ device instead of a concept.
 
 The user's Stop button ends your turn AND kills any workflow running in
 the background (its journal then says `status: killed`). Do not go
-looking for it: `TaskOutput` / `ListAgents` will not find a killed run,
-and reading its journal is not the same as finishing it. The state that
+looking for the killed run — reading its journal is not the same as
+finishing it. The state that
 matters is on disk — `course.json` (outline? style? scenes with clips?
 `play`?) and the `evidence/` directory. If the outline is missing,
 launch `plan-course` again with `resumeFromRunId: "<the killed run's
@@ -214,7 +215,7 @@ the outline is there but no scene has `clips`, run `write-screenplay.mjs`.
 If scenes have clips but `state/manager.pid` is gone or its process is
 dead, start the manager again with `--detach` — it takes its unfinished
 scenes back and never pays for a clip that is already on disk. One check, one relaunch;
-tell the user in a line what was resumed.
+tell the user what was resumed.
 
 ## Play — the screenplay and the manager
 
@@ -233,8 +234,7 @@ The `--video-ahead` and `--resolution` values above ARE this session's
 init params, filled in when the skill was installed — copy the command
 as written. If one still reads as a `{{…}}` placeholder, use 2 and
 480P. A session that asked for 768P and
-was shot at 480P is a wrong course, not a slower one — the third trial
-did exactly that.) **`--detach` is the only way to start the manager.**
+was shot at 480P is a wrong course, not a slower one.) **`--detach` is the only way to start the manager.**
 It daemonizes itself into its own session, waits for its pid file and
 prints `{ pid, log }` — the command returns in seconds and the manager
 lives on. Never `nohup … &`, never `run_in_background`, never run it in
@@ -361,7 +361,7 @@ answer has to be grounded before the manager can shoot it. On
    top priority, links it under the parent with the way back, and the
    card appears when it is ready.
 
-Do not shoot it yourself and do not navigate-to. Say in one line that the
+Do not shoot it yourself and do not navigate-to. Say that the
 answer is being made.
 
 ## Video generation (direct use)
@@ -375,7 +375,7 @@ the manager re-shoots once on a narration failure and marks the scene
 `failed` with the reason otherwise. Never wrap a script in your own
 retry loop or probe fal's endpoints yourself — one call, and if it still
 fails, the board (or the node's `failed` status) already shows the
-reason: tell the user in one line and try again only when they ask.
+reason: tell the user and try again only when they ask.
 
 Video is generated ONLY through fal.ai's MiniMax H3 Max endpoints — the
 model is served nowhere else. During the style step
@@ -426,13 +426,10 @@ adjectives alone. **Every clip of the course binds the same things:**
   continuity kit before the first clip and logs each step in
   `state/manager.log`.
 
-**There is no frame chain, and there is no `--continuity` choice.** Until
-0.6 a scene was a chain of shots, each starting from the previous one's
-last frame; it bought a seamless join and cost us the voice reference on
-those shots and every cut inside a shot. A scene is now clips joined by
-matched cuts, which is where the community puts its cuts too. (The flag
-is still accepted and ignored, so a session resumed with the old skill
-text does not fail to start a manager.)
+**A scene is 1-3 clips joined by matched cuts.** No clip starts from
+another clip's last frame, and there is no continuity mode to choose.
+(`--continuity` is accepted and ignored, so a session resumed with older
+skill text still starts its manager instead of dying on an unknown flag.)
 
 - **Prompt language follows the content.** The prompt's structural labels
   and the style recipe it quotes are English (fal's H3 Max spec is
@@ -471,7 +468,7 @@ script. A clip that says the wrong thing is worse than no clip.
 offline lane: fal for every clip, OpenRouter for the screenplay, every
 detour and question scene and the narration judge — `write-screenplay.mjs`
 and the manager refuse to run without `OPENROUTER_API_KEY`, and there is
-no fallback to your own model. If a key is missing, say so in one line
+no fallback to your own model. If a key is missing, say so
 and stop. Confirm the learning goal and perceived length with the user
 in one short exchange. The moment the topic is known:
 
@@ -512,7 +509,7 @@ in one short exchange. The moment the topic is known:
    in the evidence — read the code, run the derivation, keep each figure
    to one idea — not in reading whole papers: a pinned URL with an honest
    note is a citation.
-3. **The style step, on the board.** Tell the user in one line that the
+3. **The style step, on the board.** Tell the user that the
    style is theirs to settle on the right, then wait. The board has
    three doors — a preset card, "为我推荐", "我要自定义" — and every one
    ends in the same place: `make-style-sample.mjs` produces the style key

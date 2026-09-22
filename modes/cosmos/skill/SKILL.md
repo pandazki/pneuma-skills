@@ -182,9 +182,9 @@ chip's behaviour depends on `kind`.
 
 | kind | Shape | Opens with |
 |---|---|---|
-| `file` | `{ path, range? }` | OS default app (or chosen editor via the editor picker — bridge upgrade WIP) |
+| `file` | `{ path, range? }` | OS default app, or the editor chosen in the editor picker |
 | `url` | `{ url }` | Default browser |
-| `passage` | `{ file, locator, quote? }` | Underlying file (auto-jump to locator deferred — locator + quote shown in tooltip) |
+| `passage` | `{ file, locator, quote? }` | Underlying file — the chip opens it without jumping; the locator and quote show in the tooltip |
 | `image` | `{ path }` | OS default image viewer |
 | `audio` | `{ path, t? }` | OS default audio app |
 | `video` | `{ path, t? }` | OS default video app |
@@ -192,10 +192,9 @@ chip's behaviour depends on `kind`.
 All kinds accept an optional `label` to override the auto-derived
 chip text.
 
-Every kind now also accepts an optional `locator?: string` and
-`excerpt?: { path, caption? }`. See the new *Visual anchoring*
-chapter for what they're for and the shell commands to populate
-them.
+Every kind also accepts an optional `locator?: string` and
+`excerpt?: { path, caption? }`. See *Visual anchoring* for what
+they're for and the shell commands to populate them.
 
 ### Per-domain examples
 
@@ -311,7 +310,7 @@ verifiable extract.
 
 ### Locator everywhere
 
-Every ref kind now accepts `locator?: string`. Open-ended hint
+Every ref kind accepts `locator?: string`. Open-ended hint
 about *where inside* the artifact this node points. Examples:
 
 - `"p.23"` — PDF page
@@ -324,9 +323,8 @@ about *where inside* the artifact this node points. Examples:
 
 Whatever phrasing lets the user find the spot in five seconds.
 
-(`passage` already has a required `locator` field — same idea,
-already there. The new optional locator covers the other five
-kinds.)
+(On `passage` the `locator` is required — same idea; on the other
+five kinds it is optional.)
 
 ### Shell commands — populate excerpts without leaving the agent
 
@@ -350,10 +348,10 @@ need — fall back to chip-only if a tool isn't around.
   `ffmpeg -ss N -i video.mp4 -frames:v 1 -q:v 2 out.png`
   (requires `brew install ffmpeg`). Put `-ss` before `-i` for a
   fast seek.
-- **Web page region:** the agent can't run a headless browser in
-  MVP. If the source is a live URL, fall back to a chip + locator
-  only, or ask the user to paste the screenshot they want as a
-  workspace file and reference its path in `excerpt`.
+- **Web page region:** don't count on capturing a live URL yourself.
+  Fall back to a chip + locator only, or ask the user to drop the
+  screenshot they want into the workspace and reference its path in
+  `excerpt`.
 
 ### Per-domain guidance
 
@@ -501,11 +499,8 @@ workflow paths land.
    verified graph + perspectives but NOT the overall `tour` — pick the
    5–8 nodes that teach how the cosmos hangs together (tour discipline
    below). Write `tour[]` as `{ step, nodeId, narrative }` per beat —
-   **not** the `{ focus, narrative }` shape the workflow used for
-   `perspectives[].steps[]`. The workflow's perspectives sit right
-   above your tour in the same file, so it is easy to copy their
-   `focus` shape by reflex; see the contrast box in *Perspective
-   tours* before you write. If the graph came back denser than a
+   see the contrast box in *Perspective tours* for how it differs
+   from `perspectives[].steps[]`. If the graph came back denser than a
    reader needs, prune trivial nodes here before writing.
 5. **Write `cosmos.json` atomically, then `capture({})`** to eyeball
    readability, `fit-view()`, and drop a `<viewer-locator>` to the most

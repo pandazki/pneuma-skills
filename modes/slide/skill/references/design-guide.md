@@ -282,7 +282,7 @@ On slides, whitespace is as important as content. A slide with generous margins 
 ```
 
 - **Cover pages**: 0px or custom (full-bleed backgrounds)
-- **Content pages**: 64px all sides → 1152×592px available area (for 1280×720 canvas)
+- **Content pages**: 64px all sides → {{contentWidth}}×{{contentHeight}}px available area (for a {{slideWidth}}×{{slideHeight}} canvas)
 
 ### Gap Scale
 

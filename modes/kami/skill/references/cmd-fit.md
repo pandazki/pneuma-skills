@@ -22,26 +22,36 @@ Always read the freshest version after your last `Write` / `Edit`.
   "updated_at": "2026-04-22T12:34:56.000Z",
   "content_set": "musk-resume",
   "file": "index.html",
-  "paper": { "size": "A4", "orientation": "Portrait", "width_mm": 210, "height_mm": 297 },
+  "paper": { "size": "A4", "orientation": "Portrait", "width_mm": 210, "height_mm": 297,
+             "safe": { "top_mm": 18, "side_mm": 16, "bottom_mm": 18 } },
   "pages": [
-    { "index": 1, "content_height_mm": 289.2, "overflow_mm": -7.8, "status": "fits" },
-    { "index": 2, "content_height_mm": 314.5, "overflow_mm":  17.5, "status": "overflow" }
+    { "index": 1, "paper_height_mm": 297, "safe_height_mm": 261, "content_height_mm": 259.4, "delta_safe_mm": -1.6, "status": "fits" },
+    { "index": 2, "paper_height_mm": 297, "safe_height_mm": 261, "content_height_mm": 284.5, "delta_safe_mm": 23.5, "status": "overflow" }
   ],
-  "summary": { "total_pages": 2, "overflow_count": 1, "sparse_count": 0, "fits_count": 1 }
+  "summary": { "total_pages": 2, "sparse_count": 0, "loose_count": 0, "fits_count": 1, "bleed_count": 0, "overflow_count": 1 }
 }
 ```
 
 Fields:
 
+- `paper.safe` — the safe margins in play (`top_mm`, `side_mm`,
+  `bottom_mm`; defaults 18 / 16 / 18 unless the content set configures
+  them).
+- `pages[i].safe_height_mm` — `paper.height_mm − safe.top_mm − safe.bottom_mm`.
 - `pages[i].content_height_mm` — actual rendered height of the i-th
   `<div class="page">` element in the current file.
-- `pages[i].overflow_mm` — `content_height_mm − paper.height_mm`.
-  Positive means the page overflows the sheet; negative means it has
+- `pages[i].delta_safe_mm` — `content_height_mm − safe_height_mm`.
+  Positive means the content runs past the safe height; negative means
   headroom.
-- `pages[i].status`:
-  - `"fits"` — within ±2 … 0 overflow, and not sparse.
-  - `"overflow"` — `overflow_mm > 2`. Will not print on one sheet.
-  - `"sparse"` — `overflow_mm < −50` (more than 50mm of blank space).
+- `pages[i].status`, from `delta_safe_mm`:
+  - `"fits"` — within ±3.
+  - `"loose"` — between −30 and −3: headroom, but not glaring.
+  - `"sparse"` — below −30: more than 30 mm of the safe height unused.
+  - `"bleed"` — above 3 but no more than `safe.bottom_mm`: prints, into
+    the margin.
+  - `"overflow"` — beyond the bottom safe margin: will not print on one
+    sheet.
+- `summary` — one count per status plus `total_pages`.
 
 If the file only contains one `.page` div the report carries a single
 entry; if it contains N, you get N entries.
@@ -119,10 +129,10 @@ are exempt everywhere.
 
 Body-page fill target is **60–80%**, computed as
 `content_height_mm / paper_height_mm`. The `sparse` status
-(`overflow_mm < -50`, roughly under 83% on A4) already catches the worst cases;
+(`delta_safe_mm < -30`, more than 30 mm of the safe height unused) already catches the worst cases;
 the floors below decide the borderline page.
 
-**Items-per-page contract** (thresholds from upstream V1.5.0):
+**Items-per-page contract:**
 
 | Genre | Typical body page | Hard floor (merge if below) |
 |---|---|---|
@@ -156,13 +166,15 @@ fill level.
 After every meaningful `Write` or `Edit` call:
 
 1. Read `.pneuma/kami-fit.json`.
-2. If `summary.overflow_count > 0` → pick the lowest-numbered
-   overflowing page, apply the least-invasive tactic from the
-   overflow list, save, and restart from step 1.
+2. If `summary.overflow_count > 0`, or `summary.bleed_count > 0` on a
+   page that is not a deliberate full-bleed cover → pick
+   the lowest-numbered offending page, apply the least-invasive tactic
+   from the overflow list, save, and restart from step 1.
 3. If `summary.sparse_count > 0` AND the page is a body page →
    enrich, save, and restart from step 1.
-4. If every page is `fits` → stop. Tell the user the document is
-   ready.
+4. If every page is `fits` — or `loose` on a body page you judged
+   acceptable, or `bleed` only on a deliberate full-bleed cover → stop.
+   Tell the user the document is ready.
 
 Do not ask the user "does this look right?" when the report says
 `overflow`. The answer is known — the page doesn't fit the sheet, so

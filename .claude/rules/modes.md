@@ -29,6 +29,10 @@ paths:
 - `hidden: true` modes remain internal across mode pickers and session lists.
   `scanProjectSessions` marks their sessions `internal`; user-facing lists must
   filter them. Named UI actions and programmatic launches can still use them.
+- Plotwise's style catalog (`modes/plotwise/viewer/styleCatalog.ts` + `style-thumbs/`)
+  mirrors `skill/references/styles.md`: a card pitch is the short form of the entry's
+  "Best for", and `__tests__/style-board.test.tsx` fails when the roster, its order or
+  a narration mode drifts. Change both together.
 - Keep essential workflow policy in the mode skill for harnesses without a
   workflow runner. Put repeatable mechanics and bounded retry behavior in scripts;
   report missing, failed, or uncertain results explicitly.

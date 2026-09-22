@@ -22,7 +22,7 @@ const manifest: ModeManifest = {
   skill: {
     sourceDir: "skill",                      // directory containing SKILL.md
     installName: "pneuma-my-mode",           // installed under the selected backend's skills directory
-    claudeMdSection: `...`,                  // injected into CLAUDE.md / AGENTS.md (see below)
+    mdScene: "...",                          // 1–3 sentence scene paragraph for the pneuma:start block (see below)
 
     envMapping: {                            // init params → .env entries
       API_KEY: "apiKey",                     //   env var → init param name
@@ -57,10 +57,10 @@ const manifest: ModeManifest = {
     serveDir: ".",                           // subdir served by the built-in file server (optional)
   },
 
-  // ── Data channels (REQUIRED since 2.29) ────────────────────────────
-  // Every mode must declare a `sources` field — the runtime throws a
-  // migration error at startup when it's missing. Headless agent-only
-  // modes (evolve etc.) opt out explicitly with `sources: {}`.
+  // ── Data channels (required) ───────────────────────────────────────
+  // Every mode declares a `sources` field — startup fails without it.
+  // Headless agent-only modes (evolve etc.) opt out explicitly with
+  // `sources: {}`.
   sources: {
     files: {
       kind: "file-glob",
@@ -161,7 +161,7 @@ const manifest: ModeManifest = {
     ],
 
     // Optional hook: derive additional params from user-entered ones.
-    // Used for conditional template blocks in claudeMdSection — e.g.
+    // Used for conditional template blocks in the skill's .md files — e.g.
     // `{{#imageGenEnabled}}…{{/imageGenEnabled}}`.
     deriveParams: (params) => ({
       ...params,
@@ -186,33 +186,32 @@ instructions.`,
 export default manifest;
 ```
 
-## claudeMdSection Best Practices
+## mdScene
 
-`claudeMdSection` is injected into the workspace's active instructions file (`CLAUDE.md` or `AGENTS.md`) and
-auto-loaded by the agent on every conversation turn. It's the **hook**
-that directs the agent to the full skill.
+`mdScene` is the one to three sentence scene paragraph the installer puts
+in the `pneuma:start` block of the workspace's instructions file
+(`CLAUDE.md` or `AGENTS.md`), which the agent reads on every turn. The
+installer already wraps it in a header naming the mode, runtime shell and
+backend, and follows it with the path to the installed `SKILL.md`; the
+scene paragraph adds the human-shaped context.
 
 **Template:**
 
-```markdown
-## Pneuma {DisplayName} Mode
-
-You are running inside Pneuma {DisplayName} Mode. The user sees your
-edits live in a browser preview panel.
-
-### Skill Reference
-**Before your first action in a new conversation**, consult the
-`{installName}` skill — it contains {brief preview of key topics}.
-
-### Core Rules
-- {3-5 most critical rules inline}
-- Do not ask for confirmation on simple edits — just do them
+```ts
+mdScene:
+  "You and the user are {doing what, on what kind of object} inside " +
+  "{DisplayName}. The user sees {what the viewer shows} as you edit; " +
+  "{the one thing about the collaboration a newcomer must know}.",
 ```
 
-**Keep it concise (~10-20 lines).** It's loaded on every message; bloat
-here costs tokens forever. Heavy content belongs in the referenced
-SKILL.md, not here. The "Skill Reference" line is what triggers the
-agent's native skill-discovery mechanism via `installName`.
+Write it as a scene — what the user and the agent are doing together —
+not as a system prompt or a rule list. Architecture, file conventions,
+workflows and prohibitions belong in `SKILL.md`, which loads through the
+agent's own skill discovery via `installName`. If `mdScene` is omitted
+the installer builds a generic scene from `displayName` + `description`.
+
+`claudeMdSection` is deprecated: it is read only when `mdScene` is
+missing, and only its first paragraph is used as scene text.
 
 Use `{{key}}` from init params + `{{#key}}…{{/key}}` conditional blocks
 for sections that should appear only when a param is set:

@@ -193,7 +193,7 @@ async function runCrosscheck(promptFileArg: string, systemFile: string | null): 
       "claude",
       [
         "-p",
-        "--model", process.env.WORDTASTE_CLAUDE_MODEL || "claude-sonnet-5",
+        "--model", process.env.WORDTASTE_CLAUDE_MODEL || "sonnet",
         "--output-format", "text",
         "--no-session-persistence",
         "--safe-mode",

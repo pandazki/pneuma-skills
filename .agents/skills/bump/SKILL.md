@@ -120,14 +120,11 @@ bun run test:all
 bun run build
 ```
 
-Day-to-day work runs `bun run test` (everything except `backends/`, ~34s).
-`test:all` is the superset, and the extra ~4 minutes is entirely the backend
-lifecycle harness spawning real `claude` / `codex` / `kimi acp` processes.
-Run it here anyway: a release is exactly when "the backends still boot" is
-worth four minutes. (See `.claude/rules/testing.md` for the suite table and
-for `kimi-cli > resume`, a live-model assertion that flakes on a machine with
-the binary installed — check `git diff <base> --stat -- backends/` before
-treating it as yours.)
+Day-to-day work runs `bun run test`; `test:all` is the superset, and the
+extra time is the backend lifecycle harness spawning real `claude` / `codex` /
+`kimi acp` processes. Run it here anyway: a release is exactly when "the
+backends still boot" is worth the wait. `.claude/rules/testing.md` owns the
+suite table, timings, and how to read a backend lifecycle failure.
 
 CI runs the same suite as the gate before tagging + publishing — so a local pass is the cheapest way to avoid burning a CI cycle on a hardcoded-version mismatch or a typing slip that only manifests when something downstream re-imports the manifest. Expected output:
 
@@ -191,7 +188,6 @@ Two failure shapes worth knowing:
   not a degradation.** The exporter stamps a package `supported: true` from the
   whitelist in the repo, and the live player's `loadMode()` throws on a mode it
   was not built with — the user sees "This shared link could not be loaded".
-  That is what happened to every eli5 link shared after 3.37.0.
 - **A stale viewer degrades quietly instead.** The mode loads, but renders with
   the old build — a new construct comes out as raw markdown, which reads as
   broken without saying so.

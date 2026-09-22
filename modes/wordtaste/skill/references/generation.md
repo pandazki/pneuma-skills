@@ -4,7 +4,7 @@ Use this reference when dispatching an isolated writer.
 
 ## The prompt is composed, not written
 
-You no longer write a brief. A writer transcribes what it is given, so every
+You do not write a brief. A writer transcribes what it is given, so every
 sentence of a hand-written brief is a style sample the article will copy — and
 an orchestrator's Chinese is the worst Chinese in the prompt. The scripts write
 the prompt instead:

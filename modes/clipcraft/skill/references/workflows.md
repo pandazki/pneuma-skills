@@ -322,9 +322,8 @@ node "<SKILL_DIR>/scripts/generate-video.mjs" from-image \
 `--no-audio` has two reasons to reach for it, often at the same
 time: (1) character-focused prompts hit ByteDance's audio content
 policy more often than environment prompts, so disabling audio
-avoids that 422 up-front; (2) since @pneuma-craft/video 0.4.0,
-video tracks play their clips' embedded audio alongside audio-track
-clips — seedance's auto-generated audio would layer on top of any
+avoids that 422 up-front; (2) video tracks play their clips'
+embedded audio alongside audio-track clips — seedance's auto-generated audio would layer on top of any
 narration/BGM you add separately. If the plan is "I'll do sound
 design in a separate audio track", generate the video with
 `--no-audio` so it comes down as silent picture. If the plan is

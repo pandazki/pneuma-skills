@@ -6,7 +6,7 @@ Two concerns when laying out a slide: **where content sits in the canvas** (comp
 
 ## Composition: Thinking About Space
 
-Before writing HTML, look at the content you have and ask: **how much of the 592px vertical space will this fill?** That ratio determines the composition.
+Before writing HTML, look at the content you have and ask: **how much of the {{contentHeight}}px vertical space will this fill?** That ratio determines the composition.
 
 ### The Key Ratio: Content Height ÷ Available Height
 
@@ -20,7 +20,7 @@ Don't default to one approach. Each slide needs its own spatial decision based o
 
 ### Scenario 1: Statement Slide — One Big Idea
 
-Content: a heading + one sentence. ~100px total in a 592px space.
+Content: a heading + one sentence. ~100px total in a {{contentHeight}}px space.
 
 ```
 ✗ Top-aligned (content lost)      ✓ Centered (confident, focused)
@@ -43,7 +43,7 @@ CSS approach: `justify-content: center` on the slide container.
 
 ### Scenario 2: Heading + Medium Content
 
-Content: heading + 3 cards or 4-5 bullets. ~300px in 592px (~50%).
+Content: heading + 3 cards or 4-5 bullets. ~300px — about half of the default 592px content area.
 
 ```
 ✗ Everything centered            ✓ Heading anchored, content centered
@@ -91,7 +91,7 @@ For **dense content** (60%+ fill), pin heading to top and center the body in rem
 
 ### Scenario 3: Dense Content — Nearly Full
 
-Content: heading + subtitle + card grid + callout bar. ~450px in 592px (~75%+).
+Content: heading + subtitle + card grid + callout bar. ~450px — three quarters or more of the default 592px content area.
 
 ```
 ✓ Top-aligned (natural fill)      ✗ Forced centering (cramped)
@@ -249,7 +249,7 @@ The base theme provides several slide classes. Pick based on content volume:
 
 Before writing each slide's HTML, briefly consider:
 
-1. **Content mass**: How much of the 592px will my content fill?
+1. **Content mass**: How much of the {{contentHeight}}px will my content fill?
 2. **Zones**: Does this slide have distinct zones (heading / body / footer)?
 3. **Column balance**: In split layouts, does each column center its own content? (Scenario 4)
 4. **Adjacent slides**: Will the heading position feel consistent with neighboring slides?
@@ -259,10 +259,10 @@ Before writing each slide's HTML, briefly consider:
 
 ## Canvas Dimensions
 
-- **Total canvas**: 1280px × 720px
+- **Total canvas**: {{slideWidth}}px × {{slideHeight}}px
 - **Content page padding**: 64px all sides (`var(--slide-padding)`)
-- **Available content area**: 1152px × 592px
-- **Safety margin (15%)**: Recommended max content height: ~500px
+- **Available content area**: {{contentWidth}}px × {{contentHeight}}px
+- **Safety margin**: keep calculated content height under ~85% of {{contentHeight}}px
 
 ## Height Calculation Fundamentals
 
@@ -339,12 +339,12 @@ Three cards stacked, each 160px, gap 16px → Total: 160+16+160+16+160 = 512px
 ### Layout A: Heading + Bullet List
 
 ```
-Available: 592px (after 64px padding on 720px canvas)
+Available: {{contentHeight}}px (after 64px padding on a {{slideHeight}}px canvas)
 
 h2 heading:          36px + 24px margin-bottom = 60px
 5 bullet points:     5 × 36px + 4 × 8px gap = 212px
 ──────────────────────────────
-Total:               272px ✅ (well within 592px)
+Total:               272px ✅ (well within {{contentHeight}}px)
 ```
 
 Safe for up to **10 bullet points** (396px).
@@ -352,7 +352,7 @@ Safe for up to **10 bullet points** (396px).
 ### Layout B: Heading + 3-Column Card Grid
 
 ```
-Available: 592px
+Available: {{contentHeight}}px
 
 h2 heading:          36px + 24px margin-bottom = 60px
 Cards (horizontal):  max card height
@@ -372,7 +372,7 @@ Safe. Can add a subtitle or description paragraph above the cards.
 ### Layout C: Heading + Two-Column Split
 
 ```
-Available: 592px
+Available: {{contentHeight}}px
 
 h2 heading:          36px + 24px margin-bottom = 60px
 Columns (horizontal): max(left, right)
@@ -400,7 +400,7 @@ Total content:       162px centered in 720px ✅
 ### Layout E: Dense — Heading + Subtitle + Card Grid + Footer
 
 ```
-Available: 592px
+Available: {{contentHeight}}px
 
 h2 heading:          36px + 8px margin = 44px
 Subtitle (p):        34px + 24px margin = 58px
@@ -416,7 +416,7 @@ Total:               327px ✅ (but getting dense — consider splitting)
 
 **Split the slide** if any of these apply:
 
-- Total calculated height > 500px (approaching 592px limit)
+- Total calculated height above ~85% of {{contentHeight}}px
 - More than 6 bullet points with detailed text
 - Card grid + additional content below/above
 - Multiple charts or data tables on one slide

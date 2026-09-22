@@ -354,8 +354,7 @@ bad as a sentence written for geometry.
 - A directed view **holds** through pauses (`@wait`) and through erases,
   and hands back to the pen the moment the next writing step begins. The
   camera follows the pen by default, so a board with no camera verbs
-  behaves exactly as before — direct it at the turns of the argument,
-  not per step.
+  needs nothing. Direct it at the turns of the argument, not per step.
 - The user's own camera always outranks your direction — the wheel, and
   dragging the board by hand (which also pauses playback). Pressing Live,
   seeking, or simply resuming playback hands the camera back.
@@ -382,8 +381,8 @@ bad as a sentence written for geometry.
 - The eraser's reach is one **region**, not the whole board: bare
   `@erase` takes back what stands where the pen is, the anchored form
   what stands around the quote. On a board that never said `@at` the pen
-  is in `full` and `full` is the whole board, so both read exactly as
-  they always did. After a placement, `@erase "锚"` is how you take back
+  is in `full` and `full` is the whole board, so both forms take the
+  whole board. After a placement, `@erase "锚"` is how you take back
   one column and leave the other standing.
 - **The eraser only reaches where you are standing.** Three conditions,
   and all three hold or you do not erase: the board **the pen is on**,
@@ -436,7 +435,7 @@ bad as a sentence written for geometry.
 - The pen walks to a blank board when the room has one (never-used first,
   then an erased-empty one); on a **full wall** it does nothing and says
   so (`turnOnFullWall`) — the room will not choose which of your boards to
-  retire, the same way writing into overflow no longer erases anything. So
+  retire, and writing into overflow never erases anything. So
   glance (`glance-board`) before you turn. On a full wall the answer is
   not to go shopping for a board to retire: finish where you stand. If the
   board the pen is on is one the talk is done with, say so and clear it
@@ -468,11 +467,11 @@ reveal). Needing it more than two or three times in one lecture means the
 structure wants rearranging — split a paragraph, add a heading, layer the
 chart — not more pauses.
 
-## Removed words
+## No timing words
 
-`@with` and `@after` are dead syntax from a discarded parallel model and
-now parse as broken steps. The board is single-threaded: order is
-document order, and there is no simultaneity to express.
+The board is single-threaded: order is document order, and there is no
+simultaneity to express. Any timing mark you invent — `@with`, `@after`,
+anything else — parses as a broken step.
 
 ## When a block breaks
 

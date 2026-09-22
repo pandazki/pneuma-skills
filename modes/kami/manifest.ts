@@ -30,7 +30,7 @@ const SAFE_MARGINS_MM: Record<string, { top: number; side: number; bottom: numbe
 
 const kamiManifest: ModeManifest = {
   name: "kami",
-  version: "1.7.0",
+  version: "1.7.1",
   displayName: {
     en: "Kami",
     "zh-CN": "Kami",
@@ -50,6 +50,7 @@ const kamiManifest: ModeManifest = {
     de: "Webdesign auf Papier-Leinwand mit warmer Pergament-Ästhetik —— Designsprache übernommen von tw93/kami (MIT)",
   },
   changelog: {
+    "1.7.1": ["Fit loop rewritten to the viewer's kami-fit.json contract with the delta-safe-mm field and the five statuses including loose and bleed; WeasyPrint rationales and upstream version notes removed"],
     "1.7.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
     "1.6.0": [
       "Synced upstream tw93/kami V1.10.0 → V1.13.0 (Verified Typography / Safer Output / Steadier Proof)",

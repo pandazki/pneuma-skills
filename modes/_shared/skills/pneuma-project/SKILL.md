@@ -130,7 +130,7 @@ The `inbound_path` attribute on the `handed-off` form points at the raw structur
 
 **`reason` semantics — adjust your behavior accordingly:**
 
-- **`opened`** — fresh start. The user opened a new session; there's no precursor. **Reply once, with one short sentence**, and stop. State the mode is ready and you're waiting for the user. Don't repeat yourself across multiple turns ("ready", "standing by", "let me know"). Don't dump capabilities. Don't probe with tool calls. Wait for the user.
+- **`opened`** — fresh start. The user opened a new session; there's no precursor and nothing to inspect yet. Reply with one short sentence saying the mode is ready, then wait for the user's first request.
 
 - **`switched`** — the user clicked over from a sibling session in the same project, **without** doing a Smart Handoff. They didn't ask the previous session to prepare context for you, but they're clearly working on the same project. Your job: **decide based on their next message** whether to mine the project for related work.
 
@@ -329,5 +329,5 @@ Don't auto-borrow open-endedly. A borrow is a deliberate, bounded delegation —
 - Don't modify `project.json`. The user manages that via the launcher's edit dialog.
 - Don't auto-handoff. Wait for the user's `<pneuma:request-handoff>` tag.
 - Don't auto-borrow open-endedly. Borrow for a clear, bounded need; keep the brief tight; default to `scope: "return"` and apply the result yourself.
-- Don't write `$PNEUMA_PROJECT_ROOT/.pneuma/handoffs/<id>.md` files manually — that was the v1 protocol. Now the handoff goes through `$PNEUMA_CLI handoff`.
+- A handoff is emitted only through `$PNEUMA_CLI handoff`; there is no handoff file to write by hand.
 - When uncertain about project-scoped intent (vs your local mode work), check `$PNEUMA_PROJECT_ROOT/.pneuma/preferences/profile.md` first.

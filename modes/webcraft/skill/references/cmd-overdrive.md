@@ -5,18 +5,11 @@ argument-hint: "[target]"
 user-invocable: true
 ---
 
-Start your response with:
-
-```
-──────────── ⚡ OVERDRIVE ─────────────
-》》》 Entering overdrive mode...
-```
-
 Push an interface past conventional limits. This isn't just about visual effects. It's about using the full power of the browser to make any part of an interface feel extraordinary: a table that handles a million rows, a dialog that morphs from its trigger, a form that validates in real-time with streaming feedback, a page transition that feels cinematic.
 
-## MANDATORY PREPARATION
+## Before you start
 
-Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it carries the setup steps, the visitor modes, and the Context Gathering Protocol. The quality floor and the ban list live in [craft-floor.md](craft-floor.md); load it immediately before you edit UI. If no design context exists yet, you MUST run the `init` command (see [cmd-init](cmd-init.md)) first.
+Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it carries the setup steps, the visitor modes, and the Context Gathering Protocol. The quality floor and the ban list live in [craft-floor.md](craft-floor.md); load it immediately before you edit UI. If no design context exists yet, run the `init` command (see [cmd-init](cmd-init.md)) first.
 
 ---
 
@@ -34,7 +27,7 @@ Skipping this step risks building something embarrassing that needs to be thrown
 
 ### Iterate with Live Preview
 
-Technically ambitious effects almost never work on the first try. You MUST actively use the Pneuma viewer iframe (or any browser automation available in this session) to preview your work, visually verify the result, and iterate. Do not assume the effect looks right; check it. Expect multiple rounds of refinement. The gap between "technically works" and "looks extraordinary" is closed through visual iteration, not code alone.
+Technically ambitious effects almost never work on the first try. Check them with the `capture` viewer action (SKILL.md → Live preview) in bounded rounds rather than assuming the effect looks right, and expect a round or two of refinement. Do not reach for an external browser or devtools — the Pneuma viewer is the only faithful render of a content set. The gap between "technically works" and "looks extraordinary" is closed through visual iteration, not code alone.
 
 ---
 

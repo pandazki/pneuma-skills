@@ -7,8 +7,9 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 
 const gridboardManifest: ModeManifest = {
   name: "gridboard",
-  version: "0.1.1",
+  version: "0.1.2",
   changelog: {
+    "0.1.2": ["Resize tiers are checked with the capture-tile action instead of an imagined screenshot; description and core rules trimmed"],
     "0.1.1": ["Make skill discovery and guidance portable across Claude Code and Codex"],
   },
   displayName: {

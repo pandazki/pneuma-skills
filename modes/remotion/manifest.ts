@@ -7,8 +7,9 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 
 const remotionManifest: ModeManifest = {
   name: "remotion",
-  version: "0.2.1",
+  version: "0.2.2",
   changelog: {
+    "0.2.2": ["Install instructions collapsed to one line; rules written in third person with their reasons instead of MUST and FORBIDDEN"],
     "0.2.1": ["Make skill discovery and guidance portable across Claude Code and Codex"],
     "0.2.0": [
       "Canonical skeleton inlined in SKILL.md — Root.tsx + Composition + tokens pattern",

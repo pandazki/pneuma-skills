@@ -31,8 +31,7 @@ If the items should not be wrapped, use the `layout` prop:
 
 ## Premounting
 
-This loads the component in the timeline before it is actually played.  
-Always premount any `<Sequence>`!
+Premount every `<Sequence>` so its content is loaded before its first visible frame instead of popping in:
 
 ```tsx
 <Sequence premountFor={1 * fps}>

@@ -134,13 +134,17 @@ Six kinds, all sharing an optional `label` override:
 
 ```ts
 type CosmosSourceRef =
-  | { kind: "file"; path: string; range?: [number, number]; label?: string }
-  | { kind: "url"; url: string; label?: string }
-  | { kind: "passage"; file: string; locator: string; quote?: string; label?: string }
-  | { kind: "image"; path: string; label?: string }
-  | { kind: "audio"; path: string; t?: number; label?: string }
-  | { kind: "video"; path: string; t?: number; label?: string };
+  | { kind: "file"; path: string; range?: [number, number]; label?: string; locator?: string; excerpt?: CosmosSourceExcerpt }
+  | { kind: "url"; url: string; label?: string; locator?: string; excerpt?: CosmosSourceExcerpt }
+  | { kind: "passage"; file: string; locator: string; quote?: string; label?: string; excerpt?: CosmosSourceExcerpt }
+  | { kind: "image"; path: string; label?: string; locator?: string; excerpt?: CosmosSourceExcerpt }
+  | { kind: "audio"; path: string; t?: number; label?: string; locator?: string; excerpt?: CosmosSourceExcerpt }
+  | { kind: "video"; path: string; t?: number; label?: string; locator?: string; excerpt?: CosmosSourceExcerpt };
+
+type CosmosSourceExcerpt = { path: string; caption?: string };
 ```
+
+`locator` and `excerpt` are available on every kind — see SKILL.md's *Visual anchoring* chapter.
 
 | kind | Open via | Use case |
 |---|---|---|

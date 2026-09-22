@@ -5,9 +5,9 @@ argument-hint: "[area (feature, page, component...)]"
 user-invocable: true
 ---
 
-## MANDATORY PREPARATION
+## Before you start
 
-Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it carries the setup steps, the visitor modes, and the Context Gathering Protocol. The quality floor and the ban list live in [craft-floor.md](craft-floor.md); load it immediately before you edit UI. If no design context exists yet, you MUST run the `init` command first (see [cmd-init](cmd-init.md)). Additionally gather: what the interface is trying to accomplish.
+Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it carries the setup steps, the visitor modes, and the Context Gathering Protocol. The quality floor and the ban list live in [craft-floor.md](craft-floor.md); load it immediately before you edit UI. If no design context exists yet, run the `init` command first (see [cmd-init](cmd-init.md)). Additionally gather: what the interface is trying to accomplish.
 
 ---
 
@@ -278,7 +278,7 @@ After presenting the summary, tell the user:
 
 ## Reference Material
 
-The sections below were previously separate reference files (`cognitive-load.md`, `heuristics-scoring.md`, `personas.md`). They live inline now so the critique flow has all its deep context in one place.
+Cognitive load, heuristic scoring and personas — the deep context the critique flow draws on.
 
 ### Cognitive Load Assessment
 

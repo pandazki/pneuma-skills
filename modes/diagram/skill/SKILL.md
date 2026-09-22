@@ -1,11 +1,9 @@
 ---
 name: pneuma-diagram
 description: >
-  Pneuma Diagram Mode workspace guidelines. Use for ANY task in this workspace:
-  creating or editing architecture diagrams, flowcharts, UML, ER diagrams,
-  network topology, org charts, mind maps, or any draw.io diagram.
-  This skill defines the .drawio XML format, style strings, edge rules, and color palette.
-  Consult before your first edit in a new conversation.
+  Create and edit draw.io diagrams in the Pneuma Diagram workspace. Use for ANY task in
+  this workspace. Defines the .drawio XML format, style strings, edge rules, and color
+  palette.
 ---
 
 # Pneuma Diagram Mode
@@ -80,7 +78,7 @@ After scaffold, write the new diagram with `Write` — don't expect the canvas t
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <!-- elements here -->
+        <mxCell id="svc-1" value="Auth Service" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="100" y="100" width="140" height="60" as="geometry"/></mxCell>
       </root>
     </mxGraphModel>
   </diagram>

@@ -212,11 +212,11 @@ export function buildDataSourceSection(
   lines.push("");
 
   // ── Data Access Scripts ────────────────────────────────────────────────
-  lines.push("### Data Access Scripts (IMPORTANT)");
+  lines.push("### Data Access Scripts");
   lines.push("");
   lines.push(`Scripts directory: ${scriptsDir}/`);
   lines.push("");
-  lines.push("**ALWAYS use these scripts instead of raw grep/cat/head on JSONL files.**");
+  lines.push("Use these scripts rather than raw grep/cat/head on the JSONL files:");
   lines.push("CC history files are very large (100MB+) and 99% of their content is tool_result noise.");
   lines.push("These scripts use streaming JSONL processing to extract only the meaningful conversation text.");
   lines.push("");

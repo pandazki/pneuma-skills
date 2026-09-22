@@ -340,14 +340,15 @@ describe("mode-maker seed template", () => {
     expect(seedManifest).toContain("### Core Rules");
   });
 
-  it("mode-maker SKILL.md points to manifest reference for claudeMdSection guidance", () => {
+  it("mode-maker SKILL.md points to manifest reference for mdScene guidance", () => {
     const mmSkill = readFileSync(join(PROJECT_ROOT, "modes", "mode-maker", "skill", "SKILL.md"), "utf-8");
-    // claudeMdSection best practices moved to references/manifest-reference.md
+    // mdScene guidance lives in references/manifest-reference.md
     expect(mmSkill).toContain("references/manifest-reference.md");
     // The reference file should exist and contain the guidance
     const refFile = readFileSync(join(PROJECT_ROOT, "modes", "mode-maker", "skill", "references", "manifest-reference.md"), "utf-8");
-    expect(refFile).toContain("claudeMdSection Best Practices");
-    expect(refFile).toContain("Skill Reference");
-    expect(refFile).toContain("hook");
+    expect(refFile).toContain("## mdScene");
+    expect(refFile).toContain("scene paragraph");
+    expect(refFile).toContain("installName");
+    expect(refFile).toContain("claudeMdSection` is deprecated");
   });
 });

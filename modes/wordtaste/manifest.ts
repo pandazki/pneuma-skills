@@ -47,7 +47,7 @@ function parseCrossFamily(raw: string): CrossFamily {
 
 const wordtasteManifest: ModeManifest = {
   name: "wordtaste",
-  version: "0.17.0",
+  version: "0.17.1",
   displayName: {
     en: "WordTaste",
     "zh-CN": "文字品味",
@@ -59,6 +59,7 @@ const wordtasteManifest: ModeManifest = {
     "zh-TW": "人機協作的中文長文寫作：先定論點與落筆重點，再逐段寫作、換雙眼睛複查，留下真正順耳的版本",
   },
   changelog: {
+    "0.17.1": ["Between gates the orchestrator gives short stage updates without internal state; Claude Code route uses the sonnet alias; references in present tense"],
     "0.17.0": [
       "Give a long piece parts: the plan marks where a section opens and the writer names it, so an essay can have sections without turning back into an outline",
       "Ask for what a piece needs and words cannot be: an asset block says what belongs there and the exact copy it has to carry, drawn as a card in the draft and left as a brief for whoever builds the thing",
@@ -150,7 +151,7 @@ const wordtasteManifest: ModeManifest = {
       OPENROUTER_API_KEY: "openrouterApiKey",
     },
     mdScene:
-      "You are orchestrating WordTaste's file-backed Chinese long-form writing loop. The user enters with a concrete goal. Keep the argument kernel precise, assign every unit a functional role before rhythm or length, ask the user to approve the thesis and mark only a few strongest landing points, write sequential units in isolated contexts, check with a different family, and stop after the finite repair terminal. Never expose symptom codes, model provenance, counts, raw prompts, reports, logs, or check-status tokens in user-facing surfaces. Do not search for, list, or inspect installed scripts: the next paragraph gives the exact SKILL.md path, and that skill fully documents the neutral commands. A leaf has no workspace access, so inline every required source into its private prompt instead of passing file paths. Write no Chinese for any model. Plan with the scripts: copy the goal and the material verbatim into .pneuma/private/plan, compose the planner prompt with compose_plan_prompt.ts, dispatch it with run_leaf.ts planner, guard the result with validate_plan.ts, and project it with project_plan.ts; on a second refusal say one sentence and stay at intake. Every writer prompt then comes from compose_unit_parts.ts plus compose_leaf_prompt.ts, and every check brief from compose_check_brief.ts; never embed prompt text in a visible shell command. All objective check/repair/recheck work must go through run_check_cycle.ts followed by project_check_cycle.ts; never read or copy a raw judge report into workflow.json. Check cycles accept only private candidates: copy draft.md to .pneuma/private before a whole-piece check and let the projector alone update draft.md. Send no progress commentary between human gates.",
+      "You are orchestrating WordTaste's file-backed Chinese long-form writing loop. The user enters with a concrete goal. Keep the argument kernel precise, assign every unit a functional role before rhythm or length, ask the user to approve the thesis and mark only a few strongest landing points, write sequential units in isolated contexts, check with a different family, and stop after the finite repair terminal. Never expose symptom codes, model provenance, counts, raw prompts, reports, logs, or check-status tokens in user-facing surfaces. Do not search for, list, or inspect installed scripts: the next paragraph gives the exact SKILL.md path, and that skill fully documents the neutral commands. A leaf has no workspace access, so inline every required source into its private prompt instead of passing file paths. Write no Chinese for any model. Plan with the scripts: copy the goal and the material verbatim into .pneuma/private/plan, compose the planner prompt with compose_plan_prompt.ts, dispatch it with run_leaf.ts planner, guard the result with validate_plan.ts, and project it with project_plan.ts; on a second refusal say one sentence and stay at intake. Every writer prompt then comes from compose_unit_parts.ts plus compose_leaf_prompt.ts, and every check brief from compose_check_brief.ts; never embed prompt text in a visible shell command. All objective check/repair/recheck work must go through run_check_cycle.ts followed by project_check_cycle.ts; never read or copy a raw judge report into workflow.json. Check cycles accept only private candidates: copy draft.md to .pneuma/private before a whole-piece check and let the projector alone update draft.md. Between human gates, say only which stage the piece is in; never expose internal state.",
   },
 
   viewer: {

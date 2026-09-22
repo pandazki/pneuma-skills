@@ -157,3 +157,14 @@ bought that flat anchor drift by shoving the body 17 px from side to side —
 time the lantern crossed the body. The wider cells are the same trade: sizing
 follows the anchor, so a pose that hangs off one side of the feet gets room
 instead of being clamped back.
+
+## Build notes
+
+**Sheet resolution drives seed size more than anything else.** At 2048 the two
+finished motions plus refs came to 11 MB after pruning and 5 MB was needed;
+re-running the same two commands from 1024² sheets (`ffmpeg -vf scale=1024:1024`
+→ `set-sheet` again → `run --alpha` → `register-run`) gives 256 px grid cells —
+the character's own declared `cell` — and lands the whole seed at 5.0 MB with
+every referenced asset kept. Re-running `set-sheet` and `register-run` after a
+resolution change is what keeps `project.json`'s recorded dimensions honest;
+both are idempotent on the same ids.

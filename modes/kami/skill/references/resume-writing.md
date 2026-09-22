@@ -181,8 +181,7 @@ Use | Avoid
 
 ## Visual rhythm
 
-The shipped resume templates carry a quiet, two-page rhythm (refreshed
-upstream V1.7.2). Hold these when editing layout — they keep a resume
+The shipped resume templates carry a quiet, two-page rhythm. Hold these when editing layout — they keep a resume
 from reading like a long-doc:
 
 - **Section headers** use a single warm bottom rule
@@ -239,7 +238,7 @@ Fit and density checks validate structure and layout, not prose. A resume can re
 
 Fix a failing row by rewriting from the source material. If the source cannot support a row (for example, no outcome fact exists), ask the user for the missing fact. Do not pad, and do not fall back to generic claims ("保障稳定运行", "improved efficiency").
 
-This pass is internal: run it silently; surface it only when a row cannot be fixed without new information from the user.
+This pass is internal: report it only when a row cannot be fixed without new information from the user.
 
 ---
 

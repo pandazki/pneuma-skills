@@ -63,11 +63,16 @@ Smart Handoff in the UI.
 
    If that command fails (e.g. "command not found" — Pneuma's CLI isn't on
    PATH), skip the list step and instead propose a sensible mode from the
-   common set: `webcraft` (webpages / dashboards / static sites),
+   public catalog: `webcraft` (webpages / dashboards / static sites),
    `slide` (decks), `doc` (markdown), `diagram` (flowcharts), `draw`
    (whiteboard), `illustrate` (AI illustrations), `kami` (paper-canvas
    sites), `remotion` (programmatic video), `gridboard` (tile dashboards),
-   `clipcraft` (AIGC clips). Confirm with the user.
+   `clipcraft` (AIGC clips), `cosmos` (content → explorable graph),
+   `wordtaste` (Chinese long-form writing), `bansho` (board-writing
+   explainer), `eli5` (one topic, an audience ladder of pages), `plotwise`
+   (learning videos), `sprite` (character motion assets). The maintained
+   list is the "Built-in Modes" table in the pneuma-skills README. Confirm
+   with the user.
 
    When the JSON command worked, parse its output (an array of
    `{ name, displayName, description, source, hidden }`), drop entries where
@@ -236,7 +241,7 @@ Smart Handoff in the UI.
      `pneuma://` URL scheme automatically, opens sessions in a native
      window.
    - **For terminal-only / Linux / CI**: `bun add -g pneuma-skills`
-     (requires [Bun](https://bun.sh/) ≥ 1.3.5).
+     (requires [Bun](https://bun.sh/) ≥ 1.3.14).
 
    Do not attempt to install anything yourself.
 

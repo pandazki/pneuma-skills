@@ -125,7 +125,7 @@ Worked example (Remy & Linguini panel 06):
 
 ## Translating panels into sketch generation prompts
 
-The skill workflow's `--style sketch` invocation should now be **multi-line, derived from the panel template**, not a single sentence. Format:
+The skill workflow's `--style sketch` invocation is **multi-line, derived from the panel template**, not a single sentence. Format:
 
 ```
 "<SHOT TYPE> of <action sentence>. Camera: <angle>. Featuring <character refs if any>.

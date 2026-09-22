@@ -4,11 +4,10 @@ description: >
   Pneuma ELI5 Mode workspace guidelines. Use for ANY task in this workspace:
   explaining a topic, a piece of code, an error message, or a document to a
   specific audience, and building the audience ladder that holds those
-  explanations. Trigger on "ELI5", "explain like I am", "explain this to my
-  manager / mom / kid / team", "break this down for", "dumb it down",
-  "simplify this for", "how would I explain this to", or any request naming
-  who the explanation is for. Also trigger when the user wants the same thing
-  explained at several levels, or wants to compare two audience versions.
+  explanations. Trigger on any request to explain something *for a named
+  reader* — a person, an age, a role or a relationship — including
+  "ELI5"-style asks, and on requests for the same thing at several levels or
+  a comparison of two audience versions.
   Consult before your first edit in a new conversation.
 ---
 
@@ -247,8 +246,8 @@ about syntax until they know why the code exists.
 
 ### Designing the page for its reader
 
-The upstream ELI5 skill calibrated words. Here two more things are calibrated to
-whoever is reading, and neither of them is the vocabulary: **what the page looks
+Vocabulary is the easy half. Two more things are calibrated to whoever is
+reading: **what the page looks
 like**, and **what it has to contain before this particular person feels they
 have understood**. Miss the first and the page reads as made for somebody else —
 a five-year-old's explanation set in 15px grey Helvetica reads as homework, a

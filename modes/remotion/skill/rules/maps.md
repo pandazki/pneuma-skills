@@ -12,31 +12,7 @@ The [Mapbox documentation](https://docs.mapbox.com/mapbox-gl-js/api/) has the AP
 
 Mapbox and `@turf/turf` need to be installed.
 
-Search the project for lockfiles and run the correct command depending on the package manager:
-
-If `package-lock.json` is found, use the following command:
-
-```bash
-npm i mapbox-gl @turf/turf @types/mapbox-gl
-```
-
-If `bun.lock` is found, use the following command:
-
-```bash
-bun i mapbox-gl @turf/turf @types/mapbox-gl
-```
-
-If `yarn.lock` is found, use the following command:
-
-```bash
-yarn add mapbox-gl @turf/turf @types/mapbox-gl
-```
-
-If `pnpm-lock.yaml` is found, use the following command:
-
-```bash
-pnpm i mapbox-gl @turf/turf @types/mapbox-gl
-```
+Install them with the project's package manager (`bun i mapbox-gl @turf/turf @types/mapbox-gl`, or the `npm` / `yarn` / `pnpm` equivalent).
 
 The user needs to create a free Mapbox account and create an access token by visiting https://console.mapbox.com/account/access-tokens/.
 
@@ -164,15 +140,14 @@ The following is important in Remotion:
 
 ## Drawing lines
 
-Unless I request it, do not add a glow effect to the lines.
-Unless I request it, do not add additional points to the lines.
+Default look: plain lines, no glow, no extra interpolated points. Depart from that when the user asks for it.
 
 ## Map style
 
 By default, use the `mapbox://styles/mapbox/standard` style.  
 Hide the labels from the base map style.
 
-Unless I request otherwise, remove all features from the Mapbox Standard style.
+By default, remove all features from the Mapbox Standard style; keep them only when the user asks for them.
 
 ```tsx
 // Hide all features from the Mapbox Standard style
@@ -208,7 +183,7 @@ _map.setConfigProperty("basemap", "colorTrunks", "transparent");
 
 You can animate the camera along the line by adding a `useEffect` hook that updates the camera position based on the current frame.
 
-Unless I ask for it, do not jump between camera angles.
+Use one continuous camera move; jump between camera angles only when the user asks for it.
 
 ```tsx
 import * as turf from "@turf/turf";
@@ -263,8 +238,8 @@ useEffect(() => {
 
 Notes:
 
-IMPORTANT: Keep the camera by default so north is up.
-IMPORTANT: For multi-step animations, set all properties at all stages (zoom, position, line progress) to prevent jumps. Override initial values.
+- Keep north up unless the shot needs otherwise — a rotating basemap reads as disorienting.
+- For multi-step animations, set all properties at all stages (zoom, position, line progress) to prevent jumps. Override initial values.
 
 - The progress is clamped to a minimum value to avoid the line being empty, which can lead to turf errors
 - See [Timing](./timing.md) for more options for timing.
@@ -387,7 +362,7 @@ _map.addLayer({
 Make sure they are big enough. Check the composition dimensions and scale the labels accordingly.
 For a composition size of 1920x1080, the label font size should be at least 40px.
 
-IMPORTANT: Keep the `text-offset` small enough so it is close to the marker. Consider the marker circle radius. For a circle radius of 40, this is a good offset:
+Keep the `text-offset` small enough so it is close to the marker. Consider the marker circle radius. For a circle radius of 40, this is a good offset:
 
 ```tsx
 "text-offset": [0, 0.5],

@@ -31,14 +31,9 @@ learner confirms is what they will get. If they want to compare, shoot
 the SAME hook and the SAME device in the other look — only then is the
 difference the style.
 
-All eighteen were sample-shot and reviewed on 2026-09-01, under the
-pre-montage grammar; the stills in the viewer's style catalog
-(`viewer/styleCatalog.ts` + `viewer/style-thumbs/`) come from those
-shoots. Keep that catalog in sync with the entries below: its card pitch
-is the short form of this entry's "Best for" (one truncated line, so keep
-it short), and `__tests__/style-board.test.tsx` fails if the roster, its
-order or a narration mode drifts from this file. Measured notes inside an
-entry record what was actually observed — keep them.
+All eighteen were sample-shot and reviewed; the stills in the viewer's
+style catalog come from those shoots. Measured notes inside an entry
+record what was actually observed.
 
 Two facts that shape every recipe:
 

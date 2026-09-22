@@ -13,8 +13,9 @@ import {
 
 const clipcraftManifest: ModeManifest = {
   name: "clipcraft",
-  version: "0.10.1",
+  version: "0.10.2",
   changelog: {
+    "0.10.2": ["Reference cap corrected to 9 image refs per seedance call, --generate-audio replaced by the real --no-audio contract, script count fixed to seven, audio-layering guidance written in present tense"],
     "0.10.1": ["Make skill discovery and guidance portable across Claude Code and Codex"],
     "0.10.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
   },

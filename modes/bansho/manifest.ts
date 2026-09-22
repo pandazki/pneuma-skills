@@ -19,7 +19,7 @@ import { loadBoard, saveBoard } from "./domain.js";
 
 const banshoManifest: ModeManifest = {
   name: "bansho",
-  version: "0.26.1",
+  version: "0.26.2",
   // The name is the brand and stays romanized where the script has no
   // word for it (house style — `modes/kami/manifest.ts` ships "Kami" ×7);
   // the CJK locales have their own reading of 板書 and use it.
@@ -44,6 +44,7 @@ const banshoManifest: ModeManifest = {
     de: "Erklären wie an der Tafel: Schreib die Vorlesung in schlichtem Markdown, und die Tafel führt sie selbst auf — fließende Handschrift, handgezeichnete Hervorhebungen und Diagramme, die entstehen, sobald die Erzählung sie erreicht; jederzeit zurückspulbar",
   },
   changelog: {
+    "0.26.2": ["Skill text states the current board rules directly instead of as changes from earlier versions; measured percentages and the fold incident replaced by the rule they taught"],
     "0.26.1": ["Fix skill metadata parsing for Codex and Claude Code discovery"],
     "0.26.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
     // Wording discipline: these bullets render VERBATIM in the launcher's

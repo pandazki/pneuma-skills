@@ -50,7 +50,7 @@ non-photographically**. That is the workflow below.
    photo as a reference, and let GPT Image 2.5 compose the 4-panel
    layout including the typewriter `OUTFIT` / `CHARACTER` text block.
    GPT Image 2.5's text rendering and multi-panel composition make this
-   a single-call job now.
+   a single-call job.
 2. **`scripts/make-character-sheet.mjs`** (deterministic shortcut). A
    purpose-built wrapper around GPT Image 2.5 on OpenRouter that
    bakes the prompt and layout. Use when you want a one-liner and
@@ -157,13 +157,11 @@ Non-negotiables:
 - **`reference` subcommand, not `from-image`.** Reference mode treats
   the sheet as an identity anchor; from-image would try to animate
   the collage itself as the first frame.
-- **`--no-audio` is default.** Seedance's output-audio filter rejects
-  human-character generations even when the image passes. Verified
-  today: without `--no-audio` the retry message is
-  `"Output audio has sensitive content"` on
-  `loc: ["body","generated_video"]` — meaning the image passed and
-  the frames were generated, but audio generation was rejected. Bake
-  `--no-audio` in from the first call.
+- **Pass `--no-audio` from the first call.** Seedance's output-audio
+  filter rejects human-character generations even when the image
+  passes: the retry message `"Output audio has sensitive content"` on
+  `loc: ["body","generated_video"]` means the frames were generated
+  and only the audio was refused.
 - **Pass only the sheet, not the original photo.** Adding the photo
   re-introduces a photorealistic face and trips the filter.
 
@@ -176,10 +174,9 @@ Prompt rules for the video:
   want.
 - **Do NOT include** the phrases `"虚拟数字角色"`,
   `"virtual character"`, `"CG rendering"`, `"not a real person"`.
-  Those were a leftover from earlier bypass attempts — they do
-  nothing for the filter (which doesn't read the prompt) and they
-  actively push the model toward a game-CG aesthetic. Confirmed
-  today: removing them visibly improves photorealism.
+  They do nothing for the filter (which doesn't read the prompt) and
+  they push the model toward a game-CG aesthetic; leaving them out
+  visibly improves photorealism.
 - **Do include** a face-identity directive that references the
   sketch panel: `"角色身份与参考图完全一致——面部五官、眼型、唇形、
   发型与素描面板描绘的角色匹配"` or the English equivalent
@@ -189,7 +186,7 @@ Prompt rules for the video:
 - **Describe the action + camera.** `"slow dolly-in, the character
   blinks and softly smiles"`, etc.
 
-Example (verified passing today):
+Example (a call that passes the filter):
 
 ```
 角色身份与参考图完全一致——面部五官、眼型、唇形、肤色、发型均与素描

@@ -73,7 +73,7 @@ describe("isolated family wrappers", () => {
   });
 
   it("names the leaf model instead of inheriting whatever the account prefers", () => {
-    expect(leafSource).toContain('process.env.WORDTASTE_CLAUDE_MODEL || "claude-sonnet-5"');
+    expect(leafSource).toContain('process.env.WORDTASTE_CLAUDE_MODEL || "sonnet"');
     // Codex is the checker by default, so its model stays opt-in: no flag at
     // all unless someone names one.
     expect(leafSource).toContain("process.env.WORDTASTE_CODEX_MODEL");
@@ -256,9 +256,7 @@ describe("isolated family wrappers", () => {
       expect(byDefault.status).toBe(0);
       const defaultArgv = readFileSync(harness.claudeArgv, "utf8").split("\n");
       expect(defaultArgv).toContain("--model");
-      expect(defaultArgv[defaultArgv.indexOf("--model") + 1]).toBe(
-        "claude-sonnet-5",
-      );
+      expect(defaultArgv[defaultArgv.indexOf("--model") + 1]).toBe("sonnet");
       // A plain prompt has no composed charter beside it, so its dispatch
       // never grows the system flag.
       expect(defaultArgv).not.toContain("--system-prompt-file");

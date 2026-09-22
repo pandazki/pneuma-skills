@@ -7,7 +7,10 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 
 const docManifest: ModeManifest = {
   name: "doc",
-  version: "1.0.0",
+  version: "1.0.1",
+  changelog: {
+    "1.0.1": ["Description shortened to the job; act-don't-ask rule dropped as a harness default"],
+  },
   displayName: {
     en: "Document",
     "zh-CN": "文档",

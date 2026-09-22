@@ -259,7 +259,7 @@ describe("candidate evaluation (deliberately not synced)", () => {
 
 describe("skill version", () => {
   test("ships the image upgrade and preserves the upstream sync changelog", () => {
-    expect(illustrateManifest.version).toBe("0.6.0");
+    expect(illustrateManifest.version).toBe("0.6.1");
     // A bump without a same-key entry ships a silent update — the launcher's
     // skill-update prompt reads its bullets straight out of this map.
     expect(illustrateManifest.changelog?.[illustrateManifest.version!]).toBeDefined();

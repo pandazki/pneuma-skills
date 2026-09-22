@@ -30,8 +30,7 @@ lose — creation needs a different charter, not a different judge.
 
 ## Outer loop
 
-The outer loop never writes prose, and since 0.6.0 it does not write the plan
-either: a planner returns JSON against `references/plan-schema.json`,
+The outer loop never writes prose, and it does not write the plan either: a planner returns JSON against `references/plan-schema.json`,
 `validate_plan.ts` refuses any plan whose Chinese is not a literal quote of the
 human input, and `project_plan.ts` turns the accepted plan into the layout the
 viewer shows. What the loop still owns is the judgment below — the plan is the
