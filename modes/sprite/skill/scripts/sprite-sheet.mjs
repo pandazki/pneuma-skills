@@ -145,6 +145,31 @@ const MAX_AUTO_SEAM_FILL = 4;
 const MIN_LOOP_FRAMES = 8;
 /** A Lottie past this is too much JSON to hand a browser; --width is the fix. */
 const MAX_LOTTIE_BYTES = 8 * 1024 * 1024;
+/** An APNG past this is a page asset nobody will wait for. Its own constant
+ *  rather than a shared one: the Lottie's cost is parsing base64 and the
+ *  APNG's is the download, and the two numbers are free to move apart. The
+ *  Kiki trial shipped a 33 MB APNG with nothing said about it. */
+const MAX_APNG_BYTES = 8 * 1024 * 1024;
+/**
+ * What `--width` falls back to when it is not given and the frames are bigger.
+ *
+ * A clip's own size is almost never the size a UI renders at, and the cost of
+ * assuming it is not a slightly-too-big picture: the Kiki trial cut 532px
+ * frames and landed a 45 MB Lottie and a 33 MB APNG, of which exactly one
+ * export (the WebM) was shippable. 512 is two retina-doubled 256px icons and
+ * a size every export survives; it is a DEFAULT, announced on stderr and
+ * recorded as `widthDefaulted`, never a limit — `--width 1024` is obeyed.
+ */
+const DEFAULT_LOOP_WIDTH = 512;
+
+// --- retime: the clip's own frames, in another order ------------------------
+/** Frames `retime` will decode out of one clip. A Seedance plate is 5–10s at
+ *  24fps; 600 is 25 seconds of it, and past that the PNG sequence on disk is
+ *  the problem rather than the reorder. */
+const MAX_RETIME_SOURCE_FRAMES = 600;
+/** Near-lossless: the retimed plate is an intermediate that interpolation and
+ *  matting both read afterwards, so it must not add artefacts of its own. */
+const RETIME_CRF = 12;
 /** How different two channels have to be before a plate counts as a chroma
  *  screen with a spill hue to remove. A neutral grey plate has none, and
  *  running `despill` on it would tint the subject for no reason. */
@@ -159,7 +184,7 @@ const ALIGN_RECORD = "align.json";
 
 const SUBCOMMANDS = [
   "probe", "key", "flatten", "slice", "clean", "align", "pack", "gif",
-  "inspect", "run", "contact", "from-video", "loop",
+  "inspect", "run", "contact", "from-video", "retime", "loop",
 ];
 
 const USAGE = `Usage: sprite-sheet.mjs <subcommand> [options]
@@ -296,6 +321,19 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       The JSON says which schedule ran: "even" or "explicit".
       The clip is only read: it is never copied or moved into <motionDir>.
 
+  retime <clip> --keep <ranges> --out <mp4> [--fps N]
+      Replay a clip's OWN frames in another order: an apex hold cut short, a
+      beat repeated, a second blink dropped. <ranges> is a comma list of
+      inclusive frame indices in the order they should play, repeats allowed
+      — '2-40,41-60,2-40' is three ranges and 81 frames. Nothing is invented:
+      the frames are decoded once and written back at the clip's own rate (or
+      --fps) as an opaque H.264 mp4 (yuv420p, crf ${RETIME_CRF}).
+      This belongs on the PLATE clip, BEFORE matting and before interpolation,
+      so a clip that already carries alpha is refused by name.
+      The JSON reports firstIs / lastIs — which source frames now sit at the
+      wrap. After a retime the loop no longer closes by construction, and
+      'loop' has to measure the seam again.
+
   loop <clip> --out <motionDir> --name <motionId>
       [--trim-start s] [--trim-end s] [--key auto|#rrggbb|none|alpha]
       [--similarity ${DEFAULT_VIDEO_SIMILARITY}] [--blend ${DEFAULT_BLEND}] [--despill|--no-despill]
@@ -330,6 +368,10 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       --crop union crops every frame to one rect — the union of the kept
       frames' alpha bboxes plus --pad — so relative motion is preserved.
       --width scales in PREMULTIPLIED alpha, so soft edges do not darken.
+      Omitted, a frame wider than ${DEFAULT_LOOP_WIDTH}px is capped at ${DEFAULT_LOOP_WIDTH} with one line on
+      stderr and widthDefaulted: true in the report — the clip's own size is
+      almost never the size the UI renders at, and an uncapped one lands as a
+      Lottie nobody can ship.
       --fps N interpolates the PLATE frames to N fps with minterpolate,
       wrapped around the loop; refused with --key alpha, because
       interpolation belongs before matting (see interpolate-video.mjs).
@@ -2392,6 +2434,159 @@ function stepFromVideo(clip, options) {
 }
 
 // ---------------------------------------------------------------------------
+// retime — a clip's own frames, in another order
+// ---------------------------------------------------------------------------
+
+/**
+ * `2-40,41-60,2-40` → `[[2,40],[41,60],[2,40]]`.
+ *
+ * Inclusive, ordered, repeats allowed: the list IS the playback order, which
+ * is what lets one take become "breathe, blink, breathe again". Everything
+ * checkable without the clip is checked here; "past the last frame" needs the
+ * clip and is checked where it is decoded.
+ */
+function parseKeepRanges(raw) {
+  const parts = String(raw).split(",").map((value) => value.trim()).filter(Boolean);
+  if (!parts.length) {
+    fail("--keep: expected inclusive frame ranges in playback order, e.g. 2-40,60-66,2-40");
+  }
+  return parts.map((part) => {
+    const match = /^(\d+)-(\d+)$/.exec(part);
+    if (!match) {
+      fail(`--keep: '${part}' is not a frame range — write each one as <first>-<last>, e.g. 2-40 (a single frame is 40-40)`);
+    }
+    const from = Number(match[1]);
+    const to = Number(match[2]);
+    if (to < from) {
+      fail(`--keep: '${part}' runs backwards — a range plays forwards, so write ${to}-${from} if that is the stretch you meant`);
+    }
+    return [from, to];
+  });
+}
+
+/**
+ * Replay a clip's own frames in a given order, as an opaque H.264 plate.
+ *
+ * This is the step the Kiki trial had to improvise with `ffmpeg concat` and
+ * then could not record: two Seedance takes both froze for 1.5–2s at the
+ * inhale apex and blinked twice, which no prompt wording fixed and a $1.10
+ * re-shoot did not either. Cutting the freeze and dropping the second blink
+ * is free, deterministic, and invents no pixel — every written frame is a
+ * frame the model really drew.
+ *
+ * It runs on the PLATE, before matting and before interpolation, for the same
+ * reason `loop --fps` does: those steps read pixels, and re-encoding a matte
+ * to yuv420p would throw its alpha away. A clip that already carries one is
+ * refused by name rather than silently flattened.
+ *
+ * What it does NOT preserve is the first-last guarantee: after a reorder the
+ * frames at the wrap are whichever ones the ranges put there, so `firstIs` /
+ * `lastIs` are reported and `loop`'s measured seam becomes the only proof
+ * that the cycle still closes.
+ */
+function stepRetime(clip, options) {
+  const input = resolve(clip);
+  if (!existsSync(input)) fail(`file not found: ${input}`);
+  const out = resolve(options.out);
+  if (extname(out).toLowerCase() !== ".mp4") {
+    fail(`--out: expected an .mp4 path — a retimed plate is opaque H.264, which is what the interpolation and matting steps take (got '${options.out}')`);
+  }
+
+  const stream = probeVideoStream(input);
+  const fps = round(options.fps ?? stream.fps ?? 0, 3);
+  if (!fps) {
+    fail(`retime: ${input} reports no frame rate, so there is nothing to replay it at — pass --fps N`);
+  }
+  const size = probeSize(input, "retime");
+  if (size.width % 2 || size.height % 2) {
+    fail(`retime: ${input} is ${size.width}x${size.height} and H.264 needs even sides — crop or scale the clip before reordering it`);
+  }
+
+  // Beside the output, not in tmpdir: a PNG sequence of a plate clip is the
+  // same order of magnitude as the clip itself, and it belongs on whichever
+  // disk is about to hold the result. Removed on the way out either way.
+  const work = join(dirname(out), `.retime-work-${basename(out, extname(out))}`);
+  rmSync(work, { recursive: true, force: true });
+  mkdirSync(work, { recursive: true });
+
+  try {
+    // Alpha in means this is not a plate. Same guard, same reason and nearly
+    // the same sentence as `loop --fps`: the step belongs earlier in the chain.
+    const probe = ffmpegTo(join(work, "alpha.png"), () => [
+      ...alphaDecodeArgs(input), "-i", input, "-frames:v", "1", "-pix_fmt", "rgba",
+    ], "retime alpha probe");
+    if (hasAlpha(readRgba(probe))) {
+      fail(`retime: ${input} carries its own alpha, so it has already been matted. Reorder the PLATE clip it was made from and matte the result — a retime re-encodes to opaque H.264 and would drop the matte.`);
+    }
+
+    const srcDir = join(work, "src");
+    mkdirSync(srcDir, { recursive: true });
+    ffmpeg([
+      "-i", input, "-vf", "format=rgb24",
+      "-frames:v", String(MAX_RETIME_SOURCE_FRAMES + 1),
+      "-start_number", "0", "--", join(srcDir, "%03d.png"),
+    ], "retime decode");
+    const sourceFrames = sequenceCount(srcDir, "retime");
+    if (sourceFrames > MAX_RETIME_SOURCE_FRAMES) {
+      fail(`retime: ${input} is over ${MAX_RETIME_SOURCE_FRAMES} frames — trim it before reordering it`);
+    }
+    if (sourceFrames < 2) {
+      fail(`retime: ${input} decoded to ${sourceFrames} frame(s) — there is no order to change`);
+    }
+
+    // Naming a frame the clip does not have is the easy way to silently ship
+    // a shorter loop than was asked for, so it is an error and not a clamp.
+    for (const [from, to] of options.keep) {
+      if (to >= sourceFrames) {
+        fail(`--keep ${from}-${to}: the clip has ${sourceFrames} frames (0-${sourceFrames - 1})`);
+      }
+    }
+    const written = options.keep.reduce((sum, [from, to]) => sum + (to - from + 1), 0);
+    if (written < 2) {
+      fail(`--keep: ${written} frame is not a clip — name at least two frames of playback`);
+    }
+    if (written > MAX_LOOP_FRAMES) {
+      fail(`--keep: ${written} frames is over the ${MAX_LOOP_FRAMES}-frame limit a loop is cut under — drop a range or shorten one`);
+    }
+
+    const orderDir = join(work, "order");
+    mkdirSync(orderDir, { recursive: true });
+    let index = 0;
+    for (const [from, to] of options.keep) {
+      for (let i = from; i <= to; i++) {
+        copyFileSync(join(srcDir, loopFrameName(i)), join(orderDir, loopFrameName(index)));
+        index++;
+      }
+    }
+
+    ffmpegTo(out, () => [
+      "-framerate", String(fps), "-start_number", "0", "-i", join(orderDir, "%03d.png"),
+      "-frames:v", String(written), "-c:v", "libx264", "-pix_fmt", "yuv420p",
+      "-crf", String(RETIME_CRF),
+    ], "retime encode");
+
+    return {
+      kind: "retime",
+      source: input,
+      out,
+      fps,
+      keep: options.keep,
+      frames: written,
+      sourceFrames,
+      duration: round(written / fps, 3),
+      // Which source frames now sit at the wrap. A first-last clip closed
+      // because both ends were the same generated image; after a reorder that
+      // is only true when the ranges put it back, and the skill reads these
+      // two numbers to say which case it is looking at.
+      firstIs: options.keep[0][0],
+      lastIs: options.keep[options.keep.length - 1][1],
+    };
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // loop — every frame of a closed window, as a transparent animation for a UI
 // ---------------------------------------------------------------------------
 
@@ -2680,7 +2875,7 @@ function loopLottie(framesDir, frameCount, { fps, name, cell }) {
  * build without libvpx still owes the caller its WebP, its APNG and its
  * Lottie, and saying which one is missing is more use than refusing all four.
  */
-function writeLoopExports(motionDir, framesDir, { fps, formats, name, cell, frameCount }) {
+function writeLoopExports(motionDir, framesDir, { fps, formats, name, cell, frameCount, askedWidth = null }) {
   const paths = {};
   const warnings = [];
   // A deliverable this run is not producing must not survive from the last
@@ -2731,8 +2926,23 @@ function writeLoopExports(motionDir, framesDir, { fps, formats, name, cell, fram
 
   const sizes = {};
   for (const [format, path] of Object.entries(paths)) sizes[format] = statSync(path).size;
+
+  // What to DO about a deliverable nobody can ship depends on what was
+  // already asked for. "Pass --width to shrink the frames" is the right
+  // sentence when the flag was omitted and the frames came out at the clip's
+  // own size; said to a caller who passed `--width 512` it is advice they
+  // have already taken, and the trial agent that read it could only
+  // acknowledge the warning and move on. With a width on record the honest
+  // options are a smaller one or a format that does not grow with the
+  // picture — the WebM was 0.55 MB where the Lottie was 45.
+  const advice = (tail) => (askedWidth === null
+    ? `pass --width to shrink the frames ${tail}`
+    : `already at --width ${askedWidth}; halve it, or ship loop.webm instead`);
   if (sizes.lottie > MAX_LOTTIE_BYTES) {
-    warnings.push(`loop.json is ${(sizes.lottie / 1e6).toFixed(1)} MB of base64 PNG — pass --width to shrink the frames before a browser has to parse it`);
+    warnings.push(`loop.json is ${(sizes.lottie / 1e6).toFixed(1)} MB of base64 PNG — ${advice("before a browser has to parse it")}`);
+  }
+  if (sizes.apng > MAX_APNG_BYTES) {
+    warnings.push(`loop.apng is ${(sizes.apng / 1e6).toFixed(1)} MB — ${advice("before a page has to download it")}`);
   }
   return { paths, sizes, warnings };
 }
@@ -3011,8 +3221,19 @@ function stepLoop(clip, options) {
     }
     crop = evenRect(crop, size);
 
-    const outWidth = options.width === null ? crop.w : Math.max(2, 2 * Math.round(options.width / 2));
-    const outHeight = options.width === null
+    // No `--width` and a frame bigger than a UI ever asks for: cap it, and
+    // say so. The clip's own size is not a decision anybody made — the Kiki
+    // trial cut 532px frames because the flag was omitted and shipped a 45 MB
+    // Lottie. One line on stderr and one flag in the report, so the choice is
+    // visible and overridable rather than silently inherited from the codec.
+    const widthDefaulted = options.width === null && crop.w > DEFAULT_LOOP_WIDTH;
+    if (widthDefaulted) {
+      console.error(`no --width given: frames capped at ${DEFAULT_LOOP_WIDTH} px (source ${crop.w} px); pass --width to choose`);
+    }
+    const targetWidth = widthDefaulted ? DEFAULT_LOOP_WIDTH : options.width;
+
+    const outWidth = targetWidth === null ? crop.w : Math.max(2, 2 * Math.round(targetWidth / 2));
+    const outHeight = targetWidth === null
       ? crop.h
       : scaledHeight({ width: crop.w, height: crop.h }, outWidth);
 
@@ -3054,6 +3275,9 @@ function stepLoop(clip, options) {
     // --- 7. the deliverables ----------------------------------------------
     const { paths, sizes, warnings: exportWarnings } = writeLoopExports(motionDir, framesDir, {
       fps, formats: options.formats, name: options.name, cell, frameCount: count,
+      // The width the CALLER asked for, not the one that landed: "pass
+      // --width" is dead advice to someone who already did.
+      askedWidth: options.width,
     });
 
     if (keyColor && alphaCoverage > KEYED_OPAQUE_ALERT) {
@@ -3075,6 +3299,10 @@ function stepLoop(clip, options) {
       kind: "loop",
       frameCount: count,
       cell,
+      // Present only when the cap really fired: `false` on every run that
+      // passed `--width` would read as a statement about a default that was
+      // never consulted.
+      ...(widthDefaulted ? { widthDefaulted: true } : {}),
       fps,
       duration: round(count / fps, 3),
       seam,
@@ -3114,6 +3342,7 @@ function stepLoop(clip, options) {
       ...(despill ? { despill } : {}),
       alphaCoverage,
       cell,
+      ...(widthDefaulted ? { widthDefaulted: true } : {}),
       ...(paths.webp ? { webp: paths.webp } : {}),
       ...(paths.apng ? { apng: paths.apng } : {}),
       ...(paths.webm ? { webm: paths.webm } : {}),
@@ -3202,6 +3431,9 @@ const OPTIONS = {
     width: { type: "string" }, "no-webp": { type: "boolean", default: false },
     threshold: { type: "string" }, similarity: { type: "string" }, blend: { type: "string" },
     "no-clean": { type: "boolean", default: false },
+  },
+  retime: {
+    keep: { type: "string" }, out: { type: "string" }, fps: { type: "string" },
   },
   loop: {
     out: { type: "string" }, name: { type: "string" },
@@ -3582,6 +3814,18 @@ function main() {
       emit(values, out, [
         `${out.name}: ${out.frames.length} frames of ${out.cell.width}x${out.cell.height} sampled from ${basename(out.video)} at ${out.fps}fps → ${out.motionDir}`,
         ...(out.warnings.length ? out.warnings : ["no warnings"]),
+      ]);
+      break;
+    }
+    case "retime": {
+      const out = stepRetime(requirePositional(positionals, "<clip>"), {
+        keep: parseKeepRanges(requireFlag(values.keep, "--keep")),
+        out: requireFlag(values.out, "--out"),
+        fps: values.fps === undefined ? null : num(values.fps, "--fps", { min: 1 }),
+      });
+      emit(values, out, [
+        `${basename(out.out)}: ${out.frames} frames at ${out.fps} fps (${out.duration}s) replayed from ${out.sourceFrames} frames of ${basename(out.source)}`,
+        `kept ${out.keep.map(([from, to]) => `${from}-${to}`).join(", ")} — the wrap is now source frame ${out.lastIs} back to ${out.firstIs}, so measure the seam again with 'loop'`,
       ]);
       break;
     }

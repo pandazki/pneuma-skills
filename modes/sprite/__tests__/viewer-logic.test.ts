@@ -1448,6 +1448,13 @@ describe("loop motions", () => {
         .toContain("video-1");
       expect(spriteStrings("zh").derivedClip("video-1", "matte", "veed"))
         .toBe("video-1 的抠像 · veed");
+      // A retime is the third op, and it has its own word in both locales —
+      // it invents nothing, so calling it an interpolation would be wrong in
+      // the one place the user reads what a clip is.
+      expect(spriteStrings("en").derivedClip("video-1", "retime", "ffmpeg"))
+        .toBe("retime of video-1 · ffmpeg");
+      expect(spriteStrings("zh").derivedClip("video-1", "retime", "ffmpeg"))
+        .toBe("video-1 的重剪 · ffmpeg");
     });
 
     test("the Atlas tab tells a loop what it has instead", () => {

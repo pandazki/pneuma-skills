@@ -120,15 +120,16 @@ export type MotionStatus = (typeof MOTION_STATUSES)[number];
 export type GeneratedVideoModel = "seedance-2.5" | "h3-max";
 
 /** Models that make a clip out of ANOTHER CLIP — video matting (`veed`,
- *  `veed-gs` on its green-screen endpoint, `bria`) and frame interpolation
- *  (`topaz`, `rife`). They generate nothing of their own, which is why they
- *  are a separate union: the render-video popover must not be able to offer
- *  one, and a `derived` clip must not claim a prompt. `veed-gs` is its own
- *  name rather than a flag on `veed`, and `rife` its own rather than a flag
- *  on `topaz`: each is a different endpoint with different parameters and a
- *  different price, and a clip recorded under its sibling's name is a model
- *  nobody called. */
-export type DerivedVideoModel = "veed" | "veed-gs" | "bria" | "topaz" | "rife";
+ *  `veed-gs` on its green-screen endpoint, `bria`), frame interpolation
+ *  (`topaz`, `rife`) and the local reorder (`ffmpeg`, which invents no pixel
+ *  at all and only replays the clip's own frames in another order). They
+ *  generate nothing of their own, which is why they are a separate union: the
+ *  render-video popover must not be able to offer one, and a `derived` clip
+ *  must not claim a prompt. `veed-gs` is its own name rather than a flag on
+ *  `veed`, and `rife` its own rather than a flag on `topaz`: each is a
+ *  different endpoint with different parameters and a different price, and a
+ *  clip recorded under its sibling's name is a model nobody called. */
+export type DerivedVideoModel = "veed" | "veed-gs" | "bria" | "topaz" | "rife" | "ffmpeg";
 
 export type VideoModel = GeneratedVideoModel | DerivedVideoModel;
 
@@ -153,8 +154,14 @@ export interface MotionVideo {
    * the graph.
    */
   derivedFrom?: string;
-  /** What the derivation did. Absent on a generated clip. */
-  op?: "matte" | "interpolate";
+  /**
+   * What the derivation did. Absent on a generated clip.
+   *
+   * `retime` replays the parent's own frames in another order (a hold cut
+   * short, a repeated beat) and invents nothing; it is its own op because a
+   * retime recorded as an `interpolate` claims a model ran that never did.
+   */
+  op?: "matte" | "interpolate" | "retime";
 }
 
 /** The latest `sprite-sheet.mjs inspect` report, copied into the motion by
@@ -237,6 +244,32 @@ export interface InspectSummary {
  */
 export type MotionKind = "loop";
 
+/**
+ * The answers a loop's interview collected, before anything was paid for.
+ *
+ * A loop's first clip costs about a dollar and its size, its rate and its
+ * wrap all follow from four decisions the user — not the agent — makes. They
+ * are recorded here by `sprite-project.mjs set-motion --brief-…`, and the
+ * scripts gate the paid call on their presence: a trial agent that skipped
+ * the interview spent $2.61 on a 7.4s loop for a UI that wanted 3–4s, and no
+ * amount of prose in the skill stopped it.
+ *
+ * `budgetUsd` is the one optional answer, because a user who named no ceiling
+ * is a different state from one who named zero.
+ */
+export interface LoopBrief {
+  /** Seconds of one cycle, as asked for. */
+  duration: number;
+  /** The width in px the UI renders the loop at — what `loop --width` gets. */
+  width: number;
+  /** Who invents the in-betweens; `"none"` is the clip's own rate, kept. */
+  interpolator: "topaz" | "rife" | "ffmpeg" | "none";
+  /** The ceiling the user set, in dollars. Absent when they set none. */
+  budgetUsd?: number;
+  /** ISO timestamp of the call that recorded it. */
+  recordedAt: string;
+}
+
 /** Frontend-ready exports of a loop, by asset id. The WebP keeps `motion.webp`
  *  — it is the preview every motion has — so only the three new ones live
  *  here. */
@@ -253,6 +286,8 @@ export interface Motion {
   prompt: string;
   /** Absent means a sprite motion; see `MotionKind`. */
   kind?: MotionKind;
+  /** Loop motions: the interview's answers, recorded before the paid clip. */
+  brief?: LoopBrief;
   grid: { rows: number; cols: number };
   fps: number;
   loop: boolean;
@@ -488,7 +523,47 @@ const VIDEO_MODELS: readonly VideoModel[] = [
   "bria",
   "topaz",
   "rife",
+  "ffmpeg",
 ];
+
+const LOOP_INTERPOLATORS: readonly LoopBrief["interpolator"][] = [
+  "topaz",
+  "rife",
+  "ffmpeg",
+  "none",
+];
+
+/**
+ * The brief, or nothing — never a half of one.
+ *
+ * Every other optional field here is parsed field by field, so a broken one
+ * costs its own value. The brief cannot be: it is what the scripts refuse a
+ * paid clip without, so a record missing its width would open that gate while
+ * answering none of the question it stands for. All four required answers
+ * present and usable, or the motion has no brief.
+ */
+function parseLoopBrief(value: unknown): LoopBrief | undefined {
+  if (!isRecord(value)) return undefined;
+  const duration = parseFinite(value.duration);
+  const width = parseFinite(value.width);
+  const recordedAt = optionalStr(value.recordedAt);
+  const interpolator = LOOP_INTERPOLATORS.includes(
+    value.interpolator as LoopBrief["interpolator"],
+  )
+    ? (value.interpolator as LoopBrief["interpolator"])
+    : undefined;
+  if (duration === undefined || duration <= 0) return undefined;
+  if (width === undefined || width <= 0) return undefined;
+  if (!interpolator || !recordedAt) return undefined;
+  const budgetUsd = parseFinite(value.budgetUsd);
+  return {
+    duration,
+    width,
+    interpolator,
+    ...(budgetUsd === undefined || budgetUsd < 0 ? {} : { budgetUsd }),
+    recordedAt,
+  };
+}
 
 const VIDEO_MODES: readonly VideoMode[] = ["i2v", "first-last", "r2v", "derived"];
 
@@ -499,6 +574,11 @@ function parseMotion(value: unknown): Motion | null {
   const grid = isRecord(value.grid) ? value.grid : {};
   const inspect = parseInspect(value.inspect);
   const exports = parseExports(value.exports);
+  // Loop-only, like `keyframe` and `exports`: a brief describes a duration, a
+  // UI width and an interpolator, and a sheet motion has none of those to
+  // answer for. It is dropped rather than carried into a panel that would
+  // have nowhere to put it.
+  const brief = value.kind === "loop" ? parseLoopBrief(value.brief) : undefined;
   return {
     id,
     label: str(value.label, id),
@@ -508,6 +588,7 @@ function parseMotion(value: unknown): Motion | null {
     // so anything that is not "loop" reads as the sprite motion it was
     // before loops existed.
     ...(value.kind === "loop" ? { kind: "loop" as const } : {}),
+    ...(brief ? { brief } : {}),
     grid: { rows: num(grid.rows, 1), cols: num(grid.cols, 1) },
     fps: num(value.fps, 8),
     loop: value.loop !== false,
@@ -556,7 +637,7 @@ function parseMotion(value: unknown): Motion | null {
               ? (v.status as MotionVideo["status"])
               : "generating",
           ...(derivedFrom ? { derivedFrom } : {}),
-          ...(v.op === "matte" || v.op === "interpolate"
+          ...(v.op === "matte" || v.op === "interpolate" || v.op === "retime"
             ? { op: v.op as MotionVideo["op"] }
             : {}),
         };

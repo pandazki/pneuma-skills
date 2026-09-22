@@ -27,6 +27,7 @@ import type {
   GeneratedVideoModel,
   Motion,
   MotionStatus,
+  MotionVideo,
 } from "../domain.js";
 import type { AtlasNote } from "./atlas.js";
 import type { LoopLine, SizeLine } from "./metrics.js";
@@ -163,8 +164,14 @@ export interface SpriteStrings {
   exportLink: (label: string, size: string | null) => string;
   /** What a derived clip is: `matte of video-1 · veed`. The op's own word is
    *  inside this phrase and nowhere else — a second table for it would be a
-   *  second place the same word could be translated differently. */
-  derivedClip: (parent: string, op: "matte" | "interpolate", model: string) => string;
+   *  second place the same word could be translated differently. The op union
+   *  is taken from the domain rather than spelled again here, so an op the
+   *  pipeline learns to record cannot reach the chip untranslated. */
+  derivedClip: (
+    parent: string,
+    op: NonNullable<MotionVideo["op"]>,
+    model: string,
+  ) => string;
   factSheet: string;
   factGrid: string;
   factCell: string;
@@ -363,7 +370,7 @@ const en: SpriteStrings = {
   exportLabel: { webp: "WebP", apng: "APNG", webm: "WebM", lottie: "Lottie" },
   exportLink: (label, size) => (size ? `${label} · ${size}` : label),
   derivedClip: (parent, op, model) =>
-    `${op === "matte" ? "matte" : "interpolation"} of ${parent} · ${model}`,
+    `${{ matte: "matte", interpolate: "interpolation", retime: "retime" }[op]} of ${parent} · ${model}`,
   atlasNote: (note) => {
     switch (note.kind) {
       case "unmeasured":
@@ -587,7 +594,7 @@ const zhCN: SpriteStrings = {
   exportLabel: { webp: "WebP", apng: "APNG", webm: "WebM", lottie: "Lottie" },
   exportLink: (label, size) => (size ? `${label} · ${size}` : label),
   derivedClip: (parent, op, model) =>
-    `${parent} 的${op === "matte" ? "抠像" : "补帧"} · ${model}`,
+    `${parent} 的${{ matte: "抠像", interpolate: "补帧", retime: "重剪" }[op]} · ${model}`,
   atlasNote: (note) => {
     switch (note.kind) {
       case "unmeasured":
