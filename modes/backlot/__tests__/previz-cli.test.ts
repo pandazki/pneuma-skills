@@ -2131,6 +2131,11 @@ describe("the landmarks the pack reads off the greybox", () => {
     // no set here, so right after 风格). It carries the end state where it
     // differs, and says out loud what is NOT in the picture.
     expect(text).toContain("地理：小凯身后是便利店雨棚（结束时身后是公交站牌）；画面里没有远处的水塔。");
+    // The colour is a name, not a paint job — said right under the mapping.
+    const mappingEnd = text.indexOf("@Video1 中的黄体块 = 远处的水塔。");
+    const disclaimer = text.indexOf("这些颜色只是身份编码，不是成片颜色");
+    expect(mappingEnd).toBeGreaterThan(-1);
+    expect(disclaimer).toBeGreaterThan(mappingEnd);
     const order = ["【全局设定】", "风格：", "地理：", "光线："].map((mark) => text.indexOf(mark));
     expect(order).toEqual([...order].sort((a, b) => a - b));
     expect(order.every((at) => at >= 0)).toBe(true);

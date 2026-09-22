@@ -157,6 +157,7 @@ template, merged with what a **greybox** reference-to-video job needs on top.
 不要继承灰白材质、空场景、几何体外形与 Viewport 叠加物。
 @Video1 中的红体块 = 便利店雨棚。
 @Video1 中的蓝体块 = 公交站牌。（每个 landmark 一行，按 scene.meta.json 的顺序）
+这些颜色只是身份编码，不是成片颜色——每处地标按【全局设定】里场景一行描述的真实材质与颜色画。
 @Image1：白模中名为「xia」的白色体块就是<角色>，
 只参考这张的脸型、发型、服装与配饰，不用背景。
 @Image2：（下一个角色，同样一行）

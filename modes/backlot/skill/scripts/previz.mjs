@@ -3166,6 +3166,7 @@ const PACK_TEXT = {
     // the palette leaves behind.
     geography: "地理",
     todoColour: "<TODO: 颜色>",
+    landmarkColours: "这些颜色只是身份编码，不是成片颜色——每处地标按【全局设定】里场景一行描述的真实材质与颜色画。",
     firstFrame: "第一帧",
     lastFrame: "最后一帧",
     todoEntry: "<TODO: 第一帧上有什么——每个人的位置、朝向、手里的东西、彼此的距离>",
@@ -3203,6 +3204,7 @@ const PACK_TEXT = {
     todoRef: "<TODO: what this reference is for, and what it is not for>",
     geography: "Geography",
     todoColour: "<TODO: colour>",
+    landmarkColours: "These colours are identity codes, not film colours — paint every landmark in the real materials and colours the Set line under Global settings describes.",
     firstFrame: "First frame",
     lastFrame: "Last frame",
     todoEntry: "<TODO: what is on screen in frame 1 — each body's position, facing, what is in their hands, the distance between them>",
@@ -3508,6 +3510,9 @@ function buildSkeleton(dir, shot, projectRoot, attachments = {}) {
           ? `@Video1 中的${said}体块 = ${landmarkLabel(entry)}。`
           : `The ${said} block in @Video1 is the ${landmarkLabel(entry)}.`);
       }
+      // A saturated block is a NAME, not a paint job: without this line a
+      // shop painted yellow to be readable comes back as a yellow shop.
+      if (landmarks.length > 0) body.push(L.landmarkColours);
     }
     body.push("");
   }
