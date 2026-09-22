@@ -2056,7 +2056,8 @@ describe("prompt-skeleton", () => {
 /**
  * The greybox's sidecar, as `previz_kit.finish()` writes it: which colour in
  * the picture is which place, whether the camera sees each one at the two
- * ends of the clip, and what is standing behind each pawn there.
+ * ends of the clip, WHICH SIDE OF THE FRAME it projects onto, and what is
+ * standing behind each pawn there.
  *
  * Written by hand rather than rendered — Blender is `previz-kit.test.ts`'s
  * job. What is under test here is the pack the skeleton writes FROM it.
@@ -2074,9 +2075,9 @@ function withLandmarks(cwd: string, id = "lab-walk", extra: Record<string, unkno
     subjects: ["kai", "shutter"],
     accents: [],
     landmarks: [
-      { name: "shop", label: "便利店雨棚", color: "red", rgb: [0.85, 0.15, 0.12], objects: ["shop_awning", "shop_front"], in_frame: { first: true, last: true } },
-      { name: "bus_stop", label: "公交站牌", color: "blue", rgb: [0.15, 0.35, 0.85], objects: ["bus_stop"], in_frame: { first: true, last: true } },
-      { name: "tower", label: "远处的水塔", color: "yellow", rgb: [0.92, 0.8, 0.1], objects: ["tower"], in_frame: { first: false, last: false } },
+      { name: "shop", label: "便利店雨棚", color: "red", rgb: [0.85, 0.15, 0.12], objects: ["shop_awning", "shop_front"], in_frame: { first: true, last: true }, screen: { first: "left", last: "left" } },
+      { name: "bus_stop", label: "公交站牌", color: "blue", rgb: [0.15, 0.35, 0.85], objects: ["bus_stop"], in_frame: { first: true, last: true }, screen: { first: "right", last: "right" } },
+      { name: "tower", label: "远处的水塔", color: "yellow", rgb: [0.92, 0.8, 0.1], objects: ["tower"], in_frame: { first: false, last: false }, screen: { first: null, last: null } },
     ],
     subjects_detail: [
       { name: "kai", color: "white", rgb: [0.9, 0.9, 0.9], behind: { first: ["shop"], last: ["bus_stop"] } },
@@ -2129,8 +2130,9 @@ describe("the landmarks the pack reads off the greybox", () => {
 
     // 3 — the geography sentence, in 【全局设定】, right after 场景 (there is
     // no set here, so right after 风格). It carries the end state where it
-    // differs, and says out loud what is NOT in the picture.
-    expect(text).toContain("地理：小凯身后是便利店雨棚（结束时身后是公交站牌）；画面里没有远处的水塔。");
+    // differs, says which side of the frame each place is on, and says out
+    // loud what is NOT in the picture.
+    expect(text).toContain("地理：小凯身后是便利店雨棚（结束时身后是公交站牌）；画左是便利店雨棚，画右是公交站牌；画面里没有远处的水塔。");
     // The colour is a name, not a paint job — said right under the mapping.
     const mappingEnd = text.indexOf("@Video1 中的黄体块 = 远处的水塔。");
     const disclaimer = text.indexOf("这些颜色只是身份编码，不是成片颜色");
@@ -2159,11 +2161,19 @@ describe("the landmarks the pack reads off the greybox", () => {
     expect(text).toContain("The red block in @Video1 is the 便利店雨棚.");
     expect(text).toContain("The yellow block in @Video1 is the 远处的水塔.");
     expect(text).toContain('@Image1: the white block named "kai" in the greybox is Kai; use only this sheet\'s face');
-    expect(text).toContain("Geography: behind Kai is the 便利店雨棚 (by the end, behind Kai is the 公交站牌); the 远处的水塔 is not in frame.");
+    expect(text).toContain(
+      "Geography: behind Kai is the 便利店雨棚 (by the end, behind Kai is the 公交站牌); " +
+        "on the left of the frame: the 便利店雨棚; on the right: the 公交站牌; the 远处的水塔 is not in frame.",
+    );
     expect(text).not.toContain("<TODO: its colour and where it stands at frame 1>");
   });
 
-  test("a landmark that never leaves the frame gets no 画面里没有 clause, and a pawn that never moves gets no suffix", () => {
+  /**
+   * THE OLD SIDECAR. `screen` arrived after the first greyboxes were rendered,
+   * and a sidecar written before it is still a valid one — the pack says what
+   * it can measure and nothing more, with no warning for the missing side.
+   */
+  test("a landmark that never leaves the frame gets no 画面里没有 clause, a pawn that never moves gets no suffix, and a sidecar with no screen gets no 画左/画右", () => {
     const cwd = workspace();
     scaffold(cwd);
     writeFileSync(join(cwd, "film", "screenplay.md"), "# 便利店\n\n凌晨三点。\n");
@@ -2179,10 +2189,16 @@ describe("the landmarks the pack reads off the greybox", () => {
       subjects: ["kai"],
     });
 
-    const text = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]).skeleton as string;
+    const skeleton = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]);
+    const text = skeleton.skeleton as string;
     expect(text).toContain("地理：小凯身后是便利店雨棚。");
     expect(text).not.toContain("画面里没有");
     expect(text).not.toContain("结束时身后是");
+    // The landmark here carries no `screen` at all, so the sentence is the one
+    // it was before the sides were measured — and nobody is told off for it.
+    expect(text).not.toContain("画左");
+    expect(text).not.toContain("画右");
+    expect((skeleton.warnings as string[]).join(" ")).not.toContain("screen");
   });
 
   test("a pawn with nothing behind it is left out rather than given an empty clause", () => {
@@ -2195,7 +2211,7 @@ describe("the landmarks the pack reads off the greybox", () => {
     });
 
     const text = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]).skeleton as string;
-    expect(text).toContain("地理：画面里没有远处的水塔。");
+    expect(text).toContain("地理：画左是便利店雨棚，画右是公交站牌；画面里没有远处的水塔。");
     expect(text).not.toContain("身后是");
   });
 
@@ -2211,7 +2227,94 @@ describe("the landmarks the pack reads off the greybox", () => {
     });
 
     const text = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]).skeleton as string;
-    expect(text).toContain("地理：小凯结束时身后是公交站牌；画面里没有远处的水塔。");
+    expect(text).toContain("地理：小凯结束时身后是公交站牌；画左是便利店雨棚，画右是公交站牌；画面里没有远处的水塔。");
+  });
+
+  /**
+   * WHICH SIDE OF THE FRAME, which "behind" never said.
+   *
+   * Trial 4 (2026-09-22): s04 came back with the bicycle at the east end of
+   * the shopfront and the scooter at the west end on the SAME side of the
+   * door, and s06 came back with the whole street mirrored — shop right, stop
+   * left, where the block had shop left, stop right. Nothing in the pack said
+   * which block was on which side, because nothing measured it. The greybox
+   * now does, and this is the clause that says it.
+   */
+  test("the sides are said out loud, from the first frame, with a 、-joined list per side", () => {
+    const cwd = workspace();
+    scaffold(cwd);
+    writeFileSync(join(cwd, "film", "screenplay.md"), "# 便利店\n\n凌晨三点。\n");
+    withLandmarks(cwd, "lab-walk", {
+      subjects: ["kai"],
+      landmarks: [
+        { name: "shop", label: "便利店雨棚", color: "red", rgb: [0.85, 0.15, 0.12], objects: ["shop_awning"], in_frame: { first: true, last: true }, screen: { first: "left", last: "left" } },
+        { name: "bike", label: "靠在东头的自行车", color: "blue", rgb: [0.15, 0.35, 0.85], objects: ["bike"], in_frame: { first: true, last: true }, screen: { first: "left", last: "left" } },
+        { name: "bus_stop", label: "公交站牌", color: "yellow", rgb: [0.92, 0.8, 0.1], objects: ["bus_stop"], in_frame: { first: true, last: true }, screen: { first: "right", last: "right" } },
+      ],
+      subjects_detail: [{ name: "kai", color: "white", rgb: [0.9, 0.9, 0.9], behind: { first: [], last: [] } }],
+    });
+
+    const text = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]).skeleton as string;
+    expect(text).toContain("地理：画左是便利店雨棚、靠在东头的自行车，画右是公交站牌。");
+    expect(text).not.toContain("结束时画左");
+  });
+
+  test("a side with nothing on it is left out, and a landmark in the middle third is named by neither side", () => {
+    const cwd = workspace();
+    scaffold(cwd);
+    writeFileSync(join(cwd, "film", "screenplay.md"), "# 便利店\n\n凌晨三点。\n");
+    backlot(cwd, ["character", "add", "film", "kai", "--name", "小凯"]);
+    json(cwd, ["meta", "film/shots/lab-walk", "--characters", "kai"]);
+    withLandmarks(cwd, "lab-walk", {
+      subjects: ["kai"],
+      landmarks: [
+        { name: "shop", label: "便利店雨棚", color: "red", rgb: [0.85, 0.15, 0.12], objects: ["shop_awning"], in_frame: { first: true, last: true }, screen: { first: "centre", last: "centre" } },
+        { name: "bus_stop", label: "公交站牌", color: "blue", rgb: [0.15, 0.35, 0.85], objects: ["bus_stop"], in_frame: { first: true, last: true }, screen: { first: "right", last: "right" } },
+      ],
+      subjects_detail: [{ name: "kai", color: "white", rgb: [0.9, 0.9, 0.9], behind: { first: ["shop"], last: ["shop"] } }],
+    });
+
+    const text = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]).skeleton as string;
+    expect(text).toContain("地理：小凯身后是便利店雨棚；画右是公交站牌。");
+    expect(text).not.toContain("画左");
+  });
+
+  test("a camera that moves says where the sides END, as its own parenthesis", () => {
+    const cwd = workspace();
+    scaffold(cwd);
+    writeFileSync(join(cwd, "film", "screenplay.md"), "# 便利店\n\n凌晨三点。\n");
+    backlot(cwd, ["character", "add", "film", "kai", "--name", "小凯"]);
+    json(cwd, ["meta", "film/shots/lab-walk", "--characters", "kai"]);
+    withLandmarks(cwd, "lab-walk", {
+      subjects: ["kai"],
+      landmarks: [
+        { name: "shop", label: "便利店雨棚", color: "red", rgb: [0.85, 0.15, 0.12], objects: ["shop_awning"], in_frame: { first: true, last: true }, screen: { first: "left", last: "right" } },
+        { name: "bus_stop", label: "公交站牌", color: "blue", rgb: [0.15, 0.35, 0.85], objects: ["bus_stop"], in_frame: { first: true, last: true }, screen: { first: "right", last: "left" } },
+      ],
+      subjects_detail: [{ name: "kai", color: "white", rgb: [0.9, 0.9, 0.9], behind: { first: [], last: [] } }],
+    });
+
+    const text = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]).skeleton as string;
+    expect(text).toContain("地理：画左是便利店雨棚，画右是公交站牌（结束时画左是公交站牌，画右是便利店雨棚）。");
+  });
+
+  test("an English pack says the sides in English, at both ends", () => {
+    const cwd = workspace();
+    scaffold(cwd);
+    withLandmarks(cwd, "lab-walk", {
+      subjects: ["kai"],
+      landmarks: [
+        { name: "shop", label: "shop awning", color: "red", rgb: [0.85, 0.15, 0.12], objects: ["shop_awning"], in_frame: { first: true, last: true }, screen: { first: "left", last: "right" } },
+        { name: "bus_stop", label: "bus stop", color: "blue", rgb: [0.15, 0.35, 0.85], objects: ["bus_stop"], in_frame: { first: true, last: true }, screen: { first: "right", last: "left" } },
+      ],
+      subjects_detail: [{ name: "kai", color: "white", rgb: [0.9, 0.9, 0.9], behind: { first: [], last: [] } }],
+    });
+
+    const text = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]).skeleton as string;
+    expect(text).toContain(
+      "Geography: on the left of the frame: the shop awning; on the right: the bus stop " +
+        "(by the end, left: the bus stop; right: the shop awning).",
+    );
   });
 
   test("a blocked shot whose RENDERED greybox names no places is warned about, by name", () => {
@@ -2225,6 +2328,24 @@ describe("the landmarks the pack reads off the greybox", () => {
     );
     expect(skeleton.skeleton as string).not.toContain("地理：");
     expect(skeleton.landmarks).toEqual([]);
+  });
+
+  test("a place that only arrives in an outer third by the end is said as an arrival", () => {
+    const cwd = workspace();
+    scaffold(cwd);
+    writeFileSync(join(cwd, "film", "screenplay.md"), "# 便利店\n\n凌晨三点。\n");
+    backlot(cwd, ["character", "add", "film", "kai", "--name", "小凯"]);
+    json(cwd, ["meta", "film/shots/lab-walk", "--characters", "kai"]);
+    withLandmarks(cwd, "lab-walk", {
+      landmarks: [
+        { name: "tower", label: "钟楼", color: "red", rgb: [0.85, 0.15, 0.12], objects: ["tower"], in_frame: { first: false, last: true }, screen: { first: null, last: "right" } },
+      ],
+      subjects: ["kai"],
+      subjects_detail: [{ name: "kai", color: "white", rgb: [0.9, 0.9, 0.9], behind: { first: [], last: [] } }],
+    });
+
+    const text = json(cwd, ["prompt-skeleton", "film/shots/lab-walk"]).skeleton as string;
+    expect(text).toContain("地理：结束时画右是钟楼。");
   });
 
   test("a shot not rendered yet is not told twice — the missing greybox is the one warning", () => {

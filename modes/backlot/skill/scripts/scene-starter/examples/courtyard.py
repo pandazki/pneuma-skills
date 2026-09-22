@@ -163,9 +163,9 @@ def build_courtyard():
     # `finish()` records both, with whether the camera sees them at each end of
     # the clip and which of them is standing behind each fighter.
     pv.landmark("tower", [parts["tower"], parts["tower_top"]],
-                label="the bell tower", color="red")
+                label="bell tower", color="red")
     pv.landmark("tree", [parts["trunk"], parts["canopy"], parts["canopy_low"]],
-                label="the great tree", color="blue")
+                label="great tree", color="blue")
 
     pv.log("courtyard %.0fx%.0f m terrace, %d named parts" % (width, depth, len(parts)))
     return parts

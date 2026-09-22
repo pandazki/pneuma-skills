@@ -232,7 +232,7 @@ describe("previz_kit's module docstring is its API index", () => {
     expect(vocabulary).toContain("landmark(name, objects, label=None, color=None)");
     const places = source.slice(source.indexOf("## Landmarks, and the two things"), source.indexOf("## Every function prints one line"));
     expect(places.length).toBeGreaterThan(400);
-    expect(places).toContain("landmarks: [{name, label, color, rgb, objects, in_frame: {first, last}}]");
+    expect(places).toContain("landmarks: [{name, label, color, rgb, objects, in_frame: {first, last},\n  screen: {first, last}}]");
     expect(places).toContain("subjects_detail: [{name, color, rgb, behind}]");
     expect(places).toContain("behind: null");
   });
@@ -617,12 +617,21 @@ print("[test] clocks " + json.dumps({
 # OTHER side of the camera. Then the camera turns 80-odd degrees away, so A
 # leaves the frame it opened in and both ends of the clip have to be read
 # separately to get the answer right.
+#
+# C and D are the two SIDES. The camera looks along +Y, so -X is screen left
+# and +X is screen right; both stand 2.5 m off the axis and NEARER the camera
+# than the figure, so they are plainly in the outer thirds of the opening
+# frame and still behind nobody.
 pv.setup(seconds=2.0, fps=24, width=320, height=180)
 pv.plane("floor", (40, 40), (0, 0, 0), pv.GREY)
 shop = pv.box("shop", (2.0, 2.0, 3.0), (0.0, 12.0, 1.5))
 stop = pv.box("stop", (2.0, 2.0, 3.0), (0.0, -14.0, 1.5))
+west = pv.box("west", (1.0, 1.0, 3.0), (-2.5, 0.0, 1.5))
+east = pv.box("east", (1.0, 1.0, 3.0), (2.5, 0.0, 1.5))
 pv.landmark("A", shop, label="the shop awning")
 pv.landmark("B", [stop], label="the bus stop", color="blue")
+pv.landmark("C", west, label="the west kerb")
+pv.landmark("D", east, label="the east kerb")
 xia = pv.figure("xia", location=(0.0, 4.0))
 pv.hold(xia, 0.0, 2.0)
 street_cam = pv.camera(35, location=(0.0, -6.0, 1.6), look_at=(0.0, 4.0, 1.2))
@@ -653,6 +662,7 @@ interface Street {
     rgb: number[];
     objects: string[];
     in_frame: { first: boolean; last: boolean };
+    screen: { first: string | null; last: string | null };
   }[];
   subjects: string[];
   subjects_detail: { name: string; color: string | null; rgb: number[] | null; behind: { first: string[]; last: string[] } | null }[];
@@ -845,6 +855,8 @@ describe(`previz_kit landmark — what the sidecar says about the street ${LIVE_
     expect(landmarks.map((entry) => [entry.name, entry.label, entry.color])).toEqual([
       ["A", "the shop awning", "red"],
       ["B", "the bus stop", "blue"],
+      ["C", "the west kerb", "yellow"],
+      ["D", "the east kerb", "green"],
     ]);
     // Omitted, the colour is the next unused palette entry; named, it is the
     // one that was named. Both are the palette's own rgb.
@@ -866,6 +878,36 @@ describe(`previz_kit landmark — what the sidecar says about the street ${LIVE_
     // because the camera turned away; B was behind the camera throughout.
     expect(landmarks[0].in_frame).toEqual({ first: true, last: false });
     expect(landmarks[1].in_frame).toEqual({ first: false, last: false });
+  }, SLOW);
+
+  /**
+   * WHICH SIDE OF THE FRAME, which `in_frame` and `behind` never said.
+   *
+   * Trial 4 (2026-09-22): the block had the shop screen-left and the stop
+   * screen-right, and s06 came back mirrored — because nothing measured the
+   * side, so nothing in the pack could say it. This is the measurement.
+   */
+  test.skipIf(!HAS_BLENDER)("each place is put in a third of the frame, or in none when the camera cannot see it", () => {
+    const { landmarks } = refusals().street;
+    const side = Object.fromEntries(landmarks.map((entry) => [entry.name, entry.screen]));
+    // C stands 2.5 m to the camera's left of the axis, D the same to its
+    // right — and the frame says so, in the words the prompt uses.
+    expect(side.C.first).toBe("left");
+    expect(side.D.first).toBe("right");
+    // A opens dead centre: the middle third is neither side, and the pack
+    // says nothing about it rather than inventing a composition.
+    expect(side.A.first).toBe("centre");
+    // Out of frame is not a side. B was behind the lens the whole clip, and
+    // A and both kerbs are gone by the time the camera has turned away.
+    expect(side.B).toEqual({ first: null, last: null });
+    expect(side.A.last).toBeNull();
+    expect(side.C.last).toBeNull();
+    expect(side.D.last).toBeNull();
+    // And a side is only ever claimed where the camera really sees it.
+    for (const entry of landmarks) {
+      expect(entry.screen.first === null).toBe(!entry.in_frame.first);
+      expect(entry.screen.last === null).toBe(!entry.in_frame.last);
+    }
   }, SLOW);
 
   test.skipIf(!HAS_BLENDER)("what is behind the figure is the geography the prompt owes", () => {
@@ -1674,8 +1716,8 @@ describe(`previz_kit examples — the duel renders end to end ${LIVE_TIER_LABEL}
     for (const entry of DUEL) {
       const meta = duel()[entry.id].payload.meta;
       expect(meta.landmarks.map((place: any) => [place.name, place.label, place.color])).toEqual([
-        ["tower", "the bell tower", "red"],
-        ["tree", "the great tree", "blue"],
+        ["tower", "bell tower", "red"],
+        ["tree", "great tree", "blue"],
       ]);
       expect(meta.landmarks[0].objects).toEqual(["tower", "tower_top"]);
       expect(meta.landmarks[1].objects).toEqual(["trunk", "canopy", "canopy_low"]);
@@ -1683,6 +1725,14 @@ describe(`previz_kit examples — the duel renders end to end ${LIVE_TIER_LABEL}
         expect(Object.keys(place.in_frame).sort()).toEqual(["first", "last"]);
         expect(typeof place.in_frame.first).toBe("boolean");
         expect(typeof place.in_frame.last).toBe("boolean");
+        // …and which side of the frame it is on, at the same two ends: one
+        // of the three words the pack can say, or null where the camera
+        // cannot see it there.
+        expect(Object.keys(place.screen).sort()).toEqual(["first", "last"]);
+        for (const end of ["first", "last"] as const) {
+          expect(place.screen[end] === null || ["left", "centre", "right"].includes(place.screen[end])).toBe(true);
+          expect(place.screen[end] === null).toBe(!place.in_frame[end]);
+        }
       }
       // One row per subject, in order, and both fighters answer the geography.
       expect(meta.subjects_detail.map((row: any) => row.name)).toEqual(meta.subjects);
@@ -1717,5 +1767,64 @@ describe(`previz_kit examples — the duel renders end to end ${LIVE_TIER_LABEL}
     expect(run.err).toContain("duel_orbit.py");
     expect(run.out).toContain("one strike, three angles");
     expect(existsSync(join(EXAMPLES, "__pycache__"))).toBe(false);
+  }, SLOW);
+});
+
+// ---------------------------------------------------------------------------
+// Kit → sidecar → pack, in one run
+// ---------------------------------------------------------------------------
+
+/** A street with one place plainly left of the camera axis and one plainly
+ *  right of it, so the rendered sidecar really has both sides to report. */
+const STREET_SCENE = `import previz_kit as pv
+
+pv.setup(seconds=2.0, fps=24, width=320, height=180)
+pv.plane("floor", (40, 40), (0, 0, 0), pv.GREY)
+shop = pv.box("shop_front", (2.0, 2.0, 3.0), (-2.5, 0.0, 1.5))
+stop = pv.box("stop_pole", (2.0, 2.0, 3.0), (2.5, 0.0, 1.5))
+pv.landmark("shop", shop, label="convenience store awning", color="red")
+pv.landmark("stop", stop, label="bus stop", color="blue")
+kai = pv.figure("kai", location=(0.0, 4.0))
+pv.hold(kai, 0.0, 2.0)
+pv.camera(35, location=(0.0, -6.0, 1.6), look_at=(0.0, 4.0, 1.2))
+pv.finish()
+`;
+
+/**
+ * THE WHOLE CHAIN, not its two halves. `previz_kit` WRITES `screen` into the
+ * sidecar and `previz.mjs` READS it into the geography sentence. Renamed or
+ * reshaped on either side, both unit suites stay green and the pack quietly
+ * loses a clause — so this renders a real greybox through the real CLI and
+ * then asks the real `prompt-skeleton` what it says about it.
+ */
+describe(`previz_kit screen — the measured side reaches the pack ${LIVE_TIER_LABEL}`, () => {
+  test.skipIf(!HAS_BLENDER)("a place left of the camera axis is a place the pack calls screen-left", () => {
+    const cwd = fresh();
+    const cli = (script: string, argv: string[]) => {
+      const result = Bun.spawnSync([process.execPath, script, ...argv], { cwd, stdout: "pipe", stderr: "pipe" });
+      if (result.exitCode !== 0) {
+        throw new Error(`${script} ${argv.join(" ")} failed (${result.exitCode}):\n${result.stderr.toString()}`);
+      }
+      return JSON.parse(result.stdout.toString());
+    };
+    cli(BACKLOT, ["init", "film", "--title", "The Street", "--logline", "A man crosses a street at three in the morning."]);
+    cli(BACKLOT, ["shot", "add", "film", "street", "--title", "The crossing",
+      "--seconds", "2", "--fps", "24", "--size", "320x180"]);
+    const greybox = join(cwd, "film", "shots", "street", "greybox");
+    mkdirSync(greybox, { recursive: true });
+    writeFileSync(join(greybox, "scene.py"), STREET_SCENE);
+    cli(PREVIZ, ["meta", join("film", "shots", "street"), "--characters", "kai"]);
+    cli(PREVIZ, ["render", join("film", "shots", "street"), "--preview"]);
+
+    // What the kit measured, read back off the file it wrote — not off the
+    // return value the render happened to hand us.
+    const meta = JSON.parse(readFileSync(join(greybox, "scene.meta.json"), "utf-8"));
+    const side = Object.fromEntries(meta.landmarks.map((place: any) => [place.name, place.screen]));
+    expect(side.shop.first).toBe("left");
+    expect(side.stop.first).toBe("right");
+
+    // …and what the model is told, from that same file.
+    const text = String(cli(PREVIZ, ["prompt-skeleton", join("film", "shots", "street")]).skeleton);
+    expect(text).toContain("on the left of the frame: the convenience store awning; on the right: the bus stop");
   }, SLOW);
 });

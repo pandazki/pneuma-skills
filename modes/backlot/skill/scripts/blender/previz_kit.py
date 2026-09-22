@@ -149,13 +149,18 @@ colour nobody else has, so `@Video1` shows a RED block and the prompt can say
 carry on its own - the same reason `camera_lens` and `time_warp` are in the
 sidecar rather than in the glTF:
 
-* `landmarks: [{name, label, color, rgb, objects, in_frame: {first, last}}]` -
-  what each colour means, and whether that place projects inside the camera
-  view on the first and the last frame. A landmark that is in frame at neither
-  end is one the prompt has to say is NOT in the picture, or the model paints
-  it anyway. The rgb and the object names are here for the same reason the
-  accents are: glTF carries no Workbench material colour, so the picture has
-  it and the 3D lane has to be told.
+* `landmarks: [{name, label, color, rgb, objects, in_frame: {first, last},
+  screen: {first, last}}]` - what each colour means, whether that place
+  projects inside the camera view on the first and the last frame, and which
+  third of that frame it lands in. A landmark that is in frame at neither end
+  is one the prompt has to say is NOT in the picture, or the model paints it
+  anyway. `screen` is `"left"` (view x below 1/3), `"centre"`, `"right"`
+  (above 2/3) or `None` when the camera does not see it there - "behind"
+  orders the depth and says nothing about left and right, so without this a
+  street the block had shop-left, stop-right comes back mirrored (trial 4,
+  s06, 2026-09-22). The rgb and the object names are here for the same reason
+  the accents are: glTF carries no Workbench material colour, so the picture
+  has it and the 3D lane has to be told.
 * `subjects_detail: [{name, color, rgb, behind}]` - one entry per subject, in
   `subjects` order. For a figure, `behind.first` / `behind.last` are the
   landmarks standing behind it from the camera at those two frames (farther
@@ -1965,6 +1970,13 @@ _KIT_COLOURS = [
 # as being BEHIND that figure. A half-angle, in the ground plane.
 _BEHIND_DEGREES = 25.0
 
+# The frame in thirds, in normalised camera-view x. A place whose centre lands
+# in an outer third is one the prompt can call screen-left or screen-right;
+# the middle third is reported as "centre" and the prompt says nothing about
+# it, because a landmark near the axis is either behind somebody or in the
+# middle, and being told it is on a side is a composition the model obeys.
+_SCREEN_THIRDS = (1.0 / 3.0, 2.0 / 3.0)
+
 
 def _landmark_meshes(objects):
     """`objects` as a flat list of things that can carry a material."""
@@ -2125,8 +2137,9 @@ def _first_rgb(obj):
 
 
 def _frame_facts(scene, frame):
-    """At `frame`: each landmark's centre and whether the camera sees it, and
-    the landmarks standing behind each figure."""
+    """At `frame`: each landmark's centre, whether the camera sees it and
+    which third of the frame it lands in, and the landmarks standing behind
+    each figure."""
     scene.frame_set(frame)
     depsgraph = bpy.context.evaluated_depsgraph_get()
     camera = scene.camera.evaluated_get(depsgraph)
@@ -2135,9 +2148,17 @@ def _frame_facts(scene, frame):
     for entry in _LANDMARKS:
         centre = _world_centre(entry["handles"], depsgraph)
         view = _world_to_camera_view(scene, camera, _Vector(centre))
+        seen = bool(0.0 <= view.x <= 1.0 and 0.0 <= view.y <= 1.0 and view.z > 0.0)
+        # WHICH SIDE OF THE FRAME, from the same projection that answers
+        # in_frame. Out of frame is not a side: it is `None`, so the prompt
+        # says nothing rather than placing a block the take will not contain.
+        side = None
+        if seen:
+            side = "left" if view.x < _SCREEN_THIRDS[0] else ("right" if view.x > _SCREEN_THIRDS[1] else "centre")
         places[entry["name"]] = {
             "centre": centre,
-            "in_frame": bool(0.0 <= view.x <= 1.0 and 0.0 <= view.y <= 1.0 and view.z > 0.0),
+            "in_frame": seen,
+            "side": side,
         }
     # BEHIND is a fact about the ground plane: a landmark is behind a figure
     # when it is farther from the camera and within a narrow cone of the
@@ -2165,7 +2186,8 @@ def _frame_facts(scene, frame):
 
 
 def _landmark_track(first, last):
-    """The landmarks, with what the camera sees of them at both ends."""
+    """The landmarks, with what the camera sees of them at both ends and
+    which side of the frame each one lands on."""
     return [
         {
             "name": entry["name"],
@@ -2176,6 +2198,10 @@ def _landmark_track(first, last):
             "in_frame": {
                 "first": first["landmarks"][entry["name"]]["in_frame"],
                 "last": last["landmarks"][entry["name"]]["in_frame"],
+            },
+            "screen": {
+                "first": first["landmarks"][entry["name"]]["side"],
+                "last": last["landmarks"][entry["name"]]["side"],
             },
         }
         for entry in _LANDMARKS

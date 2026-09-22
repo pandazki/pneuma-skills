@@ -3556,9 +3556,10 @@ function buildSkeleton(dir, shot, projectRoot, attachments = {}) {
   }
   // GEOGRAPHY, said in words, from what the greybox already measured. The
   // block says where everything is; this says which of it is behind whom, so
-  // the model cannot put the shop behind a character the shop is in front of
-  // — and names the places that are NOT in the picture, which is what it
-  // otherwise paints in anyway.
+  // the model cannot put the shop behind a character the shop is in front of;
+  // which side of the frame each place is on, so the street cannot come back
+  // mirrored — and it names the places that are NOT in the picture, which is
+  // what the model otherwise paints in anyway.
   if (!free && landmarks.length > 0) {
     const labelOf = (name) => {
       const entry = landmarks.find((item) => String(item?.name ?? "") === String(name));
@@ -3596,6 +3597,56 @@ function buildSkeleton(dir, shot, projectRoot, attachments = {}) {
           ? (last.length ? `（结束时身后是${names(last)}）` : "（结束时身后什么也没有）")
           : (last.length ? ` (by the end, behind ${who} is ${names(last)})` : ` (by the end nothing is behind ${who})`);
       clauses.push(zh ? `${who}身后是${names(first)}${tail}` : `behind ${who} is ${names(first)}${tail}`);
+    }
+    // WHICH SIDE OF THE FRAME each place is on. "Behind" orders the DEPTH and
+    // says nothing about left and right: in trial 4 the bicycle at the east
+    // end of the shopfront and the scooter at the west end came back on the
+    // same side of the door (s04), and a whole street came back mirrored
+    // (s06). The greybox measures the side; this is the sentence that says
+    // it. A landmark in the middle third is named by neither side — it is
+    // behind somebody or in the middle, and calling it a side would be a
+    // composition the model then obeys.
+    const sidesAt = (end) => {
+      const pick = (side) => landmarks
+        .filter((entry) => entry?.screen && typeof entry.screen === "object" && entry.screen[end] === side)
+        .map((entry) => String(entry.name ?? ""));
+      return { left: pick("left"), right: pick("right") };
+    };
+    // `ending` switches the English to its short form: the opening clause has
+    // to say what "left" means, the parenthesis is already inside it.
+    const sideParts = (sides, ending) => {
+      const parts = [];
+      if (sides.left.length > 0) {
+        parts.push(zh ? `画左是${names(sides.left)}` : `${ending ? "left" : "on the left of the frame"}: ${names(sides.left)}`);
+      }
+      if (sides.right.length > 0) {
+        parts.push(zh ? `画右是${names(sides.right)}` : `${ending ? "right" : "on the right"}: ${names(sides.right)}`);
+      }
+      return parts;
+    };
+    const opensOn = sidesAt("first");
+    const opening = sideParts(opensOn, false);
+    if (opening.length > 0) {
+      const endsOn = sidesAt("last");
+      const turned = endsOn.left.join("\u0000") !== opensOn.left.join("\u0000")
+        || endsOn.right.join("\u0000") !== opensOn.right.join("\u0000");
+      // A camera that turned far enough to empty both sides has nothing left
+      // to name, and an empty parenthesis is not a fact — it is left out.
+      const ending = turned ? sideParts(endsOn, true) : [];
+      const tail = ending.length === 0
+        ? ""
+        : zh
+          ? `（结束时${ending.join("，")}）`
+          : ` (by the end, ${ending.join("; ")})`;
+      clauses.push(zh ? `${opening.join("，")}${tail}` : `${opening.join("; ")}${tail}`);
+    } else {
+      // Nothing in an outer third as the clip opens, something there by the
+      // end — a crane or an orbit that brings a place into the frame. Said
+      // as the arrival it is, the way the `behind` clause already does.
+      const arrival = sideParts(sidesAt("last"), false);
+      if (arrival.length > 0) {
+        clauses.push(zh ? `结束时${arrival.join("，")}` : `by the end, ${arrival.join("; ")}`);
+      }
     }
     const absent = landmarks
       .filter((entry) => entry?.in_frame && entry.in_frame.first === false && entry.in_frame.last === false)

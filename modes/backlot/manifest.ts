@@ -55,6 +55,7 @@ const backlotManifest: ModeManifest = {
       "Every paid call is recorded beside the artifact it paid for, with the vendor's reported figure when there is one, and the Cost tab sums them by stage — an unpriced call is listed as unpriced, never as free",
       "The greybox names its places: a landmark paints the shop, the bus stop or the gate one saturated colour of its own, and the prompt is written from it — which colour is which place, which colour each character's block is, and who is standing in front of what at the first and the last frame, so seven takes of one street can no longer each invent their own geography",
       "The film's style key frame has to be a look, not a location — it rides on every take, so a place inside it gets painted into shots that place is not in, and registering one warns when the picture is really a set's concept frame",
+      "The greybox measures which side of the frame each place is on and the pack says it — 画左是便利店雨棚，画右是公交站牌, with where they end up when the camera turns — because saying only what is behind whom let a whole street come back mirrored",
     ],
   },
   displayName: {

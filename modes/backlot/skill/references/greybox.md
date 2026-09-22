@@ -199,23 +199,54 @@ them in the shared set module (`courtyard.py` does) and every angle agrees.
 ```json
 "landmarks": [{"name": "shop", "label": "便利店雨棚", "color": "red",
                "rgb": [0.85, 0.15, 0.12], "objects": ["shop_awning", "shop_front"],
-               "in_frame": {"first": true, "last": false}}],
+               "in_frame": {"first": true, "last": false},
+               "screen": {"first": "left", "last": null}}],
 "subjects_detail": [{"name": "xia", "color": "white", "rgb": [0.9, 0.9, 0.9],
                      "behind": {"first": ["shop"], "last": ["bus_stop"]}}]
 ```
 
 `in_frame` is whether the place's centre projects inside the camera view on
-frame 1 and on the last frame. `behind` is the landmarks farther from the
-camera than that pawn and within 25° of the camera's line to it, nearest
-first — a prop added by `move`/`swing` is a subject too and carries
-`behind: null`.
+frame 1 and on the last frame. `screen` is **which side of that frame** it
+lands on, from the same projection: `"left"` in the first third, `"centre"` in
+the middle one, `"right"` in the last, and `null` wherever the camera does not
+see it. `behind` is the landmarks farther from the camera than that pawn and
+within 25° of the camera's line to it, nearest first — a prop added by
+`move`/`swing` is a subject too and carries `behind: null`.
+
+`behind` orders the **depth** and says nothing about left and right. Without
+`screen` a street the block had shop-left and stop-right came back mirrored
+(trial 4, s06, 2026-09-22), and two things at opposite ends of one shopfront
+came back on the same side of its door (s04). The middle third is deliberately
+not a side: a place near the axis is behind somebody or in the middle, and
+being told it is "on the left" is a composition the model then obeys.
 
 **What the prompt does with it** (`prompt-skeleton`, automatically): one
 `@Video1 中的红体块 = 便利店雨棚。` line per landmark under the `@Video1` line,
 the pawn's own colour filled into its character line
 (`白模中名为「xia」的白色体块就是夏`), and a `地理：` sentence in 【全局设定】
-that says who is standing in front of what and which places are **not** in the
-picture. A blocked shot whose greybox declares no landmarks is warned about.
+that says who is standing in front of what, `画左是…，画右是…` (with
+`（结束时画左是…）` where the camera turns), and which places are **not** in
+the picture. A greybox rendered before `screen` existed simply gets no
+side clause. A blocked shot whose greybox declares no landmarks is warned
+about.
+
+#### Colour places, not props
+
+**Paint walls, roofs, shelters, gates, kerbs — big fixed things. A bicycle, a
+scooter, a bench or a sign stays grey.** A large architectural surface takes
+the "these colours are identity codes" disclaimer the pack carries; a small
+prop does not. In trial 4 the scooter block was painted purple to be readable
+and s05 and s06 came back with an actual purple scooter, while the shop
+painted yellow did not come back yellow.
+
+A grey prop is still placeable: name it in the beat detail by its position
+next to a coloured place — "the bike leans on the east end of the shop,
+screen-left". The place is the landmark; the prop hangs off it.
+
+If a prop really must be a landmark (the story turns on which one it is), give
+it **the colour it actually has in the bible**, when that colour is still free
+in the palette — a dark-blue scooter takes `blue` only if no pawn is blue — so
+a leak costs nothing.
 
 ## The camera
 

@@ -279,8 +279,12 @@ shot: layout → blocking → prop events → camera (one move) → tempo, each 
 checked before the next hides its mistakes. **Name the places**: every spot
 the beats mention gets a `pv.landmark(...)`, one saturated colour each, eight
 at most — grey lumps make the model invent the geography once per take (seven
-takes of one street disagreed about which side the shop was on). `render --preview`, look at sheets
-and strips, `check` every item, fix what fails, then `render` for the final
+takes of one street disagreed about which side the shop was on). **Colour
+places, not props**: walls, roofs, shelters and gates take the colour; a
+bicycle or a bench stays grey and is placed in the beat detail next to a
+coloured place, because a small prop comes back painted its code colour.
+`render --preview`, look at sheets and strips, `check` every item, fix what
+fails, then `render` for the final
 `greybox.mp4` + `scene.blend` + `scene.glb`. Blender is only ever started by
 `previz.mjs render`, headless; never ask the creator to open it.
 
