@@ -17,8 +17,14 @@ import { loadRoster, saveRoster } from "./domain.js";
 
 const spriteManifest: ModeManifest = {
   name: "sprite",
-  version: "0.3.0",
+  version: "0.3.1",
   changelog: {
+    "0.3.1": [
+      "A loop's interview is now a gate, not a request: `set-motion --brief-duration/--brief-width/--brief-interpolator` records what the user answered, and `add-video` refuses the paid clip on a loop that has no brief. The 400-frame ceiling is warned about while the duration is still a question, and `register-run` says when the frames that landed are not the width the brief asked for",
+      "`sprite-sheet.mjs retime` replays a clip's own frames in another order — an apex freeze cut short, a double blink dropped, a beat repeated — and registers as a derived clip (`--op retime --model ffmpeg`). It costs nothing and invents nothing, and it is the answer to the Seedance idle-loop failure modes that prompt wording does not fix",
+      "`loop --width` caps frames at 512 px when it is not given, says so on stderr and records `widthDefaulted`; the Lottie and APNG size warnings now say something different depending on whether a width was passed, instead of advising a flag the caller already used",
+      "The frame strip samples its thumbnails on a long loop instead of putting every frame in the DOM, so a 355-frame loop no longer freezes the tab, and the inspect block's seam limit reads as a threshold rather than as the unrelated maxStep",
+    ],
     "0.3.0": [
       "Seamless transparent loops for a UI: a 3D-icon keyframe, a first-last clip with the same image at both ends so the loop closes by construction, then `sprite-sheet.mjs loop` cuts every frame of the cycle into `loop.webp`, `loop.apng`, `loop.webm` (VP9 with alpha) and a Lottie JSON",
       "A `loop` motion is judged on its seam against a normal frame step — not on anchor drift, which a bobbing icon is supposed to have; the frames stay unaligned and uncleaned because the movement is the content",

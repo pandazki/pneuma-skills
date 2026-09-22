@@ -258,9 +258,10 @@ exists.
 A third job for a clip, and the only one where the *ends* matter more than the
 middle: a loop for a UI (workflow E). It is shot **first-last with the same
 image at both ends** — `--image` and `--end-image` naming the same file — so
-the last frame is the first frame and the loop closes by construction rather
-than by luck. Nothing downstream can manufacture that; a clip whose ends differ
-produces a visible jump on every cycle, and the only fix is another clip.
+the model is given the frame it has to land back on. That is a target, not a
+guarantee: a clip whose ends differ produces a visible jump on every cycle, and
+the only fixes are another clip or a retime. What settles the question is
+`loop`'s measured `seam` against `step`, never the shape of the recipe.
 
 The model still has to be told not to wander on the way, so the template pins
 the camera, the scale and the return:
@@ -301,6 +302,31 @@ Cost is the same tier as any Seedance clip — ≈ $0.22 per second of 480p
 output, so ≈ $0.9 for four seconds and ≈ $1.1 for five. Flatten onto pure green
 rather than a neutral: the whole point of the plate is that `loop --key auto`
 can measure and remove it.
+
+### Seedance idle loops — known failure modes
+
+These are reproducible model behaviour, not bad prompts. **Prompt wording does
+not fix them; `retime` does** (pipeline.md, and workflow E step 6b). Measured
+on the Kiki trial, 2026-09-22, two 5 s 480p first-last takes of a mascot
+breathing — both takes showed all three:
+
+| What it does | How it reads in `contact` | What to do |
+|---|---|---|
+| **Freezes at the inhale apex** for 1.5–2 s of the five | A long run of ~0 in `profile.deltas`, and `loops[]` comes back **empty** — the clip has no window whose ends match, because most of it is one pose | `retime --keep` around the freeze. The take's own frames still contain a full inhale and a full exhale |
+| **Blinks twice** — closed 3 frames, open 2, closed 2 | Two dips in the dark-pixel count about 5 frames apart | Keep the first blink's range and drop the second |
+| **Sits still in the tail** after the return | `stillEnd` well before the duration | `--trim-holds` (on by default in `loop`) drops it, or a retime ends the range earlier |
+
+The prompt in the template above already says *the body is never still* and
+*a single smooth sine-wave breath with no pause at the top*. Both takes froze
+anyway. Re-shooting is $1.1 that buys the same three defects, which is why step
+6b exists and why a second take is a decision to put to the user rather than a
+correction to make.
+
+On the same trial the freeze was cut and one beat repeated into a two-beat
+breath: ranges `2-45,60-66,75-112,2-52,75-112`, then Topaz to 48 fps and VEED-gs
+for the matte. The result measured `seam 0.0022` against `step 0.0018` — a
+loop that closes, established by measurement, since the wrap was by then source
+frame 112 back to frame 2 rather than the keyframe on both sides.
 
 ### Matting the clip: `remove-video-background.mjs`
 
@@ -500,9 +526,10 @@ Topaz 60 fps version of the same clip came back at seam **0.067** against a step
 of **0.029**: past the 2× line, and the warning fires. Nothing about the
 subject changed; only the wrap did.
 
-**Budget three to seven minutes for the clip.** 199 s here against 404 s for the
-4 s i2v clip measured above — the spread is the fal queue, not the duration, so
-quote the range and register the placeholder before you call.
+**Budget three to eleven minutes for the clip.** 199 s here against 404 s for
+the 4 s i2v clip measured above, and **632 s** and **≈ 300 s** for the two Kiki
+takes (2026-09-22) — the spread is the fal queue, not the duration, so quote
+the range and register the placeholder before you call.
 
 **The same loop at 60 fps, two ways** (trial clip, `--width 512`, key +
 despill):
