@@ -100,7 +100,7 @@ loop <clip> --out <motionDir> --name <motionId>
                                             # alpha: the clip carries alpha (VEED webm, Bria mov) — decode it, no keying
                                             # none: opaque frames, no plate (warning)
   [--similarity 0.22] [--blend 0.05]        # colorkey, video defaults
-  [--despill | --no-despill]                # ffmpeg `despill` on the plate hue before keying; default ON when keying
+  [--despill | --no-despill]                # ffmpeg `despill` on the plate hue AFTER keying; default ON when keying
   [--trim-holds | --no-trim-holds]          # default ON, see below
   [--crop union|none] [--pad 8]             # union alpha bbox across kept frames + pad; default union
   [--width W]                               # scale (premultiplied alpha — no dark fringe), keeps aspect
@@ -117,7 +117,12 @@ Behaviour, in order:
    decoder drops alpha).
 2. **Decode every frame of the window in one ffmpeg pass** (no per-frame
    `-ss`): `-ss start -to end` on the input, `-vf` chain
-   `[despill=type=green|…,]colorkey=<color>:<similarity>:<blend>`, output
+   `colorkey=<color>:<similarity>:<blend>[,despill=type=green:…]` — the key
+   first, on the measured plate colour, then despill the rim that is left;
+   despill *before* the key recolours the plate so the key misses it
+   (measured 2026-09-22 on the trial clip: the plate stayed opaque and
+   near-black). Plain colorkey leaves a visible 1–2 px green fringe at 640²,
+   so despill is the default whenever a plate is keyed. Output
    `rgba` rawvideo or a PNG sequence into a temp dir. Keyed pixels get the
    `zeroKeyedRgb` treatment (RGB zeroed under the alpha threshold) — the same
    rule `key` and `from-video` apply.
