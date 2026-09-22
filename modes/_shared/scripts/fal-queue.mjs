@@ -36,16 +36,17 @@
  *     cancel has been sent. Nothing that this module gives up on keeps
  *     running upstream.
  *
- * Alongside the runner live the three things every fal-backed script needs
- * around it and must not each invent: the key (`loadFalKey`), the way a
- * local file becomes a payload (`falMediaUrl`), and the way a finished
- * job's artifact comes back (`downloadFalFile`).
+ * Alongside the runner live the four things every fal-backed script needs
+ * around it and must not each invent: the key (`loadFalKey`), the two ways
+ * a local file becomes a payload — inlined as a data URI (`falMediaUrl`,
+ * images) or uploaded to fal storage (`uploadFalFile`, video) — and the
+ * way a finished job's artifact comes back (`downloadFalFile`).
  *
  * Node 22+, no dependencies.
  */
 
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { dirname, extname, join } from "node:path";
+import { basename, dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -524,6 +525,78 @@ export function falMediaUrl(input, { label = "input", maxBytes = MAX_DATA_URI_BY
   const mime = MEDIA_MIME[extname(input).toLowerCase()];
   if (!mime) throw new Error(`${label}: unsupported file extension: ${input}`);
   return `data:${mime};base64,${readFileSync(input).toString("base64")}`;
+}
+
+/** Where an upload is registered before its bytes are PUT. */
+export const FAL_UPLOAD_INITIATE_URL = "https://rest.alpha.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3";
+
+/**
+ * Upload a local file to fal's storage and return the URL fal will fetch
+ * it from (`https://v3*.fal.media/files/...`).
+ *
+ * This exists because a data URI is not a general input path: the video
+ * endpoints validate `video_url` as a URL and reject anything past 2083
+ * characters (measured 2026-09-22 — VEED answers 422
+ * `url_too_long`, Topaz 400 `Invalid URL: URL too long`). Any clip worth
+ * matting is megabytes of base64, so video inputs go through here while
+ * images keep using `falMediaUrl`.
+ *
+ * Two steps, both of which must succeed before the caller has a URL:
+ *   1. POST the intent (content type + file name) to fal's storage API
+ *      with the API key, and get back `{ upload_url, file_url }`;
+ *   2. PUT the raw bytes to `upload_url`. That URL is pre-signed, so the
+ *      key is NOT sent with it — the bytes go to a storage host that has
+ *      no business seeing it.
+ *
+ * Throws (never exits) with the status and the head of the body on either
+ * failure, so a caller can report which half lost it. `fetchImpl` is
+ * injectable; nothing here reaches for a global.
+ */
+export async function uploadFalFile(path, { key, label = "input", fetchImpl = fetch, onNote = (m) => console.error(m), signal } = {}) {
+  if (typeof path !== "string" || !path.trim()) throw new Error(`${label}: a file path is required`);
+  if (!key) throw new Error("uploadFalFile needs a fal API key");
+  if (!existsSync(path)) throw new Error(`${label}: file not found: ${path}`);
+  const mime = MEDIA_MIME[extname(path).toLowerCase()];
+  if (!mime) throw new Error(`${label}: unsupported file extension: ${path}`);
+
+  const name = basename(path);
+  const { size } = statSync(path);
+  onNote(`NOTE: uploading ${name} (${(size / 1024 / 1024).toFixed(1)} MB) to fal storage`);
+
+  const initiated = await fetchImpl(FAL_UPLOAD_INITIATE_URL, {
+    method: "POST",
+    headers: { Authorization: `Key ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ content_type: mime, file_name: name }),
+    signal,
+  });
+  if (!initiated.ok) {
+    const text = await initiated.text().catch(() => "");
+    throw new Error(`${label}: fal storage refused the upload (HTTP ${initiated.status}): ${text.slice(0, 300)}`);
+  }
+  let ticket;
+  try {
+    ticket = await initiated.json();
+  } catch (error) {
+    throw new Error(`${label}: fal storage response was not JSON: ${errorMessage(error)}`);
+  }
+  const uploadUrl = ticket?.upload_url;
+  const fileUrl = ticket?.file_url;
+  if (!uploadUrl || !fileUrl) {
+    throw new Error(`${label}: fal storage returned no upload_url/file_url: ${JSON.stringify(ticket ?? null).slice(0, 300)}`);
+  }
+
+  const stored = await fetchImpl(uploadUrl, {
+    method: "PUT",
+    // No Authorization here on purpose: `upload_url` is pre-signed.
+    headers: { "Content-Type": mime },
+    body: readFileSync(path),
+    signal,
+  });
+  if (!stored.ok) {
+    const text = await stored.text().catch(() => "");
+    throw new Error(`${label}: fal storage upload failed (HTTP ${stored.status}): ${text.slice(0, 300)}`);
+  }
+  return fileUrl;
 }
 
 /**
