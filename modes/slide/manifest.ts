@@ -8,8 +8,9 @@ import { loadDeck, saveDeck } from "./domain.js";
 
 const slideManifest: ModeManifest = {
   name: "slide",
-  version: "1.3.0",
+  version: "1.3.1",
   changelog: {
+    "1.3.1": ["Canvas dimensions come from contentWidth and contentHeight template params instead of hard-coded 592px figures; duplicate overflow self-check removed"],
     "1.3.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
   },
   displayName: {
@@ -232,6 +233,9 @@ The user just opened the workspace. You are ready to assist with presentation cr
     deriveParams: (params) => ({
       ...params,
       imageGenEnabled: params.openrouterApiKey ? "true" : "",
+      // Content area after the 64px slide padding on each side.
+      contentWidth: Number(params.slideWidth) - 128,
+      contentHeight: Number(params.slideHeight) - 128,
     }),
   },
 

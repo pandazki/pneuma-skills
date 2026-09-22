@@ -1,11 +1,9 @@
 ---
 name: pneuma-mode-maker
 description: >
-  Pneuma Mode Maker workspace guidelines. Use for ANY task in this workspace:
-  creating modes, editing manifest.ts, pneuma-mode.ts, viewer components, skill prompts,
-  seed files, publishing, forking, or any mode package development.
-  This skill defines the ModeManifest reference, ViewerContract patterns, and publishing workflow.
-  Consult before your first edit in a new conversation.
+  Develop a Pneuma mode package in the Mode Maker workspace — manifest, viewer, skill,
+  seeds, publishing. Use for ANY task in this workspace. Defines the ModeManifest
+  reference, ViewerContract patterns, and publishing workflow.
 ---
 
 # Pneuma Mode Maker Skill
@@ -15,7 +13,6 @@ The workspace IS the mode package you are building. The user sees a live dashboa
 ## Core Rules
 
 - Follow existing mode patterns (doc, slide, draw) for consistency — see "Existing Mode Examples" below.
-- Do not ask for confirmation on simple edits — just do them.
 
 ## Working with the viewer
 

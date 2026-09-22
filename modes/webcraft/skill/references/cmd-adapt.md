@@ -5,9 +5,9 @@ argument-hint: "[target] [context (mobile, tablet, print...)]"
 user-invocable: true
 ---
 
-## MANDATORY PREPARATION
+## Before you start
 
-Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it carries the setup steps, the visitor modes, and the Context Gathering Protocol. The quality floor and the ban list live in [craft-floor.md](craft-floor.md); load it immediately before you edit UI. If no design context exists yet, you MUST run the `init` command (see [cmd-init](cmd-init.md)) first. Additionally gather: target platforms/devices and usage contexts.
+Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it carries the setup steps, the visitor modes, and the Context Gathering Protocol. The quality floor and the ban list live in [craft-floor.md](craft-floor.md); load it immediately before you edit UI. If no design context exists yet, run the `init` command (see [cmd-init](cmd-init.md)) first. Additionally gather: target platforms/devices and usage contexts.
 
 ---
 
@@ -175,8 +175,6 @@ Choose appropriate breakpoints:
 - Persistent side navigation on desktop
 - Breadcrumbs on smaller screens for context
 
-**IMPORTANT**: Test on real devices. Device emulation in DevTools is helpful but not perfect.
-
 **NEVER**:
 - Hide core functionality on mobile (if it matters, make it work)
 - Assume desktop = powerful device (consider accessibility, older machines)
@@ -188,15 +186,14 @@ Choose appropriate breakpoints:
 
 ## Verify Adaptations
 
-Test thoroughly across contexts:
-
-- **Real devices**: Test on actual phones, tablets, desktops
-- **Different orientations**: Portrait and landscape
-- **Different browsers**: Safari, Chrome, Firefox, Edge
-- **Different OS**: iOS, Android, Windows, macOS
-- **Different input methods**: Touch, mouse, keyboard
-- **Edge cases**: Very small screens (320px), very large screens (4K)
-- **Slow connections**: Test on throttled network
+Verify with what this session has: a batched `capture` round at the
+current viewport, the CSS for each breakpoint, and the markup for
+touch-sized targets and both orientations. The responsive preview's
+viewport is the user's control (`<viewer-context>` reports it; `capture`
+cannot change it), so ask the user to switch sizes when another
+breakpoint matters. Real-device, browser-matrix and throttled-network
+testing are the user's own QA — list them in the closing note rather than
+claiming them.
 
 When the adaptation feels native to each context, hand off to the `polish` command (see [cmd-polish](cmd-polish.md)) for the final pass.
 
@@ -204,7 +201,7 @@ When the adaptation feels native to each context, hand off to the `polish` comma
 
 ## Reference Material
 
-The sections below were previously `responsive-design.md` and live inline now so the adapt flow has its deep responsive reference in one place.
+The deep responsive reference the adapt flow draws on.
 
 ### Responsive Design
 
@@ -304,18 +301,6 @@ When you need different crops/compositions (not just resolutions):
 #### Layout Adaptation Patterns
 
 **Navigation**: Three stages: hamburger + drawer on mobile, horizontal compact on tablet, full with labels on desktop. **Tables**: Transform to cards on mobile using `display: block` and `data-label` attributes. **Progressive disclosure**: Use `<details>/<summary>` for content that can collapse on mobile.
-
-#### Testing: Don't Trust DevTools Alone
-
-DevTools device emulation is useful for layout but misses:
-
-- Actual touch interactions
-- Real CPU/memory constraints
-- Network latency patterns
-- Font rendering differences
-- Browser chrome/keyboard appearances
-
-**Test on at least**: One real iPhone, one real Android, a tablet if relevant. Cheap Android phones reveal performance issues you'll never see on simulators.
 
 ---
 

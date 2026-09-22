@@ -9,7 +9,7 @@ user-invocable: true
 
 Discover what should be made and how it should work, then return a confirmed design brief without code. Shape produces the thinking that makes the code good; it never writes the code.
 
-## MANDATORY PREPARATION
+## Before you start
 
 Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it carries the setup steps, the visitor modes, and the Context Gathering Protocol. If no design context exists yet, run the `init` command (see [cmd-init](cmd-init.md)) first; a missing `DESIGN.md` does **not** route back to `init`.
 

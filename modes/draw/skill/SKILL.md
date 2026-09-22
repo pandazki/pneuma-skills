@@ -1,11 +1,9 @@
 ---
 name: pneuma-draw
 description: >
-  Pneuma Draw Mode workspace guidelines. Use for ANY task in this workspace:
-  creating or editing diagrams, flowcharts, wireframes, mind maps, architecture diagrams,
-  org charts, sketches, or any visual content on the Excalidraw canvas.
-  This skill defines the Excalidraw JSON format, element types, binding rules, and color palette.
-  Consult before your first edit in a new conversation.
+  Create and edit visual content on the Excalidraw canvas in the Pneuma Draw workspace.
+  Use for ANY task in this workspace. Defines the Excalidraw JSON format, element types,
+  binding rules, and color palette.
 ---
 
 # Pneuma Draw Mode — Excalidraw Skill
@@ -68,7 +66,6 @@ After scaffold, write your new elements into the active file as a normal edit �
 - Edit `.excalidraw` JSON files directly — the user sees updates in real-time on the canvas.
 - Ensure **bidirectional binding** on every connection: arrows reference shapes AND shapes reference arrows. If only one side is set, the connection breaks the moment the user drags or resizes.
 - Generate unique element `id`s and random `seed`s. Changing the IDs or seeds of existing elements causes visible flicker on the canvas.
-- Don't ask for confirmation on simple edits — just do them.
 
 ## File Format
 

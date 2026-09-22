@@ -5,7 +5,7 @@ metadata:
   tags: animations, transitions, frames, useCurrentFrame
 ---
 
-All animations MUST be driven by the `useCurrentFrame()` hook.  
+All animations are driven by the `useCurrentFrame()` hook.  
 Write animations in seconds and multiply them by the `fps` value from `useVideoConfig()`.
 
 ```tsx
@@ -23,5 +23,4 @@ export const FadeIn = () => {
 };
 ```
 
-CSS transitions or animations are FORBIDDEN - they will not render correctly.  
-Tailwind animation class names are FORBIDDEN - they will not render correctly.
+CSS transitions and animations, including Tailwind's `transition-*` / `animate-*` classes, do not render correctly: each frame is rendered independently, so time-based CSS has no consistent state to animate from.

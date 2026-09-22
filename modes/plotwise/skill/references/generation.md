@@ -195,9 +195,8 @@ covered) and landed into course.json under the lock as `n1..nK` plus
 `n<k>d` detour stubs. `--json` reports `{ scenes, clips, cuts, problems,
 mode }`; `mode: "fallback"` means the single call failed or came back
 short of the spine and it was rewritten scene by scene. It refuses to run
-without a confirmed style or a non-empty outline. The recorded 30-60 s
-was measured on the 0.5 spine call — a 0.6 answer carries shot lists, so
-treat it as a floor.
+without a confirmed style or a non-empty outline. Treat 30-60 s as a floor: a
+screenplay carrying full shot lists takes longer.
 
 **The manager** (one process for the whole course) renders scenes in
 `--slots` parallel lanes, each scene clip by clip in fixed order:
@@ -206,11 +205,11 @@ treat it as a floor.
 |---|---|---|
 | kit | Once, before any video: the confirmed sample's narration → `style/voice.mp3`; for a course with a speaker on screen (or learner references) two more angles of the host from the sample's first frame → `style/character-{1,2}.png`. Best effort, every step logged; scripting starts without it, shooting waits for it | seconds for the voice; the character sheet measured 77 s, once per course |
 | refs | `clipRefs`: the same bindings for every clip, this clip's figures resolved against the beat's evidence and ordered by their cuts | 0s |
-| shoot | `generate-video.mjs` on fal's queue: balanced expansion, loudness normalized, one audio format, remote cancel on SIGTERM / deadline (`CLIP_DEADLINE_S` = 360 s a clip) | 20-40s for one 15 s reference clip with the voice at 480P (the band this file has recorded since 0.5, whose unit was already reference-to-video + voice). Single measurements in `h3-best-practices.md` → *Measured*: 18.4 s for a 7 s clip on a busy afternoon, 24-36 s at 768P |
+| shoot | `generate-video.mjs` on fal's queue: balanced expansion, loudness normalized, one audio format, remote cancel on SIGTERM / deadline (`CLIP_DEADLINE_S` = 360 s a clip) | 20-40s for one 15 s reference clip with the voice at 480P. Single measurements in `h3-best-practices.md` → *Measured*: 18.4 s for a 7 s clip on a busy afternoon, 24-36 s at 768P |
 | qa | `transcribe.mjs` (two attempts) → `normalizeForCompare` (digits and symbols as the words they were spoken as) → `compareNarration`; ≥ 0.97 passes, ≥ 0.90 at full coverage (±0.08) passes, < 0.60 fails, in between → one Luna judgment (keyless, 0.90 splits it). Transcription failing twice fails the CLIP with the reason — the file stays as `unchecked` and a retry checks it before paying for another render | 5-15s for a clip of this length |
 | reshoot | at most once, fresh seed, on QA failure; the rejected take stays as `c<k>.rejected.mp4` | +shoot +qa |
 | frame | the clip's last frame → `nodes/<id>/c<k>.last.png`, which the interlude shows while the next scene shoots | < 1s |
-| concat | after the last clip: ffmpeg into `nodes/<id>/video.mp4` — video stream-copied when every clip has the same stream shape, the audio always re-encoded through a 30 ms fade at each join, then the joined duration verified against the sum of its parts; a single-clip scene is simply renamed. Then `script.md`, `evidence.json`; status `ready` | the recorded 1-3s predates the per-join fade — a floor now that audio is always re-encoded |
+| concat | after the last clip: ffmpeg into `nodes/<id>/video.mp4` — video stream-copied when every clip has the same stream shape, the audio always re-encoded through a 30 ms fade at each join, then the joined duration verified against the sum of its parts; a single-clip scene is simply renamed. Then `script.md`, `evidence.json`; status `ready` | 1-3s is a floor; the audio is always re-encoded through the per-join fade |
 
 Detour and question scenes are written first (planning queue, Luna,
 from their `brief`), then join the video queue. Scheduling is by distance

@@ -20,7 +20,7 @@ Detailed reference for XML structure, edge routing, containers, layers, tags, me
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <!-- diagram elements with parent="1" -->
+        <mxCell id="svc-1" value="Auth Service" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="100" y="100" width="140" height="60" as="geometry"/></mxCell>
       </root>
     </mxGraphModel>
   </diagram>
@@ -176,7 +176,7 @@ Generally, explicit hex colors with `adaptiveColors="auto"` are sufficient — n
 
 ## Edge Routing
 
-**CRITICAL: Every edge must use the expanded form with `<mxGeometry relative="1" as="geometry" />`:**
+Every edge uses the expanded form with `<mxGeometry relative="1" as="geometry" />` — a self-closed edge cell does not render:
 
 ```xml
 <mxCell id="e1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;" edge="1" source="a" target="b" parent="1">

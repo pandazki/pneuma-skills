@@ -281,8 +281,8 @@ node "<SKILL_DIR>/scripts/generate-video.mjs" reference \
   --output assets/clips/opening.mp4
 ```
 
-The 4-image-ref ceiling caps how many panels can ride in one Path B seedance call. For 6+ panels needing a single video, either:
-- Split into two Path B segments (panels 1-3 → segment A, panels 4-6 → segment B), each with its own anchor pair
+Seedance takes up to 9 image refs per `reference` call (`generate-video.mjs` enforces it), which caps how many panels can ride in one Path B call. For 10+ panels needing a single video, either:
+- Split into two Path B segments (panels 1-6 → segment A, panels 7-12 → segment B), each with its own anchor pair
 - Use Path A (per-cut) with the slices as anchors
 
 ### Decision criteria
@@ -293,7 +293,7 @@ The 4-image-ref ceiling caps how many panels can ride in one Path B seedance cal
 | 2-3 cuts in 30s, distinct scenes | A |
 | 1 long shot with 3-5 internal beats (music / dance) | B |
 | Sketch stage of a 4-12 panel project, multi-character | C, then promote selected panels to anchors |
-| 4-12 panels needing one continuous video | C → B (slices as refs in single seedance call, capped at 4 image refs) |
+| 4-12 panels needing one continuous video | C → B (slices as refs in single seedance call, capped at 9 image refs) |
 | 13-16 panels needing distinct cuts | C for sketches → A for anchors and gens |
 | Faces are the primary content across many shots | C with FACS notation per panel (see direction-notation.md) |
 
@@ -304,7 +304,7 @@ The 4-image-ref ceiling caps how many panels can ride in one Path B seedance cal
 | 4-8s | 1 (single shot) | No storyboard needed; just generate |
 | 10-15s | 1 (long held shot) | No storyboard needed |
 | 10-15s | 3-5 (musical / dialogue) | Path B: single gen, N internal beats, ~3 anchors total |
-| 10-15s | 4-12 panels with internal music sync | Path C → B: composite → slice → up to 4 slices as seedance refs |
+| 10-15s | 4-12 panels with internal music sync | Path C → B: composite → slice → up to 9 slices as seedance refs |
 | 30s | 2-3 cuts | Path A: 2-3 separate gens, 3-4 anchors at boundaries, 5-8 sketches between |
 | 30s | 6-12 sketch panels in planning | Path C for sketches → A or B per cut |
 | 60s | 3-5 cuts | Path A: 3-5 separate gens, 4-6 anchors, 10-15 sketches |

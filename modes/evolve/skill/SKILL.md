@@ -62,8 +62,6 @@ Always start with the briefing. The user may want to:
 - Share reference content or style examples
 - Adjust the evolution direction entirely
 
-Do NOT skip the briefing and jump straight into analysis.
-
 ## Data Access Scripts
 
 You have purpose-built scripts at `<SKILL_DIR>/scripts/` for efficient CC history analysis. **Always use these instead of raw grep/cat/head on JSONL files.** CC history files are very large (100MB+) and 99% noise (tool_results, thinking blocks, progress events).

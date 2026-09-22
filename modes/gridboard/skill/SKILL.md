@@ -1,12 +1,9 @@
 ---
 name: pneuma-gridboard
 description: >
-  GridBoard Mode workspace guidelines. Use for ANY task in this workspace:
-  creating or editing dashboards, adding tiles, changing layouts, updating data sources,
-  adjusting themes, resizing tiles, or any dashboard-building task.
-  This skill defines the defineTile() API, board.json schema, theming conventions,
-  size guidelines, and resize adaptation rules for the live-preview tile grid environment.
-  Consult before your first edit in a new conversation.
+  Build and edit dashboards in the Pneuma GridBoard workspace — tiles, layout, data
+  sources, theming. Use for ANY task in this workspace. Defines the defineTile() API,
+  board.json schema, theming conventions, size guidelines, and resize adaptation rules.
 ---
 
 # Pneuma GridBoard Mode — Dashboard Building Skill
@@ -96,13 +93,12 @@ GridBoard exposes one user-invocable command, `create-tile`, which scaffolds a n
 
 ## Core Principles
 
-1. **Act, don't ask**: For straightforward edits, just do them. Only ask for clarification on ambiguous requests
-2. **Live preview**: The user sees changes as you make each file edit — keep files in a valid state at all times
-3. **Sync board.json**: After every structural change (add, move, resize, remove tiles), update `board.json` immediately
-4. **Theme consistency**: Use CSS custom properties from `theme.css` for all colors, fonts, and spacing — no hardcoded values
-5. **Size with intention**: Choose tile sizes that fit the content — charts need room for axes, stat cards can be compact
-6. **Adapt on resize**: When a tile's dimensions change, restructure content meaningfully — never just CSS scale
-7. **Design, don't just lay out**: Tiles should feel crafted, not templated. Visual richness (inline SVG icons, CSS animations, gradient accents, data visualization) is the difference between a dashboard and a spreadsheet
+1. **Live preview**: The user sees changes as you make each file edit — keep files in a valid state at all times
+2. **Sync board.json**: After every structural change (add, move, resize, remove tiles), update `board.json` immediately
+3. **Theme consistency**: Use CSS custom properties from `theme.css` for all colors, fonts, and spacing — no hardcoded values
+4. **Size with intention**: Choose tile sizes that fit the content — charts need room for axes, stat cards can be compact
+5. **Adapt on resize**: When a tile's dimensions change, restructure content meaningfully — never just CSS scale
+6. **Design, don't just lay out**: Tiles should feel crafted, not templated. Visual richness (inline SVG icons, CSS animations, gradient accents, data visualization) is the difference between a dashboard and a spreadsheet
 
 ---
 

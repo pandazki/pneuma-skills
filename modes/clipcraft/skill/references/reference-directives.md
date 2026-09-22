@@ -57,7 +57,7 @@ less the model has to guess.
 | **Style transfer** | `in the visual style of @image3`, `color-grade like @video1` | Borrows look / grade / palette without copying content. |
 | **Prop / costume add** | `the character should wear sci-fi glasses` (no ref needed) | Add or change wardrobe on top of the character ref. |
 | **POV / framing shift** | `from third-person to the character's subjective POV`, `close-up surround shot` | Direct the shot grammar. |
-| **Audio bed** | `background music from @audio1`, `underscore with @audio1` | Use an audio ref as BGM. Requires `--generate-audio` i.e. **not** `--no-audio`. |
+| **Audio bed** | `background music from @audio1`, `underscore with @audio1` | Use an audio ref as BGM. Needs the clip's audio generation on — do not pass `--no-audio`. |
 
 ## Worked example — character into a sci-fi sequence
 

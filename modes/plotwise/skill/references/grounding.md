@@ -221,6 +221,5 @@ A mid-course question gets the same treatment at runtime — the user asked,
 so they will tolerate the wait. Classify the question's tier, verify
 accordingly, render any figure the answer needs under
 `evidence/<sceneId>/` (the scene id is `q<n>`), THEN hand the scene to
-the manager as a request file (SKILL.md, "A learner's question"). Say in
-one line what you are doing ("checking sources...") so the wait reads as
+the manager as a request file (SKILL.md, "A learner's question"). Say what you are doing ("checking sources...") so the wait reads as
 diligence, not lag.

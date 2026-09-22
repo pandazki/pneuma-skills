@@ -2,7 +2,10 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 
 const diagramManifest: ModeManifest = {
   name: "diagram",
-  version: "1.0.0",
+  version: "1.0.1",
+  changelog: {
+    "1.0.1": ["Scaffold examples carry a real cell instead of a placeholder comment; edge rule stated with its reason; description shortened"],
+  },
   displayName: {
     en: "Diagram",
     "zh-CN": "图表",

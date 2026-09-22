@@ -12,8 +12,9 @@ import { normalizeCosmos, type Cosmos } from "./types.js";
 
 const cosmosManifest: ModeManifest = {
   name: "cosmos",
-  version: "0.5.1",
+  version: "0.5.2",
   changelog: {
+    "0.5.2": ["Perspective lens catalog rewritten to the steps[] shape, schema reference gains locator and excerpt on every source ref kind, visual-anchoring prose in present tense"],
     "0.5.1": ["Make skill discovery and guidance portable across Claude Code and Codex"],
     "0.5.0": [
       "Projection workflow: a partition can no longer vanish silently — every slice gets a contribution row (`stats.partitions[]`), and one that dies or comes back empty is re-dispatched once before being reported as `failed` / `empty`",

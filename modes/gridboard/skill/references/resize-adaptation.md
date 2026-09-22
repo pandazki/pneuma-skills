@@ -58,6 +58,6 @@ Each view is a separate visual design, not a parametric variation of one design.
 
 ## The Screenshot Test
 
-After implementing a resize tier, mentally screenshot it. Would someone looking at this tile say "that's well designed" or "that's just data on a dark background"?
+After implementing a resize tier, capture it: POST the `capture-tile` action with the tile id and look at the returned image. Would someone looking at this tile say "that's well designed" or "that's just data on a dark background"?
 
 If it's the latter, you haven't finished. Add an SVG icon. Add a data-driven color accent. Add a visualization. Make it feel like someone spent time on it — because you did.

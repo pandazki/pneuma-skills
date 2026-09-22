@@ -7,9 +7,9 @@ user-invocable: true
 
 Get users to first value as fast as possible. Onboarding's job is not to teach the product. Its job is to get people to the moment that proves the product is worth their time.
 
-## MANDATORY PREPARATION
+## Before you start
 
-Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it carries the setup steps, the visitor modes, and the Context Gathering Protocol. The quality floor and the ban list live in [craft-floor.md](craft-floor.md); load it immediately before you edit UI. If no design context exists yet, you MUST run the `init` command (see [cmd-init](cmd-init.md)) first. Additionally gather: the "aha moment" you want users to reach, and users' experience level.
+Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it carries the setup steps, the visitor modes, and the Context Gathering Protocol. The quality floor and the ban list live in [craft-floor.md](craft-floor.md); load it immediately before you edit UI. If no design context exists yet, run the `init` command (see [cmd-init](cmd-init.md)) first. Additionally gather: the "aha moment" you want users to reach, and users' experience level.
 
 ---
 
@@ -233,11 +233,16 @@ localStorage.setItem('feature-tooltip-seen-reports', 'true');
 
 ## Verify Onboarding Quality
 
-Test with real users:
+What you can verify here: every empty state has a next action, skip is
+visible, dismissals persist (read the storage code), no tooltip fires
+twice, and the tour never blocks the whole UI.
+
+The outcomes below need real users; hand them to the user as the
+post-launch checklist rather than claiming them:
 
 - **Time to completion**: Can users complete onboarding quickly?
 - **Comprehension**: Do users understand after completing?
-- **Action**: Do users take desired next step?
+- **Action**: Do users take the desired next step?
 - **Skip rate**: Are too many users skipping? (Maybe it's too long or not valuable)
 - **Completion rate**: Are users completing? (If low, simplify)
 - **Time to value**: How long until users get first value?

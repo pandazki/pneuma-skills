@@ -17,11 +17,11 @@ This is not a UI framework. It is a constraint system for print, designed to kee
 1. Page background parchment `#f5f4ed`, never pure white
 2. Single accent: ink-blue `#1B365D`, no second chromatic color
 3. All grays warm-toned (yellow-brown undertone), no cool blue-grays
-4. English: serif for everything (headlines and body). Chinese: serif headlines, sans body. Sans only for UI elements (labels, eyebrows, meta) in both
+4. One serif per page, every language — `--sans` aliases `--serif`. Mono only for code and technical labels
 5. Serif weight locked at 500, no bold
 6. Line-heights: tight headlines 1.1-1.3, dense body 1.4-1.45, reading body 1.5-1.55
 7. Letter-spacing: Chinese body 0.3pt for comfortable reading; English body 0; tracking only for short labels and overlines
-8. Tag backgrounds must be solid hex, never rgba (WeasyPrint renders a double rectangle)
+8. Tag backgrounds must be solid hex, never rgba — alpha over padding vs glyph areas prints as a visible double rectangle
 9. Depth via ring shadow or whisper shadow, never hard drop shadows
 10. **No italic anywhere**. No `font-style: italic` in any template or demo. No italic @font-face declarations needed
 
@@ -76,7 +76,7 @@ Four levels: near-black (primary) > dark-warm (secondary) > olive (subtext) > st
 
 ### Translucent -> Solid conversion (TAGS MUST BE SOLID)
 
-**Why**: alpha compositing over padding vs glyph areas can produce a visible double rectangle in PDF renderers (a WeasyPrint bug upstream documented); solid pre-blended hex prints identically everywhere.
+**Why**: alpha compositing over padding vs glyph areas can produce a visible double rectangle in PDF output; solid pre-blended hex prints identically everywhere.
 
 Ink Blue `#1B365D` over parchment `#f5f4ed` resolves to exactly two tokens, and
 those two are the only tints the design system has:
@@ -134,7 +134,7 @@ font-family: "JetBrains Mono", "SF Mono", "Fira Code",
 
 Any font-family that may render Chinese, Japanese, or Korean must include a CJK fallback, including `@page` footer text, `pre`, `code`, and SVG labels. A pure mono stack can render missing glyph boxes in print.
 
-**CJK families lead, Latin faces trail** (upstream V1.13.0). Write the stack so
+**CJK families lead, Latin faces trail.** Write the stack so
 one family draws the whole label. A Latin serif in front is not wrong for a
 page of English, but on a mixed line it hands every ideograph off separately,
 and a two-character word can come back set in two different faces. Same rule
@@ -185,7 +185,7 @@ parchment metrics were tuned for.
 **Design principle**: Serif uses only two weights (400/500), no synthetic bold (600/700), maintaining restrained typography.
 
 - `strong { font-weight: 500 }` in long-doc templates locks bold to W05, preventing browsers from synthesizing 700 on top of W05
-- **Web only**: W04 covers weight 400-500 (single `font-weight: 400 500` declaration); W05 is PDF-only because WeasyPrint cannot synthesize bold
+- **Web only**: W04 covers weight 400-500 (single `font-weight: 400 500` declaration); W05 is the real bold face for print, where synthetic bold is not available
 
 ### Line-height
 
@@ -1023,8 +1023,8 @@ table.data td:first-child {
 
 - `viewBox` width fixed at `920`; adjust height to content
 - `max-height: 105mm` on `svg` element to prevent overflow
-- WeasyPrint does not support `fill="url(#gradient)"` or CSS Grid inside SVG
-- Draw arrowheads as explicit `<path>` elements; `marker-end` with `orient="auto"` does not rotate in WeasyPrint
+- No `fill="url(#gradient)"` and no CSS Grid inside SVG — kami has no gradients, and grid inside SVG does not survive export
+- Draw arrowheads as explicit `<path>` elements; a rotated `marker-end` does not survive every export path
 
 ### Content rules
 

@@ -9,9 +9,9 @@ Polish is refinement, never a concealed redesign. Preserve the incumbent visual 
 
 An automated check is defect evidence, not proof of quality. Inspect the rendered experience and the real interaction path.
 
-## MANDATORY PREPARATION
+## Before you start
 
-Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it carries the setup steps, the visitor modes, and the Context Gathering Protocol. The quality floor and the ban list live in [craft-floor.md](craft-floor.md); load it immediately before you edit UI. If no design context exists yet, you MUST run the `init` command first (see [cmd-init](cmd-init.md)). Additionally gather: the quality bar and the shipping constraints.
+Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it carries the setup steps, the visitor modes, and the Context Gathering Protocol. The quality floor and the ban list live in [craft-floor.md](craft-floor.md); load it immediately before you edit UI. If no design context exists yet, run the `init` command first (see [cmd-init](cmd-init.md)). Additionally gather: the quality bar and the shipping constraints.
 
 Load [craft-floor.md](craft-floor.md) before you edit — polish is building, and the floor is the standard you are polishing to.
 

@@ -508,10 +508,12 @@ cannot enforce a schema, do not parse free-form output as JSON: switch to a
 checker that can honor the format, or explicitly degrade to one `quote +
 problem` pair per line and record that degradation under `.pneuma/`.
 
-Between human gates, send no progress commentary. Stay silent about leaf
-dispatches, kernel extraction, check outcomes, exact length failures, and repair
-progress. Update canonical state instead. Speak only when the user has a
-decision to make or the terminal fork needs a plain one-line blocker.
+Between human gates, keep the user oriented with a short plain line when a
+stage changes — which unit is being written, that the piece is in whole-article
+review. Never let internal state cross that line: no leaf dispatch detail,
+kernel extraction, check outcomes, status tokens, exact length failures, or
+repair counts; update canonical state instead. When a decision or a terminal
+blocker is ready, say so directly.
 
 ### 6. Local tuning
 

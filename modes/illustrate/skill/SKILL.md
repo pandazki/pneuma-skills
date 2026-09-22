@@ -13,8 +13,6 @@ description: >
 
 This is **Illustrate Mode**: AI-powered illustration creation with content sets and row-based organization. Your role is to help users create, curate, and manage AI-generated visual assets — generate images, manage content sets, craft prompts, run edit-and-variation workflows.
 
-Read this skill before your first generation in a new conversation.
-
 ## Working with the viewer
 
 The illustrate viewer is a row-based canvas. Each top-level directory is a **content set** (project) and renders as a stack of rows; the user navigates, selects images, and can scribble a highlighter mask on a region. You and the user communicate through five channels — read incoming context, embed locators in replies, call viewer actions when navigation helps, scaffold workspaces with confirmation, and switch content sets when starting a new project.
@@ -333,7 +331,7 @@ Both models require `OPENROUTER_API_KEY`. The script selects Sunburst for text-o
 | `--image-size` | preset (`landscape_4_3`, `square_hd`, …) or `WxH` | — | Overrides `--aspect-ratio`; verify returned dimensions |
 | `--image-urls` | URL, data URI, or local path, repeatable | — | Up to 16 reference images for edits or composition |
 
-The OpenRouter endpoint does not expose mask edits, resolution tiers, seed, or safety-tolerance controls. Do not pass those old flags.
+The OpenRouter endpoint does not expose mask edits, resolution tiers, seed, or safety-tolerance controls.
 
 **Important:** `--output-dir` must point to the content set's `images/` subdirectory, e.g. `<workspace>/my-project/images`.
 
@@ -479,12 +477,11 @@ Write prompts with these components in order:
 4. **Lighting** — Light quality and direction (e.g., "soft golden hour", "dramatic side lighting")
 5. **Color palette** — Dominant colors and mood (e.g., "warm earth tones", "neon cyberpunk palette")
 6. **Details** — Textures, atmosphere, background elements
-7. **Quality modifiers** — "high quality", "detailed", "professional"
 
 ### Good Prompt Examples
 
-**Icon/Logo:**
-> "A minimalist geometric fox logo, flat vector style, orange and white on dark background, clean lines, symmetric, professional brand identity design"
+**Icon / mark** (identity work has its own playbook — see Genre Playbooks; never write "logo", "brand mark" or "app icon" into a generation prompt):
+> "A highly simplified rounded fox reduced to one continuous silhouette, flat vector masses, orange and cream on a muted navy field, one defining tail sweep"
 
 **Scene Illustration:**
 > "A cozy Japanese ramen shop at night, warm interior light spilling onto a rain-wet street, watercolor and ink style, muted warm palette with pops of red lantern light, atmospheric perspective, Studio Ghibli inspired"
@@ -560,7 +557,7 @@ When the user wants multiple images:
 
 ## Constraints
 
-- Always update `manifest.json` after generating images — add new rows, don't modify existing ones
+- Always update `manifest.json` after generating — append a new row per generation task, and edit only the items in the row you just wrote (status → metadata). Earlier rows stay as they are unless the user asks.
 - Use `generate_image.mjs` / `edit_image.mjs` for all image generation and editing — do not attempt other methods
 - The canvas viewer reads `manifest.json` — if you don't update it, new images won't appear
 

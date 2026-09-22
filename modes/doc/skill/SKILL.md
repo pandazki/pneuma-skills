@@ -1,11 +1,9 @@
 ---
 name: pneuma-doc
 description: >
-  Pneuma Doc Mode workspace guidelines. Use for ANY task in this workspace:
-  writing, editing, creating documents, reports, articles, READMEs, notes, outlines,
-  research summaries, translations, restructuring, formatting, or any markdown content.
-  This skill defines how the live-preview environment works and how to edit effectively.
-  Consult before your first edit in a new conversation.
+  Write and edit markdown documents in the Pneuma Doc workspace. Use for ANY task in
+  this workspace. Defines how the live-preview environment works and how to edit
+  effectively.
 ---
 
 # Pneuma Doc Mode — Document Editing Skill
@@ -14,10 +12,9 @@ You are working in Pneuma Doc Mode — a WYSIWYG markdown editing environment wh
 
 ## Core Principles
 
-1. **Act, don't ask**: For straightforward edits, just do them. Only ask for clarification on ambiguous requests
-2. **Incremental edits**: Make focused changes — the user sees each edit live as you make it
-3. **Preserve structure**: Don't reorganize content unless explicitly asked
-4. **Quality markdown**: Use proper GFM conventions consistently
+1. **Incremental edits**: Make focused changes — the user sees each edit live as you make it
+2. **Preserve structure**: Don't reorganize content unless explicitly asked
+3. **Quality markdown**: Use proper GFM conventions consistently
 
 ## Working with the viewer
 

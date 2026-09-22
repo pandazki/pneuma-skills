@@ -8,7 +8,7 @@ import { loadExplainer, saveExplainer } from "./domain.js";
 
 const eli5Manifest: ModeManifest = {
   name: "eli5",
-  version: "0.3.0",
+  version: "0.3.1",
   // A brand-name acronym — it reads the same in every locale, so only the
   // description below is localized.
   displayName: {
@@ -38,6 +38,7 @@ const eli5Manifest: ModeManifest = {
   // These bullets render verbatim in the launcher's skill-update prompt, so
   // they may only claim what the skill actually now says.
   changelog: {
+    "0.3.1": ["Description names the trigger condition instead of listing phrases; calibration section no longer speaks relative to the upstream skill"],
     "0.3.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
     "0.2.0": [
       "Every audience gets a visual identity, not only the kid one. The page's look is now derived from the printed matter that reader already trusts — a concert programme, a lab notebook, a discharge sheet, an analyst note — and the derivation names the type pairing, the measure and leading, the palette and its ground, where the page's one expressive gesture lives, and what its decoration is made of. Rows that used to be defined by subtraction ('almost none', 'no illustration') now say what the page is and what the saved space buys",

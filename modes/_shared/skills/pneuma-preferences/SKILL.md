@@ -62,7 +62,7 @@ Why full rewrite? Because appending creates a pile of contradictory observations
 
 ## When to Read
 
-Read preferences silently. Do not announce it.
+Reading preferences is part of the work and needs no announcement; the one time to mention it is when you record a new hard constraint (see Markers below).
 
 - **Start of creative work** — before your first design decision in a session
 - **Before style choices** — colors, themes, layouts, density, typography, tone

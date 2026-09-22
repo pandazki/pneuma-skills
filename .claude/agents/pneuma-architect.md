@@ -1,7 +1,7 @@
 ---
 name: pneuma-architect
 description: >-
-  Pneuma Skills architecture & design authority (design-authoring, Fable-5 engine). Use
+  Pneuma Skills architecture & design authority (design-authoring, Fable engine). Use
   proactively for design-level work on any Pneuma layer / contract / mode / backend, present
   or future — TWO modes: DESIGN (architect a new or extended capability end to end —
   contracts, layer placement, cross-layer integration, ADR-worthy decisions) and REVIEW

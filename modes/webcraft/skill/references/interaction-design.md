@@ -50,7 +50,7 @@ button:focus-visible {
 
 ## Modals: The Inert Approach
 
-Focus trapping in modals used to require complex JavaScript. Now use the `inert` attribute:
+Use the `inert` attribute to trap focus instead of JavaScript focus management:
 
 ```html
 <!-- When modal is open -->
@@ -111,7 +111,7 @@ The modern solution uses the CSS Anchor Positioning API to tether an overlay to 
 }
 ```
 
-Because the dropdown uses `position: fixed`, it escapes any `overflow` clipping on ancestor elements. The `@position-try` block handles viewport edges automatically. **Browser support**: Chrome 125+, Edge 125+. Not yet in Firefox or Safari - use a fallback for those browsers.
+Because the dropdown uses `position: fixed`, it escapes any `overflow` clipping on ancestor elements. The `@position-try` block handles viewport edges automatically. **Browser support**: anchor positioning is not universal yet — check current support and keep a positioned fallback for browsers without it.
 
 ### Popover + Anchor Combo
 

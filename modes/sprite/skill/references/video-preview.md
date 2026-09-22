@@ -16,9 +16,8 @@ A clip does three jobs in this mode, and they are not the same job.
    different question asked of it: not "is this one cycle?" but "do the two
    ends match?". It has its own section below.
 
-The rule that used to read "video clips are previews, never sources" is now
-about job 2 only: a clip you rendered from the frames must not become the
-frames. A clip shot deliberately, on green, with the camera locked, IS a
+The two jobs do not mix: a clip you rendered *from* finished frames must never
+become frames. A clip shot deliberately, on green, with the camera locked, is a
 legitimate source — that is what `from-video` and `add-motion --source video`
 are for.
 
@@ -159,10 +158,8 @@ fal's pricing page before promising a user a figure.
 So a 4-second 480p Seedance preview is roughly a dollar. Render one per motion
 by default; ask before rendering a set.
 
-Measured at 480P (plotwise, 2026-09-03): the model reproduces structure and
-large shapes faithfully, and turns small text into plausible fake glyphs. For
-a sprite preview that is fine — there is no text in the frame. Go to 720p /
-768P only when the user asks for a keepsake.
+480p / 480P is the right default for a sprite preview. Go to 720p / 768P only
+when the user asks for a keepsake.
 
 ## The motion-source clip
 

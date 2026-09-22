@@ -1,6 +1,6 @@
 ---
 name: pneuma-kami
-description: Paper-canvas web design. Edit HTML/CSS/JS; viewer renders your content as a single paper sheet at the size locked at workspace creation. Design language adapted from tw93/kami (MIT). Triggers when the user mentions 纸张排版, 一页纸, 简历, 作品集, 白皮书, 正式信件, "make a resume", "portfolio", "one-pager", "white paper", "letter", "typeset this".
+description: Paper-canvas web design. Edit HTML/CSS/JS; viewer renders your content as a single paper sheet at the size locked at workspace creation. Design language adapted from tw93/kami (MIT). Triggers on typesetting a document as a physical sheet — resume, one-pager, portfolio, white paper, letter, deck, report — in any language.
 ---
 
 # Pneuma Kami Mode
@@ -343,9 +343,8 @@ plan. It names six things, and the last one is the point: **doc genre**,
 **material status**, and **the checks this document has to pass before you
 hand it back**. Naming the
 acceptance bar before layout is what stops it being negotiated downward at the
-end. Match the user's language, keep it under 80 words, write it as prose
-rather than a status panel, and continue immediately — this is transparency,
-not an approval gate.
+end. Match the user's language, keep it short enough to read in one glance, and
+continue immediately — this is transparency, not an approval gate.
 
 Example (EN):
 
@@ -398,13 +397,11 @@ fact), not by relaxing the check.
 Kami is a **strict-page** medium. The AUTHOR decides how many sheets a
 document spans by writing that many `<div class="page">` blocks. Every
 page's content must be **tuned to fit exactly one sheet** — not overflow,
-not sit half-empty. This is kami's core discipline, adapted from the
-WeasyPrint-verified workflow in the upstream project.
+not sit half-empty. This is kami's core discipline.
 
 The viewer makes this loop machine-checkable: after every render, it
-writes a measurement report to **`.pneuma/kami-fit.json`**. **You MUST
-read this file after every meaningful edit** and iterate until every
-page reports `status: "fits"`.
+writes a measurement report to **`.pneuma/kami-fit.json`**. Read it after
+every meaningful edit and iterate until every page reports `status: "fits"`.
 
 Report shape:
 
@@ -412,30 +409,36 @@ Report shape:
 {
   "content_set": "musk-resume",
   "file": "index.html",
-  "paper": { "size": "A4", "orientation": "Portrait", "height_mm": 297 },
+  "paper": { "size": "A4", "orientation": "Portrait", "height_mm": 297,
+             "safe": { "top_mm": 18, "side_mm": 16, "bottom_mm": 18 } },
   "pages": [
-    { "index": 1, "content_height_mm": 289.2, "overflow_mm": -7.8, "status": "fits" },
-    { "index": 2, "content_height_mm": 314.5, "overflow_mm":  17.5, "status": "overflow" }
+    { "index": 1, "paper_height_mm": 297, "safe_height_mm": 261, "content_height_mm": 259.4, "delta_safe_mm": -1.6, "status": "fits" },
+    { "index": 2, "paper_height_mm": 297, "safe_height_mm": 261, "content_height_mm": 284.5, "delta_safe_mm": 23.5, "status": "overflow" }
   ],
-  "summary": { "overflow_count": 1, "sparse_count": 0, "fits_count": 1 }
+  "summary": { "total_pages": 2, "sparse_count": 0, "loose_count": 0, "fits_count": 1, "bleed_count": 0, "overflow_count": 1 }
 }
 ```
 
-| Status     | Meaning                           | What to do |
-|------------|-----------------------------------|------------|
-| `fits`     | Content is within ±50mm of paper height | Stop. Move on. |
-| `overflow` | `overflow_mm > 2` — will not print on one sheet | **Must trim.** Priority order (upstream V1.7.1): delete or merge content first — drop a bullet, tighten phrasing, remove a section, merge duplicated concepts. Never shrink font-size or line-height to force a fit; those are locked by the design system. |
-| `sparse`   | `overflow_mm < -50` — paper is ~20%+ blank | Consider filling: expand a weak section with concrete specifics, add a pull-quote, include a metric, OR merge adjacent pages if the content genuinely fits tighter. |
+`delta_safe_mm` is the rendered content height minus the safe height (paper
+height minus the top and bottom safe margins). Five statuses:
 
-**The loop** (run it automatically after every edit; don't wait for the user to point out overflow):
+| Status     | `delta_safe_mm`                         | What to do |
+|------------|-----------------------------------------|------------|
+| `fits`     | within ±3 mm of the safe height          | Stop. Move on. |
+| `loose`    | 3–30 mm short                            | Fine on a body page; tighten or enrich only if the page reads thin. |
+| `sparse`   | more than 30 mm short                    | Consider filling: expand a weak section with concrete specifics, add a pull-quote, include a metric, OR merge adjacent pages if the content genuinely fits tighter. |
+| `bleed`    | over, by up to the bottom safe margin    | Prints, but into the margin. Treat as overflow unless the page is a deliberate full-bleed cover. |
+| `overflow` | over by more than the bottom safe margin | **Must trim.** Priority order: delete or merge content first — drop a bullet, tighten phrasing, remove a section, merge duplicated concepts. Never shrink font-size or line-height to force a fit; those are locked by the design system. |
+
+**The loop** (run it after every edit; don't wait for the user to point out overflow):
 
 1. Make a content edit.
 2. Read `.pneuma/kami-fit.json`.
-3. If `overflow_count > 0` → trim the overflowing pages → loop to step 2.
+3. If `overflow_count > 0`, or `bleed_count > 0` on any page that is not a deliberate full-bleed cover → trim the offending pages → loop to step 2.
 4. If `sparse_count > 0` and content intent allows → enrich → loop to step 2.
-5. When every page is `fits` → stop.
+5. When every page is `fits` — or `loose` on a body page you judged acceptable, or `bleed` only on a deliberate full-bleed cover — stop.
 
-Reaching `fits` across every page is the quality bar before you tell
+That acceptance bar across every page is what you reach before you tell
 the user the document is ready. Silence on your part implies the fit is
 passing. See `references/cmd-fit.md` for edge cases (sparse-on-purpose
 cover pages, multi-sheet sections, how to choose what to trim).

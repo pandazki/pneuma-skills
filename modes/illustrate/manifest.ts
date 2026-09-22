@@ -8,8 +8,9 @@ import { loadStudio, saveStudio } from "./domain.js";
 
 const illustrateManifest: ModeManifest = {
   name: "illustrate",
-  version: "0.6.0",
+  version: "0.6.1",
   changelog: {
+    "0.6.1": ["Prompt guide drops quality-modifier padding, the icon example follows the identity playbook, manifest row rule matches the row lifecycle"],
     "0.6.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
     "0.5.0": [
       "Logo & mascot playbook re-synced against upstream s1dashu/ip-as-logo-skill@acb834c (2026-08-22) — and it now records that pin, so the next sync starts from a known baseline",

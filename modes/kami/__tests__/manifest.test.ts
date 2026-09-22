@@ -31,7 +31,7 @@ const DIAGRAM_FILES = [
 
 describe("kami version + changelog contract", () => {
   it("includes the GPT Image 2.5 upgrade", () => {
-    expect(kamiManifest.version).toBe("1.7.0");
+    expect(kamiManifest.version).toBe("1.7.1");
   });
 
   it("carries a changelog entry for the current version", () => {

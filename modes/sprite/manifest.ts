@@ -17,8 +17,9 @@ import { loadRoster, saveRoster } from "./domain.js";
 
 const spriteManifest: ModeManifest = {
   name: "sprite",
-  version: "0.3.1",
+  version: "0.3.2",
   changelog: {
+    "0.3.2": ["Skill text states current behaviour without the incident stories; seed size note moved to the seed README"],
     "0.3.1": [
       "A loop's interview is now a gate, not a request: `set-motion --brief-duration/--brief-width/--brief-interpolator` records what the user answered, and `add-video` refuses the paid clip on a loop that has no brief. The 400-frame ceiling is warned about while the duration is still a question, and `register-run` says when the frames that landed are not the width the brief asked for",
       "`sprite-sheet.mjs retime` replays a clip's own frames in another order — an apex freeze cut short, a double blink dropped, a beat repeated — and registers as a derived clip (`--op retime --model ffmpeg`). It costs nothing and invents nothing, and it is the answer to the Seedance idle-loop failure modes that prompt wording does not fix",

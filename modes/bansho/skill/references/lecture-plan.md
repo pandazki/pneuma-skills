@@ -168,9 +168,9 @@ glance and you are guessing about both.
 
 What to check each time, in this order:
 
-1. **Room** — is the face filling the way the design said? A face that
-   reads 46% after two passages that were supposed to fill it means the
-   columns are not being used: the next passage goes `@at right`, not on a
+1. **Room** — is the face filling the way the design said? A face still
+   under half full after two passages that were supposed to fill it means
+   the columns are not being used: the next passage goes `@at right`, not on a
    new board.
 2. **Length** — is the passage roughly its estimate? Twice the estimate,
    twice, means the whole design is half as long as it says.
@@ -180,26 +180,12 @@ What to check each time, in this order:
 
 ## A clean check IS a fact about your file — for width
 
-A board has a fixed size now (1242 x 894, every screen). **Which board a
-passage lands on, where a line wraps and whether a `@turn` finds a clean
-board no longer move with the window**, and that is measured rather than
-promised: the layout gate captures the canonical layout at 1280 and at 1990
-and the two files are byte-identical. So `check-board` came back clean is a
-statement about `board.md`, and you and your reader are looking at the same
-lecture.
-
-It was not always true, and the failure is worth carrying because the habit
-it teaches is still right. A lecture in this repo's own history was composed
-until the flow stopped at exactly the last line of board 3, so that a
-`@turn` would find board 4 clean. `glance-board` read `board 3 — full`. Not
-92% — **full**, with zero margin, because the author had been deleting
-content until the findings went away. One narrower window later, the flow
-reached board 4 first, the `@turn` became a no-op on a full wall, and two
-passages were written on top of each other.
-
-That particular trap is closed. The rule it produced is not, because the
-thing it really protects against is **composing against the fold instead of
-against the lecture**:
+A board is a fixed 1242 × 894 at every window size, so which board a
+passage lands on, where a line wraps and whether `@turn` finds a clean
+board are all properties of `board.md`. A clean `check-board` is therefore
+a statement about your file: you and your reader are looking at the same
+lecture. What still matters is composing against the lecture, not against
+the fold:
 
 - **Never shape prose to steer where the fold breaks.** Deleting a formula
   or demoting a heading until a finding disappears is not fixing the

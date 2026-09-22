@@ -71,8 +71,7 @@ The board look is driven by a small set of custom properties:
 
 `1` means the writing is chalk: the slate carries grain, and an erase
 leaves behind the smear a cloth leaves. `0` means ink on paper, where ink
-is either there or struck through and never smeared — a paper board looks
-exactly as it did before any of this existed.
+is either there or struck through, never smeared.
 
 **Default is `0`, on both the light and the dark board.** The stock dark
 board is a slate by colour but does not claim to be chalk; only a theme
@@ -158,7 +157,7 @@ token controls all of it:
 
 | Value | What the board looks like |
 |---|---|
-| `0` | Perfectly clean. Every block square on the ruler, no chalk grain. Byte-for-byte the board of before this token existed. |
+| `0` | Perfectly clean. Every block square on the ruler, no chalk grain. |
 | `1` | The default. Each block sits at its own fraction of a degree, each word drifts a hair off the line, the slate carries grain and the smears a cloth leaves. |
 | `2`–`3` | Deliberately overdone — useful to SEE what the token does before choosing a value between. |
 | above `6` | Capped. |

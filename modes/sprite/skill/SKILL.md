@@ -170,10 +170,10 @@ Do this before any motion exists — every later prompt is anchored to it.
    identity into every motion, so it is worth the top quality tier.
 3. **Generate `<character>/refs/portrait.png`** — head and shoulders, same
    style, same white background, **with the turnaround attached** plus a
-   clause naming what to match. Without the reference it is a fresh draw of
-   your description, not your character: the first Lumi portrait came back
-   with dark hair and a red cloak, and the fix was the reference, not more
-   adjectives.
+   clause naming what to match. Without the reference attached it is a fresh
+   draw of your description, not your character — an attached image pins
+   identity in a way adjectives cannot (`references/prompting.md` → Reference
+   images).
 4. **Record it** — `sprite-project.mjs init` then `add-ref` for each
    reference.
 5. **Show them** — `navigate-to { "ref": "turnaround" }`, `capture`, look at

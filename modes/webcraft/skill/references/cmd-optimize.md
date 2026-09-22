@@ -7,9 +7,9 @@ user-invocable: true
 
 Performance is a feature. Identify the actual bottleneck for THIS interface, fix it, then measure. Don't optimize what isn't slow.
 
-## MANDATORY PREPARATION
+## Before you start
 
-Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it carries the setup steps, the visitor modes, and the Context Gathering Protocol. The quality floor and the ban list live in [craft-floor.md](craft-floor.md); load it immediately before you edit UI. If no design context exists yet, you MUST run the `init` command first (see [cmd-init](cmd-init.md)).
+Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it carries the setup steps, the visitor modes, and the Context Gathering Protocol. The quality floor and the ban list live in [craft-floor.md](craft-floor.md); load it immediately before you edit UI. If no design context exists yet, run the `init` command first (see [cmd-init](cmd-init.md)).
 
 ---
 
@@ -231,22 +231,17 @@ const observer = new IntersectionObserver((entries) => {
 
 ## Performance Monitoring
 
-**Tools to use**:
-- Chrome DevTools (Lighthouse, Performance panel)
-- WebPageTest
-- Core Web Vitals (Chrome UX Report)
-- Bundle analyzers (webpack-bundle-analyzer)
-- Performance monitoring (Sentry, DataDog, New Relic)
+**What you can measure here**: asset weight (`du`/`wc -c` on the shipped
+JS, CSS and images), image dimensions and formats against their rendered
+size, request count from the markup, and layout jumps between `capture`
+rounds. Lighthouse, WebPageTest, the Chrome UX Report and RUM tools
+(Sentry, DataDog, New Relic) run on the user's side — recommend them, do
+not claim their numbers.
 
-**Key metrics**:
-- LCP, INP, CLS (Core Web Vitals; INP replaced FID in March 2024)
-- Time to Interactive (TTI)
-- First Contentful Paint (FCP)
-- Total Blocking Time (TBT)
-- Bundle size
-- Request count
-
-**IMPORTANT**: Measure on real devices with real network conditions. Desktop Chrome with fast connection isn't representative.
+**Key metrics**: LCP, INP, CLS (Core Web Vitals), Time to Interactive
+(TTI), First Contentful Paint (FCP), Total Blocking Time (TBT), bundle
+size, request count. Real-device and real-network measurements are what
+count; desktop Chrome on a fast connection is not representative.
 
 **NEVER**:
 - Optimize without measuring (premature optimization)
@@ -259,13 +254,13 @@ const observer = new IntersectionObserver((entries) => {
 
 ## Verify Improvements
 
-Test that optimizations worked:
-
-- **Before/after metrics**: Compare Lighthouse scores
-- **Real user monitoring**: Track improvements for real users
-- **Different devices**: Test on low-end Android, not just flagship iPhone
-- **Slow connections**: Throttle to 3G, test experience
-- **No regressions**: Ensure functionality still works
-- **User perception**: Does it *feel* faster?
+- **Before/after weight**: compare asset sizes and request counts from
+  the shipped files
+- **No visual regressions**: a `capture` round shows every section still
+  rendering as intended
+- **Interactions and layout shift**: a screenshot cannot exercise them;
+  they need instrumentation or the user's QA — say what you did not measure
+- **For the user's QA**: Lighthouse before/after, low-end Android, a 3G
+  throttle, and whether it *feels* faster
 
 When the user-facing numbers move, hand off to the `polish` command (see [cmd-polish](cmd-polish.md)) for the final pass.

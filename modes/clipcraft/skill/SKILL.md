@@ -1,6 +1,6 @@
 ---
 name: pneuma-clipcraft
-description: AI-orchestrated video production on @pneuma-craft. Use whenever the user wants to generate, edit, or compose video clips, audio tracks, captions, or background music — including text-to-video / image-to-video generation, TTS narration, music generation, provenance tracking, and timeline composition. Trigger on phrases like "generate video", "make a clip", "add narration", "try another take", "add BGM", "edit project.json", "place on the timeline", "AIGC assets", "regenerate this shot", or any request that touches the exploded timeline or the dive-in panels. Also use when editing `project.json` by hand, registering assets, or wiring provenance edges. Do not assume the user knows the schema — they usually don't; read `references/project-json.md` before committing to an edit.
+description: AI-orchestrated video production on @pneuma-craft. Use whenever the user wants to generate, edit, or compose video clips, audio tracks, captions, or background music — text-to-video / image-to-video generation, TTS narration, music generation, provenance tracking, timeline composition — or touches the exploded timeline, the dive-in panels, or `project.json` by hand. Do not assume the user knows the schema — they usually don't; read `references/project-json.md` before committing to an edit.
 ---
 
 # ClipCraft
@@ -241,7 +241,7 @@ generic answer. The rest of this document tells you *how* to produce;
 
 ## Generation scripts
 
-Six CLI scripts wrap the provider APIs. Call them via the Bash tool.
+Seven CLI scripts wrap the provider APIs. Call them via the Bash tool.
 
 | Script | Purpose | Default model | Env var |
 |---|---|---|---|
@@ -277,8 +277,8 @@ The shared image model is `gpt-image-2.5-sunburst` via OpenRouter;
 - **Complex single-frame compositions** — foreground subject +
   environment + overlay text all in one image, rendered legibly. Title
   cards, end cards, lower thirds, memes with baked-in captions, data
-  callouts over b-roll, diagrammed explainers — all possible as
-  standalone assets now, rather than needing ffmpeg/post overlays.
+  callouts over b-roll, diagrammed explainers — all viable as
+  standalone assets rather than ffmpeg/post overlays.
 - **Text rendering that actually reads**. "A sign that says X" or "a
   poster with the headline Y" comes back legible, not glyph soup. Use
   it for signage, lower-third strap text, brand marks, chyron-style
@@ -291,10 +291,9 @@ The shared image model is `gpt-image-2.5-sunburst` via OpenRouter;
   what to change and preserve. `edit_image.mjs --annotation` accepts a visual
   location guide. OpenRouter does not expose a pixel-mask parameter.
 
-Because the image step is this much stronger, be more ambitious with
-the creative brief: text-heavy frames, multi-layer compositions, and
-explicit character continuity are now viable in a single generation
-rather than a multi-step workaround. See `references/craft.md` for
+Be ambitious with the creative brief: text-heavy frames, multi-layer
+compositions, and explicit character continuity are viable in a single
+generation. See `references/craft.md` for
 the principles that should drive those choices.
 
 ### Sizing images for video (critical)
@@ -460,11 +459,10 @@ compose provenance yourself via Edit on `project.json`.
 
 ### Audio layering — video tracks carry their own audio
 
-Since @pneuma-craft/video 0.4.0, video tracks play their clips'
-embedded audio alongside audio-track clips. A seedance clip on a
-video track and a TTS clip on an audio track will both be audible
-at once. This unlocks one-shot videos (generate once, get both
-picture and sound), but it means you have to *plan* whether a
+Video tracks play their clips' embedded audio alongside audio-track
+clips. A seedance clip on a video track and a TTS clip on an audio
+track will both be audible at once. One-shot videos (generate once,
+get both picture and sound) work, but you have to *plan* whether a
 video's auto-audio should survive into the mix:
 
 - **Picture only** (common for b-roll where you'll add narration
@@ -477,7 +475,7 @@ video's auto-audio should survive into the mix:
 - **Picture + dialogue from seedance**: don't mute, but skip a
   separate narration track for that segment.
 
-`muted` and `visible` on a track are now **orthogonal** — `muted`
+`muted` and `visible` on a track are **orthogonal** — `muted`
 governs audio only, `visible` governs picture only. Hiding a video
 track's picture means `visible: false`; silencing its audio means
 `muted: true`.

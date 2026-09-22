@@ -11,7 +11,7 @@ This is the flow for any request to make new visual work — a whole site, a pag
 
 `PRODUCT.md` owns product truth. `DESIGN.md` owns durable visual decisions. A surface brief in `.impeccable/surfaces/<page-slug>.md` owns strategy that belongs to one page.
 
-## MANDATORY PREPARATION
+## Before you start
 
 Before proceeding, consult the "Impeccable.style Design Intelligence" section of the pneuma-webcraft skill (SKILL.md) — it carries the setup steps, the visitor modes, and the Context Gathering Protocol. If no design context exists yet, run the `init` command (see [cmd-init](cmd-init.md)) first; a missing `DESIGN.md` does **not** route back to `init`.
 

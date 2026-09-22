@@ -17,7 +17,7 @@ import { load, save } from "./domain.js";
 
 const plotwiseManifest: ModeManifest = {
   name: "plotwise",
-  version: "0.7.0",
+  version: "0.7.1",
   displayName: {
     en: "Plotwise",
     "zh-CN": "Plotwise",
@@ -237,6 +237,7 @@ scene length toward these preferences, while always respecting explicit instruct
   },
 
   changelog: {
+    "0.7.1": ["Skill states the montage rule directly, replaces one-line clamps with a stated chat-reply intent, and drops trial narratives and 0.5/0.6 version references"],
     "0.7.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
     "0.6.0": [
       "A scene is a montage, not a chain of shots: one outline beat becomes 1-3 clips of up to 15 s, and inside a clip the model cuts by itself across a time-coded shot list of 4-8 cuts, each a composed picture with its own camera move, with the narration distributed across the timeline. Every prompt used to open with \"One continuous shot, no cuts\" — that clause is most of why the courses looked like talking illustrations",

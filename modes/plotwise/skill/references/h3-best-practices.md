@@ -16,11 +16,11 @@ guide), fal's H3 Max API schema, MiniMax's published prompt spec, and our
 own measurements (2026-09-01 smoke, 2026-09-03 blind trials, 2026-09-04
 reproduction and writer trial).
 
-## What 0.6 changed, and what proved it
+## What the measurements settled
 
-Until 0.6 a scene was a chain of one-take shots and every prompt opened
-with "One continuous shot, no cuts". The courses came out as talking
-illustrations. Four measurements on 2026-09-04 settled why:
+A scene written as one continuous shot comes out as a talking
+illustration. Four measurements on 2026-09-04 settled why the practice is
+a montage instead:
 
 1. **The model is not the ceiling.** The community's published 15-second
    prompts, sent to fal's H3 Max unchanged, come back at their published
@@ -38,8 +38,7 @@ illustrations. Four measurements on 2026-09-04 settled why:
    styles, a fitting device and 8-9 cuts per 15 seconds inside the speech
    budget. Shot as plain text-to-video at 768P, with no anchor and no
    references: the device carries through every cut, no invented text,
-   narration verbatim. A different league from the 0.5 pipeline's output.
-   That brief is the seed of today's `SCREENPLAY_SYSTEM`.
+   narration verbatim. That brief is the seed of `SCREENPLAY_SYSTEM`.
 
 So the final-video practice is copied from the community as it stands.
 What we build well is upstream: the content plan (what carries each idea
@@ -148,15 +147,14 @@ where continuity comes from now:
   voice across a whole course. Without it the model picks a voice per
   clip. The user set this as non-negotiable (2026-09-04).
 
-**The frame chain is retired.** Image-to-video from the previous shot's
-last frame was a true continuation, and it bought two things we now
-refuse to pay for: no voice reference on those shots (H3's
-image-to-video takes no audio reference), and no cuts inside a shot. A
-scene is 1-3 clips joined by matched cuts, which is where the community
-puts its cuts too. `--continuity` is accepted and ignored, because a
-session resumed with the 0.5 skill text still passes it and dying on an
-unknown flag would leave the learner waiting for a manager that never
-started.
+**No frame chain.** Image-to-video from a previous shot's last frame is a
+true continuation, but it costs two things this practice refuses to pay:
+the voice reference on those shots (H3's image-to-video takes no audio
+reference) and the cuts inside a shot. A scene is 1-3 clips joined by
+matched cuts, which is where the community puts its cuts too.
+`--continuity` is accepted and ignored so that a session resumed with
+older skill text still starts its manager instead of dying on an unknown
+flag.
 
 ## Seams
 
@@ -239,10 +237,9 @@ produced 141 s from 47 s of clips, and the demuxer does not check).
 - **Per-cut storyboards** — with 4-8 cuts per clip that is too many
   images for the time budget; the anchor already lifts composition.
 
-Adopted since 0.5, having been listed here as rejected: **bracket camera
-tags** (`[缓慢推进]`) and **multi-cut prompts**. Both were rejected on the
-theory that the frame chain needed one continuous take. The chain is
-gone, and both are now the practice.
+**Bracket camera tags** (`[缓慢推进]`) and **multi-cut prompts** are the
+practice; the only argument against them assumed a continuous take, which
+a montage does not have.
 
 ## How to update this practice
 

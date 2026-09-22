@@ -2,7 +2,7 @@
 
 A `cosmos.perspectives[]` entry is a *variant tour* through the same
 cosmos, framed by one design lens. The lens is the question you're
-asking; the manifestsIn list is the walk. This catalog isn't a list
+asking; the ordered `steps[]` walk is the answer. This catalog isn't a list
 of patterns to find — it's vocabulary for the kinds of question that
 have proven worth asking when reading a system, a story, or a
 research program.
@@ -28,8 +28,8 @@ Each lens below has the same shape:
 - **Falsification** — what would make this NOT the lens, only an
   apparent one. Helps keep perspectives honest.
 - **Example perspective entry** — a sketch of how the variant tour
-  might land in `cosmos.perspectives[]`, with `manifestsIn` ids that
-  ground the walk.
+  might land in `cosmos.perspectives[]`, with each step's `focus[]`
+  grounding the walk.
 
 Skim by name when you feel the gestalt. Read deep when you're trying
 to articulate a perspective you almost have.
@@ -116,7 +116,20 @@ pipeline, not a cybernetic loop. The signature is the **error signal**.
   "lens": "cybernetic-loop",
   "name": "Origin-tagged Source<T> as bidirectional reconciliation",
   "insight": "The Source<T> contract holds the property 'viewer's local state matches disk' by tagging every value event with origin (self/external/initial). When external arrives, viewer reconciles; when self echoes, viewer ignores. The error signal is the origin tag itself.",
-  "manifestsIn": ["ct-source", "ct-file-channel", "rt-sources-impl"],
+  "steps": [
+    {
+      "focus": ["ct-source"],
+      "narrative": "Start at the Source<T> contract: every value event carries an origin \u2014 self, external, or initial. That tag is the loop's error signal."
+    },
+    {
+      "focus": ["ct-file-channel"],
+      "narrative": "The file channel is the actuator. A viewer write goes to disk here, and disk is the state the loop holds the viewer in agreement with."
+    },
+    {
+      "focus": ["rt-sources-impl"],
+      "narrative": "The runtime closes the loop: an external change arrives and the viewer reconciles; a self write echoes back and is ignored. Sense, compare, correct \u2014 every write is one turn of the loop."
+    }
+  ],
   "evidence": "Self-writes still emit value events (rather than being silently absorbed) precisely so the loop closes."
 }
 ```
@@ -153,7 +166,16 @@ gradient, there's a soup. The pattern needs a *contour*.
   "lens": "entropy-gradient",
   "name": "core/types/ is the low-entropy anchor; modes/ absorbs change",
   "insight": "12 mode packages can rev versions, switch tech stacks, even fork — but a change to ModeManifest or ViewerContract is a project-wide event. The contracts hold entropy down; the periphery soaks it up. This is why mode authors can move fast: the floor is solid.",
-  "manifestsIn": ["ct-mode-manifest", "ct-viewer-contract", "mode-webcraft", "mode-clipcraft", "mode-cosmos"]
+  "steps": [
+    {
+      "focus": ["ct-mode-manifest", "ct-viewer-contract"],
+      "narrative": "Begin at the two contracts. They change rarely, and every change is a project-wide event \u2014 this is the low-entropy floor."
+    },
+    {
+      "focus": ["mode-webcraft", "mode-clipcraft", "mode-cosmos"],
+      "narrative": "Now the periphery: three modes with different tech stacks, release cadences and vocabularies, all standing on the same floor. This is where change accumulates without disturbing the core."
+    }
+  ]
 }
 ```
 
@@ -186,7 +208,20 @@ the same boxes.
   "lens": "self-similarity",
   "name": "cosmos itself is fractal — Pneuma projects modes, this seed projects pneuma",
   "insight": "Cosmos is a mode in pneuma-skills, and the bootstrap seed is cosmos projecting pneuma-skills. Same act (structured projection) at the meta level. Pneuma's contracts let modes write their own world; cosmos uses that to write a world that contains pneuma. The pattern is the act of self-description scaling.",
-  "manifestsIn": ["mode-cosmos", "ref-create-mode-skill", "ct-mode-manifest"]
+  "steps": [
+    {
+      "focus": ["ct-mode-manifest"],
+      "narrative": "Pneuma's contract lets a mode describe its own world \u2014 a manifest is a mode writing down what it projects."
+    },
+    {
+      "focus": ["ref-create-mode-skill"],
+      "narrative": "The create-mode skill is that act made repeatable: a procedure for projecting a new domain into the framework."
+    },
+    {
+      "focus": ["mode-cosmos"],
+      "narrative": "Cosmos is a mode that projects content into graphs \u2014 and its bootstrap seed projects pneuma-skills itself. The same act, one level up."
+    }
+  ]
 }
 ```
 
@@ -219,7 +254,24 @@ isn't a causal chain — it's a list. The signature is irreversibility.
   "lens": "causal-chain",
   "name": "User message → agent reads → agent edits → chokidar fires → viewer re-renders → user sees change",
   "insight": "Pneuma's reactive loop has six concrete steps and each one is the cause of the next. No step is decorative — remove any one and the live-preview promise breaks. The loop's reliability is the unbroken irreversibility of this chain.",
-  "manifestsIn": ["shell-ws-client", "be-claude-code", "rt-file-ref", "ct-source", "shell-use-source"]
+  "steps": [
+    {
+      "focus": ["shell-ws-client"],
+      "narrative": "A user message leaves the browser over the WebSocket client \u2014 the first link; nothing downstream moves without it."
+    },
+    {
+      "focus": ["be-claude-code"],
+      "narrative": "The backend hands it to the agent, which reads and edits files. This is the only place the chain produces a change on disk."
+    },
+    {
+      "focus": ["rt-file-ref", "ct-source"],
+      "narrative": "The watcher sees the write and the Source contract turns it into a value event \u2014 because a file changed, a value arrives."
+    },
+    {
+      "focus": ["shell-use-source"],
+      "narrative": "useSource re-renders the viewer and the user sees the change. Remove any link and the live-preview promise breaks."
+    }
+  ]
 }
 ```
 
@@ -251,7 +303,20 @@ pattern needs **both** forces continuing to shape decisions.
   "lens": "tension",
   "name": "Files are sacred AND viewers need domain types",
   "insight": "Pneuma refuses to abstract files away (agents speak files natively) but viewers can't operate on raw bytes; they need a Deck, a Studio, a Cosmos. The resolution isn't compromise — it's the Source<T> abstraction sitting between them, plus a fileChannel escape hatch when domain *is* files. Both forces remain present in every Source usage.",
-  "manifestsIn": ["ct-source", "ct-file-channel", "ct-viewer-contract", "ref-3-0-design"]
+  "steps": [
+    {
+      "focus": ["ref-3-0-design"],
+      "narrative": "The design record names both forces: files are the agent's native surface, and viewers need typed domain objects. Neither side is allowed to win."
+    },
+    {
+      "focus": ["ct-source", "ct-viewer-contract"],
+      "narrative": "Source<T> is where the two forces are held: the viewer subscribes to a typed T while the bytes underneath stay files the agent edits directly."
+    },
+    {
+      "focus": ["ct-file-channel"],
+      "narrative": "The file channel is the escape hatch for the case where the domain *is* files. Both forces stay live in every Source usage."
+    }
+  ]
 }
 ```
 
@@ -282,7 +347,20 @@ not just many instances of the same concern.
   "lens": "convergence",
   "name": "Instructions file as the convergence of three state circles",
   "insight": "Global preferences, project metadata, session-specific handoffs — three independent state circles, each owned by different code paths — all meet inside the assembled CLAUDE.md / AGENTS.md per session. Whoever maintains this file is implicitly mediating between user, project, and runtime — which is why marker blocks (rather than freeform append) are non-negotiable.",
-  "manifestsIn": ["rt-instructions-file", "rt-skill-installer", "rt-handoff-routes", "ref-controlled-state-surface"]
+  "steps": [
+    {
+      "focus": ["ref-controlled-state-surface"],
+      "narrative": "Three independent state circles \u2014 global preferences, project metadata, session handoffs \u2014 each owned by different code."
+    },
+    {
+      "focus": ["rt-skill-installer", "rt-handoff-routes"],
+      "narrative": "Two of those owners write into the same file through marker blocks; neither knows about the other's content."
+    },
+    {
+      "focus": ["rt-instructions-file"],
+      "narrative": "The assembled instructions file is where they all meet. Whoever maintains it is mediating between user, project and runtime \u2014 which is why marker blocks, not freeform append, are the contract."
+    }
+  ]
 }
 ```
 
@@ -313,7 +391,24 @@ shift across each boundary.
   "lens": "layered-translation",
   "name": "Perception → Cognition → Objective → Capability as four vocabularies",
   "insight": "OMNE's services aren't a flat list — they form a translation stack. Perception speaks 'snapshot'. Cognition speaks 'evidence'. Objective Management speaks 'task'. Capabilities speak 'tool invocation'. Each adjacent pair shares no nouns — that's the translation. A single user goal traverses all four.",
-  "manifestsIn": ["perc-world-adapter", "cog-veracity", "cog-evidence", "run-omne", "cap-agent-capabilities"]
+  "steps": [
+    {
+      "focus": ["perc-world-adapter"],
+      "narrative": "Perception speaks 'snapshot': the world adapter normalizes what the sensors see."
+    },
+    {
+      "focus": ["cog-veracity", "cog-evidence"],
+      "narrative": "Cognition speaks 'evidence': snapshots are interpreted and weighed, and the nouns change."
+    },
+    {
+      "focus": ["run-omne"],
+      "narrative": "The runtime speaks 'task': evidence becomes an objective to pursue."
+    },
+    {
+      "focus": ["cap-agent-capabilities"],
+      "narrative": "Capabilities speak 'tool invocation'. Four vocabularies with no shared nouns between neighbours \u2014 that is the translation."
+    }
+  ]
 }
 ```
 
@@ -347,7 +442,20 @@ direct call graphs to be the conspicuous thing.
   "lens": "hidden-hand",
   "name": "CLAUDE.md is invoked by no module but read by every session",
   "insight": "The agent's behavior is shaped overwhelmingly by what's in the assembled CLAUDE.md, yet no code path 'calls' CLAUDE.md. It's the system's hidden hand: read once on launch, internalized, then quietly governing every subsequent decision. This is why the marker-block assembly is a contract — what governs invisibly must be assembled visibly.",
-  "manifestsIn": ["rt-instructions-file", "rt-skill-installer", "ref-claude-md"]
+  "steps": [
+    {
+      "focus": ["rt-skill-installer"],
+      "narrative": "The installer assembles CLAUDE.md at launch \u2014 the only moment code touches it."
+    },
+    {
+      "focus": ["rt-instructions-file"],
+      "narrative": "No module imports the file afterwards, yet every reply the session makes is shaped by it. Absence from the call graph is the conspicuous thing."
+    },
+    {
+      "focus": ["ref-claude-md"],
+      "narrative": "The reference that documents the block layout is the contract: what governs invisibly must be assembled visibly."
+    }
+  ]
 }
 ```
 
@@ -380,7 +488,20 @@ maintainer can articulate the *difference* between. If v1 is just
   "lens": "paradigm-shift",
   "name": "v0.2 monolith → v0.3 published-language multi-package mid-flight",
   "insight": "omne_core (legacy) and omne_core_v1 (Published Language) coexist deliberately. The new code authors against v1; the old code continues to serve the parts where the new vocabulary hasn't landed. The seam isn't debt — it's the locus where the architecture's next form is being articulated. Watch this boundary to understand where OMNE is heading.",
-  "manifestsIn": ["fnd-omne-core", "fnd-omne-core-v1", "doc-domain-glossary"]
+  "steps": [
+    {
+      "focus": ["fnd-omne-core"],
+      "narrative": "The legacy core still serves the parts where the new vocabulary has not landed."
+    },
+    {
+      "focus": ["fnd-omne-core-v1"],
+      "narrative": "The Published Language package is what new code authors against \u2014 the second set of axioms, alive alongside the first."
+    },
+    {
+      "focus": ["doc-domain-glossary"],
+      "narrative": "The glossary is where the maintainer can articulate the difference. Watch this seam to see where the architecture is heading."
+    }
+  ]
 }
 ```
 
@@ -399,8 +520,8 @@ The vocabulary above is a starter. Invent when:
   either alone ("orthogonal-tension": two forces that pull
   independently, on independent axes).
 
-The discipline doesn't soften: a new lens still needs at least one
-`manifestsIn` and an `insight` that reads as wisdom about the
+The discipline doesn't soften: a new lens still needs a `steps[]` walk
+whose every beat names real nodes, and an `insight` that reads as wisdom about the
 system. Make the noun precise. Avoid jargon that doesn't earn its
 place.
 
@@ -412,4 +533,4 @@ them cohere as a system — and which walk would show that to someone
 else**.
 
 When you say it out loud and it lands, that sentence is your
-`insight`. The `manifestsIn` list is the walk that earns it.
+`insight`. The `steps[]` walk is what earns it.
