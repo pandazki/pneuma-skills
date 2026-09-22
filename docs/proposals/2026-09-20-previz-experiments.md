@@ -257,3 +257,15 @@ the `lineup` joint review at the previz gate; `slowmo`/`impact` in the kit;
   character. Also: only one voice-over line was planned — the user wants
   spoken lines; re-shoot of s02/s04–s07 with lines and hybrid greyboxes
   requested.
+- Trial 4 revision (2026-09-22 morning): s04 re-shot as hybrid with the
+  camera on the bus-stop side and the pair running toward it (the shop
+  recedes behind them — geographically right and still dynamic), s05/s06
+  hybrid with an explicit "what is behind them" sentence, s07 crane framing
+  the shop; four short spoken lines added (s02 「末班车……还有一分钟。」「走吗？」,
+  s06 「雨停了。」「……嗯。」), rendered by the model with the characters' voice
+  samples and passed by Chinese transcript — the first spoken dialogue in
+  the project. Note: the automatic take-lines check transcribed in English
+  and produced a false negative; the agent re-ran wizper with the language
+  set to Chinese and passed. Fix for the mode: pass the film's language to
+  transcribe.mjs. s05 still shows the shop behind the bus stop after four
+  takes (kept, failure recorded). Revision cost $18.75; film total ≈ $44.
