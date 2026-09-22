@@ -25,6 +25,20 @@ import { timeAgo, runningDuration } from "../utils/timeAgo.js";
 import { basename, shortenPath } from "../utils/string.js";
 import type { InitParam } from "../../core/types/mode-manifest.js";
 import type { InstalledLibrary } from "../../core/types/library.js";
+import type { ModeInstallState } from "../../core/types/mode-catalog.js";
+import {
+  useCatalogInstallStore,
+  formatBytes,
+  installPercent,
+  type CatalogInstall,
+} from "../store/catalog-install.js";
+import {
+  CatalogCardAction,
+  DownloadGlyph,
+  InstallProgressBar,
+  InstallSizeChip,
+  RefreshGlyph,
+} from "./CatalogInstall.js";
 
 export type BackendType = "claude-code" | "codex" | "kimi-cli";
 
@@ -82,6 +96,26 @@ interface BuiltinMode {
       mediaType?: "image" | "gif" | "video";
     }>;
   };
+}
+
+/**
+ * A mode this Pneuma release knows about but does not ship. The package kept
+ * its `showcase/` images and its introduction, so the card is complete before
+ * anything is downloaded — what it adds over a builtin is the install size
+ * and an action that downloads first (`/api/registry` → `catalog[]`).
+ */
+interface CatalogMode {
+  name: string;
+  displayName: string;
+  description?: string;
+  icon?: string;
+  version: string;
+  /** Bytes on disk after extraction — the size quoted on the card. */
+  unpackedSize: number;
+  /** Compressed archive bytes; the install stream reports its own total. */
+  downloadSize: number;
+  state: ModeInstallState;
+  showcase?: BuiltinMode["showcase"];
 }
 
 interface PublishedMode {
@@ -187,12 +221,20 @@ type AnyMode = {
   description?: string;
   version: string;
   icon?: string;
-  source: "builtin" | "local" | "published";
+  source: "builtin" | "local" | "published" | "catalog";
   // launch info
   specifier: string;
   path?: string;
   archiveUrl?: string;
   hasInitParams?: boolean;
+  /**
+   * Catalog modes only — where this machine stands relative to the archive
+   * this core pins. `installed` means the mode behaves exactly like a
+   * builtin; `stale` means opening it downloads the build for this release.
+   */
+  installState?: ModeInstallState;
+  /** Catalog modes only — install size, quoted before the download starts. */
+  unpackedSize?: number;
   showcase?: BuiltinMode["showcase"];
   inspiredBy?: BuiltinMode["inspiredBy"];
   /** Propagated from LocalMode for library-sourced modes (chip on tiles). */
@@ -623,13 +665,20 @@ function FeaturedMode({
   onLaunch,
   onExplore,
   isLight,
+  install,
 }: {
   mode: AnyMode;
   onLaunch: () => void;
   onExplore: () => void;
   isLight?: boolean;
+  /** Live install record when the featured mode is a catalog mode being downloaded. */
+  install?: CatalogInstall;
 }) {
   const { t } = useTranslation("launcher");
+  const needsDownload = mode.source === "catalog" && mode.installState !== "installed";
+  const installing = install?.phase === "installing";
+  const failed = install?.phase === "error";
+  const percent = installPercent(install);
   const [activeHighlight, setActiveHighlight] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
   const highlights = mode.showcase?.highlights;
@@ -719,6 +768,16 @@ function FeaturedMode({
               </p>
             )}
             <p className="text-cc-muted leading-relaxed line-clamp-3">{mode.description}</p>
+            {failed ? (
+              <p className="mt-2 text-xs text-red-400/90 leading-relaxed">{install?.error || t("catalog.failed")}</p>
+            ) : needsDownload ? (
+              <p className="mt-2 text-xs text-cc-muted/60 leading-relaxed inline-flex items-center gap-1.5">
+                <DownloadGlyph className="w-3 h-3" />
+                {mode.installState === "stale"
+                  ? t("catalog.stale_hint")
+                  : t("catalog.first_open_hint", { size: formatBytes(mode.unpackedSize || 0) })}
+              </p>
+            ) : null}
           </div>
 
           {/* Highlight list — hover switches carousel */}
@@ -762,9 +821,27 @@ function FeaturedMode({
           )}
 
           <div className="flex items-center gap-3 mt-auto pt-4 shrink-0">
-            <PrimaryButton onClick={onLaunch} className="py-2.5">
-              {t("featured.launch")}
-            </PrimaryButton>
+            {installing ? (
+              // Same footprint as the button it replaces, so the hero does not
+              // reflow when the download starts.
+              <div className="flex-1 min-w-0 py-2.5" aria-live="polite">
+                <span className="block text-sm font-medium text-cc-primary mb-1.5">
+                  {percent === null ? t("catalog.preparing") : t("catalog.downloading_percent", { percent })}
+                </span>
+                <InstallProgressBar percent={percent} />
+              </div>
+            ) : (
+              <PrimaryButton onClick={onLaunch} className="py-2.5">
+                <span className="inline-flex items-center gap-2">
+                  {needsDownload && !failed && <DownloadGlyph className="w-4 h-4" />}
+                  {failed
+                    ? t("catalog.retry")
+                    : needsDownload
+                      ? (mode.installState === "stale" ? t("catalog.update_and_open") : t("catalog.download_and_open"))
+                      : t("featured.launch")}
+                </span>
+              </PrimaryButton>
+            )}
             <button
               onClick={onExplore}
               className="px-5 py-2.5 text-sm font-medium rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg hover:border-cc-muted/40 transition-colors cursor-pointer"
@@ -1513,6 +1590,10 @@ function QuickStartTile({
   librarySource,
   isFavorite,
   compat,
+  needsDownload,
+  downloadSize,
+  stale,
+  install,
   onClick,
 }: {
   name: string;
@@ -1531,21 +1612,44 @@ function QuickStartTile({
    * Gallery card carries the full chip + tooltip.
    */
   compat?: ModeCompat;
+  /** Catalog mode that is not on this machine yet — opening it downloads it. */
+  needsDownload?: boolean;
+  /** Install size in bytes, quoted in the tile's tooltip before the download. */
+  downloadSize?: number;
+  /** Installed, but built for another core release — opening it downloads again. */
+  stale?: boolean;
+  /** Live install record for this mode, when one is running or just failed. */
+  install?: CatalogInstall;
   onClick: () => void;
 }) {
   const { t } = useTranslation("launcher");
   const incompat = compat?.level === "major-drift";
+  const installing = install?.phase === "installing";
+  const failed = install?.phase === "error";
+  const percent = installPercent(install);
   const handleClick = () => {
+    if (installing) return; // already running — the bar below is the feedback
     if (incompat) {
       const msg = compat?.reason ?? "Incompatible with the running pneuma-skills version";
       if (!confirm(`${msg}\n\nLaunch anyway?`)) return;
     }
     onClick();
   };
+  // One tooltip, in priority order: the failure the server reported, then
+  // the version mismatch, then "this one downloads first, and how much".
+  const tileTitle = failed
+    ? (install?.error || t("catalog.failed"))
+    : incompat
+      ? (compat?.reason ?? undefined)
+      : stale
+        ? t("catalog.stale_hint")
+        : needsDownload && downloadSize
+          ? t("catalog.tile_needs_download", { size: formatBytes(downloadSize) })
+          : undefined;
   return (
     <button
       onClick={handleClick}
-      title={incompat ? (compat?.reason ?? undefined) : undefined}
+      title={tileTitle}
       className={`group relative flex flex-col items-center gap-3 p-5 rounded-xl transition-all duration-200 cursor-pointer ${
         isModeMaker
           ? "bg-cc-primary/5 border border-cc-primary/15 hover:border-cc-primary/30 hover:bg-cc-primary/8"
@@ -1600,7 +1704,19 @@ function QuickStartTile({
       }`}>
         <ModeIcon svg={icon || (isModeMaker ? MODE_MAKER_ICON : undefined)} className="w-5 h-5" />
       </div>
-      <div className="text-center">
+      {needsDownload && !installing && !failed && (
+        // "Opening this one downloads it first." Bottom-right, the same
+        // corner the incompatible dot uses — a catalog mode never carries a
+        // compat verdict, so the two cannot collide. The size is in the
+        // tooltip; the glyph alone keeps the grid scannable.
+        <span
+          className="absolute bottom-2 right-2 w-3 h-3 text-cc-muted/45 group-hover:text-cc-primary transition-colors pointer-events-none"
+          aria-label={t("catalog.needs_download_aria")}
+        >
+          {stale ? <RefreshGlyph className="w-3 h-3" /> : <DownloadGlyph className="w-3 h-3" />}
+        </span>
+      )}
+      <div className="text-center w-full">
         <span className={`text-xs font-medium block transition-colors ${
           isModeMaker
             ? "text-cc-primary"
@@ -1608,7 +1724,18 @@ function QuickStartTile({
         }`}>
           {displayName}
         </span>
-        {description && (
+        {installing ? (
+          <span className="block text-[10px] text-cc-primary/90 mt-0.5 leading-tight" aria-live="polite">
+            {percent === null ? t("catalog.preparing") : t("catalog.downloading_percent", { percent })}
+          </span>
+        ) : failed ? (
+          // The full reason is in the tile's tooltip; the label stays short
+          // enough not to break the grid rhythm, and the tile still opens —
+          // clicking it retries the download.
+          <span className="block text-[10px] text-red-400/90 mt-0.5 leading-tight">
+            {t("catalog.failed")}
+          </span>
+        ) : description && (
           // line-clamp-2 sets `display: -webkit-box` — pairing it with the
           // `block` utility overrode the box display in source order and
           // disabled the clamp, letting Guizang Ppt's marathon description
@@ -1617,17 +1744,38 @@ function QuickStartTile({
           <span className="text-[10px] text-cc-muted/40 mt-0.5 leading-tight line-clamp-2">{description}</span>
         )}
       </div>
+      {installing && (
+        <div className="absolute bottom-2 left-4 right-4 pointer-events-none">
+          <InstallProgressBar percent={percent} />
+        </div>
+      )}
     </button>
   );
 }
 
 // ── ModeMakerHero ─────────────────────────────────────────────────────────
 
-function ModeMakerHero({ onClick }: { onClick: () => void }) {
+function ModeMakerHero({
+  onClick,
+  needsDownload,
+  downloadSize,
+  install,
+}: {
+  onClick: () => void;
+  /** Mode Maker is a catalog mode in this release and is not installed yet. */
+  needsDownload?: boolean;
+  /** Install size in bytes, shown next to the call to action. */
+  downloadSize?: number;
+  /** Live install record — the hero shows its own progress and failure. */
+  install?: CatalogInstall;
+}) {
   const { t } = useTranslation("launcher");
+  const installing = install?.phase === "installing";
+  const failed = install?.phase === "error";
+  const percent = installPercent(install);
   return (
     <div
-      onClick={onClick}
+      onClick={() => { if (!installing) onClick(); }}
       className="group relative rounded-xl overflow-hidden border border-cc-border/20 hover:border-cc-border/40 transition-colors duration-300 cursor-pointer"
     >
       {/* Galaxy — z-[1] so it receives mouse events */}
@@ -1657,15 +1805,36 @@ function ModeMakerHero({ onClick }: { onClick: () => void }) {
         <div className="flex-1 min-w-0">
           <h3 className="text-base font-semibold text-white">{t("mode_maker_hero.title")}</h3>
           <p className="text-sm text-white/70 mt-0.5">
-            {t("mode_maker_hero.description")}
+            {failed
+              ? (install?.error || t("catalog.failed"))
+              : t("mode_maker_hero.description")}
           </p>
         </div>
-        <div className="shrink-0 flex items-center gap-2 text-sm text-cc-primary/80 group-hover:text-cc-primary transition-all duration-300 drop-shadow-[0_0_4px_rgba(249,115,22,0.3)] group-hover:drop-shadow-[0_0_12px_rgba(249,115,22,0.7)]">
-          <span className="font-semibold">{t("mode_maker_hero.cta")}</span>
-          <svg className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-          </svg>
-        </div>
+        {installing ? (
+          <div className="shrink-0 w-44" aria-live="polite">
+            <span className="block text-sm font-semibold text-cc-primary mb-1.5">
+              {percent === null ? t("catalog.preparing") : t("catalog.downloading_percent", { percent })}
+            </span>
+            <InstallProgressBar percent={percent} />
+          </div>
+        ) : (
+          <div className="shrink-0 flex items-center gap-2 text-sm text-cc-primary/80 group-hover:text-cc-primary transition-all duration-300 drop-shadow-[0_0_4px_rgba(249,115,22,0.3)] group-hover:drop-shadow-[0_0_12px_rgba(249,115,22,0.7)]">
+            {needsDownload && !failed && <DownloadGlyph className="w-4 h-4" />}
+            <span className="font-semibold">
+              {failed
+                ? t("catalog.retry")
+                : needsDownload
+                  ? t("catalog.download_and_create")
+                  : t("mode_maker_hero.cta")}
+            </span>
+            {needsDownload && !failed && downloadSize ? (
+              <span className="text-xs text-white/50 font-mono">{formatBytes(downloadSize)}</span>
+            ) : null}
+            <svg className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+            </svg>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1686,6 +1855,7 @@ function ModeGallery({
   onPublishLibrary,
   isFavorite,
   onToggleFavorite,
+  installs,
   className,
   closing,
   headerHeight = 0,
@@ -1715,6 +1885,8 @@ function ModeGallery({
   isFavorite?: (mode: AnyMode) => boolean;
   /** Toggle the favorite state for a mode. */
   onToggleFavorite?: (mode: AnyMode) => void;
+  /** Live catalog install records, keyed by mode name. */
+  installs: Record<string, CatalogInstall>;
   className?: string;
   closing?: boolean;
   headerHeight?: number;
@@ -1743,7 +1915,10 @@ function ModeGallery({
   //   Published   — community R2 marketplace
   // The split between Local and Libraries makes management surface obvious:
   // single-mode installs have no peers, libraries have N modes sharing a source.
-  const builtin = filtered.filter((m) => m.source === "builtin");
+  // Catalog modes share the first-party group with the builtins: to the user
+  // they are Pneuma's own modes either way, and the card itself says which
+  // ones arrive over the network.
+  const builtin = filtered.filter((m) => m.source === "builtin" || m.source === "catalog");
   const local = filtered.filter((m) => m.source === "local" && !m.librarySource);
   const libraryModes = filtered.filter((m) => m.source === "local" && m.librarySource);
   const published = filtered.filter((m) => m.source === "published");
@@ -1833,6 +2008,13 @@ function ModeGallery({
                 {group.items.map((mode) => {
                   // mode-maker and evolve themselves don't get edit/evolve buttons
                   const isToolMode = mode.name === "mode-maker" || mode.name === "evolve";
+                  // Nor does a catalog mode that is not on disk yet: both
+                  // actions read the mode's source, so offering them before
+                  // the download would only produce a failed session. Pinning
+                  // it IS allowed — a star says what you want in Quick Start,
+                  // not what happens to be downloaded.
+                  const notDownloaded = mode.source === "catalog" && mode.installState !== "installed";
+                  const canDerive = !isToolMode && !notDownloaded;
                   // Include `path` so two locally-evolved forks that both
                   // manifest as `name: "slide"` don't collide on React key
                   // or expand state. Falls back to `name` for builtins +
@@ -1845,8 +2027,8 @@ function ModeGallery({
                       expanded={expandedMode === modeKey}
                       onToggle={() => setExpandedMode(expandedMode === modeKey ? null : modeKey)}
                       onLaunch={() => onLaunch(mode)}
-                      onEdit={!isToolMode && onEdit ? () => onEdit(mode) : undefined}
-                      onEvolve={!isToolMode && onEvolve ? () => onEvolve(mode) : undefined}
+                      onEdit={canDerive && onEdit ? () => onEdit(mode) : undefined}
+                      onEvolve={canDerive && onEvolve ? () => onEvolve(mode) : undefined}
                       // Pass the on-disk dir name, not the manifest name —
                       // `evolve` produces dir names like `slide-evolved-…`
                       // while the manifest retains `name: "slide"`, so
@@ -1859,6 +2041,7 @@ function ModeGallery({
                       isLight={isLight}
                       isFavorite={!isToolMode && isFavorite ? isFavorite(mode) : undefined}
                       onToggleFavorite={!isToolMode && onToggleFavorite ? () => onToggleFavorite(mode) : undefined}
+                      install={mode.source === "catalog" ? installs[mode.name] : undefined}
                     />
                   );
                 })}
@@ -2219,6 +2402,7 @@ function GalleryModeCard({
   library,
   isFavorite,
   onToggleFavorite,
+  install,
 }: {
   mode: AnyMode;
   expanded: boolean;
@@ -2241,6 +2425,11 @@ function GalleryModeCard({
   isFavorite?: boolean;
   /** Toggle this mode in the user's favorites list. Optional — when omitted, the star button hides entirely. */
   onToggleFavorite?: () => void;
+  /**
+   * Live install record for a catalog mode, when its download is running or
+   * has just failed. Drives the action area in place of the Launch button.
+   */
+  install?: CatalogInstall;
 }) {
   const { t } = useTranslation("launcher");
   const [activeHighlight, setActiveHighlight] = useState(0);
@@ -2252,6 +2441,11 @@ function GalleryModeCard({
   const [glowPos, setGlowPos] = useState<{ x: number; y: number } | null>(null);
   const highlights = mode.showcase?.highlights;
   const hasShowcase = highlights && highlights.length > 0;
+  // A catalog mode that still has to be downloaded. Once installed it is a
+  // builtin in every visible respect, so it drops straight back to the
+  // normal Launch button below.
+  const needsDownload = mode.source === "catalog" && mode.installState !== "installed";
+  const isStale = mode.installState === "stale";
 
   // Measure content height for smooth expand/collapse
   useEffect(() => {
@@ -2318,6 +2512,7 @@ function GalleryModeCard({
           <div className="flex items-baseline gap-2 flex-wrap">
             <h3 className="text-base font-medium text-cc-fg">{mode.displayName}</h3>
             <CompatBadge compat={mode.compat} />
+            {needsDownload && mode.unpackedSize ? <InstallSizeChip bytes={mode.unpackedSize} /> : null}
             {mode.showcase?.tagline && (
               <span className="text-xs text-cc-muted/60 hidden sm:inline">{mode.showcase.tagline}</span>
             )}
@@ -2397,7 +2592,9 @@ function GalleryModeCard({
               stopPropagation
             />
           )}
-          {(() => {
+          {needsDownload ? (
+            <CatalogCardAction stale={isStale} install={install} onStart={onLaunch} />
+          ) : (() => {
             const incompat = mode.compat?.level === "major-drift";
             const launchTitle = incompat
               ? (mode.compat?.reason ?? "Incompatible with the running pneuma-skills version")
@@ -2485,6 +2682,22 @@ function GalleryModeCard({
                     <p className="text-[11px] text-cc-muted/40 font-mono mt-1">{mode.path}</p>
                   )}
                 </div>
+              </div>
+            )}
+            {/* What is different about this card, spelled out where there is
+                room for a sentence: how much arrives on first open, or — for
+                an install left behind by an older core — why it downloads
+                again instead of just starting. */}
+            {needsDownload && (
+              <div className="mt-5 pt-4 border-t border-cc-border/15 flex items-start gap-3 text-[11px] text-cc-muted/70">
+                <span className="text-cc-muted/40 shrink-0 mt-px">
+                  {isStale ? <RefreshGlyph className="w-3.5 h-3.5" /> : <DownloadGlyph className="w-3.5 h-3.5" />}
+                </span>
+                <span className="leading-relaxed">
+                  {isStale
+                    ? t("catalog.stale_hint")
+                    : t("catalog.first_open_hint", { size: formatBytes(mode.unpackedSize || 0) })}
+                </span>
               </div>
             )}
             {/* Library provenance — only when the mode came from a linked
@@ -4684,8 +4897,17 @@ export default function Launcher() {
   const [backendOptions, setBackendOptions] = useState<BackendOption[]>(FALLBACK_BACKENDS);
   const [defaultBackendType, setDefaultBackendType] = useState<BackendType>("codex");
   const [builtins, setBuiltins] = useState<BuiltinMode[]>([]);
+  const [catalog, setCatalog] = useState<CatalogMode[]>([]);
   const [published, setPublished] = useState<PublishedMode[]>([]);
   const [local, setLocal] = useState<LocalMode[]>([]);
+  /**
+   * Modes this tab just finished installing. `/api/registry` is cached
+   * server-side for a minute (SWR), so a refetch right after a download can
+   * still answer "not-installed" — and the card would offer to download a
+   * mode that is already on disk. The local answer is the newer truth until
+   * the cache turns over; it only ever moves a mode forward to `installed`.
+   */
+  const [installedNow, setInstalledNow] = useState<Set<string>>(() => new Set());
   const [sessions, setSessions] = useState<RecentSession[]>([]);
   const [running, setRunning] = useState<ChildProcess[]>([]);
   const [projects, setProjects] = useState<ProjectListEntry[]>([]);
@@ -4787,6 +5009,7 @@ export default function Launcher() {
       .then((r) => r.json())
       .then((data) => {
         setBuiltins(data.builtins || []);
+        setCatalog(data.catalog || []);
         setPublished(data.published || []);
         setLocal(data.local || []);
       })
@@ -4955,6 +5178,7 @@ export default function Launcher() {
           setDefaultBackendType(backendData.defaultBackendType);
         }
         setBuiltins(registryData.builtins || []);
+        setCatalog(registryData.catalog || []);
         setPublished(registryData.published || []);
         setLocal(registryData.local || []);
         setSessions(sessionsData.sessions || []);
@@ -5094,10 +5318,13 @@ export default function Launcher() {
     const map: Record<string, string> = {};
     map["mode-maker"] = MODE_MAKER_ICON;
     for (const m of builtins) { if (m.icon) map[m.name] = m.icon; }
+    // Catalog icons travel in the catalog itself, so a session card for a
+    // mode that is not downloaded yet still gets its own glyph.
+    for (const m of catalog) { if (m.icon) map[m.name] = m.icon; }
     for (const m of local) { if (m.icon) map[m.name] = m.icon; }
     for (const m of published) { if (m.icon) map[m.name] = m.icon; }
     return map;
-  }, [builtins, local, published]);
+  }, [builtins, catalog, local, published]);
 
   // Separate app sessions (layout=app, not editing) from regular sessions
   const appSessions = sessions.filter((s) => s.layout === "app" && s.editing === false);
@@ -5139,28 +5366,64 @@ export default function Launcher() {
   ];
   const continueItems = allContinueItems.slice(0, 3);
 
-  // Featured mode — random builtin with showcase, picked once on first data load
-  const featuredIndexRef = useRef<number | null>(null);
-  const featuredMode: AnyMode | undefined = React.useMemo(() => {
-    const withShowcase = builtins.filter((m) => m.showcase?.highlights?.length);
-    if (withShowcase.length === 0) {
-      const first = builtins[0];
-      if (!first) return undefined;
-      return { ...first, source: "builtin" as const, specifier: first.name };
-    }
-    if (featuredIndexRef.current === null) {
-      featuredIndexRef.current = Math.floor(Math.random() * withShowcase.length);
-    }
-    const pick = withShowcase[featuredIndexRef.current % withShowcase.length];
-    return { ...pick, source: "builtin" as const, specifier: pick.name };
-  }, [builtins]);
-
-  // All modes for gallery
+  // All modes for gallery. Catalog modes sit with the built-ins because that
+  // is what they are to the user — first-party modes of this release; the
+  // only difference is that opening one downloads it first. `specifier` is
+  // the bare mode name for both, so an installed catalog mode launches
+  // through exactly the same path as a builtin.
   const allModes: AnyMode[] = React.useMemo(() => [
     ...builtins.map((m) => ({ ...m, source: "builtin" as const, specifier: m.name })),
+    ...catalog.map((m) => ({
+      ...m,
+      source: "catalog" as const,
+      specifier: m.name,
+      installState: installedNow.has(m.name) ? ("installed" as ModeInstallState) : m.state,
+    })),
     ...local.map((m) => ({ ...m, source: "local" as const, specifier: m.path })),
     ...published.map((m) => ({ ...m, source: "published" as const, specifier: m.archiveUrl })),
-  ], [builtins, local, published]);
+  ], [builtins, catalog, installedNow, local, published]);
+
+  // Install records, keyed by mode name — the live stream behind every
+  // "downloading 42%" in the launcher.
+  const installs = useCatalogInstallStore((s) => s.installs);
+  const startInstall = useCatalogInstallStore((s) => s.install);
+  const clearInstall = useCatalogInstallStore((s) => s.clear);
+
+  const openLaunchDialog = useCallback((mode: AnyMode) => {
+    setLaunchTarget({
+      specifier: mode.specifier,
+      displayName: mode.displayName,
+      description: mode.description,
+      icon: mode.icon,
+      showcase: mode.showcase,
+      inspiredBy: mode.inspiredBy,
+    });
+  }, []);
+
+  /**
+   * Open a mode. A catalog mode that is not installed (or was installed by
+   * another core release) is downloaded first — the card keeps the progress
+   * and the launcher stays usable meanwhile — and the launch dialog opens
+   * only once the install actually reported `done`. A failure leaves the
+   * reason on the card instead of opening a dialog that would fail again.
+   */
+  const openMode = useCallback(async (mode: AnyMode): Promise<boolean> => {
+    if (mode.source !== "catalog" || mode.installState === "installed") {
+      openLaunchDialog(mode);
+      return true;
+    }
+    const ok = await startInstall(mode.name);
+    if (!ok) return false;
+    setInstalledNow((prev) => {
+      const next = new Set(prev);
+      next.add(mode.name);
+      return next;
+    });
+    clearInstall(mode.name);
+    refreshModes();
+    openLaunchDialog(mode);
+    return true;
+  }, [openLaunchDialog, startInstall, clearInstall, refreshModes]);
 
   const { favorites, isFavorite, toggle: toggleFavorite } = useFavorites();
 
@@ -5171,29 +5434,59 @@ export default function Launcher() {
   // Sorting + membership both go through `favoriteKey` so an evolved
   // local fork (which keeps `name: "slide"` per the React-key gotcha)
   // is distinguishable from its builtin parent.
-  const quickStartModes = React.useMemo(() => {
-    const modes = allModes.filter((m) => m.name !== "mode-maker" && m.name !== "evolve");
-    return sortFavoritesFirst(modes, favorites, favoriteKey);
-  }, [allModes, favorites]);
+  //
+  // Mode Maker keeps its own hero card and the gallery's "Edit in Mode
+  // Maker" buttons, so it is never offered as a plain tile or card. The
+  // registry now reports every mode directory it finds rather than a curated
+  // name list, which is why the exclusion lives here, in the surface that
+  // owns the hero, instead of in the server.
+  const pickableModes = React.useMemo(
+    () => allModes.filter((m) => m.name !== "mode-maker" && m.name !== "evolve"),
+    [allModes],
+  );
+  /** The Mode Maker entry, when this release has one — carries its install state. */
+  const modeMakerMode = React.useMemo(
+    () => allModes.find((m) => m.name === "mode-maker"),
+    [allModes],
+  );
+  const quickStartModes = React.useMemo(
+    () => sortFavoritesFirst(pickableModes, favorites, favoriteKey),
+    [pickableModes, favorites],
+  );
+
+  // Featured mode — a random first-party mode with a showcase, picked once on
+  // first data load. Catalog modes are in the pool: their showcase images ship
+  // in the package, so the launcher's most prominent slot can introduce a mode
+  // before it is downloaded, and the card's action says what opening it costs.
+  const featuredIndexRef = useRef<number | null>(null);
+  const featuredMode: AnyMode | undefined = React.useMemo(() => {
+    const firstParty = pickableModes.filter((m) => m.source === "builtin" || m.source === "catalog");
+    const withShowcase = firstParty.filter((m) => m.showcase?.highlights?.length);
+    if (withShowcase.length === 0) return firstParty[0];
+    if (featuredIndexRef.current === null) {
+      featuredIndexRef.current = Math.floor(Math.random() * withShowcase.length);
+    }
+    return withShowcase[featuredIndexRef.current % withShowcase.length];
+  }, [pickableModes]);
 
   // All-modes overlay — favorites surface first within each source
   // group. `sortFavoritesFirst` is stable, so the per-source split
   // inside `ModeGallery` (`filtered.filter((m) => m.source === "...")`)
   // preserves the favorites-first ordering.
   const allModesSortedByFavorites = React.useMemo(
-    () => sortFavoritesFirst(allModes, favorites, favoriteKey),
-    [allModes, favorites],
+    () => sortFavoritesFirst(pickableModes, favorites, favoriteKey),
+    [pickableModes, favorites],
   );
 
+  // Launching from the gallery: an installed mode closes the overlay and
+  // goes straight to the launch dialog, while a mode that needs downloading
+  // keeps the gallery open — the progress belongs on the card the user just
+  // clicked, and closing the overlay would hide it.
   const handleGalleryLaunch = (mode: AnyMode) => {
-    setShowGallery(false);
-    setLaunchTarget({
-      specifier: mode.specifier,
-      displayName: mode.displayName,
-      description: mode.description,
-      icon: mode.icon,
-      showcase: mode.showcase,
-      inspiredBy: mode.inspiredBy,
+    const needsInstall = mode.source === "catalog" && mode.installState !== "installed";
+    if (!needsInstall) setShowGallery(false);
+    void openMode(mode).then((opened) => {
+      if (needsInstall && opened) setShowGallery(false);
     });
   };
 
@@ -5288,14 +5581,8 @@ export default function Launcher() {
             <FeaturedMode
               mode={featuredMode}
               isLight={isLight}
-              onLaunch={() => setLaunchTarget({
-                specifier: featuredMode.specifier,
-                displayName: featuredMode.displayName,
-                description: featuredMode.description,
-                icon: featuredMode.icon,
-                showcase: featuredMode.showcase,
-                inspiredBy: featuredMode.inspiredBy,
-              })}
+              install={featuredMode.source === "catalog" ? installs[featuredMode.name] : undefined}
+              onLaunch={() => { void openMode(featuredMode); }}
               onExplore={() => setShowGallery(true)}
             />
           )}
@@ -5576,7 +5863,7 @@ export default function Launcher() {
                 onClick={() => setShowGallery(true)}
                 className="text-xs text-cc-muted/50 hover:text-cc-fg transition-colors cursor-pointer"
               >
-                {t("main.all_modes_count", { count: allModes.length })}
+                {t("main.all_modes_count", { count: pickableModes.length })}
               </button>
             </div>
             <WarmSpotlightWrap gridClass="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3" radius={160}>
@@ -5598,25 +5885,33 @@ export default function Launcher() {
                   librarySource={mode.librarySource}
                   compat={mode.compat}
                   isFavorite={isFavorite(favoriteKey(mode))}
-                  onClick={() => setLaunchTarget({
-                    specifier: mode.specifier,
-                    displayName: mode.displayName,
-                    description: mode.description,
-                    icon: mode.icon,
-                    showcase: mode.showcase,
-                    inspiredBy: mode.inspiredBy,
-                  })}
+                  needsDownload={mode.source === "catalog" && mode.installState !== "installed"}
+                  downloadSize={mode.unpackedSize}
+                  stale={mode.installState === "stale"}
+                  install={mode.source === "catalog" ? installs[mode.name] : undefined}
+                  onClick={() => { void openMode(mode); }}
                 />
               ))}
             </WarmSpotlightWrap>
 
-            {/* Mode Maker — prominent hero card */}
+            {/* Mode Maker — prominent hero card. In a release that does not
+                ship Mode Maker, the hero is the only way in, so it carries
+                the download itself rather than sending the user to a mode
+                that is not there. */}
             <div className="mt-6">
               <ModeMakerHero
-                onClick={() => setLaunchTarget({
-                  specifier: "mode-maker",
-                  displayName: t("main.mode_maker_title"),
-                })}
+                install={installs["mode-maker"]}
+                needsDownload={
+                  modeMakerMode?.source === "catalog" && modeMakerMode.installState !== "installed"
+                }
+                downloadSize={modeMakerMode?.unpackedSize}
+                onClick={() => {
+                  if (modeMakerMode) { void openMode(modeMakerMode); return; }
+                  setLaunchTarget({
+                    specifier: "mode-maker",
+                    displayName: t("main.mode_maker_title"),
+                  });
+                }}
               />
             </div>
           </section>
@@ -5641,6 +5936,7 @@ export default function Launcher() {
           onPublishLibrary={(lib) => setPublishTarget(lib)}
           isFavorite={(m) => isFavorite(favoriteKey(m))}
           onToggleFavorite={(m) => toggleFavorite(favoriteKey(m))}
+          installs={installs}
           onEdit={(mode) => {
             setShowGallery(false);
             // "Edit" on a mode = start a mode-maker session seeded from that

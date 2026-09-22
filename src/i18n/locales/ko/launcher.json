@@ -123,6 +123,20 @@
     "from_library": "{{name}} 출처",
     "synced_at": "{{when}} 동기화됨"
   },
+  "catalog": {
+    "size_hint": "{{size}} 다운로드",
+    "download_and_open": "다운로드후 열기",
+    "update_and_open": "업데이트 후 열기",
+    "download_and_create": "다운로드 후 만들기",
+    "preparing": "다운로드를 시작하는 중…",
+    "downloading_percent": "다운로드 중 {{percent}}%",
+    "retry": "다시 시도",
+    "failed": "다운로드 실패",
+    "needs_download_aria": "처음 열 때 다운로드",
+    "tile_needs_download": "아직 다운로드하지 않음 — {{size}}",
+    "first_open_hint": "처음 열 때 {{size}}를 다운로드합니다. 그 다음부터는 다른 모드처럼 바로 실행됩니다.",
+    "stale_hint": "이전 Pneuma 버전용으로 설치되어 있습니다 — 열면 현재 버전용 빌드를 다시 다운로드합니다."
+  },
   "launch_dialog": {
     "workspace_label": "워크스페이스 경로",
     "browse_tooltip": "디렉터리 찾아보기",
