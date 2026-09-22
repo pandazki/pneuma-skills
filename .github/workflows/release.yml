@@ -93,6 +93,18 @@ jobs:
       - name: Build
         run: bun run build
 
+      - name: Verify mode catalog
+        # Catalog modes are downloaded from the CDN at first use, from URLs
+        # pinned in modes/catalog.json. That file is generated, not committed:
+        # `/bump` builds and uploads the archives with ~/.pneuma/r2.json before
+        # pushing, and this step pulls the catalog it uploaded for THIS version,
+        # HEAD-checks every archive against its pinned size, and leaves the file
+        # on disk so `npm publish` ships exactly the pins that were verified.
+        # A release whose archives are missing stops here — before the tag,
+        # before the GitHub Release, before npm. CI holds no R2 credentials and
+        # uploads nothing; it only verifies (owner decision, 2026-09-23).
+        run: bun scripts/verify-mode-catalog.ts --fetch
+
       - name: Extract changelog
         id: changelog
         env:
@@ -208,6 +220,14 @@ jobs:
 
       - name: Build frontend
         run: bun run build
+
+      - name: Fetch and verify mode catalog
+        # The installers carry the same pins npm does. electron-builder copies
+        # modes/catalog.json into the app, and it only exists after this step.
+        shell: bash
+        env:
+          VERSION: ${{ needs.check-version.outputs.version }}
+        run: bun scripts/verify-mode-catalog.ts --fetch --version "${VERSION}"
 
       - name: Download Bun binary for target
         working-directory: desktop
