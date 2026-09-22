@@ -10,19 +10,21 @@
  *  - the mode's source, found by `core/mode-catalog.ts` and handed to the
  *    loader by `registerExternalMode` — miss it and the mode is "Unknown
  *    mode" (a CATALOG mode is not in the builtin registry by design);
- *  - `server/index.ts::builtinNames` — miss it and `bun run dev eli5`
- *    still works, so nothing looks broken, but the launcher gallery never
- *    shows the mode;
+ *  - the launcher gallery registry in `server/index.ts`, derived from
+ *    `modes/distribution.json` plus the on-disk mode directories — put the
+ *    mode somewhere that derivation does not look and `bun run dev eli5`
+ *    still works, so nothing looks broken, but the gallery never shows it;
  *  - the mode catalogs in both READMEs — miss it and the mode exists
  *    but nobody reading the project can find it.
  *
- * `builtinNames` is a function-local array inside a route handler, so it
- * is pinned against the source text — the honest option, and the same
- * shape this repo already uses for source-level invariants.
+ * So they are pinned here rather than trusted. The gallery derivation
+ * lives inside a route handler, so it is pinned against the source text —
+ * the honest option, and the same shape this repo already uses for
+ * source-level invariants.
  */
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { listBuiltinModes } from "../../../core/mode-loader.js";
@@ -33,6 +35,7 @@ const REPO_ROOT = join(import.meta.dir, "..", "..", "..");
 const read = (rel: string) => readFileSync(join(REPO_ROOT, rel), "utf-8");
 
 const MODE_NAME = "eli5";
+const LITERAL_LIST = new RegExp("const builtinNames = " + "\\[\\s*\"");
 
 describe("registration 1/3 — the frontend dynamic-import registry", () => {
   // This is a CATALOG mode (`modes/distribution.json`): the npm package does
@@ -66,25 +69,32 @@ describe("registration 1/3 — the frontend dynamic-import registry", () => {
 describe("registration 2/3 — the launcher gallery registry", () => {
   const serverSource = read("server/index.ts");
 
-  test("`server/index.ts` declares builtinNames as a flat literal array", () => {
-    // If this ever stops matching, the assertion below is silently
-    // checking nothing — so the shape is pinned before it is read.
-    expect(serverSource).toMatch(/const builtinNames = \[[^\]]*\];/);
+  test("the launcher derives its gallery from disk, not from a name list", () => {
+    // Before the mode-distribution split this route carried a literal
+    // `builtinNames` array and a new mode had to be added to it by hand. It
+    // now reads `modes/distribution.json` plus the on-disk mode directories,
+    // so the omission this suite used to guard cannot happen — and a
+    // reintroduced literal would bring it back.
+    expect(serverSource).not.toMatch(LITERAL_LIST);
+    expect(serverSource).toContain("distribution.json");
   });
 
-  test("the mode is in it — the omission that leaves a gallery silently empty", () => {
-    const literal = serverSource.match(/const builtinNames = \[([^\]]*)\];/)![1];
-    const names = literal
-      .split(",")
-      .map((entry) => entry.trim().replace(/^"|"$/g, ""))
-      .filter(Boolean);
-    expect(names).toContain(MODE_NAME);
+  test("the mode is where that derivation looks for it", () => {
+    const bundled = (
+      JSON.parse(read("modes/distribution.json")) as { bundled: string[] }
+    ).bundled;
+    expect(existsSync(join(REPO_ROOT, "modes", MODE_NAME, "manifest.ts"))).toBe(true);
+    if (bundled.includes(MODE_NAME)) return; // ships inside the package
+    // A catalog mode is published from its own directory and reaches the
+    // launcher through `modes/catalog.json`; its card needs the showcase
+    // images that stay in the package.
+    expect(existsSync(join(REPO_ROOT, "modes", MODE_NAME, "showcase"))).toBe(true);
   });
 
   test("the mode is not otherwise hardcoded into server or CLI logic", () => {
-    // `server/` and `bin/` are ModeManifest-driven. The gallery registry
-    // array is the one sanctioned mention of the name; anything else
-    // quoting it is a branch on mode identity.
+    // `server/` and `bin/` are ModeManifest-driven, and since the gallery
+    // derives its list from disk there is no sanctioned mention left: any
+    // line quoting the name is a branch on mode identity.
     const quoted = `"${MODE_NAME}"`;
     const offenders: string[] = [];
     for (const dir of ["server", "bin"]) {
@@ -97,7 +107,6 @@ describe("registration 2/3 — the launcher gallery registry", () => {
         const rel = `${dir}/${file}`;
         for (const [i, line] of read(rel).split("\n").entries()) {
           if (!line.includes(quoted)) continue;
-          if (line.includes("const builtinNames = [")) continue;
           offenders.push(`${rel}:${i + 1}`);
         }
       }
