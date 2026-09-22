@@ -286,3 +286,26 @@ the `lineup` joint review at the previz gate; `slowmo`/`impact` in the kit;
   set-concept key frame, bible doctrine "location-neutral". Re-shoot of
   s02–s07 with coloured landmarks and a neutral style frame dispatched to
   the same Codex session (budget $25); result below.
+- Trial 4, round 3 result (2026-09-22 afternoon, Codex, resumed once after a
+  quota pause and a re-login that invalidated the server's Codex token —
+  restart the server, resend): six landmarks in every greybox (shop yellow,
+  platform green, stop sign magenta, bicycle cyan, scooter purple, north
+  wall + trees red), a location-neutral style frame (two rain busts), packs
+  written from the sidecar. Sheet: greybox first | take first | take last
+  per shot (`~/Desktop/previz-sample/backlot-trial-4/geography-v3-greybox-
+  first-last.png`; cut `rain-before-it-stops-final-v3.mp4`). s02 and s03
+  now keep the shop behind the pair and grow no shelter; s04 runs from the
+  shop toward the camera with the shop receding; s07's crane tops out with
+  the shop at the bottom of the frame and the stop at the top. s05: shop and
+  stop on the correct sides, the stop sign present, the bicycle in frame
+  though the pack said it was not. s06: mirrored — shop right, stop left,
+  from the same camera as s05 — after three takes (a fourth submit timed
+  out at fal; not resent). Round $24.54, film ≈ $68.75. Two mode findings:
+  (a) the pack never said which SIDE of the frame a landmark is on (the
+  agent's own 画左/画右 prose in s06 did not save it, and s04 had none) —
+  measured `screen: left|centre|right` per landmark from the sidecar is
+  added to the 地理 sentence; (b) a small prop painted a palette colour
+  leaks (a purple scooter in s05/s06) even with "identity codes, not film
+  colours" in the pack, while the yellow shop did not — rule: colour places,
+  not props; a prop stays grey and is named by its position next to a
+  coloured place.
