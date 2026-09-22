@@ -22,9 +22,14 @@
  *    rotation, and the glTF camera carries `yfov` and the render aspect. Shot
  *    camera mode renders through it and letterboxes to the shot aspect, so the
  *    framing is the MP4's framing.
- * 4. glTF carries transforms and the camera but NOT Workbench material-colour
- *    animation. The accent list in `scene.meta.json` is that one missing
- *    animation, and this lane replays it.
+ * 4. glTF carries transforms and the camera but NO Workbench material colour
+ *    AT ALL — not the animated kind and not the static kind. Every one of the
+ *    kit's node-less materials exports at the default 0.8 grey (measured
+ *    again on the courtyard example, 2026-09-22: `white`, `dark`, the two
+ *    fighters' own `ochre` and `slate`, and `tower_landmark` alike). So
+ *    `scene.meta.json` is the only authority for colour here, and this lane
+ *    replays all of it: the accents frame by frame, the landmarks and the
+ *    pawns' own colours once at load.
  *
  * three.js is dynamically imported: it is ~700 KB of viewer chrome that only
  * this lane needs, and the render lane must not pay for it.
@@ -61,6 +66,24 @@ export interface GreyboxSceneProps {
  */
 function sanitizeName(name: string): string {
   return name.replace(/\s/g, "_").replace(/[[\]./:]/g, "");
+}
+
+/**
+ * A sidecar colour as a CSS colour, for the legend's swatch.
+ *
+ * Blender writes LINEAR channels and CSS wants sRGB, so the swatch has to be
+ * encoded or the legend's red would sit visibly darker than the block it
+ * names. This is the canonical colour of the place — the one the Workbench
+ * MP4 shows — not a pixel match for the lane, whose exposure is turned down
+ * to 0.55 to match the render's overall level.
+ */
+function swatchCss(rgb: readonly [number, number, number]): string {
+  const encode = (channel: number): number => {
+    const c = Math.min(Math.max(channel, 0), 1);
+    const srgb = c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+    return Math.round(srgb * 255);
+  };
+  return `rgb(${encode(rgb[0])}, ${encode(rgb[1])}, ${encode(rgb[2])})`;
 }
 
 /**
@@ -228,6 +251,50 @@ export function GreyboxScene({
         baseColors.set(mesh.uuid, color.clone());
       });
 
+      /** Every mesh under one BLENDER object name, or none when it is gone. */
+      const meshesOf = (name: string): ThreeT.Mesh[] => {
+        const node = root.getObjectByName(name) ?? root.getObjectByName(sanitizeName(name));
+        const found: ThreeT.Mesh[] = [];
+        node?.traverse((object) => {
+          const mesh = object as ThreeT.Mesh;
+          if (mesh.isMesh) found.push(mesh);
+        });
+        return found;
+      };
+
+      // ── The static colours glTF left behind ──────────────────────────────
+      //
+      // Painted ONCE, at load: a landmark's colour and a pawn's own colour do
+      // not animate, so replaying them per frame would only cost frames. The
+      // mesh's BASE colour is moved with it, because an accent lerps from the
+      // base — a landmark that is also accented would otherwise slide back
+      // toward the export's grey as the accent came in.
+      const metaNow = metaRef.current;
+      const paint = (name: string, rgb: readonly [number, number, number]) => {
+        const color = new THREE.Color().setRGB(rgb[0], rgb[1], rgb[2], THREE.LinearSRGBColorSpace);
+        for (const mesh of meshesOf(name)) {
+          const material = mesh.material as ThreeT.MeshStandardMaterial;
+          if (!material.isMeshStandardMaterial) continue;
+          material.color.copy(color);
+          baseColors.set(mesh.uuid, color.clone());
+        }
+      };
+      for (const landmark of metaNow?.landmarks ?? []) {
+        for (const object of landmark.objects) paint(object, landmark.rgb);
+      }
+      // The same missing fact one level down: `figure(…, material=…)` is what
+      // the sidecar's `rgb` records, and the export dropped it with all the
+      // rest. It is null when the subject carries no material at all. The
+      // whole pawn takes the body's colour — the kit's dark visor is one of
+      // the materials the export flattened and the sidecar records no colour
+      // for it, so which way a figure faces still reads from the visor's
+      // SHAPE, as it did before this. A prop that is also a landmark is
+      // already painted the same colour: the kit reads a prop's rgb back off
+      // whatever material it ended up with.
+      for (const subject of metaNow?.subjectsDetail ?? []) {
+        if (subject.rgb) paint(subject.name, subject.rgb);
+      }
+
       // ── One mixer, every clip ────────────────────────────────────────────
       const mixer = new THREE.AnimationMixer(root);
       let clipEnd = 0;
@@ -235,9 +302,16 @@ export function GreyboxScene({
         mixer.clipAction(clip).play();
         clipEnd = Math.max(clipEnd, clip.duration);
       }
+      // The last sample, not the first. Under three's default LoopRepeat,
+      // `setTime(clipEnd)` wraps to 0 and the lane showed frame 1 while the
+      // playhead said the last frame — in the render loop AND in the path
+      // sampling below, whose final point was the first point. LoopOnce +
+      // clampWhenFinished is not the fix: once finished, the action stays
+      // paused and every later `setTime` (a scrub back) evaluates 0. Stop a
+      // hair short of the end instead.
+      const clipTime = (seconds: number) => Math.min(seconds, Math.max(0, clipEnd - 1e-4));
 
       // ── The shot camera ──────────────────────────────────────────────────
-      const metaNow = metaRef.current;
       const named = metaNow?.camera
         ? (root.getObjectByName(metaNow.camera) ?? root.getObjectByName(sanitizeName(metaNow.camera)))
         : null;
@@ -309,7 +383,7 @@ export function GreyboxScene({
       const subjectPoints: ThreeT.Vector3[][] = subjectNodes.map(() => []);
 
       for (let frame = 1; frame <= frames; frame += sampleStep) {
-        mixer.setTime(Math.min(frame / fps, clipEnd));
+        mixer.setTime(clipTime(frame / fps));
         root.updateMatrixWorld(true);
         if (shotCamera) cameraPoints.push(shotCamera.getWorldPosition(new THREE.Vector3()));
         subjectNodes.forEach((node, i) => {
@@ -397,14 +471,7 @@ export function GreyboxScene({
           accent.color[2],
           THREE.LinearSRGBColorSpace,
         );
-        const meshes: ThreeT.Mesh[] = [];
-        for (const name of accent.objects) {
-          const node = root.getObjectByName(name) ?? root.getObjectByName(sanitizeName(name));
-          node?.traverse((object) => {
-            const mesh = object as ThreeT.Mesh;
-            if (mesh.isMesh) meshes.push(mesh);
-          });
-        }
+        const meshes = accent.objects.flatMap((name) => meshesOf(name));
         return { ...accent, target, meshes };
       });
 
@@ -485,7 +552,7 @@ export function GreyboxScene({
         raf = requestAnimationFrame(render);
         const t = clock.getTime();
         // Frame 1 at 1/fps — the exporter's grid, not ours.
-        const mixerTime = Math.min((1 + Math.round(t * fps)) / fps, clipEnd);
+        const mixerTime = clipTime((1 + Math.round(t * fps)) / fps);
         if (mixerTime !== lastMixerTime) {
           mixer.setTime(mixerTime);
           applyAccents(t);
@@ -575,6 +642,32 @@ export function GreyboxScene({
                 : "No scene.glb was exported for this greybox."}
           </p>
         </div>
+      ) : null}
+      {/* What each colour MEANS. The lane paints the places; without the
+          names beside them a red mass is only a red mass, and the prompt's
+          "the red block is the bell tower" has nothing here to check it
+          against. Drawn over the scene rather than beside it, so it stays
+          with the picture at every lane size. */}
+      {status === "ready" && meta && meta.landmarks.length > 0 ? (
+        <ul className="pointer-events-none absolute left-2 top-1.5 flex max-w-[calc(100%-1rem)] flex-col gap-0.5">
+          {meta.landmarks.map((landmark) => (
+            <li
+              key={landmark.name}
+              className="flex items-center gap-1.5 self-start rounded bg-black/45 px-1.5 py-0.5 text-[10px] leading-tight text-white/85"
+            >
+              <span
+                className="h-2 w-2 shrink-0 rounded-[2px] ring-1 ring-white/30"
+                style={{ background: swatchCss(landmark.rgb) }}
+              />
+              <span className="min-w-0 truncate">{landmark.label}</span>
+              {/* The kit measured this at both ends of the clip; a place the
+                  camera never sees is one the prompt has to declare absent. */}
+              {landmark.inFrame && !landmark.inFrame.first && !landmark.inFrame.last ? (
+                <span className="shrink-0 text-white/50">not in frame</span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
       ) : null}
       {/* Readable over a light-grey scene: the caption is the one thing in
           this lane that must never be missed. */}

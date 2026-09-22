@@ -563,6 +563,57 @@ export interface SceneAccent {
 }
 
 /**
+ * A named place the model has to be able to READ, painted one flat colour.
+ *
+ * `previz_kit.landmark(name, objects, label, color)` puts one saturated
+ * palette colour over every block a place is made of, so the MP4 the model
+ * is conditioned on shows a RED mass at one end of the terrace and a BLUE
+ * one at the other and the prompt can say which is the bell tower. Without
+ * it seven takes of one street disagree about where the shop is.
+ *
+ * The colour is here for the same reason `SceneAccent.color` is: glTF drops
+ * a node-less Workbench material's colour on the floor (measured — every
+ * material exports at the default 0.8 grey), so the picture has the colour
+ * and the 3D lane has to be TOLD. `objects` are Blender object names.
+ */
+export interface SceneLandmark {
+  /** The id the prompt and the beats call this place. */
+  name: string;
+  /** The prose the prompt uses ("the bell tower"); `name` when unsaid. */
+  label: string;
+  /** The palette name (`red`), or `custom`; null when the sidecar omitted it. */
+  color: string | null;
+  /** Linear RGB in 0..1, as Blender wrote it. */
+  rgb: [number, number, number];
+  /** Blender object names this place is made of. */
+  objects: string[];
+  /**
+   * Whether the camera sees this place at each end of the clip, or null when
+   * the sidecar did not say. A place in frame at NEITHER end is one the
+   * prompt has to declare absent, or the model paints it anyway.
+   */
+  inFrame: { first: boolean; last: boolean } | null;
+}
+
+/**
+ * One subject, with the colour it was painted and the geography behind it.
+ *
+ * One entry per name in `subjects`, in that order. `rgb` is the figure's own
+ * body colour — `figure(…, material=…)` — which the glTF drops exactly as it
+ * drops a landmark's, so the 3D lane reads it from here. `behind` names the
+ * landmarks standing behind this figure from the camera at the first and the
+ * last frame; a prop is a subject too and carries null.
+ */
+export interface SubjectDetail {
+  name: string;
+  /** The nearest colour NAME the kit could give it, or null when unpainted. */
+  color: string | null;
+  /** Linear RGB in 0..1; null when the subject carries no material. */
+  rgb: [number, number, number] | null;
+  behind: { first: string[]; last: string[] } | null;
+}
+
+/**
  * One frame of the focal-length curve.
  *
  * The SECOND thing glTF drops on the floor after the accent colours: a
@@ -606,6 +657,10 @@ export interface SceneMeta {
   /** glTF node names whose floor trail the 3D lane draws. */
   subjects: string[];
   accents: SceneAccent[];
+  /** Empty when the greybox names no places — and older sidecars have none. */
+  landmarks: SceneLandmark[];
+  /** One per `subjects` entry; empty on a sidecar written before the field. */
+  subjectsDetail: SubjectDetail[];
   /** Empty when the lens never moved — then the glTF camera is the truth. */
   cameraLens: LensKey[];
   /** Empty when the shot runs at one speed; ordered, non-overlapping spans. */
@@ -662,6 +717,21 @@ function asNullableNumber(value: unknown): number | null {
 
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+}
+
+/**
+ * Three linear-RGB channels as Blender wrote them, or null.
+ *
+ * One reader for every colour in `scene.meta.json` — an accent's, a
+ * landmark's, a subject's — because they are the same fact (the colour glTF
+ * could not carry) and the 3D lane paints all three through the same path.
+ * Fewer than three channels is not a colour and is dropped whole; a channel
+ * that is not a number reads as 0, so a half-written entry darkens rather
+ * than throwing the sidecar away.
+ */
+function asRgb(value: unknown): [number, number, number] | null {
+  if (!Array.isArray(value) || value.length < 3) return null;
+  return [asNumber(value[0], 0), asNumber(value[1], 0), asNumber(value[2], 0)];
 }
 
 const BEAT_KINDS: ReadonlySet<string> = new Set(["action", "trigger", "camera", "hold"]);
@@ -1192,19 +1262,55 @@ export function parseSceneMeta(text: string): SceneMeta | null {
   const frames = asNullableNumber(raw.frames);
   if (fps === null || frames === null) return null;
   const accents: SceneAccent[] = Array.isArray(raw.accents)
-    ? raw.accents.filter(isRecord).flatMap((a) => {
-        const color = Array.isArray(a.color) ? a.color.map((c) => asNumber(c, 0)) : [];
-        if (color.length < 3) return [];
+    ? raw.accents.filter(isRecord).flatMap((a): SceneAccent[] => {
+        const color = asRgb(a.color);
+        if (color === null) return [];
         const objects = asStringArray(a.objects);
         if (objects.length === 0) return [];
+        return [{ objects, from: asNumber(a.from, 0), to: asNumber(a.to, 0), color }];
+      })
+    : [];
+  // A place with no name, no colour or no blocks is one the lane cannot paint
+  // and the legend cannot label, so it is dropped WHOLE rather than drawn
+  // half-applied — the same rule the accents follow. `in_frame` is a separate
+  // claim: missing, it stays null and nothing is said, because "not in frame"
+  // is an assertion the sidecar has to make itself.
+  const landmarks: SceneLandmark[] = Array.isArray(raw.landmarks)
+    ? raw.landmarks.filter(isRecord).flatMap((entry): SceneLandmark[] => {
+        const name = asNullableString(entry.name);
+        const rgb = asRgb(entry.rgb);
+        const objects = asStringArray(entry.objects);
+        if (name === null || rgb === null || objects.length === 0) return [];
+        const frames = isRecord(entry.in_frame) ? entry.in_frame : null;
+        const inFrame =
+          frames && typeof frames.first === "boolean" && typeof frames.last === "boolean"
+            ? { first: frames.first, last: frames.last }
+            : null;
         return [
           {
+            name,
+            label: asNullableString(entry.label) ?? name,
+            color: asNullableString(entry.color),
+            rgb,
             objects,
-            from: asNumber(a.from, 0),
-            to: asNumber(a.to, 0),
-            color: [color[0], color[1], color[2]] as [number, number, number],
+            inFrame,
           },
         ];
+      })
+    : [];
+  const subjectsDetail: SubjectDetail[] = Array.isArray(raw.subjects_detail)
+    ? raw.subjects_detail.filter(isRecord).flatMap((entry): SubjectDetail[] => {
+        const name = asNullableString(entry.name);
+        if (name === null) return [];
+        // A prop writes `behind: null` on purpose — it is a subject with no
+        // geography, not a figure whose geography went missing.
+        const behind = isRecord(entry.behind)
+          ? {
+              first: asStringArray(entry.behind.first),
+              last: asStringArray(entry.behind.last),
+            }
+          : null;
+        return [{ name, color: asNullableString(entry.color), rgb: asRgb(entry.rgb), behind }];
       })
     : [];
   return {
@@ -1216,6 +1322,8 @@ export function parseSceneMeta(text: string): SceneMeta | null {
     camera: asNullableString(raw.camera),
     subjects: asStringArray(raw.subjects),
     accents,
+    landmarks,
+    subjectsDetail,
     cameraLens: Array.isArray(raw.camera_lens)
       ? raw.camera_lens
           .filter(isRecord)

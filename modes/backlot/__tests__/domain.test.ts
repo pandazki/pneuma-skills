@@ -429,6 +429,98 @@ describe("parseSceneMeta", () => {
     expect(meta.accents).toEqual([]);
   });
 
+  test("the named places and the pawns' own colours are read", () => {
+    // glTF exports every one of the kit's materials at the default 0.8 grey,
+    // so this sidecar is the ONLY place the 3D lane can learn that the tower
+    // is red — the same reason the accents are here.
+    const meta = parseSceneMeta(
+      JSON.stringify({
+        fps: 24,
+        frames: 144,
+        subjects: ["challenger", "door"],
+        landmarks: [
+          {
+            name: "tower",
+            label: "the bell tower",
+            color: "red",
+            rgb: [0.85, 0.15, 0.12],
+            objects: ["tower", "tower_top"],
+            in_frame: { first: false, last: true },
+          },
+        ],
+        subjects_detail: [
+          {
+            name: "challenger",
+            color: "grey",
+            rgb: [0.78, 0.63, 0.42],
+            behind: { first: [], last: ["tower"] },
+          },
+          { name: "door", color: null, rgb: null, behind: null },
+        ],
+      }),
+    )!;
+    expect(meta.landmarks).toEqual([
+      {
+        name: "tower",
+        label: "the bell tower",
+        color: "red",
+        rgb: [0.85, 0.15, 0.12],
+        objects: ["tower", "tower_top"],
+        inFrame: { first: false, last: true },
+      },
+    ]);
+    // A prop is a subject with no geography, not a figure whose geography
+    // went missing: `behind: null` survives as null.
+    expect(meta.subjectsDetail).toEqual([
+      {
+        name: "challenger",
+        color: "grey",
+        rgb: [0.78, 0.63, 0.42],
+        behind: { first: [], last: ["tower"] },
+      },
+      { name: "door", color: null, rgb: null, behind: null },
+    ]);
+  });
+
+  test("a sidecar written before landmarks existed reads as no landmarks", () => {
+    const meta = parseSceneMeta(META)!;
+    expect(meta.landmarks).toEqual([]);
+    expect(meta.subjectsDetail).toEqual([]);
+  });
+
+  test("a landmark with no colour, no blocks or no name is dropped, not thrown", () => {
+    const meta = parseSceneMeta(
+      JSON.stringify({
+        fps: 24,
+        frames: 144,
+        landmarks: [
+          { name: "tower", objects: ["tower"] },
+          { name: "tree", rgb: [0.15, 0.35, 0.85], objects: [] },
+          { rgb: [0.92, 0.8, 0.1], objects: ["awning"] },
+          { name: "half", rgb: [0.15, 0.65], objects: ["sign"] },
+          "not a record",
+          // Enough to paint: the label falls back to the name and `in_frame`
+          // stays null rather than claiming the camera never saw it.
+          { name: "steps", rgb: [0.95, 0.5, 0.1], objects: ["steps"], in_frame: { first: true } },
+        ],
+        subjects_detail: [{ color: "grey" }, { name: "keeper" }],
+      }),
+    )!;
+    expect(meta.landmarks).toEqual([
+      {
+        name: "steps",
+        label: "steps",
+        color: null,
+        rgb: [0.95, 0.5, 0.1],
+        objects: ["steps"],
+        inFrame: null,
+      },
+    ]);
+    expect(meta.subjectsDetail).toEqual([
+      { name: "keeper", color: null, rgb: null, behind: null },
+    ]);
+  });
+
   test("a file without fps or frames is not a scene meta", () => {
     expect(parseSceneMeta(JSON.stringify({ camera: "cam" }))).toBeNull();
     expect(parseSceneMeta("not json")).toBeNull();
