@@ -81,7 +81,7 @@ When humans and code agents co-create content, they need more than a chat window
 | **bansho** | Board-writing explainer — write the lecture as plain markdown and the board performs it: handwriting flows in, emphasis becomes hand-drawn ink, charts and formulas draw themselves as the narration reaches them, scrubbable like a replayed lecture |
 | **eli5** | Explain anything to anyone — one topic climbs an audience ladder, from a five-year-old to the engineer on call, and every rung is its own page whose typography, vocabulary and pacing are tuned to whoever is reading it. Audience taxonomy adapted from [DreambigOu/ELI5](https://github.com/DreambigOu/ELI5) (MIT) |
 | **plotwise** | Custom-tailored learning videos — a visual-novel course shot scene by scene on MiniMax H3 Max ahead of you: continue, take the detour, or ask a question; every fact grounded by code-rendered figures, cited evidence and word-for-word narration QA |
-| **sprite** | Character-centric motion assets — design a character once, plan each motion's phases, contacts and ending, then generate from reference-guided sheets or video; key, slice, align and pack frames + `atlas.json` for game engines, with GIF/WebP and optional video previews |
+| **sprite** | Character-centric motion assets — design a character once, plan each motion's phases, contacts and ending, then generate from reference-guided sheets or video; key, slice, align and pack frames + `atlas.json` for game engines, with GIF/WebP and optional video previews. Or shoot a seamless transparent loop for a UI — a keyframe, a first-last clip that closes on itself, and every frame exported as WebP, APNG, WebM and Lottie |
 | **lucid** | A closed loop between a picture and a program — the agent dreams a target screenshot with image generation, locks it, builds a static Three.js scene toward it, and a fresh-context judge scores composition, lighting, materials and details every round until the live frame matches; Blender and image-to-3D sit on the asset ladder. Ported from [achimala/dream-loop](https://github.com/achimala/dream-loop) (MIT) |
 | **mode-maker** | Create custom modes with AI — fork, play-test, publish |
 | **evolve** | Evolution Agent — analyze history, propose skill improvements, apply/rollback |
@@ -170,7 +170,7 @@ Modes:
   bansho                       Board-writing explainer
   eli5                         Explain anything to anyone
   plotwise                     Custom-tailored learning videos
-  sprite                       Character sprite sheets and motion
+  sprite                       Character sprite sheets, motion and UI loops
   lucid                        Dream a screenshot, build it in Three.js
   mode-maker                   Create custom modes with AI
   evolve                       Launch the Evolution Agent

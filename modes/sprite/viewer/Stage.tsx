@@ -103,6 +103,12 @@ export function Stage(props: StageProps) {
   }, [onCanvas]);
 
   const anchor = props.motion?.anchor ?? "bottom";
+  /** A loop is never stood on a floor: it is cropped to its own content and
+   *  dropped into a page, so no anchor was measured and none is assumed. A
+   *  guide drawn anyway would be a line claiming a point nobody chose — so it
+   *  is not drawn, and the toggle says why instead of pretending to work. */
+  const loopMotion = props.motion?.kind === "loop";
+  const groundOn = props.ground && !loopMotion;
   /** Where the pipeline measured this motion's anchor, when it measured one.
    *  `project.json` is all the viewer reads, so this is the only channel the
    *  measurement has — without it the guide falls back to the cell edge and a
@@ -134,7 +140,7 @@ export function Stage(props: StageProps) {
       background: props.background,
       zoom: props.zoom,
       onion: props.onion,
-      ground: props.ground,
+      ground: groundOn,
       anchor,
       measured,
       theme: props.theme,
@@ -143,7 +149,7 @@ export function Stage(props: StageProps) {
     setPivotMeasured(result.pivot.measured);
   }, [
     size, props.source, props.images, props.frame, props.background,
-    props.zoom, props.onion, props.ground, props.theme, anchor, measured,
+    props.zoom, props.onion, groundOn, props.theme, anchor, measured,
   ]);
 
   return (
@@ -187,12 +193,15 @@ export function Stage(props: StageProps) {
           <OnionIcon size={12} />
         </Toggle>
         <Toggle
-          active={props.ground}
+          active={groundOn}
+          disabled={loopMotion}
           onClick={() => props.onGround(!props.ground)}
           title={
-            pivotMeasured
-              ? props.t.pivotMeasured(anchor)
-              : props.t.pivotAssumed(anchor)
+            loopMotion
+              ? props.t.pivotNoneForLoop
+              : pivotMeasured
+                ? props.t.pivotMeasured(anchor)
+                : props.t.pivotAssumed(anchor)
           }
         >
           <GroundIcon size={12} />
@@ -261,12 +270,20 @@ function StageOverlays(props: StageProps & { scale: number; reserve: number }) {
     <>
       <Corner reserve={reserve}>
         <span className={LABEL_CLASS}>{motion.label}</span>
+        {/* The same one-image source means two different things: a sprite
+            motion's sheet sliced client-side, and a loop's keyframe standing
+            in while its clip renders. Calling the second one a "sheet preview"
+            would name a file that will never exist. */}
         {source.kind === "raw-sheet" ? (
           <span
             className="shrink-0 rounded border border-cc-warning/50 px-1 py-px text-cc-warning"
-            title={t.sheetPreviewTitle(source.alpha, source.cols, source.rows)}
+            title={
+              motion.kind === "loop"
+                ? t.keyframePreviewTitle(source.alpha)
+                : t.sheetPreviewTitle(source.alpha, source.cols, source.rows)
+            }
           >
-            {t.sheetPreview}
+            {motion.kind === "loop" ? t.keyframePreview : t.sheetPreview}
           </span>
         ) : null}
         {source.kind === "frames" && source.missing > 0 ? (
@@ -377,11 +394,15 @@ function Segmented<T extends string>({
 
 function Toggle({
   active,
+  disabled = false,
   onClick,
   title,
   children,
 }: {
   active: boolean;
+  /** The affordance has nothing to show for this motion. It stays visible and
+   *  keeps its tooltip — a control that vanishes teaches nothing. */
+  disabled?: boolean;
   onClick: () => void;
   title: string;
   children: React.ReactNode;
@@ -390,9 +411,10 @@ function Toggle({
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       title={title}
       aria-pressed={active}
-      className={`rounded p-1 transition-colors focus-visible:ring-2 focus-visible:ring-cc-primary/60 ${
+      className={`rounded p-1 transition-colors focus-visible:ring-2 focus-visible:ring-cc-primary/60 disabled:cursor-default disabled:opacity-30 ${
         active
           ? "bg-cc-primary/20 text-cc-primary"
           : "text-cc-muted hover:bg-cc-hover hover:text-cc-fg"

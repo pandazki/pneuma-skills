@@ -19,7 +19,7 @@
 
 import type { CharacterProject, Motion, MotionStatus } from "../domain.js";
 import { resolveAssetUri } from "../domain.js";
-import { FilmIcon, WarnIcon } from "./icons.js";
+import { FilmIcon, LoopIcon, WarnIcon } from "./icons.js";
 import { hasGeneratingVideo } from "./metrics.js";
 import type { SpriteStrings } from "./strings.js";
 import { contentUrl } from "./urls.js";
@@ -201,7 +201,19 @@ function MotionRow({
               <span className="h-1.5 w-1.5 rounded-full bg-current motion-safe:animate-pulse" />
             </span>
           ) : null}
-          {motion.source === "video" ? (
+          {/* A loop is ALSO cut from a clip, so the two chips would both fire;
+              the loop one is the stronger statement — it says what the motion
+              is for, not just where its pixels came from — and it replaces the
+              video chip rather than stacking beside it. */}
+          {motion.kind === "loop" ? (
+            <span
+              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-cc-primary/40 px-1.5 py-px text-[10px] text-cc-primary"
+              title={t.loopSourceTitle}
+            >
+              <LoopIcon size={9} />
+              {t.loopSource}
+            </span>
+          ) : motion.source === "video" ? (
             <span
               className="inline-flex shrink-0 items-center gap-1 rounded-full border border-cc-border px-1.5 py-px text-[10px] text-cc-muted"
               title={t.videoSourceTitle}
@@ -225,9 +237,13 @@ function MotionRow({
           <StatusChip status={motion.status} t={t} />
         </span>
         <span className="text-[11px] text-cc-muted">
+          {/* A loop's grid is the 1×1 `register-run` writes because the
+              sidecar has the field, not because anything is 1×1 — printing
+              it puts a number nobody can act on in front of the two that
+              matter. The chip above already says this is a loop. */}
           {t.motionMeta({
-            cols: motion.grid.cols,
-            rows: motion.grid.rows,
+            cols: motion.kind === "loop" ? null : motion.grid.cols,
+            rows: motion.kind === "loop" ? null : motion.grid.rows,
             frames: motion.frames.length,
             fps: motion.fps,
             loop: motion.loop,

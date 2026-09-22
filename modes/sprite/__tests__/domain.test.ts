@@ -304,6 +304,196 @@ describe("loadRoster", () => {
   });
 });
 
+/**
+ * A loop motion, parsed.
+ *
+ * The three fields the stage reads off `kind` all fail SILENTLY when the word
+ * does not survive: the panel opens the GIF tab for a motion that has no GIF,
+ * the stage draws a pivot guide for an anchor nobody measured, and the Loop
+ * tab — the only place the exports can be downloaded — never appears. So the
+ * word, the two keyframe ids, the exports block and the loop's own inspect
+ * numbers are pinned here the way `bodyDrift` is: present when real, absent
+ * when not, never defaulted into a confident zero.
+ */
+describe("loop motions", () => {
+  const motionWith = (edit: (motion: any) => void) => {
+    const body = JSON.parse(MINI);
+    edit(body.sprite.motions[0]);
+    return loadRoster(files({ "mini/project.json": JSON.stringify(body) }))!
+      .byContentSet.mini.sprite.motions[0];
+  };
+
+  test("kind survives, and anything that is not `loop` is not a kind", () => {
+    expect(motionWith((m) => { m.kind = "loop"; }).kind).toBe("loop");
+    for (const broken of [undefined, null, "", "sprite", "Loop", 1, {}]) {
+      expect({ broken, kind: motionWith((m) => { m.kind = broken; }).kind })
+        .toEqual({ broken, kind: undefined });
+    }
+    // The canonical sprite motion says nothing at all, and that absence IS
+    // "this is a sprite motion".
+    expect("kind" in motionWith(() => {})).toBe(false);
+  });
+
+  test("the keyframe ids travel, and an empty one does not", () => {
+    const withKeys = motionWith((m) => {
+      m.keyframe = "bounce-keyframe";
+      m.keyframeAlpha = "bounce-keyframe-alpha";
+    });
+    expect(withKeys.keyframe).toBe("bounce-keyframe");
+    expect(withKeys.keyframeAlpha).toBe("bounce-keyframe-alpha");
+
+    const empty = motionWith((m) => {
+      m.keyframe = "";
+      m.keyframeAlpha = 7;
+    });
+    expect(empty.keyframe).toBeUndefined();
+    expect(empty.keyframeAlpha).toBeUndefined();
+  });
+
+  test("exports carry only the ids that are really there", () => {
+    expect(motionWith((m) => {
+      m.exports = { apng: "b-apng", webm: "b-webm", lottie: "b-lottie" };
+    }).exports).toEqual({ apng: "b-apng", webm: "b-webm", lottie: "b-lottie" });
+
+    // A partial export set is normal: an encoder the machine does not have is
+    // skipped with a warning, and the tab must offer what exists.
+    expect(motionWith((m) => { m.exports = { webm: "b-webm" }; }).exports)
+      .toEqual({ webm: "b-webm" });
+
+    // An empty block is no block — `motion.exports` must not be truthy for a
+    // motion that exported nothing.
+    for (const broken of [undefined, null, {}, { apng: "" }, [], "b-apng"]) {
+      expect({ broken, exports: motionWith((m) => { m.exports = broken; }).exports })
+        .toEqual({ broken, exports: undefined });
+    }
+  });
+
+  test("seam, step, seam fill and alpha coverage survive — including a perfect 0", () => {
+    const inspectWith = (over: Record<string, unknown>) =>
+      motionWith((m) => { m.inspect = { ...m.inspect, ...over }; }).inspect!;
+
+    const measured = inspectWith({ seam: 0.0065, step: 0.02, seamFill: 3, alphaCoverage: 0.31 });
+    expect(measured.seam).toBe(0.0065);
+    expect(measured.step).toBe(0.02);
+    // `loop --seam-fill auto` inserted three in-betweens at the wrap; the
+    // panel says so beside a frame count that is no longer the clip's own.
+    expect(measured.seamFill).toBe(3);
+    expect(measured.alphaCoverage).toBe(0.31);
+
+    // 0 is the seam of a loop that closes exactly, which is the whole point of
+    // the workflow — it must not be mistaken for "not measured". A seamFill of
+    // 0 is the same statement: the wrap needed no help.
+    const perfect = inspectWith({ seam: 0, step: 0, seamFill: 0, alphaCoverage: 0 });
+    expect("seam" in perfect).toBe(true);
+    expect(perfect.seam).toBe(0);
+    expect(perfect.step).toBe(0);
+    expect("seamFill" in perfect).toBe(true);
+    expect(perfect.seamFill).toBe(0);
+    expect(perfect.alphaCoverage).toBe(0);
+
+    for (const broken of [undefined, null, "0.0065", Number.NaN, {}, [0.0065], true]) {
+      const parsed = inspectWith({ seam: broken, step: broken, seamFill: broken, alphaCoverage: broken });
+      expect({
+        broken,
+        seam: "seam" in parsed,
+        step: "step" in parsed,
+        seamFill: "seamFill" in parsed,
+        alpha: "alphaCoverage" in parsed,
+      }).toEqual({ broken, seam: false, step: false, seamFill: false, alpha: false });
+    }
+
+    // A sheet motion carries none of the three, and the anchor numbers it does
+    // carry still parse beside them.
+    const sheet = loadRoster(files({ "mini/project.json": MINI }))!
+      .byContentSet.mini.sprite.motions[0].inspect!;
+    expect("seam" in sheet).toBe(false);
+    expect(sheet.maxJump).toBe(1);
+  });
+
+  test("a derived clip keeps its parent, its op and its matting model", () => {
+    const videos = motionWith((m) => {
+      m.videos = [
+        { id: "video-1", asset: "bounce-video-1", model: "seedance-2.5", mode: "first-last", prompt: "a flame", status: "ready" },
+        { id: "video-2", asset: "bounce-video-2", model: "veed", mode: "derived", prompt: "", status: "ready", derivedFrom: "video-1", op: "matte" },
+        { id: "video-3", asset: "bounce-video-3", model: "topaz", mode: "derived", prompt: "", status: "ready", derivedFrom: "video-1", op: "interpolate" },
+      ];
+    }).videos;
+
+    expect(videos.map((v) => [v.model, v.mode, v.derivedFrom, v.op])).toEqual([
+      ["seedance-2.5", "first-last", undefined, undefined],
+      ["veed", "derived", "video-1", "matte"],
+      ["topaz", "derived", "video-1", "interpolate"],
+    ]);
+    // A generated clip has no derivation, and the keys stay off it entirely.
+    expect("derivedFrom" in videos[0]).toBe(false);
+    expect("op" in videos[0]).toBe(false);
+  });
+
+  test("bria is a model, and an unknown one still falls back as before", () => {
+    const parse = (model: unknown, mode: unknown, op: unknown) =>
+      motionWith((m) => {
+        m.videos = [{ id: "video-1", asset: "bounce-video-1", model, mode, prompt: "", status: "ready", op }];
+      }).videos[0];
+
+    expect(parse("bria", "derived", "matte").model).toBe("bria");
+    // The fallback is unchanged: a name nothing can render travels as the clip
+    // every motion of this mode started as, not as itself.
+    expect(parse("sora-9", "derived", "matte").model).toBe("seedance-2.5");
+    expect(parse("veed", "matting", "matte").mode).toBe("i2v");
+    expect(parse("veed", "derived", "denoise").op).toBeUndefined();
+  });
+
+  test("a retime by ffmpeg is a clip made out of a clip like any other", () => {
+    // The Kiki trial reordered a plate clip's own frames with ffmpeg concat to
+    // cut a 1.5s freeze and a double blink out of it, and had nowhere to
+    // record it: the result travelled as `op: "interpolate", model: "topaz"`,
+    // which is a step nobody ran. Both names exist now.
+    const video = motionWith((m) => {
+      m.videos = [
+        { id: "video-1", asset: "bounce-video-1", model: "seedance-2.5", mode: "first-last", prompt: "a flame", status: "ready" },
+        { id: "video-2", asset: "bounce-video-2", model: "ffmpeg", mode: "derived", prompt: "", status: "ready", derivedFrom: "video-1", op: "retime" },
+      ];
+    }).videos[1];
+    expect([video.model, video.mode, video.op, video.derivedFrom])
+      .toEqual(["ffmpeg", "derived", "retime", "video-1"]);
+  });
+
+  test("the loop brief survives whole, or not at all, and only on a loop", () => {
+    const briefedAs = (kind: unknown, brief: unknown) =>
+      motionWith((m) => { m.kind = kind; m.brief = brief; }).brief;
+    const briefed = (brief: unknown) => briefedAs("loop", brief);
+
+    const full = {
+      duration: 4, width: 512, interpolator: "topaz" as const, budgetUsd: 3,
+      recordedAt: "2026-09-22T07:11:00.000Z",
+    };
+    expect(briefed(full)).toEqual(full);
+
+    // A budget is the one optional answer: the user may not have named a
+    // ceiling, and 0 is not the same statement as "they said nothing".
+    const { budgetUsd: _none, ...noBudget } = full;
+    expect(briefed(noBudget)).toEqual(noBudget);
+    expect("budgetUsd" in briefed(noBudget)!).toBe(false);
+
+    // A half-recorded brief is not a brief: the scripts gate a paid clip on
+    // it, so a partial one would open that gate on answers nobody gave.
+    for (const broken of [
+      undefined, null, {}, "4s",
+      { ...full, duration: undefined }, { ...full, duration: 0 }, { ...full, duration: "4" },
+      { ...full, width: undefined }, { ...full, width: Number.NaN },
+      { ...full, interpolator: "topaz-2" }, { ...full, interpolator: undefined },
+      { ...full, recordedAt: undefined }, { ...full, recordedAt: "" },
+    ]) {
+      expect({ broken, brief: briefed(broken) }).toEqual({ broken, brief: undefined });
+    }
+
+    // A sprite motion never carries one — the same tolerance every loop-only
+    // field gets, because a brief on a sheet motion describes nothing.
+    expect(briefedAs(undefined, full)).toBeUndefined();
+    expect(briefedAs("sprite", full)).toBeUndefined();
+  });
+});
+
 describe("measuredAnchor", () => {
   const motionWith = (inspect: unknown) => {
     const body = JSON.parse(MINI);

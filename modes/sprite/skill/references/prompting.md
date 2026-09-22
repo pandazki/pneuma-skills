@@ -227,6 +227,86 @@ Written out, that is the first worked prompt below.
 > filling every cell, no gradient. No speed lines, no impact flashes, no glow,
 > no motion blur, no cell borders, no numbers, no shadow.
 
+## The 3D icon keyframe
+
+Workflow E starts from one picture, not a grid. That picture is drawn once,
+cut out once, and then handed to the video model as *both* ends of the clip —
+so every one of the loop's hundred frames is an interpolation of it, and
+whatever is wrong with it is wrong a hundred times. It is worth one extra look
+before the clip is paid for.
+
+**The style anchor**, when the user has no style of their own and wants the
+look of a modern UI icon:
+
+> Smooth claymation-style 3D icon, soft matte clay, rounded forms, soft studio
+> key light from the upper left, no outline.
+
+Four constraints then do the mechanical work, and each one pays for itself:
+
+- **One subject, centred, filling about 70 % of the frame.** One subject
+  because the cut-out keeps the largest silhouette and a second object either
+  survives as unexplained litter or vanishes mid-loop. 70 % because the export
+  is cropped to the union of every frame's bounding box and then scaled to
+  `--width`: a subject that occupies a fifth of the frame is enlarged from a
+  fifth of the pixels, and at UI size that shows.
+- **A generous margin on all four sides.** The motion happens inside this
+  frame. A flame that already touches the top edge has nowhere to flicker: the
+  model either clips it or quietly shrinks it to make room, and a loop whose
+  subject changes size is a loop that pulses.
+- **A flat solid pure white background**, asked for in the prompt, with
+  `--background opaque` on the call. The alpha comes from
+  `remove-background.mjs` afterwards, exactly as a sheet's does.
+- **No floor, no cast or contact shadow, no reflection, no vignette, no text.**
+  A shadow and a reflection are opaque, so they land inside the alpha and then
+  sway along with the subject — a UI icon with a shadow attached to it is the
+  single most common way a loop comes back unusable. A vignette makes the plate
+  stop being one colour, which is what the clip's `--key auto` measures. Text
+  becomes plausible fake glyphs the moment the model animates it.
+
+**The character variant.** When the subject is the character rather than an
+icon of its own, the style anchor is the character's own `character.style`
+sentence verbatim, every reference goes on `--image-urls` (once each, as for a
+sheet), and the prompt asks for **one pose** — a keyframe is a single picture,
+not a turnaround. Everything else on this list is unchanged; the white plate,
+the margin and the no-shadow clause matter more here, not less, because a
+character has more silhouette to lose.
+
+### One worked keyframe prompt
+
+> Smooth claymation-style 3D icon, soft matte clay, rounded forms, soft studio
+> key light from the upper left, no outline. A single flame standing upright,
+> centred, filling about 70 % of the frame with clear empty margin on all four
+> sides. Warm orange-to-yellow clay, soft rounded tongues curling upward, a
+> slight forward lean, visible fingerprint texture in the matte surface. A flat
+> solid pure white background filling the whole frame, no gradient. No floor,
+> no ground plane, no cast shadow, no contact shadow, no reflection, no
+> vignette, no text, no labels.
+
+### The call
+
+```bash
+node {SKILL_PATH}/scripts/generate_image.mjs \
+  "Smooth claymation-style 3D icon, soft matte clay, rounded forms, soft studio key light from the upper left, no outline. A single flame standing upright, centred, filling about 70 % of the frame …" \
+  --image-size 1024x1024 \
+  --quality high \
+  --background opaque \
+  --output-format png \
+  --output-dir <character>/motions/<id> \
+  --filename-prefix keyframe
+```
+
+The prompt is positional and there is no `--json`, the same pair of traps as a
+sheet. `--image-size 1024x1024` rather than a sheet's 2048: the keyframe is one
+picture at UI scale, the clip that consumes it is shot at 480p, and the export
+is cropped and scaled to `--width` anyway — pixels past that are paid for and
+then thrown away by the encoder. For the character variant add
+`--image-urls <character>/refs/turnaround.png` once per reference.
+
+The file lands at exactly `<character>/motions/<id>/keyframe.png`, which is the
+path `set-keyframe --file motions/<id>/keyframe.png` registers, and
+`remove-background.mjs --resolution 1024` writes `keyframe-alpha.png` beside
+it for `--alpha`.
+
 ## What breaks consistency, and the phrasing that fixes it
 
 | Symptom | Cause | Fix in the prompt |

@@ -33,7 +33,29 @@ correctly on disk.
     inspect.json                  # latest inspect report
 ```
 
-Frame files are two-digit zero-padded; a motion has at most 100 frames.
+A **loop motion** (workflow E) has a different shape inside `motions/<id>/`:
+
+```
+<character>/motions/<id>/
+  keyframe.png                  # GPT Image, white plate, as generated
+  keyframe-alpha.png            # remove-background.mjs (BiRefNet) cut-out
+  first-green.png               # flatten --bg "#00ff00" — a working file, no id
+  video-seedance-1.mp4          # the first-last clip, both ends the same image
+  video-topaz-2.mp4             # optional: 60 fps of video-1  (derived, interpolate)
+  video-veed-3.webm             # optional: matte of video-2   (derived, matte)
+  contact.png                   # working file
+  frames/000.png … NNN.png      # every frame of the loop, unaligned, uncleaned
+  loop.webp  loop.apng  loop.webm  loop.json
+  inspect.json                  # the loop-shaped report
+  run.json                      # `loop --json`, consumed by register-run
+```
+
+No `cells/`, no `frames/align.json`, no `sheet.png`, no `atlas.json` and no
+GIF: nothing about a loop is aligned or packed, so none of those files exist.
+
+Frame files are **two-digit** zero-padded on a sprite motion (at most 100
+frames) and **three-digit** on a loop motion (at most 400). The loader accepts
+either width, so an older motion keeps loading.
 
 ## Craft-owned fields
 
@@ -71,8 +93,12 @@ video, a sheet generated from one reference) is fully described by
 | `<motion>-frame-NN` | One aligned frame |
 | `<motion>-sheet` | The packed atlas image |
 | `<motion>-atlas` | `atlas.json` (type `text`) |
-| `<motion>-gif` / `<motion>-webp` | The previews |
-| `<motion>-video-<n>` | A video clip, n from 1 |
+| `<motion>-gif` / `<motion>-webp` | The previews. A loop has no GIF; its `<motion>-webp` is `loop.webp` |
+| `<motion>-video-<n>` | A video clip, n from 1 — including a derived one |
+| `<motion>-keyframe` | A loop's keyframe, as generated (white plate) |
+| `<motion>-keyframe-alpha` | The same keyframe cut out, a `derive` edge (`step: "key"`) from it |
+| `<motion>-frame-NNN` | One frame of a loop — three digits, unaligned |
+| `<motion>-apng` (image) / `<motion>-webm` (video) / `<motion>-lottie` (text) | A loop's other three exports |
 
 Ids are stable across re-runs: `register-run` removes the previous frame
 assets and their edges before writing the new ones, so re-running a motion
@@ -87,7 +113,14 @@ but they are not part of what the character *is*, so `register-run` ignores the
 does: `set-sheet --status generating` reserves it with `status: "generating"`
 and an empty `metadata` so the stage has something to show while the model
 draws, and the second `set-sheet` (after the image lands) measures it and flips
-the same id to `ready`.
+the same id to `ready`. `<motion>-keyframe` is the loop's copy of exactly that
+arrangement, through `set-keyframe`.
+
+The three loop exports carry **`metadata.size`** in bytes, measured when they
+are registered, so the viewer can print "4.2 MB" beside a download link without
+fetching the file to find out. A Lottie is the one that grows fastest — it
+embeds every frame as base64 — which is why the size is on the asset rather
+than left for the browser to discover.
 
 ### References the user brought
 
@@ -136,15 +169,58 @@ interface Motion {
   sheetRaw?: string; sheetAlpha?: string; sheet?: string; atlas?: string;
   frames: string[];               // asset ids in playback order
   gif?: string; webp?: string;
-  videos: Array<{ id: string; asset: string;
-                  model: "seedance-2.5" | "h3-max";
-                  mode: "i2v" | "first-last" | "r2v";
-                  prompt: string;
-                  status: "generating" | "ready" | "failed" }>;
+  videos: MotionVideo[];
   inspect?: InspectSummary;       // copied from inspect.json by register-run
   source?: "sheet" | "video";     // how the frames were obtained; absent means
                                   // "sheet" (set by add-motion --source and by
                                   // register-run for a from-video run)
+  kind?: "loop";                  // what the motion is FOR; absent = a sprite
+                                  // motion. `source` still says how the frames
+                                  // were obtained ("video" for a loop)
+  brief?: LoopBrief;              // loop only: the interview's answers, written
+                                  // by `set-motion --brief-…` before anything
+                                  // is paid for. `add-video` refuses a
+                                  // generated clip without it
+  keyframe?: string;              // asset id, `<motion>-keyframe`
+  keyframeAlpha?: string;         // asset id, `<motion>-keyframe-alpha`
+  exports?: {                     // asset ids; the WebP stays `motion.webp`
+    apng?: string; webm?: string; lottie?: string;
+  };
+}
+
+interface LoopBrief {
+  duration: number;               // seconds of one cycle, as asked for
+  width: number;                  // px the UI renders it at — `loop --width`
+  interpolator: "topaz" | "rife" | "ffmpeg" | "none";
+  budgetUsd?: number;             // the ceiling the user set. Absent when they
+                                  // set none — which is a different statement
+                                  // from a ceiling of 0
+  recordedAt: string;             // ISO timestamp of the set-motion call
+}
+
+type VideoModel = "seedance-2.5" | "h3-max"          // shot
+                | "veed" | "veed-gs" | "bria"        // matted
+                | "topaz" | "rife"                   // interpolated
+                | "ffmpeg";                          // retimed, locally
+type VideoMode  = "i2v" | "first-last" | "r2v" | "derived";
+
+interface MotionVideo {
+  id: string; asset: string;
+  model: VideoModel;
+  mode: VideoMode;
+  prompt: string;                 // "" on a derived clip — nothing was prompted
+  status: "generating" | "ready" | "failed";
+  derivedFrom?: string;           // the parent clip's SIDECAR id ("video-1"),
+                                  // not its asset id — the panel says "matte
+                                  // of video-1" without walking the graph.
+                                  // The provenance edge carries the same fact
+                                  // in asset ids
+  op?: "matte" | "interpolate"    // what was done to it
+     | "retime";                  // the parent's own frames in another order
+                                  // (`sprite-sheet.mjs retime`, model
+                                  // "ffmpeg"). Its own op because it invents
+                                  // nothing: filing it as an `interpolate`
+                                  // claims a paid endpoint ran that did not
 }
 
 interface InspectSummary {
@@ -164,6 +240,26 @@ interface InspectSummary {
   maxJump: number;                          // largest step between neighbours
   scaleDrift: number;                       // (max h − min h) / mean
   emptyFrames: number[];
+  seam?: number;                            // loop only: how far the last frame
+                                            // is from the first, in the same
+                                            // silhouette-diff units as `step`
+  step?: number;                            // loop only: the median frame-to-
+                                            // frame change. `seam <= 2 * step`
+                                            // is a loop that closes — the one
+                                            // rule, the same in SKILL.md step
+                                            // 10, `pipeline.md` and the
+                                            // viewer's SEAM_STEP_FACTOR
+  seamFill?: number;                        // loop only: in-between frames
+                                            // `loop --seam-fill` inserted at
+                                            // the wrap, after which `seam` is
+                                            // the largest step across it. 0 is
+                                            // "the loop closed on its own"
+  alphaCoverage?: number;                   // loop only: fraction of the frame
+                                            // area that is opaque, averaged
+                                            // over the frames
+                                            // All four are absent unless the
+                                            // report carried finite numbers —
+                                            // 0 is a reading, not an absence
   warnings: string[];                       // human sentences
   acknowledged?: { reason: string; at: number }; // written by
                                             // `set-motion --ack-warnings`; the
@@ -183,6 +279,45 @@ Three things the shapes are quietly telling you:
   `generating` (before the image call) → `processing` (sheet saved, pipeline
   running) → `ready` (register-run landed) or `failed` (with `notes`). Skipping
   the intermediate states means the user watches a still list while you work.
+
+### Derived clips
+
+A clip made **from another clip** — a matte, an interpolation, a retime — is
+registered with `add-video --derived-from <videoId> --op matte|interpolate|retime
+--model veed|veed-gs|bria|topaz|rife|ffmpeg`. It gets a `derive` edge from the parent clip's asset carrying
+`params: { op, model }`, and its sidecar entry reads
+`{ mode: "derived", derivedFrom, op, prompt: "" }` — `derivedFrom` is the
+parent's sidecar id (`video-1`), the same spelling `--derived-from` accepts.
+Its `--status` defaults to **`ready`**, not `generating`: the script that made
+it wrote the file before there was anything to register, so there is no wait
+to show. There is no prompt because
+nothing was prompted; the empty string is the honest record, and a sentence
+invented to fill it is what makes a later turn treat the clip as a generation
+it could re-roll. `show` prints the chain — `video-3 ← video-2 (matte, veed-gs)` —
+so which clip the frames were cut from is answerable without reading the edges
+by hand.
+
+### The loop brief
+
+`motion.brief` is the only part of a motion the agent does not decide. A loop's
+length, its size and who invents its in-between frames are the user's money,
+and they are recorded — with the `set-motion --brief-…` call that collected
+them — before the first paid render:
+
+```json
+"brief": { "duration": 4, "width": 512, "interpolator": "topaz",
+           "budgetUsd": 3, "recordedAt": "2026-09-22T07:11:00.000Z" }
+```
+
+It is a gate, not a note: `add-video` refuses a generated clip on a loop motion
+that has none, and `register-run` compares `brief.width` with the width that
+actually landed. Both readers are all-or-nothing — a record missing any of the
+three answers or its `recordedAt` is read as no brief at all, by the viewer's
+loader and by the scripts alike, because half a brief would open the gate while
+answering none of the question. `add-video` and `show` say which answers are
+missing rather than reading half a record out loud. A sprite motion never
+carries one; the loader drops it there the way it drops every other loop-only
+field.
 
 ## Character identity vs content set
 

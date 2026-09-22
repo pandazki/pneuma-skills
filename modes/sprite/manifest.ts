@@ -6,6 +6,10 @@
  * character references attached, which a deterministic ffmpeg pipeline turns
  * into aligned frames, a packed atlas, a GIF/WebP preview, and — on request —
  * a short clip from a video model.
+ *
+ * A motion can also be a `loop`: a keyframe, a first-last clip with the same
+ * image at both ends, and every frame of the cycle cut into one seamless
+ * transparent animation (WebP / APNG / WebM / Lottie) for a UI.
  */
 
 import type { ModeManifest } from "../../core/types/mode-manifest.js";
@@ -13,8 +17,20 @@ import { loadRoster, saveRoster } from "./domain.js";
 
 const spriteManifest: ModeManifest = {
   name: "sprite",
-  version: "0.2.1",
+  version: "0.3.1",
   changelog: {
+    "0.3.1": [
+      "A loop's interview is now a gate, not a request: `set-motion --brief-duration/--brief-width/--brief-interpolator` records what the user answered, and `add-video` refuses the paid clip on a loop that has no brief. The 400-frame ceiling is warned about while the duration is still a question, and `register-run` says when the frames that landed are not the width the brief asked for",
+      "`sprite-sheet.mjs retime` replays a clip's own frames in another order — an apex freeze cut short, a double blink dropped, a beat repeated — and registers as a derived clip (`--op retime --model ffmpeg`). It costs nothing and invents nothing, and it is the answer to the Seedance idle-loop failure modes that prompt wording does not fix",
+      "`loop --width` caps frames at 512 px when it is not given, says so on stderr and records `widthDefaulted`; the Lottie and APNG size warnings now say something different depending on whether a width was passed, instead of advising a flag the caller already used",
+      "The frame strip samples its thumbnails on a long loop instead of putting every frame in the DOM, so a 355-frame loop no longer freezes the tab, and the inspect block's seam limit reads as a threshold rather than as the unrelated maxStep",
+    ],
+    "0.3.0": [
+      "Seamless transparent loops for a UI: a 3D-icon keyframe, a first-last clip with the same image at both ends so the loop closes by construction, then `sprite-sheet.mjs loop` cuts every frame of the cycle into `loop.webp`, `loop.apng`, `loop.webm` (VP9 with alpha) and a Lottie JSON",
+      "A `loop` motion is judged on its seam against a normal frame step — not on anchor drift, which a bobbing icon is supposed to have; the frames stay unaligned and uncleaned because the movement is the content",
+      "Video matting (VEED, its green-screen endpoint, or Bria) turns the plate clip transparent, and frame interpolation takes it to a higher rate — Topaz on fal by default, RIFE (which also closes the wrap) or free ffmpeg `minterpolate` when the user picks them. Interpolate first, matte second",
+      "Fixed: every animated WebP this mode writes — the sprite `preview.webp` as well as the loop — ghosted its previous frames, because ffmpeg's `libwebp` encoder does not composite animation frames. Encoding with `libwebp_anim` took the mean alpha error from 9.8 to 0.03 per frame",
+    ],
     "0.2.1": [
       "Measured the video workflow on the seed character's own green-screen walk: the contact window closes the loop where even sampling of the whole clip does not",
     ],
@@ -40,10 +56,10 @@ const spriteManifest: ModeManifest = {
     ja: "スプライト",
   },
   description: {
-    en: "Design a character once, then generate consistent sprite sheets and motion reference frames with GPT Image 2.5 — auto-keyed, sliced, aligned, packed; previewed as GIF or a video clip.",
+    en: "Design a character once, then generate consistent sprite sheets and motion reference frames with GPT Image 2.5 — auto-keyed, sliced, aligned, packed, previewed as GIF or a video clip. Or shoot a seamless transparent loop for a UI and export it as WebP, APNG, WebM and Lottie.",
     "zh-CN":
-      "先定角色，再用 GPT Image 2.5 产出前后一致的雪碧图与动作参考帧；自动抠背景、切帧、对齐、打包，GIF 或视频模型预览。",
-    ja: "キャラクターを一度設計すれば、あとは GPT Image 2.5 で一貫したスプライトシートとモーション参考フレームを生成 —— 背景抜き・分割・整列・パックまで自動、GIF や動画クリップでプレビュー。",
+      "先定角色，再用 GPT Image 2.5 产出前后一致的雪碧图与动作参考帧；自动抠背景、切帧、对齐、打包，GIF 或视频模型预览。也可以做界面上那种循环不断的透明小动画，一次导出 WebP、APNG、WebM 和 Lottie。",
+    ja: "キャラクターを一度設計すれば、あとは GPT Image 2.5 で一貫したスプライトシートとモーション参考フレームを生成 —— 背景抜き・分割・整列・パックまで自動、GIF や動画クリップでプレビュー。UI に置く継ぎ目のない透過ループも作れて、WebP・APNG・WebM・Lottie で書き出せます。",
   },
   // A 3×3 grid with one cell filled — a sheet with one frame picked out.
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/><rect x="9" y="9" width="6" height="6" fill="currentColor" stroke="none"/></svg>`,
@@ -58,8 +74,9 @@ const spriteManifest: ModeManifest = {
     },
     // sharedScripts is a WHITELIST: every script a listed script imports must
     // itself be listed, or the copied script dies on its first import line.
-    // seedance-video.mjs and remove-background.mjs both drive fal through
-    // fal-queue.mjs; generate_image.mjs / edit_image.mjs are the sheet path.
+    // seedance-video.mjs, remove-background.mjs, remove-video-background.mjs
+    // and interpolate-video.mjs all drive fal through fal-queue.mjs;
+    // generate_image.mjs / edit_image.mjs are the sheet and keyframe path.
     sharedScripts: [
       "generate_image.mjs",
       "edit_image.mjs",
@@ -67,6 +84,8 @@ const spriteManifest: ModeManifest = {
       "fal-queue.mjs",
       "seedance-video.mjs",
       "remove-background.mjs",
+      "remove-video-background.mjs",
+      "interpolate-video.mjs",
     ],
   },
 
@@ -167,7 +186,7 @@ const spriteManifest: ModeManifest = {
           },
         },
         description:
-          "Read back what the stage is actually showing: `{ contentSet, motion, frame, frameCount, fps, loop, playing, source: \"frames\" | \"raw-sheet\" | \"none\", warnings }`. Call it after a pipeline run — `source: \"raw-sheet\"` or a frameCount that disagrees with the grid means the run did not land, whatever the script printed.",
+          "Read back what the stage is actually showing: `{ contentSet, motion, kind, frame, frameCount, fps, loop, playing, source: \"frames\" | \"raw-sheet\" | \"keyframe\" | \"none\", warnings }`. Call it after a pipeline run — `source: \"raw-sheet\"` or a frameCount that disagrees with the grid means the run did not land, whatever the script printed. `kind` is `\"loop\"` on a loop motion and absent on a sprite motion; `source: \"keyframe\"` is a loop showing the image its clip starts and ends on because no frames exist yet, which is expected while the clip renders.",
       },
     ],
     // User → agent. The viewer renders these only while `editing !== false`,
@@ -249,7 +268,7 @@ The user just opened the sprite workspace. Greet them briefly (1-2 sentences) an
         name: "falApiKey",
         label: "fal.ai API Key",
         description:
-          "Optional — enables video previews (Seedance 2.5 / MiniMax H3 Max) and fal background removal for sheets that come back opaque",
+          "Optional — enables video previews and loop clips (Seedance 2.5 / MiniMax H3 Max), video matting and frame interpolation for a loop, and fal background removal for sheets that come back opaque",
         type: "string",
         defaultValue: "",
         sensitive: true,
@@ -274,6 +293,34 @@ The user just opened the sprite workspace. Greet them briefly (1-2 sentences) an
           },
         ],
         defaultValue: "seedance-2.5",
+      },
+      {
+        name: "defaultInterpolator",
+        label: "Default frame interpolation",
+        description:
+          "Which path takes a loop clip to a higher frame rate when the user asks for one",
+        type: "select",
+        options: [
+          {
+            value: "topaz",
+            label: "Topaz on fal",
+            description:
+              "Exactly 60 fps, sharpest in-betweens, ≈ $0.10 per 5 s clip",
+          },
+          {
+            value: "rife",
+            label: "RIFE on fal",
+            description:
+              "2× or 3× the rate, closes the wrap, cheaper — ≈ $0.03 per 5 s clip",
+          },
+          {
+            value: "ffmpeg",
+            label: "ffmpeg minterpolate",
+            description:
+              "Free, inside `sprite-sheet.mjs loop --fps`; the weakest in-betweens",
+          },
+        ],
+        defaultValue: "topaz",
       },
     ],
     // The installer's template engine has `{{#key}}` sections and no inverted

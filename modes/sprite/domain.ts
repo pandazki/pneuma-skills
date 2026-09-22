@@ -116,9 +116,26 @@ export const MOTION_STATUSES = [
 
 export type MotionStatus = (typeof MOTION_STATUSES)[number];
 
-export type VideoModel = "seedance-2.5" | "h3-max";
+/** Models that MAKE a clip out of images and a prompt. */
+export type GeneratedVideoModel = "seedance-2.5" | "h3-max";
 
-export type VideoMode = "i2v" | "first-last" | "r2v";
+/** Models that make a clip out of ANOTHER CLIP — video matting (`veed`,
+ *  `veed-gs` on its green-screen endpoint, `bria`), frame interpolation
+ *  (`topaz`, `rife`) and the local reorder (`ffmpeg`, which invents no pixel
+ *  at all and only replays the clip's own frames in another order). They
+ *  generate nothing of their own, which is why they are a separate union: the
+ *  render-video popover must not be able to offer one, and a `derived` clip
+ *  must not claim a prompt. `veed-gs` is its own name rather than a flag on
+ *  `veed`, and `rife` its own rather than a flag on `topaz`: each is a
+ *  different endpoint with different parameters and a different price, and a
+ *  clip recorded under its sibling's name is a model nobody called. */
+export type DerivedVideoModel = "veed" | "veed-gs" | "bria" | "topaz" | "rife" | "ffmpeg";
+
+export type VideoModel = GeneratedVideoModel | DerivedVideoModel;
+
+export type GeneratedVideoMode = "i2v" | "first-last" | "r2v";
+
+export type VideoMode = GeneratedVideoMode | "derived";
 
 export interface MotionVideo {
   id: string;
@@ -128,6 +145,23 @@ export interface MotionVideo {
   mode: VideoMode;
   prompt: string;
   status: "generating" | "ready" | "failed";
+  /**
+   * The clip this one was made FROM, by its sidecar id (`"video-1"`).
+   *
+   * Set only on a `derived` clip — a matte or an interpolation of an earlier
+   * take. The provenance edge carries the same fact in asset ids; this is the
+   * sidecar's own copy so the panel can say "matte of video-1" without walking
+   * the graph.
+   */
+  derivedFrom?: string;
+  /**
+   * What the derivation did. Absent on a generated clip.
+   *
+   * `retime` replays the parent's own frames in another order (a hold cut
+   * short, a repeated beat) and invents nothing; it is its own op because a
+   * retime recorded as an `interpolate` claims a model ran that never did.
+   */
+  op?: "matte" | "interpolate" | "retime";
 }
 
 /** The latest `sprite-sheet.mjs inspect` report, copied into the motion by
@@ -173,6 +207,76 @@ export interface InspectSummary {
   emptyFrames: number[];
   /** Human sentences, e.g. "frame 09 is empty". */
   warnings: string[];
+
+  // ── Loop motions only (`kind: "loop"`) ──────────────────────────────────
+  //
+  // A loop is judged on whether it CLOSES, not on where its feet are, so it
+  // measures three numbers the sheet pipeline never reports. All three are
+  // optional for `bodyDrift`'s reason: 0 is a meaningful reading for each of
+  // them (a perfect seam, a frozen motion, an empty frame), so a default of 0
+  // would be indistinguishable from a measurement. Present only when the
+  // report carried a finite number.
+
+  /** Silhouette distance from the last kept frame back to the first. */
+  seam?: number;
+  /** Median frame-to-frame silhouette distance — what `seam` is judged against. */
+  step?: number;
+  /**
+   * How many in-between frames `loop --seam-fill` inserted at the wrap, after
+   * which `seam` is the largest step across it. 0 means the loop closed on its
+   * own — a real reading, not an absence — which is why this follows the same
+   * finite-or-absent rule as its neighbours; absent means the report predates
+   * the flag.
+   */
+  seamFill?: number;
+  /** Fraction of the frame area that is opaque, averaged over the frames. */
+  alphaCoverage?: number;
+}
+
+/**
+ * What a motion IS FOR. Absent means a sprite motion — an atlas for a game
+ * engine, which is everything this mode made before loops existed.
+ *
+ * `"loop"` is a seamless transparent animation for a UI: every frame of one
+ * closed cycle, unaligned, delivered as WebP / APNG / WebM / Lottie. It is a
+ * different deliverable from the same character, not a different `source` —
+ * `source` still says how the frames were obtained (`"video"` for a loop).
+ */
+export type MotionKind = "loop";
+
+/**
+ * The answers a loop's interview collected, before anything was paid for.
+ *
+ * A loop's first clip costs about a dollar and its size, its rate and its
+ * wrap all follow from four decisions the user — not the agent — makes. They
+ * are recorded here by `sprite-project.mjs set-motion --brief-…`, and the
+ * scripts gate the paid call on their presence: a trial agent that skipped
+ * the interview spent $2.61 on a 7.4s loop for a UI that wanted 3–4s, and no
+ * amount of prose in the skill stopped it.
+ *
+ * `budgetUsd` is the one optional answer, because a user who named no ceiling
+ * is a different state from one who named zero.
+ */
+export interface LoopBrief {
+  /** Seconds of one cycle, as asked for. */
+  duration: number;
+  /** The width in px the UI renders the loop at — what `loop --width` gets. */
+  width: number;
+  /** Who invents the in-betweens; `"none"` is the clip's own rate, kept. */
+  interpolator: "topaz" | "rife" | "ffmpeg" | "none";
+  /** The ceiling the user set, in dollars. Absent when they set none. */
+  budgetUsd?: number;
+  /** ISO timestamp of the call that recorded it. */
+  recordedAt: string;
+}
+
+/** Frontend-ready exports of a loop, by asset id. The WebP keeps `motion.webp`
+ *  — it is the preview every motion has — so only the three new ones live
+ *  here. */
+export interface MotionExports {
+  apng?: string;
+  webm?: string;
+  lottie?: string;
 }
 
 export interface Motion {
@@ -180,6 +284,10 @@ export interface Motion {
   label: string;
   /** The sheet prompt actually sent. */
   prompt: string;
+  /** Absent means a sprite motion; see `MotionKind`. */
+  kind?: MotionKind;
+  /** Loop motions: the interview's answers, recorded before the paid clip. */
+  brief?: LoopBrief;
   grid: { rows: number; cols: number };
   fps: number;
   loop: boolean;
@@ -189,6 +297,10 @@ export interface Motion {
   notes?: string;
   /** How the frames were obtained; absent means `"sheet"` (round 2). */
   source?: "sheet" | "video";
+  /** Loop motions: the generated keyframe, white plate, as it came back. */
+  keyframe?: string;
+  /** Loop motions: the same keyframe with its background removed. */
+  keyframeAlpha?: string;
   sheetRaw?: string;
   sheetAlpha?: string;
   sheet?: string;
@@ -197,6 +309,8 @@ export interface Motion {
   frames: string[];
   gif?: string;
   webp?: string;
+  /** Loop motions: the APNG / WebM / Lottie exports. */
+  exports?: MotionExports;
   videos: MotionVideo[];
   inspect?: InspectSummary;
 }
@@ -343,6 +457,10 @@ function parseInspect(value: unknown): InspectSummary | undefined {
   const anchorPoint = parsePoint(value.anchorPoint);
   const acknowledged = parseAcknowledged(value.acknowledged);
   const bodyDrift = parseFinite(value.bodyDrift);
+  const seam = parseFinite(value.seam);
+  const step = parseFinite(value.step);
+  const seamFill = parseFinite(value.seamFill);
+  const alphaCoverage = parseFinite(value.alphaCoverage);
   return {
     frameCount: num(value.frameCount, 0),
     cell: { width: num(cell.width, 0), height: num(cell.height, 0) },
@@ -360,6 +478,13 @@ function parseInspect(value: unknown): InspectSummary | undefined {
     warnings: arr(value.warnings).filter(
       (w): w is string => typeof w === "string",
     ),
+    // Same `=== undefined` rule as `bodyDrift`, for the same reason: a seam of
+    // 0 is a loop that closes perfectly, and dropping it would hide the best
+    // result the pipeline can report.
+    ...(seam === undefined ? {} : { seam }),
+    ...(step === undefined ? {} : { step }),
+    ...(seamFill === undefined ? {} : { seamFill }),
+    ...(alphaCoverage === undefined ? {} : { alphaCoverage }),
   };
 }
 
@@ -377,16 +502,93 @@ function parseMotionStatus(value: unknown): MotionStatus {
     : "planned";
 }
 
+/** The exports block, with only the ids that are really there. An empty block
+ *  is no block: `exports: {}` would make `motion.exports` truthy for a motion
+ *  that exported nothing. */
+function parseExports(value: unknown): MotionExports | undefined {
+  if (!isRecord(value)) return undefined;
+  const exports: MotionExports = {
+    ...(optionalStr(value.apng) ? { apng: value.apng as string } : {}),
+    ...(optionalStr(value.webm) ? { webm: value.webm as string } : {}),
+    ...(optionalStr(value.lottie) ? { lottie: value.lottie as string } : {}),
+  };
+  return Object.keys(exports).length > 0 ? exports : undefined;
+}
+
+const VIDEO_MODELS: readonly VideoModel[] = [
+  "seedance-2.5",
+  "h3-max",
+  "veed",
+  "veed-gs",
+  "bria",
+  "topaz",
+  "rife",
+  "ffmpeg",
+];
+
+const LOOP_INTERPOLATORS: readonly LoopBrief["interpolator"][] = [
+  "topaz",
+  "rife",
+  "ffmpeg",
+  "none",
+];
+
+/**
+ * The brief, or nothing — never a half of one.
+ *
+ * Every other optional field here is parsed field by field, so a broken one
+ * costs its own value. The brief cannot be: it is what the scripts refuse a
+ * paid clip without, so a record missing its width would open that gate while
+ * answering none of the question it stands for. All four required answers
+ * present and usable, or the motion has no brief.
+ */
+function parseLoopBrief(value: unknown): LoopBrief | undefined {
+  if (!isRecord(value)) return undefined;
+  const duration = parseFinite(value.duration);
+  const width = parseFinite(value.width);
+  const recordedAt = optionalStr(value.recordedAt);
+  const interpolator = LOOP_INTERPOLATORS.includes(
+    value.interpolator as LoopBrief["interpolator"],
+  )
+    ? (value.interpolator as LoopBrief["interpolator"])
+    : undefined;
+  if (duration === undefined || duration <= 0) return undefined;
+  if (width === undefined || width <= 0) return undefined;
+  if (!interpolator || !recordedAt) return undefined;
+  const budgetUsd = parseFinite(value.budgetUsd);
+  return {
+    duration,
+    width,
+    interpolator,
+    ...(budgetUsd === undefined || budgetUsd < 0 ? {} : { budgetUsd }),
+    recordedAt,
+  };
+}
+
+const VIDEO_MODES: readonly VideoMode[] = ["i2v", "first-last", "r2v", "derived"];
+
 function parseMotion(value: unknown): Motion | null {
   if (!isRecord(value)) return null;
   const id = optionalStr(value.id);
   if (!id) return null;
   const grid = isRecord(value.grid) ? value.grid : {};
   const inspect = parseInspect(value.inspect);
+  const exports = parseExports(value.exports);
+  // Loop-only, like `keyframe` and `exports`: a brief describes a duration, a
+  // UI width and an interpolator, and a sheet motion has none of those to
+  // answer for. It is dropped rather than carried into a panel that would
+  // have nowhere to put it.
+  const brief = value.kind === "loop" ? parseLoopBrief(value.brief) : undefined;
   return {
     id,
     label: str(value.label, id),
     prompt: str(value.prompt),
+    // An unrecognised kind is not a kind: the panel opens a different first
+    // tab and the stage drops its pivot guide on the strength of this word,
+    // so anything that is not "loop" reads as the sprite motion it was
+    // before loops existed.
+    ...(value.kind === "loop" ? { kind: "loop" as const } : {}),
+    ...(brief ? { brief } : {}),
     grid: { rows: num(grid.rows, 1), cols: num(grid.cols, 1) },
     fps: num(value.fps, 8),
     loop: value.loop !== false,
@@ -394,6 +596,12 @@ function parseMotion(value: unknown): Motion | null {
     status: parseMotionStatus(value.status),
     ...(optionalStr(value.notes) ? { notes: value.notes as string } : {}),
     ...(value.source === "video" || value.source === "sheet" ? { source: value.source } : {}),
+    ...(optionalStr(value.keyframe)
+      ? { keyframe: value.keyframe as string }
+      : {}),
+    ...(optionalStr(value.keyframeAlpha)
+      ? { keyframeAlpha: value.keyframeAlpha as string }
+      : {}),
     ...(optionalStr(value.sheetRaw)
       ? { sheetRaw: value.sheetRaw as string }
       : {}),
@@ -405,24 +613,33 @@ function parseMotion(value: unknown): Motion | null {
     frames: arr(value.frames).filter((f): f is string => typeof f === "string"),
     ...(optionalStr(value.gif) ? { gif: value.gif as string } : {}),
     ...(optionalStr(value.webp) ? { webp: value.webp as string } : {}),
+    ...(exports ? { exports } : {}),
     videos: arr(value.videos)
       .map((v): MotionVideo | null => {
         if (!isRecord(v)) return null;
         const vid = optionalStr(v.id);
         if (!vid) return null;
+        const derivedFrom = optionalStr(v.derivedFrom);
         return {
           id: vid,
           asset: str(v.asset),
-          model: v.model === "h3-max" ? "h3-max" : "seedance-2.5",
-          mode:
-            v.mode === "first-last" || v.mode === "r2v"
-              ? (v.mode as VideoMode)
-              : "i2v",
+          // An unknown model falls back to the one every clip of this mode
+          // started as, rather than travelling as a name nothing can render.
+          model: VIDEO_MODELS.includes(v.model as VideoModel)
+            ? (v.model as VideoModel)
+            : "seedance-2.5",
+          mode: VIDEO_MODES.includes(v.mode as VideoMode)
+            ? (v.mode as VideoMode)
+            : "i2v",
           prompt: str(v.prompt),
           status:
             v.status === "ready" || v.status === "failed"
               ? (v.status as MotionVideo["status"])
               : "generating",
+          ...(derivedFrom ? { derivedFrom } : {}),
+          ...(v.op === "matte" || v.op === "interpolate" || v.op === "retime"
+            ? { op: v.op as MotionVideo["op"] }
+            : {}),
         };
       })
       .filter((v): v is MotionVideo => v !== null),

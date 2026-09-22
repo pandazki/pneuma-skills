@@ -69,15 +69,23 @@ export interface FramesSource {
   missing: number;
 }
 
-/** The generated sheet, sliced in the browser: the instant preview that
- *  exists between "the image landed" and "the pipeline ran". */
+/**
+ * One image, sliced in the browser: the instant preview that exists between
+ * "the image landed" and "the pipeline ran".
+ *
+ * Two pictures arrive as this shape. A sprite motion's generated SHEET, cut
+ * `cols x rows`; and a loop motion's KEYFRAME, which is one cell — the single
+ * image its clip starts and ends on, and the only thing there is to look at
+ * while the clip renders. They are told apart by the motion (`kind: "loop"`),
+ * not by the geometry: a 1x1 sheet is a legal sprite motion.
+ */
 export interface SheetSource {
   kind: "raw-sheet";
   url: string;
   cols: number;
   rows: number;
   count: number;
-  /** True when this is the background-keyed sheet rather than the raw one. */
+  /** True when this is the background-keyed image rather than the raw one. */
   alpha: boolean;
 }
 
@@ -115,6 +123,26 @@ export function resolveFrameSource(
     }
   }
 
+  // A loop has no sheet — it has a keyframe, the image its clip opens and
+  // closes on. Until the clip comes back and `loop` cuts it, that image IS
+  // the motion as far as anyone can see, so it goes on the stage as a
+  // one-cell source and `stageWarnings` says what it is. The cut-out wins
+  // when it exists, for the same reason the keyed sheet does below.
+  if (motion.kind === "loop") {
+    const keyId = motion.keyframeAlpha ?? motion.keyframe;
+    const keyUri = keyId ? resolveAssetUri(project, keyId) : undefined;
+    if (keyUri) {
+      return {
+        kind: "raw-sheet",
+        url: contentUrl(project.contentSet, keyUri, imageVersion),
+        cols: 1,
+        rows: 1,
+        count: 1,
+        alpha: motion.keyframeAlpha !== undefined,
+      };
+    }
+  }
+
   // The keyed sheet is the better preview when it exists: it is the one the
   // slicer will cut, background already removed.
   const sheetId = motion.sheetAlpha ?? motion.sheetRaw;
@@ -138,6 +166,84 @@ export function resolveFrameSource(
 /** How many frames the stage can step through. */
 export function frameCountOf(source: FrameSource): number {
   return source.kind === "none" ? 0 : source.count;
+}
+
+// ── What the strip shows ───────────────────────────────────────────────────
+
+/**
+ * The most thumbnails the strip will mount.
+ *
+ * Every thumbnail is a real picture the browser has to fetch, decode and keep
+ * a layout box for. A 355-frame 532x460 loop mounted one `<img>` per frame and
+ * took the renderer down with it: the tab stopped answering CDP, the launcher
+ * logged the browser disconnecting, and only killing the render process got it
+ * back (2026-09-22, the Kiki trial). Video-model loops made this a normal size
+ * rather than an extreme one — 7 s at 48 fps is 355 frames — so the strip
+ * cannot keep promising one thumbnail per frame.
+ *
+ * 96 is chosen to stay above what any pane can show at once (a 46 px thumb in
+ * a 1600 px strip is ~34 of them) so scrubbing still has somewhere to go, and
+ * far below the count where the mount itself is the problem.
+ */
+export const STRIP_MAX_THUMBS = 96;
+
+/**
+ * Which frames the strip draws, in order.
+ *
+ * Short motions are shown whole — the sprite sheets this mode started with
+ * are 8 to 40 frames and every one of them is worth a thumbnail. A long
+ * motion is sampled at an EVEN stride, and the two ends are always in it:
+ * frame 0 and the last frame are the two sides of a loop's seam, which is the
+ * one comparison a user opens the strip to make.
+ *
+ * This is a DISPLAY sample and nothing else. The stage still plays every
+ * frame, `navigate-to` still addresses every frame, and a thumbnail still
+ * carries its own true index — so clicking the one labelled 213 seeks to 213,
+ * not to "the 57th thumbnail".
+ */
+export function stripFrames(
+  count: number,
+  max: number = STRIP_MAX_THUMBS,
+): number[] {
+  if (!Number.isFinite(count) || count <= 0) return [];
+  const total = Math.floor(count);
+  if (total <= max || max < 2) {
+    return Array.from({ length: total }, (_, index) => index);
+  }
+  const last = total - 1;
+  const out: number[] = [];
+  for (let i = 0; i < max; i += 1) {
+    const index = Math.round((i * last) / (max - 1));
+    if (out[out.length - 1] !== index) out.push(index);
+  }
+  return out;
+}
+
+/**
+ * The thumbnail the playhead sits on — the nearest SHOWN frame.
+ *
+ * On a sampled strip the playhead is usually between two thumbnails, and the
+ * strip has to mark one of them or the row loses its playhead entirely while
+ * the motion runs. Marking the nearest is the honest answer because the
+ * thumbnail keeps its own number: the mark says "you are around here", and the
+ * exact frame is the counter above it. Ties go to the earlier frame so the
+ * mark never runs ahead of the stage.
+ */
+export function nearestStripFrame(
+  shown: ReadonlyArray<number>,
+  frame: number,
+): number | null {
+  if (shown.length === 0) return null;
+  let best = shown[0] as number;
+  let bestDistance = Math.abs(best - frame);
+  for (const index of shown) {
+    const distance = Math.abs(index - frame);
+    if (distance < bestDistance) {
+      best = index;
+      bestDistance = distance;
+    }
+  }
+  return best;
 }
 
 // ── When it moves ──────────────────────────────────────────────────────────
@@ -462,9 +568,12 @@ export function resolveAddress(
   };
 }
 
-/** Frames a motion claims to have, sheet-preview included. */
+/** Frames a motion claims to have, sheet- and keyframe-preview included. */
 export function declaredFrameCount(motion: Motion): number {
   if (motion.frames.length > 0) return motion.frames.length;
+  // The keyframe is one frame, and an address that names frame 0 of a loop
+  // still being shot has to land on it rather than be refused.
+  if (motion.kind === "loop" && (motion.keyframeAlpha ?? motion.keyframe)) return 1;
   if (motion.sheet ?? motion.sheetAlpha ?? motion.sheetRaw) {
     return Math.max(1, Math.floor(motion.grid.cols)) *
       Math.max(1, Math.floor(motion.grid.rows));
@@ -477,12 +586,21 @@ export function declaredFrameCount(motion: Motion): number {
 export interface PlaybackStateData {
   contentSet: string | null;
   motion: string | null;
+  /** Present only for a loop motion — absent is "a sprite motion", the same
+   *  way the sidecar says it. */
+  kind?: "loop";
   frame: number;
   frameCount: number;
   fps: number;
   loop: boolean;
   playing: boolean;
-  source: FrameSource["kind"];
+  /**
+   * What the stage is really drawing. `"keyframe"` is a loop's one-image
+   * stand-in: it arrives as a `raw-sheet` source because that is how a single
+   * image is drawn, but reporting it under that name would tell the agent a
+   * sheet exists for a motion that will never have one.
+   */
+  source: FrameSource["kind"] | "keyframe";
   warnings: string[];
   [key: string]: unknown;
 }
@@ -509,7 +627,9 @@ export function stageWarnings(
   }
   if (source.kind === "raw-sheet") {
     warnings.push(
-      `No aligned frames yet — the stage is slicing the ${source.alpha ? "keyed" : "raw"} sheet ${source.cols}x${source.rows} client-side. Run sprite-sheet.mjs to align and pack.`,
+      motion?.kind === "loop"
+        ? "No frames yet — the stage shows the keyframe; the clip is rendering or `sprite-sheet.mjs loop` has not run."
+        : `No aligned frames yet — the stage is slicing the ${source.alpha ? "keyed" : "raw"} sheet ${source.cols}x${source.rows} client-side. Run sprite-sheet.mjs to align and pack.`,
     );
   }
   if (motion && motion.status === "failed" && motion.notes) {
@@ -529,15 +649,19 @@ export function playbackStateData(input: {
   loop: boolean;
 }): PlaybackStateData {
   const count = frameCountOf(input.source);
+  const loopMotion = input.motion?.kind === "loop";
   return {
     contentSet: input.project ? input.project.contentSet : null,
     motion: input.motion ? input.motion.id : null,
+    ...(loopMotion ? { kind: "loop" as const } : {}),
     frame: count > 0 ? clampFrame(input.frame, count) : 0,
     frameCount: count,
     fps: input.fps,
     loop: input.loop,
     playing: input.playing,
-    source: input.source.kind,
+    source: input.source.kind === "raw-sheet" && loopMotion
+      ? "keyframe"
+      : input.source.kind,
     warnings: stageWarnings(input.motion, input.source),
   };
 }

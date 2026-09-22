@@ -12,7 +12,7 @@
  * maths in JS; every image is written by an ffmpeg filter chain.
  *
  * Subcommands: probe, key, flatten, slice, align, pack, gif, inspect, run,
- * contact, from-video.
+ * contact, from-video, loop.
  * `--json` prints exactly one JSON object on stdout; progress goes to stderr.
  */
 
@@ -32,6 +32,10 @@ const DEFAULT_BLEND = 0.05;
 const CORNER_PATCH = 8;
 /** A frame index is two digits, so a motion tops out at 100 frames. */
 const MAX_FRAMES = 100;
+/** A loop motion numbers its frames with three digits and keeps every frame of
+ *  the window, so it needs its own, higher ceiling: 400 covers 5 s at 60 fps
+ *  and still bounds the decode, the Lottie payload and the temp directory. */
+const MAX_LOOP_FRAMES = 400;
 /** Decoding a sheet costs w*h*4 bytes in one Buffer; refuse the absurd. */
 const MAX_RAW_BYTES = 512 * 1024 * 1024;
 /** A sheet whose alpha is this dense is background-opaque for keying purposes. */
@@ -117,6 +121,60 @@ const LOOP_PERIOD_MAX = 2.5;
 /** Loop candidates reported. Three, because the best seam is a measurement
  *  and the right cycle is a judgement — the agent needs alternatives. */
 const MAX_LOOPS = 3;
+// --- loop: a seamless transparent animation for a UI ------------------------
+/** Deliverables `loop` can write, and the default set. */
+const LOOP_FORMATS = ["webp", "apng", "webm", "lottie"];
+/** A frame that moves less than this share of the median step is a held pose,
+ *  not a frame of animation. Relative to the clip's OWN rhythm and nothing
+ *  else: an absolute floor under it (there was a 0.005 one) is a number tuned
+ *  on one clip deciding what "held" means on every other. Measured
+ *  2026-09-22 on the reference flame, whose keyed-alpha median step is 0.0043:
+ *  the floor dropped 12 leading and 1 trailing frame of a clip that holds
+ *  nothing. A clip whose silhouette never moves has median 0, so nothing is
+ *  dropped — which is the honest answer, and the step and seam it then
+ *  reports (both 0) say plainly that there was no motion to trim. */
+const HOLD_STEP_FRACTION = 0.25;
+/** A seam worth more than this many normal steps is a loop that does not
+ *  close: the last frame visibly snaps back to the first. */
+const SEAM_STEP_LIMIT = 2;
+/** Most in-betweens `--seam-fill auto` will synthesise at the wrap. Four,
+ *  because past that the wrap is no longer a seam to smooth but a chunk of
+ *  motion nobody shot, and inventing it silently is worse than the tick. */
+const MAX_AUTO_SEAM_FILL = 4;
+/** Under this many frames a "loop" is a slideshow. */
+const MIN_LOOP_FRAMES = 8;
+/** A Lottie past this is too much JSON to hand a browser; --width is the fix. */
+const MAX_LOTTIE_BYTES = 8 * 1024 * 1024;
+/** An APNG past this is a page asset nobody will wait for. Its own constant
+ *  rather than a shared one: the Lottie's cost is parsing base64 and the
+ *  APNG's is the download, and the two numbers are free to move apart. The
+ *  Kiki trial shipped a 33 MB APNG with nothing said about it. */
+const MAX_APNG_BYTES = 8 * 1024 * 1024;
+/**
+ * What `--width` falls back to when it is not given and the frames are bigger.
+ *
+ * A clip's own size is almost never the size a UI renders at, and the cost of
+ * assuming it is not a slightly-too-big picture: the Kiki trial cut 532px
+ * frames and landed a 45 MB Lottie and a 33 MB APNG, of which exactly one
+ * export (the WebM) was shippable. 512 is two retina-doubled 256px icons and
+ * a size every export survives; it is a DEFAULT, announced on stderr and
+ * recorded as `widthDefaulted`, never a limit — `--width 1024` is obeyed.
+ */
+const DEFAULT_LOOP_WIDTH = 512;
+
+// --- retime: the clip's own frames, in another order ------------------------
+/** Frames `retime` will decode out of one clip. A Seedance plate is 5–10s at
+ *  24fps; 600 is 25 seconds of it, and past that the PNG sequence on disk is
+ *  the problem rather than the reorder. */
+const MAX_RETIME_SOURCE_FRAMES = 600;
+/** Near-lossless: the retimed plate is an intermediate that interpolation and
+ *  matting both read afterwards, so it must not add artefacts of its own. */
+const RETIME_CRF = 12;
+/** How different two channels have to be before a plate counts as a chroma
+ *  screen with a spill hue to remove. A neutral grey plate has none, and
+ *  running `despill` on it would tint the subject for no reason. */
+const DESPILL_DOMINANCE = 24;
+
 /** Pre-align grid cells `run` leaves next to `frames/`: what `inspect` judges
  *  "leaves its grid cell" on, and what re-aligning a motion re-reads. */
 const CELLS_DIRNAME = "cells";
@@ -126,7 +184,7 @@ const ALIGN_RECORD = "align.json";
 
 const SUBCOMMANDS = [
   "probe", "key", "flatten", "slice", "clean", "align", "pack", "gif",
-  "inspect", "run", "contact", "from-video",
+  "inspect", "run", "contact", "from-video", "retime", "loop",
 ];
 
 const USAGE = `Usage: sprite-sheet.mjs <subcommand> [options]
@@ -262,6 +320,64 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       --fps then defaults to the mean sampling rate, (N-1) / (last - first).
       The JSON says which schedule ran: "even" or "explicit".
       The clip is only read: it is never copied or moved into <motionDir>.
+
+  retime <clip> --keep <ranges> --out <mp4> [--fps N]
+      Replay a clip's OWN frames in another order: an apex hold cut short, a
+      beat repeated, a second blink dropped. <ranges> is a comma list of
+      inclusive frame indices in the order they should play, repeats allowed
+      — '2-40,41-60,2-40' is three ranges and 81 frames. Nothing is invented:
+      the frames are decoded once and written back at the clip's own rate (or
+      --fps) as an opaque H.264 mp4 (yuv420p, crf ${RETIME_CRF}).
+      This belongs on the PLATE clip, BEFORE matting and before interpolation,
+      so a clip that already carries alpha is refused by name.
+      The JSON reports firstIs / lastIs — which source frames now sit at the
+      wrap. After a retime the loop no longer closes by construction, and
+      'loop' has to measure the seam again.
+
+  loop <clip> --out <motionDir> --name <motionId>
+      [--trim-start s] [--trim-end s] [--key auto|#rrggbb|none|alpha]
+      [--similarity ${DEFAULT_VIDEO_SIMILARITY}] [--blend ${DEFAULT_BLEND}] [--despill|--no-despill]
+      [--trim-holds|--no-trim-holds] [--seam-fill auto|none|N]
+      [--crop union|none] [--pad ${DEFAULT_PAD}] [--width W]
+      [--fps N] [--formats ${LOOP_FORMATS.join(",")}] [--threshold ${DEFAULT_THRESHOLD}]
+      A seamless transparent animation for a UI, not an atlas for an engine.
+      EVERY frame of the (trimmed) window is decoded in ONE pass — no
+      per-frame seeking, no even sampling — keyed, cropped and written to
+      <motionDir>/frames/NNN.png (three digits, up to ${MAX_LOOP_FRAMES}), then exported
+      as loop.webp / loop.apng / loop.webm / loop.json (Lottie image
+      sequence). The frames are NOT aligned or cleaned: in a loop the
+      movement is the content, so a bobbing icon has to keep bobbing.
+      --key auto measures frame 0's corner plate and colorkeys it; alpha
+      decodes the clip's OWN alpha (a VEED webm, a Bria ProRes 4444 mov);
+      none leaves the frames opaque and says so.
+      --despill (default on when keying a green or blue plate) takes the
+      plate's spill hue off the silhouette AFTER the key — despilling first
+      moves the plate off the colour the key was told to look for, and the
+      key then matches nothing. A neutral plate has no spill hue, so despill
+      is skipped there whatever the flag says.
+      --trim-holds (default on) drops the closing frames that have frozen
+      back onto the first frame, and the opening frames that have not moved
+      yet (keeping the last frame of the freeze).
+      --seam-fill auto (default) interpolates in-betweens into the wrap from
+      the last frame back to the first — the one transition the model never
+      drew — when the seam is worth more than ${SEAM_STEP_LIMIT} normal steps: ${MAX_AUTO_SEAM_FILL} at most,
+      enough to bring the wrap back to about one step. The loop gets that
+      many frames longer, their sampledAt is null, and the reported seam
+      becomes the worst step across the filled wrap. N forces a count,
+      none exports the wrap exactly as it was shot.
+      --crop union crops every frame to one rect — the union of the kept
+      frames' alpha bboxes plus --pad — so relative motion is preserved.
+      --width scales in PREMULTIPLIED alpha, so soft edges do not darken.
+      Omitted, a frame wider than ${DEFAULT_LOOP_WIDTH}px is capped at ${DEFAULT_LOOP_WIDTH} with one line on
+      stderr and widthDefaulted: true in the report — the clip's own size is
+      almost never the size the UI renders at, and an uncapped one lands as a
+      Lottie nobody can ship.
+      --fps N interpolates the PLATE frames to N fps with minterpolate,
+      wrapped around the loop; refused with --key alpha, because
+      interpolation belongs before matting (see interpolate-video.mjs).
+      Reports seam (how far the last frame is from the first), step (the
+      median frame-to-frame change) and maxStep: seam << step is a loop that
+      closes. Writes <motionDir>/inspect.json in the loop shape.
 
 Exit code 0 on success, 1 on failure with a one-line ERROR: on stderr.`;
 
@@ -646,7 +762,14 @@ function normalizeColor(value, flag) {
 // Frame directories
 // ---------------------------------------------------------------------------
 
-const FRAME_RE = /^(\d{2})\.png$/;
+/**
+ * A frame file is `NN.png` (a sprite motion) or `NNN.png` (a loop motion,
+ * which keeps every frame of its window). Both are read by the same walk, and the
+ * contiguity check below is what stops a directory holding both conventions
+ * at once from being read as one sequence — `00.png` and `000.png` would
+ * both claim index 0.
+ */
+const FRAME_RE = /^(\d{2,3})\.png$/;
 
 function listFrames(dir) {
   if (!existsSync(dir) || !statSync(dir).isDirectory()) fail(`frames directory not found: ${dir}`);
@@ -655,7 +778,7 @@ function listFrames(dir) {
     .filter((e) => e.match)
     .map((e) => ({ index: Number(e.match[1]), path: join(dir, e.name) }))
     .sort((a, b) => a.index - b.index);
-  if (!entries.length) fail(`no NN.png frames in ${dir}`);
+  if (!entries.length) fail(`no NN.png or NNN.png frames in ${dir}`);
   entries.forEach((entry, i) => {
     if (entry.index !== i) fail(`frames in ${dir} are not contiguous from 00 (found ${basename(entry.path)} at position ${i})`);
   });
@@ -663,6 +786,9 @@ function listFrames(dir) {
 }
 
 const frameName = (index) => `${String(index).padStart(2, "0")}.png`;
+/** A loop motion's frame file. Three digits, always — a sequence that mixed
+ *  widths would demux as two different `%0Nd` patterns. */
+const loopFrameName = (index) => `${String(index).padStart(3, "0")}.png`;
 
 /** A frames dir is rewritten wholesale — a shorter motion must not inherit
  *  the tail of a longer one, and the align record goes with the frames it
@@ -1205,10 +1331,57 @@ function stepPack(framesDir, { out, atlas, name, fps, loop, anchor, cols, scale,
   };
 }
 
-function hasLibwebp() {
-  const r = spawnSync("ffmpeg", ["-v", "error", "-hide_banner", "-encoders"], { encoding: "utf-8" });
-  return r.status === 0 && String(r.stdout).includes("libwebp");
+/**
+ * Which encoders and decoders this ffmpeg build actually has, read once.
+ *
+ * An export whose encoder is missing is a warning, not a failure — a build
+ * without libvpx still produces the WebP and the APNG — so every encoder is
+ * asked for by name before it is used. The names are matched exactly: a
+ * substring test for `libwebp` would also accept a build that carries only
+ * the STILL encoder, which is not the one an animation needs (`hasLibwebp`).
+ */
+const codecTables = new Map();
+function codecNames(kind) {
+  if (!codecTables.has(kind)) {
+    const r = spawnSync("ffmpeg", ["-v", "error", "-hide_banner", `-${kind}`], { encoding: "utf-8" });
+    const names = new Set();
+    if (r.status === 0) {
+      for (const line of String(r.stdout).split("\n")) {
+        const m = /^\s*[A-Z.]{6}\s+(\S+)/.exec(line);
+        if (m && m[1] !== "=") names.add(m[1]);
+      }
+    }
+    codecTables.set(kind, names);
+  }
+  return codecTables.get(kind);
 }
+const hasEncoder = (name) => codecNames("encoders").has(name);
+const hasDecoder = (name) => codecNames("decoders").has(name);
+
+/**
+ * `libwebp_anim`, NOT `libwebp` — the difference is whether the animation
+ * ghosts.
+ *
+ * ffmpeg's still `libwebp` encoder hands the webp muxer one full-canvas image
+ * per frame and the muxer writes every ANMF with blend = ALPHA-BLEND and
+ * dispose = none. A compositing decoder — libwebp's own WebPAnimDecoder,
+ * every browser — therefore paints frame i on TOP of the canvas frame i-1
+ * left behind, and a transparent pixel of frame i shows the older silhouette
+ * through. `libwebp_anim` drives libwebp's WebPAnimEncoder, which writes each
+ * frame as a sub-rectangle with the blend/dispose pair that makes the
+ * composited canvas equal the frame it was given.
+ *
+ * Measured 2026-09-22, ffmpeg 8.0, on the 119 keyed flame frames of the loop
+ * trial (512x596) and on this suite's 24-frame orbit fixture, decoded back
+ * through libwebp's animation decoder and compared with the source PNGs:
+ *
+ *   encoder        worst mean |alpha - source|   max   size
+ *   libwebp        12.73 (flame) / 73.93 (orbit) 255    3421390 B
+ *   libwebp_anim    0.037 (flame) /  0.00 (orbit)  1    3307530 B
+ *
+ * so the animated encoder is also 3% smaller and no slower (4.4s vs 4.6s).
+ */
+const hasLibwebp = () => hasEncoder("libwebp_anim");
 
 function stepGif(framesDir, { out, fps, loop, webp, width }) {
   const dir = resolve(framesDir);
@@ -1245,11 +1418,11 @@ function stepGif(framesDir, { out, fps, loop, webp, width }) {
         "-start_number", "0",
         "-i", pattern,
         ...(width ? ["-vf", `scale=${outWidth}:${outHeight}:flags=neighbor`] : []),
-        "-c:v", "libwebp", "-pix_fmt", "yuva420p", "-q:v", "85",
+        "-c:v", "libwebp_anim", "-pix_fmt", "yuva420p", "-q:v", "85",
         "-loop", loop ? "0" : "1",
       ], "webp");
     } else {
-      warnings.push("libwebp encoder is not available in this ffmpeg build — skipped the WebP preview");
+      warnings.push("libwebp_anim encoder is not available in this ffmpeg build — skipped the WebP preview");
     }
   }
 
@@ -1706,10 +1879,28 @@ function probeVideoStream(path) {
   };
 }
 
+/**
+ * …which is why the clamp lands HALF A FRAME BEFORE that presentation time,
+ * not on it.
+ *
+ * `-ss T` takes the first frame at or after T, so backing off half a period
+ * still selects the last frame — it just addresses it from a timestamp that
+ * survives being written down. Landing on the PTS itself does not, twice over
+ * (measured on a 24 fps, 122-frame clip, ffmpeg 8.0):
+ *   - `(frames - 1) / fps` = 121/24 is 5.041666666666667 as a double, which is
+ *     strictly GREATER than the exact 121/24 the container stores, so ffmpeg
+ *     already looks past the last frame;
+ *   - every caller rounds its timestamps to 3 dp before handing them to
+ *     ffmpeg, and 5.041667 rounds to 5.042 — well past it. `contact` then
+ *     crashed with `ENOENT … rename …/.023.tmp.png`, because ffmpeg writes no
+ *     file and still exits 0.
+ * Half a frame is 0.0208 s at 24 fps and survives that rounding with room to
+ * spare at any frame rate a clip is shot at.
+ */
 function probeLastFrameTime(path, duration) {
   const { fps, frames } = probeVideoStream(path);
-  if (fps && frames !== null && frames > 1) return (frames - 1) / fps;
-  if (fps) return Math.max(0, duration - 1 / fps);
+  if (fps && frames !== null && frames > 1) return Math.max(0, (frames - 1.5) / fps);
+  if (fps) return Math.max(0, duration - 1.5 / fps);
   // Nothing measurable (a stream with neither count nor rate): 50 ms is longer
   // than one frame at any rate a clip is shot at.
   return Math.max(0, duration - 0.05);
@@ -2242,6 +2433,928 @@ function stepFromVideo(clip, options) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// retime — a clip's own frames, in another order
+// ---------------------------------------------------------------------------
+
+/**
+ * `2-40,41-60,2-40` → `[[2,40],[41,60],[2,40]]`.
+ *
+ * Inclusive, ordered, repeats allowed: the list IS the playback order, which
+ * is what lets one take become "breathe, blink, breathe again". Everything
+ * checkable without the clip is checked here; "past the last frame" needs the
+ * clip and is checked where it is decoded.
+ */
+function parseKeepRanges(raw) {
+  const parts = String(raw).split(",").map((value) => value.trim()).filter(Boolean);
+  if (!parts.length) {
+    fail("--keep: expected inclusive frame ranges in playback order, e.g. 2-40,60-66,2-40");
+  }
+  return parts.map((part) => {
+    const match = /^(\d+)-(\d+)$/.exec(part);
+    if (!match) {
+      fail(`--keep: '${part}' is not a frame range — write each one as <first>-<last>, e.g. 2-40 (a single frame is 40-40)`);
+    }
+    const from = Number(match[1]);
+    const to = Number(match[2]);
+    if (to < from) {
+      fail(`--keep: '${part}' runs backwards — a range plays forwards, so write ${to}-${from} if that is the stretch you meant`);
+    }
+    return [from, to];
+  });
+}
+
+/**
+ * Replay a clip's own frames in a given order, as an opaque H.264 plate.
+ *
+ * This is the step the Kiki trial had to improvise with `ffmpeg concat` and
+ * then could not record: two Seedance takes both froze for 1.5–2s at the
+ * inhale apex and blinked twice, which no prompt wording fixed and a $1.10
+ * re-shoot did not either. Cutting the freeze and dropping the second blink
+ * is free, deterministic, and invents no pixel — every written frame is a
+ * frame the model really drew.
+ *
+ * It runs on the PLATE, before matting and before interpolation, for the same
+ * reason `loop --fps` does: those steps read pixels, and re-encoding a matte
+ * to yuv420p would throw its alpha away. A clip that already carries one is
+ * refused by name rather than silently flattened.
+ *
+ * What it does NOT preserve is the first-last guarantee: after a reorder the
+ * frames at the wrap are whichever ones the ranges put there, so `firstIs` /
+ * `lastIs` are reported and `loop`'s measured seam becomes the only proof
+ * that the cycle still closes.
+ */
+function stepRetime(clip, options) {
+  const input = resolve(clip);
+  if (!existsSync(input)) fail(`file not found: ${input}`);
+  const out = resolve(options.out);
+  if (extname(out).toLowerCase() !== ".mp4") {
+    fail(`--out: expected an .mp4 path — a retimed plate is opaque H.264, which is what the interpolation and matting steps take (got '${options.out}')`);
+  }
+
+  const stream = probeVideoStream(input);
+  const fps = round(options.fps ?? stream.fps ?? 0, 3);
+  if (!fps) {
+    fail(`retime: ${input} reports no frame rate, so there is nothing to replay it at — pass --fps N`);
+  }
+  const size = probeSize(input, "retime");
+  if (size.width % 2 || size.height % 2) {
+    fail(`retime: ${input} is ${size.width}x${size.height} and H.264 needs even sides — crop or scale the clip before reordering it`);
+  }
+
+  // Beside the output, not in tmpdir: a PNG sequence of a plate clip is the
+  // same order of magnitude as the clip itself, and it belongs on whichever
+  // disk is about to hold the result. Removed on the way out either way.
+  const work = join(dirname(out), `.retime-work-${basename(out, extname(out))}`);
+  rmSync(work, { recursive: true, force: true });
+  mkdirSync(work, { recursive: true });
+
+  try {
+    // Alpha in means this is not a plate. Same guard, same reason and nearly
+    // the same sentence as `loop --fps`: the step belongs earlier in the chain.
+    const probe = ffmpegTo(join(work, "alpha.png"), () => [
+      ...alphaDecodeArgs(input), "-i", input, "-frames:v", "1", "-pix_fmt", "rgba",
+    ], "retime alpha probe");
+    if (hasAlpha(readRgba(probe))) {
+      fail(`retime: ${input} carries its own alpha, so it has already been matted. Reorder the PLATE clip it was made from and matte the result — a retime re-encodes to opaque H.264 and would drop the matte.`);
+    }
+
+    const srcDir = join(work, "src");
+    mkdirSync(srcDir, { recursive: true });
+    ffmpeg([
+      "-i", input, "-vf", "format=rgb24",
+      "-frames:v", String(MAX_RETIME_SOURCE_FRAMES + 1),
+      "-start_number", "0", "--", join(srcDir, "%03d.png"),
+    ], "retime decode");
+    const sourceFrames = sequenceCount(srcDir, "retime");
+    if (sourceFrames > MAX_RETIME_SOURCE_FRAMES) {
+      fail(`retime: ${input} is over ${MAX_RETIME_SOURCE_FRAMES} frames — trim it before reordering it`);
+    }
+    if (sourceFrames < 2) {
+      fail(`retime: ${input} decoded to ${sourceFrames} frame(s) — there is no order to change`);
+    }
+
+    // Naming a frame the clip does not have is the easy way to silently ship
+    // a shorter loop than was asked for, so it is an error and not a clamp.
+    for (const [from, to] of options.keep) {
+      if (to >= sourceFrames) {
+        fail(`--keep ${from}-${to}: the clip has ${sourceFrames} frames (0-${sourceFrames - 1})`);
+      }
+    }
+    const written = options.keep.reduce((sum, [from, to]) => sum + (to - from + 1), 0);
+    if (written < 2) {
+      fail(`--keep: ${written} frame is not a clip — name at least two frames of playback`);
+    }
+    if (written > MAX_LOOP_FRAMES) {
+      fail(`--keep: ${written} frames is over the ${MAX_LOOP_FRAMES}-frame limit a loop is cut under — drop a range or shorten one`);
+    }
+
+    const orderDir = join(work, "order");
+    mkdirSync(orderDir, { recursive: true });
+    let index = 0;
+    for (const [from, to] of options.keep) {
+      for (let i = from; i <= to; i++) {
+        copyFileSync(join(srcDir, loopFrameName(i)), join(orderDir, loopFrameName(index)));
+        index++;
+      }
+    }
+
+    ffmpegTo(out, () => [
+      "-framerate", String(fps), "-start_number", "0", "-i", join(orderDir, "%03d.png"),
+      "-frames:v", String(written), "-c:v", "libx264", "-pix_fmt", "yuv420p",
+      "-crf", String(RETIME_CRF),
+    ], "retime encode");
+
+    return {
+      kind: "retime",
+      source: input,
+      out,
+      fps,
+      keep: options.keep,
+      frames: written,
+      sourceFrames,
+      duration: round(written / fps, 3),
+      // Which source frames now sit at the wrap. A first-last clip closed
+      // because both ends were the same generated image; after a reorder that
+      // is only true when the ranges put it back, and the skill reads these
+      // two numbers to say which case it is looking at.
+      firstIs: options.keep[0][0],
+      lastIs: options.keep[options.keep.length - 1][1],
+    };
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// loop — every frame of a closed window, as a transparent animation for a UI
+// ---------------------------------------------------------------------------
+
+/**
+ * Decoder flags a clip needs before its alpha survives the decode.
+ *
+ * ffmpeg's native `vp9` decoder ignores the alpha a WebM carries as block
+ * side-data, so a VEED matte comes back fully opaque and every frame of the
+ * "transparent" loop is an opaque rectangle. `libvpx-vp9` reads it. ProRes
+ * 4444 and every pix_fmt with an alpha plane need nothing special, and the
+ * `--key alpha` probe measures the first frame either way, so a build without
+ * libvpx refuses with "the clip carries no matte" rather than silently
+ * producing 400 opaque frames.
+ */
+function alphaDecodeArgs(input) {
+  const r = spawnSync("ffprobe", [
+    "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name",
+    "-of", "default=noprint_wrappers=1:nokey=1", input,
+  ], { encoding: "utf-8" });
+  const codec = r.error || r.status !== 0 ? null : String(r.stdout).trim();
+  if (codec === "vp9" && hasDecoder("libvpx-vp9")) return ["-c:v", "libvpx-vp9"];
+  return [];
+}
+
+/**
+ * The screen type `despill` should strip, or null when there is nothing to
+ * strip. A chroma plate is a hue; a neutral grey plate (the reference clip's)
+ * is not, and despilling it would tint the subject for no reason.
+ */
+function despillType(hex) {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  if (g > r + DESPILL_DOMINANCE && g > b + DESPILL_DOMINANCE) return "green";
+  if (b > r + DESPILL_DOMINANCE && b > g + DESPILL_DOMINANCE) return "blue";
+  return null;
+}
+
+/**
+ * The key chain, in the one order that works: **key first, despill second**.
+ *
+ * Measured on a Seedance 480p flame clip (plate `#01f209`, 640²), ffmpeg 8.0:
+ * `despill=type=green,colorkey=0x01f209:0.22:0.05` leaves the whole plate
+ * OPAQUE and near-black, because despill has already moved the plate off the
+ * colour the key was told to look for. The other way round —
+ * `colorkey=…,despill=type=green:mix=0.6:expand=0.5` — removes the plate AND
+ * takes the bright-green rim off the silhouette; plain `colorkey` leaves a
+ * visible 1–2 px green fringe at 640², which is not acceptable for a UI icon
+ * seen at 1:1. `despill` does not touch alpha unless asked to (`alpha=false`
+ * is its default), so running it after the key cannot undo the matte.
+ */
+function loopKeyChain(keyColor, { similarity, blend, despill }) {
+  const chain = [];
+  if (keyColor) chain.push(`colorkey=${keyColor}:${similarity}:${blend}`);
+  chain.push("format=rgba");
+  const type = keyColor && despill ? despillType(keyColor) : null;
+  if (type) chain.push(`despill=type=${type}:mix=0.6:expand=0.5`);
+  return { chain, despill: type };
+}
+
+/** Bbox and coverage of one 8-bit gray plane inside a bigger buffer. */
+function grayBbox(buffer, offset, width, height, threshold) {
+  let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1, count = 0;
+  for (let y = 0; y < height; y++) {
+    const row = offset + y * width;
+    for (let x = 0; x < width; x++) {
+      if (buffer[row + x] < threshold) continue;
+      count++;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+  }
+  return {
+    coverage: count / (width * height),
+    bbox: count ? { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 } : null,
+  };
+}
+
+/** How many `NNN.png` a working directory holds, refusing a gap. */
+function sequenceCount(dir, label) {
+  const names = readdirSync(dir).filter((name) => /^\d{3}\.png$/.test(name)).sort();
+  names.forEach((name, i) => {
+    if (Number(name.slice(0, 3)) !== i) {
+      fail(`${label}: ${dir} is not a contiguous 000.png sequence (found ${name} at position ${i})`);
+    }
+  });
+  return names.length;
+}
+
+/**
+ * One silhouette per decoded frame, in one pass over the sequence.
+ *
+ * The masks are read off the DECODED FRAMES rather than off the clip a second
+ * time, so mask i is frame i by construction — the hold trimming and the seam
+ * both index into this list and into the frames that get written, and a
+ * resampling difference between two decodes would silently misalign them.
+ */
+function decodeLoopMasks(dir, count, size, alphaBased, label, start = 0) {
+  const height = scaledHeight(size, ANALYSIS_WIDTH);
+  const chain = alphaBased
+    ? ["alphaextract", `scale=${ANALYSIS_WIDTH}:${height}`]
+    : ["format=gray", `scale=${ANALYSIS_WIDTH}:${height}`];
+  const r = spawnSync("ffmpeg", [
+    "-v", "error", "-start_number", String(start), "-i", join(dir, "%03d.png"),
+    "-frames:v", String(count),
+    "-vf", chain.join(","), "-f", "rawvideo", "-pix_fmt", "gray", "-",
+  ], { maxBuffer: MAX_RAW_BYTES });
+  if (r.error) fail(`${label}: could not analyse the decoded frames (${r.error.message})`);
+  if (r.status !== 0) fail(`${label}: could not analyse the decoded frames\n${String(r.stderr ?? "").trim()}`);
+  const frameBytes = ANALYSIS_WIDTH * height;
+  const got = Math.floor((r.stdout?.length ?? 0) / frameBytes);
+  if (got !== count) {
+    fail(`${label}: ${count} frames were decoded but ${got} could be analysed — one of them does not decode`);
+  }
+  const masks = Array.from({ length: got }, (_, i) => r.stdout.subarray(i * frameBytes, (i + 1) * frameBytes));
+  return alphaBased ? masks : masks.map(subtractBackground);
+}
+
+/**
+ * Full-resolution alpha bbox and coverage of every kept frame, read in batches.
+ *
+ * Batched rather than in one pass because the crop rect has to be exact — a
+ * downscaled bbox would either clip the subject or pad it by a guess — and one
+ * pass over 400 frames of 1440² alpha is 830 MB in a single Buffer. The batch
+ * is sized so no spawn ever buffers more than a quarter of MAX_RAW_BYTES.
+ */
+function loopFrameBoxes(dir, first, count, size, threshold, label) {
+  const frameBytes = size.width * size.height;
+  const batch = Math.max(1, Math.floor(MAX_RAW_BYTES / 4 / frameBytes));
+  const boxes = [];
+  for (let done = 0; done < count; done += batch) {
+    const take = Math.min(batch, count - done);
+    const r = spawnSync("ffmpeg", [
+      "-v", "error", "-start_number", String(first + done), "-i", join(dir, "%03d.png"),
+      "-frames:v", String(take), "-vf", "alphaextract",
+      "-f", "rawvideo", "-pix_fmt", "gray", "-",
+    ], { maxBuffer: MAX_RAW_BYTES });
+    if (r.error) fail(`${label}: could not measure the decoded frames (${r.error.message})`);
+    if (r.status !== 0) fail(`${label}: could not measure the decoded frames\n${String(r.stderr ?? "").trim()}`);
+    if ((r.stdout?.length ?? 0) < take * frameBytes) {
+      fail(`${label}: frames ${first + done}..${first + done + take - 1} measured ${r.stdout?.length ?? 0} bytes, expected ${take * frameBytes}`);
+    }
+    for (let i = 0; i < take; i++) {
+      boxes.push(grayBbox(r.stdout, i * frameBytes, size.width, size.height, threshold));
+    }
+  }
+  return boxes;
+}
+
+/**
+ * Which frames of the window are animation and which are a held pose.
+ *
+ * `HOLD = 0.25 · median step` — a quarter of a normal frame's change, in this
+ * clip's own units and no one else's. Trailing frames go while the last one
+ * has frozen back onto the first (a Seedance first-last clip closes on a
+ * duplicate of the keyframe); leading frames go while nothing has moved yet,
+ * and the LAST frame of that freeze is kept, because it is the pose the loop
+ * starts from.
+ */
+function holdWindow(masks, steps, hold) {
+  let first = 0;
+  let last = masks.length - 1;
+  while (last > first && maskDiff(masks[0], masks[last]) < hold) last--;
+  while (first < last && steps[first] < hold) first++;
+  return { first, last };
+}
+
+function trimHolds(masks, enabled) {
+  const steps = [];
+  for (let i = 0; i + 1 < masks.length; i++) steps.push(maskDiff(masks[i], masks[i + 1]));
+  const hold = HOLD_STEP_FRACTION * median(steps);
+  if (!enabled) return { first: 0, last: masks.length - 1, steps };
+  return { ...holdWindow(masks, steps, hold), steps };
+}
+
+/**
+ * How many in-betweens to synthesise at the wrap, given the seam and the step.
+ *
+ * `auto` fills only a seam the eye can already see — over `SEAM_STEP_LIMIT`
+ * steps, the same line the warning is drawn at — and fills it just enough to
+ * bring the wrap back to about one step: a seam of `k` steps needs `k - 1`
+ * frames in the gap, capped at `MAX_AUTO_SEAM_FILL`. A clip whose median step
+ * is 0 (nothing moves) has no scale to measure a seam against, so it gets
+ * nothing. An explicit count is obeyed as given — that is what it is for.
+ */
+function planSeamFill(request, seam, step) {
+  if (request === "none") return 0;
+  if (request !== "auto") return request;
+  if (!(step > 0) || seam <= SEAM_STEP_LIMIT * step) return 0;
+  return Math.min(MAX_AUTO_SEAM_FILL, Math.ceil(seam / step) - 1);
+}
+
+/**
+ * The in-betweens for the one transition the model never drew.
+ *
+ * A first-last clip closes on its keyframe, so every step inside the window
+ * was rendered — except the wrap from the last frame back to the first, which
+ * exists only because we play it in a ring. Measured 2026-09-22 on the trial
+ * flame (VEED matte, `--key alpha`): a 0.0429 seam against a 0.0131 median
+ * step, i.e. a one-frame tick every cycle.
+ *
+ * FOUR frames go in, not two — `[last-1, last, first, first+1]`. `minterpolate`
+ * is bidirectional: it needs a real frame on each side of every in-between,
+ * and the two outer frames are what give the wrap the same motion vectors the
+ * rest of the loop was interpolated with. At `fps · (fills + 1)` an output
+ * frame lands on input `k` exactly at index `k · (fills + 1)` (measured), so
+ * `last` is output `fills + 1`, `first` is output `2·(fills + 1)`, and the
+ * frames STRICTLY between them are `fills + 2 … 2·fills + 1`.
+ *
+ * Interpolated in `yuva444p`, i.e. the RGBA frames directly, alpha included:
+ * `minterpolate` accepts that format natively (it converts anything else to
+ * it — `format=gbrap` shows up as an auto-inserted `gbrap → yuva444p` scale),
+ * so the premultiply / alphamerge detour is not needed. The RGBA → yuva444p →
+ * RGBA round trip costs mean |ΔRGB| 0.249 (max 2) and mean |Δalpha| 0.031
+ * (max 1) on a real keyed flame frame. Working on the already-keyed frames is
+ * also what makes this work the same way for a keyed plate and for `--key
+ * alpha`: by this point both are the same RGBA sequence.
+ */
+function fillSeamFrames(srcDir, work, { first, last, fills, fps }) {
+  const ringDir = join(work, "seam");
+  const outDir = join(work, "seam-fill");
+  for (const dir of [ringDir, outDir]) {
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+  }
+  // `Math.max` / `Math.min` for the two-frame loop, where `last - 1` is
+  // `first` and `first + 1` is `last`: the ring is then [f, l, f, l], which is
+  // still a real frame on both sides of the wrap.
+  const ring = [Math.max(first, last - 1), last, first, Math.min(last, first + 1)];
+  ring.forEach((index, i) => {
+    copyFileSync(join(srcDir, loopFrameName(index)), join(ringDir, loopFrameName(i)));
+  });
+
+  ffmpeg([
+    "-framerate", String(fps), "-start_number", "0", "-i", join(ringDir, "%03d.png"),
+    "-vf", `format=yuva444p,minterpolate=fps=${fps * (fills + 1)}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1,format=rgba`,
+    "-frames:v", String(2 * fills + 2),
+    "-start_number", "0", "-pix_fmt", "rgba", "--", join(outDir, "%03d.png"),
+  ], "loop seam fill");
+
+  // Straight into the source sequence, right after the last kept frame: the
+  // crop/scale pass reads ONE contiguous `%03d.png` run, and whatever sits at
+  // those indices is a frame hold trimming already dropped.
+  for (let i = 0; i < fills; i++) {
+    const from = join(outDir, loopFrameName(fills + 2 + i));
+    if (!existsSync(from)) {
+      fail(`--seam-fill ${fills}: minterpolate returned no in-between for the wrap (expected ${2 * fills + 2} frames at ${fps * (fills + 1)}fps, got ${sequenceCount(outDir, "loop")}). Pass --seam-fill none to export the wrap as shot.`);
+    }
+    copyFileSync(from, join(srcDir, loopFrameName(last + 1 + i)));
+  }
+}
+
+/**
+ * A Lottie image sequence: one embedded PNG per frame, one image layer per
+ * frame, each visible for exactly its own frame.
+ *
+ * Plain Lottie JSON with base64 assets rather than a `.lottie` zip, because
+ * lottie-web and every dotLottie player read this shape with no extra writer
+ * and no extra file to serve.
+ */
+function loopLottie(framesDir, frameCount, { fps, name, cell }) {
+  const assets = [];
+  const layers = [];
+  for (let i = 0; i < frameCount; i++) {
+    const id = `img_${i}`;
+    const png = readFileSync(join(framesDir, loopFrameName(i))).toString("base64");
+    assets.push({ id, w: cell.width, h: cell.height, u: "", p: `data:image/png;base64,${png}`, e: 1 });
+    layers.push({
+      ddd: 0, ind: i + 1, ty: 2, nm: `${name}_${String(i).padStart(3, "0")}`, refId: id, sr: 1,
+      ks: {
+        o: { a: 0, k: 100 }, r: { a: 0, k: 0 }, p: { a: 0, k: [0, 0, 0] },
+        a: { a: 0, k: [0, 0, 0] }, s: { a: 0, k: [100, 100, 100] },
+      },
+      ao: 0, ip: i, op: i + 1, st: 0, bm: 0,
+    });
+  }
+  return {
+    v: "5.7.4", fr: fps, ip: 0, op: frameCount,
+    w: cell.width, h: cell.height, nm: name, ddd: 0,
+    assets, layers,
+  };
+}
+
+/**
+ * The four deliverables. A missing encoder is a warning, never a failure: a
+ * build without libvpx still owes the caller its WebP, its APNG and its
+ * Lottie, and saying which one is missing is more use than refusing all four.
+ */
+function writeLoopExports(motionDir, framesDir, { fps, formats, name, cell, frameCount, askedWidth = null }) {
+  const paths = {};
+  const warnings = [];
+  // A deliverable this run is not producing must not survive from the last
+  // one: it would sit next to frames it no longer describes, which is the
+  // same trap `resetFramesDir` exists to close for the frames themselves.
+  for (const format of LOOP_FORMATS) {
+    if (formats.includes(format)) continue;
+    rmSync(join(motionDir, format === "lottie" ? "loop.json" : `loop.${format}`), { force: true });
+  }
+  const input = ["-framerate", String(fps), "-start_number", "0", "-i", join(framesDir, "%03d.png")];
+  const missing = (file, encoder) =>
+    warnings.push(`this ffmpeg build has no ${encoder} encoder — skipped ${file}`);
+
+  if (formats.includes("webp")) {
+    // The `gif` step's webp args, minus `flags=neighbor`: a 3D icon is not
+    // pixel art, and the frames were already scaled to their final size.
+    // `libwebp_anim` rather than `libwebp` — see `hasLibwebp`; the still
+    // encoder's output ghosts every previous frame through the transparency.
+    if (hasLibwebp()) {
+      paths.webp = ffmpegTo(join(motionDir, "loop.webp"), () => [
+        ...input, "-c:v", "libwebp_anim", "-pix_fmt", "yuva420p", "-q:v", "85", "-loop", "0",
+      ], "loop webp");
+    } else missing("loop.webp", "libwebp_anim");
+  }
+  if (formats.includes("apng")) {
+    if (hasEncoder("apng")) {
+      paths.apng = ffmpegTo(join(motionDir, "loop.apng"), () => [
+        ...input, "-f", "apng", "-plays", "0", "-pred", "mixed", "-pix_fmt", "rgba",
+      ], "loop apng");
+    } else missing("loop.apng", "apng");
+  }
+  if (formats.includes("webm")) {
+    // `-auto-alt-ref 0` is not a quality knob here: libvpx-vp9 refuses to
+    // carry an alpha plane with alt-ref frames enabled.
+    if (hasEncoder("libvpx-vp9")) {
+      paths.webm = ffmpegTo(join(motionDir, "loop.webm"), () => [
+        ...input, "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p",
+        "-auto-alt-ref", "0", "-b:v", "0", "-crf", "30", "-row-mt", "1",
+      ], "loop webm");
+    } else missing("loop.webm", "libvpx-vp9");
+  }
+  if (formats.includes("lottie")) {
+    paths.lottie = writeJsonFile(
+      join(motionDir, "loop.json"),
+      loopLottie(framesDir, frameCount, { fps, name, cell }),
+    );
+  }
+
+  const sizes = {};
+  for (const [format, path] of Object.entries(paths)) sizes[format] = statSync(path).size;
+
+  // What to DO about a deliverable nobody can ship depends on what was
+  // already asked for. "Pass --width to shrink the frames" is the right
+  // sentence when the flag was omitted and the frames came out at the clip's
+  // own size; said to a caller who passed `--width 512` it is advice they
+  // have already taken, and the trial agent that read it could only
+  // acknowledge the warning and move on. With a width on record the honest
+  // options are a smaller one or a format that does not grow with the
+  // picture — the WebM was 0.55 MB where the Lottie was 45.
+  const advice = (tail) => (askedWidth === null
+    ? `pass --width to shrink the frames ${tail}`
+    : `already at --width ${askedWidth}; halve it, or ship loop.webm instead`);
+  if (sizes.lottie > MAX_LOTTIE_BYTES) {
+    warnings.push(`loop.json is ${(sizes.lottie / 1e6).toFixed(1)} MB of base64 PNG — ${advice("before a browser has to parse it")}`);
+  }
+  if (sizes.apng > MAX_APNG_BYTES) {
+    warnings.push(`loop.apng is ${(sizes.apng / 1e6).toFixed(1)} MB — ${advice("before a page has to download it")}`);
+  }
+  return { paths, sizes, warnings };
+}
+
+/**
+ * Erase the colour under every transparent pixel of the written frames — the
+ * loop's form of `zeroKeyedRgb`, applied where the sprite path applies it.
+ *
+ * It cannot be done before the scale, because the scale is what creates the
+ * problem: `premultiply → scale → unpremultiply` divides the resampled colour
+ * back out by a resampled alpha, so an edge pixel that lands on alpha 1 comes
+ * out at FULL brightness. Measured on the reference flame at --width 512:
+ * 395 pixels below the alpha threshold carried colour, up to 255 — a bright
+ * one-pixel rim for anything that ignores alpha, and the same bleed the packed
+ * sheet once showed as solid green.
+ *
+ * Batched raw rgba in, one PNG sequence out per batch: two ffmpeg spawns for a
+ * 109-frame loop instead of two per frame, and no batch ever buffers more than
+ * half of MAX_RAW_BYTES.
+ */
+function zeroLoopFrames(framesDir, count, cell, threshold) {
+  const frameBytes = cell.width * cell.height * 4;
+  const batch = Math.max(1, Math.floor(MAX_RAW_BYTES / 2 / frameBytes));
+  let zeroed = 0;
+  for (let done = 0; done < count; done += batch) {
+    const take = Math.min(batch, count - done);
+    const r = spawnSync("ffmpeg", [
+      "-v", "error", "-start_number", String(done), "-i", join(framesDir, "%03d.png"),
+      "-frames:v", String(take), "-f", "rawvideo", "-pix_fmt", "rgba", "-",
+    ], { maxBuffer: MAX_RAW_BYTES });
+    if (r.error) fail(`loop: could not re-read the written frames (${r.error.message})`);
+    if (r.status !== 0) fail(`loop: could not re-read the written frames\n${String(r.stderr ?? "").trim()}`);
+    const wanted = take * frameBytes;
+    if ((r.stdout?.length ?? 0) < wanted) {
+      fail(`loop: frames ${done}..${done + take - 1} re-read as ${r.stdout?.length ?? 0} bytes, expected ${wanted}`);
+    }
+    const data = r.stdout.subarray(0, wanted);
+    let touched = 0;
+    for (let i = 0; i < wanted; i += 4) {
+      if (data[i + 3] >= threshold) continue;
+      if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 0) continue;
+      data[i] = 0; data[i + 1] = 0; data[i + 2] = 0;
+      touched++;
+    }
+    if (!touched) continue;
+    zeroed += touched;
+    ffmpeg([
+      "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${cell.width}x${cell.height}`, "-i", "-",
+      "-frames:v", String(take), "-pix_fmt", "rgba",
+      "-start_number", String(done), "--", join(framesDir, "%03d.png"),
+    ], "loop frames", data);
+  }
+  return zeroed;
+}
+
+/** Crop rect with even sides, which is what yuva420p and every scaler want. */
+function evenRect(rect, size) {
+  const maxW = size.width - (size.width % 2);
+  const maxH = size.height - (size.height % 2);
+  const w = Math.max(2, Math.min(maxW, rect.w + (rect.w % 2)));
+  const h = Math.max(2, Math.min(maxH, rect.h + (rect.h % 2)));
+  return { x: Math.max(0, Math.min(rect.x, size.width - w)), y: Math.max(0, Math.min(rect.y, size.height - h)), w, h };
+}
+
+/**
+ * A loop motion: every frame of a window that closes on itself, keyed to
+ * transparency and exported in the four shapes a UI can play.
+ *
+ * Nothing here aligns, cleans or packs. A sprite motion is a grid of poses an
+ * engine indexes into, so its frames are pinned to a common anchor; a loop is
+ * a film of one moving thing, so moving it back to an anchor would take the
+ * movement out. The clip is only read — like `from-video`, it is a registered
+ * asset in its own right and is never copied into the motion directory.
+ */
+function stepLoop(clip, options) {
+  const input = resolve(clip);
+  if (!existsSync(input)) fail(`file not found: ${input}`);
+  const motionDir = resolve(options.out);
+  mkdirSync(motionDir, { recursive: true });
+
+  const { duration, start, end } = clipWindow(input, { ...options, label: "loop" });
+  const windowEnd = Math.min(end, duration);
+  const span = windowEnd - start;
+  const size = probeSize(input, "loop");
+  const stream = probeVideoStream(input);
+
+  const alphaSource = options.key === "alpha";
+  const keying = options.key !== "none" && !alphaSource;
+  // Asked once: the probe and the decode have to agree on the decoder, or the
+  // probe would clear a clip whose alpha the decode then drops.
+  const decodeArgs = alphaSource ? alphaDecodeArgs(input) : [];
+  if (options.fps !== null) {
+    if (alphaSource) {
+      fail("--fps interpolates the plate, and --key alpha says the clip has already been matted. Interpolate FIRST (interpolate-video.mjs --target-fps N), then matte the result and run loop --key alpha on that.");
+    }
+    if (!stream.fps) {
+      fail(`--fps: ${input} reports no frame rate, so there is nothing to interpolate from`);
+    }
+  }
+  const plannedFps = options.fps ?? stream.fps;
+  if (plannedFps) {
+    const estimate = Math.ceil(span * plannedFps);
+    if (estimate > MAX_LOOP_FRAMES) {
+      fail(`a ${round(span, 3)}s window at ${round(plannedFps, 3)}fps is about ${estimate} frames — the limit is ${MAX_LOOP_FRAMES}. Narrow the window with --trim-start/--trim-end, or lower --fps.`);
+    }
+  }
+
+  const framesDir = join(motionDir, "frames");
+  // The working frames live under the motion directory, not in tmpdir: they
+  // are the same order of magnitude as the clip, and a rename into `frames/`
+  // has to stay on one filesystem. Removed on the way out, success or failure.
+  const work = join(motionDir, ".loop-work");
+  rmSync(work, { recursive: true, force: true });
+  mkdirSync(work, { recursive: true });
+
+  try {
+    // --- 1. what the plate is ---------------------------------------------
+    let keyColor = null;
+    if (keying) {
+      if (options.key === "auto") {
+        // Off a RAW frame at the window start, like `contact`: the clip's own
+        // idea of the plate, codec drift included.
+        const frame = ffmpegTo(join(work, "key.png"), () => [
+          "-ss", String(round(start, 3)), "-i", input, "-frames:v", "1", "-pix_fmt", "rgba",
+        ], "loop key frame");
+        keyColor = stepProbe(frame, options.threshold).cornerColor;
+      } else {
+        keyColor = normalizeColor(options.key, "--key");
+      }
+    }
+    if (alphaSource) {
+      const probe = ffmpegTo(join(work, "alpha.png"), () => [
+        "-ss", String(round(start, 3)), ...decodeArgs, "-i", input,
+        "-frames:v", "1", "-pix_fmt", "rgba",
+      ], "loop alpha probe");
+      if (!hasAlpha(readRgba(probe))) {
+        fail(`--key alpha: the first frame of ${input} is fully opaque, so the clip carries no matte. Matte it first (remove-video-background.mjs), or key its plate here with --key auto or --key #rrggbb.`);
+      }
+    }
+    const { chain: keyChain, despill } = loopKeyChain(keyColor, options);
+
+    // --- 2. decode the whole window in one pass ----------------------------
+    const srcDir = join(work, "src");
+    mkdirSync(srcDir, { recursive: true });
+    let frameFps;
+    if (options.fps === null) {
+      ffmpeg([
+        "-ss", String(start), "-t", String(span), ...decodeArgs,
+        "-i", input, "-vf", keyChain.join(","),
+        "-frames:v", String(MAX_LOOP_FRAMES + 1),
+        "-start_number", "0", "-pix_fmt", "rgba", "--", join(srcDir, "%03d.png"),
+      ], "loop decode");
+      frameFps = stream.fps;
+    } else {
+      // --- 3. interpolate, on the PLATE, wrapped around the loop -----------
+      // minterpolate estimates motion on a yuv plate; in-betweens synthesised
+      // from two already-keyed frames would smear the matte instead. The extra
+      // copy of frame 0 at the end is what makes the in-betweens between the
+      // last frame and the first real frames rather than a cut.
+      const plateDir = join(work, "plate");
+      mkdirSync(plateDir, { recursive: true });
+      ffmpeg([
+        "-ss", String(start), "-t", String(span), "-i", input,
+        "-vf", "format=rgb24", "-frames:v", String(MAX_LOOP_FRAMES + 1),
+        "-start_number", "0", "--", join(plateDir, "%03d.png"),
+      ], "loop plate decode");
+      const plateCount = sequenceCount(plateDir, "loop");
+      if (plateCount < 2) {
+        fail(`loop: ${round(span, 3)}s from ${round(start, 3)}s of ${input} decoded to ${plateCount} frame(s) — nothing to interpolate`);
+      }
+      // TWO copies, not one. `minterpolate` cannot extrapolate past its last
+      // input: 25 frames in at 24 fps came back as 47 at 48 fps, covering
+      // exactly the original 0..23/24 and none of the wrap (measured, ffmpeg
+      // 8.0). It needs a real frame on BOTH sides of every in-between, so the
+      // window is followed by frames 0 and 1 of itself — the loop continuing —
+      // and the in-betweens that carry the last frame back into the first are
+      // then interpolated from real neighbours like every other one.
+      copyFileSync(join(plateDir, loopFrameName(0)), join(plateDir, loopFrameName(plateCount)));
+      copyFileSync(join(plateDir, loopFrameName(1)), join(plateDir, loopFrameName(plateCount + 1)));
+
+      const interpDir = join(work, "interp");
+      mkdirSync(interpDir, { recursive: true });
+      ffmpeg([
+        "-framerate", String(stream.fps), "-start_number", "0", "-i", join(plateDir, "%03d.png"),
+        "-vf", `format=yuv420p,minterpolate=fps=${options.fps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1`,
+        "-start_number", "0", "--", join(interpDir, "%03d.png"),
+      ], "loop interpolate");
+
+      // Everything from the appended copy onwards is dropped; the in-betweens
+      // that lead INTO it are the wrap and are kept.
+      const produced = sequenceCount(interpDir, "loop");
+      const keep = Math.min(Math.round((options.fps * plateCount) / stream.fps), produced);
+      if (keep < 2) fail(`--fps ${options.fps}: interpolating a ${round(span, 3)}s window produced ${keep} frame(s)`);
+      if (keep > MAX_LOOP_FRAMES) {
+        fail(`--fps ${options.fps} over a ${round(span, 3)}s window is ${keep} frames — the limit is ${MAX_LOOP_FRAMES}`);
+      }
+      ffmpeg([
+        "-framerate", String(options.fps), "-start_number", "0", "-i", join(interpDir, "%03d.png"),
+        "-frames:v", String(keep), "-vf", keyChain.join(","),
+        "-start_number", "0", "-pix_fmt", "rgba", "--", join(srcDir, "%03d.png"),
+      ], "loop key");
+      frameFps = options.fps;
+    }
+
+    const decoded = sequenceCount(srcDir, "loop");
+    if (decoded > MAX_LOOP_FRAMES) {
+      fail(`the window decoded to more than ${MAX_LOOP_FRAMES} frames — narrow it with --trim-start/--trim-end`);
+    }
+    if (decoded < 2) {
+      fail(`loop: ${round(span, 3)}s from ${round(start, 3)}s of ${input} decoded to ${decoded} frame(s) — a loop needs at least two`);
+    }
+    const fps = round(frameFps ?? decoded / span, 3);
+
+    // --- 4. holds, and 5. the seam ----------------------------------------
+    const masks = decodeLoopMasks(srcDir, decoded, size, keying || alphaSource, "loop");
+    const { first, last, steps } = trimHolds(masks, options.trimHolds);
+    const shot = last - first + 1;
+    if (shot < 2) {
+      fail(`--trim-holds left ${shot} of ${decoded} frames — the clip holds one pose throughout. Pass --no-trim-holds to keep every frame, or shoot a clip that moves.`);
+    }
+    const kept = steps.slice(first, last);
+    const step = round(median(kept), 4);
+    const maxStep = round(Math.max(...kept), 4);
+    const dropped = { leading: first, trailing: decoded - 1 - last };
+    let seam = round(maskDiff(masks[last], masks[first]), 4);
+
+    // --- 5b. fill the seam -------------------------------------------------
+    // Before the crop, so the in-betweens are inside the union bbox and go
+    // through the same scale and the same alpha zeroing as every other frame.
+    const seamFill = planSeamFill(options.seamFill, seam, step);
+    if (shot + seamFill > MAX_LOOP_FRAMES) {
+      fail(`--seam-fill ${seamFill} on top of ${shot} frames is over the ${MAX_LOOP_FRAMES} frame limit — narrow the window with --trim-start/--trim-end, or pass --seam-fill none`);
+    }
+    if (seamFill > 0) {
+      fillSeamFrames(srcDir, work, { first, last, fills: seamFill, fps });
+      // The seam is now the WORST step across the wrap, not the gap it used to
+      // be: an in-between that lands badly must not be able to hide behind the
+      // two ends having been brought closer together.
+      const wrap = [masks[last], ...decodeLoopMasks(srcDir, seamFill, size, keying || alphaSource, "loop", last + 1), masks[first]];
+      let worst = 0;
+      for (let i = 0; i + 1 < wrap.length; i++) worst = Math.max(worst, maskDiff(wrap[i], wrap[i + 1]));
+      seam = round(worst, 4);
+    }
+    const count = shot + seamFill;
+
+    const warnings = [];
+    if (seam > SEAM_STEP_LIMIT * step) {
+      warnings.push(seamFill > 0
+        ? `the loop does not close — even with ${seamFill} interpolated frame(s) at the wrap the worst step there is ${seam} against a normal step of ${step}; shoot again with the same image at both ends, or pass --trim-start/--trim-end from the contact sheet`
+        : `the loop does not close — the last frame is ${seam} from the first against a normal step of ${step}; shoot again with the same image at both ends, or pass --trim-start/--trim-end from the contact sheet`);
+    }
+
+    // --- 6. crop and scale -------------------------------------------------
+    const boxes = keying || alphaSource
+      ? loopFrameBoxes(srcDir, first, count, size, options.threshold, "loop")
+      : Array.from({ length: count }, () => ({
+        coverage: 1, bbox: { x: 0, y: 0, w: size.width, h: size.height },
+      }));
+    const emptyFrames = boxes.map((b, i) => (b.bbox ? -1 : i)).filter((i) => i >= 0);
+    const alphaCoverage = round(boxes.reduce((sum, b) => sum + b.coverage, 0) / count, 4);
+
+    let crop = { x: 0, y: 0, w: size.width, h: size.height };
+    if (options.crop === "union") {
+      const filled = boxes.map((b) => b.bbox).filter(Boolean);
+      if (!filled.length) {
+        fail(`every frame is empty above alpha threshold ${options.threshold} — check --key, --similarity and --blend against what 'contact' showed`);
+      }
+      // ONE rect for every frame, so what moves inside it keeps moving: a
+      // per-frame crop would silently re-centre the subject and flatten the
+      // very motion the loop exists to show.
+      const x0 = Math.max(0, Math.min(...filled.map((b) => b.x)) - options.pad);
+      const y0 = Math.max(0, Math.min(...filled.map((b) => b.y)) - options.pad);
+      const x1 = Math.min(size.width, Math.max(...filled.map((b) => b.x + b.w)) + options.pad);
+      const y1 = Math.min(size.height, Math.max(...filled.map((b) => b.y + b.h)) + options.pad);
+      crop = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    }
+    crop = evenRect(crop, size);
+
+    // No `--width` and a frame bigger than a UI ever asks for: cap it, and
+    // say so. The clip's own size is not a decision anybody made — the Kiki
+    // trial cut 532px frames because the flag was omitted and shipped a 45 MB
+    // Lottie. One line on stderr and one flag in the report, so the choice is
+    // visible and overridable rather than silently inherited from the codec.
+    const widthDefaulted = options.width === null && crop.w > DEFAULT_LOOP_WIDTH;
+    if (widthDefaulted) {
+      console.error(`no --width given: frames capped at ${DEFAULT_LOOP_WIDTH} px (source ${crop.w} px); pass --width to choose`);
+    }
+    const targetWidth = widthDefaulted ? DEFAULT_LOOP_WIDTH : options.width;
+
+    const outWidth = targetWidth === null ? crop.w : Math.max(2, 2 * Math.round(targetWidth / 2));
+    const outHeight = targetWidth === null
+      ? crop.h
+      : scaledHeight({ width: crop.w, height: crop.h }, outWidth);
+
+    // premultiply → scale → unpremultiply. Scaling straight alpha mixes every
+    // edge pixel with whatever RGB sits under the transparent pixel beside it
+    // — the plate on a keyed frame, black on a zeroed one, a dark halo either
+    // way. Premultiplied, a transparent pixel contributes nothing, so the edge
+    // keeps the subject's own colour and only its alpha falls off.
+    //
+    // 8-bit, and `area` in both directions. A kernel with NEGATIVE LOBES rings
+    // a premultiplied matte into black at the silhouette, which is the dark
+    // fringe this whole detour exists to avoid; `area` has none (a box filter
+    // going down, plain linear going up). Measured on the reference flame at
+    // ffmpeg 8.0, counting the partially transparent pixels whose luminance is
+    // under 40 — 1160x1432 down to 512: lanczos 123, bicubic 5, area 0;
+    // 484x566 up to 512: lanczos 46, spline 40, bicubic 28, area 0. Also 8-bit
+    // rather than rgba64: a 16-bit alpha of 1..256 comes back as 8-bit 0 while
+    // `unpremultiply` has already divided its colour back up to full
+    // brightness, which left 997 transparent pixels carrying up to 255.
+    const chain = [`crop=${crop.w}:${crop.h}:${crop.x}:${crop.y}`, "premultiply=inplace=1"];
+    if (outWidth !== crop.w || outHeight !== crop.h) {
+      chain.push(`scale=${outWidth}:${outHeight}:flags=area`);
+    }
+    chain.push("unpremultiply=inplace=1");
+
+    resetFramesDir(framesDir);
+    ffmpeg([
+      "-start_number", String(first), "-i", join(srcDir, "%03d.png"),
+      "-frames:v", String(count), "-vf", chain.join(","),
+      "-start_number", "0", "-pix_fmt", "rgba", "--", join(framesDir, "%03d.png"),
+    ], "loop frames");
+    const written = sequenceCount(framesDir, "loop");
+    if (written !== count) {
+      fail(`loop: wrote ${written} of ${count} frames into ${framesDir} — a frame could not be re-encoded`);
+    }
+    const cell = { width: outWidth, height: outHeight };
+    zeroLoopFrames(framesDir, count, cell, options.threshold);
+
+    // --- 7. the deliverables ----------------------------------------------
+    const { paths, sizes, warnings: exportWarnings } = writeLoopExports(motionDir, framesDir, {
+      fps, formats: options.formats, name: options.name, cell, frameCount: count,
+      // The width the CALLER asked for, not the one that landed: "pass
+      // --width" is dead advice to someone who already did.
+      askedWidth: options.width,
+    });
+
+    if (keyColor && alphaCoverage > KEYED_OPAQUE_ALERT) {
+      warnings.push(`keying ${keyColor} left ${(alphaCoverage * 100).toFixed(0)}% of each frame opaque — was the clip shot on a flat chroma background?`);
+    }
+    if (options.key === "none") {
+      warnings.push("--key none: the frames are opaque, so the loop has no transparency to composite over a UI");
+    }
+    warnings.push(...listAndTruncate(emptyFrames, (i) => `frame ${loopFrameName(i).slice(0, 3)} is empty`));
+    if (count < MIN_LOOP_FRAMES) {
+      warnings.push(`${count} frames is a slideshow, not a loop — shoot a longer clip, widen the window, or raise --fps`);
+    }
+    warnings.push(...exportWarnings);
+
+    // --- 8. the report ----------------------------------------------------
+    // No anchorDrift / bodyDrift / maxJump / scaleDrift: a loop is not judged
+    // on them, and a number nobody judges is noise in the agent's context.
+    const inspect = {
+      kind: "loop",
+      frameCount: count,
+      cell,
+      // Present only when the cap really fired: `false` on every run that
+      // passed `--width` would read as a statement about a default that was
+      // never consulted.
+      ...(widthDefaulted ? { widthDefaulted: true } : {}),
+      fps,
+      duration: round(count / fps, 3),
+      seam,
+      step,
+      maxStep,
+      alphaCoverage,
+      ...(keyColor ? { keyColor } : {}),
+      emptyFrames,
+      dropped,
+      seamFill,
+      exports: sizes,
+      warnings,
+    };
+    writeJsonFile(join(motionDir, "inspect.json"), inspect);
+
+    // --- 9. the run summary `register-run` consumes ------------------------
+    // `null` for a filled frame: it has a place in the loop but no source
+    // timestamp, and a made-up one would put a frame the clip never contained
+    // on a provenance edge as if it had been sampled from it.
+    const sampledAt = Array.from({ length: count }, (_, i) => (
+      i < shot ? round(start + (first + i) / fps, 3) : null
+    ));
+    return {
+      kind: "loop",
+      source: "video",
+      video: input,
+      motionDir,
+      name: options.name,
+      frames: Array.from({ length: count }, (_, i) => join(framesDir, loopFrameName(i))),
+      sampledAt,
+      fps,
+      duration: round(count / fps, 3),
+      trim: { start: round(start, 3), end: round(windowEnd, 3) },
+      dropped,
+      seamFill,
+      ...(keyColor ? { keyColor } : {}),
+      ...(despill ? { despill } : {}),
+      alphaCoverage,
+      cell,
+      ...(widthDefaulted ? { widthDefaulted: true } : {}),
+      ...(paths.webp ? { webp: paths.webp } : {}),
+      ...(paths.apng ? { apng: paths.apng } : {}),
+      ...(paths.webm ? { webm: paths.webm } : {}),
+      ...(paths.lottie ? { lottie: paths.lottie } : {}),
+      inspect,
+      warnings,
+    };
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
 /** Copy a w*h RGBA window out of a decoded image without re-decoding it. */
 function cropBuffer(image, x, y, w, h) {
   const out = Buffer.allocUnsafe(w * h * 4);
@@ -2319,7 +3432,27 @@ const OPTIONS = {
     threshold: { type: "string" }, similarity: { type: "string" }, blend: { type: "string" },
     "no-clean": { type: "boolean", default: false },
   },
+  retime: {
+    keep: { type: "string" }, out: { type: "string" }, fps: { type: "string" },
+  },
+  loop: {
+    out: { type: "string" }, name: { type: "string" },
+    "trim-start": { type: "string" }, "trim-end": { type: "string" },
+    key: { type: "string" }, similarity: { type: "string" }, blend: { type: "string" },
+    despill: { type: "boolean", default: false }, "no-despill": { type: "boolean", default: false },
+    "trim-holds": { type: "boolean", default: false }, "no-trim-holds": { type: "boolean", default: false },
+    "seam-fill": { type: "string" },
+    crop: { type: "string" }, pad: { type: "string" }, width: { type: "string" },
+    fps: { type: "string" }, formats: { type: "string" }, threshold: { type: "string" },
+  },
 };
+
+/** `--seam-fill auto|none|<N>` — "auto", "none", or how many in-betweens. */
+function pickSeamFill(value) {
+  if (value === undefined || value === "auto") return "auto";
+  if (value === "none") return "none";
+  return num(value, "--seam-fill", { integer: true, min: 0 });
+}
 
 function num(value, flag, { integer = false, min = -Infinity, fallback } = {}) {
   if (value === undefined) return fallback;
@@ -2388,6 +3521,29 @@ function pickLoop(values, fallback = false) {
   if (values.loop) return true;
   if (values["no-loop"]) return false;
   return fallback;
+}
+
+/** A `--flag` / `--no-flag` pair whose default is ON. */
+function pickToggle(values, flag, fallback) {
+  if (values[flag] && values[`no-${flag}`]) fail(`--${flag} and --no-${flag} are mutually exclusive`);
+  if (values[flag]) return true;
+  if (values[`no-${flag}`]) return false;
+  return fallback;
+}
+
+/** `--formats webp,apng` — the same comma-or-repeat flattening `--at` uses. */
+function parseFormats(raw) {
+  if (raw === undefined) return [...LOOP_FORMATS];
+  const asked = String(raw).split(",").map((v) => v.trim().toLowerCase()).filter(Boolean);
+  if (!asked.length) fail(`--formats: expected some of ${LOOP_FORMATS.join(", ")}, got '${raw}'`);
+  for (const format of asked) {
+    if (!LOOP_FORMATS.includes(format)) {
+      fail(`--formats: expected some of ${LOOP_FORMATS.join(", ")}, got '${format}'`);
+    }
+  }
+  // Written in the canonical order whatever order they were asked in, so the
+  // JSON key order does not depend on how the flag was typed.
+  return LOOP_FORMATS.filter((format) => asked.includes(format));
 }
 
 function emit(values, payload, humanLines) {
@@ -2657,6 +3813,49 @@ function main() {
       });
       emit(values, out, [
         `${out.name}: ${out.frames.length} frames of ${out.cell.width}x${out.cell.height} sampled from ${basename(out.video)} at ${out.fps}fps → ${out.motionDir}`,
+        ...(out.warnings.length ? out.warnings : ["no warnings"]),
+      ]);
+      break;
+    }
+    case "retime": {
+      const out = stepRetime(requirePositional(positionals, "<clip>"), {
+        keep: parseKeepRanges(requireFlag(values.keep, "--keep")),
+        out: requireFlag(values.out, "--out"),
+        fps: values.fps === undefined ? null : num(values.fps, "--fps", { min: 1 }),
+      });
+      emit(values, out, [
+        `${basename(out.out)}: ${out.frames} frames at ${out.fps} fps (${out.duration}s) replayed from ${out.sourceFrames} frames of ${basename(out.source)}`,
+        `kept ${out.keep.map(([from, to]) => `${from}-${to}`).join(", ")} — the wrap is now source frame ${out.lastIs} back to ${out.firstIs}, so measure the seam again with 'loop'`,
+      ]);
+      break;
+    }
+    case "loop": {
+      const key = values.key ?? "auto";
+      if (key !== "auto" && key !== "none" && key !== "alpha") normalizeColor(key, "--key");
+      const crop = values.crop ?? "union";
+      if (crop !== "union" && crop !== "none") fail(`--crop: expected union or none, got '${values.crop}'`);
+      const out = stepLoop(requirePositional(positionals, "<clip>"), {
+        out: requireFlag(values.out, "--out"),
+        name: requireFlag(values.name, "--name"),
+        trimStart: num(values["trim-start"], "--trim-start", { min: 0, fallback: null }),
+        trimEnd: num(values["trim-end"], "--trim-end", { min: 0, fallback: null }),
+        key,
+        similarity: num(values.similarity, "--similarity", { min: 0, fallback: DEFAULT_VIDEO_SIMILARITY }),
+        blend: num(values.blend, "--blend", { min: 0, fallback: DEFAULT_BLEND }),
+        despill: pickToggle(values, "despill", true),
+        trimHolds: pickToggle(values, "trim-holds", true),
+        seamFill: pickSeamFill(values["seam-fill"]),
+        crop,
+        pad: num(values.pad, "--pad", { integer: true, min: 0, fallback: DEFAULT_PAD }),
+        width: values.width === undefined ? null : num(values.width, "--width", { integer: true, min: 2 }),
+        fps: values.fps === undefined ? null : num(values.fps, "--fps", { min: 1 }),
+        formats: parseFormats(values.formats),
+        threshold,
+      });
+      emit(values, out, [
+        `${out.name}: ${out.frames.length} frames of ${out.cell.width}x${out.cell.height} at ${out.fps}fps (${out.duration}s) from ${basename(out.video)} → ${out.motionDir}`,
+        `seam ${out.inspect.seam} vs step ${out.inspect.step} (max ${out.inspect.maxStep}), dropped ${out.dropped.leading} leading / ${out.dropped.trailing} trailing, seam-fill ${out.seamFill}`,
+        ...Object.entries(out.inspect.exports).map(([format, bytes]) => `${format} ${(bytes / 1e6).toFixed(2)} MB`),
         ...(out.warnings.length ? out.warnings : ["no warnings"]),
       ]);
       break;

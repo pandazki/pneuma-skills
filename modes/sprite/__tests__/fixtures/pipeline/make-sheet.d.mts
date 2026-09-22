@@ -91,3 +91,95 @@ export interface BuildClipOptions {
 }
 
 export declare function buildClip(outPath: string, options?: BuildClipOptions): string;
+
+export declare const CLIP_ENCODERS: Record<"h264" | "prores4444", string[]>;
+
+/** The overlaid box of an expression clip: its position is the expression, so
+ *  only its size and colour are fixed. */
+export interface ExprBox {
+  w: number;
+  h: number;
+  /** Any ffmpeg colour expression. */
+  color: string;
+}
+
+export interface BuildExprClipOptions {
+  width?: number;
+  height?: number;
+  fps?: number;
+  /** Frames to emit; the duration is frames / fps. */
+  frames?: number;
+  background?: string;
+  box?: ExprBox;
+  /** ffmpeg expressions in `t`; commas are escaped for you. */
+  x?: string;
+  y?: string;
+  encode?: "h264" | "prores4444";
+}
+
+export declare function buildExprClip(outPath: string, options?: BuildExprClipOptions): string;
+export declare function clipFrameDeltas(path: string, width?: number): number[];
+
+export interface BuildNoiseClipOptions {
+  width?: number;
+  height?: number;
+  fps?: number;
+  /** Frames to emit; the duration is frames / fps. */
+  frames?: number;
+  /** ffmpeg `noise` strength, 0–100. */
+  level?: number;
+}
+
+export declare function buildNoiseClip(outPath: string, options?: BuildNoiseClipOptions): string;
+
+/** Mean x of the off-plate pixels in each frame, in analysis pixels; `null`
+ *  for a frame with nothing off the plate. */
+export declare function clipBoxCentres(
+  path: string,
+  options?: { width?: number; tolerance?: number },
+): Array<number | null>;
+
+export interface EdgeLumaReport {
+  /** Pixels whose alpha is inside [min, max). */
+  count: number;
+  /** Lowest / mean luminance among them, or null when there are none. */
+  min: number | null;
+  mean: number | null;
+}
+
+export declare function edgeLuma(
+  path: string,
+  bounds?: { min?: number; max?: number },
+): EdgeLumaReport;
+
+/** `loop`'s own seam/step scale: changed alpha over combined alpha, 0..1. */
+export declare function silhouetteDiff(pathA: string, pathB: string): number;
+
+export interface WebpFrame {
+  /** Rectangle this frame paints, in canvas pixels. */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  durationMs: number;
+  /** 0 = alpha-blend onto the canvas, 1 = overwrite it. */
+  blend: 0 | 1;
+  /** 0 = leave the canvas, 1 = clear this rect to the background after. */
+  dispose: 0 | 1;
+}
+
+export interface WebpAnimation {
+  /** VP8X canvas size; null when the file has no VP8X chunk. */
+  canvas: { width: number; height: number } | null;
+  /** VP8X alpha flag: does the file declare it carries transparency. */
+  declaresAlpha: boolean;
+  /** ANIM loop count, 0 = forever; null when the file is not animated. */
+  loops: number | null;
+  frames: WebpFrame[];
+}
+
+export declare function webpAnimation(path: string): WebpAnimation;
+
+/** Indices of the frames written as a full-canvas alpha blend over a canvas
+ *  nothing cleared — the still encoder's shape, the one that ghosts. */
+export declare function webpStackedFrames(path: string): number[];

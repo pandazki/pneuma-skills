@@ -162,6 +162,10 @@ describe("the skill install surface", () => {
       "fal-queue.mjs",
       "seedance-video.mjs",
       "remove-background.mjs",
+      // The loop workflow's two paid steps: matting a clip to alpha, and
+      // interpolating it to 60 fps. Both drive fal through fal-queue.mjs.
+      "remove-video-background.mjs",
+      "interpolate-video.mjs",
     ]) {
       expect({ script, declared: declared.includes(script) }).toEqual({
         script,
@@ -209,13 +213,13 @@ describe("the skill install surface", () => {
     // video read "video preview is off" right under the steps for doing it.
     const skill = read("modes/sprite/skill/SKILL.md");
     const enabled = applyTemplateParams(skill, {
-      defaultVideoModel: "seedance-2.5",
+      ...defaultInitParams(),
       imageGenEnabled: "true",
       videoGenEnabled: "true",
       videoGenDisabled: "",
     });
     const disabled = applyTemplateParams(skill, {
-      defaultVideoModel: "seedance-2.5",
+      ...defaultInitParams(),
       imageGenEnabled: "true",
       videoGenEnabled: "",
       videoGenDisabled: "true",
@@ -232,6 +236,21 @@ describe("the skill install surface", () => {
     }
   });
 
+  /**
+   * Every declared init param at its default, which is what the installer
+   * hands `deriveParams`. Built from the manifest rather than listed here:
+   * a param added to the mode and forgotten in this file would make the two
+   * tests below pass while the skill they check has an unsubstituted
+   * `{{…}}` in it.
+   */
+  const defaultInitParams = (): Record<string, string> =>
+    Object.fromEntries(
+      (spriteManifest.init!.params ?? []).map((param) => [
+        param.name,
+        String(param.defaultValue ?? "x") || "x",
+      ]),
+    );
+
   test("every conditional block in SKILL.md closes, and uses a real flag", () => {
     // `{{#key}}…{{/key}}` is the only section syntax the installer supports —
     // an inverted `{{^key}}` block would be silently left in the agent's
@@ -241,13 +260,7 @@ describe("the skill install surface", () => {
     const opens = [...skill.matchAll(/\{\{#(\w+)\}\}/g)].map((m) => m[1]);
     const closes = [...skill.matchAll(/\{\{\/(\w+)\}\}/g)].map((m) => m[1]);
     expect(opens.sort()).toEqual(closes.sort());
-    const derived = Object.keys(
-      spriteManifest.init!.deriveParams!({
-        openrouterApiKey: "x",
-        falApiKey: "x",
-        defaultVideoModel: "seedance-2.5",
-      }),
-    );
+    const derived = Object.keys(spriteManifest.init!.deriveParams!(defaultInitParams()));
     for (const key of opens) {
       expect({ key, known: derived.includes(key) }).toEqual({ key, known: true });
     }
@@ -258,13 +271,7 @@ describe("the skill install surface", () => {
     // included — an unknown key there survives into the agent's reading as
     // literal `{{…}}`, which is how a reference silently stops being advice.
     const known = new Set(
-      Object.keys(
-        spriteManifest.init!.deriveParams!({
-          openrouterApiKey: "x",
-          falApiKey: "x",
-          defaultVideoModel: "seedance-2.5",
-        }),
-      ),
+      Object.keys(spriteManifest.init!.deriveParams!(defaultInitParams())),
     );
     // The installer's `applyTemplateParams` substitutes only init params and
     // `deriveParams` output — there is no framework-supplied key beyond them
@@ -334,6 +341,24 @@ describe("the skill install surface", () => {
     }
   });
 
+  test("both installed scripts declare the same loop frame ceiling", () => {
+    // `sprite-sheet.mjs` refuses a loop over MAX_LOOP_FRAMES; `sprite-project.mjs`
+    // warns about a brief that would exceed it BEFORE the clip is paid for.
+    // They are two standalone zero-dependency files installed side by side
+    // with no module between them, so the number is written twice on purpose —
+    // and two different numbers would promise a length the pipeline then
+    // refuses, after the money is spent. Nothing but this test connects them.
+    const declared = ["sprite-sheet.mjs", "sprite-project.mjs"].map((name) => {
+      const match = read(`modes/sprite/skill/scripts/${name}`)
+        .match(/^const MAX_LOOP_FRAMES = (\d+);$/m);
+      return { name, value: match?.[1] };
+    });
+    for (const { name, value } of declared) {
+      expect({ name, declared: value !== undefined }).toEqual({ name, declared: true });
+    }
+    expect(declared[0].value).toBe(declared[1].value!);
+  });
+
   test("every references file the SKILL.md indexes exists on disk", () => {
     const skill = read("modes/sprite/skill/SKILL.md");
     const referenced = [...skill.matchAll(/`references\/([\w-]+\.md)`/g)].map(
@@ -350,12 +375,13 @@ describe("the skill install surface", () => {
 });
 
 describe("showcase copy", () => {
-  test("four highlights with localized titles and non-placeholder copy", () => {
-    // Four, not three: the sheet-vs-video choice and the style/grid range are
-    // separate claims, and neither is implied by the other two.
+  test("five highlights with localized titles and non-placeholder copy", () => {
+    // Five, not three: the sheet-vs-video choice, the style/grid range and the
+    // seamless-loop workflow are separate claims, and none is implied by the
+    // others.
     const showcase = JSON.parse(read("modes/sprite/showcase/showcase.json"));
     expect(showcase.hero).toBe("hero.png");
-    expect(showcase.highlights).toHaveLength(4);
+    expect(showcase.highlights).toHaveLength(5);
     expect(Object.keys(showcase.tagline).sort()).toEqual(["en", "ja", "zh-CN"]);
     for (const highlight of showcase.highlights) {
       expect(Object.keys(highlight.title).sort()).toEqual(["en", "ja", "zh-CN"]);

@@ -20,7 +20,11 @@ import type {
   ViewerCommandDescriptor,
   ViewerNotification,
 } from "../../../core/types/viewer-contract.js";
-import type { Motion, VideoMode, VideoModel } from "../domain.js";
+import type {
+  GeneratedVideoMode,
+  GeneratedVideoModel,
+  Motion,
+} from "../domain.js";
 import { CrosshairIcon, FilmIcon, SparkIcon, type IconProps } from "./icons.js";
 import type { SpriteStrings } from "./strings.js";
 
@@ -59,14 +63,42 @@ const ICON_FOR: Record<string, (p: IconProps) => React.ReactElement> = {
   "fix-alignment": CrosshairIcon,
 };
 
+/** Commands that only make sense for a sprite motion, by id. */
+const SPRITE_ONLY_COMMANDS = new Set(["fix-alignment"]);
+
+/**
+ * The commands that apply to the motion on stage.
+ *
+ * "Frames are misaligned" asks the agent to re-run `align` — and a loop is
+ * never aligned: its frames are kept exactly where the clip put them, because
+ * the movement IS the content. Offering the button anyway is an offer to
+ * break the deliverable, and a user who pressed it would get an agent
+ * explaining why it cannot do the thing the UI just proposed.
+ *
+ * With no motion selected every command is listed and disabled — the bar is
+ * how a user learns what this stage can do, and a loop is not yet on it.
+ */
+export function motionCommands(
+  commands: ViewerCommandDescriptor[],
+  motion: Motion | null,
+): ViewerCommandDescriptor[] {
+  if (motion?.kind !== "loop") return commands;
+  return commands.filter((command) => !SPRITE_ONLY_COMMANDS.has(command.id));
+}
+
 /** Model and mode names are the API's own, so they are not translated — the
- *  sentence explaining each one is (see `strings.ts`). */
-const MODELS: Array<{ id: VideoModel; label: string }> = [
+ *  sentence explaining each one is (see `strings.ts`).
+ *
+ *  Typed on the GENERATING halves of the two unions, not on `VideoModel` /
+ *  `VideoMode`: the matting and interpolation models (`veed`, `bria`,
+ *  `topaz`) take a finished clip, so there is nothing for this popover to
+ *  ask them to render, and `derived` is not a way of shooting anything. */
+const MODELS: Array<{ id: GeneratedVideoModel; label: string }> = [
   { id: "seedance-2.5", label: "Seedance 2.5" },
   { id: "h3-max", label: "MiniMax H3 Max" },
 ];
 
-const MODES: Array<{ id: VideoMode; label: string }> = [
+const MODES: Array<{ id: GeneratedVideoMode; label: string }> = [
   { id: "i2v", label: "i2v" },
   { id: "first-last", label: "first-last" },
   { id: "r2v", label: "r2v" },
@@ -76,7 +108,7 @@ export interface CommandBarProps {
   commands: ViewerCommandDescriptor[];
   motion: Motion | null;
   /** `initParams.defaultVideoModel` — the session's configured default. */
-  defaultVideoModel: VideoModel;
+  defaultVideoModel: GeneratedVideoModel;
   onNotifyAgent: (notification: ViewerNotification) => void;
   t: SpriteStrings;
   /** Told whenever a popover opens or closes: while one is up it owns the
@@ -118,7 +150,8 @@ export function CommandBar({
     };
   }, [open]);
 
-  if (commands.length === 0) return null;
+  const visible = motionCommands(commands, motion);
+  if (visible.length === 0) return null;
 
   const send = (
     command: ViewerCommandDescriptor,
@@ -151,7 +184,7 @@ export function CommandBar({
 
   return (
     <div ref={rootRef} className="flex items-center gap-1.5">
-      {commands.map((command) => {
+      {visible.map((command) => {
         const Icon = ICON_FOR[command.id] ?? SparkIcon;
         const disabled = !motion;
         return (
@@ -224,13 +257,17 @@ function RenderVideoPopover({
   onConfirm,
 }: {
   motion: Motion;
-  defaultModel: VideoModel;
+  defaultModel: GeneratedVideoModel;
   t: SpriteStrings;
   onCancel: () => void;
-  onConfirm: (model: VideoModel, mode: VideoMode, note: string) => void;
+  onConfirm: (
+    model: GeneratedVideoModel,
+    mode: GeneratedVideoMode,
+    note: string,
+  ) => void;
 }) {
-  const [model, setModel] = useState<VideoModel>(defaultModel);
-  const [mode, setMode] = useState<VideoMode>("i2v");
+  const [model, setModel] = useState<GeneratedVideoModel>(defaultModel);
+  const [mode, setMode] = useState<GeneratedVideoMode>("i2v");
   const [note, setNote] = useState("");
 
   return (

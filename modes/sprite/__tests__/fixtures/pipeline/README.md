@@ -2,10 +2,24 @@
 
 Inputs for `sprite-sheet.test.ts` and `sprite-project.test.ts`.
 
-- `make-sheet.mjs` — draws every sprite sheet the suites need with ffmpeg at
-  test time, so no binary blobs live in the repo. Also carries `readBbox`,
-  the tests' independent decoder (they never trust the script under test to
-  report its own pixels).
+- `make-sheet.mjs` — draws every sprite sheet and clip the suites need with
+  ffmpeg at test time, so no binary blobs live in the repo. Also carries
+  `readBbox`, the tests' independent decoder (they never trust the script
+  under test to report its own pixels).
+  - `buildSheet` / `buildClip` — the sheet grid and the breathing clip the
+    sampling commands are pinned on.
+  - `buildExprClip` — a clip whose box position is any expression in `t`, and
+    whose codec may be ProRes 4444 (a clip that carries its own alpha). The
+    loop cases use it for a named frame count, a frozen tail, a motion that
+    never returns, and a matted source.
+  - `clipFrameDeltas` — max |Δ| between consecutive frames. Any fixture that
+    argues "every frame is different" is measured with this before anything is
+    asserted on it; `drawbox` evaluates its `x`/`y` once at config time, so a
+    "moving" drawbox fixture is a still image with a duration.
+  - `alphaColorAudit` / `edgeLuma` — what survives under the transparency, and
+    how bright the partially transparent edge is. The second is what tells a
+    premultiplied resize from a straight-alpha one: a white subject scaled in
+    straight alpha comes back with a grey rim.
 - `bounce-run.json` — a hand-written `sprite-sheet.mjs run` summary with
   workspace-relative paths, fed to `sprite-project.mjs register-run`. Its
   `inspect` block is the canonical fixture's, not a real measurement. It

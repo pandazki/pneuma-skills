@@ -61,6 +61,20 @@
       },
       "media": "highlight-any-style-any-grid.png",
       "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "Seamless UI Loops",
+        "zh-CN": "无缝循环，直接上 UI",
+        "ja": "つなぎ目のない UI ループ"
+      },
+      "description": {
+        "en": "One keyframe goes in as the clip's first frame and its last, so the motion comes back to where it started. The matte keeps the alpha, and every frame ships as WebP, APNG, WebM and Lottie — with the seam across the wrap measured, not assumed.",
+        "zh-CN": "同一张关键帧，既当片子的第一帧，也当最后一帧，动作转一圈就回到出发时的样子。抠像保住透明通道，每一帧再导成 WebP、APNG、WebM 和 Lottie——接缝是量出来的，不是说说而已。",
+        "ja": "同じキーフレームをクリップの最初のコマと最後のコマの両方に渡すので、モーションは出発点に戻ってきます。マットは透明度を残したまま、全コマを WebP、APNG、WebM、Lottie として書き出し —— つなぎ目は「たぶん合っている」ではなく、実測した数字で確かめます。"
+      },
+      "media": "highlight-seamless-loop.png",
+      "mediaType": "image"
     }
   ]
 }

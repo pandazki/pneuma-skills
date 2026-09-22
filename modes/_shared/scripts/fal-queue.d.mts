@@ -104,8 +104,35 @@ export interface FalMediaUrlOptions {
  * through, a local file becomes a base64 data URI. Throws — never exits —
  * for a missing file, an unsupported extension, or a file too large to
  * inline.
+ *
+ * Images only. A video goes through `uploadFalFile`: the video endpoints
+ * validate `video_url` as a URL and reject anything past 2083 characters.
  */
 export function falMediaUrl(input: string, options?: FalMediaUrlOptions): string;
+
+/** Where an upload is registered before its bytes are PUT. */
+export const FAL_UPLOAD_INITIATE_URL: string;
+
+export interface UploadFalFileOptions {
+  /** fal API key, sent only to fal's own storage API — never with the PUT. */
+  key: string;
+  /** The flag this input came from, used in every refusal message. */
+  label?: string;
+  fetchImpl?: typeof fetch;
+  /** Where the "uploading N MB" note goes. */
+  onNote?: (message: string) => void;
+  signal?: AbortSignal;
+}
+
+/**
+ * Upload a local file to fal storage and return the `https://v3*.fal.media/…`
+ * URL fal will fetch it from: POST the intent for `{ upload_url, file_url }`,
+ * then PUT the bytes to the pre-signed `upload_url`.
+ *
+ * Throws with the status and the head of the body when either step fails,
+ * and for a missing file or an extension with no known MIME type.
+ */
+export function uploadFalFile(path: string, options: UploadFalFileOptions): Promise<string>;
 
 /** Attempts one artifact download spends before it gives up. */
 export const DOWNLOAD_ATTEMPTS: number;
