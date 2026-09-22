@@ -1,8 +1,12 @@
 /**
  * Mode Resolver — resolve mode sources and ensure local availability.
  *
- * Supports three mode sources:
- * - builtin: "doc", "slide" — built-in modes, loaded from the modes/ directory
+ * Mode sources:
+ * - builtin: "slide", "webcraft" — bundled modes, loaded from `modes/`
+ * - catalog: "doc", "sprite" — first-party modes that a release does not
+ *   ship. Resolved from `modes/<name>/` in a repo checkout, otherwise
+ *   downloaded and verified into `~/.pneuma/catalog/<name>/`
+ *   (`core/mode-catalog.ts`)
  * - local: "/abs/path" or "./rel/path" — local filesystem path
  * - github: "github:user/repo" or "github:user/repo#branch" — GitHub repository
  *
@@ -27,6 +31,12 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import {
+  ensureCatalogMode,
+  isBundledMode,
+  isCatalogMode,
+  type CatalogEnv,
+} from "./mode-catalog.js";
+import {
   detectRepoShape,
   getLibrariesDir,
   getLibraryDir,
@@ -37,7 +47,7 @@ import {
   type LibrarySyncReport,
 } from "./library-registry.js";
 
-export type ModeSourceType = "builtin" | "local" | "github" | "url";
+export type ModeSourceType = "builtin" | "catalog" | "local" | "github" | "url";
 
 export interface ResolvedMode {
   /** Mode source type */
@@ -46,34 +56,31 @@ export interface ResolvedMode {
   name: string;
   /** Absolute filesystem path to the mode package directory */
   path: string;
+  /**
+   * Root for resolving `init.seedFiles` keys. Present for catalog modes,
+   * whose mode directory is either in-tree (seed keys are package-relative)
+   * or an install root; absent for the sources whose rule has not changed
+   * (`PROJECT_ROOT` for builtins, the mode directory for externals).
+   */
+  seedBase?: string;
   /** Original specifier as provided by the user */
   specifier: string;
 }
 
-/** Known builtin mode names */
-// Keep in sync with the builtin registry in core/mode-loader.ts. A plain name
-// not in this set still resolves as builtin via the fallthrough in
-// parseModeSpecifier, so a stale entry here is not load-breaking — but it must
-// stay complete to remain a trustworthy catalog and to survive any future
-// tightening of that fallthrough.
-const BUILTIN_MODES = new Set([
-  "doc",
-  "slide",
-  "draw",
-  "diagram",
-  "illustrate",
-  "remotion",
-  "gridboard",
-  "kami",
-  "clipcraft",
-  "cosmos",
-  "webcraft",
-  "mode-maker",
-  "evolve",
-  "project-evolve",
-  "project-onboard",
-  "project-tidy",
-]);
+/**
+ * Known first-party mode names, read from `modes/distribution.json` (the
+ * bundled set) and the packaged catalog / in-tree mode directories (the
+ * catalog set). Nothing is hard-coded here any more: the distribution file
+ * is the one authority for which modes ship in the package, and duplicating
+ * it as a literal is how the old list went stale.
+ *
+ * A plain name in neither set still resolves as `builtin` via the
+ * fallthrough in `parseModeSpecifier`, and `mode-loader` produces the
+ * "Unknown mode" error.
+ */
+function isBuiltinName(specifier: string, env?: CatalogEnv): boolean {
+  return isBundledMode(specifier, env);
+}
 
 /** Global cache directory for cloned GitHub modes */
 const MODES_CACHE_DIR = join(homedir(), ".pneuma", "modes");
@@ -82,10 +89,11 @@ const MODES_CACHE_DIR = join(homedir(), ".pneuma", "modes");
  * Parse a mode specifier and determine its source type.
  *
  * @param specifier — Mode specifier string
- * @param projectRoot — Absolute path to the pneuma-skills project root
+ * @param env — Package/home override; defaults to the running package.
+ *   Only plain names consult it (to tell bundled from catalog modes).
  * @returns Parsed mode source info (not yet resolved to disk)
  */
-export function parseModeSpecifier(specifier: string): {
+export function parseModeSpecifier(specifier: string, env?: CatalogEnv): {
   type: ModeSourceType;
   name: string;
   /** For github: { user, repo, ref } */
@@ -149,9 +157,15 @@ export function parseModeSpecifier(specifier: string): {
     };
   }
 
-  // Builtin: plain name
-  if (BUILTIN_MODES.has(specifier)) {
+  // Builtin: a plain name in the bundled set
+  if (isBuiltinName(specifier, env)) {
     return { type: "builtin", name: specifier };
+  }
+
+  // Catalog: a plain name this release knows but may not carry — in-tree
+  // source in a repo checkout, a CDN archive in a release.
+  if (isCatalogMode(specifier, env)) {
+    return { type: "catalog", name: specifier };
   }
 
   // Unknown — could be a builtin we don't know about, let mode-loader handle it
@@ -186,13 +200,14 @@ export async function resolveModeOrLibrary(
   specifier: string,
   projectRoot: string,
 ): Promise<ResolveResult> {
-  const parsed = parseModeSpecifier(specifier);
+  const parsed = parseModeSpecifier(specifier, { projectRoot });
 
   switch (parsed.type) {
     case "builtin":
+    case "catalog":
     case "local": {
       // No library possibility — these specifiers point at a single mode
-      // by definition (either a builtin name or an absolute path).
+      // by definition (a first-party name or an absolute path).
       const resolved = await resolveMode(specifier, projectRoot);
       return { kind: "single", resolved };
     }
@@ -316,7 +331,7 @@ export async function resolveMode(
   specifier: string,
   projectRoot: string,
 ): Promise<ResolvedMode> {
-  const parsed = parseModeSpecifier(specifier);
+  const parsed = parseModeSpecifier(specifier, { projectRoot });
 
   switch (parsed.type) {
     case "builtin": {
@@ -324,6 +339,23 @@ export async function resolveMode(
         type: "builtin",
         name: parsed.name,
         path: join(projectRoot, "modes", parsed.name),
+        specifier,
+      };
+    }
+
+    case "catalog": {
+      // In a repo checkout this is `modes/<name>/` and costs nothing. In a
+      // release the mode is not in the package, so a missing or stale
+      // install is downloaded and verified here — which is what makes a
+      // handoff, a resume or a launcher click into a not-yet-installed mode
+      // work without every caller knowing about the catalog. Failures
+      // surface as `ModeInstallError` with an actionable code.
+      const resolved = await ensureCatalogMode(parsed.name, { projectRoot });
+      return {
+        type: "catalog",
+        name: parsed.name,
+        path: resolved.modeDir,
+        seedBase: resolved.seedBase,
         specifier,
       };
     }
@@ -556,7 +588,10 @@ async function runGit(args: string[], cwd: string): Promise<string> {
 }
 
 /**
- * Check if a mode specifier refers to a non-builtin (external) mode.
+ * Check if a mode specifier refers to a mode that loads from an absolute
+ * path rather than from the app bundle. Catalog modes count: they are
+ * registered through `registerExternalMode` whether they resolved to
+ * in-tree source or to an install directory.
  */
 export function isExternalMode(specifier: string): boolean {
   const parsed = parseModeSpecifier(specifier);

@@ -42,6 +42,13 @@ import {
   resolveModeOrLibrary,
   isExternalMode,
 } from "../core/mode-resolver.js";
+import {
+  ensureCatalogMode,
+  formatInstallSize,
+  getCatalogEntry,
+  installState,
+  isCatalogMode,
+} from "../core/mode-catalog.js";
 import type { ResolvedMode } from "../core/mode-resolver.js";
 import {
   listLibraries,
@@ -527,6 +534,44 @@ function checkBackendRequirements(backendType: AgentBackendType) {
         reason: result.reason ?? t("pneuma.backend_unavailable_no_detail"),
       }),
     );
+    process.exit(1);
+  }
+}
+
+/**
+ * Download a catalog mode before launch, with a line the user can act on.
+ *
+ * No-ops for bundled modes, for a repo checkout (the source is in-tree),
+ * and for an install that already matches the catalog this core pins. A
+ * failure stops the launch here rather than letting the mode load half
+ * installed: `installCatalogMode` leaves nothing behind, and the message
+ * carries the reason and the URL.
+ */
+async function installCatalogModeForLaunch(specifier: string): Promise<void> {
+  const env = { projectRoot: PROJECT_ROOT };
+  if (!isCatalogMode(specifier, env)) return;
+  if (installState(specifier, env) === "installed") return;
+
+  const entry = getCatalogEntry(specifier, env);
+  // No catalog entry (a repo checkout without generated catalog.json, or a
+  // name this release does not publish): let `resolveMode` produce the
+  // single authoritative error instead of guessing here.
+  if (!entry) return;
+
+  p.log.step(
+    t("pneuma.catalog_downloading", {
+      name: specifier,
+      version: entry.version,
+      size: formatInstallSize(entry.archive.size),
+    }),
+  );
+  try {
+    await ensureCatalogMode(specifier, env);
+    p.log.info(t("pneuma.catalog_downloaded", { name: specifier, version: entry.version }));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    p.log.error(t("pneuma.catalog_download_failed", { name: specifier }));
+    p.cancel(message);
     process.exit(1);
   }
 }
@@ -2033,7 +2078,14 @@ async function main() {
     return;
   }
 
-  // Resolve mode source (builtin, local path, or github clone)
+  // A catalog mode this release does not ship is downloaded and verified
+  // before anything else touches it, so the wait carries a name, a version
+  // and the size the catalog pins. `resolveMode` installs it anyway — this
+  // is the CLI's progress surface, not a second policy. In a repo checkout
+  // the mode is in-tree and this is a no-op with no network.
+  await installCatalogModeForLaunch(mode);
+
+  // Resolve mode source (bundled, catalog, local path, or github clone)
   let resolved: ResolvedMode;
   try {
     resolved = await resolveModeSource(mode, PROJECT_ROOT);
@@ -2043,7 +2095,8 @@ async function main() {
     process.exit(1);
   }
 
-  // For external modes, register them in the mode-loader before loading
+  // Catalog and external modes both load from an absolute path — register
+  // them in the mode-loader before loading.
   if (resolved.type !== "builtin") {
     registerExternalMode(resolved.name, resolved.path);
     p.log.info(t("pneuma.external_mode_loaded", { name: resolved.name, path: resolved.path }));
@@ -2250,6 +2303,13 @@ async function main() {
   // 1. Install skill + inject CLAUDE.md (driven by manifest)
   // Use resolved path for external modes, PROJECT_ROOT/modes/{name} for builtin
   const modeSourceDir = resolved.path;
+  // `init.seedFiles` keys are package-relative for in-package modes
+  // (`"modes/slide/seed/..."`) and mode-relative for external ones. A
+  // catalog mode knows its own answer — in-tree source resolves against the
+  // package root, an install resolves against its install root — so take
+  // the resolver's value whenever it supplied one.
+  const seedBaseDir = resolved.seedBase
+    ?? (resolved.type === "builtin" ? PROJECT_ROOT : resolved.path);
   const skillTarget = join(sessionDir, ".claude", "skills", manifest.skill.installName);
   let skipSkillInstall = skipSkill || !!replayPackage || viewing; // Skip for replay/viewing — installed on Continue Work or edit switch
 
@@ -2420,7 +2480,6 @@ async function main() {
   // mode upgrade propagates design-system changes to existing
   // workspaces without manual intervention.
   if (!replayPackage && manifest.init && manifest.init.seedFiles) {
-    const seedBase = resolved.type === "builtin" ? PROJECT_ROOT : resolved.path;
     const hasParams = Object.keys(resolvedParams).length > 0;
     // Same `{{_locale}}`-resolution logic as the one-shot seed loop
     // above. The two loops are intentionally duplicated rather than
@@ -2431,9 +2490,9 @@ async function main() {
     const resolveLocaleSrc = (src: string): string | null => {
       if (!src.includes("{{_locale}}")) return src;
       const candidate = src.replaceAll("{{_locale}}", userLocale ?? "en");
-      if (existsSync(join(seedBase, candidate))) return candidate;
+      if (existsSync(join(seedBaseDir, candidate))) return candidate;
       const fallback = src.replaceAll("{{_locale}}", "en");
-      if (existsSync(join(seedBase, fallback))) return fallback;
+      if (existsSync(join(seedBaseDir, fallback))) return fallback;
       return null;
     };
     for (const [src, dst] of Object.entries(manifest.init.seedFiles)) {
@@ -2441,7 +2500,7 @@ async function main() {
       const localeResolved = resolveLocaleSrc(src);
       if (localeResolved === null) continue;
       const resolvedSrc = hasParams ? applyTemplateParams(localeResolved, resolvedParams) : localeResolved;
-      const srcPath = join(seedBase, resolvedSrc);
+      const srcPath = join(seedBaseDir, resolvedSrc);
       if (!existsSync(srcPath) || !statSync(srcPath).isDirectory()) continue;
       const glob = new Bun.Glob("**/*");
       for (const relFile of glob.scanSync({ cwd: srcPath, absolute: false })) {
@@ -2583,7 +2642,7 @@ async function main() {
     modeName,
     modeManifest: manifest,
     modeSourceDir: resolved.type === "builtin" ? join(PROJECT_ROOT, "modes", resolved.name) : resolved.path,
-    seedBase: resolved.type === "builtin" ? PROJECT_ROOT : resolved.path,
+    seedBase: seedBaseDir,
     layout: manifest.layout,
     window: manifest.window,
     editing: initialEditing,

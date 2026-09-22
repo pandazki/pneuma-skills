@@ -29,7 +29,8 @@ describe("enumerateLocalModes", () => {
     const list = enumerateLocalModes({ projectRoot: PROJECT_ROOT, home: tmpHome });
     const names = list.map((m) => m.name);
 
-    // Known visible builtins per ModeManifest registry.
+    // Bundled and catalog modes alike are launchable locally — a handoff or
+    // a /borrow may target either, and a catalog mode installs on launch.
     for (const expected of ["webcraft", "slide", "doc", "diagram", "draw", "illustrate"]) {
       expect(names).toContain(expected);
     }
@@ -43,9 +44,29 @@ describe("enumerateLocalModes", () => {
     // real ~/.pneuma may surface in tests — acceptable; we just confirm
     // that the builtins themselves carry the right source tag.)
     for (const m of list) {
-      if (["webcraft", "slide", "doc"].includes(m.name)) {
+      if (["webcraft", "slide", "illustrate"].includes(m.name)) {
         expect(m.source).toBe("builtin");
       }
+    }
+  });
+
+  test("tags catalog modes and says whether they are installed", () => {
+    const list = enumerateLocalModes({ projectRoot: PROJECT_ROOT, home: tmpHome });
+    const doc = list.find((m) => m.name === "doc");
+    expect(doc?.source).toBe("catalog");
+    // In this repo the source is in-tree, so it is installed with no
+    // download and carries the path the launch will use.
+    expect(doc?.installed).toBe(true);
+    expect(doc?.path).toBe(join(PROJECT_ROOT, "modes", "doc"));
+    // A catalog mode is still just a mode to the picker.
+    expect(doc?.displayName?.length).toBeGreaterThan(0);
+  });
+
+  test("hidden catalog modes stay out of the picker", () => {
+    const list = enumerateLocalModes({ projectRoot: PROJECT_ROOT, home: tmpHome });
+    const names = list.map((m) => m.name);
+    for (const hidden of ["evolve", "project-evolve", "project-onboard", "project-tidy"]) {
+      expect(names).not.toContain(hidden);
     }
   });
 

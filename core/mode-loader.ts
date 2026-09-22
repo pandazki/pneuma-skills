@@ -1,10 +1,17 @@
 /**
- * Mode Loader — resolve, install, and load Modes.
+ * Mode Loader — resolve and load Modes.
  *
- * Supports three sources:
- * - builtin: built-in modes, dynamically imported from the modes/ directory
- * - local: local filesystem path
- * - github: GitHub repository (cloned to local cache via mode-resolver)
+ * Two registries:
+ * - builtin: the bundled modes (`modes/distribution.json`), statically
+ *   imported from `modes/` so they ship inside the app bundle
+ * - external: everything registered at runtime by absolute path — local
+ *   paths, GitHub clones, and CATALOG modes, which a release downloads to
+ *   `~/.pneuma/catalog/<name>/` and a repo checkout serves from
+ *   `modes/<name>/` source (see `core/mode-catalog.ts`)
+ *
+ * This module stays free of `node:fs` on purpose: the browser imports it.
+ * Path decisions belong to `core/mode-catalog.ts` / `core/mode-resolver.ts`,
+ * which hand the result here through `registerExternalMode`.
  *
  * Core flow: resolveMode → ensureInstalled → loadFromSource
  */
@@ -31,35 +38,35 @@ type ModeSource =
       definitionLoader: () => Promise<ModeDefinition>;
     };
 
-/** Built-in mode registry — all use dynamic import */
+/**
+ * Built-in mode registry — the BUNDLED set from `modes/distribution.json`,
+ * and nothing else.
+ *
+ * The static `import()` specifiers are what make a mode part of the app
+ * bundle: Vite follows every one of them, so a mode listed here ships its
+ * viewer inside `dist/`. Catalog modes are deliberately absent — they are
+ * registered through `registerExternalMode()` from the mode directory the
+ * catalog resolved (in-tree source in a repo checkout, `~/.pneuma/catalog/`
+ * in a release), which is the same code path in dev and in production.
+ *
+ * Keep this list equal to `distribution.json`'s `bundled` minus `_shared`
+ * (a shared asset directory, not a mode). `core/__tests__/mode-loader.test.ts`
+ * fails if the two drift.
+ */
 const builtinModes: Record<string, ModeSource> = {
-  doc: {
+  cosmos: {
     type: "builtin",
     manifestLoader: () =>
-      import("../modes/doc/manifest.js").then((m) => m.default),
+      import("../modes/cosmos/manifest.js").then((m) => m.default),
     definitionLoader: () =>
-      import("../modes/doc/pneuma-mode.js").then((m) => m.default),
+      import("../modes/cosmos/pneuma-mode.js").then((m) => m.default),
   },
-  slide: {
+  diagram: {
     type: "builtin",
     manifestLoader: () =>
-      import("../modes/slide/manifest.js").then((m) => m.default),
+      import("../modes/diagram/manifest.js").then((m) => m.default),
     definitionLoader: () =>
-      import("../modes/slide/pneuma-mode.js").then((m) => m.default),
-  },
-  draw: {
-    type: "builtin",
-    manifestLoader: () =>
-      import("../modes/draw/manifest.js").then((m) => m.default),
-    definitionLoader: () =>
-      import("../modes/draw/pneuma-mode.js").then((m) => m.default),
-  },
-  "mode-maker": {
-    type: "builtin",
-    manifestLoader: () =>
-      import("../modes/mode-maker/manifest.js").then((m) => m.default),
-    definitionLoader: () =>
-      import("../modes/mode-maker/pneuma-mode.js").then((m) => m.default),
+      import("../modes/diagram/pneuma-mode.js").then((m) => m.default),
   },
   evolve: {
     type: "builtin",
@@ -67,6 +74,20 @@ const builtinModes: Record<string, ModeSource> = {
       import("../modes/evolve/manifest.js").then((m) => m.default),
     definitionLoader: () =>
       import("../modes/evolve/pneuma-mode.js").then((m) => m.default),
+  },
+  illustrate: {
+    type: "builtin",
+    manifestLoader: () =>
+      import("../modes/illustrate/manifest.js").then((m) => m.default),
+    definitionLoader: () =>
+      import("../modes/illustrate/pneuma-mode.js").then((m) => m.default),
+  },
+  kami: {
+    type: "builtin",
+    manifestLoader: () =>
+      import("../modes/kami/manifest.js").then((m) => m.default),
+    definitionLoader: () =>
+      import("../modes/kami/pneuma-mode.js").then((m) => m.default),
   },
   "project-evolve": {
     type: "builtin",
@@ -89,48 +110,6 @@ const builtinModes: Record<string, ModeSource> = {
     definitionLoader: () =>
       import("../modes/project-tidy/pneuma-mode.js").then((m) => m.default),
   },
-  webcraft: {
-    type: "builtin",
-    manifestLoader: () =>
-      import("../modes/webcraft/manifest.js").then((m) => m.default),
-    definitionLoader: () =>
-      import("../modes/webcraft/pneuma-mode.js").then((m) => m.default),
-  },
-  illustrate: {
-    type: "builtin",
-    manifestLoader: () =>
-      import("../modes/illustrate/manifest.js").then((m) => m.default),
-    definitionLoader: () =>
-      import("../modes/illustrate/pneuma-mode.js").then((m) => m.default),
-  },
-  sprite: {
-    type: "builtin",
-    manifestLoader: () =>
-      import("../modes/sprite/manifest.js").then((m) => m.default),
-    definitionLoader: () =>
-      import("../modes/sprite/pneuma-mode.js").then((m) => m.default),
-  },
-  lucid: {
-    type: "builtin",
-    manifestLoader: () =>
-      import("../modes/lucid/manifest.js").then((m) => m.default),
-    definitionLoader: () =>
-      import("../modes/lucid/pneuma-mode.js").then((m) => m.default),
-  },
-  backlot: {
-    type: "builtin",
-    manifestLoader: () =>
-      import("../modes/backlot/manifest.js").then((m) => m.default),
-    definitionLoader: () =>
-      import("../modes/backlot/pneuma-mode.js").then((m) => m.default),
-  },
-  kami: {
-    type: "builtin",
-    manifestLoader: () =>
-      import("../modes/kami/manifest.js").then((m) => m.default),
-    definitionLoader: () =>
-      import("../modes/kami/pneuma-mode.js").then((m) => m.default),
-  },
   remotion: {
     type: "builtin",
     manifestLoader: () =>
@@ -138,61 +117,19 @@ const builtinModes: Record<string, ModeSource> = {
     definitionLoader: () =>
       import("../modes/remotion/pneuma-mode.js").then((m) => m.default),
   },
-  gridboard: {
+  slide: {
     type: "builtin",
     manifestLoader: () =>
-      import("../modes/gridboard/manifest.js").then((m) => m.default),
+      import("../modes/slide/manifest.js").then((m) => m.default),
     definitionLoader: () =>
-      import("../modes/gridboard/pneuma-mode.js").then((m) => m.default),
+      import("../modes/slide/pneuma-mode.js").then((m) => m.default),
   },
-  diagram: {
+  webcraft: {
     type: "builtin",
     manifestLoader: () =>
-      import("../modes/diagram/manifest.js").then((m) => m.default),
+      import("../modes/webcraft/manifest.js").then((m) => m.default),
     definitionLoader: () =>
-      import("../modes/diagram/pneuma-mode.js").then((m) => m.default),
-  },
-  clipcraft: {
-    type: "builtin",
-    manifestLoader: () =>
-      import("../modes/clipcraft/manifest.js").then((m) => m.default),
-    definitionLoader: () =>
-      import("../modes/clipcraft/pneuma-mode.js").then((m) => m.default),
-  },
-  cosmos: {
-    type: "builtin",
-    manifestLoader: () =>
-      import("../modes/cosmos/manifest.js").then((m) => m.default),
-    definitionLoader: () =>
-      import("../modes/cosmos/pneuma-mode.js").then((m) => m.default),
-  },
-  wordtaste: {
-    type: "builtin",
-    manifestLoader: () =>
-      import("../modes/wordtaste/manifest.js").then((m) => m.default),
-    definitionLoader: () =>
-      import("../modes/wordtaste/pneuma-mode.js").then((m) => m.default),
-  },
-  bansho: {
-    type: "builtin",
-    manifestLoader: () =>
-      import("../modes/bansho/manifest.js").then((m) => m.default),
-    definitionLoader: () =>
-      import("../modes/bansho/pneuma-mode.js").then((m) => m.default),
-  },
-  eli5: {
-    type: "builtin",
-    manifestLoader: () =>
-      import("../modes/eli5/manifest.js").then((m) => m.default),
-    definitionLoader: () =>
-      import("../modes/eli5/pneuma-mode.js").then((m) => m.default),
-  },
-  plotwise: {
-    type: "builtin",
-    manifestLoader: () =>
-      import("../modes/plotwise/manifest.js").then((m) => m.default),
-    definitionLoader: () =>
-      import("../modes/plotwise/pneuma-mode.js").then((m) => m.default),
+      import("../modes/webcraft/pneuma-mode.js").then((m) => m.default),
   },
 };
 

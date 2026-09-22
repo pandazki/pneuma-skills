@@ -1,7 +1,13 @@
 /**
  * Enumerate locally-launchable modes — builtins shipped in the pneuma
- * package, user-installed externals in `~/.pneuma/modes/`, and modes
- * activated inside libraries under `~/.pneuma/libraries/<id>/`.
+ * package, catalog modes (in-tree source in a repo checkout, otherwise
+ * downloadable into `~/.pneuma/catalog/`), user-installed externals in
+ * `~/.pneuma/modes/`, and modes activated inside libraries under
+ * `~/.pneuma/libraries/<id>/`.
+ *
+ * Catalog modes are listed whether or not they are installed, with
+ * `installed` saying which: a handoff or a `/borrow` may legitimately
+ * target a mode the user has never opened, and the launch installs it.
  *
  * Used by the `/handoff-pneuma` slash command's mode picker via the
  * `pneuma mode list --local --json` CLI. The launcher's `/api/registry`
@@ -18,10 +24,17 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 
 import { listBuiltinModes } from "./mode-loader.js";
+import {
+  getCatalogEntry,
+  installState,
+  listCatalogModeNames,
+  resolveCatalogMode,
+} from "./mode-catalog.js";
+import { resolveLocalized } from "./types/mode-manifest.js";
 import { parseManifestTs } from "./utils/manifest-parser.js";
 import { listLibraries, getLibraryModePath } from "./library-registry.js";
 
-export type LocalModeSource = "builtin" | "local" | "library";
+export type LocalModeSource = "builtin" | "catalog" | "local" | "library";
 
 export interface LocalModeEntry {
   /** Mode identifier — what the CLI accepts as `pneuma <name>`. */
@@ -30,9 +43,14 @@ export interface LocalModeEntry {
   displayName: string;
   /** Optional one-line description from the manifest. */
   description?: string;
-  /** Where the mode lives — builtin (in-package), local (~/.pneuma/modes), library. */
+  /** Where the mode lives — builtin (in-package), catalog, local (~/.pneuma/modes), library. */
   source: LocalModeSource;
-  /** Absolute install path (omitted for builtins). */
+  /**
+   * Catalog modes only: whether the mode's source is already on this
+   * machine. `false` still means launchable — the launch downloads it.
+   */
+  installed?: boolean;
+  /** Absolute install path (omitted for builtins and uninstalled catalog modes). */
   path?: string;
   /** Library origin, when `source === "library"`. */
   library?: { id: string; name: string };
@@ -75,6 +93,45 @@ export function enumerateLocalModes(opts: EnumerateOpts): LocalModeEntry[] {
       displayName: parsed.displayName || name,
       ...(parsed.description ? { description: parsed.description } : {}),
       source: "builtin",
+    });
+  }
+
+  // 1b. Catalog modes — resolved from source when the package carries it
+  //     (repo checkout), from `~/.pneuma/catalog/` when it is installed,
+  //     and from the packaged catalog entry's copied manifest fields when
+  //     it is neither. The last case is the point: the mode is still
+  //     launchable, it just has to be downloaded first.
+  for (const name of listCatalogModeNames({ projectRoot, home })) {
+    const resolved = resolveCatalogMode(name, { projectRoot, home });
+    const entry = getCatalogEntry(name, { projectRoot, home });
+    let parsed: ReturnType<typeof parseManifestTs> = {};
+    if (resolved) {
+      try {
+        const manifestPath = ["manifest.ts", "manifest.js"]
+          .map((f) => join(resolved.modeDir, f))
+          .find((f) => existsSync(f));
+        if (manifestPath) {
+          parsed = parseManifestTs(readFileSync(manifestPath, "utf-8"), locale);
+        }
+      } catch {
+        // tolerate: fall back to the catalog entry's copied fields
+      }
+    }
+    if (parsed.hidden === true) continue;
+    const displayName =
+      parsed.displayName ||
+      (entry ? resolveLocalized(entry.displayName, locale) : "") ||
+      name;
+    const description =
+      parsed.description ||
+      (entry?.description ? resolveLocalized(entry.description, locale) : "");
+    out.push({
+      name,
+      displayName,
+      ...(description ? { description } : {}),
+      source: "catalog",
+      installed: installState(name, { projectRoot, home }) === "installed",
+      ...(resolved ? { path: resolved.modeDir } : {}),
     });
   }
 
