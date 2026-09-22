@@ -1,7 +1,7 @@
 # Mode distribution — bundled modes in the package, the rest on the CDN
 
-Status: design proposal, 2026-09-22, for owner ratification. Base: `main` at
-v3.51.0 (`57993957`).
+Status: **accepted 2026-09-23** with the default answers to the owner decisions
+(see the last section). Base: `main` at v3.51.0 (`57993957`).
 
 Owner request, in order:
 
@@ -247,10 +247,10 @@ community `registry/index.json`, libraries.
   `bun run build` pass; the release job's verify step fails when an archive is
   missing.
 
-## Owner decisions
+## Owner decisions (resolved 2026-09-23)
 
-1. **mode-maker** — catalog (default, per the starred rule) or bundled.
-2. **Where uploads run** — CI with four R2 secrets (recommended), or `/bump`
-   locally with `~/.pneuma/r2.json` until then (works without any setup).
-3. **Seeds of bundled modes** — keep them in the package for now (default), or
-   schedule Phase 5's seeds on demand, which is where the remaining 84 MB is.
+1. **mode-maker** — catalog, per the starred rule.
+2. **Where uploads run** — `/bump` runs `scripts/publish-modes.ts` locally with
+   `~/.pneuma/r2.json` before pushing; CI verifies every catalog URL before npm.
+   Moving the upload into CI (four R2 secrets) stays a Phase 5 item.
+3. **Seeds of bundled modes** — stay in the package; seeds on demand is Phase 5.
