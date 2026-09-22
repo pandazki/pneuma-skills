@@ -580,6 +580,46 @@ rather than as slow actors.
 in-frame pair with the `take-handoff` status; the beats timeline gains a
 `tempo` row from `time_warp`.
 
+### Landmarks the model can read (added 2026-09-22, after the urban trial)
+
+Seven takes of one street disagreed about which side the shop was on while
+the greybox had it in the same place every time. A grey block is a shape,
+not a place: conditioned on grey lumps the model decides which lump is the
+shop once per take, and the pack had no line that could settle it. Three
+mechanisms, one sidecar:
+
+- `previz_kit.landmark(name, objects, label=None, color=None)` paints every
+  object of a named place one saturated colour from an eight-entry palette
+  (`red blue yellow green magenta cyan orange purple`; the ninth landmark,
+  a reused colour, a duplicate name or an object already in another
+  landmark is refused). `finish()` writes to `scene.meta.json`:
+  `landmarks: [{name, label, color, rgb, objects, in_frame: {first, last}}]`
+  (does the place's centre project inside the camera view on frame 1 / the
+  last frame) and `subjects_detail: [{name, color, rgb, behind: {first,
+  last} | null}]` — per pawn, the landmarks farther from the camera than
+  the pawn within 25° of the camera's line to it, nearest first, on the
+  ground plane; a prop subject carries `behind: null`. The Workbench MP4
+  carries the colours; the glTF does not (Blender's exporter writes every
+  node-less material at the default grey, pinned by a kit test), so the
+  viewer's 3D lane replays them from the sidecar exactly as it replays
+  accents.
+- `prompt-skeleton` writes, from that sidecar and nothing else: one
+  `@Video1 中的<颜色>体块 = <label>` line per landmark under the `@Video1`
+  assignment; the pawn's own colour into its character line (the former
+  `<TODO: 它的颜色>`); and a `地理：` sentence in 【全局设定】 after 场景 —
+  who stands in front of what at the first frame (and, when it differs, at
+  the last), and which places are not in the picture. A rendered greybox
+  with no landmarks is warned about; a landmark with a colour outside the
+  palette is warned about because the pack can only call it `<TODO: 颜色>`.
+  Free shots are unchanged: their geography is words in the beat details.
+- The film's one style key frame must be location-neutral: it rides on
+  every take, so a place inside it is painted into shots that place is not
+  in (the urban trial's frame was a girl under the shop awning, and the
+  awning came back in takes where the shop was behind the camera).
+  `backlot.mjs style --keyframe` warns when the file is a set's concept
+  frame (path inside `bible/sets/<id>/`, bytes equal to a registered
+  concept, or `--prompt` naming a set); it never refuses.
+
 ### Domain type (domain.ts)
 
 ```ts

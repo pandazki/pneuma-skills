@@ -269,3 +269,20 @@ the `lineup` joint review at the previz gate; `slowmo`/`impact` in the kit;
   set to Chinese and passed. Fix for the mode: pass the film's language to
   transcribe.mjs. s05 still shows the shop behind the bus stop after four
   takes (kept, failure recorded). Revision cost $18.75; film total ≈ $44.
+- Trial 4, geography audit (2026-09-22 midday, user: "几个视角的街景一眼就看出来
+  位置关系全是错乱的"): a first-frame|last-frame sheet of the seven selected
+  takes confirmed it — s02 puts both vehicles behind the pair, s03's last
+  frame grows a bus shelter beside the awning, s05 has shop windows behind
+  the stop — while both `street_set` modules the agent wrote place the shop
+  at y≈-6 and the stop at y≈+5 in every shot. The blocking was right; the
+  model could not read it. Causes: (a) every landmark is a grey block, so
+  which lump is the shop is decided once per take; (b) the style key frame
+  is a full "under the awning" scene attached to every shot, and its awning
+  leaks into shots that face away from the shop; (c) the character line's
+  `<TODO: 它的颜色>` was never filled. Mode fix committed `15082788`:
+  `previz_kit.landmark(...)` (coloured, named places → `scene.meta.json`
+  `landmarks` + `subjects_detail.behind`), `prompt-skeleton` landmark
+  mapping lines + a measured 地理 sentence, `backlot.mjs style` warning on a
+  set-concept key frame, bible doctrine "location-neutral". Re-shoot of
+  s02–s07 with coloured landmarks and a neutral style frame dispatched to
+  the same Codex session (budget $25); result below.
