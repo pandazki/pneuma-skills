@@ -6,6 +6,10 @@
  *   bun scripts/publish-modes.ts --version 3.52.0 --dry-run --out /tmp/pub
  *   bun scripts/publish-modes.ts --version 3.52.0 --only backlot,doc
  *
+ * `--version` has to be this checkout's version: the archives are stamped with
+ * the core that built them. `--only` repairs individual archives and never
+ * publishes the catalog — a release's catalog pins every catalog mode.
+ *
  * A *catalog* mode is any `modes/<name>/` with a `manifest.ts` that
  * `modes/distribution.json` does not list as bundled. It leaves only its
  * `showcase/` images in the npm package; the mode itself is downloaded from
@@ -86,17 +90,32 @@ export interface PublishedModeResult {
 export interface PublishModesResult {
   catalog: ModeCatalog;
   modes: PublishedModeResult[];
-  /** Where `catalog.json` was written locally. */
+  /** Where the catalog was written locally. */
   catalogPath: string;
+  /**
+   * `true` when `--only` left some catalog modes unbuilt. The catalog at
+   * `catalogPath` then describes a subset of the release and was neither
+   * uploaded nor written to `modes/catalog.json`.
+   */
+  partial: boolean;
 }
 
-/** Where archives and the catalog live remotely. Injectable so tests never touch R2. */
+/**
+ * Where archives and the catalog live remotely. Injectable so tests never touch R2.
+ *
+ * Both readers answer a three-valued question, and the third value is a throw.
+ * `null` means "there is definitely nothing at this key"; a value means "these
+ * are the bytes". A read that failed is neither: the overwrite rule below only
+ * consults npm when something is already there, so resolving "I could not
+ * tell" to `null` would let a failed CDN read overwrite an archive belonging
+ * to a release that is already sealed. Implementations must throw instead.
+ */
 export interface ArchiveStore {
   /** Base URL the catalog's pinned archive URLs are built from. */
   readonly publicUrl: string;
-  /** SHA-256 of the bytes currently readable at `key`, or `null` when there are none. */
+  /** SHA-256 of the bytes at `key`; `null` only when the key is known to be absent. */
   readSha256(key: string): Promise<string | null>;
-  /** Parsed JSON currently readable at `key`, or `null`. */
+  /** Parsed JSON at `key`; `null` only when the key is known to be absent. */
   readJson(key: string): Promise<unknown | null>;
   putFile(key: string, filePath: string): Promise<string>;
   putJson(key: string, value: unknown): Promise<string>;
@@ -171,6 +190,28 @@ export function modeDirNames(modesDir: string): string[] {
 export function catalogModeNames(modesDir: string): string[] {
   const { bundled } = readDistribution(modesDir);
   return modeDirNames(modesDir).filter((name) => !bundled.includes(name));
+}
+
+/**
+ * The core version this checkout declares. Every archive is stamped with the
+ * core that built it and is only valid there, so `--version` is a statement
+ * about the source being packed rather than a free label: publishing
+ * `--version 3.52.0` from a 3.51.0 tree would produce archives attributed to
+ * a core that never built them, which is the exact failure the lockstep exists
+ * to prevent.
+ */
+export function readCoreVersion(projectRoot: string): string {
+  const path = join(projectRoot, "package.json");
+  let parsed: { version?: unknown };
+  try {
+    parsed = JSON.parse(readFileSync(path, "utf-8")) as { version?: unknown };
+  } catch (error) {
+    throw new Error(`cannot read the core version from ${path}: ${(error as Error).message}`);
+  }
+  if (typeof parsed.version !== "string" || parsed.version === "") {
+    throw new Error(`${path} declares no "version" — a release cannot be bound to this checkout`);
+  }
+  return parsed.version;
 }
 
 export function archiveKey(version: string, name: string, modeVersion: string): string {
@@ -368,6 +409,16 @@ export async function publishModes(options: PublishModesOptions): Promise<Publis
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
     throw new Error(`--version must be a semver release, got "${version}"`);
   }
+  // The version is a property of the source being packed, not an argument the
+  // caller is free to choose: it goes into every archive's stamp and into the
+  // keys a released core resolves.
+  const checkoutVersion = readCoreVersion(dirname(resolve(modesDir)));
+  if (version !== checkoutVersion) {
+    throw new Error(
+      `--version ${version} does not match this checkout, which is ${checkoutVersion}. ` +
+        `Every archive is stamped with the core that built it and only runs there — release from the tree you are publishing.`,
+    );
+  }
   if (!options.dryRun && !options.store) {
     throw new Error("an ArchiveStore is required unless --dry-run is set");
   }
@@ -382,6 +433,14 @@ export async function publishModes(options: PublishModesOptions): Promise<Publis
     names = all.filter((n) => options.only!.includes(n));
   }
   if (names.length === 0) throw new Error(`no catalog modes found under ${modesDir}`);
+  /**
+   * A run that built only some of the catalog produces a catalog describing
+   * only those modes. That file is fine as a local artifact and fatal as a
+   * release: the package ships these pins, so a truncated one is a core whose
+   * remaining modes simply do not exist. `--only` stays a repair tool for a
+   * single archive; publishing the catalog is reserved for a full run.
+   */
+  const partial = names.length < all.length;
 
   const baseUrl = (options.baseUrl ?? options.store?.publicUrl ?? DEFAULT_PUBLIC_BASE_URL).replace(/\/$/, "");
   mkdirSync(options.outDir, { recursive: true });
@@ -416,7 +475,9 @@ export async function publishModes(options: PublishModesOptions): Promise<Publis
     modes: packed.map((p) => p.entry),
   };
 
-  const stagedCatalogPath = join(options.outDir, MODE_CATALOG_FILE);
+  // A partial catalog never gets to be called `catalog.json`, so no staging
+  // directory holds a file that looks like the release's pins but is not.
+  const stagedCatalogPath = join(options.outDir, partial ? "catalog.partial.json" : MODE_CATALOG_FILE);
   const catalogText = JSON.stringify(catalog, null, 2) + "\n";
   writeFileSync(stagedCatalogPath, catalogText);
 
@@ -428,8 +489,9 @@ export async function publishModes(options: PublishModesOptions): Promise<Publis
   }));
 
   if (options.dryRun) {
-    log(`[publish-modes] dry run — nothing uploaded. Archives and ${MODE_CATALOG_FILE} in ${options.outDir}`);
-    return { catalog, modes: results, catalogPath: stagedCatalogPath };
+    log(`[publish-modes] dry run — nothing uploaded. Archives and the catalog are in ${options.outDir}`);
+    if (partial) log(partialNotice(names, all));
+    return { catalog, modes: results, catalogPath: stagedCatalogPath, partial };
   }
 
   const store = options.store!;
@@ -463,12 +525,14 @@ export async function publishModes(options: PublishModesOptions): Promise<Publis
     plan.push({ key, action: "upload", archivePath: p.archivePath, name: entry.name });
   }
 
-  const remoteCatalog = (await store.readJson(catalogKey(version))) as ModeCatalog | null;
-  if (remoteCatalog && !catalogsEquivalent(remoteCatalog, catalog) && (await sealCheck())) {
-    throw new PublishRefusedError(
-      `${catalogKey(version)} differs from the catalog this commit produces and ${NPM_PACKAGE}@${version} is ` +
-        `published on npm. A published release is sealed — bump the version and publish again.`,
-    );
+  if (!partial) {
+    const remoteCatalog = (await store.readJson(catalogKey(version))) as ModeCatalog | null;
+    if (remoteCatalog && !catalogsEquivalent(remoteCatalog, catalog) && (await sealCheck())) {
+      throw new PublishRefusedError(
+        `${catalogKey(version)} differs from the catalog this commit produces and ${NPM_PACKAGE}@${version} is ` +
+          `published on npm. A published release is sealed — bump the version and publish again.`,
+      );
+    }
   }
 
   for (const step of plan) {
@@ -483,6 +547,11 @@ export async function publishModes(options: PublishModesOptions): Promise<Publis
     log(`[publish-modes] ${step.name}: uploaded ${url}`);
   }
 
+  if (partial) {
+    log(partialNotice(names, all));
+    return { catalog, modes: results, catalogPath: stagedCatalogPath, partial };
+  }
+
   await store.putJson(catalogKey(version), catalog);
   log(`[publish-modes] uploaded ${store.publicUrl}/${catalogKey(version)}`);
 
@@ -490,7 +559,18 @@ export async function publishModes(options: PublishModesOptions): Promise<Publis
   writeFileSync(catalogPath, catalogText);
   log(`[publish-modes] wrote ${catalogPath} — this is what the package ships`);
 
-  return { catalog, modes: results, catalogPath };
+  return { catalog, modes: results, catalogPath, partial };
+}
+
+/** Said on every partial run, in both the log and the CLI summary. */
+function partialNotice(names: string[], all: string[]): string {
+  const skipped = all.filter((n) => !names.includes(n));
+  return (
+    `[publish-modes] PARTIAL RUN — ${names.length} of ${all.length} catalog modes built, ` +
+    `nothing for: ${skipped.join(", ")}.\n` +
+    `  ${MODE_CATALOG_FILE} was NOT published or written: the release catalog must pin every catalog mode, ` +
+    `and this one pins ${names.length}. Re-run without --only before releasing.`
+  );
 }
 
 // ── Real-world seams ─────────────────────────────────────────────────────────
@@ -509,36 +589,92 @@ export async function npmVersionExists(version: string): Promise<boolean> {
   throw new Error(`npm registry check for ${NPM_PACKAGE}@${version} failed with ${res.status}`);
 }
 
+/** Raised when a key exists but its current bytes could not be read back. */
+export class ArchiveUnreadableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ArchiveUnreadableError";
+  }
+}
+
+export interface PublicReadStoreOptions {
+  /** Base URL the bytes are read back through. */
+  publicUrl: string;
+  /**
+   * Authoritative existence, from the bucket itself. `false` is the only
+   * answer that means "absent"; a failure here must throw rather than answer.
+   */
+  keyExists(key: string): Promise<boolean>;
+  putFile(key: string, filePath: string): Promise<string>;
+  putJson(key: string, value: unknown): Promise<string>;
+  /** Read timeout for one object. */
+  timeoutMs?: number;
+}
+
 /**
- * R2 through the helpers in `snapshot/r2.ts`. Existence is answered by the
- * bucket; the bytes are read back through the public URL, because that is the
- * copy a user's install will actually download.
+ * An `ArchiveStore` that asks the bucket whether a key exists and reads the
+ * bytes back through the public URL — the copy a user's install will actually
+ * download. Split from `createR2Store` so the three-valued read contract can
+ * be tested without a bucket.
  */
-export function createR2Store(creds: R2Credentials): ArchiveStore {
-  const publicUrl = creds.publicUrl.replace(/\/$/, "");
+export function createPublicReadStore(options: PublicReadStoreOptions): ArchiveStore {
+  const publicUrl = options.publicUrl.replace(/\/$/, "");
+  const timeoutMs = options.timeoutMs ?? 60_000;
+
+  /** Present-but-unreadable is an error, never an absence — see `ArchiveStore`. */
+  const readBytes = async (key: string): Promise<ArrayBuffer> => {
+    const url = `${publicUrl}/${key}`;
+    let res: Response;
+    try {
+      res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(timeoutMs) });
+    } catch (error) {
+      throw new ArchiveUnreadableError(
+        `${key} is in the bucket but ${url} could not be read: ${(error as Error).message}. ` +
+          `Refusing to plan an upload over a key whose current bytes are unknown.`,
+      );
+    }
+    if (!res.ok) {
+      throw new ArchiveUnreadableError(
+        `${key} is in the bucket but ${url} returned HTTP ${res.status}. ` +
+          `Refusing to plan an upload over a key whose current bytes are unknown.`,
+      );
+    }
+    return res.arrayBuffer();
+  };
+
   return {
     publicUrl,
     async readSha256(key) {
-      if (!(await checkR2KeyExists(key, creds))) return null;
-      const res = await fetch(`${publicUrl}/${key}`, { cache: "no-store" });
-      if (!res.ok) return null;
+      if (!(await options.keyExists(key))) return null;
       const hasher = new Bun.CryptoHasher("sha256");
-      hasher.update(await res.arrayBuffer());
+      hasher.update(await readBytes(key));
       return hasher.digest("hex");
     },
     async readJson(key) {
-      if (!(await checkR2KeyExists(key, creds))) return null;
-      const res = await fetch(`${publicUrl}/${key}`, { cache: "no-store" });
-      if (!res.ok) return null;
+      if (!(await options.keyExists(key))) return null;
+      const bytes = await readBytes(key);
       try {
-        return await res.json();
-      } catch {
-        return null;
+        return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+      } catch (error) {
+        // Unparseable is still "something is there". Calling it absent would
+        // let a sealed release's catalog be replaced without asking npm.
+        throw new ArchiveUnreadableError(
+          `${publicUrl}/${key} is in the bucket but is not readable JSON: ${(error as Error).message}`,
+        );
       }
     },
+    putFile: options.putFile,
+    putJson: options.putJson,
+  };
+}
+
+export function createR2Store(creds: R2Credentials): ArchiveStore {
+  return createPublicReadStore({
+    publicUrl: creds.publicUrl,
+    keyExists: (key) => checkR2KeyExists(key, creds),
     putFile: (key, filePath) => uploadToR2(filePath, key, creds),
     putJson: (key, value) => uploadJsonToR2(value, key, creds),
-  };
+  });
 }
 
 export function formatBytes(bytes: number): string {
@@ -582,11 +718,14 @@ export function parseArgs(argv: string[]): CliArgs {
 
 const USAGE = `Usage: bun scripts/publish-modes.ts --version <X.Y.Z> [options]
 
-  --version <X.Y.Z>   core release the archives belong to (required)
+  --version <X.Y.Z>   core release the archives belong to (required; must be
+                      this checkout's package.json version)
   --dry-run           build and pack, upload nothing
   --out <dir>         staging dir for archives + catalog.json
                       (default .publish/v<version>)
-  --only <a,b>        restrict the run to these catalog modes
+  --only <a,b>        repair a subset of the archives. A partial run does not
+                      publish or write catalog.json — a release pins every
+                      catalog mode, so re-run without --only before releasing.
   --base-url <url>    CDN base for the pinned URLs (default the R2 public URL)
 
 Uploads need ~/.pneuma/r2.json. A key belonging to a version already on npm
@@ -630,8 +769,11 @@ export async function main(argv: string[]): Promise<number> {
     const total = result.modes.reduce((sum, m) => sum + m.entry.archive.size, 0);
     console.log(
       `[publish-modes] ${result.modes.length} catalog modes, ${formatBytes(total)} of archives, ` +
-        `catalog at ${result.catalogPath}`,
+        `${result.partial ? "partial" : "release"} catalog at ${result.catalogPath}`,
     );
+    if (result.partial) {
+      console.log("[publish-modes] this run cannot release: re-run without --only to publish the catalog.");
+    }
     return 0;
   } catch (error) {
     console.error(`[publish-modes] ${(error as Error).message}`);

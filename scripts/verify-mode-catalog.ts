@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 /**
- * verify-mode-catalog — prove that every archive this package pins is really
- * on the CDN, before the package is published.
+ * verify-mode-catalog — prove that this package pins every catalog mode of
+ * this checkout, and that every archive it pins is really on the CDN, before
+ * the package is published.
  *
  *   bun scripts/verify-mode-catalog.ts            # verify modes/catalog.json
  *   bun scripts/verify-mode-catalog.ts --fetch    # download the release's
@@ -9,8 +10,11 @@
  *
  * A catalog mode is downloaded at first use from a URL pinned in
  * `modes/catalog.json`, so a core on npm whose archives never reached the
- * bucket is a release that looks fine and cannot launch half its modes. This
- * is the gate the release job runs before `npm publish`.
+ * bucket is a release that looks fine and cannot launch half its modes. A
+ * catalog that never mentioned those modes fails the same way while every URL
+ * it does list checks out, which is why the set is compared against the
+ * checkout before anything is fetched. This is the gate the release job runs
+ * before `npm publish`.
  *
  * `--fetch` is the CI shape: `modes/catalog.json` is generated, not committed,
  * so the job pulls `official/v<version>/catalog.json` — the copy
@@ -24,7 +28,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { MODE_CATALOG_FILE, type ModeCatalog } from "../core/types/mode-catalog.js";
-import { DEFAULT_PUBLIC_BASE_URL, OFFICIAL_PREFIX } from "./publish-modes.js";
+import { catalogModeNames, DEFAULT_PUBLIC_BASE_URL, OFFICIAL_PREFIX, readModeMetadata } from "./publish-modes.js";
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -73,6 +77,48 @@ export async function verifyCatalog(
   return verdicts;
 }
 
+/**
+ * Compare the catalog with the checkout that is about to be published.
+ *
+ * HEAD-checking the pinned URLs only proves that what the catalog *does* list
+ * is there; it says nothing about what the catalog left out. A partial publish
+ * run (`--only`) produces exactly that shape — a well-formed catalog with real,
+ * reachable archives that covers one mode instead of twelve — and shipping it
+ * means the release's other catalog modes do not exist for anyone who installs
+ * it. The mode's own version is compared too, because the archive key carries
+ * it: a catalog pinning last commit's `<name>-<old>.tar.gz` resolves fine and
+ * hands users a mode this release never built.
+ *
+ * Returns one line per problem; an empty array means the catalog describes
+ * this checkout exactly.
+ */
+export function catalogCoverage(catalog: ModeCatalog, modesDir: string): string[] {
+  const expected = catalogModeNames(modesDir);
+  const listed = new Map(catalog.modes.map((entry) => [entry.name, entry]));
+  const problems: string[] = [];
+  for (const name of expected) {
+    const entry = listed.get(name);
+    if (!entry) {
+      problems.push(`${name}: a catalog mode of this checkout, missing from the catalog`);
+      continue;
+    }
+    try {
+      const source = readModeMetadata(join(modesDir, name), name);
+      if (entry.version !== source.version) {
+        problems.push(`${name}: catalog pins ${entry.version}, this checkout's manifest says ${source.version}`);
+      }
+    } catch (error) {
+      problems.push(`${name}: manifest cannot be read here — ${(error as Error).message}`);
+    }
+  }
+  for (const entry of catalog.modes) {
+    if (!expected.includes(entry.name)) {
+      problems.push(`${entry.name}: listed in the catalog but not a catalog mode of this checkout`);
+    }
+  }
+  return problems;
+}
+
 export function readCatalog(path: string): ModeCatalog {
   return JSON.parse(readFileSync(path, "utf-8")) as ModeCatalog;
 }
@@ -85,6 +131,7 @@ export interface VerifyCliArgs {
   catalog?: string;
   version?: string;
   baseUrl?: string;
+  modesDir?: string;
   fetchCatalog: boolean;
   help: boolean;
 }
@@ -102,6 +149,7 @@ export function parseArgs(argv: string[]): VerifyCliArgs {
       case "--catalog": args.catalog = next(); break;
       case "--version": args.version = next(); break;
       case "--base-url": args.baseUrl = next(); break;
+      case "--modes-dir": args.modesDir = next(); break;
       case "--fetch": args.fetchCatalog = true; break;
       case "--help":
       case "-h": args.help = true; break;
@@ -117,8 +165,10 @@ const USAGE = `Usage: bun scripts/verify-mode-catalog.ts [options]
   --fetch            download official/v<version>/catalog.json into that path first
   --version <X.Y.Z>  release to expect (default package.json's version)
   --base-url <url>   CDN base for --fetch (default the public Pneuma bucket)
+  --modes-dir <path> checkout to compare the catalog against (default modes/)
 
-Exits non-zero when any pinned archive is missing or a different size.`;
+Exits non-zero when the catalog does not cover every catalog mode of this
+checkout, or when any pinned archive is missing or a different size.`;
 
 export async function main(argv: string[]): Promise<number> {
   let args: VerifyCliArgs;
@@ -183,6 +233,27 @@ export async function main(argv: string[]): Promise<number> {
   }
   if (catalog.modes.length === 0) {
     console.error(`[verify-mode-catalog] ${catalogPath} lists no modes`);
+    return 1;
+  }
+
+  const modesDir = args.modesDir ?? join(PROJECT_ROOT, "modes");
+  let coverage: string[];
+  try {
+    coverage = catalogCoverage(catalog, modesDir);
+  } catch (error) {
+    console.error(
+      `[verify-mode-catalog] cannot read the catalog mode set from ${modesDir}: ${(error as Error).message}`,
+    );
+    return 1;
+  }
+  if (coverage.length > 0) {
+    for (const problem of coverage) console.log(`FAIL  ${problem}`);
+    console.error(
+      `[verify-mode-catalog] ${catalogPath} does not describe this checkout (${coverage.length} problem` +
+        `${coverage.length === 1 ? "" : "s"}). The package ships these pins, so a mode missing here is a mode that ` +
+        `does not exist for v${expectedVersion}. Re-run \`bun run publish:modes --version ${expectedVersion}\` over ` +
+        `the whole catalog — a run restricted with --only cannot produce a release catalog.`,
+    );
     return 1;
   }
 

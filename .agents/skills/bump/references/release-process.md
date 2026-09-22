@@ -25,9 +25,13 @@ CI (`release.yml`) handles tagging, GitHub Release, and npm publish on push to `
    bun run publish:modes --version X.Y.Z             # 构建 + 打包 + 上传
    ```
 
-   凭证用 `~/.pneuma/r2.json`(和 snapshot publish 同一份)。Key 是 `official/vX.Y.Z/<name>-<modeVersion>.tar.gz`,目录里还有一份 `catalog.json`。**CI 没有 R2 凭证、不上传**,只在 `Build` 之后、**建 tag 之前**跑 `Verify mode catalog`:它把 `official/vX.Y.Z/catalog.json` 拉下来、对每个 archive 发 HEAD 比对 size,通过之后那份文件留在磁盘上,正是 `npm publish` 会打进包的那份(`package.json` 的 `files` 里列了 `modes/catalog.json`,尽管它被 gitignore)。desktop 矩阵同样先拉一次,所以安装包和 npm 钉的是同一批 archive。
+   凭证用 `~/.pneuma/r2.json`(和 snapshot publish 同一份)。Key 是 `official/vX.Y.Z/<name>-<modeVersion>.tar.gz`,目录里还有一份 `catalog.json`。**CI 没有 R2 凭证、不上传**,只在 `Build` 之后、**建 tag 之前**跑 `Verify mode catalog`:它把 `official/vX.Y.Z/catalog.json` 拉下来,**先拿这个 checkout 的 catalog mode 全集跟它对账**(少一个、多一个、或者某个条目钉的 mode 版本跟树里的 manifest 对不上,都算失败——否则一份只有一个条目的 catalog 也能过),再对每个 archive 发 HEAD 比对 size,通过之后那份文件留在磁盘上,正是 `npm publish` 会打进包的那份(`package.json` 的 `files` 里列了 `modes/catalog.json`,尽管它被 gitignore)。desktop 矩阵同样先拉一次,所以安装包和 npm 钉的是同一批 archive。
 
-   **覆盖规则**:字节完全相同的 key 跳过;字节不同的 key **只在 `pneuma-skills@X.Y.Z` 还没上 npm 时**允许覆盖——这正是 3.51.0 那种「release gate 挂了、同一个版本号补两个 fix commit」的路径。**一旦那个版本发布到了 npm,脚本拒绝覆盖**并让你改版本号:已发布 core 的用户解析的就是这几个 URL,改掉它们等于悄悄换掉一个已发行版的内容。重跑时跑整个脚本、别用 `--only`——一次 release 里的 archive 必须同出一个 commit。
+   **`--version` 必须等于这个 checkout 的 `package.json` 版本**,脚本自己会查、不等就拒绝跑(所以顺序是:先把版本号 bump 进 `package.json`,再 publish)。理由就是 lockstep:archive 上盖的 `coreVersion` 戳如果跟造它的源码对不上,装下来的 bundle 会在浏览器里白屏,而不是在安装时报错——安装侧现在也会拿 catalog 的 `coreVersion` 跟戳比对,对不上直接 `core-version-mismatch`。
+
+   **覆盖规则**:字节完全相同的 key 跳过;字节不同的 key **只在 `pneuma-skills@X.Y.Z` 还没上 npm 时**允许覆盖——这正是 3.51.0 那种「release gate 挂了、同一个版本号补两个 fix commit」的路径。**一旦那个版本发布到了 npm,脚本拒绝覆盖**并让你改版本号:已发布 core 的用户解析的就是这几个 URL,改掉它们等于悄悄换掉一个已发行版的内容。**读不到 CDN 上那个对象不等于它不存在**:公开读失败(网络、非 200、JSON 解析不了)现在直接抛,不再当成「不存在所以可以覆盖」。
+
+   **`--only` 只是补救工具,不能用来发 release**:少于全集的一次运行被判为 partial —— 照常构建上传它那几个 archive,但**不写、不上传 `catalog.json`**(staging 里那份叫 `catalog.partial.json`),并打印它没构建的 mode 名单。一次 release 里的 archive 必须同出一个 commit,所以正式发布跑整个脚本。
 
    **半发布恢复**:如果 push 之后 CI 在 verify 步挂了(archive 没上去 / size 对不上),tag 和 npm 都还没发生,本地补跑 `publish:modes` 再 `gh workflow run Release` 即可。如果是 archive 传了但 npm 挂了,重跑同版本的 `publish:modes` 会把所有 key 报成「相同字节,跳过」,不会触发拒绝。
 

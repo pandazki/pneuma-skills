@@ -16,11 +16,14 @@ import { MODE_PACKAGE_STAMP } from "../../core/types/mode-catalog.js";
 import type { ModeCatalog, ModePackageStamp } from "../../core/types/mode-catalog.js";
 import {
   archiveKey,
+  ArchiveUnreadableError,
   catalogModeNames,
   catalogsEquivalent,
+  createPublicReadStore,
   parseArgs,
   PublishRefusedError,
   publishModes,
+  readCoreVersion,
   readDistribution,
   type ArchiveStore,
 } from "../publish-modes.js";
@@ -38,6 +41,11 @@ let root: string;
  * from someone's local `bun install`.
  */
 function writeFixture(): string {
+  // The fixture is a miniature checkout: `--version` is bound to the
+  // package.json beside the mode tree, because the archives are stamped with
+  // the core that built them.
+  writeFileSync(join(root, "package.json"), JSON.stringify({ name: "fixture-core", version: VERSION }, null, 2));
+
   const modesDir = join(root, "modes");
   mkdirSync(modesDir, { recursive: true });
   writeFileSync(
@@ -70,6 +78,17 @@ function writeFixture(): string {
   writeFileSync(join(mode, "showcase", "hero.png"), "not really a png");
   writeFileSync(join(mode, "node_modules", "stale", "index.js"), "module.exports = 1;\n");
   return modesDir;
+}
+
+/** A second catalog mode, for the rules that only exist when a run can be partial. */
+function addCatalogMode(modesDir: string, name: string, version: string): void {
+  const dir = join(modesDir, name);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "manifest.ts"), manifestSource(name, version));
+  writeFileSync(
+    join(dir, "pneuma-mode.ts"),
+    ['import manifest from "./manifest.js";', "export default { manifest, viewer: { id: manifest.name } };", ""].join("\n"),
+  );
 }
 
 function manifestSource(name: string, version: string): string {
@@ -136,6 +155,35 @@ describe("catalog set", () => {
 
   it("addresses an archive by both the core and the mode version", () => {
     expect(archiveKey("3.52.0", "backlot", "0.4.1")).toBe("official/v3.52.0/backlot-0.4.1.tar.gz");
+  });
+});
+
+/**
+ * Every archive is stamped with the core that built it and only runs there, so
+ * the release version has to be a fact about the source being packed — not a
+ * label the caller picks.
+ */
+describe("the version is bound to the checkout", () => {
+  it("refuses a semver version this checkout does not declare", async () => {
+    const modesDir = writeFixture();
+    await expect(
+      publishModes({ version: "9.9.8", dryRun: true, outDir: join(root, "out"), modesDir, log: () => {} }),
+    ).rejects.toThrow(/9\.9\.8 does not match this checkout, which is 9\.9\.9/);
+  });
+
+  it("says which file it could not read rather than publishing unbound", async () => {
+    const modesDir = writeFixture();
+    rmSync(join(root, "package.json"));
+    await expect(
+      publishModes({ version: VERSION, dryRun: true, outDir: join(root, "out"), modesDir, log: () => {} }),
+    ).rejects.toThrow(/cannot read the core version from .*package\.json/);
+  });
+
+  it("reads the checkout's version and rejects a package.json without one", () => {
+    writeFileSync(join(root, "package.json"), JSON.stringify({ version: "1.2.3" }));
+    expect(readCoreVersion(root)).toBe("1.2.3");
+    writeFileSync(join(root, "package.json"), JSON.stringify({ name: "no-version" }));
+    expect(() => readCoreVersion(root)).toThrow(/declares no "version"/);
   });
 });
 
@@ -386,6 +434,172 @@ describe("publishModes upload rules", () => {
     await expect(
       publishModes({ version: VERSION, dryRun: false, outDir: join(root, "out"), modesDir, log: () => {} }),
     ).rejects.toThrow(/ArchiveStore is required/);
+  });
+});
+
+/**
+ * `--only` repairs one archive. The catalog it produces describes one mode,
+ * and the package ships the catalog — so a partial run must never be able to
+ * hand a release a catalog that pins less than the whole set.
+ */
+describe("partial runs", () => {
+  it("withholds the catalog and names what it did not build", async () => {
+    const modesDir = writeFixture();
+    addCatalogMode(modesDir, "second", "0.2.0");
+    const out = join(root, "out");
+    const lines: string[] = [];
+
+    const result = await publishModes({
+      version: VERSION,
+      dryRun: true,
+      outDir: out,
+      modesDir,
+      builtAt: BUILT_AT,
+      only: ["fixture"],
+      log: (line) => lines.push(line),
+    });
+
+    expect(result.partial).toBe(true);
+    expect(result.catalog.modes.map((m) => m.name)).toEqual(["fixture"]);
+    // Nothing in the staging dir is allowed to look like the release's pins.
+    expect(result.catalogPath).toBe(join(out, "catalog.partial.json"));
+    expect(existsSync(join(out, "catalog.json"))).toBe(false);
+    expect(lines.join("\n")).toContain("PARTIAL RUN");
+    expect(lines.join("\n")).toContain("second");
+  });
+
+  it("uploads the repaired archive but never the release catalog", async () => {
+    const modesDir = writeFixture();
+    addCatalogMode(modesDir, "second", "0.2.0");
+    const { store, puts, jsonPuts } = fakeStore();
+    const catalogPath = join(root, "shipped-catalog.json");
+
+    const result = await publishModes({
+      version: VERSION,
+      dryRun: false,
+      outDir: join(root, "out"),
+      modesDir,
+      builtAt: BUILT_AT,
+      only: ["fixture"],
+      store,
+      catalogPath,
+      isVersionOnNpm: async () => false,
+      log: () => {},
+    });
+
+    expect(result.partial).toBe(true);
+    expect(result.modes[0]!.upload).toBe("uploaded");
+    expect(puts).toEqual([`official/v${VERSION}/fixture-1.2.3.tar.gz`]);
+    expect(jsonPuts).toEqual([]);
+    expect(existsSync(catalogPath)).toBe(false);
+  });
+
+  it("is a full run when --only happens to name every catalog mode", async () => {
+    const modesDir = writeFixture();
+    addCatalogMode(modesDir, "second", "0.2.0");
+    const { store, jsonPuts } = fakeStore();
+
+    const result = await publishModes({
+      version: VERSION,
+      dryRun: false,
+      outDir: join(root, "out"),
+      modesDir,
+      builtAt: BUILT_AT,
+      only: ["second", "fixture"],
+      store,
+      catalogPath: join(root, "shipped-catalog.json"),
+      isVersionOnNpm: async () => false,
+      log: () => {},
+    });
+
+    expect(result.partial).toBe(false);
+    expect(result.catalog.modes.map((m) => m.name)).toEqual(["fixture", "second"]);
+    expect(jsonPuts.map((p) => p.key)).toEqual([`official/v${VERSION}/catalog.json`]);
+    expect(existsSync(join(root, "shipped-catalog.json"))).toBe(true);
+  });
+});
+
+/**
+ * The overwrite rule only consults npm once something is already at a key, so
+ * "I could not read it" must never arrive at the planner as "there is nothing
+ * there".
+ */
+describe("store reads are three-valued", () => {
+  let cdn: ReturnType<typeof Bun.serve>;
+  let respond: (req: Request) => Response;
+
+  beforeEach(() => {
+    respond = () => new Response("archive bytes", { status: 200 });
+    cdn = Bun.serve({ port: 0, fetch: (req) => respond(req) });
+  });
+  afterEach(() => cdn.stop(true));
+
+  function storeAt(exists: boolean): ArchiveStore {
+    return createPublicReadStore({
+      publicUrl: cdn.url.origin,
+      keyExists: async () => exists,
+      putFile: async (key) => key,
+      putJson: async (key) => key,
+    });
+  }
+
+  it("answers null only when the bucket says the key is absent", async () => {
+    expect(await storeAt(false).readSha256("official/v9.9.9/gone.tar.gz")).toBeNull();
+    expect(await storeAt(false).readJson("official/v9.9.9/catalog.json")).toBeNull();
+  });
+
+  it("hashes the public copy when it reads cleanly", async () => {
+    const hasher = new Bun.CryptoHasher("sha256");
+    hasher.update("archive bytes");
+    expect(await storeAt(true).readSha256("official/v9.9.9/fixture-1.2.3.tar.gz")).toBe(hasher.digest("hex"));
+  });
+
+  it("raises instead of calling a present-but-unreadable archive absent", async () => {
+    respond = () => new Response("upstream is having a moment", { status: 503 });
+    await expect(storeAt(true).readSha256("official/v9.9.9/fixture-1.2.3.tar.gz")).rejects.toBeInstanceOf(
+      ArchiveUnreadableError,
+    );
+  });
+
+  it("raises instead of calling an unparseable catalog absent", async () => {
+    respond = () => new Response("<html>nope</html>", { status: 200 });
+    await expect(storeAt(true).readJson("official/v9.9.9/catalog.json")).rejects.toThrow(/not readable JSON/);
+  });
+
+  it("raises when the public copy cannot be reached at all", async () => {
+    const store = createPublicReadStore({
+      publicUrl: "http://127.0.0.1:1",
+      keyExists: async () => true,
+      putFile: async (key) => key,
+      putJson: async (key) => key,
+      timeoutMs: 2000,
+    });
+    await expect(store.readSha256("official/v9.9.9/fixture-1.2.3.tar.gz")).rejects.toThrow(/could not be read/);
+  });
+
+  it("stops the run rather than overwriting a key it could not read", async () => {
+    const modesDir = writeFixture();
+    const { store, puts, jsonPuts } = fakeStore({
+      readSha256: async () => {
+        throw new ArchiveUnreadableError("cdn read failed");
+      },
+    });
+
+    await expect(
+      publishModes({
+        version: VERSION,
+        dryRun: false,
+        outDir: join(root, "out"),
+        modesDir,
+        builtAt: BUILT_AT,
+        store,
+        catalogPath: join(root, "shipped-catalog.json"),
+        isVersionOnNpm: async () => true,
+        log: () => {},
+      }),
+    ).rejects.toThrow(/cdn read failed/);
+    expect(puts).toEqual([]);
+    expect(jsonPuts).toEqual([]);
   });
 });
 
