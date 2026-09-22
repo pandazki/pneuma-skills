@@ -22,7 +22,9 @@ Two things the numbers in `run.json` are chosen for: `seam` 0.0065 against a
 `step` of 0.02 is the reference clip's own measurement — a loop that closes,
 with the seam at a third of a normal step — and the frames really are one
 closed cycle, so a reader who renders them sees the same verdict the report
-prints.
+prints. `seamFill` is 0 for the same reason: a loop that already closes gets
+no interpolated frames at its wrap, so all 12 `sampledAt` entries are real
+timestamps.
 
 The paths inside `run.json` are workspace-relative (`motions/flame/…`), the
 way `bounce-run.json` next door is: the test copies this directory into a

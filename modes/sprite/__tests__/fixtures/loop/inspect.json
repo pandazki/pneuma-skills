@@ -17,6 +17,7 @@
     "leading": 0,
     "trailing": 1
   },
+  "seamFill": 0,
   "exports": {
     "webp": 1680,
     "apng": 1383,

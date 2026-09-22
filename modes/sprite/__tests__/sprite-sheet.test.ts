@@ -24,7 +24,7 @@ import { join } from "node:path";
 
 import {
   alphaColorAudit, buildClip, buildExprClip, buildSheet, clipFrameDeltas, edgeLuma,
-  readBbox, readColorBbox, CELL_OFFSETS,
+  readBbox, readColorBbox, silhouetteDiff, webpAnimation, webpStackedFrames, CELL_OFFSETS,
 } from "./fixtures/pipeline/make-sheet.mjs";
 import type { BuildExprClipOptions, BuildSheetOptions } from "./fixtures/pipeline/make-sheet.mjs";
 
@@ -38,8 +38,10 @@ if (!HAS_FFMPEG) {
   console.warn("(skip) modes/sprite sprite-sheet.mjs suite — ffmpeg/ffprobe not on PATH");
 }
 
+/** `libwebp_anim`, not `libwebp`: the still encoder is what the WebP exports
+ *  used to go through, and its animations ghost (see the WebP cases below). */
 const HAS_LIBWEBP = HAS_FFMPEG &&
-  spawnSync("ffmpeg", ["-hide_banner", "-encoders"], { encoding: "utf-8" }).stdout?.includes("libwebp") === true;
+  spawnSync("ffmpeg", ["-hide_banner", "-encoders"], { encoding: "utf-8" }).stdout?.includes("libwebp_anim") === true;
 
 function run(...argv: string[]) {
   return runWithEnv({}, ...argv);
@@ -741,6 +743,11 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       const flags = bytes[20]!;
       expect(flags & 0x10).toBe(0x10);
       expect(flags & 0x02).toBe(0x02);
+
+      // …and the frames do not pile up on one another. The sprite preview goes
+      // through the same encoder the loop export does, and had the same defect:
+      // see the loop case below for the measurement.
+      expect(webpStackedFrames(join(ws, "preview.webp"))).toEqual([]);
     });
 
     test("--width rescales the preview", () => {
@@ -1663,6 +1670,14 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
     });
     /** A box that leaves and never comes back: the loop that does not close. */
     const sweep = () => clip("sweep", "sweep.mp4", { x: "8+40*t" });
+    /** A box that never moves at all. Its silhouette step is 0 — far under the
+     *  0.005 absolute floor the hold threshold used to carry — so it is the
+     *  clip that tells which of the two rules decided what counts as held.
+     *  Named `static`, not `still`: `contact` already owns `clip:still` and
+     *  `shared()/still.mp4`, and both the memo key and the path are shared
+     *  across the whole file, so the describe that ran first would have
+     *  silently handed its own 3 s / 10 fps clip to the other. */
+    const staticClip = () => clip("static", "static.mp4", { x: "24", y: "24" });
     /** A big WHITE box on green, 96x96: a bright subject whose edge shows a
      *  dark fringe the moment anything scales it in straight alpha. */
     const soft = () => clip("soft", "soft.mp4", {
@@ -1679,6 +1694,13 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
     /** Four encoders per run is most of this describe's wall time, so every
      *  case that is not about the deliverables asks for one of them. */
     const WEBP_ONLY = ["--formats", "webp"];
+
+    /** The seam-fill cases each build a clip and drive two whole `loop` runs —
+     *  3.2s measured when one of them pays for the fixtures cold, which leaves
+     *  no headroom under bun's 5s default while the rest of the suite is
+     *  competing for ffmpeg. Whichever case runs first pays; which one that is
+     *  depends on the filter, so they all carry the same bound. */
+    const SEAM_FILL_TIMEOUT_MS = 20_000;
 
     /** One `loop` per distinct set of flags, shared by the cases that only
      *  read its output — a run is ~30 ffmpeg spawns. */
@@ -1708,6 +1730,12 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       const frozen = clipFrameDeltas(frozenTail());
       expect(Math.max(...frozen.slice(0, 11))).toBeGreaterThan(10);
       expect(Math.max(...frozen.slice(12))).toBe(0);
+
+      // The static fixture argues the opposite, so it gets the same
+      // measurement: 24 frames and not one pixel of change anywhere.
+      const staticDeltas = clipFrameDeltas(staticClip());
+      expect(staticDeltas).toHaveLength(23);
+      expect(Math.max(...staticDeltas)).toBe(0);
     });
 
     test("keeps every frame of the window, keys the plate and names where each came from", () => {
@@ -1753,6 +1781,8 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(json.inspect.duration).toBe(1);
       expect(json.inspect.emptyFrames).toEqual([]);
       expect(json.inspect.dropped).toEqual({ leading: 0, trailing: 0 });
+      expect(json.inspect.seamFill).toBe(0);
+      expect(json.seamFill).toBe(0);
       expect(json.inspect.warnings).toEqual(json.warnings);
       // The seam is one step of a constant-speed orbit, so it closes.
       expect(json.inspect.seam).toBeLessThan(2 * json.inspect.step);
@@ -1788,11 +1818,47 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       const webp = readFileSync(json.webp);
       expect(webp.subarray(0, 4).toString("latin1")).toBe("RIFF");
       expect(webp.subarray(8, 12).toString("latin1")).toBe("WEBP");
-      // ANIM says animated, and its loop count is 0 = forever.
-      const anim = webp.indexOf("ANIM");
-      expect(anim).toBeGreaterThan(0);
-      expect(webp.readUInt16LE(anim + 12)).toBe(0);
-      expect(webp.indexOf("ANMF")).toBeGreaterThan(0);
+      // One ANMF per frame, the file declares transparency, and the loop count
+      // is 0 = forever.
+      const animation = webpAnimation(json.webp);
+      expect(animation.frames).toHaveLength(24);
+      expect(animation.loops).toBe(0);
+      expect(animation.declaresAlpha).toBe(true);
+    });
+
+    test("the WebP shows each frame on its own, not stacked on the ones before", () => {
+      const { json } = loop("orbit", orbit());
+
+      // ffmpeg's still `libwebp` encoder — which this export used to go
+      // through — hands the muxer one full-canvas image per frame, and every
+      // ANMF comes out blended onto the canvas the frame before it left
+      // behind, disposing nothing. A compositing decoder (libwebp's own
+      // animation decoder, every browser) therefore paints frame i on TOP of
+      // frame i-1, and the transparency of a UI loop shows the older
+      // silhouettes through. Frames 000 and 012 of this orbit are disjoint —
+      // the box is 16px and swings 16px — so the ghost is a second box.
+      //
+      // Measured 2026-09-22, ffmpeg 8.0, decoding both encodes back through
+      // libwebp's animation decoder and diffing against the source PNGs:
+      // libwebp's worst frame was 73.9 mean |alpha - source| (max 255) on this
+      // fixture and 12.7 on the 119-frame trial flame; `libwebp_anim` scored
+      // 0.0 and 0.037. That cannot be re-measured here — ffmpeg cannot read an
+      // animated WebP and libwebp is not a dependency of this repo — so the
+      // two halves of the difference are checked in the container instead.
+      //
+      // One: no frame is a full-canvas blend over a canvas nothing cleared.
+      // That is the only shape ffmpeg's still encoder writes (23 of these 24
+      // frames, and 118 of the flame's 119); `libwebp_anim` writes none.
+      expect(webpStackedFrames(json.webp)).toEqual([]);
+
+      // Two: some frame is a sub-rectangle of the canvas. Only libwebp's
+      // animation encoder ever emits one, so this is the positive half — the
+      // frame optimisation that makes the composited canvas equal the frame it
+      // was handed really ran, rather than the export having quietly fallen
+      // back to a chain of full-canvas images.
+      const { canvas, frames } = webpAnimation(json.webp);
+      expect(canvas).toEqual({ width: json.cell.width, height: json.cell.height });
+      expect(frames.some((f) => f.w < canvas!.width || f.h < canvas!.height)).toBe(true);
     });
 
     test("the Lottie is an image sequence, one embedded PNG per frame", () => {
@@ -1837,8 +1903,38 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(kept.inspect.frameCount).toBe(24);
     });
 
+    test("what counts as a hold is this clip's own step, not an absolute floor", () => {
+      // The threshold is `0.25 * median step` and nothing else. It used to be
+      // floored at 0.005, which is a number measured on one clip deciding what
+      // "held" means on every other: on the owner's reference flame — whose
+      // colour moves far more than its outline, median silhouette step 0.0043
+      // — that floor dropped 12 leading and 1 trailing frame of a clip that
+      // holds nothing, and the relative rule keeps all 122 (seam 0.0036
+      // against step 0.0043, measured 2026-09-22).
+      //
+      // This fixture is the extreme of that: a box that never moves at all, so
+      // every step is 0. Under the floor every frame read as held and the run
+      // was refused as "one pose throughout"; under the clip's own rule there
+      // is no scale on which anything is held, so nothing is dropped and the
+      // report says plainly that the loop has no motion in it.
+      const { json } = loop("static", staticClip(), WEBP_ONLY);
+      expect(json.dropped).toEqual({ leading: 0, trailing: 0 });
+      expect(json.inspect.frameCount).toBe(24);
+      expect(json.inspect.step).toBe(0);
+      expect(json.inspect.maxStep).toBe(0);
+      expect(json.inspect.seam).toBe(0);
+      // A step of 0 gives the seam no scale to be judged against, so neither
+      // the warning nor the fill may invent one.
+      expect(json.inspect.seamFill).toBe(0);
+      expect(json.warnings).toEqual([]);
+    });
+
     test("a loop that does not close says so, with both numbers", () => {
-      const { json } = loop("sweep", sweep(), WEBP_ONLY);
+      // --seam-fill none, because "did this clip close" is a question about
+      // the frames the model drew; what the default then does about the answer
+      // is the next case.
+      const { json } = loop("sweep", sweep(), ["--seam-fill", "none", ...WEBP_ONLY]);
+      expect(json.seamFill).toBe(0);
       expect(json.inspect.seam).toBeGreaterThan(2 * json.inspect.step);
       const seamWarning = json.warnings.find((w: string) => w.includes("does not close"));
       expect(seamWarning).toContain(String(json.inspect.seam));
@@ -1847,6 +1943,80 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       // The same sentence reaches the report the viewer reads.
       expect(json.inspect.warnings).toContain(seamWarning);
     });
+
+    test("--seam-fill auto only fires on a seam worth seeing, and cannot launder one", () => {
+      // The wrap from the last frame back to the first is the one transition
+      // the model never drew, so above the same line the warning is drawn at
+      // — two normal steps — the default interpolates in-betweens for it.
+      // A constant-speed orbit's seam IS one of its steps, so it gets none.
+      expect(loop("orbit", orbit()).json.seamFill).toBe(0);
+
+      // The sweep never comes back: seam 1 (no overlap at all) against a 0.2
+      // step, so `ceil(1 / 0.2) - 1` wants 4 and 4 is the cap. The wrap gets
+      // shorter — 1 → 0.44 — and the loop four frames longer, but four
+      // invented frames cannot turn a clip that was never shot as a loop into
+      // one, so the warning has to survive, now saying what was tried.
+      const { json } = loop("sweep-auto", sweep(), WEBP_ONLY);
+      expect(json.seamFill).toBe(4);
+      expect(json.inspect.seamFill).toBe(4);
+      expect(json.inspect.frameCount).toBe(28);
+      expect(json.inspect.seam).toBeLessThan(loop("sweep", sweep(), ["--seam-fill", "none", ...WEBP_ONLY]).json.inspect.seam);
+      expect(json.inspect.seam).toBeGreaterThan(2 * json.inspect.step);
+      expect(json.warnings.join(" ")).toContain("does not close");
+      expect(json.warnings.join(" ")).toContain("4 interpolated frame(s)");
+    }, SEAM_FILL_TIMEOUT_MS);
+
+    test("--seam-fill N fills the wrap with frames that are between its two ends", () => {
+      // Forced, on the matted clip, so this covers the alpha-carrying input as
+      // well: by the time the wrap is filled both paths are the same RGBA
+      // sequence, and `minterpolate` is run on it in yuva444p — alpha
+      // included — rather than on a plate that no longer exists here.
+      const plain = loop("matted", matted(), ["--key", "alpha", ...WEBP_ONLY]).json;
+      const { dir, json } = loop("matted-fill", matted(), ["--key", "alpha", "--seam-fill", "2", ...WEBP_ONLY]);
+
+      expect(plain.seamFill).toBe(0);
+      expect(json.seamFill).toBe(2);
+      expect(json.inspect.frameCount).toBe(26);
+      expect(frameNames(dir)).toHaveLength(26);
+      // The loop grows by exactly the frames that were added, at the same fps.
+      expect(json.duration).toBe(1.083);
+      expect(json.fps).toBe(24);
+      // A filled frame has a place in the loop but no source timestamp.
+      expect(json.sampledAt.slice(0, 24).every((t: unknown) => typeof t === "number")).toBe(true);
+      expect(json.sampledAt.slice(24)).toEqual([null, null]);
+
+      // The two new frames are really in the gap: each is much closer to the
+      // end it sits beside than the two ends are to each other, and the wrap
+      // the report now names is the worst step across them, not the gap.
+      const frame = (name: string) => join(dir, "frames", name);
+      const ends = silhouetteDiff(frame("023.png"), frame("000.png"));
+      const toLast = silhouetteDiff(frame("023.png"), frame("024.png"));
+      const toFirst = silhouetteDiff(frame("025.png"), frame("000.png"));
+      expect(toLast).toBeLessThan(ends / 2);
+      expect(toFirst).toBeLessThan(ends / 2);
+      expect(toLast).toBeGreaterThan(0);
+      expect(toFirst).toBeGreaterThan(0);
+      expect(json.inspect.seam).toBeLessThan(plain.inspect.seam);
+    }, SEAM_FILL_TIMEOUT_MS);
+
+    test("--seam-fill none leaves the wrap as shot; N fills one auto would not", () => {
+      // `none` on the clip whose seam auto WOULD have filled: 24 shot frames,
+      // every one of them with the timestamp it came from.
+      const raw = loop("sweep", sweep(), ["--seam-fill", "none", ...WEBP_ONLY]).json;
+      expect(raw.seamFill).toBe(0);
+      expect(raw.inspect.seamFill).toBe(0);
+      expect(raw.inspect.frameCount).toBe(24);
+      expect(raw.sampledAt.every((t: unknown) => typeof t === "number")).toBe(true);
+
+      // …and a count on the clip auto leaves alone: an explicit number is what
+      // the caller saw on the contact sheet, not something to second-guess.
+      const forced = loop("orbit-fill", orbit(), ["--seam-fill", "2", ...WEBP_ONLY]).json;
+      expect(forced.seamFill).toBe(2);
+      expect(forced.inspect.seamFill).toBe(2);
+      expect(forced.inspect.frameCount).toBe(26);
+      expect(forced.duration).toBe(1.083);
+      expect(forced.sampledAt.slice(24)).toEqual([null, null]);
+    }, SEAM_FILL_TIMEOUT_MS);
 
     test("--key alpha decodes the clip's own matte instead of keying a plate", () => {
       const { dir, json } = loop("matted", matted(), ["--key", "alpha", ...WEBP_ONLY]);
@@ -1946,7 +2116,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(human.code).toBe(0);
       expect(human.out).toContain("24 frames of 48x48 at 24fps");
       expect(human.out).toContain("seam ");
-      expect(human.out).toContain("dropped 0 leading / 0 trailing");
+      expect(human.out).toContain("dropped 0 leading / 0 trailing, seam-fill 0");
       expect(human.out).toContain("webp ");
     });
 
@@ -1961,6 +2131,10 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
         { args: [orbit(), "--out", join(ws, "e"), "--name", "x", "--key", "#zzzzzz"], names: ["--key"] },
         { args: [orbit(), "--out", join(ws, "f"), "--name", "x", "--trim-holds", "--no-trim-holds"], names: ["--trim-holds"] },
         { args: [orbit(), "--out", join(ws, "g"), "--name", "x", "--trim-start", "5"], names: ["--trim-start"] },
+        { args: [orbit(), "--out", join(ws, "h"), "--name", "x", "--seam-fill", "some"], names: ["--seam-fill"] },
+        { args: [orbit(), "--out", join(ws, "i"), "--name", "x", "--seam-fill=-1"], names: ["--seam-fill"] },
+        // The fill is frames, and frames are capped like every other frame.
+        { args: [orbit(), "--out", join(ws, "j"), "--name", "x", "--seam-fill", "400"], names: ["--seam-fill", "400"] },
       ];
       for (const { args, names } of cases) {
         const r = run("loop", ...args, "--json");

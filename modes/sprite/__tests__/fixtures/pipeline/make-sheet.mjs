@@ -14,7 +14,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 /** Cell offsets of the drawn square, in cell-local pixels, per grid cell. */
@@ -340,4 +340,104 @@ export function edgeLuma(path, { min = 16, max = 250 } = {}) {
     if (luma < lowest) lowest = luma;
   }
   return { count, min: count ? Math.round(lowest) : null, mean: count ? Math.round(sum / count) : null };
+}
+
+/**
+ * How far apart two frames' silhouettes are, on the scale `loop` reports its
+ * seam and step on: the alpha that changed over the alpha that is there —
+ * 0 for the same pose, 1 for no overlap at all.
+ *
+ * Written out here rather than imported from the script, so the suite measures
+ * the wrap with its own ruler; a helper shared with `sprite-sheet.mjs` could
+ * only prove the script agrees with itself. Full 8-bit alpha rather than a
+ * threshold, because a synthesised in-between is largely made of partial alpha.
+ */
+export function silhouetteDiff(pathA, pathB) {
+  const a = decode(pathA);
+  const b = decode(pathB);
+  if (a.width !== b.width || a.height !== b.height) {
+    throw new Error(`silhouetteDiff: ${a.width}x${a.height} vs ${b.width}x${b.height}`);
+  }
+  let delta = 0;
+  let union = 0;
+  for (let i = 3; i < a.data.length; i += 4) {
+    const x = a.data[i];
+    const y = b.data[i];
+    delta += Math.abs(x - y);
+    union += Math.max(x, y);
+  }
+  return delta / Math.max(1, union);
+}
+
+/**
+ * The frame-by-frame structure of an animated WebP, read out of its RIFF
+ * container.
+ *
+ * ffmpeg cannot decode an animated WebP and libwebp is not a dependency of
+ * this repo, so "does this animation ghost" has to be answered structurally.
+ * Every ANMF carries the rectangle it paints plus the two bits that decide
+ * what a compositing decoder does with the canvas the frame before it left
+ * behind: `blend` (0 = alpha-blend onto that canvas, 1 = overwrite it) and
+ * `dispose` (0 = keep the canvas, 1 = clear this frame's rect afterwards).
+ */
+export function webpAnimation(path) {
+  const buf = readFileSync(path);
+  if (buf.subarray(0, 4).toString("latin1") !== "RIFF" || buf.subarray(8, 12).toString("latin1") !== "WEBP") {
+    throw new Error(`webpAnimation: ${path} is not a RIFF/WEBP file`);
+  }
+  const end = Math.min(buf.length, 8 + buf.readUInt32LE(4));
+  const u24 = (at) => buf[at] | (buf[at + 1] << 8) | (buf[at + 2] << 16);
+  const frames = [];
+  let loops = null;
+  let declaresAlpha = false;
+  let canvas = null;
+  for (let p = 12; p + 8 <= end;) {
+    const id = buf.subarray(p, p + 4).toString("latin1");
+    const size = buf.readUInt32LE(p + 4);
+    const body = p + 8;
+    // VP8X: 1 flags byte (alpha is bit 4), 3 reserved, then canvas size - 1.
+    if (id === "VP8X") {
+      declaresAlpha = ((buf[body] >> 4) & 1) === 1;
+      canvas = { width: u24(body + 4) + 1, height: u24(body + 7) + 1 };
+    }
+    // ANIM: 4 bytes background colour, then the loop count.
+    if (id === "ANIM") loops = buf.readUInt16LE(body + 4);
+    if (id === "ANMF") {
+      // x/y are stored in units of 2px and the sizes as size - 1.
+      frames.push({
+        x: u24(body) * 2, y: u24(body + 3) * 2, w: u24(body + 6) + 1, h: u24(body + 9) + 1,
+        durationMs: u24(body + 12),
+        blend: (buf[body + 15] >> 1) & 1,
+        dispose: buf[body + 15] & 1,
+      });
+    }
+    p = body + size + (size % 2);
+  }
+  return { canvas, declaresAlpha, loops, frames };
+}
+
+/**
+ * Frames written the way the STILL `libwebp` encoder writes them: the whole
+ * canvas, alpha-blended onto whatever the frame before it left there, with
+ * nothing disposed in between. That is the shape that ghosts — a transparent
+ * pixel of frame i keeps showing frame i-1's subject — and it is what ffmpeg's
+ * `libwebp` + webp muxer produces for every frame of an animation.
+ *
+ * Deliberately narrow: `libwebp_anim` also emits blended frames, but always as
+ * a sub-rectangle chosen so the composited canvas equals the frame it was
+ * given, and no structural rule can re-derive that reasoning from the
+ * container. What CAN be said is that a full-canvas blend over an uncleared
+ * canvas carries no such guarantee, and that a sub-rectangle is something only
+ * the animation encoder ever writes.
+ */
+export function webpStackedFrames(path) {
+  const { canvas, frames } = webpAnimation(path);
+  const stacked = [];
+  for (let i = 1; i < frames.length; i++) {
+    const cur = frames[i];
+    const full = !canvas
+      || (cur.x === 0 && cur.y === 0 && cur.w >= canvas.width && cur.h >= canvas.height);
+    if (full && cur.blend === 0 && frames[i - 1].dispose === 0) stacked.push(i);
+  }
+  return stacked;
 }
