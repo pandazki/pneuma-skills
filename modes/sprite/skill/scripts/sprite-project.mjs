@@ -13,13 +13,13 @@
  * previous project untouched.
  *
  * Subcommands: init, add-ref, add-motion, set-motion, set-sheet,
- * register-run, add-video, set-video, remove-motion, show.
+ * set-keyframe, register-run, add-video, set-video, remove-motion, show.
  */
 
 import { spawnSync } from "node:child_process";
 import {
   closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync,
-  realpathSync, renameSync, rmSync, writeFileSync,
+  realpathSync, renameSync, rmSync, statSync, writeFileSync,
 } from "node:fs";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
@@ -32,17 +32,42 @@ const DEFAULT_FPS = 8;
 const REF_ROLES = ["turnaround", "portrait", "expression", "custom"];
 const MOTION_STATUSES = ["planned", "generating", "processing", "ready", "failed"];
 const VIDEO_STATUSES = ["generating", "ready", "failed"];
+/** Models that MAKE a clip out of images and a prompt. */
 const VIDEO_MODELS = ["seedance-2.5", "h3-max"];
 const VIDEO_MODES = ["i2v", "first-last", "r2v"];
+/** Models that make a clip out of ANOTHER clip: video matting (veed, bria)
+ *  and frame interpolation (topaz). They generate nothing of their own, so
+ *  they live in their own list — `--mode i2v --model veed` is not a take
+ *  anybody can shoot, and refusing it here is cheaper than explaining it. */
+const DERIVE_VIDEO_MODELS = ["veed", "bria", "topaz"];
+const VIDEO_OPS = ["matte", "interpolate"];
 const ANCHORS = ["bottom", "center"];
+/** What a motion is FOR. Absent means a sprite motion — an atlas for a game
+ *  engine. A `loop` is a seamless transparent animation for a UI: no sheet,
+ *  no atlas, no GIF, and three-digit frame ids because one closed cycle at
+ *  full rate is 96–400 frames, not 8–16. */
+const MOTION_KINDS = ["loop"];
 /** How a motion's frames were obtained. Absent means "sheet" — every motion
  *  made before the video source existed. */
 const MOTION_SOURCES = ["sheet", "video"];
 const FACINGS = ["left", "right"];
 
 const SUBCOMMANDS = [
-  "init", "add-ref", "add-motion", "set-motion", "set-sheet",
+  "init", "add-ref", "add-motion", "set-motion", "set-sheet", "set-keyframe",
   "register-run", "add-video", "set-video", "remove-motion", "show",
+];
+
+/**
+ * The four frontend-ready exports of a loop run, in the order the panel lists
+ * them. `probe` says how the asset is measured; every one of them also carries
+ * `metadata.size` in bytes, because the Loop tab prints "1.8 MB" beside a
+ * download link and the viewer reads project.json and nothing else.
+ */
+const LOOP_EXPORTS = [
+  { key: "webp", suffix: "webp", type: "image", probe: "image", label: "loop (webp)" },
+  { key: "apng", suffix: "apng", type: "image", probe: "image", label: "loop (apng)" },
+  { key: "webm", suffix: "webm", type: "video", probe: "video", label: "loop (webm)" },
+  { key: "lottie", suffix: "lottie", type: "text", probe: "none", label: "loop (lottie)" },
 ];
 
 const USAGE = `Usage: sprite-project.mjs <subcommand> [--dir <characterDir>] [options]
@@ -71,10 +96,15 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       (--op, a single word, default 'crop').
 
   add-motion --id <motionId> --label <text> --rows R --cols C --fps N
-             [--loop|--no-loop] [--anchor ${ANCHORS.join("|")}] [--prompt <text>]
+             [--kind ${MOTION_KINDS.join("|")}] [--loop|--no-loop]
+             [--anchor ${ANCHORS.join("|")}] [--prompt <text>]
              [--status ${MOTION_STATUSES.join("|")}] [--source ${MOTION_SOURCES.join("|")}]
       --source records how the frames will be obtained (a generated sheet or
       a sampled video clip) before anything is generated. Omitted means sheet.
+      --kind loop declares a seamless transparent animation for a UI instead
+      of a sprite atlas: --rows/--cols become optional (a loop has no grid,
+      so they default to 1x1), --source defaults to video, and playback loops
+      unless --no-loop says otherwise.
 
   set-motion --motion <motionId> [--label] [--fps] [--loop|--no-loop] [--anchor]
              [--prompt] [--status] [--notes]
@@ -94,6 +124,14 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       measures it and flips the same asset to ready. A missing file under any
       other status is an error.
 
+  set-keyframe --motion <motionId> --file <path> [--alpha <path>] [--model]
+               [--prompt] [--from <assetId,…>] [--status ${MOTION_STATUSES.join("|")}]
+      The loop-motion mirror of set-sheet: registers the generated keyframe as
+      <motion>-keyframe (the image the clip starts AND ends on), and with
+      --alpha its cut-out as <motion>-keyframe-alpha, derived from it.
+      '--status generating' is the same placeholder leg set-sheet has.
+      Refused on a motion that is not --kind loop.
+
   register-run --motion <motionId> --run <run.json|-> [--video <videoId>] [--at <ms>]
       Consume a 'sprite-sheet.mjs run' summary: registers sheet-alpha (when
       keyed), every frame, the packed sheet, the atlas, the GIF and the WebP,
@@ -107,10 +145,24 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       and sets motion.source = "video". The clip must already be a registered
       video asset (add-video); --video names which one when there is more
       than one, and the newest is used with a note when there is not.
+      A 'loop' summary (kind: "loop") has no sheet, atlas or GIF and is not
+      asked for one: it registers three-digit frames, the WebP, the APNG, the
+      WebM and the Lottie (each with its size in bytes), sets motion.kind =
+      "loop", motion.exports, a 1x1 grid and the run's fps, and copies the
+      loop's seam / step / alpha coverage into the inspect summary.
 
   add-video --motion <motionId> --file <path> --model ${VIDEO_MODELS.join("|")}
             --mode ${VIDEO_MODES.join("|")} [--from <assetId,…>] [--prompt]
             [--duration <seconds>] [--status ${VIDEO_STATUSES.join("|")}]
+  add-video --motion <motionId> --file <path> --derived-from <videoId>
+            --op ${VIDEO_OPS.join("|")} --model ${DERIVE_VIDEO_MODELS.join("|")}
+            [--duration <seconds>] [--status ${VIDEO_STATUSES.join("|")}]
+      --derived-from registers a clip made out of an earlier clip of the same
+      motion — a matte (transparent) or an interpolation (more frames). It
+      writes a 'derive' edge from that clip and refuses --mode / --prompt /
+      --from, because nothing here was shot: its history is the take it came
+      from. register-run --video then names which clip the frames were cut
+      from.
   set-video --motion <motionId> --video <videoId|assetId>
             --status ${VIDEO_STATUSES.join("|")} [--notes <text>]
       --notes lands on the motion (the failure reason a human reads).
@@ -159,8 +211,9 @@ function loadProject(dir) {
 
 const ASSET_KEYS = ["id", "type", "uri", "name", "metadata", "createdAt", "status", "tags"];
 const MOTION_KEYS = [
-  "id", "label", "prompt", "grid", "fps", "loop", "anchor", "status", "notes", "source",
-  "sheetRaw", "sheetAlpha", "sheet", "atlas", "frames", "gif", "webp", "videos", "inspect",
+  "id", "label", "prompt", "kind", "grid", "fps", "loop", "anchor", "status", "notes", "source",
+  "keyframe", "keyframeAlpha", "sheetRaw", "sheetAlpha", "sheet", "atlas", "frames",
+  "gif", "webp", "exports", "videos", "inspect",
 ];
 
 /** Rebuild an object with a fixed key order so project.json diffs stay stable
@@ -355,7 +408,11 @@ function assetOwner(doc, id) {
   const ref = doc.sprite.refs.find((r) => r.asset === id);
   if (ref) return `ref '${ref.id}'`;
   for (const motion of doc.sprite.motions) {
-    const slots = [motion.sheetRaw, motion.sheetAlpha, motion.sheet, motion.atlas, motion.gif, motion.webp];
+    const exports = motion.exports ?? {};
+    const slots = [
+      motion.sheetRaw, motion.sheetAlpha, motion.sheet, motion.atlas, motion.gif, motion.webp,
+      motion.keyframe, motion.keyframeAlpha, exports.apng, exports.webm, exports.lottie,
+    ];
     if (slots.includes(id)
       || (motion.frames ?? []).includes(id)
       || (motion.videos ?? []).some((v) => v.asset === id)) {
@@ -559,7 +616,25 @@ function requireFlag(value, flag) {
   return value;
 }
 
-const frameAssetId = (motionId, index) => `${motionId}-frame-${String(index).padStart(2, "0")}`;
+/** `bounce-frame-07`, or `flame-frame-096` for a loop — one closed cycle at
+ *  full rate runs past 99 frames, and a two-digit id would sort `100` next to
+ *  `10`. The width is the RUN's, not the index's, so a 40-frame loop still
+ *  spells `000`: a motion whose ids changed width halfway through would be
+ *  two naming schemes in one folder. */
+const frameAssetId = (motionId, index, digits = 2) =>
+  `${motionId}-frame-${String(index).padStart(digits, "0")}`;
+
+/** Size on disk in bytes, or undefined when the file cannot be stat'd. The
+ *  panel prints it beside each loop export; a missing number is a link
+ *  without a size, never a size of 0. */
+function fileSize(path) {
+  try {
+    const size = statSync(path).size;
+    return Number.isFinite(size) ? size : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Ids a `run` owns and therefore replaces wholesale. Matching is exact, never
@@ -575,11 +650,15 @@ function runOwnedIds(doc, motionId) {
   const owned = new Set([
     `${motionId}-sheet-alpha`, `${motionId}-sheet`, `${motionId}-atlas`,
     `${motionId}-gif`, `${motionId}-webp`,
+    // A loop run's own deliverables. They are owned by the run for the same
+    // reason the GIF is: re-running the loop rewrites all four, and a stale
+    // export left behind would be offered for download as if it were current.
+    `${motionId}-apng`, `${motionId}-webm`, `${motionId}-lottie`,
   ]);
   const mine = `motion '${motionId}'`;
   return doc.assets
     .map((a) => a.id)
-    .filter((id) => owned.has(id) || (id.startsWith(framePrefix) && /^\d{2}$/.test(id.slice(framePrefix.length))))
+    .filter((id) => owned.has(id) || (id.startsWith(framePrefix) && /^\d{2,3}$/.test(id.slice(framePrefix.length))))
     .filter((id) => {
       const holder = assetOwner(doc, id);
       return holder === null || holder === mine;
@@ -625,6 +704,13 @@ function inspectSummary(value) {
   if (!value || typeof value !== "object") return undefined;
   const point = anchorPoint(value.anchorPoint);
   const bodyDrift = finiteNumber(value.bodyDrift);
+  // A loop reports these three and none of the anchor numbers; a sheet run
+  // reports the anchor numbers and none of these. Picking by name means each
+  // shape carries exactly what it measured, and the missing half stays
+  // missing instead of arriving as a confident 0.
+  const seam = finiteNumber(value.seam);
+  const step = finiteNumber(value.step);
+  const alphaCoverage = finiteNumber(value.alphaCoverage);
   return {
     frameCount: value.frameCount,
     cell: value.cell,
@@ -637,7 +723,49 @@ function inspectSummary(value) {
     scaleDrift: value.scaleDrift,
     emptyFrames: value.emptyFrames ?? [],
     warnings: value.warnings ?? [],
+    ...(seam === undefined ? {} : { seam }),
+    ...(step === undefined ? {} : { step }),
+    ...(alphaCoverage === undefined ? {} : { alphaCoverage }),
   };
+}
+
+/** Four decimals — the scale the loop's seam and step are reported at. */
+const round4 = (value) => Math.round(value * 1e4) / 1e4;
+
+/**
+ * One motion, said out loud for the agent.
+ *
+ * A loop is described by different facts than a sprite motion: nobody cares
+ * about its grid, and the two numbers that decide whether the workflow
+ * succeeded — does the last frame return to the first — have nowhere else to
+ * be read. Derived clips get their parent printed beside them, because
+ * "video-2" alone cannot tell you it is the matte of video-1.
+ */
+function motionLines(motion) {
+  const frameCount = motion.frames?.length ?? 0;
+  const lines = [];
+  if (motion.kind === "loop") {
+    lines.push(`${motion.id} (${motion.label}) — loop, ${motion.status}, ${frameCount} frames @ ${motion.fps}fps`);
+    const seam = motion.inspect?.seam;
+    const step = motion.inspect?.step;
+    if (Number.isFinite(seam) && Number.isFinite(step)) {
+      lines.push(`  seam ${round4(seam)} vs step ${round4(step)} (limit ${round4(2 * step)}) — ${seam > 2 * step ? "does not close" : "closes"}`);
+    }
+    const exports = motion.exports ?? {};
+    const present = [
+      motion.webp ? "webp" : null, exports.apng ? "apng" : null,
+      exports.webm ? "webm" : null, exports.lottie ? "lottie" : null,
+    ].filter(Boolean);
+    lines.push(`  exports: ${present.join(", ") || "none yet"}`);
+  } else {
+    lines.push(`${motion.id} (${motion.label}) — ${motion.status}, ${motion.grid.rows}x${motion.grid.cols} @ ${motion.fps}fps, ${frameCount} frames`);
+  }
+  for (const video of motion.videos ?? []) {
+    lines.push(video.derivedFrom
+      ? `  ${video.id} ← ${video.derivedFrom} (${video.op}, ${video.model}) — ${video.status}`
+      : `  ${video.id} (${video.model}, ${video.mode}) — ${video.status}`);
+  }
+  return lines;
 }
 
 function summarize(doc, dir) {
@@ -660,6 +788,9 @@ function compactMotion(motion) {
   return {
     id: motion.id,
     label: motion.label,
+    // Absent for a sprite motion, so a summary of the motions this mode has
+    // always made is byte-for-byte what it was.
+    ...(motion.kind ? { kind: motion.kind } : {}),
     status: motion.status,
     grid: motion.grid,
     fps: motion.fps,
@@ -696,7 +827,7 @@ const OPTIONS = {
     id: { type: "string" }, label: { type: "string" }, rows: { type: "string" }, cols: { type: "string" },
     fps: { type: "string" }, loop: { type: "boolean", default: false }, "no-loop": { type: "boolean", default: false },
     anchor: { type: "string" }, prompt: { type: "string" }, status: { type: "string" },
-    source: { type: "string" },
+    source: { type: "string" }, kind: { type: "string" },
   },
   "set-motion": {
     motion: { type: "string" }, label: { type: "string" }, fps: { type: "string" },
@@ -708,11 +839,16 @@ const OPTIONS = {
     motion: { type: "string" }, file: { type: "string" }, from: { type: "string", multiple: true },
     model: { type: "string" }, prompt: { type: "string" }, background: { type: "string" }, status: { type: "string" },
   },
+  "set-keyframe": {
+    motion: { type: "string" }, file: { type: "string" }, alpha: { type: "string" },
+    from: { type: "string", multiple: true }, model: { type: "string" }, prompt: { type: "string" },
+    status: { type: "string" },
+  },
   "register-run": { motion: { type: "string" }, run: { type: "string" }, video: { type: "string" } },
   "add-video": {
     motion: { type: "string" }, file: { type: "string" }, model: { type: "string" }, mode: { type: "string" },
     from: { type: "string", multiple: true }, prompt: { type: "string" }, duration: { type: "string" },
-    status: { type: "string" },
+    status: { type: "string" }, "derived-from": { type: "string" }, op: { type: "string" },
   },
   "set-video": {
     motion: { type: "string" }, video: { type: "string" }, status: { type: "string" }, notes: { type: "string" },
@@ -738,8 +874,14 @@ function readRunSummary(source) {
   } catch (error) {
     fail(`--run: not valid JSON (${error.message})`);
   }
-  for (const key of ["frames", "sheet", "atlas", "gif"]) {
-    if (run[key] === undefined) fail(`--run: the run summary has no '${key}' — is this 'sprite-sheet.mjs run --json' output?`);
+  // A loop run produces no sheet, no atlas and no GIF — asking it for them
+  // would make the whole `loop` subcommand unregisterable. A sprite run is
+  // still required to carry all four: a `run` summary missing its atlas is a
+  // half-finished pipeline, not a new shape.
+  const loopRun = run.kind === "loop";
+  const command = loopRun ? "loop" : "run";
+  for (const key of loopRun ? ["frames"] : ["frames", "sheet", "atlas", "gif"]) {
+    if (run[key] === undefined) fail(`--run: the run summary has no '${key}' — is this 'sprite-sheet.mjs ${command} --json' output?`);
   }
   if (!Array.isArray(run.frames) || !run.frames.length) fail("--run: 'frames' must be a non-empty array");
   return run;
@@ -873,22 +1015,37 @@ function main() {
       if (doc.sprite.motions.some((m) => m.id === id)) {
         fail(`--id: motion '${id}' already exists — use set-motion to change it`);
       }
+      const kind = values.kind === undefined
+        ? undefined
+        : oneOf(values.kind, MOTION_KINDS, "--kind");
+      // A loop has no grid — its frames are a sequence, not cells of a sheet —
+      // so the two flags a sprite motion cannot do without become optional and
+      // land on the 1x1 that `register-run` will confirm. Everything else about
+      // a sprite motion is untouched.
+      const isLoop = kind === "loop";
+      const gridSide = (flag, raw) => (isLoop
+        ? num(raw, flag, { integer: true, min: 1, fallback: 1 })
+        : num(requireFlag(raw, flag), flag, { integer: true, min: 1 }));
       const motion = {
         id,
         label: values.label ?? titleCase(id),
         prompt: values.prompt ?? "",
+        ...(kind ? { kind } : {}),
         grid: {
-          rows: num(requireFlag(values.rows, "--rows"), "--rows", { integer: true, min: 1 }),
-          cols: num(requireFlag(values.cols, "--cols"), "--cols", { integer: true, min: 1 }),
+          rows: gridSide("--rows", values.rows),
+          cols: gridSide("--cols", values.cols),
         },
         fps: num(requireFlag(values.fps, "--fps"), "--fps", { min: 1 }),
-        loop: loop(false),
+        // A loop that plays once is a contradiction in terms, so that is the
+        // default here — --no-loop can still say otherwise.
+        loop: loop(isLoop),
         anchor: oneOf(values.anchor ?? "bottom", ANCHORS, "--anchor"),
         status: oneOf(values.status ?? "planned", MOTION_STATUSES, "--status"),
         // Absent is the honest default: it means "sheet", and every motion
-        // made before the video source existed says nothing at all.
+        // made before the video source existed says nothing at all. A loop is
+        // the exception — its frames can only come from a clip.
         ...(values.source === undefined
-          ? {}
+          ? (isLoop ? { source: "video" } : {})
           : { source: oneOf(values.source, MOTION_SOURCES, "--source") }),
         frames: [],
         videos: [],
@@ -966,6 +1123,61 @@ function main() {
       break;
     }
 
+    case "set-keyframe": {
+      const doc = loadProject(dir);
+      const motion = findMotion(doc, requireFlag(values.motion, "--motion"));
+      // A keyframe is the image a loop clip starts AND ends on; a sprite
+      // motion has no such thing, and letting the id through would put an
+      // asset nothing renders into the file.
+      if (motion.kind !== "loop") {
+        fail(`--motion: '${motion.id}' is not a loop motion — a keyframe is the image a loop clip starts and ends on. Use set-sheet for a sprite motion, or add-motion --kind loop for a new loop.`);
+      }
+      const uri = toUri(dir, requireFlag(values.file, "--file"), "--file");
+      const status = oneOf(values.status ?? "processing", MOTION_STATUSES, "--status");
+      const inputs = parseInputs(doc, values.from, "--from");
+      const owner = `motion '${motion.id}'`;
+      const assetId = `${motion.id}-keyframe`;
+
+      // The same placeholder leg set-sheet has: called BEFORE the image model
+      // runs so the stage can show the motion as generating, and the file it
+      // names does not exist yet by definition.
+      const placeholder = status === "generating";
+      const file = placeholder ? null : requireFile(dir, uri, "--file");
+
+      upsertAsset(doc, {
+        id: assetId, type: "image", uri, name: `${motion.id} keyframe`,
+        metadata: placeholder ? {} : imageMetadata(file, "--file"),
+        createdAt: now, status: placeholder ? "generating" : "ready",
+      }, owner);
+      setEdge(doc, edge(assetId, inputs, operation("generate", now, {
+        model: values.model, prompt: values.prompt,
+      }, inputs)));
+      motion.keyframe = assetId;
+
+      let alphaId;
+      if (values.alpha !== undefined) {
+        alphaId = `${motion.id}-keyframe-alpha`;
+        const alphaUri = toUri(dir, values.alpha, "--alpha");
+        const alphaFile = placeholder ? null : requireFile(dir, alphaUri, "--alpha");
+        upsertAsset(doc, {
+          id: alphaId, type: "image", uri: alphaUri, name: `${motion.id} keyframe (alpha)`,
+          metadata: placeholder ? {} : imageMetadata(alphaFile, "--alpha"),
+          createdAt: now, status: placeholder ? "generating" : "ready",
+        }, owner);
+        // Cut out of the keyframe, by whatever removed its background — the
+        // step is named, the tool is not, because this script did not run it.
+        setEdge(doc, edge(alphaId, [assetId], operation("derive", now, { step: "key" })));
+        motion.keyframeAlpha = alphaId;
+      }
+
+      motion.status = status;
+      saveProject(dir, doc);
+      emit(values, motion, [placeholder
+        ? `${motion.id}: reserved ${assetId} for ${uri} (generating — measured once the file lands)`
+        : `${motion.id}: keyframe ${uri} registered as ${assetId}${alphaId ? ` (+ ${alphaId})` : ""} (${motion.status})`]);
+      break;
+    }
+
     case "register-run": {
       const doc = loadProject(dir);
       const motion = findMotion(doc, requireFlag(values.motion, "--motion"));
@@ -981,11 +1193,17 @@ function main() {
       // the second register-run. Only the previous run's leftovers — the tail
       // of a longer motion — are really removed, and `upsertAsset` replaces
       // the rest in place so a re-run is a no-op diff.
+      // A loop run brings a different set of deliverables — no sheet, no
+      // atlas, no GIF, three extra exports — and three-digit frame ids.
+      const loopRun = run.kind === "loop";
+      const digits = loopRun ? 3 : 2;
       const rebuilt = new Set([
-        ...run.frames.map((_, index) => frameAssetId(motion.id, index)),
-        `${motion.id}-sheet`, `${motion.id}-atlas`, `${motion.id}-gif`,
+        ...run.frames.map((_, index) => frameAssetId(motion.id, index, digits)),
+        ...(run.sheet ? [`${motion.id}-sheet`] : []),
+        ...(run.atlas ? [`${motion.id}-atlas`] : []),
+        ...(run.gif ? [`${motion.id}-gif`] : []),
         ...(run.sheetAlpha ? [`${motion.id}-sheet-alpha`] : []),
-        ...(run.webp ? [`${motion.id}-webp`] : []),
+        ...LOOP_EXPORTS.filter((spec) => run[spec.key]).map((spec) => `${motion.id}-${spec.suffix}`),
       ]);
       dropAssets(doc, runOwnedIds(doc, motion.id).filter((id) => !rebuilt.has(id)));
 
@@ -1041,10 +1259,10 @@ function main() {
 
       const sourceId = sheetAlphaId ?? sheetRawId;
       const frameIds = run.frames.map((path, index) => {
-        const id = frameAssetId(motion.id, index);
+        const id = frameAssetId(motion.id, index, digits);
         const uri = toUri(dir, path, "--run frames");
         upsertAsset(doc, {
-          id, type: "image", uri, name: `${motion.id} frame ${String(index).padStart(2, "0")}`,
+          id, type: "image", uri, name: `${motion.id} frame ${String(index).padStart(digits, "0")}`,
           metadata: imageMetadata(requireFile(dir, uri, "--run frames"), "--run frames"),
           createdAt: now, status: "ready",
         }, owner);
@@ -1056,36 +1274,49 @@ function main() {
         return id;
       });
 
-      const sheetId = `${motion.id}-sheet`;
-      const sheetUri = toUri(dir, run.sheet, "--run sheet");
-      upsertAsset(doc, {
-        id: sheetId, type: "image", uri: sheetUri, name: `${motion.id} atlas image`,
-        metadata: imageMetadata(requireFile(dir, sheetUri, "--run sheet"), "--run sheet"),
-        createdAt: now, status: "ready",
-      }, owner);
-      setEdge(doc, edge(sheetId, frameIds, operation("derive", now, { tool: TOOL, step: "pack" }, frameIds)));
+      // The packed trio. A loop run carries none of them (readRunSummary does
+      // not ask it to), and a slot whose asset this run did not rebuild has
+      // just been dropped — so the sidecar must stop naming it rather than
+      // point at an id that is no longer in the file.
+      let sheetId;
+      if (run.sheet) {
+        sheetId = `${motion.id}-sheet`;
+        const sheetUri = toUri(dir, run.sheet, "--run sheet");
+        upsertAsset(doc, {
+          id: sheetId, type: "image", uri: sheetUri, name: `${motion.id} atlas image`,
+          metadata: imageMetadata(requireFile(dir, sheetUri, "--run sheet"), "--run sheet"),
+          createdAt: now, status: "ready",
+        }, owner);
+        setEdge(doc, edge(sheetId, frameIds, operation("derive", now, { tool: TOOL, step: "pack" }, frameIds)));
+      }
 
-      const atlasId = `${motion.id}-atlas`;
-      const atlasUri = toUri(dir, run.atlas, "--run atlas");
-      requireFile(dir, atlasUri, "--run atlas");
-      upsertAsset(doc, {
-        id: atlasId, type: "text", uri: atlasUri, name: `${motion.id} atlas`,
-        metadata: {}, createdAt: now, status: "ready",
-      }, owner);
-      setEdge(doc, edge(atlasId, [sheetId], operation("derive", now, { tool: TOOL, step: "pack" })));
+      let atlasId;
+      if (run.atlas) {
+        atlasId = `${motion.id}-atlas`;
+        const atlasUri = toUri(dir, run.atlas, "--run atlas");
+        requireFile(dir, atlasUri, "--run atlas");
+        upsertAsset(doc, {
+          id: atlasId, type: "text", uri: atlasUri, name: `${motion.id} atlas`,
+          metadata: {}, createdAt: now, status: "ready",
+        }, owner);
+        setEdge(doc, edge(atlasId, sheetId ? [sheetId] : [], operation("derive", now, { tool: TOOL, step: "pack" })));
+      }
 
-      const gifId = `${motion.id}-gif`;
-      const gifUri = toUri(dir, run.gif, "--run gif");
-      upsertAsset(doc, {
-        id: gifId, type: "image", uri: gifUri,
-        name: `${motion.id} preview`,
-        metadata: { ...imageMetadata(requireFile(dir, gifUri, "--run gif"), "--run gif", cell), ...(run.fps ? { fps: run.fps } : {}) },
-        createdAt: now, status: "ready",
-      }, owner);
-      setEdge(doc, edge(gifId, frameIds, operation("derive", now, { tool: TOOL, step: "gif" }, frameIds)));
+      let gifId;
+      if (run.gif) {
+        gifId = `${motion.id}-gif`;
+        const gifUri = toUri(dir, run.gif, "--run gif");
+        upsertAsset(doc, {
+          id: gifId, type: "image", uri: gifUri,
+          name: `${motion.id} preview`,
+          metadata: { ...imageMetadata(requireFile(dir, gifUri, "--run gif"), "--run gif", cell), ...(run.fps ? { fps: run.fps } : {}) },
+          createdAt: now, status: "ready",
+        }, owner);
+        setEdge(doc, edge(gifId, frameIds, operation("derive", now, { tool: TOOL, step: "gif" }, frameIds)));
+      }
 
       let webpId;
-      if (run.webp) {
+      if (run.webp && !loopRun) {
         webpId = `${motion.id}-webp`;
         const webpUri = toUri(dir, run.webp, "--run webp");
         upsertAsset(doc, {
@@ -1096,12 +1327,70 @@ function main() {
         setEdge(doc, edge(webpId, frameIds, operation("derive", now, { tool: TOOL, step: "gif" }, frameIds)));
       }
 
+      // A loop's four exports. They are what the workflow is FOR — the files a
+      // UI actually embeds — so each one is registered with its size in bytes
+      // and hangs off the frame sequence it was encoded from. An encoder the
+      // machine did not have leaves its key off the summary (`loop` warns);
+      // the export is simply not there, which is what the panel renders.
+      const exportIds = {};
+      if (loopRun) {
+        for (const spec of LOOP_EXPORTS) {
+          const path = run[spec.key];
+          if (!path) continue;
+          const label = `--run ${spec.key}`;
+          const exportUri = toUri(dir, path, label);
+          const exportFile = requireFile(dir, exportUri, label);
+          const id = `${motion.id}-${spec.suffix}`;
+          const measured = spec.probe === "image"
+            ? imageMetadata(exportFile, label, cell)
+            : spec.probe === "video"
+              ? videoMetadata(exportFile).metadata
+              : {};
+          upsertAsset(doc, {
+            id, type: spec.type, uri: exportUri, name: `${motion.id} ${spec.label}`,
+            metadata: {
+              ...measured,
+              ...(run.fps ? { fps: run.fps } : {}),
+              ...(fileSize(exportFile) === undefined ? {} : { size: fileSize(exportFile) }),
+            },
+            createdAt: now, status: "ready",
+          }, owner);
+          setEdge(doc, edge(id, frameIds, operation("derive", now, { tool: TOOL, step: "loop" }, frameIds)));
+          exportIds[spec.key] = id;
+        }
+        webpId = exportIds.webp;
+      }
+
       if (sheetAlphaId) motion.sheetAlpha = sheetAlphaId; else delete motion.sheetAlpha;
       motion.frames = frameIds;
-      motion.sheet = sheetId;
-      motion.atlas = atlasId;
-      motion.gif = gifId;
+      if (sheetId) motion.sheet = sheetId; else delete motion.sheet;
+      if (atlasId) motion.atlas = atlasId; else delete motion.atlas;
+      if (gifId) motion.gif = gifId; else delete motion.gif;
       if (webpId) motion.webp = webpId; else delete motion.webp;
+
+      // What this motion IS, corrected from the run the same way `source` is:
+      // the files on disk are the answer, not what somebody declared before
+      // anything was generated.
+      if (loopRun) {
+        motion.kind = "loop";
+        // A loop has no grid, and interpolation changes the frame rate — the
+        // run knows both, and the rail and the stage read them from here.
+        motion.grid = { rows: 1, cols: 1 };
+        const fps = Number(run.fps);
+        if (Number.isFinite(fps) && fps > 0) motion.fps = fps;
+        const exports = {
+          ...(exportIds.apng ? { apng: exportIds.apng } : {}),
+          ...(exportIds.webm ? { webm: exportIds.webm } : {}),
+          ...(exportIds.lottie ? { lottie: exportIds.lottie } : {}),
+        };
+        if (Object.keys(exports).length) motion.exports = exports;
+        else delete motion.exports;
+      } else if (motion.kind === "loop") {
+        // A sheet run over a motion someone declared a loop produced a sprite
+        // atlas; the sidecar has to say so, and the loop's exports are gone.
+        delete motion.kind;
+        delete motion.exports;
+      }
       // The sidecar says how these frames were obtained, and it is corrected
       // in both directions: a sheet run over a motion someone declared `video`
       // is still a sheet's frames. `sheet` stays unwritten when nothing ever
@@ -1116,7 +1405,9 @@ function main() {
 
       saveProject(dir, doc);
       emit(values, motion, [
-        `${motion.id}: ${frameIds.length} frames${fromVideo ? ` sampled from ${videoAssetId}` : ""}, atlas + preview registered (ready)`,
+        loopRun
+          ? `${motion.id}: ${frameIds.length} loop frames cut from ${videoAssetId} @ ${motion.fps}fps, ${Object.keys(exportIds).join(" + ") || "no exports"} registered (ready)`
+          : `${motion.id}: ${frameIds.length} frames${fromVideo ? ` sampled from ${videoAssetId}` : ""}, atlas + preview registered (ready)`,
         ...(motion.inspect?.warnings ?? []),
       ]);
       break;
@@ -1126,34 +1417,72 @@ function main() {
       const doc = loadProject(dir);
       const motion = findMotion(doc, requireFlag(values.motion, "--motion"));
       const uri = toUri(dir, requireFlag(values.file, "--file"), "--file");
-      const model = oneOf(requireFlag(values.model, "--model"), VIDEO_MODELS, "--model");
-      const mode = oneOf(requireFlag(values.mode, "--mode"), VIDEO_MODES, "--mode");
       const status = oneOf(values.status ?? "generating", VIDEO_STATUSES, "--status");
-      const inputs = parseInputs(doc, values.from, "--from");
       const duration = num(values.duration, "--duration", { min: 0 });
+      const derivedFrom = values["derived-from"];
 
       motion.videos ??= [];
       const used = new Set(motion.videos.map((v) => v.id));
       let n = 1;
       while (used.has(`video-${n}`) || doc.assets.some((a) => a.id === `${motion.id}-video-${n}`)) n++;
       const assetId = `${motion.id}-video-${n}`;
+      const videoId = `video-${n}`;
+
+      // The two origins a clip can have. A matte or an interpolation was not
+      // SHOT: it has no mode, no prompt and no reference images, and its
+      // history is the take it was made out of. Refusing those flags by name
+      // is the same deal `add-ref --derived-from` makes, for the same reason —
+      // a `generate` edge naming a model nobody prompted is a lie the graph
+      // cannot be talked out of later. Everything is validated before the
+      // document is touched, so a rejected combination writes nothing.
+      let entry;
+      let provenance;
+      let note;
+      if (derivedFrom !== undefined) {
+        for (const [flag, key] of [["--mode", "mode"], ["--prompt", "prompt"], ["--from", "from"]]) {
+          if (values[key] !== undefined) {
+            fail(`--derived-from: a clip made out of another clip has no ${flag} — its source is the take it came from`);
+          }
+        }
+        const op = oneOf(requireFlag(values.op, "--op"), VIDEO_OPS, "--op");
+        const model = oneOf(requireFlag(values.model, "--model"), DERIVE_VIDEO_MODELS, "--model");
+        const parent = motion.videos.find((v) => v.id === derivedFrom || v.asset === derivedFrom);
+        if (!parent) {
+          const known = motion.videos.map((v) => v.id).join(", ") || "none";
+          fail(`--derived-from: no video '${derivedFrom}' on motion '${motion.id}' (known: ${known})`);
+        }
+        entry = { id: videoId, asset: assetId, model, mode: "derived", prompt: "", status, derivedFrom: parent.id, op };
+        provenance = edge(assetId, [parent.asset], operation("derive", now, { op, model, duration }));
+        note = `${op}, ${model}, from ${parent.id}`;
+      } else {
+        if (values.op !== undefined) {
+          fail("--op: only --derived-from records an operation — a clip that was shot has a --mode, not an op");
+        }
+        const model = oneOf(requireFlag(values.model, "--model"), VIDEO_MODELS, "--model");
+        const mode = oneOf(requireFlag(values.mode, "--mode"), VIDEO_MODES, "--mode");
+        const inputs = parseInputs(doc, values.from, "--from");
+        entry = { id: videoId, asset: assetId, model, mode, prompt: values.prompt ?? "", status };
+        provenance = edge(assetId, inputs, operation("generate", now, {
+          model, mode, prompt: values.prompt, duration,
+        }, inputs));
+        note = `${model}, ${mode}`;
+      }
 
       const probed = videoMetadata(join(dir, uri));
       const metadata = { ...probed.metadata };
       if (duration !== undefined) metadata.duration = duration;
 
       upsertAsset(doc, {
-        id: assetId, type: "video", uri, name: `${motion.id} video ${n} (${model})`,
+        id: assetId, type: "video", uri,
+        name: `${motion.id} video ${n} (${entry.op ? `${entry.op}, ` : ""}${entry.model})`,
         metadata, createdAt: now, status,
       }, `motion '${motion.id}'`);
-      setEdge(doc, edge(assetId, inputs, operation("generate", now, {
-        model, mode, prompt: values.prompt, duration,
-      }, inputs)));
+      setEdge(doc, provenance);
 
-      motion.videos.push({ id: `video-${n}`, asset: assetId, model, mode, prompt: values.prompt ?? "", status });
+      motion.videos.push(entry);
       saveProject(dir, doc);
       emit(values, motion, [
-        `${motion.id}: registered ${assetId} (${model}, ${mode}, ${status})`,
+        `${motion.id}: registered ${assetId} (${note}, ${status})`,
         ...(probed.warning ? [`WARN: ${probed.warning}`] : []),
       ]);
       break;
@@ -1191,6 +1520,7 @@ function main() {
       const motion = findMotion(doc, requireFlag(values.motion, "--motion"));
       const owned = new Set([
         `${motion.id}-sheet-raw`,
+        `${motion.id}-keyframe`, `${motion.id}-keyframe-alpha`,
         ...runOwnedIds(doc, motion.id),
         ...(motion.videos ?? []).map((v) => v.asset),
       ]);
@@ -1211,9 +1541,23 @@ function main() {
       const doc = loadProject(dir);
       if (values.motion !== undefined) {
         const motion = findMotion(doc, values.motion);
-        const payload = { ...compactMotion(motion), prompt: motion.prompt, notes: motion.notes, inspect: motion.inspect };
+        const payload = {
+          ...compactMotion(motion),
+          prompt: motion.prompt,
+          notes: motion.notes,
+          ...(motion.keyframe ? { keyframe: motion.keyframe } : {}),
+          ...(motion.keyframeAlpha ? { keyframeAlpha: motion.keyframeAlpha } : {}),
+          ...(motion.webp ? { webp: motion.webp } : {}),
+          ...(motion.exports ? { exports: motion.exports } : {}),
+          videos: (motion.videos ?? []).map((v) => ({
+            id: v.id, model: v.model, mode: v.mode, status: v.status,
+            ...(v.derivedFrom ? { derivedFrom: v.derivedFrom } : {}),
+            ...(v.op ? { op: v.op } : {}),
+          })),
+          inspect: motion.inspect,
+        };
         emit(values, payload, [
-          `${motion.id} (${motion.label}) — ${motion.status}, ${motion.grid.rows}x${motion.grid.cols} @ ${motion.fps}fps, ${payload.frameCount} frames`,
+          ...motionLines(motion),
           ...(motion.inspect?.warnings ?? []),
         ]);
         break;
@@ -1221,7 +1565,7 @@ function main() {
       const summary = summarize(doc, dir);
       emit(values, summary, [
         `${summary.title} — ${summary.refs.length} refs, ${summary.motions.length} motions`,
-        ...summary.motions.map((m) => `  ${m.id.padEnd(12)} ${m.status.padEnd(10)} ${m.grid.rows}x${m.grid.cols} @ ${m.fps}fps  ${m.frameCount} frames${m.warnings.length ? `  (${m.warnings.length} warnings)` : ""}`),
+        ...summary.motions.map((m) => `  ${m.id.padEnd(12)} ${m.status.padEnd(10)} ${m.kind === "loop" ? "loop".padEnd(7) : `${m.grid.rows}x${m.grid.cols}`.padEnd(7)} @ ${m.fps}fps  ${m.frameCount} frames${m.warnings.length ? `  (${m.warnings.length} warnings)` : ""}`),
       ]);
       break;
     }

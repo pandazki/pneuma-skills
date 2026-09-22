@@ -69,15 +69,23 @@ export interface FramesSource {
   missing: number;
 }
 
-/** The generated sheet, sliced in the browser: the instant preview that
- *  exists between "the image landed" and "the pipeline ran". */
+/**
+ * One image, sliced in the browser: the instant preview that exists between
+ * "the image landed" and "the pipeline ran".
+ *
+ * Two pictures arrive as this shape. A sprite motion's generated SHEET, cut
+ * `cols x rows`; and a loop motion's KEYFRAME, which is one cell — the single
+ * image its clip starts and ends on, and the only thing there is to look at
+ * while the clip renders. They are told apart by the motion (`kind: "loop"`),
+ * not by the geometry: a 1x1 sheet is a legal sprite motion.
+ */
 export interface SheetSource {
   kind: "raw-sheet";
   url: string;
   cols: number;
   rows: number;
   count: number;
-  /** True when this is the background-keyed sheet rather than the raw one. */
+  /** True when this is the background-keyed image rather than the raw one. */
   alpha: boolean;
 }
 
@@ -112,6 +120,26 @@ export function resolveFrameSource(
     // has a hundred blank frames — fall through to whatever sheet exists.
     if (missing < frames.length) {
       return { kind: "frames", frames, count: frames.length, missing };
+    }
+  }
+
+  // A loop has no sheet — it has a keyframe, the image its clip opens and
+  // closes on. Until the clip comes back and `loop` cuts it, that image IS
+  // the motion as far as anyone can see, so it goes on the stage as a
+  // one-cell source and `stageWarnings` says what it is. The cut-out wins
+  // when it exists, for the same reason the keyed sheet does below.
+  if (motion.kind === "loop") {
+    const keyId = motion.keyframeAlpha ?? motion.keyframe;
+    const keyUri = keyId ? resolveAssetUri(project, keyId) : undefined;
+    if (keyUri) {
+      return {
+        kind: "raw-sheet",
+        url: contentUrl(project.contentSet, keyUri, imageVersion),
+        cols: 1,
+        rows: 1,
+        count: 1,
+        alpha: motion.keyframeAlpha !== undefined,
+      };
     }
   }
 
@@ -462,9 +490,12 @@ export function resolveAddress(
   };
 }
 
-/** Frames a motion claims to have, sheet-preview included. */
+/** Frames a motion claims to have, sheet- and keyframe-preview included. */
 export function declaredFrameCount(motion: Motion): number {
   if (motion.frames.length > 0) return motion.frames.length;
+  // The keyframe is one frame, and an address that names frame 0 of a loop
+  // still being shot has to land on it rather than be refused.
+  if (motion.kind === "loop" && (motion.keyframeAlpha ?? motion.keyframe)) return 1;
   if (motion.sheet ?? motion.sheetAlpha ?? motion.sheetRaw) {
     return Math.max(1, Math.floor(motion.grid.cols)) *
       Math.max(1, Math.floor(motion.grid.rows));
@@ -477,12 +508,21 @@ export function declaredFrameCount(motion: Motion): number {
 export interface PlaybackStateData {
   contentSet: string | null;
   motion: string | null;
+  /** Present only for a loop motion — absent is "a sprite motion", the same
+   *  way the sidecar says it. */
+  kind?: "loop";
   frame: number;
   frameCount: number;
   fps: number;
   loop: boolean;
   playing: boolean;
-  source: FrameSource["kind"];
+  /**
+   * What the stage is really drawing. `"keyframe"` is a loop's one-image
+   * stand-in: it arrives as a `raw-sheet` source because that is how a single
+   * image is drawn, but reporting it under that name would tell the agent a
+   * sheet exists for a motion that will never have one.
+   */
+  source: FrameSource["kind"] | "keyframe";
   warnings: string[];
   [key: string]: unknown;
 }
@@ -509,7 +549,9 @@ export function stageWarnings(
   }
   if (source.kind === "raw-sheet") {
     warnings.push(
-      `No aligned frames yet — the stage is slicing the ${source.alpha ? "keyed" : "raw"} sheet ${source.cols}x${source.rows} client-side. Run sprite-sheet.mjs to align and pack.`,
+      motion?.kind === "loop"
+        ? "No frames yet — the stage shows the keyframe; the clip is rendering or `sprite-sheet.mjs loop` has not run."
+        : `No aligned frames yet — the stage is slicing the ${source.alpha ? "keyed" : "raw"} sheet ${source.cols}x${source.rows} client-side. Run sprite-sheet.mjs to align and pack.`,
     );
   }
   if (motion && motion.status === "failed" && motion.notes) {
@@ -529,15 +571,19 @@ export function playbackStateData(input: {
   loop: boolean;
 }): PlaybackStateData {
   const count = frameCountOf(input.source);
+  const loopMotion = input.motion?.kind === "loop";
   return {
     contentSet: input.project ? input.project.contentSet : null,
     motion: input.motion ? input.motion.id : null,
+    ...(loopMotion ? { kind: "loop" as const } : {}),
     frame: count > 0 ? clampFrame(input.frame, count) : 0,
     frameCount: count,
     fps: input.fps,
     loop: input.loop,
     playing: input.playing,
-    source: input.source.kind,
+    source: input.source.kind === "raw-sheet" && loopMotion
+      ? "keyframe"
+      : input.source.kind,
     warnings: stageWarnings(input.motion, input.source),
   };
 }

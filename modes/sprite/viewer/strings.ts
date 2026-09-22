@@ -22,9 +22,15 @@
  *   and returns null where the manifest is already right.
  */
 
-import type { Motion, MotionStatus } from "../domain.js";
+import type {
+  GeneratedVideoMode,
+  GeneratedVideoModel,
+  Motion,
+  MotionStatus,
+} from "../domain.js";
 import type { AtlasNote } from "./atlas.js";
-import type { SizeLine } from "./metrics.js";
+import type { LoopLine, SizeLine } from "./metrics.js";
+import type { LoopFormat, PanelTab } from "./panel.js";
 
 export type SpriteLocale = "en" | "zh-CN";
 
@@ -44,6 +50,11 @@ export interface SpriteStrings {
   /** The rail's chip for the same thing. */
   videoSource: string;
   videoSourceTitle: string;
+  /** The rail's chip for a motion whose deliverable is a seamless UI loop. */
+  loopSource: string;
+  loopSourceTitle: string;
+  /** A loop's header phrase: measured size · frames @ fps. */
+  loopLine: (line: LoopLine) => string;
   renderingVideo: string;
   renderingVideoTitle: (motions: string[]) => string;
   showingReference: string;
@@ -70,6 +81,11 @@ export interface SpriteStrings {
   plannedNoSheet: string;
   sheetPreview: string;
   sheetPreviewTitle: (keyed: boolean, cols: number, rows: number) => string;
+  /** The stage chip while a loop has only its keyframe. */
+  keyframePreview: string;
+  keyframePreviewTitle: (keyed: boolean) => string;
+  /** Why the pivot toggle is off for a loop. */
+  pivotNoneForLoop: string;
   framesMissing: (count: number) => string;
   decoding: string;
 
@@ -112,7 +128,7 @@ export interface SpriteStrings {
   acknowledgedTitle: (reason: string) => string;
 
   // ── Preview panel ───────────────────────────────────────────────────────
-  tab: Record<"gif" | "video" | "atlas", string>;
+  tab: Record<PanelTab, string>;
   selectMotionForPanel: string;
   noPreviewYet: string;
   previewMeta: (m: { fps: number; loop: boolean; frames: number }) => string;
@@ -122,7 +138,25 @@ export interface SpriteStrings {
   clipFileMissing: string;
   downloadClip: string;
   noAtlasYet: string;
+  /** A loop has no atlas, and that is a fact about the deliverable rather
+   *  than a step nobody has run yet. Before the run there is nothing to count,
+   *  and the sentence says only the part it knows. */
+  noAtlasForLoop: (m: { frames: number; width: number; height: number }) => string;
   atlasNote: (note: AtlasNote) => string;
+  noLoopYet: string;
+  /** frames · fps · duration · does it close. */
+  loopMeta: (m: {
+    frames: number;
+    fps: number;
+    duration: number | null;
+    seam: "closes" | "open" | null;
+  }) => string;
+  /** File formats are proper nouns; only the row they sit in is copy. */
+  exportLabel: Record<LoopFormat, string>;
+  exportLink: (label: string, size: string | null) => string;
+  /** What a derived clip is: `matte of video-1 · veed`. */
+  derivedClip: (parent: string, op: "matte" | "interpolate", model: string) => string;
+  videoOp: Record<"matte" | "interpolate", string>;
   factSheet: string;
   factGrid: string;
   factCell: string;
@@ -138,6 +172,12 @@ export interface SpriteStrings {
   factScaleDrift: string;
   factBodyDrift: string;
   factEmpty: string;
+  factSeam: string;
+  factStep: string;
+  factFps: string;
+  factDuration: string;
+  factAlpha: string;
+  seamVerdict: Record<"closes" | "open", string>;
   none: string;
   /** The bar a value is judged against, said beside it. */
   limit: (text: string) => string;
@@ -152,8 +192,8 @@ export interface SpriteStrings {
   renderClipFor: string;
   fieldModel: string;
   fieldMode: string;
-  modelHint: Record<"seedance-2.5" | "h3-max", string>;
-  modeHint: Record<"i2v" | "first-last" | "r2v", string>;
+  modelHint: Record<GeneratedVideoModel, string>;
+  modeHint: Record<GeneratedVideoMode, string>;
   notePlaceholder: Record<"emphasis" | "change" | "misalignment", string>;
   cancel: string;
   askTheAgent: string;
@@ -185,6 +225,15 @@ const en: SpriteStrings = {
   fromVideo: "from video",
   videoSource: "video",
   videoSourceTitle: "Frames sampled from a video clip",
+  loopSource: "loop",
+  loopSourceTitle: "A seamless transparent animation for a UI, not a sprite atlas",
+  loopLine: (line) =>
+    [
+      line.measured,
+      `${line.frames} frame${line.frames === 1 ? "" : "s"} @ ${line.fps} fps`,
+    ]
+      .filter(Boolean)
+      .join(" · "),
   renderingVideo: "rendering video",
   renderingVideoTitle: (motions) =>
     `A video clip is still rendering: ${motions.join(", ")}`,
@@ -213,6 +262,11 @@ const en: SpriteStrings = {
   sheetPreview: "sheet preview",
   sheetPreviewTitle: (keyed, cols, rows) =>
     `No aligned frames yet — this is the ${keyed ? "keyed" : "raw"} sheet sliced ${cols}×${rows} in the browser.`,
+  keyframePreview: "keyframe",
+  keyframePreviewTitle: (keyed) =>
+    `No frames yet — this is the ${keyed ? "cut-out " : ""}keyframe the loop clip starts and ends on.`,
+  pivotNoneForLoop:
+    "A loop has no anchor point — it is not stood on a floor, so there is nothing to guide.",
   framesMissing: (count) => `${count} frame${count === 1 ? "" : "s"} missing`,
   decoding: "decoding…",
 
@@ -260,7 +314,7 @@ const en: SpriteStrings = {
   },
   acknowledgedTitle: (reason) => `Warnings accepted — ${reason}`,
 
-  tab: { gif: "GIF", video: "Video", atlas: "Atlas" },
+  tab: { gif: "GIF", loop: "Loop", video: "Video", atlas: "Atlas" },
   selectMotionForPanel: "Select a motion to see what it produced.",
   noPreviewYet:
     "No preview rendered yet. The GIF and WebP land with the pipeline run.",
@@ -273,6 +327,26 @@ const en: SpriteStrings = {
   clipFileMissing: "The clip is registered but its file is missing.",
   downloadClip: "Download clip",
   noAtlasYet: "No packed atlas yet. It lands with the pipeline's pack step.",
+  noAtlasForLoop: (m) =>
+    m.frames > 0 && m.width > 0
+      ? `A loop has no atlas — the frames are the PNG sequence (${m.frames} frames, ${m.width}×${m.height}).`
+      : "A loop has no atlas — its frames are a PNG sequence, and there are none yet.",
+  noLoopYet:
+    "No loop exported yet. The WebP, APNG, WebM and Lottie land when sprite-sheet.mjs loop runs.",
+  loopMeta: (m) =>
+    [
+      `${m.frames} frame${m.frames === 1 ? "" : "s"}`,
+      `${m.fps} fps`,
+      m.duration === null ? null : `${m.duration.toFixed(2)} s`,
+      m.seam === null ? null : m.seam === "closes" ? "closes" : "does not close",
+    ]
+      .filter(Boolean)
+      .join(" · "),
+  exportLabel: { webp: "WebP", apng: "APNG", webm: "WebM", lottie: "Lottie" },
+  exportLink: (label, size) => (size ? `${label} · ${size}` : label),
+  derivedClip: (parent, op, model) =>
+    `${op === "matte" ? "matte" : "interpolation"} of ${parent} · ${model}`,
+  videoOp: { matte: "matte", interpolate: "interpolate" },
   atlasNote: (note) => {
     switch (note.kind) {
       case "unmeasured":
@@ -300,6 +374,12 @@ const en: SpriteStrings = {
   factScaleDrift: "Scale drift",
   factBodyDrift: "Body drift",
   factEmpty: "Empty",
+  factSeam: "Seam",
+  factStep: "Step",
+  factFps: "Fps",
+  factDuration: "Duration",
+  factAlpha: "Alpha",
+  seamVerdict: { closes: "closes", open: "does not close" },
   none: "none",
   limit: (text) => `max ${text}`,
   acknowledged: (reason) => `Accepted — ${reason}`,
@@ -375,6 +455,12 @@ const zhCN: SpriteStrings = {
   fromVideo: "来自视频",
   videoSource: "视频",
   videoSourceTitle: "帧来自一段视频",
+  loopSource: "循环",
+  loopSourceTitle: "做给界面用的无缝透明动画，不是游戏用的精灵图集",
+  loopLine: (line) =>
+    [line.measured, `${line.frames} 帧 @ ${line.fps} fps`]
+      .filter(Boolean)
+      .join(" · "),
   renderingVideo: "视频渲染中",
   renderingVideoTitle: (motions) => `还有视频在渲染：${motions.join("、")}`,
   showingReference: "正在看参考图",
@@ -403,6 +489,10 @@ const zhCN: SpriteStrings = {
   sheetPreview: "雪碧图预览",
   sheetPreviewTitle: (keyed, cols, rows) =>
     `还没有对齐好的帧——这是${keyed ? "抠好背景" : "原始"}的雪碧图，在浏览器里按 ${cols}×${rows} 切开的。`,
+  keyframePreview: "关键帧",
+  keyframePreviewTitle: (keyed) =>
+    `还没有帧——这是循环片头尾共用的${keyed ? "抠好背景的" : ""}关键帧。`,
+  pivotNoneForLoop: "循环动画没有锚点——它不站在地面上，没有轴心可以画。",
   framesMissing: (count) => `缺 ${count} 帧`,
   decoding: "解码中…",
 
@@ -443,7 +533,7 @@ const zhCN: SpriteStrings = {
   status: zhStatus,
   acknowledgedTitle: (reason) => `已确认保留 —— ${reason}`,
 
-  tab: { gif: "GIF", video: "视频", atlas: "图集" },
+  tab: { gif: "GIF", loop: "循环", video: "视频", atlas: "图集" },
   selectMotionForPanel: "选一个动作，看它产出了什么。",
   noPreviewYet: "还没有预览。GIF 和 WebP 会随流水线一起产出。",
   previewMeta: (m) =>
@@ -455,6 +545,25 @@ const zhCN: SpriteStrings = {
   clipFileMissing: "视频已登记，但文件不在。",
   downloadClip: "下载视频",
   noAtlasYet: "还没有打包好的图集。它会随流水线的打包步骤产出。",
+  noAtlasForLoop: (m) =>
+    m.frames > 0 && m.width > 0
+      ? `循环动画没有图集——帧就是那一串 PNG（共 ${m.frames} 帧，${m.width}×${m.height}）。`
+      : "循环动画没有图集——帧就是那一串 PNG，现在还一帧都没有。",
+  noLoopYet: "还没有导出循环动画。跑 sprite-sheet.mjs loop 之后会得到 WebP、APNG、WebM 和 Lottie。",
+  loopMeta: (m) =>
+    [
+      `${m.frames} 帧`,
+      `${m.fps} fps`,
+      m.duration === null ? null : `${m.duration.toFixed(2)} 秒`,
+      m.seam === null ? null : m.seam === "closes" ? "接得上" : "接不上",
+    ]
+      .filter(Boolean)
+      .join(" · "),
+  exportLabel: { webp: "WebP", apng: "APNG", webm: "WebM", lottie: "Lottie" },
+  exportLink: (label, size) => (size ? `${label} · ${size}` : label),
+  derivedClip: (parent, op, model) =>
+    `${parent} 的${op === "matte" ? "抠像" : "补帧"} · ${model}`,
+  videoOp: { matte: "抠像", interpolate: "补帧" },
   atlasNote: (note) => {
     switch (note.kind) {
       case "unmeasured":
@@ -481,6 +590,12 @@ const zhCN: SpriteStrings = {
   factScaleDrift: "缩放漂移",
   factBodyDrift: "身体漂移",
   factEmpty: "空帧",
+  factSeam: "接缝",
+  factStep: "单帧位移",
+  factFps: "帧率",
+  factDuration: "时长",
+  factAlpha: "不透明占比",
+  seamVerdict: { closes: "接得上", open: "接不上" },
   none: "无",
   limit: (text) => `上限 ${text}`,
   acknowledged: (reason) => `已确认保留 —— ${reason}`,

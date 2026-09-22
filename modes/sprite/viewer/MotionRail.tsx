@@ -19,7 +19,7 @@
 
 import type { CharacterProject, Motion, MotionStatus } from "../domain.js";
 import { resolveAssetUri } from "../domain.js";
-import { FilmIcon, WarnIcon } from "./icons.js";
+import { FilmIcon, LoopIcon, WarnIcon } from "./icons.js";
 import { hasGeneratingVideo } from "./metrics.js";
 import type { SpriteStrings } from "./strings.js";
 import { contentUrl } from "./urls.js";
@@ -201,7 +201,19 @@ function MotionRow({
               <span className="h-1.5 w-1.5 rounded-full bg-current motion-safe:animate-pulse" />
             </span>
           ) : null}
-          {motion.source === "video" ? (
+          {/* A loop is ALSO cut from a clip, so the two chips would both fire;
+              the loop one is the stronger statement — it says what the motion
+              is for, not just where its pixels came from — and it replaces the
+              video chip rather than stacking beside it. */}
+          {motion.kind === "loop" ? (
+            <span
+              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-cc-primary/40 px-1.5 py-px text-[10px] text-cc-primary"
+              title={t.loopSourceTitle}
+            >
+              <LoopIcon size={9} />
+              {t.loopSource}
+            </span>
+          ) : motion.source === "video" ? (
             <span
               className="inline-flex shrink-0 items-center gap-1 rounded-full border border-cc-border px-1.5 py-px text-[10px] text-cc-muted"
               title={t.videoSourceTitle}

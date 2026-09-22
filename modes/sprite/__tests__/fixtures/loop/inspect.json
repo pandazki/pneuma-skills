@@ -1,0 +1,27 @@
+{
+  "kind": "loop",
+  "frameCount": 12,
+  "cell": {
+    "width": 64,
+    "height": 72
+  },
+  "fps": 12,
+  "duration": 1.0,
+  "seam": 0.0065,
+  "step": 0.02,
+  "maxStep": 0.069,
+  "alphaCoverage": 0.31,
+  "keyColor": "#08f00d",
+  "emptyFrames": [],
+  "dropped": {
+    "leading": 0,
+    "trailing": 1
+  },
+  "exports": {
+    "webp": 1680,
+    "apng": 1383,
+    "webm": 1275,
+    "lottie": 8025
+  },
+  "warnings": []
+}
