@@ -19,15 +19,75 @@
  * re-run of the motion being watched swaps its frames in one step instead of
  * blanking the sprite for the length of a decode. Pointing at different
  * pictures (another motion, a reference) clears first — see `stableSourceKey`.
+ *
+ * And one rule about WHEN a set is given back: the moment it stops being the
+ * one on screen. An `Image` that has loaded holds a decoded bitmap, and for a
+ * 532x460 frame that is a megabyte; a 355-frame loop is a third of a gigabyte
+ * per set. Those bitmaps are invisible to the JS garbage collector's idea of
+ * pressure, so dropping the last reference does NOT reliably free them —
+ * `release` detaches the element from its bytes instead. Every `register-run`
+ * rewrites the frames and bumps `imageVersion`, so the URLs change and a new
+ * set starts; before this was deterministic, a run's worth of file events took
+ * the renderer to 10 GB and the tab stopped answering at all (2026-09-22, the
+ * Kiki trial: a 355-frame 532x460 loop, browser disconnected, only killing the
+ * render process brought it back).
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { EMPTY_IMAGES, type StageImages } from "./frame-render.js";
 import type { FrameSource } from "./playback.js";
 
 /** How long to wait for the whole set before playing with what we have. */
 const DECODE_DEADLINE_MS = 8000;
+
+/** How long the file events must hold still before the pictures are re-read. */
+export const IMAGE_SETTLE_MS = 250;
+
+/**
+ * `imageVersion`, held until the file events stop arriving.
+ *
+ * The shell bumps `imageVersion` once per CHANGED FILE, not once per change:
+ * one `register-run` on the Kiki loop sent 355 separate updates inside a tenth
+ * of a second (measured 2026-09-22 on the session's own browser socket). Every
+ * bump rewrites all 355 frame URLs, so a viewer that reacts to each one asks
+ * the browser for a hundred and twenty-six thousand pictures — which is how a
+ * 30-minute session ended with a 10 GB render process and a tab that answered
+ * nothing.
+ *
+ * Waiting for quiet is also the honest reading of those events: a run that is
+ * still writing frames has no complete set to show yet. The first version is
+ * adopted immediately, so opening a session paints at once.
+ */
+export function useSettledImageVersion(
+  version: number,
+  quietMs: number = IMAGE_SETTLE_MS,
+): number {
+  const [settled, setSettled] = useState(version);
+  useEffect(() => {
+    if (version === settled) return;
+    const timer = setTimeout(() => setSettled(version), quietMs);
+    return () => clearTimeout(timer);
+  }, [version, settled, quietMs]);
+  return settled;
+}
+
+/**
+ * Hand an image's bytes back.
+ *
+ * Detaching `src` aborts a request still in flight and releases the decoded
+ * bitmap of one that finished; nulling the handlers stops a late decode from
+ * writing into a slot nobody is showing any more. `removeAttribute` rather
+ * than `src = ""`, which resolves the empty string against the document and
+ * re-requests the page itself.
+ */
+function release(images: Iterable<HTMLImageElement>): void {
+  for (const image of images) {
+    image.onload = null;
+    image.onerror = null;
+    image.removeAttribute("src");
+  }
+}
 
 /** Identity for a source: the exact bytes it points at, cache buster and all. */
 export function sourceKey(source: FrameSource): string {
@@ -53,10 +113,21 @@ export function stableSourceKey(source: FrameSource): string {
 }
 
 export function useFrameImages(source: FrameSource): StageImages {
-  const key = sourceKey(source);
-  const stable = stableSourceKey(source);
+  // Both keys walk every URL of the motion, and the shell re-renders on every
+  // animation frame — memoise them against the source the shell already
+  // memoises, or a 355-frame loop rebuilds a 40 KB string 48 times a second.
+  const key = useMemo(() => sourceKey(source), [source]);
+  const stable = useMemo(() => stableSourceKey(source), [source]);
   const [images, setImages] = useState<StageImages>(EMPTY_IMAGES);
   const stableRef = useRef<string | null>(null);
+  /** The elements behind the set currently on screen — the only ones that may
+   *  not be released, because they are what the stage is drawing. */
+  const shownRef = useRef<HTMLImageElement[]>([]);
+  /** Elements whose set has been superseded but whose replacement React has
+   *  not committed yet. Releasing one of these before the commit would blank
+   *  the stage for a frame, which is the very thing this hook exists to
+   *  prevent — so they wait for the commit below. */
+  const staleRef = useRef<HTMLImageElement[]>([]);
 
   useEffect(() => {
     // Switching to different pictures clears the stage at once; re-issuing the
@@ -64,6 +135,8 @@ export function useFrameImages(source: FrameSource): StageImages {
     // file change does not blink the sprite out from under the playhead.
     if (stableRef.current !== stable) {
       stableRef.current = stable;
+      staleRef.current = staleRef.current.concat(shownRef.current);
+      shownRef.current = [];
       setImages(EMPTY_IMAGES);
     }
 
@@ -77,9 +150,17 @@ export function useFrameImages(source: FrameSource): StageImages {
     const decoded: (HTMLImageElement | null)[] = urls.map(() => null);
     let settled = 0;
     let failed = 0;
+    let handedOver = false;
 
     const publish = (ready: boolean) => {
       if (cancelled) return;
+      if (!handedOver) {
+        // This set is taking the screen, so the one it replaces is now dead
+        // weight — a third of a gigabyte of it, for a long loop.
+        handedOver = true;
+        staleRef.current = staleRef.current.concat(shownRef.current);
+        shownRef.current = elements;
+      }
       setImages({
         frames: source.kind === "frames" ? decoded.slice() : [],
         sheet: source.kind === "raw-sheet" ? decoded[0] : null,
@@ -129,16 +210,36 @@ export function useFrameImages(source: FrameSource): StageImages {
     return () => {
       cancelled = true;
       clearTimeout(deadline);
-      // Drop the handlers so a late decode cannot write into a stale slot.
-      for (const image of elements) {
-        image.onload = null;
-        image.onerror = null;
-      }
+      // A set that never reached the screen is pure cost: give it back at
+      // once. A `register-run` rewrites every frame and each batch of file
+      // events supersedes the load before it, so without this the discarded
+      // generations pile up decoded until the renderer dies.
+      if (!handedOver) release(elements);
     };
     // `key` is the identity of the URL set; `source` itself is rebuilt each
     // render by resolveFrameSource and would restart the load every time.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
+
+  // A superseded set is given back once its replacement is on screen, not
+  // when it is chosen: this effect runs after React has committed `images`.
+  useEffect(() => {
+    if (staleRef.current.length === 0) return;
+    const stale = staleRef.current;
+    staleRef.current = [];
+    release(stale);
+  }, [images]);
+
+  // Leaving the viewer gives the last set back too — nothing is drawing it.
+  useEffect(
+    () => () => {
+      release(shownRef.current);
+      release(staleRef.current);
+      shownRef.current = [];
+      staleRef.current = [];
+    },
+    [],
+  );
 
   return images;
 }
