@@ -35,16 +35,25 @@
  * so callers never have to know the rule. An archive that unpacks flat is
  * reshaped into that layout at install time.
  *
+ * An archive is untrusted input, including one served from our own CDN: the
+ * SHA-256 pin proves the bytes are the ones the catalog names, not that a
+ * publisher built them from this repository. So the member names are checked
+ * before `tar` is allowed to act on them, the extracted tree is checked
+ * before any code follows a path inside it, and the completion record is
+ * created — never overwritten — by the installer.
+ *
  * Design: docs/proposals/2026-09-22-mode-distribution.md (D2, D4–D6, D8)
  */
 
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
   readdirSync,
   renameSync,
   rmSync,
+  type Stats,
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
@@ -108,8 +117,28 @@ export type ModeInstallErrorCode =
   | "checksum-mismatch"
   /** `tar` refused the archive. */
   | "extract-failed"
+  /**
+   * The archive carries something a mode package never contains and that
+   * would reach past the install root — a name that is absolute or walks up
+   * with `..`, a symlink, a hard link, a device node, the installer's own
+   * completion record — or an entry the installer cannot inspect. Distinct
+   * from `invalid-archive`: the package is not merely wrong for this core,
+   * it is not a file tree we will unpack at all.
+   */
+  | "unsafe-archive"
   /** Extracted, but not a mode package this core can run. */
-  | "invalid-archive";
+  | "invalid-archive"
+  /**
+   * A valid mode package built by a different core release. Its own code
+   * because the lockstep is the reason this distribution exists: the archive
+   * is intact and well-formed, it just cannot run on this host's ABI.
+   */
+  | "core-version-mismatch"
+  /**
+   * Everything verified, but the completion record could not be created.
+   * Nothing is marked installed, so the next launch downloads again.
+   */
+  | "record-write-failed";
 
 export class ModeInstallError extends Error {
   readonly code: ModeInstallErrorCode;
@@ -387,13 +416,25 @@ export async function ensureCatalogMode(
 }
 
 /**
- * Download → verify size and SHA-256 → extract → atomic rename → record.
+ * Download → verify size and SHA-256 → screen the archive → extract →
+ * screen the tree → atomic rename → record.
  *
  * Nothing partial survives a failure: the temp archive and the staging
  * directory are removed in every exit path, and the install record — the
  * only thing that marks a directory complete — is written last. An install
  * interrupted between the rename and the record is therefore re-fetched
  * rather than run.
+ *
+ * The two screening steps bracket `tar`, and both are needed. The names are
+ * screened first because the only way to be sure a member cannot land
+ * outside the staging directory is to refuse it before `tar` sees it — GNU
+ * tar and bsdtar disagree about whether such a member is an error or a
+ * silent rewrite, and neither behaviour is a contract this installer should
+ * inherit. The tree is screened afterwards because a name says nothing
+ * about a member's *type*: a symlink with a perfectly ordinary name is
+ * still a path into somewhere else, and every step after extraction
+ * (`hasManifest`, the layout rename, the stamp read, the record write, and
+ * later the seed copier) resolves paths through whatever it finds.
  */
 export async function installCatalogMode(
   name: string,
@@ -419,11 +460,14 @@ export async function installCatalogMode(
   try {
     await downloadArchive(name, entry, archivePath, opts);
 
+    await verifyArchiveMembers(name, archivePath, entry.archive.url);
+
     mkdirSync(staging, { recursive: true });
     await extractArchive(name, archivePath, staging, entry.archive.url);
+    verifyExtractedTree(name, staging, entry.archive.url);
 
     const modeDir = normalizeInstallLayout(name, staging);
-    verifyStamp(name, entry, modeDir, staging);
+    verifyStamp(name, entry, catalog, modeDir, staging);
 
     const finalRoot = catalogInstallRoot(name, opts);
     rmSync(finalRoot, { recursive: true, force: true });
@@ -437,16 +481,49 @@ export async function installCatalogMode(
       installedAt: new Date().toISOString(),
     };
     // Last write: everything above is invisible to `installState` until
-    // this file lands.
-    writeFileSync(
-      join(finalRoot, MODE_INSTALL_RECORD),
-      `${JSON.stringify(record, null, 2)}\n`,
-      "utf-8",
-    );
+    // this file lands. `wx` is part of that guarantee — the record is
+    // *created*, so the write refuses to follow anything already sitting at
+    // that path instead of silently writing through it.
+    const recordPath = join(finalRoot, MODE_INSTALL_RECORD);
+    try {
+      writeFileSync(recordPath, `${JSON.stringify(record, null, 2)}\n`, {
+        encoding: "utf-8",
+        flag: "wx",
+      });
+    } catch (err) {
+      // Without its record the tree is not installed, so leave none: a
+      // half-verified directory that a later change might learn to trust is
+      // worse than another download.
+      rmSync(finalRoot, { recursive: true, force: true });
+      throw new ModeInstallError(
+        "record-write-failed",
+        name,
+        `Installed "${name}" but could not create ${recordPath}: ${errText(err)}. ` +
+          `The directory was removed; nothing is marked installed.`,
+        entry.archive.url,
+      );
+    }
     return record;
   } finally {
-    rmSync(archivePath, { force: true });
-    rmSync(staging, { recursive: true, force: true });
+    // Best-effort, and deliberately so: this runs on the failure path too,
+    // where the tree being removed may be the hostile one that caused the
+    // failure (an unreadable directory with children makes `rmSync` throw
+    // even with `force`). A throw here would replace the real
+    // `ModeInstallError` with a filesystem error about the cleanup, hiding
+    // what actually went wrong. What is left behind is a `.tmp-*` sibling
+    // inside the catalog root, which no reader ever treats as an install:
+    // only `.pneuma-install.json` marks one complete.
+    discard(archivePath);
+    discard(staging);
+  }
+}
+
+/** Remove a temp path, never letting the removal become the reported failure. */
+function discard(path: string): void {
+  try {
+    rmSync(path, { recursive: true, force: true });
+  } catch {
+    /* see the caller: cleanup must not mask the error it runs after */
   }
 }
 
@@ -556,6 +633,143 @@ async function downloadArchive(
   }
 }
 
+/**
+ * Refuse an archive whose member names would put a file anywhere but under
+ * the staging directory, before `tar` is asked to act on them.
+ *
+ * Listing costs one decompression pass over an archive we just spent a
+ * download on, which is the price of not depending on `tar`'s own opinion
+ * of a hostile name. A member name that is not valid UTF-8 or that contains
+ * a newline splits into extra lines here; every line is checked, so the
+ * split can only add rejections, never hide one.
+ *
+ * Names only, deliberately: this does not cap how much the archive expands.
+ * The bytes are already pinned by size and SHA-256 against the catalog that
+ * ships inside the package, so an oversized archive means a publisher who
+ * can put bytes on the CDN and regenerate the catalog from them — and that
+ * publisher can ship a malicious `manifest.ts`, which the host runs. A disk
+ * quota would not narrow that boundary, only the pinned SHA does.
+ */
+async function verifyArchiveMembers(
+  name: string,
+  archivePath: string,
+  url: string,
+): Promise<void> {
+  const proc = Bun.spawn(["tar", "tzf", archivePath], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [listing, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  if (exitCode !== 0) {
+    throw new ModeInstallError(
+      "extract-failed",
+      name,
+      `tar could not read the "${name}" archive (exit ${exitCode}): ${stderr.trim() || "no output"}. Source: ${url}`,
+      url,
+    );
+  }
+
+  for (const line of listing.split("\n")) {
+    const member = line.trim();
+    if (!member) continue;
+    const reason = unsafeMemberReason(member);
+    if (reason) {
+      throw new ModeInstallError(
+        "unsafe-archive",
+        name,
+        `The "${name}" archive contains ${JSON.stringify(member)}, which ${reason}. ` +
+          `A mode package is a plain file tree under its own root; nothing was extracted. Source: ${url}`,
+        url,
+      );
+    }
+  }
+}
+
+/** Why this member name must never be unpacked, or null when it is ordinary. */
+function unsafeMemberReason(member: string): string | null {
+  if (member.startsWith("/") || /^[A-Za-z]:[\\/]/.test(member)) {
+    return "is an absolute path";
+  }
+  // Both separators, because a Windows `tar` and a hand-built archive can
+  // disagree about which one a member name uses.
+  const parts = member.split(/[\\/]/);
+  if (parts.includes("..")) return 'walks out of the archive root with ".."';
+  if (parts.includes(MODE_INSTALL_RECORD)) {
+    return `is named ${MODE_INSTALL_RECORD}, the record this installer writes to mark an install complete`;
+  }
+  return null;
+}
+
+/**
+ * Refuse an extracted tree that is anything other than plain files and
+ * directories.
+ *
+ * The publisher stages regular files only (`scripts/publish-modes.ts`
+ * skips symlinks and sockets by design), so this rejects nothing a real
+ * archive contains — and it is what keeps every later step honest. A
+ * symlink survives into the install root, where the seed copier reads
+ * through it; a hard link ties a file in the install root to a file the
+ * archive does not own. Neither has a legitimate use here, so both are
+ * refused by type rather than by target: a target check would have to
+ * re-derive what "outside" means at every step that resolves a path.
+ */
+function verifyExtractedTree(name: string, staging: string, url: string): void {
+  const unsafe = (member: string, reason: string): ModeInstallError =>
+    new ModeInstallError(
+      "unsafe-archive",
+      name,
+      `The "${name}" archive unpacked ${JSON.stringify(member)}, which ${reason}. ` +
+        `A mode package is plain files and directories; nothing was installed. Source: ${url}`,
+      url,
+    );
+
+  const walk = (dir: string, prefix: string): void => {
+    let entries: string[];
+    try {
+      entries = readdirSync(dir);
+    } catch (err) {
+      // A directory the archive made unreadable (mode 000, say). Nothing a
+      // published mode contains, and refusing beats letting a raw errno out
+      // of the installer where callers only know how to read a code.
+      // Untested on purpose: the condition does not exist for a root user,
+      // which is how CI containers run.
+      throw unsafe(prefix || ".", `cannot be inspected (${errText(err)})`);
+    }
+    for (const entry of entries) {
+      const absolute = join(dir, entry);
+      const member = prefix ? `${prefix}/${entry}` : entry;
+      // lstat, not stat: the question is what the entry *is*, not what it
+      // points at.
+      const stats = lstatSync(absolute);
+      if (stats.isDirectory()) {
+        walk(absolute, member);
+        continue;
+      }
+      if (stats.isSymbolicLink()) throw unsafe(member, "is a symbolic link");
+      if (!stats.isFile()) throw unsafe(member, describeEntryKind(stats));
+      if (stats.nlink > 1) throw unsafe(member, "is a hard link to another file");
+      if (entry === MODE_INSTALL_RECORD) {
+        throw unsafe(member, `is named ${MODE_INSTALL_RECORD}, which only this installer writes`);
+      }
+    }
+  };
+
+  walk(staging, "");
+}
+
+/** Reads as the tail of "…, which <reason>". */
+function describeEntryKind(stats: Stats): string {
+  if (stats.isBlockDevice()) return "is a block device";
+  if (stats.isCharacterDevice()) return "is a character device";
+  if (stats.isFIFO()) return "is a named pipe";
+  if (stats.isSocket()) return "is a socket";
+  return "is not a regular file";
+}
+
 async function extractArchive(
   name: string,
   archivePath: string,
@@ -566,9 +780,16 @@ async function extractArchive(
     stdout: "pipe",
     stderr: "pipe",
   });
-  const exitCode = await proc.exited;
+  // Drained concurrently with the exit, never after it: a tar that says
+  // enough on stderr to fill the pipe blocks until someone reads it, and
+  // waiting for exit first is that someone never arriving. The listing pass
+  // above does the same.
+  const [stderrText, exitCode] = await Promise.all([
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
   if (exitCode !== 0) {
-    const stderr = (await new Response(proc.stderr).text()).trim();
+    const stderr = stderrText.trim();
     throw new ModeInstallError(
       "extract-failed",
       name,
@@ -614,10 +835,22 @@ function normalizeInstallLayout(name: string, staging: string): string {
  * The archive's self-declaration. It exists so a layout change is detected
  * instead of silently patched, so an unreadable or foreign stamp is a hard
  * failure rather than a warning.
+ *
+ * `coreVersion` is compared against the *catalog's*, not against a version
+ * read from the running package, because the catalog is this core's pin:
+ * it ships inside the package, is generated by the release that built every
+ * archive it lists, and `scripts/verify-mode-catalog.ts` already refuses to
+ * release a package whose catalog names another release. Catalog ↔ core
+ * agreement is therefore settled before shipping; what is still open at
+ * install time is whether the bytes behind the URL really are that
+ * release's build, and the stamp is the only place the archive says so.
+ * Reading a second version at runtime would add a source of truth without
+ * adding an answer.
  */
 function verifyStamp(
   name: string,
   entry: ModeCatalogEntry,
+  catalog: ModeCatalog,
   modeDir: string,
   staging: string,
 ): void {
@@ -651,6 +884,19 @@ function verifyStamp(
       "invalid-archive",
       name,
       `The archive pinned for "${name}" contains mode "${stamp.name}".`,
+    );
+  }
+  // Before the mode's own version: an archive from another release usually
+  // differs in both, and "built by another core" is the explanation for the
+  // mismatch, not a second symptom of it.
+  if (stamp.coreVersion !== catalog.coreVersion) {
+    throw new ModeInstallError(
+      "core-version-mismatch",
+      name,
+      `The "${name}" archive was built by core ${stamp.coreVersion}, but this release's catalog pins ` +
+        `archives built by core ${catalog.coreVersion}. A mode's viewer bundle depends on the host it was ` +
+        `built against, so it would load and then fail in the browser; nothing was installed.`,
+      entry.archive.url,
     );
   }
   if (stamp.version !== entry.version) {

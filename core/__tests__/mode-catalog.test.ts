@@ -11,6 +11,10 @@
  *    re-fetched rather than run;
  *  - a bad archive (wrong sha, wrong size, 404, cancelled, unreadable)
  *    leaves nothing behind and says which of those happened;
+ *  - a *hostile* archive reaches nothing outside the install root, and the
+ *    completion record is the installer's alone;
+ *  - an archive built by another core release is refused at install time,
+ *    not discovered later as a broken viewer;
  *  - `stale` is decided by comparing the record's sha with the catalog's,
  *    which is how a core upgrade forces a re-download;
  *  - in a repo checkout the in-tree source wins and nothing hits the
@@ -51,7 +55,12 @@ import {
   MODE_PACKAGE_STAMP,
   type ModeCatalog,
 } from "../types/mode-catalog.js";
-import { buildModeArchive, sha256Hex } from "./fixtures/catalog-archive.js";
+import {
+  buildHostileModeArchive,
+  buildModeArchive,
+  type HostileMember,
+  sha256Hex,
+} from "./fixtures/catalog-archive.js";
 
 const CORE_VERSION = "9.9.9";
 const MODE_NAME = "demo";
@@ -67,6 +76,10 @@ let archiveV2: Uint8Array<ArrayBuffer>;
 let archiveFlat: Uint8Array<ArrayBuffer>;
 /** Same mode, packed without its `pneuma-package.json` stamp. */
 let archiveUnstamped: Uint8Array<ArrayBuffer>;
+/** Same mode and version, stamped by a core release this one is not. */
+let archiveForeignCore: Uint8Array<ArrayBuffer>;
+/** Set per test by the hostile-archive cases, which each need other bytes. */
+let archiveHostile: Uint8Array<ArrayBuffer> | null;
 let server: ReturnType<typeof Bun.serve>;
 let baseUrl: string;
 let hits: Record<string, number>;
@@ -100,6 +113,13 @@ beforeAll(() => {
   archiveV2 = buildArchive({ layout: "nested", marker: "v2" });
   archiveFlat = buildArchive({ layout: "flat", marker: "flat" });
   archiveUnstamped = buildArchive({ layout: "nested", marker: "v1", stamp: null });
+  archiveForeignCore = buildModeArchive({
+    name: MODE_NAME,
+    version: MODE_VERSION,
+    coreVersion: "0.0.1",
+    marker: "foreign",
+  });
+  archiveHostile = null;
   hits = {};
 
   server = Bun.serve({
@@ -124,6 +144,14 @@ beforeAll(() => {
       // An archive with no package stamp.
       if (url.pathname === "/unstamped.tar.gz") {
         return serveBytes(archiveUnstamped);
+      }
+      // A well-formed archive stamped by a different core release.
+      if (url.pathname === "/foreign-core.tar.gz") {
+        return serveBytes(archiveForeignCore);
+      }
+      // Whatever the running hostile-archive test built.
+      if (url.pathname === "/hostile.tar.gz" && archiveHostile) {
+        return serveBytes(archiveHostile);
       }
       // Bytes that are not the archive the catalog pins.
       if (url.pathname === "/tampered.tar.gz") {
@@ -171,6 +199,13 @@ afterAll(() => {
 
 let projectRoot: string;
 let home: string;
+/**
+ * The only place outside the fixture home a test ever names. Hostile
+ * archives aim their links here, so a regression in the installer can reach
+ * nothing but a file this file just created. Short prefix on purpose: the
+ * path travels inside a tar header's 100-byte name field.
+ */
+let sandbox: string;
 let env: { projectRoot: string; home: string };
 
 function writeDistribution(bundled: string[]): void {
@@ -217,6 +252,7 @@ function writeCatalog(opts?: {
 beforeEach(() => {
   projectRoot = mkdtempSync(join(tmpdir(), "pneuma-catalog-pkg-"));
   home = mkdtempSync(join(tmpdir(), "pneuma-catalog-home-"));
+  sandbox = mkdtempSync(join(tmpdir(), "pn-sbx-"));
   env = { projectRoot, home };
   mkdirSync(join(projectRoot, "modes"), { recursive: true });
   writeDistribution(["_shared", "slide"]);
@@ -225,6 +261,8 @@ beforeEach(() => {
 afterEach(() => {
   rmSync(projectRoot, { recursive: true, force: true });
   rmSync(home, { recursive: true, force: true });
+  rmSync(sandbox, { recursive: true, force: true });
+  archiveHostile = null;
 });
 
 /** Nothing half-installed, and no temp files left in the catalog root. */
@@ -413,6 +451,139 @@ describe("install failures", () => {
     const err = await expectInstallError(installCatalogMode(MODE_NAME, env));
     expect(err.code).toBe("unknown-mode");
     expect(err.message).toContain("modes/<name>/");
+  });
+});
+
+// ── Lockstep with the core that built the archive ────────────────────────────
+
+/**
+ * A catalog mode travels as a prebuilt viewer bundle against this host's
+ * React, store, i18n and CSS, so an archive from another release is not a
+ * degraded install — it is one that fails later, in the browser, far from
+ * the download that caused it.
+ */
+describe("core lockstep", () => {
+  test("an archive built by another core release is refused at install time", async () => {
+    writeCatalog({ path: "/foreign-core.tar.gz", bytes: archiveForeignCore });
+
+    const err = await expectInstallError(installCatalogMode(MODE_NAME, env));
+    expect(err.code).toBe("core-version-mismatch");
+    // Both releases named: the one that built the bundle, and the one that
+    // would have to run it.
+    expect(err.message).toContain("0.0.1");
+    expect(err.message).toContain(CORE_VERSION);
+    expectNothingLeftBehind();
+    expect(installState(MODE_NAME, env)).toBe("not-installed");
+  });
+});
+
+// ── Hostile archives ─────────────────────────────────────────────────────────
+
+/**
+ * An archive is remote input. Its SHA-256 pin proves the bytes are the ones
+ * the catalog names, not that a publisher built them from this repository,
+ * so the installer has to hold against an archive built to attack it.
+ *
+ * Each case serves a real tar stream that a real `tar` reads; the members
+ * are written by hand because `tar czf` will not produce them from a
+ * directory. The only path outside the fixture home any of them names is
+ * `sandbox`, created by this file — so a regression here can damage nothing
+ * but the fixture, which is also what the assertions look at.
+ */
+describe("hostile archives", () => {
+  /** Publish a catalog entry for an honest archive carrying these members. */
+  function serveHostile(members: HostileMember[]): void {
+    archiveHostile = buildHostileModeArchive({
+      name: MODE_NAME,
+      version: MODE_VERSION,
+      coreVersion: CORE_VERSION,
+      members,
+    });
+    writeCatalog({ path: "/hostile.tar.gz", bytes: archiveHostile });
+  }
+
+  test("the completion record cannot be aimed at a file outside the install", async () => {
+    const victim = join(sandbox, "precious.txt");
+    writeFileSync(victim, "original\n");
+    // The reported escape: the archive brings its own `.pneuma-install.json`
+    // as a symlink, and the installer's last write followed it.
+    serveHostile([{ path: MODE_INSTALL_RECORD, kind: "symlink", target: victim }]);
+
+    const err = await expectInstallError(installCatalogMode(MODE_NAME, env));
+    expect(err.code).toBe("unsafe-archive");
+    expect(err.message).toContain(MODE_INSTALL_RECORD);
+    expect(readFileSync(victim, "utf-8")).toBe("original\n");
+    expectNothingLeftBehind();
+    expect(installState(MODE_NAME, env)).toBe("not-installed");
+  });
+
+  test("an archive cannot supply a completion record of its own", async () => {
+    // Even as a plain file: the record is what marks a directory complete,
+    // so it is the installer's to write and nobody else's to provide.
+    serveHostile([
+      {
+        path: MODE_INSTALL_RECORD,
+        kind: "file",
+        content: JSON.stringify({ name: MODE_NAME, sha256: "forged" }),
+      },
+    ]);
+
+    const err = await expectInstallError(installCatalogMode(MODE_NAME, env));
+    expect(err.code).toBe("unsafe-archive");
+    expect(readInstallRecord(MODE_NAME, env)).toBeNull();
+    expectNothingLeftBehind();
+  });
+
+  test("a symlink with an innocent name is refused once unpacked", async () => {
+    writeFileSync(join(sandbox, "keep.txt"), "keep\n");
+    // Nothing about the name is suspect; only the unpacked entry's type is.
+    serveHostile([{ path: `modes/${MODE_NAME}/escape`, kind: "symlink", target: sandbox }]);
+
+    const err = await expectInstallError(installCatalogMode(MODE_NAME, env));
+    expect(err.code).toBe("unsafe-archive");
+    expect(err.message).toContain("symbolic link");
+    expect(err.message).toContain("escape");
+    expect(readdirSync(sandbox)).toEqual(["keep.txt"]);
+    expectNothingLeftBehind();
+  });
+
+  test("a hard link is refused once unpacked", async () => {
+    serveHostile([
+      {
+        path: `modes/${MODE_NAME}/alias`,
+        kind: "hardlink",
+        target: `modes/${MODE_NAME}/manifest.ts`,
+      },
+    ]);
+
+    const err = await expectInstallError(installCatalogMode(MODE_NAME, env));
+    expect(err.code).toBe("unsafe-archive");
+    // Both names share the inode, so the walk names whichever it meets
+    // first — the rule is about the link, not about which name carries it.
+    expect(err.message).toContain("hard link");
+    expectNothingLeftBehind();
+  });
+
+  test("a member that walks out of the archive root never reaches tar", async () => {
+    serveHostile([{ path: "../escaped.txt", kind: "file", content: "escaped\n" }]);
+
+    const err = await expectInstallError(installCatalogMode(MODE_NAME, env));
+    expect(err.code).toBe("unsafe-archive");
+    expect(err.message).toContain("..");
+    // One level up from a staging directory is the catalog root itself.
+    expect(existsSync(join(catalogRoot(env), "escaped.txt"))).toBe(false);
+    expectNothingLeftBehind();
+  });
+
+  test("an absolute member never reaches tar", async () => {
+    const target = join(sandbox, "absolute.txt");
+    serveHostile([{ path: target, kind: "file", content: "absolute\n" }]);
+
+    const err = await expectInstallError(installCatalogMode(MODE_NAME, env));
+    expect(err.code).toBe("unsafe-archive");
+    expect(err.message).toContain("absolute");
+    expect(existsSync(target)).toBe(false);
+    expectNothingLeftBehind();
   });
 });
 
