@@ -341,6 +341,24 @@ describe("the skill install surface", () => {
     }
   });
 
+  test("both installed scripts declare the same loop frame ceiling", () => {
+    // `sprite-sheet.mjs` refuses a loop over MAX_LOOP_FRAMES; `sprite-project.mjs`
+    // warns about a brief that would exceed it BEFORE the clip is paid for.
+    // They are two standalone zero-dependency files installed side by side
+    // with no module between them, so the number is written twice on purpose —
+    // and two different numbers would promise a length the pipeline then
+    // refuses, after the money is spent. Nothing but this test connects them.
+    const declared = ["sprite-sheet.mjs", "sprite-project.mjs"].map((name) => {
+      const match = read(`modes/sprite/skill/scripts/${name}`)
+        .match(/^const MAX_LOOP_FRAMES = (\d+);$/m);
+      return { name, value: match?.[1] };
+    });
+    for (const { name, value } of declared) {
+      expect({ name, declared: value !== undefined }).toEqual({ name, declared: true });
+    }
+    expect(declared[0].value).toBe(declared[1].value!);
+  });
+
   test("every references file the SKILL.md indexes exists on disk", () => {
     const skill = read("modes/sprite/skill/SKILL.md");
     const referenced = [...skill.matchAll(/`references\/([\w-]+\.md)`/g)].map(

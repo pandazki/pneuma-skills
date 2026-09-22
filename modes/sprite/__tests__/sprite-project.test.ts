@@ -1213,6 +1213,50 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       expect(sprite.videos[0].id).toBe("video-1");
     });
 
+    test("half a brief is no brief — the gate does not open on the word alone", () => {
+      // `set-motion` writes all of it at once, but `project.json` is a file:
+      // this is what a hand edit or a turn that stopped mid-way leaves, and
+      // the gate used to open on the key's presence. A `{ "duration": 4 }`
+      // bought the clip and then printed "undefinedpx" on `show`.
+      const { dir } = seedLoop({ clip: false, brief: false });
+      writeFileSync(join(dir, "motions", "flame", "video-seedance-1.mp4"), "");
+      const doc = readProject(dir);
+      doc.sprite.motions[1].brief = { duration: 4 };
+      writeFileSync(join(dir, "project.json"), JSON.stringify(doc, null, 2) + "\n");
+
+      const refused = project(dir, "add-video", "--motion", "flame",
+        "--file", "motions/flame/video-seedance-1.mp4",
+        "--model", "seedance-2.5", "--mode", "first-last", "--json");
+      expect(refused.code).toBe(1);
+      // It names what is missing: "record the answers" is not actionable when
+      // the agent believes it already did.
+      expect(refused.err).toContain(
+        "add-video: loop 'flame' has an incomplete brief, missing --brief-width, --brief-interpolator and recordedAt",
+      );
+
+      // `show` says the same thing rather than reading half of it out loud.
+      const human = project(dir, "show", "--motion", "flame");
+      expect(human.out).toContain("brief: incomplete, missing --brief-width, --brief-interpolator and recordedAt");
+      expect(human.out).not.toContain("undefined");
+      // …and the JSON summaries carry no brief at all — the same all-or-nothing
+      // rule the viewer's loader applies to the document it reads.
+      expect("brief" in projectJson(dir, "show", "--motion", "flame")).toBe(false);
+      expect("brief" in projectJson(dir, "show").motions[1]).toBe(false);
+
+      // Completing it one flag at a time is completing nothing: there is no
+      // brief to change an answer of, so all three are asked again.
+      const patch = project(dir, "set-motion", "--motion", "flame", "--brief-width", "512", "--json");
+      expect(patch.code).toBe(1);
+      expect(patch.err).toMatch(/--brief-duration.*--brief-interpolator/);
+
+      // Recorded whole, the same call goes through.
+      projectJson(dir, "set-motion", "--motion", "flame", "--brief-duration", "4",
+        "--brief-width", "512", "--brief-interpolator", "topaz", "--at", String(T1));
+      expect(projectJson(dir, "add-video", "--motion", "flame",
+        "--file", "motions/flame/video-seedance-1.mp4",
+        "--model", "seedance-2.5", "--mode", "first-last", "--at", String(T2)).videos[0].id).toBe("video-1");
+    });
+
     test("a derived clip needs no brief — that money is already spent", () => {
       // The gate is about the first paid RENDER. A matte or a retime of a clip
       // that already exists cannot be talked out of having happened, and
@@ -1297,6 +1341,19 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       expect(r.err).toContain("frames are 64 px wide but the brief said 512 — pass --width to loop");
       expect(JSON.parse(r.out).warnings)
         .toContain("frames are 64 px wide but the brief said 512 — pass --width to loop");
+      // Once per channel, and not in the measurement: `inspect.warnings` is
+      // what the viewer shows and what `--ack-warnings` accepts, and this is a
+      // comparison against the brief, not something measured in the frames.
+      expect(JSON.parse(r.out).inspect.warnings.join(" ")).not.toContain("the brief said");
+      expect(readProject(dir).sprite.motions[1].inspect.warnings.join(" ")).not.toContain("the brief said");
+
+      // A human reads it once too: stdout carries the registration, stderr the
+      // warning. The same sentence twice in one command reads as two problems.
+      const forHumans = run(PROJECT, ["register-run", "--dir", dir, "--motion", "flame",
+        "--run", "-", "--at", String(T2)], JSON.stringify(summary));
+      expect(forHumans.code).toBe(0);
+      expect(forHumans.err).toContain("WARN: frames are 64 px wide but the brief said 512");
+      expect(forHumans.out).not.toContain("the brief said");
 
       // Two pixels of rounding (an even-sided crop) is not a mismatch.
       projectJson(dir, "set-motion", "--motion", "flame", "--brief-width", "66", "--at", String(T2));

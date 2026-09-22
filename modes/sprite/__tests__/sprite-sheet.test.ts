@@ -2377,11 +2377,15 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
 
       const human = run("retime", sweep24(), "--keep", "0-5,10-15", "--out", join(ws, "h.mp4"));
       expect(human.code).toBe(0);
-      expect(human.out).toContain("12 frames");
-      expect(human.out).toContain("24 fps");
-      // The two numbers a retimed loop has to be re-measured on.
-      expect(human.out).toContain("0");
-      expect(human.out).toContain("15");
+      expect(human.out).toContain(
+        "h.mp4: 12 frames at 24 fps (0.5s) replayed from 24 frames of retime-sweep.mp4",
+      );
+      // The sentence a retimed loop has to be re-measured on: which source
+      // frames now sit at the wrap, said in words rather than as two numbers
+      // a reader has to find in the line.
+      expect(human.out).toContain(
+        "kept 0-5, 10-15 — the wrap is now source frame 15 back to 0, so measure the seam again with 'loop'",
+      );
     }, 20_000);
 
     test("leaves no working directory behind", () => {
