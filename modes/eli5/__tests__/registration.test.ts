@@ -91,10 +91,31 @@ describe("registration 2/3 — the launcher gallery registry", () => {
     expect(existsSync(join(REPO_ROOT, "modes", MODE_NAME, "showcase"))).toBe(true);
   });
 
-  test("the mode is not otherwise hardcoded into server or CLI logic", () => {
-    // `server/` and `bin/` are ModeManifest-driven, and since the gallery
-    // derives its list from disk there is no sanctioned mention left: any
-    // line quoting the name is a branch on mode identity.
+  // One file is allowed to name the mode, and the allowance is as narrow as
+  // the debt it records. `server/routes/export.ts` has carried this mode's
+  // whole export surface since it shipped — the `/export/eli5*` routes, the
+  // manifest schema, the ladder page builders — the name simply used to hide
+  // inside path strings. Making the mode a CATALOG mode is what forces the
+  // file to say it out loud: its source is no longer in the package, so the
+  // routes resolve it at request time and a static import would kill the
+  // released server at boot. Moving that export surface into the mode is the
+  // real fix and is its own piece of work; until then the file may spend
+  // exactly one line on it.
+  const NAMED_BY = "server/routes/export.ts";
+  const ALLOWED_LINE = `const ELI5_MODE = "${MODE_NAME}";`;
+
+  test("only the export routes name the mode, and only once", () => {
+    const lines = read(NAMED_BY).split("\n");
+    const hits = lines.filter((l) => l.includes(`"${MODE_NAME}"`));
+    // Exactly one, and it is the declaration — not a branch on identity that
+    // happened to grow next to it.
+    expect(hits.map((l) => l.trim())).toEqual([ALLOWED_LINE]);
+  });
+
+  test("nothing else in server or CLI logic is hardcoded to the mode", () => {
+    // `server/` and `bin/` are ModeManifest-driven, and the gallery derives
+    // its list from disk: outside the one line above, any line quoting the
+    // name is a branch on mode identity.
     const quoted = `"${MODE_NAME}"`;
     const offenders: string[] = [];
     for (const dir of ["server", "bin"]) {
@@ -107,6 +128,7 @@ describe("registration 2/3 — the launcher gallery registry", () => {
         const rel = `${dir}/${file}`;
         for (const [i, line] of read(rel).split("\n").entries()) {
           if (!line.includes(quoted)) continue;
+          if (rel === NAMED_BY && line.trim() === ALLOWED_LINE) continue;
           offenders.push(`${rel}:${i + 1}`);
         }
       }
