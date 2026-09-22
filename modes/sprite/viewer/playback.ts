@@ -168,6 +168,84 @@ export function frameCountOf(source: FrameSource): number {
   return source.kind === "none" ? 0 : source.count;
 }
 
+// ── What the strip shows ───────────────────────────────────────────────────
+
+/**
+ * The most thumbnails the strip will mount.
+ *
+ * Every thumbnail is a real picture the browser has to fetch, decode and keep
+ * a layout box for. A 355-frame 532x460 loop mounted one `<img>` per frame and
+ * took the renderer down with it: the tab stopped answering CDP, the launcher
+ * logged the browser disconnecting, and only killing the render process got it
+ * back (2026-09-22, the Kiki trial). Video-model loops made this a normal size
+ * rather than an extreme one — 7 s at 48 fps is 355 frames — so the strip
+ * cannot keep promising one thumbnail per frame.
+ *
+ * 96 is chosen to stay above what any pane can show at once (a 46 px thumb in
+ * a 1600 px strip is ~34 of them) so scrubbing still has somewhere to go, and
+ * far below the count where the mount itself is the problem.
+ */
+export const STRIP_MAX_THUMBS = 96;
+
+/**
+ * Which frames the strip draws, in order.
+ *
+ * Short motions are shown whole — the sprite sheets this mode started with
+ * are 8 to 40 frames and every one of them is worth a thumbnail. A long
+ * motion is sampled at an EVEN stride, and the two ends are always in it:
+ * frame 0 and the last frame are the two sides of a loop's seam, which is the
+ * one comparison a user opens the strip to make.
+ *
+ * This is a DISPLAY sample and nothing else. The stage still plays every
+ * frame, `navigate-to` still addresses every frame, and a thumbnail still
+ * carries its own true index — so clicking the one labelled 213 seeks to 213,
+ * not to "the 57th thumbnail".
+ */
+export function stripFrames(
+  count: number,
+  max: number = STRIP_MAX_THUMBS,
+): number[] {
+  if (!Number.isFinite(count) || count <= 0) return [];
+  const total = Math.floor(count);
+  if (total <= max || max < 2) {
+    return Array.from({ length: total }, (_, index) => index);
+  }
+  const last = total - 1;
+  const out: number[] = [];
+  for (let i = 0; i < max; i += 1) {
+    const index = Math.round((i * last) / (max - 1));
+    if (out[out.length - 1] !== index) out.push(index);
+  }
+  return out;
+}
+
+/**
+ * The thumbnail the playhead sits on — the nearest SHOWN frame.
+ *
+ * On a sampled strip the playhead is usually between two thumbnails, and the
+ * strip has to mark one of them or the row loses its playhead entirely while
+ * the motion runs. Marking the nearest is the honest answer because the
+ * thumbnail keeps its own number: the mark says "you are around here", and the
+ * exact frame is the counter above it. Ties go to the earlier frame so the
+ * mark never runs ahead of the stage.
+ */
+export function nearestStripFrame(
+  shown: ReadonlyArray<number>,
+  frame: number,
+): number | null {
+  if (shown.length === 0) return null;
+  let best = shown[0] as number;
+  let bestDistance = Math.abs(best - frame);
+  for (const index of shown) {
+    const distance = Math.abs(index - frame);
+    if (distance < bestDistance) {
+      best = index;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
 // ── When it moves ──────────────────────────────────────────────────────────
 
 export interface PlaybackState {

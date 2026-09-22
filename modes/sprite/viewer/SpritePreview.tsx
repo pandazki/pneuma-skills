@@ -74,7 +74,7 @@ import {
 import { Stage } from "./Stage.js";
 import { FilmIcon, RailIcon } from "./icons.js";
 import { selectionLabel, spriteStrings } from "./strings.js";
-import { useFrameImages } from "./useFrameImages.js";
+import { useFrameImages, useSettledImageVersion } from "./useFrameImages.js";
 import { contentUrl } from "./urls.js";
 
 /** Below this the preview panel moves under the stage instead of beside it. */
@@ -153,9 +153,16 @@ export default function SpritePreview(props: ViewerPreviewProps) {
     [character, motionId],
   );
 
+  // One `register-run` arrives as hundreds of separate file events, and each
+  // one bumps the shell's `imageVersion`. Reading the pictures again on each
+  // bump asks the browser for the whole motion hundreds of times over; every
+  // surface below therefore works off the version that the events SETTLED on,
+  // so the viewer re-reads the frames once, when the run stops writing them.
+  const imageVersion = useSettledImageVersion(props.imageVersion);
+
   const motionSource = useMemo(
-    () => resolveFrameSource(character, motion, props.imageVersion),
-    [character, motion, props.imageVersion],
+    () => resolveFrameSource(character, motion, imageVersion),
+    [character, motion, imageVersion],
   );
 
   // A reference is put on the stage as a one-frame source, so it goes through
@@ -164,8 +171,8 @@ export default function SpritePreview(props: ViewerPreviewProps) {
     if (!character || !refId) return null;
     const ref = findRef(character, refId);
     const uri = ref ? resolveAssetUri(character, ref.asset) : undefined;
-    return uri ? contentUrl(character.contentSet, uri, props.imageVersion) : null;
-  }, [character, refId, props.imageVersion]);
+    return uri ? contentUrl(character.contentSet, uri, imageVersion) : null;
+  }, [character, refId, imageVersion]);
 
   const stageSource: FrameSource = useMemo(
     () =>
@@ -473,7 +480,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
         character && stageMotionId ? (findMotion(character, stageMotionId) ?? null) : null;
       const subject = named ?? onStageMotion;
       const onStage = !!subject && subject.id === stageMotionId;
-      const source = resolveFrameSource(character, subject, props.imageVersion);
+      const source = resolveFrameSource(character, subject, imageVersion);
       const data = playbackStateData({
         project: character,
         motion: subject,
@@ -499,7 +506,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
         data,
       };
     },
-    [character, props.imageVersion],
+    [character, imageVersion],
   );
 
   // ── Agent actions ────────────────────────────────────────────────────────
@@ -721,7 +728,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
         {showRail ? (
           <MotionRail
             project={character}
-            imageVersion={props.imageVersion}
+            imageVersion={imageVersion}
             selectedMotionId={motionId}
             selectedRefId={refId}
             t={t}
@@ -803,7 +810,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
             <PreviewPanel
               project={character}
               motion={motion}
-              imageVersion={props.imageVersion}
+              imageVersion={imageVersion}
               tab={tab}
               onTab={setTab}
               geometry={geometry}
@@ -819,7 +826,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
           <PreviewPanel
             project={character}
             motion={motion}
-            imageVersion={props.imageVersion}
+            imageVersion={imageVersion}
             tab={tab}
             onTab={setTab}
             geometry={geometry}
