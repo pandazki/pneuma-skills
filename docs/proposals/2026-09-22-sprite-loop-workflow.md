@@ -275,8 +275,16 @@ Both in `modes/_shared/scripts/`, plain ESM, `fal-queue.mjs` driver, `--json`,
 - `interpolate-video.mjs --input <clip> --output <mp4> [--target-fps 60] [--upscale 1] [--model proteus] [--deadline-s] [--json]`
   → `https://fal.run/fal-ai/topaz/upscale/video`, `{ video_url, model: "Proteus", upscale_factor, target_fps, H264_output: true }`. `target_fps` 16–60. JSON `{ path, url, file_size, target_fps, upscale_factor }`. The trial verifies `upscale_factor: 1` is accepted; if fal refuses it, the minimum becomes 2 and the header says so.
 
-Local files go through `falMediaUrl` (data URI ≤ 30 MB); output through
-`downloadFalFile` to `<output>.tmp` then rename.
+**Video inputs are uploaded, never inlined.** Measured 2026-09-22: both
+endpoints refuse a data-URI `video_url` (VEED 422 `url_too_long` — "URL
+should have at most 2083 characters"; Topaz 400 "Invalid URL: URL too long").
+`fal-queue.mjs` gains `uploadFalFile(path, { key })`: `POST
+https://rest.alpha.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3`
+(`Authorization: Key`, body `{ content_type, file_name }`) → `{ upload_url,
+file_url }`, `PUT upload_url` with the bytes, use `file_url` (verified by hand
+on the trial clip: 200 / 200, served from `v3b.fal.media`). An `http(s)://`
+input passes through. Output through `downloadFalFile` to `<output>.tmp`
+then rename.
 
 ## Contract 5 — the skill text and manifest (T3)
 
