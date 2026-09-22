@@ -33,7 +33,7 @@ import { HookBus } from "../core/hook-bus.js";
 import { createProxyMiddleware, mergeProxyConfig, type ProxyConfigRef } from "./proxy-middleware.js";
 import { resolveLocalized, type ModeManifest, type ProxyRoute } from "../core/types/mode-manifest.js";
 import type { ModeCatalogEntry, ModeInstallState } from "../core/types/mode-catalog.js";
-import { bundledModeNames, listCatalogModes } from "../core/mode-catalog.js";
+import { bundledModeNames, listCatalogModes, resolveCatalogMode } from "../core/mode-catalog.js";
 import { startProxyWatcher, registerSelfWrite, registerSelfDelete } from "./file-watcher.js";
 import { copySeedEntry, resolveSeedCatalog, runPostSeedInstall } from "./seed-installer.js";
 import { mountHandoffRoutes } from "./handoff-routes.js";
@@ -752,6 +752,19 @@ export async function startServer(options: ServerOptions) {
     downloadSize: number;
     /** `not-installed` | `installed` | `stale` (installed from another core's build). */
     state: ModeInstallState;
+    /**
+     * Absolute path to the installed mode directory, present only while
+     * `state === "installed"` and the source is actually on disk.
+     *
+     * Deliberately NOT called `path`: `local[]`'s `path` is a launch
+     * specifier and a workspace the user may evolve in place, and a catalog
+     * install is neither — `core/mode-catalog.ts` owns that directory and
+     * deletes it on the next core upgrade. This field answers one question:
+     * "where would a copy of this mode's source come from", which is what
+     * "Edit in Mode Maker" needs since `modes/<name>/` does not exist for a
+     * catalog mode in a released package.
+     */
+    installPath?: string;
     showcase?: RegistryShowcase;
   }
 
@@ -969,6 +982,14 @@ export async function startServer(options: ServerOptions) {
           }
         } catch { /* a mode with no showcase in the package still gets a card */ }
         const description = pickLocalized(entry.description, locale);
+        // Where the mode's source actually is, asked of the module that owns
+        // the answer rather than reconstructed from the install layout here.
+        // Null while nothing is installed, which is what keeps the field's
+        // presence a usable "there is source to copy" signal.
+        const resolved =
+          entry.state === "installed"
+            ? resolveCatalogMode(entry.name, { projectRoot })
+            : null;
         return {
           name: entry.name,
           displayName: pickLocalized(entry.displayName, locale) || entry.name,
@@ -978,6 +999,7 @@ export async function startServer(options: ServerOptions) {
           unpackedSize: entry.unpackedSize,
           downloadSize: entry.archive?.size ?? 0,
           state: entry.state,
+          ...(resolved ? { installPath: resolved.modeDir } : {}),
           ...(showcase ? { showcase } : {}),
         };
       });
@@ -1142,6 +1164,26 @@ export async function startServer(options: ServerOptions) {
     });
   };
 
+  // `/api/catalog` + `/api/catalog/install` go wherever `/api/registry` goes,
+  // and for the same reason: the registry is what tells a surface that a mode
+  // needs downloading, so every surface that reads it can offer the download.
+  // The ProjectPanel's mode picker runs inside a PER-SESSION server and posts
+  // to its own origin — mounted on the launcher alone, its "Start in any mode"
+  // download hit a route that was not there and could never finish.
+  //
+  // Installing into `~/.pneuma/catalog/` is a machine-level operation either
+  // way: nothing about it depends on which server flavour is asked, and the
+  // installer is idempotent, so a second server offering it is not a second
+  // copy of anything.
+  const mountCatalogRoutes = (target: Hono) => {
+    registerCatalogRoutes(target, {
+      projectRoot: options.projectRoot || resolve(dirname(import.meta.path), ".."),
+      // A finished install changes what the registry can launch, so drop the
+      // SWR cache on the same tick instead of waiting out its TTL.
+      onInstalled: () => registryCache.clear(),
+    });
+  };
+
   // User locale (UI language). Persisted in ~/.pneuma/settings.json under
   // top-level "locale". Mounted on every server flavour (launcher + per-
   // session) because the frontend `syncLocaleFromServer` fires on every
@@ -1200,6 +1242,7 @@ export async function startServer(options: ServerOptions) {
     });
 
     mountRegistryRoute(app);
+    mountCatalogRoutes(app);
 
     app.get("/api/backends", async (c) => {
       const descriptors = getBackendDescriptors();
@@ -2173,14 +2216,6 @@ export async function startServer(options: ServerOptions) {
       },
     });
 
-    // Catalog modes (`/api/catalog`, `/api/catalog/install`) — the modes this
-    // release lists but does not ship. Installing one changes what the
-    // registry can launch, so drop its cache on the same tick.
-    registerCatalogRoutes(app, {
-      projectRoot: options.projectRoot || resolve(dirname(import.meta.path), ".."),
-      onInstalled: () => registryCache.clear(),
-    });
-
     // ── Favorites (launcher-scope) ─────────────────────────────────────
     // Persistent user-pinned modes. The launcher reads this list to
     // order Quick Start tiles and to mark favorited tiles with a small
@@ -2966,6 +3001,9 @@ export async function startServer(options: ServerOptions) {
   // per-session server so the dropdown works regardless of which port it
   // talks to.
   mountRegistryRoute(app);
+  // The ProjectPanel lives in this server too, and its mode picker downloads a
+  // catalog mode before it opens the launch sheet.
+  mountCatalogRoutes(app);
   mountUserLocaleRoutes(app);
 
   // ── Project routes API ──────────────────────────────────────────────

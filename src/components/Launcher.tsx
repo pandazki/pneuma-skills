@@ -115,6 +115,14 @@ interface CatalogMode {
   /** Compressed archive bytes; the install stream reports its own total. */
   downloadSize: number;
   state: ModeInstallState;
+  /**
+   * Absolute path to the installed mode directory, sent only once the
+   * download completed. A catalog mode has no `modes/<name>/` in a released
+   * package, so this is the only way another surface can read its source —
+   * "Edit in Mode Maker" copies from here. Not a workspace: the installer
+   * owns this directory and replaces it on the next core upgrade.
+   */
+  installPath?: string;
   showcase?: BuiltinMode["showcase"];
 }
 
@@ -235,6 +243,13 @@ type AnyMode = {
   installState?: ModeInstallState;
   /** Catalog modes only — install size, quoted before the download starts. */
   unpackedSize?: number;
+  /**
+   * Catalog modes only — the installed source directory (see `CatalogMode`).
+   * Separate from `path`, which for a local mode doubles as its launch
+   * specifier and as the workspace `evolve` edits in place; a catalog install
+   * must never be either of those.
+   */
+  installPath?: string;
   showcase?: BuiltinMode["showcase"];
   inspiredBy?: BuiltinMode["inspiredBy"];
   /** Propagated from LocalMode for library-sourced modes (chip on tiles). */
@@ -2015,6 +2030,19 @@ function ModeGallery({
                   // not what happens to be downloaded.
                   const notDownloaded = mode.source === "catalog" && mode.installState !== "installed";
                   const canDerive = !isToolMode && !notDownloaded;
+                  // Edit needs more than "downloaded": it COPIES the mode's
+                  // source, and a released package has no `modes/<name>/` to
+                  // copy from, so the launcher has to hand the fork route the
+                  // install directory the registry reported. Until that value
+                  // arrives (the window between a finished download and the
+                  // next registry read) the button would post a request the
+                  // server cannot resolve, so it stays off.
+                  //
+                  // Evolve does not share the restriction: it launches the
+                  // `evolve` mode with `targetMode: <name>`, and the CLI
+                  // resolves that name through the catalog itself.
+                  const canEdit =
+                    canDerive && !(mode.source === "catalog" && !mode.installPath);
                   // Include `path` so two locally-evolved forks that both
                   // manifest as `name: "slide"` don't collide on React key
                   // or expand state. Falls back to `name` for builtins +
@@ -2027,7 +2055,7 @@ function ModeGallery({
                       expanded={expandedMode === modeKey}
                       onToggle={() => setExpandedMode(expandedMode === modeKey ? null : modeKey)}
                       onLaunch={() => onLaunch(mode)}
-                      onEdit={canDerive && onEdit ? () => onEdit(mode) : undefined}
+                      onEdit={canEdit && onEdit ? () => onEdit(mode) : undefined}
                       onEvolve={canDerive && onEvolve ? () => onEvolve(mode) : undefined}
                       // Pass the on-disk dir name, not the manifest name —
                       // `evolve` produces dir names like `slide-evolved-…`
@@ -5944,12 +5972,23 @@ export default function Launcher() {
             // directory (would edit the builtin in place, or overwrite the
             // local cache). Instead always ask the user for a fresh workspace
             // path and auto-fork the source mode into it on first load.
+            //
+            // `sourcePath` answers "where does the fork read from". A bare
+            // name only works for a mode the package carries under
+            // `modes/<name>/`; a catalog mode's source lives in its install
+            // root, so the launcher passes the path the registry reported.
+            // Read-only either way — the fork copies out of it.
             setLaunchTarget({
               specifier: "mode-maker",
               displayName: t("main.edit_prefix", { name: mode.displayName }),
               forkSource: {
                 sourceMode: mode.name,
-                sourcePath: mode.source === "local" ? mode.path : undefined,
+                sourcePath:
+                  mode.source === "local"
+                    ? mode.path
+                    : mode.source === "catalog"
+                      ? mode.installPath
+                      : undefined,
               },
             });
           }}

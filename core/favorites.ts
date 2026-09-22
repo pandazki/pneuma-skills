@@ -15,9 +15,10 @@
  *
  * Legacy compatibility: entries without a `::` separator are
  * interpreted as `"builtin::<entry>"` on read. A first-party mode's bucket
- * follows THIS release's `modes/distribution.json`, not the one that wrote
- * the file: a mode that moved out of the package keeps its star as
- * `"catalog::<name>"`, and one that moved back in returns to
+ * is then re-derived to match the one `/api/registry` reports in THIS
+ * installation, not the one that wrote the file: a mode whose source left
+ * the package keeps its star as `"catalog::<name>"`, and one whose source is
+ * present — a bundled mode, or any mode in a repo checkout — is
  * `"builtin::<name>"` (see `rebucketFirstPartyKeys`). The next write persists
  * the normalized form, so legacy files migrate themselves the first
  * time the user toggles anything. All shipped defaults are builtins,
@@ -42,7 +43,7 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
 
-import { bundledModeNames, isCatalogMode, type CatalogEnv } from "./mode-catalog.js";
+import { getCatalogEntry, inTreeModeDir, type CatalogEnv } from "./mode-catalog.js";
 
 /**
  * First-run favorites. Order matters — these are surfaced in this order
@@ -76,14 +77,28 @@ function normalizeFavoriteKey(raw: unknown): string | null {
 }
 
 /**
- * Re-bucket first-party keys against the current distribution.
+ * Re-bucket first-party keys to the bucket `/api/registry` would report.
  *
- * `builtin` and `catalog` are not properties of a mode — they are where THIS
- * release ships it (`modes/distribution.json`). A favorites file written by
- * an earlier release holds `"builtin::sprite"` for a mode this one downloads
- * on demand, and the launcher composes `"catalog::sprite"` for the same card,
- * so the star would silently vanish. Both directions are handled: a mode that
- * moves back into the package returns to `builtin::`.
+ * `builtin` and `catalog` are not properties of a mode — they say how THIS
+ * installation reaches it. A favorites file written by an earlier release
+ * holds `"builtin::sprite"` for a mode this one downloads on demand, and the
+ * launcher composes `"catalog::sprite"` for the same card, so without this
+ * the star silently vanishes. Both directions are handled.
+ *
+ * The rule must be the registry's, not `modes/distribution.json` alone, and
+ * the difference is the whole point:
+ *
+ * - Source under the package's `modes/<name>/` → **builtin**. That covers a
+ *   bundled mode in a release AND every catalog mode in a repo checkout,
+ *   where the source is in the tree and the registry reports it among the
+ *   builtins. Keying those to `catalog::` un-stars them in development,
+ *   which is exactly the regression this note exists to prevent.
+ * - Only a catalog entry, no source → **catalog**. That is a catalog mode in
+ *   a released package, installed or not: the registry keeps it in the
+ *   `catalog` bucket either way, so the key does not move on download.
+ * - Neither → left alone. A deleted mode, or a name from a newer release;
+ *   renaming its bucket would be a guess, and the launcher already ignores
+ *   keys that match no card.
  *
  * Only `builtin::` and `catalog::` keys are touched. `local::` and
  * `published::` carry a path or a URL, not a first-party mode name.
@@ -92,16 +107,18 @@ export function rebucketFirstPartyKeys(keys: string[], env?: CatalogEnv): string
   if (!keys.some((k) => k.startsWith("builtin::") || k.startsWith("catalog::"))) {
     return keys;
   }
-  const bundled = new Set(bundledModeNames(env));
   return keys.map((key) => {
     const sep = key.indexOf("::");
     const source = key.slice(0, sep);
+    if (source !== "builtin" && source !== "catalog") return key;
     const name = key.slice(sep + 2);
-    if (source === "builtin" && !bundled.has(name) && isCatalogMode(name, env)) {
-      return `catalog::${name}`;
-    }
-    if (source === "catalog" && bundled.has(name)) return `builtin::${name}`;
-    return key;
+    const bucket = inTreeModeDir(name, env)
+      ? "builtin"
+      : getCatalogEntry(name, env)
+        ? "catalog"
+        : null;
+    if (bucket === null || bucket === source) return key;
+    return `${bucket}::${name}`;
   });
 }
 
