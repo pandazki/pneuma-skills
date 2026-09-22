@@ -42,15 +42,15 @@ import {
   findRef,
   resolveAssetUri,
   type Motion,
+  type GeneratedVideoModel,
   type Roster,
-  type VideoModel,
 } from "../domain.js";
 import { setSpriteStageCapture } from "../pneuma-mode.js";
 import { atlasGeometry } from "./atlas.js";
 import { CommandBar, commandLabel } from "./CommandPopovers.js";
 import { FrameStrip } from "./FrameStrip.js";
 import { frameThumbnail, type StageBackground, type StageZoom } from "./frame-render.js";
-import { generatingVideoMotions, sizeLine } from "./metrics.js";
+import { generatingVideoMotions, loopLine, sizeLine } from "./metrics.js";
 import { MotionRail } from "./MotionRail.js";
 import { tabAfterNavigate, type PanelTab } from "./panel.js";
 import { PreviewPanel } from "./PreviewPanel.js";
@@ -592,9 +592,15 @@ export default function SpritePreview(props: ViewerPreviewProps) {
   const headline = useMemo(() => {
     if (!character) return "";
     const identity = character.sprite.character;
+    // A loop is measured by different facts: it has no declared cell to be
+    // compared against and no pack to have scaled it, so the phrase becomes
+    // what it actually is — its size, and how long the cycle runs. "from
+    // video" goes too: every loop is cut from a clip, and the rail's own loop
+    // chip already says so.
+    const loopMotion = motion?.kind === "loop";
     return [
-      t.sizeLine(sizes),
-      motion?.source === "video" ? t.fromVideo : null,
+      loopMotion ? t.loopLine(loopLine(motion)) : t.sizeLine(sizes),
+      !loopMotion && motion?.source === "video" ? t.fromVideo : null,
       identity.facing ? t.facing(identity.facing) : null,
       t.refCount(character.sprite.refs.length),
       t.motionCount(character.sprite.motions.length),
@@ -621,7 +627,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
 
   const commandsEnabled =
     props.editing !== false && !props.readonly && !staticPlayer && !!props.onNotifyAgent;
-  const defaultVideoModel: VideoModel =
+  const defaultVideoModel: GeneratedVideoModel =
     props.initParams?.defaultVideoModel === "h3-max" ? "h3-max" : "seedance-2.5";
 
   if (!character) {

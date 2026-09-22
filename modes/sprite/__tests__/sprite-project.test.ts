@@ -24,6 +24,7 @@ import { join } from "node:path";
 import { buildSheet } from "./fixtures/pipeline/make-sheet.mjs";
 
 const FIXTURES = join(import.meta.dir, "fixtures", "pipeline");
+const LOOP_FIXTURE = join(import.meta.dir, "fixtures", "loop");
 const PROJECT = join(import.meta.dir, "..", "skill", "scripts", "sprite-project.mjs");
 const SHEET = join(import.meta.dir, "..", "skill", "scripts", "sprite-sheet.mjs");
 
@@ -126,7 +127,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
     const r = run(PROJECT, ["--help"]);
     expect(r.code).toBe(0);
     for (const cmd of [
-      "init", "add-ref", "add-motion", "set-motion", "set-sheet",
+      "init", "add-ref", "add-motion", "set-motion", "set-sheet", "set-keyframe",
       "register-run", "add-video", "set-video", "remove-motion", "show",
     ]) {
       expect(r.out + r.err).toContain(cmd);
@@ -1025,6 +1026,424 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
     writeFileSync(join(dir, "project.json"), JSON.stringify(doc, null, 2));
     projectJson(dir, "set-motion", "--motion", "bounce", "--fps", "10");
     expect(readProject(dir).futureField).toEqual({ keep: "me" });
+  });
+
+  /**
+   * The loop workflow, end to end on real bytes.
+   *
+   * A loop motion is the same character's OTHER deliverable: a seamless
+   * transparent animation for a UI instead of an atlas for a game engine. It
+   * has no sheet, no atlas and no GIF — so every assertion here is about a
+   * shape `register-run` used to refuse outright — plus four exports, a
+   * keyframe pair, three-digit frame ids and the two numbers that say whether
+   * the loop closes.
+   *
+   * `fixtures/loop/` is the `sprite-sheet.mjs loop --json` contract written
+   * by hand (see its README): 12 real frames, four real encodes, and a run
+   * summary whose paths are workspace-relative.
+   */
+  describe("loop motions", () => {
+    /** The seeded character with a `flame` loop motion whose files are on
+     *  disk under `motions/flame`, plus its run summary. */
+    function seedLoop({ clip = true } = {}) {
+      const { dir } = seedMini();
+      cpSync(LOOP_FIXTURE, join(dir, "motions", "flame"), { recursive: true });
+      projectJson(dir, "add-motion", "--id", "flame", "--label", "Flame",
+        "--kind", "loop", "--fps", "12", "--prompt", "a clay flame swaying");
+      if (clip) {
+        projectJson(dir, "add-video", "--motion", "flame",
+          "--file", "motions/flame/video-seedance-1.mp4",
+          "--model", "seedance-2.5", "--mode", "first-last",
+          "--prompt", "the flame sways and returns", "--status", "ready", "--at", String(T2));
+      }
+      const run = JSON.parse(readFileSync(join(LOOP_FIXTURE, "run.json"), "utf-8"));
+      return { dir, run };
+    }
+
+    const registerLoop = (dir: string, summary: unknown, extra: string[] = []) =>
+      run(PROJECT, ["register-run", "--dir", dir, "--motion", "flame", "--run", "-",
+        ...extra, "--json", "--at", String(T2)], JSON.stringify(summary));
+
+    test("add-motion --kind loop needs no grid and shoots video by default", () => {
+      const { dir } = seedMini();
+      const motion = projectJson(dir, "add-motion", "--id", "flame", "--label", "Flame",
+        "--kind", "loop", "--fps", "24");
+      // A loop has no grid: the frames are a sequence, not cells of a sheet.
+      expect(motion).toMatchObject({
+        kind: "loop",
+        grid: { rows: 1, cols: 1 },
+        fps: 24,
+        source: "video",
+        // A loop that plays once is a contradiction in terms.
+        loop: true,
+        status: "planned",
+      });
+
+      // A sprite motion is untouched — same required flags, same silence about
+      // both `kind` and `source`.
+      const sprite = projectJson(dir, "add-motion", "--id", "walk", "--label", "Walk",
+        "--rows", "2", "--cols", "4", "--fps", "10");
+      expect("kind" in sprite).toBe(false);
+      expect("source" in sprite).toBe(false);
+      expect(sprite.loop).toBe(false);
+      const missingGrid = project(dir, "add-motion", "--id", "run", "--fps", "8", "--json");
+      expect(missingGrid.code).toBe(1);
+      expect(missingGrid.err).toMatch(/--rows/);
+
+      // An explicit grid on a loop is still honoured, and an unknown kind is
+      // refused rather than travelling as a word nothing renders.
+      expect(projectJson(dir, "add-motion", "--id", "spin", "--kind", "loop",
+        "--rows", "1", "--cols", "1", "--fps", "24", "--source", "sheet").source).toBe("sheet");
+      const bogus = project(dir, "add-motion", "--id", "bad", "--kind", "cycle", "--fps", "8", "--json");
+      expect(bogus.code).toBe(1);
+      expect(bogus.err).toMatch(/--kind/);
+    });
+
+    test("set-keyframe registers the keyframe and its cut-out, and only on a loop", () => {
+      const { dir } = seedLoop({ clip: false });
+      const motion = projectJson(dir, "set-keyframe", "--motion", "flame",
+        "--file", "motions/flame/keyframe.png", "--alpha", "motions/flame/keyframe-alpha.png",
+        "--from", "ref-portrait", "--model", "openai/gpt-image-2.5-flare",
+        "--prompt", "a clay flame, white plate", "--at", String(T2));
+
+      expect(motion).toMatchObject({
+        keyframe: "flame-keyframe",
+        keyframeAlpha: "flame-keyframe-alpha",
+        status: "processing",
+      });
+      const doc = readProject(dir);
+      const asset = (id: string) => doc.assets.find((a: any) => a.id === id);
+      expect(asset("flame-keyframe")).toMatchObject({
+        type: "image", uri: "motions/flame/keyframe.png",
+        metadata: { width: 64, height: 72 }, status: "ready",
+      });
+      expect(asset("flame-keyframe-alpha").metadata).toEqual({ width: 64, height: 72 });
+
+      const edges = doc.provenance;
+      expect(edges.find((e: any) => e.toAssetId === "flame-keyframe")).toMatchObject({
+        fromAssetId: "ref-portrait",
+        operation: { type: "generate", params: { model: "openai/gpt-image-2.5-flare" } },
+      });
+      // The cut-out is the keyframe with its background gone — a derive edge
+      // off the image it came from, not a second generation.
+      expect(edges.find((e: any) => e.toAssetId === "flame-keyframe-alpha")).toEqual({
+        toAssetId: "flame-keyframe-alpha",
+        fromAssetId: "flame-keyframe",
+        operation: { type: "derive", actor: "agent", timestamp: T2, params: { step: "key" } },
+      });
+
+      // A sprite motion has no such thing, and says so instead of writing an
+      // asset nothing renders.
+      const refused = project(dir, "set-keyframe", "--motion", "bounce",
+        "--file", "motions/flame/keyframe.png", "--json");
+      expect(refused.code).toBe(1);
+      expect(refused.err).toMatch(/not a loop motion/);
+      expect(readProject(dir).sprite.motions[0].keyframe).toBeUndefined();
+    });
+
+    test("set-keyframe --status generating reserves the pair before either file exists", () => {
+      const { dir } = seedMini();
+      projectJson(dir, "add-motion", "--id", "spark", "--kind", "loop", "--fps", "24");
+      expect(existsSync(join(dir, "motions", "spark", "keyframe.png"))).toBe(false);
+
+      const motion = projectJson(dir, "set-keyframe", "--motion", "spark",
+        "--file", "motions/spark/keyframe.png", "--alpha", "motions/spark/keyframe-alpha.png",
+        "--prompt", "a spark", "--status", "generating", "--at", String(T1));
+      expect(motion.status).toBe("generating");
+      const asset = (id: string) => readProject(dir).assets.find((a: any) => a.id === id);
+      expect(asset("spark-keyframe")).toMatchObject({ status: "generating", metadata: {} });
+      expect(asset("spark-keyframe-alpha")).toMatchObject({ status: "generating", metadata: {} });
+
+      // Every other status claims the file is there, so a missing one is the
+      // hard error it is for set-sheet.
+      const early = project(dir, "set-keyframe", "--motion", "spark",
+        "--file", "motions/spark/keyframe.png", "--json");
+      expect(early.code).toBe(1);
+      expect(early.err).toMatch(/not found/);
+    });
+
+    test("add-video --derived-from hangs a matte off the clip it was made from", () => {
+      const { dir } = seedLoop();
+      writeFileSync(join(dir, "motions", "flame", "video-veed-2.webm"), "");
+      const motion = projectJson(dir, "add-video", "--motion", "flame",
+        "--file", "motions/flame/video-veed-2.webm", "--derived-from", "video-1",
+        "--op", "matte", "--model", "veed", "--status", "ready", "--at", String(T2));
+
+      expect(motion.videos[1]).toEqual({
+        id: "video-2", asset: "flame-video-2", model: "veed", mode: "derived",
+        prompt: "", status: "ready", derivedFrom: "video-1", op: "matte",
+      });
+      expect(readProject(dir).provenance.find((e: any) => e.toAssetId === "flame-video-2")).toEqual({
+        toAssetId: "flame-video-2",
+        fromAssetId: "flame-video-1",
+        operation: { type: "derive", actor: "agent", timestamp: T2, params: { op: "matte", model: "veed" } },
+      });
+
+      // Interpolation is the other op, and it can chain off the same take.
+      writeFileSync(join(dir, "motions", "flame", "video-topaz-3.mp4"), "");
+      const chained = projectJson(dir, "add-video", "--motion", "flame",
+        "--file", "motions/flame/video-topaz-3.mp4", "--derived-from", "flame-video-1",
+        "--op", "interpolate", "--model", "topaz", "--at", String(T2));
+      expect(chained.videos[2]).toMatchObject({
+        id: "video-3", model: "topaz", op: "interpolate", derivedFrom: "video-1",
+      });
+
+      // `show` says whose matte it is — "video-2" alone cannot.
+      const human = project(dir, "show", "--motion", "flame");
+      expect(human.out).toContain("video-2 ← video-1 (matte, veed)");
+      expect(projectJson(dir, "show", "--motion", "flame").videos[1]).toMatchObject({
+        derivedFrom: "video-1", op: "matte",
+      });
+    });
+
+    // Nothing here was SHOT, so each of these flags is refused by name rather
+    // than quietly recorded as a generation nobody ran.
+    const derivedRefusals: Array<[string, string[], RegExp]> = [
+      ["--mode", ["--mode", "i2v"], /--derived-from.*--mode/],
+      ["--prompt", ["--prompt", "a flame"], /--derived-from.*--prompt/],
+      ["--from", ["--from", "bounce-frame-00"], /--derived-from.*--from/],
+    ];
+    for (const [name, extra, message] of derivedRefusals) {
+      test(`add-video --derived-from ${name} is refused and nothing is written`, () => {
+        const { dir } = seedLoop();
+        writeFileSync(join(dir, "motions", "flame", "video-veed-2.webm"), "");
+        const before = readProject(dir);
+        const r = project(dir, "add-video", "--motion", "flame",
+          "--file", "motions/flame/video-veed-2.webm", "--derived-from", "video-1",
+          "--op", "matte", "--model", "veed", ...extra, "--json");
+        expect(r.code).toBe(1);
+        expect(r.err).toMatch(message);
+        expect(readProject(dir)).toEqual(before);
+      });
+    }
+
+    test("a matting model cannot be asked to shoot, and a shoot has no --op", () => {
+      const { dir } = seedLoop();
+      writeFileSync(join(dir, "motions", "flame", "video-2.mp4"), "");
+      const shooting = project(dir, "add-video", "--motion", "flame",
+        "--file", "motions/flame/video-2.mp4", "--model", "veed", "--mode", "i2v", "--json");
+      expect(shooting.code).toBe(1);
+      expect(shooting.err).toMatch(/--model/);
+
+      const opWithoutParent = project(dir, "add-video", "--motion", "flame",
+        "--file", "motions/flame/video-2.mp4", "--model", "seedance-2.5",
+        "--mode", "i2v", "--op", "matte", "--json");
+      expect(opWithoutParent.code).toBe(1);
+      expect(opWithoutParent.err).toMatch(/--op.*--derived-from/);
+
+      const unknownParent = project(dir, "add-video", "--motion", "flame",
+        "--file", "motions/flame/video-2.mp4", "--derived-from", "video-9",
+        "--op", "matte", "--model", "bria", "--json");
+      expect(unknownParent.code).toBe(1);
+      expect(unknownParent.err).toMatch(/video-9.*video-1/);
+    });
+
+    test("register-run takes a loop summary with no sheet, atlas or GIF", () => {
+      const { dir, run: summary } = seedLoop();
+      const r = registerLoop(dir, summary);
+      expect(r.code).toBe(0);
+      const motion = JSON.parse(r.out);
+
+      expect(motion).toMatchObject({
+        kind: "loop",
+        source: "video",
+        status: "ready",
+        // Interpolation changes the frame rate, so the run's fps wins.
+        fps: 12,
+        grid: { rows: 1, cols: 1 },
+        exports: { apng: "flame-apng", webm: "flame-webm", lottie: "flame-lottie" },
+        webp: "flame-webp",
+      });
+      // Three digits: one closed cycle at full rate runs past 99 frames.
+      expect(motion.frames).toEqual(
+        Array.from({ length: 12 }, (_, i) => `flame-frame-${String(i).padStart(3, "0")}`),
+      );
+      // No atlas exists, and the sidecar does not claim one.
+      for (const key of ["sheet", "atlas", "gif", "sheetRaw"]) {
+        expect({ key, present: key in motion }).toEqual({ key, present: false });
+      }
+
+      // The loop's own numbers, and none of the anchor ones it never measured.
+      expect(motion.inspect).toMatchObject({
+        frameCount: 12,
+        cell: { width: 64, height: 72 },
+        seam: 0.0065,
+        step: 0.02,
+        alphaCoverage: 0.31,
+        warnings: [],
+      });
+      expect("anchorPoint" in motion.inspect).toBe(false);
+      expect("bodyDrift" in motion.inspect).toBe(false);
+    });
+
+    test("every export is registered with its size in bytes", () => {
+      const { dir, run: summary } = seedLoop();
+      registerLoop(dir, summary);
+      const assets = readProject(dir).assets;
+      const asset = (id: string) => assets.find((a: any) => a.id === id);
+
+      const onDisk = (name: string) =>
+        readFileSync(join(dir, "motions", "flame", name)).byteLength;
+
+      // The size is measured off the FILE, not copied out of the report — the
+      // panel prints it beside a download link, and a stale number there is a
+      // promise about bytes nobody has.
+      expect(asset("flame-webp")).toMatchObject({
+        type: "image", uri: "motions/flame/loop.webp",
+        metadata: { width: 64, height: 72, fps: 12, size: onDisk("loop.webp") },
+      });
+      expect(asset("flame-apng")).toMatchObject({
+        type: "image", metadata: { width: 64, height: 72, fps: 12, size: onDisk("loop.apng") },
+      });
+      expect(asset("flame-webm")).toMatchObject({
+        type: "video", metadata: { width: 64, height: 72, fps: 12, size: onDisk("loop.webm") },
+      });
+      expect(asset("flame-lottie")).toMatchObject({
+        type: "text", uri: "motions/flame/loop.json",
+        metadata: { fps: 12, size: onDisk("loop.json") },
+      });
+
+      // Each one was encoded from the frame sequence, and says so.
+      const edge = readProject(dir).provenance.find((e: any) => e.toAssetId === "flame-webm");
+      expect(edge.fromAssetId).toBe("flame-frame-000");
+      expect(edge.operation.params).toMatchObject({ tool: "sprite-sheet.mjs", step: "loop" });
+      expect(edge.operation.params.inputs).toHaveLength(12);
+    });
+
+    test("the frames are cut from the clip, with the timestamp of each one", () => {
+      const { dir, run: summary } = seedLoop();
+      registerLoop(dir, summary);
+      const edges = readProject(dir).provenance;
+      const first = edges.find((e: any) => e.toAssetId === "flame-frame-000");
+      expect(first.fromAssetId).toBe("flame-video-1");
+      expect(first.operation.params).toEqual({
+        tool: "sprite-sheet.mjs", step: "from-video", frameIndex: 0, t: 0,
+      });
+      expect(edges.find((e: any) => e.toAssetId === "flame-frame-011").operation.params.t)
+        .toBeCloseTo(11 / 12, 3);
+      // The clip keeps its own generate edge.
+      expect(edges.find((e: any) => e.toAssetId === "flame-video-1").operation.type).toBe("generate");
+    });
+
+    test("a loop cut from a derived clip names that clip", () => {
+      // The whole point of --derived-from: the frames of a matted loop came
+      // out of the MATTE, not out of the take it was made from.
+      const { dir, run: summary } = seedLoop();
+      cpSync(join(LOOP_FIXTURE, "loop.webm"), join(dir, "motions", "flame", "video-veed-2.webm"));
+      projectJson(dir, "add-video", "--motion", "flame", "--file", "motions/flame/video-veed-2.webm",
+        "--derived-from", "video-1", "--op", "matte", "--model", "veed", "--status", "ready", "--at", String(T2));
+
+      const matted = { ...summary, video: "motions/flame/video-veed-2.webm" };
+      const r = registerLoop(dir, matted, ["--video", "video-2"]);
+      expect(r.code).toBe(0);
+      expect(readProject(dir).provenance.find((e: any) => e.toAssetId === "flame-frame-000").fromAssetId)
+        .toBe("flame-video-2");
+
+      // And naming the wrong one is still refused rather than mis-parented.
+      const wrong = registerLoop(dir, matted, ["--video", "video-1"]);
+      expect(wrong.code).toBe(1);
+      expect(wrong.err).toContain("video-veed-2.webm");
+    });
+
+    test("re-registering a loop run leaves project.json byte-identical", () => {
+      const { dir, run: summary } = seedLoop();
+      registerLoop(dir, summary);
+      const before = readFileSync(join(dir, "project.json"), "utf-8");
+      registerLoop(dir, summary);
+      expect(readFileSync(join(dir, "project.json"), "utf-8")).toBe(before);
+    });
+
+    test("a shorter re-run drops the stale three-digit frames", () => {
+      const { dir, run: summary } = seedLoop();
+      registerLoop(dir, summary);
+      const shorter = {
+        ...summary,
+        frames: summary.frames.slice(0, 4),
+        sampledAt: summary.sampledAt.slice(0, 4),
+        inspect: { ...summary.inspect, frameCount: 4 },
+      };
+      const motion = JSON.parse(registerLoop(dir, shorter).out);
+      expect(motion.frames).toHaveLength(4);
+      const ids = readProject(dir).assets.map((a: any) => a.id);
+      expect(ids).toContain("flame-frame-003");
+      expect(ids).not.toContain("flame-frame-004");
+      expect(ids).not.toContain("flame-frame-011");
+      // The exports survive — they are rebuilt in place, not orphaned.
+      expect(ids).toContain("flame-lottie");
+    });
+
+    test("a loop run still needs its clip registered, and says which command", () => {
+      const { dir, run: summary } = seedLoop({ clip: false });
+      const r = registerLoop(dir, summary);
+      expect(r.code).toBe(1);
+      expect(r.err).toContain("add-video");
+      expect(r.err).toContain("flame");
+    });
+
+    test("a summary with neither frames nor a shape names the subcommand", () => {
+      const { dir } = seedLoop();
+      const r = registerLoop(dir, { kind: "loop", source: "video" });
+      expect(r.code).toBe(1);
+      expect(r.err).toMatch(/frames/);
+      expect(r.err).toContain("loop");
+      // A sprite run is still held to all four keys.
+      const sheetish = run(PROJECT, ["register-run", "--dir", dir, "--motion", "bounce", "--run", "-", "--json"],
+        JSON.stringify({ frames: ["motions/bounce/frames/00.png"] }));
+      expect(sheetish.code).toBe(1);
+      expect(sheetish.err).toMatch(/'sheet'/);
+    });
+
+    test("show and remove-motion know what a loop is made of", () => {
+      const { dir, run: summary } = seedLoop();
+      projectJson(dir, "set-keyframe", "--motion", "flame", "--file", "motions/flame/keyframe.png",
+        "--alpha", "motions/flame/keyframe-alpha.png", "--at", String(T2));
+      registerLoop(dir, summary);
+
+      const human = project(dir, "show", "--motion", "flame");
+      expect(human.out).toContain("loop");
+      expect(human.out).toContain("seam 0.0065 vs step 0.02");
+      expect(human.out).toContain("closes");
+      expect(human.out).toContain("webp, apng, webm, lottie");
+
+      const single = projectJson(dir, "show", "--motion", "flame");
+      expect(single.kind).toBe("loop");
+      expect(single.exports).toEqual({ apng: "flame-apng", webm: "flame-webm", lottie: "flame-lottie" });
+      expect(single.keyframe).toBe("flame-keyframe");
+      // A sprite motion in the same character says nothing about a kind.
+      expect(projectJson(dir, "show").motions.find((m: any) => m.id === "bounce").kind)
+        .toBeUndefined();
+
+      // Removing the motion takes the keyframe pair and all four exports with
+      // it — every id this motion owns, or the next character-wide check trips
+      // over an asset nothing claims.
+      const removed = projectJson(dir, "remove-motion", "--motion", "flame");
+      for (const id of [
+        "flame-keyframe", "flame-keyframe-alpha", "flame-frame-000", "flame-webp",
+        "flame-apng", "flame-webm", "flame-lottie", "flame-video-1",
+      ]) {
+        expect({ id, removed: removed.removedAssets.includes(id) }).toEqual({ id, removed: true });
+      }
+      expect(readProject(dir).assets.some((a: any) => a.id.startsWith("flame-"))).toBe(false);
+    });
+
+    test("a sheet run over a motion declared a loop corrects the kind", () => {
+      // The same discipline `source` has: the files on disk are the answer,
+      // not what somebody declared before anything was generated.
+      const { dir, run: summary } = seedLoop();
+      registerLoop(dir, summary);
+      expect(readProject(dir).sprite.motions[1].kind).toBe("loop");
+
+      const sheetRun = JSON.parse(readFileSync(join(FIXTURES, "bounce-run.json"), "utf-8"));
+      // point it at the bounce files, which really are on disk here
+      const r = run(PROJECT, ["register-run", "--dir", dir, "--motion", "flame", "--run", "-", "--json"],
+        JSON.stringify(sheetRun));
+      expect(r.code).toBe(0);
+      const motion = JSON.parse(r.out);
+      expect("kind" in motion).toBe(false);
+      expect("exports" in motion).toBe(false);
+      expect(motion.sheet).toBe("flame-sheet");
+      expect(readProject(dir).assets.some((a: any) => a.id === "flame-lottie")).toBe(false);
+    });
   });
 
   test("cleanup", () => {

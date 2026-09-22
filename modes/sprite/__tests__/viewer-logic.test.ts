@@ -25,14 +25,27 @@ import spriteManifest from "../manifest.js";
 import { atlasGeometry, atlasPivot } from "../viewer/atlas.js";
 import { pivotGuide } from "../viewer/frame-render.js";
 import {
+  alphaCoverageOf,
   bodyDriftOf,
   bodyDriftVerdict,
+  formatBytes,
+  loopDuration,
+  loopLine,
   maxJumpVerdict,
   scaleDriftVerdict,
+  seamOf,
+  seamVerdict,
   sizeLine,
+  stepOf,
 } from "../viewer/metrics.js";
 import { commandLabel, commandTooltip } from "../viewer/CommandPopovers.js";
-import { tabAfterNavigate, tabHasContent } from "../viewer/panel.js";
+import {
+  defaultTab,
+  loopExports,
+  panelTabs,
+  tabAfterNavigate,
+  tabHasContent,
+} from "../viewer/panel.js";
 import {
   resolveLocale,
   selectionLabel,
@@ -1017,6 +1030,373 @@ describe("tabAfterNavigate", () => {
 
   test("webp alone counts as a preview", () => {
     expect(tabHasContent(motion({ webp: "w" }), "gif")).toBe(true);
+  });
+});
+
+// ── A loop motion, through the whole viewer ────────────────────────────────
+
+/**
+ * The loop path, end to end in the pure half.
+ *
+ * Every one of these can be wrong in a way a screenshot would not catch: a
+ * keyframe reported to the agent as a "raw sheet" that will never exist, a
+ * seam printed without the step it is judged against, a download link with a
+ * size nobody measured, a panel opening a GIF tab for a motion that has no
+ * GIF. The fixture is the canonical character with a `flame` loop beside its
+ * sprite motion, so both shapes are exercised against the same project.
+ */
+describe("loop motions", () => {
+  const LOOP_CELL = { width: 64, height: 72 };
+
+  /** `mini` plus a loop motion, at whatever stage of the workflow. */
+  function loopProject(
+    stage: "planned" | "keyframe" | "ready" = "ready",
+    edit: (motion: any, body: any) => void = () => {},
+  ): CharacterProject {
+    return mutate((body) => {
+      const assets: any[] = [];
+      const motion: any = {
+        id: "flame",
+        label: "Flame",
+        prompt: "a clay flame swaying",
+        kind: "loop",
+        grid: { rows: 1, cols: 1 },
+        fps: 12,
+        loop: true,
+        anchor: "bottom",
+        status: stage === "ready" ? "ready" : "generating",
+        source: "video",
+        frames: [],
+        videos: [],
+      };
+
+      if (stage !== "planned") {
+        motion.keyframe = "flame-keyframe";
+        motion.keyframeAlpha = "flame-keyframe-alpha";
+        assets.push(
+          { id: "flame-keyframe", type: "image", uri: "motions/flame/keyframe.png", name: "flame keyframe", metadata: LOOP_CELL, createdAt: 1, status: "ready" },
+          { id: "flame-keyframe-alpha", type: "image", uri: "motions/flame/keyframe-alpha.png", name: "flame keyframe (alpha)", metadata: LOOP_CELL, createdAt: 1, status: "ready" },
+        );
+      }
+
+      if (stage === "ready") {
+        motion.frames = ["flame-frame-000", "flame-frame-001", "flame-frame-002"];
+        motion.webp = "flame-webp";
+        motion.exports = { apng: "flame-apng", webm: "flame-webm", lottie: "flame-lottie" };
+        motion.inspect = {
+          frameCount: 3,
+          cell: LOOP_CELL,
+          anchorDrift: { x: 0, y: 0 },
+          maxJump: 0,
+          scaleDrift: 0,
+          emptyFrames: [],
+          warnings: [],
+          seam: 0.0065,
+          step: 0.02,
+          alphaCoverage: 0.31,
+        };
+        for (const [i, id] of motion.frames.entries()) {
+          assets.push({ id, type: "image", uri: `motions/flame/frames/00${i}.png`, name: `flame frame 00${i}`, metadata: LOOP_CELL, createdAt: 1, status: "ready" });
+        }
+        assets.push(
+          { id: "flame-webp", type: "image", uri: "motions/flame/loop.webp", name: "flame loop (webp)", metadata: { ...LOOP_CELL, fps: 12, size: 1680 }, createdAt: 1, status: "ready" },
+          { id: "flame-apng", type: "image", uri: "motions/flame/loop.apng", name: "flame loop (apng)", metadata: { ...LOOP_CELL, fps: 12, size: 1_383_000 }, createdAt: 1, status: "ready" },
+          { id: "flame-webm", type: "video", uri: "motions/flame/loop.webm", name: "flame loop (webm)", metadata: { ...LOOP_CELL, fps: 12, size: 12_750 }, createdAt: 1, status: "ready" },
+          { id: "flame-lottie", type: "text", uri: "motions/flame/loop.json", name: "flame loop (lottie)", metadata: { fps: 12, size: 8025 }, createdAt: 1, status: "ready" },
+        );
+      }
+
+      body.assets.push(...assets);
+      body.sprite.motions.push(motion);
+      // Last, so a test can edit the motion AND the assets it just added —
+      // the motion is in the document by reference either way.
+      edit(motion, body);
+    });
+  }
+
+  const flame = (p: CharacterProject): Motion => motionOf(p, "flame");
+
+  describe("what the stage plays", () => {
+    test("the keyframe stands in until the frames exist", () => {
+      const p = loopProject("keyframe");
+      const source = resolveFrameSource(p, flame(p), 5);
+      expect(source.kind).toBe("raw-sheet");
+      if (source.kind !== "raw-sheet") return;
+      // The cut-out wins over the white-plate original, the way the keyed
+      // sheet does for a sprite motion.
+      expect(source.url).toBe("/content/mini/motions/flame/keyframe-alpha.png?v=5");
+      expect(source.alpha).toBe(true);
+      expect({ cols: source.cols, rows: source.rows, count: source.count })
+        .toEqual({ cols: 1, rows: 1, count: 1 });
+
+      const raw = loopProject("keyframe", (motion) => { delete motion.keyframeAlpha; });
+      const rawSource = resolveFrameSource(raw, flame(raw), 1);
+      expect(rawSource.kind === "raw-sheet" && rawSource.url)
+        .toBe("/content/mini/motions/flame/keyframe.png?v=1");
+      expect(rawSource.kind === "raw-sheet" && rawSource.alpha).toBe(false);
+    });
+
+    test("frames win once they are cut, and nothing yet is nothing", () => {
+      const p = loopProject("ready");
+      const source = resolveFrameSource(p, flame(p), 1);
+      expect(source.kind).toBe("frames");
+      expect(frameCountOf(source)).toBe(3);
+      expect(resolveFrameSource(loopProject("planned"), flame(loopProject("planned")), 1).kind)
+        .toBe("none");
+    });
+
+    test("the keyframe is one addressable frame", () => {
+      // Without this an agent's `{ motion: "flame", frame: 0 }` is refused
+      // while the stage is visibly showing something.
+      const p = loopProject("keyframe");
+      const r = resolveAddress(p, { motion: "flame", frame: 0 }, null);
+      expect(r.ok).toBe(true);
+      expect(r.target).toEqual({ kind: "motion", motionId: "flame", frame: 0 });
+      expect(resolveAddress(p, { motion: "flame", frame: 1 }, null).ok).toBe(false);
+    });
+  });
+
+  describe("what the agent reads back", () => {
+    test("a keyframe is reported as a keyframe, not as a sheet", () => {
+      const p = loopProject("keyframe");
+      const motion = flame(p);
+      const data = playbackStateData({
+        project: p,
+        motion,
+        source: resolveFrameSource(p, motion, 1),
+        frame: 0,
+        playing: false,
+        fps: 12,
+        loop: true,
+      });
+      expect(data.kind).toBe("loop");
+      // "raw-sheet" would name a file this motion will never have.
+      expect(data.source).toBe("keyframe");
+      expect(data.frameCount).toBe(1);
+      expect(data.warnings).toEqual([
+        "No frames yet — the stage shows the keyframe; the clip is rendering or `sprite-sheet.mjs loop` has not run.",
+      ]);
+      // And it is not the sprite motion's sentence, which claims a sheet is
+      // being sliced on a grid that does not exist here.
+      expect(data.warnings.some((w) => w.includes("slicing"))).toBe(false);
+    });
+
+    test("a finished loop says kind and nothing else changes", () => {
+      const p = loopProject("ready");
+      const motion = flame(p);
+      const data = playbackStateData({
+        project: p,
+        motion,
+        source: resolveFrameSource(p, motion, 1),
+        frame: 1,
+        playing: true,
+        fps: 12,
+        loop: true,
+      });
+      expect(data).toEqual({
+        contentSet: "mini",
+        motion: "flame",
+        kind: "loop",
+        frame: 1,
+        frameCount: 3,
+        fps: 12,
+        loop: true,
+        playing: true,
+        source: "frames",
+        warnings: [],
+      });
+    });
+
+    test("a sprite motion carries no kind at all", () => {
+      // Absent is how the sidecar says "sprite motion"; an explicit null or a
+      // "sprite" string would be a second vocabulary for the same fact.
+      const p = project();
+      const data = playbackStateData({
+        project: p,
+        motion: motionOf(p),
+        source: resolveFrameSource(p, motionOf(p), 1),
+        frame: 0,
+        playing: false,
+        fps: 8,
+        loop: true,
+      });
+      expect("kind" in data).toBe(false);
+    });
+  });
+
+  describe("the panel", () => {
+    test("a loop opens on Loop and a sprite motion on GIF", () => {
+      const p = loopProject("ready");
+      expect(panelTabs(flame(p))).toEqual(["loop", "video", "atlas"]);
+      expect(panelTabs(motionOf(p))).toEqual(["gif", "video", "atlas"]);
+      expect(defaultTab(flame(p))).toBe("loop");
+      expect(defaultTab(motionOf(p))).toBe("gif");
+      expect(defaultTab(null)).toBe("gif");
+    });
+
+    test("a tab the motion does not have is not kept", () => {
+      // The shell holds the tab across selections, so a loop and a sprite
+      // motion hand each other tabs the other cannot render.
+      const p = loopProject("ready");
+      expect(tabAfterNavigate("gif", flame(p))).toBe("loop");
+      expect(tabAfterNavigate("loop", motionOf(p))).toBe("gif");
+      // A tab both of them have is kept when it has something in it.
+      expect(tabAfterNavigate("atlas", motionOf(p))).toBe("atlas");
+      expect(tabAfterNavigate("atlas", flame(p))).toBe("loop");
+    });
+
+    test("the Loop tab has content as soon as any export exists", () => {
+      const p = loopProject("ready");
+      expect(tabHasContent(flame(p), "loop")).toBe(true);
+      const webpOnly = loopProject("ready", (motion) => { delete motion.exports; });
+      expect(tabHasContent(flame(webpOnly), "loop")).toBe(true);
+      const nothing = loopProject("keyframe");
+      expect(tabHasContent(flame(nothing), "loop")).toBe(false);
+    });
+
+    test("the exports are listed in order with the sizes that were measured", () => {
+      const p = loopProject("ready");
+      expect(loopExports(p, flame(p))).toEqual([
+        { format: "webp", assetId: "flame-webp", size: 1680 },
+        { format: "apng", assetId: "flame-apng", size: 1_383_000 },
+        { format: "webm", assetId: "flame-webm", size: 12_750 },
+        { format: "lottie", assetId: "flame-lottie", size: 8025 },
+      ]);
+
+      // An export the sidecar does not name is simply not offered.
+      const partial = loopProject("ready", (motion) => {
+        delete motion.exports.webm;
+      });
+      expect(loopExports(partial, flame(partial)).map((e) => e.format))
+        .toEqual(["webp", "apng", "lottie"]);
+
+      // An export whose ASSET is gone is not a broken download link.
+      const orphaned = loopProject("ready", (_motion, body) => {
+        body.assets = body.assets.filter((a: any) => a.id !== "flame-apng");
+      });
+      expect(loopExports(orphaned, flame(orphaned)).map((e) => e.format))
+        .toEqual(["webp", "webm", "lottie"]);
+
+      // And one with no recorded size is a link without a size — never a 0.
+      const unmeasured = loopProject("ready");
+      delete (unmeasured.assetsById.get("flame-lottie")!.metadata as Record<string, unknown>).size;
+      expect(loopExports(unmeasured, flame(unmeasured)).at(-1)).toEqual({
+        format: "lottie", assetId: "flame-lottie", size: null,
+      });
+    });
+
+    test("a file size reads as a file size", () => {
+      expect(formatBytes(0)).toBe("0 B");
+      expect(formatBytes(940)).toBe("940 B");
+      expect(formatBytes(8025)).toBe("7.8 KB");
+      expect(formatBytes(1_383_000)).toBe("1.3 MB");
+      expect(formatBytes(31_457_280)).toBe("30 MB");
+      // Nothing to print is null, not "0 B" — the link stands on its own.
+      expect(formatBytes(null)).toBeNull();
+      expect(formatBytes(undefined)).toBeNull();
+      expect(formatBytes(Number.NaN)).toBeNull();
+    });
+  });
+
+  describe("does it close", () => {
+    const inspect = (over: Record<string, unknown> = {}) =>
+      ({
+        frameCount: 96,
+        cell: { width: 520, height: 600 },
+        anchorDrift: { x: 0, y: 0 },
+        maxJump: 0,
+        scaleDrift: 0,
+        emptyFrames: [],
+        warnings: [],
+        seam: 0.0065,
+        step: 0.02,
+        alphaCoverage: 0.31,
+        ...over,
+      }) as any;
+
+    test("the bar is twice the step, so it moves with the motion", () => {
+      // The reference clip: a seam a third of a normal step — it closes.
+      expect(seamVerdict(inspect())).toEqual({ limit: 0.04, over: false });
+      // The same seam against a nearly frozen loop is a visible jump.
+      expect(seamVerdict(inspect({ seam: 0.0065, step: 0.002 })))
+        .toEqual({ limit: 0.004, over: true });
+      expect(seamVerdict(inspect({ seam: 0.13, step: 0.02 })).over).toBe(true);
+    });
+
+    test("no step is no bar, and no seam is no verdict", () => {
+      // A loop nobody measured is not judged — it is not judged YET, which is
+      // a different thing from passing.
+      const noStep = seamVerdict(inspect({ step: undefined }));
+      expect(noStep).toEqual({ limit: null, over: false });
+      expect(stepOf(inspect({ step: undefined }))).toBeNull();
+      expect(seamOf(inspect({ seam: undefined }))).toBeNull();
+      expect(seamVerdict(inspect({ seam: undefined })).over).toBe(false);
+    });
+
+    test("a seam of exactly 0 is a measurement, not a missing one", () => {
+      expect(seamOf(inspect({ seam: 0 }))).toBe(0);
+      expect(alphaCoverageOf(inspect({ alphaCoverage: 0 }))).toBe(0);
+      expect(alphaCoverageOf(inspect({ alphaCoverage: "0.31" }))).toBeNull();
+    });
+
+    test("duration is frames over fps, and undefined when either is missing", () => {
+      expect(loopDuration(96, 24)).toBe(4);
+      expect(loopDuration(122, 24)).toBe(5.08);
+      expect(loopDuration(0, 24)).toBeNull();
+      expect(loopDuration(96, 0)).toBeNull();
+    });
+  });
+
+  describe("what the header says", () => {
+    test("a loop prints its measured size and its cycle, in both languages", () => {
+      const p = loopProject("ready");
+      const line = loopLine(flame(p));
+      expect(line).toEqual({ measured: "64×72", frames: 3, fps: 12 });
+      expect(spriteStrings("en").loopLine(line)).toBe("64×72 · 3 frames @ 12 fps");
+      expect(spriteStrings("zh").loopLine(line)).toBe("64×72 · 3 帧 @ 12 fps");
+    });
+
+    test("before the run there is no measurement, and none is invented", () => {
+      const p = loopProject("keyframe");
+      const line = loopLine(flame(p));
+      expect(line.measured).toBeNull();
+      expect(line.frames).toBe(0);
+      expect(spriteStrings("en").loopLine(line)).toBe("0 frames @ 12 fps");
+    });
+
+    test("the loop meta line says whether it closes", () => {
+      const en = spriteStrings("en");
+      expect(en.loopMeta({ frames: 96, fps: 24, duration: 4, seam: "closes" }))
+        .toBe("96 frames · 24 fps · 4.00 s · closes");
+      expect(en.loopMeta({ frames: 96, fps: 24, duration: 4, seam: "open" }))
+        .toContain("does not close");
+      // An unmeasured loop says the facts it has and no verdict.
+      expect(en.loopMeta({ frames: 12, fps: 12, duration: null, seam: null }))
+        .toBe("12 frames · 12 fps");
+      expect(spriteStrings("zh").loopMeta({ frames: 96, fps: 24, duration: 4, seam: "closes" }))
+        .toBe("96 帧 · 24 fps · 4.00 秒 · 接得上");
+    });
+
+    test("a derived clip is described by what it is made of", () => {
+      expect(spriteStrings("en").derivedClip("video-1", "matte", "veed"))
+        .toBe("matte of video-1 · veed");
+      expect(spriteStrings("en").derivedClip("video-1", "interpolate", "topaz"))
+        .toContain("video-1");
+      expect(spriteStrings("zh").derivedClip("video-1", "matte", "veed"))
+        .toBe("video-1 的抠像 · veed");
+    });
+
+    test("the Atlas tab tells a loop what it has instead", () => {
+      expect(spriteStrings("en").noAtlasForLoop({ frames: 96, width: 520, height: 600 }))
+        .toBe("A loop has no atlas — the frames are the PNG sequence (96 frames, 520×600).");
+      // Before the run there is nothing to count, and "(0 frames, 0×0)" reads
+      // as a measurement of an empty thing rather than as "not yet".
+      expect(spriteStrings("en").noAtlasForLoop({ frames: 0, width: 0, height: 0 }))
+        .toBe("A loop has no atlas — its frames are a PNG sequence, and there are none yet.");
+      expect(/[\u4e00-\u9fff]/.test(
+        spriteStrings("zh").noAtlasForLoop({ frames: 96, width: 520, height: 600 }),
+      )).toBe(true);
+    });
   });
 });
 

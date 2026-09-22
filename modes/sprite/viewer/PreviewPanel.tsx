@@ -26,26 +26,45 @@
 import type { CharacterProject, Motion, MotionVideo } from "../domain.js";
 import { resolveAssetUri } from "../domain.js";
 import { type AtlasGeometry, atlasPivot } from "./atlas.js";
-import { DownloadIcon, FilmIcon, GridIcon, ImageIcon, WarnIcon } from "./icons.js";
 import {
+  DownloadIcon,
+  FilmIcon,
+  GridIcon,
+  ImageIcon,
+  LoopIcon,
+  WarnIcon,
+} from "./icons.js";
+import {
+  alphaCoverageOf,
   bodyDriftOf,
   bodyDriftVerdict,
+  formatBytes,
+  loopDuration,
   maxJumpVerdict,
   scaleDriftVerdict,
+  seamOf,
+  seamVerdict,
+  stepOf,
   type MetricVerdict,
   type SizeLine,
 } from "./metrics.js";
-import type { PanelTab } from "./panel.js";
+import {
+  defaultTab,
+  loopExports,
+  panelTabs,
+  type PanelTab,
+} from "./panel.js";
 import type { SpriteStrings } from "./strings.js";
 import { contentUrl } from "./urls.js";
 
 export type { PanelTab };
 
-const TABS: Array<{ id: PanelTab; icon: typeof ImageIcon }> = [
-  { id: "gif", icon: ImageIcon },
-  { id: "video", icon: FilmIcon },
-  { id: "atlas", icon: GridIcon },
-];
+const TAB_ICON: Record<PanelTab, typeof ImageIcon> = {
+  gif: ImageIcon,
+  loop: LoopIcon,
+  video: FilmIcon,
+  atlas: GridIcon,
+};
 
 const CHECKER_STYLE = {
   backgroundImage:
@@ -80,13 +99,24 @@ export function PreviewPanel(props: PreviewPanelProps) {
     return uri ? contentUrl(project.contentSet, uri, imageVersion) : null;
   };
 
+  // The selected tab belongs to the SHELL, and the shell keeps it while the
+  // user moves between motions — so a loop and a sprite motion can hand each
+  // other a tab the other one does not have. Resolving it here (rather than
+  // resetting the shell's state on every selection) means the strip and the
+  // body always show the same thing, and the user's choice survives a trip
+  // through a motion that could not honour it.
+  const tabs = panelTabs(motion);
+  const tab = tabs.includes(props.tab) ? props.tab : defaultTab(motion);
+
   const frame = (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       {!motion ? (
         <Empty>{t.selectMotionForPanel}</Empty>
-      ) : props.tab === "gif" ? (
+      ) : tab === "gif" ? (
         <GifTab motion={motion} url={url} t={t} />
-      ) : props.tab === "video" ? (
+      ) : tab === "loop" ? (
+        <LoopTab project={project} motion={motion} url={url} t={t} />
+      ) : tab === "video" ? (
         <VideoTab
           motion={motion}
           url={url}
@@ -115,13 +145,15 @@ export function PreviewPanel(props: PreviewPanelProps) {
       }`}
     >
       <div className="flex shrink-0 items-center gap-1 border-b border-cc-border px-2 py-1.5">
-        {TABS.map(({ id, icon: Icon }) => (
+        {tabs.map((id) => {
+          const Icon = TAB_ICON[id];
+          return (
           <button
             key={id}
             type="button"
             onClick={() => props.onTab(id)}
             className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-[11px] transition-colors focus-visible:ring-2 focus-visible:ring-cc-primary/60 ${
-              props.tab === id
+              tab === id
                 ? "bg-cc-primary/15 text-cc-primary"
                 : "text-cc-muted hover:bg-cc-hover hover:text-cc-fg"
             }`}
@@ -129,7 +161,8 @@ export function PreviewPanel(props: PreviewPanelProps) {
             <Icon size={12} />
             {t.tab[id]}
           </button>
-        ))}
+          );
+        })}
       </div>
       {frame}
     </aside>
@@ -183,6 +216,91 @@ function GifTab({
   );
 }
 
+/**
+ * A loop's deliverables: the animation itself, and the four files a page can
+ * embed it as.
+ *
+ * Rendered at NATURAL smoothing, unlike every other picture in this viewer. A
+ * sprite is pixel art and `imageRendering: pixelated` is the only honest way
+ * to show it; a loop is a soft-shaded 3D icon scaled to whatever box the panel
+ * has, and nearest-neighbour there is not fidelity, it is aliasing the user
+ * would blame on the render.
+ *
+ * The sizes come from `metadata.size`, measured when the run was registered —
+ * the point of printing them is that a 12 MB Lottie is a real problem for the
+ * page this is going into, and the user should see it before downloading.
+ */
+function LoopTab({
+  project,
+  motion,
+  url,
+  t,
+}: {
+  project: CharacterProject;
+  motion: Motion;
+  url: UrlOf;
+  t: SpriteStrings;
+}) {
+  const exports = loopExports(project, motion);
+  const webp = url(motion.webp);
+  if (!webp && exports.length === 0) {
+    return <Empty>{t.noLoopYet}</Empty>;
+  }
+  const inspect = motion.inspect;
+  const frames = motion.frames.length || inspect?.frameCount || 0;
+  return (
+    <div className="flex flex-col gap-3 p-3">
+      {webp ? (
+        <div
+          className="flex items-center justify-center rounded-lg border border-cc-border p-3"
+          style={CHECKER_STYLE}
+        >
+          <img
+            src={webp}
+            alt={motion.label}
+            className="h-40 w-full object-contain"
+            style={{ imageRendering: "auto" }}
+          />
+        </div>
+      ) : null}
+      <p className="text-[11px] leading-relaxed text-cc-muted">
+        {t.loopMeta({
+          frames,
+          fps: motion.fps,
+          duration: loopDuration(frames, motion.fps),
+          seam: seamWord(motion),
+        })}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {exports.map((item) => {
+          const href = url(item.assetId);
+          return href ? (
+            <DownloadLink
+              key={item.format}
+              href={href}
+              label={t.exportLink(t.exportLabel[item.format], formatBytes(item.size))}
+            />
+          ) : null;
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Does this loop close — as a word, or null when nobody measured.
+ *
+ * Both halves are needed: a seam with no step has no bar to be judged against,
+ * and printing "closes" from a seam alone would be an opinion dressed as a
+ * measurement.
+ */
+function seamWord(motion: Motion): "closes" | "open" | null {
+  const inspect = motion.inspect;
+  if (!inspect) return null;
+  if (seamOf(inspect) === null || stepOf(inspect) === null) return null;
+  return seamVerdict(inspect).over ? "open" : "closes";
+}
+
 function VideoTab({
   motion,
   url,
@@ -218,8 +336,18 @@ function VideoCard({
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-cc-border bg-cc-bg/40 p-2">
       <div className="flex flex-wrap items-center gap-1.5">
-        <Chip>{video.model}</Chip>
-        <Chip>{video.mode}</Chip>
+        {/* A matte or an interpolation is not a take of its own: "veed" and
+            "derived" beside each other say nothing about WHICH clip it was
+            made from, which is the only thing that distinguishes it from the
+            three other files in this tab. */}
+        {video.derivedFrom && video.op ? (
+          <Chip>{t.derivedClip(video.derivedFrom, video.op, video.model)}</Chip>
+        ) : (
+          <>
+            <Chip>{video.model}</Chip>
+            <Chip>{video.mode}</Chip>
+          </>
+        )}
         <span
           className={`ml-auto text-[10px] uppercase tracking-wide ${
             video.status === "ready"
@@ -283,6 +411,21 @@ function AtlasTab({
   const sheet = url(motion.sheet);
   const atlas = url(motion.atlas);
   const pivot = atlasPivot(motion);
+
+  // "No packed atlas YET" would be a promise: a loop never gets one. Its
+  // frames ARE the sequence, so the empty state says what exists instead.
+  if (motion.kind === "loop") {
+    const inspect = motion.inspect;
+    return (
+      <Empty>
+        {t.noAtlasForLoop({
+          frames: motion.frames.length || inspect?.frameCount || 0,
+          width: inspect?.cell.width ?? 0,
+          height: inspect?.cell.height ?? 0,
+        })}
+      </Empty>
+    );
+  }
 
   if (!sheet || !geometry) {
     return <Empty>{t.noAtlasYet}</Empty>;
@@ -386,41 +529,47 @@ function InspectBlock({ motion, t }: { motion: Motion; t: SpriteStrings }) {
         {t.inspect}
       </h3>
       <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
-        <Fact label={t.factFrames}>{inspect.frameCount}</Fact>
-        <Fact label={t.factCell}>
-          {inspect.cell.width}×{inspect.cell.height}
-        </Fact>
-        <Fact label={t.factAnchorDrift}>
-          {inspect.anchorDrift.x.toFixed(1)}, {inspect.anchorDrift.y.toFixed(1)} px
-        </Fact>
-        <Measured
-          label={t.factMaxJump}
-          value={`${inspect.maxJump.toFixed(1)} px`}
-          verdict={maxJumpVerdict(inspect)}
-          limitText={(limit) => `${limit} px`}
-          t={t}
-        />
-        <Measured
-          label={t.factScaleDrift}
-          value={`${(inspect.scaleDrift * 100).toFixed(1)}%`}
-          verdict={scaleDriftVerdict(inspect)}
-          limitText={(limit) => `${Math.round(limit * 100)}%`}
-          t={t}
-        />
-        {bodyDrift !== null ? (
-          <Measured
-            label={t.factBodyDrift}
-            value={`${bodyDrift.toFixed(1)} px`}
-            verdict={bodyDriftVerdict(inspect)}
-            limitText={(limit) => `${limit} px`}
-            t={t}
-          />
-        ) : null}
-        <Fact label={t.factEmpty}>
-          {inspect.emptyFrames.length === 0
-            ? t.none
-            : inspect.emptyFrames.map((n) => String(n).padStart(2, "0")).join(", ")}
-        </Fact>
+        {motion.kind === "loop" ? (
+          <LoopFacts motion={motion} t={t} />
+        ) : (
+          <>
+            <Fact label={t.factFrames}>{inspect.frameCount}</Fact>
+            <Fact label={t.factCell}>
+              {inspect.cell.width}×{inspect.cell.height}
+            </Fact>
+            <Fact label={t.factAnchorDrift}>
+              {inspect.anchorDrift.x.toFixed(1)}, {inspect.anchorDrift.y.toFixed(1)} px
+            </Fact>
+            <Measured
+              label={t.factMaxJump}
+              value={`${inspect.maxJump.toFixed(1)} px`}
+              verdict={maxJumpVerdict(inspect)}
+              limitText={(limit) => `${limit} px`}
+              t={t}
+            />
+            <Measured
+              label={t.factScaleDrift}
+              value={`${(inspect.scaleDrift * 100).toFixed(1)}%`}
+              verdict={scaleDriftVerdict(inspect)}
+              limitText={(limit) => `${Math.round(limit * 100)}%`}
+              t={t}
+            />
+            {bodyDrift !== null ? (
+              <Measured
+                label={t.factBodyDrift}
+                value={`${bodyDrift.toFixed(1)} px`}
+                verdict={bodyDriftVerdict(inspect)}
+                limitText={(limit) => `${limit} px`}
+                t={t}
+              />
+            ) : null}
+            <Fact label={t.factEmpty}>
+              {inspect.emptyFrames.length === 0
+                ? t.none
+                : inspect.emptyFrames.map((n) => String(n).padStart(2, "0")).join(", ")}
+            </Fact>
+          </>
+        )}
       </dl>
       {warned ? (
         <ul
@@ -454,22 +603,73 @@ function InspectBlock({ motion, t }: { motion: Motion; t: SpriteStrings }) {
   );
 }
 
+/**
+ * What a loop is judged on.
+ *
+ * Not one anchor row among them, and that is the point: a loop is never stood
+ * on a floor, so `anchorDrift` / `maxJump` / `scaleDrift` describe nothing —
+ * printing them would be five numbers nobody can act on next to the two that
+ * decide whether the workflow succeeded. The seam carries its own bar (twice
+ * the median step, the pipeline's own rule) so a user can argue with the
+ * verdict instead of taking it.
+ */
+function LoopFacts({ motion, t }: { motion: Motion; t: SpriteStrings }) {
+  const inspect = motion.inspect!;
+  const seam = seamOf(inspect);
+  const step = stepOf(inspect);
+  const alpha = alphaCoverageOf(inspect);
+  const frames = motion.frames.length || inspect.frameCount;
+  const duration = loopDuration(frames, motion.fps);
+  const verdict = seamWord(motion);
+  return (
+    <>
+      {seam === null ? null : (
+        <Measured
+          label={t.factSeam}
+          value={`${seam.toFixed(4)}${verdict ? ` · ${t.seamVerdict[verdict]}` : ""}`}
+          verdict={seamVerdict(inspect)}
+          limitText={(limit) => limit.toFixed(4)}
+          // The one row carrying three things — the number, the verdict and
+          // the bar — and the only one anybody reads first. In a half-width
+          // cell it wraps its own limit onto a second line.
+          wide
+          t={t}
+        />
+      )}
+      {step === null ? null : (
+        <Fact label={t.factStep}>{step.toFixed(4)}</Fact>
+      )}
+      <Fact label={t.factFrames}>{frames}</Fact>
+      <Fact label={t.factFps}>{motion.fps}</Fact>
+      {duration === null ? null : (
+        <Fact label={t.factDuration}>{duration.toFixed(2)} s</Fact>
+      )}
+      {alpha === null ? null : (
+        <Fact label={t.factAlpha}>{(alpha * 100).toFixed(1)}%</Fact>
+      )}
+    </>
+  );
+}
+
 /** One inspect value with the bar it is judged by, amber when it is over. */
 function Measured({
   label,
   value,
   verdict,
   limitText,
+  wide = false,
   t,
 }: {
   label: string;
   value: string;
   verdict: MetricVerdict;
   limitText: (limit: number) => string;
+  /** Take the whole grid row instead of one of its two columns. */
+  wide?: boolean;
   t: SpriteStrings;
 }) {
   return (
-    <div className="flex flex-col">
+    <div className={wide ? "col-span-2 flex flex-col" : "flex flex-col"}>
       <dt className="text-[10px] uppercase tracking-wide text-cc-muted">
         {label}
       </dt>
