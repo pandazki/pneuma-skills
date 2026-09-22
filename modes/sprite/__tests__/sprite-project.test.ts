@@ -1467,6 +1467,19 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       });
       expect(edges.find((e: any) => e.toAssetId === "flame-frame-011").operation.params.t)
         .toBeCloseTo(11 / 12, 3);
+
+      // A frame `--seam-fill` invented at the wrap was sampled from nothing,
+      // so the run reports `sampledAt: null` for it. It must arrive as an
+      // ABSENT `t`, never as 0 — which is the timestamp of frame 000.
+      const filled = JSON.parse(readFileSync(join(LOOP_FIXTURE, "run.json"), "utf-8"));
+      filled.sampledAt[11] = null;
+      registerLoop(dir, filled);
+      const wrap = readProject(dir).provenance
+        .find((e: any) => e.toAssetId === "flame-frame-011");
+      expect("t" in wrap.operation.params).toBe(false);
+      expect(wrap.operation.params).toEqual({
+        tool: "sprite-sheet.mjs", step: "from-video", frameIndex: 11,
+      });
       // The clip keeps its own generate edge.
       expect(edges.find((e: any) => e.toAssetId === "flame-video-1").operation.type).toBe("generate");
     });
