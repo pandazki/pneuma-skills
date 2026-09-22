@@ -98,6 +98,21 @@ four static inserts of a sword at a throat is no scene at all.** When you
 find yourself splitting an action into pieces so each piece can be blocked,
 the answer is a free shot, not four shots.
 
+**Free is narrower than it looks.** A free shot has no picture of the space,
+so the model puts the prettiest landmark behind everybody and lets bodies run
+wherever the camera sentence is easiest to satisfy. In the urban trial
+(2026-09-22) the crossing of a six-metre street was shot free with "侧向跟拍，
+从画左的店横穿到画右的公交站" — geometrically impossible from a sidewalk
+tracking camera — and came back as two people running *along* the shopfront
+to a bus stop on the same side; the two hybrid shots after it inherited the
+error. The rule: **any shot that moves a character between two landmarks,
+or that must show how two landmarks sit relative to each other, is a
+geography shot and is `greybox` or `hybrid`.** `free` is for shots where
+geography does not matter — a face, a hand, a reaction, an action against
+one wall. And every shot's `detail`, free or not, names **what is behind
+each character** (from the set's layout, not from taste), because that
+sentence is the only geography a free take ever gets.
+
 Two consequences, both mechanical:
 
 - A free shot needs **no greybox and no greybox checks** — `next` goes plan →

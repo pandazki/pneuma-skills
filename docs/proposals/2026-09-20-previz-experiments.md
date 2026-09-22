@@ -244,3 +244,16 @@ the `lineup` joint review at the previz gate; `slowmo`/`impact` in the kit;
   wrong side of the street), music and VO mixed, 30 s at 720p, $25.29. The
   flow, the gates-open path, the free/hybrid split and the re-shoot
   discipline all held without a human in the loop.
+- Trial 4 review (user): the shop and the bus stop ended up on the same
+  side of the street. The crossing shot (s04) was `free`; its prompt asked
+  for a sidewalk tracking camera AND a left-to-right crossing of the road,
+  which no camera can do, and the model resolved it as a run along the
+  shopfront; s05/s06 (hybrid, but with no "what is behind them" sentence)
+  inherited the shop as backdrop; the s07 crane greybox never framed the
+  shop, so the take had no evidence to keep it across the street. Rule
+  recorded in shot-plan.md: a shot that moves a character between two
+  landmarks, or shows two landmarks' relation, is greybox/hybrid; free is
+  for geography-free shots; every detail names what is behind each
+  character. Also: only one voice-over line was planned — the user wants
+  spoken lines; re-shoot of s02/s04–s07 with lines and hybrid greyboxes
+  requested.
