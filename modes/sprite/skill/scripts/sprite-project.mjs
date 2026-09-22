@@ -43,9 +43,29 @@ const VIDEO_MODES = ["i2v", "first-last", "r2v"];
  *  names of their own because each is a different endpoint at a different
  *  price: recording one under its sibling's name would name a model nobody
  *  called. */
-const DERIVE_VIDEO_MODELS = ["veed", "veed-gs", "bria", "topaz", "rife"];
-const VIDEO_OPS = ["matte", "interpolate"];
+const DERIVE_VIDEO_MODELS = ["veed", "veed-gs", "bria", "topaz", "rife", "ffmpeg"];
+/** What a derived clip had done to it. `retime` replays the parent's own
+ *  frames in another order — a hold cut short, a beat repeated — and invents
+ *  no pixel, which is why it is its own op with `ffmpeg` as its only model: a
+ *  reorder filed as an `interpolate` claims a paid endpoint ran that did not. */
+const VIDEO_OPS = ["matte", "interpolate", "retime"];
 const ANCHORS = ["bottom", "center"];
+/** Who invents a loop's in-between frames, as recorded in the brief.
+ *  `none` keeps the clip's own rate. */
+const LOOP_INTERPOLATORS = ["topaz", "rife", "ffmpeg", "none"];
+/** The interpolators that aim at a FIXED 60 fps (`interpolate-video.mjs`'s
+ *  default target, and `loop --fps 60`). RIFE multiplies the clip's own rate
+ *  instead, so the arithmetic below does not apply to it. */
+const SIXTY_FPS_INTERPOLATORS = ["topaz", "ffmpeg"];
+/** `sprite-sheet.mjs`'s own MAX_LOOP_FRAMES, duplicated because these two
+ *  scripts are standalone zero-dependency files installed side by side with
+ *  no module between them. A loop's frame files are three digits and the
+ *  pipeline refuses more; knowing the number here is what lets the brief warn
+ *  about a duration BEFORE the clip is paid for instead of after. */
+const MAX_LOOP_FRAMES = 400;
+/** The rates an interpolator is actually asked for, high to low — the answer
+ *  to "what fits under the ceiling" has to be one somebody would type. */
+const LOOP_TARGET_FPS = [60, 48, 30, 24];
 /** What a motion is FOR. Absent means a sprite motion — an atlas for a game
  *  engine. A `loop` is a seamless transparent animation for a UI: no sheet,
  *  no atlas, no GIF, and three-digit frame ids because one closed cycle at
@@ -113,10 +133,19 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
   set-motion --motion <motionId> [--label] [--fps] [--loop|--no-loop] [--anchor]
              [--prompt] [--status] [--notes]
              [--ack-warnings "<reason>"] [--clear-ack]
+             [--brief-duration <s>] [--brief-width <px>]
+             [--brief-interpolator ${LOOP_INTERPOLATORS.join("|")}] [--brief-budget <usd>]
       --ack-warnings accepts the motion's remaining inspect warnings with a
       one-sentence reason the user reads on the stage; the numbers stay
       visible. --clear-ack takes it back. Re-registering a run drops the
       acknowledgement with the measurement it covered.
+      --brief-* records what the user answered before anything was paid for:
+      the cycle length, the width the UI renders it at, who invents the
+      in-between frames, and (optionally) the dollar ceiling. The first call
+      needs the first three together; later calls may change any one. Only a
+      --kind loop motion has a brief, and 'add-video' refuses a generated clip
+      on a loop that has none. A duration whose 60fps frame count is over
+      ${MAX_LOOP_FRAMES} is warned about here, naming the rate that fits.
 
   set-sheet --motion <motionId> --file <path> [--from <assetId,…>] [--model]
             [--prompt] [--background <text>] [--status ${MOTION_STATUSES.join("|")}]
@@ -167,7 +196,8 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
             --op ${VIDEO_OPS.join("|")} --model ${DERIVE_VIDEO_MODELS.join("|")}
             [--duration <seconds>] [--status ${VIDEO_STATUSES.join("|")}]
       --derived-from registers a clip made out of an earlier clip of the same
-      motion — a matte (transparent) or an interpolation (more frames). It
+      motion — a matte (transparent), an interpolation (more frames), or a
+      retime (the same frames in another order, --model ffmpeg). It
       writes a 'derive' edge from that clip and refuses --mode / --prompt /
       --from, because nothing here was shot: its history is the take it came
       from. Its --status defaults to 'ready', not 'generating': the script
@@ -222,7 +252,7 @@ function loadProject(dir) {
 
 const ASSET_KEYS = ["id", "type", "uri", "name", "metadata", "createdAt", "status", "tags"];
 const MOTION_KEYS = [
-  "id", "label", "prompt", "kind", "grid", "fps", "loop", "anchor", "status", "notes", "source",
+  "id", "label", "prompt", "kind", "brief", "grid", "fps", "loop", "anchor", "status", "notes", "source",
   "keyframe", "keyframeAlpha", "sheetRaw", "sheetAlpha", "sheet", "atlas", "frames",
   "gif", "webp", "exports", "videos", "inspect",
 ];
@@ -779,6 +809,84 @@ function inspectSummary(value) {
 /** Four decimals — the scale the loop's seam and step are reported at. */
 const round4 = (value) => Math.round(value * 1e4) / 1e4;
 
+/** The brief, as one line for `show` — the cheapest place a later turn can
+ *  read what it is working to. */
+function briefLine(brief) {
+  const budget = brief.budgetUsd === undefined ? "" : `, budget $${brief.budgetUsd}`;
+  return `  brief: ${brief.duration}s, ${brief.width}px, interpolator ${brief.interpolator}${budget} (recorded ${brief.recordedAt})`;
+}
+
+/**
+ * Record the loop interview's answers on the motion, or refuse.
+ *
+ * The three required answers are recorded TOGETHER the first time and singly
+ * afterwards, because that is how the conversation goes: one message asks all
+ * of them, and a later turn narrows one of them ("make it 256 after all").
+ * Writing a partial first brief would be worse than writing none — `add-video`
+ * opens on the brief's existence, so half a brief opens the gate on answers
+ * nobody gave.
+ *
+ * Returns the stderr lines the caller should print. The 400-frame ceiling is
+ * a WARNING and not a refusal: a 7s loop at 48 fps is a perfectly good loop,
+ * and the point is that the user finds out before the clip is paid for
+ * instead of after (measured on the Kiki trial: two clips, then the discovery).
+ */
+function setLoopBrief(motion, values, now) {
+  const given = {
+    duration: values["brief-duration"],
+    width: values["brief-width"],
+    interpolator: values["brief-interpolator"],
+    budget: values["brief-budget"],
+  };
+  if (Object.values(given).every((value) => value === undefined)) return [];
+  if (motion.kind !== "loop") {
+    fail(`--brief-*: '${motion.id}' is not a loop motion — the brief is a loop's interview (cycle length, UI width, interpolator), and a sheet motion answers none of it. Use add-motion --kind loop for a UI loop.`);
+  }
+
+  const current = motion.brief && typeof motion.brief === "object" ? motion.brief : {};
+  const duration = given.duration === undefined
+    ? finiteNumber(current.duration)
+    : num(given.duration, "--brief-duration", { min: 0.1 });
+  const width = given.width === undefined
+    ? finiteNumber(current.width)
+    : num(given.width, "--brief-width", { integer: true, min: 1 });
+  const interpolator = given.interpolator === undefined
+    ? (LOOP_INTERPOLATORS.includes(current.interpolator) ? current.interpolator : undefined)
+    : oneOf(given.interpolator, LOOP_INTERPOLATORS, "--brief-interpolator");
+
+  const missing = [
+    duration === undefined ? "--brief-duration" : null,
+    width === undefined ? "--brief-width" : null,
+    interpolator === undefined ? "--brief-interpolator" : null,
+  ].filter(Boolean);
+  if (missing.length) {
+    fail(`--brief-*: motion '${motion.id}' has no brief yet, so the first one needs ${missing.join(" and ")} as well — the three answers are recorded together, and any one of them can be changed later`);
+  }
+
+  const budgetUsd = given.budget === undefined
+    ? finiteNumber(current.budgetUsd)
+    : num(given.budget, "--brief-budget", { min: 0 });
+
+  motion.brief = {
+    duration,
+    width,
+    interpolator,
+    ...(budgetUsd === undefined ? {} : { budgetUsd }),
+    recordedAt: new Date(now).toISOString(),
+  };
+
+  // `duration × fps ≤ 400`, checked against the rate the chosen interpolator
+  // aims at. RIFE multiplies the clip's own rate and `none` changes nothing,
+  // so neither has a 60 to be measured against here.
+  if (!SIXTY_FPS_INTERPOLATORS.includes(interpolator)) return [];
+  const atSixty = Math.ceil(duration * 60);
+  if (atSixty <= MAX_LOOP_FRAMES) return [];
+  const fits = LOOP_TARGET_FPS.find((fps) => Math.ceil(duration * fps) <= MAX_LOOP_FRAMES);
+  return [fits === undefined
+    ? `WARN: a ${duration}s loop is over the ${MAX_LOOP_FRAMES}-frame limit at every rate down to ${LOOP_TARGET_FPS[LOOP_TARGET_FPS.length - 1]}fps (${Math.ceil(duration * LOOP_TARGET_FPS[LOOP_TARGET_FPS.length - 1])} frames) — shorten the loop before shooting it`
+    : `WARN: a ${duration}s loop at 60fps is ${atSixty} frames and the limit is ${MAX_LOOP_FRAMES} — interpolate to ${fits}fps instead (--target-fps ${fits}), or shorten the loop. Say which before the clip is shot.`];
+}
+
 /**
  * One motion, said out loud for the agent.
  *
@@ -793,6 +901,11 @@ function motionLines(motion) {
   const lines = [];
   if (motion.kind === "loop") {
     lines.push(`${motion.id} (${motion.label}) — loop, ${motion.status}, ${frameCount} frames @ ${motion.fps}fps`);
+    // The brief first: it is what everything below is judged against, and a
+    // loop that has none cannot be shot yet.
+    lines.push(motion.brief
+      ? briefLine(motion.brief)
+      : "  brief: none — ask the user before the clip (set-motion --brief-duration … --brief-width … --brief-interpolator …)");
     const seam = motion.inspect?.seam;
     const step = motion.inspect?.step;
     if (Number.isFinite(seam) && Number.isFinite(step)) {
@@ -840,6 +953,9 @@ function compactMotion(motion) {
     // line is not: its grid column is padded to seven so `loop` can stand
     // where `4x4` does, which moves the columns after it.)
     ...(motion.kind ? { kind: motion.kind } : {}),
+    // Loop motions only, and only once recorded — the same rule `kind`
+    // follows, so a sprite motion's summary is byte-for-byte what it was.
+    ...(motion.brief ? { brief: motion.brief } : {}),
     status: motion.status,
     grid: motion.grid,
     fps: motion.fps,
@@ -883,6 +999,8 @@ const OPTIONS = {
     loop: { type: "boolean", default: false }, "no-loop": { type: "boolean", default: false },
     anchor: { type: "string" }, prompt: { type: "string" }, status: { type: "string" }, notes: { type: "string" },
     "ack-warnings": { type: "string" }, "clear-ack": { type: "boolean", default: false },
+    "brief-duration": { type: "string" }, "brief-width": { type: "string" },
+    "brief-interpolator": { type: "string" }, "brief-budget": { type: "string" },
   },
   "set-sheet": {
     motion: { type: "string" }, file: { type: "string" }, from: { type: "string", multiple: true },
@@ -1133,8 +1251,17 @@ function main() {
       }
       if (values["clear-ack"] && motion.inspect) delete motion.inspect.acknowledged;
 
+      // The interview's answers. They are the one thing on a motion that is
+      // not the agent's to decide — a loop's size, its length and who invents
+      // its in-betweens are the user's money — and `add-video` refuses the
+      // paid clip until they are here.
+      const briefLines = setLoopBrief(motion, values, now);
+
       saveProject(dir, doc);
       emit(values, motion, [`${motion.id}: ${motion.status}, ${motion.fps}fps, loop=${motion.loop}`]);
+      // After the write, and on stderr: every caller of this command passes
+      // --json, so a line routed through `emit` would be swallowed by it.
+      for (const line of briefLines) console.error(line);
       break;
     }
 
@@ -1475,13 +1602,31 @@ function main() {
       if (summary) motion.inspect = summary;
       motion.status = "ready";
 
+      // What the user asked for against what landed. The frames are already
+      // cut by the time anyone can measure this, so it is a warning and not a
+      // refusal — but it is the difference between a 512px loop for a hero
+      // and the 532px one the Kiki trial shipped with a 45 MB Lottie, and
+      // nothing else in the chain compares the two numbers. Two pixels of
+      // slack, because the crop rect is rounded to even sides.
+      const warnings = [];
+      const briefWidth = loopRun ? finiteNumber(motion.brief?.width) : undefined;
+      const cutWidth = finiteNumber(motion.inspect?.cell?.width);
+      if (briefWidth !== undefined && cutWidth !== undefined && Math.abs(cutWidth - briefWidth) > 2) {
+        warnings.push(`frames are ${cutWidth} px wide but the brief said ${briefWidth} — pass --width to loop`);
+      }
+
       saveProject(dir, doc);
-      emit(values, motion, [
+      // The motion, plus what this registration noticed. `warnings` is only
+      // there when there is something to say: the payload is the motion, and
+      // an always-present empty array would read as a field of it.
+      emit(values, warnings.length ? { ...motion, warnings } : motion, [
         loopRun
           ? `${motion.id}: ${frameIds.length} loop frames cut from ${videoAssetId} @ ${motion.fps}fps, ${Object.keys(exportIds).join(" + ") || "no exports"} registered (ready)`
           : `${motion.id}: ${frameIds.length} frames${fromVideo ? ` sampled from ${videoAssetId}` : ""}, atlas + preview registered (ready)`,
         ...(motion.inspect?.warnings ?? []),
+        ...warnings,
       ]);
+      for (const warning of warnings) console.error(`WARN: ${warning}`);
       break;
     }
 
@@ -1490,6 +1635,16 @@ function main() {
       const motion = findMotion(doc, requireFlag(values.motion, "--motion"));
       const uri = toUri(dir, requireFlag(values.file, "--file"), "--file");
       const derivedFrom = values["derived-from"];
+      // The gate the loop workflow's first step exists for. A GENERATED clip
+      // on a loop is the moment this workflow starts spending — about a
+      // dollar a take — and its duration, its width and its frame rate are
+      // all the user's decisions. Prose in the skill did not hold: a trial
+      // agent skipped the interview and spent $2.61 on a loop twice as long
+      // as the UI wanted. A DERIVED clip is exempt because that money is
+      // already gone: refusing to record it would only lose its provenance.
+      if (motion.kind === "loop" && derivedFrom === undefined && !motion.brief) {
+        fail(`add-video: loop '${motion.id}' has no brief — record the user's answers first: set-motion --brief-duration … --brief-width … --brief-interpolator …`);
+      }
       // The two legs are registered at opposite ends of their wait. A SHOT
       // clip is booked before the model runs, so the stage can show a chip
       // for the seven minutes it takes — its file does not exist yet, and

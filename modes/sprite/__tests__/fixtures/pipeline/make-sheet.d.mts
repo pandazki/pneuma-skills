@@ -120,6 +120,25 @@ export interface BuildExprClipOptions {
 export declare function buildExprClip(outPath: string, options?: BuildExprClipOptions): string;
 export declare function clipFrameDeltas(path: string, width?: number): number[];
 
+export interface BuildNoiseClipOptions {
+  width?: number;
+  height?: number;
+  fps?: number;
+  /** Frames to emit; the duration is frames / fps. */
+  frames?: number;
+  /** ffmpeg `noise` strength, 0–100. */
+  level?: number;
+}
+
+export declare function buildNoiseClip(outPath: string, options?: BuildNoiseClipOptions): string;
+
+/** Mean x of the off-plate pixels in each frame, in analysis pixels; `null`
+ *  for a frame with nothing off the plate. */
+export declare function clipBoxCentres(
+  path: string,
+  options?: { width?: number; tolerance?: number },
+): Array<number | null>;
+
 export interface EdgeLumaReport {
   /** Pixels whose alpha is inside [min, max). */
   count: number;

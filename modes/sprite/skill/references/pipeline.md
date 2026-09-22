@@ -487,6 +487,57 @@ The clip is only ever read. Unlike a sheet it is not copied into the motion
 directory, because it is already an asset in its own right and the frames'
 provenance points at it.
 
+### `retime <clip> --keep <ranges> --out <mp4> [--fps N]`
+
+A clip's own frames, in another order. Nothing is generated and nothing is
+interpolated: the frames are decoded once, written back in the order `--keep`
+names, and re-encoded as an opaque H.264 mp4 (`yuv420p`, crf 12).
+
+```bash
+node {SKILL_PATH}/scripts/sprite-sheet.mjs retime \
+  <character>/motions/<id>/video-seedance-1.mp4 \
+  --keep 2-45,60-66,75-112,2-58 \
+  --out <character>/motions/<id>/video-retime-2.mp4 --json
+```
+
+| Flag | Default | Notes |
+|---|---|---|
+| `--keep <ranges>` | required | Comma list of **inclusive** frame index ranges **in playback order**, repeats allowed: `2-40,41-60,2-40` plays a beat twice. A single frame is `40-40`. A range that runs backwards, or names a frame the clip does not have, is refused |
+| `--out <mp4>` | required | Must end in `.mp4` — the result is an opaque plate for the interpolation and matting steps |
+| `--fps N` | the clip's own rate | What the reordered frames play at. It renames the rate; it does not resample |
+
+**Where it belongs: on the PLATE, before interpolation and before matting.**
+A clip that already carries alpha is refused by name, because the re-encode is
+opaque and would drop the matte — the same rule, for the same reason, as
+`loop --fps` on a matted clip. Bounds: at most 600 source frames decoded, and
+at most 400 written (a retimed plate is still a loop's input).
+
+**What it is for.** Seedance's idle-loop failure modes are reproducible and
+prompt wording does not fix them: a 1.5–2 s freeze at the inhale apex, a double
+blink, a still tail (`video-preview.md` has the measured numbers). Cutting the
+freeze, dropping the second blink and repeating a beat is free and deterministic
+— every written frame is a frame the model really drew.
+
+**What it costs.** The first-last construction argument. Before a retime the
+clip's two ends are the same generated image; afterwards they are whichever
+frames the ranges put there, so `firstIs` / `lastIs` report the source indices
+now at the wrap and `loop`'s measured seam becomes the only evidence the cycle
+closes.
+
+```json
+{ "kind": "retime", "source": "<abs clip>", "out": "<abs mp4>", "fps": 24,
+  "keep": [[2, 45], [60, 66], [75, 112], [2, 58]], "frames": 146,
+  "sourceFrames": 121, "duration": 6.083, "firstIs": 2, "lastIs": 58 }
+```
+
+Register it like any other derived clip — it is one:
+
+```bash
+node {SKILL_PATH}/scripts/sprite-project.mjs add-video --dir <character> \
+  --motion <id> --file motions/<id>/video-retime-2.mp4 \
+  --derived-from <id>-video-1 --op retime --model ffmpeg --json
+```
+
 ### `loop <clip> --out <motionDir> --name <motionId> [flags]`
 
 The third way frames come into existence, and the only one whose deliverable is
@@ -512,7 +563,7 @@ node {SKILL_PATH}/scripts/sprite-sheet.mjs loop \
 | `--trim-holds` / `--no-trim-holds` | on | Drops a frozen opening or closing, see below |
 | `--seam-fill auto\|none\|<N>` | `auto` | Interpolates in-between frames into the **wrap** when the seam is worse than `2·step`, see below |
 | `--crop union\|none` / `--pad 8` | `union` / 8 | One rect, computed over every kept frame, applied to all of them |
-| `--width W` | the source width | Scales in premultiplied space, aspect kept |
+| `--width W` | **512 when the cropped frame is wider**, else the source width | Scales in premultiplied space, aspect kept. The cap is announced on stderr (`no --width given: frames capped at 512 px (source <w> px); pass --width to choose`) and recorded as `widthDefaulted: true` in the run summary and `inspect.json` |
 | `--fps N` | the clip's own fps | `minterpolate`, loop-wrapped. **Refused with `--key alpha`** |
 | `--formats webp,apng,webm,lottie` | all four | |
 | `--threshold 16` / `--json` | | as elsewhere |
@@ -602,7 +653,16 @@ are wrong if they move:
    edges do not darken.
 
    **Choose `--width` from the size the UI renders at**, doubled for retina —
-   not from the clip. Measured on 119 frames of 512×596 at 24 fps: WebP
+   not from the clip, and in workflow E not from anywhere but `brief.width`.
+   Omitted, a cropped frame wider than **512 px is capped there**: one line on
+   stderr naming the source width and the flag that overrides it, and
+   `widthDefaulted: true` in the report. That default exists because the
+   alternative is what the Kiki trial shipped — 532 px frames straight off the
+   clip, a 45 MB Lottie and a 33 MB APNG, of which one export (the WebM, 0.55
+   MB) was usable. It is a guard, not a choice: a loop the user asked for at
+   1024 still gets 1024.
+
+   Measured on 119 frames of 512×596 at 24 fps: WebP
    3.4 MB, APNG 21 MB, WebM **367 KB**, Lottie 28 MB (the Lottie warning
    fired). At `--width 256` the same loop lands near 7 MB of Lottie and 5 MB
    of APNG; the WebM is small at any width. The width also decides how much
@@ -633,7 +693,8 @@ are wrong if they move:
 and returned as `inspect` in the JSON:
 
 ```json
-{ "kind": "loop", "frameCount": 96, "cell": { "width": 520, "height": 600 },
+{ "kind": "loop", "frameCount": 96, "cell": { "width": 512, "height": 591 },
+  "widthDefaulted": true,
   "fps": 24, "duration": 4.0, "seam": 0.0065, "step": 0.020, "maxStep": 0.069,
   "seamFill": 0, "alphaCoverage": 0.31, "keyColor": "#08f00d", "emptyFrames": [],
   "dropped": { "leading": 0, "trailing": 1 },
@@ -655,7 +716,9 @@ frame.
 | "frame NNN is empty" | No pixel above the alpha threshold | Usually the key ate the subject; lower `--similarity` |
 | "only N frames" | `frameCount < 8` | The window is too short, or hold trimming ate it. Check `dropped` and the trim timestamps |
 | "<encoder> is missing — <file> was not written" | ffmpeg has no encoder for that format | Install it or drop the format from `--formats`; the other three still land |
-| "loop.json is 12.4 MB" | Lottie over 8 MB | `--width`. A Lottie carries every frame as a base64 PNG, so it is the format that grows fastest |
+| "loop.json is 12.4 MB of base64 PNG" | Lottie over 8 MB | A Lottie carries every frame as a base64 PNG, so it is the format that grows fastest |
+| "loop.apng is 21.0 MB" | APNG over 8 MB | APNG is lossless and grows with the picture; the WebM is a tenth of it at the same size |
+| …"pass --width to shrink the frames" / …"already at --width 512; halve it, or ship loop.webm instead" | the two size warnings above, worded by whether `--width` was passed | Without the flag, pass it. **With** it, "pass --width" would be advice already taken: halve the number, or deliver the WebM and keep the big format out of the page |
 
 **`--json`** is what `register-run` consumes:
 
@@ -665,7 +728,7 @@ frame.
   "fps": 24, "duration": 4.0, "trim": { "start": 0, "end": 4.042 },
   "dropped": { "leading": 0, "trailing": 1 }, "seamFill": 0,
   "keyColor": "#08f00d", "alphaCoverage": 0.31,
-  "cell": { "width": 520, "height": 600 },
+  "cell": { "width": 512, "height": 591 }, "widthDefaulted": true,
   "webp": "<abs>/loop.webp", "apng": "<abs>/loop.apng", "webm": "<abs>/loop.webm",
   "lottie": "<abs>/loop.json", "inspect": { "…": "as above" }, "warnings": [] }
 ```
@@ -780,9 +843,11 @@ come from `Date.now()` unless `--at <ms>` is passed.
 | `add-motion … [--source sheet\|video]` | Records how the frames will be obtained, before anything is generated. Absent means `sheet`. |
 | `add-motion … [--kind loop]` | Declares a **loop motion** (workflow E). `--rows/--cols` become optional (1×1 is recorded), `source` defaults to `video`, and `set-keyframe` is accepted only here. A sprite motion is unchanged. |
 | `set-keyframe --motion <id> --file motions/<id>/keyframe.png [--alpha motions/<id>/keyframe-alpha.png] [--model] [--prompt] [--from <refIds>] [--status generating\|processing\|ready]` | The loop's `set-sheet`. Registers `<motion>-keyframe` with a `generate` edge carrying the model and prompt; `--alpha` registers `<motion>-keyframe-alpha` with a `derive` edge (`step: "key"`) from it. Refused on a motion that is not `--kind loop`. Called twice per keyframe, as `set-sheet` is — but the closing call needs only `--file` and `--alpha`: an omitted `--model` / `--prompt` / `--from` **keeps** what the reserving call recorded rather than blanking the edge. Once `--alpha` has reserved the cut-out, a closing call without `--alpha` is refused, because the stage prefers the cut-out and a placeholder there is a broken image. |
-| `add-video … --file motions/<id>/<clip> --derived-from <videoId> --op matte\|interpolate --model veed\|veed-gs\|bria\|topaz\|rife [--duration] [--status]` | Registers a clip made **from another clip**: a `derive` edge from the parent's asset with `params: { op, model }`, and a sidecar entry with `mode: "derived"`. `--file` is required here as everywhere. It takes no `--mode`, `--prompt` or `--from` — nothing was prompted, and a prompt invented to fill the field is what makes a later turn believe the clip was generated. `--status` defaults to **`ready`**: the script that made the clip wrote the file before there was anything to register, so there is no wait to show (a shot clip still defaults to `generating`). |
+| `add-video … --file motions/<id>/<clip> --derived-from <videoId> --op matte\|interpolate\|retime --model veed\|veed-gs\|bria\|topaz\|rife\|ffmpeg [--duration] [--status]` | Registers a clip made **from another clip**: a `derive` edge from the parent's asset with `params: { op, model }`, and a sidecar entry with `mode: "derived"`. `--file` is required here as everywhere. It takes no `--mode`, `--prompt` or `--from` — nothing was prompted, and a prompt invented to fill the field is what makes a later turn believe the clip was generated. `--op retime --model ffmpeg` is the local reorder (`sprite-sheet.mjs retime`), which invents no pixel and so is neither a matte nor an interpolation. `--status` defaults to **`ready`**: the script that made the clip wrote the file before there was anything to register, so there is no wait to show (a shot clip still defaults to `generating`). |
+| `set-motion … --brief-duration <s> --brief-width <px> --brief-interpolator topaz\|rife\|ffmpeg\|none [--brief-budget <usd>]` | Records the **loop brief** — the answers workflow E step 1 collects before anything is paid for. The first call needs the three required flags together; any later call may change one. Refused on a motion that is not `--kind loop`. Warns on stderr when `duration × 60 > 400` with an interpolator that targets 60 fps, naming the rate that fits (`--target-fps 48` for a 7–8 s loop). |
+| `add-video` on a **loop** motion, generated clip | **Refused** when the motion has no brief: `add-video: loop '<id>' has no brief — record the user's answers first: set-motion --brief-duration … --brief-width … --brief-interpolator …`. A `--derived-from` clip is exempt: that money is already spent, and refusing to record it would only lose the provenance. |
 | `set-motion … [--ack-warnings "<reason>"] [--clear-ack]` | Accepts the motion's remaining inspect warnings with a one-sentence reason the user reads on the stage; the numbers stay visible and the badge dims. `--clear-ack` takes it back. Refused when the motion has no inspect report, and refused with an empty reason — the acknowledgement *is* the reason. |
-| `register-run --motion idle --run <run.json \| -> [--video <videoId>]` | Consumes `sprite-sheet.mjs run` output: registers the alpha sheet (if any), every frame, the packed sheet, atlas, gif and webp with `derive` edges; **removes** the previous frame assets and edges for that motion; copies `inspect` into the motion (including the measured `anchorPoint`, which is what the viewer's pivot guide stands on); sets status `ready`. A `from-video` summary derives the frames from the clip asset instead (`--video` names which, the newest is used with a note on stderr) and sets `motion.source`. A summary with `"kind": "loop"` has no sheet, atlas or gif — those become optional, and a sprite run still requires them — and registers the webp plus `<motion>-apng`, `<motion>-webm` and `<motion>-lottie` instead; it sets `motion.kind = "loop"`, `motion.exports`, `motion.source = "video"`, `motion.fps` from the run (interpolation changes it) and `grid = {1,1}`, and the inspect summary it copies carries `seam`, `step`, `seamFill` and `alphaCoverage`. Any acknowledgement goes with the measurement it covered. |
+| `register-run --motion idle --run <run.json \| -> [--video <videoId>]` | Consumes `sprite-sheet.mjs run` output: registers the alpha sheet (if any), every frame, the packed sheet, atlas, gif and webp with `derive` edges; **removes** the previous frame assets and edges for that motion; copies `inspect` into the motion (including the measured `anchorPoint`, which is what the viewer's pivot guide stands on); sets status `ready`. A `from-video` summary derives the frames from the clip asset instead (`--video` names which, the newest is used with a note on stderr) and sets `motion.source`. A summary with `"kind": "loop"` has no sheet, atlas or gif — those become optional, and a sprite run still requires them — and registers the webp plus `<motion>-apng`, `<motion>-webm` and `<motion>-lottie` instead; it sets `motion.kind = "loop"`, `motion.exports`, `motion.source = "video"`, `motion.fps` from the run (interpolation changes it) and `grid = {1,1}`, and the inspect summary it copies carries `seam`, `step`, `seamFill` and `alphaCoverage`. Any acknowledgement goes with the measurement it covered. On a loop it also compares the registered `inspect.cell.width` with `brief.width` and warns — stderr, and `warnings[]` in the `--json` payload — when they are more than 2 px apart (`frames are <w> px wide but the brief said <width> — pass --width to loop`). A warning, not an error: the frames are already cut, and cutting them again is free. |
 | `add-video --motion idle --file motions/idle/video-seedance-1.mp4 --model seedance-2.5 --mode i2v --from idle-frame-00[,idle-frame-15] [--prompt] [--duration 4] [--status generating]` | Registers `<motion>-video-<n>` (n is the next free number) with a `generate` edge. |
 | `set-video --motion idle --video <id> --status ready\|failed [--notes]` | Closes out a video after the render returns. |
 | `remove-motion --motion idle` | Removes the motion, its assets and its edges. Files on disk are left alone; the orphaned paths are printed so you can delete them deliberately. |

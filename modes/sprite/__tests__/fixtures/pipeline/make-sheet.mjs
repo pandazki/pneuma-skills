@@ -318,6 +318,89 @@ export function clipFrameDeltas(path, width = 48) {
 }
 
 /**
+ * A clip of pure temporal noise — the one fixture whose FRAMES ARE BIG.
+ *
+ * Every other clip here draws a flat plate with a box on it, which a PNG
+ * encoder compresses to a few kilobytes however large the canvas is. The
+ * export-size warnings are about deliverables a browser has to download or
+ * parse, and nothing made of flat colour ever reaches that size: 15 frames of
+ * 600x512 noise come back as ~900 KB of PNG each, which is what puts a Lottie
+ * and an APNG over their limits without a 400-frame run.
+ */
+export function buildNoiseClip(outPath, {
+  width = 600,
+  height = 512,
+  fps = 24,
+  frames = 15,
+  level = 100,
+} = {}) {
+  mkdirSync(dirname(outPath), { recursive: true });
+  const chain = [
+    `color=c=0x808080:s=${width}x${height}:d=${frames / fps}:r=${fps}`,
+    `noise=alls=${level}:allf=t+u`,
+    "format=yuv420p",
+  ].join(",");
+  const r = spawnSync(
+    "ffmpeg",
+    ["-v", "error", "-y", "-f", "lavfi", "-i", chain,
+      "-c:v", "libx264", "-crf", "10", "-pix_fmt", "yuv420p", "--", outPath],
+    { encoding: "utf-8" },
+  );
+  if (r.status !== 0) {
+    throw new Error(`fixture ffmpeg failed: ${r.stderr ?? r.error?.message ?? "unknown"}`);
+  }
+  return outPath;
+}
+
+/**
+ * Where the subject sits in each frame of a clip: the mean x of every pixel
+ * that is not the plate, in analysis pixels, one number per frame.
+ *
+ * `retime` claims to replay a clip's own frames in the order it was handed.
+ * H.264 is lossy, so a written frame cannot be compared byte for byte with
+ * the source frame it came from — but WHERE the moving thing is survives a
+ * re-encode, and on a fixture that sweeps steadily across the plate that
+ * position identifies the frame. `null` for a frame with nothing off the
+ * plate at all.
+ */
+export function clipBoxCentres(path, { width = 64, tolerance = 24 } = {}) {
+  const probe = spawnSync(
+    "ffprobe",
+    ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", path],
+    { encoding: "utf-8" },
+  );
+  if (probe.status !== 0) throw new Error(`ffprobe failed for ${path}`);
+  const [w, h] = String(probe.stdout).trim().split(",").map(Number);
+  const height = Math.max(2, 2 * Math.round((h * width) / w / 2));
+  const r = spawnSync(
+    "ffmpeg",
+    ["-v", "error", "-i", path, "-vf", `scale=${width}:${height}`, "-f", "rawvideo", "-pix_fmt", "gray", "-"],
+    { maxBuffer: 256 * 1024 * 1024 },
+  );
+  if (r.status !== 0) throw new Error(`ffmpeg decode failed for ${path}`);
+  const frameBytes = width * height;
+  const count = Math.floor(r.stdout.length / frameBytes);
+  const centres = [];
+  for (let f = 0; f < count; f++) {
+    const base = f * frameBytes;
+    // The top-left pixel is the plate: every fixture here paints one, and the
+    // box never reaches the corner.
+    const plate = r.stdout[base];
+    let sum = 0;
+    let seen = 0;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (Math.abs(r.stdout[base + y * width + x] - plate) <= tolerance) continue;
+        sum += x;
+        seen++;
+      }
+    }
+    centres.push(seen ? sum / seen : null);
+  }
+  return centres;
+}
+
+/**
  * Luminance of the partially transparent pixels: the fringe, measured.
  *
  * A soft edge scaled in STRAIGHT alpha is averaged with whatever RGB sits

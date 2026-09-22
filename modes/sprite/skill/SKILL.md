@@ -144,7 +144,14 @@ clickable card that takes the user there — or into the `capture` action's
   deliberately on flat chroma green with a locked camera *is* a legitimate
   source: that is workflow B-video (sampled by `from-video`) or workflow E's
   first-last loop clip (cut by `loop`). Those two subcommands are the only
-  things that may cut frames out of a clip.
+  things that may cut a clip into a motion's frames. `retime` is the third
+  thing that may touch a clip's frames and it is not an exception: it writes
+  another **clip**, out of the same take's own frames, and gets registered as
+  a derived clip like a matte does (workflow E step 6b).
+- **Reply in the language the user writes in.** The `user_locale` in the env
+  tag is the UI's language, not the conversation's — a user typing Chinese to
+  an English UI gets Chinese back, in the progress messages and the motion
+  `notes` as well as the final report.
 - **Never touch `.claude/` or `.pneuma/`.**
 
 ## Workflows
@@ -504,9 +511,13 @@ into a page — `loop.webp`, `loop.apng`, `loop.webm` (VP9 with alpha) and
 uncleaned. The bobbing *is* the content, so nothing re-centres it and nothing
 sweeps the sparks away; there is no atlas, no GIF and no anchor.
 
-The loop closes by construction: the clip is shot **first-last with the same
-image at both ends**, so its last frame is its first frame. That is the whole
-trick, and it is why a loop starts from a single keyframe instead of a sheet.
+Shooting the clip **first-last with the same image at both ends** gives the
+model a target to land back on, which is why a loop starts from a single
+keyframe instead of a sheet. It is not a guarantee, and it is not the proof:
+the model can stop short of the target, and a retime (6b) changes which source
+frames sit at the wrap at all. The proof is the **measured** seam — `loop`
+reports `seam` against `step`, and `seam ≤ 2·step` is a loop that closes. Say
+"it closes" from that number, never from the shape of the workflow.
 
 It spends the fal key twice over — the clip is a paid Seedance render (about a
 dollar for four seconds), and matting and interpolation are paid calls on top.
@@ -518,6 +529,30 @@ Say the price and the wait before you start one.
    character's own `character.style` verbatim), the duration (4 s; 5 s when the
    motion has two beats), and the width the UI will render it at. Five answers,
    one message — the next step after them costs money.
+
+   **The frame ceiling belongs in that message.** `loop` writes at most 400
+   frames, so `duration × fps ≤ 400`: 60 fps fits up to 6.6 s, and a 7–8 s
+   two-beat loop is a 48 fps loop. Say so while the duration is still a
+   question — discovering it after the clip is paid for leaves the user with a
+   rate they never chose.
+
+   **Ask for a budget ceiling when the user has not named one** — a take is
+   ≈ $1.1, the matte ≈ $0.06 and the interpolation ≈ $0.10 — and put the
+   running total in every message that spends.
+
+   Then record the answers. They go on the motion, so this runs right after
+   `add-motion` in step 2:
+
+   ```bash
+   node {SKILL_PATH}/scripts/sprite-project.mjs set-motion --dir <character> \
+     --motion <id> --brief-duration 4 --brief-width 512 \
+     --brief-interpolator topaz --brief-budget 3 --json
+   ```
+
+   `add-video` **refuses** a generated clip on a loop motion that has no
+   brief, so "I will ask later" is not an option the scripts leave open. Any
+   one answer can be changed later with a single flag, and `set-motion` warns
+   here when the duration will not fit at 60 fps.
 2. **Register the motion.**
 
    ```bash
@@ -527,7 +562,8 @@ Say the price and the wait before you start one.
 
    `--kind loop` is what makes every later step behave: `--rows/--cols` are
    optional (a loop has no grid; 1×1 is recorded), `source` defaults to
-   `video`, and `set-keyframe` is refused on a motion without it.
+   `video`, and `set-keyframe` is refused on a motion without it. Record the
+   brief (step 1) as the next command.
 3. **Draw the keyframe, then look at it.** The placeholder goes first, so the
    stage is not empty while the model draws:
 
@@ -588,8 +624,9 @@ Say the price and the wait before you start one.
 
    `--from` names the *asset* the clip grew out of; the green flatten has no id,
    so provenance points at the cut-out keyframe. Then one line to the user:
-   **three to seven minutes** — both ends of that range have been measured on
-   this queue, and neither was the clip's fault.
+   **three to eleven minutes** — every end of that range has been measured on
+   this queue (3–7 min on the flame trial, 10 min 32 s and 5 min on the Kiki
+   one), and none of it was the clip's fault.
 5. **Shoot it with the same image at both ends.**
 
    ```bash
@@ -605,21 +642,60 @@ Say the price and the wait before you start one.
    the sentence that makes the model land there instead of drifting past it.
    One call, then leave it alone; afterwards `set-video --status ready` (or
    `failed`, with `--notes`).
+
+   **A second take is the user's money too.** When `contact` shows a freeze or
+   an open seam, do not re-shoot on your own judgement — put the numbers, the
+   price (≈ $1.1) and the wait in front of the user *together with the free
+   alternative* (6b, a retime of the take you already have), and take the
+   answer. The same applies to a second Topaz or VEED call. Being right about
+   the defect does not make the purchase yours to make.
 6. **Look at the clip before you cut it** — `sprite-sheet.mjs contact`, the
    same command as B-video step 6. Open the sheet and read the numbers with a
    loop's question in mind: does the motion ever freeze, and does the end come
    back to the opening pose? A long `stillEnd` hold is the duplicate closing
    keyframe (step 8 trims it); `loops[0].seam` well under `step` says the
    return landed.
+
+   6b. **Retime the plate (optional, free).** Seedance has known idle-loop
+   failure modes that no prompt wording fixes — a 1.5–2 s freeze at the inhale
+   apex, a double blink, a tail that sits still (the numbers are in
+   `references/video-preview.md`). `contact`'s `profile.deltas` shows them as a
+   run of near-zero steps. Reordering the clip's own frames costs nothing and
+   invents nothing:
+
+   ```bash
+   node {SKILL_PATH}/scripts/sprite-sheet.mjs retime \
+     <character>/motions/<id>/video-seedance-1.mp4 \
+     --keep 2-45,60-66,75-112 --out <character>/motions/<id>/video-retime-2.mp4 --json
+
+   node {SKILL_PATH}/scripts/sprite-project.mjs add-video --dir <character> \
+     --motion <id> --file motions/<id>/video-retime-2.mp4 \
+     --derived-from <id>-video-1 --op retime --model ffmpeg --json
+   ```
+
+   Ranges are inclusive frame indices **in playback order**, repeats allowed:
+   `2-40,41-60,2-40` plays a beat twice. It runs on the PLATE, before
+   interpolation and before matting — a clip that already carries alpha is
+   refused, because the re-encode is opaque H.264.
+
+   **What it costs you is the construction argument.** After a retime the
+   frames at the wrap are whichever ones your ranges put there, not the
+   keyframe on both sides: the JSON's `firstIs` / `lastIs` name them, and step
+   10's measured seam is what decides whether the cycle still closes. Say that
+   to the user rather than repeating "same image at both ends".
 7. **Optional, and in this order: interpolate, then matte.** Both are
    skippable, and the order is not a preference: interpolation reads opaque
    pixels, so it runs on the **plate** clip; matting is what makes a clip
    transparent, and after it `loop --fps` is refused because there is nothing
    left to interpolate honestly.
 
-   **Interpolation is the user's choice, not yours — put the three in one
-   message and take the answer.** This session's default is
-   **`{{defaultInterpolator}}`**; use it unless the user asks for another.
+   **Interpolation is the user's choice, and they already made it** — it is
+   the third answer in the step 1 brief (`brief.interpolator`, printed by
+   `show`). Use it and do not ask twice. Only when there is no brief to read
+   (a motion from before the interview existed) do you put the three in one
+   message and take the answer; this session's default is
+   **`{{defaultInterpolator}}`**. `none` means the clip's own rate is what
+   ships — skip this half of the step entirely.
 
    | | What it does | Cost | The wrap |
    |---|---|---|---|
@@ -688,8 +764,12 @@ Say the price and the wait before you start one.
    up to 400) with the four exports beside them. Every flag, every warning and
    what fixes it: `references/pipeline.md`.
 
-   **Choose `--width` from the size the UI renders at** (double it for retina),
-   not from the clip. Measured on 119 frames of 512×596 at 24 fps: WebP 3.4 MB,
+   **`--width` comes from the brief** — `brief.width`, the size the UI renders
+   at, doubled for retina if the user gave you the CSS size. Never from the
+   clip. Omit it and `loop` caps the frames at 512 px, says so on stderr and
+   records `widthDefaulted: true`; that default is a guard against the Kiki
+   outcome (532 px frames, a 45 MB Lottie and a 33 MB APNG), not a choice
+   anybody made. Measured on 119 frames of 512×596 at 24 fps: WebP 3.4 MB,
    APNG 21 MB, WebM 367 KB, Lottie 28 MB — the Lottie warning fired. At
    `--width 256` the Lottie comes down to about 7 MB and the APNG to about
    5 MB; the WebM is small at any width. `loop` also keeps its working PNGs
@@ -718,6 +798,12 @@ Say the price and the wait before you start one.
    on stderr), which is wrong the moment a derived clip exists and you cut from
    a different one; the run's clip path is checked against the asset's uri, so
    a mismatch is reported rather than quietly recorded.
+
+   `register-run` also compares the frames it just registered against the
+   brief and warns — on stderr and in the JSON's `warnings` — when they are
+   more than 2 px off `brief.width`. Cutting again with the right `--width`
+   costs nothing; do it before you report, rather than explaining the number
+   away.
 10. **Read the seam, then look at it.** Report `seam` against `step`, in
     numbers: `seam ≤ 2·step` is a loop that closes, and past that is where the
     script warns. Say `seamFill` too when it is not 0 — those frames are the
@@ -725,9 +811,12 @@ Say the price and the wait before you start one.
     `navigate-to` the motion, `play` it, and check the seam with your own eyes
     — `pause` and `capture` the **last** frame, then `navigate-to` frame 0 and
     `capture` that. Two screenshots a step apart is what a seam looks like;
-    anything further apart is a jump the user will see on every cycle. Close
-    with the frame count, fps, duration and the four export sizes — a 28 MB
-    Lottie is a deliverable nobody can ship, and `--width` is the remedy.
+    anything further apart is a jump the user will see on every cycle. After a
+    retime this reading is the *only* evidence the cycle closes — the two ends
+    are no longer the same generated image — so quote it rather than the
+    workflow. Close with the frame count, fps, duration, the four export sizes
+    and the running cost; a 28 MB Lottie is a deliverable nobody can ship, and
+    a narrower `--width` is the remedy.
 {{/videoGenEnabled}}
 
 {{#videoGenDisabled}}
@@ -769,6 +858,6 @@ naming the selected motion.
 | Topic | File |
 |---|---|
 | Motion planning and continuity for either source; sheet grammar, recipes, worked prompts, the 3D-icon keyframe, fixing one cell | `references/prompting.md` |
-| Every `sprite-sheet.mjs` / `sprite-project.mjs` subcommand — `contact`, `clean`, `from-video` and `--at`, `loop` and its warnings, `set-keyframe`, `add-ref --uploaded`, the atlas schema, inspect warnings | `references/pipeline.md` |
+| Every `sprite-sheet.mjs` / `sprite-project.mjs` subcommand — `contact`, `clean`, `from-video` and `--at`, `retime`, `loop` and its warnings, `set-keyframe`, the loop brief, `add-ref --uploaded`, the atlas schema, inspect warnings | `references/pipeline.md` |
 | The chroma-green source clip and the seamless loop clip (prompt templates + worked calls), Seedance and H3 Max flags, video matting and interpolation, cost, latency, measured keying numbers (needs the fal key) | `references/video-preview.md` |
 | The `project.json` schema — craft fields, the sprite sidecar, loop motions and derived clips, asset id conventions | `references/project-json.md` |

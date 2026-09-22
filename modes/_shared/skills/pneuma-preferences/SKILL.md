@@ -50,7 +50,7 @@ The layers exist because surface preferences are easy to spot but shallow, while
 
 Preference files are living documents, not label databases. This distinction matters:
 
-- **Full rewrite, not append** — each update is a fresh look at the whole portrait, not a new line at the bottom. Reread everything, reconsider, rewrite what changed.
+- **Full rewrite, not append** — each update is a fresh look at the whole portrait, not a new line at the bottom. Reread everything, reconsider, rewrite what changed. A measured fact another session recorded — a price, a wall time, how a model actually behaves — survives the rewrite unless newer evidence contradicts it; those numbers were paid for once and cannot be re-derived from this session's context. And never write your own deviation from a mode's workflow into the file as a default: a skipped interview or a purchase nobody approved is a thing you did, not a preference the user holds, and recording it as one licenses every later session to do the same.
 - **Preserve contradictions** — people are not consistent. If behavior contradicts itself, record both sides. Forcing coherence is a lie that degrades your model.
 - **Everything is deletable** — any entry can be overturned by later observation. Nothing is permanent.
 - **Temporary vs. stable** — "this project needs dark theme" is not a preference. "Consistently chooses dark themes across projects" is.

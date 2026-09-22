@@ -177,6 +177,10 @@ interface Motion {
   kind?: "loop";                  // what the motion is FOR; absent = a sprite
                                   // motion. `source` still says how the frames
                                   // were obtained ("video" for a loop)
+  brief?: LoopBrief;              // loop only: the interview's answers, written
+                                  // by `set-motion --brief-…` before anything
+                                  // is paid for. `add-video` refuses a
+                                  // generated clip without it
   keyframe?: string;              // asset id, `<motion>-keyframe`
   keyframeAlpha?: string;         // asset id, `<motion>-keyframe-alpha`
   exports?: {                     // asset ids; the WebP stays `motion.webp`
@@ -184,9 +188,20 @@ interface Motion {
   };
 }
 
+interface LoopBrief {
+  duration: number;               // seconds of one cycle, as asked for
+  width: number;                  // px the UI renders it at — `loop --width`
+  interpolator: "topaz" | "rife" | "ffmpeg" | "none";
+  budgetUsd?: number;             // the ceiling the user set. Absent when they
+                                  // set none — which is a different statement
+                                  // from a ceiling of 0
+  recordedAt: string;             // ISO timestamp of the set-motion call
+}
+
 type VideoModel = "seedance-2.5" | "h3-max"          // shot
                 | "veed" | "veed-gs" | "bria"        // matted
-                | "topaz" | "rife";                  // interpolated
+                | "topaz" | "rife"                   // interpolated
+                | "ffmpeg";                          // retimed, locally
 type VideoMode  = "i2v" | "first-last" | "r2v" | "derived";
 
 interface MotionVideo {
@@ -200,7 +215,12 @@ interface MotionVideo {
                                   // of video-1" without walking the graph.
                                   // The provenance edge carries the same fact
                                   // in asset ids
-  op?: "matte" | "interpolate";   // what was done to it
+  op?: "matte" | "interpolate"    // what was done to it
+     | "retime";                  // the parent's own frames in another order
+                                  // (`sprite-sheet.mjs retime`, model
+                                  // "ffmpeg"). Its own op because it invents
+                                  // nothing: filing it as an `interpolate`
+                                  // claims a paid endpoint ran that did not
 }
 
 interface InspectSummary {
@@ -262,9 +282,9 @@ Three things the shapes are quietly telling you:
 
 ### Derived clips
 
-A clip made **from another clip** — a matte, an interpolation — is registered
-with `add-video --derived-from <videoId> --op matte|interpolate --model
-veed|veed-gs|bria|topaz|rife`. It gets a `derive` edge from the parent clip's asset carrying
+A clip made **from another clip** — a matte, an interpolation, a retime — is
+registered with `add-video --derived-from <videoId> --op matte|interpolate|retime
+--model veed|veed-gs|bria|topaz|rife|ffmpeg`. It gets a `derive` edge from the parent clip's asset carrying
 `params: { op, model }`, and its sidecar entry reads
 `{ mode: "derived", derivedFrom, op, prompt: "" }` — `derivedFrom` is the
 parent's sidecar id (`video-1`), the same spelling `--derived-from` accepts.
@@ -276,6 +296,26 @@ invented to fill it is what makes a later turn treat the clip as a generation
 it could re-roll. `show` prints the chain — `video-3 ← video-2 (matte, veed-gs)` —
 so which clip the frames were cut from is answerable without reading the edges
 by hand.
+
+### The loop brief
+
+`motion.brief` is the only part of a motion the agent does not decide. A loop's
+length, its size and who invents its in-between frames are the user's money,
+and they are recorded — with the `set-motion --brief-…` call that collected
+them — before the first paid render:
+
+```json
+"brief": { "duration": 4, "width": 512, "interpolator": "topaz",
+           "budgetUsd": 3, "recordedAt": "2026-09-22T07:11:00.000Z" }
+```
+
+It is a gate, not a note: `add-video` refuses a generated clip on a loop motion
+that has none, and `register-run` compares `brief.width` with the width that
+actually landed. The parser is all-or-nothing — a brief missing any of the
+three required answers is read as no brief at all, because half a brief would
+open the gate while answering none of the question. A sprite motion never
+carries one; the loader drops it there the way it drops every other loop-only
+field.
 
 ## Character identity vs content set
 

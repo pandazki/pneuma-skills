@@ -442,6 +442,56 @@ describe("loop motions", () => {
     expect(parse("veed", "matting", "matte").mode).toBe("i2v");
     expect(parse("veed", "derived", "denoise").op).toBeUndefined();
   });
+
+  test("a retime by ffmpeg is a clip made out of a clip like any other", () => {
+    // The Kiki trial reordered a plate clip's own frames with ffmpeg concat to
+    // cut a 1.5s freeze and a double blink out of it, and had nowhere to
+    // record it: the result travelled as `op: "interpolate", model: "topaz"`,
+    // which is a step nobody ran. Both names exist now.
+    const video = motionWith((m) => {
+      m.videos = [
+        { id: "video-1", asset: "bounce-video-1", model: "seedance-2.5", mode: "first-last", prompt: "a flame", status: "ready" },
+        { id: "video-2", asset: "bounce-video-2", model: "ffmpeg", mode: "derived", prompt: "", status: "ready", derivedFrom: "video-1", op: "retime" },
+      ];
+    }).videos[1];
+    expect([video.model, video.mode, video.op, video.derivedFrom])
+      .toEqual(["ffmpeg", "derived", "retime", "video-1"]);
+  });
+
+  test("the loop brief survives whole, or not at all, and only on a loop", () => {
+    const briefedAs = (kind: unknown, brief: unknown) =>
+      motionWith((m) => { m.kind = kind; m.brief = brief; }).brief;
+    const briefed = (brief: unknown) => briefedAs("loop", brief);
+
+    const full = {
+      duration: 4, width: 512, interpolator: "topaz" as const, budgetUsd: 3,
+      recordedAt: "2026-09-22T07:11:00.000Z",
+    };
+    expect(briefed(full)).toEqual(full);
+
+    // A budget is the one optional answer: the user may not have named a
+    // ceiling, and 0 is not the same statement as "they said nothing".
+    const { budgetUsd: _none, ...noBudget } = full;
+    expect(briefed(noBudget)).toEqual(noBudget);
+    expect("budgetUsd" in briefed(noBudget)!).toBe(false);
+
+    // A half-recorded brief is not a brief: the scripts gate a paid clip on
+    // it, so a partial one would open that gate on answers nobody gave.
+    for (const broken of [
+      undefined, null, {}, "4s",
+      { ...full, duration: undefined }, { ...full, duration: 0 }, { ...full, duration: "4" },
+      { ...full, width: undefined }, { ...full, width: Number.NaN },
+      { ...full, interpolator: "topaz-2" }, { ...full, interpolator: undefined },
+      { ...full, recordedAt: undefined }, { ...full, recordedAt: "" },
+    ]) {
+      expect({ broken, brief: briefed(broken) }).toEqual({ broken, brief: undefined });
+    }
+
+    // A sprite motion never carries one — the same tolerance every loop-only
+    // field gets, because a brief on a sheet motion describes nothing.
+    expect(briefedAs(undefined, full)).toBeUndefined();
+    expect(briefedAs("sprite", full)).toBeUndefined();
+  });
 });
 
 describe("measuredAnchor", () => {
