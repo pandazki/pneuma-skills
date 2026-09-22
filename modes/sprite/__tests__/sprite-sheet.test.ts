@@ -17,13 +17,16 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import {
-  cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync,
+  cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { alphaColorAudit, buildClip, buildSheet, readBbox, readColorBbox, CELL_OFFSETS } from "./fixtures/pipeline/make-sheet.mjs";
-import type { BuildSheetOptions } from "./fixtures/pipeline/make-sheet.mjs";
+import {
+  alphaColorAudit, buildClip, buildExprClip, buildSheet, clipFrameDeltas, edgeLuma,
+  readBbox, readColorBbox, CELL_OFFSETS,
+} from "./fixtures/pipeline/make-sheet.mjs";
+import type { BuildExprClipOptions, BuildSheetOptions } from "./fixtures/pipeline/make-sheet.mjs";
 
 const SCRIPT = join(import.meta.dir, "..", "skill", "scripts", "sprite-sheet.mjs");
 
@@ -39,12 +42,28 @@ const HAS_LIBWEBP = HAS_FFMPEG &&
   spawnSync("ffmpeg", ["-hide_banner", "-encoders"], { encoding: "utf-8" }).stdout?.includes("libwebp") === true;
 
 function run(...argv: string[]) {
+  return runWithEnv({}, ...argv);
+}
+
+function runWithEnv(env: Record<string, string>, ...argv: string[]) {
   const r = Bun.spawnSync([process.execPath, SCRIPT, ...argv], {
     cwd: import.meta.dir,
     stdout: "pipe",
     stderr: "pipe",
+    ...(Object.keys(env).length ? { env: { ...process.env, ...env } } : {}),
   });
   return { code: r.exitCode, out: r.stdout.toString(), err: r.stderr.toString() };
+}
+
+/** The codec ffprobe finds in a container — the tests' independent answer to
+ *  "is this really an APNG / a VP9 WebM". */
+function codecOf(path: string): string | null {
+  const r = spawnSync(
+    "ffprobe",
+    ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name", "-of", "csv=p=0", path],
+    { encoding: "utf-8" },
+  );
+  return r.status === 0 ? String(r.stdout).trim() : null;
 }
 
 function runJson(...argv: string[]) {
@@ -211,14 +230,14 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
     expect(r.code).toBe(0);
     for (const cmd of [
       "probe", "key", "flatten", "slice", "clean", "align", "pack", "gif",
-      "inspect", "run", "contact", "from-video",
+      "inspect", "run", "contact", "from-video", "loop",
     ]) {
       expect(r.out + r.err).toContain(cmd);
     }
   });
 
-  test("clean --help, contact --help and from-video --help exit 0", () => {
-    for (const cmd of ["clean", "contact", "from-video"]) {
+  test("clean --help, contact --help, from-video --help and loop --help exit 0", () => {
+    for (const cmd of ["clean", "contact", "from-video", "loop"]) {
       const r = run(cmd, "--help");
       expect({ cmd, code: r.code }).toEqual({ cmd, code: 0 });
     }
@@ -1350,14 +1369,25 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
     });
 
     test("the stills are scratch: nothing is left behind in the temp directory", () => {
+      // The command's temp root is this test's own directory, not the shared
+      // one. Watching the shared `tmpdir()` for `sprite-contact-*` cannot
+      // attribute what it sees: any other process running this suite — four
+      // worktrees testing the same mode at once is the normal case here —
+      // adds and removes those names while this test is between its two
+      // samples, and a killed run leaves one behind for every later run to
+      // trip over. (Measured 2026-09-22: the set came back with one name
+      // swapped for another, from a run in a different checkout.) Owning the
+      // directory makes the claim exact instead of statistical.
       const ws = fresh();
-      const before = readdirSync(tmpdir()).filter((f) => f.startsWith("sprite-contact-"));
-      const r = run("contact", holdClip(), "--out", join(ws, "t.png"), "--count", "4", "--json");
+      const scratch = join(ws, "tmp");
+      mkdirSync(scratch, { recursive: true });
+      const r = runWithEnv({ TMPDIR: scratch }, "contact", holdClip(),
+        "--out", join(ws, "t.png"), "--count", "4", "--json");
       expect(r.code).toBe(0);
-      expect(readdirSync(tmpdir()).filter((f) => f.startsWith("sprite-contact-"))).toEqual(before);
+      expect(readdirSync(scratch)).toEqual([]);
       // …and nothing was written next to the motion either: a contact sheet is
       // a working file, not an asset.
-      expect(readdirSync(ws)).toEqual(["t.png"]);
+      expect(readdirSync(ws).sort()).toEqual(["t.png", "tmp"]);
     });
   });
 
@@ -1440,8 +1470,11 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       );
       expect(once.sampledAt[0]).toBe(0);
       // A one-shot motion has to show where it ended up; a loop must not
-      // sample the pose frame 00 already is.
-      expect(once.sampledAt[3]).toBeGreaterThanOrEqual(1.9);
+      // sample the pose frame 00 already is. 1.85, not the last frame's own
+      // 1.9: the clamp sits half a frame before that presentation time, which
+      // still SELECTS the last frame (`-ss` takes the first frame at or after
+      // it) from a timestamp that survives being rounded to milliseconds.
+      expect(once.sampledAt[3]).toBe(1.85);
       expect(once.loop).toBe(false);
     });
 
@@ -1549,6 +1582,408 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
           expect({ args, contains: r.err.includes(name) }).toEqual({ args, contains: true });
         }
       }
+    });
+  });
+
+  describe("the last frame that can still be seeked to", () => {
+    /**
+     * 122 frames at 24 fps, so the last one presents at 121/24 = 5.041666…
+     *
+     * That number is where the clamp used to land, and it does not survive the
+     * trip to ffmpeg: as a double it rounds UP past the frame it names, and
+     * every caller rounds its timestamps to milliseconds on top of that, which
+     * makes it 5.042. `-ss 5.041667` decodes the last frame; `-ss 5.042`
+     * decodes nothing AND exits 0, so `contact` died renaming a still that was
+     * never written (`ENOENT … .023.tmp.png`) and `from-video` refused a clip
+     * it could perfectly well sample.
+     */
+    const longClip = () => {
+      const key = "clip:last-frame";
+      if (!built.has(key)) {
+        built.set(key, buildExprClip(join(shared(), "last-frame.mp4"), {
+          frames: 122, x: "24+8*sin(2*PI*t)", y: "24+8*cos(2*PI*t)",
+        }));
+      }
+      return built.get(key)!;
+    };
+
+    test("contact tiles a clip whose last frame sits on a non-terminating decimal", () => {
+      const ws = fresh();
+      const out = join(ws, "contact.png");
+      const json = runJson("contact", longClip(), "--out", out, "--count", "24", "--width", "40");
+      expect(json.tiles).toHaveLength(24);
+      expect(json.duration).toBeCloseTo(5.083, 2);
+      // Strictly before the last frame's presentation time, and still inside
+      // the last frame's own period, so it selects that frame.
+      expect(json.tiles[23].t).toBeLessThan(5.041667);
+      expect(json.tiles[23].t).toBeGreaterThan(5.041667 - 1 / 24);
+      expect(existsSync(out)).toBe(true);
+    });
+
+    test("from-video samples the same clip all the way to its last frame", () => {
+      const ws = fresh();
+      const json = runJson(
+        "from-video", longClip(), "--out", join(ws, "m"), "--name", "m",
+        "--frames", "4", "--no-loop",
+      );
+      // (122 - 1.5) / 24, rounded to the millisecond every timestamp is.
+      expect(json.sampledAt[3]).toBe(5.021);
+      expect(json.frames).toHaveLength(4);
+      for (const frame of json.frames) {
+        expect({ frame, exists: existsSync(frame) }).toEqual({ frame, exists: true });
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // loop — every frame of a closed window as a transparent UI animation
+  // -------------------------------------------------------------------------
+
+  describe("loop", () => {
+    /** Built once, like every other fixture, and only ever read. */
+    const clip = (key: string, name: string, options: BuildExprClipOptions) => {
+      const id = `clip:${key}`;
+      if (!built.has(id)) built.set(id, buildExprClip(join(shared(), name), options));
+      return built.get(id)!;
+    };
+
+    /**
+     * A 16x16 box orbiting once a second on a chroma plate, 24 frames at
+     * 24 fps: a window that closes on itself, at constant speed so every step
+     * is the same size and the seam is one of them.
+     */
+    const orbit = () => clip("orbit", "orbit.mp4", {
+      x: "24+8*sin(2*PI*t)", y: "24+8*cos(2*PI*t)",
+    });
+    /** The same box, swinging out and back over half a second and then frozen
+     *  on the opening pose for the other half — a first-last clip's duplicate
+     *  closing keyframe, twelve times over. */
+    const frozenTail = () => clip("frozen", "frozen.mp4", {
+      x: "if(lt(t,0.5),24+24*sin(2*PI*t),24)",
+    });
+    /** A box that leaves and never comes back: the loop that does not close. */
+    const sweep = () => clip("sweep", "sweep.mp4", { x: "8+40*t" });
+    /** A big WHITE box on green, 96x96: a bright subject whose edge shows a
+     *  dark fringe the moment anything scales it in straight alpha. */
+    const soft = () => clip("soft", "soft.mp4", {
+      width: 96, height: 96, box: { w: 40, h: 40, color: "white" },
+      x: "28+8*sin(2*PI*t)", y: "28+8*cos(2*PI*t)",
+    });
+    /** The same orbit shot with no plate at all, carried as ProRes 4444 alpha
+     *  — what a matting endpoint hands back. */
+    const matted = () => clip("matted", "matted.mov", {
+      background: "black@0", encode: "prores4444",
+      x: "24+8*sin(2*PI*t)", y: "24+8*cos(2*PI*t)",
+    });
+
+    /** Four encoders per run is most of this describe's wall time, so every
+     *  case that is not about the deliverables asks for one of them. */
+    const WEBP_ONLY = ["--formats", "webp"];
+
+    /** One `loop` per distinct set of flags, shared by the cases that only
+     *  read its output — a run is ~30 ffmpeg spawns. */
+    const runs = new Map<string, { dir: string; json: any }>();
+    const loop = (key: string, source: string, extra: string[] = []) => {
+      if (!runs.has(key)) {
+        const dir = join(shared(), `loop-${key}`);
+        runs.set(key, { dir, json: runJson("loop", source, "--out", dir, "--name", key, ...extra) });
+      }
+      return runs.get(key)!;
+    };
+
+    const frameNames = (dir: string) => readdirSync(join(dir, "frames")).sort();
+
+    test("the fixtures really move — measured, not assumed", () => {
+      // The drawbox gotcha: a filter whose x/y is evaluated once at config
+      // time produces a still image with a duration, and every assertion
+      // below would pass on it. `overlay` is used for exactly this reason,
+      // and this is the measurement that proves it worked.
+      for (const [name, path] of Object.entries({ orbit: orbit(), sweep: sweep(), matted: matted() })) {
+        const deltas = clipFrameDeltas(path);
+        expect({ name, frames: deltas.length + 1 }).toEqual({ name, frames: 24 });
+        expect({ name, quietestStep: Math.min(...deltas) > 10 }).toEqual({ name, quietestStep: true });
+      }
+      // …and the frozen fixture is frozen where it claims to be: its last
+      // eleven steps are zero, its first twelve are not.
+      const frozen = clipFrameDeltas(frozenTail());
+      expect(Math.max(...frozen.slice(0, 11))).toBeGreaterThan(10);
+      expect(Math.max(...frozen.slice(12))).toBe(0);
+    });
+
+    test("keeps every frame of the window, keys the plate and names where each came from", () => {
+      const { dir, json } = loop("orbit", orbit());
+
+      expect(json.kind).toBe("loop");
+      expect(json.source).toBe("video");
+      expect(json.video).toBe(orbit());
+      expect(json.motionDir).toBe(dir);
+      expect(json.name).toBe("orbit");
+      // Every frame, not a sample of them: 24 in, 24 out.
+      expect(json.frames).toHaveLength(24);
+      expect(json.fps).toBe(24);
+      expect(json.duration).toBe(1);
+      expect(json.trim).toEqual({ start: 0, end: 1 });
+      expect(json.dropped).toEqual({ leading: 0, trailing: 0 });
+      expect(json.keyColor).toMatch(/^#[0-9a-f]{6}$/);
+      expect(json.alphaCoverage).toBeGreaterThan(0.03);
+      expect(json.alphaCoverage).toBeLessThan(0.2);
+      expect(json.sampledAt.slice(0, 3)).toEqual([0, 0.042, 0.083]);
+      expect(json.sampledAt).toHaveLength(24);
+
+      // A loop is not a sprite: no sheet, no atlas, no gif, no cells.
+      for (const absent of ["sheet", "atlas", "gif", "cells", "anchor", "xFrom"]) {
+        expect({ absent, value: json[absent] }).toEqual({ absent, value: undefined });
+      }
+
+      // Three digits, contiguous from 000, and that is what the JSON names.
+      expect(frameNames(dir)).toEqual(Array.from({ length: 24 }, (_, i) => `${String(i).padStart(3, "0")}.png`));
+      expect(json.frames[0]).toBe(join(dir, "frames", "000.png"));
+      expect(json.frames[23]).toBe(join(dir, "frames", "023.png"));
+    });
+
+    test("the report is the loop shape, on disk and in the run summary", () => {
+      const { dir, json } = loop("orbit", orbit());
+      const onDisk = JSON.parse(readFileSync(join(dir, "inspect.json"), "utf-8"));
+      expect(onDisk).toEqual(json.inspect);
+
+      expect(json.inspect.kind).toBe("loop");
+      expect(json.inspect.frameCount).toBe(24);
+      expect(json.inspect.cell).toEqual(json.cell);
+      expect(json.inspect.fps).toBe(24);
+      expect(json.inspect.duration).toBe(1);
+      expect(json.inspect.emptyFrames).toEqual([]);
+      expect(json.inspect.dropped).toEqual({ leading: 0, trailing: 0 });
+      expect(json.inspect.warnings).toEqual(json.warnings);
+      // The seam is one step of a constant-speed orbit, so it closes.
+      expect(json.inspect.seam).toBeLessThan(2 * json.inspect.step);
+      expect(json.inspect.maxStep).toBeGreaterThanOrEqual(json.inspect.step);
+      expect(json.warnings).toEqual([]);
+
+      // Nothing a loop is not judged on.
+      for (const absent of ["anchorDrift", "bodyDrift", "maxJump", "scaleDrift", "anchorPoint"]) {
+        expect({ absent, value: json.inspect[absent] }).toEqual({ absent, value: undefined });
+      }
+    });
+
+    test("writes all four deliverables in the containers they claim", () => {
+      const { dir, json } = loop("orbit", orbit());
+      expect(json.webp).toBe(join(dir, "loop.webp"));
+      expect(json.apng).toBe(join(dir, "loop.apng"));
+      expect(json.webm).toBe(join(dir, "loop.webm"));
+      expect(json.lottie).toBe(join(dir, "loop.json"));
+      for (const path of [json.webp, json.apng, json.webm, json.lottie]) {
+        expect({ path, exists: existsSync(path) }).toEqual({ path, exists: true });
+      }
+      expect(json.inspect.exports).toEqual({
+        webp: statSync(json.webp).size,
+        apng: statSync(json.apng).size,
+        webm: statSync(json.webm).size,
+        lottie: statSync(json.lottie).size,
+      });
+
+      // ffprobe reads the two it can read; it cannot read an animated WebP at
+      // all, so that one is identified by its own container.
+      expect(codecOf(json.apng)).toBe("apng");
+      expect(codecOf(json.webm)).toBe("vp9");
+      const webp = readFileSync(json.webp);
+      expect(webp.subarray(0, 4).toString("latin1")).toBe("RIFF");
+      expect(webp.subarray(8, 12).toString("latin1")).toBe("WEBP");
+      // ANIM says animated, and its loop count is 0 = forever.
+      const anim = webp.indexOf("ANIM");
+      expect(anim).toBeGreaterThan(0);
+      expect(webp.readUInt16LE(anim + 12)).toBe(0);
+      expect(webp.indexOf("ANMF")).toBeGreaterThan(0);
+    });
+
+    test("the Lottie is an image sequence, one embedded PNG per frame", () => {
+      const { json } = loop("orbit", orbit());
+      const doc = JSON.parse(readFileSync(json.lottie, "utf-8"));
+      expect(doc.v).toBe("5.7.4");
+      expect(doc.fr).toBe(24);
+      expect(doc.ip).toBe(0);
+      expect(doc.op).toBe(24);
+      expect({ w: doc.w, h: doc.h }).toEqual({ w: json.cell.width, h: json.cell.height });
+      expect(doc.assets).toHaveLength(24);
+      expect(doc.layers).toHaveLength(24);
+
+      expect(doc.assets[0].id).toBe("img_0");
+      expect(doc.assets[0].e).toBe(1);
+      expect(doc.assets[0].p.startsWith("data:image/png;base64,")).toBe(true);
+      // The asset really is that frame's PNG.
+      expect(Buffer.from(doc.assets[5].p.split(",")[1], "base64"))
+        .toEqual(readFileSync(join(json.motionDir, "frames", "005.png")));
+
+      // Each layer is an image layer visible for exactly its own frame.
+      expect(doc.layers[0]).toMatchObject({ ty: 2, ind: 1, refId: "img_0", ip: 0, op: 1, ao: 0, bm: 0, sr: 1 });
+      expect(doc.layers[23]).toMatchObject({ ty: 2, ind: 24, refId: "img_23", ip: 23, op: 24 });
+      expect(doc.layers[0].ks.o).toEqual({ a: 0, k: 100 });
+      expect(doc.layers[0].ks.s).toEqual({ a: 0, k: [100, 100, 100] });
+    });
+
+    test("--trim-holds drops a frozen tail and leaves a clip that never holds alone", () => {
+      const held = loop("frozen", frozenTail(), WEBP_ONLY).json;
+      expect(held.dropped.trailing).toBeGreaterThan(0);
+      expect(held.dropped.leading).toBe(0);
+      expect(held.inspect.frameCount).toBe(24 - held.dropped.trailing);
+      expect(held.frames).toHaveLength(held.inspect.frameCount);
+      expect(frameNames(loop("frozen", frozenTail(), WEBP_ONLY).dir)).toHaveLength(held.inspect.frameCount);
+
+      // The clip that moves from frame 1 and returns loses nothing.
+      expect(loop("orbit", orbit()).json.dropped).toEqual({ leading: 0, trailing: 0 });
+
+      // …and the trimming is a default, not a law.
+      const kept = loop("frozen-kept", frozenTail(), ["--no-trim-holds", ...WEBP_ONLY]).json;
+      expect(kept.dropped).toEqual({ leading: 0, trailing: 0 });
+      expect(kept.inspect.frameCount).toBe(24);
+    });
+
+    test("a loop that does not close says so, with both numbers", () => {
+      const { json } = loop("sweep", sweep(), WEBP_ONLY);
+      expect(json.inspect.seam).toBeGreaterThan(2 * json.inspect.step);
+      const seamWarning = json.warnings.find((w: string) => w.includes("does not close"));
+      expect(seamWarning).toContain(String(json.inspect.seam));
+      expect(seamWarning).toContain(String(json.inspect.step));
+      expect(seamWarning).toContain("--trim-start");
+      // The same sentence reaches the report the viewer reads.
+      expect(json.inspect.warnings).toContain(seamWarning);
+    });
+
+    test("--key alpha decodes the clip's own matte instead of keying a plate", () => {
+      const { dir, json } = loop("matted", matted(), ["--key", "alpha", ...WEBP_ONLY]);
+      expect(json.keyColor).toBeUndefined();
+      expect(json.inspect.keyColor).toBeUndefined();
+      expect(json.inspect.frameCount).toBe(24);
+      // A 16x16 box in a 64x64 frame, and nothing else opaque.
+      expect(json.alphaCoverage).toBeCloseTo(256 / 4096, 3);
+      const frame = readBbox(join(dir, "frames", "000.png"));
+      expect(frame.bbox).not.toBeNull();
+      expect(frame.coverage).toBeLessThan(0.5);
+    });
+
+    test("--key alpha on an opaque clip is refused by name instead of matting nothing", () => {
+      const ws = fresh();
+      const r = run("loop", orbit(), "--out", join(ws, "no"), "--name", "x", "--key", "alpha", "--json");
+      expect(r.code).toBe(1);
+      expect(r.err).toContain("fully opaque");
+      expect(r.err).toContain("remove-video-background.mjs");
+    });
+
+    test("--fps is refused on an alpha clip and names the tool that does it first", () => {
+      const ws = fresh();
+      const r = run("loop", matted(), "--out", join(ws, "no"), "--name", "x",
+        "--key", "alpha", "--fps", "48", "--json");
+      expect(r.code).toBe(1);
+      expect(r.err).toContain("interpolate-video.mjs");
+    });
+
+    test("--fps interpolates the plate and keeps the wrap smooth", () => {
+      const { json } = loop("orbit48", orbit(), ["--fps", "48", ...WEBP_ONLY]);
+      expect(json.fps).toBe(48);
+      expect(json.inspect.frameCount).toBe(48);
+      expect(json.duration).toBe(1);
+      // i / N from the window start, per the contract.
+      expect(json.sampledAt.slice(0, 3)).toEqual([0, 0.021, 0.042]);
+      // The in-betweens that carry the last frame back into the first are
+      // real frames, so the seam is still one step — without them it stayed
+      // at the source clip's 0.36 against a 0.11 step.
+      expect(json.inspect.seam).toBeLessThan(2 * json.inspect.step);
+    });
+
+    test("--crop union is one rect over every frame; --crop none and --pad say otherwise", () => {
+      // The box is 16 wide and orbits +-8, so the union bbox is 32 px across;
+      // --pad 8 on each side makes the cell 48.
+      expect(loop("orbit", orbit()).json.cell).toEqual({ width: 48, height: 48 });
+      expect(loop("orbit-pad0", orbit(), ["--pad", "0", ...WEBP_ONLY]).json.cell).toEqual({ width: 32, height: 32 });
+      expect(loop("orbit-nocrop", orbit(), ["--crop", "none", ...WEBP_ONLY]).json.cell).toEqual({ width: 64, height: 64 });
+    });
+
+    test("--width scales in premultiplied alpha: no dark fringe, no colour under the transparency", () => {
+      const scaled = loop("soft-32", soft(), ["--width", "32", ...WEBP_ONLY]).json;
+      expect(scaled.cell).toEqual({ width: 32, height: 32 });
+
+      // The plate never reaches a transparent pixel, at any scale.
+      for (const index of ["000", "012"]) {
+        const audit = alphaColorAudit(join(scaled.motionDir, "frames", `${index}.png`));
+        expect({ index, hiddenColors: audit.hiddenColors }).toEqual({ index, hiddenColors: ["0,0,0"] });
+      }
+
+      // …and the edge of a WHITE subject stays white. Scaled in straight
+      // alpha it would be averaged with the zeroed plate beside it and come
+      // back grey, which is the dark fringe this is the test for.
+      const edge = edgeLuma(join(scaled.motionDir, "frames", "000.png"));
+      expect(edge.count).toBeGreaterThan(20);
+      expect(edge.min).toBeGreaterThan(160);
+    });
+
+    test("--formats writes only what was asked for", () => {
+      const { dir, json } = loop("orbit-webp", orbit(), ["--formats", "lottie,webp"]);
+      expect(json.webp).toBe(join(dir, "loop.webp"));
+      expect(json.lottie).toBe(join(dir, "loop.json"));
+      expect(json.apng).toBeUndefined();
+      expect(json.webm).toBeUndefined();
+      expect(Object.keys(json.inspect.exports)).toEqual(["webp", "lottie"]);
+      expect(existsSync(join(dir, "loop.apng"))).toBe(false);
+      expect(existsSync(join(dir, "loop.webm"))).toBe(false);
+    });
+
+    test("--key none keeps the frames opaque and says that out loud", () => {
+      const { json } = loop("orbit-raw", orbit(), ["--key", "none", "--formats", "webp"]);
+      expect(json.keyColor).toBeUndefined();
+      expect(json.alphaCoverage).toBe(1);
+      expect(json.cell).toEqual({ width: 64, height: 64 });
+      expect(json.warnings.join(" ")).toContain("opaque");
+    });
+
+    test("--json is one object; the human form names the seam and the exports", () => {
+      const ws = fresh();
+      const asJson = run("loop", orbit(), "--out", join(ws, "j"), "--name", "j",
+        "--formats", "webp", "--json");
+      expect(asJson.code).toBe(0);
+      expect(asJson.out.trim().split("\n")).toHaveLength(1);
+      expect(() => JSON.parse(asJson.out)).not.toThrow();
+
+      const human = run("loop", orbit(), "--out", join(ws, "h"), "--name", "h", "--formats", "webp");
+      expect(human.code).toBe(0);
+      expect(human.out).toContain("24 frames of 48x48 at 24fps");
+      expect(human.out).toContain("seam ");
+      expect(human.out).toContain("dropped 0 leading / 0 trailing");
+      expect(human.out).toContain("webp ");
+    });
+
+    test("refuses by name what it cannot do", () => {
+      const ws = fresh();
+      const cases: Array<{ args: string[]; names: string[] }> = [
+        { args: [join(ws, "nope.mp4"), "--out", join(ws, "a"), "--name", "x"], names: ["nope.mp4"] },
+        { args: [orbit(), "--name", "x"], names: ["--out"] },
+        { args: [orbit(), "--out", join(ws, "b")], names: ["--name"] },
+        { args: [orbit(), "--out", join(ws, "c"), "--name", "x", "--crop", "sideways"], names: ["--crop"] },
+        { args: [orbit(), "--out", join(ws, "d"), "--name", "x", "--formats", "gif"], names: ["--formats", "gif"] },
+        { args: [orbit(), "--out", join(ws, "e"), "--name", "x", "--key", "#zzzzzz"], names: ["--key"] },
+        { args: [orbit(), "--out", join(ws, "f"), "--name", "x", "--trim-holds", "--no-trim-holds"], names: ["--trim-holds"] },
+        { args: [orbit(), "--out", join(ws, "g"), "--name", "x", "--trim-start", "5"], names: ["--trim-start"] },
+      ];
+      for (const { args, names } of cases) {
+        const r = run("loop", ...args, "--json");
+        expect({ args, code: r.code }).toEqual({ args, code: 1 });
+        for (const name of names) {
+          expect({ args, contains: r.err.includes(name) }).toEqual({ args, contains: true });
+        }
+      }
+    });
+
+    test("leaves no working directory behind, whether it finishes or fails", () => {
+      const ws = fresh();
+      const dir = join(ws, "clean");
+      runJson("loop", orbit(), "--out", dir, "--name", "c", "--formats", "webp");
+      expect(readdirSync(dir).sort()).toEqual(["frames", "inspect.json", "loop.webp"]);
+
+      // …and a refusal raised INSIDE the run — the alpha probe is the first
+      // thing the working directory exists for — sweeps up on the way out.
+      const bad = join(ws, "bad");
+      const r = run("loop", orbit(), "--out", bad, "--name", "b", "--key", "alpha", "--json");
+      expect(r.code).toBe(1);
+      expect(existsSync(join(bad, ".loop-work"))).toBe(false);
+      expect(readdirSync(bad)).toEqual([]);
     });
   });
 
