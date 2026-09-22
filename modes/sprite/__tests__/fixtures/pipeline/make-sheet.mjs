@@ -228,3 +228,116 @@ export function buildClip(outPath, {
   }
   return outPath;
 }
+
+/** Encoders `buildExprClip` can write, by name. */
+export const CLIP_ENCODERS = {
+  /** What a model returns: 8-bit, no alpha, chroma-subsampled. */
+  h264: ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-an"],
+  /** What a matting endpoint returns: an alpha plane in the clip itself. */
+  prores4444: ["-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le", "-an"],
+};
+
+/**
+ * A clip of one box whose position is any expression in `t`.
+ *
+ * `buildClip` is the breathing fixture the sampling commands are pinned on;
+ * this is its general form, for the loop cases that need a named number of
+ * frames (the 24 fps / 122-frame clip whose last PTS is 121/24), a motion that
+ * freezes, a motion that never returns, or a clip that carries its own alpha.
+ *
+ * The box is moved by `overlay`, never by `drawbox`: drawbox evaluates its
+ * `x`/`y` once at config time, so a "moving" drawbox fixture is a still image
+ * with a duration (see `buildClip`). Commas inside an expression are escaped
+ * here, so a caller writes `if(lt(t,0.5),24,40)` as it would read it.
+ */
+export function buildExprClip(outPath, {
+  width = 64,
+  height = 64,
+  fps = 24,
+  frames = 24,
+  background = "0x00b140",
+  box = { w: 16, h: 16, color: "red" },
+  x = "24",
+  y = "24",
+  encode = "h264",
+} = {}) {
+  const seconds = frames / fps;
+  const esc = (value) => String(value).replace(/,/g, "\\,");
+  const chain = [
+    `color=c=${background}:s=${width}x${height}:d=${seconds}:r=${fps},format=rgba[bg]`,
+    `color=c=${box.color}:s=${box.w}x${box.h}:d=${seconds}:r=${fps},format=rgba[box]`,
+    `[bg][box]overlay=x=${esc(x)}:y=${esc(y)}:format=auto`,
+  ].join(";");
+  mkdirSync(dirname(outPath), { recursive: true });
+  const r = spawnSync(
+    "ffmpeg",
+    ["-v", "error", "-y", "-f", "lavfi", "-i", chain, ...CLIP_ENCODERS[encode], "--", outPath],
+    { encoding: "utf-8" },
+  );
+  if (r.status !== 0) {
+    throw new Error(`fixture ffmpeg failed: ${r.stderr ?? r.error?.message ?? "unknown"}`);
+  }
+  return outPath;
+}
+
+/**
+ * Max |Δ| between consecutive frames of a clip, as 0..255 luma at a small
+ * analysis size.
+ *
+ * The judgement the drawbox gotcha earned: any fixture that argues "every
+ * frame is different" gets measured once before anything is asserted on it.
+ * A silent still image is what made the first video suite pass for a release.
+ */
+export function clipFrameDeltas(path, width = 48) {
+  const probe = spawnSync(
+    "ffprobe",
+    ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", path],
+    { encoding: "utf-8" },
+  );
+  if (probe.status !== 0) throw new Error(`ffprobe failed for ${path}`);
+  const [w, h] = String(probe.stdout).trim().split(",").map(Number);
+  const height = Math.max(2, 2 * Math.round((h * width) / w / 2));
+  const r = spawnSync(
+    "ffmpeg",
+    ["-v", "error", "-i", path, "-vf", `scale=${width}:${height}`, "-f", "rawvideo", "-pix_fmt", "gray", "-"],
+    { maxBuffer: 256 * 1024 * 1024 },
+  );
+  if (r.status !== 0) throw new Error(`ffmpeg decode failed for ${path}`);
+  const frameBytes = width * height;
+  const count = Math.floor(r.stdout.length / frameBytes);
+  const deltas = [];
+  for (let i = 0; i + 1 < count; i++) {
+    let max = 0;
+    for (let p = 0; p < frameBytes; p++) {
+      const d = Math.abs(r.stdout[i * frameBytes + p] - r.stdout[(i + 1) * frameBytes + p]);
+      if (d > max) max = d;
+    }
+    deltas.push(max);
+  }
+  return deltas;
+}
+
+/**
+ * Luminance of the partially transparent pixels: the fringe, measured.
+ *
+ * A soft edge scaled in STRAIGHT alpha is averaged with whatever RGB sits
+ * under the transparent pixel beside it — black, once the plate has been
+ * zeroed — so a white subject comes back with a grey rim. Scaled
+ * premultiplied, the transparent neighbour contributes nothing and the rim
+ * keeps the subject's own colour. `min` is what tells the two apart.
+ */
+export function edgeLuma(path, { min = 16, max = 250 } = {}) {
+  const { width, height, data } = decode(path);
+  let count = 0;
+  let lowest = 255;
+  let sum = 0;
+  for (let i = 0; i < width * height * 4; i += 4) {
+    const a = data[i + 3];
+    if (a < min || a >= max) continue;
+    const luma = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    count++;
+    sum += luma;
+    if (luma < lowest) lowest = luma;
+  }
+  return { count, min: count ? Math.round(lowest) : null, mean: count ? Math.round(sum / count) : null };
+}

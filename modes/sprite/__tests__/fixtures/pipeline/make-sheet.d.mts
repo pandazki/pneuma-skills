@@ -91,3 +91,44 @@ export interface BuildClipOptions {
 }
 
 export declare function buildClip(outPath: string, options?: BuildClipOptions): string;
+
+export declare const CLIP_ENCODERS: Record<"h264" | "prores4444", string[]>;
+
+/** The overlaid box of an expression clip: its position is the expression, so
+ *  only its size and colour are fixed. */
+export interface ExprBox {
+  w: number;
+  h: number;
+  /** Any ffmpeg colour expression. */
+  color: string;
+}
+
+export interface BuildExprClipOptions {
+  width?: number;
+  height?: number;
+  fps?: number;
+  /** Frames to emit; the duration is frames / fps. */
+  frames?: number;
+  background?: string;
+  box?: ExprBox;
+  /** ffmpeg expressions in `t`; commas are escaped for you. */
+  x?: string;
+  y?: string;
+  encode?: "h264" | "prores4444";
+}
+
+export declare function buildExprClip(outPath: string, options?: BuildExprClipOptions): string;
+export declare function clipFrameDeltas(path: string, width?: number): number[];
+
+export interface EdgeLumaReport {
+  /** Pixels whose alpha is inside [min, max). */
+  count: number;
+  /** Lowest / mean luminance among them, or null when there are none. */
+  min: number | null;
+  mean: number | null;
+}
+
+export declare function edgeLuma(
+  path: string,
+  bounds?: { min?: number; max?: number },
+): EdgeLumaReport;
