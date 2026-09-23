@@ -7,7 +7,9 @@ import { shareProcess } from "../server/share.js";
 const ws = mkdtempSync(join(tmpdir(), "demo-remotion-"));
 mkdirSync(join(ws, ".pneuma"), { recursive: true });
 await initShadowGit(ws);
-cpSync("modes/remotion/seed/default", ws, { recursive: true });
+// The remotion seed is compound: shared scenes/assets plus one locale overlay (src/locale.ts).
+cpSync("modes/remotion/seed/shared", ws, { recursive: true });
+cpSync("modes/remotion/seed/en", ws, { recursive: true });
 await enqueueCheckpoint(ws, 1);
 writeFileSync(join(ws, ".pneuma", "session.json"), JSON.stringify({ sessionId: "demo", mode: "remotion", backendType: "claude-code", createdAt: Date.now() }));
 writeFileSync(join(ws, ".pneuma", "history.json"), JSON.stringify([

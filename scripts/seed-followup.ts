@@ -26,6 +26,10 @@ console.log("Publishing follow-up demo packages:\n");
 // demo must mirror that layout (src/Root.tsx, cosmos.json at root), not nest
 // it under the seed-folder name.
 await demo("diagram", "Architecture (diagram)", (ws) => cpSync("modes/diagram/seed/diagram.drawio", join(ws, "pneuma-overview.drawio")));
-await demo("remotion", "Pneuma Intro (remotion)", (ws) => cpSync("modes/remotion/seed/default", ws, { recursive: true }));
+// remotion is compound: shared scenes/assets plus one locale overlay (src/locale.ts).
+await demo("remotion", "Pneuma Intro (remotion)", (ws) => {
+  cpSync("modes/remotion/seed/shared", ws, { recursive: true });
+  cpSync("modes/remotion/seed/en", ws, { recursive: true });
+});
 await demo("cosmos", "Codebase Cosmos (cosmos)", (ws) => cpSync("modes/cosmos/seed/en", ws, { recursive: true }));
 console.log("\nDone.");

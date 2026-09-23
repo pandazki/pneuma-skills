@@ -60,7 +60,7 @@ const DEMOS: Demo[] = [
   { mode: "illustrate", title: "Blog Heroes (illustrate)",   setup: (ws) => cpSync("modes/illustrate/seed/blog-heroes", join(ws, "blog-heroes"), { recursive: true }) },
   { mode: "kami",       title: "One-Pager (kami)",           setup: (ws) => { cpSync("modes/kami/seed/pneuma-one-pager", join(ws, "pneuma-one-pager"), { recursive: true }); copyKamiShared(ws); } },
   { mode: "diagram",    title: "Architecture (diagram)",     setup: (ws) => cpSync("modes/diagram/seed/diagram.drawio", join(ws, "pneuma-overview.drawio")) },
-  { mode: "remotion",   title: "Pneuma Intro (remotion)",    setup: (ws) => cpSync("modes/remotion/seed/default", ws, { recursive: true }) },
+  { mode: "remotion",   title: "Pneuma Intro (remotion)",    setup: (ws) => { cpSync("modes/remotion/seed/shared", ws, { recursive: true }); cpSync("modes/remotion/seed/en", ws, { recursive: true }); } },
   { mode: "cosmos",     title: "Codebase Cosmos (cosmos)",   setup: (ws) => cpSync("modes/cosmos/seed/en", ws, { recursive: true }) },
 ];
 

@@ -7,8 +7,15 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 
 const remotionManifest: ModeManifest = {
   name: "remotion",
-  version: "0.2.2",
+  version: "0.3.0",
   changelog: {
+    "0.3.0": [
+      "Seed gallery offers the Pneuma intro in English and in Chinese, each one flat Remotion project built from shared scenes plus a locale file",
+      "Chinese version set in LXGW WenKai; every face is loaded before a frame renders, in the preview and in remotion render",
+      "New mode-catalog scene: a deterministic rigid-body pile that renders identical pixels in the preview, a full render and an isolated still",
+      "Tighter opening, staged scene handoffs that never leave an empty frame, and the repository URL on the sign-off",
+      "Seed images shrunk from 13 MB to 1.3 MB",
+    ],
     "0.2.2": ["Install instructions collapsed to one line; rules written in third person with their reasons instead of MUST and FORBIDDEN"],
     "0.2.1": ["Make skill discovery and guidance portable across Claude Code and Codex"],
     "0.2.0": [
@@ -147,24 +154,50 @@ const remotionManifest: ModeManifest = {
 
   init: {
     contentCheckPattern: "src/Root.tsx",
+    // Compound seeds: `shared/` holds the project (config, public/, every scene) and each
+    // locale dir adds only src/locale.ts (copy, text faces, size tweaks). Applied in order,
+    // they produce one flat Remotion project.
     seedFiles: {
-      "modes/remotion/seed/default/": "./",
+      "modes/remotion/seed/shared/": "./",
+      "modes/remotion/seed/en/": "./",
+      "modes/remotion/seed/zh/": "./",
     },
     seeds: [
       {
-        id: "default",
-        sourceKey: "modes/remotion/seed/default/",
-        thumbnail: "default.png",
+        id: "pneuma-intro-en",
+        sourceKey: ["modes/remotion/seed/shared/", "modes/remotion/seed/en/"],
+        thumbnail: "en.png",
         displayName: {
-          en: "Title sequence starter",
-          "zh-CN": "标题序列起手",
-          "zh-TW": "標題序列起手",
+          en: "Pneuma intro · English",
+          "zh-CN": "Pneuma 介绍片 · 英文",
+          "zh-TW": "Pneuma 介紹片 · 英文",
+          ja: "Pneuma 紹介映像 · 英語",
         },
         description: {
-          en: "A Remotion composition with a title sequence at 1280×720, 30fps — edit the React tree and the player updates frame-by-frame.",
-          "zh-CN": "一个 1280×720 / 30fps 的 Remotion 项目,改 React 树面板就会逐帧刷新。",
+          en: "A 63-second product film at 1280×720, 30fps: one file seen two ways, four pillars, and the mode catalog piling up in real physics. Edit any scene and the player follows frame by frame.",
+          "zh-CN": "一支 63 秒的产品介绍片（1280×720，30fps，英文版）：同一份文件的两种视角、四个支柱，还有用物理模拟堆起来的 mode 目录。改任意一幕，播放器逐帧跟上。",
+          "zh-TW": "一支 63 秒的產品介紹片（1280×720，30fps，英文版）：同一份檔案的兩種視角、四個支柱，還有用物理模擬堆起來的 mode 目錄。改任意一幕，播放器逐格跟上。",
+          ja: "63 秒のプロダクト映像（1280×720・30fps・英語版）。ひとつのファイルを二つの視点で、四つの柱、物理演算で積み上がる mode カタログ。どのシーンを直してもプレーヤーがフレーム単位で追従します。",
         },
-        tags: ["Video"],
+        tags: ["Video", "EN"],
+      },
+      {
+        id: "pneuma-intro-zh",
+        sourceKey: ["modes/remotion/seed/shared/", "modes/remotion/seed/zh/"],
+        thumbnail: "zh.png",
+        displayName: {
+          en: "Pneuma intro · Chinese",
+          "zh-CN": "Pneuma 介绍片 · 中文",
+          "zh-TW": "Pneuma 介紹片 · 中文",
+          ja: "Pneuma 紹介映像 · 中国語",
+        },
+        description: {
+          en: "The same 63-second film in Chinese, set in LXGW WenKai beside Fraunces. Fonts load from a CDN at render time, so the project stays small.",
+          "zh-CN": "同一支 63 秒的介绍片，中文版，霞鹜文楷配 Fraunces。字体在渲染时从 CDN 加载，项目本身很轻。",
+          "zh-TW": "同一支 63 秒的介紹片，中文版，霞鶩文楷配 Fraunces。字型在算繪時從 CDN 載入，專案本身很輕。",
+          ja: "同じ 63 秒の映像の中国語版。書体は霞鹜文楷（LXGW WenKai）と Fraunces。フォントはレンダリング時に CDN から読み込むため、プロジェクト自体は軽量です。",
+        },
+        tags: ["Video", "中文"],
       },
     ],
     params: [
