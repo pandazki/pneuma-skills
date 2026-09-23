@@ -14,7 +14,7 @@ CI (`release.yml`) handles tagging, GitHub Release, and npm publish on push to `
 6. **发布体积** —— 若本次新增了 mode 或往仓库里加了大宗二进制(截图、证据帧、样例素材),先跑 `npm pack --dry-run` 看打包体积。**npm 单包上限约 250 MB**,超了 `npm publish` 回 `413 Payload Too Large`,而那一步在 CI 的**最后**:tag 建了、GitHub Release 发了、**只有 registry 没拿到包**——半发布状态,而且从 release 页面上看不出来。3.29.0 就这么炸过一次(bansho 的 `harness/screenshots/` 166 MB,把包顶到 346 MB)。
    **排除大宗物料只能靠 `package.json` 的 `files` 否定模式**(`"!modes/*/harness/"`),**`.npmignore` 对 `files` 白名单里的目录无效**——`files` 优先级更高,写进 `.npmignore` 的那一版打出来一个字节都没少。
    **先 `bun run build` 再 `npm pack --dry-run`,否则少算 `dist/`(30 MB / 294 文件)**——CI 在 publish 前会 build,`files` 里有 `dist/`。3.45.0 就是这样漏的:本地 dry-run 185.8 MB 看着安全,CI 打出 202.5 MB / 249.4 MB unpacked,`413`;3.44.1 是 244 MB unpacked 刚好挤过去的。**实际上限按 tarball ≈ 195 MB / unpacked ≈ 245 MB 算,目标留 40 MB 余量**。大头是 launcher 的 showcase / seed-gallery PNG(94 张 87 MB → pngquant 后 40 MB)和 kami 种子里的两份 19 MB 字体;新加的 showcase 图先 `pngquant --quality=85-100` 再提交。
-   **mode 分发拆分之后(见下面 6b)量到**:187.3 MB / 238.2 MB unpacked / 2294 文件 → **136.1 MB / 174.2 MB unpacked / 1469 文件**。新增一个 **catalog** mode 现在只往包里加它的 `showcase/` 图(几 MB);只有新增 **bundled** mode 才会整个进包——往 `modes/distribution.json` 的 `bundled` 里加名字之前先量一次。`files` 里 `modes/*/showcase/**` **末尾那两个星号不能省**:npm-packlist 只对真实目录展开出 `!dir/**`,带 glob 的条目原样使用,写成 `modes/*/showcase/` 会只进 3 个文件而不是 127 个,而且不报错。
+   **mode 分发拆分之后(见下面 6b)量到**:187.3 MB / 238.2 MB unpacked / 2294 文件 → **127.9 MB / 157.5 MB unpacked / 1199 文件**。新增一个 **catalog** mode 现在只往包里加它的 `showcase/` 图(几 MB);只有新增 **bundled** mode 才会整个进包——往 `modes/distribution.json` 的 `bundled` 里加名字之前先量一次。`files` 里 `modes/*/showcase/**` **末尾那两个星号不能省**:npm-packlist 只对真实目录展开出 `!dir/**`,带 glob 的条目原样使用,写成 `modes/*/showcase/` 会只进 3 个文件而不是 127 个,而且不报错。
 
 
 

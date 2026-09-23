@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.52.0] - 2026-09-23
+
+### Added
+- **Most modes now arrive on first use.** The package ships the starred modes and the framework's own modes; every other mode keeps only its preview images and introduction in the package and is downloaded from the CDN the first time it is opened. Its launcher card, Quick Start tile and the project panel's "Start in any mode" show the download size, a progress bar while it installs, the server's own reason plus a retry if it fails, and behave exactly like a built-in mode once installed. Which modes ship built in is a property of the release (`modes/distribution.json`), not of the mode.
+- **Catalog modes are released with the core, by version.** `bun run publish:modes --version X.Y.Z` rebuilds every catalog mode from the release commit and uploads the archives under `official/vX.Y.Z/`, pinned by size and SHA-256 in the packaged `modes/catalog.json`. A prebuilt viewer only runs on the core that built it, so an install from an older release is shown as stale and re-downloads. CI checks that the published catalog covers every catalog mode in the checkout and that every archive is present before it tags or publishes.
+
+### Improved
+- **The package is a third smaller.** 187 MB → 128 MB packed, 238 MB → 158 MB unpacked, 2294 → 1199 files — well clear of the npm 413 ceiling the last few releases were brushing against.
+- **One bundle builder and one declared host ABI.** Mode viewers built outside the package borrow the host's React, store, i18next and styles through a declared set of globals and vendor shims; `snapshot/mode-build.ts` is the only builder.
+
+### Fixed
+- **External modes no longer get a second store.** The launch-time build for an external mode inlined its own copy of the host's Zustand store, so the viewer and the shell silently disagreed about state; it now shares the host's, and each bundle is about 171 KB smaller.
+- **Stars survive the split.** A favorite saved before this release under a mode that is now downloaded is moved to the right bucket instead of disappearing.
+- **The installer treats an archive as untrusted input.** Absolute paths, `..`, links, devices and a forged install record are refused before anything lands, the archive's core stamp must match the release, and the install record is written last so a half-finished install is never mistaken for a complete one.
+
 ## [3.51.0] - 2026-09-22
 
 ### Added
