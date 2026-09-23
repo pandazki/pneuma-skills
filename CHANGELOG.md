@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.52.2] - 2026-09-23
+
+### Improved
+- **A new Pneuma intro in Remotion, in English and Chinese.** The remotion mode's seed gallery now offers the intro film twice, one card per language, rebuilt from a cold-start Opus 5.5 session and refined. It shows one file seen two ways: the agent writes, the viewer renders, you point and it edits. The Chinese version is set in LXGW WenKai and the English in Fraunces and DM Sans, and every face loads before a frame renders. A new mode-catalog scene piles the modes onto a shelf with a small deterministic physics solver, so a preview, a full render and an isolated still show the same pixels. The old matter.js scene disagreed between render contexts. Scene handoffs never leave an empty frame, and the seed's images shrink from 14 MB to 1.4 MB.
+
 ## [3.52.1] - 2026-09-23
 
 ### Improved
