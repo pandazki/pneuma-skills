@@ -30,8 +30,8 @@ const DIAGRAM_FILES = [
 ];
 
 describe("kami version + changelog contract", () => {
-  it("includes the GPT Image 2.5 upgrade", () => {
-    expect(kamiManifest.version).toBe("1.7.1");
+  it("is at the V1.16.0 sync version", () => {
+    expect(kamiManifest.version).toBe("1.8.0");
   });
 
   it("carries a changelog entry for the current version", () => {
@@ -137,6 +137,28 @@ describe("kami shared stylesheet tokens", () => {
     const families = serif.split(",").map((f) => f.replace(/['"]/g, "").trim());
     expect(families.indexOf("TsangerJinKai02")).toBe(0);
     expect(families.indexOf("Songti SC")).toBeLessThan(families.indexOf("Charter"));
+  });
+});
+
+describe("kami seeds follow the subtractive rule (upstream V1.14.0)", () => {
+  const SEED_DIR = join(import.meta.dir, "..", "seed");
+  const SEEDS = readdirSync(SEED_DIR).filter(
+    (d) => !d.startsWith("_") && existsSync(join(SEED_DIR, d, "index.html")),
+  );
+
+  // design.md «Subtractive rule»: a line must separate regions, encode state,
+  // or carry data. Agents copy these seeds as skeletons, so a decorative brand
+  // bar left in a seed re-teaches the pattern the references now forbid.
+  it("no seed draws a brand-colored side bar or short decorative rule", () => {
+    expect(SEEDS.length).toBeGreaterThan(0);
+    const offenders: string[] = [];
+    for (const seed of SEEDS) {
+      const html = readFileSync(join(SEED_DIR, seed, "index.html"), "utf8");
+      if (/border-left:[^;]*var\(--brand\)/.test(html)) offenders.push(`${seed}: brand border-left`);
+      if (/border-(top|bottom):[^;]*var\(--brand\)/.test(html)) offenders.push(`${seed}: brand rule`);
+      if (/class="(cover|contact)-line"/.test(html)) offenders.push(`${seed}: short decorative rule`);
+    }
+    expect(offenders).toEqual([]);
   });
 });
 

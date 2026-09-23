@@ -195,6 +195,24 @@ breakpoint matters. Real-device, browser-matrix and throttled-network
 testing are the user's own QA — list them in the closing note rather than
 claiming them.
 
+**Custom controls** (sliders, drag surfaces, scrollable control strips): a
+before/after slider can pass every width check and still refuse to drag on
+iOS, so check each one in scope in the same round:
+
+- **Primary gesture**: a tap responds as designed, and a drag with the
+  target input completes rather than just starting.
+- **Scroll across it**: a swipe along the page's scroll axis across the
+  control scrolls the page or container without activating it; a drag that
+  starts on the control along its axis moves the control, not the page.
+  Neither failure throws an error. In code, look for mouse-only handlers,
+  a pointer-event drag surface with no `touch-action`, and drag state that
+  nothing clears on `pointercancel`, `lostpointercapture`, or `blur`.
+- **Evidence**: say what produced it. A `capture` and a resized viewport
+  verify layout, never a gesture; reading the handlers is code review, not
+  a test. When the gesture matters, ask the user to try it on a touch
+  device and report what happens. Name what stayed untested and move on;
+  unreachable hardware is a reported gap, not a blocker.
+
 When the adaptation feels native to each context, hand off to the `polish` command (see [cmd-polish](cmd-polish.md)) for the final pass.
 
 ---

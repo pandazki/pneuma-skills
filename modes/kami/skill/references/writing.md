@@ -17,7 +17,7 @@ How to write, not how to lay out. Good typography with bad content is just "poli
 - Avoid: "Delivered significant business growth"
 - Use: write the specific numbers and deltas
 
-Every sentence should survive the follow-up question "how much, specifically?". If you can't answer, don't write it.
+Use verified numbers for quantitative claims. Explain mechanisms and judgments with concrete facts or examples; do not add a number just to satisfy a quota.
 
 ### 2. Judgment over execution
 
@@ -31,7 +31,7 @@ Junior writes "what they did". Mid writes "how they did it". **Senior writes "wh
 - Avoid: "Embrace the AI era, pioneer digital transformation paradigms"
 - Use: say it in your own words, skip the industry vocabulary
 
-**Distinctive phrasing is memorable**. A line you invented beats a line borrowed from an earnings call. It sounds like a person thinking, not a deck regurgitating.
+Use words that fit the author and the subject. Keep an established voice; do not invent a slogan to make a paragraph seem distinctive.
 
 ### 4. Honest boundaries
 
@@ -103,10 +103,10 @@ Branded documents should first make the subject recognizable, then use decoratio
 
 **Rules**:
 - Every chapter opens with a "claim paragraph" (2-3 sentences summarizing the argument)
-- After long paragraphs (>5 lines), intersperse callouts / quotes / figures to relieve eye fatigue
+- Break long paragraphs with real evidence, an attributed quote, or a useful figure when one exists. Otherwise edit the prose or add a descriptive subhead; do not invent a component for rhythm alone
 - Highlight key data / conclusions with `<span class="hl">`
 - Chapters with external facts must preserve source cues so readers can distinguish fact, judgment, and inference
-- Use "chapter breaks" (blank page + chapter number) between major sections
+- Give a major section its own opener only when it improves navigation. Do not insert a ceremonial blank page
 
 ### Letter
 
@@ -150,7 +150,7 @@ Branded documents should first make the subject recognizable, then use decoratio
 
 **Rules**:
 - Visuals first, text supports
-- Every project's outcome must be quantifiable
+- Support each project outcome with verified metrics or concrete qualitative evidence
 - Final product screenshots / real photos > design mockups > code screenshots
 - If project images are missing, mark the gap. Do not fill the layout with unrelated imagery
 - Don't list every tech stack - a mono tag row is enough
@@ -233,7 +233,7 @@ Structure is necessary but not sufficient. These bars define what separates comp
 
 ### Resume
 
-**Impact formula**: Action + Scope + Measurable Result + Business Outcome. Every bullet must answer "what did I do, at what scale, with what result, and why did it matter?"
+**Impact formula**: Action + Honest Scope + Observable Result. Explain the business outcome when relevant; use verified metrics when available and concrete qualitative evidence otherwise.
 
 | Avoid | Use |
 |---|---|
@@ -243,10 +243,10 @@ Structure is necessary but not sufficient. These bars define what separates comp
 
 **Rules**:
 1. Start every bullet with a strong past-tense verb (designed, led, reduced, migrated). Never "Responsible for" or "Helped with"
-2. Every bullet needs at least one number. If no hard metric exists, use scope (team size, user count, codebase size)
+2. Use verified numbers when they explain the result or scope. If no metric is available, state the observable outcome without inventing one
 3. Connect technical work to business outcomes: revenue, cost, reliability, user retention, time-to-market
 4. Include before/after pairs when possible: "from X to Y" is more credible than "improved by Z%"
-5. Use precise numbers over round ones: "$280K" reads as measured, "$300K" reads as estimated
+5. Match the source's precision: keep a measured value exact and label an estimate as an estimate
 6. Distinguish ownership: "owned" vs "contributed to" vs "coordinated". Inflating scope is the fastest way to lose credibility in an interview
 
 **Senior vs junior**: junior resumes show execution ("built X"). Senior resumes show judgment ("evaluated 3 approaches, chose Y because of tradeoff Z") and multiplier effect ("mentored 4 engineers, 2 promoted within 12 months")
@@ -262,10 +262,10 @@ Structure is necessary but not sufficient. These bars define what separates comp
 
 **Rules**:
 1. Show 2-3 decision points where you chose between alternatives. Explain the tradeoff, not just the winner
-2. Three-layer outcomes: quantitative metric (conversion rate +80%) + qualitative evidence (user quote) + business context ($1.2M additional annual revenue)
+2. Support outcomes with verified metrics or concrete qualitative evidence, and explain the business context when relevant. Include user quotes only when supplied or sourced
 3. State your exact role and scope: "I designed" vs "I led" vs "I contributed to" are very different signals
 4. 3-5 deep case studies beats 12 shallow ones. Depth is credibility
-5. Always close the loop: every problem introduced must have a measured resolution
+5. Close the loop with an observable result for each problem; state unresolved limits when the evidence does not establish a resolution
 6. Prefer final product screenshots over mockups. If product images are missing, mark the gap rather than filling with unrelated imagery
 
 ### Slides
@@ -319,8 +319,8 @@ Structure is necessary but not sufficient. These bars define what separates comp
 When the source arrives as Markdown, remove or convert its artifacts before delivery: thematic breaks (`---`), `**bold**` markers, and inline-code backticks must not surface as raw characters in the rendered page. Scan the finished pages (preview or `capture`) for stray Markdown syntax before calling the document done.
 
 **Rules**:
-1. Evidence density: at least one data point per paragraph. A paragraph with zero numbers is an opinion paragraph and should be rare
-2. Callout or figure after every 3-4 paragraphs of dense text. Long unbroken prose causes eye fatigue in print
+1. Evidence density: support factual claims with sources, examples, or verified measurements. Do not add numbers to paragraphs that explain a mechanism or judgment
+2. When dense prose needs relief, use an existing attributed quote, evidence figure, descriptive subhead, or paragraph edit. Do not manufacture a callout on a fixed cadence
 3. Counter-arguments addressed before they become reader objections. If you can predict the pushback, address it proactively
 4. Source cues preserved inline: "(Gartner, 2025)" or "according to the company's 10-K" so readers can distinguish fact from inference
 5. Each chapter should stand alone as a mini-essay with its own arc: claim -> evidence -> conclusion
@@ -356,7 +356,7 @@ When the source arrives as Markdown, remove or convert its artifacts before deli
 
 **Rules**:
 1. Breaking changes always first, with migration path ("Replace `config.old` with `config.new`; run `migrate.sh` to convert")
-2. 5-8 items per section. If more, this is probably 2 releases
+2. Group changes by user-visible outcome. Item counts do not determine release boundaries
 3. Group by user impact (Breaking / Features / Fixes), not by component or file
 4. No internal jargon. "Fix memory leak in image decoder" is clear. "Fix retain cycle in UIImageDecoderBridge" is not
 
@@ -438,9 +438,9 @@ Literal alignment is the failure mode; meaning alignment is the goal. Every time
 
 - **Read each language straight through as a native reader**, not against the source text. Flag every sentence that carries the source language's skeleton: word order, comparison patterns, and punctuation rhythm are all allowed to diverge from the source.
 - **Rewrite, don't adjust.** A source-shaped sentence usually needs its structure rebuilt, not a word swapped — even at the cost of dropping the source's phrasing entirely.
-- **Never transplant rhetorical devices.** Number parallelism, puns, and alliteration die in translation. A line that reads as a device becomes a plain statement in the target language: what the reader gets, no cleverness.
+- **Localize the expression, preserve the facts.** Rework puns and parallel phrasing only when natural local speech needs it. `One price, five tools` can become `一次购买，包含五款工具`, never a claim the source does not make (such as `永久更新` when lifetime updates are not part of the offer).
 - **User-adopted phrasing wins.** If the user has already approved a specific line in one language, treat it as fixed and localize around it, not over it.
-- **Report the pass.** Tell the user how many sentences were rewritten per language; `0 rewrites` after a large copy change is a signal the pass did not happen.
+- **Report coverage and unresolved issues.** List the languages and pages checked. Keep already-natural sentences; a rewrite count is not evidence of quality.
 
 ---
 
@@ -454,7 +454,7 @@ Run through before shipping every draft:
 - [ ] Are all numbers verifiable? If asked "where did this come from", can you answer?
 - [ ] Are current facts, versions, launch dates, funding, financials, and specs backed by reliable sources?
 - [ ] Does every branded document have logo, product image, or UI screenshot coverage? Are missing materials clearly marked?
-- [ ] At least one **distinctive phrase** (not industry boilerplate)?
+- [ ] Does the wording fit the author and subject, without stock phrases or forced slogans?
 - [ ] Every emphasized (brand-colored) span is either a number or a distinctive phrase? If not, remove the emphasis.
 - [ ] Paragraph lengths even? No paragraph over 5 lines?
 - [ ] Number format consistent (commas, percent signs, arrows)?
@@ -462,7 +462,7 @@ Run through before shipping every draft:
 - [ ] Page count within the document's constraint (resume 2, one-pager 1, letter 1)?
 - [ ] Any AI writing cliches? CN: 本质是 / 这意味着 / 值得注意的是 / 不仅...而且 / 破折号堆砌。EN: em dashes, "It's worth noting", "This means that". See anti-patterns #28.
 - [ ] Multi-page docs (>8 pages / >10 slides): domain terms re-annotated beyond the half-life window? See principle #7.
-- [ ] Multilingual documents: native-reader localization pass done per language, rewrite counts reported?
+- [ ] Multilingual documents: native-reader localization pass done per language, coverage and open issues reported?
 
 ---
 

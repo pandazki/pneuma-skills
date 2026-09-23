@@ -34,7 +34,7 @@ Each project row uses a fixed three-part structure. The word and character targe
 
 - Role: what the project was, why it existed, and your position in it. No verbs yet.
 - Actions: the decisions and techniques you applied. One concrete approach per sentence.
-- Impact: quantified outcomes only. If no number exists, write the magnitude or scope (team size, user count, traffic tier).
+- Impact: state the observable outcome. Include verified numbers when available; otherwise use concrete qualitative evidence. Team size or traffic describes scope, not a substitute result.
 
 **Self-check**: read Impact aloud. If it sounds like a process description ("improved the pipeline") rather than a result ("reduced p95 latency from 800ms to 120ms"), rewrite.
 
@@ -106,7 +106,7 @@ Each project card has a `.metrics` row that shows key numbers. Two layout modes 
 
 Use | Avoid
 ---|---
-Horizontal for two short metrics: `38% reduce latency · 12k daily users` | Horizontal for long labels: `reduced p95 latency from 820ms to 110ms · 12k active users`
+Horizontal for two short metrics: `38% lower latency · 12k daily users` | Horizontal for long labels: `reduced p95 latency from 820ms to 110ms · 12k active users`
 Vertical when three or more metrics exist | Vertical for exactly two short metrics (wastes space)
 
 To switch to vertical:
@@ -185,9 +185,9 @@ The shipped resume templates carry a quiet, two-page rhythm. Hold these when edi
 from reading like a long-doc:
 
 - **Section headers** use a single warm bottom rule
-  (`border-bottom: 0.5pt solid var(--border)`), not a brand-color left
-  bar. The 2.5pt brand left bar belongs to long-doc / proposal section
-  titles; on a resume it reads loud.
+  (`border-bottom: 0.5pt solid var(--border)`). It is the one heading line
+  kami keeps, because it separates major content regions; no genre carries
+  a brand-color side bar on its headings (`design.md` «Subtractive rule»).
 - **Project rows** carry no top/bottom border. Separate them with padding
   and the weight of the project name alone — row borders fragment the
   page and fight the metric strip.

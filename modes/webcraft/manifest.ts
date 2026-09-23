@@ -8,7 +8,7 @@ import { loadSite, saveSite } from "./domain.js";
 
 const webcraftManifest: ModeManifest = {
   name: "webcraft",
-  version: "1.7.2",
+  version: "1.8.0",
   displayName: {
     en: "WebCraft",
     "zh-CN": "WebCraft",
@@ -28,6 +28,14 @@ const webcraftManifest: ModeManifest = {
     de: "Webdesign mit Impeccable.style —— 22 KI-Designbefehle, responsive Vorschau und Export",
   },
   changelog: {
+    "1.8.0": [
+      "Synced Impeccable.style guidance to upstream skill v4.3.1",
+      "The direction contract now lives in the page's surface brief and never ships inside the exported page",
+      "Ordinary extensions confirm DESIGN.md against the build instead of rewriting it, and pre-existing drift is reported rather than silently repaired",
+      "Craft floor bans many-vertex clip-path silhouettes and images buried under near-opaque washes",
+      "Adapt, audit and harden now check custom sliders and drag surfaces under touch, and say what evidence a gesture claim rests on",
+      "Workflow questions get advice without edits, and palette seeds drop the SaaS brand roll-call",
+    ],
     "1.7.2": ["Command references verify with capture rounds instead of real-device and Lighthouse steps the session cannot run; overdrive follows the no-external-browser rule; MANDATORY, CRITICAL and NEVER labels replaced by plain rules"],
     "1.7.1": ["Make skill discovery and guidance portable across Claude Code and Codex"],
     "1.7.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],

@@ -31,9 +31,12 @@ that is a new workspace, not an edit.
 
 ## Content pre-flight
 
-Confirm these before drafting any slide. Ask them **all at once**, skip anything
-already answered, and do not stall the work waiting for a full set — draft on
-the answers you have and mark what is still open.
+Resolve these from the request and the source material before drafting any
+slide. The table is an **internal checklist, not a questionnaire**: infer what
+the context already answers, and ask only about the choices that are still open
+*and* would materially change the deck — at most one compact question. Do not
+stall the work waiting for answers; draft on what you have and mark what is
+still open.
 
 | # | Question |
 |---|---|
@@ -44,7 +47,7 @@ the answers you have and mark what is still open.
 | 5 | **Hard constraints** — brand colors, a required logo, slides that must exist? |
 | 6 | **Format confirmation** — is this actually a deck, or a one-pager that looks like one? |
 
-Question 6 is not a formality. A one-pager wearing deck clothes is the single
+Item 6 is not a formality. A one-pager wearing deck clothes is the single
 most common miss in this genre, and it is much cheaper to catch here than after
 twenty slides exist.
 
@@ -57,7 +60,7 @@ twenty slides exist.
 - **No CJK parentheses**: replace `（...）` with `·` or a comma.
 - **Each bullet fits one line**: trim until it does.
 - **2×2 layouts use `table.t2x2`**, not CSS Grid — table rows share height naturally, grid does not guarantee it.
-- **Pinned conclusions** use `.co` at the bottom of the sheet. The whitespace above a pinned callout is the design, not a sparse page.
+- **Pinned conclusions** use `.co` at the bottom of the sheet, only when the callout adds a real relationship, constraint, or conclusion. Then the whitespace above it is the design; a `.co` placed to fill trailing whitespace is padding.
 
 ## Before handing the deck back
 

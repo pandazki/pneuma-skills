@@ -219,7 +219,7 @@ Do these before your first design edit in a conversation:
 1. **Gather design context** (the Context Gathering Protocol below). Design work without project context is generic work; if the project has none, run the `init` command first.
 2. **Load the one playbook that owns the request.** A toolbar command (or a clearly implied one) → its `references/cmd-<command>.md`. A new surface or a replacement visual world → the new-work flow in [references/cmd-craft.md](references/cmd-craft.md). Non-optional: the reference defines the flow, and skipping it skips steps the user expects.
 3. **Inspect what is already true.** Read the target and at least one representative source of incumbent visual truth in the active content set — tokens, theme, CSS, a component, an asset. Required even after step 2. Don't reinvent what is there; branch out when the UX wins.
-4. **Load [references/craft-floor.md](references/craft-floor.md) immediately before editing UI**, once analysis and direction are settled. It carries the quality floor, the absolute bans, and the reflexes no review catches for you. Don't load it for planning-only work.
+4. **Load [references/craft-floor.md](references/craft-floor.md) immediately before any UI edit**, small refinements included, once analysis and direction are settled. It carries the quality floor, the absolute bans, and the reflexes no review catches for you. Don't load it for planning-only work.
 5. **New content set with no committed brand colors?** Run `node {SKILL_PATH}/scripts/palette.mjs` for a brand seed color with mood and composition guidance, then build the palette (bg, surface, ink, accent, muted) around it in OKLCH. Committed brand colors always win — identity preservation beats a fresh seed.
 
 ### How to design
@@ -252,7 +252,7 @@ Gathering order:
 
 ### Surface briefs — a page remembers its strategy
 
-When work settles durable strategy for one page, write it to `.impeccable/surfaces/<page-slug>.md` with the `Write` tool, and read that file back before you touch the page again. Keep it small: scope and visitor mode; audience, job, action, proof or content, constraints; the chosen direction and its memorable moment; what is still open. Never copy global product truth or `DESIGN.md` tokens into it. The point is that a later session continues this page's argument instead of inventing a new one.
+When work settles durable strategy for one page, write it to `.impeccable/surfaces/<page-slug>.md` with the `Write` tool, and read that file back before you touch the page again. Keep it small: scope and visitor mode; audience, job, action, proof or content, constraints; the chosen direction and its memorable moment; what is still open. New visual work also keeps its direction contract here ([cmd-craft](references/cmd-craft.md) §5). Never copy global product truth or `DESIGN.md` tokens into it, and never copy the brief into the page: it is development-only and never ships. The point is that a later session continues this page's argument instead of inventing a new one.
 
 ### Drift — report it once, never repair it as a side quest
 
@@ -304,9 +304,10 @@ The user invokes these from the viewer toolbar. When a command is invoked, follo
 
 1. **Toolbar invocation** (`command:X` in `<user-actions>`): load that command's reference and follow it. The chat text, if any, is the target.
 2. **Typed command name**: if the first word of a message matches a command above (including the deprecated `teach` → `init` alias), treat it as an invocation; everything after it is the target.
-3. **Clear intent, no command named**: when a request maps cleanly onto one command ("fix the spacing" → `layout`, "rewrite this error message" → `clarify`, "the colors feel flat" → `colorize`), load that reference and proceed as if invoked. If two fit, ask once which.
-4. **New visual work, however it is phrased** ("build a landing page", "add a pricing section", "redesign this"): follow [cmd-craft](references/cmd-craft.md). It opens by naming the job kind, because each one earns a different amount of freedom — a blank slate derives a whole world; a new page inside an existing product keeps the world fixed and decides only its structure; a section added to a working page inherits everything and decides only what it introduces; a redesign treats the old look as evidence and replaces it; a scoped refinement stays inside the ask. Getting this wrong in either direction is the classic failure: restyling a product around a new section, or polishing the look the user asked you to discard.
-5. **No clear match**: general design work. Apply Setup, the visitor mode, and the craft floor, with the request as context.
+3. **A question about the workflow** ("which command should I run?", "what does polish do?"): answer it with advice, reading the relevant command references for prerequisites and scope, and change nothing. If the user also asks for the work, do it.
+4. **Clear intent, no command named**: when a request maps cleanly onto one command ("fix the spacing" → `layout`, "rewrite this error message" → `clarify`, "the colors feel flat" → `colorize`), load that reference and proceed as if invoked. If two fit, ask once which.
+5. **New visual work, however it is phrased** ("build a landing page", "add a pricing section", "redesign this"): follow [cmd-craft](references/cmd-craft.md). It opens by naming the job kind, because each one earns a different amount of freedom — a blank slate derives a whole world; a new page inside an existing product keeps the world fixed and decides only its structure; a section added to a working page inherits everything and decides only what it introduces; a redesign treats the old look as evidence and replaces it; a scoped refinement stays inside the ask. Getting this wrong in either direction is the classic failure: restyling a product around a new section, or polishing the look the user asked you to discard.
+6. **No clear match**: general design work. Apply Setup, the visitor mode, and the craft floor, with the request as context.
 
 Missing `PRODUCT.md` routes new work through `init` first. A narrow refinement of existing code proceeds on the incumbent implementation and offers `init` afterwards rather than blocking on it.
 

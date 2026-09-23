@@ -195,7 +195,8 @@ machine-readable check — capture is for visual judgement.
 | Serif | **One serif per page.** CN: `TsangerJinKai02`. EN: `Charter` (system). JA: `YuMincho` (system). KO: `Source Han Serif K` → `AppleMyungjo` (system). Weight 400 body / 500 headings. Never bold. |
 | Letter-spacing | CN body 0.3pt (locks in TsangerJinKai02 density). EN body 0. Tracking only on small labels and overlines. |
 | Line-height | Titles 1.1–1.3. Dense body 1.4–1.45. Reading body 1.5–1.55. Never 1.6+. |
-| Shadows | Ring or whisper only. No hard drop shadows. No gradients. |
+| Surfaces | Flat. Ivory fill is the only lift. No shadows on content (a whisper shadow only under a real floating screenshot), no gradients. |
+| Lines | A line must separate regions, encode state, or carry data. No eyebrow ticks, short cover rules, or side bars on headings, callouts, and quotes. Table rules are neutral `--border` hairlines. |
 | Tags | Two tints, both tokens: `--tag-bg` `#E4ECF5` default, `--brand-tint` `#EEF2F7` to recede. Solid only — `rgba()` can break in print, and a third tint is drift. |
 
 `--sans` aliases `--serif` in `_shared/styles.css`; use one serif per page
@@ -275,7 +276,7 @@ kinds, and only the first one runs the full flow below:
 
 | The request | Kind | What it commits you to |
 |---|---|---|
-| A new document, or a restructuring that changes what the pages are | **New document** | The full flow: source pass, layout note, content set, post-fill check |
+| A new document, or a restructuring that changes what the pages are | **New document** | The full flow: source pass, layout note, content set, post-fill check, editorial passes |
 | Replacing text, translating, correcting a fact in an existing document | **Content-only** | Change the copy. Leave CSS and layout alone unless the new copy proves a genuine fit defect |
 | The user looks at the render and says something is wrong with how it looks | **Visual repair** | The render is the brief. Name the target, name what must stay untouched, make the smallest fix — see «Vague feedback → concrete options» |
 | A standalone generated illustration, cover, or redraw | **Generated asset** | Lock the semantic brief before any pixels; preserve what was already accepted across iterations — see «Image generation» |
@@ -392,6 +393,38 @@ that nothing was dropped or mutated on the way into HTML:
 Fix a mismatch by fixing the page (or asking the user for the missing
 fact), not by relaxing the check.
 
+### Step 5 · Editorial passes (tables, then lines)
+
+**Table pass** — whenever the document has a table. A kami table separates
+rows through alignment and breathing room first; rules are quiet guides.
+
+- One chromatic system: table text stays in the neutral ink hierarchy, every
+  rule is `var(--border)`. No category-colored values, brand-colored rules,
+  per-column hues, tinted header, or vertical grid. Carry meaning with weight,
+  signs, and labels.
+- Hairline hierarchy: header and total rules `0.6pt`, body rules `0.25pt`. If
+  the line is noticed before the values, it is too heavy.
+- Padding floor: at least `6pt` on headers and `5pt` on cells. A resume or
+  one-pager may step down once to `5pt` / `4pt` after the fit loop proves it
+  must; `.compact` never goes below `3pt` / `2.5pt`, and is earned (5+
+  columns, 8+ body rows, or a verified fit constraint), not reflexive.
+- Striping is exceptional: start without `.striped`; add its neutral fill only
+  when 8+ body rows still track poorly at normal viewing size.
+
+**Subtractive pass** — before handing back. Remove every visual primitive that
+does not encode data, state, grouping, or a relationship: decorative eyebrow
+ticks, short cover or contact rules, side bars on headings / quotations /
+callouts, fake dash bullets. A callout needs only its fill, padding, and type; a
+quotation only indentation, olive text, and reading space; a section title only
+type scale and margin. Keep what does real work: table hairlines, chart axes,
+diagram connectors, full-width region separators, current-state indicators.
+The test is to hide the line: if meaning, grouping, and navigation survive,
+delete it and restore the pause with spacing, not with another ornament.
+
+Both passes change geometry. Re-read `.pneuma/kami-fit.json` afterwards and
+look at the affected pages with a `capture` — a removed rule can collapse an
+intended pause or leave a neighbour visually unanchored.
+
 ## Fit discipline — the kami authoring loop
 
 Kami is a **strict-page** medium. The AUTHOR decides how many sheets a
@@ -426,7 +459,7 @@ height minus the top and bottom safe margins). Five statuses:
 |------------|-----------------------------------------|------------|
 | `fits`     | within ±3 mm of the safe height          | Stop. Move on. |
 | `loose`    | 3–30 mm short                            | Fine on a body page; tighten or enrich only if the page reads thin. |
-| `sparse`   | more than 30 mm short                    | Consider filling: expand a weak section with concrete specifics, add a pull-quote, include a metric, OR merge adjacent pages if the content genuinely fits tighter. |
+| `sparse`   | more than 30 mm short                    | Merge with a neighbouring page first, or fold the page's one useful point into a neighbour. Expand only with verified specifics the source supports. Never add a callout, chart, or image just to occupy space. |
 | `bleed`    | over, by up to the bottom safe margin    | Prints, but into the margin. Treat as overflow unless the page is a deliberate full-bleed cover. |
 | `overflow` | over by more than the bottom safe margin | **Must trim.** Priority order: delete or merge content first — drop a bullet, tighten phrasing, remove a section, merge duplicated concepts. Never shrink font-size or line-height to force a fit; those are locked by the design system. |
 
@@ -435,7 +468,7 @@ height minus the top and bottom safe margins). Five statuses:
 1. Make a content edit.
 2. Read `.pneuma/kami-fit.json`.
 3. If `overflow_count > 0`, or `bleed_count > 0` on any page that is not a deliberate full-bleed cover → trim the offending pages → loop to step 2.
-4. If `sparse_count > 0` and content intent allows → enrich → loop to step 2.
+4. If `sparse_count > 0` and content intent allows → merge or enrich → loop to step 2.
 5. When every page is `fits` — or `loose` on a body page you judged acceptable, or `bleed` only on a deliberate full-bleed cover — stop.
 
 That acceptance bar across every page is what you reach before you tell
@@ -660,8 +693,9 @@ alternatives: "X is currently Y. Would you like (a) … or (b) …?" Never say
 **Escalate after two rounds.** If the same element is still not approved
 after two adjustment rounds, stop nudging values: build one comparison
 page instead — the current state plus 2-3 labeled variants (A/B/C) of
-the same content in the same frame — and let the user pick in the live
-preview. For choices with no objective criterion (typeface feel, accent
+the same content in the document's actual page and background, keeping the
+neighbouring components and changing only the compared property — and let the
+user pick in the live preview. For choices with no objective criterion (typeface feel, accent
 usage, cover motif), skip the nudging entirely and start with a specimen
 page: up to 5 candidates, each a labeled half-page block of identical
 title-plus-paragraph content. One round of "pick one" converges where
@@ -702,13 +736,13 @@ Load only what the task needs. Default to the lowest tier.
 | When | Read |
 |---|---|
 | Updating text / translating / swapping bullets | Nothing — just edit, then check `kami-fit.json` |
-| A page shows `overflow` or `sparse` | `references/cmd-fit.md` — trimming + filling tactics |
+| A page shows `overflow` or `sparse` | `references/cmd-fit.md` — trimming + merge tactics |
 | Adjusting layout or tweaking spacing | Look at the closest existing demo |
 | Building a new doc type from scratch | `references/design.md` |
 | Writing tone / structure guidance | `references/writing.md` |
 | Embedding a diagram | `references/diagrams.md` |
 | Architecture board / maintained diagram | `references/diagrams.md` §3-4 — board skeleton, evidence pass, maturity encoding |
-| Drafting a deck | `references/deck-preflight.md` — the six questions to ask in one batch, then the slide content rules |
+| Drafting a deck | `references/deck-preflight.md` — the pre-flight checklist (ask only what is open and material), then the slide content rules |
 | Building or editing a resume | `references/resume-writing.md` — bullet structure, source-and-truth pass, ownership calibration, two-page balance, recruiter pass |
 | Document headed to a home/office printer | `references/design.md` §6 — the opt-in white-paper recipe |
 | Quality pass before handing back | `references/anti-patterns.md` — the AI-document failure checklist |

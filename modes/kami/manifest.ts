@@ -30,7 +30,7 @@ const SAFE_MARGINS_MM: Record<string, { top: number; side: number; bottom: numbe
 
 const kamiManifest: ModeManifest = {
   name: "kami",
-  version: "1.7.1",
+  version: "1.8.0",
   displayName: {
     en: "Kami",
     "zh-CN": "Kami",
@@ -50,6 +50,14 @@ const kamiManifest: ModeManifest = {
     de: "Webdesign auf Papier-Leinwand mit warmer Pergament-Ästhetik —— Designsprache übernommen von tw93/kami (MIT)",
   },
   changelog: {
+    "1.8.0": [
+      "Synced upstream tw93/kami V1.13.0 to V1.16.0 (Quieter Pages / Good Paper)",
+      "Subtractive pages: no eyebrow ticks, cover rules or brand side bars on headings, callouts and quotes; the three seeds and their gallery cards follow",
+      "Tables go quiet: neutral 0.6pt / 0.25pt hairlines, a padding floor, compact and striping only when earned",
+      "New editorial passes after the fact check: a table pass and a line-deletion test, verified by capture and the fit report",
+      "Verified numbers only: resume, portfolio and report guidance no longer demand a figure in every bullet or paragraph",
+      "Deck intake asks only what is open and material; sparse pages merge before they fill, and nothing is added just to occupy space",
+    ],
     "1.7.1": ["Fit loop rewritten to the viewer's kami-fit.json contract with the delta-safe-mm field and the five statuses including loose and bleed; WeasyPrint rationales and upstream version notes removed"],
     "1.7.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
     "1.6.0": [

@@ -218,6 +218,11 @@ t('items', { count }) // Handles complex plural rules
 - Optimistic updates with rollback
 - Conflict resolution
 
+**Interrupted gestures** (custom sliders, drag surfaces, scrollable control strips):
+- A second finger or pointer lands mid-drag: the first drag keeps its pointer or ends cleanly, never jumps to the new one
+- The browser cancels the gesture to scroll (`pointercancel`), capture is lost (`lostpointercapture`), the pointer is released outside the control, or the window loses focus (`blur`) mid-drag: clear the dragging state and release capture
+- After each of these, the next tap or drag works without a reload
+
 **Permission states**:
 - No permission to view
 - No permission to edit
@@ -347,7 +352,9 @@ name them in the closing note.
 
 **Automated testing** (when the project has a test harness): unit tests
 for edge cases, integration tests for error scenarios, E2E tests for
-critical paths, visual regression tests, accessibility tests (axe, WAVE).
+critical paths, a behavioral regression for each confirmed gesture fix when
+the runner can drive input, visual regression tests, accessibility tests
+(axe, WAVE).
 
 Hardening is about expecting the unexpected. Real users will do things you never imagined.
 
@@ -371,5 +378,6 @@ Check each of these in the shipped page, with a `capture` where it renders:
 - **Concurrent actions**: a double submit is guarded
 - **Errors**: every error state the page defines has copy and a recovery
 - **Empty**: every empty state has a next action
+- **Interrupted gestures**: every cancel, lost-capture, release-outside, and blur path clears the drag state in code; ask the user to run the physical checks (second finger mid-drag, scroll across the control, switch windows mid-drag, then drag again) on a touch device, and name what stayed untested
 
 When edge cases are covered, hand off to the `polish` command (see [cmd-polish](cmd-polish.md)) for the final pass.

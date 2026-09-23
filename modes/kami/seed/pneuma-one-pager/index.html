@@ -29,9 +29,6 @@
 
   /* ========== HEADER ========== */
   .header {
-    border-left: 2.5pt solid var(--brand);
-    border-radius: 1.5pt;
-    padding-left: 8pt;
     margin-bottom: 14pt;
     display: flex;
     align-items: flex-end;
@@ -114,9 +111,6 @@
     font-weight: 500;
     color: var(--near-black);
     margin-bottom: 6pt;
-    border-left: 2.5pt solid var(--brand);
-    border-radius: 1.5pt;
-    padding-left: 8pt;
   }
   h2 .sub {
     font-size: 8.5pt;
@@ -198,12 +192,12 @@
   }
 
   /* ========== Callout / 高亮块 ========== */
-  /* 参考 resume.html .team-culture：透明底 + 单左侧 brand 竖条。
-     不做容器也不做圆角，气质是"一条旁注"而不是"一个卡片"。 */
+  /* Ivory fill and type carry the emphasis; no accent edge
+     (upstream V1.14.0 subtractive rule). */
   .callout {
-    background: transparent;
-    border-left: 1.8pt solid var(--brand);
-    padding: 4pt 0 4pt 14pt;
+    background: var(--ivory);
+    border-radius: 3pt;
+    padding: 8pt 12pt;
     margin: 10pt 0;
     font-size: 10pt;
     line-height: 1.5;

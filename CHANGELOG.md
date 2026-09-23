@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.52.1] - 2026-09-23
+
+### Improved
+- **Kami follows upstream tw93/kami V1.16.0.** Pages are quieter: decorative brand bars, eyebrow marks, cover rules and card accents are gone — a line now has to separate regions, show state or carry data. Tables get one neutral recipe, a half-empty page is merged with its neighbour instead of padded, bullets no longer need a figure each, and diagrams gain a relationship-geometry check. The three seeds and their gallery images are redrawn to match; a manifest test keeps the old side bars from coming back.
+- **WebCraft follows upstream Impeccable.style skill v4.3.1.** The direction contract moves into the page's surface brief so it never ships inside an exported page; `document` confirms an existing DESIGN.md instead of rewriting it; the craft floor bans many-vertex `clip-path` silhouettes and images buried under near-opaque washes; adapt, audit and harden check touch gestures by reading handlers and asking for a device try; workflow questions get advice without edits; `palette.mjs` takes upstream's seed data without the SaaS brand roll-call.
+
 ## [3.52.0] - 2026-09-23
 
 ### Added

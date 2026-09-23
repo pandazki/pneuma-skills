@@ -59,10 +59,69 @@ it mirrors upstream V1.7.0's "Korean Paper" without bundling the font.
 ## Tracked upstream version
 
 Diagrams and reference docs in this mode are synced against
-[tw93/kami **V1.13.0**](https://github.com/tw93/Kami/releases/tag/V1.13.0)
-("Steadier Proof", 2026-08-23). Items intentionally not synced from
-upstream because they don't apply to Pneuma's iframe paper-canvas /
-browser-print model:
+[tw93/kami **V1.16.0**](https://github.com/tw93/Kami/releases/tag/V1.16.0)
+("Good content deserves good paper"), plus the post-release commit
+`a489e39` that finishes V1.16.0's verified-numbers wording in
+`references/writing.md`. Upstream moved its skill into `skills/kami/` in
+V1.15.0; the file-level mapping is unchanged.
+
+Adopted from V1.14.0 – V1.16.0:
+
+- **V1.14.0 subtractive visual system.** `references/design.md` drops the
+  brand left rule, eyebrow ticks, short cover / contact rules, the
+  callout and quote side bars, the accent-edge card, ring and hover
+  shadows, and the dash bullet in favour of the «Subtractive rule»
+  (a line must separate regions, encode state, or carry data) and a flat
+  «Depth & Separation» section. The table recipe moves to neutral
+  `0.6pt` / `0.25pt` `--border` hairlines with a padding floor, earned
+  `.compact` and exceptional `.striped`; the metric-suffix rule for `×`
+  is added. SKILL.md gains the table pass and the subtractive pass as
+  Step 5. The three seeds follow (bars, ticks and brand rules removed,
+  equity-report tables re-ruled and un-striped, analyst box loses its
+  closed border), and their gallery cards were re-rendered.
+- **V1.14.0 sparse-page policy.** Sparse pages merge or fold into a
+  neighbour before they are filled, and nothing (callout, chart, image)
+  is added only to occupy space — SKILL.md fit table, `cmd-fit.md`,
+  design.md deck recipe, and the `.co` pinned-callout rule.
+- **V1.16.0 verified numbers only.** `writing.md`, `resume-writing.md`
+  and anti-pattern #7 stop demanding a figure in every bullet or
+  paragraph; outcomes use verified metrics or concrete qualitative
+  evidence, and localization reports coverage rather than rewrite counts.
+- **V1.16.0 typography cross-check** (measure 40–70 characters, optical
+  alignment, contrast over ornament; multi-weight families rejected) in
+  design.md §2.
+- **V1.16.0 lighter deck intake.** `deck-preflight.md`'s six questions
+  become an internal checklist; only open, material choices are asked.
+- **V1.16.0 comparison variants** render in the document's own page and
+  background, changing only the compared property.
+- The checker-independent half of V1.16.0's architecture geometry rules
+  (edge attachment, label masks, preserving relationship labels) lands in
+  `diagrams.md` «Relationship geometry», verified by eye on a `capture`.
+
+Items intentionally not synced from upstream because they don't apply to
+Pneuma's iframe paper-canvas / browser-print model:
+
+- V1.15.0 strict LaTeX mathematics (MathJax SVG via `ensure_mathjax.sh`
+  and `math_render.py`, Node runtime). It is a build-time renderer this
+  mode does not have; without it the rule would print raw TeX.
+- V1.15.0 skills-CLI install slimming and checkout font recovery, and the
+  `skills/kami/` + `site/` repository split — packaging plumbing.
+- V1.16.0 diagram geometry checker (`data-node` / `data-edge` /
+  `data-label-for` annotations, `diagram_geometry.py`, `--check`). The
+  18 diagram templates here stay unannotated; the principles ride
+  `diagrams.md` instead.
+- V1.16.0 long-doc TOC anchor fix and `--verify` page-number check
+  (WeasyPrint 70 `target-counter()`), and the post-release Korean
+  MuPDF preview pitfall — WeasyPrint-only.
+- V1.16.0 intake changes that target flows this mode lacks: the
+  page-count question (Pneuma never asked it) and the narrowed trigger
+  that stops auditing existing product sites (landing pages are already
+  out of model).
+- V1.14.0 `--inline-code-bg` token and the screen-only landing-page
+  changes (CTA stacking at 320px, inline-code, card hover, pricing, hero
+  entrance, gallery sweep) — screen-first genre, not synced.
+- V1.14.0 PPTX-only-on-request output rule — Pneuma exports PDF / PNG
+  from the viewer and has no PPTX path.
 
 - The WeasyPrint runtime and the `slides-weasy` PDF path; the Marp /
   `marp-cli` and python-pptx slide-rendering paths (V1.6.0 "Markdown
@@ -147,7 +206,9 @@ browser-print model:
   `.doc-nav`, `.prose`). Only the CN font-chain addition applies to this
   mode's `seed/_shared/styles.css`. Upstream also retired
   `--ring-warm` / `--ring-deep`; this mode still defines and uses them,
-  so `references/design.md` keeps naming them.
+  so `references/design.md` keeps naming them. As of the V1.16.0 sync,
+  design.md names only `--ring-warm` (the sheet's own edge in
+  `_shared/styles.css`); `--ring-deep` stays declared but unused.
 
 ## Seed demos
 

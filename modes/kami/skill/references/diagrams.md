@@ -300,6 +300,27 @@ Node titles carry function first, protocol noun second. A bare protocol noun out
 
 In-diagram copy holds objects, boundaries, and actions only; argument stays in prose. CJK copy inside nodes uses short labels with commas, slashes, and semicolons, never the CJK full stop (。). If a line needs a full stop, it is a sentence, and sentences live in the document, not the diagram.
 
+### Relationship geometry
+
+A relationship is an edge that attaches to a named node, with an optional label
+sitting on a background mask. Check the geometry by eye on the `capture`, at the
+final display size — the source cannot tell you whether it holds:
+
+- Each edge starts and ends on the outward edge of its own node: no floating
+  endpoint, no shaft running *through* another node or across another label.
+  Grazing a rectangle edge or crossing a real boundary frame is fine.
+- Node rectangles and label masks never overlap each other.
+- Preserve meaningful relationship labels — protocol, action, direction,
+  synchronous vs asynchronous. When a label does not fit, move its mask and text
+  together, widen the corridor, or reroute the edge. Do not shrink the text or
+  drop meaning to make it fit.
+- Several branches out of one node need separate attachment points; keep their
+  order stable and leave room at the corners.
+- When updating a diagram, tell changed relationships apart from boxes that
+  merely moved, and keep the unchanged objects unchanged. Record the evidence
+  for a relationship in the intent note, not just the component names: a
+  component existing in the source does not prove a call or dependency.
+
 ### Terminology sync
 
 The diagram and its host document are one vocabulary. When prose renames an object, the same change updates: SVG `<text>` labels, `<title>` and `<desc>`, and the intent note, plus any cross-references. A diagram that still shows the old name is a bug, not a style issue.

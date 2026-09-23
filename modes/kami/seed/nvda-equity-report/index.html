@@ -37,9 +37,6 @@
     justify-content: space-between;
     align-items: flex-start;
     margin-bottom: 14pt;
-    border-left: 2.5pt solid var(--brand);
-    border-radius: 1.5pt;
-    padding-left: 8pt;
   }
   .ticker-block { flex: 1; }
   .ticker-eyebrow {
@@ -114,6 +111,13 @@
     white-space: nowrap;
     letter-spacing: -0.3pt;
   }
+  /* A multiplication sign is a suffix, not a second digit (upstream V1.14.0). */
+  .metric-suffix {
+    margin-left: 0.06em;
+    font-size: 0.58em;
+    font-weight: 400;
+    vertical-align: 0.08em;
+  }
   .metric-label {
     font-size: 9pt;
     color: var(--olive);
@@ -164,13 +168,13 @@
     text-align: left;
     font-weight: 500;
     color: var(--dark-warm);
-    padding: 5pt 8pt;
-    border-bottom: 1pt solid var(--border);
+    padding: 6pt 8pt;
+    border-bottom: 0.6pt solid var(--border);
     background: transparent;
   }
   td {
-    padding: 4pt 8pt;
-    border-bottom: 0.3pt solid var(--border-soft);
+    padding: 5pt 8pt;
+    border-bottom: 0.25pt solid var(--border);
     vertical-align: top;
   }
   table.financial td:not(:first-child),
@@ -187,7 +191,6 @@
   /* CALLOUT */
   .callout {
     background: var(--ivory);
-    border-left: 2pt solid var(--brand);
     padding: 7pt 12pt;
     border-radius: 3pt;
     margin: 8pt 0 12pt;
@@ -234,7 +237,6 @@
   /* ANALYST SUMMARY */
   .analyst-box {
     background: var(--ivory);
-    border: 0.5pt solid var(--border);
     border-radius: 4pt;
     padding: 10pt 14pt;
     margin: 10pt 0 12pt;
@@ -286,7 +288,7 @@
     <div class="metric-label">市值</div>
   </div>
   <div class="metric">
-    <div class="metric-value">68×</div>
+    <div class="metric-value">68<span class="metric-suffix">×</span></div>
     <div class="metric-label">P/E (TTM)</div>
   </div>
   <div class="metric">
@@ -406,7 +408,7 @@
 </figure>
 
 <h2>财务概览</h2>
-<table class="financial striped">
+<table class="financial">
   <thead>
     <tr>
       <th>指标</th>
@@ -490,7 +492,7 @@
 <h2>竞争格局</h2>
 <p>AI 训练市场 NVIDIA 仍占有 <span class="hl">~88%</span> 的份额；推理侧 AMD MI355X、定制 ASIC（TPU v6、Trainium 3、MTIA v2）开始切入腰部需求，但 CUDA 生态在 Rack-scale 互联与软件栈成熟度上仍领先 18-24 个月。Hyperscaler 自研 ASIC 的 ROI 主要体现在内部工作负载，对 NVIDIA 商品力影响小于市场担忧。</p>
 
-<table class="financial compact striped">
+<table class="financial compact">
   <thead>
     <tr>
       <th>公司</th>

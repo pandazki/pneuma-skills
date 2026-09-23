@@ -23,7 +23,7 @@ Common failures when AI generates professional documents. Organized by failure t
 | # | Pattern | Bad | Fix |
 |---|---------|-----|-----|
 | 6 | Round numbers implying precision | "Exactly 10,000 users" when the source says "around 10K" | Match the source's precision: "approximately 10,000" |
-| 7 | Fake decimal precision | "Market share: 23.7%" with no cited source | Either cite the source or round to "roughly 24%" |
+| 7 | Fake decimal precision | "Market share: 23.7%" with no cited source | Verify the figure and cite its source, or mark it `[DATA NEEDED]`; rounding does not make an unsupported number valid |
 | 8 | Metric-narrative disconnect | Chart shows flat revenue, text says "strong momentum" | Text must match what the chart shows |
 | 9 | Invented comparison baselines | "3x faster than alternatives" with no benchmark | Name the alternative and the benchmark method, or remove |
 | 10 | Mixing time periods | YoY growth next to QoQ growth as if comparable | Label every comparison window explicitly |

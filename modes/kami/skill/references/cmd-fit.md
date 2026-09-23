@@ -105,17 +105,22 @@ Decide first: is this page INTENDED to be sparse?
 
 - **Cover / title page** — usually keep sparse. Breathing room is the
   point.
-- **Body page** — treat as a signal to enrich:
-  1. Expand the weakest section with a concrete specific (a number, a
-     date, a case).
-  2. Add a pull-quote / callout that summarises the page's argument.
-  3. Include a small diagram or metric strip.
-  4. Merge with the next page if the next page overflows slightly —
-     redistributing across both pages often fixes both statuses at
-     once.
+- **Body page** — treat it as a structure signal first, a content
+  signal second:
+  1. Merge with a neighbouring page — redistributing across two pages
+     often fixes both statuses at once, especially when the next page
+     overflows slightly.
+  2. Remove the page and fold its one useful assertion or proof into a
+     neighbour.
+  3. Expand the weakest section with a concrete, verified specific (a
+     date, a case, a sourced figure) that the source material actually
+     supports.
+  4. Convert existing information to a small diagram or table only when
+     that form is clearer even without the density problem.
 
-Never pad with filler prose that doesn't carry information. Kami rejects
-filler; empty space is more honest than vacuous text.
+Never pad with filler prose, and never add a callout, pull-quote, chart,
+icon, or image whose only job is to occupy space. Kami rejects filler;
+empty space is more honest than vacuous text.
 
 ---
 
@@ -147,13 +152,14 @@ genre's floor gets, in order:
 
 1. Merge upward into the previous section.
 2. Merge downward into the next section.
-3. Promote a list to a small diagram or table that earns the space.
-4. Pin a `.co` callout to the bottom (slides only). Whitespace above a pinned
-   callout is intentional, not sparse.
+3. Remove the page and fold its one useful assertion or proof into a neighbour.
+4. Convert existing information to a small diagram or table only when that form
+   is clearer even without the density problem.
 
 Forbidden ways to "fill" it: filler prose, the heading restated as a sentence,
-invented statistics, the prior page reworded. If none of the four options
-apply, the page should not exist — delete the `<div class="page">` block.
+invented statistics, the prior page reworded, or a callout, chart, icon, or
+image whose only job is to occupy space. If the merge options don't apply, the
+page should not exist — delete the `<div class="page">` block.
 
 **Last-page exemption.** The last body page is allowed 40–60% fill; forcing
 balance there usually means padding. Cover and closing colophon may sit at any
@@ -171,7 +177,7 @@ After every meaningful `Write` or `Edit` call:
    the lowest-numbered offending page, apply the least-invasive tactic
    from the overflow list, save, and restart from step 1.
 3. If `summary.sparse_count > 0` AND the page is a body page →
-   enrich, save, and restart from step 1.
+   merge or enrich per «Acting on `sparse`», save, and restart from step 1.
 4. If every page is `fits` — or `loose` on a body page you judged
    acceptable, or `bleed` only on a deliberate full-bleed cover → stop.
    Tell the user the document is ready.
