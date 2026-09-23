@@ -11,6 +11,7 @@ import type { Shot } from "../domain.js";
 import { shotStages } from "../domain.js";
 import { ConditioningChip } from "./ConditioningChip.js";
 import { CheckIcon } from "./icons.js";
+import { ShotPoster } from "./ShotPoster.js";
 
 export interface ShotsRailProps {
   shots: Shot[];
@@ -77,17 +78,6 @@ function ShotCard({
   urlFor: ShotsRailProps["urlFor"];
 }) {
   const stages = shotStages(shot);
-  const greybox = shot.greybox.final;
-  // The poster is the greybox's own first second, asked for with a media
-  // fragment and `preload="metadata"` — one range request, no second file to
-  // generate, and it is a frame of the shot rather than a contact sheet cell
-  // whose grid the rail would have to guess at.
-  const posterUrl = greybox
-    ? urlFor(shot, greybox.file, greybox.revision)
-    : shot.reference
-      ? urlFor(shot, shot.reference.file, shot.greybox.revision)
-      : null;
-  const sheetUrl = urlFor(shot, shot.greybox.sheet, shot.greybox.revision);
 
   return (
     <button
@@ -101,26 +91,19 @@ function ShotCard({
       }`}
     >
       <div className="relative aspect-video w-full overflow-hidden bg-black/50">
-        {posterUrl ? (
-          <video
-            src={`${posterUrl}#t=0.6`}
-            preload="metadata"
-            muted
-            playsInline
-            className="h-full w-full object-cover"
-          />
-        ) : sheetUrl ? (
-          <img
-            src={sheetUrl}
-            alt=""
-            className="h-full w-full object-cover object-left-top"
-            loading="lazy"
-          />
-        ) : (
-          <span className="flex h-full w-full items-center justify-center text-[10px] text-cc-muted">
-            not rendered
-          </span>
-        )}
+        {/* The picture is the domain's call (`shotPictures`): the greybox,
+            else a reference clip, a key frame, a rendered contact sheet, a
+            board, and for a free shot — never blocked in 3D — its take. */}
+        <ShotPoster
+          shot={shot}
+          urlFor={urlFor}
+          at={0.6}
+          placeholder={
+            <span className="flex h-full w-full items-center justify-center text-[10px] text-cc-muted">
+              not rendered
+            </span>
+          }
+        />
         <span className="absolute left-1 top-1 rounded bg-black/60 px-1 text-[9px] tabular-nums text-white/90">
           {String(index + 1).padStart(2, "0")}
         </span>

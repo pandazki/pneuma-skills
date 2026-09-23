@@ -96,6 +96,9 @@ export interface LaneView {
   duration: number | null;
   /** Why this lane is waiting or failed. */
   note: string | null;
+  /** The badge a waiting, failed or empty lane wears, when it is not the
+   *  kind's default ("Nothing here yet" for an empty lane). */
+  stateTitle?: string;
   /** The take this lane plays, when it is the take lane. */
   takeId: string | null;
   /** Cache buster for the lane's URL. */
@@ -251,6 +254,7 @@ export function laneViews(shot: Shot, takeId: string | null): LaneView[] {
             kind: "empty",
             file: null,
             facts: "free shot — no greybox",
+            stateTitle: "Not needed",
             duration: null,
             note:
               "free shot — no greybox. This shot is conditioned on the character sheets and the film's style frame, "

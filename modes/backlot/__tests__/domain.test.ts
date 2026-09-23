@@ -36,6 +36,7 @@ import {
   selectedTake,
   shotDir,
   shotRefOf,
+  shotPictures,
   shotStages,
   shotThumbnail,
   stageLabel,
@@ -1228,8 +1229,67 @@ describe("the designed picture", () => {
 
     const nothing = parseShot("d", "s", shotJson({
       greybox: { revision: 0, script: "greybox/scene.py", preview: null, final: null },
+      takes: [],
     }))!;
     expect(shotThumbnail(nothing)).toEqual({ kind: "none", file: null, rev: 0 });
+  });
+
+  /**
+   * `greybox.sheet` is where a render WILL write its contact sheet — the
+   * scaffold names the path before anything is rendered, and `previz.mjs
+   * render` is the only writer of both the file and `greybox.revision`. A
+   * free shot is never rendered, so its sheet path names a file that does
+   * not exist; pointing an <img> at it drew a black box on every card
+   * (2026-09-24, the 23-shot tanka-launch film).
+   */
+  test("a sheet path is only a picture once a render wrote it; a free shot shows its take", () => {
+    const scaffolded = {
+      revision: 0,
+      script: "greybox/scene.py",
+      preview: null,
+      final: null,
+      sheet: "greybox/sheet.png",
+    };
+    const freeWithTake = parseShot("d", "s", shotJson({ conditioning: "free", greybox: scaffolded }))!;
+    // The take is the shot's own picture, cache-busted like the take lane.
+    expect(shotThumbnail(freeWithTake)).toEqual({ kind: "take", file: "takes/take-01.mp4", rev: 2 });
+    expect(shotPictures(freeWithTake).map((p) => p.kind)).toEqual(["take"]);
+
+    const freeNoTake = parseShot("d", "s", shotJson({ conditioning: "free", greybox: scaffolded, takes: [] }))!;
+    expect(shotThumbnail(freeNoTake)).toEqual({ kind: "none", file: null, rev: 0 });
+
+    // Only a finished take has bytes: a submitted or failed one is skipped.
+    const pending = parseShot("d", "s", shotJson({
+      greybox: scaffolded,
+      takes: [{ id: "take-01", status: "submitted", file: null, selected: true }],
+    }))!;
+    expect(shotThumbnail(pending).kind).toBe("none");
+
+    // A preview render wrote the sheet (and bumped the revision): it leads,
+    // and the take stays behind it as the fallback when the sheet is gone.
+    const previewOnly = parseShot("d", "s", shotJson({
+      greybox: {
+        ...scaffolded,
+        revision: 1,
+        preview: { file: "greybox/preview.mp4", revision: 1, renderedAt: 1, renderSeconds: 3 },
+      },
+    }))!;
+    expect(shotPictures(previewOnly)).toEqual([
+      { kind: "sheet", file: "greybox/sheet.png", rev: 1 },
+      { kind: "take", file: "takes/take-01.mp4", rev: 2 },
+    ]);
+  });
+
+  test("a recreate shot's reference clip stands in until the greybox is rendered", () => {
+    const reference = { file: "reference/segment.mp4", sourceName: "src.mp4", in: 1, out: 9, cuts: [] };
+    const recreate = parseShot("d", "s", shotJson({
+      reference,
+      greybox: { revision: 0, script: "greybox/scene.py", preview: null, final: null, sheet: "greybox/sheet.png" },
+      takes: [],
+    }))!;
+    expect(shotThumbnail(recreate)).toEqual({ kind: "reference", file: "reference/segment.mp4", rev: 0 });
+    // The greybox still wins once it exists.
+    expect(shotThumbnail(parseShot("d", "s", shotJson({ reference }))!).kind).toBe("greybox");
   });
 });
 

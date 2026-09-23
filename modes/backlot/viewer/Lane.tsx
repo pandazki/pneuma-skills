@@ -114,11 +114,12 @@ function LaneState({ lane }: { lane: LaneView }) {
         ? "border-cc-primary/40 text-cc-primary"
         : "border-cc-border text-cc-muted";
   const title =
-    lane.kind === "failed"
+    lane.stateTitle ??
+    (lane.kind === "failed"
       ? "The request failed"
       : lane.kind === "waiting"
         ? "Waiting for the model"
-        : "Nothing here yet";
+        : "Nothing here yet");
   return (
     <div className="flex h-full w-full items-center justify-center bg-cc-bg/60 px-6 text-center">
       <div className="max-w-xs">
