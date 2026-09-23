@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.53.1] - 2026-09-24
+
+### Fixed
+- **Backlot's shot rail shows your free shots.** A free shot never renders a greybox, but the rail and the shot plan pointed its card at the contact sheet that a render would have written, so every card came out black. A card now shows the best picture the shot actually has (the greybox render, reference clip, key frame, rendered sheet or board, and otherwise a frame of its current take). It falls through on a load error, and says "not rendered" only when there is nothing to show. For a free shot, the Previz lane reads "Not needed".
+
 ## [3.53.0] - 2026-09-24
 
 ### Added
