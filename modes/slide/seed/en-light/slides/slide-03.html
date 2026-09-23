@@ -1,66 +1,44 @@
 <div class="slide">
-  <span class="tag" style="margin-bottom: 16px; align-self: flex-start;">Architecture</span>
-  <h1 style="font-size: 2.2rem;">The <span class="text-primary">Four-Layer</span> Engine</h1>
-  <p style="max-width: 700px; margin-bottom: 32px;">
-    Pneuma is built on four distinct layers, cleanly separating the concerns of AI execution, visual rendering, and
-    domain-specific knowledge.
-  </p>
+  <header class="chrome"><span class="brand">Pneuma Skills</span><span class="path">slides/slide-03.html</span><span class="folio">03 / 11</span></header>
 
-  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-    <!-- Layer 4 -->
-    <div
-      style="background: var(--color-surface); padding: 24px; border-radius: 16px; border: 1px solid var(--color-border); position: relative; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.02);">
-      <div
-        style="position: absolute; right: -15px; bottom: -25px; font-size: 120px; opacity: 0.04; font-weight: 800; line-height: 1; color: var(--color-primary);">
-        4</div>
-      <h3 style="color: var(--color-primary); margin-bottom: 8px; font-size: 1.3rem;">Mode Protocol</h3>
-      <p
-        style="font-family: monospace; font-size: 0.85rem; color: var(--color-muted); margin-bottom: 12px; background: rgba(0,0,0,0.04); padding: 4px 8px; border-radius: 4px; display: inline-block;">
-        ModeManifest</p>
-      <p style="font-size: 0.95rem; line-height: 1.5; margin-bottom: 0;">The declarative soul. Defines what the AI knows
-        (skills), what the user sees (viewers), and how the agent is configured.</p>
+  <div style="display:grid; grid-template-columns: 1fr 440px; gap: 48px; align-items: end;">
+    <div>
+      <div class="kicker">How it works</div>
+      <h2 style="margin-top: 20px;">Files in. <em>Deck out.</em></h2>
+    </div>
+    <p style="font-size: 18px;">Each slide is an HTML fragment on a fixed 1280&thinsp;&times;&thinsp;720 canvas. The viewer watches the workspace and re-renders the moment a file changes.</p>
+  </div>
+
+  <div style="display:grid; grid-template-columns: 420px 1fr 560px; align-items: center; margin-top: 44px;">
+    <div class="code" style="line-height: 1.75; padding: 22px 24px;"><span class="k">my-deck/</span>
+├─ manifest.json   <span class="c">order + titles</span>
+├─ theme.css       <span class="c">design system</span>
+├─ slides/
+│  ├─ slide-01.html
+│  ├─ slide-02.html
+│  └─ <span class="s">slide-03.html</span>  <span class="s">&larr; written</span>
+└─ assets/         <span class="c">images</span></div>
+
+    <div style="display:flex; flex-direction:column; align-items:center; gap: 10px;">
+      <span class="mono muted" style="font-size: 16px;">file watch</span>
+      <svg width="64" height="14" viewBox="0 0 64 14" style="fill:none; stroke:var(--color-primary); stroke-width:1.5"><path d="M0 7h60M54 1l7 6-7 6"/></svg>
     </div>
 
-    <!-- Layer 3 -->
-    <div
-      style="background: var(--color-surface); padding: 24px; border-radius: 16px; border: 1px solid var(--color-border); position: relative; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.02);">
-      <div
-        style="position: absolute; right: -15px; bottom: -25px; font-size: 120px; opacity: 0.04; font-weight: 800; line-height: 1; color: var(--color-accent);">
-        3</div>
-      <h3 style="color: var(--color-accent); margin-bottom: 8px; font-size: 1.3rem;">Content Viewer</h3>
-      <p
-        style="font-family: monospace; font-size: 0.85rem; color: var(--color-muted); margin-bottom: 12px; background: rgba(0,0,0,0.04); padding: 4px 8px; border-radius: 4px; display: inline-block;">
-        ViewerContract</p>
-      <p style="font-size: 0.95rem; line-height: 1.5; margin-bottom: 0;">The dynamic frontend. Renders workspace files
-        in real-time, extracts context, and provides agent-callable actions.</p>
-    </div>
-
-    <!-- Layer 2 -->
-    <div
-      style="background: var(--color-surface); padding: 24px; border-radius: 16px; border: 1px solid var(--color-border); position: relative; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.02);">
-      <div
-        style="position: absolute; right: -15px; bottom: -25px; font-size: 120px; opacity: 0.04; font-weight: 800; line-height: 1; color: #6B8E6B;">
-        2</div>
-      <h3 style="color: #6B8E6B; margin-bottom: 8px; font-size: 1.3rem;">Agent Bridge</h3>
-      <p
-        style="font-family: monospace; font-size: 0.85rem; color: var(--color-muted); margin-bottom: 12px; background: rgba(0,0,0,0.04); padding: 4px 8px; border-radius: 4px; display: inline-block;">
-        AgentBackend</p>
-      <p style="font-size: 0.95rem; line-height: 1.5; margin-bottom: 0;">The AI orchestrator. Handles launching,
-        resuming, and communicating with the underlying CLI agents (e.g. Claude Code).</p>
-    </div>
-
-    <!-- Layer 1 -->
-    <div
-      style="background: var(--color-surface); padding: 24px; border-radius: 16px; border: 1px solid var(--color-border); position: relative; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.02);">
-      <div
-        style="position: absolute; right: -15px; bottom: -25px; font-size: 120px; opacity: 0.04; font-weight: 800; line-height: 1; color: #5B8DB5;">
-        1</div>
-      <h3 style="color: #5B8DB5; margin-bottom: 8px; font-size: 1.3rem;">Runtime Shell</h3>
-      <p
-        style="font-family: monospace; font-size: 0.85rem; color: var(--color-muted); margin-bottom: 12px; background: rgba(0,0,0,0.04); padding: 4px 8px; border-radius: 4px; display: inline-block;">
-        Bun + Hono + Vite</p>
-      <p style="font-size: 0.95rem; line-height: 1.5; margin-bottom: 0;">The foundation. Manages file watching, PTY
-        terminals, session persistence, and hosts the Dual WebSocket bridge.</p>
+    <div class="panel" style="height: 315px; padding: 12px; display:grid; grid-template-columns: 84px 1fr; gap: 12px; box-shadow: var(--shadow-sm);">
+      <div style="display:flex; flex-direction:column; gap: 8px;">
+        <div class="frame" style="width: 84px; border-radius: 4px;"><div class="in" style="gap: 4px;"><div class="bar fg" style="height: 4px; width: 70%;"></div><div class="bar" style="height: 3px; width: 50%;"></div></div></div>
+        <div class="frame" style="width: 84px; border-radius: 4px;"><div class="in" style="gap: 4px;"><div class="bar fg" style="height: 4px; width: 60%;"></div><div class="bar" style="height: 3px; width: 80%;"></div></div></div>
+        <div class="frame" style="width: 84px; border-radius: 4px; border-color: var(--color-primary);"><div class="in" style="gap: 4px;"><div class="bar pri" style="height: 3px; width: 30%;"></div><div class="bar fg" style="height: 4px; width: 75%;"></div></div></div>
+        <div class="frame ghost" style="width: 84px; border-radius: 4px;"></div>
+      </div>
+      <div class="frame" style="align-self: center; background: var(--color-bg); border-color: var(--color-border);">
+        <div class="in" style="inset: 12% 10%; gap: 10px; justify-content: center;">
+          <div class="mono" style="font-size: 9px; letter-spacing: 0.14em; color: var(--color-primary);">HOW IT WORKS</div>
+          <div style="font-family: var(--font-display); font-size: 34px; line-height: 1; color: var(--color-fg);">Files in. <em style="color: var(--color-primary);">Deck out.</em></div>
+          <div class="bar" style="width: 80%; margin-top: 6px;"></div>
+          <div class="bar" style="width: 56%;"></div>
+        </div>
+      </div>
     </div>
   </div>
 </div>

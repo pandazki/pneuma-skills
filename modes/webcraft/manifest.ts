@@ -230,8 +230,8 @@ The user just opened the workspace. You are ready to assist with web design and 
     seedFiles: {
       // Order matters — the resolver preserves filesystem discovery order
       // (which mirrors install order), so the first seed becomes the
-      // default content set on first launch. pneuma is the brand-register
-      // primary; console is the product-register companion.
+      // default content set on first launch. pneuma is the Persuade-mode
+      // landing; the console is its Operate-mode companion.
       "modes/webcraft/seed/pneuma/":         "pneuma/",
       "modes/webcraft/seed/gazette/":        "gazette/",
       "modes/webcraft/seed/pneuma-console/": "pneuma-console/",
@@ -247,10 +247,11 @@ The user just opened the workspace. You are ready to assist with web design and 
           "zh-TW": "品牌著陸頁",
         },
         description: {
-          en: "Dark, restrained product landing — hero, four pillars, footer. Built to be re-skinned.",
-          "zh-CN": "暗色克制的产品着陆页 —— hero、四大支柱、footer,留好改皮空间。",
+          en: "Warm-orange product landing — a live agent-and-viewer demo, four pillars, a modes list, and a How it works page.",
+          "zh-CN": "暖橙色的产品着陆页 —— 可交互的智能体与视图演示、四大支柱、模式列表，另附一页工作原理。",
+          "zh-TW": "暖橙色的產品著陸頁 —— 可互動的代理與檢視器示範、四大支柱、模式清單，另附一頁運作原理。",
         },
-        tags: ["Landing", "Dark"],
+        tags: ["Landing"],
       },
       {
         id: "gazette",
@@ -262,8 +263,9 @@ The user just opened the workspace. You are ready to assist with web design and 
           "zh-TW": "報紙版式",
         },
         description: {
-          en: "Old-school broadsheet layout — masthead, lead story, side columns. For long-form writing with weight.",
-          "zh-CN": "复古大报版面 —— 报头、头条、专栏。给厚重的长文用。",
+          en: "A fictional broadsheet in black ink on newsprint — blackletter nameplate, ruled columns, seven engravings, and the lead story in full.",
+          "zh-CN": "一份虚构的老式大报，黑墨印在新闻纸上 —— 哥特体报头、分栏细线、七幅版画插图，外加整篇头条长文。",
+          "zh-TW": "一份虛構的老式大報，黑墨印在新聞紙上 —— 哥德體報頭、分欄細線、七幅版畫插圖，另附整篇頭條長文。",
         },
         tags: ["Editorial"],
       },
@@ -277,8 +279,9 @@ The user just opened the workspace. You are ready to assist with web design and 
           "zh-TW": "工作台控制台",
         },
         description: {
-          en: "A working dashboard — sessions table, KPIs, status pills. Bring your own data and adapt.",
-          "zh-CN": "一个能跑通的仪表盘 —— 会话表、关键指标、状态徽章。换上你自己的数据即可。",
+          en: "A working operations console on sample data — sortable, filterable sessions, usage and budget charts, and settings with members and API keys.",
+          "zh-CN": "一个真能操作的运营控制台，跑在示例数据上 —— 可排序筛选的会话表、用量与预算图表，以及含成员和 API 密钥的设置页。",
+          "zh-TW": "一個真能操作的營運控制台，跑在範例資料上 —— 可排序篩選的工作階段表、用量與預算圖表，以及含成員與 API 金鑰的設定頁。",
         },
         tags: ["Dashboard"],
       },

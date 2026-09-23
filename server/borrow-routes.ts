@@ -26,9 +26,10 @@
 
 import type { Hono } from "hono";
 import { mkdir, rename, writeFile, readFile } from "node:fs/promises";
-import { join, resolve as resolvePath, sep } from "node:path";
+import { join, resolve as resolvePath } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
+import { isContained } from "./utils.js";
 
 import {
   isBorrowResult,
@@ -160,14 +161,16 @@ export function resolveBorrowDir(borrowId: string, projectRoot: string | undefin
 /**
  * Path-containment guard — true when `candidate` resolves inside `root` (or is
  * `root` itself). Mirrors `/api/contentsets/delete` + `mountFileRoute`'s
- * traversal check: `..` segments and absolute escapes are rejected. Used to
+ * traversal check: `..` segments, absolute escapes, and symlinks leading
+ * outside are rejected. Used to
  * keep a borrow brief's `inputs` / `in_place_targets` inside the project root
  * (contract invariant, design §4.1).
  */
 export function isInsideRoot(candidate: string, root: string): boolean {
   const absRoot = resolvePath(root);
-  const abs = resolvePath(absRoot, candidate);
-  return abs === absRoot || abs.startsWith(absRoot + sep);
+  // Relative inputs resolve against the project root; the containment
+  // decision itself (lexical and through symlinks) is `isContained`'s.
+  return isContained(resolvePath(absRoot, candidate), absRoot);
 }
 
 /** Atomic JSON write (tmp + rename) so a concurrent reader never sees a partial file. */

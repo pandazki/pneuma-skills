@@ -1,65 +1,35 @@
 <div class="slide">
-  <span class="tag" style="margin-bottom: 16px; align-self: flex-start;">Architecture</span>
-  <h1 style="font-size: 2.2rem;">四层 <span class="text-primary">核心架构</span></h1>
-  <p style="max-width: 700px; margin-bottom: 32px;">
-    Pneuma 基于四个清晰分离的层级构建，将 AI 执行、视觉渲染和领域特定知识优雅地解耦。
-  </p>
+  <div class="folio"><span class="path">slides/slide-03.html</span><span class="count"><b>03</b> / 12</span></div>
 
-  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-    <!-- Layer 4 -->
-    <div
-      style="background: var(--color-surface); padding: 24px; border-radius: 16px; border: 1px solid var(--color-border); position: relative; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.02);">
-      <div
-        style="position: absolute; right: -15px; bottom: -25px; font-size: 120px; opacity: 0.04; font-weight: 800; line-height: 1; color: var(--color-primary);">
-        4</div>
-      <h3 style="color: var(--color-primary); margin-bottom: 8px; font-size: 1.3rem;">Mode 协议层</h3>
-      <p
-        style="font-family: monospace; font-size: 0.85rem; color: var(--color-muted); margin-bottom: 12px; background: rgba(0,0,0,0.04); padding: 4px 8px; border-radius: 4px; display: inline-block;">
-        ModeManifest</p>
-      <p style="font-size: 0.95rem; line-height: 1.5; margin-bottom: 0;">声明式的灵魂。定义了 AI 的能力边界 (Skills)、用户界面的呈现方式
-        (Viewers)，以及智能体的偏好配置。</p>
+  <p class="eyebrow">02 · Pneuma Skills</p>
+  <h2>人和 code agent 共创的基础设施</h2>
+  <p class="lead" style="max-width:880px;">agent 本来就在磁盘上的文件里工作。<br>Pneuma 给每类任务配一个实时播放器，把这些文件渲染成你熟悉的样子，<br>你随时能看，也随时能插手。</p>
+
+  <div style="display:flex; align-items:stretch; margin-top:52px;">
+    <div style="flex:1; border:1px solid var(--color-border); padding:22px 24px;">
+      <p class="mono small" style="font-size:15px;">human</p>
+      <h3 style="margin:6px 0 4px;">你</h3>
+      <p class="small">看、点选、提要求</p>
     </div>
-
-    <!-- Layer 3 -->
-    <div
-      style="background: var(--color-surface); padding: 24px; border-radius: 16px; border: 1px solid var(--color-border); position: relative; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.02);">
-      <div
-        style="position: absolute; right: -15px; bottom: -25px; font-size: 120px; opacity: 0.04; font-weight: 800; line-height: 1; color: var(--color-accent);">
-        3</div>
-      <h3 style="color: var(--color-accent); margin-bottom: 8px; font-size: 1.3rem;">内容视图层</h3>
-      <p
-        style="font-family: monospace; font-size: 0.85rem; color: var(--color-muted); margin-bottom: 12px; background: rgba(0,0,0,0.04); padding: 4px 8px; border-radius: 4px; display: inline-block;">
-        ViewerContract</p>
-      <p style="font-size: 0.95rem; line-height: 1.5; margin-bottom: 0;">动态前端。实时渲染工作区内容，提取上下文反馈给 AI，并暴露可供 Agent 调用的前端接口。
-      </p>
+    <div style="width:56px; display:flex; align-items:center; justify-content:center; color:var(--color-fg-soft); font-family:var(--font-mono); font-size:24px;">⇄</div>
+    <div style="flex:1; border:1px solid var(--color-border); padding:22px 24px; background:var(--color-surface);">
+      <p class="mono small" style="font-size:15px;">viewer</p>
+      <h3 style="margin:6px 0 4px;">播放器</h3>
+      <p class="small">把文件实时渲染<br>成一套稿子</p>
     </div>
-
-    <!-- Layer 2 -->
-    <div
-      style="background: var(--color-surface); padding: 24px; border-radius: 16px; border: 1px solid var(--color-border); position: relative; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.02);">
-      <div
-        style="position: absolute; right: -15px; bottom: -25px; font-size: 120px; opacity: 0.04; font-weight: 800; line-height: 1; color: #6B8E6B;">
-        2</div>
-      <h3 style="color: #6B8E6B; margin-bottom: 8px; font-size: 1.3rem;">智能体桥接层</h3>
-      <p
-        style="font-family: monospace; font-size: 0.85rem; color: var(--color-muted); margin-bottom: 12px; background: rgba(0,0,0,0.04); padding: 4px 8px; border-radius: 4px; display: inline-block;">
-        AgentBackend</p>
-      <p style="font-size: 0.95rem; line-height: 1.5; margin-bottom: 0;">AI 调度核心。全权负责启动、挂起、恢复以及与底层 CLI 智能体 (例如 Claude
-        Code) 进行进程间通信。</p>
+    <div style="width:56px; display:flex; align-items:center; justify-content:center; color:var(--color-fg-soft); font-family:var(--font-mono); font-size:24px;">⇄</div>
+    <div style="flex:1; border:1.5px dashed var(--color-primary); padding:22px 24px;">
+      <p class="mono small accent" style="font-size:15px;">files</p>
+      <h3 style="margin:6px 0 4px;">文件</h3>
+      <p class="small">slides/*.html<br>theme.css</p>
     </div>
-
-    <!-- Layer 1 -->
-    <div
-      style="background: var(--color-surface); padding: 24px; border-radius: 16px; border: 1px solid var(--color-border); position: relative; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.02);">
-      <div
-        style="position: absolute; right: -15px; bottom: -25px; font-size: 120px; opacity: 0.04; font-weight: 800; line-height: 1; color: #5B8DB5;">
-        1</div>
-      <h3 style="color: #5B8DB5; margin-bottom: 8px; font-size: 1.3rem;">运行时壳层</h3>
-      <p
-        style="font-family: monospace; font-size: 0.85rem; color: var(--color-muted); margin-bottom: 12px; background: rgba(0,0,0,0.04); padding: 4px 8px; border-radius: 4px; display: inline-block;">
-        Bun + Hono + Vite</p>
-      <p style="font-size: 0.95rem; line-height: 1.5; margin-bottom: 0;">坚实的基石。掌控文件监听、PTY 伪终端分配、会话状态持久化，并托管极其关键的双向
-        WebSocket 桥。</p>
+    <div style="width:56px; display:flex; align-items:center; justify-content:center; color:var(--color-fg-soft); font-family:var(--font-mono); font-size:24px;">⇄</div>
+    <div style="flex:1; border:1px solid var(--color-border); padding:22px 24px;">
+      <p class="mono small" style="font-size:15px;">agent</p>
+      <h3 style="margin:6px 0 4px;">Agent</h3>
+      <p class="small">Claude Code<br>Codex · Kimi</p>
     </div>
   </div>
+
+  <p class="small" style="margin-top:32px;">slide 是 Pneuma 的内置 mode 之一。同一套外壳下，还有 webcraft、doc、diagram、clipcraft 等 mode。</p>
 </div>

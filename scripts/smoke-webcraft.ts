@@ -13,7 +13,7 @@ rmSync(out, { recursive: true, force: true });
 const ws = mkdtempSync(join(tmpdir(), "smoke-web-"));
 mkdirSync(join(ws, ".pneuma"), { recursive: true });
 await initShadowGit(ws);
-// Real seed content: gazette has index.html + manifest.json + images/*.webp
+// Real seed content: gazette has two pages + manifest.json + assets/*.jpg
 cpSync("modes/webcraft/seed/gazette", join(ws, "gazette"), { recursive: true });
 await enqueueCheckpoint(ws, 1);
 

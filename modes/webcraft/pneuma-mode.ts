@@ -75,11 +75,25 @@ const webcraftMode: ModeDefinition = {
         }
         try {
           const parsed = JSON.parse(manifestFile.content);
-          return (parsed.pages || []).map((p: { file: string; title?: string }, i: number) => ({
+          const declared = (parsed.pages || []).map((p: { file: string; title?: string }, i: number) => ({
             path: p.file,
             label: p.title || p.file.replace(/\.html$/i, ""),
             index: i,
           }));
+          // Every other HTML page of the site is an item too, after the
+          // declared ones: its own links can open it (the preview follows and
+          // names it), and the store drops an active file that is not an
+          // item — a save on such a page used to reset the viewer's page.
+          const known = new Set(declared.map((d: { path: string }) => d.path));
+          const extra = files
+            .filter((f) => /\.html?$/i.test(f.path) && !known.has(f.path))
+            .map((f, i) => ({
+              path: f.path,
+              label: f.path.replace(/\.html?$/i, ""),
+              index: declared.length + i,
+              metadata: { declared: false },
+            }));
+          return [...declared, ...extra];
         } catch {
           return [];
         }

@@ -97,7 +97,8 @@ export type FrameSource = FramesSource | SheetSource | NoSource;
 
 /**
  * What the stage can actually draw for this motion, in precedence order.
- * `imageVersion` rides into every URL (see `urls.ts`).
+ * `imageVersion` rides into every URL, and a frame's registration time into
+ * frame URLs (see `urls.ts`).
  */
 export function resolveFrameSource(
   project: CharacterProject | null,
@@ -114,7 +115,10 @@ export function resolveFrameSource(
         missing += 1;
         return null;
       }
-      return contentUrl(project.contentSet, uri, imageVersion);
+      // Frames are outside the file watcher, so their url names the run that
+      // registered them as well as the image counter (see `urls.ts`).
+      const registeredAt = project.assetsById.get(assetId)?.createdAt;
+      return contentUrl(project.contentSet, uri, imageVersion, registeredAt);
     });
     // Every id dangling means the run's assets are gone, not that the motion
     // has a hundred blank frames — fall through to whatever sheet exists.

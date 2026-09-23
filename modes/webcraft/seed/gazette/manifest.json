@@ -1,7 +1,13 @@
 {
   "title": "The Gazette",
   "pages": [
-    { "file": "index.html", "title": "Front Page" },
-    { "file": "article.html", "title": "Feature Article" }
+    {
+      "file": "index.html",
+      "title": "Front Page"
+    },
+    {
+      "file": "article.html",
+      "title": "Page A6: The Lead Story"
+    }
   ]
 }

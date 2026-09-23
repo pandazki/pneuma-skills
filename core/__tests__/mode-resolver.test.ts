@@ -9,7 +9,7 @@
  */
 
 import { afterAll, beforeAll, describe, test, expect } from "bun:test";
-import { parseModeSpecifier, isExternalMode, resolveMode } from "../mode-resolver.js";
+import { isSafeGitRef, parseModeSpecifier, isExternalMode, resolveMode } from "../mode-resolver.js";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { resolve, dirname, join } from "node:path";
@@ -286,5 +286,21 @@ describe("resolveMode — catalog mode that is not in the package", () => {
     // The install never lands in `~/.pneuma/modes/`, which belongs to
     // user-installed and evolved modes.
     expect(existsSync(join(tmpHome, ".pneuma", "modes", MODE))).toBe(false);
+  });
+});
+
+describe("GitHub refs reach git only when they are branch or tag names", () => {
+  test("isSafeGitRef", () => {
+    expect(isSafeGitRef("main")).toBe(true);
+    expect(isSafeGitRef("release/3.52")).toBe(true);
+    expect(isSafeGitRef("v1.2.3")).toBe(true);
+    expect(isSafeGitRef("--upload-pack=touch /tmp/x")).toBe(false);
+    expect(isSafeGitRef("-b")).toBe(false);
+    expect(isSafeGitRef("a..b")).toBe(false);
+    expect(isSafeGitRef("a b")).toBe(false);
+  });
+  test("parseModeSpecifier refuses an option-shaped ref", () => {
+    expect(() => parseModeSpecifier("github:user/repo#--upload-pack=touch x")).toThrow("not a branch or tag name");
+    expect(parseModeSpecifier("github:user/repo#dev").github?.ref).toBe("dev");
   });
 });

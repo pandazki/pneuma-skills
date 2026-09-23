@@ -82,6 +82,16 @@ function isBuiltinName(specifier: string, env?: CatalogEnv): boolean {
   return isBundledMode(specifier, env);
 }
 
+/**
+ * Whether `ref` is safe to hand to git as a branch/tag name: letters, digits,
+ * `.`, `_`, `-`, `/`, not starting with `-` or `/` and without `..`. The ref
+ * reaches `git fetch origin <ref>`, where a value like `--upload-pack=<cmd>`
+ * would be parsed as an option and run a command.
+ */
+export function isSafeGitRef(ref: string): boolean {
+  return /^[A-Za-z0-9_][A-Za-z0-9._\/-]*$/.test(ref) && !ref.includes("..");
+}
+
 /** Global cache directory for cloned GitHub modes */
 const MODES_CACHE_DIR = join(homedir(), ".pneuma", "modes");
 
@@ -127,6 +137,9 @@ export function parseModeSpecifier(specifier: string, env?: CatalogEnv): {
       throw new Error(
         `Invalid GitHub mode specifier: "${specifier}". Expected format: github:user/repo or github:user/repo#branch`,
       );
+    }
+    if (ref && !isSafeGitRef(ref)) {
+      throw new Error(`Invalid GitHub mode specifier: "${specifier}". "${ref}" is not a branch or tag name.`);
     }
     return {
       type: "github",
@@ -417,6 +430,9 @@ async function ensureGithubMode(
   ref: string,
   cacheDir: string,
 ): Promise<void> {
+  // Callers parse specifiers through `parseModeSpecifier`, which already
+  // refuses unsafe refs; this is the last check before git sees the value.
+  if (!isSafeGitRef(ref)) throw new Error(`Invalid git ref: ${ref}`);
   mkdirSync(MODES_CACHE_DIR, { recursive: true });
 
   const repoUrl = `https://github.com/${user}/${repo}.git`;

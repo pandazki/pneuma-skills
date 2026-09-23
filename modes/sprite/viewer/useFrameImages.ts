@@ -26,8 +26,8 @@
  * per set. Those bitmaps are invisible to the JS garbage collector's idea of
  * pressure, so dropping the last reference does NOT reliably free them —
  * `release` detaches the element from its bytes instead. Every `register-run`
- * rewrites the frames and bumps `imageVersion`, so the URLs change and a new
- * set starts; before this was deterministic, a run's worth of file events took
+ * re-stamps the frames' registration time, so the URLs change and a new set
+ * starts; before this was deterministic, a run's worth of file events took
  * the renderer to 10 GB and the tab stopped answering at all (2026-09-22, the
  * Kiki trial: a 355-frame 532x460 loop, browser disconnected, only killing the
  * render process brought it back).
@@ -49,7 +49,9 @@ export const IMAGE_SETTLE_MS = 250;
  *
  * The shell bumps `imageVersion` once per CHANGED FILE, not once per change:
  * one `register-run` on the Kiki loop sent 355 separate updates inside a tenth
- * of a second (measured 2026-09-22 on the session's own browser socket). Every
+ * of a second (measured 2026-09-22 on the session's own browser socket; the
+ * frame directories have since left the watcher, but a run still writes a
+ * burst of keyframes, contact sheets and previews). Every
  * bump rewrites all 355 frame URLs, so a viewer that reacts to each one asks
  * the browser for a hundred and twenty-six thousand pictures — which is how a
  * 30-minute session ended with a 10 GB render process and a tab that answered
@@ -101,7 +103,8 @@ export function sourceKey(source: FrameSource): string {
  * "which version of them".
  *
  * This is what separates a RELOAD from a SWITCH. An `imageVersion` bump
- * rewrites every URL of the motion already on stage (`?v=` — see `urls.ts`);
+ * — or a re-run's new registration time (`&r=`) — rewrites every URL of the
+ * motion already on stage (see `urls.ts`);
  * the frames are about to be redrawn from the same paths, so the pictures
  * already decoded are the best thing to keep showing while the new ones land.
  * A different motion is not that: its bytes have nothing to do with what is on
@@ -109,7 +112,10 @@ export function sourceKey(source: FrameSource): string {
  * lie the stage tells in the one place a screenshot cannot catch it.
  */
 export function stableSourceKey(source: FrameSource): string {
-  return sourceKey(source).replace(/\?v=\d+/g, "");
+  // Both version tokens: the image counter and a frame's registration time
+  // (`?v=<n>&r=<createdAt>`, see `urls.ts`) — a re-run at the same paths is
+  // a reload of the same pictures.
+  return sourceKey(source).replace(/\?v=\d+(?:&r=\d+)?/g, "");
 }
 
 export function useFrameImages(source: FrameSource): StageImages {

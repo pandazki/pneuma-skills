@@ -78,6 +78,22 @@ describe("stampFileRefs — tool_result image mining", () => {
     ]);
   });
 
+  it("skips a workspace path that is a symlink to an image outside the workspace", () => {
+    const fs = require("node:fs") as typeof import("node:fs");
+    const outside = mkdtempSync(join(tmpdir(), "pneuma-file-ref-outside-"));
+    try {
+      writeFileSync(join(outside, "secret.png"), "fakepng");
+      const link = join(workspace, "captures", "linked.png");
+      fs.symlinkSync(join(outside, "secret.png"), link);
+      const content: ContentBlock[] = [{ type: "tool_result", tool_use_id: "t1", content: `see ${link}` }];
+      stampFileRefs(content, "codex", workspace);
+      const tr = content[0] as Extract<ContentBlock, { type: "tool_result" }>;
+      expect(tr.fileRefs).toBeUndefined();
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
   it("skips paths outside the workspace and paths that don't exist", () => {
     const outside = "/Users/elsewhere/foreign.png";
     const stale = join(workspace, "captures", "deleted.png");

@@ -1,16 +1,16 @@
 {
-  "title": "Pneuma Slide — Welcome",
+  "title": "Pneuma Slide Mode — for developers and builders",
   "slides": [
-    { "file": "slides/slide-01.html", "title": "Pneuma Slide" },
-    { "file": "slides/slide-02.html", "title": "More Than Just a Tool" },
-    { "file": "slides/slide-03.html", "title": "Live Preview WYSIWYG" },
-    { "file": "slides/slide-04.html", "title": "Conversational Creation" },
-    { "file": "slides/slide-05.html", "title": "Click to Select, Edit Precisely" },
-    { "file": "slides/slide-06.html", "title": "AI-Generated Illustrations" },
-    { "file": "slides/slide-07.html", "title": "Theme Design System" },
-    { "file": "slides/slide-08.html", "title": "All-in-One Toolbox" },
-    { "file": "slides/slide-09.html", "title": "Smart Layout Engine" },
-    { "file": "slides/slide-10.html", "title": "Present & Export" },
-    { "file": "slides/slide-11.html", "title": "Start Creating" }
+    { "file": "slides/slide-01.html", "title": "Your agent writes the deck" },
+    { "file": "slides/slide-02.html", "title": "The premise" },
+    { "file": "slides/slide-03.html", "title": "Files in, deck out" },
+    { "file": "slides/slide-04.html", "title": "Watch the deck take shape" },
+    { "file": "slides/slide-05.html", "title": "Point, don't describe" },
+    { "file": "slides/slide-06.html", "title": "Images that belong to the deck" },
+    { "file": "slides/slide-07.html", "title": "One file holds the whole look" },
+    { "file": "slides/slide-08.html", "title": "Every slide fits" },
+    { "file": "slides/slide-09.html", "title": "From editor to stage" },
+    { "file": "slides/slide-10.html", "title": "It's all files" },
+    { "file": "slides/slide-11.html", "title": "Start a deck" }
   ]
 }

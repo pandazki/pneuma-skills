@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, rm, mkdir, writeFile, utimes } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, utimes, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -165,5 +165,109 @@ describe("GET /content/* — unchanged behaviour", () => {
     const res = await app.request(`/content/${encodeURIComponent("a b.txt")}`);
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("hi");
+  });
+});
+
+/**
+ * A directory URL serves its index.html, as every static host does. The
+ * webcraft preview now shows each page at its real `/content/*` URL and lets
+ * the browser follow the page's own links, so `<a href="./">` must land on the
+ * content set's front page here exactly as it does once the site is deployed.
+ */
+describe("GET /content/* — directory index", () => {
+  it("serves index.html for a directory URL with a trailing slash", async () => {
+    await mkdir(join(root, "site", "sub"), { recursive: true });
+    await writeFile(join(root, "site", "index.html"), "<h1>front</h1>");
+    await writeFile(join(root, "site", "sub", "index.html"), "<h1>sub</h1>");
+    const res = await app.request("/content/site/");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type") ?? "").toContain("text/html");
+    expect(await res.text()).toBe("<h1>front</h1>");
+    expect(await (await app.request("/content/site/sub/?q=1")).text()).toBe("<h1>sub</h1>");
+  });
+
+  it("redirects a directory URL without the slash, so relative links resolve inside it", async () => {
+    await mkdir(join(root, "site"), { recursive: true });
+    await writeFile(join(root, "site", "index.html"), "<h1>front</h1>");
+    const res = await app.request("/content/site?mode=x", { redirect: "manual" });
+    expect(res.status).toBe(301);
+    expect(res.headers.get("location")).toBe("/content/site/?mode=x");
+  });
+
+  it("a directory without index.html is still not found", async () => {
+    await mkdir(join(root, "empty"), { recursive: true });
+    expect((await app.request("/content/empty/")).status).toBe(404);
+  });
+});
+
+describe("GET /content/ — the workspace root", () => {
+  it("serves the root index.html of a workspace without content sets", async () => {
+    await writeFile(join(root, "index.html"), "<h1>root</h1>");
+    expect(await (await app.request("/content/")).text()).toBe("<h1>root</h1>");
+  });
+});
+
+/**
+ * Containment (2026-09-23 final review, pre-existing). `pathStartsWith` was a
+ * plain `String.startsWith`, so with the content root at `<base>/pneuma` an
+ * encoded `../pneuma-neighbor/sentinel.txt` served the sibling directory's
+ * file, and a symlink inside the root served whatever it pointed at —
+ * including through the directory-index path.
+ */
+describe("GET /content/* — containment", () => {
+  let base: string;
+  let site: string;
+  let jail: Hono;
+  beforeEach(async () => {
+    base = await mkdtemp(join(tmpdir(), "pneuma-contain-"));
+    site = join(base, "pneuma");
+    await mkdir(join(site, "sub"), { recursive: true });
+    await mkdir(join(base, "pneuma-neighbor", "dir"), { recursive: true });
+    await writeFile(join(base, "pneuma-neighbor", "sentinel.txt"), "neighbor");
+    await writeFile(join(base, "pneuma-neighbor", "dir", "index.html"), "<h1>outside</h1>");
+    await writeFile(join(site, "page.html"), "<h1>inside</h1>");
+    jail = new Hono();
+    mountContentRoute(jail, { contentRoot: site });
+  });
+  afterEach(async () => {
+    await rm(base, { recursive: true, force: true });
+  });
+
+  it("refuses a sibling directory whose name starts with the root's", async () => {
+    const res = await jail.request("/content/%2e%2e%2fpneuma-neighbor%2fsentinel.txt");
+    expect(res.status).toBe(403);
+    expect(await res.text()).not.toContain("neighbor");
+  });
+
+  it("refuses a symlink inside the root that points outside it", async () => {
+    await symlink(join(base, "pneuma-neighbor", "sentinel.txt"), join(site, "link.txt"));
+    expect((await jail.request("/content/link.txt")).status).toBe(403);
+  });
+
+  it("refuses a symlinked directory that points outside, and its index.html", async () => {
+    await symlink(join(base, "pneuma-neighbor", "dir"), join(site, "linked"));
+    expect((await jail.request("/content/linked/")).status).toBe(403);
+    expect((await jail.request("/content/linked/index.html")).status).toBe(403);
+  });
+
+  it("refuses an index.html that is itself a symlink to outside", async () => {
+    await symlink(join(base, "pneuma-neighbor", "dir", "index.html"), join(site, "sub", "index.html"));
+    expect((await jail.request("/content/sub/")).status).toBe(403);
+  });
+
+  it("serves a symlink whose target stays inside the root", async () => {
+    await symlink(join(site, "page.html"), join(site, "alias.html"));
+    const res = await jail.request("/content/alias.html");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("<h1>inside</h1>");
+  });
+
+  it("answers malformed percent-encoding with 400, not 500", async () => {
+    expect((await jail.request("/content/%E0%A4%A.html")).status).toBe(400);
+    expect((await jail.request("/content/%")).status).toBe(400);
+  });
+
+  it("still serves ordinary files", async () => {
+    expect(await (await jail.request("/content/page.html")).text()).toBe("<h1>inside</h1>");
   });
 });

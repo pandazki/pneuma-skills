@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Usage · Carbon Park</title>
+  <link rel="stylesheet" href="assets/app.css?v=4">
+  <link rel="stylesheet" href="assets/usage.css?v=4">
+</head>
+<body data-page-title="Usage">
+<a class="skip" href="#main">Skip to content</a>
+<div class="app">
+  <aside class="rail" aria-label="Workspace">
+    <a class="brand" href="index.html">
+      <svg class="brand-mark" viewBox="0 0 26 26" aria-hidden="true">
+        <path d="M13 1.5 23 7.25v11.5L13 24.5 3 18.75V7.25Z" fill="oklch(0.42 0.095 152)"/>
+        <path d="M13 7.5v11M9 11.5l4 3 4-3" fill="none" stroke="oklch(0.97 0.02 152)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="brand-text"><span class="brand-name" data-ws-name>Carbon Park</span><span class="brand-sub">Pneuma workspace</span></span>
+    </a>
+    <nav class="nav" aria-label="Console">
+      <a href="index.html"><span data-icon="sessions"></span><span class="lbl">Sessions</span><em class="count" data-active-count></em></a>
+      <a href="usage.html" aria-current="page"><span data-icon="usage"></span><span class="lbl">Usage</span></a>
+      <a href="settings.html"><span data-icon="settings"></span><span class="lbl">Settings</span></a>
+    </nav>
+    <div class="rail-foot">
+      <p class="sample-note">Sample workspace. Sessions, members, and costs are synthetic.</p>
+      <div class="me" data-me></div>
+    </div>
+  </aside>
+  <main class="main" id="main">
+    <header class="page-head">
+      <div>
+        <h1>Usage</h1>
+        <p class="sub" id="range-line"></p>
+      </div>
+      <div class="segmented" role="radiogroup" aria-label="Date range" id="range">
+        <button type="button" role="radio" data-range="7"><span class="long">Last </span>7 days</button>
+        <button type="button" role="radio" data-range="30"><span class="long">Last </span>30 days</button>
+        <button type="button" role="radio" data-range="month">September</button>
+      </div>
+    </header>
+
+    <section class="budget" aria-labelledby="budget-title">
+      <div class="budget-text">
+        <h2 id="budget-title">September budget</h2>
+        <p class="budget-verdict" id="budget-verdict"></p>
+      </div>
+      <div class="budget-track" id="budget-track"></div>
+      <p class="hint" id="budget-foot"></p>
+    </section>
+
+    <section class="kpis" aria-label="Range summary" id="summary"></section>
+
+    <section class="chart-block" aria-labelledby="chart-title">
+      <div class="block-head">
+        <h2 id="chart-title">Daily spend</h2>
+        <div class="segmented" role="radiogroup" aria-label="Chart metric" id="metric">
+          <button type="button" role="radio" data-metric="cost">Spend</button>
+          <button type="button" role="radio" data-metric="tokens">Tokens</button>
+          <button type="button" role="radio" data-metric="sessions">Sessions</button>
+        </div>
+      </div>
+      <div class="chart" id="chart"></div>
+      <div class="tip" id="tip" role="status" aria-live="polite" hidden></div>
+    </section>
+
+    <div class="split">
+      <section class="breakdown-block" aria-labelledby="bd-title">
+        <div class="block-head">
+          <h2 id="bd-title">Breakdown</h2>
+          <div class="segmented" role="radiogroup" aria-label="Group by" id="group">
+            <button type="button" role="radio" data-group="mode">Mode</button>
+            <button type="button" role="radio" data-group="model">Model</button>
+            <button type="button" role="radio" data-group="owner">Owner</button>
+          </div>
+        </div>
+        <table class="bd" id="bd"></table>
+      </section>
+
+      <section class="top-block" aria-labelledby="top-title">
+        <div class="block-head">
+          <h2 id="top-title">Most expensive sessions</h2>
+        </div>
+        <ol class="top" id="top"></ol>
+      </section>
+    </div>
+
+    <p class="footnote hint" id="rates"></p>
+  </main>
+</div>
+<script src="assets/data.js?v=4"></script>
+<script src="assets/app.js?v=4"></script>
+<script src="assets/usage.js?v=4"></script>
+</body>
+</html>

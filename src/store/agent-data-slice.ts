@@ -9,6 +9,10 @@ export interface AgentDataSlice {
   gitAvailable: boolean | null;
   changedFilesTick: number;
   imageTick: number;
+  /** Workspace paths of the images whose change produced the latest
+   *  `imageTick` bump (empty when the caller did not say). Lets a viewer
+   *  refresh only when an image it shows changed. */
+  imageTickPaths: string[];
   diffBase: "last-commit" | "default-branch";
 
   setTasks: (tasks: TaskItem[]) => void;
@@ -21,7 +25,7 @@ export interface AgentDataSlice {
   updateProcess: (taskId: string, updates: Partial<ProcessItem>) => void;
   setGitAvailable: (available: boolean) => void;
   bumpChangedFilesTick: () => void;
-  bumpImageTick: () => void;
+  bumpImageTick: (paths?: string[]) => void;
   setDiffBase: (base: "last-commit" | "default-branch") => void;
 }
 
@@ -32,6 +36,7 @@ export const createAgentDataSlice: StateCreator<AppState, [], [], AgentDataSlice
   gitAvailable: null,
   changedFilesTick: 0,
   imageTick: 0,
+  imageTickPaths: [],
   diffBase: "last-commit",
 
   setTasks: (tasks) => set({ tasks }),
@@ -60,6 +65,6 @@ export const createAgentDataSlice: StateCreator<AppState, [], [], AgentDataSlice
 
   setGitAvailable: (gitAvailable) => set({ gitAvailable }),
   bumpChangedFilesTick: () => set((s) => ({ changedFilesTick: s.changedFilesTick + 1 })),
-  bumpImageTick: () => set((s) => ({ imageTick: s.imageTick + 1 })),
+  bumpImageTick: (paths = []) => set((s) => ({ imageTick: s.imageTick + 1, imageTickPaths: paths })),
   setDiffBase: (diffBase) => set({ diffBase }),
 });

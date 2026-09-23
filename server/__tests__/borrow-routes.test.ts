@@ -25,6 +25,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 import {
+  isInsideRoot,
   mountBorrowRoutes,
   type BorrowWsBridgeLike,
   type BorrowRoutesContext,
@@ -445,5 +446,23 @@ describe("TTL prune", () => {
     // Wait for at least one prune tick (interval 10ms, ttl 0 → stale at once).
     await new Promise((r) => setTimeout(r, 40));
     expect(ctx.borrows.get(borrow_id)?.state).toBe("timed_out");
+  });
+});
+
+describe("isInsideRoot", () => {
+  test("rejects a path through a symlink that leaves the project root", async () => {
+    const { symlinkSync, realpathSync } = await import("node:fs");
+    const base = realpathSync(await mkdtemp(join(tmpdir(), "pneuma-borrow-root-")));
+    try {
+      await mkdir(join(base, "proj", "real"), { recursive: true });
+      await mkdir(join(base, "outside"), { recursive: true });
+      symlinkSync(join(base, "outside"), join(base, "proj", "out"));
+      symlinkSync(join(base, "proj", "real"), join(base, "proj", "in"));
+      expect(isInsideRoot("out/x.md", join(base, "proj"))).toBe(false);
+      expect(isInsideRoot("in/x.md", join(base, "proj"))).toBe(true);
+      expect(isInsideRoot("../outside/x.md", join(base, "proj"))).toBe(false);
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
   });
 });

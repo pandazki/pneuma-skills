@@ -1,325 +1,291 @@
-/* Pneuma Slide Theme — Humanistic Tech Fusion (Warm Light) */
+/* Pneuma Slide Mode — deck theme
+ * Slides reference only the variables below. Swap this file to re-theme the deck.
+ * Everything between @tokens:start and @tokens:end is theme-specific;
+ * everything after it is shared, byte for byte, between the dark and light themes. */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap');
+
+/* @tokens:start */
+:root {
+  --theme-name: "Paper \00B7  light";
+
+  --color-bg: #f3eee4;
+  --color-fg: #1c1915;
+  --color-fg-2: #4d473e;
+  --color-muted: #686055;
+  --color-surface: #ebe5d9;
+  --color-surface-2: #e5dece;
+  --color-border: #dbd3c3;
+  --color-border-strong: #c3b9a6;
+  --color-primary: #b1401a;
+  --color-primary-soft: rgba(194, 70, 28, 0.12);
+  --color-secondary: #6d5e48;
+  --color-accent: #2b6f5f;
+  --color-select: #b1401a;
+  --color-glow: rgba(194, 70, 28, 0.05);
+  --color-hatch: rgba(194, 70, 28, 0.18);
+
+  --code-bg: #e9e2d4;
+  --code-fg: #2a251f;
+  --code-muted: #6a6358;
+  --code-key: #b23f16;
+  --code-str: #276456;
+  --code-add: rgba(45, 117, 100, 0.12);
+  --code-del: rgba(194, 70, 28, 0.09);
+
+  --plate-mat: #fbf8f1;
+  --shadow-lg: 0 30px 60px -24px rgba(60, 40, 20, 0.30), 0 0 0 1px rgba(60, 40, 20, 0.08);
+  --shadow-sm: 0 14px 30px -16px rgba(60, 40, 20, 0.28);
+
+  --label-bg: "#F3EEE4";
+  --label-surface: "#EBE5D9";
+  --label-fg: "#1C1915";
+  --label-muted: "#686055";
+  --label-primary: "#B1401A";
+  --label-accent: "#2B6F5F";
+}
+/* @tokens:end */
 
 :root {
-  --color-bg: #FAF7F2;
-  --color-fg: #2D2A26;
-  --color-primary: #D4632A;
-  --color-secondary: #8A8178;
-  --color-accent: #C4963A;
-  --color-muted: #8A8178;
-  --color-surface: #F0EBE3;
-  --color-border: #DDD5CA;
-  --color-surface-alt: #E8E1D7;
-
-  --font-sans: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
-
+  --font-display: "Instrument Serif", "Songti SC", "Noto Serif CJK SC", Georgia, serif;
+  --font-sans: "Geist", "SF Pro Text", -apple-system, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "Geist Mono", "SF Mono", "JetBrains Mono", Menlo, "PingFang SC", "Noto Sans CJK SC", monospace;
   --slide-padding: 64px;
+  --pad-x: 72px;
+  --pad-top: 92px;
+  --pad-bottom: 64px;
+  --radius: 14px;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
   font-family: var(--font-sans);
   background: var(--color-bg);
   color: var(--color-fg);
-  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* ── Base slide container ─────────────────────────────── */
+/* ── Slide canvas ─────────────────────────────────────── */
 
 .slide {
   width: 100%;
   height: 100%;
-  padding: var(--slide-padding);
+  padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
   display: flex;
   flex-direction: column;
   justify-content: center;
   position: relative;
   overflow: hidden;
-}
-
-/* ── Layout variants ──────────────────────────────────── */
-
-.slide-title {
-  align-items: center;
-  text-align: center;
-}
-
-.slide-content {
-  justify-content: flex-start;
-  padding-top: 72px;
-}
-
-.slide-split {
-  flex-direction: row;
-  gap: 48px;
-  align-items: center;
-}
-
-.slide-split>* {
-  flex: 1;
-  min-width: 0;
-}
-
-.slide-image {
-  padding: 0;
-  align-items: center;
-  justify-content: center;
-}
-
-/* ── Typography ───────────────────────────────────────── */
-
-h1,
-h2,
-h3,
-p,
-div,
-span {
-  z-index: 1;
-  position: relative;
-}
-
-h1 {
-  font-size: 2.75rem;
-  font-weight: 700;
-  line-height: 1.15;
-  letter-spacing: -0.03em;
-  margin-bottom: 0.4em;
   color: var(--color-fg);
+  background:
+    radial-gradient(900px 520px at 88% -8%, var(--color-glow), transparent 70%),
+    var(--color-bg);
 }
 
-h2 {
-  font-size: 1.75rem;
-  font-weight: 600;
-  line-height: 1.3;
-  letter-spacing: -0.02em;
-  margin-bottom: 0.6em;
-  color: var(--color-fg);
+.slide-title { text-align: left; }
+
+/* The chrome rail: every slide names the file it lives in */
+.chrome {
+  position: absolute;
+  top: 30px;
+  left: var(--pad-x);
+  right: var(--pad-x);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  color: var(--color-muted);
 }
+.chrome .brand { display: flex; align-items: center; gap: 10px; color: var(--color-fg-2); }
+.chrome .brand::before {
+  content: "";
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-primary);
+}
+.chrome .path { margin-left: auto; }
+.chrome .path::before { content: "\2192  "; color: var(--color-muted); }
+.chrome .folio { color: var(--color-fg-2); min-width: 64px; text-align: right; }
+
+/* ── Type ─────────────────────────────────────────────── */
+
+h1, h2 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  color: var(--color-fg);
+  letter-spacing: -0.012em;
+}
+h1 { font-size: 76px; line-height: 1.0; }
+h2 { font-size: 54px; line-height: 1.04; }
+h1 em, h2 em { font-style: italic; color: var(--color-primary); }
 
 h3 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  line-height: 1.4;
-  margin-bottom: 0.4em;
+  font-family: var(--font-sans);
+  font-size: 21px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
   color: var(--color-fg);
 }
 
-p {
-  font-size: 1.15rem;
-  line-height: 1.7;
-  color: var(--color-muted);
-  margin-bottom: 0.6em;
-}
+p { font-size: 19px; line-height: 1.55; color: var(--color-fg-2); text-wrap: pretty; }
+p.lead { font-size: 21px; line-height: 1.5; }
+p strong { color: var(--color-fg); font-weight: 500; }
 
-ul,
-ol {
-  font-size: 1.15rem;
-  line-height: 1.8;
-  padding-left: 1.5em;
-  color: var(--color-fg);
-}
-
-li {
-  margin-bottom: 0.4em;
-}
-
-li::marker {
+.kicker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   color: var(--color-primary);
 }
+.kicker::before { content: ""; width: 28px; height: 1px; background: var(--color-primary); }
 
-/* ── Code ─────────────────────────────────────────────── */
+.mono { font-family: var(--font-mono); }
+.muted { color: var(--color-muted); }
 
 code {
   font-family: var(--font-mono);
-  font-size: 0.85em;
-  background: var(--color-surface);
-  padding: 0.15em 0.4em;
-  border-radius: 4px;
-  color: var(--color-primary);
+  font-size: 0.86em;
+  color: var(--color-fg);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.08em 0.38em;
 }
 
-pre {
+/* ── Stack helpers ────────────────────────────────────── */
+
+.stack > * + * { margin-top: var(--gap, 16px); }
+.row { display: flex; gap: var(--gap, 24px); }
+
+/* ── Surfaces ─────────────────────────────────────────── */
+
+.panel {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 10px;
-  padding: 1.25em;
-  overflow-x: auto;
-  margin: 0.75em 0;
+  border-radius: var(--radius);
 }
 
-pre code {
-  background: none;
-  padding: 0;
-  font-size: 0.95rem;
-  color: var(--color-fg);
+.code {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--code-fg);
+  background: var(--code-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 18px 22px;
+  white-space: pre;
+}
+.code .k { color: var(--code-key); }
+.code .s { color: var(--code-str); }
+.code .c { color: var(--code-muted); }
+.code .add { display: block; background: var(--code-add); margin: 0 -22px; padding: 0 22px; }
+.code .del { display: block; background: var(--code-del); margin: 0 -22px; padding: 0 22px; color: var(--color-fg-2); }
+.code-label {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  color: var(--color-muted);
+  margin-bottom: 10px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--color-fg-2);
+  white-space: nowrap;
+}
+.chip b { font-weight: 500; color: var(--color-fg); }
+
+.hair-cols { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
+.hair-cols > * { padding: 22px 28px 0; border-left: 1px solid var(--color-border); }
+.hair-cols > *:first-child { padding-left: 0; border-left: none; }
+.idx { font-family: var(--font-mono); font-size: 15px; color: var(--color-primary); letter-spacing: 0.06em; }
+
+/* ── Mini slide frames (drawn slides) ─────────────────── */
+
+.frame {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.frame.ghost { background: transparent; border-style: dashed; }
+.frame .in { position: absolute; inset: 11% 9%; display: flex; flex-direction: column; gap: 7%; justify-content: center; }
+.bar { height: 6px; border-radius: 3px; background: var(--color-border-strong); }
+.bar.fg { background: var(--color-fg); opacity: 0.85; }
+.bar.pri { background: var(--color-primary); }
+.bar.t { height: 12px; border-radius: 3px; }
+.caret { display: inline-block; width: 2px; height: 14px; background: var(--color-primary); vertical-align: middle; }
+
+/* Viewer-style selection box */
+.select {
+  position: absolute;
+  outline: 1.5px dashed var(--color-select);
+  outline-offset: 6px;
+  border-radius: 2px;
+}
+.select::before, .select::after {
+  content: "";
+  position: absolute;
+  width: 8px; height: 8px;
+  background: var(--color-bg);
+  border: 1.5px solid var(--color-select);
+}
+.select::before { top: -11px; left: -11px; }
+.select::after { bottom: -11px; right: -11px; }
+.select-tag {
+  position: absolute;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  line-height: 1;
+  padding: 6px 9px;
+  border-radius: 5px;
+  background: var(--color-select);
+  color: var(--color-bg);
+  white-space: nowrap;
 }
 
 /* ── Images ───────────────────────────────────────────── */
 
-img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
+.plate {
+  background: var(--plate-mat);
+  padding: 14px;
+  border-radius: 4px;
+  box-shadow: var(--shadow-lg);
+}
+.plate img { display: block; width: 100%; height: auto; border-radius: 1px; }
+
+/* ── Swatches that read their labels from this file ───── */
+
+.swatch .chipcolor {
+  height: 96px;
   border-radius: 10px;
+  border: 1px solid var(--color-border-strong);
 }
-
-/* ── Cards ────────────────────────────────────────────── */
-
-.card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
-  padding: 24px;
-}
-
-.card h3 {
-  color: var(--color-primary);
-  margin-bottom: 0.4em;
-}
-
-.card p {
-  font-size: 1rem;
-  margin-bottom: 0;
-}
-
-/* ── Tags / Badges ────────────────────────────────────── */
-
-.tag {
-  display: inline-block;
-  padding: 4px 14px;
-  border-radius: 20px;
-  font-size: 13px;
-  font-weight: 600;
-  background: rgba(212, 99, 42, 0.12);
-  color: var(--color-primary);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-/* ── Divider ──────────────────────────────────────────── */
-
-.divider {
-  height: 1px;
-  background: var(--color-border);
-  margin: 20px 0;
-}
-
-/* ── Icon container ───────────────────────────────────── */
-
-.icon-circle {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.icon-circle svg {
-  width: 24px;
-  height: 24px;
-}
-
-/* ── Feature row ──────────────────────────────────────── */
-
-.feature-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-}
-
-.feature-row .icon-circle {
-  margin-top: 2px;
-}
-
-/* ── Utilities ────────────────────────────────────────── */
-
-.text-primary {
-  color: var(--color-primary);
-}
-
-.text-secondary {
-  color: var(--color-secondary);
-}
-
-.text-accent {
-  color: var(--color-accent);
-}
-
-.text-muted {
-  color: var(--color-muted);
-}
-
-.text-center {
-  text-align: center;
-}
-
-.text-small {
-  font-size: 0.95rem;
-}
-
-.text-large {
-  font-size: 1.35rem;
-}
-
-.mt-1 {
-  margin-top: 1em;
-}
-
-.mt-2 {
-  margin-top: 2em;
-}
-
-.mb-1 {
-  margin-bottom: 1em;
-}
-
-.mb-2 {
-  margin-bottom: 2em;
-}
-
-.flex {
-  display: flex;
-}
-
-.flex-col {
-  flex-direction: column;
-}
-
-.flex-row {
-  flex-direction: row;
-}
-
-.gap-xs {
-  gap: 8px;
-}
-
-.gap-sm {
-  gap: 16px;
-}
-
-.gap-md {
-  gap: 24px;
-}
-
-.gap-lg {
-  gap: 32px;
-}
-
-.items-center {
-  align-items: center;
-}
-
-.justify-center {
-  justify-content: center;
-}
+.swatch .name { margin-top: 12px; font-family: var(--font-mono); font-size: 16px; color: var(--color-fg); }
+.swatch .val { margin-top: 2px; font-family: var(--font-mono); font-size: 16px; color: var(--color-muted); }
+.val-bg::after { content: var(--label-bg); }
+.val-surface::after { content: var(--label-surface); }
+.val-fg::after { content: var(--label-fg); }
+.val-muted::after { content: var(--label-muted); }
+.val-primary::after { content: var(--label-primary); }
+.val-accent::after { content: var(--label-accent); }
+.theme-name::after { content: var(--theme-name); }

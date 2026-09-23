@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { mkdtempSync } from "node:fs";
 import type { SharedHistoryPackage } from "../core/types/shared-history.js";
 import type { BrowserIncomingMessage } from "./session-types.js";
+import { isGitObjectId } from "./utils.js";
 
 export interface ImportedPackage {
   manifest: SharedHistoryPackage;
@@ -60,6 +61,9 @@ export async function importHistory(pathOrDir: string, importDir?: string): Prom
     importDir: dir,
     extractCheckpointFiles: async (hash: string, outDir: string) => {
       if (!repoDir) throw new Error("No bundle available for checkpoint extraction");
+      // The hash comes from a request or from the (untrusted) package manifest
+      // and becomes a `git archive` argument: only an object id is accepted.
+      if (!isGitObjectId(hash)) throw new Error(`Invalid checkpoint hash: ${hash}`);
       mkdirSync(outDir, { recursive: true });
       const archive = Bun.spawn(
         ["git", `--git-dir=${repoDir}`, "archive", hash],

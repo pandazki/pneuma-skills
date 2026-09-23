@@ -894,3 +894,77 @@ describe("GET /api/projects/:id/sessions/:sessionId/thumbnail", () => {
 // The v1 file-mediated `/api/handoffs/:id/{confirm,cancel}` endpoints were
 // replaced by the tool-call protocol — see `server/handoff-routes.ts` and
 // its dedicated test file. Only the project-CRUD endpoints live here now.
+
+/**
+ * Owned-root containment for project routes that take a request-controlled
+ * path (security table of the 2026-09-23 final review): the file route under
+ * the project root, and the session thumbnail / session delete routes under
+ * `<root>/.pneuma/sessions/`. Project CRUD itself is deliberately global.
+ */
+describe("project routes stay inside their owned roots", () => {
+  async function makeProject(name: string): Promise<string> {
+    const projRoot = join(home, name);
+    await mkdir(join(projRoot, ".pneuma", "sessions"), { recursive: true });
+    await writeFile(
+      join(projRoot, ".pneuma", "project.json"),
+      JSON.stringify({ version: 1, name, displayName: name, createdAt: 1 }),
+    );
+    return projRoot;
+  }
+
+  test("GET /api/projects/:id/file refuses a symlink to outside the project root", async () => {
+    const { symlink } = await import("node:fs/promises");
+    const projRoot = await makeProject("file-proj");
+    const outside = join(home, "outside");
+    await mkdir(outside, { recursive: true });
+    await writeFile(join(outside, "secret.txt"), "OUTSIDE-PROJECT-SENTINEL");
+    await symlink(join(outside, "secret.txt"), join(projRoot, "leak.txt"));
+    await symlink(outside, join(projRoot, "leak-dir"));
+    await writeFile(join(projRoot, "logo.txt"), "inside");
+    const id = encodeURIComponent(projRoot);
+    for (const rel of ["leak.txt", "leak-dir/secret.txt"]) {
+      const res = await testApp.request(`/api/projects/${id}/file?path=${encodeURIComponent(rel)}`);
+      expect(res.status).toBe(403);
+      expect(await res.text()).not.toContain("OUTSIDE-PROJECT-SENTINEL");
+    }
+    const ok = await testApp.request(`/api/projects/${id}/file?path=logo.txt`);
+    expect(ok.status).toBe(200);
+    expect(await ok.text()).toBe("inside");
+  });
+
+  test("session thumbnail refuses a session id or thumbnail that leads outside the sessions dir", async () => {
+    const { symlink } = await import("node:fs/promises");
+    const projRoot = await makeProject("thumb-contain");
+    const other = join(home, "other");
+    await mkdir(join(other, "x"), { recursive: true });
+    await writeFile(join(other, "x", "session.json"), "{}");
+    await writeFile(join(other, "x", "thumbnail.png"), "OUTSIDE-PROJECT-SENTINEL");
+    const sessionDir = join(projRoot, ".pneuma", "sessions", "abc");
+    await mkdir(sessionDir, { recursive: true });
+    await writeFile(join(sessionDir, "session.json"), "{}");
+    await symlink(join(other, "x", "thumbnail.png"), join(sessionDir, "thumbnail.png"));
+    const id = encodeURIComponent(projRoot);
+    for (const sid of [encodeURIComponent("../../../other/x"), "abc"]) {
+      const res = await testApp.request(`/api/projects/${id}/sessions/${sid}/thumbnail`);
+      expect(res.status).toBeGreaterThanOrEqual(400);
+      expect(await res.text()).not.toContain("OUTSIDE-PROJECT-SENTINEL");
+    }
+  });
+
+  test("session delete refuses a sessions dir that links outside and deletes nothing there", async () => {
+    const { symlink } = await import("node:fs/promises");
+    const projRoot = join(home, "del-contain");
+    await mkdir(join(projRoot, ".pneuma"), { recursive: true });
+    await writeFile(
+      join(projRoot, ".pneuma", "project.json"),
+      JSON.stringify({ version: 1, name: "d", displayName: "d", createdAt: 1 }),
+    );
+    const outside = join(home, "outside-sessions");
+    await mkdir(join(outside, "victim"), { recursive: true });
+    await writeFile(join(outside, "victim", "keep.txt"), "keep");
+    await symlink(outside, join(projRoot, ".pneuma", "sessions"));
+    const res = await testApp.request(`/api/projects/${encodeURIComponent(projRoot)}/sessions/victim`, { method: "DELETE" });
+    expect(res.status).toBe(400);
+    expect(existsSync(join(outside, "victim", "keep.txt"))).toBe(true);
+  });
+});

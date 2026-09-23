@@ -10,14 +10,17 @@
  *
  * - POST /api/assets/trash: moves one or more workspace-relative files
  *   to the OS trash via the `trash` npm package. Path-scoped to the
- *   workspace's `assets/` tree — absolute paths and `..` escapes are
- *   rejected before touching disk. Returns `{ trashed, failed }`.
+ *   workspace's `assets/` tree — absolute paths, `..` escapes, and paths
+ *   whose canonical target leaves the workspace (a symlinked `assets/` or
+ *   subdirectory) are rejected before anything is trashed.
+ *   Returns `{ trashed, failed }`.
  */
 
 import type { Hono } from "hono";
 import { existsSync, lstatSync, readdirSync } from "node:fs";
 import { join, relative, sep, extname } from "node:path";
 import trash from "trash";
+import { isContained } from "../utils.js";
 
 export interface AssetFsOptions {
   workspace: string;
@@ -83,7 +86,9 @@ export function registerAssetFsRoutes(app: Hono, options: AssetFsOptions) {
 
   app.get("/api/assets/fs-listing", (c) => {
     const assetsDir = join(workspace, "assets");
-    if (!existsSync(assetsDir)) {
+    // The walk skips symlinked entries, but the root itself is followed by
+    // readdir: an `assets/` that links outside the workspace lists nothing.
+    if (!existsSync(assetsDir) || !isContained(assetsDir, workspace)) {
       return c.json({ entries: [] });
     }
     const absEntries: AbsEntry[] = [];
@@ -126,6 +131,10 @@ export function registerAssetFsRoutes(app: Hono, options: AssetFsOptions) {
         continue;
       }
       const abs = join(workspace, uri);
+      if (!isContained(abs, workspace)) {
+        failed.push({ uri, error: "path out of scope" });
+        continue;
+      }
       if (!existsSync(abs)) {
         failed.push({ uri, error: "not found" });
         continue;

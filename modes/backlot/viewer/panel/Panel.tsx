@@ -58,14 +58,17 @@ export function Panel(props: PanelProps) {
 
   return (
     <aside className="flex w-80 shrink-0 flex-col border-l border-cc-border bg-cc-surface/30 backdrop-blur">
-      <nav className="flex shrink-0 items-center gap-0.5 border-b border-cc-border px-1.5 py-1.5">
+      {/* The tabs wrap rather than overflow. Six tabs plus a failing-check
+          and a take count can be wider than the 20rem panel, and a row that
+          pokes past the panel's edge pans the whole viewer sideways. */}
+      <nav className="flex shrink-0 flex-wrap items-center border-b border-cc-border px-1 py-1.5">
         {TABS.map((entry) => (
           <button
             key={entry.id}
             type="button"
             onClick={() => setTab(entry.id)}
             aria-pressed={tab === entry.id}
-            className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] transition-colors ${
+            className={`inline-flex items-center gap-1 rounded-full px-1.5 py-1 text-[11px] transition-colors ${
               tab === entry.id
                 ? "bg-cc-primary/15 text-cc-primary"
                 : "text-cc-muted hover:bg-cc-hover hover:text-cc-fg"

@@ -1,56 +1,49 @@
 <div class="slide">
-  <span class="tag" style="margin-bottom: 16px; align-self: flex-start;">Design</span>
-  <h1 style="font-size: 2.2rem;">Smart <span class="text-accent">Layout Engine</span></h1>
-  <p style="max-width: 800px; margin-bottom: 32px;">
-    The CSS foundation of Slide mode is built for rigid, predictable layouts. It ensures your content never breaks the
-    projection canvas.
-  </p>
+  <header class="chrome"><span class="brand">Pneuma Skills</span><span class="path">slides/slide-09.html</span><span class="folio">09 / 11</span></header>
 
-  <div style="display: flex; gap: 24px; height: 320px;">
+  <div style="display:grid; grid-template-columns: 1fr 540px; gap: 64px; align-items: center;">
 
-    <div
-      style="flex: 1; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; padding: 24px; position: relative;">
-      <div
-        style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(212, 99, 42, 0.03) 10px, rgba(212, 99, 42, 0.03) 20px); border-radius: 12px;">
-      </div>
+    <div>
+      <div class="kicker">Ship it</div>
+      <h2 style="margin-top: 20px;">From editor <em>to stage.</em></h2>
 
-      <div style="position: relative; z-index: 1;">
-        <h3 style="margin-top: 0; display: flex; align-items: center; gap: 8px;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-            <line x1="12" y1="8" x2="12" y2="16" />
-            <line x1="8" y1="12" x2="16" y2="12" />
-          </svg>
-          Overflow Prevention
-        </h3>
-        <p style="font-size: 0.95rem; color: var(--color-secondary);">
-          Unlike normal web pages, slides cannot scroll. The CSS framework strictly enforces
-          <code>overflow: hidden</code> on the slide canvas and employs flexbox scaling to keep text inside boundaries.
-        </p>
+      <div style="margin-top: 32px; border-top: 1px solid var(--color-border);">
+        <div style="display:grid; grid-template-columns: 136px 1fr; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--color-border);">
+          <h3 style="font-size: 19px;">Present</h3>
+          <p style="font-size: 18px;">Fullscreen, arrow keys, and a grid overview to jump anywhere.</p>
+        </div>
+        <div style="display:grid; grid-template-columns: 136px 1fr; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--color-border);">
+          <h3 style="font-size: 19px;">Export</h3>
+          <p style="font-size: 18px;">A print-ready page to save as PDF, or the deck as standalone HTML.</p>
+        </div>
+        <div style="display:grid; grid-template-columns: 136px 1fr; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--color-border);">
+          <h3 style="font-size: 19px;">Reorder</h3>
+          <p style="font-size: 18px;">Drag thumbnails; <code>manifest.json</code> updates to match.</p>
+        </div>
+        <div style="display:grid; grid-template-columns: 136px 1fr; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--color-border);">
+          <h3 style="font-size: 19px;">Content sets</h3>
+          <p style="font-size: 18px;">Decks or variants side by side in one workspace. This one ships as two.</p>
+        </div>
       </div>
     </div>
 
-    <div
-      style="flex: 1; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; padding: 24px; position: relative;">
-      <div
-        style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: repeating-linear-gradient(-45deg, transparent, transparent 10px, rgba(91, 141, 181, 0.03) 10px, rgba(91, 141, 181, 0.03) 20px); border-radius: 12px;">
+    <div>
+      <div class="frame" style="width: 540px; background: var(--color-bg); border-color: var(--color-border-strong); box-shadow: var(--shadow-lg);">
+        <div class="in" style="inset: 16% 10%; gap: 12px; justify-content: center;">
+          <div class="mono" style="font-size: 10px; letter-spacing: 0.14em; color: var(--color-primary);">SLIDE MODE</div>
+          <div style="font-family: var(--font-display); font-size: 40px; line-height: 1.02; color: var(--color-fg);">Your agent writes the deck. You <em style="color: var(--color-primary);">watch</em> it take shape.</div>
+        </div>
+        <span class="mono muted" style="position:absolute; right: 14px; bottom: 10px; font-size: 15px;">01 / 11</span>
       </div>
-
-      <div style="position: relative; z-index: 1;">
-        <h3 style="margin-top: 0; display: flex; align-items: center; gap: 8px;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polygon points="12 2 2 7 12 12 22 7 12 2" />
-            <polyline points="2 17 12 22 22 17" />
-            <polyline points="2 12 12 17 22 12" />
-          </svg>
-          Absolute Precision
-        </h3>
-        <p style="font-size: 0.95rem; color: var(--color-secondary);">
-          Ask the AI to "place the red circle exactly at coordinates 500, 100". Because the canvas has a fixed aspect
-          ratio (e.g., 1280x720), the AI can mathematically calculate and position elements flawlessly using absolute
-          CSS.
-        </p>
+      <div style="display:grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-top: 16px;">
+        <div class="frame" style="border-radius: 4px; border-color: var(--color-primary);"><div class="in" style="gap: 3px;"><div class="bar fg" style="height: 3px; width: 70%;"></div><div class="bar fg" style="height: 3px; width: 45%;"></div></div></div>
+        <div class="frame" style="border-radius: 4px;"><div class="in" style="gap: 3px;"><div class="bar fg" style="height: 3px; width: 80%;"></div><div class="bar" style="height: 3px; width: 60%;"></div></div></div>
+        <div class="frame" style="border-radius: 4px;"><div class="in" style="gap: 3px;"><div class="bar fg" style="height: 3px; width: 50%;"></div><div class="bar" style="height: 8px; width: 100%;"></div></div></div>
+        <div class="frame" style="border-radius: 4px;"><div class="in" style="gap: 3px;"><div class="bar fg" style="height: 3px; width: 64%;"></div><div class="bar" style="height: 3px; width: 90%;"></div></div></div>
+        <div class="frame" style="border-radius: 4px;"><div class="in" style="gap: 3px;"><div class="bar fg" style="height: 3px; width: 44%;"></div><div class="bar" style="height: 8px; width: 70%;"></div></div></div>
+        <div class="frame" style="border-radius: 4px;"><div class="in" style="gap: 3px;"><div class="bar fg" style="height: 3px; width: 72%;"></div><div class="bar" style="height: 3px; width: 50%;"></div></div></div>
       </div>
+      <div class="mono muted" style="margin-top: 12px; font-size: 16px; display:flex; justify-content: space-between;"><span>fullscreen</span><span>grid overview</span></div>
     </div>
 
   </div>

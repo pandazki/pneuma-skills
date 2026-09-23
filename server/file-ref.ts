@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 import type { ContentBlock } from "./session-types.js";
+import { isContained } from "./utils.js";
 import type { AgentBackendType } from "../core/types/agent-backend.js";
 import { getBackendModule } from "../backends/index.js";
 
@@ -78,7 +79,7 @@ function scanToolResultForImageRefs(
     // from leaking a system-open affordance into the chat; existence
     // stops the agent's hypothetical or stale paths from rendering as
     // broken `<img>` placeholders.
-    if (!abs.startsWith(workspaceAbs + "/") && abs !== workspaceAbs) continue;
+    if (!isContained(abs, workspaceAbs)) continue;
     if (!existsSync(abs)) continue;
     seen.add(abs);
     refs.push({ path: abs, kind: "output" });

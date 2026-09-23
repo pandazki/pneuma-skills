@@ -37,6 +37,7 @@
     "modes/*/showcase/**",
     "!modes/*/harness/",
     "snapshot/",
+    "templates/",
     "dist/",
     "public/fonts/",
     "src/",

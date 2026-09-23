@@ -8,9 +8,10 @@
  */
 
 import type { Hono } from "hono";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, extname, dirname } from "node:path";
-import { pathStartsWith } from "../utils.js";
+import { canonicalPath, isContained } from "../utils.js";
+import { readWorkspaceText } from "../workspace-text.js";
 import { parseCompositions } from "../../modes/remotion/viewer/composition-parser.js";
 import { resolveCatalogMode } from "../../core/mode-catalog.js";
 import type { CatalogEnv } from "../../core/mode-catalog.js";
@@ -178,6 +179,100 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
   const workspace = options.workspace;
   const { hookBus, sessionInfo } = options;
 
+  // ── Workspace containment ─────────────────────────────────────────────
+  // Every file an export reads — the content-set directory, its manifest,
+  // the files the manifest names, and the assets those files reference —
+  // must stay inside the workspace once symlinks are resolved. `isContained`
+  // is the single authority. A content set that escapes is a 400 like any
+  // other invalid parameter; a manifest or manifest-named file that escapes
+  // refuses the whole export (403) before anything is built; an asset
+  // reference that escapes is left un-inlined, like any unresolvable ref.
+
+  type ExportRefusal = { error: string; status: 400 | 403 };
+
+  /**
+   * The directory an export reads: `?contentSet=` when given, else the
+   * workspace when it holds `marker`, else the first subdirectory that does
+   * (named by `discovered`).
+   */
+  function resolveExportBase(
+    rawContentSet: string | undefined,
+    marker = "manifest.json",
+  ): { baseDir: string; discovered?: string } | ExportRefusal {
+    if (rawContentSet) {
+      const baseDir = join(workspace, rawContentSet);
+      if (!isContained(baseDir, workspace)) return { error: "Invalid content set", status: 400 };
+      return { baseDir };
+    }
+    if (!existsSync(join(workspace, marker))) {
+      try {
+        for (const entry of readdirSync(workspace, { withFileTypes: true })) {
+          if (entry.isDirectory() && existsSync(join(workspace, entry.name, marker))) {
+            return { baseDir: join(workspace, entry.name), discovered: entry.name };
+          }
+        }
+      } catch { /* fall back to the workspace root */ }
+    }
+    return { baseDir: workspace };
+  }
+
+  /** Top-level entries the zip exports exclude (`zip -x`). */
+  const ZIP_EXCLUDED_TOP_LEVEL = new Set([".claude", ".pneuma", "node_modules", ".git"]);
+
+  /**
+   * A refusal naming the first symlink under `dir` whose canonical target
+   * leaves the workspace. `zip -r` follows symlinks, so zipping a directory
+   * that holds one would carry the outside file. Linked directories that
+   * stay inside are walked as zip will walk them, each canonical directory
+   * once (a link cycle terminates).
+   */
+  function refuseEscapingLinks(dir: string): ExportRefusal | null {
+    const seen = new Set<string>();
+    const visit = (d: string, top: boolean): string | null => {
+      const canonical = canonicalPath(d);
+      if (canonical === null) return d;
+      if (seen.has(canonical)) return null;
+      seen.add(canonical);
+      let entries: import("node:fs").Dirent[];
+      try {
+        entries = readdirSync(d, { withFileTypes: true });
+      } catch {
+        return null; // unreadable for zip too
+      }
+      for (const entry of entries) {
+        if (top && ZIP_EXCLUDED_TOP_LEVEL.has(entry.name)) continue;
+        const full = join(d, entry.name);
+        let descend = entry.isDirectory();
+        if (entry.isSymbolicLink()) {
+          if (!isContained(full, workspace)) return full;
+          try {
+            descend = statSync(full).isDirectory();
+          } catch {
+            continue; // dangling inside the workspace: zip skips it
+          }
+        }
+        if (descend) {
+          const hit = visit(full, false);
+          if (hit) return hit;
+        }
+      }
+      return null;
+    };
+    const hit = visit(dir, true);
+    return hit === null ? null : { error: `Path escapes workspace: ${hit.slice(workspace.length + 1) || hit}`, status: 403 };
+  }
+
+  /** A refusal naming the first of `files` (relative to `baseDir`) that leaves the workspace. */
+  function refuseEscapes(baseDir: string, files: ReadonlyArray<unknown>): ExportRefusal | null {
+    for (const file of files) {
+      if (typeof file !== "string") continue;
+      if (!isContained(join(baseDir, file), workspace)) {
+        return { error: `Path escapes workspace: ${file}`, status: 403 };
+      }
+    }
+    return null;
+  }
+
   // ── Slide export: shared builder + routes ─────────────────────────────
 
   const ASSET_MIME: Record<string, string> = {
@@ -199,7 +294,7 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
     if (cleaned.startsWith("/content/")) cleaned = cleaned.slice(9);
     if (cleaned.startsWith("/")) return null;
     const absPath = join(resolveBase, cleaned);
-    if (!pathStartsWith(absPath, workspace) || !existsSync(absPath)) return null;
+    if (!isContained(absPath, workspace) || !existsSync(absPath)) return null;
     try {
       const ext = extname(cleaned).toLowerCase();
       const mime = ASSET_MIME[ext] || "application/octet-stream";
@@ -227,7 +322,7 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
       if (cleaned.startsWith("/content/")) cleaned = cleaned.slice(9);
       if (cleaned.startsWith("/")) return match;
       const absPath = join(resolveBase, cleaned);
-      if (!pathStartsWith(absPath, workspace) || !existsSync(absPath)) return match;
+      if (!isContained(absPath, workspace) || !existsSync(absPath)) return match;
       try {
         let css = readFileSync(absPath, "utf-8");
         const cssDir = dirname(absPath);
@@ -296,22 +391,12 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
   /** Build the full export HTML. When inline=true, assets are inlined and toolbar/base removed. */
   function buildExportHtml(opts: { inline: boolean; contentSet?: string }): { html: string; title: string } | { error: string; status: number } {
     // Resolve base directory: workspace root or content set subdirectory
-    let baseDir = workspace;
-    let resolvedContentSet = opts.contentSet;
-    if (opts.contentSet) {
-      baseDir = join(workspace, opts.contentSet);
-    } else if (!existsSync(join(workspace, "manifest.json"))) {
-      // Auto-discover: find first subdirectory containing manifest.json
-      try {
-        for (const entry of readdirSync(workspace, { withFileTypes: true })) {
-          if (entry.isDirectory() && existsSync(join(workspace, entry.name, "manifest.json"))) {
-            baseDir = join(workspace, entry.name);
-            resolvedContentSet = entry.name;
-            break;
-          }
-        }
-      } catch { /* ignore */ }
-    }
+    const base = resolveExportBase(opts.contentSet);
+    if ("error" in base) return base;
+    const { baseDir } = base;
+    const resolvedContentSet = opts.contentSet ?? base.discovered;
+    const manifestRefusal = refuseEscapes(baseDir, ["manifest.json"]);
+    if (manifestRefusal) return manifestRefusal;
 
     const manifestPath = join(baseDir, "manifest.json");
     if (!existsSync(manifestPath)) {
@@ -326,6 +411,8 @@ export function registerExportRoutes(app: Hono, options: ExportOptions) {
     if (!manifest.slides?.length) {
       return { error: "No slides in manifest.json", status: 404 };
     }
+    const slideRefusal = refuseEscapes(baseDir, ["theme.css", ...manifest.slides.map((s) => s?.file)]);
+    if (slideRefusal) return slideRefusal;
 
     // Read theme.css and patch font stacks for CJK print compatibility
     const themePath = join(baseDir, "theme.css");
@@ -822,6 +909,7 @@ function initSlides(){
 
 async function createMaterializedSlides(){
   var wrapper=document.createElement('div');
+  wrapper.className='print-staging';
   wrapper.style.cssText='position:absolute;left:-9999px;top:0;width:${W}px;pointer-events:none;';
   document.body.appendChild(wrapper);
   var dedupe=new Set();
@@ -1036,7 +1124,6 @@ body {
   width: ${W}px;
   height: ${H}px;
   overflow: hidden;
-  break-after: page;
   position: relative;
   box-sizing: border-box;
   /* Prevent blending issues with background */
@@ -1213,8 +1300,17 @@ ${opts.inline ? `
     border-radius: 0;
     break-inside: avoid;
   }
-  .slide-page:last-of-type {
-    break-after: auto;
+  /* Break only between adjacent slide hosts. A trailing break-after on the
+     last slide cannot be cancelled reliably: anything appended to <body>
+     after the deck (print materialization's staging node) defeats sibling
+     position selectors such as :last-of-type and yields a blank last page. */
+  .slide-host + .slide-host {
+    break-before: page;
+  }
+  /* Materialization staging holds cloned slide stylesheets; the styles still
+     apply while the node itself stays out of print pagination. */
+  .print-staging {
+    display: none !important;
   }
   /* Strip only the effects that actually hang Chrome's print renderer:
      1. backdrop-filter — rasterising blurred background is extremely slow
@@ -1289,25 +1385,19 @@ ${getDeployScript().replace(/<\/script>/gi, "<\\/script>")}
 
   function buildSlidePlayerHtml(opts: { contentSet?: string }): { html: string; title: string } | { error: string; status: number } {
     // Reuse the same manifest/baseDir resolution as buildExportHtml
-    let baseDir = workspace;
-    if (opts.contentSet) {
-      baseDir = join(workspace, opts.contentSet);
-    } else if (!existsSync(join(workspace, "manifest.json"))) {
-      try {
-        for (const entry of readdirSync(workspace, { withFileTypes: true })) {
-          if (entry.isDirectory() && existsSync(join(workspace, entry.name, "manifest.json"))) {
-            baseDir = join(workspace, entry.name);
-            break;
-          }
-        }
-      } catch { /* ignore */ }
-    }
+    const base = resolveExportBase(opts.contentSet);
+    if ("error" in base) return base;
+    const { baseDir } = base;
+    const manifestRefusal = refuseEscapes(baseDir, ["manifest.json"]);
+    if (manifestRefusal) return manifestRefusal;
 
     const manifestPath = join(baseDir, "manifest.json");
     if (!existsSync(manifestPath)) return { error: "No manifest.json found", status: 404 };
     let manifest: { title: string; slides: { file: string; title: string }[] };
     try { manifest = JSON.parse(readFileSync(manifestPath, "utf-8")); } catch { return { error: "Failed to parse manifest.json", status: 500 }; }
     if (!manifest.slides?.length) return { error: "No slides", status: 404 };
+    const slideRefusal = refuseEscapes(baseDir, ["theme.css", ...manifest.slides.map((s) => s?.file)]);
+    if (slideRefusal) return slideRefusal;
 
     const W = (options.initParams?.slideWidth as number) || 1280;
     const H = (options.initParams?.slideHeight as number) || 720;
@@ -1571,19 +1661,11 @@ document.addEventListener("keydown",function(e){
   /** Build the WebCraft export HTML page. */
   function buildWebcraftExportHtml(opts: { inline: boolean; contentSet?: string }): { html: string; title: string } | { error: string; status: number } {
     // Resolve base directory
-    let baseDir = workspace;
-    if (opts.contentSet) {
-      baseDir = join(workspace, opts.contentSet);
-    } else if (!existsSync(join(workspace, "manifest.json"))) {
-      try {
-        for (const entry of readdirSync(workspace, { withFileTypes: true })) {
-          if (entry.isDirectory() && existsSync(join(workspace, entry.name, "manifest.json"))) {
-            baseDir = join(workspace, entry.name);
-            break;
-          }
-        }
-      } catch { /* ignore */ }
-    }
+    const base = resolveExportBase(opts.contentSet);
+    if ("error" in base) return base;
+    const { baseDir } = base;
+    const manifestRefusal = refuseEscapes(baseDir, ["manifest.json"]);
+    if (manifestRefusal) return manifestRefusal;
 
     const manifestPath = join(baseDir, "manifest.json");
     if (!existsSync(manifestPath)) {
@@ -1598,6 +1680,8 @@ document.addEventListener("keydown",function(e){
     if (!manifest.pages?.length) {
       return { error: "No pages in manifest.json", status: 404 };
     }
+    const pageRefusal = refuseEscapes(baseDir, manifest.pages.map((p) => p?.file));
+    if (pageRefusal) return pageRefusal;
 
     const title = manifest.title || "WebCraft Project";
 
@@ -2292,19 +2376,11 @@ ${pageSectionsHtml}${downloadScript}${pageInitScript}
       ? await hookBus.emit("export:before", { format, contentSet, page: pageFile }, sessionInfo).catch(() => ({ format, contentSet, page: pageFile }))
       : { format, contentSet, page: pageFile };
     // Resolve base directory (same logic as buildWebcraftExportHtml)
-    let baseDir = workspace;
-    if (contentSet) {
-      baseDir = join(workspace, contentSet);
-    } else if (!existsSync(join(workspace, "manifest.json"))) {
-      try {
-        for (const entry of readdirSync(workspace, { withFileTypes: true })) {
-          if (entry.isDirectory() && existsSync(join(workspace, entry.name, "manifest.json"))) {
-            baseDir = join(workspace, entry.name);
-            break;
-          }
-        }
-      } catch { /* ignore */ }
-    }
+    const base = resolveExportBase(contentSet);
+    if ("error" in base) return c.text(base.error, base.status);
+    const { baseDir } = base;
+    const manifestRefusal = refuseEscapes(baseDir, ["manifest.json"]);
+    if (manifestRefusal) return c.text(manifestRefusal.error, manifestRefusal.status);
     const manifestPath = join(baseDir, "manifest.json");
     if (!existsSync(manifestPath)) return c.text("No manifest.json found", 404);
     let manifest: { title?: string; pages?: { file: string; title?: string }[] };
@@ -2315,6 +2391,8 @@ ${pageSectionsHtml}${downloadScript}${pageInitScript}
     const targetPage = pageFile
       ? manifest.pages.find((p) => p.file === pageFile) || manifest.pages[0]
       : manifest.pages[0];
+    const pageRefusal = refuseEscapes(baseDir, [targetPage.file]);
+    if (pageRefusal) return c.text(pageRefusal.error, pageRefusal.status);
     const pagePath = join(baseDir, targetPage.file);
     if (!existsSync(pagePath)) return c.text(`Missing: ${targetPage.file}`, 404);
 
@@ -2347,19 +2425,11 @@ ${pageSectionsHtml}${downloadScript}${pageInitScript}
   // Screenshot is handled entirely client-side via snapdom + fflate (loaded
   // from the page itself); no server support needed.
   function buildKamiExportHtml(opts: { contentSet?: string }): { html: string; title: string } | { error: string; status: number } {
-    let baseDir = workspace;
-    if (opts.contentSet) {
-      baseDir = join(workspace, opts.contentSet);
-    } else if (!existsSync(join(workspace, "manifest.json"))) {
-      try {
-        for (const entry of readdirSync(workspace, { withFileTypes: true })) {
-          if (entry.isDirectory() && existsSync(join(workspace, entry.name, "manifest.json"))) {
-            baseDir = join(workspace, entry.name);
-            break;
-          }
-        }
-      } catch { /* ignore */ }
-    }
+    const base = resolveExportBase(opts.contentSet);
+    if ("error" in base) return base;
+    const { baseDir } = base;
+    const manifestRefusal = refuseEscapes(baseDir, ["manifest.json"]);
+    if (manifestRefusal) return manifestRefusal;
 
     const manifestPath = join(baseDir, "manifest.json");
     if (!existsSync(manifestPath)) return { error: "No manifest.json found in workspace", status: 404 };
@@ -2368,6 +2438,8 @@ ${pageSectionsHtml}${downloadScript}${pageInitScript}
     try { manifest = JSON.parse(readFileSync(manifestPath, "utf-8")); }
     catch { return { error: "Failed to parse manifest.json", status: 500 }; }
     if (!manifest.pages?.length) return { error: "No pages in manifest.json", status: 404 };
+    const pageRefusal = refuseEscapes(baseDir, manifest.pages.map((p) => p?.file));
+    if (pageRefusal) return pageRefusal;
 
     // Paper dimensions come from .pneuma/config.json, written by manifest.init.deriveParams.
     // Defaults to A4 portrait if missing (shouldn't happen in practice).
@@ -2875,20 +2947,12 @@ async function downloadPdf() {
     let contentSet = c.req.query("contentSet") || undefined;
     const pageFile = c.req.query("page") || undefined;
 
-    let baseDir = workspace;
-    if (contentSet) {
-      baseDir = join(workspace, contentSet);
-    } else if (!existsSync(join(workspace, "manifest.json"))) {
-      try {
-        for (const entry of readdirSync(workspace, { withFileTypes: true })) {
-          if (entry.isDirectory() && existsSync(join(workspace, entry.name, "manifest.json"))) {
-            contentSet = entry.name;
-            baseDir = join(workspace, entry.name);
-            break;
-          }
-        }
-      } catch { /* ignore */ }
-    }
+    const base = resolveExportBase(contentSet);
+    if ("error" in base) return c.text(base.error, base.status);
+    const { baseDir } = base;
+    contentSet = contentSet ?? base.discovered;
+    const manifestRefusal = refuseEscapes(baseDir, ["manifest.json"]);
+    if (manifestRefusal) return c.text(manifestRefusal.error, manifestRefusal.status);
 
     const manifestPath = join(baseDir, "manifest.json");
     if (!existsSync(manifestPath)) return c.text("No manifest.json found", 404);
@@ -2900,6 +2964,8 @@ async function downloadPdf() {
     const targetPage = pageFile
       ? manifest.pages.find((p) => p.file === pageFile) || manifest.pages[0]
       : manifest.pages[0];
+    const pageRefusal = refuseEscapes(baseDir, [targetPage.file]);
+    if (pageRefusal) return c.text(pageRefusal.error, pageRefusal.status);
     const pagePath = join(baseDir, targetPage.file);
     if (!existsSync(pagePath)) return c.text(`Missing: ${targetPage.file}`, 404);
 
@@ -2974,26 +3040,33 @@ async function downloadPdf() {
   //   3. auto-discover the first subdirectory containing a draft.md
   function resolveWordtasteDraft(
     rawContentSet: string | undefined,
-  ): { path: string; contentSet?: string } | { error: string; status: 400 | 404 } {
+  ): { path: string; contentSet?: string } | { error: string; status: 400 | 403 | 404 } {
     if (rawContentSet) {
       const baseDir = join(workspace, rawContentSet);
-      // Containment guard: reject any ?contentSet that escapes the workspace.
-      if (!pathStartsWith(baseDir, workspace)) {
+      // Containment guard: reject any ?contentSet that escapes the workspace,
+      // lexically or through a symlink.
+      if (!isContained(baseDir, workspace)) {
         return { error: "Invalid content set", status: 400 };
       }
       const draftPath = join(baseDir, "draft.md");
+      if (!isContained(draftPath, workspace)) return { error: "Path escapes workspace: draft.md", status: 403 };
       if (!existsSync(draftPath)) return { error: "No draft.md found", status: 404 };
       return { path: draftPath, contentSet: rawContentSet };
     }
 
     const rootDraft = join(workspace, "draft.md");
-    if (existsSync(rootDraft)) return { path: rootDraft };
+    if (existsSync(rootDraft)) {
+      if (!isContained(rootDraft, workspace)) return { error: "Path escapes workspace: draft.md", status: 403 };
+      return { path: rootDraft };
+    }
 
     try {
       for (const entry of readdirSync(workspace, { withFileTypes: true })) {
         if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
         const candidate = join(workspace, entry.name, "draft.md");
-        if (existsSync(candidate)) return { path: candidate, contentSet: entry.name };
+        if (existsSync(candidate) && isContained(candidate, workspace)) {
+          return { path: candidate, contentSet: entry.name };
+        }
       }
     } catch { /* fall through to 404 */ }
 
@@ -3036,19 +3109,14 @@ async function downloadPdf() {
 
   app.get("/export/webcraft/zip", async (c) => {
     if (!workspace) return c.text("No workspace", 400);
-    let contentSet = c.req.query("contentSet") || undefined;
     // Auto-discover content set if not specified
-    if (!contentSet && !existsSync(join(workspace, "manifest.json"))) {
-      try {
-        for (const entry of readdirSync(workspace, { withFileTypes: true })) {
-          if (entry.isDirectory() && existsSync(join(workspace, entry.name, "manifest.json"))) {
-            contentSet = entry.name;
-            break;
-          }
-        }
-      } catch { /* ignore */ }
-    }
-    const exportDir = contentSet ? join(workspace, contentSet) : workspace;
+    const base = resolveExportBase(c.req.query("contentSet") || undefined);
+    if ("error" in base) return c.text(base.error, base.status);
+    const contentSet = c.req.query("contentSet") || base.discovered;
+    const exportDir = base.baseDir;
+    // The complete archive set is checked before zip runs.
+    const linkRefusal = refuseEscapingLinks(exportDir);
+    if (linkRefusal) return c.text(linkRefusal.error, linkRefusal.status);
     const tmpFile = `/tmp/pneuma-webcraft-export-${Date.now()}.zip`;
     try {
       const proc = Bun.spawn(
@@ -3126,25 +3194,13 @@ async function downloadPdf() {
    */
   function resolveEli5Topic(eli5: Eli5Modules, rawContentSet: string | undefined):
     | { baseDir: string; contentSet?: string; manifest: ExplainerManifest }
-    | { error: string; status: 400 | 404 | 500 } {
-    let baseDir = workspace;
-    let contentSet = rawContentSet;
-    if (contentSet) {
-      baseDir = join(workspace, contentSet);
-      if (!pathStartsWith(baseDir, workspace)) {
-        return { error: "Invalid content set", status: 400 };
-      }
-    } else if (!existsSync(join(workspace, "manifest.json"))) {
-      try {
-        for (const entry of readdirSync(workspace, { withFileTypes: true })) {
-          if (entry.isDirectory() && existsSync(join(workspace, entry.name, "manifest.json"))) {
-            contentSet = entry.name;
-            baseDir = join(workspace, entry.name);
-            break;
-          }
-        }
-      } catch { /* ignore */ }
-    }
+    | { error: string; status: 400 | 403 | 404 | 500 } {
+    const base = resolveExportBase(rawContentSet);
+    if ("error" in base) return base;
+    const { baseDir } = base;
+    const contentSet = rawContentSet ?? base.discovered;
+    const manifestRefusal = refuseEscapes(baseDir, ["manifest.json"]);
+    if (manifestRefusal) return manifestRefusal;
 
     const manifestPath = join(baseDir, "manifest.json");
     if (!existsSync(manifestPath)) {
@@ -3161,6 +3217,8 @@ async function downloadPdf() {
     if (!manifest || manifest.audiences.length === 0) {
       return { error: "No audiences in manifest.json", status: 404 };
     }
+    const pageRefusal = refuseEscapes(baseDir, manifest.audiences.map((a) => a.file || undefined));
+    if (pageRefusal) return pageRefusal;
     return { baseDir, contentSet, manifest };
   }
 
@@ -3350,7 +3408,7 @@ ${rungs}
     // sanitizing); the export iframes carry no selection script.
     const pageContents = manifest.audiences.map((a) => {
       const pagePath = join(baseDir, a.file);
-      const inWorkspace = pathStartsWith(pagePath, workspace);
+      const inWorkspace = isContained(pagePath, workspace);
       const raw = inWorkspace && a.file && existsSync(pagePath)
         ? readFileSync(pagePath, "utf-8")
         : `<p>Missing: ${escapeEli5Text(a.file || "(no file)")}</p>`;
@@ -3768,7 +3826,7 @@ ${pageSectionsHtml}${downloadScript}${pageInitScript}
     const { audience, index } = findEli5Audience(manifest, page);
     if (!audience.file) return c.text(`No page file for audience: ${audience.id}`, 404);
     const pagePath = join(resolved.baseDir, audience.file);
-    if (!pathStartsWith(pagePath, workspace)) return c.text("Invalid page path", 400);
+    if (!isContained(pagePath, workspace)) return c.text("Invalid page path", 400);
     if (!existsSync(pagePath)) return c.text(`Missing: ${audience.file}`, 404);
 
     // Inline assets against the page's OWN directory — an explainer page's
@@ -3826,6 +3884,9 @@ ${pageSectionsHtml}${downloadScript}${pageInitScript}
     const resolved = resolveEli5Topic(eli5, contentSet);
     if ("error" in resolved) return c.text(resolved.error, resolved.status);
     const exportDir = resolved.baseDir;
+    // The complete archive set is checked before zip runs.
+    const linkRefusal = refuseEscapingLinks(exportDir);
+    if (linkRefusal) return c.text(linkRefusal.error, linkRefusal.status);
     const tmpFile = `/tmp/pneuma-eli5-export-${Date.now()}.zip`;
     try {
       const proc = Bun.spawn(
@@ -3876,6 +3937,7 @@ ${pageSectionsHtml}${downloadScript}${pageInitScript}
   function collectRemotionSources(): { path: string; content: string }[] | { error: string; status: number } {
     const srcDir = join(workspace, "src");
     if (!existsSync(srcDir)) return { error: "No src/ directory found", status: 404 };
+    if (!isContained(srcDir, workspace)) return { error: "Path escapes workspace: src", status: 403 };
     const rootPath = join(srcDir, "Root.tsx");
     if (!existsSync(rootPath)) return { error: "No src/Root.tsx found", status: 404 };
 
@@ -3891,6 +3953,8 @@ ${pageSectionsHtml}${downloadScript}${pageInitScript}
           scanSrc(join(dir, entry.name), `${prefix}${entry.name}/`);
         } else if (/\.(tsx?|jsx?)$/.test(entry.name) && !/\bindex\.(tsx?|jsx?)$/.test(entry.name)) {
           const relPath = `src/${prefix}${entry.name}`;
+          // A symlinked source is exported only when it resolves inside.
+          if (!isContained(join(dir, entry.name), workspace)) continue;
           const source = readFileSync(join(dir, entry.name), "utf-8");
           try {
             files.push({ path: relPath, content: transpiler.transformSync(source) });
@@ -4291,6 +4355,7 @@ createRoot(document.getElementById('root')).render(h(ExportApp));
     // 1. Read and parse compositions
     const rootPath = join(workspace, "src", "Root.tsx");
     if (!existsSync(rootPath)) return { error: "No src/Root.tsx found in workspace", status: 404 };
+    if (!isContained(rootPath, workspace)) return { error: "Path escapes workspace: src/Root.tsx", status: 403 };
     const rootSource = readFileSync(rootPath, "utf-8");
     const compositions = parseCompositions(rootSource);
     if (!compositions.length) return { error: "No <Composition> declarations found in Root.tsx", status: 404 };
@@ -4553,6 +4618,7 @@ ${getDeployScript().replace(/<\/script>/gi, "<\\/script>")}
 
   app.get("/api/files", (c) => {
     const files: { path: string; content: string }[] = [];
+    const seen = new Set<string>();
     const patterns = options.watchPatterns || ["**/*.md"];
     try {
       for (const pattern of patterns) {
@@ -4570,10 +4636,16 @@ ${getDeployScript().replace(/<\/script>/gi, "<\\/script>")}
           // Skip config files
           if (relPath === "CLAUDE.md" || relPath.startsWith(".claude/")) continue;
           // Skip duplicates (patterns may overlap)
-          if (files.some((f) => f.path === relPath)) continue;
+          if (seen.has(relPath)) continue;
+          seen.add(relPath);
           const absPath = join(workspace, relPath);
+          // Bun.Glob does not follow symlinks today; the snapshot must not
+          // depend on that to keep outside files out of the browser.
+          if (!isContained(absPath, workspace)) continue;
           try {
-            const content = readFileSync(absPath, "utf-8");
+            // A binary match is listed by path with empty content — its
+            // bytes are served by /content/* (see server/workspace-text.ts).
+            const content = readWorkspaceText(absPath) ?? "";
             files.push({ path: relPath, content });
           } catch {
             // skip unreadable files

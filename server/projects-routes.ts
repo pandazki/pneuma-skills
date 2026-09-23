@@ -10,6 +10,7 @@ import {
 import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
 import { extname, isAbsolute, join, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
+import { isContained, pathStartsWith } from "./utils.js";
 import {
   loadProjectManifest,
   writeProjectManifest,
@@ -184,7 +185,7 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
     const candidates = ["cover.png", "cover.jpg", "cover.jpeg", "cover.webp", "cover.svg"];
     const coverPath = candidates
       .map((name) => join(project.root, ".pneuma", name))
-      .find((p) => existsSync(p));
+      .find((p) => existsSync(p) && isContained(p, project.root));
     if (!coverPath) {
       return c.json({ error: "no cover image" }, 404);
     }
@@ -505,7 +506,9 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
     if (!manifest) return c.json({ error: "project not found" }, 404);
     const projectRootResolved = resolve(id);
     const abs = resolve(projectRootResolved, rel);
-    if (!abs.startsWith(projectRootResolved + sep) && abs !== projectRootResolved) {
+    // Lexically and after resolving symlinks: a link inside the project
+    // pointing outside it is refused.
+    if (!isContained(abs, projectRootResolved)) {
       return c.json({ error: "path escapes project root" }, 403);
     }
     if (!existsSync(abs)) return c.json({ error: "not found" }, 404);
@@ -535,11 +538,17 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
     // as `/cover` above.
     const manifest = await loadProjectManifest(id);
     if (!manifest) return c.json({ error: "project not found" }, 404);
-    const sessionDir = join(id, ".pneuma", "sessions", sessionId);
+    const sessionsRoot = resolve(join(id, ".pneuma", "sessions"));
+    const sessionDir = resolve(join(sessionsRoot, sessionId));
+    const thumbPath = join(sessionDir, "thumbnail.png");
+    // The session dir sits directly under the project's sessions dir, and
+    // neither it nor the thumbnail leads outside the project through a link.
+    if (!pathStartsWith(sessionDir, sessionsRoot + sep) || !isContained(thumbPath, resolve(id))) {
+      return c.json({ error: "invalid session id" }, 400);
+    }
     if (!existsSync(join(sessionDir, "session.json"))) {
       return c.json({ error: "session not found" }, 404);
     }
-    const thumbPath = join(sessionDir, "thumbnail.png");
     if (!existsSync(thumbPath)) {
       return c.json({ error: "no thumbnail" }, 404);
     }
@@ -565,7 +574,10 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
     if (!manifest) return c.json({ error: "project not found" }, 404);
     const sessionsRoot = resolve(join(id, ".pneuma", "sessions"));
     const sessionDir = resolve(join(sessionsRoot, sessionId));
-    if (!sessionDir.startsWith(sessionsRoot + sep)) {
+    // Strictly under the sessions dir as written, and inside the project
+    // once symlinks are resolved — a `.pneuma/sessions` linked elsewhere must
+    // not turn this into a recursive delete outside the project.
+    if (!pathStartsWith(sessionDir, sessionsRoot + sep) || !isContained(sessionDir, resolve(id))) {
       return c.json({ error: "invalid session id" }, 400);
     }
 

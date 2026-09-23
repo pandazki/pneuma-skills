@@ -17,8 +17,11 @@ import { loadRoster, saveRoster } from "./domain.js";
 
 const spriteManifest: ModeManifest = {
   name: "sprite",
-  version: "0.3.2",
+  version: "0.3.3",
   changelog: {
+    "0.3.3": [
+      "A character with thousands of frames opens in seconds: the frame, cell and pipeline scratch directories are no longer file-watched (the server spent 25-40 s registering a watch per frame before it answered the page), and a frame's url now names the run that registered it, so a re-run still refreshes the stage",
+    ],
     "0.3.2": ["Skill text states current behaviour without the incident stories; seed size note moved to the seed README"],
     "0.3.1": [
       "A loop's interview is now a gate, not a request: `set-motion --brief-duration/--brief-width/--brief-interpolator` records what the user answered, and `add-video` refuses the paid clip on a loop that has no brief. The 400-frame ceiling is warned about while the duration is still a question, and `register-run` says when the frames that landed are not the width the brief asked for",
@@ -96,7 +99,25 @@ const spriteManifest: ModeManifest = {
       "**/refs/**/*",
       "**/motions/**/*",
     ],
-    ignorePatterns: ["node_modules/**", ".pneuma/**"],
+    // The per-frame directories are served (`/content/*`) but never watched.
+    // The watcher registers one `fs.watch` per file, and on macOS that cost
+    // grows superlinearly with the count (Bun 1.4.0: 2,000 files 2.5 s, 3,000
+    // files 11 s), all on the server's main thread: a ten-loop character with
+    // 2,684 frames kept the server from answering anything for 25-40 s after
+    // start. Nothing here needs a frame event — `register-run` rewrites
+    // project.json whenever frames land, stamping each frame asset's
+    // `createdAt`, and the stage's frame urls carry that stamp
+    // (`playback.ts::resolveFrameSource`). `cells/` is the pre-align grid, and
+    // `.loop-work` / `.retime-work-*` are the pipeline's scratch sequences —
+    // hundreds of PNGs each while a run is in flight.
+    ignorePatterns: [
+      "node_modules/**",
+      ".pneuma/**",
+      "**/frames/**",
+      "**/cells/**",
+      "**/.loop-work/**",
+      "**/.retime-work-*/**",
+    ],
     serveDir: ".",
   },
 

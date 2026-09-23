@@ -267,8 +267,8 @@ describe("resolveFrameSource", () => {
     if (source.kind !== "frames") return;
     expect(source.count).toBe(4);
     expect(source.missing).toBe(0);
-    expect(source.frames[0]).toBe("/content/mini/motions/bounce/frames/00.png?v=7");
-    expect(source.frames[3]).toBe("/content/mini/motions/bounce/frames/03.png?v=7");
+    expect(source.frames[0]).toBe("/content/mini/motions/bounce/frames/00.png?v=7&r=1757400002000");
+    expect(source.frames[3]).toBe("/content/mini/motions/bounce/frames/03.png?v=7&r=1757400002000");
   });
 
   test("a frame whose asset is gone keeps its slot so indices never shift", () => {
@@ -281,7 +281,7 @@ describe("resolveFrameSource", () => {
     expect(source.count).toBe(4);
     expect(source.missing).toBe(1);
     expect(source.frames[2]).toBeNull();
-    expect(source.frames[3]).toBe("/content/mini/motions/bounce/frames/03.png?v=1");
+    expect(source.frames[3]).toBe("/content/mini/motions/bounce/frames/03.png?v=1&r=1757400002000");
   });
 
   test("falls back to slicing the raw sheet when there are no frames yet", () => {
@@ -339,7 +339,7 @@ describe("resolveFrameSource", () => {
     const source = resolveFrameSource(p, motionOf(p), 2);
     expect(source.kind).toBe("frames");
     if (source.kind !== "frames") return;
-    expect(source.frames[0]).toBe("/content/motions/bounce/frames/00.png?v=2");
+    expect(source.frames[0]).toBe("/content/motions/bounce/frames/00.png?v=2&r=1757400002000");
   });
 });
 

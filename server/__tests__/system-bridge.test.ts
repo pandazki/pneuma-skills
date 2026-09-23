@@ -36,6 +36,10 @@ describe("resolveAndValidate", () => {
     expect(result).toBe("/tmp/test-workspace/file.txt");
   });
 
+  test("rejects a sibling directory sharing the workspace name as a prefix", () => {
+    expect(() => resolveAndValidate(workspace, "../test-workspace-neighbor/x")).toThrow("Path escapes workspace");
+  });
+
   test("rejects sneaky traversal like foo/../../..", () => {
     expect(() => resolveAndValidate(workspace, "foo/../../../etc")).toThrow("Path escapes workspace");
   });
@@ -66,5 +70,25 @@ describe("validateUrl", () => {
 
   test("rejects ftp:// URL", () => {
     expect(() => validateUrl("ftp://example.com")).toThrow("Only http:// and https://");
+  });
+});
+
+describe("resolveAndValidate — symlinks", () => {
+  test("rejects a workspace symlink whose target is outside, accepts one that stays inside", async () => {
+    const { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const base = realpathSync(mkdtempSync(join(tmpdir(), "pneuma-bridge-")));
+    try {
+      const ws = join(base, "ws");
+      mkdirSync(join(ws, "real"), { recursive: true });
+      mkdirSync(join(base, "outside"), { recursive: true });
+      symlinkSync(join(base, "outside"), join(ws, "out"));
+      symlinkSync(join(ws, "real"), join(ws, "in"));
+      expect(() => resolveAndValidate(ws, "out/file.txt")).toThrow("Path escapes workspace");
+      expect(resolveAndValidate(ws, "in/file.txt")).toBe(join(ws, "in", "file.txt"));
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
   });
 });

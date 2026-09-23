@@ -10,7 +10,7 @@
  *    quality floor and the ban list live in craft-floor.md as of upstream
  *    skill-v4.1.2, so SKILL.md stays a short, always-loaded core)
  * 6. CLAUDE.md injection with pneuma markers
- * 7. Seed file (index.html) for empty workspaces
+ * 7. Seed files: every gallery site's pages, local references, no dev-only files
  * 8. Seed quality (OKLCH, fluid typography, semantic HTML, responsive, reduced motion)
  * 9. Viewer actions (all 20 Impeccable commands)
  * 10. Watch patterns (HTML, CSS, JS, images)
@@ -574,7 +574,7 @@ describe("seed file", () => {
   it("seed index.html is a complete HTML document", () => {
     const seedPath = join(MODE_SOURCE_DIR, "seed", "pneuma", "index.html");
     const content = readFileSync(seedPath, "utf-8");
-    expect(content).toContain("<!DOCTYPE html>");
+    expect(content).toMatch(/<!doctype html>/i);
     expect(content).toContain("<html");
     expect(content).toContain("</html>");
     expect(content).toContain("<head>");
@@ -587,15 +587,78 @@ describe("seed file", () => {
     expect(seedFiles["modes/webcraft/seed/gazette/"]).toBe("gazette/");
     expect(seedFiles["modes/webcraft/seed/pneuma-console/"]).toBe("pneuma-console/");
   });
+
+  const SEED_SETS = ["pneuma", "gazette", "pneuma-console"];
+
+  function listFiles(dir: string, prefix = ""): string[] {
+    return readdirSync(dir).flatMap((name) => {
+      const rel = prefix ? `${prefix}/${name}` : name;
+      return statSync(join(dir, name)).isDirectory() ? listFiles(join(dir, name), rel) : [rel];
+    });
+  }
+
+  for (const set of SEED_SETS) {
+    const setDir = join(MODE_SOURCE_DIR, "seed", set);
+
+    it(`${set}: every manifest page exists`, () => {
+      const manifest = JSON.parse(readFileSync(join(setDir, "manifest.json"), "utf-8"));
+      expect(manifest.pages.length).toBeGreaterThan(0);
+      for (const page of manifest.pages) {
+        expect(existsSync(join(setDir, page.file))).toBe(true);
+      }
+    });
+
+    it(`${set}: every local src/href in its pages resolves inside the set`, () => {
+      const pages = listFiles(setDir).filter((f) => f.endsWith(".html"));
+      for (const page of pages) {
+        const html = readFileSync(join(setDir, page), "utf-8");
+        for (const [, ref] of html.matchAll(/\b(?:src|href)="([^"]+)"/g)) {
+          if (/^(?:https?:|mailto:|#)/.test(ref)) continue;
+          const path = ref.split(/[?#]/)[0];
+          expect(existsSync(join(setDir, path))).toBe(true);
+        }
+      }
+    });
+
+    it(`${set}: ships no development-only context or scratch files`, () => {
+      // Seeds install side by side into one workspace; a site's design brief
+      // or scratch (.impeccable/, PRODUCT.md, DESIGN.md) would be read as the
+      // whole workspace's context.
+      const files = listFiles(setDir);
+      for (const f of files) {
+        expect(f).not.toMatch(/(^|\/)(\.impeccable|\.pneuma|\.claude)(\/|$)/);
+        expect(f).not.toMatch(/(^|\/)(PRODUCT|DESIGN|CLAUDE|AGENTS)\.(md|json)$/);
+        expect(f).not.toMatch(/\.DS_Store$/);
+      }
+    });
+
+    it(`${set}: every shipped asset is referenced by the site`, () => {
+      const files = listFiles(setDir);
+      const text = files
+        .filter((f) => /\.(html|css|js|json)$/.test(f))
+        .map((f) => readFileSync(join(setDir, f), "utf-8"))
+        .join("\n");
+      for (const f of files.filter((x) => /\.(jpe?g|png|webp|avif|gif|svg|woff2?)$/.test(x))) {
+        expect(text).toContain(f.split("/").pop()!);
+      }
+    });
+  }
 });
 
 // ── 8. Seed Quality (Impeccable Principles) ─────────────────────────────────
 
 describe("seed quality — Impeccable principles", () => {
+  // The landing's page and its linked stylesheet, read together: the seed
+  // keeps its CSS in styles.css rather than an inline <style> block.
   let seedHtml: string;
+  let seedCss: string;
 
   beforeEach(() => {
-    seedHtml = readFileSync(join(MODE_SOURCE_DIR, "seed", "pneuma", "index.html"), "utf-8");
+    const dir = join(MODE_SOURCE_DIR, "seed", "pneuma");
+    const html = readFileSync(join(dir, "index.html"), "utf-8");
+    expect(html).toContain('href="styles.css"');
+    seedCss = readFileSync(join(dir, "styles.css"), "utf-8");
+    seedHtml = `${html}\n<style>${seedCss}</style>`;
   });
 
   it("uses OKLCH color functions", () => {
@@ -644,10 +707,8 @@ describe("seed quality — Impeccable principles", () => {
   it("avoids pure black and pure white", () => {
     // In CSS custom property declarations, should not use #000 or #fff
     // (oklch equivalents are fine)
-    const cssSection = seedHtml.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? "";
-    // Check that the design tokens don't use #000 or #fff
-    expect(cssSection).not.toMatch(/:\s*#000\b/);
-    expect(cssSection).not.toMatch(/:\s*#fff\b/);
+    expect(seedCss).not.toMatch(/:\s*#000\b/);
+    expect(seedCss).not.toMatch(/:\s*#fff\b/);
   });
 
   it("has viewport meta tag for mobile", () => {
@@ -655,12 +716,14 @@ describe("seed quality — Impeccable principles", () => {
     expect(seedHtml).toContain("width=device-width");
   });
 
-  it("uses distinctive font pairing (not system defaults)", () => {
-    // Should load custom fonts
-    expect(seedHtml).toContain("fonts.googleapis.com");
-    // Should define display and body font families
-    expect(seedHtml).toContain("--font-display:");
-    expect(seedHtml).toContain("--font-body:");
+  it("uses distinctive fonts (not system defaults)", () => {
+    // Self-hosted variable fonts shipped with the seed
+    expect(seedCss).toContain("@font-face");
+    expect(seedCss).toMatch(/src:\s*url\("assets\/fonts\/[^"]+\.woff2"\)/);
+    // Display, text and mono families are named tokens
+    expect(seedCss).toContain("--f-display:");
+    expect(seedCss).toContain("--f-text:");
+    expect(seedCss).toContain("--f-mono:");
   });
 });
 

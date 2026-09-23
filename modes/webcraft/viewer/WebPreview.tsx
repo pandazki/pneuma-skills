@@ -20,35 +20,78 @@ import { useSource } from "../../../src/hooks/useSource.js";
 import { buildSelectionScript } from "../../../core/iframe-selection/index.js";
 import { useStore } from "../../../src/store.js";
 import type { Site } from "../domain.js";
+import {
+  LEAVE_SCRIPT,
+  elementBody,
+  instrumentPage,
+  contentRequests,
+  pageFromUrl,
+  pagePath,
+  referencedContentPaths,
+  staleAfterLoad,
+} from "./page-document.js";
+import { applyTextEdits, describeEditSource, type TextEdit } from "./source-edit.js";
 
 // ── Edit Mode Extension ─────────────────────────────────────────────────────
 
 const EDIT_MODE_EXTENSION = `
+  // Text editing. Each edited element is reported with a handle the viewer
+  // can verify against the page's SOURCE (describeEdit in source-edit.ts):
+  // its id or its structural position, its attributes, its inner HTML when
+  // editing began and ended, and how many look-alikes the page shows.
+  // Nothing else of the rendered page is ever sent back.
   var editActive = false;
-  var editDirty = false;
-  var editOriginalText = '';
-  var editFocusedTag = '';
-  var editChanges = [];
+  var editEl = null;
+  var editBefore = '';
+  var editSaved = new Map(); // element -> its own style attribute before edit mode
+  var EDITABLE = 'h1,h2,h3,h4,h5,h6,p,li,td,th,span,a,blockquote,figcaption,label,dt,dd';
 
   window.addEventListener('message', function(e) {
     if (!e.data || e.data.type !== 'pneuma:editMode') return;
-    editActive = !!e.data.enabled;
+    var next = !!e.data.enabled;
+    if (next === editActive) return;
+    if (!next && editEl) finishEdit(editEl);
+    editActive = next;
     toggleEditable(editActive);
-    if (!editActive) {
-      if (editDirty) { sendEditedContent(); editDirty = false; }
-      editChanges = [];
-    }
   });
 
   function toggleEditable(enable) {
-    var tags = 'h1,h2,h3,h4,h5,h6,p,li,td,th,span,a,blockquote,figcaption,label,dt,dd';
-    var els = document.querySelectorAll(tags);
-    for (var i = 0; i < els.length; i++) {
-      els[i].contentEditable = enable ? 'true' : 'false';
-      els[i].style.cursor = enable ? 'text' : '';
+    if (enable) {
+      var els = document.querySelectorAll(EDITABLE);
+      for (var i = 0; i < els.length; i++) {
+        if (els[i].closest('[data-pneuma-preview],[data-pneuma-overlay]')) continue;
+        editSaved.set(els[i], els[i].getAttribute('style'));
+        els[i].contentEditable = 'true';
+        els[i].style.cursor = 'text';
+      }
+      document.addEventListener('click', preventEditNav, true);
+    } else {
+      editSaved.forEach(function(style, el) { restore(el, el); });
+      editSaved = new Map();
+      document.removeEventListener('click', preventEditNav, true);
     }
-    if (enable) document.addEventListener('click', preventEditNav, true);
-    else document.removeEventListener('click', preventEditNav, true);
+  }
+
+  // Put back what edit mode changed on 'orig', writing onto 'target' (the
+  // element itself, or its twin in a clone).
+  function restore(orig, target) {
+    if (!editSaved.has(orig)) return;
+    target.removeAttribute('contenteditable');
+    var style = editSaved.get(orig);
+    if (style === null) target.removeAttribute('style'); else target.setAttribute('style', style);
+  }
+
+  // Inner HTML as authored: the viewer's own attributes and nodes removed.
+  function cleanInner(el) {
+    var clone = el.cloneNode(true);
+    var marked = clone.querySelectorAll('[data-pneuma-preview],[data-pneuma-overlay]');
+    for (var i = marked.length - 1; i >= 0; i--) marked[i].parentNode.removeChild(marked[i]);
+    var origs = el.querySelectorAll('*');
+    var twins = clone.querySelectorAll('*');
+    if (origs.length === twins.length) {
+      for (var j = 0; j < origs.length; j++) restore(origs[j], twins[j]);
+    }
+    return clone.innerHTML;
   }
 
   function preventEditNav(e) {
@@ -58,47 +101,36 @@ const EDIT_MODE_EXTENSION = `
   document.addEventListener('focus', function(e) {
     if (!editActive) return;
     var el = e.target;
-    if (el && el.contentEditable === 'true') {
-      editOriginalText = (el.textContent || '').trim();
-      editFocusedTag = el.tagName ? el.tagName.toLowerCase() : '';
+    if (el && el.isContentEditable && editSaved.has(el)) {
+      editEl = el;
+      editBefore = cleanInner(el);
     }
   }, true);
-
-  document.addEventListener('input', function() { if (editActive) editDirty = true; });
 
   document.addEventListener('blur', function(e) {
-    if (!editActive) return;
-    var el = e.target;
-    if (el && el.contentEditable === 'true') {
-      var newText = (el.textContent || '').trim();
-      if (editOriginalText !== newText) {
-        editChanges.push({ tag: editFocusedTag, before: editOriginalText, after: newText });
-        editDirty = true;
-      }
-      if (editDirty) { sendEditedContent(); editDirty = false; }
-    }
+    if (!editActive || e.target !== editEl) return;
+    finishEdit(editEl);
   }, true);
 
-  function serializeCleanBody() {
-    var clone = document.body.cloneNode(true);
-    var scripts = clone.querySelectorAll('script');
-    for (var i = scripts.length - 1; i >= 0; i--) scripts[i].parentNode.removeChild(scripts[i]);
-    var eds = clone.querySelectorAll('[contenteditable]');
-    for (var i = 0; i < eds.length; i++) eds[i].removeAttribute('contenteditable');
-    var styled = clone.querySelectorAll('[style]');
-    for (var i = 0; i < styled.length; i++) {
-      var s = styled[i].style;
-      s.outline = ''; s.outlineOffset = ''; s.borderRadius = ''; s.cursor = '';
-      if (!styled[i].getAttribute('style').trim()) styled[i].removeAttribute('style');
-    }
-    return clone.innerHTML.trim();
+  function finishEdit(el) {
+    editEl = null;
+    var after = cleanInner(el);
+    if (after === editBefore) return;
+    var change = describeEdit(el, editBefore, after, cleanInner);
+    editBefore = after;
+    window.parent.postMessage({
+      type: 'pneuma:textEdit',
+      // Which loaded document this came from (set by the viewer on load), so
+      // the edit is saved to the file this document was loaded from.
+      doc: document.documentElement.getAttribute('data-pneuma-instrumented'),
+      changes: [change],
+    }, '*');
   }
 
-  function sendEditedContent() {
-    var changes = editChanges.slice();
-    editChanges = [];
-    window.parent.postMessage({ type: 'pneuma:textEdit', html: serializeCleanBody(), changes: changes }, '*');
-  }
+  // Leaving the page mid-edit (a link, a reload) still reports the edit.
+  window.addEventListener('pagehide', function() { if (editActive && editEl) finishEdit(editEl); });
+
+  var describeEdit = (${describeEditSource});
 `;
 
 // ── Selection Script ─────────────────────────────────────────────────────────
@@ -357,88 +389,153 @@ function ImpeccableAttribution({ collapsed }: { collapsed: boolean }) {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/**
- * Build a full HTML document for the iframe srcdoc.
- * Injects <base href> for correct relative asset resolution and
- * the dormant selection script (controlled via postMessage).
- */
-// Intercept hash-only anchor clicks so they scroll in-place instead of
-// navigating away from the srcdoc (which <base href> would otherwise cause).
-//
-// Also intercept page-relative anchor clicks (e.g. <a href="settings.html">):
-// without this, the click would navigate the iframe to the absolute URL the
-// <base href> resolves to, which then causes React's srcdoc effect to fight
-// the navigation. Instead, post a message to the parent so it can update
-// activeFile and re-render this iframe with the new content — keeping the
-// page navigator in sync and preserving the about:srcdoc origin.
-const HASH_NAV_FIX = `<script>
-document.addEventListener('click',function(e){
-  var a=e.target.closest('a[href]');
-  if(!a)return;
-  if(a.target&&a.target!=='_self')return;
-  var rawHref=a.getAttribute('href');
-  if(!rawHref)return;
-  if(rawHref.charAt(0)==='#'){
-    e.preventDefault();
-    if(rawHref.length<2)return;
-    try{var target=document.querySelector(rawHref)||document.getElementById(rawHref.slice(1));if(target)target.scrollIntoView({behavior:'smooth'});}catch(_){}
-    return;
-  }
-  if(/^[a-z][a-z0-9+.-]*:/i.test(rawHref))return;
-  if(rawHref.charAt(0)==='/')return;
-  var fileMatch=rawHref.match(/^([^?#]+)/);
-  if(!fileMatch)return;
-  var file=fileMatch[1];
-  if(!/\\.html?$/i.test(file)&&!file.endsWith('/'))return;
-  e.preventDefault();
-  window.parent.postMessage({type:'pneuma:webcraft:navigate',href:file},'*');
-});
-</script>`;
-
-const SCROLLBAR_STYLE = `<style data-pneuma-scrollbar>
+/** Thin scrollbars inside the preview page, to sit with the app's dark shell. */
+const SCROLLBAR_CSS = `
 *{scrollbar-width:thin;scrollbar-color:rgba(128,128,128,0.3) transparent}
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:rgba(128,128,128,0.3);border-radius:3px}
 ::-webkit-scrollbar-thumb:hover{background:rgba(128,128,128,0.5)}
-</style>`;
+`;
 
-function buildSrcdoc(html: string, baseHref: string): string {
-  const isFullDoc = /<!DOCTYPE|<html/i.test(html);
-  const injectedScripts = HASH_NAV_FIX + SELECTION_SCRIPT;
+/** What the viewer adds to every page the preview loads (see `instrumentPage`). */
+const PAGE_INSTRUMENTS = {
+  scripts: [LEAVE_SCRIPT, elementBody(SELECTION_SCRIPT)],
+  styles: [SCROLLBAR_CSS],
+};
 
-  if (isFullDoc) {
-    let result = html;
-    const baseTag = `<base href="${baseHref}">${SCROLLBAR_STYLE}`;
-    // Inject <base> into <head>
-    if (/<head[^>]*>/i.test(result)) {
-      result = result.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`);
-    } else if (/<html[^>]*>/i.test(result)) {
-      result = result.replace(/<html([^>]*)>/i, `<html$1><head>${baseTag}</head>`);
-    }
-    // Inject scripts before </body>
-    if (/<\/body>/i.test(result)) {
-      result = result.replace(/<\/body>/i, `${injectedScripts}</body>`);
-    } else {
-      result += injectedScripts;
-    }
-    return result;
+/** The iframe's current URL, or null when it cannot be read (another origin, nothing loaded). */
+function frameHref(iframe: HTMLIFrameElement): string | null {
+  try {
+    const href = iframe.contentWindow?.location.href;
+    return href && /^https?:/.test(href) ? href : null;
+  } catch {
+    return null;
   }
+}
 
-  // Fragment: wrap in full document
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <base href="${baseHref}">
-  ${SCROLLBAR_STYLE}
-</head>
-<body>
-${html}
-${injectedScripts}
-</body>
-</html>`;
+interface EditProblem {
+  id: number;
+  kind: "refused" | "write-failed";
+  /** The page the edit was made on. */
+  page: string;
+  reason: string;
+  /** Plain text of the edits that were not saved, for copying. */
+  unsaved: string[];
+  /** Present when the same save can be tried again (a rejected write). */
+  retry?: () => void;
+}
+
+interface NoticeAction {
+  label: string;
+  /** Label shown briefly after the action succeeded (e.g. "Copied"). */
+  doneLabel?: string;
+  primary?: boolean;
+  /** May be async; `doneLabel` shows only when it resolves to anything but `false`. */
+  onClick: () => void | Promise<boolean | void>;
+}
+
+/** A message over the preview: an edit that was not saved, or a page outside the site. */
+function PreviewNotice({
+  role,
+  tone,
+  title,
+  detail,
+  actions,
+  onDismiss,
+}: {
+  role: "alert" | "status";
+  tone: "error" | "info";
+  title: string;
+  detail: React.ReactNode;
+  actions: NoticeAction[];
+  onDismiss?: () => void;
+}) {
+  const [done, setDone] = useState<string | null>(null);
+  const accent = tone === "error" ? "var(--color-cc-error)" : "var(--color-cc-primary)";
+  return (
+    <div
+      role={role}
+      aria-live={role === "alert" ? "assertive" : "polite"}
+      style={{
+        pointerEvents: "auto",
+        width: "fit-content",
+        maxWidth: 640,
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 12,
+        padding: "10px 10px 10px 14px",
+        borderRadius: 10,
+        background: "color-mix(in srgb, var(--color-cc-surface) 90%, transparent)",
+        backdropFilter: "blur(12px)",
+        border: "1px solid var(--color-cc-border)",
+        borderLeft: `3px solid ${accent}`,
+        boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+        color: "var(--color-cc-fg)",
+        fontSize: 12,
+        lineHeight: 1.45,
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontWeight: 600, color: tone === "error" ? "var(--color-cc-error)" : "var(--color-cc-fg)", marginBottom: 2 }}>{title}</div>
+        {detail}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+          {actions.map((a) => (
+            <button
+              key={a.label}
+              type="button"
+              onClick={async () => {
+                let ok: boolean | void;
+                try {
+                  ok = await a.onClick();
+                } catch {
+                  ok = false;
+                }
+                if (a.doneLabel && ok !== false) {
+                  setDone(a.label);
+                  setTimeout(() => setDone(null), 1500);
+                }
+              }}
+              style={{
+                padding: "5px 10px",
+                borderRadius: 7,
+                border: a.primary ? "1px solid rgba(249,115,22,0.45)" : "1px solid var(--color-cc-border)",
+                background: a.primary ? "var(--color-cc-primary-muted)" : "var(--color-cc-hover)",
+                color: a.primary ? "var(--color-cc-primary)" : "var(--color-cc-fg)",
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              {done === a.label && a.doneLabel ? a.doneLabel : a.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {onDismiss && (
+        <button
+          type="button"
+          aria-label="Dismiss"
+          onClick={onDismiss}
+          style={{
+            flexShrink: 0,
+            width: 24,
+            height: 24,
+            display: "grid",
+            placeItems: "center",
+            borderRadius: 6,
+            border: "none",
+            background: "transparent",
+            color: "var(--color-cc-muted)",
+            cursor: "pointer",
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+            <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
 }
 
 // ── Page Navigator ──────────────────────────────────────────────────────────
@@ -881,11 +978,11 @@ export default function WebPreview({
   // back to the first one if activeContentSet hasn't been set yet.
   const siteSource = sources.site as Source<Site>;
   const { value: site } = useSource(siteSource);
-  // Companion file-glob: raw HTML/CSS/JS content used by iframe srcdoc
+  // Companion file-glob: raw HTML/CSS/JS content used by the page document
   // construction and handleTextEdit (splicing <body> edits back into the
   // full original document).
   const filesSource = sources.files as Source<ViewerFileContent[]>;
-  const { value: filesValue } = useSource(filesSource);
+  const { value: filesValue, status: filesStatus } = useSource(filesSource);
   const files: ViewerFileContent[] = filesValue ?? [];
   const pageEntries = useMemo<PageEntry[]>(() => {
     if (!site) return [];
@@ -902,25 +999,18 @@ export default function WebPreview({
     [pageEntries],
   );
 
-  // Reachable html targets within the active content set: declared pages
-  // plus any other .html file living directly under the same prefix. The
-  // PageNavigator only renders declared pages, but internal links inside a
-  // page can navigate to siblings (e.g. an empty-state placeholder) without
-  // the manifest having to enumerate every supporting screen.
+  // Every HTML page of the active content set: declared pages plus any other
+  // .html file under the same prefix, nested ones included. The PageNavigator
+  // only renders declared pages, but a page's own links can open any page of
+  // the site (an empty-state screen, `docs/guide.html`), and the viewer must
+  // then name THAT page — in its page state, selections and addresses.
   const reachableHtmlFiles = useMemo(() => {
     const prefix = activeContentSet ? `${activeContentSet}/` : "";
     const extras: string[] = [];
     for (const f of files) {
       if (!/\.html?$/i.test(f.path)) continue;
-      if (prefix) {
-        if (!f.path.startsWith(prefix)) continue;
-        const rel = f.path.slice(prefix.length);
-        if (rel.includes("/")) continue;
-        extras.push(rel);
-      } else {
-        if (f.path.includes("/")) continue;
-        extras.push(f.path);
-      }
+      if (prefix && !f.path.startsWith(prefix)) continue;
+      extras.push(f.path.slice(prefix.length));
     }
     return Array.from(new Set([...htmlFiles, ...extras]));
   }, [files, activeContentSet, htmlFiles]);
@@ -943,38 +1033,13 @@ export default function WebPreview({
     return `${apiBase}/content/`;
   }, [activeContentSet]);
 
-  // Build srcdoc for the current file.
-  //
-  // Note on path resolution: `currentFile` is the manifest-relative path
-  // like "index.html" (unprefixed). After P5.11 removed the useViewerProps
-  // content-set remap, the raw files from `sources.files` carry the
-  // content-set prefix like "gazette/index.html". We reconstruct the
-  // fully-qualified path before lookup.
-  const srcdoc = useMemo(() => {
-    if (!currentFile) return "";
-    const fullPath = activeContentSet
-      ? `${activeContentSet}/${currentFile}`
-      : currentFile;
-    const fileContent = files.find((f) => f.path === fullPath);
-    if (!fileContent) return "";
-    return buildSrcdoc(fileContent.content, baseHref);
-  }, [currentFile, files, baseHref, activeContentSet]);
-
-  // Stable srcdoc: only update when the actual file content changes (not on
-  // every `files` array reference change).  This prevents the iframe from
-  // reloading — and resetting scroll position — due to unrelated store updates.
-  const stableSrcdocRef = useRef("");
-
-  useEffect(() => {
-    if (!iframeRef.current || !srcdoc) return;
-    if (stableSrcdocRef.current !== srcdoc) {
-      stableSrcdocRef.current = srcdoc;
-    }
-    // Always assign srcdoc — the iframe DOM node may have been replaced by
-    // a viewport switch (Full ↔ Device) which conditionally renders different
-    // iframe structures.  Without this, the new iframe mounts blank.
-    iframeRef.current.srcdoc = srcdoc;
-  }, [srcdoc, viewport]);
+  // The current page's source in `files`. `currentFile` is manifest-relative
+  // ("index.html"); `files` paths carry the content-set prefix
+  // ("gazette/index.html").
+  const pageSourcePath = currentFile
+    ? (activeContentSet ? `${activeContentSet}/${currentFile}` : currentFile)
+    : "";
+  const pageExists = !!pageSourcePath && files.some((f) => f.path === pageSourcePath);
 
   // ── Selection & edit mode handling ──────────────────────────────────────────
 
@@ -1005,124 +1070,230 @@ export default function WebPreview({
     } catch {}
   }, [isEditMode]);
 
-  // Also send selectMode and editMode after iframe loads
-  const handleIframeLoad = useCallback(() => {
-    const iframe = iframeRef.current;
-    if (!iframe?.contentWindow) return;
-    try {
-      iframe.contentWindow.postMessage(
-        { type: "pneuma:selectMode", enabled: isSelectMode },
-        "*",
-      );
-      iframe.contentWindow.postMessage(
-        { type: "pneuma:editMode", enabled: isEditMode },
-        "*",
-      );
-    } catch {}
-  }, [isSelectMode, isEditMode]);
+  // ── Loaded documents ──────────────────────────────────────────────────────
+  // Each document the iframe loads is given an id (see handleFrameLoad) and
+  // remembered with the page and source file it was loaded from, and the
+  // source text it was shown from. Selections, annotations and text edits are
+  // attributed to that document — never to whichever page is current by the
+  // time they are handled.
+
+  interface LoadedDoc {
+    id: string;
+    /** The content set the page belongs to (null: a workspace without sets). */
+    contentSet: string | null;
+    /** Content-set-relative page ("index.html", "docs/guide.html"). */
+    file: string;
+    /** Workspace-relative source path ("gazette/index.html"). */
+    sourcePath: string;
+    /** The source text this document shows, as far as the viewer can tell; null when unknown. */
+    expected: string | null;
+  }
+  const docsRef = useRef(new Map<string, LoadedDoc>());
+  const currentDocRef = useRef<LoadedDoc | null>(null);
+  const docSeqRef = useRef(0);
 
   // ── Text edit handling ────────────────────────────────────────────────────
+  // Edits arrive per element (see EDIT_MODE_EXTENSION) and are applied to the
+  // source text of the file their document was loaded from, never by writing
+  // the rendered page back (source-edit.ts). They are queued per document and
+  // saved after a short pause, or at once when the preview moves on.
 
-  const pendingChangesRef = useRef<{ tag: string; before: string; after: string }[]>([]);
-  const editTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const pendingEditsRef = useRef(new Map<string, { doc: LoadedDoc; edits: TextEdit[]; timer: ReturnType<typeof setTimeout> }>());
+  const filesRef = useRef(files);
+  filesRef.current = files;
+  // The last save per file, so a save made before the previous one's file
+  // event arrives builds on it instead of on the stale source.
+  const lastSaveRef = useRef(new Map<string, { from: string; to: string }>());
+  // Set by the frame controller below: reload the preview when it shows one
+  // of these paths (a save made from a document that is no longer on screen).
+  const reloadIfShownRef = useRef<(paths: readonly string[], selfWrite: boolean) => void>(() => {});
 
-  const handleTextEdit = useCallback((file: string, html: string, changes?: { tag: string; before: string; after: string }[]) => {
-    if (changes?.length) pendingChangesRef.current.push(...changes);
-    clearTimeout(editTimerRef.current);
-    editTimerRef.current = setTimeout(() => {
-      // Reconstruct the full HTML document by replacing the body content.
-      // `file` is the manifest-relative path (e.g. "index.html"); the raw
-      // `files` array from sources.files carries the content-set prefix
-      // (e.g. "gazette/index.html"), so we fully qualify before looking up.
-      const fullPath = activeContentSet
-        ? `${activeContentSet}/${file}`
-        : file;
-      const fileContent = files.find((f) => f.path === fullPath);
-      if (!fileContent) return;
-      const original = fileContent.content;
-      let updated: string;
-      if (/<body[^>]*>/i.test(original)) {
-        updated = original.replace(
-          /(<body[^>]*>)([\s\S]*?)(<\/body>)/i,
-          `$1\n${html}\n$3`,
+  /** The file's source as the viewer's last save left it, or as last read. */
+  const currentSource = useCallback((path: string): string | null => {
+    const content = filesRef.current.find((f) => f.path === path)?.content;
+    if (content === undefined) return null;
+    const last = lastSaveRef.current.get(path);
+    return last && last.from === content ? last.to : content;
+  }, []);
+
+  // A text edit that did not reach the file — refused by the source matcher,
+  // or a write the server rejected. Shown in the preview until dismissed: the
+  // page still displays the typed text, so the person must learn it was not
+  // kept, and can copy it or go back to the saved version.
+  const [editProblem, setEditProblem] = useState<EditProblem | null>(null);
+  const problemSeqRef = useRef(0);
+  // The problem whose "Copy text" failed (clipboard refused or unavailable).
+  const [copyFailed, setCopyFailed] = useState<number | null>(null);
+  const draftRef = useRef<HTMLSpanElement>(null);
+  const selectDraft = useCallback(() => {
+    const el = draftRef.current;
+    const sel = window.getSelection();
+    if (!el || !sel) return;
+    sel.removeAllRanges();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    sel.addRange(range);
+  }, []);
+  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
+  const flushEdits = useCallback((docId: string) => {
+    const queued = pendingEditsRef.current.get(docId);
+    if (!queued) return;
+    pendingEditsRef.current.delete(docId);
+    clearTimeout(queued.timer);
+    const { doc, edits } = queued;
+    const path = doc.sourcePath;
+    const log = (actionId: string, description: string) =>
+      useStore.getState().pushUserAction({ timestamp: Date.now(), actionId, description });
+    const report = (kind: EditProblem["kind"], reason: string, unsaved: readonly TextEdit[], retry?: () => void) => {
+      console.warn(`[webcraft] text edit not saved: ${reason}`);
+      const count = unsaved.length;
+      log(
+        "edit-text-failed",
+        `${count === 1 ? "A text edit" : `${count} text edits`} on "${doc.file}" could not be saved (${unsaved.map((e) => `<${e.tag}> "${e.afterText ?? ""}"`).join(", ")}): ${reason}. The file was not changed.`,
+      );
+      setEditProblem({
+        id: ++problemSeqRef.current,
+        kind,
+        page: doc.file,
+        reason,
+        unsaved: unsaved.map((e) => e.afterText ?? "").filter(Boolean),
+        retry,
+      });
+    };
+    const source = currentSource(path);
+    if (source === null) return report("refused", "the page's file is no longer in the workspace", edits);
+    // Source-version precondition: the edit was made on a document showing
+    // `expected`; if the file has changed since, positions and look-alikes
+    // in the handle may mean something else.
+    if (doc.expected === null || doc.expected !== source) {
+      return report("refused", "the file changed after this page was shown", edits);
+    }
+    const content = filesRef.current.find((f) => f.path === path)!.content;
+    const parser = new DOMParser();
+    const result = applyTextEdits(source, edits, (html) => parser.parseFromString(html, "text/html"));
+    const applied = edits.slice(0, result.applied);
+    if (result.applied > 0) {
+      // Optimistic base: a save queued before this write resolves builds on
+      // it. Success is recorded only once the write has resolved.
+      const shownBefore = doc.expected;
+      doc.expected = result.html;
+      lastSaveRef.current.set(path, { from: content, to: result.html });
+      const save = () => {
+        fileChannel.write(path, result.html).then(
+          () => {
+            const lines = applied.map((c) => `  <${c.tag}>: "${c.beforeText ?? ""}" → "${c.afterText ?? ""}"`);
+            log("edit-text", `Edited text on "${doc.file}":\n${lines.join("\n")}`);
+            // Made on a document that is gone: if the page now on screen shows
+            // this file, it was loaded before the save and must be reloaded.
+            if (currentDocRef.current !== doc) reloadIfShownRef.current([path], false);
+          },
+          (err: unknown) => {
+            console.error("[webcraft] save failed", err);
+            if (lastSaveRef.current.get(path)?.to === result.html) {
+              lastSaveRef.current.delete(path);
+              if (doc.expected === result.html) doc.expected = shownBefore;
+            }
+            const message = err instanceof Error ? err.message : String(err);
+            report("write-failed", `the file could not be written (${message})`, applied, () => {
+              // Retry only onto the version the edit was made on.
+              if (currentSource(path) !== source) {
+                report("refused", "the file changed after this page was shown", applied);
+                return;
+              }
+              doc.expected = result.html;
+              lastSaveRef.current.set(path, { from: content, to: result.html });
+              setEditProblem(null);
+              save();
+            });
+          },
         );
-      } else {
-        updated = html;
-      }
+      };
+      save();
+    }
+    if (result.failure) {
+      report("refused", result.failure.reason, edits.slice(result.applied));
+    }
+  }, [currentSource, fileChannel]);
 
-      // Persist via the source-aware file channel (origin-tagged "self").
-      const savePath = activeContentSet ? `${activeContentSet}/${file}` : file;
-      fileChannel.write(savePath, updated).catch((err) => {
-        console.error("[webcraft] save failed", err);
-      });
+  const flushAllEdits = useCallback(() => {
+    for (const id of Array.from(pendingEditsRef.current.keys())) flushEdits(id);
+  }, [flushEdits]);
 
-      // Record user action
-      const batch = pendingChangesRef.current.splice(0);
-      const diffLines = batch.map((c) => `  <${c.tag}>: "${c.before}" → "${c.after}"`);
-      const desc = diffLines.length > 0
-        ? `Edited text on "${file}":\n${diffLines.join("\n")}`
-        : `Edited text on "${file}"`;
-      useStore.getState().pushUserAction({
-        timestamp: Date.now(),
-        actionId: "edit-text",
-        description: desc,
-      });
-    }, 800);
-  }, [files, activeContentSet, fileChannel]);
+  const queueEdits = useCallback((docId: string, changes: TextEdit[]) => {
+    const doc = docsRef.current.get(docId);
+    if (!doc || !changes.length) return;
+    const queued = pendingEditsRef.current.get(docId);
+    if (queued) clearTimeout(queued.timer);
+    const entry = queued ?? { doc, edits: [], timer: undefined as unknown as ReturnType<typeof setTimeout> };
+    entry.edits.push(...changes);
+    entry.timer = setTimeout(() => flushEdits(docId), 800);
+    pendingEditsRef.current.set(docId, entry);
+  }, [flushEdits]);
+
+  // Leaving the viewer saves what is queued.
+  useEffect(() => () => flushAllEdits(), [flushAllEdits]);
 
   // Listen for selection and text edit messages from iframe
   useEffect(() => {
     function handleMessage(e: MessageEvent) {
       if (e.data?.type === "pneuma:textEdit") {
-        handleTextEdit(currentFile, e.data.html, e.data.changes);
+        // Identified by the document id the viewer gave the page, not by
+        // `e.source`: an edit finished by the blur of a page switch arrives
+        // after the iframe has started loading the next page, and no longer
+        // compares equal to its contentWindow (measured in Chrome).
+        if (e.origin !== window.location.origin) return;
+        queueEdits(String(e.data.doc ?? ""), Array.isArray(e.data.changes) ? e.data.changes : []);
         return;
       }
-      if (e.data?.type === "pneuma:select") {
-        const sel = e.data.selection;
-        if (!sel) {
-          if (previewMode === "annotate") {
-            setPendingAnnotation(null);
-          } else {
-            onSelect(null);
-          }
-          return;
-        }
+      if (e.data?.type !== "pneuma:select") return;
+      if (e.source !== iframeRef.current?.contentWindow) return;
+      // Selections name the page of the document on screen.
+      const doc = currentDocRef.current;
+      const sel = e.data.selection;
+      if (!sel || !doc) {
         if (previewMode === "annotate") {
-          // In annotate mode: show popover instead of selecting
-          if (!sel.rect) return;
-          setPendingAnnotation({
-            selection: sel,
-            pageFile: currentFile,
-            rect: sel.rect,
-          });
+          setPendingAnnotation(null);
         } else {
-          onSelect({
-            type: sel.type,
-            content: sel.content,
-            level: sel.level,
-            file: currentFile,
-            tag: sel.tag,
-            classes: sel.classes,
-            selector: sel.selector,
-            // ViewerAddress — the round-trippable handle for this object.
-            // Coarse: content set + page; fine: the CSS selector. The agent
-            // can feed this straight into `capture` or a `<viewer-locator>`.
-            address: {
-              ...(activeContentSet ? { contentSet: activeContentSet } : {}),
-              page: currentFile,
-              ...(sel.selector ? { selector: sel.selector } : {}),
-            },
-            thumbnail: sel.thumbnail,
-            label: sel.label,
-            nearbyText: sel.nearbyText,
-            accessibility: sel.accessibility,
-          });
+          onSelect(null);
         }
+        return;
+      }
+      if (previewMode === "annotate") {
+        // In annotate mode: show popover instead of selecting
+        if (!sel.rect) return;
+        setPendingAnnotation({
+          selection: sel,
+          pageFile: doc.file,
+          rect: sel.rect,
+        });
+      } else {
+        onSelect({
+          type: sel.type,
+          content: sel.content,
+          level: sel.level,
+          file: doc.file,
+          tag: sel.tag,
+          classes: sel.classes,
+          selector: sel.selector,
+          // ViewerAddress — the round-trippable handle for this object.
+          // Coarse: content set + page; fine: the CSS selector. The agent
+          // can feed this straight into `capture` or a `<viewer-locator>`.
+          address: {
+            ...(doc.contentSet ? { contentSet: doc.contentSet } : {}),
+            page: doc.file,
+            ...(sel.selector ? { selector: sel.selector } : {}),
+          },
+          thumbnail: sel.thumbnail,
+          label: sel.label,
+          nearbyText: sel.nearbyText,
+          accessibility: sel.accessibility,
+        });
       }
     }
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [currentFile, onSelect, handleTextEdit, previewMode, activeContentSet]);
+  }, [onSelect, queueEdits, previewMode, activeContentSet]);
 
   // Confirm pending annotation with comment
   const confirmAnnotation = useCallback(
@@ -1184,37 +1355,230 @@ export default function WebPreview({
     [onActiveFileChange, onSelect],
   );
 
-  // ── In-iframe link navigation ───────────────────────────────────────────────
-  // The HASH_NAV_FIX script in the iframe posts pneuma:webcraft:navigate when
-  // the user clicks a page-relative <a href="other.html">. Resolve the target
-  // against the manifest's page list and switch to it via handlePageChange.
+  // ── The preview frame ───────────────────────────────────────────────────────
+  // The iframe shows the page at its real content URL (see page-document.ts).
+  // The viewer drives it only when the page it should show changes — a page
+  // tab, a locator, a content-set switch, a new iframe element — and follows
+  // it everywhere else: a link, a reload or a script-set `location` inside the
+  // page moves the iframe, and its `load` tells the viewer where it now is.
+
+  const contentRootPath = pagePath(activeContentSet, "");
+  const desiredPath = currentFile ? pagePath(activeContentSet, currentFile) : "";
+  // The element the controller last drove, and the URL it holds or is loading.
+  const frameRef = useRef<{ iframe: HTMLIFrameElement | null; url: string | null }>({ iframe: null, url: null });
+  // An address navigation waiting for its page's `load`, with the verdict
+  // callback of THAT request (a later request replaces it, and its own verdict
+  // is then never given — the store reads that as superseded).
+  const awaitingRef = useRef<{ file: string; complete: typeof onNavigateComplete } | null>(null);
+  // The page whose document has finished loading and is not being replaced.
+  const readyFileRef = useRef<string | null>(null);
+  // Files that changed while the iframe was loading, with when the change was
+  // seen: the document that finishes loading may or may not have them.
+  const dirtyRef = useRef(new Map<string, number>());
+  // A document the iframe shows that is not a page of this site (another
+  // content set, the app itself, a 404, an image): shown, but not instrumented
+  // — nothing on it can be selected, edited or addressed.
+  const [foreignUrl, setForeignUrl] = useState<string | null>(null);
+
+  const openInFrame = useCallback((iframe: HTMLIFrameElement, url: string, fresh: boolean) => {
+    frameRef.current = { iframe, url };
+    readyFileRef.current = null;
+    iframe.setAttribute("aria-busy", "true");
+    if (fresh) {
+      iframe.src = url;
+      return;
+    }
+    // replace(): a viewer-driven page switch is not a step in the page's history.
+    try { iframe.contentWindow!.location.replace(url); } catch { iframe.src = url; }
+  }, []);
+
   useEffect(() => {
-    function onMessage(e: MessageEvent) {
-      if (!e.data || e.data.type !== "pneuma:webcraft:navigate") return;
-      const raw = String(e.data.href || "").trim();
-      if (!raw) return;
-      // Strip leading "./", drop trailing "/" → "index.html"
-      let target = raw.replace(/^\.\//, "");
-      if (target.endsWith("/")) target = `${target}index.html`;
-      if (reachableHtmlFiles.includes(target)) {
-        handlePageChange(target);
+    const iframe = iframeRef.current;
+    if (!iframe || !pageExists || !desiredPath) return;
+    const origin = window.location.origin;
+    const root = origin + contentRootPath;
+    const st = frameRef.current;
+    if (st.iframe !== iframe) {
+      // First mount, or a Full ↔ Device switch mounted a new element: open the
+      // page where the previous element was, query and fragment included.
+      openInFrame(iframe, st.url && pageFromUrl(st.url, root) === currentFile ? st.url : origin + desiredPath, true);
+      return;
+    }
+    const busy = iframe.getAttribute("aria-busy") === "true";
+    const here = (busy ? st.url : frameHref(iframe) ?? st.url) ?? "";
+    // Compare pages, not URLs: `sub/` and `sub/index.html` are the same page,
+    // and the URL the page is at keeps its query and fragment.
+    if (here && pageFromUrl(here, root) === currentFile) return;
+    openInFrame(iframe, origin + desiredPath, false);
+  }, [desiredPath, pageExists, viewport, openInFrame, contentRootPath, currentFile]);
+
+  // Latest render values for the load handler, which the iframe calls.
+  const latest = { currentFile, reachableHtmlFiles, isSelectMode, isEditMode, contentRootPath, activeContentSet, handlePageChange };
+  const latestRef = useRef(latest);
+  latestRef.current = latest;
+
+  const reload = useCallback((iframe: HTMLIFrameElement) => {
+    iframe.setAttribute("aria-busy", "true");
+    readyFileRef.current = null;
+    try { iframe.contentWindow!.location.reload(); } catch { iframe.removeAttribute("aria-busy"); }
+  }, []);
+
+  const handleFrameLoad = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    // The initial about:blank of a new iframe element, not a page.
+    if (frameRef.current.iframe !== iframe) return;
+    try { if (iframe.contentWindow?.location.href === "about:blank") return; } catch { /* another origin */ }
+    const href = frameHref(iframe);
+    const L = latestRef.current;
+    const file = href ? pageFromUrl(href, window.location.origin + L.contentRootPath) : null;
+    if (!href || !file || !L.reachableHtmlFiles.includes(file)) {
+      // Not a page of this site: leave it alone, and say so.
+      frameRef.current = { iframe, url: href };
+      currentDocRef.current = null;
+      readyFileRef.current = null;
+      dirtyRef.current.clear();
+      iframe.removeAttribute("aria-busy");
+      setForeignUrl(href ?? "another site");
+      flushAllEdits();
+      return;
+    }
+    const win = iframe.contentWindow!;
+    frameRef.current = { iframe, url: href };
+    const sourcePath = L.activeContentSet ? `${L.activeContentSet}/${file}` : file;
+    const doc: LoadedDoc = {
+      id: String(++docSeqRef.current),
+      contentSet: L.activeContentSet ?? null,
+      file,
+      sourcePath,
+      expected: currentSource(sourcePath),
+    };
+    docsRef.current.set(doc.id, doc);
+    currentDocRef.current = doc;
+    // Keep recent documents (a late message can still name one), and any
+    // with edits waiting to be saved.
+    for (const id of docsRef.current.keys()) {
+      if (docsRef.current.size <= 16) break;
+      if (!pendingEditsRef.current.has(id)) docsRef.current.delete(id);
+    }
+    setForeignUrl(null);
+    instrumentPage(win.document, PAGE_INSTRUMENTS, doc.id);
+    try {
+      win.postMessage({ type: "pneuma:selectMode", enabled: L.isSelectMode }, "*");
+      win.postMessage({ type: "pneuma:editMode", enabled: L.isEditMode }, "*");
+    } catch { /* gone again */ }
+    // Edits made on the previous document go to ITS file now.
+    flushAllEdits();
+
+    // Files that changed while this document loaded: if it requested one of
+    // them before the change was seen, it may show the old version — reload.
+    if (dirtyRef.current.size) {
+      const setPrefix = decodeURIComponent(L.contentRootPath).replace(/^\/content\//, "");
+      const stale = staleAfterLoad(dirtyRef.current, contentRequests(win), setPrefix);
+      dirtyRef.current.clear();
+      if (stale.length) {
+        if (stale.includes(sourcePath)) doc.expected = null;
+        reload(iframe);
+        return;
       }
     }
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, [reachableHtmlFiles, handlePageChange]);
+
+    readyFileRef.current = file;
+    iframe.removeAttribute("aria-busy");
+    // The page moved itself (a link, a reload, a script): follow it, so the
+    // page tabs, selections and addresses name the page on screen.
+    if (file !== L.currentFile) L.handlePageChange(file);
+    const awaiting = awaitingRef.current;
+    if (awaiting && awaiting.file === file) {
+      awaitingRef.current = null;
+      awaiting.complete?.();
+    }
+  }, [currentSource, flushAllEdits, reload]);
+
+  // Reload the page when a file it shows changes: its own HTML, or any
+  // stylesheet, script, image, font or data file it requested (read from the
+  // page's Resource Timing). A reload keeps the page's current query and
+  // fragment, the way a browser reload does. The viewer's own text-edit saves
+  // are already on screen and do not reload. While the iframe is loading,
+  // changes are kept and checked against the document once it has loaded.
+  const reloadIfShown = useCallback((paths: readonly string[], selfWrite: boolean) => {
+    const iframe = iframeRef.current;
+    if (!iframe || !paths.length) return;
+    if (iframe.getAttribute("aria-busy") === "true") {
+      // The viewer's own saves are handled where they are made (flushEdits).
+      if (selfWrite) return;
+      const now = Date.now();
+      for (const p of paths) dirtyRef.current.set(p, now);
+      return;
+    }
+    const href = frameHref(iframe);
+    if (!href || !currentDocRef.current) return;
+    const win = iframe.contentWindow!;
+    const own = currentDocRef.current.sourcePath;
+    const refs = referencedContentPaths(win);
+    const setPrefix = decodeURIComponent(latestRef.current.contentRootPath).replace(/^\/content\//, "");
+    const shown = (p: string) =>
+      p === own || (refs === "all" ? p.startsWith(setPrefix) : refs.has(p));
+    const hit = paths.filter(shown);
+    if (!hit.length) return;
+    if (selfWrite && hit.every((p) => p === own)) return;
+    reload(iframe);
+  }, [reload]);
+  reloadIfShownRef.current = reloadIfShown;
+
+  const prevFilesRef = useRef<Map<string, string> | null>(null);
+  useEffect(() => {
+    const next = new Map(files.map((f) => [f.path, f.content] as const));
+    const prev = prevFilesRef.current;
+    prevFilesRef.current = next;
+    if (!prev || prev.size === 0) return;
+    const changed: string[] = [];
+    for (const [path, content] of next) if (prev.get(path) !== content) changed.push(path);
+    for (const path of prev.keys()) if (!next.has(path)) changed.push(path);
+    reloadIfShown(changed, filesStatus.lastOrigin === "self");
+  }, [files, reloadIfShown]);
+
+  const imageTickPaths = useStore((s) => s.imageTickPaths);
+  const prevImageVersionRef = useRef(imageVersion);
+  useEffect(() => {
+    if (prevImageVersionRef.current === imageVersion) return;
+    prevImageVersionRef.current = imageVersion;
+    reloadIfShown(imageTickPaths, false);
+  }, [imageVersion, imageTickPaths, reloadIfShown]);
+
+  /** Back from a page that is not part of this site to the current page. */
+  const returnToSite = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (iframe && desiredPath) openInFrame(iframe, window.location.origin + desiredPath, false);
+  }, [desiredPath, openInFrame]);
 
   // ── Locator / address navigation from chat cards & the capture action ───────
   // Consumes a ViewerAddress: `page` (or legacy `file`) names the target page;
   // `contentSet` is already resolved upstream by the store's setNavigateRequest.
+  //
+  // Arrival is reported once the target page's document has loaded, not when
+  // the switch is merely requested: `capture` waits for this verdict, and
+  // shooting earlier would picture the page being left or a blank one.
   useEffect(() => {
     if (!navigateRequest) return;
+    const complete = onNavigateComplete;
     const { address } = navigateRequest;
     const target = (address.page || address.file) as string | undefined;
-    if (target && htmlFiles.includes(target)) {
-      handlePageChange(target);
+    awaitingRef.current = null;
+    if (!target) {
+      complete?.();
+      return;
     }
-    onNavigateComplete?.();
+    if (!reachableHtmlFiles.includes(target)) {
+      complete?.({ success: false, message: `This site has no page "${target}"` });
+      return;
+    }
+    if (target === currentFile && readyFileRef.current === target) {
+      complete?.();
+      return;
+    }
+    awaitingRef.current = { file: target, complete };
+    if (target !== currentFile) handlePageChange(target);
   }, [navigateRequest]);
 
   // ── Viewport preset handling ─────────────────────────────────────────────────
@@ -1479,7 +1843,110 @@ export default function WebPreview({
             justifyContent: "center",
           }}
         >
-          {currentFile && srcdoc ? (
+          {((foreignUrl && currentFile && pageExists) || editProblem) && (
+            <div
+              style={{
+                position: "absolute",
+                top: 12,
+                left: 12,
+                right: 12,
+                zIndex: 5,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 8,
+                pointerEvents: "none",
+              }}
+            >
+              {editProblem && (
+                <PreviewNotice
+                  key={editProblem.id}
+                  role="alert"
+                  tone="error"
+                  title="Edit not saved"
+                  detail={
+                    <>
+                      <span style={{ display: "block" }}>
+                        Your change to <b style={{ fontWeight: 600 }}>{editProblem.page}</b> was not saved, and the file is unchanged.
+                        {editProblem.kind === "refused"
+                          ? " Copy your text and ask the agent to apply it, or edit the file."
+                          : " You can try saving again."}
+                      </span>
+                      <span style={{ display: "block", color: "var(--color-cc-muted)" }}>
+                        Why: {editProblem.reason}.
+                      </span>
+                      {editProblem.unsaved.length > 0 && (
+                        <span
+                          ref={draftRef}
+                          style={{ display: "block", marginTop: 4, color: "var(--color-cc-fg)", overflowWrap: "anywhere", whiteSpace: "pre-wrap", userSelect: "text", cursor: "text" }}
+                        >
+                          {editProblem.unsaved.join("\n\n")}
+                        </span>
+                      )}
+                      {copyFailed === editProblem.id && (
+                        <span role="status" style={{ display: "block", marginTop: 4, color: "var(--color-cc-warning)" }}>
+                          Couldn't copy automatically. The text above is selected: press {isMac ? "⌘C" : "Ctrl+C"} to copy it.
+                        </span>
+                      )}
+                    </>
+                  }
+                  actions={[
+                    ...(editProblem.unsaved.length > 0
+                      ? [{
+                          label: "Copy text",
+                          doneLabel: "Copied",
+                          onClick: async () => {
+                            const problem = editProblem;
+                            try {
+                              if (!navigator.clipboard?.writeText) throw new Error("clipboard unavailable");
+                              await navigator.clipboard.writeText(problem.unsaved.join("\n\n"));
+                              setCopyFailed(null);
+                              return true;
+                            } catch {
+                              // Keep the draft on screen, selected for a manual copy.
+                              setCopyFailed(problem.id);
+                              selectDraft();
+                              return false;
+                            }
+                          },
+                        }]
+                      : []),
+                    ...(copyFailed === editProblem.id ? [{ label: "Select text", onClick: selectDraft }] : []),
+                    ...(editProblem.retry ? [{ label: "Retry save", primary: true, onClick: editProblem.retry }] : []),
+                    {
+                      label: "Discard edit and show saved version",
+                      primary: !editProblem.retry,
+                      onClick: () => {
+                        setEditProblem(null);
+                        const iframe = iframeRef.current;
+                        if (iframe) reload(iframe);
+                      },
+                    },
+                  ]}
+                  onDismiss={() => setEditProblem(null)}
+                />
+              )}
+              {foreignUrl && currentFile && pageExists && (
+                <PreviewNotice
+                  role="status"
+                  tone="info"
+                  title="This page is not part of the site"
+                  detail={
+                    <>
+                      <span style={{ display: "block", color: "var(--color-cc-muted)", overflowWrap: "anywhere" }}>
+                        {foreignUrl.replace(window.location.origin, "")}
+                      </span>
+                      <span style={{ display: "block", color: "var(--color-cc-muted)" }}>
+                        Selecting and editing work on the site's own pages.
+                      </span>
+                    </>
+                  }
+                  actions={[{ label: `Back to ${currentFile}`, primary: true, onClick: returnToSite }]}
+                />
+              )}
+            </div>
+          )}
+          {currentFile && pageExists ? (
             iframeLayout.useTransform ? (
               /* Device viewport mode: centered, scaled iframe with device frame */
               <div
@@ -1505,7 +1972,7 @@ export default function WebPreview({
                   }}
                   sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
                   title="Web Preview"
-                  onLoad={handleIframeLoad}
+                  onLoad={handleFrameLoad}
                 />
               </div>
             ) : (
@@ -1521,7 +1988,7 @@ export default function WebPreview({
                 }}
                 sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
                 title="Web Preview"
-                onLoad={handleIframeLoad}
+                onLoad={handleFrameLoad}
               />
             )
           ) : (

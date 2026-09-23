@@ -21,6 +21,9 @@ import { snapdom as outerSnapdom } from "@zumer/snapdom";
 
 type SnapdomFn = typeof outerSnapdom;
 
+/** Upper bound on loading `/vendor/snapdom.js` into an iframe. */
+const SCRIPT_LOAD_TIMEOUT_MS = 5_000;
+
 /** Resolve the snapdom that runs in `el`'s own window. */
 export async function snapdomFor(el: Element): Promise<SnapdomFn> {
   try {
@@ -33,16 +36,21 @@ export async function snapdomFor(el: Element): Promise<SnapdomFn> {
     if (win.snapdom) return win.snapdom;
     const script = doc.createElement("script");
     script.src = "/vendor/snapdom.js";
-    doc.head.appendChild(script);
+    // Wait on the script's own load/error event, bounded by ONE timer. This
+    // used to poll every 100 ms for up to 5 s — and a chain of timers is
+    // exactly what Chrome throttles to one wake-up per minute once a tab
+    // has been in the background for five minutes, which turned a sub-
+    // second injection into minutes and every addressed capture of a fresh
+    // page into a 60 s timeout.
     await new Promise<void>((resolve) => {
-      let tries = 0;
-      const timer = setInterval(() => {
-        tries++;
-        if (win.snapdom || tries > 50) {
-          clearInterval(timer);
-          resolve();
-        }
-      }, 100);
+      const timer = setTimeout(resolve, SCRIPT_LOAD_TIMEOUT_MS);
+      const done = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      script.addEventListener("load", done, { once: true });
+      script.addEventListener("error", done, { once: true });
+      (doc.head ?? doc.documentElement).appendChild(script);
     });
     return win.snapdom ?? outerSnapdom;
   } catch {

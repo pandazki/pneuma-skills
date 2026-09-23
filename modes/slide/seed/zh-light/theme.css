@@ -1,325 +1,314 @@
-/* Pneuma Slide Theme — Humanistic Tech Fusion (Warm Light) */
+/* Pneuma Slide Mode — Paper（明）
+ * 一份「活的校样」：页眉印文件路径，四角裁切标记，朱砂只用在选中框母题上。
+ * 与 zh-dark/theme.css 结构完全相同，只有下面的 :root 色板不同。
+ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
-  --color-bg: #FAF7F2;
-  --color-fg: #2D2A26;
-  --color-primary: #D4632A;
-  --color-secondary: #8A8178;
-  --color-accent: #C4963A;
-  --color-muted: #8A8178;
-  --color-surface: #F0EBE3;
-  --color-border: #DDD5CA;
-  --color-surface-alt: #E8E1D7;
+  /* ── Palette · Paper ───────────────────────────── */
+  --theme-name: "Paper · 明";
+  --color-bg: #f2ede3;
+  --color-fg: #1c1a16;
+  --color-fg-soft: #3f3a32;
+  --color-primary: #b43a1c;
+  --color-secondary: #7b602f;
+  --color-accent: #b43a1c;
+  --color-muted: #6a6357;
+  --color-surface: #e9e3d6;
+  --color-border: #d3c9b7;
+  --color-mark: #b3a790;
+  --color-on-primary: #f7f3ec;
+  --plate-shadow: 0 1px 2px rgba(60, 45, 25, 0.06), 0 12px 32px -12px rgba(60, 45, 25, 0.22);
 
-  --font-sans: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
+  --code-tag: #b03a1c;
+  --code-attr: #7d6030;
+  --code-str: #3f3a32;
+  --code-com: #6c6356;
 
+  /* 色值标签：第 8 页用 content: var() 把当前主题的实际色值印出来 */
+  --label-bg: "#F2EDE3";
+  --label-fg: "#1C1A16";
+  --label-primary: "#B43A1C";
+  --label-secondary: "#7B602F";
+  --label-surface: "#E9E3D6";
+  --label-muted: "#6A6357";
+
+  /* ── Type & space（两套主题相同）────────────────── */
+  --font-serif: "Noto Serif SC", "Songti SC", "STSong", "Source Han Serif SC", serif;
+  --font-display: "Instrument Serif", "Noto Serif SC", "Songti SC", serif;
+  --font-sans: "Inter", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Menlo", "PingFang SC", monospace;
   --slide-padding: 64px;
+  --pad-x: 88px;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
   font-family: var(--font-sans);
   background: var(--color-bg);
   color: var(--color-fg);
-  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* ── Base slide container ─────────────────────────────── */
+/* ── Slide ───────────────────────────────────────── */
 
 .slide {
   width: 100%;
   height: 100%;
-  padding: var(--slide-padding);
+  padding: 76px var(--pad-x) var(--slide-padding);
   display: flex;
   flex-direction: column;
   justify-content: center;
   position: relative;
   overflow: hidden;
+  background: var(--color-bg);
+  color: var(--color-fg);
 }
 
-/* ── Layout variants ──────────────────────────────────── */
-
-.slide-title {
-  align-items: center;
-  text-align: center;
-}
-
-.slide-content {
-  justify-content: flex-start;
-  padding-top: 72px;
+/* 四角裁切标记 */
+.slide::before {
+  content: "";
+  position: absolute;
+  inset: 22px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--color-mark), var(--color-mark)) left top / 16px 1px no-repeat,
+    linear-gradient(var(--color-mark), var(--color-mark)) left top / 1px 16px no-repeat,
+    linear-gradient(var(--color-mark), var(--color-mark)) right top / 16px 1px no-repeat,
+    linear-gradient(var(--color-mark), var(--color-mark)) right top / 1px 16px no-repeat,
+    linear-gradient(var(--color-mark), var(--color-mark)) left bottom / 16px 1px no-repeat,
+    linear-gradient(var(--color-mark), var(--color-mark)) left bottom / 1px 16px no-repeat,
+    linear-gradient(var(--color-mark), var(--color-mark)) right bottom / 16px 1px no-repeat,
+    linear-gradient(var(--color-mark), var(--color-mark)) right bottom / 1px 16px no-repeat;
 }
 
 .slide-split {
   flex-direction: row;
-  gap: 48px;
   align-items: center;
+  gap: 64px;
 }
 
-.slide-split>* {
-  flex: 1;
-  min-width: 0;
-}
+/* ── Folio：页眉 ─────────────────────────────────── */
 
-.slide-image {
-  padding: 0;
+.folio {
+  position: absolute;
+  top: 30px;
+  left: var(--pad-x);
+  right: var(--pad-x);
+  display: flex;
+  justify-content: space-between;
   align-items: center;
-  justify-content: center;
-}
-
-/* ── Typography ───────────────────────────────────────── */
-
-h1,
-h2,
-h3,
-p,
-div,
-span {
-  z-index: 1;
-  position: relative;
-}
-
-h1 {
-  font-size: 2.75rem;
-  font-weight: 700;
-  line-height: 1.15;
-  letter-spacing: -0.03em;
-  margin-bottom: 0.4em;
-  color: var(--color-fg);
-}
-
-h2 {
-  font-size: 1.75rem;
-  font-weight: 600;
-  line-height: 1.3;
-  letter-spacing: -0.02em;
-  margin-bottom: 0.6em;
-  color: var(--color-fg);
-}
-
-h3 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  line-height: 1.4;
-  margin-bottom: 0.4em;
-  color: var(--color-fg);
-}
-
-p {
-  font-size: 1.15rem;
-  line-height: 1.7;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  letter-spacing: 0.02em;
   color: var(--color-muted);
-  margin-bottom: 0.6em;
+}
+.folio .path::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 10px;
+  vertical-align: 2px;
+  background: var(--color-primary);
+}
+.folio .count b { color: var(--color-fg); font-weight: 500; }
+
+/* ── Typography ──────────────────────────────────── */
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-secondary);
+  margin-bottom: 22px;
 }
 
-ul,
-ol {
-  font-size: 1.15rem;
-  line-height: 1.8;
-  padding-left: 1.5em;
+h1, h2, h3 {
+  font-family: var(--font-serif);
   color: var(--color-fg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
+h1 { font-size: 60px; line-height: 1.22; }
+h2 { font-size: 42px; line-height: 1.3; margin-bottom: 20px; }
+h3 { font-size: 22px; line-height: 1.45; margin-bottom: 8px; }
 
-li {
-  margin-bottom: 0.4em;
+p { font-size: 20px; line-height: 1.75; color: var(--color-fg-soft); }
+.lead { font-size: 22px; line-height: 1.7; color: var(--color-fg-soft); max-width: 760px; }
+.small { font-size: 17px; line-height: 1.65; color: var(--color-muted); }
+.it {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0;
 }
-
-li::marker {
-  color: var(--color-primary);
-}
-
-/* ── Code ─────────────────────────────────────────────── */
+.accent { color: var(--color-primary); }
+.muted { color: var(--color-muted); }
+.mono { font-family: var(--font-mono); font-variant-ligatures: none; }
 
 code {
   font-family: var(--font-mono);
-  font-size: 0.85em;
-  background: var(--color-surface);
-  padding: 0.15em 0.4em;
-  border-radius: 4px;
-  color: var(--color-primary);
-}
-
-pre {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  padding: 1.25em;
-  overflow-x: auto;
-  margin: 0.75em 0;
-}
-
-pre code {
-  background: none;
-  padding: 0;
-  font-size: 0.95rem;
+  font-size: 0.86em;
   color: var(--color-fg);
+  padding: 1px 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
 }
 
-/* ── Images ───────────────────────────────────────────── */
+/* ── Selection motif：选中框 ─────────────────────── */
 
-img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  border-radius: 10px;
+.sel {
+  position: relative;
+  display: inline-block;
+  outline: 1.5px dashed var(--color-primary);
+  outline-offset: 8px;
 }
+.sel::before {
+  content: "";
+  position: absolute;
+  inset: -12px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--color-primary), var(--color-primary)) left top / 8px 8px no-repeat,
+    linear-gradient(var(--color-primary), var(--color-primary)) right top / 8px 8px no-repeat,
+    linear-gradient(var(--color-primary), var(--color-primary)) left bottom / 8px 8px no-repeat,
+    linear-gradient(var(--color-primary), var(--color-primary)) right bottom / 8px 8px no-repeat;
+}
+.sel::after {
+  content: attr(data-sel);
+  position: absolute;
+  left: -12px;
+  top: -40px;
+  padding: 3px 8px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+.sel-below::after { top: auto; bottom: -40px; }
+.sel:not([data-sel])::after { content: none; }
 
-/* ── Cards ────────────────────────────────────────────── */
+/* ── Rules & lists ───────────────────────────────── */
 
-.card {
+.rule { height: 1px; background: var(--color-border); }
+
+.numbered { list-style: none; }
+.numbered li {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  align-items: baseline;
+  padding: 22px 0;
+  border-top: 1px solid var(--color-border);
+}
+.numbered li:last-child { border-bottom: 1px solid var(--color-border); }
+.numbered .n {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 40px;
+  line-height: 1;
+  color: var(--color-primary);
+}
+.numbered h3 { margin-bottom: 4px; }
+.numbered p { font-size: 18px; line-height: 1.6; }
+
+/* ── Plate：图版 ─────────────────────────────────── */
+
+.plate {
+  padding: 10px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 14px;
-  padding: 24px;
+  box-shadow: var(--plate-shadow);
+}
+.plate img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.caption {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-muted);
+  margin-top: 12px;
 }
 
-.card h3 {
-  color: var(--color-primary);
-  margin-bottom: 0.4em;
+/* ── Code block ──────────────────────────────────── */
+
+.code {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-size: 15px;
+  line-height: 1.75;
+  color: var(--code-str);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  padding: 22px 26px;
+  white-space: pre;
+  box-shadow: var(--plate-shadow);
+}
+.code .tag { color: var(--code-tag); }
+.code .attr { color: var(--code-attr); }
+.code .com { color: var(--code-com); font-style: italic; }
+.code .hl { color: var(--color-fg); background: var(--color-bg); outline: 1px dashed var(--color-primary); outline-offset: 2px; }
+.code-title {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--color-muted);
+  margin-bottom: 10px;
+  letter-spacing: 0.02em;
 }
 
-.card p {
-  font-size: 1rem;
-  margin-bottom: 0;
+/* ── Mini slide（示意用的缩略页）──────────────────── */
+
+.mini {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--plate-shadow);
 }
+.bar { height: 6px; background: var(--color-border); }
 
-/* ── Tags / Badges ────────────────────────────────────── */
+/* ── Swatch ──────────────────────────────────────── */
 
-.tag {
-  display: inline-block;
-  padding: 4px 14px;
-  border-radius: 20px;
-  font-size: 13px;
-  font-weight: 600;
-  background: rgba(212, 99, 42, 0.12);
-  color: var(--color-primary);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+.swatch .chip {
+  height: 96px;
+  border: 1px solid var(--color-border);
 }
-
-/* ── Divider ──────────────────────────────────────────── */
-
-.divider {
-  height: 1px;
-  background: var(--color-border);
-  margin: 20px 0;
+.swatch .name {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  color: var(--color-fg);
+  margin-top: 12px;
 }
-
-/* ── Icon container ───────────────────────────────────── */
-
-.icon-circle {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.icon-circle svg {
-  width: 24px;
-  height: 24px;
-}
-
-/* ── Feature row ──────────────────────────────────────── */
-
-.feature-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-}
-
-.feature-row .icon-circle {
+.swatch .val {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--color-muted);
   margin-top: 2px;
 }
+.v-bg::after { content: var(--label-bg); }
+.v-fg::after { content: var(--label-fg); }
+.v-primary::after { content: var(--label-primary); }
+.v-secondary::after { content: var(--label-secondary); }
+.v-surface::after { content: var(--label-surface); }
+.v-muted::after { content: var(--label-muted); }
+.v-theme::after { content: var(--theme-name); }
 
-/* ── Utilities ────────────────────────────────────────── */
+/* ── Pill: named apart from .code .tag so the chip box never lands on code ── */
 
-.text-primary {
-  color: var(--color-primary);
-}
-
-.text-secondary {
-  color: var(--color-secondary);
-}
-
-.text-accent {
-  color: var(--color-accent);
-}
-
-.text-muted {
-  color: var(--color-muted);
-}
-
-.text-center {
-  text-align: center;
-}
-
-.text-small {
-  font-size: 0.95rem;
-}
-
-.text-large {
-  font-size: 1.35rem;
-}
-
-.mt-1 {
-  margin-top: 1em;
-}
-
-.mt-2 {
-  margin-top: 2em;
-}
-
-.mb-1 {
-  margin-bottom: 1em;
-}
-
-.mb-2 {
-  margin-bottom: 2em;
-}
-
-.flex {
-  display: flex;
-}
-
-.flex-col {
-  flex-direction: column;
-}
-
-.flex-row {
-  flex-direction: row;
-}
-
-.gap-xs {
-  gap: 8px;
-}
-
-.gap-sm {
-  gap: 16px;
-}
-
-.gap-md {
-  gap: 24px;
-}
-
-.gap-lg {
-  gap: 32px;
-}
-
-.items-center {
-  align-items: center;
-}
-
-.justify-center {
-  justify-content: center;
+.pill {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  padding: 3px 10px;
+  border: 1px solid var(--color-border);
+  color: var(--color-fg-soft);
 }

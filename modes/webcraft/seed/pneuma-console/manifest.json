@@ -1,7 +1,8 @@
 {
-  "title": "Pneuma Console",
+  "title": "Carbon Park Console",
   "pages": [
     { "file": "index.html", "title": "Sessions" },
+    { "file": "usage.html", "title": "Usage" },
     { "file": "settings.html", "title": "Settings" }
   ]
 }

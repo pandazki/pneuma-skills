@@ -1,55 +1,36 @@
-<div class="slide slide-title" style="position: relative;">
-  <!-- Decorative organic shapes -->
-  <svg style="position: absolute; top: -100px; right: -100px; opacity: 0.1;" width="500" height="500"
-    viewBox="0 0 500 500" fill="none">
-    <circle cx="250" cy="250" r="230" stroke="#5B8DB5" stroke-width="2" />
-    <circle cx="250" cy="250" r="180" stroke="#C4963A" stroke-width="1.5" />
-    <circle cx="250" cy="250" r="130" stroke="#D4632A" stroke-width="1" />
-  </svg>
+<!-- 这一页的两张小样写死了两套色值，用来并排展示两个主题；除此之外整套稿子只引用 theme.css 变量 -->
+<div class="slide">
+  <div class="folio"><span class="path">slides/slide-11.html</span><span class="count"><b>11</b> / 12</span></div>
 
-  <div style="position: absolute; bottom: 40px; left: 40px; opacity: 0.05;">
-    <svg width="200" height="200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-      <path d="M12 2L2 7l10 5 10-5-10-5z" />
-      <path d="M2 17l10 5 10-5" />
-      <path d="M2 12l10 5 10-5" />
-    </svg>
+  <div style="display:flex; justify-content:space-between; align-items:flex-end;">
+    <div>
+      <p class="eyebrow">10 · 两套主题</p>
+      <h2 style="margin-bottom:0;">深浅两套，只换 theme.css</h2>
+    </div>
+    <span class="pill v-theme" style="margin-bottom:10px;">当前主题 · </span>
   </div>
 
-  <div style="position: relative; z-index: 1; text-align: center;">
-    <h1 style="font-size: 3.8rem; margin-bottom: 24px; letter-spacing: -0.02em;">想好怎么 <span
-        class="text-primary">共创了吗？</span></h1>
-    <p
-      style="font-size: 1.4rem; max-width: 680px; margin: 0 auto 48px; color: var(--color-secondary); line-height: 1.4;">
-      你会教 AI 造出什么不可思议的魔法？<br>
-      一个所见即所得的简历生成器？一个创意画板？还是一个数据库大屏？
-    </p>
-
-    <div style="display: flex; gap: 24px; justify-content: center;">
-      <!-- CTA 1: Try Slide -->
-      <div
-        style="background: rgba(255, 255, 255, 0.05); color: #fff; padding: 16px 32px; border-radius: 30px; font-weight: 500; font-size: 1.1rem; display: flex; align-items: center; gap: 12px; border: 1px solid rgba(255,255,255,0.1);">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="5 3 19 12 5 21 5 3" />
-        </svg>
-        bunx pneuma-skills slide
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:36px; margin-top:32px;">
+    <figure>
+      <div style="aspect-ratio:16/9; background:#13110f; border:1px solid #332f29; padding:30px 34px; display:flex; flex-direction:column; justify-content:center;">
+        <div style="width:30%; height:4px; background:#b89b6a;"></div>
+        <p style="font-family:var(--font-serif); font-size:26px; font-weight:600; line-height:1.35; color:#ece5d8; margin-top:18px;">和 agent 一起做演示稿<br><span style="outline:1.5px dashed #e25b3c; outline-offset:4px;">看着它</span>成形</p>
+        <div style="width:64%; height:5px; background:#332f29; margin-top:22px;"></div>
+        <div style="width:48%; height:5px; background:#332f29; margin-top:8px;"></div>
       </div>
-
-      <!-- CTA 2: Mode Maker -->
-      <div
-        style="background: var(--color-primary); color: #fff; padding: 16px 32px; border-radius: 30px; font-weight: 600; font-size: 1.1rem; display: flex; align-items: center; gap: 12px; box-shadow: 0 8px 24px rgba(212, 99, 42, 0.3);">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="4 17 10 11 4 5" />
-          <line x1="12" y1="19" x2="20" y2="19" />
-        </svg>
-        bunx pneuma-skills mode-maker
+      <figcaption class="caption">zh-dark/theme.css · Ink</figcaption>
+    </figure>
+    <figure>
+      <div style="aspect-ratio:16/9; background:#f2ede3; border:1px solid #d3c9b7; padding:30px 34px; display:flex; flex-direction:column; justify-content:center;">
+        <div style="width:30%; height:4px; background:#7b602f;"></div>
+        <p style="font-family:var(--font-serif); font-size:26px; font-weight:600; line-height:1.35; color:#1c1a16; margin-top:18px;">和 agent 一起做演示稿<br><span style="outline:1.5px dashed #b43a1c; outline-offset:4px;">看着它</span>成形</p>
+        <div style="width:64%; height:5px; background:#d3c9b7; margin-top:22px;"></div>
+        <div style="width:48%; height:5px; background:#d3c9b7; margin-top:8px;"></div>
       </div>
-    </div>
-
-    <div
-      style="margin-top: 64px; font-family: monospace; color: var(--color-muted); font-size: 0.9rem; letter-spacing: 0.05em;">
-      GITHUB.COM/PANDAZKI/PNEUMA-SKILLS
-    </div>
+      <figcaption class="caption">zh-light/theme.css · Paper</figcaption>
+    </figure>
   </div>
+
+<div class="code" style="margin-top:20px; font-size:15px; padding:14px 22px; line-height:1.7;"><span class="muted">$</span> diff -rq zh-dark zh-light
+<span class="accent">Files zh-dark/theme.css and zh-light/theme.css differ</span></div>
 </div>

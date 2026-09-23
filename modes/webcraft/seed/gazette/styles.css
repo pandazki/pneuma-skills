@@ -1,0 +1,856 @@
+/* The Gazette — shared styles for the front page and the jump page. */
+
+@view-transition { navigation: auto; }
+
+:root {
+  /* Ink and newsprint. Newsprint is pinned by the broadsheet brief; kept grey-leaning, not cream. */
+  --newsprint: oklch(0.935 0.009 95);
+  --newsprint-deep: oklch(0.9 0.011 95);
+  --ink: oklch(0.19 0.012 80);
+  --ink-soft: oklch(0.33 0.012 80);
+  --ink-faint: oklch(0.45 0.012 80);
+  --rule: oklch(0.26 0.012 80);
+
+  --font-nameplate: "UnifrakturMaguntia", "Old English Text MT", serif;
+  --font-serif: "Old Standard TT", "Century Schoolbook", Georgia, serif;
+  --font-gothic: "League Gothic", "Alternate Gothic No1 D", "Arial Narrow", sans-serif;
+
+  --gutter: clamp(0.75rem, 1.1vw, 1.05rem);
+  --page-max: 84rem;
+  --text: 0.98rem;
+  --leading: 1.45;
+
+  color-scheme: light;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  background: var(--newsprint-deep);
+  scrollbar-color: var(--ink-soft) var(--newsprint-deep);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: var(--text);
+  line-height: var(--leading);
+  font-variant-numeric: oldstyle-nums;
+  font-kerning: normal;
+  text-rendering: optimizeLegibility;
+}
+
+::selection { background: var(--ink); color: var(--newsprint); }
+
+a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 0.18em; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+
+img { display: block; max-width: 100%; height: auto; }
+
+p { margin: 0; }
+p + p { text-indent: 1.2em; }
+
+h1, h2, h3, h4 { margin: 0; font-weight: 700; text-wrap: balance; }
+
+.skip {
+  position: absolute; left: 1rem; top: -3rem;
+  background: var(--ink); color: var(--newsprint);
+  padding: 0.5rem 0.9rem; z-index: 10; text-decoration: none;
+}
+.skip:focus { top: 1rem; }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ---------- The sheet ---------- */
+
+.sheet {
+  max-width: var(--page-max);
+  margin: 0 auto;
+  background: var(--newsprint);
+  padding: clamp(1rem, 2.4vw, 2.25rem) clamp(0.9rem, 2.6vw, 2.5rem) 2.5rem;
+  box-shadow: 0 1px 2px oklch(0.2 0.01 80 / 0.12), 0 6px 8px -6px oklch(0.2 0.01 80 / 0.18);
+}
+
+/* ---------- Masthead ---------- */
+
+.masthead {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1fr) auto minmax(9rem, 1fr);
+  align-items: center;
+  gap: 1.5rem;
+  padding-bottom: 0.6rem;
+}
+
+.ear {
+  border: 1px solid var(--rule);
+  padding: 0.55rem 0.7rem 0.6rem;
+  max-width: 13.5rem;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  text-align: center;
+  font-style: italic;
+}
+.ear--right { justify-self: end; }
+.ear strong {
+  display: block;
+  font-family: var(--font-gothic);
+  font-style: normal;
+  font-weight: 400;
+  font-size: 1.15rem;
+  line-height: 1;
+  text-transform: uppercase;
+  margin-bottom: 0.3rem;
+}
+
+.nameplate {
+  font-family: var(--font-nameplate);
+  font-weight: 400;
+  font-size: clamp(2.8rem, 9.2vw, 7.25rem);
+  line-height: 0.9;
+  letter-spacing: 0;
+  text-align: center;
+  white-space: nowrap;
+  padding-top: 0.1em;
+}
+.nameplate a { text-decoration: none; }
+
+.folio {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  box-shadow: 0 -3px 0 -2px var(--newsprint), 0 -4px 0 -2px var(--rule),
+              0 4px 0 -1px var(--newsprint), 0 6px 0 0 var(--rule);
+  padding: 0.3rem 0.1rem 0.28rem;
+  margin: 0.2rem 0 1.4rem;
+  font-family: var(--font-gothic);
+  font-size: 1.05rem;
+  line-height: 1.1;
+  text-transform: uppercase;
+  letter-spacing: 0.035em;
+}
+.folio > :nth-child(2) { text-align: center; }
+.folio > :last-child { text-align: right; }
+
+/* ---------- Bands: rows of the broadsheet grid with hairline column rules ---------- */
+
+.band { overflow: hidden; }
+.band + .band { margin-top: 0; }
+
+.band__grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin: -1px 0 0 -1px; /* hides the rules of the first column and first row */
+}
+
+.band__grid > * {
+  border-left: 1px solid var(--rule);
+  border-top: 1px solid var(--rule);
+  padding: 0.35rem var(--gutter) 1.35rem;
+  min-width: 0;
+}
+
+.cut {
+  /* thick-and-thin cut-off rule between bands, as at the fold */
+  height: 5px;
+  border-top: 3px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  margin: 0.3rem 0 1rem;
+}
+
+/* a cell that carries its own ruled sub-grid */
+.band__grid > .nest { padding: 0; overflow: hidden; }
+.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* Top band: the right-hand stories join the band grid so columns can balance */
+.band--top .nest,
+.band--top .nest > .band__grid { display: contents; }
+.band--top > .band__grid {
+  grid-template-areas:
+    "lead lead lead lead ferry ferry"
+    "sum  sum  sum  sum  lamp  lamp";
+}
+.band--top .a-lead { grid-area: lead; }
+.band--top .a-ferry { grid-area: ferry; }
+.band--top .a-lamp { grid-area: lamp; }
+.band--top .a-sum { grid-area: sum; }
+@media (min-width: 68.01rem) {
+  /* News Summary runs as a strip of briefs under the lead */
+  .band--top .a-sum ul { columns: 4 10rem; column-gap: calc(var(--gutter) * 2); column-rule: 1px solid var(--rule); }
+  .band--top .a-sum li { break-inside: avoid; margin: 0 0 0.7rem; padding: 0; border: 0; }
+  .band--top .a-sum li + li { margin-top: 0; padding-top: 0; border-top: 0; }
+  .band--top .a-sum .flag { text-align: left; }
+}
+
+/* shared across pages for the cross-document view transition */
+.vt-hed { view-transition-name: lead-hed; }
+.vt-art { view-transition-name: lead-art; }
+::view-transition-group(*) { animation-duration: 420ms; animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1); }
+
+.span-1 { grid-column: span 1; }
+.span-2 { grid-column: span 2; }
+.span-3 { grid-column: span 3; }
+.span-4 { grid-column: span 4; }
+.span-6 { grid-column: span 6; }
+
+/* ---------- Story type ---------- */
+
+/* Front-page columns are about eleven rem wide. Justified at that measure
+   the word spaces open into rivers, so column text is set ragged-right and
+   hyphenated, a size below the running text as on a printed page. The
+   article's wider measure stays justified. */
+.story p,
+.flow p {
+  text-align: left;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  text-wrap: pretty;
+}
+.flow,
+.lead__open,
+.story > p:not(.byline, .jump) {
+  font-size: 0.93rem;
+  line-height: 1.45;
+}
+/* furniture inside a story is never justified or indented */
+.story :is(.decks p, .byline, .jump, .columnist, .sig) {
+  text-align: inherit;
+  hyphens: manual;
+  -webkit-hyphens: manual;
+  text-indent: 0;
+}
+
+.flow {
+  columns: 10.5rem;
+  column-gap: calc(var(--gutter) * 2);
+  column-rule: 1px solid var(--rule);
+}
+.flow--2 { columns: 2 10.5rem; }
+.flow--3 { columns: 3 10rem; }
+
+.hed-lead {
+  font-size: clamp(2.3rem, 4.6vw, 3.6rem);
+  line-height: 1.02;
+  letter-spacing: -0.012em;
+  padding-bottom: 0.6rem;
+}
+.hed-lead a { text-decoration: none; }
+.hed-lead a:hover { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 0.12em; }
+
+.hed-2 {
+  font-size: clamp(1.45rem, 1.9vw, 1.85rem);
+  line-height: 1.06;
+  letter-spacing: -0.008em;
+  margin-bottom: 0.55rem;
+}
+
+.hed-gothic {
+  font-family: var(--font-gothic);
+  font-weight: 400;
+  font-size: clamp(1.7rem, 2.1vw, 2.05rem);
+  line-height: 0.96;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  text-align: center;
+  margin-bottom: 0.5rem;
+}
+
+.decks {
+  text-align: left;
+  margin-bottom: 0.7rem;
+}
+/* single-column heads and the lead's opening column stack their decks on the centre line */
+.hed-gothic + .decks,
+.lead__open .decks { text-align: center; }
+.deck {
+  font-family: var(--font-gothic);
+  font-weight: 400;
+  font-size: 1.22rem;
+  line-height: 1.02;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin: 0;
+}
+.deck-i {
+  font-style: italic;
+  font-size: 0.98rem;
+  line-height: 1.3;
+  margin: 0;
+  text-wrap: balance;
+}
+.decks > * + *::before {
+  content: "";
+  display: block;
+  width: 2.75rem;
+  margin: 0.45rem 0 0.4rem;
+  border-top: 1px solid var(--rule);
+}
+:is(.hed-gothic + .decks, .lead__open .decks) > * + *::before { margin-inline: auto; }
+
+.byline {
+  font-size: 0.78rem;
+  line-height: 1.3;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-align: left;
+  margin: 0 0 0.6rem;
+}
+.byline span { display: block; text-transform: none; letter-spacing: 0; font-style: italic; }
+
+.lead__open .byline,
+.hed-gothic ~ .byline { text-align: center; }
+
+.dateline { text-transform: uppercase; font-size: 0.86em; letter-spacing: 0.03em; }
+
+.story .jump,
+.jump {
+  margin-top: 0.55rem;
+  font-style: italic;
+  font-size: 0.86rem;
+  text-align: right;
+  break-inside: avoid;
+}
+.jump a { font-weight: 700; font-style: normal; }
+
+.drop {
+  float: left;
+  font-weight: 700;
+  font-size: 3.55em;
+  line-height: 0.8;
+  padding: 0.06em 0.07em 0 0;
+  margin-bottom: -0.1em;
+}
+.dropcap { text-indent: 0 !important; }
+
+/* ---------- Figures: engravings printed into the sheet ---------- */
+
+.engraving { margin: 0 0 0.8rem; }
+.engraving img {
+  width: 100%;
+  mix-blend-mode: multiply;
+  filter: grayscale(1) contrast(1.06);
+  background: var(--newsprint);
+}
+.engraving figcaption {
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  font-style: italic;
+  text-align: left;
+  text-wrap: pretty;
+}
+.credit {
+  display: block;
+  font-style: normal;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-align: right;
+  margin-top: 0.15rem;
+  color: var(--ink-soft);
+}
+
+/* ---------- Lead story ---------- */
+
+.lead { padding-bottom: 1.1rem; }
+.lead__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 3fr);
+}
+.lead__open { padding-right: var(--gutter); }
+.lead__rest {
+  border-left: 1px solid var(--rule);
+  padding-left: var(--gutter);
+}
+.lead__rest .engraving img { aspect-ratio: 3 / 2; object-fit: cover; }
+
+/* ---------- Standing heads, briefs, boxes ---------- */
+
+.flag {
+  font-family: var(--font-nameplate);
+  font-weight: 400;
+  font-size: 1.7rem;
+  line-height: 1;
+  text-align: center;
+  padding: 0.25rem 0 0.35rem;
+  margin-bottom: 0.7rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.summary h3 {
+  font-size: 0.95rem;
+  line-height: 1.2;
+  margin: 0 0 0.15rem;
+}
+.summary li { list-style: none; }
+.summary ul { margin: 0; padding: 0; }
+.summary li + li { margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px solid var(--rule); }
+.summary p { font-size: 0.9rem; line-height: 1.38; text-align: left; hyphens: manual; }
+.page-ref { font-weight: 700; white-space: nowrap; font-variant-numeric: lining-nums; }
+
+.op-head {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  margin-bottom: 0.7rem;
+}
+.hedcut {
+  flex: 0 0 5.25rem;
+  margin: 0;
+}
+.hedcut img { mix-blend-mode: multiply; filter: grayscale(1) contrast(1.05); aspect-ratio: 1; object-fit: cover; }
+.columnist {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.columnist span { display: block; text-transform: none; letter-spacing: 0; font-style: italic; }
+
+.index-box { border: 1px solid var(--rule); padding: 0.55rem 0.7rem 0.7rem; margin-bottom: 1rem; }
+.index-box h2,
+.markets h2 {
+  font-family: var(--font-gothic);
+  font-weight: 400;
+  text-transform: uppercase;
+  font-size: 1.3rem;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  text-align: center;
+  margin-bottom: 0.4rem;
+}
+.index-list { margin: 0; padding: 0; list-style: none; font-size: 0.88rem; }
+.index-list li { display: flex; align-items: baseline; gap: 0.35rem; }
+.index-list li::after { content: none; }
+.index-list .dots { flex: 1; border-bottom: 1px dotted var(--ink-faint); transform: translateY(-0.25em); }
+.index-list b { font-variant-numeric: lining-nums; }
+
+.markets table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.markets caption { caption-side: bottom; font-size: 0.72rem; font-style: italic; text-align: left; padding-top: 0.35rem; color: var(--ink-soft); }
+.markets th, .markets td { padding: 0.22rem 0 0.22rem 0.4rem; border-top: 1px solid var(--rule); text-align: right; font-weight: 400; white-space: nowrap; }
+.markets th { padding-left: 0; white-space: normal; }
+.markets th { text-align: left; }
+.markets thead :is(th, td) { font-style: italic; border-top: 0; font-size: 0.74rem; }
+
+.letters .flag { border-bottom: 0; margin-bottom: 0.2rem; }
+.letters__body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  column-gap: calc(var(--gutter) * 2);
+}
+.letter { border-top: 1px solid var(--rule); padding-top: 0.6rem; margin-bottom: 0.8rem; }
+.letter p { text-align: justify; hyphens: auto; -webkit-hyphens: auto; }
+.letters h3 { font-size: 0.98rem; margin: 0.1rem 0 0.25rem; font-style: italic; font-weight: 400; }
+.letter .sig { text-align: right; font-size: 0.84rem; font-style: italic; margin-top: 0.3rem; text-indent: 0; }
+
+/* ---------- Classifieds ---------- */
+
+.classifieds .flag { border-bottom: 0; }
+.ads {
+  columns: 6 11rem;
+  column-gap: calc(var(--gutter) * 2);
+  column-rule: 1px solid var(--rule);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+.ad {
+  break-inside: avoid;
+  border: 1px solid var(--rule);
+  padding: 0.5rem 0.55rem 0.55rem;
+  margin-bottom: 0.8rem;
+  text-align: left;
+}
+.ad h3 {
+  font-family: var(--font-gothic);
+  font-weight: 400;
+  font-size: 1.15rem;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  text-align: center;
+  margin-bottom: 0.3rem;
+}
+.ad--heavy { border-width: 3px; border-style: double; }
+
+/* ---------- Colophon ---------- */
+
+.colophon {
+  border-top: 3px solid var(--rule);
+  box-shadow: 0 -5px 0 -3px var(--newsprint), 0 -6px 0 -3px var(--rule);
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem 2rem;
+  font-size: 0.8rem;
+  font-style: italic;
+}
+.colophon p + p { text-indent: 0; }
+
+/* ---------- Tablet ---------- */
+
+@media (max-width: 68rem) {
+  .band__grid, .cols-2 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .span-4, .span-3, .span-6, .t-4 { grid-column: span 4; }
+  .t-2 { grid-column: span 2; }
+  .band--top > .band__grid {
+    grid-template-areas:
+      "lead  lead  lead lead"
+      "ferry ferry lamp sum";
+  }
+  .band__grid > * { padding-top: 0.9rem; }
+  .band__grid > .lead { padding-top: 0.35rem; }
+}
+
+/* ---------- Phone ---------- */
+
+@media (max-width: 44rem) {
+  .masthead { grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+  .nameplate { grid-column: 1 / -1; grid-row: 1; }
+  .ear { max-width: none; font-size: 0.74rem; }
+  .ear--right { justify-self: stretch; }
+  .folio { flex-direction: column; align-items: center; gap: 0.15rem; text-align: center; }
+  .folio > * { text-align: center !important; }
+  .band__grid { grid-template-columns: minmax(0, 1fr); }
+  .band__grid > * { grid-column: 1 / -1; }
+  .band--top > .band__grid { grid-template-areas: "lead" "ferry" "lamp" "sum"; }
+  /* on a phone the engraving leads, then the opening, then the rest */
+  .lead__body { display: flex; flex-direction: column; }
+  .lead__open { padding-right: 0; }
+  .lead__rest { display: contents; }
+  .lead__rest .engraving { order: -1; }
+  .lead__rest .flow { border-top: 1px solid var(--rule); padding-top: 0.9rem; margin-top: 0.9rem; }
+
+  /* One column on a phone: ragged-right throughout, at reading size. */
+  .letter p { text-align: left; }
+  .flow, .lead__open, .story > p:not(.byline, .jump) { font-size: 0.98rem; }
+
+  /* The phone edition prints each story to its opening paragraph and its
+     jump line, as a pocket edition does; the lead keeps its opening and
+     points to the full story on Page A6. */
+  .lead__rest .flow p:not(.jump),
+  .story .flow p:not(:first-child):not(.jump) { display: none; }
+  .lead__rest .flow { padding-top: 0.5rem; }
+
+  /* secondary engravings print as a shallower cut; the section index above
+     stands in for the printed "Inside" box */
+  .band__grid > .story .engraving img { aspect-ratio: 16 / 10; object-fit: cover; }
+  .index-box { display: none; }
+
+  .ads { columns: 2 8.5rem; font-size: 0.8rem; }
+  .ad h3 { font-size: 1.05rem; }
+}
+
+/* Section index: a phone reader's way around the edition */
+.sections { display: none; }
+@media (max-width: 44rem) {
+  .sections {
+    display: block;
+    margin: -0.6rem 0 1.2rem;
+    padding-bottom: 0.7rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  .sections h2 {
+    font-family: var(--font-gothic);
+    font-weight: 400;
+    font-size: 1.05rem;
+    line-height: 1;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    text-align: center;
+    margin-bottom: 0.45rem;
+  }
+  .sections ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.1rem 0;
+    font-size: 0.92rem;
+    font-style: italic;
+  }
+  .sections li + li::before { content: "·"; padding: 0 0.45rem; font-style: normal; }
+  .sections a { display: inline-block; padding: 0.3rem 0; text-decoration: none; }
+  .sections a:hover { text-decoration: underline; }
+  [id] { scroll-margin-top: 0.75rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @view-transition { navigation: none; }
+}
+
+/* =========================================================
+   Inside page (Page A6): the lead story in full
+   ========================================================= */
+
+.inside-head {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: end;
+  gap: 1rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--font-gothic);
+  font-size: 1.05rem;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.035em;
+}
+.inside-head__page { text-align: right; }
+.inside-head__plate {
+  font-family: var(--font-nameplate);
+  font-size: clamp(2.2rem, 4.4vw, 3.3rem);
+  line-height: 0.95;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.inside-head__plate a { text-decoration: none; }
+
+.inside-nav {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.6rem;
+  padding: 0.4rem 0 0.38rem;
+  border-bottom: 3px solid var(--rule);
+  box-shadow: 0 3px 0 0 var(--newsprint), 0 4px 0 0 var(--rule);
+  margin-bottom: clamp(1.6rem, 3vw, 2.6rem);
+  font-size: 0.9rem;
+  font-style: italic;
+}
+.inside-nav a { text-decoration: none; }
+.inside-nav a:hover { text-decoration: underline; }
+.inside-nav span { font-style: normal; font-weight: 700; }
+
+.feature__head {
+  max-width: 54rem;
+  margin: 0 auto;
+  text-align: center;
+}
+.hed-feature {
+  font-size: clamp(2.3rem, 5.2vw, 4.4rem);
+  line-height: 1;
+  letter-spacing: -0.018em;
+  margin-bottom: 1rem;
+}
+.decks--feature { text-align: center; max-width: 38rem; margin: 0 auto 1rem; }
+.decks--feature .deck { font-size: clamp(1.35rem, 2vw, 1.7rem); }
+.decks--feature .deck-i { font-size: clamp(1.05rem, 1.4vw, 1.22rem); }
+.decks--feature > * + *::before { margin-inline: auto; width: 3.5rem; }
+
+.feature__byline {
+  font-size: 0.86rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.feature__byline i { text-transform: none; letter-spacing: 0; }
+
+.feature__art {
+  max-width: 62rem;
+  margin: clamp(1.4rem, 2.6vw, 2.2rem) auto clamp(1.8rem, 3vw, 2.8rem);
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+}
+.feature__art img { aspect-ratio: 3 / 2; }
+
+.feature__body {
+  /* the rail's geometry is shared with the sidenotes that hang into it */
+  --rail: 16rem;
+  --rail-gap: clamp(1.5rem, 3vw, 2.75rem);
+  --rail-pad: clamp(1rem, 2vw, 1.6rem);
+  display: grid;
+  grid-template-columns: minmax(0, 37rem) var(--rail);
+  justify-content: center;
+  column-gap: var(--rail-gap);
+}
+
+.feature__text {
+  font-size: 1.12rem;
+  line-height: 1.62;
+}
+.feature__text p {
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  text-wrap: pretty;
+}
+.feature__text .drop { font-size: 3.9em; }
+
+.breaker {
+  font-family: var(--font-gothic);
+  font-weight: 400;
+  font-size: 1.5rem;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  text-align: center;
+  margin: 2.1rem 0 0.85rem;
+}
+.breaker + p { text-indent: 0; }
+
+.pull {
+  margin: 1.8rem 0;
+  padding: 0;
+  text-align: center;
+}
+.pull::before,
+.pull::after {
+  content: "";
+  display: block;
+  width: 4rem;
+  margin: 0 auto 1rem;
+  border-top: 1px solid var(--rule);
+}
+.pull::after { margin: 1rem auto 0; }
+.feature__text .pull p {
+  font-style: italic;
+  font-size: clamp(1.45rem, 2.2vw, 1.8rem);
+  line-height: 1.25;
+  text-align: center;
+  text-wrap: balance;
+  hyphens: manual;
+}
+.pull footer {
+  margin-top: 0.55rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.pull + p { text-indent: 0; }
+
+.feature__inset { margin: 1.8rem 0; }
+.feature__inset + h2 { margin-top: 1.6rem; }
+
+.end::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  margin-left: 0.4em;
+  background: var(--ink);
+  vertical-align: 0.05em;
+}
+
+.feature__rail {
+  border-left: 1px solid var(--rule);
+  padding-left: var(--rail-pad);
+  font-size: 0.92rem;
+  line-height: 1.45;
+  /* the edition box closes the rail beside the end of the story */
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.rail-box {
+  border: 1px solid var(--rule);
+  padding: 0.8rem 0.9rem 0.9rem;
+  margin-bottom: 1.5rem;
+}
+.rail-box--end { margin-bottom: 0; }
+
+/* A sidenote is set in the story, beside the paragraph it belongs to, and
+   hangs out into the rail on wide screens. */
+.sidenote {
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+.feature__text .sidenote p { text-align: left; text-indent: 0; hyphens: manual; }
+.feature__text .sidenote + p { text-indent: 1.2em; }
+@media (min-width: 56.01rem) {
+  .sidenote {
+    float: right;
+    clear: right;
+    width: calc(var(--rail) - var(--rail-pad));
+    margin: 0.35rem calc(-1 * (var(--rail) + var(--rail-gap))) 1.5rem 0;
+  }
+}
+.rail-quote { border-top: 3px solid var(--rule); border-bottom: 1px solid var(--rule); padding: 0.8rem 0 0.85rem; text-align: center; }
+.feature__text .rail-quote p { text-align: center; font-style: italic; font-size: 1.2rem; line-height: 1.3; text-wrap: balance; }
+.feature__text .rail-quote .rail-quote__who { margin-top: 0.5rem; font-style: normal; font-size: 0.72rem; line-height: 1.3; text-transform: uppercase; letter-spacing: 0.06em; }
+.rail-box--figures dl { margin: 0; }
+.rail-box--figures div + div { margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px solid var(--rule); }
+.rail-box--figures dt {
+  font-family: var(--font-gothic);
+  font-size: 2rem;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+}
+.rail-box--figures dd { margin: 0.15rem 0 0; font-style: italic; }
+.rail-box h2 {
+  font-family: var(--font-gothic);
+  font-weight: 400;
+  font-size: 1.35rem;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  text-align: center;
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.65rem;
+  border-bottom: 1px solid var(--rule);
+}
+.rail-box ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+.rail-box ol li {
+  counter-increment: step;
+  display: grid;
+  grid-template-columns: 1.6rem 1fr;
+  gap: 0.2rem;
+}
+.rail-box ol li + li { margin-top: 0.55rem; }
+.rail-box ol li::before {
+  content: counter(step);
+  font-weight: 700;
+  font-variant-numeric: lining-nums;
+}
+.rail-box--plain { position: static; border-width: 0; border-top: 3px solid var(--rule); padding-inline: 0; }
+.rail-box ul { margin: 0; padding: 0; list-style: none; }
+.rail-box ul li + li { margin-top: 0.65rem; padding-top: 0.65rem; border-top: 1px solid var(--rule); }
+.rail-box ul a { font-weight: 700; text-decoration: none; display: block; line-height: 1.25; }
+.rail-box ul a:hover { text-decoration: underline; }
+.rail-box ul span { display: block; font-style: italic; font-size: 0.84rem; margin-top: 0.15rem; }
+
+.sheet--inside .colophon a { font-style: normal; font-weight: 700; }
+
+@media (max-width: 56rem) {
+  .feature__body { grid-template-columns: minmax(0, 37rem); }
+  .feature__rail {
+    border-left: 0;
+    padding-left: 0;
+    margin-top: 2rem;
+    padding-top: 1.2rem;
+    border-top: 3px solid var(--rule);
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    gap: 0 1.6rem;
+  }
+  .sidenote { margin: 1.8rem 0; }
+  /* in one column the rail quote would sit right beside the lines it repeats */
+  .rail-quote { display: none; }
+}
+
+@media (max-width: 44rem) {
+  .inside-head { grid-template-columns: 1fr 1fr; }
+  .inside-head__plate { grid-column: 1 / -1; grid-row: 1; text-align: center; }
+  .feature__text { font-size: 1.05rem; }
+  .feature__text p { text-align: left; }
+}

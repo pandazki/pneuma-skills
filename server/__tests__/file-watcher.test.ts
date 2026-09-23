@@ -13,7 +13,7 @@
  */
 
 import { describe, test, expect, afterEach } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FSWatcher } from "chokidar";
@@ -263,4 +263,36 @@ describe("startFileWatcher (integration)", () => {
     const paths = events.map((e) => e.path).sort();
     expect(paths).toEqual(["assets/logo.png", "slides/slide-01.html"]);
   }, 15_000);
+
+  /**
+   * Finding 19 of the 2026-09-23 final review: chokidar follows symlinks, so
+   * a link inside the workspace to an outside file or directory made the
+   * watcher read that outside file on change and push its text to every
+   * browser in `content_update` — even though `/content/*` refuses it.
+   */
+  test("changes reached through a symlink to outside are never read or sent", async () => {
+    const ws = makeWorkspace();
+    const outside = realpathSync(mkdtempSync(join(tmpdir(), "pneuma-watcher-outside-")));
+    cleanup.push(() => rmSync(outside, { recursive: true, force: true }));
+    writeFileSync(join(outside, "theme.css"), "/* before */");
+    mkdirSync(join(outside, "dir"), { recursive: true });
+    writeFileSync(join(outside, "dir", "leak.html"), "before");
+    symlinkSync(join(outside, "theme.css"), join(ws, "theme.css"));
+    symlinkSync(join(outside, "dir"), join(ws, "slides", "ext"));
+    const { events } = collectEvents(ws, join(ws, ".pneuma"));
+    await sleep(600);
+    events.length = 0;
+
+    writeFileSync(join(outside, "theme.css"), "/* OUTSIDE-WATCHER-SENTINEL */");
+    writeFileSync(join(outside, "dir", "leak.html"), "OUTSIDE-WATCHER-SENTINEL");
+    writeFileSync(join(outside, "dir", "new.html"), "OUTSIDE-WATCHER-SENTINEL");
+    await sleep(EVENT_WAIT_MS);
+    expect(events.filter((e) => e.content.includes("OUTSIDE-WATCHER-SENTINEL"))).toEqual([]);
+    expect(events.filter((e) => e.path.startsWith("slides/ext/"))).toEqual([]);
+
+    // Normal files still flow, including one reached through an in-root link.
+    writeFileSync(join(ws, "slides", "slide-01.html"), "<h1>inside</h1>");
+    await sleep(EVENT_WAIT_MS);
+    expect(events.map((e) => e.path)).toContain("slides/slide-01.html");
+  }, 20_000);
 });

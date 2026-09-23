@@ -28,6 +28,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { applyTemplateParams } from "./skill-installer.js";
+import { isContained } from "./utils.js";
 import type { SeedDescriptor } from "../core/types/mode-manifest.js";
 
 /**
@@ -111,11 +112,36 @@ function resolveLocaleSrc(src: string, seedBase: string, locale: string): string
 }
 
 /**
- * Copy a single seed entry into the workspace. Returns `null` when the
- * source path can't be resolved (missing locale variant + no `en`
- * fallback, or the resolved file doesn't exist on disk).
+ * A seed copy that would read from outside the seed base or write outside
+ * the workspace — `..` in a destination, or a destination (or source) that
+ * is or passes through a symlink whose target is outside. Thrown before the
+ * first write: a refused seed writes none of its files.
  */
-export function copySeedEntry(opts: SeedCopyOptions): SeedCopyResult | null {
+export class SeedContainmentError extends Error {
+  constructor(readonly path: string, readonly side: "source" | "destination") {
+    super(`seed ${side} escapes its root: ${path}`);
+    this.name = "SeedContainmentError";
+  }
+}
+
+/** One seed entry resolved into file copies, every one of them checked. */
+export interface SeedCopyPlan {
+  workspace: string;
+  params: Record<string, string | number>;
+  steps: { src: string; dst: string; dstRel: string }[];
+}
+
+/**
+ * Resolve a single seed entry into the copies it would make, without writing.
+ * Returns `null` when the source path can't be resolved (missing locale
+ * variant + no `en` fallback, or the resolved file doesn't exist on disk).
+ *
+ * Every source must stay inside `seedBase` and every destination inside
+ * `workspace` (see `isContained`); a violation throws
+ * {@link SeedContainmentError}. Callers applying several entries plan all of
+ * them before applying any.
+ */
+export function planSeedEntry(opts: SeedCopyOptions): SeedCopyPlan | null {
   const localeResolved = resolveLocaleSrc(opts.src, opts.seedBase, opts.locale);
   if (localeResolved === null) return null;
 
@@ -123,43 +149,54 @@ export function copySeedEntry(opts: SeedCopyOptions): SeedCopyResult | null {
   const resolvedSrc = hasParams ? applyTemplateParams(localeResolved, opts.params) : localeResolved;
   const srcPath = join(opts.seedBase, resolvedSrc);
   if (!existsSync(srcPath)) return null;
+  if (!isContained(srcPath, opts.seedBase)) throw new SeedContainmentError(resolvedSrc, "source");
 
-  const files: string[] = [];
-  let seededRootPackageJson = false;
-
+  const steps: SeedCopyPlan["steps"] = [];
   if (resolvedSrc.endsWith("/") && statSync(srcPath).isDirectory()) {
     const glob = new Bun.Glob("**/*");
     for (const relFile of glob.scanSync({ cwd: srcPath, absolute: false })) {
       const fileSrc = join(srcPath, relFile);
       if (statSync(fileSrc).isDirectory()) continue;
       const dstRel = join(opts.dst, relFile);
-      const fileDst = join(opts.workspace, dstRel);
-      mkdirSync(dirname(fileDst), { recursive: true });
-      const isBinary = isBinarySeedFile(fileSrc);
-      if (hasParams && !isBinary) {
-        const content = applyTemplateParams(readFileSync(fileSrc, "utf-8"), opts.params);
-        writeFileSync(fileDst, content, "utf-8");
-      } else {
-        copyFileSync(fileSrc, fileDst);
-      }
-      files.push(dstRel);
-      if (dstRel === "package.json") seededRootPackageJson = true;
+      steps.push({ src: fileSrc, dst: join(opts.workspace, dstRel), dstRel });
     }
   } else {
-    const dstPath = join(opts.workspace, opts.dst);
-    mkdirSync(dirname(dstPath), { recursive: true });
-    const isBinary = isBinarySeedFile(srcPath);
-    if (hasParams && !isBinary) {
-      const content = applyTemplateParams(readFileSync(srcPath, "utf-8"), opts.params);
-      writeFileSync(dstPath, content, "utf-8");
-    } else {
-      copyFileSync(srcPath, dstPath);
-    }
-    files.push(opts.dst);
-    if (opts.dst === "package.json") seededRootPackageJson = true;
+    steps.push({ src: srcPath, dst: join(opts.workspace, opts.dst), dstRel: opts.dst });
   }
+  for (const step of steps) {
+    if (!isContained(step.src, opts.seedBase)) throw new SeedContainmentError(step.src, "source");
+    if (!isContained(step.dst, opts.workspace)) throw new SeedContainmentError(step.dstRel, "destination");
+  }
+  return { workspace: opts.workspace, params: opts.params, steps };
+}
 
+/** Perform a plan from {@link planSeedEntry}. */
+export function applySeedPlan(plan: SeedCopyPlan): SeedCopyResult {
+  const hasParams = Object.keys(plan.params).length > 0;
+  const files: string[] = [];
+  let seededRootPackageJson = false;
+  for (const step of plan.steps) {
+    mkdirSync(dirname(step.dst), { recursive: true });
+    const isBinary = isBinarySeedFile(step.src);
+    if (hasParams && !isBinary) {
+      const content = applyTemplateParams(readFileSync(step.src, "utf-8"), plan.params);
+      writeFileSync(step.dst, content, "utf-8");
+    } else {
+      copyFileSync(step.src, step.dst);
+    }
+    files.push(step.dstRel);
+    if (step.dstRel === "package.json") seededRootPackageJson = true;
+  }
   return { files, seededRootPackageJson };
+}
+
+/**
+ * Copy a single seed entry into the workspace: {@link planSeedEntry}, then
+ * {@link applySeedPlan}. A refused entry writes none of its files.
+ */
+export function copySeedEntry(opts: SeedCopyOptions): SeedCopyResult | null {
+  const plan = planSeedEntry(opts);
+  return plan ? applySeedPlan(plan) : null;
 }
 
 /**
