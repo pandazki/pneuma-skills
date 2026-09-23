@@ -168,6 +168,9 @@ describe("lanes", () => {
     expect(lane.facts).toBe("free shot — no greybox");
     expect(lane.note).toContain("free shot — no greybox");
     expect(lane.note).not.toContain("No greybox has been rendered");
+    // And the lane's badge agrees: not the "Nothing here yet" every other
+    // empty lane wears, which reads as a render still owed.
+    expect(lane.stateTitle).toBe("Not needed");
     // A free shot that DID render one for the reel plays it as usual.
     const forTheReel = laneViews(
       shot({

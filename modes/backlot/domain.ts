@@ -1823,30 +1823,67 @@ export function primaryAnchor(shot: Shot): AnchorRecord | null {
  * What one shot LOOKS like, for a card that has room for exactly one frame.
  *
  * THE GREYBOX FIRST. It is the picture the shot actually is — the space, the
- * staging and the camera — and the only one the take is conditioned on. A key
- * frame is an optional picture somebody rendered to look at, so it stands in
- * only when there is no render yet; then the contact sheet, then a legacy
- * board, then `kind: "none"`, which is a real state and not a missing case.
+ * staging and the camera — and the only one the take is conditioned on. A
+ * recreate shot's reference clip is footage of the same shot, so it stands in
+ * next. A key frame is an optional picture somebody rendered to look at, so
+ * it stands in only when there is no render yet; then the contact sheet, then
+ * a legacy board, then the shot's current take — the only picture a free
+ * shot, which is never blocked in 3D, ever gets — then `kind: "none"`, which
+ * is a real state and not a missing case.
  *
- * `kind` says what the caller is drawing: a `greybox` is an MP4 and needs a
- * `<video>` poster, everything else is a still.
+ * A RECORDED PATH IS NOT A FILE. `greybox.sheet` is scaffolded before
+ * anything is rendered: it names where `previz.mjs render` will write the
+ * contact sheet, and that command is the only writer of both the file and
+ * `greybox.revision`. So the sheet is a candidate only once the revision says
+ * a render happened. Every other candidate is a record some command wrote
+ * after producing its file.
+ *
+ * `kind` says what the caller is drawing: `greybox`, `reference` and `take`
+ * are MP4s and need a `<video>` poster, everything else is a still.
  */
 export interface ShotThumbnail {
-  kind: "anchor" | "greybox" | "sheet" | "board" | "none";
+  kind: "greybox" | "reference" | "anchor" | "sheet" | "board" | "take" | "none";
   /** Shot-relative path, or null for `none`. */
   file: string | null;
   /** The cache buster the record carries — `urlFor(shot, file, rev)`. */
   rev: number;
 }
 
-export function shotThumbnail(shot: Shot): ShotThumbnail {
+/** Whether a thumbnail is drawn as a `<video>` poster rather than an `<img>`. */
+export function isVideoThumbnail(thumbnail: ShotThumbnail): boolean {
+  return thumbnail.kind === "greybox" || thumbnail.kind === "reference" || thumbnail.kind === "take";
+}
+
+/**
+ * Every picture the shot has, best first (see {@link shotThumbnail}).
+ *
+ * A card draws the first and falls through to the next when a file the
+ * records name turns out to be missing on disk — the records say what was
+ * written, not that nobody deleted it since.
+ */
+export function shotPictures(shot: Shot): ShotThumbnail[] {
+  const pictures: ShotThumbnail[] = [];
   const greybox = shot.greybox.final;
-  if (greybox) return { kind: "greybox", file: greybox.file, rev: greybox.revision };
+  if (greybox) pictures.push({ kind: "greybox", file: greybox.file, rev: greybox.revision });
+  if (shot.reference) {
+    pictures.push({ kind: "reference", file: shot.reference.file, rev: shot.greybox.revision });
+  }
   const anchor = primaryAnchor(shot);
-  if (anchor) return { kind: "anchor", file: anchor.file, rev: anchor.revision };
-  if (shot.greybox.sheet) return { kind: "sheet", file: shot.greybox.sheet, rev: shot.greybox.revision };
-  if (shot.board) return { kind: "board", file: shot.board.file, rev: shot.board.revision };
-  return { kind: "none", file: null, rev: 0 };
+  if (anchor) pictures.push({ kind: "anchor", file: anchor.file, rev: anchor.revision });
+  if (shot.greybox.sheet && shot.greybox.revision > 0) {
+    pictures.push({ kind: "sheet", file: shot.greybox.sheet, rev: shot.greybox.revision });
+  }
+  if (shot.board) pictures.push({ kind: "board", file: shot.board.file, rev: shot.board.revision });
+  const take = selectedTake(shot);
+  if (take && take.status === "done" && take.file) {
+    // The take lane's cache buster: the greybox revision it was rendered from.
+    pictures.push({ kind: "take", file: take.file, rev: take.greyboxRevision ?? shot.greybox.revision });
+  }
+  return pictures;
+}
+
+export function shotThumbnail(shot: Shot): ShotThumbnail {
+  return shotPictures(shot)[0] ?? { kind: "none", file: null, rev: 0 };
 }
 
 /**

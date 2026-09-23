@@ -11,18 +11,20 @@
  * designed detail, the camera, the continuity decision — and the picture
  * comes one stage later, as the greybox. So a card shows this shot's
  * greybox when it has been rendered, a key frame when somebody rendered one
- * before there was a greybox, and a grey card that says what is missing
- * when there is neither: never nothing, and never a promise of a frame
- * nobody is going to draw.
+ * before there was a greybox, a free shot's take (it is never blocked in 3D),
+ * and a grey card that says what is missing when there is none of these:
+ * never nothing, never a broken image, and never a promise of a frame nobody
+ * is going to draw. The order is `domain.shotPictures`, drawn by `ShotPoster`.
  *
  * Clicking a card opens that shot on the previz stage, which is where the
  * work continues.
  */
 
 import type { Project, Shot } from "../domain.js";
-import { checkTally, selectedTake, shotStages, shotThumbnail } from "../domain.js";
+import { checkTally, selectedTake, shotStages } from "../domain.js";
 import { ConditioningChip } from "./ConditioningChip.js";
 import { ImageIcon } from "./icons.js";
+import { ShotPoster } from "./ShotPoster.js";
 import { StageEmpty } from "./StageEmpty.js";
 
 export interface BoardsViewProps {
@@ -78,8 +80,6 @@ function BoardCard({
   onOpen: () => void;
   urlFor: BoardsViewProps["urlFor"];
 }) {
-  const thumbnail = shotThumbnail(shot);
-  const url = thumbnail.file ? urlFor(shot, thumbnail.file, thumbnail.rev) : null;
   return (
     <button
       type="button"
@@ -91,32 +91,22 @@ function BoardCard({
       }`}
     >
       <div className="relative aspect-video w-full overflow-hidden bg-black/45">
-        {url && thumbnail.kind === "greybox" ? (
-          // The greybox's own opening second, asked for with a media
-          // fragment: one range request, and it is a frame of this shot
-          // rather than a cell of a contact sheet whose grid to guess at.
-          <video
-            src={`${url}#t=0.1`}
-            preload="metadata"
-            muted
-            playsInline
-            className="h-full w-full object-cover"
-          />
-        ) : url ? (
-          <img
-            src={url}
-            alt={shot.title}
-            className={`h-full w-full object-cover${thumbnail.kind === "sheet" ? " object-left-top" : ""}`}
-            loading="lazy"
-          />
-        ) : (
-          <span className="flex h-full w-full flex-col items-center justify-center gap-1 px-4 text-center text-cc-muted">
-            <ImageIcon size={16} />
-            <span className="text-[9px] leading-relaxed">
-              No picture yet — this shot is blocked in 3D first, and that greybox is the picture.
+        <ShotPoster
+          shot={shot}
+          urlFor={urlFor}
+          at={0.1}
+          alt={shot.title}
+          placeholder={
+            <span className="flex h-full w-full flex-col items-center justify-center gap-1 px-4 text-center text-cc-muted">
+              <ImageIcon size={16} />
+              <span className="text-[9px] leading-relaxed">
+                {shot.conditioning === "free"
+                  ? "No picture yet — a free shot is not blocked in 3D, so its first take is the picture."
+                  : "No picture yet — this shot is blocked in 3D first, and that greybox is the picture."}
+              </span>
             </span>
-          </span>
-        )}
+          }
+        />
         <span className="absolute left-1 top-1 rounded bg-black/65 px-1 text-[9px] tabular-nums text-white/90">
           {String(index + 1).padStart(2, "0")}
           {scene ? ` · sc ${scene}` : ""}
