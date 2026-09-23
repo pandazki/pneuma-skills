@@ -1,242 +1,314 @@
-/* Pneuma Slide Theme — Modern Dark Mode (Vercel/Linear inspired) */
+/* Pneuma Slide Mode — Ink（暗）
+ * 一份「活的校样」：页眉印文件路径，四角裁切标记，朱砂只用在选中框母题上。
+ * 与 zh-light/theme.css 结构完全相同，只有下面的 :root 色板不同。
+ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
-  /* Core Colors */
-  --color-bg: #0A0A0A;
-  --color-fg: #EDEDED;
-  --color-primary: #FF4F00; /* Vibrant Orange */
-  --color-accent: #0070F3;  /* Electric Blue */
-  --color-secondary: #A1A1AA;
-  --color-muted: #71717A;
-  
-  /* Surfaces & Borders */
-  --color-surface: rgba(255, 255, 255, 0.03);
-  --color-surface-hover: rgba(255, 255, 255, 0.05);
-  --color-border: rgba(255, 255, 255, 0.1);
-  --color-border-glow: rgba(255, 79, 0, 0.3);
+  /* ── Palette · Ink ─────────────────────────────── */
+  --theme-name: "Ink · 暗";
+  --color-bg: #13110f;
+  --color-fg: #ece5d8;
+  --color-fg-soft: #c3bbad;
+  --color-primary: #e25b3c;
+  --color-secondary: #b89b6a;
+  --color-accent: #e25b3c;
+  --color-muted: #8b8375;
+  --color-surface: #1c1a17;
+  --color-border: #332f29;
+  --color-mark: #4d463c;
+  --color-on-primary: #13110f;
+  --plate-shadow: none;
 
-  /* Typography */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: 'JetBrains Mono', "SF Mono", "Fira Code", monospace;
+  --code-tag: #e8876c;
+  --code-attr: #b89b6a;
+  --code-str: #d6cebf;
+  --code-com: #8b8375;
 
+  /* 色值标签：第 8 页用 content: var() 把当前主题的实际色值印出来 */
+  --label-bg: "#13110F";
+  --label-fg: "#ECE5D8";
+  --label-primary: "#E25B3C";
+  --label-secondary: "#B89B6A";
+  --label-surface: "#1C1A17";
+  --label-muted: "#8B8375";
+
+  /* ── Type & space（两套主题相同）────────────────── */
+  --font-serif: "Noto Serif SC", "Songti SC", "STSong", "Source Han Serif SC", serif;
+  --font-display: "Instrument Serif", "Noto Serif SC", "Songti SC", serif;
+  --font-sans: "Inter", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Menlo", "PingFang SC", monospace;
   --slide-padding: 64px;
+  --pad-x: 88px;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
   font-family: var(--font-sans);
   background: var(--color-bg);
   color: var(--color-fg);
-  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ── Base slide container ─────────────────────────────── */
+/* ── Slide ───────────────────────────────────────── */
 
 .slide {
   width: 100%;
   height: 100%;
-  padding: var(--slide-padding);
+  padding: 76px var(--pad-x) var(--slide-padding);
   display: flex;
   flex-direction: column;
   justify-content: center;
   position: relative;
   overflow: hidden;
-  background: radial-gradient(circle at 50% 0%, rgba(255,255,255,0.03) 0%, transparent 70%), var(--color-bg);
-}
-
-/* Base glowing orb behind everything */
-.slide::before {
-  content: '';
-  position: absolute;
-  top: -20%;
-  left: -10%;
-  width: 50%;
-  height: 50%;
-  background: radial-gradient(circle, rgba(255, 79, 0, 0.08) 0%, transparent 60%);
-  filter: blur(80px);
-  z-index: 0;
-  pointer-events: none;
-}
-
-/* ── Typography ───────────────────────────────────────── */
-
-h1, h2, h3, p, div, span {
-  z-index: 1;
-  position: relative;
-}
-
-h1 {
-  font-size: 3.25rem;
-  font-weight: 700;
-  line-height: 1.15;
-  letter-spacing: -0.04em;
-  margin-bottom: 0.4em;
-  color: #fff;
-}
-
-h2 {
-  font-size: 2rem;
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: -0.03em;
-  margin-bottom: 0.5em;
-  color: #fff;
-}
-
-h3 {
-  font-size: 1.35rem;
-  font-weight: 500;
-  line-height: 1.4;
-  margin-bottom: 0.4em;
-  color: #E4E4E7;
-  letter-spacing: -0.01em;
-}
-
-p {
-  font-size: 1.1rem;
-  line-height: 1.7;
-  color: var(--color-secondary);
-  font-weight: 400;
-  margin-bottom: 0.6em;
-}
-
-ul, ol {
-  font-size: 1.15rem;
-  line-height: 1.8;
-  padding-left: 1.5em;
-  color: #E4E4E7;
-}
-
-li { margin-bottom: 0.4em; }
-li::marker { color: var(--color-primary); }
-
-/* Highlighted Text */
-.text-primary { 
-  background: linear-gradient(135deg, #FF4F00 0%, #FF8A00 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: var(--color-primary); /* fallback */
-}
-.text-accent { 
-  background: linear-gradient(135deg, #0070F3 0%, #00C6FF 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: var(--color-accent); /* fallback */
-}
-
-/* ── Code ─────────────────────────────────────────────── */
-
-code {
-  font-family: var(--font-mono);
-  font-size: 0.85em;
-  background: rgba(255,255,255,0.08);
-  padding: 0.2em 0.4em;
-  border-radius: 6px;
-  color: #E4E4E7;
-  border: 1px solid rgba(255,255,255,0.05);
-}
-
-pre {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  padding: 1.25em;
-  overflow-x: auto;
-  margin: 0.75em 0;
-}
-
-pre code {
-  background: none;
-  padding: 0;
-  font-size: 0.95rem;
+  background: var(--color-bg);
   color: var(--color-fg);
-  border: none;
 }
 
-/* ── Images ───────────────────────────────────────────── */
-
-img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  border-radius: 10px;
+/* 四角裁切标记 */
+.slide::before {
+  content: "";
+  position: absolute;
+  inset: 22px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--color-mark), var(--color-mark)) left top / 16px 1px no-repeat,
+    linear-gradient(var(--color-mark), var(--color-mark)) left top / 1px 16px no-repeat,
+    linear-gradient(var(--color-mark), var(--color-mark)) right top / 16px 1px no-repeat,
+    linear-gradient(var(--color-mark), var(--color-mark)) right top / 1px 16px no-repeat,
+    linear-gradient(var(--color-mark), var(--color-mark)) left bottom / 16px 1px no-repeat,
+    linear-gradient(var(--color-mark), var(--color-mark)) left bottom / 1px 16px no-repeat,
+    linear-gradient(var(--color-mark), var(--color-mark)) right bottom / 16px 1px no-repeat,
+    linear-gradient(var(--color-mark), var(--color-mark)) right bottom / 1px 16px no-repeat;
 }
 
-/* ── Cards (Glassmorphism) ───────────────────────────── */
-
-.card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 16px;
-  padding: 28px;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 4px 24px -1px rgba(0, 0, 0, 0.2);
-  transition: all 0.2s ease;
-}
-
-.card:hover {
-  background: var(--color-surface-hover);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-}
-
-.card h3 {
-  color: #fff;
-  margin-bottom: 0.5em;
-}
-
-.card p {
-  font-size: 0.95rem;
-  margin-bottom: 0;
-}
-
-/* ── Tags / Badges ────────────────────────────────────── */
-
-.tag {
-  display: inline-flex;
+.slide-split {
+  flex-direction: row;
   align-items: center;
-  padding: 6px 16px;
-  border-radius: 30px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  background: rgba(255, 255, 255, 0.05);
-  color: #fff;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  gap: 64px;
 }
 
-/* Glowing dot in tag */
-.tag::before {
-  content: '';
+/* ── Folio：页眉 ─────────────────────────────────── */
+
+.folio {
+  position: absolute;
+  top: 30px;
+  left: var(--pad-x);
+  right: var(--pad-x);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  color: var(--color-muted);
+}
+.folio .path::before {
+  content: "";
   display: inline-block;
   width: 6px;
   height: 6px;
-  border-radius: 50%;
+  margin-right: 10px;
+  vertical-align: 2px;
   background: var(--color-primary);
-  margin-right: 8px;
-  box-shadow: 0 0 8px var(--color-primary);
+}
+.folio .count b { color: var(--color-fg); font-weight: 500; }
+
+/* ── Typography ──────────────────────────────────── */
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-secondary);
+  margin-bottom: 22px;
 }
 
-/* ── Utilities ────────────────────────────────────────── */
-.text-secondary { color: var(--color-secondary); }
-.text-muted { color: var(--color-muted); }
-.text-center { text-align: center; }
+h1, h2, h3 {
+  font-family: var(--font-serif);
+  color: var(--color-fg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+h1 { font-size: 60px; line-height: 1.22; }
+h2 { font-size: 42px; line-height: 1.3; margin-bottom: 20px; }
+h3 { font-size: 22px; line-height: 1.45; margin-bottom: 8px; }
 
-/* ── Divider ──────────────────────────────────────────── */
+p { font-size: 20px; line-height: 1.75; color: var(--color-fg-soft); }
+.lead { font-size: 22px; line-height: 1.7; color: var(--color-fg-soft); max-width: 760px; }
+.small { font-size: 17px; line-height: 1.65; color: var(--color-muted); }
+.it {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.accent { color: var(--color-primary); }
+.muted { color: var(--color-muted); }
+.mono { font-family: var(--font-mono); font-variant-ligatures: none; }
 
-.divider {
-  height: 1px;
-  background: var(--color-border);
-  margin: 20px 0;
+code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  color: var(--color-fg);
+  padding: 1px 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+/* ── Selection motif：选中框 ─────────────────────── */
+
+.sel {
+  position: relative;
+  display: inline-block;
+  outline: 1.5px dashed var(--color-primary);
+  outline-offset: 8px;
+}
+.sel::before {
+  content: "";
+  position: absolute;
+  inset: -12px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--color-primary), var(--color-primary)) left top / 8px 8px no-repeat,
+    linear-gradient(var(--color-primary), var(--color-primary)) right top / 8px 8px no-repeat,
+    linear-gradient(var(--color-primary), var(--color-primary)) left bottom / 8px 8px no-repeat,
+    linear-gradient(var(--color-primary), var(--color-primary)) right bottom / 8px 8px no-repeat;
+}
+.sel::after {
+  content: attr(data-sel);
+  position: absolute;
+  left: -12px;
+  top: -40px;
+  padding: 3px 8px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+.sel-below::after { top: auto; bottom: -40px; }
+.sel:not([data-sel])::after { content: none; }
+
+/* ── Rules & lists ───────────────────────────────── */
+
+.rule { height: 1px; background: var(--color-border); }
+
+.numbered { list-style: none; }
+.numbered li {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  align-items: baseline;
+  padding: 22px 0;
+  border-top: 1px solid var(--color-border);
+}
+.numbered li:last-child { border-bottom: 1px solid var(--color-border); }
+.numbered .n {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 40px;
+  line-height: 1;
+  color: var(--color-primary);
+}
+.numbered h3 { margin-bottom: 4px; }
+.numbered p { font-size: 18px; line-height: 1.6; }
+
+/* ── Plate：图版 ─────────────────────────────────── */
+
+.plate {
+  padding: 10px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--plate-shadow);
+}
+.plate img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.caption {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-muted);
+  margin-top: 12px;
+}
+
+/* ── Code block ──────────────────────────────────── */
+
+.code {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-size: 15px;
+  line-height: 1.75;
+  color: var(--code-str);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  padding: 22px 26px;
+  white-space: pre;
+  box-shadow: var(--plate-shadow);
+}
+.code .tag { color: var(--code-tag); }
+.code .attr { color: var(--code-attr); }
+.code .com { color: var(--code-com); font-style: italic; }
+.code .hl { color: var(--color-fg); background: var(--color-bg); outline: 1px dashed var(--color-primary); outline-offset: 2px; }
+.code-title {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--color-muted);
+  margin-bottom: 10px;
+  letter-spacing: 0.02em;
+}
+
+/* ── Mini slide（示意用的缩略页）──────────────────── */
+
+.mini {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--plate-shadow);
+}
+.bar { height: 6px; background: var(--color-border); }
+
+/* ── Swatch ──────────────────────────────────────── */
+
+.swatch .chip {
+  height: 96px;
+  border: 1px solid var(--color-border);
+}
+.swatch .name {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  color: var(--color-fg);
+  margin-top: 12px;
+}
+.swatch .val {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--color-muted);
+  margin-top: 2px;
+}
+.v-bg::after { content: var(--label-bg); }
+.v-fg::after { content: var(--label-fg); }
+.v-primary::after { content: var(--label-primary); }
+.v-secondary::after { content: var(--label-secondary); }
+.v-surface::after { content: var(--label-surface); }
+.v-muted::after { content: var(--label-muted); }
+.v-theme::after { content: var(--theme-name); }
+
+/* ── Pill: named apart from .code .tag so the chip box never lands on code ── */
+
+.pill {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  padding: 3px 10px;
+  border: 1px solid var(--color-border);
+  color: var(--color-fg-soft);
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -34,6 +34,26 @@ describe("GET /api/file", () => {
     const res = await app.request(`/api/file?path=${encodeURIComponent(".cosmos-assets/n1/x.png")}`);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("image/png");
+  });
+  it("403 for a sibling directory sharing the workspace name as a prefix", async () => {
+    await mkdir(`${workspace}-neighbor`, { recursive: true });
+    await writeFile(join(`${workspace}-neighbor`, "s.txt"), "neighbor");
+    try {
+      const res = await app.request(`/api/file?path=${encodeURIComponent(join(`${workspace}-neighbor`, "s.txt"))}`);
+      expect(res.status).toBe(403);
+    } finally {
+      await rm(`${workspace}-neighbor`, { recursive: true, force: true });
+    }
+  });
+  it("403 for a symlink inside the workspace pointing outside", async () => {
+    const outside = await mkdtemp(join(tmpdir(), "pneuma-fileroute-out-"));
+    await writeFile(join(outside, "s.txt"), "outside");
+    await symlink(join(outside, "s.txt"), join(workspace, "link.txt"));
+    try {
+      expect((await app.request(`/api/file?path=link.txt`)).status).toBe(403);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
   });
   it("403 for a relative path escaping the workspace", async () => {
     const res = await app.request(`/api/file?path=${encodeURIComponent("../outside.txt")}`);

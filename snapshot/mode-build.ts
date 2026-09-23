@@ -17,6 +17,7 @@
 
 import { join, resolve, dirname } from "node:path";
 import { existsSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 /**
@@ -66,35 +67,116 @@ export const HOST_ABI_EXTERNALS: readonly string[] = Object.keys(HOST_ABI_VENDOR
 // before the mode bundle is imported.
 //
 // A named import that a shim does not export fails hard at module-eval time
-// in the browser (`SyntaxError: ... does not provide an export named 'x'`),
-// so each shim re-exports the full surface of the module it stands in for —
-// enumerated from the real package, not guessed.
+// in the browser (`SyntaxError: ... does not provide an export named 'x'`)
+// and the mode never mounts. So the React family of shims does not list its
+// names by hand: each one re-exports the export surface of the very package
+// the host's singleton comes from, read off that package when the shim is
+// first served. A hand-kept list is how 3.52.x shipped a React shim without
+// `version` or `useInsertionEffect`, and Draw and ClipCraft stuck on
+// "Loading…".
 
-const REACT_SHIM = `const R = window.__PNEUMA_REACT__;
+// The checkout a mode is compiled against: its `src/` and `core/` are the
+// sources a bundle inlines (everything but the host ABI), so the archive is
+// self-contained and carries no machine-specific import paths. It is also
+// where the host's React resolves from, so the shims enumerate that copy.
+const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+const hostRequire = createRequire(join(PROJECT_ROOT, "package.json"));
+
+/** A name `export const { name } = X` can bind. */
+const BINDABLE_EXPORT = /^[A-Za-z_$][\w$]*$/;
+
+/**
+ * Named exports of the given host packages, as the host exposes them.
+ *
+ * `default` and `__esModule` are interop plumbing, not names a bundle can
+ * import by name. A key that is not a bindable identifier cannot be written
+ * as a named export here and is left out — `mode-host-abi.test.ts` fails if
+ * any real key is ever dropped this way.
+ */
+function hostExportNames(...specifiers: string[]): string[] {
+  const names = new Set<string>();
+  for (const specifier of specifiers) {
+    for (const key of Object.keys(hostRequire(specifier) as object)) {
+      if (key === "default" || key === "__esModule") continue;
+      if (BINDABLE_EXPORT.test(key)) names.add(key);
+    }
+  }
+  return [...names].sort();
+}
+
+/** What a shim exports, and the module source that exports it. */
+interface VendorShim {
+  /** Named exports, excluding `default`. */
+  readonly names: readonly string[];
+  readonly hasDefault: boolean;
+  readonly source: string;
+}
+
+function destructureExports(names: readonly string[], from: string): string {
+  return names.length ? `export const { ${names.join(", ")} } = ${from};` : "";
+}
+
+// `src/main.tsx` exposes `import * as React from "react"`: the namespace,
+// whose keys are the package's exports.
+function reactShim(): VendorShim {
+  const names = hostExportNames("react");
+  return {
+    names,
+    hasDefault: true,
+    source: `const R = window.__PNEUMA_REACT__;
 export default R;
-export const { useState, useEffect, useCallback, useMemo, useRef, useContext, createContext, forwardRef, memo, Fragment, createElement, cloneElement, Children, isValidElement, Component, PureComponent, Suspense, lazy, startTransition, useTransition, useDeferredValue, useId, useSyncExternalStore, useImperativeHandle, useLayoutEffect, useDebugValue, useReducer } = R;`;
+${destructureExports(names, "R")}`,
+  };
+}
 
-// react-dom exports forwarded to published mode bundles. Keep in sync
-// with what react-dom actually exports — missing an export here causes
-// a runtime SyntaxError when a bundle imports it (since this shim is
-// an ES module, any named import that isn't re-exported fails hard).
-// unstable_batchedUpdates in particular is still pulled in by @dnd-kit
-// and a few other deps; React 18+ auto-batches so a fallback identity
-// shim is safe if the runtime ever stops providing it.
-const REACT_DOM_SHIM = `const RD = window.__PNEUMA_REACT_DOM__;
+// `src/main.tsx` exposes `{ ...ReactDOM, createRoot, hydrateRoot }` — the
+// `react-dom` namespace with the `react-dom/client` entry points merged in —
+// so this shim covers both packages' surfaces.
+//
+// `unstable_batchedUpdates` is still imported by @dnd-kit and a few other
+// dependencies. React 18+ batches on its own, so an identity fallback keeps
+// those bundles linking if a React release ever stops exporting it.
+function reactDomShim(): VendorShim {
+  const COMPAT = "unstable_batchedUpdates";
+  const names = hostExportNames("react-dom", "react-dom/client").filter((n) => n !== COMPAT);
+  return {
+    names: [...names, COMPAT].sort(),
+    hasDefault: true,
+    source: `const RD = window.__PNEUMA_REACT_DOM__;
 export default RD;
-export const { createPortal, flushSync, createRoot, hydrateRoot, version } = RD;
-export const unstable_batchedUpdates = RD.unstable_batchedUpdates || ((fn, ...args) => fn(...args));`;
+${destructureExports(names, "RD")}
+export const ${COMPAT} = RD.${COMPAT} || ((fn, ...args) => fn(...args));`,
+  };
+}
 
-const JSX_RUNTIME_SHIM = `const J = window.__PNEUMA_JSX_RUNTIME__;
-export const { jsx, jsxs, Fragment } = J;`;
+// `src/main.tsx` exposes `import * as JsxRuntime from "react/jsx-runtime"`.
+function jsxRuntimeShim(): VendorShim {
+  const names = hostExportNames("react/jsx-runtime");
+  return {
+    names,
+    hasDefault: false,
+    source: `const J = window.__PNEUMA_JSX_RUNTIME__;
+${destructureExports(names, "J")}`,
+  };
+}
 
 // Bun.build uses jsx-dev-runtime (jsxDEV) due to a Bun v1.3+ regression.
-// jsxDEV(type, props, key, isStatic, source, self) is signature-compatible
-// with jsx(type, props, key) — extra dev args are simply ignored.
-const JSX_DEV_RUNTIME_SHIM = `const J = window.__PNEUMA_JSX_RUNTIME__;
-export const jsxDEV = J.jsx;
-export const Fragment = J.Fragment;`;
+// The host exposes no dev runtime, only the production one: jsxDEV(type,
+// props, key, isStatic, source, self) is signature-compatible with
+// jsx(type, props, key) — the extra dev arguments are simply ignored. Every
+// other name of the dev runtime is taken from the production one.
+function jsxDevRuntimeShim(): VendorShim {
+  const names = hostExportNames("react/jsx-dev-runtime");
+  const shared = names.filter((n) => n !== "jsxDEV");
+  return {
+    names,
+    hasDefault: false,
+    source: `const J = window.__PNEUMA_JSX_RUNTIME__;
+${names.includes("jsxDEV") ? "export const jsxDEV = J.jsx;" : ""}
+${destructureExports(shared, "J")}`,
+  };
+}
 
 // Host store shim — re-exports `useStore` from the HOST's single Zustand
 // instance. Without this, Bun.build inlines the entire src/store.ts
@@ -103,64 +185,203 @@ export const Fragment = J.Fragment;`;
 // is anything that crosses the mode/host boundary (activeContentSet,
 // activeFile, selection) silently failing because writes go to the
 // mode's bundled copy while the host reads from its own.
-const PNEUMA_STORE_SHIM = `const S = window.__PNEUMA_STORE__;
+function pneumaStoreShim(): VendorShim {
+  return {
+    names: ["useStore"],
+    hasDefault: true,
+    source: `const S = window.__PNEUMA_STORE__;
 if (!S) throw new Error("__PNEUMA_STORE__ not set — pneuma-skills host didn't expose useStore before loading the mode bundle");
 export const useStore = S;
-export default S;`;
+export default S;`,
+  };
+}
 
 // i18next — the host's *initialised* default instance. The named exports of
 // the real package are bound to that same default instance, so they are
 // forwarded as calls rather than destructured (an unbound `changeLanguage`
-// would lose `this`).
-const I18NEXT_SHIM = `const I = window.__PNEUMA_I18N__;
+// would lose `this`). Which names are instance methods is a judgement about
+// i18next's semantics, so this list stays explicit; the ABI test fails when
+// the real package exports a name it does not cover.
+const I18NEXT_FORWARDED = [
+  "t", "changeLanguage", "createInstance", "dir", "exists", "getFixedT",
+  "hasLoadedNamespace", "init", "keyFromSelector", "loadLanguages",
+  "loadNamespaces", "loadResources", "reloadResources", "setDefaultNamespace",
+  "use",
+] as const;
+
+function i18nextShim(): VendorShim {
+  return {
+    names: [...I18NEXT_FORWARDED].sort(),
+    hasDefault: true,
+    source: `const I = window.__PNEUMA_I18N__;
 if (!I) throw new Error("__PNEUMA_I18N__ not set — pneuma-skills host didn't expose its i18next instance before loading the mode bundle");
 const i18n = I.i18next;
 export default i18n;
-export const t = (...a) => i18n.t(...a);
-export const changeLanguage = (...a) => i18n.changeLanguage(...a);
-export const createInstance = (...a) => i18n.createInstance(...a);
-export const dir = (...a) => i18n.dir(...a);
-export const exists = (...a) => i18n.exists(...a);
-export const getFixedT = (...a) => i18n.getFixedT(...a);
-export const hasLoadedNamespace = (...a) => i18n.hasLoadedNamespace(...a);
-export const init = (...a) => i18n.init(...a);
-export const keyFromSelector = (...a) => i18n.keyFromSelector(...a);
-export const loadLanguages = (...a) => i18n.loadLanguages(...a);
-export const loadNamespaces = (...a) => i18n.loadNamespaces(...a);
-export const loadResources = (...a) => i18n.loadResources(...a);
-export const reloadResources = (...a) => i18n.reloadResources(...a);
-export const setDefaultNamespace = (...a) => i18n.setDefaultNamespace(...a);
-export const use = (...a) => i18n.use(...a);`;
+${I18NEXT_FORWARDED.map((n) => `export const ${n} = (...a) => i18n.${n}(...a);`).join("\n")}`,
+  };
+}
 
 // react-i18next — the host's module namespace, whose `initReactI18next` has
 // already bound the instance above. Components and hooks carry no `this`, so
 // destructuring the namespace is safe.
-const REACT_I18NEXT_SHIM = `const I = window.__PNEUMA_I18N__;
+function reactI18nextShim(): VendorShim {
+  const names = hostExportNames("react-i18next");
+  return {
+    names,
+    hasDefault: true,
+    source: `const I = window.__PNEUMA_I18N__;
 if (!I || !I.reactI18next) throw new Error("__PNEUMA_I18N__.reactI18next not set — pneuma-skills host didn't expose react-i18next before loading the mode bundle");
 const R = I.reactI18next;
 export default R;
-export const { I18nContext, I18nextProvider, IcuTrans, IcuTransWithoutContext, Trans, TransWithoutContext, Translation, composeInitialProps, date, getDefaults, getI18n, getInitialProps, initReactI18next, nodesToString, number, plural, select, selectOrdinal, setDefaults, setI18n, time, useSSR, useTranslation, withSSR, withTranslation } = R;`;
+${destructureExports(names, "R")}`,
+  };
+}
 
-/** Vendor shim URL → ES module source. The server serves exactly these. */
-export const HOST_ABI_VENDOR_SHIMS: Readonly<Record<string, string>> = {
-  "/vendor/react.js": REACT_SHIM,
-  "/vendor/react-dom.js": REACT_DOM_SHIM,
-  "/vendor/react-jsx-runtime.js": JSX_RUNTIME_SHIM,
-  "/vendor/react-jsx-dev-runtime.js": JSX_DEV_RUNTIME_SHIM,
-  "/vendor/pneuma-store.js": PNEUMA_STORE_SHIM,
-  "/vendor/i18n.js": I18NEXT_SHIM,
-  "/vendor/react-i18n.js": REACT_I18NEXT_SHIM,
+const VENDOR_SHIM_FACTORIES: Readonly<Record<string, () => VendorShim>> = {
+  "/vendor/react.js": reactShim,
+  "/vendor/react-dom.js": reactDomShim,
+  "/vendor/react-jsx-runtime.js": jsxRuntimeShim,
+  "/vendor/react-jsx-dev-runtime.js": jsxDevRuntimeShim,
+  "/vendor/pneuma-store.js": pneumaStoreShim,
+  "/vendor/i18n.js": i18nextShim,
+  "/vendor/react-i18n.js": reactI18nextShim,
 };
+
+const vendorShimCache = new Map<string, VendorShim>();
+
+/**
+ * The shim served at a vendor URL. Built on first use: enumerating the host
+ * packages loads them (react-dom/client and react-i18next dominate, ~15–30 ms
+ * together), which a session that serves no external mode never needs.
+ */
+function vendorShim(url: string): VendorShim {
+  let shim = vendorShimCache.get(url);
+  if (!shim) {
+    const factory = VENDOR_SHIM_FACTORIES[url];
+    if (!factory) throw new Error(`no host-ABI vendor shim is served at "${url}"`);
+    shim = factory();
+    vendorShimCache.set(url, shim);
+  }
+  return shim;
+}
+
+/**
+ * Vendor shim URL → ES module source. The server serves exactly these.
+ * Each entry is an enumerable getter, so reading the table is how a shim is
+ * first built (see `vendorShim`).
+ */
+export const HOST_ABI_VENDOR_SHIMS: Readonly<Record<string, string>> = Object.freeze(
+  Object.defineProperties(
+    {} as Record<string, string>,
+    Object.fromEntries(
+      Object.keys(VENDOR_SHIM_FACTORIES).map((url) => [
+        url,
+        { enumerable: true, get: () => vendorShim(url).source },
+      ]),
+    ),
+  ),
+);
+
+/**
+ * Names a bundle may import from a host-ABI specifier — `"default"` included
+ * when the shim has a default export. Null for a specifier outside the ABI.
+ */
+export function hostAbiExportNames(specifier: string): ReadonlySet<string> | null {
+  const url = HOST_ABI_VENDOR_URLS[specifier];
+  if (!url) return null;
+  const shim = vendorShim(url);
+  return new Set(shim.hasDefault ? [...shim.names, "default"] : shim.names);
+}
+
+// ── Bundle ↔ ABI link check ─────────────────────────────────────────────
+
+/** An import in a built bundle that the host ABI cannot satisfy. */
+export interface UnresolvedHostAbiImport {
+  file: string;
+  specifier: string;
+  /** The imported name, or a description of an import form not understood. */
+  name: string;
+}
+
+const SPECIFIER_ALTERNATION = () =>
+  HOST_ABI_EXTERNALS.map((s) => s.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")).join("|");
+
+/**
+ * The imported names of an import/export clause, or null when the clause is
+ * a form this check does not understand.
+ */
+function clauseImportedNames(keyword: string, clause: string): string[] | null {
+  const names: string[] = [];
+  let rest = clause.trim();
+  if (rest === "*" || /^\*\s+as\s+[\w$]+$/.test(rest)) return names; // namespace
+  if (keyword === "import") {
+    const lead = /^([A-Za-z_$][\w$]*)\s*(,\s*|$)/.exec(rest);
+    if (lead) {
+      names.push("default");
+      rest = rest.slice(lead[0].length).trim();
+      if (!rest) return names;
+      if (/^\*\s+as\s+[\w$]+$/.test(rest)) return names;
+    }
+  }
+  const braces = /^\{([^}]*)\}$/.exec(rest);
+  if (!braces) return null;
+  for (const part of braces[1].split(",")) {
+    const item = part.trim();
+    if (!item) continue;
+    const m = /^(?:type\s+)?([A-Za-z_$][\w$]*|"[^"]*")(?:\s+as\s+[A-Za-z_$][\w$]*)?$/.exec(item);
+    if (!m) return null;
+    names.push(m[1].replace(/^"|"$/g, ""));
+  }
+  return names;
+}
+
+/**
+ * Check a built bundle's imports of host-ABI specifiers against the names the
+ * shims export. The browser links a bundle against the shims and throws on
+ * any missing name before a line of the mode runs; Bun.build does not — an
+ * external import is never checked — so this is the only place the mismatch
+ * can be caught before a user sees a mode that never loads.
+ *
+ * Bun emits every import of an external module as one statement at the start
+ * of a line (`import { a, b as c } from "react";`), which is what this scans
+ * for. A form it cannot read is reported rather than let through, and so is
+ * a `require()` of an ABI module: it has no importmap to resolve against.
+ */
+export function findUnresolvedHostAbiImports(
+  source: string,
+  file = "<bundle>",
+): UnresolvedHostAbiImport[] {
+  const unresolved: UnresolvedHostAbiImport[] = [];
+  const specs = SPECIFIER_ALTERNATION();
+  const statement = new RegExp(
+    `^[ \\t]*(import|export)\\s*([^;"'\`]*?)\\s*from\\s*["'](${specs})["']`,
+    "gm",
+  );
+  for (const match of source.matchAll(statement)) {
+    const [, keyword, clause, specifier] = match;
+    const exported = hostAbiExportNames(specifier)!;
+    const names = clauseImportedNames(keyword, clause);
+    if (!names) {
+      unresolved.push({ file, specifier, name: `unrecognised ${keyword} clause "${clause.trim()}"` });
+      continue;
+    }
+    for (const name of names) {
+      if (!exported.has(name)) unresolved.push({ file, specifier, name });
+    }
+  }
+  // Bun's CJS interop helper — how a CommonJS dependency's `require("react")`
+  // comes out when react is external. It throws in the browser.
+  const required = new RegExp(`\\b__require\\(\\s*["'](${specs})["']\\s*\\)`, "g");
+  for (const match of source.matchAll(required)) {
+    unresolved.push({ file, specifier: match[1], name: "require() of a host-ABI module" });
+  }
+  return unresolved;
+}
 
 /** The importmap body the host injects so a bundle's bare specifiers resolve. */
 export function hostAbiImportMap(): { imports: Record<string, string> } {
   return { imports: { ...HOST_ABI_VENDOR_URLS } };
 }
-
-// The checkout a mode is compiled against: its `src/` and `core/` are the
-// sources a bundle inlines (everything but the host ABI), so the archive is
-// self-contained and carries no machine-specific import paths.
-const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const SOURCE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs"];
 
@@ -495,6 +716,21 @@ export async function buildModeViewer(
     }
     return { success: false, buildDir, errors };
   }
+
+  // 5. Link the bundle against the host ABI. A name the shims do not export
+  //    builds fine and then fails in the browser before the mode mounts, so
+  //    it is a build error here — for every caller, the release pack step
+  //    included.
+  for (const output of result.outputs) {
+    if (!output.path.endsWith(".js")) continue;
+    const rel = output.path.startsWith(buildDir) ? output.path.slice(buildDir.length + 1) : output.path;
+    for (const miss of findUnresolvedHostAbiImports(await output.text(), rel)) {
+      errors.push(
+        `${miss.file}: import of "${miss.name}" from "${miss.specifier}" is not provided by the host ABI shim ${HOST_ABI_VENDOR_URLS[miss.specifier]}`,
+      );
+    }
+  }
+  if (errors.length) return { success: false, buildDir, errors };
 
   return { success: true, buildDir, errors: [] };
 }

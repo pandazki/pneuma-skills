@@ -124,6 +124,15 @@ function resolveKey(rel) {
 
 async function serveContent(request, rel) {
   await ensureState();
+  // A directory URL serves its index.html, as the session server and any
+  // static host do; without the trailing slash, redirect first so relative
+  // URLs inside the page resolve inside the directory.
+  if (rel === "" || rel.endsWith("/")) {
+    rel += "index.html";
+  } else if (active && !active.files[rel] && active.files[rel + "/index.html"]) {
+    const url = new URL(request.url);
+    return Response.redirect(`${url.origin}${url.pathname}/${url.search}`, 301);
+  }
   const key = resolveKey(rel);
   if (!key) return new Response("Not found in play package", { status: 404 });
 

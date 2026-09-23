@@ -9,6 +9,8 @@ import { watch, type FSWatcher } from "chokidar";
 import { readFileSync, existsSync } from "node:fs";
 import { relative, join, resolve } from "node:path";
 import type { ViewerConfig } from "../core/types/mode-manifest.js";
+import { isContained } from "./utils.js";
+import { readWorkspaceText } from "./workspace-text.js";
 
 const DEBOUNCE_MS = 300;
 
@@ -326,13 +328,25 @@ export function startFileWatcher(
     const files: FileUpdate[] = [];
     for (const relPath of pendingChanges) {
       const absPath = join(workspace, relPath);
+      // chokidar follows symlinks, so an event can name a workspace path whose
+      // file lives outside it. Such a file is never read, and nothing about
+      // it is sent (see `scheduleFlush`).
+      if (!isContained(absPath, workspace)) continue;
       if (existsSync(absPath)) {
         try {
-          const content = readFileSync(absPath, "utf-8");
-          const origin: "self" | "external" = consumeSelfWrite(relPath, content)
+          const text = readWorkspaceText(absPath);
+          if (text === null) {
+            // A watched binary (a `**/*.woff2` font, a video under a
+            // directory glob) is a change signal only, like the image branch
+            // below: the browser refetches the bytes from /content/*. Viewer
+            // self-writes are text, so a binary is never a "self" echo.
+            files.push({ path: relPath, content: "", origin: "external" });
+            continue;
+          }
+          const origin: "self" | "external" = consumeSelfWrite(relPath, text)
             ? "self"
             : "external";
-          files.push({ path: relPath, content, origin });
+          files.push({ path: relPath, content: text, origin });
         } catch {
           // skip unreadable files
         }
@@ -350,6 +364,10 @@ export function startFileWatcher(
   const scheduleFlush = (absPath: string) => {
     // Normalize to forward slashes for cross-platform consistency (Windows path.relative returns backslashes)
     const relPath = relative(workspace, absPath).replaceAll("\\", "/");
+
+    // A path reached through a symlink to outside the workspace is ignored
+    // outright: no content, and no path-only image notification either.
+    if (!isContained(absPath, workspace)) return;
 
     // Image changes: notify browser to bust cache (don't read content)
     const ext = relPath.slice(relPath.lastIndexOf(".")).toLowerCase();
@@ -373,6 +391,9 @@ export function startFileWatcher(
   const handleUnlink = (absPath: string) => {
     // Normalize to forward slashes for cross-platform consistency.
     const relPath = relative(workspace, absPath).replaceAll("\\", "/");
+    // The file is gone, so this judges its parent chain: a delete beneath a
+    // link to outside is not reported.
+    if (!isContained(absPath, workspace)) return;
 
     // Apply the same watch-pattern + image filter as add/change, so deletes
     // of ignored file types don't leak out. Images fall through the pattern

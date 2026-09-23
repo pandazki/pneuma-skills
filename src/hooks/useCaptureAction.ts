@@ -22,10 +22,80 @@ import { useStore } from "../store.js";
 import { getApiBase } from "../utils/api.js";
 import { captureViewer } from "../utils/viewer-capture.js";
 import type { ViewerAddress } from "../../core/types/viewer-contract.js";
+import type { ViewerSlice } from "../store/viewer-slice.js";
 
 type ActionResult = { success: boolean; message?: string; data?: Record<string, unknown> };
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Render + settle time a viewer gets after a navigation before the shot —
+ *  most viewers answer `onNavigateComplete` synchronously, before they have
+ *  painted the target. */
+const NAVIGATE_SETTLE_MS = 1100;
+/** Longest wait for the viewer's verdict on an addressed navigation. */
+export const NAVIGATE_VERDICT_TIMEOUT_MS = 15_000;
+
+export type NavigationWait =
+  | { status: "arrived" }
+  | { status: "failed"; message: string }
+  | { status: "superseded" }
+  | { status: "timeout" };
+
+/** Shown when another navigation replaced a capture's target before the shot. */
+export const SUPERSEDED_MESSAGE =
+  "Another navigation moved the viewer before this capture's address was reached; nothing was captured. Capture again.";
+
+/** The part of the store a navigation wait reads. */
+interface NavigateStore {
+  getState(): Pick<ViewerSlice, "navigateDoneSeq" | "navigateOutcome" | "navigateSeq">;
+  subscribe(listener: () => void): () => void;
+}
+
+/**
+ * Wait for the navigation dispatched under `seq` to end: the viewer's
+ * verdict, or the shell settling it itself (see `navigateDoneSeq`). A newer
+ * navigation dispatched first makes it `superseded` — another request's
+ * arrival never certifies this one's. A viewer
+ * that loads its target asynchronously answers when the target is on
+ * screen, so `capture` shoots the page it was asked for — not the one it was
+ * leaving, and not a half-loaded one. Bounded: a viewer that never answers
+ * yields `timeout`, never a hang.
+ */
+export function waitForNavigation(
+  seq: number,
+  timeoutMs: number = NAVIGATE_VERDICT_TIMEOUT_MS,
+  store: NavigateStore = useStore,
+): Promise<NavigationWait> {
+  const verdict = (): NavigationWait | null => {
+    const s = store.getState();
+    if (s.navigateDoneSeq === seq) {
+      const outcome = s.navigateOutcome;
+      if (outcome && outcome.seq === seq && !outcome.ok) {
+        const message = outcome.message
+          ?? (outcome.code === "unknownContentSet" ? `No content set "${outcome.contentSet}"` : "The viewer could not open it");
+        return { status: "failed", message };
+      }
+      return { status: "arrived" };
+    }
+    if (s.navigateSeq > seq) return { status: "superseded" };
+    return null;
+  };
+  const now = verdict();
+  if (now) return Promise.resolve(now);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      unsubscribe();
+      resolve({ status: "timeout" });
+    }, timeoutMs);
+    const unsubscribe = store.subscribe(() => {
+      const v = verdict();
+      if (!v) return;
+      clearTimeout(timer);
+      unsubscribe();
+      resolve(v);
+    });
+  });
+}
 
 /**
  * Address keys that name a target outside the current view — the viewer must
@@ -104,16 +174,38 @@ export function useCaptureAction(
             ? { selector: params.selector }
             : undefined;
 
-      // Coarse part → drive the viewer there first, then shoot.
+      // Coarse part → drive the viewer there first, then shoot — once the
+      // viewer says it has arrived (and after the usual settle time).
+      let navigationNote: string | undefined;
+      let navigatedSeq: number | null = null;
       if (isCoarseAddress(address)) {
-        setNavigateRequest({ label: "capture", address });
-        await sleep(1100); // React re-render + iframe/content reload + settle
+        const seq = setNavigateRequest({ label: "capture", address });
+        const [arrival] = await Promise.all([waitForNavigation(seq), sleep(NAVIGATE_SETTLE_MS)]);
         if (cancelled) return;
+        if (arrival.status === "failed") {
+          respond({ success: false, message: `Could not open the addressed view: ${arrival.message}` });
+          return;
+        }
+        // Still ours after the settle time? A navigation dispatched since
+        // then would be what is on screen.
+        if (arrival.status === "superseded" || useStore.getState().navigateSeq !== seq) {
+          respond({ success: false, message: SUPERSEDED_MESSAGE });
+          return;
+        }
+        navigatedSeq = seq;
+        if (arrival.status === "timeout") {
+          navigationNote = `The viewer had not confirmed reaching the address after ${NAVIGATE_VERDICT_TIMEOUT_MS / 1000} s; this shows what was on screen.`;
+        }
       }
 
       const result = await captureViewer(el, { selector: fineSelector(address), captureViewport });
       if (cancelled) return;
+      if (navigatedSeq !== null && useStore.getState().navigateSeq !== navigatedSeq) {
+        respond({ success: false, message: SUPERSEDED_MESSAGE });
+        return;
+      }
       if (!result.ok) { respond({ success: false, message: result.message }); return; }
+      const note = [navigationNote, result.note].filter(Boolean).join(" ") || undefined;
 
       // Persist the PNG and hand back a path the agent can Read.
       try {
@@ -129,7 +221,7 @@ export function useCaptureAction(
         }
         respond({
           success: true,
-          message: result.note,
+          message: note,
           data: { path: json.path, width: result.width, height: result.height, method: result.method },
         });
       } catch (err) {

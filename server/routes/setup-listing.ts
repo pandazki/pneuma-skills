@@ -12,13 +12,15 @@
  *                     a lex-sorted listing of `*-NN.{png,jpg,jpeg,webp}`)
  *
  * Pure synchronous fs scan — small response (<5 KB typical), no
- * caching, no chokidar. Mirrors the asset-fs.ts pattern. Symlinks are
- * skipped; dotfiles are ignored.
+ * caching, no chokidar. Mirrors the asset-fs.ts pattern. Symlinked
+ * entries are skipped, scan roots whose canonical target leaves the
+ * workspace list nothing, and dotfiles are ignored.
  */
 
 import type { Hono } from "hono";
 import { existsSync, readFileSync, readdirSync, statSync, lstatSync } from "node:fs";
 import { join, relative, sep } from "node:path";
+import { isContained } from "../utils.js";
 
 interface BibleEntry {
   path: string;
@@ -66,6 +68,7 @@ function toRelUri(workspace: string, abs: string): string {
 
 function detectBible(workspace: string): BibleEntry | null {
   const p = join(workspace, "setup", "bible.md");
+  if (!isContained(p, workspace)) return null;
   const st = safeStat(p);
   if (!st || !st.isFile()) return null;
   return { path: "setup/bible.md", mtime: Math.floor(st.mtimeMs) };
@@ -93,7 +96,7 @@ function findCardImage(dir: string, baseName: string): string | null {
 
 function detectCardsIn(workspace: string, subdir: "cast" | "world"): CardEntry[] {
   const root = join(workspace, "setup", subdir);
-  if (!existsSync(root)) return [];
+  if (!existsSync(root) || !isContained(root, workspace)) return [];
   const cards: CardEntry[] = [];
   let entries: string[];
   try {
@@ -162,7 +165,7 @@ function detectCardsIn(workspace: string, subdir: "cast" | "world"): CardEntry[]
 
 function detectStoryboards(workspace: string): StoryboardEntry[] {
   const root = join(workspace, "storyboard");
-  if (!existsSync(root)) return [];
+  if (!existsSync(root) || !isContained(root, workspace)) return [];
   const out: StoryboardEntry[] = [];
   let entries: string[];
   try {
@@ -206,7 +209,10 @@ function detectStoryboards(workspace: string): StoryboardEntry[] {
     // can fall through to the lex-fallback panel listing below.
     const STDOUT_JSON_MAX_BYTES = 1_000_000;
     const stdoutSt = safeStat(stdoutJsonPath);
-    if (stdoutSt && stdoutSt.isFile() && stdoutSt.size <= STDOUT_JSON_MAX_BYTES) {
+    if (
+      stdoutSt && stdoutSt.isFile() && stdoutSt.size <= STDOUT_JSON_MAX_BYTES &&
+      isContained(stdoutJsonPath, workspace)
+    ) {
       try {
         const raw = readFileSync(stdoutJsonPath, "utf-8");
         const parsed = JSON.parse(raw);

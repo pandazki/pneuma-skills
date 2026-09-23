@@ -8,7 +8,7 @@
  * Driven by ModeManifest + AgentBackend — no hardcoded mode knowledge.
  */
 
-import { resolve, dirname, join, basename, sep } from "node:path";
+import { resolve, dirname, join, basename, relative, sep } from "node:path";
 import { existsSync, copyFileSync, cpSync, mkdirSync, readFileSync, writeFileSync, statSync, readdirSync, rmSync, unlinkSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import * as p from "@clack/prompts";
@@ -37,6 +37,7 @@ import {
 import type { AgentBackendType } from "../core/types/agent-backend.js";
 import { applyTemplateParams } from "../server/skill-installer.js";
 import { isBinarySeedFile } from "../server/seed-installer.js";
+import { isContained } from "../server/utils.js";
 import {
   resolveMode as resolveModeSource,
   resolveModeOrLibrary,
@@ -2503,10 +2504,21 @@ async function main() {
       const srcPath = join(seedBaseDir, resolvedSrc);
       if (!existsSync(srcPath) || !statSync(srcPath).isDirectory()) continue;
       const glob = new Bun.Glob("**/*");
+      const copies: { fileSrc: string; fileDst: string }[] = [];
       for (const relFile of glob.scanSync({ cwd: srcPath, absolute: false })) {
         const fileSrc = join(srcPath, relFile);
         if (statSync(fileSrc).isDirectory()) continue;
-        const fileDst = join(workspace, dst, relFile);
+        copies.push({ fileSrc, fileDst: join(workspace, dst, relFile) });
+      }
+      // Same containment authority as the gallery copy (`planSeedEntry`): a
+      // `_` directory that is, or passes through, a symlink out of the
+      // workspace is not re-synced at all — none of its files are written.
+      const escaping = copies.find((c) => !isContained(c.fileDst, workspace));
+      if (escaping) {
+        console.warn(`[seed] skipped re-sync of ${dst}: ${relative(workspace, escaping.fileDst)} would be written outside the workspace`);
+        continue;
+      }
+      for (const { fileSrc, fileDst } of copies) {
         mkdirSync(dirname(fileDst), { recursive: true });
         // Same authority as the gallery copy path — see
         // `server/seed-installer.ts::isBinarySeedFile`.

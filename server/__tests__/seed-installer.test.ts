@@ -3,7 +3,7 @@ import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { copySeedEntry, resolveSeedCatalog } from "../seed-installer.js";
+import { copySeedEntry, resolveSeedCatalog, SeedContainmentError } from "../seed-installer.js";
 import type { SeedDescriptor } from "../../core/types/mode-manifest.js";
 
 let seedBase: string;
@@ -250,5 +250,92 @@ describe("resolveSeedCatalog", () => {
     };
     const result = resolveSeedCatalog(seedFiles, undefined);
     expect(result.map((s) => s.sourceKey)).toEqual(["mode/seed/default/"]);
+  });
+});
+
+/**
+ * Finding 19 of the 2026-09-23 final review: a seed destination that is (or
+ * passes through) a symlink to outside the workspace was written through.
+ * The whole destination set is validated before the first write, so a seed
+ * whose second file would escape writes none of its files.
+ */
+describe("copySeedEntry — destination containment", () => {
+  it("refuses a destination directory that is a symlink to outside, writing nothing", async () => {
+    const { symlinkSync, readdirSync, realpathSync } = await import("node:fs");
+    const outside = await mkdtemp(join(tmpdir(), "pneuma-seed-outside-"));
+    try {
+      await mkdir(join(seedBase, "seed", "site"), { recursive: true });
+      await writeFile(join(seedBase, "seed", "site", "index.html"), "<h1>x</h1>");
+      symlinkSync(outside, join(workspace, "site"));
+      expect(() =>
+        copySeedEntry({ workspace, seedBase, src: "seed/site/", dst: "site/", params: {}, locale: "en" }),
+      ).toThrow(SeedContainmentError);
+      expect(readdirSync(realpathSync(outside))).toEqual([]);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("validates every destination before the first write", async () => {
+    const { symlinkSync, readdirSync } = await import("node:fs");
+    const outside = await mkdtemp(join(tmpdir(), "pneuma-seed-outside-"));
+    try {
+      await mkdir(join(seedBase, "seed", "site", "assets"), { recursive: true });
+      await writeFile(join(seedBase, "seed", "site", "a-first.html"), "first");
+      await writeFile(join(seedBase, "seed", "site", "assets", "b.css"), "b");
+      await mkdir(join(workspace, "site"), { recursive: true });
+      symlinkSync(outside, join(workspace, "site", "assets"));
+      expect(() =>
+        copySeedEntry({ workspace, seedBase, src: "seed/site/", dst: "site/", params: {}, locale: "en" }),
+      ).toThrow(SeedContainmentError);
+      expect(existsSync(join(workspace, "site", "a-first.html"))).toBe(false);
+      expect(readdirSync(outside)).toEqual([]);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a single-file destination through a symlink and a `..` destination", async () => {
+    const { symlinkSync, readdirSync } = await import("node:fs");
+    const outside = await mkdtemp(join(tmpdir(), "pneuma-seed-outside-"));
+    try {
+      await writeFile(join(seedBase, "one.md"), "# one");
+      symlinkSync(outside, join(workspace, "linked"));
+      expect(() =>
+        copySeedEntry({ workspace, seedBase, src: "one.md", dst: "linked/one.md", params: {}, locale: "en" }),
+      ).toThrow(SeedContainmentError);
+      expect(() =>
+        copySeedEntry({ workspace, seedBase, src: "one.md", dst: "../escape.md", params: {}, locale: "en" }),
+      ).toThrow(SeedContainmentError);
+      expect(readdirSync(outside)).toEqual([]);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a source that leaves the seed base", async () => {
+    const outside = await mkdtemp(join(tmpdir(), "pneuma-seed-outside-"));
+    try {
+      await writeFile(join(outside, "secret.md"), "secret");
+      const { symlinkSync } = await import("node:fs");
+      symlinkSync(join(outside, "secret.md"), join(seedBase, "linked.md"));
+      expect(() =>
+        copySeedEntry({ workspace, seedBase, src: "linked.md", dst: "copied.md", params: {}, locale: "en" }),
+      ).toThrow(SeedContainmentError);
+      expect(existsSync(join(workspace, "copied.md"))).toBe(false);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("still writes into an in-workspace destination reached through an in-root link", async () => {
+    const { symlinkSync } = await import("node:fs");
+    await mkdir(join(seedBase, "seed", "site"), { recursive: true });
+    await writeFile(join(seedBase, "seed", "site", "index.html"), "<h1>x</h1>");
+    await mkdir(join(workspace, "real-site"), { recursive: true });
+    symlinkSync(join(workspace, "real-site"), join(workspace, "site"));
+    const result = copySeedEntry({ workspace, seedBase, src: "seed/site/", dst: "site/", params: {}, locale: "en" });
+    expect(result?.files).toEqual(["site/index.html"]);
+    expect(readFileSync(join(workspace, "real-site", "index.html"), "utf-8")).toBe("<h1>x</h1>");
   });
 });

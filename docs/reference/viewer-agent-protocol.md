@@ -193,6 +193,8 @@ export interface ViewerActionResult {
 
 这让"渲染对不对、有没有溢出"的视觉自查留在 Pneuma viewer 内部完成——外部浏览器渲染的是脱离 viewer 规则的原始文件，看到的不是用户看到的画面。
 
+**先到、再拍、拍不到就说。** navigate-then-shoot 等的是 viewer 的到达回执（`onNavigateComplete`，store 里记作 `navigateDoneSeq`），上限 15 秒，外加原有的 1.1 秒渲染余量；回执是失败（viewer 没有这一页、content set 不存在）就直接返回失败，不再截下当前画面冒充目标；回执之前另一次导航（用户点了定位卡、又一次 capture）把 viewer 带走了，这次 capture 作废并如实说明，不截别的页面，迟到的旧回执也不会记到新请求头上（`navigateRequestSeq`）。异步载入目标的 viewer 应在目标真正上屏后才回执（webcraft 在目标页面文档自己的 `load` 之后，而不是看 `readyState`——导航途中 iframe 里还是旧的、已经 complete 的文档）。截同源 iframe 时，viewer 可在 iframe 上标 `aria-busy="true"` 表示页面还在（重新）载入，capture 等它清掉、等文档 `load` 和 `document.fonts.ready`（均有上限）；页面在截图途中被替换（agent 刚改完文件、viewer 重载），这一次作废、换新页面重拍，而不是等一个已被丢弃的 window 里永不落定的 promise。后台标签页里没有渲染帧、Chrome 还把连环 timer 节流到一分钟一次，所以 capture 不轮询，也跳过滚动触发的 reveal 预热，并在结果的 `message` 里注明。实现与测试：`src/utils/viewer-capture.ts`、`src/hooks/useCaptureAction.ts::waitForNavigation`、`src/__tests__/viewer-capture-page-lifecycle.test.ts`、`src/__tests__/capture-navigation-wait.test.ts`。
+
 `capture` 接收的对象就是用户选中元素时 ⑥ 上报的同一个 `address`——所以 **select → 拿到 address → capture 那个 address** 是一个闭环（webcraft 已验证）。`params.address` 也接受裸 `selector` 字符串以兼容旧用法。实现见 `src/hooks/useCaptureAction.ts`、`backends/tool-file-ref.ts`（capture 结果走 fileRef 通道在 chat 里显示）。
 
 #### Well-known action 词表
@@ -406,6 +408,17 @@ export interface SourceDescriptor {
   config?: unknown;            // provider 私有 schema
 }
 ```
+
+**`content` is text or empty.** The cold-start snapshot (`GET /api/files`)
+and every watcher `content_update` report each file a mode's `watchPatterns`
+match, but only text travels as `content`. A binary match (a known media/font/
+archive extension, or a NUL byte in its first 8 KiB) is reported by path with
+`content: ""` — the shape image change signals have always had — and its bytes
+are served by `/content/*`. The one classifier is
+`server/workspace-text.ts::readWorkspaceText`. Before it, a directory glob such
+as sprite's `**/motions/**/*` shipped every frame, WebP, WebM and MP4 as
+UTF-8-mangled text: a 2,818-file workspace produced a 1.89 GB snapshot that
+Chrome aborted (2026-09-23).
 
 ### 四条不变量（`core/sources/base.ts` 强制，不靠 viewer 自律）
 

@@ -1,101 +1,37 @@
 <div class="slide">
-  <span class="tag" style="margin-bottom: 16px; align-self: flex-start;">Capabilities</span>
-  <h1 style="font-size: 2.2rem;">Viewer Context & <span class="text-primary">Agent Vision</span></h1>
-  <p style="max-width: 800px; margin-bottom: 24px;">
-    The frontend viewer isn't just a static display; it interacts directly with the AI, giving it structural awareness
-    of the rendered document.
-  </p>
+  <header class="chrome"><span class="brand">Pneuma Skills</span><span class="path">slides/slide-05.html</span><span class="folio">05 / 11</span></header>
 
-  <div style="display: flex; gap: 24px; align-items: stretch;">
-    <!-- Element Selection -->
-    <div class="card"
-      style="flex: 1; border: 1px solid var(--color-border); padding: 24px; display: flex; flex-direction: column;">
-      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
-        <div
-          style="width: 40px; height: 40px; border-radius: 10px; background: rgba(212, 99, 42, 0.1); display: flex; align-items: center; justify-content: center;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D4632A" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
-            <path d="M13 13l6 6" />
-          </svg>
+  <div style="display:grid; grid-template-columns: 560px 1fr; gap: 64px; align-items: center;">
+
+    <div>
+      <div class="frame" style="width: 560px; background: var(--color-surface); box-shadow: var(--shadow-sm);">
+        <div class="in" style="inset: 14% 10%; gap: 14px; justify-content: center;">
+          <div class="mono" style="font-size: 10px; letter-spacing: 0.14em; color: var(--color-muted);">OUR APPROACH</div>
+          <div style="position: relative;">
+            <div style="font-family: var(--font-display); font-size: 36px; line-height: 1.08; color: var(--color-fg);">Our platform enables seamless collaboration</div>
+            <div class="select" style="inset: 0;"></div>
+            <span class="select-tag" style="bottom: calc(100% + 14px); right: -7px;">h1</span>
+          </div>
+          <div class="bar" style="width: 86%; margin-top: 6px;"></div>
+          <div class="bar" style="width: 62%;"></div>
         </div>
-        <h3 style="margin: 0; font-size: 1.25rem;">Element Selection</h3>
+        <svg style="position:absolute; left: 330px; top: 150px;" width="22" height="26" viewBox="0 0 22 26"><path d="M2 2l17 11-8 1.6 4.6 8.4-3.3 1.8-4.6-8.4L2 22z" style="fill:var(--color-fg); stroke:var(--color-bg); stroke-width:1.5; stroke-linejoin:round"/></svg>
       </div>
-      <p style="font-size: 0.95rem; line-height: 1.5; color: var(--color-secondary);">Click any block in the live
-        preview. Pneuma wraps it in an outline and automatically injects a <code>&lt;viewer-context&gt;</code> block
-        into your next chat message.</p>
 
-      <div
-        style="margin-top: auto; position: relative; border: 2px dashed var(--color-primary); padding: 16px; border-radius: 8px; background: rgba(212, 99, 42, 0.03);">
-        <div
-          style="position: absolute; top: -10px; left: 12px; background: var(--color-primary); color: #fff; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-weight: bold;">
-          Selected: &lt;h1&gt;</div>
-        <strong style="display: block; font-size: 1.05rem; margin-bottom: 8px;">"Make this title larger and
-          blue"</strong>
-        <p style="margin: 0; font-size: 0.8rem; color: var(--color-muted);">The AI knows exactly which
-          <code>&lt;h1&gt;</code> you clicked on without you needing to explain where it is.</p>
-      </div>
+      <div class="code" style="margin-top: 20px; font-size: 15px;"><span class="del">- &lt;h1&gt;Our platform enables seamless collaboration&lt;/h1&gt;</span><span class="add">+ &lt;h1&gt;Built together, <span class="s">live</span>.&lt;/h1&gt;</span></div>
     </div>
 
-    <!-- Viewer API -->
-    <div class="card"
-      style="flex: 1; border: 1px solid var(--color-border); padding: 24px; display: flex; flex-direction: column;">
-      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
-        <div
-          style="width: 40px; height: 40px; border-radius: 10px; background: rgba(196, 150, 58, 0.1); display: flex; align-items: center; justify-content: center;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C4963A" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <polyline points="12 16 16 12 12 8" />
-            <line x1="8" y1="12" x2="16" y2="12" />
-          </svg>
-        </div>
-        <h3 style="margin: 0; font-size: 1.25rem;">Agent-Callable Actions</h3>
-      </div>
-      <p style="font-size: 0.95rem; line-height: 1.5; color: var(--color-secondary);">The ViewerContract exposes
-        specific actions the agent can trigger in the UI, enabling seamless multi-step workflows.</p>
+    <div>
+      <div class="kicker">Select to edit</div>
+      <h2 style="margin-top: 20px;">Point, <em>don't describe.</em></h2>
+      <p style="margin-top: 20px;">Click any element in the preview. The viewer hands the agent its exact address, so &ldquo;this heading&rdquo; is never ambiguous, and the edit touches one element in one file.</p>
 
-      <div
-        style="margin-top: auto; background: var(--color-bg); border-radius: 8px; border: 1px solid var(--color-border); overflow: hidden;">
-        <div
-          style="padding: 10px 16px; border-bottom: 1px solid var(--color-border); display: flex; gap: 12px; align-items: center;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-muted)" stroke-width="2">
-            <path d="M9 18l6-6-6-6" />
-          </svg>
-          <div>
-            <div style="font-size: 0.85rem; font-weight: 600;">Navigation</div>
-            <div style="font-size: 0.75rem; color: var(--color-muted);">Agent jumps your view to Slide 10 after editing.
-            </div>
-          </div>
-        </div>
-        <div
-          style="padding: 10px 16px; border-bottom: 1px solid var(--color-border); display: flex; gap: 12px; align-items: center;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-muted)" stroke-width="2">
-            <rect x="3" y="3" width="7" height="7" />
-            <rect x="14" y="3" width="7" height="7" />
-            <rect x="14" y="14" width="7" height="7" />
-            <rect x="3" y="14" width="7" height="7" />
-          </svg>
-          <div>
-            <div style="font-size: 0.85rem; font-weight: 600;">View Setup</div>
-            <div style="font-size: 0.75rem; color: var(--color-muted);">Agent triggers "Grid View" for sorting slides.
-            </div>
-          </div>
-        </div>
-        <div style="padding: 10px 16px; display: flex; gap: 12px; align-items: center;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-muted)" stroke-width="2">
-            <path d="M21 2v6h-6" />
-            <path d="M3 12a9 9 0 1015-6.7L21 8" />
-            <path d="M3 2v6h6" />
-            <path d="M21 12a9 9 0 10-15 6.7L3 16" />
-          </svg>
-          <div>
-            <div style="font-size: 0.85rem; font-weight: 600;">Scaffolding</div>
-            <div style="font-size: 0.75rem; color: var(--color-muted);">Agent resets workspace fully (with UI confirm).
-            </div>
-          </div>
-        </div>
-      </div>
+      <div class="code-label" style="margin-top: 28px;">what the agent receives</div>
+      <div class="code" style="font-size: 15px;"><span class="k">&lt;viewer-context</span> file=<span class="s">"slides/slide-03.html"</span><span class="k">&gt;</span>
+Address: {<span class="s">"file"</span>: <span class="s">"slides/slide-03.html"</span>,
+          <span class="s">"selector"</span>: <span class="s">"h1"</span>}
+<span class="c">user:</span> make this shorter and punchier</div>
     </div>
+
   </div>
 </div>

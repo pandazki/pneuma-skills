@@ -1,10 +1,10 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serveStatic } from "hono/bun";
-import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, unlinkSync, mkdirSync, createReadStream } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, lstatSync, unlinkSync, mkdirSync, createReadStream } from "node:fs";
 import { Readable } from "node:stream";
 import { join, resolve, relative, basename, dirname, sep } from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
 import { WsBridge } from "./ws-bridge.js";
 import { getBackendDescriptors, getDefaultBackendType, detectBackendAvailability } from "../backends/index.js";
@@ -17,7 +17,7 @@ import { registerModeMakerRoutes } from "./mode-maker-routes.js";
 import { HOST_ABI_VENDOR_SHIMS, hostAbiImportMap } from "../snapshot/mode-build.js";
 import { registerEvolutionRoutes } from "./evolution-routes.js";
 import { openPath, revealPath, openUrl } from "./system-bridge.js";
-import { pathStartsWith, isWin } from "./utils.js";
+import { pathStartsWith, isContained, isGitObjectId, isWin } from "./utils.js";
 import { registerExportRoutes } from "./routes/export.js";
 import { registerAssetFsRoutes } from "./routes/asset-fs.js";
 import { registerSetupListing } from "./routes/setup-listing.js";
@@ -35,7 +35,7 @@ import { resolveLocalized, type ModeManifest, type ProxyRoute } from "../core/ty
 import type { ModeCatalogEntry, ModeInstallState } from "../core/types/mode-catalog.js";
 import { bundledModeNames, listCatalogModes, resolveCatalogMode } from "../core/mode-catalog.js";
 import { startProxyWatcher, registerSelfWrite, registerSelfDelete } from "./file-watcher.js";
-import { copySeedEntry, resolveSeedCatalog, runPostSeedInstall } from "./seed-installer.js";
+import { applySeedPlan, planSeedEntry, resolveSeedCatalog, runPostSeedInstall, SeedContainmentError, type SeedCopyPlan } from "./seed-installer.js";
 import { mountHandoffRoutes } from "./handoff-routes.js";
 import { mountBorrowRoutes } from "./borrow-routes.js";
 import { enumerateLocalModes } from "../core/local-modes.js";
@@ -250,7 +250,7 @@ export function mountFileRoute(
     // This also matches how the static player's service worker resolves
     // `/api/file` against workspace-relative package blob keys.
     const abs = resolve(workspaceRoot, rel);
-    if (abs !== workspaceRoot && !abs.startsWith(workspaceRoot + sep)) {
+    if (!isContained(abs, workspaceRoot)) {
       return c.json({ error: "path escapes workspace" }, 403);
     }
     if (!existsSync(abs)) return c.json({ error: "not found" }, 404);
@@ -319,11 +319,17 @@ export function mountContentRoute(
 ): void {
   const contentRoot = opts.contentRoot;
   app.get("/content/*", async (c) => {
-    const relPath = decodeURIComponent(c.req.path.replace(/^\/content\//, ""));
-    if (!relPath) return c.text("Not found", 404);
-    const absPath = join(contentRoot, relPath);
-    // Basic path traversal protection
-    if (!pathStartsWith(absPath, contentRoot)) {
+    let relPath: string;
+    try {
+      relPath = decodeURIComponent(c.req.path.replace(/^\/content\//, ""));
+    } catch {
+      return c.text("Bad request: malformed percent-encoding", 400);
+    }
+    if (relPath.includes("\0")) return c.text("Bad request", 400);
+    let absPath = join(contentRoot, relPath);
+    // Containment by whole path components and after resolving symlinks: an
+    // encoded `../<root>-neighbor/` or a symlink to outside is refused.
+    if (!isContained(absPath, contentRoot)) {
       return c.text("Forbidden", 403);
     }
     if (!existsSync(absPath)) {
@@ -333,6 +339,21 @@ export function mountContentRoute(
     let stat: ReturnType<typeof statSync>;
     try {
       stat = statSync(absPath);
+      if (stat.isDirectory()) {
+        // A directory URL serves its index.html, as a static host does — a
+        // page's `<a href="./">` must land where it lands once deployed.
+        // Without the trailing slash, relative URLs inside the page would
+        // resolve one level up, so redirect to the slashed URL first.
+        const index = join(absPath, "index.html");
+        if (!isContained(index, contentRoot)) return c.text("Forbidden", 403);
+        if (!existsSync(index) || !statSync(index).isFile()) return c.text("Not found", 404);
+        if (!c.req.path.endsWith("/")) {
+          const query = new URL(c.req.url).search;
+          return c.redirect(`${c.req.path}/${query}`, 301);
+        }
+        absPath = index;
+        stat = statSync(index);
+      }
       if (!stat.isFile()) return c.text("Not found", 404);
     } catch {
       return c.text("Not found", 404);
@@ -1370,7 +1391,7 @@ export async function startServer(options: ServerOptions) {
     app.get("/api/modes/:name/showcase/*", async (c) => {
       const name = c.req.param("name");
       const assetPath = c.req.path.split("/showcase/").slice(1).join("/showcase/");
-      if (!name || !assetPath) {
+      if (!name || !assetPath || name === "." || name === ".." || name.includes("\\")) {
         return c.json({ error: "Invalid path" }, 400);
       }
       const projectRoot = options.projectRoot || resolve(dirname(import.meta.path), "..");
@@ -1378,13 +1399,14 @@ export async function startServer(options: ServerOptions) {
       const builtinShowcase = resolve(join(projectRoot, "modes", name, "showcase"));
       const localShowcase = resolve(join(homedir(), ".pneuma", "modes", name, "showcase"));
       let fullPath = resolve(join(builtinShowcase, assetPath));
-      // Path containment: resolved path must stay inside one of the showcase dirs
-      if (!pathStartsWith(fullPath, builtinShowcase + sep)) {
+      // Path containment: resolved path must stay inside one of the showcase
+      // dirs, also once symlinks are resolved.
+      if (fullPath === builtinShowcase || !isContained(fullPath, builtinShowcase)) {
         return c.json({ error: "Invalid path" }, 400);
       }
       if (!existsSync(fullPath)) {
         const localFull = resolve(join(localShowcase, assetPath));
-        if (pathStartsWith(localFull, localShowcase + sep) && existsSync(localFull)) {
+        if (localFull !== localShowcase && isContained(localFull, localShowcase) && existsSync(localFull)) {
           fullPath = localFull;
         } else {
           return c.notFound();
@@ -1461,8 +1483,9 @@ export async function startServer(options: ServerOptions) {
       }
 
       const thumbPath = join(resolvedWorkspace, ".pneuma", "thumbnail.png");
-      // Extra safety: resolved path must stay inside the workspace
-      if (!pathStartsWith(thumbPath, resolvedWorkspace)) {
+      // Extra safety: the thumbnail (or a `.pneuma` link) must not lead
+      // outside the registered workspace.
+      if (!isContained(thumbPath, resolvedWorkspace)) {
         return c.json({ error: "Invalid path" }, 403);
       }
       try {
@@ -2047,7 +2070,7 @@ export async function startServer(options: ServerOptions) {
             await Bun.spawn(["git", "clone", "--bare", bundlePath, bareRepo], { stdout: "ignore", stderr: "ignore" }).exited;
             const headProc = Bun.spawn(["git", `--git-dir=${bareRepo}`, "rev-parse", "HEAD"], { stdout: "pipe", stderr: "ignore" });
             const headHash = (await new Response(headProc.stdout).text()).trim();
-            if (headHash) {
+            if (isGitObjectId(headHash)) {
               const archive = Bun.spawn(["git", `--git-dir=${bareRepo}`, "archive", headHash], { stdout: "pipe", stderr: "ignore" });
               const extract = Bun.spawn(["tar", "x", "-C", targetDir], { stdin: archive.stdout, stdout: "ignore", stderr: "ignore" });
               await extract.exited;
@@ -3330,6 +3353,9 @@ export async function startServer(options: ServerOptions) {
   app.post("/api/replay/checkout/:hash", async (c) => {
     if (!replayPackage) return c.json({ error: "No replay loaded" }, 400);
     const hash = c.req.param("hash");
+    // Reaches `git archive <hash>`: anything but an object id (`--output=…`,
+    // `--remote=… --exec=…`) would be parsed as an option.
+    if (!isGitObjectId(hash)) return c.json({ error: "Invalid checkpoint hash" }, 400);
     // Extract to replay-checkout (clean slate each time) so /content/* serves correct per-checkpoint state
     const stateDirForReplay = options.stateDir ?? join(workspace, ".pneuma");
     const outDir = join(stateDirForReplay, "replay-checkout");
@@ -3340,13 +3366,22 @@ export async function startServer(options: ServerOptions) {
     try {
       await replayPackage.extractCheckpointFiles(hash, outDir);
       const files: { path: string; content: string }[] = [];
+      // A replay package is untrusted input: a checkpoint can carry
+      // symlinks. A linked file is read only when its canonical target stays
+      // inside the checkout directory; linked directories are not descended
+      // (their targets are walked on their own, and a link cycle cannot
+      // recurse forever).
       function walk(dir: string, prefix: string) {
         for (const entry of readdirSync(dir)) {
           const full = join(dir, entry);
           const rel = prefix ? `${prefix}/${entry}` : entry;
-          const stat = statSync(full);
-          if (stat.isDirectory()) walk(full, rel);
-          else if (stat.size < 500_000) {
+          const isLink = lstatSync(full).isSymbolicLink();
+          if (isLink && !isContained(full, outDir)) continue;
+          let stat: ReturnType<typeof statSync>;
+          try { stat = statSync(full); } catch { continue; } // dangling link
+          if (stat.isDirectory()) {
+            if (!isLink) walk(full, rel);
+          } else if (stat.size < 500_000) {
             try { files.push({ path: rel, content: readFileSync(full, "utf-8") }); } catch {}
           }
         }
@@ -3504,21 +3539,36 @@ export async function startServer(options: ServerOptions) {
 
         const { getUserLocale } = await import("../core/locale.js");
         const locale = getUserLocale() ?? "en";
-        const writtenFiles: string[] = [];
-        let seededRootPackageJson = false;
+        // Plan every entry before writing any: a missing source or a copy
+        // that would leave the workspace (a symlinked destination) refuses
+        // the whole request with nothing written.
+        const plans: SeedCopyPlan[] = [];
         for (const src of sourceKeys) {
-          const dst = seedFiles[src];
-          const result = copySeedEntry({
-            workspace,
-            seedBase: sessionSeedBase,
-            src,
-            dst,
-            params: options.initParams ?? {},
-            locale,
-          });
-          if (!result) {
+          let plan: SeedCopyPlan | null;
+          try {
+            plan = planSeedEntry({
+              workspace,
+              seedBase: sessionSeedBase,
+              src,
+              dst: seedFiles[src],
+              params: options.initParams ?? {},
+              locale,
+            });
+          } catch (err) {
+            if (err instanceof SeedContainmentError) {
+              return c.json({ ok: false, error: err.message }, 403);
+            }
+            throw err;
+          }
+          if (!plan) {
             return c.json({ ok: false, error: `seed source not found on disk: ${src}` }, 404);
           }
+          plans.push(plan);
+        }
+        const writtenFiles: string[] = [];
+        let seededRootPackageJson = false;
+        for (const plan of plans) {
+          const result = applySeedPlan(plan);
           writtenFiles.push(...result.files);
           if (result.seededRootPackageJson) seededRootPackageJson = true;
         }
@@ -3566,8 +3616,12 @@ export async function startServer(options: ServerOptions) {
           return c.json({ ok: false, error: `invalid prefix: ${prefix}` }, 400);
         }
         const target = resolve(join(workspace, prefix));
-        const workspaceResolved = resolve(workspace);
-        if (target === workspaceResolved || !target.startsWith(workspaceResolved + sep)) {
+        // The whole target set is decided here, before anything is removed:
+        // the prefix must be a directory strictly inside the workspace once
+        // symlinks are resolved (a prefix through, or itself, a link to
+        // outside is refused). `rmSync` below unlinks links nested inside
+        // the content set rather than following them.
+        if (target === resolve(workspace) || !isContained(target, workspace)) {
           return c.json({ ok: false, error: "prefix escapes workspace" }, 403);
         }
         if (!existsSync(target)) return c.json({ ok: false, error: "prefix does not exist" }, 404);
@@ -3612,7 +3666,7 @@ export async function startServer(options: ServerOptions) {
       const assetPath = c.req.path.split("/showcase/").slice(1).join("/showcase/");
       if (!assetPath) return c.json({ error: "Invalid path" }, 400);
       const fullPath = resolve(join(showcaseRoot, assetPath));
-      if (!pathStartsWith(fullPath, showcaseRoot + sep)) {
+      if (fullPath === showcaseRoot || !isContained(fullPath, showcaseRoot)) {
         return c.json({ error: "Invalid path" }, 400);
       }
       if (!existsSync(fullPath)) return c.notFound();
@@ -3639,7 +3693,7 @@ export async function startServer(options: ServerOptions) {
       const assetPath = c.req.path.split("/seed-gallery/").slice(1).join("/seed-gallery/");
       if (!assetPath) return c.json({ error: "Invalid path" }, 400);
       const fullPath = resolve(join(seedGalleryRoot, assetPath));
-      if (!pathStartsWith(fullPath, seedGalleryRoot + sep)) {
+      if (fullPath === seedGalleryRoot || !isContained(fullPath, seedGalleryRoot)) {
         return c.json({ error: "Invalid path" }, 400);
       }
       if (!existsSync(fullPath)) return c.notFound();
@@ -3728,7 +3782,7 @@ export async function startServer(options: ServerOptions) {
       // directory and file paths are prefixed with it.
       const contentSet = body.contentSet?.replace(/^\/+|\/+$/g, ""); // sanitize
       const scopedRoot = contentSet ? join(workspace, contentSet) : workspace;
-      if (contentSet && !pathStartsWith(scopedRoot, workspace)) {
+      if (contentSet && !isContained(scopedRoot, workspace)) {
         return c.json({ success: false, message: `Invalid contentSet: ${contentSet}` }, 403);
       }
 
@@ -3744,7 +3798,7 @@ export async function startServer(options: ServerOptions) {
           return c.json({ success: false, message: `Invalid path: ${f.path}` }, 400);
         }
         const abs = join(workspace, f.path);
-        if (!pathStartsWith(abs, workspace)) {
+        if (!isContained(abs, workspace)) {
           return c.json({ success: false, message: `Path escapes workspace: ${f.path}` }, 403);
         }
       }
@@ -3754,8 +3808,11 @@ export async function startServer(options: ServerOptions) {
       const isProtected = (relPath: string) =>
         PROTECTED.some((p) => p.endsWith("/") ? relPath.startsWith(p) : relPath === p);
 
-      // 1. Delete files matching clear globs (scoped to contentSet if provided)
-      let filesDeleted = 0;
+      // 1. Delete files matching clear globs (scoped to contentSet if provided).
+      // The complete deletion set is collected and checked before the first
+      // unlink; a match whose canonical target is outside the workspace (a
+      // link to outside) is never deleted.
+      const toDelete = new Set<string>();
       if (Array.isArray(body.clear)) {
         for (const pattern of body.clear) {
           try {
@@ -3765,15 +3822,17 @@ export async function startServer(options: ServerOptions) {
               const relPath = contentSet ? `${contentSet}/${matchPath}` : matchPath;
               if (isProtected(relPath)) continue;
               const absPath = join(workspace, relPath);
-              if (pathStartsWith(absPath, workspace) && existsSync(absPath)) {
-                unlinkSync(absPath);
-                filesDeleted++;
-              }
+              if (isContained(absPath, workspace) && existsSync(absPath)) toDelete.add(absPath);
             }
           } catch {
             // skip invalid globs
           }
         }
+      }
+      let filesDeleted = 0;
+      for (const absPath of toDelete) {
+        unlinkSync(absPath);
+        filesDeleted++;
       }
 
       // 2. Write files
@@ -3807,7 +3866,7 @@ export async function startServer(options: ServerOptions) {
       return c.json({ error: "Missing path or content" }, 400);
     }
     const absPath = join(workspace, relPath);
-    if (!pathStartsWith(absPath, workspace)) {
+    if (!isContained(absPath, workspace)) {
       return c.json({ error: "Forbidden" }, 403);
     }
     // `?origin=external` tells the server "this write is a user-initiated
@@ -3849,7 +3908,7 @@ export async function startServer(options: ServerOptions) {
       return c.json({ error: "Missing path query parameter" }, 400);
     }
     const absPath = join(workspace, relPath);
-    if (!pathStartsWith(absPath, workspace)) {
+    if (!isContained(absPath, workspace)) {
       return c.json({ error: "Forbidden" }, 403);
     }
     try {
@@ -3870,7 +3929,7 @@ export async function startServer(options: ServerOptions) {
     const relPath = c.req.query("path");
     if (!relPath) return c.json({ error: "Missing path" }, 400);
     const absPath = join(workspace, relPath);
-    if (!pathStartsWith(absPath, workspace)) return c.json({ error: "Forbidden" }, 403);
+    if (!isContained(absPath, workspace)) return c.json({ error: "Forbidden" }, 403);
     try {
       const content = readFileSync(absPath, "utf-8");
       return c.json({ path: relPath, content });
@@ -3988,7 +4047,9 @@ export async function startServer(options: ServerOptions) {
     const files = new Map<string, string>(); // relPath → status (A/M/D)
     try {
       // Uncommitted changes vs HEAD
-      const nameStatus = execSync("git -c core.quotePath=false diff HEAD --name-status", { cwd: workspace, encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+      // `--relative`: a workspace nested inside a larger repository lists only
+      // its own files, with workspace-relative paths (like `ls-files` below).
+      const nameStatus = execSync("git -c core.quotePath=false diff HEAD --name-status --relative", { cwd: workspace, encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
       for (const line of nameStatus.split("\n").filter(Boolean)) {
         const [status, ...parts] = line.split("\t");
         const filePath = parts.join("\t");
@@ -4003,7 +4064,8 @@ export async function startServer(options: ServerOptions) {
       if (base === "default-branch") {
         try {
           const defaultBranch = execSync("git symbolic-ref refs/remotes/origin/HEAD --short", { cwd: workspace, encoding: "utf-8", timeout: 5_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
-          const branchStatus = execSync(`git -c core.quotePath=false diff ${defaultBranch}...HEAD --name-status`, { cwd: workspace, encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+          // Argument vector, not a shell string: a ref name may contain `$(`.
+          const branchStatus = execFileSync("git", ["-c", "core.quotePath=false", "diff", `${defaultBranch}...HEAD`, "--name-status", "--relative"], { cwd: workspace, encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
           for (const line of branchStatus.split("\n").filter(Boolean)) {
             const [status, ...parts] = line.split("\t");
             const filePath = parts.join("\t");
@@ -4023,34 +4085,41 @@ export async function startServer(options: ServerOptions) {
     const filePath = c.req.query("path");
     if (!filePath) return c.json({ error: "Missing path" }, 400);
     const base = c.req.query("base") || "last-commit";
+    const absPath = join(workspace, filePath);
+    // An untracked path is diffed with `--no-index`, which reads any file:
+    // the path must be inside the workspace, also through symlinks.
+    if (!isContained(absPath, workspace)) return c.json({ error: "Forbidden" }, 403);
+    // Git receives the checked, normalized workspace-relative path — never
+    // the raw request string — and `--literal-pathspecs` makes it a plain
+    // path: otherwise `:(top)…`, `:/…` or a glob would select files git
+    // resolves from the repository root, outside a nested workspace (`--`
+    // ends options but does not disable pathspec magic).
+    const relPath = relative(workspace, absPath).split(sep).join("/");
+    if (!relPath) return c.json({ error: "path must name a file" }, 400);
+    // Every git call takes an argument vector — request input never reaches
+    // a shell.
+    const git = (args: string[], timeout: number) =>
+      execFileSync("git", ["--literal-pathspecs", "-c", "core.quotePath=false", ...args], { cwd: workspace, encoding: "utf-8", timeout, stdio: ["pipe", "pipe", "pipe"] }).trim();
+    // `git diff` exits 1 when there are differences; its stdout is the diff.
+    const gitDiff = (args: string[]) => {
+      try { return git(args, 10_000); } catch (e: any) { return e.stdout?.toString().trim() || ""; }
+    };
     try {
       let diff = "";
-      const absPath = join(workspace, filePath);
       // Check if file is untracked
-      const tracked = execSync(`git -c core.quotePath=false ls-files -- "${filePath}"`, { cwd: workspace, encoding: "utf-8", timeout: 5_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+      const tracked = git(["ls-files", "--", relPath], 5_000);
       if (!tracked) {
-        // Untracked new file — diff against /dev/null (NUL on Windows)
-        try {
-          const devNull = isWin ? "NUL" : "/dev/null";
-          diff = execSync(`git -c core.quotePath=false diff --no-index -- ${devNull} "${absPath}"`, { cwd: workspace, encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
-        } catch (e: any) {
-          // git diff --no-index exits with 1 when there are differences
-          diff = e.stdout?.toString() || "";
-        }
+        // Untracked new file — diff against /dev/null (NUL on Windows). With
+        // `--no-index` both operands are filesystem paths, not pathspecs.
+        diff = gitDiff(["diff", "--no-index", "--", isWin ? "NUL" : "/dev/null", absPath]);
       } else if (base === "default-branch") {
         try {
-          const defaultBranch = execSync("git symbolic-ref refs/remotes/origin/HEAD --short", { cwd: workspace, encoding: "utf-8", timeout: 5_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
-          diff = execSync(`git -c core.quotePath=false diff ${defaultBranch}...HEAD -- "${filePath}"`, { cwd: workspace, encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+          const defaultBranch = execFileSync("git", ["symbolic-ref", "refs/remotes/origin/HEAD", "--short"], { cwd: workspace, encoding: "utf-8", timeout: 5_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+          diff = git(["diff", `${defaultBranch}...HEAD`, "--", relPath], 10_000);
         } catch { /* fallback to HEAD */ }
-        if (!diff) {
-          try {
-            diff = execSync(`git -c core.quotePath=false diff HEAD -- "${filePath}"`, { cwd: workspace, encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
-          } catch (e: any) { diff = e.stdout?.toString() || ""; }
-        }
+        if (!diff) diff = gitDiff(["diff", "HEAD", "--", relPath]);
       } else {
-        try {
-          diff = execSync(`git -c core.quotePath=false diff HEAD -- "${filePath}"`, { cwd: workspace, encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }).trim();
-        } catch (e: any) { diff = e.stdout?.toString() || ""; }
+        diff = gitDiff(["diff", "HEAD", "--", relPath]);
       }
       return c.json({ path: filePath, diff });
     } catch {
@@ -4061,7 +4130,12 @@ export async function startServer(options: ServerOptions) {
   // ── Git: status (for editor file tree badges) ──────────────────────
   app.get("/api/git/status", (c) => {
     try {
-      const output = execSync("git -c core.quotePath=false status --porcelain", { cwd: workspace, encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] }).trimEnd();
+      // Limited to the workspace (`-- .`, literal) and re-rooted onto it:
+      // porcelain paths are repository-relative, so a workspace nested in a
+      // larger repository would otherwise list — and mis-key — files outside it.
+      const run = (args: string[]) => execFileSync("git", ["--literal-pathspecs", "-c", "core.quotePath=false", ...args], { cwd: workspace, encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] });
+      const prefix = run(["rev-parse", "--show-prefix"]).trim();
+      const output = run(["status", "--porcelain", "--", "."]).trimEnd();
       const statuses: Record<string, string> = {};
       for (const line of output.split("\n").filter(Boolean)) {
         const status = line.substring(0, 2).trim();
@@ -4070,6 +4144,7 @@ export async function startServer(options: ServerOptions) {
         if (filePath.startsWith('"') && filePath.endsWith('"')) {
           filePath = filePath.slice(1, -1);
         }
+        if (prefix && filePath.startsWith(prefix)) filePath = filePath.slice(prefix.length);
         if (status === "??" || status === "A") statuses[filePath] = "A";
         else if (status === "D") statuses[filePath] = "D";
         else statuses[filePath] = "M";
@@ -4250,6 +4325,7 @@ export async function startServer(options: ServerOptions) {
     app.get("/mode-assets/*", async (c) => {
       const relPath = c.req.path.replace("/mode-assets/", "");
       const filePath = join(bundleDir, relPath);
+      if (!isContained(filePath, bundleDir)) return c.notFound();
       const file = Bun.file(filePath);
       if (await file.exists()) {
         const contentType = relPath.endsWith(".css")

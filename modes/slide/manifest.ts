@@ -162,8 +162,8 @@ The user just opened the workspace. You are ready to assist with presentation cr
           de: "Englisch · Dunkel",
         },
         description: {
-          en: "A sober dark deck — confident typography on near-black surfaces. Good for keynotes, technical talks, late-night demos.",
-          "zh-CN": "深色稳重的样板,近黑底配清晰的字体层级。适合发布会、技术分享、深夜演示。",
+          en: "Ember: warm ink-black with ember-orange accents and an editorial serif. An 11-slide tour of slide mode, from files to live preview to export.",
+          "zh-CN": "Ember 深色：暖墨黑底、余烬橙点缀，衬线标题带编辑感。11 页英文稿，从文件、实时预览一路讲到导出。",
         },
         tags: ["English", "Dark"],
       },
@@ -181,8 +181,8 @@ The user just opened the workspace. You are ready to assist with presentation cr
           de: "Englisch · Hell",
         },
         description: {
-          en: "Soft paper tones with restrained accents. Reads well projected, prints cleanly, kind to eyes in daylight.",
-          "zh-CN": "纸感柔和、点缀克制。投影清晰、打印干净,白天看也不刺眼。",
+          en: "Paper: warm cream with vermilion accents, the same 11 slides in daylight. Reads well projected and prints cleanly.",
+          "zh-CN": "Paper 浅色：暖米白底、朱红点缀，同一套 11 页英文稿。投影清楚，打印干净。",
         },
         tags: ["English", "Light"],
       },
@@ -200,8 +200,8 @@ The user just opened the workspace. You are ready to assist with presentation cr
           de: "Chinesisch · Dunkel",
         },
         description: {
-          en: "Dark surfaces tuned for CJK type — generous leading, hierarchy that breathes through dense text.",
-          "zh-CN": "为中文字号调过的深色样板,行距宽松、层级在密集文本中也能立住。",
+          en: "Ink: warm ink-black, bone-white Chinese serif headings, vermilion selection marks and two generated washi-paper photographs. A 12-slide introduction to slide mode.",
+          "zh-CN": "Ink 深色：暖墨黑底、骨白色中文衬线标题、朱砂选中框，配两张生成的和纸照片。12 页中文稿，讲清 slide mode 怎么用。",
         },
         tags: ["中文", "Dark"],
       },
@@ -219,8 +219,8 @@ The user just opened the workspace. You are ready to assist with presentation cr
           de: "Chinesisch · Hell",
         },
         description: {
-          en: "Paper-warm light template for Chinese decks — high contrast, considered margins, prints beautifully.",
-          "zh-CN": "纸感温和的浅色中文样板,高对比、留白讲究,打印效果也很好。",
+          en: "Paper: warm paper-white with ink type and a deeper vermilion; the same 12 Chinese slides and photographs. Prints cleanly.",
+          "zh-CN": "Paper 浅色：暖纸白底、墨色正文、深一档的朱砂，同一套 12 页中文稿和配图。打印出来也干净。",
         },
         tags: ["中文", "Light"],
       },

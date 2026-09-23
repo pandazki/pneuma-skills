@@ -42,6 +42,16 @@ export interface ViewerSlice {
    *  flight (and after a clean arrival). Only failures are worth keeping:
    *  the card renders nothing on success. */
   navigateOutcome: NavigateOutcome | null;
+  /** The last seq whose navigation has ENDED — the viewer gave its verdict,
+   *  or the shell settled it without a viewer (refused, nothing to do, a
+   *  bare content-set switch). Lets a caller that needs the viewer to have
+   *  arrived (`capture` of an addressed object) wait for exactly that
+   *  instead of guessing a delay. `navigateOutcome` says how it ended. */
+  navigateDoneSeq: number;
+  /** The seq of the request currently handed to the viewer (`navigateRequest`),
+   *  or 0. A verdict is accepted only for this request: a late verdict for a
+   *  request that a newer one replaced must not certify the newer one. */
+  navigateRequestSeq: number;
   userActions: UserAction[];
 
   setSelection: (s: ElementSelection | null) => void;
@@ -57,8 +67,10 @@ export interface ViewerSlice {
    *  `null` clears the in-flight request WITHOUT touching seq or outcome —
    *  it is the viewer saying "done", not a new question. */
   setNavigateRequest: (req: ViewerLocator | null) => number;
-  /** The viewer's verdict on the navigation it was just handed. */
-  resolveNavigate: (result?: ViewerActionResult) => void;
+  /** The viewer's verdict on the navigation it was handed. `seq` names that
+   *  request (the shell binds it for the viewer); a verdict for any request
+   *  but the current one is ignored. Omitted: the current request. */
+  resolveNavigate: (result?: ViewerActionResult, seq?: number) => void;
   pushUserAction: (action: UserAction) => void;
   drainUserActions: () => UserAction[];
 }
@@ -74,6 +86,8 @@ export const createViewerSlice: StateCreator<AppState, [], [], ViewerSlice> = (s
   navigateRequest: null,
   navigateSeq: 0,
   navigateOutcome: null,
+  navigateDoneSeq: 0,
+  navigateRequestSeq: 0,
   userActions: [],
 
   setSelection: (selection) => set((s) => ({ selection, selectionStamp: selection ? s.selectionStamp + 1 : s.selectionStamp })),
@@ -118,18 +132,26 @@ export const createViewerSlice: StateCreator<AppState, [], [], ViewerSlice> = (s
           code: plan.code,
           contentSet: plan.contentSet,
         },
+        navigateDoneSeq: seq,
       });
       return seq;
     }
-    if (plan.kind === "noop") return seq;
+    if (plan.kind === "noop") {
+      set({ navigateDoneSeq: seq });
+      return seq;
+    }
     if (plan.kind === "switch") {
       state.setActiveContentSet(plan.switchTo);
+      set({ navigateDoneSeq: seq });
       return seq;
     }
     if (plan.switchTo) state.setActiveContentSet(plan.switchTo);
     const handOver = () => {
+      // A newer navigation was dispatched during the content-set wait.
+      if (get().navigateSeq !== seq) return;
       set({
         navigateRequest: { label: navigateRequest.label, address: plan.address },
+        navigateRequestSeq: seq,
       });
     };
     // A viewer handed a set it has not mounted yet cannot resolve anything
@@ -140,14 +162,18 @@ export const createViewerSlice: StateCreator<AppState, [], [], ViewerSlice> = (s
     return seq;
   },
 
-  resolveNavigate: (result) => {
-    const seq = get().navigateSeq;
+  resolveNavigate: (result, forSeq) => {
+    const state = get();
+    if (forSeq && forSeq !== state.navigateRequestSeq) return; // stale: superseded or already answered
+    const seq = forSeq || state.navigateRequestSeq || state.navigateSeq;
     set({
+      navigateRequestSeq: 0,
       navigateRequest: null,
       navigateOutcome:
         result && result.success === false
           ? { seq, ok: false, message: result.message }
           : null,
+      navigateDoneSeq: seq,
     });
   },
 

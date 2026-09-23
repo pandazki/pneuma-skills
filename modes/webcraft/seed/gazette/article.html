@@ -1,408 +1,136 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>The Architecture of Shared Creation — The Gazette</title>
-  <style>
-    /* ── Design Tokens ─────────────────────────────────── */
-    :root {
-      --paper: oklch(96% 0.008 80);
-      --paper-aged: oklch(93% 0.012 78);
-      --ink: oklch(18% 0.01 260);
-      --ink-light: oklch(35% 0.008 260);
-      --ink-faded: oklch(52% 0.006 260);
-      --rule: oklch(72% 0.01 80);
-      --rule-heavy: oklch(30% 0.01 260);
-      --accent: oklch(42% 0.12 25);
-
-      --font-headline: "Playfair Display", "Georgia", serif;
-      --font-body: "Source Serif 4", "Georgia", serif;
-      --font-sans: "Inter", system-ui, sans-serif;
-
-      --measure: 62ch;
-      --col-gap: clamp(1.5rem, 3vw, 2.5rem);
-    }
-
-    /* ── Reset ──────────────────────────────────────────── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    /* ── Base ───────────────────────────────────────────── */
-    html {
-      font-size: clamp(15px, 0.85vw + 13px, 18px);
-      -webkit-font-smoothing: antialiased;
-    }
-
-    body {
-      font-family: var(--font-body);
-      color: var(--ink);
-      background: var(--paper);
-      line-height: 1.8;
-    }
-
-    /* ── Typography ─────────────────────────────────────── */
-    h1, h2, h3 {
-      font-family: var(--font-headline);
-      font-weight: 700;
-      line-height: 1.1;
-      letter-spacing: -0.015em;
-    }
-
-    /* ── Masthead (compact) ────────────────────────────── */
-    .masthead {
-      text-align: center;
-      padding: 1rem clamp(1rem, 4vw, 2.5rem);
-      border-bottom: 3px double var(--rule-heavy);
-    }
-
-    .masthead h2 {
-      font-family: var(--font-headline);
-      font-size: clamp(1.8rem, 4vw, 2.5rem);
-      letter-spacing: -0.02em;
-    }
-
-    .masthead-nav {
-      display: flex;
-      justify-content: center;
-      gap: 2rem;
-      padding: 0.5rem 0 0;
-      list-style: none;
-      font-family: var(--font-sans);
-      font-size: 0.7rem;
-      font-weight: 600;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      border-top: 1px solid var(--rule);
-      margin-top: 0.5rem;
-    }
-
-    .masthead-nav a { color: var(--ink-light); text-decoration: none; }
-    .masthead-nav a:hover { color: var(--ink); }
-
-    /* ── Wrap ───────────────────────────────────────────── */
-    .page-wrap {
-      max-width: 1100px;
-      margin-inline: auto;
-      padding-inline: clamp(1rem, 4vw, 2.5rem);
-    }
-
-    /* ── Article Header ────────────────────────────────── */
-    .article-header {
-      padding: clamp(3rem, 6vw, 5rem) 0 clamp(2rem, 4vw, 3rem);
-      border-bottom: 1px solid var(--rule);
-      text-align: center;
-    }
-
-    .article-section-label {
-      font-family: var(--font-sans);
-      font-size: 0.65rem;
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--accent);
-      margin-bottom: 1.25rem;
-    }
-
-    .article-header h1 {
-      font-size: clamp(2.2rem, 5vw, 3.5rem);
-      letter-spacing: -0.025em;
-      line-height: 1.08;
-      margin-bottom: 1rem;
-      max-width: 18ch;
-      margin-inline: auto;
-    }
-
-    .article-deck {
-      font-family: var(--font-body);
-      font-size: clamp(1.05rem, 1.5vw, 1.25rem);
-      line-height: 1.6;
-      color: var(--ink-light);
-      max-width: 45ch;
-      margin-inline: auto;
-      margin-bottom: 1.5rem;
-    }
-
-    .article-meta {
-      font-family: var(--font-sans);
-      font-size: 0.72rem;
-      color: var(--ink-faded);
-      letter-spacing: 0.04em;
-    }
-
-    .article-meta strong {
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-    }
-
-    /* ── Article Body ──────────────────────────────────── */
-    .article-body {
-      padding-block: clamp(2rem, 4vw, 3.5rem);
-      max-width: 680px;
-      margin-inline: auto;
-    }
-
-    .article-body p {
-      font-size: 1rem;
-      margin-bottom: 1.5em;
-      text-align: justify;
-      text-justify: inter-word;
-      hyphens: auto;
-      max-width: none;
-    }
-
-    .article-body p:first-of-type::first-letter {
-      font-family: var(--font-headline);
-      font-size: 4.2em;
-      float: left;
-      line-height: 0.78;
-      margin-right: 0.08em;
-      margin-top: 0.06em;
-      color: var(--ink);
-    }
-
-    /* ── Subhead ───────────────────────────────────────── */
-    .article-body h2 {
-      font-size: clamp(1.3rem, 2.2vw, 1.7rem);
-      margin-top: 2.5em;
-      margin-bottom: 1em;
-      padding-top: 1.5em;
-      border-top: 1px solid var(--rule);
-    }
-
-    /* ── Article Figure ──────────────────────────────────── */
-    .article-figure {
-      margin: 2em 0;
-      border: 1px solid var(--rule);
-      overflow: hidden;
-    }
-
-    .article-figure img {
-      display: block;
-      width: 100%;
-      height: auto;
-    }
-
-    .article-figure figcaption {
-      font-family: var(--font-sans);
-      font-size: 0.68rem;
-      color: var(--ink-faded);
-      padding: 0.5rem 0.75rem;
-      border-top: 1px solid var(--rule);
-      letter-spacing: 0.02em;
-    }
-
-    /* ── Pull Quote ────────────────────────────────────── */
-    .article-pullquote {
-      margin: 2.5em 0;
-      padding: 1.5em 0;
-      border-top: 2px solid var(--rule-heavy);
-      border-bottom: 1px solid var(--rule);
-    }
-
-    .article-pullquote blockquote {
-      font-family: var(--font-headline);
-      font-size: clamp(1.2rem, 2vw, 1.55rem);
-      font-style: italic;
-      line-height: 1.45;
-      text-align: center;
-      color: var(--ink);
-    }
-
-    .article-pullquote blockquote::before { content: "\201C"; }
-    .article-pullquote blockquote::after { content: "\201D"; }
-
-    /* ── Sidebar Box ───────────────────────────────────── */
-    .sidebar-box {
-      float: right;
-      width: min(280px, 40%);
-      margin: 0.5em 0 1.5em 2em;
-      padding: 1.25em;
-      background: var(--paper-aged);
-      border: 1px solid var(--rule);
-    }
-
-    .sidebar-box h4 {
-      font-family: var(--font-sans);
-      font-size: 0.65rem;
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--accent);
-      margin-bottom: 0.75rem;
-      padding-bottom: 0.5rem;
-      border-bottom: 1px solid var(--rule);
-    }
-
-    .sidebar-box ul {
-      list-style: none;
-      font-size: 0.85rem;
-      line-height: 1.6;
-      color: var(--ink-light);
-    }
-
-    .sidebar-box li {
-      padding: 0.3em 0;
-      border-bottom: 1px solid oklch(82% 0.01 80);
-    }
-
-    .sidebar-box li:last-child { border-bottom: none; }
-
-    .sidebar-box li strong {
-      display: block;
-      font-family: var(--font-headline);
-      color: var(--ink);
-      font-size: 0.95rem;
-    }
-
-    /* ── End Mark ───────────────────────────────────────── */
-    .end-mark {
-      text-align: center;
-      padding: 2rem 0;
-      font-family: var(--font-headline);
-      font-size: 1.5rem;
-      color: var(--ink-faded);
-      border-top: 1px solid var(--rule);
-    }
-
-    /* ── Footer ────────────────────────────────────────── */
-    footer {
-      padding: clamp(1.5rem, 3vw, 2rem) 0;
-      text-align: center;
-      border-top: 3px double var(--rule-heavy);
-    }
-
-    footer p {
-      font-family: var(--font-sans);
-      font-size: 0.7rem;
-      color: var(--ink-faded);
-      letter-spacing: 0.05em;
-      max-width: none;
-    }
-
-    /* ── Responsive ────────────────────────────────────── */
-    @media (max-width: 640px) {
-      .sidebar-box {
-        float: none;
-        width: 100%;
-        margin: 1.5em 0;
-      }
-      .masthead-nav { flex-wrap: wrap; gap: 1rem; }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after {
-        animation-duration: 0.01ms !important;
-        transition-duration: 0.01ms !important;
-      }
-    }
-
-    @media print {
-      body { background: white; }
-    }
-  </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Humans and Code Agents Begin Sharing One Drafting Table | The Gazette</title>
+  <meta name="description" content="In studios across Harbor City, people and code agents now build pages together on one live surface. Designers point, the machines draw, and skeptics ask who holds the pen.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=League+Gothic&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&family=UnifrakturMaguntia&display=swap">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<a class="skip" href="#story">Skip to the story</a>
 
-  <!-- Compact Masthead -->
-  <header class="masthead page-wrap">
-    <h2>The Gazette</h2>
-    <ul class="masthead-nav">
-      <li><a href="index.html">Front Page</a></li>
-      <li><a href="article.html">Features</a></li>
-      <li><a href="#">Opinion</a></li>
-      <li><a href="#">Arts</a></li>
-      <li><a href="#">Science</a></li>
-    </ul>
+<div class="sheet sheet--inside">
+
+  <header class="inside-head">
+    <p class="inside-head__date">Wednesday, September 23, 2026</p>
+    <p class="inside-head__plate"><a href="index.html" aria-label="The Gazette, front page">The Gazette</a></p>
+    <p class="inside-head__page">Page A6</p>
   </header>
+  <nav class="inside-nav" aria-label="Edition">
+    <a href="index.html">Front Page</a>
+    <span>Technology</span>
+    <a href="index.html#opinion">Opinion</a>
+    <a href="index.html#letters">Letters</a>
+  </nav>
 
-  <main class="page-wrap">
+  <main id="story">
+    <article class="feature">
 
-    <!-- Article Header -->
-    <div class="article-header">
-      <p class="article-section-label">Feature</p>
-      <h1>The Architecture of Shared Creation</h1>
-      <p class="article-deck">How four layers of abstraction turned a chat window into a co-creation workspace &mdash; and what it means for the future of human-agent collaboration.</p>
-      <p class="article-meta"><strong>By Clara Whitfield</strong> &middot; Senior Technology Correspondent &middot; March 9, 2026</p>
-    </div>
+      <header class="feature__head">
+        <h1 class="hed-feature vt-hed">Humans and Code Agents Begin Sharing One Drafting Table</h1>
+        <div class="decks decks--feature">
+          <p class="deck">Work Moves Onto a Live Canvas</p>
+          <p class="deck-i">Designers Point, the Machines Draw, and Both Watch the Page Change as It Happens; Skeptics Ask Who Holds the Pen</p>
+        </div>
+        <p class="feature__byline">By Eleanor Voss, <i>Technology Correspondent</i></p>
+      </header>
 
-    <!-- Article Body -->
-    <div class="article-body">
-
-      <p>Consider the humble file system. It is, in essence, a shared medium &mdash; a place where both human and machine can read, write, and observe changes. For decades, this shared medium was invisible to most users, hidden behind application interfaces that abstracted away the very thing that made collaboration possible. The recent emergence of co-creation infrastructure has, in a sense, returned the file system to prominence, placing it at the center of a new architectural paradigm.</p>
-
-      <p>The paradigm is built on a deceptively simple insight: if an agent edits files on disk, and a human sees the rendered result in real time, then both parties share a common representation of reality. The translation problem &mdash; the eternal friction of describing visual intent in words &mdash; is not eliminated but dramatically reduced. The human points at what they see. The agent understands the file that produces it. A continuous loop forms.</p>
-
-      <h2>The Four-Layer Stack</h2>
-
-      <figure class="article-figure">
-        <img src="images/feature-architecture.webp" alt="Isometric illustration of four architectural layers stacked vertically: Mode Protocol, Content Viewer, Agent Bridge, and Runtime Shell">
-        <figcaption>The four-layer stack: each layer has a clear contract boundary, from the runtime shell at the base to the mode protocol at the top.</figcaption>
+      <figure class="engraving feature__art">
+        <img class="vt-art" src="assets/lead-workspace.jpg" width="1536" height="1024" decoding="async" fetchpriority="high"
+             alt="Engraving of a drafting studio: a woman points at a corner of a large upright layout board while a jointed brass drafting arm on a wheeled cabinet of gears draws where she points; two colleagues watch from a table of proofs.">
+        <figcaption>At a studio on Mercer Street, a designer marks a correction on the shared board while the agent’s drafting arm makes it. Colleagues follow the page from the proof table.<span class="credit">Engraving for The Gazette</span></figcaption>
       </figure>
 
-      <div class="sidebar-box">
-        <h4>Architecture at a Glance</h4>
-        <ul>
-          <li>
-            <strong>Layer 4: Mode Protocol</strong>
-            ModeManifest &mdash; skill, viewer, agent config
-          </li>
-          <li>
-            <strong>Layer 3: Content Viewer</strong>
-            ViewerContract &mdash; render, select, extract context
-          </li>
-          <li>
-            <strong>Layer 2: Agent Bridge</strong>
-            AgentBackend &mdash; launch, resume, lifecycle
-          </li>
-          <li>
-            <strong>Layer 1: Runtime Shell</strong>
-            HTTP, WebSocket, file watch, terminal, UI
-          </li>
-        </ul>
+      <div class="feature__body">
+        <div class="feature__text">
+          <p class="dropcap"><span class="drop" aria-hidden="true">H</span><span class="dateline"><span class="sr-only">H</span>arbor City, Sept. 22</span> — On the fourth floor of a converted cannery on Mercer Street, the designer Ada Lindqvist spent Tuesday morning doing something that a year ago would have taken her a week. She described a page to a code agent, watched it build the page on a screen they could both see, and when a headline sat wrong she did not write a ticket. She clicked on it.</p>
+          <p>“That one,” she said. The agent, which had already been told what she clicked, set the headline two sizes smaller and moved on to the next column.</p>
+          <p>Scenes like it are becoming ordinary in studios and small software shops across the city. For most of the short history of code-writing software, the work happened out of sight: a person typed a request, the machine returned a block of text, and someone had to run it to learn what it did. Mistakes surfaced late, usually after lunch, often after the client had seen them.</p>
+          <p>The new arrangement puts both parties in front of the same live surface, whether a web page, a slide deck or a diagram. The agent edits the real files, and the surface redraws itself with every edit it makes. Nothing is handed over at the end because nothing was ever out of view.</p>
+
+          <h2 class="breaker">Pointing Instead of Describing</h2>
+          <p>The change that users mention first is small. On the shared surface, a person can select anything they see, a headline, a photograph, one row of a table, and the agent receives not a vague description but the exact address of the thing selected.</p>
+          <p>“I used to write paragraphs,” Ms. Lindqvist said. “‘The second blue box from the top, no, the other one.’ Now I point, like I would with an assistant standing next to me.”</p>
+          <aside class="sidenote rail-quote" aria-hidden="true">
+            <p>“It shows me. Sometimes it shows me that it didn’t, before I notice.”</p>
+            <p class="rail-quote__who">Sam Whitlock, software engineer</p>
+          </aside>
+          <p>The traffic runs the other way as well. The agents in these rooms take pictures of their own work, the same view the person is looking at, and check it before they report that a job is done. Sam Whitlock, a software engineer at a freight company near the harbor, said he stopped asking whether a change had worked. “It shows me,” he said. “Sometimes it shows me that it didn’t, before I notice.”</p>
+
+          <h2 class="breaker">A Change in Posture</h2>
+          <p>People who work this way describe the difference less in speed than in posture. The human stops reviewing finished work and starts watching work in progress, the way an editor once stood behind a compositor at the stone. They can stop a wrong turn at the third line instead of the thirtieth page, and they can hand over context that a written request would have missed.</p>
+
+          <blockquote class="pull">
+            <p>“The page is the conversation now. I don’t read what it says it did. I look.”</p>
+            <footer>Marcus Oduya, Aldine Works</footer>
+          </blockquote>
+
+          <p>Marcus Oduya runs Aldine Works, a four-person shop on Canal Row that builds websites for restaurants, theaters and one very particular bookbinder. In August the shop delivered a brochure site that, by Mr. Oduya’s account, would once have taken three weeks of emailed screenshots. It went out in four days.</p>
+          <p>“The time didn’t go into typing,” he said. “It went into waiting for each other. That’s the part that’s gone.”</p>
+
+          <aside class="sidenote rail-box rail-box--figures" aria-labelledby="figures-h">
+            <h2 id="figures-h">The Rooms in Figures</h2>
+            <dl>
+              <div><dt>4 days</dt><dd>to deliver a brochure site at Aldine Works, once three weeks of emailed screenshots.</dd></div>
+              <div><dt>2 studios</dt><dd>of those Professor Kessler observed shipped pages that failed readers using screen readers.</dd></div>
+              <div><dt>1 rule</dt><dd>in the busiest rooms: the agent may draw anything; only a person may publish.</dd></div>
+            </dl>
+          </aside>
+          <p>The rooms also remember. Several studios described keeping a running record of every step the agent takes, so that a bad afternoon can be wound back like a tape, and a short file of each designer’s standing preferences, which the agent reads before it chooses a typeface or a color. Ms. Lindqvist’s file begins with a line about serifs that she declined to have printed.</p>
+
+          <figure class="engraving feature__inset">
+            <img src="assets/hands-table.jpg" width="1536" height="1024" loading="lazy" decoding="async"
+                 alt="Engraving looking down on a drafting table where a human hand holding a pencil and a jointed brass mechanical hand holding a pen work on the same sheet of architectural drawings, their points almost touching.">
+            <figcaption>Two hands, one sheet. In the shared studios, the person and the agent work on the same page rather than trading drafts.<span class="credit">Engraving for The Gazette</span></figcaption>
+          </figure>
+
+          <h2 class="breaker">The Skeptics</h2>
+          <p>Not everyone is persuaded. Ruth Kessler, who studies how people and software work together at Harbor City Polytechnic, has spent the summer watching designers use the new rooms, and she worries about what the pleasant view leaves out.</p>
+          <p>“A live preview is very good at showing you what you asked for,” Professor Kessler said. “It is much worse at showing you what you didn’t think to ask. The page can look right while the file underneath is a mess, and the prettier the page, the less anybody opens the file.”</p>
+          <p>She also cautioned against mistaking attention for understanding. Watching a machine work, she said, can give a person the feeling of having supervised it without the substance. Two of the studios she observed had shipped pages that looked finished and failed for readers using screen readers, a flaw no one in the room could see.</p>
+
+          <h2 class="breaker">Who Holds the Pen</h2>
+          <p>The studios that use the rooms most heavily have settled, so far, on a simple rule: the agent may draw anything, and only a person may publish. At Aldine Works, nothing leaves the shop until someone other than the person who directed it has read the page, and read the file.</p>
+          <p>“The question isn’t whether the machine can draw,” Professor Kessler said. “It plainly can. The question is whether the person standing next to it still knows why each line is there.”</p>
+          <p>Late on Tuesday, the light going amber over the cannery windows, Ms. Lindqvist switched off her screen. The page they had built that morning stayed exactly where they had left it, every step of it on record.</p>
+          <p class="end">“It will all be there in the morning,” she said. “So will it.”</p>
+        </div>
+
+        <aside class="feature__rail" aria-label="About this story">
+          <section class="rail-box">
+            <h2>How the Shared Room Works</h2>
+            <ol>
+              <li>A person describes the work in plain words.</li>
+              <li>The agent edits the real files, and the page redraws as each edit lands.</li>
+              <li>The person points at anything on the page to hand it back with context.</li>
+              <li>The agent pictures its own work to check what the person sees.</li>
+              <li>Every step is kept, so a wrong turn can be undone.</li>
+            </ol>
+          </section>
+          <section class="rail-box rail-box--plain rail-box--end">
+            <h2>Elsewhere in This Edition</h2>
+            <ul>
+              <li><a href="index.html#opinion">Let the Machine Show Its Work</a><span>Margaret Hale, Opinion</span></li>
+              <li><a href="index.html#letters">A Machine at the Stone</a><span>Letters to the Editor</span></li>
+              <li><a href="index.html#pressroom">Printers’ Guild Votes to Keep the Old Presses Running</a><span>Page B4</span></li>
+            </ul>
+          </section>
+        </aside>
       </div>
 
-      <p>The architecture that enables this collaboration is organized into four distinct layers, each with a clear contract boundary. At the foundation sits the runtime shell: HTTP servers, WebSocket bridges, file watchers, and the frontend rendering engine. This layer knows nothing about presentations or documents or diagrams &mdash; it simply moves data between endpoints.</p>
-
-      <p>Above it, the agent bridge manages the lifecycle of the AI agent itself. Launch, resume, kill. Currently implemented for Claude Code via the undocumented <code>--sdk-url</code> WebSocket protocol, this layer is designed to accommodate other backends: Codex CLI, Aider, or entirely custom agents. The abstraction is deliberate. The infrastructure should outlast any particular AI model.</p>
-
-      <p>The content viewer, layer three, defines how files become visual experiences. A ViewerContract specifies the preview component, the element selection mechanism, and the context extraction pipeline that tells the agent what the user is looking at. This is where the bidirectional magic happens: the user clicks an element, the viewer extracts its file coordinates, and the agent receives a structured context block describing exactly what needs to change.</p>
-
-      <p>At the top sits the mode protocol. A ModeManifest is a pure data declaration &mdash; no React dependencies, no runtime coupling &mdash; that describes what a mode is: its skill prompt, its viewer configuration, its agent preferences, its seed templates. To add a new mode, you implement this interface. The system discovers and loads it automatically.</p>
-
-      <div class="article-pullquote">
-        <blockquote>The translation problem &mdash; the eternal friction of describing visual intent in words &mdash; is not eliminated but dramatically reduced.</blockquote>
-      </div>
-
-      <h2>Skills That Evolve</h2>
-
-      <p>Perhaps the most conceptually ambitious aspect of this architecture is its approach to learning. Traditional software treats configuration as static: you set your preferences once, or perhaps they drift over time through accumulated changes to settings files. The evolution agent takes a fundamentally different approach.</p>
-
-      <p>It works like this: after multiple sessions of collaboration, the evolution agent is invoked to mine conversation history. It looks for patterns &mdash; not just explicit preferences ("I prefer sans-serif fonts") but implicit ones revealed through the arc of edits and revisions. A user who consistently adjusts spacing after the agent&rsquo;s initial attempts reveals a preference for different spatial density. A user who repeatedly asks for bolder typography reveals an aesthetic direction.</p>
-
-      <p>These patterns are surfaced as proposals, each backed by evidence citations from actual conversations. The user reviews them, approves or rejects, and the approved patterns are integrated into the skill prompt for future sessions. The agent doesn&rsquo;t just remember &mdash; it adapts.</p>
-
-      <h2>The Marketplace Thesis</h2>
-
-      <p>The distribution story completes the picture. A mode, once developed, is a self-contained package: manifest, skill files, viewer component, seed templates, export pipeline. It can be published to a registry, installed with a single command, and immediately used by anyone. The Mode Maker &mdash; itself a mode, in a satisfying act of self-reference &mdash; provides AI-assisted development: fork an existing mode, modify it with Claude&rsquo;s help, test it in an isolated instance, and publish.</p>
-
-      <p>This creates a flywheel. More modes attract more users. More users generate more conversation history. More history enables better evolution. Better evolution produces more refined modes. The architecture, in other words, is not just infrastructure for collaboration &mdash; it is infrastructure for the continuous improvement of collaboration itself.</p>
-
-      <p>Whether this thesis holds will depend on adoption, on the quality of modes that emerge, and on the willingness of users to trust an AI agent with access to their creative history. But the architectural foundation is, at least, sound: four clean layers, three typed contracts, and a file system at the center of it all &mdash; the oldest shared medium in computing, pressed into service for its newest purpose.</p>
-
-    </div>
-
-    <!-- End Mark -->
-    <div class="end-mark">&diams;</div>
-
+    </article>
   </main>
 
-  <!-- Footer -->
-  <footer class="page-wrap">
-    <p>Copyright &copy; 2026 The Gazette &middot; A Pneuma WebCraft seed publication &middot; All rights reserved</p>
+  <footer class="colophon">
+    <p><a href="index.html">Return to the Front Page</a></p>
+    <p>A work of fiction: every story, name, figure and advertisement in this edition is invented. Illustrations engraved for The Gazette.</p>
+    <p>© 2026 The Gazette Company</p>
   </footer>
 
+</div>
 </body>
 </html>

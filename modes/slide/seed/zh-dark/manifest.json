@@ -1,16 +1,17 @@
 {
-  "title": "Pneuma Slide — Welcome",
+  "title": "Pneuma Slide Mode",
   "slides": [
-    { "file": "slides/slide-01.html", "title": "Pneuma Slide" },
-    { "file": "slides/slide-02.html", "title": "这不只是一个工具" },
-    { "file": "slides/slide-03.html", "title": "实时预览 WYSIWYG" },
-    { "file": "slides/slide-04.html", "title": "对话式创作" },
-    { "file": "slides/slide-05.html", "title": "点击选择，精确修改" },
-    { "file": "slides/slide-06.html", "title": "AI 生成配图" },
-    { "file": "slides/slide-07.html", "title": "主题设计系统" },
-    { "file": "slides/slide-08.html", "title": "全能工具箱" },
-    { "file": "slides/slide-09.html", "title": "智能排版引擎" },
-    { "file": "slides/slide-10.html", "title": "展示与导出" },
-    { "file": "slides/slide-11.html", "title": "开始你的创作" }
+    { "file": "slides/slide-01.html", "title": "看着它成形" },
+    { "file": "slides/slide-02.html", "title": "让 agent 做稿，最费劲的是来回改" },
+    { "file": "slides/slide-03.html", "title": "人和 code agent 共创的基础设施" },
+    { "file": "slides/slide-04.html", "title": "每一页都是一个 HTML 文件" },
+    { "file": "slides/slide-05.html", "title": "写一页，亮一页" },
+    { "file": "slides/slide-06.html", "title": "点中哪里，就改哪里" },
+    { "file": "slides/slide-07.html", "title": "需要一张图，它就去生成" },
+    { "file": "slides/slide-08.html", "title": "一个 theme.css 管住整套稿子" },
+    { "file": "slides/slide-09.html", "title": "每一页都放得下" },
+    { "file": "slides/slide-10.html", "title": "写完就能讲，也能带走" },
+    { "file": "slides/slide-11.html", "title": "深浅两套，只换 theme.css" },
+    { "file": "slides/slide-12.html", "title": "一行命令，开一套稿子" }
   ]
 }

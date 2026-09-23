@@ -1,94 +1,92 @@
 <div class="slide">
-  <span class="tag" style="margin-bottom: 16px; align-self: flex-start;">Communication</span>
-  <h1 style="font-size: 2.2rem;">The <span class="text-accent">Dual-Channel</span> Bridge</h1>
-  <p style="max-width: 700px; margin-bottom: 40px;">
-    At the heart of the Runtime Shell is an incredibly fast WebSocket bridge synchronizing the CLI agent with the React
-    frontend.
-  </p>
+  <header class="chrome"><span class="brand">Pneuma Skills</span><span class="path">slides/slide-04.html</span><span class="folio">04 / 11</span></header>
 
-  <div
-    style="display: flex; align-items: stretch; justify-content: center; width: 100%; max-width: 860px; margin: 0 auto; padding: 32px; background: var(--color-surface); border-radius: 16px; border: 1px solid var(--color-border); box-shadow: inset 0 2px 10px rgba(0,0,0,0.02);">
-
-    <!-- AI Agent Side -->
-    <div
-      style="flex: 1; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
-      <div
-        style="width: 72px; height: 72px; margin: 0 auto 16px; background: #fff; border: 2px solid var(--color-primary); border-radius: 20px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(212, 99, 42, 0.15);">
-        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#D4632A" stroke-width="2"
-          stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4 17l6-6-6-6" />
-          <path d="M12 19h8" />
-        </svg>
-      </div>
-      <h3 style="margin-bottom: 4px; font-size: 1.1rem;">Claude CLI</h3>
-      <p
-        style="font-size: 0.8rem; color: var(--color-muted); font-family: monospace; background: rgba(0,0,0,0.05); padding: 2px 6px; border-radius: 4px;">
-        --sdk-url</p>
+  <div style="display:grid; grid-template-columns: 1fr 460px; gap: 48px; align-items: end;">
+    <div>
+      <div class="kicker">Live</div>
+      <h2 style="margin-top: 20px;">Watch the deck <em>take shape.</em></h2>
     </div>
+    <p style="font-size: 18px;">Nothing waits for a finished file. Every write lands in the viewer, so you can change direction while the deck is still forming.</p>
+  </div>
 
-    <!-- The Bridge -->
-    <div
-      style="flex: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; padding: 0 20px;">
+  <div style="position: relative; margin-top: 56px;">
+    <div style="position:absolute; top: 5px; left: 0; right: 0; height: 1px; background: var(--color-border-strong);"></div>
+    <div style="display:grid; grid-template-columns: repeat(5, 1fr); gap: 28px; position: relative;">
 
-      <!-- Top Arrow -->
-      <div style="display: flex; align-items: center; width: 100%; margin-bottom: 16px; position: relative;">
-        <!-- Animated dots track -->
-        <div
-          style="position: absolute; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--color-primary) 0%, var(--color-accent) 50%, #5B8DB5 100%); opacity: 0.3; top: 50%; transform: translateY(-50%); z-index: 0;">
+      <div>
+        <div style="width: 11px; height: 11px; border-radius: 50%; background: var(--color-bg); border: 1.5px solid var(--color-fg-2);"></div>
+        <div class="frame" style="margin-top: 22px;">
+          <div class="in" style="gap: 7px; justify-content: flex-start; inset: 14% 12%;">
+            <div class="bar fg" style="width: 40%; height: 5px;"></div>
+            <div class="bar" style="width: 90%; height: 4px;"></div>
+            <div class="bar" style="width: 78%; height: 4px;"></div>
+            <div class="bar" style="width: 84%; height: 4px;"></div>
+            <div class="bar" style="width: 60%; height: 4px;"></div>
+          </div>
         </div>
-
-        <div style="flex: 1;"></div>
-        <div
-          style="padding: 6px 14px; background: #2D2A26; border-radius: 20px; font-size: 0.75rem; color: #fff; margin: 0 8px; z-index: 1; font-family: monospace; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
-          <span style="color: var(--color-primary);">NDJSON</span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M5 12h14" />
-            <path d="M12 5l7 7-7 7" />
-          </svg>
-          <span style="color: #5B8DB5;">JSON</span>
-        </div>
-        <div style="flex: 1;"></div>
+        <h3 style="margin-top: 16px; font-size: 18px;">Outline</h3>
+        <p class="mono muted" style="font-size: 16px; margin-top: 4px;">design_outline.md</p>
       </div>
 
-      <div
-        style="padding: 16px 32px; background: #fff; border: 2px solid var(--color-border); border-radius: 12px; font-weight: 700; color: #111; z-index: 1; box-shadow: 0 4px 16px rgba(0,0,0,0.04); font-size: 1.1rem; letter-spacing: 0.02em;">
-        Hono Server
+      <div>
+        <div style="width: 11px; height: 11px; border-radius: 50%; background: var(--color-bg); border: 1.5px solid var(--color-fg-2);"></div>
+        <div style="margin-top: 22px; display:grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 6px; aspect-ratio: 16 / 9;">
+          <div class="frame ghost" style="border-radius: 4px; aspect-ratio: auto;"></div>
+          <div class="frame ghost" style="border-radius: 4px; aspect-ratio: auto;"></div>
+          <div class="frame ghost" style="border-radius: 4px; aspect-ratio: auto;"></div>
+          <div class="frame ghost" style="border-radius: 4px; aspect-ratio: auto;"></div>
+        </div>
+        <h3 style="margin-top: 16px; font-size: 18px;">Scaffold</h3>
+        <p class="mono muted" style="font-size: 16px; margin-top: 4px;">manifest.json + stubs</p>
       </div>
 
-      <!-- Bottom Arrow -->
-      <div style="display: flex; align-items: center; width: 100%; margin-top: 16px; position: relative;">
-        <div
-          style="position: absolute; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, #5B8DB5 0%, var(--color-accent) 50%, var(--color-primary) 100%); opacity: 0.3; top: 50%; transform: translateY(-50%); z-index: 0;">
+      <div>
+        <div style="width: 11px; height: 11px; border-radius: 50%; background: var(--color-bg); border: 1.5px solid var(--color-fg-2);"></div>
+        <div class="frame" style="margin-top: 22px;">
+          <div class="in" style="flex-direction: row; align-items: center; justify-content: space-between; inset: 12% 12%;">
+            <div style="font-family: var(--font-display); font-size: 46px; line-height: 1; color: var(--color-fg);">Aa</div>
+            <div style="display:grid; grid-template-columns: repeat(2, 18px); gap: 6px;">
+              <div style="height: 18px; border-radius: 50%; background: var(--color-primary);"></div>
+              <div style="height: 18px; border-radius: 50%; background: var(--color-accent);"></div>
+              <div style="height: 18px; border-radius: 50%; background: var(--color-fg);"></div>
+              <div style="height: 18px; border-radius: 50%; background: var(--color-border-strong);"></div>
+            </div>
+          </div>
         </div>
-
-        <div style="flex: 1;"></div>
-        <div
-          style="padding: 6px 14px; background: #2D2A26; border-radius: 20px; font-size: 0.75rem; color: #fff; margin: 0 8px; z-index: 1; font-family: monospace; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M19 12H5" />
-            <path d="M12 19l-7-7 7-7" />
-          </svg>
-          <span>File Watcher Push</span>
-        </div>
-        <div style="flex: 1;"></div>
+        <h3 style="margin-top: 16px; font-size: 18px;">Theme</h3>
+        <p class="mono muted" style="font-size: 16px; margin-top: 4px;">theme.css</p>
       </div>
+
+      <div>
+        <div style="width: 11px; height: 11px; border-radius: 50%; background: var(--color-bg); border: 1.5px solid var(--color-fg-2);"></div>
+        <div class="frame" style="margin-top: 22px;">
+          <div class="in" style="gap: 7px; inset: 16% 12%;">
+            <div class="bar pri" style="width: 22%; height: 4px;"></div>
+            <div class="bar t fg" style="width: 80%; height: 9px;"></div>
+            <div class="bar t fg" style="width: 50%; height: 9px;"></div>
+            <div class="bar" style="width: 64%; height: 4px; margin-top: 4px;"></div>
+          </div>
+        </div>
+        <h3 style="margin-top: 16px; font-size: 18px;">Cover</h3>
+        <p class="mono muted" style="font-size: 16px; margin-top: 4px;">slide-01.html</p>
+      </div>
+
+      <div>
+        <div style="width: 11px; height: 11px; border-radius: 50%; background: var(--color-primary); box-shadow: 0 0 0 5px var(--color-primary-soft);"></div>
+        <div class="frame" style="margin-top: 22px; border-color: var(--color-primary);">
+          <div class="in" style="gap: 7px; inset: 14% 10%;">
+            <div class="bar fg" style="width: 56%; height: 7px;"></div>
+            <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 4px;">
+              <div class="bar" style="height: 30px; border-radius: 3px;"></div>
+              <div class="bar" style="height: 30px; border-radius: 3px;"></div>
+              <div style="height: 30px; border-radius: 3px; border: 1px dashed var(--color-border-strong); display:flex; align-items:center; justify-content:center;"><span class="caret" style="height: 12px;"></span></div>
+            </div>
+          </div>
+        </div>
+        <h3 style="margin-top: 16px; font-size: 18px; color: var(--color-primary);">Content, now</h3>
+        <p class="mono muted" style="font-size: 16px; margin-top: 4px;">slide-04.html</p>
+      </div>
+
     </div>
-
-    <!-- Frontend Side -->
-    <div
-      style="flex: 1; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
-      <div
-        style="width: 72px; height: 72px; margin: 0 auto 16px; background: #fff; border: 2px solid #5B8DB5; border-radius: 20px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(91, 141, 181, 0.15);">
-        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#5B8DB5" stroke-width="2"
-          stroke-linecap="round" stroke-linejoin="round">
-          <path d="M2 12h4l2-9 5 18 3-10h6" />
-        </svg>
-      </div>
-      <h3 style="margin-bottom: 4px; font-size: 1.1rem;">Vite Viewer</h3>
-      <p
-        style="font-size: 0.8rem; color: var(--color-muted); font-family: monospace; background: rgba(0,0,0,0.05); padding: 2px 6px; border-radius: 4px;">
-        React App</p>
-    </div>
-
   </div>
 </div>

@@ -954,9 +954,9 @@ export function handleParsedMessage(
       const contentFiles = (data.files as Incoming[])
         .filter((f) => !IMAGE_RE.test(f.path))
         .map((f) => ({ ...f, origin: f.origin ?? "external" }));
-      const hasImageChange = (data.files as Incoming[]).some((f) => IMAGE_RE.test(f.path));
+      const imagePaths = (data.files as Incoming[]).filter((f) => IMAGE_RE.test(f.path)).map((f) => f.path);
       if (contentFiles.length > 0) store.updateFiles(contentFiles);
-      if (hasImageChange) store.bumpImageTick();
+      if (imagePaths.length > 0) store.bumpImageTick(imagePaths);
       break;
     }
 

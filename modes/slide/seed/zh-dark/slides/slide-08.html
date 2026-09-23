@@ -1,55 +1,37 @@
 <div class="slide">
-  <span class="tag" style="margin-bottom: 16px; align-self: flex-start;">Design System</span>
-  <h1 style="font-size: 2.2rem;">基于 <span class="text-primary">CSS 变量</span> 的全局主题</h1>
-  <p style="max-width: 700px; margin-bottom: 32px;">
-    Slide 模式秉持“主题优先”的设计哲学。只需让 AI 或自己修改一个核心的 <code>theme.css</code>，你就能一秒重塑整套幻灯片的视觉美学，绝无死角。
-  </p>
+  <div class="folio"><span class="path">slides/slide-08.html</span><span class="count"><b>08</b> / 12</span></div>
 
-  <div style="display: flex; gap: 24px;">
-    <!-- Theme definitions -->
-    <div style="flex: 1; background: #1E1E1E; padding: 20px; border-radius: 12px; border: 1px solid #333;">
-      <div
-        style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px solid #333; padding-bottom: 8px;">
-        <span style="color: #888; font-size: 0.85rem; font-family: monospace;">theme.css</span>
-        <div style="display: flex; gap: 6px;">
-          <div style="width: 10px; height: 10px; border-radius: 50%; background: #ED6A5E;"></div>
-          <div style="width: 10px; height: 10px; border-radius: 50%; background: #F4BF4F;"></div>
-          <div style="width: 10px; height: 10px; border-radius: 50%; background: #61C554;"></div>
-        </div>
-      </div>
-      <pre
-        style="margin: 0; padding: 0; background: transparent; font-size: 0.85rem; line-height: 1.6; font-family: 'JetBrains Mono', monospace;"><span style="color: #DCDCAA;">:root</span> {
-  <span style="color: #9CDCFE;">--color-bg</span>: <span style="color: #CE9178;">#FAF7F2</span>;
-  <span style="color: #9CDCFE;">--color-text</span>: <span style="color: #CE9178;">#2D2A26</span>;
-  <span style="color: #9CDCFE;">--color-primary</span>: <span style="color: #CE9178;">#D4632A</span>;
-  <span style="color: #9CDCFE;">--color-accent</span>: <span style="color: #CE9178;">#C4963A</span>;
-  <span style="color: #9CDCFE;">--color-surface</span>: <span style="color: #CE9178;">#F0EBE3</span>;
-  
-  <span style="color: #9CDCFE;">--font-sans</span>: <span style="color: #CE9178;">'Inter', sans-serif</span>;
-}</pre>
+  <div style="display:flex; justify-content:space-between; align-items:flex-end;">
+    <div>
+      <p class="eyebrow">07 · theme.css</p>
+      <h2 style="margin-bottom:0;">一个 theme.css，管住整套稿子</h2>
     </div>
+    <span class="pill v-theme" style="margin-bottom:10px;">当前主题 · </span>
+  </div>
 
-    <!-- Usage example -->
-    <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 16px;">
-      <div
-        style="padding: 16px; background: var(--color-surface); border: 1px solid var(--color-border); border-left: 4px solid var(--color-primary); border-radius: 6px;">
-        <div
-          style="font-weight: 600; font-size: 0.85rem; color: var(--color-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em;">
-          Prompting Tip #1 / 提示词技巧之一</div>
-        <p style="margin: 0; font-size: 0.95rem;">
-          “把全局主题换成最硬核的赛博朋克风。背景全部用极深的反差黑，并用高饱和的霓虹粉和青色做重点元素的点缀。”
-        </p>
-      </div>
+  <div style="display:grid; grid-template-columns:repeat(6, 1fr); gap:16px; margin-top:44px;">
+    <div class="swatch"><div class="chip" style="background:var(--color-bg);"></div><p class="name">--color-bg</p><p class="val v-bg"></p></div>
+    <div class="swatch"><div class="chip" style="background:var(--color-surface);"></div><p class="name">--color-surface</p><p class="val v-surface"></p></div>
+    <div class="swatch"><div class="chip" style="background:var(--color-fg);"></div><p class="name">--color-fg</p><p class="val v-fg"></p></div>
+    <div class="swatch"><div class="chip" style="background:var(--color-muted);"></div><p class="name">--color-muted</p><p class="val v-muted"></p></div>
+    <div class="swatch"><div class="chip" style="background:var(--color-secondary);"></div><p class="name">--color-secondary</p><p class="val v-secondary"></p></div>
+    <div class="swatch"><div class="chip" style="background:var(--color-primary);"></div><p class="name">--color-primary</p><p class="val v-primary"></p></div>
+  </div>
 
-      <div
-        style="padding: 16px; background: var(--color-surface); border: 1px solid var(--color-border); border-left: 4px solid var(--color-accent); border-radius: 6px;">
-        <div
-          style="font-weight: 600; font-size: 0.85rem; color: var(--color-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em;">
-          Prompting Tip #2 / 提示词技巧之二</div>
-        <p style="margin: 0; font-size: 0.95rem;">
-          “把所有卡片和模块的全局圆角调大，让整套 PPT 给人的感觉更平易近人、更活泼圆润一点。”
-        </p>
-      </div>
+  <div style="display:grid; grid-template-columns:1.2fr 1fr 1fr; gap:40px; margin-top:40px; padding-top:28px; border-top:1px solid var(--color-border);">
+    <div>
+      <p class="caption" style="margin:0 0 8px;">--font-serif · 标题</p>
+      <p style="font-family:var(--font-serif); font-size:34px; font-weight:600; line-height:1.3; color:var(--color-fg);">看着它成形</p>
+    </div>
+    <div>
+      <p class="caption" style="margin:0 0 8px;">--font-sans · 正文</p>
+      <p style="font-size:20px; line-height:1.6;">点中哪里，它就改哪里</p>
+    </div>
+    <div>
+      <p class="caption" style="margin:0 0 8px;">--font-mono · 代码与路径</p>
+      <p class="mono" style="font-size:17px; line-height:1.7;">slides/slide-08.html</p>
     </div>
   </div>
+
+  <p class="small" style="margin-top:28px;">页面里不写死颜色和字体，全部引用这些变量。改一个变量，十二页一起变。</p>
 </div>

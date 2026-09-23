@@ -21,6 +21,8 @@ import {
   HOST_ABI_VENDOR_SHIMS,
   HOST_STORE_EXTERNAL_SPECIFIER,
   hostAbiImportMap,
+  hostAbiExportNames,
+  findUnresolvedHostAbiImports,
   resolveHostAbiExternal,
   buildModeViewer,
 } from "../mode-build.js";
@@ -120,6 +122,106 @@ describe("vendor shims", () => {
     const dataUrl = `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
     return await import(dataUrl);
   }
+
+  /**
+   * The globals exactly as `src/main.tsx` sets them, from the real packages.
+   * The shims must re-export everything these expose — a missing name is a
+   * link error in the browser, and the mode never loads (3.52.x shipped a
+   * React shim without `version`, which is how Draw stopped rendering).
+   */
+  async function hostReactGlobals() {
+    const React = await import("react");
+    const ReactDOM = await import("react-dom");
+    const ReactDOMClient = await import("react-dom/client");
+    const JsxRuntime = await import("react/jsx-runtime");
+    return {
+      React,
+      ReactDOM,
+      ReactDOMClient,
+      JsxRuntime,
+      globals: {
+        __PNEUMA_REACT__: React,
+        __PNEUMA_REACT_DOM__: {
+          ...ReactDOM,
+          createRoot: ReactDOMClient.createRoot,
+          hydrateRoot: ReactDOMClient.hydrateRoot,
+        },
+        __PNEUMA_JSX_RUNTIME__: JsxRuntime,
+      },
+    };
+  }
+
+  function namedKeys(ns: object): string[] {
+    return Object.keys(ns).filter((k) => k !== "default" && k !== "__esModule");
+  }
+
+  test("/vendor/react.js re-exports the host's whole React surface", async () => {
+    const { React, globals } = await hostReactGlobals();
+    const shim = await evalShim("/vendor/react.js", globals, "react");
+    expect(shim.default).toBe(React);
+    for (const name of namedKeys(React)) {
+      expect(name in shim, `shim is missing react export "${name}"`).toBe(true);
+      expect(shim[name]).toBe((React as any)[name]);
+    }
+    // The names that broke catalog modes in 3.52.x: draw (excalidraw) imports
+    // `version`, clipcraft `useInsertionEffect`.
+    for (const name of ["version", "useInsertionEffect", "useId", "startTransition", "use", "useActionState", "useOptimistic", "createRef", "StrictMode", "Profiler"]) {
+      expect(name in shim, `shim is missing react export "${name}"`).toBe(true);
+    }
+  });
+
+  test("/vendor/react-dom.js re-exports react-dom and react-dom/client as the host merges them", async () => {
+    const { ReactDOM, ReactDOMClient, globals } = await hostReactGlobals();
+    const shim = await evalShim("/vendor/react-dom.js", globals, "react-dom");
+    expect(shim.default).toBe(globals.__PNEUMA_REACT_DOM__);
+    for (const [pkg, ns] of [["react-dom", ReactDOM], ["react-dom/client", ReactDOMClient]] as const) {
+      for (const name of namedKeys(ns)) {
+        expect(name in shim, `shim is missing ${pkg} export "${name}"`).toBe(true);
+        expect(shim[name]).toBe((globals.__PNEUMA_REACT_DOM__ as any)[name]);
+      }
+    }
+    expect(shim.createRoot).toBe(ReactDOMClient.createRoot);
+  });
+
+  test("/vendor/react-dom.js keeps unstable_batchedUpdates when the host lacks it", async () => {
+    const shim = await evalShim("/vendor/react-dom.js", { __PNEUMA_REACT_DOM__: {} }, "no-batched");
+    expect(shim.unstable_batchedUpdates((a: number, b: number) => a + b, 2, 3)).toBe(5);
+  });
+
+  test("/vendor/react-jsx-runtime.js re-exports the whole jsx-runtime surface", async () => {
+    const { JsxRuntime, globals } = await hostReactGlobals();
+    const shim = await evalShim("/vendor/react-jsx-runtime.js", globals, "jsx");
+    for (const name of namedKeys(JsxRuntime)) {
+      expect(shim[name], `shim is missing react/jsx-runtime export "${name}"`).toBe((JsxRuntime as any)[name]);
+    }
+  });
+
+  test("/vendor/react-jsx-dev-runtime.js covers jsx-dev-runtime through the production runtime", async () => {
+    const JsxDevRuntime = await import("react/jsx-dev-runtime");
+    const { JsxRuntime, globals } = await hostReactGlobals();
+    const shim = await evalShim("/vendor/react-jsx-dev-runtime.js", globals, "jsx-dev");
+    for (const name of namedKeys(JsxDevRuntime)) {
+      expect(name in shim, `shim is missing react/jsx-dev-runtime export "${name}"`).toBe(true);
+    }
+    expect(shim.jsxDEV).toBe(JsxRuntime.jsx);
+    expect(shim.Fragment).toBe(JsxRuntime.Fragment);
+  });
+
+  test("hostAbiExportNames describes what each shim really exports", async () => {
+    const { globals } = await hostReactGlobals();
+    const hostGlobals = {
+      ...globals,
+      __PNEUMA_STORE__: () => undefined,
+      __PNEUMA_I18N__: { i18next: {}, reactI18next: await import("react-i18next") },
+    };
+    for (const specifier of HOST_ABI_EXTERNALS) {
+      const url = HOST_ABI_VENDOR_URLS[specifier];
+      const shim = await evalShim(url, hostGlobals, `names:${specifier}`);
+      const actual = new Set(Object.keys(shim));
+      expect([...hostAbiExportNames(specifier)!].sort()).toEqual([...actual].sort());
+    }
+    expect(hostAbiExportNames("react-markdown")).toBeNull();
+  });
 
   test("/vendor/react-i18n.js re-exports the host's whole react-i18next surface", async () => {
     const reactI18next = await import("react-i18next");
@@ -301,5 +403,121 @@ export default function FixturePreview() {
     // not leave resolution scaffolding (a linked node_modules, a lockfile)
     // next to the sources.
     expect(readdirSync(modeDir).sort()).toEqual([".build", "manifest.ts", "pneuma-mode.ts", "viewer"]);
+  });
+});
+
+describe("findUnresolvedHostAbiImports", () => {
+  test("accepts every import form Bun emits when the names exist", () => {
+    const bundle = [
+      `import React, { useState, version as version2 } from "react";`,
+      `import * as React2 from "react";`,
+      `import ReactExports, { createContext } from "react";`,
+      `import { default as default2 } from "pneuma-skills/src/store.js";`,
+      `import { createPortal, flushSync, unstable_batchedUpdates, createRoot } from "react-dom";`,
+      `import { jsxDEV as jsxDEV2, Fragment } from "react/jsx-dev-runtime";`,
+      `import * as jsxRuntime from "react/jsx-runtime";`,
+      `export { useTranslation } from "react-i18next";`,
+      `import i18n, { t } from "i18next";`,
+      `import "react";`,
+    ].join("\n");
+    expect(findUnresolvedHostAbiImports(bundle)).toEqual([]);
+  });
+
+  test("reports a name the shim does not export", () => {
+    const bundle = `const x = 1;\nimport { useState, notAReactExport } from "react";\nimport J from "react/jsx-runtime";\n`;
+    expect(findUnresolvedHostAbiImports(bundle, "pneuma-mode.js")).toEqual([
+      { file: "pneuma-mode.js", specifier: "react", name: "notAReactExport" },
+      // The JSX runtime has no default export — the host exposes a namespace.
+      { file: "pneuma-mode.js", specifier: "react/jsx-runtime", name: "default" },
+    ]);
+  });
+
+  test("ignores specifiers outside the ABI and look-alike prefixes", () => {
+    const bundle = `import { nope } from "react-markdown";\nimport { nope2 } from "react-dom/server";\n`;
+    expect(findUnresolvedHostAbiImports(bundle)).toEqual([]);
+  });
+
+  test("fails closed on forms it cannot read and on require() of an ABI module", () => {
+    const misses = findUnresolvedHostAbiImports(
+      `import { useState as } from "react";\nvar r = __require("react-dom");\n`,
+    );
+    expect(misses.map((m) => [m.specifier, m.name.split(" ")[0]])).toEqual([
+      ["react", "unrecognised"],
+      ["react-dom", "require()"],
+    ]);
+  });
+});
+
+describe("buildModeViewer links bundles against the host ABI", () => {
+  let root = "";
+
+  beforeAll(() => {
+    root = mkdtempSync(join(tmpdir(), "pneuma-abi-link-"));
+  });
+
+  afterAll(() => {
+    if (root) rmSync(root, { recursive: true, force: true });
+  });
+
+  function writeFixture(name: string, previewSource: string): string {
+    const modeDir = join(root, name);
+    mkdirSync(join(modeDir, "viewer"), { recursive: true });
+    writeFileSync(
+      join(modeDir, "manifest.ts"),
+      `export default { name: "${name}", version: "1.0.0", displayName: { en: "${name}" }, description: { en: "fixture" } };\n`,
+    );
+    writeFileSync(
+      join(modeDir, "pneuma-mode.ts"),
+      `import manifest from "./manifest.js";\nimport Preview from "./viewer/Preview.js";\nexport default { manifest, viewer: { PreviewComponent: Preview } };\n`,
+    );
+    writeFileSync(join(modeDir, "viewer", "Preview.tsx"), previewSource);
+    return modeDir;
+  }
+
+  test("a bundle using the wider React surface builds and every import resolves", async () => {
+    // The names catalog modes actually pull in through their dependencies
+    // (excalidraw: `version`; clipcraft: `useInsertionEffect`), plus the rest
+    // of the surface a dependency is likely to reach for.
+    const modeDir = writeFixture(
+      "wide-react",
+      `import React, { version, useId, startTransition, useInsertionEffect, useTransition, useDeferredValue, useSyncExternalStore, use, useActionState, useOptimistic, createRef, StrictMode, Profiler, useState } from "react";
+import * as ReactNS from "react";
+import { createPortal, flushSync, unstable_batchedUpdates, preload } from "react-dom";
+import { useTranslation } from "react-i18next";
+
+export const surface = [version, useId, startTransition, useInsertionEffect, useTransition, useDeferredValue, useSyncExternalStore, use, useActionState, useOptimistic, createRef, StrictMode, Profiler, createPortal, flushSync, unstable_batchedUpdates, preload, ReactNS.memo, React.Children];
+
+export default function Preview() {
+  const [n] = useState(0);
+  const { t } = useTranslation();
+  return <StrictMode><span>{t("x")} {n} {version}</span></StrictMode>;
+}
+`,
+    );
+    const result = await buildModeViewer(modeDir);
+    expect(result.errors).toEqual([]);
+    expect(result.success).toBe(true);
+    const bundle = readFileSync(join(result.buildDir, "pneuma-mode.js"), "utf-8");
+    // Guard the guard: the imports really are there to be checked.
+    expect(bundle).toMatch(/^import .*\bversion\b.* from "react";$/m);
+    expect(bundle).toMatch(/^import .*\bpreload\b.* from "react-dom";$/m);
+    expect(bundle).toMatch(/from "react\/jsx-dev-runtime";$/m);
+    expect(findUnresolvedHostAbiImports(bundle)).toEqual([]);
+  });
+
+  test("an import the host cannot satisfy fails the build instead of shipping a mode that never loads", async () => {
+    const modeDir = writeFixture(
+      "missing-export",
+      `import { useState, notAReactExport } from "react";
+export default function Preview() {
+  const [n] = useState(0);
+  return <span>{String(notAReactExport)} {n}</span>;
+}
+`,
+    );
+    const result = await buildModeViewer(modeDir);
+    expect(result.success).toBe(false);
+    expect(result.errors.join("\n")).toContain(`"notAReactExport" from "react"`);
+    expect(result.errors.join("\n")).toContain("/vendor/react.js");
   });
 });

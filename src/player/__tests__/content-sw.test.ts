@@ -233,3 +233,33 @@ describe("player content service worker", () => {
     expect(res?.status).toBe(200);
   });
 });
+
+// The webcraft preview shows each page at its real `/content/*` URL and lets
+// the browser follow the page's own links, so in the hosted player a
+// directory link (`<a href="./">`) is a navigation this worker answers. It
+// must serve the directory's index.html as the session server does
+// (server/index.ts::mountContentRoute) — and as the deployed site will.
+describe("player content service worker — directory index", () => {
+  const SITE = {
+    type: "pneuma-player-checkout",
+    baseUrl: BASE,
+    files: { "gazette/index.html": "sha-png", "gazette/article.html": "sha-mp4" },
+  };
+
+  test("a directory URL serves its index.html as HTML", async () => {
+    const sw = bootWorker(createCacheStorage());
+    await postMessage(sw, SITE);
+    const res = await requestContent(sw, `${ORIGIN}/content/gazette/?mode=x`);
+    expect(res?.status).toBe(200);
+    expect(res?.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
+    expect(new Uint8Array(await res!.arrayBuffer())).toEqual(PNG_BYTES);
+  });
+
+  test("without the trailing slash it redirects first, keeping the query", async () => {
+    const sw = bootWorker(createCacheStorage());
+    await postMessage(sw, SITE);
+    const res = await requestContent(sw, `${ORIGIN}/content/gazette?mode=x`);
+    expect(res?.status).toBe(301);
+    expect(res?.headers.get("Location")).toBe(`${ORIGIN}/content/gazette/?mode=x`);
+  });
+});

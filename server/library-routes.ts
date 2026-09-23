@@ -35,7 +35,7 @@ import {
   publishModeToLibrary,
   pushLibrary,
 } from "../core/library-publish.js";
-import { resolveModeOrLibrary } from "../core/mode-resolver.js";
+import { isSafeGitRef, resolveModeOrLibrary } from "../core/mode-resolver.js";
 import { detectGh, createRepo } from "../core/github-cli.js";
 import type { WsBridge } from "./ws-bridge.js";
 import type { BrowserIncomingMessage } from "./session-types.js";
@@ -157,6 +157,8 @@ export function registerLibraryRoutes(
 
       if (prev.source.type === "github") {
         const ref = prev.source.ref || "main";
+        // A stored ref becomes a `git fetch` argument (`--upload-pack=…` runs a command).
+        if (!isSafeGitRef(ref)) return c.json({ error: `invalid library ref: ${ref}` }, 400);
         try {
           await runGit(["fetch", "origin", ref], libDir);
           await runGit(["checkout", `origin/${ref}`, "--force"], libDir);

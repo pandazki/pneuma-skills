@@ -7,6 +7,7 @@
 
 import { resolve, dirname } from "node:path";
 import { existsSync } from "node:fs";
+import { isContained } from "./utils.js";
 
 // ── Platform detection ───────────────────────────────────────────────────────
 
@@ -18,12 +19,10 @@ function getPlatform(): Platform {
 
 // ── Path validation ──────────────────────────────────────────────────────────
 
+/** Resolve a workspace path, refusing one that leaves it (lexically or through a symlink). */
 export function resolveAndValidate(workspace: string, inputPath: string): string {
   const abs = resolve(workspace, inputPath);
-  const match = process.platform === "win32"
-    ? abs.toLowerCase().startsWith(workspace.toLowerCase())
-    : abs.startsWith(workspace);
-  if (!match) {
+  if (!isContained(abs, workspace)) {
     throw new Error("Path escapes workspace");
   }
   return abs;
@@ -40,6 +39,11 @@ export function resolveAndValidate(workspace: string, inputPath: string): string
  * right next to it. We only require the resolved path to exist on disk —
  * which mirrors `/api/system/open-in-editor`, which has always accepted any
  * existing path. Relative inputs resolve against the session CWD.
+ *
+ * This is a deliberate exception to the workspace containment policy
+ * (`isContained` in `server/utils.ts`): the OS handoff reads and writes
+ * nothing itself, it names an existing path for an application the user
+ * opens.
  */
 export function resolveOsHandoffPath(workspace: string, inputPath: string): string {
   const abs = resolve(workspace, inputPath);

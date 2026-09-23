@@ -12,7 +12,13 @@
 import type { ComponentType } from "react";
 import type { Source, FileChannel } from "./source.js";
 
-/** File content (kept in sync with FileContent in src/types.ts) */
+/**
+ * File content (kept in sync with FileContent in src/types.ts).
+ *
+ * `content` is the file's text. A binary file (image, video, font, archive —
+ * see `server/workspace-text.ts::readWorkspaceText`) is listed by path with
+ * `content: ""`; read its bytes from `/content/<path>`.
+ */
 export interface ViewerFileContent {
   path: string;
   content: string;
@@ -304,13 +310,18 @@ export interface ViewerPreviewProps {
   onNotifyAgent?: (notification: ViewerNotification) => void;
   /** Currently active file selected by the framework (store.activeFile) */
   activeFile?: string | null;
-  /** Navigation request — triggered by clicking a locator card in chat */
+  /** Navigation request — triggered by clicking a locator card in chat, or
+   *  by the built-in `capture` action for an address's coarse half. */
   navigateRequest?: ViewerLocator | null;
   /** Called after the Viewer completes navigation, clears the request.
    *  Pass the navigation's own `ViewerActionResult` to have the shell
    *  surface a failure beside the card that was clicked; calling it bare
    *  (every viewer written before this seam) means "no verdict" and reads
-   *  as success, which is what a viewer that cannot fail should say. */
+   *  as success, which is what a viewer that cannot fail should say.
+   *  `capture` of an addressed object waits for this call (bounded) before
+   *  it shoots and reports a failure verdict instead of shooting, so a
+   *  viewer that reaches its target asynchronously (webcraft loads the
+   *  page document) should call it once the target is on screen. */
   onNavigateComplete?: (result?: ViewerActionResult) => void;
   /** Viewer commands declared in the manifest (user → agent) — injected by the runtime from the manifest, used by the viewer to render command menus, etc. */
   commands?: ViewerCommandDescriptor[];

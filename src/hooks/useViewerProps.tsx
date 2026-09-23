@@ -82,6 +82,7 @@ export function useViewerProps(prefs: { theme: "light" | "dark"; locale: string 
   const setActionRequest = useStore((s) => s.setActionRequest);
   const navigateRequest = useStore((s) => s.navigateRequest);
   const resolveNavigate = useStore((s) => s.resolveNavigate);
+  const navigateRequestSeq = useStore((s) => s.navigateRequestSeq);
   const replayMode = useStore((s) => s.replayMode);
   const commands = useStore((s) => s.modeCommands);
   // Backward-compat snapshot for pre-2.29 viewers (e.g. external modes that
@@ -146,7 +147,9 @@ export function useViewerProps(prefs: { theme: "light" | "dark"; locale: string 
       useStore.getState().addPendingNotification(notification);
     },
     navigateRequest,
-    onNavigateComplete: (result) => resolveNavigate(result),
+    // Bound to the request this render hands over, so a viewer answering
+    // an older request late cannot certify a newer one.
+    onNavigateComplete: (result) => resolveNavigate(result, navigateRequestSeq),
     commands,
     readonly: replayMode,
     theme: prefs.theme,

@@ -14,6 +14,12 @@
  * showing the previous run's frames and the user would think the pipeline did
  * nothing. Text-shaped assets (atlas.json) get it too; they are rewritten by
  * the same runs.
+ *
+ * Frames are the exception to "the counter moves when the file does": the
+ * per-frame directories are outside the file watcher (see the manifest's
+ * `ignorePatterns`), so no frame write bumps `imageVersion`. A frame url also
+ * carries `r=<createdAt>` — the time `register-run` recorded the frame — so a
+ * run that lands at the same paths is still new bytes to the browser.
  */
 
 /** Percent-encode each segment of a `/`-separated path, keeping the slashes. */
@@ -30,12 +36,16 @@ export function encodeContentPath(path: string): string {
  * @param contentSet Directory prefix of the character; `""` for a root project.
  * @param uri        Asset uri, relative to the character directory.
  * @param imageVersion Framework image counter, used as a cache buster.
+ * @param registeredAt The asset's `createdAt`, for assets the watcher does
+ *                     not follow (frames). Omitted when 0 or absent.
  */
 export function contentUrl(
   contentSet: string,
   uri: string,
   imageVersion: number,
+  registeredAt?: number,
 ): string {
   const prefix = contentSet ? `${encodeContentPath(contentSet)}/` : "";
-  return `/content/${prefix}${encodeContentPath(uri)}?v=${imageVersion}`;
+  const run = registeredAt ? `&r=${registeredAt}` : "";
+  return `/content/${prefix}${encodeContentPath(uri)}?v=${imageVersion}${run}`;
 }

@@ -1,522 +1,317 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>The Gazette — Front Page</title>
-  <style>
-    /* ── Design Tokens ─────────────────────────────────── */
-    :root {
-      --paper: oklch(96% 0.008 80);
-      --paper-aged: oklch(93% 0.012 78);
-      --ink: oklch(18% 0.01 260);
-      --ink-light: oklch(35% 0.008 260);
-      --ink-faded: oklch(52% 0.006 260);
-      --rule: oklch(72% 0.01 80);
-      --rule-heavy: oklch(30% 0.01 260);
-      --accent: oklch(42% 0.12 25);
-
-      --font-headline: "Playfair Display", "Georgia", serif;
-      --font-body: "Source Serif 4", "Georgia", serif;
-      --font-sans: "Inter", system-ui, sans-serif;
-      --font-mono: "JetBrains Mono", ui-monospace, monospace;
-
-      --measure: 65ch;
-      --col-gap: clamp(1.5rem, 3vw, 2.5rem);
-    }
-
-    /* ── Reset ──────────────────────────────────────────── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    /* ── Base ───────────────────────────────────────────── */
-    html {
-      font-size: clamp(15px, 0.85vw + 13px, 18px);
-      -webkit-font-smoothing: antialiased;
-    }
-
-    body {
-      font-family: var(--font-body);
-      color: var(--ink);
-      background: var(--paper);
-      line-height: 1.75;
-    }
-
-    /* ── Typography ─────────────────────────────────────── */
-    h1, h2, h3, h4 {
-      font-family: var(--font-headline);
-      font-weight: 700;
-      line-height: 1.1;
-      letter-spacing: -0.015em;
-    }
-
-    h1 { font-size: clamp(2.8rem, 7vw, 5rem); line-height: 1.02; letter-spacing: -0.03em; }
-    h2 { font-size: clamp(1.5rem, 3vw, 2.2rem); }
-    h3 { font-size: clamp(1.15rem, 2vw, 1.5rem); }
-    h4 { font-size: 1rem; }
-
-    p { max-width: var(--measure); }
-
-    a {
-      color: inherit;
-      text-decoration: none;
-      transition: color 200ms ease;
-    }
-    a:hover { color: var(--accent); }
-
-    /* ── Masthead ───────────────────────────────────────── */
-    .masthead {
-      text-align: center;
-      padding: clamp(1.5rem, 3vw, 2.5rem) clamp(1rem, 4vw, 2.5rem) 0;
-      border-bottom: 3px double var(--rule-heavy);
-    }
-
-    .masthead-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      font-family: var(--font-sans);
-      font-size: 0.7rem;
-      color: var(--ink-faded);
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      margin-bottom: 0.75rem;
-    }
-
-    .masthead h1 {
-      font-size: clamp(3rem, 8vw, 5.5rem);
-      letter-spacing: -0.03em;
-      line-height: 1;
-      margin-bottom: 0.2em;
-    }
-
-    .masthead-motto {
-      font-family: var(--font-body);
-      font-style: italic;
-      font-size: 0.85rem;
-      color: var(--ink-light);
-      margin-bottom: 0.75rem;
-    }
-
-    .masthead-rule {
-      width: 100%;
-      height: 1px;
-      background: var(--rule);
-      border: none;
-    }
-
-    .masthead-nav {
-      display: flex;
-      justify-content: center;
-      gap: 2rem;
-      padding: 0.6rem 0;
-      list-style: none;
-      font-family: var(--font-sans);
-      font-size: 0.72rem;
-      font-weight: 600;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      border-top: 1px solid var(--rule);
-    }
-
-    .masthead-nav a { color: var(--ink-light); }
-    .masthead-nav a:hover { color: var(--ink); }
-
-    /* ── Wrap ───────────────────────────────────────────── */
-    .page-wrap {
-      max-width: 1100px;
-      margin-inline: auto;
-      padding-inline: clamp(1rem, 4vw, 2.5rem);
-    }
-
-    /* ── Lead Story ────────────────────────────────────── */
-    .lead {
-      padding-block: clamp(2rem, 4vw, 3.5rem);
-      border-bottom: 1px solid var(--rule);
-    }
-
-    .lead h2 {
-      font-size: clamp(2rem, 5vw, 3.2rem);
-      letter-spacing: -0.025em;
-      line-height: 1.05;
-      margin-bottom: 0.75rem;
-    }
-
-    .lead-deck {
-      font-size: 1.15rem;
-      line-height: 1.65;
-      color: var(--ink-light);
-      margin-bottom: 1.25rem;
-      max-width: 55ch;
-    }
-
-    .lead-body {
-      column-count: 2;
-      column-gap: var(--col-gap);
-      column-rule: 1px solid var(--rule);
-    }
-
-    .lead-body p {
-      font-size: 0.95rem;
-      margin-bottom: 1em;
-      text-align: justify;
-      text-justify: inter-word;
-      hyphens: auto;
-    }
-
-    .lead-body p:first-of-type::first-letter {
-      font-family: var(--font-headline);
-      font-size: 3.8em;
-      float: left;
-      line-height: 0.8;
-      margin-right: 0.08em;
-      margin-top: 0.05em;
-      color: var(--ink);
-    }
-
-    .byline {
-      font-family: var(--font-sans);
-      font-size: 0.72rem;
-      font-weight: 600;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: var(--ink-faded);
-      margin-bottom: 1rem;
-    }
-
-    /* ── Two-Column Grid ───────────────────────────────── */
-    .grid-two {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0;
-      border-bottom: 1px solid var(--rule);
-    }
-
-    .grid-two .story {
-      padding: clamp(1.5rem, 3vw, 2.5rem) 0;
-    }
-
-    .grid-two .story:first-child {
-      padding-right: calc(var(--col-gap) / 2);
-      border-right: 1px solid var(--rule);
-    }
-
-    .grid-two .story:last-child {
-      padding-left: calc(var(--col-gap) / 2);
-    }
-
-    .story h3 { margin-bottom: 0.5rem; }
-
-    .story p {
-      font-size: 0.9rem;
-      text-align: justify;
-      hyphens: auto;
-      margin-bottom: 0.75em;
-    }
-
-    .story .byline { margin-top: 0; }
-
-    /* ── Three-Column Grid ─────────────────────────────── */
-    .grid-three {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 0;
-      border-bottom: 1px solid var(--rule);
-    }
-
-    .grid-three .brief {
-      padding: clamp(1.25rem, 2.5vw, 2rem) 0;
-    }
-
-    .grid-three .brief:not(:last-child) {
-      padding-right: calc(var(--col-gap) / 2);
-      border-right: 1px solid var(--rule);
-    }
-
-    .grid-three .brief:not(:first-child) {
-      padding-left: calc(var(--col-gap) / 2);
-    }
-
-    .brief-section {
-      font-family: var(--font-sans);
-      font-size: 0.65rem;
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--accent);
-      margin-bottom: 0.5rem;
-    }
-
-    .brief h4 {
-      font-family: var(--font-headline);
-      margin-bottom: 0.4rem;
-    }
-
-    .brief p {
-      font-size: 0.85rem;
-      line-height: 1.6;
-      color: var(--ink-light);
-    }
-
-    /* ── Article Images ─────────────────────────────────── */
-    .lead-image {
-      margin: 1.25rem 0 1.5rem;
-      border: 1px solid var(--rule);
-      overflow: hidden;
-    }
-
-    .lead-image img {
-      display: block;
-      width: 100%;
-      height: auto;
-    }
-
-    .lead-image figcaption {
-      font-family: var(--font-sans);
-      font-size: 0.68rem;
-      color: var(--ink-faded);
-      padding: 0.5rem 0.75rem;
-      border-top: 1px solid var(--rule);
-      letter-spacing: 0.02em;
-    }
-
-    .story-image {
-      margin: 0.75rem 0 1rem;
-      border: 1px solid var(--rule);
-      overflow: hidden;
-    }
-
-    .story-image img {
-      display: block;
-      width: 100%;
-      height: auto;
-    }
-
-    .story-image figcaption {
-      font-family: var(--font-sans);
-      font-size: 0.65rem;
-      color: var(--ink-faded);
-      padding: 0.4rem 0.6rem;
-      border-top: 1px solid var(--rule);
-    }
-
-    /* ── Quotation Box ─────────────────────────────────── */
-    .pullquote {
-      padding: clamp(2rem, 4vw, 3rem) 0;
-      border-bottom: 1px solid var(--rule);
-      text-align: center;
-    }
-
-    .pullquote blockquote {
-      font-family: var(--font-headline);
-      font-size: clamp(1.3rem, 2.5vw, 1.8rem);
-      font-style: italic;
-      line-height: 1.45;
-      max-width: 42ch;
-      margin-inline: auto;
-      color: var(--ink);
-    }
-
-    .pullquote blockquote::before { content: "\201C"; }
-    .pullquote blockquote::after { content: "\201D"; }
-
-    .pullquote cite {
-      display: block;
-      margin-top: 0.75rem;
-      font-family: var(--font-sans);
-      font-style: normal;
-      font-size: 0.72rem;
-      font-weight: 600;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--ink-faded);
-    }
-
-    /* ── Opinion Section ───────────────────────────────── */
-    .opinion {
-      padding-block: clamp(1.5rem, 3vw, 2.5rem);
-      border-bottom: 1px solid var(--rule);
-    }
-
-    .opinion-header {
-      font-family: var(--font-sans);
-      font-size: 0.65rem;
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--accent);
-      padding-bottom: 0.5rem;
-      border-bottom: 2px solid var(--rule-heavy);
-      margin-bottom: 1.25rem;
-    }
-
-    .opinion h3 {
-      font-style: italic;
-      margin-bottom: 0.5rem;
-    }
-
-    .opinion p {
-      font-size: 0.9rem;
-      text-align: justify;
-      hyphens: auto;
-      max-width: 50ch;
-    }
-
-    .opinion .byline { margin-top: 0.75rem; }
-
-    /* ── Footer ────────────────────────────────────────── */
-    footer {
-      padding: clamp(1.5rem, 3vw, 2rem) 0;
-      text-align: center;
-    }
-
-    footer p {
-      font-family: var(--font-sans);
-      font-size: 0.7rem;
-      color: var(--ink-faded);
-      letter-spacing: 0.05em;
-      max-width: none;
-    }
-
-    /* ── Responsive ────────────────────────────────────── */
-    @media (max-width: 720px) {
-      .lead-body { column-count: 1; }
-      .grid-two { grid-template-columns: 1fr; }
-      .grid-two .story:first-child {
-        padding-right: 0;
-        border-right: none;
-        border-bottom: 1px solid var(--rule);
-      }
-      .grid-two .story:last-child { padding-left: 0; }
-      .grid-three { grid-template-columns: 1fr; }
-      .grid-three .brief:not(:last-child) {
-        padding-right: 0;
-        border-right: none;
-        border-bottom: 1px solid var(--rule);
-      }
-      .grid-three .brief:not(:first-child) { padding-left: 0; }
-      .masthead-top { flex-direction: column; gap: 0.25rem; align-items: center; }
-      .masthead-nav { flex-wrap: wrap; gap: 1rem; }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after {
-        animation-duration: 0.01ms !important;
-        transition-duration: 0.01ms !important;
-      }
-    }
-
-    /* ── Print ─────────────────────────────────────────── */
-    @media print {
-      body { background: white; }
-      .masthead { border-bottom-color: #333; }
-    }
-  </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The Gazette: Wednesday, September 23, 2026</title>
+  <meta name="description" content="The Gazette, Late Edition. Humans and code agents begin sharing one drafting table; the night ferry wins its final vote; the Tars take the pennant.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=League+Gothic&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&family=UnifrakturMaguntia&display=swap">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<a class="skip" href="#lead">Skip to the lead story</a>
 
-  <!-- Masthead -->
-  <header class="masthead page-wrap">
-    <div class="masthead-top">
-      <span>Vol. CLVII &middot; No. 42</span>
-      <span>Sunday, March 9, 2026</span>
-      <span>Price: Two Shillings</span>
-    </div>
-    <h1>The Gazette</h1>
-    <p class="masthead-motto">All the news that&rsquo;s fit to render</p>
-    <hr class="masthead-rule">
-    <ul class="masthead-nav">
-      <li><a href="index.html">Front Page</a></li>
-      <li><a href="article.html">Features</a></li>
-      <li><a href="#">Opinion</a></li>
-      <li><a href="#">Arts</a></li>
-      <li><a href="#">Science</a></li>
-    </ul>
+<div class="sheet">
+
+  <header class="masthead">
+    <p class="ear ear--left"><strong>Established 1879</strong>“Every Line Set Where the Reader Can See It.”</p>
+    <h1 class="nameplate"><a href="index.html">The Gazette</a></h1>
+    <p class="ear ear--right"><strong>Late Edition</strong>Morning fog, then clearing. High 68. Tonight, cool, low 54. Tomorrow, bright and breezy. Details, Page B10.</p>
   </header>
 
-  <main class="page-wrap">
+  <div class="folio">
+    <span>Vol. CXLVII . . . No. 51,204</span>
+    <span>Harbor City, Wednesday, September 23, 2026</span>
+    <span>Two Dollars</span>
+  </div>
 
-    <!-- Lead Story -->
-    <article class="lead">
-      <h2>Machines and Makers Find Common Ground in Shared Workspaces</h2>
-      <p class="lead-deck">A new paradigm emerges as code agents move beyond chat windows into visual environments where both human and artificial intelligence operate on the same canvas.</p>
-      <p class="byline">By Eleanor Voss &middot; Technology Correspondent</p>
-      <figure class="lead-image">
-        <img src="images/lead-story.webp" alt="Editorial illustration of humans and AI agents collaborating at shared digital workstations, connected by flowing amber lines">
-        <figcaption>Illustration: Humans and agents converge in a shared creative workspace — the paradigm shift from chat to canvas.</figcaption>
-      </figure>
-      <div class="lead-body">
-        <p>The relationship between human creators and their artificial counterparts has, until recently, resembled something like a long-distance correspondence &mdash; messages exchanged across a void, screenshots pasted into chat windows, instructions given and sometimes followed. The friction was palpable. Every interaction required translation: from visual intention to verbal description, from spatial understanding to textual approximation.</p>
-        <p>But a quiet revolution is underway. A new class of tools has begun to bridge this gap, not by making agents smarter or humans more precise, but by giving both parties something they&rsquo;ve lacked: a shared medium. The agent edits files on disk. The human sees, selects, and guides the rendered result. Both operate on the same representation, in real time, each bringing their particular strengths to the collaboration.</p>
-        <p>This is not the AI future that was promised by breathless press releases &mdash; no sentient machines, no obsolete workers. It is something more practical and, perhaps, more interesting: infrastructure for a new kind of partnership, where the boundary between human intent and machine capability becomes productively blurred.</p>
-        <p>The implications extend beyond individual productivity. When skills can evolve based on cross-session history, when modes can be shared through marketplaces, the knowledge of one collaboration enriches all future ones. A presentation designer&rsquo;s preferences inform the agent&rsquo;s next session. A web developer&rsquo;s patterns become reusable templates.</p>
+  <nav class="sections" aria-label="Sections of this edition">
+    <h2>In This Edition</h2>
+    <ul>
+      <li><a href="#lead">Front</a></li>
+      <li><a href="#opinion">Opinion</a></li>
+      <li><a href="#pressroom">Pressroom</a></li>
+      <li><a href="#arts">Arts</a></li>
+      <li><a href="#letters">Letters</a></li>
+      <li><a href="#sports">Sports</a></li>
+      <li><a href="#valley">The Valley</a></li>
+      <li><a href="#classifieds">Classifieds</a></li>
+    </ul>
+  </nav>
+
+  <main>
+
+    <!-- Above the fold -->
+    <section class="band band--top" aria-label="Top stories">
+      <div class="band__grid">
+
+        <article class="lead span-4 a-lead" id="lead">
+          <h2 class="hed-lead vt-hed"><a href="article.html">Humans and Code Agents Begin Sharing One Drafting Table</a></h2>
+          <div class="lead__body">
+            <div class="lead__open story">
+              <div class="decks">
+                <p class="deck">Work Moves Onto a Live Canvas</p>
+                <p class="deck-i">Designers Point, the Machines Draw, and Both Watch the Page Change as It Happens</p>
+                <p class="deck">Skeptics Ask Who Holds the Pen</p>
+              </div>
+              <p class="byline">By Eleanor Voss <span>Technology Correspondent</span></p>
+              <p class="dropcap"><span class="drop" aria-hidden="true">H</span><span class="dateline"><span class="sr-only">H</span>arbor City, Sept. 22</span> — On the fourth floor of a converted cannery on Mercer Street, the designer Ada Lindqvist spent Tuesday morning doing something that a year ago would have taken her a week. She described a page to a code agent, watched it build the page on a screen they could both see, and when a headline sat wrong she did not write a ticket. She clicked on it.</p>
+              <p>“That one,” she said. The agent, which had already been told what she clicked, set the headline two sizes smaller and moved on to the next column.</p>
+            </div>
+            <div class="lead__rest story">
+              <figure class="engraving">
+                <img class="vt-art" src="assets/lead-workspace.jpg" width="1536" height="1024" decoding="async" fetchpriority="high"
+                     alt="Engraving of a drafting studio: a woman points at a corner of a large upright layout board while a jointed brass drafting arm on a wheeled cabinet of gears draws where she points; two colleagues watch from a table of proofs.">
+                <figcaption>At a studio on Mercer Street, a designer marks a correction on the shared board while the agent’s drafting arm makes it. Colleagues follow the page from the proof table.<span class="credit">Engraving for The Gazette</span></figcaption>
+              </figure>
+              <div class="flow flow--3">
+                <p>Scenes like it are becoming ordinary in studios and small software shops across the city. For most of the short history of code-writing software, the work happened out of sight: a person typed a request, the machine returned a block of text, and someone had to run it to learn what it did.</p>
+                <p>The new arrangement puts both parties in front of the same live surface, whether a web page, a slide deck or a diagram, and that surface redraws itself with every edit the agent makes.</p>
+                <p>People who use these shared workspaces describe a change less in speed than in posture. The human stops reviewing finished work and starts watching work in progress, the way an editor once stood behind a compositor at the stone. They can stop a wrong turn early, point at the exact thing they mean, and hand over context a paragraph of instructions would have missed.</p>
+                <p>“The page is the conversation now,” said Marcus Oduya, who runs a four-person shop called Aldine Works. “I don’t read what it says it did. I look.”</p>
+                <p>Not everyone is persuaded. Critics warn that watching a machine is not the same as understanding it, and that a pleasant live preview can hide a sloppy file underneath.</p>
+                <p class="jump">Full story on <a href="article.html">Page A6</a></p>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <div class="span-2 t-4 nest">
+          <div class="band__grid cols-2">
+
+            <article class="story span-2 a-ferry">
+              <h2 class="hed-2">Night Ferry to the Outer Islands Wins Final Vote</h2>
+              <div class="decks">
+                <p class="deck">Council Approves 11 P.M. Sailings</p>
+                <p class="deck-i">Islanders Hail End of the Six O’Clock Curfew; Service to Begin in April</p>
+              </div>
+              <figure class="engraving">
+                <img src="assets/ferry-night.jpg" width="1100" height="825" loading="lazy" decoding="async"
+                     alt="Engraving of a small steam ferry with lit cabin windows leaving a wooden pier at night under a full moon, passengers watching from the quay.">
+                <figcaption>The evening boat leaves Pier 4 for Gull Island. Under the new plan, sailings will run until 11 p.m.<span class="credit">Engraving for The Gazette</span></figcaption>
+              </figure>
+              <p class="byline">By Thomas Pell</p>
+              <div class="flow flow--2">
+                <p><span class="dateline">Harbor City, Sept. 22</span> — After three years of petitions, two public hearings and one memorable filibuster by a councilman from Gull Island, the City Council voted 9 to 2 on Tuesday night to extend ferry service to the outer islands until 11 o’clock.</p>
+                <p>For the roughly 4,000 people who live on Gull, Tern and Little Brother islands, the last boat home now leaves Pier 4 at 6:10 p.m. Nurses on the night shift sleep on cots at the harbor hospital; cooks from the islands keep rooms in town.</p>
+                <p>“My daughter has never seen a film that did not start at four in the afternoon,” said Ruth Anand, who testified at both hearings.</p>
+                <p>The later sailings will cost the city an estimated $1.8 million a year, covered in part by a 25-cent rise in daytime fares.</p>
+                <p class="jump">Continued on Page A10</p>
+              </div>
+            </article>
+
+            <article class="story span-1 a-lamp">
+              <h2 class="hed-gothic">Quay Street’s Last Lamplighter Puts Down His Pole</h2>
+              <div class="decks"><p class="deck-i">After 41 Years, Tomas Reyes Lights the Final Gas Lamp by Hand</p></div>
+              <p class="byline">By June Hartley</p>
+              <div class="flow flow--2">
+              <p>Tomas Reyes lit the 31 gas lamps on Quay Street for the last time on Tuesday evening, working from the fish market to the customs house as he has every dusk since 1985. The lamps will be fitted with timers next month.</p>
+              <p>A small crowd followed him down the street, and when he reached the final lamp somebody began to clap. Mr. Reyes, 68, said he intends to sleep through sunset for a week.</p>
+              <p>“After that,” he said, “I will probably come down and watch the timers.”</p>
+              <p class="jump">Continued on Page A14</p>
+              </div>
+            </article>
+
+            <aside class="summary span-1 a-sum" aria-labelledby="summary-flag">
+              <h2 class="flag" id="summary-flag">News Summary</h2>
+              <ul>
+                <li><h3>Grain Talks Resume</h3><p>Negotiators returned to the table in Geneva after a two-week pause, citing progress on shipping insurance. <span class="page-ref">A5</span></p></li>
+                <li><h3>Rail Safety Bill Advances</h3><p>A Senate committee sent the measure to the floor, 14 to 7, with new rules for tank-car inspections. <span class="page-ref">A9</span></p></li>
+                <li><h3>Library Keeps Later Hours</h3><p>Four branches will stay open until 10 p.m. on weeknights from Oct. 1. <span class="page-ref">A12</span></p></li>
+                <li><h3>Harbor Mutual Posts Gain</h3><p>The insurer reported a third-quarter profit of $212 million on rising freight at the port. <span class="page-ref">B1</span></p></li>
+                <li><h3>A Fireball Over the Hills</h3><p>Ridge Observatory volunteers logged a bright meteor early Monday; fragments may have fallen near Alder Creek. <span class="page-ref">A11</span></p></li>
+              </ul>
+            </aside>
+
+          </div>
+        </div>
+
       </div>
-    </article>
+    </section>
 
-    <!-- Two-Column Stories -->
-    <div class="grid-two">
-      <article class="story">
-        <h3>The Evolution Agent: When Software Learns Its Users</h3>
-        <p class="byline">By Marcus Chen &middot; AI Bureau</p>
-        <figure class="story-image">
-          <img src="images/evolution-story.webp" alt="Conversation patterns flowing into a funnel and crystallizing into refined geometric preferences">
-          <figcaption>Software that learns: conversation history distilled into user preferences.</figcaption>
-        </figure>
-        <p>In the annals of software design, adaptation has typically meant settings panels and preference dialogs &mdash; crude instruments for expressing the subtlety of individual taste. A new approach inverts this paradigm entirely.</p>
-        <p>Rather than asking users to configure their tools, an evolution agent mines conversation history across sessions, extracting patterns of preference that the user may not even consciously recognize. Typography choices, spacing density, color palette tendencies &mdash; these are surfaced as proposals, presented with evidence citations from actual conversations, and applied only with explicit approval.</p>
-        <p>The result is software that grows more attuned to its user with each session, not through surveillance but through considered reflection on shared creative history.</p>
-      </article>
-      <article class="story">
-        <h3>Mode Makers and the Marketplace of Capabilities</h3>
-        <p class="byline">By Ava Langford &middot; Industry Analysis</p>
-        <p>The ecosystem model &mdash; once the province of app stores and plugin directories &mdash; has found new expression in the realm of agent-assisted creation. Custom modes, each encapsulating a complete vertical of capability, can now be forked, developed with AI assistance, tested in isolation, and published to a shared registry.</p>
-        <p>This represents a shift from monolithic tools that try to do everything to composable capabilities that do one thing well. A mode for presentations. A mode for documents. A mode for whiteboard diagrams. Each carries its own skill prompt, viewer component, seed templates, and export pipeline.</p>
-        <p>The marketplace, then, is not merely a distribution channel but a collective intelligence &mdash; each published mode an artifact of someone&rsquo;s refined workflow made available to all.</p>
-      </article>
-    </div>
+    <div class="cut" role="presentation"></div>
 
-    <!-- Pull Quote -->
-    <div class="pullquote">
-      <blockquote>Stop pasting screenshots into chat. Give your agent eyes, memory, and a canvas to work on.</blockquote>
-      <cite>&mdash; Pneuma Project Documentation</cite>
-    </div>
+    <!-- Below the fold -->
+    <section class="band" aria-label="Opinion, the city and the arts">
+      <div class="band__grid">
 
-    <!-- Three Briefs -->
-    <div class="grid-three">
-      <div class="brief">
-        <span class="brief-section">Technology</span>
-        <h4>Dual WebSocket Channels Enable Real-Time Agent-Browser Bridge</h4>
-        <p>A novel architecture maintains two simultaneous WebSocket connections &mdash; JSON for the browser, NDJSON for the CLI agent &mdash; enabling sub-second feedback loops between human perception and machine action.</p>
+        <article class="story span-2" id="opinion">
+          <h2 class="flag">Opinion</h2>
+          <h3 class="hed-2">Let the Machine Show Its Work</h3>
+          <div class="op-head">
+            <figure class="hedcut">
+              <img src="assets/hedcut-columnist.jpg" width="640" height="640" loading="lazy" decoding="async" alt="Stipple portrait of the columnist Margaret Hale, a woman with short grey hair and round spectacles.">
+            </figure>
+            <p class="columnist">By Margaret Hale <span>Columnist</span></p>
+          </div>
+          <div class="flow flow--2">
+            <p>When I was a copy girl at this newspaper, the most useful thing an old editor told me was to go down to the composing room and watch. Not to check the finished page, which anyone could do, but to stand at the stone while it was being made, because that was where the mistakes were small enough to fix with a thumb.</p>
+            <p>I thought of him this week reading Eleanor Voss’s report on the studios where people and code agents now build pages together in plain view. The novelty is not that the machines are faster. It is that, for the first time, we can watch them at the stone.</p>
+            <p>That is a good thing, and I want to say plainly why. Work you can see is work you can correct. A mistake caught at the third line costs a word; caught at the thirtieth page, it costs a week and a good deal of temper.</p>
+            <p>But watching carries its own temptation, which is to confuse a handsome page with a sound one. The old compositors knew a line could look straight and still be set in the wrong face. We will need the same habit: look, and then look underneath.</p>
+            <p class="jump">More Opinion, Page A22</p>
+          </div>
+        </article>
+
+        <article class="story span-2" id="pressroom">
+          <h2 class="hed-2">Printers’ Guild Votes to Keep the Old Presses Running</h2>
+          <div class="decks">
+            <p class="deck">Plan Pairs 1962 Line With New Equipment</p>
+            <p class="deck-i">Members Say the Veteran Press Still Prints the Cleanest Engravings in the State</p>
+          </div>
+          <figure class="engraving">
+            <img src="assets/pressroom.jpg" width="1100" height="825" loading="lazy" decoding="async"
+                 alt="Engraving of two pressmen in aprons and paper caps inspecting a printed sheet beside a large rotary press under hanging lamps.">
+            <figcaption>Pressmen check an early copy of today’s edition on the rotary line at the Water Street plant.<span class="credit">Engraving for The Gazette</span></figcaption>
+          </figure>
+          <p class="byline">By Samuel Ortiz</p>
+          <div class="flow flow--2">
+            <p>Members of Local 17 of the Harbor City Printers’ Guild voted 112 to 9 on Monday to back a plan that would keep this newspaper’s 1962 rotary press in service for at least another decade, running beside a new digital line due in the spring.</p>
+            <p>The old press, which fills most of the ground floor of the Water Street plant, prints roughly 60,000 copies a night. Its rollers were last replaced in 2011.</p>
+            <p>“She is slower than anything they make now,” said Harold Beck, the night foreman, who has run the press for 27 years. “She is also the only one in the state that can hold a fine engraving without muddying it.”</p>
+            <p class="jump">Continued on Page B4</p>
+          </div>
+        </article>
+
+        <article class="story span-1 t-2" id="arts">
+          <h2 class="flag">The Arts</h2>
+          <h3 class="hed-gothic">A Quartet Fills the Old Exchange Hall, Then Hushes It</h3>
+          <p class="byline">By Clara Wen</p>
+          <p>The Linden Quartet has a habit of starting so softly that an audience leans forward to find the music. On Monday at the Old Exchange Hall, where the acoustics were built for auctioneers, the habit became a kind of dare.</p>
+          <p>By the slow movement of the Schubert, a hall of 900 people had stopped rustling its programs. By the last chord, nobody wanted to be the first to clap.</p>
+          <p class="jump">Review, Page C1</p>
+        </article>
+
+        <aside class="span-1 t-2" aria-label="Index and markets">
+          <nav class="index-box" aria-labelledby="inside-title">
+            <h2 id="inside-title">Inside</h2>
+            <ul class="index-list">
+              <li>Arts<span class="dots"></span><b>C1</b></li>
+              <li>Business<span class="dots"></span><b>B1</b></li>
+              <li>Crossword<span class="dots"></span><b>C6</b></li>
+              <li>Editorials<span class="dots"></span><b>A22</b></li>
+              <li>Obituaries<span class="dots"></span><b>A20</b></li>
+              <li>Sports<span class="dots"></span><b>D1</b></li>
+              <li>Television<span class="dots"></span><b>C8</b></li>
+              <li>Weather<span class="dots"></span><b>B10</b></li>
+            </ul>
+          </nav>
+          <div class="markets">
+            <h2>Markets</h2>
+            <table>
+              <caption>Harbor Exchange, 4 p.m. Full tables, Page B6.</caption>
+              <thead><tr><td></td><th scope="col" style="text-align:right">Close</th><th scope="col" style="text-align:right">Chg.</th></tr></thead>
+              <tbody>
+                <tr><th scope="row">Composite</th><td>4,812.36</td><td>+18.40</td></tr>
+                <tr><th scope="row">Freight</th><td>1,206.90</td><td>–3.10</td></tr>
+                <tr><th scope="row">Grain, bu.</th><td>6.14</td><td>–0.02</td></tr>
+                <tr><th scope="row">Copper, lb.</th><td>4.37</td><td>+0.05</td></tr>
+                <tr><th scope="row">10-Yr. Bond</th><td>3.92%</td><td>+0.01</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </aside>
+
       </div>
-      <div class="brief">
-        <span class="brief-section">Design</span>
-        <h4>Impeccable Design Intelligence Brings 17 Commands to Web Creation</h4>
-        <p>From audit to animate, critique to colorize, a new design intelligence framework offers structured commands that transform vague aesthetic aspirations into concrete, principled design decisions.</p>
-      </div>
-      <div class="brief">
-        <span class="brief-section">Industry</span>
-        <h4>Cross-Platform Compatibility Reaches Windows, macOS, and Linux</h4>
-        <p>PATH resolution, terminal management, browser opening, and process control now work consistently across operating systems, removing a persistent barrier to adoption in enterprise environments.</p>
-      </div>
-    </div>
+    </section>
 
-    <!-- Opinion -->
-    <section class="opinion">
-      <p class="opinion-header">Editorial</p>
-      <h3>The Case for Shared Representation</h3>
-      <p class="byline">The Gazette Editorial Board</p>
-      <p>For too long, the conversation about artificial intelligence in creative work has been framed as a binary: replacement or irrelevance. This framing misses the far more interesting middle ground &mdash; the possibility that humans and machines might genuinely collaborate, each compensating for the other&rsquo;s limitations, provided they share a common medium of expression.</p>
-      <p>The emergence of visual co-creation infrastructure suggests this middle ground is not merely theoretical. When an agent can see what the user sees, when preferences evolve from actual collaboration rather than abstract configuration, the relationship ceases to be one of command and execution. It becomes, for lack of a better word, a partnership.</p>
+    <div class="cut" role="presentation"></div>
+
+    <section class="band" aria-label="Letters, sports and the valley">
+      <div class="band__grid">
+
+        <section class="letters span-2 t-4" id="letters" aria-labelledby="letters-flag">
+          <h2 class="flag" id="letters-flag">Letters to the Editor</h2>
+          <div class="letters__body">
+          <div class="letter">
+            <h3>On the Reservoir</h3>
+            <p>Your Sept. 19 report on the reservoir leak left out the one figure readers most wanted: how much water the city loses each day. The Water Board’s own estimate, given at Thursday’s hearing, was 2.3 million gallons. That is a figure worth a headline.</p>
+            <p class="sig">Walter Brandt, Harbor Heights</p>
+          </div>
+          <div class="letter">
+            <h3>A Machine at the Stone</h3>
+            <p>My daughter builds websites for a living, and last week she showed me how she works now, pointing at her screen while a program rearranged things. I was ready to disapprove. Instead I found myself pointing too. I am 81, and it was the first time I have understood what she does all day.</p>
+            <p class="sig">Priya Nair, Mercer Street</p>
+          </div>
+          <div class="letter">
+            <h3>Ferry Arithmetic</h3>
+            <p>The councilman who opposed the night ferry says the islands are too small to justify the cost. Every nurse, cook and cinema-goer on Gull Island would like him to count us again.</p>
+            <p class="sig">Owen Castell, Gull Island</p>
+          </div>
+          </div>
+        </section>
+
+        <article class="story span-2" id="sports">
+          <h2 class="flag">Sports</h2>
+          <h3 class="hed-2">Tars Take the Pennant in the Tenth</h3>
+          <div class="decks">
+            <p class="deck">Okafor’s Slide Beats the Tag</p>
+            <p class="deck-i">Harbor City Heads to Its First Series Since 1998 After a 5-4 Win Over Ridgefield</p>
+          </div>
+          <figure class="engraving">
+            <img src="assets/ballpark.jpg" width="1100" height="825" loading="lazy" decoding="async"
+                 alt="Engraving of a baseball runner sliding feet first into home plate in a cloud of dust as the catcher reaches with his mitt and the umpire leans in, a crowded grandstand behind.">
+            <figcaption>Luis Okafor slides home under the tag of Ridgefield’s catcher, Pete Arlen, with the winning run.<span class="credit">Engraving for The Gazette</span></figcaption>
+          </figure>
+          <p class="byline">By Danny Morrow</p>
+          <div class="flow flow--2">
+            <p>Luis Okafor had not stolen a base since June. With two outs in the 10th inning on Tuesday night and the pennant riding on a single run, he decided that was long enough.</p>
+            <p>He broke for home on a slow roller to second, and the throw beat him by what looked, from the press box, like half a step. He slid anyway, feet first and wide, and swept a hand across the plate beneath the catcher’s mitt.</p>
+            <p>Umpire Frank Delaney held his arms out flat. The crowd of 31,000 at Pier Park took a moment to believe it.</p>
+            <p class="jump">Continued on Page D1</p>
+          </div>
+        </article>
+
+        <article class="story span-2" id="valley">
+          <h2 class="flag">The Valley</h2>
+          <h3 class="hed-2">Rains Hold the Valley Harvest in Check</h3>
+          <div class="decks">
+            <p class="deck">Picking Is Two Weeks Behind</p>
+            <p class="deck-i">Growers Wait Under Barn Roofs as the Wettest September in 30 Years Runs Long</p>
+          </div>
+          <figure class="engraving">
+            <img src="assets/harvest-rain.jpg" width="1100" height="825" loading="lazy" decoding="async"
+                 alt="Engraving of farm workers in oilskins sheltering under a barn roof beside empty apple crates, rows of laden trees fading into rain and mist.">
+            <figcaption>Pickers wait out a downpour at the Hollis orchard near Alder Creek on Monday. The crates stayed empty.<span class="credit">Engraving for The Gazette</span></figcaption>
+          </figure>
+          <p class="byline">By Nora Flint</p>
+          <div class="flow flow--2">
+            <p><span class="dateline">Alder Creek, Sept. 22</span> — The apples are ready and the ladders are up. On Monday afternoon at the Hollis orchard, fifteen pickers sat on upturned crates under the barn roof and watched the rain come down on both.</p>
+            <p>The valley has had rain on 19 of the last 22 days, the wettest September since 1996 by the county’s count. Fruit left too long on the branch splits; fruit picked wet bruises in the crate.</p>
+            <p>“You can’t hurry it and you can’t wait forever,” said Anne Hollis, whose family has farmed here for four generations. A dry spell is forecast from Thursday.</p>
+            <p class="jump">Continued on Page B8</p>
+          </div>
+        </article>
+
+      </div>
+    </section>
+
+    <div class="cut" role="presentation"></div>
+
+    <section class="classifieds" id="classifieds" aria-labelledby="classified-flag">
+      <h2 class="flag" id="classified-flag">Classified Advertisements</h2>
+      <div class="ads">
+        <div class="ad ad--heavy"><h3>Help Wanted</h3><p>APPRENTICE COMPOSITOR. Steady hands, good eyes, no fear of ink. Apply to H. Beck at the Water Street plant after 9 p.m.</p></div>
+        <div class="ad"><h3>For Sale</h3><p>UPRIGHT PIANO, 1921, walnut case, recently tuned. Owner moving abroad. $400 or best offer. Harbor Heights 4-2217.</p></div>
+        <div class="ad"><h3>Lost</h3><p>GREY TABBY, answers to Moss, one white paw, last seen near the fish market Sunday. Reward. Quay Street 5-0931.</p></div>
+        <div class="ad"><h3>Rooms</h3><p>BRIGHT ROOM with north light, suit illustrator or draftsman, use of a large table. Mercer Street. $85 weekly.</p></div>
+        <div class="ad"><h3>Lessons</h3><p>LETTERING and sign writing taught Tuesday and Thursday evenings, all ages. Bring a brush. Studio 3, Old Exchange.</p></div>
+        <div class="ad"><h3>Notice</h3><p>THE GULL ISLAND SOCIETY meets Friday at 7 p.m. to celebrate the ferry vote. Refreshments. Last boat 6:10, for now.</p></div>
+        <div class="ad"><h3>Services</h3><p>PIANOS TUNED, clocks repaired, typewriters revived. Forty years’ experience. L. Marchetti, 18 Canal Row.</p></div>
+        <div class="ad ad--heavy"><h3>Wanted</h3><p>COMPANION for Sunday walks along the sea wall. Must tolerate herons and long silences. Box 412, The Gazette.</p></div>
+      </div>
     </section>
 
   </main>
 
-  <!-- Footer -->
-  <footer class="page-wrap">
-    <p>Copyright &copy; 2026 The Gazette &middot; A Pneuma WebCraft seed publication &middot; All rights reserved</p>
+  <footer class="colophon">
+    <p>The Gazette. Established 1879. Water Street, Harbor City.</p>
+    <p>A work of fiction: every story, name, figure and advertisement in this edition is invented. Illustrations engraved for The Gazette.</p>
+    <p>© 2026 The Gazette Company</p>
   </footer>
 
+</div>
 </body>
 </html>

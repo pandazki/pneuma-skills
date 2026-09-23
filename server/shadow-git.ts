@@ -1,5 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { isGitObjectId } from "./utils.js";
 
 const SHADOW_DIR_NAME = "shadow.git";
 
@@ -406,6 +407,8 @@ export async function listCheckpointTree(
   hash: string,
   stateDir?: string,
 ): Promise<TreeFileEntry[]> {
+  // Object names become git arguments; refuse anything option-shaped.
+  if (!isGitObjectId(hash)) throw new Error(`Invalid checkpoint hash: ${hash}`);
   const proc = Bun.spawn(
     ["git", `--git-dir=${gitDir(workspace, stateDir)}`, "ls-tree", "-r", "-l", hash],
     { stdout: "pipe", stderr: "ignore" },
@@ -435,6 +438,7 @@ export async function readCheckpointBlob(
   blobSha: string,
   stateDir?: string,
 ): Promise<Uint8Array> {
+  if (!isGitObjectId(blobSha)) throw new Error(`Invalid blob id: ${blobSha}`);
   const proc = Bun.spawn(
     ["git", `--git-dir=${gitDir(workspace, stateDir)}`, "cat-file", "blob", blobSha],
     { stdout: "pipe", stderr: "ignore" },
@@ -444,6 +448,7 @@ export async function readCheckpointBlob(
 }
 
 export async function exportCheckpointFiles(workspace: string, hash: string, outDir: string): Promise<void> {
+  if (!isGitObjectId(hash)) throw new Error(`Invalid checkpoint hash: ${hash}`);
   mkdirSync(outDir, { recursive: true });
   const archive = Bun.spawn(
     ["git", `--git-dir=${gitDir(workspace)}`, "archive", hash],

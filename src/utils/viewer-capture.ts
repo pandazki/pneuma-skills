@@ -16,6 +16,23 @@
  *     kami) it snapshots the inner document — full page, full scroll height.
  *     For a sandboxed iframe (slide) the inner document is unreachable, so
  *     browser-dev capture degrades to a clear error.
+ *
+ * Shooting a same-origin iframe page (`shootIframePage`) waits for the page
+ * first and survives it being replaced:
+ *   - A viewer whose page is (re)loading marks the iframe `aria-busy="true"`
+ *     until the page document has loaded (webcraft sets it when it navigates
+ *     the iframe and from the page's `pagehide`). The capture waits for that
+ *     to clear, for the document's `load`, and for its web fonts — bounded,
+ *     never forever.
+ *   - snapdom runs inside the iframe's own window. When that document is
+ *     replaced mid-capture (an agent edit lands a moment after the capture
+ *     request and the viewer reloads the page), the old window's promises
+ *     never settle — the capture used to hang until the server's 60 s
+ *     timeout. A replacement now aborts that attempt and shoots the new page.
+ *   - A background tab gets no animation frames, and Chrome throttles its
+ *     chained timers to one wake-up per minute after five minutes hidden.
+ *     Nothing here polls, and scroll-reveal priming (which cannot fire
+ *     without frames) is skipped there — with a note in the result.
  */
 
 import { snapdomFor } from "./iframe-snapdom.js";
@@ -86,6 +103,14 @@ async function snapdomToPng(el: Element, bg?: string | null): Promise<string | n
     prevBg = htmlEl.style.backgroundColor;
     htmlEl.style.backgroundColor = bg;
   }
+  // snapdom clones the element, not its ancestors, so the language the page
+  // declares on <html lang> does not reach the clone. Without it the
+  // rasterizer cannot hyphenate: under `hyphens: auto` every line comes out
+  // longer than the page's own, spills past the height snapdom froze, and
+  // justified multi-column text prints over the next paragraph. Carry the
+  // effective language onto the captured root for the duration of the shot.
+  const inheritedLang = el.hasAttribute("lang") ? null : el.closest("[lang]")?.getAttribute("lang") ?? null;
+  if (inheritedLang) el.setAttribute("lang", inheritedLang);
   try {
     // Run snapdom in the element's own window — for an element inside a
     // same-origin iframe (webcraft, kami) this resolves the iframe's CSS vars
@@ -103,6 +128,7 @@ async function snapdomToPng(el: Element, bg?: string | null): Promise<string | n
     if (bg && hasInlineStyle) {
       htmlEl.style.backgroundColor = prevBg ?? "";
     }
+    if (inheritedLang) el.removeAttribute("lang");
   }
 }
 
@@ -139,20 +165,153 @@ function effectiveBackgroundColor(el: Element): string | null {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+const joinNotes = (...notes: (string | undefined)[]) => notes.filter(Boolean).join(" ") || undefined;
+
+/** Upper bound on waiting for an iframe page to be ready before shooting it anyway. */
+const PAGE_READY_TIMEOUT_MS = 12_000;
+/** Upper bound on waiting for a page's web fonts. */
+const FONTS_READY_TIMEOUT_MS = 3_000;
+/** Upper bound on one rasterization of an iframe page. */
+const SHOT_TIMEOUT_MS = 20_000;
+/** A page replaced this many times in a row while being shot is reported, not chased. */
+const MAX_SHOT_ATTEMPTS = 3;
+
+/** Shown when the capture ran in a tab the browser is not rendering. */
+export const HIDDEN_TAB_NOTE =
+  "The Pneuma viewer tab is in the background, so the page could not run scroll-triggered reveals or animations before this capture; content that animates in may be missing.";
+
+/** Resolve after `ms`, or when `signal` fires, whichever is first. */
+function waitFor(ms: number, subscribe: (fire: () => void) => () => void): Promise<boolean> {
+  return new Promise((resolve) => {
+    let unsubscribe = () => {};
+    const timer = setTimeout(() => {
+      unsubscribe();
+      resolve(false);
+    }, ms);
+    unsubscribe = subscribe(() => {
+      clearTimeout(timer);
+      unsubscribe();
+      resolve(true);
+    });
+  });
+}
+
+const isBusy = (iframe: HTMLIFrameElement) => iframe.getAttribute("aria-busy") === "true";
+
+/** Fire when the iframe's `aria-busy` changes. */
+function onBusyChange(iframe: HTMLIFrameElement, fire: () => void): () => void {
+  const Observer = (iframe.ownerDocument.defaultView as (Window & typeof globalThis) | null)?.MutationObserver;
+  if (!Observer) return () => {};
+  const mo = new Observer(() => fire());
+  mo.observe(iframe, { attributes: true, attributeFilter: ["aria-busy"] });
+  return () => mo.disconnect();
+}
+
+/**
+ * Wait until the iframe's page is ready to shoot: the viewer no longer marks
+ * it busy, its document has loaded, and its web fonts are in. Bounded by
+ * `PAGE_READY_TIMEOUT_MS` overall; returns the document to shoot (or null
+ * when it is not reachable) and whether it really settled.
+ */
+async function pageReady(iframe: HTMLIFrameElement): Promise<{ doc: Document | null; settled: boolean }> {
+  const deadline = Date.now() + PAGE_READY_TIMEOUT_MS;
+  const left = () => Math.max(0, deadline - Date.now());
+  while (left() > 0) {
+    if (isBusy(iframe)) {
+      await waitFor(left(), (fire) => onBusyChange(iframe, fire));
+      continue;
+    }
+    const doc = accessibleIframeDoc(iframe);
+    if (!doc) return { doc: null, settled: true };
+    if (doc.readyState !== "complete") {
+      const win = doc.defaultView;
+      await waitFor(left(), (fire) => {
+        if (!win) return () => {};
+        win.addEventListener("load", fire);
+        iframe.addEventListener("load", fire);
+        return () => {
+          win.removeEventListener("load", fire);
+          iframe.removeEventListener("load", fire);
+        };
+      });
+      continue;
+    }
+    const fonts = doc.fonts as FontFaceSet | undefined;
+    if (fonts?.ready) {
+      await Promise.race([fonts.ready.catch(() => undefined), sleep(Math.min(FONTS_READY_TIMEOUT_MS, left()))]);
+    }
+    if (!isBusy(iframe) && iframe.contentDocument === doc) return { doc, settled: true };
+  }
+  return { doc: accessibleIframeDoc(iframe), settled: false };
+}
+
+type Shot = { png: string | null } | { replaced: true } | { timedOut: true };
+
+/**
+ * Run `shoot` against the iframe's settled page; if the page is replaced
+ * while it runs (the iframe loads a new document or the viewer marks it
+ * busy), give up on that attempt and shoot the new page instead.
+ */
+async function shootIframePage(
+  iframe: HTMLIFrameElement,
+  shoot: (doc: Document) => Promise<string | null>,
+): Promise<{ png: string | null; doc: Document | null; note?: string; error?: string }> {
+  let note: string | undefined;
+  for (let attempt = 0; attempt < MAX_SHOT_ATTEMPTS; attempt++) {
+    const { doc, settled } = await pageReady(iframe);
+    if (!doc) return { png: null, doc: null };
+    if (!settled) note = "The page had not finished loading when it was captured.";
+    let stop = () => {};
+    const replaced = new Promise<Shot>((resolve) => {
+      const fire = () => resolve({ replaced: true });
+      const unBusy = onBusyChange(iframe, () => { if (isBusy(iframe)) fire(); });
+      iframe.addEventListener("load", fire);
+      stop = () => {
+        unBusy();
+        iframe.removeEventListener("load", fire);
+      };
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<Shot>((resolve) => {
+      timer = setTimeout(() => resolve({ timedOut: true }), SHOT_TIMEOUT_MS);
+    });
+    const result = await Promise.race([shoot(doc).then((png): Shot => ({ png })), replaced, timedOut]);
+    stop();
+    clearTimeout(timer);
+    if ("png" in result) {
+      if (iframe.contentDocument !== doc) continue; // swapped between the last paint and now
+      return { png: result.png, doc, note };
+    }
+    if ("timedOut" in result) {
+      return { png: null, doc, error: `Rendering the page did not finish within ${SHOT_TIMEOUT_MS / 1000} s.` };
+    }
+  }
+  return {
+    png: null,
+    doc: null,
+    error: `The page was replaced ${MAX_SHOT_ATTEMPTS} times while it was being captured (it is being edited); try again once it settles.`,
+  };
+}
+
 /**
  * Scroll a same-origin iframe through its full height once so scroll-triggered
  * entrance animations (IntersectionObserver-based reveals — common on webcraft
  * pages) fire before a full-page snapshot. Without this, everything below the
  * fold snapshots blank. Best-effort; restores the original scroll position.
+ *
+ * Returns false when it could not run: in a hidden tab there are no
+ * rendering steps, so observers would not fire however long it waited, and
+ * its chain of short sleeps is what Chrome throttles to a minute each.
  */
-async function primeScrollReveals(iframe: HTMLIFrameElement): Promise<void> {
+async function primeScrollReveals(iframe: HTMLIFrameElement): Promise<boolean> {
   try {
     const win = iframe.contentWindow;
     const doc = iframe.contentDocument;
-    if (!win || !doc) return;
+    if (!win || !doc) return true;
+    if (doc.visibilityState === "hidden") return false;
     const total = doc.documentElement.scrollHeight;
     const step = win.innerHeight || 800;
-    if (total <= step + 4) return; // single screen — nothing to reveal
+    if (total <= step + 4) return true; // single screen — nothing to reveal
     // Defeat CSS `scroll-behavior: smooth` — otherwise each scrollTo animates
     // and the loop finishes before the page has moved, so reveals never fire.
     const rootEl = doc.documentElement;
@@ -167,6 +326,7 @@ async function primeScrollReveals(iframe: HTMLIFrameElement): Promise<void> {
     rootEl.style.scrollBehavior = prevBehavior;
     await sleep(600); // let entrance animations settle
   } catch { /* best effort */ }
+  return true;
 }
 
 /**
@@ -206,8 +366,11 @@ export async function captureViewer(
   // ── Region capture (a CSS selector was given) ─────────────────────────────
   if (selector) {
     // Same-origin iframe (webcraft, kami) — resolve the selector inside it.
-    if (innerDoc) {
-      const target = innerDoc.querySelector(selector);
+    if (innerDoc && iframe) {
+      const { doc: readyDoc } = await pageReady(iframe);
+      const pageDoc = readyDoc ?? innerDoc;
+      const hiddenNote = pageDoc.visibilityState === "hidden" ? HIDDEN_TAB_NOTE : undefined;
+      const target = pageDoc.querySelector(selector);
       if (!target) return { ok: false, message: `Selector not found in the rendered page: ${selector}` };
       target.scrollIntoView({ behavior: "instant", block: "center", inline: "center" });
       await sleep(450); // let any scroll-triggered reveal settle
@@ -229,8 +392,13 @@ export async function captureViewer(
         if (shot) return finalize(shot, "electron-iframe-element");
       }
       const bg = effectiveBackgroundColor(targetEl);
-      const png = await snapdomToPng(targetEl, bg);
-      if (png) return finalize(png, "snapdom-iframe-element");
+      const snap = await shootIframePage(iframe, async (doc) => {
+        // A replaced page is shot again: find the element in the new one.
+        const el = doc === pageDoc ? targetEl : (doc.querySelector(selector) as HTMLElement | null);
+        return el ? snapdomToPng(el, bg) : null;
+      });
+      if (snap.error) return { ok: false, message: snap.error };
+      if (snap.png) return finalize(snap.png, "snapdom-iframe-element", joinNotes(hiddenNote, snap.note));
       if (capturePage && iframe) {
         // Final fallback — try the OS screenshot even for oversized targets;
         // captures whatever portion of the element is visible in the iframe.
@@ -304,10 +472,14 @@ export async function captureViewer(
   }
   // Same-origin iframe: snapshot the inner document — full page incl. scroll.
   if (iframe && innerDoc) {
-    await primeScrollReveals(iframe);
-    const root = innerDoc.body || innerDoc.documentElement;
-    const png = root ? await snapdomToPng(root) : null;
-    if (png) return finalize(png, "snapdom-iframe");
+    let hiddenNote: string | undefined;
+    const snap = await shootIframePage(iframe, async (doc) => {
+      if (!(await primeScrollReveals(iframe))) hiddenNote = HIDDEN_TAB_NOTE;
+      const root = doc.body || doc.documentElement;
+      return root ? snapdomToPng(root) : null;
+    });
+    if (snap.error) return { ok: false, message: snap.error };
+    if (snap.png) return finalize(snap.png, "snapdom-iframe", joinNotes(hiddenNote, snap.note));
     // fall through to Electron
   }
   // Electron real screenshot of the on-screen preview region.

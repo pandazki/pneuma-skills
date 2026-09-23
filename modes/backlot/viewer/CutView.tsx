@@ -85,8 +85,13 @@ export function CutView({
     if (shot) onSelectSegment(shot);
   };
 
+  // `min-w-0` is load-bearing. This column is a flex item of the viewer's
+  // stage row, and a flex item's default `min-width: auto` is its min-content
+  // width — here, the cut-point strip's full row of cards. Without it the
+  // column grows to that width, the player centres far off-screen and the
+  // shell's scroller pans the whole page; with it, only the strip scrolls.
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-cc-border bg-cc-surface/30 px-3 py-1.5">
         <span
           className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] ${
