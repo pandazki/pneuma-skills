@@ -15,7 +15,7 @@ import { applyTemplateParams } from "./skill-installer.js";
 import { readAndValidateManifest, getModeArchiveKey, getModeLatestKey } from "../snapshot/mode-publish.js";
 import { loadCredentials, uploadToR2, uploadJsonToR2, checkR2KeyExists } from "../snapshot/r2.js";
 import { createModeArchive } from "../snapshot/archive.js";
-import { buildModeForPublish, cleanModeBuild } from "../snapshot/mode-build.js";
+import { buildModeViewer, cleanModeBuild } from "../snapshot/mode-build.js";
 
 interface ModeMakerOptions {
   workspace: string;
@@ -739,7 +739,7 @@ export function registerModeMakerRoutes(app: Hono, opts: ModeMakerOptions): () =
       }
 
       // 5. Pre-build viewer bundle (inlines third-party deps)
-      const buildResult = await buildModeForPublish(workspace);
+      const buildResult = await buildModeViewer(workspace);
       if (!buildResult.success) {
         return c.json({
           success: false,

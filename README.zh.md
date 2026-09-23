@@ -89,6 +89,8 @@
 
 > 每个 mode 独立版本号 —— 在 launcher 和 mode 市场处呈现，不在 README 里重复以避免与代码漂移。
 
+> 其中少数几个随安装包一起发布，其余的第一次用到时才下载。launcher 的卡片上写着下载体积，点开就先取回来、再照常启动。哪些随包、哪些按需，是这一版发布的安排（`modes/distribution.json`），不是 mode 自己的属性 —— 一个 mode 在两边挪动，对使用的人来说没有任何差别。
+
 各 mode 的图像工具统一通过 OpenRouter 使用 GPT Image 2.5：Sunburst 生图，Flare 改图及基于参考图生成。配置 OpenRouter API key 即可启用；视频或语音工具可能还需要 fal.ai key。
 
 ## 第一次进项目时，Pneuma 会带着你走一遍

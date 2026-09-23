@@ -123,6 +123,20 @@
     "from_library": "Desde {{name}}",
     "synced_at": "sincronizado {{when}}"
   },
+  "catalog": {
+    "size_hint": "{{size}} de descarga",
+    "download_and_open": "Descargar y abrir",
+    "update_and_open": "Actualizar y abrir",
+    "download_and_create": "Descargar y crear",
+    "preparing": "Iniciando la descarga…",
+    "downloading_percent": "Descargando… {{percent}}%",
+    "retry": "Reintentar",
+    "failed": "La descarga falló",
+    "needs_download_aria": "Se descarga al abrirlo por primera vez",
+    "tile_needs_download": "Aún sin descargar — {{size}}",
+    "first_open_hint": "Abrir este modo descarga {{size}} una vez; después arranca como cualquier otro.",
+    "stale_hint": "Instalado para una versión anterior de Pneuma: al abrirlo se descarga la compilación de esta versión."
+  },
   "launch_dialog": {
     "workspace_label": "Ruta del espacio de trabajo",
     "browse_tooltip": "Explorar directorios",

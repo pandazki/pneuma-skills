@@ -123,6 +123,20 @@
     "from_library": "来自 {{name}}",
     "synced_at": "同步于 {{when}}"
   },
+  "catalog": {
+    "size_hint": "下载 {{size}}",
+    "download_and_open": "下载并打开",
+    "update_and_open": "更新并打开",
+    "download_and_create": "下载并开始",
+    "preparing": "正在开始下载…",
+    "downloading_percent": "下载中 {{percent}}%",
+    "retry": "重试",
+    "failed": "下载失败",
+    "needs_download_aria": "首次打开时下载",
+    "tile_needs_download": "尚未下载，约 {{size}}",
+    "first_open_hint": "首次打开会下载 {{size}}，之后和其他模式一样直接启动。",
+    "stale_hint": "本地的版本是为旧版 Pneuma 构建的，打开时会重新下载匹配当前版本的构建。"
+  },
   "launch_dialog": {
     "workspace_label": "工作区路径",
     "browse_tooltip": "浏览目录",

@@ -9,7 +9,7 @@
  */
 
 import { resolve, dirname, join, basename, sep } from "node:path";
-import { existsSync, copyFileSync, cpSync, mkdirSync, readFileSync, writeFileSync, statSync, realpathSync, readdirSync, rmSync, unlinkSync } from "node:fs";
+import { existsSync, copyFileSync, cpSync, mkdirSync, readFileSync, writeFileSync, statSync, readdirSync, rmSync, unlinkSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import * as p from "@clack/prompts";
 import { t } from "./i18n.js";
@@ -42,6 +42,13 @@ import {
   resolveModeOrLibrary,
   isExternalMode,
 } from "../core/mode-resolver.js";
+import {
+  ensureCatalogMode,
+  formatInstallSize,
+  getCatalogEntry,
+  installState,
+  isCatalogMode,
+} from "../core/mode-catalog.js";
 import type { ResolvedMode } from "../core/mode-resolver.js";
 import {
   listLibraries,
@@ -527,6 +534,44 @@ function checkBackendRequirements(backendType: AgentBackendType) {
         reason: result.reason ?? t("pneuma.backend_unavailable_no_detail"),
       }),
     );
+    process.exit(1);
+  }
+}
+
+/**
+ * Download a catalog mode before launch, with a line the user can act on.
+ *
+ * No-ops for bundled modes, for a repo checkout (the source is in-tree),
+ * and for an install that already matches the catalog this core pins. A
+ * failure stops the launch here rather than letting the mode load half
+ * installed: `installCatalogMode` leaves nothing behind, and the message
+ * carries the reason and the URL.
+ */
+async function installCatalogModeForLaunch(specifier: string): Promise<void> {
+  const env = { projectRoot: PROJECT_ROOT };
+  if (!isCatalogMode(specifier, env)) return;
+  if (installState(specifier, env) === "installed") return;
+
+  const entry = getCatalogEntry(specifier, env);
+  // No catalog entry (a repo checkout without generated catalog.json, or a
+  // name this release does not publish): let `resolveMode` produce the
+  // single authoritative error instead of guessing here.
+  if (!entry) return;
+
+  p.log.step(
+    t("pneuma.catalog_downloading", {
+      name: specifier,
+      version: entry.version,
+      size: formatInstallSize(entry.archive.size),
+    }),
+  );
+  try {
+    await ensureCatalogMode(specifier, env);
+    p.log.info(t("pneuma.catalog_downloaded", { name: specifier, version: entry.version }));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    p.log.error(t("pneuma.catalog_download_failed", { name: specifier }));
+    p.cancel(message);
     process.exit(1);
   }
 }
@@ -2033,7 +2078,14 @@ async function main() {
     return;
   }
 
-  // Resolve mode source (builtin, local path, or github clone)
+  // A catalog mode this release does not ship is downloaded and verified
+  // before anything else touches it, so the wait carries a name, a version
+  // and the size the catalog pins. `resolveMode` installs it anyway — this
+  // is the CLI's progress surface, not a second policy. In a repo checkout
+  // the mode is in-tree and this is a no-op with no network.
+  await installCatalogModeForLaunch(mode);
+
+  // Resolve mode source (bundled, catalog, local path, or github clone)
   let resolved: ResolvedMode;
   try {
     resolved = await resolveModeSource(mode, PROJECT_ROOT);
@@ -2043,7 +2095,8 @@ async function main() {
     process.exit(1);
   }
 
-  // For external modes, register them in the mode-loader before loading
+  // Catalog and external modes both load from an absolute path — register
+  // them in the mode-loader before loading.
   if (resolved.type !== "builtin") {
     registerExternalMode(resolved.name, resolved.path);
     p.log.info(t("pneuma.external_mode_loaded", { name: resolved.name, path: resolved.path }));
@@ -2250,6 +2303,13 @@ async function main() {
   // 1. Install skill + inject CLAUDE.md (driven by manifest)
   // Use resolved path for external modes, PROJECT_ROOT/modes/{name} for builtin
   const modeSourceDir = resolved.path;
+  // `init.seedFiles` keys are package-relative for in-package modes
+  // (`"modes/slide/seed/..."`) and mode-relative for external ones. A
+  // catalog mode knows its own answer — in-tree source resolves against the
+  // package root, an install resolves against its install root — so take
+  // the resolver's value whenever it supplied one.
+  const seedBaseDir = resolved.seedBase
+    ?? (resolved.type === "builtin" ? PROJECT_ROOT : resolved.path);
   const skillTarget = join(sessionDir, ".claude", "skills", manifest.skill.installName);
   let skipSkillInstall = skipSkill || !!replayPackage || viewing; // Skip for replay/viewing — installed on Continue Work or edit switch
 
@@ -2420,7 +2480,6 @@ async function main() {
   // mode upgrade propagates design-system changes to existing
   // workspaces without manual intervention.
   if (!replayPackage && manifest.init && manifest.init.seedFiles) {
-    const seedBase = resolved.type === "builtin" ? PROJECT_ROOT : resolved.path;
     const hasParams = Object.keys(resolvedParams).length > 0;
     // Same `{{_locale}}`-resolution logic as the one-shot seed loop
     // above. The two loops are intentionally duplicated rather than
@@ -2431,9 +2490,9 @@ async function main() {
     const resolveLocaleSrc = (src: string): string | null => {
       if (!src.includes("{{_locale}}")) return src;
       const candidate = src.replaceAll("{{_locale}}", userLocale ?? "en");
-      if (existsSync(join(seedBase, candidate))) return candidate;
+      if (existsSync(join(seedBaseDir, candidate))) return candidate;
       const fallback = src.replaceAll("{{_locale}}", "en");
-      if (existsSync(join(seedBase, fallback))) return fallback;
+      if (existsSync(join(seedBaseDir, fallback))) return fallback;
       return null;
     };
     for (const [src, dst] of Object.entries(manifest.init.seedFiles)) {
@@ -2441,7 +2500,7 @@ async function main() {
       const localeResolved = resolveLocaleSrc(src);
       if (localeResolved === null) continue;
       const resolvedSrc = hasParams ? applyTemplateParams(localeResolved, resolvedParams) : localeResolved;
-      const srcPath = join(seedBase, resolvedSrc);
+      const srcPath = join(seedBaseDir, resolvedSrc);
       if (!existsSync(srcPath) || !statSync(srcPath).isDirectory()) continue;
       const glob = new Bun.Glob("**/*");
       for (const relFile of glob.scanSync({ cwd: srcPath, absolute: false })) {
@@ -2480,6 +2539,10 @@ async function main() {
   }
 
   // 2.5 Pre-compile external mode viewer for production serving
+  //     Same builder, same host ABI as publish and the release pack step —
+  //     see snapshot/mode-build.ts. A private build config here is how an
+  //     external mode used to end up with its own inlined copy of the host
+  //     store while a published one did not.
   let modeBundleDir: string | undefined;
   if (!isDev && resolved.type !== "builtin") {
     const existingBuild = join(resolved.path, ".build", "pneuma-mode.js");
@@ -2487,59 +2550,21 @@ async function main() {
       // Use pre-built bundle from publish (third-party deps already inlined)
       modeBundleDir = join(resolved.path, ".build");
       p.log.step(t("pneuma.using_prebuilt_viewer"));
-    } else {
+    } else if (
+      existsSync(join(resolved.path, "pneuma-mode.ts")) ||
+      existsSync(join(resolved.path, "manifest.ts"))
+    ) {
       // Build from source (local development, unpublished modes)
-      const buildDir = join(resolved.path, ".build");
-      const modeEntry = join(resolved.path, "pneuma-mode.ts");
-      const manifestEntry = join(resolved.path, "manifest.ts");
-      const entrypoints = [modeEntry, manifestEntry].filter((e) => existsSync(e));
-      if (entrypoints.length > 0) {
-        p.log.step(t("pneuma.compiling_viewer"));
-        // Resolve symlinks (macOS /tmp → /private/tmp) so importer paths match
-        const realModePath = realpathSync(resolved.path);
-        const result = await Bun.build({
-          entrypoints,
-          outdir: buildDir,
-          target: "browser",
-          format: "esm",
-          external: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
-          throw: false,
-          plugins: [{
-            name: "pneuma-mode-resolve",
-            setup(build) {
-              // Redirect imports from external mode files to pneuma project root
-              const externals = new Set(["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"]);
-              build.onResolve({ filter: /.+/ }, (args) => {
-                if (!args.importer || (!args.importer.startsWith(realModePath) && !args.importer.startsWith(resolved.path))) return;
-                if (!args.path.startsWith(".") && !args.path.startsWith("/")) {
-                  // Let Bun handle external modules (don't resolve them to file paths)
-                  if (externals.has(args.path)) return;
-                  // Bare specifier — resolve from project's or mode's node_modules
-                  try {
-                    return { path: require.resolve(args.path, { paths: [resolved.path, join(PROJECT_ROOT, "node_modules")] }) };
-                  } catch { /* let Bun handle it */ }
-                  return;
-                }
-                const abs = resolve(dirname(args.importer), args.path);
-                // Redirect imports that reference pneuma project internals (core/, src/)
-                for (const prefix of ["/core/", "/src/"]) {
-                  const idx = abs.indexOf(prefix);
-                  if (idx !== -1 && !abs.startsWith(PROJECT_ROOT)) {
-                    return { path: PROJECT_ROOT + abs.slice(idx) };
-                  }
-                }
-              });
-            },
-          }],
-        });
-        if (result.success) {
-          modeBundleDir = buildDir;
-          p.log.step(t("pneuma.viewer_compiled"));
-        } else {
-          p.log.warn(t("pneuma.viewer_compile_failed"));
-          for (const log of result.logs) {
-            p.log.warn(`  ${log.message}`);
-          }
+      p.log.step(t("pneuma.compiling_viewer"));
+      const { buildModeViewer } = await import("../snapshot/mode-build.js");
+      const result = await buildModeViewer(resolved.path, { projectRoot: PROJECT_ROOT });
+      if (result.success) {
+        modeBundleDir = result.buildDir;
+        p.log.step(t("pneuma.viewer_compiled"));
+      } else {
+        p.log.warn(t("pneuma.viewer_compile_failed"));
+        for (const message of result.errors) {
+          p.log.warn(`  ${message}`);
         }
       }
     }
@@ -2583,7 +2608,7 @@ async function main() {
     modeName,
     modeManifest: manifest,
     modeSourceDir: resolved.type === "builtin" ? join(PROJECT_ROOT, "modes", resolved.name) : resolved.path,
-    seedBase: resolved.type === "builtin" ? PROJECT_ROOT : resolved.path,
+    seedBase: seedBaseDir,
     layout: manifest.layout,
     window: manifest.window,
     editing: initialEditing,

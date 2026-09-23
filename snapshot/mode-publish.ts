@@ -7,7 +7,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { parseManifestTs } from "../core/utils/manifest-parser.js";
 import { createModeArchive } from "./archive.js";
-import { buildModeForPublish, cleanModeBuild } from "./mode-build.js";
+import { buildModeViewer, cleanModeBuild } from "./mode-build.js";
 import { getCredentials, uploadToR2, uploadJsonToR2, checkR2KeyExists, updateRegistryIndex } from "./r2.js";
 
 /** Valid mode name: lowercase letters, digits, hyphens; must start with a letter. */
@@ -117,7 +117,7 @@ export async function publishMode(workspace: string, options?: PublishOptions): 
 
   // 6. Pre-build viewer bundle (inlines third-party deps)
   console.log("[mode-publish] Building viewer bundle...");
-  const buildResult = await buildModeForPublish(workspace);
+  const buildResult = await buildModeViewer(workspace);
   if (!buildResult.success) {
     throw new Error(
       `Viewer build failed:\n${buildResult.errors.join("\n")}`,

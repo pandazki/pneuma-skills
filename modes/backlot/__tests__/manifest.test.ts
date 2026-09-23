@@ -4,9 +4,13 @@
  * Each one fails differently and quietly when it is missed (shape adapted
  * from `modes/lucid/__tests__/registration.test.ts`):
  *
- *  - `core/mode-loader.ts` — miss it and the mode is "Unknown mode";
- *  - `server/index.ts::builtinNames` — miss it and `bun run dev backlot` still
- *    works, so nothing looks broken, but the launcher gallery never shows it;
+ *  - the mode's source, found by `core/mode-catalog.ts` and handed to the
+ *    loader by `registerExternalMode` — miss it and the mode is "Unknown
+ *    mode" (a CATALOG mode is not in the builtin registry by design);
+ *  - the launcher gallery registry in `server/index.ts`, derived from
+ *    `modes/distribution.json` plus the on-disk mode directories — put the
+ *    mode somewhere that derivation does not look and `bun run dev backlot`
+ *    still works, so nothing looks broken, but the gallery never shows it;
  *  - the mode catalogs in both READMEs — miss it and the mode exists but
  *    nobody reading the project can find it.
  */
@@ -16,6 +20,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { listBuiltinModes } from "../../../core/mode-loader.js";
+import { isCatalogMode, resolveCatalogMode } from "../../../core/mode-catalog.js";
 import backlotManifest from "../manifest.js";
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..");
@@ -32,16 +37,31 @@ function dirBytes(dir: string): number {
 }
 
 const MODE_NAME = "backlot";
+const LITERAL_LIST = new RegExp("const builtinNames = " + "\\[\\s*\"");
 
 describe("registration 1/3 — the frontend dynamic-import registry", () => {
-  test("`core/mode-loader.ts` knows the mode by name", () => {
-    expect(listBuiltinModes()).toContain(MODE_NAME);
+  // This is a CATALOG mode (`modes/distribution.json`): the npm package does
+  // not ship it, so it is deliberately NOT in the builtin registry — that
+  // registry is what Vite follows into `dist/`, and a viewer bundled without
+  // its source is dead weight. It loads through `registerExternalMode` from
+  // whatever directory the catalog resolved: `modes/<name>/` here in the
+  // repo, `~/.pneuma/catalog/<name>/` after a release downloads it. Same
+  // code path both times, which is why the repo exercises the shipped shape.
+  test("`core/mode-catalog.ts` resolves the mode, and it is not a builtin", () => {
+    expect(listBuiltinModes()).not.toContain(MODE_NAME);
+    expect(isCatalogMode(MODE_NAME)).toBe(true);
+    const resolved = resolveCatalogMode(MODE_NAME);
+    expect(resolved?.source).toBe("in-tree");
+    expect(resolved?.modeDir).toBe(join(REPO_ROOT, "modes", MODE_NAME));
   });
 
   test("the manifest it resolves to is this mode's own", async () => {
-    // Not a tautology: the loader entry is two hand-written import paths, and
-    // a copy-paste pointing at the wrong mode would still list the right name.
-    const { loadModeManifest } = await import("../../../core/mode-loader.js");
+    // Not a tautology: registration hands the loader a directory, and a
+    // path pointing at the wrong mode would still carry the right name.
+    const { registerExternalMode, loadModeManifest } = await import(
+      "../../../core/mode-loader.js"
+    );
+    registerExternalMode(MODE_NAME, resolveCatalogMode(MODE_NAME)!.modeDir);
     const manifest = await loadModeManifest(MODE_NAME);
     expect(manifest.name).toBe(MODE_NAME);
     expect(manifest.skill?.installName).toBe(backlotManifest.skill.installName);
@@ -51,19 +71,32 @@ describe("registration 1/3 — the frontend dynamic-import registry", () => {
 describe("registration 2/3 — the launcher gallery registry", () => {
   const serverSource = read("server/index.ts");
 
-  test("the mode is in builtinNames — the omission that leaves a gallery empty", () => {
-    const literal = serverSource.match(/const builtinNames = \[([^\]]*)\];/)![1];
-    const names = literal
-      .split(",")
-      .map((entry) => entry.trim().replace(/^"|"$/g, ""))
-      .filter(Boolean);
-    expect(names).toContain(MODE_NAME);
+  test("the launcher derives its gallery from disk, not from a name list", () => {
+    // Before the mode-distribution split this route carried a literal
+    // `builtinNames` array and a new mode had to be added to it by hand. It
+    // now reads `modes/distribution.json` plus the on-disk mode directories,
+    // so the omission this suite used to guard cannot happen — and a
+    // reintroduced literal would bring it back.
+    expect(serverSource).not.toMatch(LITERAL_LIST);
+    expect(serverSource).toContain("distribution.json");
+  });
+
+  test("the mode is where that derivation looks for it", () => {
+    const bundled = (
+      JSON.parse(read("modes/distribution.json")) as { bundled: string[] }
+    ).bundled;
+    expect(existsSync(join(REPO_ROOT, "modes", MODE_NAME, "manifest.ts"))).toBe(true);
+    if (bundled.includes(MODE_NAME)) return; // ships inside the package
+    // A catalog mode is published from its own directory and reaches the
+    // launcher through `modes/catalog.json`; its card needs the showcase
+    // images that stay in the package.
+    expect(existsSync(join(REPO_ROOT, "modes", MODE_NAME, "showcase"))).toBe(true);
   });
 
   test("the mode is not otherwise hardcoded into server or CLI logic", () => {
-    // `server/` and `bin/` are ModeManifest-driven. The gallery registry array
-    // is the one sanctioned mention of the name; anything else quoting it is a
-    // branch on mode identity.
+    // `server/` and `bin/` are ModeManifest-driven, and since the gallery
+    // derives its list from disk there is no sanctioned mention left: any
+    // line quoting the name is a branch on mode identity.
     const quoted = `"${MODE_NAME}"`;
     const offenders: string[] = [];
     for (const dir of ["server", "bin"]) {
@@ -73,7 +106,6 @@ describe("registration 2/3 — the launcher gallery registry", () => {
         const rel = `${dir}/${file}`;
         for (const [i, line] of read(rel).split("\n").entries()) {
           if (!line.includes(quoted)) continue;
-          if (line.includes("const builtinNames = [")) continue;
           offenders.push(`${rel}:${i + 1}`);
         }
       }

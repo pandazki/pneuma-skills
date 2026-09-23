@@ -8,24 +8,36 @@
  * - Error handling
  */
 
-import { describe, test, expect } from "bun:test";
+import { afterAll, beforeAll, describe, test, expect } from "bun:test";
 import { parseModeSpecifier, isExternalMode, resolveMode } from "../mode-resolver.js";
-import { homedir } from "node:os";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { resolve, dirname, join } from "node:path";
+import { buildModeArchive, sha256Hex } from "./fixtures/catalog-archive.js";
+import { MODE_CATALOG_FORMAT, type ModeCatalog } from "../types/mode-catalog.js";
 
 describe("parseModeSpecifier", () => {
   // ── Builtin modes ──────────────────────────────────────────────────
 
-  test("recognizes builtin mode: doc", () => {
-    const result = parseModeSpecifier("doc");
-    expect(result.type).toBe("builtin");
-    expect(result.name).toBe("doc");
-  });
-
-  test("recognizes builtin mode: slide", () => {
+  test("recognizes a bundled mode: slide", () => {
     const result = parseModeSpecifier("slide");
     expect(result.type).toBe("builtin");
     expect(result.name).toBe("slide");
+  });
+
+  test("recognizes a bundled mode: webcraft", () => {
+    const result = parseModeSpecifier("webcraft");
+    expect(result.type).toBe("builtin");
+    expect(result.name).toBe("webcraft");
+  });
+
+  // `doc` is a catalog mode: listed by every release, shipped by none.
+  // In this repo its source is in-tree, which is why resolution below
+  // finds it without a download.
+  test("recognizes a catalog mode: doc", () => {
+    const result = parseModeSpecifier("doc");
+    expect(result.type).toBe("catalog");
+    expect(result.name).toBe("doc");
   });
 
   test("unknown plain name falls back to builtin (let mode-loader handle it)", () => {
@@ -127,10 +139,23 @@ const PROJECT_ROOT = resolve(dirname(import.meta.path), "../..");
 
 describe("resolveMode", () => {
   test("resolves builtin mode to modes/ directory", async () => {
-    const result = await resolveMode("doc", PROJECT_ROOT);
+    const result = await resolveMode("slide", PROJECT_ROOT);
     expect(result.type).toBe("builtin");
+    expect(result.name).toBe("slide");
+    expect(result.path).toBe(join(PROJECT_ROOT, "modes", "slide"));
+  });
+
+  test("resolves a catalog mode to in-tree source in a repo checkout", async () => {
+    // No network: the source is in the tree, so the catalog installer is
+    // never consulted. This is the invariant that keeps development and CI
+    // working offline for modes the package does not ship.
+    const result = await resolveMode("doc", PROJECT_ROOT);
+    expect(result.type).toBe("catalog");
     expect(result.name).toBe("doc");
     expect(result.path).toBe(join(PROJECT_ROOT, "modes", "doc"));
+    // Seed keys in first-party manifests are package-relative
+    // ("modes/doc/seed/README.md"), so the seed root is the package root.
+    expect(result.seedBase).toBe(PROJECT_ROOT);
   });
 
   test("resolves local path to absolute directory", async () => {
@@ -157,9 +182,14 @@ describe("resolveMode", () => {
 });
 
 describe("isExternalMode", () => {
-  test("builtin modes are not external", () => {
-    expect(isExternalMode("doc")).toBe(false);
+  test("bundled modes are not external", () => {
     expect(isExternalMode("slide")).toBe(false);
+    expect(isExternalMode("webcraft")).toBe(false);
+  });
+
+  test("catalog modes are external — they load from an absolute path", () => {
+    expect(isExternalMode("doc")).toBe(true);
+    expect(isExternalMode("sprite")).toBe(true);
   });
 
   test("local paths are external", () => {
@@ -169,5 +199,92 @@ describe("isExternalMode", () => {
 
   test("github specifiers are external", () => {
     expect(isExternalMode("github:user/repo")).toBe(true);
+  });
+});
+
+/**
+ * The released shape: a catalog mode whose source is NOT in the package.
+ * `resolveMode` is the one seam every launch path goes through — CLI,
+ * session resume, handoff/borrow target, launcher — so the install has to
+ * happen here, or a handoff into a mode the user never opened would fail
+ * with "missing manifest.ts" instead of downloading it.
+ */
+describe("resolveMode — catalog mode that is not in the package", () => {
+  const MODE = "demo";
+  const VERSION = "2.0.0";
+  const CORE = "9.9.9";
+
+  let archive: Uint8Array<ArrayBuffer>;
+  let server: ReturnType<typeof Bun.serve>;
+  let pkgRoot: string;
+  let tmpHome: string;
+  let realHome: string | undefined;
+
+  beforeAll(() => {
+    archive = buildModeArchive({ name: MODE, version: VERSION, coreVersion: CORE });
+    server = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch: () => new Response(new Blob([archive])),
+    });
+
+    pkgRoot = mkdtempSync(join(tmpdir(), "pneuma-resolver-pkg-"));
+    tmpHome = mkdtempSync(join(tmpdir(), "pneuma-resolver-home-"));
+    mkdirSync(join(pkgRoot, "modes"), { recursive: true });
+    writeFileSync(
+      join(pkgRoot, "modes", "distribution.json"),
+      JSON.stringify({ bundled: ["_shared", "slide"] }),
+    );
+    const catalog: ModeCatalog = {
+      formatVersion: MODE_CATALOG_FORMAT,
+      coreVersion: CORE,
+      generatedAt: "2026-09-22T00:00:00.000Z",
+      modes: [
+        {
+          name: MODE,
+          version: VERSION,
+          displayName: { en: "Demo" },
+          archive: {
+            url: `http://127.0.0.1:${server.port}/official/v${CORE}/${MODE}-${VERSION}.tar.gz`,
+            size: archive.length,
+            sha256: sha256Hex(archive),
+          },
+          unpackedSize: 4096,
+        },
+      ],
+    };
+    writeFileSync(join(pkgRoot, "modes", "catalog.json"), JSON.stringify(catalog));
+
+    // The installer resolves `~` from the environment (Bun caches
+    // `os.homedir()` at boot), so this is what redirects the install.
+    realHome = process.env.HOME;
+    process.env.HOME = tmpHome;
+  });
+
+  afterAll(() => {
+    if (realHome === undefined) delete process.env.HOME;
+    else process.env.HOME = realHome;
+    server.stop(true);
+    rmSync(pkgRoot, { recursive: true, force: true });
+    rmSync(tmpHome, { recursive: true, force: true });
+  });
+
+  test("installs on resolve and points at the installed mode directory", async () => {
+    const result = await resolveMode(MODE, pkgRoot);
+    expect(result.type).toBe("catalog");
+    expect(result.name).toBe(MODE);
+
+    const installRoot = join(tmpHome, ".pneuma", "catalog", MODE);
+    expect(result.path).toBe(join(installRoot, "modes", MODE));
+    expect(existsSync(join(result.path, "manifest.ts"))).toBe(true);
+    // Package-relative seed keys ("modes/demo/seed/README.md") resolve
+    // against the install root exactly as they do against the package root.
+    expect(result.seedBase).toBe(installRoot);
+    expect(
+      readFileSync(join(result.seedBase!, "modes", MODE, "seed", "README.md"), "utf-8"),
+    ).toContain(VERSION);
+    // The install never lands in `~/.pneuma/modes/`, which belongs to
+    // user-installed and evolved modes.
+    expect(existsSync(join(tmpHome, ".pneuma", "modes", MODE))).toBe(false);
   });
 });

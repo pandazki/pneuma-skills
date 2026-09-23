@@ -14,6 +14,7 @@ import type { TerminalSocketData } from "./ws-bridge-types.js";
 import type { ServerWebSocket } from "bun";
 import { TerminalManager } from "./terminal-manager.js";
 import { registerModeMakerRoutes } from "./mode-maker-routes.js";
+import { HOST_ABI_VENDOR_SHIMS, hostAbiImportMap } from "../snapshot/mode-build.js";
 import { registerEvolutionRoutes } from "./evolution-routes.js";
 import { openPath, revealPath, openUrl } from "./system-bridge.js";
 import { pathStartsWith, isWin } from "./utils.js";
@@ -31,12 +32,15 @@ import { SettingsManager } from "../core/settings-manager.js";
 import { HookBus } from "../core/hook-bus.js";
 import { createProxyMiddleware, mergeProxyConfig, type ProxyConfigRef } from "./proxy-middleware.js";
 import { resolveLocalized, type ModeManifest, type ProxyRoute } from "../core/types/mode-manifest.js";
+import type { ModeCatalogEntry, ModeInstallState } from "../core/types/mode-catalog.js";
+import { bundledModeNames, listCatalogModes, resolveCatalogMode } from "../core/mode-catalog.js";
 import { startProxyWatcher, registerSelfWrite, registerSelfDelete } from "./file-watcher.js";
 import { copySeedEntry, resolveSeedCatalog, runPostSeedInstall } from "./seed-installer.js";
 import { mountHandoffRoutes } from "./handoff-routes.js";
 import { mountBorrowRoutes } from "./borrow-routes.js";
 import { enumerateLocalModes } from "../core/local-modes.js";
 import { registerLibraryRoutes } from "./library-routes.js";
+import { registerCatalogRoutes } from "./catalog-routes.js";
 import {
   registerAgentCommandRoutes,
   bootstrapAutoUpdate as bootstrapAgentCommandAutoUpdate,
@@ -719,6 +723,51 @@ export async function startServer(options: ServerOptions) {
     reason?: string;
   }
 
+  /** Localized showcase payload shared by the `builtins` and `catalog` buckets. */
+  interface RegistryShowcase {
+    tagline?: string;
+    hero?: string;
+    highlights?: Array<{ title: string; description: string; media: string; mediaType?: string }>;
+  }
+
+  /**
+   * One catalog mode as the launcher sees it before anything is downloaded:
+   * the introduction copied into `modes/catalog.json` at pack time, the
+   * `showcase/` images that stayed in the package, the install size, and
+   * where this machine stands (`state`).
+   *
+   * A catalog mode that is present in the tree (a repo checkout) is NOT
+   * listed here — it runs from source and is reported in `builtins`.
+   */
+  interface RegistryCatalogEntry {
+    name: string;
+    displayName: string;
+    description?: string;
+    icon?: string;
+    /** The mode's own manifest version, as pinned by this core's catalog. */
+    version: string;
+    /** Bytes on disk after extraction — what the card quotes as the install size. */
+    unpackedSize: number;
+    /** Compressed archive bytes — the denominator the install stream counts to. */
+    downloadSize: number;
+    /** `not-installed` | `installed` | `stale` (installed from another core's build). */
+    state: ModeInstallState;
+    /**
+     * Absolute path to the installed mode directory, present only while
+     * `state === "installed"` and the source is actually on disk.
+     *
+     * Deliberately NOT called `path`: `local[]`'s `path` is a launch
+     * specifier and a workspace the user may evolve in place, and a catalog
+     * install is neither — `core/mode-catalog.ts` owns that directory and
+     * deletes it on the next core upgrade. This field answers one question:
+     * "where would a copy of this mode's source come from", which is what
+     * "Edit in Mode Maker" needs since `modes/<name>/` does not exist for a
+     * catalog mode in a released package.
+     */
+    installPath?: string;
+    showcase?: RegistryShowcase;
+  }
+
   interface RegistryResponse {
     /** Pneuma runtime version this server is running. Convenient for UI display. */
     runtimeVersion: string;
@@ -770,6 +819,12 @@ export async function startServer(options: ServerOptions) {
        */
       compat?: RegistryCompat;
     }>;
+    /**
+     * Modes this core release knows about but does not ship — downloaded
+     * from the CDN on first use. Empty on a core without a generated
+     * catalog (a repo checkout), where every mode is in `builtins`.
+     */
+    catalog: RegistryCatalogEntry[];
   }
 
   const registryCache: Map<string, { value: RegistryResponse; fetchedAt: number }> = new Map();
@@ -810,6 +865,19 @@ export async function startServer(options: ServerOptions) {
     return out;
   };
 
+  /** A catalog entry joined with this machine's install state. */
+  type CatalogModeListing = ModeCatalogEntry & { state: ModeInstallState };
+
+  /**
+   * Catalog modes as the launcher sees them before anything is downloaded.
+   * `listCatalogModes` answers `[]` for a repo checkout (no generated
+   * `modes/catalog.json`), where every mode is reachable from the tree and
+   * belongs in `builtins` instead — an empty bucket here is the normal
+   * development case, not a degraded one.
+   */
+  const loadCatalogListings = async (root: string): Promise<CatalogModeListing[]> =>
+    listCatalogModes({ projectRoot: root });
+
   const buildRegistry = async (locale: string): Promise<RegistryResponse> => {
     const { parseManifestTs } = await import("../core/utils/manifest-parser.js");
     const { checkCompat } = await import("../core/version-compat.js");
@@ -822,15 +890,49 @@ export async function startServer(options: ServerOptions) {
       if (typeof pkg.version === "string") runtimeVersion = pkg.version;
     } catch { /* leave as 0.0.0; UI will fall back to "unknown" compat */ }
 
-    // The launcher's user-pickable mode grid is driven from this curated
-    // order. Modes that exist on disk but should never be offered as a
-    // user choice (evolve, project-evolve, project-onboard — all are
-    // triggered by specific UI affordances or by Pneuma itself, never by
-    // "what mode would you like to start?") declare `hidden: true` in
-    // their manifest and get filtered out below. The filter is the source
-    // of truth; the omission-from-this-list pattern is fragile (forget to
-    // add a hidden mode → it leaks).
-    const builtinNames = ["webcraft", "kami", "slide", "doc", "draw", "diagram", "illustrate", "remotion", "gridboard", "clipcraft", "cosmos", "wordtaste", "bansho", "eli5", "plotwise", "sprite", "lucid", "backlot"];
+    // `builtins` = every mode whose source is present in this installation.
+    // In a released package that is exactly the bundled set; in a repo
+    // checkout it is every mode directory, because an in-tree catalog mode
+    // runs from source with no network (proposal D8).
+    //
+    // The list is derived, never written here: the server must carry no
+    // mode knowledge. Order = `modes/distribution.json` first (the modes
+    // this distribution leads with), then the catalog's own order, then
+    // anything left over alphabetically — so a new mode directory appears
+    // without an edit to this file.
+    //
+    // Modes that exist on disk but should never be offered as a user choice
+    // (evolve, project-evolve, project-onboard — all triggered by a specific
+    // UI affordance or by Pneuma itself, never by "what mode would you like
+    // to start?") declare `hidden: true` in their manifest and are filtered
+    // out below. That flag is the only filter; nothing is excluded by being
+    // absent from a list.
+    const modesRoot = join(projectRoot, "modes");
+    let onDiskModes: string[] = [];
+    try {
+      onDiskModes = readdirSync(modesRoot)
+        .filter((dir) => existsSync(join(modesRoot, dir, "manifest.ts")))
+        .sort();
+    } catch { /* no modes dir (minimal test harness) — leave empty */ }
+
+    const catalogListings = await loadCatalogListings(projectRoot);
+    const declaredOrder = new Map<string, number>();
+    // `bundledModeNames` reads `modes/distribution.json`, the one authority
+    // for the split (see `core/types/mode-catalog.ts`). A malformed or missing
+    // file degrades to "no declared order", which leaves the on-disk modes
+    // alphabetical rather than hiding any of them.
+    const declared = [...bundledModeNames({ projectRoot }), ...catalogListings.map((e) => e.name)];
+    for (const name of declared) {
+      if (!declaredOrder.has(name)) declaredOrder.set(name, declaredOrder.size);
+    }
+    const builtinNames = onDiskModes.slice().sort((a, b) => {
+      const ai = declaredOrder.get(a);
+      const bi = declaredOrder.get(b);
+      if (ai !== undefined && bi !== undefined) return ai - bi;
+      if (ai !== undefined) return -1;
+      if (bi !== undefined) return 1;
+      return a.localeCompare(b);
+    });
     const builtins = builtinNames
       .map((name) => {
         const manifestPath = join(projectRoot, "modes", name, "manifest.ts");
@@ -861,6 +963,46 @@ export async function startServer(options: ServerOptions) {
       })
       .filter((m) => !m.hidden)
       .map(({ hidden: _hidden, ...rest }) => rest); // strip the diagnostic field before serializing
+
+    // Catalog bucket — the modes this release does not ship. An entry whose
+    // source IS in the tree was already reported as a builtin above, so it
+    // never shows up twice. Introduction and icon come from the catalog
+    // (copied out of the manifest at pack time); the preview images come
+    // from `modes/<name>/showcase/`, which survives the split, so the card
+    // is complete before a single archive byte is downloaded.
+    const onDiskSet = new Set(onDiskModes);
+    const catalog: RegistryCatalogEntry[] = catalogListings
+      .filter((entry) => !onDiskSet.has(entry.name))
+      .map((entry) => {
+        let showcase: RegistryShowcase | undefined;
+        try {
+          const showcasePath = join(modesRoot, entry.name, "showcase", "showcase.json");
+          if (existsSync(showcasePath)) {
+            showcase = localizeShowcase(JSON.parse(readFileSync(showcasePath, "utf-8")), locale);
+          }
+        } catch { /* a mode with no showcase in the package still gets a card */ }
+        const description = pickLocalized(entry.description, locale);
+        // Where the mode's source actually is, asked of the module that owns
+        // the answer rather than reconstructed from the install layout here.
+        // Null while nothing is installed, which is what keeps the field's
+        // presence a usable "there is source to copy" signal.
+        const resolved =
+          entry.state === "installed"
+            ? resolveCatalogMode(entry.name, { projectRoot })
+            : null;
+        return {
+          name: entry.name,
+          displayName: pickLocalized(entry.displayName, locale) || entry.name,
+          ...(description ? { description } : {}),
+          ...(entry.icon ? { icon: entry.icon } : {}),
+          version: entry.version,
+          unpackedSize: entry.unpackedSize,
+          downloadSize: entry.archive?.size ?? 0,
+          state: entry.state,
+          ...(resolved ? { installPath: resolved.modeDir } : {}),
+          ...(showcase ? { showcase } : {}),
+        };
+      });
 
     let published: RegistryResponse["published"] = [];
     try {
@@ -953,7 +1095,7 @@ export async function startServer(options: ServerOptions) {
       }
     } catch { /* library subsystem failure should not break the registry */ }
 
-    return { runtimeVersion, builtins, published, local };
+    return { runtimeVersion, builtins, catalog, published, local };
   };
 
   /**
@@ -1022,6 +1164,26 @@ export async function startServer(options: ServerOptions) {
     });
   };
 
+  // `/api/catalog` + `/api/catalog/install` go wherever `/api/registry` goes,
+  // and for the same reason: the registry is what tells a surface that a mode
+  // needs downloading, so every surface that reads it can offer the download.
+  // The ProjectPanel's mode picker runs inside a PER-SESSION server and posts
+  // to its own origin — mounted on the launcher alone, its "Start in any mode"
+  // download hit a route that was not there and could never finish.
+  //
+  // Installing into `~/.pneuma/catalog/` is a machine-level operation either
+  // way: nothing about it depends on which server flavour is asked, and the
+  // installer is idempotent, so a second server offering it is not a second
+  // copy of anything.
+  const mountCatalogRoutes = (target: Hono) => {
+    registerCatalogRoutes(target, {
+      projectRoot: options.projectRoot || resolve(dirname(import.meta.path), ".."),
+      // A finished install changes what the registry can launch, so drop the
+      // SWR cache on the same tick instead of waiting out its TTL.
+      onInstalled: () => registryCache.clear(),
+    });
+  };
+
   // User locale (UI language). Persisted in ~/.pneuma/settings.json under
   // top-level "locale". Mounted on every server flavour (launcher + per-
   // session) because the frontend `syncLocaleFromServer` fires on every
@@ -1080,6 +1242,7 @@ export async function startServer(options: ServerOptions) {
     });
 
     mountRegistryRoute(app);
+    mountCatalogRoutes(app);
 
     app.get("/api/backends", async (c) => {
       const descriptors = getBackendDescriptors();
@@ -2838,6 +3001,9 @@ export async function startServer(options: ServerOptions) {
   // per-session server so the dropdown works regardless of which port it
   // talks to.
   mountRegistryRoute(app);
+  // The ProjectPanel lives in this server too, and its mode picker downloads a
+  // catalog mode before it opens the launch sheet.
+  mountCatalogRoutes(app);
   mountUserLocaleRoutes(app);
 
   // ── Project routes API ──────────────────────────────────────────────
@@ -4070,49 +4236,15 @@ export async function startServer(options: ServerOptions) {
   if (options.modeBundleDir) {
     const bundleDir = options.modeBundleDir;
 
-    // Vendor shims — re-export React from window globals set by main bundle
-    const REACT_SHIM = `const R = window.__PNEUMA_REACT__;
-export default R;
-export const { useState, useEffect, useCallback, useMemo, useRef, useContext, createContext, forwardRef, memo, Fragment, createElement, cloneElement, Children, isValidElement, Component, PureComponent, Suspense, lazy, startTransition, useTransition, useDeferredValue, useId, useSyncExternalStore, useImperativeHandle, useLayoutEffect, useDebugValue, useReducer } = R;`;
-
-    const JSX_RUNTIME_SHIM = `const J = window.__PNEUMA_JSX_RUNTIME__;
-export const { jsx, jsxs, Fragment } = J;`;
-
-    // Bun.build uses jsx-dev-runtime (jsxDEV) due to a Bun v1.3+ regression.
-    // jsxDEV(type, props, key, isStatic, source, self) is signature-compatible
-    // with jsx(type, props, key) — extra dev args are simply ignored.
-    const JSX_DEV_RUNTIME_SHIM = `const J = window.__PNEUMA_JSX_RUNTIME__;
-export const jsxDEV = J.jsx;
-export const Fragment = J.Fragment;`;
-
-    app.get("/vendor/react.js", (c) => new Response(REACT_SHIM, { headers: { "Content-Type": "application/javascript" } }));
-    // react-dom exports forwarded to published mode bundles. Keep in sync
-    // with what react-dom actually exports — missing an export here causes
-    // a runtime SyntaxError when a bundle imports it (since this shim is
-    // an ES module, any named import that isn't re-exported fails hard).
-    // unstable_batchedUpdates in particular is still pulled in by @dnd-kit
-    // and a few other deps; React 18+ auto-batches so a fallback identity
-    // shim is safe if the runtime ever stops providing it.
-    const REACT_DOM_SHIM = `const RD = window.__PNEUMA_REACT_DOM__;
-export default RD;
-export const { createPortal, flushSync, createRoot, hydrateRoot, version } = RD;
-export const unstable_batchedUpdates = RD.unstable_batchedUpdates || ((fn, ...args) => fn(...args));`;
-    app.get("/vendor/react-dom.js", (c) => new Response(REACT_DOM_SHIM, { headers: { "Content-Type": "application/javascript" } }));
-    app.get("/vendor/react-jsx-runtime.js", (c) => new Response(JSX_RUNTIME_SHIM, { headers: { "Content-Type": "application/javascript" } }));
-    app.get("/vendor/react-jsx-dev-runtime.js", (c) => new Response(JSX_DEV_RUNTIME_SHIM, { headers: { "Content-Type": "application/javascript" } }));
-
-    // Host store shim — re-exports `useStore` from the HOST's single Zustand
-    // instance. Without this, Bun.build inlines the entire src/store.ts
-    // tree into every published mode bundle, and the mode ends up with its
-    // own parallel store that never talks to the host. The visible symptom
-    // is anything that crosses the mode/host boundary (activeContentSet,
-    // activeFile, selection) silently failing because writes go to the
-    // mode's bundled copy while the host reads from its own.
-    const PNEUMA_STORE_SHIM = `const S = window.__PNEUMA_STORE__;
-if (!S) throw new Error("__PNEUMA_STORE__ not set — pneuma-skills host didn't expose useStore before loading the mode bundle");
-export const useStore = S;
-export default S;`;
-    app.get("/vendor/pneuma-store.js", (c) => new Response(PNEUMA_STORE_SHIM, { headers: { "Content-Type": "application/javascript" } }));
+    // Vendor shims — the host ABI declared in snapshot/mode-build.ts. Each
+    // shim re-exports a host singleton from a window global that
+    // src/main.tsx sets before the mode bundle loads, and the importmap
+    // below maps the bare specifiers Bun.build left external onto these
+    // URLs. Both tables come from the builder so a bundle can never be
+    // compiled against an ABI this server does not serve.
+    for (const [url, source] of Object.entries(HOST_ABI_VENDOR_SHIMS)) {
+      app.get(url, () => new Response(source, { headers: { "Content-Type": "application/javascript" } }));
+    }
 
     // Serve compiled mode bundle (JS + CSS)
     app.get("/mode-assets/*", async (c) => {
@@ -4158,7 +4290,7 @@ export default S;`;
 
       if (hasModeBundleDir) {
         const importMap = `<script type="importmap">
-{"imports":{"react":"/vendor/react.js","react-dom":"/vendor/react-dom.js","react/jsx-runtime":"/vendor/react-jsx-runtime.js","react/jsx-dev-runtime":"/vendor/react-jsx-dev-runtime.js","pneuma-skills/src/store.js":"/vendor/pneuma-store.js","pneuma-skills/src/store.ts":"/vendor/pneuma-store.js"}}
+${JSON.stringify(hostAbiImportMap())}
 </script>`;
         // Inject <link> tags for any CSS files produced by Bun.build()
         let cssLinks = "";

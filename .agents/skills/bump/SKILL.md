@@ -136,6 +136,39 @@ CI runs the same suite as the gate before tagging + publishing — so a local pa
 
 A non-zero `fail` count means stop and fix before pushing. The backend lifecycle suites under `backends/*/[__tests__]/` count their `(skip) ... binary not available` lines toward `skip`, not `fail`; those are fine. A `fail` for a hardcoded version expectation usually points back at step 4b's grep — re-run that grep with the previous version string and patch every hit.
 
+### 5c. Publish the catalog modes for this version
+
+**Before the push, and after the version in `package.json` is the new one.**
+
+Catalog modes — every `modes/<name>/` that `modes/distribution.json` does not
+list under `bundled` — do not travel inside the package. They are downloaded
+from the CDN from URLs pinned in a generated `modes/catalog.json`, and a
+prebuilt viewer bundle only runs on the core that built it. So every release
+republishes every catalog mode from this commit:
+
+```
+bun run publish:modes --version X.Y.Z --dry-run   # sizes first, uploads nothing
+bun run publish:modes --version X.Y.Z             # build, pack, upload
+```
+
+Needs `~/.pneuma/r2.json` (the credentials snapshot publishing already uses).
+CI holds no R2 credentials and uploads nothing — its `Verify mode catalog` step
+downloads `official/vX.Y.Z/catalog.json` and HEAD-checks every archive **before
+the tag and before npm**, so a release whose archives never went up stops there.
+Pushing before this runs is what makes that step fail.
+
+Rules worth knowing before you re-run it:
+
+- A key that already holds the same bytes is skipped.
+- A key whose bytes differ is overwritten **only while `pneuma-skills@X.Y.Z` is
+  not yet on npm** — the "failed gate → fix commit → same version" path.
+- Once that version is on npm the script refuses: its users resolve those exact
+  URLs. Bump the version instead.
+- Re-run the whole script, not `--only`: every archive in a release comes from
+  one commit.
+
+`references/release-process.md` has the recovery notes.
+
 ### 6. Push
 
 ```
@@ -198,5 +231,6 @@ Print a summary:
 - Previous version → new version
 - Bump type (patch/minor/major)
 - Key changes included
+- How many catalog modes were published and how many bytes of archives
 - Whether the online player was redeployed, and why or why not
 - Verify the workflow for the pushed commit, npm version, and expected desktop assets; distinguish a published release from a still-running or failed job

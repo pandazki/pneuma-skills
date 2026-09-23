@@ -38,16 +38,37 @@ extraResources:
     to: "pneuma/backends"
   - from: "../core"
     to: "pneuma/core"
-  # harness/ is dev-only experiment bulk (bansho screenshots etc., ~71 MB) —
-  # npm already excludes it via package.json "files" negation; without this
-  # filter the desktop app shipped it, and its 3 concurrent on-disk copies
-  # (.app + zip + dmg staging) helped push the macOS CI runner into ENOSPC
-  # at the dmg step (v3.36.0, twice).
+  # Modes ship the same way npm does: the bundled set in full, every other
+  # mode only as its showcase/ images plus its entry in catalog.json (it is
+  # downloaded from the CDN on first use). The list is a whitelist, not
+  # "**/*" plus exclusions, because re-including a subdirectory of an
+  # excluded tree is not portable across the matchers involved — and it is
+  # derived from modes/distribution.json, which
+  # scripts/__tests__/release-packaging.test.ts checks this file against.
+  # harness/ is dev-only experiment bulk (bansho screenshots etc., ~71 MB);
+  # without that exclusion the desktop app shipped it, and its 3 concurrent
+  # on-disk copies (.app + zip + dmg staging) helped push the macOS CI runner
+  # into ENOSPC at the dmg step (v3.36.0, twice).
   - from: "../modes"
     to: "pneuma/modes"
     filter:
-      - "**/*"
+      - "distribution.json"
+      - "catalog.json"
+      - "_shared/**/*"
+      - "cosmos/**/*"
+      - "diagram/**/*"
+      - "evolve/**/*"
+      - "illustrate/**/*"
+      - "kami/**/*"
+      - "project-evolve/**/*"
+      - "project-onboard/**/*"
+      - "project-tidy/**/*"
+      - "remotion/**/*"
+      - "slide/**/*"
+      - "webcraft/**/*"
+      - "*/showcase/**/*"
       - "!**/harness/**"
+      - "!**/__tests__/**"
   # Builtin plugins (vercel-deploy, cf-pages-deploy, obsidian-memory).
   # Plugin registry discovers via `join(import.meta.dir, "..", "plugins")` from
   # server/, so the directory must sit at pneuma/plugins next to server/. Without

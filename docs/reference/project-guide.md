@@ -64,7 +64,7 @@ pneuma agent-command status [--backend claude-code|codex|all] [--json]
 pneuma agent-command install [--backend claude-code|codex|all] [--force] [--json]
 pneuma agent-command uninstall [--backend claude-code|codex|all] [--force] [--json]
 pneuma agent-command update [--backend claude-code|codex|all] [--json]
-pneuma mode list --local [--json]                # builtins + ~/.pneuma/modes + activated library modes
+pneuma mode list --local [--json]                # bundled + catalog (with `installed`) + ~/.pneuma/modes + activated library modes
 pneuma handoff-from-external --intent <text> --mode <name> [--cwd <path>] \
     [--init-project|--quick] [--source-agent claude-code|codex] [--json] [--dry-run]
 ```
@@ -103,7 +103,8 @@ pneuma-skills/
 ├── core/
 │   ├── types/                 # Contracts (ModeManifest, ViewerContract, AgentBackend, SharedHistory, PluginManifest, LibraryManifest)
 │   ├── mode-loader.ts         # Mode discovery & loading
-│   ├── mode-resolver.ts       # Source resolution (builtin/local/github/url → disk); single-vs-library detection at install
+│   ├── mode-resolver.ts       # Source resolution (builtin/catalog/local/github/url → disk); single-vs-library detection at install
+│   ├── mode-catalog.ts        # Catalog modes: read modes/catalog.json, install/verify into ~/.pneuma/catalog/<name>/
 │   ├── library-registry.ts    # ~/.pneuma/libraries/<id>/ CRUD (consume side)
 │   ├── library-publish.ts     # Author side: initLocalLibrary, publishModeToLibrary, pushLibrary
 │   ├── plugin-registry.ts     # Plugin discovery, lifecycle, route mounting
@@ -164,6 +165,8 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 | **InitParam** + `InitParamOption` / `InitParamOptionsSource` | `core/types/mode-manifest.ts` | Each mode's `manifest.init.params[]`. `type: "select" \| "multi-select"` takes `options` (bare strings still valid, or `{ value, label, description, group, exclusive }`); `optionsSource` declares options **resolved at launch time** — the manifest names *what kind of thing* to look for, never how to find it | `core/init-param-resolver.ts` (the only place discovery happens; `directory-scan` walks `roots × path`, requires `markerFile`, reads `displayName`/`name`/`description` out of it, and yields `[]` for anything unreadable) → `server/init-params.ts::prepareInitParams` (both `/api/launch/prepare` routes: API-key auto-fill + resolved options on one pass) → `src/components/InitParamForm.tsx` (chips) and `bin/pneuma.ts::promptInitParams` (clack). Selection algebra + wire format (`,`-joined, declared order, never empty) in `core/init-param-options.ts`, shared by both renderers |
 | **ModeDefinition** = `{ manifest, viewer }` | `core/types/mode-definition.ts` | Each mode's `modes/<name>/pneuma-mode.ts` default export — binds manifest + ViewerContract | Frontend `core/mode-loader.ts` dynamic-imports it; the React tree mounts `viewer.PreviewComponent`. Split from `manifest.ts` so the latter can be loaded by the Bun backend (which has no React). |
 | **ViewerContract** + `ViewerPreviewProps` | `core/types/viewer-contract.ts` | Each mode's `modes/<name>/viewer/<Name>Preview.tsx` (referenced from `pneuma-mode.ts`) | `core/mode-loader.ts` dynamic import → `src/App.tsx` mounts `PreviewComponent` with props injected from `src/store/` |
+| **ModeCatalog** + `ModeCatalogEntry` / `ModeArchiveRef` / `ModeInstallRecord` / `ModePackageStamp` / `ModeInstallState` | `core/types/mode-catalog.ts` | `scripts/publish-modes.ts` 每次 release 生成 `modes/catalog.json`(不手写、不入库):`modes/distribution.json` 没 bundle 的每个 mode 都经 `snapshot/mode-build.ts` 就地构建、打上 `pneuma-package.json` stamp、去掉 `__tests__/` `harness/` `showcase/` 打包、传到 `official/v<core>/<name>-<modeVersion>.tar.gz`,并用 size + SHA-256 钉死;`displayName` / `description` / `icon` 由 `core/utils/manifest-parser.ts::parseManifestTs` 从 manifest 抄出 | `core/mode-catalog.ts`(读 catalog、装/校验/记录,判断 `installed` / `stale` / `not-installed`)→ `core/mode-resolver.ts`(`catalog` 源)、`core/local-modes.ts`(`installed` 标记)、`server/catalog-routes.ts`(`/api/catalog*`)、launcher 卡片;`scripts/verify-mode-catalog.ts` 是 release job 建 tag 前的闸门(先拿这个 checkout 的 catalog mode 全集与 catalog 对账——缺、多、或条目版本与树里 manifest 不符都算失败——再 HEAD 每个钉住的 archive);`package.json` 的 `files` 与 `desktop/electron-builder.yml` 只装 bundled 集合加 catalog(同样从 `distribution.json` 派生,由 `scripts/__tests__/release-packaging.test.ts` 守住)。不变量钉在 `core/__tests__/mode-distribution.test.ts` |
+| **Mode viewer host ABI** — `HOST_ABI_VENDOR_URLS` / `HOST_ABI_EXTERNALS` / `HOST_ABI_VENDOR_SHIMS` + `hostAbiImportMap()` / `resolveHostAbiExternal()` | `snapshot/mode-build.ts` | 一张数据表:外部 mode viewer 唯一可以向宿主借的东西 —— React、ReactDOM、两个 JSX runtime、宿主 Zustand store、i18next 与 react-i18next。externals 由 URL 表派生,shim 源码与它同表,所以「标成 external 的」「importmap 里写的」「server 真 serve 的」三者不会漂 | `snapshot/mode-build.ts::buildModeViewer` 是**唯一** builder(`bin/pneuma.ts` 启动时构建外部 mode、`scripts/publish-modes.ts` 发布 catalog mode、`snapshot/mode-publish.ts` 与 `server/mode-maker-routes.ts` 的 publish 路径都调它);`server/index.ts` 用 `HOST_ABI_VENDOR_SHIMS` serve `/vendor/*`、用 `hostAbiImportMap()` 往 index.html 注入 importmap;`src/main.tsx` 在加载任何 mode bundle 之前挂好 `window.__PNEUMA_*`。Bun 1.4.0 的两个坑与不变量钉在 `snapshot/__tests__/mode-host-abi.test.ts` |
 | **ModeShowcase** | `core/types/mode-manifest.ts` (declared); actual content in `modes/<name>/showcase/showcase.json` (sibling file, not inline in manifest) | Each mode's `showcase/showcase.json` + `hero.png` + 3-4 `highlight-*.png` | `server/index.ts` serves via `GET /api/modes/:name/showcase/*`; launcher gallery cards consume |
 | **ViewerAddress** | `core/types/viewer-contract.ts` | Each mode's SKILL.md defines its vocabulary (`{slide}` / `{page,anchor,selector}` / …) | Viewer selection produces (⑥); `<viewer-locator>` + `capture` + `navigateRequest` consume (⑤) |
 | **ViewerActionDescriptor** + `ViewerActionRequest` / `Result` | `core/types/viewer-contract.ts` | Mode `manifest.viewerApi.actions[]` | `server/skill-installer.ts` injects into `<!-- pneuma:viewer-api:* -->`; `server/ws-bridge-viewer.ts` dispatches; `src/store/viewer-slice.ts` 派发 to viewer; `src/hooks/useCaptureAction.ts` is the built-in `capture` implementation |
@@ -211,7 +214,7 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 
 ## Mode Lifecycle
 
-1. **Resolve** — 把 specifier(builtin / local / github / url)映射到含 `manifest.ts` 的磁盘路径(`core/mode-resolver.ts`)
+1. **Resolve** — 把 specifier(builtin / catalog / local / github / url)映射到含 `manifest.ts` 的磁盘路径(`core/mode-resolver.ts`);catalog mode 在这一步按需下载校验(仓库 checkout 走本地源码,不联网)
 2. **Load manifest** — `loadModeManifest()` → ModeManifest
 3. **Session** — load or create `<stateDir>/session.json`. Quick sessions use `sessionDir = workspace`, `stateDir = workspace/.pneuma`; project sessions use `sessionDir = stateDir = <project>/.pneuma/sessions/<id>/`. Skills and instructions are installed under `sessionDir` (the agent CWD).
 4. **Skill install** — 把 `modes/<mode>/skill/` 复制到 backend-appropriate 目录,应用 `{{key}}` / `{{#key}}…{{/key}}` 模板,拼装 marker blocks 写到指令文件
@@ -229,13 +232,33 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 
 | 类型 | Specifier | 落盘路径 |
 |------|-----------|---------|
-| **builtin** | `webcraft`、`doc`、`slide` … | `modes/<name>/` |
+| **builtin** | `webcraft`、`slide`、`kami` …(`modes/distribution.json` 的 `bundled`) | `modes/<name>/`,随包发布 |
+| **catalog** | `doc`、`sprite`、`bansho` …(第一方但**不随包发布**) | 仓库里是 `modes/<name>/` 源码;正式包里下载到 `~/.pneuma/catalog/<name>/`(见下) |
 | **local** | `/abs/path`、`./rel` | as-is |
 | **github 单 mode** | `github:user/repo`,根目录有 `manifest.ts` | `~/.pneuma/modes/<user>-<repo>/` |
 | **github library** | `github:user/repo`,根目录有 `pneuma.library.json` 或 N 个子目录每个含 `manifest.ts` | `~/.pneuma/libraries/<user>-<repo>/` |
 | **url** | `https://….tar.gz` | `~/.pneuma/modes/<name>/`(或 libraries 若包是 library) |
+| **catalog**(第一方、不进包) | `backlot`、`doc`、`sprite` …(和 builtin 一样是裸名字) | `~/.pneuma/catalog/<name>/` |
 
 一个 mode 包必含 `manifest.ts` 导出 `ModeManifest`。Library 检测发生在 **clone/extract 后**——不像 library 的 repo 走单 mode 路径,二者字节一致。
+
+### Catalog Modes(`core/mode-catalog.ts`)
+
+`modes/distribution.json` 的 `bundled` 是**唯一权威**:在里面 = 进 npm 包与桌面安装包(`core/mode-loader.ts` 的 builtin registry 只列它,因此也只有它进 `dist/` 的 viewer bundle);不在里面 = catalog mode,包里只留 `showcase/` 与生成的 `modes/catalog.json` 条目,首次使用时从 CDN 取。
+
+两种形态走**同一条代码路径**(`registerExternalMode` + 绝对路径),差别只在目录来自哪里:
+
+| 场景 | mode 目录 | seedBase(`init.seedFiles` 键的根) |
+|------|-----------|-----------------------------------|
+| 仓库 checkout(无 `catalog.json`) | `modes/<name>/` 源码,不联网 | 包根 |
+| 正式包,已安装且 sha 与 catalog 一致 | `~/.pneuma/catalog/<name>/modes/<name>/` | `~/.pneuma/catalog/<name>/` |
+| 正式包,未安装或 sha 不符(核心升级过) | 下载校验后同上 | 同上 |
+
+安装顺序是契约:**下载 → 校验 size 与 SHA-256 → 解压到临时同级目录 → 原子 rename → 最后写 `.pneuma-install.json`**。记录写在最后,所以"有目录没记录"= 未完成,直接删掉重取;失败(404 / 校验不符 / 中断 / 解压失败 / `unsafe-archive` / `core-version-mismatch` / `record-write-failed`)各有独立 `ModeInstallError.code`,且不留半个安装、绝不回退到别的核心版本构建的旧包。**archive 是不可信输入**:解压前先 `tar tzf` 列表,拒绝绝对路径、`..` 和叫 `.pneuma-install.json` 的成员;解压后遍历暂存树,拒绝一切非普通文件/目录(symlink、hard link、设备节点);记录用 `wx` 创建而不是写入,所以谁都无法把它重定向到安装根之外。stamp 的 `coreVersion` 与 catalog 的比对,是「这批字节确实是这个 release 造的」唯一的现场证据。`~/.pneuma/catalog/` 与 `~/.pneuma/modes/`(用户装的、evolve 出来的)彼此独立,不会在 launcher 里出现两次。
+
+发布侧:`scripts/publish-modes.ts` 构建 + 打包 + 上传 + 生成 catalog(凭证用 `~/.pneuma/r2.json`),`scripts/verify-mode-catalog.ts` 在 release job 建 tag 前 HEAD 校验每个 archive。预构建的 viewer bundle 内联了这个 core 的 `src/`/`core/` 辅助代码、依赖宿主的 React / store / Tailwind,**只在造出它的那个 core 上有效**,所以 archive 逐 core 版本发布、按 SHA-256 钉死,覆盖规则见 `.agents/skills/bump/references/release-process.md` 6b。
+
+设计:`docs/proposals/2026-09-22-mode-distribution.md`
 
 ### Mode Libraries
 
@@ -408,6 +431,7 @@ Key endpoints:
 - `POST /api/session/thumbnail` — base64 PNG → `<stateDir>/thumbnail.png`
 - `GET/POST /api/favorites` — pinned-modes
 - `GET /api/github/status` — `{ installed, authenticated, username?, version?, hint? }` from `gh` probe
+- `/api/catalog` + `POST /api/catalog/install`(launcher-only)—— 列出本版本**不随包发布**的 mode 及其 `ModeInstallState`;install 返回 NDJSON 流:`{"event":"progress","received","total"}` … `{"event":"done","version"}` 或 `{"event":"error","message","code"}`。流一旦开始状态码就是 200,失败在 body 里,消费者必须读到终止事件;断开连接即取消下载
 - `/api/libraries/*`(launcher-only)—— CRUD library + 广播 `libraries_updated`,使 library-activated mode 在 Quick Start 即时生效
 - `/api/agent-commands/*` + `/api/handoffs/external` + `/api/cli/*`(launcher-only)—— 见 Agent Command Distribution
 - `GET /api/seeds/list` + `POST /api/seeds/apply` + `GET /api/mode/seed-gallery/*` —— per-session gallery endpoints (seed catalog, copy one or many entries from `init.seedFiles`, serve thumbnail assets). `apply` body accepts `sourceKey: string | string[]` so a single card can copy a multi-file bundle. Copy logic in `server/seed-installer.ts::copySeedEntry`.

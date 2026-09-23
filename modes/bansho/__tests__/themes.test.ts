@@ -299,17 +299,30 @@ describe("the bundled font", () => {
     expect(BUNDLED_FONT_FACE_CSS).toContain("font-display: block");
   });
 
-  test("the mode's files are carried by package.json's files list", () => {
-    // `files` wins over .npmignore, and only `modes/*/harness/` is excluded
-    // — so a font under modes/bansho/assets/ ships. A change to either side
-    // of that would make kawaii-cream a broken theme on every install.
+  test("the font travels with the mode into whichever package ships it", () => {
+    // The font and its OFL.txt have to arrive together wherever bansho does,
+    // or kawaii-cream is a broken theme and the SIL OFL notice is missing.
+    // Which package that is now depends on modes/distribution.json: a
+    // bundled mode ships inside npm, a catalog mode ships as one CDN archive
+    // that keeps everything except __tests__/, harness/ and showcase/
+    // (pinned by scripts/__tests__/publish-modes.test.ts). Half a mode in
+    // `files` would be the failure this guards.
     const pkg = require(
       fileURLToPath(new URL("../../../package.json", import.meta.url)),
     ) as { files: string[] };
-    expect(pkg.files).toContain("modes/");
-    expect(pkg.files.filter((f) => f.startsWith("!modes/"))).toEqual([
-      "!modes/*/harness/",
-    ]);
+    const distribution = require(
+      fileURLToPath(new URL("../../distribution.json", import.meta.url)),
+    ) as { bundled: string[] };
+
+    expect(pkg.files).not.toContain("modes/");
+    const banshoEntries = pkg.files.filter((f) => f.startsWith("modes/bansho"));
+    if (distribution.bundled.includes("bansho")) {
+      expect(banshoEntries).toEqual(["modes/bansho/"]);
+    } else {
+      // Only the launcher card's images stay behind, through the shared glob.
+      expect(banshoEntries).toEqual([]);
+      expect(pkg.files).toContain("modes/*/showcase/**");
+    }
   });
 });
 

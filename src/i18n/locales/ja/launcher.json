@@ -123,6 +123,20 @@
     "from_library": "{{name}} から",
     "synced_at": "同期: {{when}}"
   },
+  "catalog": {
+    "size_hint": "{{size}} をダウンロード",
+    "download_and_open": "ダウンロードして開く",
+    "update_and_open": "更新して開く",
+    "download_and_create": "ダウンロードして作成",
+    "preparing": "ダウンロードを開始しています…",
+    "downloading_percent": "ダウンロード中 {{percent}}%",
+    "retry": "再試行",
+    "failed": "ダウンロードに失敗しました",
+    "needs_download_aria": "初回起動時にダウンロード",
+    "tile_needs_download": "未ダウンロード — {{size}}",
+    "first_open_hint": "初回起動時に {{size}} をダウンロードします。以降は他のモードと同じように起動します。",
+    "stale_hint": "以前の Pneuma 向けにビルドされたものです — 開くと現在のバージョン用のビルドを再ダウンロードします。"
+  },
   "launch_dialog": {
     "workspace_label": "ワークスペースのパス",
     "browse_tooltip": "ディレクトリを参照",

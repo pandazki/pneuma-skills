@@ -31,6 +31,11 @@ web/.deploy.env
 
 # Per-mode build artifacts (e.g. modes/slide/.build/)
 .build/
+# Mode distribution: catalog.json is generated per release by
+# scripts/publish-modes.ts (and fetched by CI) — the package ships it through
+# package.json "files", it is never hand-edited. .publish/ stages the archives.
+modes/catalog.json
+.publish/
 # Blind-trial screenshots a browser-driving agent can only write under the repo root
 .tmp-*/
 e2e-*-shots/

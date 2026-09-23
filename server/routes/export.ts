@@ -12,12 +12,137 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, extname, dirname } from "node:path";
 import { pathStartsWith } from "../utils.js";
 import { parseCompositions } from "../../modes/remotion/viewer/composition-parser.js";
-import { loadExplainer } from "../../modes/eli5/domain.js";
+import { resolveCatalogMode } from "../../core/mode-catalog.js";
+import type { CatalogEnv } from "../../core/mode-catalog.js";
+// Type-only on purpose. `import type` is erased before this file runs, so it
+// costs nothing when modes/eli5/ is absent from the package; the matching
+// VALUE imports must never come back — see loadEli5Modules() below.
 import type { AudienceEntry, ExplainerManifest } from "../../modes/eli5/domain.js";
-import { buildPageSrcdoc } from "../../modes/eli5/viewer/player-logic.js";
 import { getDeployCSS, getDeployToolbarHTML, getDeployModalHTML, getDeployScript } from "./deploy-ui.js";
 import type { HookBus } from "../../core/hook-bus.js";
 import type { SessionInfo } from "../../core/types/plugin.js";
+
+// ── ELI5 mode source, loaded per request ─────────────────────────────────────
+
+/*
+ * `eli5` is a CATALOG mode (`modes/distribution.json`): its source does not
+ * ship inside the npm package. It is downloaded to `~/.pneuma/catalog/eli5/`
+ * the first time the mode is used, so when the server starts `modes/eli5/`
+ * may simply not be there.
+ *
+ * That is why the two value imports this file used to hold at module scope
+ * (`loadExplainer`, `buildPageSrcdoc`) were fatal: module resolution fails
+ * before a single route is registered, so a released build could not start at
+ * all — not even for the bundled modes that have nothing to do with eli5.
+ * `resolveCatalogMode` answers the only question that matters here, "where
+ * did this mode actually resolve", identically for an in-tree checkout and an
+ * installed copy, and the import is done against that path when a request
+ * needs it.
+ *
+ * Resolving per request is deliberate and cheap: the module registry caches
+ * the modules themselves, so the recurring cost is a few `existsSync` calls,
+ * and a mode installed while the server is running starts working without a
+ * restart. Nothing is cached here, so nothing has to be invalidated.
+ *
+ * Only the value imports moved. `AudienceEntry` / `ExplainerManifest` stay
+ * static `import type`: type imports are erased before this file runs, and the
+ * repo checkout — the only place types are ever resolved — always has every
+ * mode on disk.
+ */
+
+/**
+ * The mode whose source these routes need. Named once, here: the file's
+ * `/export/eli5*` routes, manifest schema and page builders are all specific
+ * to it already, and one constant is better than five copies of the literal.
+ */
+const ELI5_MODE = "eli5";
+
+/** The two mode functions the export routes call, typed off the real modules. */
+interface Eli5Modules {
+  loadExplainer: typeof import("../../modes/eli5/domain.js").loadExplainer;
+  buildPageSrcdoc: typeof import("../../modes/eli5/viewer/player-logic.js").buildPageSrcdoc;
+}
+
+/**
+ * What the eli5 routes report when the mode is not there. 503 rather than 500:
+ * the request is well-formed and the route exists, the mode behind it just
+ * has not been downloaded yet — and the message says how to fix that. Never a
+ * crash, and never an empty export that looks like success.
+ */
+interface Eli5Unavailable {
+  error: string;
+  status: 503;
+}
+
+/**
+ * Locate a module inside a resolved mode directory: `.ts`, then `.js` — the
+ * same two shapes `core/mode-catalog.ts` accepts for a mode's manifest.
+ */
+function modeModulePath(modeDir: string, relative: string): string | null {
+  for (const ext of [".ts", ".js"]) {
+    const candidate = join(modeDir, `${relative}${ext}`);
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+/**
+ * Load eli5's domain parser and page builder from wherever the mode resolved.
+ *
+ * `env` exists for tests: pointing `projectRoot`/`home` at empty directories
+ * is the only way to reach the not-installed branch from a repo checkout,
+ * where `modes/eli5/` is always present. Production callers pass nothing and
+ * get the package root plus the real `~/.pneuma`.
+ */
+export async function loadEli5Modules(
+  env?: CatalogEnv,
+): Promise<Eli5Modules | Eli5Unavailable> {
+  const resolved = resolveCatalogMode(ELI5_MODE, env);
+  if (!resolved) {
+    return {
+      error:
+        `The "${ELI5_MODE}" mode is not installed, so its export routes cannot run. ` +
+        `Open ${ELI5_MODE} once from the launcher (or run \`pneuma ${ELI5_MODE}\`) to download it, then export again.`,
+      status: 503,
+    };
+  }
+  const domainPath = modeModulePath(resolved.modeDir, "domain");
+  const playerPath = modeModulePath(resolved.modeDir, "viewer/player-logic");
+  if (!domainPath || !playerPath) {
+    return {
+      error:
+        `The "${ELI5_MODE}" mode at ${resolved.modeDir} is incomplete: ` +
+        `${domainPath ? "viewer/player-logic" : "domain"} is missing. Reinstall the mode and export again.`,
+      status: 503,
+    };
+  }
+  let domain: { loadExplainer?: unknown };
+  let player: { buildPageSrcdoc?: unknown };
+  try {
+    [domain, player] = await Promise.all([import(domainPath), import(playerPath)]);
+  } catch (err) {
+    return {
+      error:
+        `Failed to load the "${ELI5_MODE}" mode from ${resolved.modeDir}: ` +
+        `${err instanceof Error ? err.message : String(err)}`,
+      status: 503,
+    };
+  }
+  // The dynamic import is untyped, so the shape is checked at the boundary
+  // rather than blowing up later inside a half-built export.
+  if (typeof domain.loadExplainer !== "function" || typeof player.buildPageSrcdoc !== "function") {
+    return {
+      error:
+        `The "${ELI5_MODE}" mode at ${resolved.modeDir} does not export the functions export needs ` +
+        "(domain.loadExplainer, viewer/player-logic.buildPageSrcdoc). Reinstall the mode and export again.",
+      status: 503,
+    };
+  }
+  return {
+    loadExplainer: domain.loadExplainer as Eli5Modules["loadExplainer"],
+    buildPageSrcdoc: player.buildPageSrcdoc as Eli5Modules["buildPageSrcdoc"],
+  };
+}
 
 export interface ExportOptions {
   workspace: string;
@@ -2999,7 +3124,7 @@ async function downloadPdf() {
    * paths need it, and the explicit branch is traversal-guarded (wordtaste's
    * idiom).
    */
-  function resolveEli5Topic(rawContentSet: string | undefined):
+  function resolveEli5Topic(eli5: Eli5Modules, rawContentSet: string | undefined):
     | { baseDir: string; contentSet?: string; manifest: ExplainerManifest }
     | { error: string; status: 400 | 404 | 500 } {
     let baseDir = workspace;
@@ -3027,7 +3152,7 @@ async function downloadPdf() {
     }
     let manifest: ExplainerManifest | undefined;
     try {
-      manifest = loadExplainer([
+      manifest = eli5.loadExplainer([
         { path: "manifest.json", content: readFileSync(manifestPath, "utf-8") },
       ])?.byContentSet[""];
     } catch {
@@ -3209,8 +3334,8 @@ ${rungs}
 </details>`;
   }
 
-  function buildEli5ExportHtml(opts: { contentSet?: string }): { html: string; title: string } | { error: string; status: number } {
-    const resolved = resolveEli5Topic(opts.contentSet);
+  function buildEli5ExportHtml(eli5: Eli5Modules, opts: { contentSet?: string }): { html: string; title: string } | { error: string; status: number } {
+    const resolved = resolveEli5Topic(eli5, opts.contentSet);
     if ("error" in resolved) return resolved;
     const { baseDir, contentSet, manifest } = resolved;
 
@@ -3235,7 +3360,7 @@ ${rungs}
         label: a.label,
         tone: a.tone ?? "",
         file: a.file,
-        srcdoc: buildPageSrcdoc(raw, { baseHref: contentBase + fileDir, script: "", imageVersion: 0 }),
+        srcdoc: eli5.buildPageSrcdoc(raw, { baseHref: contentBase + fileDir, script: "", imageVersion: 0 }),
       };
     });
 
@@ -3615,14 +3740,20 @@ ${pageSectionsHtml}${downloadScript}${pageInitScript}
     return { html: exportHtml, title };
   }
 
-  app.get("/export/eli5", (c) => {
+  app.get("/export/eli5", async (c) => {
+    const eli5 = await loadEli5Modules();
+    if ("error" in eli5) return c.text(eli5.error, eli5.status);
     const contentSet = c.req.query("contentSet") || undefined;
-    const result = buildEli5ExportHtml({ contentSet });
+    const result = buildEli5ExportHtml(eli5, { contentSet });
     if ("error" in result) return c.text(result.error, result.status as any);
     return c.html(result.html);
   });
 
   app.get("/export/eli5/download", async (c) => {
+    // Before the export:before hook: a plugin should not be told an export is
+    // starting when the mode that would produce it is not installed.
+    const eli5 = await loadEli5Modules();
+    if ("error" in eli5) return c.text(eli5.error, eli5.status);
     const contentSet = c.req.query("contentSet") || undefined;
     const page = c.req.query("page") || undefined;
     const nav = c.req.query("nav") || undefined;
@@ -3631,7 +3762,7 @@ ${pageSectionsHtml}${downloadScript}${pageInitScript}
       ? await hookBus.emit("export:before", { format, contentSet, page }, sessionInfo).catch(() => ({ format, contentSet, page }))
       : { format, contentSet, page };
 
-    const resolved = resolveEli5Topic(contentSet);
+    const resolved = resolveEli5Topic(eli5, contentSet);
     if ("error" in resolved) return c.text(resolved.error, resolved.status);
     const { manifest } = resolved;
     const { audience, index } = findEli5Audience(manifest, page);
@@ -3678,17 +3809,21 @@ ${pageSectionsHtml}${downloadScript}${pageInitScript}
     });
   });
 
-  app.get("/export/eli5/site-index", (c) => {
+  app.get("/export/eli5/site-index", async (c) => {
+    const eli5 = await loadEli5Modules();
+    if ("error" in eli5) return c.text(eli5.error, eli5.status);
     const contentSet = c.req.query("contentSet") || undefined;
-    const resolved = resolveEli5Topic(contentSet);
+    const resolved = resolveEli5Topic(eli5, contentSet);
     if ("error" in resolved) return c.text(resolved.error, resolved.status);
     return c.html(buildEli5SiteIndexHtml(resolved.manifest));
   });
 
   app.get("/export/eli5/zip", async (c) => {
     if (!workspace) return c.text("No workspace", 400);
+    const eli5 = await loadEli5Modules();
+    if ("error" in eli5) return c.text(eli5.error, eli5.status);
     const contentSet = c.req.query("contentSet") || undefined;
-    const resolved = resolveEli5Topic(contentSet);
+    const resolved = resolveEli5Topic(eli5, contentSet);
     if ("error" in resolved) return c.text(resolved.error, resolved.status);
     const exportDir = resolved.baseDir;
     const tmpFile = `/tmp/pneuma-eli5-export-${Date.now()}.zip`;

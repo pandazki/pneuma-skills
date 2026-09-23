@@ -31,7 +31,14 @@ interface FavoritesResponse {
  * library modes) → `archiveUrl` (published) → `name` (builtins).
  */
 export interface FavoriteKeyInput {
-  source: "builtin" | "local" | "published";
+  /**
+   * `catalog` is a mode this release knows about but does not ship. Its key
+   * is `catalog::<name>` and it does NOT change when the mode is installed —
+   * the registry keeps reporting it in the same bucket — so a star survives
+   * the download. `core/favorites.ts` stores any `<source>::<specifier>`
+   * pair, so no server change is needed to pin one.
+   */
+  source: "builtin" | "local" | "published" | "catalog";
   name: string;
   specifier?: string;
   path?: string;
