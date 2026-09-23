@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.53.0] - 2026-09-24
+
+### Added
+- **New WebCraft seeds.** The brand landing, the Gazette broadsheet and the Carbon Park console are rebuilt from cold-start Opus 5.5 sessions and polished. The landing has an orange identity, a live agent-and-viewer demo and a runnable install command. The Gazette is a full front page and article with seven engravings. The console is a working dashboard: filters, sorting, search, paging, a Usage page and a modal drawer on phones. Together the seeds are 2.9 MB, down from 4.9 MB.
+- **New Slide seeds.** The English and Chinese decks, each in dark and light, are rebuilt the same way. They explain the workflow through a file tree, a live-build timeline, an element address and a diff. Small text meets 4.5:1 contrast in every theme, and the Chinese lines break deliberately.
+- **Edits that cannot be saved say so.** When WebCraft cannot map an in-preview text edit to exactly one element in the source, or the write fails, the viewer shows a persistent "Edit not saved" notice. The notice names the page, gives the reason and shows your text, with Copy, Retry and Discard.
+
+### Fixed
+- **Draw and ClipCraft open again.** In 3.52.x both stayed on "Loading…": the host's React shim exported a hand-picked set of names, and Excalidraw needs `version` while ClipCraft's dependencies need `useInsertionEffect`. The shims now re-export the host packages' full export surface, and a mode build fails when it imports a name the host does not provide. Existing catalog archives work again with this core.
+- **Large Sprite projects open in seconds.** A character with thousands of frames never rendered and left a black screen. The workspace snapshot sent every image and video to the page as text (1.89 GB for one project), and the watcher spent 25–40 s registering one watch per frame. Binaries now travel as paths only, for every mode, and Sprite no longer watches its frame directories. The same project renders in under 5 s.
+- **WebCraft links keep their query and hash.** Pages now load at their real `/content/<set>/<page>?q#h` address, served by the server, the dev proxy and the online player's service worker. Deep links, section anchors, nested and directory links, and a page's own reload all behave as they do on a deployed site. Shared webcraft links in the online player load their styles, images and fonts.
+- **Saving an in-preview edit no longer damages the page.** The whole rendered body used to be written back, which dropped authored scripts and turned prices like `$3.73` into a duplicated page. The edited element is now changed in the source, per page, after its identity is verified.
+- **Agent captures are reliable.** An addressed capture waits for the page to actually arrive. It fails clearly when a newer navigation supersedes it or the page does not exist, survives a background tab and a reload mid-capture, and keeps `lang` so text hyphenates as it does on screen.
+- **Asset-only changes refresh the WebCraft preview.** A change to a page's CSS, JS or image reloads the page, including one that lands while the page is still loading.
+- **Backlot's Cut view no longer widens the whole page.** A long transition strip now scrolls on its own, and the player and header stay in view.
+- **Slide PDF export has no trailing blank page.**
+- **`/borrow` and `/handoff` work from the npm package.** Their command templates were missing from the published files.
+
+### Security
+- **Workspace file access is contained everywhere.** One fail-closed check decides whether a path is inside the workspace. It works on whole path components, resolves symlinks and has no depth limit. Every route that reads, writes or deletes workspace files now uses it: content, the file APIs, exports, seed installation, content-set deletion, scaffold, the file watcher and asset listings. A symlink that points outside the workspace is no longer served or followed.
+- **Git calls cannot be steered outside the workspace or given options.** Diff and status paths are literal pathspecs relative to the workspace, run without a shell. Replay checkout hashes must be object ids, and GitHub mode refs are validated before `git fetch`.
+
 ## [3.52.2] - 2026-09-23
 
 ### Improved
