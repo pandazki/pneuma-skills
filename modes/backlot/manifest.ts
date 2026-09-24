@@ -21,8 +21,15 @@ import { loadFilm, saveFilm } from "./domain.js";
 
 const backlotManifest: ModeManifest = {
   name: "backlot",
-  version: "0.1.0",
+  version: "0.2.0",
   changelog: {
+    "0.2.0": [
+      "A finished film has a supported way into the Cut stage. The cut itself makes straight cuts with voice-over and one music bed. When the last pass adds more (titles, captions, UI over the picture, a dissolve, a slowed shot, a re-timed mix), the agent now registers the result with cut --finish. The Cut stage then plays the film you are handed, says what the pass added and keeps the plain assembly it was made over. Before, a composited film was copied into the cut folder by hand and the stage read 'nothing yet'",
+      "The status report lists any film in the cut folder that the Cut stage does not show, so an unregistered finish is caught before delivery",
+      "On the cut strip, voice-over marks now land at their second of the film instead of their second of the shot. The frames at each join now come from the trimmed range the film actually plays",
+      "A voice-over line still speaking when the film ends is reported as clipped, with the seconds it loses. Before, the end of the line was cut off without a word",
+      "Past the last take, for example on a finishing pass's end card, the Cut stage says there is no shot instead of naming the last take. When a new film arrives, the playhead stays where it was",
+    ],
     "0.1.0": [
       "The backlot opens with its greybox stage: block the shot in 3D before anything is generated, so a Blender greybox animation fixes the room, the action and the camera move, and the video model only paints the look on top of that exact clip",
       "Start from an idea or from a video you already have — the recreate entry trims the segment you point at, reads its cuts and adopts its duration, frame rate and size into the shot spec",

@@ -41,3 +41,16 @@ After `readWorkspaceText` (binary -> `{ path, content: "" }`), the same workspac
 Measured 2026-09-23, macOS arm64, Bun 1.4.0.
 
 chokidar 5 has no FSEvents backend; its Node handler opens one `fs.watch` per file and per directory. Bun's per-file registration is superlinear and synchronous on the main thread. Opening N watches in one process: 250 -> 43 ms, 1,000 -> 1.4 s, 2,000 -> 2.5 s, 3,000 -> 11.1 s, 4,000 -> 69.2 s. A `--cpu-prof` of a sprite viewing session (2,882 watched files, `HOME` pointed at an empty directory so no projects-cache work ran) spent 73.4 s of 76 s in native `watch`. `/api/session` stalled up to 24 s, and the page's own `GET /` waited about 33 s, so the first render came at 40.8 s even after the snapshot fix. With sprite's frame, cell and scratch directories in `ignorePatterns` (198 watched files), the server is ready in 0.9 s and the first render lands 4.6 s after navigation. A single recursive `fs.watch(root, { recursive: true })` set up in 21.8 ms on the same tree. It would remove the per-file cost for every mode, but it has no pre-traversal `ignored` predicate: on Linux, where recursion is emulated per directory, an ignored `node_modules` or `.venv` would presumably still be walked (not measured). The awaitWriteFinish, symlink and deletion semantics would also need re-verifying, so it has not replaced chokidar.
+
+### Replacements lost under Bun (2026-09-24)
+
+Measured on macOS arm64, Bun 1.4.0, chokidar 5.0.0. In a large tree, chokidar under Bun loses a file that is REPLACED by rename, which is how every mode script's `writeJsonAtomic` writes. The case was backlot's `cut --finish` rewriting `cut/edl.json`, which left the open Cut stage on the old film until a reload. The same run reproduces under a passive `/ws/browser/<sid>` client: `content_update` arrived for `cut --final` and not for the `--finish` after it.
+
+Evidence:
+- **The owner's backlot clone** (391 directories and 1,016 files, after pruning): plain chokidar with three `cut --finish` runs reported 1 of 3 replacements under Bun and 3 of 3 under Node. Bun took 14.9 s to reach `ready`; Node took 0.1 s.
+- **A synthetic tree:** 3 of 3 with 100 directories, but 2 of 3 with 400 (`ready` at 24 s).
+- **A single recursive `fs.watch(root, { recursive: true })` alone** saw 3 of 3 on the same tree.
+- **The trap:** with chokidar's per-path watches in the same process, even that recursive watch reported nothing (200 directories, native registered before or after chokidar). **Adding a native watch beside chokidar does not help**; it was tried and reverted.
+- **An in-place write** (`touch`) of the replaced file was still delivered, which is why the blind trial's agent could unstick the viewer by touching `edl.json`.
+
+The fix is to replace chokidar on macOS with one recursive watch and give that watcher the ignore, debounce, image, deletion and self-write semantics chokidar provides today. First check whether `server/projects-cache.ts`'s chokidar in the same process also deafens it. That has not been done yet.

@@ -989,6 +989,86 @@ describe("bible, sound and cut records", () => {
     expect(cut.kind).toBe("final");
   });
 
+  test("a voice-over mark sits at its second of the FILM, not its second of the shot", () => {
+    // `backlot.mjs cut` writes both: `at` on the shot's clock, `start` on
+    // the film's. Reading `at` drew every mark after the first untrimmed
+    // shot at the wrong place — the fixture above only has that one case.
+    const cut = parseCut(
+      JSON.stringify({
+        kind: "final",
+        file: "final.mp4",
+        seconds: 6,
+        segments: [
+          { shot: "a", source: "take-01", offset: 0, seconds: 3, in: 0.8, out: 3.8 },
+          { shot: "b", source: "take-01", offset: 3, seconds: 3, in: 0, out: 3 },
+        ],
+        vo: [
+          { shot: "a", line: "l1", at: 1.2, start: 0.4, file: "shots/a/sound/l1.mp3" },
+          { shot: "b", line: "l2", at: 0.5, start: 3.5, file: "shots/b/sound/l2.mp3" },
+          // Hand-written or older lists carry one number, already on the
+          // cut's clock.
+          { shot: "b", line: "l3", at: 4.2, file: "shots/b/sound/l3.mp3" },
+        ],
+      }),
+    )!;
+    expect(cut.vo.map((vo) => [vo.line, vo.at])).toEqual([
+      ["l1", 0.4],
+      ["l2", 3.5],
+      ["l3", 4.2],
+    ]);
+  });
+
+  test("a registered finish is read with what it added and the assembly it was made over", () => {
+    const cut = parseCut(
+      JSON.stringify({
+        version: 1,
+        kind: "final",
+        file: "finished.mp4",
+        seconds: 16.4,
+        builtAt: 1758390000000,
+        segments: [
+          { shot: "a", source: "take-01", offset: 0, seconds: 8 },
+          { shot: "b", source: "take-02", offset: 7.5, seconds: 8.9, transition: { kind: "dissolve", seconds: 0.5 } },
+        ],
+        finish: {
+          by: "glass UI cards, captions and a re-timed mix",
+          source: "render/launch.mp4",
+          retimed: true,
+          assembly: { version: 1, kind: "final", file: "final.mp4", seconds: 16, builtAt: 1758380000000, segments: [] },
+        },
+      }),
+    )!;
+    expect(cut.file).toBe("finished.mp4");
+    expect(cut.kind).toBe("final");
+    expect(cut.finish).toEqual({
+      by: "glass UI cards, captions and a re-timed mix",
+      source: "render/launch.mp4",
+      retimed: true,
+      assembly: { file: "final.mp4", seconds: 16, builtAt: 1758380000000 },
+    });
+
+    // A plain assembly has none; a finish that does not say what it added
+    // is not one; the rest is read defensively.
+    expect(filmProject().cut!.finish).toBeNull();
+    expect(parseCut(JSON.stringify({ file: "finished.mp4", finish: { by: "  " } }))!.finish).toBeNull();
+    expect(parseCut(JSON.stringify({ file: "finished.mp4", finish: "titles" }))!.finish).toBeNull();
+    expect(parseCut(JSON.stringify({ file: "finished.mp4", finish: { by: "a grade", retimed: "yes" } }))!.finish).toEqual({
+      by: "a grade",
+      source: null,
+      retimed: false,
+      assembly: null,
+    });
+  });
+
+  test("a music level nobody recorded stays unknown instead of reading as 0 dB", () => {
+    // `cut --finish --edit` records what the pass did not state as null: a
+    // bed shown at "0 dB" would claim a level the mix may never have used.
+    const cut = parseCut(
+      JSON.stringify({ file: "finished.mp4", music: { file: "sound/music.mp3", gainDb: null, fadeOutSeconds: null } }),
+    )!;
+    expect(cut.music).toEqual({ file: "sound/music.mp3", gainDb: null, fadeOutSeconds: null });
+  });
+
   test("music with no file is no music at all", () => {
     expect(parseMusic(JSON.stringify({ music: { prompt: "x" } }))).toBeNull();
     expect(parseMusic("{")).toBeNull();
@@ -1002,6 +1082,9 @@ describe("bible, sound and cut records", () => {
     expect(segmentAt(cut, 8)?.shot).toBe("corridor");
     // The last frame of the film is still the last shot.
     expect(segmentAt(cut, 16)?.shot).toBe("corridor");
+    expect(segmentAt(cut, 16.04)?.shot).toBe("corridor");
+    // Past the last take there is no shot: a finish's end card is not it.
+    expect(segmentAt(cut, 19.5)).toBeNull();
     expect(segmentAt(cut, -1)).toBeNull();
     expect(segmentAt(null, 1)).toBeNull();
   });
@@ -1456,6 +1539,48 @@ describe("cutPoints", () => {
     expect(points[0].continuity).toBe(false);
     // Still 24 fps: the fallback clock, not a crash and not a NaN.
     expect(points[0].outTime).toBeCloseTo(4 - 1 / 24, 5);
+  });
+
+  test("a trimmed segment's frames are the ends of its RANGE, not of its source file", () => {
+    // The edit list records the shot-clock range each segment shows. A card
+    // decoding 0 s and `seconds` of a take trimmed to 0.8–3.8 s would show
+    // two frames the audience never sees.
+    const files = filesWith({}).map((file) =>
+      file.path.endsWith("cut/edl.json")
+        ? {
+            ...file,
+            content: JSON.stringify({
+              kind: "final",
+              file: "final.mp4",
+              seconds: 5.5,
+              segments: [
+                { shot: "lab-walk", source: "take-01", offset: 0, seconds: 3, in: 0.8, out: 3.8 },
+                { shot: "corridor", source: "take-02", offset: 3, seconds: 2.5, in: 1.25, out: 3.75 },
+              ],
+            }),
+          }
+        : file,
+    );
+    const project = filmProject(files);
+    const [point] = cutPoints(project, project.cut);
+    expect(point.outTime).toBeCloseTo(3.8 - 1 / 24, 5);
+    expect(point.inTime).toBe(1.25);
+    expect(point.at).toBe(3);
+  });
+
+  test("a finish's segment with an in-point and a speed but no out-point ends where its speed says", () => {
+    // 1.24 s of film at 0.62x shows 0.7688 s of the source, from 2 s.
+    const project = filmProject(filesWith({}));
+    const [point] = cutPoints(project, {
+      ...project.cut!,
+      segments: [
+        { shot: "lab-walk", source: "take-01", offset: 0, seconds: 1.24, in: 2, speed: 0.62 },
+        { shot: "corridor", source: "take-02", offset: 1.24, seconds: 2 },
+      ],
+    });
+    expect(point.outTime).toBeCloseTo(2 + 1.24 * 0.62 - 1 / 24, 5);
+    // No in-point recorded: the source's first frame.
+    expect(point.inTime).toBe(0);
   });
 });
 

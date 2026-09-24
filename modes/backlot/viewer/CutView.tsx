@@ -6,7 +6,10 @@
  * 1. WHAT YOU ARE WATCHING. A cut with a greybox standing in for any shot is
  *    a REEL and says so in the loudest label on the page. `domain.parseCut`
  *    demotes a `final` whose segments still contain a stand-in, so the label
- *    cannot be more optimistic than the segment list.
+ *    cannot be more optimistic than the segment list. A film a finishing
+ *    pass made over the final is `finished`, and names the assembly it was
+ *    made over and what the pass added; its segments are already on the
+ *    finished film's clock, so nothing below needs to know.
  * 2. WHERE EACH SHOT IS. The segment strip is the EDL to scale; a stand-in
  *    is hatched and labelled `greybox`. Clicking seeks.
  * 3. WHERE THE SOUND LANDS. Voice-over marks and the music bed are drawn on
@@ -26,7 +29,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { CutPoint, CutState, Project, Shot, Take } from "../domain.js";
+import type { CutFinish, CutPoint, CutState, Project, Shot, Take } from "../domain.js";
 import { conditioningChip, cutPoints, segmentAt } from "../domain.js";
 import { ConditioningChip } from "./ConditioningChip.js";
 import { CutIcon, LinkIcon, MusicIcon, PauseIcon, PlayIcon, VoiceIcon } from "./icons.js";
@@ -66,7 +69,18 @@ export function CutView({
     if (Math.abs(video.currentTime - time) > 0.25) video.currentTime = time;
   }, [time]);
 
-  const onLoaded = useCallback(() => setError(null), []);
+  // The address owns the playhead across a change of FILE too. A new cut
+  // (a finish registered, a re-cut) keys a new <video>, which starts at 0
+  // while the readout still says where the address is; the effect above
+  // does not run again because `time` did not change.
+  const timeRef = useRef(time);
+  timeRef.current = time;
+  const onLoaded = useCallback((event: React.SyntheticEvent<HTMLVideoElement>) => {
+    setError(null);
+    const video = event.currentTarget;
+    const wanted = timeRef.current;
+    if (Math.abs(video.currentTime - wanted) > 0.25) video.currentTime = wanted;
+  }, []);
 
   if (!cut) return <StageEmpty stage="cut" />;
 
@@ -103,7 +117,8 @@ export function CutView({
           {cut.kind}
         </span>
         <span className="text-[11px] text-cc-fg">{cut.file}</span>
-        <span className="text-[10px] tabular-nums text-cc-muted">
+        {cut.finish ? <FinishLabel finish={cut.finish} /> : null}
+        <span className="shrink-0 text-[10px] tabular-nums text-cc-muted">
           {cut.seconds.toFixed(1)} s · {cut.segments.length} segment
           {cut.segments.length === 1 ? "" : "s"}
         </span>
@@ -165,7 +180,7 @@ export function CutView({
           {formatSeconds(time)} / {formatSeconds(cut.seconds)} s
         </span>
         <span className="min-w-0 truncate text-[10px] text-cc-muted">
-          {here ? `${here.shot} · ${here.source}` : "between segments"}
+          {here ? `${here.shot} · ${here.source}` : "no shot here"}
         </span>
       </div>
 
@@ -187,6 +202,25 @@ export function CutView({
         />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * A registered finishing pass: the film on screen is not the plain assembly,
+ * and the header says which assembly it was made over and what it added.
+ */
+function FinishLabel({ finish }: { finish: CutFinish }) {
+  const over = finish.assembly ? `over ${finish.assembly.file} — ` : "";
+  return (
+    <>
+      <span className="shrink-0 rounded-full border border-cc-primary/50 bg-cc-primary/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-cc-primary">
+        finished
+      </span>
+      <span className="min-w-0 truncate text-[10px] text-cc-muted" title={`${over}${finish.by}`}>
+        {over}
+        {finish.by}
+      </span>
+    </>
   );
 }
 
@@ -321,10 +355,13 @@ function EdlStrip({
           {cut.music ? (
             <div
               className="relative mt-1 h-3 w-full overflow-hidden rounded-sm bg-cc-primary/15"
-              title={`${cut.music.file} at ${cut.music.gainDb} dB, ${cut.music.fadeOutSeconds} s fade-out`}
+              title={`${cut.music.file}${cut.music.gainDb === null ? "" : ` at ${cut.music.gainDb} dB`}${
+                cut.music.fadeOutSeconds === null ? "" : `, ${cut.music.fadeOutSeconds} s fade-out`
+              }`}
             >
               <span className="absolute inset-y-0 left-0 right-0 flex items-center px-1 text-[8px] text-cc-muted">
-                {cut.music.file} · {cut.music.gainDb} dB
+                {cut.music.file}
+                {cut.music.gainDb === null ? "" : ` · ${cut.music.gainDb} dB`}
               </span>
             </div>
           ) : null}

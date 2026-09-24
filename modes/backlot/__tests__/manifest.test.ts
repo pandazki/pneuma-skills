@@ -190,11 +190,13 @@ describe("the manifest carries no React", () => {
 
 describe("identity", () => {
   test("the version and its changelog land together", () => {
-    expect(backlotManifest.version).toBe("0.1.0");
-    const entry = backlotManifest.changelog?.["0.1.0"];
-    expect(entry?.length ?? 0).toBeGreaterThan(5);
+    expect(backlotManifest.version).toBe("0.2.0");
+    const entry = backlotManifest.changelog?.["0.2.0"];
+    expect(entry?.length ?? 0).toBeGreaterThan(0);
     // Changelog bullets are user-facing one-liners, not markdown.
-    for (const bullet of entry!) expect(bullet).not.toMatch(/^[-*#]|`[a-z]+\.ts`/);
+    for (const bullet of Object.values(backlotManifest.changelog ?? {}).flat()) {
+      expect(bullet).not.toMatch(/^[-*#]|`[a-z]+\.ts`/);
+    }
   });
 
   test("the display name is localized in all three locales", () => {
