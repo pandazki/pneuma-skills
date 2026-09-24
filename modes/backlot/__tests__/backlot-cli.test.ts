@@ -16,9 +16,9 @@
  */
 
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 const SCRIPTS = join(import.meta.dir, "..", "skill", "scripts");
 const BACKLOT = join(SCRIPTS, "backlot.mjs");
@@ -899,7 +899,11 @@ describe("cut", () => {
     const cwd = workspace();
     film(cwd);
     expect(run(cwd, ["cut", "film"]).err).toContain("--reel");
+    expect(run(cwd, ["cut", "film"]).err).toContain("--finish");
     expect(run(cwd, ["cut", "film", "--reel", "--final"]).err).toContain("not both");
+    // A finish registers a film that was already made; it builds nothing.
+    expect(run(cwd, ["cut", "film", "--final", "--finish", "made.mp4"]).err).toContain("--finish takes neither --reel nor --final");
+    expect(run(cwd, ["cut", "film", "--reel", "--by", "captions"]).err).toContain("--by and --edit only go with --finish");
     expect(run(cwd, ["cut", "film", "--reel"]).err).toContain("no shots yet");
   });
 });
@@ -912,6 +916,318 @@ function volumeDb(file: string, from?: number, seconds?: number): number {
   const match = /mean_volume:\s*(-?[\d.]+) dB/.exec(result.stderr.toString());
   return match ? Number(match[1]) : -Infinity;
 }
+
+/**
+ * A two-shot film whose plain assembly is on disk: `a` and `b` both deliver
+ * take-01, `b` also has a finished take-02 it does NOT deliver, and a
+ * recorded voice-over. A small spec and open gates — the finish is what is
+ * under test here, and it is refused on the gate in its own case.
+ */
+function assembled(cwd: string): Record<string, any> {
+  json(cwd, ["init", "film", "--title", "Launch", "--logline", "x", "--seconds", "2", "--width", "320", "--height", "180"]);
+  json(cwd, ["gates", "film", "open"]);
+  for (const id of ["a", "b"]) {
+    json(cwd, ["shot", "add", "film", id, "--title", id.toUpperCase()]);
+    const shotDir = join(cwd, "film", "shots", id);
+    fixtureMp4(join(shotDir, "takes", "take-01.mp4"), { seconds: 1, size: "320x180" });
+    const shot = shotOf(cwd, id);
+    shot.takes = [{ id: "take-01", status: "done", file: "takes/take-01.mp4", selected: true, cost: null }];
+    if (id === "b") {
+      fixtureMp4(join(shotDir, "takes", "take-02.mp4"), { seconds: 1, size: "320x180" });
+      shot.takes.push({ id: "take-02", status: "done", file: "takes/take-02.mp4", selected: false, cost: null });
+      mkdirSync(join(shotDir, "sound"), { recursive: true });
+      const line = Bun.spawnSync(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=700:duration=0.4", "-ac", "2", "-ar", "48000", join(shotDir, "sound", "l1.mp3")]);
+      if (line.exitCode !== 0) throw new Error(line.stderr.toString());
+      shot.lines = [{ id: "l1", speaker: "narrator", kind: "vo", text: "x", at: 0.3, file: "sound/l1.mp3", seconds: 0.4, cost: null }];
+    }
+    writeFileSync(join(shotDir, "shot.json"), `${JSON.stringify(shot, null, 2)}\n`);
+  }
+  return json(cwd, ["cut", "film", "--final", "--now", "1758380000000"]);
+}
+
+/** A finishing pass that keeps the assembly's clock: the same film with a
+ *  box burnt over it, the way a caption or a UI card is. */
+function overlayPass(source: string, output: string): string {
+  mkdirSync(dirname(output), { recursive: true });
+  const made = Bun.spawnSync([
+    "ffmpeg", "-y", "-v", "error", "-i", source,
+    "-vf", "drawbox=x=8:y=8:w=120:h=24:color=white@0.8:t=fill",
+    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "copy", output,
+  ]);
+  if (made.exitCode !== 0) throw new Error(`could not build the overlay pass: ${made.stderr.toString()}`);
+  return output;
+}
+
+const edlOf = (cwd: string) => JSON.parse(readFileSync(join(cwd, "film", "cut", "edl.json"), "utf-8"));
+
+describe("cut --finish", () => {
+  test.skipIf(!HAS_FFMPEG)("refuses on the gate, without --by, and without a final to finish from", () => {
+    const cwd = workspace();
+    withShot(cwd, { take: true });
+    const made = fixtureMp4(join(cwd, "made.mp4"), { seconds: 1 });
+
+    // The same gate as --final: a finish IS the final, so sound must be
+    // approved.
+    const gated = run(cwd, ["cut", "film", "--finish", made, "--by", "captions"]);
+    expect(gated.code).toBe(1);
+    expect(gated.err).toContain('refusing to spend on "cut-final"');
+    expect(gated.err).toContain('stage "sound"');
+
+    json(cwd, ["gates", "film", "open"]);
+    const noBy = run(cwd, ["cut", "film", "--finish", made]);
+    expect(noBy.code).toBe(1);
+    expect(noBy.err).toContain("--by");
+    expect(noBy.err).toContain("say what the finishing pass added");
+    expect(run(cwd, ["cut", "film", "--finish", made, "--by", "   "]).err).toContain("say what the finishing pass added");
+    expect(run(cwd, ["cut", "film", "--finish", join(cwd, "nope.mp4"), "--by", "captions"]).err).toContain("no such file");
+
+    const none = run(cwd, ["cut", "film", "--finish", made, "--by", "captions"]);
+    expect(none.code).toBe(1);
+    expect(none.err).toContain("there is no assembly to finish from");
+    expect(none.err).toContain("--final' first");
+
+    json(cwd, ["cut", "film", "--reel"]);
+    const overReel = run(cwd, ["cut", "film", "--finish", made, "--by", "captions"]);
+    expect(overReel.code).toBe(1);
+    expect(overReel.err).toContain("the last cut is a reel");
+    expect(overReel.err).toContain("--final' first");
+    // The refusals left the film as it was: the reel is still the cut.
+    expect(edlOf(cwd).file).toBe("reel.mp4");
+    expect(existsSync(join(cwd, "film", "cut", "finished.mp4"))).toBe(false);
+  });
+
+  test.skipIf(!HAS_FFMPEG)("an overlay pass keeps the assembly's clock, so it is registered on the assembly's edit list", () => {
+    const cwd = workspace();
+    const final = assembled(cwd);
+    expect(final.supersededFinish).toBeNull();
+    const source = overlayPass(join(cwd, "film", "cut", "final.mp4"), join(cwd, "film", "render", "captions.mp4"));
+
+    const result = run(cwd, ["cut", "film", "--finish", "film/render/captions.mp4", "--by", "captions and a lower third", "--now", "1758390000000"]);
+    expect(result.code).toBe(0);
+    const report = JSON.parse(result.out);
+    expect(report).toMatchObject({
+      command: "cut",
+      kind: "final",
+      finished: true,
+      file: "cut/finished.mp4",
+      by: "captions and a lower third",
+      retimed: false,
+      assembly: { file: "cut/final.mp4", seconds: final.seconds },
+      omitted: [],
+      music: null,
+      edl: "cut/edl.json",
+    });
+    expect(report.seconds).toBe(final.seconds);
+    expect(report.segments).toEqual(final.segments);
+    expect(report.vo).toEqual(final.vo);
+
+    const edl = edlOf(cwd);
+    expect(edl).toMatchObject({ version: 1, kind: "final", file: "finished.mp4", builtAt: 1758390000000 });
+    expect(edl.segments).toEqual(final.segments);
+    expect(edl.vo).toEqual(final.vo);
+    expect(edl.droppedVo).toEqual(final.droppedVo);
+    // Inside the project, so recorded project-relative.
+    expect(edl.finish).toMatchObject({ by: "captions and a lower third", source: "render/captions.mp4", retimed: false });
+    expect(edl.finish.assembly).toMatchObject({ kind: "final", file: "final.mp4", builtAt: 1758380000000, segments: final.segments });
+    expect(edl.finish.assembly.finish).toBeUndefined();
+
+    // The finished film is copied in byte for byte, the assembly stays, and
+    // no scratch is left behind in cut/.
+    expect(readFileSync(join(cwd, "film", "cut", "finished.mp4")).equals(readFileSync(source))).toBe(true);
+    expect(readdirSync(join(cwd, "film", "cut")).sort()).toEqual(["edl.json", "final.mp4", "finished.mp4"]);
+
+    // A second pass is registered over the SAME assembly, never over the
+    // first finish.
+    const again = json(cwd, ["cut", "film", "--finish", source, "--by", "captions, re-graded"]);
+    expect(again.assembly.file).toBe("cut/final.mp4");
+    expect(edlOf(cwd).finish.by).toBe("captions, re-graded");
+    expect(edlOf(cwd).finish.assembly.file).toBe("final.mp4");
+    expect(edlOf(cwd).finish.assembly.finish).toBeUndefined();
+
+    // Registering the file that already IS cut/finished.mp4 is not a copy
+    // onto itself.
+    json(cwd, ["cut", "film", "--finish", "film/cut/finished.mp4", "--by", "captions"]);
+    expect(readFileSync(join(cwd, "film", "cut", "finished.mp4")).equals(readFileSync(source))).toBe(true);
+    expect(edlOf(cwd).finish.source).toBe("cut/finished.mp4");
+  });
+
+  test.skipIf(!HAS_FFMPEG)("a film of another length is refused without an edit list of its own", () => {
+    const cwd = workspace();
+    assembled(cwd);
+    const longer = fixtureMp4(join(cwd, "longer.mp4"), { seconds: 3, size: "320x180" });
+    const refused = run(cwd, ["cut", "film", "--finish", longer, "--by", "dissolves and a slow-down"]);
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain("the finished film is 3 s and the assembly 2 s");
+    expect(refused.err).toContain("pass --edit <file>");
+    expect(edlOf(cwd).file).toBe("final.mp4");
+    expect(existsSync(join(cwd, "film", "cut", "finished.mp4"))).toBe(false);
+  });
+
+  test.skipIf(!HAS_FFMPEG)("a retimed finish registers its own segments and voice-over — and only takes the shots deliver", () => {
+    const cwd = workspace();
+    assembled(cwd);
+    const made = fixtureMp4(join(cwd, "retimed.mp4"), { seconds: 3, size: "320x180" });
+    const edit = (value: unknown) => {
+      writeFileSync(join(cwd, "edit.json"), JSON.stringify(value));
+      return "edit.json";
+    };
+
+    const registered = run(cwd, [
+      "cut", "film", "--finish", made, "--by", "a dissolve and a slow-down", "--edit",
+      edit({
+        segments: [
+          { shot: "a", source: "take-01", offset: 0, seconds: 1.5, in: 0, out: 1, speed: 0.66666 },
+          { shot: "b", source: "take-01", offset: 1.25, seconds: 1.75, transition: { kind: "dissolve", seconds: 0.25 }, note: "dropped" },
+        ],
+        vo: [{ shot: "b", line: "l1", start: 1.9 }],
+      }),
+    ]);
+    expect(registered.code).toBe(0);
+    const report = JSON.parse(registered.out);
+    expect(report).toMatchObject({ retimed: true, seconds: 3, omitted: [], music: null });
+    expect(report.segments).toEqual([
+      { shot: "a", source: "take-01", offset: 0, seconds: 1.5, in: 0, out: 1, speed: 0.6667 },
+      { shot: "b", source: "take-01", offset: 1.25, seconds: 1.75, transition: { kind: "dissolve", seconds: 0.25 } },
+    ]);
+    // Written in the shape --final writes: the shot's second from shot.json,
+    // the film's second from the edit.
+    expect(report.vo).toEqual([{ shot: "b", line: "l1", at: 0.3, start: 1.9, file: "shots/b/sound/l1.mp3" }]);
+    const edl = edlOf(cwd);
+    expect(edl).toMatchObject({ kind: "final", file: "finished.mp4", seconds: 3, droppedVo: [], music: null });
+    expect(edl.segments).toEqual(report.segments);
+    expect(edl.vo).toEqual(report.vo);
+    // Outside the project, so recorded absolute.
+    expect(edl.finish).toMatchObject({ retimed: true, source: made, assembly: { file: "final.mp4" } });
+
+    // A bare array is the segments. A shot the film has and the finish does
+    // not is said out loud, so is a finish with no voice-over marks, and so
+    // is a frame size that is not the project's.
+    const small = fixtureMp4(join(cwd, "small.mp4"), { seconds: 3, size: "160x120" });
+    const bare = run(cwd, ["cut", "film", "--finish", small, "--by", "only a", "--edit", edit([{ shot: "a", source: "take-01", offset: 0, seconds: 3 }])]);
+    expect(bare.code).toBe(0);
+    expect(JSON.parse(bare.out).omitted).toEqual(["b"]);
+    expect(bare.err).toContain("WARN: the finished film leaves out b");
+    expect(bare.err).toContain("NOTE: the edit list names no voice-over");
+    expect(bare.err).toContain("NOTE: the finished film measures 160x120");
+    expect(edlOf(cwd).vo).toEqual([]);
+
+    // Refusals leave the edit list exactly as it was.
+    const before = readFileSync(join(cwd, "film", "cut", "edl.json"), "utf-8");
+    const refusal = (segments: unknown[]) => run(cwd, ["cut", "film", "--finish", made, "--by", "x", "--edit", edit({ segments })]);
+    expect(refusal([{ shot: "zz", source: "take-01", offset: 0, seconds: 1 }]).err).toContain('no shot "zz" in this film');
+    expect(refusal([{ shot: "b", source: "take-09", offset: 0, seconds: 1 }]).err).toContain('no take "take-09" on b');
+    // The one that matters: take-02 exists and is finished, and b does not
+    // deliver it.
+    const unselected = refusal([{ shot: "b", source: "take-02", offset: 0, seconds: 1 }]);
+    expect(unselected.code).toBe(1);
+    expect(unselected.err).toContain("b delivers take-01, not take-02");
+    expect(unselected.err).toContain("select it first (previz.mjs select)");
+    expect(refusal([{ shot: "a", source: "take-01", offset: 2, seconds: 2 }]).err).toContain("past the end of the 3 s film");
+    expect(
+      refusal([
+        { shot: "a", source: "take-01", offset: 1, seconds: 1 },
+        { shot: "b", source: "take-01", offset: 0.5, seconds: 1 },
+      ]).err,
+    ).toContain("starts before the segment ahead of it");
+    expect(refusal([]).err).toContain("no segments");
+    expect(
+      run(cwd, ["cut", "film", "--finish", made, "--by", "x", "--edit", edit({ segments: [{ shot: "b", source: "take-01", offset: 0, seconds: 3 }], vo: [{ shot: "a", line: "l1", start: 0.5 }] })]).err,
+    ).toContain('a has no recorded voice-over line "l1"');
+    expect(readFileSync(join(cwd, "film", "cut", "edl.json"), "utf-8")).toBe(before);
+  });
+
+  test.skipIf(!HAS_FFMPEG)("a finish over an assembly the shots have moved away from is refused, naming the shot", () => {
+    const cwd = workspace();
+    assembled(cwd);
+    previzJson(cwd, ["select", "film/shots/b", "take-02"]);
+    const made = fixtureMp4(join(cwd, "over.mp4"), { seconds: 2, size: "320x180" });
+    const refused = run(cwd, ["cut", "film", "--finish", made, "--by", "captions"]);
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain("b now delivers take-02 but final.mp4 was cut from take-01");
+    expect(refused.err).toContain("run cut --final again, finish from it, then register");
+    expect(edlOf(cwd).file).toBe("final.mp4");
+    expect(existsSync(join(cwd, "film", "cut", "finished.mp4"))).toBe(false);
+  });
+
+  test.skipIf(!HAS_FFMPEG)("a voice-over still speaking when the film ends is reported as clipped, not passed", () => {
+    // Its start lands inside the film, so it is not dropped — but the mix is
+    // cut to the picture, and the tail is lost without a word (the 2026-09-24
+    // blind trial's closing line lost 3.2 s that way).
+    const cwd = workspace();
+    assembled(cwd);
+    const b = shotOf(cwd, "b");
+    b.lines = b.lines.map((line: any) => ({ ...line, at: 0.9 }));
+    writeFileSync(join(cwd, "film", "shots", "b", "shot.json"), `${JSON.stringify(b, null, 2)}\n`);
+    const result = run(cwd, ["cut", "film", "--final"]);
+    expect(result.code).toBe(0);
+    const cut = JSON.parse(result.out);
+    expect(cut.droppedVo).toEqual([]);
+    expect(cut.clippedVo).toHaveLength(1);
+    expect(cut.clippedVo[0]).toMatchObject({ shot: "b", line: "l1", seconds: 0.4 });
+    expect(cut.clippedVo[0].lost).toBeCloseTo(0.3, 1);
+    expect(result.err).toContain("b/l1 runs");
+    expect(result.err).toContain("is CUT OFF");
+    expect(edlOf(cwd).clippedVo).toEqual(cut.clippedVo);
+  });
+
+  test.skipIf(!HAS_FFMPEG)("a re-trim since the assembly is drift too, and so is a trim removed", () => {
+    const cwd = workspace();
+    assembled(cwd);
+    const made = fixtureMp4(join(cwd, "over.mp4"), { seconds: 2, size: "320x180" });
+    previzJson(cwd, ["meta", "film/shots/b", "--trim-in", "0.25", "--trim-out", "0.75"]);
+    const trimmed = run(cwd, ["cut", "film", "--finish", made, "--by", "captions"]);
+    expect(trimmed.code).toBe(1);
+    expect(trimmed.err).toContain("b is trimmed to 0.25–0.75 s now but final.mp4 was cut from 0–");
+    expect(trimmed.err).toContain("run cut --final again");
+
+    // Cut with the trim, then take it away again.
+    json(cwd, ["cut", "film", "--final"]);
+    previzJson(cwd, ["meta", "film/shots/b", "--no-trim"]);
+    const untrimmed = run(cwd, ["cut", "film", "--finish", made, "--by", "captions"]);
+    expect(untrimmed.code).toBe(1);
+    expect(untrimmed.err).toContain("b is no longer trimmed but final.mp4 was cut from 0.25 s of it");
+    expect(existsSync(join(cwd, "film", "cut", "finished.mp4"))).toBe(false);
+  });
+
+  test.skipIf(!HAS_FFMPEG)("a new assembly supersedes the registered finish, and says so", () => {
+    const cwd = workspace();
+    assembled(cwd);
+    json(cwd, ["cut", "film", "--finish", fixtureMp4(join(cwd, "over.mp4"), { seconds: 2, size: "320x180" }), "--by", "captions"]);
+    const again = run(cwd, ["cut", "film", "--final"]);
+    expect(again.code).toBe(0);
+    expect(JSON.parse(again.out).supersededFinish).toBe("cut/finished.mp4");
+    expect(again.err).toContain("NOTE: the registered finish");
+    expect(again.err).toContain("--finish");
+    const edl = edlOf(cwd);
+    expect(edl.file).toBe("final.mp4");
+    expect(edl.finish).toBeUndefined();
+  });
+
+  test.skipIf(!HAS_FFMPEG)("status names every film in cut/ the Cut stage does not show", () => {
+    const cwd = workspace();
+    assembled(cwd);
+    const cutDir = join(cwd, "film", "cut");
+    json(cwd, ["cut", "film", "--finish", fixtureMp4(join(cwd, "over.mp4"), { seconds: 2, size: "320x180" }), "--by", "captions"]);
+    // The reel's name is accounted for whatever it holds; a film under any
+    // other name is not, whatever its case; a text file is no film.
+    writeFileSync(join(cutDir, "reel.mp4"), "a reel");
+    writeFileSync(join(cutDir, "other.mp4"), "a film nobody registered");
+    writeFileSync(join(cutDir, "Draft.MOV"), "another");
+    writeFileSync(join(cutDir, "notes.txt"), "not a film");
+
+    const status = run(cwd, ["status", "film"]);
+    expect(status.code).toBe(0);
+    expect(JSON.parse(status.out).unregistered).toEqual(["cut/Draft.MOV", "cut/other.mp4"]);
+    expect(status.err).toContain("WARN: a film in cut/ the Cut stage does not show: cut/Draft.MOV, cut/other.mp4");
+    expect(status.err).toContain('--finish <file> --by "');
+
+    // The edit list naming a file that is gone is said too.
+    for (const name of ["finished.mp4", "other.mp4", "Draft.MOV"]) rmSync(join(cutDir, name));
+    const gone = run(cwd, ["status", "film"]);
+    expect(JSON.parse(gone.out).unregistered).toEqual([]);
+    expect(gone.err).toContain("WARN: cut/edl.json names finished.mp4, which is not in cut/");
+  });
+});
 
 describe("cost", () => {
   test.skipIf(!HAS_FFMPEG)("totals what the artefacts themselves record, by stage, and names what is unpriced", () => {

@@ -145,6 +145,35 @@ describe("what each stage puts in focus", () => {
     expect(text).toContain("Segment in focus: s02 from greybox at 8.0–16.0 s");
   });
 
+  test("a registered finish says which assembly it was made over and what it added", () => {
+    const files = FILES().map((file) =>
+      file.path === "cut/edl.json"
+        ? {
+            path: file.path,
+            content: JSON.stringify({
+              kind: "final",
+              file: "finished.mp4",
+              seconds: 16,
+              segments: [
+                { shot: "s01", source: "take-01", offset: 0, seconds: 8 },
+                { shot: "s02", source: "take-01", offset: 8, seconds: 8 },
+              ],
+              finish: {
+                by: "captions and a title card",
+                source: "render/film.mp4",
+                retimed: false,
+                assembly: { kind: "final", file: "final.mp4", seconds: 16, segments: [] },
+              },
+            }),
+          }
+        : file,
+    );
+    const text = context({ stage: "cut" }, files);
+    expect(text).toContain("Cut: final · finished.mp4 · 16.0 s · 2 segment(s) · finished over final.mp4 (captions and a title card)");
+    // A plain assembly says nothing of the kind.
+    expect(context({ stage: "cut" })).not.toContain("finished over");
+  });
+
   test("the script lists the scenes with the shots broken out of them", () => {
     const text = context({ stage: "script", scene: "sc1" });
     expect(text).toContain("1:sc1 (1 shot(s))");

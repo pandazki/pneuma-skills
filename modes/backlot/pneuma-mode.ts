@@ -362,10 +362,16 @@ function describeStageFocus(
         break;
       }
       const standIns = cut.segments.filter((s) => s.source === "greybox").length;
+      // A registered finish is the film on screen; the plain assembly it was
+      // made over is still named, so "which file am I looking at" has one
+      // answer.
+      const finish = cut.finish
+        ? ` · finished${cut.finish.assembly ? ` over ${cut.finish.assembly.file}` : ""} (${cut.finish.by})`
+        : "";
       lines.push(
         `Cut: ${cut.kind} · ${cut.file} · ${cut.seconds.toFixed(1)} s · ${cut.segments.length} segment(s)${
           standIns > 0 ? ` · ${standIns} greybox stand-in(s)` : ""
-        }`,
+        }${finish}`,
       );
       // The joins, in the same words the cut view badges them with. Only the
       // boundaries that DECLARE a hand-off carry a verdict; the rest are

@@ -479,20 +479,49 @@ export interface CutSegment {
   source: string;
   offset: number;
   seconds: number;
+  /** Where the segment starts on its SHOT's clock (the trim), when recorded. */
+  in?: number;
+  /** Where it ends on the shot's clock, when recorded. */
+  out?: number;
+  /** Playback rate a finishing pass gave it (0.62 = slowed to 62 %). */
+  speed?: number;
 }
 
 export interface CutVo {
   shot: string;
   line: string;
-  /** Seconds on the CUT's clock, already offset by the segment. */
+  /**
+   * Seconds on the CUT's clock, already offset by the segment — the edit
+   * list's `start`. Its `at` is the line's second of the SHOT, and is read
+   * only from a list that carries nothing else.
+   */
   at: number;
   file: string;
 }
 
 export interface CutMusic {
   file: string;
-  gainDb: number;
-  fadeOutSeconds: number;
+  /** Null when a finishing pass did not say what level it laid the bed at. */
+  gainDb: number | null;
+  /** Null when a finishing pass did not say how it faded the bed out. */
+  fadeOutSeconds: number | null;
+}
+
+/**
+ * A finishing pass registered over the plain assembly (`backlot.mjs cut
+ * --finish`): titles, captions, UI, transitions, a re-mix — whatever
+ * `cut --final` does not do. The cut's `file` is then the finished film and
+ * its segments are on THAT film's clock.
+ */
+export interface CutFinish {
+  /** What the finishing pass added, in the agent's words. */
+  by: string;
+  /** Where the finished film was rendered, as recorded. */
+  source: string | null;
+  /** The pass changed the timing, so the segments are its own, not the assembly's. */
+  retimed: boolean;
+  /** The plain assembly the finish was made over. */
+  assembly: { file: string; seconds: number; builtAt: number | null } | null;
 }
 
 /**
@@ -511,6 +540,8 @@ export interface CutState {
   segments: CutSegment[];
   vo: CutVo[];
   music: CutMusic | null;
+  /** Null for a plain assembly. */
+  finish: CutFinish | null;
 }
 
 /** One stage of the eight, with what the creator has approved and spent. */
@@ -1188,6 +1219,10 @@ export function parseMusic(text: string): MusicRecord | null {
  * as one. `kind` is read from the file, but a `final` that still stands a
  * greybox in is corrected to `reel` here: the label is a claim about what the
  * user is watching, and the segment list is the evidence.
+ *
+ * A registered finish (`finish`) makes `file` the finished film; the
+ * segments, voice-over and music are then on that film's clock, so nothing
+ * that seeks by them needs to know it is not the plain assembly.
  */
 export function parseCut(text: string): CutState | null {
   const raw = parseJsonRecord(text);
@@ -1198,12 +1233,18 @@ export function parseCut(text: string): CutState | null {
     ? raw.segments.filter(isRecord).flatMap((entry): CutSegment[] => {
         const shot = asNullableString(entry.shot);
         if (!shot) return [];
+        const from = asNullableNumber(entry.in);
+        const to = asNullableNumber(entry.out);
+        const speed = asNullableNumber(entry.speed);
         return [
           {
             shot,
             source: asString(entry.source, "greybox"),
             offset: asNumber(entry.offset, 0),
             seconds: asNumber(entry.seconds, 0),
+            ...(from === null ? {} : { in: from }),
+            ...(to === null ? {} : { out: to }),
+            ...(speed !== null && speed > 0 ? { speed } : {}),
           },
         ];
       })
@@ -1232,7 +1273,9 @@ export function parseCut(text: string): CutState | null {
             {
               shot: asString(entry.shot, ""),
               line: asString(entry.line, ""),
-              at: asNumber(entry.at, 0),
+              // `start` is the film's second; `at` the shot's. The mark is
+              // drawn on the film's axis.
+              at: asNullableNumber(entry.start) ?? asNumber(entry.at, 0),
               file: voFile,
             },
           ];
@@ -1242,9 +1285,29 @@ export function parseCut(text: string): CutState | null {
       musicRaw && musicFile
         ? {
             file: musicFile,
-            gainDb: asNumber(musicRaw.gainDb, 0),
-            fadeOutSeconds: asNumber(musicRaw.fadeOutSeconds, 0),
+            gainDb: asNullableNumber(musicRaw.gainDb),
+            fadeOutSeconds: asNullableNumber(musicRaw.fadeOutSeconds),
           }
+        : null,
+    finish: parseCutFinish(raw.finish),
+  };
+}
+
+/** `edl.json.finish` → the registered finishing pass, or null. A finish that
+ *  does not say what it added is not one. */
+function parseCutFinish(raw: unknown): CutFinish | null {
+  if (!isRecord(raw)) return null;
+  const by = typeof raw.by === "string" ? raw.by.trim() : "";
+  if (!by) return null;
+  const assembly = isRecord(raw.assembly) ? raw.assembly : null;
+  const assemblyFile = assembly ? asNullableString(assembly.file) : null;
+  return {
+    by,
+    source: asNullableString(raw.source),
+    retimed: raw.retimed === true,
+    assembly:
+      assembly && assemblyFile
+        ? { file: assemblyFile, seconds: asNumber(assembly.seconds, 0), builtAt: asNullableNumber(assembly.builtAt) }
         : null,
   };
 }
@@ -2024,12 +2087,22 @@ export function stageLabel(stage: StageId, lang: "en" | "zh" = "en"): string {
 }
 
 /**
- * The cut segment playing at `t` seconds, or null when `t` is outside the cut.
+ * How far past the last segment's end a playhead still counts as parked on
+ * its final frame: the end of a plain assembly IS that end, give or take the
+ * edit list's rounding and a frame.
+ */
+const LAST_FRAME_TOLERANCE_S = 0.05;
+
+/**
+ * The cut segment playing at `t` seconds, or null when `t` is outside every
+ * segment.
  *
  * Segments are half-open (`offset ≤ t < offset + seconds`) so a boundary
- * belongs to the shot that starts there; the very end of the film belongs to
- * the last segment, because a playhead parked on the final frame is still
- * watching that shot.
+ * belongs to the shot that starts there; the very end of the last segment
+ * belongs to it, because a playhead parked on the final frame is still
+ * watching that shot. Beyond that there is no shot: a finishing pass can run
+ * the film on past its last take — an end card, a logo — and naming the last
+ * take there labels a card as a shot.
  */
 export function segmentAt(cut: CutState | null, t: number): CutSegment | null {
   if (!cut || cut.segments.length === 0) return null;
@@ -2037,7 +2110,8 @@ export function segmentAt(cut: CutState | null, t: number): CutSegment | null {
     if (t >= segment.offset && t < segment.offset + segment.seconds) return segment;
   }
   const last = cut.segments[cut.segments.length - 1];
-  return t >= last.offset + last.seconds ? last : null;
+  const end = last.offset + last.seconds;
+  return t >= end && t <= end + LAST_FRAME_TOLERANCE_S ? last : null;
 }
 
 /**
@@ -2053,8 +2127,9 @@ export const HANDOFF_CHECK = "take-handoff" as const;
  *
  * `outTime` / `inTime` are seconds INSIDE their own source file, not on the
  * cut's clock — they are what a `<video>` element is seeked to in order to
- * show the real frame. `at` is the boundary on the cut's clock, which is what
- * a click seeks the cut player to.
+ * show the real frame, so they are the ends of the shot-clock RANGE the
+ * segment shows (its `in`/`out`), not of the file. `at` is the boundary on
+ * the cut's clock, which is what a click seeks the cut player to.
  */
 export interface CutPoint {
   /** The boundary between segment `index` and segment `index + 1`. */
@@ -2067,9 +2142,9 @@ export interface CutPoint {
   /** The take the segment plays, or null when a greybox stands in. */
   fromTake: Take | null;
   toTake: Take | null;
-  /** Last frame of the outgoing source, in that source's own seconds. */
+  /** Last frame the outgoing segment shows, in its source's own seconds. */
   outTime: number;
-  /** First frame of the incoming source; 0 — the EDL records no source trim. */
+  /** First frame the incoming segment shows: its `in`, or 0 when none is recorded. */
   inTime: number;
   /** Seconds on the CUT's clock where the two meet. */
   at: number;
@@ -2114,10 +2189,15 @@ export function cutPoints(project: Project, cut: CutState | null): CutPoint[] {
       toShot,
       fromTake: takeOf(fromShot, fromSegment.source),
       toTake,
-      // The frame the cut actually shows last: `seconds` is one frame past
-      // the end of the segment, and seeking there lands on black or clamps.
-      outTime: Math.max(0, fromSegment.seconds - 1 / fps),
-      inTime: 0,
+      // The frame the cut actually shows last: the range's end is one frame
+      // past it, and seeking there lands on black or clamps. With no `out`
+      // recorded the range runs `seconds` of film from `in` — at the
+      // segment's speed, when a finishing pass changed it.
+      outTime: Math.max(
+        0,
+        (fromSegment.out ?? (fromSegment.in ?? 0) + fromSegment.seconds * (fromSegment.speed ?? 1)) - 1 / fps,
+      ),
+      inTime: toSegment.in ?? 0,
       at: toSegment.offset,
       continuity: fromShot !== null && toShot?.continuity?.from === fromShot.id,
       handoffCheck: arriving

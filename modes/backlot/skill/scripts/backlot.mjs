@@ -13,6 +13,12 @@
  *   sound/sound.json          the music bed
  *   cut/edl.json              the edit list of the last cut
  *
+ * The cut is built here (`cut --reel`, `cut --final`), and a film a
+ * finishing pass made outside this script — titles, captions, UI,
+ * transitions, a re-mix — is REGISTERED here (`cut --finish`), never copied
+ * into cut/ by hand: the Cut stage plays only the file the edit list names,
+ * and seeks by that list's segments.
+ *
  * `previz.mjs` remains the only writer of `shots/<id>/shot.json` — a shot's
  * own machine state — and the agent writes the prose and the Blender script.
  * The viewer writes nothing: approving a stage is a COMMAND to the agent,
@@ -40,10 +46,13 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  constants,
   copyFileSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
   statSync,
@@ -317,7 +326,7 @@ const STAGE_HINTS = {
   previz: "write greybox/scene.py, then previz.mjs render / check / anchor",
   takes: "previz.mjs generate, then previz.mjs check / select",
   sound: "previz.mjs vo and backlot.mjs music",
-  cut: "backlot.mjs cut --reel, then --final",
+  cut: "backlot.mjs cut --reel, then --final (and --finish <film> when a finishing pass made the film)",
 };
 
 function cmdStatus(dir) {
@@ -341,6 +350,17 @@ function cmdStatus(dir) {
   const changed = statuses.filter((entry) => entry.status === "changed").map((entry) => entry.stage);
   if (changed.length) note(`WARN: ${changed.join(", ")} changed after approval — the creator has not seen the current version`);
   if (manifest.gates === "open") note("WARN: gates are OPEN — paid commands do not wait for approval in this project");
+  const cut = parseJsonObject(texts["cut/edl.json"]);
+  const unregistered = unregisteredFilms(dir, cut);
+  if (unregistered.length) {
+    note(
+      `WARN: a film in cut/ the Cut stage does not show: ${unregistered.join(", ")} — if it is the finished film, ` +
+        "register it with 'backlot.mjs cut <project> --finish <file> --by \"<what the pass added>\"'; otherwise move it out of cut/",
+    );
+  }
+  if (typeof cut?.file === "string" && !isFile(join(dir, "cut", cut.file))) {
+    note(`WARN: cut/edl.json names ${cut.file}, which is not in cut/ — the Cut stage has nothing to play; cut again, or register the finished film with --finish`);
+  }
 
   return emit({
     command: "status",
@@ -357,11 +377,41 @@ function cmdStatus(dir) {
     sets: manifest.sets.map((id) => bibleSummary(dir, "sets", id)),
     shots,
     sound: parseJsonObject(texts["sound/sound.json"]),
-    cut: parseJsonObject(texts["cut/edl.json"]),
+    cut,
+    unregistered,
     cost: summarizeCost(lines),
     stuck: shots.flatMap((shot) => (shot.stuck ?? []).map((id) => `${shot.id}:${id}`)),
     next: nextOpenStage(statuses, manifest.gates),
   });
+}
+
+const FILM_EXTENSIONS = /\.(mp4|mov|webm|mkv)$/i;
+
+/**
+ * Every film directly in `cut/` that no edit list accounts for.
+ *
+ * The Cut stage plays the file `edl.json` names and nothing else, so a film
+ * copied in by hand is invisible there — which is how a finishing pass ended
+ * up as `cut/final.mp4` with no edit list at all. Accounted for: the two
+ * names `cut` builds, the file the edit list names, and the assembly a
+ * registered finish was made over.
+ */
+function unregisteredFilms(dir, edl) {
+  const cutDir = join(dir, "cut");
+  let names;
+  try {
+    names = readdirSync(cutDir);
+  } catch (error) {
+    if (error.code !== "ENOENT") note(`WARN: cannot list ${cutDir} (${error.message}) — unregistered films are not checked`);
+    return [];
+  }
+  const accounted = new Set(["reel.mp4", "final.mp4"]);
+  if (typeof edl?.file === "string") accounted.add(edl.file);
+  if (typeof edl?.finish?.assembly?.file === "string") accounted.add(edl.finish.assembly.file);
+  return names
+    .filter((name) => FILM_EXTENSIONS.test(name) && !accounted.has(name) && isFile(join(cutDir, name)))
+    .sort()
+    .map((name) => `cut/${name}`);
 }
 
 function bibleSummary(dir, family, id) {
@@ -1227,11 +1277,36 @@ function normalizeSegment(ffmpeg, segment, spec, output) {
   return output;
 }
 
+/** The refusal a final gets while any shot lacks a selected take — shared by
+ *  `--final` and `--finish`, which stand on the same check. */
+function notAFinal(missing) {
+  return `refusing to call this a final: ${missing.length} shot(s) do not deliver a selected take:\n  - ${missing.join("\n  - ")}\n` +
+    "Select the take each one delivers (previz.mjs select), or build a reel with --reel.";
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function cmdCut(dir, opts) {
   requireProject(dir);
+  if (opts.finish !== undefined) {
+    if (opts.final || opts.reel) {
+      fail("cut --finish takes neither --reel nor --final — it builds nothing; it registers a film a finishing pass already made over the last --final");
+    }
+    return cmdFinish(dir, opts);
+  }
+  if (opts.by !== undefined || opts.edit !== undefined) {
+    fail("--by and --edit only go with --finish <film> — they describe a finishing pass being registered");
+  }
   const kind = opts.final ? "final" : "reel";
   if (opts.final && opts.reel) fail("cut takes --reel or --final, not both");
-  if (!opts.final && !opts.reel) fail("cut needs --reel (greybox stands in for a missing take) or --final (every shot delivers its selected take)");
+  if (!opts.final && !opts.reel) {
+    fail(
+      "cut needs --reel (greybox stands in for a missing take), --final (every shot delivers its selected take) " +
+        "or --finish <film> (register the film a finishing pass made over the final)",
+    );
+  }
   const manifest = loadManifest(dir);
   if (manifest.shots.length === 0) fail("this film has no shots yet — add them with 'backlot.mjs shot add'");
   if (kind === "final") requireGate("cut-final", dir);
@@ -1244,12 +1319,19 @@ function cmdCut(dir, opts) {
   if (missing.length) {
     fail(
       kind === "final"
-        ? `refusing to call this a final: ${missing.length} shot(s) do not deliver a selected take:\n  - ${missing.join("\n  - ")}\n` +
-            "Select the take each one delivers (previz.mjs select), or build a reel with --reel."
+        ? notAFinal(missing)
         : `nothing to cut for ${missing.length} shot(s):\n  - ${missing.join("\n  - ")}\n` +
             "Render their greybox (previz.mjs render) or generate a take first.",
     );
   }
+
+  // A registered finish was made over the assembly this cut replaces. Once
+  // the edit list is rewritten it is no longer the Cut stage's film, and the
+  // agent has to be told rather than find out.
+  const previous = parseJsonObject(readIfExists(join(dir, "cut", "edl.json")));
+  const supersededFinish = isPlainObject(previous?.finish) && typeof previous.file === "string"
+    ? `cut/${previous.file}`
+    : null;
 
   const work = join(dir, "cut", ".work");
   rmSync(work, { recursive: true, force: true });
@@ -1316,6 +1398,7 @@ function cmdCut(dir, opts) {
 
     const voiceOvers = [];
     const droppedVo = [];
+    const clippedVo = [];
     segments.forEach((segment, index) => {
       for (const line of segment.lines) {
         if (!line || line.kind !== "vo" || !line.file) continue;
@@ -1345,6 +1428,19 @@ function cmdCut(dir, opts) {
           continue;
         }
         voiceOvers.push({ shot: segment.shot, line: line.id, at: round4(shotAt), start: round4(start), file, rel: relFromProject(dir, file) });
+        // Its START fits, but the mix is cut to the picture (`duration=first`),
+        // so a line still speaking when the film ends is cut off mid-word — a
+        // loss as real as a dropped line, and as silent unless it is said.
+        const recorded = Number(line.seconds);
+        const lineSeconds = Number.isFinite(recorded) && recorded > 0 ? recorded : probeSeconds(file);
+        const lost = lineSeconds === null ? 0 : start + lineSeconds - filmSeconds;
+        if (lost > 0.05) {
+          note(
+            `WARN: ${segment.shot}/${line.id} runs ${round4(lost)} s past the end of the ${filmSeconds} s film and is CUT OFF — ` +
+              "move its 'at' earlier, shorten the line, or give the last shot more seconds",
+          );
+          clippedVo.push({ shot: segment.shot, line: line.id, start: round4(start), seconds: round4(lineSeconds), lost: round4(lost) });
+        }
       }
     });
 
@@ -1418,6 +1514,8 @@ function cmdCut(dir, opts) {
       // A line that was recorded and did NOT reach the film is part of the
       // honest projection: it is in the edit list as dropped, with why.
       droppedVo,
+      // And one that reached it but was still speaking when the picture ended.
+      clippedVo,
       music: music ? { file: music.file, gainDb: music.gainDb, fadeOutSeconds: music.fadeOutSeconds } : null,
     };
     writeJsonAtomic(join(dir, "cut", "edl.json"), edlDoc);
@@ -1429,6 +1527,12 @@ function cmdCut(dir, opts) {
     }
     if (cards.length) {
       note(`NOTE: ${cards.length} of them are BLACK CARDS (${cards.join(", ")}): free shots with no greybox, holding their seconds`);
+    }
+    if (supersededFinish) {
+      note(
+        `NOTE: the registered finish (${supersededFinish}) was made from the previous assembly and is no longer the Cut stage's film — ` +
+          "finish again from the new final and register it with 'backlot.mjs cut <project> --finish <film> --by \"…\"'",
+      );
     }
     return emit({
       command: "cut",
@@ -1443,12 +1547,381 @@ function cmdCut(dir, opts) {
       trimmed: segments.filter((segment) => segment.trim).map((segment) => segment.shot),
       vo: edlDoc.vo,
       droppedVo,
+      clippedVo,
       music: edlDoc.music,
       edl: "cut/edl.json",
+      supersededFinish,
     });
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
+}
+
+// ---------------------------------------------------------------------------
+// cut --finish — register the film a finishing pass made over the final
+// ---------------------------------------------------------------------------
+
+const FINISHED_FILE = "finished.mp4";
+
+/** How every "there is nothing to finish from" refusal ends. */
+const FINISH_NEEDS_FINAL =
+  "run 'backlot.mjs cut <project> --final' first — it is the check that every shot delivers its selected take, " +
+  "and the edit list a finish starts from";
+
+/**
+ * Register a film that a finishing pass made over the plain assembly.
+ *
+ * `cut --final` assembles the selected takes; it does not set titles,
+ * captions or UI over them, dissolve between them, ramp their speed or
+ * re-mix the sound. A pass that does is made outside this script, and until
+ * it is registered the Cut stage cannot show it — the one time it was
+ * copied over `final.mp4` by hand, the edit list went unwritten and the
+ * stage said "nothing yet".
+ *
+ * What registering guarantees is what the plain final guarantees, plus the
+ * clock: the finish is made over a `final` that still delivers every shot's
+ * selected take (the same gate, the same check), the finished film is
+ * measured, and the edit list the Cut stage seeks by is on THAT film's
+ * clock — the assembly's when the pass only drew over it, the pass's own
+ * (`--edit`) when it moved anything. The assembly is kept inside the edit
+ * list, so a second pass is registered over the same assembly and never
+ * over the first finish.
+ */
+function cmdFinish(dir, opts) {
+  const manifest = loadManifest(dir);
+  if (manifest.shots.length === 0) fail("this film has no shots yet — add them with 'backlot.mjs shot add'");
+  requireGate("cut-final", dir);
+
+  const by = typeof opts.by === "string" ? opts.by.trim() : "";
+  if (!by) {
+    fail(
+      'cut --finish needs --by "<what the pass added>" — say what the finishing pass added (titles, captions, UI, ' +
+        "transitions, a re-mix); it is the label the Cut stage shows",
+    );
+  }
+  const source = resolveInput(opts.finish);
+  if (!isFile(source)) fail(`--finish: no such file: ${source}`);
+  const builtAt = nowMs(opts);
+  const spec = { ...DEFAULT_SPEC, ...(manifest.defaults ?? {}) };
+  const frame = 1 / (Number(spec.fps) || DEFAULT_SPEC.fps);
+
+  // The assembly. When the edit list already carries a finish, the finish
+  // was made over the assembly it records, and so is this one.
+  const edlPath = join(dir, "cut", "edl.json");
+  const edl = parseJsonObject(readIfExists(edlPath));
+  let base = edl;
+  if (edl && edl.finish !== undefined) base = isPlainObject(edl.finish?.assembly) ? edl.finish.assembly : null;
+  if (!base) {
+    const why = !existsSync(edlPath)
+      ? "no cut/edl.json"
+      : edl ? "cut/edl.json records a finish without the assembly it was made over" : "cut/edl.json is not a JSON object";
+    fail(`there is no assembly to finish from (${why}) — ${FINISH_NEEDS_FINAL}`);
+  }
+  if (base.kind !== "final") fail(`the last cut is a ${base.kind === "reel" ? "reel" : "cut of no known kind"}, not a final — ${FINISH_NEEDS_FINAL}`);
+  const baseSegments = Array.isArray(base.segments) ? base.segments.filter(isPlainObject) : [];
+  const baseSeconds = Number(base.seconds);
+  if (typeof base.file !== "string" || !base.file || baseSegments.length === 0 || !Number.isFinite(baseSeconds)) {
+    fail(`cut/edl.json does not describe an assembly this script wrote (it has no file, segments or length) — ${FINISH_NEEDS_FINAL}`);
+  }
+  const standIns = baseSegments.filter((s) => s.source === "greybox" || s.source === "card").map((s) => `${s.shot} (${s.source})`);
+  if (standIns.length) fail(`the last final still has stand-ins — ${standIns.join(", ")} — ${FINISH_NEEDS_FINAL}`);
+  if (!isFile(join(dir, "cut", base.file))) fail(`cut/${base.file} is gone — ${FINISH_NEEDS_FINAL}`);
+
+  // The assembly has to be what the shots deliver NOW: a finish made from a
+  // take a shot has since moved away from would put that take back in the
+  // film behind the selection's back.
+  const { segments: current, missing } = planSegments(dir, manifest, "final");
+  if (missing.length) fail(notAFinal(missing));
+  const drift = assemblyDrift(baseSegments, current, base.file);
+  if (drift) fail(`${drift} — run cut --final again, finish from it, then register`);
+
+  // The film as it is, not as its container says.
+  const probeDoc = probeMedia(source, { counted: true });
+  if (!probeDoc) fail(`ffprobe cannot read ${source} — register the rendered film, not a project or a folder`);
+  const probe = parseProbe(probeDoc, { bytes: statSync(source).size });
+  if (!probe) fail(`${source} has no video stream — a finished film is a picture`);
+  const seconds = probe.seconds;
+  if (!Number.isFinite(seconds) || seconds <= 0) fail(`cannot measure how long ${source} is — ffprobe reports no frames and no duration`);
+
+  // The edit list of the finished film.
+  const notices = [];
+  let edit;
+  if (opts.edit === undefined) {
+    // An overlay-only pass: the assembly's segments are this film's
+    // segments, which is true only while the two are the same length.
+    if (Math.abs(seconds - baseSeconds) > frame + 1e-3) {
+      fail(
+        `the finished film is ${round4(seconds)} s and the assembly ${round4(baseSeconds)} s, so its timing is not the ` +
+          "assembly's and the assembly's edit list would seek to the wrong shot — pass --edit <file> with the finished film's own segments",
+      );
+    }
+    edit = {
+      segments: baseSegments,
+      vo: Array.isArray(base.vo) ? base.vo : [],
+      droppedVo: Array.isArray(base.droppedVo) ? base.droppedVo : [],
+      clippedVo: Array.isArray(base.clippedVo) ? base.clippedVo : [],
+      music: isPlainObject(base.music) ? base.music : null,
+    };
+  } else {
+    edit = readFinishEdit(dir, manifest, resolveInput(opts.edit), seconds, frame, notices);
+  }
+
+  const shown = new Set(edit.segments.map((segment) => segment.shot));
+  const omitted = manifest.shots.filter((id) => !shown.has(id));
+  if (omitted.length) {
+    notices.push(
+      `WARN: the finished film leaves out ${omitted.join(", ")} — the film has ${omitted.length === 1 ? "that shot" : "those shots"} ` +
+        "and this cut does not show them; a legitimate edit, and one the creator has to hear about",
+    );
+  }
+  if (probe.width !== spec.width || probe.height !== spec.height) {
+    notices.push(`NOTE: the finished film measures ${probe.width}x${probe.height}; the project spec is ${spec.width}x${spec.height} — recorded as measured`);
+  }
+  const inside = relative(dir, source);
+  const recordedSource = inside && !inside.startsWith("..") && !isAbsolute(inside) ? inside.split(sep).join("/") : source;
+  if (recordedSource.startsWith("cut/") && recordedSource !== `cut/${FINISHED_FILE}`) {
+    notices.push(
+      `NOTE: ${recordedSource} stays where it is and 'status' will list it as unregistered — the registered copy is cut/${FINISHED_FILE}; ` +
+        "render finishing passes outside cut/, or move this one out",
+    );
+  }
+
+  // Land the film, then write the edit list LAST: it describes a file that
+  // exists. A clone where the filesystem has them (APFS), so a 75 MB film
+  // is not duplicated on disk.
+  const cutDir = join(dir, "cut");
+  const destination = join(cutDir, FINISHED_FILE);
+  if (!(existsSync(destination) && realpathSync(source) === realpathSync(destination))) {
+    const scratch = join(cutDir, `.${FINISHED_FILE}.${process.pid}.tmp`);
+    try {
+      mkdirSync(cutDir, { recursive: true });
+      copyFileSync(source, scratch, constants.COPYFILE_FICLONE);
+      renameSync(scratch, destination);
+    } catch (error) {
+      try { rmSync(scratch, { force: true }); } catch { /* never created */ }
+      fail(`cannot copy ${source} to ${destination}: ${error.message}`);
+    }
+  }
+  for (const line of notices) note(line);
+
+  const { finish: _previousFinish, ...assembly } = base;
+  const retimed = opts.edit !== undefined;
+  writeJsonAtomic(edlPath, {
+    version: 1,
+    kind: "final",
+    file: FINISHED_FILE,
+    seconds,
+    builtAt,
+    probe,
+    segments: edit.segments,
+    vo: edit.vo,
+    droppedVo: edit.droppedVo,
+    clippedVo: edit.clippedVo,
+    music: edit.music,
+    finish: { by, source: recordedSource, retimed, assembly },
+  });
+
+  return emit({
+    command: "cut",
+    dir,
+    kind: "final",
+    finished: true,
+    file: `cut/${FINISHED_FILE}`,
+    seconds,
+    probe,
+    by,
+    retimed,
+    assembly: { file: `cut/${base.file}`, seconds: baseSeconds },
+    segments: edit.segments,
+    omitted,
+    vo: edit.vo,
+    music: edit.music,
+    edl: "cut/edl.json",
+  });
+}
+
+/** The first way the assembly's (shot, take) sequence differs from what the
+ *  shots deliver now, in words, or null when they agree. */
+function assemblyDrift(assembled, current, file) {
+  for (let index = 0; index < Math.max(assembled.length, current.length); index += 1) {
+    const was = assembled[index];
+    const now = current[index];
+    if (!was) return `${now.shot} is in the film now but not in ${file}`;
+    if (!now) return `${was.shot} is in ${file} but no longer in the film`;
+    if (was.shot !== now.shot) {
+      return `the shot order changed since ${file} was cut (segment ${index + 1} is ${now.shot} now and was ${was.shot})`;
+    }
+    if (was.source !== now.source) return `${now.shot} now delivers ${now.source} but ${file} was cut from ${was.source}`;
+    // A re-trim moves what the film shows of the shot just as a re-select
+    // does. An untrimmed shot is recorded from 0 with its measured length,
+    // so only a start that moved off 0 can betray a trim since removed.
+    const wasIn = Number(was.in ?? 0);
+    const wasOut = Number(was.out);
+    if (now.trim && (Math.abs(wasIn - now.trim.in) > 1e-3 || !(Math.abs(wasOut - now.trim.out) <= 1e-3))) {
+      return `${now.shot} is trimmed to ${round4(now.trim.in)}–${round4(now.trim.out)} s now but ${file} was cut from ${round4(wasIn)}–${round4(wasOut)} s`;
+    }
+    if (!now.trim && wasIn > 1e-3) return `${now.shot} is no longer trimmed but ${file} was cut from ${round4(wasIn)} s of it`;
+  }
+  return null;
+}
+
+/** A finite number, or null — for fields an agent wrote by hand. */
+function finiteOrNull(value) {
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  if (typeof value === "string" && !value.trim()) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+/**
+ * The finished film's own edit list (`--edit <file>`), checked against the
+ * film it describes and the shots it claims to show, and normalised into the
+ * shape `--final` writes.
+ *
+ * Every segment must show the take its shot has SELECTED: the selection is
+ * the one authority on which take a shot delivers, and a finish that could
+ * name any take would be a way round it. Voice-over is optional — a finish
+ * owns its own mix — but a finish without it draws no marks, and says so.
+ */
+function readFinishEdit(dir, manifest, path, filmSeconds, frame, notices) {
+  if (!isFile(path)) fail(`--edit: no such file: ${path}`);
+  let doc;
+  try {
+    doc = JSON.parse(readFileSync(path, "utf-8"));
+  } catch (error) {
+    return fail(`--edit: ${path} is not valid JSON (${error.message})`);
+  }
+  if (Array.isArray(doc)) doc = { segments: doc };
+  if (!isPlainObject(doc)) {
+    fail(`--edit: ${path} must be { "segments": [...], "vo"?: [...], "music"?: {...} } or a bare list of segments`);
+  }
+  if (!Array.isArray(doc.segments) || doc.segments.length === 0) {
+    fail("--edit: no segments — the finished film's edit list is what the Cut stage seeks by, and it cannot be empty");
+  }
+
+  const shotCache = new Map();
+  const shotOf = (id, where) => {
+    if (!manifest.shots.includes(id)) fail(`--edit: ${where}: no shot "${id}" in this film (${manifest.shots.join(", ")})`);
+    if (!shotCache.has(id)) {
+      const file = shotPathOf(join(dir, "shots", id));
+      try {
+        shotCache.set(id, normalizeShot(JSON.parse(readFileSync(file, "utf-8"))));
+      } catch (error) {
+        fail(`--edit: ${where}: ${id}'s shot.json cannot be read (${error.message})`);
+      }
+    }
+    return shotCache.get(id);
+  };
+  const given = (value) => value !== undefined && value !== null;
+
+  let previous = -Infinity;
+  const segments = doc.segments.map((entry, index) => {
+    const where = `segment ${index + 1}`;
+    if (!isPlainObject(entry)) fail(`--edit: ${where} is not an object`);
+    const id = String(entry.shot ?? "");
+    const shot = shotOf(id, where);
+    const takeId = String(entry.source ?? "");
+    const take = shot.takes.find((candidate) => candidate.id === takeId);
+    if (!take) fail(`--edit: ${where}: no take "${takeId}" on ${id} (${shot.takes.map((t) => t.id).join(", ") || "none recorded"})`);
+    if (take.status !== "done" || !take.file) fail(`--edit: ${where}: ${id}'s ${takeId} is "${take.status}" — only a finished take can be in the film`);
+    if (take.selected !== true) {
+      const delivered = shot.takes.find((candidate) => candidate.selected === true)?.id ?? "no take";
+      fail(
+        `--edit: ${where}: ${id} delivers ${delivered}, not ${takeId} — a finish shows only the take its shot has selected; ` +
+          "select it first (previz.mjs select), then cut --final again, finish from it, and register",
+      );
+    }
+    const offset = finiteOrNull(entry.offset);
+    if (offset === null || offset < 0) fail(`--edit: ${where}: offset must be a second of the finished film, ≥ 0 (got: ${JSON.stringify(entry.offset)})`);
+    const seconds = finiteOrNull(entry.seconds);
+    if (seconds === null || seconds <= 0) fail(`--edit: ${where}: seconds must be greater than 0 (got: ${JSON.stringify(entry.seconds)})`);
+    if (offset < previous) fail(`--edit: ${where} starts before the segment ahead of it (${round4(offset)} s < ${round4(previous)} s) — offsets never go back`);
+    if (offset + seconds > filmSeconds + frame) {
+      fail(`--edit: ${where} runs to ${round4(offset + seconds)} s, past the end of the ${round4(filmSeconds)} s film`);
+    }
+    previous = offset;
+
+    const segment = { shot: id, source: takeId, offset: round4(offset), seconds: round4(seconds) };
+    if (given(entry.in)) {
+      const from = finiteOrNull(entry.in);
+      if (from === null || from < 0) fail(`--edit: ${where}: in must be a second of the shot, ≥ 0 (got: ${JSON.stringify(entry.in)})`);
+      segment.in = round4(from);
+    }
+    if (given(entry.out)) {
+      const to = finiteOrNull(entry.out);
+      if (to === null || to <= (segment.in ?? 0)) fail(`--edit: ${where}: out must be a second of the shot after in (got: ${JSON.stringify(entry.out)})`);
+      segment.out = round4(to);
+    }
+    if (given(entry.speed)) {
+      const speed = finiteOrNull(entry.speed);
+      if (speed === null || speed <= 0) fail(`--edit: ${where}: speed must be greater than 0 (got: ${JSON.stringify(entry.speed)})`);
+      segment.speed = round4(speed);
+    }
+    if (given(entry.transition)) {
+      const transition = entry.transition;
+      const kind = isPlainObject(transition) && typeof transition.kind === "string" ? transition.kind.trim() : "";
+      const length = isPlainObject(transition) ? finiteOrNull(transition.seconds) : null;
+      if (!kind || length === null || length <= 0) {
+        fail(`--edit: ${where}: transition must be { "kind": "dissolve", "seconds": 0.5 } — the transition INTO this segment`);
+      }
+      segment.transition = { kind, seconds: round4(length) };
+    }
+    return segment;
+  });
+
+  let vo = [];
+  if (!given(doc.vo)) {
+    notices.push("NOTE: the edit list names no voice-over, so the Cut stage will draw no voice-over marks for this film — list them as \"vo\": [{ \"shot\", \"line\", \"start\" }] if the finished film carries any");
+  } else {
+    if (!Array.isArray(doc.vo)) fail('--edit: vo must be a list of { "shot", "line", "start" }');
+    vo = doc.vo.map((entry, index) => {
+      const where = `vo ${index + 1}`;
+      if (!isPlainObject(entry)) fail(`--edit: ${where} is not an object`);
+      const id = String(entry.shot ?? "");
+      const shot = shotOf(id, where);
+      const lineId = String(entry.line ?? "");
+      const recorded = shot.lines.filter((line) => line && line.kind === "vo" && line.file);
+      const line = recorded.find((candidate) => candidate.id === lineId);
+      if (!line) {
+        fail(`--edit: ${where}: ${id} has no recorded voice-over line "${lineId}" (${recorded.map((l) => l.id).join(", ") || "none recorded"})`);
+      }
+      const file = join(dir, "shots", id, line.file);
+      if (!isFile(file)) fail(`--edit: ${where}: ${id}/${lineId} names ${line.file} but the file is gone`);
+      const start = finiteOrNull(entry.start);
+      if (start === null || start < 0 || start > filmSeconds) {
+        fail(`--edit: ${where}: start must be a second of the finished film, 0–${round4(filmSeconds)} s (got: ${JSON.stringify(entry.start)})`);
+      }
+      const at = given(entry.at) ? finiteOrNull(entry.at) : (finiteOrNull(line.at) ?? 0);
+      if (at === null || at < 0) fail(`--edit: ${where}: at must be a second of the shot, ≥ 0 (got: ${JSON.stringify(entry.at)})`);
+      return { shot: id, line: lineId, at: round4(at), start: round4(start), file: relFromProject(dir, file) };
+    });
+  }
+
+  let music = null;
+  if (given(doc.music)) {
+    const raw = doc.music;
+    const rel = isPlainObject(raw) && typeof raw.file === "string" ? raw.file : "";
+    const file = rel && !isAbsolute(rel) ? resolve(dir, rel) : null;
+    const within = file ? relative(dir, file) : "..";
+    if (!file || within.startsWith("..") || isAbsolute(within) || !isFile(file)) {
+      fail(`--edit: music must be { "file": "<a file inside the project>", "gainDb"?: n, "fadeOutSeconds"?: n } or null (got: ${JSON.stringify(raw)})`);
+    }
+    const gainDb = given(raw.gainDb) ? finiteOrNull(raw.gainDb) : null;
+    if (given(raw.gainDb) && gainDb === null) fail(`--edit: music.gainDb must be a number of decibels (got: ${JSON.stringify(raw.gainDb)})`);
+    const fadeOut = given(raw.fadeOutSeconds) ? finiteOrNull(raw.fadeOutSeconds) : null;
+    if (given(raw.fadeOutSeconds) && (fadeOut === null || fadeOut < 0)) {
+      fail(`--edit: music.fadeOutSeconds must be a non-negative number of seconds (got: ${JSON.stringify(raw.fadeOutSeconds)})`);
+    }
+    // What the pass did not say is recorded as unknown, never as a default
+    // it may not have used.
+    music = {
+      file: relFromProject(dir, file),
+      gainDb: gainDb === null ? null : round4(gainDb),
+      fadeOutSeconds: fadeOut === null ? null : round4(fadeOut),
+    };
+  }
+
+  return { segments, vo, droppedVo: [], clippedVo: [], music };
 }
 
 function readIfExists(path) {
@@ -1507,6 +1980,8 @@ said to run through. Image generation is not wrapped by this script — ask
       approved; the gates; the scenes, the bible, the shots with their
       takes and lines; the sound and the last cut; and the first open
       stage. Never writes. The shot-level report is 'previz.mjs status'.
+      "unregistered" lists every film directly in cut/ that no edit list
+      accounts for — the Cut stage does not show it, and a WARN says so.
 
   approve <project> <stage> [--note "<what the creator said>"]
       Record the creator's approval of this stage together with a hash of
@@ -1578,7 +2053,9 @@ said to run through. Image generation is not wrapped by this script — ask
       ${MUSIC_FADE_OUT_S} s fade-out. Writes cut/reel.mp4 or cut/final.mp4, probes it, and
       writes cut/edl.json LAST — each segment with the shot-clock in/out it
       shows. A voice-over spoken outside its shot's trim is DROPPED and
-      listed, with the reason, in the report and the edit list. A negative
+      listed, with the reason, in the report and the edit list; one that
+      starts in time but is still speaking when the film ends is listed
+      in "clippedVo" with the seconds it loses. A negative
       decibel value needs the '=' spelling: --music-db=-22.
       --reel stands the greybox in for any shot without a selected take and
       labels those segments; a shot conditioned 'free' that has no greybox
@@ -1586,6 +2063,43 @@ said to run through. Image generation is not wrapped by this script — ask
       source "card" — it never owed the reel a block. --final REFUSES while
       any shot lacks a selected take.
       Gated (--final only): sound must be approved.
+      A new --reel or --final replaces a registered finish as the Cut
+      stage's film; the report's "supersededFinish" and a NOTE say so —
+      finish again from the new final and register it again.
+
+  cut <project> --finish <film> --by "<what the pass added>" [--edit <edit.json>]
+      Register a film that a finishing pass made over the last --final:
+      titles, captions, UI, transitions, speed ramps, a re-mix — whatever
+      the assembly does not do. Never copy a film into cut/ by hand: the
+      Cut stage plays only what cut/edl.json names and seeks by its
+      segments. Refuses without --by (it is the label the Cut stage shows),
+      without a --final to finish from (a reel, a stand-in or a missing
+      final.mp4 is not one), and while any shot has since moved to another
+      take than the one the final was cut from — cut --final again, finish
+      from it, then register. Gated like --final: sound must be approved.
+      The film is measured, copied to cut/finished.mp4 (a clone where the
+      disk allows) and cut/edl.json is written LAST with kind "final", the
+      finished film's segments, and a "finish" block: by, source, retimed,
+      and the assembly it was made over. A second finish is registered
+      over that same assembly.
+      Without --edit the pass kept the assembly's timing — every cut at the
+      same second — and the assembly's segments, voice-over and music are
+      its own. Only the length can be checked (the assembly's, within one
+      frame); a pass that moved any cut, even at the same length, needs
+      --edit, or the strip seeks to the wrong shot. Pass --edit with the
+      finished film's own:
+        { "segments": [ { "shot": "s01", "source": "take-02",
+                          "offset": 0, "seconds": 2.4,
+                          "in": 0.8, "out": 3.2, "speed": 1,
+                          "transition": { "kind": "dissolve", "seconds": 0.5 } } ],
+          "vo":    [ { "shot": "s02", "line": "l1", "start": 3.1 } ],
+          "music": { "file": "sound/mix.mp3", "gainDb": -16, "fadeOutSeconds": 2 } }
+      offset/seconds/start are seconds of the FINISHED film; in/out are
+      seconds of the shot; transition is the one INTO the segment. Every
+      source must be the take its shot has selected. vo and music are
+      optional: with no vo the Cut stage draws no voice-over marks, and a
+      NOTE says so. A shot the finish leaves out is a WARN, and a frame
+      size other than the project's is a NOTE — never a refusal.
 
   cost <project>
       Every paid call the files record — sheets, voices, boards, takes,
@@ -1632,6 +2146,9 @@ const OPTIONS = {
   "cost-basis": { type: "string" },
   reel: { type: "boolean" },
   final: { type: "boolean" },
+  finish: { type: "string" },
+  by: { type: "string" },
+  edit: { type: "string" },
   "music-db": { type: "string" },
   "music-fade": { type: "string" },
 };

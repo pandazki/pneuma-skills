@@ -532,6 +532,7 @@ describe("stage addressing", () => {
       ],
       vo: [],
       music: null,
+      finish: null,
     },
   });
   const ctx = {

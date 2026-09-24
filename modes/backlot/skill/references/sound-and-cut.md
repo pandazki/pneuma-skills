@@ -123,7 +123,7 @@ stand-ins.
 
 ### Read the report, not just the file
 
-Two fields decide whether the cut is finished:
+Three fields decide whether the cut is finished:
 
 - **`trimmed`** — the shots the film shows only part of. Expect the ones you
   trimmed deliberately, and nothing else. A shot in that list you did not trim
@@ -135,6 +135,12 @@ Two fields decide whether the cut is finished:
   (`previz.mjs lines --set`) or by widening the trim (`previz.mjs meta
   --trim-in/--trim-out`), then cut again — and if the creator decided to leave
   it dropped, say so in the delivery rather than letting them discover it.
+- **`clippedVo`** — a line that starts in time but is still speaking when the
+  picture ends, with the seconds it `lost`. The mix is exactly as long as the
+  film, so the rest of the line is cut off mid-word. Move the line's `at`
+  earlier, shorten it, or give the last shot more seconds. A finishing pass
+  that runs past the last take (an end card) can carry the line over it, but
+  only when you mean it.
 
 ### Mix levels
 
@@ -161,6 +167,75 @@ the same problem found after six takes costs the takes.
 Never present a reel as the film, and never let `reel.mp4` be the file you
 hand over when someone asks for the film.
 
+## Finishing: when the film needs more than the cut
+
+`cut --final` makes one kind of edit: straight cuts, the take's own audio, VO
+at its second and one music bed. A film often needs more: a title and an end
+card, captions, a product's UI laid over the picture, a logo, a dissolve, a
+slowed shot, music ducked under a line, a sound no take has. That is a
+**finishing pass**, and building it is part of the job. Use whatever does it
+well, whether ffmpeg filters or a web page rendered frame by frame. Four
+things keep it honest.
+
+1. **It starts from the assembly.** Run `cut --final` first, even when you
+   already know you will finish on top of it. That run checks that every shot
+   delivers its selected take. It also leaves a plain version to fall back
+   on, and it writes the edit list the finish is registered against. Build
+   the pass from the *selected* takes, or from `cut/final.mp4` itself, and
+   from the VO and music files `sound/` records. A take the shot has not
+   selected is not in the film, so select it first (`previz.mjs select`).
+2. **Its sources live in the project,** in a directory of their own such as
+   `finish/`: the timeline, the overlay pages and the mix script. Then the
+   film can be re-finished when a take changes. Render into that directory,
+   not into `cut/`.
+3. **It is registered, or it is not the film.**
+
+   ```bash
+   node {SKILL_PATH}/scripts/backlot.mjs cut <project> --finish finish/out/film.mp4 \
+     --by "title and end card, UI cards over s04–s13, Japanese captions"
+   ```
+
+   `--finish` copies the film to `cut/finished.mp4` and probes it. It then
+   rewrites `edl.json` with a `finish` block that says what the pass added,
+   where the film came from and which assembly it was made over. If the pass
+   kept the assembly's timing (overlays only), that is all.
+
+   If the pass changed the timing, with a dissolve, a slowed shot, a re-trim
+   or narration moved, the assembly's segments no longer describe the film.
+   `--finish` refuses until you pass `--edit <edit.json>` with the finished
+   film's own edit list. It has `edl.json`'s shape, with offsets in seconds
+   of the finished film:
+
+   ```json
+   {
+     "segments": [
+       { "shot": "s02", "source": "take-01", "offset": 5.0, "seconds": 5.5,
+         "in": 0, "out": 5.0, "speed": 0.909,
+         "transition": { "kind": "dissolve", "seconds": 1.0 } }
+     ],
+     "vo": [{ "shot": "s02", "line": "m02", "start": 7.9 }],
+     "music": { "file": "sound/music.mp3", "gainDb": -19 }
+   }
+   ```
+
+   Write it from the same timeline the pass was rendered from, so the strip
+   seeks to the shot that is actually on screen.
+4. **Nothing else registers it.** Never copy a film into `cut/` by hand, never
+   overwrite `cut/final.mp4` with it, and never write `edl.json`. A composited
+   film that went in by hand once left the Cut stage reading "nothing yet"
+   while the film sat on disk. `backlot.mjs status` now lists such a file
+   under `unregistered`.
+
+A new assembly retires the finish. Running `cut --final` or `--reel` after a
+finish makes the Cut stage show the new assembly, and the report names the
+finish it superseded. `--finish` also refuses when a shot has selected a
+different take since the assembly. Either way, re-render the pass from the
+current takes and register it again.
+
+Then look. `navigate-to { stage: "cut" }`: the header shows `final`, the file
+name and `finished`, with what the pass added. Click a join and a VO mark and
+check that the strip agrees with the picture.
+
 ## Delivering
 
 When the cut is done, tell the creator what exists, per file, and which of the
@@ -169,14 +244,22 @@ key or an approval*:
 
 | file | what it is |
 |---|---|
-| `cut/final.mp4` | the film, at the project spec ffprobe actually measured |
-| `cut/edl.json` | the edit list: every segment, its source, its offset, the VO and music placement |
+| `cut/finished.mp4` | the film, when a finishing pass made it and `cut --finish` registered it, at the size ffprobe measured |
+| `cut/final.mp4` | the assembly, at the project spec ffprobe actually measured. It is the film when no finishing pass was made, and the plate under the finish when one was |
+| `cut/edl.json` | the edit list of the film the Cut stage plays: every segment, its source, its offset, the VO and music placement, and (after a finish) what the pass added and the assembly it was made over |
 | `shots/<id>/takes/…` | the selected take per shot, and the ones that were not chosen |
 | `shots/<id>/greybox/{greybox.mp4,scene.blend,scene.glb}` | the blocking, and the editable Blender project |
 | `shots/<id>/{shot-plan,prompts,comparison}.md` | how each shot was planned, what was asked of the model, and how the take compared |
 | `shots/<id>/shot.json` | the acceptance record: every check, its status, its note and its history |
 | `bible/**`, `sound/**` | the cast, the places, the voice files and the score |
 | `backlot.mjs cost <project>` | what the film cost, by stage and kind, with each figure's basis; a call with no recorded price is listed as unpriced, never as free |
+
+**The file you hand over is the file the Cut stage plays.** Before you write
+the summary, run `backlot.mjs status`. `cut.file` must be that film, and
+`cut.finish.by` must say what the pass added when there was one. `unregistered`
+must be empty. Then `navigate-to { stage: "cut" }` and look. If `cut/` holds a
+film the stage does not show, or the stage says "nothing yet", the film has
+not been delivered, whatever is on disk.
 
 Read the acceptance records before you write the summary. A film delivered
 with a failing or `unverified` check is delivered with that check named — the

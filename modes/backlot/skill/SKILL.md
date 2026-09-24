@@ -62,7 +62,7 @@ in the warning colour) and what that stage cost. Under it, a body per stage:
 | `previz` | the shot's player (below), default lane `greybox`; the panel's **Lineup** tab is optional — it stands any key frame beside the greybox second it was rendered from, with the beats and the continuity note |
 | `takes` | the same player, default lane `take` |
 | `sound` | the lines table (speaker, kind, text, second, play) and the music row with the brief it was made from |
-| `cut` | the film player, the segment strip from `edl.json` (greybox stand-ins hatched and labelled), the out-frame/in-frame pair at each join with its `take-handoff` status, and the rows for voice-over and music |
+| `cut` | the film `edl.json` registers — the finished film when a finishing pass was registered, else the assembly — with the segment strip (greybox stand-ins hatched and labelled), the out-frame/in-frame pair at each join with its `take-handoff` status, and the rows for voice-over and music. Nothing registered reads "nothing yet", whatever sits in `cut/` |
 
 A **shot** is one continuous take of a few seconds and the unit of everything
 in `previz`, `takes` and `cut`. Its player runs up to four **lanes** on one
@@ -113,7 +113,8 @@ and you run `backlot.mjs approve <project> <stage>`; changes are ordinary chat.
    `bible/sets/<id>/set.json` and `style/keyframe.png`; `boards` →
    `shots/<id>/shot.json` + `shot-plan.md`, and **no image**; `previz` →
    `shots/<id>/greybox/**`; `takes` → `shots/<id>/takes/**`; `sound` →
-   `sound/sound.json` + the line MP3s; `cut` → `cut/{final.mp4,edl.json}`.
+   `sound/sound.json` + the line MP3s; `cut` → `cut/{final.mp4,edl.json}`,
+   plus `cut/finished.mp4` when a finishing pass made the film.
 2. **Stop at the end of every stage and show what you made.** `navigate-to`
    that stage, say in two lines what exists and what it cost, and wait. Go on
    when they approve or say what to change. Only if they said in so many words
@@ -128,7 +129,9 @@ and you run `backlot.mjs approve <project> <stage>`; changes are ordinary chat.
    writes `shots/<id>/shot.json`. You write the prose — `idea.md`,
    `screenplay.md`, `shots/<id>/{shot-plan,prompts,comparison}.md` — and
    `greybox/scene.py`; the viewer writes nothing. Hand-editing a JSON breaks
-   the record the rail, the gates, the costs and the cut read.
+   the record the rail, the gates, the costs and the cut read. A film
+   finished outside the cut enters `cut/` only through `backlot.mjs cut
+   --finish`: never copy it in, never write `edl.json`.
 5. **Frame arithmetic is exact.** Frames = seconds × fps, numbered 1…N: 8 s at
    24 fps is frames 1–192, and there is no frame 193. Plan in seconds, convert
    once. Seedance will not return less than 4 s, so no shot is shorter.
@@ -329,14 +332,33 @@ lines (`previz.mjs vo`), write a music brief — genre, tempo, instruments,
 mood, length — and commission it with `backlot.mjs music`. Ambience and
 effects come from the takes' own audio; there is no SFX generator.
 
-**8. Cut.** `backlot.mjs cut --final` re-encodes every selected take to the
-project spec, honours each shot's trim, concatenates in shot order, keeps take
-audio as ambience, places each VO line at its second, lays the music under and
-writes `cut/edl.json` last; it refuses while any shot lacks a selected take.
-Read the report: `trimmed` holds the shots you trimmed, `droppedVo` a line
-whose second fell outside its trim — move it or widen the trim, never leave
-one unmentioned. Then deliver `final.mp4`, `edl.json`, the takes, the packs,
-the acceptance records and the cost total, each named for what it is.
+**8. Cut — assemble, finish if the film needs it, register what you
+deliver.** Read `references/sound-and-cut.md`. Always run `backlot.mjs cut
+--final` first. It re-encodes every selected take to the project spec,
+honours each shot's trim, concatenates in shot order, keeps take audio as
+ambience, places each VO line at its second, lays the music under and writes
+`cut/edl.json` last. It refuses while any shot lacks a selected take. Read the
+report: `trimmed` holds the shots you trimmed, `droppedVo` a line whose second
+fell outside its trim, `clippedVo` a line still speaking when the film ends.
+Move that line or widen the trim, and never leave one unmentioned.
+
+The cut does straight cuts, VO and one music bed. Titles, captions, a logo,
+UI laid over the picture, a dissolve, a slowed shot, a ducked or re-timed mix
+or sounds the takes lack are a **finishing pass**, and building it is your
+job. Build it over the assembly from the *selected* takes and the files
+`sound/` records, with its sources in one directory of the project (e.g.
+`finish/`). Render it, then **register it**: `backlot.mjs cut <project>
+--finish <film.mp4> --by "<what the pass added>"`. Add `--edit <edit.json>`
+with the finished film's own segments when the pass changed the timing. **An
+unregistered pass is not the film.** A film copied into `cut/` by hand, a
+`final.mp4` overwritten or a hand-written `edl.json` leaves the Cut stage
+empty, and that shipped once.
+
+**The film is delivered when the Cut stage plays it.** `navigate-to { stage:
+"cut" }` and look. Then `backlot.mjs status`: `cut.file` must be the file you
+hand over and `unregistered` must be empty. Only then deliver the film,
+`edl.json`, the takes, the packs, the acceptance records and the cost total,
+each named for what it is.
 
 ## Commands
 
@@ -360,6 +382,7 @@ Every subcommand takes the project directory as its first argument.
 | `style <project> --keyframe <png>` \| `--clear` | the film's **style reference**, and it is essential: one picture that says how this film is rendered — idiom, palette, light, finish — and nothing about what is in the frame. Copied into the project and attached to every take (and every key frame). `generate` warns when a film has none. Free |
 | `music <project> --prompt "…" [--seconds]` · `cost <project>` | commission the score through `generate-bgm.mjs` into `sound/sound.json`; and total every paid call by stage and kind — anything with no recorded price is listed as unpriced |
 | `cut <project> --reel` \| `--final` `[--music-db=-18] [--music-fade 2]` | assemble the film, honouring every shot's trim. `--reel` uses greybox stand-ins — and a black title card for a free shot with no block — is free and needs no gate; `--final` refuses while any shot lacks a selected take. A negative decibel needs the `=` spelling |
+| `cut <project> --finish <film.mp4> --by "…" [--edit <edit.json>]` | **register a finishing pass as the film**: copies it to `cut/finished.mp4` and rewrites `edl.json` with what the pass added and the assembly it was made over. Needs a current `--final` and the `sound` gate. It refuses a film whose length differs from the assembly's until `--edit` gives the finished film's own segments, and it refuses a take the shot has not selected. A later `--final` supersedes it and says so |
 
 ### `previz.mjs` — the shot
 
@@ -404,7 +427,7 @@ takes local paths and is the continuity mechanism. The other four are invoked
 | Recreating a reference video: reading it, estimating space, comparing | `references/recreate.md` |
 | **The prompt: the template block by block, the timeline rules, worked examples** | `references/prompting.md` |
 | Model capability, the references, cost, what `generate` checks, after the take | `references/video-generation.md` |
-| Voice-over, the music brief, the reel and the final cut, delivery | `references/sound-and-cut.md` |
+| Voice-over, the music brief, the reel and the final cut, **the finishing pass and how it is registered**, delivery | `references/sound-and-cut.md` |
 | Every `backlot.mjs` and `previz.mjs` command and its JSON | `references/scripts.md` |
 
 <!-- pneuma:end -->
