@@ -590,9 +590,12 @@ export function declaredFrameCount(motion: Motion): number {
 export interface PlaybackStateData {
   contentSet: string | null;
   motion: string | null;
-  /** Present only for a loop motion — absent is "a sprite motion", the same
-   *  way the sidecar says it. */
-  kind?: "loop";
+  /** Present only for a loop or a transition — absent is "a sprite motion",
+   *  the same way the sidecar says it. */
+  kind?: "loop" | "transition";
+  /** A transition's two loops. */
+  from?: string;
+  to?: string;
   frame: number;
   frameCount: number;
   fps: number;
@@ -654,10 +657,12 @@ export function playbackStateData(input: {
 }): PlaybackStateData {
   const count = frameCountOf(input.source);
   const loopMotion = input.motion?.kind === "loop";
+  const transition = input.motion?.kind === "transition" ? input.motion : null;
   return {
     contentSet: input.project ? input.project.contentSet : null,
     motion: input.motion ? input.motion.id : null,
     ...(loopMotion ? { kind: "loop" as const } : {}),
+    ...(transition ? { kind: "transition" as const, from: transition.from, to: transition.to } : {}),
     frame: count > 0 ? clampFrame(input.frame, count) : 0,
     frameCount: count,
     fps: input.fps,

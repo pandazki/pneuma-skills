@@ -23,9 +23,10 @@
  *    would change a file goes to the agent as a command notification.
  *
  * Player compatibility (`5c`): every asset URL is `/content/...`, no `/api/*`
- * call is made at render time, and the command bar is gated on
- * `editing !== false`, `readonly` and `staticPlayer`, so the hosted player
- * shows a motion without offering to change it.
+ * call is made at render time, and the command bar and the Export tab's
+ * requests are gated by `canAskAgent` (`editing`, `readonly` and
+ * `staticPlayer`), so the hosted player and a `--viewing` session show a
+ * motion without offering to change it.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -52,7 +53,17 @@ import { FrameStrip } from "./FrameStrip.js";
 import { frameThumbnail, type StageBackground, type StageZoom } from "./frame-render.js";
 import { generatingVideoMotions, loopLine, sizeLine } from "./metrics.js";
 import { MotionRail } from "./MotionRail.js";
-import { tabAfterNavigate, type PanelTab } from "./panel.js";
+import {
+  canAskAgent,
+  exportRequestNotification,
+  exportStamp,
+  motionLabel,
+  railGroups,
+  tabAfterNavigate,
+  type ExportRequests,
+  type ExportRow,
+  type PanelTab,
+} from "./panel.js";
 import { PreviewPanel } from "./PreviewPanel.js";
 import {
   advance,
@@ -113,6 +124,11 @@ export default function SpritePreview(props: ViewerPreviewProps) {
   /** A command popover owns the keyboard while it is open (see the transport
    *  shortcuts below): its own buttons and note field must keep Space. */
   const [popoverOpen, setPopoverOpen] = useState(false);
+  /** Exports asked of the agent this session, by row key, against the file
+   *  that existed when asked (see `ExportRequests`). Session-local on
+   *  purpose: a request is a thing this user did in this tab, not a fact
+   *  about the character, and `project.json` is the scripts' to write. */
+  const [exportRequests, setExportRequests] = useState<ExportRequests>(() => new Map());
 
   // ── Playback ─────────────────────────────────────────────────────────────
   const playRef = useRef<PlaybackState>({ frame: 0, acc: 0, playing: false });
@@ -604,13 +620,17 @@ export default function SpritePreview(props: ViewerPreviewProps) {
     // what it actually is — its size, and how long the cycle runs. "from
     // video" goes too: every loop is cut from a clip, and the rail's own loop
     // chip already says so.
-    const loopMotion = motion?.kind === "loop";
+    // A transition is cut from a clip the same way, and read the same way.
+    const loopMotion = motion?.kind === "loop" || motion?.kind === "transition";
     return [
       loopMotion ? t.loopLine(loopLine(motion)) : t.sizeLine(sizes),
       !loopMotion && motion?.source === "video" ? t.fromVideo : null,
       identity.facing ? t.facing(identity.facing) : null,
       t.refCount(character.sprite.refs.length),
-      t.motionCount(character.sprite.motions.length),
+      // Transitions are counted apart: they are the clips between loops,
+      // not more things the character does.
+      t.motionCount(railGroups(character).motions.length),
+      railGroups(character).transitions.length ? t.transitionCount(railGroups(character).transitions.length) : null,
     ]
       .filter(Boolean)
       .join(" · ");
@@ -632,8 +652,37 @@ export default function SpritePreview(props: ViewerPreviewProps) {
   const showRail = railOpen && paneWidth >= RAIL_PANE_PX;
   const panelPlacement = paneWidth >= WIDE_PANE_PX ? "side" : "bottom";
 
-  const commandsEnabled =
-    props.editing !== false && !props.readonly && !staticPlayer && !!props.onNotifyAgent;
+  const commandsEnabled = canAskAgent({
+    editing: props.editing,
+    readonly: props.readonly,
+    staticPlayer,
+    canNotify: !!props.onNotifyAgent,
+  });
+  const exportCommand = commandsEnabled
+    ? props.commands?.find((command) => command.id === "export")
+    : undefined;
+  const { onNotifyAgent } = props;
+  const requestExport = useCallback(
+    (row: ExportRow, background: string | null) => {
+      if (!character || !exportCommand || !onNotifyAgent) return;
+      setExportRequests((previous) => new Map(previous).set(row.key, exportStamp(row.state)));
+      onNotifyAgent(
+        exportRequestNotification({
+          project: character,
+          motion: row.format === "riv" ? null : motion,
+          format: row.format,
+          background,
+          label: exportCommand.label,
+          rive: row.rive,
+        }),
+      );
+    },
+    [character, motion, exportCommand, onNotifyAgent],
+  );
+  const exportOptions = useMemo(
+    () => ({ canRequest: !!exportCommand, requests: exportRequests }),
+    [exportCommand, exportRequests],
+  );
   const defaultVideoModel: GeneratedVideoModel =
     props.initParams?.defaultVideoModel === "h3-max" ? "h3-max" : "seedance-2.5";
 
@@ -752,6 +801,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
               images={images}
               frame={frame}
               motion={refId ? null : motion}
+              motionLabel={motion && character ? motionLabel(character, motion) : null}
               refLabel={activeRef ? activeRef.label : null}
               theme={props.theme}
               background={background}
@@ -781,7 +831,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
                     }}
                     className="ml-auto rounded border border-cc-border px-2 py-1 text-cc-muted transition-colors hover:border-cc-primary/40 hover:text-cc-primary"
                   >
-                    {t.backToMotion(motion.label)}
+                    {t.backToMotion(character ? motionLabel(character, motion) : motion.label)}
                   </button>
                 ) : null}
               </div>
@@ -818,6 +868,8 @@ export default function SpritePreview(props: ViewerPreviewProps) {
               renderVideoLabel={renderVideoLabel}
               t={t}
               placement="bottom"
+              exportOptions={exportOptions}
+              onRequestExport={exportCommand ? requestExport : undefined}
             />
           ) : null}
         </div>
@@ -834,6 +886,8 @@ export default function SpritePreview(props: ViewerPreviewProps) {
             renderVideoLabel={renderVideoLabel}
             t={t}
             placement="side"
+            exportOptions={exportOptions}
+            onRequestExport={exportCommand ? requestExport : undefined}
           />
         ) : null}
       </div>

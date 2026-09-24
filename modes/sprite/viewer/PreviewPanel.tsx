@@ -23,15 +23,21 @@
  * beside it, amber when it is over, is a fact the user can argue with.
  */
 
+import { useState } from "react";
+
 import type { CharacterProject, Motion, MotionVideo } from "../domain.js";
 import { resolveAssetUri } from "../domain.js";
 import { type AtlasGeometry, atlasPivot } from "./atlas.js";
 import {
   DownloadIcon,
+  ExportIcon,
+  EyeIcon,
   FilmIcon,
   GridIcon,
   ImageIcon,
   LoopIcon,
+  RefreshIcon,
+  SparkIcon,
   WarnIcon,
 } from "./icons.js";
 import {
@@ -39,6 +45,7 @@ import {
   bodyDriftOf,
   bodyDriftVerdict,
   formatBytes,
+  joinVerdict,
   loopDuration,
   maxJumpVerdict,
   scaleDriftVerdict,
@@ -51,10 +58,18 @@ import {
 } from "./metrics.js";
 import {
   defaultTab,
+  EXPORT_SWATCHES,
+  exportRows,
   loopExports,
+  motionLabel,
+  normalizeExportColor,
   panelTabs,
+  type ExportFamily,
+  type ExportRow,
+  type ExportRowOptions,
   type PanelTab,
 } from "./panel.js";
+import { RivePreview } from "./RivePreview.js";
 import type { SpriteStrings } from "./strings.js";
 import { contentUrl } from "./urls.js";
 
@@ -65,6 +80,7 @@ const TAB_ICON: Record<PanelTab, typeof ImageIcon> = {
   loop: LoopIcon,
   video: FilmIcon,
   atlas: GridIcon,
+  export: ExportIcon,
 };
 
 const CHECKER_STYLE = {
@@ -90,6 +106,10 @@ export interface PreviewPanelProps {
   renderVideoLabel: string | null;
   /** Docked to the right on a wide pane, under the stage on a narrow one. */
   placement: "side" | "bottom";
+  /** Whether an agent can be asked, and what has been asked of it. */
+  exportOptions: ExportRowOptions;
+  /** Ask the agent for an export. Absent in a viewing-only session. */
+  onRequestExport?: (row: ExportRow, background: string | null) => void;
 }
 
 export function PreviewPanel(props: PreviewPanelProps) {
@@ -123,6 +143,15 @@ export function PreviewPanel(props: PreviewPanelProps) {
           url={url}
           t={t}
           renderVideoLabel={props.renderVideoLabel}
+        />
+      ) : tab === "export" ? (
+        <ExportTab
+          project={project}
+          motion={motion}
+          imageVersion={imageVersion}
+          options={props.exportOptions}
+          onRequest={props.onRequestExport}
+          t={t}
         />
       ) : (
         <AtlasTab
@@ -518,6 +547,323 @@ function AtlasTab({
   );
 }
 
+const EXPORT_FAMILIES: ExportFamily[] = ["video", "frames", "rive"];
+
+/**
+ * Every format this motion can be delivered as, in three sections.
+ *
+ * The rows are `exportRows` verbatim — this component decides nothing about
+ * which formats exist, only how a row looks. A row is a download when its
+ * file exists, a Generate button when it can be asked for, or the reason it
+ * is not offered; in a session without an agent only the downloads are there.
+ * The MP4 row carries the one choice a request needs besides the format: the
+ * colour the frames are flattened onto.
+ */
+function ExportTab({
+  project,
+  motion,
+  imageVersion,
+  options,
+  onRequest,
+  t,
+}: {
+  project: CharacterProject;
+  motion: Motion;
+  imageVersion: number;
+  options: ExportRowOptions;
+  onRequest?: (row: ExportRow, background: string | null) => void;
+  t: SpriteStrings;
+}) {
+  const [background, setBackground] = useState<string>(EXPORT_SWATCHES[0]);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const rows = exportRows(project, motion, {
+    ...options,
+    canRequest: options.canRequest && !!onRequest,
+  });
+  if (rows.length === 0) return <Empty>{t.exportNothingReady}</Empty>;
+
+  const fileUrl = (uri: string, createdAt: number) =>
+    contentUrl(project.contentSet, uri, imageVersion, createdAt);
+  const labels = new Map(project.sprite.motions.map((m) => [m.id, motionLabel(project, m)]));
+
+  return (
+    <div className="flex flex-col gap-4 p-3">
+      {EXPORT_FAMILIES.map((family) => {
+        const inFamily = rows.filter((row) => row.family === family);
+        if (inFamily.length === 0) return null;
+        return (
+          <section key={family} className="flex flex-col gap-1.5">
+            <h3 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cc-muted">
+              {t.exportFamily[family]}
+            </h3>
+            {inFamily.map((row) => (
+              <ExportRowView
+                key={row.key}
+                row={row}
+                motion={motion}
+                labels={labels}
+                fileUrl={fileUrl}
+                background={background}
+                onBackground={setBackground}
+                previewOpen={previewOpen}
+                onPreview={setPreviewOpen}
+                onRequest={onRequest}
+                t={t}
+              />
+            ))}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function ExportRowView({
+  row,
+  motion,
+  labels,
+  fileUrl,
+  background,
+  onBackground,
+  previewOpen,
+  onPreview,
+  onRequest,
+  t,
+}: {
+  row: ExportRow;
+  motion: Motion;
+  /** Each motion's name on the stage, for the Rive preview's buttons. */
+  labels: ReadonlyMap<string, string>;
+  fileUrl: (uri: string, createdAt: number) => string;
+  background: string;
+  onBackground: (hex: string) => void;
+  previewOpen: boolean;
+  onPreview: (open: boolean) => void;
+  onRequest?: (row: ExportRow, background: string | null) => void;
+  t: SpriteStrings;
+}) {
+  const [colorValid, setColorValid] = useState(true);
+  const state = row.state;
+  const ready = state.kind === "ready";
+  const offered = state.kind !== "not-offered";
+  const riv = row.format === "riv";
+  const takesColor = row.format === "mp4" && row.canGenerate;
+  const motions = row.rive?.motions.length ?? 0;
+  const transitions = row.rive?.transitions.length ?? 0;
+  const request = () => onRequest?.(row, row.format === "mp4" ? background : null);
+  const rivFile = riv && state.kind === "ready" ? state.files[0] : null;
+
+  return (
+    <div
+      className={`flex flex-col gap-1.5 rounded-lg border p-2 ${
+        offered ? "border-cc-border bg-cc-bg/40" : "border-cc-border/60 bg-transparent"
+      }`}
+    >
+      <div className="flex items-baseline gap-2">
+        <span
+          className={`text-[12px] ${offered ? "text-cc-fg" : "text-cc-muted"}`}
+          title={row.builtIn ? t.exportBuiltInTitle : undefined}
+        >
+          {t.exportFormatName[row.format]}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-[11px] text-cc-muted" title={t.exportPurpose(row.format, { motions, transitions })}>
+          {t.exportPurpose(row.format, { motions, transitions })}
+        </span>
+      </div>
+
+      {state.kind === "not-offered" ? (
+        <p className="text-[11px] leading-relaxed text-cc-muted">
+          {t.exportNotOffered[state.reason]}
+        </p>
+      ) : null}
+
+      {offered && row.video ? (
+        <p className="font-mono text-[10px] text-cc-muted">
+          {t.exportRepeat(row.video, motion.loop)}
+          {row.background ? ` · ${t.exportOnBackground(row.background)}` : null}
+        </p>
+      ) : null}
+
+      {riv && row.rive ? (
+        <>
+          {/* On a transition's own tab: a transition is not a Rive file of
+              its own, it is part of the character's. A file made before it
+              was is said by the missing line below instead. */}
+          {motion.kind === "transition" && offered && row.rive.transitions.includes(motion.id) ? (
+            <p className="text-[11px] leading-relaxed text-cc-muted">
+              {t.exportRiveTransition(transitions)}
+            </p>
+          ) : null}
+          {ready && row.rive.missing.length > 0 ? (
+            <p className="rounded border border-cc-warning/40 bg-cc-warning/10 px-2 py-1 text-[11px] leading-relaxed text-cc-fg">
+              {row.rive.tooHeavy
+                ? t.exportNotOffered["too-heavy"]
+                : t.exportRiveMissing(row.rive.missing)}
+            </p>
+          ) : null}
+          {/* Before the file exists these are the plan a Generate would
+              follow; after, what the file recorded — either way the rate and
+              size it plays at, never the source frames'. */}
+          {offered && row.rive.loops ? (
+            <p className="font-mono text-[10px] text-cc-muted">{t.exportRiveLoops(row.rive.loops)}</p>
+          ) : null}
+          {row.rive.decodeBytes !== undefined ? (
+            <p className={`text-[10px] ${row.rive.tooHeavy && !ready ? "text-cc-warning" : "text-cc-muted"}`}>
+              {t.exportRiveMemory(formatBytes(row.rive.decodeBytes) ?? "")}
+            </p>
+          ) : null}
+        </>
+      ) : null}
+
+      {takesColor && !row.requested ? (
+        <ColorChoice
+          value={background}
+          onChange={onBackground}
+          onValidity={setColorValid}
+          t={t}
+        />
+      ) : null}
+
+      {offered ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {state.kind === "ready"
+            ? state.files.map((file) => (
+                <DownloadLink
+                  key={file.assetId}
+                  href={fileUrl(file.uri, file.createdAt)}
+                  label={t.exportLink(file.name, formatBytes(file.size))}
+                />
+              ))
+            : null}
+          {rivFile ? (
+            <button
+              type="button"
+              onClick={() => onPreview(!previewOpen)}
+              aria-pressed={previewOpen}
+              className={`inline-flex items-center gap-1.5 rounded border px-2 py-1 text-[11px] transition-colors focus-visible:ring-2 focus-visible:ring-cc-primary/60 ${
+                previewOpen
+                  ? "border-cc-primary/60 bg-cc-primary/15 text-cc-primary"
+                  : "border-cc-border text-cc-muted hover:border-cc-primary/40 hover:text-cc-primary"
+              }`}
+            >
+              <EyeIcon size={12} />
+              {t.rivePreview}
+            </button>
+          ) : null}
+          {row.canGenerate ? (
+            row.requested ? (
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-cc-primary">
+                <span className="h-1.5 w-1.5 rounded-full bg-current motion-safe:animate-pulse" />
+                {ready ? t.exportUpdating : t.exportRequested}
+                <button
+                  type="button"
+                  onClick={request}
+                  className="rounded px-1 text-[10px] text-cc-muted underline-offset-2 transition-colors hover:text-cc-fg hover:underline"
+                >
+                  {t.exportAskAgain}
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={request}
+                disabled={takesColor && !colorValid}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] transition-colors focus-visible:ring-2 focus-visible:ring-cc-primary/60 disabled:opacity-40 ${
+                  ready
+                    ? "border-cc-border text-cc-muted hover:border-cc-primary/40 hover:text-cc-primary"
+                    : "border-cc-primary/50 bg-cc-primary/15 text-cc-primary hover:bg-cc-primary/25"
+                }`}
+              >
+                {ready ? <RefreshIcon size={12} /> : <SparkIcon size={12} />}
+                {ready ? t.exportRegenerate : t.exportGenerate}
+              </button>
+            )
+          ) : null}
+        </div>
+      ) : null}
+
+      {rivFile && previewOpen ? (
+        <RivePreview
+          src={fileUrl(rivFile.uri, rivFile.createdAt)}
+          machine={row.rive?.machine ?? null}
+          labels={labels}
+          t={t}
+          onClose={() => onPreview(false)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The MP4 background: a few swatches and a hex field, token-styled — no
+ * native colour picker, whose OS chrome would sit in the middle of the panel.
+ * The swatch fill is the one colour here that is not a token, because it IS
+ * the value being chosen.
+ */
+function ColorChoice({
+  value,
+  onChange,
+  onValidity,
+  t,
+}: {
+  value: string;
+  onChange: (hex: string) => void;
+  onValidity: (valid: boolean) => void;
+  t: SpriteStrings;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [invalid, setInvalid] = useState(false);
+  const pick = (hex: string) => {
+    setDraft(hex);
+    setInvalid(false);
+    onValidity(true);
+    onChange(hex);
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-[10px] uppercase tracking-wide text-cc-muted">{t.exportBackground}</span>
+      {EXPORT_SWATCHES.map((hex) => (
+        <button
+          key={hex}
+          type="button"
+          onClick={() => pick(hex)}
+          title={hex}
+          aria-label={hex}
+          aria-pressed={value === hex}
+          className={`h-4 w-4 rounded border transition-shadow focus-visible:ring-2 focus-visible:ring-cc-primary/60 ${
+            value === hex ? "border-cc-primary ring-2 ring-cc-primary/60" : "border-cc-border"
+          }`}
+          style={{ backgroundColor: hex }}
+        />
+      ))}
+      <input
+        type="text"
+        value={draft}
+        spellCheck={false}
+        maxLength={7}
+        aria-label={t.exportBackgroundField}
+        aria-invalid={invalid}
+        title={invalid ? t.exportColorInvalid : t.exportBackgroundField}
+        onChange={(event) => {
+          const next = event.target.value;
+          setDraft(next);
+          const hex = normalizeExportColor(next);
+          setInvalid(hex === null);
+          onValidity(hex !== null);
+          if (hex) onChange(hex);
+        }}
+        className={`w-[4.75rem] appearance-none rounded border bg-cc-input-bg px-1.5 py-0.5 font-mono text-[11px] text-cc-fg outline-none focus-visible:ring-2 focus-visible:ring-cc-primary/60 ${
+          invalid ? "border-cc-error/60" : "border-cc-border"
+        }`}
+      />
+      {invalid ? (
+        <span className="text-[10px] text-cc-error">{t.exportColorInvalid}</span>
+      ) : null}
+    </div>
+  );
+}
+
 function InspectBlock({ motion, t }: { motion: Motion; t: SpriteStrings }) {
   const inspect = motion.inspect;
   if (!inspect) return null;
@@ -537,6 +883,8 @@ function InspectBlock({ motion, t }: { motion: Motion; t: SpriteStrings }) {
       <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
         {motion.kind === "loop" ? (
           <LoopFacts motion={motion} t={t} />
+        ) : motion.kind === "transition" ? (
+          <TransitionFacts motion={motion} t={t} />
         ) : (
           <>
             <Fact label={t.factFrames}>{inspect.frameCount}</Fact>
@@ -653,6 +1001,40 @@ function LoopFacts({ motion, t }: { motion: Motion; t: SpriteStrings }) {
       {alpha === null ? null : (
         <Fact label={t.factAlpha}>{(alpha * 100).toFixed(1)}%</Fact>
       )}
+    </>
+  );
+}
+
+/**
+ * What a transition is judged on: whether each end lands on its loop's first
+ * frame — `startGap` and `endGap` against twice the clip's own step, the
+ * seam's bar — then how long it runs.
+ */
+function TransitionFacts({ motion, t }: { motion: Motion; t: SpriteStrings }) {
+  const inspect = motion.inspect!;
+  const joins = joinVerdict(inspect);
+  const step = stepOf(inspect);
+  const frames = motion.frames.length || inspect.frameCount;
+  const duration = loopDuration(frames, motion.fps);
+  return (
+    <>
+      {([["start", t.factStartGap], ["end", t.factEndGap]] as const).map(([end, label]) =>
+        joins[end].gap === null ? null : (
+          <Measured
+            key={end}
+            label={label}
+            value={`${joins[end].gap!.toFixed(4)}${joins[end].limit === null ? "" : ` · ${t.joinVerdict[joins[end].over ? "off" : "lands"]}`}`}
+            verdict={joins[end]}
+            limitText={(limit) => limit.toFixed(4)}
+            wide
+            t={t}
+          />
+        ),
+      )}
+      {step === null ? null : <Fact label={t.factStep}>{step.toFixed(4)}</Fact>}
+      <Fact label={t.factFrames}>{frames}</Fact>
+      <Fact label={t.factFps}>{motion.fps}</Fact>
+      {duration === null ? null : <Fact label={t.factDuration}>{duration.toFixed(2)} s</Fact>}
     </>
   );
 }

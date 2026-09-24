@@ -31,7 +31,16 @@ correctly on disk.
     preview.webp
     video-<model>-<n>.mp4         # video-seedance-1.mp4, video-h3-1.mp4
     inspect.json                  # latest inspect report
+    exports/                      # on-demand exports, only the ones asked for
+      <motion-id>.mp4  .mov  .webm  .apng
+      <motion-id>.json            # Lottie
+      <motion-id>-frames.zip      # PNG sequence + animation.json
+  exports/<character>.riv         # the whole character for Rive (`rive`)
 ```
+
+`exports/` is written by `sprite-sheet.mjs export` / `rive` and nothing else;
+the files a run makes (previews, sheet, atlas — or a loop's four files below)
+stay where they are, with their names and ids, and are never copied into it.
 
 A **loop motion** (workflow E) has a different shape inside `motions/<id>/`:
 
@@ -48,7 +57,27 @@ A **loop motion** (workflow E) has a different shape inside `motions/<id>/`:
   loop.webp  loop.apng  loop.webm  loop.json
   inspect.json                  # the loop-shaped report
   run.json                      # `loop --json`, consumed by register-run
+  exports/<id>.mp4 .mov <id>-frames.zip   # on demand, as for a sprite motion
 ```
+
+A **transition** (workflow F) is a clip between two loops, named
+`<from>-to-<to>`:
+
+```
+<character>/motions/idle-to-coffee/
+  video-seedance-1.mp4          # first-last: idle's first-green.png → coffee's
+  video-veed-2.webm             # matte of video-1 (derived, matte)
+  frames/000.png … NNN.png      # the cut clip, holds dropped, retimed to its brief
+  inspect.json                  # step, startGap, endGap, crop, scale
+  run.json                      # `transition --json`, consumed by register-run
+  exports/…                     # on demand, as for any motion (plays once)
+<character>/motions/coffee-to-idle/
+  frames/000.png … NNN.png      # `transition --reverse-of idle-to-coffee`: the
+  inspect.json                  # same frames backwards — no clip of its own
+```
+
+`<character>/lineup.png` is `lineup`'s picture of every loop's frame 0 beside
+the hub's — a working file, not registered.
 
 No `cells/`, no `frames/align.json`, no `sheet.png`, no `atlas.json` and no
 GIF: nothing about a loop is aligned or packed, so none of those files exist.
@@ -98,7 +127,9 @@ video, a sheet generated from one reference) is fully described by
 | `<motion>-keyframe` | A loop's keyframe, as generated (white plate) |
 | `<motion>-keyframe-alpha` | The same keyframe cut out, a `derive` edge (`step: "key"`) from it |
 | `<motion>-frame-NNN` | One frame of a loop — three digits, unaligned |
-| `<motion>-apng` (image) / `<motion>-webm` (video) / `<motion>-lottie` (text) | A loop's other three exports |
+| `<motion>-apng` (image) / `<motion>-webm` (video) / `<motion>-lottie` (text) | A loop's other three exports, made by its own run |
+| `<motion>-export-<format>` | An on-demand export of a ready motion, `format` one of `mp4` / `mov` / `webm` (video), `apng` (image), `lottie` (text), `png-seq` (image, `metadata.container: "zip"`). Written by `register-export` |
+| `<character>-export-riv` | The character's `.riv` (image, `metadata.container: "riv"`); `<character>` is the directory name. Written by `register-export` |
 
 Ids are stable across re-runs: `register-run` removes the previous frame
 assets and their edges before writing the new ones, so re-running a motion
@@ -121,6 +152,77 @@ are registered, so the viewer can print "4.2 MB" beside a download link without
 fetching the file to find out. A Lottie is the one that grows fastest — it
 embeds every frame as base64 — which is why the size is on the asset rather
 than left for the browser to discover.
+
+### On-demand exports
+
+`register-export` registers what `sprite-sheet.mjs export` or `rive` just
+wrote, from its `--json` report:
+
+- **`<motion>-export-<format>`** — `metadata`: `size`, and what the export
+  measured: `width`, `height`, `fps`, `duration`, `frames` (the motion's frame
+  count — a video holds `frames × repeat`), `repeat`, `scale`, `background` (MP4 only), `container` (`"zip"`
+  on a PNG sequence). One `derive` edge from the motion's frames:
+  `fromAssetId` is the first frame, `params: { tool: "sprite-sheet.mjs",
+  step: "export", format, repeat, scale, background, inputs: [every frame] }`.
+  The sidecar names it as `motion.exports[format]`.
+- **`<character>-export-riv`** — `metadata`: `width` / `height` (the
+  artboard), `frames` (the images it EMBEDS — a shared reverse adds none),
+  `motionCount` (loops and sprite motions) and `transitionCount`, `images`
+  (`"webp"`, `"webp-lossless"` or `"png"`), `estimatedDecodeBytes`, `container: "riv"`, `size`.
+  Its `derive` edge hangs off every registered frame of every motion it was
+  made from and carries `params.motions` — the motion ids it holds, in order,
+  loops and transitions included — `params.sampled`, and
+  `params.stateMachine`, what drives the file:
+
+  ```json
+  "stateMachine": { "name": "State Machine 1", "hub": "idle",
+    "number": { "name": "motion", "default": 0,
+                "values": [{ "value": 0, "motion": "idle" }, { "value": 1, "motion": "wave" }] },
+    "triggers": [{ "name": "play_attack", "motion": "attack" }] }
+  ```
+
+  The Export tab's Rive preview builds its buttons from it — one per loop,
+  setting `motion` to that value, one per one-shot trigger. (A file
+  registered before this record existed carries only the machine's name
+  there; the preview then shows the file's inputs as plain controls.) The
+  sidecar names the file as `sprite.exports.riv`.
+
+  A loop goes into the `.riv` resampled (24 fps by default) and downscaled
+  (longest edge 320 px), because every Rive runtime decodes every embedded
+  frame when the file opens: the memory is frames × width × height × 4 after
+  resampling — tanka's idle, 244 frames of 512×652 at 60 fps, goes in as 98
+  frames of 251×320, 30 MB instead of 311 MB. So `metadata.frames` can be far
+  fewer than the edge's inputs, and `params.sampled` records each motion as
+  the file plays it — `[{ motion, frames, fps, width, height }]` — which is
+  what the viewer's Export tab prints for a ready file.
+
+  With two loops or transitions or more, each is first divided by its clip
+  scale (`inspect.scale`; for a loop cut before `loop` recorded it, the
+  measured `motion.clip`, or measured off the clip now), so the character is
+  one size in every state, and placed at its clip's coordinates
+  (`inspect.crop`). **One authority for an old loop's size:** when `rive`
+  measures a loop, `register-export` writes the result onto the motion as
+  `motion.clip: { scale, origin, from: "measured" }`, and both the next
+  export and the Export tab's quote read it — so after the first export the
+  quote and the file agree. A recorded `inspect.scale` always wins and is
+  never overwritten; `register-run` drops `motion.clip` with the frames it
+  measured. Before the first export an old loop is quoted as cut, since only
+  the script can decode the clip.
+
+Registration checks the report's frames against the frames registered now and
+refuses a mismatch, so an export always describes the pictures its edge points
+at. Re-registering replaces the asset and its edge in place.
+
+**Retirement.** An export is made of one set of frames. When `register-run`
+replaces a motion's frames it drops that motion's `<motion>-export-*` assets,
+their edges and their `motion.exports` entries — and the `.riv` too, when
+`params.motions` lists the motion (a transition included) — and says so on
+stderr; `remove-motion` does the same. Cutting a transition again also
+notes each reverse made from the old cut: its frames are still the old ones
+backwards, and `rive` stops sharing the source's images with it until it is
+cut again with `--reverse-of`. The files stay on disk (the paths are printed) and are simply
+no longer offered. A loop's own `<motion>-apng` / `-webm` / `-lottie` are
+rewritten by the run itself and are never retired this way.
 
 ### References the user brought
 
@@ -156,6 +258,10 @@ interface SpriteSidecar {
                 role: "turnaround" | "portrait" | "expression" | "custom";
                 label: string }>;
   motions: Motion[];
+  exports?: { riv?: string };     // `<character>-export-riv`, the whole
+                                  // character for Rive, loops resampled.
+                                  // Absent until one is registered; absent
+                                  // in every 0.3.x file
 }
 
 interface Motion {
@@ -174,18 +280,37 @@ interface Motion {
   source?: "sheet" | "video";     // how the frames were obtained; absent means
                                   // "sheet" (set by add-motion --source and by
                                   // register-run for a from-video run)
-  kind?: "loop";                  // what the motion is FOR; absent = a sprite
+  kind?: "loop" | "transition";   // what the motion is FOR; absent = a sprite
                                   // motion. `source` still says how the frames
-                                  // were obtained ("video" for a loop)
-  brief?: LoopBrief;              // loop only: the interview's answers, written
-                                  // by `set-motion --brief-…` before anything
-                                  // is paid for. `add-video` refuses a
-                                  // generated clip without it
+                                  // were obtained ("video" for both). An
+                                  // unknown kind loads as a sprite motion
+  from?: string;                  // transition only: the loop it leaves; its
+  to?: string;                    // first frame is drawn from `from`'s frame 0,
+                                  // its last lands on `to`'s. A record with
+                                  // kind "transition" but no from/to loads as
+                                  // a sprite motion
+  reverseOf?: string;             // transition only: the transition whose
+                                  // frames it plays backwards
+  brief?: LoopBrief | TransitionBrief;
+                                  // loop and transition: the interview's
+                                  // answers, written by `set-motion --brief-…`
+                                  // before anything is paid for. `add-video`
+                                  // refuses a generated clip without it
+  clip?: { scale: number; origin: { x: number; y: number } | null; from: "measured" };
+                                  // loop only, and only one cut before `loop`
+                                  // recorded its crop: what `rive` measured,
+                                  // written by `register-export`
   keyframe?: string;              // asset id, `<motion>-keyframe`
   keyframeAlpha?: string;         // asset id, `<motion>-keyframe-alpha`
-  exports?: {                     // asset ids; the WebP stays `motion.webp`
-    apng?: string; webm?: string; lottie?: string;
-  };
+  exports?: {                     // export format → asset id. The WebP, GIF
+                                  // and sheet stay in their own fields
+    mp4?: string; mov?: string; webm?: string;
+    apng?: string; lottie?: string; "png-seq"?: string;
+  };                              // A loop's own run fills apng / webm /
+                                  // lottie with `<motion>-apng` … — exactly
+                                  // what 0.3.x stored here, so an older file
+                                  // loads unchanged. Everything else is
+                                  // `<motion>-export-<format>`, on any motion
 }
 
 interface LoopBrief {
@@ -196,6 +321,13 @@ interface LoopBrief {
                                   // set none — which is a different statement
                                   // from a ceiling of 0
   recordedAt: string;             // ISO timestamp of the set-motion call
+}
+
+interface TransitionBrief {       // a transition's two answers, both required
+  duration: number;               // seconds it plays in the .riv — the take
+                                  // is cut down to it (`transition --duration`)
+  budgetUsd: number;              // the ceiling for its take and matte
+  recordedAt: string;
 }
 
 type VideoModel = "seedance-2.5" | "h3-max"          // shot
@@ -260,6 +392,24 @@ interface InspectSummary {
                                             // All four are absent unless the
                                             // report carried finite numbers —
                                             // 0 is a reading, not an absence
+  crop?: { x: number; y: number; w: number; h: number };
+                                            // loop and transition: the rect
+                                            // every frame was cut from, in
+                                            // CLIP px
+  startGap?: number;                        // transition only: first frame
+  endGap?: number;                          // against `from`'s frame 0, last
+                                            // against `to`'s, as silhouette
+                                            // distance in clip coordinates;
+                                            // lands at ≤ 2 · step
+  scale?: number;                           // loop and transition: frame px per clip px,
+                                            // so frame px = (clip px − crop.xy)
+                                            // × scale. The `.riv` divides it
+                                            // out to draw every loop at one
+                                            // size and in its clip's place.
+                                            // Both absent on a loop cut before
+                                            // `loop` recorded them (the export
+                                            // then measures them off the clip)
+                                            // — never a default of 1
   warnings: string[];                       // human sentences
   acknowledged?: { reason: string; at: number }; // written by
                                             // `set-motion --ack-warnings`; the
@@ -307,6 +457,13 @@ them — before the first paid render:
 ```json
 "brief": { "duration": 4, "width": 512, "interpolator": "topaz",
            "budgetUsd": 3, "recordedAt": "2026-09-22T07:11:00.000Z" }
+```
+
+A **transition's brief** has two answers — how long it plays in the file, and
+the ceiling — both on the first call:
+
+```json
+"brief": { "duration": 1.2, "budgetUsd": 1.2, "recordedAt": "2026-09-24T09:05:00.000Z" }
 ```
 
 It is a gate, not a note: `add-video` refuses a generated clip on a loop motion

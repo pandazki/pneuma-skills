@@ -67,6 +67,13 @@ const ICON_FOR: Record<string, (p: IconProps) => React.ReactElement> = {
 const SPRITE_ONLY_COMMANDS = new Set(["fix-alignment"]);
 
 /**
+ * Commands sent from a panel, never from the bar. `export` needs a format —
+ * and for MP4 a colour — which only the Export tab's row knows; a bar button
+ * would be a second, vaguer way to ask for the same thing.
+ */
+const PANEL_COMMANDS = new Set(["export"]);
+
+/**
  * The commands that apply to the motion on stage.
  *
  * "Frames are misaligned" asks the agent to re-run `align` — and a loop is
@@ -82,8 +89,9 @@ export function motionCommands(
   commands: ViewerCommandDescriptor[],
   motion: Motion | null,
 ): ViewerCommandDescriptor[] {
-  if (motion?.kind !== "loop") return commands;
-  return commands.filter((command) => !SPRITE_ONLY_COMMANDS.has(command.id));
+  const onBar = commands.filter((command) => !PANEL_COMMANDS.has(command.id));
+  if (motion?.kind !== "loop") return onBar;
+  return onBar.filter((command) => !SPRITE_ONLY_COMMANDS.has(command.id));
 }
 
 /** Model and mode names are the API's own, so they are not translated — the

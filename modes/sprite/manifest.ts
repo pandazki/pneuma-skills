@@ -17,8 +17,23 @@ import { loadRoster, saveRoster } from "./domain.js";
 
 const spriteManifest: ModeManifest = {
   name: "sprite",
-  version: "0.3.3",
+  version: "0.4.0",
   changelog: {
+    "0.4.0": [
+      "An Export tab on every ready motion lists what it can be delivered as, in three groups: video, frame animation and Rive. A file that exists is a download with its size; the rest have a Generate button that asks the agent for it, and a format that does not fit the motion says why",
+      "Video: MP4 flattened onto a background colour you pick, plus MOV (ProRes 4444) and WebM (VP9) that keep transparency. A looping motion repeats until the clip lasts at least 3 seconds, and a one-shot plays once",
+      "Frame animation: APNG, Lottie and a zipped PNG sequence with an animation.json of frame timing and pivot, next to the GIF, WebP and sprite sheet every run already makes",
+      "Rive: the whole character in one .riv, each motion an animation, driven by a state machine with a number input that picks the loop to be in and a trigger for each one-shot. It plays right in the Export tab with the official Rive runtime, bundled with the mode so it works offline, with a button per loop and per one-shot and the states shown as they go by. The frames are raster images, so the file plays in every Rive runtime but cannot be edited in the Rive editor",
+      "The .riv embeds its frames as WebP by default, lossy at quality 85: tanka's ten loops and ten transitions came to 13.0 MB instead of 81.1 MB as PNG, with the same memory once opened. Every Rive runtime decodes WebP. A pixel-art character goes in as lossless WebP instead, every pixel exact and smaller than PNG; --images png or webp-lossless keeps any frames lossless, and an ffmpeg without libwebp falls back to PNG with a warning",
+      "UI loops can go into the .riv too, so a mascot made only of loops can switch states in an app: each loop is resampled to 24 fps and shrunk to 320 px on its longest edge by default, stays seamless, and keeps looping until another loop is asked for. The Export tab shows the frame rate, size and memory before you generate, and a file too large for a runtime to open is refused with what to lower",
+      "Connected motions for Rive: a transition is a short clip from one loop's first frame to another's, shot first-last between the two keyframes, cut with its waiting frames dropped and retimed to the length it should play, and checked at both ends against the loops it joins. The way back is the same clip played backwards, free, and it adds nothing to the file's memory",
+      "The .riv routes through an idle hub and changes state only at the end of a loop's cycle or a transition's last frame, so the pictures meet wherever it switches. The report lists every route, how long each loop can make you wait, and every place the file still cuts between two poses with how far apart they are",
+      "Lineup puts every loop's first frame beside idle's at one scale before anything is spent, and suggests which loops need a transition. Transitions have their own group in the motion list, named after the two loops they join, and one whose end does not land is marked",
+      "The character is one size in every loop of a .riv, standing where its clip put it: each loop was cut to its own box before the 512 px width (tanka's ten at 1.03–1.42× their clips), so the export divides that back out. The loop step now records the crop and scale it cut at; for loops cut earlier the export measures them off the clip, and says so when it cannot",
+      "In a session opened for viewing only, with no agent to ask, the Export tab offers downloads only — no Generate, Regenerate or MP4 colour. The MP4 colour swatches are four colours you can tell apart",
+      "For a loop cut before its crop was recorded, the size the first export measures is kept on the motion, so the Export tab's memory quote and the file agree from then on",
+      "Everything this mode already made keeps its name and place; a loop's WebP, APNG, WebM and Lottie appear in the tab as ready",
+    ],
     "0.3.3": [
       "A character with thousands of frames opens in seconds: the frame, cell and pipeline scratch directories are no longer file-watched (the server spent 25-40 s registering a watch per frame before it answered the page), and a frame's url now names the run that registered it, so a re-run still refreshes the stage",
     ],
@@ -71,7 +86,7 @@ const spriteManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-sprite",
-    mdScene: `You and the user are building a character's motion assets inside Pneuma's workspace. The user watches a motion stage: a refs rail, a motion list, and a player that runs the selected motion at its own fps beside its GIF, video and atlas. You design the character, write the sheet prompts, run the generation and the ffmpeg pipeline, then look through the stage — playback state, the inspect report, a capture — before you tell them a motion is done.`,
+    mdScene: `You and the user are building a character's motion assets inside Pneuma's workspace. The user watches a motion stage: a refs rail, a motion list, and a player that runs the selected motion at its own fps beside its GIF, video, atlas and an Export tab. You design the character, write the sheet prompts, run the generation and the ffmpeg pipeline, then look through the stage — playback state, the inspect report, a capture — before you tell them a motion is done.`,
     envMapping: {
       OPENROUTER_API_KEY: "openrouterApiKey",
       FAL_KEY: "falApiKey",
@@ -100,11 +115,13 @@ const spriteManifest: ModeManifest = {
       "**/motions/**/*",
     ],
     // The per-frame directories are served (`/content/*`) but never watched.
-    // The watcher registers one `fs.watch` per file, and on macOS that cost
-    // grows superlinearly with the count (Bun 1.4.0: 2,000 files 2.5 s, 3,000
-    // files 11 s), all on the server's main thread: a ten-loop character with
-    // 2,684 frames kept the server from answering anything for 25-40 s after
-    // start. Nothing here needs a frame event — `register-run` rewrites
+    // This started as a start-up fix: the chokidar watcher used before 3.54
+    // registered one `fs.watch` per file, and on macOS that cost grew
+    // superlinearly (Bun 1.4.0: 2,000 files 2.5 s, 3,000 files 11 s), so a
+    // ten-loop character with 2,684 frames kept the server from answering for
+    // 25-40 s. The per-root watcher (`server/watch/`) made that cost flat, but
+    // the scope stays: frame bursts are pure event volume, and nothing here
+    // needs a frame event — `register-run` rewrites
     // project.json whenever frames land, stamping each frame asset's
     // `createdAt`, and the stage's frame urls carry that stamp
     // (`playback.ts::resolveFrameSource`). `cells/` is the pre-align grid, and
@@ -239,6 +256,15 @@ const spriteManifest: ModeManifest = {
         label: "Frames are misaligned",
         description:
           "Say the character slides or jumps between frames, and the agent re-aligns them.",
+      },
+      // Sent by the Export tab's Generate buttons, never shown on the command
+      // bar (`CommandPopovers.tsx::motionCommands`): the row it comes from is
+      // what knows the format and, for MP4, the background colour.
+      {
+        id: "export",
+        label: "Export",
+        description:
+          "Ask for this motion, or the whole character, as a video, a frame animation or a Rive file.",
       },
     ],
   },

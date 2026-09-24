@@ -648,6 +648,14 @@ are wrong if they move:
    loop must not do. `--width` then scales in premultiplied space, so soft
    edges do not darken.
 
+   The report records both: **`crop`** `{ x, y, w, h }` is that rectangle in
+   clip pixels and **`scale`** is frame pixels per clip pixel (the width
+   ratio), so frame px = (clip px − crop.xy) × scale. Every clip is cropped to
+   its own box before the one width, so the same character comes out at a
+   different scale in each loop — tanka's ten at 1.03–1.42× their clips — and
+   anything that plays loops together (the `.riv`) divides this back out.
+   `register-run` copies both into the sidecar's `inspect`.
+
    **Choose `--width` from the size the UI renders at**, doubled for retina —
    not from the clip, and in workflow E not from anywhere but `brief.width`.
    Omitted, a cropped frame wider than **512 px is capped there**: one line on
@@ -689,8 +697,8 @@ are wrong if they move:
 and returned as `inspect` in the JSON:
 
 ```json
-{ "kind": "loop", "frameCount": 96, "cell": { "width": 512, "height": 591 },
-  "widthDefaulted": true,
+{ "kind": "loop", "frameCount": 96, "cell": { "width": 512, "height": 592 },
+  "crop": { "x": 64, "y": 48, "w": 434, "h": 502 }, "scale": 1.1797, "widthDefaulted": true,
   "fps": 24, "duration": 4.0, "seam": 0.0065, "step": 0.020, "maxStep": 0.069,
   "seamFill": 0, "alphaCoverage": 0.31, "keyColor": "#08f00d", "emptyFrames": [],
   "dropped": { "leading": 0, "trailing": 1 },
@@ -724,7 +732,8 @@ frame.
   "fps": 24, "duration": 4.0, "trim": { "start": 0, "end": 4.042 },
   "dropped": { "leading": 0, "trailing": 1 }, "seamFill": 0,
   "keyColor": "#08f00d", "alphaCoverage": 0.31,
-  "cell": { "width": 512, "height": 591 }, "widthDefaulted": true,
+  "cell": { "width": 512, "height": 592 },
+  "crop": { "x": 64, "y": 48, "w": 434, "h": 502 }, "scale": 1.1797, "widthDefaulted": true,
   "webp": "<abs>/loop.webp", "apng": "<abs>/loop.apng", "webm": "<abs>/loop.webm",
   "lottie": "<abs>/loop.json", "inspect": { "…": "as above" }, "warnings": [] }
 ```
@@ -735,6 +744,405 @@ at the wrap, which was sampled from nothing. There is no `sheet`, `atlas`, `gif`
 key, and `register-run` does not ask for them on a run whose `kind` is `loop`.
 As with `from-video`, the clip is only ever read: it is already an asset, and
 the frames' provenance points at it.
+
+### `transition <clip> --character <dir> --from <loopId> --to <loopId> [flags]`
+
+The clip between two loops, for a `.riv` (SKILL.md workflow F): a first-last
+take from `--from`'s keyframe plate to `--to`'s, cut so it starts on the one
+loop's frame 0 and ends on the other's. Both must be **ready loops** of the
+character, and not the same one. Written to
+`<character>/motions/<from>-to-<to>/frames/NNN.png` (`--out`, `--name`
+override) with an `inspect.json`; `--json` is what `register-run` takes.
+
+It shares `loop`'s whole cutting path — the same decode, key, crop and scale
+code (`prepareClip` → `decodeClipFrames` → `cutClipFrames`), picked over a
+one-shot mode inside `loop` because a transition asks a different question of
+the frames and has different flags (no seam, no seam fill, no exports) — so:
+
+- **One decode.** Every frame of the window is decoded once. `--key alpha`
+  reads a matted clip's own alpha (the `veed-gs` matte of step 5); `auto` /
+  `#rrggbb` key a green plate with `--similarity`, `--blend` and the despill,
+  exactly as `loop`. `--key none` is refused: a transition is placed by its
+  silhouette.
+- **Holds, both ends** (`--trim-holds`, default on). A first-last take waits
+  on each keyframe; leading frames that are the first pose and trailing
+  frames that are the last collapse to one of each. "The same pose" is a step
+  under a quarter of the upper-quartile step — the upper quartile rather than
+  the median, because a take can spend half its length holding and its median
+  step is then a hold. `dropped: { leading, trailing }` says how many went.
+  `--trim-start` / `--trim-end` (seconds) cut the window first.
+- **`--duration s`** retimes to the length it should play: `k = max(2,
+  round(s × fps))` frames at `round(i × (n − 1) / (k − 1))` — evenly spread,
+  the first and last frame always kept (`retime: { from, to }`). A duration
+  longer than the movement keeps every frame and says so; nothing is
+  stretched. The rate stays the clip's.
+- **Crop and scale recorded**, as `loop` does: one union crop over the kept
+  frames plus `--pad`, drawn `--width` wide (default 512, `widthDefaulted`),
+  `crop` and `scale` in the report and `inspect.json`, so the frames sit in
+  clip coordinates beside the loops.
+- **Does it land?** `step` is the median silhouette distance (1 − alpha IoU)
+  between consecutive kept frames. `startGap` is the first frame against
+  `--from`'s registered frame 0 and `endGap` the last against `--to`'s, both
+  placed in clip coordinates (each loop's recorded, stored or measured clip
+  scale and origin) and drawn at one analysis scale. A gap of at most
+  **2 · step** lands — the same bar as a loop's seam. Past it, a warning names
+  the end and the free remedy (`--trim-start` / `--trim-end`) before the paid
+  one (a new take from that keyframe). A loop whose place in its clip is
+  unknown leaves that gap `null`, with a warning.
+
+`--reverse-of <transitionId>` makes the way back, free: the registered frames
+of that transition copied in reverse order into
+`motions/<to>-to-<from>/frames/`, with its crop, scale and rate, and its own
+ends measured again against the loops it now joins (they come out as the
+source's gaps swapped). No clip is read. `register-run` records it with
+`reverseOf` and one `derive` edge per frame from the source frame it plays.
+
+tanka's idle → coffee (2026-09-24): a 4 s take that bent down, picked the mug
+up off the floor and straightened up in 1.7 s, then held the last pose for
+2.1 s — 5 frames dropped at the start, 51 at the end, 41 kept and sampled to
+29 for its 1.2 s brief:
+
+```json
+{ "kind": "transition", "source": "video", "video": "<abs>/motions/idle-to-coffee/video-veed-2.webm",
+  "from": "idle", "to": "coffee", "motionDir": "<abs>/motions/idle-to-coffee", "name": "idle-to-coffee",
+  "frames": ["<abs>/motions/idle-to-coffee/frames/000.png", "… 29 in all"],
+  "sampledAt": [0.208, 0.25, 0.333, "…", 1.875],
+  "fps": 24, "duration": 1.208, "trim": { "start": 0, "end": 4.041 },
+  "dropped": { "leading": 5, "trailing": 51 }, "retime": { "from": 41, "to": 29 },
+  "alphaCoverage": 0.304, "cell": { "width": 444, "height": 586 },
+  "crop": { "x": 87, "y": 54, "w": 444, "h": 586 }, "scale": 1,
+  "inspect": { "kind": "transition", "frameCount": 29, "step": 0.03,
+               "startGap": 0.009, "endGap": 0.0184, "…": "…" },
+  "warnings": [] }
+```
+
+### `lineup <characterDir> [--hub <loopId>] [--out <png>]`
+
+Look before paying for transitions. Every **ready loop**'s frame 0 beside the
+hub's — the hub is `--hub`, else the looping idle, else the first loop, the
+same rule `rive` uses — each at its clip's scale and placed in clip
+coordinates, drawn on one canvas at one scale with the hub's floor across
+every panel, written to `<character>/lineup.png` and labelled with the motion
+ids (without labels, and said, when ffmpeg's `drawtext` cannot run). Writes
+nothing to project.json.
+
+Per loop: `scale` and `scaleFrom` (`recorded` / `measured`) and `origin`;
+`poseGap` to the hub — `iou` (soft alpha overlap), `gap` = 1 − iou, `rgb`
+(mean colour difference inside the union) and `chroma` (mean chromaticity
+difference where both are opaque: it ignores shading and fur, and sees where
+the arms lie across the body and whether a mug is in hand); `closestFrame`,
+the loop frame nearest the hub pose (data only — `rive` leaves a loop at its
+cycle end, which is frame 0); the ready `transitions` already registered for
+the pair, either way; and a `suggestion`, **`direct`** when `iou ≥ 0.87` and
+`chroma ≤ 0.085`, else **`transition`**, with the rule in `threshold`.
+
+**The threshold, calibrated on tanka (2026-09-24)** — ten loops of one plush
+mascot, each shot from its own keyframe; idle is the hub, and walk is the only
+loop whose opening pose stands the way idle does:
+
+| loop | iou | chroma | rgb | pose | suggestion |
+|---|---|---|---|---|---|
+| walk | 0.876 | 0.069 | 0.146 | standing, arms down | direct |
+| coffee | 0.910 | 0.097 | 0.139 | standing, mug in both paws | transition |
+| thinking | 0.857 | 0.079 | 0.170 | standing, paw at the chin | transition |
+| wave | 0.830 | 0.050 | 0.160 | standing, one arm up | transition |
+| celebrate | 0.819 | 0.058 | 0.180 | standing, both arms up | transition |
+| dance | 0.729 | 0.079 | 0.255 | one leg lifted | transition |
+| reading | 0.794 | 0.154 | 0.279 | sitting, tablet | transition |
+| typing | 0.751 | 0.189 | 0.308 | sitting, laptop | transition |
+| sleep | 0.750 | 0.138 | 0.270 | sitting, eyes closed | transition |
+
+Neither number separates them alone: coffee has the best silhouette overlap
+(the mug sits inside the body's outline) and wave the lowest chroma (the arm
+is outside it). `rgb` was tried and dropped — it put coffee (0.139) nearer
+idle than walk (0.146). The margins are thin (walk passes the overlap bar by
+0.006), so the suggestion is a starting point for looking at `lineup.png`, not
+a verdict.
+
+### `export <motionDir> --format mp4|mov|webm|apng|lottie|png-seq [--bg #rrggbb] [--repeat N] [--scale N]`
+
+One **ready** motion in a format somebody else's tool reads. It reads
+`project.json` (never writes it) and refuses a motion whose status is not
+`ready`, or whose `frames/` on disk are not the frames registered — "register
+the run … before exporting". Registration is the separate
+`sprite-project.mjs register-export` step below.
+
+| `--format` | File | What it is |
+|---|---|---|
+| `mp4` | `exports/<id>.mp4` | H.264 `yuv420p`, flattened onto `--bg` (default `#ffffff`) — no alpha |
+| `mov` | `exports/<id>.mov` | ProRes 4444, `yuva444p10le`: keeps alpha, for editing software |
+| `webm` | `exports/<id>.webm` | VP9 `yuva420p` with `alpha_mode=1` (`-auto-alt-ref 0`, as `loop.webm`) |
+| `apng` | `exports/<id>.apng` | every frame once; plays forever when the motion loops, once when not |
+| `lottie` | `exports/<id>.json` | the loop writer's raster image sequence, one layer per frame |
+| `png-seq` | `exports/<id>-frames.zip` | a **stored** zip (PNG is already compressed) of `<id>/NN.png` plus `<id>/animation.json` |
+
+`exports/` is inside the motion directory (`lumi/motions/attack/exports/`).
+
+- **Which frames, at which rate.** A sprite motion plays its aligned
+  `frames/NN.png` at the **atlas** fps, and its per-frame `duration` and
+  `pivot` come from `atlas.json`. A loop plays `frames/NNN.png` at its own fps.
+- **`--repeat N`** — video formats only: the frames are played N times. The
+  default is stated in the report (`repeatDefaulted: true`): a looping motion
+  repeats until the clip lasts at least 3 s (`ceil(3 / (frames / fps))`), a
+  one-shot plays once. On a frame animation it is reported as ignored.
+- **`--scale N`** — an integer, default 1, always nearest-neighbour, so pixel
+  art and hard edges survive. The pivot in `animation.json` scales with it.
+- **`--bg #rrggbb`** — MP4 only. On every other format it is **reported as
+  ignored** in `warnings[]`, never applied and never an error: the caller asked
+  for it, the format has alpha, and saying so is the useful answer. A word
+  (`white`) is refused; `#rgb` is not a `#rrggbb`.
+- **Even sides.** H.264 and VP9 4:2:0 need even dimensions, so an odd side gets
+  one transparent column or row on the right / bottom — the pivot does not
+  move. The report says so in `padded`.
+- **Verified before it is named.** Every export is written to a scratch file
+  beside the destination and renamed only after it checks out. A video is
+  probed with `ffprobe -count_frames`: codec, pixel format with alpha where it
+  is claimed (`yuva…` for MOV, `alpha_mode=1` for WebM), frame count =
+  frames × repeat, and duration. Any mismatch is an `ERROR:` and the old file,
+  if there was one, is untouched. An APNG's frame count is checked the same way.
+- **Refusals**, each with nothing written: an unknown format; a motion that is
+  not ready; frames that do not match the registration; a file the motion
+  **already ships** — a sprite motion's GIF / WebP / sheet + atlas, a loop's
+  own WebP / APNG / WebM / Lottie (the refusal names the file it already is);
+  a loop as GIF (1-bit alpha, hundreds of frames) or as an atlas (a loop is a
+  sequence); an ffmpeg build without the encoder the format needs.
+
+**`--json`** is what `register-export` consumes:
+
+```json
+{ "kind": "export", "character": "<abs>", "motion": "attack", "motionKind": "sprite",
+  "format": "mp4", "out": "<abs>/motions/attack/exports/attack.mp4",
+  "frames": ["<abs>/motions/attack/frames/00.png", "…"], "frameCount": 12,
+  "fps": 12, "loop": false, "scale": 1, "width": 188, "height": 250,
+  "repeat": 1, "repeatDefaulted": true, "background": "#ffffff",
+  "padded": { "width": 1, "height": 0 }, "duration": 1.0,
+  "probe": { "codec": "h264", "pixFmt": "yuv420p", "alpha": false, "frames": 12, "duration": 1.0 },
+  "size": 48213, "notes": ["MP4 has no alpha: the frames are flattened onto #ffffff"],
+  "warnings": [] }
+```
+
+`repeatDefaulted`, `padded` and `probe.pixFmt` are on video formats only;
+`entries` (the number of files in the zip) on `png-seq`. `background` is null
+except on MP4.
+
+`animation.json`, inside the PNG-sequence zip:
+
+```json
+{ "app": "pneuma-sprite", "version": 1, "name": "attack", "kind": "sprite",
+  "fps": 12, "loop": false, "size": { "w": 188, "h": 250 }, "scale": 1,
+  "pivot": { "x": 0.5, "y": 0.968 }, "anchorPoint": { "x": 94, "y": 242 },
+  "frames": [ { "file": "00.png", "duration": 83 }, "…" ] }
+```
+
+`pivot` is the atlas pivot (normalized), `anchorPoint` the same point in
+pixels (scaled by `--scale`; null when the frames carried no `align.json`),
+and each frame's `duration` is in ms. A loop has no pivot: both are `null`,
+and `kind` is `"loop"`.
+
+### `rive <characterDir> [--motions id,…] [--include-loops] [--hub id] [--fps N] [--max-size N] [--filter auto|smooth|nearest] [--images webp|webp-lossless|png]`
+
+The whole character as `<characterDir>/exports/<character>.riv`, encoded by
+the zero-dependency writer in `scripts/rive.mjs`, planned by
+`scripts/rive-plan.mjs`, and validated against the official
+`@rive-app/canvas` runtime (2.43.1).
+
+- **Which motions:** by default every **ready sprite motion**, in rail order.
+  Loops go in when asked: `--include-loops` adds every ready loop and every
+  ready transition (still in rail order); `--motions idle,wave` names exactly
+  which motions go in, loops or not, **in that order** — `--include-loops` is
+  then ignored with a warning. A transition goes in only with **both** loops
+  it joins: left out with the reason under `--include-loops` when one is not
+  going in, refused by name when `--motions` names it without them. A named
+  motion that does not exist, is not ready, or is named twice is refused.
+  Everything left out is in `excluded[]` with its reason.
+- **Why loops are resampled:** every Rive runtime decodes every embedded image
+  when the file LOADS — Σ frames × width × height × 4, paid up front whichever
+  motion plays — and a loop is cut at its clip's rate and width: tanka's are
+  230-300 frames of 512 px at 60 fps, about 90 MB each as they are.
+- **Rate, `--fps N`** (loops default **24**; sprite motions keep their atlas
+  fps unless it is given). A motion keeps `round(count × fps / sourceFps)`
+  frames — the same duration. A loop takes source frame `floor(i × count /
+  kept)`: frame 0 first, evenly spread, and the step from the last kept frame
+  back to frame 0 is one of the steps the loop takes anyway, so it stays
+  seamless (the loop's own last frame is already one step short of its
+  first). A one-shot takes `round(i × (count − 1) / (kept − 1))`, which keeps
+  its last pose. A rate at or above the motion's own keeps every frame —
+  nothing is sped up by repeating frames. The kept indices are in the report
+  (`indices`) whenever frames were dropped.
+- **Size, `--max-size N`** (the longest edge; loops default **320**; sprite
+  motions keep their size unless it is given). One factor per kind — all the
+  loops shrink by the same factor, chosen so the largest fits, and the sprite
+  motions by theirs — so the character keeps its relative size from motion to
+  motion. Nothing is enlarged past the frames as cut.
+- **Transitions** are sampled with the loops (their rate, their factor) and
+  keep their first and last frame. A **reverse** (`reverseOf`) whose source is
+  in the file shows the source's embedded images in reverse order — it adds
+  no image and no memory (`shares` in its report entry, `estimatedDecodeBytes`
+  0; `frameCount` counts embedded images once). A reverse made from an
+  earlier cut of its source — the source registered again since — carries its
+  own frames instead, with a warning to cut it again.
+- **Clip scale (loops and transitions):** each loop is cropped to its own union box and scaled
+  to the brief's width, so one character is cut at a different scale in each
+  loop (tanka's ten: 1.03–1.42× their clips, a 38% spread). With **two loops
+  or transitions or more**, each is first divided by its clip scale, so the
+  factor is in clip pixels and the character is one size in every state:
+  a motion's `scale` in the report is that factor over its clip scale. The
+  clip scale and the crop origin are **recorded** by `loop` and `transition`
+  (`inspect.scale`, `inspect.crop`). A loop cut before that uses the
+  **measured** record an earlier export left on it (`motion.clip`, written by
+  `register-export`, so the Export tab quotes the same plan); failing that,
+  they are **measured** off the clip: about five frames, spread across the loop, each against the same
+  moment of the clip — found through the frame's registered `derive` edge
+  (the clip asset and the second it was sampled at; `run.json` is not read) —
+  comparing half-coverage (alpha ≥ 128) boxes: height ratio for the scale,
+  box corner for the origin, medians. Per-frame scales more than 3% apart,
+  a clip that is missing, outside the character, opaque or undecodable: the
+  scale is **unknown**, a warning names the loop, and it is drawn as cut and
+  stood on its feet. An origin that varies by more than 3 px (or 1% of the
+  clip) keeps the scale and stands the loop on its feet, with a warning.
+  `clip` in each loop's report is `{ scale, origin: { x, y } | null, from:
+  "recorded" | "measured" }`, or null when unknown (and for a lone loop,
+  which has nothing to be matched against and is not measured). A recorded
+  crop always wins over a measured one, and cutting the loop again clears the
+  measured record with the frames it described. tanka's ten,
+  measured: rendered body height per clip pixel 0.529–0.533 in every state.
+- **Downscale, `--filter`:** `auto` (default) is nearest-neighbour when
+  `character.style` says pixel art (`pixel art`, `8-bit`/`16-bit`, `像素`…)
+  and smooth otherwise: premultiply → `area` → unpremultiply, the chain `loop`
+  measured to keep alpha edges free of dark fringes. `smooth` / `nearest`
+  force it. The report says which, and whether the style or the flag chose.
+- **Placement:** every frame is pinned to one shared point of the artboard.
+  Loops whose clip scale and origin are known are placed in **clip
+  coordinates** (`anchor.from: "clip"`): one point of the clips lands on the
+  same point of the artboard in all of them, so each stands where its clip
+  put it — what a transition clip shot from one keyframe to the next needs to
+  hand over without a jump. Transitions are placed the same way, so their
+  first and last frames sit on the loops they join. That point is the feet of
+  the hub's (else the first placed loop's) frame 0. A sprite motion is pinned by its
+  **atlas pivot** there, and a loop whose place is not known by its **first
+  frame's feet** (`feet`: the mean x of the alpha pixels in the bottom tenth
+  of the figure, as `align --x-from feet` and `inspect` measure it, and the
+  bottom of the figure; `frame` for an empty frame 0). The keyframes are
+  drawn independently, so loops placed by their clips do not share one
+  footing: tanka's standing loops land within 9–10 px of each other at
+  320 px, exactly where their clips put them (within 1.4 px). The artboard
+  is the union of every frame around the point.
+- **Memory:** `estimatedDecodeBytes` is counted AFTER resampling and scaling,
+  per motion and in total (1 MB = 1024 × 1024 bytes). Over **128 MB** the
+  report warns; over **768 MB** `rive` refuses before a frame is scaled or a
+  byte written (only a legacy loop's clip-scale samples are decoded first), with
+  each motion's share and the three ways down: a lower `--fps`, a smaller
+  `--max-size`, fewer `--motions`.
+- **Structure:** one artboard; one Solo holding every frame as an Image; one
+  timeline per motion keying which frame the Solo shows (hold interpolation),
+  at the motion's effective fps — an integer rate as-is, anything else re-keyed
+  on a 60 fps timeline (`timelineFps`); a loop's timeline loops, a
+  transition's and a one-shot's play once.
+- **The state machine, `State Machine 1`** (`riveStateMachine` in `rive.mjs`
+  builds it as a graph; the file is that graph):
+  - **Inputs:** one number, **`motion`**, the loop the character should be
+    in — loop *i* of the file, in file order, is value *i*; the mapping is in
+    `stateMachine.inputs[0].values` — and one **trigger per one-shot**,
+    `play_<motionId>`. A loop is a state the character is IN, reached in one
+    or several steps, so it is a value that stays set; a trigger is consumed
+    after one step and could not carry that. A file with no loop has no
+    number, and its triggers work as before.
+  - **The hub** is `--hub <loopId>`, else the looping motion called `idle`
+    (`idle-2`, `sword_idle` — never a transition), else the first loop. The
+    machine starts there and `motion` starts at its value.
+  - **Routing.** Every exit from a loop is on **100 % exit time**, which on a
+    looping animation is the end of the cycle it is in: the character never
+    leaves a loop mid-cycle. From loop C toward the loop T that `motion`
+    names: C→T's transition if one is registered; otherwise, when C is not
+    the hub, C→hub's transition; otherwise the hub→T transition, or T itself
+    — a **direct cut**. A transition's last frame branches on `motion` the
+    same way from the loop it ends on, so it never settles into the hub for a
+    whole idle cycle when `motion` already names another loop; with nothing
+    else asked it arrives at its own end loop. A one-shot plays at once from
+    any state, then cuts to the loop `motion` names (the hub when it names
+    none). Rive checks a state's exits in order, so each is written as
+    `motion == value` plus the exit time.
+  - **In the report:** `stateMachine.hub`; `routes`, every ordered pair of
+    loops as steps — `{ transition: id }`, or `{ cut: { from, to } }` — with
+    the worst-case `seconds` (the whole cycle of the loop being left, plus
+    every clip on the way); `waits`, each loop's cycle, which is the longest
+    anyone waits after setting `motion`; and `cuts`, every edge in the file
+    whose two sides do not share a pose (a loop's last frame and the next
+    state's first), each with its **`poseGap`** measured on the frames as the
+    file draws them — `iou`, `gap`, `rgb` and `chroma`, the same numbers as
+    `lineup`. `from: null` is a one-shot fired from any state (no single gap).
+    A cut into a clip from a loop other than the one it starts on is a cut
+    too. The `notes` say that leaving a loop waits for its cycle end, and how
+    many cuts there are with the largest gap.
+- **`--images webp|webp-lossless|png`** (default webp; webp-lossless for pixel
+  art) — how each frame is embedded. WebP is
+  lossy at quality 85 (`libwebp`, `yuva420p`) and several times smaller: on
+  tanka-connect (10 loops, 10 transitions, 320 px) 13.0 MB against PNG's
+  81.1 MB, with the same 324.9 MB decoded — the memory is the pixels, not the
+  bytes. Every Rive runtime decodes it: rive-runtime, the C++ core the native
+  runtimes share, builds its own WebP decoder in (`decoders/src/decode_webp.cpp`,
+  libwebp from `dependencies/premake5_libwebp_v2.lua`), and Rive's own
+  best-practices guide recommends WebP for the smallest files.
+  **`webp-lossless`** (`-lossless 1`, `bgra`: no chroma subsampling) keeps
+  every visible pixel exactly as drawn — only the hidden colour of a fully
+  transparent pixel may change — and is the default when `character.style`
+  says pixel art, by the same reading as `--filter auto`: lossy WebP would put
+  colours between the hard pixels nearest-neighbour kept. On the pixel-art test
+  character it is 1,768 B against PNG's 3,010 B (lossy WebP: 3,364 B).
+  `--images png` embeds PNG. An ffmpeg without the `libwebp` encoder: with no
+  `--images`, the frames go in as PNG and `warnings` says why; a WebP format
+  asked for by name is refused.
+- **Honesty:** the frames are raster images, not vector shapes. The file plays
+  in every Rive runtime but is a runtime file — it cannot be reopened in the
+  Rive editor. The report's `notes` say this every time, plus one line per
+  resampled or scaled motion (`idle: 244 frames at 60 fps, 512×652 → 98 frames
+  at 24 fps, 251×320 in the .riv`).
+
+**`--json`** (consumed by `register-export`) — tanka, `--include-loops` at the
+defaults (2026-09-24): ten loops cut before `loop` recorded its crop, five
+entries from idle and their five reverses (3 of 20 motions shown):
+
+```json
+{ "kind": "rive", "character": "<abs>", "name": "Tanka",
+  "out": "<abs>/exports/tanka.riv", "size": 13627331, "images": "webp",
+  "artboard": {"name": "Tanka", "width": 315, "height": 341, "anchor": {"x": 168, "y": 313}},
+  "resample": { "loop": { "fps": 24, "maxSize": 320 }, "sprite": { "fps": null, "maxSize": null },
+                "filter": "smooth", "filterFrom": "style" },
+  "motions": [
+    {"id": "idle", "kind": "loop", "loop": true, "frames": 98, "fps": 24, "width": 230, "height": 293, "scale": 0.4496, "clip": {"scale": 1.1816, "origin": {"x": 97.46, "y": 46.07}, "from": "measured"}, "seconds": 4.083, "anchor": {"x": 115.62, "y": 288.06, "from": "clip"}, "estimatedDecodeBytes": 26416880},
+    {"id": "idle-to-coffee", "kind": "transition", "loop": false, "from": "idle", "to": "coffee", "frames": 29, "fps": 24, "width": 236, "height": 311, "scale": 0.5313, "clip": {"scale": 1, "origin": {"x": 87, "y": 54}, "from": "recorded"}, "seconds": 1.208, "anchor": {"x": 121.34, "y": 283.7, "from": "clip"}, "estimatedDecodeBytes": 8513936},
+    {"id": "coffee-to-idle", "kind": "transition", "loop": false, "from": "coffee", "to": "idle", "shares": "idle-to-coffee", "frames": 29, "fps": 24, "width": 236, "height": 311, "scale": 0.5313, "clip": {"scale": 1, "origin": {"x": 87, "y": 54}, "from": "recorded"}, "seconds": 1.208, "anchor": {"x": 121.34, "y": 283.7, "from": "clip"}, "estimatedDecodeBytes": 0},
+    "… 20 in all" ],
+  "frames": ["<abs>/motions/wave/frames/000.png", "… every registered frame of all 20"], "frameCount": 1235,
+  "estimatedDecodeBytes": 340723148,
+  "stateMachine": { "name": "State Machine 1", "hub": "idle", "defaultMotion": "idle",
+    "inputs": [ { "name": "motion", "type": "number", "default": 8,
+                  "values": [ { "value": 0, "motion": "wave" }, "…", { "value": 3, "motion": "coffee" }, "…", { "value": 8, "motion": "idle" }, { "value": 9, "motion": "dance" } ] } ],
+    "routes": [ {"from": "idle", "to": "coffee", "steps": [{"transition": "idle-to-coffee"}], "seconds": 5.291},
+                {"from": "coffee", "to": "wave", "steps": [{"transition": "coffee-to-idle"}, {"cut": {"from": "coffee-to-idle", "to": "wave"}}], "seconds": 6.25},
+                {"from": "coffee", "to": "typing", "steps": [{"transition": "coffee-to-idle"}, {"transition": "idle-to-typing"}], "seconds": 7.75}, "… 90 in all" ],
+    "cuts": [ {"from": "coffee-to-idle", "to": "wave", "poseGap": {"iou": 0.8313, "gap": 0.1687, "rgb": 0.1599, "chroma": 0.0497}}, "… 60 in all" ],
+    "waits": [ { "motion": "idle", "seconds": 4.083 }, { "motion": "coffee", "seconds": 5.042 }, "…" ] },
+  "excluded": [],
+  "notes": ["The frames are raster images, not vector shapes: …", "…",
+            "coffee-to-idle: idle-to-coffee's 29 images played backwards — nothing more embedded", "…",
+            "Leaving a loop waits for the end of its cycle: set 'motion' and the loop plays out the cycle it is in before anything moves — up to 5.083s from reading (every loop's wait is in stateMachine.waits). Routes go through idle unless a transition joins two loops directly.",
+            "60 direct cuts where no transition joins the poses, the largest poseGap 0.2843 (walk → dance) — each is in stateMachine.cuts; a transition clip between those loops removes it.",
+            "The frames are embedded as WebP, lossy at quality 85 — several times smaller than PNG, and decoded by every Rive runtime (the native ones share rive-runtime's own WebP decoder); --images png embeds them lossless."],
+  "warnings": ["the runtime decodes every frame when the file loads: about 325 MB of memory before anything plays (over 128 MB) — lower --fps or --max-size, or pass fewer motions with --motions"] }
+```
+
+`frames` is what the file was made FROM — every registered frame of every
+motion in it, which `register-export` checks against project.json and hangs
+the `.riv` off; `frameCount` is what it embeds. Per motion, `source` is the
+motion as registered and `frames` / `fps` / `width` / `height` are what the
+file plays — quote those, never the source's.
+
+`stateMachine.inputs` is what a developer wires: set `motion` to wave's value
+from their code and the character finishes the cycle it is in, goes through
+whatever clips join the two, and waves until `motion` changes; fire
+`play_attack` on a sprite one-shot and it plays once and goes to the loop
+`motion` names.
 
 ### Fixing the alignment without regenerating the sheet
 
@@ -843,10 +1251,11 @@ come from `Date.now()` unless `--at <ms>` is passed.
 | `set-motion … --brief-duration <s> --brief-width <px> --brief-interpolator topaz\|rife\|ffmpeg\|none [--brief-budget <usd>]` | Records the **loop brief** — the answers workflow E step 1 collects before anything is paid for. The first call needs the three required flags together; any later call may change one. Refused on a motion that is not `--kind loop`. Warns on stderr when `duration × 60 > 400` with an interpolator that targets 60 fps, naming the rate that fits (`--target-fps 48` for a 7–8 s loop). |
 | `add-video` on a **loop** motion, generated clip | **Refused** when the motion has no brief: `add-video: loop '<id>' has no brief — record the user's answers first: set-motion --brief-duration … --brief-width … --brief-interpolator …`. A record that is only half a brief is refused the same way and names what it is missing (`… has an incomplete brief, missing --brief-width, --brief-interpolator and recordedAt — …`): the reader is all-or-nothing everywhere — the gate, `show` and the JSON summaries — so half an answer never travels as one. A `--derived-from` clip is exempt: that money is already spent, and refusing to record it would only lose the provenance. |
 | `set-motion … [--ack-warnings "<reason>"] [--clear-ack]` | Accepts the motion's remaining inspect warnings with a one-sentence reason the user reads on the stage; the numbers stay visible and the badge dims. `--clear-ack` takes it back. Refused when the motion has no inspect report, and refused with an empty reason — the acknowledgement *is* the reason. |
-| `register-run --motion idle --run <run.json \| -> [--video <videoId>]` | Consumes `sprite-sheet.mjs run` output: registers the alpha sheet (if any), every frame, the packed sheet, atlas, gif and webp with `derive` edges; **removes** the previous frame assets and edges for that motion; copies `inspect` into the motion (including the measured `anchorPoint`, which is what the viewer's pivot guide stands on); sets status `ready`. A `from-video` summary derives the frames from the clip asset instead (`--video` names which, the newest is used with a note on stderr) and sets `motion.source`. A summary with `"kind": "loop"` has no sheet, atlas or gif — those become optional, and a sprite run still requires them — and registers the webp plus `<motion>-apng`, `<motion>-webm` and `<motion>-lottie` instead; it sets `motion.kind = "loop"`, `motion.exports`, `motion.source = "video"`, `motion.fps` from the run (interpolation changes it) and `grid = {1,1}`, and the inspect summary it copies carries `seam`, `step`, `seamFill` and `alphaCoverage`. Any acknowledgement goes with the measurement it covered. On a loop it also compares the registered `inspect.cell.width` with `brief.width` and warns — stderr, and `warnings[]` in the `--json` payload — when they are more than 2 px apart (`frames are <w> px wide but the brief said <width> — pass --width to loop`). A warning, not an error: the frames are already cut, and cutting them again is free. It is said once per channel and is **not** written into `inspect.warnings`: that list is the measurement of the frames — what the viewer shows and what `--ack-warnings` accepts — and this is a comparison against the brief. |
+| `register-run --motion idle --run <run.json \| -> [--video <videoId>]` | Consumes `sprite-sheet.mjs run` output: registers the alpha sheet (if any), every frame, the packed sheet, atlas, gif and webp with `derive` edges; **removes** the previous frame assets and edges for that motion; copies `inspect` into the motion (including the measured `anchorPoint`, which is what the viewer's pivot guide stands on); sets status `ready`. A `from-video` summary derives the frames from the clip asset instead (`--video` names which, the newest is used with a note on stderr) and sets `motion.source`. A summary with `"kind": "loop"` has no sheet, atlas or gif — those become optional, and a sprite run still requires them — and registers the webp plus `<motion>-apng`, `<motion>-webm` and `<motion>-lottie` instead; it sets `motion.kind = "loop"`, `motion.exports`, `motion.source = "video"`, `motion.fps` from the run (interpolation changes it) and `grid = {1,1}`, and the inspect summary it copies carries `seam`, `step`, `seamFill` and `alphaCoverage`. Any acknowledgement goes with the measurement it covered. Re-registering a motion **retires** the on-demand exports made from its old frames (`<motion>-export-*`, and the character's `.riv` when it held this motion): the assets and edges go, the files stay on disk, and stderr says `note: retired <id> — it was cut from the frames this run replaced; re-export it`. A loop's own WebP / APNG / WebM / Lottie are rewritten by the run itself and are not retired. On a loop it also compares the registered `inspect.cell.width` with `brief.width` and warns — stderr, and `warnings[]` in the `--json` payload — when they are more than 2 px apart (`frames are <w> px wide but the brief said <width> — pass --width to loop`). A warning, not an error: the frames are already cut, and cutting them again is free. It is said once per channel and is **not** written into `inspect.warnings`: that list is the measurement of the frames — what the viewer shows and what `--ack-warnings` accepts — and this is a comparison against the brief. |
+| `register-export --report <report.json \| ->` | Consumes the `--json` report of `sprite-sheet.mjs export` or `rive`, usually piped (`--report -`). A motion export becomes `<motion>-export-<format>` (type `video` for mp4/mov/webm, `image` for apng, `text` for lottie, `image` with `metadata.container: "zip"` for png-seq) and `motion.exports[format]` names it; the `.riv` becomes `<character>-export-riv` (type `image`, `metadata.container: "riv"`) and `sprite.exports.riv` names it. Metadata carries `size` in bytes plus what the report measured (`width`, `height`, `fps`, `duration`, `frames`, `repeat`, `scale`, `background` on MP4; `motionCount`, `images`, `estimatedDecodeBytes` on the `.riv`). One `derive` edge from every frame it was made of, `params: { tool, step: "export"\|"rive", format, repeat, scale, background }` — the `.riv`'s edge lists `params.motions` and `params.sampled` (each motion's frames, fps, width and height as the file plays it), and its `metadata.frames` is what it embeds. The report's frames must be the ones registered **now**, or it is refused ("export it again"). Re-registering replaces the asset in place. An empty report — the export failed and printed only its `ERROR:` — is said as such and registers nothing. A format a loop already ships (its own WebM, APNG, Lottie) is refused. |
 | `add-video --motion idle --file motions/idle/video-seedance-1.mp4 --model seedance-2.5 --mode i2v --from idle-frame-00[,idle-frame-15] [--prompt] [--duration 4] [--status generating]` | Registers `<motion>-video-<n>` (n is the next free number) with a `generate` edge. |
 | `set-video --motion idle --video <id> --status ready\|failed [--notes]` | Closes out a video after the render returns. |
-| `remove-motion --motion idle` | Removes the motion, its assets and its edges. Files on disk are left alone; the orphaned paths are printed so you can delete them deliberately. |
+| `remove-motion --motion idle` | Removes the motion, its assets and its edges — its on-demand exports included, and the character's `.riv` when it holds this motion. Files on disk are left alone; the orphaned paths are printed so you can delete them deliberately. |
 | `show [--motion id]` | Compact summary: name, refs (each with `origin: generated \| uploaded \| derived`, read off its edge — whether an image was drawn here or brought in decides what you may regenerate), motions with status / grid / fps / frame count / warnings, and derived clips as `video-3 ← video-2 (matte, veed-gs)`. The cheapest way to re-orient at the start of a turn. |
 
 ### `set-sheet` is called twice per sheet

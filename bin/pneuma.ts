@@ -2561,8 +2561,13 @@ async function main() {
   //     store while a published one did not.
   let modeBundleDir: string | undefined;
   if (!isDev && resolved.type !== "builtin") {
-    const existingBuild = join(resolved.path, ".build", "pneuma-mode.js");
-    if (existsSync(existingBuild)) {
+    // A bundle already in `.build/` is reused only while it is the build of
+    // the sources beside it (see `prebuiltViewer`): in a checkout, the first
+    // launch compiles into the same directory a published archive ships, and
+    // reusing that unconditionally served a stale viewer forever after.
+    const { prebuiltViewer } = await import("../snapshot/mode-build.js");
+    const prebuilt = prebuiltViewer(resolved.path, { projectRoot: PROJECT_ROOT });
+    if (prebuilt.reuse) {
       // Use pre-built bundle from publish (third-party deps already inlined)
       modeBundleDir = join(resolved.path, ".build");
       p.log.step(t("pneuma.using_prebuilt_viewer"));

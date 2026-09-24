@@ -1,6 +1,6 @@
 # Video: the motion source, the preview, and the loop
 
-A clip does three jobs in this mode, and they are not the same job.
+A clip does four jobs in this mode, and they are not the same job.
 
 1. **A motion source.** A clip shot on a flat chroma-green plate is sampled
    into frames by `sprite-sheet.mjs from-video`, keyed, cleaned, aligned and
@@ -15,6 +15,10 @@ A clip does three jobs in this mode, and they are not the same job.
    forever (workflow E). Same price as job 1, a different prompt, and a
    different question asked of it: not "is this one cycle?" but "do the two
    ends match?". It has its own section below.
+4. **A transition.** A clip shot first-last from one loop's keyframe to
+   another's, cut into the clip a `.riv` plays between those two loops
+   (workflow F). The question asked of it: does each end land on its loop's
+   first frame? Its own section is *The transition clip* below.
 
 The two jobs do not mix: a clip you rendered *from* finished frames must never
 become frames. A clip shot deliberately, on green, with the camera locked, is a
@@ -299,6 +303,56 @@ Cost is the same tier as any Seedance clip — ≈ $0.22 per second of 480p
 output, so ≈ $0.9 for four seconds and ≈ $1.1 for five. Flatten onto pure green
 rather than a neutral: the whole point of the plate is that `loop --key auto`
 can measure and remove it.
+
+## The transition clip
+
+A fourth job, for a character's `.riv` (workflow F): the clip between two
+loops, shot **first-last with two different images** — `--image` the hub's
+keyframe plate, `--end-image` the target loop's — so it starts on one loop's
+frame 0 and ends on the other's. Every loop of a character was shot from its
+own keyframe at the same camera and scale, so their plates already agree; the
+clip only has to invent the in-between. As with a loop, the ends are a target,
+not a guarantee: `transition` measures `startGap` and `endGap` against the
+clip's own `step`, and that number is what says it lands.
+
+> One continuous movement of the [subject], from the pose in the first image
+> to the pose in the last image. The camera is locked off: no pan, no tilt, no
+> zoom, no parallax, no cut. The [subject] stays at the same spot at a constant
+> size, fully inside the frame with clear margins — it does not walk away,
+> travel across the frame, turn away, or change scale. Keep its exact look:
+> [the look sentence the loops were shot with]. It starts exactly in the pose
+> of the first image. The movement: [the in-between action in one sentence —
+> what moves first, what follows; a prop is picked up or put down with the
+> paws, never popping in or out]. It ends exactly in the pose of the last
+> image, arriving a little before the end and holding still there. The
+> background is a flat solid pure chroma green filling the whole frame, evenly
+> lit, no gradient, no floor, no cast shadow, no reflection, and no green
+> light spilling onto the [subject].
+
+**The hold at the end is on purpose.** A take that arrives early and waits
+lands on the keyframe; one still moving at its last frame is where `endGap`
+fails. `transition` drops the waiting frames at both ends (keeping one), so the
+hold costs nothing in the file. `--duration` then sets how long the clip plays
+there — four seconds shot, about one to one and a half played.
+
+The worked call — the hub's plate first, the target's last, both made by
+workflow E step 3:
+
+```bash
+node {SKILL_PATH}/scripts/seedance-video.mjs \
+  --prompt "<the template above, filled in>" \
+  --image <character>/motions/idle/first-green.png \
+  --end-image <character>/motions/coffee/first-green.png \
+  --duration 4 --resolution 480p --no-audio \
+  --output <character>/motions/idle-to-coffee/video-seedance-1.mp4 --json
+```
+
+Price it like any take — ≈ $1.1 at 4 s and 480p, plus ≈ $0.06 for the
+`veed-gs` matte. No interpolation: the `.riv` plays at 24 fps, which is the
+rate the take already has. Only the entries are shot; each exit is its entry
+played backwards (`transition --reverse-of`), free. When a reverse reads wrong
+— a mug put down is not a mug picked up backwards — an exit take costs the
+same as an entry.
 
 ### Seedance idle loops — known failure modes
 

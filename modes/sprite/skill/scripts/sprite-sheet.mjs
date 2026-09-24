@@ -12,7 +12,13 @@
  * maths in JS; every image is written by an ffmpeg filter chain.
  *
  * Subcommands: probe, key, flatten, slice, align, pack, gif, inspect, run,
- * contact, from-video, loop.
+ * contact, from-video, retime, loop, export, rive.
+ *
+ * `export` and `rive` hand a FINISHED motion over in somebody else's format
+ * (video, a frame animation, a `.riv`). They read the character's
+ * project.json to learn which frames are the motion's and whether it is
+ * ready, and never write it — registering what they made is
+ * `sprite-project.mjs register-export`.
  * `--json` prints exactly one JSON object on stdout; progress goes to stderr.
  */
 
@@ -24,6 +30,13 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
+
+import { RIVE_MOTION_INPUT, riveDefaultMotion, riveHub, writeRiv } from "./rive.mjs";
+import {
+  RIVE_DECODE_LIMIT_BYTES, RIVE_DECODE_WARN_BYTES, RIVE_LOOP_FPS, RIVE_LOOP_MAX_SIZE, RIVE_PIXEL_ART_STYLE, riveDefaultImages,
+  riveDecodeWarning, riveMB, rivePlan, riveReverseIsCurrent,
+} from "./rive-plan.mjs";
+import { zipStore } from "./zip.mjs";
 
 const DEFAULT_THRESHOLD = 16;
 const DEFAULT_PAD = 8;
@@ -137,6 +150,9 @@ const HOLD_STEP_FRACTION = 0.25;
 /** A seam worth more than this many normal steps is a loop that does not
  *  close: the last frame visibly snaps back to the first. */
 const SEAM_STEP_LIMIT = 2;
+/** A transition's end joins a loop's frame 0 when their gap is at most this
+ *  many of its median steps — the rule a loop's seam is held to. */
+const JOIN_STEPS = SEAM_STEP_LIMIT;
 /** Most in-betweens `--seam-fill auto` will synthesise at the wrap. Four,
  *  because past that the wrap is no longer a seam to smooth but a chunk of
  *  motion nobody shot, and inventing it silently is worse than the tick. */
@@ -182,9 +198,30 @@ const CELLS_DIRNAME = "cells";
  *  actually used instead of guessing the cell edge. */
 const ALIGN_RECORD = "align.json";
 
+// --- export / rive: a finished motion, handed over --------------------------
+/** What `export --format` makes, in the order the Export tab lists them. */
+const EXPORT_FORMATS = ["mp4", "mov", "webm", "apng", "lottie", "png-seq"];
+/** The formats that are video: they repeat, pad to even sides, and are
+ *  probed after encoding. The frame animations play the frames once and let
+ *  the file's own loop flag (or the player) decide the rest. */
+const VIDEO_EXPORTS = new Set(["mp4", "mov", "webm"]);
+/** A looping motion's clip repeats until it lasts at least this long: a 0.5 s
+ *  idle handed to an editor as a 0.5 s clip is a blink nobody can place. */
+const EXPORT_MIN_SECONDS = 3;
+/** MP4 has no alpha, so it is flattened onto this unless `--bg` says. */
+const DEFAULT_EXPORT_BG = "#ffffff";
+/** `motions/<id>/exports/` for a motion, `<character>/exports/` for the .riv. */
+const EXPORTS_DIRNAME = "exports";
+/** How `rive --images` embeds each frame: WebP (lossy at q85, several times
+ *  smaller), lossless WebP (every visible pixel exact — pixel art's default)
+ *  or PNG. Every Rive runtime decodes all three. */
+const RIVE_IMAGES = ["webp", "webp-lossless", "png"];
+/** What the codec is called once ffprobe reads the file back. */
+const EXPORT_CODECS = { mp4: "h264", mov: "prores", webm: "vp9" };
+
 const SUBCOMMANDS = [
   "probe", "key", "flatten", "slice", "clean", "align", "pack", "gif",
-  "inspect", "run", "contact", "from-video", "retime", "loop",
+  "inspect", "run", "contact", "from-video", "retime", "loop", "transition", "lineup", "export", "rive",
 ];
 
 const USAGE = `Usage: sprite-sheet.mjs <subcommand> [options]
@@ -378,6 +415,120 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       Reports seam (how far the last frame is from the first), step (the
       median frame-to-frame change) and maxStep: seam << step is a loop that
       closes. Writes <motionDir>/inspect.json in the loop shape.
+
+  transition <clip> --character <dir> --from <loopId> --to <loopId>
+      [--out <motionDir>] [--name <id>] [--duration s]
+      [--trim-start s] [--trim-end s] [--key alpha|auto|#rrggbb]
+      [--similarity ${DEFAULT_VIDEO_SIMILARITY}] [--blend ${DEFAULT_BLEND}] [--despill|--no-despill]
+      [--trim-holds|--no-trim-holds] [--crop union|none] [--pad ${DEFAULT_PAD}] [--width W]
+      [--threshold ${DEFAULT_THRESHOLD}]
+  transition --reverse-of <transitionId> --character <dir> [--out <motionDir>] [--name <id>]
+      The take between two loops: cut like 'loop' (one decode, keyed or with
+      its own matte, one union crop, one width, crop and scale recorded so
+      the frames sit in clip coordinates), but it plays once: no seam, the
+      holds a first-last take leaves at BOTH ends collapsed to one frame each
+      (--no-trim-holds keeps them), and --duration s retimes it to the length
+      it should play by even sampling that keeps the first and last frame (a
+      4 s take played in 1.2 s). Never stretched: a --duration longer than
+      the movement keeps every frame and says so.
+      Measures whether it LANDS: startGap is its first frame against
+      --from's frame 0, endGap its last against --to's, as silhouette
+      distance in clip coordinates, against its own median step. At most
+      ${JOIN_STEPS} steps joins; more is a warning naming the end.
+      Written to <character>/motions/<from>-to-<to>/frames/NNN.png with an
+      inspect.json; --json is what register-run takes.
+      --reverse-of plays a REGISTERED transition backwards as the way back,
+      free: its frames copied in reverse order, its crop, scale and rate, and
+      its own ends measured against the loops it now joins.
+
+  lineup <characterDir> [--hub <loopId>] [--out <png>]
+      Look before spending: every ready loop's frame 0 beside the hub's, at
+      their clips' scale and placed in clip coordinates on one baseline,
+      written to <character>/lineup.png (labelled with the motion ids). The
+      JSON gives, per loop, its clip scale (recorded or measured), its poseGap
+      to the hub (alpha IoU in clip coordinates and the mean colour difference
+      inside the union), the frame of the loop closest to the hub pose, the
+      transitions already registered for the pair, and a suggestion — direct
+      or transition — with the threshold it used.
+
+  export <motionDir> --format mp4|mov|webm|apng|lottie|png-seq
+      [--bg #rrggbb] [--repeat N] [--scale N]
+      One READY motion (status in project.json, frames as registered) in a
+      format somebody else's tool reads. Written to
+      <motionDir>/exports/<id>.<ext> (png-seq: <id>-frames.zip), encoded to a
+      scratch file and renamed only after it checks out.
+        mp4      H.264 yuv420p, flattened onto --bg (default ${DEFAULT_EXPORT_BG}).
+        mov      ProRes 4444 with alpha, for editing software.
+        webm     VP9 with alpha.
+        apng     every frame once; loops forever when the motion loops.
+        lottie   the loop writer's raster image sequence.
+        png-seq  a stored zip of the frames plus animation.json (fps, loop,
+                 pivot, anchorPoint, per-frame file and duration).
+      A sprite motion plays its aligned frames at the ATLAS fps and pivot; a
+      loop plays its frames at its own fps.
+      --repeat N (video only) plays the motion N times. Default: a looping
+      motion repeats until the clip lasts at least ${EXPORT_MIN_SECONDS} s, a one-shot plays
+      once; the report says which (repeatDefaulted).
+      --scale N is an integer, default 1, always nearest-neighbour.
+      Video sides are padded to even with transparency (right and bottom).
+      Every video is probed after encoding — codec, alpha where claimed,
+      frame count = frames x repeat, duration — and refused if it is not.
+      --bg on mov/webm/apng/lottie/png-seq and --repeat on a frame animation
+      are reported as ignored, never applied.
+      What a motion already ships is refused with the file it already is:
+      a sprite motion's GIF / WebP / sheet + atlas, a loop's WebP / APNG /
+      WebM / Lottie. A loop is never a GIF or an atlas.
+
+  rive <characterDir> [--motions id,id,…] [--include-loops] [--hub <loopId>]
+      [--fps N] [--max-size N] [--filter auto|smooth|nearest]
+      [--images webp|webp-lossless|png]
+      The whole character as <characterDir>/exports/<character>.riv. By
+      default every READY sprite motion goes in; loops go in when asked:
+      --include-loops (every ready motion, transitions included), or
+      --motions, which names exactly which motions go in and in what order.
+      A transition goes in only with both loops it joins; a reverse whose
+      source is in the file shows the source's images backwards and embeds
+      nothing (unless the source was cut again after it was made — said).
+      Every runtime decodes every embedded frame when the file loads, so a
+      loop is resampled and downscaled: --fps (loops default ${RIVE_LOOP_FPS}) keeps
+      round(duration x fps) frames at floor(i x count / kept) — evenly spread,
+      still seamless — and --max-size (loops default ${RIVE_LOOP_MAX_SIZE}) shrinks them
+      by ONE factor so the largest fits that longest edge. A transition is
+      sampled with the loops and keeps its first and last frame. A sprite
+      motion keeps its atlas fps and size unless --fps / --max-size is given
+      (a one-shot then keeps its last frame). Nothing is ever sped up or
+      enlarged. --filter auto (default) downscales nearest-neighbour when
+      character.style says pixel art, smooth otherwise.
+      With two loops or transitions or more, each is first divided by its
+      scale against its clip (inspect.scale, recorded by loop and transition;
+      measured off the clip for a loop cut earlier, with a warning when it
+      cannot be) so the character is one size in every state, and placed at
+      its clip's coordinates.
+      Each frame is pinned to one point of the artboard: a sprite motion by
+      its atlas pivot, a placed loop or transition by that clip point, any
+      other where its first frame's feet stand.
+      The state machine ("State Machine 1"): a number input 'motion' names
+      the loop to be in (the mapping is in the report; it starts on the hub),
+      and a trigger play_<id> per one-shot. The hub is --hub, else the looping
+      idle, else the first loop. A loop leaves only at the end of its cycle;
+      from loop C toward T it takes C→T's transition if there is one, else
+      C→hub's, else hub→T's, else cuts; a transition's end branches on
+      'motion' the same way. A one-shot plays from any state and cuts back to
+      the loop 'motion' names. The report spells out every route
+      (stateMachine.routes, worst-case seconds), each loop's wait
+      (stateMachine.waits), and every direct cut with its poseGap measured
+      on the frames as drawn (stateMachine.cuts).
+      estimatedDecodeBytes (frames x w x h x 4, after resampling, shared
+      images once) is reported per motion and in total: over 128 MB warns,
+      over 768 MB is refused with nothing written.
+      The frames are RASTER: the file plays in every Rive runtime but cannot
+      be reopened in the Rive editor. --images webp (the default) embeds each
+      frame as a lossy WebP at quality 85, several times smaller than PNG;
+      webp-lossless keeps every visible pixel exact and is the default when
+      character.style says pixel art (the reading --filter auto uses); png
+      embeds PNG. Every Rive runtime decodes all three. With no --images and an
+      ffmpeg without libwebp, the frames go in as PNG and the report warns; a
+      WebP format asked for by name on such an ffmpeg is refused.
 
 Exit code 0 on success, 1 on failure with a one-line ERROR: on stderr.`;
 
@@ -2845,17 +2996,20 @@ function fillSeamFrames(srcDir, work, { first, last, fills, fps }) {
  *
  * Plain Lottie JSON with base64 assets rather than a `.lottie` zip, because
  * lottie-web and every dotLottie player read this shape with no extra writer
- * and no extra file to serve.
+ * and no extra file to serve. One writer for both callers — a loop's four
+ * exports and a sprite motion's on-demand `export --format lottie` — so the
+ * two Lottie files this mode makes cannot drift into two shapes. `framePaths`
+ * is the sequence in playback order; each layer is named after its file.
  */
-function loopLottie(framesDir, frameCount, { fps, name, cell }) {
+function lottieSequence(framePaths, { fps, name, cell }) {
   const assets = [];
   const layers = [];
-  for (let i = 0; i < frameCount; i++) {
+  for (let i = 0; i < framePaths.length; i++) {
     const id = `img_${i}`;
-    const png = readFileSync(join(framesDir, loopFrameName(i))).toString("base64");
+    const png = readFileSync(framePaths[i]).toString("base64");
     assets.push({ id, w: cell.width, h: cell.height, u: "", p: `data:image/png;base64,${png}`, e: 1 });
     layers.push({
-      ddd: 0, ind: i + 1, ty: 2, nm: `${name}_${String(i).padStart(3, "0")}`, refId: id, sr: 1,
+      ddd: 0, ind: i + 1, ty: 2, nm: `${name}_${basename(framePaths[i], ".png")}`, refId: id, sr: 1,
       ks: {
         o: { a: 0, k: 100 }, r: { a: 0, k: 0 }, p: { a: 0, k: [0, 0, 0] },
         a: { a: 0, k: [0, 0, 0] }, s: { a: 0, k: [100, 100, 100] },
@@ -2864,7 +3018,7 @@ function loopLottie(framesDir, frameCount, { fps, name, cell }) {
     });
   }
   return {
-    v: "5.7.4", fr: fps, ip: 0, op: frameCount,
+    v: "5.7.4", fr: fps, ip: 0, op: framePaths.length,
     w: cell.width, h: cell.height, nm: name, ddd: 0,
     assets, layers,
   };
@@ -2920,7 +3074,10 @@ function writeLoopExports(motionDir, framesDir, { fps, formats, name, cell, fram
   if (formats.includes("lottie")) {
     paths.lottie = writeJsonFile(
       join(motionDir, "loop.json"),
-      loopLottie(framesDir, frameCount, { fps, name, cell }),
+      lottieSequence(
+        Array.from({ length: frameCount }, (_, i) => join(framesDir, loopFrameName(i))),
+        { fps, name, cell },
+      ),
     );
   }
 
@@ -3008,25 +3165,15 @@ function evenRect(rect, size) {
 }
 
 /**
- * A loop motion: every frame of a window that closes on itself, keyed to
- * transparency and exported in the four shapes a UI can play.
- *
- * Nothing here aligns, cleans or packs. A sprite motion is a grid of poses an
- * engine indexes into, so its frames are pinned to a common anchor; a loop is
- * a film of one moving thing, so moving it back to an anchor would take the
- * movement out. The clip is only read — like `from-video`, it is a registered
- * asset in its own right and is never copied into the motion directory.
+ * What a clip is before a frame is decoded: the window, its size and rate,
+ * how its transparency is got — the checks `loop` and `transition` share, so
+ * both refuse the same impossible request with the same sentence.
  */
-function stepLoop(clip, options) {
-  const input = resolve(clip);
-  if (!existsSync(input)) fail(`file not found: ${input}`);
-  const motionDir = resolve(options.out);
-  mkdirSync(motionDir, { recursive: true });
-
-  const { duration, start, end } = clipWindow(input, { ...options, label: "loop" });
+function prepareClip(input, options, label) {
+  const { duration, start, end } = clipWindow(input, { ...options, label });
   const windowEnd = Math.min(end, duration);
   const span = windowEnd - start;
-  const size = probeSize(input, "loop");
+  const size = probeSize(input, label);
   const stream = probeVideoStream(input);
 
   const alphaSource = options.key === "alpha";
@@ -3050,6 +3197,229 @@ function stepLoop(clip, options) {
     }
   }
 
+  return { start, windowEnd, span, size, stream, alphaSource, keying, decodeArgs };
+}
+
+/**
+ * Decode a clip's window into `<work>/src/%03d.png` in one pass, keyed to
+ * transparency (or with its own matte, `--key alpha`), and — `loop --fps`
+ * only — interpolated on the plate first. Shared by `loop` and `transition`.
+ */
+function decodeClipFrames(input, prep, options, work, label) {
+  const { start, span, size, stream, alphaSource, keying, decodeArgs } = prep;
+  // --- 1. what the plate is ---------------------------------------------
+  let keyColor = null;
+  if (keying) {
+    if (options.key === "auto") {
+      // Off a RAW frame at the window start, like `contact`: the clip's own
+      // idea of the plate, codec drift included.
+      const frame = ffmpegTo(join(work, "key.png"), () => [
+        "-ss", String(round(start, 3)), "-i", input, "-frames:v", "1", "-pix_fmt", "rgba",
+      ], `${label} key frame`);
+      keyColor = stepProbe(frame, options.threshold).cornerColor;
+    } else {
+      keyColor = normalizeColor(options.key, "--key");
+    }
+  }
+  if (alphaSource) {
+    const probe = ffmpegTo(join(work, "alpha.png"), () => [
+      "-ss", String(round(start, 3)), ...decodeArgs, "-i", input,
+      "-frames:v", "1", "-pix_fmt", "rgba",
+    ], `${label} alpha probe`);
+    if (!hasAlpha(readRgba(probe))) {
+      fail(`--key alpha: the first frame of ${input} is fully opaque, so the clip carries no matte. Matte it first (remove-video-background.mjs), or key its plate here with --key auto or --key #rrggbb.`);
+    }
+  }
+  const { chain: keyChain, despill } = loopKeyChain(keyColor, options);
+
+  // --- 2. decode the whole window in one pass ----------------------------
+  const srcDir = join(work, "src");
+  mkdirSync(srcDir, { recursive: true });
+  let frameFps;
+  if (options.fps === null) {
+    ffmpeg([
+      "-ss", String(start), "-t", String(span), ...decodeArgs,
+      "-i", input, "-vf", keyChain.join(","),
+      "-frames:v", String(MAX_LOOP_FRAMES + 1),
+      "-start_number", "0", "-pix_fmt", "rgba", "--", join(srcDir, "%03d.png"),
+    ], `${label} decode`);
+    frameFps = stream.fps;
+  } else {
+    // --- 3. interpolate, on the PLATE, wrapped around the loop -----------
+    // minterpolate estimates motion on a yuv plate; in-betweens synthesised
+    // from two already-keyed frames would smear the matte instead. The extra
+    // copy of frame 0 at the end is what makes the in-betweens between the
+    // last frame and the first real frames rather than a cut.
+    const plateDir = join(work, "plate");
+    mkdirSync(plateDir, { recursive: true });
+    ffmpeg([
+      "-ss", String(start), "-t", String(span), "-i", input,
+      "-vf", "format=rgb24", "-frames:v", String(MAX_LOOP_FRAMES + 1),
+      "-start_number", "0", "--", join(plateDir, "%03d.png"),
+    ], `${label} plate decode`);
+    const plateCount = sequenceCount(plateDir, label);
+    if (plateCount < 2) {
+      fail(`${label}: ${round(span, 3)}s from ${round(start, 3)}s of ${input} decoded to ${plateCount} frame(s) — nothing to interpolate`);
+    }
+    // TWO copies, not one. `minterpolate` cannot extrapolate past its last
+    // input: 25 frames in at 24 fps came back as 47 at 48 fps, covering
+    // exactly the original 0..23/24 and none of the wrap (measured, ffmpeg
+    // 8.0). It needs a real frame on BOTH sides of every in-between, so the
+    // window is followed by frames 0 and 1 of itself — the loop continuing —
+    // and the in-betweens that carry the last frame back into the first are
+    // then interpolated from real neighbours like every other one.
+    copyFileSync(join(plateDir, loopFrameName(0)), join(plateDir, loopFrameName(plateCount)));
+    copyFileSync(join(plateDir, loopFrameName(1)), join(plateDir, loopFrameName(plateCount + 1)));
+
+    const interpDir = join(work, "interp");
+    mkdirSync(interpDir, { recursive: true });
+    ffmpeg([
+      "-framerate", String(stream.fps), "-start_number", "0", "-i", join(plateDir, "%03d.png"),
+      "-vf", `format=yuv420p,minterpolate=fps=${options.fps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1`,
+      "-start_number", "0", "--", join(interpDir, "%03d.png"),
+    ], `${label} interpolate`);
+
+    // Everything from the appended copy onwards is dropped; the in-betweens
+    // that lead INTO it are the wrap and are kept.
+    const produced = sequenceCount(interpDir, label);
+    const keep = Math.min(Math.round((options.fps * plateCount) / stream.fps), produced);
+    if (keep < 2) fail(`--fps ${options.fps}: interpolating a ${round(span, 3)}s window produced ${keep} frame(s)`);
+    if (keep > MAX_LOOP_FRAMES) {
+      fail(`--fps ${options.fps} over a ${round(span, 3)}s window is ${keep} frames — the limit is ${MAX_LOOP_FRAMES}`);
+    }
+    ffmpeg([
+      "-framerate", String(options.fps), "-start_number", "0", "-i", join(interpDir, "%03d.png"),
+      "-frames:v", String(keep), "-vf", keyChain.join(","),
+      "-start_number", "0", "-pix_fmt", "rgba", "--", join(srcDir, "%03d.png"),
+    ], `${label} key`);
+    frameFps = options.fps;
+  }
+
+  const decoded = sequenceCount(srcDir, label);
+  if (decoded > MAX_LOOP_FRAMES) {
+    fail(`the window decoded to more than ${MAX_LOOP_FRAMES} frames — narrow it with --trim-start/--trim-end`);
+  }
+  if (decoded < 2) {
+    fail(`${label}: ${round(span, 3)}s from ${round(start, 3)}s of ${input} decoded to ${decoded} frame(s) — a loop needs at least two`);
+  }
+  const fps = round(frameFps ?? decoded / span, 3);
+  return { keyColor, despill, srcDir, decoded, fps };
+}
+
+/**
+ * Crop `count` decoded frames from `first` to ONE union rect, scale them to
+ * the width, write them to `framesDir` as `%03d.png` with the transparent
+ * pixels zeroed, and say where they sit in the clip (`crop`, `scale`).
+ * Shared by `loop` and `transition`, so a transition's frames sit in clip
+ * coordinates exactly the way a loop's do.
+ */
+function cutClipFrames(srcDir, first, count, size, options, framesDir, { keyed, label }) {
+  // --- 6. crop and scale -------------------------------------------------
+  const boxes = keyed
+    ? loopFrameBoxes(srcDir, first, count, size, options.threshold, label)
+    : Array.from({ length: count }, () => ({
+      coverage: 1, bbox: { x: 0, y: 0, w: size.width, h: size.height },
+    }));
+  const emptyFrames = boxes.map((b, i) => (b.bbox ? -1 : i)).filter((i) => i >= 0);
+  const alphaCoverage = round(boxes.reduce((sum, b) => sum + b.coverage, 0) / count, 4);
+
+  let crop = { x: 0, y: 0, w: size.width, h: size.height };
+  if (options.crop === "union") {
+    const filled = boxes.map((b) => b.bbox).filter(Boolean);
+    if (!filled.length) {
+      fail(`every frame is empty above alpha threshold ${options.threshold} — check --key, --similarity and --blend against what 'contact' showed`);
+    }
+    // ONE rect for every frame, so what moves inside it keeps moving: a
+    // per-frame crop would silently re-centre the subject and flatten the
+    // very motion the loop exists to show.
+    const x0 = Math.max(0, Math.min(...filled.map((b) => b.x)) - options.pad);
+    const y0 = Math.max(0, Math.min(...filled.map((b) => b.y)) - options.pad);
+    const x1 = Math.min(size.width, Math.max(...filled.map((b) => b.x + b.w)) + options.pad);
+    const y1 = Math.min(size.height, Math.max(...filled.map((b) => b.y + b.h)) + options.pad);
+    crop = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  }
+  crop = evenRect(crop, size);
+
+  // No `--width` and a frame bigger than a UI ever asks for: cap it, and
+  // say so. The clip's own size is not a decision anybody made — the Kiki
+  // trial cut 532px frames because the flag was omitted and shipped a 45 MB
+  // Lottie. One line on stderr and one flag in the report, so the choice is
+  // visible and overridable rather than silently inherited from the codec.
+  const widthDefaulted = options.width === null && crop.w > DEFAULT_LOOP_WIDTH;
+  if (widthDefaulted) {
+    console.error(`no --width given: frames capped at ${DEFAULT_LOOP_WIDTH} px (source ${crop.w} px); pass --width to choose`);
+  }
+  const targetWidth = widthDefaulted ? DEFAULT_LOOP_WIDTH : options.width;
+
+  const outWidth = targetWidth === null ? crop.w : Math.max(2, 2 * Math.round(targetWidth / 2));
+  const outHeight = targetWidth === null
+    ? crop.h
+    : scaledHeight({ width: crop.w, height: crop.h }, outWidth);
+
+  // premultiply → scale → unpremultiply. Scaling straight alpha mixes every
+  // edge pixel with whatever RGB sits under the transparent pixel beside it
+  // — the plate on a keyed frame, black on a zeroed one, a dark halo either
+  // way. Premultiplied, a transparent pixel contributes nothing, so the edge
+  // keeps the subject's own colour and only its alpha falls off.
+  //
+  // 8-bit, and `area` in both directions. A kernel with NEGATIVE LOBES rings
+  // a premultiplied matte into black at the silhouette, which is the dark
+  // fringe this whole detour exists to avoid; `area` has none (a box filter
+  // going down, plain linear going up). Measured on the reference flame at
+  // ffmpeg 8.0, counting the partially transparent pixels whose luminance is
+  // under 40 — 1160x1432 down to 512: lanczos 123, bicubic 5, area 0;
+  // 484x566 up to 512: lanczos 46, spline 40, bicubic 28, area 0. Also 8-bit
+  // rather than rgba64: a 16-bit alpha of 1..256 comes back as 8-bit 0 while
+  // `unpremultiply` has already divided its colour back up to full
+  // brightness, which left 997 transparent pixels carrying up to 255.
+  const chain = [`crop=${crop.w}:${crop.h}:${crop.x}:${crop.y}`, "premultiply=inplace=1"];
+  if (outWidth !== crop.w || outHeight !== crop.h) {
+    chain.push(`scale=${outWidth}:${outHeight}:flags=area`);
+  }
+  chain.push("unpremultiply=inplace=1");
+
+  resetFramesDir(framesDir);
+  ffmpeg([
+    "-start_number", String(first), "-i", join(srcDir, "%03d.png"),
+    "-frames:v", String(count), "-vf", chain.join(","),
+    "-start_number", "0", "-pix_fmt", "rgba", "--", join(framesDir, "%03d.png"),
+  ], `${label} frames`);
+  const written = sequenceCount(framesDir, label);
+  if (written !== count) {
+    fail(`${label}: wrote ${written} of ${count} frames into ${framesDir} — a frame could not be re-encoded`);
+  }
+  const cell = { width: outWidth, height: outHeight };
+  zeroLoopFrames(framesDir, count, cell, options.threshold);
+  // What maps a frame back onto its clip: frame px = (clip px − crop.xy) ×
+  // scale. Every loop is cut to its OWN union box and then scaled to one
+  // width, so two loops of one character come out at different scales —
+  // tanka's ten were drawn at 1.03-1.42× their clips — and anything that
+  // plays them together (the .riv) has to undo that to keep the character
+  // one size, and to put each where it stood in its clip. One number: the
+  // width ratio, which the height ratio matches to the even-pixel rounding.
+  const clipScale = round(outWidth / crop.w, 4);
+  return { crop, cell, clipScale, emptyFrames, alphaCoverage, widthDefaulted, outWidth };
+}
+
+/**
+ * A loop motion: every frame of a window that closes on itself, keyed to
+ * transparency and exported in the four shapes a UI can play.
+ *
+ * Nothing here aligns, cleans or packs. A sprite motion is a grid of poses an
+ * engine indexes into, so its frames are pinned to a common anchor; a loop is
+ * a film of one moving thing, so moving it back to an anchor would take the
+ * movement out. The clip is only read — like `from-video`, it is a registered
+ * asset in its own right and is never copied into the motion directory.
+ */
+function stepLoop(clip, options) {
+  const input = resolve(clip);
+  if (!existsSync(input)) fail(`file not found: ${input}`);
+  const motionDir = resolve(options.out);
+  mkdirSync(motionDir, { recursive: true });
+
+  const prep = prepareClip(input, options, "loop");
+  const { start, windowEnd, span, size, alphaSource, keying } = prep;
+
   const framesDir = join(motionDir, "frames");
   // The working frames live under the motion directory, not in tmpdir: they
   // are the same order of magnitude as the clip, and a rename into `frames/`
@@ -3059,102 +3429,7 @@ function stepLoop(clip, options) {
   mkdirSync(work, { recursive: true });
 
   try {
-    // --- 1. what the plate is ---------------------------------------------
-    let keyColor = null;
-    if (keying) {
-      if (options.key === "auto") {
-        // Off a RAW frame at the window start, like `contact`: the clip's own
-        // idea of the plate, codec drift included.
-        const frame = ffmpegTo(join(work, "key.png"), () => [
-          "-ss", String(round(start, 3)), "-i", input, "-frames:v", "1", "-pix_fmt", "rgba",
-        ], "loop key frame");
-        keyColor = stepProbe(frame, options.threshold).cornerColor;
-      } else {
-        keyColor = normalizeColor(options.key, "--key");
-      }
-    }
-    if (alphaSource) {
-      const probe = ffmpegTo(join(work, "alpha.png"), () => [
-        "-ss", String(round(start, 3)), ...decodeArgs, "-i", input,
-        "-frames:v", "1", "-pix_fmt", "rgba",
-      ], "loop alpha probe");
-      if (!hasAlpha(readRgba(probe))) {
-        fail(`--key alpha: the first frame of ${input} is fully opaque, so the clip carries no matte. Matte it first (remove-video-background.mjs), or key its plate here with --key auto or --key #rrggbb.`);
-      }
-    }
-    const { chain: keyChain, despill } = loopKeyChain(keyColor, options);
-
-    // --- 2. decode the whole window in one pass ----------------------------
-    const srcDir = join(work, "src");
-    mkdirSync(srcDir, { recursive: true });
-    let frameFps;
-    if (options.fps === null) {
-      ffmpeg([
-        "-ss", String(start), "-t", String(span), ...decodeArgs,
-        "-i", input, "-vf", keyChain.join(","),
-        "-frames:v", String(MAX_LOOP_FRAMES + 1),
-        "-start_number", "0", "-pix_fmt", "rgba", "--", join(srcDir, "%03d.png"),
-      ], "loop decode");
-      frameFps = stream.fps;
-    } else {
-      // --- 3. interpolate, on the PLATE, wrapped around the loop -----------
-      // minterpolate estimates motion on a yuv plate; in-betweens synthesised
-      // from two already-keyed frames would smear the matte instead. The extra
-      // copy of frame 0 at the end is what makes the in-betweens between the
-      // last frame and the first real frames rather than a cut.
-      const plateDir = join(work, "plate");
-      mkdirSync(plateDir, { recursive: true });
-      ffmpeg([
-        "-ss", String(start), "-t", String(span), "-i", input,
-        "-vf", "format=rgb24", "-frames:v", String(MAX_LOOP_FRAMES + 1),
-        "-start_number", "0", "--", join(plateDir, "%03d.png"),
-      ], "loop plate decode");
-      const plateCount = sequenceCount(plateDir, "loop");
-      if (plateCount < 2) {
-        fail(`loop: ${round(span, 3)}s from ${round(start, 3)}s of ${input} decoded to ${plateCount} frame(s) — nothing to interpolate`);
-      }
-      // TWO copies, not one. `minterpolate` cannot extrapolate past its last
-      // input: 25 frames in at 24 fps came back as 47 at 48 fps, covering
-      // exactly the original 0..23/24 and none of the wrap (measured, ffmpeg
-      // 8.0). It needs a real frame on BOTH sides of every in-between, so the
-      // window is followed by frames 0 and 1 of itself — the loop continuing —
-      // and the in-betweens that carry the last frame back into the first are
-      // then interpolated from real neighbours like every other one.
-      copyFileSync(join(plateDir, loopFrameName(0)), join(plateDir, loopFrameName(plateCount)));
-      copyFileSync(join(plateDir, loopFrameName(1)), join(plateDir, loopFrameName(plateCount + 1)));
-
-      const interpDir = join(work, "interp");
-      mkdirSync(interpDir, { recursive: true });
-      ffmpeg([
-        "-framerate", String(stream.fps), "-start_number", "0", "-i", join(plateDir, "%03d.png"),
-        "-vf", `format=yuv420p,minterpolate=fps=${options.fps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1`,
-        "-start_number", "0", "--", join(interpDir, "%03d.png"),
-      ], "loop interpolate");
-
-      // Everything from the appended copy onwards is dropped; the in-betweens
-      // that lead INTO it are the wrap and are kept.
-      const produced = sequenceCount(interpDir, "loop");
-      const keep = Math.min(Math.round((options.fps * plateCount) / stream.fps), produced);
-      if (keep < 2) fail(`--fps ${options.fps}: interpolating a ${round(span, 3)}s window produced ${keep} frame(s)`);
-      if (keep > MAX_LOOP_FRAMES) {
-        fail(`--fps ${options.fps} over a ${round(span, 3)}s window is ${keep} frames — the limit is ${MAX_LOOP_FRAMES}`);
-      }
-      ffmpeg([
-        "-framerate", String(options.fps), "-start_number", "0", "-i", join(interpDir, "%03d.png"),
-        "-frames:v", String(keep), "-vf", keyChain.join(","),
-        "-start_number", "0", "-pix_fmt", "rgba", "--", join(srcDir, "%03d.png"),
-      ], "loop key");
-      frameFps = options.fps;
-    }
-
-    const decoded = sequenceCount(srcDir, "loop");
-    if (decoded > MAX_LOOP_FRAMES) {
-      fail(`the window decoded to more than ${MAX_LOOP_FRAMES} frames — narrow it with --trim-start/--trim-end`);
-    }
-    if (decoded < 2) {
-      fail(`loop: ${round(span, 3)}s from ${round(start, 3)}s of ${input} decoded to ${decoded} frame(s) — a loop needs at least two`);
-    }
-    const fps = round(frameFps ?? decoded / span, 3);
+    const { keyColor, despill, srcDir, decoded, fps } = decodeClipFrames(input, prep, options, work, "loop");
 
     // --- 4. holds, and 5. the seam ----------------------------------------
     const masks = decodeLoopMasks(srcDir, decoded, size, keying || alphaSource, "loop");
@@ -3196,81 +3471,9 @@ function stepLoop(clip, options) {
     }
 
     // --- 6. crop and scale -------------------------------------------------
-    const boxes = keying || alphaSource
-      ? loopFrameBoxes(srcDir, first, count, size, options.threshold, "loop")
-      : Array.from({ length: count }, () => ({
-        coverage: 1, bbox: { x: 0, y: 0, w: size.width, h: size.height },
-      }));
-    const emptyFrames = boxes.map((b, i) => (b.bbox ? -1 : i)).filter((i) => i >= 0);
-    const alphaCoverage = round(boxes.reduce((sum, b) => sum + b.coverage, 0) / count, 4);
-
-    let crop = { x: 0, y: 0, w: size.width, h: size.height };
-    if (options.crop === "union") {
-      const filled = boxes.map((b) => b.bbox).filter(Boolean);
-      if (!filled.length) {
-        fail(`every frame is empty above alpha threshold ${options.threshold} — check --key, --similarity and --blend against what 'contact' showed`);
-      }
-      // ONE rect for every frame, so what moves inside it keeps moving: a
-      // per-frame crop would silently re-centre the subject and flatten the
-      // very motion the loop exists to show.
-      const x0 = Math.max(0, Math.min(...filled.map((b) => b.x)) - options.pad);
-      const y0 = Math.max(0, Math.min(...filled.map((b) => b.y)) - options.pad);
-      const x1 = Math.min(size.width, Math.max(...filled.map((b) => b.x + b.w)) + options.pad);
-      const y1 = Math.min(size.height, Math.max(...filled.map((b) => b.y + b.h)) + options.pad);
-      crop = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
-    }
-    crop = evenRect(crop, size);
-
-    // No `--width` and a frame bigger than a UI ever asks for: cap it, and
-    // say so. The clip's own size is not a decision anybody made — the Kiki
-    // trial cut 532px frames because the flag was omitted and shipped a 45 MB
-    // Lottie. One line on stderr and one flag in the report, so the choice is
-    // visible and overridable rather than silently inherited from the codec.
-    const widthDefaulted = options.width === null && crop.w > DEFAULT_LOOP_WIDTH;
-    if (widthDefaulted) {
-      console.error(`no --width given: frames capped at ${DEFAULT_LOOP_WIDTH} px (source ${crop.w} px); pass --width to choose`);
-    }
-    const targetWidth = widthDefaulted ? DEFAULT_LOOP_WIDTH : options.width;
-
-    const outWidth = targetWidth === null ? crop.w : Math.max(2, 2 * Math.round(targetWidth / 2));
-    const outHeight = targetWidth === null
-      ? crop.h
-      : scaledHeight({ width: crop.w, height: crop.h }, outWidth);
-
-    // premultiply → scale → unpremultiply. Scaling straight alpha mixes every
-    // edge pixel with whatever RGB sits under the transparent pixel beside it
-    // — the plate on a keyed frame, black on a zeroed one, a dark halo either
-    // way. Premultiplied, a transparent pixel contributes nothing, so the edge
-    // keeps the subject's own colour and only its alpha falls off.
-    //
-    // 8-bit, and `area` in both directions. A kernel with NEGATIVE LOBES rings
-    // a premultiplied matte into black at the silhouette, which is the dark
-    // fringe this whole detour exists to avoid; `area` has none (a box filter
-    // going down, plain linear going up). Measured on the reference flame at
-    // ffmpeg 8.0, counting the partially transparent pixels whose luminance is
-    // under 40 — 1160x1432 down to 512: lanczos 123, bicubic 5, area 0;
-    // 484x566 up to 512: lanczos 46, spline 40, bicubic 28, area 0. Also 8-bit
-    // rather than rgba64: a 16-bit alpha of 1..256 comes back as 8-bit 0 while
-    // `unpremultiply` has already divided its colour back up to full
-    // brightness, which left 997 transparent pixels carrying up to 255.
-    const chain = [`crop=${crop.w}:${crop.h}:${crop.x}:${crop.y}`, "premultiply=inplace=1"];
-    if (outWidth !== crop.w || outHeight !== crop.h) {
-      chain.push(`scale=${outWidth}:${outHeight}:flags=area`);
-    }
-    chain.push("unpremultiply=inplace=1");
-
-    resetFramesDir(framesDir);
-    ffmpeg([
-      "-start_number", String(first), "-i", join(srcDir, "%03d.png"),
-      "-frames:v", String(count), "-vf", chain.join(","),
-      "-start_number", "0", "-pix_fmt", "rgba", "--", join(framesDir, "%03d.png"),
-    ], "loop frames");
-    const written = sequenceCount(framesDir, "loop");
-    if (written !== count) {
-      fail(`loop: wrote ${written} of ${count} frames into ${framesDir} — a frame could not be re-encoded`);
-    }
-    const cell = { width: outWidth, height: outHeight };
-    zeroLoopFrames(framesDir, count, cell, options.threshold);
+    const { crop, cell, clipScale, emptyFrames, alphaCoverage, widthDefaulted } = cutClipFrames(
+      srcDir, first, count, size, options, framesDir, { keyed: keying || alphaSource, label: "loop" },
+    );
 
     // --- 7. the deliverables ----------------------------------------------
     const { paths, sizes, warnings: exportWarnings } = writeLoopExports(motionDir, framesDir, {
@@ -3299,6 +3502,8 @@ function stepLoop(clip, options) {
       kind: "loop",
       frameCount: count,
       cell,
+      crop,
+      scale: clipScale,
       // Present only when the cap really fired: `false` on every run that
       // passed `--width` would read as a statement about a default that was
       // never consulted.
@@ -3342,6 +3547,8 @@ function stepLoop(clip, options) {
       ...(despill ? { despill } : {}),
       alphaCoverage,
       cell,
+      crop,
+      scale: clipScale,
       ...(widthDefaulted ? { widthDefaulted: true } : {}),
       ...(paths.webp ? { webp: paths.webp } : {}),
       ...(paths.apng ? { apng: paths.apng } : {}),
@@ -3349,6 +3556,203 @@ function stepLoop(clip, options) {
       ...(paths.lottie ? { lottie: paths.lottie } : {}),
       inspect,
       warnings,
+    };
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
+/**
+ * `transition <clip> --character <dir> --from A --to B`: the take between two
+ * loops, cut the way `loop` cuts a clip — one decode, keyed or with its own
+ * matte, one union crop, one width — so its frames sit in clip coordinates
+ * exactly as the loops' do. What differs is what a transition is: it plays
+ * once, so there is no seam to measure or fill; the holds a first-last model
+ * leaves at both ends are collapsed to one frame each; `--duration` retimes
+ * it to the length it should play by even sampling that keeps the first and
+ * the last frame; and it is judged on whether its ends LAND — `startGap`
+ * against A's frame 0 and `endGap` against B's, against its own median step.
+ */
+function stepTransition(clip, options) {
+  const label = "transition";
+  const character = readCharacterProject(options.character, label);
+  const ends = transitionEnds(character, options.from, options.to, label);
+  if (options.key === "none") fail(`${label}: --key none leaves no alpha, and a transition is placed and measured by its alpha — use --key alpha (a matted take) or --key auto`);
+  const input = resolve(clip);
+  if (!existsSync(input)) fail(`file not found: ${input}`);
+  const name = options.name ?? `${ends.from.id}-to-${ends.to.id}`;
+  const motionDir = resolve(options.out ?? join(character.dir, "motions", name));
+  mkdirSync(motionDir, { recursive: true });
+  const prep = prepareClip(input, { ...options, fps: null }, label);
+  const { start, windowEnd, size } = prep;
+  const framesDir = join(motionDir, "frames");
+  const work = join(motionDir, ".transition-work");
+  rmSync(work, { recursive: true, force: true });
+  mkdirSync(work, { recursive: true });
+
+  try {
+    const { keyColor, despill, srcDir, decoded, fps } = decodeClipFrames(input, prep, { ...options, fps: null }, work, label);
+    const warnings = [];
+
+    // --- holds at both ends, collapsed to one frame each ------------------
+    const masks = decodeLoopMasks(srcDir, decoded, size, true, label);
+    const steps = [];
+    for (let i = 0; i + 1 < masks.length; i++) steps.push(maskDiff(masks[i], masks[i + 1]));
+    const { first, last } = options.trimHolds ? transitionHolds(steps) : { first: 0, last: decoded - 1 };
+    const moving = last - first + 1;
+    if (moving < 2) {
+      fail(`${label}: --trim-holds left ${moving} of ${decoded} frames — the take holds one pose throughout. Pass --no-trim-holds to keep every frame, or shoot a take that moves.`);
+    }
+
+    // --- retime to the length it should play -------------------------------
+    let picked = Array.from({ length: moving }, (_, i) => first + i);
+    let retime = null;
+    if (options.duration !== null) {
+      const target = Math.max(2, Math.round(options.duration * fps));
+      if (target < moving) {
+        picked = Array.from({ length: target }, (_, i) => first + Math.round((i * (moving - 1)) / (target - 1)));
+        retime = { from: moving, to: target };
+      } else if (target > moving) {
+        warnings.push(`--duration ${options.duration}: the take moves for only ${moving} frames (${round(moving / fps, 3)}s) — every frame is kept; a transition is never stretched`);
+      }
+    }
+    const pickedDir = join(work, "picked");
+    mkdirSync(pickedDir, { recursive: true });
+    picked.forEach((index, i) => copyFileSync(join(srcDir, loopFrameName(index)), join(pickedDir, loopFrameName(i))));
+    const count = picked.length;
+
+    // --- crop and scale, as `loop` does ------------------------------------
+    const { crop, cell, clipScale, emptyFrames, alphaCoverage, widthDefaulted } = cutClipFrames(
+      pickedDir, 0, count, size, options, framesDir, { keyed: true, label },
+    );
+    warnings.push(...listAndTruncate(emptyFrames, (i) => `frame ${loopFrameName(i).slice(0, 3)} is empty`));
+
+    // --- does it land? -----------------------------------------------------
+    const placement = { origin: { x: crop.x, y: crop.y }, scale: clipScale };
+    const joins = transitionJoins(character, ends, framesDir, count, cell, placement, work, label);
+    warnings.push(...joins.warnings);
+
+    const inspect = {
+      kind: "transition",
+      from: ends.from.id,
+      to: ends.to.id,
+      frameCount: count,
+      cell,
+      crop,
+      scale: clipScale,
+      ...(widthDefaulted ? { widthDefaulted: true } : {}),
+      fps,
+      duration: round(count / fps, 3),
+      step: joins.step,
+      ...(joins.startGap === null ? {} : { startGap: joins.startGap }),
+      ...(joins.endGap === null ? {} : { endGap: joins.endGap }),
+      alphaCoverage,
+      ...(keyColor ? { keyColor } : {}),
+      emptyFrames,
+      dropped: { leading: first, trailing: decoded - 1 - last },
+      ...(retime ? { retime } : {}),
+      warnings,
+    };
+    writeJsonFile(join(motionDir, "inspect.json"), inspect);
+    return {
+      kind: "transition",
+      source: "video",
+      video: input,
+      from: ends.from.id,
+      to: ends.to.id,
+      motionDir,
+      name,
+      frames: Array.from({ length: count }, (_, i) => join(framesDir, loopFrameName(i))),
+      sampledAt: picked.map((index) => round(start + index / fps, 3)),
+      fps,
+      duration: round(count / fps, 3),
+      trim: { start: round(start, 3), end: round(windowEnd, 3) },
+      dropped: inspect.dropped,
+      ...(retime ? { retime } : {}),
+      ...(keyColor ? { keyColor } : {}),
+      ...(despill ? { despill } : {}),
+      alphaCoverage,
+      cell,
+      crop,
+      scale: clipScale,
+      ...(widthDefaulted ? { widthDefaulted: true } : {}),
+      inspect,
+      warnings,
+    };
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
+/**
+ * `transition --reverse-of <id> --character <dir>`: the way back, free — the
+ * registered frames of A → B, copied in reverse order as B → A. The copy is
+ * what the viewer and a per-motion export play; the `.riv` reuses the
+ * source's images when both are in the file. Its crop, scale and rate are
+ * the source's, and its ends are measured again against B and A, because
+ * "reversed, so it lands" is exactly the kind of claim that is checked here.
+ */
+function stepReverseTransition(options) {
+  const label = "transition";
+  const character = readCharacterProject(options.character, label);
+  const source = character.doc.sprite.motions.find((m) => m && m.id === options.reverseOf);
+  if (!source) fail(`${label}: --reverse-of: no motion '${options.reverseOf}' in ${character.dir}/project.json`);
+  if (source.kind !== "transition") fail(`${label}: --reverse-of: '${source.id}' is not a transition`);
+  if (!Array.isArray(source.frames) || !source.frames.length) {
+    fail(`${label}: --reverse-of: ${source.id} has no registered frames — cut it and register it first`);
+  }
+  const clip = recordedLoopClip(source);
+  if (!clip?.origin) fail(`${label}: --reverse-of: ${source.id} has no recorded crop and scale — cut it again with 'transition'`);
+  const ends = transitionEnds(character, source.to, source.from, label);
+  const frames = registeredFrames(character, source, label);
+  const name = options.name ?? `${ends.from.id}-to-${ends.to.id}`;
+  const motionDir = resolve(options.out ?? join(character.dir, "motions", name));
+  const framesDir = join(motionDir, "frames");
+  resetFramesDir(framesDir);
+  const count = frames.paths.length;
+  frames.paths.forEach((path, i) => copyFileSync(path, join(framesDir, loopFrameName(count - 1 - i))));
+  const cell = probeSize(frames.paths[0], label);
+  const fps = Number(source.fps) > 0 ? Number(source.fps) : fail(`${label}: --reverse-of: ${source.id} has no usable fps`);
+  const work = mkdtempSync(join(tmpdir(), "sprite-reverse-"));
+  try {
+    const placement = { origin: clip.origin, scale: clip.scale };
+    const joins = transitionJoins(character, ends, framesDir, count, cell, placement, work, label);
+    const crop = source.inspect?.crop;
+    const inspect = {
+      kind: "transition",
+      from: ends.from.id,
+      to: ends.to.id,
+      reverseOf: source.id,
+      frameCount: count,
+      cell,
+      crop,
+      scale: clip.scale,
+      fps,
+      duration: round(count / fps, 3),
+      step: joins.step,
+      ...(joins.startGap === null ? {} : { startGap: joins.startGap }),
+      ...(joins.endGap === null ? {} : { endGap: joins.endGap }),
+      ...(Number.isFinite(source.inspect?.alphaCoverage) ? { alphaCoverage: source.inspect.alphaCoverage } : {}),
+      emptyFrames: [],
+      warnings: joins.warnings,
+    };
+    writeJsonFile(join(motionDir, "inspect.json"), inspect);
+    return {
+      kind: "transition",
+      source: "reverse",
+      reverseOf: source.id,
+      from: ends.from.id,
+      to: ends.to.id,
+      motionDir,
+      name,
+      frames: Array.from({ length: count }, (_, i) => join(framesDir, loopFrameName(i))),
+      fps,
+      duration: inspect.duration,
+      cell,
+      crop,
+      scale: clip.scale,
+      inspect,
+      warnings: joins.warnings,
     };
   } finally {
     rmSync(work, { recursive: true, force: true });
@@ -3363,6 +3767,1506 @@ function cropBuffer(image, x, y, w, h) {
     image.data.copy(out, row * w * 4, src, src + w * 4);
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Exports — a finished motion in the shape somebody else's tool reads
+// ---------------------------------------------------------------------------
+
+/** The file a motion export lands in, inside `motions/<id>/exports/`. */
+function exportFileName(motionId, format) {
+  if (format === "png-seq") return `${motionId}-frames.zip`;
+  return `${motionId}.${format === "lottie" ? "json" : format}`;
+}
+
+/**
+ * Render into a scratch file beside the destination, let `render` check it,
+ * and rename only if it returns. `ffmpegTo` renames whatever ffmpeg wrote;
+ * an export is probed first, so a file that is not what it claims to be never
+ * takes the real name — not even for a moment.
+ */
+function renderVerified(outPath, render) {
+  const out = resolve(outPath);
+  mkdirSync(dirname(out), { recursive: true });
+  const scratch = join(dirname(out), `.${basename(out, extname(out))}.tmp${extname(out)}`);
+  try {
+    const result = render(scratch);
+    renameSync(scratch, out);
+    return result;
+  } finally {
+    if (existsSync(scratch)) rmSync(scratch, { force: true });
+  }
+}
+
+/** Write bytes through a scratch file beside the destination, then rename —
+ *  the same guarantee `ffmpegTo` and `writeJsonFile` give. */
+function writeBytesAtomic(outPath, bytes) {
+  const out = resolve(outPath);
+  mkdirSync(dirname(out), { recursive: true });
+  const scratch = join(dirname(out), `.${basename(out)}.tmp`);
+  try {
+    writeFileSync(scratch, bytes);
+    renameSync(scratch, out);
+  } finally {
+    if (existsSync(scratch)) rmSync(scratch, { force: true });
+  }
+  return out;
+}
+
+/**
+ * A character's project.json, READ-ONLY.
+ *
+ * `sprite-project.mjs` stays the only writer; the exports read it because
+ * "only a finished motion can be exported" and "which frames are this
+ * motion's" are both facts that live there and nowhere else.
+ */
+function readCharacterProject(characterDir, label) {
+  const dir = resolve(characterDir);
+  const path = join(dir, "project.json");
+  if (!existsSync(path)) {
+    fail(`${label}: no project.json in ${dir} — exports are made from a character that sprite-project.mjs has registered`);
+  }
+  let doc;
+  try {
+    doc = JSON.parse(readFileSync(path, "utf-8"));
+  } catch (error) {
+    fail(`${label}: ${path} is not valid JSON (${error.message})`);
+  }
+  if (!doc || !doc.sprite || !Array.isArray(doc.sprite.motions)) {
+    fail(`${label}: ${path} has no sprite sidecar — is ${dir} a sprite character?`);
+  }
+  const assets = new Map();
+  for (const asset of Array.isArray(doc.assets) ? doc.assets : []) {
+    if (asset && typeof asset.id === "string") assets.set(asset.id, asset);
+  }
+  return {
+    dir,
+    doc,
+    assets,
+    /** The content-set name — what the .riv and its asset id are named after. */
+    id: basename(dir),
+    name: String(doc.sprite.character?.name || basename(dir)),
+  };
+}
+
+/** The file behind an asset id, or null when the project carries no such asset. */
+function assetFile(character, assetId) {
+  const uri = assetId ? character.assets.get(assetId)?.uri : null;
+  return typeof uri === "string" && uri ? join(character.dir, uri) : null;
+}
+
+/**
+ * The motion's REGISTERED frames, checked against the directory they sit in.
+ *
+ * An export is provenance: `register-export` hangs it off these frame assets.
+ * A frames directory a later run rewrote but nobody registered would export
+ * pictures that project.json does not describe, so the two must agree — same
+ * files, same order — or the export is refused with the command that fixes it.
+ */
+function registeredFrames(character, motion, label) {
+  const ids = Array.isArray(motion.frames) ? motion.frames : [];
+  if (!ids.length) fail(`${label}: motion '${motion.id}' has no registered frames`);
+  const paths = ids.map((id) => {
+    const path = assetFile(character, id);
+    if (!path) fail(`${label}: motion '${motion.id}' names frame asset '${id}', which project.json does not carry — re-run register-run`);
+    return resolve(path);
+  });
+  const dir = dirname(paths[0]);
+  const onDisk = listFrames(dir);
+  const same = onDisk.length === paths.length && onDisk.every((entry, i) => resolve(entry.path) === paths[i]);
+  if (!same) {
+    fail(`${label}: ${dir} holds ${onDisk.length} frames but project.json registers ${paths.length} for '${motion.id}' — register the run that wrote them (sprite-project.mjs register-run) before exporting`);
+  }
+  return { dir, paths, digits: basename(paths[0], ".png").length };
+}
+
+/**
+ * A sprite motion's timing and pivot, off its atlas — the file a game engine
+ * reads, and so the authority on fps, loop and where each frame is pinned.
+ */
+function readAtlasFacts(character, motion, frameCount, label) {
+  const path = assetFile(character, motion.atlas);
+  if (!path || !existsSync(path)) {
+    fail(`${label}: motion '${motion.id}' has no atlas.json on disk — re-run its pipeline and register-run`);
+  }
+  let atlas;
+  try {
+    atlas = JSON.parse(readFileSync(path, "utf-8"));
+  } catch (error) {
+    fail(`${label}: ${path} is not valid JSON (${error.message})`);
+  }
+  const frames = atlas?.frames && typeof atlas.frames === "object" ? atlas.frames : {};
+  const keys = Array.isArray(atlas?.animations?.[motion.id]) ? atlas.animations[motion.id] : Object.keys(frames);
+  if (keys.length !== frameCount) {
+    fail(`${label}: ${path} lists ${keys.length} frames but '${motion.id}' registers ${frameCount} — re-pack and register-run before exporting`);
+  }
+  const fps = Number(atlas?.meta?.fps);
+  if (!(fps > 0)) fail(`${label}: ${path} has no usable meta.fps`);
+  const finite = (v) => typeof v === "number" && Number.isFinite(v);
+  const perFrame = keys.map((key) => {
+    const frame = frames[key];
+    if (!frame || !finite(frame.pivot?.x) || !finite(frame.pivot?.y)) {
+      fail(`${label}: ${path} has no pivot for frame '${key}'`);
+    }
+    return {
+      pivot: { x: frame.pivot.x, y: frame.pivot.y },
+      duration: finite(frame.duration) && frame.duration > 0 ? frame.duration : Math.round(1000 / fps),
+    };
+  });
+  const point = atlas?.meta?.anchorPoint;
+  return {
+    fps,
+    loop: atlas?.meta?.loop === true,
+    perFrame,
+    anchorPoint: point && finite(point.x) && finite(point.y) ? { x: point.x, y: point.y } : null,
+  };
+}
+
+/**
+ * Where a motion already ships in `format`, or null when it does not.
+ *
+ * The Export tab lists these as ready and `export` never makes them again:
+ * two files for one deliverable is two things to keep in step. The answer is
+ * the registered file, so the refusal can say where it is.
+ */
+function shippedAs(character, motion, format) {
+  const loop = motion.kind === "loop";
+  const slot = (id, fallback) => {
+    const path = assetFile(character, id);
+    return path ? relative(character.dir, path).split("\\").join("/") : fallback;
+  };
+  if (format === "gif" && !loop && motion.gif) return slot(motion.gif, "preview.gif");
+  if (format === "webp" && motion.webp) return slot(motion.webp, loop ? "loop.webp" : "preview.webp");
+  if ((format === "sheet" || format === "atlas") && !loop && motion.sheet) {
+    return `${slot(motion.sheet, "sheet.png")} + ${slot(motion.atlas, "atlas.json")}`;
+  }
+  if (loop && ["apng", "webm", "lottie"].includes(format) && motion.exports?.[format] === `${motion.id}-${format}`) {
+    return slot(motion.exports[format], format === "lottie" ? "loop.json" : `loop.${format}`);
+  }
+  return null;
+}
+
+/** Why a format is not offered for a motion at all, or null when it is. */
+function notOffered(motion, format) {
+  if (motion.kind === "transition") {
+    if (format === "gif") {
+      return "a transition is not exported as GIF: GIF has 1-bit alpha, and a transition is cut from a matted clip — use APNG, WebM or MOV";
+    }
+    if (format === "sheet" || format === "atlas") {
+      return "a transition has no sprite sheet or atlas — its frames are a sequence (export --format png-seq)";
+    }
+    return null;
+  }
+  if (motion.kind !== "loop") return null;
+  if (format === "gif") {
+    return "a loop is not exported as GIF: GIF has 1-bit alpha and a loop has hundreds of frames — use its WebP or APNG";
+  }
+  if (format === "sheet" || format === "atlas") {
+    return "a loop has no sprite sheet or atlas — its frames are a sequence (export --format png-seq)";
+  }
+  return null;
+}
+
+/** ffprobe's reading of an encoded video: the independent check on the file. */
+function probeEncoded(path) {
+  const r = spawnSync("ffprobe", [
+    "-v", "error", "-count_frames", "-select_streams", "v:0",
+    "-show_entries", "stream=codec_name,pix_fmt,width,height,nb_read_frames:stream_tags=alpha_mode:format=duration",
+    "-of", "json", path,
+  ], { encoding: "utf-8" });
+  if (r.error || r.status !== 0) return null;
+  try {
+    const doc = JSON.parse(r.stdout);
+    const stream = doc.streams?.[0] ?? {};
+    return {
+      codec: stream.codec_name ?? null,
+      pixFmt: stream.pix_fmt ?? null,
+      width: Number(stream.width),
+      height: Number(stream.height),
+      frames: Number(stream.nb_read_frames),
+      alphaMode: stream.tags?.alpha_mode ?? null,
+      duration: Number(doc.format?.duration),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Scale every frame by an integer, nearest-neighbour, into `work`. Pixel art
+ *  and hard alpha edges survive a nearest scale; they do not survive bilinear. */
+function stageScaledFrames(frames, scale, work) {
+  const pattern = `%0${frames.digits}d.png`;
+  ffmpeg([
+    "-start_number", "0", "-i", join(frames.dir, pattern), "-frames:v", String(frames.paths.length),
+    "-vf", `scale=iw*${scale}:ih*${scale}:flags=neighbor`, "-pix_fmt", "rgba",
+    "-start_number", "0", "--", join(work, pattern),
+  ], "export scale");
+  return { dir: work, paths: frames.paths.map((path) => join(work, basename(path))), digits: frames.digits };
+}
+
+/**
+ * `export <motionDir> --format …`: one finished motion, one file.
+ *
+ * Frames come from project.json (the registered sequence), timing from the
+ * atlas for a sprite motion and from the motion itself for a loop. Every
+ * refusal happens before anything is written; the file is encoded to a
+ * scratch path, checked with ffprobe where it is a video, and only then
+ * renamed into `exports/`.
+ */
+function stepExport(motionDir, options) {
+  const label = "export";
+  const dir = resolve(motionDir);
+  const motionId = basename(dir);
+  const character = readCharacterProject(dirname(dirname(dir)), label);
+  const motion = character.doc.sprite.motions.find((m) => m && m.id === motionId);
+  if (!motion) {
+    const known = character.doc.sprite.motions.map((m) => m?.id).filter(Boolean).join(", ") || "none";
+    fail(`${label}: no motion '${motionId}' in ${character.dir}/project.json (known: ${known})`);
+  }
+
+  const { format } = options;
+  const already = shippedAs(character, motion, format);
+  if (already) {
+    fail(`${label}: '${motion.id}' already ships as ${format}: ${already} — nothing to export; hand over that file`);
+  }
+  const refused = notOffered(motion, format);
+  if (refused) fail(`${label}: ${refused}`);
+  if (!EXPORT_FORMATS.includes(format)) {
+    fail(`${label}: --format expected one of ${EXPORT_FORMATS.join(", ")}, got '${format}'`);
+  }
+  if (motion.status !== "ready") {
+    fail(`${label}: motion '${motion.id}' is not ready (status: ${motion.status ?? "none"}) — only a finished motion can be exported`);
+  }
+
+  // A loop and a transition are cut from clips: their frames play at the
+  // motion's own rate, with no atlas. A transition plays once.
+  const motionKind = motion.kind === "loop" || motion.kind === "transition" ? motion.kind : "sprite";
+  const frames = registeredFrames(character, motion, label);
+  const count = frames.paths.length;
+  const facts = motionKind !== "sprite"
+    ? {
+      fps: Number(motion.fps) > 0 ? Number(motion.fps) : fail(`${label}: ${motionKind} '${motion.id}' has no usable fps`),
+      loop: motionKind === "loop" && motion.loop !== false,
+      perFrame: null,
+      anchorPoint: null,
+    }
+    : readAtlasFacts(character, motion, count, label);
+  const { fps } = facts;
+  const video = VIDEO_EXPORTS.has(format);
+  const warnings = [];
+  const notes = [];
+
+  // What the flags mean for THIS format. A flag that does nothing here is
+  // said out loud rather than silently dropped: the caller asked for it.
+  let repeat = null;
+  let repeatDefaulted = false;
+  if (video) {
+    if (options.repeat !== null) repeat = options.repeat;
+    else {
+      repeatDefaulted = true;
+      repeat = facts.loop ? Math.max(1, Math.ceil(EXPORT_MIN_SECONDS / (count / fps) - 1e-9)) : 1;
+    }
+  } else if (options.repeat !== null) {
+    warnings.push(`--repeat ${options.repeat} ignored: ${format} plays the frames once and loops by its own flag — only mp4, mov and webm repeat`);
+  }
+  let background = null;
+  if (format === "mp4") {
+    background = options.bg ?? DEFAULT_EXPORT_BG;
+    notes.push(`MP4 has no alpha: the frames are flattened onto ${background}`);
+  } else if (options.bg !== null) {
+    warnings.push(`--bg ${options.bg} ignored: ${format} keeps its transparency, so there is nothing to flatten onto a colour — only mp4 takes a background`);
+  }
+  const encoder = { mp4: "libx264", mov: "prores_ks", webm: "libvpx-vp9", apng: "apng" }[format];
+  if (encoder && !hasEncoder(encoder)) {
+    fail(`${label}: this ffmpeg build has no ${encoder} encoder, which ${format} needs`);
+  }
+
+  const first = probeSize(frames.paths[0], label);
+  const scale = options.scale;
+  const width = first.width * scale;
+  const height = first.height * scale;
+  const out = join(dir, EXPORTS_DIRNAME, exportFileName(motion.id, format));
+  const work = scale !== 1 ? mkdtempSync(join(tmpdir(), "sprite-export-")) : null;
+  const report = {
+    kind: "export",
+    character: character.dir,
+    motion: motion.id,
+    motionKind,
+    format,
+    out,
+    frames: frames.paths,
+    frameCount: count,
+    fps,
+    loop: facts.loop,
+    scale,
+    width,
+    height,
+    repeat,
+    ...(video ? { repeatDefaulted } : {}),
+    background,
+  };
+
+  try {
+    const source = work ? stageScaledFrames(frames, scale, work) : frames;
+    const input = ["-framerate", String(fps), "-start_number", "0", "-i", join(source.dir, `%0${source.digits}d.png`)];
+
+    if (video) {
+      // H.264 4:2:0 needs even sides (and VP9's 4:2:0 alpha does too); one
+      // transparent column / row on the right / bottom moves no pivot.
+      const padded = { width: width % 2, height: height % 2 };
+      const W = width + padded.width;
+      const H = height + padded.height;
+      const chain = [];
+      if (repeat > 1) chain.push(`loop=loop=${repeat - 1}:size=${count}:start=0`);
+      if (padded.width || padded.height) chain.push(`pad=${W}:${H}:0:0:color=black@0`);
+      let args;
+      if (format === "mp4") {
+        const graph = [
+          `[0:v]${[...chain, "format=rgba"].join(",")}[fg]`,
+          `color=c=0x${background.slice(1)}:s=${W}x${H}:r=${fps},format=rgba[bg]`,
+          "[bg][fg]overlay=shortest=1:format=auto,format=yuv420p[v]",
+        ].join(";");
+        args = [...input, "-filter_complex", graph, "-map", "[v]",
+          "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p", "-movflags", "+faststart"];
+      } else if (format === "mov") {
+        args = [...input, ...(chain.length ? ["-vf", chain.join(",")] : []),
+          "-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le", "-vendor", "apl0"];
+      } else {
+        // `-auto-alt-ref 0` is required: libvpx-vp9 will not carry an alpha
+        // plane with alt-ref frames on (the same flags `loop.webm` uses).
+        args = [...input, ...(chain.length ? ["-vf", chain.join(",")] : []),
+          "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-auto-alt-ref", "0", "-b:v", "0", "-crf", "30", "-row-mt", "1"];
+      }
+      const expectedFrames = count * repeat;
+      const expectedDuration = expectedFrames / fps;
+      const probe = renderVerified(out, (scratch) => {
+        ffmpeg([...args, "--", scratch], `export ${format}`);
+        const probe = probeEncoded(scratch);
+        const problems = [];
+        if (!probe) problems.push("ffprobe cannot read it");
+        else {
+          if (probe.codec !== EXPORT_CODECS[format]) problems.push(`codec ${probe.codec}, expected ${EXPORT_CODECS[format]}`);
+          if (format === "mp4" && probe.pixFmt !== "yuv420p") problems.push(`pixel format ${probe.pixFmt}, expected yuv420p`);
+          if (format === "mov" && !/^yuva/.test(String(probe.pixFmt))) problems.push(`pixel format ${probe.pixFmt} has no alpha`);
+          if (format === "webm" && probe.alphaMode !== "1") problems.push("no alpha_mode=1 — the alpha plane was dropped");
+          if (probe.frames !== expectedFrames) problems.push(`${probe.frames} frames, expected ${expectedFrames} (${count} × ${repeat})`);
+          if (!(Math.abs(probe.duration - expectedDuration) <= 1.5 / fps + 0.05)) {
+            problems.push(`duration ${probe.duration}s, expected ${round(expectedDuration, 3)}s`);
+          }
+        }
+        if (problems.length) fail(`${label}: the ${format} did not come out as encoded — ${problems.join("; ")}`);
+        return probe;
+      });
+      Object.assign(report, {
+        width: W,
+        height: H,
+        padded,
+        duration: round(probe.duration, 3),
+        probe: {
+          codec: probe.codec,
+          pixFmt: probe.pixFmt,
+          alpha: format === "mov" ? true : format === "webm",
+          frames: probe.frames,
+          duration: round(probe.duration, 3),
+        },
+      });
+      if (repeat > 1) notes.push(`${count} frames played ${repeat} times: ${round(expectedDuration, 2)} s`);
+    } else if (format === "apng") {
+      const encoded = renderVerified(out, (scratch) => {
+        ffmpeg([...input, "-f", "apng", "-plays", facts.loop ? "0" : "1", "-pred", "mixed", "-pix_fmt", "rgba",
+          "--", scratch], "export apng");
+        const found = countEncodedFrames(scratch);
+        if (found !== count) fail(`${label}: the APNG holds ${found ?? "no"} frames, expected ${count} — a frame did not encode`);
+        return found;
+      });
+      Object.assign(report, { duration: round(count / fps, 3), probe: { codec: "apng", frames: encoded, alpha: true } });
+    } else if (format === "lottie") {
+      writeJsonFile(out, lottieSequence(source.paths, { fps, name: motion.id, cell: { width, height } }));
+      Object.assign(report, { duration: round(count / fps, 3) });
+    } else {
+      const animation = {
+        app: "pneuma-sprite",
+        version: 1,
+        name: motion.id,
+        kind: motionKind,
+        fps,
+        loop: facts.loop,
+        size: { w: width, h: height },
+        scale,
+        // A loop is not stood on a floor — it has no pivot, and null says so
+        // rather than inventing the cell centre.
+        pivot: facts.perFrame ? facts.perFrame[0].pivot : null,
+        anchorPoint: facts.anchorPoint
+          ? { x: round(facts.anchorPoint.x * scale, 4), y: round(facts.anchorPoint.y * scale, 4) }
+          : null,
+        frames: source.paths.map((path, i) => ({
+          file: basename(path),
+          duration: facts.perFrame ? facts.perFrame[i].duration : Math.round(1000 / fps),
+        })),
+      };
+      const entries = [
+        { name: `${motion.id}/animation.json`, data: Buffer.from(`${JSON.stringify(animation, null, 2)}\n`) },
+        ...source.paths.map((path) => ({ name: `${motion.id}/${basename(path)}`, data: readFileSync(path) })),
+      ];
+      writeBytesAtomic(out, zipStore(entries));
+      Object.assign(report, { duration: round(count / fps, 3), entries: entries.length });
+    }
+  } finally {
+    if (work) rmSync(work, { recursive: true, force: true });
+  }
+
+  report.size = statSync(out).size;
+  report.notes = notes;
+  report.warnings = warnings;
+  return report;
+}
+
+/** Encode one frame as a still WebP for `rive --images webp|webp-lossless`.
+ *  `libwebp` (the still encoder) is right here: this is one picture, not an
+ *  animation. Lossless has to be `bgra`: with `-lossless 1` on `yuva420p`
+ *  ffmpeg still subsamples the colour first, and the pixels are not exact. */
+function stillWebp(path, work, index, lossless) {
+  const out = join(work, `${String(index).padStart(4, "0")}.webp`);
+  ffmpeg(["-i", path, "-frames:v", "1", "-c:v", "libwebp",
+    ...(lossless ? ["-lossless", "1", "-pix_fmt", "bgra"] : ["-lossless", "0", "-q:v", "85", "-pix_fmt", "yuva420p"]),
+    "--", out], "rive webp");
+  return readFileSync(out);
+}
+
+/** The downscale for a character's style: pixel art (`RIVE_PIXEL_ART_STYLE`,
+ *  read from `character.style`) keeps hard pixels only through
+ *  nearest-neighbour; everything else — painted, plush, 3D — goes through the
+ *  filter the loop pipeline measured for alpha edges. */
+const RIVE_FILTERS = ["auto", "smooth", "nearest"];
+
+/**
+ * premultiply → area → unpremultiply, the chain `loop` scales with, and for
+ * the reason measured there: scaling straight alpha drags whatever RGB sits
+ * under a transparent pixel into the silhouette's edge (a dark fringe), and a
+ * kernel with negative lobes rings a premultiplied matte into black. `area`
+ * has none; going down it is a box filter, the average a painted edge wants.
+ */
+function riveScaleChain(width, height, filter) {
+  return filter === "nearest"
+    ? [`scale=${width}:${height}:flags=neighbor`]
+    : ["premultiply=inplace=1", `scale=${width}:${height}:flags=area`, "unpremultiply=inplace=1"];
+}
+
+/**
+ * Where a loop stands. A loop has no atlas pivot — its frames are the clip's,
+ * unaligned, because the movement is the content — so it is pinned where its
+ * FIRST frame stands: the mean x of the feet (the same `feetCenterX` that
+ * `align` and `inspect` use) and the bottom of the figure. Frame 0 is the pose
+ * the loop starts and ends on, so every loop of a character switches in from
+ * the same footing. The frame's bottom-centre would move a body that is not
+ * centred in its crop: tanka's wave stands 36 px left of its frame centre.
+ */
+function loopAnchor(path) {
+  const image = readRgba(path);
+  const { bbox, feetX } = measureFrame(image, DEFAULT_THRESHOLD);
+  return bbox
+    ? { x: feetX, y: bbox.y + bbox.h, from: "feet" }
+    : { x: image.width / 2, y: image.height, from: "frame" };
+}
+
+/**
+ * How a loop's frames sit in the clip they were cut from: frame px =
+ * (clip px − origin) × scale.
+ *
+ * `loop` cuts every clip to its OWN union box and scales that box to one
+ * width, so one character comes out at a different scale in each loop —
+ * tanka's ten at 1.03-1.42× their clips, a 38% spread — and at a different
+ * offset. The clips agree with each other (same camera, same figure), so
+ * dividing each loop back to its clip's scale is what keeps the character
+ * one size across loops, and the origin is what puts each where it stood.
+ *
+ * Recorded by `loop` since it learned to (`inspect.crop` / `inspect.scale`,
+ * copied into the sidecar by `register-run`). For a loop cut before that,
+ * `measureLoopClip` recovers both off the clip. Null when neither is known.
+ */
+function recordedLoopClip(motion) {
+  const inspect = motion.inspect && typeof motion.inspect === "object" ? motion.inspect : {};
+  const scale = Number(inspect.scale);
+  if (!(Number.isFinite(scale) && scale > 0)) return null;
+  const crop = inspect.crop && typeof inspect.crop === "object" ? inspect.crop : null;
+  const origin = crop && Number.isFinite(crop.x) && Number.isFinite(crop.y) ? { x: crop.x, y: crop.y } : null;
+  return { scale, origin, from: "recorded" };
+}
+
+/** What an earlier export MEASURED for a loop cut before `loop` recorded its
+ *  crop — `motion.clip`, written by `register-export` — or null. Reused
+ *  rather than measured again, so the file and the Export tab's quote come
+ *  from the same numbers. */
+function storedLoopClip(motion) {
+  const clip = motion.clip && typeof motion.clip === "object" ? motion.clip : null;
+  const scale = Number(clip?.scale);
+  if (!clip || clip.from !== "measured" || !(Number.isFinite(scale) && scale > 0)) return null;
+  const origin = clip.origin && Number.isFinite(clip.origin.x) && Number.isFinite(clip.origin.y)
+    ? { x: clip.origin.x, y: clip.origin.y }
+    : null;
+  return { scale, origin, from: "measured" };
+}
+
+/** Frames of the loop compared against the clip — about five, spread across it. */
+const CLIP_SAMPLES = 5;
+/** Per-frame scales farther apart than this, as a share of their median, are
+ *  not one crop-and-scale of that clip. tanka's ten loops: 0.11-0.64%. */
+const CLIP_SCALE_SPREAD = 0.03;
+/** The same for the origin, in clip px: 3 px, or 1% of the clip's long edge.
+ *  tanka's ten: 0.5-1.3 px on 640 px clips. */
+const clipOriginSpread = (image) => Math.max(3, 0.01 * Math.max(image.width, image.height));
+/** Half coverage: where an edge stays when it is resampled. A low threshold
+ *  counts the blur the loop's own scaling added — measured on a 1.85×
+ *  upscale, 16 read the body 0.4% taller than it was cut, and on tanka's
+ *  wave a stray speck moved one frame's box by 4 px. */
+const CLIP_MEASURE_THRESHOLD = 128;
+/** Seeks land this far before a frame's timestamp, so a time rounded to the
+ *  millisecond still decodes that frame and not the one after it. */
+const CLIP_SEEK_LEAD = 0.004;
+
+/**
+ * A loop's scale and origin against its clip, measured: for about five of its
+ * frames, the same moment of the clip is decoded and the two alpha boxes
+ * compared — heights for the scale (frame h / clip h), then the box corner
+ * for the origin (clip xy − frame xy / scale). Medians, so one frame whose
+ * box a stray speck moved does not decide it.
+ *
+ * Everything comes from project.json: each registered frame's `derive` edge
+ * names the clip asset (a path inside the character) and the second it was
+ * sampled at. `run.json` is not read — its paths are absolute and can point
+ * at the project the character was copied from.
+ *
+ * Nothing is guessed: `{ reason }` when the scale cannot be had, and the
+ * origin comes back null with `originReason` when only it disagrees.
+ */
+function measureLoopClip(character, motion, paths, work) {
+  const edges = new Map();
+  for (const edge of Array.isArray(character.doc.provenance) ? character.doc.provenance : []) {
+    if (edge && typeof edge.toAssetId === "string") edges.set(edge.toAssetId, edge);
+  }
+  const timed = [];
+  (Array.isArray(motion.frames) ? motion.frames : []).forEach((id, index) => {
+    const edge = edges.get(id);
+    const params = edge?.operation?.params;
+    if (params?.step === "from-video" && Number.isFinite(params.t) && typeof edge.fromAssetId === "string") {
+      timed.push({ index, t: params.t, clipId: edge.fromAssetId });
+    }
+  });
+  if (!timed.length) return { reason: "its frames carry no clip timestamps to measure against" };
+  const clipId = timed[0].clipId;
+  const uri = character.assets.get(clipId)?.uri;
+  if (typeof uri !== "string" || !uri) return { reason: `its clip ${clipId} is not in project.json` };
+  const clipPath = resolve(character.dir, uri);
+  const inside = relative(character.dir, clipPath);
+  if (!inside || inside.startsWith("..") || isAbsolute(inside)) return { reason: `its clip ${uri} is outside the character folder` };
+  if (!existsSync(clipPath)) return { reason: `${uri} is not on disk` };
+
+  const decodeArgs = alphaDecodeArgs(clipPath);
+  const count = Math.min(CLIP_SAMPLES, timed.length);
+  const picks = Array.from({ length: count }, (_, n) => timed[Math.floor(((n + 0.5) * timed.length) / count)]);
+  const samples = [];
+  let clipImage = null;
+  for (const [n, pick] of picks.entries()) {
+    const out = join(work, `clip-${motion.id}-${n}.png`);
+    const r = spawnSync("ffmpeg", [
+      "-v", "error", "-y", "-ss", String(Math.max(0, pick.t - CLIP_SEEK_LEAD)), ...decodeArgs, "-i", clipPath,
+      "-frames:v", "1", "-pix_fmt", "rgba", "--", out,
+    ]);
+    if (r.error || r.status !== 0 || !existsSync(out)) return { reason: `${uri} could not be decoded at ${pick.t}s` };
+    clipImage = readRgba(out);
+    if (!hasAlpha(clipImage)) return { reason: `${uri} is opaque, so there is no figure to measure the frames against` };
+    const clipBox = computeBbox(clipImage, CLIP_MEASURE_THRESHOLD).bbox;
+    const frameBox = computeBbox(readRgba(paths[pick.index]), CLIP_MEASURE_THRESHOLD).bbox;
+    if (!clipBox || !frameBox) return { reason: `frame ${pick.index} or ${uri} at ${pick.t}s is empty` };
+    samples.push({ clipBox, frameBox });
+  }
+
+  const scales = samples.map((s) => s.frameBox.h / s.clipBox.h);
+  const scale = median(scales);
+  const low = Math.min(...scales);
+  const high = Math.max(...scales);
+  if (high - low > CLIP_SCALE_SPREAD * scale) {
+    return { reason: `its frames are ${round(low, 3)}-${round(high, 3)}× ${uri} from frame to frame, not one crop and scale of it` };
+  }
+  const xs = samples.map((s) => s.clipBox.x - s.frameBox.x / scale);
+  const ys = samples.map((s) => s.clipBox.y - s.frameBox.y / scale);
+  const tolerance = clipOriginSpread(clipImage);
+  const spread = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  const clip = { scale: round(scale, 4), origin: null, from: "measured" };
+  if (spread > tolerance) {
+    return { clip, originReason: `where its frames sit in ${uri} varies by ${round(spread, 1)} px from frame to frame` };
+  }
+  clip.origin = { x: round(median(xs), 2), y: round(median(ys), 2) };
+  return { clip };
+}
+
+// ---------------------------------------------------------------------------
+// Poses in clip coordinates
+// ---------------------------------------------------------------------------
+
+/**
+ * Every clip of one character agrees with the others — same camera, same
+ * figure — so a pose from any of them can be compared with a pose from any
+ * other once each frame is put back where its clip had it: clip px = origin +
+ * frame px / scale (`loop` and `transition` record both; see
+ * `recordedLoopClip`). A comparison is drawn on a small canvas over the clip
+ * rect the two frames cover, at one analysis scale, premultiplied RGBA.
+ */
+
+/** The longest edge, in px, a pose comparison is drawn at. */
+const POSE_CANVAS = 192;
+
+/** The clip rect a frame of `size` covers when placed by `placement`. */
+function clipExtent(size, placement) {
+  return {
+    x0: placement.origin.x,
+    y0: placement.origin.y,
+    x1: placement.origin.x + size.width / placement.scale,
+    y1: placement.origin.y + size.height / placement.scale,
+  };
+}
+
+function unionExtent(extents) {
+  return {
+    x0: Math.min(...extents.map((e) => e.x0)),
+    y0: Math.min(...extents.map((e) => e.y0)),
+    x1: Math.max(...extents.map((e) => e.x1)),
+    y1: Math.max(...extents.map((e) => e.y1)),
+  };
+}
+
+/** The analysis scale (canvas px per clip px) that draws `extent` at POSE_CANVAS. */
+function poseScale(extent) {
+  return POSE_CANVAS / Math.max(1, extent.x1 - extent.x0, extent.y1 - extent.y0);
+}
+
+/** The size a frame of `size` is decoded at on a canvas of scale `s`. */
+function poseSize(size, placement, s) {
+  return {
+    width: Math.max(1, Math.round((size.width * s) / placement.scale)),
+    height: Math.max(1, Math.round((size.height * s) / placement.scale)),
+  };
+}
+
+/** premultiply → area → raw RGBA: colour weighted by coverage, so an edge
+ *  pixel counts as much as it covers. */
+const POSE_CHAIN = (size) => `format=rgba,premultiply=inplace=1,scale=${size.width}:${size.height}:flags=area,format=rgba`;
+
+/** One image, decoded at `size`. */
+function poseImage(path, size, label) {
+  const r = spawnSync("ffmpeg", [
+    "-v", "error", "-i", path, "-frames:v", "1", "-vf", POSE_CHAIN(size), "-f", "rawvideo", "-pix_fmt", "rgba", "-",
+  ], { maxBuffer: MAX_RAW_BYTES });
+  const bytes = size.width * size.height * 4;
+  if (r.error || r.status !== 0 || !r.stdout || r.stdout.length < bytes) {
+    fail(`${label}: could not decode ${path} for a pose comparison${r.stderr ? `\n${String(r.stderr).trim()}` : ""}`);
+  }
+  return r.stdout.subarray(0, bytes);
+}
+
+/** `count` numbered frames (`%0<digits>d.png` from 0) of a folder, decoded at `size` in one pass. */
+function poseSequence(dir, digits, count, size, label) {
+  const r = spawnSync("ffmpeg", [
+    "-v", "error", "-start_number", "0", "-i", join(dir, `%0${digits}d.png`), "-frames:v", String(count),
+    "-vf", POSE_CHAIN(size), "-f", "rawvideo", "-pix_fmt", "rgba", "-",
+  ], { maxBuffer: MAX_RAW_BYTES });
+  const bytes = size.width * size.height * 4;
+  const got = r.stdout ? Math.floor(r.stdout.length / bytes) : 0;
+  if (r.error || r.status !== 0 || got !== count) {
+    fail(`${label}: could not decode ${count} frames of ${dir} for a pose comparison (got ${got})`);
+  }
+  return Array.from({ length: count }, (_, i) => r.stdout.subarray(i * bytes, (i + 1) * bytes));
+}
+
+/**
+ * A decoded frame put onto a canvas over `extent` at scale `s`, where its
+ * clip placement puts it — bilinear, so a placement between canvas pixels
+ * lands between them instead of snapping.
+ */
+function poseCanvas(extent, s, pixels, size, decoded, placement) {
+  const width = Math.max(1, Math.ceil((extent.x1 - extent.x0) * s));
+  const height = Math.max(1, Math.ceil((extent.y1 - extent.y0) * s));
+  const data = new Float32Array(width * height * 4);
+  const originX = (placement.origin.x - extent.x0) * s;
+  const originY = (placement.origin.y - extent.y0) * s;
+  const stepX = (size.width / placement.scale) * s / decoded.width;
+  const stepY = (size.height / placement.scale) * s / decoded.height;
+  for (let j = 0; j < decoded.height; j++) {
+    const ty = originY + j * stepY;
+    const y0 = Math.floor(ty);
+    const fy = ty - y0;
+    for (let i = 0; i < decoded.width; i++) {
+      const src = (j * decoded.width + i) * 4;
+      const alpha = pixels[src + 3];
+      if (alpha === 0) continue;
+      const tx = originX + i * stepX;
+      const x0 = Math.floor(tx);
+      const fx = tx - x0;
+      for (const [dx, dy, weight] of [[0, 0, (1 - fx) * (1 - fy)], [1, 0, fx * (1 - fy)], [0, 1, (1 - fx) * fy], [1, 1, fx * fy]]) {
+        const x = x0 + dx;
+        const y = y0 + dy;
+        if (weight === 0 || x < 0 || y < 0 || x >= width || y >= height) continue;
+        const dst = (y * width + x) * 4;
+        data[dst] += pixels[src] * weight;
+        data[dst + 1] += pixels[src + 1] * weight;
+        data[dst + 2] += pixels[src + 2] * weight;
+        data[dst + 3] += alpha * weight;
+      }
+    }
+  }
+  return { width, height, data };
+}
+
+/**
+ * How far apart two poses on one canvas are.
+ *
+ * `iou` is the soft alpha overlap (Σ min / Σ max) and `gap` = 1 − iou, the
+ * silhouette distance `loop` measures its `step` and `seam` in. `rgb` is the
+ * mean |Δ| of the premultiplied colour inside the union, 0..1. `chroma` is
+ * the mean |Δ| of chromaticity (each channel over their sum, 0..2) where BOTH
+ * are opaque: it ignores shading and fur texture, which differ between any
+ * two independently generated keyframes, and keeps where the cream arms lie
+ * across the purple body and whether a mug is in hand — the pose inside the
+ * silhouette. Measured on tanka: `rgb` put coffee (mug in hand, 0.139) nearer
+ * idle than walk (0.146); `chroma` puts it at 0.098 against walk's 0.070.
+ */
+function poseDiff(a, b) {
+  let low = 0;
+  let high = 0;
+  let colour = 0;
+  let inside = 0;
+  let chroma = 0;
+  let both = 0;
+  for (let p = 0; p < a.data.length; p += 4) {
+    const alphaA = a.data[p + 3];
+    const alphaB = b.data[p + 3];
+    low += Math.min(alphaA, alphaB);
+    high += Math.max(alphaA, alphaB);
+    if (alphaA >= 128 || alphaB >= 128) {
+      colour += (Math.abs(a.data[p] - b.data[p]) + Math.abs(a.data[p + 1] - b.data[p + 1]) + Math.abs(a.data[p + 2] - b.data[p + 2])) / 3;
+      inside++;
+    }
+    if (alphaA >= 200 && alphaB >= 200) {
+      const sumA = Math.max(1, a.data[p] + a.data[p + 1] + a.data[p + 2]);
+      const sumB = Math.max(1, b.data[p] + b.data[p + 1] + b.data[p + 2]);
+      for (let c = 0; c < 3; c++) chroma += Math.abs(a.data[p + c] / sumA - b.data[p + c] / sumB);
+      both++;
+    }
+  }
+  const iou = high > 0 ? low / high : 1;
+  return {
+    iou: round(iou, 4),
+    gap: round(1 - iou, 4),
+    rgb: inside ? round(colour / inside / 255, 4) : 0,
+    chroma: both ? round(chroma / both, 4) : null,
+  };
+}
+
+/**
+ * A motion's frames placed in clip coordinates: a loop's recorded, stored or
+ * measured scale and origin (`recordedLoopClip` → `storedLoopClip` →
+ * `measureLoopClip`), a transition's recorded crop. `placement` is null, with
+ * the reason, when the motion cannot be placed.
+ */
+function motionPlacement(character, motion, frames, work) {
+  let clip = recordedLoopClip(motion) ?? (motion.kind === "loop" ? storedLoopClip(motion) : null);
+  let reason = null;
+  if (!clip && motion.kind === "loop") {
+    const measured = measureLoopClip(character, motion, frames.paths, work);
+    if (measured.reason) reason = measured.reason;
+    else {
+      clip = measured.clip;
+      if (!clip.origin) reason = measured.originReason;
+    }
+  } else if (!clip) {
+    reason = "it has no recorded crop and scale";
+  } else if (!clip.origin) {
+    reason = "where it stood in its clip was not recorded";
+  }
+  return {
+    clip,
+    placement: clip?.origin ? { origin: clip.origin, scale: clip.scale } : null,
+    reason,
+  };
+}
+
+/** One frame as a pose over `extent`. */
+function framePose(path, placement, extent, s, label) {
+  const size = probeSize(path, label);
+  const decoded = poseSize(size, placement, s);
+  return poseCanvas(extent, s, poseImage(path, decoded, label), size, decoded, placement);
+}
+
+/**
+ * A transition's joins, measured: its median `step`, and how far its first
+ * frame is from `from`'s frame 0 (`startGap`) and its last from `to`'s
+ * (`endGap`), in clip coordinates at one analysis scale. A gap of at most
+ * JOIN_STEPS steps joins; a larger one is a warning naming the end.
+ */
+function transitionJoins(character, ends, framesDir, count, cell, placement, work, label) {
+  const own = clipExtent(cell, placement);
+  const s = poseScale(own);
+  const decoded = poseSize(cell, placement, s);
+  const poses = poseSequence(framesDir, 3, count, decoded, label)
+    .map((pixels) => poseCanvas(own, s, pixels, cell, decoded, placement));
+  const steps = [];
+  for (let i = 0; i + 1 < poses.length; i++) steps.push(poseDiff(poses[i], poses[i + 1]).gap);
+  const step = round(median(steps), 4);
+  const warnings = [];
+  const gaps = {};
+  for (const [end, loop, index] of [["start", ends.from, 0], ["end", ends.to, count - 1]]) {
+    const frames = registeredFrames(character, loop, label);
+    const where = motionPlacement(character, loop, frames, work);
+    const key = `${end}Gap`;
+    if (!where.placement) {
+      gaps[key] = null;
+      warnings.push(`${key} not measured: ${loop.id}'s place in its clip is unknown — ${where.reason}`);
+      continue;
+    }
+    const loopSize = probeSize(frames.paths[0], label);
+    const extent = unionExtent([own, clipExtent(loopSize, where.placement)]);
+    const mine = framePose(join(framesDir, loopFrameName(index)), placement, extent, s, label);
+    const theirs = framePose(frames.paths[0], where.placement, extent, s, label);
+    const gap = poseDiff(mine, theirs).gap;
+    gaps[key] = gap;
+    if (gap > JOIN_STEPS * step) {
+      warnings.push(end === "start"
+        ? `the start does not join ${loop.id}'s frame 0: startGap ${gap} against a step of ${step} (at most ${round(JOIN_STEPS * step, 4)} joins) — the take did not begin on ${loop.id}'s keyframe; shoot it again from that image, or cut later with --trim-start`
+        : `the end does not land on ${loop.id}'s frame 0: endGap ${gap} against a step of ${step} (at most ${round(JOIN_STEPS * step, 4)} joins) — the take did not finish on ${loop.id}'s keyframe; shoot it again with that image as the end frame, or cut earlier with --trim-end`);
+    }
+  }
+  return { step, startGap: gaps.startGap, endGap: gaps.endGap, warnings };
+}
+
+/** The two loops a transition joins, checked: both ready loops of this
+ *  character, and not the same one. */
+function transitionEnds(character, from, to, label) {
+  const find = (id, flag) => {
+    const motion = character.doc.sprite.motions.find((m) => m && m.id === id);
+    if (!motion) fail(`${label}: ${flag}: no motion '${id}' in ${character.dir}/project.json (known: ${character.doc.sprite.motions.map((m) => m.id).join(", ") || "none"})`);
+    if (motion.kind !== "loop") fail(`${label}: ${flag}: '${id}' is not a loop — a transition joins two loops' frame 0s`);
+    if (motion.status !== "ready") fail(`${label}: ${flag}: '${id}' is not ready — a transition lands on a loop's registered frame 0`);
+    return motion;
+  };
+  if (from === to) fail(`${label}: --to: a transition from '${from}' to itself joins nothing`);
+  return { from: find(from, "--from"), to: find(to, "--to") };
+}
+
+/** A transition's holds: leading frames that are the first pose and trailing
+ *  frames that are the last, collapsed to one of each. Measured against the
+ *  upper quartile of the steps, because a first-last take can spend half its
+ *  length holding and the median step is then a hold. */
+function transitionHolds(steps) {
+  const sorted = [...steps].sort((a, b) => a - b);
+  const moving = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.75))] ?? 0;
+  const hold = HOLD_STEP_FRACTION * moving;
+  let first = 0;
+  let last = steps.length;
+  while (first < last && steps[first] < hold) first++;
+  while (last > first && steps[last - 1] < hold) last--;
+  return { first, last };
+}
+
+/**
+ * When a loop's frame 0 is close enough to the hub's to cut between them,
+ * measured on poses in clip coordinates: the silhouettes overlap by at least
+ * LINEUP_DIRECT_IOU and the pose inside them differs by at most
+ * LINEUP_DIRECT_CHROMA (see `poseDiff`). Calibrated on tanka (2026-09-24),
+ * where walk is the only standing pose near idle: walk iou 0.876 / chroma
+ * 0.070; the nearest refused are thinking (iou 0.857, a hand at the chin) and
+ * coffee (chroma 0.098, a mug in hand) — `pipeline.md`, "lineup".
+ */
+const LINEUP_DIRECT_IOU = 0.87;
+const LINEUP_DIRECT_CHROMA = 0.085;
+/** How tall a panel of lineup.png is drawn, in px. */
+const LINEUP_PANEL_HEIGHT = 360;
+const LINEUP_BACKGROUND = [39, 39, 42];
+const LINEUP_BASELINE = [249, 115, 22];
+
+/**
+ * `lineup <characterDir> [--hub id]`: look before spending on transitions.
+ * Every ready loop's frame 0 beside the hub's, each where its clip put it,
+ * as numbers (the pose gap to the hub, and the frame of the loop that comes
+ * closest to it) and as `lineup.png`. Writes nothing to project.json.
+ */
+function stepLineup(characterDir, { hub: hubId, out }) {
+  const label = "lineup";
+  const character = readCharacterProject(characterDir, label);
+  const loops = character.doc.sprite.motions.filter((m) => m && m.kind === "loop" && m.status === "ready" && m.loop !== false);
+  if (!loops.length) fail(`${label}: ${character.name} has no ready loop to line up`);
+  let hub;
+  if (hubId !== null) {
+    hub = loops.find((m) => m.id === hubId);
+    if (!hub) fail(`${label}: --hub: '${hubId}' is not a ready loop (ready loops: ${loops.map((m) => m.id).join(", ")})`);
+  } else {
+    // The hub a .riv of these loops would route through (`riveHub`).
+    hub = loops[riveHub(loops.map((m) => ({ id: m.id, loop: true, kind: "loop" })))];
+  }
+  const ordered = [hub, ...loops.filter((m) => m !== hub)];
+  const warnings = [];
+  const work = mkdtempSync(join(tmpdir(), "sprite-lineup-"));
+  try {
+    const entries = ordered.map((motion) => {
+      const frames = registeredFrames(character, motion, label);
+      const where = motionPlacement(character, motion, frames, work);
+      return { motion, frames, where, size: probeSize(frames.paths[0], label) };
+    });
+    const hubEntry = entries[0];
+    if (!hubEntry.where.placement) {
+      fail(`${label}: the hub '${hub.id}' cannot be placed in clip coordinates — ${hubEntry.where.reason}`);
+    }
+    const placed = entries.filter((entry) => entry.where.placement);
+    for (const entry of entries) {
+      if (!entry.where.placement) warnings.push(`${entry.motion.id}: not compared — ${entry.where.reason}`);
+    }
+    const extent = unionExtent(placed.map((entry) => clipExtent(entry.size, entry.where.placement)));
+    const s = poseScale(extent);
+    const hubPose = framePose(hubEntry.frames.paths[0], hubEntry.where.placement, extent, s, label);
+
+    const motions = entries.map((entry) => {
+      const { motion, where } = entry;
+      const base = {
+        id: motion.id,
+        ...(entry === hubEntry ? { hub: true } : {}),
+        scale: where.clip ? round(where.clip.scale, 4) : null,
+        scaleFrom: where.clip?.from ?? null,
+        origin: where.placement?.origin ?? null,
+      };
+      if (entry === hubEntry) return base;
+      const transitions = character.doc.sprite.motions
+        .filter((m) => m && m.kind === "transition" && m.status === "ready"
+          && ((m.from === hub.id && m.to === motion.id) || (m.from === motion.id && m.to === hub.id)))
+        .map((m) => m.id);
+      if (!where.placement) return { ...base, poseGap: null, closestFrame: null, transitions, suggestion: null };
+      const poseGap = poseDiff(framePose(entry.frames.paths[0], where.placement, extent, s, label), hubPose);
+      // Every frame of the loop against the hub pose: the one a cut could
+      // leave from with the smallest jump. Data only — `rive` leaves a loop
+      // at its cycle end, which is frame 0.
+      const decoded = poseSize(entry.size, where.placement, s);
+      let closestFrame = null;
+      poseSequence(entry.frames.dir, entry.frames.digits, entry.frames.paths.length, decoded, label).forEach((pixels, index) => {
+        const diff = poseDiff(poseCanvas(extent, s, pixels, entry.size, decoded, where.placement), hubPose);
+        if (!closestFrame || diff.gap < closestFrame.gap) closestFrame = { index, ...diff };
+      });
+      const suggestion = poseGap.iou >= LINEUP_DIRECT_IOU && poseGap.chroma !== null && poseGap.chroma <= LINEUP_DIRECT_CHROMA
+        ? "direct"
+        : "transition";
+      return { ...base, poseGap, closestFrame, transitions, suggestion };
+    });
+
+    const outPath = resolve(out ?? join(character.dir, "lineup.png"));
+    const drawn = drawLineup(entries, hubEntry, extent, outPath, label);
+    if (!drawn.labelled) warnings.push("ffmpeg's drawtext filter could not run here (missing, or no font to draw with) — lineup.png carries no labels; its panels are in the order of `motions`");
+    return {
+      kind: "lineup",
+      character: character.dir,
+      out: outPath,
+      hub: hub.id,
+      threshold: {
+        iou: LINEUP_DIRECT_IOU,
+        chroma: LINEUP_DIRECT_CHROMA,
+        rule: `direct when poseGap.iou ≥ ${LINEUP_DIRECT_IOU} and poseGap.chroma ≤ ${LINEUP_DIRECT_CHROMA}; otherwise transition`,
+      },
+      analysisScale: round(s, 4),
+      motions,
+      warnings,
+    };
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
+/**
+ * lineup.png: one panel per loop over the same clip rect, each frame 0 where
+ * its clip put it at one display scale, on a dark plate, with the hub's
+ * floor drawn across every panel and the motion id under each.
+ */
+function drawLineup(entries, hubEntry, extent, outPath, label) {
+  const d = LINEUP_PANEL_HEIGHT / Math.max(1, extent.y1 - extent.y0);
+  const panelW = Math.max(1, Math.ceil((extent.x1 - extent.x0) * d));
+  const panelH = Math.max(1, Math.ceil((extent.y1 - extent.y0) * d));
+  const gutter = 16;
+  const band = 28;
+  const width = entries.length * panelW + (entries.length + 1) * gutter;
+  const height = panelH + 2 * gutter + band;
+  const data = Buffer.alloc(width * height * 4);
+  for (let p = 0; p < width * height; p++) {
+    data[p * 4] = LINEUP_BACKGROUND[0] - 12;
+    data[p * 4 + 1] = LINEUP_BACKGROUND[1] - 12;
+    data[p * 4 + 2] = LINEUP_BACKGROUND[2] - 12;
+    data[p * 4 + 3] = 255;
+  }
+  const hubFeet = loopAnchor(hubEntry.frames.paths[0]);
+  const baseline = Math.round((hubEntry.where.placement.origin.y + hubFeet.y / hubEntry.where.placement.scale - extent.y0) * d);
+  entries.forEach((entry, n) => {
+    const left = gutter + n * (panelW + gutter);
+    let pose = null;
+    if (entry.where.placement) {
+      const decoded = poseSize(entry.size, entry.where.placement, d);
+      pose = poseCanvas(extent, d, poseImage(entry.frames.paths[0], decoded, label), entry.size, decoded, entry.where.placement);
+    }
+    for (let y = 0; y < panelH; y++) {
+      for (let x = 0; x < panelW; x++) {
+        const dst = ((gutter + y) * width + left + x) * 4;
+        const src = pose && x < pose.width && y < pose.height ? (y * pose.width + x) * 4 : -1;
+        const alpha = src >= 0 ? Math.min(255, pose.data[src + 3]) / 255 : 0;
+        for (let c = 0; c < 3; c++) {
+          const own = src >= 0 ? Math.min(255, pose.data[src + c]) : 0;
+          data[dst + c] = Math.round(own + LINEUP_BACKGROUND[c] * (1 - alpha));
+        }
+        if (y === baseline) {
+          for (let c = 0; c < 3; c++) data[dst + c] = Math.round(data[dst + c] * 0.4 + LINEUP_BASELINE[c] * 0.6);
+        }
+      }
+    }
+  });
+  const plain = join(dirname(outPath), `.${basename(outPath, ".png")}.plain.png`);
+  writeRgbaPng(plain, { width, height, data }, `${label} image`);
+  const labels = entries.map((entry, n) => {
+    const text = entry.motion.id.replace(/[^A-Za-z0-9_.-]/g, "_");
+    return `drawtext=text='${text}':x=${gutter + n * (panelW + gutter) + 4}:y=${gutter + panelH + 6}:fontsize=16:fontcolor=white`;
+  });
+  try {
+    ffmpegTo(outPath, () => ["-i", plain, "-frames:v", "1", "-vf", labels.join(","), "-pix_fmt", "rgb24"], `${label} labels`);
+    return { labelled: true };
+  } catch (error) {
+    if (!(error instanceof SpriteSheetError)) throw error;
+    renameSync(plain, outPath);
+    return { labelled: false };
+  } finally {
+    rmSync(plain, { force: true });
+  }
+}
+
+/**
+ * `rive <characterDir>`: the whole character as one `.riv`.
+ *
+ * By default every READY sprite motion goes in, in rail order. Loops go in
+ * when asked — `--include-loops`, or by name with `--motions` — resampled and
+ * downscaled by `rive-plan.mjs`, because every runtime decodes every embedded
+ * frame when the file loads and a loop is cut at its clip's rate and width.
+ * A transition goes in with the two loops it joins, never without them, and
+ * a reverse whose source is in the file is drawn from the source's images.
+ * With two clip motions or more, each loop and transition is divided by its
+ * scale against its clip and placed at its clip's coordinates
+ * (`recordedLoopClip`, `measureLoopClip`), so the character is one size in
+ * every state and stands where each clip put it. Each frame is pinned by its
+ * pivot to one shared point of the artboard: the atlas pivot for a sprite
+ * motion, that clip point for a placed loop or transition, the first frame's
+ * feet for one whose place is unknown. The memory is counted from the plan
+ * before a frame is scaled, and a file past `RIVE_DECODE_LIMIT_BYTES` is
+ * refused with nothing written.
+ *
+ * The state machine routes (`riveStateMachine` in rive.mjs): the number
+ * input `motion` names the loop to be in, and the machine changes state only
+ * at a loop's cycle end or a clip's last frame, through the hub (`--hub`,
+ * else the looping idle) when no clip joins two loops. Every direct cut in the
+ * file is reported with its pose gap, measured on the frames as the file
+ * shows them.
+ */
+function stepRive(characterDir, { images: askedImages = null, motions: named, includeLoops, fps, maxSize, filter, hub: hubId = null }) {
+  const label = "rive";
+  const character = readCharacterProject(characterDir, label);
+  const all = character.doc.sprite.motions.filter((m) => m && typeof m.id === "string");
+  const isLoop = (motion) => motion.kind === "loop";
+  const isTransition = (motion) => motion.kind === "transition";
+  const kindOf = (motion) => (isLoop(motion) ? "loop" : isTransition(motion) ? "transition" : "sprite");
+  const loopFps = fps ?? RIVE_LOOP_FPS;
+  const loopMax = maxSize ?? RIVE_LOOP_MAX_SIZE;
+  const included = [];
+  const excluded = [];
+  const warnings = [];
+
+  if (named) {
+    if (includeLoops) warnings.push("--include-loops ignored: --motions names every motion that goes in");
+    const seen = new Set();
+    for (const id of named) {
+      if (seen.has(id)) fail(`${label}: --motions names '${id}' twice`);
+      seen.add(id);
+      const motion = all.find((m) => m.id === id);
+      if (!motion) fail(`${label}: no motion '${id}' in ${character.dir}/project.json (known: ${all.map((m) => m.id).join(", ") || "none"})`);
+      if (motion.status !== "ready") {
+        fail(`${label}: '${id}' is not ready (${motion.status ?? "no status"}) — only a finished motion goes into a .riv`);
+      }
+      included.push(motion);
+    }
+    for (const motion of included.filter(isTransition)) {
+      for (const end of [motion.from, motion.to]) {
+        if (!included.some((m) => m.id === end)) {
+          fail(`${label}: ${motion.id} joins '${end}', which --motions leaves out — a transition goes in with both of the loops it joins: add ${end}, or leave ${motion.id} out`);
+        }
+      }
+    }
+    for (const motion of all) {
+      if (!seen.has(motion.id)) excluded.push({ motion: motion.id, reason: "not named in --motions" });
+    }
+  } else {
+    for (const motion of all) {
+      if (isLoop(motion) && !includeLoops) {
+        excluded.push({
+          motion: motion.id,
+          reason: `a loop — left out unless asked for: --include-loops, or --motions ${motion.id}; it goes in resampled to ${loopFps} fps with a longest edge of ${loopMax} px`,
+        });
+      } else if (isTransition(motion) && !includeLoops) {
+        excluded.push({ motion: motion.id, reason: "a transition — it goes in with the loops it joins: --include-loops" });
+      } else if (motion.status !== "ready") {
+        excluded.push({ motion: motion.id, reason: `not ready (${motion.status ?? "no status"}) — only a finished motion goes in` });
+      } else {
+        included.push(motion);
+      }
+    }
+    // A transition lands on two loops; without both it has nowhere to go.
+    for (const motion of included.filter(isTransition)) {
+      const missing = [motion.from, motion.to].filter((end) => !included.some((m) => m.id === end && isLoop(m)));
+      if (!missing.length) continue;
+      included.splice(included.indexOf(motion), 1);
+      excluded.push({
+        motion: motion.id,
+        reason: `joins ${missing.join(" and ")}, which ${missing.length === 1 ? "is" : "are"} not going in — a transition goes in with both of its loops`,
+      });
+    }
+    if (!included.length) {
+      const loops = all.filter((m) => isLoop(m) && m.status === "ready").map((m) => m.id);
+      if (loops.length && !includeLoops) {
+        fail(`${label}: ${character.name} has no finished sprite motion, only loop${loops.length === 1 ? "" : "s"} (${loops.join(", ")}) — loops go into a .riv when asked: pass --include-loops, or --motions ${loops.join(",")}. Each is resampled to ${loopFps} fps with a longest edge of ${loopMax} px (--fps, --max-size), because every Rive runtime decodes every embedded frame when the file loads.`);
+      }
+      fail(`${label}: ${character.name} has no finished motion to put in a .riv — finish one first`);
+    }
+  }
+  if (hubId !== null && !included.some((m) => m.id === hubId && isLoop(m))) {
+    const loops = included.filter(isLoop).map((m) => m.id);
+    fail(`${label}: --hub: '${hubId}' is not a loop in this file (loops in it: ${loops.join(", ") || "none"}) — the hub is the loop every route passes through`);
+  }
+  // WebP unless asked otherwise — lossless for pixel art, by the reading of
+  // the style `--filter auto` uses. An ffmpeg without libwebp cannot write
+  // either: asked for by name, that is refused; by default, the file is still
+  // worth making as PNG, larger, and the report says why.
+  const style = String(character.doc.sprite.character?.style ?? "");
+  let images = askedImages ?? riveDefaultImages(style);
+  if (images !== "png" && !hasEncoder("libwebp")) {
+    if (askedImages) {
+      fail(`${label}: --images ${askedImages} needs ffmpeg's libwebp encoder, which this build does not have — use --images png`);
+    }
+    const wanted = images === "webp-lossless" ? "lossless WebP" : "WebP";
+    images = "png";
+    warnings.push(`This ffmpeg has no libwebp encoder, so the frames went in as PNG instead of the default ${wanted} — lossless, but larger; an ffmpeg built with libwebp makes the smaller file`);
+  }
+
+  // What every motion is, as registered: its frames, its rate, its size.
+  const sources = included.map((motion) => {
+    const frames = registeredFrames(character, motion, label);
+    const kind = kindOf(motion);
+    const facts = kind === "sprite"
+      ? readAtlasFacts(character, motion, frames.paths.length, label)
+      : {
+        fps: Number(motion.fps) > 0 ? Number(motion.fps) : fail(`${label}: ${kind} '${motion.id}' has no usable fps`),
+        // A transition plays once, whatever its record says.
+        loop: kind === "loop" && motion.loop !== false,
+        perFrame: null,
+      };
+    return { motion, frames, facts, size: probeSize(frames.paths[0], label), kind, clip: null };
+  });
+  const graphMotions = sources.map((source) => ({
+    id: source.motion.id,
+    loop: source.facts.loop,
+    kind: source.kind,
+    ...(source.kind === "transition" ? { from: source.motion.from, to: source.motion.to } : {}),
+  }));
+
+  const work = mkdtempSync(join(tmpdir(), "sprite-rive-"));
+  try {
+    // Where each loop and transition sits in its clip (see
+    // `recordedLoopClip`). Two of them or more only: one has no sibling to be
+    // matched against, and its size and place come out the same either way.
+    // A loop cut before `loop` recorded it is measured — a handful of decoded
+    // frames — and one that cannot be measured is said so and drawn the way
+    // it always was. A transition always records its crop.
+    const clipSources = sources.filter((source) => source.kind !== "sprite");
+    for (const source of clipSources) {
+      const id = source.motion.id;
+      source.clip = recordedLoopClip(source.motion) ?? (source.kind === "loop" ? storedLoopClip(source.motion) : null);
+      if (clipSources.length < 2) continue;
+      if (source.clip) {
+        if (!source.clip.origin) warnings.push(`${id}: where it stood in its clip is not known — stood on its feet instead`);
+        continue;
+      }
+      if (source.kind === "transition") {
+        warnings.push(`${id}: its crop and scale were not recorded — drawn as it was cut and stood on its feet, so it may not line up with the loops it joins; cut it again with 'transition'`);
+        continue;
+      }
+      const measured = measureLoopClip(character, source.motion, source.frames.paths, work);
+      if (measured.reason) {
+        warnings.push(`${id}: its scale against its clip is unknown — ${measured.reason}; drawn as it was cut and stood on its feet, so it may not match the other loops in size or place`);
+        continue;
+      }
+      source.clip = measured.clip;
+      if (measured.originReason) warnings.push(`${id}: where it stood in its clip is unknown — ${measured.originReason}; stood on its feet instead`);
+    }
+
+    // A reverse whose source is in the file shows the source's images
+    // backwards — unless the source was cut again after it was made.
+    const edges = new Map();
+    for (const edge of Array.isArray(character.doc.provenance) ? character.doc.provenance : []) {
+      if (edge && typeof edge.toAssetId === "string") edges.set(edge.toAssetId, edge);
+    }
+    const lookup = { edgeOf: (id) => edges.get(id), createdAt: (id) => character.assets.get(id)?.createdAt };
+    const reverseOf = new Map();
+    for (const source of sources.filter((s) => s.kind === "transition" && typeof s.motion.reverseOf === "string")) {
+      const origin = sources.find((s) => s.motion.id === source.motion.reverseOf);
+      if (!origin) continue;
+      if (riveReverseIsCurrent(source.motion, origin.motion, lookup)) {
+        reverseOf.set(source.motion.id, origin.motion.id);
+      } else {
+        warnings.push(`${source.motion.id} plays an earlier cut of ${origin.motion.id} backwards — it goes in with its own frames; cut it again with 'sprite-sheet.mjs transition --reverse-of ${origin.motion.id} --character <dir>' and register it to draw it from ${origin.motion.id}'s images`);
+      }
+    }
+
+    const plan = rivePlan(sources.map((source) => ({
+      id: source.motion.id,
+      kind: source.kind,
+      loop: source.facts.loop,
+      fps: source.facts.fps,
+      frames: source.frames.paths.length,
+      width: source.size.width,
+      height: source.size.height,
+      ...(source.clip ? { clipScale: source.clip.scale } : {}),
+      ...(reverseOf.has(source.motion.id) ? { reverseOf: reverseOf.get(source.motion.id) } : {}),
+    })), { fps, maxSize });
+
+    // Refused on the arithmetic, before a frame is scaled or a byte written.
+    if (plan.decodeBytes > RIVE_DECODE_LIMIT_BYTES) {
+      const each = plan.motions
+        .filter((m) => !m.shares)
+        .map((m) => `${m.id} ${m.frames} × ${m.width}×${m.height} = ${riveMB(m.decodeBytes)} MB`)
+        .join(", ");
+      fail(`${label}: this .riv would take about ${riveMB(plan.decodeBytes)} MB of memory once opened (${each}) — over the ${riveMB(RIVE_DECODE_LIMIT_BYTES)} MB a Rive runtime can be asked to decode up front. Lower --fps (loops now ${plan.settings.loop.fps}) or --max-size (loops now ${plan.settings.loop.maxSize} px), or pass fewer motions with --motions.`);
+    }
+    if (plan.decodeBytes > RIVE_DECODE_WARN_BYTES) warnings.push(riveDecodeWarning(plan.decodeBytes));
+
+    // The loops and transitions whose place in the clip is known are drawn
+    // in CLIP coordinates: a point of the clip lands on the same point of the
+    // artboard in every one of them. That point is the hub's feet — or the
+    // resting motion's, or the first placed loop's — so the sprite motions
+    // and anything stood on its own feet stand where the reference does.
+    const hubIndex = riveHub(graphMotions, hubId);
+    const resting = sources[hubIndex !== -1 ? hubIndex : riveDefaultMotion(graphMotions)];
+    const placed = clipSources.filter((source) => source.clip?.origin);
+    const reference = placed.includes(resting) ? resting : (placed.find((source) => source.kind === "loop") ?? placed[0]);
+    let clipPoint = null;
+    if (reference) {
+      const feet = loopAnchor(reference.frames.paths[0]);
+      clipPoint = {
+        x: reference.clip.origin.x + feet.x / reference.clip.scale,
+        y: reference.clip.origin.y + feet.y / reference.clip.scale,
+      };
+    }
+
+    const scaleFilter = filter === "auto" ? (RIVE_PIXEL_ART_STYLE.test(style) ? "nearest" : "smooth") : filter;
+    let encoded = 0;
+    const own = sources.map((source, k) => {
+      const planned = plan.motions[k];
+      if (planned.shares) return { planned, source, shown: null, frames: null, loopPoint: null };
+      const picked = planned.indices.map((i) => source.frames.paths[i]);
+      let paths = picked;
+      if (planned.scale !== 1) {
+        // The kept frames as one numbered run, then one ffmpeg pass.
+        const staged = join(work, `m${k}`);
+        const scaled = join(work, `m${k}-scaled`);
+        mkdirSync(staged, { recursive: true });
+        mkdirSync(scaled, { recursive: true });
+        picked.forEach((path, i) => copyFileSync(path, join(staged, `${String(i).padStart(4, "0")}.png`)));
+        ffmpeg([
+          "-start_number", "0", "-i", join(staged, "%04d.png"), "-frames:v", String(picked.length),
+          "-vf", riveScaleChain(planned.width, planned.height, scaleFilter).join(","),
+          "-pix_fmt", "rgba", "-start_number", "0", "--", join(scaled, "%04d.png"),
+        ], `rive scale ${planned.id}`);
+        paths = picked.map((_, i) => join(scaled, `${String(i).padStart(4, "0")}.png`));
+        const written = paths.filter((path) => existsSync(path)).length;
+        if (written !== paths.length) fail(`${label}: scaling '${planned.id}' wrote ${written} of ${paths.length} frames`);
+      }
+
+      // The pivot as a fraction of the frame survives any scale; in pixels it
+      // is that fraction of the frame the .riv embeds. A loop or transition
+      // placed in clip coordinates pins the clip point every one of them
+      // shares: (point − origin) × scale in its own frame pixels, inside the
+      // frame or not.
+      const loopPoint = source.kind === "sprite"
+        ? null
+        : clipPoint && source.clip?.origin
+          ? {
+            x: (clipPoint.x - source.clip.origin.x) * source.clip.scale,
+            y: (clipPoint.y - source.clip.origin.y) * source.clip.scale,
+            from: "clip",
+          }
+          : loopAnchor(source.frames.paths[0]);
+      const fraction = (i) => source.kind !== "sprite"
+        ? { x: loopPoint.x / source.size.width, y: loopPoint.y / source.size.height }
+        : source.facts.perFrame[planned.indices[i]].pivot;
+      const shown = paths.map((path, i) => {
+        const pivot = fraction(i);
+        return { path, width: planned.width, height: planned.height, pivot: { x: pivot.x * planned.width, y: pivot.y * planned.height } };
+      });
+      const frames = shown.map((frame) => ({
+        bytes: images === "png" ? readFileSync(frame.path) : stillWebp(frame.path, work, encoded++, images === "webp-lossless"),
+        width: frame.width,
+        height: frame.height,
+        pivot: frame.pivot,
+        ext: images === "png" ? "png" : "webp",
+      }));
+      return { planned, source, shown, frames, loopPoint };
+    });
+    // A shared motion shows its source's embedded frames, backwards: its
+    // frame r is the source's planned frame K − 1 − r.
+    const byId = new Map(own.map((entry) => [entry.planned.id, entry]));
+    for (const entry of own) {
+      if (!entry.planned.shares) continue;
+      const from = byId.get(entry.planned.shares);
+      const count = entry.planned.frames;
+      entry.shown = Array.from({ length: count }, (_, r) => from.shown[count - 1 - r]);
+      entry.frames = Array.from({ length: count }, (_, r) => ({ shared: { motion: from.planned.id, index: count - 1 - r } }));
+      entry.loopPoint = from.loopPoint;
+    }
+
+    // One artboard every frame fits on with its pivot at the same point: as
+    // far left of that point as any frame reaches, as far right, and so on.
+    let left = 0;
+    let right = 0;
+    let top = 0;
+    let bottom = 0;
+    for (const { shown } of own) {
+      for (const frame of shown) {
+        left = Math.max(left, frame.pivot.x);
+        right = Math.max(right, frame.width - frame.pivot.x);
+        top = Math.max(top, frame.pivot.y);
+        bottom = Math.max(bottom, frame.height - frame.pivot.y);
+      }
+    }
+    const anchor = { x: Math.ceil(left - 1e-6), y: Math.ceil(top - 1e-6) };
+    const artboard = {
+      name: character.name,
+      width: anchor.x + Math.ceil(right - 1e-6),
+      height: anchor.y + Math.ceil(bottom - 1e-6),
+    };
+    const written = writeRiv({
+      artboard,
+      anchor,
+      hub: hubId,
+      motions: own.map(({ planned, source, frames }, k) => ({
+        ...graphMotions[k],
+        fps: planned.fps,
+        loop: planned.loop,
+        frames,
+      })),
+    });
+    const out = writeBytesAtomic(join(character.dir, EXPORTS_DIRNAME, `${character.id}.riv`), written.bytes);
+
+    // Every direct cut, measured where the file makes it: the last frame of
+    // what is left against the first of what comes next, each where the
+    // artboard draws it, in the same 1 − IoU a transition's joins are read in.
+    const shownOf = new Map(own.map((entry) => [entry.planned.id, entry.shown]));
+    const onArtboard = (frame) => ({ origin: { x: anchor.x - frame.pivot.x, y: anchor.y - frame.pivot.y }, scale: 1 });
+    const cuts = written.stateMachine.cuts.map((cut) => {
+      if (cut.from === null) return { ...cut, poseGap: null };
+      const last = shownOf.get(cut.from).at(-1);
+      const first = shownOf.get(cut.to)[0];
+      const extent = unionExtent([last, first].map((frame) => clipExtent(frame, onArtboard(frame))));
+      const s = poseScale(extent);
+      return {
+        ...cut,
+        poseGap: poseDiff(
+          framePose(last.path, onArtboard(last), extent, s, label),
+          framePose(first.path, onArtboard(first), extent, s, label),
+        ),
+      };
+    });
+
+    const notes = [
+      "The frames are raster images, not vector shapes: the .riv plays in every Rive runtime, but it is a runtime file and cannot be reopened in the Rive editor.",
+    ];
+    for (const { planned } of own) {
+      const { source } = planned;
+      if (planned.shares) {
+        notes.push(`${planned.id}: ${planned.shares}'s ${planned.frames} images played backwards — nothing more embedded`);
+        continue;
+      }
+      if (planned.frames === source.frames && planned.scale === 1) continue;
+      notes.push(`${planned.id}: ${source.frames} frames at ${source.fps} fps, ${source.width}×${source.height} → ${planned.frames} frames at ${planned.fps} fps, ${planned.width}×${planned.height} in the .riv`);
+    }
+    if (placed.length > 1) {
+      const factor = round(placed[0].clip.scale * plan.motions[sources.indexOf(placed[0])].scale, 4);
+      notes.push(`${placed.map((source) => source.motion.id).join(", ")} are drawn at one scale — ${factor} px per pixel of their clips — and placed where their clips put them, around ${reference.motion.id}'s feet.`);
+    }
+    const machine = written.stateMachine;
+    if (machine.waits.length > 1) {
+      const longest = machine.waits.reduce((a, b) => (b.seconds > a.seconds ? b : a));
+      notes.push(`Leaving a loop waits for the end of its cycle: set '${RIVE_MOTION_INPUT}' and the loop plays out the cycle it is in before anything moves — up to ${longest.seconds}s from ${longest.motion} (every loop's wait is in stateMachine.waits). Routes go through ${machine.hub} unless a transition joins two loops directly.`);
+      const measured = cuts.filter((cut) => cut.poseGap);
+      if (measured.length) {
+        const worst = measured.reduce((a, b) => (b.poseGap.gap > a.poseGap.gap ? b : a));
+        notes.push(`${measured.length} direct cut${measured.length === 1 ? "" : "s"} where no transition joins the poses, the largest poseGap ${worst.poseGap.gap} (${worst.from} → ${worst.to}) — each is in stateMachine.cuts; a transition clip between those loops removes it.`);
+      } else {
+        notes.push("Every route between loops goes through a transition clip: no direct cut between loops.");
+      }
+    }
+    if (images === "webp-lossless") {
+      notes.push(`The frames are embedded as lossless WebP — every visible pixel exactly as drawn${askedImages ? "" : ", the default for pixel art (character.style)"}; --images webp makes a smaller, lossy file.`);
+    }
+    if (images === "webp") {
+      notes.push("The frames are embedded as WebP, lossy at quality 85 — several times smaller than PNG, and decoded by every Rive runtime (the native ones share rive-runtime's own WebP decoder); --images png embeds them lossless.");
+    }
+    return {
+      kind: "rive",
+      character: character.dir,
+      name: character.name,
+      out,
+      size: statSync(out).size,
+      images,
+      artboard: { ...artboard, anchor },
+      resample: {
+        loop: plan.settings.loop,
+        sprite: plan.settings.sprite,
+        filter: scaleFilter,
+        filterFrom: filter === "auto" ? "style" : "flag",
+      },
+      motions: own.map(({ planned, source, shown, loopPoint }, i) => ({
+        id: planned.id,
+        kind: planned.kind,
+        loop: planned.loop,
+        ...(source.kind === "transition" ? { from: source.motion.from, to: source.motion.to } : {}),
+        ...(planned.shares ? { shares: planned.shares } : {}),
+        source: planned.source,
+        frames: planned.frames,
+        fps: planned.fps,
+        width: planned.width,
+        height: planned.height,
+        scale: round(planned.scale, 4),
+        // A loop's or transition's scale and place in its clip, and where
+        // they came from; null when not known (or, alone, not needed).
+        ...(source.kind !== "sprite" ? { clip: source.clip } : {}),
+        ...(planned.frames === planned.source.frames ? {} : { indices: planned.indices }),
+        timelineFps: written.animations[i].fps,
+        seconds: written.animations[i].seconds,
+        anchor: {
+          x: round(shown[0].pivot.x, 2),
+          y: round(shown[0].pivot.y, 2),
+          from: source.kind !== "sprite" ? loopPoint.from : "atlas",
+        },
+        estimatedDecodeBytes: planned.decodeBytes,
+      })),
+      // What the file was made FROM: every registered frame of every motion in
+      // it. Registration checks these against project.json and hangs the
+      // .riv off them; `frameCount` is what the file embeds.
+      frames: sources.flatMap((source) => source.frames.paths),
+      frameCount: plan.motions.reduce((sum, m) => sum + (m.shares ? 0 : m.frames), 0),
+      estimatedDecodeBytes: plan.decodeBytes,
+      stateMachine: { ...machine, cuts },
+      excluded,
+      notes,
+      warnings,
+    };
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -3445,6 +5349,24 @@ const OPTIONS = {
     crop: { type: "string" }, pad: { type: "string" }, width: { type: "string" },
     fps: { type: "string" }, formats: { type: "string" }, threshold: { type: "string" },
   },
+  transition: {
+    character: { type: "string" }, from: { type: "string" }, to: { type: "string" },
+    out: { type: "string" }, name: { type: "string" }, duration: { type: "string" },
+    "reverse-of": { type: "string" },
+    "trim-start": { type: "string" }, "trim-end": { type: "string" },
+    key: { type: "string" }, similarity: { type: "string" }, blend: { type: "string" },
+    despill: { type: "boolean", default: false }, "no-despill": { type: "boolean", default: false },
+    "trim-holds": { type: "boolean", default: false }, "no-trim-holds": { type: "boolean", default: false },
+    crop: { type: "string" }, pad: { type: "string" }, width: { type: "string" }, threshold: { type: "string" },
+  },
+  lineup: { hub: { type: "string" }, out: { type: "string" } },
+  export: {
+    format: { type: "string" }, bg: { type: "string" }, repeat: { type: "string" }, scale: { type: "string" },
+  },
+  rive: {
+    images: { type: "string" }, motions: { type: "string" }, "include-loops": { type: "boolean", default: false },
+    fps: { type: "string" }, "max-size": { type: "string" }, filter: { type: "string" }, hub: { type: "string" },
+  },
 };
 
 /** `--seam-fill auto|none|<N>` — "auto", "none", or how many in-betweens. */
@@ -3466,6 +5388,17 @@ function num(value, flag, { integer = false, min = -Infinity, fallback } = {}) {
 function requireFlag(value, flag) {
   if (value === undefined || value === "") fail(`${flag} is required`);
   return value;
+}
+
+/** A transition's report, said for a person. */
+function transitionLines(out) {
+  const { step, startGap, endGap } = out.inspect;
+  const said = (gap, end) => (gap === undefined ? `${end} not measured` : `${end}Gap ${gap}${gap > JOIN_STEPS * step ? " — does not land" : " — joins"}`);
+  return [
+    `${out.name}: ${out.from} → ${out.to}${out.reverseOf ? ` (${out.reverseOf} backwards)` : ""}, ${out.frames.length} frames of ${out.cell.width}x${out.cell.height} at ${out.fps}fps (${out.duration}s) → ${out.motionDir}`,
+    `step ${step}; ${said(startGap, "start")}; ${said(endGap, "end")}`,
+    ...(out.warnings.length ? out.warnings : ["no warnings"]),
+  ];
 }
 
 function requirePositional(positionals, label) {
@@ -3544,6 +5477,14 @@ function parseFormats(raw) {
   // Written in the canonical order whatever order they were asked in, so the
   // JSON key order does not depend on how the flag was typed.
   return LOOP_FORMATS.filter((format) => asked.includes(format));
+}
+
+/** `--bg`: a `#rrggbb`, lowercased. Words like `white` are refused rather than
+ *  guessed at — the colour lands in the file and in the report verbatim. */
+function exportColor(value) {
+  const color = String(value).trim().toLowerCase();
+  if (!/^#[0-9a-f]{6}$/.test(color)) fail(`--bg: expected a #rrggbb colour, got '${value}'`);
+  return color;
 }
 
 function emit(values, payload, humanLines) {
@@ -3857,6 +5798,111 @@ function main() {
         `seam ${out.inspect.seam} vs step ${out.inspect.step} (max ${out.inspect.maxStep}), dropped ${out.dropped.leading} leading / ${out.dropped.trailing} trailing, seam-fill ${out.seamFill}`,
         ...Object.entries(out.inspect.exports).map(([format, bytes]) => `${format} ${(bytes / 1e6).toFixed(2)} MB`),
         ...(out.warnings.length ? out.warnings : ["no warnings"]),
+      ]);
+      break;
+    }
+    case "transition": {
+      const character = requireFlag(values.character, "--character");
+      if (values["reverse-of"] !== undefined) {
+        if (positionals.length) fail("--reverse-of takes no clip: the way back is the registered frames played backwards");
+        const out = stepReverseTransition({ character, reverseOf: values["reverse-of"], out: values.out, name: values.name });
+        emit(values, out, transitionLines(out));
+        break;
+      }
+      const key = values.key ?? "alpha";
+      if (key !== "auto" && key !== "none" && key !== "alpha") normalizeColor(key, "--key");
+      const crop = values.crop ?? "union";
+      if (crop !== "union" && crop !== "none") fail(`--crop: expected union or none, got '${values.crop}'`);
+      const out = stepTransition(requirePositional(positionals, "<clip>"), {
+        character,
+        from: requireFlag(values.from, "--from"),
+        to: requireFlag(values.to, "--to"),
+        out: values.out,
+        name: values.name,
+        duration: values.duration === undefined ? null : num(values.duration, "--duration", { min: 0.05 }),
+        trimStart: num(values["trim-start"], "--trim-start", { min: 0, fallback: null }),
+        trimEnd: num(values["trim-end"], "--trim-end", { min: 0, fallback: null }),
+        key,
+        similarity: num(values.similarity, "--similarity", { min: 0, fallback: DEFAULT_VIDEO_SIMILARITY }),
+        blend: num(values.blend, "--blend", { min: 0, fallback: DEFAULT_BLEND }),
+        despill: pickToggle(values, "despill", true),
+        trimHolds: pickToggle(values, "trim-holds", true),
+        crop,
+        pad: num(values.pad, "--pad", { integer: true, min: 0, fallback: DEFAULT_PAD }),
+        width: values.width === undefined ? null : num(values.width, "--width", { integer: true, min: 2 }),
+        threshold,
+      });
+      emit(values, out, transitionLines(out));
+      break;
+    }
+    case "lineup": {
+      const out = stepLineup(requirePositional(positionals, "<characterDir>"), {
+        hub: values.hub ?? null, out: values.out,
+      });
+      emit(values, out, [
+        `${basename(out.out)}: hub ${out.hub} · ${out.threshold.rule}`,
+        ...out.motions.filter((m) => !m.hub).map((m) => (m.poseGap
+          ? `  ${m.id}: iou ${m.poseGap.iou}, chroma ${m.poseGap.chroma}, rgb ${m.poseGap.rgb} → ${m.suggestion}${m.transitions.length ? ` (registered: ${m.transitions.join(", ")})` : ""}; closest frame ${m.closestFrame.index} (iou ${m.closestFrame.iou})`
+          : `  ${m.id}: not compared`)),
+        ...out.warnings,
+      ]);
+      break;
+    }
+    case "export": {
+      const format = String(requireFlag(values.format, "--format")).toLowerCase();
+      const out = stepExport(requirePositional(positionals, "<motionDir>"), {
+        format,
+        bg: values.bg === undefined ? null : exportColor(values.bg),
+        repeat: values.repeat === undefined ? null : num(values.repeat, "--repeat", { integer: true, min: 1 }),
+        scale: num(values.scale, "--scale", { integer: true, min: 1, fallback: 1 }),
+      });
+      emit(values, out, [
+        `${basename(out.out)} · ${out.frameCount} frames at ${out.fps} fps, ${out.loop ? "loops" : "plays once"}${out.repeat > 1 ? `, played ${out.repeat}× (${out.duration} s)` : ""} · ${out.width}×${out.height} · ${(out.size / 1e6).toFixed(2)} MB → ${out.out}`,
+        ...out.notes,
+        ...out.warnings,
+      ]);
+      break;
+    }
+    case "rive": {
+      const images = values.images ?? null;
+      if (images !== null && !RIVE_IMAGES.includes(images)) fail(`--images: expected ${RIVE_IMAGES.join(" or ")}, got '${values.images}'`);
+      const filter = values.filter ?? "auto";
+      if (!RIVE_FILTERS.includes(filter)) fail(`--filter: expected ${RIVE_FILTERS.join(", ")}, got '${values.filter}'`);
+      let fps = null;
+      if (values.fps !== undefined) {
+        fps = Number(values.fps);
+        if (!(Number.isFinite(fps) && fps > 0 && fps <= 120)) fail(`--fps: expected a rate above 0 and at most 120, got '${values.fps}'`);
+      }
+      let maxSize = null;
+      if (values["max-size"] !== undefined) {
+        maxSize = Number(values["max-size"]);
+        if (!(Number.isInteger(maxSize) && maxSize >= 8)) fail(`--max-size: expected a whole number of pixels, at least 8, got '${values["max-size"]}'`);
+      }
+      let motions = null;
+      if (values.motions !== undefined) {
+        motions = values.motions.split(",").map((id) => id.trim()).filter(Boolean);
+        if (!motions.length) fail("--motions: expected motion ids separated by commas, e.g. --motions idle,wave");
+      }
+      const out = stepRive(requirePositional(positionals, "<characterDir>"), {
+        images, motions, includeLoops: values["include-loops"], fps, maxSize, filter, hub: values.hub ?? null,
+      });
+      const machine = out.stateMachine;
+      const number = machine.inputs.find((input) => input.type === "number");
+      const triggers = machine.inputs.filter((input) => input.type === "trigger").map((input) => input.name);
+      const gapOf = new Map(machine.cuts.map((cut) => [`${cut.from}>${cut.to}`, cut.poseGap?.gap]));
+      emit(values, out, [
+        `${basename(out.out)} · ${out.motions.map((m) => m.id).join(", ")} · ${out.frameCount} ${out.images} frames on a ${out.artboard.width}×${out.artboard.height} artboard · ${(out.size / 1e6).toFixed(2)} MB → ${out.out}`,
+        ...out.motions.map((m) => `  ${m.id} (${m.kind}): ${m.shares ? `${m.shares}'s images backwards` : `${m.frames} frames at ${m.fps} fps, ${m.width}×${m.height} — ${riveMB(m.estimatedDecodeBytes)} MB decoded`}`),
+        `state machine "${machine.name}", resting in ${machine.defaultMotion}${machine.hub ? ` (the hub)` : ""}`,
+        ...(number ? [`  number '${number.name}': ${number.values.map((v) => `${v.value} = ${v.motion}`).join(", ")}`] : []),
+        ...(triggers.length ? [`  triggers: ${triggers.join(", ")}`] : []),
+        ...machine.routes.map((route) => `  ${route.from} → ${route.to}: ${route.steps.map((step) => step.transition
+          ? `transition ${step.transition}`
+          : `direct cut (poseGap ${gapOf.get(`${step.cut.from}>${step.cut.to}`)})`).join(", then ")} · up to ${route.seconds}s`),
+        `decodes to about ${riveMB(out.estimatedDecodeBytes)} MB when loaded`,
+        ...out.excluded.map((entry) => `left out ${entry.motion}: ${entry.reason}`),
+        ...out.notes,
+        ...out.warnings,
       ]);
       break;
     }

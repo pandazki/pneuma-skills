@@ -16,7 +16,8 @@
  */
 
 import { join, resolve, dirname } from "node:path";
-import { existsSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
@@ -732,7 +733,82 @@ export async function buildModeViewer(
   }
   if (errors.length) return { success: false, buildDir, errors };
 
+  writeModeSourceStamp(modeDir);
   return { success: true, buildDir, errors: [] };
+}
+
+/** What a build records about the sources it was made from. */
+const SOURCE_STAMP_FILE = "source-stamp.json";
+/** Files a viewer bundle can be built from. Seeds, showcase images, tests and
+ *  dependencies are not the viewer's sources; skill scripts can be (a viewer
+ *  may import a script's pure module), so they count. */
+const STAMP_SOURCES = new Bun.Glob("**/*.{ts,tsx,js,jsx,mjs,cjs,css,json}");
+const STAMP_EXCLUDED = ["node_modules/", ".build/", "seed/", "showcase/", "__tests__/"];
+
+/**
+ * A content hash of a mode's viewer sources — path and bytes of every file a
+ * bundle can be built from, in path order. Content, not modification times:
+ * an archive extracted on another machine hashes the same as the tree it was
+ * packed from.
+ */
+export function modeSourceStamp(modeDir: string): string {
+  const hash = createHash("sha256");
+  const files = [...STAMP_SOURCES.scanSync({ cwd: modeDir, absolute: false })]
+    .map((rel) => rel.split("\\").join("/"))
+    .filter((rel) => !STAMP_EXCLUDED.some((prefix) => rel.startsWith(prefix)))
+    .sort();
+  for (const rel of files) {
+    hash.update(rel);
+    hash.update("\0");
+    hash.update(readFileSync(join(modeDir, rel)));
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
+/** Record in `<modeDir>/.build/` which sources the bundle there was built from. */
+export function writeModeSourceStamp(modeDir: string): void {
+  writeFileSync(
+    join(modeDir, ".build", SOURCE_STAMP_FILE),
+    `${JSON.stringify({ version: 1, sources: modeSourceStamp(modeDir) })}\n`,
+  );
+}
+
+export type PrebuiltViewerReason = "current" | "stale" | "published" | "unstamped-in-tree" | "missing";
+
+/**
+ * Whether `<modeDir>/.build/pneuma-mode.js` may be served as it is.
+ *
+ * `buildModeViewer` writes the same directory a published archive ships, so
+ * a bundle there is either the publish step's or an earlier local compile's.
+ * It is reused when its stamp matches the sources beside it (`current`), or
+ * — with no stamp at all — when the mode lives outside the project tree,
+ * where only an installed archive could have put it (`published`; archives
+ * packed before stamps existed carry none, and cannot be rebuilt without the
+ * dependencies they inlined). A stamp that no longer matches (`stale`), or an
+ * unstamped bundle inside the checkout (`unstamped-in-tree`, a compile from
+ * before stamps), is built again from source.
+ */
+export function prebuiltViewer(
+  modeDir: string,
+  options: { projectRoot?: string } = {},
+): { reuse: boolean; reason: PrebuiltViewerReason } {
+  const buildDir = join(modeDir, ".build");
+  if (!existsSync(join(buildDir, "pneuma-mode.js"))) return { reuse: false, reason: "missing" };
+  const stampPath = join(buildDir, SOURCE_STAMP_FILE);
+  if (existsSync(stampPath)) {
+    let recorded: unknown = null;
+    try {
+      recorded = JSON.parse(readFileSync(stampPath, "utf-8"))?.sources;
+    } catch {
+      recorded = null;
+    }
+    return recorded === modeSourceStamp(modeDir)
+      ? { reuse: true, reason: "current" }
+      : { reuse: false, reason: "stale" };
+  }
+  const inTree = isInside(realpathOr(resolve(modeDir)), realpathOr(resolve(options.projectRoot ?? PROJECT_ROOT)));
+  return inTree ? { reuse: false, reason: "unstamped-in-tree" } : { reuse: true, reason: "published" };
 }
 
 /**

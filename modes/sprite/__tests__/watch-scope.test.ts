@@ -3,11 +3,13 @@
  * still refreshes the pictures it no longer hears about.
  *
  * A character's frames are the bulk of its workspace: the owner's ten-loop
- * character had 2,684 frame PNGs out of 2,882 files. The watcher registers one
- * `fs.watch` per file, and on macOS that registration grows superlinearly
- * (Bun 1.4.0: 2,000 files 2.5 s, 3,000 files 11 s, 4,000 files 69 s), all on
- * the server's main thread — so opening that workspace answered nothing,
- * not even the page itself, for 25–40 s (measured 2026-09-23).
+ * character had 2,684 frame PNGs out of 2,882 files. The chokidar watcher
+ * used before 3.54 registered one `fs.watch` per file, and on macOS that
+ * registration grew superlinearly (Bun 1.4.0: 2,000 files 2.5 s, 3,000 files
+ * 11 s, 4,000 files 69 s), all on the server's main thread — so opening that
+ * workspace answered nothing, not even the page itself, for 25–40 s (measured
+ * 2026-09-23). The per-root watcher in `server/watch/` removed that cost; the
+ * scope below stays because frame bursts are event volume nobody reads.
  *
  * The frame directories never needed watching. `register-run` rewrites
  * `project.json` every time frames land, stamping each frame asset's

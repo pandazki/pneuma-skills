@@ -191,6 +191,12 @@ export default defineConfig({
       "react-dom": path.dirname(require.resolve("react-dom/package.json")),
     },
   },
+  // A viewer may import a `.wasm` for its URL (the sprite viewer ships the
+  // Rive runtime's WebAssembly this way, so it never comes from a CDN).
+  // Without this, Vite refuses a plain `.wasm` import — only `?url` / `?init`
+  // are built in, and Bun.build (the catalog bundle) supports neither suffix,
+  // so the plain import is the one form both bundlers accept.
+  assetsInclude: ["**/*.wasm"],
   optimizeDeps: {
     // Limit the dependency scan to the app entries. Vite otherwise crawls
     // every `*.html` under the root, including mode-owned static scenes such

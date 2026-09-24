@@ -4304,7 +4304,10 @@ export async function startServer(options: ServerOptions) {
       app.get(url, () => new Response(source, { headers: { "Content-Type": "application/javascript" } }));
     }
 
-    // Serve compiled mode bundle (JS + CSS)
+    // Serve compiled mode bundle (JS + CSS, plus the assets Bun.build emits
+    // beside them). A `.wasm` must go out as application/wasm:
+    // `WebAssembly.instantiateStreaming` rejects any other type, which is how
+    // the sprite viewer's Rive runtime loads the file it ships with.
     app.get("/mode-assets/*", async (c) => {
       const relPath = c.req.path.replace("/mode-assets/", "");
       const filePath = join(bundleDir, relPath);
@@ -4313,7 +4316,9 @@ export async function startServer(options: ServerOptions) {
       if (await file.exists()) {
         const contentType = relPath.endsWith(".css")
           ? "text/css"
-          : "application/javascript";
+          : relPath.endsWith(".wasm")
+            ? "application/wasm"
+            : "application/javascript";
         return new Response(file, { headers: { "Content-Type": contentType } });
       }
       return c.notFound();

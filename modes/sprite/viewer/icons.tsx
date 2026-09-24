@@ -151,3 +151,36 @@ export const CrosshairIcon = (p: IconProps) => (
 export const CloseIcon = (p: IconProps) => (
   <Svg {...p}><path d="m6 6 12 12M18 6 6 18" /></Svg>
 );
+
+/** A tray with an arrow leaving it — the Export tab. */
+export const ExportIcon = (p: IconProps) => (
+  <Svg {...p}><path d="M12 15V3.5M7.5 8 12 3.5 16.5 8M4.5 13.5v5a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5" /></Svg>
+);
+
+/** Two arrows chasing each other — make this again. */
+export const RefreshIcon = (p: IconProps) => (
+  <Svg {...p}><path d="M19.5 12a7.5 7.5 0 0 1-12.9 5.2M4.5 12a7.5 7.5 0 0 1 12.9-5.2M17.5 3v4h-4M6.5 21v-4h4" /></Svg>
+);
+
+/** An eye — look at it here instead of downloading it. */
+export const EyeIcon = (p: IconProps) => (
+  <Svg {...p}><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" /><circle cx="12" cy="12" r="2.75" /></Svg>
+);
+
+/** A lightning bolt — fire a trigger. */
+export const BoltIcon = (p: IconProps) => (
+  <Svg {...p}><path d="M13 2.5 5 13.5h6l-1 8 8-11h-6z" /></Svg>
+);
+
+export const MinusIcon = (p: IconProps) => (
+  <Svg {...p}><path d="M5 12h14" /></Svg>
+);
+
+export const PlusIcon = (p: IconProps) => (
+  <Svg {...p}><path d="M12 5v14M5 12h14" /></Svg>
+);
+
+/** Two arrows, one each way — a clip that joins two loops. */
+export const BridgeIcon = (p: IconProps) => (
+  <Svg {...p}><path d="M4 8h14M14 4l4 4-4 4M20 16H6M10 12l-4 4 4 4" /></Svg>
+);
