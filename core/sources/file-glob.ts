@@ -68,7 +68,7 @@ export class FileGlobSource extends BaseSource<ViewerFileContent[]> {
     // the batch is tagged "self", we tag the whole emission "self"
     // (the viewer's own write round-tripped); otherwise "external".
     // We do NOT combine self+external in one emission — the FileChannel
-    // guarantees that batches are coherent (one chokidar debounce window)
+    // guarantees that batches are coherent (one file-watcher debounce window)
     // and a mixed-origin batch would indicate a runtime bug we want to
     // surface rather than paper over.
     const hasSelf = batch.some((ev) => ev.origin === "self");

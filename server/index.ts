@@ -35,6 +35,7 @@ import { resolveLocalized, type ModeManifest, type ProxyRoute } from "../core/ty
 import type { ModeCatalogEntry, ModeInstallState } from "../core/types/mode-catalog.js";
 import { bundledModeNames, listCatalogModes, resolveCatalogMode } from "../core/mode-catalog.js";
 import { startProxyWatcher, registerSelfWrite, registerSelfDelete } from "./file-watcher.js";
+import type { WorkspaceWatcher } from "./watch/index.js";
 import { applySeedPlan, planSeedEntry, resolveSeedCatalog, runPostSeedInstall, SeedContainmentError, type SeedCopyPlan } from "./seed-installer.js";
 import { mountHandoffRoutes } from "./handoff-routes.js";
 import { mountBorrowRoutes } from "./borrow-routes.js";
@@ -48,10 +49,11 @@ import {
 import { mountNativeRoutes } from "./native-bridge.js";
 import { mountProjectsRoutes } from "./projects-routes.js";
 import {
-  primeProjectCache,
+  primeRegisteredProjects,
   revalidateProjectCache,
   shutdownProjectCache,
 } from "./projects-cache.js";
+import { bindFirstFreePort } from "./bind-port.js";
 import { loadProjectManifest } from "../core/project-loader.js";
 import {
   readSessionsFileSync,
@@ -63,6 +65,8 @@ import {
 import { readRunning, removeRunning } from "../bin/running-registry.js";
 
 const DEFAULT_PORT = 17007;
+/** Consecutive ports tried from the requested one before startup fails. */
+const MAX_PORT_ATTEMPTS = 10;
 
 export interface ServerOptions {
   port?: number;
@@ -132,6 +136,15 @@ export interface ServerOptions {
    * locate built-in mode manifests.
    */
   pneumaProjectRoot?: string;
+  /**
+   * The session's workspace watcher (`server/file-watcher.ts::createSessionWatcher`),
+   * owned by the caller for the life of the process (`bin/pneuma.ts` leaves it
+   * to process exit). The server hot-reloads `proxy.json` from
+   * it and reports its health as `GET /api/session` → `watcher`. Absent
+   * (launcher, evolve, tests): `proxy.json` is read once at start and
+   * `watcher` is null.
+   */
+  workspaceWatcher?: WorkspaceWatcher;
 }
 
 /**
@@ -673,7 +686,7 @@ export async function startServer(options: ServerOptions) {
     // The child just wrote a new session subdir under
     // `<project>/.pneuma/sessions/<id>/`. Kick a cache revalidation so
     // the next /api/projects/:id/sessions call picks up the new session
-    // immediately instead of waiting on chokidar's `addDir` event. Fire-
+    // immediately instead of waiting on the project watcher. Fire-
     // and-forget — the launch response shouldn't block on the scan.
     if (params.project) {
       revalidateProjectCache(params.project).catch(() => {});
@@ -2189,20 +2202,7 @@ export async function startServer(options: ServerOptions) {
     // (it falls back to a synchronous SWR scan); priming just lets the
     // common case skip that one-time cost. Wrapped so a malformed registry
     // doesn't block server start.
-    try {
-      const registryData = readSessionsFileSync(
-        join(homedir(), ".pneuma", "sessions.json"),
-      );
-      for (const p of registryData.projects) {
-        // Don't await — the goal is to populate the cache in the background
-        // while the server keeps coming up.
-        primeProjectCache(p.root).catch((err) => {
-          console.warn(`[projects-cache] prime failed for ${p.root}: ${err}`);
-        });
-      }
-    } catch (err) {
-      console.warn(`[projects-cache] prime-on-start failed: ${err}`);
-    }
+    primeRegisteredProjects(join(homedir(), ".pneuma", "sessions.json"));
 
     // ── Handoff routes (v2 tool-call protocol) ─────────────────────────
     // Mount `/api/libraries/*` + `/api/github/status` — launcher-scope only
@@ -2344,26 +2344,16 @@ export async function startServer(options: ServerOptions) {
     }
 
     // Start server (no WebSocket needed for launcher)
-    const MAX_PORT_ATTEMPTS = 10;
-    let serverPort = port;
-    let server!: ReturnType<typeof Bun.serve>;
-
-    for (let attempt = 0; attempt < MAX_PORT_ATTEMPTS; attempt++) {
-      try {
-        server = Bun.serve({
-          port: serverPort,
-          hostname: "0.0.0.0",
-          fetch: app.fetch,
-        });
-        break;
-      } catch (err: any) {
-        if (err?.code === "EADDRINUSE") {
-          console.log(`[server] Port ${serverPort} is in use, trying ${serverPort + 1}...`);
-          serverPort++;
-        } else {
-          throw err;
-        }
-      }
+    let server: ReturnType<typeof Bun.serve>;
+    let serverPort: number;
+    try {
+      ({ server, port: serverPort } = await bindFirstFreePort(port, MAX_PORT_ATTEMPTS, (candidate) =>
+        Bun.serve({ port: candidate, hostname: "0.0.0.0", fetch: app.fetch }),
+      ));
+    } catch (err) {
+      // Nothing is listening: release the project-cache watchers primed above.
+      await shutdownProjectCache().catch(() => {});
+      throw err;
     }
 
     console.log(`[server] Launcher server running on http://localhost:${serverPort}`);
@@ -2388,14 +2378,17 @@ export async function startServer(options: ServerOptions) {
     console.log(`[proxy] Loaded ${proxyConfigRef.current.size} proxy route(s): ${[...proxyConfigRef.current.keys()].join(", ")}`);
   }
 
-  // Watch proxy.json for hot reload
-  startProxyWatcher(workspace, (config) => {
-    proxyConfigRef.current = mergeProxyConfig(
-      options.manifestProxy,
-      config as Record<string, ProxyRoute> | undefined,
-    );
-    console.log(`[proxy] Config reloaded: ${proxyConfigRef.current.size} route(s)`);
-  });
+  // Hot-reload proxy.json from the session's workspace watcher — the same
+  // single watch on the workspace root that feeds content updates.
+  const unsubscribeProxy = options.workspaceWatcher
+    ? startProxyWatcher(options.workspaceWatcher, (config) => {
+        proxyConfigRef.current = mergeProxyConfig(
+          options.manifestProxy,
+          config as Record<string, ProxyRoute> | undefined,
+        );
+        console.log(`[proxy] Config reloaded: ${proxyConfigRef.current.size} route(s)`);
+      })
+    : undefined;
 
   // The v1 chokidar handoff watcher was deleted in the 2026-04-28 tool-call
   // rewrite. Handoffs now flow through `/api/handoffs/emit` and a server-side
@@ -2433,6 +2426,13 @@ export async function startServer(options: ServerOptions) {
     workspace,
     backendType: options.backendType ?? "",
   };
+  /**
+   * The session this server serves. Prefers the live agent connection (a
+   * quick session learns its id only when the agent connects), else the id
+   * from `session.json` at boot, which `bin` updates once it knows it — so a
+   * `--viewing` session, which never connects an agent, still has one.
+   */
+  const currentSessionId = (): string | null => wsBridge.getActiveSessionId() ?? (sessionInfo.sessionId || null);
 
   await pluginRegistry.activateAll(activePlugins as any, sessionInfo);
 
@@ -2718,7 +2718,7 @@ export async function startServer(options: ServerOptions) {
       };
     }
     return c.json({
-      sessionId: wsBridge.getActiveSessionId(),
+      sessionId: currentSessionId(),
       project: projectInfo,
       // Per-session working directory — the agent's CWD. Equals the project
       // session dir for project sessions and the quick-session workspace for
@@ -2727,6 +2727,10 @@ export async function startServer(options: ServerOptions) {
       // surface, not the shared project root (which the ProjectPanel's own
       // open-IDE button already covers separately).
       workspace,
+      // Workspace watcher health (`core/types/workspace-watcher.ts`): which
+      // backend delivers file changes, whether it is ready, whether it fell
+      // back or reported an error, and when it last heard a change.
+      watcher: options.workspaceWatcher?.health() ?? null,
     });
   });
 
@@ -3049,29 +3053,10 @@ export async function startServer(options: ServerOptions) {
     },
   });
 
-  // Prime the per-project cache. Per-session servers care most about the
-  // current project (high probability the user opens its panel first) but
-  // we prime everything for parity with the launcher — the panel can list
-  // all projects via `/api/projects`. Fire-and-forget to keep startup fast.
-  try {
-    const registryData = readSessionsFileSync(
-      join(homedir(), ".pneuma", "sessions.json"),
-    );
-    for (const p of registryData.projects) {
-      primeProjectCache(p.root).catch((err) => {
-        console.warn(`[projects-cache] prime failed for ${p.root}: ${err}`);
-      });
-    }
-  } catch (err) {
-    console.warn(`[projects-cache] prime-on-start failed: ${err}`);
-  }
-  if (options.pneumaProjectRoot) {
-    primeProjectCache(options.pneumaProjectRoot).catch((err) => {
-      console.warn(
-        `[projects-cache] prime current project failed: ${err}`,
-      );
-    });
-  }
+  // The per-project cache is primed by the caller BEFORE it creates the
+  // workspace watcher (`primeRegisteredProjects`, see bin/pneuma.ts): every
+  // prime registers a watch, and on macOS each registration can drop the
+  // workspace watch's events.
 
   // ── Handoff routes (v2 tool-call protocol) ──────────────────────────
   // Mounted on the per-session server so the source agent's
@@ -3150,10 +3135,8 @@ export async function startServer(options: ServerOptions) {
   // a background sub-session and relays a result; control stays with A.
   const borrowRoutesContext = mountBorrowRoutes(app, {
     wsBridge,
-    // Resolve the host session id at request time: prefer the live active
-    // session (quick sessions only learn their id once the agent connects),
-    // fall back to the session.json-derived id captured at boot.
-    hostSessionId: () => wsBridge.getActiveSessionId() ?? sessionInfo.sessionId,
+    // Resolved at request time (see `currentSessionId`).
+    hostSessionId: () => currentSessionId() ?? "",
     // The brief's `return_via.host_server_url` is filled at dispatch time, so
     // it reflects the final bound port (which auto-increments on collision).
     hostServerUrl: () => `http://localhost:${serverPort}`,
@@ -3573,7 +3556,7 @@ export async function startServer(options: ServerOptions) {
           if (result.seededRootPackageJson) seededRootPackageJson = true;
         }
 
-        // Tag the writes as self-originated so chokidar echoes are
+        // Tag the writes as self-originated so the watcher's echoes are
         // labelled "self" rather than "external". The 5s TTL is plenty
         // for file events to arrive after a single seed copy.
         for (const rel of writtenFiles) {
@@ -3582,7 +3565,7 @@ export async function startServer(options: ServerOptions) {
             registerSelfWrite(rel, content);
           } catch {
             // Binary files (matched by `isBinarySeedFile` in seed-installer)
-            // are copied byte-for-byte; the chokidar echo won't carry a
+            // are copied byte-for-byte; the watcher echo won't carry a
             // text payload to match anyway. Skip silently.
           }
         }
@@ -3630,7 +3613,7 @@ export async function startServer(options: ServerOptions) {
         }
 
         // Register pending self-deletes for every file we're about to
-        // unlink so the chokidar unlink echoes are tagged "self".
+        // unlink so the watcher's delete echoes are tagged "self".
         const glob = new Bun.Glob("**/*");
         const deleted: string[] = [];
         for (const rel of glob.scanSync({ cwd: target, absolute: false })) {
@@ -3871,7 +3854,7 @@ export async function startServer(options: ServerOptions) {
     }
     // `?origin=external` tells the server "this write is a user-initiated
     // edit, not a Source<T> autosave echo." When set, we skip the
-    // registerSelfWrite call so the resulting chokidar event is tagged
+    // registerSelfWrite call so the resulting watcher event is tagged
     // origin: "external" and every Source<T> in the viewer treats it as
     // a real external change (refreshing its value, triggering remount,
     // etc). The built-in EditorPanel uses this; Source<T>'s own
@@ -3885,7 +3868,7 @@ export async function startServer(options: ServerOptions) {
       if (dataUrlMatch) {
         writeFileSync(absPath, Buffer.from(dataUrlMatch[1], "base64"));
       } else {
-        // Register this write as self-originated so the chokidar echo is
+        // Register this write as self-originated so the watcher echo is
         // tagged origin: "self" when it arrives. Registration happens BEFORE
         // the disk write so there's no window where the echo could arrive
         // ahead of the registration. Binary writes (data URLs) take the
@@ -3912,7 +3895,7 @@ export async function startServer(options: ServerOptions) {
       return c.json({ error: "Forbidden" }, 403);
     }
     try {
-      // Register the self-delete BEFORE unlinking so the chokidar unlink
+      // Register the self-delete BEFORE unlinking so the watcher's delete
       // event is tagged origin: "self" when it arrives.
       registerSelfDelete(relPath);
       if (existsSync(absPath)) {
@@ -4384,14 +4367,12 @@ ${JSON.stringify(hostAbiImportMap())}
   }
 
   // ── Bun.serve with WebSocket ──────────────────────────────────────────
-  const MAX_PORT_ATTEMPTS = 10;
-  let serverPort = port;
-  let server!: ReturnType<typeof Bun.serve<SocketData>>;
-
-  for (let attempt = 0; attempt < MAX_PORT_ATTEMPTS; attempt++) {
-    try {
-      server = Bun.serve<SocketData>({
-        port: serverPort,
+  let server: ReturnType<typeof Bun.serve<SocketData>>;
+  let serverPort: number;
+  try {
+    ({ server, port: serverPort } = await bindFirstFreePort(port, MAX_PORT_ATTEMPTS, (candidate) =>
+      Bun.serve<SocketData>({
+        port: candidate,
         hostname: "0.0.0.0",
         async fetch(req, server) {
           const url = new URL(req.url);
@@ -4465,16 +4446,15 @@ ${JSON.stringify(hostAbiImportMap())}
             }
           },
         },
-      });
-      break; // success
-    } catch (err: any) {
-      if (err?.code === "EADDRINUSE") {
-        console.log(`[server] Port ${serverPort} is in use, trying ${serverPort + 1}...`);
-        serverPort++;
-      } else {
-        throw err;
-      }
-    }
+      }),
+    ));
+  } catch (err) {
+    // Nothing is listening: release what was started for this session.
+    unsubscribeProxy?.();
+    handoffRoutesContext.stop();
+    borrowRoutesContext.stop();
+    await shutdownProjectCache().catch(() => {});
+    throw err;
   }
 
   console.log(`[server] Pneuma server running on http://localhost:${serverPort}`);
@@ -4488,15 +4468,21 @@ ${JSON.stringify(hostAbiImportMap())}
   const onEditingLaunch = (cb: () => Promise<void>) => { editingLaunchCallback = cb; };
   const onEditingKill = (cb: () => Promise<void>) => { editingKillCallback = cb; };
 
-  const cleanup = async () => {
+  /**
+   * `exiting`: the process is about to exit, so the OS releases every watch.
+   * The project-cache watchers are then left open: closing chokidar's
+   * per-path watches (`PNEUMA_WATCHER=chokidar`) costs one FSEventStream
+   * rebuild each on macOS — 0.8 s for 20 small projects, 2.7 s on a real
+   * registry — and `bin`'s shutdown kills the agent only after this returns,
+   * under a 4 s force-exit fuse. Without it (tests, embedding callers) they
+   * are closed so nothing outlives the server. The workspace watcher belongs
+   * to the caller that created it.
+   */
+  const cleanup = async (opts: { exiting?: boolean } = {}) => {
     if (handoffRoutesContext) handoffRoutesContext.stop();
     if (borrowRoutesContext) borrowRoutesContext.stop();
     await hookBus.emit("session:end", { sessionId: sessionInfo.sessionId, mode: sessionInfo.mode, workspace }, sessionInfo).catch(() => {});
-    // Tear down chokidar watchers so they don't leak across `bun run dev`
-    // restarts (each restart spawns a fresh server process; without this,
-    // the process exit alone reaps them, but explicit shutdown lets
-    // tests clean up between cases).
-    await shutdownProjectCache().catch(() => {});
+    if (!opts.exiting) await shutdownProjectCache().catch(() => {});
   };
 
   return { server, wsBridge, terminalManager, port: serverPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill, cleanup, sessionInfo, hookBus, queueContentUpdate };

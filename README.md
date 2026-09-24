@@ -195,6 +195,9 @@ Options:
   --debug              Enable debug mode
   --dev                Force dev mode (Vite)
 
+Environment:
+  PNEUMA_WATCHER=native|chokidar   File-watcher backend (default: native on macOS, chokidar elsewhere)
+
 Subcommands:
   mode add <url>           Install a remote mode (single → ~/.pneuma/modes/; library → ~/.pneuma/libraries/)
   mode list                List published modes on R2
@@ -312,7 +315,7 @@ Quick (project-less) sessions remain fully supported — projects are opt-in. Cr
 | Diagramming | [draw.io](https://www.drawio.com) viewer-static (CDN) + [rough.js](https://roughjs.com) 4.6 |
 | Video | [Remotion](https://www.remotion.dev) 4.0 + @remotion/player + @babel/standalone |
 | Canvas | [@xyflow/react](https://reactflow.dev) 12 (Illustrate mode) |
-| File Watching | [chokidar](https://github.com/paulmillr/chokidar) 5 |
+| File Watching | One watch per workspace root: Bun's recursive `fs.watch` on macOS, [chokidar](https://github.com/paulmillr/chokidar) 5 on Linux and Windows |
 | Agent | Claude Code CLI via stdio stream-json (`-p --input-format/--output-format stream-json`); Codex CLI via app-server stdio JSON-RPC; Moonshot Kimi Code CLI via ACP JSON-RPC over stdio (`kimi acp`) |
 
 ## Backend Model

@@ -178,7 +178,7 @@ export interface SourceContext {
 // ────────────────────────────────────────────────────────────────────────────
 
 /**
- * Bridge between file-backed providers and the server's chokidar → WS
+ * Bridge between file-backed providers and the server's file watcher → WS
  * pipeline. The runtime instantiates exactly one FileChannel per mode
  * session and hands it to every file-backed provider via SourceContext.
  *
@@ -186,7 +186,7 @@ export interface SourceContext {
  *
  * When a provider calls `write(path, content)`, the runtime (specifically the
  * server-side /api/files handler) records a `pendingSelfWrite` entry for that
- * path + content hash. When chokidar subsequently fires for that path, the
+ * path + content hash. When the watcher subsequently reports that path, the
  * server consults the entry and tags the outgoing FileUpdate with
  * origin: "self"; otherwise origin: "external". Providers observe the tag via
  * the `origin` field on FileChangeEvent and propagate it to their own
@@ -215,7 +215,7 @@ export interface FileChannel {
    * Persist file content to the workspace. Wraps the existing
    * `POST /api/files` endpoint. Returns when the server has acknowledged
    * the write (which also means the pendingSelfWrite entry has been recorded
-   * on the server side, so the resulting chokidar echo will be tagged
+   * on the server side, so the resulting watcher echo will be tagged
    * origin: "self" when it arrives).
    *
    * Providers call this from their doWrite() implementation. The runtime
@@ -227,7 +227,7 @@ export interface FileChannel {
   /**
    * Delete a file from the workspace. Wraps `DELETE /api/files?path=...`.
    * Like write(), the server records a pendingSelfDelete entry so the
-   * resulting chokidar `unlink` event is tagged origin: "self" and the
+   * resulting watcher delete is tagged origin: "self" and the
    * provider can absorb its own echo.
    *
    * Used primarily by `aggregate-file` providers whose `save()` produces

@@ -1,0 +1,86 @@
+name: Watcher contract
+
+# The workspace watcher behaves differently per OS: FSEvents on macOS (where
+# Bun shares one stream across every fs.watch), ReadDirectoryChangesW on
+# Windows, inotify on Linux. release.yml runs every suite on Ubuntu only, which
+# is how a macOS-only Bun defect (lost rename-overs, backlot 2026-09-24)
+# shipped. This job runs the watcher suites on the other two platforms, against
+# both backends (server/__tests__/watch-contract.test.ts), plus the port bind
+# (a macOS wildcard bind can share a port with a loopback-only listener). It
+# does not gate the release; a red run is the signal to look before tagging.
+on:
+  pull_request:
+    paths:
+      - "server/watch/**"
+      - "server/file-watcher.ts"
+      - "server/projects-cache.ts"
+      - "server/index.ts"
+      - "server/__tests__/watch-contract.test.ts"
+      - "server/__tests__/file-watcher.test.ts"
+      - "server/__tests__/projects-cache.test.ts"
+      - "server/__tests__/session-watcher.test.ts"
+      - "server/bind-port.ts"
+      - "server/__tests__/bind-port.test.ts"
+      - "core/types/workspace-watcher.ts"
+      - "bin/pneuma.ts"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/watcher-contract.yml"
+  push:
+    branches: [main]
+    paths:
+      - "server/watch/**"
+      - "server/file-watcher.ts"
+      - "server/projects-cache.ts"
+      - "server/index.ts"
+      - "server/__tests__/watch-contract.test.ts"
+      - "server/__tests__/file-watcher.test.ts"
+      - "server/__tests__/projects-cache.test.ts"
+      - "server/__tests__/session-watcher.test.ts"
+      - "server/bind-port.ts"
+      - "server/__tests__/bind-port.test.ts"
+      - "core/types/workspace-watcher.ts"
+      - "bin/pneuma.ts"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/watcher-contract.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: watcher-contract-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  watcher-contract:
+    name: Watcher contract (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    # The suites take well under a minute; the cap turns a wedged watcher into
+    # a failure instead of a stalled runner.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      # Keep in step with release.yml's setup-bun (the Bun floor moves in all
+      # CI jobs together; see the Bun file-watcher deadlock rule).
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.0"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Watcher suites
+        run: >-
+          bun test --timeout 60000
+          core/__tests__/workspace-watcher.test.ts
+          server/__tests__/watch-contract.test.ts
+          server/__tests__/file-watcher.test.ts
+          server/__tests__/projects-cache.test.ts
+          server/__tests__/session-watcher.test.ts
+          server/__tests__/binary-snapshot.test.ts
+          server/__tests__/bind-port.test.ts
+          modes/sprite/__tests__/watch-scope.test.ts

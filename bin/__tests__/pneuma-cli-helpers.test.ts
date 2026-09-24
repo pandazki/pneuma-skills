@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import {
   normalizePersistedSession,
   normalizeSessionRecord,
@@ -6,6 +6,7 @@ import {
   parseVitePort,
   preserveRefinedSessionMeta,
   resolveWorkspaceBackendType,
+  startViteDev,
   startsOverPersistedSession,
   type PersistedSession,
 } from "../pneuma-cli-helpers.js";
@@ -277,5 +278,76 @@ describe("parseVitePort (the ready line must name the port Vite actually took)",
 
   test("refuses a port outside the legal range rather than reporting it", () => {
     expect(parseVitePort("  ➜  Local:   http://localhost:99999/")).toBeNull();
+  });
+});
+
+describe("startViteDev (a dev server that never came up is a failure, not a URL)", () => {
+  // Review finding (2026-09-24): the port promise only ever resolved — on
+  // the Local line or, after 10 s, to the port it had asked for. A Vite that
+  // exited at once (missing dependency, config error) still produced a ready
+  // line pointing at nothing. `cmd` stands in for `bunx vite`.
+  const fake = (script: string) => [process.execPath, "-e", script];
+  const quiet = () => {
+    const log = spyOn(console, "log").mockImplementation(() => {});
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    return (): string[] => {
+      const warned = warn.mock.calls.map((c) => String(c[0]));
+      log.mockRestore();
+      warn.mockRestore();
+      return warned;
+    };
+  };
+
+  test("rejects with the exit code and the output tail when Vite exits before reporting a port", async () => {
+    const restore = quiet();
+    try {
+      const started = startViteDev({
+        projectRoot: process.cwd(),
+        port: 17996,
+        env: { ...(process.env as Record<string, string>) },
+        cmd: fake("console.log('loading config'); console.error('Error: Cannot find package vite'); process.exit(3)"),
+        timeoutMs: 20_000,
+      });
+      await expect(started).rejects.toThrow(/exited with code 3[\s\S]*Cannot find package vite/);
+    } finally {
+      restore();
+    }
+  });
+
+  test("resolves with the port from the Local line", async () => {
+    const restore = quiet();
+    try {
+      const { proc, port } = await startViteDev({
+        projectRoot: process.cwd(),
+        port: 17996,
+        env: { ...(process.env as Record<string, string>) },
+        cmd: fake("console.log('  ➜  Local:   http://localhost:17999/'); setInterval(() => {}, 1000)"),
+        timeoutMs: 20_000,
+      });
+      proc.kill();
+      expect(port).toBe(17999);
+    } finally {
+      restore();
+    }
+  });
+
+  test("a Vite still running at the timeout keeps the requested port, with a warning", async () => {
+    const restore = quiet();
+    let proc: ReturnType<typeof Bun.spawn> | null = null;
+    try {
+      const result = await startViteDev({
+        projectRoot: process.cwd(),
+        port: 17996,
+        env: { ...(process.env as Record<string, string>) },
+        cmd: fake("setInterval(() => {}, 1000)"),
+        timeoutMs: 300,
+      });
+      proc = result.proc;
+      expect(result.port).toBe(17996);
+    } finally {
+      proc?.kill();
+      const warned = restore();
+      expect(warned.some((m) => m.includes("17996"))).toBe(true);
+    }
   });
 });

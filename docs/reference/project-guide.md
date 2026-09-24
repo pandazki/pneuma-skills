@@ -10,7 +10,7 @@ Architecture and runtime reference for Pneuma Skills. Start with [AGENTS.md](../
 | Server | Hono 4.7 |
 | Frontend | React 19 + Vite 7 + Tailwind CSS 4 + Zustand 5 |
 | Terminal | xterm.js 6 + Bun native PTY |
-| File Watching | chokidar 5 |
+| File Watching | `server/watch/` layer: Bun recursive `fs.watch` (macOS default) / chokidar 5 (Linux, Windows, fallback) |
 | Drawing | @excalidraw/excalidraw 0.18 |
 | Diagramming | draw.io viewer-static.min.js (CDN) + rough.js 4.6 |
 | Video | remotion 4.0 + @remotion/player + @remotion/web-renderer + @babel/standalone |
@@ -88,12 +88,15 @@ pneuma handoff-from-external --intent <text> --mode <name> [--cwd <path>] \
 | `--project <path>` | Run as session inside the project at `<path>` |
 | `--session-id <id>` | Resume project session (requires `--project`) |
 
+Environment: `PNEUMA_WATCHER=native|chokidar` overrides the workspace watcher's backend (default: `native` on macOS, `chokidar` elsewhere). The choice and the watcher's ready time are logged as `[watcher] <backend> ready in <n>ms`.
+
 ## Ports
 
 - **17996** — Vite dev server / production server
 - **17007** — Hono backend in dev mode
 - Dev: 浏览器走 Vite,WebSocket 直连 backend,绕开 Vite WS proxy
 - Launcher 派生子进程时端口自动递增;详细拓扑见 `docs/reference/network-topology.md`
+- A taken server port moves to the next one, 10 attempts (`server/bind-port.ts`); when all are taken `startServer` rejects and the CLI exits 1. A dev Vite that exits before printing its `Local:` port fails startup the same way
 
 ## Project Structure
 
@@ -128,6 +131,8 @@ pneuma-skills/
 │   ├── ws-bridge*.ts          # WS bridge to browsers (JSON); per-backend BridgeBackends in ws-bridge-{kimi,codex}.ts
 │   ├── ws-bridge-backend.ts   # BridgeBackend interface
 │   ├── skill-installer.ts     # Skill copy + template engine + instructions injection
+│   ├── watch/                 # Workspace watcher layer: one watch per root, native (macOS) / chokidar backends
+│   ├── file-watcher.ts        # content_update + proxy.json consumers of the session watcher
 │   └── shadow-git.ts          # Shadow git, per-turn checkpoint capture, bundle export
 ├── src/                       # React frontend (Vite)
 │   ├── App.tsx                # Root layout, dynamic viewer loading
@@ -185,6 +190,7 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 | **EvolutionConfig** | `core/types/mode-manifest.ts` | Mode `manifest.evolution` | `server/evolution-routes.ts` + Evolution mode |
 | **SharedHistoryPackage** | `core/types/shared-history.ts` | `pneuma history export/share` produces | `pneuma history open` + replay flow consumes |
 | **PluginManifest** | `core/types/plugin.ts` | Each plugin's `manifest.ts` (`plugins/<name>/`) | `core/plugin-registry.ts` (discovery + lifecycle), `core/hook-bus.ts` (waterfall events), `core/settings-manager.ts` (settings) |
+| **WatcherHealth** + `WatcherBackendKind` / `parseWatcherBackendKind` (`PNEUMA_WATCHER`) | `core/types/workspace-watcher.ts` | `server/watch/index.ts` — the watcher layer (`createWorkspaceWatcher`: ignore on every notice, `lstat` classification, 200 ms write stability, a file index taken at creation and reconciled after ready, overflow rescan, a reconcile after any other registration on macOS, chokidar fallback) reports `health()`; `resolveWatcherBackend()` picks native on macOS, chokidar elsewhere, unless `PNEUMA_WATCHER` names one | `GET /api/session` → `watcher: { backend, ready, degraded, lastEventAt }` (null without a workspace watcher); `bin/pneuma.ts` primes the project cache (`primeRegisteredProjects`), then creates the session watcher before `startServer` and logs its backend and ready time; `startFileWatcher` / `startProxyWatcher` / `server/projects-cache.ts` subscribe. Pinned by `core/__tests__/workspace-watcher.test.ts`, `server/__tests__/watch-contract.test.ts`, `server/__tests__/session-watcher.test.ts` |
 | **ProjectManifest** | `core/types/project-manifest.ts` | `<projectRoot>/.pneuma/project.json` | `core/project-loader.ts::detectWorkspaceKind()`; `server/handoff-routes.ts`; ProjectPanel / EmptyShell on front-end |
 | **`BorrowDispatchPayload` + `BorrowResult` + `BorrowLink`** (round-trip cross-mode handoff — see ADR-015) | `core/types/borrow.ts` (`isBorrowResult` guard + `normalizeBorrowScope` + `MAX_CONCURRENT_BORROWS_PER_SESSION`) | dispatch built by `bin/borrow-cli.ts` (`pneuma borrow`) → `server/borrow-routes.ts` `/api/borrows/dispatch` writes `<Bdir>/.pneuma/borrow-brief.json` + records `BorrowLink` in the per-session `Map<borrow_id, BorrowLink>`; result written atomically by `bin/borrow-return-cli.ts` to `<Bdir>/borrow-result.json`, then signaled to the host server at `/api/borrows/return` | `server/skill-installer.ts` (brief → B's `pneuma:handoff` block); `bin/env-tag.ts` (`reason="borrow"` start signal); `server/ws-bridge.ts` (queued `<pneuma:borrow-returned>` return tag, idle-flush); `pneuma-project` skill (semantic layer, both sides). |
 
@@ -205,7 +211,7 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 
 - **浏览器 ↔ Server**:`/ws/browser/:sessionId`(JSON)
 - **Server ↔ Backend**:所有后端跑 stdio(Claude 是 stdio NDJSON,Codex 是 stdio JSON-RPC,Kimi 是 ACP stdio JSON-RPC);浏览器 ↔ backend 桥接走 `BridgeBackend` 实现
-- **文件变化**:chokidar → WS push 到浏览器,事件携 `origin: "self" | "external"`(服务端 `pendingSelfWrites` 在源头标记)
+- **文件变化**:workspace watcher(`server/watch/`:每个根一个 watch,macOS 用原生 recursive `fs.watch`,其余平台 chokidar)→ WS push 到浏览器,事件携 `origin: "self" | "external"`(服务端 `pendingSelfWrites` 在源头标记)
 - **Session init**:携 `backend_type` / `agent_capabilities` / `agent_version`,前端据此 feature-gate
 - **`tool_use` 带 `fileRef`**:服务端 `stampFileRefs`(`server/file-ref.ts`)通过 `BackendModule.toolFileRef` 归一化为 `{ path, kind }`;Chat 渲染 `FilePreview` + `ToolFileActions`(open/editor/reveal via `/api/system/*`),零 tool-name 知识
 - **跨模式 chat-tag 信号**:`<pneuma:request-handoff>` / `<pneuma:handoff-cancelled>`(goto 交接)与 `<pneuma:request-borrow>` / `<pneuma:borrow-returned>`(往返借用,见 Borrow)都走同一条 chat-tag 注入管道;`borrow-returned` 是**排队**通知(rides `pendingNotifications`,A idle 时 flush,绝不打断 A 某一轮中间)
@@ -218,11 +224,11 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 2. **Load manifest** — `loadModeManifest()` → ModeManifest
 3. **Session** — load or create `<stateDir>/session.json`. Quick sessions use `sessionDir = workspace`, `stateDir = workspace/.pneuma`; project sessions use `sessionDir = stateDir = <project>/.pneuma/sessions/<id>/`. Skills and instructions are installed under `sessionDir` (the agent CWD).
 4. **Skill install** — 把 `modes/<mode>/skill/` 复制到 backend-appropriate 目录,应用 `{{key}}` / `{{#key}}…{{/key}}` 模板,拼装 marker blocks 写到指令文件
-5. **Server start** — Hono HTTP + WebSocket + backend transport bridge
+5. **Server start** — the workspace watcher is created first (one watch on the workspace root for the life of the process; backend per platform or `PNEUMA_WATCHER`; `[watcher] … ready in …ms`), then Hono HTTP + WebSocket + backend transport bridge
 6. **Backend selection** — startup-only、workspace-locked
 7. **Agent launch** — stdio per backend
 8. **Frontend** — `mode-loader.ts` 动态 import;外部 mode 走 `registerExternalMode()` → `Bun.build()` → import map
-9. **Preview loop** — Agent 编辑 → chokidar → WS → 浏览器 → viewer 渲染;用户选择 → `<viewer-context>` → agent
+9. **Preview loop** — Agent 编辑 → workspace watcher → WS → 浏览器 → viewer 渲染;用户选择 → `<viewer-context>` → agent
 
 无 mode 参数 → Launcher(marketplace UI、Recent Sessions,子进程通过 `/api/launch` 派生)。
 
@@ -426,6 +432,7 @@ WebSocket:`/ws/browser/:sessionId`(JSON)、`/ws/cli/:sessionId`(NDJSON,legacy �
 
 Key endpoints:
 
+- `GET /api/session` — the id of the session this server serves (the live agent connection's, else `session.json`'s, so `--viewing` has one too), project paths, workspace, and `watcher` health(`WatcherHealth`:backend、ready、degraded、lastEventAt;写一个探测文件后 `lastEventAt` 必须前移)
 - `GET /api/file?path=<abs>` — workspace-contained file reads(chat 图片预览)
 - `GET /api/running` — 系统级所有 running sessions(每条带 current mode + optional `thumbnailUrl`)
 - `POST /api/session/thumbnail` — base64 PNG → `<stateDir>/thumbnail.png`
