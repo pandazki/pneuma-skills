@@ -201,6 +201,28 @@ export function seamVerdict(inspect: InspectSummary): MetricVerdict {
 
 const round4 = (value: number): number => Math.round(value * 1e4) / 1e4;
 
+/** One end of a transition: its measured gap, the bar, and whether it is over. */
+export interface JoinEnd {
+  gap: number | null;
+  limit: number | null;
+  over: boolean;
+}
+
+/**
+ * Does a transition land at both ends?
+ *
+ * The same bar as a seam, for the same reason: `transition` measures how far
+ * its first frame is from the loop it leaves (`startGap`) and its last from
+ * the loop it lands on (`endGap`), and a gap past twice the clip's own step
+ * reads as a jump when the file switches there. No step, no bar.
+ */
+export function joinVerdict(inspect: InspectSummary): { start: JoinEnd; end: JoinEnd } {
+  const step = stepOf(inspect);
+  const limit = step === null ? null : round4(SEAM_STEP_FACTOR * step);
+  const end = (gap: number | null): JoinEnd => ({ gap, limit, over: limit !== null && gap !== null && gap > limit });
+  return { start: end(finite(inspect.startGap)), end: end(finite(inspect.endGap)) };
+}
+
 /** How long the loop runs, in seconds — frames over fps. Null when either is
  *  missing: a duration of 0 would read as a clip with nothing in it. */
 export function loopDuration(frames: number, fps: number): number | null {

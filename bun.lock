@@ -24,6 +24,7 @@
         "@pneuma-craft/video": "^0.6.0",
         "@remotion/player": "4.0.438",
         "@remotion/web-renderer": "4.0.438",
+        "@rive-app/canvas": "2.43.1",
         "@tailwindcss/typography": "^0.5.19",
         "@tailwindcss/vite": "^4.0.0",
         "@uiw/react-codemirror": "^4.25.5",
@@ -363,6 +364,8 @@
     "@remotion/player": ["@remotion/player@4.0.438", "", { "dependencies": { "remotion": "4.0.438" }, "peerDependencies": { "react": ">=16.8.0", "react-dom": ">=16.8.0" } }, "sha512-2OT8r0arsjxUEVEa5dNgain7ChbDG0THZglxh1Bo4U8nTSMnuX+1yyF0MVOlmT56yaESfoiGbZvnnpB6e7Ltew=="],
 
     "@remotion/web-renderer": ["@remotion/web-renderer@4.0.438", "", { "dependencies": { "@mediabunny/aac-encoder": "1.39.2", "@mediabunny/flac-encoder": "1.39.2", "@mediabunny/mp3-encoder": "1.39.2", "@remotion/licensing": "4.0.438", "mediabunny": "1.39.2", "remotion": "4.0.438" }, "peerDependencies": { "react": ">=18.0.0", "react-dom": ">=18.0.0" } }, "sha512-cOGtgqRiD+q77Vj65gy/fo+GK1wA3G5ft2xYLPJZzddmrhhrhibyFglljY2Vu7UaXYIUWZTkGoXwdKchC09UZA=="],
+
+    "@rive-app/canvas": ["@rive-app/canvas@2.43.1", "", {}, "sha512-GqENtpSOK5KOnF+kmzDQ70tfEQYksSOb39jcPPAV5vj5XDJ3vekPdbqTWuQdEyOFMhJUir4iBo3On9Gy2hghtQ=="],
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.0-rc.3", "", {}, "sha512-eybk3TjzzzV97Dlj5c+XrBFW57eTNhzod66y9HrBlzJ6NsCrWCp/2kaPS3K9wJmurBC0Tdw4yPjXKZqlznim3Q=="],
 

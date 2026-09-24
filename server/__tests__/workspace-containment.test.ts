@@ -72,6 +72,10 @@ beforeAll(async () => {
   // Compiled mode bundle, with a link out.
   mkdirSync(join(base, "bundle"), { recursive: true });
   writeFileSync(join(base, "bundle", "pneuma-mode.js"), "export default 1;");
+  writeFileSync(join(base, "bundle", "pneuma-mode.css"), "body{}");
+  // A WebAssembly asset the bundler emitted beside the code (the sprite
+  // viewer's Rive runtime): the `\0asm` magic and version 1.
+  writeFileSync(join(base, "bundle", "rive-abc123.wasm"), new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]));
   symlinkSync(join(outside, "sentinel.css"), join(base, "bundle", "leak.js"));
 
   // In-workspace links.
@@ -225,6 +229,18 @@ describe("mode-owned asset routes", () => {
     const res = await api("/mode-assets/leak.js");
     expect(res.status).toBe(404);
     expect(await res.text()).not.toContain(SENTINEL);
+  });
+
+  test("a bundle's assets are served with their own content type", async () => {
+    // `WebAssembly.instantiateStreaming` refuses anything but
+    // application/wasm; served as JavaScript, the runtime falls back to a
+    // slower path with a console error, or fails outright.
+    const wasm = await api("/mode-assets/rive-abc123.wasm");
+    expect(wasm.status).toBe(200);
+    expect(wasm.headers.get("content-type")).toBe("application/wasm");
+    expect(new Uint8Array(await wasm.arrayBuffer())).toEqual(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]));
+    expect((await api("/mode-assets/pneuma-mode.js")).headers.get("content-type")).toBe("application/javascript");
+    expect((await api("/mode-assets/pneuma-mode.css")).headers.get("content-type")).toBe("text/css");
   });
 
   test("showcase and seed-gallery assets are served; links to outside are not", async () => {

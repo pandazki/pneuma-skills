@@ -15,12 +15,17 @@
  * stay true, but a mark that stays loud after somebody looked at it and gave
  * a reason is how three sessions in a row ended with an agent saying "not a
  * defect" beside an alarm nobody could turn off.
+ *
+ * Transitions — the clips between loops, made for the `.riv` — are a third
+ * list after the motions (`railGroups` says why), each named by the two loops
+ * it joins, and an end that does not land is marked the way an open seam is.
  */
 
 import type { CharacterProject, Motion, MotionStatus } from "../domain.js";
 import { resolveAssetUri } from "../domain.js";
-import { FilmIcon, LoopIcon, WarnIcon } from "./icons.js";
-import { hasGeneratingVideo } from "./metrics.js";
+import { BridgeIcon, FilmIcon, LoopIcon, WarnIcon } from "./icons.js";
+import { hasGeneratingVideo, joinVerdict } from "./metrics.js";
+import { motionLabel, railGroups } from "./panel.js";
 import type { SpriteStrings } from "./strings.js";
 import { contentUrl } from "./urls.js";
 
@@ -80,6 +85,7 @@ export function MotionRail({
   onSelectRef,
 }: MotionRailProps) {
   const { refs, motions } = project.sprite;
+  const groups = railGroups(project);
 
   return (
     <nav className="flex h-full w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-cc-border bg-cc-surface/30 px-3 py-3">
@@ -137,7 +143,10 @@ export function MotionRail({
         )}
       </section>
 
-      <section className="min-h-0">
+      {/* The rail scrolls as a whole; its sections keep their height. A
+          section allowed to shrink (min-h-0) in this column let its rows
+          overflow onto the next section's. */}
+      <section className="shrink-0">
         <h2 className="px-1 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-cc-muted">
           {t.motions}
         </h2>
@@ -147,10 +156,11 @@ export function MotionRail({
           </p>
         ) : (
           <ul className="flex flex-col gap-1">
-            {motions.map((motion) => (
+            {groups.motions.map((motion) => (
               <MotionRow
                 key={motion.id}
                 motion={motion}
+                label={motion.label}
                 t={t}
                 active={selectedMotionId === motion.id && !selectedRefId}
                 onSelect={() => onSelectMotion(motion.id)}
@@ -159,17 +169,40 @@ export function MotionRail({
           </ul>
         )}
       </section>
+
+      {groups.transitions.length > 0 ? (
+        <section className="shrink-0">
+          <h2 className="px-1 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-cc-muted">
+            {t.transitions}
+          </h2>
+          <ul className="flex flex-col gap-1">
+            {groups.transitions.map((motion) => (
+              <MotionRow
+                key={motion.id}
+                motion={motion}
+                label={motionLabel(project, motion)}
+                t={t}
+                active={selectedMotionId === motion.id && !selectedRefId}
+                onSelect={() => onSelectMotion(motion.id)}
+              />
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </nav>
   );
 }
 
 function MotionRow({
   motion,
+  label,
   active,
   t,
   onSelect,
 }: {
   motion: Motion;
+  /** What the row is called: a transition is named by its two loops. */
+  label: string;
   active: boolean;
   t: SpriteStrings;
   onSelect: () => void;
@@ -178,6 +211,11 @@ function MotionRow({
   const warnings = inspect?.warnings ?? [];
   const acknowledged = inspect?.acknowledged ?? null;
   const rendering = hasGeneratingVideo(motion);
+  const transition = motion.kind === "transition";
+  // An end that does not land is marked in the row, like an open seam: the
+  // file would jump there.
+  const joins = transition && inspect ? joinVerdict(inspect) : null;
+  const offEnd = joins && (joins.start.over || joins.end.over);
   return (
     <li>
       <button
@@ -190,8 +228,8 @@ function MotionRow({
         }`}
       >
         <span className="flex items-center gap-1.5">
-          <span className="flex-1 truncate text-[13px] text-cc-fg">
-            {motion.label}
+          <span className="flex-1 truncate text-[13px] text-cc-fg" title={label}>
+            {label}
           </span>
           {rendering ? (
             <span
@@ -205,7 +243,7 @@ function MotionRow({
               the loop one is the stronger statement — it says what the motion
               is for, not just where its pixels came from — and it replaces the
               video chip rather than stacking beside it. */}
-          {motion.kind === "loop" ? (
+          {transition ? null : motion.kind === "loop" ? (
             <span
               className="inline-flex shrink-0 items-center gap-1 rounded-full border border-cc-primary/40 px-1.5 py-px text-[10px] text-cc-primary"
               title={t.loopSourceTitle}
@@ -236,18 +274,39 @@ function MotionRow({
           ) : null}
           <StatusChip status={motion.status} t={t} />
         </span>
-        <span className="text-[11px] text-cc-muted">
+        <span className="flex items-center gap-1.5 text-[11px] text-cc-muted">
+          {/* A transition's chip rides on this line: its name — two loops and
+              an arrow — needs the first line's width. */}
+          {transition ? (
+            <span
+              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-cc-primary/40 px-1.5 py-px text-[10px] text-cc-primary"
+              title={motion.reverseOf ? `${t.transitionChipTitle}\n${t.reverseTitle(motion.reverseOf)}` : t.transitionChipTitle}
+            >
+              <BridgeIcon size={9} />
+              {t.transitionChip}
+            </span>
+          ) : null}
+          <span className="min-w-0 truncate">
           {/* A loop's grid is the 1×1 `register-run` writes because the
               sidecar has the field, not because anything is 1×1 — printing
               it puts a number nobody can act on in front of the two that
               matter. The chip above already says this is a loop. */}
           {t.motionMeta({
-            cols: motion.kind === "loop" ? null : motion.grid.cols,
-            rows: motion.kind === "loop" ? null : motion.grid.rows,
+            cols: motion.kind === "loop" || transition ? null : motion.grid.cols,
+            rows: motion.kind === "loop" || transition ? null : motion.grid.rows,
             frames: motion.frames.length,
             fps: motion.fps,
-            loop: motion.loop,
+            loop: motion.loop && !transition,
           })}
+          {joins && offEnd ? (
+            <span className="text-cc-warning">
+              {(["start", "end"] as const)
+                .filter((end) => joins[end].over)
+                .map((end) => ` · ${t.joinOff(end)}`)
+                .join("")}
+            </span>
+          ) : null}
+          </span>
         </span>
       </button>
     </li>

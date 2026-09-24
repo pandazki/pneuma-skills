@@ -334,7 +334,7 @@ export type ViewerAddress = Record<string, unknown>;
 
 - 状态持久化在 `<sessionDir>/session.json` 与 `~/.pneuma/sessions.json`，是 resume identity 的一部分。
 - 服务端：`GET /api/config` 返回 `editing`；`POST /api/session/editing` 切换并广播。
-- Viewer 端：通过 `ViewerPreviewProps.editing: boolean` 读，各 mode 自行适配 UI。`readonly: boolean`（replay）禁用一切交互，比 `editing: false` 更严格。
+- Viewer 端：通过 `ViewerPreviewProps.editing: boolean` 读，各 mode 自行适配 UI。`readonly: boolean`（replay）禁用一切交互，比 `editing: false` 更严格。shell 在 editor 与 app 两种 layout 下都传这个值（`src/hooks/useViewerProps.tsx`）；`--viewing` session 没有 agent，viewer 拿到的是 `false`，凡是会给 agent 发请求的控件都应据此隐藏。
 - CLI：`--viewing` flag 让 session 启动即进入 `editing: false`——此时不安装 skill、不 spawn agent；用户在 UI 切回 `true` 才触发 spawn。
 
 ---

@@ -24,6 +24,7 @@ import type { ViewerFileContent } from "../../../core/types/viewer-contract.js";
 import {
   CRAFT_PROJECT_SCHEMA,
   createCharacterProjectFile,
+  EXPORT_FORMATS,
   findMotion,
   findRef,
   loadRoster,
@@ -334,6 +335,44 @@ describe("loop motions", () => {
     expect("kind" in motionWith(() => {})).toBe(false);
   });
 
+  test("a transition carries where it goes from and to, and its source when it is a reverse", () => {
+    const transition = motionWith((m) => {
+      m.id = "idle-to-coffee";
+      m.kind = "transition";
+      m.from = "idle";
+      m.to = "coffee";
+      m.loop = false;
+      m.brief = { duration: 1.2, budgetUsd: 1.5, recordedAt: "2026-09-24T00:00:00.000Z" };
+      m.inspect = { ...m.inspect, startGap: 0.012, endGap: 0.4, step: 0.03 };
+    });
+    expect(transition).toMatchObject({ kind: "transition", from: "idle", to: "coffee", loop: false });
+    expect(transition.brief).toEqual({ duration: 1.2, budgetUsd: 1.5, recordedAt: "2026-09-24T00:00:00.000Z" });
+    expect({ start: transition.inspect?.startGap, end: transition.inspect?.endGap }).toEqual({ start: 0.012, end: 0.4 });
+    expect("reverseOf" in transition).toBe(false);
+
+    const reverse = motionWith((m) => {
+      m.kind = "transition";
+      m.from = "coffee";
+      m.to = "idle";
+      m.reverseOf = "idle-to-coffee";
+    });
+    expect(reverse.reverseOf).toBe("idle-to-coffee");
+
+    // A transition that does not say both ends connects nothing: it loads as
+    // the sprite motion an unknown kind always falls back to.
+    for (const broken of [{ from: "idle" }, { to: "coffee" }, { from: "", to: "coffee" }, { from: 1, to: 2 }]) {
+      const parsed = motionWith((m) => { Object.assign(m, { kind: "transition" }, broken); });
+      expect({ broken, kind: parsed.kind, from: parsed.from }).toEqual({ broken, kind: undefined, from: undefined });
+    }
+    // A half brief is no brief, as for a loop; a loop's brief is not a transition's.
+    expect(motionWith((m) => {
+      Object.assign(m, { kind: "transition", from: "a", to: "b", brief: { duration: 1.2, recordedAt: "x" } });
+    }).brief).toBeUndefined();
+    expect(motionWith((m) => {
+      Object.assign(m, { kind: "loop", brief: { duration: 1.2, budgetUsd: 1, recordedAt: "x" } });
+    }).brief).toBeUndefined();
+  });
+
   test("the keyframe ids travel, and an empty one does not", () => {
     const withKeys = motionWith((m) => {
       m.keyframe = "bounce-keyframe";
@@ -408,6 +447,36 @@ describe("loop motions", () => {
       .byContentSet.mini.sprite.motions[0].inspect!;
     expect("seam" in sheet).toBe(false);
     expect(sheet.maxJump).toBe(1);
+  });
+
+  test("a loop's crop and clip scale survive; anything else is no record", () => {
+    const inspectWith = (over: Record<string, unknown>) =>
+      motionWith((m) => { m.inspect = { ...m.inspect, ...over }; }).inspect!;
+    const recorded = inspectWith({ crop: { x: 97, y: 46, w: 434, h: 552 }, scale: 1.1797 });
+    expect(recorded.crop).toEqual({ x: 97, y: 46, w: 434, h: 552 });
+    expect(recorded.scale).toBe(1.1797);
+    for (const [crop, scale] of [
+      [undefined, undefined], [null, 0], [{ x: 1, y: 2, w: 3 }, -1], [{ x: "1", y: 2, w: 3, h: 4 }, "1.2"],
+      [{ x: 0, y: 0, w: 0, h: 4 }, Number.NaN],
+    ]) {
+      const parsed = inspectWith({ crop, scale });
+      expect({ crop, scale, has: ["crop" in parsed, "scale" in parsed] }).toEqual({ crop, scale, has: [false, false] });
+    }
+  });
+
+  test("a loop's measured clip record survives; half of one is no record", () => {
+    const clipWith = (clip: unknown) => motionWith((m) => { m.kind = "loop"; m.clip = clip; }).clip;
+    expect(clipWith({ scale: 1.18, origin: { x: 97.2, y: 46.1 }, from: "measured" }))
+      .toEqual({ scale: 1.18, origin: { x: 97.2, y: 46.1 }, from: "measured" });
+    // The scale alone is still a record: the loop is sized, and stood on its feet.
+    expect(clipWith({ scale: 1.18, origin: null, from: "measured" }))
+      .toEqual({ scale: 1.18, origin: null, from: "measured" });
+    for (const broken of [undefined, null, { scale: 0, from: "measured" }, { scale: 1.2 }, { scale: "1.2", from: "measured" },
+      { scale: 1.2, origin: { x: 1 }, from: "measured" }, { scale: 1.2, from: "recorded" }]) {
+      expect({ broken, clip: clipWith(broken) }).toEqual({ broken, clip: undefined });
+    }
+    // A sprite motion is not cut from a clip, so it has no such record.
+    expect(motionWith((m) => { m.clip = { scale: 1.18, origin: null, from: "measured" }; }).clip).toBeUndefined();
   });
 
   test("a derived clip keeps its parent, its op and its matting model", () => {
@@ -491,6 +560,76 @@ describe("loop motions", () => {
     // field gets, because a brief on a sheet motion describes nothing.
     expect(briefedAs(undefined, full)).toBeUndefined();
     expect(briefedAs("sprite", full)).toBeUndefined();
+  });
+});
+
+/**
+ * On-demand exports (0.4.0).
+ *
+ * `motion.exports` was the loop's `{ apng, webm, lottie }`; it is now a map
+ * from export format to asset id on EVERY motion, and the character gained
+ * `sprite.exports.riv`. The Export tab reads both to decide which rows are
+ * ready — a key that fails to survive shows a Generate button for a file the
+ * user already has, and a key that is invented offers a download of nothing.
+ */
+describe("exports", () => {
+  const withBody = (edit: (body: any) => void) => {
+    const body = JSON.parse(MINI);
+    edit(body);
+    return loadRoster(files({ "mini/project.json": JSON.stringify(body) }))!.byContentSet.mini;
+  };
+
+  test("the format list is the one the scripts export", () => {
+    expect([...EXPORT_FORMATS]).toEqual(["mp4", "mov", "webm", "apng", "lottie", "png-seq"]);
+  });
+
+  test("a sprite motion carries every format it exported, keyed by format", () => {
+    const all = {
+      mp4: "bounce-export-mp4",
+      mov: "bounce-export-mov",
+      webm: "bounce-export-webm",
+      apng: "bounce-export-apng",
+      lottie: "bounce-export-lottie",
+      "png-seq": "bounce-export-png-seq",
+    };
+    const motion = withBody((b) => { b.sprite.motions[0].exports = all; }).sprite.motions[0];
+    expect(motion.exports).toEqual(all);
+  });
+
+  test("a key that is not an export format, or an empty id, is not an export", () => {
+    // `gif`, `webp` and the sheet are the motion's own fields, and `riv`
+    // belongs to the character — none of them is an on-demand export of a
+    // motion, and letting them through would show a second row for a file the
+    // tab already lists.
+    const motion = withBody((b) => {
+      b.sprite.motions[0].exports = { mp4: "bounce-export-mp4", gif: "bounce-gif", riv: "x", mov: "", webm: 3 };
+    }).sprite.motions[0];
+    expect(motion.exports).toEqual({ mp4: "bounce-export-mp4" });
+  });
+
+  test("a 0.3.x loop's exports load unchanged under the same keys", () => {
+    const motion = withBody((b) => {
+      const m = b.sprite.motions[0];
+      m.kind = "loop";
+      m.exports = { apng: "bounce-apng", webm: "bounce-webm", lottie: "bounce-lottie" };
+    }).sprite.motions[0];
+    expect(motion.exports).toEqual({ apng: "bounce-apng", webm: "bounce-webm", lottie: "bounce-lottie" });
+  });
+
+  test("the character's Rive file travels, and a project without one has no block", () => {
+    const withRiv = withBody((b) => { b.sprite.exports = { riv: "mini-export-riv" }; });
+    expect(withRiv.sprite.exports).toEqual({ riv: "mini-export-riv" });
+
+    // The 0.3.x file has no `sprite.exports` at all — the canonical fixture
+    // is one — and it must load exactly as before.
+    const old = loadRoster(files({ "mini/project.json": MINI }))!.byContentSet.mini;
+    expect("exports" in old.sprite).toBe(false);
+    expect(old.sprite.motions[0].status).toBe("ready");
+
+    for (const broken of [null, {}, { riv: "" }, { riv: 4 }, [], "mini-export-riv"]) {
+      expect({ broken, exports: withBody((b) => { b.sprite.exports = broken; }).sprite.exports })
+        .toEqual({ broken, exports: undefined });
+    }
   });
 });
 

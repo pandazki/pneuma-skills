@@ -19,7 +19,7 @@ import {
   cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import { buildSheet } from "./fixtures/pipeline/make-sheet.mjs";
 
@@ -1648,6 +1648,25 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       expect("bodyDrift" in motion.inspect).toBe(false);
     });
 
+    test("a loop's crop and clip scale go into the sidecar, and a run without them carries neither", () => {
+      // The .riv and the Export tab read the sidecar: without the scale each
+      // loop was drawn at against its clip, they cannot keep the character
+      // one size across loops, nor put each where it stood in its clip.
+      const { dir, run: summary } = seedLoop();
+      const recorded = { ...summary, inspect: { ...summary.inspect, crop: { x: 12, y: 4, w: 64, h: 72 }, scale: 1 } };
+      const motion = JSON.parse(registerLoop(dir, recorded).out);
+      expect(motion.inspect).toMatchObject({ crop: { x: 12, y: 4, w: 64, h: 72 }, scale: 1 });
+
+      // A run from before the fields existed: absent, never a made-up 1.
+      const legacy = JSON.parse(registerLoop(dir, summary).out);
+      expect({ crop: "crop" in legacy.inspect, scale: "scale" in legacy.inspect }).toEqual({ crop: false, scale: false });
+
+      // Half a rect or a scale that is not a positive number is no record.
+      const broken = { ...summary, inspect: { ...summary.inspect, crop: { x: 12, y: 4, w: 64 }, scale: 0 } };
+      const dropped = JSON.parse(registerLoop(dir, broken).out);
+      expect({ crop: "crop" in dropped.inspect, scale: "scale" in dropped.inspect }).toEqual({ crop: false, scale: false });
+    });
+
     test("every export is registered with its size in bytes", () => {
       const { dir, run: summary } = seedLoop();
       registerLoop(dir, summary);
@@ -1871,6 +1890,540 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       expect("exports" in motion).toBe(false);
       expect(motion.sheet).toBe("flame-sheet");
       expect(readProject(dir).assets.some((a: any) => a.id === "flame-lottie")).toBe(false);
+    });
+  });
+
+  describe("exports", () => {
+    /** The seeded character with `bounce` registered from its real run. */
+    function seedReady() {
+      const { dir, realRun } = seedMini();
+      const r = run(PROJECT, ["register-run", "--dir", dir, "--motion", "bounce", "--run", "-", "--json",
+        "--at", String(T1)], JSON.stringify(realRun));
+      if (r.code !== 0) throw new Error(r.err);
+      return { dir, realRun };
+    }
+
+    /** What `sprite-sheet.mjs export … --json` / `rive … --json` printed. */
+    function sheetJson(...argv: string[]) {
+      const r = run(SHEET, [...argv, "--json"]);
+      if (r.code !== 0) throw new Error(`sprite-sheet ${argv[0]} failed:\n${r.err}`);
+      return JSON.parse(r.out);
+    }
+    const exportOf = (dir: string, motion: string, ...flags: string[]) =>
+      sheetJson("export", join(dir, "motions", motion), ...flags);
+
+    const register = (dir: string, report: unknown, at = T2) =>
+      run(PROJECT, ["register-export", "--dir", dir, "--report", "-", "--json", "--at", String(at)],
+        JSON.stringify(report));
+
+    const asset = (dir: string, id: string) => readProject(dir).assets.find((a: any) => a.id === id);
+    const edgeTo = (dir: string, id: string) => readProject(dir).provenance.find((e: any) => e.toAssetId === id);
+    const motionOf = (dir: string, id: string) => readProject(dir).sprite.motions.find((m: any) => m.id === id);
+    const BOUNCE_FRAMES = ["bounce-frame-00", "bounce-frame-01", "bounce-frame-02", "bounce-frame-03"];
+    const EXPORT_TIMEOUT_MS = 30_000;
+
+    test("a video export is registered with its size, its timing and its frames", () => {
+      const { dir } = seedReady();
+      const report = exportOf(dir, "bounce", "--format", "mp4");
+      const r = register(dir, report);
+      expect(r.code).toBe(0);
+      const payload = JSON.parse(r.out);
+      expect(payload).toMatchObject({ motion: "bounce", format: "mp4", asset: "bounce-export-mp4" });
+
+      expect(asset(dir, "bounce-export-mp4")).toEqual({
+        id: "bounce-export-mp4",
+        type: "video",
+        uri: "motions/bounce/exports/bounce.mp4",
+        name: "bounce export (mp4)",
+        metadata: {
+          width: 64, height: 64, fps: 8, duration: 3, frames: 4, repeat: 6, scale: 1,
+          background: "#ffffff",
+          size: readFileSync(join(dir, "motions", "bounce", "exports", "bounce.mp4")).byteLength,
+        },
+        createdAt: T2,
+        status: "ready",
+      });
+      // Made from the registered frames, all four of them.
+      const edge = edgeTo(dir, "bounce-export-mp4");
+      expect(edge.fromAssetId).toBe("bounce-frame-00");
+      expect(edge.operation).toMatchObject({ type: "derive", actor: "agent", timestamp: T2 });
+      expect(edge.operation.params).toEqual({
+        tool: "sprite-sheet.mjs", step: "export", format: "mp4", repeat: 6, scale: 1,
+        background: "#ffffff", inputs: BOUNCE_FRAMES,
+      });
+      expect(motionOf(dir, "bounce").exports).toEqual({ mp4: "bounce-export-mp4" });
+    }, EXPORT_TIMEOUT_MS);
+
+    test("each format lands under its own id, with the craft type that fits it", () => {
+      const { dir } = seedReady();
+      for (const format of ["apng", "lottie", "png-seq"]) {
+        expect(register(dir, exportOf(dir, "bounce", "--format", format)).code).toBe(0);
+      }
+      expect(asset(dir, "bounce-export-apng")).toMatchObject({ type: "image", uri: "motions/bounce/exports/bounce.apng" });
+      expect(asset(dir, "bounce-export-lottie")).toMatchObject({ type: "text", uri: "motions/bounce/exports/bounce.json" });
+      // The craft type union has no archive; the zip is filed as the image
+      // sequence it holds, and `container` says what the file really is.
+      expect(asset(dir, "bounce-export-png-seq")).toMatchObject({
+        type: "image",
+        uri: "motions/bounce/exports/bounce-frames.zip",
+        metadata: { container: "zip", frames: 4, fps: 8 },
+      });
+      expect(motionOf(dir, "bounce").exports).toEqual({
+        apng: "bounce-export-apng", lottie: "bounce-export-lottie", "png-seq": "bounce-export-png-seq",
+      });
+    }, EXPORT_TIMEOUT_MS);
+
+    test("re-exporting replaces the asset in place, and the same report twice is a no-op", () => {
+      const { dir } = seedReady();
+      const first = exportOf(dir, "bounce", "--format", "apng");
+      register(dir, first);
+      const once = readFileSync(join(dir, "project.json"), "utf-8");
+      register(dir, first);
+      expect(readFileSync(join(dir, "project.json"), "utf-8")).toBe(once);
+
+      const again = exportOf(dir, "bounce", "--format", "mp4", "--repeat", "2");
+      register(dir, again, T2 + 1);
+      register(dir, exportOf(dir, "bounce", "--format", "mp4", "--repeat", "3"), T2 + 2);
+      const doc = readProject(dir);
+      expect(doc.assets.filter((a: any) => a.id === "bounce-export-mp4")).toHaveLength(1);
+      expect(doc.provenance.filter((e: any) => e.toAssetId === "bounce-export-mp4")).toHaveLength(1);
+      expect(asset(dir, "bounce-export-mp4").metadata.repeat).toBe(3);
+    }, EXPORT_TIMEOUT_MS);
+
+    test("a lossless .riv says so in the sidecar", () => {
+      const { dir } = seedReady();
+      const report = sheetJson("rive", dir, "--images", "webp-lossless");
+      expect(report.images).toBe("webp-lossless");
+      expect(register(dir, report).code).toBe(0);
+      expect(asset(dir, `${basename(dir)}-export-riv`).metadata.images).toBe("webp-lossless");
+    }, EXPORT_TIMEOUT_MS);
+
+    test("the character's .riv is registered on the character, off every frame it holds", () => {
+      const { dir } = seedReady();
+      const report = sheetJson("rive", dir);
+      // The format is the script's to choose (WebP unless this ffmpeg has no libwebp); the sidecar records it.
+      expect(["webp", "png"]).toContain(report.images);
+      const r = register(dir, report);
+      expect(r.code).toBe(0);
+      const id = `${basename(dir)}-export-riv`;
+      expect(JSON.parse(r.out)).toMatchObject({ asset: id, format: "riv" });
+      expect(asset(dir, id)).toMatchObject({
+        type: "image",
+        uri: `exports/${basename(dir)}.riv`,
+        metadata: {
+          container: "riv", frames: 4, motionCount: 1, transitionCount: 0, images: report.images,
+          width: report.artboard.width, height: report.artboard.height,
+          estimatedDecodeBytes: 4 * 64 * 64 * 4,
+          size: readFileSync(report.out).byteLength,
+        },
+      });
+      const edge = edgeTo(dir, id);
+      expect(edge.fromAssetId).toBe("bounce-frame-00");
+      expect(edge.operation.params).toEqual({
+        tool: "sprite-sheet.mjs", step: "rive", images: report.images, motions: ["bounce"],
+        sampled: [{ motion: "bounce", frames: 4, fps: 8, width: 64, height: 64 }],
+        // What drives the file: bounce loops, so the number names it.
+        stateMachine: {
+          name: "State Machine 1",
+          hub: "bounce",
+          number: { name: "motion", default: 0, values: [{ value: 0, motion: "bounce" }] },
+          triggers: [],
+        },
+        inputs: BOUNCE_FRAMES,
+      });
+      expect(readProject(dir).sprite.exports).toEqual({ riv: id });
+    }, EXPORT_TIMEOUT_MS);
+
+    /** `seedReady` plus the `flame` loop from the fixture, registered. */
+    function withFlame() {
+      const seeded = seedReady();
+      const { dir } = seeded;
+      cpSync(LOOP_FIXTURE, join(dir, "motions", "flame"), { recursive: true });
+      projectJson(dir, "add-motion", "--id", "flame", "--label", "Flame", "--kind", "loop", "--fps", "12");
+      projectJson(dir, "set-motion", "--motion", "flame", "--brief-duration", "1", "--brief-width", "64",
+        "--brief-interpolator", "none");
+      projectJson(dir, "add-video", "--motion", "flame", "--file", "motions/flame/video-seedance-1.mp4",
+        "--model", "seedance-2.5", "--mode", "first-last", "--status", "ready");
+      const loopRun = readFileSync(join(LOOP_FIXTURE, "run.json"), "utf-8");
+      const r = run(PROJECT, ["register-run", "--dir", dir, "--motion", "flame", "--run", "-", "--json"], loopRun);
+      if (r.code !== 0) throw new Error(r.err);
+      return { ...seeded, loopRun };
+    }
+
+    test("a resampled loop goes into the .riv: made from all its frames, recorded at the rate it plays", () => {
+      const { dir } = withFlame();
+      const report = sheetJson("rive", dir, "--motions", "flame,bounce", "--fps", "6", "--max-size", "36");
+      const r = register(dir, report);
+      expect(r.code).toBe(0);
+      const id = `${basename(dir)}-export-riv`;
+      // `frames` is what the file embeds — 6 of flame's 12 and 3 of bounce's
+      // 4 at 6 fps — and the edge hangs off every frame it was made FROM.
+      expect(asset(dir, id).metadata).toMatchObject({ frames: 6 + 3, motionCount: 2 });
+      const flameFrames = motionOf(dir, "flame").frames;
+      const edge = edgeTo(dir, id);
+      expect(edge.fromAssetId).toBe(flameFrames[0]);
+      expect(edge.operation.params.inputs).toEqual([...flameFrames, ...BOUNCE_FRAMES]);
+      expect(edge.operation.params.motions).toEqual(["flame", "bounce"]);
+      expect(edge.operation.params.sampled).toEqual([
+        { motion: "flame", frames: 6, fps: 6, width: 32, height: 36 },
+        { motion: "bounce", frames: 3, fps: 6, width: 36, height: 36 },
+      ]);
+    }, EXPORT_TIMEOUT_MS);
+
+    test("a loop's measured clip scale and place go onto the motion, where the viewer reads them", () => {
+      // A loop cut before `loop` recorded its crop is measured by `rive` off
+      // the clip. The Export tab cannot decode a clip, so without this record
+      // it quoted the frames as cut while the file held them divided back to
+      // the clip's scale — two numbers for one file.
+      const { dir, loopRun } = withFlame();
+      const report = sheetJson("rive", dir, "--include-loops");
+      const flame = report.motions.find((m: any) => m.id === "flame");
+      flame.clip = { scale: 1.25, origin: { x: 3, y: 4 }, from: "measured" };
+      expect(register(dir, report).code).toBe(0);
+      expect(motionOf(dir, "flame").clip).toEqual({ scale: 1.25, origin: { x: 3, y: 4 }, from: "measured" });
+
+      // A clip scale the file could not learn is no record, and does not
+      // erase one that is there.
+      flame.clip = null;
+      expect(register(dir, report).code).toBe(0);
+      expect(motionOf(dir, "flame").clip).toEqual({ scale: 1.25, origin: { x: 3, y: 4 }, from: "measured" });
+
+      // A new cut replaces the frames the measurement was of: it goes.
+      const r = run(PROJECT, ["register-run", "--dir", dir, "--motion", "flame", "--run", "-", "--json"], loopRun);
+      expect(r.code).toBe(0);
+      expect("clip" in motionOf(dir, "flame")).toBe(false);
+    }, EXPORT_TIMEOUT_MS);
+
+    test("a recorded crop and scale win: a measured record is never written over them", () => {
+      const { dir, loopRun } = withFlame();
+      const summary = JSON.parse(loopRun);
+      summary.inspect = { ...summary.inspect, crop: { x: 0, y: 0, w: 64, h: 72 }, scale: 1 };
+      expect(run(PROJECT, ["register-run", "--dir", dir, "--motion", "flame", "--run", "-", "--json"],
+        JSON.stringify(summary)).code).toBe(0);
+      const report = sheetJson("rive", dir, "--include-loops");
+      report.motions.find((m: any) => m.id === "flame").clip = { scale: 2, origin: { x: 1, y: 1 }, from: "measured" };
+      expect(register(dir, report).code).toBe(0);
+      expect("clip" in motionOf(dir, "flame")).toBe(false);
+    }, EXPORT_TIMEOUT_MS);
+
+    test("a new cut of a loop retires the .riv that holds it", () => {
+      const { dir, loopRun } = withFlame();
+      expect(register(dir, sheetJson("rive", dir, "--include-loops")).code).toBe(0);
+      const r = run(PROJECT, ["register-run", "--dir", dir, "--motion", "flame", "--run", "-", "--json"], loopRun);
+      expect(r.code).toBe(0);
+      expect(readProject(dir).sprite.exports).toBeUndefined();
+      expect(r.err).toMatch(/retired .*-export-riv/);
+    }, EXPORT_TIMEOUT_MS);
+
+    test("new frames retire the exports cut from the old ones, and say so", () => {
+      const { dir, realRun } = seedReady();
+      register(dir, exportOf(dir, "bounce", "--format", "apng"));
+      register(dir, sheetJson("rive", dir));
+      const riv = `${basename(dir)}-export-riv`;
+
+      const r = run(PROJECT, ["register-run", "--dir", dir, "--motion", "bounce", "--run", "-", "--json"],
+        JSON.stringify(realRun));
+      expect(r.code).toBe(0);
+      // An export in project.json describes the frames that are registered
+      // NOW; one cut from the previous frames would be offered as current.
+      const doc = readProject(dir);
+      expect(doc.assets.some((a: any) => a.id === "bounce-export-apng" || a.id === riv)).toBe(false);
+      expect(doc.provenance.some((e: any) => e.toAssetId === "bounce-export-apng" || e.toAssetId === riv)).toBe(false);
+      expect("exports" in motionOf(dir, "bounce")).toBe(false);
+      expect("exports" in doc.sprite).toBe(false);
+      expect(r.err).toMatch(/bounce-export-apng/);
+      expect(r.err).toMatch(/re-export/);
+      // The files are the user's; only the registration goes.
+      expect(existsSync(join(dir, "motions", "bounce", "exports", "bounce.apng"))).toBe(true);
+    }, EXPORT_TIMEOUT_MS);
+
+    test("remove-motion takes its exports, and the .riv that holds it, along", () => {
+      const { dir } = seedReady();
+      register(dir, exportOf(dir, "bounce", "--format", "apng"));
+      register(dir, sheetJson("rive", dir));
+      const removed = projectJson(dir, "remove-motion", "--motion", "bounce");
+      expect(removed.removedAssets).toContain("bounce-export-apng");
+      expect(removed.removedAssets).toContain(`${basename(dir)}-export-riv`);
+      expect(removed.orphanedPaths).toContain("motions/bounce/exports/bounce.apng");
+      expect(readProject(dir).sprite.exports).toBeUndefined();
+    }, EXPORT_TIMEOUT_MS);
+
+    test("a report that does not describe this character's registered frames is refused", () => {
+      const { dir } = seedReady();
+      const report = exportOf(dir, "bounce", "--format", "apng");
+      const before = readFileSync(join(dir, "project.json"), "utf-8");
+      const cases: Array<[unknown, RegExp]> = [
+        [{ ...report, frames: report.frames.slice(1) }, /not the frames registered/],
+        [{ ...report, motion: "walk" }, /no motion 'walk'/],
+        [{ ...report, format: "gif" }, /format/],
+        [{ ...report, out: "/etc/hosts" }, /outside/],
+        [{ ...report, kind: "run" }, /export or rive/],
+      ];
+      for (const [bad, message] of cases) {
+        const r = register(dir, bad);
+        expect(r.code).toBe(1);
+        expect(r.err).toMatch(message);
+      }
+      // An export that failed prints nothing on stdout, so the pipe hands
+      // this command an empty report — which must say where to look.
+      const empty = run(PROJECT, ["register-export", "--dir", dir, "--report", "-", "--json"], "");
+      expect(empty.code).toBe(1);
+      expect(empty.err).toMatch(/empty.*export.*ERROR/);
+      expect(readFileSync(join(dir, "project.json"), "utf-8")).toBe(before);
+    }, EXPORT_TIMEOUT_MS);
+
+    test("a loop keeps its own exports and gains the new ones beside them", () => {
+      const { dir } = seedReady();
+      cpSync(LOOP_FIXTURE, join(dir, "motions", "flame"), { recursive: true });
+      projectJson(dir, "add-motion", "--id", "flame", "--label", "Flame", "--kind", "loop", "--fps", "12");
+      projectJson(dir, "set-motion", "--motion", "flame", "--brief-duration", "1", "--brief-width", "64",
+        "--brief-interpolator", "none");
+      projectJson(dir, "add-video", "--motion", "flame", "--file", "motions/flame/video-seedance-1.mp4",
+        "--model", "seedance-2.5", "--mode", "first-last", "--status", "ready");
+      const loopRun = readFileSync(join(LOOP_FIXTURE, "run.json"), "utf-8");
+      expect(run(PROJECT, ["register-run", "--dir", dir, "--motion", "flame", "--run", "-", "--json"], loopRun).code).toBe(0);
+
+      // A 0.3.x loop: exports are the three the loop run wrote, by asset id.
+      expect(motionOf(dir, "flame").exports).toEqual({ apng: "flame-apng", webm: "flame-webm", lottie: "flame-lottie" });
+      expect(register(dir, exportOf(dir, "flame", "--format", "png-seq")).code).toBe(0);
+      expect(motionOf(dir, "flame").exports).toEqual({
+        apng: "flame-apng", webm: "flame-webm", lottie: "flame-lottie", "png-seq": "flame-export-png-seq",
+      });
+      // The loop's own WebM is not something an export may replace.
+      const clash = register(dir, { ...exportOf(dir, "bounce", "--format", "webm"), motion: "flame" });
+      expect(clash.code).toBe(1);
+      expect(clash.err).toMatch(/flame already ships webm as flame-webm/);
+
+      // A new cut of the loop keeps the loop's exports and retires the rest.
+      expect(run(PROJECT, ["register-run", "--dir", dir, "--motion", "flame", "--run", "-", "--json"], loopRun).code).toBe(0);
+      expect(motionOf(dir, "flame").exports).toEqual({ apng: "flame-apng", webm: "flame-webm", lottie: "flame-lottie" });
+    }, EXPORT_TIMEOUT_MS);
+
+    test("show says what a motion and the character have been exported as", () => {
+      const { dir } = seedReady();
+      register(dir, exportOf(dir, "bounce", "--format", "apng"));
+      register(dir, sheetJson("rive", dir));
+      expect(projectJson(dir, "show", "--motion", "bounce").exports).toEqual({ apng: "bounce-export-apng" });
+      const summary = projectJson(dir, "show");
+      expect(summary.exports).toEqual({ riv: `${basename(dir)}-export-riv` });
+      const human = project(dir, "show");
+      expect(human.out).toMatch(/exported: .*riv/);
+      const single = project(dir, "show", "--motion", "bounce");
+      expect(single.out).toMatch(/exports: apng/);
+    }, EXPORT_TIMEOUT_MS);
+  });
+
+  describe("transitions", () => {
+    /**
+     * Two registered loops — `flame` and `ember`, both cut from the loop
+     * fixture — with keyframes, so a transition between them has two ends
+     * and two keyframes to grow out of.
+     */
+    function seedTwoLoops() {
+      const { dir } = seedMini();
+      for (const id of ["flame", "ember"]) {
+        cpSync(LOOP_FIXTURE, join(dir, "motions", id), { recursive: true });
+        projectJson(dir, "add-motion", "--id", id, "--label", id === "flame" ? "Flame" : "Ember", "--kind", "loop", "--fps", "12");
+        projectJson(dir, "set-motion", "--motion", id, "--brief-duration", "1", "--brief-width", "64",
+          "--brief-interpolator", "none");
+        projectJson(dir, "set-keyframe", "--motion", id, "--file", `motions/${id}/keyframe.png`,
+          "--alpha", `motions/${id}/keyframe-alpha.png`, "--status", "ready");
+        projectJson(dir, "add-video", "--motion", id, "--file", `motions/${id}/video-seedance-1.mp4`,
+          "--model", "seedance-2.5", "--mode", "first-last", "--status", "ready");
+        const summary = readFileSync(join(LOOP_FIXTURE, "run.json"), "utf-8").replaceAll("motions/flame", `motions/${id}`);
+        const r = run(PROJECT, ["register-run", "--dir", dir, "--motion", id, "--run", "-", "--json"], summary);
+        if (r.code !== 0) throw new Error(r.err);
+      }
+      return dir;
+    }
+
+    /** A `transition --json` summary, shaped as `sprite-sheet.mjs` prints it,
+     *  over the loop fixture's frames copied into the transition's folder. */
+    function transitionRun(dir: string, id: string, from: string, to: string, extra: Record<string, unknown> = {}) {
+      const frames = join(dir, "motions", id, "frames");
+      mkdirSync(frames, { recursive: true });
+      const paths = Array.from({ length: 6 }, (_, i) => {
+        const name = `${String(i).padStart(3, "0")}.png`;
+        cpSync(join(LOOP_FIXTURE, "frames", `${String(i * 2).padStart(3, "0")}.png`), join(frames, name));
+        return `motions/${id}/frames/${name}`;
+      });
+      return {
+        kind: "transition", source: "video", video: `motions/${id}/video-veed-2.webm`,
+        from, to, motionDir: `motions/${id}`, name: id, frames: paths,
+        sampledAt: [0, 0.2, 0.4, 0.6, 0.8, 1], fps: 6, duration: 1,
+        cell: { width: 64, height: 72 }, crop: { x: 0, y: 0, w: 64, h: 72 }, scale: 1,
+        inspect: {
+          kind: "transition", frameCount: 6, cell: { width: 64, height: 72 }, crop: { x: 0, y: 0, w: 64, h: 72 },
+          scale: 1, fps: 6, step: 0.05, startGap: 0.02, endGap: 0.3, alphaCoverage: 0.3, emptyFrames: [],
+          warnings: ["the end does not land: 0.3 from ember's frame 0 against a step of 0.05"],
+        },
+        warnings: [],
+        ...extra,
+      };
+    }
+    const registerTransition = (dir: string, motion: string, summary: unknown) =>
+      run(PROJECT, ["register-run", "--dir", dir, "--motion", motion, "--run", "-", "--json"], JSON.stringify(summary));
+
+    test("add-motion --kind transition joins two loops, named after them", () => {
+      const dir = seedTwoLoops();
+      const motion = projectJson(dir, "add-motion", "--kind", "transition", "--from", "flame", "--to", "ember");
+      expect(motion).toMatchObject({
+        id: "flame-to-ember", kind: "transition", from: "flame", to: "ember", label: "Flame → Ember",
+        loop: false, grid: { rows: 1, cols: 1 }, source: "video", status: "planned",
+      });
+      // A transition plays at the take's rate unless told otherwise.
+      expect(motion.fps).toBe(24);
+    });
+
+    test("add-motion --kind transition refuses a pair it cannot join, by name", () => {
+      const dir = seedTwoLoops();
+      projectJson(dir, "add-motion", "--kind", "transition", "--from", "flame", "--to", "ember");
+      const cases: Array<[string[], RegExp]> = [
+        [["--from", "flame"], /--to/],
+        [["--from", "smoke", "--to", "ember"], /no motion 'smoke'/],
+        [["--from", "flame", "--to", "flame"], /flame.*itself/],
+        [["--from", "flame", "--to", "ember", "--id", "again"], /flame-to-ember already goes from flame to ember/],
+        [["--from", "bounce", "--to", "ember"], /'bounce' is not a loop/],
+      ];
+      for (const [flags, message] of cases) {
+        const r = run(PROJECT, ["add-motion", "--dir", dir, "--kind", "transition", ...flags, "--json"]);
+        expect({ flags, code: r.code, matches: message.test(r.err) }).toEqual({ flags, code: 1, matches: true });
+      }
+      // The reverse pair is a different transition.
+      expect(projectJson(dir, "add-motion", "--kind", "transition", "--from", "ember", "--to", "flame").id).toBe("ember-to-flame");
+    });
+
+    test("its brief is the playback length and the budget; its clip grows out of both keyframes", () => {
+      const dir = seedTwoLoops();
+      projectJson(dir, "add-motion", "--kind", "transition", "--from", "flame", "--to", "ember");
+      const noBrief = run(PROJECT, ["add-video", "--dir", dir, "--motion", "flame-to-ember", "--file",
+        "motions/flame/video-seedance-1.mp4", "--model", "seedance-2.5", "--mode", "first-last", "--json"]);
+      expect(noBrief.code).toBe(1);
+      expect(noBrief.err).toMatch(/transition 'flame-to-ember' has no brief.*--brief-duration.*--brief-budget/);
+
+      const half = run(PROJECT, ["set-motion", "--dir", dir, "--motion", "flame-to-ember", "--brief-duration", "1.2", "--json"]);
+      expect(half.code).toBe(1);
+      expect(half.err).toMatch(/--brief-budget/);
+      const loopOnly = run(PROJECT, ["set-motion", "--dir", dir, "--motion", "flame-to-ember", "--brief-width", "64", "--json"]);
+      expect(loopOnly.code).toBe(1);
+      expect(loopOnly.err).toMatch(/--brief-width.*loop/);
+
+      const briefed = projectJson(dir, "set-motion", "--motion", "flame-to-ember", "--brief-duration", "1.2", "--brief-budget", "1.5");
+      expect(briefed.brief).toMatchObject({ duration: 1.2, budgetUsd: 1.5 });
+
+      mkdirSync(join(dir, "motions", "flame-to-ember"), { recursive: true });
+      cpSync(join(dir, "motions", "flame", "video-seedance-1.mp4"), join(dir, "motions", "flame-to-ember", "video-seedance-1.mp4"));
+      projectJson(dir, "add-video", "--motion", "flame-to-ember", "--file", "motions/flame-to-ember/video-seedance-1.mp4",
+        "--model", "seedance-2.5", "--mode", "first-last", "--from", "flame-keyframe-alpha,ember-keyframe-alpha",
+        "--status", "ready");
+      const edge = readProject(dir).provenance.find((e: any) => e.toAssetId === "flame-to-ember-video-1");
+      expect(edge.fromAssetId).toBe("flame-keyframe-alpha");
+      expect(edge.operation.params.inputs).toEqual(["flame-keyframe-alpha", "ember-keyframe-alpha"]);
+    });
+
+    test("register-run takes a transition's frames, its crop and its gaps, and no exports", () => {
+      const dir = seedTwoLoops();
+      projectJson(dir, "add-motion", "--kind", "transition", "--from", "flame", "--to", "ember");
+      projectJson(dir, "set-motion", "--motion", "flame-to-ember", "--brief-duration", "1", "--brief-budget", "1.2");
+      mkdirSync(join(dir, "motions", "flame-to-ember"), { recursive: true });
+      cpSync(join(dir, "motions", "flame", "video-seedance-1.mp4"), join(dir, "motions", "flame-to-ember", "video-veed-2.webm"));
+      projectJson(dir, "add-video", "--motion", "flame-to-ember", "--file", "motions/flame-to-ember/video-veed-2.webm",
+        "--model", "seedance-2.5", "--mode", "first-last", "--status", "ready");
+
+      // The ends the summary claims must be the motion's.
+      const wrongEnds = registerTransition(dir, "flame-to-ember", transitionRun(dir, "flame-to-ember", "ember", "flame"));
+      expect(wrongEnds.code).toBe(1);
+      expect(wrongEnds.err).toMatch(/goes from ember to flame.*flame-to-ember goes from flame to ember/);
+      const onLoop = registerTransition(dir, "flame", transitionRun(dir, "flame-to-ember", "flame", "ember"));
+      expect(onLoop.code).toBe(1);
+      expect(onLoop.err).toMatch(/'flame' is not a transition/);
+
+      const r = registerTransition(dir, "flame-to-ember", transitionRun(dir, "flame-to-ember", "flame", "ember"));
+      expect(r.code).toBe(0);
+      const motion = JSON.parse(r.out);
+      expect(motion).toMatchObject({
+        kind: "transition", from: "flame", to: "ember", loop: false, fps: 6, status: "ready",
+        frames: Array.from({ length: 6 }, (_, i) => `flame-to-ember-frame-${String(i).padStart(3, "0")}`),
+      });
+      expect(motion.inspect).toMatchObject({ startGap: 0.02, endGap: 0.3, step: 0.05, scale: 1, crop: { x: 0, y: 0, w: 64, h: 72 } });
+      expect(motion.inspect.warnings[0]).toMatch(/does not land/);
+      expect("exports" in motion).toBe(false);
+      const edge = readProject(dir).provenance.find((e: any) => e.toAssetId === "flame-to-ember-frame-005");
+      expect(edge.fromAssetId).toBe("flame-to-ember-video-1");
+      expect(edge.operation.params).toMatchObject({ step: "from-video", frameIndex: 5, t: 1 });
+    });
+
+    test("a reverse is registered with its source, and each frame derives from the source frame it plays", () => {
+      const dir = seedTwoLoops();
+      projectJson(dir, "add-motion", "--kind", "transition", "--from", "flame", "--to", "ember");
+      projectJson(dir, "set-motion", "--motion", "flame-to-ember", "--brief-duration", "1", "--brief-budget", "1.2");
+      mkdirSync(join(dir, "motions", "flame-to-ember"), { recursive: true });
+      cpSync(join(dir, "motions", "flame", "video-seedance-1.mp4"), join(dir, "motions", "flame-to-ember", "video-veed-2.webm"));
+      projectJson(dir, "add-video", "--motion", "flame-to-ember", "--file", "motions/flame-to-ember/video-veed-2.webm",
+        "--model", "seedance-2.5", "--mode", "first-last", "--status", "ready");
+      expect(registerTransition(dir, "flame-to-ember", transitionRun(dir, "flame-to-ember", "flame", "ember")).code).toBe(0);
+
+      projectJson(dir, "add-motion", "--kind", "transition", "--from", "ember", "--to", "flame");
+      const reverse = transitionRun(dir, "ember-to-flame", "ember", "flame", {
+        source: "reverse", reverseOf: "flame-to-ember", video: undefined, sampledAt: undefined,
+      });
+      // Only a transition with the ends swapped can be played backwards into this one.
+      const wrong = registerTransition(dir, "ember-to-flame", { ...reverse, reverseOf: "flame" });
+      expect(wrong.code).toBe(1);
+      expect(wrong.err).toMatch(/reverseOf.*'flame' is not a transition/);
+
+      const r = registerTransition(dir, "ember-to-flame", reverse);
+      expect(r.code).toBe(0);
+      const motion = JSON.parse(r.out);
+      expect(motion).toMatchObject({ kind: "transition", from: "ember", to: "flame", reverseOf: "flame-to-ember", status: "ready" });
+      // Needs no brief and no clip: it cost nothing.
+      expect(motion.videos).toEqual([]);
+      const doc = readProject(dir);
+      const first = doc.provenance.find((e: any) => e.toAssetId === "ember-to-flame-frame-000");
+      expect(first.fromAssetId).toBe("flame-to-ember-frame-005");
+      expect(first.operation.params).toMatchObject({ step: "reverse", frameIndex: 0, sourceFrame: 5 });
+      const last = doc.provenance.find((e: any) => e.toAssetId === "ember-to-flame-frame-005");
+      expect(last.fromAssetId).toBe("flame-to-ember-frame-000");
+    });
+
+    test("a new cut of a transition retires the .riv holding it, and says its reverse is stale", () => {
+      const dir = seedTwoLoops();
+      projectJson(dir, "add-motion", "--kind", "transition", "--from", "flame", "--to", "ember");
+      projectJson(dir, "set-motion", "--motion", "flame-to-ember", "--brief-duration", "1", "--brief-budget", "1.2");
+      mkdirSync(join(dir, "motions", "flame-to-ember"), { recursive: true });
+      cpSync(join(dir, "motions", "flame", "video-seedance-1.mp4"), join(dir, "motions", "flame-to-ember", "video-veed-2.webm"));
+      projectJson(dir, "add-video", "--motion", "flame-to-ember", "--file", "motions/flame-to-ember/video-veed-2.webm",
+        "--model", "seedance-2.5", "--mode", "first-last", "--status", "ready");
+      const cut = transitionRun(dir, "flame-to-ember", "flame", "ember");
+      expect(registerTransition(dir, "flame-to-ember", cut).code).toBe(0);
+      projectJson(dir, "add-motion", "--kind", "transition", "--from", "ember", "--to", "flame");
+      expect(registerTransition(dir, "ember-to-flame", transitionRun(dir, "ember-to-flame", "ember", "flame", {
+        source: "reverse", reverseOf: "flame-to-ember", video: undefined,
+      })).code).toBe(0);
+
+      // A .riv that holds the transition, registered as the rive step would.
+      const doc = readProject(dir);
+      const rivFrames = doc.sprite.motions.find((m: any) => m.id === "flame-to-ember").frames;
+      doc.assets.push({ id: `${basename(dir)}-export-riv`, type: "image", uri: "exports/x.riv", name: "x", metadata: {}, createdAt: 1, status: "ready" });
+      doc.provenance.push({ toAssetId: `${basename(dir)}-export-riv`, fromAssetId: rivFrames[0], operation: { type: "derive", actor: "agent", timestamp: 1, params: { step: "rive", motions: ["flame", "ember", "flame-to-ember"] } } });
+      doc.sprite.exports = { riv: `${basename(dir)}-export-riv` };
+      writeFileSync(join(dir, "project.json"), JSON.stringify(doc));
+
+      const r = registerTransition(dir, "flame-to-ember", cut);
+      expect(r.code).toBe(0);
+      expect(readProject(dir).sprite.exports).toBeUndefined();
+      expect(r.err).toMatch(/retired .*-export-riv/);
+      expect(r.err).toMatch(/ember-to-flame plays the frames this run replaced.*--reverse-of flame-to-ember/);
+    });
+
+    test("a loop a transition joins cannot be removed from under it", () => {
+      const dir = seedTwoLoops();
+      projectJson(dir, "add-motion", "--kind", "transition", "--from", "flame", "--to", "ember");
+      const r = run(PROJECT, ["remove-motion", "--dir", dir, "--motion", "ember", "--json"]);
+      expect(r.code).toBe(1);
+      expect(r.err).toMatch(/flame-to-ember.*remove it first/);
+      projectJson(dir, "remove-motion", "--motion", "flame-to-ember");
+      projectJson(dir, "remove-motion", "--motion", "ember");
     });
   });
 

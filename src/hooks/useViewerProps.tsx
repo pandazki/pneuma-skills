@@ -84,6 +84,11 @@ export function useViewerProps(prefs: { theme: "light" | "dark"; locale: string 
   const resolveNavigate = useStore((s) => s.resolveNavigate);
   const navigateRequestSeq = useStore((s) => s.navigateRequestSeq);
   const replayMode = useStore((s) => s.replayMode);
+  // Creating vs consuming (`--viewing` starts no agent). Passed in BOTH
+  // layouts: the app layout's viewing branch used to be the only place the
+  // viewer heard it, so in the editor layout a viewing-only session offered
+  // request controls to an agent that was never started.
+  const editing = useStore((s) => s.editing);
   const commands = useStore((s) => s.modeCommands);
   // Backward-compat snapshot for pre-2.29 viewers (e.g. external modes that
   // still read `props.files.find(...)`). New viewers consume `sources`.
@@ -152,6 +157,7 @@ export function useViewerProps(prefs: { theme: "light" | "dark"; locale: string 
     onNavigateComplete: (result) => resolveNavigate(result, navigateRequestSeq),
     commands,
     readonly: replayMode,
+    editing,
     theme: prefs.theme,
     locale: prefs.locale,
   };

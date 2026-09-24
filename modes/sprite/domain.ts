@@ -231,6 +231,26 @@ export interface InspectSummary {
   seamFill?: number;
   /** Fraction of the frame area that is opaque, averaged over the frames. */
   alphaCoverage?: number;
+  /**
+   * Transitions only: how far the first frame is from the `from` loop's
+   * frame 0, and the last from the `to` loop's, as silhouette distance in
+   * clip coordinates — the same units as `step`. At most 2 × `step` joins.
+   */
+  startGap?: number;
+  endGap?: number;
+  /**
+   * A loop's rect in its clip, in clip pixels: the union box `loop` cut
+   * every frame from. With `scale`, frame px = (clip px − crop.xy) × scale.
+   * Absent on a loop cut before `loop` recorded it.
+   */
+  crop?: { x: number; y: number; w: number; h: number };
+  /**
+   * A loop's frame pixels per clip pixel. Each loop is cut to its own box
+   * and scaled to one width, so the same character comes out at a different
+   * scale in each; the `.riv` plan divides it back out. Absent when not
+   * recorded — never a default of 1.
+   */
+  scale?: number;
 }
 
 /**
@@ -242,7 +262,18 @@ export interface InspectSummary {
  * different deliverable from the same character, not a different `source` —
  * `source` still says how the frames were obtained (`"video"` for a loop).
  */
-export type MotionKind = "loop";
+export type MotionKind = "loop" | "transition";
+
+/**
+ * A transition's interview: how long it should PLAY (a 4 s take is retimed
+ * to this) and the dollar ceiling for its take. Both answers, or none — the
+ * paid clip is gated on it as a loop's is on `LoopBrief`.
+ */
+export interface TransitionBrief {
+  duration: number;
+  budgetUsd: number;
+  recordedAt: string;
+}
 
 /**
  * The answers a loop's interview collected, before anything was paid for.
@@ -270,13 +301,47 @@ export interface LoopBrief {
   recordedAt: string;
 }
 
-/** Frontend-ready exports of a loop, by asset id. The WebP keeps `motion.webp`
- *  — it is the preview every motion has — so only the three new ones live
- *  here. */
-export interface MotionExports {
-  apng?: string;
-  webm?: string;
-  lottie?: string;
+/**
+ * The formats `sprite-sheet.mjs export` writes for one motion, in the order
+ * the Export tab lists them. The tuple is the single source of truth: the
+ * type is derived from it, and the parser drops any key that is not in it.
+ */
+export const EXPORT_FORMATS = ["mp4", "mov", "webm", "apng", "lottie", "png-seq"] as const;
+
+export type ExportFormat = (typeof EXPORT_FORMATS)[number];
+
+/**
+ * A motion's exports, by format → asset id.
+ *
+ * A loop wrote `apng`, `webm` and `lottie` as part of its own pipeline
+ * (`loop.apng`, `loop.webm`, `loop.json`, asset ids `<motion>-apng` …) — that
+ * is the whole of what 0.3.x stored here, and it loads unchanged. Every other
+ * entry is an on-demand export registered by `sprite-project.mjs
+ * register-export` under the id `<motion>-export-<format>`. The WebP, GIF and
+ * sheet stay in their own fields: they are made by every run, not exported.
+ */
+export type MotionExports = Partial<Record<ExportFormat, string>>;
+
+/** The character-level exports: one `.riv` of the character's motions —
+ *  loops resampled — asset id `<character>-export-riv`. */
+export interface CharacterExports {
+  riv?: string;
+}
+
+/**
+ * A loop's scale and place against its clip, as `sprite-sheet.mjs rive`
+ * MEASURED them for a loop cut before `loop` recorded its own
+ * (`inspect.crop` / `inspect.scale`, which win whenever they are there).
+ * `register-export` writes it, so the Export tab quotes the same plan the
+ * script follows, and a later export reuses it instead of decoding the clip
+ * again. `register-run` drops it with the frames it measured.
+ */
+export interface LoopClip {
+  /** Frame px per clip px. */
+  scale: number;
+  /** The frame's top-left in clip px; null when it could not be measured. */
+  origin: { x: number; y: number } | null;
+  from: "measured";
 }
 
 export interface Motion {
@@ -286,8 +351,18 @@ export interface Motion {
   prompt: string;
   /** Absent means a sprite motion; see `MotionKind`. */
   kind?: MotionKind;
-  /** Loop motions: the interview's answers, recorded before the paid clip. */
-  brief?: LoopBrief;
+  /** Loop and transition motions: the interview's answers, recorded before
+   *  the paid clip — `LoopBrief` on a loop, `TransitionBrief` on a transition. */
+  brief?: LoopBrief | TransitionBrief;
+  /**
+   * Transitions only: the loop it leaves and the loop it arrives at. Its
+   * first frame is drawn from `from`'s frame 0 and its last lands on `to`'s,
+   * in clip coordinates.
+   */
+  from?: string;
+  to?: string;
+  /** Transitions only: the transition whose frames this one plays backwards. */
+  reverseOf?: string;
   grid: { rows: number; cols: number };
   fps: number;
   loop: boolean;
@@ -309,10 +384,13 @@ export interface Motion {
   frames: string[];
   gif?: string;
   webp?: string;
-  /** Loop motions: the APNG / WebM / Lottie exports. */
+  /** Exports by format: a loop's own APNG / WebM / Lottie, and any format
+   *  exported on demand. See `MotionExports`. */
   exports?: MotionExports;
   videos: MotionVideo[];
   inspect?: InspectSummary;
+  /** Loop motions cut before `loop` recorded their crop: see `LoopClip`. */
+  clip?: LoopClip;
 }
 
 export interface SpriteSidecar {
@@ -320,6 +398,8 @@ export interface SpriteSidecar {
   character: SpriteCharacter;
   refs: SpriteRef[];
   motions: Motion[];
+  /** Absent until something was exported for the whole character. */
+  exports?: CharacterExports;
 }
 
 // ── The loaded shape ───────────────────────────────────────────────────────
@@ -461,6 +541,10 @@ function parseInspect(value: unknown): InspectSummary | undefined {
   const step = parseFinite(value.step);
   const seamFill = parseFinite(value.seamFill);
   const alphaCoverage = parseFinite(value.alphaCoverage);
+  const startGap = parseFinite(value.startGap);
+  const endGap = parseFinite(value.endGap);
+  const crop = parseClipRect(value.crop);
+  const scale = parseFinite(value.scale);
   return {
     frameCount: num(value.frameCount, 0),
     cell: { width: num(cell.width, 0), height: num(cell.height, 0) },
@@ -485,7 +569,20 @@ function parseInspect(value: unknown): InspectSummary | undefined {
     ...(step === undefined ? {} : { step }),
     ...(seamFill === undefined ? {} : { seamFill }),
     ...(alphaCoverage === undefined ? {} : { alphaCoverage }),
+    ...(startGap === undefined ? {} : { startGap }),
+    ...(endGap === undefined ? {} : { endGap }),
+    ...(crop ? { crop } : {}),
+    ...(scale !== undefined && scale > 0 ? { scale } : {}),
   };
+}
+
+/** A whole rect with a real size, or undefined — never half of one. */
+function parseClipRect(value: unknown): InspectSummary["crop"] {
+  if (!isRecord(value)) return undefined;
+  const [x, y, w, h] = [value.x, value.y, value.w, value.h].map(parseFinite);
+  return x !== undefined && y !== undefined && w !== undefined && h !== undefined && w > 0 && h > 0
+    ? { x, y, w, h }
+    : undefined;
 }
 
 /**
@@ -502,17 +599,24 @@ function parseMotionStatus(value: unknown): MotionStatus {
     : "planned";
 }
 
-/** The exports block, with only the ids that are really there. An empty block
- *  is no block: `exports: {}` would make `motion.exports` truthy for a motion
- *  that exported nothing. */
+/** The exports block, with only the ids that are really there, under a format
+ *  that really exists. An empty block is no block: `exports: {}` would make
+ *  `motion.exports` truthy for a motion that exported nothing. */
 function parseExports(value: unknown): MotionExports | undefined {
   if (!isRecord(value)) return undefined;
-  const exports: MotionExports = {
-    ...(optionalStr(value.apng) ? { apng: value.apng as string } : {}),
-    ...(optionalStr(value.webm) ? { webm: value.webm as string } : {}),
-    ...(optionalStr(value.lottie) ? { lottie: value.lottie as string } : {}),
-  };
+  const exports: MotionExports = {};
+  for (const format of EXPORT_FORMATS) {
+    const id = optionalStr(value[format]);
+    if (id) exports[format] = id;
+  }
   return Object.keys(exports).length > 0 ? exports : undefined;
+}
+
+/** The character's exports block, by the same rule. */
+function parseCharacterExports(value: unknown): CharacterExports | undefined {
+  if (!isRecord(value)) return undefined;
+  const riv = optionalStr(value.riv);
+  return riv ? { riv } : undefined;
 }
 
 const VIDEO_MODELS: readonly VideoModel[] = [
@@ -567,6 +671,31 @@ function parseLoopBrief(value: unknown): LoopBrief | undefined {
 
 const VIDEO_MODES: readonly VideoMode[] = ["i2v", "first-last", "r2v", "derived"];
 
+/** A whole measured record or nothing: a scale without its provenance, or an
+ *  origin missing a coordinate, is not a measurement anyone made. */
+function parseLoopClip(value: unknown): LoopClip | undefined {
+  if (!isRecord(value) || value.from !== "measured") return undefined;
+  const scale = parseFinite(value.scale);
+  if (scale === undefined || scale <= 0) return undefined;
+  if (value.origin === null || value.origin === undefined) return { scale, origin: null, from: "measured" };
+  if (!isRecord(value.origin)) return undefined;
+  const x = parseFinite(value.origin.x);
+  const y = parseFinite(value.origin.y);
+  if (x === undefined || y === undefined) return undefined;
+  return { scale, origin: { x, y }, from: "measured" };
+}
+
+/** Both answers of a transition's interview, or no brief. */
+function parseTransitionBrief(value: unknown): TransitionBrief | undefined {
+  if (!isRecord(value)) return undefined;
+  const duration = parseFinite(value.duration);
+  const budgetUsd = parseFinite(value.budgetUsd);
+  const recordedAt = optionalStr(value.recordedAt);
+  if (duration === undefined || duration <= 0) return undefined;
+  if (budgetUsd === undefined || budgetUsd < 0 || !recordedAt) return undefined;
+  return { duration, budgetUsd, recordedAt };
+}
+
 function parseMotion(value: unknown): Motion | null {
   if (!isRecord(value)) return null;
   const id = optionalStr(value.id);
@@ -578,7 +707,18 @@ function parseMotion(value: unknown): Motion | null {
   // UI width and an interpolator, and a sheet motion has none of those to
   // answer for. It is dropped rather than carried into a panel that would
   // have nowhere to put it.
-  const brief = value.kind === "loop" ? parseLoopBrief(value.brief) : undefined;
+  // A transition names both loops it joins, or it joins nothing and loads as
+  // the sprite motion every unrecognised kind falls back to.
+  const from = optionalStr(value.from);
+  const to = optionalStr(value.to);
+  const kind: MotionKind | undefined = value.kind === "loop"
+    ? "loop"
+    : value.kind === "transition" && from && to ? "transition" : undefined;
+  const brief = kind === "loop"
+    ? parseLoopBrief(value.brief)
+    : kind === "transition" ? parseTransitionBrief(value.brief) : undefined;
+  const clip = kind === "loop" ? parseLoopClip(value.clip) : undefined;
+  const reverseOf = kind === "transition" ? optionalStr(value.reverseOf) : undefined;
   return {
     id,
     label: str(value.label, id),
@@ -587,8 +727,10 @@ function parseMotion(value: unknown): Motion | null {
     // tab and the stage drops its pivot guide on the strength of this word,
     // so anything that is not "loop" reads as the sprite motion it was
     // before loops existed.
-    ...(value.kind === "loop" ? { kind: "loop" as const } : {}),
+    ...(kind ? { kind } : {}),
     ...(brief ? { brief } : {}),
+    ...(kind === "transition" ? { from, to } : {}),
+    ...(reverseOf ? { reverseOf } : {}),
     grid: { rows: num(grid.rows, 1), cols: num(grid.cols, 1) },
     fps: num(value.fps, 8),
     loop: value.loop !== false,
@@ -644,6 +786,7 @@ function parseMotion(value: unknown): Motion | null {
       })
       .filter((v): v is MotionVideo => v !== null),
     ...(inspect ? { inspect } : {}),
+    ...(clip ? { clip } : {}),
   };
 }
 
@@ -653,6 +796,7 @@ function parseSidecar(value: unknown): SpriteSidecar | null {
   if (!character) return null;
   const cell = isRecord(character.cell) ? character.cell : {};
   const facing = character.facing;
+  const exports = parseCharacterExports(value.exports);
   return {
     version: 1,
     character: {
@@ -686,6 +830,7 @@ function parseSidecar(value: unknown): SpriteSidecar | null {
     motions: arr(value.motions)
       .map(parseMotion)
       .filter((m): m is Motion => m !== null),
+    ...(exports ? { exports } : {}),
   };
 }
 

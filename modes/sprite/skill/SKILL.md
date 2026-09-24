@@ -6,8 +6,10 @@ description: >
   writing motion prompts, generating sprite sheets, shooting and sampling
   motion clips, slicing and aligning frames, packing atlases, rendering GIF
   or video previews, building a seamless transparent loop for a UI
-  (WebP / APNG / WebM / Lottie), diagnosing misaligned or empty frames, or
-  handing assets to a game engine. Defines the project.json contract, the
+  (WebP / APNG / WebM / Lottie), diagnosing misaligned or empty frames,
+  handing assets to a game engine, or exporting a motion or the whole
+  character as video (MP4 / MOV / WebM), frame animation (APNG / Lottie /
+  PNG sequence) or a Rive file. Defines the project.json contract, the
   pipeline scripts, and how to
   look through the viewer before claiming a motion is done.
   Consult before your first generation in a new conversation.
@@ -75,8 +77,9 @@ clickable card that takes the user there — or into the `capture` action's
   where `source` is `"frames" | "raw-sheet" | "keyframe" | "none"`.
   A `source` of `"raw-sheet"` (the unprocessed sheet) or a `frameCount` that
   disagrees with the grid means the pipeline did not land — whatever the
-  script printed. `kind` is `"loop"` on a loop motion (workflow E) and absent
-  on a sprite motion; a loop before its frames exist reports
+  script printed. `kind` is `"loop"` on a loop motion (workflow E),
+  `"transition"` on a transition (workflow F, with its `from` and `to`), and
+  absent on a sprite motion; a loop before its frames exist reports
   `source: "keyframe"` — the image its clip starts and ends on, standing in,
   which is expected rather than a fault.
 - **`capture`** — framework built-in. Screenshot an address and look at it.
@@ -142,9 +145,10 @@ clickable card that takes the user there — or into the `capture` action's
   from finished frames is never sampled back into frames — its frames are not
   cell-aligned and its character is whatever the model felt like. A clip shot
   deliberately on flat chroma green with a locked camera *is* a legitimate
-  source: that is workflow B-video (sampled by `from-video`) or workflow E's
-  first-last loop clip (cut by `loop`). Those two subcommands are the only
-  things that may cut a clip into a motion's frames. `retime` is the third
+  source: that is workflow B-video (sampled by `from-video`), workflow E's
+  first-last loop clip (cut by `loop`) or workflow F's transition take (cut
+  by `transition`). Those three subcommands are the only things that may cut
+  a clip into a motion's frames. `retime` is the third
   thing that may touch a clip's frames and it is not an exception: it writes
   another **clip**, out of the same take's own frames, and gets registered as
   a derived clip like a matte does (workflow E step 6b).
@@ -501,6 +505,11 @@ timing rides in each frame's `duration` (ms); `pivot` is the anchor point
 hovering 8px above it. For a pixel-art look, re-pack with
 `pack --scale 0.5 --nearest`. Schema in `references/pipeline.md`.
 
+An engine that wants loose frames rather than a sheet takes the PNG sequence,
+whose `animation.json` carries the same fps, per-frame duration and pivot; a
+product or app team that drives states from code takes the character's Rive
+file. Both are under **Exporting** below.
+
 ### E. A seamless loop for the UI
 
 {{#videoGenEnabled}}
@@ -509,7 +518,10 @@ differently. What lands is one transparent animation a frontend drops straight
 into a page — `loop.webp`, `loop.apng`, `loop.webm` (VP9 with alpha) and
 `loop.json` (Lottie) — carrying **every** frame of the cycle, unaligned and
 uncleaned. The bobbing *is* the content, so nothing re-centres it and nothing
-sweeps the sparks away; there is no atlas, no GIF and no anchor.
+sweeps the sparks away; there is no atlas, no GIF and no anchor. Those four
+files need no export step; an MP4, a MOV or a PNG sequence of the same loop is
+made on request, and so is a Rive file of the character's loops, resampled to
+a rate and size a runtime can open (**Exporting** below).
 
 Shooting the clip **first-last with the same image at both ends** gives the
 model a target to land back on, which is why a loop starts from a single
@@ -827,10 +839,254 @@ path left, and it is not the same thing — its frames are drawn, not
 interpolated, and it exports an atlas rather than a transparent loop.
 {{/videoGenDisabled}}
 
+### F. Connect the loops for Rive
+
+When the user wants **one Rive file whose loops switch in an app** — a mascot
+that goes from idle to typing to a coffee break on cue. Every loop was shot
+from its own keyframe, so switching between two of them jumps: a mug is in
+one frame and gone in the next, the body stands and then sits. Rive cannot
+blend two frames, so the continuity has to be in the pictures: a **hub** loop
+(idle), **transition clips** that start on one loop's frame 0 and end on
+another's, and a state machine that changes state only where the pictures
+meet. `rive` builds that machine from whatever transitions are registered;
+this workflow makes them.
+
+{{#videoGenEnabled}}
+1. **Look first — it is free.**
+
+   ```bash
+   node {SKILL_PATH}/scripts/sprite-sheet.mjs lineup <character> --json
+   ```
+
+   It writes `<character>/lineup.png`: every ready loop's frame 0 beside the
+   hub's, at one scale, where each clip put it, on the hub's floor line. Per
+   loop the JSON gives a `poseGap` to the hub (silhouette overlap `iou`, and
+   `chroma`, how different the pose inside the silhouette is), the loop frame
+   `closestFrame` to the hub pose, the transitions already registered, and a
+   `suggestion` — `direct` or `transition` — with the rule it used. Open the
+   PNG and look: the threshold was calibrated on one character
+   (`references/pipeline.md`, "lineup"), and your eyes are the check.
+2. **Decide which loops need a clip.** A loop whose frame 0 is already the
+   hub's pose (tanka's walk beside its idle) can cut; one that sits, or holds
+   a mug, cannot. Only **hub → X** is shot: the way back is X → hub played
+   backwards, free (step 7). A clip between two loops that are not the hub is
+   optional; `rive` uses it when it exists.
+3. **Price it and ask for a budget.** Per entry: one take ≈ $1.1 (Seedance,
+   4 s, 480p) and one matte ≈ $0.06 (`veed-gs`); no interpolation, because a
+   Rive file plays at 24 fps, the rate the take already has. Five entries is
+   about $5.8. Put the list, the price and the wait (three to eleven minutes a
+   take) in one message, take the answer, and keep a running total.
+4. **Register, brief and shoot each entry.**
+
+   ```bash
+   node {SKILL_PATH}/scripts/sprite-project.mjs add-motion --dir <character> \
+     --kind transition --from idle --to coffee --json
+   node {SKILL_PATH}/scripts/sprite-project.mjs set-motion --dir <character> \
+     --motion idle-to-coffee --brief-duration 1.2 --brief-budget 1.2 --json
+   node {SKILL_PATH}/scripts/sprite-project.mjs add-video --dir <character> \
+     --motion idle-to-coffee --file motions/idle-to-coffee/video-seedance-1.mp4 \
+     --model seedance-2.5 --mode first-last \
+     --from idle-keyframe-alpha,coffee-keyframe-alpha \
+     --prompt "<the prompt>" --duration 4 --status generating --json
+   node {SKILL_PATH}/scripts/seedance-video.mjs \
+     --prompt "<the transition template from references/video-preview.md>" \
+     --image <character>/motions/idle/first-green.png \
+     --end-image <character>/motions/coffee/first-green.png \
+     --duration 4 --resolution 480p --no-audio \
+     --output <character>/motions/idle-to-coffee/video-seedance-1.mp4 --json
+   ```
+
+   The id is `<from>-to-<to>` and the label is built from the loops' labels.
+   `--brief-duration` is how long the clip should **play** in the file (about
+   one to one and a half seconds), not the take's length — the take is cut
+   down to it. `--from` names both keyframes: the clip grows out of both.
+   `first-green.png` is each loop's flattened keyframe from workflow E step 3
+   (flatten it again if it is gone). Then `set-video --status ready`, or
+   `failed` with `--notes`.
+5. **Matte it** with `remove-video-background.mjs --model veed-gs`, registered
+   with `add-video --derived-from <that video id> --op matte --model veed-gs`,
+   exactly as in workflow E step 7.
+6. **Cut it, and read both ends.**
+
+   ```bash
+   node {SKILL_PATH}/scripts/sprite-sheet.mjs transition \
+     <character>/motions/idle-to-coffee/video-veed-2.webm --character <character> \
+     --from idle --to coffee --key alpha --duration 1.2 --json \
+     > <character>/motions/idle-to-coffee/run.json
+   node {SKILL_PATH}/scripts/sprite-project.mjs register-run --dir <character> \
+     --motion idle-to-coffee --run <character>/motions/idle-to-coffee/run.json \
+     --video <the matte's video id> --json
+   ```
+
+   It drops the frames a first-last take spends waiting at each end, keeps
+   the first and last frame when it retimes to `--duration`, records the crop
+   and scale like `loop`, and measures `startGap` (against idle's frame 0) and
+   `endGap` (against coffee's) beside the clip's own `step`. `gap ≤ 2·step`
+   lands; past that a warning names the end. Quote all three numbers. A
+   warning means the take did not begin or end on the keyframe: a later
+   `--trim-start` or an earlier `--trim-end` is free, a new take is the
+   user's money.
+7. **Make the exits, free.**
+
+   ```bash
+   node {SKILL_PATH}/scripts/sprite-project.mjs add-motion --dir <character> \
+     --kind transition --from coffee --to idle --json
+   node {SKILL_PATH}/scripts/sprite-sheet.mjs transition --reverse-of idle-to-coffee \
+     --character <character> --json \
+     | node {SKILL_PATH}/scripts/sprite-project.mjs register-run --dir <character> \
+       --motion coffee-to-idle --run - --json
+   ```
+
+   The exit is the entry's frames backwards, registered with `reverseOf`; in
+   the `.riv` it embeds nothing and shows the entry's images in reverse. Play
+   it before you report it. **When a reversed exit reads wrong** — a mug put
+   down is not a mug picked up backwards, and sitting down played in reverse
+   is a stand-up with gravity running the wrong way — say what you saw, and
+   offer a real exit take at the price of an entry.
+8. **Export, and look through the preview.** `rive <character>
+   --include-loops`, registered (see **Exporting**). In the Export tab's Rive
+   preview, press a loop's button and watch the state line: idle →
+   idle-to-coffee → coffee. Report from the file's `stateMachine`: the
+   routes, each loop's wait, and every direct cut with its `poseGap`.
+
+**Say the limits plainly.** Leaving a loop waits for the end of its cycle —
+`stateMachine.waits` has each loop's wait (tanka's loops run 3.8–5.1 s). Routes
+go through the hub: from coffee to typing plays coffee → idle, then idle →
+typing. A pair with no transition cuts, and the report lists where and how far
+apart the poses are.
+{{/videoGenEnabled}}
+
+{{#videoGenDisabled}}
+The transition clips are paid Seedance takes, so this workflow needs the fal
+key. Without one, `lineup` still runs and `rive` still routes through the
+hub: say which switches will cut, and how far apart their poses are.
+{{/videoGenDisabled}}
+
+## Exporting
+
+Every file a motion's own run makes is already a deliverable and needs **no
+export step**: a sprite motion's `preview.gif`, `preview.webp`, `sheet.png` +
+`atlas.json` and its clips; a loop's `loop.webp`, `loop.apng`, `loop.webm`
+and `loop.json`. The stage's Export tab lists them as ready, next to
+everything else a **ready** motion can be made into on request. Match the
+format to where it is going:
+
+| Where it goes | Format | How |
+|---|---|---|
+| Editing software — Premiere, Final Cut, After Effects, DaVinci | MOV, ProRes 4444 with alpha | `export --format mov` |
+| Anywhere a plain video plays — chat, slides, social | MP4, H.264 on a solid colour | `export --format mp4 --bg "#rrggbb"` |
+| A web page | WebM (VP9 with alpha), or the animated WebP the run made | `export --format webm` |
+| Lossless frame animation; an app that plays Lottie | APNG; Lottie (raster frames) | `export --format apng` / `lottie` |
+| A game engine | the sheet + atlas the run made, or a PNG sequence with `animation.json` | `export --format png-seq` |
+| Product or app animation driven from code — a mascot switching states | Rive — the whole character: a number input picks the loop, a trigger per one-shot | `rive <character>` (loops and transitions: `--include-loops` or `--motions`) |
+
+Each export is one command and one registration, piped:
+
+```bash
+node {SKILL_PATH}/scripts/sprite-sheet.mjs export lumi/motions/attack --format mp4 --bg "#ffffff" --json \
+  | node {SKILL_PATH}/scripts/sprite-project.mjs register-export --dir lumi --report - --json
+
+node {SKILL_PATH}/scripts/sprite-sheet.mjs rive lumi --json \
+  | node {SKILL_PATH}/scripts/sprite-project.mjs register-export --dir lumi --report - --json
+
+node {SKILL_PATH}/scripts/sprite-sheet.mjs rive tanka --motions idle,wave,typing --json \
+  | node {SKILL_PATH}/scripts/sprite-project.mjs register-export --dir tanka --report - --json
+```
+
+The files land in `lumi/motions/attack/exports/` (`attack.mp4`, `attack.mov`,
+`attack.webm`, `attack.apng`, `attack.json`, `attack-frames.zip`) and at
+`lumi/exports/lumi.riv`; registration records them as `attack-export-mp4` …
+and `lumi-export-riv`, with the size the tab prints. Exporting again replaces
+the file and its record in place. A failed export prints its `ERROR:` and
+nothing on stdout, and `register-export` then says the report is empty and
+registers nothing — read the `ERROR:` line, fix that, run both again. When a
+motion is re-run, the exports made from its old frames are retired
+(`register-run` says so on stderr): export them again if the user still wants
+them.
+
+- **`--repeat N`** (video only): how many times the motion plays. Left out, a
+  looping motion repeats until the clip lasts at least 3 s and a one-shot plays
+  once; the report says which (`repeatDefaulted`). Tell the user the length.
+- **`--scale N`**: a whole number, nearest-neighbour, so pixel art stays crisp.
+- **`--bg`**: MP4 only, default white. Passed to any other format it is
+  reported as ignored — those keep their transparency.
+- The script probes every video it writes (codec, alpha, frame count,
+  duration) and refuses one that is not what it claims. Quote the size and the
+  duration from the report when you hand it over.
+
+**Rive** — say these to the user plainly, every time:
+
+- The frames are **raster images**, not vector shapes. The `.riv` plays in
+  every Rive runtime (web, iOS, Android, Flutter, Unity…), but it is a runtime
+  file and **cannot be opened and edited in the Rive editor**.
+- **Which motions**: by default every ready sprite motion. Loops go in only
+  when asked — `--include-loops` for every ready motion, transitions
+  included, or `--motions a,b,c` to name exactly which (and their order). A
+  transition goes in only with both loops it joins. Ask the user which states
+  their app switches between rather than putting in all ten loops of a
+  character.
+- **Loops are resampled, and say so**: a Rive runtime decodes every embedded
+  frame when it opens the file, and a loop is cut at its clip's rate and
+  width (hundreds of 512 px frames). So a loop goes in at **24 fps**
+  (`--fps`), evenly sampled so it still closes, and shrunk so its longest
+  edge is at most **320 px** (`--max-size`) — one factor for all the loops,
+  so the character keeps its size between them. Sprite motions keep their
+  atlas rate and size unless you pass either flag. The downscale is smooth,
+  or nearest-neighbour when `character.style` says pixel art (`--filter`).
+  Quote each motion's `frames`, `fps`, `width` × `height` from the report —
+  never the source frames' 60 fps and 512 px, which is not what the file
+  holds.
+- **Loops are brought back to their clips' scale and place**: `loop` crops
+  each clip to its own box before the 512 px width, so one character is cut
+  at a different scale in each loop (tanka's ten: 1.03–1.42×). With two
+  loops or more, `rive` divides each one by that scale and draws them where
+  their clips put them — the same body height in every state, the feet where
+  each keyframe stood. `loop` records the crop and scale (`inspect.crop`,
+  `inspect.scale`); for a loop cut before it did, `rive` measures them off
+  the clip (`clip.from: "measured"`). When it cannot, a warning names the
+  loop and it is drawn as cut and stood on its feet — tell the user that
+  loop may not match in size, and that re-cutting it with `loop` fixes it.
+- **Memory**: `estimatedDecodeBytes` in the report — frames × width × height
+  × 4 after resampling, per motion and in total — is what the file costs once
+  opened. Past 128 MB the report warns; past 768 MB `rive` refuses and writes
+  nothing. Say the number; when it is large, offer a lower `--fps`, a smaller
+  `--max-size`, or fewer motions.
+- **Wiring**: the state machine is `State Machine 1`. A number input,
+  **`motion`**, names the loop the character should be in — each loop's
+  value is in `stateMachine.inputs` — and each one-shot keeps a trigger,
+  `play_<motionId>`. It starts on the **hub**: the looping idle, else the
+  first loop (`--hub <id>` picks another). Setting `motion` moves the
+  character at the **end of the loop's current cycle**, through the
+  transition clips where they exist and through the hub when no clip joins
+  two loops; a one-shot plays at once from any state, then goes to the loop
+  `motion` names. Give the developer the value table and the waits.
+- **Connected or not**: `stateMachine.routes` spells out every loop-to-loop
+  route (`transition <id>` steps, or a direct cut) with its worst-case
+  seconds, `stateMachine.waits` each loop's cycle, and `stateMachine.cuts`
+  every place the file cuts between two poses, with the measured `poseGap`
+  (1 − silhouette overlap, the same number `lineup` reads). Say how many
+  cuts there are and the largest; workflow F is how they go away. A reverse
+  transition shows its source's images backwards and adds no memory.
+- The frames go in as WebP by default, lossy at quality 85 and several
+  times smaller than PNG (tanka's twenty motions: 13.0 MB against 81.1 MB,
+  the same memory once opened). Every Rive runtime decodes WebP. Pixel art
+  (`character.style`, the reading `--filter auto` uses) goes in as
+  `webp-lossless` instead: every visible pixel exact. Ask for
+  `--images webp-lossless` or `png` when other frames must be lossless. With
+  no libwebp in ffmpeg, the default falls back to PNG and the report warns;
+  say so.
+- The user can play the file in the Export tab (Preview): one button per
+  loop sets `motion`, one per one-shot fires it, and the state line shows the
+  route as it plays. After registering, `navigate-to` a motion of the
+  character so they land on it.
+
+Every flag and report field: `references/pipeline.md`; the asset ids and
+sidecar fields: `references/project-json.md`.
+
 ## Commands
 
-The user can press three buttons on the stage. Each arrives as a notification
-naming the selected motion.
+The user can press four kinds of button on the stage. Each arrives as a
+notification naming the selected motion — or, for a Rive file, the character.
 
 - **`render-video`** — they picked a model and a mode in the popover. Use
   their choices, not your defaults, and follow workflow C.
@@ -850,6 +1106,19 @@ naming the selected motion.
   or the other anchor. Check whether `scaleDrift` is a pose or prop change
   before regenerating; clipped cells need a drawing fix. Preserve intended
   movement. `references/pipeline.md` has the table and alignment limits.
+- **`export`** — they pressed Generate (or Regenerate) on a row of the Export
+  tab. The facts line names `character`, `motion` (absent for `format: riv`,
+  which is the whole character), `format` and, for `mp4`, the `background`
+  they picked. Run exactly that export — with that colour, quoted
+  (`--bg "#1a2b3c"`; unquoted, the shell reads `#` as a comment) — and
+  register it, as **Exporting** shows. For `riv` the facts line also lists
+  `motions` and, when there are any, `transitions` — run `rive <character>
+  --motions <the motions>,<the transitions>`, at the defaults (it names
+  `loops:` and an `estimate:` when loops go in). On a transition's own tab
+  the row is still the character's `.riv`: a transition is never a Rive
+  file of its own. Report the file and
+  its size, and for Rive the caveats above. Do not swap in a format
+  they did not ask for; if the export refuses, say why in their words.
 
 <!-- pneuma:end -->
 
@@ -858,6 +1127,6 @@ naming the selected motion.
 | Topic | File |
 |---|---|
 | Motion planning and continuity for either source; sheet grammar, recipes, worked prompts, the 3D-icon keyframe, fixing one cell | `references/prompting.md` |
-| Every `sprite-sheet.mjs` / `sprite-project.mjs` subcommand — `contact`, `clean`, `from-video` and `--at`, `retime`, `loop` and its warnings, `set-keyframe`, the loop brief, `add-ref --uploaded`, the atlas schema, inspect warnings | `references/pipeline.md` |
-| The chroma-green source clip and the seamless loop clip (prompt templates + worked calls), Seedance and H3 Max flags, video matting and interpolation, cost, latency, measured keying numbers (needs the fal key) | `references/video-preview.md` |
-| The `project.json` schema — craft fields, the sprite sidecar, loop motions and derived clips, asset id conventions | `references/project-json.md` |
+| Every `sprite-sheet.mjs` / `sprite-project.mjs` subcommand — `contact`, `clean`, `from-video` and `--at`, `retime`, `loop` and its warnings, `transition` and `--reverse-of`, `lineup` and its threshold, `export`, `rive` and its state machine, `register-export`, `set-keyframe`, the loop and transition briefs, `add-ref --uploaded`, the atlas schema, `animation.json`, inspect warnings | `references/pipeline.md` |
+| The chroma-green source clip, the seamless loop clip and the transition clip (prompt templates + worked calls), Seedance and H3 Max flags, video matting and interpolation, cost, latency, measured keying numbers (needs the fal key) | `references/video-preview.md` |
+| The `project.json` schema — craft fields, the sprite sidecar, loop and transition motions, derived clips, exports and the `.riv` record, asset id conventions | `references/project-json.md` |

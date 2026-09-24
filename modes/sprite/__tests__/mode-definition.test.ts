@@ -299,12 +299,16 @@ describe("the definition and the manifest agree", () => {
     expect(skill).toContain("{{defaultInterpolator}}");
   });
 
-  test("the three commands the design commissions are declared", () => {
+  test("the commands the design commissions are declared", () => {
     const commands = spriteManifest.viewerApi!.commands!;
+    // `export` is sent from the Export tab's Generate buttons, not from the
+    // command bar — but it is a command like the others, so the agent's
+    // briefing and the hover-hint rules below apply to it all the same.
     expect(commands.map((c) => c.id)).toEqual([
       "render-video",
       "regenerate-motion",
       "fix-alignment",
+      "export",
     ]);
     for (const command of commands) {
       expect(command.label.length).toBeGreaterThan(0);
@@ -332,9 +336,22 @@ describe("the definition and the manifest agree", () => {
     );
     const commands = skill.slice(skill.indexOf("\n## Commands"));
     expect(commands.length).toBeGreaterThan(0);
-    for (const id of ["render-video", "regenerate-motion", "fix-alignment"]) {
+    for (const id of ["render-video", "regenerate-motion", "fix-alignment", "export"]) {
       expect(commands).toContain(id);
     }
+  });
+
+  test("0.4.0 is the export release, and says so in the user's words", () => {
+    expect(spriteManifest.version).toBe("0.4.0");
+    const notes = spriteManifest.changelog?.["0.4.0"] ?? [];
+    expect(notes.length).toBeGreaterThan(0);
+    for (const note of notes) {
+      // The manifest style: plain sentences, no markdown, no trailing period.
+      expect(note).not.toMatch(/`|\*\*|^- /);
+      expect(note.endsWith(".")).toBe(false);
+    }
+    expect(notes.join(" ")).toMatch(/Rive/);
+    expect(notes.join(" ")).toMatch(/MP4/);
   });
 
   test("the workspace model is copied from the manifest, not restated", () => {

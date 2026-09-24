@@ -35,6 +35,9 @@ export interface StageProps {
   images: StageImages;
   frame: number;
   motion: Motion | null;
+  /** What the motion is called on the stage — a transition by the two loops
+   *  it joins (`motionLabel`); its own label when absent. */
+  motionLabel?: string | null;
   /** Set when a reference image, not a motion, is on the stage. */
   refLabel: string | null;
   theme: "light" | "dark";
@@ -107,7 +110,7 @@ export function Stage(props: StageProps) {
    *  dropped into a page, so no anchor was measured and none is assumed. A
    *  guide drawn anyway would be a line claiming a point nobody chose — so it
    *  is not drawn, and the toggle says why instead of pretending to work. */
-  const loopMotion = props.motion?.kind === "loop";
+  const loopMotion = props.motion?.kind === "loop" || props.motion?.kind === "transition";
   const groundOn = props.ground && !loopMotion;
   /** Where the pipeline measured this motion's anchor, when it measured one.
    *  `project.json` is all the viewer reads, so this is the only channel the
@@ -269,7 +272,7 @@ function StageOverlays(props: StageProps & { scale: number; reserve: number }) {
   return (
     <>
       <Corner reserve={reserve}>
-        <span className={LABEL_CLASS}>{motion.label}</span>
+        <span className={LABEL_CLASS}>{props.motionLabel ?? motion.label}</span>
         {/* The same one-image source means two different things: a sprite
             motion's sheet sliced client-side, and a loop's keyframe standing
             in while its clip renders. Calling the second one a "sheet preview"

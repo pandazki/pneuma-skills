@@ -31,7 +31,15 @@ import type {
 } from "../domain.js";
 import type { AtlasNote } from "./atlas.js";
 import type { LoopLine, SizeLine } from "./metrics.js";
-import type { LoopFormat, PanelTab } from "./panel.js";
+import type {
+  ExportFamily,
+  ExportNotOffered,
+  ExportRepeat,
+  ExportRowFormat,
+  LoopFormat,
+  PanelTab,
+} from "./panel.js";
+import type { RiveFailureStage } from "./rive-preview.js";
 
 export type SpriteLocale = "en" | "zh-CN";
 
@@ -46,6 +54,8 @@ export interface SpriteStrings {
   facing: (direction: "left" | "right") => string;
   refCount: (count: number) => string;
   motionCount: (count: number) => string;
+  /** The header's count of transitions, beside the motions. */
+  transitionCount: (count: number) => string;
   /** The header's word for a motion sampled out of a video clip. */
   fromVideo: string;
   /** The rail's chip for the same thing. */
@@ -54,6 +64,11 @@ export interface SpriteStrings {
   /** The rail's chip for a motion whose deliverable is a seamless UI loop. */
   loopSource: string;
   loopSourceTitle: string;
+  /** The rail's chip for a clip between two loops. */
+  transitionChip: string;
+  transitionChipTitle: string;
+  /** A transition made by playing another one backwards. */
+  reverseTitle: (source: string) => string;
   /** A loop's header phrase: measured size · frames @ fps. */
   loopLine: (line: LoopLine) => string;
   renderingVideo: string;
@@ -116,6 +131,8 @@ export interface SpriteStrings {
   // ── Rail ────────────────────────────────────────────────────────────────
   references: string;
   motions: string;
+  /** The rail's second list: the clips between loops. */
+  transitions: string;
   noReferences: string;
   noMotions: string;
   referenceTitle: (label: string, role: string) => string;
@@ -165,6 +182,61 @@ export interface SpriteStrings {
   /** File formats are proper nouns; only the row they sit in is copy. */
   exportLabel: Record<LoopFormat, string>;
   exportLink: (label: string, size: string | null) => string;
+
+  // ── Export tab ──────────────────────────────────────────────────────────
+  exportFamily: Record<ExportFamily, string>;
+  /** The row's name. Formats are proper nouns; "PNG sequence" is not. */
+  exportFormatName: Record<ExportRowFormat, string>;
+  /** One line on what the format is for, in the user's words. `motions` is
+   *  the count a `.riv` holds; the other formats ignore it. */
+  exportPurpose: (format: ExportRowFormat, m: { motions: number; transitions?: number }) => string;
+  exportNotOffered: Record<ExportNotOffered, string>;
+  /** How many times a video plays and for how long — stated before it is
+   *  made, because the default depends on whether the motion loops. */
+  exportRepeat: (video: ExportRepeat, loop: boolean) => string;
+  /** The ready `.riv` lacks motions that became ready after it was made. */
+  exportRiveMissing: (motions: string[]) => string;
+  /** On a transition's own tab: it is not a file of its own in Rive — it is
+   *  part of the character's, which holds `count` of them. */
+  exportRiveTransition: (count: number) => string;
+  /** The memory the runtime decodes the `.riv` into when it opens. */
+  exportRiveMemory: (size: string) => string;
+  /** The rate and the largest size the loops in the `.riv` play at. */
+  exportRiveLoops: (m: { fps: number; width: number; height: number }) => string;
+  /** The colour a made MP4 was flattened onto. */
+  exportOnBackground: (hex: string) => string;
+  exportBackground: string;
+  exportBackgroundField: string;
+  exportColorInvalid: string;
+  exportBuiltInTitle: string;
+  exportGenerate: string;
+  exportRegenerate: string;
+  exportRequested: string;
+  exportUpdating: string;
+  exportAskAgain: string;
+  exportNothingReady: string;
+
+  // ── Rive preview ────────────────────────────────────────────────────────
+  rivePreview: string;
+  riveClose: string;
+  riveLoading: string;
+  /** Precedes the preview's state trail; the current state follows it, never cut. */
+  riveStateLabel: string;
+  riveInputs: string;
+  riveNoInputs: string;
+  riveFire: (name: string) => string;
+  /** The loop buttons' heading: they set the number input `input`. */
+  riveLoopsHeading: (input: string) => string;
+  /** The one-shot buttons' heading: they fire a trigger. */
+  riveOneShotsHeading: string;
+  /** A loop button's tooltip. */
+  riveSetMotion: (input: string, value: number, label: string) => string;
+  riveOn: string;
+  riveOff: string;
+  riveDecrease: string;
+  riveIncrease: string;
+  riveError: Record<RiveFailureStage, string>;
+  riveRetry: string;
   /** What a derived clip is: `matte of video-1 · veed`. The op's own word is
    *  inside this phrase and nowhere else — a second table for it would be a
    *  second place the same word could be translated differently. The op union
@@ -192,6 +264,13 @@ export interface SpriteStrings {
   factEmpty: string;
   factSeam: string;
   factStep: string;
+  /** A transition's two joins: its first frame against the loop it leaves,
+   *  its last against the loop it lands on. */
+  factStartGap: string;
+  factEndGap: string;
+  joinVerdict: Record<"lands" | "off", string>;
+  /** The rail's note on a transition whose end does not land. */
+  joinOff: (end: "start" | "end") => string;
   factFps: string;
   factDuration: string;
   factAlpha: string;
@@ -240,11 +319,15 @@ const en: SpriteStrings = {
   facing: (direction) => `facing ${direction}`,
   refCount: (count) => `${count} reference${count === 1 ? "" : "s"}`,
   motionCount: (count) => `${count} motion${count === 1 ? "" : "s"}`,
+  transitionCount: (count) => `${count} transition${count === 1 ? "" : "s"}`,
   fromVideo: "from video",
   videoSource: "video",
   videoSourceTitle: "Frames sampled from a video clip",
   loopSource: "loop",
   loopSourceTitle: "A seamless transparent animation for a UI, not a sprite atlas",
+  transitionChip: "transition",
+  transitionChipTitle: "A clip from one loop's first frame to another's, so the Rive file can switch between them without a jump",
+  reverseTitle: (source) => `${source} played backwards`,
   loopLine: (line) =>
     [
       line.measured,
@@ -313,6 +396,7 @@ const en: SpriteStrings = {
 
   references: "References",
   motions: "Motions",
+  transitions: "Transitions",
   noReferences:
     "No identity references yet. They are what keeps every motion sheet on model.",
   noMotions: "No motions yet. Ask for one — idle, walk, attack.",
@@ -342,7 +426,7 @@ const en: SpriteStrings = {
   },
   acknowledgedTitle: (reason) => `Warnings accepted — ${reason}`,
 
-  tab: { gif: "GIF", loop: "Loop", video: "Video", atlas: "Atlas" },
+  tab: { gif: "GIF", loop: "Loop", video: "Video", atlas: "Atlas", export: "Export" },
   selectMotionForPanel: "Select a motion to see what it produced.",
   noPreviewYet:
     "No preview rendered yet. The GIF and WebP land with the pipeline run.",
@@ -375,6 +459,109 @@ const en: SpriteStrings = {
       .join(" · "),
   exportLabel: { webp: "WebP", apng: "APNG", webm: "WebM", lottie: "Lottie" },
   exportLink: (label, size) => (size ? `${label} · ${size}` : label),
+
+  exportFamily: { video: "Video", frames: "Frame animation", rive: "Rive" },
+  exportFormatName: {
+    mp4: "MP4",
+    mov: "MOV",
+    webm: "WebM",
+    gif: "GIF",
+    webp: "WebP",
+    apng: "APNG",
+    lottie: "Lottie",
+    "png-seq": "PNG sequence",
+    sheet: "Sprite sheet + atlas",
+    riv: "Rive",
+  },
+  exportPurpose: (format, m) => {
+    switch (format) {
+      case "mp4":
+        return "H.264 · on a solid colour, plays anywhere";
+      case "mov":
+        return "ProRes 4444 · keeps transparency, for editing software";
+      case "webm":
+        return "VP9 · keeps transparency, for web pages";
+      case "gif":
+        return "on/off transparency only · for chat and quick previews";
+      case "webp":
+        return "animated WebP · full transparency, small, for web pages";
+      case "apng":
+        return "animated PNG · full transparency, lossless, larger files";
+      case "lottie":
+        return "Lottie JSON of raster frames · for apps that already play Lottie";
+      case "png-seq":
+        return "every frame plus animation.json, zipped · for game engines and editors";
+      case "sheet":
+        return "sheet.png + atlas.json · loads straight into Phaser or PixiJS";
+      default:
+        return [
+          "whole character",
+          `${m.motions} motion${m.motions === 1 ? "" : "s"}`,
+          m.transitions ? `${m.transitions} transition${m.transitions === 1 ? "" : "s"}` : null,
+          "raster frames",
+        ].filter(Boolean).join(", ");
+    }
+  },
+  exportNotOffered: {
+    "loop-gif":
+      "Not for a loop: GIF has only on/off transparency and a loop has hundreds of frames — use WebP or APNG.",
+    "loop-atlas":
+      "Not for a loop: a loop is never packed into an atlas — use the PNG sequence.",
+    "transition-gif":
+      "Not for a transition: GIF has only on/off transparency, and a transition is cut from a matted clip — use APNG or WebM.",
+    "transition-atlas":
+      "Not for a transition: a transition is never packed into an atlas — use the PNG sequence.",
+    "too-heavy":
+      "Even at 24 fps and 320 px, this character's motions would take more than 768 MB of memory to open — ask the agent in the chat for fewer motions or a lower frame rate.",
+    "not-ready": "Available once the motion is ready.",
+    "not-in-run": "Made by every run of the motion; this run was made without it.",
+  },
+  exportRepeat: (video, loop) => {
+    const plays = video.repeat === 1 ? "plays once" : `plays ${video.repeat}×`;
+    const line = `${plays} · ${video.seconds.toFixed(1)} s`;
+    return video.defaulted && loop && video.repeat > 1
+      ? `${line} — repeats until at least 3 s`
+      : line;
+  },
+  exportRiveMissing: (motions) =>
+    `Does not include ${motions.join(", ")} yet — regenerate to add ${motions.length === 1 ? "it" : "them"}`,
+  exportRiveTransition: (count) =>
+    `This transition is part of the character's .riv — ${count} transition${count === 1 ? "" : "s"} in all`,
+  exportRiveMemory: (size) => `takes about ${size} of memory once opened`,
+  exportRiveLoops: (m) => `loops resampled to ${m.fps} fps, up to ${m.width}×${m.height} px`,
+  exportOnBackground: (hex) => `on ${hex}`,
+  exportBackground: "Background",
+  exportBackgroundField: "Background colour as a hex code",
+  exportColorInvalid: "Write the colour like #1a2b3c",
+  exportBuiltInTitle: "Made by every run of this motion",
+  exportGenerate: "Generate",
+  exportRegenerate: "Regenerate",
+  exportRequested: "Asked the agent…",
+  exportUpdating: "Asked for a new one…",
+  exportAskAgain: "Ask again",
+  exportNothingReady: "Nothing has been exported for this motion yet.",
+
+  rivePreview: "Preview",
+  riveClose: "Close the preview",
+  riveLoading: "Loading the Rive player…",
+  riveStateLabel: "state:",
+  riveInputs: "Inputs",
+  riveNoInputs: "This file's state machine has no inputs.",
+  riveFire: (name) => `Fire ${name}`,
+  riveLoopsHeading: (input) => `Loops · set ${input}`,
+  riveOneShotsHeading: "One-shots · fire",
+  riveSetMotion: (input, value, label) => `Set ${input} to ${value} — ${label}`,
+  riveOn: "on",
+  riveOff: "off",
+  riveDecrease: "Decrease",
+  riveIncrease: "Increase",
+  riveError: {
+    runtime: "The Rive player could not start.",
+    file: "The .riv file could not be opened.",
+    "state-machine": "The file has no state machine to play.",
+  },
+  riveRetry: "Try again",
+
   derivedClip: (parent, op, model) =>
     `${{ matte: "matte", interpolate: "interpolation", retime: "retime" }[op]} of ${parent} · ${model}`,
   atlasNote: (note) => {
@@ -406,6 +593,10 @@ const en: SpriteStrings = {
   factEmpty: "Empty",
   factSeam: "Seam",
   factStep: "Step",
+  factStartGap: "Start join",
+  factEndGap: "End join",
+  joinVerdict: { lands: "lands", off: "does not land" },
+  joinOff: (end) => (end === "start" ? "start does not land" : "end does not land"),
   factFps: "Fps",
   factDuration: "Duration",
   factAlpha: "Alpha",
@@ -457,12 +648,14 @@ const zhCommandLabels: Record<string, string> = {
   "render-video": "渲染视频预览",
   "regenerate-motion": "重画这个动作",
   "fix-alignment": "帧对不齐",
+  export: "导出",
 };
 
 const zhCommandHints: Record<string, string> = {
   "render-video": "让助手把这个动作渲成一段视频，可以挑模型和生成方式。",
   "regenerate-motion": "让助手重画这个动作的雪碧图，可以附一句要改什么。",
   "fix-alignment": "帧与帧之间人物在滑或在跳时，让助手重新对齐。",
+  export: "让助手把这个动作——或整个角色——导出成视频、帧动画或 Rive 文件。",
 };
 
 const zhCN: SpriteStrings = {
@@ -482,11 +675,15 @@ const zhCN: SpriteStrings = {
   facing: (direction) => (direction === "left" ? "朝左" : "朝右"),
   refCount: (count) => `${count} 张参考图`,
   motionCount: (count) => `${count} 个动作`,
+  transitionCount: (count) => `${count} 段过渡`,
   fromVideo: "来自视频",
   videoSource: "视频",
   videoSourceTitle: "帧来自一段视频",
   loopSource: "循环",
   loopSourceTitle: "做给界面用的无缝透明动画，不是游戏用的精灵图集",
+  transitionChip: "过渡",
+  transitionChipTitle: "从一个循环的首帧过渡到另一个循环的首帧，Rive 文件在两者之间切换时就不会跳",
+  reverseTitle: (source) => `由 ${source} 倒放而来`,
   loopLine: (line) =>
     [line.measured, `${line.frames} 帧 @ ${line.fps} fps`]
       .filter(Boolean)
@@ -551,6 +748,7 @@ const zhCN: SpriteStrings = {
 
   references: "参考图",
   motions: "动作",
+  transitions: "过渡",
   noReferences: "还没有身份参考图。它们是每张动作图不跑形的依据。",
   noMotions: "还没有动作。让助手做一个吧——待机、行走、攻击。",
   referenceTitle: (label, role) => `${label} — ${role}`,
@@ -573,7 +771,7 @@ const zhCN: SpriteStrings = {
   status: zhStatus,
   acknowledgedTitle: (reason) => `已确认保留 —— ${reason}`,
 
-  tab: { gif: "GIF", loop: "循环", video: "视频", atlas: "图集" },
+  tab: { gif: "GIF", loop: "循环", video: "视频", atlas: "图集", export: "导出" },
   selectMotionForPanel: "选一个动作，看它产出了什么。",
   noPreviewYet: "还没有预览。GIF 和 WebP 会随流水线一起产出。",
   previewMeta: (m) =>
@@ -602,6 +800,104 @@ const zhCN: SpriteStrings = {
       .join(" · "),
   exportLabel: { webp: "WebP", apng: "APNG", webm: "WebM", lottie: "Lottie" },
   exportLink: (label, size) => (size ? `${label} · ${size}` : label),
+
+  exportFamily: { video: "视频", frames: "帧动画", rive: "Rive" },
+  exportFormatName: {
+    mp4: "MP4",
+    mov: "MOV",
+    webm: "WebM",
+    gif: "GIF",
+    webp: "WebP",
+    apng: "APNG",
+    lottie: "Lottie",
+    "png-seq": "PNG 序列",
+    sheet: "雪碧图 + 图集",
+    riv: "Rive",
+  },
+  exportPurpose: (format, m) => {
+    switch (format) {
+      case "mp4":
+        return "H.264 · 铺在纯色底上，哪儿都能播";
+      case "mov":
+        return "ProRes 4444 · 保留透明，给剪辑软件用";
+      case "webm":
+        return "VP9 · 保留透明，放网页用";
+      case "gif":
+        return "透明只有全透和不透 · 发聊天、快速预览";
+      case "webp":
+        return "动态 WebP · 完整透明、体积小，放网页用";
+      case "apng":
+        return "动态 PNG · 完整透明、无损，文件偏大";
+      case "lottie":
+        return "逐帧位图的 Lottie JSON · 给已经在播 Lottie 的 App";
+      case "png-seq":
+        return "每一帧加 animation.json 打成 zip · 给游戏引擎和编辑器";
+      case "sheet":
+        return "sheet.png + atlas.json · Phaser、PixiJS 直接读";
+      default:
+        return [
+          "整个角色",
+          `${m.motions} 个动作`,
+          m.transitions ? `${m.transitions} 段过渡` : null,
+          "位图帧",
+        ].filter(Boolean).join(" · ");
+    }
+  },
+  exportNotOffered: {
+    "loop-gif":
+      "循环动画不出 GIF：GIF 的透明只有全透和不透，循环动画又动辄几百帧——用 WebP 或 APNG。",
+    "loop-atlas": "循环动画不打包成图集——要逐帧文件就用 PNG 序列。",
+    "transition-gif":
+      "过渡片段不出 GIF：GIF 的透明只有全透和不透，而过渡是从抠好像的视频里切出来的——用 APNG 或 WebM。",
+    "transition-atlas": "过渡片段不打包成图集——要逐帧文件就用 PNG 序列。",
+    "too-heavy":
+      "就算降到 24 fps、320 px，这个角色的动作打开也要占 768 MB 以上内存——在对话里请助手少放几个动作，或者再降低帧率。",
+    "not-ready": "动作就绪后才能导出。",
+    "not-in-run": "这个文件随每次流水线产出，这一次跑的时候没有生成。",
+  },
+  exportRepeat: (video, loop) => {
+    const line = `播 ${video.repeat} 遍 · ${video.seconds.toFixed(1)} 秒`;
+    return video.defaulted && loop && video.repeat > 1
+      ? `${line}——循环动作会重复到至少 3 秒`
+      : line;
+  },
+  exportRiveMissing: (motions) => `还没有包含 ${motions.join("、")}——重新生成就会加进去`,
+  exportRiveTransition: (count) => `这段过渡在角色的 .riv 里——一共 ${count} 段过渡`,
+  exportRiveMemory: (size) => `打开后约占 ${size} 内存`,
+  exportRiveLoops: (m) => `循环动画降到 ${m.fps} fps，最大 ${m.width}×${m.height}`,
+  exportOnBackground: (hex) => `底色 ${hex}`,
+  exportBackground: "底色",
+  exportBackgroundField: "底色的十六进制色值",
+  exportColorInvalid: "颜色要写成 #1a2b3c 这样",
+  exportBuiltInTitle: "每次跑这个动作都会产出",
+  exportGenerate: "生成",
+  exportRegenerate: "重新生成",
+  exportRequested: "已交给助手…",
+  exportUpdating: "已请助手重新生成…",
+  exportAskAgain: "再问一次",
+  exportNothingReady: "这个动作还没有导出过文件。",
+
+  rivePreview: "预览",
+  riveClose: "关闭预览",
+  riveLoading: "正在载入 Rive 播放器…",
+  riveStateLabel: "当前状态：",
+  riveInputs: "输入",
+  riveNoInputs: "这个文件的状态机没有输入。",
+  riveFire: (name) => `触发 ${name}`,
+  riveLoopsHeading: (input) => `循环 · 设置 ${input}`,
+  riveOneShotsHeading: "单次动作 · 触发",
+  riveSetMotion: (input, value, label) => `把 ${input} 设为 ${value}（${label}）`,
+  riveOn: "开",
+  riveOff: "关",
+  riveDecrease: "减小",
+  riveIncrease: "增大",
+  riveError: {
+    runtime: "Rive 播放器没能启动。",
+    file: ".riv 文件打不开。",
+    "state-machine": "文件里没有可以播放的状态机。",
+  },
+  riveRetry: "重试",
+
   derivedClip: (parent, op, model) =>
     `${parent} 的${{ matte: "抠像", interpolate: "补帧", retime: "重剪" }[op]} · ${model}`,
   atlasNote: (note) => {
@@ -632,6 +928,10 @@ const zhCN: SpriteStrings = {
   factEmpty: "空帧",
   factSeam: "接缝",
   factStep: "单帧位移",
+  factStartGap: "起点衔接",
+  factEndGap: "终点衔接",
+  joinVerdict: { lands: "接得上", off: "接不上" },
+  joinOff: (end) => (end === "start" ? "起点接不上" : "终点接不上"),
   factFps: "帧率",
   factDuration: "时长",
   factAlpha: "不透明占比",

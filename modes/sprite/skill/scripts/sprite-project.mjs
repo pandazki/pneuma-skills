@@ -13,7 +13,8 @@
  * previous project untouched.
  *
  * Subcommands: init, add-ref, add-motion, set-motion, set-sheet,
- * set-keyframe, register-run, add-video, set-video, remove-motion, show.
+ * set-keyframe, register-run, register-export, add-video, set-video,
+ * remove-motion, show.
  */
 
 import { spawnSync } from "node:child_process";
@@ -70,7 +71,7 @@ const LOOP_TARGET_FPS = [60, 48, 30, 24];
  *  engine. A `loop` is a seamless transparent animation for a UI: no sheet,
  *  no atlas, no GIF, and three-digit frame ids because one closed cycle at
  *  full rate is 96–400 frames, not 8–16. */
-const MOTION_KINDS = ["loop"];
+const MOTION_KINDS = ["loop", "transition"];
 /** How a motion's frames were obtained. Absent means "sheet" — every motion
  *  made before the video source existed. */
 const MOTION_SOURCES = ["sheet", "video"];
@@ -78,8 +79,28 @@ const FACINGS = ["left", "right"];
 
 const SUBCOMMANDS = [
   "init", "add-ref", "add-motion", "set-motion", "set-sheet", "set-keyframe",
-  "register-run", "add-video", "set-video", "remove-motion", "show",
+  "register-run", "register-export", "add-video", "set-video", "remove-motion", "show",
 ];
+
+/**
+ * What `sprite-sheet.mjs export --format` makes, and how each lands as a craft
+ * asset. The craft type union is video | image | audio | text and has no
+ * archive or runtime-bundle member, so the PNG-sequence zip (and, below, the
+ * `.riv`) is filed as the image sequence it holds, with `container` in its
+ * metadata saying what the file actually is.
+ */
+const EXPORT_SPECS = {
+  mp4: { type: "video" },
+  mov: { type: "video" },
+  webm: { type: "video" },
+  apng: { type: "image" },
+  lottie: { type: "text" },
+  "png-seq": { type: "image", container: "zip" },
+};
+
+/** The asset id of a motion's on-demand export. The loop's own exports keep
+ *  the ids `register-run` gives them (`<motion>-apng`, …). */
+const exportAssetId = (motionId, format) => `${motionId}-export-${format}`;
 
 /**
  * The four frontend-ready exports of a loop run, in the order the panel lists
@@ -123,12 +144,18 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
              [--kind ${MOTION_KINDS.join("|")}] [--loop|--no-loop]
              [--anchor ${ANCHORS.join("|")}] [--prompt <text>]
              [--status ${MOTION_STATUSES.join("|")}] [--source ${MOTION_SOURCES.join("|")}]
+  add-motion --kind transition --from <loopId> --to <loopId> [--id] [--label]
       --source records how the frames will be obtained (a generated sheet or
       a sampled video clip) before anything is generated. Omitted means sheet.
       --kind loop declares a seamless transparent animation for a UI instead
       of a sprite atlas: --rows/--cols become optional (a loop has no grid,
       so they default to 1x1), --source defaults to video, and playback loops
       unless --no-loop says otherwise.
+      --kind transition declares the clip between two loops for the .riv: it
+      starts on --from's frame 0 and ends on --to's. Both must be loops of
+      this character, not the same one, and the pair must not have a
+      transition yet. The id defaults to <from>-to-<to> and the label to
+      "<From label> → <To label>"; it plays once at 24 fps, from a clip.
 
   set-motion --motion <motionId> [--label] [--fps] [--loop|--no-loop] [--anchor]
              [--prompt] [--status] [--notes]
@@ -146,6 +173,10 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       --kind loop motion has a brief, and 'add-video' refuses a generated clip
       on a loop that has none. A duration whose 60fps frame count is over
       ${MAX_LOOP_FRAMES} is warned about here, naming the rate that fits.
+      A transition's brief is --brief-duration (how long it plays in the
+      .riv) and --brief-budget, both on the first call; width and
+      interpolator do not apply. 'add-video' refuses a generated clip on a
+      transition without one.
 
   set-sheet --motion <motionId> --file <path> [--from <assetId,…>] [--model]
             [--prompt] [--background <text>] [--status ${MOTION_STATUSES.join("|")}]
@@ -170,6 +201,29 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       so leaving it a placeholder leaves a broken image on screen.
       Refused on a motion that is not --kind loop.
 
+  register-export --report <export.json|->
+      Register what 'sprite-sheet.mjs export' or 'rive' just wrote, from its
+      --json report (piped: 'sprite-sheet.mjs export … --json |
+      sprite-project.mjs register-export --dir <character> --report -').
+      A motion export becomes <motion>-export-<format> (mp4, mov, webm, apng,
+      lottie, png-seq) with a 'derive' edge from every frame it was made of
+      and motion.exports[format] naming it; the character's .riv becomes
+      <character>-export-riv, derived from every frame of every motion in it
+      (loops and transitions included), named by sprite.exports.riv; its
+      metadata.frames is what it embeds (a shared reverse embeds nothing),
+      metadata.motionCount and transitionCount what it holds, its edge's
+      params.sampled the rate and size each motion plays at, and
+      params.stateMachine what drives it: { name, hub, number: { name,
+      default, values: [{ value, motion }] }, triggers: [{ name, motion }] }.
+      A loop the export measured against its clip (no inspect.scale) gets
+      motion.clip = { scale, origin, from: "measured" }, which the next
+      export and the Export tab's quote reuse. Each carries metadata.size. The report's frames must
+      be the ones registered now, and a format the motion already ships (a
+      loop's own WebM, APNG or Lottie) is refused. Re-registering replaces the
+      asset in place. A later register-run or remove-motion retires the
+      exports cut from the frames it replaces, and the .riv that held them —
+      the files stay on disk; export again.
+
   register-run --motion <motionId> --run <run.json|-> [--video <videoId>] [--at <ms>]
       Consume a 'sprite-sheet.mjs run' summary: registers sheet-alpha (when
       keyed), every frame, the packed sheet, the atlas, the GIF and the WebP,
@@ -188,6 +242,14 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       WebM and the Lottie (each with its size in bytes), sets motion.kind =
       "loop", motion.exports, a 1x1 grid and the run's fps, and copies the
       loop's seam / step / alpha coverage into the inspect summary.
+      A 'transition' summary (kind: "transition") goes on a transition motion
+      with the same from/to: frames only, its crop, scale, step, startGap and
+      endGap copied into the inspect summary. A reverse (source: "reverse")
+      checks its reverseOf — a transition the other way with as many frames —
+      derives frame i from that transition's frame n − 1 − i and sets
+      motion.reverseOf. Cutting a transition again retires its exports and
+      the .riv that held it, and notes any reverse made from the old cut.
+      Any run drops a loop's measured clip record (motion.clip).
 
   add-video --motion <motionId> --file <path> --model ${VIDEO_MODELS.join("|")}
             --mode ${VIDEO_MODES.join("|")} [--from <assetId,…>] [--prompt]
@@ -210,7 +272,8 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
 
   remove-motion --motion <motionId>
       Drop the motion, its assets and its edges. Files on disk are left
-      alone; their paths are printed as orphanedPaths.
+      alone; their paths are printed as orphanedPaths. A loop that a
+      transition joins is refused until the transition is removed.
 
   show [--motion <motionId>]
       Compact summary for the agent.
@@ -448,11 +511,12 @@ function videoMetadata(path) {
 function assetOwner(doc, id) {
   const ref = doc.sprite.refs.find((r) => r.asset === id);
   if (ref) return `ref '${ref.id}'`;
+  if (doc.sprite.exports?.riv === id) return CHARACTER_OWNER;
   for (const motion of doc.sprite.motions) {
-    const exports = motion.exports ?? {};
+    const exports = motion.exports && typeof motion.exports === "object" ? motion.exports : {};
     const slots = [
       motion.sheetRaw, motion.sheetAlpha, motion.sheet, motion.atlas, motion.gif, motion.webp,
-      motion.keyframe, motion.keyframeAlpha, exports.apng, exports.webm, exports.lottie,
+      motion.keyframe, motion.keyframeAlpha, ...Object.values(exports),
     ];
     if (slots.includes(id)
       || (motion.frames ?? []).includes(id)
@@ -461,6 +525,28 @@ function assetOwner(doc, id) {
     }
   }
   return null;
+}
+
+/** The owner of an asset that belongs to the whole character (its `.riv`). */
+const CHARACTER_OWNER = "the character";
+
+/**
+ * The character's `.riv`, when it holds `motionId`'s frames — read off the
+ * edge `register-export` wrote (`params.motions`). A `.riv` made from frames
+ * that are about to be replaced or removed would be offered as current.
+ */
+function rivHolding(doc, motionId) {
+  const id = doc.sprite.exports?.riv;
+  if (!id) return null;
+  const motions = doc.provenance.find((e) => e.toAssetId === id)?.operation?.params?.motions;
+  return Array.isArray(motions) && motions.includes(motionId) ? id : null;
+}
+
+/** Take the `.riv` off the sidecar once its asset is gone. */
+function retireRiv(doc) {
+  if (!doc.sprite.exports) return;
+  delete doc.sprite.exports.riv;
+  if (!Object.keys(doc.sprite.exports).length) delete doc.sprite.exports;
 }
 
 /**
@@ -726,6 +812,10 @@ function runOwnedIds(doc, motionId) {
     // reason the GIF is: re-running the loop rewrites all four, and a stale
     // export left behind would be offered for download as if it were current.
     `${motionId}-apng`, `${motionId}-webm`, `${motionId}-lottie`,
+    // Every on-demand export. A run replaces the frames they were cut from,
+    // and nothing rebuilds them, so a new run retires them all — an export
+    // in project.json always describes the frames registered now.
+    ...Object.keys(EXPORT_SPECS).map((format) => exportAssetId(motionId, format)),
   ]);
   const mine = `motion '${motionId}'`;
   return doc.assets
@@ -787,6 +877,15 @@ function inspectSummary(value) {
   // rule applies: absent means the report predates the flag.
   const seamFill = finiteNumber(value.seamFill);
   const alphaCoverage = finiteNumber(value.alphaCoverage);
+  // Where a loop's frames sit in their clip: frame px = (clip px − crop.xy) ×
+  // scale. The .riv needs both to draw every loop at one size and in the
+  // place it stood; absent on a run from before `loop` recorded them, and
+  // then the export measures them itself rather than trusting a default.
+  const crop = clipRect(value.crop);
+  const scale = finiteNumber(value.scale);
+  // A transition's two joins, in the units of `step`.
+  const startGap = finiteNumber(value.startGap);
+  const endGap = finiteNumber(value.endGap);
   return {
     frameCount: value.frameCount,
     cell: value.cell,
@@ -803,7 +902,19 @@ function inspectSummary(value) {
     ...(step === undefined ? {} : { step }),
     ...(seamFill === undefined ? {} : { seamFill }),
     ...(alphaCoverage === undefined ? {} : { alphaCoverage }),
+    ...(startGap === undefined ? {} : { startGap }),
+    ...(endGap === undefined ? {} : { endGap }),
+    ...(crop ? { crop } : {}),
+    ...(scale > 0 ? { scale } : {}),
   };
+}
+
+/** `{ x, y, w, h }` in whole clip pixels, with a real width and height — or
+ *  undefined, never half a rect. */
+function clipRect(value) {
+  if (!value || typeof value !== "object") return undefined;
+  const [x, y, w, h] = ["x", "y", "w", "h"].map((key) => finiteNumber(value[key]));
+  return [x, y, w, h].every((n) => n !== undefined) && w > 0 && h > 0 ? { x, y, w, h } : undefined;
 }
 
 /** Four decimals — the scale the loop's seam and step are reported at. */
@@ -882,6 +993,98 @@ function briefLine(brief) {
  * and the point is that the user finds out before the clip is paid for
  * instead of after (measured on the Kiki trial: two clips, then the discovery).
  */
+/**
+ * A new `--kind transition` motion: the clip that carries the character from
+ * one loop's frame 0 to another's. Both ends must be loops of this character,
+ * different ones, and a pair is joined once — a second transition for the
+ * same pair would leave the `.riv` two routes and no way to say which.
+ */
+function transitionMotion(doc, values) {
+  const from = requireFlag(values.from, "--from");
+  const to = requireFlag(values.to, "--to");
+  const loopEnd = (id, flag) => {
+    const motion = doc.sprite.motions.find((m) => m.id === id);
+    if (!motion) {
+      fail(`${flag}: no motion '${id}' (known: ${doc.sprite.motions.map((m) => m.id).join(", ") || "none"})`);
+    }
+    if (motion.kind !== "loop") {
+      fail(`${flag}: '${id}' is not a loop — a transition joins two loops' frame 0s in clip coordinates, and a sprite motion has neither`);
+    }
+    return motion;
+  };
+  const a = loopEnd(from, "--from");
+  const b = loopEnd(to, "--to");
+  if (from === to) fail(`--to: a transition from '${from}' to itself joins nothing — a loop already returns to its own frame 0`);
+  const existing = doc.sprite.motions.find((m) => m.kind === "transition" && m.from === from && m.to === to);
+  if (existing) fail(`--from/--to: ${existing.id} already goes from ${from} to ${to} — cut it again with register-run instead`);
+  const id = values.id ?? `${from}-to-${to}`;
+  if (doc.sprite.motions.some((m) => m.id === id)) {
+    fail(`--id: motion '${id}' already exists — use set-motion to change it`);
+  }
+  if (values.rows !== undefined || values.cols !== undefined) fail("--rows/--cols: a transition is a sequence, not a grid");
+  return {
+    id,
+    label: values.label ?? `${a.label ?? a.id} → ${b.label ?? b.id}`,
+    prompt: values.prompt ?? "",
+    kind: "transition",
+    from,
+    to,
+    grid: { rows: 1, cols: 1 },
+    // The take's own rate until the cut says otherwise (register-run writes
+    // the run's fps); a transition plays once.
+    fps: values.fps === undefined ? 24 : num(values.fps, "--fps", { min: 1 }),
+    loop: false,
+    anchor: oneOf(values.anchor ?? "bottom", ANCHORS, "--anchor"),
+    status: oneOf(values.status ?? "planned", MOTION_STATUSES, "--status"),
+    source: "video",
+    frames: [],
+    videos: [],
+  };
+}
+
+/**
+ * A transition's interview: how long it should PLAY — a 4 s take is retimed
+ * to it — and the dollar ceiling for its take. Both answers the first time;
+ * either may change later. A loop's width and interpolator are refused by
+ * name: the transition is cut at the width its loops were, and a Rive file
+ * resamples it to 24 fps, so there is nothing to interpolate.
+ */
+function setTransitionBrief(motion, values, now) {
+  if (values["brief-width"] !== undefined || values["brief-interpolator"] !== undefined) {
+    fail(`--brief-width/--brief-interpolator: '${motion.id}' is a transition — those are a loop's answers; a transition's brief is --brief-duration (how long it plays) and --brief-budget`);
+  }
+  const current = readTransitionBrief(motion).brief ?? {};
+  const duration = values["brief-duration"] === undefined
+    ? current.duration
+    : num(values["brief-duration"], "--brief-duration", { min: 0.1 });
+  const budgetUsd = values["brief-budget"] === undefined
+    ? current.budgetUsd
+    : num(values["brief-budget"], "--brief-budget", { min: 0 });
+  const missing = [
+    duration === undefined ? "--brief-duration" : null,
+    budgetUsd === undefined ? "--brief-budget" : null,
+  ].filter(Boolean);
+  if (missing.length) {
+    fail(`--brief-*: transition '${motion.id}' has no brief yet, so the first one needs ${listOf(missing)} as well — how long it plays and what its take may cost are recorded together`);
+  }
+  motion.brief = { duration, budgetUsd, recordedAt: new Date(now).toISOString() };
+  return [];
+}
+
+/** A transition's whole brief, or which answers it is missing. */
+function readTransitionBrief(motion) {
+  const raw = motion?.brief;
+  if (!raw || typeof raw !== "object") return { missing: ["--brief-duration", "--brief-budget"] };
+  const duration = finiteNumber(raw.duration);
+  const budgetUsd = finiteNumber(raw.budgetUsd);
+  const missing = [
+    duration === undefined || duration <= 0 ? "--brief-duration" : null,
+    budgetUsd === undefined || budgetUsd < 0 ? "--brief-budget" : null,
+  ].filter(Boolean);
+  if (missing.length || typeof raw.recordedAt !== "string") return { missing };
+  return { brief: { duration, budgetUsd, recordedAt: raw.recordedAt } };
+}
+
 function setLoopBrief(motion, values, now) {
   const given = {
     duration: values["brief-duration"],
@@ -890,6 +1093,7 @@ function setLoopBrief(motion, values, now) {
     budget: values["brief-budget"],
   };
   if (Object.values(given).every((value) => value === undefined)) return [];
+  if (motion.kind === "transition") return setTransitionBrief(motion, values, now);
   if (motion.kind !== "loop") {
     fail(`--brief-*: '${motion.id}' is not a loop motion — the brief is a loop's interview (cycle length, UI width, interpolator), and a sheet motion answers none of it. Use add-motion --kind loop for a UI loop.`);
   }
@@ -953,7 +1157,21 @@ function setLoopBrief(motion, values, now) {
 function motionLines(motion) {
   const frameCount = motion.frames?.length ?? 0;
   const lines = [];
-  if (motion.kind === "loop") {
+  if (motion.kind === "transition") {
+    lines.push(`${motion.id} (${motion.label}) — transition ${motion.from} → ${motion.to}${motion.reverseOf ? `, ${motion.reverseOf} played backwards` : ""}, ${motion.status}, ${frameCount} frames @ ${motion.fps}fps`);
+    const { brief } = readTransitionBrief(motion);
+    if (!motion.reverseOf) {
+      lines.push(brief
+        ? `  brief: plays ${brief.duration}s, budget $${brief.budgetUsd}`
+        : "  brief: none — ask the user before the take (set-motion --brief-duration <s> --brief-budget <usd>)");
+    }
+    const step = motion.inspect?.step;
+    for (const [end, gap, loop] of [["start", motion.inspect?.startGap, motion.from], ["end", motion.inspect?.endGap, motion.to]]) {
+      if (Number.isFinite(gap) && Number.isFinite(step)) {
+        lines.push(`  ${end}Gap ${round4(gap)} vs step ${round4(step)} (limit ${round4(2 * step)}) — ${gap > 2 * step ? `does not land on ${loop}'s frame 0` : "joins"}`);
+      }
+    }
+  } else if (motion.kind === "loop") {
     lines.push(`${motion.id} (${motion.label}) — loop, ${motion.status}, ${frameCount} frames @ ${motion.fps}fps`);
     // The brief first: it is what everything below is judged against, and a
     // loop that has none cannot be shot yet. A half-written one is none, and
@@ -971,10 +1189,13 @@ function motionLines(motion) {
     const present = [
       motion.webp ? "webp" : null, exports.apng ? "apng" : null,
       exports.webm ? "webm" : null, exports.lottie ? "lottie" : null,
+      ...Object.keys(exports).filter((format) => !["apng", "webm", "lottie"].includes(format)),
     ].filter(Boolean);
     lines.push(`  exports: ${present.join(", ") || "none yet"}`);
   } else {
     lines.push(`${motion.id} (${motion.label}) — ${motion.status}, ${motion.grid.rows}x${motion.grid.cols} @ ${motion.fps}fps, ${frameCount} frames`);
+    const exported = Object.keys(motion.exports ?? {});
+    if (exported.length) lines.push(`  exports: ${exported.join(", ")}`);
   }
   for (const video of motion.videos ?? []) {
     lines.push(video.derivedFrom
@@ -997,6 +1218,7 @@ function summarize(doc, dir) {
       uri: doc.assets.find((a) => a.id === ref.asset)?.uri ?? null,
     })),
     motions: doc.sprite.motions.map(compactMotion),
+    ...(doc.sprite.exports && Object.keys(doc.sprite.exports).length ? { exports: doc.sprite.exports } : {}),
   };
 }
 
@@ -1050,7 +1272,7 @@ const OPTIONS = {
     id: { type: "string" }, label: { type: "string" }, rows: { type: "string" }, cols: { type: "string" },
     fps: { type: "string" }, loop: { type: "boolean", default: false }, "no-loop": { type: "boolean", default: false },
     anchor: { type: "string" }, prompt: { type: "string" }, status: { type: "string" },
-    source: { type: "string" }, kind: { type: "string" },
+    source: { type: "string" }, kind: { type: "string" }, from: { type: "string" }, to: { type: "string" },
   },
   "set-motion": {
     motion: { type: "string" }, label: { type: "string" }, fps: { type: "string" },
@@ -1070,6 +1292,7 @@ const OPTIONS = {
     status: { type: "string" },
   },
   "register-run": { motion: { type: "string" }, run: { type: "string" }, video: { type: "string" } },
+  "register-export": { report: { type: "string" } },
   "add-video": {
     motion: { type: "string" }, file: { type: "string" }, model: { type: "string" }, mode: { type: "string" },
     from: { type: "string", multiple: true }, prompt: { type: "string" }, duration: { type: "string" },
@@ -1103,13 +1326,228 @@ function readRunSummary(source) {
   // would make the whole `loop` subcommand unregisterable. A sprite run is
   // still required to carry all four: a `run` summary missing its atlas is a
   // half-finished pipeline, not a new shape.
-  const loopRun = run.kind === "loop";
-  const command = loopRun ? "loop" : "run";
+  const loopRun = run.kind === "loop" || run.kind === "transition";
+  const command = run.kind === "transition" ? "transition" : loopRun ? "loop" : "run";
   for (const key of loopRun ? ["frames"] : ["frames", "sheet", "atlas", "gif"]) {
     if (run[key] === undefined) fail(`--run: the run summary has no '${key}' — is this 'sprite-sheet.mjs ${command} --json' output?`);
   }
   if (!Array.isArray(run.frames) || !run.frames.length) fail("--run: 'frames' must be a non-empty array");
   return run;
+}
+
+/**
+ * The `--json` report of `sprite-sheet.mjs export` or `rive`, from a file or
+ * stdin. An export that FAILED prints its `ERROR:` on stderr and nothing on
+ * stdout, so the documented pipe hands this command an empty report — which
+ * is said as such, pointing at the line that explains it.
+ */
+function readExportReport(source) {
+  const text = source === "-" ? readFileSync(0, "utf-8") : (() => {
+    const path = resolve(source);
+    if (!existsSync(path)) fail(`--report: file not found: ${path}`);
+    return readFileSync(path, "utf-8");
+  })();
+  if (!text.trim()) {
+    fail("--report: the report is empty — the export printed nothing on stdout, which means it failed; its ERROR: line above says why, and nothing was registered");
+  }
+  let report;
+  try {
+    report = JSON.parse(text);
+  } catch (error) {
+    fail(`--report: not valid JSON (${error.message}) — pass the --json output of sprite-sheet.mjs export or rive`);
+  }
+  if (!report || (report.kind !== "export" && report.kind !== "rive")) {
+    fail(`--report: expected the --json report of sprite-sheet.mjs export or rive (kind export or rive), got kind '${report?.kind}'`);
+  }
+  if (typeof report.out !== "string" || !report.out) fail("--report: the report names no output file ('out')");
+  if (!Array.isArray(report.frames) || !report.frames.length) fail("--report: the report lists no frames");
+  return report;
+}
+
+/** The uris of a list of frame asset ids, as project.json records them. */
+function frameUris(doc, ids) {
+  return ids.map((id) => doc.assets.find((a) => a.id === id)?.uri ?? null);
+}
+
+/** A number the report carried, or undefined — metadata keeps only real readings. */
+const reported = (value) => (typeof value === "number" && Number.isFinite(value) ? value : undefined);
+
+/**
+ * `<motion>-export-<format>`: one file `sprite-sheet.mjs export` made from a
+ * ready motion. Its parent is every frame it was made of — which must be the
+ * frames registered NOW, or the edge would describe pictures the file does
+ * not contain.
+ */
+function registerMotionExport(doc, dir, report, now) {
+  const motion = findMotion(doc, String(report.motion), "--report motion");
+  const format = String(report.format);
+  const spec = EXPORT_SPECS[format];
+  if (!spec) fail(`--report: format '${format}' is not one export writes (${Object.keys(EXPORT_SPECS).join(", ")})`);
+  const id = exportAssetId(motion.id, format);
+  const current = motion.exports?.[format];
+  if (current && current !== id) {
+    fail(`--report: ${motion.id} already ships ${format} as ${current} — that file is the deliverable; nothing to register`);
+  }
+  const uri = toUri(dir, report.out, "--report out");
+  const file = requireFile(dir, uri, "--report out");
+
+  const expected = frameUris(doc, motion.frames ?? []);
+  const got = report.frames.map((path) => toUri(dir, String(path), "--report frames"));
+  if (got.length !== expected.length || got.some((u, i) => u !== expected[i])) {
+    fail(`--report: the export was made from ${got.length} frames that are not the frames registered for '${motion.id}' (${expected.length}) — export it again from the motion as it is registered now`);
+  }
+
+  const size = fileSize(file);
+  const metadata = {
+    width: reported(report.width),
+    height: reported(report.height),
+    fps: reported(report.fps),
+    duration: reported(report.duration),
+    frames: reported(report.frameCount),
+    repeat: reported(report.repeat),
+    scale: reported(report.scale),
+    ...(typeof report.background === "string" ? { background: report.background } : {}),
+    ...(spec.container ? { container: spec.container } : {}),
+    size,
+  };
+  for (const key of Object.keys(metadata)) if (metadata[key] === undefined) delete metadata[key];
+
+  upsertAsset(doc, {
+    id, type: spec.type, uri, name: `${motion.id} export (${format})`,
+    metadata, createdAt: now, status: "ready",
+  }, `motion '${motion.id}'`);
+  setEdge(doc, edge(id, motion.frames, operation("derive", now, {
+    tool: TOOL,
+    step: "export",
+    format,
+    repeat: reported(report.repeat),
+    scale: reported(report.scale),
+    background: typeof report.background === "string" ? report.background : undefined,
+  }, motion.frames)));
+  motion.exports = { ...(motion.exports ?? {}), [format]: id };
+  return { motion: motion.id, format, asset: id, uri, metadata };
+}
+
+/**
+ * `<character>-export-riv`: the whole character as one `.riv`. It belongs to
+ * the character, not to a motion (`sprite.exports.riv`), and hangs off every
+ * frame it embeds; `params.motions` is what a later `register-run` or
+ * `remove-motion` reads to know the file no longer describes the frames.
+ */
+function registerRiv(doc, dir, report, now) {
+  const character = basename(resolve(dir));
+  const id = `${character}-export-riv`;
+  const uri = toUri(dir, report.out, "--report out");
+  const file = requireFile(dir, uri, "--report out");
+  const motionIds = Array.isArray(report.motions) ? report.motions.map((m) => String(m?.id ?? m)) : [];
+  if (!motionIds.length) fail("--report: the .riv report lists no motions");
+  const motions = motionIds.map((motionId) => {
+    const motion = findMotion(doc, motionId, "--report motions");
+    if (motion.status !== "ready") fail(`--report: '${motionId}' is not ready (${motion.status})`);
+    return motion;
+  });
+  const frameIds = motions.flatMap((motion) => motion.frames ?? []);
+  const expected = frameUris(doc, frameIds);
+  const got = report.frames.map((path) => toUri(dir, String(path), "--report frames"));
+  if (got.length !== expected.length || got.some((u, i) => u !== expected[i])) {
+    fail(`--report: the .riv holds ${got.length} frames that are not the frames registered for ${motionIds.join(", ")} (${expected.length}) — run rive again`);
+  }
+
+  const metadata = {
+    width: reported(report.artboard?.width),
+    height: reported(report.artboard?.height),
+    // What the file EMBEDS — a loop goes in resampled, so this can be far
+    // fewer than the frames it was made from (those are the edge's inputs).
+    frames: reported(report.frameCount) ?? frameIds.length,
+    // Motions a user plays; the clips between loops are counted apart.
+    motionCount: motions.filter((m) => m.kind !== "transition").length,
+    transitionCount: motions.filter((m) => m.kind === "transition").length,
+    images: ["webp", "webp-lossless", "png"].includes(report.images) ? report.images : "png",
+    estimatedDecodeBytes: reported(report.estimatedDecodeBytes),
+    container: "riv",
+    size: fileSize(file),
+  };
+  for (const key of Object.keys(metadata)) if (metadata[key] === undefined) delete metadata[key];
+
+  upsertAsset(doc, {
+    id, type: "image", uri, name: `${doc.sprite.character?.name ?? character} (rive)`,
+    metadata, createdAt: now, status: "ready",
+  }, CHARACTER_OWNER);
+  // Each motion as the file plays it — the rate and size it was resampled
+  // to — so nobody reads the source frames' 60 fps and 512 px into the .riv.
+  const sampled = (Array.isArray(report.motions) ? report.motions : [])
+    .filter((m) => m && typeof m === "object")
+    .map((m) => ({
+      motion: String(m.id),
+      frames: reported(m.frames),
+      fps: reported(m.fps),
+      width: reported(m.width),
+      height: reported(m.height),
+    }));
+  setEdge(doc, edge(id, frameIds, operation("derive", now, {
+    tool: TOOL,
+    step: "rive",
+    images: metadata.images,
+    motions: motionIds,
+    ...(sampled.length ? { sampled } : {}),
+    stateMachine: riveMachineRecord(report.stateMachine),
+  }, frameIds)));
+  doc.sprite.exports = { ...(doc.sprite.exports ?? {}), riv: id };
+
+  // What `rive` measured for a loop cut before `loop` recorded its crop: kept
+  // on the motion, so the Export tab quotes the plan the script follows (it
+  // cannot decode a clip) and the next export reuses it. A recorded crop and
+  // scale win and are never overwritten; an unknown one erases nothing.
+  const measured = [];
+  for (const entry of Array.isArray(report.motions) ? report.motions : []) {
+    const clip = measuredClip(entry?.clip);
+    if (!clip) continue;
+    const motion = motions.find((m) => m.id === String(entry.id));
+    if (!motion || motion.kind !== "loop" || finiteNumber(motion.inspect?.scale) > 0) continue;
+    motion.clip = clip;
+    measured.push(motion.id);
+  }
+  return { format: "riv", asset: id, uri, motions: motionIds, metadata, ...(measured.length ? { measured } : {}) };
+}
+
+/**
+ * What a developer — and the viewer's Rive preview — drives the file with:
+ * the machine's name, the hub, the number input and what each of its values
+ * means, and the one-shot triggers. Taken from the report's inputs; nothing
+ * the report does not state is invented. Undefined when the report names no
+ * machine.
+ */
+function riveMachineRecord(machine) {
+  if (!machine || typeof machine !== "object" || typeof machine.name !== "string") return undefined;
+  const inputs = Array.isArray(machine.inputs) ? machine.inputs.filter((i) => i && typeof i.name === "string") : [];
+  const number = inputs.find((i) => i.type === "number");
+  return {
+    name: machine.name,
+    hub: typeof machine.hub === "string" ? machine.hub : null,
+    number: number
+      ? {
+        name: number.name,
+        default: finiteNumber(number.default) ?? 0,
+        values: (Array.isArray(number.values) ? number.values : [])
+          .filter((v) => v && typeof v.motion === "string" && finiteNumber(v.value) !== undefined)
+          .map((v) => ({ value: finiteNumber(v.value), motion: v.motion })),
+      }
+      : null,
+    triggers: inputs
+      .filter((i) => i.type === "trigger" && typeof i.motion === "string")
+      .map((i) => ({ name: i.name, motion: i.motion })),
+  };
+}
+
+/** A measured `{ scale, origin, from: "measured" }` off a rive report, or
+ *  undefined — never a partial record. */
+function measuredClip(value) {
+  if (!value || typeof value !== "object" || value.from !== "measured") return undefined;
+  const scale = finiteNumber(value.scale);
+  if (!(scale > 0)) return undefined;
+  const x = finiteNumber(value.origin?.x);
+  const y = finiteNumber(value.origin?.y);
+  return { scale, origin: x !== undefined && y !== undefined ? { x, y } : null, from: "measured" };
 }
 
 function main() {
@@ -1236,13 +1674,23 @@ function main() {
 
     case "add-motion": {
       const doc = loadProject(dir);
+      const kind = values.kind === undefined
+        ? undefined
+        : oneOf(values.kind, MOTION_KINDS, "--kind");
+      if (kind === "transition") {
+        const motion = transitionMotion(doc, values);
+        doc.sprite.motions.push(motion);
+        saveProject(dir, doc);
+        emit(values, motion, [`added transition ${motion.id} (${motion.from} → ${motion.to})`]);
+        break;
+      }
+      if (values.from !== undefined || values.to !== undefined) {
+        fail("--from / --to: only a --kind transition goes from one loop to another");
+      }
       const id = requireFlag(values.id, "--id");
       if (doc.sprite.motions.some((m) => m.id === id)) {
         fail(`--id: motion '${id}' already exists — use set-motion to change it`);
       }
-      const kind = values.kind === undefined
-        ? undefined
-        : oneOf(values.kind, MOTION_KINDS, "--kind");
       // A loop has no grid — its frames are a sequence, not cells of a sheet —
       // so the two flags a sprite motion cannot do without become optional and
       // land on the 1x1 that `register-run` will confirm. Everything else about
@@ -1428,6 +1876,29 @@ function main() {
       const motion = findMotion(doc, requireFlag(values.motion, "--motion"));
       const run = readRunSummary(requireFlag(values.run, "--run"));
       const owner = `motion '${motion.id}'`;
+      // A transition's cut goes onto a transition, and only there: its frames
+      // are the clip between two loops, and the ends it claims are checked.
+      const transitionRun = run.kind === "transition";
+      let reverseSource = null;
+      if (transitionRun || motion.kind === "transition") {
+        if (!transitionRun) fail(`--motion: '${motion.id}' is a transition — register the output of 'sprite-sheet.mjs transition' on it`);
+        if (motion.kind !== "transition") fail(`--motion: '${motion.id}' is not a transition — add one with add-motion --kind transition --from <loop> --to <loop>`);
+        if (run.from !== motion.from || run.to !== motion.to) {
+          fail(`--run: this cut goes from ${run.from} to ${run.to}, but ${motion.id} goes from ${motion.from} to ${motion.to}`);
+        }
+        if (run.source === "reverse") {
+          reverseSource = doc.sprite.motions.find((m) => m.id === run.reverseOf);
+          if (!reverseSource || reverseSource.kind !== "transition") {
+            fail(`--run: reverseOf '${run.reverseOf}' is not a transition of this character`);
+          }
+          if (reverseSource.from !== motion.to || reverseSource.to !== motion.from) {
+            fail(`--run: reverseOf ${reverseSource.id} goes from ${reverseSource.from} to ${reverseSource.to} — played backwards it is not ${motion.from} → ${motion.to}`);
+          }
+          if ((reverseSource.frames ?? []).length !== run.frames.length) {
+            fail(`--run: reverseOf ${reverseSource.id} has ${(reverseSource.frames ?? []).length} registered frames and this cut ${run.frames.length} — cut it again with --reverse-of ${reverseSource.id}`);
+          }
+        }
+      }
       const cell = run.cell && Number.isFinite(Number(run.cell.width)) && Number.isFinite(Number(run.cell.height))
         ? { width: Number(run.cell.width), height: Number(run.cell.height) }
         : null;
@@ -1440,7 +1911,7 @@ function main() {
       // the rest in place so a re-run is a no-op diff.
       // A loop run brings a different set of deliverables — no sheet, no
       // atlas, no GIF, three extra exports — and three-digit frame ids.
-      const loopRun = run.kind === "loop";
+      const loopRun = run.kind === "loop" || transitionRun;
       const digits = loopRun ? 3 : 2;
       const rebuilt = new Set([
         ...run.frames.map((_, index) => frameAssetId(motion.id, index, digits)),
@@ -1450,7 +1921,18 @@ function main() {
         ...(run.sheetAlpha ? [`${motion.id}-sheet-alpha`] : []),
         ...LOOP_EXPORTS.filter((spec) => run[spec.key]).map((spec) => `${motion.id}-${spec.suffix}`),
       ]);
-      dropAssets(doc, runOwnedIds(doc, motion.id).filter((id) => !rebuilt.has(id)));
+      const leftover = runOwnedIds(doc, motion.id).filter((id) => !rebuilt.has(id));
+      // The exports cut from the frames this run replaces — the motion's own
+      // and the character's .riv when it holds this motion — go with them.
+      // Said on stderr, because the file stays on disk and the user may have
+      // shipped it already.
+      const staleRiv = rivHolding(doc, motion.id);
+      const onDemand = new Set(Object.keys(EXPORT_SPECS).map((format) => exportAssetId(motion.id, format)));
+      const retiredExports = doc.assets
+        .filter((a) => (onDemand.has(a.id) && leftover.includes(a.id)) || a.id === staleRiv)
+        .map((a) => ({ id: a.id, uri: a.uri }));
+      dropAssets(doc, [...leftover, ...(staleRiv ? [staleRiv] : [])]);
+      if (staleRiv) retireRiv(doc);
 
       const sheetRawId = motion.sheetRaw && doc.assets.some((a) => a.id === motion.sheetRaw) ? motion.sheetRaw : null;
 
@@ -1512,6 +1994,15 @@ function main() {
           createdAt: now, status: "ready",
         }, owner);
         const sampledAt = Array.isArray(run.sampledAt) ? run.sampledAt[index] : undefined;
+        if (reverseSource) {
+          // A reverse is the source transition's frames played backwards:
+          // frame i IS source frame n − 1 − i, and says so.
+          const sourceFrame = reverseSource.frames.length - 1 - index;
+          setEdge(doc, edge(id, [reverseSource.frames[sourceFrame]], operation("derive", now, {
+            tool: TOOL, step: "reverse", frameIndex: index, sourceFrame,
+          })));
+          return id;
+        }
         const parents = fromVideo ? [videoAssetId] : (sourceId ? [sourceId] : []);
         setEdge(doc, edge(id, parents, operation("derive", now, fromVideo
           ? { tool: TOOL, step: "from-video", frameIndex: index, t: Number.isFinite(sampledAt) ? sampledAt : undefined }
@@ -1628,7 +2119,17 @@ function main() {
       // What this motion IS, corrected from the run the same way `source` is:
       // the files on disk are the answer, not what somebody declared before
       // anything was generated.
-      if (loopRun) {
+      if (transitionRun) {
+        // A transition keeps what it is; the cut brings its rate. It ships no
+        // files of its own — an export is asked for, like a sprite motion's.
+        motion.grid = { rows: 1, cols: 1 };
+        const fps = Number(run.fps);
+        if (Number.isFinite(fps) && fps > 0) motion.fps = fps;
+        motion.loop = false;
+        delete motion.exports;
+        if (reverseSource) motion.reverseOf = reverseSource.id;
+        else delete motion.reverseOf;
+      } else if (loopRun) {
         motion.kind = "loop";
         // A loop has no grid, and interpolation changes the frame rate — the
         // run knows both, and the rail and the stage read them from here.
@@ -1642,22 +2143,28 @@ function main() {
         };
         if (Object.keys(exports).length) motion.exports = exports;
         else delete motion.exports;
-      } else if (motion.kind === "loop") {
+      } else {
         // A sheet run over a motion someone declared a loop produced a sprite
-        // atlas; the sidecar has to say so, and the loop's exports are gone.
-        delete motion.kind;
+        // atlas; the sidecar has to say so. Either way every export this
+        // motion had was cut from the frames just replaced, and was retired
+        // above with its asset.
+        if (motion.kind === "loop") delete motion.kind;
         delete motion.exports;
       }
       // The sidecar says how these frames were obtained, and it is corrected
       // in both directions: a sheet run over a motion someone declared `video`
       // is still a sheet's frames. `sheet` stays unwritten when nothing ever
       // claimed otherwise, because absent already means sheet.
-      if (fromVideo) motion.source = "video";
+      if (fromVideo || transitionRun) motion.source = "video";
       else if (motion.source === "video") motion.source = "sheet";
       // A fresh measurement is not the one that was acknowledged, so the
       // acknowledgement goes with the numbers it covered.
       const summary = inspectSummary(run.inspect);
       if (summary) motion.inspect = summary;
+      // A measured clip scale and place were measurements of the frames this
+      // run replaces; the new run records its own (or the next export
+      // measures again).
+      delete motion.clip;
       motion.status = "ready";
 
       // What the user asked for against what landed. The frames are already
@@ -1691,6 +2198,27 @@ function main() {
         ...(motion.inspect?.warnings ?? []),
       ]);
       for (const warning of warnings) console.error(`WARN: ${warning}`);
+      for (const retired of retiredExports) {
+        console.error(`note: retired ${retired.id} — it was cut from the frames this run replaced; re-export it (the file stays on disk: ${retired.uri})`);
+      }
+      // A reverse is a copy of these frames played backwards: it now plays
+      // the old cut. Said, not undone — its frames are still a transition.
+      for (const reverse of doc.sprite.motions.filter((m) => m.reverseOf === motion.id)) {
+        console.error(`note: ${reverse.id} plays the frames this run replaced backwards — cut it again with 'sprite-sheet.mjs transition --reverse-of ${motion.id}' and register it`);
+      }
+      break;
+    }
+
+    case "register-export": {
+      const doc = loadProject(dir);
+      const report = readExportReport(requireFlag(values.report, "--report"));
+      const registered = report.kind === "rive"
+        ? registerRiv(doc, dir, report, now)
+        : registerMotionExport(doc, dir, report, now);
+      saveProject(dir, doc);
+      emit(values, registered, [
+        `${registered.asset} → ${registered.uri} (${registered.metadata.size ?? "?"} bytes) registered`,
+      ]);
       break;
     }
 
@@ -1706,6 +2234,9 @@ function main() {
       // agent skipped the interview and spent $2.61 on a loop twice as long
       // as the UI wanted. A DERIVED clip is exempt because that money is
       // already gone: refusing to record it would only lose its provenance.
+      if (motion.kind === "transition" && derivedFrom === undefined && !readTransitionBrief(motion).brief) {
+        fail(`add-video: transition '${motion.id}' has no brief — record the user's answers first: set-motion --brief-duration <seconds it plays> --brief-budget <usd>`);
+      }
       if (motion.kind === "loop" && derivedFrom === undefined) {
         const { brief, missing } = readBrief(motion);
         if (!brief) {
@@ -1828,15 +2359,24 @@ function main() {
     case "remove-motion": {
       const doc = loadProject(dir);
       const motion = findMotion(doc, requireFlag(values.motion, "--motion"));
+      const joined = doc.sprite.motions.filter((m) => m.kind === "transition" && (m.from === motion.id || m.to === motion.id));
+      if (joined.length) {
+        fail(`remove-motion: ${joined.map((m) => m.id).join(", ")} ${joined.length === 1 ? "joins" : "join"} '${motion.id}' — remove ${joined.length === 1 ? "it" : "them"} first, or the character keeps a transition to nowhere`);
+      }
+      const staleRiv = rivHolding(doc, motion.id);
       const owned = new Set([
         `${motion.id}-sheet-raw`,
         `${motion.id}-keyframe`, `${motion.id}-keyframe-alpha`,
         ...runOwnedIds(doc, motion.id),
         ...(motion.videos ?? []).map((v) => v.asset),
+        // The character's .riv holds this motion's frames; without them it
+        // no longer describes the character.
+        ...(staleRiv ? [staleRiv] : []),
       ]);
       const ids = doc.assets.map((a) => a.id).filter((id) => owned.has(id));
       const orphanedPaths = doc.assets.filter((a) => ids.includes(a.id)).map((a) => a.uri);
       dropAssets(doc, ids);
+      if (staleRiv) retireRiv(doc);
       doc.sprite.motions = doc.sprite.motions.filter((m) => m.id !== motion.id);
       saveProject(dir, doc);
       const payload = { motion: motion.id, removedAssets: ids, orphanedPaths };
@@ -1873,8 +2413,10 @@ function main() {
         break;
       }
       const summary = summarize(doc, dir);
+      const rivUri = summary.exports?.riv ? doc.assets.find((a) => a.id === summary.exports.riv)?.uri : null;
       emit(values, summary, [
         `${summary.title} — ${summary.refs.length} refs, ${summary.motions.length} motions`,
+        ...(rivUri ? [`  exported: riv (${rivUri})`] : []),
         ...summary.motions.map((m) => `  ${m.id.padEnd(12)} ${m.status.padEnd(10)} ${m.kind === "loop" ? "loop".padEnd(7) : `${m.grid.rows}x${m.grid.cols}`.padEnd(7)} @ ${m.fps}fps  ${m.frameCount} frames${m.warnings.length ? `  (${m.warnings.length} warnings)` : ""}`),
       ]);
       break;
