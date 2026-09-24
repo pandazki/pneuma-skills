@@ -9,16 +9,18 @@
  * agent edits files or a new session is spawned.
  *
  * This module owns an in-memory cache keyed by absolute project root, kept
- * fresh via chokidar watchers on `<root>/.pneuma/sessions/`. Routes hand
- * off to the cache via:
+ * fresh by one workspace watcher per project on `<root>/.pneuma/`. Routes
+ * hand off to the cache via:
  *   - `getProjectCache(root)` — synchronous Map lookup, returns the cached
  *     entry or null on miss.
  *   - `getProjectCacheSWR(root)` — returns the cached entry immediately if
  *     present (and triggers a background revalidation), otherwise does a
  *     synchronous scan and primes the cache.
  *   - `revalidateProjectCache(root)` — manual kick (e.g. after spawning a
- *     new session, before chokidar's `add` fires).
+ *     new session, before the watcher reports it).
  *   - `primeProjectCache(root)` — initial scan + start watcher; idempotent.
+ *   - `primeRegisteredProjects(registry)` — prime every registered project
+ *     (server start); every watch is registered when it returns.
  *
  * Failure handling:
  *   - If `scanProjectSessions` throws during a revalidation, the previous
@@ -26,21 +28,27 @@
  *   - Concurrent SWR reads collapse to a single in-flight scan via a
  *     `Map<root, Promise<void>>` dedupe.
  *
- * Watcher:
- *   - One chokidar watcher per project root, watching the `.pneuma/sessions/`
- *     directory and direct session metadata files, pruning content trees
- *     before traversal. Session adds/removes and metadata writes refresh it.
- *   - `awaitWriteFinish` debounces rapid writes; the in-flight Promise
- *     dedupe re-runs once if events accumulate while a scan is running.
+ * Watcher (`server/watch/`, one watch per root — never per path):
+ *   - One watcher per project root on `<root>/.pneuma/`, whose ignore admits
+ *     only `project.json`, `cover.png`, `sessions/`, the session directories
+ *     and their direct `session.json` / `history.json` / `thumbnail.png`.
+ *     Content, captures, `shadow.git`, dependencies and linked directories
+ *     never refresh the cache: chokidar (Linux/Windows) prunes them before
+ *     traversal; the native backend (macOS) receives their events and drops
+ *     them in the layer. A project without `.pneuma/` gets no watcher until a
+ *     later prime/revalidate finds one.
+ *   - The layer's write stability debounces rapid writes; the in-flight
+ *     Promise dedupe re-runs once if events accumulate while a scan runs.
  *
  * NOTE: this cache is per-process. The launcher and each per-session server
  * are separate processes, so they each maintain their own cache; the disk
- * is the source of truth and chokidar keeps each cache in sync.
+ * is the source of truth and the watchers keep each cache in sync.
  */
 
 import { existsSync } from "node:fs";
-import { join, relative } from "node:path";
-import { watch, type FSWatcher } from "chokidar";
+import { join } from "node:path";
+import { createWorkspaceWatcher, type WorkspaceWatcher } from "./watch/index.js";
+import { readSessionsFileSync } from "../bin/sessions-registry.js";
 import {
   loadProjectManifest,
   scanProjectSessions,
@@ -64,7 +72,7 @@ export interface ProjectCacheEntry {
 }
 
 const cache = new Map<string, ProjectCacheEntry>();
-const watchers = new Map<string, FSWatcher>();
+const watchers = new Map<string, WorkspaceWatcher>();
 const inFlight = new Map<string, Promise<void>>();
 /**
  * Tracks projects where another revalidation event arrived while a scan was
@@ -74,6 +82,27 @@ const inFlight = new Map<string, Promise<void>>();
  */
 const pendingFollowUp = new Set<string>();
 const SESSION_METADATA_FILES = new Set(["session.json", "history.json", "thumbnail.png"]);
+const PROJECT_METADATA_FILES = new Set(["project.json", "cover.png"]);
+/** Roots already logged as having no `.pneuma/` (one line per root, not per prime). */
+const reportedUnwatched = new Set<string>();
+
+/**
+ * Ignore predicate over paths relative to `<root>/.pneuma`: everything except
+ * the metadata `scanFresh` reads. `isDir` undefined means "not classified
+ * yet" — admit what either kind would admit, decide once it is known.
+ */
+function isIgnoredProjectMetadataPath(rel: string, isDir: boolean | undefined): boolean {
+  const parts = rel.split("/");
+  if (parts.length === 1) {
+    if (parts[0] === "sessions") return isDir === false;
+    if (PROJECT_METADATA_FILES.has(parts[0])) return isDir === true;
+    return true;
+  }
+  if (parts[0] !== "sessions") return true;
+  if (parts.length === 2) return isDir === false;
+  if (parts.length === 3) return !SESSION_METADATA_FILES.has(parts[2]) || isDir === true;
+  return true;
+}
 
 /**
  * Build a fresh cache entry by re-reading manifest + scanning sessions.
@@ -195,8 +224,8 @@ export async function getProjectCacheSWR(
 /**
  * Force an immediate revalidation. Used by `/api/launch` after spawning a
  * new session, and by handoff confirm — both write a new session subdir
- * before chokidar's `add` event has a chance to fire, so the next panel
- * fetch needs to see the new state without waiting on the watcher.
+ * before the watcher has a chance to report it, so the next panel fetch
+ * needs to see the new state without waiting on the watcher.
  */
 export async function revalidateProjectCache(projectRoot: string): Promise<void> {
   if (!watchers.has(projectRoot)) {
@@ -216,48 +245,57 @@ export async function primeProjectCache(projectRoot: string): Promise<void> {
   // Always run a scan (so the cache is populated by the time we return),
   // but only register one watcher per project root.
   if (!watchers.has(projectRoot)) {
-    const sessionsDir = join(projectRoot, ".pneuma", "sessions");
-    // A depth limit alone still opens every content/capture/dependency
-    // directory immediately below a session. Across registered projects,
-    // that initial filesystem work can stall Bun's HTTP event loop for
-    // tens of seconds. Prune everything except the metadata the scan reads.
-    const watcher = watch(sessionsDir, {
-      depth: 1,
-      followSymlinks: false,
-      persistent: true,
-      ignoreInitial: true,
-      awaitWriteFinish: {
-        stabilityThreshold: 200,
-        pollInterval: 50,
-      },
-      ignored: (path, stats) => {
-        const rel = relative(sessionsDir, path).replaceAll("\\", "/");
-        if (!rel || rel === ".." || rel.startsWith("../")) return false;
-        const parts = rel.split("/");
-        if (parts.length === 1) return stats ? !stats.isDirectory() : false;
-        return parts.length !== 2 || !SESSION_METADATA_FILES.has(parts[1])
-          || (stats ? !stats.isFile() : false);
-      },
-    });
-
-    const trigger = () => {
-      runScan(projectRoot).catch((err) => {
-        console.warn(`[projects-cache] watcher trigger failed: ${err}`);
-      });
-    };
-    watcher.on("add", trigger);
-    watcher.on("addDir", trigger);
-    watcher.on("change", trigger);
-    watcher.on("unlink", trigger);
-    watcher.on("unlinkDir", trigger);
-    watcher.on("error", (err) => {
-      console.warn(`[projects-cache] watcher error for ${projectRoot}: ${err}`);
-    });
-
-    watchers.set(projectRoot, watcher);
+    const pneumaDir = join(projectRoot, ".pneuma");
+    if (existsSync(pneumaDir)) {
+      // One recursive watch on `.pneuma/`. A depth limit alone would still
+      // open every content/capture/dependency directory below a session, and
+      // across registered projects that initial filesystem work stalled
+      // Bun's HTTP event loop for tens of seconds; the ignore prunes (or, on
+      // the native backend, drops) everything the scan does not read.
+      try {
+        const watcher = createWorkspaceWatcher({ root: pneumaDir, ignore: isIgnoredProjectMetadataPath });
+        watcher.subscribe(() => true, () => {
+          runScan(projectRoot).catch((err) => {
+            console.warn(`[projects-cache] watcher trigger failed: ${err}`);
+          });
+        });
+        watchers.set(projectRoot, watcher);
+        reportedUnwatched.delete(projectRoot);
+      } catch (err) {
+        console.warn(`[projects-cache] cannot watch ${pneumaDir}: ${err}`);
+      }
+    } else if (!reportedUnwatched.has(projectRoot)) {
+      reportedUnwatched.add(projectRoot);
+      console.log(`[projects-cache] ${projectRoot} has no .pneuma directory; not watching it`);
+    }
   }
 
   await runScan(projectRoot);
+}
+
+/**
+ * Prime every project in the registry (`~/.pneuma/sessions.json`), plus
+ * `currentProjectRoot` if given. Scans continue in the background; every
+ * watch is REGISTERED when this returns (`primeProjectCache` registers before
+ * its first await). A session server calls this before it creates its
+ * workspace watcher: under Bun on macOS each `fs.watch` add rebuilds the
+ * process's one FSEventStream, and a rebuild while the workspace watch runs
+ * dropped edits in the real session (6 of 29 launches). A missing or
+ * malformed registry primes nothing.
+ */
+export function primeRegisteredProjects(registryPath: string, currentProjectRoot?: string): void {
+  const roots = new Set<string>();
+  try {
+    for (const project of readSessionsFileSync(registryPath).projects) roots.add(project.root);
+  } catch (err) {
+    console.warn(`[projects-cache] prime-on-start failed: ${err}`);
+  }
+  if (currentProjectRoot) roots.add(currentProjectRoot);
+  for (const root of roots) {
+    primeProjectCache(root).catch((err) => {
+      console.warn(`[projects-cache] prime failed for ${root}: ${err}`);
+    });
+  }
 }
 
 /**
@@ -280,8 +318,8 @@ export async function evictProjectCache(projectRoot: string): Promise<void> {
 }
 
 /**
- * Tear down all watchers + clear the cache. For server shutdown so chokidar
- * watchers don't leak across `bun run dev` restarts.
+ * Tear down all watchers + clear the cache. For server shutdown so watchers
+ * don't leak across `bun run dev` restarts.
  */
 export async function shutdownProjectCache(): Promise<void> {
   const closes: Promise<void>[] = [];
@@ -294,6 +332,7 @@ export async function shutdownProjectCache(): Promise<void> {
   }
   await Promise.all(closes);
   watchers.clear();
+  reportedUnwatched.clear();
   cache.clear();
   inFlight.clear();
   pendingFollowUp.clear();

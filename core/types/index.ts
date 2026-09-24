@@ -100,3 +100,6 @@ export type {
   InstalledLibrary,
   InstalledLibraryMode,
 } from "./library.js";
+
+export type { WatcherBackendKind, WatcherHealth } from "./workspace-watcher.js";
+export { WATCHER_BACKEND_KINDS, parseWatcherBackendKind } from "./workspace-watcher.js";

@@ -12,6 +12,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, extname, dirname } from "node:path";
 import { canonicalPath, isContained } from "../utils.js";
 import { readWorkspaceText } from "../workspace-text.js";
+import { readFileSnapshot } from "../file-watcher.js";
 import { parseCompositions } from "../../modes/remotion/viewer/composition-parser.js";
 import { resolveCatalogMode } from "../../core/mode-catalog.js";
 import type { CatalogEnv } from "../../core/mode-catalog.js";
@@ -4616,45 +4617,5 @@ ${getDeployScript().replace(/<\/script>/gi, "<\\/script>")}
     });
   });
 
-  app.get("/api/files", (c) => {
-    const files: { path: string; content: string }[] = [];
-    const seen = new Set<string>();
-    const patterns = options.watchPatterns || ["**/*.md"];
-    try {
-      for (const pattern of patterns) {
-        // Bun.Glob hides dot-directories by default. Enable `dot` ONLY for a
-        // pattern the manifest author made dot-intentional (a segment starting
-        // with "."), so an explicitly-declared state file like
-        // `.pneuma/cross-family.json` is served on cold start (without it the
-        // json-file source reading it never hydrates), while ordinary patterns
-        // keep excluding dotfiles — no cross-mode regression.
-        const dot = pattern.split("/").some((seg) => seg.startsWith("."));
-        const entries = new Bun.Glob(pattern).scanSync({ cwd: workspace, absolute: false, dot });
-        for (const rawPath of entries) {
-          // Normalize to forward slashes (Bun.Glob returns backslashes on Windows)
-          const relPath = rawPath.replaceAll("\\", "/");
-          // Skip config files
-          if (relPath === "CLAUDE.md" || relPath.startsWith(".claude/")) continue;
-          // Skip duplicates (patterns may overlap)
-          if (seen.has(relPath)) continue;
-          seen.add(relPath);
-          const absPath = join(workspace, relPath);
-          // Bun.Glob does not follow symlinks today; the snapshot must not
-          // depend on that to keep outside files out of the browser.
-          if (!isContained(absPath, workspace)) continue;
-          try {
-            // A binary match is listed by path with empty content — its
-            // bytes are served by /content/* (see server/workspace-text.ts).
-            const content = readWorkspaceText(absPath) ?? "";
-            files.push({ path: relPath, content });
-          } catch {
-            // skip unreadable files
-          }
-        }
-      }
-    } catch {
-      // glob failed
-    }
-    return c.json({ files, workspace });
-  });
+  app.get("/api/files", (c) => c.json({ files: readFileSnapshot(workspace, options.watchPatterns), workspace }));
 }

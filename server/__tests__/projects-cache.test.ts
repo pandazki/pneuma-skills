@@ -1,4 +1,5 @@
-import { describe, expect, test, beforeEach, afterEach } from "bun:test";
+import { describe, expect, test, beforeEach, afterEach, spyOn } from "bun:test";
+import fs, { writeFileSync } from "node:fs";
 import { mkdtemp, rm, mkdir, writeFile, rename, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,6 +8,7 @@ import {
   getProjectCache,
   getProjectCacheSWR,
   primeProjectCache,
+  primeRegisteredProjects,
   revalidateProjectCache,
   shutdownProjectCache,
 } from "../projects-cache.js";
@@ -121,6 +123,46 @@ describe("primeProjectCache", () => {
     await waitFor(() => getProjectCache(projectRoot)!.sessions.length === 1);
   });
 
+  // The watcher sits on `<root>/.pneuma` (not `sessions/`), so the project's
+  // own manifest and cover refresh the entry too; before, they waited for the
+  // next unrelated scan.
+  test("manifest and cover changes refresh without a manual revalidate", async () => {
+    await seedProject(projectRoot, ["s1"]);
+    await primeProjectCache(projectRoot);
+    const waitFor = async (what: string, check: () => boolean) => {
+      for (let i = 0; i < 150 && !check(); i++) await Bun.sleep(20);
+      if (!check()) throw new Error(`timed out after 3 s waiting for ${what}`);
+    };
+
+    const manifestPath = join(projectRoot, ".pneuma", "project.json");
+    await writeFile(`${manifestPath}.tmp`, JSON.stringify({
+      version: 1, name: "p", displayName: "Renamed project", createdAt: 1,
+    }));
+    await rename(`${manifestPath}.tmp`, manifestPath);
+    await waitFor("the renamed manifest", () => getProjectCache(projectRoot)!.manifest?.displayName === "Renamed project");
+
+    const coverPath = join(projectRoot, ".pneuma", "cover.png");
+    await writeFile(coverPath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    await waitFor("the new cover", () => getProjectCache(projectRoot)!.hasCover);
+    await rm(coverPath);
+    await waitFor("the removed cover", () => !getProjectCache(projectRoot)!.hasCover);
+  });
+
+  test("a project without .pneuma primes without throwing, and is watched once it has one", async () => {
+    await mkdir(projectRoot, { recursive: true });
+    await primeProjectCache(projectRoot);
+    expect(getProjectCache(projectRoot)!.sessions).toEqual([]);
+
+    // The project is created later; the next revalidation attaches the watcher.
+    await seedProject(projectRoot, ["s1"]);
+    await revalidateProjectCache(projectRoot);
+    expect(getProjectCache(projectRoot)!.sessions.map((s) => s.sessionId)).toEqual(["s1"]);
+
+    await seedProject(projectRoot, ["s2"]);
+    for (let i = 0; i < 150 && getProjectCache(projectRoot)!.sessions.length < 2; i++) await Bun.sleep(20);
+    expect(getProjectCache(projectRoot)!.sessions.map((s) => s.sessionId).sort()).toEqual(["s1", "s2"]);
+  });
+
   test("populates the cache entry from disk", async () => {
     await seedProject(projectRoot, ["s1", "s2"]);
     expect(getProjectCache(projectRoot)).toBeNull();
@@ -211,12 +253,16 @@ describe("getProjectCacheSWR", () => {
     expect(entry.sessions.map((s) => s.sessionId)).toEqual(["s1"]); // stale
 
     // Wait for the background revalidation to complete. We can't peek
-    // at the in-flight Promise from outside; settle by polling lastScanned.
+    // at the in-flight Promise from outside; settle by polling for a new
+    // entry (every completed scan stores a fresh object). `lastScanned` is a
+    // millisecond clock: a scan landing in the prime's millisecond compared
+    // equal, and on Linux (2026-09-24, 1 of 6 runs) no later scan rescued it,
+    // because chokidar swallowed the new session while still registering.
     let updated = entry;
     for (let i = 0; i < 50; i++) {
       await new Promise((resolve) => setTimeout(resolve, 20));
       const next = getProjectCache(projectRoot)!;
-      if (next.lastScanned > beforeScan && next.sessions.length === 2) {
+      if (next !== before && next.lastScanned >= beforeScan && next.sessions.length === 2) {
         updated = next;
         break;
       }
@@ -325,5 +371,41 @@ describe("evictProjectCache", () => {
     // After eviction, getProjectCacheSWR should re-prime.
     const reopened = await getProjectCacheSWR(projectRoot);
     expect(reopened.sessions).toHaveLength(1);
+  });
+});
+
+// Round-2 finding 2 (2026-09-24): under Bun on macOS every `fs.watch` add
+// rebuilds the process's one FSEventStream from "now", and edits made while
+// projects-cache primed its watches after the workspace watcher existed were
+// lost. `bin` therefore primes first, which relies on every registration
+// having happened by the time this call returns (the scans continue behind).
+describe("primeRegisteredProjects", () => {
+  test("registers every registered project's watch before it returns", async () => {
+    const roots = [join(home, "a"), join(home, "b"), join(home, "c")];
+    for (const root of roots) await seedProject(root, ["s1"]);
+    const registry = join(home, "sessions.json");
+    writeFileSync(
+      registry,
+      JSON.stringify({ projects: roots.map((root) => ({ id: root, root, name: "p", displayName: "P", createdAt: 1, lastAccessed: 1 })), sessions: [] }),
+    );
+    const previous = process.env.PNEUMA_WATCHER;
+    process.env.PNEUMA_WATCHER = "native"; // synchronous registration on every platform
+    const watch = spyOn(fs, "watch");
+    try {
+      primeRegisteredProjects(registry, roots[0]);
+      expect(watch.mock.calls.map((call) => String(call[0])).sort()).toEqual(roots.map((r) => join(r, ".pneuma")).sort());
+    } finally {
+      watch.mockRestore();
+      if (previous === undefined) delete process.env.PNEUMA_WATCHER;
+      else process.env.PNEUMA_WATCHER = previous;
+    }
+    for (const root of roots) {
+      await revalidateProjectCache(root);
+      expect(getProjectCache(root)?.sessions.map((s) => s.sessionId)).toEqual(["s1"]);
+    }
+  });
+
+  test("a missing or unreadable registry primes nothing and does not throw", () => {
+    expect(() => primeRegisteredProjects(join(home, "absent.json"))).not.toThrow();
   });
 });

@@ -11,7 +11,7 @@
 | 层 | 归谁 | 服务谁 | 动词 | 实现锚点 |
 |---|---|---|---|---|
 | **L1 文件系统** | Agent 的母语 | Claude / Codex / Kimi 通过 Read/Edit/Write 跟世界对话 | read / edit / write file by path | `backends/<name>/cli-launcher.ts` |
-| **L2 传输** | Runtime 基础设施 | 把 L1 的变化变成可订阅的事件流 | chokidar → `pendingSelfWrites` → WS → event bus | `server/index.ts`（chokidar）+ `server/ws-bridge.ts` |
+| **L2 传输** | Runtime 基础设施 | 把 L1 的变化变成可订阅的事件流 | workspace watcher → `pendingSelfWrites` → WS → event bus | `server/watch/` + `server/file-watcher.ts` + `server/ws-bridge.ts` |
 | **L3 Source** | Viewer 的输入/输出契约 | mode 作者只看这一层，用 domain 类型订阅 | `Source<T>.subscribe` / `.write` | `core/types/source.ts` + `core/sources/*` + `src/hooks/useSource.ts` |
 
 本篇描述 **三方之间** 的六个方向（① ~ ⑥），Source 与六方向正交，在末尾单独展开。
@@ -312,7 +312,7 @@ export type ViewerAddress = Record<string, unknown>;
 | **skill-installer** | `server/skill-installer.ts` | manifest → 指令文件；把 actions / commands / proxy 描述渲染进 `<!-- pneuma:viewer-api:* -->` 块；Viewer API 段是**纯路由器**——它命名各通道，把 `ViewerAddress` 词表指向 mode 自己的 SKILL.md，框架不持有任何 mode 的 keys |
 | **source-registry** | `core/source-registry.ts` | `manifest.sources` → 按 kind 选 SourceProvider 实例化；built-in provider 与 plugin 注册的 provider 同住一个 registry |
 | **store + props** | `src/store/` + `src/App.tsx` | commands / actions / sources / workspace items 注入 viewer props |
-| **proxy middleware** | `server/index.ts` (`/proxy/<name>/*`) | `manifest.proxy` + workspace `proxy.json` 解析；GET 默认放行，其他方法需显式 `methods`；`proxy.json` 改动 chokidar 热加载 |
+| **proxy middleware** | `server/index.ts` (`/proxy/<name>/*`) | `manifest.proxy` + workspace `proxy.json` 解析；GET 默认放行，其他方法需显式 `methods`；`proxy.json` 改动由 workspace watcher 热加载 |
 | **WS bridge** | `server/ws-bridge.ts` + `server/ws-bridge-{viewer,codex,kimi}.ts` | 浏览器 JSON ↔ backend transport；非 Claude 后端经 `BridgeBackend` 接口拓展 |
 | **context injection** | `src/ws.ts` + `server/ws-bridge.ts::prepareIncomingUserMessage` | Browser adds viewer context and user actions; server adds queued environment tags; bare slash commands bypass both prefixes |
 
@@ -350,7 +350,7 @@ Source **不是编辑器抽象，是 player 抽象**——首要用途是让 vie
 ```
 Agent (Edit/Write)              ← L1 母语
       ↓ 写文件
-chokidar → pendingSelfWrites    ← L2 传输（origin 在源头确定）
+watcher → pendingSelfWrites     ← L2 传输（origin 在源头确定）
       ↓ origin-tagged event
 WS → fileEventBus
       ↓ subscribe
@@ -420,6 +420,16 @@ as sprite's `**/motions/**/*` shipped every frame, WebP, WebM and MP4 as
 UTF-8-mangled text: a 2,818-file workspace produced a 1.89 GB snapshot that
 Chrome aborted (2026-09-23).
 
+**A delete names a path that could be on screen.** `deleted: true` is sent
+when the watcher layer knew the path (it was indexed at start or reported
+since: `WatchEvent.deleted.known`) or a browser may hold it (a snapshot listed
+it, or an earlier update carried it: `server/file-watcher.ts::browserPaths`).
+The first covers an unchanged image a page displays that no pattern lists
+(doc mode's `img/pic.png`); the second, a file a page load listed before the
+layer reported it. A scratch file created and removed faster than write
+stability is neither, and its delete would remove nothing: a 50 ms burst of
+300 such files once sent 300 frames and filled the replay buffer (2026-09-24).
+
 ### 四条不变量（`core/sources/base.ts` 强制，不靠 viewer 自律）
 
 1. **Single writer**——`write()` 是改变 source 状态的唯一入口；`BaseSource` 用 Promise 队列串行化。
@@ -431,7 +441,7 @@ Chrome aborted (2026-09-23).
 
 ### Agent 与 Source 的关系
 
-**Source 层不替代文件系统。** Agent 继续通过原生 Edit / Write / Read 工具直接操作 workspace——这是 Pneuma 与 coding agent 协作的基本契约。`pendingSelfWrites` 标记机制对 agent 完全透明：agent 调 Edit 产生的 chokidar 事件被标为 `origin: "external"`，viewer 的 source 订阅者据此知道"这是 agent 干的"，按需 reconcile（重挂载 store、动画高亮、prompt 用户合并）。**Source 层和 agent 的 file tools 是两条独立写路径，共享同一份磁盘状态，通过 origin 标记相互识别。** `pendingSelfWrites` 的唯一识别点在 `server/index.ts` 的 chokidar pipeline 与 `/api/files` 写路径里。
+**Source 层不替代文件系统。** Agent 继续通过原生 Edit / Write / Read 工具直接操作 workspace——这是 Pneuma 与 coding agent 协作的基本契约。`pendingSelfWrites` 标记机制对 agent 完全透明：agent 调 Edit 产生的 watcher 事件被标为 `origin: "external"`，viewer 的 source 订阅者据此知道"这是 agent 干的"，按需 reconcile（重挂载 store、动画高亮、prompt 用户合并）。**Source 层和 agent 的 file tools 是两条独立写路径，共享同一份磁盘状态，通过 origin 标记相互识别。** `pendingSelfWrites` 的唯一识别点在 `server/file-watcher.ts` 的 watcher pipeline 与 `server/index.ts` 的 `/api/files` 写路径里。
 
 ### 四类 built-in provider
 

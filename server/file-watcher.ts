@@ -1,16 +1,22 @@
 /**
- * File watcher — monitors workspace for content file changes using chokidar.
- * Debounces changes and notifies callback with updated file contents.
+ * File watcher — turns workspace changes into `content_update` batches.
+ * Debounces text changes and notifies the callback with updated contents.
  *
- * Parameterized by ViewerConfig from ModeManifest — no hardcoded file type knowledge.
+ * Parameterized by ViewerConfig from ModeManifest — no hardcoded file type
+ * knowledge. Change detection comes from the workspace watcher layer
+ * (`server/watch/`): one watch per root, write stability, and the same event
+ * stream on every backend. This module keeps what is specific to content
+ * updates: ignore rules, the extension filter, the text debounce, image
+ * signals, self-echo tagging, containment, and which deletes a browser needs.
  */
 
-import { watch, type FSWatcher } from "chokidar";
 import { readFileSync, existsSync } from "node:fs";
 import { relative, join, resolve } from "node:path";
 import type { ViewerConfig } from "../core/types/mode-manifest.js";
+import type { WatcherBackendKind } from "../core/types/workspace-watcher.js";
 import { isContained } from "./utils.js";
 import { readWorkspaceText } from "./workspace-text.js";
+import { createWorkspaceWatcher, type WatchBackend, type WorkspaceWatcher } from "./watch/index.js";
 
 const DEBOUNCE_MS = 300;
 
@@ -125,7 +131,9 @@ export interface FileUpdate {
   /**
    * True for unlink events (file deleted on disk). `content` is empty
    * string in that case. Consumers that care about delete vs empty-write
-   * should check this flag.
+   * should check this flag. Sent for a path the watcher layer knew (indexed
+   * at start or reported since) or a browser may hold (a snapshot listed it
+   * or an update carried it); a scratch file seen by neither is not sent.
    */
   deleted?: boolean;
 }
@@ -133,16 +141,16 @@ export interface FileUpdate {
 /**
  * pendingSelfWrites is the ONLY place in the system where viewer-origin
  * writes are identified. When the /api/files POST handler receives a
- * write, it calls `registerSelfWrite(path, content)` here. When chokidar
- * subsequently fires for that path, we look up the entry and tag the
+ * write, it calls `registerSelfWrite(path, content)` here. When the watcher
+ * subsequently reports that path, we look up the entry and tag the
  * outgoing FileUpdate with origin: "self" if the content matches. Entries
  * auto-expire after PENDING_SELF_WRITE_TTL_MS to guarantee an unmatched
  * registration doesn't poison a later legitimate external edit.
  *
  * pendingSelfDeletes works the same way for DELETE /api/files, but since
  * a delete has no content to match on, the map stores only the expiry
- * timestamp. The next chokidar `unlink` event for that path consumes the
- * entry regardless of timing (within the TTL).
+ * timestamp. The next watcher delete for that path consumes the entry
+ * regardless of timing (within the TTL).
  */
 const PENDING_SELF_WRITE_TTL_MS = 5000;
 
@@ -193,6 +201,30 @@ function consumeSelfWrite(relPath: string, content: string): boolean {
   return true;
 }
 
+/**
+ * Paths a browser may hold, per workspace: every path a cold-start snapshot
+ * served (`readFileSnapshot`, GET /api/files) and every path a non-delete
+ * update carried, until a delete for it is sent.
+ *
+ * A delete is sent when the layer knew the path (`deleted.known`: indexed at
+ * creation or reported since — an unchanged image a page displays, which no
+ * pattern lists) OR a browser may hold it (a file a snapshot listed before
+ * the layer reported it). Anything else was never visible: scratch files
+ * created and removed faster than write stability once sent one delete frame
+ * each (300 for a 50 ms burst) and filled the replay buffer.
+ */
+const browserPaths = new Map<string, Set<string>>();
+
+function browserPathsFor(workspace: string): Set<string> {
+  const key = resolve(workspace);
+  let paths = browserPaths.get(key);
+  if (!paths) {
+    paths = new Set();
+    browserPaths.set(key, paths);
+  }
+  return paths;
+}
+
 function consumeSelfDelete(relPath: string): boolean {
   const exp = pendingSelfDeletes.get(relPath);
   if (!exp) return false;
@@ -213,7 +245,8 @@ function consumeSelfDelete(relPath: string): boolean {
  * path was watched and broadcast. This is what let a session's own
  * `.pneuma/thumbnail.png` writes loop back as image `content_update`s and
  * reload every slide iframe (the intermittent viewer flicker). We compile the
- * globs ourselves (Bun.Glob) and hand chokidar a function matcher instead.
+ * globs ourselves (Bun.Glob) and hand the watcher layer a function matcher,
+ * which it applies on every backend (and chokidar uses to prune).
  *
  * Matching is against workspace-RELATIVE paths. This matters for the
  * project-session topology, where the workspace path itself contains
@@ -232,6 +265,16 @@ export function buildIgnoreMatcher(
   viewerConfig: ViewerConfig,
   stateDir?: string,
 ): (absPath: string) => boolean {
+  const ignoredRel = compileIgnore(workspace, viewerConfig, stateDir);
+  return (absPath: string) => ignoredRel(relative(workspace, absPath).replaceAll("\\", "/"));
+}
+
+/** The same rules over workspace-relative, '/'-separated paths (the watcher layer's form). */
+function compileIgnore(
+  workspace: string,
+  viewerConfig: ViewerConfig,
+  stateDir?: string,
+): (rel: string) => boolean {
   const patterns = [
     ...DEFAULT_IGNORE,
     ...(viewerConfig.ignorePatterns || []).map((p) =>
@@ -248,15 +291,14 @@ export function buildIgnoreMatcher(
     }
   }
 
-  // For every `x/**` pattern also match the bare dir `x`, so chokidar prunes
-  // the directory instead of descending into it and filtering per-file
-  // (shadow.git object stores and node_modules are large).
+  // For every `x/**` pattern also match the bare dir `x`, so a pruning backend
+  // never descends into it (shadow.git object stores and node_modules are
+  // large) and the native backend drops everything below it.
   const globs = patterns
     .flatMap((p) => (p.endsWith("/**") ? [p, p.slice(0, -3)] : [p]))
     .map((p) => new Bun.Glob(p));
 
-  return (absPath: string) => {
-    const rel = relative(workspace, absPath).replaceAll("\\", "/");
+  return (rel: string) => {
     if (rel === "" || rel.startsWith("..")) return false;
     return globs.some((g) => g.match(rel));
   };
@@ -296,12 +338,104 @@ export function matchesWatchPatterns(relPath: string, watchExtensions: Set<strin
   return watchExtensions.has(relPath.slice(lastDot).toLowerCase());
 }
 
+/**
+ * The cold-start snapshot (`GET /api/files`): every file the mode's
+ * `watchPatterns` match, with its text (a binary match is listed by path with
+ * empty content — see `server/workspace-text.ts`). The paths it returns are
+ * recorded as held by a browser, so their deletes are sent.
+ */
+export function readFileSnapshot(
+  workspace: string,
+  watchPatterns: string[] | undefined,
+): { path: string; content: string }[] {
+  const files: { path: string; content: string }[] = [];
+  const seen = new Set<string>();
+  const patterns = watchPatterns || ["**/*.md"];
+  try {
+    for (const pattern of patterns) {
+      // Bun.Glob hides dot-directories by default. Enable `dot` ONLY for a
+      // pattern the manifest author made dot-intentional (a segment starting
+      // with "."), so an explicitly-declared state file like
+      // `.pneuma/cross-family.json` is served on cold start (without it the
+      // json-file source reading it never hydrates), while ordinary patterns
+      // keep excluding dotfiles — no cross-mode regression.
+      const dot = pattern.split("/").some((seg) => seg.startsWith("."));
+      const entries = new Bun.Glob(pattern).scanSync({ cwd: workspace, absolute: false, dot });
+      for (const rawPath of entries) {
+        // Normalize to forward slashes (Bun.Glob returns backslashes on Windows)
+        const relPath = rawPath.replaceAll("\\", "/");
+        // Skip config files
+        if (relPath === "CLAUDE.md" || relPath.startsWith(".claude/")) continue;
+        // Skip duplicates (patterns may overlap)
+        if (seen.has(relPath)) continue;
+        seen.add(relPath);
+        const absPath = join(workspace, relPath);
+        // Bun.Glob does not follow symlinks today; the snapshot must not
+        // depend on that to keep outside files out of the browser.
+        if (!isContained(absPath, workspace)) continue;
+        try {
+          // A binary match is listed by path with empty content — its
+          // bytes are served by /content/* (see server/workspace-text.ts).
+          const content = readWorkspaceText(absPath) ?? "";
+          files.push({ path: relPath, content });
+        } catch {
+          // skip unreadable files
+        }
+      }
+    }
+  } catch {
+    // glob failed
+  }
+  const served = browserPathsFor(workspace);
+  for (const file of files) served.add(file.path);
+  return files;
+}
+
+/** The workspace-root file whose changes hot-reload the proxy config. */
+export const PROXY_CONFIG_FILE = "proxy.json";
+
+/**
+ * The one workspace watcher a session shares: content updates
+ * (`startFileWatcher`) and proxy hot-reload (`startProxyWatcher`) both
+ * subscribe to it, so the process holds one watch for the workspace root.
+ * `bin/pneuma.ts` creates it before `startServer` and closes it on shutdown.
+ *
+ * Its ignore is the content ignore (see `buildIgnoreMatcher`) except that
+ * `proxy.json` at the root is always watched; `startFileWatcher` re-applies
+ * the full ignore to what it reports, so a mode that ignores `*.json` still
+ * never sees proxy.json as content.
+ */
+export function createSessionWatcher(
+  workspace: string,
+  viewerConfig: ViewerConfig,
+  options: { stateDir?: string; backend?: WatcherBackendKind | WatchBackend } = {},
+): WorkspaceWatcher {
+  const ignored = compileIgnore(workspace, viewerConfig, options.stateDir);
+  return createWorkspaceWatcher({
+    root: resolve(workspace),
+    ignore: (rel) => rel !== PROXY_CONFIG_FILE && ignored(rel),
+    backend: options.backend,
+  });
+}
+
+export interface FileWatcherHandle {
+  /** Resolves once the underlying workspace watcher is ready. */
+  readonly ready: Promise<void>;
+  /** Stop reporting. Closes the workspace watcher only if this call created it. */
+  close(): Promise<void>;
+}
+
 export function startFileWatcher(
   workspace: string,
   viewerConfig: ViewerConfig,
   onUpdate: (files: FileUpdate[]) => void,
-  options?: { stateDir?: string },
-): FSWatcher {
+  options?: {
+    stateDir?: string;
+    /** A shared session watcher (`createSessionWatcher`); one is created and owned when absent. */
+    watcher?: WorkspaceWatcher;
+    backend?: WatcherBackendKind;
+  },
+): FileWatcherHandle {
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   const pendingChanges = new Set<string>();
 
@@ -309,28 +443,31 @@ export function startFileWatcher(
   const watchExtensions = extractWatchExtensions(viewerConfig.watchPatterns);
 
   // Default + mode-specific + topology-derived ignore globs, compiled to a
-  // function matcher — chokidar v4+ treats string entries as exact paths, so
-  // glob strings must not be passed through directly (see buildIgnoreMatcher).
-  const ignoreMatcher = buildIgnoreMatcher(workspace, viewerConfig, options?.stateDir);
+  // function matcher (see buildIgnoreMatcher). The watcher applies the same
+  // rules minus the proxy.json exemption; they are re-applied here.
+  const ignoredRel = compileIgnore(workspace, viewerConfig, options?.stateDir);
 
-  // Watch the workspace directory (not glob) — chokidar globs + cwd don't work reliably
-  const watcher = watch(workspace, {
-    ignored: (path: string) => ignoreMatcher(path),
-    persistent: true,
-    ignoreInitial: true,
-    awaitWriteFinish: {
-      stabilityThreshold: 200,
-      pollInterval: 50,
-    },
-  });
+  const watcher = options?.watcher
+    ?? createSessionWatcher(workspace, viewerConfig, { stateDir: options?.stateDir, backend: options?.backend });
+  const ownsWatcher = !options?.watcher;
+
+  const held = browserPathsFor(workspace);
+  const send = (files: FileUpdate[]) => {
+    for (const file of files) {
+      if (file.deleted) held.delete(file.path);
+      else held.add(file.path);
+    }
+    onUpdate(files);
+  };
 
   const flush = () => {
     const files: FileUpdate[] = [];
     for (const relPath of pendingChanges) {
       const absPath = join(workspace, relPath);
-      // chokidar follows symlinks, so an event can name a workspace path whose
-      // file lives outside it. Such a file is never read, and nothing about
-      // it is sent (see `scheduleFlush`).
+      // Backends do not follow symlinks, but a link entry itself is reported
+      // and check-then-use is not atomic. A file resolving outside the
+      // workspace is never read, and nothing about it is sent (see
+      // `scheduleFlush`).
       if (!isContained(absPath, workspace)) continue;
       if (existsSync(absPath)) {
         try {
@@ -355,15 +492,15 @@ export function startFileWatcher(
     pendingChanges.clear();
 
     if (files.length > 0) {
-      onUpdate(files);
+      send(files);
     }
   };
 
   const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]);
 
-  const scheduleFlush = (absPath: string) => {
-    // Normalize to forward slashes for cross-platform consistency (Windows path.relative returns backslashes)
-    const relPath = relative(workspace, absPath).replaceAll("\\", "/");
+  // Called once a file is stable (the layer's 200 ms write-stability check).
+  const scheduleFlush = (relPath: string) => {
+    const absPath = join(workspace, relPath);
 
     // A path reached through a symlink to outside the workspace is ignored
     // outright: no content, and no path-only image notification either.
@@ -374,7 +511,7 @@ export function startFileWatcher(
     if (IMAGE_EXTS.has(ext)) {
       // Images are never self-writes from a viewer (data URLs bypass the
       // registerSelfWrite path per the plan), so hard-code "external".
-      onUpdate([{ path: relPath, content: "", origin: "external" }]);
+      send([{ path: relPath, content: "", origin: "external" }]);
       return;
     }
 
@@ -388,9 +525,8 @@ export function startFileWatcher(
     debounceTimer = setTimeout(flush, DEBOUNCE_MS);
   };
 
-  const handleUnlink = (absPath: string) => {
-    // Normalize to forward slashes for cross-platform consistency.
-    const relPath = relative(workspace, absPath).replaceAll("\\", "/");
+  const handleUnlink = (relPath: string, known: boolean) => {
+    const absPath = join(workspace, relPath);
     // The file is gone, so this judges its parent chain: a delete beneath a
     // link to outside is not reported.
     if (!isContained(absPath, workspace)) return;
@@ -404,42 +540,44 @@ export function startFileWatcher(
     if (!isImage && !matchesWatchPatterns(relPath, watchExtensions)) return;
 
     const origin: "self" | "external" = consumeSelfDelete(relPath) ? "self" : "external";
+    // Only a path the layer knew or a browser may hold (see `browserPaths`).
+    if (!known && !held.has(relPath)) return;
     // Emit immediately — the file is gone, so we can't route through the
     // readFileSync-backed debounce flush. This mirrors the image branch.
-    onUpdate([{ path: relPath, content: "", origin, deleted: true }]);
+    send([{ path: relPath, content: "", origin, deleted: true }]);
   };
 
-  watcher.on("change", scheduleFlush);
-  watcher.on("add", scheduleFlush);
-  watcher.on("unlink", handleUnlink);
-  watcher.on("error", (err) => {
-    // Permission errors (EACCES/EPERM) during directory traversal — log and continue
-    console.warn(`[file-watcher] ${err}`);
-  });
+  // Backend errors (EACCES during traversal, …) are logged by the layer and
+  // surface as `degraded` in GET /api/session; the watcher continues.
+  const unsubscribe = watcher.subscribe(
+    (rel) => !ignoredRel(rel),
+    (event) => (event.kind === "deleted" ? handleUnlink(event.rel, event.known) : scheduleFlush(event.rel)),
+  );
 
   const patternDesc = viewerConfig.watchPatterns.join(", ");
   console.log(`[file-watcher] Watching ${workspace} for ${patternDesc} changes`);
-  return watcher;
+  return {
+    ready: watcher.ready,
+    close: async () => {
+      unsubscribe();
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = null;
+      pendingChanges.clear();
+      if (ownsWatcher) await watcher.close();
+    },
+  };
 }
 
 /**
- * Watch proxy.json for changes and call the update callback with parsed config.
- * Separate from the content file watcher — proxy config has its own lifecycle.
+ * Hot-reload `proxy.json` at the workspace root from the session watcher,
+ * including a file created after start: a change parses and reloads, a
+ * delete clears the workspace proxy config. Returns the unsubscribe function.
  */
 export function startProxyWatcher(
-  workspace: string,
+  watcher: WorkspaceWatcher,
   onUpdate: (config: Record<string, unknown> | null) => void,
-): void {
-  const proxyPath = join(workspace, "proxy.json");
-
-  const watcher = watch(proxyPath, {
-    persistent: true,
-    ignoreInitial: true,
-    awaitWriteFinish: {
-      stabilityThreshold: 200,
-      pollInterval: 50,
-    },
-  });
+): () => void {
+  const proxyPath = join(watcher.root, PROXY_CONFIG_FILE);
 
   const reload = () => {
     if (existsSync(proxyPath)) {
@@ -457,7 +595,5 @@ export function startProxyWatcher(
     }
   };
 
-  watcher.on("change", reload);
-  watcher.on("add", reload);
-  watcher.on("unlink", reload);
+  return watcher.subscribe((rel) => rel === PROXY_CONFIG_FILE, reload);
 }

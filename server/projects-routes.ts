@@ -155,7 +155,7 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
     // synchronous Map lookups (the warm path is <1ms even for big registries),
     // misses fall back to a one-time scan that primes the cache + starts
     // the watcher. After the first hit, subsequent calls are instant and
-    // chokidar keeps the entries fresh in the background.
+    // the project watchers keep the entries fresh in the background.
     const enriched: ProjectListResponseEntry[] = await Promise.all(
       filtered.map(async (p) => {
         const cached = getProjectCache(p.root);
@@ -612,7 +612,7 @@ export function mountProjectsRoutes(app: Hono, options: ProjectsRoutesOptions): 
       return c.json({ error: "session not found" }, 404);
     }
     // Kick a revalidation so the panel's next refresh sees the deletion
-    // before chokidar's `unlinkDir` event has propagated. The watcher
+    // before the watcher's delete events have propagated. The watcher
     // would catch it on its own, but the explicit nudge avoids a brief
     // window where the deleted session row reappears via stale cache.
     revalidateProjectCache(id).catch(() => {});

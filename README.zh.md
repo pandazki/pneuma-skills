@@ -196,6 +196,9 @@ Options:
   --debug              调试模式
   --dev                强制 dev 模式（Vite）
 
+Environment:
+  PNEUMA_WATCHER=native|chokidar   文件监听后端（默认：macOS 用 native，其余平台用 chokidar）
+
 Subcommands:
   mode add <url>           安装远端 mode（单 mode → ~/.pneuma/modes/；library → ~/.pneuma/libraries/）
   mode list                列出 R2 上已发布的 mode
@@ -313,7 +316,7 @@ Pneuma 支持在 session 之上的可选 Project 层 —— 用来锚定**一件
 | 图表 | [draw.io](https://www.drawio.com) viewer-static (CDN) + [rough.js](https://roughjs.com) 4.6 |
 | 视频 | [Remotion](https://www.remotion.dev) 4.0 + @remotion/player + @babel/standalone |
 | 节点画布 | [@xyflow/react](https://reactflow.dev) 12（Illustrate mode） |
-| 文件监听 | [chokidar](https://github.com/paulmillr/chokidar) 5 |
+| 文件监听 | 每个工作区根目录一个监听:macOS 用 Bun 的递归 `fs.watch`,Linux 与 Windows 用 [chokidar](https://github.com/paulmillr/chokidar) 5 |
 | Agent | Claude Code CLI 走 stdio stream-json（`-p --input-format/--output-format stream-json`）；Codex CLI 走 app-server stdio JSON-RPC；Moonshot Kimi Code CLI 走 ACP JSON-RPC over stdio（`kimi acp`） |
 
 ## 后端模型

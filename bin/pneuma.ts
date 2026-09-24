@@ -19,7 +19,9 @@ import { ClaudeCodeBackend } from "../backends/claude-code/index.js";
 import { installSkill, installSessionCommands, readInboundHandoff, type InboundHandoffPayload } from "../server/skill-installer.js";
 import { buildEnvTag } from "./env-tag.js";
 import { ensureCliWrapper } from "./cli-wrapper.js";
-import { startFileWatcher } from "../server/file-watcher.js";
+import { createSessionWatcher, startFileWatcher } from "../server/file-watcher.js";
+import { resolveWatcherBackend } from "../server/watch/index.js";
+import { primeRegisteredProjects } from "../server/projects-cache.js";
 import { initShadowGit } from "../server/shadow-git.js";
 import { loadModeManifest, listBuiltinModes, registerExternalMode } from "../core/mode-loader.js";
 import { type ModeManifest, resolveLocalized } from "../core/types/mode-manifest.js";
@@ -859,7 +861,9 @@ async function handleEvolveCommand(args: string[]) {
   const isDev = forceDev || !existsSync(join(distDir, "index.html"));
   const effectivePort = port || (isDev ? 17007 : 17996);
 
-  // 5. Start server with evolution routes
+  // 5. Start server with evolution routes (the project cache first: its
+  // watches must not be registered beside a live watch; see below)
+  primeRegisteredProjects(SESSIONS_REGISTRY);
   const { server, wsBridge, port: actualPort } = await startServer({
     port: effectivePort,
     workspace,
@@ -2603,6 +2607,35 @@ async function main() {
   const existingSession = loadSession(stateDir);
   const initialEditing: boolean = viewing ? false : (existingSession?.editing ?? true);
 
+  // 2.8 Project cache — every registered project's watch is registered here,
+  // BEFORE the workspace watcher: under Bun on macOS each `fs.watch` add
+  // rebuilds the process's one FSEventStream, and priming after the workspace
+  // watch existed dropped edits made in that window (6 of 29 launches). The
+  // layer also reconciles live watchers after any later registration.
+  primeRegisteredProjects(SESSIONS_REGISTRY, startup.paths.projectRoot ?? undefined);
+
+  // 2.9 Workspace watcher — ONE watch on the workspace root, shared by content
+  // updates and proxy.json hot-reload, for the life of the process. Created
+  // before the server so the first request is never behind it; its index is
+  // taken synchronously here. Backend: native on macOS, chokidar elsewhere,
+  // or PNEUMA_WATCHER (see server/watch/index.ts).
+  const watcherSelection = resolveWatcherBackend();
+  if (watcherSelection.invalid !== undefined) {
+    console.warn(
+      `[watcher] ignoring PNEUMA_WATCHER=${JSON.stringify(watcherSelection.invalid)} (expected native or chokidar)`,
+    );
+  }
+  const watcherStartedAt = performance.now();
+  const workspaceWatcher = createSessionWatcher(workspace, manifest.viewer, {
+    stateDir,
+    backend: watcherSelection.kind,
+  });
+  void workspaceWatcher.ready.then(() => {
+    const source = watcherSelection.source === "env" ? "PNEUMA_WATCHER" : `default on ${process.platform}`;
+    const ms = Math.round(performance.now() - watcherStartedAt);
+    console.log(`[watcher] ${workspaceWatcher.kind} ready in ${ms}ms (${source})`);
+  });
+
   const { server, wsBridge, port: actualPort, modeMakerCleanup, onReplayContinue, onEditingLaunch, onEditingKill, cleanup: serverCleanup, sessionInfo, hookBus, queueContentUpdate } = await startServer({
     port: serverPort,
     workspace,
@@ -2633,6 +2666,7 @@ async function main() {
     sessionDir,
     sessionId: startup.sessionId,
     pneumaProjectRoot: startup.paths.projectRoot ?? undefined,
+    workspaceWatcher,
   });
 
   // The HTTP origin the agent's `pneuma handoff` CLI must POST against. The
@@ -2820,7 +2854,7 @@ async function main() {
       // Start file watcher
       startFileWatcher(workspace, manifest.viewer, (files) => {
         wsBridge.broadcastToSession(sessionId, { type: "content_update", files });
-      }, { stateDir });
+      }, { stateDir, watcher: workspaceWatcher });
 
       // Start history persistence
       historyInterval = setInterval(() => {
@@ -3201,7 +3235,7 @@ async function main() {
           files,
         });
       }
-    }, { stateDir });
+    }, { stateDir, watcher: workspaceWatcher });
   }
 
   // Update sessionInfo so that server-side hooks (e.g. session:end, deploy:*)
@@ -3319,7 +3353,12 @@ async function main() {
       }
     }
     modeMakerCleanup?.();
-    if (serverCleanup) await serverCleanup();
+    // `exiting`: the project-cache watchers are left to process exit too.
+    if (serverCleanup) await serverCleanup({ exiting: true });
+    // The workspace watcher is NOT closed here: process exit releases its OS
+    // watches, and closing chokidar's per-path watches (PNEUMA_WATCHER=chokidar
+    // on macOS) rebuilds Bun's FSEventStream once per path, synchronously —
+    // on a 14k-file tree that blocked this shutdown past its 4 s fuse.
     viteProc?.kill();
     if (backend) await backend.killAll();
     server.stop(true);

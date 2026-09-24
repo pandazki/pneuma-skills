@@ -210,7 +210,7 @@ Personal evolve 和 project-evolve 共享一套 dashboard：
 
 明确一下边界：以下东西 Pneuma **不管**，避免误以为它会替你做。
 
-- **用户的交付物文件**：deck 内容、文档正文、组件代码——agent 直接 Read/Edit/Write，Pneuma 只是观察 chokidar 推过来的事件。
+- **用户的交付物文件**：deck 内容、文档正文、组件代码——agent 直接 Read/Edit/Write，Pneuma 只是观察 workspace watcher 推过来的事件。
 - **用户项目自己的 git**：`shadow.git/` 是 Pneuma 自己的 bare 仓库，跟用户在 `<root>/.git/` 的 git 完全独立。
 - **Backend 的私有 state**：Claude Code 的 `~/.claude/`、Codex 的会话存储——Pneuma 只通过 stdio 跟它说话，不读它的内部文件。
 - **跨机器同步**：`~/.pneuma/` 默认本机；用户自己用 dotfile 工具同步要自担风险（registry / preferences 可同步，secret 文件建议排除）。

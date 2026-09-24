@@ -356,25 +356,41 @@ export function parseVitePort(line: string): number | null {
   return Number.isInteger(port) && port > 0 && port < 65536 ? port : null;
 }
 
+/** Output lines kept for the error when Vite exits before reporting its port. */
+const VITE_OUTPUT_TAIL_LINES = 20;
+
 /**
- * Spawn Vite dev server and resolve the actual port from its stdout.
- * Returns { proc, port } where port is the actual port Vite bound to.
+ * Spawn the Vite dev server and resolve the port it actually bound, read from
+ * its "Local:" line. Rejects if Vite exits before printing that line (with
+ * its exit code and last output lines): a dev server that never came up must
+ * not produce a ready URL. If Vite is still running but silent at the
+ * timeout, resolves the requested port with a warning — it may still be
+ * starting. `cmd` and `timeoutMs` exist for tests.
  */
 export async function startViteDev(opts: {
   projectRoot: string;
   port: number;
   env: Record<string, string>;
+  cmd?: string[];
+  timeoutMs?: number;
 }): Promise<{ proc: ReturnType<typeof Bun.spawn>; port: number }> {
   const proc = Bun.spawn(
-    ["bunx", "vite", "--port", String(opts.port)],
+    opts.cmd ?? ["bunx", "vite", "--port", String(opts.port)],
     { cwd: opts.projectRoot, stdout: "pipe", stderr: "pipe", env: opts.env },
   );
+  const timeoutMs = opts.timeoutMs ?? 10_000;
+  const tail: string[] = [];
 
   let resolved = false;
-  const port = await new Promise<number>((resolvePort) => {
+  const port = await new Promise<number>((resolvePort, rejectPort) => {
     const timeout = setTimeout(() => {
-      if (!resolved) { resolved = true; resolvePort(opts.port); }
-    }, 10_000);
+      if (resolved) return;
+      resolved = true;
+      console.warn(
+        `[vite] no "Local:" line within ${timeoutMs} ms; assuming the requested port ${opts.port}`,
+      );
+      resolvePort(opts.port);
+    }, timeoutMs);
 
     const pipeAndParse = async (stream: ReadableStream<Uint8Array>) => {
       const reader = stream.getReader();
@@ -384,7 +400,11 @@ export async function startViteDev(opts: {
         if (done) break;
         const text = decoder.decode(value, { stream: true });
         for (const line of text.split("\n")) {
-          if (line.trim()) console.log(`[vite] ${line}`);
+          if (line.trim()) {
+            console.log(`[vite] ${line}`);
+            tail.push(line.replace(ANSI_ESCAPE, ""));
+            if (tail.length > VITE_OUTPUT_TAIL_LINES) tail.shift();
+          }
           if (!resolved) {
             const parsed = parseVitePort(line);
             if (parsed !== null) {
@@ -396,8 +416,19 @@ export async function startViteDev(opts: {
         }
       }
     };
-    if (proc.stdout && typeof proc.stdout !== "number") pipeAndParse(proc.stdout);
-    if (proc.stderr && typeof proc.stderr !== "number") pipeAndParse(proc.stderr);
+    const pipes: Promise<void>[] = [];
+    if (proc.stdout && typeof proc.stdout !== "number") pipes.push(pipeAndParse(proc.stdout));
+    if (proc.stderr && typeof proc.stderr !== "number") pipes.push(pipeAndParse(proc.stderr));
+
+    // Drain the output first: a Local line printed just before exit still counts.
+    void proc.exited.then(async (code) => {
+      await Promise.allSettled(pipes);
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeout);
+      const output = tail.length > 0 ? `\n${tail.join("\n")}` : " (no output)";
+      rejectPort(new Error(`Vite dev server exited with code ${code} before reporting its port${output}`));
+    });
   });
 
   return { proc, port };

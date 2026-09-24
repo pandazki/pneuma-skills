@@ -3,7 +3,8 @@
  *
  * Unit tests for the exported pure functions (extractWatchExtensions,
  * matchesWatchPatterns, buildIgnoreMatcher) plus integration tests running
- * the real chokidar watcher against a temp workspace.
+ * the real watcher (platform-default backend) against a temp workspace. The
+ * per-backend incident cases live in `watch-contract.test.ts`.
  *
  * The buildIgnoreMatcher suite pins the chokidar v4+ regression fix: chokidar
  * removed glob support, so string `ignored` entries are exact-equality
@@ -16,13 +17,13 @@ import { describe, test, expect, afterEach } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { FSWatcher } from "chokidar";
 import {
   extractWatchExtensions,
   matchesWatchPatterns,
   buildIgnoreMatcher,
   startFileWatcher,
   type FileUpdate,
+  type FileWatcherHandle,
 } from "../file-watcher.js";
 import type { ViewerConfig } from "../../core/types/mode-manifest.js";
 
@@ -190,7 +191,7 @@ describe("buildIgnoreMatcher", () => {
   });
 });
 
-// ── startFileWatcher integration (real chokidar, real filesystem) ───────────
+// ── startFileWatcher integration (real watcher, real filesystem) ────────────
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 // awaitWriteFinish stability (200ms) + debounce (300ms) + headroom.
@@ -214,7 +215,7 @@ function makeWorkspace(): string {
 function collectEvents(
   ws: string,
   stateDir: string,
-): { events: FileUpdate[]; watcher: FSWatcher } {
+): { events: FileUpdate[]; watcher: FileWatcherHandle } {
   const events: FileUpdate[] = [];
   const watcher = startFileWatcher(ws, SLIDE_VIEWER, (files) => events.push(...files), {
     stateDir,
