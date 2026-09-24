@@ -275,6 +275,52 @@ function knownGap(kind: WatcherBackendKind, gaps: Partial<Record<NodeJS.Platform
   return (gaps[process.platform] ?? []).includes(kind);
 }
 
+// ── Measured budgets ────────────────────────────────────────────────────────
+//
+// Timing budgets are per platform and backend, set from measurements (Bun
+// 1.4.0, 2026-09-24). Each case logs its measurement on every run, so CI runs
+// refine them; `n=1` marks a figure from a single run.
+
+type Budget = Partial<Record<NodeJS.Platform, Record<WatcherBackendKind, number>>>;
+
+/** This platform's budget for `kind` (an unlisted platform uses Linux's). */
+function budgetFor(table: Budget, kind: WatcherBackendKind): number {
+  return (table[process.platform] ?? table.linux!)[kind];
+}
+
+/**
+ * CPU the watcher process spends absorbing the 5,000-write `.venv` flood (the
+ * writes come from a child process). Guards against per-path registration
+ * (seconds, the macOS chokidar failure) and against runaway rescans; a
+ * per-event `lstat` is below its resolution (10,000 cost 18 ms on macOS,
+ * 60 ms on Linux).
+ * - macOS arm64: native 18-22 ms local, 35 ms macos-latest; chokidar 13-16 / 14 ms.
+ * - Linux (Docker): native 99-107 ms, chokidar 8-12 ms.
+ * - windows-latest, n=1: native 2,531 ms — ReadDirectoryChangesW overflowed
+ *   141 times, each a rescan, and every event crosses Bun's watcher — so its
+ *   budget (2x) only catches a runaway; chokidar 31 ms.
+ */
+const FLOOD_CPU_BUDGET_MS: Budget = {
+  darwin: { native: 750, chokidar: 750 },
+  linux: { native: 750, chokidar: 750 },
+  win32: { native: 5_000, chokidar: 750 },
+};
+
+/**
+ * `ready` on the 400-directory / 1,200-file tree. Guards against registration
+ * growing per file or entering ignored trees (chokidar on macOS took 17.7 s
+ * for 1,200 files; it is skipped there as a known gap).
+ * - macOS arm64: native 120-148 ms.
+ * - Linux (Docker): native 61-70 ms, chokidar 117-121 ms.
+ * - windows-latest, n=1: chokidar 1,429 ms (the same as main: one watch per
+ *   directory), so 3,000 (2.1x); native passed under 1,000.
+ */
+const LARGE_TREE_READY_BUDGET_MS: Budget = {
+  darwin: { native: 1_000, chokidar: 1_000 },
+  linux: { native: 1_000, chokidar: 1_000 },
+  win32: { native: 1_000, chokidar: 3_000 },
+};
+
 // ── Backend selection ───────────────────────────────────────────────────────
 
 describe("backend selection", () => {
@@ -354,12 +400,9 @@ function contractCases(kind: WatcherBackendKind): void {
     await expectUpdate(s, "bayes/course.json", `{"n":2}`, 2_000);
 
     expect(s.events.filter((e) => e.path.includes(".venv/"))).toEqual([]);
-    // The writes happen in a child process; this is the watcher's own cost of
-    // absorbing (native: receiving and filtering) 5,000+ events. Measured on
-    // macOS arm64, Bun 1.4.0, 2026-09-24: native 20-22 ms, chokidar 13-14 ms.
-    // The budget leaves ~30x for slow CI runners and still catches a per-event
-    // stat or a per-path registration.
-    expect(cpuMs).toBeLessThan(750);
+    // The watcher's own cost of absorbing (native: receiving and filtering)
+    // 5,000+ events; see FLOOD_CPU_BUDGET_MS for the measurements.
+    expect(cpuMs).toBeLessThan(budgetFor(FLOOD_CPU_BUDGET_MS, kind));
     expect(s.watcher.health().degraded).toBe(false);
   }, 20_000);
 
@@ -367,10 +410,11 @@ function contractCases(kind: WatcherBackendKind): void {
   // `fs.watch` per path, superlinearly (17.7 s for 1,200 files), on the main
   // thread; a sprite workspace answered no request for 25-40 s.
   test.skipIf(knownGap(kind, { darwin: ["chokidar"] }))(
-    "large-tree start: 400 dirs / 1,200 files ready within 1 s; a write 100 ms after ready arrives",
+    "large-tree start: 400 dirs / 1,200 files ready within budget; a write 100 ms after ready arrives",
     async () => {
       const s = await openSession(kind, JSON_VIEWER, (ws) => makeTree(ws, 400, 3));
-      expect(s.readyMs).toBeLessThan(1_000);
+      console.log(`[watch-contract] ${kind}: 400 dirs / 1,200 files ready in ${s.readyMs.toFixed(0)} ms`);
+      expect(s.readyMs).toBeLessThan(budgetFor(LARGE_TREE_READY_BUDGET_MS, kind));
 
       await Bun.sleep(100);
       writeFileSync(join(s.ws, "d7", "s3", "f1.json"), `{"late":true}`);
@@ -420,21 +464,37 @@ function contractCases(kind: WatcherBackendKind): void {
   // A directory renamed into or out of the tree is ONE event on a recursive
   // native watch (FSEvents / inotify never list its children). Mode scripts
   // assemble output in a staging directory and move it into place.
-  test("a directory moved in reports its files; moved out reports them deleted", async () => {
+  /** A session with `pack/slides/{a,b}.html` moved in from a staging directory, and reported. */
+  async function sessionWithPackMovedIn(): Promise<{ s: Session; stage: string }> {
     const s = await openSession(kind, SLIDE_VIEWER, (ws) => mkdirSync(join(ws, "slides"), { recursive: true }));
     const stage = tempDir("pneuma-watch-stage-");
     mkdirSync(join(stage, "pack", "slides"), { recursive: true });
     writeFileSync(join(stage, "pack", "slides", "a.html"), "<p>a</p>");
     writeFileSync(join(stage, "pack", "slides", "b.html"), "<p>b</p>");
-
     renameSync(join(stage, "pack"), join(s.ws, "pack"));
     await expectUpdate(s, "pack/slides/a.html", "<p>a</p>");
     await expectUpdate(s, "pack/slides/b.html", "<p>b</p>");
+    return { s, stage };
+  }
 
-    renameSync(join(s.ws, "pack"), join(stage, "pack-out"));
-    await expectDelete(s, "pack/slides/a.html");
-    await expectDelete(s, "pack/slides/b.html");
+  test("a directory moved in reports its files", async () => {
+    await sessionWithPackMovedIn();
   }, 10_000);
+
+  // Not on Windows with chokidar: it holds a watch handle on every directory,
+  // and Windows refuses to rename a directory while handles are open beneath
+  // it (EPERM on `pack`, which holds the watched `pack/slides`). The same
+  // holds on main; the native backend's one recursive handle sits on the root.
+  test.skipIf(knownGap(kind, { win32: ["chokidar"] }))(
+    "a directory moved out reports its files deleted",
+    async () => {
+      const { s, stage } = await sessionWithPackMovedIn();
+      renameSync(join(s.ws, "pack"), join(stage, "pack-out"));
+      await expectDelete(s, "pack/slides/a.html");
+      await expectDelete(s, "pack/slides/b.html");
+    },
+    10_000,
+  );
 
   // F12: proxy.json hot-reloads from the same root watcher, including a file
   // created after start — even when a mode's ignore patterns would hide it.
