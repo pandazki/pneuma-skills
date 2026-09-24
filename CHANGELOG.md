@@ -2,6 +2,45 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.54.0] - 2026-09-25
+
+### Added
+- **Sprite exports.** Every ready motion has an Export tab.
+  - **Video:** MP4 on a background colour you pick, MOV (ProRes 4444, keeps transparency, for editing software) and WebM with transparency.
+  - **Frame animation:** APNG, Lottie and a PNG sequence zip with an `animation.json`.
+  - **Rive:** covered below.
+  - The formats Sprite already made (GIF, WebP, sheet + atlas and the loop files) show there as ready. A format that hasn't been made yet has a Generate button that asks the agent to export it.
+- **Sprite characters as Rive files.** One `.riv` holds the whole character, and its state machine switches between motions.
+  - **Preview:** the file plays in the viewer with Rive's official runtime, with one button per motion.
+  - **Format:** frames are embedded as WebP (lossless for pixel art), which took a ten-loop character from 81 MB to 13 MB.
+  - **Limits:** the frames are raster, so the file plays in every Rive runtime but can't be opened in the Rive editor. Opening it decodes every frame, and the export reports how much memory that takes.
+- **Connected Sprite motions.** A transition clip is shot from the idle pose to a loop's first pose, and its reverse serves as the way back.
+  - **Measured joins:** both ends of each clip are measured against the loops they join.
+  - **Routing:** the Rive file goes through the idle loop at cycle boundaries instead of cutting mid-pose.
+  - **Choosing:** `lineup` shows which loops start too far from idle to switch directly.
+
+### Fixed
+- **File changes reach the viewer on macOS.** The file watcher opened one watch per file. Under Bun on macOS that dropped changes in large workspaces: a replaced `edl.json` never refreshed Backlot's viewer. It also kept a large workspace from answering for up to 40 s while it started. It now opens one watch per workspace. It is ready in under 0.1 s on a 14,000-file project and delivered every change in end-to-end tests, including edits made while it starts. Linux and Windows keep chokidar. `PNEUMA_WATCHER=chokidar` switches macOS back.
+- **Sprite loops keep one size in a Rive file.** Each loop had been cropped and scaled on its own, so switching states made the character 15–40% bigger or smaller. Loops now record their crop and scale, older loops are measured against their clip, and every state draws at the clip's scale.
+- **Viewing-only sessions hide request buttons.** A `--viewing` session showed Generate and Regenerate in Sprite, Backlot and Lucid, with no agent to receive them.
+- **A mode's viewer is rebuilt when its source changes.** Running from a checkout reused the first compiled viewer indefinitely.
+- **A failed start says so.** When every port was taken, Pneuma still printed "ready" and then crashed on shutdown. It now exits with "No free port". A port that another program holds only on 127.0.0.1 or ::1 is also skipped, where before `localhost` quietly reached the other program. The dev server's Vite start fails loudly when Vite exits.
+- **`/api/session` reports the session id in viewing sessions.**
+
+### Improved
+- **`/api/session` reports watcher health:** the backend, whether it is ready, whether it degraded, and the time of the last event.
+
+## [3.53.2] - 2026-09-24
+
+### Added
+- **Backlot registers a finished film.** Some films need more than the cut makes, which is straight cuts with voice-over and one music bed. Titles, captions, UI laid over the picture, dissolves, slowed shots or a re-timed mix are now a finishing pass that the agent builds over the assembly and registers with `cut --finish`. The Cut stage plays that film, says what the pass added and keeps the plain assembly it was made over. Registration refuses when the assembly is stale, when a take is not the one its shot has selected, and when the film's timing has changed but no edit list says how. The skill now asks the agent to assemble, finish, register and look at the Cut stage before delivering. A film copied into `cut/` by hand, which is how a finished film once left the stage reading "nothing yet", is listed by `status` as unregistered.
+
+### Fixed
+- **Backlot's cut strip puts voice-over marks at the right second.** Every mark after the first shot was drawn at its second of the shot rather than of the film.
+- **Voice-over cut off at the end of a film is reported.** A line still speaking when the picture ends now appears as clipped, with the seconds it loses. Before, it was cut off mid-word without a warning.
+- **The frames at each join in a trimmed cut** come from the range the film actually plays.
+- **A finish's end card is not labelled as the last take.** When a new film arrives in the Cut stage, the playhead stays where it was.
+
 ## [3.53.1] - 2026-09-24
 
 ### Fixed

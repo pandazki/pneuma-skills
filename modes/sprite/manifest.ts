@@ -20,19 +20,12 @@ const spriteManifest: ModeManifest = {
   version: "0.4.0",
   changelog: {
     "0.4.0": [
-      "An Export tab on every ready motion lists what it can be delivered as, in three groups: video, frame animation and Rive. A file that exists is a download with its size; the rest have a Generate button that asks the agent for it, and a format that does not fit the motion says why",
-      "Video: MP4 flattened onto a background colour you pick, plus MOV (ProRes 4444) and WebM (VP9) that keep transparency. A looping motion repeats until the clip lasts at least 3 seconds, and a one-shot plays once",
-      "Frame animation: APNG, Lottie and a zipped PNG sequence with an animation.json of frame timing and pivot, next to the GIF, WebP and sprite sheet every run already makes",
-      "Rive: the whole character in one .riv, each motion an animation, driven by a state machine with a number input that picks the loop to be in and a trigger for each one-shot. It plays right in the Export tab with the official Rive runtime, bundled with the mode so it works offline, with a button per loop and per one-shot and the states shown as they go by. The frames are raster images, so the file plays in every Rive runtime but cannot be edited in the Rive editor",
-      "The .riv embeds its frames as WebP by default, lossy at quality 85: tanka's ten loops and ten transitions came to 13.0 MB instead of 81.1 MB as PNG, with the same memory once opened. Every Rive runtime decodes WebP. A pixel-art character goes in as lossless WebP instead, every pixel exact and smaller than PNG; --images png or webp-lossless keeps any frames lossless, and an ffmpeg without libwebp falls back to PNG with a warning",
-      "UI loops can go into the .riv too, so a mascot made only of loops can switch states in an app: each loop is resampled to 24 fps and shrunk to 320 px on its longest edge by default, stays seamless, and keeps looping until another loop is asked for. The Export tab shows the frame rate, size and memory before you generate, and a file too large for a runtime to open is refused with what to lower",
-      "Connected motions for Rive: a transition is a short clip from one loop's first frame to another's, shot first-last between the two keyframes, cut with its waiting frames dropped and retimed to the length it should play, and checked at both ends against the loops it joins. The way back is the same clip played backwards, free, and it adds nothing to the file's memory",
-      "The .riv routes through an idle hub and changes state only at the end of a loop's cycle or a transition's last frame, so the pictures meet wherever it switches. The report lists every route, how long each loop can make you wait, and every place the file still cuts between two poses with how far apart they are",
-      "Lineup puts every loop's first frame beside idle's at one scale before anything is spent, and suggests which loops need a transition. Transitions have their own group in the motion list, named after the two loops they join, and one whose end does not land is marked",
-      "The character is one size in every loop of a .riv, standing where its clip put it: each loop was cut to its own box before the 512 px width (tanka's ten at 1.03–1.42× their clips), so the export divides that back out. The loop step now records the crop and scale it cut at; for loops cut earlier the export measures them off the clip, and says so when it cannot",
-      "In a session opened for viewing only, with no agent to ask, the Export tab offers downloads only — no Generate, Regenerate or MP4 colour. The MP4 colour swatches are four colours you can tell apart",
-      "For a loop cut before its crop was recorded, the size the first export measures is kept on the motion, so the Export tab's memory quote and the file agree from then on",
-      "Everything this mode already made keeps its name and place; a loop's WebP, APNG, WebM and Lottie appear in the tab as ready",
+      "An Export tab on every ready motion: MP4, MOV and WebM video, APNG, Lottie and a PNG sequence, next to the formats every run already makes",
+      "Export a whole character as one Rive file, previewed in the tab with the official Rive runtime and a button per motion",
+      "Rive frames are WebP by default, lossless for pixel art: a ten-loop character went from 81 MB to 13 MB",
+      "Loops keep one size and position in a Rive file, measured against their clips for older projects",
+      "Connected motions: transition clips shot between keyframes, reversed for the way back, routed through idle at cycle boundaries",
+      "Lineup shows which loops start too far from idle to switch directly; viewing-only sessions offer downloads only",
     ],
     "0.3.3": [
       "A character with thousands of frames opens in seconds: the frame, cell and pipeline scratch directories are no longer file-watched (the server spent 25-40 s registering a watch per frame before it answered the page), and a frame's url now names the run that registered it, so a re-run still refreshes the stage",
@@ -75,9 +68,9 @@ const spriteManifest: ModeManifest = {
     ja: "スプライト",
   },
   description: {
-    en: "Design a character once, then generate consistent sprite sheets and motion reference frames with GPT Image 2.5 — auto-keyed, sliced, aligned, packed, previewed as GIF or a video clip. Or shoot a seamless transparent loop for a UI and export it as WebP, APNG, WebM and Lottie.",
+    en: "Design a character once, then generate consistent sprite sheets and motion reference frames with GPT Image 2.5 — auto-keyed, sliced, aligned, packed, previewed as GIF or a video clip. Or shoot a seamless transparent loop for a UI and export it as WebP, APNG, WebM and Lottie. Export any motion as video or frame animation, and a whole character as one Rive file.",
     "zh-CN":
-      "先定角色，再用 GPT Image 2.5 产出前后一致的雪碧图与动作参考帧；自动抠背景、切帧、对齐、打包，GIF 或视频模型预览。也可以做界面上那种循环不断的透明小动画，一次导出 WebP、APNG、WebM 和 Lottie。",
+      "先定角色，再用 GPT Image 2.5 产出前后一致的雪碧图与动作参考帧；自动抠背景、切帧、对齐、打包，GIF 或视频模型预览。也可以做界面上那种循环不断的透明小动画，一次导出 WebP、APNG、WebM 和 Lottie。每个动作能导出视频或帧动画，整个角色能导成一个 Rive 文件。",
     ja: "キャラクターを一度設計すれば、あとは GPT Image 2.5 で一貫したスプライトシートとモーション参考フレームを生成 —— 背景抜き・分割・整列・パックまで自動、GIF や動画クリップでプレビュー。UI に置く継ぎ目のない透過ループも作れて、WebP・APNG・WebM・Lottie で書き出せます。",
   },
   // A 3×3 grid with one cell filled — a sheet with one frame picked out.
