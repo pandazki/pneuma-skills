@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.53.2] - 2026-09-24
+
+### Added
+- **Backlot registers a finished film.** Some films need more than the cut makes, which is straight cuts with voice-over and one music bed. Titles, captions, UI laid over the picture, dissolves, slowed shots or a re-timed mix are now a finishing pass that the agent builds over the assembly and registers with `cut --finish`. The Cut stage plays that film, says what the pass added and keeps the plain assembly it was made over. Registration refuses when the assembly is stale, when a take is not the one its shot has selected, and when the film's timing has changed but no edit list says how. The skill now asks the agent to assemble, finish, register and look at the Cut stage before delivering. A film copied into `cut/` by hand, which is how a finished film once left the stage reading "nothing yet", is listed by `status` as unregistered.
+
+### Fixed
+- **Backlot's cut strip puts voice-over marks at the right second.** Every mark after the first shot was drawn at its second of the shot rather than of the film.
+- **Voice-over cut off at the end of a film is reported.** A line still speaking when the picture ends now appears as clipped, with the seconds it loses. Before, it was cut off mid-word without a warning.
+- **The frames at each join in a trimmed cut** come from the range the film actually plays.
+- **A finish's end card is not labelled as the last take.** When a new film arrives in the Cut stage, the playhead stays where it was.
+
 ## [3.53.1] - 2026-09-24
 
 ### Fixed
