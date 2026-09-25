@@ -23,6 +23,7 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync,
   rmSync, statSync, unlinkSync, writeFileSync,
@@ -31,9 +32,9 @@ import { tmpdir } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
-import { RIVE_MOTION_INPUT, riveDefaultMotion, riveHub, writeRiv } from "./rive.mjs";
+import { RIVE_MOTION_INPUT, riveDefaultMotion, riveHub, riveTrimRect, writeRiv } from "./rive.mjs";
 import {
-  RIVE_DECODE_LIMIT_BYTES, RIVE_DECODE_WARN_BYTES, RIVE_LOOP_FPS, RIVE_LOOP_MAX_SIZE, RIVE_PIXEL_ART_STYLE, riveDefaultImages,
+  RIVE_DECODE_LIMIT_BYTES, RIVE_DECODE_WARN_BYTES, RIVE_LOOP_FPS, RIVE_LOOP_MAX_SIZE, riveDefaultFilter, riveDefaultImages,
   riveDecodeWarning, riveMB, rivePlan, riveReverseIsCurrent,
 } from "./rive-plan.mjs";
 import { zipStore } from "./zip.mjs";
@@ -518,9 +519,14 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       (stateMachine.routes, worst-case seconds), each loop's wait
       (stateMachine.waits), and every direct cut with its poseGap measured
       on the frames as drawn (stateMachine.cuts).
-      estimatedDecodeBytes (frames x w x h x 4, after resampling, shared
-      images once) is reported per motion and in total: over 128 MB warns,
-      over 768 MB is refused with nothing written.
+      Each frame is embedded trimmed to its visible pixels (and a one-pixel
+      transparent ring) and drawn exactly where it was; a frame that is the
+      same picture in the same place as one already in shows that one
+      (dedupedFrames). estimatedDecodeBytes is what the file decodes, per
+      motion and in total; untrimmedDecodeBytes (frames x w x h x 4 after
+      resampling) the most it could: over 128 MB decoded warns, over 768 MB
+      (untrimmed, or as an earlier registered export measured it) is refused
+      with nothing written.
       The frames are RASTER: the file plays in every Rive runtime but cannot
       be reopened in the Rive editor. --images webp (the default) embeds each
       frame as a lossy WebP at quality 85, several times smaller than PNG;
@@ -4221,16 +4227,42 @@ function stepExport(motionDir, options) {
   return report;
 }
 
-/** Encode one frame as a still WebP for `rive --images webp|webp-lossless`.
- *  `libwebp` (the still encoder) is right here: this is one picture, not an
- *  animation. Lossless has to be `bgra`: with `-lossless 1` on `yuva420p`
- *  ffmpeg still subsamples the colour first, and the pixels are not exact. */
-function stillWebp(path, work, index, lossless) {
-  const out = join(work, `${String(index).padStart(4, "0")}.webp`);
-  ffmpeg(["-i", path, "-frames:v", "1", "-c:v", "libwebp",
-    ...(lossless ? ["-lossless", "1", "-pix_fmt", "bgra"] : ["-lossless", "0", "-q:v", "85", "-pix_fmt", "yuva420p"]),
-    "--", out], "rive webp");
+/**
+ * One frame of a `.riv` as the bytes it embeds: the `crop` of the frame at
+ * `path` (its visible pixels and their one-pixel ring, `riveTrimRect`), in
+ * the file's image format. A PNG frame that needs no crop goes in as it is.
+ * `libwebp` (the still encoder) is right for WebP: this is one picture, not an
+ * animation. Lossless has to be `bgra`: with `-lossless 1` on `yuva420p`
+ * ffmpeg still subsamples the colour first, and the pixels are not exact.
+ */
+function riveFrameBytes(path, crop, full, images, work, index) {
+  const whole = crop.x === 0 && crop.y === 0 && crop.width === full.width && crop.height === full.height;
+  if (images === "png" && whole) return readFileSync(path);
+  const out = join(work, `${String(index).padStart(5, "0")}.${images === "png" ? "png" : "webp"}`);
+  const codec = images === "png"
+    ? ["-c:v", "png", "-pix_fmt", "rgba"]
+    : images === "webp-lossless"
+      ? ["-c:v", "libwebp", "-lossless", "1", "-pix_fmt", "bgra"]
+      : ["-c:v", "libwebp", "-lossless", "0", "-q:v", "85", "-pix_fmt", "yuva420p"];
+  ffmpeg([
+    "-i", path, "-frames:v", "1",
+    ...(whole ? [] : ["-vf", `crop=${crop.width}:${crop.height}:${crop.x}:${crop.y}`]),
+    ...codec, "--", out,
+  ], "rive frame");
   return readFileSync(out);
+}
+
+/** What makes two trimmed frames the same picture in the same place: the
+ *  full frame's size, its pivot, where the crop sat, and every RGBA byte of
+ *  the crop. */
+function riveFrameKey(image, crop, pivot) {
+  const hash = createHash("sha256");
+  hash.update(`${image.width}x${image.height}@${pivot.x},${pivot.y}#${crop.x},${crop.y},${crop.width},${crop.height};`);
+  for (let y = crop.y; y < crop.y + crop.height; y++) {
+    const start = (y * image.width + crop.x) * 4;
+    hash.update(image.data.subarray(start, start + crop.width * 4));
+  }
+  return hash.digest("hex");
 }
 
 /** The downscale for a character's style: pixel art (`RIVE_PIXEL_ART_STYLE`,
@@ -5021,7 +5053,10 @@ function stepRive(characterDir, { images: askedImages = null, motions: named, in
       }
     }
 
-    const plan = rivePlan(sources.map((source) => ({
+    const scaleFilter = filter === "auto" ? riveDefaultFilter(style) : filter;
+    // The plan the Export tab quotes: trimmed where an earlier export measured
+    // these frames (`motion.riveTrim`), as they are where none has.
+    const planWith = (trimOf) => rivePlan(sources.map((source) => ({
       id: source.motion.id,
       kind: source.kind,
       loop: source.facts.loop,
@@ -5031,7 +5066,9 @@ function stepRive(characterDir, { images: askedImages = null, motions: named, in
       height: source.size.height,
       ...(source.clip ? { clipScale: source.clip.scale } : {}),
       ...(reverseOf.has(source.motion.id) ? { reverseOf: reverseOf.get(source.motion.id) } : {}),
-    })), { fps, maxSize });
+      trim: trimOf(source),
+    })), { fps, maxSize, filter: scaleFilter });
+    let plan = planWith((source) => source.motion.riveTrim ?? null);
 
     // Refused on the arithmetic, before a frame is scaled or a byte written.
     if (plan.decodeBytes > RIVE_DECODE_LIMIT_BYTES) {
@@ -5041,7 +5078,6 @@ function stepRive(characterDir, { images: askedImages = null, motions: named, in
         .join(", ");
       fail(`${label}: this .riv would take about ${riveMB(plan.decodeBytes)} MB of memory once opened (${each}) — over the ${riveMB(RIVE_DECODE_LIMIT_BYTES)} MB a Rive runtime can be asked to decode up front. Lower --fps (loops now ${plan.settings.loop.fps}) or --max-size (loops now ${plan.settings.loop.maxSize} px), or pass fewer motions with --motions.`);
     }
-    if (plan.decodeBytes > RIVE_DECODE_WARN_BYTES) warnings.push(riveDecodeWarning(plan.decodeBytes));
 
     // The loops and transitions whose place in the clip is known are drawn
     // in CLIP coordinates: a point of the clip lands on the same point of the
@@ -5061,7 +5097,6 @@ function stepRive(characterDir, { images: askedImages = null, motions: named, in
       };
     }
 
-    const scaleFilter = filter === "auto" ? (RIVE_PIXEL_ART_STYLE.test(style) ? "nearest" : "smooth") : filter;
     let encoded = 0;
     const own = sources.map((source, k) => {
       const planned = plan.motions[k];
@@ -5106,26 +5141,102 @@ function stepRive(characterDir, { images: askedImages = null, motions: named, in
         const pivot = fraction(i);
         return { path, width: planned.width, height: planned.height, pivot: { x: pivot.x * planned.width, y: pivot.y * planned.height } };
       });
-      const frames = shown.map((frame) => ({
-        bytes: images === "png" ? readFileSync(frame.path) : stillWebp(frame.path, work, encoded++, images === "webp-lossless"),
-        width: frame.width,
-        height: frame.height,
-        pivot: frame.pivot,
-        ext: images === "png" ? "png" : "webp",
-      }));
-      return { planned, source, shown, frames, loopPoint };
+      return { planned, source, shown, frames: null, loopPoint };
     });
+
+    // Trimmed and deduplicated, in file order, with nothing about the drawing
+    // changed. Each frame embeds only its visible pixels and their one-pixel
+    // ring (`riveTrimRect`) and is drawn on the exact spot they had in the
+    // full frame (`riveTrimmedPosition`); a frame with nothing visible embeds one
+    // transparent pixel, shared by all such frames. A frame that is the same
+    // picture in the same place as one already embedded — every RGBA byte,
+    // the crop, the pivot — shows that one instead: the reverse transition's
+    // sharing, found in the pixels. What each motion then costs is recorded
+    // (`riveTrimRecord`), and the plan re-made from it is what the file is.
+    const seen = new Map();
+    const measured = new Map();
+    let embeddedBytes = 0;
+    let dedupedFrames = 0;
+    let emptyFrames = 0;
+    for (const entry of own) {
+      if (entry.planned.shares) continue;
+      const id = entry.planned.id;
+      const tally = { decodeBytes: 0, sharedBytes: 0, with: new Set(), deduped: 0, empty: 0 };
+      const mine = new Set();
+      entry.frames = entry.shown.map((frame, i) => {
+        const image = readRgba(frame.path);
+        if (image.width !== frame.width || image.height !== frame.height) {
+          fail(`${label}: ${frame.path} is ${image.width}×${image.height}, planned ${frame.width}×${frame.height}`);
+        }
+        const rect = riveTrimRect(image.data, image.width, image.height);
+        const crop = rect ?? { x: 0, y: 0, width: 1, height: 1 };
+        const key = rect ? riveFrameKey(image, crop, frame.pivot) : "empty";
+        const bytes = crop.width * crop.height * 4;
+        if (!rect) tally.empty += 1;
+        const earlier = seen.get(key);
+        if (earlier) {
+          tally.deduped += 1;
+          // Shown once already in this motion: nothing more. First shown here
+          // but embedded by an earlier motion: counted here, and credited as
+          // shared with that motion.
+          if (!mine.has(key)) {
+            mine.add(key);
+            tally.decodeBytes += bytes;
+            if (earlier.motion !== id) {
+              tally.sharedBytes += bytes;
+              tally.with.add(earlier.motion);
+            }
+          }
+          return { shared: earlier };
+        }
+        seen.set(key, { motion: id, index: i });
+        mine.add(key);
+        tally.decodeBytes += bytes;
+        embeddedBytes += bytes;
+        return {
+          bytes: riveFrameBytes(frame.path, crop, frame, images, work, encoded++),
+          width: crop.width,
+          height: crop.height,
+          pivot: frame.pivot,
+          trim: { x: crop.x, y: crop.y, width: frame.width, height: frame.height },
+          ext: images === "png" ? "png" : "webp",
+        };
+      });
+      dedupedFrames += tally.deduped;
+      emptyFrames += tally.empty;
+      measured.set(id, {
+        record: {
+          width: entry.planned.width,
+          height: entry.planned.height,
+          fps: entry.planned.fps,
+          frames: entry.planned.frames,
+          filter: scaleFilter,
+          decodeBytes: tally.decodeBytes,
+          ...(tally.sharedBytes ? { shared: { bytes: tally.sharedBytes, with: [...tally.with] } } : {}),
+        },
+        deduped: tally.deduped,
+        empty: tally.empty,
+      });
+    }
     // A shared motion shows its source's embedded frames, backwards: its
-    // frame r is the source's planned frame K − 1 − r.
+    // frame r is the source's planned frame K − 1 − r — or the frame that one
+    // shows, when it was a repeat.
     const byId = new Map(own.map((entry) => [entry.planned.id, entry]));
     for (const entry of own) {
       if (!entry.planned.shares) continue;
       const from = byId.get(entry.planned.shares);
       const count = entry.planned.frames;
       entry.shown = Array.from({ length: count }, (_, r) => from.shown[count - 1 - r]);
-      entry.frames = Array.from({ length: count }, (_, r) => ({ shared: { motion: from.planned.id, index: count - 1 - r } }));
+      entry.frames = Array.from({ length: count }, (_, r) => from.frames[count - 1 - r].shared ?? { motion: from.planned.id, index: count - 1 - r });
+      entry.frames = entry.frames.map((target) => ({ shared: target }));
       entry.loopPoint = from.loopPoint;
     }
+    plan = planWith((source) => measured.get(source.motion.id)?.record ?? null);
+    // One authority: the plan made from these measurements is what was embedded.
+    if (plan.decodeBytes !== embeddedBytes) {
+      fail(`${label}: the plan counts ${plan.decodeBytes} bytes decoded, the frames embedded ${embeddedBytes} — a bug in the trim accounting`);
+    }
+    if (plan.decodeBytes > RIVE_DECODE_WARN_BYTES) warnings.push(riveDecodeWarning(plan.decodeBytes));
 
     // One artboard every frame fits on with its pivot at the same point: as
     // far left of that point as any frame reaches, as far right, and so on.
@@ -5182,7 +5293,9 @@ function stepRive(characterDir, { images: askedImages = null, motions: named, in
 
     const notes = [
       "The frames are raster images, not vector shapes: the .riv plays in every Rive runtime, but it is a runtime file and cannot be reopened in the Rive editor.",
+      `Each frame is embedded trimmed to its visible pixels (and a one-pixel transparent ring) and drawn exactly where it was, so nothing on screen changes: about ${riveMB(plan.decodeBytes)} MB decoded where the full frames would take ${riveMB(plan.untrimmedDecodeBytes)} MB${dedupedFrames ? `; ${dedupedFrames} frame${dedupedFrames === 1 ? " is" : "s are"} the same picture in the same place as one already in the file and show${dedupedFrames === 1 ? "s" : ""} it instead` : ""}.`,
     ];
+
     for (const { planned } of own) {
       const { source } = planned;
       if (planned.shares) {
@@ -5251,14 +5364,26 @@ function stepRive(characterDir, { images: askedImages = null, motions: named, in
           y: round(shown[0].pivot.y, 2),
           from: source.kind !== "sprite" ? loopPoint.from : "atlas",
         },
-        estimatedDecodeBytes: planned.decodeBytes,
+        estimatedDecodeBytes: plan.motions[i].decodeBytes,
+        untrimmedDecodeBytes: plan.motions[i].untrimmedDecodeBytes,
+        ...(measured.has(planned.id)
+          ? {
+            trim: measured.get(planned.id).record,
+            deduped: measured.get(planned.id).deduped,
+            emptyFrames: measured.get(planned.id).empty,
+          }
+          : {}),
       })),
       // What the file was made FROM: every registered frame of every motion in
       // it. Registration checks these against project.json and hangs the
       // .riv off them; `frameCount` is what the file embeds.
       frames: sources.flatMap((source) => source.frames.paths),
-      frameCount: plan.motions.reduce((sum, m) => sum + (m.shares ? 0 : m.frames), 0),
+      frameCount: own.reduce((sum, entry) => sum + entry.frames.filter((frame) => !frame.shared).length, 0),
       estimatedDecodeBytes: plan.decodeBytes,
+      untrimmedDecodeBytes: plan.untrimmedDecodeBytes,
+      dedupedFrames,
+      emptyFrames,
+      inexactPlacements: written.inexactPlacements,
       stateMachine: { ...machine, cuts },
       excluded,
       notes,

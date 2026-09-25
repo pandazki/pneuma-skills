@@ -1046,11 +1046,16 @@ them.
   the clip (`clip.from: "measured"`). When it cannot, a warning names the
   loop and it is drawn as cut and stood on its feet — tell the user that
   loop may not match in size, and that re-cutting it with `loop` fixes it.
-- **Memory**: `estimatedDecodeBytes` in the report — frames × width × height
-  × 4 after resampling, per motion and in total — is what the file costs once
-  opened. Past 128 MB the report warns; past 768 MB `rive` refuses and writes
+- **Memory**: `estimatedDecodeBytes` in the report is what the file costs
+  once opened, per motion and in total: every frame trimmed to its visible
+  pixels (drawn exactly where it was — nothing on screen changes) and a frame
+  that repeats one already in the file counted once (`dedupedFrames`).
+  `untrimmedDecodeBytes` is frames × width × height × 4, the most they can
+  cost. Past 128 MB the report warns; past 768 MB (the untrimmed figure, or
+  the trimmed one an earlier export registered) `rive` refuses and writes
   nothing. Say the number; when it is large, offer a lower `--fps`, a smaller
-  `--max-size`, or fewer motions.
+  `--max-size`, or fewer motions — the only ways down that change what is
+  drawn, so they are the user's call.
 - **Wiring**: the state machine is `State Machine 1`. A number input,
   **`motion`**, names the loop the character should be in — each loop's
   value is in `stateMachine.inputs` — and each one-shot keeps a trigger,

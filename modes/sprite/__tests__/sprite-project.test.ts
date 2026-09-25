@@ -985,6 +985,16 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       // A fresh measurement is not the one that was accepted.
       expect(readProject(dir).sprite.motions[0].inspect.acknowledged).toBeUndefined();
     });
+
+    test("a new run drops what the last .riv export measured its frames at", () => {
+      const { dir } = seedMini();
+      const doc = readProject(dir);
+      doc.sprite.motions[0].riveTrim = { width: 64, height: 64, fps: 8, frames: 4, filter: "smooth", decodeBytes: 16384 };
+      writeFileSync(join(dir, "project.json"), JSON.stringify(doc, null, 2));
+      projectJson(dir, "register-run", "--motion", "bounce", "--run", join(FIXTURES, "bounce-run.json"), "--at", String(T2));
+      // Other frames: the measurement was of the ones this run replaced.
+      expect(readProject(dir).sprite.motions[0].riveTrim).toBeUndefined();
+    });
   });
 
   describe("show", () => {
@@ -2011,12 +2021,18 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
         type: "image",
         uri: `exports/${basename(dir)}.riv`,
         metadata: {
-          container: "riv", frames: 4, motionCount: 1, transitionCount: 0, images: report.images,
+          // What the file embeds and decodes: its frames trimmed, a repeat once.
+          container: "riv", frames: report.frameCount, motionCount: 1, transitionCount: 0, images: report.images,
           width: report.artboard.width, height: report.artboard.height,
-          estimatedDecodeBytes: 4 * 64 * 64 * 4,
+          estimatedDecodeBytes: report.estimatedDecodeBytes,
           size: readFileSync(report.out).byteLength,
         },
       });
+      expect(report.frameCount + report.dedupedFrames).toBe(4);
+      expect(report.estimatedDecodeBytes).toBeLessThanOrEqual(4 * 64 * 64 * 4);
+      // What the frames cost trimmed goes onto the motion, for the Export
+      // tab's next quote; a new run of the motion drops it.
+      expect(motionOf(dir, "bounce").riveTrim).toEqual(report.motions[0].trim);
       const edge = edgeTo(dir, id);
       expect(edge.fromAssetId).toBe("bounce-frame-00");
       expect(edge.operation.params).toEqual({
@@ -2057,8 +2073,10 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       expect(r.code).toBe(0);
       const id = `${basename(dir)}-export-riv`;
       // `frames` is what the file embeds — 6 of flame's 12 and 3 of bounce's
-      // 4 at 6 fps — and the edge hangs off every frame it was made FROM.
-      expect(asset(dir, id).metadata).toMatchObject({ frames: 6 + 3, motionCount: 2 });
+      // 4 at 6 fps, a repeated picture once — and the edge hangs off every
+      // frame it was made FROM.
+      expect(report.frameCount + report.dedupedFrames).toBe(6 + 3);
+      expect(asset(dir, id).metadata).toMatchObject({ frames: report.frameCount, motionCount: 2 });
       const flameFrames = motionOf(dir, "flame").frames;
       const edge = edgeTo(dir, id);
       expect(edge.fromAssetId).toBe(flameFrames[0]);

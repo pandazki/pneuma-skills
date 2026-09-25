@@ -1027,11 +1027,35 @@ the zero-dependency writer in `scripts/rive.mjs`, planned by
   footing: tanka's standing loops land within 9–10 px of each other at
   320 px, exactly where their clips put them (within 1.4 px). The artboard
   is the union of every frame around the point.
-- **Memory:** `estimatedDecodeBytes` is counted AFTER resampling and scaling,
-  per motion and in total (1 MB = 1024 × 1024 bytes). Over **128 MB** the
-  report warns; over **768 MB** `rive` refuses before a frame is scaled or a
-  byte written (only a legacy loop's clip-scale samples are decoded first), with
-  each motion's share and the three ways down: a lower `--fps`, a smaller
+- **Trimmed, deduplicated, nothing drawn differently.** Each frame embeds
+  only its pixels with alpha above 0 plus a one-pixel ring of its own
+  transparent pixels (the reach of bilinear filtering), clamped to the frame;
+  a frame with nothing visible embeds one transparent pixel, shared by all
+  such frames. A trimmed frame is drawn with origin 0 at the float32 spot its
+  pixels had in the full frame — the untrimmed corner computed the way the
+  runtime computes it, plus the whole pixels cut away — so every rendered
+  pixel is the same (proved in `@rive-app/canvas` at 1:1 and scaled:
+  `rive-runtime.live.test.ts`). A frame that is the same picture in the same
+  place as one already embedded (every RGBA byte of the crop, the crop's
+  offset, the pivot, the frame size) shows that one — the reverse
+  transition's sharing, found in the pixels. PNG and `webp-lossless` frames
+  are bit-identical to the untrimmed file's; a lossy `webp` crop is its own
+  q85 encoding of the same pixels, so its colour noise is not the untrimmed
+  encoding's (alpha stays exact).
+- **Memory:** `estimatedDecodeBytes` is what the file decodes: the trimmed
+  images, each once, per motion and in total (1 MB = 1024 × 1024 bytes);
+  `untrimmedDecodeBytes` is frames × width × height × 4 after resampling and
+  scaling, the most they can cost. `dedupedFrames` counts frames shown from
+  an image already in the file, `emptyFrames` frames with nothing visible,
+  `inexactPlacements` trimmed frames placed at the float32 nearest their spot
+  rather than on it (0 expected). Each motion carries `trim: { width, height,
+  fps, frames, filter, decodeBytes, shared? }` — what `register-export` keeps
+  as `motion.riveTrim` so the Export tab quotes the same number
+  (`riveTrimRecord`). Over **128 MB** (trimmed) the report warns; over
+  **768 MB** `rive` refuses before a frame is scaled or a byte written (only
+  a legacy loop's clip-scale samples are decoded first) — on the untrimmed
+  figure, or the trimmed one an earlier export registered — with each
+  motion's share and the three ways down: a lower `--fps`, a smaller
   `--max-size`, fewer `--motions`.
 - **Structure:** one artboard; one Solo holding every frame as an Image; one
   timeline per motion keying which frame the Solo shows (hold interpolation),
@@ -1078,7 +1102,7 @@ the zero-dependency writer in `scripts/rive.mjs`, planned by
   art) — how each frame is embedded. WebP is
   lossy at quality 85 (`libwebp`, `yuva420p`) and several times smaller: on
   tanka-connect (10 loops, 10 transitions, 320 px) 13.0 MB against PNG's
-  81.1 MB, with the same 324.9 MB decoded — the memory is the pixels, not the
+  81.1 MB, with the same 324.9 MB decoded (untrimmed) — the memory is the pixels, not the
   bytes. Every Rive runtime decodes it: rive-runtime, the C++ core the native
   runtimes share, builds its own WebP decoder in (`decoders/src/decode_webp.cpp`,
   libwebp from `dependencies/premake5_libwebp_v2.lua`), and Rive's own
@@ -1099,22 +1123,25 @@ the zero-dependency writer in `scripts/rive.mjs`, planned by
   at 24 fps, 251×320 in the .riv`).
 
 **`--json`** (consumed by `register-export`) — tanka, `--include-loops` at the
-defaults (2026-09-24): ten loops cut before `loop` recorded its crop, five
-entries from idle and their five reverses (3 of 20 motions shown):
+defaults (2026-09-25): ten loops cut before `loop` recorded its crop, five
+entries from idle and their five reverses (3 of 20 motions shown). Trimmed,
+it decodes 296 MB where the full frames would take 325 MB; no frame repeats
+another exactly, so nothing is deduplicated:
 
 ```json
 { "kind": "rive", "character": "<abs>", "name": "Tanka",
-  "out": "<abs>/exports/tanka.riv", "size": 13627331, "images": "webp",
+  "out": "<abs>/exports/tanka.riv", "size": 13679841, "images": "webp",
   "artboard": {"name": "Tanka", "width": 315, "height": 341, "anchor": {"x": 168, "y": 313}},
   "resample": { "loop": { "fps": 24, "maxSize": 320 }, "sprite": { "fps": null, "maxSize": null },
                 "filter": "smooth", "filterFrom": "style" },
   "motions": [
-    {"id": "idle", "kind": "loop", "loop": true, "frames": 98, "fps": 24, "width": 230, "height": 293, "scale": 0.4496, "clip": {"scale": 1.1816, "origin": {"x": 97.46, "y": 46.07}, "from": "measured"}, "seconds": 4.083, "anchor": {"x": 115.62, "y": 288.06, "from": "clip"}, "estimatedDecodeBytes": 26416880},
-    {"id": "idle-to-coffee", "kind": "transition", "loop": false, "from": "idle", "to": "coffee", "frames": 29, "fps": 24, "width": 236, "height": 311, "scale": 0.5313, "clip": {"scale": 1, "origin": {"x": 87, "y": 54}, "from": "recorded"}, "seconds": 1.208, "anchor": {"x": 121.34, "y": 283.7, "from": "clip"}, "estimatedDecodeBytes": 8513936},
-    {"id": "coffee-to-idle", "kind": "transition", "loop": false, "from": "coffee", "to": "idle", "shares": "idle-to-coffee", "frames": 29, "fps": 24, "width": 236, "height": 311, "scale": 0.5313, "clip": {"scale": 1, "origin": {"x": 87, "y": 54}, "from": "recorded"}, "seconds": 1.208, "anchor": {"x": 121.34, "y": 283.7, "from": "clip"}, "estimatedDecodeBytes": 0},
+    {"id": "idle", "kind": "loop", "loop": true, "frames": 98, "fps": 24, "width": 230, "height": 293, "scale": 0.4496, "clip": {"scale": 1.1816, "origin": {"x": 97.46, "y": 46.07}, "from": "measured"}, "seconds": 4.083, "anchor": {"x": 115.62, "y": 288.06, "from": "clip"}, "estimatedDecodeBytes": 24858488, "untrimmedDecodeBytes": 26416880, "trim": {"width": 230, "height": 293, "fps": 24, "frames": 98, "filter": "smooth", "decodeBytes": 24858488}, "deduped": 0, "emptyFrames": 0},
+    {"id": "idle-to-coffee", "kind": "transition", "loop": false, "from": "idle", "to": "coffee", "frames": 29, "fps": 24, "width": 236, "height": 311, "scale": 0.5313, "clip": {"scale": 1, "origin": {"x": 87, "y": 54}, "from": "recorded"}, "seconds": 1.208, "anchor": {"x": 121.34, "y": 283.7, "from": "clip"}, "estimatedDecodeBytes": 7783516, "untrimmedDecodeBytes": 8513936, "trim": {"width": 236, "height": 311, "fps": 24, "frames": 29, "filter": "smooth", "decodeBytes": 7783516}, "deduped": 0, "emptyFrames": 0},
+    {"id": "coffee-to-idle", "kind": "transition", "loop": false, "from": "coffee", "to": "idle", "shares": "idle-to-coffee", "frames": 29, "fps": 24, "width": 236, "height": 311, "scale": 0.5313, "clip": {"scale": 1, "origin": {"x": 87, "y": 54}, "from": "recorded"}, "seconds": 1.208, "anchor": {"x": 121.34, "y": 283.7, "from": "clip"}, "estimatedDecodeBytes": 0, "untrimmedDecodeBytes": 0},
     "… 20 in all" ],
   "frames": ["<abs>/motions/wave/frames/000.png", "… every registered frame of all 20"], "frameCount": 1235,
-  "estimatedDecodeBytes": 340723148,
+  "estimatedDecodeBytes": 310235748, "untrimmedDecodeBytes": 340723148,
+  "dedupedFrames": 0, "emptyFrames": 0, "inexactPlacements": 0,
   "stateMachine": { "name": "State Machine 1", "hub": "idle", "defaultMotion": "idle",
     "inputs": [ { "name": "motion", "type": "number", "default": 8,
                   "values": [ { "value": 0, "motion": "wave" }, "…", { "value": 3, "motion": "coffee" }, "…", { "value": 8, "motion": "idle" }, { "value": 9, "motion": "dance" } ] } ],
@@ -1124,12 +1151,13 @@ entries from idle and their five reverses (3 of 20 motions shown):
     "cuts": [ {"from": "coffee-to-idle", "to": "wave", "poseGap": {"iou": 0.8313, "gap": 0.1687, "rgb": 0.1599, "chroma": 0.0497}}, "… 60 in all" ],
     "waits": [ { "motion": "idle", "seconds": 4.083 }, { "motion": "coffee", "seconds": 5.042 }, "…" ] },
   "excluded": [],
-  "notes": ["The frames are raster images, not vector shapes: …", "…",
+  "notes": ["The frames are raster images, not vector shapes: …",
+            "Each frame is embedded trimmed to its visible pixels (and a one-pixel transparent ring) and drawn exactly where it was, so nothing on screen changes: about 296 MB decoded where the full frames would take 325 MB.", "…",
             "coffee-to-idle: idle-to-coffee's 29 images played backwards — nothing more embedded", "…",
             "Leaving a loop waits for the end of its cycle: set 'motion' and the loop plays out the cycle it is in before anything moves — up to 5.083s from reading (every loop's wait is in stateMachine.waits). Routes go through idle unless a transition joins two loops directly.",
             "60 direct cuts where no transition joins the poses, the largest poseGap 0.2843 (walk → dance) — each is in stateMachine.cuts; a transition clip between those loops removes it.",
             "The frames are embedded as WebP, lossy at quality 85 — several times smaller than PNG, and decoded by every Rive runtime (the native ones share rive-runtime's own WebP decoder); --images png embeds them lossless."],
-  "warnings": ["the runtime decodes every frame when the file loads: about 325 MB of memory before anything plays (over 128 MB) — lower --fps or --max-size, or pass fewer motions with --motions"] }
+  "warnings": ["the runtime decodes every frame when the file loads: about 296 MB of memory before anything plays (over 128 MB) — lower --fps or --max-size, or pass fewer motions with --motions"] }
 ```
 
 `frames` is what the file was made FROM — every registered frame of every

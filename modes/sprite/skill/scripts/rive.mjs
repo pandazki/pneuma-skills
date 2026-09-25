@@ -381,6 +381,64 @@ class RivWriter {
 const pad2 = (i) => String(i).padStart(2, "0");
 
 /**
+ * The part of a frame a `.riv` needs to embed: every pixel with alpha above 0,
+ * plus a one-pixel ring of the frame's own transparent pixels around them,
+ * clamped to the frame. Null for a frame with nothing visible.
+ *
+ * The ring is what keeps the drawing identical. A frame placed at a fraction
+ * of a pixel is drawn with bilinear filtering, whose reach is one texel: the
+ * edge of the silhouette is blended with the transparent texel beside it. Cut
+ * exactly at the silhouette, that blend would come from the renderer's edge
+ * handling instead of from the image — a different computation. With the ring
+ * every sample the filter takes is a texel the untrimmed frame has too, and
+ * past the ring the untrimmed frame is transparent all the way out.
+ *
+ * `rgba`: width × height × 4 bytes, straight alpha.
+ */
+export function riveTrimRect(rgba, width, height) {
+  let x0 = width, y0 = height, x1 = -1, y1 = -1;
+  for (let y = 0; y < height; y++) {
+    const row = y * width * 4;
+    for (let x = 0; x < width; x++) {
+      if (rgba[row + x * 4 + 3] === 0) continue;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+  }
+  if (x1 < 0) return null;
+  const left = Math.max(0, x0 - 1);
+  const top = Math.max(0, y0 - 1);
+  const right = Math.min(width, x1 + 2);
+  const bottom = Math.min(height, y1 + 2);
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+/**
+ * Where a trimmed frame is drawn along one axis, so it lands where its
+ * pixels were in the full frame.
+ *
+ * The runtime draws an Image at its position minus `size × origin`, in
+ * float32 (`Image::draw`: `transform(worldTransform())`, then
+ * `translate(-width * originX(), -height * originY())`). A full frame sits at
+ * `anchor` with its pivot as the origin fraction, so its top-left edge lands
+ * at T = f32(anchor − f32(W · f32(pivot / W))) — computed here the same way.
+ * The crop starts `offset` whole pixels further in: it is drawn with origin 0
+ * at position f32(T + offset), the float32 nearest to that spot, and `exact`
+ * says it IS that spot — true whenever T + offset is a float32, which it is
+ * unless the sum crosses into a coarser power of two.
+ */
+export function riveTrimmedPosition(anchor, pivot, fullSize, offset) {
+  const f32 = Math.fround;
+  const full = f32(pivot / fullSize);
+  const edge = f32(f32(anchor) - f32(fullSize * full));
+  const target = edge + offset;
+  const position = f32(target);
+  return { position, exact: position === target };
+}
+
+/**
  * Write one character as a `.riv`.
  *
  * `spec`:
@@ -396,6 +454,12 @@ const pad2 = (i) => String(i).padStart(2, "0");
  *             transition is its source's images backwards and embeds none.
  *             `kind: "transition"` with `from`/`to` makes a clip the machine
  *             routes through (`riveStateMachine`).
+ *             A trimmed frame adds `trim: { x, y, width, height }` — where its
+ *             pixels sat in the full frame and the full frame's size — and
+ *             keeps `pivot` in FULL-frame pixels: it is drawn on the spot
+ *             the full frame's pixels were (`riveTrimmedPosition`). The same
+ *             `shared` reference deduplicates frames: any frame may show an
+ *             earlier embedded one, of its own motion or another.
  *
  * Returns the bytes plus what a developer needs to drive them: each motion's
  * timeline, and the state machine's name, hub, inputs, every loop-to-loop
@@ -464,16 +528,30 @@ export function writeRiv(spec) {
   const SOLO = 1;
   const FIRST_IMAGE = 2;
   w.object("Solo", { componentName: "frames", parentId: 0, activeComponentId: FIRST_IMAGE });
+  let inexactPlacements = 0;
   placed.forEach((entry, i) => {
     entry.component = FIRST_IMAGE + i;
+    const { frame } = entry;
+    const trim = frame.trim;
+    const cropped = trim && (trim.x !== 0 || trim.y !== 0 || trim.width !== frame.width || trim.height !== frame.height);
+    let placement;
+    if (cropped) {
+      // Origin 0, positioned where the crop's pixels were (see `riveTrimmedPosition`).
+      const x = riveTrimmedPosition(anchor.x, frame.pivot.x, trim.width, trim.x);
+      const y = riveTrimmedPosition(anchor.y, frame.pivot.y, trim.height, trim.y);
+      if (!x.exact || !y.exact) inexactPlacements += 1;
+      placement = { x: x.position, y: y.position, originX: 0, originY: 0 };
+    } else {
+      placement = { x: anchor.x, y: anchor.y, originX: frame.pivot.x / frame.width, originY: frame.pivot.y / frame.height };
+    }
     w.object("Image", {
       componentName: `${entry.motion.id}_${pad2(entry.index)}`,
       parentId: SOLO,
-      x: anchor.x,
-      y: anchor.y,
+      x: placement.x,
+      y: placement.y,
       imageAssetId: entry.assetIndex,
-      originX: entry.frame.pivot.x / entry.frame.width,
-      originY: entry.frame.pivot.y / entry.frame.height,
+      originX: placement.originX,
+      originY: placement.originY,
     });
   });
 
@@ -545,6 +623,9 @@ export function writeRiv(spec) {
   const ms = (n) => Math.round(n * 1000) / 1000;
   return {
     bytes: w.bytes(),
+    // Trimmed frames whose position is the float32 nearest to where their
+    // pixels were rather than that spot itself (`riveTrimmedPosition`).
+    inexactPlacements,
     animations,
     stateMachine: {
       name: RIVE_STATE_MACHINE,

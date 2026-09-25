@@ -29,6 +29,8 @@ import {
   riveHub,
   riveStateMachine,
   riveTimeline,
+  riveTrimmedPosition,
+  riveTrimRect,
   riveTriggerName,
   writeRiv,
 } from "../skill/scripts/rive.mjs";
@@ -38,6 +40,7 @@ import {
   RIVE_LOOP_FPS,
   RIVE_LOOP_MAX_SIZE,
   riveDecodeWarning,
+  riveDefaultFilter,
   riveDefaultImages,
   rivePlan,
   riveSampleFrames,
@@ -360,6 +363,65 @@ describe("rive.mjs", () => {
  * a loop's cycle end or a transition's last frame. Where no clip exists it
  * cuts, and every cut is named so the report can measure it.
  */
+describe("trimming a frame without changing the drawing", () => {
+  /** A width × height RGBA frame, transparent but for `set` (x, y, alpha). */
+  const frame = (width: number, height: number, set: Array<[number, number, number]>) => {
+    const rgba = new Uint8Array(width * height * 4);
+    for (const [x, y, a] of set) rgba.set([200, 100, 50, a], (y * width + x) * 4);
+    return rgba;
+  };
+
+  test("the crop is every pixel with alpha above 0, and a one-pixel ring of transparent ones", () => {
+    // Alpha 1 counts: no threshold, so no faint edge pixel is ever lost.
+    expect(riveTrimRect(frame(10, 8, [[3, 2, 255], [6, 5, 1]]), 10, 8)).toEqual({ x: 2, y: 1, width: 6, height: 6 });
+  });
+
+  test("at the frame's edge the ring is clamped: the crop never reaches past the frame", () => {
+    expect(riveTrimRect(frame(10, 8, [[0, 0, 9], [9, 7, 9]]), 10, 8)).toEqual({ x: 0, y: 0, width: 10, height: 8 });
+    expect(riveTrimRect(frame(10, 8, [[9, 3, 9]]), 10, 8)).toEqual({ x: 8, y: 2, width: 2, height: 3 });
+  });
+
+  test("a frame with nothing visible has nothing to crop", () => {
+    expect(riveTrimRect(frame(10, 8, []), 10, 8)).toBeNull();
+  });
+
+  test("a crop is drawn where its pixels were: the untrimmed corner plus whole pixels, in float32", () => {
+    const f = Math.fround;
+    for (const [anchor, pivot, size, offset] of [[168, 115.62, 230, 17], [37, 12.3456, 64, 3], [313, 288.06, 293, 40], [20, 7, 32, 0]]) {
+      const edge = f(f(anchor) - f(size * f(pivot / size)));
+      const placed = riveTrimmedPosition(anchor, pivot, size, offset);
+      expect(placed.position - edge).toBe(offset);
+      expect(placed.exact).toBe(true);
+    }
+    // Where the sum crosses into a coarser power of two it may not be a
+    // float32: then the nearest one, off by a float32 rounding.
+    const coarse = riveTrimmedPosition(0, -1.0000001, 1, 1);
+    expect(Math.abs(coarse.position - (Math.fround(0 - Math.fround(1 * Math.fround(-1.0000001))) + 1))).toBeLessThan(1e-6);
+  });
+
+  test("the writer draws a trimmed frame with origin 0 at that spot, and an untrimmed one as before", () => {
+    const bytes = Buffer.from("x");
+    const { bytes: riv, inexactPlacements } = writeRiv({
+      artboard: { name: "T", width: 64, height: 64 },
+      anchor: { x: 32, y: 60 },
+      motions: [{
+        id: "m", fps: 8, loop: true,
+        frames: [
+          { bytes, width: 10, height: 20, pivot: { x: 16, y: 58 }, trim: { x: 11, y: 30, width: 32, height: 60 } },
+          { bytes, width: 32, height: 60, pivot: { x: 16, y: 58 } },
+          { shared: { motion: "m", index: 0 } },
+        ],
+      }],
+    });
+    expect(inexactPlacements).toBe(0);
+    const images = decodeRiv(riv).objects.filter((o) => o.type === "Image").map((o) => o.props);
+    expect(images).toHaveLength(2);
+    expect(images[0]).toMatchObject({ x: 32 - 16 + 11, y: 60 - 58 + 30, originX: 0, originY: 0 });
+    expect(images[1]).toMatchObject({ x: 32, y: 60 });
+    expect(images[1].originX as number).toBeCloseTo(0.5, 6);
+  });
+});
+
 describe("the routed state machine", () => {
   const loop = (id: string) => ({ id, loop: true });
   const x = (from: string, to: string, extra: Record<string, unknown> = {}) =>
@@ -611,6 +673,45 @@ describe("zip.mjs", () => {
  * viewer quotes it before anyone presses Generate.
  */
 describe("rive-plan.mjs", () => {
+  describe("a trimmed measurement", () => {
+    const loop = { id: "idle", kind: "loop" as const, loop: true, fps: 24, frames: 10, width: 100, height: 200 };
+    const full = 10 * 100 * 200 * 4;
+    const record = { width: 100, height: 200, fps: 24, frames: 10, filter: "smooth" as const, decodeBytes: 300_000 };
+
+    test("quotes what an export measured while it still describes these frames", () => {
+      const plan = rivePlan([{ ...loop, trim: record }], { filter: "smooth" });
+      expect(plan.motions[0]).toMatchObject({ trimmed: true, decodeBytes: 300_000, untrimmedDecodeBytes: full });
+      expect(plan).toMatchObject({ decodeBytes: 300_000, untrimmedDecodeBytes: full });
+    });
+
+    test("and the frames at full size otherwise: no record, other settings, another filter", () => {
+      for (const [trim, options] of [
+        [undefined, { filter: "smooth" }],
+        [record, { filter: "smooth", maxSize: 100 }],
+        [record, { filter: "smooth", fps: 12 }],
+        [record, { filter: "nearest" }],
+        [{ ...record, decodeBytes: full + 4 }, { filter: "smooth" }],
+      ] as const) {
+        const plan = rivePlan([{ ...loop, ...(trim ? { trim } : {}) }], options);
+        expect(plan.motions[0].trimmed).toBe(false);
+        expect(plan.decodeBytes).toBe(plan.untrimmedDecodeBytes);
+      }
+    });
+
+    test("frames shown from an earlier motion's images are free only while that motion is measured and in", () => {
+      const wave = { ...loop, id: "wave" };
+      const shared = { ...record, shared: { bytes: 100_000, with: ["idle"] } };
+      expect(rivePlan([{ ...loop, trim: record }, { ...wave, trim: shared }], { filter: "smooth" }).decodeBytes).toBe(300_000 + 200_000);
+      expect(rivePlan([{ ...loop }, { ...wave, trim: shared }], { filter: "smooth" }).decodeBytes).toBe(full + 300_000);
+      expect(rivePlan([{ ...wave, trim: shared }], { filter: "smooth" }).decodeBytes).toBe(300_000);
+    });
+
+    test("the style is read once for the filter and the images", () => {
+      expect(riveDefaultFilter("16-bit pixel art")).toBe("nearest");
+      expect(riveDefaultFilter("soft plush 3D")).toBe("smooth");
+    });
+  });
+
   test("pixel art is embedded lossless by default; everything else as lossy WebP", () => {
     for (const style of ["16-bit pixel art, crisp outline", "Pixel-style sprites", "8-bit retro", "像素风小人"]) {
       expect(riveDefaultImages(style)).toBe("webp-lossless");

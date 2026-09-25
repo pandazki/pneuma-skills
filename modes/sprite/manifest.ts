@@ -17,8 +17,11 @@ import { loadRoster, saveRoster } from "./domain.js";
 
 const spriteManifest: ModeManifest = {
   name: "sprite",
-  version: "0.4.0",
+  version: "0.4.1",
   changelog: {
+    "0.4.1": [
+      "A Rive file now embeds each frame cut to its visible pixels and drawn exactly where it was, and a frame that repeats one already in the file only once, so it takes less memory to open with nothing on screen changed: tanka's ten loops and four transitions went from 316 MB to 288 MB",
+    ],
     "0.4.0": [
       "An Export tab on every ready motion: MP4, MOV and WebM video, APNG, Lottie and a PNG sequence, next to the formats every run already makes",
       "Export a whole character as one Rive file, previewed in the tab with the official Rive runtime and a button per motion",

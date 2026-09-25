@@ -49,6 +49,41 @@ export function riveDefaultImages(style) {
   return RIVE_PIXEL_ART_STYLE.test(String(style ?? "")) ? "webp-lossless" : RIVE_DEFAULT_IMAGES;
 }
 
+/** How a `.riv` scales a character's frames unless `--filter` says otherwise:
+ *  nearest-neighbour for pixel art (the reading above), smooth for the rest. */
+export function riveDefaultFilter(style) {
+  return RIVE_PIXEL_ART_STYLE.test(String(style ?? "")) ? "nearest" : "smooth";
+}
+
+/**
+ * What an export measured a motion's frames at once trimmed and deduplicated
+ * (`rive` reports it; `register-export` keeps it as `motion.riveTrim`), when it
+ * still describes the frames this plan would make: the same frame size, rate,
+ * count and scaling filter. Anything else — an old sidecar, other settings, a
+ * re-cut motion (a run drops the record) — is null, and the motion is quoted
+ * untrimmed, which is the most it can cost.
+ *
+ * `decodeBytes` counts the motion's embedded frames after trimming, a frame
+ * repeated within the motion once. `shared` is what the motion saved by
+ * showing frames an EARLIER motion of the file embeds: `bytes`, and the
+ * motions `with` it shared them. That saving holds only while every one of
+ * those motions is in the plan with a record of its own.
+ */
+export function riveTrimRecord(record, planned) {
+  if (!record || typeof record !== "object") return null;
+  const n = (v) => (typeof v === "number" && Number.isFinite(v) ? v : NaN);
+  if (n(record.width) !== planned.width || n(record.height) !== planned.height) return null;
+  if (n(record.fps) !== planned.fps || n(record.frames) !== planned.frames) return null;
+  if (record.filter !== planned.filter) return null;
+  const decodeBytes = n(record.decodeBytes);
+  if (!(decodeBytes >= 0) || decodeBytes > planned.frames * planned.width * planned.height * 4) return null;
+  const sharedBytes = n(record.shared?.bytes);
+  const shared = sharedBytes > 0 && Array.isArray(record.shared.with) && record.shared.with.every((id) => typeof id === "string")
+    ? { bytes: Math.min(sharedBytes, decodeBytes), with: record.shared.with }
+    : null;
+  return { decodeBytes, shared };
+}
+
 /** A loop's longest edge in a `.riv` unless `--max-size` says otherwise. */
 export const RIVE_LOOP_MAX_SIZE = 320;
 
@@ -131,12 +166,15 @@ export function riveScaleFactor(sizes, maxSize) {
  * The plan for a set of motions.
  *
  * `motions`: `[{ id, kind: "sprite" | "loop" | "transition", loop, fps, frames,
- * width, height, clipScale?, reverseOf? }]` — the frame count, rate and frame
+ * width, height, clipScale?, reverseOf?, trim? }]` — the frame count, rate and frame
  * size as registered; for a loop or a transition whose scale against its clip
  * is known, that scale (see `riveScaleFactor`); for a transition that plays
  * another backwards, the one it plays.
+ * `trim` is what an earlier export measured (see `riveTrimRecord`).
  * `options.fps` / `options.maxSize`: the caller's `--fps` / `--max-size`, or
- * null. Loops and transitions fall back to 24 fps and 320 px; a sprite
+ * null. `options.filter`: the scaling filter the frames would be made with
+ * (`riveDefaultFilter` of the style unless `--filter` names one) — a trim
+ * record is only good for the filter it was measured with. Loops and transitions fall back to 24 fps and 320 px; a sprite
  * motion keeps its own rate and size unless the caller named one.
  *
  * Two groups each shrink by ONE factor of their own, so the character stays
@@ -153,7 +191,7 @@ export function riveScaleFactor(sizes, maxSize) {
  * the source, and it adds nothing to `decodeBytes`: every runtime decodes an
  * embedded image once, however many timelines show it.
  */
-export function rivePlan(motions, { fps = null, maxSize = null } = {}) {
+export function rivePlan(motions, { fps = null, maxSize = null, filter = null } = {}) {
   const settings = {
     loop: { fps: fps ?? RIVE_LOOP_FPS, maxSize: maxSize ?? RIVE_LOOP_MAX_SIZE },
     sprite: { fps, maxSize },
@@ -174,6 +212,8 @@ export function rivePlan(motions, { fps = null, maxSize = null } = {}) {
     const scale = factor[group] / (clipScale ?? 1);
     const width = Math.max(1, Math.round(motion.width * scale));
     const height = Math.max(1, Math.round(motion.height * scale));
+    const untrimmed = sampled.indices.length * width * height * 4;
+    const trim = riveTrimRecord(motion.trim, { width, height, fps: sampled.fps, frames: sampled.indices.length, filter });
     return {
       id: motion.id,
       kind: kindOf(motion),
@@ -186,7 +226,12 @@ export function rivePlan(motions, { fps = null, maxSize = null } = {}) {
       height,
       scale,
       clipScale,
-      decodeBytes: sampled.indices.length * width * height * 4,
+      // Trimmed when an export measured these very frames; the frames as
+      // they are, which is the most they can cost, until one has.
+      trimmed: !!trim,
+      decodeBytes: trim ? trim.decodeBytes : untrimmed,
+      untrimmedDecodeBytes: untrimmed,
+      ...(trim?.shared ? { sharedWith: trim.shared } : {}),
     };
   };
   const byId = new Map(motions.map((m) => [m.id, m]));
@@ -208,12 +253,24 @@ export function rivePlan(motions, { fps = null, maxSize = null } = {}) {
       indices: shared.indices.map((i) => motion.frames - 1 - i).reverse(),
       clipScale: motion.clipScale > 0 ? motion.clipScale : shared.clipScale,
       decodeBytes: 0,
+      untrimmedDecodeBytes: 0,
+      sharedWith: undefined,
     };
   });
+  // Frames shown from an earlier motion's images cost nothing more — while
+  // each motion they came from is in this plan, measured, and earlier.
+  const trimmedBefore = new Set();
+  for (const m of planned) {
+    const credit = m.sharedWith;
+    delete m.sharedWith;
+    if (credit && credit.with.every((id) => trimmedBefore.has(id))) m.decodeBytes -= credit.bytes;
+    if (m.trimmed) trimmedBefore.add(m.id);
+  }
   return {
     settings,
     motions: planned,
     decodeBytes: planned.reduce((sum, m) => sum + m.decodeBytes, 0),
+    untrimmedDecodeBytes: planned.reduce((sum, m) => sum + m.untrimmedDecodeBytes, 0),
   };
 }
 

@@ -342,10 +342,12 @@ describe("the definition and the manifest agree", () => {
   });
 
   test("0.4.0 is the export release, and says so in the user's words", () => {
-    expect(spriteManifest.version).toBe("0.4.0");
+    expect(spriteManifest.version).toBe("0.4.1");
     const notes = spriteManifest.changelog?.["0.4.0"] ?? [];
     expect(notes.length).toBeGreaterThan(0);
-    for (const note of notes) {
+    const trim = spriteManifest.changelog?.["0.4.1"] ?? [];
+    expect(trim.join(" ")).toMatch(/visible pixels.*nothing on screen changed/);
+    for (const note of [...notes, ...trim]) {
       // The manifest style: plain sentences, no markdown, no trailing period.
       expect(note).not.toMatch(/`|\*\*|^- /);
       expect(note.endsWith(".")).toBe(false);

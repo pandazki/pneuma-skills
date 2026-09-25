@@ -17,7 +17,7 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import {
-  chmodSync, cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync,
+  chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -2659,7 +2659,8 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(back).toMatchObject({ shares: "stand-to-lean", frames: 12, estimatedDecodeBytes: 0 });
       const riv = decodeRiv(readFileSync(json.out));
       const embedded = riv.objects.filter((o) => o.type === "ImageAsset").length;
-      expect(embedded).toBe(stand.frames + lean.frames + into.frames);
+      // Every frame of the three, less the ones that repeat one already in.
+      expect(embedded).toBe(stand.frames + lean.frames + into.frames - json.dedupedFrames);
       expect(json.frameCount).toBe(embedded);
       expect(json.estimatedDecodeBytes).toBe(stand.estimatedDecodeBytes + lean.estimatedDecodeBytes + into.estimatedDecodeBytes);
 
@@ -2679,11 +2680,25 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(machine.waits).toEqual([{ motion: "stand", seconds: 1 }, { motion: "lean", seconds: 1 }]);
       expect(json.notes.join(" ")).toMatch(/leaving a loop waits for the end of its cycle/i);
 
-      // One authority for the memory: the Export tab quotes the same plan.
+      // One authority for the memory: the Export tab quotes the same plan —
+      // the frames at full size until an export has measured them trimmed…
       const planned = quote(dir);
-      expect(planned.decodeBytes).toBe(json.estimatedDecodeBytes);
+      expect(planned.decodeBytes).toBe(json.untrimmedDecodeBytes);
       expect(planned.motions.map((m) => [m.id, m.frames, m.width, m.height, m.shares ?? null]))
         .toEqual(json.motions.map((m: any) => [m.id, m.frames, m.width, m.height, m.shares ?? null]));
+      // …and, registered, what the script made: each motion's trimmed cost,
+      // the reverse still free.
+      projectCmd(dir, "register-export", "--report", reportPath(dir, json));
+      const measured = quote(dir);
+      expect(measured.decodeBytes).toBe(json.estimatedDecodeBytes);
+      expect(measured.motions.map((m) => [m.id, m.trimmed, m.decodeBytes]))
+        .toEqual(json.motions.map((m: any) => [m.id, true, m.estimatedDecodeBytes]));
+      // The next export starts from that quote and comes out the same.
+      const again = runJson("rive", dir, "--include-loops");
+      expect(again.estimatedDecodeBytes).toBe(json.estimatedDecodeBytes);
+      // The measurement is kept on each motion, with what it was measured at.
+      const doc = JSON.parse(readFileSync(join(dir, "project.json"), "utf-8"));
+      expect(doc.sprite.motions.find((m: any) => m.id === "stand").riveTrim).toMatchObject({ filter: "smooth", decodeBytes: json.motions[0].estimatedDecodeBytes });
     }, TIMEOUT_MS);
 
     test("two loops with nothing between them cut, and the cut is listed with its pose gap", () => {
@@ -2740,6 +2755,10 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(json.warnings).toContainEqual(expect.stringMatching(
         /lean-to-stand plays an earlier cut of stand-to-lean backwards.*--reverse-of stand-to-lean/,
       ));
+      // Unmeasured, the Export tab quotes the frames at full size; once the
+      // export is registered, it quotes what the script made.
+      expect(quote(dir).decodeBytes).toBe(json.untrimmedDecodeBytes);
+      projectCmd(dir, "register-export", "--report", reportPath(dir, json));
       expect(quote(dir).decodeBytes).toBe(json.estimatedDecodeBytes);
     }, TIMEOUT_MS);
 
@@ -3198,6 +3217,95 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       return rivRuns.get(key)!;
     };
     const ofType = (objects: RiveObject[], type: string) => objects.filter((o) => o.type === type);
+    /** What the file draws at each timeline key of `motion`: the Image the
+     *  Solo shows, its pixels, and where its top-left corner lands on the
+     *  artboard — in float32, the way `Image::draw` places it (position −
+     *  size × origin; origin 0.5 when unwritten, the runtime's default). */
+    const shownFrames = (json: any, motion: string) => {
+      const { objects } = decodeRiv(readFileSync(json.out));
+      const images = ofType(objects, "Image");
+      const assets = ofType(objects, "ImageAsset");
+      const contents = ofType(objects, "FileAssetContents");
+      const start = objects.findIndex((o) => o.type === "LinearAnimation" && o.props.name === motion);
+      expect(start).toBeGreaterThanOrEqual(0);
+      const keys: number[] = [];
+      for (let i = start + 1; i < objects.length && !["LinearAnimation", "StateMachine"].includes(objects[i].type); i++) {
+        if (objects[i].type === "KeyFrameId") keys.push(objects[i].props.value as number);
+      }
+      const f = Math.fround;
+      return keys.map((component) => {
+        const p = images[component - 2].props as Record<string, any>;
+        const size = assets[p.assetId].props as { width: number; height: number };
+        return {
+          name: String(p.name),
+          rgba: readRgba(contents[p.assetId].props.bytes as Buffer),
+          left: f(f(p.x) - f(size.width * f(p.originX ?? 0.5))),
+          top: f(f(p.y) - f(size.height * f(p.originY ?? 0.5))),
+        };
+      });
+    };
+    /** Where the untrimmed file drew a full frame's top-left: the anchor less
+     *  size × (pivot / size), in float32. */
+    const fullEdge = (anchor: number, pivot: number, size: number) => {
+      const f = Math.fround;
+      return f(f(anchor) - f(size * f(pivot / size)));
+    };
+    /** `shown` draws exactly what the full frame drew, where it drew it: its
+     *  corner sits a whole number of pixels into the full frame, its pixels
+     *  are the full frame's there, and nothing visible of the full frame is
+     *  left outside it. `slack`: how far off whole the offset may be — the
+     *  float32 placement is exact, but a report rounds the pivot it states. */
+    const expectDrawnAsFull = (
+      shown: { rgba: { width: number; height: number; data: Buffer }; left: number; top: number },
+      full: { width: number; height: number; data: Buffer },
+      left: number,
+      top: number,
+      slack = 1e-4,
+    ) => {
+      // Nothing to draw on either side: where it is placed is moot.
+      const visible = (data: Buffer) => data.some((v, i) => i % 4 === 3 && v > 0);
+      if (!visible(full.data) && !visible(shown.rgba.data)) return;
+      const dx = shown.left - left;
+      const dy = shown.top - top;
+      expect(Math.abs(dx - Math.round(dx))).toBeLessThan(slack);
+      expect(Math.abs(dy - Math.round(dy))).toBeLessThan(slack);
+      const ox = Math.round(dx);
+      const oy = Math.round(dy);
+      const { width: w, height: h, data } = shown.rgba;
+      expect(ox >= 0 && oy >= 0 && ox + w <= full.width && oy + h <= full.height).toBe(true);
+      let differing = 0;
+      let lost = 0;
+      for (let y = 0; y < full.height; y++) {
+        for (let x = 0; x < full.width; x++) {
+          const s = (y * full.width + x) * 4;
+          if (x < ox || x >= ox + w || y < oy || y >= oy + h) {
+            if (full.data[s + 3] !== 0) lost++;
+            continue;
+          }
+          const t = ((y - oy) * w + (x - ox)) * 4;
+          if (full.data[s + 3] !== data[t + 3]) differing++;
+          else if (data[t + 3] > 0 && (full.data[s] !== data[t] || full.data[s + 1] !== data[t + 1] || full.data[s + 2] !== data[t + 2])) differing++;
+        }
+      }
+      expect({ differing, lost }).toEqual({ differing: 0, lost: 0 });
+    };
+    /** A sprite motion at its atlas size, frame by frame: drawn as the
+     *  registered frames were, each by its atlas pivot. */
+    const expectSpriteDrawnAsRegistered = (dir: string, json: any, motion: string) => {
+      const atlas = JSON.parse(readFileSync(join(dir, "motions", motion, "atlas.json"), "utf-8"));
+      const names = Object.keys(atlas.frames);
+      const shown = shownFrames(json, motion);
+      expect(shown).toHaveLength(names.length);
+      for (const [i, frame] of shown.entries()) {
+        const full = readRgba(readFileSync(join(dir, "motions", motion, "frames", `${String(i).padStart(2, "0")}.png`)));
+        const { pivot } = atlas.frames[names[i]];
+        expectDrawnAsFull(
+          frame, full,
+          fullEdge(json.artboard.anchor.x, pivot.x * full.width, full.width),
+          fullEdge(json.artboard.anchor.y, pivot.y * full.height, full.height),
+        );
+      }
+    };
     /** Every embedded frame of `test` against `ref`'s: alpha the same
      *  everywhere, colour the same wherever a pixel is visible. */
     const expectSamePixels = (ref: any, test: any) => {
@@ -3230,9 +3338,9 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(ofType(riv.objects, "Solo")).toHaveLength(1);
       expect(ofType(riv.objects, "Image")).toHaveLength(8);
       expect(ofType(riv.objects, "ImageAsset")).toHaveLength(8);
-      // The embedded bytes are the registered frames, as they are on disk.
-      expect(ofType(riv.objects, "FileAssetContents")[5].props.bytes)
-        .toEqual(readFileSync(join(dir, "motions", "hop", "frames", "01.png")));
+      // Each frame is embedded trimmed to its visible pixels and drawn
+      // exactly where, and exactly as, the registered frame was.
+      expectSpriteDrawnAsRegistered(dir, json, "hop");
       expect(ofType(riv.objects, "LinearAnimation").map((a) => a.props)).toEqual([
         { name: "bounce", fps: 8, duration: 4, loopValue: 1 },
         { name: "hop", fps: 10, duration: 4, loopValue: 0 },
@@ -3282,30 +3390,67 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       const [artboard] = ofType(riv.objects, "Artboard");
       expect({ width: artboard.props.width, height: artboard.props.height })
         .toEqual({ width: json.artboard.width, height: json.artboard.height });
-      const images = ofType(riv.objects, "Image");
-      const assets = ofType(riv.objects, "ImageAsset");
-      for (const [i, image] of images.entries()) {
-        const motion = i < 4 ? "bounce" : "hop";
-        const atlas = JSON.parse(readFileSync(join(dir, "motions", motion, "atlas.json"), "utf-8"));
-        const pivot = atlas.frames[`${motion}_0${i % 4}`].pivot;
-        expect(image.props.x).toBe(json.artboard.anchor.x);
-        expect(image.props.y).toBe(json.artboard.anchor.y);
-        expect(image.props.originX as number).toBeCloseTo(pivot.x, 3);
-        expect(image.props.originY as number).toBeCloseTo(pivot.y, 3);
-        // …and the frame fits: nothing of it hangs off the artboard.
-        const { width, height } = assets[i].props as { width: number; height: number };
-        const left = json.artboard.anchor.x - pivot.x * width;
-        const top = json.artboard.anchor.y - pivot.y * height;
-        expect(left).toBeGreaterThanOrEqual(-0.5);
-        expect(top).toBeGreaterThanOrEqual(-0.5);
-        expect(left + width).toBeLessThanOrEqual(json.artboard.width + 0.5);
-        expect(top + height).toBeLessThanOrEqual(json.artboard.height + 0.5);
+      for (const motion of ["bounce", "hop"]) {
+        // The full frame's pivot on the anchor, and each trimmed frame on the
+        // spot its pixels had in it.
+        expectSpriteDrawnAsRegistered(dir, json, motion);
+        // …and every frame fits: nothing of it hangs off the artboard.
+        for (const frame of shownFrames(json, motion)) {
+          expect(frame.left).toBeGreaterThanOrEqual(-0.5);
+          expect(frame.top).toBeGreaterThanOrEqual(-0.5);
+          expect(frame.left + frame.rgba.width).toBeLessThanOrEqual(json.artboard.width + 0.5);
+          expect(frame.top + frame.rgba.height).toBeLessThanOrEqual(json.artboard.height + 0.5);
+        }
       }
+    }, EXPORT_TIMEOUT_MS);
+
+    test("a repeated frame is embedded once, and a frame with nothing visible is one transparent pixel", () => {
+      const dir = useCharacter();
+      const bounce = join(dir, "motions", "bounce");
+      // bounce's frame 2 becomes frame 0 again, pivot and all.
+      cpSync(join(bounce, "frames", "00.png"), join(bounce, "frames", "02.png"));
+      const atlasPath = join(bounce, "atlas.json");
+      const atlas = JSON.parse(readFileSync(atlasPath, "utf-8"));
+      atlas.frames.bounce_02.pivot = atlas.frames.bounce_00.pivot;
+      writeFileSync(atlasPath, JSON.stringify(atlas));
+      // hop's frames 1 and 2: nothing visible at all.
+      const hop = join(dir, "motions", "hop", "frames");
+      const { width, height } = readRgba(readFileSync(join(hop, "01.png")));
+      for (const name of ["01.png", "02.png"]) {
+        const made = spawnSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", `color=c=0x00000000:s=${width}x${height},format=rgba`,
+          "-frames:v", "1", join(hop, name)]);
+        expect(made.status).toBe(0);
+      }
+      const json = runJson("rive", dir, "--images", "png");
+      expect({ deduped: json.dedupedFrames, empty: json.emptyFrames, embedded: json.frameCount }).toEqual({ deduped: 2, empty: 2, embedded: 6 });
+      expect(json.motions.map((m: any) => [m.id, m.deduped, m.emptyFrames])).toEqual([["bounce", 1, 0], ["hop", 1, 2]]);
+      const shownBounce = shownFrames(json, "bounce");
+      expect(shownBounce[2].name).toBe(shownBounce[0].name);
+      const shownHop = shownFrames(json, "hop");
+      expect([shownHop[1].rgba.width, shownHop[1].rgba.height, shownHop[1].rgba.data[3]]).toEqual([1, 1, 0]);
+      expect(shownHop[2].name).toBe(shownHop[1].name);
+      // …and every frame still draws exactly what it did.
+      expectSpriteDrawnAsRegistered(dir, json, "bounce");
+      expectSpriteDrawnAsRegistered(dir, json, "hop");
+      // The memory counts each image once: what the file embeds.
+      const embedded = ofType(decodeRiv(readFileSync(json.out)).objects, "ImageAsset")
+        .reduce((sum, a) => sum + (a.props.width as number) * (a.props.height as number) * 4, 0);
+      expect(json.estimatedDecodeBytes).toBe(embedded);
+      expect(json.notes.join(" ")).toMatch(/2 frames are the same picture in the same place/);
     }, EXPORT_TIMEOUT_MS);
 
     test("the memory it will cost is estimated from the frames", () => {
       const { json } = rived("png", "--images", "png");
-      expect(json.estimatedDecodeBytes).toBe(4 * 64 * 64 * 4 + 4 * 63 * 61 * 4);
+      // The frames at full size are the most they can cost…
+      expect(json.untrimmedDecodeBytes).toBe(4 * 64 * 64 * 4 + 4 * 63 * 61 * 4);
+      // …and what the runtime decodes is what is embedded: each image once, trimmed.
+      const riv = decodeRiv(readFileSync(json.out));
+      const embedded = ofType(riv.objects, "ImageAsset")
+        .reduce((sum, a) => sum + (a.props.width as number) * (a.props.height as number) * 4, 0);
+      expect(json.estimatedDecodeBytes).toBe(embedded);
+      expect(json.estimatedDecodeBytes).toBeLessThan(json.untrimmedDecodeBytes);
+      expect(json.motions.map((m: any) => m.trim.decodeBytes)).toEqual(json.motions.map((m: any) => m.estimatedDecodeBytes));
+      expect(json.notes.join(" ")).toMatch(/trimmed to its visible pixels.*nothing on screen changes/);
       expect(json.warnings).toEqual([]);
     }, EXPORT_TIMEOUT_MS);
 
@@ -3394,7 +3539,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
         width: 64,
         height: 72,
         scale: 1,
-        estimatedDecodeBytes: 12 * 64 * 72 * 4,
+        untrimmedDecodeBytes: 12 * 64 * 72 * 4,
       });
       expect(json.resample).toEqual({
         loop: { fps: 24, maxSize: 320 },
@@ -3402,7 +3547,8 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
         filter: "smooth",
         filterFrom: "style",
       });
-      expect(json.frameCount).toBe(8 + 12);
+      // What the file embeds: every frame, less the ones that repeat one already in.
+      expect(json.frameCount).toBe(8 + 12 - json.dedupedFrames);
       expect(json.estimatedDecodeBytes).toBe(json.motions.reduce((sum: number, m: any) => sum + m.estimatedDecodeBytes, 0));
     }, EXPORT_TIMEOUT_MS);
 
@@ -3417,12 +3563,20 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(hop).toMatchObject({ frames: 2, fps: 6, indices: [0, 3] });
 
       const riv = decodeRiv(readFileSync(json.out));
-      const contents = ofType(riv.objects, "FileAssetContents").map((o) => o.props.bytes as Buffer);
-      expect(contents).toHaveLength(8);
+      // The kept frames, each drawn as it was — a repeat shown from the image
+      // already in; the loop stands on its feet.
+      const shown = shownFrames(json, "flame");
+      expect(shown).toHaveLength(6);
       for (const [i, index] of [0, 2, 4, 6, 8, 10].entries()) {
-        expect(contents[i]).toEqual(readFileSync(join(dir, "motions", "flame", "frames", `${String(index).padStart(3, "0")}.png`)));
+        const full = readRgba(readFileSync(join(dir, "motions", "flame", "frames", `${String(index).padStart(3, "0")}.png`)));
+        expectDrawnAsFull(
+          shown[i], full,
+          fullEdge(json.artboard.anchor.x, flame.anchor.x, full.width),
+          fullEdge(json.artboard.anchor.y, flame.anchor.y, full.height),
+          0.02,
+        );
       }
-      expect(contents[7]).toEqual(readFileSync(join(dir, "motions", "hop", "frames", "03.png")));
+      expect(json.frameCount).toBe(ofType(riv.objects, "ImageAsset").length);
       expect(ofType(riv.objects, "LinearAnimation").map((a) => a.props)).toEqual([
         { name: "flame", fps: 6, duration: 6, loopValue: 1 },
         { name: "hop", fps: 6, duration: 2, loopValue: 0 },
@@ -3448,13 +3602,18 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
     test("--max-size shrinks a loop by one factor, and it still stands on its feet", () => {
       const { dir, json } = rived("small", "--motions", "flame", "--max-size", "36", "--images", "png");
       const [flame] = json.motions;
-      expect(flame).toMatchObject({ width: 32, height: 36, scale: 0.5, estimatedDecodeBytes: 12 * 32 * 36 * 4 });
+      expect(flame).toMatchObject({ width: 32, height: 36, scale: 0.5, untrimmedDecodeBytes: 12 * 32 * 36 * 4 });
       const riv = decodeRiv(readFileSync(json.out));
+      // Every image is (a trim of) a 32x36 frame, drawn inside that frame's box.
       const assets = ofType(riv.objects, "ImageAsset");
-      expect(assets.every((a) => a.props.width === 32 && a.props.height === 36)).toBe(true);
-      const png = ofType(riv.objects, "FileAssetContents")[0].props.bytes as Buffer;
-      // The embedded PNG really is 32x36 (IHDR), not the source with a label.
-      expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([32, 36]);
+      expect(assets.every((a) => (a.props.width as number) <= 32 && (a.props.height as number) <= 36)).toBe(true);
+      for (const frame of shownFrames(json, "flame")) {
+        const dx = frame.left - fullEdge(json.artboard.anchor.x, flame.anchor.x, 32);
+        const dy = frame.top - fullEdge(json.artboard.anchor.y, flame.anchor.y, 36);
+        expect(Math.abs(dx - Math.round(dx))).toBeLessThan(0.02);
+        expect(Math.round(dx) >= 0 && Math.round(dx) + frame.rgba.width <= 32).toBe(true);
+        expect(Math.round(dy) >= 0 && Math.round(dy) + frame.rgba.height <= 36).toBe(true);
+      }
 
       // A loop has no atlas pivot: it stands where its first frame's feet are
       // (the same feet `align` and `inspect` measure), scaled with the frame.
@@ -3463,10 +3622,10 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(flame.anchor.from).toBe("feet");
       expect(flame.anchor.x).toBeCloseTo(feet.x * 0.5, 2);
       expect(flame.anchor.y).toBeCloseTo(feet.y * 0.5, 2);
-      const [image] = ofType(riv.objects, "Image");
-      expect(image.props.originX as number).toBeCloseTo(flame.anchor.x / 32, 4);
-      expect(image.props.originY as number).toBeCloseTo(flame.anchor.y / 36, 4);
-      expect(image.props.x).toBe(json.artboard.anchor.x);
+      // The feet on the anchor: the full frame's corner is the anchor less the feet.
+      const [first] = shownFrames(json, "flame");
+      expect(Math.abs(fullEdge(json.artboard.anchor.x, flame.anchor.x, 32) - (json.artboard.anchor.x - flame.anchor.x))).toBeLessThan(0.01);
+      expect(first.left).toBeGreaterThanOrEqual(fullEdge(json.artboard.anchor.x, flame.anchor.x, 32) - 1e-4);
     }, EXPORT_TIMEOUT_MS);
 
     test("the downscale is smooth for painted styles and nearest-neighbour for pixel art", () => {
@@ -3506,21 +3665,20 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
     }, EXPORT_TIMEOUT_MS);
 
     test("the memory is counted after resampling; over 128 MB warns, over 768 MB refuses", () => {
-      // 400 frames of 1024x1024 — hard links to one small PNG, so the fixture
-      // costs nothing on disk while the arithmetic is the real one.
+      // 400 frames of 1024x1024, each a 1000 px square a pixel or more from
+      // the last — all different and all but full, so neither trimming nor
+      // deduplication makes the arithmetic small.
       const dir = join(fresh(), "big");
       const frames = join(dir, "motions", "huge", "frames");
       mkdirSync(frames, { recursive: true });
-      const one = join(dir, "one.png");
       const made = spawnSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i",
-        "color=c=0x00000000:s=1024x1024,format=rgba,drawbox=x=412:y=500:w=200:h=480:color=red@1:t=fill",
-        "-frames:v", "1", one]);
+        "color=c=0x00000000:s=1048x1048:r=60,format=rgba,drawbox=x=24:y=24:w=1000:h=1000:color=red@1:t=fill:replace=1,crop=1024:1024:'mod(n,24)':'mod(floor(n/24),24)'",
+        "-frames:v", "400", "-start_number", "0", join(frames, "%03d.png")]);
       expect(made.status).toBe(0);
       const assets = [];
       const ids = [];
       for (let i = 0; i < 400; i++) {
         const name = `${String(i).padStart(3, "0")}.png`;
-        linkSync(one, join(frames, name));
         const id = `huge-frame-${String(i).padStart(3, "0")}`;
         ids.push(id);
         assets.push({ id, type: "image", uri: `motions/huge/frames/${name}`, name: id, metadata: { width: 1024, height: 1024 }, createdAt: 1, status: "ready" });
@@ -3548,26 +3706,30 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(refused.err).toMatch(/--motions/);
       expect(existsSync(join(dir, "exports"))).toBe(false);
 
-      // At 24 fps: 160 frames, 640 MB — made, with the warning.
-      const heavy = runJson("rive", dir, "--motions", "huge", "--fps", "24", "--max-size", "1024");
+      // At 24 fps: 160 frames, 640 MB at full size, about 612 MB trimmed —
+      // made, with the warning, which counts what the file decodes.
+      const heavy = runJson("rive", dir, "--motions", "huge", "--fps", "24", "--max-size", "1024", "--images", "png");
       expect(heavy.motions[0]).toMatchObject({ frames: 160, width: 1024, height: 1024 });
-      expect(heavy.estimatedDecodeBytes).toBe(160 * 1024 * 1024 * 4);
-      expect(heavy.warnings.join(" ")).toMatch(/640 MB/);
+      expect(heavy.untrimmedDecodeBytes).toBe(160 * 1024 * 1024 * 4);
+      expect(heavy.dedupedFrames).toBe(0);
+      expect(heavy.estimatedDecodeBytes).toBeLessThan(heavy.untrimmedDecodeBytes);
+      expect(heavy.warnings.join(" ")).toMatch(new RegExp(`about ${Math.round(heavy.estimatedDecodeBytes / 1024 / 1024)} MB`));
 
       // At the defaults: 24 fps and 320 px, about 63 MB and no warning.
-      const light = runJson("rive", dir, "--motions", "huge");
+      const light = runJson("rive", dir, "--motions", "huge", "--images", "png");
       expect(light.motions[0]).toMatchObject({ frames: 160, width: 320, height: 320 });
-      expect(light.estimatedDecodeBytes).toBe(160 * 320 * 320 * 4);
+      expect(light.untrimmedDecodeBytes).toBe(160 * 320 * 320 * 4);
       expect(light.warnings).toEqual([]);
 
       // The Export tab quotes the same plan from project.json alone, before
-      // anyone asks for the file: same memory, same rate, same size.
+      // anyone asks for the file: same rate, same size, and — nothing
+      // measured yet — the memory at full size.
       const roster = loadRoster([{ path: "big/project.json", content: readFileSync(join(dir, "project.json"), "utf-8") }])!;
       const big = roster.byContentSet.big;
       const quoted = exportRows(big, big.sprite.motions[0], { canRequest: true, requests: new Map() })
         .find((row) => row.format === "riv")!;
       expect(quoted.rive).toMatchObject({
-        decodeBytes: light.estimatedDecodeBytes,
+        decodeBytes: light.untrimmedDecodeBytes,
         loops: { fps: light.motions[0].fps, width: light.motions[0].width, height: light.motions[0].height },
         tooHeavy: false,
       });
@@ -3646,16 +3808,10 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
        *  resample keeps in place, where a low threshold would also count the
        *  blur two rounds of scaling leave around it. */
       const bodies = (json: any) => {
-        const riv = decodeRiv(readFileSync(json.out));
-        const images = ofType(riv.objects, "Image");
-        const assets = ofType(riv.objects, "ImageAsset");
-        const contents = ofType(riv.objects, "FileAssetContents");
         const out: Record<string, { left: number; bottom: number; height: number }> = {};
-        let first = 0;
         for (const motion of json.motions) {
-          const image = images[first].props as Record<string, number>;
-          const { width, height } = assets[first].props as { width: number; height: number };
-          const pixels = readRgba(contents[first].props.bytes as Buffer);
+          const [frame] = shownFrames(json, motion.id);
+          const pixels = frame.rgba;
           let x0 = Infinity, y0 = Infinity, y1 = -1;
           for (let y = 0; y < pixels.height; y++) {
             for (let x = 0; x < pixels.width; x++) {
@@ -3663,10 +3819,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
               x0 = Math.min(x0, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
             }
           }
-          const left = image.x - image.originX * width;
-          const top = image.y - image.originY * height;
-          out[motion.id] = { left: left + x0, bottom: top + y1 + 1, height: y1 + 1 - y0 };
-          first += motion.frames;
+          out[motion.id] = { left: frame.left + x0, bottom: frame.top + y1 + 1, height: y1 + 1 - y0 };
         }
         return out;
       };
@@ -3702,7 +3855,8 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
         const quoted = exportRows(character, character.sprite.motions[0], { canRequest: true, requests: new Map() })
           .find((row) => row.format === "riv")!;
         expect(quoted.rive).toMatchObject({
-          decodeBytes: json.estimatedDecodeBytes,
+          // Nothing measured yet: the frames at full size.
+          decodeBytes: json.untrimmedDecodeBytes,
           loops: {
             fps: 24,
             width: Math.max(...json.motions.map((m: any) => m.width)),

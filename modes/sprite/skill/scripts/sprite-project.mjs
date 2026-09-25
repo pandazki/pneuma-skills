@@ -250,6 +250,10 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       motion.reverseOf. Cutting a transition again retires its exports and
       the .riv that held it, and notes any reverse made from the old cut.
       Any run drops a loop's measured clip record (motion.clip).
+      Every motion in the .riv gets motion.riveTrim = { width, height, fps,
+      frames, filter, decodeBytes, shared? }: what its frames cost trimmed and
+      deduplicated, which the Export tab quotes while it still describes the
+      frames a Generate would make. Any run drops the motion's record.
 
   add-video --motion <motionId> --file <path> --model ${VIDEO_MODELS.join("|")}
             --mode ${VIDEO_MODES.join("|")} [--from <assetId,…>] [--prompt]
@@ -1500,6 +1504,13 @@ function registerRiv(doc, dir, report, now) {
   // scale win and are never overwritten; an unknown one erases nothing.
   const measured = [];
   for (const entry of Array.isArray(report.motions) ? report.motions : []) {
+    // What its frames cost trimmed and deduplicated, for the next quote.
+    const trim = trimRecord(entry?.trim);
+    const traced = motions.find((m) => m.id === String(entry?.id));
+    if (traced) {
+      if (trim) traced.riveTrim = trim;
+      else delete traced.riveTrim;
+    }
     const clip = measuredClip(entry?.clip);
     if (!clip) continue;
     const motion = motions.find((m) => m.id === String(entry.id));
@@ -1537,6 +1548,19 @@ function riveMachineRecord(machine) {
       .filter((i) => i.type === "trigger" && typeof i.motion === "string")
       .map((i) => ({ name: i.name, motion: i.motion })),
   };
+}
+
+/** A `rive` report's per-motion trim record, whole or not at all. */
+function trimRecord(value) {
+  if (!value || typeof value !== "object") return undefined;
+  const whole = (v) => Number.isInteger(v) && v >= 0;
+  const { width, height, fps, frames, filter, decodeBytes } = value;
+  if (![width, height, frames, decodeBytes].every(whole) || !(finiteNumber(fps) > 0)) return undefined;
+  if (filter !== "smooth" && filter !== "nearest") return undefined;
+  const shared = value.shared && whole(value.shared.bytes) && Array.isArray(value.shared.with)
+    ? { bytes: value.shared.bytes, with: value.shared.with.filter((id) => typeof id === "string") }
+    : undefined;
+  return { width, height, fps, frames, filter, decodeBytes, ...(shared ? { shared } : {}) };
 }
 
 /** A measured `{ scale, origin, from: "measured" }` off a rive report, or
@@ -2165,6 +2189,7 @@ function main() {
       // run replaces; the new run records its own (or the next export
       // measures again).
       delete motion.clip;
+      delete motion.riveTrim;
       motion.status = "ready";
 
       // What the user asked for against what landed. The frames are already

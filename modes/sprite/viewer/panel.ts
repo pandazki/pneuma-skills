@@ -24,6 +24,7 @@ import {
   RIVE_LOOP_FPS,
   RIVE_LOOP_MAX_SIZE,
   riveMB,
+  riveDefaultFilter,
   riveDefaultImages,
   rivePlan,
   riveReverseIsCurrent,
@@ -485,7 +486,9 @@ export function riveMotions(project: CharacterProject): Motion[] {
  * loop's or transition's scale against its clip is its recorded
  * `inspect.scale`, else (a loop) what an earlier export measured
  * (`motion.clip`, written by `register-export`); a loop with neither is
- * quoted as cut until its first export measures it. A reverse shares its
+ * quoted as cut until its first export measures it. Each motion is quoted
+ * trimmed once an export has measured its frames (`motion.riveTrim`), at
+ * full size until then. A reverse shares its
  * source's images when `riveReverseIsCurrent` says so — the script's own
  * test.
  */
@@ -514,11 +517,12 @@ export function rivePlanFor(project: CharacterProject): RivePlan | null {
         ...size,
         ...(clipScale ? { clipScale } : {}),
         ...(shares ? { reverseOf: shares } : {}),
+        ...(m.riveTrim ? { trim: m.riveTrim } : {}),
       }
       : null;
   });
   return inputs.every((input) => input !== null) && inputs.length > 0
-    ? rivePlan(inputs as RivePlanInput[])
+    ? rivePlan(inputs as RivePlanInput[], { filter: riveDefaultFilter(project.sprite.character.style) })
     : null;
 }
 

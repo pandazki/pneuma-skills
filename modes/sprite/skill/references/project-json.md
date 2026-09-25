@@ -208,6 +208,13 @@ wrote, from its `--json` report:
   never overwritten; `register-run` drops `motion.clip` with the frames it
   measured. Before the first export an old loop is quoted as cut, since only
   the script can decode the clip.
+  The memory works the same way: `rive` trims every frame to its visible
+  pixels and embeds a repeated one once, and `register-export` writes what
+  each motion then costs onto it as `motion.riveTrim: { width, height, fps,
+  frames, filter, decodeBytes, shared? }`. The Export tab quotes it while it
+  still describes the frames a Generate would make (same size, rate, count and
+  filter); `register-run` drops it with the frames it measured. Unmeasured, a
+  motion is quoted at full size — the most it can cost.
 
 Registration checks the report's frames against the frames registered now and
 refuses a mismatch, so an export always describes the pictures its edge points
@@ -300,6 +307,14 @@ interface Motion {
                                   // loop only, and only one cut before `loop`
                                   // recorded its crop: what `rive` measured,
                                   // written by `register-export`
+  riveTrim?: { width: number; height: number; fps: number; frames: number;
+               filter: "smooth" | "nearest"; decodeBytes: number;
+               shared?: { bytes: number; with: string[] } };
+                                  // any motion in the last registered .riv:
+                                  // its frames' cost trimmed and deduplicated
+                                  // (`shared`: saved by showing frames an
+                                  // earlier motion embeds), written by
+                                  // `register-export`, dropped by a run
   keyframe?: string;              // asset id, `<motion>-keyframe`
   keyframeAlpha?: string;         // asset id, `<motion>-keyframe-alpha`
   exports?: {                     // export format → asset id. The WebP, GIF

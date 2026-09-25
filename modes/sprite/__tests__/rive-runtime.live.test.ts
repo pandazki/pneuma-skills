@@ -25,6 +25,12 @@
  * routes through the clips, every state leaves only at the end of its cycle
  * or its clip, and a one-shot hands back to the loop `motion` names.
  *
+ * A third pair proves trimming changes nothing on screen: the same frames
+ * written untrimmed and trimmed (`riveTrimRect`, `riveTrimmedPosition`),
+ * each frame drawn by the runtime and read back off the canvas, at 1:1 and
+ * scaled — including a frame whose silhouette runs to the edge of its frame
+ * and of the artboard, and a frame with nothing visible.
+ *
  * Live tier: it launches a real browser and runs a real ffmpeg pipeline.
  */
 
@@ -35,6 +41,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { riveTimeline, riveTrimRect, writeRiv } from "../skill/scripts/rive.mjs";
 import {
   announceLiveTierSkip,
   LIVE_TIER,
@@ -120,6 +127,112 @@ async function rive(character: string, ...flags: string[]): Promise<RiveReport> 
   return JSON.parse(stdout);
 }
 
+/** A PNG's pixels as straight RGBA, decoded by ffmpeg. */
+function rgbaOf(path: string) {
+  const probe = spawnSync("ffprobe", ["-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0", path], { encoding: "utf-8" });
+  const [width, height] = String(probe.stdout).trim().split(",").map(Number);
+  const r = spawnSync("ffmpeg", ["-v", "error", "-i", path, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", "-"], { maxBuffer: 1 << 26 });
+  return { width, height, data: r.stdout as Buffer };
+}
+
+/** One frame through ffmpeg: `-vf` applied, written as an RGBA PNG. */
+function ffmpegPng(input: string, out: string, filter: string) {
+  const r = spawnSync("ffmpeg", ["-v", "error", "-y", "-i", input, "-frames:v", "1", "-vf", filter, "-pix_fmt", "rgba", out]);
+  if (r.status !== 0) throw new Error(String(r.stderr));
+  return out;
+}
+
+/**
+ * The same five frames as two files: embedded whole, as the released writer
+ * did, and trimmed the way `sprite-sheet.mjs rive` trims them. Pivots are
+ * fractional so the runtime samples between pixels.
+ */
+function trimPair(dir: string) {
+  const idle = join(SEED, "motions", "idle", "frames");
+  const size = rgbaOf(join(idle, "00.png"));
+  // Cut off below the knees: the silhouette runs to the frame's bottom edge,
+  // which the anchor puts on the artboard's bottom edge.
+  const edge = ffmpegPng(join(idle, "05.png"), join(dir, "edge.png"), `crop=iw:ih-40:0:0`);
+  const empty = ffmpegPng(join(idle, "00.png"), join(dir, "empty.png"), "format=rgba,geq=r=0:g=0:b=0:a=0");
+  const frames = [
+    { path: join(idle, "00.png"), pivot: { x: 93.37, y: 244.0116 } },
+    { path: join(idle, "04.png"), pivot: { x: 92.81, y: 243.5 } },
+    // 9.37 px of it below the anchor, more than any other frame: its last
+    // row is the artboard's last row.
+    { path: edge, pivot: { x: 93.37, y: size.height - 40 - 9.37 } },
+    { path: empty, pivot: { x: 93.37, y: 244.0116 } },
+    { path: join(idle, "10.png"), pivot: { x: 93.5, y: 244.25 } },
+  ];
+  let left = 0, right = 0, top = 0, bottom = 0;
+  for (const f of frames) {
+    const { width, height } = rgbaOf(f.path);
+    left = Math.max(left, f.pivot.x); right = Math.max(right, width - f.pivot.x);
+    top = Math.max(top, f.pivot.y); bottom = Math.max(bottom, height - f.pivot.y);
+  }
+  const anchor = { x: Math.ceil(left - 1e-6), y: Math.ceil(top - 1e-6) };
+  const artboard = { name: "Trim", width: anchor.x + Math.ceil(right - 1e-6), height: anchor.y + Math.ceil(bottom - 1e-6) };
+  const whole = frames.map((f) => {
+    const { width, height } = rgbaOf(f.path);
+    return { bytes: readFileSync(f.path), width, height, pivot: f.pivot, ext: "png" as const };
+  });
+  const trimmed = frames.map((f, i) => {
+    const image = rgbaOf(f.path);
+    const rect = riveTrimRect(image.data, image.width, image.height) ?? { x: 0, y: 0, width: 1, height: 1 };
+    const out = ffmpegPng(f.path, join(dir, `trim-${i}.png`), `crop=${rect.width}:${rect.height}:${rect.x}:${rect.y}`);
+    return {
+      bytes: readFileSync(out), width: rect.width, height: rect.height, pivot: f.pivot, ext: "png" as const,
+      trim: { x: rect.x, y: rect.y, width: image.width, height: image.height },
+    };
+  });
+  const write = (name: string, list: typeof whole) => {
+    const out = join(dir, name);
+    const written = writeRiv({ artboard, anchor, motions: [{ id: "m", fps: 8, loop: true, frames: list }] });
+    writeFileSync(out, written.bytes);
+    return { out, inexactPlacements: written.inexactPlacements };
+  };
+  const cut = write("trim-cut.riv", trimmed);
+  return {
+    full: write("trim-full.riv", whole).out,
+    cut: cut.out,
+    inexactPlacements: cut.inexactPlacements,
+    artboard,
+    times: riveTimeline(8, frames.length).keys.map((key, i) => (key + (i + 1 < frames.length ? 0.5 : 0.25)) / 8),
+    edgeBottom: anchor.y + (size.height - 40) - frames[2].pivot.y,
+    fullBytes: whole.reduce((sum, f) => sum + f.width * f.height * 4, 0),
+    cutBytes: trimmed.reduce((sum, f) => sum + f.width * f.height * 4, 0),
+  };
+}
+
+/** A page that draws one frame of a `.riv` and hands back the canvas pixels. */
+const GRAB_PAGE = `<!doctype html>
+<html><body style="margin:0;background:transparent">
+<canvas id="c"></canvas>
+<script src="/rive.js"></script>
+<script>
+rive.RuntimeLoader.setWasmUrl("/rive.wasm");
+rive.RuntimeLoader.setWasmFallbackUrl(null);
+const raf = () => new Promise((r) => requestAnimationFrame(() => r()));
+window.loaded = Promise.resolve(true);
+window.grab = (src, t, w, h, fit) => new Promise((resolve, reject) => {
+  const canvas = document.getElementById("c");
+  canvas.width = w; canvas.height = h;
+  const r = new rive.Rive({
+    src, canvas, animations: "m", autoplay: false, enableRiveAssetCDN: false,
+    layout: new rive.Layout({ fit: fit === "none" ? rive.Fit.None : rive.Fit.Contain, alignment: rive.Alignment.TopLeft }),
+    onLoadError: (e) => reject(new Error(String((e && e.data) || e))),
+    onLoad: async () => {
+      r.scrub("m", t);
+      for (let i = 0; i < 4; i++) await raf();
+      const data = canvas.getContext("2d").getImageData(0, 0, w, h).data;
+      r.cleanup();
+      let bin = "";
+      for (let i = 0; i < data.length; i += 0x8000) bin += String.fromCharCode.apply(null, data.subarray(i, i + 0x8000));
+      resolve(btoa(bin));
+    },
+  });
+});
+</script></body></html>`;
+
 /** A minimal DevTools-protocol client over Bun's WebSocket. */
 async function connect(url: string) {
   const ws = new WebSocket(url);
@@ -181,6 +294,7 @@ describe.skipIf(!LIVE_TIER || !CHROME || !HAS_FFMPEG)(
     let evaluate: (expression: string) => Promise<any>;
     let open: (page: string) => Promise<(expression: string) => Promise<any>>;
     let pivot = { x: 0, y: 0 };
+    let pair: ReturnType<typeof trimPair>;
 
     beforeAll(async () => {
       root = mkdtempSync(join(tmpdir(), "pneuma-rive-runtime-"));
@@ -204,7 +318,11 @@ describe.skipIf(!LIVE_TIER || !CHROME || !HAS_FFMPEG)(
       const first = atlas.frames[atlas.animations.idle[0]];
       pivot = { x: first.pivot.x * first.sourceSize.w, y: first.pivot.y * first.sourceSize.h };
 
+      pair = trimPair(mkdtempSync(join(root, "trim-")));
+
       const files: Record<string, string> = {
+        "/trim-full.riv": pair.full,
+        "/trim-cut.riv": pair.cut,
         "/rive.js": join(RUNTIME_DIR, "rive.js"),
         "/rive.wasm": join(RUNTIME_DIR, "rive.wasm"),
         "/file.riv": report.out,
@@ -223,6 +341,7 @@ describe.skipIf(!LIVE_TIER || !CHROME || !HAS_FFMPEG)(
               headers: { "Content-Type": "text/html" },
             });
           }
+          if (path === "/grab.html") return new Response(GRAB_PAGE, { headers: { "Content-Type": "text/html" } });
           if (path === "/connected.html") {
             return new Response(PAGE("/connected.riv", connected.artboard.width, connected.artboard.height), {
               headers: { "Content-Type": "text/html" },
@@ -459,6 +578,50 @@ describe.skipIf(!LIVE_TIER || !CHROME || !HAS_FFMPEG)(
       }
       // …and calm, told at 0.7 s, still played its whole first cycle.
       expect((entered[1].t - entered[0].t) / 1000).toBeGreaterThan(seconds.get("calm")! - tolerance);
+    }, 60_000);
+
+    test("a trimmed frame draws exactly what the whole frame drew, at 1:1 and scaled", async () => {
+      // The trim is real: less to decode, placed without a fraction lost.
+      expect(pair.cutBytes).toBeLessThan(pair.fullBytes);
+      expect(pair.inexactPlacements).toBe(0);
+      const grab = await open("grab.html");
+      const { width: w, height: h } = pair.artboard;
+      const results: Array<Record<string, unknown>> = [];
+      for (const [fit, cw, ch] of [["none", w, h], ["contain", 2 * w + 1, 2 * h + 3]] as const) {
+        for (const [i, t] of pair.times.entries()) {
+          const [a, b] = await Promise.all([
+            grab(`grab("/trim-full.riv", ${t}, ${cw}, ${ch}, "${fit}")`),
+            grab(`grab("/trim-cut.riv", ${t}, ${cw}, ${ch}, "${fit}")`),
+          ]);
+          const x = Buffer.from(a as string, "base64");
+          const y = Buffer.from(b as string, "base64");
+          let differing = 0;
+          let worst = 0;
+          let drawn = 0;
+          let lowest = -1;
+          for (let p = 0; p < x.length; p += 4) {
+            if (x[p + 3] > 0) {
+              drawn++;
+              lowest = Math.max(lowest, Math.floor(p / 4 / cw));
+            }
+            let d = 0;
+            for (let c = 0; c < 4; c++) d = Math.max(d, Math.abs(x[p + c] - y[p + c]));
+            if (d) differing++;
+            worst = Math.max(worst, d);
+          }
+          results.push({ fit, frame: i, drawn: drawn > 0, differing, worst, lowest });
+        }
+      }
+      // Every frame, both ways: not one pixel differs.
+      expect(results.map(({ fit, frame, differing, worst }) => ({ fit, frame, differing, worst })))
+        .toEqual(results.map(({ fit, frame }) => ({ fit, frame, differing: 0, worst: 0 })));
+      // …and the frames are the ones meant: the empty frame draws nothing,
+      // the others do, and the cut-off frame reaches the artboard's edge.
+      expect(results.filter((r) => r.fit === "none").map((r) => r.drawn)).toEqual([true, true, true, false, true]);
+      // The cut-off frame ends inside the artboard's last row; the runtime
+      // draws up to its last texel centre, one row up — trimmed or not.
+      expect(pair.edgeBottom).toBeGreaterThan(h - 1);
+      expect(results.find((r) => r.fit === "none" && r.frame === 2)!.lowest).toBeGreaterThanOrEqual(h - 2);
     }, 60_000);
   },
 );

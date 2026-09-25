@@ -72,6 +72,8 @@ export interface RiveFrameSpec {
   height: number;
   /** The anchor inside this frame, in its own pixels. */
   pivot: { x: number; y: number };
+  /** Where a trimmed frame's pixels sat in the full frame, and the full frame's size; `pivot` is then in full-frame pixels. */
+  trim?: { x: number; y: number; width: number; height: number };
   ext?: "png" | "webp";
 }
 
@@ -100,6 +102,7 @@ export type RiveInput =
 
 export interface RiveWritten {
   bytes: Buffer;
+  inexactPlacements: number;
   animations: Array<{ motion: string; fps: number; duration: number; loop: boolean; seconds: number }>;
   stateMachine: {
     name: string;
@@ -114,3 +117,9 @@ export interface RiveWritten {
 }
 
 export declare function writeRiv(spec: RiveSpec): RiveWritten;
+export declare function riveTrimRect(
+  rgba: Uint8Array,
+  width: number,
+  height: number,
+): { x: number; y: number; width: number; height: number } | null;
+export declare function riveTrimmedPosition(anchor: number, pivot: number, fullSize: number, offset: number): { position: number; exact: boolean };

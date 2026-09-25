@@ -32,6 +32,7 @@
  */
 
 import type { ViewerFileContent } from "../../core/types/viewer-contract.js";
+import type { RiveTrimRecord } from "./skill/scripts/rive-plan.mjs";
 
 // ── Craft-owned shapes (mirrors modes/clipcraft/persistence.ts) ─────────────
 
@@ -391,6 +392,10 @@ export interface Motion {
   inspect?: InspectSummary;
   /** Loop motions cut before `loop` recorded their crop: see `LoopClip`. */
   clip?: LoopClip;
+  /** What the last `.riv` export measured this motion's frames at, trimmed
+   *  and deduplicated; `rivePlan` uses it only while it still describes the
+   *  frames it would make (`riveTrimRecord`). A run drops it. */
+  riveTrim?: RiveTrimRecord;
 }
 
 export interface SpriteSidecar {
@@ -756,6 +761,7 @@ function parseMotion(value: unknown): Motion | null {
     ...(optionalStr(value.gif) ? { gif: value.gif as string } : {}),
     ...(optionalStr(value.webp) ? { webp: value.webp as string } : {}),
     ...(exports ? { exports } : {}),
+    ...(isRecord(value.riveTrim) ? { riveTrim: value.riveTrim as unknown as RiveTrimRecord } : {}),
     videos: arr(value.videos)
       .map((v): MotionVideo | null => {
         if (!isRecord(v)) return null;

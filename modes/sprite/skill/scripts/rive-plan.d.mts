@@ -6,6 +6,23 @@
 export declare const RIVE_DEFAULT_IMAGES: "webp";
 export declare const RIVE_PIXEL_ART_STYLE: RegExp;
 export declare function riveDefaultImages(style: string | null | undefined): "webp" | "webp-lossless";
+export type RiveScaleFilter = "smooth" | "nearest";
+export declare function riveDefaultFilter(style: string | null | undefined): RiveScaleFilter;
+
+/** What an export measured a motion's frames at, trimmed and deduplicated. */
+export interface RiveTrimRecord {
+  width: number;
+  height: number;
+  fps: number;
+  frames: number;
+  filter: RiveScaleFilter;
+  decodeBytes: number;
+  shared?: { bytes: number; with: string[] };
+}
+export declare function riveTrimRecord(
+  record: unknown,
+  planned: { width: number; height: number; fps: number; frames: number; filter: string | null },
+): { decodeBytes: number; shared: { bytes: number; with: string[] } | null } | null;
 export declare const RIVE_LOOP_FPS: number;
 export declare const RIVE_LOOP_MAX_SIZE: number;
 export declare const RIVE_DECODE_WARN_BYTES: number;
@@ -44,6 +61,8 @@ export interface RivePlanInput {
   clipScale?: number | null;
   /** A transition: the transition whose frames it plays backwards. */
   reverseOf?: string;
+  /** What an earlier export measured, trimmed (see `riveTrimRecord`). */
+  trim?: RiveTrimRecord | null;
 }
 
 export interface RivePlanMotion {
@@ -65,7 +84,11 @@ export interface RivePlanMotion {
   clipScale: number | null;
   /** A reverse that embeds nothing: the transition whose images it shows. */
   shares?: string;
+  /** Whether `decodeBytes` is a trimmed measurement of these frames. */
+  trimmed: boolean;
   decodeBytes: number;
+  /** The frames at their full size — the most they can cost. */
+  untrimmedDecodeBytes: number;
 }
 
 export interface RivePlanSettings {
@@ -77,11 +100,12 @@ export interface RivePlan {
   settings: { loop: RivePlanSettings; sprite: RivePlanSettings };
   motions: RivePlanMotion[];
   decodeBytes: number;
+  untrimmedDecodeBytes: number;
 }
 
 export declare function rivePlan(
   motions: RivePlanInput[],
-  options?: { fps?: number | null; maxSize?: number | null },
+  options?: { fps?: number | null; maxSize?: number | null; filter?: string | null },
 ): RivePlan;
 
 /** Whether a registered reverse still shows its source backwards: every
