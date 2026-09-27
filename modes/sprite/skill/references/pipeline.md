@@ -60,16 +60,40 @@ GPT Image 2.5 the answer is always `hasAlpha: false` with a near-white
 `cornerColor`, so it is not really a branch — it is the free confirmation that
 the plate is flat and one colour, and the colour `key --color auto` will use.
 
-### `key <in> --out <png> [--color auto|#rrggbb] [--similarity 0.12] [--blend 0.05]`
+### `key <in> --out <png> [--color auto|#rrggbb] [--similarity 0.12] [--blend 0.05] [--keyer unmix|colorkey]`
 
-ffmpeg `colorkey`. `auto` uses the probed `cornerColor`. Reports
-`alphaCoverage` after keying, so you can tell a successful key (coverage drops
-to roughly the sprite's share of the image) from one that ate the character
-(coverage near zero) or did nothing (coverage still ~1.0). Raise
-`--similarity` when a gradient background survives; lower it when the
-character's own colours start disappearing. When neither setting separates the
-character from its background, the sheet needs a matting model, not a colour
-threshold — see `remove-background.mjs` below.
+Keys a plate away. Reports `alphaCoverage` after keying, so you can tell a
+successful key (coverage drops to roughly the sprite's share of the image) from
+one that ate the character (coverage near zero) or did nothing (coverage still
+~1.0). Raise `--similarity` when a gradient background survives; lower it when
+the character's own colours start disappearing. When neither setting separates
+the character from its background, the sheet needs a matting model, not a
+colour threshold — see `remove-background.mjs` below.
+
+**Two keyers** (`--keyer`, default `unmix`). Both cut every pixel within the
+`--similarity` radius of the plate (`similarity × 255√3` in RGB: 0.12 ≈ 53,
+0.22 ≈ 97). They differ at the edge:
+
+- **`unmix`** (`scripts/chroma.mjs`) reads an edge pixel as a mix,
+  `observed = (1−k)·subject + k·plate`, takes `k` off how far the pixel leans
+  toward the plate's hue, and writes back the subject's colour
+  `(observed − k·plate)/(1−k)` at alpha `α·(1−k)` — within 4 px of the cut
+  (2 px for colours close to the plate). Small plate-coloured clusters inside
+  the subject (a green reflection) are recoloured with their alpha kept. A
+  pixel that does not carry the plate's hue (every plate channel above every
+  other one) is never touched, so yellow, gold, skin and white edges stay as
+  drawn. `auto` measures the plate as the mode of 8-wide colour bins over the
+  corner patches and the border. `--blend` does not apply.
+- **`colorkey`** is ffmpeg's: alpha ramps over `--blend` past the radius and
+  RGB is left as it was, so an anti-aliased edge keeps its plate colour at
+  partial alpha — the 1 px green rim. `auto` uses the probed `cornerColor`.
+
+A plate with no hue — white, cream, grey, which is every GPT Image sheet — has
+nothing to un-mix and is keyed with `colorkey` whichever you ask for; stderr
+says so and the JSON's `keyer` names the keyer that ran. On a hued plate the
+JSON also carries `keyResidue` (see `inspect`) and a warning above 0.005.
+Ported from aldegad/sprite-gen (Apache-2.0); the method, the adaptations and
+the numbers are in "Measured: the chroma keyer" at the end of this file.
 
 **The keyed-out pixels come back black, not invisible-green.** ffmpeg's
 `colorkey` only writes the alpha plane — the name is literal — so the plate is
@@ -81,12 +105,25 @@ it drops a blob (transparency is all four bytes). `run` inherits it through the
 keyed sheet; `from-video` does the same to each sampled frame. Opaque pixels are
 never touched, so nothing you can see changes.
 
-### `flatten <in> --out <png> [--bg #ffffff]`
+### `flatten <in> --out <png> [--bg #ffffff] [--similarity 0.22]`
 
 Composite onto a solid colour. Video models mishandle alpha — flatten frame 00
 before handing it to `seedance-video.mjs --image`. Both paths are
 workspace-relative: `flatten <character>/motions/<id>/frames/00.png --out
 <character>/motions/<id>/first.png`.
+
+**It checks the subject against the plate first.** The clip that comes back is
+keyed at the video radius (`--similarity`, 0.22 ≈ 97 RGB units), and every
+subject pixel inside that radius of `--bg` is cut away with the plate wherever
+it sits — a green gem on a green plate, a white collar on a white one. Before
+painting, `flatten` counts the subject's pixels (alpha ≥ `--threshold`) within
+the radius, ignoring speckles (a pixel needs 3 of its 8 neighbours to be
+subject within 40 of it), and reports
+`plateCheck: { radius, subjectPixels, within, fraction, minDistance, nearest }`
+with a warning when `within > 0`. Pick another plate before paying for the
+clip. An input with no transparency has no subject to tell apart and gets no
+`plateCheck`. Inspired by aldegad/sprite-gen `gen/prepare.py` (a key must clear
+every subject pixel by the erase radius).
 
 ### `slice <sheet> --rows R --cols C --out <dir> [--margin px] [--gutter px]`
 
@@ -232,7 +269,7 @@ encoder name matters: plain `libwebp` does not composite animation frames, so
 every `preview.webp` written through it ghosted the frames before it (mean
 alpha error per frame 9.8 against 0.03 with `libwebp_anim`).
 
-### `inspect <motionDir> [--anchor bottom|center] [--cells <dir>] [--threshold 16]`
+### `inspect <motionDir> [--anchor bottom|center] [--cells <dir>] [--key #rrggbb] [--threshold 16]`
 
 The deterministic quality gate. Writes `<motionDir>/inspect.json` and prints
 the same object.
@@ -254,6 +291,7 @@ only if you sliced into a directory of your own.
 | `scaleDrift` | `(max bbox height − min bbox height) / mean` |
 | `emptyFrames` | Indices with no pixel above the alpha threshold |
 | `anchorPoint` | The point `align` recorded for these frames, in cell pixels — the same point the atlas pivot names. Absent when the frames carry no `align.json` for this anchor and cell |
+| `keyResidue` | Share of the visible pixels (alpha ≥ threshold) whose every plate channel still clears every other channel by more than 40 — the plate's hue, pooled over the frames. Absent unless the motion was keyed off a hued plate: `--key` names the plate, otherwise the `keyColor` the last `inspect.json` recorded (`run` and `from-video` record it). The fat report adds `keyResidueEdge`, the same share over the partially transparent pixels. `register-run` copies `keyResidue` into the sidecar |
 | `warnings` | Human sentences — read these, they name the fix |
 
 Warning rules and what each one means:
@@ -266,6 +304,7 @@ Warning rules and what each one means:
 | "anchor jumps between frames NN and MM" | `maxJump > 0.08 · cellWidth` **and** the feet moved that far too | Compare the source poses with the plan. For unintended placement jumps, try `align --smooth` or the other anchor; fix discontinuous drawing when alignment cannot help. Preserve deliberate fast movement. |
 | "character scale varies across frames — regenerate with a fixed-scale instruction" | `scaleDrift > 0.15` | This measures silhouette height, including props. Check for intended crouching, turning or prop movement; acknowledge it when justified. Regenerate actual proportion or drawing-scale drift with the fixed-scale guidance in `prompting.md`. |
 | "cell NN is clipped — the drawing leaves its grid cell" | Bbox touches the cell edge before alignment | The pose is bigger than its cell. Regenerate with the "stays inside its own cell" clause. |
+| "keyResidue 0.0158: 1.6% of the visible pixels still carry the plate's hue …" | `keyResidue > 0.005` | Look at an edge at 4× on a dark background. A `--keyer colorkey` cut leaves a green rim — re-cut with `--keyer unmix`. After `unmix` the usual cause is the character's own plate-coloured material or a translucent effect (smoke, glow) the plate shows through; a matte (`remove-video-background.mjs`, then `--key alpha`) is the fix for the second |
 
 These are geometric heuristics. `maxJump` does not include last-to-first, and
 the report does not judge identity, contacts or animation rhythm. Check those
@@ -428,7 +467,8 @@ node {SKILL_PATH}/scripts/sprite-sheet.mjs from-video \
 | `--fps N` | frames / trimmed duration | The default plays the motion at the speed the clip was shot at |
 | `--loop` / `--no-loop` | `--no-loop` | Decides the sampling schedule, see below |
 | `--trim-start` / `--trim-end` | 0 / the duration | **Timestamps** in seconds, like ffmpeg's `-ss` / `-to` — not durations |
-| `--key auto\|#rrggbb\|none` | `auto` | `auto` = the median of frame 00's four corner patches, i.e. the plate the model actually painted |
+| `--key auto\|#rrggbb\|none` | `auto` | `auto` = the plate the model actually painted: with `unmix`, the mode of the border colours over 8 of the sampled frames; with `colorkey`, the median of frame 00's four corner patches |
+| `--keyer unmix\|colorkey` | `unmix` | See `key`. `colorkey` leaves the 1 px green rim `video-preview.md` measured; a plate with no hue is keyed with `colorkey` either way. The JSON says `keyer` |
 | `--similarity` | **0.22** | Wider than a sheet's 0.12: a codec's "solid" green is a range, not a colour. Measurements in `video-preview.md` |
 | `--no-clean` | cleaning on | As in `run` |
 | `--anchor` `--x-from` `--cell` `--pad` `--smooth` `--scale` `--nearest` `--cols` `--width` `--no-webp` | as `run` | |
@@ -470,8 +510,10 @@ The extra keys on top of `run`'s JSON:
 { "source": "video", "video": "<abs path to the clip>",
   "sampledAt": [0, 0.253, 0.505, "…"], "schedule": "even",
   "trim": { "start": 0, "end": 4.042 }, "duration": 4.042,
-  "alphaCoverage": 0.4438, "keyColor": "#08f00d" }
+  "alphaCoverage": 0.4438, "keyColor": "#08f00d", "keyer": "unmix" }
 ```
+
+`inspect` in that JSON carries `keyResidue` when the plate had a hue.
 
 `register-run` reads `source` and `video`: it hangs every frame's `derive`
 edge off the **clip asset** instead of a sheet, with `params.frameIndex` and
@@ -554,8 +596,9 @@ node {SKILL_PATH}/scripts/sprite-sheet.mjs loop \
 |---|---|---|
 | `--trim-start` / `--trim-end` | 0 / the duration | **Timestamps** in seconds, exactly as for `from-video` and `contact` |
 | `--key auto\|#rrggbb\|none\|alpha` | `auto` | `auto` measures frame 0's corner plate and keys that colour. `alpha` = the clip carries its own alpha (a VEED `.webm`, a Bria `.mov`): decode it, key nothing. `none` = opaque frames, no plate, and a warning saying so |
-| `--similarity` / `--blend` | **0.22** / 0.05 | `colorkey`, the video defaults (`video-preview.md` has the sweep behind them) |
-| `--despill` / `--no-despill` | on whenever it keys | ffmpeg `despill` on the plate hue, applied **after** the key |
+| `--keyer unmix\|colorkey` | `unmix` | See `key`. `unmix` measures the plate on 8 frames spread over the window and un-mixes every edge; `colorkey` is the previous chain (frame 0's corner colour, `colorkey`, `despill`). A plate with no hue is keyed with `colorkey` either way |
+| `--similarity` / `--blend` | **0.22** / 0.05 | The key radius (both keyers) and `colorkey`'s ramp (`video-preview.md` has the sweep behind them) |
+| `--despill` / `--no-despill` | on whenever `colorkey` keys a hued plate | ffmpeg `despill` on the plate hue, applied **after** the key. `colorkey` only — and see step 4 for what it does to the rest of the picture |
 | `--trim-holds` / `--no-trim-holds` | on | Drops a frozen opening or closing, see below |
 | `--seam-fill auto\|none\|<N>` | `auto` | Interpolates in-between frames into the **wrap** when the seam is worse than `2·step`, see below |
 | `--crop union\|none` / `--pad 8` | `union` / 8 | One rect, computed over every kept frame, applied to all of them |
@@ -593,10 +636,25 @@ are wrong if they move:
    0.0107 against a step of 0.0275). The session's `defaultInterpolator`
    setting says which to reach for; ffmpeg's is the weakest of the three and
    is the fallback for a session with no fal key.
-4. **Key, then despill, then zero the keyed RGB.** `colorkey` with the measured
-   plate colour runs first; `despill` takes the green rim off what survives;
-   then every pixel under the alpha threshold has its RGB zeroed — the same
+4. **Key, then zero the keyed RGB.** With `--keyer unmix` (the default) the
+   window is decoded once to raw RGBA in the work directory (W × H × 4 bytes a
+   frame, deleted when keyed), the plate is measured on 8 frames spread over
+   it, and every frame is un-mixed in JS and written as PNG in batches of at
+   most 256 MB. No despill runs: the un-mix already took the plate out of the
+   edge, and it leaves every pixel without the plate's hue exactly as it was.
+   Then every pixel under the alpha threshold has its RGB zeroed — the same
    rule `key` and `from-video` apply, because transparency is all four bytes.
+
+   **Why `despill` is no longer the default.** ffmpeg 8.0's
+   `despill=type=green:mix=0.6:expand=0.5` subtracts `G − (0.6·R + 0.2·B)` from
+   green wherever that is positive — which is every neutral pixel, not just the
+   rim. White comes out `(255,204,255)`, grey 128 `(128,102,128)`, skin and
+   yellow pink or salmon: on tanka's ten loops it moved the body's colour by
+   7.7–12.0 ΔE00 and turned the yellow fur salmon, and on the synthetic set it
+   changed 71 % of the interior (see Measured at the end). It also turns the
+   dark rim pixel `(0,145,0)` opaque black, the loop's dark rim.
+
+   `--keyer colorkey` keeps the previous chain — `colorkey`, then `despill`:
 
    **The order is the opposite of the intuitive one, and it was measured.**
    Despilling first recolours the plate, so the colour measured on frame 0's
@@ -605,11 +663,10 @@ are wrong if they move:
    black**, with no error and no warning. Keying first and despilling the
    remainder is also what removes the **1–2 px green fringe** a plain key
    leaves on a soft 3D edge at 640² — which is why `--despill` is on by default
-   here and why a loop cannot rely on the sprite path's "it disappears when you
-   downscale": a loop is rendered at the size it was cut at. The best edge
-   measured so far is not this path at all but a VEED matte read back with
-   `--key alpha` (`video-preview.md`); key-then-despill is what you use when
-   there is no fal key, and it is good enough at UI size.
+   in that chain and why a loop cannot rely on the sprite path's "it disappears
+   when you downscale": a loop is rendered at the size it was cut at. A VEED
+   matte read back with `--key alpha` (`video-preview.md`) remains the paid
+   alternative; the free path is now `--keyer unmix`.
 5. **Trim holds** (`--trim-holds`, default on). Silhouette masks for every
    frame, `toFirst[i] = diff(mask0, maski)`, `step[i] = diff(maski, maski+1)`,
    `med = median(step)`, **`HOLD = 0.25 · med`** — a fraction of this clip's
@@ -700,7 +757,8 @@ and returned as `inspect` in the JSON:
 { "kind": "loop", "frameCount": 96, "cell": { "width": 512, "height": 592 },
   "crop": { "x": 64, "y": 48, "w": 434, "h": 502 }, "scale": 1.1797, "widthDefaulted": true,
   "fps": 24, "duration": 4.0, "seam": 0.0065, "step": 0.020, "maxStep": 0.069,
-  "seamFill": 0, "alphaCoverage": 0.31, "keyColor": "#08f00d", "emptyFrames": [],
+  "seamFill": 0, "alphaCoverage": 0.31, "keyColor": "#08f00d",
+  "keyResidue": 0, "keyResidueEdge": 0, "emptyFrames": [],
   "dropped": { "leading": 0, "trailing": 1 },
   "exports": { "webp": 1843201, "apng": 9120033, "webm": 612330, "lottie": 12400021 },
   "warnings": [] }
@@ -716,6 +774,7 @@ frame.
 |---|---|---|
 | "the loop does not close — the last frame is 0.13 from the first against a normal step of 0.02" | `seam > 2·step`, re-checked **after** `--seam-fill` | Shoot again with the same image at both ends, or pass `--trim-start` / `--trim-end` read off the contact sheet. Filling the wrap closes a near miss; it cannot invent a return the clip never made |
 | "was it shot on a flat plate?" | `alphaCoverage > 0.9` after keying | The key did nothing — the plate is not flat, or `--key` names the wrong colour. Check `keyColor` against the contact sheet |
+| "keyResidue 0.0158: …% of the visible pixels still carry the plate's hue …" | `keyResidue > 0.005`, measured on the frames the loop ships (after crop and scale) | As in `inspect`. Note that `--keyer colorkey` with `--despill` reads near 0 here because despill removes the green by recolouring everything — look at the frames, not only the number |
 | "frames are opaque" | `--key none` | Deliberate only when the clip already has no plate. A UI loop with opaque frames is a video, not a loop |
 | "frame NNN is empty" | No pixel above the alpha threshold | Usually the key ate the subject; lower `--similarity` |
 | "only N frames" | `frameCount < 8` | The window is too short, or hold trimming ate it. Check `dropped` and the trim timestamps |
@@ -731,7 +790,7 @@ frame.
   "frames": ["<abs>/frames/000.png", "…"], "sampledAt": [0, 0.0417, "…"],
   "fps": 24, "duration": 4.0, "trim": { "start": 0, "end": 4.042 },
   "dropped": { "leading": 0, "trailing": 1 }, "seamFill": 0,
-  "keyColor": "#08f00d", "alphaCoverage": 0.31,
+  "keyColor": "#08f00d", "keyer": "unmix", "alphaCoverage": 0.31,
   "cell": { "width": 512, "height": 592 },
   "crop": { "x": 64, "y": 48, "w": 434, "h": 502 }, "scale": 1.1797, "widthDefaulted": true,
   "webp": "<abs>/loop.webp", "apng": "<abs>/loop.apng", "webm": "<abs>/loop.webm",
@@ -761,9 +820,10 @@ the frames and has different flags (no seam, no seam fill, no exports) — so:
 
 - **One decode.** Every frame of the window is decoded once. `--key alpha`
   reads a matted clip's own alpha (the `veed-gs` matte of step 5); `auto` /
-  `#rrggbb` key a green plate with `--similarity`, `--blend` and the despill,
-  exactly as `loop`. `--key none` is refused: a transition is placed by its
-  silhouette.
+  `#rrggbb` key a green plate with `--keyer` (default `unmix`) and
+  `--similarity` — or `colorkey` with `--blend` and the despill — exactly as
+  `loop`, `keyResidue` included. `--key none` is refused: a transition is
+  placed by its silhouette.
 - **Holds, both ends** (`--trim-holds`, default on). A first-last take waits
   on each keyframe; leading frames that are the first pose and trailing
   frames that are the last collapse to one of each. "The same pose" is a step
@@ -1378,3 +1438,90 @@ character's size). A 4×4 sheet at 2048² gives 512 px grid cells and, after
 `--cell auto` tightens to the silhouette plus `--pad 8`, frames of 304×484
 (idle) / 416×506 (attack).
 
+
+## Measured: the chroma keyer (2026-09-27)
+
+Why `--keyer unmix` is the default for every hued plate (`key`, `run`,
+`from-video`, `loop`, `transition`). M-series mac, ffmpeg 8.0, node 25 / Bun
+1.4. `contact` keeps `colorkey` for its silhouettes: they are thresholded at
+96 px wide, where a rim does not exist, and both keyers cut the same radius.
+
+**What was ported.** aldegad/sprite-gen (Apache-2.0)
+`sprite_gen/frames/extract.py@fbd1a08` — `remove_chroma_background` (hard cut,
+soft-alpha un-mix within 4 px of the cut, 2 px for in-band blends, trapped-spill
+despill of clusters ≤ max(32, 0.5 % of the subject) with a pixel tinted past
+40), `despill_color` / `unmix_key_blend`, `detect_background_key_rgb` (mode of
+8-wide bins over corner patches and border), with their constants. Changes, each
+measured: one hard-cut ball around the **measured** plate at our `--similarity`
+radius (upstream: a ball around the requested pure key plus a gated ball around
+the painted one — its border rule rejects broadcast green `#00b140`); the
+channel split taken from the plate's own hue; the plate measured over 8 frames
+of the clip; blends **classified** by channel excess rather than the mean tint
+(upstream's opt-in `spill_require_hue` rule), because the mean tint reads
+yellow and gold as green — on tanka it put a pale translucent ring round every
+yellow ear, and on the synthetic gold disc an orange one.
+
+**Synthetic ground truth.** A 512² scene drawn at 4× and box-downsampled, so
+every edge pixel's true colour and coverage are known: an ink-outlined skin
+disc, a white panel with no outline, a purple-over-yellow plush with a 1.5 px
+feathered edge, a gold disc on its rim, a teal gem inside it, crimson strands
+0.5–3 px wide, and a translucent pale-blue wisp. Composited on a painted green
+`(8,240,13)` with a ±5 light falloff, 8 frames of sub-pixel drift, through
+`libx264 -crf 16 -pix_fmt yuv420p`, decoded, keyed. Scores: **halo** = mean
+CIEDE2000 of the composite against the true composite on `#0A0A0D` / white over
+the 2 px band round every true edge; **contamination** = pixels covered in both
+whose hue turned ≥ 12° toward the key (upstream's definition); **strand
+recall** = Σmin(α,α̂)/Σα over the strands; **interior damage** = pixels ≥ 3 px
+inside with ΔE00 > 5.
+
+| chain | halo dark / white, edges | contamination, edges | strand recall | interior damage | keyResidue |
+|---|---|---|---|---|---|
+| `colorkey` (the previous `from-video`) | 8.39 / 7.48 | 44.9 % | 76.7 % | 0.7 % | 3.11 % |
+| `colorkey` + `despill` (the previous `loop`) | 7.48 / 9.27 | 9.8 % | 76.7 % | **71.0 %** | 0 |
+| **`unmix`** | **5.49 / 4.88** | 23.7 % | 74.5 % | 0.7 % | 0.72 % |
+| upstream Python, `--spill small` | 5.82 / 5.09 | 21.8 % | 73.9 % | 1.1 % | 0.74 % |
+| upstream Python, `--spill full` | 5.72 / 4.99 | 19.4 % | 73.9 % | 1.1 % | 0 |
+
+"Edges" leaves out the wisp, which no chain keys right (a translucent subject
+over the plate stays green at partial alpha; upstream's `--spill full` makes it
+opaque grey-blue). `despill`'s low contamination is bought by recolouring the
+whole picture — hence its interior damage and its white halo. On lossless
+stills (a sheet on green), `unmix` gives 2.45 / 2.31 against `colorkey`'s
+4.53 / 3.95 and the best strand recall, 90.7 % against 89.6 %. The JS port runs
+at 5–6 ms a 512² frame against upstream's 50–90 ms in Python.
+
+**Real clips: tanka's ten Seedance loops** (640², 97–121 frames, plates
+`#00ee01`–`#00f500`), 24 frames each. No ground truth, so: `keyResidue`; the
+rim — mean luma of the outermost opaque ring over the ring 3 px in (a green rim
+lifts it a little, a black rim drags it down; tanka has no outline, so near 1
+is right); and the body — ΔE00 between keyed and source pixels ≥ 5 px inside.
+
+| chain | keyResidue | rim / 3 px in | body ΔE00 vs source |
+|---|---|---|---|
+| `colorkey` | 1.22–1.56 % | 0.83–0.88 | 0.45–0.53 |
+| `colorkey` + `despill` | 0 | 0.60–0.65 | **7.7–12.0** (yellow fur → salmon) |
+| **`unmix`** | **0** | **0.93–0.97** | **0.00** |
+
+`from-video --frames 12` on tanka's walk: `keyResidue` 0.0158 with `--keyer
+colorkey` (the 1 px rim `video-preview.md` measured on Lumi's portrait), 0 with
+`unmix`. Alpha coverage is the same to 0.1 % across all three chains.
+
+**Throughput**, 300 frames at 512² (tanka's walk looped): the key stage alone
+went from 1.45–1.67 s (one ffmpeg pass: decode, colorkey, despill, PNG) to
+2.63–2.79 s (decode to raw RGBA 0.15 s, key 1.35 s, PNG 1.1–1.3 s): 1.70–1.73×.
+The whole `loop --width 512 --formats webm` command: 15.3–16.5 s before,
+16.2–20.7 s after on a shared machine — within noise of the old chain run the
+same way (16.1–22.2 s).
+
+**Where it does not apply.** A white, cream or grey plate has no hue to un-mix
+and keeps `colorkey`. The Lumi attack clip is on cream `#ece9e1`: `colorkey`
+there eats the cream hair and coat fills (a hair tip keys hollow) and leaves a
+light rim on dark (outer-ring luma 3.1× the inner) — no colour key separates a
+subject from a plate it shares colours with; that clip needs a matte.
+
+**Lumi's white-plate `sheet-alpha.png` (BiRefNet) has no light halo** on
+`#0A0A0D` at 8×. Its opaque interior matches `sheet-raw.png` to 2.6 levels
+(palette noise), but its partially transparent pixels differ by ~97: the matte
+already carries foreground colour, not a white blend. Known-background recovery
+`F = (P − (1−α)·B)/α` (upstream `frames/cutout.py:212`) would over-darken them
+(edge composite luma 26 → 8.8) and was not built.

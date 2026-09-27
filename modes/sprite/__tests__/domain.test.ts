@@ -441,6 +441,17 @@ describe("loop motions", () => {
       }).toEqual({ broken, seam: false, step: false, seamFill: false, alpha: false });
     }
 
+    // keyResidue follows the same rule: 0 is the clean cut, absent is "no
+    // hued plate was keyed" — never the same statement.
+    expect(inspectWith({ keyResidue: 0.0158 }).keyResidue).toBe(0.0158);
+    const clean = inspectWith({ keyResidue: 0 });
+    expect("keyResidue" in clean).toBe(true);
+    expect(clean.keyResidue).toBe(0);
+    for (const broken of [undefined, null, "0.01", Number.NaN, {}]) {
+      expect({ broken, present: "keyResidue" in inspectWith({ keyResidue: broken }) })
+        .toEqual({ broken, present: false });
+    }
+
     // A sheet motion carries none of the three, and the anchor numbers it does
     // carry still parse beside them.
     const sheet = loadRoster(files({ "mini/project.json": MINI }))!

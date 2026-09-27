@@ -24,13 +24,16 @@
 
 import { spawnSync } from "node:child_process";
 import {
-  copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync,
-  rmSync, statSync, unlinkSync, writeFileSync,
+  closeSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, readSync,
+  renameSync, rmSync, statSync, unlinkSync, writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
+import {
+  keyFrame, keyRadius, keyResidue, measurePlate, plateOf, plateProximity, poolResidue,
+} from "./chroma.mjs";
 import { RIVE_MOTION_INPUT, riveDefaultMotion, riveHub, writeRiv } from "./rive.mjs";
 import {
   RIVE_DECODE_LIMIT_BYTES, RIVE_DECODE_WARN_BYTES, RIVE_LOOP_FPS, RIVE_LOOP_MAX_SIZE, RIVE_PIXEL_ART_STYLE, riveDefaultImages,
@@ -98,6 +101,25 @@ const DEFAULT_VIDEO_SIMILARITY = 0.22;
 /** How far short of the clip's end the last sample is pulled, so a timestamp
  *  that lands exactly on the duration still decodes a frame. */
 const SAMPLE_TAIL = 0.001;
+
+// --- keying: which keyer decides the pixels -----------------------------------
+/**
+ * `unmix` (chroma.mjs) separates every edge pixel into the subject's colour
+ * and its coverage; `colorkey` is ffmpeg's alpha-only key (plus `despill` in
+ * the loop path). `unmix` is the default because it won on both grounds the
+ * switch was judged on (2026-09-27, `references/pipeline.md` → Measured):
+ * a synthetic ground truth through x264, and tanka's ten Seedance loops.
+ * A plate with no hue (white, cream, grey) has nothing to un-mix, and is keyed
+ * with `colorkey` whatever the flag says — the report's `keyer` says which ran.
+ */
+const KEYERS = ["unmix", "colorkey"];
+const DEFAULT_KEYER = "unmix";
+/** Frames of a clip the plate colour is measured on, spread across the window. */
+const PLATE_SAMPLE_FRAMES = 8;
+/** Share of the visible pixels still carrying the plate's hue above which the
+ *  cut is worth a look. tanka's colorkey cuts measured 1.2–1.6 %, the un-mixed
+ *  ones 0.00 %; a translucent effect over the plate reads here as well. */
+const KEY_RESIDUE_WARN = 0.005;
 
 // --- contact: looking at a clip before sampling it -------------------------
 /** Stills on a contact sheet, unless --count / --every say otherwise. */
@@ -233,10 +255,19 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       Report { width, height, hasAlpha, alphaCoverage, cornerColor }.
 
   key <image> --out <png> [--color auto|#rrggbb] [--similarity ${DEFAULT_SIMILARITY}] [--blend ${DEFAULT_BLEND}]
-      Chroma-key a background colour away. 'auto' uses the corner colour.
+      [--keyer unmix|colorkey]
+      Chroma-key a background colour away. 'auto' measures the plate on the
+      border (unmix) or takes the corner colour (colorkey).
+      --keyer unmix (default) un-mixes every edge pixel into the subject's
+      colour and coverage (chroma.mjs); colorkey is ffmpeg's alpha-only key.
+      A plate with no hue (white, cream, grey) is keyed with colorkey either
+      way; the JSON's 'keyer' says which ran, and keyResidue what it left.
 
-  flatten <image> --out <png> [--bg #ffffff]
+  flatten <image> --out <png> [--bg #ffffff] [--similarity ${DEFAULT_VIDEO_SIMILARITY}]
       Composite onto a solid colour (for video models that mishandle alpha).
+      First checks the subject against the plate: any subject pixel within
+      the video key radius (--similarity) of --bg is reported in plateCheck
+      and warned about — keying the clip later would cut it out.
 
   slice <sheet> --rows R --cols C --out <dir> [--margin 0] [--gutter 0]
       Cut the grid into <dir>/NN.png, row-major. Non-integer cells are
@@ -278,17 +309,20 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       [--webp <preview.webp>] [--width W]
       Palette GIF with a reserved transparent entry; optional animated WebP.
 
-  inspect <motionDir> [--anchor bottom|center] [--cells <dir>] [--threshold ${DEFAULT_THRESHOLD}]
+  inspect <motionDir> [--anchor bottom|center] [--cells <dir>] [--key #rrggbb] [--threshold ${DEFAULT_THRESHOLD}]
       Frame count, cell, per-frame bboxes, anchor drift, body drift, max jump,
-      scale drift, empty frames and human warnings. Writes
+      scale drift, empty frames, keyResidue and human warnings. Writes
       <motionDir>/inspect.json.
+      keyResidue is the share of visible pixels still carrying the plate's
+      hue, for a motion keyed off a hued plate: --key names the plate, else
+      the keyColor the last inspect.json recorded; warns above ${KEY_RESIDUE_WARN}.
       --cells points at the pre-align grid cells so "leaves its grid cell"
       can be judged on the raw crop rather than the padded frame; it defaults
       to <motionDir>/${CELLS_DIRNAME} when 'run' left that directory there.
 
   run <sheet-raw> --rows R --cols C --out <motionDir> --name <motionId> --fps N
       [--alpha <png>] [--force] [--loop] [--anchor bottom|center]
-      [--x-from feet|bbox|cell] [--key auto|#rrggbb|none] [--cell auto|WxH]
+      [--x-from feet|bbox|cell] [--key auto|#rrggbb|none] [--keyer unmix|colorkey] [--cell auto|WxH]
       [--pad ${DEFAULT_PAD}] [--smooth] [--scale 1] [--nearest] [--margin 0] [--gutter 0]
       [--width W] [--no-webp] [--threshold ${DEFAULT_THRESHOLD}]
       probe -> key (only when the sheet is opaque) -> slice -> align -> pack
@@ -335,14 +369,18 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       [--trim-start s] [--trim-end s] [--no-clean] [--cell auto|WxH]
       [--pad ${DEFAULT_PAD}] [--smooth] [--scale 1] [--nearest] [--width W] [--no-webp]
       [--cols C] [--similarity ${DEFAULT_VIDEO_SIMILARITY}] [--blend ${DEFAULT_BLEND}] [--threshold ${DEFAULT_THRESHOLD}]
+      [--keyer unmix|colorkey]
       The video source: sample -> key -> clean -> align -> pack -> gif (+webp)
       -> inspect. There is no sheet — --frames frames are cut evenly out of
       the (trimmed) clip into <motionDir>/${CELLS_DIRNAME}/NN.png and the rest of the
       chain is the one 'run' drives.
-      --key auto takes the median of frame 00's four corner patches (the
-      chroma green, when the clip was shot as instructed) and keys every
-      frame with it, at a wider default similarity than a generated sheet
-      needs because a codec's "solid" green is a range.
+      --key auto measures the plate (the chroma green, when the clip was
+      shot as instructed) and keys every frame with it, at a wider default
+      similarity than a generated sheet needs because a codec's "solid"
+      green is a range. --keyer unmix (default) measures it on the border of
+      ${PLATE_SAMPLE_FRAMES} sampled frames and un-mixes the edge; colorkey takes the median of
+      frame 00's corner patches and keys alpha only (it leaves a 1 px green
+      rim). A plate with no hue is keyed with colorkey either way.
       --trim-start / --trim-end are TIMESTAMPS in seconds, like ffmpeg's
       -ss / -to; --trim-end defaults to the clip's duration.
       --loop stops one step short of the end (frame 00 already holds the
@@ -372,7 +410,7 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       'loop' has to measure the seam again.
 
   loop <clip> --out <motionDir> --name <motionId>
-      [--trim-start s] [--trim-end s] [--key auto|#rrggbb|none|alpha]
+      [--trim-start s] [--trim-end s] [--key auto|#rrggbb|none|alpha] [--keyer unmix|colorkey]
       [--similarity ${DEFAULT_VIDEO_SIMILARITY}] [--blend ${DEFAULT_BLEND}] [--despill|--no-despill]
       [--trim-holds|--no-trim-holds] [--seam-fill auto|none|N]
       [--crop union|none] [--pad ${DEFAULT_PAD}] [--width W]
@@ -384,14 +422,18 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       as loop.webp / loop.apng / loop.webm / loop.json (Lottie image
       sequence). The frames are NOT aligned or cleaned: in a loop the
       movement is the content, so a bobbing icon has to keep bobbing.
-      --key auto measures frame 0's corner plate and colorkeys it; alpha
-      decodes the clip's OWN alpha (a VEED webm, a Bria ProRes 4444 mov);
-      none leaves the frames opaque and says so.
-      --despill (default on when keying a green or blue plate) takes the
-      plate's spill hue off the silhouette AFTER the key — despilling first
-      moves the plate off the colour the key was told to look for, and the
-      key then matches nothing. A neutral plate has no spill hue, so despill
-      is skipped there whatever the flag says.
+      --key auto measures the plate and keys it; alpha decodes the clip's
+      OWN alpha (a VEED webm, a Bria ProRes 4444 mov); none leaves the
+      frames opaque and says so.
+      --keyer unmix (default) measures the plate on ${PLATE_SAMPLE_FRAMES} frames spread over
+      the window and un-mixes every edge pixel into colour + coverage — no
+      rim and no despill. colorkey is the previous chain: frame 0's corner
+      colour, ffmpeg colorkey, then --despill. A plate with no hue is keyed
+      with colorkey either way.
+      --despill (colorkey only; default on when keying a green or blue
+      plate) takes the plate's spill hue off the silhouette AFTER the key.
+      It also takes a fifth of the green out of every neutral pixel —
+      white comes out (255,204,255) — which is why unmix replaced it.
       --trim-holds (default on) drops the closing frames that have frozen
       back onto the first frame, and the opening frames that have not moved
       yet (keeping the last frame of the freeze).
@@ -418,7 +460,7 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
 
   transition <clip> --character <dir> --from <loopId> --to <loopId>
       [--out <motionDir>] [--name <id>] [--duration s]
-      [--trim-start s] [--trim-end s] [--key alpha|auto|#rrggbb]
+      [--trim-start s] [--trim-end s] [--key alpha|auto|#rrggbb] [--keyer unmix|colorkey]
       [--similarity ${DEFAULT_VIDEO_SIMILARITY}] [--blend ${DEFAULT_BLEND}] [--despill|--no-despill]
       [--trim-holds|--no-trim-holds] [--crop union|none] [--pad ${DEFAULT_PAD}] [--width W]
       [--threshold ${DEFAULT_THRESHOLD}]
@@ -910,6 +952,55 @@ function normalizeColor(value, flag) {
 }
 
 // ---------------------------------------------------------------------------
+// Keying — which keyer runs, the plate it runs on, and what it left behind
+// ---------------------------------------------------------------------------
+
+/**
+ * The keyer that actually runs. `unmix` needs a plate with a hue to lean on;
+ * `plate` is what a raw frame (or the colour `--key` names) says the plate
+ * is, and a white, cream or grey one is keyed with `colorkey` instead — said
+ * on stderr, and in the report's `keyer`, never silently. A border with no
+ * opaque pixel to measure (null) is keyed with `colorkey` too.
+ */
+function resolveKeyer(requested, plate, label) {
+  if (requested !== "unmix") return "colorkey";
+  if (plate?.chroma) return "unmix";
+  console.error(plate
+    ? `${label}: the plate ${plate.hex} has no hue to un-mix — keyed with colorkey`
+    : `${label}: no opaque border pixel to measure the plate on — keyed with colorkey`);
+  return "colorkey";
+}
+
+/** The plate `--key` names: measured over `frames` (a clip's spread, or the
+ *  one sheet) when it says auto, taken at its word when it is a colour. */
+function keyPlate(frames, key, similarity) {
+  return key === "auto"
+    ? measurePlate(frames, { key: "auto", radius: keyRadius(similarity) })
+    : plateOf(normalizeColor(key, "--key"));
+}
+
+/** `count` indices spread evenly over `0..total-1`, both ends included. */
+function spreadIndices(total, count) {
+  if (total <= count) return Array.from({ length: total }, (_, i) => i);
+  return Array.from({ length: count }, (_, k) => Math.round((k * (total - 1)) / (count - 1)));
+}
+
+/**
+ * `keyResidue` pooled over frames, as the numbers a report carries: the
+ * visible share (the one judged) and the partially transparent share. Null
+ * when there is no key colour or it has no hue — absent, never a 0.
+ */
+function residueOf(counts) {
+  const pooled = poolResidue(counts);
+  return pooled ? { keyResidue: round(pooled.visible, 4), keyResidueEdge: round(pooled.edge, 4) } : null;
+}
+
+function residueWarning(residue, hex) {
+  if (!residue || residue.keyResidue <= KEY_RESIDUE_WARN) return null;
+  return `keyResidue ${residue.keyResidue}: ${(residue.keyResidue * 100).toFixed(1)}% of the visible pixels still carry the plate's hue (${hex}) — a fringe the key left, or colour the character really has. Look at an edge at 4x on a dark background; a --keyer colorkey cut leaves one, --keyer unmix takes it out`;
+}
+
+// ---------------------------------------------------------------------------
 // Frame directories
 // ---------------------------------------------------------------------------
 
@@ -975,42 +1066,90 @@ function stepProbe(input, threshold) {
   };
 }
 
-function stepKey(input, { out, color, similarity, blend, threshold }) {
-  const resolved = color === "auto" ? stepProbe(input, threshold).cornerColor : normalizeColor(color, "--color");
-  const output = ffmpegTo(out, () => [
-    "-i", resolve(input),
-    "-vf", `colorkey=${resolved}:${similarity}:${blend},format=rgba`,
-    "-frames:v", "1", "-pix_fmt", "rgba",
-  ], "key");
-  // The keyed sheet is what `slice`, `align` and `pack` all copy pixels from,
-  // so the plate has to go here — at the one point where it is created — not
-  // at each of the places it would otherwise resurface. This costs no extra
-  // decode: the coverage this step reports is measured on the same buffer.
-  const keyed = readRgba(output);
-  if (zeroKeyedRgb(keyed, threshold)) writeRgbaPng(output, keyed, "key");
+function stepKey(input, { out, color, similarity, blend, threshold, keyer: requested = DEFAULT_KEYER }) {
+  const source = readRgba(resolve(input));
+  const colorkeyColor = color === "auto" ? cornerColor(source) : normalizeColor(color, "--color");
+  const plate = requested === "unmix" ? keyPlate([source], color, similarity) : null;
+  const keyer = resolveKeyer(requested, plate, "key");
+  let output;
+  let keyed;
+  let resolved;
+  if (keyer === "unmix") {
+    keyed = source;
+    keyFrame(keyed, plate, { radius: keyRadius(similarity) });
+    zeroKeyedRgb(keyed, threshold);
+    output = writeRgbaPng(out, keyed, "key");
+    resolved = plate.hex;
+  } else {
+    output = ffmpegTo(out, () => [
+      "-i", resolve(input),
+      "-vf", `colorkey=${colorkeyColor}:${similarity}:${blend},format=rgba`,
+      "-frames:v", "1", "-pix_fmt", "rgba",
+    ], "key");
+    // The keyed sheet is what `slice`, `align` and `pack` all copy pixels from,
+    // so the plate has to go here — at the one point where it is created — not
+    // at each of the places it would otherwise resurface. This costs no extra
+    // decode: the coverage this step reports is measured on the same buffer.
+    keyed = readRgba(output);
+    if (zeroKeyedRgb(keyed, threshold)) writeRgbaPng(output, keyed, "key");
+    resolved = colorkeyColor;
+  }
   const { coverage } = computeBbox(keyed, threshold);
+  const residue = residueOf([keyResidue(keyed, plateOf(resolved), threshold)]);
+  const warning = residueWarning(residue, resolved);
   return {
     input: resolve(input),
     output,
     color: resolved,
+    keyer,
     similarity,
     blend,
     width: keyed.width,
     height: keyed.height,
     alphaCoverage: round(coverage, 4),
+    ...(residue ?? {}),
+    warnings: warning ? [warning] : [],
   };
 }
 
-function stepFlatten(input, { out, bg }) {
+/**
+ * Composite onto a solid colour — and first, say which of the subject's own
+ * pixels that colour would take with it. A frame flattened onto a chroma
+ * plate comes back from the video model to be keyed at the video radius, and
+ * every subject pixel inside that radius goes with the plate, wherever it
+ * sits: a green gem on green, a white collar on a white plate. Measured on the
+ * subject before the plate is painted, when the alpha still says which pixel
+ * is which. An image with no transparency has no subject to tell apart, so it
+ * is not judged.
+ */
+function stepFlatten(input, { out, bg, similarity, threshold }) {
   const color = normalizeColor(bg, "--bg");
-  const { width, height } = probeSize(resolve(input));
+  const image = readRgba(resolve(input));
+  const { width, height } = image;
+  const warnings = [];
+  let plateCheck = null;
+  if (hasAlpha(image)) {
+    const radius = keyRadius(similarity);
+    const near = plateProximity(image, plateOf(color).painted, { radius, threshold });
+    plateCheck = {
+      radius: round(radius, 1),
+      subjectPixels: near.subject,
+      within: near.within,
+      fraction: round(near.fraction, 4),
+      minDistance: near.minDistance === null ? null : round(near.minDistance, 1),
+      nearest: near.nearest,
+    };
+    if (near.within > 0) {
+      warnings.push(`${near.within} subject px (${(near.fraction * 100).toFixed(2)}%) sit within the key radius of ${color} (${round(radius, 1)}; nearest ${near.nearest}, ${round(near.minDistance, 1)} away) — keying the clip will cut them out with the plate. Flatten onto a plate further from the character's colours`);
+    }
+  }
   const output = ffmpegTo(out, () => [
     "-i", resolve(input),
     "-f", "lavfi", "-i", `color=c=${color}:s=${width}x${height}`,
     "-filter_complex", "[1:v][0:v]overlay=0:0:format=auto,format=rgb24",
     "-frames:v", "1",
   ], "flatten");
-  return { input: resolve(input), output, bg: color, width, height };
+  return { input: resolve(input), output, bg: color, width, height, ...(plateCheck ? { plateCheck } : {}), warnings };
 }
 
 function stepSlice(sheet, { rows, cols, out, margin, gutter }) {
@@ -1600,11 +1739,21 @@ function stdDev(values) {
   return Math.sqrt(values.reduce((acc, v) => acc + (v - mean) ** 2, 0) / values.length);
 }
 
+/** The `keyColor` the motion's last `inspect.json` recorded, or null. */
+function previousKeyColor(dir) {
+  try {
+    const value = JSON.parse(readFileSync(join(dir, "inspect.json"), "utf-8")).keyColor;
+    return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Read a finished motion and say what is wrong with it in sentences a human
  * (and the agent talking to one) can act on.
  */
-function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write = true }) {
+function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write = true, keyColor }) {
   const dir = resolve(motionDir);
   const framesDir = existsSync(join(dir, "frames")) ? join(dir, "frames") : dir;
   const entries = listFrames(framesDir);
@@ -1612,15 +1761,23 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
   // `inspect <motionDir>` reproduces the clipping report `run` printed
   // instead of quietly judging it on the padded frames.
   const cells = cellsDir ?? (existsSync(join(dir, CELLS_DIRNAME)) ? join(dir, CELLS_DIRNAME) : null);
+  // The plate these frames were keyed off, for `keyResidue`: what the caller
+  // keyed with (null: nothing was keyed), or — a plain `inspect`, which was
+  // not there — what the last report recorded.
+  const key = keyColor === undefined ? previousKeyColor(dir) : keyColor;
+  const plate = key ? plateOf(key) : null;
+  const residueCounts = [];
 
   const measured = entries.map((entry) => {
     const image = readRgba(entry.path);
+    if (plate?.chroma) residueCounts.push(keyResidue(image, plate, threshold));
     return {
       index: entry.index, path: entry.path,
       width: image.width, height: image.height,
       ...measureFrame(image, threshold),
     };
   });
+  const residue = residueOf(residueCounts);
 
   const cellW = measured[0].width;
   const cellH = measured[0].height;
@@ -1697,6 +1854,8 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
     warnings.push("character scale varies across frames — regenerate with a fixed-scale instruction");
   }
   warnings.push(...listAndTruncate(clipped, (i) => `cell ${pad(i)} is clipped — the drawing leaves its grid cell`));
+  const residueNote = residueWarning(residue, key);
+  if (residueNote) warnings.push(residueNote);
 
   // The point `align` put the anchor on, when these very frames carry it: the
   // viewer draws its pivot guide there, and the atlas declares the same point.
@@ -1719,6 +1878,9 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
     maxJump: round(maxJump, 3),
     scaleDrift,
     emptyFrames,
+    // Present only when a hued plate was keyed: 0 is the best reading there
+    // is, and a white-plate or matted motion has no residue to speak of.
+    ...(residue ? { keyResidue: residue.keyResidue } : {}),
     warnings,
   };
 
@@ -1727,6 +1889,8 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
     motionDir: dir,
     framesDir,
     ...(cells ? { cellsDir: resolve(cells) } : {}),
+    ...(key ? { keyColor: key } : {}),
+    ...(residue ? { keyResidueEdge: residue.keyResidueEdge } : {}),
     anchor,
     frames: measured.map((f) => ({
       index: f.index,
@@ -1862,6 +2026,7 @@ function finishMotion(motionDir, cellsDir, options, { measures, sourceCell, warn
   const { summary } = stepInspect(motionDir, {
     anchor: options.anchor,
     threshold: options.threshold,
+    keyColor: options.keyColor ?? null,
     cellsDir,
     cellBoxes: measures.map((m, index) => ({
       index, width: sourceCell.width, height: sourceCell.height, bbox: m.bbox,
@@ -1888,6 +2053,7 @@ function stepRun(sheetRaw, options) {
   let sheetAlpha = providedAlpha;
   let keyedHere = null;
   let keyColor;
+  let keyer;
   if (!providedAlpha) {
     const probe = stepProbe(sheetRawPath, options.threshold);
     const opaque = !probe.hasAlpha || probe.alphaCoverage >= OPAQUE_COVERAGE;
@@ -1898,10 +2064,12 @@ function stepRun(sheetRaw, options) {
         similarity: options.similarity,
         blend: options.blend,
         threshold: options.threshold,
+        keyer: options.keyer,
       });
       keyedHere = keyed.output;
       sheetAlpha = keyed.output;
       keyColor = keyed.color;
+      keyer = keyed.keyer;
       if (keyed.alphaCoverage > KEYED_OPAQUE_ALERT) {
         warnings.push(`keying ${keyed.color} left ${(keyed.alphaCoverage * 100).toFixed(0)}% of the sheet opaque — check the background colour`);
       }
@@ -1945,7 +2113,7 @@ function stepRun(sheetRaw, options) {
   const cleaned = options.clean ? cleanSummary(cleanStats) : null;
   if (cleaned) warnings.push(...cleaned.warnings);
 
-  const { aligned, packed, preview, summary } = finishMotion(motionDir, cellsDir, options, {
+  const { aligned, packed, preview, summary } = finishMotion(motionDir, cellsDir, { ...options, keyColor: keyColor ?? null }, {
     measures, sourceCell: sliced.cell, warnings,
   });
 
@@ -1958,6 +2126,7 @@ function stepRun(sheetRaw, options) {
     ...(providedAlpha ? { alphaSource: "provided" } : {}),
     keyed: Boolean(keyedHere),
     ...(keyColor ? { keyColor } : {}),
+    ...(keyer ? { keyer } : {}),
     ...(cleaned ? { cleaned: cleaned.cleaned } : {}),
     cells: cellsDir,
     frames: aligned.frames.map((f) => f.path),
@@ -2505,17 +2674,39 @@ function stepFromVideo(clip, options) {
 
   // The key colour is read off the first sampled frame, un-keyed — the clip's
   // own idea of the chroma plate, codec drift included, rather than the ideal
-  // green the prompt asked for.
+  // green the prompt asked for. The un-mixing keyer measures it again over a
+  // spread of the sampled frames once they are all out.
   let keyColor;
+  let keyer = null;
+  let plate = null;
   let filter = null;
   if (options.key !== "none") {
     extract(times[0], 0, null);
-    const probe = stepProbe(join(cellsDir, frameName(0)), options.threshold);
-    keyColor = options.key === "auto" ? probe.cornerColor : normalizeColor(options.key, "--key");
-    filter = `colorkey=${keyColor}:${options.similarity}:${options.blend},format=rgba`;
+    const first = readRgba(join(cellsDir, frameName(0)));
+    keyColor = options.key === "auto" ? cornerColor(first) : normalizeColor(options.key, "--key");
+    keyer = resolveKeyer(options.keyer, options.keyer === "unmix" ? keyPlate([first], options.key, options.similarity) : null, "from-video");
+    if (keyer === "colorkey") filter = `colorkey=${keyColor}:${options.similarity}:${options.blend},format=rgba`;
   }
 
+  // `unmix` extracts every sample raw and keys it in the pass below, which
+  // already has each frame's pixels in hand.
   for (const [index, time] of times.entries()) extract(time, index, filter);
+  if (keyer === "unmix") {
+    plate = keyPlate(
+      spreadIndices(times.length, PLATE_SAMPLE_FRAMES).map((i) => readRgba(join(cellsDir, frameName(i)))),
+      options.key, options.similarity,
+    );
+    if (plate?.chroma) {
+      keyColor = plate.hex;
+    } else {
+      // Frame 0 had a hue and the spread does not: the colorkey the plate
+      // gets anyway, on frame 0's colour, as if unmix had never been asked.
+      keyer = resolveKeyer("unmix", plate, "from-video");
+      filter = `colorkey=${keyColor}:${options.similarity}:${options.blend},format=rgba`;
+      for (const [index, time] of times.entries()) extract(time, index, filter);
+    }
+  }
+  const radius = keyRadius(options.similarity);
 
   const source = probeSize(join(cellsDir, frameName(0)), "from-video");
   const cleanStats = [];
@@ -2525,14 +2716,18 @@ function stepFromVideo(clip, options) {
     const path = join(cellsDir, frameName(index));
     const image = readRgba(path);
     let rewrite = false;
+    if (keyer === "unmix") {
+      keyFrame(image, plate, { radius });
+      rewrite = true;
+    }
     if (options.clean) {
       const result = cleanCell(image, options.threshold);
       cleanStats.push({ index, ...result });
       if (result.removedPixels) rewrite = true;
     }
-    // Here the key ran inside the extraction filter, so there is no keyed
-    // sheet to fix once — every frame carries its own plate under the alpha,
-    // and this loop is the pass that already has the pixels in hand.
+    // Here the key ran inside the extraction filter (or just above), so there
+    // is no keyed sheet to fix once — every frame carries its own plate under
+    // the alpha, and this loop is the pass that already has the pixels in hand.
     if (keyColor && zeroKeyedRgb(image, options.threshold)) rewrite = true;
     if (rewrite) writeRgbaPng(path, image, `from-video cell ${index}`);
     const measure = measureFrame(image, options.threshold);
@@ -2549,7 +2744,7 @@ function stepFromVideo(clip, options) {
     warnings.push(`keying ${keyColor} left ${(meanCoverage * 100).toFixed(0)}% of each frame opaque — was the clip shot on a flat chroma background?`);
   }
 
-  const { aligned, packed, preview, summary } = finishMotion(motionDir, cellsDir, { ...options, fps }, {
+  const { aligned, packed, preview, summary } = finishMotion(motionDir, cellsDir, { ...options, fps, keyColor: keyColor ?? null }, {
     measures, sourceCell: source, warnings,
   });
 
@@ -2565,6 +2760,7 @@ function stepFromVideo(clip, options) {
     grid: packed.grid,
     keyed: Boolean(keyColor),
     ...(keyColor ? { keyColor } : {}),
+    ...(keyer ? { keyer } : {}),
     alphaCoverage: round(meanCoverage, 4),
     ...(cleaned ? { cleaned: cleaned.cleaned } : {}),
     cells: cellsDir,
@@ -3120,10 +3316,13 @@ function writeLoopExports(motionDir, framesDir, { fps, formats, name, cell, fram
  * 109-frame loop instead of two per frame, and no batch ever buffers more than
  * half of MAX_RAW_BYTES.
  */
-function zeroLoopFrames(framesDir, count, cell, threshold) {
+function zeroLoopFrames(framesDir, count, cell, threshold, plate = null) {
   const frameBytes = cell.width * cell.height * 4;
   const batch = Math.max(1, Math.floor(MAX_RAW_BYTES / 2 / frameBytes));
   let zeroed = 0;
+  // The same pass reads every written frame, so it is where `keyResidue` is
+  // measured: on the pixels the loop ships, after the crop and the scale.
+  const residue = [];
   for (let done = 0; done < count; done += batch) {
     const take = Math.min(batch, count - done);
     const r = spawnSync("ffmpeg", [
@@ -3137,6 +3336,11 @@ function zeroLoopFrames(framesDir, count, cell, threshold) {
       fail(`loop: frames ${done}..${done + take - 1} re-read as ${r.stdout?.length ?? 0} bytes, expected ${wanted}`);
     }
     const data = r.stdout.subarray(0, wanted);
+    if (plate?.chroma) {
+      for (let k = 0; k < take; k++) {
+        residue.push(keyResidue({ width: cell.width, height: cell.height, data: data.subarray(k * frameBytes, (k + 1) * frameBytes) }, plate, threshold));
+      }
+    }
     let touched = 0;
     for (let i = 0; i < wanted; i += 4) {
       if (data[i + 3] >= threshold) continue;
@@ -3152,7 +3356,7 @@ function zeroLoopFrames(framesDir, count, cell, threshold) {
       "-start_number", String(done), "--", join(framesDir, "%03d.png"),
     ], "loop frames", data);
   }
-  return zeroed;
+  return { zeroed, residue: residueOf(residue) };
 }
 
 /** Crop rect with even sides, which is what yuva420p and every scaler want. */
@@ -3201,6 +3405,61 @@ function prepareClip(input, options, label) {
 }
 
 /**
+ * Key a raw rgba plate sequence (`<work>/plate.rgba`, W×H×4 bytes a frame)
+ * with the un-mixing keyer into `outDir/%03d.png`, and delete the raw file.
+ *
+ * The plate is measured first over PLATE_SAMPLE_FRAMES frames spread across
+ * the window (`--key auto`; a colour is taken at its word). Frames are then
+ * read one at a time from the file, keyed and zeroed in memory, and encoded
+ * in batches of at most half of MAX_RAW_BYTES — one ffmpeg spawn per batch,
+ * as `zeroLoopFrames` does, so a 300-frame window never sits in memory whole.
+ * Returns the plate; a plate that turns out to have no hue is returned
+ * unused, for the caller to key with colorkey.
+ */
+function unmixRawSequence(rawPath, size, outDir, options, label) {
+  const { width, height } = size;
+  const frameBytes = width * height * 4;
+  const count = Math.floor(statSync(rawPath).size / frameBytes);
+  if (count > MAX_LOOP_FRAMES) {
+    fail(`the window decoded to more than ${MAX_LOOP_FRAMES} frames — narrow it with --trim-start/--trim-end`);
+  }
+  const fd = openSync(rawPath, "r");
+  try {
+    // Straight into the buffer the batch is encoded from: no conversion pass.
+    const readFrame = (index, into) => {
+      if (readSync(fd, into, 0, frameBytes, index * frameBytes) !== frameBytes) {
+        fail(`${label}: frame ${index} of the decoded window is short`);
+      }
+      return { width, height, data: into };
+    };
+    const plate = count
+      ? keyPlate(spreadIndices(count, PLATE_SAMPLE_FRAMES).map((i) => readFrame(i, Buffer.allocUnsafe(frameBytes))), options.key, options.similarity)
+      : null;
+    if (!plate?.chroma) return plate;
+    const radius = keyRadius(options.similarity);
+    const batch = Math.max(1, Math.floor(MAX_RAW_BYTES / 2 / frameBytes));
+    for (let done = 0; done < count; done += batch) {
+      const take = Math.min(batch, count - done);
+      const out = Buffer.allocUnsafe(take * frameBytes);
+      for (let k = 0; k < take; k++) {
+        const image = readFrame(done + k, out.subarray(k * frameBytes, (k + 1) * frameBytes));
+        keyFrame(image, plate, { radius });
+        zeroKeyedRgb(image, options.threshold);
+      }
+      ffmpeg([
+        "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${width}x${height}`, "-i", "-",
+        "-frames:v", String(take), "-pix_fmt", "rgba",
+        "-start_number", String(done), "--", join(outDir, "%03d.png"),
+      ], `${label} key`, out);
+    }
+    return plate;
+  } finally {
+    closeSync(fd);
+    rmSync(rawPath, { force: true });
+  }
+}
+
+/**
  * Decode a clip's window into `<work>/src/%03d.png` in one pass, keyed to
  * transparency (or with its own matte, `--key alpha`), and — `loop --fps`
  * only — interpolated on the plate first. Shared by `loop` and `transition`.
@@ -3209,17 +3468,25 @@ function decodeClipFrames(input, prep, options, work, label) {
   const { start, span, size, stream, alphaSource, keying, decodeArgs } = prep;
   // --- 1. what the plate is ---------------------------------------------
   let keyColor = null;
+  let keyer = null;
   if (keying) {
+    let first = null;
     if (options.key === "auto") {
       // Off a RAW frame at the window start, like `contact`: the clip's own
       // idea of the plate, codec drift included.
       const frame = ffmpegTo(join(work, "key.png"), () => [
         "-ss", String(round(start, 3)), "-i", input, "-frames:v", "1", "-pix_fmt", "rgba",
       ], `${label} key frame`);
-      keyColor = stepProbe(frame, options.threshold).cornerColor;
+      first = readRgba(frame);
+      keyColor = cornerColor(first);
     } else {
       keyColor = normalizeColor(options.key, "--key");
     }
+    keyer = resolveKeyer(
+      options.keyer,
+      options.keyer === "unmix" ? keyPlate(first ? [first] : [], options.key, options.similarity) : null,
+      label,
+    );
   }
   if (alphaSource) {
     const probe = ffmpegTo(join(work, "alpha.png"), () => [
@@ -3230,19 +3497,16 @@ function decodeClipFrames(input, prep, options, work, label) {
       fail(`--key alpha: the first frame of ${input} is fully opaque, so the clip carries no matte. Matte it first (remove-video-background.mjs), or key its plate here with --key auto or --key #rrggbb.`);
     }
   }
-  const { chain: keyChain, despill } = loopKeyChain(keyColor, options);
 
-  // --- 2. decode the whole window in one pass ----------------------------
+  // --- 2. where the frames come from: the window, or its interpolation ---
   const srcDir = join(work, "src");
   mkdirSync(srcDir, { recursive: true });
+  let source;
+  let limit;
   let frameFps;
   if (options.fps === null) {
-    ffmpeg([
-      "-ss", String(start), "-t", String(span), ...decodeArgs,
-      "-i", input, "-vf", keyChain.join(","),
-      "-frames:v", String(MAX_LOOP_FRAMES + 1),
-      "-start_number", "0", "-pix_fmt", "rgba", "--", join(srcDir, "%03d.png"),
-    ], `${label} decode`);
+    source = ["-ss", String(start), "-t", String(span), ...decodeArgs, "-i", input];
+    limit = MAX_LOOP_FRAMES + 1;
     frameFps = stream.fps;
   } else {
     // --- 3. interpolate, on the PLATE, wrapped around the loop -----------
@@ -3287,12 +3551,34 @@ function decodeClipFrames(input, prep, options, work, label) {
     if (keep > MAX_LOOP_FRAMES) {
       fail(`--fps ${options.fps} over a ${round(span, 3)}s window is ${keep} frames — the limit is ${MAX_LOOP_FRAMES}`);
     }
-    ffmpeg([
-      "-framerate", String(options.fps), "-start_number", "0", "-i", join(interpDir, "%03d.png"),
-      "-frames:v", String(keep), "-vf", keyChain.join(","),
-      "-start_number", "0", "-pix_fmt", "rgba", "--", join(srcDir, "%03d.png"),
-    ], `${label} key`);
+    source = ["-framerate", String(options.fps), "-start_number", "0", "-i", join(interpDir, "%03d.png")];
+    limit = keep;
     frameFps = options.fps;
+  }
+
+  // --- 4. key: one ffmpeg pass (colorkey), or raw frames un-mixed in JS ----
+  const decodeKeyed = (color) => {
+    const { chain, despill: type } = loopKeyChain(color, options);
+    ffmpeg([
+      ...source, "-vf", chain.join(","), "-frames:v", String(limit),
+      "-start_number", "0", "-pix_fmt", "rgba", "--", join(srcDir, "%03d.png"),
+    ], `${label} decode`);
+    return type;
+  };
+  let despill = null;
+  if (keyer === "unmix") {
+    const raw = join(work, "plate.rgba");
+    ffmpeg([...source, "-frames:v", String(limit), "-f", "rawvideo", "-pix_fmt", "rgba", "--", raw], `${label} decode`);
+    const plate = unmixRawSequence(raw, size, srcDir, options, label);
+    if (plate?.chroma) {
+      keyColor = plate.hex;
+    } else {
+      // Frame 0 had a hue and the window does not: colorkey, on frame 0's colour.
+      keyer = resolveKeyer("unmix", plate, label);
+      despill = decodeKeyed(keyColor);
+    }
+  } else {
+    despill = decodeKeyed(keyColor);
   }
 
   const decoded = sequenceCount(srcDir, label);
@@ -3303,7 +3589,7 @@ function decodeClipFrames(input, prep, options, work, label) {
     fail(`${label}: ${round(span, 3)}s from ${round(start, 3)}s of ${input} decoded to ${decoded} frame(s) — a loop needs at least two`);
   }
   const fps = round(frameFps ?? decoded / span, 3);
-  return { keyColor, despill, srcDir, decoded, fps };
+  return { keyColor, keyer, despill, srcDir, decoded, fps };
 }
 
 /**
@@ -3313,7 +3599,7 @@ function decodeClipFrames(input, prep, options, work, label) {
  * Shared by `loop` and `transition`, so a transition's frames sit in clip
  * coordinates exactly the way a loop's do.
  */
-function cutClipFrames(srcDir, first, count, size, options, framesDir, { keyed, label }) {
+function cutClipFrames(srcDir, first, count, size, options, framesDir, { keyed, label, keyColor = null }) {
   // --- 6. crop and scale -------------------------------------------------
   const boxes = keyed
     ? loopFrameBoxes(srcDir, first, count, size, options.threshold, label)
@@ -3389,7 +3675,7 @@ function cutClipFrames(srcDir, first, count, size, options, framesDir, { keyed, 
     fail(`${label}: wrote ${written} of ${count} frames into ${framesDir} — a frame could not be re-encoded`);
   }
   const cell = { width: outWidth, height: outHeight };
-  zeroLoopFrames(framesDir, count, cell, options.threshold);
+  const { residue } = zeroLoopFrames(framesDir, count, cell, options.threshold, keyColor ? plateOf(keyColor) : null);
   // What maps a frame back onto its clip: frame px = (clip px − crop.xy) ×
   // scale. Every loop is cut to its OWN union box and then scaled to one
   // width, so two loops of one character come out at different scales —
@@ -3398,7 +3684,7 @@ function cutClipFrames(srcDir, first, count, size, options, framesDir, { keyed, 
   // one size, and to put each where it stood in its clip. One number: the
   // width ratio, which the height ratio matches to the even-pixel rounding.
   const clipScale = round(outWidth / crop.w, 4);
-  return { crop, cell, clipScale, emptyFrames, alphaCoverage, widthDefaulted, outWidth };
+  return { crop, cell, clipScale, emptyFrames, alphaCoverage, widthDefaulted, outWidth, residue };
 }
 
 /**
@@ -3429,7 +3715,7 @@ function stepLoop(clip, options) {
   mkdirSync(work, { recursive: true });
 
   try {
-    const { keyColor, despill, srcDir, decoded, fps } = decodeClipFrames(input, prep, options, work, "loop");
+    const { keyColor, keyer, despill, srcDir, decoded, fps } = decodeClipFrames(input, prep, options, work, "loop");
 
     // --- 4. holds, and 5. the seam ----------------------------------------
     const masks = decodeLoopMasks(srcDir, decoded, size, keying || alphaSource, "loop");
@@ -3471,8 +3757,8 @@ function stepLoop(clip, options) {
     }
 
     // --- 6. crop and scale -------------------------------------------------
-    const { crop, cell, clipScale, emptyFrames, alphaCoverage, widthDefaulted } = cutClipFrames(
-      srcDir, first, count, size, options, framesDir, { keyed: keying || alphaSource, label: "loop" },
+    const { crop, cell, clipScale, emptyFrames, alphaCoverage, widthDefaulted, residue } = cutClipFrames(
+      srcDir, first, count, size, options, framesDir, { keyed: keying || alphaSource, label: "loop", keyColor },
     );
 
     // --- 7. the deliverables ----------------------------------------------
@@ -3486,6 +3772,8 @@ function stepLoop(clip, options) {
     if (keyColor && alphaCoverage > KEYED_OPAQUE_ALERT) {
       warnings.push(`keying ${keyColor} left ${(alphaCoverage * 100).toFixed(0)}% of each frame opaque — was the clip shot on a flat chroma background?`);
     }
+    const residueNote = residueWarning(residue, keyColor);
+    if (residueNote) warnings.push(residueNote);
     if (options.key === "none") {
       warnings.push("--key none: the frames are opaque, so the loop has no transparency to composite over a UI");
     }
@@ -3515,6 +3803,7 @@ function stepLoop(clip, options) {
       maxStep,
       alphaCoverage,
       ...(keyColor ? { keyColor } : {}),
+      ...(residue ? residue : {}),
       emptyFrames,
       dropped,
       seamFill,
@@ -3544,6 +3833,7 @@ function stepLoop(clip, options) {
       dropped,
       seamFill,
       ...(keyColor ? { keyColor } : {}),
+      ...(keyer ? { keyer } : {}),
       ...(despill ? { despill } : {}),
       alphaCoverage,
       cell,
@@ -3591,7 +3881,7 @@ function stepTransition(clip, options) {
   mkdirSync(work, { recursive: true });
 
   try {
-    const { keyColor, despill, srcDir, decoded, fps } = decodeClipFrames(input, prep, { ...options, fps: null }, work, label);
+    const { keyColor, keyer, despill, srcDir, decoded, fps } = decodeClipFrames(input, prep, { ...options, fps: null }, work, label);
     const warnings = [];
 
     // --- holds at both ends, collapsed to one frame each ------------------
@@ -3622,10 +3912,12 @@ function stepTransition(clip, options) {
     const count = picked.length;
 
     // --- crop and scale, as `loop` does ------------------------------------
-    const { crop, cell, clipScale, emptyFrames, alphaCoverage, widthDefaulted } = cutClipFrames(
-      pickedDir, 0, count, size, options, framesDir, { keyed: true, label },
+    const { crop, cell, clipScale, emptyFrames, alphaCoverage, widthDefaulted, residue } = cutClipFrames(
+      pickedDir, 0, count, size, options, framesDir, { keyed: true, label, keyColor },
     );
     warnings.push(...listAndTruncate(emptyFrames, (i) => `frame ${loopFrameName(i).slice(0, 3)} is empty`));
+    const residueNote = residueWarning(residue, keyColor);
+    if (residueNote) warnings.push(residueNote);
 
     // --- does it land? -----------------------------------------------------
     const placement = { origin: { x: crop.x, y: crop.y }, scale: clipScale };
@@ -3648,6 +3940,7 @@ function stepTransition(clip, options) {
       ...(joins.endGap === null ? {} : { endGap: joins.endGap }),
       alphaCoverage,
       ...(keyColor ? { keyColor } : {}),
+      ...(residue ? residue : {}),
       emptyFrames,
       dropped: { leading: first, trailing: decoded - 1 - last },
       ...(retime ? { retime } : {}),
@@ -3670,6 +3963,7 @@ function stepTransition(clip, options) {
       dropped: inspect.dropped,
       ...(retime ? { retime } : {}),
       ...(keyColor ? { keyColor } : {}),
+      ...(keyer ? { keyer } : {}),
       ...(despill ? { despill } : {}),
       alphaCoverage,
       cell,
@@ -5279,9 +5573,9 @@ const OPTIONS = {
   probe: { threshold: { type: "string" } },
   key: {
     out: { type: "string" }, color: { type: "string" }, similarity: { type: "string" },
-    blend: { type: "string" }, threshold: { type: "string" },
+    blend: { type: "string" }, threshold: { type: "string" }, keyer: { type: "string" },
   },
-  flatten: { out: { type: "string" }, bg: { type: "string" } },
+  flatten: { out: { type: "string" }, bg: { type: "string" }, similarity: { type: "string" }, threshold: { type: "string" } },
   slice: {
     rows: { type: "string" }, cols: { type: "string" }, out: { type: "string" },
     margin: { type: "string" }, gutter: { type: "string" },
@@ -5302,7 +5596,7 @@ const OPTIONS = {
     out: { type: "string" }, fps: { type: "string" }, loop: { type: "boolean", default: false },
     "no-loop": { type: "boolean", default: false }, webp: { type: "string" }, width: { type: "string" },
   },
-  inspect: { anchor: { type: "string" }, threshold: { type: "string" }, cells: { type: "string" } },
+  inspect: { anchor: { type: "string" }, threshold: { type: "string" }, cells: { type: "string" }, key: { type: "string" } },
   run: {
     rows: { type: "string" }, cols: { type: "string" }, out: { type: "string" }, name: { type: "string" },
     alpha: { type: "string" }, force: { type: "boolean", default: false },
@@ -5312,7 +5606,7 @@ const OPTIONS = {
     smooth: { type: "boolean", default: false }, scale: { type: "string" }, nearest: { type: "boolean", default: false },
     margin: { type: "string" }, gutter: { type: "string" }, width: { type: "string" },
     "no-webp": { type: "boolean", default: false }, threshold: { type: "string" },
-    similarity: { type: "string" }, blend: { type: "string" },
+    similarity: { type: "string" }, blend: { type: "string" }, keyer: { type: "string" },
     "no-clean": { type: "boolean", default: false },
   },
   contact: {
@@ -5334,6 +5628,7 @@ const OPTIONS = {
     nearest: { type: "boolean", default: false }, cols: { type: "string" },
     width: { type: "string" }, "no-webp": { type: "boolean", default: false },
     threshold: { type: "string" }, similarity: { type: "string" }, blend: { type: "string" },
+    keyer: { type: "string" },
     "no-clean": { type: "boolean", default: false },
   },
   retime: {
@@ -5344,6 +5639,7 @@ const OPTIONS = {
     "trim-start": { type: "string" }, "trim-end": { type: "string" },
     key: { type: "string" }, similarity: { type: "string" }, blend: { type: "string" },
     despill: { type: "boolean", default: false }, "no-despill": { type: "boolean", default: false },
+    keyer: { type: "string" },
     "trim-holds": { type: "boolean", default: false }, "no-trim-holds": { type: "boolean", default: false },
     "seam-fill": { type: "string" },
     crop: { type: "string" }, pad: { type: "string" }, width: { type: "string" },
@@ -5356,6 +5652,7 @@ const OPTIONS = {
     "trim-start": { type: "string" }, "trim-end": { type: "string" },
     key: { type: "string" }, similarity: { type: "string" }, blend: { type: "string" },
     despill: { type: "boolean", default: false }, "no-despill": { type: "boolean", default: false },
+    keyer: { type: "string" },
     "trim-holds": { type: "boolean", default: false }, "no-trim-holds": { type: "boolean", default: false },
     crop: { type: "string" }, pad: { type: "string" }, width: { type: "string" }, threshold: { type: "string" },
   },
@@ -5368,6 +5665,20 @@ const OPTIONS = {
     fps: { type: "string" }, "max-size": { type: "string" }, filter: { type: "string" }, hub: { type: "string" },
   },
 };
+
+/** `--keyer unmix|colorkey`. */
+function pickKeyer(value) {
+  if (value === undefined) return DEFAULT_KEYER;
+  if (!KEYERS.includes(value)) fail(`--keyer: expected ${KEYERS.join(" or ")}, got '${value}'`);
+  return value;
+}
+
+/** A report's `keyResidue`, said the way a human line says it. */
+function residueLine(report) {
+  return typeof report.keyResidue === "number"
+    ? [`keyResidue ${report.keyResidue} (visible pixels with the plate's hue${typeof report.keyResidueEdge === "number" ? `; ${report.keyResidueEdge} of the soft edge` : ""})`]
+    : [];
+}
 
 /** `--seam-fill auto|none|<N>` — "auto", "none", or how many in-betweens. */
 function pickSeamFill(value) {
@@ -5397,6 +5708,7 @@ function transitionLines(out) {
   return [
     `${out.name}: ${out.from} → ${out.to}${out.reverseOf ? ` (${out.reverseOf} backwards)` : ""}, ${out.frames.length} frames of ${out.cell.width}x${out.cell.height} at ${out.fps}fps (${out.duration}s) → ${out.motionDir}`,
     `step ${step}; ${said(startGap, "start")}; ${said(endGap, "end")}`,
+    ...residueLine(out.inspect),
     ...(out.warnings.length ? out.warnings : ["no warnings"]),
   ];
 }
@@ -5543,16 +5855,23 @@ function main() {
         similarity: num(values.similarity, "--similarity", { min: 0, fallback: DEFAULT_SIMILARITY }),
         blend: num(values.blend, "--blend", { min: 0, fallback: DEFAULT_BLEND }),
         threshold,
+        keyer: pickKeyer(values.keyer),
       });
-      emit(values, out, [`keyed ${out.color} → ${out.output} (coverage now ${(out.alphaCoverage * 100).toFixed(1)}%)`]);
+      emit(values, out, [
+        `keyed ${out.color} with ${out.keyer} → ${out.output} (coverage now ${(out.alphaCoverage * 100).toFixed(1)}%)`,
+        ...residueLine(out),
+        ...out.warnings,
+      ]);
       break;
     }
     case "flatten": {
       const out = stepFlatten(requirePositional(positionals, "<image>"), {
         out: requireFlag(values.out, "--out"),
         bg: values.bg ?? "#ffffff",
+        similarity: num(values.similarity, "--similarity", { min: 0, fallback: DEFAULT_VIDEO_SIMILARITY }),
+        threshold,
       });
-      emit(values, out, [`flattened onto ${out.bg} → ${out.output}`]);
+      emit(values, out, [`flattened onto ${out.bg} → ${out.output}`, ...out.warnings]);
       break;
     }
     case "slice": {
@@ -5630,9 +5949,12 @@ function main() {
         anchor: pickAnchor(values.anchor),
         threshold,
         cellsDir: values.cells ?? null,
+        // Absent: whatever the motion's last report recorded (undefined).
+        ...(values.key === undefined ? {} : { keyColor: normalizeColor(values.key, "--key") }),
       });
       emit(values, report, [
         `${report.frameCount} frames of ${report.cell.width}x${report.cell.height}, anchor drift ${report.anchorDrift.x}/${report.anchorDrift.y}px, body drift ${report.bodyDrift}px, max jump ${report.maxJump}px, scale drift ${report.scaleDrift}`,
+        ...residueLine(report),
         ...(report.warnings.length ? report.warnings : ["no warnings"]),
       ]);
       break;
@@ -5664,10 +5986,12 @@ function main() {
         threshold,
         similarity: num(values.similarity, "--similarity", { min: 0, fallback: DEFAULT_SIMILARITY }),
         blend: num(values.blend, "--blend", { min: 0, fallback: DEFAULT_BLEND }),
+        keyer: pickKeyer(values.keyer),
         clean: !values["no-clean"],
       });
       emit(values, out, [
         `${out.name}: ${out.frames.length} frames of ${out.cell.width}x${out.cell.height} → ${out.motionDir}`,
+        ...residueLine(out.inspect),
         ...(out.warnings.length ? out.warnings : ["no warnings"]),
       ]);
       break;
@@ -5750,10 +6074,12 @@ function main() {
         threshold,
         similarity: num(values.similarity, "--similarity", { min: 0, fallback: DEFAULT_VIDEO_SIMILARITY }),
         blend: num(values.blend, "--blend", { min: 0, fallback: DEFAULT_BLEND }),
+        keyer: pickKeyer(values.keyer),
         clean: !values["no-clean"],
       });
       emit(values, out, [
         `${out.name}: ${out.frames.length} frames of ${out.cell.width}x${out.cell.height} sampled from ${basename(out.video)} at ${out.fps}fps → ${out.motionDir}`,
+        ...residueLine(out.inspect),
         ...(out.warnings.length ? out.warnings : ["no warnings"]),
       ]);
       break;
@@ -5784,6 +6110,7 @@ function main() {
         similarity: num(values.similarity, "--similarity", { min: 0, fallback: DEFAULT_VIDEO_SIMILARITY }),
         blend: num(values.blend, "--blend", { min: 0, fallback: DEFAULT_BLEND }),
         despill: pickToggle(values, "despill", true),
+        keyer: pickKeyer(values.keyer),
         trimHolds: pickToggle(values, "trim-holds", true),
         seamFill: pickSeamFill(values["seam-fill"]),
         crop,
@@ -5796,6 +6123,7 @@ function main() {
       emit(values, out, [
         `${out.name}: ${out.frames.length} frames of ${out.cell.width}x${out.cell.height} at ${out.fps}fps (${out.duration}s) from ${basename(out.video)} → ${out.motionDir}`,
         `seam ${out.inspect.seam} vs step ${out.inspect.step} (max ${out.inspect.maxStep}), dropped ${out.dropped.leading} leading / ${out.dropped.trailing} trailing, seam-fill ${out.seamFill}`,
+        ...residueLine(out.inspect),
         ...Object.entries(out.inspect.exports).map(([format, bytes]) => `${format} ${(bytes / 1e6).toFixed(2)} MB`),
         ...(out.warnings.length ? out.warnings : ["no warnings"]),
       ]);
@@ -5826,6 +6154,7 @@ function main() {
         similarity: num(values.similarity, "--similarity", { min: 0, fallback: DEFAULT_VIDEO_SIMILARITY }),
         blend: num(values.blend, "--blend", { min: 0, fallback: DEFAULT_BLEND }),
         despill: pickToggle(values, "despill", true),
+        keyer: pickKeyer(values.keyer),
         trimHolds: pickToggle(values, "trim-holds", true),
         crop,
         pad: num(values.pad, "--pad", { integer: true, min: 0, fallback: DEFAULT_PAD }),

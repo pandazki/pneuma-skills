@@ -232,6 +232,17 @@ export interface InspectSummary {
   /** Fraction of the frame area that is opaque, averaged over the frames. */
   alphaCoverage?: number;
   /**
+   * Share of the visible pixels (alpha at or above the threshold) that still
+   * carry the chroma plate's hue — every keyed channel above every other by
+   * more than 40 — pooled over the frames: the fringe a key left, or colour
+   * the character really has. Measured by `from-video`, `loop`, `transition`,
+   * `run` and `inspect` on a motion keyed off a hued plate; above 0.005 the
+   * report warns. Absent when nothing was keyed or the plate had no hue
+   * (white, cream, grey) — 0 is the best reading there is, so it follows the
+   * finite-or-absent rule.
+   */
+  keyResidue?: number;
+  /**
    * Transitions only: how far the first frame is from the `from` loop's
    * frame 0, and the last from the `to` loop's, as silhouette distance in
    * clip coordinates — the same units as `step`. At most 2 × `step` joins.
@@ -541,6 +552,7 @@ function parseInspect(value: unknown): InspectSummary | undefined {
   const step = parseFinite(value.step);
   const seamFill = parseFinite(value.seamFill);
   const alphaCoverage = parseFinite(value.alphaCoverage);
+  const keyResidue = parseFinite(value.keyResidue);
   const startGap = parseFinite(value.startGap);
   const endGap = parseFinite(value.endGap);
   const crop = parseClipRect(value.crop);
@@ -569,6 +581,7 @@ function parseInspect(value: unknown): InspectSummary | undefined {
     ...(step === undefined ? {} : { step }),
     ...(seamFill === undefined ? {} : { seamFill }),
     ...(alphaCoverage === undefined ? {} : { alphaCoverage }),
+    ...(keyResidue === undefined ? {} : { keyResidue }),
     ...(startGap === undefined ? {} : { startGap }),
     ...(endGap === undefined ? {} : { endGap }),
     ...(crop ? { crop } : {}),
