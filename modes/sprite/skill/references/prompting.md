@@ -213,6 +213,30 @@ Written out, that is the first worked prompt below.
 > pure white background filling every cell, no gradient. No grid lines, no
 > numbers, no shadow, no anti-aliased halo around the sprite.
 
+<!-- T12 review: pixel-art prompting notes from T5 (pixel lattice), 2026-09-27.
+     Evidence in references/pipeline.md "Measured (pixel lattice, 2026-09-27)". -->
+**What the model does with "pixel art", and what that means for the sheet.**
+Measured on a GPT Image 2.5 walk (shoot e6): the model does not honour a
+pixel count — asked for 32 art pixels, it drew the knight ≈ 53 tall — and
+its blocks are ≈ 8 px but only loosely on one grid, with details drawn at
+half-block scale. `run --pixel` snaps them onto one grid; what it cannot keep
+is detail smaller than a block (the gap between two visor slits merges into
+one block). So:
+
+- Pin the **block size**, not a pixel count, through the reference. Upstream
+  reports that the model follows the attached image's block size far more
+  than the text (aldegad/sprite-gen, `docs/pixel-unfake.md`: pixel density is
+  governed by the reference, not the prompt) — attach a true low-resolution
+  reference upscaled nearest, not a smooth illustration; and it warns that a
+  raw that is already on a clean grid is a better anchor than a snapped copy
+  of it (snapping twice blurs the face). Not yet measured here.
+- Ask for every detail at least one full block wide ("every feature at
+  least one pixel block wide, no half-blocks") and keep "hard pixel edges,
+  no anti-aliasing, limited palette".
+- After the sheet is drawn, look at one cell at 8× and count blocks across a
+  flat area: that width in source pixels is the `--pitch-hint` `run --pixel`
+  asks for when the frames do not show their grid on their own.
+
 ### Anime attack (4×4, 10 fps, no loop)
 
 > Crisp anime cel-shading, two-tone shadows, clean ink outline. A single image

@@ -338,12 +338,27 @@ answer sitting next to the frames. The record travels with the frames it
 describes and every align rewrites it; like the cells it is an intermediate
 file, not an asset, and `register-run` never registers it.
 
+**Frames written by `pixel`** (a `pixel.json` next to them) are N×N blocks of
+logical pixels, and `align` keeps them that way: every offset, the pad
+(rounded up) and the auto cell are whole multiples of N, so no block
+straddles the cell's N-grid and the atlas divides back to logical pixels
+exactly. An explicit `--cell` that is not a multiple of N is refused. The
+record's `{ scale, pitch, palette }` is copied into `align.json` as `pixel`,
+which is where `inspect` finds it.
+
 ### `pack <framesDir> --out <sheet.png> --atlas <atlas.json> --name <motionId> --fps N [--loop] [--anchor bottom|center] [--cols C] [--scale 0.5] [--nearest]`
 
 Tiles the aligned frames row-major into one image and writes the atlas.
-`--scale` resizes every frame first; add `--nearest` for pixel art so
-downscaling stays hard-edged. No margin, no gutter — a game engine reads the
-rects from the atlas, and gutters only cost texture memory.
+`--scale` resizes every frame first; `--nearest` keeps a downscale
+hard-edged. No margin, no gutter — a game engine reads the rects from the
+atlas, and gutters only cost texture memory.
+
+For **generated** pixel art, `--scale 0.5 --nearest` is not a pixel-art
+path: a fixed factor cuts through block centres wherever the model's block
+width is not that factor, so blocks come out uneven, the soft edge stays
+soft and every frame keeps thousands of colours. Use `run --pixel` /
+`pixel` (below), which measures the grid first; the numbers are in
+"Measured (pixel lattice, 2026-09-27)".
 
 The pivot it writes is the anchor point `<framesDir>/align.json` recorded, not
 the cell edge, under two keys per frame: `pivot` and `anchor` (the same
@@ -393,6 +408,7 @@ only if you sliced into a directory of your own.
 | `rowJumps` | `[from, to]` row boundaries of the sheet's grid that jump (below). `[]` when checked and none |
 | `anchorPoint` | The point `align` recorded for these frames, in cell pixels — the same point the atlas pivot names. Absent when the frames carry no `align.json` for this anchor and cell |
 | `keyResidue` | Share of the visible pixels (alpha ≥ threshold) whose every plate channel still clears every other channel by more than 40 — the plate's hue, pooled over the frames. Absent unless the motion was keyed off a hued plate: `--key` names the plate, otherwise the `keyColor` the last `inspect.json` recorded (`run` and `from-video` record it). The fat report adds `keyResidueEdge`, the same share over the partially transparent pixels. `register-run` copies `keyResidue` into the sidecar |
+| `pixel` | Only for frames that went through `pixel`: `{ pitch, scale, held, palette, paletteChecked }` — the block size it cut at (source px per logical px), the whole-number scale, and whether the lattice survived everything after it: alpha only 0/255, every N×N block one colour, every colour a pinned-palette colour (not checked after `--outline`, which darkens the edge on purpose). When `held` is false the offending frames are listed (`softAlphaFrames`, `offGridFrames`, `offPaletteFrames`). On these frames `headDrift` is in frame pixels and `sourceHeadDrift`, measured on the source-resolution cells, is converted to them (× scale / pitch.x) so the two compare |
 | `warnings` | Human sentences — read these, they name the fix |
 
 Warning rules and what each one means:
@@ -409,6 +425,7 @@ Warning rules and what each one means:
 | "character scale varies across frames — regenerate with a fixed-scale instruction" | `scaleDrift > 0.15` | This measures silhouette height, including props. Check for intended crouching, turning or prop movement; acknowledge it when justified. Regenerate actual proportion or drawing-scale drift with the fixed-scale guidance in `prompting.md`. |
 | "cell NN is clipped — the drawing leaves its grid cell" | Bbox touches the cell edge before alignment | The pose is bigger than its cell. Regenerate with the "stays inside its own cell" clause. |
 | "keyResidue 0.0158: 1.6% of the visible pixels still carry the plate's hue …" | `keyResidue > 0.005` | Look at an edge at 4× on a dark background. A `--keyer colorkey` cut leaves a green rim — re-cut with `--keyer unmix`. After `unmix` the usual cause is the character's own plate-coloured material or a translucent effect (smoke, glow) the plate shows through; a matte (`remove-video-background.mjs`, then `--key alpha`) is the fix for the second |
+| "pixel lattice broken: frame(s) … have soft alpha / blocks off the N× grid / colours outside the palette …" | Pixel frames that no longer match their lattice | Something resampled or re-aligned them from the wrong source. Re-align from `pixel/`, not `cells/`; re-run `pixel` if the palette was rebuilt after them. |
 
 These are geometric heuristics. `maxJump` does not include last-to-first (the
 step checks do, for a motion whose atlas says it loops), and the report does
@@ -432,6 +449,18 @@ is not `none`, writing `sheet-alpha.png`) → slice → align → pack → gif (
 → inspect. Accepts every flag the individual steps take (`--loop`, `--anchor`,
 `--key auto|#rrggbb|none`, `--cell`, `--pad`, `--smooth`, `--scale`,
 `--nearest`, `--margin`, `--gutter`, `--x-from`).
+
+`--pixel` puts the `pixel` step between the cleaned cells and `align` (the
+lattice frames stay at `<motionDir>/pixel/NN.png`, beside `cells/`), pins the
+palette at `<motionDir>/palette.json` unless `--palette` names one, and turns
+`--scale` into the whole-number upscale of the lattice (default 1: one image
+pixel per logical pixel; pack then packs at 1). It takes `pixel`'s flags
+(`--palette`, `--repalette`, `--palette-size`, `--pitch-hint`, `--outline`,
+`--outline-strength`, `--no-detail-bias`); they are refused without
+`--pixel`. The JSON gains `pixel: { dir, scale, pitch, logicalCell, palette,
+outline, record }` and `inspect.pixel`. A `run` **without** `--pixel` on a
+character whose `character.style` says pixel art (the reading `rive --filter
+auto` uses) ends with a warning suggesting it.
 
 The one command to remember, keyed or not:
 
@@ -486,6 +515,89 @@ it is there and falls back to the cell edge when it is not — which with any
 `--pad` draws a confident ground line under a floating sprite. Frames aligned
 before the point was recorded simply carry none; that absence is honest and the
 stage says "assumed" rather than guessing.
+
+### `pixel <framesDir> --out <dir> [--palette <file>] [--repalette] [--palette-size 48] [--scale 1] [--pitch-hint N] [--outline] [--outline-strength 0.62] [--no-detail-bias]`
+
+Snaps generated "pixel art" onto the pixel grid it was drawn on. An image
+model's blocks are not whole pixels wide (10.3, not 10), differ per axis,
+wobble inside a frame and carry anti-aliased, half-transparent edges; this
+measures the grid and collapses every block to one logical pixel. Per frame,
+on its solid-alpha (α ≥ 128) bbox:
+
+1. **Pitch per axis, 2–48 px, sub-pixel** — an integer lattice score (the
+   share of colour edges within ±1 px of a grid line, minus the share chance
+   puts there), then a 0.02 px refinement around the integer seed and its
+   halves to fifths. A frame whose best score is under 0.2 reads "no grid".
+2. **The generation's consensus** — the median of the frames' readings;
+   readings under 60 % of the ceiling are collapsed (a divisor) and dropped,
+   and so are readings above the ceiling's family that fewer than a quarter
+   of the frames share (a harmonic). A frame keeps **its own** pitch when it
+   is within 10 % of the consensus on both axes, and is cut at the consensus
+   otherwise — said per frame in `warnings`.
+3. **Phase**, measured: the most uniform of 8×8 offsets at that pitch.
+4. **Cut lines** move onto the strongest colour boundary within ±pitch/3,
+   never closer than 0.6 × pitch to the next line (2 px under pitch 3.3).
+5. **One colour per block** — a two-cluster vote; a near-black minority of
+   at least 40 % wins (eyes, 1 px outlines) unless `--no-detail-bias`. A
+   block less than half solid is transparent; alpha is 0 or 255.
+6. **One palette** of at most `--palette-size` colours (median cut) over all
+   the frames, **pinned** to `--palette` (default `<dir>/palette.json`,
+   `run --pixel`: `<motionDir>/palette.json`): when that file exists it is
+   used as it is, so a re-run cannot move the colours, and a later motion
+   that names the same file gets the same ones. `--repalette` rebuilds it; a
+   pinned palette more than 48 (RGB distance) from some colour of the new
+   frames is said, not silently applied; an unreadable one is refused.
+7. `--outline` darkens every silhouette-edge pixel to (1 − strength) of its
+   colour, after the palette (so those colours are not palette colours).
+
+Writes `<dir>/NN.png` (the input's names) — every frame on **one** canvas of
+logical pixels, at the logical position it sat at in its cell (so
+`align --x-from cell` still means something), upscaled by `--scale N`
+(whole number, nearest; refused otherwise) — and `<dir>/pixel.json`:
+
+```json
+{ "kind": "pneuma-sprite-pixel", "version": 1, "source": "…/cells", "scale": 1,
+  "pitch": { "x": 10.367, "y": 10.6 }, "runlen": { "x": 8.574, "y": 9.04 },
+  "logicalCell": { "width": 49, "height": 48 }, "cell": { "width": 49, "height": 48 },
+  "palette": { "file": "…/palette.json", "colors": 48, "pinned": false },
+  "detailBias": true, "outline": null,
+  "frames": [{ "index": 0, "source": "own", "own": { "x": 10.3, "y": 10.6 },
+               "pitch": { "x": 10.3, "y": 10.6 }, "logical": { "width": 17, "height": 39 },
+               "at": { "x": 16, "y": 7 } }],
+  "warnings": [] }
+```
+
+`source` per frame: `own`, `consensus` (its own reading was inconclusive),
+`outlier` (its reading was outside the family) or `empty`. `palette.json` is
+`{ kind: "pneuma-sprite-palette", version: 1, source, colors: ["#rrggbb", …] }`.
+`--out` must not be the input directory — the cells are what a re-run snaps
+again. A same-colour run-length estimate is kept as a second opinion only:
+when it disagrees (a divisor, a harmonic, one axis collapsed onto the other)
+it is a warning, never a change to the cut.
+
+**When the frames do not show their grid, it refuses rather than guesses.**
+If fewer than half of the non-empty frames read a grid on their own, the step
+stops and says what the frames suggest — where they score best *together*,
+and what the same-colour runs measure (those read short at soft edges) — and
+asks for `--pitch-hint N`. This is the normal case for real GPT-Image pixel
+art (see "Measured"): its blocks are ~8 px but only loosely on one lattice.
+Look at a frame at 8× (count a few blocks across a flat area) and pass the
+block width in source pixels. The hint then **is** the consensus: a frame
+keeps its own reading within 10 % of it and is cut at N otherwise. No
+automatic floor can replace the look: a plush video walk that is not pixel
+art pools a higher lattice score (0.168 at 32 px) than a real pixel-art
+walk (0.154 at 9 px).
+
+The method is a port of aldegad/sprite-gen's "Backbone Lattice"
+(`sprite_gen/frames/extract.py@fbd1a08`, Apache-2.0; its run-length
+estimator is itself a port of perfectpixel-studio, MIT). Before three
+measured changes it produced pixel-identical frames and palettes to
+upstream's Python; the changes are: divisor seeds down to a fifth (upstream:
+half and third), a consensus ceiling that needs a quarter of the frames'
+support (upstream: the single largest reading), and the hint as the family
+centre (upstream: a fallback when every frame is inconclusive). Upstream's
+component extraction, row registration and physical-cell cap are not
+ported: `slice`/`clean` cut the cells and `align` places and sizes them.
 
 ### `contact <clip> --out <png> [--count 24 | --every s] [--cols 8] [--width 160] [--gait walk|run] [flags]`
 
@@ -2070,3 +2182,109 @@ stands 240–241 px, where unscaled they differ 1.54×.
 **Cost.** `inspect` on 16 frames of 506×536 with 16 cells of 640² took
 4.9–6.0 s before and 5.0–5.5 s after (three runs each, noise-bound);
 `from-video --body-height` adds one keyed decode of the clip's first frame.
+
+## Measured (pixel lattice, 2026-09-27)
+
+What `pixel` / `run --pixel` does on generated pixel art, against what this
+mode did before, and against the Python it was ported from. Machine: Apple
+M4 Max, Node 25, ffmpeg 8.0; upstream aldegad/sprite-gen at `fbd1a08` on
+Python 3.14 + Pillow 12.3. Scripts and the 8× panels live in the dev scratch
+(`~/pneuma-dev-scratch/2026-09-27/sg/pixel/`).
+
+**Synthetic ground truth.** A 30 × 44 logical walking character (16 frames,
+a 1 px outline, 1 px eyes, a two-block gold buckle) drawn the way a model
+draws "pixel art": a fractional pitch that differs per axis and jitters ±1.5 %
+per frame, a sub-pixel phase, a slow sine wobble of the lattice (0.08 pitch),
+area-filtered block edges, a Gaussian blur, a white plate, a JPEG round trip —
+then keyed and sliced by `run` exactly as a real sheet is. Scored per truth
+cell: **colour** = the output's cell within 40 of the truth on every channel
+(and the same alpha side), after a monotonic alignment of output lines to
+truth lines; **doubled / dropped** = output lines the alignment had to insert
+or skip. (a) is today's pixel-art path, `run --scale 0.5 --nearest`, read at
+each truth cell's centre through the known geometry — its most generous
+reading; (a2) pushes today's tools to native resolution, nearest at
+1/round(pitch). (b0) is the faithful port (commit `c97924e1`), (c) upstream's
+Python on the same cells, (b) this port as shipped.
+
+| Fixture | Method | Pitch error mean / max (px) | Colour | Doubled + dropped lines (frames hit) | Soft-alpha px | Colours / frame |
+|---|---|---|---|---|---|---|
+| 10.3 × 10.6, 4×4 of 512² | a today 0.5 nearest | — (fixed ×0.5) | 100 % | — (blocks 5.15 px wide) | 0.65 % | 1835 |
+| | a2 nearest 1/10 | — | 98.9 % | 54 (16/16) | 0.19 % | 167 |
+| | b0 = c upstream | 0.039 / 0.176 | 100 % | 7 (7/16) | 0 | 27 |
+| | **b shipped** | 0.058 / 0.461 | 100 % | 9 (7/16) | 0 | 27 |
+| 7.35 × 7.2 | a today | — | 100 % | — | 0.93 % | 1553 |
+| | a2 nearest 1/7 | — | 95.0 % | 39 (16/16) | 1.49 % | 216 |
+| | b0 = c upstream | **31.8 / 31.8** | **0.07 %** | 710 (16/16) | 0 | 18 |
+| | **b shipped** | 0.091 / 0.721 | 99.3 % | 15 (10/16) | 0 | 30 |
+| 6.2 × 6.3, blur 0.9, JPEG q6 | a today | — | 100 % | — | 1.35 % | 1468 |
+| | a2 nearest 1/6 | — | 98.3 % | 53 (16/16) | 2.63 % | 232 |
+| | b0 = c upstream | **25.3 / 27.4** | **0.33 %** | 680 (16/16) | 0 | 20 |
+| | **b shipped** | 0.036 / 0.108 | 99.9 % | 23 (15/16) | 0 | 31 |
+| 21.4 × 20.8, 2×2 of 1024² | a today | — | 100 % | — | 0.48 % | 2300 |
+| | a2 nearest 1/21 | — | 97.4 % | 7 (4/4) | 0.67 % | 105 |
+| | b0 = b = c | 0.314 / 0.861 | 98.6 % | 2 (1/4) | 0 | 32 |
+
+- **Parity.** On all four fixtures (and on the real sheet below) the faithful
+  port's logical frames *and* palette are pixel-identical to upstream's
+  Python (16/16, 16/16, 16/16, 4/4, 8/8 frames, 0 differing pixels).
+- **Why upstream fails at 7.35 and 6.2.** At 7.35 one frame of 16 read the
+  5th harmonic (38.94); upstream's collapse filter anchors on the largest
+  reading, so the fifteen true readings fell under its 60 % floor and all 16
+  frames were cut at 38.94 (4 × 7 logical pixels). At 6.2, 10 of 16 frames'
+  integer seeds landed on ~31 and the refinement only tried halves and
+  thirds. Seeding fourths and fifths takes those misreadings from 10 → 0
+  (6.2) and 4 → 2 (7.35); a ceiling that needs a quarter of the frames'
+  support removes the single-harmonic takeover. Upstream's ported
+  ground-truth suite passes unchanged with both.
+- **What the change costs.** On the 10.3 fixture one frame's y axis now reads
+  10.29 for a true 10.75 — 4 %, inside the 10 % family, so it is kept and the
+  frame gains 3 rows (b0: it read 9.00, an outlier, and was cut at the
+  consensus). That is the family guard's known trade (upstream keeps a 4 %
+  own reading because forcing the consensus split an eye).
+- **The lines that remain** are mostly one extra column at the silhouette
+  edge: the blurred dark outline over white keeps a light halo that the white
+  key leaves solid, and it becomes a logical column. It does not touch a
+  truth cell (colour stays 100 % on the 10.3 fixture).
+- (a) reads 100 % only because it is sampled at block centres: its blocks are
+  5.15 px wide on the 10.3 fixture (so 5 or 6 px, unevenly), its edge is still
+  soft and each frame carries 1.5–2.3 thousand colours. It is not pixel art at
+  any size; (a2) shows what happens when it is pushed to one pixel per block.
+
+**A real GPT-Image sheet** (sg shoot e6: GPT Image 2.5 Flare, 4×2 walk at
+2048 × 1024 with the turnaround attached, BiRefNet heavy matte; the knight's
+blocks are ≈ 8 px by eye, irregular, with half-blocks, and he stands ≈ 53 art
+pixels tall where 32 was asked):
+
+| | Detected pitch per frame (00–07) | Result |
+|---|---|---|
+| upstream / b0 (identical, 8/8) | 00–05 no grid; 06 3.00 × 4.00; 07 3.00 × 3.00 | consensus 3 × 4 → sprites 69–74 × 104–108 "logical" px: every 8 px block cut into ~2.5 × 2 |
+| **b, no hint** | same readings | **refused**: "only 2 of 8 frames … read a pixel grid on their own; together the frames score best at 9 px (0.154); same-colour runs measure 7.1 × 7.0 px" |
+| **b, `--pitch-hint 8`** | all 8 cut at 8 (06, 07 as outliers of the hint) | 27–28 × 52–54 logical px in every frame, cell 50 × 70, **0** semi-transparent px (today's frames: 6,831–8,254 each), 42–45 colours per frame (today: ≈ 23,000), palette 48, `inspect` lattice held; `run --pixel` 5.3 s |
+
+- The pitch cannot be picked for this art automatically. At hints 6 / 7 /
+  7.5 / 8 / 9 / 10 the frames stay consistent (heights 70–72 / 60–61 / 56–58
+  / 52–54 / 46–48 / 42–43), the fractional lattice score peaks at *every*
+  whole number (≈ 0.30 at 6, 7, 8 and 9), and the error of painting each
+  logical pixel back over its block rises smoothly (13.9 → 15.2 → 16.1 →
+  17.3 → 19.5 → 22.0 per channel) with no elbow. The hint is a person's
+  reading; 8 matches the shoot's independent one (≈ 8 px, ≈ 53 px tall).
+- At 8 px the knight reads as pixel art, but what the model drew at
+  half-block scale merges: the bright gap between the two visor slits and the
+  rivet ring's centre become one block. Whether that beats today's soft
+  output is a judgement to make on the 8× panels, not a number — `--pixel`
+  stays opt-in.
+- The turnaround (2048², ≈ 18–22 px blocks by eye): 0 of 1 frame reads a grid;
+  the pooled suggestion is 22 px; `--pitch-hint 22` gives an 89 × 63 sheet of
+  three views.
+- Calibration of "does it look like pixel art at all": the per-frame score
+  pooled over a generation is 0.154 at 9 px on this walk, 0.072 on Lumi's
+  attack, 0.067 on Fenn's idle, and **0.168** at 32 px on tanka's plush
+  video walk (3 of its 16 frames even pass the single-frame 0.2 floor). No
+  threshold separates them, which is why thin evidence is refused rather
+  than guessed; the half-the-frames rule also refuses tanka.
+
+**Time**, 4 × 4 sheet of 512² cells (the 10.3 fixture), three runs each:
+`run` 8.2 s, `run --pixel` 8.9–9.1 s (+0.8 s). The lattice itself is 0.29 s
+for the 16 frames (upstream's Python: 3.0 s on the same cells); a standalone
+`pixel` on the cells directory is 3.0 s, almost all of it decoding and
+writing 16 PNGs through ffmpeg.
