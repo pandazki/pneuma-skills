@@ -12,8 +12,8 @@
  * maths in JS; every image is written by an ffmpeg filter chain.
  *
  * Subcommands: probe, key, flatten, slice, align, pack, gif, inspect, run,
- * contact, from-video, retime, loop, export, rive, fit, breathe, pixel, mirror,
- * recolor, recolor-palette.
+ * contact, from-video, retime, loop, lineup, sizes, export, rive, fit, breathe,
+ * pixel, mirror, recolor, recolor-palette.
  *
  * `pixel` (and `run --pixel`) snaps generated pixel art onto the pixel grid
  * it was drawn on; the lattice itself lives in `pixel-lattice.mjs`.
@@ -22,6 +22,10 @@
  *
  * `mirror` flips a side view into the other side; which motions flip and
  * where the anchor lands are `mirror.mjs`'s rules.
+ *
+ * `slice --auto` (and `run`, when the fixed grid would clip a pose) finds
+ * each pose on the sheet by its ink instead of cutting at the grid lines;
+ * the projection segmentation lives in `sheet-segment.mjs`.
  *
  * `export` and `rive` hand a FINISHED motion over in somebody else's format
  * (video, a frame animation, an Aseprite sheet, a `.riv`). They read the character's
@@ -78,6 +82,8 @@ import {
 } from "./pixel-lattice.mjs";
 import { DEFAULT_SAFE_MARGIN_RATIO, guideGeometry, guideRaster } from "./sheet-prompt.mjs";
 import { MIRRORED, asymmetry, atlasLayout, mirrorAnchorRecord, mirrorRefusal } from "./mirror.mjs";
+import { CELL_MARGIN, alphaComponents, cutPoses, layoutPoses, locatePoses } from "./sheet-segment.mjs";
+import { SIZE_SPREAD_WARN, motionSize, sizeSpread, sizeWarning } from "./sizes.mjs";
 
 const DEFAULT_THRESHOLD = 16;
 const DEFAULT_PAD = 8;
@@ -340,10 +346,14 @@ const EXPORT_CODECS = { mp4: "h264", mov: "prores", webm: "vp9" };
 const SUBCOMMANDS = [
   "guide",
   "probe", "key", "flatten", "slice", "clean", "align", "pack", "gif",
-  "inspect", "run", "contact", "from-video", "retime", "loop", "transition", "lineup", "export", "rive",
+  "inspect", "run", "contact", "from-video", "retime", "loop", "transition", "lineup", "sizes", "export", "rive",
   "fit", "breathe", "pixel",
   "mirror", "recolor", "recolor-palette",
 ];
+
+/** A fraction as the percentage the help prints: 0.28 is "28%", never the
+ *  float product "28.000000000000004%". */
+const pct = (fraction) => `${Math.round(fraction * 1000) / 10}%`;
 
 const USAGE = `Usage: sprite-sheet.mjs <subcommand> [options]
 
@@ -377,8 +387,8 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       and warned about — keying the clip later would cut it out.
       --room pads the picture into the canvas its motion needs first, because
       an image-to-video model keeps the input's framing: square squares it off;
-      tall is 3:4 with ${ROOM_DEFAULTS.tall.headroom * 100}% of the height empty above (a jump); wide
-      is 16:9 with ${ROOM_DEFAULTS.wide.headroom * 100}% above, ${ROOM_DEFAULTS.wide.lead * 100}% of the width in front and ${ROOM_DEFAULTS.wide.trail * 100}% behind (an
+      tall is 3:4 with ${pct(ROOM_DEFAULTS.tall.headroom)} of the height empty above (a jump); wide
+      is 16:9 with ${pct(ROOM_DEFAULTS.wide.headroom)} above, ${pct(ROOM_DEFAULTS.wide.lead)} of the width in front and ${pct(ROOM_DEFAULTS.wide.trail)} behind (an
       attack; a wave or a cheer is --headroom 0 --lead 0.3 --trail 0).
       --headroom / --lead / --trail override those fractions (each in [0, 0.9),
       lead + trail < 0.9). Front is the facing side: --facing, else the
@@ -387,24 +397,51 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       stands on the canvas's bottom edge.
 
   slice <sheet> --rows R --cols C --out <dir> [--margin 0] [--gutter 0]
+        [--auto [--threshold ${DEFAULT_THRESHOLD}]]
       Cut the grid into <dir>/NN.png, row-major. Non-integer cells are
       floored and reported (exact:false + remainder).
+      --auto finds each pose by its ink instead of cutting at the grid lines,
+      for a sheet whose poses cross them (an image model does not always
+      draw the grid it was asked for): the rows from the blank bands across
+      the sheet, then each row's poses from the blank bands down it (where
+      two poses touch, the cut goes through the least ink), and every
+      connected piece of ink goes whole to the pose it belongs to. Each pose
+      keeps the place it was drawn at relative to its grid cell; the cells
+      grow, all alike, as far as any pose reaches past the grid lines, plus
+      ${CELL_MARGIN} px. On a sheet whose poses stay inside their cells the cells are
+      the fixed slice's. <dir>/${SLICE_RECORD} records the cut lines, the counts found
+      (natural; forced when they had to be cut to R x C, which warns), how
+      far the cell grew, each pose's box on the sheet, and the poses clipped
+      anyway (drawn off the sheet, or cut apart from a pose they touched),
+      which inspect reports. Refused when the rows or a row's poses cannot
+      be found. The sheet is only read.
 
   clean <cellsDir> --out <dir> [--threshold ${DEFAULT_THRESHOLD}]
       Drop what is not the character out of every cell: keep the largest
-      connected alpha blob plus anything at least ${CLEAN_KEEP_RATIO * 100}% of its area (a
+      connected alpha blob plus anything at least ${pct(CLEAN_KEEP_RATIO)} of its area (a
       detached accessory is design), and remove the rest only where it
       touches a cell border or floats above the head / below the feet —
       i.e. a neighbouring cell's overspill and stray specks, never a prop
       the character is holding. Reports cleaned[] and warns on any cell that
-      lost more than ${CLEAN_ALERT_FRACTION * 100}% of its ink. --out may be the input directory.
+      lost more than ${pct(CLEAN_ALERT_FRACTION)} of its ink. --out may be the input directory.
 
   align <framesDir> --out <dir> [--anchor bottom|center] [--x-from feet|bbox|cell|trend|body]
-        [--cell auto|WxH] [--pad ${DEFAULT_PAD}] [--smooth] [--threshold ${DEFAULT_THRESHOLD}]
+        [--y-from anchor|cell|clip] [--cell auto|WxH] [--pad ${DEFAULT_PAD}] [--smooth] [--force]
+        [--threshold ${DEFAULT_THRESHOLD}]
       Re-place every frame so its anchor lands on the same point.
       y: bbox bottom (bottom) or bbox centre (center).
+      --y-from cell (clip is the same mode; bottom anchor only) keeps the
+      height each frame was drawn or filmed at instead: the ground is the lowest feet across the
+      frames, in their shared coordinates (one grid's cells, one clip's
+      frames — they must be one height), and every frame keeps its lift above
+      it, so a jump rises. The cell grows to hold the highest frame. The
+      record carries lift (px per frame); inspect reports it. Warned: no
+      frame more than 2% of the cell (at least one block) off the ground —
+      the source has no drawn height; and, on a grid, a row that never comes
+      down to the ground the others stand on (airborne throughout, or drawn
+      on a higher ground line — look).
       x: --x-from feet (default) takes the mean x of the alpha pixels in the
-      bottom ${FEET_BAND * 100}% of the bbox — where the character STANDS, so a prop
+      bottom ${pct(FEET_BAND)} of the bbox — where the character STANDS, so a prop
       swinging sideways no longer drags the body the other way; bbox takes the
       bbox centre (what --anchor center always uses, feet being no reference
       for an airborne pose); cell keeps the offset the drawing had inside its
@@ -414,7 +451,7 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       so a walk's planted foot is not pinned (pinning it lurches the body by
       about a stride every step). trend fits a straight line to the body's
       mass centre across the frames and removes it; body registers the last
-      frame's head and torso (top ${BODY_REGISTER_BAND * 100}% of its box) against the first's,
+      frame's head and torso (top ${pct(BODY_REGISTER_BAND)} of its box) against the first's,
       +/-${BODY_REGISTER_SEARCH} px, and ramps that offset across the frames. Either way
       the anchor lands on the mean foot line, and the record carries what was
       removed (drift.driftPx / drift.wrapDx).
@@ -426,6 +463,10 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       Frames written by 'pixel' (a ${PIXEL_RECORD} next to them) are placed on
       whole multiples of their scale N — offsets, pad and cell — so every
       block stays on the cell's N-grid; the record travels into ${ALIGN_RECORD}.
+      Aligning frames with no ${PIXEL_RECORD} over frames whose ${ALIGN_RECORD}
+      carries a lattice (re-aligning a pixel motion from ${CELLS_DIRNAME}/ instead of
+      ${PIXEL_DIRNAME}/) is refused, because it would drop the lattice without a word;
+      --force does it and says so.
 
   pack <framesDir> --out <sheet.png> --atlas <atlas.json> --name <motionId>
        --fps N [--loop] [--anchor bottom|center] [--cols C] [--scale 1] [--nearest]
@@ -433,6 +474,8 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       The pivot is the anchor point <framesDir>/${ALIGN_RECORD} recorded (also
       copied into meta.anchorPoint in pixels, scaled with --scale); frames
       aligned elsewhere fall back to {0.5,1} / {0.5,0.5} with a note on stderr.
+      A --scale other than 1 records meta.filter ("nearest" with --nearest,
+      else "smooth"), so a later pack of the same frames can repeat it.
 
   gif <framesDir> --out <preview.gif> --fps N [--loop|--no-loop]
       [--webp <preview.webp>] [--width W]
@@ -455,10 +498,16 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       Frames that went through 'pixel' also get pixel: { pitch, scale, held,
       palette } — held is false (with a warning) when a frame has soft alpha,
       a block off the N-grid, or a colour outside the pinned palette.
+      Frames aligned with --y-from cell also get lift: each frame's feet above
+      the anchor, px. headDrift is absent when it cannot be measured (frames
+      of different widths). Cells sliced with --auto are clipped when their
+      ${SLICE_RECORD} says so (drawn off the sheet, or cut from a pose they
+      touched), not by touching their padded edge.
 
   run <sheet-raw> --rows R --cols C --out <motionDir> --name <motionId> --fps N
-      [--alpha <png>] [--force] [--loop] [--anchor bottom|center]
-      [--x-from feet|bbox|cell|trend|body] [--key auto|#rrggbb|none] [--keyer unmix|colorkey] [--cell auto|WxH]
+      [--alpha <png>] [--force] [--loop] [--anchor bottom|center] [--auto-slice|--no-auto-slice]
+      [--x-from feet|bbox|cell|trend|body] [--y-from anchor|cell]
+      [--key auto|#rrggbb|none] [--keyer unmix|colorkey] [--cell auto|WxH]
       [--pad ${DEFAULT_PAD}] [--smooth] [--scale 1] [--nearest] [--margin 0] [--gutter 0]
       [--width W] [--no-webp] [--threshold ${DEFAULT_THRESHOLD}]
       [--pixel [--palette <file>] [--repalette] [--palette-size ${DEFAULT_PALETTE_SIZE}] [--pitch-hint N]
@@ -474,6 +523,14 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       --logical-height H): see 'pixel'.
       The pre-align cells are kept as <motionDir>/${CELLS_DIRNAME}/NN.png so the
       report can be reproduced and the alignment redone without re-slicing.
+      The sheet is cut on its fixed grid first. When a pose's ink continues
+      across a line between two cells, the cut would clip it, so the sheet
+      is sliced again as 'slice --auto' does and a warning says so;
+      --no-auto-slice keeps the fixed cut, --auto-slice goes straight to the
+      auto one (refused when the poses cannot be found; the fallback keeps
+      the fixed grid and warns instead). The summary then carries slice
+      { mode: "auto", reason: "asked"|"grid-clipped", gridClipped, cuts,
+      natural, forced, grew, poses, clipped } — absent means the fixed grid.
 
       <motionDir>/sheet-raw.png is the only copy of what the model drew, so it
       is never overwritten by accident:
@@ -588,7 +645,7 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
 
   from-video <clip> --out <motionDir> --name <motionId> --frames N | --at t1,t2,…
       [--fps N] [--loop|--no-loop] [--anchor bottom|center] [--body-height N]
-      [--x-from feet|bbox|cell|trend|body] [--key auto|#rrggbb|none]
+      [--x-from feet|bbox|cell|trend|body] [--y-from anchor|clip] [--key auto|#rrggbb|none]
       [--trim-start s] [--trim-end s] [--no-clean] [--cell auto|WxH]
       [--pad ${DEFAULT_PAD}] [--smooth] [--scale 1] [--nearest] [--width W] [--no-webp]
       [--cols C] [--similarity ${DEFAULT_VIDEO_SIMILARITY}] [--blend ${DEFAULT_BLEND}] [--threshold ${DEFAULT_THRESHOLD}]
@@ -621,6 +678,10 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       FIRST frame (t = 0, the still every clip starts from) stands N px tall:
       the same N across a character's clips gives it one size in every motion.
       Up or down (up is warned); premultiplied; needs a keyed clip.
+      --y-from clip (the same mode as align's cell, recorded as "cell")
+      keeps each frame where the clip had it vertically — on a locked camera,
+      a jump's travel above the floor it takes off from (see align); the
+      summary's lift says how far each frame rose.
       The clip is only read: it is never copied or moved into <motionDir>.
 
   retime <clip> --keep <ranges> --out <mp4> [--fps N]
@@ -726,7 +787,11 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       which keeps the sentence in the warnings and says force: true in the
       summary (register-run refuses an asymmetric mirror without it). --out
       defaults to <character>/motions/<id>. --json is what register-run
-      takes (source: "mirror", mirrorOf).
+      takes (source: "mirror", mirrorOf), with the grid it packed, fps, loop
+      and anchor. A scaled atlas is repacked with the filter it was packed
+      with (atlas meta.filter; an older atlas: nearest for pixel art). The
+      mirror's keyResidue is measured against the plate <of> was keyed off
+      (its inspect.json), never a keyColor left in a reused --out.
 
   lineup <characterDir> [--hub <loopId>] [--out <png>]
       Look before spending: every ready loop's frame 0 beside the hub's, at
@@ -737,6 +802,20 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       inside the union), the frame of the loop closest to the hub pose, the
       transitions already registered for the pair, and a suggestion — direct
       or transition — with the threshold it used.
+
+  sizes <characterDir> [--motions id,id,…] [--out <png>] [--threshold ${DEFAULT_THRESHOLD}]
+      Is the character one size across its motions? Every ready sprite
+      motion (or the ones named; at least two) is measured on its registered
+      frames: a loop stands at the median of its frames' solid-alpha heights,
+      a one-shot at its first frame (it starts from the rest pose), times its
+      atlas scale — the height it ships at. Reports each motion's heights, the
+      spread (tallest over shortest, minus 1), the reference height (their
+      median) and scaleToMatch per motion, and warns above ${pct(SIZE_SPREAD_WARN)}
+      (pixel art: only past two logical pixels). inspect's scaleDrift is the
+      spread INSIDE one motion and says nothing about this. Writes
+      <character>/sizes.png (or --out): each motion's measured frame at
+      shipped scale, feet on one baseline, the reference height marked.
+      Reads project.json, writes nothing to it.
 
   export <motionDir> --format mp4|mov|webm|apng|lottie|png-seq|aseprite
       [--bg #rrggbb] [--repeat N] [--scale N] [--shadow [shadow flags]]
@@ -1095,53 +1174,6 @@ function measureFrame(image, threshold) {
 }
 
 /**
- * Connected components of the alpha mask, 4-connectivity, one pass.
- *
- * 4-connectivity on purpose: 8-connectivity welds a fragment to the body
- * through a single diagonally touching pixel, which is exactly the kind of
- * accident this is meant to survive. The flood is iterative — a 512px cell is
- * a quarter-million pixels and a recursive fill blows the stack on a large
- * silhouette.
- */
-function alphaComponents(image, threshold) {
-  const { width, height, data } = image;
-  const count = width * height;
-  const labels = new Int32Array(count).fill(-1);
-  const stack = new Int32Array(count);
-  const components = [];
-
-  for (let seed = 0; seed < count; seed++) {
-    if (labels[seed] !== -1 || data[seed * 4 + 3] < threshold) continue;
-    const id = components.length;
-    let top = 0;
-    stack[top++] = seed;
-    labels[seed] = id;
-    let area = 0, x0 = width, y0 = height, x1 = -1, y1 = -1;
-    while (top > 0) {
-      const p = stack[--top];
-      const x = p % width;
-      const y = (p - x) / width;
-      area++;
-      if (x < x0) x0 = x;
-      if (x > x1) x1 = x;
-      if (y < y0) y0 = y;
-      if (y > y1) y1 = y;
-      const push = (q) => {
-        if (labels[q] !== -1 || data[q * 4 + 3] < threshold) return;
-        labels[q] = id;
-        stack[top++] = q;
-      };
-      if (x > 0) push(p - 1);
-      if (x < width - 1) push(p + 1);
-      if (y > 0) push(p - width);
-      if (y < height - 1) push(p + width);
-    }
-    components.push({ id, area, bbox: { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 } });
-  }
-  return { labels, components };
-}
-
-/**
  * Erase what is not the character from one cell, in place.
  *
  * The keep rule, in the order it is asked:
@@ -1392,7 +1424,13 @@ function readSliceRecord(cellsDir) {
   if (!doc || !whole(doc.rows) || !whole(doc.cols)) {
     fail(`${path} is not a slice record (needs whole rows and cols) — delete it or re-run slice`);
   }
-  return { rows: doc.rows, cols: doc.cols };
+  // An auto slice pads every pose, so a cell edge no longer says "clipped":
+  // the record names the poses that are (drawn off the sheet, or cut apart
+  // from a neighbour they touched).
+  const clipped = Array.isArray(doc.auto?.clipped)
+    ? doc.auto.clipped.filter((c) => Number.isInteger(c?.index) && (c.why === "sheet-edge" || c.why === "cut"))
+    : null;
+  return { rows: doc.rows, cols: doc.cols, ...(doc.auto ? { auto: true } : {}), ...(clipped ? { clipped } : {}) };
 }
 
 function listAndTruncate(items, render) {
@@ -1540,6 +1578,9 @@ function stepFlatten(input, { out, bg, similarity, threshold, room = null, headr
   }
   let placed = null;
   let facing = null;
+  if (room && room !== "wide" && givenFacing) {
+    warnings.push(`--facing ${givenFacing} places only a wide room (the lead goes in front); a ${room} room centres the picture, so it was not used`);
+  }
   if (room) {
     facing = flattenFacing(source, givenFacing);
     try {
@@ -1584,20 +1625,32 @@ function stepFlatten(input, { out, bg, similarity, threshold, room = null, headr
   };
 }
 
-function stepSlice(sheet, { rows, cols, out, margin, gutter }) {
-  const input = resolve(sheet);
-  const { width, height } = probeSize(input);
+/**
+ * The R x C grid a sheet was asked for: its cell (floored) and where cell
+ * (row, col) starts. The one definition both slicers use — the fixed one cuts
+ * here, the auto one places each pose relative to it.
+ */
+function gridGeometry(width, height, { rows, cols, margin, gutter }) {
   const cellW = Math.floor((width - 2 * margin - (cols - 1) * gutter) / cols);
   const cellH = Math.floor((height - 2 * margin - (rows - 1) * gutter) / rows);
   if (cellW <= 0 || cellH <= 0) {
     fail(`a ${cols}x${rows} grid with margin ${margin} and gutter ${gutter} leaves no room in a ${width}x${height} sheet`);
   }
   if (rows * cols > MAX_FRAMES) fail(`${rows}x${cols} is ${rows * cols} frames — the limit is ${MAX_FRAMES}`);
-
-  const remainder = {
-    x: width - (2 * margin + (cols - 1) * gutter + cols * cellW),
-    y: height - (2 * margin + (rows - 1) * gutter + rows * cellH),
+  return {
+    cell: { width: cellW, height: cellH },
+    remainder: {
+      x: width - (2 * margin + (cols - 1) * gutter + cols * cellW),
+      y: height - (2 * margin + (rows - 1) * gutter + rows * cellH),
+    },
+    origin: (row, col) => ({ x: margin + col * (cellW + gutter), y: margin + row * (cellH + gutter) }),
   };
+}
+
+function stepSlice(sheet, { rows, cols, out, margin, gutter }) {
+  const input = resolve(sheet);
+  const { width, height } = probeSize(input);
+  const { cell: { width: cellW, height: cellH }, remainder, origin } = gridGeometry(width, height, { rows, cols, margin, gutter });
   const dir = resolve(out);
   resetFramesDir(dir);
 
@@ -1606,8 +1659,7 @@ function stepSlice(sheet, { rows, cols, out, margin, gutter }) {
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
       const index = row * cols + col;
-      const x = margin + col * (cellW + gutter);
-      const y = margin + row * (cellH + gutter);
+      const { x, y } = origin(row, col);
       boxes.push({ index, x, y });
       frames.push(ffmpegTo(join(dir, frameName(index)), () => [
         "-i", input,
@@ -1633,6 +1685,128 @@ function stepSlice(sheet, { rows, cols, out, margin, gutter }) {
     cells: boxes,
     frames,
   };
+}
+
+/**
+ * Find the poses of an R x C sheet by their ink (`sheet-segment.mjs`), and
+ * where each goes in one uniform output cell. Writes nothing. Returns
+ * `{ failed }` (a sentence) when the rows, or a row's poses, cannot be found
+ * as asked — the caller decides whether that is a refusal (`slice --auto`)
+ * or a reason to keep the fixed grid (`run`'s fallback).
+ */
+function planAutoSlice(image, { rows, cols, margin, gutter, threshold }) {
+  const geometry = gridGeometry(image.width, image.height, { rows, cols, margin, gutter });
+  const located = locatePoses(image, { rows, cols, threshold, cell: geometry.cell });
+  if (located.failed) return { failed: located.failed };
+  const layout = layoutPoses(located.poses, { cell: geometry.cell, origin: geometry.origin });
+  return { geometry, located, layout };
+}
+
+/**
+ * Write a planned auto slice: <out>/NN.png per pose — only its own pixels,
+ * placed where it was drawn relative to its grid cell — and the slice record,
+ * which carries what the fixed grid's record does (rows, cols, cell) plus
+ * `auto`: the cut lines it found, the counts it found on its own and whether
+ * it had to force them, how far the cell grew past the nominal one, each
+ * pose's box on the sheet, and the poses that are clipped anyway (ink on the
+ * sheet's edge, or cut apart from a neighbour it was drawn touching) — which
+ * `inspect` reports, since a padded auto cell never touches its own edge.
+ */
+function writeAutoSlice(input, image, plan, { out, rows, cols, margin, gutter, reason, gridClipped = null }) {
+  const { geometry, located, layout } = plan;
+  const dir = resolve(out);
+  resetFramesDir(dir);
+  const images = cutPoses(image, located, layout);
+  const frames = images.map((cell, i) => writeRgbaPng(join(dir, frameName(i)), cell, `slice pose ${i}`));
+  const pad2 = (i) => String(i).padStart(2, "0");
+  const clipped = located.poses
+    .filter((pose) => pose.edge || pose.cut)
+    .map((pose) => ({ index: pose.index, why: pose.edge ? "sheet-edge" : "cut" }));
+  const warnings = [];
+  if (located.rows.forced) {
+    warnings.push(`slice --auto: the blank bands showed ${located.rows.natural} row(s) where ${rows} were asked — the rows were cut at the thinnest lines, y = ${located.rows.cuts.join(", ")}; look at the cells`);
+  }
+  located.cols.forEach((c, row) => {
+    if (!c.forced) return;
+    warnings.push(`slice --auto: row ${row} (cells ${pad2(row * cols)}–${pad2(row * cols + cols - 1)}) showed ${c.natural} pose(s) where ${cols} were asked — cut at the thinnest columns, x = ${c.cuts.join(", ")}; look at those cells`);
+  });
+  const auto = {
+    // "asked" (slice --auto, run --auto-slice) or "grid-clipped": run cut the
+    // fixed grid first and it went through the cells in gridClipped.
+    reason,
+    ...(gridClipped ? { gridClipped } : {}),
+    nominalCell: geometry.cell,
+    grew: layout.grew,
+    cuts: { rows: located.rows.cuts, cols: located.cols.map((c) => c.cuts) },
+    natural: { rows: located.rows.natural, cols: located.cols.map((c) => c.natural) },
+    forced: { rows: located.rows.forced, cols: located.cols.map((c) => c.forced) },
+    poses: located.poses.map((pose, i) => ({
+      index: pose.index,
+      box: pose.ink ? { x: pose.ink.x0, y: pose.ink.y0, w: pose.ink.x1 - pose.ink.x0, h: pose.ink.y1 - pose.ink.y0 } : null,
+      // The sheet point that became the cell's top-left corner.
+      at: { x: -layout.placements[i].dx, y: -layout.placements[i].dy },
+    })),
+    clipped,
+  };
+  const record = writeJsonFile(join(dir, SLICE_RECORD), { rows, cols, cell: layout.cell, margin, gutter, auto });
+  return {
+    sheet: input,
+    outDir: dir,
+    rows, cols, margin, gutter,
+    cell: layout.cell,
+    sliceRecord: record,
+    mode: "auto",
+    auto,
+    cells: auto.poses.map((pose) => ({ index: pose.index, x: pose.at.x, y: pose.at.y })),
+    frames,
+    images,
+    warnings,
+  };
+}
+
+/** `slice --auto`: plan and write, refusing when the poses cannot be found. */
+function stepSliceAuto(sheet, options) {
+  const input = resolve(sheet);
+  const image = readRgba(input);
+  const plan = planAutoSlice(image, options);
+  if (plan.failed) {
+    fail(`slice --auto: ${plan.failed} — check --rows/--cols against the sheet, or slice it on the fixed grid`);
+  }
+  const { images, ...out } = writeAutoSlice(input, image, plan, { ...options, reason: "asked" });
+  return out;
+}
+
+/**
+ * Cells of a fixed-grid slice whose (cleaned) drawing CONTINUES across a line
+ * shared with another cell: a pixel of the cell's own ink on its edge whose
+ * neighbour just across the line, on the sheet, is ink too. The pose crosses
+ * the grid there and the cut took part of it. A drawing that merely touches
+ * the line from inside was not cut, and the sheet's own outer edge does not
+ * count — no other slicing can give back what was drawn off the image.
+ */
+function interiorClipped(sliced, cellImages, sheet, threshold) {
+  const { rows, cols, cell } = sliced;
+  const inkAt = (image, x, y) => image.data[(y * image.width + x) * 4 + 3] >= threshold;
+  const sheetInk = (x, y) => x >= 0 && y >= 0 && x < sheet.width && y < sheet.height && inkAt(sheet, x, y);
+  return sliced.cells.map(({ index, x: ox, y: oy }) => {
+    const image = cellImages[index];
+    const row = Math.floor(index / cols);
+    const col = index % cols;
+    const edges = [];
+    if (col > 0) edges.push({ inside: (k) => [0, k], across: (k) => [ox - 1, oy + k], n: cell.height });
+    if (col < cols - 1) edges.push({ inside: (k) => [cell.width - 1, k], across: (k) => [ox + cell.width, oy + k], n: cell.height });
+    if (row > 0) edges.push({ inside: (k) => [k, 0], across: (k) => [ox + k, oy - 1], n: cell.width });
+    if (row < rows - 1) edges.push({ inside: (k) => [k, cell.height - 1], across: (k) => [ox + k, oy + cell.height], n: cell.width });
+    for (const edge of edges) {
+      for (let k = 0; k < edge.n; k++) {
+        const [ix, iy] = edge.inside(k);
+        if (!inkAt(image, ix, iy)) continue;
+        const [ax, ay] = edge.across(k);
+        if (sheetInk(ax, ay)) return index;
+      }
+    }
+    return -1;
+  }).filter((i) => i >= 0);
 }
 
 /**
@@ -2214,6 +2388,57 @@ function driftAnchors(entries, measures, xMode, threshold) {
   };
 }
 
+/**
+ * `--y-from cell`: how high each frame was drawn (or filmed) above the
+ * ground, in the frames' shared coordinates — the cells of one grid, the
+ * frames of one clip — so `align` can keep it. The ground is the lowest feet
+ * across the frames: the sheet prompt asks every cell to share one baseline
+ * while the character stands, and a locked camera films one floor. `lift` is
+ * px above it per frame (null for an empty one).
+ *
+ * Two readings are said rather than assumed. No frame leaving the ground by
+ * more than `still` (2 % of the cell height, at least one block) means the
+ * source carries no drawn height at all. And on a grid whose rows do not all
+ * reach the ground, a row standing entirely above it is either airborne
+ * throughout (the middle row of a 4x4 jump) or drawn on a higher ground
+ * line (the model's rows drifted) — the pixels cannot tell which.
+ */
+function liftAboveGround(entries, bboxes, { given, grid, sheetGrid }) {
+  let height = given?.height ?? null;
+  if (height === null) {
+    const first = probeSize(entries[0].path, "align");
+    for (const entry of entries) {
+      const size = probeSize(entry.path, "align");
+      if (size.height !== first.height) {
+        fail(`--y-from cell keeps each frame's height above one ground, so the frames must be cut from one grid or one clip — but ${basename(entries[0].path)} is ${first.height}px tall and ${basename(entry.path)} is ${size.height}px`);
+      }
+    }
+    height = first.height;
+  }
+  const bottoms = bboxes.map((b) => (b ? b.y + b.h : null));
+  const ground = Math.max(...bottoms.filter((v) => v !== null));
+  const lift = bottoms.map((v) => (v === null ? null : ground - v));
+  const still = Math.max(grid, Math.round(0.02 * height));
+  const pad = (i) => String(i).padStart(2, "0");
+  const warnings = [];
+  const highest = Math.max(...lift.filter((v) => v !== null));
+  if (highest <= still) {
+    warnings.push(`--y-from cell: no frame stands more than ${still} px off the ground (the highest lift is ${highest} px) — these frames were drawn without jump height; it has to come from the game, or the jump has to be drawn again with the body rising in its cells`);
+  }
+  if (sheetGrid && sheetGrid.rows > 1 && sheetGrid.rows * sheetGrid.cols === entries.length) {
+    const rowLow = Array.from({ length: sheetGrid.rows }, (_, r) => {
+      const lifts = lift.slice(r * sheetGrid.cols, (r + 1) * sheetGrid.cols).filter((v) => v !== null);
+      return lifts.length ? Math.min(...lifts) : null;
+    });
+    const grounded = rowLow.map((v, r) => (v !== null && v <= still ? r : -1)).filter((r) => r >= 0);
+    rowLow.forEach((low, r) => {
+      if (low === null || low <= still || !grounded.length) return;
+      warnings.push(`--y-from cell: row ${r} (frames ${pad(r * sheetGrid.cols)}–${pad((r + 1) * sheetGrid.cols - 1)}) never comes down to the ground its other rows stand on — its lowest frame is ${low} px up; either it is airborne throughout, or the model drew that row on a higher ground line. Look at those frames before trusting their lift`);
+    });
+  }
+  return { lift, ground: { y: ground, still }, warnings };
+}
+
 /** Anchor of a bbox in its own frame's coordinates. */
 function anchorOf(bbox, anchor) {
   return {
@@ -2237,8 +2462,13 @@ function median3(values, i) {
  * cell. `measures` may be supplied by a caller that already decoded the source
  * (see `run`), which saves one decode per frame.
  */
-function stepAlign(framesDir, { out, anchor, cell, pad: askedPad, smooth, threshold, xFrom, measures: given, sourceCell }) {
+function stepAlign(framesDir, {
+  out, anchor, cell, pad: askedPad, smooth, threshold, xFrom, measures: given, sourceCell, yFrom = "anchor", grid: sheetGrid = null,
+}) {
   const entries = listFrames(resolve(framesDir));
+  if (yFrom === "cell" && anchor !== "bottom") {
+    fail("--y-from cell keeps each frame's height above the ground, so it stands on a bottom anchor — drop --anchor center (a centre anchor is for poses that never touch the ground)");
+  }
   // Frames `pixel` wrote are N x N blocks of logical pixels. Every offset,
   // the pad and the cell are then whole multiples of N, so a block never
   // straddles the cell's N-grid and the atlas divides back to logical pixels
@@ -2277,6 +2507,12 @@ function stepAlign(framesDir, { out, anchor, cell, pad: askedPad, smooth, thresh
     return anchorOf(m.bbox, anchor).x;
   });
   const anchorsY = bboxes.map((b) => (b ? anchorOf(b, anchor).y : null));
+  // `--y-from cell`: every frame keeps the height it was drawn (or filmed) at
+  // above the ground, instead of standing its own feet on the anchor. The
+  // ground is the lowest feet across the frames, in the frames' shared
+  // coordinates (one grid's cells, one clip's frames) — so a jump keeps its
+  // travel and the canvas grows tall enough to hold the apex.
+  const lifted = yFrom === "cell" ? liftAboveGround(entries, bboxes, { given: sourceCell, grid, sheetGrid }) : null;
   let targetsX = anchorsX;
   let targetsY = anchorsY;
   if (smooth) {
@@ -2317,7 +2553,9 @@ function stepAlign(framesDir, { out, anchor, cell, pad: askedPad, smooth, thresh
       width: xMode === "cell"
         ? even(sourceWidth)
         : even(2 * Math.ceil(Math.max(...reach)) + 2 * pad),
-      height: even(Math.max(...filled.map((b) => b.h)) + 2 * pad),
+      // Lifted frames stand their feet `lift` above the anchor, so the cell
+      // holds the highest head of any frame, not just the tallest frame.
+      height: even(Math.max(...bboxes.map((b, i) => (b ? b.h + (lifted ? lifted.lift[i] : 0) : 0))) + 2 * pad),
     };
   }
 
@@ -2360,7 +2598,7 @@ function stepAlign(framesDir, { out, anchor, cell, pad: askedPad, smooth, thresh
     const localX = targetsX[i] - box.x;
     const localY = (anchor === "center" ? targetsY[i] : anchorOf(box, anchor).y) - box.y;
     let offsetX = grid * Math.round((target.x - localX) / grid);
-    let offsetY = grid * Math.round((target.y - localY) / grid);
+    let offsetY = grid * Math.round((target.y - (lifted ? lifted.lift[i] : 0) - localY) / grid);
     const clampedX = Math.min(Math.max(offsetX, 0), cellSize.width - box.w);
     const clampedY = Math.min(Math.max(offsetY, 0), cellSize.height - box.h);
     if (clampedX !== offsetX || clampedY !== offsetY) clamped.push(i);
@@ -2406,16 +2644,23 @@ function stepAlign(framesDir, { out, anchor, cell, pad: askedPad, smooth, thresh
     // What `trend` / `body` measured and removed — the drift is a fact about
     // the source, and it is only known here.
     ...(drift ? { drift: drift.record } : {}),
+    // Where y came from: absent is the anchor (every frame's own feet or
+    // centre on the point); "cell" kept each frame's drawn height above the
+    // ground, and `lift` is that height per frame, in frame px.
+    ...(lifted ? { yFrom: "cell", lift: lifted.lift, ground: lifted.ground } : {}),
     // The lattice these frames carry, travelling with them so `inspect` can
     // check it held without knowing where `pixel` wrote.
     ...(pixel ? { pixel } : {}),
   });
+  if (lifted) warnings.push(...lifted.warnings);
 
   return {
     inDir: resolve(framesDir),
     outDir: dir,
     anchor, pad, smooth,
     xFrom: xMode,
+    yFrom: lifted ? "cell" : "anchor",
+    ...(lifted ? { lift: lifted.lift } : {}),
     ...(drift ? { drift: drift.record } : {}),
     ...(pixel ? { pixel } : {}),
     cell: cellSize,
@@ -2462,6 +2707,36 @@ function countEncodedFrames(path) {
 }
 
 /**
+ * `align` over frames that carry a pixel lattice, from an input that does not.
+ *
+ * A pixel motion's frames are aligned from `pixel/` — the lattice frames,
+ * whose `pixel.json` travels into `align.json`. Re-aligning the motion from
+ * `cells/` (what a head-sway warning used to advise) writes smooth frames over
+ * them and drops the record with no word, so `inspect` stops checking a
+ * lattice nothing holds any more. Refused unless `--force`; with it, the
+ * sentence returned here goes first in the warnings.
+ */
+function latticeAlignGuard(input, outDir, force) {
+  const path = join(resolve(outDir), ALIGN_RECORD);
+  if (!existsSync(path)) return null;
+  let previous;
+  try {
+    previous = JSON.parse(readFileSync(path, "utf-8"));
+  } catch {
+    return null;
+  }
+  if (!previous?.pixel || typeof previous.pixel !== "object") return null;
+  if (existsSync(join(resolve(input), PIXEL_RECORD))) return null;
+  const scale = Number(previous.pixel.scale) || 1;
+  const sibling = join(dirname(resolve(outDir)), PIXEL_DIRNAME);
+  const from = existsSync(join(sibling, PIXEL_RECORD)) ? sibling : `the ${PIXEL_DIRNAME}/ frames the motion's run wrote`;
+  if (!force) {
+    fail(`align: ${resolve(outDir)} holds pixel-art frames snapped to a ${scale}x lattice (${ALIGN_RECORD}), and ${resolve(input)} has no ${PIXEL_RECORD} — aligning it over them would drop the lattice without a word. Align from ${from} instead, or pass --force to replace them with frames that carry no lattice`);
+  }
+  return `replaced pixel-art frames (a ${scale}x lattice) with frames from ${resolve(input)}, which carry none (--force) — inspect no longer checks a lattice for this motion`;
+}
+
+/**
  * The anchor point `align` measured for these frames, or null when nothing
  * measured them.
  *
@@ -2490,6 +2765,8 @@ function readAlignRecord(framesDir) {
     anchorPoint: { x: doc.anchorPoint.x, y: doc.anchorPoint.y },
     // Records from before the field existed were all feet/bbox/cell alignments.
     xFrom: X_FROM_MODES.includes(doc.xFrom) ? doc.xFrom : null,
+    // Absent on every record but a `--y-from cell` one: y came from the anchor.
+    yFrom: doc.yFrom === "cell" ? "cell" : "anchor",
     ...(doc.pixel ? { pixel: pixelFacts(doc.pixel, `${path} (pixel)`) } : {}),
   };
 }
@@ -2587,6 +2864,9 @@ function stepPack(framesDir, { out, atlas, name, fps, loop, anchor, cols, scale,
       fps,
       loop,
       anchor,
+      // How a scaled pack resampled the cells — what a later pack of the same
+      // frames (a mirror) repeats. Absent at scale 1, where nothing resampled.
+      ...(scale !== 1 ? { filter: nearest ? "nearest" : "smooth" } : {}),
       // Present only when `align` measured it: an absent key says "this pivot
       // is the anchor's default, not a measurement".
       ...(scaledAnchor ? { anchorPoint: scaledAnchor } : {}),
@@ -2837,7 +3117,10 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
   const headX = nonUniformWidth(measured)
     ? measured.map(() => null)
     : headOffsets(measured.map((f) => f.head), measured[0].width);
-  const headDrift = round(stdDev(headX.filter((v) => v !== null)), 3);
+  // Unmeasurable (frames of different widths, fewer than two heads) is
+  // absent, never 0 — 0 is what a perfectly steady head reads.
+  const headValues = headX.filter((v) => v !== null);
+  const headDrift = headValues.length >= 2 ? round(stdDev(headValues), 3) : null;
 
   // The step from each frame to the next, and — for a looping motion — from
   // the last back to the first. A pair with an empty frame has no step: the
@@ -2922,18 +3205,38 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
   // for `trend` / `body`, which keep the foot line as filmed by design.
   const record = readAlignRecord(framesDir);
   const keepsFootLine = record && (record.xFrom === "trend" || record.xFrom === "body");
-  const headMoves = headDrift > STEADY_HEAD_FRACTION * cellW;
+  const headMoves = headDrift !== null && headDrift > STEADY_HEAD_FRACTION * cellW;
   if (!keepsFootLine && headMoves && bodyDrift > MAX_BODY_DRIFT_FRACTION * cellW) {
     warnings.push("body drifts sideways between frames — re-run align with --x-from feet/cell");
   }
-  if (sourceHeadDrift !== null && headDrift > ADDED_SWAY_RATIO * sourceHeadDrift
-    && headDrift - sourceHeadDrift > ADDED_SWAY_FRACTION * cellW) {
-    warnings.push(`head sways ${headDrift} px across the frames but ${sourceHeadDrift} px in the source once its slow drift is removed — the alignment added sway (a pinned stepping foot) or kept the drift; re-align from cells/ with --x-from trend (or cell, the placement as drawn)`);
+  // The bar is at least one block for pixel art: a lattice moves in whole
+  // blocks, so anything under one is the snap, not sway (a 44 px pixel cell
+  // put the 1 % bar at 0.44 px). The advice names the frames to re-align
+  // from — pixel/ for a lattice, whose record cells/ does not carry — and
+  // never the x mode that produced these frames.
+  const swayBar = Math.max(ADDED_SWAY_FRACTION * cellW, pixel ? pixel.scale : 0);
+  if (headDrift !== null && sourceHeadDrift !== null && headDrift > ADDED_SWAY_RATIO * sourceHeadDrift
+    && headDrift - sourceHeadDrift > swayBar) {
+    const alignFrom = pixel ? `${PIXEL_DIRNAME}/` : `${CELLS_DIRNAME}/`;
+    const others = ["trend", "cell"].filter((m) => m !== record?.xFrom);
+    const advice = others.length === 2
+      ? "--x-from trend (or cell, the placement as drawn)"
+      : others[0] === "cell" ? "--x-from cell (the placement as drawn)" : "--x-from trend";
+    warnings.push(`head sways ${headDrift} px across the frames but ${sourceHeadDrift} px in the source once its slow drift is removed — the alignment${record?.xFrom ? ` (--x-from ${record.xFrom})` : ""} added sway (a pinned stepping foot) or kept the drift; re-align from ${alignFrom} with ${advice}`);
   }
   if (scaleDrift > MAX_SCALE_DRIFT) {
     warnings.push("character scale varies across frames — regenerate with a fixed-scale instruction");
   }
-  warnings.push(...listAndTruncate(clipped, (i) => `cell ${pad(i)} is clipped — the drawing leaves its grid cell`));
+  // An auto slice pads its cells, so its record names the poses clipped
+  // anyway; a fixed cell says it by touching its own edge.
+  const clippedWhy = new Map((grid?.clipped ?? []).map((c) => [c.index, c.why]));
+  for (const i of clipped) if (!clippedWhy.has(i)) clippedWhy.set(i, "cell");
+  const clippedText = {
+    cell: "the drawing leaves its grid cell",
+    "sheet-edge": "the drawing runs off the edge of the sheet",
+    cut: "it was drawn touching a neighbouring pose and cut apart from it",
+  };
+  warnings.push(...listAndTruncate([...clippedWhy].sort((a, b) => a[0] - b[0]), ([i, why]) => `cell ${pad(i)} is clipped — ${clippedText[why]}`));
   // One sentence per kind, naming every pair: six lines for one gentle idle
   // would bury the warnings that are not about holds.
   const pairsText = (pairs) => listAndTruncate(pairs, (p) => `${pad(p.from)}→${pad(p.to)}`).join(", ");
@@ -2996,14 +3299,22 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
     && record.cell.width === cellW && record.cell.height === cellH
     ? record.anchorPoint
     : null;
+  // Frames aligned with `--y-from cell` keep the height they were drawn at:
+  // how high each one's feet stand above the anchor, measured on the frames
+  // themselves (px, null for an empty frame). A jump's travel, in numbers —
+  // all zeros means it has none.
+  const lift = record?.yFrom === "cell" && measuredAnchor
+    ? measured.map((f) => (f.bbox ? round(measuredAnchor.y - (f.bbox.y + f.bbox.h), 2) : null))
+    : null;
 
   const summary = {
     frameCount: measured.length,
     cell: { width: cellW, height: cellH },
     ...(measuredAnchor ? { anchorPoint: measuredAnchor } : {}),
+    ...(lift ? { lift } : {}),
     anchorDrift,
     bodyDrift,
-    headDrift,
+    ...(headDrift === null ? {} : { headDrift }),
     ...(sourceHeadDrift === null ? {} : { sourceHeadDrift }),
     maxJump: round(maxJump, 3),
     scaleDrift,
@@ -3141,6 +3452,9 @@ function finishMotion(motionDir, cellsDir, options, { measures, sourceCell, warn
     smooth: options.smooth,
     threshold: options.threshold,
     xFrom: options.xFrom,
+    yFrom: options.yFrom ?? "anchor",
+    // The sheet's grid, for the rows `--y-from cell` compares; a clip has none.
+    grid: options.rows && options.cols ? { rows: options.rows, cols: options.cols } : null,
     measures: lattice ? lattice.measures : measures,
     sourceCell: lattice ? lattice.cell : sourceCell,
   });
@@ -3230,36 +3544,72 @@ function stepRun(sheetRaw, options) {
   // the alignment has to be redone. `resetFramesDir` keeps them in step with
   // the frames, so a shorter re-run cannot leave a stale tail.
   const cellsDir = join(motionDir, CELLS_DIRNAME);
-  const sliced = stepSlice(source, {
-    rows: options.rows, cols: options.cols, out: cellsDir,
-    margin: options.margin, gutter: options.gutter,
-  });
+  const geometry = { rows: options.rows, cols: options.cols, margin: options.margin, gutter: options.gutter };
 
   // One decode of the source covers every cell's bbox: slicing is a pure
   // crop, so a cell's pixels are the sheet's pixels. Cleaning rides the same
   // pass — the cell is already in hand, and what it removes has to be gone
   // before the bbox that positions the frame is measured.
   const sheetImage = readRgba(source);
-  const cleanStats = [];
-  const measures = [];
-  const cellImages = [];
-  for (const cell of sliced.cells) {
-    const image = {
+  const prepare = (images) => {
+    const stats = [];
+    const measured = [];
+    images.forEach((image, index) => {
+      if (options.clean) {
+        const result = cleanCell(image, options.threshold);
+        stats.push({ index, ...result });
+        if (result.removedPixels) writeRgbaPng(join(cellsDir, frameName(index)), image, `clean cell ${index}`);
+      }
+      measured.push(measureFrame(image, options.threshold));
+    });
+    return { stats, measured };
+  };
+
+  // The fixed grid first, unless auto slicing was asked for outright. When
+  // the fixed cut takes part of a pose — its ink reaches a line shared with
+  // another cell — the sheet is sliced again by where its poses are
+  // (`--no-auto-slice` keeps the fixed cut regardless). sheet-raw.png and
+  // sheet-alpha.png are only read: the auto cells are cut from them.
+  let sliced;
+  let cellImages;
+  let prepared;
+  let plan = null;
+  let reason = null;
+  let gridClipped = null;
+  if (options.autoSlice === true) {
+    plan = planAutoSlice(sheetImage, { ...geometry, threshold: options.threshold });
+    if (plan.failed) fail(`run --auto-slice: ${plan.failed} — check --rows/--cols against the sheet, or drop --auto-slice to cut it on the fixed grid`);
+    reason = "asked";
+  } else {
+    sliced = stepSlice(source, { ...geometry, out: cellsDir });
+    cellImages = sliced.cells.map((cell) => ({
       width: sliced.cell.width,
       height: sliced.cell.height,
       data: cropBuffer(sheetImage, cell.x, cell.y, sliced.cell.width, sliced.cell.height),
-    };
-    if (options.clean) {
-      const result = cleanCell(image, options.threshold);
-      cleanStats.push({ index: cell.index, ...result });
-      if (result.removedPixels) {
-        writeRgbaPng(join(cellsDir, frameName(cell.index)), image, `clean cell ${cell.index}`);
+    }));
+    prepared = prepare(cellImages);
+    const crossing = options.autoSlice === false ? [] : interiorClipped(sliced, cellImages, sheetImage, options.threshold);
+    if (crossing.length) {
+      const named = listAndTruncate(crossing, (i) => String(i).padStart(2, "0")).join(", ");
+      const attempt = planAutoSlice(sheetImage, { ...geometry, threshold: options.threshold });
+      if (attempt.failed) {
+        warnings.push(`the fixed grid cuts through cell(s) ${named} and auto slicing could not find the poses (${attempt.failed}) — kept the fixed grid; look at the sheet`);
+      } else {
+        plan = attempt;
+        reason = "grid-clipped";
+        gridClipped = crossing;
+        warnings.push(`the fixed ${options.cols}x${options.rows} grid cut through cell(s) ${named} — the poses cross the grid lines, so the sheet was sliced by where its poses are instead (slice.mode "auto"); sheet-raw.png is untouched`);
       }
     }
-    measures.push(measureFrame(image, options.threshold));
-    cellImages.push(image);
   }
-  const cleaned = options.clean ? cleanSummary(cleanStats) : null;
+  if (plan) {
+    sliced = writeAutoSlice(source, sheetImage, plan, { ...geometry, out: cellsDir, reason, gridClipped });
+    cellImages = sliced.images;
+    prepared = prepare(cellImages);
+    warnings.push(...sliced.warnings);
+  }
+  const measures = prepared.measured;
+  const cleaned = options.clean ? cleanSummary(prepared.stats) : null;
   if (cleaned) warnings.push(...cleaned.warnings);
 
   // Pixel art: snap the cleaned cells onto their lattice before anything
@@ -3298,6 +3648,10 @@ function stepRun(sheetRaw, options) {
     motionDir,
     name: options.name,
     grid: { rows: options.rows, cols: options.cols },
+    // Present only when the cells were found by their ink rather than cut on
+    // the grid: why, the cut lines, and what the slice record says — so what
+    // registers these frames can tell they did not come off the fixed grid.
+    ...(sliced.auto ? { slice: { mode: "auto", cell: sliced.cell, ...sliced.auto } } : {}),
     ...(sheetRawPath ? { sheetRaw: sheetRawPath } : {}),
     ...(sheetAlpha ? { sheetAlpha } : {}),
     ...(providedAlpha ? { alphaSource: "provided" } : {}),
@@ -3317,6 +3671,7 @@ function stepRun(sheetRaw, options) {
     loop: options.loop,
     anchor: options.anchor,
     xFrom: aligned.xFrom,
+    ...(aligned.lift ? { yFrom: aligned.yFrom, lift: aligned.lift } : {}),
     ...(aligned.drift ? { drift: aligned.drift } : {}),
     scale: options.scale,
     ...(lattice ? {
@@ -4191,6 +4546,7 @@ function stepFromVideo(clip, options) {
     loop: options.loop,
     anchor: options.anchor,
     xFrom: aligned.xFrom,
+    ...(aligned.lift ? { yFrom: aligned.yFrom, lift: aligned.lift } : {}),
     ...(aligned.drift ? { drift: aligned.drift } : {}),
     scale: options.scale,
     warnings,
@@ -5558,9 +5914,12 @@ function stepMirror(sourceDir, options) {
   const layout = atlasLayout(sourceAtlas);
   const anchor = layout.anchor ?? (source.anchor === "center" ? "center" : "bottom");
   const scale = layout.scale ?? 1;
-  // A scaled atlas of pixel art was packed nearest-neighbour; the atlas does
-  // not say which filter it used, so the character's own reading decides.
-  const nearest = scale !== 1 && riveIsPixelArt(character.doc.sprite.character);
+  // A scaled pack is repeated with the filter it used: the atlas says so
+  // (`meta.filter`, since 0.5.0); an older atlas does not, and then the
+  // character's own reading decides (pixel art was packed nearest-neighbour).
+  const nearest = scale !== 1 && (layout.filter
+    ? layout.filter === "nearest"
+    : riveIsPixelArt(character.doc.sprite.character));
 
   // The frames and, when the source kept them, its pre-align cells: `inspect`
   // judges "leaves its grid cell" on the cells, and a flip preserves which
@@ -5624,7 +5983,13 @@ function stepMirror(sourceDir, options) {
     width: null,
   });
   warnings.push(...preview.warnings);
-  const { summary } = stepInspect(motionDir, { anchor, threshold: options.threshold, cellsDir: cells });
+  // The plate the source was keyed off, from the source's own report: a flip
+  // keeps every colour, so the mirror's residue is the source's, measured on
+  // the mirror's pixels. Named explicitly (null: nothing was keyed) so an
+  // inspect.json left in a reused --out never lends its keyColor.
+  const { summary } = stepInspect(motionDir, {
+    anchor, threshold: options.threshold, cellsDir: cells, keyColor: previousKeyColor(dir),
+  });
   warnings.push(...summary.warnings.filter((w) => !warnings.includes(w)));
 
   return {
@@ -5633,6 +5998,9 @@ function stepMirror(sourceDir, options) {
     source: "mirror",
     mirrorOf: source.id,
     direction: facing,
+    // The atlas the mirror packed — its rows and columns — which is the grid
+    // the stage plays it on (the source's pack layout, not a generated sheet).
+    grid: packed.grid,
     ...(cells ? { cells } : {}),
     frames: flipped,
     sheet: packed.sheet,
@@ -7084,14 +7452,22 @@ function drawLineup(entries, hubEntry, extent, outPath, label) {
       }
     }
   });
+  return writeLabelledPanels(outPath, { width, height, data }, entries.map((entry, n) => ({
+    text: entry.motion.id, x: gutter + n * (panelW + gutter) + 4, y: gutter + panelH + 6,
+  })), label);
+}
+
+/**
+ * Write a panel image with a text label under each panel. The labels are
+ * ffmpeg's drawtext; where it cannot run (no font, a build without it) the
+ * image is written plain and `labelled: false` says so.
+ */
+function writeLabelledPanels(outPath, image, labels, label) {
   const plain = join(dirname(outPath), `.${basename(outPath, ".png")}.plain.png`);
-  writeRgbaPng(plain, { width, height, data }, `${label} image`);
-  const labels = entries.map((entry, n) => {
-    const text = entry.motion.id.replace(/[^A-Za-z0-9_.-]/g, "_");
-    return `drawtext=text='${text}':x=${gutter + n * (panelW + gutter) + 4}:y=${gutter + panelH + 6}:fontsize=16:fontcolor=white`;
-  });
+  writeRgbaPng(plain, image, `${label} image`);
+  const filters = labels.map(({ text, x, y }) => `drawtext=text='${String(text).replace(/[^A-Za-z0-9_. -]/g, "_")}':x=${x}:y=${y}:fontsize=16:fontcolor=white`);
   try {
-    ffmpegTo(outPath, () => ["-i", plain, "-frames:v", "1", "-vf", labels.join(","), "-pix_fmt", "rgb24"], `${label} labels`);
+    ffmpegTo(outPath, () => ["-i", plain, "-frames:v", "1", "-vf", filters.join(","), "-pix_fmt", "rgb24"], `${label} labels`);
     return { labelled: true };
   } catch (error) {
     if (!(error instanceof SpriteSheetError)) throw error;
@@ -7100,6 +7476,154 @@ function drawLineup(entries, hubEntry, extent, outPath, label) {
   } finally {
     rmSync(plain, { force: true });
   }
+}
+
+/** How tall the tallest figure is drawn in sizes.png, in px. */
+const SIZES_PANEL_HEIGHT = 320;
+
+/**
+ * `sizes <characterDir> [--motions id,…] [--out png]`: is the character one
+ * size across its motions? Every ready sprite motion's registered frames are
+ * measured (solid-alpha bbox height per frame); a motion's size is the median
+ * of those heights times its atlas scale — what it ships at — and the set is
+ * compared by `sizes.mjs`. Writes sizes.png: each motion's median-height frame
+ * at shipped scale, feet on one baseline, the set's reference height marked.
+ * Reads project.json, writes nothing to it.
+ */
+function stepSizes(characterDir, { motions: named, out, threshold }) {
+  const label = "sizes";
+  const character = readCharacterProject(characterDir, label);
+  const all = character.doc.sprite.motions.filter((m) => m && typeof m.id === "string");
+  const isSprite = (m) => m.kind !== "loop" && m.kind !== "transition";
+  let chosen;
+  const skipped = [];
+  if (named) {
+    chosen = named.map((id) => {
+      const motion = all.find((m) => m.id === id);
+      if (!motion) fail(`${label}: --motions: no motion '${id}' (motions: ${all.map((m) => m.id).join(", ") || "none"})`);
+      if (!isSprite(motion)) fail(`${label}: --motions: '${id}' is a ${motion.kind} — sizes compares sprite motions (lineup places loops)`);
+      if (motion.status !== "ready") fail(`${label}: --motions: '${id}' is ${motion.status ?? "not registered"}, not ready`);
+      return motion;
+    });
+  } else {
+    chosen = all.filter((m) => isSprite(m) && m.status === "ready");
+    for (const m of all) {
+      if (chosen.includes(m)) continue;
+      skipped.push({ motion: m.id, reason: isSprite(m) ? `${m.status ?? "not registered"}, not ready` : `a ${m.kind}` });
+    }
+  }
+  if (!chosen.length) fail(`${label}: ${character.name} has no ready sprite motion to measure`);
+
+  const entries = chosen.map((motion) => {
+    const frames = registeredFrames(character, motion, label);
+    const facts = readAtlasFacts(character, motion, frames.paths.length, label);
+    const boxes = frames.paths.map((path) => computeBbox(readRgba(path), threshold).bbox);
+    const heights = boxes.map((b) => (b ? b.h : null));
+    const size = motionSize(heights, { scale: facts.scale, loop: facts.loop });
+    // One logical pixel of pixel art, as shipped: the finest a height can differ.
+    const block = (readAlignRecord(frames.dir)?.pixel?.scale ?? 0) * facts.scale;
+    // The frame drawn for the motion: the one its size was read from.
+    let shown = -1;
+    if (size?.from === "first") shown = 0;
+    else {
+      heights.forEach((h, i) => {
+        if (h !== null && (shown < 0 || Math.abs(h - size.median) < Math.abs(heights[shown] - size.median))) shown = i;
+      });
+    }
+    return { id: motion.id, size, heights, block, shown, path: shown >= 0 ? frames.paths[shown] : null, box: shown >= 0 ? boxes[shown] : null };
+  });
+  const comparison = sizeSpread(entries);
+  const warnings = [];
+  const outPath = resolve(out ?? join(character.dir, "sizes.png"));
+  const note = sizeWarning(entries, comparison, { block: Math.max(0, ...entries.map((e) => e.block)), picture: outPath });
+  if (note) warnings.push(note);
+  for (const entry of entries) if (!entry.size) warnings.push(`${entry.id}: every frame is empty — nothing to measure`);
+
+  const drawn = drawSizes(entries, comparison, outPath, label);
+  if (!drawn.labelled) warnings.push("ffmpeg's drawtext filter could not run here (missing, or no font to draw with) — sizes.png carries no labels; its panels are in the order of `motions`");
+  return {
+    kind: "sizes",
+    character: character.dir,
+    out: outPath,
+    bar: SIZE_SPREAD_WARN,
+    motions: entries.map((e) => ({ id: e.id, frameCount: e.heights.length, height: e.size, heights: e.heights, shownFrame: e.shown })),
+    ...(comparison ?? { spread: null }),
+    skipped,
+    warnings,
+  };
+}
+
+/** sizes.png: the shown frame of each motion at its shipped scale, cropped to
+ *  its figure, feet on one orange baseline, the reference height a grey line. */
+function drawSizes(entries, comparison, outPath, label) {
+  const drawable = entries.filter((e) => e.box);
+  const tallest = Math.max(1, ...drawable.map((e) => e.box.h * e.size.scale));
+  const d = SIZES_PANEL_HEIGHT / tallest;
+  const sizeOf = (e) => ({
+    width: Math.max(1, Math.round(e.box.w * e.size.scale * d)),
+    height: Math.max(1, Math.round(e.box.h * e.size.scale * d)),
+  });
+  const panelW = Math.max(40, ...drawable.map((e) => sizeOf(e).width)) + 16;
+  const gutter = 16;
+  const band = 28;
+  const top = 12;
+  const panelH = SIZES_PANEL_HEIGHT + top;
+  const width = entries.length * panelW + (entries.length + 1) * gutter;
+  const height = panelH + 2 * gutter + band;
+  const data = Buffer.alloc(width * height * 4);
+  for (let p = 0; p < width * height; p++) {
+    data[p * 4] = LINEUP_BACKGROUND[0] - 12;
+    data[p * 4 + 1] = LINEUP_BACKGROUND[1] - 12;
+    data[p * 4 + 2] = LINEUP_BACKGROUND[2] - 12;
+    data[p * 4 + 3] = 255;
+  }
+  const baseline = gutter + panelH;
+  const refLine = comparison ? Math.round(baseline - comparison.reference * d) : null;
+  const work = mkdtempSync(join(tmpdir(), "sprite-sizes-"));
+  try {
+    entries.forEach((entry, n) => {
+      const left = gutter + n * (panelW + gutter);
+      let pixels = null;
+      let size = null;
+      if (entry.box) {
+        size = sizeOf(entry);
+        const crop = join(work, `${n}.png`);
+        const image = readRgba(entry.path);
+        writeRgbaPng(crop, { width: entry.box.w, height: entry.box.h, data: cropBuffer(image, entry.box.x, entry.box.y, entry.box.w, entry.box.h) }, `${label} crop`);
+        pixels = poseImage(crop, size, label);
+      }
+      for (let y = gutter; y < gutter + panelH; y++) {
+        for (let x = 0; x < panelW; x++) {
+          const dst = (y * width + left + x) * 4;
+          let r = LINEUP_BACKGROUND[0], g = LINEUP_BACKGROUND[1], b = LINEUP_BACKGROUND[2];
+          if (pixels) {
+            const px = x - Math.floor((panelW - size.width) / 2);
+            const py = y - (baseline - size.height);
+            if (px >= 0 && px < size.width && py >= 0 && py < size.height) {
+              const src = (py * size.width + px) * 4;
+              const a = pixels[src + 3] / 255;
+              r = Math.round(pixels[src] + r * (1 - a));
+              g = Math.round(pixels[src + 1] + g * (1 - a));
+              b = Math.round(pixels[src + 2] + b * (1 - a));
+            }
+          }
+          if (y === refLine) { r = Math.round(r * 0.5 + 200 * 0.5); g = Math.round(g * 0.5 + 200 * 0.5); b = Math.round(b * 0.5 + 200 * 0.5); }
+          data[dst] = r;
+          data[dst + 1] = g;
+          data[dst + 2] = b;
+        }
+      }
+      for (let x = 0; x < panelW; x++) {
+        const dst = (baseline * width + left + x) * 4;
+        for (let c = 0; c < 3; c++) data[dst + c] = Math.round(data[dst + c] * 0.4 + LINEUP_BASELINE[c] * 0.6);
+      }
+    });
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+  return writeLabelledPanels(outPath, { width, height, data }, entries.map((entry, n) => ({
+    text: `${entry.id} ${entry.size ? entry.size.shipped : "-"}`, x: gutter + n * (panelW + gutter) + 4, y: baseline + 8,
+  })), label);
 }
 
 /**
@@ -7984,11 +8508,12 @@ const OPTIONS = {
   slice: {
     rows: { type: "string" }, cols: { type: "string" }, out: { type: "string" },
     margin: { type: "string" }, gutter: { type: "string" },
+    auto: { type: "boolean", default: false }, threshold: { type: "string" },
   },
   clean: { out: { type: "string" }, threshold: { type: "string" } },
   align: {
-    out: { type: "string" }, anchor: { type: "string" }, "x-from": { type: "string" },
-    cell: { type: "string" },
+    out: { type: "string" }, anchor: { type: "string" }, "x-from": { type: "string" }, "y-from": { type: "string" },
+    cell: { type: "string" }, force: { type: "boolean", default: false },
     pad: { type: "string" }, smooth: { type: "boolean", default: false }, threshold: { type: "string" },
   },
   pack: {
@@ -8006,13 +8531,14 @@ const OPTIONS = {
     rows: { type: "string" }, cols: { type: "string" }, out: { type: "string" }, name: { type: "string" },
     alpha: { type: "string" }, force: { type: "boolean", default: false },
     fps: { type: "string" }, loop: { type: "boolean", default: false }, "no-loop": { type: "boolean", default: false },
-    anchor: { type: "string" }, "x-from": { type: "string" },
+    anchor: { type: "string" }, "x-from": { type: "string" }, "y-from": { type: "string" },
     key: { type: "string" }, cell: { type: "string" }, pad: { type: "string" },
     smooth: { type: "boolean", default: false }, scale: { type: "string" }, nearest: { type: "boolean", default: false },
     margin: { type: "string" }, gutter: { type: "string" }, width: { type: "string" },
     "no-webp": { type: "boolean", default: false }, threshold: { type: "string" },
     similarity: { type: "string" }, blend: { type: "string" }, keyer: { type: "string" },
     "no-clean": { type: "boolean", default: false },
+    "auto-slice": { type: "boolean", default: false }, "no-auto-slice": { type: "boolean", default: false },
     pixel: { type: "boolean", default: false },
     ...pixelOptions(),
   },
@@ -8034,7 +8560,7 @@ const OPTIONS = {
     at: { type: "string", multiple: true },
     fps: { type: "string" }, loop: { type: "boolean", default: false },
     "no-loop": { type: "boolean", default: false },
-    anchor: { type: "string" }, "x-from": { type: "string" }, key: { type: "string" },
+    anchor: { type: "string" }, "x-from": { type: "string" }, "y-from": { type: "string" }, key: { type: "string" },
     "trim-start": { type: "string" }, "trim-end": { type: "string" },
     cell: { type: "string" }, pad: { type: "string" },
     smooth: { type: "boolean", default: false }, scale: { type: "string" },
@@ -8070,6 +8596,7 @@ const OPTIONS = {
     crop: { type: "string" }, pad: { type: "string" }, width: { type: "string" }, threshold: { type: "string" },
   },
   lineup: { hub: { type: "string" }, out: { type: "string" } },
+  sizes: { motions: { type: "string" }, out: { type: "string" }, threshold: { type: "string" } },
   export: {
     format: { type: "string" }, bg: { type: "string" }, repeat: { type: "string" }, scale: { type: "string" },
     shadow: { type: "boolean", default: false },
@@ -8183,6 +8710,17 @@ function pickAnchor(value) {
   const anchor = value ?? "bottom";
   if (anchor !== "bottom" && anchor !== "center") fail(`--anchor: expected bottom or center, got '${value}'`);
   return anchor;
+}
+
+/** `--y-from anchor|cell|clip`: the anchor (every frame's own feet or centre
+ *  on the point, today's behaviour) or the height each frame was drawn or
+ *  filmed at. `clip` is `cell` by the name a clip's frames go by — one mode,
+ *  recorded as "cell". */
+function pickYFrom(value) {
+  const yFrom = value ?? "anchor";
+  if (yFrom === "clip") return "cell";
+  if (yFrom !== "anchor" && yFrom !== "cell") fail(`--y-from: expected anchor, cell or clip, got '${value}'`);
+  return yFrom;
 }
 
 function pickXFrom(value) {
@@ -8413,13 +8951,27 @@ function main() {
       break;
     }
     case "slice": {
-      const out = stepSlice(requirePositional(positionals, "<sheet>"), {
+      const geometry = {
         rows: num(requireFlag(values.rows, "--rows"), "--rows", { integer: true, min: 1 }),
         cols: num(requireFlag(values.cols, "--cols"), "--cols", { integer: true, min: 1 }),
         out: requireFlag(values.out, "--out"),
         margin: num(values.margin, "--margin", { integer: true, min: 0, fallback: 0 }),
         gutter: num(values.gutter, "--gutter", { integer: true, min: 0, fallback: 0 }),
-      });
+      };
+      if (!values.auto && values.threshold !== undefined) fail("--threshold decides which pixels are ink for --auto; a fixed slice cuts at the grid lines whatever they hold");
+      const sheet = requirePositional(positionals, "<sheet>");
+      if (values.auto) {
+        const out = stepSliceAuto(sheet, { ...geometry, threshold });
+        const grew = out.auto.grew;
+        emit(values, out, [
+          `sliced ${out.rows}x${out.cols} by the poses' ink into ${out.frames.length} cells of ${out.cell.width}x${out.cell.height} (the ${out.auto.nominalCell.width}x${out.auto.nominalCell.height} grid cell grown ${grew.left}/${grew.top}/${grew.right}/${grew.bottom} px left/top/right/bottom)`,
+          `row cuts y = ${out.auto.cuts.rows.join(", ") || "none"}; column cuts per row: ${out.auto.cuts.cols.map((c) => c.join(", ") || "none").join(" | ")}`,
+          ...out.auto.clipped.map((c) => `cell ${String(c.index).padStart(2, "0")} is clipped anyway (${c.why === "cut" ? "cut apart from a pose it touched" : "drawn off the sheet"})`),
+          ...out.warnings,
+        ]);
+        break;
+      }
+      const out = stepSlice(sheet, geometry);
       emit(values, out, [
         `sliced ${out.rows}x${out.cols} into ${out.frames.length} cells of ${out.cell.width}x${out.cell.height}${out.exact ? "" : ` (floored, ${out.remainder.x}x${out.remainder.y} px left over)`}`,
       ]);
@@ -8439,17 +8991,24 @@ function main() {
       break;
     }
     case "align": {
-      const out = stepAlign(requirePositional(positionals, "<framesDir>"), {
-        out: requireFlag(values.out, "--out"),
+      const input = requirePositional(positionals, "<framesDir>");
+      const outDir = requireFlag(values.out, "--out");
+      const dropped = latticeAlignGuard(input, outDir, values.force);
+      const sheetGrid = readSliceRecord(input);
+      const out = stepAlign(input, {
+        out: outDir,
         anchor: pickAnchor(values.anchor),
         xFrom: pickXFrom(values["x-from"]),
+        yFrom: pickYFrom(values["y-from"]),
+        grid: sheetGrid ? { rows: sheetGrid.rows, cols: sheetGrid.cols } : null,
         cell: parseCell(values.cell),
         pad: num(values.pad, "--pad", { integer: true, min: 0, fallback: DEFAULT_PAD }),
         smooth: values.smooth,
         threshold,
       });
+      if (dropped) out.warnings.unshift(dropped);
       emit(values, out, [
-        `aligned ${out.frames.length} frames on a ${out.cell.width}x${out.cell.height} cell (${out.anchor} anchor at ${out.anchorPoint.x},${out.anchorPoint.y}, x from ${out.xFrom})`,
+        `aligned ${out.frames.length} frames on a ${out.cell.width}x${out.cell.height} cell (${out.anchor} anchor at ${out.anchorPoint.x},${out.anchorPoint.y}, x from ${out.xFrom}${out.lift ? `, y from cell: lift ${out.lift.map((v) => v ?? "-").join(",")} px` : ""})`,
         ...out.warnings,
       ]);
       break;
@@ -8491,7 +9050,8 @@ function main() {
         ...(values.key === undefined ? {} : { keyColor: normalizeColor(values.key, "--key") }),
       });
       emit(values, report, [
-        `${report.frameCount} frames of ${report.cell.width}x${report.cell.height}, anchor drift ${report.anchorDrift.x}/${report.anchorDrift.y}px, body drift ${report.bodyDrift}px, head drift ${report.headDrift}px, max jump ${report.maxJump}px, scale drift ${report.scaleDrift}`,
+        `${report.frameCount} frames of ${report.cell.width}x${report.cell.height}, anchor drift ${report.anchorDrift.x}/${report.anchorDrift.y}px, body drift ${report.bodyDrift}px, head drift ${report.headDrift === undefined ? "n/a" : `${report.headDrift}px`}, max jump ${report.maxJump}px, scale drift ${report.scaleDrift}`,
+        ...(report.lift ? [`lift above the ground (y from cell): ${report.lift.map((v) => v ?? "-").join(", ")} px`] : []),
         ...residueLine(report),
         ...(report.pixel ? [`pixel art at pitch ${report.pixel.pitch.x}x${report.pixel.pitch.y}, ${report.pixel.scale}x — lattice ${report.pixel.held ? "held" : "broken"}`] : []),
         ...(report.warnings.length ? report.warnings : ["no warnings"]),
@@ -8551,6 +9111,7 @@ function main() {
         loop: pickLoop(values),
         anchor: pickAnchor(values.anchor),
         xFrom: pickXFrom(values["x-from"]),
+        yFrom: pickYFrom(values["y-from"]),
         key,
         cell: parseCell(values.cell),
         pad: num(values.pad, "--pad", { integer: true, min: 0, fallback: DEFAULT_PAD }),
@@ -8566,6 +9127,10 @@ function main() {
         blend: num(values.blend, "--blend", { min: 0, fallback: DEFAULT_BLEND }),
         keyer: pickKeyer(values.keyer),
         clean: !values["no-clean"],
+        // true: find the poses by their ink; false: cut the fixed grid
+        // whatever it clips; undefined: the fixed grid, sliced again by ink
+        // only when it cuts through a pose.
+        autoSlice: pickToggle(values, "auto-slice", undefined),
         pixel: values.pixel,
         // The lattice flags; `palette` stays null unless named, and `run`
         // then pins <motionDir>/palette.json.
@@ -8648,6 +9213,7 @@ function main() {
         loop: pickLoop(values),
         anchor: pickAnchor(values.anchor),
         xFrom: pickXFrom(values["x-from"]),
+        yFrom: pickYFrom(values["y-from"]),
         key,
         trimStart,
         trimEnd,
@@ -8765,6 +9331,20 @@ function main() {
           ? `  ${m.id}: iou ${m.poseGap.iou}, chroma ${m.poseGap.chroma}, rgb ${m.poseGap.rgb} → ${m.suggestion}${m.transitions.length ? ` (registered: ${m.transitions.join(", ")})` : ""}; closest frame ${m.closestFrame.index} (iou ${m.closestFrame.iou})`
           : `  ${m.id}: not compared`)),
         ...out.warnings,
+      ]);
+      break;
+    }
+    case "sizes": {
+      const named = values.motions === undefined ? null : values.motions.split(",").map((m) => m.trim()).filter(Boolean);
+      if (named && named.length < 2) fail("--motions: name at least two motions to compare, e.g. --motions walk-front,walk-right");
+      const out = stepSizes(requirePositional(positionals, "<characterDir>"), { motions: named, out: values.out, threshold });
+      emit(values, out, [
+        `${basename(out.out)}: ${out.motions.map((m) => `${m.id} ${m.height ? m.height.shipped : "-"} px`).join(" · ")}`,
+        out.spread === null
+          ? "one motion measured — nothing to compare"
+          : `spread ${(out.spread * 100).toFixed(1)} % (${out.tallest} tallest, ${out.shortest} shortest; warned above ${(out.bar * 100).toFixed(1)} %)`,
+        ...out.skipped.map((s) => `  left out ${s.motion}: ${s.reason}`),
+        ...(out.warnings.length ? out.warnings : ["no warnings"]),
       ]);
       break;
     }

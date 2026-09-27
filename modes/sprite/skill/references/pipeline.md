@@ -217,6 +217,53 @@ the grid the cells were cut from, which is how `inspect` tells a row boundary
 from an ordinary step. Anything that rewrites the directory's frames removes
 it, so a clip sampled into the same `cells/` later is never judged as a grid.
 
+**`--auto`: slice by where the poses are.** An image model asked for a grid
+does not always draw one. The Kagari attack sheet (GPT Image, 4×4, 2048 px,
+blind trial G, 2026-09-27) left its blank bands between rows at y ≈ 547, 1031
+and 1533 instead of 512, 1024 and 1536: the first row's boots crossed y = 512,
+and two lunging swords crossed the column lines — eight of sixteen cells
+clipped. `--auto` finds the poses from the alpha instead
+(`scripts/sheet-segment.mjs`):
+
+1. the rows from the sheet's row profile (alpha mass per pixel row): its
+   blank bands separate the rows, and the cut goes through the middle of each
+   band; where two rows touch, the dynamic-programming cut goes through the
+   least ink, each row near the ideal height;
+2. inside each row band, the poses from its column profile, the same way;
+3. every connected piece of ink (4-connected, at the alpha threshold) goes,
+   whole, to the pose whose region its centre falls in — so the boots stay
+   with their body; a piece with a quarter of itself in another region, or
+   spanning more than 1.5 cells, is two poses drawn touching and is split at
+   the region line (a small leftover touching the line is the neighbour's
+   overhang and is dropped); the soft edge under the threshold follows the
+   solid ink it touches;
+4. each pose keeps the place it was drawn at **relative to its grid cell** —
+   exactly where the fixed slice would put it — and all the cells grow, alike,
+   as far as any pose reaches past the grid lines, plus 4 px.
+
+On a sheet whose poses stay inside their cells nothing grows and the cells
+are the fixed slice's (the E1 Lumi idle sheets, 4×4 / 4×2 / 2×2, grew 0 px on
+every side). `slice.json` gains `auto`: `reason`, the cut lines (`cuts.rows`,
+`cuts.cols` per row), the counts found on their own (`natural`) and whether
+they had to be forced to R × C (`forced`, which warns — look at those cells),
+how far the cell grew (`grew`) against the nominal cell, each pose's box on
+the sheet (`poses[].box`, with `at`, the sheet point that became the cell's
+top-left) and `clipped`: the poses clipped anyway — ink on the sheet's own
+edge (`sheet-edge`) or cut apart from a pose they were drawn touching
+(`cut`). `inspect` reports those, because a padded auto cell never touches
+its own edge. Refused when the rows or a row's poses cannot be found at all
+(an empty sheet). The sheet is only read.
+
+`run` does this by itself when it has to: it cuts the fixed grid first, and
+when a pose's own ink continues across a line shared by two cells (a pixel
+of the cell's cleaned ink on its edge, and ink just across the line on the
+sheet — a drawing that only touches the line is not cut) it slices again by
+ink and says so in its warnings. The summary then carries `slice` (`mode:
+"auto"`, `reason: "grid-clipped"`, `gridClipped`, and the record above);
+absent means the fixed grid. `--no-auto-slice` keeps the fixed cut whatever it
+clips; `--auto-slice` goes straight to the auto one. `sheet-raw.png` and
+`sheet-alpha.png` are never rewritten — a re-layout is never a hand edit.
+
 These are the **cells** — the raw crop of each grid square, before any
 alignment. `run` writes them to `<motionDir>/cells/NN.png` and leaves them
 there, because two later steps need the un-padded crop: `inspect` judges
@@ -259,7 +306,7 @@ that is the whole point. A 4 px fragment jammed against the left cell border
 moves the bbox 17 px left, and the aligner then faithfully centres the
 character around the litter.
 
-### `align <framesDir> --out <dir> [--anchor bottom|center] [--x-from feet|bbox|cell|trend|body] [--cell auto|WxH] [--pad 8] [--smooth]`
+### `align <framesDir> --out <dir> [--anchor bottom|center] [--x-from feet|bbox|cell|trend|body] [--y-from anchor|cell] [--cell auto|WxH] [--pad 8] [--smooth] [--force]`
 
 The step that turns sixteen pictures into an animation. Computes each frame's
 alpha bounding box, then crops to the bbox and pads onto a transparent cell so
@@ -272,6 +319,25 @@ the anchor point lands at the same coordinate in every frame.
 - `center` — the bbox centre, placed at `H/2`; for airborne pose sequences
   where the feet are not the reference. This recentres the body each frame;
   it does not preserve a jump's vertical trajectory.
+
+**`--y-from cell` keeps a jump's height.** With the default (`anchor`) every
+frame stands its own feet on the anchor, so a jump plays as squash and
+stretch on the ground — blind trial G-pixel's slime jump had no vertical
+travel at all. `--y-from cell` (`clip` is accepted as the same mode, the
+name a clip's frames go by; bottom anchor only; refused with `center`)
+keeps the height each frame was drawn or filmed at: the ground is the lowest
+feet across the frames, in their shared coordinates (the cells of one grid,
+the frames of one clip — they must be one height), every frame keeps its lift
+above it, and the cell grows tall enough for the highest frame. `align.json`
+records `yFrom: "cell"`, `lift` (px per frame) and `ground`; `inspect` reports
+`lift` measured on the frames; `run` and `from-video` take the same flag and
+put `lift` in their summary. Two readings are warned rather than assumed: no
+frame more than 2 % of the cell (at least one block) off the ground — the
+source has no drawn height, so it has to come from the game or a redraw; and,
+on a grid, a row that never comes down to the ground the other rows stand on
+— airborne throughout (the middle rows of a 4×4 jump), or drawn on a higher
+ground line (the model's rows drifted); the pixels cannot tell which, so look
+at those frames. Measured below ("slicing, lift and sizes").
 
 **x comes from `--x-from`**, and the three modes answer three different
 questions about where the character *is*:
@@ -371,7 +437,12 @@ logical pixels, and `align` keeps them that way: every offset, the pad
 straddles the cell's N-grid and the atlas divides back to logical pixels
 exactly. An explicit `--cell` that is not a multiple of N is refused. The
 record's `{ scale, pitch, palette }` is copied into `align.json` as `pixel`,
-which is where `inspect` finds it.
+which is where `inspect` finds it. That is also why a pixel motion is
+re-aligned from `pixel/`, never from `cells/`: the cells carry no
+`pixel.json`, so frames aligned from them are smooth and the record goes. When
+`--out` already holds frames whose `align.json` carries a lattice and the
+input has no `pixel.json`, `align` refuses and names the `pixel/` directory;
+`--force` does it anyway and says so first in the warnings.
 
 ### `pack <framesDir> --out <sheet.png> --atlas <atlas.json> --name <motionId> --fps N [--loop] [--anchor bottom|center] [--cols C] [--scale 0.5] [--nearest]`
 
@@ -426,7 +497,7 @@ only if you sliced into a directory of your own.
 | `cell` | `{ width, height }` of the aligned cell |
 | `anchorDrift` | Std-dev in px of the anchor point across frames — the *silhouette*, props included |
 | `bodyDrift` | Std-dev in px of the feet-centre x across frames. Near zero after `align --x-from feet` **by construction** — it is the line that mode pins; large when a prop-inflated bbox pushed the body around, and large by design after `trend`/`body`, which keep a walk's stepping foot line |
-| `headDrift` | Std-dev in px of the head-and-torso x across frames: each frame's top 60 % band (as column profiles in 8 strips) registered against the first frame's. A region no alignment pins, so it sees what `bodyDrift` cannot — a feet-pinned walk lurching by the stride |
+| `headDrift` | Std-dev in px of the head-and-torso x across frames: each frame's top 60 % band (as column profiles in 8 strips) registered against the first frame's. A region no alignment pins, so it sees what `bodyDrift` cannot — a feet-pinned walk lurching by the stride. Absent when it cannot be measured (frames of different widths, fewer than two heads) — never a 0 that looks like a steady head |
 | `sourceHeadDrift` | The same spread measured on the pre-align cells (the clip as filmed, the grid as drawn), with its straight-line drift removed — the sway the motion itself has. Absent without cells |
 | `maxJump` | Largest anchor displacement between consecutive frames |
 | `scaleDrift` | `(max bbox height − min bbox height) / mean` |
@@ -434,6 +505,7 @@ only if you sliced into a directory of your own.
 | `nearDuplicates` | `[from, to]` pairs whose step is under 0.01 — `[last, 0]` is the wrap of a looping motion. `[]` when checked and none. Listed for a breathe too, but not warned about there (see `breathe`) |
 | `rowJumps` | `[from, to]` row boundaries of the sheet's grid that jump (below). `[]` when checked and none |
 | `anchorPoint` | The point `align` recorded for these frames, in cell pixels — the same point the atlas pivot names. Absent when the frames carry no `align.json` for this anchor and cell |
+| `lift` | Only for frames aligned with `--y-from cell`: each frame's feet above the anchor point, px (null for an empty frame), measured on the frames — a jump's travel in numbers; all zeros means it has none |
 | `keyResidue` | Share of the visible pixels (alpha ≥ threshold) whose every plate channel still clears every other channel by more than 40 — the plate's hue, pooled over the frames. Absent unless the motion was keyed off a hued plate: `--key` names the plate, otherwise the `keyColor` the last `inspect.json` recorded (`run` and `from-video` record it). The fat report adds `keyResidueEdge`, the same share over the partially transparent pixels. `register-run` copies `keyResidue` into the sidecar |
 | `pixel` | Only for frames that went through `pixel`: `{ pitch, scale, held, palette, paletteChecked }` — the block size it cut at (source px per logical px), the whole-number scale, and whether the lattice survived everything after it: alpha only 0/255, every N×N block one colour, every colour a pinned-palette colour (not checked after `--outline`, which darkens the edge on purpose). When `held` is false the offending frames are listed (`softAlphaFrames`, `offGridFrames`, `offPaletteFrames`). On these frames `headDrift` is in frame pixels and `sourceHeadDrift`, measured on the source-resolution cells, is converted to them (× scale / pitch.x) so the two compare |
 | `warnings` | Human sentences — read these, they name the fix |
@@ -445,12 +517,13 @@ Warning rules and what each one means:
 | "frame NN is empty" | No pixel above threshold | A cell the model left blank. Edit that one cell (see `prompting.md`) and re-run. |
 | "frame NN is nearly empty" | Alpha coverage < 0.02 | Usually the key ate the character. Re-key with a lower `--similarity`. |
 | "body drifts sideways between frames — re-run align with --x-from feet/cell" | `bodyDrift > 0.05 · cellWidth` **and** `headDrift > 0.01 · cellWidth` (the upper body moves too); never for `trend`/`body` alignments | Check the motion plan first. For unintended sliding, re-align from `cells/` with `--x-from feet`; use `cell` to retain well-placed intentional lateral motion. A foot line sweeping under a still head is a walk's step, not a slide — it no longer warns. |
-| "head sways N px across the frames but M px in the source once its slow drift is removed — …re-align from cells/ with --x-from trend (or cell…)" | `headDrift > 2 · sourceHeadDrift` **and** `headDrift − sourceHeadDrift > 0.01 · cellWidth` | The alignment added sideways sway the source does not have — a pinned stepping foot, or a slide `cell` kept. Re-align a clip's cycle with `--x-from trend`; a sheet with `trend` or `cell`. Feet-pinned walks measured 9.7× (Lumi side clip), 7.4× (pixel knight sheet) and 44× (synthetic); every alignment that kept or reduced its source's motion stayed at or under 1.8× or +0.95 % of the cell. |
+| "head sways N px across the frames but M px in the source once its slow drift is removed — the alignment (--x-from X) added sway … re-align from cells/ (pixel/ for pixel art) with --x-from …" | `headDrift > 2 · sourceHeadDrift` **and** `headDrift − sourceHeadDrift` over the larger of `0.01 · cellWidth` and, for pixel frames, one block (the scale) | The alignment added sideways sway the source does not have — a pinned stepping foot, or a slide `cell` kept. Re-align a clip's cycle with `--x-from trend`; a sheet with `trend` or `cell`. The advice never repeats the mode the frames were aligned with, and names `pixel/` when the frames carry a lattice (aligning from `cells/` would drop it — `align` refuses). On pixel frames the bar is at least one block: a lattice moves in whole blocks, and a 44 px pixel cell put the 1 % bar at 0.44 px, under what the snap alone produces. Feet-pinned walks measured 9.7× (Lumi side clip), 7.4× (pixel knight sheet) and 44× (synthetic); every alignment that kept or reduced its source's motion stayed at or under 1.8× or +0.95 % of the cell. |
 | "near-duplicate frames AA→BB, … (step under 0.01) — the animation holds there" | A step (mean RGBA difference at 64×64, 0..1) under 0.01 — less than nudging the same drawing one pixel (0.014–0.021 on Lumi's frames); never for frames `breathe` made (a `breathe.json` in the cells or frames) | Fine for a held idle; a hitch in a stroke or a step. For a clip, the sampling hit a hold — resample with `--at` around it. For a sheet, drop or redraw the repeated frame. |
 | "row boundaries jump: AA→BB, … — the sheet's rows were drawn as separate sequences" | A grid row boundary (the wrap too, for a looping sheet) whose step is over 3× the in-row median, over every in-row step, and at least 0.01; rows of 3+ frames only; the grid comes from `cells/slice.json` | The model drew each row as its own little animation. Regenerate with a continuity instruction across rows, or fewer frames (Lumi idle as 4×2 or 2×2 has no jump); a sheet whose rows are phases (windup, strike, recovery) measures under the bar. |
 | "anchor jumps between frames NN and MM" | `maxJump > 0.08 · cellWidth` **and** the feet moved that far too | Compare the source poses with the plan. For unintended placement jumps, try `align --smooth` or the other anchor; fix discontinuous drawing when alignment cannot help. Preserve deliberate fast movement. |
 | "character scale varies across frames — regenerate with a fixed-scale instruction" | `scaleDrift > 0.15` | This measures silhouette height, including props. Check for intended crouching, turning or prop movement; acknowledge it when justified. Regenerate actual proportion or drawing-scale drift with the fixed-scale guidance in `prompting.md`. |
-| "cell NN is clipped — the drawing leaves its grid cell" | Bbox touches the cell edge before alignment | The pose is bigger than its cell. Regenerate with the "stays inside its own cell" clause. |
+| "cell NN is clipped — the drawing leaves its grid cell" | Bbox touches the cell edge before alignment (fixed-grid cells; `run` slices by ink instead when a pose continues across a line, so this is what `--no-auto-slice` leaves) | The pose is bigger than its cell. Regenerate with the "stays inside its own cell" clause. |
+| "cell NN is clipped — the drawing runs off the edge of the sheet" / "— it was drawn touching a neighbouring pose and cut apart from it" | Cells sliced by ink (`slice --auto`, `run`'s fallback): the pose's ink reaches the sheet's own edge, or it was split from a pose it touched (`slice.json` `auto.clipped`) | No slicing gives back what was drawn off the image — regenerate. A split pose: look at the two cells; the cut went through the least ink between them. |
 | "keyResidue 0.0158: 1.6% of the visible pixels still carry the plate's hue …" | `keyResidue > 0.005` | Look at an edge at 4× on a dark background. A `--keyer colorkey` cut leaves a green rim — re-cut with `--keyer unmix`. After `unmix` the usual cause is the character's own plate-coloured material or a translucent effect (smoke, glow) the plate shows through; a matte (`remove-video-background.mjs`, then `--key alpha`) is the fix for the second |
 | "pixel lattice broken: frame(s) … have soft alpha / blocks off the N× grid / colours outside the palette …" | Pixel frames that no longer match their lattice | Something resampled or re-aligned them from the wrong source. Re-align from `pixel/`, not `cells/`; re-run `pixel` if the palette was rebuilt after them. |
 
@@ -475,7 +548,12 @@ The whole chain in one call: probe → key (when the sheet is opaque and `--key`
 is not `none`, writing `sheet-alpha.png`) → slice → align → pack → gif (+ webp)
 → inspect. Accepts every flag the individual steps take (`--loop`, `--anchor`,
 `--key auto|#rrggbb|none`, `--cell`, `--pad`, `--smooth`, `--scale`,
-`--nearest`, `--margin`, `--gutter`, `--x-from`).
+`--nearest`, `--margin`, `--gutter`, `--x-from`, `--y-from`).
+
+The slice is the fixed grid unless a pose's ink continues across a grid line;
+then `run` slices by ink (`slice --auto`, above), warns that it did, and the
+summary carries `slice` — `--no-auto-slice` / `--auto-slice` choose outright.
+With `--y-from cell` the summary carries `yFrom` and `lift`.
 
 `--pixel` puts the `pixel` step between the cleaned cells and `align` (the
 lattice frames stay at `<motionDir>/pixel/NN.png`, beside `cells/`) and turns
@@ -925,6 +1003,7 @@ node {SKILL_PATH}/scripts/sprite-sheet.mjs from-video \
 | `--no-clean` | cleaning on | As in `run` |
 | `--body-height N` | off | Scale every sample so the subject in the clip's **first** frame stands N px tall — see below |
 | `--anchor` `--x-from` `--cell` `--pad` `--smooth` `--scale` `--nearest` `--cols` `--width` `--no-webp` | as `run` | `--x-from trend` for a walk or run cycle, see `align` |
+| `--y-from anchor\|clip` | `anchor` | `clip` (the same mode as `align`'s `cell`, recorded as `cell`) keeps where the clip had each frame vertically: on a locked camera, a jump's rise above the floor it takes off from (see `align`). The summary's `lift` says how far each frame rose — E4's roomy jump: `[2, 0, 0, 132, 182, 192, 194, 190, 152, 2, 2, 2]` px, the same 192 px its clip measured |
 
 **The sampling schedule depends on `--loop`**, and it matters: a looping
 motion stops one step short of the end, because the closing pose is the
@@ -1406,11 +1485,18 @@ left-facing motion without a second generation (the top-down route's
 with ffmpeg's `hflip` — a pure reorder of pixels, so every RGBA value
 survives exactly — and then finished the way `run` finishes a sheet:
 `pack` → `gif` (+ `webp`) → `inspect`, with `<of>`'s atlas fps, loop,
-anchor, scale and columns (a scaled pixel-art atlas is packed
-nearest-neighbour, read off `character.pixel` / the style). Written to
-`--out`, default `<character>/motions/<id>`; `--json` is a sprite run
-summary plus `source: "mirror"`, `mirrorOf` and `direction`, which
-`register-run` takes as it is:
+anchor, scale and columns. A scaled atlas is repacked with the filter it was
+packed with — `pack` records it as `meta.filter` (`nearest` / `smooth`); an
+atlas from before that falls back to nearest for a pixel-art character
+(`character.pixel` / the style), which used to repack a `--nearest`
+non-pixel source smooth. Written to `--out`, default
+`<character>/motions/<id>`; `--json` is a sprite run summary plus
+`source: "mirror"`, `mirrorOf` and `direction`, with `grid` (the rows and
+columns the mirror's atlas was packed on — the grid the stage plays it
+with), `fps`, `loop` and `anchor`, which `register-run` takes as it is. Its
+`inspect` measures `keyResidue` against the plate `<of>` was keyed off (the
+`keyColor` of `<of>`'s `inspect.json`; a flip keeps every colour) and never
+takes a `keyColor` from an `inspect.json` left in a reused `--out`:
 
 ```bash
 node {SKILL_PATH}/scripts/sprite-project.mjs add-motion --dir <character> --id walk-left \
@@ -1422,8 +1508,9 @@ node {SKILL_PATH}/scripts/sprite-sheet.mjs mirror <character>/motions/walk-right
 - **The anchor lands at `cell.width − x`**, y unchanged — in the frames'
   `align.json` (which also names `mirrorOf`) and so in the atlas pivot and
   `meta.anchorPoint`. The point is taken from the source's **atlas**, the
-  authority every export reads; its `align.json` lends `pad`, `smooth`
-  and `xFrom` when it describes the same point, and its pixel lattice
+  authority every export reads; its `align.json` lends `pad`, `smooth`,
+  `xFrom` (and a `--y-from cell` source's `yFrom`, `lift` and `ground`, which
+  a horizontal flip does not change) when it describes the same point, and its pixel lattice
   (`pixel`: scale, pitch, palette) whenever it describes frames of the same
   size — a flip about a cell a whole number of blocks wide keeps every block
   on the grid, so `inspect` checks the mirror against the source's lattice
@@ -1520,6 +1607,31 @@ is outside it). `rgb` was tried and dropped — it put coffee (0.139) nearer
 idle than walk (0.146). The margins are thin (walk passes the overlap bar by
 0.006), so the suggestion is a starting point for looking at `lineup.png`, not
 a verdict.
+
+### `sizes <characterDir> [--motions id,id,…] [--out <png>] [--threshold 16]`
+
+Is the character one size across its motions? `inspect`'s `scaleDrift` is the
+spread **inside** one motion and says nothing about this — blind trial G-4dir
+claimed "the sizes differ at most 2.8 % across the set" from the largest
+within-motion `scaleDrift` while its front walk stood 480 px and its right
+walk 456.5 px. Run this before saying a set is one size.
+
+Every ready sprite motion (loops and transitions are `lineup`'s), or the ones
+`--motions` names (at least two), is measured on its registered frames: a
+looping motion stands at the median of its frames' solid-alpha bbox heights,
+a one-shot (an attack, a jump) at its **first** frame — it starts from the
+rest pose and spends the rest crouched or stretched — times its atlas scale:
+the height it ships at. The JSON gives per motion `height { standing, from,
+median, min, max, first, scale, shipped }` and `heights` per frame; for the
+set `spread` (tallest ÷ shortest − 1), `tallest`, `shortest`, `reference`
+(the median of the shipped heights) and `scaleToMatch` per motion (what its
+shipped height would be multiplied by to meet the reference). Over 3.5 % it
+warns, naming both motions; pixel art is warned only past two logical pixels
+(each height is quantised to a block). It writes `<character>/sizes.png` (or
+`--out`): each motion's measured frame at shipped scale, cropped to its
+figure, feet on one orange baseline, the reference height a grey line.
+Reads `project.json`, writes nothing to it. Numbers in "Measured: slicing,
+lift and sizes".
 
 ### `export <motionDir> --format mp4|mov|webm|apng|lottie|png-seq|aseprite [--bg #rrggbb] [--repeat N] [--scale N] [--shadow …]`
 ### `export <characterDir> --format aseprite [--scale N] [--shadow …]`
@@ -1923,7 +2035,8 @@ whatever clips join the two, and waves until `motion` changes; fire
 ### Fixing the alignment without regenerating the sheet
 
 Use this when the drawing is fine but placement drifts unintentionally.
-The cells are still on disk, so nothing has to be re-sliced:
+The cells are still on disk, so nothing has to be re-sliced (a pixel-art
+motion re-aligns from `<id>/pixel`, not `cells` — see `align`):
 
 ```bash
 node {SKILL_PATH}/scripts/sprite-sheet.mjs align <character>/motions/<id>/cells \
@@ -2771,3 +2884,45 @@ A map with one typo (`#1954be` for `#1954bf`) swaps only its other entry
 - **Painted art** is refused: each Lumi frame (the seed) carries 248–252
   colours, and the 64 most used cover 53.4 % (idle) / 55.2 % (attack) of its
   visible pixels — an exact map would leave half of every edge behind.
+
+## Measured: slicing, lift and sizes (2026-09-27)
+
+Real inputs from this round's blind trials and paid shoots, copied to the
+amendment's scratch (`sg/amend-slice/`); evidence images beside the numbers.
+
+**Slicing by ink (`slice --auto`, `run`'s fallback).** The Kagari attack
+sheet (blind trial G, GPT Image 4×4, 2048 px, the original before the
+trial's hand re-layout): blank bands between rows at y 525–569, 1006–1056
+and 1512–1553. Fixed grid: 8 of 16 cells clipped (00–03 by their boots
+across y = 512, 06/07/08 by swords across column lines). `run` now sees ink
+continue across those lines, slices by ink and reports 0 clipped: row cuts
+551 / 1038 / 1536, every row 4 poses found without forcing, cells 561×530
+(the 512 cell grown 27 / 0 / 22 / 18 px left / top / right / bottom), 0.1 s
+for the segmentation on the 2048² sheet, `sheet-raw.png` byte-identical.
+Upstream's width heuristic (a one-peak run over 1.45 median widths is two
+poses) read row 0 as 5 poses (a 374 px lunge against a 257 px median) and
+forced it; it is tried here only when the plain count falls short. The six
+E1 Lumi idle sheets (4×4 / 4×2 / 2×2, two shoots each) find every row and
+pose unforced and grow the cell 0 px — the same cells as the fixed slice;
+none of them, nor the four G-4dir walks, the slime's two sheets or Kagari's
+idle, crosses a grid line, so none falls back.
+
+**`--y-from cell`.** E4 "roomy" jump (Seedance on green, 3:4 with 34 %
+headroom), 12 frames 0.2–3.4 s: default lift all 0 (the jump plays as squash
+on the ground); `--y-from cell` lift `[2, 0, 0, 132, 182, 192, 194, 190, 152,
+2, 2, 2]` px — the 192 px the clip's own feet rise — in a 358×734 cell
+(550 tall before). E4 "tight" (8 px pad): peak 72 px, but its head leaves
+the top of the frame in 8 of 12 samples (clipped warnings), which is why
+the tall room is the way to shoot a jump. The G-pixel slime's jump sheet
+(2×4): lift `[3, 3, 0, 2, 12, 8, 5, 5]` logical px — the model drew no rise
+in row 0 (the apex frame 03 sits 2 px up) and drew row 1 on a ground line
+4–5 px higher, which the row warning names. The sheet has no usable jump
+height; the lift has to come from the game or a redraw.
+
+**`sizes`.** Standing heights as shipped: the G-4dir granny walks front 480
+/ back 461.5 / left 461 / right 456.5 px — spread 5.1 %, warned (the trial's
+reviewer measured 4.8 % on means and saw her change size turning); Kagari
+idle 247 / walk 246.25 / attack 246 (first frame; its median 229 is the
+lunges) — 0.4 %; the Lumi seed idle 234.5 / attack 227 — 3.3 %; the slime
+idle 26.5 / jump 25 logical px — 6 %, but within two pixels of the lattice,
+not warned. The 3.5 % bar sits between Lumi and the granny.

@@ -32,6 +32,10 @@ export interface MirrorAnchorRecord {
   pad?: unknown;
   smooth?: unknown;
   xFrom?: unknown;
+  /** A `--y-from cell` source's per-frame heights, unchanged by the flip. */
+  yFrom?: unknown;
+  lift?: unknown;
+  ground?: unknown;
   /** The source's pixel lattice, lent whenever its record describes frames
    *  of this size. */
   pixel?: Record<string, unknown>;
@@ -48,9 +52,11 @@ export declare function mirrorAnchorRecord(input: {
   mirrorOf: string;
 }): MirrorAnchorRecord | null;
 
-/** The source atlas's anchor, scale and columns; null where it says nothing. */
+/** The source atlas's anchor, scale, columns and scaled-pack filter; null
+ *  where it says nothing. */
 export declare function atlasLayout(atlas: Record<string, any> | null | undefined): {
   anchor: "bottom" | "center" | null;
   scale: number | null;
   cols: number | null;
+  filter: "nearest" | "smooth" | null;
 };

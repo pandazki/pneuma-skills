@@ -915,6 +915,11 @@ describe("mirror.mjs", () => {
     expect(mirrorAnchorRecord({ record, atlas, cell, anchor: "bottom", mirrorOf: "walk-right" })).toEqual({
       anchor: "bottom", cell, pad: 8, smooth: false, xFrom: "feet", anchorPoint: { x: 44, y: 56 }, mirrorOf: "walk-right",
     });
+    // A `--y-from cell` source's heights survive a horizontal flip unchanged.
+    const lifted = { ...record, yFrom: "cell", lift: [0, 10, 30, 0], ground: { y: 56, still: 2 } };
+    expect(mirrorAnchorRecord({ record: lifted, atlas, cell, anchor: "bottom", mirrorOf: "walk-right" })).toMatchObject({
+      yFrom: "cell", lift: [0, 10, 30, 0], ground: { y: 56, still: 2 },
+    });
     // No record, or one about another point: the atlas alone, said so.
     for (const other of [null, { ...record, anchorPoint: { x: 32, y: 56 } }]) {
       expect(mirrorAnchorRecord({ record: other, atlas, cell, anchor: "bottom", mirrorOf: "walk-right" })).toEqual({
@@ -953,7 +958,10 @@ describe("mirror.mjs", () => {
       meta: { anchor: "center", scale: 0.5, size: { w: 96, h: 64 } },
       frames: { a_00: { frame: { x: 0, y: 0, w: 32, h: 32 } } },
     };
-    expect(atlasLayout(atlas)).toEqual({ anchor: "center", scale: 0.5, cols: 3 });
-    expect(atlasLayout({})).toEqual({ anchor: null, scale: null, cols: null });
+    expect(atlasLayout(atlas)).toEqual({ anchor: "center", scale: 0.5, cols: 3, filter: null });
+    expect(atlasLayout({})).toEqual({ anchor: null, scale: null, cols: null, filter: null });
+    // A scaled pack says which filter it resampled with, and the mirror repeats it.
+    expect(atlasLayout({ ...atlas, meta: { ...atlas.meta, filter: "nearest" } }).filter).toBe("nearest");
+    expect(atlasLayout({ ...atlas, meta: { ...atlas.meta, filter: "bicubic" } }).filter).toBeNull();
   });
 });
