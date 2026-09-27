@@ -176,6 +176,13 @@ const PLATE_SAMPLE_FRAMES = 8;
  *  cut is worth a look. tanka's colorkey cuts measured 1.2–1.6 %, the un-mixed
  *  ones 0.00 %; a translucent effect over the plate reads here as well. */
 const KEY_RESIDUE_WARN = 0.005;
+/** Share of the two-pixel edge band that is a fringe — the subject still
+ *  blended with the plate at full opacity, which no hue test sees — above
+ *  which the edge is worth a look. The route-G fox's walk, keyed before the
+ *  local un-mix (2026-09-27), measured 0.023–0.025 with keyResidue 0 at
+ *  --similarity 0.3; tanka's ten loops and the fox through the local
+ *  un-mix measure 0. */
+const KEY_FRINGE_WARN = 0.01;
 
 // --- contact: looking at a clip before sampling it -------------------------
 /** Stills on a contact sheet, unless --count / --every say otherwise. */
@@ -446,9 +453,12 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       at 64x64), row-boundary jumps (a grid's boundary step over ${BOUNDARY_STEP_RATIO}x its
       in-row median — the grid comes from <cells>/${SLICE_RECORD}, which slice
       writes), keyResidue and human warnings. Writes <motionDir>/inspect.json.
-      keyResidue is the share of visible pixels still carrying the plate's
-      hue, for a motion keyed off a hued plate: --key names the plate, else
-      the keyColor the last inspect.json recorded; warns above ${KEY_RESIDUE_WARN}.
+      keyResidue is the share of visible pixels still carrying the plate —
+      its hue, or an opaque edge pixel that is the colour beside it blended
+      with the plate — for a motion keyed off a hued plate: --key names the
+      plate, else the keyColor the last inspect.json recorded; warns above
+      ${KEY_RESIDUE_WARN}. keyFringe is the share of the 2 px edge that is such a
+      blend; warns above ${KEY_FRINGE_WARN}.
       --cells points at the pre-align grid cells so "leaves its grid cell"
       can be judged on the raw crop rather than the padded frame; it defaults
       to <motionDir>/${CELLS_DIRNAME} when 'run' left that directory there.
@@ -1302,12 +1312,13 @@ function resolveKeyer(requested, plate, label) {
   return "colorkey";
 }
 
-/** The plate `--key` names: measured over `frames` (a clip's spread, or the
- *  one sheet) when it says auto, taken at its word when it is a colour. */
-function keyPlate(frames, key, similarity) {
+/** The plate `--key` (`key --color`) names: measured over `frames` (a clip's
+ *  spread, or the one sheet) when it says auto, taken at its word when it is
+ *  a colour. */
+function keyPlate(frames, key, similarity, flag = "--key") {
   return key === "auto"
     ? measurePlate(frames, { key: "auto", radius: keyRadius(similarity) })
-    : plateOf(normalizeColor(key, "--key"));
+    : plateOf(normalizeColor(key, flag));
 }
 
 /** `count` indices spread evenly over `0..total-1`, both ends included. */
@@ -1323,12 +1334,20 @@ function spreadIndices(total, count) {
  */
 function residueOf(counts) {
   const pooled = poolResidue(counts);
-  return pooled ? { keyResidue: round(pooled.visible, 4), keyResidueEdge: round(pooled.edge, 4) } : null;
+  return pooled
+    ? { keyResidue: round(pooled.visible, 4), keyResidueEdge: round(pooled.edge, 4), keyFringe: round(pooled.fringe, 4) }
+    : null;
 }
 
 function residueWarning(residue, hex) {
-  if (!residue || residue.keyResidue <= KEY_RESIDUE_WARN) return null;
-  return `keyResidue ${residue.keyResidue}: ${(residue.keyResidue * 100).toFixed(1)}% of the visible pixels still carry the plate's hue (${hex}) — a fringe the key left, or colour the character really has. Look at an edge at 4x on a dark background; a --keyer colorkey cut leaves one, --keyer unmix takes it out`;
+  if (!residue) return null;
+  if (residue.keyResidue > KEY_RESIDUE_WARN) {
+    return `keyResidue ${residue.keyResidue}: ${(residue.keyResidue * 100).toFixed(1)}% of the visible pixels still carry the plate (${hex}) — its hue, or a fringe of it at the edge; a fringe the key left, a shadow on the floor, or colour the character really has. Look at an edge and under the feet at 4x on a dark background; a --keyer colorkey cut leaves a fringe, --keyer unmix takes it out`;
+  }
+  if (residue.keyFringe > KEY_FRINGE_WARN) {
+    return `keyFringe ${residue.keyFringe}: ${(residue.keyFringe * 100).toFixed(1)}% of the edge is the character still blended with the plate (${hex}) at full opacity — a yellow-green rim on warm colours, a teal one on blue. Look at an edge at 4x on a dark background; --keyer unmix reads each edge pixel against the colour beside it and takes it out, a wider --similarity does not`;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1421,7 +1440,7 @@ function stepProbe(input, threshold) {
 function stepKey(input, { out, color, similarity, blend, threshold, keyer: requested = DEFAULT_KEYER }) {
   const source = readRgba(resolve(input));
   const colorkeyColor = color === "auto" ? cornerColor(source) : normalizeColor(color, "--color");
-  const plate = requested === "unmix" ? keyPlate([source], color, similarity) : null;
+  const plate = requested === "unmix" ? keyPlate([source], color, similarity, "--color") : null;
   const keyer = resolveKeyer(requested, plate, "key");
   let output;
   let keyed;
@@ -1455,7 +1474,8 @@ function stepKey(input, { out, color, similarity, blend, threshold, keyer: reque
     color: resolved,
     keyer,
     similarity,
-    blend,
+    // colorkey's softness; the un-mixing keyer has none to report.
+    ...(keyer === "colorkey" ? { blend } : {}),
     width: keyed.width,
     height: keyed.height,
     alphaCoverage: round(coverage, 4),
@@ -3025,7 +3045,7 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
     framesDir,
     ...(cells ? { cellsDir: resolve(cells) } : {}),
     ...(key ? { keyColor: key } : {}),
-    ...(residue ? { keyResidueEdge: residue.keyResidueEdge } : {}),
+    ...(residue ? { keyResidueEdge: residue.keyResidueEdge, keyFringe: residue.keyFringe } : {}),
     anchor,
     frames: measured.map((f, i) => ({
       index: f.index,
@@ -8090,10 +8110,20 @@ function pickKeyer(value) {
   return value;
 }
 
+/** --blend and --despill tune ffmpeg's colorkey chain; the un-mixing keyer has
+ *  no use for either. Said on stderr rather than dropped in silence — they
+ *  still apply when the plate turns out to have no hue and colorkey runs. */
+function noteUnmixIgnores(values, label) {
+  if (pickKeyer(values.keyer) !== "unmix") return;
+  const given = [values.blend !== undefined && "--blend", values.despill === true && "--despill"].filter(Boolean);
+  if (!given.length) return;
+  console.error(`${label}: ${given.join(" and ")} ${given.length > 1 ? "tune" : "tunes"} the colorkey chain and --keyer unmix ignores ${given.length > 1 ? "them" : "it"} — used only if the plate has no hue and colorkey runs instead`);
+}
+
 /** A report's `keyResidue`, said the way a human line says it. */
 function residueLine(report) {
   return typeof report.keyResidue === "number"
-    ? [`keyResidue ${report.keyResidue} (visible pixels with the plate's hue${typeof report.keyResidueEdge === "number" ? `; ${report.keyResidueEdge} of the soft edge` : ""})`]
+    ? [`keyResidue ${report.keyResidue} (visible pixels carrying the plate${typeof report.keyResidueEdge === "number" ? `; ${report.keyResidueEdge} of the soft edge` : ""}${typeof report.keyFringe === "number" ? `; fringe ${report.keyFringe} of the edge` : ""})`]
     : [];
 }
 
@@ -8360,6 +8390,7 @@ function main() {
       break;
     }
     case "key": {
+      noteUnmixIgnores(values, "key");
       const out = stepKey(requirePositional(positionals, "<image>"), {
         out: requireFlag(values.out, "--out"),
         color: values.color ?? "auto",
@@ -8623,6 +8654,7 @@ function main() {
       break;
     }
     case "from-video": {
+      noteUnmixIgnores(values, "from-video");
       const key = values.key ?? "auto";
       if (key !== "auto" && key !== "none") normalizeColor(key, "--key");
       const at = values.at === undefined ? null : parseSampleTimes(values.at);
@@ -8688,6 +8720,7 @@ function main() {
       break;
     }
     case "loop": {
+      noteUnmixIgnores(values, "loop");
       const key = values.key ?? "auto";
       if (key !== "auto" && key !== "none" && key !== "alpha") normalizeColor(key, "--key");
       const crop = values.crop ?? "union";
@@ -8732,6 +8765,7 @@ function main() {
       if (key !== "auto" && key !== "none" && key !== "alpha") normalizeColor(key, "--key");
       const crop = values.crop ?? "union";
       if (crop !== "union" && crop !== "none") fail(`--crop: expected union or none, got '${values.crop}'`);
+      noteUnmixIgnores(values, "transition");
       const out = stepTransition(requirePositional(positionals, "<clip>"), {
         character,
         from: requireFlag(values.from, "--from"),

@@ -17,7 +17,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-  keyFrame, keyRadius, keyResidue, measurePlate, plateOf, plateProximity, plateSplit, poolResidue,
+  keyFrame, keyRadius, keyResidue, measurePlate, plateOf, plateProximity, plateSplit, poolResidue, RESIDUE_TINT,
   type Rgb, type RgbaImage,
 } from "../skill/scripts/chroma.mjs";
 
@@ -204,10 +204,12 @@ describe("keyResidue: what a cut still shows of the plate", () => {
     paint(image, 6, 5, 2, 1, [90, 110, 90], 200);      // leans green by 20: not the plate's hue
     paint(image, 8, 5, 2, 1, [0, 200, 0], 8);          // under the threshold: not visible
     const counts = keyResidue(image, plate, 16)!;
-    expect(counts).toEqual({ visible: 58, tinted: 6, partial: 8, partialTinted: 6 });
-    const pooled = poolResidue([counts, null, { visible: 42, tinted: 0, partial: 2, partialTinted: 0 }])!;
-    expect(pooled.visible).toBeCloseTo(6 / 100, 10);
+    // edge: the 11 visible pixels touching transparency and the 11 behind them.
+    expect(counts).toEqual({ visible: 58, tinted: 6, fringe: 0, edge: 22, partial: 8, partialTinted: 6 });
+    const pooled = poolResidue([counts, null, { visible: 42, tinted: 0, fringe: 2, edge: 18, partial: 2, partialTinted: 0 }])!;
+    expect(pooled.visible).toBeCloseTo(8 / 100, 10);
     expect(pooled.edge).toBeCloseTo(6 / 10, 10);
+    expect(pooled.fringe).toBeCloseTo(2 / 40, 10);
   });
 
   test("a plate with no hue has no residue to count", () => {
@@ -227,6 +229,108 @@ describe("keyResidue: what a cut still shows of the plate", () => {
     expect(keyResidue(colorkeyed, plate, 16)!.tinted).toBe(16);
     keyed(scene);
     expect(keyResidue(scene, plate, 16)!.tinted).toBe(0);
+  });
+});
+
+describe("keyFrame: warm and saturated subjects, and a shadow on the plate (amend round)", () => {
+  // Channel excess reads a blend of red, blue or copper with green as
+  // subject: at 30 % plate the green still sits under the red (or the blue),
+  // so the old rule kept `(154,94,28)`-like pixels at α255 — the route-G
+  // fox's yellow-green halo. The local un-mix reads such a pixel against the
+  // subject beside it and finds the plate in it.
+  const RED: Rgb = [220, 30, 40];
+  const BLUE: Rgb = [40, 60, 220];
+  const COPPER: Rgb = [205, 105, 45];
+
+  test("a 30 % blend at a red, blue or copper edge un-mixes back to the subject at 70 % coverage", () => {
+    for (const subject of [RED, BLUE, COPPER]) {
+      const edge = blend(subject, GREEN, 0.3);
+      // The old classification's premise, pinned: none of these edges has
+      // the plate's hue by channel excess (green does not clear red/blue).
+      expect({ subject, excess: edge[1] - Math.max(edge[0], edge[2]) < 18 }).toEqual({ subject, excess: true });
+      const { image, stats } = keyed(edgeScene(subject, edge));
+      const [r, g, b, a] = at(image, 8, 12);
+      expect({ subject, a: Math.abs(a - 179) <= 4 }).toEqual({ subject, a: true });
+      expect({ subject, rgb: Math.max(Math.abs(r - subject[0]), Math.abs(g - subject[1]), Math.abs(b - subject[2])) <= 6 })
+        .toEqual({ subject, rgb: true });
+      expect(stats.localUnmixed).toBeGreaterThan(0);
+      expect(at(image, 16, 16)).toEqual([...subject, 255]);
+    }
+  });
+
+  test("shading and a rim light are the subject's own: an edge darker or yellower than the fill stays opaque", () => {
+    const darker = COPPER.map((c) => Math.round(c * 0.7)) as Rgb;
+    const rimLight: Rgb = [240, 200, 90];
+    for (const edge of [darker, rimLight]) {
+      const { image } = keyed(edgeScene(COPPER, edge));
+      expect({ edge, out: at(image, 8, 12) }).toEqual({ edge, out: [...edge, 255] });
+    }
+  });
+
+  test("a shadow painted on the plate goes with it; the pixels touching the subject stay for the un-mix", () => {
+    // Plate (0,246,4); the shadow at 0.58 with a codec's blue cast, the way
+    // Seedance paints one under the feet: (5,143,22), ~105 from the plate —
+    // outside the 0.22 radius, so the cut alone left it green and opaque.
+    const plate: Rgb = [0, 246, 4];
+    const image = canvas(40, 34, plate);
+    paint(image, 10, 4, 20, 16, [60, 40, 50]);            // a boot
+    paint(image, 2, 20, 36, 8, [5, 143, 22]);              // the floor shadow under it
+    paint(image, 3, 21, 1, 1, [3, 140, 30]);               // a pixel just past the strict test
+    const { stats } = keyed(image, plate);
+    expect(stats.shaded).toBeGreaterThan(36 * 8 - 25);
+    expect(at(image, 20, 24)).toEqual([0, 0, 0, 0]);
+    expect(at(image, 3, 21)).toEqual([0, 0, 0, 0]);
+    expect(at(image, 36, 24)).toEqual([0, 0, 0, 0]);
+    // The row touching the boot is a blend of boot and shadow: kept, and
+    // un-mixed rather than left green.
+    const [r, g, b, a] = at(image, 20, 20);
+    expect(a).toBeGreaterThan(0);
+    expect(g - Math.max(r, b)).toBeLessThan(RESIDUE_TINT);
+    expect(at(image, 20, 10)).toEqual([60, 40, 50, 255]);
+    // No shade pass: the shadow is left as it was, green and opaque.
+    const kept = canvas(40, 34, plate);
+    paint(kept, 10, 4, 20, 16, [60, 40, 50]);
+    paint(kept, 2, 20, 36, 8, [5, 143, 22]);
+    keyFrame(kept, plateOf(plate), { radius: RADIUS, shade: false });
+    expect(at(kept, 20, 24)).toEqual([5, 143, 22, 255]);
+  });
+
+  test("dark green material, and a shade no plate pixel reaches, are not cut", () => {
+    const image = canvas(40, 40, GREEN);
+    paint(image, 4, 4, 32, 32, [120, 90, 70]);
+    paint(image, 12, 12, 8, 8, [5, 145, 3]);    // plate-coloured shade enclosed by subject
+    paint(image, 22, 22, 8, 8, [30, 90, 60]);   // dark green cloth: off the plate's direction
+    const { stats } = keyed(image);
+    expect(stats.shaded).toBe(0);
+    expect(at(image, 25, 25)).toEqual([30, 90, 60, 255]);
+    expect(at(image, 15, 15)[3]).toBe(255);
+  });
+});
+
+describe("keyResidue: the fringe a hue test cannot see", () => {
+  test("a copper edge left 30 % green at full alpha counts as fringe; un-mixed, it does not", () => {
+    const COPPER: Rgb = [205, 105, 45];
+    const plate = plateOf(GREEN);
+    // What the old keyer shipped: the plate cut, the blended ring untouched.
+    const left = edgeScene(COPPER, blend(COPPER, GREEN, 0.3));
+    for (let i = 0; i < left.data.length; i += 4) {
+      if (left.data[i] === 0 && left.data[i + 1] === 255 && left.data[i + 2] === 0) left.data.fill(0, i, i + 4);
+    }
+    const before = keyResidue(left, plate, 16)!;
+    expect(before.tinted).toBe(0);
+    expect(before.fringe).toBe(16);
+    expect(poolResidue([before])!.visible).toBeGreaterThan(0);
+    expect(poolResidue([before])!.fringe).toBeGreaterThan(0.1);
+    const fixed = edgeScene(COPPER, blend(COPPER, GREEN, 0.3));
+    keyed(fixed);
+    expect(keyResidue(fixed, plate, 16)!.fringe).toBe(0);
+  });
+
+  test("a yellow edge next to yellow fur is subject, not fringe", () => {
+    const yellow: Rgb = [240, 215, 130];
+    const image = edgeScene(yellow, yellow);
+    keyed(image);
+    expect(keyResidue(image, plateOf(GREEN), 16)).toMatchObject({ tinted: 0, fringe: 0 });
   });
 });
 
