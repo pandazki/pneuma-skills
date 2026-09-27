@@ -327,8 +327,8 @@ describe.skipIf(!HAS_FFMPEG)("route A through project.json", () => {
     const fitted = ok(root, SHEET, ["fit", join(dir, "refs", "upload.png"), "--out", join(dir, "refs", "still.png"), "--max", "200"]).json;
     expect(Math.max(fitted.character.width, fitted.character.height)).toBe(200);
     P("add-ref", "--id", "still", "--file", "refs/still.png", "--role", "custom", "--derived-from", "upload", "--op", "key");
-    // A breathe is drawn on no grid: none is asked for.
-    const planned = P("add-motion", "--id", "idle", "--label", "Idle", "--fps", "8", "--source", "breathe");
+    // A breathe is drawn on no grid and timed by its run: neither is asked for.
+    const planned = P("add-motion", "--id", "idle", "--label", "Idle", "--source", "breathe");
     expect(planned.grid).toEqual({ rows: 1, cols: 1 });
 
     const { run: summary, motion } = breatheAndRegister();

@@ -92,6 +92,12 @@ export const DEFAULT_BREATHE_DEPTH = 0.02;
 /** Default frames for one breath: upstream's tempo (six frames at 4 fps, 1.5 s
  *  a breath) at the 8 fps our previews play — twice the frames, same breath. */
 export const FRAMES_PER_BREATH = 12;
+/** The rate a breathe plays at: FRAMES_PER_BREATH frames make one 1.5 s
+ *  breath at 8 fps — upstream's tempo, measured on Lumi (T6). The one
+ *  authority: `sprite-sheet.mjs breathe` defaults `--fps` to it, and
+ *  `sprite-project.mjs add-motion --source breathe` records it until the run
+ *  lands with the rate it really has. */
+export const BREATHE_FPS = 8;
 /** Depth and lag bounds (upstream's curation schema bounds). */
 export const DEPTH_MIN = 0.005;
 export const DEPTH_MAX = 0.2;

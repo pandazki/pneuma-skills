@@ -2029,8 +2029,8 @@ any of `--rigid-row` / `--axis` / `--torso` was given, and `torsoHalf` only
 when `--torso` was (a manual band changes what is pushed, so a re-run must be
 given it again). `register-run` makes the motion ready, derives every frame
 from the still, and takes the motion's `grid` and `fps` from the run — a
-breathe is drawn on no grid, so `add-motion --source breathe` needs no
-`--rows/--cols`.
+breathe is drawn on no grid and timed by its run, so `add-motion --source
+breathe` needs no `--rows/--cols` and no `--fps`.
 
 **Warnings go where the stage shows them.** The detector's warnings that ask
 for a decision — a prop across the rigid row, pixel mode on anti-aliased art,
@@ -2137,7 +2137,7 @@ node {SKILL_PATH}/scripts/sprite-sheet.mjs fit <character>/refs/still.png --out 
 node {SKILL_PATH}/scripts/sprite-project.mjs add-ref --dir <character> --id still \
   --file refs/still.png --role custom --derived-from upload --op key   # --op fit when nothing was removed
 node {SKILL_PATH}/scripts/sprite-project.mjs add-motion --dir <character> --id idle --label Idle \
-  --fps 8 --source breathe
+  --source breathe
 node {SKILL_PATH}/scripts/sprite-sheet.mjs breathe <character>/refs/still.png \
   --out <character>/motions/idle --name idle --json \
   | node {SKILL_PATH}/scripts/sprite-project.mjs register-run --dir <character> --motion idle --run -

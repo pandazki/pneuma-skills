@@ -29,6 +29,9 @@ import { parseArgs } from "node:util";
 import {
   GUIDE_DEFAULT, RECOMMENDED_FRAMES, SHEET_FRAME_COUNTS, SHEET_STATES, buildSheetPrompt, sheetGrid,
 } from "./sheet-prompt.mjs";
+// A breathe's default rate — the rate `add-motion --source breathe` records
+// until the run lands with its own (one authority, shared with sprite-sheet.mjs).
+import { BREATHE_FPS } from "./breathe.mjs";
 // The colourway rules — one authority, shared with sprite-sheet.mjs (which
 // bakes them) and the viewer's loader (which reads them back).
 import { RecolorError, checkVariant, sameVariant, variantNameProblem } from "./recolor.mjs";
@@ -204,8 +207,9 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       sampled video clip, a breathe of one still, a mirror of another motion)
       before anything is generated. Omitted means sheet; register-run
       corrects it from the run that lands. --source breathe makes --rows /
-      --cols optional (1x1 until the run lands): a breathe is drawn on no
-      grid, and register-run takes the grid and the fps from its atlas.
+      --cols and --fps optional (1x1 at 8 fps until the run lands): a
+      breathe is drawn on no grid and timed by its run, and register-run
+      takes the grid and the fps from it.
       --direction is the way the motion faces; name it <state>-<direction>
       (walk-left) so every export carries the direction in its keys.
       --kind loop declares a seamless transparent animation for a UI instead
@@ -2591,7 +2595,12 @@ function main() {
           rows: gridSide("--rows", values.rows),
           cols: gridSide("--cols", values.cols),
         },
-        fps: num(requireFlag(values.fps, "--fps"), "--fps", { min: 1 }),
+        // A breathe is timed by its run as well (`breathe --fps`), and
+        // register-run takes the rate from it; until then it reads as the
+        // rate a breathe plays at by default.
+        fps: values.source === "breathe"
+          ? num(values.fps, "--fps", { min: 1, fallback: BREATHE_FPS })
+          : num(requireFlag(values.fps, "--fps"), "--fps", { min: 1 }),
         // A loop that plays once is a contradiction in terms, so that is the
         // default here — --no-loop can still say otherwise.
         loop: loop(isLoop),

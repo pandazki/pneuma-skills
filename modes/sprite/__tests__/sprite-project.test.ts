@@ -2783,6 +2783,24 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
         expect(project(dir, "show", "--motion", "idle").out).toMatch(/breathe of ref-portrait \(refs\/portrait\.png\): depth 0\.02, 1 breath, lag 0\.15, smooth, rigid row 30, axis 32 \(detected\)/);
       });
 
+      test("a breathe is declared with no grid and no rate: the run brings both", () => {
+        // The documented route-A form is `add-motion --id idle --source
+        // breathe`: the breathe run times itself (`breathe --fps`, default 8)
+        // and register-run takes the rate and the grid from it, so asking the
+        // agent for a number here would only invite one that disagrees.
+        const dir = readyBounce();
+        const planned = projectJson(dir, "add-motion", "--id", "idle", "--source", "breathe");
+        expect(planned).toMatchObject({ source: "breathe", grid: { rows: 1, cols: 1 }, fps: 8, status: "planned" });
+        const summary = spriteRun(dir, "idle", { source: "breathe", still: "refs/portrait.png", breathe: BREATHE, fps: 6 });
+        const motion = JSON.parse(register(dir, "idle", summary).out);
+        expect({ fps: motion.fps, grid: motion.grid }).toEqual({ fps: 6, grid: summary.grid });
+        // Every other sprite motion still names its rate: a sheet is sliced at
+        // whatever rate the agent planned, and nothing downstream supplies it.
+        const sheet = project(dir, "add-motion", "--id", "walk", "--rows", "2", "--cols", "4");
+        expect(sheet.code).toBe(1);
+        expect(sheet.err).toMatch(/--fps/);
+      });
+
       test("an unregistered still is refused with the command that registers it", () => {
         const dir = readyBounce();
         projectJson(dir, "add-motion", "--id", "idle", "--rows", "2", "--cols", "2", "--fps", "8");

@@ -53,7 +53,8 @@ import {
 import { SHADOW_DEFAULTS, SHADOW_RANGES, projectShadow, shadowCanvas, withShadow } from "./shadow.mjs";
 import { zipStore } from "./zip.mjs";
 import {
-  BREATHE_MODES, BreatheError, DEFAULT_BREATHE_DEPTH, DEFAULT_LAG, FRAMES_PER_BREATH, bakeBreathe, hasAppendage,
+  BREATHE_FPS, BREATHE_MODES, BreatheError, DEFAULT_BREATHE_DEPTH, DEFAULT_LAG, FRAMES_PER_BREATH, bakeBreathe,
+  hasAppendage,
 } from "./breathe.mjs";
 import { DEFAULT_FIT_MAX, DEFAULT_FIT_PAD, StillError, cropRgba, fitStill, padRgba } from "./still.mjs";
 import {
@@ -80,9 +81,6 @@ import { MIRRORED, asymmetry, atlasLayout, mirrorAnchorRecord, mirrorRefusal } f
 
 const DEFAULT_THRESHOLD = 16;
 const DEFAULT_PAD = 8;
-/** The rate a breathe plays at: FRAMES_PER_BREATH (12) frames make one 1.5 s
- *  breath at 8 fps — upstream's tempo, measured on Lumi (T6). */
-const BREATHE_FPS = 8;
 const DEFAULT_SIMILARITY = 0.12;
 const DEFAULT_BLEND = 0.05;
 const CORNER_PATCH = 8;

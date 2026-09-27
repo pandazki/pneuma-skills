@@ -655,7 +655,8 @@ sheet is not one picture of the character. Each frame is a `derive`
 edge from the still, `params: { tool, step: "breathe", frameIndex, depth,
 depthX?, breaths, lag, mode }`, and `motion.breathe` keeps the record. A
 breathe is drawn on no grid and timed by its run: `add-motion --source
-breathe` needs no `--rows/--cols` (1×1 until the run lands), and
+breathe` needs no `--rows/--cols` and no `--fps` (1×1 at 8 fps until the
+run lands), and
 `register-run` sets `motion.grid` to the atlas the run packed, `motion.fps`
 to the run's rate and `loop: true`. Re-registering after a re-run with other
 parameters rewrites the frames, their edges and the record in place and

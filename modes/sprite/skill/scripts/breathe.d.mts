@@ -23,6 +23,7 @@ export declare const DEFAULT_LAG: number;
 export declare const SMOOTH_CYCLE_FRAMES: number;
 export declare const DEFAULT_BREATHE_DEPTH: number;
 export declare const FRAMES_PER_BREATH: number;
+export declare const BREATHE_FPS: number;
 export declare const DEPTH_MIN: number;
 export declare const DEPTH_MAX: number;
 export declare const LAG_MAX: number;
