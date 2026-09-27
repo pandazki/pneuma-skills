@@ -12,6 +12,8 @@
     body:before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 78% -8%,#5a341f22,transparent 62%);pointer-events:none}
     .page{position:relative;width:1376px;height:768px;padding:35px 48px 30px;display:none}
     .page.active{display:block}
+    img{display:block}
+    .px{image-rendering:pixelated}
 
     /* --- shared chrome --- */
     .brand{display:flex;align-items:center;gap:12px;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#a5a1a0}
@@ -32,447 +34,518 @@
     /* --- surfaces --- */
     .window{border:1px solid #322e31;border-radius:13px;overflow:hidden;background:#0e0e10;box-shadow:0 25px 50px #0006}
     .bar{height:44px;background:#171618;border-bottom:1px solid #2b282b;display:flex;align-items:center;gap:10px;padding:0 20px;font-size:12.5px;color:#ddd7d3}
-    .bar .muted{color:#918a86;margin-left:8px}
+    .bar .muted{color:#918a86;margin-left:2px}
     .bar .right{margin-left:auto;display:flex;align-items:center;gap:13px;color:#9c9490;font-size:12px}
-    .pill{padding:4px 9px;border:1px solid #4a3a2e;border-radius:5px;color:#ffb47c;background:#f973160e;font-size:11.5px}
+    .pill{padding:4px 9px;border:1px solid #4a3a2e;border-radius:5px;color:#ffb47c;background:#f973160e;font-size:11.5px;white-space:nowrap}
     .pill.quiet{border-color:#3a3639;color:#b0a8a3;background:#ffffff05}
     .chk{background-color:#121214;background-image:linear-gradient(45deg,#1a1a1d 25%,transparent 25%,transparent 75%,#1a1a1d 75%),linear-gradient(45deg,#1a1a1d 25%,transparent 25%,transparent 75%,#1a1a1d 75%);background-size:14px 14px;background-position:0 0,7px 7px}
     .panel{border:1px solid #2f2b2e;border-radius:8px;overflow:hidden;background:#101012}
     .panel.sel{border-color:#c4753d;box-shadow:0 0 0 1px #f9731626}
-    .plabel{height:31px;padding:0 11px;display:flex;align-items:center;justify-content:space-between;font-size:11.5px;color:#c8c1bb;background:#141315}
+    .plabel{height:31px;padding:0 11px;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11.5px;color:#c8c1bb;background:#141315;white-space:nowrap}
     .plabel small{color:#8d8783;font-size:11.5px}
     .sel .plabel{color:#f7c398}
-    .art{display:block;object-fit:contain}
-    .play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:38px;height:38px;border-radius:50%;background:#0b0b0ccc;border:1px solid #6c625c;display:flex;align-items:center;justify-content:center}
-    .play:after{content:"";border-left:11px solid #f2e9e2;border-top:7px solid transparent;border-bottom:7px solid transparent;margin-left:3px}
+    .play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:34px;height:34px;border-radius:50%;background:#0b0b0ccc;border:1px solid #6c625c;display:flex;align-items:center;justify-content:center}
+    .play:after{content:"";border-left:10px solid #f2e9e2;border-top:6px solid transparent;border-bottom:6px solid transparent;margin-left:3px}
+    .ready{font-size:9.5px;letter-spacing:.8px;color:#6ee7a0;border:1px solid #1f5f3b;background:#10b9810f;border-radius:4px;padding:1px 6px}
+    .chip{font-size:10px;color:#b0a8a3;border:1px solid #3a3639;border-radius:4px;padding:1px 6px;background:#ffffff05}
+    .route{display:inline-flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.3px;color:#ffb47c;border:1px solid #6b4128;background:#f9731614;border-radius:20px;padding:3px 10px 3px 8px}
+    .route:before{content:"";width:6px;height:6px;border-radius:50%;background:#f97316}
+    .stat{border:1px solid #2b282b;border-radius:8px;padding:12px 13px;background:#111113}
+    .stat b{display:block;font:400 22px/1 Fraunces,Georgia,serif;color:#e6ddd5;margin-bottom:6px}
+    .stat b.hot{color:#f9be92}
+    .stat span{display:block;font-size:11px;color:#8d8783;line-height:1.55}
+    .arrow-r{width:9px;height:9px;border-top:1.5px solid #f9a665;border-right:1.5px solid #f9a665;transform:rotate(45deg);flex:none}
 
     /* --- 00 hero --- */
     .hero .window{margin-top:16px;height:534px}
-    .hero .board{height:490px;display:grid;grid-template-columns:196px 1fr 300px;padding:0;overflow:hidden}
-    .hero .rail{border-right:1px solid #262327;padding:15px 13px}
-    .hero .rail .eyebrow{margin-bottom:10px}
+    .hero .bar b{font-weight:500;color:#f4f2ef}
+    .hero .board{height:490px;display:grid;grid-template-columns:232px 1fr 302px;overflow:hidden}
+    .hero .rail{border-right:1px solid #262327;padding:14px 13px}
+    .hero .rail .eyebrow{margin-bottom:9px}
+    .hero .refs{display:flex;gap:7px;margin-bottom:15px}
+    .hero .ref{flex:1;border:1px solid #2b282b;border-radius:7px;overflow:hidden;background:#111113}
+    .hero .ref .thumb{height:92px;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .hero .ref .thumb img{height:100%}
+    .hero .ref span{display:block;font-size:10.5px;color:#a29a95;padding:4px 7px}
     .hero .mcard{display:flex;gap:9px;align-items:center;padding:7px;border:1px solid #2b282b;border-radius:7px;margin-bottom:7px;background:#111113}
     .hero .mcard.sel{border-color:#c4753d;background:#f973160a}
-    .hero .mcard img{width:40px;height:40px;object-fit:contain;border-radius:4px}
-    .hero .mcard b{display:block;font-size:12.5px;font-weight:500;color:#ded7d1;white-space:nowrap}
+    .hero .mcard .t{width:40px;height:44px;flex:none;display:flex;align-items:flex-end;justify-content:center;overflow:hidden}
+    .hero .mcard .t img{height:44px}
+    .hero .mcard .row{display:flex;align-items:center;gap:6px}
+    .hero .mcard b{font-size:12.5px;font-weight:500;color:#ded7d1;white-space:nowrap}
     .hero .mcard.sel b{color:#f9be92}
-    .hero .mcard span{font-size:10.5px;color:#8d8783;white-space:nowrap}
-    .hero .rail hr{border:0;border-top:1px solid #262327;margin:14px 0 12px}
-    .hero .ccard{display:flex;gap:9px;align-items:center;margin-bottom:10px}
-    .hero .ccard img{width:34px;height:34px;object-fit:contain}
-    .hero .ccard b{display:block;font-size:12px;font-weight:500;color:#c8c1bb;white-space:nowrap}
-    .hero .ccard span{font-size:10.5px;color:#7e7874;white-space:nowrap}
-    .hero .stage{padding:15px 18px;display:flex;flex-direction:column}
-    .hero .glass{position:relative;height:362px;border:1px solid #2b282b;border-radius:9px;overflow:hidden;display:flex;align-items:flex-end;justify-content:center}
-    .hero .glass img{height:296px;margin-bottom:26px}
-    .hero .anchor{position:absolute;left:0;right:0;bottom:35px;height:1px;background:linear-gradient(90deg,transparent,#f9731699 10%,#f97316cc 50%,#f9731699 90%,transparent)}
+    .hero .mcard .ready{margin-left:auto}
+    .hero .mcard .meta{display:block;font-size:10.5px;color:#8d8783;white-space:nowrap;margin-top:3px}
+    .hero .mcard .grow{flex:1;min-width:0}
+    .hero .stage{padding:13px 16px;display:flex;flex-direction:column}
+    .hero .tools{display:flex;gap:6px;align-items:center;margin-bottom:9px;font-size:11px;color:#8d8783}
+    .hero .tools span{border:1px solid #2b282b;border-radius:5px;padding:3px 8px;background:#111113}
+    .hero .tools span.on{border-color:#c4753d;color:#f9be92;background:#f973160f}
+    .hero .tools i{width:1px;height:15px;background:#2f2b2e;margin:0 3px}
+    .hero .tools .r{margin-left:auto;border:0;background:none;padding:0;color:#8d8783}
+    .hero .glass{position:relative;height:330px;border:1px solid #2b282b;border-radius:9px;overflow:hidden}
+    .hero .glass img{position:absolute;left:50%;transform:translateX(-50%);bottom:21px;height:312px}
+    .hero .anchor{position:absolute;left:0;right:0;bottom:25px;height:1px;background:linear-gradient(90deg,transparent,#f9731699 10%,#f97316cc 50%,#f9731699 90%,transparent)}
     .hero .anchor b{position:absolute;right:9px;bottom:6px;font-size:10.5px;font-weight:400;color:#f9a665;letter-spacing:.3px}
-    .hero .readout{display:flex;justify-content:space-between;font-size:11.5px;color:#8d8783;margin:11px 2px 10px}
+    .hero .readout{display:flex;justify-content:space-between;font-size:11.5px;color:#8d8783;margin:9px 2px 8px}
     .hero .readout b{color:#f9be92;font-weight:500}
-    .hero .strip{display:flex;gap:5px;height:65px}
+    .hero .strip{display:flex;gap:5px;height:58px}
     .hero .strip div{flex:1;border:1px solid #262327;border-radius:5px;display:flex;align-items:flex-end;justify-content:center;overflow:hidden}
     .hero .strip div.sel{border-color:#c4753d}
-    .hero .strip img{height:55px;margin-bottom:3px}
-    .hero .aside{border-left:1px solid #262327;padding:15px 15px}
-    .hero .aside .eyebrow{margin-bottom:10px}
-    .hero .aside .panel{margin-bottom:9px}
-    .hero .aside .media{position:relative;height:143px;display:flex;align-items:center;justify-content:center;overflow:hidden}
-    .hero .aside .media img{height:100%}
-    .hero .atlas{border:1px solid #2b282b;border-radius:7px;padding:9px 10px;background:#111113}
-    .hero .atlas b{display:block;font-size:11.5px;color:#c8c1bb;font-weight:500;margin-bottom:4px}
-    .hero .atlas .mono{color:#7e7874;line-height:1.5}
+    .hero .strip img{height:52px;margin-bottom:2px}
+    .hero .aside{border-left:1px solid #262327;padding:13px 14px}
+    .hero .tabs{display:flex;gap:4px;margin-bottom:11px;font-size:11.5px;color:#8d8783}
+    .hero .tabs span{padding:4px 9px;border-radius:5px}
+    .hero .tabs span.on{color:#f9be92;background:#f9731614;border:1px solid #6b4128}
+    .hero .clip{position:relative;height:150px;background:#0f0f11;display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .hero .clip img{height:100%}
+    .hero .aside .eyebrow{margin:13px 0 8px}
+    .hero .erow{border:1px solid #2b282b;border-radius:7px;padding:9px 10px;background:#111113;margin-bottom:7px}
+    .hero .erow .top{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#ded7d1;margin-bottom:4px}
+    .hero .erow .mono{color:#8d8783;font-size:10.5px;line-height:1.5}
+    .hero .erow.sel{border-color:#c4753d;background:#f973160a}
+    .hero .phaser{margin-top:9px;padding:0 2px;color:#7e7874;font-size:10.5px;line-height:1.6}
 
-    /* --- 01 character-locked --- */
-    .lock .content{display:grid;grid-template-columns:330px 168px 1fr;gap:0;margin-top:20px;align-items:center}
-    .lock .refs .big img{width:100%;height:266px}
-    .lock .refs .row2{display:flex;gap:11px;margin-top:10px;align-items:stretch}
-    .lock .refs .small{width:134px;flex:none}
-    .lock .refs .small img{width:100%;height:122px}
-    .lock .note{flex:1;font-size:11.5px;line-height:1.6;color:#8d8783;border:1px solid #2b282b;border-radius:8px;padding:11px 12px;background:#101012}
-    .lock .note em{font-style:italic;color:#bdb4ac;display:block;margin-top:5px}
-    .lock .link{text-align:center;padding:0 16px}
-    .lock .link .cap{font-size:11px;letter-spacing:1.4px;color:#c98a52;text-transform:uppercase;margin-bottom:11px}
-    .lock .link .line{position:relative;height:1px;background:linear-gradient(90deg,#7a4c2c,#f97316)}
-    .lock .link .line:after{content:"";width:8px;height:8px;border-top:1.5px solid #f9a665;border-right:1.5px solid #f9a665;transform:rotate(45deg);position:absolute;right:0;top:-4px}
-    .lock .link p{font-size:11.5px;margin-top:13px;color:#8d8783;line-height:1.55}
-    .lock .sheets{display:flex;gap:14px;justify-content:flex-end}
-    .lock .sheets .panel{width:446px}
-    .lock .sheets .panel:last-child{width:317px}
-    .lock .sheets .sheetbox{height:430px;display:flex;align-items:center;justify-content:center;overflow:hidden}
-    .lock .sheets img{max-height:100%;max-width:100%}
+    /* --- 01 routes --- */
+    .routes .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:22px}
+    .routes .card{border:1px solid #2f2b2e;border-radius:11px;background:#0e0e10;overflow:hidden;display:flex;flex-direction:column;height:452px}
+    .routes .card.sel{border-color:#c4753d;box-shadow:0 0 0 1px #f9731620}
+    .routes .head{padding:13px 14px 10px}
+    .routes .head .route{margin-bottom:9px}
+    .routes .head h3{margin:0;font:400 21px/1.15 Fraunces,Georgia,serif;letter-spacing:-.4px;color:#f4f2ef}
+    .routes .head p{font-size:11.5px;line-height:1.5;margin-top:6px;color:#948d89;min-height:52px}
+    .routes .vis{position:relative;height:210px;border-top:1px solid #231f22;border-bottom:1px solid #231f22;overflow:hidden}
+    .routes .fin{padding:11px 14px 13px;flex:1;display:flex;flex-direction:column}
+    .routes .fin .eyebrow{font-size:10px;margin-bottom:6px}
+    .routes .fin .file{display:flex;justify-content:space-between;align-items:baseline;font-size:11.5px;color:#ded7d1;padding:4px 0;border-bottom:1px dashed #262327}
+    .routes .fin .file:last-of-type{border-bottom:0}
+    .routes .fin .file small{font-size:11px;color:#8d8783;font-family:DM,Arial,sans-serif}
+    .routes .fin .who{margin-top:auto;font-size:10.5px;color:#7e7874;padding-top:7px}
+    .routes .trio img{position:absolute;bottom:11.7px}
+    .routes .base{position:absolute;left:12px;right:12px;bottom:14px;height:1px;background:#f9731666}
+    .routes .ab{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:12px}
+    .routes .ab .up{width:108px;height:162px;border-radius:6px;overflow:hidden;border:1px solid #3a3639}
+    .routes .ab .up img{width:100%;height:100%;object-fit:cover}
+    .routes .ab .out{height:180px}
+    .routes .ab .out img{height:100%}
+    .routes .page-mock{position:absolute;left:14px;right:14px;top:14px;bottom:14px;border:1px solid #34303a;border-radius:7px;background:#f3efe8;overflow:hidden}
+    .routes .page-mock .chrome{height:18px;background:#e2ddd4;display:flex;align-items:center;gap:4px;padding:0 7px}
+    .routes .page-mock .chrome i{width:6px;height:6px;border-radius:50%;background:#c9c2b6}
+    .routes .page-mock .chrome span{margin-left:8px;height:8px;flex:1;border-radius:4px;background:#f3efe8}
+    .routes .page-mock .ln{height:7px;border-radius:3px;background:#d8d1c5;margin:0 0 7px}
+    .routes .page-mock .body{padding:14px 14px}
+    .routes .page-mock .h{height:12px;width:58%;border-radius:3px;background:#b9b0a2;margin-bottom:11px}
+    .routes .page-mock .corner{position:absolute;right:10px;bottom:4px;height:128px}
+    .routes .page-mock .tag{position:absolute;right:92px;bottom:40px;font-size:9.5px;color:#c2410c;border:1px dashed #f97316;border-radius:4px;padding:1px 5px;background:#fff7ed}
+    .routes .riv{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+    .routes .riv img{width:162px;height:144px}
+    .routes .riv .btns{display:flex;gap:6px;margin-top:10px}
+    .routes .riv .btns span{font-size:10.5px;border:1px solid #3a3639;border-radius:5px;padding:3px 9px;color:#b0a8a3;background:#141315}
+    .routes .riv .btns span.on{border-color:#c4753d;color:#f9be92;background:#f9731614}
+    .routes .riv .sm{position:absolute;left:10px;top:9px;font-size:10px;color:#8d8783;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 
-    /* --- 02 slice-align --- */
-    .cut .ribbon{display:flex;align-items:center;gap:9px;margin-top:24px;font-size:11.5px;color:#918a86}
-    .cut .ribbon span{border:1px solid #2f2b2e;border-radius:5px;padding:5px 11px;background:#111113}
-    .cut .ribbon span.on{border-color:#c4753d;color:#f9be92;background:#f973160f}
-    .cut .ribbon i{font-style:normal;color:#5c5652}
-    .cut .film{position:relative;margin-top:17px;border:1px solid #2f2b2e;border-radius:10px;padding:16px 16px 30px;height:246px;display:flex;gap:8px}
-    .cut .film .cell{flex:1;position:relative;display:flex;align-items:flex-end;justify-content:center}
-    .cut .film .cell img{height:194px}
-    .cut .film .cell b{position:absolute;top:-2px;left:0;font-size:10.5px;font-weight:400;color:#6b6561}
-    .cut .baseline{position:absolute;left:0;right:0;bottom:34px;height:1px;background:#f97316;box-shadow:0 0 7px #f9731666}
-    .cut .baseline b{position:absolute;right:8px;bottom:-24px;font-size:11px;font-weight:400;color:#f9a665;letter-spacing:.3px}
-    .cut .below{display:grid;grid-template-columns:1fr 430px;gap:18px;margin-top:20px;align-items:stretch}
-    .cut .stats{display:flex;gap:9px}
-    .cut .stat{flex:1;border:1px solid #2b282b;border-radius:7px;padding:14px 13px;background:#111113;display:flex;flex-direction:column;justify-content:center}
-    .cut .stat b{display:block;font:400 23px/1 Fraunces,Georgia,serif;color:#e6ddd5;margin-bottom:7px}
-    .cut .stat span{font-size:11px;color:#8d8783;line-height:1.7}
-    .cut .code{border:1px solid #2b282b;border-radius:7px;padding:14px 14px;background:#111113;color:#8d8783;line-height:1.78}
-    .cut .code em{font-style:normal;color:#c8c1bb}
+    /* --- 02 breathe --- */
+    .breathe .body{display:grid;grid-template-columns:352px 1fr 318px;gap:22px;margin-top:22px;height:462px}
+    .breathe .col-eyebrow{margin-bottom:9px;display:flex;justify-content:space-between}
+    .breathe .src{display:flex;gap:10px;align-items:stretch}
+    .breathe .src .panel{flex:none}
+    .breathe .up{width:176px}
+    .breathe .up .m{height:264px;overflow:hidden}
+    .breathe .up .m img{width:100%;height:100%;object-fit:cover}
+    .breathe .cut{width:128px}
+    .breathe .cut .m{height:264px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px}
+    .breathe .cut .m img{height:248px}
+    .breathe .src .mid{display:flex;align-items:center;margin:0 -3px}
+    .breathe .note{margin-top:12px;border:1px solid #2b282b;border-radius:8px;background:#111113;padding:11px 13px;font-size:11.5px;line-height:1.6;color:#948d89}
+    .breathe .note b{color:#e6ddd5;font-weight:500}
+    .breathe .note .row{display:flex;justify-content:space-between;border-bottom:1px dashed #262327;padding:3px 0}
+    .breathe .note .row:last-child{border-bottom:0}
+    .breathe .note .row span:last-child{color:#c8c1bb}
+    .breathe .stage{position:relative;height:440px;border:1px solid #2f2b2e;border-radius:10px;overflow:hidden}
+    .breathe .fr{position:absolute;bottom:0;width:180px;height:400px}
+    .breathe .fr img{position:absolute;left:0;bottom:0;width:180px;height:400px}
+    .breathe .fr .lab{position:absolute;left:50%;transform:translateX(-50%);top:-34px;white-space:nowrap;font-size:10.5px;color:#8d8783;text-align:center}
+    .breathe .fr .lab b{display:block;font-weight:500;color:#e6ddd5;font-size:11.5px}
+    .breathe .fr.hot .lab b{color:#f9be92}
+    .breathe .guide{position:absolute;left:0;right:0;height:0;border-top:1px dashed}
+    .breathe .guide.hi{border-color:#f97316cc}
+    .breathe .guide.lo{border-color:#f9a66566}
+    .breathe .guide small{position:absolute;left:8px;top:-15px;font-size:10px;color:#f9a665;letter-spacing:.2px;background:#121214;padding:0 4px}
+    .breathe .guide.lo small{top:3px;color:#d9a27a}
+    .breathe .guide.rigid{border-color:#9ca3af55}
+    .breathe .guide.rigid small{color:#9ca3af}
+    .breathe .feet{position:absolute;left:0;right:0;height:1px;background:#f97316;box-shadow:0 0 6px #f9731666}
+    .breathe .chart{border:1px solid #2b282b;border-radius:8px;background:#111113;padding:12px 13px 10px}
+    .breathe .bars{position:relative;height:116px;display:flex;gap:5px;align-items:stretch;margin-top:8px}
+    .breathe .bars .zero{position:absolute;left:0;right:0;top:50%;height:1px;background:#3a3639}
+    .breathe .bars div{flex:1;position:relative}
+    .breathe .bars div i{position:absolute;left:1px;right:1px;background:#6b4128;border-radius:2px}
+    .breathe .bars div.x i{background:#f97316}
+    .breathe .bars div em{position:absolute;left:0;right:0;bottom:-15px;text-align:center;font-style:normal;font-size:9.5px;color:#7e7874}
+    .breathe .bars div.x em{color:#f9a665}
+    .breathe .chart .k{display:flex;justify-content:space-between;font-size:10px;color:#7e7874;margin-top:19px}
+    .breathe .stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
 
-    /* --- 03 sheet-or-video --- */
-    .src .paths{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:22px}
-    .src .path{border:1px solid #2f2b2e;border-radius:11px;padding:15px 16px 16px;background:#0e0e10}
-    .src .path.sel{border-color:#c4753d;box-shadow:0 0 0 1px #f9731620}
-    .src .ptop{display:flex;align-items:baseline;gap:9px;margin-bottom:11px}
-    .src .ptop .tag{font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8d8783}
-    .src .path.sel .ptop .tag{color:#f9a665}
-    .src .ptop b{font-size:13px;font-weight:500;color:#ded7d1}
-    .src .ptop span{margin-left:auto;font-size:11px;color:#7e7874}
-    .src .srcbox{width:228px;height:222px;margin:0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid #2b282b;border-radius:8px}
-    .src .srcbox img{max-height:100%;max-width:100%}
-    .src .down{display:flex;align-items:center;gap:9px;margin:10px 0 9px;font-size:11px;color:#8d8783}
-    .src .down i{flex:1;height:1px;background:#332f33;font-style:normal}
-    .src .path.sel .down i{background:linear-gradient(90deg,#7a4c2c,#f97316)}
-    .src .fstrip{display:flex;gap:6px;height:104px}
-    .src .fstrip div{flex:1;border:1px solid #262327;border-radius:5px;display:flex;align-items:flex-end;justify-content:center;overflow:hidden}
-    .src .fstrip img{height:92px;margin-bottom:3px}
-    .src .pmeta{margin-top:11px;font-size:11.5px;color:#8d8783}
-    .src .pmeta b{color:#c8c1bb;font-weight:500}
-    .src .converge{margin-top:18px;border:1px solid #2b282b;border-radius:9px;background:#111113;padding:12px 18px;display:flex;align-items:center;gap:14px;font-size:12px;color:#a29a95}
-    .src .converge b{color:#e6ddd5;font-weight:500}
-    .src .converge .mono{color:#8d8783}
-    .src .converge .arrow{width:9px;height:9px;border-top:1.5px solid #f9a665;border-right:1.5px solid #f9a665;transform:rotate(135deg);flex:none;margin-top:-4px}
+    /* --- 03 pixel --- */
+    .pixel .body{display:grid;grid-template-columns:560px 1fr;gap:24px;margin-top:22px}
+    .pixel .hd{display:flex;justify-content:space-between;margin-bottom:9px}
+    .pixel .snap{display:flex;align-items:center;gap:0}
+    .pixel .zoom{width:266px;flex:none}
+    .pixel .zoom .m{height:308px;overflow:hidden;position:relative}
+    .pixel .zoom .m img{position:absolute;max-width:none}
+    .pixel .mid{width:28px;display:flex;flex-direction:column;align-items:center;gap:8px;font-size:10px;color:#c98a52;text-align:center;line-height:1.3;margin-top:-30px}
+    .pixel .mid span:last-child{white-space:nowrap}
+    .pixel .facts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+    .pixel .ways{display:flex;gap:10px}
+    .pixel .way{flex:1;border:1px solid #2f2b2e;border-radius:8px;overflow:hidden;background:#101012}
+    .pixel .way .m{height:256px;display:flex;align-items:center;justify-content:center}
+    .pixel .way .m img{width:216px;height:192px}
+    .pixel .way .plabel small{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px}
+    .pixel .pal{margin-top:12px;border:1px solid #2b282b;border-radius:8px;background:#111113;padding:12px 13px}
+    .pixel .chips{display:grid;grid-template-columns:repeat(24,1fr);gap:4px;margin-top:9px}
+    .pixel .chips i{display:block;height:22px;border-radius:3px;border:1px solid #ffffff14;position:relative}
+    .pixel .chips i.keep{outline:1.5px solid #f9a665;outline-offset:1px}
+    .pixel .legend{display:flex;gap:16px;margin-top:10px;font-size:11px;color:#8d8783}
+    .pixel .legend b{color:#e6ddd5;font-weight:500}
+    .pixel .legend .k{display:inline-block;width:10px;height:10px;border-radius:2px;outline:1.5px solid #f9a665;outline-offset:1px;background:#132b1b;margin-right:6px;vertical-align:-1px}
 
-    /* --- 04 any-style --- */
-    .range .cards{display:flex;gap:14px;margin-top:20px}
-    .range .card{width:309px;flex:none;border:1px solid #2f2b2e;border-radius:9px;overflow:hidden;background:#101012}
-    .range .card.sel{border-color:#c4753d;box-shadow:0 0 0 1px #f9731626}
-    .range .sheetbox{height:352px;display:flex;align-items:center;justify-content:center;overflow:hidden}
-    .range .sheetbox img{max-height:100%;max-width:100%}
-    .range .who{height:34px;padding:0 12px;display:flex;align-items:center;justify-content:space-between;font-size:12.5px;color:#ded7d1;background:#151416;border-top:1px solid #262327}
-    .range .who small{font-size:11px;color:#8d8783}
-    .range .card.sel .who{color:#f9be92}
-    .range .card.sel .who small{color:#c98a52}
-    .range .style{padding:11px 12px 12px;font-size:11px;line-height:1.6;color:#8d8783;font-style:italic;border-top:1px solid #201e21;min-height:72px}
-    .range .style span{display:block;font-style:normal;color:#a29a95;margin-top:7px}
+    /* --- 04 ink slice --- */
+    .ink .body{display:grid;grid-template-columns:462px 1fr;gap:24px;margin-top:22px}
+    .ink .sheet{position:relative;width:462px;height:462px;border:1px solid #2f2b2e;border-radius:9px;overflow:hidden;background:#fff}
+    .ink .sheet img{position:absolute;left:0;top:0;width:460px;height:460px}
+    .ink .sheet svg{position:absolute;left:0;top:0;width:460px;height:460px}
+    .ink .legend{display:flex;gap:18px;margin-top:10px;font-size:11.5px;color:#8d8783}
+    .ink .legend i{display:inline-block;width:20px;height:0;vertical-align:3px;margin-right:7px}
+    .ink .legend .g{border-top:2px dashed #ef4444}
+    .ink .legend .c{border-top:2px solid #f97316}
+    .ink .rowhead{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px}
+    .ink .rowhead b{font-size:13px;font-weight:500;color:#ded7d1}
+    .ink .rowhead b.bad{color:#fca5a5}
+    .ink .rowhead b.good{color:#f9be92}
+    .ink .rowhead span{font-size:11.5px;color:#8d8783}
+    .ink .cells{display:flex;gap:10px;margin-bottom:14px}
+    .ink .cell{flex:1;border:1px solid #2f2b2e;border-radius:8px;overflow:hidden;background:#101012}
+    .ink .cell.bad{border-color:#7f1d1d}
+    .ink .cell.good{border-color:#c4753d}
+    .ink .cell .m{height:150px;display:flex;align-items:center;justify-content:center;position:relative}
+    .ink .cell .frame{position:relative}
+    .ink .cell .frame img{display:block;width:100%;height:100%}
+    .ink .cell .frame:after{content:"";position:absolute;inset:0;border:1px solid #ffffff22}
+    .ink .cell .cut{position:absolute;background:#ef4444;box-shadow:0 0 6px #ef4444aa}
+    .ink .cell .plabel{height:28px;font-size:11px}
+    .ink .facts{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 
-    /* --- 05 seamless-loop --- */
-    .loop .ribbon{display:flex;align-items:center;gap:8px;margin-top:22px;font-size:11.5px;color:#918a86}
-    .loop .ribbon span{border:1px solid #2f2b2e;border-radius:5px;padding:5px 11px;background:#111113;white-space:nowrap}
-    .loop .ribbon span.on{border-color:#c4753d;color:#f9be92;background:#f973160f}
-    .loop .ribbon i{font-style:normal;color:#5c5652}
-    .loop .head{display:flex;align-items:baseline;justify-content:space-between;margin-top:20px}
-    .loop .head .meta{font-size:11.5px;color:#8d8783}
-    .loop .head .meta b{color:#c8c1bb;font-weight:500}
-    .loop .film{position:relative;margin-top:9px;border:1px solid #2f2b2e;border-radius:10px;padding:15px 14px 12px;height:214px;display:flex;gap:7px;align-items:flex-end}
-    .loop .film .cell{flex:1;position:relative;display:flex;align-items:flex-end;justify-content:center}
-    .loop .film .cell img{height:176px;max-width:100%;object-fit:contain}
-    .loop .film .cell b{position:absolute;top:-4px;left:0;font-size:10.5px;font-weight:400;color:#6b6561}
-    .loop .film .cell em{position:absolute;top:-6px;left:27px;font-style:normal;font-size:9px;letter-spacing:.7px;color:#c98a52;border:1px solid #4a3a2e;border-radius:3px;padding:1px 5px;background:#f9731612}
-    .loop .film .cell.fill b{color:#c98a52}
-    .loop .film .seam{position:relative;width:56px;flex:none;align-self:stretch}
-    .loop .film .seam:before{content:"";position:absolute;top:-8px;bottom:-6px;left:50%;border-left:1px dashed #f97316bb}
-    .loop .film .seam u{position:absolute;top:-6px;left:50%;transform:translateX(-50%);text-decoration:none;font-size:9px;letter-spacing:1.3px;color:#f9a665;background:#0e0e10;padding:1px 5px}
-    .loop .film .seam s{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-decoration:none;width:31px;height:31px;border-radius:50%;border:1px solid #c4753d;background:#120f0e;color:#f9a665;display:flex;align-items:center;justify-content:center;font-size:16px;line-height:1}
-    .loop .seambar{display:flex;align-items:center;gap:12px;margin-top:10px;border:1px solid #2b282b;border-radius:8px;background:#111113;padding:8px 14px;font-size:12px;color:#8d8783}
-    .loop .seambar .k{font-size:10.5px;letter-spacing:1.5px;text-transform:uppercase;color:#8d8783}
-    .loop .seambar .v{font:400 19px/1 Fraunces,Georgia,serif;color:#f9be92}
-    .loop .seambar .sep{width:1px;height:19px;background:#302c30}
-    .loop .seambar .ok{margin-left:auto;border:1px solid #c4753d;border-radius:5px;padding:4px 12px;color:#f9be92;background:#f973160f;font-size:11.5px;letter-spacing:1.3px;text-transform:uppercase}
-    .loop .below{display:grid;grid-template-columns:556px 1fr;gap:24px;margin-top:16px}
-    .loop .below .head{margin-top:0}
-    .loop .prep{display:flex;gap:8px;margin-top:9px}
-    .loop .prep .panel{flex:1}
-    .loop .prep .thumb{height:74px;display:flex;align-items:center;justify-content:center;overflow:hidden}
-    .loop .prep .thumb img{height:66px}
-    .loop .prep .plabel{height:40px;padding:0 11px;flex-direction:column;align-items:flex-start;justify-content:center;gap:2px;font-size:11.5px}
-    .loop .prep .plabel small{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:-.2px;color:#8d8783}
-    .loop .prep .panel.sel .plabel small{color:#c98a52}
-    .loop .etiles{display:flex;gap:8px;margin-top:9px}
-    .loop .etile{flex:1;border:1px solid #2b282b;border-radius:7px;padding:12px 13px;background:#111113;height:114px;display:flex;flex-direction:column;justify-content:center}
-    .loop .etile.sel{border-color:#c4753d;background:#f9731608}
-    .loop .etile b{display:block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;font-weight:400;color:#918a86;margin-bottom:7px}
-    .loop .etile span{display:block;font:400 21px/1 Fraunces,Georgia,serif;color:#e6ddd5;margin-bottom:7px}
-    .loop .etile.sel span{color:#f9be92}
-    .loop .etile small{font-size:10.5px;color:#7e7874;line-height:1.5}
+    /* --- 05 edges --- */
+    .edges .body{display:grid;grid-template-columns:300px 1fr 300px;gap:22px;margin-top:22px}
+    .edges .fig{position:relative;height:462px;border:1px solid #2f2b2e;border-radius:10px;overflow:hidden}
+    .edges .fig img{position:absolute;left:50%;transform:translateX(-50%);bottom:12px;width:272px;height:419px}
+    .edges .fig .box{position:absolute;border:1.5px solid #f97316;box-shadow:0 0 0 2000px #09090b55;border-radius:2px}
+    .edges .fig .lab{position:absolute;left:12px;top:10px;font-size:10.5px;color:#8d8783}
+    .edges .grid{display:grid;grid-template-columns:auto 1fr 1fr;gap:10px 10px;align-items:center}
+    .edges .grid .h{font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8d8783;text-align:center}
+    .edges .grid .r{font-size:12px;color:#c8c1bb;line-height:1.45;width:112px}
+    .edges .grid .r b{display:block;font-weight:500;font-size:12.5px}
+    .edges .grid .r.bad b{color:#fca5a5}
+    .edges .grid .r.good b{color:#f9be92}
+    .edges .grid .r span{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;color:#8d8783}
+    .edges .z{position:relative;height:212px;border-radius:8px;overflow:hidden;border:1px solid #2f2b2e}
+    .edges .z.dark{background:#0a0a0d}
+    .edges .z.light{background:#f5f5f5}
+    .edges .z.good{border-color:#c4753d}
+    .edges .z img{position:absolute;image-rendering:pixelated}
+    .edges .side .stat{margin-bottom:9px}
+    .edges .src{border:1px solid #2f2b2e;border-radius:8px;overflow:hidden;background:#101012}
+    .edges .src .m{height:120px;display:flex;justify-content:center;background:#0f0f11}
+    .edges .src .m img{height:120px}
   </style>
 </head>
 <body>
 
 <!-- ══════════════ HERO ══════════════ -->
 <section class="page hero" data-view="hero">
-  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">ONE CHARACTER · EVERY MOTION</span></div>
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">FOUR ROUTES · ONE STAGE</span></div>
   <div class="topline">
-    <h1>One character. Every motion.</h1>
-    <p>Sheet, frames, atlas, preview — in one pass.</p>
+    <h1>Say what it's for. Get the moves.</h1>
+    <p>A game character · a picture that breathes · a page loop · an app mascot</p>
   </div>
   <div class="window">
-    <div class="bar">Lumi <span class="muted">lantern courier · 2 motions · 32 frames</span>
-      <div class="right">Chibi anime line art<span class="pill">＋ New motion</span></div>
+    <div class="bar"><b>Kagari 篝</b><span class="route">Game character</span>
+      <span class="muted">declared 256 · measured 578×520 · packed ×0.5 · facing right · 2 references · 3 motions</span>
+      <div class="right"><span class="pill">＋ New motion</span></div>
     </div>
     <div class="board">
 
       <div class="rail">
+        <div class="eyebrow">References</div>
+        <div class="refs">
+          <div class="ref"><div class="thumb"><img src="/art/kagari/refs/turnaround.png"></div><span>Turnaround</span></div>
+          <div class="ref"><div class="thumb"><img src="/art/kagari/refs/portrait.png"></div><span>Portrait</span></div>
+        </div>
         <div class="eyebrow">Motions</div>
-        <div class="mcard"><img src="/art/lumi/idle-00.png"><div><b>Idle</b><span>16 frames · 8 fps</span></div></div>
-        <div class="mcard sel"><img src="/art/lumi/attack-06.png"><div><b>Attack</b><span>16 frames · 10 fps</span></div></div>
-        <hr>
-        <div class="eyebrow" style="margin-bottom:11px">Characters</div>
-        <div class="ccard"><img src="/art/rivet/idle-00.png"><div><b>Rivet</b><span>Flat vector · 2 motions</span></div></div>
-        <div class="ccard"><img src="/art/ame/attack-04.png"><div><b>Ame</b><span>128px pixel · 1 motion</span></div></div>
-        <div class="ccard"><img src="/art/mio/pickup-04.png"><div><b>Mio</b><span>Semi-realistic · 1 motion</span></div></div>
+        <div class="mcard"><div class="t"><img src="/art/kagari/idle/00.png"></div><div class="grow"><div class="row"><b>Idle</b><span class="ready">READY</span></div><span class="meta">4×2 · 8 frames · 3.3 fps · loop</span></div></div>
+        <div class="mcard"><div class="t"><img src="/art/kagari/walk/03.png"></div><div class="grow"><div class="row"><b>Walk</b><span class="chip">video</span><span class="ready">READY</span></div><span class="meta">4×3 · 12 frames · 9 fps · loop</span></div></div>
+        <div class="mcard sel"><div class="t"><img src="/art/kagari/attack/07.png"></div><div class="grow"><div class="row"><b>Attack</b><span class="ready">READY</span></div><span class="meta">4×4 · 16 frames · 12 fps · once</span></div></div>
       </div>
 
       <div class="stage">
+        <div class="tools"><span class="on">Checker</span><span>Dark</span><span>Light</span><i></i><span class="on">Fit</span><span>1x</span><span>2x</span><span class="r">Attack · sliced by ink</span></div>
         <div class="glass chk">
-          <img src="/art/lumi/attack-07.png">
-          <div class="anchor"><b>anchor · bottom</b></div>
+          <img src="/art/kagari/attack/07.png">
+          <div class="anchor"><b>anchor · bottom · 289, 512</b></div>
         </div>
-        <div class="readout"><span>frame <b>07</b> / 16 &nbsp;·&nbsp; playing at 10 fps &nbsp;·&nbsp; cell 272 × 262</span><span>source: frames</span></div>
+        <div class="readout"><span>frame <b>07</b> / 16 &nbsp;·&nbsp; 12 fps &nbsp;·&nbsp; plays once &nbsp;·&nbsp; cell 578 × 520</span><span>0 of 16 poses clipped</span></div>
         <div class="strip">
-          <div><img src="/art/lumi/attack-04.png"></div>
-          <div><img src="/art/lumi/attack-05.png"></div>
-          <div><img src="/art/lumi/attack-06.png"></div>
-          <div class="sel"><img src="/art/lumi/attack-07.png"></div>
-          <div><img src="/art/lumi/attack-08.png"></div>
-          <div><img src="/art/lumi/attack-09.png"></div>
-          <div><img src="/art/lumi/attack-10.png"></div>
-          <div><img src="/art/lumi/attack-11.png"></div>
+          <div><img src="/art/kagari/attack/03.png"></div>
+          <div><img src="/art/kagari/attack/04.png"></div>
+          <div><img src="/art/kagari/attack/05.png"></div>
+          <div><img src="/art/kagari/attack/06.png"></div>
+          <div class="sel"><img src="/art/kagari/attack/07.png"></div>
+          <div><img src="/art/kagari/attack/08.png"></div>
+          <div><img src="/art/kagari/attack/09.png"></div>
+          <div><img src="/art/kagari/attack/10.png"></div>
         </div>
       </div>
 
       <div class="aside">
-        <div class="eyebrow">Preview</div>
-        <div class="panel"><div class="media chk"><img src="/art/lumi/attack.gif"></div>
-          <div class="plabel">preview.gif<small>10 fps</small></div></div>
-        <div class="panel"><div class="media"><img src="/art/lumi/attack-video.png"><div class="play"></div></div>
-          <div class="plabel">video-seedance-1.mp4<small>4 s · 480p</small></div></div>
-        <div class="atlas"><b>atlas.json</b><div class="mono">TexturePacker JSON-hash<br>16 frames · anchor 136, 254</div></div>
+        <div class="tabs"><span>GIF</span><span>Video</span><span>Atlas</span><span class="on">Export</span></div>
+        <div class="panel"><div class="clip"><img src="/art/kagari/walk-clip.png"><div class="play" style="left:auto;top:auto;right:10px;bottom:10px;transform:none"></div></div>
+          <div class="plabel">walk · video-seedance-1.mp4<small>640² · 4.04 s</small></div></div>
+        <div class="eyebrow">Whole character</div>
+        <div class="erow sel"><div class="top">Aseprite-format sheet<span class="ready">READY</span></div>
+          <div class="mono">kagari-aseprite.zip · 36 frames<br>1156 × 2320 · 1.8 MB · 3 tags</div></div>
+        <div class="erow"><div class="top">Rive<span class="ready">READY</span></div>
+          <div class="mono">kagari.riv · 3 motions · 1.0 MB<br>input motion · trigger play_attack</div></div>
+        <div class="phaser mono">this.load.aseprite('kagari', …)<br>this.anims.createFromAseprite('kagari')</div>
       </div>
 
     </div>
   </div>
-  <div class="foot"><span>GPT Image 2.5 sheets · ffmpeg slice / align / pack · Seedance 2.5 preview</span><span>Conceptual interface · actual generated sprites</span></div>
+  <div class="foot"><span>Kagari · route G blind trial, re-cut on the final 0.5.0 scripts · GPT Image 2.5 sheets · Seedance 2.5 walk</span><span>Conceptual interface · actual generated sprites</span></div>
 </section>
 
-<!-- ══════════════ CHARACTER-LOCKED SHEETS ══════════════ -->
-<section class="page lock" data-view="character-locked">
-  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">01 / CONSISTENCY</span></div>
-  <h1>The character goes in with every prompt.</h1>
-  <p>Design it once. Every motion sheet is drawn with its own references attached.</p>
-  <div class="content">
-
-    <div class="refs">
-      <div class="eyebrow" style="margin-bottom:10px">lumi / refs</div>
-      <div class="panel big"><div class="chk"><img class="art" src="/art/lumi/turnaround-keyed.png"></div>
-        <div class="plabel">turnaround.png<small>1024 × 1024</small></div></div>
-      <div class="row2">
-        <div class="panel small"><div class="chk"><img class="art" src="/art/lumi/portrait-keyed.png"></div>
-          <div class="plabel">portrait.png</div></div>
-        <div class="note">Style, once, in the character's own words:<em>“Clean anime-chibi line art, flat colours, thick uniform outline, no shading.”</em></div>
-      </div>
-    </div>
-
-    <div class="link">
-      <div class="cap">Attached</div>
-      <div class="line"></div>
-      <p>to every sheet prompt<br>the model draws</p>
-    </div>
-
-    <div class="sheets">
-      <div class="panel"><div class="sheetbox chk"><img src="/art/lumi/attack-sheet.png"></div>
-        <div class="plabel">attack · 4 × 4<small>16 frames</small></div></div>
-      <div class="panel"><div class="sheetbox chk"><img src="/art/lumi/idle-sheet.png"></div>
-        <div class="plabel">idle · 4 × 4<small>16 frames</small></div></div>
-    </div>
-
-  </div>
-  <div class="caption">Frame 12 of the attack is the same character as frame 1 of the idle.</div>
-  <div class="foot"><span>Actual GPT Image 2.5 sheets from the Lumi seed · references attached to both prompts</span><span>Conceptual interface · actual generated sprites</span></div>
-</section>
-
-<!-- ══════════════ AUTO SLICE &amp; ALIGN ══════════════ -->
-<section class="page cut" data-view="slice-align">
-  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">02 / PIPELINE</span></div>
-  <h1>Keyed, cut, and standing on the same pixel.</h1>
-  <p>One sheet in. Transparent frames, a packed atlas and a preview out — no hand-tracing.</p>
-  <div class="ribbon">
-    <span>sheet.png</span><i>›</i><span>key</span><i>›</i><span>slice 2 × 4</span><i>›</i>
-    <span class="on">align · anchor bottom</span><i>›</i><span>pack</span><i>›</i><span>atlas.json</span><i>›</i><span>preview.gif</span>
-  </div>
-  <div class="film chk">
-    <div class="cell"><b>00</b><img src="/art/rivet/walk-00.png"></div>
-    <div class="cell"><b>01</b><img src="/art/rivet/walk-01.png"></div>
-    <div class="cell"><b>02</b><img src="/art/rivet/walk-02.png"></div>
-    <div class="cell"><b>03</b><img src="/art/rivet/walk-03.png"></div>
-    <div class="cell"><b>04</b><img src="/art/rivet/walk-04.png"></div>
-    <div class="cell"><b>05</b><img src="/art/rivet/walk-05.png"></div>
-    <div class="cell"><b>06</b><img src="/art/rivet/walk-06.png"></div>
-    <div class="cell"><b>07</b><img src="/art/rivet/walk-07.png"></div>
-    <div class="baseline"><b>anchor · y 474</b></div>
-  </div>
-  <div class="below">
-    <div class="stats">
-      <div class="stat"><b>0.22 px</b><span>anchor drift<br>across 8 frames</span></div>
-      <div class="stat"><b>0.5 px</b><span>largest jump<br>frame to frame</span></div>
-      <div class="stat"><b>0</b><span>empty frames<br>0 warnings</span></div>
-    </div>
-    <div class="code mono">
-      <em>walk/atlas.json</em><br>
-      "image": "sheet.png", "fps": 12, "loop": true,<br>
-      "size": { "w": 1448, "h": 964 }, "anchor": "bottom",<br>
-      "anchorPoint": { "x": 181, "y": 474 }<br>
-      "walk_03": { "frame": { "x": 1086, "y": 0,<br>
-      &nbsp;&nbsp;"w": 362, "h": 482 }, "trimmed": false }
-    </div>
-  </div>
-  <div class="caption">Feet land on the same pixel in every frame — Phaser and PixiJS read the atlas as it is.</div>
-  <div class="foot"><span>Rivet · walk · real frames and real inspect numbers from one pipeline run</span><span>ffmpeg only — no model call in this step</span></div>
-</section>
-
-<!-- ══════════════ SHEET OR VIDEO ══════════════ -->
-<section class="page src" data-view="sheet-or-video">
-  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">03 / SOURCE</span></div>
-  <h1>Draw the frames, or shoot them.</h1>
-  <p>Two ways into one motion. Both land on the same aligned frames and the same atlas.</p>
-  <div class="paths">
-
-    <div class="path">
-      <div class="ptop"><span class="tag">Path A</span><b>A drawn sheet</b><span>GPT Image 2.5</span></div>
-      <div class="srcbox chk"><img src="/art/lumi/attack-sheet.png"></div>
-      <div class="down">slice 4 × 4<i></i>key<i></i>align</div>
-      <div class="fstrip">
-        <div class="chk"><img src="/art/lumi/attack-00.png"></div>
-        <div class="chk"><img src="/art/lumi/attack-05.png"></div>
-        <div class="chk"><img src="/art/lumi/attack-10.png"></div>
-        <div class="chk"><img src="/art/lumi/attack-15.png"></div>
-      </div>
-      <div class="pmeta"><b>16 frames</b> · one image · drawn in ≈ 35 s</div>
-    </div>
-
-    <div class="path sel">
-      <div class="ptop"><span class="tag">Path B</span><b>A video clip</b><span>Seedance 2.5 · 640 × 640 · 4.04 s</span></div>
-      <div class="srcbox"><img src="/art/video-source/clip-still.png"></div>
-      <div class="down">sample 16<i></i>key green<i></i>align</div>
-      <div class="fstrip">
-        <div class="chk"><img src="/art/video-source/frames/00.png"></div>
-        <div class="chk"><img src="/art/video-source/frames/03.png"></div>
-        <div class="chk"><img src="/art/video-source/frames/06.png"></div>
-        <div class="chk"><img src="/art/video-source/frames/09.png"></div>
-      </div>
-      <div class="pmeta"><b>16 frames</b> · sampled in 12.4 s · anchor drift 2.9 px, 0 warnings</div>
-    </div>
-
-  </div>
-  <div class="converge">
-    <span class="arrow"></span><b>Either way:</b>
-    <span class="mono">motions/&lt;id&gt;/frames/ · sheet.png · atlas.json · preview.gif</span>
-    <span style="margin-left:auto">The stage does not know which path made them.</span>
-  </div>
-  <div class="caption">One sheet ≈ 35 s · one 4 s Seedance clip ≈ $1, 5–7 min — the clip also plays as the preview.</div>
-  <div class="foot"><span>You pick the source per motion · the pipeline after it is identical</span><span>Conceptual interface · actual generated sprites</span></div>
-</section>
-
-<!-- ══════════════ ANY STYLE, ANY GRID ══════════════ -->
-<section class="page range" data-view="any-style">
-  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">04 / RANGE</span></div>
-  <h1>Any style. Any grid.</h1>
-  <p>The style sentence is yours. The pipeline never needs to know what it is cutting up.</p>
+<!-- ══════════════ FOUR ROUTES ══════════════ -->
+<section class="page routes" data-view="routes">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">01 / ROUTES</span></div>
+  <h1>Say what it's for. The route follows.</h1>
+  <p>Each route has its own few questions, its own price, and its own finish line. The empty stage lists the same four.</p>
   <div class="cards">
 
-    <div class="card">
-      <div class="sheetbox chk"><img src="/art/lumi/idle-sheet.png"></div>
-      <div class="who">Lumi · idle<small>4 × 4</small></div>
-      <div class="style">“Clean anime-chibi line art, flat colours, thick uniform outline, no shading.”
-        <span>16 frames · 8 fps · loop</span></div>
-    </div>
-
-    <div class="card">
-      <div class="sheetbox chk"><img src="/art/rivet/walk-sheet.png"></div>
-      <div class="who">Rivet · walk<small>2 × 4</small></div>
-      <div class="style">“Clean flat-color vector cartoon, crisp uniform dark outlines, flat fills, no shading.”
-        <span>8 frames · 12 fps · loop</span></div>
-    </div>
-
-    <div class="card">
-      <div class="sheetbox chk"><img src="/art/ame/attack-sheet.png"></div>
-      <div class="who">Ame · attack<small>4 × 4</small></div>
-      <div class="style">“Simplified 128px pixel art sprite, chunky readable pixels, hard edges, no anti-aliasing.”
-        <span>16 frames · 10 fps</span></div>
-    </div>
-
     <div class="card sel">
-      <div class="sheetbox chk"><img src="/art/mio/pickup-sheet.png"></div>
-      <div class="who">Mio · pickup-letter<small>3 × 3</small></div>
-      <div class="style">“Realistic anime illustration, fine ink linework, soft painterly cel shading in cool blue-grey tones.”
-        <span>9 frames · 6 fps</span></div>
+      <div class="head"><span class="route">G · Game character</span><h3>A move set your engine loads</h3>
+        <p>Stand, walk, attack, jump — frames on one foot line, packed into a sheet.</p></div>
+      <div class="vis chk">
+        <div class="base"></div>
+        <div class="trio"><img style="left:-3.7px;height:150px" src="/art/kagari/idle/00.png"><img style="left:67.3px;height:150px" src="/art/kagari/walk/03.png"><img style="left:131px;height:152.3px" src="/art/kagari/attack/07.png"></div>
+      </div>
+      <div class="fin"><div class="eyebrow">Finish line</div>
+        <div class="file mono">kagari-aseprite.zip<small>36 frames</small></div>
+        <div class="file mono">idle · walk · attack<small>3 tags</small></div>
+        <div class="who">Kagari — “for my Phaser game”, route G trial</div></div>
+    </div>
+
+    <div class="card">
+      <div class="head"><span class="route">A · Your picture</span><h3>Bring my picture to life</h3>
+        <p>Drop in a picture you love. It is cut out and starts breathing — no drawing model involved.</p></div>
+      <div class="vis chk">
+        <div class="ab"><div class="up"><img src="/art/frog/upload.png"></div><span class="arrow-r"></span><div class="out"><img src="/art/frog/10.png"></div></div>
+      </div>
+      <div class="fin"><div class="eyebrow">Finish line</div>
+        <div class="file mono">preview.webp<small>12 frames · 8 fps</small></div>
+        <div class="file mono">preview.gif<small>loops</small></div>
+        <div class="who">Frog wizard — the creator's own image, route A trial</div></div>
+    </div>
+
+    <div class="card">
+      <div class="head"><span class="route">L · Loop for a page</span><h3>A loop for a page</h3>
+        <p>Something small that never stops moving, in the formats a page plays with alpha.</p></div>
+      <div class="vis" style="background:#141316">
+        <div class="page-mock"><div class="chrome"><i></i><i></i><i></i><span></span></div>
+          <div class="body"><div class="h"></div><div class="ln" style="width:86%"></div><div class="ln" style="width:72%"></div><div class="ln" style="width:80%"></div><div class="ln" style="width:44%"></div></div>
+          <span class="tag">idle.webm</span><img class="corner" src="/art/frog/00.png"></div>
+      </div>
+      <div class="fin"><div class="eyebrow">Finish line</div>
+        <div class="file mono">idle.webm<small>58 KB · VP9 alpha</small></div>
+        <div class="file mono">idle.apng · idle.json<small>1.8 MB · 2.5 MB Lottie</small></div>
+        <div class="who">The frog's breath, exported for “my homepage corner”</div></div>
+    </div>
+
+    <div class="card">
+      <div class="head"><span class="route">M · Mascot for an app</span><h3>A mascot for an app</h3>
+        <p>A few states the app switches from code, packed into one Rive file.</p></div>
+      <div class="vis chk">
+        <div class="riv"><span class="sm">State Machine 1</span><img class="px" src="/art/slime/idle/00.png">
+          <div class="btns"><span class="on">motion = 0 · idle</span><span>▶ play_jump</span></div></div>
+      </div>
+      <div class="fin"><div class="eyebrow">Finish line</div>
+        <div class="file mono">slime.riv<small>8.8 KB · lossless WebP</small></div>
+        <div class="file mono">kagari.riv<small>1.0 MB · idle ⇄ walk · play_attack</small></div>
+        <div class="who">This round's characters, through the free <span class="mono" style="font-size:10px">rive</span> export</div></div>
     </div>
 
   </div>
-  <div class="caption">Four characters, four style sentences, one unchanged pipeline.</div>
-  <div class="foot"><span>Actual sheets from four separate runs of the mode</span><span>Conceptual interface · actual generated sprites</span></div>
+  <div class="caption">Say it in plain words — the agent picks the route, and asks only what that route needs.</div>
+  <div class="foot"><span>G and A are the blind trials' own characters; L and M reuse their frames through the mode's free exports</span><span>Conceptual interface · actual generated sprites</span></div>
 </section>
 
-<!-- ══════════════ SEAMLESS LOOP ══════════════ -->
-<section class="page loop" data-view="seamless-loop">
-  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">05 / LOOP</span></div>
-  <h1>The last frame lands on the first.</h1>
-  <p>One keyframe goes in at both ends of the clip — and the wrap comes back as a number, not a promise.</p>
-  <div class="ribbon">
-    <span>keyframe</span><i>›</i><span>cut out</span><i>›</i><span>green plate</span><i>›</i>
-    <span>Seedance · first = last</span><i>›</i><span>matte</span><i>›</i>
-    <span class="on">loop · measure · seam-fill</span><i>›</i><span>webp · apng · webm · lottie</span>
-  </div>
+<!-- ══════════════ YOUR PICTURE, BREATHING ══════════════ -->
+<section class="page breathe" data-view="breathe">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">02 / YOUR PICTURE</span></div>
+  <h1>One picture in. A breathing loop out.</h1>
+  <p>The breath is a warp of the still, not a new drawing: the body swells on a wave, the head rides on top in one piece, the feet never move.</p>
+  <div class="body">
 
-  <div class="head">
-    <span class="eyebrow">The wrap — frames 117 … 001</span>
-    <span class="meta"><b>122 frames</b> · 24 fps · 5.08 s · 512 × 596 · 119 sampled + 3 seam fills · alpha coverage 0.41</span>
-  </div>
-  <div class="film chk">
-    <div class="cell"><b>117</b><img src="/art/flame/frames/117.png"></div>
-    <div class="cell"><b>118</b><img src="/art/flame/frames/118.png"></div>
-    <div class="cell fill"><b>119</b><em>FILL</em><img src="/art/flame/frames/119.png"></div>
-    <div class="cell fill"><b>120</b><em>FILL</em><img src="/art/flame/frames/120.png"></div>
-    <div class="cell fill"><b>121</b><em>FILL</em><img src="/art/flame/frames/121.png"></div>
-    <div class="seam"><u>WRAP</u><s>↻</s></div>
-    <div class="cell"><b>000</b><img src="/art/flame/frames/000.png"></div>
-    <div class="cell"><b>001</b><img src="/art/flame/frames/001.png"></div>
-  </div>
-  <div class="seambar">
-    <span class="k">Seam</span><span class="v">0.0120</span><span class="sep"></span>
-    <span class="k">Median step</span><span class="v">0.0131</span><span class="sep"></span>
-    <span>limit 0.0262 &nbsp;·&nbsp; two steps across the wrap</span>
-    <span class="ok">Closes</span>
-  </div>
-
-  <div class="below">
-    <div class="source">
-      <div class="head"><span class="eyebrow">One image, two roles</span>
-        <span class="meta">36 s of prep, before any video call</span></div>
-      <div class="prep">
-        <div class="panel"><div class="thumb"><img class="art" src="/art/flame/keyframe.png"></div>
-          <div class="plabel">keyframe.png<small>1024 × 1024</small></div></div>
-        <div class="panel"><div class="thumb chk"><img class="art" src="/art/flame/keyframe-alpha.png"></div>
-          <div class="plabel">cut out<small>coverage 0.397</small></div></div>
-        <div class="panel sel"><div class="thumb"><img class="art" src="/art/flame/first-green.png"></div>
-          <div class="plabel">green plate<small>--image = --end-image</small></div></div>
+    <div>
+      <div class="eyebrow col-eyebrow"><span>What the creator gave it</span></div>
+      <div class="src">
+        <div class="panel up"><div class="m"><img src="/art/frog/upload.png"></div><div class="plabel">upload.png<small>1024 × 1536</small></div></div>
+        <div class="mid"><span class="arrow-r"></span></div>
+        <div class="panel cut sel"><div class="m chk"><img src="/art/frog/still.png"></div><div class="plabel">still.png<small>221 × 496</small></div></div>
+      </div>
+      <div class="note">
+        <div class="row"><span>Cut out</span><span>once, background removal</span></div>
+        <div class="row"><span>Breathe</span><span><b>no model call</b> · free</span></div>
+        <div class="row"><span>Depth · mode</span><span>0.02 · smooth, from the style</span></div>
+        <div class="row"><span>Loop</span><span>12 frames · 8 fps · 1.5 s</span></div>
       </div>
     </div>
-    <div class="exports">
-      <div class="head"><span class="eyebrow">Exports — every frame, four ways</span>
-        <span class="meta">one <b>loop</b> call, no re-render</span></div>
-      <div class="etiles">
-        <div class="etile"><b>loop.webp</b><span>3.4 MB</span><small>animated, alpha</small></div>
-        <div class="etile"><b>loop.apng</b><span>21.5 MB</span><small>lossless, alpha</small></div>
-        <div class="etile sel"><b>loop.webm</b><span>368 KB</span><small>VP9 alpha · UI-ready</small></div>
-        <div class="etile"><b>loop.json</b><span>29.2 MB</span><small>Lottie · size warned</small></div>
+
+    <div>
+      <div class="eyebrow col-eyebrow"><span>Lowest · still · highest</span><span>frames 03 · 00 · 10</span></div>
+      <div class="stage chk" id="breathe-stage">
+        <div class="fr hot" style="left:10px"><img src="/art/frog/03.png"><div class="lab"><b>03 · head +5 px</b>lowest</div></div>
+        <div class="fr" style="left:193px"><img src="/art/frog/00.png"><div class="lab"><b>00 · head −2 px</b>&nbsp;</div></div>
+        <div class="fr hot" style="left:376px"><img src="/art/frog/10.png"><div class="lab"><b>10 · head −5 px</b>highest</div></div>
       </div>
     </div>
-  </div>
 
-  <div class="caption">A loop is only called a loop once the wrap is measured — 0.0120 against a 0.0262 limit.</div>
-  <div class="foot"><span>Flame · flicker · one paid Seedance call ≈ $1.1 · every number read off that motion's run.json</span><span>Conceptual interface · actual generated sprites</span></div>
+    <div>
+      <div class="eyebrow col-eyebrow"><span>Head offset per frame</span><span>px, − is up</span></div>
+      <div class="chart">
+        <div class="bars" id="head-bars"><span class="zero"></span></div>
+        <div class="k"><span>travel 10 px · −5 … +5</span><span>highest 10 · lowest 03</span></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><b class="hot">12 / 12</b><span>frames whose head is<br>pixel-identical to the still</span></div>
+        <div class="stat"><b>y 221</b><span>rigid row, found at<br>the neck</span></div>
+        <div class="stat"><b>0 px</b><span>anchor drift · the soles<br>never move</span></div>
+        <div class="stat"><b>475–485</b><span>body height, px<br>(the still: 480)</span></div>
+      </div>
+    </div>
+
+  </div>
+  <div class="caption">Nothing above the neck changes shape — the head rides the breath, 10 px from its lowest to its highest.</div>
+  <div class="foot"><span>Frog wizard · route A blind trial · breathe re-run on the final 0.5.0 script · every number from its run summary</span><span>Conceptual interface · actual generated sprites</span></div>
+</section>
+
+<!-- ══════════════ PIXEL ART STAYS PIXEL ══════════════ -->
+<section class="page pixel" data-view="pixel">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">03 / PIXEL ART</span></div>
+  <h1>Pixel art stays on its pixels.</h1>
+  <p>An image model draws pixel art with soft, uneven blocks. The lattice step snaps every block back to one pixel, on one pinned palette.</p>
+  <div class="body">
+
+    <div class="left">
+      <div class="eyebrow hd"><span>One cell, as drawn and on the lattice</span><span>idle · frame 00</span></div>
+      <div class="snap">
+        <div class="panel zoom"><div class="m chk"><img class="px" id="raw-zoom" src="/art/slime/cell-00.png"></div><div class="plabel">as drawn · 2×<small>soft edges · 11 px blocks</small></div></div>
+        <div class="mid"><span class="arrow-r"></span><span>11 px<br>↓<br>1 px</span></div>
+        <div class="panel zoom sel"><div class="m chk" id="lat-box"><img class="px" id="lat-zoom" src="/art/slime/idle/00.png"></div><div class="plabel">on the lattice · 22×<small>one block, one pixel</small></div></div>
+      </div>
+      <div class="facts">
+        <div class="stat"><b class="hot">27 px</b><span>tall · declared 27,<br>measured 27</span></div>
+        <div class="stat"><b>11 × 11</b><span>source px per block,<br>one logical pixel</span></div>
+        <div class="stat"><b>held</b><span>alpha 0 or 255, on grid,<br>in the pinned palette</span></div>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="eyebrow hd"><span>Colourways — one map, every motion</span><span>4× · nearest</span></div>
+      <div class="ways">
+        <div class="way"><div class="m chk"><img class="px" src="/art/slime/idle/00.png"></div><div class="plabel">green · as drawn<small>idle 00</small></div></div>
+        <div class="way"><div class="m chk"><img class="px" src="/art/slime/lv2-blue/00.png"></div><div class="plabel">lv2-blue<small>4,133 px swapped</small></div></div>
+        <div class="way"><div class="m chk"><img class="px" src="/art/slime/lv3-red/00.png"></div><div class="plabel">lv3-red<small>4,133 px swapped</small></div></div>
+      </div>
+      <div class="pal">
+        <div class="eyebrow" style="display:flex;justify-content:space-between"><span>palette.json · pinned</span><span>48 colours</span></div>
+        <div class="chips" id="chips"></div>
+        <div class="legend"><span><b>38</b> body colours mapped per colourway</span><span><i class="k"></i><b>10</b> left alone — eyes, mouth, glint</span><span><b>0</b> unmatched</span></div>
+      </div>
+    </div>
+
+  </div>
+  <div class="caption">Three colourways from one pinned palette — exact swaps, so the eyes and the glint never change.</div>
+  <div class="foot"><span>Slime · route G-pixel blind trial · idle re-run on the final scripts with the trial's pitch, byte-identical · colourways re-baked</span><span>Conceptual interface · actual generated sprites</span></div>
+</section>
+
+<!-- ══════════════ EVERY POSE WHOLE ══════════════ -->
+<section class="page ink" data-view="ink-slice">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">04 / SLICING</span></div>
+  <h1>The model missed the grid. No pose was cut.</h1>
+  <p>When a pose runs across a grid line, the sheet is cut where the poses actually are — found by their ink — and the drawing is never touched.</p>
+  <div class="body">
+
+    <div>
+      <div class="sheet">
+        <img src="/art/kagari/attack-sheet-raw.png">
+        <svg viewBox="0 0 2048 2048" id="cuts"></svg>
+      </div>
+      <div class="legend"><span><i class="g"></i>the 4 × 4 grid it was asked for</span><span><i class="c"></i>where the poses are</span></div>
+    </div>
+
+    <div>
+      <div class="rowhead"><b class="bad">Cut on the grid — 7 of 16 cells clipped</b><span>cells 00–03, 06, 07, 08</span></div>
+      <div class="cells">
+        <div class="cell bad"><div class="m chk"><div class="frame" style="width:150px;height:150px"><img src="/art/kagari/attack-cells-grid/03.png"><span class="cut" style="left:0;right:0;bottom:0;height:2px"></span></div></div><div class="plabel">03<small>boots cut at the row line</small></div></div>
+        <div class="cell bad"><div class="m chk"><div class="frame" style="width:150px;height:150px"><img src="/art/kagari/attack-cells-grid/06.png"><span class="cut" style="top:0;bottom:0;right:0;width:2px"></span></div></div><div class="plabel">06<small>the next pose's tail inside</small></div></div>
+        <div class="cell bad"><div class="m chk"><div class="frame" style="width:150px;height:150px"><img src="/art/kagari/attack-cells-grid/07.png"><span class="cut" style="top:0;bottom:0;left:0;width:2px"></span></div></div><div class="plabel">07<small>tail cut off</small></div></div>
+      </div>
+      <div class="rowhead"><b class="good">Cut by ink — 0 of 16 clipped</b><span>the same three poses, whole</span></div>
+      <div class="cells">
+        <div class="cell good"><div class="m chk"><div class="frame" style="width:164px;height:155px"><img src="/art/kagari/attack-cells-ink/03.png"></div></div><div class="plabel">03<small>561 × 530</small></div></div>
+        <div class="cell good"><div class="m chk"><div class="frame" style="width:164px;height:155px"><img src="/art/kagari/attack-cells-ink/06.png"></div></div><div class="plabel">06<small>561 × 530</small></div></div>
+        <div class="cell good"><div class="m chk"><div class="frame" style="width:164px;height:155px"><img src="/art/kagari/attack-cells-ink/07.png"></div></div><div class="plabel">07<small>561 × 530</small></div></div>
+      </div>
+      <div class="facts">
+        <div class="stat"><b>551 · 1038 · 1536</b><span>rows cut at, px<br>(the grid: 512 · 1024 · 1536)</span></div>
+        <div class="stat"><b>4 · 4 · 4 · 4</b><span>poses found per row,<br>none forced</span></div>
+        <div class="stat"><b>512 → 561 × 530</b><span>every cell grows alike<br>to hold the widest reach</span></div>
+        <div class="stat"><b class="hot">read only</b><span>sheet-raw.png is never<br>re-laid or redrawn</span></div>
+      </div>
+    </div>
+
+  </div>
+  <div class="foot"><span>Kagari · attack · the trial's original 2048² sheet, re-run on the final scripts with and without the ink fallback</span><span>Local and free — no model call in this step</span></div>
+</section>
+
+<!-- ══════════════ CLEAN WARM EDGES ══════════════ -->
+<section class="page edges" data-view="edges">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">05 / KEYING</span></div>
+  <h1>Copper hair off a green screen, with no green left.</h1>
+  <p>Orange mixed with green reads yellow-green, not green, so a hue test cannot see it. The keyer reads each edge pixel against the character's own colours.</p>
+  <div class="body">
+
+    <div>
+      <div class="fig chk"><span class="lab">walk · frame 03 · re-keyed</span><img src="/art/kagari/walk/03.png" id="edge-fig"><div class="box" id="edge-box"></div></div>
+    </div>
+
+    <div class="grid">
+      <span></span><span class="h">On dark</span><span class="h">On light</span>
+      <div class="r bad"><b>As the trial shipped it</b><span>keyFringe 0.0373</span></div>
+      <div class="z dark"><img data-crop="trial"></div><div class="z light"><img data-crop="trial"></div>
+      <div class="r good"><b>Re-keyed, final keyer</b><span>keyFringe 0</span></div>
+      <div class="z dark good"><img data-crop="final"></div><div class="z light good"><img data-crop="final"></div>
+    </div>
+
+    <div class="side">
+      <div class="stat"><b class="hot">0.0373 → 0</b><span>keyFringe — share of the opaque edge<br>still blended with the plate</span></div>
+      <div class="stat"><b>0.0036 → 0</b><span>keyResidue — visible pixels<br>carrying the plate</span></div>
+      <div class="stat"><b>1 → 0</b><span>warnings from inspect on<br>the same 12 frames</span></div>
+      <div class="src"><div class="m"><img src="/art/kagari/walk-clip.png"></div><div class="plabel">video-seedance-1.mp4<small>plate #00f604</small></div></div>
+    </div>
+
+  </div>
+  <div class="caption">Same clip, same twelve timestamps. The trial had widened the key to 0.3 and the rim stayed; the new keyer clears it at the default.</div>
+  <div class="foot"><span>Kagari · walk · 12 frames sampled 1.083–2.417 s · before: the trial's delivered frames, measured by the final inspect</span><span>4× crops, nearest neighbour</span></div>
 </section>
 
 <script>
@@ -480,6 +553,120 @@
   const page = Array.from(document.querySelectorAll('[data-view]')).find(el => el.dataset.view === view);
   if (page) page.classList.add('active');
   document.title = `Sprite — ${view}`;
+  const jobs = [];
+
+  // 02 — head offset per frame, from the breathe run summary (perFrame[].headOffset).
+  const headOffsets = [-2, 1, 4, 5, 4, 3, 1, -1, -2, -4, -5, -4];
+  const bars = document.getElementById('head-bars');
+  headOffsets.forEach((v, i) => {
+    const d = document.createElement('div');
+    if (v === 5 || v === -5) d.className = 'x';
+    const bar = document.createElement('i');
+    const h = Math.abs(v) / 5 * 50; // % of half the chart
+    bar.style.height = Math.max(h, 1.5) + '%';
+    if (v < 0) bar.style.bottom = '50%'; else bar.style.top = '50%';
+    d.appendChild(bar);
+    const em = document.createElement('em'); em.textContent = String(i).padStart(2, '0');
+    d.appendChild(em);
+    bars.appendChild(d);
+  });
+  // Guides on the stage: hat top of frames 10 and 03, the feet line (inspect.json bboxes).
+  (function () {
+    const stage = document.getElementById('breathe-stage');
+    const s = 400 / 502;              // frames are 226 × 502, shown 180 × 400
+    const frameBottom = 438;          // inner height of the stage: the frames stand on its floor
+    const yOf = (py) => frameBottom - (502 - py) * s;
+    const add = (cls, py, text) => {
+      const g = document.createElement('div');
+      g.className = cls; g.style.top = yOf(py) + 'px';
+      if (text) { const t = document.createElement('small'); t.textContent = text; g.appendChild(t); }
+      stage.appendChild(g);
+    };
+    add('guide hi', 9, 'hat, frame 10 · y 9');
+    add('guide lo', 19, 'hat, frame 03 · y 19');
+    add('feet', 494, '');
+  })();
+
+  // 03 — the two zooms and the palette chips.
+  (function () {
+    // Both panels show the same 12 × 12 blocks of idle frame 00. The frame's
+    // block (bx, by) is the sheet cell's pixels from (93 + (bx - 12) * 11,
+    // 155 + (by - 13) * 11): registered by the least colour difference
+    // between the block centres of cells/00.png and the frame's pixels.
+    const bx = 20, by = 22, ls = 22, rs = 2;
+    const raw = document.getElementById('raw-zoom');
+    raw.style.width = 512 * rs + 'px'; raw.style.height = 512 * rs + 'px';
+    raw.style.left = -(93 + (bx - 12) * 11) * rs + 'px'; raw.style.top = -(155 + (by - 13) * 11) * rs + 'px';
+    const lat = document.getElementById('lat-zoom');
+    lat.style.width = 54 * ls + 'px'; lat.style.height = 48 * ls + 'px';
+    lat.style.left = -bx * ls + 'px'; lat.style.top = -by * ls + 'px';
+    const grid = document.createElement('div');
+    grid.style.cssText = `position:absolute;inset:0;background-image:linear-gradient(#00000047 1px,transparent 1px),linear-gradient(90deg,#00000047 1px,transparent 1px);background-size:${ls}px ${ls}px`;
+    document.getElementById('lat-box').appendChild(grid);
+    if (view === 'pixel') jobs.push(Promise.all([
+      fetch('/art/slime/palette.json').then(r => r.json()),
+      fetch('/art/slime/recolor.json').then(r => r.json()),
+    ]).then(([pal, rec]) => {
+      const mapped = new Set(Object.keys(rec.variants[0].map).map(h => h.toLowerCase()));
+      const chips = document.getElementById('chips');
+      pal.colors.forEach(hex => {
+        const i = document.createElement('i'); i.style.background = hex; i.title = hex;
+        if (!mapped.has(hex.toLowerCase())) i.className = 'keep';
+        chips.appendChild(i);
+      });
+    }));
+  })();
+
+  // 04 — the cut lines, in the sheet's own pixels (run summary slice.cuts).
+  (function () {
+    const svg = document.getElementById('cuts');
+    const ns = 'http://www.w3.org/2000/svg';
+    const line = (x1, y1, x2, y2, stroke, dash, w) => {
+      const l = document.createElementNS(ns, 'line');
+      Object.entries({ x1, y1, x2, y2, stroke, 'stroke-width': w }).forEach(([k, v]) => l.setAttribute(k, v));
+      if (dash) l.setAttribute('stroke-dasharray', dash);
+      svg.appendChild(l);
+    };
+    const rect = (x, y, w, h) => {
+      const r = document.createElementNS(ns, 'rect');
+      Object.entries({ x, y, width: w, height: h, fill: '#ef444418', stroke: 'none' }).forEach(([k, v]) => r.setAttribute(k, v));
+      svg.appendChild(r);
+    };
+    [0, 1, 2, 3, 6, 7, 8].forEach(c => rect((c % 4) * 512, Math.floor(c / 4) * 512, 512, 512));
+    for (const g of [512, 1024, 1536]) { line(g, 0, g, 2048, '#ef4444', '28 22', 9); line(0, g, 2048, g, '#ef4444', '28 22', 9); }
+    const rows = [0, 551, 1038, 1536, 2048];
+    const cols = [[476, 962, 1444], [493, 1002, 1482], [538, 997, 1487], [494, 972, 1459]];
+    for (const y of rows.slice(1, 4)) line(0, y, 2048, y, '#f97316', null, 11);
+    cols.forEach((cs, r) => cs.forEach(x => line(x, rows[r], x, rows[r + 1], '#f97316', null, 11)));
+  })();
+
+  // 05 — the 4x crops: the same region of frame 03, trial vs re-keyed.
+  (function () {
+    // The visible window starts at (X, Y) of the trial's frame 03; the re-keyed
+    // frame 03 sits 1 px left and 1 px lower (their alpha boxes: 17,10 vs 16,11).
+    const S = 4, X = 34, Y = 126;
+    const off = { trial: [0, 0], final: [-1, 1] };
+    let winW = 0, winH = 0;
+    document.querySelectorAll('.edges .z img').forEach(img => {
+      const k = img.dataset.crop;
+      img.src = k === 'trial' ? '/art/kagari/walk-trial/03.png' : '/art/kagari/walk/03.png';
+      const [dx, dy] = off[k];
+      const box = img.parentElement.getBoundingClientRect();
+      winW = (box.width - 2) / S; winH = (box.height - 2) / S;
+      img.style.width = 332 * S + 'px';
+      img.style.left = -(X + dx) * S + 'px';
+      img.style.top = -(Y + dy) * S + 'px';
+    });
+    // The same window on the full figure (the re-keyed frame, 332 × 512 shown 272 × 419).
+    const figS = 272 / 332, fx = (298 - 272) / 2, fyTop = 460 - 12 - 419;
+    const bx = document.getElementById('edge-box');
+    bx.style.left = fx + (X - 1) * figS + 'px';
+    bx.style.top = fyTop + (Y + 1) * figS + 'px';
+    bx.style.width = winW * figS + 'px'; bx.style.height = winH * figS + 'px';
+  })();
+
+  Promise.all([document.fonts.ready, ...jobs, ...Array.from(document.images).map(i => i.decode().catch(() => {}))])
+    .then(() => { document.body.dataset.ready = '1'; });
 </script>
 </body>
 </html>
