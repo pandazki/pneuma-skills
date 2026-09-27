@@ -12,7 +12,11 @@
  *    (measured on source-resolution cells against lattice-resolution frames),
  *    T5's lattice report, and S's palette pinning through `register-run`;
  *  - `from-video` with T1's default un-mixing keyer, T4's `--x-from trend`
- *    and `--body-height` together.
+ *    and `--body-height` together;
+ *  - T8's `mirror` over a `run --pixel` motion (T5's lattice, S's pinned
+ *    palette, T2's own-pack anchor) and over T10's one-command breathe
+ *    (68fd3b6c's breathe record), and T10's `fit` / `breathe --name` on a
+ *    character declared pixel art.
  *
  * Every fixture is drawn at test time; the file skips with a named reason
  * when ffmpeg is missing.
@@ -20,7 +24,7 @@
 
 import { afterAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
@@ -111,25 +115,25 @@ describe.skipIf(!HAS_FFMPEG)("breathe x align / inspect", () => {
   }, SLOW);
 });
 
-describe.skipIf(!HAS_FFMPEG)("run --pixel x anchor, head band, palette pinning", () => {
-  const ART = logicalArt(20, 28, 11);
-  const PITCHES = [13.1, 13.3, 12.9, 13.2];
-  /** A 2x2 sheet with alpha; the sprite sits at a different x in each cell
-   *  (0, 2, 4 and 1 blocks right), the placement `--x-from cell` keeps. */
-  function pixelSheet(path: string) {
-    const img = blank(840, 840);
-    PITCHES.forEach((p, i) => {
-      const cell = blank(420, 420);
-      const sprite = upscaledFractional(ART, p);
-      const x = 27 + Math.round([0, 2, 4, 1][i] * p);
-      paste(cell, sprite, x, 21);
-      for (let k = x; k < x + sprite.width; k++) setPixel(cell, k, 21 + sprite.height, [40, 40, 40, 100]);
-      paste(img, cell, (i % 2) * 420, Math.floor(i / 2) * 420);
-    });
-    writePng(path, img);
-    return path;
-  }
+const ART = logicalArt(20, 28, 11);
+const PITCHES = [13.1, 13.3, 12.9, 13.2];
+/** A 2x2 pixel-art sheet with alpha; the sprite sits at a different x in each
+ *  cell (0, 2, 4 and 1 blocks right), the placement `--x-from cell` keeps. */
+function pixelSheet(path: string) {
+  const img = blank(840, 840);
+  PITCHES.forEach((p, i) => {
+    const cell = blank(420, 420);
+    const sprite = upscaledFractional(ART, p);
+    const x = 27 + Math.round([0, 2, 4, 1][i] * p);
+    paste(cell, sprite, x, 21);
+    for (let k = x; k < x + sprite.width; k++) setPixel(cell, k, 21 + sprite.height, [40, 40, 40, 100]);
+    paste(img, cell, (i % 2) * 420, Math.floor(i / 2) * 420);
+  });
+  writePng(path, img);
+  return path;
+}
 
+describe.skipIf(!HAS_FFMPEG)("run --pixel x anchor, head band, palette pinning", () => {
   test("the atlas carries anchor, and the source head sway is said in frame pixels", () => {
     const ws = fresh();
     const src = pixelSheet(join(ws, "sheet.png"));
@@ -244,4 +248,88 @@ describe.skipIf(!HAS_FFMPEG)("from-video: un-mixing keyer x --x-from trend x --b
     const cutReport = JSON.parse(readFileSync(join(ws, "cut", "inspect.json"), "utf-8"));
     expect(Math.abs(cutReport.frames[0].bbox.h - 60)).toBeLessThanOrEqual(2);
   }, 2 * SLOW);
+});
+
+describe.skipIf(!HAS_FFMPEG)("mirror x pixel lattice, breathe --name, palette pinning", () => {
+  const doc = (dir: string) => JSON.parse(readFileSync(join(dir, "project.json"), "utf-8"));
+  const readJson = (path: string) => JSON.parse(readFileSync(path, "utf-8"));
+
+  test("a pixel-art side view mirrors onto its own lattice, keeps the pinned palette, and packs its own anchor", () => {
+    const ws = fresh();
+    const src = pixelSheet(join(ws, "sheet.png"));
+    const dir = join(ws, "knight");
+    projectJson(dir, "init", "--name", "Knight", "--purpose", "game", "--pixel", "28", "--facing", "right");
+    projectJson(dir, "add-motion", "--id", "walk-right", "--rows", "2", "--cols", "2", "--fps", "8", "--loop", "--direction", "right");
+    const walk = sheet("run", src, "--rows", "2", "--cols", "2", "--out", join(dir, "motions", "walk-right"), "--name", "walk-right",
+      "--fps", "8", "--loop", "--pixel", "--no-webp");
+    expect(registerRun(dir, "walk-right", walk).code).toBe(0);
+    const pinned = doc(dir);
+    const palette = pinned.assets.find((a: { id: string }) => a.id === "knight-palette");
+    expect(palette.uri).toBe("motions/walk-right/palette.json");
+
+    projectJson(dir, "add-motion", "--id", "walk-left", "--rows", "2", "--cols", "2", "--fps", "8", "--loop",
+      "--source", "mirror", "--direction", "left");
+    const mirrored = sheet("mirror", join(dir, "motions", "walk-right"), "--name", "walk-left");
+    // The lattice the source was snapped to travels with the flip, and the
+    // flipped frames hold it: binary alpha, blocks on the grid, every colour
+    // in the pinned palette.
+    const record = readJson(join(dir, "motions", "walk-left", "frames", "align.json"));
+    expect(record.pixel).toEqual(readJson(join(dir, "motions", "walk-right", "frames", "align.json")).pixel);
+    expect(record.pixel.palette).toBe(join(dir, "motions", "walk-right", "palette.json"));
+    expect(mirrored.inspect.pixel).toMatchObject({ held: true, scale: walk.inspect.pixel.scale });
+    // The anchor comes from the mirror's own pack: the source's point at
+    // width − x, and every frame's `anchor` is its own pivot.
+    const right = readJson(join(dir, "motions", "walk-right", "atlas.json"));
+    const left = readJson(join(dir, "motions", "walk-left", "atlas.json"));
+    expect(left.meta.anchorPoint).toEqual({ x: mirrored.cell.width - right.meta.anchorPoint.x, y: right.meta.anchorPoint.y });
+    for (const frame of Object.values(left.frames) as Array<{ anchor: unknown; pivot: unknown }>) {
+      expect(frame.anchor).toEqual(frame.pivot);
+    }
+    // A flip adds no colour: the mirror registers and the pin is untouched.
+    expect(registerRun(dir, "walk-left", mirrored).code).toBe(0);
+    const after = doc(dir);
+    expect(after.sprite.character.pixel).toEqual(pinned.sprite.character.pixel);
+    expect(after.assets.find((a: { id: string }) => a.id === "knight-palette")).toEqual(palette);
+  }, SLOW);
+
+  test("a breathe made in one command keeps its planned holds out of the warnings, and so does its mirror", () => {
+    const ws = fresh();
+    const dir = join(ws, "lumi");
+    projectJson(dir, "init", "--name", "Lumi", "--style", "Clean anime-chibi line art, flat colors", "--facing", "right");
+    mkdirSync(join(dir, "refs"), { recursive: true });
+    copyFileSync(LUMI_IDLE_00, join(dir, "refs", "still.png"));
+    projectJson(dir, "add-ref", "--id", "still", "--file", "refs/still.png", "--role", "custom", "--uploaded");
+    projectJson(dir, "add-motion", "--id", "idle-right", "--fps", "8", "--source", "breathe", "--direction", "right");
+    const breathed = sheet("breathe", join(dir, "refs", "still.png"), "--out", join(dir, "motions", "idle-right"),
+      "--name", "idle-right", "--frames", "16", "--depth", "0.02", "--no-webp");
+    // The one-command form bakes into cells/, and its record lands there.
+    expect(breathed.breatheRecord).toBe(join(dir, "motions", "idle-right", "cells", "breathe.json"));
+    expect(breathed.inspect.nearDuplicates.length).toBeGreaterThan(0);
+    expect(breathed.inspect.warnings.some((w: string) => w.startsWith("near-duplicate frames"))).toBe(false);
+    expect(registerRun(dir, "idle-right", breathed).code).toBe(0);
+
+    projectJson(dir, "add-motion", "--id", "idle-left", "--rows", "4", "--cols", "4", "--fps", "8", "--loop",
+      "--source", "mirror", "--direction", "left");
+    const mirrored = sheet("mirror", join(dir, "motions", "idle-right"), "--name", "idle-left");
+    expect(existsSync(join(dir, "motions", "idle-left", "cells", "breathe.json"))).toBe(true);
+    expect(mirrored.inspect.nearDuplicates.length).toBeGreaterThan(0);
+    expect(mirrored.inspect.warnings.some((w: string) => w.startsWith("near-duplicate frames"))).toBe(false);
+    expect(registerRun(dir, "idle-left", mirrored).code).toBe(0);
+    expect(doc(dir).sprite.motions.find((m: { id: string }) => m.id === "idle-left"))
+      .toMatchObject({ source: "mirror", mirrorOf: "idle-right", direction: "left", status: "ready" });
+  }, SLOW);
+
+  test("fit and breathe --name on a character declared pixel art keep whole pixels", () => {
+    const ws = fresh();
+    const dir = join(ws, "plush");
+    projectJson(dir, "init", "--name", "Plush", "--style", "soft plush render", "--pixel", "28");
+    const fitted = sheet("fit", LUMI_IDLE_00, "--out", join(dir, "refs", "still.png"), "--max", "100");
+    // Trimmed, never resampled, and said so.
+    expect(fitted).toMatchObject({ pixelArt: true, scale: 1 });
+    expect(fitted.notes.join("\n")).toMatch(/character\.pixel says pixel art, which is never resampled/);
+    const breathed = sheet("breathe", join(dir, "refs", "still.png"), "--out", join(dir, "motions", "idle"),
+      "--name", "idle", "--frames", "8", "--no-webp");
+    expect({ mode: breathed.mode, modeFrom: breathed.modeFrom, recorded: breathed.breathe.mode })
+      .toEqual({ mode: "pixel", modeFrom: "character.pixel", recorded: "pixel" });
+  }, SLOW);
 });

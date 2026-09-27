@@ -2998,6 +2998,16 @@ function main() {
       } else {
         delete motion.mirrorOf;
       }
+      // A prompt `sheet-prompt` built is the sheet this motion was going to be
+      // drawn from. A breathe or a mirror is drawn from no prompt, so the
+      // code-built text goes with the parts that built it — the agent's
+      // context would otherwise carry a sheet prompt for frames no sheet
+      // made. A prompt written by hand (no parts) stays: it is the agent's
+      // words, not a record of how the frames were made.
+      if ((breatheRun || mirrorRun) && motion.promptParts) {
+        delete motion.promptParts;
+        motion.prompt = "";
+      }
       // A fresh measurement is not the one that was acknowledged, so the
       // acknowledgement goes with the numbers it covered.
       const summary = inspectSummary(run.inspect);

@@ -929,6 +929,25 @@ describe("mirror.mjs", () => {
     expect(mirrorAnchorRecord({ record, atlas, cell, anchor: "center", mirrorOf: "w" })).toBeNull();
   });
 
+  test("the pixel lattice travels with frames of the same size; the source's drift does not", () => {
+    const atlas = { meta: { anchor: "bottom", scale: 1, anchorPoint: { x: 20, y: 56 } } };
+    const cell = { width: 64, height: 64 };
+    const pixel = { scale: 4, pitch: { x: 13.1, y: 13.1 }, palette: "/c/motions/walk/palette.json", outline: null };
+    const drift = { mode: "trend", driftPx: -12.5 };
+    const record = { anchor: "bottom", cell, pad: 8, smooth: false, xFrom: "trend", anchorPoint: { x: 20, y: 56 }, drift, pixel };
+    const same = mirrorAnchorRecord({ record, atlas, cell, anchor: "bottom", mirrorOf: "walk-right" })!;
+    expect(same.pixel).toEqual(pixel);
+    expect("drift" in same).toBe(false);
+    expect(same).toMatchObject({ pad: 8, xFrom: "trend", anchorPoint: { x: 44, y: 56 } });
+    // Another point, the same frames: the lattice still describes them.
+    const moved = mirrorAnchorRecord({ record: { ...record, anchorPoint: { x: 32, y: 56 } }, atlas, cell, anchor: "bottom", mirrorOf: "w" })!;
+    expect(moved).toMatchObject({ from: "atlas", pixel });
+    expect("pad" in moved).toBe(false);
+    // Frames of another size are not the frames that lattice was checked on.
+    const other = mirrorAnchorRecord({ record: { ...record, cell: { width: 60, height: 64 } }, atlas, cell, anchor: "bottom", mirrorOf: "w" })!;
+    expect("pixel" in other).toBe(false);
+  });
+
   test("the mirror is packed the way the source's atlas was", () => {
     const atlas = {
       meta: { anchor: "center", scale: 0.5, size: { w: 96, h: 64 } },

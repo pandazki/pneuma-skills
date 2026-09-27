@@ -5268,6 +5268,21 @@ function stepMirror(sourceDir, options) {
     flipImages(listFrames(sourceCells).map((entry) => entry.path), cellsDir, 2, label);
     cells = cellsDir;
   }
+  // What made the source's cells travels with their flip, as `clean` carries
+  // it: the grid they were sliced from (so `inspect` tells a row boundary
+  // from an ordinary step) and a breathe's record (so the whole-pixel head's
+  // planned holds are not read as a model repeating a drawing). A flip
+  // changes neither. Without flipped cells, a breathe's record goes beside
+  // the frames, where `inspect` also looks.
+  const carry = (fromDir, toDir, names) => {
+    for (const name of names) {
+      const path = join(fromDir, name);
+      if (existsSync(path)) copyFileSync(path, join(toDir, name));
+    }
+  };
+  if (cells) carry(sourceCells, cellsDir, [SLICE_RECORD, BREATHE_RECORD]);
+  else carry(sourceCells, framesDir, [BREATHE_RECORD]);
+  carry(frames.dir, framesDir, [BREATHE_RECORD]);
 
   const packed = stepPack(framesDir, {
     out: join(motionDir, "sheet.png"),

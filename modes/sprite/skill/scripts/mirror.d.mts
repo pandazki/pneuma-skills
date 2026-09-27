@@ -28,6 +28,13 @@ export interface MirrorAnchorRecord {
   mirrorOf: string;
   /** "atlas" when the point came from the source's atlas alone. */
   from?: "atlas";
+  /** Lent by the source's record when it describes the same point. */
+  pad?: unknown;
+  smooth?: unknown;
+  xFrom?: unknown;
+  /** The source's pixel lattice, lent whenever its record describes frames
+   *  of this size. */
+  pixel?: Record<string, unknown>;
   [field: string]: unknown;
 }
 

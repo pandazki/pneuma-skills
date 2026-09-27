@@ -671,7 +671,11 @@ drops any parts on file. `guards` lists only the conditional clauses
 (`pixel:<h>`, `guide`, `direction:<d>`, `anchor:<d>`, `asymmetric`,
 `state:<s>`, `row-continuity`, `loop-close` / `one-shot-end`); what every
 sheet prompt says is pinned by the builder version. With the same character
-and grid, the same parts render the same text.
+and grid, the same parts render the same text. Parts describe a sheet:
+`sheet-prompt` refuses a breathe or a mirror motion, a breathe or mirror run
+landing on a motion that had a built prompt drops the parts and the text
+they built (a prompt written by hand stays), and the viewer ignores parts
+beside `source: "breathe"` or `"mirror"`.
 
 **Pixel art.** `character.pixel` is the one authority for "this is pixel
 art": `riveIsPixelArt` (`rive-plan.mjs`) reads it first and falls back to the

@@ -165,7 +165,10 @@ describe("sheet-prompt.mjs — the builder", () => {
     expect(built.prompt).toContain("Every cell is a pure side profile facing camera-left; lock the whole sheet to that facing");
     expect(built.prompt).toContain("The attached left-facing anchor is authoritative for that facing");
     expect(built.prompt).not.toContain("The character faces right.");
-    expect(built.attach).toEqual(["turnaround", "anchor-left", "portrait"]);
+    // The direction's anchor goes first, whatever order the refs were
+    // registered in — the recipe E7 measured (prompting.md, Direction
+    // anchors); anchors facing elsewhere stay home.
+    expect(built.attach).toEqual(["anchor-left", "turnaround", "portrait"]);
     // No anchor facing that way: the lock stays, the anchor clause does not.
     const front = buildSheetPrompt({ character: BLOB, motion: { ...walkLeft, id: "walk-front", direction: "front" }, refs, action: ACTION });
     expect(front.parts.guards).toEqual(["direction:front", "state:walk", "row-continuity", "loop-close"]);
@@ -359,7 +362,7 @@ describe("sprite-project.mjs sheet-prompt", () => {
     expect(r.code).toBe(0);
     const out = JSON.parse(r.out);
     expect(out.promptParts.guards).toEqual(["direction:left", "anchor:left", "state:walk", "row-continuity", "loop-close"]);
-    expect(out.attach).toEqual([join(dir, "refs/turnaround.png"), join(dir, "refs/anchor-left.png")]);
+    expect(out.attach).toEqual([join(dir, "refs/anchor-left.png"), join(dir, "refs/turnaround.png")]);
   });
 });
 

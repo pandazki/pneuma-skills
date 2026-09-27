@@ -76,7 +76,10 @@ guide's geometry when one was used) and prints it. Without `--json` stdout is
 the prompt alone, so `PROMPT="$(node … sheet-prompt …)"` feeds
 `generate_image.mjs "$PROMPT"` directly; the image size, the references to
 attach (in order) and the guide call go to stderr. With `--json` they are
-`imageSize`, `attach`, `guide` and `notes`.
+`imageSize`, `attach`, `guide` and `notes`. The order is the one *Direction
+anchors* below was measured with: the anchor for the motion's direction
+first, then every other reference in the order it was registered (anchors
+facing elsewhere are left out), the layout guide last.
 
 **You write the action**: the view if it matters ("three-quarter view"), the
 phases by cell, what leads and follows, the one secondary motion, the blink,
@@ -637,8 +640,9 @@ prompt re-tells the sentence for its own view: from behind, her left hip is on
 the left of the picture; facing left, the hairpin is on the far side and
 hidden.
 
-**What a directional sheet attaches, in order:** its direction's anchor
-first, then the turnaround and the portrait; for the generated second side
+**What a directional sheet attaches, in order** (`sheet-prompt`'s `attach`
+lists it so): its direction's anchor first, then the turnaround and the
+portrait; for the generated second side
 of an asymmetric character, the first side's sheet of the same motion last.
 Never another motion's sheet. The prompt says what the first image is and
 names the facing for every cell:

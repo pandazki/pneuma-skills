@@ -396,10 +396,14 @@ export function buildSheetPrompt({ character, motion, refs = [], action, state, 
     } : {}),
   };
   const prompt = renderSheetPrompt({ character, motion }, parts);
-  // What the text says is attached, in the order it says it: every
-  // reference except anchors facing another way, then the guide last.
-  const attach = refs
-    .filter((r) => r.role !== "anchor" || r === anchorRef)
-    .map((r) => r.id);
+  // What the text says is attached, in the order the direction-anchor
+  // recipe was measured with (prompting.md, "Direction anchors", E7): the
+  // anchor for this direction first, then every other reference in the
+  // order it was registered — anchors facing another way left out — and the
+  // guide last. The order is not in the text, so it is not in the parts.
+  const attach = [
+    ...(anchorRef ? [anchorRef.id] : []),
+    ...refs.filter((r) => r.role !== "anchor").map((r) => r.id),
+  ];
   return { prompt, parts, state: chosen, geometry, attach };
 }

@@ -989,6 +989,17 @@ describe("0.5.0 sidecar additions", () => {
       .toEqual(unguided);
   });
 
+  test("prompt parts describe a sheet: a breathe or a mirror carries none, a declared video keeps them", () => {
+    for (const source of ["breathe", "mirror"]) {
+      expect("promptParts" in motion0((m) => { m.source = source; m.promptParts = PARTS; })).toBe(false);
+    }
+    // sheet-prompt is allowed on a motion declared video (the sheet's run
+    // corrects the source), so the parts stay until that run lands.
+    for (const source of ["sheet", "video", undefined]) {
+      expect(motion0((m) => { m.source = source; m.promptParts = PARTS; }).promptParts).toEqual(PARTS);
+    }
+  });
+
   test("character.pixel decides pixel art first; the style sentence only for a character without it", () => {
     const character = (edit: (c: any) => void) => parsed((b) => edit(b.sprite.character)).sprite.character;
     // Declared pixel art, whatever the style sentence says.

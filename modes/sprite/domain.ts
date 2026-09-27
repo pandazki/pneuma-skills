@@ -1041,7 +1041,12 @@ function parseMotion(value: unknown): Motion | null {
   const mirrorOf = source === "mirror" ? optionalStr(value.mirrorOf) : undefined;
   const breathe = source === "breathe" ? parseBreathe(value.breathe) : undefined;
   const direction = member(DIRECTIONS, value.direction);
-  const promptParts = parsePromptParts(value.promptParts);
+  // Prompt parts record how a SHEET prompt was built; a breathe or a mirror
+  // is drawn from no prompt (`register-run` drops them when one lands), so
+  // parts beside one describe frames this motion does not have.
+  const promptParts = source === "breathe" || source === "mirror"
+    ? undefined
+    : parsePromptParts(value.promptParts);
   return {
     id,
     label: str(value.label, id),

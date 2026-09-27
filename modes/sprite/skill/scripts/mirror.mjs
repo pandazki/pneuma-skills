@@ -74,9 +74,16 @@ export function asymmetry(character) {
  * `meta.anchorPoint` (divided by `meta.scale`) is the point the source ships
  * with, and it survives where the record does not (the Lumi seed carries its
  * atlases without frames/align.json). The source's own `align.json` (`record`,
- * raw or null) only lends the fields `pack` does not read — pad, smooth,
- * xFrom — when it describes the same point, cell and anchor. An atlas without
- * `anchorPoint` declared the anchor's default, and so does the mirror: null.
+ * raw or null) lends the fields `pack` does not read — pad, smooth, xFrom —
+ * when it describes the same point, cell and anchor, and its pixel lattice
+ * (`pixel`: scale, pitch, palette) whenever it describes frames of this
+ * size: `inspect` checks the mirror against the lattice the source was
+ * snapped to, and a flip about a cell a whole number of blocks wide (which
+ * `align` makes it) keeps every block on that grid and every colour in that
+ * palette. Its `drift` record is not lent: it is a signed measurement of the
+ * source's clip, taken by an alignment the mirror did not run. An atlas
+ * without `anchorPoint` declared the anchor's default, and so does the
+ * mirror: null.
  */
 export function mirrorAnchorRecord({ record, atlas, cell, anchor, mirrorOf }) {
   const finite = (v) => typeof v === "number" && Number.isFinite(v);
@@ -86,11 +93,15 @@ export function mirrorAnchorRecord({ record, atlas, cell, anchor, mirrorOf }) {
   const scale = finite(meta.scale) && meta.scale > 0 ? meta.scale : 1;
   const x = point.x / scale;
   const y = point.y / scale;
-  const same = record && record.anchor === anchor
-    && record.cell?.width === cell.width && record.cell?.height === cell.height
+  const sameCell = Boolean(record) && record.cell?.width === cell.width && record.cell?.height === cell.height;
+  const same = sameCell && record.anchor === anchor
     && Math.abs(record.anchorPoint?.x - x) < 1e-6 && Math.abs(record.anchorPoint?.y - y) < 1e-6;
+  const lent = {};
+  if (same) for (const key of ["pad", "smooth", "xFrom"]) if (record[key] !== undefined) lent[key] = record[key];
+  if (sameCell && record.pixel && typeof record.pixel === "object") lent.pixel = record.pixel;
   return {
-    ...(same ? record : { from: "atlas" }),
+    ...(same ? {} : { from: "atlas" }),
+    ...lent,
     anchor,
     cell: { width: cell.width, height: cell.height },
     anchorPoint: { x: cell.width - x, y },

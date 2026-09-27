@@ -2875,6 +2875,22 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
           .toMatchObject({ direction: "left", source: "mirror", mirrorOf: "bounce" });
       });
 
+      test("a mirror drops a prompt sheet-prompt built for the motion, and keeps one written by hand", () => {
+        const dir = readyBounce();
+        const parts = JSON.stringify({ builder: "sheet-prompt/1", action: "bounce", guards: ["state:generic", "loop-close"] });
+        projectJson(dir, "add-motion", "--id", "bounce-left", "--rows", "2", "--cols", "2", "--fps", "8");
+        projectJson(dir, "set-motion", "--motion", "bounce-left", "--prompt", "A built sheet prompt.", "--prompt-parts", parts);
+        const built = JSON.parse(register(dir, "bounce-left", mirrorRun(dir, "bounce-left")).out);
+        // No sheet was drawn from it: the text and the parts that built it go.
+        expect(built.prompt).toBe("");
+        expect("promptParts" in built).toBe(false);
+        expect(readProject(dir).sprite.motions.find((m: any) => m.id === "bounce-left").promptParts).toBeUndefined();
+
+        projectJson(dir, "add-motion", "--id", "hand", "--rows", "2", "--cols", "2", "--fps", "8", "--prompt", "Flip of the bounce.");
+        const hand = JSON.parse(register(dir, "hand", mirrorRun(dir, "hand")).out);
+        expect(hand.prompt).toBe("Flip of the bounce.");
+      });
+
       test("a mirror is refused on a source it cannot flip", () => {
         const dir = readyBounce();
         projectJson(dir, "add-motion", "--id", "m", "--rows", "2", "--cols", "2", "--fps", "8");

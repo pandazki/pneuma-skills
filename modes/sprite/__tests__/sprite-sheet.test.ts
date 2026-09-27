@@ -4524,6 +4524,40 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(planned.decodeBytes).toBe(json.estimatedDecodeBytes);
     }, TIMEOUT_MS);
 
+    test("a whole-character Aseprite export ships a mirror as a motion of its own: its frames, its anchor", () => {
+      const dir = useMirrorable();
+      // walk-right's anchor off the centre line, so the flip has something to move.
+      const frames = join(dir, "motions", "walk-right", "frames");
+      const record = JSON.parse(readFileSync(join(frames, "align.json"), "utf-8"));
+      const { width } = record.cell;
+      writeFileSync(join(frames, "align.json"), JSON.stringify({ ...record, anchorPoint: { x: 20, y: record.anchorPoint.y } }));
+      runJson("pack", frames, "--out", join(dir, "motions", "walk-right", "sheet.png"),
+        "--atlas", join(dir, "motions", "walk-right", "atlas.json"), "--name", "walk-right", "--fps", "8", "--loop");
+      projectCmd(dir, "register-run", "--motion", "walk-left", "--run", runFile(dir, mirror(dir)), "--at", "2000");
+
+      const json = runJson("export", dir, "--format", "aseprite");
+      expect(json.motions.map((m: any) => m.id)).toEqual(["walk-right", "walk-left"]);
+      expect(json.excluded).toEqual([]);
+      // Hung off every frame on the sheet — the mirror's own included.
+      expect(json.frames).toEqual([
+        ...[0, 1, 2, 3].map((i) => join(dir, "motions", "walk-right", "frames", `0${i}.png`)),
+        ...[0, 1, 2, 3].map((i) => join(dir, "motions", "walk-left", "frames", `0${i}.png`)),
+      ]);
+      const entries = readZip(readFileSync(json.out));
+      const doc = JSON.parse(entries.find((e) => e.name.endsWith(".json"))!.data.toString("utf8"));
+      expect(doc.meta.frameTags.map((t: any) => [t.name, t.from, t.to])).toEqual([["walk-right", 0, 3], ["walk-left", 4, 7]]);
+      for (let i = 0; i < 4; i++) {
+        const right = doc.frames[String(i)];
+        const left = doc.frames[String(4 + i)];
+        // Each tag stands on its own atlas's pivot: the mirror's is width − x.
+        expect(right.anchor.x).toBeCloseTo(20 / width, 4);
+        expect(left.anchor.x).toBeCloseTo((width - 20) / width, 4);
+        expect(left.anchor.y).toBeCloseTo(right.anchor.y, 4);
+        // Its own frames, on its own sheet stacked below the source's.
+        expect(left.frame.y).toBeGreaterThanOrEqual(right.frame.y + right.frame.h);
+      }
+    }, TIMEOUT_MS);
+
     test("rive reads character.pixel before the style sentence", () => {
       const dir = useMirrorable();
       projectCmd(dir, "set-character", "--style", "Soft painted storybook look", "--pixel", "32");

@@ -1291,8 +1291,13 @@ node {SKILL_PATH}/scripts/sprite-sheet.mjs mirror <character>/motions/walk-right
 - **The anchor lands at `cell.width − x`**, y unchanged — in the frames'
   `align.json` (which also names `mirrorOf`) and so in the atlas pivot and
   `meta.anchorPoint`. The point is taken from the source's **atlas**, the
-  authority every export reads; its `align.json` only lends `pad`, `smooth`
-  and `xFrom` when it describes the same point. A source whose record is
+  authority every export reads; its `align.json` lends `pad`, `smooth`
+  and `xFrom` when it describes the same point, and its pixel lattice
+  (`pixel`: scale, pitch, palette) whenever it describes frames of the same
+  size — a flip about a cell a whole number of blocks wide keeps every block
+  on the grid, so `inspect` checks the mirror against the source's lattice
+  and palette (`inspect.pixel.held`). Its `drift` record is not lent: a
+  signed measurement of the source's clip, which the mirror did not take. A source whose record is
   gone still flips its measured point (`"from": "atlas"`): the Lumi seed
   ships atlases without `frames/align.json`, and before this the mirror
   fell back to the `{0.5, 1}` default where idle ships `{0.5, 0.9683}`.
@@ -1300,7 +1305,10 @@ node {SKILL_PATH}/scripts/sprite-sheet.mjs mirror <character>/motions/walk-right
   on both sides; anything anchored off-centre keeps its true point.
 - **Cells:** when `<of>` kept its pre-align cells (`run`, `from-video`),
   they are flipped into `<id>/cells/` too, so `inspect` judges clipping on
-  them and `inspect <id>` reproduces the report. A flip keeps every
+  them and `inspect <id>` reproduces the report. What made those cells goes
+  with them: `slice.json` (the grid, so a row boundary is told from a step)
+  and a breathe's `breathe.json` (so a mirrored breathe's planned holds are
+  listed but not called a drawing the model repeated). A flip keeps every
   measurement: drift, jump, scale drift and clipping read the same as the
   source's. A `cells/` left in `--out` by an earlier run of `<id>` goes.
 - **Refused, before anything is written:** `<of>` not ready, a loop, a
