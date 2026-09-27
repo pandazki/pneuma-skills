@@ -953,6 +953,18 @@ describe("0.5.0 sidecar additions", () => {
     }).breathe).toEqual({ still: "ref-portrait", depth: 0.02, breaths: 1, lag: 0.15, mode: "smooth" });
   });
 
+  test("a manual torso band travels with the anatomy; a malformed one goes on its own", () => {
+    const withTorso: BreatheRecord = { ...BREATHE, anatomy: { rigidRow: 41, axisX: 32, from: "override", torsoHalf: 18 } };
+    expect(motion0((m) => { m.source = "breathe"; m.breathe = withTorso; }).breathe).toEqual(withTorso);
+    for (const bad of [0, -3, "wide", null]) {
+      const anatomy = motion0((m) => {
+        m.source = "breathe";
+        m.breathe = { ...BREATHE, anatomy: { rigidRow: 41, axisX: 32, from: "override", torsoHalf: bad } };
+      }).breathe?.anatomy;
+      expect({ bad, anatomy }).toEqual({ bad, anatomy: { rigidRow: 41, axisX: 32, from: "override" } });
+    }
+  });
+
   test("mirrorOf travels only with source mirror", () => {
     const mirror = motion0((m) => { m.source = "mirror"; m.mirrorOf = "walk-right"; m.direction = "left"; });
     expect(mirror).toMatchObject({ source: "mirror", mirrorOf: "walk-right", direction: "left" });

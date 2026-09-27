@@ -12,7 +12,7 @@
  * maths in JS; every image is written by an ffmpeg filter chain.
  *
  * Subcommands: probe, key, flatten, slice, align, pack, gif, inspect, run,
- * contact, from-video, retime, loop, export, rive, breathe, pixel, mirror.
+ * contact, from-video, retime, loop, export, rive, fit, breathe, pixel, mirror.
  *
  * `pixel` (and `run --pixel`) snaps generated pixel art onto the pixel grid
  * it was drawn on; the lattice itself lives in `pixel-lattice.mjs`.
@@ -52,6 +52,7 @@ import { zipStore } from "./zip.mjs";
 import {
   BREATHE_MODES, BreatheError, DEFAULT_BREATHE_DEPTH, DEFAULT_LAG, FRAMES_PER_BREATH, bakeBreathe, hasAppendage,
 } from "./breathe.mjs";
+import { DEFAULT_FIT_MAX, DEFAULT_FIT_PAD, StillError, cropRgba, fitStill, padRgba } from "./still.mjs";
 import {
   GAIT_FLOORS, SEAM_FLOOR, SEAM_STEP_LIMIT, adjacentSteps, detectCycle, detectOneShots, distanceMatrix,
   frameDistance, frameMass, premultiplied, seamLimit, thumbSize,
@@ -72,6 +73,9 @@ import { MIRRORED, asymmetry, atlasLayout, mirrorAnchorRecord, mirrorRefusal } f
 
 const DEFAULT_THRESHOLD = 16;
 const DEFAULT_PAD = 8;
+/** The rate a breathe plays at: FRAMES_PER_BREATH (12) frames make one 1.5 s
+ *  breath at 8 fps — upstream's tempo, measured on Lumi (T6). */
+const BREATHE_FPS = 8;
 const DEFAULT_SIMILARITY = 0.12;
 const DEFAULT_BLEND = 0.05;
 const CORNER_PATCH = 8;
@@ -332,7 +336,7 @@ const SUBCOMMANDS = [
   "guide",
   "probe", "key", "flatten", "slice", "clean", "align", "pack", "gif",
   "inspect", "run", "contact", "from-video", "retime", "loop", "transition", "lineup", "export", "rive",
-  "breathe", "pixel",
+  "fit", "breathe", "pixel",
   "mirror",
 ];
 
@@ -793,8 +797,23 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       ffmpeg without libwebp, the frames go in as PNG and the report warns; a
       WebP format asked for by name on such an ffmpeg is refused.
 
+  fit <image> --out <png> [--max ${DEFAULT_FIT_MAX}] [--pad ${DEFAULT_FIT_PAD}] [--threshold ${DEFAULT_THRESHOLD}]
+      The still a breathe is made from, at the size it plays: a cut-out
+      (transparent background) trimmed to the character plus --pad px, with
+      the character's larger side brought down to --max px (area-averaged in
+      premultiplied alpha, so the removed background cannot bleed into the
+      edge). Never enlarges. Specks the background remover left clear of the
+      body are dropped first, as 'run' cleans a cell. Pixel art (the nearest
+      character's pixel spec or style, as 'breathe' reads it) is trimmed only,
+      never resampled. An image with no transparent background is refused —
+      cut it out first. --out may be the input. Reports the size, the box it
+      kept (in the input's pixels), the scale, and a warning when the
+      character touches an edge of the image (part of it may be cut off).
+
   breathe <still> --out <framesDir> [--frames N] [--depth ${DEFAULT_BREATHE_DEPTH}] [--breaths 1]
       [--mode smooth|pixel] [--rigid-row y] [--axis x] [--torso halfWidth]
+  breathe <still> --out <motionDir> --name <motionId> [--fps ${BREATHE_FPS}] [--pad ${DEFAULT_PAD}]
+      [--width W] [--no-webp] [the flags above]
       A breathing idle from ONE still, no model call: the body below the neck
       swells and settles on a travelling wave, the head rides on top as one
       rigid block, the soles never move, and whatever reaches far past the
@@ -820,6 +839,18 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       coordinates: --rigid-row y, --axis x, --torso halfWidth.
       Reports per frame its solid height, head offset (negative = up) and
       how many head pixels differ from the still (0 = identical).
+      With --name it is the whole motion in one command, the way 'run' is for
+      a sheet: --out is the MOTION directory, the bake lands in
+      <motionDir>/cells (cropped to what the frames reach, plus --pad), and
+      align (--x-from cell), pack, gif (+webp) and inspect follow at --fps
+      (default ${BREATHE_FPS}; ${FRAMES_PER_BREATH} frames a breath is 1.5 s). The JSON is the run
+      summary 'sprite-project.mjs register-run' takes: a sprite run plus
+      source "breathe", still (the path breathed) and breathe { depth,
+      breaths, lag, mode, anatomy: { rigidRow, axisX, from, torsoHalf? } }
+      — the record a re-run with one parameter changed starts from. The
+      detector's warnings that ask for a decision (a prop across the rigid
+      row, pixel mode on anti-aliased art, too few frames a breath) join
+      inspect.warnings, where the stage shows them.
 
 Exit code 0 on success, 1 on failure with a one-line ERROR: on stderr.`;
 
@@ -2422,7 +2453,7 @@ function readAtlasLoop(motionDir) {
  * Read a finished motion and say what is wrong with it in sentences a human
  * (and the agent talking to one) can act on.
  */
-function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write = true, keyColor }) {
+function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write = true, keyColor, extraWarnings = [] }) {
   const dir = resolve(motionDir);
   const framesDir = existsSync(join(dir, "frames")) ? join(dir, "frames") : dir;
   const entries = listFrames(framesDir);
@@ -2610,6 +2641,10 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
   }
   const residueNote = residueWarning(residue, key);
   if (residueNote) warnings.push(residueNote);
+  // What the caller knows about these frames that the pixels cannot say — a
+  // breathe's detector on the still they were warped from. In the summary,
+  // because that is what register-run copies and the stage shows.
+  for (const warning of extraWarnings) if (!warnings.includes(warning)) warnings.push(warning);
 
   let pixelSummary = null;
   if (pixel) {
@@ -2827,6 +2862,7 @@ function finishMotion(motionDir, cellsDir, options, { measures, sourceCell, warn
     anchor: options.anchor,
     threshold: options.threshold,
     keyColor: options.keyColor ?? null,
+    extraWarnings: options.extraWarnings,
     cellsDir,
     cellBoxes: measures.map((m, index) => ({
       index, width: sourceCell.width, height: sourceCell.height, bbox: m.bbox, head: m.head,
@@ -7191,8 +7227,10 @@ function stepRive(characterDir, { images: askedImages = null, motions: named, in
 
 /**
  * The sprite character above `start`, if any: the nearest ancestor holding a
- * project.json with a sprite sidecar. Only read, for `character.style`. A
- * project.json that does not parse is said, not skipped in silence.
+ * project.json with a sprite sidecar. Only read, for whether it is pixel art
+ * (`character.pixel`, then `character.style` — `riveIsPixelArt`, the one
+ * authority). A project.json that does not parse is said, not skipped in
+ * silence.
  */
 function findCharacterAbove(start, notes) {
   let dir = resolve(start);
@@ -7216,34 +7254,65 @@ function findCharacterAbove(start, notes) {
   return null;
 }
 
+/** The character above --out, else above the input, else above the working
+ *  directory — where `breathe` and `fit` look for it. */
+function characterNear(out, input, notes) {
+  return findCharacterAbove(dirname(resolve(out)), notes)
+    ?? findCharacterAbove(dirname(resolve(input)), notes)
+    ?? findCharacterAbove(process.cwd(), notes);
+}
+
+/** Where the character reads "pixel art" from, said the way a note names it. */
+const pixelArtSource = (character) =>
+  (character?.pixel && Number(character.pixel.logicalHeight) > 0 ? "character.pixel" : "character.style");
+
 /**
- * Which way to move the pixels. `--mode` wins; otherwise the character's
- * style decides (pixel art → the whole-pixel bake, anything else → smooth),
- * looked up above --out, then above the still, then above the working
- * directory. With neither, the choice is refused rather than guessed: the two
- * modes are wrong for each other's art.
+ * Which way to move the pixels. `--mode` wins; otherwise the character
+ * decides (pixel art → the whole-pixel bake, anything else → smooth), looked
+ * up above --out, then above the still, then above the working directory.
+ * With neither, the choice is refused rather than guessed: the two modes are
+ * wrong for each other's art.
  */
 function resolveBreatheMode(asked, { out, still, notes }) {
-  const character = findCharacterAbove(dirname(resolve(out)), notes)
-    ?? findCharacterAbove(dirname(resolve(still)), notes)
-    ?? findCharacterAbove(process.cwd(), notes);
+  const character = characterNear(out, still, notes);
   // `character.pixel` is the one authority for pixel art; a character
   // without it is read off its style sentence (`riveIsPixelArt`).
-  const pixelStyle = character ? riveIsPixelArt(character) : null;
-  const from = character?.pixel && Number(character.pixel.logicalHeight) > 0 ? "character.pixel" : "character.style";
+  const pixelArt = character ? riveIsPixelArt(character) : null;
+  const from = pixelArtSource(character);
   if (asked) {
     if (!BREATHE_MODES.includes(asked)) fail(`--mode: expected ${BREATHE_MODES.join(" or ")}, got '${asked}'`);
-    if (pixelStyle === true && asked === "smooth") notes.push(`${from} says pixel art, but --mode smooth resamples off the pixel grid`);
-    if (pixelStyle === false && asked === "pixel") notes.push(`${from} does not say pixel art, but --mode pixel moves whole pixels`);
+    if (pixelArt === true && asked === "smooth") notes.push(`${from} says pixel art, but --mode smooth resamples off the pixel grid`);
+    if (pixelArt === false && asked === "pixel") notes.push(`${from} does not say pixel art, but --mode pixel moves whole pixels`);
     return { mode: asked, modeFrom: "--mode", character };
   }
   if (!character) {
     fail("breathe: --mode is required when no sprite character (project.json) is found above --out, the still or the working directory — smooth for anti-aliased art, pixel for pixel art");
   }
-  return { mode: pixelStyle ? "pixel" : "smooth", modeFrom: from, character };
+  return { mode: pixelArt ? "pixel" : "smooth", modeFrom: from, character };
 }
 
-function stepBreathe(still, { out, frames, depth, breaths, mode: askedMode, rigidY, axisX, torsoHalf }) {
+/** The edges of the picture its visible pixels touch — where a character
+ *  that was cropped by its own image is cut off. */
+function edgesTouched(image, threshold) {
+  const { bbox } = computeBbox(image, threshold);
+  if (!bbox) return [];
+  return [
+    bbox.y === 0 && "top",
+    bbox.y + bbox.h === image.height && "bottom",
+    bbox.x === 0 && "left",
+    bbox.x + bbox.w === image.width && "right",
+  ].filter(Boolean);
+}
+
+function stepBreathe(still, options) {
+  return bakeStill(still, options).report;
+}
+
+/**
+ * The bake itself: frames written to `out` (NN.png), the report, and the
+ * frames still in hand for a caller that goes on to cut the motion.
+ */
+function bakeStill(still, { out, frames, depth, breaths, mode: askedMode, rigidY, axisX, torsoHalf, crop = null }) {
   const input = resolve(still);
   const framesDir = resolve(out);
   // resetFramesDir clears NN.png here; a still that IS one of those files
@@ -7264,8 +7333,11 @@ function stepBreathe(still, { out, frames, depth, breaths, mode: askedMode, rigi
     throw error;
   }
 
+  // The motion form trims every frame to what the frames reach plus a pad:
+  // one rectangle for all of them, so nothing moves relative to anything.
+  const images = crop ? cropToReach(baked.frames, crop.pad) : baked.frames;
   resetFramesDir(framesDir);
-  const paths = baked.frames.map((frame, i) => writeRgbaPng(join(framesDir, frameName(i)), frame, `breathe frame ${i}`));
+  const paths = images.map((frame, i) => writeRgbaPng(join(framesDir, frameName(i)), frame, `breathe frame ${i}`));
   // The frames say what made them, the way cells carry their grid: `inspect`
   // reads this to keep a breathe's planned holds out of its warnings.
   const record = writeJsonFile(join(framesDir, BREATHE_RECORD), {
@@ -7283,7 +7355,7 @@ function stepBreathe(still, { out, frames, depth, breaths, mode: askedMode, rigi
   if (baked.rigidRows > 0 && identical < baked.perFrame.length) {
     baked.warnings.push(`the head block differs from the still in ${baked.perFrame.length - identical} of ${baked.perFrame.length} frames (up to ${Math.max(...baked.perFrame.map((f) => f.headDiffPx ?? 0))} px)${mode === "pixel" ? " — the outline thinning runs over the whole frame" : ""}`);
   }
-  return {
+  const report = {
     input,
     framesDir,
     frames: paths,
@@ -7323,6 +7395,203 @@ function stepBreathe(still, { out, frames, depth, breaths, mode: askedMode, rigi
     notes,
     warnings: baked.warnings,
   };
+  return { report, image, images, anatomy: a, overridden: { rigidY: rigidY !== null, axisX: axisX !== null, torsoHalf: torsoHalf !== null } };
+}
+
+/**
+ * Every frame cut to the one rectangle all of them reach (any alpha), plus
+ * `pad` px of transparency on every side. The bake keeps the still's canvas —
+ * an untrimmed upload's whole width — and grows it only where the stretch
+ * needs; this is what makes the motion's cell the character plus a pad
+ * whatever the still's framing, and keeps the ink off the cell edge, where
+ * `inspect` would read it as a drawing that left its grid cell.
+ */
+function cropToReach(frames, pad) {
+  let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
+  for (const frame of frames) {
+    const { bbox } = computeBbox(frame, 1);
+    if (!bbox) continue;
+    x0 = Math.min(x0, bbox.x); y0 = Math.min(y0, bbox.y);
+    x1 = Math.max(x1, bbox.x + bbox.w); y1 = Math.max(y1, bbox.y + bbox.h);
+  }
+  if (x1 < 0) return frames;
+  const box = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  return frames.map((frame) => padRgba(cropRgba(frame, box), pad));
+}
+
+/**
+ * Warnings of the bake that ask for a decision, as opposed to notes on how
+ * the anatomy was read. Upstream's detector tags its notes (`face-absent:`,
+ * `neck-absent:`, `*-override:`); an untagged warning — a prop across the
+ * rigid row, pixel mode on anti-aliased art, too few frames a breath, the
+ * soles moving — is one the user may have to choose on, so it goes where the
+ * stage shows warnings. The head check is a note in pixel mode, where the
+ * outline thinning is expected to touch the head.
+ */
+const BREATHE_NOTE_TAGS = ["face-absent:", "neck-absent:", "axis-x-override:", "rigid-row-override:", "torso-half-override:"];
+function splitBreatheWarnings(report) {
+  const decide = [];
+  const notes = [];
+  for (const warning of report.warnings) {
+    const tagged = BREATHE_NOTE_TAGS.some((tag) => warning.startsWith(tag));
+    const expectedHead = report.mode === "pixel" && warning.startsWith("the head block differs");
+    (tagged || expectedHead ? notes : decide).push(warning);
+  }
+  return { decide, notes };
+}
+
+/**
+ * breathe --name: the whole motion from one still, the way `run` is for a
+ * sheet — bake into <motionDir>/cells, then the same align/pack/gif/inspect
+ * half every source ends with. The JSON is the run summary `register-run`
+ * takes for a breathe.
+ */
+function stepBreatheRun(still, options) {
+  const input = resolve(still);
+  if (!existsSync(input)) fail(`file not found: ${input}`);
+  const motionDir = resolve(options.out);
+  const cellsDir = join(motionDir, CELLS_DIRNAME);
+  const framesDir = join(motionDir, "frames");
+  // Both directories are cleared before anything is written into them.
+  if ([cellsDir, framesDir].includes(dirname(input)) && FRAME_RE.test(basename(input))) {
+    fail(`breathe: the still ${input} is a frame of ${motionDir}, which this run rewrites — copy it out and register the copy as a reference (add-ref --derived-from <frame id>), then breathe that`);
+  }
+  mkdirSync(motionDir, { recursive: true });
+  const { report, image: stillImage, images, anatomy, overridden } = bakeStill(input, {
+    out: cellsDir,
+    frames: options.frames,
+    depth: options.depth,
+    breaths: options.breaths,
+    mode: options.mode,
+    rigidY: options.rigidY,
+    axisX: options.axisX,
+    torsoHalf: options.torsoHalf,
+    crop: { pad: options.pad },
+  });
+  const { decide, notes } = splitBreatheWarnings(report);
+  const cut = edgesTouched(stillImage, options.threshold);
+  if (cut.length) {
+    decide.push(`the character touches the ${cut.join(" and ")} edge${cut.length > 1 ? "s" : ""} of the still — part of it may be cut off there; look at ${basename(input)}`);
+  }
+
+  // The cells are in hand: measured here, not decoded again.
+  const measures = images.map((frame) => measureFrame(frame, options.threshold));
+  const sourceCell = { width: images[0].width, height: images[0].height };
+  const warnings = [];
+  const { aligned, packed, preview, summary } = finishMotion(motionDir, cellsDir, {
+    name: options.name,
+    fps: options.fps,
+    loop: true,
+    anchor: "bottom",
+    xFrom: "cell",
+    cell: null,
+    pad: options.pad,
+    smooth: false,
+    threshold: options.threshold,
+    cols: null,
+    scale: 1,
+    nearest: report.mode === "pixel",
+    webp: options.webp,
+    width: options.width,
+    keyColor: null,
+    extraWarnings: decide,
+  }, { measures, sourceCell, warnings });
+
+  const anyOverride = overridden.rigidY || overridden.axisX || overridden.torsoHalf;
+  return {
+    ...report,
+    motionDir,
+    name: options.name,
+    source: "breathe",
+    still: input,
+    breathe: {
+      depth: report.depth,
+      breaths: report.breaths,
+      lag: report.lag,
+      mode: report.mode,
+      // In the still's pixels — what --rigid-row / --axis / --torso take back.
+      anatomy: {
+        rigidRow: report.anatomy.rigidY,
+        axisX: report.anatomy.axisX,
+        from: anyOverride ? "override" : "detected",
+        // A manual torso band changes what is pushed rather than stretched,
+        // so a re-run has to be told it again; a detected one is found again.
+        ...(overridden.torsoHalf ? { torsoHalf: anatomy.torsoHalf } : {}),
+      },
+    },
+    grid: packed.grid,
+    cells: cellsDir,
+    framesDir,
+    frames: aligned.frames.map((f) => f.path),
+    sheet: packed.sheet,
+    atlas: packed.atlas,
+    gif: preview.gif,
+    ...(preview.webp ? { webp: preview.webp } : {}),
+    inspect: summary,
+    cell: aligned.cell,
+    fps: options.fps,
+    loop: true,
+    anchor: "bottom",
+    xFrom: aligned.xFrom,
+    scale: 1,
+    notes: [...report.notes, ...notes],
+    warnings,
+  };
+}
+
+/**
+ * fit: a cut-out trimmed to the character plus a pad and brought down to the
+ * size it plays at (`still.mjs`), so the reference registered for a breathe is
+ * the very picture its frames are warped from.
+ */
+function stepFit(inputRaw, { out, max, pad, threshold }) {
+  const input = resolve(inputRaw);
+  if (!existsSync(input)) fail(`file not found: ${input}`);
+  const output = resolve(out);
+  if (extname(output).toLowerCase() !== ".png") fail(`--out must be a .png path (got ${out}) — it has to carry alpha`);
+  const image = readRgba(input);
+  const measured = computeBbox(image, threshold);
+  if (!measured.bbox) fail(`fit: nothing in ${input} is visible above alpha ${threshold}`);
+  if (measured.coverage >= OPAQUE_COVERAGE) {
+    fail(`fit: ${basename(input)} has no transparent background (${(measured.coverage * 100).toFixed(1)}% opaque) — cut the character out first: remove-background.mjs for a busy or photographic background, 'key' for a flat plate`);
+  }
+  const notes = [];
+  const warnings = [];
+  const cleaned = cleanCell(image, threshold);
+  const { bbox } = computeBbox(image, threshold);
+  const cut = edgesTouched(image, threshold);
+  if (cut.length) {
+    warnings.push(`the character touches the ${cut.join(" and ")} edge${cut.length > 1 ? "s" : ""} of the image — part of it may be cut off there; look before breathing it`);
+  }
+  const character = characterNear(output, input, notes);
+  const pixelArt = character ? riveIsPixelArt(character) : false;
+  let fitted;
+  try {
+    fitted = fitStill(image, { box: bbox, max, pad, resample: !pixelArt });
+  } catch (error) {
+    if (error instanceof StillError) fail(`fit: ${error.message}`);
+    throw error;
+  }
+  if (pixelArt && fitted.needed < 1) {
+    notes.push(`${pixelArtSource(character)} says pixel art, which is never resampled here: the character stays ${bbox.w}x${bbox.h} (over --max ${max})`);
+  }
+  mkdirSync(dirname(output), { recursive: true });
+  writeRgbaPng(output, fitted.image, "fit");
+  return {
+    input,
+    output,
+    width: fitted.image.width,
+    height: fitted.image.height,
+    box: bbox,
+    character: fitted.character,
+    scale: round(fitted.scale, 4),
+    pad,
+    max,
+    pixelArt,
+    ...(cleaned.removedComponents ? { cleaned: { removedComponents: cleaned.removedComponents, removedPixels: cleaned.removedPixels } } : {}),
+    notes,
+    warnings,
+  };
 }
 
 /** The anatomy, said the way you would check it against the still. */
@@ -7361,8 +7630,11 @@ const OPTIONS = {
   breathe: {
     out: { type: "string" }, frames: { type: "string" }, depth: { type: "string" }, breaths: { type: "string" },
     mode: { type: "string" }, "rigid-row": { type: "string" }, axis: { type: "string" }, torso: { type: "string" },
+    name: { type: "string" }, fps: { type: "string" }, pad: { type: "string" }, width: { type: "string" },
+    "no-webp": { type: "boolean", default: false }, threshold: { type: "string" },
   },
   guide: { rows: { type: "string" }, cols: { type: "string" }, cell: { type: "string" }, out: { type: "string" }, margin: { type: "string" } },
+  fit: { out: { type: "string" }, max: { type: "string" }, pad: { type: "string" }, threshold: { type: "string" } },
   probe: { threshold: { type: "string" } },
   key: {
     out: { type: "string" }, color: { type: "string" }, similarity: { type: "string" },
@@ -8198,7 +8470,8 @@ function main() {
     case "breathe": {
       const breaths = num(values.breaths, "--breaths", { integer: true, min: 1, fallback: 1 });
       const intOrNull = (value, flag, min) => (value === undefined ? null : num(value, flag, { integer: true, min }));
-      const out = stepBreathe(requirePositional(positionals, "<still>"), {
+      const still = requirePositional(positionals, "<still>");
+      const bake = {
         out: requireFlag(values.out, "--out"),
         breaths,
         frames: num(values.frames, "--frames", { integer: true, min: 2, fallback: FRAMES_PER_BREATH * breaths }),
@@ -8207,8 +8480,46 @@ function main() {
         rigidY: intOrNull(values["rigid-row"], "--rigid-row", 0),
         axisX: intOrNull(values.axis, "--axis", 0),
         torsoHalf: intOrNull(values.torso, "--torso", 1),
+      };
+      if (values.name === undefined) {
+        // The frames-only form writes NN.png into --out and nothing else; the
+        // motion's flags would be silently ignored there.
+        const stray = ["fps", "pad", "width", "no-webp"].filter((flag) => values[flag] !== undefined && values[flag] !== false);
+        if (stray.length) fail(`${stray.map((f) => `--${f}`).join(", ")} cut${stray.length > 1 ? "" : "s"} a motion — pass --name <motionId> (and --out <motionDir>) for the whole motion`);
+        const out = stepBreathe(still, bake);
+        emit(values, out, breatheLines(out));
+        break;
+      }
+      const out = stepBreatheRun(still, {
+        ...bake,
+        name: values.name,
+        fps: num(values.fps, "--fps", { min: 1, fallback: BREATHE_FPS }),
+        pad: num(values.pad, "--pad", { integer: true, min: 0, fallback: DEFAULT_PAD }),
+        width: values.width === undefined ? null : num(values.width, "--width", { integer: true, min: 1 }),
+        webp: !values["no-webp"],
+        threshold,
       });
-      emit(values, out, breatheLines(out));
+      emit(values, out, [
+        `${out.name}: ${out.frames.length} frames of ${out.cell.width}x${out.cell.height} breathed from ${basename(out.still)} at ${out.fps}fps → ${out.motionDir}`,
+        ...breatheLines(out).slice(1, 3),
+        ...out.notes,
+        ...(out.warnings.length ? out.warnings : ["no warnings"]),
+      ]);
+      break;
+    }
+    case "fit": {
+      const out = stepFit(requirePositional(positionals, "<image>"), {
+        out: requireFlag(values.out, "--out"),
+        max: num(values.max, "--max", { integer: true, min: 8, fallback: DEFAULT_FIT_MAX }),
+        pad: num(values.pad, "--pad", { integer: true, min: 0, fallback: DEFAULT_FIT_PAD }),
+        threshold,
+      });
+      emit(values, out, [
+        `${out.width}x${out.height} → ${out.output} (character ${out.character.width}x${out.character.height}${out.scale < 1 ? `, scaled ×${out.scale}` : ""}, kept x ${out.box.x}..${out.box.x + out.box.w - 1}, y ${out.box.y}..${out.box.y + out.box.h - 1} of the input)`,
+        ...(out.cleaned ? [`dropped ${out.cleaned.removedComponents} speck${out.cleaned.removedComponents > 1 ? "s" : ""} (${out.cleaned.removedPixels} px) clear of the body`] : []),
+        ...out.notes,
+        ...(out.warnings.length ? out.warnings : ["no warnings"]),
+      ]);
       break;
     }
     case "mirror": {

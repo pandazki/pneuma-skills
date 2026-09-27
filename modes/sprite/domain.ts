@@ -468,7 +468,7 @@ export type MotionSource = (typeof MOTION_SOURCES)[number];
 export interface BreatheRecord {
   /** Asset id of the still the frames were warped from. */
   still: string;
-  /** Vertical amplitude, a fraction of the figure's height. */
+  /** The total stretch, as a share of the body below the neck. */
   depth: number;
   /** Horizontal amplitude when it differs from `depth`; 0 turns it off. */
   depthX?: number;
@@ -479,11 +479,13 @@ export interface BreatheRecord {
   /** Whole pixels (pixel art) or bilinear, premultiplied (painted art). */
   mode: "smooth" | "pixel";
   /**
-   * The boundary the warp actually used, and whether it was detected or
-   * given — what the agent needs to answer "the head wobbles" with
-   * `--rigid-row` on the next run.
+   * The boundary the warp actually used, in the still's pixels, and whether
+   * it was detected or given — what the agent needs to answer "the head
+   * wobbles" with `--rigid-row` on the next run. `torsoHalf` is present only
+   * when a manual torso band was given: it changes what is pushed rather than
+   * stretched, so a re-run has to be given it again.
    */
-  anatomy?: { rigidRow: number; axisX: number; from: "detected" | "override" };
+  anatomy?: { rigidRow: number; axisX: number; from: "detected" | "override"; torsoHalf?: number };
 }
 
 /** A layout guide's geometry, as the prompt that used it described it. */
@@ -946,7 +948,9 @@ function parseAnatomy(value: unknown): BreatheRecord["anatomy"] {
   const rigidRow = parseFinite(value.rigidRow);
   const axisX = parseFinite(value.axisX);
   const from = value.from === "detected" || value.from === "override" ? value.from : undefined;
-  return rigidRow !== undefined && axisX !== undefined && from ? { rigidRow, axisX, from } : undefined;
+  if (rigidRow === undefined || axisX === undefined || !from) return undefined;
+  const torsoHalf = parseFinite(value.torsoHalf);
+  return { rigidRow, axisX, from, ...(torsoHalf !== undefined && torsoHalf >= 1 ? { torsoHalf } : {}) };
 }
 
 /**

@@ -698,6 +698,16 @@ export default function SpritePreview(props: ViewerPreviewProps) {
           <p className="mt-2 text-sm leading-relaxed text-cc-muted">
             {t.noCharacterBody}
           </p>
+          {/* The four routes, one sentence each: what the agent's opening
+              question will offer, readable before anyone types. */}
+          <ul className="mt-4 space-y-2 text-left text-[13px] leading-relaxed text-cc-muted">
+            {t.noCharacterRoutes.map((route) => (
+              <li key={route} className="flex gap-2.5">
+                <span className="mt-[0.6em] h-1 w-1 shrink-0 rounded-full bg-cc-primary/70" aria-hidden="true" />
+                <span>{route}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
     );

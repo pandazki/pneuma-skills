@@ -197,7 +197,9 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       --source records how the frames will be obtained (a generated sheet, a
       sampled video clip, a breathe of one still, a mirror of another motion)
       before anything is generated. Omitted means sheet; register-run
-      corrects it from the run that lands.
+      corrects it from the run that lands. --source breathe makes --rows /
+      --cols optional (1x1 until the run lands): a breathe is drawn on no
+      grid, and register-run takes the grid and the fps from its atlas.
       --direction is the way the motion faces; name it <state>-<direction>
       (walk-left) so every export carries the direction in its keys.
       --kind loop declares a seamless transparent animation for a UI instead
@@ -333,12 +335,17 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       motion.reverseOf. Cutting a transition again retires its exports and
       the .riv that held it, and notes any reverse made from the old cut.
       Any run drops a loop's measured clip record (motion.clip).
-      A breathe summary (source: "breathe") names the still it warped
-      ('still', a path) and 'breathe' { depth, breaths, lag, mode, depthX?,
-      anatomy? }: the still must already be a registered reference (add-ref
-      --uploaded; a frame becomes one with add-ref --derived-from <frame id>),
-      every frame derives from it, and motion.breathe records the
-      parameters. A mirror summary (source: "mirror") names 'mirrorOf', a
+      A breathe summary (source: "breathe", from 'sprite-sheet.mjs breathe
+      --name') names the still it warped ('still', a path) and 'breathe'
+      { depth, breaths, lag, mode, depthX?, anatomy? { rigidRow, axisX, from,
+      torsoHalf? } }: the still must already be a registered reference
+      (add-ref --uploaded; a cut-out: --derived-from <ref> --op key; a frame
+      becomes one with add-ref --derived-from <frame id>), every frame
+      derives from it, motion.breathe records the parameters, and the
+      motion's grid and fps become the run's (it was drawn on no grid).
+      Re-registering after a re-run with other parameters replaces the
+      frames and the record in place. A mirror summary (source: "mirror")
+      names 'mirrorOf', a
       ready left- or right-facing sprite motion with as many frames: frame i
       derives from its frame i, motion.mirrorOf is set and motion.direction
       becomes the other side. It is refused on a motion another mirror is
@@ -1449,10 +1456,18 @@ function breatheRecord(raw, stillId) {
   if (missing.length) fail(`--run: the breathe block is missing or has a malformed ${listOf(missing)}`);
   const depthX = finiteNumber(raw.depthX);
   const a = raw.anatomy;
+  const torsoHalf = a && typeof a === "object" ? finiteNumber(a.torsoHalf) : undefined;
   const anatomy = a && typeof a === "object"
     && finiteNumber(a.rigidRow) !== undefined && finiteNumber(a.axisX) !== undefined
     && (a.from === "detected" || a.from === "override")
-    ? { rigidRow: a.rigidRow, axisX: a.axisX, from: a.from }
+    ? {
+      rigidRow: a.rigidRow,
+      axisX: a.axisX,
+      from: a.from,
+      // Only a manual torso band is recorded: it changes what is pushed
+      // rather than stretched, so a re-run has to be given it again.
+      ...(torsoHalf !== undefined && torsoHalf >= 1 ? { torsoHalf } : {}),
+    }
     : undefined;
   return {
     still: stillId,
@@ -1624,7 +1639,7 @@ function pinPalette(doc, dir, motion, run, frameIds, repin, now) {
  * be read. Derived clips get their parent printed beside them, because
  * "video-2" alone cannot tell you it is the matte of video-1.
  */
-function motionLines(motion) {
+function motionLines(motion, doc) {
   const frameCount = motion.frames?.length ?? 0;
   const lines = [];
   if (motion.kind === "transition") {
@@ -1669,7 +1684,10 @@ function motionLines(motion) {
     lines.push(`${motion.id} (${motion.label}) — ${motion.status}, ${motion.grid.rows}x${motion.grid.cols} @ ${motion.fps}fps, ${frameCount} frames`);
     if (motion.source === "breathe" && motion.breathe) {
       const b = motion.breathe;
-      lines.push(`  breathe of ${b.still}: depth ${b.depth}${b.depthX === undefined ? "" : ` (x ${b.depthX})`}, ${b.breaths} breath${b.breaths === 1 ? "" : "s"}, lag ${b.lag}, ${b.mode}${b.anatomy ? `, rigid row ${b.anatomy.rigidRow} (${b.anatomy.from})` : ""}`);
+      // The path too: a re-run passes the still again, and the id alone
+      // would send the agent to look it up.
+      const stillUri = doc?.assets.find((asset) => asset.id === b.still)?.uri;
+      lines.push(`  breathe of ${b.still}${stillUri ? ` (${stillUri})` : ""}: depth ${b.depth}${b.depthX === undefined ? "" : ` (x ${b.depthX})`}, ${b.breaths} breath${b.breaths === 1 ? "" : "s"}, lag ${b.lag}, ${b.mode}${b.anatomy ? `, rigid row ${b.anatomy.rigidRow}, axis ${b.anatomy.axisX}${b.anatomy.torsoHalf === undefined ? "" : `, torso ${b.anatomy.torsoHalf}`} (${b.anatomy.from})` : ""}`);
     } else if (motion.source === "mirror" && motion.mirrorOf) {
       lines.push(`  mirror of ${motion.mirrorOf}`);
     }
@@ -1823,6 +1841,12 @@ function readRunSummary(source) {
     if (!existsSync(path)) fail(`--run: file not found: ${path}`);
     return readFileSync(path, "utf-8");
   })();
+  // A run that FAILED prints its `ERROR:` on stderr and nothing on stdout, so
+  // the piped form (`breathe --name … --json | register-run --run -`) hands
+  // this command an empty summary — said as such, not as a JSON syntax error.
+  if (!text.trim()) {
+    fail("--run: the run summary is empty — the command that should have written it printed nothing, which means it failed; its ERROR: line says why, and nothing was registered");
+  }
   let run;
   try {
     run = JSON.parse(text);
@@ -2311,10 +2335,13 @@ function main() {
       }
       // A loop has no grid — its frames are a sequence, not cells of a sheet —
       // so the two flags a sprite motion cannot do without become optional and
-      // land on the 1x1 that `register-run` will confirm. Everything else about
+      // land on the 1x1 that `register-run` will confirm. A breathe has no
+      // generated sheet either: its grid is the atlas `breathe --name` packs,
+      // which register-run writes when the frames land. Everything else about
       // a sprite motion is untouched.
       const isLoop = kind === "loop";
-      const gridSide = (flag, raw) => (isLoop
+      const gridFromRun = isLoop || values.source === "breathe";
+      const gridSide = (flag, raw) => (gridFromRun
         ? num(raw, flag, { integer: true, min: 1, fallback: 1 })
         : num(requireFlag(raw, flag), flag, { integer: true, min: 1 }));
       const motion = {
@@ -2940,6 +2967,18 @@ function main() {
         // above with its asset.
         if (motion.kind === "loop") delete motion.kind;
         delete motion.exports;
+        // A breathe was drawn on no grid and at no declared rate: the atlas it
+        // packed IS its grid, and the rate its breath was timed at is the one
+        // its GIF and atlas durations carry. A re-run with more frames or
+        // another --fps must not leave the stage reading the old layout.
+        if (breathe) {
+          const rows = Number(run.grid?.rows);
+          const cols = Number(run.grid?.cols);
+          if (Number.isInteger(rows) && rows >= 1 && Number.isInteger(cols) && cols >= 1) motion.grid = { rows, cols };
+          const fps = Number(run.fps);
+          if (Number.isFinite(fps) && fps > 0) motion.fps = fps;
+          motion.loop = true;
+        }
       }
       // The sidecar says how these frames were obtained, and it is corrected
       // in both directions: a sheet run over a motion someone declared `video`
@@ -3225,7 +3264,7 @@ function main() {
           inspect: motion.inspect,
         };
         emit(values, payload, [
-          ...motionLines(motion),
+          ...motionLines(motion, doc),
           ...(stale ? [`  stale: ${stale} — mirror it again and register it`] : []),
           ...(motion.inspect?.warnings ?? []),
         ]);

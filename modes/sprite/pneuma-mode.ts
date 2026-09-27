@@ -86,8 +86,20 @@ function describeMotion(
   if (motion.source === "video") {
     lines.push("Source: video (frames sampled from a clip)");
   } else if (motion.source === "breathe") {
+    // The parameters too: "regenerate" on a breathe is a re-run with one of
+    // them changed, and this is the context that request arrives with.
+    const b = motion.breathe;
+    const params = b
+      ? ` · depth ${b.depth}, ${b.breaths} breath${b.breaths === 1 ? "" : "s"}, ${b.mode}${
+          b.anatomy
+            ? `, rigid row ${b.anatomy.rigidRow}, axis ${b.anatomy.axisX}${
+                b.anatomy.torsoHalf === undefined ? "" : `, torso ${b.anatomy.torsoHalf}`
+              } (${b.anatomy.from})`
+            : ""
+        }`
+      : "";
     lines.push(
-      `Source: breathe (from ${motion.breathe?.still ?? "a still that was not recorded"})`,
+      `Source: breathe (from ${b?.still ?? "a still that was not recorded"})${params}`,
     );
   } else if (motion.source === "mirror") {
     lines.push(

@@ -2569,6 +2569,33 @@ describe("routes, directions, breathe and mirror on the stage", () => {
     }
   });
 
+  test("the empty stage names the four routes, one sentence each, in both languages", () => {
+    const en = spriteStrings("en");
+    const zh = spriteStrings("zh");
+    for (const t of [en, zh]) {
+      expect(t.noCharacterRoutes).toHaveLength(4);
+      expect(new Set(t.noCharacterRoutes).size).toBe(4);
+      for (const route of t.noCharacterRoutes) expect(route.length).toBeGreaterThan(20);
+    }
+    // In the order the agent's opening question offers them: game, page loop,
+    // app mascot, picture brought to life — the last one free.
+    expect(en.noCharacterRoutes[0]).toMatch(/^A game character/);
+    expect(en.noCharacterRoutes[3]).toMatch(/^Bring your own picture to life .* free/);
+    expect(zh.noCharacterRoutes[0]).toMatch(/^游戏角色/);
+    expect(zh.noCharacterRoutes[3]).toMatch(/^让你的图动起来.*不花钱/);
+  });
+
+  test("a breathe chip says which way the pixels moved, in both languages", () => {
+    for (const locale of ["en", "zh"]) {
+      const t = spriteStrings(locale);
+      expect(t.breatheSource.length).toBeGreaterThan(0);
+      const titles = [t.breatheSourceTitle("smooth"), t.breatheSourceTitle("pixel"), t.breatheSourceTitle(null)];
+      expect(new Set(titles).size).toBe(3);
+    }
+    expect(spriteStrings("en").breatheSourceTitle("pixel")).toMatch(/whole pixels/);
+    expect(spriteStrings("zh").breatheSourceTitle("smooth")).toMatch(/平滑/);
+  });
+
   test("every direction and the anchor role have words in both languages", () => {
     for (const locale of ["en", "zh"]) {
       const t = spriteStrings(locale);

@@ -2780,7 +2780,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
             tool: "sprite-sheet.mjs", step: "breathe", frameIndex: 2, depth: 0.02, breaths: 1, lag: 0.15, mode: "smooth",
           } },
         });
-        expect(project(dir, "show", "--motion", "idle").out).toMatch(/breathe of ref-portrait: depth 0\.02, 1 breath, lag 0\.15, smooth, rigid row 30 \(detected\)/);
+        expect(project(dir, "show", "--motion", "idle").out).toMatch(/breathe of ref-portrait \(refs\/portrait\.png\): depth 0\.02, 1 breath, lag 0\.15, smooth, rigid row 30, axis 32 \(detected\)/);
       });
 
       test("an unregistered still is refused with the command that registers it", () => {
