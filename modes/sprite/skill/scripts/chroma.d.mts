@@ -73,6 +73,11 @@ export declare const UNMIX_REACH: number;
 export declare const RESIDUE_TINT: number;
 export declare const RGB_DIAGONAL: number;
 
+export declare const MAX_UNMIX_STAGE_BYTES: number;
+export declare const UNMIX_STAGE_MARGIN: number;
+export declare function unmixStageRefusal(
+  options: { frames: number; width: number; height: number; freeBytes?: number | null },
+): string | null;
 export declare function keyRadius(similarity: number): number;
 export declare function parseHex(hex: string): Rgb;
 export declare function toHex(color: Rgb): string;

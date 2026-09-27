@@ -17,7 +17,8 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-  keyFrame, keyRadius, keyResidue, measurePlate, plateOf, plateProximity, plateSplit, poolResidue, RESIDUE_TINT,
+  keyFrame, keyRadius, keyResidue, MAX_UNMIX_STAGE_BYTES, measurePlate, plateOf, plateProximity, plateSplit, poolResidue,
+  RESIDUE_TINT, UNMIX_STAGE_MARGIN, unmixStageRefusal,
   type Rgb, type RgbaImage,
 } from "../skill/scripts/chroma.mjs";
 
@@ -331,6 +332,20 @@ describe("keyResidue: the fringe a hue test cannot see", () => {
     const image = edgeScene(yellow, yellow);
     keyed(image);
     expect(keyResidue(image, plateOf(GREEN), 16)).toMatchObject({ tinted: 0, fringe: 0 });
+  });
+});
+
+describe("unmixStageRefusal: the raw window the un-mix stages on disk (R1-4)", () => {
+  test("a window over the budget, or over the free space, is refused before decoding; a normal one is not", () => {
+    // tanka's loops: 300 frames at 640² — 491 MB, staged.
+    expect(unmixStageRefusal({ frames: 300, width: 640, height: 640, freeBytes: 50 * 1024 ** 3 })).toBeNull();
+    // A 4K window at the loop cap: 13 GB.
+    expect(unmixStageRefusal({ frames: 400, width: 3840, height: 2160 }))
+      .toBe("the window is up to 400 frames of 3840x2160: 12.4 GB of raw frames staged on disk for --keyer unmix, over its 4.0 GB budget — narrow the window (--trim-start/--trim-end), or key with --keyer colorkey, which writes compressed frames");
+    // Under the budget, but the disk is nearly full.
+    expect(unmixStageRefusal({ frames: 300, width: 640, height: 640, freeBytes: 600 * 1024 ** 2 })).toContain("and 0.6 GB is free there");
+    expect(MAX_UNMIX_STAGE_BYTES).toBe(4 * 1024 ** 3);
+    expect(UNMIX_STAGE_MARGIN).toBe(512 * 1024 ** 2);
   });
 });
 

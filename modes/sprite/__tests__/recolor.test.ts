@@ -16,7 +16,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   ALPHA_THRESHOLD, RECOLOR_KIND, RecolorError, UNCOVERED_CAP, checkVariant, countColors, draftRecolorMap,
-  formatHex, mergeTallies, newTally, offPalette, parseRecolorMap, recolorImage, sameVariant, swatchSheet,
+  formatHex, MAX_SWATCH_PIXELS, MAX_SWATCHES, mergeTallies, newTally, offPalette, parseRecolorMap, recolorImage, sameVariant, swatchSheet,
   tallyReport, type Rgb, type RgbaImage,
 } from "../skill/scripts/recolor.mjs";
 
@@ -255,5 +255,16 @@ describe("what this port changed or added", () => {
     // Its alpha is opaque everywhere: a picture to look at, not a sprite.
     for (let i = 3; i < image.data.length; i += 4) expect(image.data[i]).toBe(255);
     expect(ALPHA_THRESHOLD).toBe(8);
+  });
+
+  test("a sheet of more colours than a palette holds, or of more pixels than a budget, is refused before it is drawn (R2-4)", () => {
+    const sheet = buildSheet();
+    const many = Array.from({ length: MAX_SWATCHES + 1 }, (_, i) => ({ rgb: [i % 256, (i >> 8) * 40, 7] as [number, number, number], image: sheet }));
+    expect(() => swatchSheet(many)).toThrow(/257 colours in use — a swatch sheet draws at most 256.*--pixel/);
+    // 256 cells of an unfitted 1024 px frame drawn at 1x: ~270 MP.
+    const huge = { width: 1024, height: 1024, data: new Uint8Array(1024 * 1024 * 4).fill(255) };
+    const wide = Array.from({ length: 256 }, (_, i) => ({ rgb: [i, 0, 0] as [number, number, number], image: huge }));
+    expect(() => swatchSheet(wide)).toThrow(/over 32 MP/);
+    expect(MAX_SWATCH_PIXELS).toBe(32_000_000);
   });
 });

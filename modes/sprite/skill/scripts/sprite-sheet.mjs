@@ -33,7 +33,7 @@
 
 import { spawnSync } from "node:child_process";
 import {
-  closeSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, readSync,
+  closeSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, readSync, statfsSync,
   renameSync, rmSync, statSync, unlinkSync, writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -41,7 +41,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 
 import { parseArgs } from "node:util";
 
 import {
-  keyFrame, keyRadius, keyResidue, measurePlate, plateOf, plateProximity, poolResidue,
+  keyFrame, keyRadius, keyResidue, measurePlate, plateOf, plateProximity, poolResidue, unmixStageRefusal,
 } from "./chroma.mjs";
 
 import { asepriteDocument, gridLayout, stackLayout } from "./aseprite.mjs";
@@ -5219,6 +5219,17 @@ function decodeClipFrames(input, prep, options, work, label) {
   let despill = null;
   if (keyer === "unmix") {
     const raw = join(work, "plate.rgba");
+    // The raw window is staged on disk; refused up front when it would not fit.
+    const frames = options.fps === null ? Math.min(limit, Math.ceil(span * stream.fps) + 1) : limit;
+    let free = null;
+    try {
+      const fs = statfsSync(work);
+      free = Number(fs.bavail) * Number(fs.bsize);
+    } catch {
+      // No statfs here: the budget alone decides.
+    }
+    const refusal = unmixStageRefusal({ frames, width: size.width, height: size.height, freeBytes: free });
+    if (refusal) fail(`${label}: ${refusal}`);
     ffmpeg([...source, "-frames:v", String(limit), "-f", "rawvideo", "-pix_fmt", "rgba", "--", raw], `${label} decode`);
     const plate = unmixRawSequence(raw, size, srcDir, options, label);
     if (plate?.chroma) {

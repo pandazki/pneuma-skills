@@ -138,6 +138,28 @@ const IN_BAND = 2;
 const OUT_OF_BAND = 3;
 const UNSEEN = 255;
 
+/**
+ * Raw RGBA the un-mixing keyer may stage on disk for one clip window. `loop`
+ * and `transition` decode the window once, raw, and key it in bounded
+ * batches from that file: 300 frames at 640² are 491 MB, a 400-frame 4K
+ * window 13 GB (R1-4). Past the budget — or past the free space beside the
+ * output, less a margin — the run is refused before a byte is decoded.
+ */
+export const MAX_UNMIX_STAGE_BYTES = 4 * 1024 ** 3;
+export const UNMIX_STAGE_MARGIN = 512 * 1024 ** 2;
+
+/** Why a window of `frames` at `width`×`height` cannot be staged for the
+ *  un-mix (`freeBytes` null when unknown), or null when it can. */
+export function unmixStageRefusal({ frames, width, height, freeBytes = null }) {
+  const bytes = frames * width * height * 4;
+  const gb = (v) => `${(v / 1024 ** 3).toFixed(1)} GB`;
+  const what = `the window is up to ${frames} frames of ${width}x${height}: ${gb(bytes)} of raw frames staged on disk for --keyer unmix`;
+  const fix = "narrow the window (--trim-start/--trim-end), or key with --keyer colorkey, which writes compressed frames";
+  if (bytes > MAX_UNMIX_STAGE_BYTES) return `${what}, over its ${gb(MAX_UNMIX_STAGE_BYTES)} budget — ${fix}`;
+  if (freeBytes !== null && bytes + UNMIX_STAGE_MARGIN > freeBytes) return `${what}, and ${gb(freeBytes)} is free there — free some space, or ${fix}`;
+  return null;
+}
+
 /** `--similarity` (colorkey's fraction of the cube diagonal) as an RGB radius. */
 export function keyRadius(similarity) {
   return similarity * RGB_DIAGONAL;
