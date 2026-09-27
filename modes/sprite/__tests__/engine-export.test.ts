@@ -173,6 +173,20 @@ describe("shadow.mjs", () => {
     }
   });
 
+  test("opacity rounds as upstream's lookup table does — halves to even", () => {
+    // Every alpha 0..255 once, projected through the identity at opacity 0.5:
+    // each odd alpha is a tie, and upstream's `round(value * opacity)` (Python)
+    // sends it to the even neighbour.
+    const ramp = blank(256, 1);
+    for (let x = 0; x < 256; x++) ramp.data[x * 4 + 3] = x;
+    const shadow = projectShadow(ramp, { x: 0, y: 1 }, { squash: 1, shear: 0, opacity: 0.5, blur: 0 });
+    const ox = shadow.anchor.x;
+    const oy = shadow.anchor.y - 1;
+    const pyRound = (v: number) => { const f = Math.floor(v); const d = v - f; return d > 0.5 ? f + 1 : d < 0.5 ? f : f % 2 === 0 ? f : f + 1; };
+    for (let a = 0; a < 256; a++) expect([a, alphaOf(shadow, a + ox, oy)]).toEqual([a, pyRound(a * 0.5)]);
+    expect(alphaOf(shadow, 5 + ox, oy)).toBe(2); // Math.round said 3
+  });
+
   test("the source is not modified", () => {
     const source = silhouette();
     const before = Buffer.from(source.data);
@@ -322,6 +336,9 @@ describe("aseprite.mjs", () => {
       .toThrow("two animations are named 'a'");
     expect(() => asepriteDocument({ image: "x.png", size: { w: 1, h: 1 }, tags: [{ name: "a", frames: [{ ...one, duration: 0 }] }] }))
       .toThrow("no duration");
+    // A frame shorter than half a millisecond is still a frame: 1 ms, not 0.
+    const brief = asepriteDocument({ image: "x.png", size: { w: 1, h: 1 }, tags: [{ name: "a", frames: [{ ...one, duration: 0.4 }] }] });
+    expect(brief.frames["0"].duration).toBe(1);
   });
 
   test("sheets stack top to bottom, left-aligned", () => {

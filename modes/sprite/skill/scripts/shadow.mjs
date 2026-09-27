@@ -18,9 +18,11 @@
  * Positive shear throws the shadow to the LEFT of the feet (light from the
  * upper right); squash is how long it is against the figure's height.
  *
- * Zero dependencies, no I/O: pixels in, pixels out. `sprite-sheet.mjs export
- * --shadow` decodes and encodes around it.
+ * No dependencies beyond `drift.mjs`'s rounding, no I/O: pixels in, pixels
+ * out. `sprite-sheet.mjs export --shadow` decodes and encodes around it.
  */
+
+import { roundHalfEven } from "./drift.mjs";
 
 /** Upstream's defaults, unchanged. */
 export const SHADOW_DEFAULTS = Object.freeze({
@@ -201,9 +203,11 @@ export function projectShadow(image, anchor, given = {}) {
     data[o] = color[0];
     data[o + 1] = color[1];
     data[o + 2] = color[2];
-    // Opacity last, on the 8-bit blurred alpha, as upstream's lookup table.
+    // Opacity last, on the 8-bit blurred alpha, as upstream's lookup table
+    // (`round(value * opacity)`, Python's round: halves to even — at opacity
+    // 0.5 every odd alpha is a tie, and Math.round lifted each by one).
     const a = Math.min(255, Math.max(0, Math.round(plane[i])));
-    data[o + 3] = Math.round(a * opacity);
+    data[o + 3] = roundHalfEven(a * opacity);
   }
   return { width, height, data, anchor: geometry.anchor };
 }

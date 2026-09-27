@@ -31,6 +31,8 @@
  * each function names what it took and what changed. Node built-ins only.
  */
 
+import { roundHalfEven } from "./drift.mjs";
+
 /** Longest edge of an analysis thumbnail, px. `loop.py:44` ANALYSIS_SIZE. */
 export const CYCLE_THUMB = 96;
 
@@ -69,9 +71,7 @@ export const GAIT_FLOORS = { walk: 0.6, run: 0.35 };
 export function gaitFloor(gait, fps) {
   const seconds = gait ? GAIT_FLOORS[gait] : null;
   if (!seconds || !(fps > 0)) return null;
-  const x = seconds * fps;
-  const r = Math.round(x);
-  return Math.abs(x - Math.trunc(x)) === 0.5 && r % 2 !== 0 ? r - 1 : r;
+  return roundHalfEven(seconds * fps);
 }
 
 /** Candidate windows reported per cycle: the best cut is a measurement, the

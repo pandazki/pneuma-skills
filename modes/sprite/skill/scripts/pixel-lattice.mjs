@@ -34,7 +34,7 @@
  * `refine_edges_to_boundaries`, `snap_by_edges`, `build_shared_palette`,
  * `apply_palette`, `enforce_outline`, the palette lock, and the consensus /
  * outlier orchestration of `_snap_strip`. Same constants, same integer
- * arithmetic and tie-breaking: before the three changes marked ADAPTED below,
+ * arithmetic and tie-breaking: before the changes marked ADAPTED below,
  * this module's logical frames and palette were pixel-identical to upstream's
  * Python on every input measured (four synthetic generations and a real
  * GPT-Image sheet, `references/pipeline.md` "Measured"). Changes:
@@ -43,10 +43,15 @@
  * `conform_row_logical` (a physical-cell cap this pipeline does not have —
  * `align` sizes the cell to the sprite) and `register_row_frames`
  * (upper-body registration; `align` places the frames here) are not ported;
- * the palette lock stores `#rrggbb` strings rather than RGB triples; and
- * ADAPTED: divisor seeds up to 1/5 (`detectPixelGrid`), a collapse ceiling
- * that needs support (`consensusPitch`), and the pitch hint as the family
- * centre (`latticeFrames`).
+ * nor is `_snap_strip`'s last fallback, reading the grid off the whole strip
+ * when no frame is confident and there is no hint — such a generation comes
+ * back unsnapped (consensus 1) with `pooledPitch` as a suggestion, and the
+ * caller refuses it; the palette lock stores `#rrggbb` strings rather than
+ * RGB triples and will not pin an empty list; and ADAPTED: divisor seeds up
+ * to 1/5 (`detectPixelGrid`), a collapse ceiling that needs support and a
+ * same-colour run length that overrules a majority of divisor readings
+ * (`consensusPitch`), and the pitch hint as the family centre
+ * (`latticeFrames`).
  *
  * The run-length estimator (`estimatePixelGridRunlen`) and its crosscheck are
  * upstream's port of perfectpixel-studio: see that function's header.
@@ -1179,9 +1184,14 @@ export function loadPalette(path) {
   return { file, colors, source: typeof doc.source === "string" ? doc.source : null };
 }
 
-/** Write a palette atomically (scratch file + rename). */
+/** Write a palette atomically (scratch file + rename). Refuses an empty
+ *  list before touching the disk: `loadPalette` refuses one, so it would pin
+ *  a file the next run can only fail on. */
 export function writePalette(path, colors, source) {
   const file = resolve(path);
+  if (!Array.isArray(colors) || !colors.length) {
+    throw new Error(`no colours to pin to ${file} — the snapped frames hold no opaque pixel`);
+  }
   mkdirSync(dirname(file), { recursive: true });
   const scratch = `${file}.tmp`;
   try {

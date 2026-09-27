@@ -28,8 +28,8 @@ import {
 import {
   alphaBbox, applyPalette, bestPhase, buildSharedPalette, consensusPitch, crosscheckPitchRunlen, cropImage,
   detectPixelGrid, detectPixelPitch, dominantBlockColor, enforceOutline, estimatePixelGridRunlen, gridEdges,
-  latticeCheck, latticeFrames, refineEdgesToBoundaries, resolveFramePitch, snapGrid, solidBbox, upscale,
-  type RgbaImage,
+  latticeCheck, latticeFrames, loadPalette, refineEdgesToBoundaries, resolveFramePitch, snapGrid, solidBbox, upscale,
+  writePalette, type RgbaImage,
 } from "../skill/scripts/pixel-lattice.mjs";
 
 /** Upstream `grid_snap_downscale(image, pitch, phase=…)`: cut at the given
@@ -512,6 +512,21 @@ describe("colour decisions", () => {
     setPixel(img, 2, 0, [90, 90, 90, 40]);
     applyPalette(img, [[255, 0, 0], [0, 0, 255]]);
     expect([getPixel(img, 0, 0), getPixel(img, 1, 0), getPixel(img, 2, 0)]).toEqual([[255, 0, 0, 255], [0, 0, 255, 255], [0, 0, 0, 0]]);
+  });
+
+  test("an empty palette is refused before anything is written", () => {
+    // loadPalette refuses an empty colours list, so pinning one would leave a
+    // file every later run fails on.
+    const dir = mkdtempSync(join(tmpdir(), "sprite-palette-"));
+    try {
+      const file = join(dir, "pal", "palette.json");
+      expect(() => writePalette(file, [], "nothing")).toThrow("no colours to pin");
+      expect(existsSync(file)).toBe(false);
+      writePalette(file, [[1, 2, 3]], "one");
+      expect(loadPalette(file)).toMatchObject({ colors: [[1, 2, 3]], source: "one" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("the outline darkens only silhouette-edge pixels", () => {

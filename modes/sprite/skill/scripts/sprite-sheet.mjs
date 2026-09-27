@@ -1865,7 +1865,13 @@ function stepPixel(framesDir, {
   }
   const logicals = lattice.frames.map((f) => f.logical).filter(Boolean);
   const colors = pinned ? pinned.colors : buildSharedPalette(logicals, paletteSize);
-  if (!pinned) writePalette(paletteFile, colors, `built from ${logicals.length} frame(s) of ${inDir}`);
+  if (!pinned) {
+    try {
+      writePalette(paletteFile, colors, `built from ${logicals.length} frame(s) of ${inDir}`);
+    } catch (error) {
+      fail(`pixel: ${error.message}`);
+    }
+  }
   if (pinned) {
     // How far this generation's colours sit from the pinned ones, before
     // they are mapped: a large gap is a palette pinned for other art.
