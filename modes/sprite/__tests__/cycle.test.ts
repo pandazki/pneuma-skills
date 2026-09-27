@@ -13,7 +13,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-  GAIT_FLOORS, SEAM_FLOOR, detectCycle, detectOneShots, distanceMatrix, frameDistance, frameMass,
+  GAIT_FLOORS, SEAM_FLOOR, detectCycle, detectOneShots, distanceMatrix, frameDistance, frameMass, gaitFloor,
   periodicityFloor, premultiplied, rankWindows, seamCloses, seamLimit, thumbSize,
 } from "../skill/scripts/cycle.mjs";
 
@@ -134,7 +134,7 @@ describe("cycle.mjs — is there a cycle?", () => {
     });
 
     test("--gait walk: a period under the floor is one step, so the stride is taken", () => {
-      expect(Math.round(GAIT_FLOORS.walk * FPS)).toBeGreaterThan(12);
+      expect(gaitFloor("walk", FPS)).toBeGreaterThan(12);
       const cycle = analyse(walker(96), "walk");
       expect(cycle.verdict).toBe("periodic");
       expect(cycle.period).toBe(24);
@@ -149,6 +149,53 @@ describe("cycle.mjs — is there a cycle?", () => {
       expect(cycle.guard).toMatchObject({ applied: false, below: 12 });
       expect(cycle.windows).toEqual([]);
     });
+  });
+
+  test("the gait floor rounds halves to even, as upstream's Python round does", () => {
+    expect(GAIT_FLOORS).toEqual({ walk: 0.6, run: 0.35 });
+    expect(gaitFloor("walk", 24)).toBe(14); // 14.4
+    expect(gaitFloor("run", 24)).toBe(8); // 8.4
+    expect(gaitFloor("run", 30)).toBe(10); // 10.5 → 10 (Math.round: 11)
+    expect(gaitFloor("run", 10)).toBe(4); // 3.5 → 4
+    expect(gaitFloor("run", 50)).toBe(18); // 17.5 → 18
+    expect(gaitFloor(null, 24)).toBeNull();
+    expect(gaitFloor("walk", 0)).toBeNull();
+    // A 10-frame run stride at 30 fps sits ON the floor, so it is a stride —
+    // with a floor of 11 it was taken for one step and doubled to 20.
+    const fps = 30;
+    const frames = sequence(90, (i) => [0.5 + 0.4 * Math.sin((2 * Math.PI * i) / 10), 0.5 + 0.4 * Math.cos((2 * Math.PI * i) / 10)]);
+    const cycle = detectCycle(distanceMatrix(frames), frames.length, { minLen: 6, maxLen: 40, gait: "run", fps });
+    expect(cycle.verdict).toBe("periodic");
+    expect(cycle.period).toBe(10);
+    expect(cycle.guard).toBeNull();
+  });
+
+  test("the lag past the window is a neighbour only: never one lone pair, never in the mean", () => {
+    // Upstream's profile mean averages the lags floor(minLen/2)..maxLen; the
+    // extra lag that lets a dip at maxLen be a minimum stays out of it.
+    const frames = sequence(96, (i) => [0.5 + 0.4 * Math.sin((2 * Math.PI * i) / 12), 0.5 + 0.4 * Math.cos((2 * Math.PI * i) / 12)]);
+    const n = frames.length;
+    const D = distanceMatrix(frames);
+    const { minLen, maxLen } = windowFor(n);
+    const lagMean = (L: number) => {
+      let sum = 0;
+      for (let j = 0; j + L < n; j++) sum += D[j * n + j + L];
+      return sum / (n - L);
+    };
+    const lags = Array.from({ length: maxLen - Math.floor(minLen / 2) + 1 }, (_, k) => Math.floor(minLen / 2) + k);
+    const expected = lags.reduce((a, L) => a + lagMean(L), 0) / lags.length;
+    expect(detectCycle(D, n, { minLen, maxLen, fps: FPS }).profileMean!).toBeCloseTo(expected, 9);
+
+    // 30 frames whose only repeat is at lag 28 (two pairs); lag 29 would be
+    // one pair, frame 0 against frame 29. That single difference is not
+    // evidence that 28 is a dip, so the window holds no cycle — reading it
+    // made a 28-frame "cycle" out of two frame pairs.
+    const m = 30;
+    const E = new Float64Array(m * m);
+    for (let i = 0; i < m; i++) for (let j = 0; j < m; j++) E[i * m + j] = Math.abs(i - j) === 28 ? 0 : Math.abs(i - j) / m;
+    const edge = detectCycle(E, m, { minLen: 6, maxLen: 28, fps: FPS });
+    expect(edge.verdict).toBe("none");
+    expect(edge.reason).toBe("no-dip");
   });
 
   test("frames that drift steadily apart have no cycle — not the window floor", () => {

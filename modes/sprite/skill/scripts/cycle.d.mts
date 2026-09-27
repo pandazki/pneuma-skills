@@ -12,6 +12,8 @@ export declare const DOUBLE_TOLERANCE: number;
 export declare const DOUBLE_SEARCH: number;
 export declare const NEAR_EXACT_STEP_FRACTION: number;
 export declare const GAIT_FLOORS: { walk: number; run: number };
+/** The gait floor in frames, halves rounded to even as upstream's Python does. */
+export declare function gaitFloor(gait: "walk" | "run" | null | undefined, fps: number | null | undefined): number | null;
 export declare const MAX_CYCLE_WINDOWS: number;
 export declare const HOLD_STEP_FRACTION: number;
 export declare const ONE_SHOT_MIN_CONTRAST: number;
