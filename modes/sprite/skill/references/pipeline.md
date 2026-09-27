@@ -638,9 +638,10 @@ are wrong if they move:
    is the fallback for a session with no fal key.
 4. **Key, then zero the keyed RGB.** With `--keyer unmix` (the default) the
    window is decoded once to raw RGBA in the work directory (W × H × 4 bytes a
-   frame, deleted when keyed), the plate is measured on 8 frames spread over
-   it, and every frame is un-mixed in JS and written as PNG in batches of at
-   most 256 MB. No despill runs: the un-mix already took the plate out of the
+   frame at the clip's own size — 200 MB for 121 frames of 640², 1 GB for 122
+   of 1440² — deleted as soon as it is keyed), the plate is measured on 8
+   frames spread over it, and every frame is un-mixed in JS and written as PNG
+   in batches of at most 256 MB. No despill runs: the un-mix already took the plate out of the
    edge, and it leaves every pixel without the plate's hue exactly as it was.
    Then every pixel under the alpha threshold has its RGB zeroed — the same
    rule `key` and `from-video` apply, because transparency is all four bytes.
@@ -652,7 +653,8 @@ are wrong if they move:
    yellow pink or salmon: on tanka's ten loops it moved the body's colour by
    7.7–12.0 ΔE00 and turned the yellow fur salmon, and on the synthetic set it
    changed 71 % of the interior (see Measured at the end). It also turns the
-   dark rim pixel `(0,145,0)` opaque black, the loop's dark rim.
+   dark-green rim pixel `(0,145,0)` black at whatever alpha the key left it
+   (148 against a pure-green key) — the loop's dark rim.
 
    `--keyer colorkey` keeps the previous chain — `colorkey`, then `despill`:
 
@@ -730,7 +732,9 @@ are wrong if they move:
    disk the run needs: `loop` stages its working PNGs under
    `<motionDir>/.loop-work` while it runs, about `frames × W × H × 4` bytes —
    roughly **600 MB** for a 122-frame 1440² clip — so pass `--width` before
-   cutting a large clip rather than after it fills the disk.
+   cutting a large clip rather than after it fills the disk. With `--keyer
+   unmix` the raw window step 4 keys from comes on top, briefly and at the
+   clip's own size whatever `--width` says: about 1 GB more for that clip.
 8. **Write `frames/NNN.png` and the exports.** Three digits, up to **400**
    frames (a sprite motion's two-digit frames still load; the contiguity check
    is unchanged). Each export is skipped with a warning, never a failed command,
@@ -1458,8 +1462,9 @@ the painted one — its border rule rejects broadcast green `#00b140`); the
 channel split taken from the plate's own hue; the plate measured over 8 frames
 of the clip; blends **classified** by channel excess rather than the mean tint
 (upstream's opt-in `spill_require_hue` rule), because the mean tint reads
-yellow and gold as green — on tanka it put a pale translucent ring round every
-yellow ear, and on the synthetic gold disc an orange one.
+yellow and gold as green — on tanka it lowered the alpha of 42–77 % of the
+yellow fur within 4 px of the edge (a pale translucent ring round every ear),
+and on the synthetic gold disc it left an orange one.
 
 **Synthetic ground truth.** A 512² scene drawn at 4× and box-downsampled, so
 every edge pixel's true colour and coverage are known: an ink-outlined skin
@@ -1494,24 +1499,29 @@ at 5–6 ms a 512² frame against upstream's 50–90 ms in Python.
 `#00ee01`–`#00f500`), 24 frames each. No ground truth, so: `keyResidue`; the
 rim — mean luma of the outermost opaque ring over the ring 3 px in (a green rim
 lifts it a little, a black rim drags it down; tanka has no outline, so near 1
-is right); and the body — ΔE00 between keyed and source pixels ≥ 5 px inside.
+is right); the body — ΔE00 between keyed and source pixels ≥ 5 px inside; and
+the yellow ring — the share of yellow-fur pixels within 4 px of the edge whose
+alpha was lowered.
 
-| chain | keyResidue | rim / 3 px in | body ΔE00 vs source |
-|---|---|---|---|
-| `colorkey` | 1.22–1.56 % | 0.83–0.88 | 0.45–0.53 |
-| `colorkey` + `despill` | 0 | 0.60–0.65 | **7.7–12.0** (yellow fur → salmon) |
-| **`unmix`** | **0** | **0.93–0.97** | **0.00** |
+| chain | keyResidue | rim / 3 px in | body ΔE00 vs source | yellow ring |
+|---|---|---|---|---|
+| `colorkey` | 1.22–1.56 % | 0.83–0.88 | 0.45–0.53 | 0 |
+| `colorkey` + `despill` | 0 | 0.60–0.65 | **7.7–12.0** (yellow fur → salmon) | 0 |
+| **`unmix`** | **0** | **0.93–0.97** | **0.00** | **0** |
+| upstream Python (mean tint) | 0 | 0.92–0.96 | 0.01–0.04 | **42–77 %** |
 
 `from-video --frames 12` on tanka's walk: `keyResidue` 0.0158 with `--keyer
 colorkey` (the 1 px rim `video-preview.md` measured on Lumi's portrait), 0 with
 `unmix`. Alpha coverage is the same to 0.1 % across all three chains.
 
-**Throughput**, 300 frames at 512² (tanka's walk looped): the key stage alone
-went from 1.45–1.67 s (one ffmpeg pass: decode, colorkey, despill, PNG) to
-2.63–2.79 s (decode to raw RGBA 0.15 s, key 1.35 s, PNG 1.1–1.3 s): 1.70–1.73×.
-The whole `loop --width 512 --formats webm` command: 15.3–16.5 s before,
-16.2–20.7 s after on a shared machine — within noise of the old chain run the
-same way (16.1–22.2 s).
+**Throughput**, 300 frames at 512² (tanka's walk looped to 300 frames, x264
+CRF 16): the key stage alone, six rounds over two sessions on a shared
+machine, went from 1.36–2.18 s (one ffmpeg pass: decode, colorkey, despill,
+PNG) to 2.30–2.79 s (decode to raw RGBA 0.1–0.15 s, key 1.28–1.35 s — about
+4.4 ms a frame — PNG 0.9–1.3 s): 1.22–1.96×, never past the 2× budget. The
+whole `loop --width 512 --formats webm --seam-fill none --no-trim-holds`
+command: 11.4–12.7 s on the previous script, 13.7–15.9 s with `unmix` (one
+round of the previous script took 28.7 s under load).
 
 **Where it does not apply.** A white, cream or grey plate has no hue to un-mix
 and keeps `colorkey`. The Lumi attack clip is on cream `#ece9e1`: `colorkey`

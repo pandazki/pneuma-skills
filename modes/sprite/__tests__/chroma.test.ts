@@ -119,9 +119,11 @@ describe("keyFrame: hard cut, un-mix, spill", () => {
     expect(at(image, 16, 16)).toEqual([...subject, 255]);
   });
 
-  test("colorkey's dark-green rim pixel comes out as the ink it was, not green and not black-opaque", () => {
+  test("colorkey's dark-green rim pixel comes out as the ink it was, at the coverage it had", () => {
     // (0,145,0) next to the plate is ~43% black ink and ~57% plate. colorkey
-    // leaves it pure green at α≈148; despill after it paints it opaque black.
+    // leaves it pure green at α≈148; despill after it paints it (0,0,0) at
+    // that same α — the colour is right only by accident, the coverage never
+    // is. Un-mixed, it comes back as near-black ink at ~43 % coverage.
     const { image } = keyed(edgeScene([20, 16, 24], [0, 145, 0]));
     const [r, g, b, a] = at(image, 8, 12);
     expect(Math.max(r, g, b)).toBeLessThanOrEqual(8);
