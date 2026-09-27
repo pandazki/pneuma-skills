@@ -1,79 +1,79 @@
 {
   "tagline": {
-    "en": "One character, every motion, ready for a game engine",
-    "zh-CN": "一个角色，所有动作，游戏引擎直接能用",
-    "ja": "キャラクターは一度、モーションは無限、そのままゲームエンジンへ"
+    "en": "From a game move set to a picture that breathes",
+    "zh-CN": "从游戏角色的一整套动作，到一张会呼吸的图",
+    "ja": "ゲームキャラのモーション一式から、呼吸する一枚の絵まで"
   },
   "hero": "hero.png",
   "highlights": [
     {
       "title": {
-        "en": "Character-Locked Sheets",
-        "zh-CN": "角色锁定的雪碧图",
-        "ja": "キャラクターが固定されたシート"
+        "en": "Say What It's For",
+        "zh-CN": "说清用途就行",
+        "ja": "用途を言うだけ"
       },
       "description": {
-        "en": "Design the character once. Every motion sheet is drawn with its turnaround and portrait attached, so frame 12 of the attack is the same character as frame 1 of the idle.",
-        "zh-CN": "角色只定一次。每张动作雪碧图都带着它的三视图和头像一起生成，所以攻击的第 12 帧和待机的第 1 帧还是同一个角色。",
-        "ja": "キャラクターの設計は一度きり。モーションシートは必ず三面図とポートレートを添えて生成されるので、アタックの 12 コマ目も待機の 1 コマ目も同じキャラクターです。"
+        "en": "A game character, your own picture brought to life, a loop for a web page, or a mascot an app switches from code. Say which, and the agent asks only that route's few questions, quotes its price first, and finishes at its files.",
+        "zh-CN": "游戏角色、让自己的图动起来、网页上的循环动画，还是应用里靠代码切换状态的吉祥物——说出是哪一种，助手就只问这条路线需要的那几个问题，先报价，最后交付该交的文件。",
+        "ja": "ゲームキャラ、手持ちの絵を動かす、Web ページのループ、アプリがコードで切り替えるマスコット。どれかを伝えれば、エージェントはそのルートに必要な質問だけをして、先に費用を伝え、決まったファイルで仕上げます。"
       },
-      "media": "highlight-character-locked-sheets.png",
+      "media": "highlight-say-what-its-for.png",
       "mediaType": "image"
     },
     {
       "title": {
-        "en": "Auto Slice & Align",
-        "zh-CN": "自动切帧与对齐",
-        "ja": "自動スライスとアライン"
+        "en": "Your Picture, Breathing",
+        "zh-CN": "让你的图呼吸起来",
+        "ja": "あなたの絵が息をする"
       },
       "description": {
-        "en": "The background is keyed out, the grid is cut into frames, and every frame is nudged until the character's feet land on the same pixel — then packed into sheet.png and an atlas.json that Phaser and PixiJS read as it is.",
-        "zh-CN": "背景自动抠掉，网格切成帧，每一帧都挪到角色的脚落在同一个像素上，再打包成 sheet.png 和一份 Phaser、PixiJS 直接能读的 atlas.json。",
-        "ja": "背景を抜き、グリッドをコマに切り、キャラクターの足が同じピクセルに乗るまで各コマを整列。sheet.png と、Phaser や PixiJS がそのまま読める atlas.json にパックします。"
+        "en": "Drop in a picture you love: it is cut out once, then breathes with no model call. The body swells on a slow wave, the head rides on top without changing a pixel, and the feet never move.",
+        "zh-CN": "发一张你喜欢的图，抠一次背景，它就开始呼吸，这一步不调用任何模型。身体随呼吸慢慢起伏，头整个跟着上下，一个像素都不变形，脚始终不动。",
+        "ja": "お気に入りの絵を渡せば、一度切り抜くだけで呼吸を始めます。この工程ではモデルを呼びません。体はゆっくり膨らんでは戻り、頭は形を変えずにそのまま上下し、足は動きません。"
       },
-      "media": "highlight-auto-slice-align.png",
+      "media": "highlight-picture-breathes.png",
       "mediaType": "image"
     },
     {
       "title": {
-        "en": "Sheet or Video, Your Call",
-        "zh-CN": "雪碧图还是视频，你来定",
-        "ja": "シートか動画か、選ぶのはあなた"
+        "en": "Pixel Art Stays Pixel",
+        "zh-CN": "像素画不走样",
+        "ja": "ドット絵はドットのまま"
       },
       "description": {
-        "en": "Draw the motion as one sheet, or shoot it as a video clip on chroma green and sample that — you pick per motion. Either source lands on the same aligned frames, the same atlas, and the clip doubles as the preview.",
-        "zh-CN": "一个动作，可以画成一张雪碧图，也可以在纯绿背景上拍成视频再采样成帧——每个动作自己选。两条路最后都落到同样对齐的帧和同一份 atlas，而那段视频顺便就是预览。",
-        "ja": "モーションは 1 枚のシートとして描いてもいいし、クロマキーグリーンで撮った動画をサンプリングしてもいい —— モーションごとに選べます。どちらの入り口でも揃ったコマと同じアトラスに行き着き、クリップはそのままプレビューになります。"
+        "en": "The soft, uneven blocks an image model draws are snapped back to one pixel each, on one pinned palette. Colourways are exact colour swaps across every motion, so the eyes and the highlight never change.",
+        "zh-CN": "图像模型画出的像素块边缘发虚、大小不一，这一步把每个块重新对齐成一个像素，并锁定同一套调色板。换色版本是逐色精确替换、所有动作一起换，眼睛和高光始终不变。",
+        "ja": "画像モデルが描く、にじんで不揃いなブロックを 1 ブロック 1 ピクセルに揃え直し、パレットも固定します。カラバリは全モーション共通の厳密な色の置き換えなので、目もハイライトも変わりません。"
       },
-      "media": "highlight-sheet-or-video.png",
+      "media": "highlight-pixel-stays-pixel.png",
       "mediaType": "image"
     },
     {
       "title": {
-        "en": "Any Style, Any Grid",
-        "zh-CN": "任何画风，任何网格",
-        "ja": "どんな画風も、どんなグリッドも"
+        "en": "Every Pose Cut Whole",
+        "zh-CN": "每个姿势都切得完整",
+        "ja": "ポーズは欠けずに切り出す"
       },
       "description": {
-        "en": "Chibi line art, flat vector, 128px pixel art, semi-realistic — the style sentence is yours, and so is the grid. A 4×4 of sixteen frames, a 2×4 walk cycle and a 3×3 of nine all go through the same pipeline untouched.",
-        "zh-CN": "Q 版线稿、扁平矢量、128 像素点阵、半写实——画风由你一句话定，网格也一样。4×4 的十六帧、2×4 的走路循环、3×3 的九帧，走的是同一条流水线，一行都不用改。",
-        "ja": "ちび線画、フラットベクター、128px ドット絵、セミリアル —— 画風はあなたの一文で決まり、グリッドも同じ。16 コマの 4×4 も、歩行ループの 2×4 も、9 コマの 3×3 も、同じパイプラインをそのまま通ります。"
+        "en": "Image models don't always draw the grid they were asked for. When a pose crosses a grid line, the sheet is cut where the poses actually are, so no boot, blade or tail is lost, and the drawing itself is never touched.",
+        "zh-CN": "图像模型不一定按要求的网格来画。只要有姿势越过格线，就改为按每个姿势实际所在的位置来切，靴子、刀刃、尾巴都不会被切掉，原图也一笔不动。",
+        "ja": "画像モデルは頼んだグリッドどおりに描くとは限りません。ポーズが線をはみ出したら、実際にポーズがある位置で切り直すので、ブーツも刃も尻尾も欠けず、元の絵には一切手を加えません。"
       },
-      "media": "highlight-any-style-any-grid.png",
+      "media": "highlight-every-pose-whole.png",
       "mediaType": "image"
     },
     {
       "title": {
-        "en": "Seamless UI Loops",
-        "zh-CN": "无缝循环，直接上 UI",
-        "ja": "つなぎ目のない UI ループ"
+        "en": "Clean Edges, Warm Colours",
+        "zh-CN": "暖色边缘也干净",
+        "ja": "暖色のふちもきれいに"
       },
       "description": {
-        "en": "One keyframe goes in as the clip's first frame and its last, so the motion comes back to where it started. The matte keeps the alpha, and every frame ships as WebP, APNG, WebM and Lottie — with the seam across the wrap measured, not assumed.",
-        "zh-CN": "同一张关键帧，既当片子的第一帧，也当最后一帧，动作转一圈就回到出发时的样子。抠像保住透明通道，每一帧再导成 WebP、APNG、WebM 和 Lottie——接缝是量出来的，不是说说而已。",
-        "ja": "同じキーフレームをクリップの最初のコマと最後のコマの両方に渡すので、モーションは出発点に戻ってきます。マットは透明度を残したまま、全コマを WebP、APNG、WebM、Lottie として書き出し —— つなぎ目は「たぶん合っている」ではなく、実測した数字で確かめます。"
+        "en": "Copper hair shot on a green screen used to keep a yellow-green rim that a hue check cannot see. The keyer now reads each edge pixel against the character's own colours, and measures what is left.",
+        "zh-CN": "在绿幕前拍的铜色头发，以前边上总留着一圈黄绿色，按色相判断根本发现不了。现在抠像时，每个边缘像素都会拿角色自己的颜色来比对，剩下多少也会量出来。",
+        "ja": "グリーンバックで撮った銅色の髪には、色相では見分けられない黄緑のふちが残っていました。いまのキーヤーはふちの 1 ピクセルずつをキャラ自身の色と照らし合わせ、残りも数値で測ります。"
       },
-      "media": "highlight-seamless-loop.png",
+      "media": "highlight-clean-warm-edges.png",
       "mediaType": "image"
     }
   ]
