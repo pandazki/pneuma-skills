@@ -130,7 +130,8 @@ export interface PixelSpec {
  * its pinned palette's colours to others, baked into new files by
  * `sprite-sheet.mjs recolor`. Recorded once, here; each motion names the
  * files its bake left (`Motion.variants`). The rules (a slug name, `#rrggbb`
- * colours, a tolerance of 1–255 or none for exact) are `recolor.mjs`'s —
+ * colours, a tolerance of 1–255, or 0 / none for exact — 0 is never
+ * stored) are `recolor.mjs`'s —
  * the writer checks with them and this loader drops what fails them.
  */
 export interface PixelVariant {
@@ -499,8 +500,6 @@ export interface BreatheRecord {
   still: string;
   /** The total stretch, as a share of the body below the neck. */
   depth: number;
-  /** Horizontal amplitude when it differs from `depth`; 0 turns it off. */
-  depthX?: number;
   /** Whole breaths in one loop of the motion. */
   breaths: number;
   /** How far the head trails the chest, as a fraction of a breath. */
@@ -1036,12 +1035,10 @@ function parseBreathe(value: unknown): BreatheRecord | undefined {
   if (!still || depth === undefined || depth < 0 || breaths === undefined || lag === undefined || !mode) {
     return undefined;
   }
-  const depthX = parseFinite(value.depthX);
   const anatomy = parseAnatomy(value.anatomy);
   return {
     still,
     depth,
-    ...(depthX === undefined || depthX < 0 ? {} : { depthX }),
     breaths,
     lag,
     mode,

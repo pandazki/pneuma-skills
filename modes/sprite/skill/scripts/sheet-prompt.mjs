@@ -25,8 +25,11 @@
  */
 
 /** The version of the text below. Any change to a sentence bumps it: a
- *  recorded `promptParts.builder` has to keep meaning the words it produced. */
-export const SHEET_PROMPT_BUILDER = "sheet-prompt/1";
+ *  recorded `promptParts.builder` has to keep meaning the words it produced.
+ *  `/2` added the side geometry an asymmetric character's facing implies and
+ *  the rhythm reference (`rhythm:<d>`); every prompt without them reads as
+ *  `/1` did, word for word. */
+export const SHEET_PROMPT_BUILDER = "sheet-prompt/2";
 
 /**
  * Safe margin as a share of the cell, floored per axis.
@@ -62,6 +65,36 @@ export const RECOMMENDED_FRAMES = { idle: 8 };
 export const GUIDE_DEFAULT = false;
 
 const DIRECTIONS = ["front", "back", "left", "right"];
+/** The side view a mirror of each side view would be. */
+const OPPOSITE = { left: "right", right: "left" };
+
+/**
+ * Where the character's OWN right and left side are in a picture facing each
+ * way — the geometry a side-specific detail (a basket on the right arm, a
+ * hairpin on the left) has to be placed by. Computed, not reasoned about:
+ * the 2026-09-27 four-direction blind trial wrote "facing left, her right
+ * side faces the viewer" into its own prompts — the opposite — and both side
+ * walks carried the basket on the wrong side. Facing left (a pure profile
+ * toward the left of the picture) the character has turned to its own right,
+ * so its left side is the one toward the viewer; facing right, its right
+ * side is. Every sheet prompt of an asymmetric character carries the
+ * sentence for its facing, and `sprite-project.mjs sheet-prompt --json`
+ * prints the whole table (`sides`) for the prompts written by hand — the
+ * direction anchors.
+ */
+export const SIDE_GEOMETRY = {
+  front: "Seen from the front, the character's own right side is on the left of the picture and their own left side is on the right of the picture.",
+  back: "Seen from behind, the character's own right side is on the right of the picture and their own left side is on the left of the picture.",
+  left: "Facing left, toward the left of the picture, the character's own right side is the far side — turned away from the viewer and partly hidden behind the body — and their own left side is the near side, toward the viewer.",
+  right: "Facing right, toward the right of the picture, the character's own right side is the near side, toward the viewer, and their own left side is the far side — turned away from the viewer and partly hidden behind the body.",
+};
+
+/** The side-geometry sentence for a facing, and what it asks of every
+ *  side-specific detail; null for a facing it has no sentence for. */
+export function sideClause(direction) {
+  const geometry = SIDE_GEOMETRY[direction];
+  return geometry ? `${geometry} Place every side-specific detail by the character's own right and left, as they fall in this view.` : null;
+}
 
 /** Words in a motion's id or label that name its state. First token wins,
  *  id before label. `--state` overrides. */
@@ -210,7 +243,7 @@ export function stateOf(motion) {
  * records them. Only the conditional clauses have ids: everything said in
  * every sheet prompt is pinned by the builder version instead.
  */
-export function sheetGuards({ character, motion, state, anchor = false, guide = false }) {
+export function sheetGuards({ character, motion, state, anchor = false, guide = false, rhythm = null }) {
   const guards = [];
   const height = character?.pixel?.logicalHeight;
   if (whole(height)) guards.push(`pixel:${height}`);
@@ -220,7 +253,16 @@ export function sheetGuards({ character, motion, state, anchor = false, guide = 
     guards.push(`direction:${motion.direction}`);
     if (anchor) guards.push(`anchor:${motion.direction}`);
   }
-  if (typeof character?.asymmetric === "string" && character.asymmetric.trim()) guards.push("asymmetric");
+  const asymmetric = typeof character?.asymmetric === "string" && character.asymmetric.trim() !== "";
+  if (asymmetric) guards.push("asymmetric");
+  if (rhythm) {
+    // The finished other side of an asymmetric side view, attached for its
+    // timing alone. It exists because that side could not be mirrored.
+    if (!asymmetric || OPPOSITE[motion.direction] !== rhythm) {
+      throw new Error(`a rhythm sheet facing ${rhythm} goes only with an asymmetric character's ${OPPOSITE[rhythm] ?? "side"}-facing motion`);
+    }
+    guards.push(`rhythm:${rhythm}`);
+  }
   guards.push(`state:${state}`);
   if (motion.grid.rows > 1) guards.push("row-continuity");
   guards.push(motion.loop ? "loop-close" : "one-shot-end");
@@ -230,7 +272,7 @@ export function sheetGuards({ character, motion, state, anchor = false, guide = 
 /** Read a guard list back into what the text needs, refusing an id this
  *  builder version does not know — it could not have written it. */
 function readGuards(guards) {
-  const read = { pixel: null, guide: false, direction: null, anchor: null, asymmetric: false, state: null, rowContinuity: false, ending: null };
+  const read = { pixel: null, guide: false, direction: null, anchor: null, asymmetric: false, rhythm: null, state: null, rowContinuity: false, ending: null };
   for (const id of guards) {
     let m;
     if ((m = /^pixel:(\d+)$/.exec(id)) && Number(m[1]) > 0) read.pixel = Number(m[1]);
@@ -238,6 +280,7 @@ function readGuards(guards) {
     else if ((m = /^direction:(\w+)$/.exec(id)) && DIRECTIONS.includes(m[1])) read.direction = m[1];
     else if ((m = /^anchor:(\w+)$/.exec(id)) && DIRECTIONS.includes(m[1])) read.anchor = m[1];
     else if (id === "asymmetric") read.asymmetric = true;
+    else if ((m = /^rhythm:(\w+)$/.exec(id)) && OPPOSITE[m[1]]) read.rhythm = m[1];
     else if ((m = /^state:(\w+)$/.exec(id)) && (SHEET_STATES.includes(m[1]) || m[1] === "generic")) read.state = m[1];
     else if (id === "row-continuity") read.rowContinuity = true;
     else if (id === "loop-close" || id === "one-shot-end") read.ending = id;
@@ -246,6 +289,9 @@ function readGuards(guards) {
   if (!read.state) throw new Error("the guards name no state (state:<name>)");
   if (!read.ending) throw new Error("the guards name no ending (loop-close or one-shot-end)");
   if (read.anchor && read.anchor !== read.direction) throw new Error(`anchor:${read.anchor} without direction:${read.anchor}`);
+  if (read.rhythm && (!read.asymmetric || read.direction !== OPPOSITE[read.rhythm])) {
+    throw new Error(`rhythm:${read.rhythm} needs asymmetric and direction:${OPPOSITE[read.rhythm]}`);
+  }
   return read;
 }
 
@@ -354,9 +400,19 @@ export function renderSheetPrompt({ character, motion }, parts) {
     const sentence = typeof character.asymmetric === "string" ? character.asymmetric.trim() : "";
     if (!sentence) throw new Error("the asymmetric clause needs character.asymmetric");
     text.push(`These details are side-specific and never flip or change sides in any cell: ${closed(sentence)}`);
+    // Where "right" and "left" land in this view, spelled out: the facing
+    // the prompt states is the one the sentence is for.
+    const facing = g.direction ?? (character.facing === "left" || character.facing === "right" ? character.facing : null);
+    const sides = facing ? sideClause(facing) : null;
+    if (sides) text.push(sides);
   }
   // 4. The motion: the agent's plan, then what the state and the grid demand.
   text.push(`The motion (${plural(n, "frame")}, ${g.ending === "loop-close" ? "looping" : "played once"}): ${closed(action)}`);
+  if (g.rhythm) {
+    // The attach order is references, this sheet, then the guide: the guide
+    // keeps "last", which its own clause has always said.
+    text.push(`The ${g.guide ? "second-to-last attached image, just before the layout guide," : "last attached image"} is the finished ${g.rhythm}-facing sheet of this same motion, for rhythm only: match its step timing, stride length and drawing scale cell for cell, and take nothing else from it — not its facing, and not the side any detail is on.`);
+  }
   text.push(stateText(g.state, g.direction));
   if (g.rowContinuity) {
     text.push("The motion runs straight on across row ends: the first cell of each row continues from the last cell of the row above by the same small step as the cells within a row.");
@@ -374,8 +430,12 @@ export function renderSheetPrompt({ character, motion }, parts) {
  * Build a sheet prompt for a motion: choose the guards, record the parts,
  * render the text. `refs` is the sidecar's ref list — an anchor facing the
  * motion's direction is attached and named; anchors facing elsewhere are not.
+ * `rhythm` is the direction of a finished sheet of this motion's other side
+ * that the caller will attach after the references (an asymmetric
+ * character's second side); the caller finds it, because this module sees
+ * no other motion.
  */
-export function buildSheetPrompt({ character, motion, refs = [], action, state, guide = false }) {
+export function buildSheetPrompt({ character, motion, refs = [], action, state, guide = false, rhythm = null }) {
   const chosen = state ?? stateOf(motion);
   if (!(SHEET_STATES.includes(chosen) || chosen === "generic")) {
     throw new Error(`--state: expected ${[...SHEET_STATES, "generic"].join(", ")}, got '${chosen}'`);
@@ -387,7 +447,7 @@ export function buildSheetPrompt({ character, motion, refs = [], action, state, 
   const parts = {
     builder: SHEET_PROMPT_BUILDER,
     action: typeof action === "string" ? action.trim() : "",
-    guards: sheetGuards({ character, motion, state: chosen, anchor: Boolean(anchorRef), guide }),
+    guards: sheetGuards({ character, motion, state: chosen, anchor: Boolean(anchorRef), guide, rhythm }),
     ...(guide ? {
       guide: {
         rows: geometry.rows, cols: geometry.cols,
@@ -399,8 +459,10 @@ export function buildSheetPrompt({ character, motion, refs = [], action, state, 
   // What the text says is attached, in the order the direction-anchor
   // recipe was measured with (prompting.md, "Direction anchors", E7): the
   // anchor for this direction first, then every other reference in the
-  // order it was registered — anchors facing another way left out — and the
-  // guide last. The order is not in the text, so it is not in the parts.
+  // order it was registered — anchors facing another way left out. The
+  // caller appends the rhythm sheet and then the guide, in that order: the
+  // text names both by their place from the end. The reference order is
+  // not in the text, so it is not in the parts.
   const attach = [
     ...(anchorRef ? [anchorRef.id] : []),
     ...refs.filter((r) => r.role !== "anchor").map((r) => r.id),
