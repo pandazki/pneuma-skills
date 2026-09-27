@@ -22,6 +22,45 @@ export const DEFAULT_MATTE_MODEL: string;
 /** fal's own default for `spill_suppression_strength` (veed-gs). */
 export const DEFAULT_SPILL_SUPPRESSION: number;
 
+/** fal's list price per endpoint: VEED per 30 frames, Bria per second. */
+export interface MattePrice {
+  usd: number;
+  /** veed only: the price with edge refinement off. */
+  unrefinedUsd?: number;
+  per: "30 frames" | "second";
+  /** When the model page was read. */
+  checked: string;
+}
+export const MATTE_PRICES: Readonly<Record<string, MattePrice>>;
+
+/** What one matte cost, as near as can be said without fal's invoice. */
+export interface MatteCost {
+  /** Null when the delivered clip could not be measured (see `note`). */
+  usd: number | null;
+  estimate: true;
+  basis: "frames-of-delivered-clip" | "seconds-of-delivered-clip" | "unknown";
+  unitPriceUsd?: number;
+  unit?: string;
+  checked?: string;
+  frames?: number;
+  seconds?: number;
+  note?: string;
+}
+
+/** Frames (packet count) and seconds of a local clip, or null without ffprobe. */
+export function measureClip(path: string): { frames: number | null; duration: number | null } | null;
+
+/** fal's list price applied to the delivered clip. */
+export function matteCost(input?: {
+  model?: string;
+  refine?: boolean;
+  frames?: number | null;
+  duration?: number | null;
+}): MatteCost;
+
+/** The one stderr line: `cost: ≈ $X (estimate: …)` or `cost: unknown (…)`. */
+export function costLine(cost: MatteCost | null | undefined, model: string): string;
+
 /** Bria's documented input ceiling: "duration less than 30s". */
 export const BRIA_MAX_DURATION_S: number;
 /** Bria's documented input ceiling: "Size should be less than 4000x4000". */
@@ -94,6 +133,8 @@ export interface RemoveVideoBackgroundResult {
   model: string;
   endpoint: string;
   alpha: true;
+  /** Additive: every other key is as it was before the field existed. */
+  cost: MatteCost;
 }
 
 /** One entry of a fal `File` / `Video` result. */
@@ -115,6 +156,8 @@ export interface RemoveVideoBackgroundDependencies {
   upload?: FalUploader;
   /** Defaults to `probeVideoFile`; injected so the limit check needs no ffprobe. */
   probe?: (path: string) => ProbedVideo | null;
+  /** Defaults to `measureClip`; counts the delivered matte for its cost. */
+  measure?: (path: string) => { frames: number | null; duration: number | null } | null;
   /** Defaults to `fal-queue.mjs::runFalJob`. */
   runJob?: (options: {
     url: string;

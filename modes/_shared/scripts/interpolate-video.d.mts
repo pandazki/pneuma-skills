@@ -27,6 +27,54 @@ export const TARGET_FPS_MAX: number;
 /** fal: "Supports up to 8x upscaling". */
 export const MAX_UPSCALE: number;
 
+/** fal's list prices (model pages read `checked`). */
+export const INTERPOLATE_PRICES: {
+  readonly topaz: {
+    readonly tiers: ReadonlyArray<{ readonly maxShortSide: number; readonly usd: number; readonly label: string }>;
+    readonly per: string;
+    readonly highFpsFactor: number;
+    readonly gaia2Factor: number;
+    readonly checked: string;
+  };
+  readonly rife: { readonly usd: number; readonly per: string; readonly checked: string };
+};
+
+/** What one job cost, as near as can be said without fal's invoice. */
+export interface InterpolateCost {
+  /** Null when nothing could be measured (see `note`). */
+  usd: number | null;
+  estimate: true;
+  basis: "seconds-of-delivered-clip" | "inference-time" | "wall-time-upper-bound" | "unknown";
+  unit?: string;
+  unitPriceUsd?: number;
+  checked?: string;
+  seconds?: number;
+  /** Topaz: the resolution tier, the short side it was read off, and the
+   *  two multipliers fal's page names. */
+  tier?: string;
+  shortSide?: number;
+  fpsDoubled?: boolean;
+  gaiaHalved?: boolean;
+  note?: string;
+}
+
+/** Width, height and seconds of a local clip, or null without ffprobe. */
+export function measureClip(path: string): { width: number | null; height: number | null; duration: number | null } | null;
+
+export function topazCost(input?: {
+  width?: number | null;
+  height?: number | null;
+  duration?: number | null;
+  targetFps?: number;
+  /** The alias (`gaia-2`) or fal's spelling (`Gaia 2`). */
+  model?: string;
+}): InterpolateCost;
+
+export function rifeCost(input?: { inferenceSeconds?: number; apiMs?: number }): InterpolateCost;
+
+/** The one stderr line: `cost: ≈ $X (estimate: …)` or `cost: unknown (…)`. */
+export function costLine(cost: InterpolateCost | null | undefined, family: string): string;
+
 export interface InterpolateOptions {
   /** Local path or URL of the clip to retime. */
   input?: string;
@@ -98,6 +146,8 @@ export interface TopazInterpolateResult {
   target_fps: number;
   upscale_factor: number;
   model: string;
+  /** Additive: every other key is as it was before the field existed. */
+  cost: InterpolateCost;
 }
 
 /** The `--json` contract for a RIFE run: what it was really given. There is
@@ -112,6 +162,8 @@ export interface RifeInterpolateResult {
   loop: boolean;
   /** Only when `--fps` pinned the output rate. */
   fps?: number;
+  /** Additive: every other key is as it was before the field existed. */
+  cost: InterpolateCost;
 }
 
 export type InterpolateResult = TopazInterpolateResult | RifeInterpolateResult;
@@ -125,6 +177,8 @@ export type FalUploader = (
 export interface InterpolateDependencies {
   /** Defaults to `fal-queue.mjs::uploadFalFile`. */
   upload?: FalUploader;
+  /** Defaults to `measureClip`; reads the retimed clip for Topaz's cost. */
+  measure?: (path: string) => { width: number | null; height: number | null; duration: number | null } | null;
   /** Defaults to `fal-queue.mjs::runFalJob`. */
   runJob?: (options: {
     url: string;
@@ -135,7 +189,7 @@ export interface InterpolateDependencies {
     label?: string;
     deadlineMs?: number;
     onRetry?: (info: { attempt: number; attempts: number; delayMs: number; reason: string }) => void;
-  }) => Promise<{ data?: any; apiMs?: number; attempts?: number }>;
+  }) => Promise<{ data?: any; apiMs?: number; inferenceSeconds?: number; attempts?: number }>;
   /** Defaults to `fal-queue.mjs::downloadFalFile`. */
   download?: (url: string, options?: { signal?: AbortSignal; attempts?: number }) => Promise<Uint8Array>;
 }

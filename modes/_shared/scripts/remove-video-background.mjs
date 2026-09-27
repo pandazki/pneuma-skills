@@ -56,11 +56,12 @@
  *     { video_url, output_codec: "vp9", spill_suppression_strength }
  *     Answers `video: [File, …]`, the same list shape as `veed`, and the
  *     same VP9-with-alpha WebM, so `--output` must end `.webm`.
- *     $0.015 per 30 frames — there is no edge-refinement tier to pay for.
+ *     $0.025 per 30 frames (model page, read 2026-09-28; it read $0.015 on
+ *     2026-09-22) — there is no edge-refinement tier to pay for.
  *     Source: https://fal.ai/models/veed/video-background-removal/green-screen
  *     MEASURED 2026-09-22 on the same 640² 24 fps 121-frame trial clip:
  *     617 KB of VP9 with `ALPHA_MODE=1`, 18.7 s of inference, 30 s wall,
- *     ≈ $0.06 — zero green pixels left, and a SOFTER edge than plain
+ *     ≈ $0.06 at that day's price (≈ $0.10 at today's) — zero green pixels left, and a SOFTER edge than plain
  *     `veed` on the same frame (8535 partial-alpha pixels against 6198).
  *     It knows the plate is chroma green, so it has no subject hint and no
  *     refinement switch: `--person` and `--no-refine` are refused here,
@@ -84,7 +85,11 @@
  * watcher never sees a half-written clip.
  *
  * `--json` prints exactly one object:
- *   { path, url, file_size, model, endpoint, alpha: true }
+ *   { path, url, file_size, model, endpoint, alpha: true, cost }
+ * `cost` is an ESTIMATE (`matteCost`): fal's list price for the endpoint
+ * applied to the matte that landed — its frames for VEED, its seconds for
+ * Bria, counted by ffprobe — never an invoice. The same figure goes to
+ * stderr as one `cost:` line; without ffprobe it is `cost: unknown (…)`.
  * Progress and warnings go to stderr; exit 1 on failure, 130 on interrupt.
  *
  * Environment: FAL_KEY, from the environment or a `.env` discovered by
@@ -135,6 +140,87 @@ export const DEFAULT_MATTE_MODEL = "veed";
  * fal's own default for the field; the trial ran at it and left no green.
  */
 export const DEFAULT_SPILL_SUPPRESSION = 0.8;
+
+/**
+ * fal's list prices, as each endpoint's model page states them (read
+ * 2026-09-28; https://fal.ai/models/<endpoint>). VEED bills per 30 frames,
+ * Bria per second of video. `veed` and `bria` match the sprite skill's
+ * table (`references/video-preview.md`, read 2026-09-22); `veed-gs` does
+ * NOT: the page now says $0.025 per 30 frames where the skill quoted $0.015,
+ * so the page's figure is the one used. Check again before quoting a user a
+ * total. Proration is assumed (frames ÷ 30 × price): fal does not say
+ * whether a part-block is rounded up.
+ */
+export const MATTE_PRICES = Object.freeze({
+  veed: Object.freeze({ usd: 0.0225, unrefinedUsd: 0.015, per: "30 frames", checked: "2026-09-28" }),
+  "veed-gs": Object.freeze({ usd: 0.025, per: "30 frames", checked: "2026-09-28" }),
+  bria: Object.freeze({ usd: 0.14, per: "second", checked: "2026-09-28" }),
+});
+
+const roundTo = (value, places) => Math.round(value * 10 ** places) / 10 ** places;
+
+/**
+ * Frames and seconds of a local clip, or null without ffprobe. Frames are
+ * counted packet by packet (`-count_packets`), because a VP9 WebM carries no
+ * frame count in its header; the duration is the container's.
+ */
+export function measureClip(path) {
+  const result = spawnSync(
+    "ffprobe",
+    ["-v", "error", "-select_streams", "v:0", "-count_packets",
+      "-show_entries", "stream=nb_read_packets:format=duration", "-of", "default=noprint_wrappers=1", path],
+    { encoding: "utf-8" },
+  );
+  if (result.error || result.status !== 0) return null;
+  const fields = {};
+  for (const line of String(result.stdout).trim().split("\n")) {
+    const eq = line.indexOf("=");
+    if (eq > 0) fields[line.slice(0, eq)] = line.slice(eq + 1).trim();
+  }
+  const positive = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  };
+  const frames = positive(fields.nb_read_packets);
+  const duration = positive(fields.duration);
+  return frames === null && duration === null ? null : { frames, duration };
+}
+
+/**
+ * What one matte cost at fal's list price, from the clip that landed. Always
+ * an estimate; `usd` is null when the clip could not be measured, with the
+ * reason in `note`.
+ */
+export function matteCost({ model, refine = true, frames, duration } = {}) {
+  const price = MATTE_PRICES[model];
+  if (!price) return { usd: null, estimate: true, basis: "unknown", note: `no price is known for --model ${model}` };
+  const unitPriceUsd = model === "veed" && refine === false ? price.unrefinedUsd : price.usd;
+  const common = { estimate: true, unitPriceUsd, unit: price.per, checked: price.checked };
+  if (price.per === "second") {
+    if (!(duration > 0)) return { usd: null, ...common, basis: "unknown", note: "ffprobe could not read the matte's duration" };
+    return { usd: roundTo(duration * unitPriceUsd, 4), ...common, basis: "seconds-of-delivered-clip", seconds: roundTo(duration, 3) };
+  }
+  if (!(frames > 0)) return { usd: null, ...common, basis: "unknown", note: "ffprobe could not count the matte's frames" };
+  return { usd: roundTo((frames / 30) * unitPriceUsd, 4), ...common, basis: "frames-of-delivered-clip", frames };
+}
+
+/** `$0.0908` — dollars to four places. */
+function formatUsd(usd) {
+  return Number.isFinite(usd) ? `$${usd.toFixed(4)}` : "unknown";
+}
+
+/** The one stderr line a `cost` object is said in. */
+export function costLine(cost, model) {
+  const tier = model === "veed" && cost?.unitPriceUsd === MATTE_PRICES.veed.unrefinedUsd ? ", edge refinement off" : "";
+  const listed = cost?.unitPriceUsd === undefined
+    ? ""
+    : `; fal lists ${formatUsd(cost.unitPriceUsd)} per ${cost.unit} for ${model}${tier}`;
+  if (!cost || cost.usd === null) return `cost: unknown (${cost?.note ?? "no measurement"}${listed})`;
+  const what = cost.basis === "seconds-of-delivered-clip"
+    ? `${cost.seconds} s × ${formatUsd(cost.unitPriceUsd)} per second`
+    : `${cost.frames} frames ÷ 30 × ${formatUsd(cost.unitPriceUsd)} per 30 frames`;
+  return `cost: ≈ ${formatUsd(cost.usd)} (estimate: ${what}, ${model}${tier} at fal's list price, model page read ${cost.checked})`;
+}
 
 /** Bria's documented input ceiling: "duration less than 30s". */
 export const BRIA_MAX_DURATION_S = 30;
@@ -297,7 +383,7 @@ export function mattedFile(data, model, { onNote = (message) => console.error(me
  */
 export async function removeVideoBackground(
   options,
-  { runJob = runFalJob, download = downloadFalFile, upload = uploadFalFile, probe = probeVideoFile } = {},
+  { runJob = runFalJob, download = downloadFalFile, upload = uploadFalFile, probe = probeVideoFile, measure = measureClip } = {},
 ) {
   const { output, apiKey, signal, deadlineMs = 600_000 } = options;
   if (!apiKey) throw new Error("No API key found. Set FAL_KEY in the environment or a .env file.");
@@ -344,6 +430,8 @@ export async function removeVideoBackground(
     // with alpha / ProRes with a Transparent background), which is what
     // `sprite-sheet.mjs loop --key alpha` relies on.
     alpha: true,
+    // Additive: every earlier key is as it was.
+    cost: matteCost({ model, refine: body.refine_foreground_edges, ...(measure(output) ?? {}) }),
   };
 }
 
@@ -354,7 +442,7 @@ const HELP = `Usage: remove-video-background.mjs --input <clip> --output <path> 
                          .webm for --model veed, .mov for --model bria
   --model <name>         ${Object.keys(MATTE_MODELS).join(", ")} (default: ${DEFAULT_MATTE_MODEL})
                          veed: VP9+alpha WebM, $0.0225 / 30 frames refined ($0.015 without)
-                         veed-gs: VP9+alpha WebM, $0.015 / 30 frames — for a clip
+                         veed-gs: VP9+alpha WebM, $0.025 / 30 frames — for a clip
                                   shot on flat chroma green; softest edge measured
                          bria: ProRes+alpha MOV, $0.14 / second; input < ${BRIA_MAX_DURATION_S}s and < ${BRIA_MAX_DIMENSION}x${BRIA_MAX_DIMENSION}
   --person               The subject is a person (veed only; default: not a person)
@@ -368,7 +456,11 @@ A local clip is uploaded to fal storage first (an http(s) URL is used as
 given; a data URI is refused — these endpoints cap video_url at 2083
 characters). Bria's documented input limits are measured with ffprobe
 before the paid call. Requires FAL_KEY (environment or .env). Progress goes
-to stderr; with --json, stdout carries exactly one object.`;
+to stderr; with --json, stdout carries exactly one object. What the matte
+cost — an estimate at fal's list price (model pages read
+${MATTE_PRICES.veed.checked}) on the frames or seconds ffprobe counts in the
+delivered clip — is printed on stderr as a cost: line and returned as the
+object's cost.`;
 
 export async function main(argv = process.argv.slice(2)) {
   const { values } = parseArgs({
@@ -424,6 +516,8 @@ export async function main(argv = process.argv.slice(2)) {
       signal: controller.signal,
       deadlineMs: Math.max(30, Number(values["deadline-s"]) || 600) * 1000,
     });
+    // The price first, on stderr: stdout stays one object (or one path).
+    console.error(costLine(result.cost, result.model));
     console.log(values.json ? JSON.stringify(result) : result.path);
     return 0;
   } catch (error) {

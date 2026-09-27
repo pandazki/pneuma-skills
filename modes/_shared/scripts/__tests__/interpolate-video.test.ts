@@ -24,7 +24,9 @@ import { fileURLToPath } from "node:url";
 
 import {
   buildInterpolateRequest,
+  costLine,
   DEFAULT_BETWEEN,
+  INTERPOLATE_PRICES,
   DEFAULT_UPSCALE,
   INTERPOLATORS,
   interpolateVideo,
@@ -34,6 +36,8 @@ import {
   TARGET_FPS_MAX,
   TARGET_FPS_MIN,
   TOPAZ_URL,
+  rifeCost,
+  topazCost,
 } from "../interpolate-video.mjs";
 
 const workspace = mkdtempSync(join(tmpdir(), "topaz-test-"));
@@ -220,6 +224,42 @@ describe("rife request bodies", () => {
   });
 });
 
+describe("what a retime cost", () => {
+  const read = INTERPOLATE_PRICES.topaz.checked;
+
+  test("Topaz is priced per second of output, by tier, doubled at 60 fps, halved for Gaia 2", () => {
+    // The trial clip: 640², 5 s, 60 fps, Proteus — the ≈ $0.10 the skill quotes.
+    const trial = topazCost({ width: 640, height: 640, duration: 5, targetFps: 60, model: "proteus" });
+    expect(trial).toMatchObject({ usd: 0.1, tier: "≤ 720p", shortSide: 640, fpsDoubled: true, gaiaHalved: false });
+    expect(trial.note).toBeUndefined();
+    expect(topazCost({ width: 640, height: 640, duration: 5, targetFps: 24, model: "proteus" }).usd).toBe(0.05);
+    expect(topazCost({ width: 640, height: 640, duration: 5, targetFps: 60, model: "gaia-2" }).usd).toBe(0.05);
+    expect(topazCost({ width: 3840, height: 2160, duration: 5, targetFps: 30, model: "proteus" })).toMatchObject({ usd: 0.4, tier: "above 1080p" });
+    expect(costLine(trial, "topaz")).toBe(
+      `cost: ≈ $0.1000 (estimate: 5 s × $0.0100 per second at ≤ 720p (short side 640 px), × 2 for 60 fps output, Topaz at fal's list price, model page read ${read})`,
+    );
+  });
+
+  test("RIFE is priced on its inference time, or bounded by the wall time", () => {
+    // The trial run: 21.0 s of inference, ≈ $0.03.
+    const trial = rifeCost({ inferenceSeconds: 21, apiMs: 231_000 });
+    expect(trial).toMatchObject({ usd: 0.0273, basis: "inference-time", seconds: 21 });
+    expect(costLine(trial, "rife")).toBe(
+      `cost: ≈ $0.0273 (estimate: 21 s of inference × $0.00130 per compute second, RIFE at fal's list price, model page read ${INTERPOLATE_PRICES.rife.checked})`,
+    );
+    expect(rifeCost({ apiMs: 231_000 })).toMatchObject({ usd: 0.3003, basis: "wall-time-upper-bound" });
+  });
+
+  test("nothing measured is said as unknown, with the reason and the list price", () => {
+    expect(costLine(topazCost({ targetFps: 60 }), "topaz")).toBe(
+      "cost: unknown (ffprobe could not read the retimed clip's size and length; fal lists Topaz at $0.01 per second of output up to 720p, $0.02 to 1080p, $0.08 above, doubled at 60 fps, half for Gaia 2)",
+    );
+    expect(costLine(rifeCost({}), "rife")).toBe(
+      "cost: unknown (fal reported no timing for the job; fal lists $0.00130 per compute second for RIFE)",
+    );
+  });
+});
+
 describe("topaz download and result", () => {
   const upload = async () => HOSTED;
 
@@ -239,9 +279,13 @@ describe("topaz download and result", () => {
           expect(url).toBe("https://cdn.fal.ai/upscaled.mp4");
           return bytes;
         },
+        // A 540² clip upscaled 2× lands at 1080².
+        measure: () => ({ width: 1080, height: 1080, duration: 5 }),
       },
     );
-    expect(result).toEqual({
+    // Every key a caller already reads is as it was; `cost` is the addition.
+    const { cost, ...keys } = result;
+    expect(keys).toEqual({
       path: output,
       url: "https://cdn.fal.ai/upscaled.mp4",
       file_size: bytes.length,
@@ -250,6 +294,10 @@ describe("topaz download and result", () => {
       // fal's spelling, as sent — not the alias the caller typed.
       model: "Gaia 2",
     });
+    // 1080² is the 720p–1080p tier ($0.02/s), 48 fps is priced doubled (an
+    // upper bound — the page names 60), Gaia 2 halves it: 5 × 0.02 × 2 × 0.5.
+    expect(cost).toMatchObject({ usd: 0.1, tier: "720p–1080p", fpsDoubled: true, gaiaHalved: true });
+    expect(cost.note).toContain("48 fps is priced doubled, an upper bound");
     expect(submitted).toEqual([{
       url: TOPAZ_URL,
       body: { video_url: HOSTED, model: "Gaia 2", upscale_factor: 2, target_fps: 48, H264_output: true },
@@ -289,7 +337,8 @@ describe("topaz download and result", () => {
         download: async () => bytes,
       },
     );
-    expect(result).toEqual({
+    const { cost, ...keys } = result;
+    expect(keys).toEqual({
       path: output,
       url: "https://cdn.fal.ai/rife.mp4",
       file_size: bytes.length,
@@ -297,6 +346,8 @@ describe("topaz download and result", () => {
       between: 1,
       loop: true,
     });
+    // No inference time from the fake queue: the wall time bounds it.
+    expect(cost).toMatchObject({ usd: 0.000013, basis: "wall-time-upper-bound", seconds: 0.01 });
     // No `target_fps` and no `upscale_factor`: nobody set either of them.
     expect(result).not.toHaveProperty("target_fps");
     expect(submitted).toEqual([{
@@ -377,6 +428,8 @@ describe("interpolate-video CLI guard rails", () => {
     expect(text).toContain("rife");
     expect(text).toContain("$0.01");
     expect(text).toContain("$0.0013");
+    // …and that the run says what it cost.
+    expect(text).toContain("cost: line");
   });
 
   test("missing arguments and a missing key die before any network I/O", () => {

@@ -28,9 +28,13 @@ import {
   BRIA_MAX_DIMENSION,
   BRIA_MAX_DURATION_S,
   buildRemoveVideoBackgroundRequest,
+  costLine,
   DEFAULT_SPILL_SUPPRESSION,
   MATTE_MODELS,
+  MATTE_PRICES,
+  matteCost,
   mattedFile,
+  measureClip,
   probeVideoFile,
   removeVideoBackground,
 } from "../remove-video-background.mjs";
@@ -329,6 +333,39 @@ describe("which file in the response is the matte", () => {
   });
 });
 
+describe("what a matte cost", () => {
+  test("each endpoint is priced by its own unit, from the clip that landed", () => {
+    // VEED per 30 frames — refined, unrefined, green-screen — and Bria per second.
+    expect(matteCost({ model: "veed", frames: 121 }).usd).toBe(0.0908);
+    expect(matteCost({ model: "veed", refine: false, frames: 121 }).usd).toBe(0.0605);
+    expect(matteCost({ model: "veed-gs", frames: 121 }).usd).toBe(0.1008);
+    expect(matteCost({ model: "bria", duration: 5 }).usd).toBe(0.7);
+    // Frames are what VEED bills; seconds alone do not price it.
+    expect(matteCost({ model: "veed", duration: 5 }).usd).toBeNull();
+  });
+
+  test("the cost line says the estimate and where the number comes from", () => {
+    expect(costLine(matteCost({ model: "veed-gs", frames: 121 }), "veed-gs")).toBe(
+      `cost: ≈ $0.1008 (estimate: 121 frames ÷ 30 × $0.0250 per 30 frames, veed-gs at fal's list price, model page read ${MATTE_PRICES["veed-gs"].checked})`,
+    );
+    expect(costLine(matteCost({ model: "veed", refine: false, frames: 30 }), "veed")).toBe(
+      `cost: ≈ $0.0150 (estimate: 30 frames ÷ 30 × $0.0150 per 30 frames, veed, edge refinement off at fal's list price, model page read ${MATTE_PRICES.veed.checked})`,
+    );
+    expect(costLine(matteCost({ model: "bria", duration: 5.04 }), "bria")).toBe(
+      `cost: ≈ $0.7056 (estimate: 5.04 s × $0.1400 per second, bria at fal's list price, model page read ${MATTE_PRICES.bria.checked})`,
+    );
+    expect(costLine(matteCost({ model: "veed" }), "veed")).toBe(
+      "cost: unknown (ffprobe could not count the matte's frames; fal lists $0.0225 per 30 frames for veed)",
+    );
+  });
+
+  test.skipIf(!HAS_FFMPEG)("frames are counted off a real clip, packet by packet", () => {
+    const counted = makeClip("counted.mp4", { seconds: 2, fps: 24 });
+    expect(measureClip(counted)).toMatchObject({ frames: 48 });
+    expect(measureClip(join(workspace, "no-such-clip.webm"))).toBeNull();
+  });
+});
+
 describe("video matting download and result", () => {
   const upload = async () => HOSTED;
 
@@ -348,15 +385,24 @@ describe("video matting download and result", () => {
           expect(url).toBe("https://cdn.fal.ai/matte.webm");
           return bytes;
         },
+        // The trial clip's count: 121 frames.
+        measure: () => ({ frames: 121, duration: 5.042 }),
       },
     );
-    expect(result).toEqual({
+    // Every key a caller already reads is as it was; `cost` is the addition.
+    const { cost, ...keys } = result;
+    expect(keys).toEqual({
       path: output,
       url: "https://cdn.fal.ai/matte.webm",
       file_size: bytes.length,
       model: "veed",
       endpoint: "https://fal.run/veed/video-background-removal",
       alpha: true,
+    });
+    // 121 ÷ 30 × $0.0225 — the ≈ $0.09 the skill quotes for this clip.
+    expect(cost).toEqual({
+      usd: 0.0908, estimate: true, basis: "frames-of-delivered-clip", frames: 121,
+      unitPriceUsd: 0.0225, unit: "30 frames", checked: MATTE_PRICES.veed.checked,
     });
     expect(submitted).toEqual([{
       url: "https://fal.run/veed/video-background-removal",
@@ -378,9 +424,12 @@ describe("video matting download and result", () => {
         probe: () => null,
         runJob: async () => ({ data: { video: { url: "https://cdn.fal.ai/matte.mov", file_size: 99 } }, apiMs: 10, attempts: 1 }),
         download: async () => bytes,
+        // Unmeasurable (no ffprobe, or bytes it cannot read): no price is made up.
+        measure: () => null,
       },
     );
-    expect(result).toEqual({
+    const { cost, ...keys } = result;
+    expect(keys).toEqual({
       path: output,
       url: "https://cdn.fal.ai/matte.mov",
       // The file on disk, not the `file_size` fal reported for its own copy.
@@ -389,6 +438,10 @@ describe("video matting download and result", () => {
       endpoint: "https://fal.run/bria/video/background-removal",
       alpha: true,
     });
+    expect(cost.usd).toBeNull();
+    expect(costLine(cost, "bria")).toBe(
+      "cost: unknown (ffprobe could not read the matte's duration; fal lists $0.1400 per second for bria)",
+    );
   });
 
   test("a response with no video URL fails loudly and writes nothing", async () => {
@@ -462,7 +515,10 @@ describe("remove-video-background CLI guard rails", () => {
     expect(text).toContain("veed-gs");
     expect(text).toContain("$0.0225");
     expect(text).toContain("$0.015");
+    expect(text).toContain("$0.025");
     expect(text).toContain("$0.14");
+    // …and that the run says what it cost.
+    expect(text).toContain("cost: line");
   });
 
   test("missing arguments and a missing key die before any network I/O", () => {

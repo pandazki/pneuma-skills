@@ -106,12 +106,17 @@
  *           `model` is fal's own spelling, as sent ("Proteus").
  *   rife:  { path, url, file_size, model: "rife", between, loop, fps? }
  *           `fps` only when `--fps` pinned one.
+ * Both also carry `cost`, an ESTIMATE at fal's list price — Topaz on the
+ * seconds and frame size ffprobe reads off the retimed clip, RIFE on the
+ * job's inference time (wall time as an upper bound when fal reports none)
+ * — never an invoice. The same figure goes to stderr as one `cost:` line.
  * Progress and warnings go to stderr; exit 1 on failure, 130 on interrupt.
  *
  * Environment: FAL_KEY, from the environment or a `.env` discovered by
  * `fal-queue.mjs::loadFalKey`. Never printed, never an argv.
  */
 
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -158,6 +163,128 @@ export const TARGET_FPS_MIN = 16;
 export const TARGET_FPS_MAX = 60;
 /** fal: "Supports up to 8x upscaling". */
 export const MAX_UPSCALE = 8;
+
+/**
+ * fal's list prices, as each endpoint's model page states them (read
+ * 2026-09-28, the same figures the sprite skill's `video-preview.md`
+ * quotes): Topaz bills per second of OUTPUT by its resolution — $0.01 up to
+ * 720p, $0.02 from 720p to 1080p, $0.08 above — "doubles for 60fps output",
+ * and "for Gaia 2 output costs half"; RIFE bills $0.0013 per compute second.
+ * The resolution tier is read off the output's shorter side (720p is
+ * 1280×720). Check again before quoting a user a total.
+ */
+export const INTERPOLATE_PRICES = Object.freeze({
+  topaz: Object.freeze({
+    tiers: Object.freeze([
+      Object.freeze({ maxShortSide: 720, usd: 0.01, label: "≤ 720p" }),
+      Object.freeze({ maxShortSide: 1080, usd: 0.02, label: "720p–1080p" }),
+      Object.freeze({ maxShortSide: Infinity, usd: 0.08, label: "above 1080p" }),
+    ]),
+    per: "second of output",
+    highFpsFactor: 2,
+    gaia2Factor: 0.5,
+    checked: "2026-09-28",
+  }),
+  rife: Object.freeze({ usd: 0.0013, per: "compute second", checked: "2026-09-28" }),
+});
+
+const roundTo = (value, places) => Math.round(value * 10 ** places) / 10 ** places;
+
+/** Width, height and seconds of a local clip, or null without ffprobe. */
+export function measureClip(path) {
+  const result = spawnSync(
+    "ffprobe",
+    ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height:format=duration",
+      "-of", "default=noprint_wrappers=1", path],
+    { encoding: "utf-8" },
+  );
+  if (result.error || result.status !== 0) return null;
+  const fields = {};
+  for (const line of String(result.stdout).trim().split("\n")) {
+    const eq = line.indexOf("=");
+    if (eq > 0) fields[line.slice(0, eq)] = line.slice(eq + 1).trim();
+  }
+  const positive = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  };
+  return { width: positive(fields.width), height: positive(fields.height), duration: positive(fields.duration) };
+}
+
+/**
+ * What one Topaz job cost at fal's list price, from the clip that landed.
+ * The page names 60 fps as the doubled rate and says nothing of 31–59, so a
+ * rate in between is priced doubled and the estimate says it is an upper
+ * bound. `usd` is null when the clip could not be measured.
+ */
+export function topazCost({ width, height, duration, targetFps, model } = {}) {
+  const price = INTERPOLATE_PRICES.topaz;
+  const gaia = model === "gaia-2" || model === "Gaia 2";
+  const common = { estimate: true, unit: price.per, checked: price.checked };
+  if (!(width > 0 && height > 0 && duration > 0)) {
+    return { usd: null, ...common, basis: "unknown", note: "ffprobe could not read the retimed clip's size and length" };
+  }
+  const shortSide = Math.min(width, height);
+  const tier = price.tiers.find((t) => shortSide <= t.maxShortSide);
+  const fps = Number(targetFps);
+  const fpsDoubled = fps > 30;
+  const factor = (fpsDoubled ? price.highFpsFactor : 1) * (gaia ? price.gaia2Factor : 1);
+  const notes = [];
+  if (fpsDoubled && fps < 60) notes.push(`fal's page doubles the price at 60 fps and names no rate between; ${fps} fps is priced doubled, an upper bound`);
+  return {
+    usd: roundTo(duration * tier.usd * factor, 4),
+    ...common,
+    basis: "seconds-of-delivered-clip",
+    seconds: roundTo(duration, 3),
+    tier: tier.label,
+    shortSide,
+    unitPriceUsd: tier.usd,
+    fpsDoubled,
+    gaiaHalved: gaia,
+    ...(notes.length ? { note: notes.join("; ") } : {}),
+  };
+}
+
+/**
+ * What one RIFE job cost: fal bills compute seconds, and the nearest number
+ * the queue reports is the job's inference time. Without it, the wall time
+ * from submit to result — queue wait included — bounds it from above.
+ */
+export function rifeCost({ inferenceSeconds, apiMs } = {}) {
+  const price = INTERPOLATE_PRICES.rife;
+  const common = { estimate: true, unitPriceUsd: price.usd, unit: price.per, checked: price.checked };
+  const priced = (seconds, basis) => ({ usd: roundTo(seconds * price.usd, 6), ...common, basis, seconds: roundTo(seconds, 3) });
+  if (Number.isFinite(inferenceSeconds) && inferenceSeconds >= 0) return priced(inferenceSeconds, "inference-time");
+  if (Number.isFinite(apiMs) && apiMs >= 0) return priced(apiMs / 1000, "wall-time-upper-bound");
+  return { usd: null, ...common, basis: "unknown", note: "fal reported no timing for the job" };
+}
+
+/** `$0.00001`, `$0.1000` — enough digits to be non-zero under a cent. */
+function formatUsd(usd) {
+  if (!Number.isFinite(usd)) return "unknown";
+  return `$${usd < 0.01 ? usd.toFixed(5) : usd.toFixed(4)}`;
+}
+
+/** The one stderr line a `cost` object is said in. */
+export function costLine(cost, family) {
+  const read = `fal's list price, model page read ${cost?.checked ?? INTERPOLATE_PRICES[family]?.checked ?? "?"}`;
+  if (family === "rife") {
+    if (!cost || cost.usd === null) {
+      return `cost: unknown (${cost?.note ?? "no measurement"}; fal lists ${formatUsd(INTERPOLATE_PRICES.rife.usd)} per compute second for RIFE)`;
+    }
+    const what = cost.basis === "inference-time"
+      ? `${cost.seconds} s of inference`
+      : `${cost.seconds} s wall time, queue included — an upper bound`;
+    return `cost: ≈ ${formatUsd(cost.usd)} (estimate: ${what} × ${formatUsd(cost.unitPriceUsd)} per compute second, RIFE at ${read})`;
+  }
+  if (!cost || cost.usd === null) {
+    return `cost: unknown (${cost?.note ?? "no measurement"}; fal lists Topaz at $0.01 per second of output up to 720p, $0.02 to 1080p, $0.08 above, doubled at 60 fps, half for Gaia 2)`;
+  }
+  const parts = [`${cost.seconds} s × ${formatUsd(cost.unitPriceUsd)} per second at ${cost.tier} (short side ${cost.shortSide} px)`];
+  if (cost.fpsDoubled) parts.push("× 2 for 60 fps output");
+  if (cost.gaiaHalved) parts.push("× 0.5 for Gaia 2");
+  return `cost: ≈ ${formatUsd(cost.usd)} (estimate: ${parts.join(", ")}, Topaz at ${read}${cost.note ? `; ${cost.note}` : ""})`;
+}
 
 /** Flags that belong to exactly one endpoint, by the option name a caller
  *  types. A flag the chosen endpoint does not have is refused by name: one
@@ -274,7 +401,10 @@ function rifeBody({ between = DEFAULT_BETWEEN, sceneDetect = false, loop = false
  * can be exercised without touching fal. The file appears atomically:
  * bytes go to `<output>.tmp` and only then take the real name.
  */
-export async function interpolateVideo(options, { runJob = runFalJob, download = downloadFalFile, upload = uploadFalFile } = {}) {
+export async function interpolateVideo(
+  options,
+  { runJob = runFalJob, download = downloadFalFile, upload = uploadFalFile, measure = measureClip } = {},
+) {
   const { output, apiKey, signal, deadlineMs = 900_000 } = options;
   if (!apiKey) throw new Error("No API key found. Set FAL_KEY in the environment or a .env file.");
 
@@ -315,15 +445,24 @@ export async function interpolateVideo(options, { runJob = runFalJob, download =
   // given a rate and a resize factor; RIFE was given a multiplier and a wrap
   // flag, and has no target rate at all unless one was pinned. Printing a
   // `target_fps` for a RIFE run would be a number nobody set.
+  //
+  // `cost` is additive: every earlier key is as it was.
   const common = { path: output, url: file.url, file_size: statSync(output).size };
   return family === "topaz"
-    ? { ...common, target_fps: body.target_fps, upscale_factor: body.upscale_factor, model: body.model }
+    ? {
+      ...common,
+      target_fps: body.target_fps,
+      upscale_factor: body.upscale_factor,
+      model: body.model,
+      cost: topazCost({ ...(measure(output) ?? {}), targetFps: body.target_fps, model }),
+    }
     : {
       ...common,
       model,
       between: body.num_frames,
       loop: body.loop,
       ...(body.fps === undefined ? {} : { fps: body.fps }),
+      cost: rifeCost({ inferenceSeconds: job?.inferenceSeconds ?? job?.data?.timings?.inference, apiMs: job?.apiMs }),
     };
 }
 
@@ -357,7 +496,10 @@ alpha does not survive a codec without it. A local clip is uploaded to fal
 storage first (an http(s) URL is used as given; a data URI is refused — both
 endpoints cap the length of video_url). Requires FAL_KEY (environment or
 .env). Progress goes to stderr; with --json, stdout carries exactly one
-object.`;
+object. What the job cost — an estimate at fal's list price (model pages
+read ${INTERPOLATE_PRICES.topaz.checked}): Topaz on the seconds and size of
+the retimed clip, RIFE on its inference time — is printed on stderr as a
+cost: line and returned as the object's cost.`;
 
 export async function main(argv = process.argv.slice(2)) {
   const { values } = parseArgs({
@@ -423,6 +565,8 @@ export async function main(argv = process.argv.slice(2)) {
       signal: controller.signal,
       deadlineMs: Math.max(30, Number(values["deadline-s"]) || 900) * 1000,
     });
+    // The price first, on stderr: stdout stays one object (or one path).
+    console.error(costLine(result.cost, INTERPOLATORS[values.model]));
     console.log(values.json ? JSON.stringify(result) : result.path);
     return 0;
   } catch (error) {
