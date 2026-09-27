@@ -66,24 +66,30 @@ in order to work at all. Every sheet prompt carries all five.
 ## Building the prompt: `sheet-prompt`
 
 ```bash
-node {SKILL_PATH}/scripts/sprite-project.mjs sheet-prompt --dir <character> \
-  --motion <id> --action "<the phase plan, by cell>" [--frames 8] [--state idle] [--guide] --json
+mkdir -p <character>/motions/<id> && node {SKILL_PATH}/scripts/sprite-project.mjs sheet-prompt \
+  --dir <character> --motion <id> --action "<the phase plan, by cell>" [--frames 8] [--state idle] [--guide] \
+  > <character>/motions/<id>/sheet-prompt.txt
 ```
 
 It builds the whole prompt in code, records it on the motion (`prompt`, and
 `promptParts` — builder version, your action verbatim, the clause ids, the
 guide's geometry when one was used) and prints it. Without `--json` stdout is
-the prompt alone, so redirect it to a file in the motion directory
-(`> <character>/motions/<id>/sheet-prompt.txt`, a working file like
-`contact.png`) and hand it on as `"$(cat …/sheet-prompt.txt)"` to `set-sheet
---prompt` and to `generate_image.mjs`: a shell variable does not survive from
-one tool call to the next, and an empty prompt is a paid image of nothing.
-The image size, the references to attach (in order) and the guide call go to
-stderr. With `--json` they are
-`imageSize`, `attach`, `guide` and `notes`. The order is the one *Direction
-anchors* below was measured with: the anchor for the motion's direction
-first, then every other reference in the order it was registered (anchors
-facing elsewhere are left out), the layout guide last.
+the prompt alone, so it goes to a file in the motion directory (a working
+file like `contact.png`; `mkdir -p` because a planned motion's directory does
+not exist yet) and is handed on as `"$(cat …/sheet-prompt.txt)"` to
+`set-sheet --prompt` and to `generate_image.mjs`: a shell variable does not
+survive from one tool call to the next, and an empty prompt is a paid image
+of nothing. The image size, the files to attach (in order), the `sides:`
+sentence of an asymmetric character's facing and the guide call go to
+stderr. With `--json` stdout is one object instead: `prompt`, `imageSize`,
+`cell`, `safeMargin`, `attach`, `rhythm`, `guide`, `sides` (every view's
+sentence, keyed by direction) and `notes`. The attach order is the one
+*Direction anchors* below was measured with: the anchor for the motion's
+direction first, then every other reference in the order it was registered
+(anchors facing elsewhere are left out; a file registered twice goes once),
+then — for an asymmetric character's left or right motion whose other side
+is ready — that side's finished sheet for rhythm, and the layout guide
+last.
 
 **You write the action**: the view if it matters ("three-quarter view"), the
 phases by cell, what leads and follows, the one secondary motion, the blink,
@@ -145,7 +151,8 @@ then slice that grid); without it the motion's own grid is used.
 | 16 | 4 × 4 | 2048×2048 |
 
 The cell drawn is the character's cell times the largest whole factor that
-keeps it at most 512 px (256 → 512), so pixel art stays on an integer scale.
+keeps it at most 512 px (256 → 512), so pixel art stays on an integer scale;
+a cell already over 512 px is drawn at its own size.
 Pass the printed `imageSize` as `--image-size`; the prompt names those exact
 pixels. More than 16 frames come from a clip. An idle that is not 8 frames
 gets a note (E1, *Measured* below).
@@ -159,7 +166,7 @@ cell — and cost 22 % more per sheet; reach for it when a sheet comes back with
 merged or misplaced cells.
 
 **Deterministic.** The same character, grid and parts give the same text byte
-for byte; `builder: "sheet-prompt/1"` names the wording. Changing a sentence
+for byte; `builder: "sheet-prompt/2"` names the wording. Changing a sentence
 means a new builder version, so a recorded prompt keeps meaning what it said.
 A prompt you write yourself goes in with `set-motion --prompt` and drops the
 parts.
@@ -187,25 +194,29 @@ the pixel (E2: no cell kept 48 px), and neither clipped.
 
 ## The call
 
-The five parts above are one argument, quoted. This is the whole invocation —
-the three worked prompts below are what belongs inside the quotes:
+The five parts above are one argument, quoted — the file `sheet-prompt`
+wrote, read back with `$(cat …)`. This is the whole invocation (the three
+worked prompts below show what such a prompt says):
 
 ```bash
 node {SKILL_PATH}/scripts/generate_image.mjs \
-  "Clean anime-chibi line art, flat colors, thick uniform outline, no shading. A single image laid out as a strict 4x4 grid of 16 equal cells, read left to right, top to bottom. …" \
+  "$(cat <character>/motions/<id>/sheet-prompt.txt)" \
+  --image-urls <character>/refs/anchor-right.png \
   --image-urls <character>/refs/turnaround.png \
   --image-urls <character>/refs/portrait.png \
   --background opaque \
-  --image-size 2048x2048 \
+  --image-size 2048x1024 \
   --quality high \
   --output-format png \
   --output-dir <character>/motions/<id> \
   --filename-prefix sheet-raw
 ```
 
-Run it from the workspace — no `cd`, `{SKILL_PATH}` is absolute, and every
-path here is workspace-relative (`references/pipeline.md` states the rule
-once for all the scripts).
+The `--image-urls` are the files `sheet-prompt` printed, in that order (here
+a right-facing 4×2 motion with a right anchor), and `--image-size` is the one
+it printed. Run it from the workspace — no `cd`, `{SKILL_PATH}` is absolute,
+and every path here is workspace-relative (`references/pipeline.md` states
+the rule once for all the scripts).
 
 - **The prompt is a positional argument.** There is no `--prompt` flag on
   `generate_image.mjs` or `edit_image.mjs`; writing one fails the call outright
@@ -235,10 +246,10 @@ once for all the scripts).
   supported. Accepted: auto, opaque` — so the try is free and the answer is
   always the same. Ask for the white plate in the prompt, pass `opaque`, and
   probe the sheet (workflow B step 5) instead of trusting any flag.
-- **`--image-size 2048x2048` pins the pixels**; `--aspect-ratio 1:1` only asks
-  for a square at whatever size the provider picks. Pin the size for a sheet —
-  2048 across a 4×4 grid is a 512 px cell, which survives slicing and
-  downscaling. `--quality high` is the default; write it anyway on anything a
+- **`--image-size` pins the pixels** (`2048x1024` for a 4×2 sheet,
+  `2048x2048` for 4×4); `--aspect-ratio` only asks for a shape at whatever
+  size the provider picks. Pin the size for a sheet — 2048 across four
+  columns is a 512 px cell, which survives slicing and downscaling. `--quality high` is the default; write it anyway on anything a
   later motion inherits.
 - **Where the file lands:** with one image (the default) the output is exactly
   `<output-dir>/<filename-prefix>.<format>` — `sheet-raw.png` here, with no
@@ -450,8 +461,9 @@ then thrown away by the encoder. For the character variant add
 
 The file lands at exactly `<character>/motions/<id>/keyframe.png`, which is the
 path `set-keyframe --file motions/<id>/keyframe.png` registers, and
-`remove-background.mjs --resolution 1024` writes `keyframe-alpha.png` beside
-it for `--alpha`.
+`remove-background.mjs --input <character>/motions/<id>/keyframe.png --output
+<character>/motions/<id>/keyframe-alpha.png --resolution 1024` writes the
+cut-out beside it for `--alpha`.
 
 ## What breaks consistency, and the phrasing that fixes it
 
@@ -460,7 +472,7 @@ it for `--alpha`.
 | Character unexpectedly reverses facing | No facing declared, or an ambiguous turn | Declare the starting view; keep it fixed when no turn is intended, otherwise name the turn direction and end view |
 | Character proportions drift across the grid | The model treats each cell as its own composition | "Consistent body proportions and drawing scale, fixed camera distance" — a crouch or turn may legitimately change silhouette dimensions |
 | Numbers or letters in the corners | Grids read as contact sheets to the model | "No numbers, no labels, no text anywhere" |
-| A grey, tinted or gradient plate behind the sprite | The model drew its own backdrop instead of the flat white you asked for | Say "a flat solid pure white background filling every cell, no gradient" — a gradient is what makes the cut-out (workflow B step 6) leave a halo. A *flat* plate of any colour is fine; the keyer takes it |
+| A grey, tinted or gradient plate behind the sprite | The model drew its own backdrop instead of the flat white you asked for | Say "a flat solid pure white background filling every cell, no gradient" — a gradient is what makes the cut-out (workflow B step 5) leave a halo. A *flat* plate of any colour is fine; the keyer takes it |
 | Sprite clipped at a cell edge | The pose is bigger than the cell | "The whole character, including the weapon, stays inside its own cell with a clear margin" |
 | Ground shadow follows the sprite | Default illustration habit | "No ground shadow, no drop shadow, no contact shadow" — a shadow is opaque and it lands in the alpha, so the aligner treats it as part of the silhouette |
 | Effects bleed between cells | Motion blur, speed lines, glow | "Nothing crossing between cells, no motion blur, no speed lines, no glow" |
@@ -618,8 +630,18 @@ node {SKILL_PATH}/scripts/sprite-project.mjs add-ref --dir <character> --id anch
   --from ref-turnaround,ref-portrait --model openai/gpt-image-2.5-flare --prompt "<the prompt>" --json
 ```
 
-A frame the user already likes can be the anchor instead:
-`add-ref --role anchor --direction right --derived-from walk-right-frame-00`.
+A frame the user already likes can be the anchor instead — copy it out of
+the motion (a re-run rewrites its frames) and register the copy:
+
+```bash
+cp <character>/motions/walk-right/frames/00.png <character>/refs/anchor-right.png
+node {SKILL_PATH}/scripts/sprite-project.mjs add-ref --dir <character> --id anchor-right \
+  --file refs/anchor-right.png --role anchor --direction right --derived-from walk-right-frame-00 --json
+```
+
+On an asymmetric character `add-ref` prints a note with that view's sides
+sentence: check every side-specific detail of the anchor against it before a
+sheet uses it.
 
 **Look at the anchor beside the turnaround before anything uses it.** Every
 sheet facing that way reproduces the anchor, including what the anchor got
@@ -638,13 +660,24 @@ one hip: a flip moves each to the other side of the body. Record them in one
 sentence before any directional work — `set-character --asymmetric "the red
 clover hairpin sits on the right side of her head; the satchel hangs at her
 left hip"` — and `mirror` refuses from then on, saying the sentence back.
-Then the other side is generated after all: its own anchor first, then its
-sheets, with the finished first side's sheet of the same motion attached
-**last and for rhythm only** — step timing, stride and scale, never facing or
-identity (upstream's left/right gate; not measured here). Every directional
-prompt re-tells the sentence for its own view: from behind, her left hip is on
-the left of the picture; facing left, the hairpin is on the far side and
-hidden.
+Then the other side is generated after all. A motion planned as a mirror
+becomes a sheet with `set-motion --motion <id> --source sheet` (`sheet-prompt`
+refuses a planned mirror); then its own anchor, then its sheets, with the
+finished first side's sheet of the same motion attached **after the
+references and for rhythm only** (before the guide, when there is one) —
+step timing, stride and scale, never facing or identity (upstream's
+left/right gate; not measured here).
+
+Every directional prompt re-tells the sentence for its own view, and the
+sides are geometry, not something to reason out afresh (SKILL.md, G-4dir,
+has the table): from the front her own right is on the left of the picture,
+from behind on the right; facing left it is the far side, partly hidden,
+facing right the near side. A sheet prompt carries its view's sentence by
+itself. A prompt you write by hand — an anchor, a turnaround — copies it
+word for word from `sheet-prompt --json`'s `sides[d]` (every sheet motion
+prints all four; a planned mirror, a loop or a one-cell plan without
+`--frames` is refused): from behind, her left hip is on the left of the picture;
+facing left, the hairpin is on the far side and hidden.
 
 **What a directional sheet attaches, in order** (`sheet-prompt`'s `attach`
 lists it so): its direction's anchor first, then the turnaround and the

@@ -48,6 +48,7 @@ same in more detail.
 | `skill/scripts/drift.mjs` — drift-trend and body-ramp alignment | `sprite_gen/video/loop.py`: `drift_reference`, `body_wrap_offset`, `ramp_frames`, `body_centre` | A 10 % foot band (upstream 8 %), empty frames skipped; edges zero-filled rather than wrapped; the ramp returns shifts; `body_centre` becomes `massCenterX` |
 | `skill/scripts/canvas.mjs` — room in the first frame (`flatten --room`) | `sprite_gen/video/canvas.py`: `pad_canvas`, `STATE_CANVAS`, `SHAPE_DEFAULTS` | Re-expressed as `roomCanvas`; identical geometry on 168 of 168 cases run against the Python; a facing other than left/right is refused |
 | `skill/scripts/pixel-lattice.mjs` — the pixel lattice (`run --pixel`, `pixel`) | `sprite_gen/frames/extract.py`: edge-histogram pitch detection and fractional refinement, `_best_phase`, `resolve_frame_pitch`, `_grid_edges`, `solid_alpha_bbox` / `tighten_components`, `refine_edges_to_boundaries`, `snap_by_edges`, `_dominant_block_color`, `build_shared_palette` / `apply_palette`, `enforce_outline`, the palette lock, the `_snap_strip` consensus; `docs/pixel-unfake.md` | Divisor seeds down to a fifth (upstream: a third); a consensus ceiling needs a quarter of the frames' support; `--pitch-hint` is the family centre, not a last resort; a same-colour run length over 1.5× the consensus overrules a majority of divisor readings; refused when fewer than half the frames read a grid; the declared height is ours — a snap 1.5× off it is re-cut at the height's pitch when the frames back it, else refused before the motion is touched; an empty palette is never pinned. Not ported: component extraction, `arbitrate_pitch`, `conform_row_logical`, `register_row_frames`, the whole-strip detection fallback |
+| `skill/scripts/sheet-segment.mjs` — slicing a sheet by its ink (`slice --auto`, `run`'s fallback) | `sprite_gen/frames/segment.py`: the alpha projection profile, its smoothing, content runs, pose peaks, `dp_n_cut`, `split_range`, `segment_strip`, `segment_boundaries`, with the same constants | Applied to rows over the whole sheet first, then to each row's poses, instead of to one strip; the profile counts only alpha at or above the threshold; a segmentation that falls short returns the count it found instead of printing; a one-peak run 1.45× the median is read as two poses only when the count falls short |
 | `skill/scripts/breathe.mjs` — a breathing idle from one still | `sprite_gen/effects/anatomy.py` (the anatomy), `sprite_gen/effects/breathe.py` (the deformation and the whole-pixel bake, mirrored in `serve/curator/src/breathe.js`), helpers from `sprite_gen/frames/extract.py` (`solid_alpha_bbox`) and `sprite_gen/frames/segment.py` (`mask_components`, `smooth_profile`) | The canvas grows instead of refusing, within a 3 MP working canvas; default depth 0.02 (upstream 0.06, tuned on 32–64 px pixel art); no sidecar or curator plumbing. Ours: the `smooth` mode (it stretches only inside the solid box), overrides in the still's coordinates, the per-frame head check and its extremes, the prop-crossing and head-never-moves warnings |
 | `skill/scripts/shadow.mjs` — the projected ground shadow (`export --shadow`) | `sprite_gen/effects/shadow.py` (projection maths, geometry, defaults, ranges); tests adapted from `tests/effects/test_shadow.py` | A true Gaussian blur (not Pillow's box approximation); reads outside the frame are transparent; the shadow is composited under the sprite |
 | `skill/scripts/aseprite.mjs` — the Aseprite JSON shape (`export --format aseprite`) | `sprite_gen/compose/export_aseprite.py` | The hash form only, with `anchor` / `pivot` per frame and rects from our atlases. Ours: stacking several motions' sheets into one character sheet |
@@ -57,15 +58,22 @@ same in more detail.
 
 ### Transitive credit — perfectpixel-studio (MIT)
 
-The same-colour run-length pitch estimator in `skill/scripts/pixel-lattice.mjs`
-(a second opinion beside the lattice score, and its cross-check) is ported from
-upstream's `estimate_pixel_grid_runlen` and `crosscheck_pitch_runlen` in
-`sprite_gen/frames/extract.py`, which upstream itself ported from
-**perfectpixel-studio** (<https://github.com/gykim80/perfectpixel-studio>,
-`internal/sprite/pixelize.go`), Copyright Andrew Kim (gykim80), MIT License.
+Two ports here reach **perfectpixel-studio**
+(<https://github.com/gykim80/perfectpixel-studio>), Copyright Andrew Kim
+(gykim80), MIT License, through upstream, which ported them from it:
+
+- the same-colour run-length pitch estimator in
+  `skill/scripts/pixel-lattice.mjs` (a second opinion beside the lattice
+  score, and its cross-check) — upstream's `estimate_pixel_grid_runlen` and
+  `crosscheck_pitch_runlen` in `sprite_gen/frames/extract.py`, from
+  `internal/sprite/pixelize.go`;
+- the projection-profile segmentation with its DP optimal cut in
+  `skill/scripts/sheet-segment.mjs` — upstream's `sprite_gen/frames/segment.py`,
+  from `internal/sprite/segment.go`.
+
 The credit is carried as upstream carries it (its NOTICE, reproduced below).
-Upstream's other perfectpixel-studio ports — the alpha-centroid alignment,
-the projection segmentation and the YCbCr matte — were not taken.
+Upstream's other perfectpixel-studio ports — the alpha-centroid alignment and
+the YCbCr matte — were not taken.
 
 ## Inspired by
 
@@ -79,6 +87,7 @@ Their idea, our design; nothing of upstream's code.
 | The near-duplicate and row-boundary warnings (`frame-steps.mjs`, `inspect`) | `sprite_gen/qa/inspect.py` `_motion_presence`, `sprite_gen/qa/score.py` |
 | `from-video --body-height` | `sprite_gen/video/loop.py` `--body-height` / `first_frame_height` |
 | `headDrift` in `inspect` | upstream's head-and-torso registration (`body_wrap_offset`) |
+| Giving each pose all of its own ink when slicing by ink (`sheet-segment.mjs`): components assigned to a cell by centroid, a component spanning cells split at their borders, a neighbour's small border fragments dropped | `sprite_gen/frames/slice_sheet.py` |
 | The code-built sheet prompt and its identity-over-motion lines (`sheet-prompt.mjs`) | `sprite_gen/gen/prepare.py` `row_prompt` |
 | The facing lock and the anchor clause | `sprite_gen/gen/prepare.py` `DIRECTION_FACING`, `direction_prefix_requirements`, `directional_requirements` |
 | The no-detached-effects clause | `sprite_gen/gen/prepare.py` `TRANSPARENCY_ARTIFACT_RULES` |

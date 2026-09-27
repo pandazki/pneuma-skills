@@ -109,8 +109,12 @@ colour threshold — see `remove-background.mjs` below.
   the subject (a green reflection) are recoloured with their alpha kept. A
   pixel that does not carry the plate's hue (every plate channel above every
   other one) is never touched, so yellow, gold, skin and white edges stay as
-  drawn. `auto` measures the plate as the mode of 8-wide colour bins over the
-  corner patches and the border. `--blend` does not apply.
+  drawn. An opaque edge pixel is also read against the character's own
+  colours beside it, so a rim that is the character blended with the plate
+  at full opacity comes out; plate-coloured shadow touching no part of the
+  character (a floor shadow) is removed. `auto` measures the plate as the
+  mode of 8-wide colour bins over the corner patches and the border.
+  `--blend` and `--despill` do not apply, and a note says so.
 - **`colorkey`** is ffmpeg's: alpha ramps over `--blend` past the radius and
   RGB is left as it was, so an anti-aliased edge keeps its plate colour at
   partial alpha — the 1 px green rim. `auto` uses the probed `cornerColor`.
@@ -118,7 +122,8 @@ colour threshold — see `remove-background.mjs` below.
 A plate with no hue — white, cream, grey, which is every GPT Image sheet — has
 nothing to un-mix and is keyed with `colorkey` whichever you ask for; stderr
 says so and the JSON's `keyer` names the keyer that ran. On a hued plate the
-JSON also carries `keyResidue` (see `inspect`) and a warning above 0.005.
+JSON also carries `keyResidue` and `keyFringe` (see `inspect`), with a warning
+above 0.005 and 0.01 respectively.
 Ported from aldegad/sprite-gen (Apache-2.0); the method, the adaptations and
 the numbers are in "Measured: the chroma keyer" at the end of this file.
 
@@ -306,7 +311,7 @@ that is the whole point. A 4 px fragment jammed against the left cell border
 moves the bbox 17 px left, and the aligner then faithfully centres the
 character around the litter.
 
-### `align <framesDir> --out <dir> [--anchor bottom|center] [--x-from feet|bbox|cell|trend|body] [--y-from anchor|cell] [--cell auto|WxH] [--pad 8] [--smooth] [--force]`
+### `align <framesDir> --out <dir> [--anchor bottom|center] [--x-from feet|bbox|cell|trend|body] [--y-from anchor|cell|clip] [--cell auto|WxH] [--pad 8] [--smooth] [--force]`
 
 The step that turns sixteen pictures into an animation. Computes each frame's
 alpha bounding box, then crops to the bbox and pads onto a transparent cell so
@@ -400,12 +405,16 @@ search, shifts }`. Ported from aldegad/sprite-gen `sprite_gen/video/loop.py`
 (`drift_reference`, `body_wrap_offset`, `ramp_frames`); the ports reproduce
 upstream's numbers on its own fixtures exactly.
 
-**Preserving movement:** `cell` keeps horizontal offsets only. Neither
-vertical anchor preserves the source's full vertical travel; both reposition
-each frame. A jump's body poses can survive while its rise and fall disappear.
-Preserving that trajectory requires pipeline support beyond these flags, so
-do not claim the exported frames retain it. Compare source cells and aligned
-frames before treating a planned step, crouch or turn as jitter to remove.
+**Preserving movement:** `--x-from cell` keeps the horizontal offsets the
+source drew; `--y-from cell` (or `clip`) keeps the vertical ones. Under the
+default `--y-from anchor` a jump's body poses survive while its rise and fall
+disappear — say which the frames carry: the rise is in them only when the
+run used `--y-from cell|clip` and `lift` shows it (a peak well above 0), and
+otherwise the game code moves the sprite. A jump clip that should keep its
+height is shot from `flatten --room tall`, or the peak has no headroom to
+rise into.
+Compare source cells and aligned frames before treating a planned step,
+crouch or turn as jitter to remove.
 
 `--cell auto` sizes the cell around the anchor, not around the bbox: twice the
 worst frame's reach from its anchor, plus `2·pad`, rounded up to an even
@@ -432,10 +441,11 @@ describes and every align rewrites it; like the cells it is an intermediate
 file, not an asset, and `register-run` never registers it.
 
 **Frames written by `pixel`** (a `pixel.json` next to them) are N×N blocks of
-logical pixels, and `align` keeps them that way: every offset, the pad
-(rounded up) and the auto cell are whole multiples of N, so no block
-straddles the cell's N-grid and the atlas divides back to logical pixels
-exactly. An explicit `--cell` that is not a multiple of N is refused. The
+logical pixels, and `align` keeps them that way: every offset and the pad
+(rounded up) are whole multiples of N, so no block straddles the cell's
+N-grid and the atlas divides back to logical pixels exactly. The auto cell
+is a whole multiple of 2N, so the anchor in its middle is a block boundary
+rather than the middle of a block. An explicit `--cell` that is not a multiple of N is refused. The
 record's `{ scale, pitch, palette }` is copied into `align.json` as `pixel`,
 which is where `inspect` finds it. That is also why a pixel motion is
 re-aligned from `pixel/`, never from `cells/`: the cells carry no
@@ -444,11 +454,14 @@ re-aligned from `pixel/`, never from `cells/`: the cells carry no
 input has no `pixel.json`, `align` refuses and names the `pixel/` directory;
 `--force` does it anyway and says so first in the warnings.
 
-### `pack <framesDir> --out <sheet.png> --atlas <atlas.json> --name <motionId> --fps N [--loop] [--anchor bottom|center] [--cols C] [--scale 0.5] [--nearest]`
+### `pack <framesDir> --out <sheet.png> --atlas <atlas.json> --name <motionId> --fps N [--loop] [--anchor bottom|center] [--cols C] [--scale 1] [--nearest]`
 
 Tiles the aligned frames row-major into one image and writes the atlas.
-`--scale` resizes every frame first; `--nearest` keeps a downscale
-hard-edged. No margin, no gutter — a game engine reads the rects from the
+`--scale` (default 1) resizes every frame first; `--nearest` keeps a
+downscale hard-edged, and a scale other than 1 records `meta.filter`
+(`nearest` or `smooth`) so a later pack of the same frames repeats it. A
+pack at `--scale 0.5` is a half-size copy: the full-size atlas is a re-pack
+of the same frames at `--scale 1`, never an upscale of the half. No margin, no gutter — a game engine reads the rects from the
 atlas, and gutters only cost texture memory.
 
 For **generated** pixel art, `--scale 0.5 --nearest` is not a pixel-art
@@ -505,9 +518,10 @@ only if you sliced into a directory of your own.
 | `nearDuplicates` | `[from, to]` pairs whose step is under 0.01 — `[last, 0]` is the wrap of a looping motion. `[]` when checked and none. Listed for a breathe too, but not warned about there (see `breathe`) |
 | `rowJumps` | `[from, to]` row boundaries of the sheet's grid that jump (below). `[]` when checked and none |
 | `anchorPoint` | The point `align` recorded for these frames, in cell pixels — the same point the atlas pivot names. Absent when the frames carry no `align.json` for this anchor and cell |
-| `lift` | Only for frames aligned with `--y-from cell`: each frame's feet above the anchor point, px (null for an empty frame), measured on the frames — a jump's travel in numbers; all zeros means it has none |
-| `keyResidue` | Share of the visible pixels (alpha ≥ threshold) whose every plate channel still clears every other channel by more than 40 — the plate's hue, pooled over the frames. Absent unless the motion was keyed off a hued plate: `--key` names the plate, otherwise the `keyColor` the last `inspect.json` recorded (`run` and `from-video` record it). The fat report adds `keyResidueEdge`, the same share over the partially transparent pixels. `register-run` copies `keyResidue` into the sidecar |
-| `pixel` | Only for frames that went through `pixel`: `{ pitch, scale, held, palette, paletteChecked }` — the block size it cut at (source px per logical px), the whole-number scale, and whether the lattice survived everything after it: alpha only 0/255, every N×N block one colour, every colour a pinned-palette colour (not checked after `--outline`, which darkens the edge on purpose). When `held` is false the offending frames are listed (`softAlphaFrames`, `offGridFrames`, `offPaletteFrames`). On these frames `headDrift` is in frame pixels and `sourceHeadDrift`, measured on the source-resolution cells, is converted to them (× scale / pitch.x) so the two compare |
+| `lift` | Only for frames aligned with `--y-from cell`: each frame's feet above the anchor point, px (null for an empty frame), measured on the frames — a jump's travel in numbers; all zeros means it has none. `register-run` keeps it, whole or not at all |
+| `keyResidue` | Share of the visible pixels (alpha ≥ threshold) that still carry the plate, pooled over the frames: its hue (every plate channel clears every other channel by more than 40), or an opaque edge pixel that is the colour beside it blended with the plate — a floor shadow counts. Absent unless the motion was keyed off a hued plate: `--key` names the plate, otherwise the `keyColor` the last `inspect.json` recorded (`run` and `from-video` record it). The fat report adds `keyResidueEdge`, the same share over the partially transparent pixels. `register-run` copies `keyResidue` into the sidecar |
+| `keyFringe` | Share of the fully opaque edge pixels (within 2 px of transparency) that still read as at least 20 % plate — the rim a colour key leaves at full opacity. Same presence rule as `keyResidue`; not copied into the sidecar |
+| `pixel` | Only for frames that went through `pixel`: `{ pitch, scale, held, palette, paletteChecked }` — the block size it cut at (source px per logical px), the whole-number scale, and whether the lattice survived everything after it: alpha only 0/255, every N×N block one colour, every colour a pinned-palette colour (not checked after `--outline`, which darkens the edge on purpose). When `held` is false the offending frames are listed (`softAlphaFrames`, `offGridFrames`, `offPaletteFrames`). On these frames `headDrift` is in frame pixels and `sourceHeadDrift`, measured on the source-resolution cells, is converted to them (× scale / pitch.x) so the two compare. `register-run` keeps it |
 | `warnings` | Human sentences — read these, they name the fix |
 
 Warning rules and what each one means:
@@ -524,7 +538,8 @@ Warning rules and what each one means:
 | "character scale varies across frames — regenerate with a fixed-scale instruction" | `scaleDrift > 0.15` | This measures silhouette height, including props. Check for intended crouching, turning or prop movement; acknowledge it when justified. Regenerate actual proportion or drawing-scale drift with the fixed-scale guidance in `prompting.md`. |
 | "cell NN is clipped — the drawing leaves its grid cell" | Bbox touches the cell edge before alignment (fixed-grid cells; `run` slices by ink instead when a pose continues across a line, so this is what `--no-auto-slice` leaves) | The pose is bigger than its cell. Regenerate with the "stays inside its own cell" clause. |
 | "cell NN is clipped — the drawing runs off the edge of the sheet" / "— it was drawn touching a neighbouring pose and cut apart from it" | Cells sliced by ink (`slice --auto`, `run`'s fallback): the pose's ink reaches the sheet's own edge, or it was split from a pose it touched (`slice.json` `auto.clipped`) | No slicing gives back what was drawn off the image — regenerate. A split pose: look at the two cells; the cut went through the least ink between them. |
-| "keyResidue 0.0158: 1.6% of the visible pixels still carry the plate's hue …" | `keyResidue > 0.005` | Look at an edge at 4× on a dark background. A `--keyer colorkey` cut leaves a green rim — re-cut with `--keyer unmix`. After `unmix` the usual cause is the character's own plate-coloured material or a translucent effect (smoke, glow) the plate shows through; a matte (`remove-video-background.mjs`, then `--key alpha`) is the fix for the second |
+| "keyResidue 0.0158: 1.6% of the visible pixels still carry the plate … a fringe the key left, a shadow on the floor, or colour the character really has" | `keyResidue > 0.005` | Look at an edge and under the feet at 4× on a dark background. A `--keyer colorkey` cut leaves a green rim — re-cut with `--keyer unmix`. After `unmix` the usual cause is the character's own plate-coloured material or a translucent effect (smoke, glow) the plate shows through; a matte (`remove-video-background.mjs`, then `--key alpha`) is the fix for the second |
+| "keyFringe 0.0252: 2.5% of the edge is the character still blended with the plate … a yellow-green rim on warm colours, a teal one on blue" | `keyFringe > 0.01` (said only when `keyResidue` is under its bar) | Re-cut with `--keyer unmix`, which reads each edge pixel against the colour beside it. A wider `--similarity` does not remove it: the rim is opaque character colour, outside any radius of the plate |
 | "pixel lattice broken: frame(s) … have soft alpha / blocks off the N× grid / colours outside the palette …" | Pixel frames that no longer match their lattice | Something resampled or re-aligned them from the wrong source. Re-align from `pixel/`, not `cells/`; re-run `pixel` if the palette was rebuilt after them. |
 
 These are geometric heuristics. `maxJump` does not include last-to-first (the
@@ -563,9 +578,14 @@ is, in order: `--palette` when named; else the palette pinned on the
 character (`character.pixel.palette`, which `register-run` pinned from the
 first pixel run — every motion of a pixel character shares it, and a run
 quantised to another is refused there); else, with nothing pinned yet, a new
-`<motionDir>/palette.json`. `--repalette` never rebuilds the pinned file in
-another motion's directory: it builds this motion's own, and `register-run`
-then needs `--repin`. A pinned palette whose file is gone is refused. It
+`<motionDir>/palette.json`. `--repalette` never rebuilds the pinned file: it builds this motion's own
+(beside it, as `palette-rebuilt.json`, when this motion's `palette.json` is
+the pinned one), and `register-run` then needs `--repin`. A pinned palette
+whose file is gone is refused, and an empty palette is never pinned.
+`--palette-size` defaults to the character's `character.pixel.colors`, else
+48. The lattice is decided in a scratch directory before anything in
+`<motionDir>` is replaced, so a refusal leaves the previous run exactly as
+it was. It
 takes `pixel`'s flags (`--palette`, `--repalette`, `--palette-size`,
 `--pitch-hint`, `--outline`, `--outline-strength`, `--no-detail-bias`); they
 are refused without `--pixel`. The JSON gains `pixel: { dir, scale, pitch,
@@ -577,7 +597,9 @@ or `--logical-height H` for this run (see `pixel`) — and the JSON's `pixel`
 gains `logicalHeight`. A `run` **without**
 `--pixel` on a pixel-art character — `character.pixel`, else a
 `character.style` that says so (the reading `rive --filter auto` uses) — ends
-with a warning suggesting it.
+with a warning suggesting it. A run without `--pixel` also removes the
+`pixel/` frames and the unpinned palette an earlier pixel run of that motion
+left, and warns `not a pixel run: removed …`; a pinned palette stays.
 
 The one command to remember, keyed or not:
 
@@ -645,6 +667,10 @@ on its solid-alpha (α ≥ 128) bbox:
    share of colour edges within ±1 px of a grid line, minus the share chance
    puts there), then a 0.02 px refinement around the integer seed and its
    halves to fifths. A frame whose best score is under 0.2 reads "no grid".
+   Pixels whose alpha is 0 are read as transparent black: colour a key left
+   under them is no edge. (The slime jump's fixed-grid cell 00 snapped
+   26×25 before that rule and 26×26 after, the same as its auto-sliced
+   cell.)
 2. **The generation's consensus** — the median of the frames' readings;
    readings under 60 % of the ceiling are collapsed (a divisor) and dropped,
    and so are readings above the ceiling's family that fewer than a quarter
@@ -723,6 +749,18 @@ does two things:
   frames 427 px tall, which the frames do not back — the sheet was probably
   drawn at another height`) and still asks for `--pitch-hint`. An explicit
   `--pitch-hint` always wins.
+- **It catches a wrong grid.** Cut at the frames' own pitch, a height 1.5×
+  or more off H either way is a divisor or a multiple of the real blocks,
+  not a figure drawn a little off: the pitch that makes the frames H tall is
+  taken when the frames' readings back it (said in `warnings`, `pitchFrom:
+  "height"`), and otherwise the step refuses. Measured: a slime idle
+  declared 24 tall used to snap at pitch 3 to 96 logical px with exit 0; it
+  now cuts at 12 and comes out 25 tall. Without H, a consensus the
+  same-colour runs call a divisor (runs 1.5× or more its size) takes a
+  larger reading those runs back, or refuses. Both refusals say `Nothing was
+  written.` and name the two ways on: `--pitch-hint N` after looking at a
+  frame at 8×, or `set-character --pixel H` with the height the frames were
+  drawn at.
 - **It is checked** after the snap: the frames' median logical height
   against H, within 5 % (at least 1 px — a walk bobs by one). A miss is a
   warning with the numbers to act on — regenerate at H, pass the hint that
@@ -782,7 +820,9 @@ only the colours that change) and pass the file to `recolor --map`. The one
 template colourway has an empty map, which `recolor` refuses. An existing
 map is never drafted over without `--force` (it may hold colourways);
 `--out` writes elsewhere, the swatch sheet then `<name>-swatches.png`
-beside it.
+beside it. More than 256 colours in use (frames not quantised to one
+palette) or a swatch sheet over 32 MP (frames larger than pixel art is
+drawn at — check they went through `--pixel` at scale 1) is refused.
 
 ### `recolor <characterDir|motionDir> [--map <map.json>] [--variant name,…]`
 
@@ -904,7 +944,8 @@ aldegad/sprite-gen's `video-loop` (`cycle.mjs`, credits there):
    **`ambiguous`**: both lengths are named, the short one stays first (pixels
    cannot say which is the gait), and the long one's best window is added to
    `loops[]`. `--gait walk|run` says it IS a gait: a period under the gait's
-   floor (0.6 s walk, 0.35 s run) is one step, so the doubled period is taken
+   floor (0.6 s walk, 0.35 s run; in frames, the seconds × fps rounded half
+   to even — a run at 30 fps is 10 frames) is one step, so the doubled period is taken
    when it repeats within 25 %, and the verdict is no cycle (half a stride)
    when it does not; an ambiguous period above the floor takes the long one.
 5. **Where to cut it**: every start for the period ± 1 frame, ranked by how
@@ -1319,6 +1360,9 @@ are wrong if they move:
    cutting a large clip rather than after it fills the disk. With `--keyer
    unmix` the raw window step 4 keys from comes on top, briefly and at the
    clip's own size whatever `--width` says: about 1 GB more for that clip.
+   A raw window over 4 GiB, or more than the free space beside the output
+   less 512 MiB, is refused before a byte is decoded; narrow the window
+   (`--trim-start` / `--trim-end`) or key with `--keyer colorkey`.
 8. **Write `frames/NNN.png` and the exports.** Three digits, up to **400**
    frames (a sprite motion's two-digit frames still load; the contiguity check
    is unchanged). Each export is skipped with a warning, never a failed command,
@@ -1496,11 +1540,13 @@ columns the mirror's atlas was packed on — the grid the stage plays it
 with), `fps`, `loop` and `anchor`, which `register-run` takes as it is. Its
 `inspect` measures `keyResidue` against the plate `<of>` was keyed off (the
 `keyColor` of `<of>`'s `inspect.json`; a flip keeps every colour) and never
-takes a `keyColor` from an `inspect.json` left in a reused `--out`:
+takes a `keyColor` from an `inspect.json` left in a reused `--out`. A
+planned mirror needs no grid, fps or loop — it plays on its source's, and
+`register-run` takes them from the run:
 
 ```bash
 node {SKILL_PATH}/scripts/sprite-project.mjs add-motion --dir <character> --id walk-left \
-  --rows 2 --cols 4 --fps 10 --loop --source mirror --direction left --json
+  --source mirror --direction left --json
 node {SKILL_PATH}/scripts/sprite-sheet.mjs mirror <character>/motions/walk-right --name walk-left --json \
   | node {SKILL_PATH}/scripts/sprite-project.mjs register-run --dir <character> --motion walk-left --run - --json
 ```
@@ -1542,10 +1588,15 @@ node {SKILL_PATH}/scripts/sprite-sheet.mjs mirror <character>/motions/walk-right
   the summary, and leaves the verdict to the user looking at the stage.
   `register-run` refuses a mirror of an asymmetric character whose summary
   does not carry `"force": true`, so the lock holds whichever way the
-  summary reaches it.
+  summary reaches it. To draw that side instead, keep the planned motion and
+  change how it gets its frames: `set-motion --motion walk-left --source
+  sheet`, then `sheet-prompt` (which refuses a planned mirror) writes its
+  prompt with the row's `sides[d]` sentence.
 - **Stale mirrors.** Running `<of>` again leaves the mirror showing the old
-  frames: `register-run` notes it, `show` lists it under `staleMirrors`, and
-  the fix is this command plus `register-run` again.
+  frames: `register-run` notes it, `show` lists it under `staleMirrors` and
+  names this command (`mirror <character>/motions/<of> --name <id>`), and
+  the fix is that plus `register-run` again. When `<of>` is gone, `show`
+  says there is nothing to mirror it from again.
 - **Colourways are per motion.** A mirror of a recoloured motion carries
   none (`show` lists it under `variantsMissing`, the Export tab offers no
   colourway row for it) until `recolor` runs on it — with the recorded
@@ -1859,8 +1910,8 @@ the zero-dependency writer in `scripts/rive.mjs`, planned by
   `width − x` (`shares` and `mirrored: true` in its report entry,
   `estimatedDecodeBytes` 0, a note `walk-left: walk-right's 8 images flipped`).
   Poses for `cuts` are measured on the flipped pixels. A mirror of an earlier
-  run of its source carries its own frames, with a warning to mirror it
-  again. Measured on Lumi (2026-09-27): idle + attack is 333,948 bytes and
+  run of its source carries its own frames, with a warning that names the
+  command to mirror it again from its source. Measured on Lumi (2026-09-27): idle + attack is 333,948 bytes and
   7.2 MB decoded; adding their mirrors `idle-left` and `attack-left` makes it
   335,982 bytes and the same 7.2 MB, where embedding `idle-left`'s own frames
   costs 161,743 bytes and 2.9 MB more. In the official runtime
@@ -2077,7 +2128,9 @@ result; once you have settled, do the final pass with `run` so the summary
 `register-run` reads is one the pipeline actually produced. One caution on the
 `run` route: it re-probes whatever sheet you hand it and keys it again if that
 image is opaque, so a matting you paid `remove-background.mjs` for is redone
-with a colour threshold unless the sheet you pass already carries alpha.
+with a colour threshold unless you pass the cut-out it kept —
+`run <motionDir>/sheet-raw.png --alpha <motionDir>/sheet-alpha.png …`, the
+same two paths as the first run.
 
 ### `fit <image> --out <png> [--max 480] [--pad 8]`
 
@@ -2131,7 +2184,7 @@ node {SKILL_PATH}/scripts/sprite-sheet.mjs breathe <character>/refs/still.png \
   | node {SKILL_PATH}/scripts/sprite-project.mjs register-run --dir <character> --motion idle --run -
 ```
 
-(Redirecting to `motions/idle/run.json` works too, once that directory
+(Redirecting to `<character>/motions/idle/run.json` works too, once that directory
 exists — on a first breathe it does not.) The summary is a sprite run
 (`frames`, `sheet`, `atlas`, `gif`, `webp`, `inspect`, `cell`, `grid`, `fps`,
 `loop: true`, `xFrom: "cell"`) plus `source: "breathe"`, `still` (the path
@@ -2163,9 +2216,9 @@ before cutting anything; the chain it stands for is the one `--name` runs:
 
 ```bash
 node {SKILL_PATH}/scripts/sprite-sheet.mjs breathe <character>/refs/still.png \
-  --out <scratch>/cells --json
-node {SKILL_PATH}/scripts/sprite-sheet.mjs align <scratch>/cells \
-  --out <scratch>/frames --x-from cell --json
+  --out <character>/work/breathe-try/cells --json
+node {SKILL_PATH}/scripts/sprite-sheet.mjs align <character>/work/breathe-try/cells \
+  --out <character>/work/breathe-try/frames --x-from cell --json
 ```
 
 `--x-from cell` because the frames already stand where they stand — the axis
@@ -2174,7 +2227,12 @@ feet centroid that the stretch moves by a fraction of a pixel. On the Lumi
 stills this chain measures `bodyDrift` 0.03–0.06 px and no `inspect` warnings.
 
 Beside the frames it writes `breathe.json` (`{ kind: "pneuma-sprite-breathe",
-version, still, frames, breaths, depth, mode }`; `clean` carries it along).
+version, still, frames, breaths, depth, mode, headOffset, perFrame, warnings }`;
+`clean` carries it along) — with `--name`, in `<motionDir>/cells/`.
+`register-run` keeps the run's `headOffset` as `motion.breathe.headOffset`,
+and `show --motion <id>` prints it under the breathe line, word for word as
+`breathe` does: `head offset -1..+1px (travel 2px: highest in frame 9, 10,
+11, lowest in 2, 3, 4, 5)`.
 `inspect` reads it from the cells or the frames: the head moves by whole
 pixels, so at each turn of the breath two neighbours can share the head's row
 and differ by a sub-pixel body warp alone (Lumi idle frame 00, depth 0.02, 16
@@ -2210,7 +2268,10 @@ reading `rive --filter auto` uses; `modeFrom` says which) — from the nearest
 character, `--mode` is required.
 
 **Read the report, per frame and overall:** `height` (solid alpha, min..max
-against the still's), `headOffset` (negative = up), `headDiffPx` (head pixels
+against the still's), `headOffset` (per frame, negative = up; overall
+`{ min, max, travel, highest: [frames], lowest: [frames] }` — the head rides
+the breath by `travel` px, and `highest` / `lowest` name the two frames to
+capture when saying so), `headDiffPx` (head pixels
 that differ from the still; 0 = identical — nonzero only in `pixel` mode on
 art with dark outlines, where the thinning pass runs over the whole frame),
 `strain` (the largest per-row strain; over 0.25 is refused), and warnings.
@@ -2223,6 +2284,14 @@ Two warnings to act on:
   breathes above that row. Look at both and choose.
 - **pixel mode on anti-aliased art** — duplicated rows step the diagonals and
   the thinning eats a pixel of a thick line; use `smooth`.
+- **the head never moves** — the character is too short for the depth to
+  lift it a whole pixel, so the frames only widen and narrow. The warning
+  names the `--depth` at which the head starts to move; or breathe a larger
+  still.
+
+A still whose working canvas (the still plus a third of the character on
+every side) is over 3 MP is refused, naming `fit`: breathe the picture at
+the size it plays at (an unfitted 2048² upload measured ≈ 1.9 GB resident).
 
 `--depth` is the total stretch as a share of the body below the neck (the
 same number means the same on every character). Fewer than 6 frames a breath
@@ -2322,27 +2391,27 @@ come from `Date.now()` unless `--at <ms>` is passed.
 
 | Subcommand | Purpose |
 |---|---|
-| `init --name "Lumi" [--description] [--style] [--cell 256x256] [--facing right] [--purpose game\|loop\|mascot\|animate] [--asymmetric "<sentence>"] [--pixel <H> [--colors N]]` | Creates the character directory if it is not there yet, then writes `project.json`. Fails if one exists unless `--force`. `--purpose` records the route (SKILL.md, *Pick the route*); `--asymmetric` is one sentence naming what must never flip — it stops `mirror` and guards every built prompt; `--pixel` declares pixel art at H logical px tall (`--colors`, the palette size). |
+| `init --name "Lumi" [--description] [--style] [--cell 256x256] [--facing right] [--purpose game\|loop\|mascot\|animate] [--asymmetric "<sentence>"] [--pixel <H> [--colors N]]` | Creates the character directory if it is not there yet, then writes `project.json`. Fails if one exists unless `--force`. `--purpose` records the route (SKILL.md, *Pick the route*); `--asymmetric` is one sentence naming what must never flip — it stops `mirror` and guards every built prompt; `--pixel` declares pixel art at H logical px tall; `--colors N` is the palette size, the default `--palette-size` of every `run --pixel`. |
 | `set-character [--description] [--style] [--facing] [--purpose] [--asymmetric "<sentence>"] [--pixel <H>] [--colors N] [--no-pixel] [--remove-variant <name,…>]` | Changes the character after `init`; only the flags given change. `--asymmetric ""` takes the sentence back. `--no-pixel` removes the pixel spec and unregisters the pinned palette and every colourway's files (the files stay on disk); `--remove-variant` drops the named colourways and their files. `show` prints the purpose, the pixel height and the sentence on its second line. |
 | `add-ref --id turnaround --file refs/turnaround.png --role turnaround\|portrait\|expression\|anchor\|custom [--direction front\|back\|left\|right] [--label] [--prompt] [--model] [--from <assetId,…>] [--uploaded \| --derived-from <refId\|assetId> [--op crop]]` | `--role anchor` needs `--direction`: one single-pose image facing that way, one per direction (a second anchor for the same direction is refused; re-register that id to replace it); no other role takes a direction (`prompting.md`, *Direction anchors*). Registers `ref-<id>` with a `generate` edge carrying the model and prompt you used. `--uploaded` instead records a file **the user brought**: an `upload` edge with `actor: "human"`, no parent and no params — it refuses `--model` / `--prompt` / `--from` by name, since none of them happened. `--derived-from <refId>` records an image you cut or cleaned out of another registered reference (a single pose out of an uploaded design sheet): a `derive` edge from that ref with `params.op` — `--op` is one word, default `crop`, and only valid here. Re-adding an id replaces its edge whatever its type. |
 | `add-motion --id idle --label Idle --rows 4 --cols 4 --fps 8 [--loop] [--anchor bottom] [--prompt] [--status planned] [--direction front\|back\|left\|right]` | Adds the motion. Call it before you generate, so the stage shows a placeholder. `--direction` is the way it faces; name it `<state>-<direction>` (`walk-left`) so every atlas key, Aseprite tag and Rive input carries it. |
-| `set-motion --motion idle [--label] [--fps] [--loop\|--no-loop] [--anchor] [--prompt [--prompt-parts '<json>']] [--direction] [--status] [--notes]` | Edits motion metadata. `--notes` is where a failure reason belongs. `--prompt` alone is a hand-written prompt and drops any recorded parts; `--prompt-parts` records how code built the `--prompt` given with it (what `sheet-prompt` writes; `project-json.md`, *Recorded prompt parts*). A mirror's `--direction` must stay the opposite of its source's. |
-| `sheet-prompt --motion idle --action "<phase plan>" [--frames N] [--state …] [--guide\|--no-guide]` | Builds the sheet prompt in code from the character, the motion and your action, records `prompt` + `promptParts`, and prints the prompt (stdout alone without `--json`; `imageSize`, `attach` and `guide` with it). `--frames` redraws the motion's grid. Refused on loop, transition, breathe and mirror motions. Grammar, guards and the frames table: `prompting.md`, *Building the prompt*. |
+| `set-motion --motion idle [--label] [--fps] [--loop\|--no-loop] [--anchor] [--prompt [--prompt-parts '<json>']] [--direction] [--source sheet\|video\|breathe\|mirror] [--status] [--notes]` | Edits motion metadata. `--source` says again how a motion with no frames yet will get them — the way out when a planned mirror is refused on an asymmetric character: `--source sheet`, then `sheet-prompt`; a motion with frames keeps the source that made them. `--notes` is where a failure reason belongs. `--prompt` alone is a hand-written prompt and drops any recorded parts; `--prompt-parts` records how code built the `--prompt` given with it (what `sheet-prompt` writes; `project-json.md`, *Recorded prompt parts*). A mirror's `--direction` must stay the opposite of its source's. |
+| `sheet-prompt --motion idle --action "<phase plan>" [--frames N] [--state …] [--guide\|--no-guide]` | Builds the sheet prompt in code from the character, the motion and your action, records `prompt` + `promptParts`, and prints the prompt (stdout alone without `--json`; `imageSize`, `attach`, `rhythm`, `guide` and `sides` with it — `sides[d]` is where the character's own right and left fall in view `d`). `--frames` redraws the motion's grid. Refused on loop, transition, breathe and mirror motions, a planned mirror included. Grammar, guards and the frames table: `prompting.md`, *Building the prompt*. |
 | `set-sheet --motion idle --file motions/idle/sheet-raw.png --from ref-turnaround[,…] [--model] [--prompt] [--background opaque] [--status generating\|processing]` | Registers `<motion>-sheet-raw` with a `generate` edge. `--from` becomes the edge's `fromAssetId`; `params.inputs` lists the whole set **only when you attach two or more references** — with one, `fromAssetId` already says everything. Re-running replaces the previous raw sheet and its edges, keeping the id stable. Call it twice per sheet (see below). |
-| `add-motion … [--source sheet\|video\|breathe\|mirror]` | Records how the frames will be obtained, before anything is generated. Absent means `sheet`; `register-run` corrects it from the run that lands. `--source breathe` needs no `--rows/--cols` and no `--fps` (1×1 at 8 fps until the run lands: a breathe is drawn on no grid and timed by its run). A mirror takes its source's grid and fps. |
+| `add-motion … [--source sheet\|video\|breathe\|mirror]` | Records how the frames will be obtained, before anything is generated. Absent means `sheet`; `register-run` corrects it from the run that lands. `--source breathe` needs no `--rows/--cols` and no `--fps` (1×1 at 8 fps until the run lands: a breathe is drawn on no grid and timed by its run). `--source mirror` needs none of them either: a mirror plays on its source's grid, fps and loop, which `register-run` takes from the run. |
 | `add-motion … [--kind loop]` | Declares a **loop motion** (workflow E). `--rows/--cols` become optional (1×1 is recorded), `source` defaults to `video`, and `set-keyframe` is accepted only here. A sprite motion is unchanged. |
 | `set-keyframe --motion <id> --file motions/<id>/keyframe.png [--alpha motions/<id>/keyframe-alpha.png] [--model] [--prompt] [--from <refIds>] [--status generating\|processing\|ready]` | The loop's `set-sheet`. Registers `<motion>-keyframe` with a `generate` edge carrying the model and prompt; `--alpha` registers `<motion>-keyframe-alpha` with a `derive` edge (`step: "key"`) from it. Refused on a motion that is not `--kind loop`. Called twice per keyframe, as `set-sheet` is — but the closing call needs only `--file` and `--alpha`: an omitted `--model` / `--prompt` / `--from` **keeps** what the reserving call recorded rather than blanking the edge. Once `--alpha` has reserved the cut-out, a closing call without `--alpha` is refused, because the stage prefers the cut-out and a placeholder there is a broken image. |
 | `add-video … --file motions/<id>/<clip> --derived-from <videoId> --op matte\|interpolate\|retime --model veed\|veed-gs\|bria\|topaz\|rife\|ffmpeg [--duration] [--status]` | Registers a clip made **from another clip**: a `derive` edge from the parent's asset with `params: { op, model }`, and a sidecar entry with `mode: "derived"`. `--file` is required here as everywhere. It takes no `--mode`, `--prompt` or `--from` — nothing was prompted, and a prompt invented to fill the field is what makes a later turn believe the clip was generated. `--op retime --model ffmpeg` is the local reorder (`sprite-sheet.mjs retime`), which invents no pixel and so is neither a matte nor an interpolation. `--status` defaults to **`ready`**: the script that made the clip wrote the file before there was anything to register, so there is no wait to show (a shot clip still defaults to `generating`). |
-| `set-motion … --brief-duration <s> --brief-width <px> --brief-interpolator topaz\|rife\|ffmpeg\|none [--brief-budget <usd>]` | Records the **loop brief** — the answers workflow E step 1 collects before anything is paid for. The first call needs the three required flags together; any later call may change one. Refused on a motion that is not `--kind loop`. Warns on stderr when `duration × 60 > 400` with an interpolator that targets 60 fps, naming the rate that fits (`--target-fps 48` for a 7–8 s loop). |
+| `set-motion … --brief-duration <s> --brief-width <px> --brief-interpolator topaz\|rife\|ffmpeg\|none [--brief-budget <usd>]` | Records the **loop brief** — the answers workflow E step 1 collects before anything is paid for. The first call needs the three required flags together; any later call may change one. Refused on a motion that is not `--kind loop` or a transition; a transition's brief is `--brief-duration` and `--brief-budget` alone. Warns on stderr when `duration × 60 > 400` with an interpolator that targets 60 fps, naming the rate that fits (`--target-fps 48` for a 7–8 s loop). |
 | `add-video` on a **loop** motion, generated clip | **Refused** when the motion has no brief: `add-video: loop '<id>' has no brief — record the user's answers first: set-motion --brief-duration … --brief-width … --brief-interpolator …`. A record that is only half a brief is refused the same way and names what it is missing (`… has an incomplete brief, missing --brief-width, --brief-interpolator and recordedAt — …`): the reader is all-or-nothing everywhere — the gate, `show` and the JSON summaries — so half an answer never travels as one. A `--derived-from` clip is exempt: that money is already spent, and refusing to record it would only lose the provenance. |
 | `set-motion … [--ack-warnings "<reason>"] [--clear-ack]` | Accepts the motion's remaining inspect warnings with a one-sentence reason the user reads on the stage; the numbers stay visible and the badge dims. `--clear-ack` takes it back. Refused when the motion has no inspect report, and refused with an empty reason — the acknowledgement *is* the reason. |
-| `register-run --motion idle --run <run.json \| -> [--video <videoId>] [--repin]` | Consumes `sprite-sheet.mjs run` output: registers the alpha sheet (if any), every frame, the packed sheet, atlas, gif and webp with `derive` edges; **removes** the previous frame assets and edges for that motion; copies `inspect` into the motion (including the measured `anchorPoint`, which is what the viewer's pivot guide stands on); sets status `ready`. A `from-video` summary derives the frames from the clip asset instead (`--video` names which, the newest is used with a note on stderr) and sets `motion.source`. A summary with `"kind": "loop"` has no sheet, atlas or gif — those become optional, and a sprite run still requires them — and registers the webp plus `<motion>-apng`, `<motion>-webm` and `<motion>-lottie` instead; it sets `motion.kind = "loop"`, `motion.exports`, `motion.source = "video"`, `motion.fps` from the run (interpolation changes it) and `grid = {1,1}`, and the inspect summary it copies carries `seam`, `step`, `seamFill` and `alphaCoverage`. Any acknowledgement goes with the measurement it covered. Re-registering a motion **retires** the on-demand exports made from its old frames (`<motion>-export-*`, and the character's `.riv` when it held this motion): the assets and edges go, the files stay on disk, and stderr says `note: retired <id> — it was cut from the frames this run replaced; re-export it`. A loop's own WebP / APNG / WebM / Lottie are rewritten by the run itself and are not retired. Its colourway files (`<motion>-variant-*`, `motion.variants`) are retired the same way, with a note naming the command that bakes them again from the recorded colourways. A **breathe** summary (`source: "breathe"`) needs its `still` registered as a reference and takes the motion's grid and fps from the run; a **mirror** summary (`source: "mirror"`) needs a ready left- or right-facing source with as many frames, refuses an asymmetric character unless the summary carries `force: true`, and notes every mirror a re-run leaves stale; a **pixel** summary pins its palette on the character the first time and refuses a different one later unless `--repin` (which warns that the other motions used the old one) — all three in `project-json.md`, *Routes, directions, breathe, mirror, pixel art*. On a loop it also compares the registered `inspect.cell.width` with `brief.width` and warns — stderr, and `warnings[]` in the `--json` payload — when they are more than 2 px apart (`frames are <w> px wide but the brief said <width> — pass --width to loop`). A warning, not an error: the frames are already cut, and cutting them again is free. It is said once per channel and is **not** written into `inspect.warnings`: that list is the measurement of the frames — what the viewer shows and what `--ack-warnings` accepts — and this is a comparison against the brief. |
+| `register-run --motion idle --run <run.json \| -> [--video <videoId>] [--repin]` | Consumes `sprite-sheet.mjs run` output: registers the alpha sheet (if any), every frame, the packed sheet, atlas, gif and webp with `derive` edges; **removes** the previous frame assets and edges for that motion; copies `inspect` into the motion field by field (including the measured `anchorPoint`, which is what the viewer's pivot guide stands on, a jump's `lift` and the `pixel` lattice report; `keyFringe` stays in `inspect.json`); takes the motion's `grid` and `fps` from the run (the grid a sheet was sliced on, the columns a clip's frames were packed on); keeps an auto slice's record as `motion.slice` and a breathe's `headOffset` as `motion.breathe.headOffset` — `show --motion` and the viewer context print the slice, the lift and the head offset, so a later turn reads them without the run summary; sets status `ready`. A `from-video` summary derives the frames from the clip asset instead (`--video` names which, the newest is used with a note on stderr) and sets `motion.source`. A summary with `"kind": "loop"` has no sheet, atlas or gif — those become optional, and a sprite run still requires them — and registers the webp plus `<motion>-apng`, `<motion>-webm` and `<motion>-lottie` instead; it sets `motion.kind = "loop"`, `motion.exports`, `motion.source = "video"`, `motion.fps` from the run (interpolation changes it) and `grid = {1,1}`, and the inspect summary it copies carries `seam`, `step`, `seamFill` and `alphaCoverage`. Any acknowledgement goes with the measurement it covered. Re-registering a motion **retires** the on-demand exports made from its old frames (`<motion>-export-*`, and the character's `.riv` when it held this motion): the assets and edges go, the files stay on disk, and stderr says `note: retired <id> — it was cut from the frames this run replaced; re-export it`. A loop's own WebP / APNG / WebM / Lottie are rewritten by the run itself and are not retired. Its colourway files (`<motion>-variant-*`, `motion.variants`) are retired the same way, with a note naming the command that bakes them again from the recorded colourways. A **breathe** summary (`source: "breathe"`) needs its `still` registered as a reference and takes the motion's grid and fps from the run; a **mirror** summary (`source: "mirror"`) needs a ready left- or right-facing source with as many frames, takes its grid, fps, loop and anchor from the run (the source's where the summary does not say), refuses an asymmetric character unless the summary carries `force: true`, and notes every mirror a re-run leaves stale; a **pixel** summary pins its palette on the character the first time and refuses a different one later unless `--repin` (which warns that the other motions used the old one) — all three in `project-json.md`, *Routes, directions, breathe, mirror, pixel art*. On a loop it also compares the registered `inspect.cell.width` with `brief.width` and warns — stderr, and `warnings[]` in the `--json` payload — when they are more than 2 px apart (`frames are <w> px wide but the brief said <width> — pass --width to loop`). A warning, not an error: the frames are already cut, and cutting them again is free. It is said once per channel and is **not** written into `inspect.warnings`: that list is the measurement of the frames — what the viewer shows and what `--ack-warnings` accepts — and this is a comparison against the brief. |
 | `register-export --report <report.json \| ->` | Consumes the `--json` report of `sprite-sheet.mjs export` or `rive`, usually piped (`--report -`). A motion export becomes `<motion>-export-<format>` (type `video` for mp4/mov/webm, `image` for apng, `text` for lottie, `image` with `metadata.container: "zip"` for png-seq and aseprite) and `motion.exports[format]` names it, with `metadata.shadow` `{ squash, shear, opacity, blur, color }` when it was made with `--shadow`; the character's Aseprite sheet (`"scope": "character"`) becomes `<character>-export-aseprite` (type `image`, `metadata.container: "zip"`, `width`/`height` of the sheet, `frames`, `motionCount`) with `params.motions` and `params.tags`, and `sprite.exports.aseprite` names it — retired with the `.riv` by a `register-run` or `remove-motion` of a motion it holds; the `.riv` becomes `<character>-export-riv` (type `image`, `metadata.container: "riv"`) and `sprite.exports.riv` names it. Metadata carries `size` in bytes plus what the report measured (`width`, `height`, `fps`, `duration`, `frames`, `repeat`, `scale`, `background` on MP4; `motionCount`, `images`, `estimatedDecodeBytes` on the `.riv`). One `derive` edge from every frame it was made of, `params: { tool, step: "export"\|"rive", format, repeat, scale, background }` — the `.riv`'s edge lists `params.motions` and `params.sampled` (each motion's frames, fps, width and height as the file plays it), and its `metadata.frames` is what it embeds. The report's frames must be the ones registered **now**, or it is refused ("export it again"). Re-registering replaces the asset in place. An empty report — the export failed and printed only its `ERROR:` — is said as such and registers nothing. A format a loop already ships (its own WebM, APNG, Lottie) is refused. |
 | `register-recolor --report <recolor.json \| ->` | Consumes the `--json` report of `sprite-sheet.mjs recolor`. Records each colourway once, on the character (`character.pixel.variants`: a changed one replaces its record in place, a new one is appended), and per motion its `sheet.png`, `atlas.json` and `preview.gif` as `<motion>-variant-<name>-sheet` / `-atlas` / `-gif` (sheet: `metadata.substituted`, `unmatched`, `uncovered` counts), named by `motion.variants[name]`. The sheet and preview are `derive` edges from the motion's frames (`params: { step: "recolor", variant, tolerance?, inputs }`), the atlas from the sheet. The report's frames must be the ones registered now. A colourway whose map changed unregisters the files other motions baked with the old one (said on stderr). |
 | `add-video --motion idle --file motions/idle/video-seedance-1.mp4 --model seedance-2.5 --mode i2v --from idle-frame-00[,idle-frame-15] [--prompt] [--duration 4] [--status generating]` | Registers `<motion>-video-<n>` (n is the next free number) with a `generate` edge. |
 | `set-video --motion idle --video <id> --status ready\|failed [--notes]` | Closes out a video after the render returns. |
 | `remove-motion --motion idle` | Removes the motion, its assets and its edges — its on-demand exports included, and the character's `.riv` when it holds this motion. Files on disk are left alone; the orphaned paths are printed so you can delete them deliberately. |
-| `show [--motion id]` | Compact summary (with `staleMirrors` — a mirror whose source was registered again after it, fixed by `mirror` + `register-run`; and `variantsMissing` — the ready sprite motions missing a recorded colourway, which is what a re-run leaves; the fix is `recolor` on that motion without `--map`): name, the recorded purpose, pixel height and asymmetry sentence, refs (each with `origin: generated \| uploaded \| derived`, read off its edge — whether an image was drawn here or brought in decides what you may regenerate), motions with status / grid / fps / frame count / warnings, and derived clips as `video-3 ← video-2 (matte, veed-gs)`. The cheapest way to re-orient at the start of a turn. |
+| `show [--motion id]` | Compact summary (with `staleMirrors` — a mirror whose source was registered again after it, fixed by the `mirror` command it names + `register-run`; `staleBreathes` — a breathe whose still was registered again after it or is gone, fixed by `breathe --name` + `register-run`; and `variantsMissing` — the ready sprite motions missing a recorded colourway, which is what a re-run leaves; the fix is `recolor` on that motion without `--map`): name, the recorded purpose, pixel height and asymmetry sentence, refs (each with `origin: generated \| uploaded \| derived`, read off its edge — whether an image was drawn here or brought in decides what you may regenerate), motions with status / grid / fps / frame count / warnings, and derived clips as `video-3 ← video-2 (matte, veed-gs)`. The cheapest way to re-orient at the start of a turn. |
 
 ### `set-sheet` is called twice per sheet
 
@@ -2384,6 +2453,30 @@ the keyframe. The green flatten the clip is actually shot from
 the same rule `first.png` follows — so the clip's `--from` names the cut-out
 keyframe, which is the last thing in the chain that is an asset.
 
+## How long each step takes
+
+Measured wall times. Nothing here has a progress bar, so this is how to tell
+"working" from "hung", and the number the user hears before a wait. The loop
+and transition rows (keyframe, first-last clip, matte, interpolation, `loop`)
+are in `loops.md`.
+
+| Step | Wall time |
+|---|---|
+| a reference image (2048², `--quality high`); a direction anchor (1024²) | 30–40 s; ≈ 25 s |
+| a sheet (2048 wide, refs attached) | 20–35 s |
+| `remove-background.mjs --model heavy` at 2048 / 1024 | 10–20 s / ≈ 6 s |
+| `sprite-sheet.mjs run` (`--pixel` adds ≈ 1 s) | ≈ 5 s |
+| `breathe --name … \| register-run` (route A, the cut-out aside) | ≈ 7 s |
+| `mirror` + `register-run` | ≈ 5 s |
+| `sprite-sheet.mjs contact` (4 s clip, 24 stills + analysis) | ≈ 3 s |
+| `sprite-sheet.mjs from-video` (16 frames, 640² clip) | ≈ 12 s |
+| **a 4 s Seedance 480p clip** | **140–400 s**, and 632 s on one loop take — the queue decides, not the clip |
+
+Quote a Seedance take as a range. It is the step that looks broken and is
+not: register the placeholder, say the range, and wait — no polling, no
+second call. The script retries transient failures itself, and a second
+submission is a second bill.
+
 ## `atlas.json`
 
 TexturePacker JSON-hash, which Phaser and PixiJS both load without a
@@ -2411,7 +2504,9 @@ converter.
 ```
 
 - Frame keys are `<motionId>_NN`; `animations[<motionId>]` lists them in
-  playback order.
+  playback order. Loading it: Phaser, `this.load.atlas(key, 'sheet.png',
+  'atlas.json')`; PixiJS 8, `Assets.load('atlas.json')`, whose `Spritesheet`
+  hands `animations[<motionId>]` to an `AnimatedSprite`.
 - `pivot` is the anchor point `align` measured, normalized by the cell:
   `{0.5, (H − pad) / H}` for `anchor: bottom`, `{0.5, 0.5}` for `center`,
   rounded to 4 decimals. With `--pad 8` on a 256px cell that is
@@ -2563,6 +2658,23 @@ whole `loop --width 512 --formats webm --seam-fill none --no-trim-holds`
 command: 11.4–12.7 s on the previous script, 13.7–15.9 s with `unmix` (one
 round of the previous script took 28.7 s under load).
 
+**The edge read against the character** (a later round the same day; the
+tables above predate it). An opaque edge pixel is now read against the
+character's own colours beside it before the green-tint rule, floor shadow
+that touches no part of the character is removed, and `keyFringe` counts
+the opaque rim that is left. Fox walk (`from-video`, `--similarity` 0.22):
+`keyResidue` 0.0119 → 0 and `keyFringe` 0.0231 → 0, no warnings; at 0.3 the
+old measure read 0 while the new one reads `keyResidue` 0.0024 and
+`keyFringe` 0.0252 and warns — a wider radius does not take the rim out. An
+independent green check flagged 941 → 99 pixels; the real bench's fox
+residue went 1.24 % → 0.00 %. Synthetic edges (ΔE00 halo): red 27.9 → 1.2,
+blue 28.7 → 2.0, copper 21.7 → 1.8, purple 34.3 → 0.1; floor shadow left
+behind 71.3 % → 3.6 %. Tanka's ten clips: residue 0.00 % before and after,
+body ΔE00 0. The costs: tanka's yellow fur gets partial alpha on 5.8–12.2 %
+of its edge pixels (was 0; it reads cleaner), strand recall 74.4 → 70.5 %,
+subject lost 0.59 → 0.66 %, and the keyer is about twice as slow (5.4 →
+11.3 ms a 640² frame; `from-video` 9.6 → 12.2 s).
+
 **Where it does not apply.** A white, cream or grey plate has no hue to un-mix
 and keeps `colorkey`. The Lumi attack clip is on cream `#ece9e1`: `colorkey`
 there eats the cream hair and coat fills (a hair tip keys hollow) and leaves a
@@ -2616,8 +2728,8 @@ lag 0.10, through `breathe → align --x-from cell → gif --fps 8 → inspect`.
 
 ## Measured: alignment and framing (2026-09-27)
 
-Everything below is reproducible from `~/pneuma-dev-scratch/2026-09-27/sg/align/`
-(`run-*.sh`, outputs beside them). Clips from the wave-2 shoot of this round:
+Measured on the development machine with scripted runs (not shipped with
+the mode). Clips from the wave-2 shoot of this round:
 Lumi side-view walk (Seedance 2.5 i2v, 4 s, 480p; contact period 1.333 s,
 sampled 1.5–2.833 s, 16 frames), Lumi first-last attack (4 s), Lumi jump from
 a tight and from a `tall` frame (4 s each); tanka's front-view walk
@@ -2697,8 +2809,8 @@ stands 240–241 px, where unscaled they differ 1.54×.
 What `pixel` / `run --pixel` does on generated pixel art, against what this
 mode did before, and against the Python it was ported from. Machine: Apple
 M4 Max, Node 25, ffmpeg 8.0; upstream aldegad/sprite-gen at `fbd1a08` on
-Python 3.14 + Pillow 12.3. Scripts and the 8× panels live in the dev scratch
-(`~/pneuma-dev-scratch/2026-09-27/sg/pixel/`).
+Python 3.14 + Pillow 12.3. The scripts and 8× panels stayed on the
+development machine.
 
 **Synthetic ground truth.** A 30 × 44 logical walking character (16 frames,
 a 1 px outline, 1 px eyes, a two-block gold buckle) drawn the way a model
@@ -2832,9 +2944,8 @@ work.
 The pixel knight walk (sg shoot e6: GPT Image 2.5 Flare, 4×2 at 2048 × 1024,
 BiRefNet matte; blocks ≈ 8 px by eye, the figure 427 px tall where 32
 logical px were asked for). Apple M4 Max, Node 25, ffmpeg 8.0; upstream
-aldegad/sprite-gen at `fbd1a08` on Python 3.14 + Pillow 12.3. Scripts, the 8×
-contact sheet and the reports live in the dev scratch
-(`~/pneuma-dev-scratch/2026-09-27/sg/recolor/evidence/`).
+aldegad/sprite-gen at `fbd1a08` on Python 3.14 + Pillow 12.3. The scripts,
+8× contact sheet and reports stayed on the development machine.
 
 **The declared height.**
 
@@ -2887,8 +2998,8 @@ A map with one typo (`#1954be` for `#1954bf`) swaps only its other entry
 
 ## Measured: slicing, lift and sizes (2026-09-27)
 
-Real inputs from this round's blind trials and paid shoots, copied to the
-amendment's scratch (`sg/amend-slice/`); evidence images beside the numbers.
+Real inputs from this round's blind trials and paid shoots, copied (never
+the owner's files) and measured on the development machine.
 
 **Slicing by ink (`slice --auto`, `run`'s fallback).** The Kagari attack
 sheet (blind trial G, GPT Image 4×4, 2048 px, the original before the

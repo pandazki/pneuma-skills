@@ -6,8 +6,8 @@ A clip does four jobs in this mode, and they are not the same job.
    into frames by `sprite-sheet.mjs from-video`, keyed, cleaned, aligned and
    packed exactly like a sheet's cells. This is the smoother of the two
    sources — the model draws the in-betweens — and it is what a walk, a run or
-   an attack should be built from. It costs about a dollar and several minutes
-   per motion.
+   an attack should be built from. It costs ≈ $0.83 (a 4 s 480p take) and
+   several minutes per motion.
 2. **A preview.** A clip rendered *from* finished frames, so the user can feel
    the motion. That clip is never sampled back into frames.
 3. **A seamless loop.** A clip shot first-last with the same image at both
@@ -115,7 +115,10 @@ node {SKILL_PATH}/scripts/seedance-video.mjs \
 | `--json` | flag | | one JSON object on stdout |
 
 `--json` returns `{ path, url, file_size, model, endpoint, requested_duration,
-resolution, seed? }`. Local files are converted to data URIs; anything over
+resolution, seed?, request_id?, cost }`. `cost` is an estimate by fal's
+published formula applied to the clip that landed (`usd`, `tokens`, `width`,
+`height`, `duration`), never an invoice; the same figure goes to stderr as
+one `cost:` line — quote that line to the user after the take. Local files are converted to data URIs; anything over
 30 MB is refused with a clear message (a 480p 4 s clip and a 2048×2048
 reference are both far under it).
 
@@ -153,14 +156,15 @@ fal's pricing page before promising a user a figure.
 
 | Model / setting | Cost | Wall time |
 |---|---|---|
-| Seedance 2.5 i2v, 480p | ≈ $0.22 per second of output | — |
-| Seedance 2.5 i2v, 720p | ≈ $0.47 per second of output | — |
+| Seedance 2.5, 480p / 720p | $0.0214 per 1000 tokens; tokens ≈ width × height × seconds × 24 / 1024 of the clip that lands — a 640×640 480p square: ≈ $0.83 for 4 s, ≈ $1.0 for 5 s | 140–400 s for 4 s (632 s seen) |
+| Seedance 2.5, 1080p | ≈ $0.0234 per 1000 tokens | — |
 | H3 Max r2v, 480P, 7 s shot | — | ≈ 14 s (≈ 18 s with a voice reference) |
 | H3 Max i2v, 480P, 7 s shot | — | ≈ 28 s |
 | H3 Max t2v, 480P | — | ≈ 2–3 s on a quiet queue; reference analysis dominates r2v |
 
-So a 4-second 480p Seedance preview is roughly a dollar. Render one per motion
-by default; ask before rendering a set.
+So a 4-second 480p Seedance preview is ≈ $0.83 (fal's pricing read
+2026-09-27; video references bill at 0.6× plus their own duration). Render one
+per motion by default; ask before rendering a set.
 
 480p / 480P is the right default for a sprite preview. Go to 720p / 768P only
 when the user asks for a keepsake.
@@ -358,7 +362,7 @@ the camera, the scale and the return:
 
 The last sentence is not a formality — it is what turns a four-second
 performance into a cycle, and it is the one clause worth re-reading before you
-spend the dollar. **Ask for the settle, not just the return**: on the measured
+pay for the take. **Ask for the settle, not just the return**: on the measured
 clip below Seedance spent its final three frames hurrying back to the keyframe,
 at about twice the median step, which reads as a flinch right where the loop
 joins. Two beats need five seconds; one needs four.
@@ -378,8 +382,9 @@ node {SKILL_PATH}/scripts/seedance-video.mjs \
   --output <character>/motions/<id>/video-seedance-1.mp4 --json
 ```
 
-Cost is the same tier as any Seedance clip — ≈ $0.22 per second of 480p
-output, so ≈ $0.9 for four seconds and ≈ $1.1 for five. Flatten onto pure green
+Cost is the same as any Seedance clip — ≈ $0.83 for four seconds of 480p
+square output and ≈ $1.0 for five; the script's `cost:` line says what this
+one came to. Flatten onto pure green
 rather than a neutral: the whole point of the plate is that `loop --key auto`
 can measure and remove it.
 
@@ -426,7 +431,7 @@ node {SKILL_PATH}/scripts/seedance-video.mjs \
   --output <character>/motions/idle-to-coffee/video-seedance-1.mp4 --json
 ```
 
-Price it like any take — ≈ $1.1 at 4 s and 480p, plus ≈ $0.06 for the
+Price it like any take — ≈ $0.83 at 4 s and 480p, plus ≈ $0.06 for the
 `veed-gs` matte. No interpolation: the `.riv` plays at 24 fps, which is the
 rate the take already has. Only the entries are shot; each exit is its entry
 played backwards (`transition --reverse-of`), free. When a reverse reads wrong
@@ -448,7 +453,7 @@ breathing — both takes showed all three:
 
 The prompt in the template above already says *the body is never still* and
 *a single smooth sine-wave breath with no pause at the top*. Both takes froze
-anyway. Re-shooting is $1.1 that buys the same three defects, which is why step
+anyway. Re-shooting is ≈ $1.0 that buys the same three defects, which is why step
 6b exists and why a second take is a decision to put to the user rather than a
 correction to make.
 
@@ -628,7 +633,7 @@ post-processing path run against it.
 |---|---|---|---|
 | keyframe (GPT Image, 1024², `--quality high`) | **29 s** | $0.05 | one flame on white |
 | `remove-background.mjs --model heavy --resolution 1024` | **6 s** | | the cut-out |
-| clip, first-last, same image both ends (`--duration 5 --resolution 480p --no-audio`) | **199 s** (3 min 19 s) | ≈ $1.1 | 640×640, h264, 24 fps, **121 frames**, 5.04 s, 366 KB |
+| clip, first-last, same image both ends (`--duration 5 --resolution 480p --no-audio`) | **199 s** (3 min 19 s) | ≈ $1.0 | 640×640, h264, 24 fps, **121 frames**, 5.04 s, 366 KB |
 | `remove-video-background.mjs --model veed` | **22.6 s** (17 s inference) | ≈ $0.09 | VP9 webm carrying alpha |
 | `remove-video-background.mjs --model veed-gs` | **30 s** (18.7 s inference) | ≈ $0.06 | 617 KB VP9 webm, `ALPHA_MODE=1`, zero green pixels |
 | `interpolate-video.mjs --target-fps 60 --upscale 1` (Topaz) | **49 s** (43 s inference) | ≈ $0.10 | 300 frames, 4.3 MB h264, the green plate kept |
@@ -654,7 +659,10 @@ edge. Never ship a chroma-plate loop keyed with plain colorkey
 at, so there is no downscale further along to hide the fringe the way a sprite
 motion has.
 
-**Seam, as a worked verdict.** `loop` measured the Seedance clip at seam
+**Seam, as a worked verdict.** (These seams, and the table below, were
+measured in silhouette units before 2026-09-27; `loop` now measures colour —
+*Measured: cycle analysis* below — so today's numbers differ, while the rule,
+seam against its limit, is the same.) `loop` measured the Seedance clip at seam
 **0.028** against a median step of **0.046** — the last frame is closer to the
 first than a normal frame is to its neighbour, which is a loop that closes. The
 Topaz 60 fps version of the same clip came back at seam **0.067** against a step
@@ -857,8 +865,8 @@ has the rules): colour instead of silhouette, every frame at the clip's own
 rate instead of 12 fps, the whole-clip lag profile instead of best-single-seam,
 a no-cycle verdict, one-shots, and a 0.005 noise floor under `seam ≤ 2·step`.
 Before = the scripts at `2831b7d2`, after = this change, same copies of the
-clips (inputs copied, never the owner's files). Reproduce with
-`~/pneuma-dev-scratch/2026-09-27/sg/cycle/tools/evidence.mjs`.
+clips (inputs copied, never the owner's files), measured with a script
+that stayed on the development machine.
 
 **`contact`, before → after.** tanka: Seedance 2.5, 640², 24 fps, 97–121
 frames, chroma green. Lumi attack: the seed's `video-seedance-1.mp4` (the
@@ -898,7 +906,7 @@ loops (VEED matte of the Topaz 60 fps clip, `--key alpha`, the whole clip):
 | wave | 0.0028 / 0.0058 | 0 | 0.0028 / 0.0023 | 0.005 | 0 |
 
 The five loops whose decision changed, last frame | first frame | difference
-×16 (`sg/cycle/evidence/wrap-changed-5.png`): the same pose every time, and a
+×16: the same pose every time, and a
 difference that is fur-texture noise spread over the whole body with no
 structure — nothing the four interpolated frames were fixing. The walk keeps
 its two: a real 2.5-step wrap. The wave-2 first-last attack closes either way
@@ -906,9 +914,8 @@ its two: a real 2.5-step wrap. The wave-2 first-last attack closes either way
 
 **Transitions keep silhouette joins.** On tanka-connect's four transitions the
 colour measure agrees on three and false-alarms on one: `idle-to-reading`'s end
-reads 0.0154 against a limit of 0.0135 on two frames of the same pose
-(`sg/cycle/evidence/transition-reading-end-vs-frame0.png` — fur and tablet
-shading differ between the two renders); its silhouette gap, 0.0083 against
+reads 0.0154 against a limit of 0.0135 on two frames of the same pose (fur
+and tablet shading differ between the two renders); its silhouette gap, 0.0083 against
 0.0194, lands. So `transition` is unchanged (`pipeline.md`).
 
 **Synthetic ground truth** (`__tests__/sprite-sheet.test.ts`, ffmpeg `overlay`

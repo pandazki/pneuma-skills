@@ -25,13 +25,13 @@ const spriteManifest: ModeManifest = {
   version: "0.5.0",
   changelog: {
     "0.5.0": [
-      "Four routes shape the session around what you are making — a game character, a looping animation for a page, a mascot for an app, or your own picture brought to life — so you answer one plain question instead of choosing settings",
-      "Bring a picture to life: upload an image and it starts breathing in seconds, free, with no model call",
-      "Pixel-art characters snap onto a true pixel grid with one palette across every motion, and colourways such as a red team and a blue team come as extra downloads",
-      "Characters for top-down games face four ways: one reference picture per facing keeps every sheet on-model, and the other side is mirrored for free",
-      "Game-engine export: an Aseprite sheet of one motion or the whole character that Phaser loads in one call, atlases PixiJS stands on the feet, and an optional ground shadow",
-      "Cleaner green-screen edges: the key takes the plate colour out of every edge instead of leaving a green or dark rim",
-      "Jumps and attacks get room in the frame, walks stay steady instead of lurching, and a character keeps one height across its clips",
+      "Four routes shape the session around what you are making — a game character, a looping animation for a page, a mascot for an app, or your own picture brought to life — so you answer one plain question instead of choosing settings, and hear the price and the wait before anything paid runs",
+      "Bring a picture to life: upload an image and it starts breathing in seconds, free, with no model call, and the motion remembers how far the head rides each breath",
+      "Pixel-art characters snap onto a true pixel grid at the height you chose, read from the visible drawing alone, with one palette across every motion — a sheet drawn at another size is caught, not squashed — and colourways such as a red team and a blue team come as extra downloads",
+      "Characters for top-down games face four ways: one reference picture per facing keeps every sheet on-model, and the other side is mirrored for free, or drawn when something is only on one side; a mirror left behind by a redrawn source says how to refresh it",
+      "Game-engine export: an Aseprite-format sheet of one motion or the whole character that Phaser loads in one call, atlases PixiJS stands on the feet, and an optional ground shadow",
+      "Cleaner green-screen edges: the key takes the plate colour out of every edge, including the rim a colour key used to leave on warm colours and a shadow on the floor",
+      "Jumps and attacks get room in the frame and a jump can keep its height, sheets whose poses cross the grid are cut by their drawing (both remembered with the motion), walks stay steady instead of lurching, and a character keeps one height across its motions",
       "Clips are read more truly: a walk's full stride, a one-off action and a clip that never repeats are told apart, and near-still loops are no longer padded with extra frames",
     ],
     "0.4.0": [
