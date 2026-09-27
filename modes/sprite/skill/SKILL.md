@@ -319,7 +319,10 @@ height, and every sheet runs through the lattice:
   pinned file) + `register-run --repin` only when the user wants new colours
   everywhere.
 - **`inspect.pixel.held`** is true or false; when false, the warning names
-  the frames that left the lattice. Re-align a pixel motion from its
+  the frames that left the lattice. After `register-run` it is in the record
+  too: `show --motion <id>` and the viewer context print `pixel lattice held
+  · pitch …, scale Nx · palette checked`, or `broken — …` naming the frames.
+  Re-align a pixel motion from its
   `pixel/` directory, never `cells/` (`align` refuses; `--force` drops the
   lattice). Never re-pack generated pixel art with `pack --scale 0.5
   --nearest`. Exports scale by whole numbers (`--scale N`); the `.riv` goes
