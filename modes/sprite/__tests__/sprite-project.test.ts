@@ -1990,6 +1990,89 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       expect(asset(dir, "bounce-export-mp4").metadata.repeat).toBe(3);
     }, EXPORT_TIMEOUT_MS);
 
+    test("an Aseprite export of a motion is filed like the PNG sequence, its shadow recorded", () => {
+      const { dir } = seedReady();
+      const report = exportOf(dir, "bounce", "--format", "aseprite", "--shadow", "--shadow-opacity", "0.5");
+      const r = register(dir, report);
+      expect(r.code).toBe(0);
+      expect(asset(dir, "bounce-export-aseprite")).toEqual({
+        id: "bounce-export-aseprite",
+        type: "image",
+        uri: "motions/bounce/exports/bounce-aseprite.zip",
+        name: "bounce export (aseprite)",
+        metadata: {
+          width: 64, height: 64, fps: 8, duration: 0.5, frames: 4, scale: 1,
+          shadow: { squash: 0.25, shear: 0.8, opacity: 0.5, blur: 3, color: "#140f1e" },
+          container: "zip",
+          size: readFileSync(report.out).byteLength,
+        },
+        createdAt: T2,
+        status: "ready",
+      });
+      expect(edgeTo(dir, "bounce-export-aseprite").operation.params).toEqual({
+        tool: "sprite-sheet.mjs", step: "export", format: "aseprite", scale: 1,
+        shadow: { squash: 0.25, shear: 0.8, opacity: 0.5, blur: 3, color: "#140f1e" },
+        inputs: BOUNCE_FRAMES,
+      });
+      expect(motionOf(dir, "bounce").exports).toEqual({ aseprite: "bounce-export-aseprite" });
+    }, EXPORT_TIMEOUT_MS);
+
+    test("the character's Aseprite sheet is registered on the character, off every frame on it", () => {
+      const { dir } = seedReady();
+      const report = sheetJson("export", dir, "--format", "aseprite");
+      expect(report.scope).toBe("character");
+      const r = register(dir, report);
+      expect(r.code).toBe(0);
+      const id = `${basename(dir)}-export-aseprite`;
+      expect(JSON.parse(r.out)).toMatchObject({ asset: id, format: "aseprite", scope: "character", motions: ["bounce"] });
+      expect(asset(dir, id)).toEqual({
+        id,
+        type: "image",
+        uri: `exports/${basename(dir)}-aseprite.zip`,
+        name: `${readProject(dir).sprite.character.name} (aseprite)`,
+        metadata: {
+          width: report.sheet.w, height: report.sheet.h, frames: 4, motionCount: 1, scale: 1,
+          container: "zip", size: readFileSync(report.out).byteLength,
+        },
+        createdAt: T2,
+        status: "ready",
+      });
+      const edge = edgeTo(dir, id);
+      expect(edge.fromAssetId).toBe("bounce-frame-00");
+      expect(edge.operation.params).toEqual({
+        tool: "sprite-sheet.mjs", step: "export", format: "aseprite", scale: 1,
+        motions: ["bounce"], tags: [{ name: "bounce", from: 0, to: 3 }],
+        inputs: BOUNCE_FRAMES,
+      });
+      expect(readProject(dir).sprite.exports).toEqual({ aseprite: id });
+      // A report whose frames are not the ones registered now is refused.
+      const stale = register(dir, { ...report, frames: report.frames.slice(1) });
+      expect(stale.code).toBe(1);
+      expect(stale.err).toMatch(/not the frames registered/);
+    }, EXPORT_TIMEOUT_MS);
+
+    test("new frames and remove-motion retire the character's sheet with its .riv", () => {
+      const { dir, realRun } = seedReady();
+      const sheet = `${basename(dir)}-export-aseprite`;
+      const riv = `${basename(dir)}-export-riv`;
+      register(dir, sheetJson("export", dir, "--format", "aseprite"));
+      register(dir, sheetJson("rive", dir));
+      expect(readProject(dir).sprite.exports).toEqual({ aseprite: sheet, riv });
+      const r = run(PROJECT, ["register-run", "--dir", dir, "--motion", "bounce", "--run", "-", "--json"],
+        JSON.stringify(realRun));
+      expect(r.code).toBe(0);
+      expect(r.err).toMatch(new RegExp(`retired ${sheet}`));
+      expect(r.err).toMatch(new RegExp(`retired ${riv}`));
+      expect("exports" in readProject(dir).sprite).toBe(false);
+      expect(readProject(dir).assets.some((a: any) => a.id === sheet)).toBe(false);
+
+      register(dir, sheetJson("export", dir, "--format", "aseprite"));
+      const removed = projectJson(dir, "remove-motion", "--motion", "bounce");
+      expect(removed.removedAssets).toContain(sheet);
+      expect(removed.orphanedPaths).toContain(`exports/${basename(dir)}-aseprite.zip`);
+      expect(readProject(dir).sprite.exports).toBeUndefined();
+    }, EXPORT_TIMEOUT_MS);
+
     test("a lossless .riv says so in the sidecar", () => {
       const { dir } = seedReady();
       const report = sheetJson("rive", dir, "--images", "webp-lossless");

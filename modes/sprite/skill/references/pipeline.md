@@ -213,7 +213,8 @@ downscaling stays hard-edged. No margin, no gutter — a game engine reads the
 rects from the atlas, and gutters only cost texture memory.
 
 The pivot it writes is the anchor point `<framesDir>/align.json` recorded, not
-the cell edge. `--scale` leaves the normalized pivot alone (it is a ratio) and
+the cell edge, under two keys per frame: `pivot` and `anchor` (the same
+point — see `atlas.json` below for which engine reads which). `--scale` leaves the normalized pivot alone (it is a ratio) and
 scales `meta.anchorPoint`, which carries the same point in pixels. Frames that
 carry no usable record — aligned by something else, or a record describing a
 different cell or a different anchor — fall back to `{0.5, 1.0}` / `{0.5, 0.5}`,
@@ -859,7 +860,8 @@ idle than walk (0.146). The margins are thin (walk passes the overlap bar by
 0.006), so the suggestion is a starting point for looking at `lineup.png`, not
 a verdict.
 
-### `export <motionDir> --format mp4|mov|webm|apng|lottie|png-seq [--bg #rrggbb] [--repeat N] [--scale N]`
+### `export <motionDir> --format mp4|mov|webm|apng|lottie|png-seq|aseprite [--bg #rrggbb] [--repeat N] [--scale N] [--shadow …]`
+### `export <characterDir> --format aseprite [--scale N] [--shadow …]`
 
 One **ready** motion in a format somebody else's tool reads. It reads
 `project.json` (never writes it) and refuses a motion whose status is not
@@ -875,8 +877,53 @@ the run … before exporting". Registration is the separate
 | `apng` | `exports/<id>.apng` | every frame once; plays forever when the motion loops, once when not |
 | `lottie` | `exports/<id>.json` | the loop writer's raster image sequence, one layer per frame |
 | `png-seq` | `exports/<id>-frames.zip` | a **stored** zip (PNG is already compressed) of `<id>/NN.png` plus `<id>/animation.json` |
+| `aseprite` | `exports/<id>-aseprite.zip` | a stored zip of `<id>/<id>.png` — the motion's packed `sheet.png`, byte for byte at `--scale 1` — and `<id>/<id>.json`, the same sheet described in Aseprite's JSON-hash shape (below). A sprite motion only: a loop or transition has no sheet |
 
 `exports/` is inside the motion directory (`lumi/motions/attack/exports/`).
+
+**The whole character** — `export <characterDir> --format aseprite` (the
+directory that holds `project.json`; any other format there is refused and
+pointed at the motion, or at `rive`): every **ready sprite motion**, in rail
+order, on one sheet — their packed sheets stacked top to bottom, left-aligned,
+each keeping its atlas rects offset by its row — with one frame tag per motion,
+as `<characterDir>/exports/<character>-aseprite.zip`
+(`<character>/<character>.png` + `<character>/<character>.json`). Loops,
+transitions and unfinished motions are left out and listed in `excluded[]`
+with the reason, as `rive` leaves loops out. Motions packed at different
+`pack --scale` are warned about (the character changes size between tags); a
+sheet past 4096 px on a side is warned about too (many phones and some WebGL
+contexts cannot load it as one texture). Registration files it on the
+character, like the `.riv`.
+
+The Aseprite JSON (ported from aldegad/sprite-gen `compose/export_aseprite.py`,
+Apache-2.0 — the shape; our rects come from the atlas):
+
+```json
+{ "frames": {
+    "0": { "frame": { "x": 0, "y": 0, "w": 186, "h": 252 }, "rotated": false, "trimmed": false,
+           "spriteSourceSize": { "x": 0, "y": 0, "w": 186, "h": 252 }, "sourceSize": { "w": 186, "h": 252 },
+           "duration": 125, "anchor": { "x": 0.5, "y": 0.9683 }, "pivot": { "x": 0.5, "y": 0.9683 } },
+    "…": {} },
+  "meta": { "app": "pneuma-sprite", "version": "1", "image": "lumi.png", "format": "RGBA8888",
+            "size": { "w": 1088, "h": 2056 }, "scale": "1",
+            "frameTags": [ { "name": "idle", "from": 0, "to": 15, "direction": "forward" },
+                           { "name": "attack", "from": 16, "to": 31, "direction": "forward" } ] } }
+```
+
+- Frames are keyed by their **global** playback index `"0"…"N-1"` and each
+  carries its own `duration` in ms (the atlas's). Phaser's
+  `anims.createFromAseprite(key)` walks each tag's `from..to`, looks every
+  frame up as `frames[String(i)]`, and uses that duration — so
+  `this.load.aseprite('lumi', 'lumi.png', 'lumi.json');
+  this.anims.createFromAseprite('lumi'); sprite.play({ key: 'idle', repeat: -1 })`
+  is the whole setup. Loop policy is not in the file (Aseprite tags carry a
+  range and a direction); pass `repeat: -1` for a looping motion.
+- Each frame's `anchor` (and `pivot`, the same point) is the atlas pivot:
+  Phaser's hash parser turns `anchor || pivot` into the frame's origin, so the
+  sprite's position IS where the feet stand, in every tag.
+- The hash form is also what Flame's `SpriteAnimation.fromAsepriteData` reads
+  (it wants `frames` as a map and ignores tags): use a **per-motion** export,
+  whose indices start at 0.
 
 - **Which frames, at which rate.** A sprite motion plays its aligned
   `frames/NN.png` at the **atlas** fps, and its per-frame `duration` and
@@ -891,6 +938,34 @@ the run … before exporting". Registration is the separate
   ignored** in `warnings[]`, never applied and never an error: the caller asked
   for it, the format has alpha, and saying so is the useful answer. A word
   (`white`) is refused; `#rgb` is not a `#rrggbb`.
+- **`--shadow`** — a ground shadow cast from the frame's own silhouette about
+  the foot: the alpha is projected `x' = x + shear·(y − ay)`,
+  `y' = ay + squash·(y − ay)` about the anchor `(ax, ay)`, bicubic-sampled,
+  Gaussian-blurred and multiplied by the opacity (ported from
+  aldegad/sprite-gen `effects/shadow.py`, Apache-2.0, with its defaults:
+  `--shadow-squash 0.25`, `--shadow-shear 0.8` — positive falls **left**, a
+  negative one is written `--shadow-shear=-0.5` — `--shadow-opacity 0.4`,
+  `--shadow-blur 3` px, `--shadow-color #140f1e`). The anchor is the atlas
+  pivot for a sprite motion, and a loop's or transition's first frame's feet
+  (the point the `.riv` stands it on) — reported as `shadow.from`
+  `"atlas"` / `"feet"`.
+  - **mp4 / mov / webm**: cast INTO the frames, behind the figure. The canvas
+    grows to hold the whole projection (from the frame rectangle, never a
+    per-frame alpha box, so every frame is the same size) — Lumi attack goes
+    from 272×262 to 520×272 with the figure at x = 222 — and the report gives
+    the new `width` / `height` and `shadow.anchor`, the foot in the video's
+    frame. A loop's own `loop.webm` is its deliverable, so a shadowed WebM of
+    a loop is refused and pointed at `mov` (keeps the alpha) or `mp4`.
+  - **aseprite**: a **separate** shadow sheet for the engine to place itself
+    — `<name>-shadow.png` + `<name>-shadow.json` in the same zip, frame for
+    frame with the sprite (same durations), tags named `<motion>-shadow` (an
+    engine's animation names can be global — Phaser refuses a second `idle`),
+    each shadow frame's `anchor` on the same foot. Put the shadow sprite at the
+    character's position, one depth below, and play `<motion>-shadow` with
+    `<motion>`.
+  - Any other format: **reported as ignored**. A tuning flag without
+    `--shadow` is refused, and so is a value outside upstream's ranges
+    (squash 0.001–1, shear −16–16, opacity 0–1, blur 0–128).
 - **Even sides.** H.264 and VP9 4:2:0 need even dimensions, so an odd side gets
   one transparent column or row on the right / bottom — the pivot does not
   move. The report says so in `padded`.
@@ -910,20 +985,30 @@ the run … before exporting". Registration is the separate
 **`--json`** is what `register-export` consumes:
 
 ```json
-{ "kind": "export", "character": "<abs>", "motion": "attack", "motionKind": "sprite",
+{ "kind": "export", "scope": "motion", "character": "<abs>", "motion": "attack", "motionKind": "sprite",
   "format": "mp4", "out": "<abs>/motions/attack/exports/attack.mp4",
   "frames": ["<abs>/motions/attack/frames/00.png", "…"], "frameCount": 12,
   "fps": 12, "loop": false, "scale": 1, "width": 188, "height": 250,
   "repeat": 1, "repeatDefaulted": true, "background": "#ffffff",
   "padded": { "width": 1, "height": 0 }, "duration": 1.0,
   "probe": { "codec": "h264", "pixFmt": "yuv420p", "alpha": false, "frames": 12, "duration": 1.0 },
+  "shadow": null,
   "size": 48213, "notes": ["MP4 has no alpha: the frames are flattened onto #ffffff"],
   "warnings": [] }
 ```
 
 `repeatDefaulted`, `padded` and `probe.pixFmt` are on video formats only;
-`entries` (the number of files in the zip) on `png-seq`. `background` is null
-except on MP4.
+`entries` (the number of files in the zip) on `png-seq` and `aseprite`.
+`background` is null except on MP4. `shadow` is null unless one was cast:
+`{ squash, shear, opacity, blur, color, from }`, plus `anchor` on a video and
+`sheet: { w, h }` (the shadow sheet) on an Aseprite export. An Aseprite export
+also carries `sheet: { w, h }` and `tags: [{ name, from, to }]`.
+
+The whole character's report has `"scope": "character"`, no `motion`, and:
+`name`, `motions: [{ id, frames, fps, loop, from, to, atlasScale }]`,
+`excluded: [{ motion, reason }]`, `frames` (every registered frame of every
+motion on the sheet, in order — what `register-export` checks), `frameCount`,
+`scale`, `sheet`, `tags`, `shadow`, `entries`, `size`, `notes`, `warnings`.
 
 `animation.json`, inside the PNG-sequence zip:
 
@@ -938,6 +1023,17 @@ except on MP4.
 pixels (scaled by `--scale`; null when the frames carried no `align.json`),
 and each frame's `duration` is in ms. A loop has no pivot: both are `null`,
 and `kind` is `"loop"`.
+
+**Measured (2026-09-27, Lumi seed and tanka walk, ffmpeg 8.0, M-series mac).**
+
+| What | Result |
+|---|---|
+| Shadow port vs upstream `project_shadow` (Pillow 12.3.0) on Lumi attack frame 05, 272×262, foot (136, 254) | same canvas 519×97 and anchor (358, 79); at blur 0 **0 differing pixels** (36,135 at shear 0.8, 49,713 at −1.5); at the default blur 3, max \|Δα\| 2/255, mean 0.093, alpha mass ratio 0.9999 — the Gaussian against Pillow's three-box approximation |
+| Lumi attack → mp4 | 0.42 s; with `--shadow` 0.60 s, 272×262 → 520×272 |
+| tanka walk, 242 frames of 512×566 → mov | 1.8 s; with `--shadow` 7.2 s, 1004×570 (shear 0.8 on a 566 px figure throws the head's shadow ~450 px left) |
+| Lumi whole character → aseprite | 32 frames, idle 0–15 + attack 16–31 on 1088×2056, 1.44 MB, 0.6 s; with `--shadow` 0.8 s, shadow sheet 2076×768 |
+| Phaser 4.2.1 and 3.90.0, `load.aseprite` + `anims.createFromAseprite` on that zip (headless Chrome) | `idle` 16 × 125 ms, `attack` 16 × 100 ms, `idle-shadow` / `attack-shadow` built; at four sampled times every frame's pivot pixel landed on the baseline (y = 430 of 430) |
+| PixiJS 8.21.0 `Spritesheet` | the seed atlas (pivot only): `Sprite.anchor` (0, 0); a current pack: (0.5, 0.9683) on all 16 frames; the Aseprite JSON parses with its anchors |
 
 ### `rive <characterDir> [--motions id,…] [--include-loops] [--hub id] [--fps N] [--max-size N] [--filter auto|smooth|nearest] [--images webp|webp-lossless|png]`
 
@@ -1252,7 +1348,7 @@ come from `Date.now()` unless `--at <ms>` is passed.
 | `add-video` on a **loop** motion, generated clip | **Refused** when the motion has no brief: `add-video: loop '<id>' has no brief — record the user's answers first: set-motion --brief-duration … --brief-width … --brief-interpolator …`. A record that is only half a brief is refused the same way and names what it is missing (`… has an incomplete brief, missing --brief-width, --brief-interpolator and recordedAt — …`): the reader is all-or-nothing everywhere — the gate, `show` and the JSON summaries — so half an answer never travels as one. A `--derived-from` clip is exempt: that money is already spent, and refusing to record it would only lose the provenance. |
 | `set-motion … [--ack-warnings "<reason>"] [--clear-ack]` | Accepts the motion's remaining inspect warnings with a one-sentence reason the user reads on the stage; the numbers stay visible and the badge dims. `--clear-ack` takes it back. Refused when the motion has no inspect report, and refused with an empty reason — the acknowledgement *is* the reason. |
 | `register-run --motion idle --run <run.json \| -> [--video <videoId>]` | Consumes `sprite-sheet.mjs run` output: registers the alpha sheet (if any), every frame, the packed sheet, atlas, gif and webp with `derive` edges; **removes** the previous frame assets and edges for that motion; copies `inspect` into the motion (including the measured `anchorPoint`, which is what the viewer's pivot guide stands on); sets status `ready`. A `from-video` summary derives the frames from the clip asset instead (`--video` names which, the newest is used with a note on stderr) and sets `motion.source`. A summary with `"kind": "loop"` has no sheet, atlas or gif — those become optional, and a sprite run still requires them — and registers the webp plus `<motion>-apng`, `<motion>-webm` and `<motion>-lottie` instead; it sets `motion.kind = "loop"`, `motion.exports`, `motion.source = "video"`, `motion.fps` from the run (interpolation changes it) and `grid = {1,1}`, and the inspect summary it copies carries `seam`, `step`, `seamFill` and `alphaCoverage`. Any acknowledgement goes with the measurement it covered. Re-registering a motion **retires** the on-demand exports made from its old frames (`<motion>-export-*`, and the character's `.riv` when it held this motion): the assets and edges go, the files stay on disk, and stderr says `note: retired <id> — it was cut from the frames this run replaced; re-export it`. A loop's own WebP / APNG / WebM / Lottie are rewritten by the run itself and are not retired. On a loop it also compares the registered `inspect.cell.width` with `brief.width` and warns — stderr, and `warnings[]` in the `--json` payload — when they are more than 2 px apart (`frames are <w> px wide but the brief said <width> — pass --width to loop`). A warning, not an error: the frames are already cut, and cutting them again is free. It is said once per channel and is **not** written into `inspect.warnings`: that list is the measurement of the frames — what the viewer shows and what `--ack-warnings` accepts — and this is a comparison against the brief. |
-| `register-export --report <report.json \| ->` | Consumes the `--json` report of `sprite-sheet.mjs export` or `rive`, usually piped (`--report -`). A motion export becomes `<motion>-export-<format>` (type `video` for mp4/mov/webm, `image` for apng, `text` for lottie, `image` with `metadata.container: "zip"` for png-seq) and `motion.exports[format]` names it; the `.riv` becomes `<character>-export-riv` (type `image`, `metadata.container: "riv"`) and `sprite.exports.riv` names it. Metadata carries `size` in bytes plus what the report measured (`width`, `height`, `fps`, `duration`, `frames`, `repeat`, `scale`, `background` on MP4; `motionCount`, `images`, `estimatedDecodeBytes` on the `.riv`). One `derive` edge from every frame it was made of, `params: { tool, step: "export"\|"rive", format, repeat, scale, background }` — the `.riv`'s edge lists `params.motions` and `params.sampled` (each motion's frames, fps, width and height as the file plays it), and its `metadata.frames` is what it embeds. The report's frames must be the ones registered **now**, or it is refused ("export it again"). Re-registering replaces the asset in place. An empty report — the export failed and printed only its `ERROR:` — is said as such and registers nothing. A format a loop already ships (its own WebM, APNG, Lottie) is refused. |
+| `register-export --report <report.json \| ->` | Consumes the `--json` report of `sprite-sheet.mjs export` or `rive`, usually piped (`--report -`). A motion export becomes `<motion>-export-<format>` (type `video` for mp4/mov/webm, `image` for apng, `text` for lottie, `image` with `metadata.container: "zip"` for png-seq and aseprite) and `motion.exports[format]` names it, with `metadata.shadow` `{ squash, shear, opacity, blur, color }` when it was made with `--shadow`; the character's Aseprite sheet (`"scope": "character"`) becomes `<character>-export-aseprite` (type `image`, `metadata.container: "zip"`, `width`/`height` of the sheet, `frames`, `motionCount`) with `params.motions` and `params.tags`, and `sprite.exports.aseprite` names it — retired with the `.riv` by a `register-run` or `remove-motion` of a motion it holds; the `.riv` becomes `<character>-export-riv` (type `image`, `metadata.container: "riv"`) and `sprite.exports.riv` names it. Metadata carries `size` in bytes plus what the report measured (`width`, `height`, `fps`, `duration`, `frames`, `repeat`, `scale`, `background` on MP4; `motionCount`, `images`, `estimatedDecodeBytes` on the `.riv`). One `derive` edge from every frame it was made of, `params: { tool, step: "export"\|"rive", format, repeat, scale, background }` — the `.riv`'s edge lists `params.motions` and `params.sampled` (each motion's frames, fps, width and height as the file plays it), and its `metadata.frames` is what it embeds. The report's frames must be the ones registered **now**, or it is refused ("export it again"). Re-registering replaces the asset in place. An empty report — the export failed and printed only its `ERROR:` — is said as such and registers nothing. A format a loop already ships (its own WebM, APNG, Lottie) is refused. |
 | `add-video --motion idle --file motions/idle/video-seedance-1.mp4 --model seedance-2.5 --mode i2v --from idle-frame-00[,idle-frame-15] [--prompt] [--duration 4] [--status generating]` | Registers `<motion>-video-<n>` (n is the next free number) with a `generate` edge. |
 | `set-video --motion idle --video <id> --status ready\|failed [--notes]` | Closes out a video after the render returns. |
 | `remove-motion --motion idle` | Removes the motion, its assets and its edges — its on-demand exports included, and the character's `.riv` when it holds this motion. Files on disk are left alone; the orphaned paths are printed so you can delete them deliberately. |
@@ -1316,6 +1412,7 @@ converter.
       "spriteSourceSize": { "x": 0, "y": 0, "w": 256, "h": 256 },
       "sourceSize": { "w": 256, "h": 256 },
       "pivot": { "x": 0.5, "y": 0.9688 },
+      "anchor": { "x": 0.5, "y": 0.9688 },
       "duration": 125
     }
   },
@@ -1333,6 +1430,23 @@ converter.
   above the ground. `meta.anchorPoint` is the same point in pixels (scaled with
   `--scale`); it is absent when the frames carried no `align.json`, which is
   how you tell a measured pivot from the assumed default.
+- `anchor` is the same point as `pivot`, under the key **PixiJS 8 reads**:
+  its `Spritesheet` parser sets each texture's `defaultAnchor` from
+  `frames[key].anchor` and never reads `pivot`, so an atlas with `pivot` alone
+  stands every Pixi sprite on its **top-left corner** (measured with pixi.js
+  8.21.0 on the seed's Lumi idle atlas, 2026-09-27: `Sprite.anchor` (0, 0); a
+  current pack: (0.5, 0.9683)). Phaser 3.90 / 4.2 read `anchor || pivot`.
+  `pivot` stays for readers of older atlases. The seed Lumi atlases predate
+  `anchor` and cannot be re-packed to gain it: their frames carry no
+  `align.json`, so `pack` would fall back to `{0.5, 1}` — re-run the motion.
+- Neither engine plays per-frame `duration` from a texture atlas: it is a
+  record, and the animation's rate is set in code (`frameRate: fps`). The
+  Aseprite export is what carries durations an engine plays.
+- `meta.scale` is `pack --scale`, a record of how the cells were resized.
+  **PixiJS reads it as the texture resolution** (`parseFloat(meta.scale)`), so
+  a sheet packed at `--scale 0.5` is drawn at twice its pixel size there —
+  back at the frames' size (measured, pixi.js 8.21.0: a 186 px cell at
+  `scale: 0.5` comes out 372 px wide). Phaser ignores it.
 - `duration` is `round(1000 / fps)` in milliseconds.
 - Frames are laid out row-major, `cols` per row, no margin and no gutter.
 

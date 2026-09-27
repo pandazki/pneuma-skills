@@ -96,7 +96,16 @@ const EXPORT_SPECS = {
   apng: { type: "image" },
   lottie: { type: "text" },
   "png-seq": { type: "image", container: "zip" },
+  // The sheet and its Aseprite JSON (and a shadow pair), zipped.
+  aseprite: { type: "image", container: "zip" },
 };
+
+/** The exports that belong to the whole character, by `sprite.exports` key:
+ *  the `.riv` (`rive`) and the Aseprite sheet of every sprite motion
+ *  (`export <characterDir> --format aseprite`). Each is the asset
+ *  `<character>-export-<key>`, hung off every frame it holds, with the
+ *  motions it holds in its edge's `params.motions`. */
+const CHARACTER_EXPORTS = ["riv", "aseprite"];
 
 /** The asset id of a motion's on-demand export. The loop's own exports keep
  *  the ids `register-run` gives them (`<motion>-apng`, …). */
@@ -206,8 +215,13 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       --json report (piped: 'sprite-sheet.mjs export … --json |
       sprite-project.mjs register-export --dir <character> --report -').
       A motion export becomes <motion>-export-<format> (mp4, mov, webm, apng,
-      lottie, png-seq) with a 'derive' edge from every frame it was made of
-      and motion.exports[format] naming it; the character's .riv becomes
+      lottie, png-seq, aseprite) with a 'derive' edge from every frame it was
+      made of and motion.exports[format] naming it; a shadow it cast is
+      metadata.shadow { squash, shear, opacity, blur, color }. The character's
+      Aseprite sheet (export <characterDir> --format aseprite) becomes
+      <character>-export-aseprite, named by sprite.exports.aseprite, derived
+      from every frame on it, its motions and tags in params. The
+      character's .riv becomes
       <character>-export-riv, derived from every frame of every motion in it
       (loops and transitions included), named by sprite.exports.riv; its
       metadata.frames is what it embeds (a shared reverse embeds nothing),
@@ -221,8 +235,8 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       be the ones registered now, and a format the motion already ships (a
       loop's own WebM, APNG or Lottie) is refused. Re-registering replaces the
       asset in place. A later register-run or remove-motion retires the
-      exports cut from the frames it replaces, and the .riv that held them —
-      the files stay on disk; export again.
+      exports cut from the frames it replaces, and the .riv and Aseprite
+      sheet that held them — the files stay on disk; export again.
 
   register-run --motion <motionId> --run <run.json|-> [--video <videoId>] [--at <ms>]
       Consume a 'sprite-sheet.mjs run' summary: registers sheet-alpha (when
@@ -511,7 +525,7 @@ function videoMetadata(path) {
 function assetOwner(doc, id) {
   const ref = doc.sprite.refs.find((r) => r.asset === id);
   if (ref) return `ref '${ref.id}'`;
-  if (doc.sprite.exports?.riv === id) return CHARACTER_OWNER;
+  if (CHARACTER_EXPORTS.some((key) => doc.sprite.exports?.[key] === id)) return CHARACTER_OWNER;
   for (const motion of doc.sprite.motions) {
     const exports = motion.exports && typeof motion.exports === "object" ? motion.exports : {};
     const slots = [
@@ -527,25 +541,29 @@ function assetOwner(doc, id) {
   return null;
 }
 
-/** The owner of an asset that belongs to the whole character (its `.riv`). */
+/** The owner of an asset that belongs to the whole character (its `.riv`,
+ *  its Aseprite sheet). */
 const CHARACTER_OWNER = "the character";
 
 /**
- * The character's `.riv`, when it holds `motionId`'s frames — read off the
- * edge `register-export` wrote (`params.motions`). A `.riv` made from frames
- * that are about to be replaced or removed would be offered as current.
+ * The character's exports that hold `motionId`'s frames — read off the edge
+ * `register-export` wrote (`params.motions`). One made from frames that are
+ * about to be replaced or removed would be offered as current.
  */
-function rivHolding(doc, motionId) {
-  const id = doc.sprite.exports?.riv;
-  if (!id) return null;
-  const motions = doc.provenance.find((e) => e.toAssetId === id)?.operation?.params?.motions;
-  return Array.isArray(motions) && motions.includes(motionId) ? id : null;
+function characterExportsHolding(doc, motionId) {
+  return CHARACTER_EXPORTS.map((key) => doc.sprite.exports?.[key]).filter((id) => {
+    if (!id) return false;
+    const motions = doc.provenance.find((e) => e.toAssetId === id)?.operation?.params?.motions;
+    return Array.isArray(motions) && motions.includes(motionId);
+  });
 }
 
-/** Take the `.riv` off the sidecar once its asset is gone. */
-function retireRiv(doc) {
+/** Take character exports off the sidecar once their assets are gone. */
+function retireCharacterExports(doc, ids) {
   if (!doc.sprite.exports) return;
-  delete doc.sprite.exports.riv;
+  for (const key of CHARACTER_EXPORTS) {
+    if (ids.includes(doc.sprite.exports[key])) delete doc.sprite.exports[key];
+  }
   if (!Object.keys(doc.sprite.exports).length) delete doc.sprite.exports;
 }
 
@@ -1407,6 +1425,7 @@ function registerMotionExport(doc, dir, report, now) {
     repeat: reported(report.repeat),
     scale: reported(report.scale),
     ...(typeof report.background === "string" ? { background: report.background } : {}),
+    ...(shadowSettings(report.shadow) ? { shadow: shadowSettings(report.shadow) } : {}),
     ...(spec.container ? { container: spec.container } : {}),
     size,
   };
@@ -1423,9 +1442,91 @@ function registerMotionExport(doc, dir, report, now) {
     repeat: reported(report.repeat),
     scale: reported(report.scale),
     background: typeof report.background === "string" ? report.background : undefined,
+    shadow: shadowSettings(report.shadow),
   }, motion.frames)));
   motion.exports = { ...(motion.exports ?? {}), [format]: id };
   return { motion: motion.id, format, asset: id, uri, metadata };
+}
+
+/** The shadow a report says it cast — the settings, not where it landed —
+ *  or undefined when it cast none. */
+function shadowSettings(value) {
+  if (!value || typeof value !== "object") return undefined;
+  const settings = {
+    squash: finiteNumber(value.squash),
+    shear: finiteNumber(value.shear),
+    opacity: finiteNumber(value.opacity),
+    blur: finiteNumber(value.blur),
+    color: typeof value.color === "string" && /^#[0-9a-f]{6}$/.test(value.color) ? value.color : undefined,
+  };
+  return Object.values(settings).every((v) => v !== undefined) ? settings : undefined;
+}
+
+/**
+ * The frames a character-wide export was made from, checked against the
+ * frames registered NOW for the motions it names — or refused, because the
+ * edge would describe pictures the file does not contain.
+ */
+function characterExportFrames(doc, dir, report, again) {
+  const motionIds = Array.isArray(report.motions) ? report.motions.map((m) => String(m?.id ?? m)) : [];
+  if (!motionIds.length) fail("--report: the report lists no motions");
+  const motions = motionIds.map((motionId) => {
+    const motion = findMotion(doc, motionId, "--report motions");
+    if (motion.status !== "ready") fail(`--report: '${motionId}' is not ready (${motion.status})`);
+    return motion;
+  });
+  const frameIds = motions.flatMap((motion) => motion.frames ?? []);
+  const expected = frameUris(doc, frameIds);
+  const got = report.frames.map((path) => toUri(dir, String(path), "--report frames"));
+  if (got.length !== expected.length || got.some((u, i) => u !== expected[i])) {
+    fail(`--report: the file holds ${got.length} frames that are not the frames registered for ${motionIds.join(", ")} (${expected.length}) — ${again}`);
+  }
+  return { motionIds, motions, frameIds };
+}
+
+/**
+ * `<character>-export-aseprite`: every sprite motion of the character on one
+ * sheet, one frame tag each (`sprite-sheet.mjs export <characterDir> --format
+ * aseprite`). Filed like the `.riv`: on the character (`sprite.exports
+ * .aseprite`), hung off every frame on the sheet, its motions in
+ * `params.motions` so a later register-run or remove-motion retires it.
+ */
+function registerCharacterAseprite(doc, dir, report, now) {
+  const character = basename(resolve(dir));
+  const id = `${character}-export-aseprite`;
+  const uri = toUri(dir, report.out, "--report out");
+  const file = requireFile(dir, uri, "--report out");
+  const { motionIds, motions, frameIds } = characterExportFrames(doc, dir, report, "export it again");
+  const shadow = shadowSettings(report.shadow);
+  const metadata = {
+    width: reported(report.sheet?.w),
+    height: reported(report.sheet?.h),
+    frames: reported(report.frameCount) ?? frameIds.length,
+    motionCount: motions.length,
+    scale: reported(report.scale),
+    ...(shadow ? { shadow } : {}),
+    container: "zip",
+    size: fileSize(file),
+  };
+  for (const key of Object.keys(metadata)) if (metadata[key] === undefined) delete metadata[key];
+  upsertAsset(doc, {
+    id, type: "image", uri, name: `${doc.sprite.character?.name ?? character} (aseprite)`,
+    metadata, createdAt: now, status: "ready",
+  }, CHARACTER_OWNER);
+  const tags = (Array.isArray(report.tags) ? report.tags : [])
+    .filter((t) => t && typeof t.name === "string" && Number.isInteger(t.from) && Number.isInteger(t.to))
+    .map((t) => ({ name: t.name, from: t.from, to: t.to }));
+  setEdge(doc, edge(id, frameIds, operation("derive", now, {
+    tool: TOOL,
+    step: "export",
+    format: "aseprite",
+    scale: reported(report.scale),
+    shadow,
+    motions: motionIds,
+    ...(tags.length ? { tags } : {}),
+  }, frameIds)));
+  doc.sprite.exports = { ...(doc.sprite.exports ?? {}), aseprite: id };
+  return { format: "aseprite", scope: "character", asset: id, uri, motions: motionIds, metadata };
 }
 
 /**
@@ -1439,19 +1540,7 @@ function registerRiv(doc, dir, report, now) {
   const id = `${character}-export-riv`;
   const uri = toUri(dir, report.out, "--report out");
   const file = requireFile(dir, uri, "--report out");
-  const motionIds = Array.isArray(report.motions) ? report.motions.map((m) => String(m?.id ?? m)) : [];
-  if (!motionIds.length) fail("--report: the .riv report lists no motions");
-  const motions = motionIds.map((motionId) => {
-    const motion = findMotion(doc, motionId, "--report motions");
-    if (motion.status !== "ready") fail(`--report: '${motionId}' is not ready (${motion.status})`);
-    return motion;
-  });
-  const frameIds = motions.flatMap((motion) => motion.frames ?? []);
-  const expected = frameUris(doc, frameIds);
-  const got = report.frames.map((path) => toUri(dir, String(path), "--report frames"));
-  if (got.length !== expected.length || got.some((u, i) => u !== expected[i])) {
-    fail(`--report: the .riv holds ${got.length} frames that are not the frames registered for ${motionIds.join(", ")} (${expected.length}) — run rive again`);
-  }
+  const { motionIds, motions, frameIds } = characterExportFrames(doc, dir, report, "run rive again");
 
   const metadata = {
     width: reported(report.artboard?.width),
@@ -1926,13 +2015,13 @@ function main() {
       // and the character's .riv when it holds this motion — go with them.
       // Said on stderr, because the file stays on disk and the user may have
       // shipped it already.
-      const staleRiv = rivHolding(doc, motion.id);
+      const staleWhole = characterExportsHolding(doc, motion.id);
       const onDemand = new Set(Object.keys(EXPORT_SPECS).map((format) => exportAssetId(motion.id, format)));
       const retiredExports = doc.assets
-        .filter((a) => (onDemand.has(a.id) && leftover.includes(a.id)) || a.id === staleRiv)
+        .filter((a) => (onDemand.has(a.id) && leftover.includes(a.id)) || staleWhole.includes(a.id))
         .map((a) => ({ id: a.id, uri: a.uri }));
-      dropAssets(doc, [...leftover, ...(staleRiv ? [staleRiv] : [])]);
-      if (staleRiv) retireRiv(doc);
+      dropAssets(doc, [...leftover, ...staleWhole]);
+      retireCharacterExports(doc, staleWhole);
 
       const sheetRawId = motion.sheetRaw && doc.assets.some((a) => a.id === motion.sheetRaw) ? motion.sheetRaw : null;
 
@@ -2214,7 +2303,9 @@ function main() {
       const report = readExportReport(requireFlag(values.report, "--report"));
       const registered = report.kind === "rive"
         ? registerRiv(doc, dir, report, now)
-        : registerMotionExport(doc, dir, report, now);
+        : report.scope === "character"
+          ? registerCharacterAseprite(doc, dir, report, now)
+          : registerMotionExport(doc, dir, report, now);
       saveProject(dir, doc);
       emit(values, registered, [
         `${registered.asset} → ${registered.uri} (${registered.metadata.size ?? "?"} bytes) registered`,
@@ -2363,20 +2454,20 @@ function main() {
       if (joined.length) {
         fail(`remove-motion: ${joined.map((m) => m.id).join(", ")} ${joined.length === 1 ? "joins" : "join"} '${motion.id}' — remove ${joined.length === 1 ? "it" : "them"} first, or the character keeps a transition to nowhere`);
       }
-      const staleRiv = rivHolding(doc, motion.id);
+      const staleWhole = characterExportsHolding(doc, motion.id);
       const owned = new Set([
         `${motion.id}-sheet-raw`,
         `${motion.id}-keyframe`, `${motion.id}-keyframe-alpha`,
         ...runOwnedIds(doc, motion.id),
         ...(motion.videos ?? []).map((v) => v.asset),
-        // The character's .riv holds this motion's frames; without them it
-        // no longer describes the character.
-        ...(staleRiv ? [staleRiv] : []),
+        // The character's .riv and Aseprite sheet hold this motion's frames;
+        // without them they no longer describe the character.
+        ...staleWhole,
       ]);
       const ids = doc.assets.map((a) => a.id).filter((id) => owned.has(id));
       const orphanedPaths = doc.assets.filter((a) => ids.includes(a.id)).map((a) => a.uri);
       dropAssets(doc, ids);
-      if (staleRiv) retireRiv(doc);
+      retireCharacterExports(doc, staleWhole);
       doc.sprite.motions = doc.sprite.motions.filter((m) => m.id !== motion.id);
       saveProject(dir, doc);
       const payload = { motion: motion.id, removedAssets: ids, orphanedPaths };
@@ -2413,10 +2504,12 @@ function main() {
         break;
       }
       const summary = summarize(doc, dir);
-      const rivUri = summary.exports?.riv ? doc.assets.find((a) => a.id === summary.exports.riv)?.uri : null;
+      const whole = CHARACTER_EXPORTS
+        .map((key) => [key, doc.assets.find((a) => a.id === summary.exports?.[key])?.uri])
+        .filter(([, uri]) => uri);
       emit(values, summary, [
         `${summary.title} — ${summary.refs.length} refs, ${summary.motions.length} motions`,
-        ...(rivUri ? [`  exported: riv (${rivUri})`] : []),
+        ...whole.map(([key, uri]) => `  exported: ${key} (${uri})`),
         ...summary.motions.map((m) => `  ${m.id.padEnd(12)} ${m.status.padEnd(10)} ${m.kind === "loop" ? "loop".padEnd(7) : `${m.grid.rows}x${m.grid.cols}`.padEnd(7)} @ ${m.fps}fps  ${m.frameCount} frames${m.warnings.length ? `  (${m.warnings.length} warnings)` : ""}`),
       ]);
       break;

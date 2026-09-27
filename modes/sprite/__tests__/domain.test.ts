@@ -580,7 +580,7 @@ describe("exports", () => {
   };
 
   test("the format list is the one the scripts export", () => {
-    expect([...EXPORT_FORMATS]).toEqual(["mp4", "mov", "webm", "apng", "lottie", "png-seq"]);
+    expect([...EXPORT_FORMATS]).toEqual(["mp4", "mov", "webm", "apng", "lottie", "png-seq", "aseprite"]);
   });
 
   test("a sprite motion carries every format it exported, keyed by format", () => {
@@ -591,6 +591,7 @@ describe("exports", () => {
       apng: "bounce-export-apng",
       lottie: "bounce-export-lottie",
       "png-seq": "bounce-export-png-seq",
+      aseprite: "bounce-export-aseprite",
     };
     const motion = withBody((b) => { b.sprite.motions[0].exports = all; }).sprite.motions[0];
     expect(motion.exports).toEqual(all);
@@ -616,9 +617,15 @@ describe("exports", () => {
     expect(motion.exports).toEqual({ apng: "bounce-apng", webm: "bounce-webm", lottie: "bounce-lottie" });
   });
 
-  test("the character's Rive file travels, and a project without one has no block", () => {
+  test("the character's Rive file and Aseprite sheet travel, and a project without one has no block", () => {
     const withRiv = withBody((b) => { b.sprite.exports = { riv: "mini-export-riv" }; });
     expect(withRiv.sprite.exports).toEqual({ riv: "mini-export-riv" });
+    const both = withBody((b) => {
+      b.sprite.exports = { riv: "mini-export-riv", aseprite: "mini-export-aseprite", mp4: "stray" };
+    });
+    expect(both.sprite.exports).toEqual({ riv: "mini-export-riv", aseprite: "mini-export-aseprite" });
+    const sheetOnly = withBody((b) => { b.sprite.exports = { aseprite: "mini-export-aseprite", riv: "" }; });
+    expect(sheetOnly.sprite.exports).toEqual({ aseprite: "mini-export-aseprite" });
 
     // The 0.3.x file has no `sprite.exports` at all — the canonical fixture
     // is one — and it must load exactly as before.

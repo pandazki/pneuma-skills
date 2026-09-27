@@ -547,7 +547,7 @@ function AtlasTab({
   );
 }
 
-const EXPORT_FAMILIES: ExportFamily[] = ["video", "frames", "rive"];
+const EXPORT_FAMILIES: ExportFamily[] = ["video", "frames", "character"];
 
 /**
  * Every format this motion can be delivered as, in three sections.
@@ -648,7 +648,7 @@ function ExportRowView({
   const offered = state.kind !== "not-offered";
   const riv = row.format === "riv";
   const takesColor = row.format === "mp4" && row.canGenerate;
-  const motions = row.rive?.motions.length ?? 0;
+  const motions = row.rive?.motions.length ?? row.sheet?.motions.length ?? 0;
   const transitions = row.rive?.transitions.length ?? 0;
   const request = () => onRequest?.(row, row.format === "mp4" ? background : null);
   const rivFile = riv && state.kind === "ready" ? state.files[0] : null;
@@ -681,6 +681,15 @@ function ExportRowView({
         <p className="font-mono text-[10px] text-cc-muted">
           {t.exportRepeat(row.video, motion.loop)}
           {row.background ? ` · ${t.exportOnBackground(row.background)}` : null}
+          {row.shadow ? ` · ${t.exportWithShadow}` : null}
+        </p>
+      ) : offered && row.shadow ? (
+        <p className="font-mono text-[10px] text-cc-muted">{t.exportWithShadow}</p>
+      ) : null}
+
+      {ready && row.sheet && row.sheet.missing.length > 0 ? (
+        <p className="rounded border border-cc-warning/40 bg-cc-warning/10 px-2 py-1 text-[11px] leading-relaxed text-cc-fg">
+          {t.exportRiveMissing(row.sheet.missing)}
         </p>
       ) : null}
 

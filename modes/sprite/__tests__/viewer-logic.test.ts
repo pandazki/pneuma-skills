@@ -1676,7 +1676,11 @@ describe("the Export tab", () => {
       ["frames", "lottie", "missing", false],
       ["frames", "png-seq", "missing", false],
       ["frames", "sheet", "ready", true],
-      ["rive", "riv", "missing", false],
+      // The same sheet re-described for createFromAseprite, made on demand.
+      ["frames", "aseprite", "missing", false],
+      ["character", "riv", "missing", false],
+      // Every ready sprite motion on one sheet, a frame tag each.
+      ["character", "character-aseprite", "missing", false],
     ]);
     // A run's own file is a download and nothing else.
     const gif = rowOf(rows, "gif");
@@ -1750,8 +1754,13 @@ describe("the Export tab", () => {
       ["frames", "lottie", "ready", true],
       ["frames", "png-seq", "missing", false],
       ["frames", "sheet", "loop-atlas", false],
+      // An Aseprite sheet is an atlas: a loop never is one.
+      ["frames", "aseprite", "loop-atlas", false],
       // The character's .riv, loops and all.
-      ["rive", "riv", "missing", false],
+      ["character", "riv", "missing", false],
+      // The character's sheet holds its sprite motions — bounce — and is
+      // offered from the loop's tab too, as the .riv is.
+      ["character", "character-aseprite", "missing", false],
     ]);
     expect(rowOf(rows, "webm").state).toMatchObject({ files: [{ name: "loop.webm", size: 12_750 }] });
     expect(rowOf(rows, "webm").canGenerate).toBe(false);
@@ -1864,6 +1873,75 @@ describe("the Export tab", () => {
     });
     expect(rowOf(exportRows(withLoop, motionOf(withLoop, "flame"), editing), "riv").rive)
       .toEqual({ motions: ["bounce", "flame"], transitions: [], missing: [], decodeBytes: 65_536, loops: { fps: 6, width: 32, height: 36 }, tooHeavy: false });
+  });
+
+  /** Registers `mini-export-aseprite` holding `motions`, the way register-export does. */
+  function addSheet(body: any, motions: string[], metadata: Record<string, unknown> = {}) {
+    body.sprite.exports = { ...(body.sprite.exports ?? {}), aseprite: "mini-export-aseprite" };
+    body.assets.push({
+      id: "mini-export-aseprite", type: "image", uri: "exports/mini-aseprite.zip", name: "Mini (aseprite)",
+      metadata: { width: 128, height: 128, frames: 4, motionCount: motions.length, container: "zip", size: 3_000, ...metadata },
+      createdAt: 60, status: "ready",
+    });
+    body.provenance.push({
+      toAssetId: "mini-export-aseprite", fromAssetId: "bounce-frame-00",
+      operation: { type: "derive", actor: "agent", params: { tool: "sprite-sheet.mjs", step: "export", format: "aseprite", motions, inputs: [] }, timestamp: 60 },
+    });
+  }
+
+  test("the character's Aseprite sheet: what a Generate would hold, what a made one holds and lacks", () => {
+    const p = mutate(addFlame);
+    // Before it exists: every ready sprite motion — not the loop.
+    expect(rowOf(exportRows(p, motionOf(p, "flame"), editing), "character-aseprite").sheet)
+      .toEqual({ motions: ["bounce"], missing: [] });
+    const made = mutate((b) => {
+      addFlame(b);
+      addSheet(b, ["bounce"], { shadow: { squash: 0.25, shear: 0.8, opacity: 0.4, blur: 3, color: "#140f1e" } });
+    });
+    const row = rowOf(exportRows(made, motionOf(made), editing), "character-aseprite");
+    expect(row.state).toEqual({
+      kind: "ready",
+      files: [{ assetId: "mini-export-aseprite", name: "mini-aseprite.zip", uri: "exports/mini-aseprite.zip", size: 3_000, createdAt: 60 }],
+    });
+    expect(row.sheet).toEqual({ motions: ["bounce"], missing: [] });
+    expect(row.shadow).toBe(true);
+    expect(row.canGenerate).toBe(true);
+    // Remembered per character, like the .riv.
+    expect(row.key).toBe("mini::character-aseprite");
+    // A sprite motion finished after the sheet was made is said to be missing.
+    const later = mutate((b) => {
+      addSheet(b, ["bounce"]);
+      b.sprite.motions.push({ ...b.sprite.motions[0], id: "hop", label: "Hop" });
+    });
+    expect(rowOf(exportRows(later, motionOf(later), editing), "character-aseprite").sheet)
+      .toEqual({ motions: ["bounce"], missing: ["hop"] });
+  });
+
+  test("a motion's Aseprite export and a shadowed video say what they are", () => {
+    const shadow = { squash: 0.25, shear: 0.8, opacity: 0.4, blur: 3, color: "#140f1e" };
+    const p = mutate((b) => {
+      b.sprite.motions[0].exports = { aseprite: "bounce-export-aseprite", mp4: "bounce-export-mp4" };
+      b.assets.push(
+        { id: "bounce-export-aseprite", type: "image", uri: "motions/bounce/exports/bounce-aseprite.zip", name: "", metadata: { container: "zip", size: 2_954 }, createdAt: 70, status: "ready" },
+        { id: "bounce-export-mp4", type: "video", uri: "motions/bounce/exports/bounce.mp4", name: "", metadata: { repeat: 6, duration: 3, background: "#ffffff", shadow, size: 9_000 }, createdAt: 71, status: "ready" },
+      );
+    });
+    const rows = exportRows(p, motionOf(p), editing);
+    expect(rowOf(rows, "aseprite").state).toMatchObject({ kind: "ready", files: [{ name: "bounce-aseprite.zip", size: 2_954 }] });
+    expect(rowOf(rows, "aseprite").shadow).toBeUndefined();
+    expect(rowOf(rows, "mp4").shadow).toBe(true);
+  });
+
+  test("the character sheet's request names the scope and the motions, and no motion", () => {
+    const p = project();
+    const row = rowOf(exportRows(p, motionOf(p), editing), "character-aseprite");
+    const note = exportRequestNotification({ project: p, motion: null, format: "character-aseprite", background: null, label: "Export", sheet: row.sheet });
+    expect(note.summary).toBe("/export · Mini · aseprite");
+    expect(note.message.split("\n")[1]).toBe(
+      "command: export · character: mini · format: aseprite · scope: whole character — every ready sprite motion on one sheet · motions: bounce",
+    );
+    const one = exportRequestNotification({ project: p, motion: motionOf(p), format: "aseprite", background: null, label: "Export" });
+    expect(one.message.split("\n")[1]).toBe("command: export · character: mini · motion: bounce · format: aseprite");
   });
 
   test("a viewing-only session shows only what can be downloaded", () => {
@@ -2000,8 +2078,8 @@ describe("the Export tab", () => {
   });
 
   describe("in both languages", () => {
-    const FORMATS = ["mp4", "mov", "webm", "gif", "webp", "apng", "lottie", "png-seq", "sheet", "riv"] as const;
-    const REASONS = ["loop-gif", "loop-atlas", "too-heavy", "not-ready", "not-in-run"] as const;
+    const FORMATS = ["mp4", "mov", "webm", "gif", "webp", "apng", "lottie", "png-seq", "sheet", "aseprite", "riv", "character-aseprite"] as const;
+    const REASONS = ["loop-gif", "loop-atlas", "too-heavy", "not-ready", "not-in-run", "no-sprite-motion"] as const;
 
     test("every row has a name and a purpose line", () => {
       for (const locale of ["en", "zh"]) {
@@ -2025,7 +2103,10 @@ describe("the Export tab", () => {
       const zh = spriteStrings("zh");
       expect(zh.exportPurpose("mov", { motions: 1 })).toBe("ProRes 4444 · 保留透明，给剪辑软件用");
       expect(zh.exportPurpose("riv", { motions: 3 })).toBe("整个角色 · 3 个动作 · 位图帧");
-      expect(zh.exportFamily).toEqual({ video: "视频", frames: "帧动画", rive: "Rive" });
+      expect(zh.exportFamily).toEqual({ video: "视频", frames: "帧动画", character: "整个角色" });
+      expect(en.exportFamily.character).toBe("Whole character");
+      expect(en.exportPurpose("character-aseprite", { motions: 2 })).toBe("2 sprite motions on one sheet, a frame tag each · Phaser builds every animation in one call");
+      expect(zh.exportPurpose("character-aseprite", { motions: 2 })).toBe("2 个精灵动作拼在一张图上，每个动作一个帧标签 · Phaser 一次建好全部动画");
       expect(zh.tab.export).toBe("导出");
       expect(en.tab.export).toBe("Export");
       // Chinese reasons are written in Chinese, not left in English.
@@ -2276,7 +2357,10 @@ describe("connected motions", () => {
       ["frames", "gif", "transition-gif"],
       ["frames", "apng", "missing"], ["frames", "lottie", "missing"], ["frames", "png-seq", "missing"],
       ["frames", "sheet", "transition-atlas"],
-      ["rive", "riv", "missing"],
+      ["frames", "aseprite", "transition-atlas"],
+      ["character", "riv", "missing"],
+      // Loops and transitions only: nothing goes on a sheet.
+      ["character", "character-aseprite", "no-sprite-motion"],
     ]);
     expect(rowOf(rows, "mp4").video).toEqual({ repeat: 1, seconds: 0.5, defaulted: true });
   });

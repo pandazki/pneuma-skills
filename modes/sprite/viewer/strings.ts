@@ -188,13 +188,15 @@ export interface SpriteStrings {
   /** The row's name. Formats are proper nouns; "PNG sequence" is not. */
   exportFormatName: Record<ExportRowFormat, string>;
   /** One line on what the format is for, in the user's words. `motions` is
-   *  the count a `.riv` holds; the other formats ignore it. */
+   *  the count a `.riv` or the character's sheet holds; the other formats
+   *  ignore it. */
   exportPurpose: (format: ExportRowFormat, m: { motions: number; transitions?: number }) => string;
   exportNotOffered: Record<ExportNotOffered, string>;
   /** How many times a video plays and for how long — stated before it is
    *  made, because the default depends on whether the motion loops. */
   exportRepeat: (video: ExportRepeat, loop: boolean) => string;
-  /** The ready `.riv` lacks motions that became ready after it was made. */
+  /** A ready `.riv` or character sheet lacks motions that became ready
+   *  after it was made. */
   exportRiveMissing: (motions: string[]) => string;
   /** On a transition's own tab: it is not a file of its own in Rive — it is
    *  part of the character's, which holds `count` of them. */
@@ -205,6 +207,8 @@ export interface SpriteStrings {
   exportRiveLoops: (m: { fps: number; width: number; height: number }) => string;
   /** The colour a made MP4 was flattened onto. */
   exportOnBackground: (hex: string) => string;
+  /** A made file carries a ground shadow (`export --shadow`). */
+  exportWithShadow: string;
   exportBackground: string;
   exportBackgroundField: string;
   exportColorInvalid: string;
@@ -460,7 +464,7 @@ const en: SpriteStrings = {
   exportLabel: { webp: "WebP", apng: "APNG", webm: "WebM", lottie: "Lottie" },
   exportLink: (label, size) => (size ? `${label} · ${size}` : label),
 
-  exportFamily: { video: "Video", frames: "Frame animation", rive: "Rive" },
+  exportFamily: { video: "Video", frames: "Frame animation", character: "Whole character" },
   exportFormatName: {
     mp4: "MP4",
     mov: "MOV",
@@ -471,7 +475,9 @@ const en: SpriteStrings = {
     lottie: "Lottie",
     "png-seq": "PNG sequence",
     sheet: "Sprite sheet + atlas",
+    aseprite: "Aseprite sheet",
     riv: "Rive",
+    "character-aseprite": "Aseprite sheet",
   },
   exportPurpose: (format, m) => {
     switch (format) {
@@ -493,6 +499,10 @@ const en: SpriteStrings = {
         return "every frame plus animation.json, zipped · for game engines and editors";
       case "sheet":
         return "sheet.png + atlas.json · loads straight into Phaser or PixiJS";
+      case "aseprite":
+        return "the sheet + Aseprite JSON with a frame tag, zipped · Phaser's createFromAseprite, Flame";
+      case "character-aseprite":
+        return `${m.motions} sprite motion${m.motions === 1 ? "" : "s"} on one sheet, a frame tag each · Phaser builds every animation in one call`;
       default:
         return [
           "whole character",
@@ -515,6 +525,8 @@ const en: SpriteStrings = {
       "Even at 24 fps and 320 px, this character's motions would take more than 768 MB of memory to open — ask the agent in the chat for fewer motions or a lower frame rate.",
     "not-ready": "Available once the motion is ready.",
     "not-in-run": "Made by every run of the motion; this run was made without it.",
+    "no-sprite-motion":
+      "Only sprite motions go on the sheet, and none is ready yet — a loop is a sequence: use its PNG sequence or the Rive file.",
   },
   exportRepeat: (video, loop) => {
     const plays = video.repeat === 1 ? "plays once" : `plays ${video.repeat}×`;
@@ -530,6 +542,7 @@ const en: SpriteStrings = {
   exportRiveMemory: (size) => `takes about ${size} of memory once opened`,
   exportRiveLoops: (m) => `loops resampled to ${m.fps} fps, up to ${m.width}×${m.height} px`,
   exportOnBackground: (hex) => `on ${hex}`,
+  exportWithShadow: "with a ground shadow",
   exportBackground: "Background",
   exportBackgroundField: "Background colour as a hex code",
   exportColorInvalid: "Write the colour like #1a2b3c",
@@ -801,7 +814,7 @@ const zhCN: SpriteStrings = {
   exportLabel: { webp: "WebP", apng: "APNG", webm: "WebM", lottie: "Lottie" },
   exportLink: (label, size) => (size ? `${label} · ${size}` : label),
 
-  exportFamily: { video: "视频", frames: "帧动画", rive: "Rive" },
+  exportFamily: { video: "视频", frames: "帧动画", character: "整个角色" },
   exportFormatName: {
     mp4: "MP4",
     mov: "MOV",
@@ -812,7 +825,9 @@ const zhCN: SpriteStrings = {
     lottie: "Lottie",
     "png-seq": "PNG 序列",
     sheet: "雪碧图 + 图集",
+    aseprite: "Aseprite 图集",
     riv: "Rive",
+    "character-aseprite": "Aseprite 图集",
   },
   exportPurpose: (format, m) => {
     switch (format) {
@@ -834,6 +849,10 @@ const zhCN: SpriteStrings = {
         return "每一帧加 animation.json 打成 zip · 给游戏引擎和编辑器";
       case "sheet":
         return "sheet.png + atlas.json · Phaser、PixiJS 直接读";
+      case "aseprite":
+        return "雪碧图加带帧标签的 Aseprite JSON，打成 zip · 给 Phaser 的 createFromAseprite、Flame";
+      case "character-aseprite":
+        return `${m.motions} 个精灵动作拼在一张图上，每个动作一个帧标签 · Phaser 一次建好全部动画`;
       default:
         return [
           "整个角色",
@@ -854,6 +873,7 @@ const zhCN: SpriteStrings = {
       "就算降到 24 fps、320 px，这个角色的动作打开也要占 768 MB 以上内存——在对话里请助手少放几个动作，或者再降低帧率。",
     "not-ready": "动作就绪后才能导出。",
     "not-in-run": "这个文件随每次流水线产出，这一次跑的时候没有生成。",
+    "no-sprite-motion": "只有精灵动作会拼进这张图，现在还没有做好的——循环动画是逐帧序列，用它的 PNG 序列或 Rive 文件。",
   },
   exportRepeat: (video, loop) => {
     const line = `播 ${video.repeat} 遍 · ${video.seconds.toFixed(1)} 秒`;
@@ -866,6 +886,7 @@ const zhCN: SpriteStrings = {
   exportRiveMemory: (size) => `打开后约占 ${size} 内存`,
   exportRiveLoops: (m) => `循环动画降到 ${m.fps} fps，最大 ${m.width}×${m.height}`,
   exportOnBackground: (hex) => `底色 ${hex}`,
+  exportWithShadow: "带地面投影",
   exportBackground: "底色",
   exportBackgroundField: "底色的十六进制色值",
   exportColorInvalid: "颜色要写成 #1a2b3c 这样",

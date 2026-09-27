@@ -669,11 +669,12 @@ export default function SpritePreview(props: ViewerPreviewProps) {
       onNotifyAgent(
         exportRequestNotification({
           project: character,
-          motion: row.format === "riv" ? null : motion,
+          motion: row.family === "character" ? null : motion,
           format: row.format,
           background,
           label: exportCommand.label,
           rive: row.rive,
+          sheet: row.sheet,
         }),
       );
     },

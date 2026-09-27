@@ -686,8 +686,15 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
         spriteSourceSize: { x: 0, y: 0, w: 64, h: 64 },
         sourceSize: { w: 64, h: 64 },
         pivot: { x: 0.5, y: 0.7344 }, // 47 / 64, not the cell edge
+        // The same point under the key PixiJS 8 reads (Spritesheet.mjs:119,
+        // `defaultAnchor: data.anchor` — it never reads `pivot`); Phaser reads
+        // `anchor || pivot` (JSONHash.js:80). `pivot` stays for older readers.
+        anchor: { x: 0.5, y: 0.7344 },
         duration: 125,
       });
+      for (const frame of Object.values(atlas.frames) as Array<{ pivot: unknown; anchor: unknown }>) {
+        expect(frame.anchor).toEqual(frame.pivot);
+      }
       expect(atlas.frames.bounce_03.frame).toEqual({ x: 64, y: 64, w: 64, h: 64 });
       expect(atlas.animations).toEqual({ bounce: ["bounce_00", "bounce_01", "bounce_02", "bounce_03"] });
     });
@@ -747,6 +754,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
 
       const atlas = JSON.parse(readFileSync(join(ws, "atlas.json"), "utf-8"));
       expect(atlas.frames.bounce_00.pivot).toEqual({ x: 0.5, y: 1 });
+      expect(atlas.frames.bounce_00.anchor).toEqual({ x: 0.5, y: 1 });
       // an absent key is how a consumer tells "assumed" from "measured"
       expect(atlas.meta.anchorPoint).toBeUndefined();
     });
@@ -3122,6 +3130,222 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(animation.frames[11]).toEqual({ file: "011.png", duration: 83 });
     }, EXPORT_TIMEOUT_MS);
 
+    // ── aseprite: the sheet engines build their animations from ──────────────
+
+    /** The pixels of a PNG held in memory, and one RGBA pixel of them. */
+    const decoded = (bytes: Buffer) => readRgba(bytes);
+    const pixelAt = (image: { width: number; data: Buffer }, x: number, y: number) =>
+      [...image.data.subarray((y * image.width + x) * 4, (y * image.width + x) * 4 + 4)];
+    const atlasOf = (dir: string, motion: string) =>
+      JSON.parse(readFileSync(join(dir, "motions", motion, "atlas.json"), "utf-8"));
+
+    test("aseprite re-describes a motion's own sheet: numeric frame keys, one tag, the atlas's rects, durations and anchor", () => {
+      const { dir, json } = exported("bounce-aseprite", "bounce", "--format", "aseprite");
+      expect(json.out).toBe(join(dir, "motions", "bounce", "exports", "bounce-aseprite.zip"));
+      expect(json).toMatchObject({
+        kind: "export", scope: "motion", motion: "bounce", format: "aseprite",
+        frameCount: 4, fps: 8, loop: true, repeat: null, shadow: null,
+      });
+      const entries = readZip(readFileSync(json.out));
+      expect(entries.map((e) => e.name)).toEqual(["bounce/bounce.png", "bounce/bounce.json"]);
+      // The packed sheet byte for byte — re-described, not re-encoded.
+      expect(entries[0].data).toEqual(readFileSync(join(dir, "motions", "bounce", "sheet.png")));
+
+      const doc = JSON.parse(entries[1].data.toString("utf8"));
+      const atlas = atlasOf(dir, "bounce");
+      expect(Object.keys(doc.frames)).toEqual(["0", "1", "2", "3"]);
+      expect(doc.meta).toMatchObject({
+        image: "bounce.png", format: "RGBA8888", size: atlas.meta.size, scale: "1",
+        frameTags: [{ name: "bounce", from: 0, to: 3, direction: "forward" }],
+      });
+      atlas.animations.bounce.forEach((key: string, i: number) => {
+        expect(doc.frames[String(i)]).toMatchObject({
+          frame: atlas.frames[key].frame,
+          duration: atlas.frames[key].duration,
+          anchor: atlas.frames[key].pivot,
+        });
+      });
+      expect(json.sheet).toEqual(atlas.meta.size);
+      expect(json.tags).toEqual([{ name: "bounce", from: 0, to: 3 }]);
+      expect(json.size).toBe(statSync(json.out).size);
+    }, EXPORT_TIMEOUT_MS);
+
+    test("aseprite --scale enlarges the sheet nearest-neighbour with its rects; the anchor is a ratio and stays", () => {
+      const { dir, json } = exported("hop-aseprite-x2", "hop", "--format", "aseprite", "--scale", "2");
+      const entries = readZip(readFileSync(json.out));
+      const sheet = decoded(readFileSync(join(dir, "motions", "hop", "sheet.png")));
+      const big = decoded(entries[0].data);
+      expect({ w: big.width, h: big.height }).toEqual({ w: sheet.width * 2, h: sheet.height * 2 });
+      for (const [x, y] of [[10, 10], [40, 30], [70, 90]]) {
+        expect(pixelAt(big, 2 * x + 1, 2 * y + 1)).toEqual(pixelAt(sheet, x, y));
+      }
+      const doc = JSON.parse(entries[1].data.toString("utf8"));
+      const atlas = atlasOf(dir, "hop");
+      const r = atlas.frames.hop_01.frame;
+      expect(doc.frames["1"].frame).toEqual({ x: 2 * r.x, y: 2 * r.y, w: 2 * r.w, h: 2 * r.h });
+      expect(doc.frames["1"].anchor).toEqual(atlas.frames.hop_01.pivot);
+      expect(doc.frames["1"].duration).toBe(100);
+      expect(json).toMatchObject({ scale: 2, width: 126, height: 122, sheet: { w: sheet.width * 2, h: sheet.height * 2 } });
+    }, EXPORT_TIMEOUT_MS);
+
+    test("the whole character: every ready sprite motion on one sheet, a frame tag each", () => {
+      const dir = useCharacter();
+      const json = runJson("export", dir, "--format", "aseprite");
+      expect(json.out).toBe(join(dir, "exports", "mini-aseprite.zip"));
+      expect(json).toMatchObject({ kind: "export", scope: "character", format: "aseprite", frameCount: 8, shadow: null });
+      expect(json.motions.map((m: any) => m.id)).toEqual(["bounce", "hop"]);
+      // A loop is a sequence, not a sheet; a planned motion has no frames.
+      expect(json.excluded.map((e: any) => e.motion)).toEqual(["flame", "walk"]);
+      expect(json.excluded[0].reason).toMatch(/loop/);
+      expect(json.excluded[1].reason).toMatch(/not ready/);
+      // Made from every registered frame of both, in order — what
+      // register-export hangs the file off.
+      const framesOf = (id: string) => [0, 1, 2, 3].map((i) => join(dir, "motions", id, "frames", `0${i}.png`));
+      expect(json.frames).toEqual([...framesOf("bounce"), ...framesOf("hop")]);
+
+      const entries = readZip(readFileSync(json.out));
+      expect(entries.map((e) => e.name)).toEqual(["mini/mini.png", "mini/mini.json"]);
+      const doc = JSON.parse(entries[1].data.toString("utf8"));
+      expect(Object.keys(doc.frames)).toEqual(["0", "1", "2", "3", "4", "5", "6", "7"]);
+      expect(doc.meta.frameTags).toEqual([
+        { name: "bounce", from: 0, to: 3, direction: "forward" },
+        { name: "hop", from: 4, to: 7, direction: "forward" },
+      ]);
+      const bounce = atlasOf(dir, "bounce");
+      const hop = atlasOf(dir, "hop");
+      // Each motion's sheet keeps its rects, pushed down by the rows above it.
+      const below = bounce.meta.size.h;
+      expect(doc.meta.size).toEqual({ w: Math.max(bounce.meta.size.w, hop.meta.size.w), h: below + hop.meta.size.h });
+      expect(json.sheet).toEqual(doc.meta.size);
+      hop.animations.hop.forEach((key: string, i: number) => {
+        const r = hop.frames[key].frame;
+        expect(doc.frames[String(4 + i)]).toMatchObject({
+          frame: { x: r.x, y: r.y + below, w: r.w, h: r.h },
+          duration: 100,
+          anchor: hop.frames[key].pivot,
+        });
+      });
+      expect(doc.frames["0"].duration).toBe(125);
+      // And the pixels are the motions' own, where the rects say.
+      const whole = decoded(entries[0].data);
+      const hopSheet = decoded(readFileSync(join(dir, "motions", "hop", "sheet.png")));
+      const r = hop.frames.hop_02.frame;
+      for (let y = 0; y < r.h; y += 7) {
+        for (let x = 0; x < r.w; x += 7) {
+          expect(pixelAt(whole, r.x + x, r.y + below + y)).toEqual(pixelAt(hopSheet, r.x + x, r.y + y));
+        }
+      }
+    }, EXPORT_TIMEOUT_MS);
+
+    test("the whole character is exported as aseprite only, and a loop never is", () => {
+      const dir = useCharacter();
+      const whole = run("export", dir, "--format", "mp4", "--json");
+      expect(whole.code).toBe(1);
+      expect(whole.err).toMatch(/is a character.*--format aseprite/);
+      const loop = run("export", join(dir, "motions", "flame"), "--format", "aseprite", "--json");
+      expect(loop.code).toBe(1);
+      expect(loop.err).toMatch(/a loop has no sprite sheet or atlas/);
+      expect(existsSync(join(dir, "exports"))).toBe(false);
+    });
+
+    // ── --shadow: the silhouette's shadow, about the foot ───────────────────
+
+    test("--shadow casts the shadow left of the feet onto a canvas that holds it", () => {
+      const { json } = exported("hop-mp4-shadow", "hop", "--format", "mp4", "--shadow");
+      expect(json.shadow).toMatchObject({ squash: 0.25, shear: 0.8, opacity: 0.4, blur: 3, color: "#140f1e", from: "atlas" });
+      const probe = probeVideo(json.out);
+      expect(probe.frames).toBe(4);
+      expect({ width: probe.width, height: probe.height }).toEqual({ width: json.width, height: json.height });
+      // The shadow reaches past the frame's left edge, so the canvas grew.
+      expect(json.width).toBeGreaterThan(64);
+      const { x, y } = json.shadow.anchor;
+      const pixel = (px: number, py: number) => firstFramePixel(json.out, Math.round(px), Math.round(py));
+      // Beside the body, just above the ground line: in the shadow only —
+      // darker than the white it was cast on, far from black.
+      for (const channel of pixel(x - 20, y - 3)) {
+        expect(channel).toBeLessThan(235);
+        expect(channel).toBeGreaterThan(60);
+      }
+      // Well above the ground, left of the body: nothing there.
+      for (const channel of pixel(x - 26, y - 22)) expect(channel).toBeGreaterThan(245);
+    }, EXPORT_TIMEOUT_MS);
+
+    test("--shadow keeps the alpha of a transparent video: the shadow is partly transparent, the body opaque", () => {
+      const { json } = exported("hop-mov-shadow", "hop", "--format", "mov", "--shadow");
+      const r = spawnSync("ffmpeg", ["-v", "error", "-i", json.out, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", "-"], { maxBuffer: 1 << 26 });
+      const frame = { width: json.width, data: r.stdout as Buffer };
+      const { x, y } = json.shadow.anchor;
+      const alpha = (px: number, py: number) => pixelAt(frame, Math.round(px), Math.round(py))[3];
+      expect(alpha(x - 20, y - 3)).toBeGreaterThan(8);
+      expect(alpha(x - 20, y - 3)).toBeLessThan(0.4 * 255 + 2);
+      expect(alpha(x, y - 12)).toBe(255);
+      expect(alpha(x - 26, y - 22)).toBe(0);
+    }, EXPORT_TIMEOUT_MS);
+
+    test("--shadow on a loop stands the shadow on its first frame's feet", () => {
+      const { json } = exported("flame-mp4-shadow", "flame", "--format", "mp4", "--shadow", "--shadow-shear=-0.5", "--shadow-opacity", "0.6");
+      expect(json.shadow).toMatchObject({ shear: -0.5, opacity: 0.6, from: "feet" });
+      expect(probeVideo(json.out).frames).toBe(36);
+      // Its own loop.webm is its deliverable: a shadowed one is another format.
+      const webm = run("export", join(json.character, "motions", "flame"), "--format", "webm", "--shadow", "--json");
+      expect(webm.code).toBe(1);
+      expect(webm.err).toMatch(/loop\.webm, without a shadow — a shadowed video of it is --format mov/);
+    }, EXPORT_TIMEOUT_MS);
+
+    test("aseprite --shadow adds a shadow sheet of its own, frame for frame, on the same foot", () => {
+      const { json } = exported("bounce-aseprite-shadow", "bounce", "--format", "aseprite", "--shadow");
+      const entries = readZip(readFileSync(json.out));
+      expect(entries.map((e) => e.name)).toEqual([
+        "bounce/bounce.png", "bounce/bounce.json", "bounce/bounce-shadow.png", "bounce/bounce-shadow.json",
+      ]);
+      const doc = JSON.parse(entries[1].data.toString("utf8"));
+      const shadowDoc = JSON.parse(entries[3].data.toString("utf8"));
+      // Its own tag name: Phaser's animations are global, so a shadow tag
+      // named like the motion would be refused as a duplicate.
+      expect(shadowDoc.meta).toMatchObject({ image: "bounce-shadow.png", frameTags: [{ name: "bounce-shadow", from: 0, to: 3, direction: "forward" }] });
+      const sheet = decoded(entries[2].data);
+      expect({ w: sheet.width, h: sheet.height }).toEqual(shadowDoc.meta.size);
+      for (let i = 0; i < 4; i++) {
+        const frame = shadowDoc.frames[String(i)];
+        expect(frame.duration).toBe(doc.frames[String(i)].duration);
+        // The anchor is where the feet are in the shadow frame: the shadow's
+        // mass lies above it (squash) and to its left (positive shear).
+        const ax = frame.frame.x + frame.anchor.x * frame.frame.w;
+        const ay = frame.frame.y + frame.anchor.y * frame.frame.h;
+        let sum = 0, sx = 0, sy = 0;
+        for (let y = frame.frame.y; y < frame.frame.y + frame.frame.h; y++) {
+          for (let x = frame.frame.x; x < frame.frame.x + frame.frame.w; x++) {
+            const a = pixelAt(sheet, x, y)[3];
+            sum += a; sx += a * (x + 0.5); sy += a * (y + 0.5);
+          }
+        }
+        expect(sum).toBeGreaterThan(0);
+        expect(sx / sum).toBeLessThan(ax);
+        expect(sy / sum).toBeLessThan(ay);
+      }
+      expect(json.shadow).toMatchObject({ squash: 0.25, shear: 0.8, opacity: 0.4, blur: 3, from: "atlas" });
+    }, EXPORT_TIMEOUT_MS);
+
+    test("the shadow flags: refused out of range or without --shadow, ignored where there is nothing to cast on", () => {
+      const dir = useCharacter();
+      const bounce = join(dir, "motions", "bounce");
+      const cases: Array<[string[], RegExp]> = [
+        [["--format", "mp4", "--shadow-shear", "2"], /--shadow-shear.*--shadow/],
+        [["--format", "mp4", "--shadow", "--shadow-squash", "2"], /--shadow-squash.*0\.001.*1/],
+        [["--format", "mp4", "--shadow", "--shadow-blur", "wide"], /--shadow-blur/],
+        [["--format", "mp4", "--shadow", "--shadow-color", "red"], /--shadow-color.*#rrggbb/],
+      ];
+      for (const [flags, message] of cases) {
+        const r = run("export", bounce, ...flags, "--json");
+        expect({ flags: flags.join(" "), code: r.code }).toEqual({ flags: flags.join(" "), code: 1 });
+        expect(r.err).toMatch(message);
+      }
+      expect(existsSync(join(bounce, "exports"))).toBe(false);
+      const apng = runJson("export", bounce, "--format", "apng", "--shadow");
+      expect(apng.shadow).toBeNull();
+      expect(apng.warnings.join(" ")).toMatch(/--shadow ignored/);
+    }, EXPORT_TIMEOUT_MS);
+
     test("the formats a loop already ships are refused and named, never duplicated", () => {
       const dir = useCharacter();
       for (const [format, existing] of [["webm", "loop.webm"], ["apng", "loop.apng"], ["lottie", "loop.json"]]) {
@@ -3143,7 +3367,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       const dir = useCharacter();
       const cases: Array<[string[], RegExp]> = [
         [["export", join(dir, "motions", "walk"), "--format", "mp4"], /walk.*not ready.*planned/],
-        [["export", join(dir, "motions", "bounce"), "--format", "avi"], /--format.*mp4, mov, webm, apng, lottie, png-seq/],
+        [["export", join(dir, "motions", "bounce"), "--format", "avi"], /--format.*mp4, mov, webm, apng, lottie, png-seq, aseprite/],
         [["export", join(dir, "motions", "bounce")], /--format is required/],
         [["export", join(dir, "motions", "bounce"), "--format", "mp4", "--scale", "1.5"], /--scale/],
         [["export", join(dir, "motions", "bounce"), "--format", "mp4", "--repeat", "0"], /--repeat/],
