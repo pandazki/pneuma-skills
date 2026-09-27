@@ -1254,6 +1254,78 @@ result; once you have settled, do the final pass with `run` so the summary
 image is opaque, so a matting you paid `remove-background.mjs` for is redone
 with a colour threshold unless the sheet you pass already carries alpha.
 
+### `breathe <still> --out <framesDir> [--frames N] [--depth 0.02] [--breaths 1] [--mode smooth|pixel] [--rigid-row y] [--axis x] [--torso halfWidth]`
+
+A breathing idle from **one still**, no model call and no money: the body
+below the neck swells and settles on a travelling wave, the head rides on top
+as one rigid block, the soles never move, and anything that reaches far past
+the torso (an arm, a wing, a held lantern) is pushed outward instead of
+stretched. Ported from aldegad/sprite-gen (`effects/breathe.py`,
+`effects/anatomy.py` @ fbd1a08, Apache-2.0); the `smooth` mode is ours.
+
+Writes `NN.png` frames — `--frames` (default 12 × `--breaths`) frames holding
+`--breaths` whole breaths — on the still's canvas, grown only as far as the
+stretch needs (`canvas.grew`; the bottom never grows). Put them where `run`
+puts pre-align cells and cut the motion with the usual chain:
+
+```bash
+node {SKILL_PATH}/scripts/sprite-sheet.mjs breathe <character>/motions/idle/frames/00.png \
+  --out <character>/motions/breathe/cells --json
+node {SKILL_PATH}/scripts/sprite-sheet.mjs align <character>/motions/breathe/cells \
+  --out <character>/motions/breathe/frames --x-from cell --json
+# then pack / gif / inspect on <character>/motions/breathe as for any motion
+```
+
+`--x-from cell` because the frames already stand where they stand — the axis
+column and the soles are fixed by construction — and `feet` would re-round a
+feet centroid that the stretch moves by a fraction of a pixel. On the Lumi
+stills this chain measures `bodyDrift` 0.03–0.06 px and no `inspect` warnings.
+`--out` must not be the directory the still sits in (it is cleared first; that
+is refused by name).
+
+**The anatomy is measured, printed, and yours to correct.** Every report
+carries, in the still's pixel coordinates: the body axis `axisX` (alpha
+centroid), `neckY` and `neckSource` (`bottleneck` = the most prominent
+narrowing of the width profile in the top 5–70 %; `shoulder-gradient` when
+there is none — a slime), `face` (a mirror-symmetric pair of small dark blobs
+above 65 % height; anime eyes with highlights usually are not found, which is
+fine), `rigidY` (nothing above it deforms: the lower of the neck and the face
+plus room for the mouth, capped at 80 % of the height), `torsoHalf` /
+`maxHalf` and `appendage` (something reaches sideways when the widest
+half-width is ≥ 1.3 × the torso's). Check them against the still before
+looking at the frames; `--rigid-row y`, `--axis x` and `--torso halfWidth`
+replace a detected value (the report names what they replaced). A manual
+`--torso` pushes everything outside the band.
+
+**Two modes.** `smooth` resamples the same deformation continuously
+(area-weighted, premultiplied alpha) for anti-aliased art, and moves the head
+by a whole number of pixels so it is pixel-identical to the still in every
+frame. `pixel` is upstream's whole-pixel bake — rows duplicated or dropped,
+columns remapped, a dark outline thinned back to 1 px — so every pixel stays a
+source pixel and pixel art stays on its grid. Without `--mode` the character's
+`style` decides (pixel art → `pixel`, the reading `rive --filter auto` uses),
+from the nearest `project.json` above `--out`, the still, or the working
+directory; with no character, `--mode` is required.
+
+**Read the report, per frame and overall:** `height` (solid alpha, min..max
+against the still's), `headOffset` (negative = up), `headDiffPx` (head pixels
+that differ from the still; 0 = identical — nonzero only in `pixel` mode on
+art with dark outlines, where the thinning pass runs over the whole frame),
+`strain` (the largest per-row strain; over 0.25 is refused), and warnings.
+Two warnings to act on:
+
+- **something beside the body crosses the rigid row** — a prop there (Lumi's
+  lantern) rides with the head above the row and is stretched and pushed with
+  the body below it, so it squashes and shears. The warning names the
+  `--rigid-row` that keeps it whole; the price is a chest that no longer
+  breathes above that row. Look at both and choose.
+- **pixel mode on anti-aliased art** — duplicated rows step the diagonals and
+  the thinning eats a pixel of a thick line; use `smooth`.
+
+`--depth` is the total stretch as a share of the body below the neck (the
+same number means the same on every character). Fewer than 6 frames a breath
+reads as a twitch and is warned about.
+
 ## `remove-background.mjs` — the fal keying path
 
 The one model call on this page, and **the default way a sprite sheet gets its
@@ -1535,3 +1607,41 @@ subject from a plate it shares colours with; that clip needs a matte.
 already carries foreground colour, not a white blend. Known-background recovery
 `F = (P − (1−α)·B)/α` (upstream `frames/cutout.py:212`) would over-darken them
 (edge composite luma 26 → 8.8) and was not built.
+
+## Measured: `breathe` on the Lumi stills (2026-09-27)
+
+Two stills, both with a 233 px character: idle frame 00 (3/4 view, 186×252)
+and the front view cut from `refs/turnaround.png` (keyed off its white plate
+by a border flood, scaled to the same height, 132×249). 16 frames, 1 breath,
+lag 0.10, through `breathe → align --x-from cell → gif --fps 8 → inspect`.
+
+| still | depth | height (still 233) | head offset | head = still (smooth / pixel) | `bodyDrift` |
+|---|---|---|---|---|---|
+| idle 00 | 0.02 | 230–236 px | −3…+3 px | 16/16 / 0/16 (≤ 33 px differ) | 0.03 / 0.06 px |
+| idle 00 | 0.03 | 229–237 px | −4…+4 px | 16/16 / 0/16 | 0.04 / 0.06 px |
+| front | 0.02 | 230–236 px | −3…+3 px | 16/16 / 0/16 (≤ 2 px differ) | 0.06 / 0.03 px |
+| front | 0.03 | 229–237 px | −4…+4 px | 16/16 / 0/16 | 0.04 / 0.03 px |
+
+- **Anatomy.** Idle 00: axis x=92, neck y=99 (bottleneck), no face pair,
+  torso half-width 31 px vs widest 82 px (the lantern). Front: axis x=66, neck
+  y=89 (bottleneck), face y=60–80, torso 33 vs 58 px. Both rigid rows are the
+  neck, and both put the lantern across it (the warning fires; the lantern's
+  lower half swings ±1.2 px against its top at 0.02 on idle 00).
+- **Depth.** Upstream's 0.06 default is tuned for 32–64 px pixel art. At our
+  scale 0.05 already swings the height 227–240 px and the head −7…+6 px, which
+  reads as bouncing (0.06: 226–241 px); 0.02 (the default) moves the head ±3 px,
+  0.03 ±4 px.
+- **Stair-steps.** Silhouette edge roughness in the stretched band (RMS second
+  difference of each row's sub-pixel edge, y 110–220): idle 00 still 1.09,
+  smooth 0.89 / 0.88, pixel 1.17 / 1.21 (0.02 / 0.03); front still 1.30,
+  smooth 0.98 / 1.02, pixel 1.33 / 1.35. `pixel` adds 7–12 % roughness
+  (duplicated rows); `smooth` is 18–24 % smoother than the still, i.e. slightly
+  softer where the band is resampled at a fractional offset.
+- **Parity with upstream.** `pixel` reproduces sprite-gen's Python bake
+  (`bake_breathe_sequence`, CPython 3.14) with **0 differing pixels** in all
+  64 frames above and at depth 0.06; the suite pins five of upstream's
+  synthetic fixtures by golden hash. That needs the envelope's float sum to
+  be CPython's compensated one: a plain sum differs in the last bits for 270
+  of 426 rigid rows on these stills.
+- **Cost.** 1.2 s for 16 frames at 186×252 in either mode, frame writes
+  included (upstream's Python: 1.5 s).
