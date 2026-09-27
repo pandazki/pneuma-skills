@@ -268,6 +268,15 @@ export interface InspectSummary {
    */
   anchorPoint?: { x: number; y: number };
   /**
+   * Frames aligned with `--y-from cell` (a jump drawn or filmed rising):
+   * how high each frame's feet stand above the ground, in px — one entry per
+   * frame, `null` for an empty one. All zeros means the source carries no
+   * drawn height. Absent for every other alignment; a list that is not one
+   * entry per frame, or holds anything but a number or null, is dropped whole
+   * (an entry means its frame, so it cannot be repaired).
+   */
+  lift?: Array<number | null>;
+  /**
    * The agent accepted the remaining warnings with a one-sentence reason
    * (round 2). The viewer dims the badge but keeps every number visible.
    */
@@ -514,6 +523,40 @@ export interface BreatheRecord {
    * stretched, so a re-run has to be given it again.
    */
   anatomy?: { rigidRow: number; axisX: number; from: "detected" | "override"; torsoHalf?: number };
+  /**
+   * Where the head rode across the frames, in whole px of image y (negative
+   * is up): the range, the travel between its ends, and the frames at each
+   * end — the answer to "how far does the head move". Absent on a breathe
+   * registered before `breathe` reported it; dropped on its own when
+   * malformed, the rest of the record stands.
+   */
+  headOffset?: { min: number; max: number; travel: number; highest: number[]; lowest: number[] };
+}
+
+/** Why `run` sliced a sheet by its poses' ink rather than on the fixed grid. */
+export const SLICE_REASONS = ["asked", "grid-clipped"] as const;
+/** What an auto-sliced pose ran into: the sheet's edge, or a neighbour it was
+ *  drawn touching and had to be cut apart from. */
+export const CLIP_REASONS = ["sheet-edge", "cut"] as const;
+
+/**
+ * A sheet motion whose cells `run` found by the poses' ink (`slice --auto`,
+ * `run --auto-slice`, or the fallback when the fixed grid cut through a pose),
+ * as `register-run` kept it. The cut lines, the grown cell and each pose's
+ * box stay in the run summary and `cells/slice.json`; this is what tells the
+ * agent which cells to look at. Absent means the fixed grid.
+ */
+export interface SliceRecord {
+  mode: "auto";
+  /** `"asked"`, or `"grid-clipped"`: the fixed grid cut through a pose. */
+  reason: (typeof SLICE_REASONS)[number];
+  /** `"grid-clipped"` only: the cells the fixed grid cut through. */
+  gridClipped?: number[];
+  /** Whether the row count, and per row its pose count, had to be forced to
+   *  what was asked (cut at the thinnest lines) — the blank bands showed another. */
+  forced: { rows: boolean; cols: boolean[] };
+  /** Poses clipped anyway, by frame index. `[]` is a result: none. */
+  clipped: Array<{ index: number; why: (typeof CLIP_REASONS)[number] }>;
 }
 
 /** A layout guide's geometry, as the prompt that used it described it. */
@@ -576,6 +619,8 @@ export interface Motion {
   mirrorOf?: string;
   /** `source: "breathe"` only: what the warp was made from and with. */
   breathe?: BreatheRecord;
+  /** Sheet motions only (`source` absent or `"sheet"`): an auto slice's findings. */
+  slice?: SliceRecord;
   /** Loop motions: the generated keyframe, white plate, as it came back. */
   keyframe?: string;
   /** Loop motions: the same keyframe with its background removed. */
@@ -750,11 +795,21 @@ function parseFramePairs(value: unknown): Array<[number, number]> | undefined {
     .map(([from, to]) => [from, to] as [number, number]);
 }
 
+/** A `--y-from cell` lift, whole, or undefined: see `InspectSummary.lift`. */
+function parseLift(value: unknown, frameCount: unknown): Array<number | null> | undefined {
+  if (!Array.isArray(value)) return undefined;
+  if (typeof frameCount === "number" && Number.isInteger(frameCount) && value.length !== frameCount) return undefined;
+  return value.every((v) => v === null || parseFinite(v) !== undefined)
+    ? (value as Array<number | null>).slice()
+    : undefined;
+}
+
 function parseInspect(value: unknown): InspectSummary | undefined {
   if (!isRecord(value)) return undefined;
   const cell = isRecord(value.cell) ? value.cell : {};
   const drift = isRecord(value.anchorDrift) ? value.anchorDrift : {};
   const anchorPoint = parsePoint(value.anchorPoint);
+  const lift = parseLift(value.lift, value.frameCount);
   const acknowledged = parseAcknowledged(value.acknowledged);
   const bodyDrift = parseFinite(value.bodyDrift);
   const headDrift = parseFinite(value.headDrift);
@@ -775,6 +830,7 @@ function parseInspect(value: unknown): InspectSummary | undefined {
     frameCount: num(value.frameCount, 0),
     cell: { width: num(cell.width, 0), height: num(cell.height, 0) },
     ...(anchorPoint ? { anchorPoint } : {}),
+    ...(lift ? { lift } : {}),
     ...(acknowledged ? { acknowledged } : {}),
     anchorDrift: { x: num(drift.x, 0), y: num(drift.y, 0) },
     // `=== undefined`, never a truthiness test: 0 is the *good* body drift and
@@ -1036,6 +1092,7 @@ function parseBreathe(value: unknown): BreatheRecord | undefined {
     return undefined;
   }
   const anatomy = parseAnatomy(value.anatomy);
+  const headOffset = parseHeadOffset(value.headOffset);
   return {
     still,
     depth,
@@ -1043,6 +1100,55 @@ function parseBreathe(value: unknown): BreatheRecord | undefined {
     lag,
     mode,
     ...(anatomy ? { anatomy } : {}),
+    ...(headOffset ? { headOffset } : {}),
+  };
+}
+
+/** The head-offset extremes, whole, or undefined. */
+function parseHeadOffset(value: unknown): BreatheRecord["headOffset"] {
+  if (!isRecord(value)) return undefined;
+  const min = parseFinite(value.min);
+  const max = parseFinite(value.max);
+  const travel = parseFinite(value.travel);
+  const highest = frameIndices(value.highest);
+  const lowest = frameIndices(value.lowest);
+  if (min === undefined || max === undefined || travel === undefined || !highest || !lowest) return undefined;
+  return { min, max, travel, highest, lowest };
+}
+
+/** A list of frame indices, all of them, or undefined. */
+function frameIndices(value: unknown): number[] | undefined {
+  return Array.isArray(value) && value.every((i) => typeof i === "number" && Number.isInteger(i) && i >= 0)
+    ? (value as number[]).slice()
+    : undefined;
+}
+
+/**
+ * An auto slice's record, or nothing — never half of one. A malformed entry
+ * of `gridClipped` or `clipped` is dropped on its own; the lists' other
+ * entries still name their cells.
+ */
+function parseSlice(value: unknown): SliceRecord | undefined {
+  if (!isRecord(value) || value.mode !== "auto") return undefined;
+  const reason = member(SLICE_REASONS, value.reason);
+  const forced = value.forced;
+  if (!reason || !isRecord(forced) || typeof forced.rows !== "boolean") return undefined;
+  if (!Array.isArray(forced.cols) || !forced.cols.every((c) => typeof c === "boolean")) return undefined;
+  if (!Array.isArray(value.clipped)) return undefined;
+  const index = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n) && n >= 0;
+  const gridClipped = Array.isArray(value.gridClipped) ? value.gridClipped.filter(index) : undefined;
+  const clipped: SliceRecord["clipped"] = [];
+  for (const c of value.clipped) {
+    if (!isRecord(c) || !index(c.index)) continue;
+    const why = member(CLIP_REASONS, c.why);
+    if (why) clipped.push({ index: c.index, why });
+  }
+  return {
+    mode: "auto",
+    reason,
+    ...(gridClipped ? { gridClipped } : {}),
+    forced: { rows: forced.rows, cols: forced.cols.slice() as boolean[] },
+    clipped,
   };
 }
 
@@ -1104,6 +1210,8 @@ function parseMotion(value: unknown): Motion | null {
   const source = member(MOTION_SOURCES, value.source);
   const mirrorOf = source === "mirror" ? optionalStr(value.mirrorOf) : undefined;
   const breathe = source === "breathe" ? parseBreathe(value.breathe) : undefined;
+  // Only a sheet is sliced: a clip's samples, a warped still or a flip were not.
+  const slice = source === undefined || source === "sheet" ? parseSlice(value.slice) : undefined;
   const direction = member(DIRECTIONS, value.direction);
   // Prompt parts record how a SHEET prompt was built; a breathe or a mirror
   // is drawn from no prompt (`register-run` drops them when one lands), so
@@ -1137,6 +1245,7 @@ function parseMotion(value: unknown): Motion | null {
     ...(source ? { source } : {}),
     ...(mirrorOf ? { mirrorOf } : {}),
     ...(breathe ? { breathe } : {}),
+    ...(slice ? { slice } : {}),
     ...(optionalStr(value.keyframe)
       ? { keyframe: value.keyframe as string }
       : {}),

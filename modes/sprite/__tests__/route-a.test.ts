@@ -334,7 +334,12 @@ describe.skipIf(!HAS_FFMPEG)("route A through project.json", () => {
     const { run: summary, motion } = breatheAndRegister();
     expect(motion).toMatchObject({ id: "idle", source: "breathe", status: "ready", fps: 8, loop: true, grid: summary.grid });
     expect(motion.frames).toEqual(Array.from({ length: 12 }, (_, i) => `idle-frame-${String(i).padStart(2, "0")}`));
-    expect(motion.breathe).toEqual({ still: "ref-still", ...summary.breathe });
+    // The head-offset extremes the run reported at its top level ride along.
+    // (Plain checks: Bun 1.4's toMatchObject writes asymmetric matchers into
+    // the object it was given, and this one is compared again below.)
+    const { min, max, travel, highest, lowest } = summary.headOffset;
+    expect({ travel, highest: Array.isArray(highest), lowest: Array.isArray(lowest) }).toEqual({ travel: max - min, highest: true, lowest: true });
+    expect(motion.breathe).toEqual({ still: "ref-still", ...summary.breathe, headOffset: summary.headOffset });
     expect(motion.inspect.cell).toEqual(summary.cell);
 
     const doc = readProject(dir);
@@ -355,6 +360,10 @@ describe.skipIf(!HAS_FFMPEG)("route A through project.json", () => {
     // `show` names the still by id and path, and the parameters to re-run from.
     const shown = run(root, PROJECT, ["show", "--dir", dir, "--motion", "idle"]);
     expect(shown.out).toContain(`breathe of ref-still (refs/still.png): depth 0.02, 1 breath, lag 0.1, smooth, rigid row ${summary.breathe.anatomy.rigidRow}, axis ${summary.breathe.anatomy.axisX} (detected)`);
+    // …and how far the head rides, as `breathe` itself said it.
+    const h = summary.headOffset;
+    const signed = (v: number) => (v > 0 ? `+${v}` : String(v));
+    expect(shown.out).toContain(`  head offset ${signed(h.min)}..${signed(h.max)}px (travel ${h.travel}px: highest in frame ${h.highest.join(", ")}, lowest in ${h.lowest.join(", ")})`);
   }, 90_000);
 
   test("a re-run with other parameters replaces the frames, the record, the grid and the rate in place", () => {
@@ -365,6 +374,7 @@ describe.skipIf(!HAS_FFMPEG)("route A through project.json", () => {
     expect(motion.breathe).toEqual({
       still: "ref-still", depth: 0.03, breaths: 1, lag: 0.1, mode: "smooth",
       anatomy: { rigidRow: rigid + 4, axisX: summary.breathe.anatomy.axisX, from: "override", torsoHalf: 30 },
+      headOffset: summary.headOffset,
     });
     expect({ grid: motion.grid, fps: motion.fps }).toEqual({ grid: { rows: 3, cols: 3 }, fps: 6 });
 
