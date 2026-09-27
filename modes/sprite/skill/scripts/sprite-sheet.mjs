@@ -12,7 +12,10 @@
  * maths in JS; every image is written by an ffmpeg filter chain.
  *
  * Subcommands: probe, key, flatten, slice, align, pack, gif, inspect, run,
- * contact, from-video, retime, loop, export, rive.
+ * contact, from-video, retime, loop, export, rive, pixel.
+ *
+ * `pixel` (and `run --pixel`) snaps generated pixel art onto the pixel grid
+ * it was drawn on; the lattice itself lives in `pixel-lattice.mjs`.
  *
  * `export` and `rive` hand a FINISHED motion over in somebody else's format
  * (video, a frame animation, a `.riv`). They read the character's
@@ -37,6 +40,11 @@ import {
   riveDecodeWarning, riveMB, rivePlan, riveReverseIsCurrent,
 } from "./rive-plan.mjs";
 import { zipStore } from "./zip.mjs";
+import {
+  DEFAULT_OUTLINE_STRENGTH, DEFAULT_PALETTE_SIZE, MAX_PITCH, PIXEL_RECORD, applyPalette, blankImage,
+  buildSharedPalette, enforceOutline, hexColor, latticeCheck, latticeFrames, loadPalette, paste as pasteImage,
+  upscale, writePalette,
+} from "./pixel-lattice.mjs";
 
 const DEFAULT_THRESHOLD = 16;
 const DEFAULT_PAD = 8;
@@ -198,6 +206,19 @@ const CELLS_DIRNAME = "cells";
  *  actually used instead of guessing the cell edge. */
 const ALIGN_RECORD = "align.json";
 
+// --- pixel: generated pixel art snapped onto its lattice ---------------------
+/** `run --pixel` leaves the lattice frames here, between `cells/` and
+ *  `frames/`: what `align` re-reads when only the alignment is redone. */
+const PIXEL_DIRNAME = "pixel";
+/** The palette `run --pixel` pins in the motion directory. */
+const PALETTE_FILENAME = "palette.json";
+/** Largest whole-number upscale `pixel --scale` takes. */
+const MAX_PIXEL_SCALE = 16;
+/** A pinned palette whose nearest colour is further than this (RGB distance)
+ *  from one of this generation's colours was pinned for other art — a new
+ *  prop's colour, another character — and quietly recolours it. */
+const PALETTE_FAR = 48;
+
 // --- export / rive: a finished motion, handed over --------------------------
 /** What `export --format` makes, in the order the Export tab lists them. */
 const EXPORT_FORMATS = ["mp4", "mov", "webm", "apng", "lottie", "png-seq"];
@@ -222,6 +243,7 @@ const EXPORT_CODECS = { mp4: "h264", mov: "prores", webm: "vp9" };
 const SUBCOMMANDS = [
   "probe", "key", "flatten", "slice", "clean", "align", "pack", "gif",
   "inspect", "run", "contact", "from-video", "retime", "loop", "transition", "lineup", "export", "rive",
+  "pixel",
 ];
 
 const USAGE = `Usage: sprite-sheet.mjs <subcommand> [options]
@@ -266,6 +288,9 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       median is applied to y.
       Records the point and the x mode it used in <dir>/${ALIGN_RECORD}, so
       pack declares that pivot instead of assuming the cell edge.
+      Frames written by 'pixel' (a ${PIXEL_RECORD} next to them) are placed on
+      whole multiples of their scale N — offsets, pad and cell — so every
+      block stays on the cell's N-grid; the record travels into ${ALIGN_RECORD}.
 
   pack <framesDir> --out <sheet.png> --atlas <atlas.json> --name <motionId>
        --fps N [--loop] [--anchor bottom|center] [--cols C] [--scale 1] [--nearest]
@@ -285,14 +310,24 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       --cells points at the pre-align grid cells so "leaves its grid cell"
       can be judged on the raw crop rather than the padded frame; it defaults
       to <motionDir>/${CELLS_DIRNAME} when 'run' left that directory there.
+      Frames that went through 'pixel' also get pixel: { pitch, scale, held,
+      palette } — held is false (with a warning) when a frame has soft alpha,
+      a block off the N-grid, or a colour outside the pinned palette.
 
   run <sheet-raw> --rows R --cols C --out <motionDir> --name <motionId> --fps N
       [--alpha <png>] [--force] [--loop] [--anchor bottom|center]
       [--x-from feet|bbox|cell] [--key auto|#rrggbb|none] [--cell auto|WxH]
       [--pad ${DEFAULT_PAD}] [--smooth] [--scale 1] [--nearest] [--margin 0] [--gutter 0]
       [--width W] [--no-webp] [--threshold ${DEFAULT_THRESHOLD}]
+      [--pixel [--palette <file>] [--repalette] [--palette-size ${DEFAULT_PALETTE_SIZE}] [--pitch-hint N]
+               [--outline] [--outline-strength ${DEFAULT_OUTLINE_STRENGTH}] [--no-detail-bias]]
       probe -> key (only when the sheet is opaque) -> slice -> align -> pack
       -> gif (+webp) -> inspect. An outside sheet is copied in, never moved.
+      --pixel adds the 'pixel' step between the cells and align: the lattice
+      frames go to <motionDir>/${PIXEL_DIRNAME}/, the palette is pinned at
+      <motionDir>/${PALETTE_FILENAME} (or --palette), and --scale becomes the
+      whole-number upscale of the lattice (default 1: one pixel per logical
+      pixel) instead of the atlas resize.
       The pre-align cells are kept as <motionDir>/${CELLS_DIRNAME}/NN.png so the
       report can be reproduced and the alignment redone without re-slicing.
 
@@ -309,6 +344,32 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       remove-background.mjs) at any path: it is copied to
       <motionDir>/sheet-alpha.png and sliced instead of keying.
       Cleaning runs by default; --no-clean skips it.
+
+  pixel <framesDir> --out <dir> [--palette <file>] [--repalette]
+      [--palette-size ${DEFAULT_PALETTE_SIZE}] [--scale 1] [--pitch-hint N] [--outline]
+      [--outline-strength ${DEFAULT_OUTLINE_STRENGTH}] [--no-detail-bias] [--threshold ${DEFAULT_THRESHOLD}]
+      Snap generated pixel art onto the pixel grid it was drawn on. Per
+      frame: the pitch is measured on each axis (2-${MAX_PITCH} px, sub-pixel) on the
+      solid-alpha bbox; the frames' median is the consensus (collapsed
+      readings below 60% of the largest dropped); a frame keeps its own
+      pitch only within 10% of the consensus; the phase is the most uniform
+      of 8x8 offsets; each cut line moves onto the nearest colour boundary
+      (never closer than 0.6 pitch to the next); each block becomes one
+      logical pixel of its dominant colour (dark detail wins a close vote
+      unless --no-detail-bias), alpha 0 or 255.
+      One palette of at most --palette-size colours is built over all the
+      frames and PINNED to --palette (default <dir>/${PALETTE_FILENAME}): when that
+      file exists it is used as it is, so a re-run cannot move the colours
+      and a later motion passing the same file gets the same ones;
+      --repalette rebuilds it. --outline darkens every silhouette-edge pixel
+      to (1 - strength) of its colour.
+      Writes <dir>/NN.png — every frame on one canvas of logical pixels,
+      placed where it sat in its cell, upscaled by --scale N (whole number,
+      nearest) — and <dir>/${PIXEL_RECORD} (pitch per frame, consensus, palette).
+      'align' reads that record and places the frames on whole multiples of
+      N; 'inspect' then reports the pitch and whether the lattice held.
+      Refuses a directory with no pixel grid in any frame (pass
+      --pitch-hint N when the art is pixel art the detector cannot read).
 
   contact <clip> --out <png> [--count ${DEFAULT_CONTACT_COUNT} | --every s] [--cols ${DEFAULT_CONTACT_COLS}] [--width ${DEFAULT_CONTACT_WIDTH}]
       [--trim-start s] [--trim-end s] [--key auto|#rrggbb|none]
@@ -1090,6 +1151,195 @@ function stepClean(cellsDir, { out, threshold }) {
   return { inDir, outDir, threshold, frames, ...cleanSummary(stats) };
 }
 
+/**
+ * Snap a directory of frames (cells) onto their pixel lattice — see
+ * `pixel-lattice.mjs` for the method and its provenance.
+ *
+ * Every frame lands on ONE canvas of logical pixels, at the logical position
+ * it sat at in its cell (so `align --x-from cell` still means something), and
+ * is upscaled by the whole number `scale`. The palette is pinned: an existing
+ * `palette` file is used as it is and only `repalette` rebuilds it.
+ *
+ * `images` may be passed by a caller that already holds the decoded frames
+ * (`run`), in the order of the directory's frames. Returns the step's JSON plus
+ * `measures` of the written frames, for an `align` that follows.
+ */
+function stepPixel(framesDir, {
+  out, palette, repalette, paletteSize, scale, pitchHint, outline, outlineStrength, detailBias, threshold, images: given,
+}) {
+  const inDir = resolve(framesDir);
+  const outDir = resolve(out);
+  if (inDir === outDir) {
+    fail(`pixel: --out ${outDir} is the input directory — the frames there are what a re-run snaps again, so write the lattice frames somewhere else`);
+  }
+  const entries = listFrames(inDir);
+  const images = given ?? entries.map((entry) => readRgba(entry.path));
+  if (images.length !== entries.length) fail("internal: pixel image count does not match frame count");
+
+  const lattice = latticeFrames(images, { detailBias, pitchHint });
+  const { consensus } = lattice;
+  const warnings = [...lattice.warnings];
+  const unsnapped = lattice.frames.filter((f) => f.source === "none");
+  if (unsnapped.length || !lattice.frames.some((f) => f.logical)) {
+    const which = unsnapped.length ? unsnapped.map((f) => frameName(f.index).slice(0, -4)).join(", ") : "any";
+    fail(`pixel: no pixel grid found in ${which === "any" ? "any frame" : `frame(s) ${which}`} of ${inDir} (pitch 2-${MAX_PITCH} px on both axes) and no consensus to fall back on — this does not read as pixel art; if it is, pass --pitch-hint N (the block size in source pixels)`);
+  }
+
+  // One palette for every frame, pinned to disk. A file that is there wins
+  // over whatever these frames would build — that is what pinning means — and
+  // one that is there but unreadable stops the step rather than being
+  // silently replaced.
+  const paletteFile = resolve(palette);
+  let pinned = null;
+  if (!repalette) {
+    try {
+      pinned = loadPalette(paletteFile);
+    } catch (error) {
+      fail(`pixel: --palette ${error.message}`);
+    }
+  }
+  const logicals = lattice.frames.map((f) => f.logical).filter(Boolean);
+  const colors = pinned ? pinned.colors : buildSharedPalette(logicals, paletteSize);
+  if (!pinned) writePalette(paletteFile, colors, `built from ${logicals.length} frame(s) of ${inDir}`);
+  if (pinned) {
+    // How far this generation's colours sit from the pinned ones, before
+    // they are mapped: a large gap is a palette pinned for other art.
+    let far = 0;
+    const seen = new Set();
+    for (const image of logicals) {
+      const { data } = image;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i + 3] !== 255) continue;
+        const key = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
+        if (seen.has(key)) continue;
+        seen.add(key);
+        let best = Infinity;
+        for (const c of colors) best = Math.min(best, (c[0] - data[i]) ** 2 + (c[1] - data[i + 1]) ** 2 + (c[2] - data[i + 2]) ** 2);
+        if (Math.sqrt(best) > PALETTE_FAR) far++;
+      }
+    }
+    if (far) {
+      warnings.push(`${far} colour(s) of these frames are more than ${PALETTE_FAR} from every colour of the pinned palette ${paletteFile} — they are recoloured to the nearest one; --repalette rebuilds the palette from these frames`);
+    }
+  }
+  for (const image of logicals) {
+    applyPalette(image, colors);
+    if (outline) enforceOutline(image, outlineStrength);
+  }
+
+  // The canvas: every frame's logical sprite where it sat in its cell. The
+  // cell measured in logical pixels at the consensus pitch, grown to whatever
+  // a frame needs — a frame is never clipped to make the canvas tidy.
+  const cellW = Math.max(...images.map((image) => image.width));
+  const cellH = Math.max(...images.map((image) => image.height));
+  const placed = lattice.frames.map((f) => (f.logical
+    ? { x: Math.round(f.box.x / f.pitch.x), y: Math.round(f.box.y / f.pitch.y) }
+    : null));
+  let logicalW = Math.max(1, Math.round(cellW / consensus.x));
+  let logicalH = Math.max(1, Math.round(cellH / consensus.y));
+  for (const [i, f] of lattice.frames.entries()) {
+    if (!f.logical) continue;
+    logicalW = Math.max(logicalW, placed[i].x + f.logical.width);
+    logicalH = Math.max(logicalH, placed[i].y + f.logical.height);
+  }
+
+  resetFramesDir(outDir);
+  const frames = [];
+  const measures = [];
+  for (const [i, entry] of entries.entries()) {
+    const f = lattice.frames[i];
+    const canvas = blankImage(logicalW, logicalH);
+    if (f.logical) pasteImage(canvas, f.logical, placed[i].x, placed[i].y);
+    const image = upscale(canvas, scale);
+    const target = join(outDir, basename(entry.path));
+    writeRgbaPng(target, image, `pixel frame ${i}`);
+    frames.push(target);
+    measures.push(measureFrame(image, threshold));
+  }
+
+  const round3 = (v) => round(v, 3);
+  const pitchOf = (p) => (p ? { x: round3(p.x), y: round3(p.y) } : null);
+  const perFrame = lattice.frames.map((f, i) => ({
+    index: f.index,
+    source: f.source,
+    own: pitchOf(f.own && Math.min(f.own.x, f.own.y) >= 2 ? f.own : null),
+    pitch: pitchOf(f.pitch),
+    ...(f.logical ? { logical: { width: f.logical.width, height: f.logical.height }, at: placed[i] } : {}),
+  }));
+  const paletteReport = {
+    file: paletteFile,
+    colors: colors.length,
+    pinned: Boolean(pinned),
+  };
+  const record = writeJsonFile(join(outDir, PIXEL_RECORD), {
+    kind: "pneuma-sprite-pixel",
+    version: 1,
+    source: inDir,
+    scale,
+    pitch: pitchOf(consensus),
+    runlen: pitchOf(lattice.runlen),
+    logicalCell: { width: logicalW, height: logicalH },
+    cell: { width: logicalW * scale, height: logicalH * scale },
+    palette: paletteReport,
+    detailBias,
+    outline: outline ? outlineStrength : null,
+    frames: perFrame,
+    warnings,
+  });
+
+  return {
+    inDir,
+    outDir,
+    scale,
+    pitch: pitchOf(consensus),
+    logicalCell: { width: logicalW, height: logicalH },
+    cell: { width: logicalW * scale, height: logicalH * scale },
+    palette: paletteReport,
+    outline: outline ? outlineStrength : null,
+    frames,
+    perFrame,
+    record,
+    measures,
+    warnings,
+  };
+}
+
+/**
+ * The lattice facts `pixel` left next to these frames — its own record, or
+ * the copy `align` carried into its record — or null when these frames never
+ * went through `pixel`. As with the align record, absent is legitimate and
+ * malformed is an error.
+ */
+function readPixelRecord(framesDir) {
+  const path = join(resolve(framesDir), PIXEL_RECORD);
+  if (!existsSync(path)) return null;
+  let doc;
+  try {
+    doc = JSON.parse(readFileSync(path, "utf-8"));
+  } catch (error) {
+    fail(`${path} is not valid JSON (${error.message}) — delete it or re-run pixel`);
+  }
+  return pixelFacts(doc, path);
+}
+
+/** The part of a pixel record `align` and `inspect` rely on, validated. */
+function pixelFacts(doc, where) {
+  const finite = (v) => typeof v === "number" && Number.isFinite(v);
+  const ok = doc && Number.isInteger(doc.scale) && doc.scale >= 1
+    && finite(doc.pitch?.x) && finite(doc.pitch?.y);
+  if (!ok) fail(`${where} is not a pixel record (needs a whole-number scale and a pitch) — delete it or re-run pixel`);
+  // `pixel.json` carries the palette as { file, … }; the copy in align.json
+  // is these facts themselves, palette as a path. Both read the same.
+  const palette = typeof doc.palette === "string" ? doc.palette
+    : typeof doc.palette?.file === "string" ? doc.palette.file : null;
+  return {
+    scale: doc.scale,
+    pitch: { x: doc.pitch.x, y: doc.pitch.y },
+    palette,
+    outline: finite(doc.outline) ? doc.outline : null,
+  };
+}
+
 function parseCell(value) {
   if (!value || value === "auto") return null;
   const m = /^(\d+)x(\d+)$/.exec(String(value).trim());
@@ -1139,8 +1389,18 @@ function median3(values, i) {
  * cell. `measures` may be supplied by a caller that already decoded the source
  * (see `run`), which saves one decode per frame.
  */
-function stepAlign(framesDir, { out, anchor, cell, pad, smooth, threshold, xFrom, measures: given, sourceCell }) {
+function stepAlign(framesDir, { out, anchor, cell, pad: askedPad, smooth, threshold, xFrom, measures: given, sourceCell }) {
   const entries = listFrames(resolve(framesDir));
+  // Frames `pixel` wrote are N x N blocks of logical pixels. Every offset,
+  // the pad and the cell are then whole multiples of N, so a block never
+  // straddles the cell's N-grid and the atlas divides back to logical pixels
+  // exactly. N = 1 is the plain case and changes nothing.
+  const pixel = readPixelRecord(framesDir);
+  const grid = pixel ? pixel.scale : 1;
+  const pad = Math.ceil(askedPad / grid) * grid;
+  if (cell && grid > 1 && (cell.width % grid || cell.height % grid)) {
+    fail(`--cell ${cell.width}x${cell.height}: these frames are pixel art at ${grid}x (${PIXEL_RECORD}), so the cell must be a multiple of ${grid} on both sides`);
+  }
   const measures = given ?? entries.map((entry) => measureFrame(readRgba(entry.path), threshold));
   if (measures.length !== entries.length) fail("internal: measurement count does not match frame count");
   const bboxes = measures.map((m) => m.bbox);
@@ -1194,7 +1454,10 @@ function stepAlign(framesDir, { out, anchor, cell, pad, smooth, threshold, xFrom
   // cell by however lopsided the pose is around the feet.
   let cellSize = cell;
   if (!cellSize) {
-    const even = (n) => (n % 2 ? n + 1 : n);
+    // Even, so the anchor sits on a whole pixel in the middle — and for pixel
+    // frames also a multiple of the block, so it sits on a block boundary.
+    const unit = grid % 2 ? 2 * grid : grid;
+    const even = (n) => Math.ceil(n / unit) * unit;
     const reach = bboxes.map((b, i) => (b
       ? Math.max(targetsX[i] - b.x, b.x + b.w - targetsX[i])
       : 0));
@@ -1247,8 +1510,8 @@ function stepAlign(framesDir, { out, anchor, cell, pad, smooth, threshold, xFrom
     // Where the anchor sits inside the crop, after optional smoothing.
     const localX = targetsX[i] - box.x;
     const localY = (anchor === "center" ? targetsY[i] : anchorOf(box, anchor).y) - box.y;
-    let offsetX = Math.round(target.x - localX);
-    let offsetY = Math.round(target.y - localY);
+    let offsetX = grid * Math.round((target.x - localX) / grid);
+    let offsetY = grid * Math.round((target.y - localY) / grid);
     const clampedX = Math.min(Math.max(offsetX, 0), cellSize.width - box.w);
     const clampedY = Math.min(Math.max(offsetY, 0), cellSize.height - box.h);
     if (clampedX !== offsetX || clampedY !== offsetY) clamped.push(i);
@@ -1291,6 +1554,9 @@ function stepAlign(framesDir, { out, anchor, cell, pad, smooth, threshold, xFrom
     // next person asking "why does the body sit off-centre" does, and so does
     // anyone re-running align from the same cells.
     xFrom: xMode,
+    // The lattice these frames carry, travelling with them so `inspect` can
+    // check it held without knowing where `pixel` wrote.
+    ...(pixel ? { pixel } : {}),
   });
 
   return {
@@ -1298,6 +1564,7 @@ function stepAlign(framesDir, { out, anchor, cell, pad, smooth, threshold, xFrom
     outDir: dir,
     anchor, pad, smooth,
     xFrom: xMode,
+    ...(pixel ? { pixel } : {}),
     cell: cellSize,
     anchorPoint: { x: target.x, y: target.y },
     alignRecord: record,
@@ -1368,6 +1635,7 @@ function readAlignRecord(framesDir) {
     anchor: doc.anchor,
     cell: { width: doc.cell.width, height: doc.cell.height },
     anchorPoint: { x: doc.anchorPoint.x, y: doc.anchorPoint.y },
+    ...(doc.pixel ? { pixel: pixelFacts(doc.pixel, `${path} (pixel)`) } : {}),
   };
 }
 
@@ -1613,12 +1881,26 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
   // instead of quietly judging it on the padded frames.
   const cells = cellsDir ?? (existsSync(join(dir, CELLS_DIRNAME)) ? join(dir, CELLS_DIRNAME) : null);
 
+  // Frames that went through `pixel` are checked against their lattice in the
+  // same decode: binary alpha, every block one colour on the N-grid, every
+  // colour a palette colour (unless --outline darkened the edge on purpose).
+  const pixel = readAlignRecord(framesDir)?.pixel ?? readPixelRecord(framesDir);
+  let paletteColors = null;
+  if (pixel?.palette && pixel.outline === null) {
+    try {
+      paletteColors = loadPalette(pixel.palette)?.colors ?? null;
+    } catch (error) {
+      fail(`inspect: ${error.message}`);
+    }
+  }
+
   const measured = entries.map((entry) => {
     const image = readRgba(entry.path);
     return {
       index: entry.index, path: entry.path,
       width: image.width, height: image.height,
       ...measureFrame(image, threshold),
+      ...(pixel ? { lattice: latticeCheck(image, pixel.scale, paletteColors) } : {}),
     };
   });
 
@@ -1698,6 +1980,35 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
   }
   warnings.push(...listAndTruncate(clipped, (i) => `cell ${pad(i)} is clipped — the drawing leaves its grid cell`));
 
+  let pixelSummary = null;
+  if (pixel) {
+    const framesWith = (key) => measured.filter((f) => f.lattice[key] > 0).map((f) => f.index);
+    const softAlphaFrames = framesWith("softAlpha");
+    const offGridFrames = framesWith("offGrid");
+    const offPaletteFrames = paletteColors ? framesWith("offPalette") : [];
+    const held = !softAlphaFrames.length && !offGridFrames.length && !offPaletteFrames.length;
+    const list = (indices) => indices.slice(0, MAX_LISTED).map(pad).join(", ") + (indices.length > MAX_LISTED ? ", …" : "");
+    if (softAlphaFrames.length) {
+      warnings.push(`pixel lattice broken: frame(s) ${list(softAlphaFrames)} have soft alpha — they were not made by pixel, or were resampled after it`);
+    }
+    if (offGridFrames.length) {
+      warnings.push(`pixel lattice broken: frame(s) ${list(offGridFrames)} have blocks off the ${pixel.scale}x grid — re-align from the ${PIXEL_DIRNAME}/ frames, not from ${CELLS_DIRNAME}/`);
+    }
+    if (offPaletteFrames.length) {
+      warnings.push(`pixel lattice broken: frame(s) ${list(offPaletteFrames)} use colours outside the palette ${pixel.palette} — was it rebuilt after these frames were made?`);
+    }
+    pixelSummary = {
+      pitch: pixel.pitch,
+      scale: pixel.scale,
+      held,
+      palette: pixel.palette,
+      paletteChecked: Boolean(paletteColors),
+      ...(softAlphaFrames.length ? { softAlphaFrames } : {}),
+      ...(offGridFrames.length ? { offGridFrames } : {}),
+      ...(offPaletteFrames.length ? { offPaletteFrames } : {}),
+    };
+  }
+
   // The point `align` put the anchor on, when these very frames carry it: the
   // viewer draws its pivot guide there, and the atlas declares the same point.
   // It belongs to the SUMMARY, not just the fat report: `run` embeds the
@@ -1720,6 +2031,9 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
     scaleDrift,
     emptyFrames,
     warnings,
+    // Present only for frames that went through `pixel`: the pitch it found
+    // and whether the lattice survived everything after it.
+    ...(pixelSummary ? { pixel: pixelSummary } : {}),
   };
 
   const report = {
@@ -1823,9 +2137,11 @@ function resolveRunSheets(input, motionDir, { alpha, force }) {
  * `warnings` is the caller's list, appended to in the order the steps ran —
  * inspect's are added last and only when they are not already there.
  */
-function finishMotion(motionDir, cellsDir, options, { measures, sourceCell, warnings }) {
+function finishMotion(motionDir, cellsDir, options, { measures, sourceCell, warnings, lattice = null }) {
   const framesDir = join(motionDir, "frames");
-  const aligned = stepAlign(cellsDir, {
+  // With a lattice step in between, align reads ITS frames (and the pixel
+  // record next to them); the clipping verdict below stays on the raw cells.
+  const aligned = stepAlign(lattice ? lattice.outDir : cellsDir, {
     out: framesDir,
     anchor: options.anchor,
     cell: options.cell,
@@ -1833,8 +2149,8 @@ function finishMotion(motionDir, cellsDir, options, { measures, sourceCell, warn
     smooth: options.smooth,
     threshold: options.threshold,
     xFrom: options.xFrom,
-    measures,
-    sourceCell,
+    measures: lattice ? lattice.measures : measures,
+    sourceCell: lattice ? lattice.cell : sourceCell,
   });
   warnings.push(...aligned.warnings);
 
@@ -1846,7 +2162,9 @@ function finishMotion(motionDir, cellsDir, options, { measures, sourceCell, warn
     loop: options.loop,
     anchor: options.anchor,
     cols: options.cols,
-    scale: options.scale,
+    // A lattice already applied the whole-number scale; resampling the atlas
+    // again could only take it off the grid.
+    scale: lattice ? 1 : options.scale,
     nearest: options.nearest,
   });
 
@@ -1927,6 +2245,7 @@ function stepRun(sheetRaw, options) {
   const sheetImage = readRgba(source);
   const cleanStats = [];
   const measures = [];
+  const cellImages = [];
   for (const cell of sliced.cells) {
     const image = {
       width: sliced.cell.width,
@@ -1941,12 +2260,36 @@ function stepRun(sheetRaw, options) {
       }
     }
     measures.push(measureFrame(image, options.threshold));
+    cellImages.push(image);
   }
   const cleaned = options.clean ? cleanSummary(cleanStats) : null;
   if (cleaned) warnings.push(...cleaned.warnings);
 
+  // Pixel art: snap the cleaned cells onto their lattice before anything
+  // places them. The cells stay what they are — the source a re-run snaps.
+  let lattice = null;
+  if (options.pixel) {
+    lattice = stepPixel(cellsDir, {
+      out: join(motionDir, PIXEL_DIRNAME),
+      palette: options.palette ?? join(motionDir, PALETTE_FILENAME),
+      repalette: options.repalette,
+      paletteSize: options.paletteSize,
+      scale: options.scale,
+      pitchHint: options.pitchHint,
+      outline: options.outline,
+      outlineStrength: options.outlineStrength,
+      detailBias: options.detailBias,
+      threshold: options.threshold,
+      images: cellImages,
+    });
+    warnings.push(...lattice.warnings);
+  } else {
+    const hint = pixelStyleHint(motionDir);
+    if (hint) warnings.push(hint);
+  }
+
   const { aligned, packed, preview, summary } = finishMotion(motionDir, cellsDir, options, {
-    measures, sourceCell: sliced.cell, warnings,
+    measures, sourceCell: sliced.cell, warnings, lattice,
   });
 
   return {
@@ -1972,8 +2315,40 @@ function stepRun(sheetRaw, options) {
     anchor: options.anchor,
     xFrom: aligned.xFrom,
     scale: options.scale,
+    ...(lattice ? {
+      pixel: {
+        dir: lattice.outDir,
+        scale: lattice.scale,
+        pitch: lattice.pitch,
+        logicalCell: lattice.logicalCell,
+        palette: lattice.palette,
+        outline: lattice.outline,
+        record: lattice.record,
+      },
+    } : {}),
     warnings,
   };
+}
+
+/**
+ * A sentence for a `run` without `--pixel` on a character whose style says
+ * pixel art (the reading `rive --filter auto` uses), or null. Read only: the
+ * character is `<motionDir>/../..` when the motion sits in `motions/`, and a
+ * project.json that is missing or unreadable is simply no hint — this is a
+ * suggestion, and `register-run` is where a broken project.json is reported.
+ */
+function pixelStyleHint(motionDir) {
+  if (basename(dirname(motionDir)) !== "motions") return null;
+  const path = join(dirname(dirname(motionDir)), "project.json");
+  if (!existsSync(path)) return null;
+  let style;
+  try {
+    style = String(JSON.parse(readFileSync(path, "utf-8"))?.sprite?.character?.style ?? "");
+  } catch {
+    return null;
+  }
+  if (!RIVE_PIXEL_ART_STYLE.test(style)) return null;
+  return `character.style says pixel art ("${style}") — run --pixel snaps the frames onto their pixel lattice (one pixel per block, binary alpha, one pinned palette); this run kept the drawn edges as they are`;
 }
 
 /** Seconds of playable video, straight out of the container. */
@@ -5275,6 +5650,16 @@ function stepRive(characterDir, { images: askedImages = null, motions: named, in
 
 const COMMON = { json: { type: "boolean", default: false }, help: { type: "boolean", short: "h", default: false } };
 
+/** The lattice flags `pixel` and `run --pixel` share. */
+function pixelOptions() {
+  return {
+    palette: { type: "string" }, repalette: { type: "boolean", default: false },
+    "palette-size": { type: "string" }, "pitch-hint": { type: "string" },
+    outline: { type: "boolean", default: false }, "outline-strength": { type: "string" },
+    "no-detail-bias": { type: "boolean", default: false },
+  };
+}
+
 const OPTIONS = {
   probe: { threshold: { type: "string" } },
   key: {
@@ -5314,6 +5699,12 @@ const OPTIONS = {
     "no-webp": { type: "boolean", default: false }, threshold: { type: "string" },
     similarity: { type: "string" }, blend: { type: "string" },
     "no-clean": { type: "boolean", default: false },
+    pixel: { type: "boolean", default: false },
+    ...pixelOptions(),
+  },
+  pixel: {
+    out: { type: "string" }, scale: { type: "string" }, threshold: { type: "string" },
+    ...pixelOptions(),
   },
   contact: {
     out: { type: "string" }, count: { type: "string" }, every: { type: "string" },
@@ -5368,6 +5759,39 @@ const OPTIONS = {
     fps: { type: "string" }, "max-size": { type: "string" }, filter: { type: "string" }, hub: { type: "string" },
   },
 };
+
+/** The lattice flags, parsed once for `pixel` and `run --pixel`. `--scale`
+ *  there is a whole-number upscale: pixel art is never resampled by a
+ *  fraction. `--outline-strength` alone turns the outline on. */
+function pickPixelOptions(values) {
+  const scale = num(values.scale, "--scale", { min: 1, fallback: 1 });
+  if (!Number.isInteger(scale) || scale > MAX_PIXEL_SCALE) {
+    fail(`--scale: pixel art scales by a whole number from 1 to ${MAX_PIXEL_SCALE}, got '${values.scale}'`);
+  }
+  const outlineStrength = num(values["outline-strength"], "--outline-strength", { min: 0, fallback: DEFAULT_OUTLINE_STRENGTH });
+  if (outlineStrength > 1) fail(`--outline-strength: expected a number from 0 to 1, got '${values["outline-strength"]}'`);
+  const paletteSize = num(values["palette-size"], "--palette-size", { integer: true, min: 2, fallback: DEFAULT_PALETTE_SIZE });
+  if (paletteSize > 256) fail(`--palette-size: expected at most 256 colours, got ${paletteSize}`);
+  return {
+    scale,
+    palette: values.palette ?? null,
+    repalette: values.repalette,
+    paletteSize,
+    pitchHint: values["pitch-hint"] === undefined ? null : num(values["pitch-hint"], "--pitch-hint", { min: 2 }),
+    outline: values.outline || values["outline-strength"] !== undefined,
+    outlineStrength,
+    detailBias: !values["no-detail-bias"],
+  };
+}
+
+/** One line per pixel step, for the human output. */
+function pixelLines(out) {
+  const own = out.perFrame.filter((f) => f.source === "own").length;
+  return [
+    `pixel: ${out.frames.length} frames at pitch ${out.pitch.x}x${out.pitch.y} (${own} on their own pitch) → ${out.logicalCell.width}x${out.logicalCell.height} logical px x${out.scale} → ${out.outDir}`,
+    `palette: ${out.palette.colors} colours ${out.palette.pinned ? "from the pinned" : "built and pinned to"} ${out.palette.file}`,
+  ];
+}
 
 /** `--seam-fill auto|none|<N>` — "auto", "none", or how many in-betweens. */
 function pickSeamFill(value) {
@@ -5633,13 +6057,30 @@ function main() {
       });
       emit(values, report, [
         `${report.frameCount} frames of ${report.cell.width}x${report.cell.height}, anchor drift ${report.anchorDrift.x}/${report.anchorDrift.y}px, body drift ${report.bodyDrift}px, max jump ${report.maxJump}px, scale drift ${report.scaleDrift}`,
+        ...(report.pixel ? [`pixel art at pitch ${report.pixel.pitch.x}x${report.pixel.pitch.y}, ${report.pixel.scale}x — lattice ${report.pixel.held ? "held" : "broken"}`] : []),
         ...(report.warnings.length ? report.warnings : ["no warnings"]),
       ]);
+      break;
+    }
+    case "pixel": {
+      const outDir = requireFlag(values.out, "--out");
+      const picked = pickPixelOptions(values);
+      const { measures, ...out } = stepPixel(requirePositional(positionals, "<framesDir>"), {
+        ...picked,
+        out: outDir,
+        palette: picked.palette ?? join(resolve(outDir), PALETTE_FILENAME),
+        threshold,
+      });
+      emit(values, out, [...pixelLines(out), ...(out.warnings.length ? out.warnings : ["no warnings"])]);
       break;
     }
     case "run": {
       const key = values.key ?? "auto";
       if (key !== "auto" && key !== "none") normalizeColor(key, "--key");
+      const latticeFlags = ["palette", "repalette", "palette-size", "pitch-hint", "outline", "outline-strength", "no-detail-bias"]
+        .filter((flag) => values[flag] !== undefined && values[flag] !== false);
+      if (!values.pixel && latticeFlags.length) fail(`--${latticeFlags[0]} belongs to the pixel lattice — add --pixel`);
+      const picked = values.pixel ? pickPixelOptions(values) : null;
       const out = stepRun(requirePositional(positionals, "<sheet-raw>"), {
         rows: num(requireFlag(values.rows, "--rows"), "--rows", { integer: true, min: 1 }),
         cols: num(requireFlag(values.cols, "--cols"), "--cols", { integer: true, min: 1 }),
@@ -5655,7 +6096,7 @@ function main() {
         cell: parseCell(values.cell),
         pad: num(values.pad, "--pad", { integer: true, min: 0, fallback: DEFAULT_PAD }),
         smooth: values.smooth,
-        scale: num(values.scale, "--scale", { min: 0.01, fallback: 1 }),
+        scale: picked ? picked.scale : num(values.scale, "--scale", { min: 0.01, fallback: 1 }),
         nearest: values.nearest,
         margin: num(values.margin, "--margin", { integer: true, min: 0, fallback: 0 }),
         gutter: num(values.gutter, "--gutter", { integer: true, min: 0, fallback: 0 }),
@@ -5665,9 +6106,17 @@ function main() {
         similarity: num(values.similarity, "--similarity", { min: 0, fallback: DEFAULT_SIMILARITY }),
         blend: num(values.blend, "--blend", { min: 0, fallback: DEFAULT_BLEND }),
         clean: !values["no-clean"],
+        pixel: values.pixel,
+        // The lattice flags; `palette` stays null unless named, and `run`
+        // then pins <motionDir>/palette.json.
+        ...(picked ?? {}),
       });
+      const pixelLine = out.pixel
+        ? [`pixel: pitch ${out.pixel.pitch.x}x${out.pixel.pitch.y}, ${out.pixel.logicalCell.width}x${out.pixel.logicalCell.height} logical px x${out.pixel.scale}, ${out.pixel.palette.colors} colours (${out.pixel.palette.pinned ? "pinned" : "built"}: ${out.pixel.palette.file})${out.inspect.pixel ? ` — lattice ${out.inspect.pixel.held ? "held" : "BROKEN"}` : ""}`]
+        : [];
       emit(values, out, [
         `${out.name}: ${out.frames.length} frames of ${out.cell.width}x${out.cell.height} → ${out.motionDir}`,
+        ...pixelLine,
         ...(out.warnings.length ? out.warnings : ["no warnings"]),
       ]);
       break;
