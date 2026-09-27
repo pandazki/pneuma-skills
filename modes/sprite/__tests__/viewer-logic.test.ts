@@ -1962,6 +1962,58 @@ describe("the Export tab", () => {
     expect(one.message.split("\n")[1]).toBe("command: export · character: mini · motion: bounce · format: aseprite");
   });
 
+  test("a pixel-art character's colourways are downloads beside the sheet, one row each, in the character's order", () => {
+    const withColourways = (edit?: (b: any) => void) => mutate((b) => {
+      b.sprite.character.pixel = {
+        logicalHeight: 32,
+        palette: "mini-palette",
+        variants: [
+          { name: "red-team", map: { "#3050a0": "#a03030" } },
+          { name: "blue-team", map: { "#a03030": "#3050a0" } },
+        ],
+      };
+      // Registered out of the character's order; listed in it.
+      b.sprite.motions[0].variants = {
+        "blue-team": { sheet: "bounce-variant-blue-team-sheet", atlas: "bounce-variant-blue-team-atlas", gif: "bounce-variant-blue-team-gif" },
+        "red-team": { sheet: "bounce-variant-red-team-sheet", atlas: "bounce-variant-red-team-atlas", gif: "bounce-variant-red-team-gif" },
+      };
+      for (const name of ["red-team", "blue-team"]) {
+        for (const [part, file, type] of [["sheet", "sheet.png", "image"], ["atlas", "atlas.json", "text"], ["gif", "preview.gif", "image"]]) {
+          b.assets.push({ id: `bounce-variant-${name}-${part}`, type, uri: `motions/bounce/variants/${name}/${file}`, name: "", metadata: { size: 1_000 }, createdAt: 90, status: "ready" });
+        }
+      }
+      edit?.(b);
+    });
+    const p = withColourways();
+    const rows = exportRows(p, motionOf(p), editing);
+    const colourways = rows.filter((r) => r.format === "colourway");
+    expect(colourways.map((r) => [r.family, r.variant, r.builtIn, r.canGenerate])).toEqual([
+      ["frames", "red-team", true, false],
+      ["frames", "blue-team", true, false],
+    ]);
+    expect(colourways[0].state).toMatchObject({
+      kind: "ready",
+      files: [{ name: "sheet.png", uri: "motions/bounce/variants/red-team/sheet.png" }, { name: "atlas.json" }, { name: "preview.gif" }],
+    });
+    // After the sheet and its Aseprite twin, before the whole character.
+    const formats = rows.map((r) => r.format);
+    expect(formats.indexOf("colourway")).toBe(formats.indexOf("aseprite") + 1);
+    // Each row is its own request key, so the list renders with unique keys.
+    expect(new Set(colourways.map((r) => r.key)).size).toBe(2);
+    // A download, so the hosted player lists them too.
+    const viewing = exportRows(p, motionOf(p), { canRequest: false, requests: new Map() });
+    expect(viewing.filter((r) => r.format === "colourway").map((r) => r.variant)).toEqual(["red-team", "blue-team"]);
+
+    // Files not there (a re-run retired them), or a name the character no
+    // longer records, are no row: nothing here can make one.
+    const retired = withColourways((b) => {
+      delete b.sprite.motions[0].variants["blue-team"];
+      b.assets = b.assets.filter((a: { id: string }) => a.id !== "bounce-variant-red-team-atlas");
+      b.sprite.character.pixel.variants = b.sprite.character.pixel.variants.filter((v: { name: string }) => v.name !== "red-team");
+    });
+    expect(exportRows(retired, motionOf(retired), editing).some((r) => r.format === "colourway")).toBe(false);
+  });
+
   test("a viewing-only session shows only what can be downloaded", () => {
     const p = mutate((b) => addRiv(b, ["bounce"]));
     const rows = exportRows(p, motionOf(p), { canRequest: false, requests: new Map() });

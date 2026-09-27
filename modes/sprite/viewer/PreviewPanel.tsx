@@ -661,9 +661,10 @@ function ExportRowView({
       <div className="flex items-baseline gap-2">
         <span
           className={`text-[12px] ${offered ? "text-cc-fg" : "text-cc-muted"}`}
-          title={row.builtIn ? t.exportBuiltInTitle : undefined}
+          title={row.builtIn && !row.variant ? t.exportBuiltInTitle : undefined}
         >
           {t.exportFormatName[row.format]}
+          {row.variant ? <span className="font-mono text-cc-muted"> · {row.variant}</span> : null}
         </span>
         <span className="min-w-0 flex-1 truncate text-[11px] text-cc-muted" title={t.exportPurpose(row.format, { motions, transitions })}>
           {t.exportPurpose(row.format, { motions, transitions })}

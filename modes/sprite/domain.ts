@@ -32,6 +32,7 @@
  */
 
 import type { ViewerFileContent } from "../../core/types/viewer-contract.js";
+import { RecolorError, checkVariant, variantNameProblem } from "./skill/scripts/recolor.mjs";
 
 // ── Craft-owned shapes (mirrors modes/clipcraft/persistence.ts) ─────────────
 
@@ -119,6 +120,34 @@ export interface PixelSpec {
   palette?: string;
   /** The palette size asked for, then the size it was pinned with. */
   colors?: number;
+  /** The character's colourways, recorded by `register-recolor`; absent
+   *  until one is. See `PixelVariant`. */
+  variants?: PixelVariant[];
+}
+
+/**
+ * One colourway of a pixel-art character — "red-team": a map from some of
+ * its pinned palette's colours to others, baked into new files by
+ * `sprite-sheet.mjs recolor`. Recorded once, here; each motion names the
+ * files its bake left (`Motion.variants`). The rules (a slug name, `#rrggbb`
+ * colours, a tolerance of 1–255 or none for exact) are `recolor.mjs`'s —
+ * the writer checks with them and this loader drops what fails them.
+ */
+export interface PixelVariant {
+  name: string;
+  /** Source `#rrggbb` → target, in the order a tolerance tie goes by. */
+  map: Record<string, string>;
+  /** Absent: exact. Else a pixel within this Chebyshev distance of a source
+   *  takes the nearest source's target. */
+  tolerance?: number;
+}
+
+/** A motion's files for one colourway, as asset ids
+ *  (`<motion>-variant-<name>-sheet|atlas|gif`). */
+export interface MotionVariantFiles {
+  sheet: string;
+  atlas: string;
+  gif?: string;
 }
 
 export interface SpriteCharacter {
@@ -561,6 +590,9 @@ export interface Motion {
   /** Exports by format: a loop's own APNG / WebM / Lottie, and any format
    *  exported on demand. See `MotionExports`. */
   exports?: MotionExports;
+  /** Sprite motions of a pixel-art character: each colourway's baked files,
+   *  by colourway name (`PixelSpec.variants`). */
+  variants?: Record<string, MotionVariantFiles>;
   videos: MotionVideo[];
   inspect?: InspectSummary;
   /** Loop motions cut before `loop` recorded their crop: see `LoopClip`. */
@@ -933,11 +965,46 @@ function parsePixel(value: unknown): PixelSpec | undefined {
   if (logicalHeight === undefined) return undefined;
   const palette = optionalStr(value.palette);
   const colors = positiveInteger(value.colors);
+  const variants = parsePixelVariants(value.variants);
   return {
     logicalHeight,
     ...(palette ? { palette } : {}),
     ...(colors === undefined ? {} : { colors }),
+    ...(variants ? { variants } : {}),
   };
+}
+
+/** The colourways that pass `recolor.mjs`'s rules, first of a name kept; an
+ *  empty list is no list. */
+function parsePixelVariants(value: unknown): PixelVariant[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const variants: PixelVariant[] = [];
+  for (const raw of value) {
+    let variant: PixelVariant;
+    try {
+      variant = checkVariant(raw);
+    } catch (error) {
+      if (error instanceof RecolorError) continue;
+      throw error;
+    }
+    if (!variants.some((v) => v.name === variant.name)) variants.push(variant);
+  }
+  return variants.length ? variants : undefined;
+}
+
+/** A motion's colourway files: an entry needs a colourway name and its sheet
+ *  and atlas ids; the preview is optional. An empty record is no record. */
+function parseMotionVariants(value: unknown): Record<string, MotionVariantFiles> | undefined {
+  if (!isRecord(value)) return undefined;
+  const variants: Record<string, MotionVariantFiles> = {};
+  for (const [name, files] of Object.entries(value)) {
+    if (variantNameProblem(name) || !isRecord(files)) continue;
+    const sheet = optionalStr(files.sheet);
+    const atlas = optionalStr(files.atlas);
+    const gif = optionalStr(files.gif);
+    if (sheet && atlas) variants[name] = { sheet, atlas, ...(gif ? { gif } : {}) };
+  }
+  return Object.keys(variants).length ? variants : undefined;
 }
 
 /** The anatomy a breathe used, whole, or undefined. */
@@ -1038,6 +1105,9 @@ function parseMotion(value: unknown): Motion | null {
   const breathe = source === "breathe" ? parseBreathe(value.breathe) : undefined;
   const direction = member(DIRECTIONS, value.direction);
   const promptParts = parsePromptParts(value.promptParts);
+  // Colourways are baked from a sprite motion's packed frames; a loop or a
+  // transition has none.
+  const variants = kind ? undefined : parseMotionVariants(value.variants);
   return {
     id,
     label: str(value.label, id),
@@ -1079,6 +1149,7 @@ function parseMotion(value: unknown): Motion | null {
     ...(optionalStr(value.gif) ? { gif: value.gif as string } : {}),
     ...(optionalStr(value.webp) ? { webp: value.webp as string } : {}),
     ...(exports ? { exports } : {}),
+    ...(variants ? { variants } : {}),
     videos: arr(value.videos)
       .map((v): MotionVideo | null => {
         if (!isRecord(v)) return null;

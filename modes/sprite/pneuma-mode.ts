@@ -97,6 +97,8 @@ function describeMotion(
     );
   }
   lines.push(`Frames: ${motion.frames.length}`);
+  // Its baked colourways — what the Export tab offers besides the motion's own files.
+  if (motion.variants) lines.push(`Colourways: ${Object.keys(motion.variants).join(", ")}`);
   // The size the user is looking at. The header says declared → measured, and
   // an agent that only knew the declared cell answered "256" to somebody
   // reading "186×252" off the same screen.
@@ -142,6 +144,16 @@ function describeCharacter(project: CharacterProject, lines: string[]): void {
   // What the user is making, so a later session does not ask again.
   if (character.purpose) lines.push(`Purpose: ${character.purpose}`);
   if (character.style) lines.push(`Style: ${character.style}`);
+  // Pixel art is a promise every later motion is held to: its height, its
+  // one palette, and the colourways baked from it.
+  if (character.pixel) {
+    const { logicalHeight, palette, variants } = character.pixel;
+    lines.push(
+      `Pixel art: ${logicalHeight} logical px tall · palette ${palette ? "pinned" : "not pinned yet"}${
+        variants ? ` · colourways: ${variants.map((v) => v.name).join(", ")}` : ""
+      }`,
+    );
+  }
   if (refs.length > 0) {
     lines.push(
       `Refs: ${refs

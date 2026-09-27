@@ -253,6 +253,36 @@ describe("extractContext — routes, directions, breathe and mirror", () => {
   });
 });
 
+describe("extractContext — pixel art and its colourways", () => {
+  function pixel(edit?: (body: any) => void): ViewerFileContent[] {
+    const body = JSON.parse(withWalk());
+    body.sprite.character.pixel = {
+      logicalHeight: 53, palette: "mini-palette", colors: 48,
+      variants: [{ name: "red-team", map: { "#1954bf": "#bf191f" } }, { name: "blue-team", map: { "#dc2224": "#2263dc" } }],
+    };
+    body.sprite.motions[0].variants = { "red-team": { sheet: "a", atlas: "b", gif: "c" } };
+    edit?.(body);
+    return files({ "mini/project.json": JSON.stringify(body) });
+  }
+
+  test("the overview says pixel art, its height, its palette and its colourways in one line", () => {
+    const context = extractSpriteContext(null, pixel());
+    expect(context).toContain("Pixel art: 53 logical px tall · palette pinned · colourways: red-team, blue-team");
+    expect(extractSpriteContext(null, pixel((b) => {
+      b.sprite.character.pixel = { logicalHeight: 32 };
+    }))).toContain("Pixel art: 32 logical px tall · palette not pinned yet\n");
+    expect(extractSpriteContext(null, files({ "mini/project.json": withWalk() }))).not.toContain("Pixel art:");
+  });
+
+  test("a motion names the colourways it was baked in", () => {
+    const motionId = JSON.parse(withWalk()).sprite.motions[0].id;
+    expect(extractSpriteContext({ address: { contentSet: "mini", motion: motionId } } as never, pixel())).toContain("Colourways: red-team");
+    expect(extractSpriteContext({ address: { contentSet: "mini", motion: motionId } } as never, pixel((b) => {
+      delete b.sprite.motions[0].variants;
+    }))).not.toContain("Colourways:");
+  });
+});
+
 describe("selectCharacter", () => {
   const roster = {
     byContentSet: {

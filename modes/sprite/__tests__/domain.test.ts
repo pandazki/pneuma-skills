@@ -848,7 +848,7 @@ describe("0.5.0 sidecar additions", () => {
     join(import.meta.dir, "..", "seed", "lumi", "project.json"),
     "utf-8",
   );
-  const NEW_MOTION_KEYS = ["direction", "promptParts", "mirrorOf", "breathe"];
+  const NEW_MOTION_KEYS = ["direction", "promptParts", "mirrorOf", "breathe", "variants"];
 
   /** The mini fixture with its sidecar edited through JSON, then parsed. */
   const parsed = (edit: (body: any) => void) => {
@@ -897,6 +897,48 @@ describe("0.5.0 sidecar additions", () => {
     expect(parsed((b) => { b.sprite.character.pixel = { logicalHeight: 48, palette: "", colors: -4 }; }).sprite.character.pixel)
       .toEqual({ logicalHeight: 48 });
     expect("asymmetric" in parsed((b) => { b.sprite.character.asymmetric = "   "; }).sprite.character).toBe(false);
+  });
+
+  test("colourways load by recolor.mjs's own rules, and a motion's files only on a sprite motion", () => {
+    const project = parsed((b) => {
+      b.sprite.character.pixel = {
+        logicalHeight: 32,
+        palette: "mini-palette",
+        variants: [
+          { name: "red-team", map: { "#3050A0": "#A03030" } },
+          { name: "near", map: { "#102030": "#302010" }, tolerance: 6 },
+          // Each of these fails a rule the writer checks with, and is dropped alone.
+          { name: "Red Team", map: { "#000000": "#ffffff" } },
+          { name: "empty", map: {} },
+          { name: "bad-hex", map: { "3050a0": "#a03030" } },
+          { name: "wide", map: { "#000000": "#ffffff" }, tolerance: 999 },
+          { name: "red-team", map: { "#000000": "#ffffff" } },
+        ],
+      };
+      b.sprite.motions[0].variants = {
+        "red-team": { sheet: "bounce-variant-red-team-sheet", atlas: "bounce-variant-red-team-atlas", gif: "bounce-variant-red-team-gif" },
+        near: { sheet: "bounce-variant-near-sheet", atlas: "bounce-variant-near-atlas" },
+        "no-atlas": { sheet: "bounce-variant-no-atlas-sheet" },
+        "Bad Name": { sheet: "x", atlas: "y" },
+      };
+    });
+    // Colours are read lower-case, as the writer writes them; the first of a name wins.
+    expect(project.sprite.character.pixel!.variants).toEqual([
+      { name: "red-team", map: { "#3050a0": "#a03030" } },
+      { name: "near", map: { "#102030": "#302010" }, tolerance: 6 },
+    ]);
+    expect(project.sprite.motions[0].variants).toEqual({
+      "red-team": { sheet: "bounce-variant-red-team-sheet", atlas: "bounce-variant-red-team-atlas", gif: "bounce-variant-red-team-gif" },
+      near: { sheet: "bounce-variant-near-sheet", atlas: "bounce-variant-near-atlas" },
+    });
+    // Nothing valid is no list, and a loop has no colourways to carry.
+    expect("variants" in parsed((b) => {
+      b.sprite.character.pixel = { logicalHeight: 32, variants: [{ name: "x", map: {} }] };
+    }).sprite.character.pixel!).toBe(false);
+    expect("variants" in motion0((m) => {
+      m.kind = "loop";
+      m.variants = { "red-team": { sheet: "a", atlas: "b" } };
+    })).toBe(false);
   });
 
   test("an anchor is its direction: without one it loads as custom, and no other role keeps one", () => {
