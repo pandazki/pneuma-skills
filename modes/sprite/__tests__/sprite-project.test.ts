@@ -2611,6 +2611,18 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
         });
       });
 
+      test("show names the route, the pixel height and the lock, so a later turn does not ask again", () => {
+        const dir = fresh();
+        projectJson(dir, "init", "--name", "Pip", "--purpose", "game", "--pixel", "32",
+          "--asymmetric", "The sword is always in the right hand.");
+        const lines = project(dir, "show").out.split("\n");
+        expect(lines[1]).toBe("  purpose: game · pixel art, 32 px tall · asymmetric: The sword is always in the right hand.");
+        // Nothing recorded, nothing said: an older character keeps its summary.
+        const seed = fresh();
+        cpSync(SEED, join(seed, "project.json"));
+        expect(project(seed, "show").out).not.toMatch(/purpose:|pixel art|asymmetric:/);
+      });
+
       test("init refuses a route it does not know, and a palette size without pixel art", () => {
         const dir = fresh();
         expect(project(dir, "init", "--name", "Pip", "--purpose", "cutscene").err).toMatch(/--purpose: expected one of game, loop, mascot, animate/);

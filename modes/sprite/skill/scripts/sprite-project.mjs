@@ -3554,8 +3554,17 @@ function main() {
       const whole = CHARACTER_EXPORTS
         .map((key) => [key, doc.assets.find((a) => a.id === summary.exports?.[key])?.uri])
         .filter(([, uri]) => uri);
+      // What the user is making, recorded once: a later turn reads it here
+      // instead of asking again (the viewer context says the same).
+      const { purpose, pixel, asymmetric } = doc.sprite.character;
+      const recorded = [
+        ...(purpose ? [`purpose: ${purpose}`] : []),
+        ...(pixel ? [`pixel art, ${pixel.logicalHeight} px tall`] : []),
+        ...(asymmetric ? [`asymmetric: ${asymmetric}`] : []),
+      ];
       emit(values, summary, [
         `${summary.title} — ${summary.refs.length} refs, ${summary.motions.length} motions`,
+        ...(recorded.length ? [`  ${recorded.join(" · ")}`] : []),
         ...whole.map(([key, uri]) => `  exported: ${key} (${uri})`),
         ...summary.motions.map((m) => `  ${m.id.padEnd(12)} ${m.status.padEnd(10)} ${m.kind === "loop" ? "loop".padEnd(7) : `${m.grid.rows}x${m.grid.cols}`.padEnd(7)} @ ${m.fps}fps  ${m.frameCount} frames${m.warnings.length ? `  (${m.warnings.length} warnings)` : ""}`),
         ...(summary.staleMirrors ?? []).map((m) => `  stale mirror: ${m.id} (of ${m.mirrorOf}) — ${m.reason}; mirror it again and register it`),
