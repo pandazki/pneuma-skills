@@ -521,20 +521,23 @@ paid call, so the stage shows it working.
    action that did not say drew a second floating lantern in 3 of 8 cells):
 
    ```bash
-   PROMPT="$(node {SKILL_PATH}/scripts/sprite-project.mjs sheet-prompt --dir <character> --motion <id> \
-     --action "<the phase plan, by cell>" --frames 8)"
+   mkdir -p <character>/motions/<id> && node {SKILL_PATH}/scripts/sprite-project.mjs sheet-prompt \
+     --dir <character> --motion <id> --action "<the phase plan, by cell>" --frames 8 \
+     > <character>/motions/<id>/sheet-prompt.txt
    ```
 
-   It records `prompt` + `promptParts` on the motion, prints the prompt on
-   stdout and, on stderr, the `--image-size` and the references to attach in
+   It records `prompt` + `promptParts` on the motion and prints the prompt —
+   into a file, because a shell variable does not survive to your next call —
+   and, on stderr, the `--image-size` and the references to attach in
    order. `--frames` redraws the motion's grid (8 → 4 columns × 2 rows) and
    `run --rows/--cols` must match it; `--state` overrides the state read off
-   the id. The code writes the style sentence, grid, safe margin, identity
-   clauses, facing, asymmetry lock, pixel-art clause, per-state guards and
-   the white plate (`references/prompting.md` → *Building the prompt*).
+   the id. The code writes everything else — style sentence first, facing,
+   guards, the white plate (`references/prompting.md` → *Building the
+   prompt*).
 4. **Reserve and generate** — `set-sheet --file motions/<id>/sheet-raw.png
-   --from ref-turnaround,ref-portrait --prompt "$PROMPT" --background opaque
-   --status generating`, then one `generate_image.mjs "$PROMPT"` call with
+   --from ref-turnaround,ref-portrait --prompt "$(cat <that file>)"
+   --background opaque --status generating`, then one `generate_image.mjs
+   "$(cat <that file>)"` call with
    `--image-urls` once per printed reference, in that order, and the printed
    `--image-size` (the call: `references/prompting.md` → The call). Then
    **run `set-sheet` again without `--status`**, so the same asset is
@@ -565,9 +568,8 @@ paid call, so the stage shows it working.
    ```
 
    The example is an idle; use the planned grid, fps and anchor, `--no-loop`
-   for a one-shot, and `--pixel` for pixel art (G-pixel). It keeps the raw
-   cells at `<motionDir>/cells/NN.png` — what `inspect` judges clipping on
-   and `align` re-reads when only the alignment has to be redone.
+   for a one-shot, and `--pixel` for pixel art (G-pixel). The raw cells stay
+   in `cells/` for `inspect` and for a re-`align`.
 
 #### B-video — the sampled clip
 
@@ -689,8 +691,7 @@ user in step 2:
 | `sprite-sheet.mjs loop` (119 frames, 512×596, four exports) | ≈ 24 s |
 
 Quote the Seedance rows as a **range**: 199 s and 404 s have both been
-measured on this queue, and the difference was the queue, not the clip
-(`references/video-preview.md`). The clip is the step that looks broken and
+measured, and the difference was the queue, not the clip. The clip is the step that looks broken and
 is not: say so before you start one, register the placeholder, and wait — no
 polling, no second call. It retries transient failures itself, and a second
 submission is a second bill.

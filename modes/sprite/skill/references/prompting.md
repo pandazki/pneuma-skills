@@ -73,9 +73,13 @@ node {SKILL_PATH}/scripts/sprite-project.mjs sheet-prompt --dir <character> \
 It builds the whole prompt in code, records it on the motion (`prompt`, and
 `promptParts` — builder version, your action verbatim, the clause ids, the
 guide's geometry when one was used) and prints it. Without `--json` stdout is
-the prompt alone, so `PROMPT="$(node … sheet-prompt …)"` feeds
-`generate_image.mjs "$PROMPT"` directly; the image size, the references to
-attach (in order) and the guide call go to stderr. With `--json` they are
+the prompt alone, so redirect it to a file in the motion directory
+(`> <character>/motions/<id>/sheet-prompt.txt`, a working file like
+`contact.png`) and hand it on as `"$(cat …/sheet-prompt.txt)"` to `set-sheet
+--prompt` and to `generate_image.mjs`: a shell variable does not survive from
+one tool call to the next, and an empty prompt is a paid image of nothing.
+The image size, the references to attach (in order) and the guide call go to
+stderr. With `--json` they are
 `imageSize`, `attach`, `guide` and `notes`. The order is the one *Direction
 anchors* below was measured with: the anchor for the motion's direction
 first, then every other reference in the order it was registered (anchors
