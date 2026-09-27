@@ -35,7 +35,10 @@ correctly on disk.
       <motion-id>.mp4  .mov  .webm  .apng
       <motion-id>.json            # Lottie
       <motion-id>-frames.zip      # PNG sequence + animation.json
+      <motion-id>-aseprite.zip    # sheet + Aseprite JSON (+ shadow sheet)
   exports/<character>.riv         # the whole character for Rive (`rive`)
+  exports/<character>-aseprite.zip  # every sprite motion on one Aseprite
+                                  # sheet (`export <character> --format aseprite`)
 ```
 
 `exports/` is written by `sprite-sheet.mjs export` / `rive` and nothing else;
@@ -128,9 +131,11 @@ video, a sheet generated from one reference) is fully described by
 | `<motion>-keyframe-alpha` | The same keyframe cut out, a `derive` edge (`step: "key"`) from it |
 | `<motion>-frame-NNN` | One frame of a loop — three digits, unaligned |
 | `<motion>-apng` (image) / `<motion>-webm` (video) / `<motion>-lottie` (text) | A loop's other three exports, made by its own run |
-| `<motion>-export-<format>` | An on-demand export of a ready motion, `format` one of `mp4` / `mov` / `webm` (video), `apng` (image), `lottie` (text), `png-seq` (image, `metadata.container: "zip"`). Written by `register-export` |
+| `<motion>-export-<format>` | An on-demand export of a ready motion, `format` one of `mp4` / `mov` / `webm` (video), `apng` (image), `lottie` (text), `png-seq` / `aseprite` (image, `metadata.container: "zip"`). Written by `register-export` |
 | `<character>-export-riv` | The character's `.riv` (image, `metadata.container: "riv"`); `<character>` is the directory name. Written by `register-export` |
 | `<character>-palette` | A pixel-art character's pinned palette (text, `palette.json`), `metadata: { colors?, size, sha256 }`; a `derive` edge (`step: "palette"`) from the frames of the run that pinned it. Written by `register-run` (see *Pixel art*) |
+
+| `<character>-export-aseprite` | Every ready sprite motion on one Aseprite sheet (image, `metadata.container: "zip"`). Written by `register-export` |
 
 Ids are stable across re-runs: `register-run` removes the previous frame
 assets and their edges before writing the new ones, so re-running a motion
@@ -162,10 +167,20 @@ wrote, from its `--json` report:
 - **`<motion>-export-<format>`** — `metadata`: `size`, and what the export
   measured: `width`, `height`, `fps`, `duration`, `frames` (the motion's frame
   count — a video holds `frames × repeat`), `repeat`, `scale`, `background` (MP4 only), `container` (`"zip"`
-  on a PNG sequence). One `derive` edge from the motion's frames:
+  on a PNG sequence and an Aseprite sheet), and `shadow` —
+  `{ squash, shear, opacity, blur, color }` — when it was made with
+  `--shadow` (cast into a video's frames; a shadow sheet beside an Aseprite
+  one). One `derive` edge from the motion's frames:
   `fromAssetId` is the first frame, `params: { tool: "sprite-sheet.mjs",
-  step: "export", format, repeat, scale, background, inputs: [every frame] }`.
+  step: "export", format, repeat, scale, background, shadow, inputs: [every frame] }`.
   The sidecar names it as `motion.exports[format]`.
+- **`<character>-export-aseprite`** — every ready sprite motion on one
+  sheet, a frame tag each. `metadata`: `width` / `height` (the sheet),
+  `frames`, `motionCount`, `scale`, `shadow` (as above), `container: "zip"`,
+  `size`. Filed like the `.riv`: its `derive` edge hangs off every registered
+  frame of every motion on it, `params: { tool, step: "export", format:
+  "aseprite", scale, shadow, motions: [ids in order], tags: [{ name, from,
+  to }], inputs }`, and the sidecar names it as `sprite.exports.aseprite`.
 - **`<character>-export-riv`** — `metadata`: `width` / `height` (the
   artboard), `frames` (the images it EMBEDS — a shared reverse adds none),
   `motionCount` (loops and sprite motions) and `transitionCount`, `images`
@@ -216,9 +231,9 @@ at. Re-registering replaces the asset and its edge in place.
 
 **Retirement.** An export is made of one set of frames. When `register-run`
 replaces a motion's frames it drops that motion's `<motion>-export-*` assets,
-their edges and their `motion.exports` entries — and the `.riv` too, when
-`params.motions` lists the motion (a transition included) — and says so on
-stderr; `remove-motion` does the same. Cutting a transition again also
+their edges and their `motion.exports` entries — and the `.riv` and the
+character's Aseprite sheet too, when their `params.motions` lists the motion
+(a transition included) — and says so on stderr; `remove-motion` does the same. Cutting a transition again also
 notes each reverse made from the old cut: its frames are still the old ones
 backwards, and `rive` stops sharing the source's images with it until it is
 cut again with `--reverse-of`. The files stay on disk (the paths are printed) and are simply
@@ -285,10 +300,12 @@ interface SpriteSidecar {
                                   // direction. The character's directions are
                                   // its anchors' directions
   motions: Motion[];
-  exports?: { riv?: string };     // `<character>-export-riv`, the whole
-                                  // character for Rive, loops resampled.
-                                  // Absent until one is registered; absent
-                                  // in every 0.3.x file
+  exports?: { riv?: string; aseprite?: string };
+                                  // `<character>-export-riv`, the whole
+                                  // character for Rive, loops resampled;
+                                  // `<character>-export-aseprite`, its sprite
+                                  // motions on one Aseprite sheet. Each absent
+                                  // until registered; absent in every 0.3.x file
 }
 
 interface Motion {
@@ -345,7 +362,7 @@ interface Motion {
   exports?: {                     // export format → asset id. The WebP, GIF
                                   // and sheet stay in their own fields
     mp4?: string; mov?: string; webm?: string;
-    apng?: string; lottie?: string; "png-seq"?: string;
+    apng?: string; lottie?: string; "png-seq"?: string; aseprite?: string;
   };                              // A loop's own run fills apng / webm /
                                   // lottie with `<motion>-apng` … — exactly
                                   // what 0.3.x stored here, so an older file

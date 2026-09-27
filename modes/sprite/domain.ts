@@ -383,7 +383,7 @@ export interface LoopBrief {
  * the Export tab lists them. The tuple is the single source of truth: the
  * type is derived from it, and the parser drops any key that is not in it.
  */
-export const EXPORT_FORMATS = ["mp4", "mov", "webm", "apng", "lottie", "png-seq"] as const;
+export const EXPORT_FORMATS = ["mp4", "mov", "webm", "apng", "lottie", "png-seq", "aseprite"] as const;
 
 export type ExportFormat = (typeof EXPORT_FORMATS)[number];
 
@@ -399,10 +399,12 @@ export type ExportFormat = (typeof EXPORT_FORMATS)[number];
  */
 export type MotionExports = Partial<Record<ExportFormat, string>>;
 
-/** The character-level exports: one `.riv` of the character's motions —
- *  loops resampled — asset id `<character>-export-riv`. */
+/** The character-level exports, each asset id `<character>-export-<key>`:
+ *  one `.riv` of the character's motions — loops resampled — and one
+ *  Aseprite sheet of its sprite motions, a frame tag each. */
 export interface CharacterExports {
   riv?: string;
+  aseprite?: string;
 }
 
 /**
@@ -763,7 +765,9 @@ function parseExports(value: unknown): MotionExports | undefined {
 function parseCharacterExports(value: unknown): CharacterExports | undefined {
   if (!isRecord(value)) return undefined;
   const riv = optionalStr(value.riv);
-  return riv ? { riv } : undefined;
+  const aseprite = optionalStr(value.aseprite);
+  const exports: CharacterExports = { ...(riv ? { riv } : {}), ...(aseprite ? { aseprite } : {}) };
+  return Object.keys(exports).length > 0 ? exports : undefined;
 }
 
 const VIDEO_MODELS: readonly VideoModel[] = [

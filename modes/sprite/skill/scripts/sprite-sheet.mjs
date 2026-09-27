@@ -15,7 +15,7 @@
  * contact, from-video, retime, loop, export, rive, breathe.
  *
  * `export` and `rive` hand a FINISHED motion over in somebody else's format
- * (video, a frame animation, a `.riv`). They read the character's
+ * (video, a frame animation, an Aseprite sheet, a `.riv`). They read the character's
  * project.json to learn which frames are the motion's and whether it is
  * ready, and never write it — registering what they made is
  * `sprite-project.mjs register-export`.
@@ -34,11 +34,14 @@ import { parseArgs } from "node:util";
 import {
   keyFrame, keyRadius, keyResidue, measurePlate, plateOf, plateProximity, poolResidue,
 } from "./chroma.mjs";
+
+import { asepriteDocument, gridLayout, stackLayout } from "./aseprite.mjs";
 import { RIVE_MOTION_INPUT, riveDefaultMotion, riveHub, writeRiv } from "./rive.mjs";
 import {
   RIVE_DECODE_LIMIT_BYTES, RIVE_DECODE_WARN_BYTES, RIVE_LOOP_FPS, RIVE_LOOP_MAX_SIZE, RIVE_PIXEL_ART_STYLE, riveDefaultImages,
   riveDecodeWarning, riveMB, rivePlan, riveReverseIsCurrent,
 } from "./rive-plan.mjs";
+import { SHADOW_DEFAULTS, SHADOW_RANGES, projectShadow, shadowCanvas, withShadow } from "./shadow.mjs";
 import { zipStore } from "./zip.mjs";
 import {
   BREATHE_MODES, BreatheError, DEFAULT_BREATHE_DEPTH, DEFAULT_LAG, FRAMES_PER_BREATH, bakeBreathe, hasAppendage,
@@ -242,7 +245,14 @@ const ALIGN_RECORD = "align.json";
 
 // --- export / rive: a finished motion, handed over --------------------------
 /** What `export --format` makes, in the order the Export tab lists them. */
-const EXPORT_FORMATS = ["mp4", "mov", "webm", "apng", "lottie", "png-seq"];
+const EXPORT_FORMATS = ["mp4", "mov", "webm", "apng", "lottie", "png-seq", "aseprite"];
+/** The one format `export <characterDir>` makes: every sprite motion on one
+ *  sheet. (The character's `.riv` is `rive`.) */
+const CHARACTER_EXPORT_FORMATS = ["aseprite"];
+/** A sheet side past this will not load as one texture everywhere: 4096 is
+ *  the MAX_TEXTURE_SIZE WebGL implementations can be relied on for, and many
+ *  phones stop there. Said, not refused — desktop GPUs take 16384. */
+const ENGINE_TEXTURE_SIDE = 4096;
 /** The formats that are video: they repeat, pad to even sides, and are
  *  probed after encoding. The frame animations play the frames once and let
  *  the file's own loop flag (or the player) decide the rest. */
@@ -532,12 +542,14 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       transitions already registered for the pair, and a suggestion — direct
       or transition — with the threshold it used.
 
-  export <motionDir> --format mp4|mov|webm|apng|lottie|png-seq
-      [--bg #rrggbb] [--repeat N] [--scale N]
+  export <motionDir> --format mp4|mov|webm|apng|lottie|png-seq|aseprite
+      [--bg #rrggbb] [--repeat N] [--scale N] [--shadow [shadow flags]]
+  export <characterDir> --format aseprite [--scale N] [--shadow [shadow flags]]
       One READY motion (status in project.json, frames as registered) in a
       format somebody else's tool reads. Written to
-      <motionDir>/exports/<id>.<ext> (png-seq: <id>-frames.zip), encoded to a
-      scratch file and renamed only after it checks out.
+      <motionDir>/exports/<id>.<ext> (png-seq: <id>-frames.zip, aseprite:
+      <id>-aseprite.zip), encoded to a scratch file and renamed only after it
+      checks out.
         mp4      H.264 yuv420p, flattened onto --bg (default ${DEFAULT_EXPORT_BG}).
         mov      ProRes 4444 with alpha, for editing software.
         webm     VP9 with alpha.
@@ -545,8 +557,27 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
         lottie   the loop writer's raster image sequence.
         png-seq  a stored zip of the frames plus animation.json (fps, loop,
                  pivot, anchorPoint, per-frame file and duration).
+        aseprite a stored zip of <id>.png (the motion's packed sheet, byte for
+                 byte) and <id>.json in Aseprite's JSON-hash shape: frames
+                 keyed "0"…"N-1", each with its rect, its duration (ms) and
+                 its anchor; meta.frameTags names the motion — what Phaser's
+                 load.aseprite + anims.createFromAseprite read. A sprite
+                 motion only: a loop has no sheet.
+      Given the CHARACTER directory, aseprite puts every ready sprite motion
+      on one sheet (their packed sheets stacked, rects offset), a frame tag
+      each, as <characterDir>/exports/<character>-aseprite.zip; loops,
+      transitions and unfinished motions are left out and listed (excluded).
       A sprite motion plays its aligned frames at the ATLAS fps and pivot; a
       loop plays its frames at its own fps.
+      --shadow casts a ground shadow from the silhouette about the foot (the
+      atlas pivot; a loop's first frame's feet): into the frames of mp4 / mov
+      / webm, whose canvas grows to hold it; beside an aseprite export as a
+      sheet of its own (<id>-shadow.png/.json, tags <motion>-shadow, each frame
+      anchored on the same foot). Ignored, and said, on other formats.
+      Tune it with --shadow-squash (${SHADOW_DEFAULTS.squash}, ${SHADOW_RANGES.squash.join("–")}),
+      --shadow-shear (${SHADOW_DEFAULTS.shear}, ${SHADOW_RANGES.shear.join("–")}; positive falls left; a
+      negative value is written --shadow-shear=-0.5), --shadow-opacity
+      (${SHADOW_DEFAULTS.opacity}), --shadow-blur (${SHADOW_DEFAULTS.blur} px) and --shadow-color (#${SHADOW_DEFAULTS.color.map((c) => c.toString(16).padStart(2, "0")).join("")}).
       --repeat N (video only) plays the motion N times. Default: a looping
       motion repeats until the clip lasts at least ${EXPORT_MIN_SECONDS} s, a one-shot plays
       once; the report says which (repeatDefaulted).
@@ -554,8 +585,8 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       Video sides are padded to even with transparency (right and bottom).
       Every video is probed after encoding — codec, alpha where claimed,
       frame count = frames x repeat, duration — and refused if it is not.
-      --bg on mov/webm/apng/lottie/png-seq and --repeat on a frame animation
-      are reported as ignored, never applied.
+      --bg on mov/webm/apng/lottie/png-seq/aseprite and --repeat on a frame
+      animation are reported as ignored, never applied.
       What a motion already ships is refused with the file it already is:
       a sprite motion's GIF / WebP / sheet + atlas, a loop's WebP / APNG /
       WebM / Lottie. A loop is never a GIF or an atlas.
@@ -1651,6 +1682,11 @@ function stepPack(framesDir, { out, atlas, name, fps, loop, anchor, cols, scale,
       spriteSourceSize: { x: 0, y: 0, w: cellW, h: cellH },
       sourceSize: { w: cellW, h: cellH },
       pivot,
+      // The same point under the key PixiJS 8 reads — its Spritesheet parser
+      // takes `defaultAnchor: data.anchor` and never looks at `pivot`, so a
+      // pivot-only atlas stands every frame on its top-left corner there.
+      // Phaser reads `anchor || pivot`; `pivot` stays for existing readers.
+      anchor: { ...pivot },
       duration,
     };
   }
@@ -4240,6 +4276,7 @@ function cropBuffer(image, x, y, w, h) {
 /** The file a motion export lands in, inside `motions/<id>/exports/`. */
 function exportFileName(motionId, format) {
   if (format === "png-seq") return `${motionId}-frames.zip`;
+  if (format === "aseprite") return `${motionId}-aseprite.zip`;
   return `${motionId}.${format === "lottie" ? "json" : format}`;
 }
 
@@ -4372,17 +4409,28 @@ function readAtlasFacts(character, motion, frameCount, label) {
     if (!frame || !finite(frame.pivot?.x) || !finite(frame.pivot?.y)) {
       fail(`${label}: ${path} has no pivot for frame '${key}'`);
     }
+    const r = frame.frame;
     return {
       pivot: { x: frame.pivot.x, y: frame.pivot.y },
       duration: finite(frame.duration) && frame.duration > 0 ? frame.duration : Math.round(1000 / fps),
+      // Where the frame sits in the packed sheet — what the Aseprite export
+      // re-describes. Null when the atlas does not say; only that export needs it.
+      rect: r && [r.x, r.y, r.w, r.h].every((v) => Number.isInteger(v) && v >= 0) && r.w > 0 && r.h > 0
+        ? { x: r.x, y: r.y, w: r.w, h: r.h }
+        : null,
     };
   });
   const point = atlas?.meta?.anchorPoint;
+  const size = atlas?.meta?.size;
   return {
+    path,
     fps,
     loop: atlas?.meta?.loop === true,
     perFrame,
     anchorPoint: point && finite(point.x) && finite(point.y) ? { x: point.x, y: point.y } : null,
+    /** `pack --scale`: the cells' size against the aligned frames. */
+    scale: finite(atlas?.meta?.scale) && atlas.meta.scale > 0 ? atlas.meta.scale : 1,
+    sheetSize: size && Number.isInteger(size.w) && Number.isInteger(size.h) ? { w: size.w, h: size.h } : null,
   };
 }
 
@@ -4416,7 +4464,7 @@ function notOffered(motion, format) {
     if (format === "gif") {
       return "a transition is not exported as GIF: GIF has 1-bit alpha, and a transition is cut from a matted clip — use APNG, WebM or MOV";
     }
-    if (format === "sheet" || format === "atlas") {
+    if (format === "sheet" || format === "atlas" || format === "aseprite") {
       return "a transition has no sprite sheet or atlas — its frames are a sequence (export --format png-seq)";
     }
     return null;
@@ -4425,7 +4473,7 @@ function notOffered(motion, format) {
   if (format === "gif") {
     return "a loop is not exported as GIF: GIF has 1-bit alpha and a loop has hundreds of frames — use its WebP or APNG";
   }
-  if (format === "sheet" || format === "atlas") {
+  if (format === "sheet" || format === "atlas" || format === "aseprite") {
     return "a loop has no sprite sheet or atlas — its frames are a sequence (export --format png-seq)";
   }
   return null;
@@ -4476,10 +4524,20 @@ function stageScaledFrames(frames, scale, work) {
  * refusal happens before anything is written; the file is encoded to a
  * scratch path, checked with ffprobe where it is a video, and only then
  * renamed into `exports/`.
+ *
+ * Given a CHARACTER directory (it holds the project.json) instead, the one
+ * format that describes a whole character on one sheet — Aseprite — is
+ * `stepExportCharacter`'s.
  */
-function stepExport(motionDir, options) {
+function stepExport(target, options) {
   const label = "export";
-  const dir = resolve(motionDir);
+  const dir = resolve(target);
+  if (existsSync(join(dir, "project.json"))) {
+    if (!CHARACTER_EXPORT_FORMATS.includes(options.format)) {
+      fail(`${label}: ${dir} is a character — a whole character is exported only as --format ${CHARACTER_EXPORT_FORMATS.join(", ")}; one motion is 'export ${join(dir, "motions", "<id>")} --format ${options.format}', and the .riv is 'rive ${dir}'`);
+    }
+    return stepExportCharacter(dir, options);
+  }
   const motionId = basename(dir);
   const character = readCharacterProject(dirname(dirname(dir)), label);
   const motion = character.doc.sprite.motions.find((m) => m && m.id === motionId);
@@ -4491,6 +4549,11 @@ function stepExport(motionDir, options) {
   const { format } = options;
   const already = shippedAs(character, motion, format);
   if (already) {
+    // A loop's own WebM is its deliverable and keeps its asset: a shadowed one
+    // cannot take its place, so the shadow goes into another video format.
+    if (options.shadow && VIDEO_EXPORTS.has(format)) {
+      fail(`${label}: '${motion.id}' already ships as ${format}: ${already}, without a shadow — a shadowed video of it is --format mov (keeps the alpha) or mp4`);
+    }
     fail(`${label}: '${motion.id}' already ships as ${format}: ${already} — nothing to export; hand over that file`);
   }
   const refused = notOffered(motion, format);
@@ -4540,6 +4603,14 @@ function stepExport(motionDir, options) {
   } else if (options.bg !== null) {
     warnings.push(`--bg ${options.bg} ignored: ${format} keeps its transparency, so there is nothing to flatten onto a colour — only mp4 takes a background`);
   }
+  // A shadow is cast INTO a video's frames; an engine gets it as a sheet of
+  // its own beside the Aseprite one, to place under the sprite itself. Any
+  // other format would have to grow its frames around a shadow nobody asked
+  // the engine or page to expect.
+  const shadow = video || format === "aseprite" ? options.shadow : null;
+  if (options.shadow && !shadow) {
+    warnings.push(`--shadow ignored: ${format} is handed over as the frames are — mp4, mov and webm cast the shadow into the frames, and aseprite ships it as a sheet of its own`);
+  }
   const encoder = { mp4: "libx264", mov: "prores_ks", webm: "libvpx-vp9", apng: "apng" }[format];
   if (encoder && !hasEncoder(encoder)) {
     fail(`${label}: this ffmpeg build has no ${encoder} encoder, which ${format} needs`);
@@ -4547,12 +4618,14 @@ function stepExport(motionDir, options) {
 
   const first = probeSize(frames.paths[0], label);
   const scale = options.scale;
-  const width = first.width * scale;
-  const height = first.height * scale;
+  let width = first.width * scale;
+  let height = first.height * scale;
   const out = join(dir, EXPORTS_DIRNAME, exportFileName(motion.id, format));
-  const work = scale !== 1 ? mkdtempSync(join(tmpdir(), "sprite-export-")) : null;
+  const work = mkdtempSync(join(tmpdir(), "sprite-export-"));
   const report = {
     kind: "export",
+    // One motion; `export <characterDir>` reports "character".
+    scope: "motion",
     character: character.dir,
     motion: motion.id,
     motionKind,
@@ -4568,10 +4641,31 @@ function stepExport(motionDir, options) {
     repeat,
     ...(video ? { repeatDefaulted } : {}),
     background,
+    shadow: null,
   };
 
   try {
-    const source = work ? stageScaledFrames(frames, scale, work) : frames;
+    let source = scale !== 1 && format !== "aseprite" ? stageScaledFrames(frames, scale, workDir(work, "scaled")) : frames;
+    if (video && shadow) {
+      // Where the feet are: the atlas pivot a sprite motion is pinned by; a
+      // loop or transition has none, so its first frame's feet — the same
+      // point the .riv stands it on.
+      const pivot = facts.perFrame?.[0]?.pivot;
+      const anchor = pivot
+        ? { x: pivot.x * width, y: pivot.y * height, from: "atlas" }
+        : loopAnchor(source.paths[0]);
+      const cast = stageShadowFrames(source, { width, height }, anchor, shadow, workDir(work, "shadow"), label);
+      source = cast.frames;
+      width = cast.canvas.width;
+      height = cast.canvas.height;
+      report.shadow = {
+        ...shadowRecord(shadow),
+        // The foot in the video's frame: the canvas grew around the shadow.
+        anchor: { x: round(cast.canvas.anchor.x, 2), y: round(cast.canvas.anchor.y, 2) },
+        from: anchor.from,
+      };
+      notes.push(`Shadow cast from the silhouette about the ${anchor.from === "atlas" ? "atlas pivot" : "first frame's feet"}; the frame grew to ${width}×${height} to hold it, with the figure at (${cast.canvas.frame.x}, ${cast.canvas.frame.y})`);
+    }
     const input = ["-framerate", String(fps), "-start_number", "0", "-i", join(source.dir, `%0${source.digits}d.png`)];
 
     if (video) {
@@ -4635,6 +4729,18 @@ function stepExport(motionDir, options) {
         },
       });
       if (repeat > 1) notes.push(`${count} frames played ${repeat} times: ${round(expectedDuration, 2)} s`);
+    } else if (format === "aseprite") {
+      const built = asepriteBundle(character, [{ motion, facts }], { name: motion.id, scale, shadow, work, label });
+      writeBytesAtomic(out, zipStore(built.entries));
+      Object.assign(report, {
+        duration: round(count / fps, 3),
+        sheet: built.sheet,
+        tags: built.tags,
+        shadow: built.shadow,
+        entries: built.entries.length,
+      });
+      notes.push(...built.notes);
+      warnings.push(...built.warnings);
     } else if (format === "apng") {
       const encoded = renderVerified(out, (scratch) => {
         ffmpeg([...input, "-f", "apng", "-plays", facts.loop ? "0" : "1", "-pred", "mixed", "-pix_fmt", "rgba",
@@ -4676,13 +4782,309 @@ function stepExport(motionDir, options) {
       Object.assign(report, { duration: round(count / fps, 3), entries: entries.length });
     }
   } finally {
-    if (work) rmSync(work, { recursive: true, force: true });
+    rmSync(work, { recursive: true, force: true });
   }
 
   report.size = statSync(out).size;
   report.notes = notes;
   report.warnings = warnings;
   return report;
+}
+
+/** A fresh subdirectory of an export's scratch space. */
+function workDir(work, name) {
+  const dir = join(work, name);
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+/** The shadow's settings as a report and project.json carry them. */
+function shadowRecord(shadow) {
+  return {
+    squash: shadow.squash,
+    shear: shadow.shear,
+    opacity: shadow.opacity,
+    blur: shadow.blur,
+    color: toHex(...shadow.color),
+  };
+}
+
+/**
+ * Every frame with its shadow under it (`shadow.mjs` `withShadow`), written
+ * as the same numbered PNGs into `outDir`, all on one canvas: the geometry
+ * depends on the frame size and the anchor alone. Decoded and encoded in
+ * batches — a loop is 400 frames, and one Buffer of them all would not fit.
+ */
+function stageShadowFrames(source, size, anchor, shadow, outDir, label) {
+  const foot = { x: anchor.x, y: anchor.y };
+  const canvas = shadowCanvas(size.width, size.height, foot, shadow);
+  const pattern = `%0${source.digits}d.png`;
+  const frameBytes = size.width * size.height * 4;
+  const outBytes = canvas.width * canvas.height * 4;
+  const batch = Math.max(1, Math.floor(MAX_RAW_BYTES / 4 / Math.max(frameBytes, outBytes)));
+  const count = source.paths.length;
+  for (let start = 0; start < count; start += batch) {
+    const n = Math.min(batch, count - start);
+    const r = spawnSync("ffmpeg", [
+      "-v", "error", "-start_number", String(start), "-i", join(source.dir, pattern), "-frames:v", String(n),
+      "-f", "rawvideo", "-pix_fmt", "rgba", "-",
+    ], { maxBuffer: MAX_RAW_BYTES });
+    const got = r.stdout ? Math.floor(r.stdout.length / frameBytes) : 0;
+    if (r.error || r.status !== 0 || got !== n) {
+      fail(`${label}: could not decode frames ${start}–${start + n - 1} for the shadow (got ${got})${r.stderr ? `\n${String(r.stderr).trim()}` : ""}`);
+    }
+    const composed = Buffer.alloc(n * outBytes);
+    for (let i = 0; i < n; i++) {
+      const frame = { width: size.width, height: size.height, data: r.stdout.subarray(i * frameBytes, (i + 1) * frameBytes) };
+      withShadow(frame, foot, shadow).data.copy(composed, i * outBytes);
+    }
+    ffmpeg([
+      "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${canvas.width}x${canvas.height}`, "-i", "-",
+      "-frames:v", String(n), "-pix_fmt", "rgba", "-start_number", String(start), "--", join(outDir, pattern),
+    ], `${label} shadow`, composed);
+  }
+  return {
+    frames: { dir: outDir, paths: source.paths.map((path) => join(outDir, basename(path))), digits: source.digits },
+    canvas,
+  };
+}
+
+/** An integer nearest-neighbour enlargement of a decoded image; 1 returns it. */
+function enlargeNearest(image, factor) {
+  if (factor === 1) return image;
+  const width = image.width * factor;
+  const height = image.height * factor;
+  const data = Buffer.alloc(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    const sy = Math.floor(y / factor);
+    for (let x = 0; x < width; x++) {
+      const s = (sy * image.width + Math.floor(x / factor)) * 4;
+      image.data.copy(data, (y * width + x) * 4, s, s + 4);
+    }
+  }
+  return { width, height, data };
+}
+
+/** Copy `src` into `dst` at (x, y), replacing what is there. */
+function blitRgba(dst, src, x, y) {
+  for (let row = 0; row < src.height; row++) {
+    src.data.copy(dst.data, ((y + row) * dst.width + x) * 4, row * src.width * 4, (row + 1) * src.width * 4);
+  }
+}
+
+/** A blank RGBA image, refused past what one Buffer is allowed to hold. */
+function blankRgba(width, height, what, label) {
+  const bytes = width * height * 4;
+  if (bytes > MAX_RAW_BYTES) {
+    fail(`${label}: ${what} would be ${width}x${height} — ${(bytes / 1e6).toFixed(0)} MB, over the ${MAX_RAW_BYTES / 1e6} MB limit; export fewer motions or re-pack them smaller`);
+  }
+  return { width, height, data: Buffer.alloc(bytes) };
+}
+
+const jsonBytes = (value) => Buffer.from(`${JSON.stringify(value, null, 2)}\n`);
+
+/**
+ * The files an Aseprite export zips: `<name>/<name>.png` and
+ * `<name>/<name>.json` (`aseprite.mjs`), and with `shadow`, the same pair for
+ * a shadow sheet — `<name>-shadow.png` / `.json`, frame for frame with the
+ * sprite, each frame anchored on the same foot, its tags named
+ * `<motion>-shadow` so they do not collide with the motion's own in an
+ * engine whose animation names are global (Phaser's).
+ *
+ * Each part is a READY sprite motion with its atlas facts. Its packed
+ * `sheet.png` is re-described, not re-drawn: the rects, durations and pivots
+ * are the atlas's, and one motion at --scale 1 ships its sheet byte for
+ * byte. Several motions stack their sheets top to bottom; --scale enlarges
+ * every sheet nearest-neighbour and its rects with it.
+ */
+function asepriteBundle(character, parts, { name, scale, shadow, work, label }) {
+  const warnings = [];
+  const notes = [];
+  const sheets = parts.map(({ motion, facts }) => {
+    const path = assetFile(character, motion.sheet);
+    if (!path || !existsSync(path)) fail(`${label}: motion '${motion.id}' has no sheet.png on disk — re-run its pipeline and register-run`);
+    const size = probeSize(path, label);
+    const said = facts.sheetSize;
+    if (!said || said.w !== size.width || said.h !== size.height) {
+      fail(`${label}: ${path} is ${size.width}x${size.height} but its atlas describes ${said ? `a ${said.w}x${said.h} sheet` : "no sheet size"} — re-pack and register-run before exporting`);
+    }
+    facts.perFrame.forEach((frame, i) => {
+      const r = frame.rect;
+      if (!r || r.x + r.w > size.width || r.y + r.h > size.height) {
+        fail(`${label}: ${facts.path}: frame ${i} ${r ? "lies outside" : "has no rect in"} the ${size.width}x${size.height} sheet — re-pack and register-run before exporting`);
+      }
+    });
+    return { path, width: size.width * scale, height: size.height * scale };
+  });
+  const layout = stackLayout(sheets);
+  const verbatim = parts.length === 1 && scale === 1;
+  const images = !verbatim || shadow ? sheets.map((sheet) => enlargeNearest(readRgba(sheet.path), scale)) : null;
+
+  let png;
+  if (verbatim) png = readFileSync(sheets[0].path);
+  else {
+    const whole = blankRgba(layout.width, layout.height, "the sheet", label);
+    images.forEach((image, i) => blitRgba(whole, image, layout.offsets[i].x, layout.offsets[i].y));
+    png = readFileSync(writeRgbaPng(join(work, `${name}.png`), whole, `${label} aseprite`));
+  }
+  const doc = asepriteDocument({
+    image: `${name}.png`,
+    size: { w: layout.width, h: layout.height },
+    tags: parts.map(({ motion, facts }, i) => ({
+      name: motion.id,
+      frames: facts.perFrame.map((frame) => ({
+        rect: {
+          x: frame.rect.x * scale + layout.offsets[i].x,
+          y: frame.rect.y * scale + layout.offsets[i].y,
+          w: frame.rect.w * scale,
+          h: frame.rect.h * scale,
+        },
+        duration: frame.duration,
+        anchor: frame.pivot,
+      })),
+    })),
+  });
+  const entries = [
+    { name: `${name}/${name}.png`, data: png },
+    { name: `${name}/${name}.json`, data: jsonBytes(doc) },
+  ];
+  const tooBig = (size, what) => {
+    if (Math.max(size.width, size.height) > ENGINE_TEXTURE_SIDE) {
+      warnings.push(`${what} is ${size.width}×${size.height}: past ${ENGINE_TEXTURE_SIDE} px on a side, many phones and some WebGL contexts cannot load it as one texture — export fewer motions, or re-pack them with pack --scale`);
+    }
+  };
+  tooBig(layout, "the sheet");
+
+  let shadowReport = null;
+  if (shadow) {
+    const casts = parts.map(({ motion, facts }, i) => {
+      const shadows = facts.perFrame.map((frame) => {
+        const r = { x: frame.rect.x * scale, y: frame.rect.y * scale, w: frame.rect.w * scale, h: frame.rect.h * scale };
+        const cell = { width: r.w, height: r.h, data: cropBuffer(images[i], r.x, r.y, r.w, r.h) };
+        return projectShadow(cell, { x: frame.pivot.x * r.w, y: frame.pivot.y * r.h }, shadow);
+      });
+      const grid = gridLayout(shadows.length, {
+        width: Math.max(...shadows.map((c) => c.width)),
+        height: Math.max(...shadows.map((c) => c.height)),
+      });
+      return { motion, facts, shadows, grid };
+    });
+    const stack = stackLayout(casts.map(({ grid }) => grid));
+    const sheet = blankRgba(stack.width, stack.height, "the shadow sheet", label);
+    const shadowDoc = asepriteDocument({
+      image: `${name}-shadow.png`,
+      size: { w: stack.width, h: stack.height },
+      tags: casts.map(({ motion, facts, shadows, grid }, i) => ({
+        name: `${motion.id}-shadow`,
+        frames: shadows.map((cast, k) => {
+          const x = grid.rects[k].x + stack.offsets[i].x;
+          const y = grid.rects[k].y + stack.offsets[i].y;
+          blitRgba(sheet, cast, x, y);
+          return {
+            rect: { x, y, w: cast.width, h: cast.height },
+            duration: facts.perFrame[k].duration,
+            anchor: { x: round(cast.anchor.x / cast.width, 4), y: round(cast.anchor.y / cast.height, 4) },
+          };
+        }),
+      })),
+    });
+    entries.push(
+      { name: `${name}/${name}-shadow.png`, data: readFileSync(writeRgbaPng(join(work, `${name}-shadow.png`), sheet, `${label} shadow`)) },
+      { name: `${name}/${name}-shadow.json`, data: jsonBytes(shadowDoc) },
+    );
+    tooBig(stack, "the shadow sheet");
+    shadowReport = { ...shadowRecord(shadow), from: "atlas", sheet: { w: stack.width, h: stack.height } };
+    notes.push(`The shadow is a sheet of its own (${name}-shadow.png, tags ${casts.map(({ motion }) => `${motion.id}-shadow`).join(", ")}): play it under the sprite at the same position and frame — each shadow frame is anchored on the same foot.`);
+  }
+  return {
+    entries,
+    sheet: { w: layout.width, h: layout.height },
+    tags: doc.meta.frameTags.map(({ name: tag, from, to }) => ({ name: tag, from, to })),
+    shadow: shadowReport,
+    notes,
+    warnings,
+  };
+}
+
+/**
+ * `export <characterDir> --format aseprite`: the whole character on one
+ * sheet, one frame tag per motion — what Phaser's `createFromAseprite` builds
+ * every animation of the character from in one call.
+ *
+ * Every READY sprite motion goes in, in rail order; a loop or transition is a
+ * sequence, never packed, and is left out with the reason (as `rive` leaves
+ * loops out unless asked). Like `rive` it reads project.json and never writes
+ * it: `register-export` files the zip on the character
+ * (`sprite.exports.aseprite`), hung off every frame it holds.
+ */
+function stepExportCharacter(characterDir, options) {
+  const label = "export";
+  const character = readCharacterProject(characterDir, label);
+  const { format, scale, shadow } = options;
+  const warnings = [];
+  if (options.repeat !== null) warnings.push(`--repeat ${options.repeat} ignored: a sheet's tags play by their frames' durations — only mp4, mov and webm repeat`);
+  if (options.bg !== null) warnings.push(`--bg ${options.bg} ignored: the sheet keeps its transparency — only mp4 takes a background`);
+
+  const included = [];
+  const excluded = [];
+  for (const motion of character.doc.sprite.motions.filter((m) => m && typeof m.id === "string")) {
+    if (motion.kind === "loop" || motion.kind === "transition") {
+      excluded.push({ motion: motion.id, reason: `a ${motion.kind} — its frames are a sequence, never packed on a sheet; hand it over as --format png-seq, or in the .riv (rive --include-loops)` });
+    } else if (motion.status !== "ready") {
+      excluded.push({ motion: motion.id, reason: `not ready (${motion.status ?? "no status"}) — only a finished motion goes on the sheet` });
+    } else {
+      included.push(motion);
+    }
+  }
+  if (!included.length) {
+    fail(`${label}: ${character.name} has no finished sprite motion to put on a sheet${excluded.length ? ` (${excluded.map((e) => `${e.motion}: ${e.reason}`).join("; ")})` : ""}`);
+  }
+  const parts = included.map((motion) => {
+    const frames = registeredFrames(character, motion, label);
+    return { motion, frames, facts: readAtlasFacts(character, motion, frames.paths.length, label) };
+  });
+  if (new Set(parts.map(({ facts }) => facts.scale)).size > 1) {
+    warnings.push(`the motions were packed at different scales (${parts.map(({ motion, facts }) => `${motion.id} ${facts.scale}`).join(", ")}), so the character is not one size across its tags — re-pack them at one --scale`);
+  }
+
+  const out = join(character.dir, EXPORTS_DIRNAME, `${character.id}-aseprite.zip`);
+  const work = mkdtempSync(join(tmpdir(), "sprite-export-"));
+  try {
+    const built = asepriteBundle(character, parts, { name: character.id, scale, shadow, work, label });
+    writeBytesAtomic(out, zipStore(built.entries));
+    return {
+      kind: "export",
+      scope: "character",
+      character: character.dir,
+      name: character.name,
+      format,
+      out,
+      motions: parts.map(({ motion, facts, frames }, i) => ({
+        id: motion.id,
+        frames: frames.paths.length,
+        fps: facts.fps,
+        loop: facts.loop,
+        from: built.tags[i].from,
+        to: built.tags[i].to,
+        atlasScale: facts.scale,
+      })),
+      excluded,
+      // What the file was made FROM: every registered frame of every motion
+      // on it — what register-export checks and hangs it off.
+      frames: parts.flatMap(({ frames }) => frames.paths),
+      frameCount: parts.reduce((sum, { frames }) => sum + frames.paths.length, 0),
+      scale,
+      sheet: built.sheet,
+      tags: built.tags,
+      shadow: built.shadow,
+      entries: built.entries.length,
+      size: statSync(out).size,
+      notes: built.notes,
+      warnings: [...warnings, ...built.warnings],
+    };
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
 }
 
 /** Encode one frame as a still WebP for `rive --images webp|webp-lossless`.
@@ -5977,6 +6379,9 @@ const OPTIONS = {
   lineup: { hub: { type: "string" }, out: { type: "string" } },
   export: {
     format: { type: "string" }, bg: { type: "string" }, repeat: { type: "string" }, scale: { type: "string" },
+    shadow: { type: "boolean", default: false },
+    "shadow-squash": { type: "string" }, "shadow-shear": { type: "string" }, "shadow-opacity": { type: "string" },
+    "shadow-blur": { type: "string" }, "shadow-color": { type: "string" },
   },
   rive: {
     images: { type: "string" }, motions: { type: "string" }, "include-loops": { type: "boolean", default: false },
@@ -6118,10 +6523,39 @@ function parseFormats(raw) {
 
 /** `--bg`: a `#rrggbb`, lowercased. Words like `white` are refused rather than
  *  guessed at — the colour lands in the file and in the report verbatim. */
-function exportColor(value) {
+function exportColor(value, flag = "--bg") {
   const color = String(value).trim().toLowerCase();
-  if (!/^#[0-9a-f]{6}$/.test(color)) fail(`--bg: expected a #rrggbb colour, got '${value}'`);
+  if (!/^#[0-9a-f]{6}$/.test(color)) fail(`${flag}: expected a #rrggbb colour, got '${value}'`);
   return color;
+}
+
+/**
+ * `--shadow` and its tuning flags → the options `shadow.mjs` takes, or null.
+ * A tuning flag without `--shadow` is refused rather than read as "yes": the
+ * shadow changes the size of the file, which nobody should get by accident.
+ */
+function pickShadow(values) {
+  const tuned = ["squash", "shear", "opacity", "blur", "color"].filter((name) => values[`shadow-${name}`] !== undefined);
+  if (!values.shadow) {
+    if (tuned.length) fail(`--shadow-${tuned[0]} tunes the shadow — pass --shadow with it`);
+    return null;
+  }
+  const options = { ...SHADOW_DEFAULTS, color: [...SHADOW_DEFAULTS.color] };
+  for (const name of ["squash", "shear", "opacity", "blur"]) {
+    const raw = values[`shadow-${name}`];
+    if (raw === undefined) continue;
+    const [low, high] = SHADOW_RANGES[name];
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < low || value > high) {
+      fail(`--shadow-${name}: expected a number from ${low} to ${high}, got '${raw}'`);
+    }
+    options[name] = value;
+  }
+  if (values["shadow-color"] !== undefined) {
+    const hex = exportColor(values["shadow-color"], "--shadow-color");
+    options.color = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  }
+  return options;
 }
 
 function emit(values, payload, humanLines) {
@@ -6506,14 +6940,19 @@ function main() {
     }
     case "export": {
       const format = String(requireFlag(values.format, "--format")).toLowerCase();
-      const out = stepExport(requirePositional(positionals, "<motionDir>"), {
+      const out = stepExport(requirePositional(positionals, "<motionDir|characterDir>"), {
         format,
         bg: values.bg === undefined ? null : exportColor(values.bg),
         repeat: values.repeat === undefined ? null : num(values.repeat, "--repeat", { integer: true, min: 1 }),
         scale: num(values.scale, "--scale", { integer: true, min: 1, fallback: 1 }),
+        shadow: pickShadow(values),
       });
+      const mb = `${(out.size / 1e6).toFixed(2)} MB`;
       emit(values, out, [
-        `${basename(out.out)} · ${out.frameCount} frames at ${out.fps} fps, ${out.loop ? "loops" : "plays once"}${out.repeat > 1 ? `, played ${out.repeat}× (${out.duration} s)` : ""} · ${out.width}×${out.height} · ${(out.size / 1e6).toFixed(2)} MB → ${out.out}`,
+        out.scope === "character"
+          ? `${basename(out.out)} · ${out.motions.map((m) => `${m.id} ${m.from}–${m.to}`).join(", ")} · ${out.frameCount} frames on a ${out.sheet.w}×${out.sheet.h} sheet · ${mb} → ${out.out}`
+          : `${basename(out.out)} · ${out.frameCount} frames at ${out.fps} fps, ${out.loop ? "loops" : "plays once"}${out.repeat > 1 ? `, played ${out.repeat}× (${out.duration} s)` : ""} · ${out.width}×${out.height} · ${mb} → ${out.out}`,
+        ...(out.excluded ?? []).map((entry) => `left out ${entry.motion}: ${entry.reason}`),
         ...out.notes,
         ...out.warnings,
       ]);
