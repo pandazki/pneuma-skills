@@ -64,6 +64,7 @@ import {
   buildSharedPalette, enforceOutline, latticeCheck, latticeFrames, loadPalette, paste as pasteImage,
   upscale, writePalette,
 } from "./pixel-lattice.mjs";
+import { DEFAULT_SAFE_MARGIN_RATIO, guideGeometry, guideRaster } from "./sheet-prompt.mjs";
 
 const DEFAULT_THRESHOLD = 16;
 const DEFAULT_PAD = 8;
@@ -324,6 +325,7 @@ const RIVE_IMAGES = ["webp", "webp-lossless", "png"];
 const EXPORT_CODECS = { mp4: "h264", mov: "prores", webm: "vp9" };
 
 const SUBCOMMANDS = [
+  "guide",
   "probe", "key", "flatten", "slice", "clean", "align", "pack", "gif",
   "inspect", "run", "contact", "from-video", "retime", "loop", "transition", "lineup", "export", "rive",
   "breathe", "pixel",
@@ -333,6 +335,13 @@ const USAGE = `Usage: sprite-sheet.mjs <subcommand> [options]
 
 Deterministic sprite-sheet pipeline (ffmpeg only, no model calls).
 Every subcommand accepts --json (one JSON object on stdout) and --help.
+
+  guide --rows R --cols C --cell WxH --out <png> [--margin ${DEFAULT_SAFE_MARGIN_RATIO}]
+      Draw the layout guide sent with a sheet prompt, at the sheet's own
+      size (C x W by R x H): a light grey canvas, a dark box on every cell,
+      a blue box on its safe area (inset --margin of the cell, floored) and
+      a centre line. --cell is the GENERATION cell ('sheet-prompt --json'
+      reports it with the call). A working file, not an asset.
 
   probe <image> [--threshold 16]
       Report { width, height, hasAlpha, alphaCoverage, cornerColor }.
@@ -7152,6 +7161,7 @@ const OPTIONS = {
     out: { type: "string" }, frames: { type: "string" }, depth: { type: "string" }, breaths: { type: "string" },
     mode: { type: "string" }, "rigid-row": { type: "string" }, axis: { type: "string" }, torso: { type: "string" },
   },
+  guide: { rows: { type: "string" }, cols: { type: "string" }, cell: { type: "string" }, out: { type: "string" }, margin: { type: "string" } },
   probe: { threshold: { type: "string" } },
   key: {
     out: { type: "string" }, color: { type: "string" }, similarity: { type: "string" },
@@ -7505,6 +7515,28 @@ function main() {
   const threshold = num(values.threshold, "--threshold", { integer: true, min: 0, fallback: DEFAULT_THRESHOLD });
 
   switch (command) {
+    case "guide": {
+      if (positionals.length) fail(`guide: unexpected argument '${positionals[0]}' — the grid comes from --rows, --cols and --cell`);
+      const cell = parseCell(requireFlag(values.cell, "--cell"));
+      if (!cell) fail("--cell: the guide needs the generation cell in pixels, WxH");
+      let geometry;
+      try {
+        geometry = guideGeometry({
+          rows: num(requireFlag(values.rows, "--rows"), "--rows", { integer: true, min: 1 }),
+          cols: num(requireFlag(values.cols, "--cols"), "--cols", { integer: true, min: 1 }),
+          cell,
+          margin: num(values.margin, "--margin", { min: 0, fallback: DEFAULT_SAFE_MARGIN_RATIO }),
+        });
+      } catch (error) {
+        fail(error.message);
+      }
+      const output = writeRgbaPng(requireFlag(values.out, "--out"), guideRaster(geometry), "guide");
+      const { rows, cols, width, height, safeMargin } = geometry;
+      emit(values, { output, rows, cols, cell, safeMargin, width, height }, [
+        `guide ${cols}x${rows} of ${cell.width}x${cell.height} (safe inset ${safeMargin.x}x${safeMargin.y}) → ${output} (${width}x${height})`,
+      ]);
+      break;
+    }
     case "probe": {
       const out = stepProbe(requirePositional(positionals, "<image>"), threshold);
       emit(values, out, [

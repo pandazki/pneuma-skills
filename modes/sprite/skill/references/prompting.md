@@ -5,6 +5,12 @@ can align frames and pack an atlas; it cannot fix a drawing whose character
 changed size halfway through the grid. Everything here is about what happens
 before the pipeline runs.
 
+`sprite-project.mjs sheet-prompt` writes this grammar for you: you write the
+motion (the action), the code writes everything else and records how it did
+(*Building the prompt: `sheet-prompt`*, below). The grammar is still the thing
+to know — it is what the builder encodes, and what you read when a sheet comes
+back wrong.
+
 ## The five-part grammar
 
 Write every sheet prompt in this order. The order matters — the model weights
@@ -42,8 +48,8 @@ in order to work at all. Every sheet prompt carries all five.
   opaque, only the background is white") — a colour key cannot tell the plate
   from a white the character is wearing, and the fastest way to lose an eye is
   to let the model paint it the same white as the backdrop.
-- **At least 16 px of empty background on every side of every cell**, moving
-  accessories included. A pose that touches its cell edge is a pose whose
+- **Empty background on every side of every cell** — 9.4 % of the cell, 48 px
+  on a 512 px cell — moving accessories included. A pose that touches its cell edge is a pose whose
   neighbour bleeds into it, and `inspect` will say so ("cell NN is clipped").
   The padding is what `clean` needs too: a fragment that reaches a border is
   the one thing it can safely identify as litter.
@@ -56,6 +62,108 @@ in order to work at all. Every sheet prompt carries all five.
 - **Close the loop** when the motion loops: "the last cell leads smoothly
   into the first on the next beat, with compatible movement direction".
   For a one-shot or transition, name the final pose instead.
+
+## Building the prompt: `sheet-prompt`
+
+```bash
+node {SKILL_PATH}/scripts/sprite-project.mjs sheet-prompt --dir <character> \
+  --motion <id> --action "<the phase plan, by cell>" [--frames 8] [--state idle] [--guide] --json
+```
+
+It builds the whole prompt in code, records it on the motion (`prompt`, and
+`promptParts` — builder version, your action verbatim, the clause ids, the
+guide's geometry when one was used) and prints it. Without `--json` stdout is
+the prompt alone, so `PROMPT="$(node … sheet-prompt …)"` feeds
+`generate_image.mjs "$PROMPT"` directly; the image size, the references to
+attach (in order) and the guide call go to stderr. With `--json` they are
+`imageSize`, `attach`, `guide` and `notes`.
+
+**You write the action**: the view if it matters ("three-quarter view"), the
+phases by cell, what leads and follows, the one secondary motion, the blink,
+the final pose of a one-shot. Nothing else — the rest below is written for you,
+the same way every time.
+
+**The code writes**, in grammar order:
+
+| Part | What it says | Clause id (recorded only when conditional) |
+|---|---|---|
+| 1 | `character.style`, verbatim | — (refused when empty) |
+| 1 | pixel art at `pixel.logicalHeight` logical px: square blocks, one size in every cell, no anti-aliasing | `pixel:<h>` when `character.pixel` is set |
+| 2 | the image and grid in pixels, C columns × R rows, read order | — |
+| 2 | each cell holds the whole character once, centred, with the safe margin (9.4 % of the cell), props included | — |
+| 2 | the layout guide is the last attached image: follow it, never draw it | `guide` |
+| 3 | the same character as the references, then `character.description`; pale details stay opaque | — |
+| 3 | the facing: the motion's direction locked for the whole sheet, else `character.facing` | `direction:<d>` |
+| 3 | the attached anchor for that direction owns the facing | `anchor:<d>` when an anchor ref faces that way |
+| 3 | fixed camera and scale; identity over motion ("This sheet owns motion only… Prefer a subtler animation over any change that alters the character's identity") | — |
+| 3 | the asymmetry lock, with `character.asymmetric` verbatim | `asymmetric` |
+| 4 | your action, headed by the frame count and loop / once | — |
+| 4 | the state guard (below) | `state:<s>` |
+| 4 | the motion runs straight on across row ends | `row-continuity` when rows > 1 |
+| 4 | cell N leads into cell 1 / cell N is the final pose | `loop-close` / `one-shot-end` |
+| 4 | no detached effects (sparkles, arcs, speed lines, smears, glows) | — |
+| 5 | the flat pure white plate and the negatives | — |
+
+**State guards.** The state is read off the motion's id, then its label, first
+matching word wins (`walk-right` → walk, `lantern-swing` → attack); anything
+else is `generic`, and `--state` overrides.
+
+| State | Words | The guard |
+|---|---|---|
+| idle | idle, breathe | feet planted on one baseline, never lift, step, shuffle or slide; no turning; the eyes close in one cell at most |
+| walk / run | walk, march; run, sprint, dash, jog | in place, on the spot; distinct gait poses with support passing between feet, not repeated standing or bobbing; no speed lines, dust or trails. Front or back: alternate legs, arms, shoulders and body height visibly |
+| jump | jump, hop, leap | one jump, not repeated hops; anticipation, lift, peak, descent, settle; the peak stays in the safe area; no shadows, landing marks or smears |
+| attack | attack, slash, strike, swing, punch, kick, stab | windup, strike, follow-through, recovery with what it already holds; every grip stays; the weapon stays in the safe area; no slash arcs, flashes or trails |
+| wave | wave, greet, hello | the arm alone; feet planted unless the action steps; no wave marks or sparkles |
+| generic | — | carry the action in the body, one readable phase after the next |
+
+Ported (text) from aldegad/sprite-gen `sprite_gen/gen/prepare.py`
+`STATE_REQUIREMENTS` (walk, run, frontwalk, jump, wave) and `video/batch.py`
+`HOLD_TEXT` (the attack grip lines); the idle and attack guards are ours, from
+the idle recipe below and upstream's default attack action. The identity lines
+are adapted from upstream's row prompt anchor lock, from a one-row strip to a
+grid.
+
+**Frames and grid.** `--frames N` redraws the motion's grid (and `run` must
+then slice that grid); without it the motion's own grid is used.
+
+| Frames | Grid (columns × rows) | Image at a 512 px cell |
+|---|---|---|
+| 2, 3 | N × 1 | 1024×512, 1536×512 |
+| 4 | 2 × 2 | 1024×1024 |
+| 6 | 3 × 2 | 1536×1024 |
+| 8 | 4 × 2 | 2048×1024 |
+| 9 | 3 × 3 | 1536×1536 |
+| 12 | 4 × 3 | 2048×1536 |
+| 16 | 4 × 4 | 2048×2048 |
+
+The cell drawn is the character's cell times the largest whole factor that
+keeps it at most 512 px (256 → 512), so pixel art stays on an integer scale.
+Pass the printed `imageSize` as `--image-size`; the prompt names those exact
+pixels. More than 16 frames come from a clip. An idle that is not 8 frames
+gets a note (E1, *Measured* below).
+
+**The layout guide** (`--guide`, default **off**): the prompt says the last
+attached image is the guide, and the output gives the call that draws it —
+`sprite-sheet.mjs guide --rows R --cols C --cell 512x512 --out
+<character>/motions/<id>/layout-guide.png` (`pipeline.md`). Attach it last.
+On E2 (below) it fixed nothing — no arm clipped, drew lines or misplaced a
+cell — and cost 22 % more per sheet; reach for it when a sheet comes back with
+merged or misplaced cells.
+
+**Deterministic.** The same character, grid and parts give the same text byte
+for byte; `builder: "sheet-prompt/1"` names the wording. Changing a sentence
+means a new builder version, so a recorded prompt keeps meaning what it said.
+A prompt you write yourself goes in with `set-motion --prompt` and drops the
+parts.
+
+**Where it departs from upstream, deliberately.** Upstream's row prompt asks
+for a one-row strip on a chroma key with a sectioned "authoritative spec"; we
+keep a grid, the white plate (BiRefNet cuts it) and one paragraph in grammar
+order. The safe margin is upstream's 9.4 % of the cell rather than our
+earlier 16 px, which was written for 256 px cells and is 3 % of a 512 px
+cell — one number, which the guide draws too. Neither number is honoured to
+the pixel (E2: no cell kept 48 px), and neither clipped.
 
 ## Drawing a character that is not a person
 
@@ -139,28 +247,28 @@ once for all the scripts).
 
 One shape covers most motions, and it is the one the pipeline is tuned for:
 
-> **A single 1024×1024 image, a strict 4×4 grid of 16 equal 256×256 cells,
-> read left to right, top to bottom. Each cell holds one frame of the
-> character, with at least 16 px of empty background on every side —
-> including anything the character is holding or wearing that moves. The
-> camera is fixed, with consistent body proportions and drawing scale.
-> Ground contacts share a baseline during grounded phases; the pose and
-> movement follow the motion plan. A flat solid pure white background fills
-> every cell, no gradient, no cell borders, no numbers.**
+> **A single 2048×1024 image, a strict 4×2 grid of 8 equal 512×512 cells,
+> 4 columns and 2 rows, read left to right, top to bottom. Each cell holds the
+> whole character exactly once, centred, with at least 48 px of empty
+> background on every side — including anything the character is holding or
+> wearing that moves. The camera is fixed, with consistent body proportions
+> and drawing scale. Ground contacts share a baseline during grounded phases;
+> the pose and movement follow the motion plan. A flat solid pure white
+> background fills every cell, no gradient, no cell borders, no numbers.**
 
-Adapt the grid and cell dimensions to the chosen frame count, paste it after
-the style anchor, then say what the frames *are*.
-`--image-size 1024x1024` gives exactly the 256 px cell a character with
-`cell: 256×256` declares; go to `2048x2048` (a 512 px cell) when the frames
-are a hand-off to an engine or may be re-packed larger, and say why. The
-default the workflow prints is 2048; 1024 is the cheaper iteration tier and a
-quarter of the bytes on disk.
+`sheet-prompt` writes it for the chosen frame count (the grid table above) and
+prints the matching `--image-size`: 512 px cells for a 256 px character, the
+tier a hand-off to an engine needs. The margin is 9.4 % of the cell (48 px
+here, 24 px on a 256 px cell). A 1024 px sheet is the cheaper iteration tier
+and a quarter of the bytes on disk; write that prompt by hand if you choose it.
 
 ## The idle recipe
 
 For a quiet grounded idle, keep the primary motion small — an idle that
-"does something" can read as a twitch. A starting recipe, as a
-16-frame 4×4 sheet at 6–7 fps (a ≈ 2.4 s cycle):
+"does something" can read as a twitch. A starting recipe, as an **8-frame
+sheet, 4 columns × 2 rows, at ≈ 3.3 fps (a ≈ 2.4 s cycle)** — the shape that
+read best in both E1 takes (*Measured* below); 4×4 showed a pop at a row
+boundary or at the wrap, and 2×2 held each pose 0.6 s:
 
 - **One gentle breathing rise and fall across the whole cycle.** The chest and
   shoulders lift over the first half and settle over the second; the head
@@ -176,28 +284,33 @@ For a quiet grounded idle, keep the primary motion small — an idle that
   in every cell".
 - **No walking, no turning, no stepping toward the camera**, and no change of
   facing. Those are other motions.
-- **The last cell flows back into the first** — say it by number ("cell 16
-  leads into cell 1 on the next beat, without an extra hold").
+- **The last cell flows back into the first** — say it by number ("cell 8
+  leads into cell 1 on the next beat, without an extra hold"; `sheet-prompt`
+  writes this line).
 
 Written out, that is the first worked prompt below.
 
 ## Three worked prompts
 
-### Chibi idle (4×4, 8 fps, loop)
+### Chibi idle (4×2, ≈ 3.3 fps, loop)
 
 > Clean anime-chibi line art, flat colors, thick uniform outline, no shading.
-> A single image laid out as a strict 4×4 grid of 16 equal cells, read left to
-> right, top to bottom. The same character in every cell, matching the
-> attached reference sheet exactly: short bob hair, oversized hooded cloak,
-> satchel, small floating paper lantern. Facing right, three-quarter view,
-> full body, consistent body proportions and fixed camera distance in every
-> cell. A 16-frame idle breathing loop: cells 1-4 the chest rises and the
-> cloak settles, cells 5-8 the rise peaks and the lantern drifts up, cells
-> 9-12 the chest falls, cells 13-16 settle toward the opening pose, with cell
-> 16 leading smoothly into cell 1. A flat solid pure white background filling
-> every cell, no gradient. No grid lines, no cell borders, no numbers, no text, no
-> drop shadow, no ground shadow, no motion blur, nothing crossing between
-> cells.
+> A single 2048x1024 image laid out as a strict 4x2 grid of 8 equal 512x512
+> cells, 4 columns and 2 rows, read left to right, top to bottom. The same
+> character in every cell, matching the attached reference sheet exactly:
+> short bob hair, oversized hooded cloak, satchel, small floating paper
+> lantern. Facing right, three-quarter view, full body, consistent body
+> proportions and fixed camera distance in every cell. An 8-frame idle
+> breathing loop: cells 1-2 the chest begins to rise, cells 3-4 the rise
+> peaks and the lantern drifts up a beat behind, cells 5-6 the chest falls,
+> cells 7-8 settle toward the opening pose, with cell 8 leading smoothly into
+> cell 1. A flat solid pure white background filling every cell, no gradient.
+> No grid lines, no cell borders, no numbers, no text, no drop shadow, no
+> ground shadow, no motion blur, nothing crossing between cells.
+
+With `sheet-prompt`, the action is only the middle: "Three-quarter view. An
+8-frame idle breathing loop: cells 1-2 … cells 7-8 settle toward the opening
+pose." Everything around it is written for you.
 
 ### Pixel walk (4×2, 12 fps, loop)
 
@@ -343,6 +456,7 @@ it for `--alpha`.
 | Ground shadow follows the sprite | Default illustration habit | "No ground shadow, no drop shadow, no contact shadow" — a shadow is opaque and it lands in the alpha, so the aligner treats it as part of the silhouette |
 | Effects bleed between cells | Motion blur, speed lines, glow | "Nothing crossing between cells, no motion blur, no speed lines, no glow" |
 | Loop jumps from frame 16 to frame 1 | The closing transition was not specified | "Cells 13-16 settle toward the opening pose; cell 16 leads into cell 1 on the next beat" — check movement direction as well as pose similarity |
+| A prop appears twice in a cell (a held lantern and a floating one) | The description says how the prop is usually carried, the action says something else, and the model draws both | Say it in the action: "she grips the paper lantern by its cord — the one lantern, no other" (E2: 3 of 8 cells in one of four sheets) |
 
 Two of those — scale drift and cell clipping — the `inspect` report names for
 you (`scaleDrift`, "cell NN is clipped"). Read the report before rewriting the
@@ -444,3 +558,54 @@ Flare model automatically — do not override it with `--model`.
 Do not attach a previous motion's sheet as a reference. It looks like a helpful
 consistency anchor and it is not: the model copies the *grid* as well as the
 character, and you get an attack drawn in the idle's poses.
+
+## Measured (Lumi, 2026-09-27)
+
+**E1 — idle frame count.** One idle breath at the same 2.4 s cycle drawn as
+4×4 (16 frames at 6.67 fps), 4×2 (8 at 3.33 fps) and 2×2 (4 at 1.67 fps), two
+takes each (GPT Image 2.5 flare, the seed's refs, one prompt per grid).
+Adjacent-frame change is mean |RGBA| at 64×64 in play order:
+
+| | in-row steps min–max (median) | row boundaries | wrap |
+|---|---|---|---|
+| 4×4, take 2 | 0.0097–0.0265 (0.0166) | 0.0257, 0.0376, 0.0231 | 0.0393 |
+| 4×4, take 1 | 0.0083–0.0166 (0.0100) | 0.0409, 0.0365, 0.0185 | 0.0202 |
+| 4×2, take 2 / 1 | 0.0128–0.0218 / 0.016–0.0235 | 0.0195 / 0.0155 | 0.0178 / 0.0256 |
+| 2×2, take 2 / 1 | 0.038–0.055 / 0.033–0.043 | 0.0505 / 0.0426 | 0.0423 / 0.0358 |
+
+On 4×4 the model draws each row as a unit: row-boundary steps ran 3.6–4.1× the
+median in-row step in take 1, and in take 2 the wrap was the biggest step
+(2.4×). On 4×2 no step — boundary and wrap included — exceeds 1.25× its
+median in-row step in either take (the largest is take 1's wrap, 0.0256).
+2×2 moves smoothly but holds each pose 0.6 s. `inspect` raised no warning on
+any of the six. Hence the idle recipe's 8 frames; `sheet-prompt` notes an idle
+of any other count. Other states were not measured for frame count.
+
+**E2 — the layout guide, on vs off.** Four 8-frame lantern-swing attack sheets
+(4×2, 2048×1024, flare, turnaround + portrait), prompts from `sheet-prompt/1`
+differing only by the guide clause; the guide arm attached the guide last.
+Each sheet → BiRefNet → `run` → `register-run`.
+
+| | guide 1 | guide 2 | none 1 | none 2 |
+|---|---|---|---|---|
+| drawn grid lines / boxes, guide colours, grey plate | none | none | none | none |
+| clipped cells | 0/8 | 0/8 | 0/8 | 0/8 |
+| cells keeping the stated 48 px margin | 0/8 | 0/8 | 0/8 | 0/8 |
+| closest approach to a cell edge (px) | 9 | 12 | 9 | 8 |
+| mean character height (px of 512) | 440 | 443 | 455 | 459 |
+| mean feet offset from the cell centre (px) | 20.4 | 20.2 | 39.3 | 27.2 |
+| row-boundary step / median in-row step | 1.18 | 1.19 | 0.87 | 1.45 |
+| scale spread (cv of √area) | 0.025 | 0.030 | 0.022 | 0.027 |
+| `inspect` scaleDrift (warns over 0.15) | 0.161 | 0.167 | 0.125 | 0.135 |
+| cells with a second lantern | 0 | 0 | 3 | 0 |
+| image cost | $0.067 | $0.067 | $0.055 | $0.055 |
+
+What the guide is for — cells the model misplaces, merges, clips, or boxes
+drawn into the art — happened in neither arm. It nudged the drawing the way it
+asks (characters ≈ 3.5 % smaller, feet nearer the centre) without getting any
+cell inside its safe area, and two sheets per arm cannot separate that from
+take noise. Both guide sheets tripped `scaleDrift`; the area-based spread is
+the same in both arms, so that is the raised lantern stretching the bbox, not
+the guide. Default off; the flag stays for a sheet that comes back misplaced.
+Spend: images $0.2451 + 4 BiRefNet calls.
+

@@ -395,7 +395,8 @@ interface BreatheRecord {         // all required but depthX and anatomy
 interface PromptParts {           // how `sheet-prompt` built `prompt`
   builder: string;                // code version, e.g. "sheet-prompt/1"
   action: string;                 // your action / phase plan, verbatim
-  guards: string[];               // clause ids: "walk-gait", "direction:left"…
+  guards: string[];               // clause ids: "state:walk", "direction:left",
+                                  // "row-continuity", "loop-close", "guide"…
   guide?: { rows: number; cols: number;
             cell: { width: number; height: number };
             safeMargin: { x: number; y: number } };
@@ -644,10 +645,15 @@ note, not a status: the fix is one free `mirror` + `register-run`).
 A run of any other shape over a breathe or mirror motion drops that record
 and corrects `source`, the way a sheet run corrects `video`.
 
-**Recorded prompt parts.** `set-motion --prompt "<text>" --prompt-parts
-'<json>'` records a prompt with the parts code built it from — the writer
-`sheet-prompt` uses. Both go on together; `--prompt` alone is a hand-written
-prompt and drops any parts on file.
+**Recorded prompt parts.** `sheet-prompt --motion <id> --action "…"` builds
+the sheet prompt and records both (`prompting.md`, *Building the prompt*);
+`set-motion --prompt "<text>" --prompt-parts '<json>'` is the same writer
+exposed. Both go on together; `--prompt` alone is a hand-written prompt and
+drops any parts on file. `guards` lists only the conditional clauses
+(`pixel:<h>`, `guide`, `direction:<d>`, `anchor:<d>`, `asymmetric`,
+`state:<s>`, `row-continuity`, `loop-close` / `one-shot-end`); what every
+sheet prompt says is pinned by the builder version. With the same character
+and grid, the same parts render the same text.
 
 **Pixel art.** `character.pixel` is the one authority for "this is pixel
 art": `riveIsPixelArt` (`rive-plan.mjs`) reads it first and falls back to the

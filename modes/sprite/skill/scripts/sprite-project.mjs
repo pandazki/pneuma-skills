@@ -13,8 +13,8 @@
  * previous project untouched.
  *
  * Subcommands: init, set-character, add-ref, add-motion, set-motion,
- * set-sheet, set-keyframe, register-run, register-export, add-video,
- * set-video, remove-motion, show.
+ * sheet-prompt, set-sheet, set-keyframe, register-run, register-export,
+ * add-video, set-video, remove-motion, show.
  */
 
 import { spawnSync } from "node:child_process";
@@ -25,6 +25,10 @@ import {
 } from "node:fs";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
+
+import {
+  GUIDE_DEFAULT, RECOMMENDED_FRAMES, SHEET_FRAME_COUNTS, SHEET_STATES, buildSheetPrompt, sheetGrid,
+} from "./sheet-prompt.mjs";
 
 const SCHEMA = "pneuma-craft/project/v1";
 const TOOL = "sprite-sheet.mjs";
@@ -93,7 +97,7 @@ const MIRRORED = { left: "right", right: "left" };
 const BREATHE_MODES = ["smooth", "pixel"];
 
 const SUBCOMMANDS = [
-  "init", "set-character", "add-ref", "add-motion", "set-motion", "set-sheet", "set-keyframe",
+  "init", "set-character", "add-ref", "add-motion", "set-motion", "sheet-prompt", "set-sheet", "set-keyframe",
   "register-run", "register-export", "add-video", "set-video", "remove-motion", "show",
 ];
 
@@ -232,6 +236,25 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       .riv) and --brief-budget, both on the first call; width and
       interpolator do not apply. 'add-video' refuses a generated clip on a
       transition without one.
+
+  sheet-prompt --motion <motionId> --action "<the phase plan, by cell>"
+               [--frames ${SHEET_FRAME_COUNTS.join("|")}] [--state ${[...SHEET_STATES, "generic"].join("|")}]
+               [--guide | --no-guide]
+      Build the sheet prompt in code and record it: motion.prompt is the
+      text, motion.promptParts how it was built. You write the action — the
+      view if it matters, the phases by cell, the secondary motion, the
+      blink; the code writes the rest in the grammar of prompting.md: the
+      character's style sentence verbatim, the grid and the image size, the
+      safe margin, identity over motion, the facing (the motion's direction,
+      else the character's), the asymmetry lock, pixel art, the guards for
+      the motion's state, the loop closure and the white plate. Printed on
+      stdout (the prompt alone; --json adds imageSize, attach and guide).
+      --frames redraws the motion's grid for that many frames (8 → 4
+      columns × 2 rows). --state overrides the state read off the motion's
+      id and label (unknown → generic). --guide adds the layout guide:
+      the prompt names it as the last attached image, and the output says
+      the 'sprite-sheet.mjs guide' call that draws it. Default: ${GUIDE_DEFAULT ? "on" : "off"}.
+      Refused on a loop, a transition, a breathe or a mirror motion.
 
   set-sheet --motion <motionId> --file <path> [--from <assetId,…>] [--model]
             [--prompt] [--background <text>] [--status ${MOTION_STATUSES.join("|")}]
@@ -1759,6 +1782,10 @@ const OPTIONS = {
     "brief-interpolator": { type: "string" }, "brief-budget": { type: "string" },
     direction: { type: "string" }, "prompt-parts": { type: "string" },
   },
+  "sheet-prompt": {
+    motion: { type: "string" }, action: { type: "string" }, frames: { type: "string" }, state: { type: "string" },
+    guide: { type: "boolean", default: false }, "no-guide": { type: "boolean", default: false },
+  },
   "set-sheet": {
     motion: { type: "string" }, file: { type: "string" }, from: { type: "string", multiple: true },
     model: { type: "string" }, prompt: { type: "string" }, background: { type: "string" }, status: { type: "string" },
@@ -2383,6 +2410,96 @@ function main() {
       // After the write, and on stderr: every caller of this command passes
       // --json, so a line routed through `emit` would be swallowed by it.
       for (const line of [...briefLines, ...directionNotes]) console.error(line);
+      break;
+    }
+
+    case "sheet-prompt": {
+      const doc = loadProject(dir);
+      const motion = findMotion(doc, requireFlag(values.motion, "--motion"));
+      if (motion.kind === "loop" || motion.kind === "transition") {
+        fail(`sheet-prompt: '${motion.id}' is a ${motion.kind} — its frames come from a clip, and there is no grid to draw`);
+      }
+      if (motion.source === "breathe" || motion.source === "mirror") {
+        fail(`sheet-prompt: '${motion.id}' is a ${motion.source} motion — its frames are made from ${motion.source === "mirror" ? "another motion's frames" : "one still"}, not drawn from a prompt`);
+      }
+      const action = requireFlag(values.action, "--action");
+      if (values.guide && values["no-guide"]) fail("--guide and --no-guide are mutually exclusive");
+      const guide = values.guide ? true : values["no-guide"] ? false : GUIDE_DEFAULT;
+      const state = values.state === undefined ? undefined : oneOf(values.state, [...SHEET_STATES, "generic"], "--state");
+      let grid = motion.grid;
+      if (values.frames !== undefined) {
+        const frames = num(values.frames, "--frames", { integer: true, min: 1 });
+        try {
+          grid = sheetGrid(frames);
+        } catch (error) {
+          fail(error.message);
+        }
+      }
+      let built;
+      try {
+        built = buildSheetPrompt({
+          character: doc.sprite.character, motion: { ...motion, grid }, refs: doc.sprite.refs, action, state, guide,
+        });
+      } catch (error) {
+        fail(`sheet-prompt: ${error.message}`);
+      }
+      const frameCount = grid.rows * grid.cols;
+      const notes = [];
+      // The grid the prompt draws is the grid `run --rows --cols` slices, so
+      // the two change together.
+      if (grid.rows !== motion.grid.rows || grid.cols !== motion.grid.cols) {
+        if (motion.frames?.length) {
+          notes.push(`note: ${motion.id} is now ${grid.cols} columns × ${grid.rows} rows; its ${motion.frames.length} registered frames are from the old ${motion.grid.cols} × ${motion.grid.rows} sheet until the next run`);
+        }
+        motion.grid = { rows: grid.rows, cols: grid.cols };
+      }
+      const recommended = RECOMMENDED_FRAMES[built.state];
+      if (recommended && recommended !== frameCount) {
+        notes.push(`note: ${built.state} reads best at ${recommended} frames (${sheetGrid(recommended).cols} columns × ${sheetGrid(recommended).rows} rows), measured — this sheet has ${frameCount}; --frames ${recommended} redraws it (references/prompting.md)`);
+      }
+      if (!doc.sprite.character.description?.trim()) {
+        notes.push("note: the character has no description — the references carry the identity alone (set-character --description)");
+      }
+      if (motion.source === "video") {
+        notes.push(`note: ${motion.id} was declared --source video; register-run records sheet when this sheet's frames land`);
+      }
+      recordPromptParts(motion, built.parts, built.prompt);
+      saveProject(dir, doc);
+
+      // Workspace-relative, the way the image call wants its paths: the
+      // --dir as given, then the uri.
+      const onDisk = (uri) => (values.dir === undefined ? uri : join(values.dir, uri));
+      const guideOut = onDisk(`motions/${motion.id}/layout-guide.png`);
+      const attach = [
+        ...built.attach.map((refId) => {
+          const ref = doc.sprite.refs.find((r) => r.id === refId);
+          return onDisk(doc.assets.find((a) => a.id === ref.asset)?.uri ?? `refs/${refId}.png`);
+        }),
+        ...(guide ? [guideOut] : []),
+      ];
+      const { geometry } = built;
+      const cell = `${geometry.cell.width}x${geometry.cell.height}`;
+      const payload = {
+        motion: motion.id,
+        state: built.state,
+        frames: frameCount,
+        grid: motion.grid,
+        imageSize: geometry.imageSize,
+        cell: geometry.cell,
+        safeMargin: geometry.safeMargin,
+        prompt: built.prompt,
+        promptParts: motion.promptParts,
+        attach,
+        guide: guide ? { out: guideOut, rows: geometry.rows, cols: geometry.cols, cell } : null,
+        notes,
+      };
+      emit(values, payload, [built.prompt]);
+      if (!values.json) {
+        console.error(`recorded ${built.parts.builder} on ${motion.id}: ${frameCount} frames as ${geometry.cols} columns × ${geometry.rows} rows, state ${built.state}; guards ${built.parts.guards.join(", ")}`);
+        console.error(`image: --image-size ${geometry.imageSize}; attach in this order: ${attach.join(", ") || "(no references registered)"}`);
+        if (guide) console.error(`guide: sprite-sheet.mjs guide --rows ${geometry.rows} --cols ${geometry.cols} --cell ${cell} --out ${guideOut}`);
+        for (const note of notes) console.error(note);
+      }
       break;
     }
 
