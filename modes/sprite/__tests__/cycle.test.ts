@@ -191,7 +191,7 @@ describe("cycle.mjs — is there a cycle?", () => {
     // evidence that 28 is a dip, so the window holds no cycle — reading it
     // made a 28-frame "cycle" out of two frame pairs.
     const m = 30;
-    const E = new Float64Array(m * m);
+    const E = new Float32Array(m * m);
     for (let i = 0; i < m; i++) for (let j = 0; j < m; j++) E[i * m + j] = Math.abs(i - j) === 28 ? 0 : Math.abs(i - j) / m;
     const edge = detectCycle(E, m, { minLen: 6, maxLen: 28, fps: FPS });
     expect(edge.verdict).toBe("none");
