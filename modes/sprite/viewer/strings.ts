@@ -52,6 +52,9 @@ export interface SpriteStrings {
   railHide: string;
   noCharacterTitle: string;
   noCharacterBody: string;
+  /** The empty stage's four routes, one sentence each, in the order the
+   *  agent's opening question names them. */
+  noCharacterRoutes: string[];
   /** `declared 256 · measured 186×252 · packed ×0.5` */
   sizeLine: (line: SizeLine) => string;
   facing: (direction: "left" | "right") => string;
@@ -64,6 +67,10 @@ export interface SpriteStrings {
   /** The rail's chip for the same thing. */
   videoSource: string;
   videoSourceTitle: string;
+  /** The rail's chip for a motion warped out of one still (breathe), and
+   *  its title, which says which way the pixels moved. */
+  breatheSource: string;
+  breatheSourceTitle: (mode: "smooth" | "pixel" | null) => string;
   /** The rail's chip for a motion whose deliverable is a seamless UI loop. */
   loopSource: string;
   loopSourceTitle: string;
@@ -319,7 +326,13 @@ const en: SpriteStrings = {
   railHide: "Hide the rail",
   noCharacterTitle: "No character yet",
   noCharacterBody:
-    "Sprite starts with a character — a name, a look, a style. Describe one in the chat and the agent will draw its references, then you can ask for motions: idle, walk, attack.",
+    "Sprite starts with a character. Tell the agent what you are making, or drop in a picture:",
+  noCharacterRoutes: [
+    "A game character — the moves it needs (stand, walk, attack, jump) as a sprite sheet your engine can load.",
+    "A looping animation for a page — a small icon or element that never stops moving, as WebP, APNG, WebM or Lottie.",
+    "A mascot for an app — a few states it switches between, packed into one Rive file.",
+    "Bring your own picture to life — upload an image and it starts breathing, free, in seconds.",
+  ],
   sizeLine: (line) =>
     [
       line.declared ? `declared ${line.declared}` : null,
@@ -335,6 +348,13 @@ const en: SpriteStrings = {
   fromVideo: "from video",
   videoSource: "video",
   videoSourceTitle: "Frames sampled from a video clip",
+  breatheSource: "breathe",
+  breatheSourceTitle: (mode) =>
+    mode === "pixel"
+      ? "Breathing warped out of one picture, no model call — whole pixels, for pixel art"
+      : mode === "smooth"
+        ? "Breathing warped out of one picture, no model call — smooth resampling, for painted and anti-aliased art"
+        : "Breathing warped out of one picture, no model call",
   loopSource: "loop",
   loopSourceTitle: "A seamless transparent animation for a UI, not a sprite atlas",
   transitionChip: "transition",
@@ -704,8 +724,13 @@ const zhCN: SpriteStrings = {
   railShow: "显示侧栏",
   railHide: "收起侧栏",
   noCharacterTitle: "还没有角色",
-  noCharacterBody:
-    "精灵图从一个角色开始——名字、长相、画风。在对话里描述一个，助手会先画出它的参考图，之后你就可以要动作了：待机、行走、攻击。",
+  noCharacterBody: "精灵图从一个角色开始。告诉助手你想做什么，或者直接发一张图：",
+  noCharacterRoutes: [
+    "游戏角色——它要做的动作（待机、行走、攻击、跳跃），做成游戏引擎能直接用的精灵图。",
+    "网页上的循环动画——一个一直在动的小图标或小元素，导出成 WebP、APNG、WebM 或 Lottie。",
+    "应用里的吉祥物——几种能来回切换的状态，打包进一个 Rive 文件。",
+    "让你的图动起来——发一张图过来，它就会轻轻呼吸，不花钱，几秒就好。",
+  ],
   sizeLine: (line) =>
     [
       line.declared ? `声明 ${line.declared}` : null,
@@ -721,6 +746,13 @@ const zhCN: SpriteStrings = {
   fromVideo: "来自视频",
   videoSource: "视频",
   videoSourceTitle: "帧来自一段视频",
+  breatheSource: "呼吸",
+  breatheSourceTitle: (mode) =>
+    mode === "pixel"
+      ? "由一张图直接变形出呼吸，没有调用模型——按整像素移动，适合像素画"
+      : mode === "smooth"
+        ? "由一张图直接变形出呼吸，没有调用模型——平滑重采样，适合手绘和带抗锯齿的画"
+        : "由一张图直接变形出呼吸，没有调用模型",
   loopSource: "循环",
   loopSourceTitle: "做给界面用的无缝透明动画，不是游戏用的精灵图集",
   transitionChip: "过渡",

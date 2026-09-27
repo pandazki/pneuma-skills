@@ -23,7 +23,7 @@
 
 import type { CharacterProject, Motion, MotionStatus } from "../domain.js";
 import { resolveAssetUri } from "../domain.js";
-import { BridgeIcon, FilmIcon, LoopIcon, WarnIcon } from "./icons.js";
+import { BreathIcon, BridgeIcon, FilmIcon, LoopIcon, WarnIcon } from "./icons.js";
 import { hasGeneratingVideo, joinVerdict } from "./metrics.js";
 import { motionLabel, railGroups } from "./panel.js";
 import type { SpriteStrings } from "./strings.js";
@@ -263,6 +263,17 @@ function MotionRow({
             >
               <FilmIcon size={9} />
               {t.videoSource}
+            </span>
+          ) : motion.source === "breathe" ? (
+            // Warped out of one picture for free: the chip says so, and its
+            // title says which way the pixels moved — the one setting that
+            // is wrong for the other kind of art.
+            <span
+              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-cc-border px-1.5 py-px text-[10px] text-cc-muted"
+              title={t.breatheSourceTitle(motion.breathe?.mode ?? null)}
+            >
+              <BreathIcon size={9} />
+              {t.breatheSource}
             </span>
           ) : null}
           {warnings.length > 0 ? (

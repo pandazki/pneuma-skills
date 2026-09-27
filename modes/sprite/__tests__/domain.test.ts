@@ -907,7 +907,7 @@ describe("0.5.0 sidecar additions", () => {
   });
 
   test("a manual torso band travels with the anatomy; a malformed one goes on its own", () => {
-    const withTorso = { ...BREATHE, anatomy: { rigidRow: 41, axisX: 32, from: "override", torsoHalf: 18 } };
+    const withTorso: BreatheRecord = { ...BREATHE, anatomy: { rigidRow: 41, axisX: 32, from: "override", torsoHalf: 18 } };
     expect(motion0((m) => { m.source = "breathe"; m.breathe = withTorso; }).breathe).toEqual(withTorso);
     for (const bad of [0, -3, "wide", null]) {
       const anatomy = motion0((m) => {

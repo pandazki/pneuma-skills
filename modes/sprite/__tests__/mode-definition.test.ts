@@ -238,10 +238,24 @@ describe("extractContext — routes, directions, breathe and mirror", () => {
   });
 
   test("a breathe names the still it was warped from; a mirror names its source and its side", () => {
-    expect(at({ contentSet: "mini", motion: "idle" })).toContain("Source: breathe (from ref-portrait-alpha)");
+    expect(at({ contentSet: "mini", motion: "idle" })).toContain("Source: breathe (from ref-portrait-alpha) · depth 0.02, 1 breath, smooth");
     const mirror = at({ contentSet: "mini", motion: "walk-left" });
     expect(mirror).toContain("Direction: left");
     expect(mirror).toContain("Source: mirror of walk (its frames flipped left↔right)");
+  });
+
+  test("a breathe's context carries what a re-run starts from: the boundary it used, and a manual torso", () => {
+    const body = JSON.parse(withWalk());
+    body.sprite.motions.push({
+      id: "idle", label: "Idle", prompt: "", grid: { rows: 3, cols: 4 }, fps: 8, loop: true, anchor: "bottom",
+      status: "ready", source: "breathe", frames: [], videos: [],
+      breathe: {
+        still: "ref-still", depth: 0.03, breaths: 2, lag: 0.1, mode: "pixel",
+        anatomy: { rigidRow: 96, axisX: 67, from: "override", torsoHalf: 30 },
+      },
+    });
+    const context = extractSpriteContext({ address: { contentSet: "mini", motion: "idle" } } as never, files({ "mini/project.json": JSON.stringify(body) }));
+    expect(context).toContain("Source: breathe (from ref-still) · depth 0.03, 2 breaths, pixel, rigid row 96, axis 67, torso 30 (override)");
   });
 
   test("an anchor reference says which way it faces", () => {

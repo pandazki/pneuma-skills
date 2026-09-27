@@ -184,3 +184,8 @@ export const PlusIcon = (p: IconProps) => (
 export const BridgeIcon = (p: IconProps) => (
   <Svg {...p}><path d="M4 8h14M14 4l4 4-4 4M20 16H6M10 12l-4 4 4 4" /></Svg>
 );
+
+/** Air moving: the chip of a motion that breathes out of one still. */
+export const BreathIcon = (p: IconProps) => (
+  <Svg {...p}><path d="M3 9h11a3 3 0 1 0-3-3M3 15h15a3 3 0 1 1-3 3M3 12h7" /></Svg>
+);
