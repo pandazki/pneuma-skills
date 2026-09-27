@@ -156,6 +156,9 @@ function describeCharacter(project: CharacterProject, lines: string[]): void {
   // What the user is making, so a later session does not ask again.
   if (character.purpose) lines.push(`Purpose: ${character.purpose}`);
   if (character.style) lines.push(`Style: ${character.style}`);
+  // The side-specific details: why the other side is drawn rather than
+  // mirrored, and what every directional prompt has to keep on its side.
+  if (character.asymmetric) lines.push(`Asymmetric (never mirrored): ${character.asymmetric}`);
   // Pixel art is a promise every later motion is held to: its height, its
   // one palette, and the colourways baked from it.
   if (character.pixel) {

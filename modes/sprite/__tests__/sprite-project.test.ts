@@ -2597,6 +2597,11 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
     const register = (dir: string, motion: string, summary: unknown, ...more: string[]) =>
       run(PROJECT, ["register-run", "--dir", dir, "--motion", motion, "--run", "-", "--json", ...more], JSON.stringify(summary));
 
+    /** A mirror summary of `bounce` for motion `id`, as `sprite-sheet.mjs
+     *  mirror` writes it (timing, loop and anchor from the source atlas). */
+    const mirrorFlip = (dir: string, id: string, extra: Record<string, unknown> = {}) =>
+      spriteRun(dir, id, { source: "mirror", mirrorOf: "bounce", ...extra });
+
     const BREATHE = { depth: 0.02, breaths: 1, lag: 0.15, mode: "smooth", anatomy: { rigidRow: 30, axisX: 32, from: "detected" } };
 
     describe("the character", () => {
@@ -3042,6 +3047,206 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
         const sheet = JSON.parse(register(dir, "bounce-left", spriteRun(dir, "bounce-left")).out);
         expect(sheet.source).toBe("sheet");
         expect("mirrorOf" in sheet).toBe(false);
+      });
+    });
+
+    /**
+     * The 2026-09-27 amendment round: the mirror plays on its source's grid
+     * (R3 M1), an asymmetric second side has a way to be drawn (R3 M2), its
+     * sheet prompt carries the side geometry and the first side's sheet for
+     * rhythm (G1, G4), every run brings its grid and rate (K5), and a
+     * breathe says when its still has moved on (R3).
+     */
+    describe("sides, mirrors and what a run brings", () => {
+      /** A ready right-facing `walk-right` with its drawn sheet on disk,
+       *  from bounce's files. */
+      function readyWalkRight(dir: string) {
+        projectJson(dir, "add-motion", "--id", "walk-right", "--label", "Walk · right", "--rows", "2", "--cols", "2",
+          "--fps", "8", "--loop", "--direction", "right");
+        cpSync(join(dir, "motions", "bounce", "sheet-raw.png"), join(dir, "motions", "walk-right-sheet-raw.png"));
+        mkdirSync(join(dir, "motions", "walk-right"), { recursive: true });
+        cpSync(join(dir, "motions", "bounce", "sheet-raw.png"), join(dir, "motions", "walk-right", "sheet-raw.png"));
+        projectJson(dir, "set-sheet", "--motion", "walk-right", "--file", "motions/walk-right/sheet-raw.png", "--from", "ref-portrait");
+        expect(register(dir, "walk-right", spriteRun(dir, "walk-right"), "--at", String(T1)).code).toBe(0);
+      }
+
+      test("a mirror needs no grid or rate of its own and plays on its source's: a looping idle stays a loop", () => {
+        const dir = readyBounce();
+        // The source runs at 12 fps, looping, on its 2x2.
+        projectJson(dir, "set-motion", "--motion", "bounce", "--fps", "12");
+        const planned = projectJson(dir, "add-motion", "--id", "bounce-left", "--source", "mirror", "--direction", "left");
+        expect(planned).toMatchObject({ source: "mirror", grid: { rows: 1, cols: 1 }, fps: 8, loop: false, status: "planned" });
+        // The summary as `mirror` wrote it before it carried a grid: the
+        // grid is read off the source; timing, loop and anchor off the run.
+        const { grid: _grid, ...noGrid } = mirrorFlip(dir, "bounce-left", { fps: 12, loop: true, anchor: "bottom" });
+        const motion = JSON.parse(register(dir, "bounce-left", noGrid).out);
+        expect({ grid: motion.grid, fps: motion.fps, loop: motion.loop, anchor: motion.anchor })
+          .toEqual({ grid: { rows: 2, cols: 2 }, fps: 12, loop: true, anchor: "bottom" });
+        // A summary that says nothing at all is read off the source whole.
+        projectJson(dir, "set-motion", "--motion", "bounce-left", "--no-loop", "--fps", "3", "--anchor", "center");
+        const bare = mirrorFlip(dir, "bounce-left");
+        for (const key of ["grid", "fps", "loop", "anchor"]) delete (bare as Record<string, unknown>)[key];
+        const again = JSON.parse(register(dir, "bounce-left", bare).out);
+        expect({ grid: again.grid, fps: again.fps, loop: again.loop, anchor: again.anchor })
+          .toEqual({ grid: { rows: 2, cols: 2 }, fps: 12, loop: true, anchor: "bottom" });
+        // The run's word wins where it gives one.
+        const said = JSON.parse(register(dir, "bounce-left", mirrorFlip(dir, "bounce-left", { grid: { rows: 1, cols: 4 }, fps: 6 })).out);
+        expect({ grid: said.grid, fps: said.fps }).toEqual({ grid: { rows: 1, cols: 4 }, fps: 6 });
+      });
+
+      test.skipIf(!HAS_LIBWEBP)("the real mirror of a real run registers on its source's grid, rate and loop", () => {
+        const dir = readyBounce();
+        projectJson(dir, "add-motion", "--id", "bounce-left", "--source", "mirror");
+        const flipped = run(SHEET, ["mirror", join(dir, "motions", "bounce"), "--name", "bounce-left", "--json"]);
+        expect(flipped.code).toBe(0);
+        const motion = JSON.parse(register(dir, "bounce-left", JSON.parse(flipped.out)).out);
+        expect({ grid: motion.grid, fps: motion.fps, loop: motion.loop, direction: motion.direction })
+          .toEqual({ grid: { rows: 2, cols: 2 }, fps: 8, loop: true, direction: "left" });
+      });
+
+      test("an asymmetric second side goes from refused mirror to a drawn sheet without remove-motion", () => {
+        const { dir } = seedMini();
+        projectJson(dir, "set-character", "--asymmetric", "The basket hangs on her right arm.");
+        readyWalkRight(dir);
+        projectJson(dir, "add-motion", "--id", "walk-left", "--label", "Walk · left", "--source", "mirror", "--direction", "left");
+        // 1. The flip is refused, saying the sentence back.
+        const flip = run(SHEET, ["mirror", join(dir, "motions", "walk-right"), "--name", "walk-left", "--json"]);
+        expect(flip.code).toBe(1);
+        expect(flip.err).toMatch(/is asymmetric: "The basket hangs on her right arm\." — flipping walk-right/);
+        // 2. The planned mirror cannot take a sheet prompt, and says what can.
+        const before = readFileSync(join(dir, "project.json"), "utf-8");
+        const refused = project(dir, "sheet-prompt", "--motion", "walk-left", "--action", "A walk.");
+        expect(refused.code).toBe(1);
+        expect(refused.err).toMatch(/set-motion --motion walk-left --source sheet, then sheet-prompt/);
+        expect(project(dir, "set-motion", "--motion", "walk-left", "--prompt", "x", "--prompt-parts",
+          JSON.stringify({ builder: "sheet-prompt/2", action: "A walk.", guards: ["state:walk", "loop-close"] })).err)
+          .toMatch(/--prompt-parts: 'walk-left' is a mirror motion .*--source sheet first/);
+        expect(readFileSync(join(dir, "project.json"), "utf-8")).toBe(before);
+        // 3. Said again: this side is drawn. What the mirror would have
+        //    brought (grid, rate, loop) is named as placeholders.
+        const switched = project(dir, "set-motion", "--motion", "walk-left", "--source", "sheet", "--json");
+        expect(switched.code).toBe(0);
+        expect(JSON.parse(switched.out).source).toBe("sheet");
+        expect(switched.err).toMatch(/note: walk-left was planned as a mirror, whose run brings the grid, the rate and the loop — sheet-prompt --frames <n> draws the grid; the 8 fps and loop=false here are placeholders: set-motion --fps <n> --loop\|--no-loop/);
+        // A one-frame placeholder is no sheet to draw.
+        expect(project(dir, "sheet-prompt", "--motion", "walk-left", "--action", "A walk.").err).toMatch(/is planned as 1x1 — one frame is a still, not a sheet\. .*--frames/);
+        const timed = project(dir, "set-motion", "--motion", "walk-left", "--fps", "10", "--loop", "--json");
+        expect(JSON.parse(timed.out)).toMatchObject({ fps: 10, loop: true });
+        // 4. Its prompt locks the sides for facing left and attaches the
+        //    finished right side's sheet last, for rhythm only.
+        const built = projectJson(dir, "sheet-prompt", "--motion", "walk-left", "--action", "Contact, down, pass, up.", "--frames", "4");
+        expect(built.promptParts.guards).toEqual(["direction:left", "asymmetric", "rhythm:right", "state:walk", "row-continuity", "loop-close"]);
+        expect(built.prompt).toContain("The basket hangs on her right arm. Facing left, toward the left of the picture, the character's own right side is the far side");
+        expect(built.prompt).toContain("The last attached image is the finished right-facing sheet of this same motion, for rhythm only");
+        expect(built.rhythm).toEqual({ motion: "walk-right", direction: "right", file: join(dir, "motions/walk-right/sheet-raw.png") });
+        expect(built.attach).toEqual([join(dir, "refs/portrait.png"), join(dir, "motions/walk-right/sheet-raw.png")]);
+        // With the guide: the rhythm sheet, then the guide, last.
+        const guided = projectJson(dir, "sheet-prompt", "--motion", "walk-left", "--action", "Contact, down, pass, up.", "--guide");
+        expect(guided.attach.slice(-2)).toEqual([join(dir, "motions/walk-right/sheet-raw.png"), join(dir, "motions/walk-left/layout-guide.png")]);
+        expect(guided.prompt).toContain("The second-to-last attached image, just before the layout guide, is the finished right-facing sheet");
+        // The human form says which file is the rhythm and where the sides fall.
+        const human = project(dir, "sheet-prompt", "--motion", "walk-left", "--action", "Contact, down, pass, up.");
+        expect(human.err).toMatch(/rhythm: .*walk-right\/sheet-raw\.png is walk-right's finished sheet, attached for its timing only/);
+        expect(human.err).toMatch(/sides: Facing left, toward the left of the picture, the character's own right side is the far side/);
+        // A motion with frames keeps the source that made them.
+        expect(project(dir, "set-motion", "--motion", "walk-right", "--source", "video").err)
+          .toMatch(/--source: 'walk-right' has 4 frames made by sheet — .*remove-motion --motion walk-right/);
+      });
+
+      test("no rhythm sheet without the lock, without a ready other side, or for a front view", () => {
+        const { dir } = seedMini();
+        readyWalkRight(dir);
+        projectJson(dir, "add-motion", "--id", "walk-left", "--rows", "2", "--cols", "2", "--fps", "8", "--loop", "--direction", "left");
+        projectJson(dir, "add-motion", "--id", "walk-front", "--rows", "2", "--cols", "2", "--fps", "8", "--loop", "--direction", "front");
+        const guards = (id: string) => projectJson(dir, "sheet-prompt", "--motion", id, "--action", "A walk.").promptParts.guards;
+        // Symmetric: the left side is a mirror's job, and nothing is attached.
+        expect(guards("walk-left")).not.toContain("rhythm:right");
+        projectJson(dir, "set-character", "--asymmetric", "The basket hangs on her right arm.");
+        expect(guards("walk-left")).toContain("rhythm:right");
+        expect(guards("walk-front")).toEqual(["direction:front", "asymmetric", "state:walk", "row-continuity", "loop-close"]);
+        // The other side not ready yet: nothing to take the rhythm from.
+        projectJson(dir, "set-motion", "--motion", "walk-right", "--status", "processing");
+        expect(guards("walk-left")).not.toContain("rhythm:right");
+      });
+
+      test("a file registered as two references is attached once", () => {
+        const { dir } = seedMini();
+        projectJson(dir, "add-ref", "--id", "turnaround", "--file", "refs/portrait.png", "--role", "turnaround", "--uploaded");
+        projectJson(dir, "set-character", "--style", "flat vector blob, thick outline");
+        const built = projectJson(dir, "sheet-prompt", "--motion", "bounce", "--action", "A bounce.");
+        expect(built.attach).toEqual([join(dir, "refs/portrait.png")]);
+      });
+
+      test("an anchor of an asymmetric character is registered with where its sides fall", () => {
+        const { dir } = seedMini();
+        buildSheet(join(dir, "refs", "anchor-left.png"), { cell: 64, rows: 1, cols: 1 });
+        const plain = project(dir, "add-ref", "--id", "anchor-left", "--file", "refs/anchor-left.png", "--role", "anchor", "--direction", "left", "--uploaded", "--json");
+        expect(plain.err).not.toMatch(/asymmetric/);
+        projectJson(dir, "set-character", "--asymmetric", "The basket hangs on her right arm.");
+        const locked = project(dir, "add-ref", "--id", "anchor-left", "--file", "refs/anchor-left.png", "--role", "anchor", "--direction", "left", "--uploaded", "--json");
+        expect(locked.code).toBe(0);
+        expect(locked.err).toMatch(/note: Mini is asymmetric \("The basket hangs on her right arm\."\)\. Facing left, .*own right side is the far side.* Look at this anchor and check every side-specific detail sits on that side/);
+      });
+
+      test("every run brings its grid and its rate: a clip cut on other columns, a sheet at another fps", () => {
+        const { dir, realRun } = seedMini();
+        // A from-video summary: frames packed four across at 12 fps, over a
+        // motion planned as 2x2 at 8.
+        writeFileSync(join(dir, "motions", "bounce", "video-seedance-1.mp4"), "");
+        projectJson(dir, "add-video", "--motion", "bounce", "--file", "motions/bounce/video-seedance-1.mp4",
+          "--model", "seedance-2.5", "--mode", "i2v", "--at", String(T2));
+        const clip = { ...realRun, source: "video", video: join(dir, "motions", "bounce", "video-seedance-1.mp4"),
+          sampledAt: [0, 0.25, 0.5, 0.75], grid: { rows: 1, cols: 4 }, fps: 12 };
+        const cut = JSON.parse(register(dir, "bounce", clip).out);
+        expect({ grid: cut.grid, fps: cut.fps, loop: cut.loop }).toEqual({ grid: { rows: 1, cols: 4 }, fps: 12, loop: true });
+        // A sheet run sliced 2x2 at 10 fps.
+        const sheet = JSON.parse(register(dir, "bounce", { ...realRun, fps: 10 }).out);
+        expect({ grid: sheet.grid, fps: sheet.fps }).toEqual({ grid: { rows: 2, cols: 2 }, fps: 10 });
+        // A summary without either leaves the plan as it was.
+        const { grid: _g, fps: _f, ...silent } = realRun;
+        const kept = JSON.parse(register(dir, "bounce", silent).out);
+        expect({ grid: kept.grid, fps: kept.fps }).toEqual({ grid: { rows: 2, cols: 2 }, fps: 10 });
+      });
+
+      test("a breathe whose still is registered again says so, and show lists it until it is breathed again", () => {
+        const dir = readyBounce();
+        projectJson(dir, "add-motion", "--id", "idle", "--source", "breathe");
+        const summary = spriteRun(dir, "idle", { source: "breathe", still: "refs/portrait.png", breathe: BREATHE });
+        expect(register(dir, "idle", summary, "--at", String(T2)).code).toBe(0);
+        expect("staleBreathes" in projectJson(dir, "show")).toBe(false);
+
+        const T3 = T2 + 1000;
+        buildSheet(join(dir, "refs", "portrait-2.png"), { cell: 64, rows: 1, cols: 1 });
+        const replaced = project(dir, "add-ref", "--id", "portrait", "--file", "refs/portrait-2.png", "--role", "portrait", "--uploaded", "--at", String(T3), "--json");
+        expect(replaced.code).toBe(0);
+        expect(replaced.err).toMatch(/note: idle was breathed from ref-portrait before this — it still shows that picture\. .*refs\/portrait-2\.png/);
+        expect(projectJson(dir, "show").staleBreathes).toEqual([
+          { id: "idle", still: "ref-portrait", reason: "ref-portrait was registered again after it was breathed" },
+        ]);
+        expect(project(dir, "show").out).toMatch(/stale breathe: idle \(of ref-portrait\) — ref-portrait was registered again after it was breathed; breathe it again and register it/);
+        expect(projectJson(dir, "show", "--motion", "idle").stale).toBe("ref-portrait was registered again after it was breathed");
+
+        const fresh = spriteRun(dir, "idle", { source: "breathe", still: "refs/portrait-2.png", breathe: BREATHE });
+        expect(register(dir, "idle", fresh, "--at", String(T3 + 1000)).code).toBe(0);
+        expect("staleBreathes" in projectJson(dir, "show")).toBe(false);
+      });
+
+      test("a re-run of a mirror's source names the mirror's own directory and command", () => {
+        const dir = readyBounce();
+        projectJson(dir, "add-motion", "--id", "bounce-left", "--source", "mirror");
+        expect(register(dir, "bounce-left", mirrorFlip(dir, "bounce-left"), "--at", String(T2)).code).toBe(0);
+        const again = run(PROJECT, ["register-run", "--dir", dir, "--motion", "bounce", "--run", join(FIXTURES, "bounce-run.json"), "--at", String(T2 + 1000), "--json"]);
+        expect(again.err).toContain("mirror it again from <character>/motions/bounce ('sprite-sheet.mjs mirror <character>/motions/bounce --name bounce-left')");
+      });
+
+      test("init records no facing for a picture brought to life", () => {
+        const dir = fresh();
+        const animate = projectJson(dir, "init", "--name", "Frog", "--purpose", "animate").character;
+        expect("facing" in animate).toBe(false);
+        const told = fresh();
+        expect(projectJson(told, "init", "--name", "Frog", "--purpose", "animate", "--facing", "left").character.facing).toBe("left");
+        const game = fresh();
+        expect(projectJson(game, "init", "--name", "Knight", "--purpose", "game").character.facing).toBe("right");
       });
     });
 

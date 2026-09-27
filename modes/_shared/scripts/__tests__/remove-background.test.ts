@@ -13,8 +13,11 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  BIREFNET_PRICE,
   BIREFNET_URL,
+  birefnetCost,
   buildRemoveBackgroundRequest,
+  costLine,
   MODEL_ALIASES,
   removeBackground,
 } from "../remove-background.mjs";
@@ -96,7 +99,7 @@ describe("birefnet download and result", () => {
         runJob: async (options: { url: string; body: { model: string } }) => {
           expect(options.url).toBe(BIREFNET_URL);
           expect(options.body.model).toBe("Matting");
-          return { data: { image: { url: "https://cdn.fal.ai/cut.png", width: 2048, height: 1024 } }, apiMs: 5, attempts: 1 };
+          return { data: { image: { url: "https://cdn.fal.ai/cut.png", width: 2048, height: 1024 } }, apiMs: 5, attempts: 1, inferenceSeconds: 1.5 };
         },
         download: async () => PNG,
       },
@@ -107,6 +110,10 @@ describe("birefnet download and result", () => {
       width: 2048,
       height: 1024,
       model: "Matting",
+      cost: {
+        usd: 0.0012, estimate: true, basis: "inference-time", seconds: 1.5,
+        unitPriceUsd: 0.0008, unit: "compute second",
+      },
     });
     expect(readFileSync(output)).toEqual(PNG);
   });
@@ -131,6 +138,45 @@ describe("birefnet download and result", () => {
       ),
     ).rejects.toThrow("no image URL");
     expect(existsSync(missing)).toBe(false);
+  });
+});
+
+/**
+ * Three blind trials (2026-09-27) reported "no price before the paid
+ * cut-out": the script printed nothing about money. It now says what the job
+ * cost — an estimate at fal's list price, labelled with what it is from.
+ */
+describe("what a cut-out cost", () => {
+  test("the list price is fal's, per compute second", () => {
+    expect(BIREFNET_PRICE).toMatchObject({ usd: 0.0008, unit: "compute second" });
+  });
+
+  test("inference time at the list price; else the wall time as an upper bound; else unknown", () => {
+    // Measured on a real call, 2026-09-27: 0.721 s of inference, 2.465 s wall.
+    expect(birefnetCost({ inferenceSeconds: 0.7209999561309814, apiMs: 2465 })).toEqual({
+      usd: 0.000577, estimate: true, basis: "inference-time", seconds: 0.721, unitPriceUsd: 0.0008, unit: "compute second",
+    });
+    expect(birefnetCost({ apiMs: 2465 })).toMatchObject({ usd: 0.001972, basis: "wall-time-upper-bound", seconds: 2.465 });
+    expect(birefnetCost({})).toEqual({ usd: null, estimate: true, basis: "unknown", unitPriceUsd: 0.0008, unit: "compute second" });
+  });
+
+  test("the stderr line says the figure and what it is an estimate of", () => {
+    expect(costLine(birefnetCost({ inferenceSeconds: 0.721 })))
+      .toBe("cost: ≈ $0.00058 (estimate: 0.721 s of inference × $0.00080 per compute second, fal list price)");
+    expect(costLine(birefnetCost({ apiMs: 2465 }))).toContain("2.465 s wall time, queue included — an upper bound");
+    expect(costLine(birefnetCost({}))).toBe("cost: unknown — fal reported no timing (list price $0.00080 per compute second)");
+  });
+
+  test("a result's timing comes from the job, or from the result's own timings", async () => {
+    const output = join(workspace, "cut", "timed.png");
+    const result = await removeBackground(
+      { input: sheet, output, apiKey: "fixture-key" },
+      {
+        runJob: async () => ({ data: { image: { url: "https://cdn.fal.ai/cut.png" }, timings: { inference: 2 } }, apiMs: 9000, attempts: 1 }),
+        download: async () => PNG,
+      },
+    );
+    expect(result.cost).toMatchObject({ usd: 0.0016, basis: "inference-time", seconds: 2 });
   });
 });
 

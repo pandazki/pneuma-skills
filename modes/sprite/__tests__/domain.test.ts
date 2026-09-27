@@ -970,7 +970,7 @@ describe("0.5.0 sidecar additions", () => {
   });
 
   const BREATHE: BreatheRecord = {
-    still: "ref-portrait", depth: 0.02, depthX: 0, breaths: 1, lag: 0.15, mode: "smooth",
+    still: "ref-portrait", depth: 0.02, breaths: 1, lag: 0.15, mode: "smooth",
     anatomy: { rigidRow: 41, axisX: 32, from: "detected" },
   };
 
@@ -988,10 +988,11 @@ describe("0.5.0 sidecar additions", () => {
     for (const bad of [{ breaths: 1.5 }, { breaths: 0 }, { mode: "wobbly" }, { depth: -0.1 }]) {
       expect("breathe" in motion0((m) => { m.source = "breathe"; m.breathe = { ...BREATHE, ...bad }; })).toBe(false);
     }
-    // The optional halves go on their own.
+    // The optional half goes on its own; a key no breathe run writes
+    // (the horizontal amplitude upstream has and ours does not) is not kept.
     expect(motion0((m) => {
       m.source = "breathe";
-      m.breathe = { ...BREATHE, depthX: "wide", anatomy: { rigidRow: 41, from: "detected" } };
+      m.breathe = { ...BREATHE, depthX: 0.01, anatomy: { rigidRow: 41, from: "detected" } };
     }).breathe).toEqual({ still: "ref-portrait", depth: 0.02, breaths: 1, lag: 0.15, mode: "smooth" });
   });
 

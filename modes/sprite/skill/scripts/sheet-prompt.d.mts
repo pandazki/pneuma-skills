@@ -3,7 +3,7 @@
  * keeps `tsc --noEmit` honest for the tests that import it.
  */
 
-export declare const SHEET_PROMPT_BUILDER: "sheet-prompt/1";
+export declare const SHEET_PROMPT_BUILDER: "sheet-prompt/2";
 export declare const DEFAULT_SAFE_MARGIN_RATIO: number;
 export declare const GENERATION_CELL_MAX: number;
 export declare const SHEET_FRAME_COUNTS: number[];
@@ -61,6 +61,11 @@ export interface SheetPromptParts {
   guide?: { rows: number; cols: number; cell: Size; safeMargin: Inset };
 }
 
+/** Where the character's own right and left fall in a picture facing each way. */
+export declare const SIDE_GEOMETRY: Record<SheetDirection, string>;
+/** `SIDE_GEOMETRY[direction]` plus what it asks of every side-specific detail; null for no such direction. */
+export declare function sideClause(direction: string | undefined | null): string | null;
+
 export declare function sheetGrid(frames: number): { rows: number; cols: number };
 export declare function generationCell(cell: Size): Size;
 export declare function safeMarginFor(cell: Size, ratio?: number): Inset;
@@ -80,6 +85,8 @@ export declare function sheetGuards(input: {
   state: SheetState;
   anchor?: boolean;
   guide?: boolean;
+  /** The facing of a finished other-side sheet attached for rhythm only. */
+  rhythm?: "left" | "right" | null;
 }): string[];
 export declare function renderSheetPrompt(
   input: { character: SheetCharacter; motion: SheetMotion },
@@ -92,11 +99,13 @@ export declare function buildSheetPrompt(input: {
   action: string;
   state?: SheetState;
   guide?: boolean;
+  /** The facing of the finished other-side sheet the caller attaches after the references. */
+  rhythm?: "left" | "right" | null;
 }): {
   prompt: string;
   parts: SheetPromptParts;
   state: SheetState;
   geometry: SheetGeometry;
-  /** Ref ids the text assumes are attached, in order (the guide, when used, goes last). */
+  /** Ref ids the text assumes are attached, in order; the caller appends the rhythm sheet, then the guide. */
   attach: string[];
 };

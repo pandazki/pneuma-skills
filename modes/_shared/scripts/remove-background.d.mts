@@ -44,6 +44,28 @@ export interface RemoveBackgroundRequest {
   body: RemoveBackgroundRequestBody;
 }
 
+/** fal's list price for BiRefNet v2, and the date it was read. */
+export const BIREFNET_PRICE: Readonly<{ usd: number; unit: string; checked: string }>;
+
+/**
+ * What one job cost, always an estimate: inference time at the list price,
+ * else the wall time as an upper bound, else unknown (`usd: null`).
+ */
+export interface BirefnetCost {
+  usd: number | null;
+  estimate: true;
+  basis: "inference-time" | "wall-time-upper-bound" | "unknown";
+  /** The seconds priced; absent when unknown. */
+  seconds?: number;
+  unitPriceUsd: number;
+  unit: string;
+}
+
+export function birefnetCost(timing?: { inferenceSeconds?: number; apiMs?: number }): BirefnetCost;
+export function formatUsd(usd: number | null | undefined): string;
+/** The stderr `cost:` line for a cost object. */
+export function costLine(cost: BirefnetCost | null | undefined): string;
+
 /** The `--json` contract. `model` is fal's display name, as sent. */
 export interface RemoveBackgroundResult {
   path: string;
@@ -51,6 +73,8 @@ export interface RemoveBackgroundResult {
   width: number | null;
   height: number | null;
   model: string;
+  /** Added 2026-09-27; every earlier key is unchanged. */
+  cost: BirefnetCost;
 }
 
 export interface RemoveBackgroundDependencies {
@@ -64,7 +88,7 @@ export interface RemoveBackgroundDependencies {
     label?: string;
     deadlineMs?: number;
     onRetry?: (info: { attempt: number; attempts: number; delayMs: number; reason: string }) => void;
-  }) => Promise<{ data?: any; apiMs?: number; attempts?: number }>;
+  }) => Promise<{ data?: any; apiMs?: number; inferenceSeconds?: number; attempts?: number }>;
   /** Defaults to `fal-queue.mjs::downloadFalFile`. */
   download?: (url: string, options?: { signal?: AbortSignal }) => Promise<Uint8Array>;
 }

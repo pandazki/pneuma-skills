@@ -454,7 +454,25 @@ export interface AddressResolution {
    *  close and being told so. */
   target: AddressTarget | null;
   message?: string;
+  /**
+   * The address names something this copy of the roster does not have — no
+   * character yet, a reference or motion it does not list, a frame past the
+   * ones it knows. The one refusal a newer `project.json` can turn into an
+   * arrival: the agent registers a reference and navigates to it in the next
+   * breath, before the file event has reached the viewer (four-direction
+   * trial, 2026-09-27: `Reference "turnaround" is not in this character
+   * (has: none)`). See `NAVIGATE_ROSTER_WAIT_MS`.
+   */
+  notYetKnown?: boolean;
 }
+
+/**
+ * How long a navigation to something the roster does not list yet waits for
+ * the next roster update before it is refused. A registration reaches the
+ * viewer as a file event in well under a second; two seconds covers a busy
+ * machine without making a genuinely wrong address slow to answer.
+ */
+export const NAVIGATE_ROSTER_WAIT_MS = 2000;
 
 /** Content-set keys are directories; an agent copying one out of a seed
  *  catalogue writes the trailing slash, so both sides are trimmed. */
@@ -496,7 +514,7 @@ export function resolveAddress(
   currentMotionId: string | null,
 ): AddressResolution {
   if (!project) {
-    return { ok: false, target: null, message: "No character is loaded." };
+    return { ok: false, target: null, message: "No character is loaded.", notYetKnown: true };
   }
 
   const mismatch = contentSetMismatch(project, address.contentSet);
@@ -515,6 +533,7 @@ export function resolveAddress(
         ok: false,
         target: null,
         message: `Reference "${address.ref}" is not in this character (has: ${known}).`,
+        notYetKnown: true,
       };
     }
     return { ok: true, target: { kind: "ref", refId: ref.id } };
@@ -539,6 +558,7 @@ export function resolveAddress(
       ok: false,
       target: null,
       message: `Motion "${motionId}" is not in this character (has: ${known}).`,
+      notYetKnown: true,
     };
   }
 
@@ -562,6 +582,7 @@ export function resolveAddress(
         frame: count > 0 ? count - 1 : 0,
       },
       message: `Motion "${motion.id}" has ${count} frame${count === 1 ? "" : "s"} (0-${Math.max(count - 1, 0)}); frame ${address.frame} does not exist. Stopped on the last one.`,
+      notYetKnown: true,
     };
   }
 

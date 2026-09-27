@@ -19,10 +19,13 @@ import { fileURLToPath } from "node:url";
 
 import {
   buildSeedanceRequest,
+  costLine,
   ENDPOINTS,
   generateSeedanceVideo,
   resolveEndpointName,
   SEEDANCE_MODEL,
+  SEEDANCE_PRICE,
+  seedanceCost,
 } from "../seedance-video.mjs";
 
 const workspace = mkdtempSync(join(tmpdir(), "seedance-test-"));
@@ -191,6 +194,11 @@ describe("seedance download and result", () => {
       requested_duration: 6,
       resolution: "720p",
       seed: 7,
+      // Not a clip ffprobe can read: the cost says it could not be measured.
+      cost: {
+        usd: null, estimate: true, usdPer1000Tokens: 0.0214, basis: "unknown",
+        note: "the delivered clip could not be measured (ffprobe)",
+      },
     });
     expect(readFileSync(output)).toEqual(bytes);
     expect(readdirSync(join(workspace, "clips"))).toEqual(["shot.mp4"]);
@@ -284,6 +292,64 @@ describe("seedance download and result", () => {
       ),
     ).rejects.toThrow("no video URL");
     expect(existsSync(output)).toBe(false);
+  });
+});
+
+/**
+ * The blind trials of 2026-09-27 could not say what a clip cost: fal's result
+ * carries no price, and the script printed none. It now prints fal's
+ * published formula applied to the clip that landed — an estimate, labelled.
+ */
+describe("what a clip cost", () => {
+  test("fal's rate and formula, as read on the pricing API and the model page", () => {
+    expect(SEEDANCE_PRICE.usdPer1000Tokens).toEqual({ "480p": 0.0214, "720p": 0.0214, "1080p": 0.0234 });
+    expect(SEEDANCE_PRICE.referenceVideoFactor).toBe(0.6);
+  });
+
+  test("the trial's 4 s walk: 640×640 for 4.04 s is 38,800 tokens, ≈ $0.83", () => {
+    // Route G, 2026-09-27: a "480p" 1:1 request came back 640×640, 97
+    // frames at 24 fps — the size the model chose, which is why the clip is
+    // measured rather than the request priced.
+    const cost = seedanceCost({ width: 640, height: 640, duration: 4.041667, resolution: "480p" });
+    expect(cost).toEqual({
+      usd: 0.8303, estimate: true, usdPer1000Tokens: 0.0214, basis: "formula-on-delivered-clip",
+      tokens: 38800, width: 640, height: 640, duration: 4.042,
+    });
+    expect(costLine(cost)).toBe("cost: ≈ $0.8303 (estimate: 640×640, 4.042 s → 38800 tokens × $0.0214 per 1000, fal's published formula)");
+    expect(seedanceCost({ width: 1920, height: 1080, duration: 5, resolution: "1080p" }).usdPer1000Tokens).toBe(0.0234);
+  });
+
+  test("reference videos: the output at 0.6× the rate, and it says their own duration is billed too", () => {
+    const cost = seedanceCost({ width: 640, height: 640, duration: 4.041667, resolution: "480p", referenceVideos: 1 });
+    expect(cost.usd).toBe(0.4982);
+    expect(cost.note).toBe("output only, at 0.6× the rate — fal also bills the 1 reference video's duration");
+  });
+
+  test("a clip that cannot be measured has no figure, and the line says why", () => {
+    const cost = seedanceCost({ resolution: "480p" });
+    expect(cost.usd).toBeNull();
+    expect(costLine(cost)).toMatch(/^cost: unknown — the delivered clip could not be measured \(ffprobe\)/);
+  });
+
+  test("the result is measured on disk (probe injected), with the reference count from the request", async () => {
+    const frame = join(workspace, "ref-frame.png");
+    writeFileSync(frame, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII=", "base64"));
+    const greybox = join(workspace, "greybox.mp4");
+    writeFileSync(greybox, "clip");
+    const probed: string[] = [];
+    const result = await generateSeedanceVideo(
+      { prompt: "@Video1 as blocking", output: join(workspace, "costed", "shot.mp4"), apiKey: "fixture-key", remux: false, refVideos: [greybox], refImages: [frame] },
+      {
+        runJob: async () => ({ data: { video: { url: "https://cdn.fal.ai/clip.mp4" } }, apiMs: 10, attempts: 1 }),
+        download: async () => Buffer.from("bytes"),
+        probe: (path: string) => {
+          probed.push(path);
+          return { width: 640, height: 640, duration: 4.041667 };
+        },
+      },
+    );
+    expect(probed).toEqual([join(workspace, "costed", "shot.mp4")]);
+    expect(result.cost).toMatchObject({ usd: 0.4982, tokens: 38800, basis: "formula-on-delivered-clip" });
   });
 });
 

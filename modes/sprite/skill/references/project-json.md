@@ -151,7 +151,6 @@ video, a sheet generated from one reference) is fully described by
 | `<motion>-export-<format>` | An on-demand export of a ready motion, `format` one of `mp4` / `mov` / `webm` (video), `apng` (image), `lottie` (text), `png-seq` / `aseprite` (image, `metadata.container: "zip"`). Written by `register-export` |
 | `<character>-export-riv` | The character's `.riv` (image, `metadata.container: "riv"`); `<character>` is the directory name. Written by `register-export` |
 | `<character>-palette` | A pixel-art character's pinned palette (text, `palette.json`), `metadata: { colors?, size, sha256 }`; a `derive` edge (`step: "palette"`) from the frames of the run that pinned it. Written by `register-run` (see *Pixel art*) |
-
 | `<character>-export-aseprite` | Every ready sprite motion on one Aseprite sheet (image, `metadata.container: "zip"`). Written by `register-export` |
 | `<motion>-variant-<name>-sheet` / `-atlas` / `-gif` | One colourway of a pixel-art sprite motion: `variants/<name>/sheet.png` (image, `metadata: { width, height, substituted, unmatched, uncovered, size }` — the bake's counts), `atlas.json` (text) and `preview.gif`. Written by `register-recolor` (see *Colourways*) |
 
@@ -292,7 +291,9 @@ interface SpriteSidecar {
     style: string;                // the style anchor that opens every prompt
     cell: { width: number; height: number };
     facing?: "left" | "right";    // the side that is generated; the other
-                                  // side is a `mirror` of it
+                                  // side is a `mirror` of it. `init` writes
+                                  // right unless told, except for purpose
+                                  // animate (a picture faces as drawn)
     purpose?: "game" | "loop" | "mascot" | "animate";
                                   // what the user is making (the route):
                                   // `init --purpose` / `set-character
@@ -308,7 +309,8 @@ interface SpriteSidecar {
         name: string;             // a slug: "red-team"
         map: Record<string, string>;  // "#src" → "#dst", lower-case, in
                                   // the order a tolerance tie goes by
-        tolerance?: number;       // 1–255; absent = exact
+        tolerance?: number;       // 1–255; absent = exact (0 is accepted
+                                  // as exact and not stored)
       }>;                         // (`register-recolor`; see *Colourways*)
     };
     asymmetric?: string;          // one sentence: what must never flip ("the
@@ -344,6 +346,11 @@ interface Motion {
   promptParts?: PromptParts;      // present when code built `prompt`
                                   // (`sheet-prompt`); absent = hand-written
   grid: { rows: number; cols: number };
+                                  // planned by add-motion / sheet-prompt;
+                                  // register-run sets it (and fps) from the
+                                  // run that lands — the grid the sheet was
+                                  // sliced on, the columns a clip's frames
+                                  // were packed on
   fps: number; loop: boolean;
   anchor: "bottom" | "center";
   status: "planned" | "generating" | "processing" | "ready" | "failed";
@@ -408,10 +415,9 @@ interface LoopBrief {
   recordedAt: string;             // ISO timestamp of the set-motion call
 }
 
-interface BreatheRecord {         // all required but depthX and anatomy
+interface BreatheRecord {         // all required but anatomy
   still: string;                  // asset id of the reference warped from
   depth: number;                  // total stretch, share of the body below the neck
-  depthX?: number;                // horizontal amplitude when it differs
   breaths: number;                // whole breaths per loop of the motion
   lag: number;                    // how far the head trails the chest
   mode: "smooth" | "pixel";       // resampled, or whole pixels
@@ -424,7 +430,7 @@ interface BreatheRecord {         // all required but depthX and anatomy
 }
 
 interface PromptParts {           // how `sheet-prompt` built `prompt`
-  builder: string;                // code version, e.g. "sheet-prompt/1"
+  builder: string;                // code version, e.g. "sheet-prompt/2"
   action: string;                 // your action / phase plan, verbatim
   guards: string[];               // clause ids: "state:walk", "direction:left",
                                   // "row-continuity", "loop-close", "guide"…
@@ -648,7 +654,7 @@ that is generated; the other side is mirrored.
 <id> --json` (usually piped straight into `register-run --run -`), whose
 summary is a sprite run's (frames, sheet, atlas, GIF, inspect, grid, fps)
 plus `source: "breathe"`, `still` (the image's path) and `breathe: { depth,
-breaths, lag, mode, depthX?, anatomy? }`. `register-run` finds the still by
+breaths, lag, mode, anatomy? }`. `register-run` finds the still by
 its uri among the registered **references** and refuses one that is not there —
 `add-ref --uploaded` it first (a cut-out: `--derived-from <ref> --op key`;
 an upload that was already transparent and only fitted: `--op fit`), so
@@ -658,14 +664,19 @@ leave `breathe.still` dangling (copy it under `refs/` and `add-ref
 --derived-from <frame id>` — the refusal names the frame), and a preview or a
 sheet is not one picture of the character. Each frame is a `derive`
 edge from the still, `params: { tool, step: "breathe", frameIndex, depth,
-depthX?, breaths, lag, mode }`, and `motion.breathe` keeps the record. A
+breaths, lag, mode }`, and `motion.breathe` keeps the record. A
 breathe is drawn on no grid and timed by its run: `add-motion --source
 breathe` needs no `--rows/--cols` and no `--fps` (1×1 at 8 fps until the
 run lands), and
 `register-run` sets `motion.grid` to the atlas the run packed, `motion.fps`
 to the run's rate and `loop: true`. Re-registering after a re-run with other
 parameters rewrites the frames, their edges and the record in place and
-drops the old tail.
+drops the old tail. Registering the still's reference again (`add-ref` over
+the same id, usually with a new file) leaves the breathe showing the old
+picture: `add-ref` says so on stderr, and `show` lists it under
+`staleBreathes` (`{ id, still, reason }`; `show --motion` as `stale`) until
+it is breathed again and registered — a note, not a status, like a stale
+mirror.
 
 **A mirror** is registered from `sprite-sheet.mjs mirror --json`: a sprite
 run plus `source: "mirror"`, `mirrorOf` and — when `mirror --force` flipped an
@@ -677,7 +688,11 @@ source of another mirror (that one would become a mirror of a mirror), and on
 a character with `asymmetric` set a summary without `force: true` is refused,
 the same lock `mirror` applies. `motion.mirrorOf` names it and `motion.direction`
 becomes the other side (a mirror declared facing the same side is refused,
-and `set-motion --direction` cannot turn it later). Re-running the source
+and `set-motion --direction` cannot turn it later). A mirror plays exactly as
+its source does: `add-motion --source mirror` needs no `--rows/--cols/--fps`
+(1×1 at 8 fps until the run lands), and `register-run` sets its `grid`,
+`fps`, `loop` and `anchor` from the summary, reading the source motion for
+whichever the summary leaves out. Re-running the source
 prints a note per mirror made from it, and `show` lists each mirror whose
 source was registered again after it — or is gone — under `staleMirrors` (a
 note, not a status: the fix is one free `mirror` + `register-run`).
@@ -691,13 +706,33 @@ the sheet prompt and records both (`prompting.md`, *Building the prompt*);
 exposed. Both go on together; `--prompt` alone is a hand-written prompt and
 drops any parts on file. `guards` lists only the conditional clauses
 (`pixel:<h>`, `guide`, `direction:<d>`, `anchor:<d>`, `asymmetric`,
-`state:<s>`, `row-continuity`, `loop-close` / `one-shot-end`); what every
-sheet prompt says is pinned by the builder version. With the same character
+`rhythm:<d>`, `state:<s>`, `row-continuity`, `loop-close` /
+`one-shot-end`); what every sheet prompt says is pinned by the builder
+version. `sheet-prompt/2` (2026-09-27) added two things to `/1`'s text: an
+asymmetric character's prompt says where the character's own right and left
+fall for the facing it states (the motion's direction, else
+`character.facing` — `sheet-prompt.mjs` `SIDE_GEOMETRY`, printed whole as
+`sides` by `sheet-prompt --json`), and `rhythm:<d>` — the finished
+`<d>`-facing sheet of the same motion, attached for its timing only when an
+asymmetric character's other side had to be drawn. A prompt with neither is
+`/1`'s text word for word; `/1` records stay as they were written. The
+attach order `sheet-prompt` prints is the order the text names them by: the
+direction's anchor, the other references (a file registered twice goes
+once), the rhythm sheet, the layout guide — the last two named by their
+place from the end. With the same character
 and grid, the same parts render the same text. Parts describe a sheet:
-`sheet-prompt` refuses a breathe or a mirror motion, a breathe or mirror run
+`sheet-prompt` refuses a breathe or a mirror motion (and `set-motion
+--prompt-parts` refuses to record parts on one), a breathe or mirror run
 landing on a motion that had a built prompt drops the parts and the text
 they built (a prompt written by hand stays), and the viewer ignores parts
 beside `source: "breathe"` or `"mirror"`.
+
+**Re-planning a source.** `set-motion --source sheet|video|breathe|mirror`
+says again how a motion with no frames yet will get them — the way a planned
+mirror that an asymmetric character refuses becomes a drawn side (`--source
+sheet`, then `sheet-prompt`). Its `mirrorOf` / `breathe` record, if a
+hand-edited file had one, goes with the old source. A motion with frames
+keeps the source that made them; the run that replaces them corrects it.
 
 **Pixel art.** `character.pixel` is the one authority for "this is pixel
 art": `riveIsPixelArt` (`rive-plan.mjs`) reads it first and falls back to the
@@ -737,7 +772,8 @@ agent's call.
 
 `register-recolor` is the only writer. The loader applies the same rules the
 writer checks with (`recolor.mjs`): a colourway with a bad name, a non-hex
-colour, an empty map or a tolerance outside 1–255 is dropped, the first of a
+colour, an empty map or a tolerance outside 0–255 is dropped (0 is exact,
+the same as none, and is never stored), the first of a
 name wins, and an empty list is no list; a motion's entry needs a colourway
 name and its sheet and atlas ids, and only a sprite motion (no `kind`) keeps
 one. Lifecycle — the files stay on disk each time, only unregistered:

@@ -23,7 +23,11 @@
  * result is written atomically (`<output>.tmp`, then renamed) — a watcher
  * never sees a half-written PNG.
  *
- * `--json` prints exactly one object: { path, url, width, height, model }.
+ * `--json` prints exactly one object: { path, url, width, height, model,
+ * cost }. `cost` is what the job cost as far as can be said without fal's
+ * invoice — always an estimate, and it says from what (`birefnetCost`); the
+ * same figure goes to stderr as one `cost:` line, so a caller that reads
+ * only the path still sees the price.
  * Progress and warnings go to stderr; exit 1 on failure, 130 on interrupt.
  *
  * Environment: FAL_KEY, from the environment or a `.env` discovered by
@@ -58,6 +62,57 @@ export const RESOLUTIONS = {
 
 export const DEFAULT_MODEL = "heavy";
 export const DEFAULT_RESOLUTION = "2048";
+
+/**
+ * fal's list price for `fal-ai/birefnet/v2`: $0.0008 per compute second
+ * (fal pricing API, `GET https://api.fal.ai/v1/models/pricing?endpoint_id=
+ * fal-ai/birefnet/v2`, read 2026-09-27; the model page rounds it to "$0").
+ * Check it again before quoting a user a total.
+ */
+export const BIREFNET_PRICE = Object.freeze({ usd: 0.0008, unit: "compute second", checked: "2026-09-27" });
+
+const roundTo = (value, places) => Math.round(value * 10 ** places) / 10 ** places;
+
+/**
+ * What one BiRefNet job cost, as near as a caller can say: fal bills compute
+ * seconds, and the nearest number the queue reports is the job's inference
+ * time (`metrics.inference_time`, or `timings.inference` on the result).
+ * Without it, the wall time from submit to result — which includes the
+ * queue wait — bounds the charge from above. Either way it is an ESTIMATE,
+ * labelled with its basis; `usd` is null when there is nothing to go on.
+ * Measured 2026-09-27: a 512 px portrait, `--model light --resolution 1024`,
+ * 0.72 s of inference ≈ $0.0006 (2.5 s wall).
+ */
+export function birefnetCost({ inferenceSeconds, apiMs } = {}) {
+  const priced = (seconds, basis) => ({
+    usd: roundTo(seconds * BIREFNET_PRICE.usd, 6),
+    estimate: true,
+    basis,
+    seconds: roundTo(seconds, 3),
+    unitPriceUsd: BIREFNET_PRICE.usd,
+    unit: BIREFNET_PRICE.unit,
+  });
+  if (Number.isFinite(inferenceSeconds) && inferenceSeconds >= 0) return priced(inferenceSeconds, "inference-time");
+  if (Number.isFinite(apiMs) && apiMs >= 0) return priced(apiMs / 1000, "wall-time-upper-bound");
+  return { usd: null, estimate: true, basis: "unknown", unitPriceUsd: BIREFNET_PRICE.usd, unit: BIREFNET_PRICE.unit };
+}
+
+/** `$0.00058`, `$0.0214`, `$1.23` — enough digits to be non-zero. */
+export function formatUsd(usd) {
+  if (!Number.isFinite(usd)) return "unknown";
+  return `$${usd < 0.01 ? usd.toFixed(5) : usd < 1 ? usd.toFixed(4) : usd.toFixed(2)}`;
+}
+
+/** The one stderr line a `cost` object is said in. */
+export function costLine(cost) {
+  if (!cost || cost.usd === null) {
+    return `cost: unknown — fal reported no timing (list price ${formatUsd(BIREFNET_PRICE.usd)} per ${BIREFNET_PRICE.unit})`;
+  }
+  const what = cost.basis === "inference-time"
+    ? `${cost.seconds} s of inference`
+    : `${cost.seconds} s wall time, queue included — an upper bound`;
+  return `cost: ≈ ${formatUsd(cost.usd)} (estimate: ${what} × ${formatUsd(cost.unitPriceUsd)} per ${cost.unit}, fal list price)`;
+}
 
 /**
  * The exact request BiRefNet is sent, or a thrown refusal naming the flag
@@ -148,6 +203,11 @@ export async function removeBackground(options, { runJob = runFalJob, download =
     width: typeof image.width === "number" ? image.width : (measured?.width ?? null),
     height: typeof image.height === "number" ? image.height : (measured?.height ?? null),
     model: body.model,
+    // Additive: every earlier key is as it was.
+    cost: birefnetCost({
+      inferenceSeconds: job?.inferenceSeconds ?? job?.data?.timings?.inference,
+      apiMs: job?.apiMs,
+    }),
   };
 }
 
@@ -165,7 +225,9 @@ const HELP = `Usage: remove-background.mjs --input <image> --output <path.png> [
 
 Local inputs are inlined as data URIs (30 MB max); host anything larger and
 pass its URL. Requires FAL_KEY (environment or .env). Progress goes to
-stderr; with --json, stdout carries exactly one object.`;
+stderr; with --json, stdout carries exactly one object. What the job cost
+(an estimate at fal's list price, ${formatUsd(BIREFNET_PRICE.usd)} per ${BIREFNET_PRICE.unit}) is
+printed on stderr as a cost: line and returned as the object's cost.`;
 
 export async function main(argv = process.argv.slice(2)) {
   const { values } = parseArgs({
@@ -217,6 +279,8 @@ export async function main(argv = process.argv.slice(2)) {
       signal: controller.signal,
       deadlineMs: Math.max(30, Number(values["deadline-s"]) || 300) * 1000,
     });
+    // The price first, on stderr: stdout stays one object (or one path).
+    console.error(costLine(result.cost));
     console.log(values.json ? JSON.stringify(result) : result.path);
     return 0;
   } catch (error) {

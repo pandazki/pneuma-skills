@@ -50,8 +50,13 @@ import { setSpriteStageCapture } from "../pneuma-mode.js";
 import { atlasGeometry } from "./atlas.js";
 import { CommandBar, commandLabel } from "./CommandPopovers.js";
 import { FrameStrip } from "./FrameStrip.js";
-import { frameThumbnail, type StageBackground, type StageZoom } from "./frame-render.js";
-import { generatingVideoMotions, loopLine, sizeLine } from "./metrics.js";
+import {
+  characterFitFrame,
+  frameThumbnail,
+  type StageBackground,
+  type StageZoom,
+} from "./frame-render.js";
+import { generatingVideoMotions, loopLine, sizeLine, stageFacing } from "./metrics.js";
 import { MotionRail } from "./MotionRail.js";
 import {
   canAskAgent,
@@ -70,6 +75,7 @@ import {
   clampFrame,
   contentSetMismatch,
   declaredFrameCount,
+  NAVIGATE_ROSTER_WAIT_MS,
   frameCountOf,
   parseAddress,
   playbackStateData,
@@ -434,8 +440,10 @@ export default function SpritePreview(props: ViewerPreviewProps) {
   }, []);
 
   // ── Address routing, shared by the action and the locator card ───────────
+  /** `notYetKnown` rides along for the caller that may wait for a newer
+   *  roster (see `awaitRoster`); it is stripped before anyone is answered. */
   const runAddress = useCallback(
-    (raw: unknown, intent: { autoplay: boolean }): ViewerActionResult => {
+    (raw: unknown, intent: { autoplay: boolean }): ViewerActionResult & { notYetKnown?: boolean } => {
       const address = parseAddress(raw);
       const resolution = resolveAddress(character, address, motionId);
       const target = resolution.target;
@@ -462,6 +470,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
       return {
         success: resolution.ok,
         ...(resolution.message ? { message: resolution.message } : {}),
+        ...(resolution.notYetKnown ? { notYetKnown: true } : {}),
       };
     },
     [character, motionId, setPlay, showMotion, showRef, playable],
@@ -525,6 +534,70 @@ export default function SpritePreview(props: ViewerPreviewProps) {
     [character, imageVersion],
   );
 
+  // ── Navigations that arrive before the roster does ──────────────────────
+  //
+  // The agent registers a reference or a run and names it in the next
+  // command; the file event that brings the new project.json can land after
+  // that navigation. Refusing it then ("not in this character (has: none)")
+  // reports the viewer's lag as the agent's mistake. So an address naming
+  // something this roster does not list yet is retried on each roster update
+  // and answered on arrival, or with the refusal once
+  // NAVIGATE_ROSTER_WAIT_MS has passed. One at a time: a newer one answers
+  // the older with what it would have got.
+  const latest = useRef({ runAddress, readState });
+  latest.current = { runAddress, readState };
+  const pendingRef = useRef<{
+    address: unknown;
+    autoplay: boolean;
+    answer: (result: ViewerActionResult) => void;
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
+
+  const answerPending = useCallback((final: boolean) => {
+    const pending = pendingRef.current;
+    if (!pending) return;
+    const { notYetKnown, ...result } = latest.current.runAddress(pending.address, { autoplay: pending.autoplay });
+    if (notYetKnown && !result.success && !final) return;
+    clearTimeout(pending.timer);
+    pendingRef.current = null;
+    pending.answer(
+      !result.success && notYetKnown
+        ? { ...result, message: `${result.message ?? "Not found."} (waited ${NAVIGATE_ROSTER_WAIT_MS / 1000} s for the viewer to load the latest project.json)` }
+        : result,
+    );
+  }, []);
+
+  /** Resolve an address now, or — when it names something the roster does
+   *  not list yet — once a newer roster lists it or the wait runs out. */
+  const awaitRoster = useCallback(
+    (address: unknown, autoplay: boolean, answer: (result: ViewerActionResult) => void) => {
+      answerPending(true);
+      const { notYetKnown, ...result } = latest.current.runAddress(address, { autoplay });
+      if (result.success || !notYetKnown) {
+        answer(result);
+        return;
+      }
+      pendingRef.current = {
+        address,
+        autoplay,
+        answer,
+        timer: setTimeout(() => answerPending(true), NAVIGATE_ROSTER_WAIT_MS),
+      };
+    },
+    [answerPending],
+  );
+
+  // Every roster update is a chance for the pending address to resolve.
+  useEffect(() => {
+    answerPending(false);
+  }, [character, answerPending]);
+
+  useEffect(() => () => {
+    const pending = pendingRef.current;
+    if (pending) clearTimeout(pending.timer);
+    pendingRef.current = null;
+  }, []);
+
   // ── Agent actions ────────────────────────────────────────────────────────
   const { actionRequest, onActionResult } = props;
   useEffect(() => {
@@ -533,20 +606,22 @@ export default function SpritePreview(props: ViewerPreviewProps) {
 
     switch (actionId) {
       case "navigate-to": {
-        const result = runAddress(params?.address, { autoplay: false });
-        // Report where the stage IS now — including after a refusal, where
-        // "nothing moved, here is what you are still looking at" is the
-        // useful answer.
-        onActionResult(requestId, {
-          ...result,
-          data: (readState(undefined).data ?? {}) as Record<string, unknown>,
+        awaitRoster(params?.address, false, (result) => {
+          // Report where the stage IS now — including after a refusal, where
+          // "nothing moved, here is what you are still looking at" is the
+          // useful answer.
+          onActionResult(requestId, {
+            ...result,
+            data: (latest.current.readState(undefined).data ?? {}) as Record<string, unknown>,
+          });
         });
         break;
       }
       case "play": {
         let result: ViewerActionResult = { success: true };
         if (params?.address !== undefined) {
-          result = runAddress(params.address, { autoplay: false });
+          const { notYetKnown: _later, ...resolved } = runAddress(params.address, { autoplay: false });
+          result = resolved;
           if (!result.success) {
             onActionResult(requestId, result);
             break;
@@ -588,8 +663,9 @@ export default function SpritePreview(props: ViewerPreviewProps) {
   const { navigateRequest, onNavigateComplete } = props;
   useEffect(() => {
     if (!navigateRequest) return;
-    const result = runAddress(navigateRequest.address, { autoplay: true });
-    onNavigateComplete?.(result);
+    // The same wait: `capture` of a motion registered a moment ago arrives
+    // through this channel.
+    awaitRoster(navigateRequest.address, true, (result) => onNavigateComplete?.(result));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigateRequest]);
 
@@ -612,9 +688,14 @@ export default function SpritePreview(props: ViewerPreviewProps) {
     () => generatingVideoMotions(character),
     [character],
   );
+  // One `fit` scale for every sprite motion of the character (see
+  // `characterFitFrame`); a loop, a transition or a reference on the stage is
+  // fitted by its own size.
+  const characterFit = useMemo(() => characterFitFrame(character), [character]);
+  const stageFit = refId || motion?.kind ? null : characterFit;
   const headline = useMemo(() => {
     if (!character) return "";
-    const identity = character.sprite.character;
+    const facing = stageFacing(character, motion);
     // A loop is measured by different facts: it has no declared cell to be
     // compared against and no pack to have scaled it, so the phrase becomes
     // what it actually is — its size, and how long the cycle runs. "from
@@ -625,7 +706,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
     return [
       loopMotion ? t.loopLine(loopLine(motion)) : t.sizeLine(sizes),
       !loopMotion && motion?.source === "video" ? t.fromVideo : null,
-      identity.facing ? t.facing(identity.facing) : null,
+      facing ? t.facing(facing) : null,
       t.refCount(character.sprite.refs.length),
       // Transitions are counted apart: they are the clips between loops,
       // not more things the character does.
@@ -824,6 +905,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
               onOnion={setOnion}
               onGround={setGround}
               onCanvas={handleCanvas}
+              fitFrame={stageFit}
               t={t}
             />
 

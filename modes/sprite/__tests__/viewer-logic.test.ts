@@ -23,11 +23,13 @@ import ts from "typescript";
 import { loadRoster, type CharacterProject, type Motion } from "../domain.js";
 import spriteManifest from "../manifest.js";
 import { atlasGeometry, atlasPivot } from "../viewer/atlas.js";
-import { pivotGuide } from "../viewer/frame-render.js";
+import { characterFitFrame, pivotGuide, stageScale } from "../viewer/frame-render.js";
 import {
   alphaCoverageOf,
+  BODY_DRIFT_WARNING,
   bodyDriftOf,
   bodyDriftVerdict,
+  JUMP_WARNING,
   formatBytes,
   joinVerdict,
   loopDuration,
@@ -38,6 +40,7 @@ import {
   seamOf,
   seamVerdict,
   sizeLine,
+  stageFacing,
   stepOf,
 } from "../viewer/metrics.js";
 import {
@@ -85,6 +88,7 @@ import {
   advance,
   contentSetMismatch,
   frameCountOf,
+  NAVIGATE_ROSTER_WAIT_MS,
   parseAddress,
   playbackStateData,
   resolveAddress,
@@ -585,6 +589,21 @@ describe("resolveAddress", () => {
     expect(r.ok).toBe(true);
     expect(r.target).toEqual({ kind: "character" });
   });
+
+  // Four-direction trial, 2026-09-27: `navigate-to {ref: "turnaround"}` right
+  // after `add-ref` answered "not in this character (has: none)" — the file
+  // event had not reached the viewer yet. The refusals a newer roster can
+  // turn into an arrival say so, and the stage waits for one, bounded.
+  test("what a newer roster could still list is marked; a wrong character or a missing motion name is not", () => {
+    expect(resolveAddress(p, { ref: "turnaround" }, null).notYetKnown).toBe(true);
+    expect(resolveAddress(p, { motion: "attack" }, null).notYetKnown).toBe(true);
+    expect(resolveAddress(p, { motion: "bounce", frame: 12 }, null).notYetKnown).toBe(true);
+    expect(resolveAddress(null, { motion: "bounce" }, null).notYetKnown).toBe(true);
+    expect(resolveAddress(p, { contentSet: "other", motion: "bounce" }, null).notYetKnown).toBeUndefined();
+    expect(resolveAddress(p, { frame: 2 }, null).notYetKnown).toBeUndefined();
+    expect(resolveAddress(p, { motion: "bounce" }, null).notYetKnown).toBeUndefined();
+    expect(NAVIGATE_ROSTER_WAIT_MS).toBe(2000);
+  });
 });
 
 /**
@@ -978,6 +997,7 @@ describe("sizeLine", () => {
     const p = project();
     expect(sizeLine(p, null, null)).toEqual({
       declared: "64",
+      logicalHeight: null,
       measured: null,
       packedScale: null,
     });
@@ -1003,6 +1023,7 @@ describe("sizeLine", () => {
     const line = sizeLine(p, motion, atlasGeometry(p, motion));
     expect(line).toEqual({
       declared: "128",
+      logicalHeight: null,
       measured: "250×250",
       packedScale: 0.5,
     });
@@ -1043,6 +1064,63 @@ describe("sizeLine", () => {
       body.sprite.character.cell = { width: 256, height: 192 };
     });
     expect(sizeLine(p, null, null).declared).toBe("256×192");
+  });
+
+  // Route A's header read "declared 256 · measured 226×502 · facing right"
+  // over an uploaded front-facing picture, and a pixel character declared 27
+  // px tall read "declared 256" (2026-09-27 trials). Each route says what it
+  // is held to, and nothing it is not.
+  test("a picture brought to life and a UI loop have no declared cell to be compared with", () => {
+    for (const purpose of ["animate", "loop"]) {
+      const p = mutate((body) => { body.sprite.character.purpose = purpose; });
+      const line = sizeLine(p, motionOf(p), atlasGeometry(p, motionOf(p)));
+      expect(line.declared).toBeNull();
+      expect(spriteStrings("en").sizeLine(line)).toBe("measured 64×64");
+    }
+    for (const purpose of ["game", "mascot"]) {
+      const p = mutate((body) => { body.sprite.character.purpose = purpose; });
+      expect(sizeLine(p, null, null).declared).toBe("64");
+    }
+  });
+
+  test("pixel art is held to its height in logical pixels, not a cell, in both languages", () => {
+    const p = mutate((body) => {
+      body.sprite.character.purpose = "game";
+      body.sprite.character.pixel = { logicalHeight: 27 };
+    });
+    const line = sizeLine(p, motionOf(p), atlasGeometry(p, motionOf(p)));
+    expect(line).toMatchObject({ declared: null, logicalHeight: 27, measured: "64×64" });
+    expect(spriteStrings("en").sizeLine(line)).toBe("27 px tall · measured 64×64");
+    expect(spriteStrings("zh").sizeLine(line)).toBe("高 27 像素 · 实测 64×64");
+  });
+});
+
+describe("stageFacing", () => {
+  test("the motion's own direction wins over the character's side", () => {
+    const p = mutate((body) => {
+      body.sprite.character.facing = "right";
+      body.sprite.motions[0].direction = "front";
+    });
+    expect(stageFacing(p, motionOf(p))).toBe("front");
+    expect(spriteStrings("en").facing("front")).toBe("facing front");
+    expect(spriteStrings("zh").facing("front")).toBe("正面");
+    expect(spriteStrings("zh").facing("back")).toBe("背面");
+    expect(spriteStrings("zh").facing("left")).toBe("朝左");
+  });
+
+  test("with no direction the character's side, except on the routes that have none", () => {
+    const side = mutate((body) => { body.sprite.character.facing = "left"; });
+    expect(stageFacing(side, motionOf(side))).toBe("left");
+    expect(stageFacing(side, null)).toBe("left");
+    for (const purpose of ["animate", "loop"]) {
+      const p = mutate((body) => {
+        body.sprite.character.facing = "right";
+        body.sprite.character.purpose = purpose;
+      });
+      expect(stageFacing(p, motionOf(p))).toBeNull();
+    }
+    const unset = mutate((body) => { delete body.sprite.character.facing; });
+    expect(stageFacing(unset, motionOf(unset))).toBeNull();
   });
 });
 
@@ -1086,13 +1164,30 @@ describe("inspect thresholds", () => {
   test("the jump bar is 8 % of the cell, so it moves with the cell", () => {
     // 250px cell → 20px. The same 25px jump is a warning here and not on a
     // 512px sheet, which is exactly why a fixed px limit would lie.
-    expect(maxJumpVerdict(inspect({ maxJump: 25 }))).toEqual({
+    const jumped = [`${JUMP_WARNING} 02 and 03`];
+    expect(maxJumpVerdict(inspect({ maxJump: 25, warnings: jumped }))).toEqual({
       limit: 20,
       over: true,
     });
     expect(
-      maxJumpVerdict(inspect({ maxJump: 25, cell: { width: 512, height: 512 } })),
+      maxJumpVerdict(inspect({ maxJump: 25, cell: { width: 512, height: 512 }, warnings: jumped })),
     ).toEqual({ limit: 40.96, over: false });
+  });
+
+  test("over the bar is amber only when the run warned: the jump and drift rules have a second condition", () => {
+    // Four-direction trial, 2026-09-27: 27.5 px over a 22.24 px bar, painted
+    // amber beside an empty warning list — the script warns about a jump
+    // only when the feet jump too.
+    expect(maxJumpVerdict(inspect({ maxJump: 27.5, cell: { width: 278, height: 400 } }))).toEqual({ limit: 22.24, over: false });
+    expect(maxJumpVerdict(inspect({ maxJump: 27.5, cell: { width: 278, height: 400 }, warnings: [`${JUMP_WARNING} 05 and 06`] })).over).toBe(true);
+    // Body drift has its own second condition (the head moves, the foot
+    // line was not kept on purpose).
+    expect(bodyDriftVerdict(inspect({ bodyDrift: 17.4 }))).toEqual({ limit: 12.5, over: false });
+    expect(bodyDriftVerdict(inspect({ bodyDrift: 17.4, warnings: [`${BODY_DRIFT_WARNING} — re-run align with --x-from feet/cell`] })).over).toBe(true);
+    // The script's own sentences, word for word.
+    const script = readFileSync(join(import.meta.dir, "..", "skill", "scripts", "sprite-sheet.mjs"), "utf-8");
+    expect(script).toContain(`\`${JUMP_WARNING} \${pad(jumpPair[0])}`);
+    expect(script).toContain(`"${BODY_DRIFT_WARNING} — re-run align`);
   });
 
   test("no measured cell means no bar at all — never a bar of zero", () => {
@@ -1105,10 +1200,42 @@ describe("inspect thresholds", () => {
     expect(bodyDriftOf(inspect())).toBeNull();
     expect(bodyDriftOf(inspect({ bodyDrift: 17.4 }))).toBe(17.4);
     expect(bodyDriftOf(inspect({ bodyDrift: "17.4" }))).toBeNull();
-    expect(bodyDriftVerdict(inspect({ bodyDrift: 17.4 }))).toEqual({
+    expect(bodyDriftVerdict(inspect({ bodyDrift: 17.4, warnings: [`${BODY_DRIFT_WARNING} — re-run align with --x-from feet/cell`] }))).toEqual({
       limit: 12.5,
       over: true,
     });
+  });
+});
+
+/**
+ * Game trial, 2026-09-27: Fit showed the attack at 70 % and the idle and walk
+ * at 1× — a size change the user read off the stage. One box per character.
+ */
+describe("one fit scale per character", () => {
+  const sized = (cells: Array<[string, number, number, string?]>) => mutate((body) => {
+    const template = body.sprite.motions[0];
+    body.sprite.motions = cells.map(([id, width, height, kind]) => ({
+      ...template, id, ...(kind ? { kind } : {}), inspect: { ...template.inspect, cell: { width, height } },
+    }));
+  });
+
+  test("the box is the widest and the tallest sprite cell; loops and motions without frames are left out", () => {
+    const p = sized([["idle", 226, 502], ["attack", 420, 480], ["flame", 900, 900, "loop"]]);
+    expect(characterFitFrame(p)).toEqual({ width: 420, height: 502 });
+    expect(characterFitFrame(null)).toBeNull();
+    const none = mutate((body) => { body.sprite.motions[0].frames = []; });
+    expect(characterFitFrame(none)).toBeNull();
+  });
+
+  test("fitted by that box, every motion shares the scale the largest one needs", () => {
+    const box = { width: 420, height: 502 };
+    // A 600×480 stage: the attack alone fits at 0.82, the idle alone at 1 —
+    // together they both play at 0.82.
+    const alone = [stageScale("fit", 420, 480, 600, 480), stageScale("fit", 226, 502, 600, 480)];
+    expect(alone[0]).not.toBe(alone[1]);
+    const shared = stageScale("fit", Math.max(box.width, 226), Math.max(box.height, 502), 600, 480);
+    expect(shared).toBe(stageScale("fit", Math.max(box.width, 420), Math.max(box.height, 480), 600, 480));
+    expect(shared).toBeLessThan(1);
   });
 });
 
@@ -2646,6 +2773,8 @@ describe("routes, directions, breathe and mirror on the stage", () => {
     }
     expect(spriteStrings("en").breatheSourceTitle("pixel")).toMatch(/whole pixels/);
     expect(spriteStrings("zh").breatheSourceTitle("smooth")).toMatch(/平滑/);
+    // Natural Chinese, not "由一张图直接变形出呼吸" (R3, 2026-09-27).
+    expect(spriteStrings("zh").breatheSourceTitle(null)).toBe("用一张图直接做出呼吸动画，不调用模型");
   });
 
   test("every direction and the anchor role have words in both languages", () => {

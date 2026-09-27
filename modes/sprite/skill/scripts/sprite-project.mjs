@@ -27,7 +27,8 @@ import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
 
 import {
-  GUIDE_DEFAULT, RECOMMENDED_FRAMES, SHEET_FRAME_COUNTS, SHEET_STATES, buildSheetPrompt, sheetGrid,
+  GUIDE_DEFAULT, RECOMMENDED_FRAMES, SHEET_FRAME_COUNTS, SHEET_STATES, SIDE_GEOMETRY, buildSheetPrompt, sheetGrid,
+  sideClause, stateOf,
 } from "./sheet-prompt.mjs";
 // A breathe's default rate — the rate `add-motion --source breathe` records
 // until the run lands with its own (one authority, shared with sprite-sheet.mjs).
@@ -159,7 +160,9 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
        [--facing left|right] [--purpose ${PURPOSES.join("|")}]
        [--asymmetric "<sentence>"] [--pixel <height> [--colors N]] [--force]
       Create project.json, creating --dir first if it does not exist yet.
-      Refuses to clobber an existing project without --force.
+      Refuses to clobber an existing project without --force. --facing
+      defaults to right, except for --purpose animate: a picture brought to
+      life faces whatever way it was drawn, and nothing is recorded.
       --purpose records what the user is making (character.purpose): a game
       character, a UI loop, a mascot for an app, or a picture brought to life.
       --asymmetric is one sentence naming what must never flip ("the sword is
@@ -195,7 +198,12 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       'crop').
       --role anchor is one single-pose image facing one way, and needs
       --direction; there is one anchor per direction (re-register that id to
-      replace it). No other role takes a --direction.
+      replace it). No other role takes a --direction. On an asymmetric
+      character the note after it says where the character's own right and
+      left fall in that view: check the anchor's side-specific details
+      against it before a sheet uses it.
+      Re-registering a reference a breathe was warped from notes the breathe:
+      it shows the old picture until it is breathed again (show lists it).
 
   add-motion --id <motionId> --label <text> --rows R --cols C --fps N
              [--kind ${MOTION_KINDS.join("|")}] [--loop|--no-loop]
@@ -206,10 +214,11 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       --source records how the frames will be obtained (a generated sheet, a
       sampled video clip, a breathe of one still, a mirror of another motion)
       before anything is generated. Omitted means sheet; register-run
-      corrects it from the run that lands. --source breathe makes --rows /
-      --cols and --fps optional (1x1 at 8 fps until the run lands): a
-      breathe is drawn on no grid and timed by its run, and register-run
-      takes the grid and the fps from it.
+      corrects it from the run that lands. --source breathe or mirror makes
+      --rows / --cols and --fps optional (1x1 at 8 fps until the run lands):
+      a breathe is drawn on no grid and timed by its run, a mirror plays on
+      its source's, and register-run takes the grid and the fps from the
+      run (a mirror's loop and anchor too).
       --direction is the way the motion faces; name it <state>-<direction>
       (walk-left) so every export carries the direction in its keys.
       --kind loop declares a seamless transparent animation for a UI instead
@@ -224,15 +233,21 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
 
   set-motion --motion <motionId> [--label] [--fps] [--loop|--no-loop] [--anchor]
              [--prompt [--prompt-parts '<json>']] [--status] [--notes]
-             [--direction ${DIRECTIONS.join("|")}]
+             [--direction ${DIRECTIONS.join("|")}] [--source ${MOTION_SOURCES.join("|")}]
              [--ack-warnings "<reason>"] [--clear-ack]
              [--brief-duration <s>] [--brief-width <px>]
              [--brief-interpolator ${LOOP_INTERPOLATORS.join("|")}] [--brief-budget <usd>]
       --prompt alone records a prompt written by hand, and drops any recorded
       prompt parts. --prompt-parts records how code built the --prompt given
       with it: {"builder","action","guards":[…],"guide"?:{rows,cols,cell:
-      {width,height},safeMargin:{x,y}}} (what sheet-prompt writes).
+      {width,height},safeMargin:{x,y}}} (what sheet-prompt writes); refused
+      on a breathe or a mirror, which no prompt draws.
       --direction on a mirror must stay the opposite of its source's.
+      --source says again how a motion with no frames yet will get them —
+      the way out when a planned mirror is refused (an asymmetric character)
+      and that side has to be drawn instead: --source sheet, then
+      sheet-prompt. A motion with frames keeps the source that made them;
+      register-run corrects it when a run of another kind lands.
       --ack-warnings accepts the motion's remaining inspect warnings with a
       one-sentence reason the user reads on the stage; the numbers stay
       visible. --clear-ack takes it back. Re-registering a run drops the
@@ -260,13 +275,20 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       safe margin, identity over motion, the facing (the motion's direction,
       else the character's), the asymmetry lock, pixel art, the guards for
       the motion's state, the loop closure and the white plate. Printed on
-      stdout (the prompt alone; --json adds imageSize, attach and guide).
+      stdout (the prompt alone; --json adds imageSize, attach, rhythm,
+      guide and sides — where the character's own right and left fall in
+      each view, the sentence an asymmetric character's prompts carry).
+      Attach in the order printed: the direction's anchor, the other
+      references (a file registered twice goes once), then — for an
+      asymmetric character's left or right motion whose other side is
+      ready — that side's finished sheet for rhythm only, then the guide.
       --frames redraws the motion's grid for that many frames (8 → 4
       columns × 2 rows). --state overrides the state read off the motion's
       id and label (unknown → generic). --guide adds the layout guide:
       the prompt names it as the last attached image, and the output says
       the 'sprite-sheet.mjs guide' call that draws it. Default: ${GUIDE_DEFAULT ? "on" : "off"}.
-      Refused on a loop, a transition, a breathe or a mirror motion.
+      Refused on a loop, a transition, a breathe or a mirror motion (a
+      planned one: set-motion --source sheet first).
 
   set-sheet --motion <motionId> --file <path> [--from <assetId,…>] [--model]
             [--prompt] [--background <text>] [--status ${MOTION_STATUSES.join("|")}]
@@ -342,6 +364,8 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       only what the previous run left over (the tail of a longer motion), so
       a video keeps the frame it was generated from. The run's intermediate
       'cells' are not registered.
+      The motion's grid and fps become the run's (a sheet run's slice grid,
+      a from-video run's packed grid), so the stage plays what landed.
       A 'from-video' summary (source: "video") derives every frame from the
       CLIP instead of a sheet, with params.frameIndex and params.t seconds,
       and sets motion.source = "video". The clip must already be a registered
@@ -362,7 +386,7 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       Any run drops a loop's measured clip record (motion.clip).
       A breathe summary (source: "breathe", from 'sprite-sheet.mjs breathe
       --name') names the still it warped ('still', a path) and 'breathe'
-      { depth, breaths, lag, mode, depthX?, anatomy? { rigidRow, axisX, from,
+      { depth, breaths, lag, mode, anatomy? { rigidRow, axisX, from,
       torsoHalf? } }: the still must already be a registered reference
       (add-ref --uploaded; a cut-out: --derived-from <ref> --op key; a frame
       becomes one with add-ref --derived-from <frame id>), every frame
@@ -372,8 +396,9 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       frames and the record in place. A mirror summary (source: "mirror")
       names 'mirrorOf', a
       ready left- or right-facing sprite motion with as many frames: frame i
-      derives from its frame i, motion.mirrorOf is set and motion.direction
-      becomes the other side. It is refused on a motion another mirror is
+      derives from its frame i, motion.mirrorOf is set, motion.direction
+      becomes the other side, and its grid, fps, loop and anchor become the
+      run's (the source's where the summary does not say). It is refused on a motion another mirror is
       made from, and on an asymmetric character unless the summary carries
       force: true (sprite-sheet.mjs mirror --force). A later run of either
       shape's opposite drops the record. Re-running a motion notes each
@@ -412,8 +437,10 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
 
   show [--motion <motionId>]
       Compact summary for the agent. Lists stale mirrors — a mirror whose
-      source was registered again after it, or is gone (staleMirrors) — and
-      the ready sprite motions missing a recorded colourway (variantsMissing).
+      source was registered again after it, or is gone (staleMirrors) —,
+      stale breathes — a breathe whose still was registered again after it,
+      or is gone (staleBreathes) — and the ready sprite motions missing a
+      recorded colourway (variantsMissing).
 
 Exit code 0 on success, 1 on failure with a one-line ERROR: on stderr.`;
 
@@ -1499,7 +1526,6 @@ function breatheRecord(raw, stillId) {
     BREATHE_MODES.includes(raw.mode) ? null : "mode",
   ].filter(Boolean);
   if (missing.length) fail(`--run: the breathe block is missing or has a malformed ${listOf(missing)}`);
-  const depthX = finiteNumber(raw.depthX);
   const a = raw.anatomy;
   const torsoHalf = a && typeof a === "object" ? finiteNumber(a.torsoHalf) : undefined;
   const anatomy = a && typeof a === "object"
@@ -1517,7 +1543,6 @@ function breatheRecord(raw, stillId) {
   return {
     still: stillId,
     depth,
-    ...(depthX !== undefined && depthX >= 0 ? { depthX } : {}),
     breaths,
     lag,
     mode: raw.mode,
@@ -1608,6 +1633,76 @@ function staleMirrors(doc) {
     .filter((m) => m.source === "mirror" && typeof m.mirrorOf === "string" && m.mirrorOf)
     .map((m) => ({ id: m.id, mirrorOf: m.mirrorOf, reason: mirrorStaleness(doc, m) }))
     .filter((m) => m.reason !== null);
+}
+
+/**
+ * Why a breathe no longer shows its still, or null when it does — the
+ * mirror rule, for a still. Frame i was derived (`step: "breathe"`) from the
+ * still at the time of that edge; a reference registered again since then
+ * (`add-ref` over the same id, usually with a new file) is newer than the
+ * edge, and the stage keeps playing the old picture breathing.
+ */
+function breatheStaleness(doc, motion) {
+  const stillId = motion.breathe?.still;
+  if (!stillId) return null;
+  const still = doc.assets.find((a) => a.id === stillId);
+  if (!still) return `its still '${stillId}' is gone`;
+  const shot = Number(still.createdAt);
+  const current = (motion.frames ?? []).every((id) => {
+    const found = doc.provenance.find((e) => e.toAssetId === id);
+    const made = Number(found?.operation?.timestamp);
+    return found?.fromAssetId === stillId
+      && found.operation?.params?.step === "breathe"
+      && Number.isFinite(made) && Number.isFinite(shot) && shot <= made;
+  });
+  return current ? null : `${stillId} was registered again after it was breathed`;
+}
+
+/** Every breathe that no longer shows its still, with the reason. */
+function staleBreathes(doc) {
+  return doc.sprite.motions
+    .filter((m) => m.source === "breathe" && m.breathe?.still)
+    .map((m) => ({ id: m.id, still: m.breathe.still, reason: breatheStaleness(doc, m) }))
+    .filter((m) => m.reason !== null);
+}
+
+/**
+ * The finished other side of an asymmetric side-view motion, or null: the
+ * sheet `sheet-prompt` attaches after the references, for rhythm only,
+ * when that side had to be generated because a mirror would move what the
+ * `asymmetric` sentence names (prompting.md, "Handed props and hairpins keep
+ * their side"; upstream's left/right gate).
+ *
+ * "The same motion" is the `<state>-<direction>` naming the ids follow
+ * (walk-left ↔ walk-right), else the one ready motion of the same state
+ * facing the other way. Its drawn sheet is attached — the raw sheet, a grid
+ * on the white plate like the one being asked for — or its packed sheet when
+ * it was never drawn (a clip's frames). A mirror is not a rhythm reference:
+ * it is the side flipped, the very thing the lock refuses.
+ */
+function rhythmSheet(doc, dir, motion) {
+  const opposite = MIRRORED[motion.direction];
+  const asymmetric = doc.sprite.character?.asymmetric;
+  if (!opposite || typeof asymmetric !== "string" || !asymmetric.trim()) return null;
+  const ready = doc.sprite.motions.filter((m) => m.id !== motion.id && !m.kind && m.source !== "mirror"
+    && m.source !== "breathe" && m.direction === opposite && m.status === "ready");
+  const suffix = `-${motion.direction}`;
+  let sibling = motion.id.endsWith(suffix)
+    ? ready.find((m) => m.id === `${motion.id.slice(0, -suffix.length)}-${opposite}`)
+    : undefined;
+  if (!sibling) {
+    const state = stateOf(motion);
+    const same = state === "generic" ? [] : ready.filter((m) => stateOf(m) === state);
+    if (same.length === 1) sibling = same[0];
+  }
+  if (!sibling) return null;
+  for (const id of [sibling.sheetRaw, sibling.sheet]) {
+    const asset = id ? doc.assets.find((a) => a.id === id && a.status === "ready") : undefined;
+    if (asset?.uri && existsSync(join(dir, asset.uri))) {
+      return { motion: sibling.id, direction: opposite, asset: asset.id, uri: asset.uri };
+    }
+  }
+  return null;
 }
 
 const sha256 = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
@@ -1922,7 +2017,7 @@ function motionLines(motion, doc) {
       // The path too: a re-run passes the still again, and the id alone
       // would send the agent to look it up.
       const stillUri = doc?.assets.find((asset) => asset.id === b.still)?.uri;
-      lines.push(`  breathe of ${b.still}${stillUri ? ` (${stillUri})` : ""}: depth ${b.depth}${b.depthX === undefined ? "" : ` (x ${b.depthX})`}, ${b.breaths} breath${b.breaths === 1 ? "" : "s"}, lag ${b.lag}, ${b.mode}${b.anatomy ? `, rigid row ${b.anatomy.rigidRow}, axis ${b.anatomy.axisX}${b.anatomy.torsoHalf === undefined ? "" : `, torso ${b.anatomy.torsoHalf}`} (${b.anatomy.from})` : ""}`);
+      lines.push(`  breathe of ${b.still}${stillUri ? ` (${stillUri})` : ""}: depth ${b.depth}, ${b.breaths} breath${b.breaths === 1 ? "" : "s"}, lag ${b.lag}, ${b.mode}${b.anatomy ? `, rigid row ${b.anatomy.rigidRow}, axis ${b.anatomy.axisX}${b.anatomy.torsoHalf === undefined ? "" : `, torso ${b.anatomy.torsoHalf}`} (${b.anatomy.from})` : ""}`);
     } else if (motion.source === "mirror" && motion.mirrorOf) {
       lines.push(`  mirror of ${motion.mirrorOf}`);
     }
@@ -1945,6 +2040,7 @@ function motionLines(motion, doc) {
 
 function summarize(doc, dir) {
   const stale = staleMirrors(doc);
+  const breathes = staleBreathes(doc);
   const missing = variantsMissing(doc);
   return {
     dir: resolve(dir),
@@ -1962,6 +2058,7 @@ function summarize(doc, dir) {
     ...(doc.sprite.exports && Object.keys(doc.sprite.exports).length ? { exports: doc.sprite.exports } : {}),
     // Only when there is one: a 0.4.x summary stays byte-for-byte what it was.
     ...(stale.length ? { staleMirrors: stale } : {}),
+    ...(breathes.length ? { staleBreathes: breathes } : {}),
     ...(missing.length ? { variantsMissing: missing } : {}),
   };
 }
@@ -2038,7 +2135,7 @@ const OPTIONS = {
     "ack-warnings": { type: "string" }, "clear-ack": { type: "boolean", default: false },
     "brief-duration": { type: "string" }, "brief-width": { type: "string" },
     "brief-interpolator": { type: "string" }, "brief-budget": { type: "string" },
-    direction: { type: "string" }, "prompt-parts": { type: "string" },
+    direction: { type: "string" }, "prompt-parts": { type: "string" }, source: { type: "string" },
   },
   "sheet-prompt": {
     motion: { type: "string" }, action: { type: "string" }, frames: { type: "string" }, state: { type: "string" },
@@ -2451,7 +2548,13 @@ function main() {
         fail(`--dir: cannot create the character directory ${dir}: ${error.message}`);
       }
       const cell = values.cell ? parseCell(values.cell, "--cell") : { ...DEFAULT_CELL };
-      const facing = oneOf(values.facing ?? "right", FACINGS, "--facing");
+      // A side view faces right unless told otherwise. A picture brought to
+      // life (route A) faces whatever way it was drawn — usually the viewer —
+      // so nothing is recorded rather than a side nobody chose.
+      const animate = values.purpose === "animate";
+      const facing = values.facing === undefined
+        ? (animate ? undefined : "right")
+        : oneOf(values.facing, FACINGS, "--facing");
       const doc = {
         $schema: SCHEMA,
         title: name,
@@ -2474,7 +2577,7 @@ function main() {
             description: values.description ?? "",
             style: values.style ?? "",
             cell,
-            facing,
+            ...(facing ? { facing } : {}),
           },
           refs: [],
           motions: [],
@@ -2550,6 +2653,17 @@ function main() {
 
       saveProject(dir, doc);
       emit(values, summarize(doc, dir), [`registered ${assetId} → ${uri}`]);
+      // On stderr, after the write: every caller passes --json.
+      const asymmetric = doc.sprite.character?.asymmetric;
+      if (role === "anchor" && typeof asymmetric === "string" && asymmetric.trim()) {
+        console.error(`note: ${doc.sprite.character.name} is asymmetric ("${asymmetric.trim()}"). ${SIDE_GEOMETRY[direction]} Look at this anchor and check every side-specific detail sits on that side before a sheet uses it.`);
+      }
+      // A breathe warped from this reference shows the picture it had then.
+      for (const breathed of doc.sprite.motions.filter((m) => m.source === "breathe" && m.breathe?.still === assetId)) {
+        if (breatheStaleness(doc, breathed)) {
+          console.error(`note: ${breathed.id} was breathed from ${assetId} before this — it still shows that picture. If the picture changed, breathe it again from ${uri} (sprite-sheet.mjs breathe … --name ${breathed.id}) and register it; show lists it as stale until then`);
+        }
+      }
       break;
     }
 
@@ -2581,7 +2695,10 @@ function main() {
       // which register-run writes when the frames land. Everything else about
       // a sprite motion is untouched.
       const isLoop = kind === "loop";
-      const gridFromRun = isLoop || values.source === "breathe";
+      // A mirror plays on its source's grid, at its source's rate, and the
+      // run that flips it says both: register-run takes them from it.
+      const timedByRun = values.source === "breathe" || values.source === "mirror";
+      const gridFromRun = isLoop || timedByRun;
       const gridSide = (flag, raw) => (gridFromRun
         ? num(raw, flag, { integer: true, min: 1, fallback: 1 })
         : num(requireFlag(raw, flag), flag, { integer: true, min: 1 }));
@@ -2595,11 +2712,11 @@ function main() {
           rows: gridSide("--rows", values.rows),
           cols: gridSide("--cols", values.cols),
         },
-        // A breathe is timed by its run as well (`breathe --fps`), and
-        // register-run takes the rate from it; until then it reads as the
-        // rate a breathe plays at by default.
-        fps: values.source === "breathe"
-          ? num(values.fps, "--fps", { min: 1, fallback: BREATHE_FPS })
+        // A breathe is timed by its run as well (`breathe --fps`), and a
+        // mirror by its source; register-run takes the rate from the run.
+        // Until then it reads as the rate a breathe plays at by default.
+        fps: timedByRun
+          ? num(values.fps, "--fps", { min: 1, fallback: values.source === "breathe" ? BREATHE_FPS : DEFAULT_FPS })
           : num(requireFlag(values.fps, "--fps"), "--fps", { min: 1 }),
         // A loop that plays once is a contradiction in terms, so that is the
         // default here — --no-loop can still say otherwise.
@@ -2624,6 +2741,45 @@ function main() {
     case "set-motion": {
       const doc = loadProject(dir);
       const motion = findMotion(doc, requireFlag(values.motion, "--motion"));
+      // How the frames WILL be obtained, said again before any exist — the
+      // way out of a planned mirror an asymmetric character refuses. Once
+      // frames are registered the source describes them, and only the run
+      // that replaces them may change it (register-run corrects it).
+      const sourceNotes = [];
+      if (values.source !== undefined) {
+        const source = oneOf(values.source, MOTION_SOURCES, "--source");
+        if (motion.kind === "loop" || motion.kind === "transition") {
+          fail(`--source: '${motion.id}' is a ${motion.kind} — its frames come from a clip, whatever is said here`);
+        }
+        const frameCount = (motion.frames ?? []).length;
+        if (frameCount) {
+          fail(`--source: '${motion.id}' has ${frameCount} frames made by ${motion.source ?? "sheet"}${motion.mirrorOf ? ` (${motion.mirrorOf} flipped)` : ""} — the source says how those frames were made, and a run of another kind corrects it when it is registered. To draw it from scratch instead: remove-motion --motion ${motion.id}, add it again with --source ${source}`);
+        }
+        // A breathe or a mirror was planned with no grid, rate or loop of its
+        // own — its run brings them. A side that is drawn or shot instead
+        // needs them from somebody: said below, once the flags given in this
+        // same call are in.
+        const was = motion.source;
+        if ((was === "breathe" || was === "mirror") && (source === "sheet" || source === "video")) {
+          const timed = values.fps !== undefined || values.loop || values["no-loop"];
+          sourceNotes.push(() => `note: ${motion.id} was planned as a ${was}, whose run brings the grid${timed ? "" : ", the rate and the loop"} — ${source === "sheet" ? "sheet-prompt --frames <n> draws the grid" : "from-video brings the grid"}${timed ? "" : `; the ${motion.fps} fps and loop=${motion.loop} here are placeholders: set-motion --fps <n> --loop|--no-loop`}`);
+        }
+        if (source === "sheet" && motion.source === undefined) {
+          // Absent already means sheet; a 0.4.x motion stays byte for byte.
+        } else {
+          motion.source = source;
+        }
+        // Each source's record goes with it; a planned motion has none, but
+        // a hand-edited file might.
+        if (source !== "mirror") delete motion.mirrorOf;
+        if (source !== "breathe") delete motion.breathe;
+      }
+      // Prompt parts record how a SHEET prompt was built. A breathe or a
+      // mirror is drawn from no prompt: the loader drops parts on one, so
+      // writing them would store something nobody can read back.
+      if (values["prompt-parts"] !== undefined && (motion.source === "breathe" || motion.source === "mirror")) {
+        fail(`--prompt-parts: '${motion.id}' is a ${motion.source} motion — its frames are made from ${motion.source === "mirror" ? "another motion's frames" : "one still"}, not drawn from a prompt${(motion.frames ?? []).length ? "" : `; to draw it instead, set-motion --motion ${motion.id} --source sheet first`}`);
+      }
       if (values.label !== undefined) motion.label = values.label;
       if (values.fps !== undefined) motion.fps = num(values.fps, "--fps", { min: 1 });
       motion.loop = loop(motion.loop);
@@ -2682,7 +2838,7 @@ function main() {
       emit(values, motion, [`${motion.id}: ${motion.status}, ${motion.fps}fps, loop=${motion.loop}`]);
       // After the write, and on stderr: every caller of this command passes
       // --json, so a line routed through `emit` would be swallowed by it.
-      for (const line of [...briefLines, ...directionNotes]) console.error(line);
+      for (const line of [...briefLines, ...directionNotes, ...sourceNotes.map((note) => note())]) console.error(line);
       break;
     }
 
@@ -2693,7 +2849,10 @@ function main() {
         fail(`sheet-prompt: '${motion.id}' is a ${motion.kind} — its frames come from a clip, and there is no grid to draw`);
       }
       if (motion.source === "breathe" || motion.source === "mirror") {
-        fail(`sheet-prompt: '${motion.id}' is a ${motion.source} motion — its frames are made from ${motion.source === "mirror" ? "another motion's frames" : "one still"}, not drawn from a prompt`);
+        const made = (motion.frames ?? []).length;
+        fail(`sheet-prompt: '${motion.id}' is a ${motion.source} motion — its frames are made from ${motion.source === "mirror" ? "another motion's frames" : "one still"}, not drawn from a prompt. ${made
+          ? `Its ${made} frames were made that way; to draw it instead, remove-motion --motion ${motion.id} and add it again with --source sheet`
+          : `To draw it instead (a mirror an asymmetric character refuses, say): set-motion --motion ${motion.id} --source sheet, then sheet-prompt`}`);
       }
       const action = requireFlag(values.action, "--action");
       if (values.guide && values["no-guide"]) fail("--guide and --no-guide are mutually exclusive");
@@ -2708,16 +2867,21 @@ function main() {
           fail(error.message);
         }
       }
+      const rhythm = rhythmSheet(doc, dir, motion);
       let built;
       try {
         built = buildSheetPrompt({
           character: doc.sprite.character, motion: { ...motion, grid }, refs: doc.sprite.refs, action, state, guide,
+          rhythm: rhythm?.direction ?? null,
         });
       } catch (error) {
         fail(`sheet-prompt: ${error.message}`);
       }
       const frameCount = grid.rows * grid.cols;
       const notes = [];
+      if (frameCount < 2) {
+        fail(`sheet-prompt: '${motion.id}' is planned as ${grid.cols}x${grid.rows} — one frame is a still, not a sheet. Say how many frames it draws: --frames ${SHEET_FRAME_COUNTS.join("|")}`);
+      }
       // The grid the prompt draws is the grid `run --rows --cols` slices, so
       // the two change together.
       if (grid.rows !== motion.grid.rows || grid.cols !== motion.grid.cols) {
@@ -2743,11 +2907,18 @@ function main() {
       // --dir as given, then the uri.
       const onDisk = (uri) => (values.dir === undefined ? uri : join(values.dir, uri));
       const guideOut = onDisk(`motions/${motion.id}/layout-guide.png`);
+      // The order the text names them by: the references (the direction's
+      // anchor first), then the other side's sheet for rhythm, then the
+      // guide — the last two are named by their place from the end. A file
+      // registered under two references is attached once, where it first
+      // comes: a second copy is one more image the model weighs twice.
+      const refFiles = [...new Set(built.attach.map((refId) => {
+        const ref = doc.sprite.refs.find((r) => r.id === refId);
+        return onDisk(doc.assets.find((a) => a.id === ref.asset)?.uri ?? `refs/${refId}.png`);
+      }))];
       const attach = [
-        ...built.attach.map((refId) => {
-          const ref = doc.sprite.refs.find((r) => r.id === refId);
-          return onDisk(doc.assets.find((a) => a.id === ref.asset)?.uri ?? `refs/${refId}.png`);
-        }),
+        ...refFiles,
+        ...(rhythm ? [onDisk(rhythm.uri)] : []),
         ...(guide ? [guideOut] : []),
       ];
       const { geometry } = built;
@@ -2763,13 +2934,24 @@ function main() {
         prompt: built.prompt,
         promptParts: motion.promptParts,
         attach,
+        rhythm: rhythm ? { motion: rhythm.motion, direction: rhythm.direction, file: onDisk(rhythm.uri) } : null,
         guide: guide ? { out: guideOut, rows: geometry.rows, cols: geometry.cols, cell } : null,
+        // Where the character's own right and left fall in each view — the
+        // sentence an asymmetric character's prompts carry for their facing,
+        // and the one to write into a direction anchor's prompt by hand.
+        sides: SIDE_GEOMETRY,
         notes,
       };
       emit(values, payload, [built.prompt]);
       if (!values.json) {
         console.error(`recorded ${built.parts.builder} on ${motion.id}: ${frameCount} frames as ${geometry.cols} columns × ${geometry.rows} rows, state ${built.state}; guards ${built.parts.guards.join(", ")}`);
         console.error(`image: --image-size ${geometry.imageSize}; attach in this order: ${attach.join(", ") || "(no references registered)"}`);
+        if (rhythm) console.error(`rhythm: ${onDisk(rhythm.uri)} is ${rhythm.motion}'s finished sheet, attached for its timing only`);
+        const asymmetric = doc.sprite.character.asymmetric;
+        const facing = motion.direction ?? doc.sprite.character.facing;
+        if (typeof asymmetric === "string" && asymmetric.trim() && sideClause(facing)) {
+          console.error(`sides: ${SIDE_GEOMETRY[facing]}`);
+        }
         if (guide) console.error(`guide: sprite-sheet.mjs guide --rows ${geometry.rows} --cols ${geometry.cols} --cell ${cell} --out ${guideOut}`);
         for (const note of notes) console.error(note);
       }
@@ -3053,7 +3235,7 @@ function main() {
           // parameters that made it.
           setEdge(doc, edge(id, [stillId], operation("derive", now, {
             tool: TOOL, step: "breathe", frameIndex: index,
-            depth: breathe.depth, depthX: breathe.depthX, breaths: breathe.breaths, lag: breathe.lag, mode: breathe.mode,
+            depth: breathe.depth, breaths: breathe.breaths, lag: breathe.lag, mode: breathe.mode,
           })));
           return id;
         }
@@ -3213,18 +3395,32 @@ function main() {
         // above with its asset.
         if (motion.kind === "loop") delete motion.kind;
         delete motion.exports;
-        // A breathe was drawn on no grid and at no declared rate: the atlas it
-        // packed IS its grid, and the rate its breath was timed at is the one
-        // its GIF and atlas durations carry. A re-run with more frames or
+        // The grid and the rate the frames landed on, whatever was planned:
+        // the atlas and the GIF were packed and timed with them, and the
+        // stage plays and lays out the motion by the sidecar. A breathe was
+        // drawn on no grid, a clip's frames are packed on whatever columns
+        // `from-video` chose, a sheet may be sliced on another grid than the
+        // one planned — each run says which, and a re-run with more frames or
         // another --fps must not leave the stage reading the old layout.
-        if (breathe) {
-          const rows = Number(run.grid?.rows);
-          const cols = Number(run.grid?.cols);
-          if (Number.isInteger(rows) && rows >= 1 && Number.isInteger(cols) && cols >= 1) motion.grid = { rows, cols };
-          const fps = Number(run.fps);
-          if (Number.isFinite(fps) && fps > 0) motion.fps = fps;
-          motion.loop = true;
+        const rows = Number(run.grid?.rows);
+        const cols = Number(run.grid?.cols);
+        const runGrid = Number.isInteger(rows) && rows >= 1 && Number.isInteger(cols) && cols >= 1 ? { rows, cols } : null;
+        const runFps = Number(run.fps);
+        if (mirror) {
+          // A mirror plays exactly as its source does: `mirror` packs it with
+          // the source atlas's columns, timing, loop and anchor, and says so
+          // in the summary. What the summary leaves out is read off the
+          // source motion itself.
+          const from = mirror.source;
+          motion.grid = runGrid ?? { rows: from.grid.rows, cols: from.grid.cols };
+          motion.fps = Number.isFinite(runFps) && runFps > 0 ? runFps : from.fps;
+          motion.loop = typeof run.loop === "boolean" ? run.loop : Boolean(from.loop);
+          motion.anchor = ANCHORS.includes(run.anchor) ? run.anchor : from.anchor;
+        } else {
+          if (runGrid) motion.grid = runGrid;
+          if (Number.isFinite(runFps) && runFps > 0) motion.fps = runFps;
         }
+        if (breathe) motion.loop = true;
       }
       // The sidecar says how these frames were obtained, and it is corrected
       // in both directions: a sheet run over a motion someone declared `video`
@@ -3316,7 +3512,7 @@ function main() {
         // Its colourways were baked from its own (old) frames and stay until
         // those are replaced: registering the new mirror retires them.
         const colourways = Object.keys(flipped.variants ?? {});
-        console.error(`note: ${flipped.id} mirrors the frames this run replaced — mirror it again from motions/${motion.id} ('sprite-sheet.mjs mirror') and register it${colourways.length ? `, then recolor it (its ${listOf(colourways)} colourway files go with its old frames)` : ""}`);
+        console.error(`note: ${flipped.id} mirrors the frames this run replaced — mirror it again from <character>/motions/${motion.id} ('sprite-sheet.mjs mirror <character>/motions/${motion.id} --name ${flipped.id}') and register it${colourways.length ? `, then recolor it (its ${listOf(colourways)} colourway files go with its old frames)` : ""}`);
       }
       break;
     }
@@ -3524,7 +3720,9 @@ function main() {
       const doc = loadProject(dir);
       if (values.motion !== undefined) {
         const motion = findMotion(doc, values.motion);
-        const stale = motion.source === "mirror" && motion.mirrorOf ? mirrorStaleness(doc, motion) : null;
+        const stale = motion.source === "mirror" && motion.mirrorOf
+          ? mirrorStaleness(doc, motion)
+          : motion.source === "breathe" && motion.breathe ? breatheStaleness(doc, motion) : null;
         const payload = {
           ...compactMotion(motion),
           prompt: motion.prompt,
@@ -3545,7 +3743,7 @@ function main() {
         };
         emit(values, payload, [
           ...motionLines(motion, doc),
-          ...(stale ? [`  stale: ${stale} — mirror it again and register it`] : []),
+          ...(stale ? [`  stale: ${stale} — ${motion.source === "breathe" ? "breathe" : "mirror"} it again and register it`] : []),
           ...(motion.inspect?.warnings ?? []),
         ]);
         break;
@@ -3568,6 +3766,7 @@ function main() {
         ...whole.map(([key, uri]) => `  exported: ${key} (${uri})`),
         ...summary.motions.map((m) => `  ${m.id.padEnd(12)} ${m.status.padEnd(10)} ${m.kind === "loop" ? "loop".padEnd(7) : `${m.grid.rows}x${m.grid.cols}`.padEnd(7)} @ ${m.fps}fps  ${m.frameCount} frames${m.warnings.length ? `  (${m.warnings.length} warnings)` : ""}`),
         ...(summary.staleMirrors ?? []).map((m) => `  stale mirror: ${m.id} (of ${m.mirrorOf}) — ${m.reason}; mirror it again and register it`),
+        ...(summary.staleBreathes ?? []).map((m) => `  stale breathe: ${m.id} (of ${m.still}) — ${m.reason}; breathe it again and register it`),
         ...(recordedVariants(doc.sprite.character).length ? [`  colourways: ${recordedVariants(doc.sprite.character).map((v) => v.name).join(", ")}`] : []),
         ...(summary.variantsMissing ?? []).map((m) => `  missing colourway: ${m.motion} has no ${m.variants.join(", ")} — recolor it (sprite-sheet.mjs recolor <character>/motions/${m.motion}) and register-recolor`),
       ]);

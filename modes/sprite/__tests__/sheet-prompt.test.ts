@@ -3,9 +3,10 @@
  * sheet-prompt`) and the layout guide (`sprite-sheet.mjs guide`).
  *
  * The module tests are pure and run everywhere. The builder's text is pinned
- * word for word under `sheet-prompt/1`: a change to any sentence has to fail
+ * word for word under `sheet-prompt/2`: a change to any sentence has to fail
  * here, because a recorded `promptParts.builder` must keep meaning the words
- * it produced — change the text, bump the builder.
+ * it produced — change the text, bump the builder. (`/2` added the side
+ * geometry and the rhythm reference; a prompt with neither is `/1`'s text.)
  *
  * The CLI halves run the real scripts. `sheet-prompt` needs no ffmpeg; the
  * guide PNG and the anchor ref (a registered image) do, and skip with a named
@@ -22,6 +23,7 @@ import {
   DEFAULT_SAFE_MARGIN_RATIO,
   GUIDE_DEFAULT,
   SHEET_PROMPT_BUILDER,
+  SIDE_GEOMETRY,
   buildSheetPrompt,
   generationCell,
   guideGeometry,
@@ -30,6 +32,7 @@ import {
   safeMarginFor,
   sheetGrid,
   sheetGuards,
+  sideClause,
   stateOf,
   type SheetCharacter,
   type SheetMotion,
@@ -53,17 +56,18 @@ const BLOB: SheetCharacter = {
 const IDLE: SheetMotion = { id: "idle", label: "Idle", grid: { rows: 2, cols: 4 }, loop: true };
 const ACTION = "Cells 1-4 the blob swells, cells 5-8 it settles back.";
 
-/** `sheet-prompt/1` for BLOB's 8-frame idle, word for word. */
+/** `sheet-prompt/2` for BLOB's 8-frame idle, word for word — unchanged from
+ *  `/1`: nothing asymmetric, no rhythm sheet. */
 const GOLDEN_IDLE =
   "Flat vector blob, thick outline. A single 2048x1024 image laid out as a strict 4x2 grid of 8 equal 512x512 cells, 4 columns and 2 rows, read left to right, top to bottom. Each cell holds the whole character exactly once, centred in the cell, with at least 48 px of empty background on every side — anything the character holds or wears that moves included — and nothing crosses into a neighbouring cell. The same character in every cell, matching the attached references exactly. A round test blob with one antenna. Keep white and pale details inside the character — highlights, eye whites, pale hair or clothing — fully opaque; only the background is white. The character faces right. Fixed camera: consistent body proportions, drawing scale and camera distance in every cell, and ground contacts share one baseline while the character stands on the ground. The references own the identity — face, hair shape, markings, palette, outline weight, proportions, outfit and props stay exactly as they show, and whatever is worn or held on one side stays on that side. This sheet owns motion only: spend the variation on pose, limb contacts, body height, torso lean, head bob, and hair and cloth follow-through. Prefer a subtler animation over any change that alters the character's identity. The motion (8 frames, looping): Cells 1-4 the blob swells, cells 5-8 it settles back. This is an idle: the feet, or whatever the character rests on, stay planted on the same baseline in every cell and never lift, step, shuffle or slide — no walking, no marching in place, no turning, no change of facing. The eyes close in one cell at most. The motion runs straight on across row ends: the first cell of each row continues from the last cell of the row above by the same small step as the cells within a row. Cell 8 leads smoothly into cell 1 on the next beat, with compatible movement direction and without an extra hold. Show it through pose, expression and silhouette, never through effects: nothing detached from the character — no floating sparkles, symbols, smoke, dust, motion arcs, speed lines, afterimages, smears, glows or impact bursts. A flat solid pure white background filling every cell, no gradient. No grid lines, no cell borders, no numbers, no text, no floor, no drop shadow, no ground shadow, no motion blur.";
 
 describe("sheet-prompt.mjs — the builder", () => {
-  test("sheet-prompt/1 text is pinned, and the same parts render the same text", () => {
+  test("sheet-prompt/2 text is pinned, and the same parts render the same text", () => {
     const built = buildSheetPrompt({ character: BLOB, motion: IDLE, action: ACTION });
-    expect(SHEET_PROMPT_BUILDER).toBe("sheet-prompt/1");
+    expect(SHEET_PROMPT_BUILDER).toBe("sheet-prompt/2");
     expect(built.prompt).toBe(GOLDEN_IDLE);
     expect(built.parts).toEqual({
-      builder: "sheet-prompt/1",
+      builder: "sheet-prompt/2",
       action: ACTION,
       guards: ["state:idle", "row-continuity", "loop-close"],
     });
@@ -206,6 +210,8 @@ describe("sheet-prompt.mjs — the builder", () => {
     const parts = buildSheetPrompt({ character: BLOB, motion: IDLE, action: ACTION }).parts;
     const render = (p: typeof parts, character: SheetCharacter = BLOB) => () => renderSheetPrompt({ character, motion: IDLE }, p);
     expect(render({ ...parts, builder: "sheet-prompt/0" })).toThrow(/cannot render parts built by sheet-prompt\/0/);
+    // A /1 record names /1's words; this builder does not claim to write them.
+    expect(render({ ...parts, builder: "sheet-prompt/1" })).toThrow(/cannot render parts built by sheet-prompt\/1/);
     expect(render({ ...parts, guards: [...parts.guards, "no-shadow"] })).toThrow(/does not know the clause 'no-shadow'/);
     expect(render({ ...parts, guards: ["row-continuity", "loop-close"] })).toThrow(/no state/);
     expect(render({ ...parts, guards: ["state:idle"] })).toThrow(/no ending/);
@@ -214,6 +220,94 @@ describe("sheet-prompt.mjs — the builder", () => {
     expect(render({ ...parts, guards: ["asymmetric", "state:idle", "loop-close"] })).toThrow(/needs character.asymmetric/);
     expect(render({ ...parts, action: "  " })).toThrow(/--action/);
     expect(render(parts, { ...BLOB, style: "" })).toThrow(/no style sentence/);
+  });
+});
+
+/**
+ * G1 (four-direction blind trial, 2026-09-27): the agent wrote "facing left,
+ * her right side faces the viewer" into its own prompts and both side walks
+ * carried the basket on the wrong side. The geometry is now code: every
+ * prompt of an asymmetric character says where the character's own right
+ * and left fall for the facing it states.
+ */
+describe("sheet-prompt.mjs — side geometry", () => {
+  const LOCKED: SheetCharacter = { ...BLOB, asymmetric: "The basket hangs on her right arm." };
+  const facing = (direction: SheetMotion["direction"]) =>
+    buildSheetPrompt({ character: LOCKED, motion: { ...IDLE, id: `walk-${direction}`, direction }, action: ACTION });
+
+  test("the table: facing left the own right side is far, facing right it is near; front and back mirror the picture", () => {
+    expect(SIDE_GEOMETRY.left).toMatch(/Facing left, .*own right side is the far side — turned away from the viewer and partly hidden behind the body — and their own left side is the near side, toward the viewer/);
+    expect(SIDE_GEOMETRY.right).toMatch(/Facing right, .*own right side is the near side, toward the viewer, and their own left side is the far side/);
+    expect(SIDE_GEOMETRY.front).toMatch(/own right side is on the left of the picture and their own left side is on the right of the picture/);
+    expect(SIDE_GEOMETRY.back).toMatch(/own right side is on the right of the picture and their own left side is on the left of the picture/);
+    expect(Object.keys(SIDE_GEOMETRY)).toEqual(["front", "back", "left", "right"]);
+    expect(sideClause("left")).toBe(`${SIDE_GEOMETRY.left} Place every side-specific detail by the character's own right and left, as they fall in this view.`);
+    expect(sideClause("up")).toBeNull();
+    expect(sideClause(undefined)).toBeNull();
+  });
+
+  test("an asymmetric motion carries its facing's sentence right after the lock, and nothing else changes", () => {
+    for (const d of ["front", "back", "left", "right"] as const) {
+      const built = facing(d);
+      expect(built.prompt).toContain(`never flip or change sides in any cell: The basket hangs on her right arm. ${sideClause(d)} The motion (8 frames, looping)`);
+      for (const other of ["front", "back", "left", "right"].filter((x) => x !== d)) {
+        expect(built.prompt).not.toContain(SIDE_GEOMETRY[other as typeof d]);
+      }
+      // The guards do not change: the sentence follows from two that exist.
+      expect(built.parts.guards).toEqual([`direction:${d}`, "asymmetric", "state:walk", "row-continuity", "loop-close"]);
+      // Rebuilt from the recorded parts, byte for byte.
+      expect(renderSheetPrompt({ character: LOCKED, motion: { ...IDLE, direction: d } }, JSON.parse(JSON.stringify(built.parts)))).toBe(built.prompt);
+    }
+  });
+
+  test("with no direction the character's facing is the one the sentence is for; no lock, no sentence", () => {
+    const side = buildSheetPrompt({ character: { ...LOCKED, facing: "left" }, motion: IDLE, action: ACTION });
+    expect(side.prompt).toContain("The character faces left.");
+    expect(side.prompt).toContain(SIDE_GEOMETRY.left);
+    const unfaced = buildSheetPrompt({ character: { ...LOCKED, facing: undefined }, motion: IDLE, action: ACTION });
+    for (const sentence of Object.values(SIDE_GEOMETRY)) expect(unfaced.prompt).not.toContain(sentence);
+    const plain = buildSheetPrompt({ character: BLOB, motion: { ...IDLE, direction: "left" }, action: ACTION });
+    for (const sentence of Object.values(SIDE_GEOMETRY)) expect(plain.prompt).not.toContain(sentence);
+  });
+});
+
+/**
+ * G4: the generated second side of an asymmetric character is drawn with the
+ * finished first side's sheet attached for rhythm only. The caller finds and
+ * attaches it (the builder sees no other motion); the builder records
+ * `rhythm:<d>` and says which image it is — last, or just before the guide.
+ */
+describe("sheet-prompt.mjs — the rhythm sheet", () => {
+  const LOCKED: SheetCharacter = { ...BLOB, asymmetric: "The basket hangs on her right arm." };
+  const WALK_LEFT: SheetMotion = { ...IDLE, id: "walk-left", direction: "left" };
+
+  test("it is recorded, named as the last image, and rebuilt from the parts", () => {
+    const built = buildSheetPrompt({ character: LOCKED, motion: WALK_LEFT, action: ACTION, rhythm: "right" });
+    expect(built.parts.guards).toEqual(["direction:left", "asymmetric", "rhythm:right", "state:walk", "row-continuity", "loop-close"]);
+    expect(built.prompt).toContain(`(8 frames, looping): ${ACTION} The last attached image is the finished right-facing sheet of this same motion, for rhythm only: match its step timing, stride length and drawing scale cell for cell, and take nothing else from it — not its facing, and not the side any detail is on. This is a walk in place`);
+    expect(renderSheetPrompt({ character: LOCKED, motion: WALK_LEFT }, built.parts)).toBe(built.prompt);
+    // Without the rhythm sheet the text is what it was.
+    const alone = buildSheetPrompt({ character: LOCKED, motion: WALK_LEFT, action: ACTION });
+    expect(alone.prompt).not.toContain("rhythm only");
+    expect(built.prompt.replace(" The last attached image is the finished right-facing sheet of this same motion, for rhythm only: match its step timing, stride length and drawing scale cell for cell, and take nothing else from it — not its facing, and not the side any detail is on.", "")).toBe(alone.prompt);
+  });
+
+  test("with the guide it is the image just before the guide, which stays last", () => {
+    const built = buildSheetPrompt({ character: LOCKED, motion: WALK_LEFT, action: ACTION, rhythm: "right", guide: true });
+    expect(built.parts.guards).toEqual(["guide", "direction:left", "asymmetric", "rhythm:right", "state:walk", "row-continuity", "loop-close"]);
+    expect(built.prompt).toContain("The last attached image is the layout guide for this sheet");
+    expect(built.prompt).toContain("The second-to-last attached image, just before the layout guide, is the finished right-facing sheet of this same motion, for rhythm only");
+  });
+
+  test("only the other side of an asymmetric side view takes one", () => {
+    expect(() => buildSheetPrompt({ character: BLOB, motion: WALK_LEFT, action: ACTION, rhythm: "right" })).toThrow(/goes only with an asymmetric character/);
+    expect(() => buildSheetPrompt({ character: LOCKED, motion: WALK_LEFT, action: ACTION, rhythm: "left" })).toThrow(/goes only with/);
+    expect(() => buildSheetPrompt({ character: LOCKED, motion: { ...WALK_LEFT, direction: "front" }, action: ACTION, rhythm: "right" })).toThrow(/goes only with/);
+    const parts = buildSheetPrompt({ character: LOCKED, motion: WALK_LEFT, action: ACTION, rhythm: "right" }).parts;
+    const render = (guards: string[]) => () => renderSheetPrompt({ character: LOCKED, motion: WALK_LEFT }, { ...parts, guards });
+    expect(render(["direction:left", "rhythm:right", "state:walk", "loop-close"])).toThrow(/rhythm:right needs asymmetric and direction:left/);
+    expect(render(["direction:right", "asymmetric", "rhythm:right", "state:walk", "loop-close"])).toThrow(/rhythm:right needs asymmetric and direction:left/);
+    expect(render(["direction:left", "asymmetric", "rhythm:front", "state:walk", "loop-close"])).toThrow(/does not know the clause 'rhythm:front'/);
   });
 });
 
@@ -293,12 +387,12 @@ describe("sprite-project.mjs sheet-prompt", () => {
     expect(r.out).toBe(`${GOLDEN_IDLE}\n`);
     const motion = readProject(dir).sprite.motions[0];
     expect(motion.prompt).toBe(GOLDEN_IDLE);
-    expect(motion.promptParts).toEqual({ builder: "sheet-prompt/1", action: ACTION, guards: ["state:idle", "row-continuity", "loop-close"] });
+    expect(motion.promptParts).toEqual({ builder: "sheet-prompt/2", action: ACTION, guards: ["state:idle", "row-continuity", "loop-close"] });
     expect(motion.grid).toEqual({ rows: 2, cols: 4 });
-    expect(r.err).toContain("recorded sheet-prompt/1 on idle: 8 frames as 4 columns × 2 rows, state idle");
+    expect(r.err).toContain("recorded sheet-prompt/2 on idle: 8 frames as 4 columns × 2 rows, state idle");
     expect(r.err).toContain("image: --image-size 2048x1024");
     // `show` names the builder.
-    expect(run(PROJECT, ["show", "--dir", dir, "--motion", "idle"]).out).toContain("prompt built by sheet-prompt/1 (guards: state:idle, row-continuity, loop-close)");
+    expect(run(PROJECT, ["show", "--dir", dir, "--motion", "idle"]).out).toContain("prompt built by sheet-prompt/2 (guards: state:idle, row-continuity, loop-close)");
   });
 
   test("--json carries the image size, the attach order and the guide call; the idle note names the measured count", () => {
@@ -313,6 +407,9 @@ describe("sprite-project.mjs sheet-prompt", () => {
     expect(out.guide).toEqual({ out: join(dir, "motions/idle/layout-guide.png"), rows: 4, cols: 4, cell: "512x512" });
     expect(out.attach).toEqual([join(dir, "motions/idle/layout-guide.png")]);
     expect(out.notes.join("\n")).toMatch(/idle reads best at 8 frames \(4 columns × 2 rows\)/);
+    // The side table the skill shows, whole, and no rhythm sheet here.
+    expect(out.sides).toEqual(SIDE_GEOMETRY);
+    expect(out.rhythm).toBeNull();
   });
 
   test("a hand-written --prompt afterwards drops the parts", () => {
