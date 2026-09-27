@@ -126,7 +126,7 @@ clickable card that takes the user there — or into the `capture` action's
   finished frames is never sampled back into frames — its frames are not
   cell-aligned and its character is whatever the model felt like. `retime`
   is not an exception: it writes another **clip** out of the same take's own
-  frames, registered as a derived clip (workflow E step 6b).
+  frames, registered as a derived clip (E step 6b).
 - **Every sheet is generated with the character references attached**, in
   the order `sheet-prompt` prints, from the prompt it builds — which opens
   with the `character.style` sentence verbatim. Drop the references and the
@@ -533,8 +533,8 @@ paid call, so the stage shows it working.
    clauses, facing, asymmetry lock, pixel-art clause, per-state guards and
    the white plate (`references/prompting.md` → *Building the prompt*).
 4. **Reserve and generate** — `set-sheet --file motions/<id>/sheet-raw.png
-   --from <the refs> --prompt "$PROMPT" --background opaque --status
-   generating`, then one `generate_image.mjs "$PROMPT"` call with
+   --from ref-turnaround,ref-portrait --prompt "$PROMPT" --background opaque
+   --status generating`, then one `generate_image.mjs "$PROMPT"` call with
    `--image-urls` once per printed reference, in that order, and the printed
    `--image-size` (the call: `references/prompting.md` → The call). Then
    **run `set-sheet` again without `--status`**, so the same asset is
