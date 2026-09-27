@@ -47,6 +47,8 @@
  * prop that crosses the rigid row.
  */
 
+import { DEFAULT_FIT_MAX } from "./still.mjs";
+
 /** A refusal this module knows how to phrase. The CLI prints its message. */
 export class BreatheError extends Error {}
 
@@ -102,6 +104,18 @@ export const BREATHE_FPS = 8;
 export const DEPTH_MIN = 0.005;
 export const DEPTH_MAX = 0.2;
 export const LAG_MAX = 0.45;
+/**
+ * The largest working canvas a bake takes, in pixels: the still plus a third
+ * of the character on every side. Memory follows it — the frames, and three
+ * float passes for smooth: an unfitted 2048² upload (a 10.7 MP canvas)
+ * measured ~1.9 GB resident (node, 2026-09-27), a 1024² one (2.7 MP) ~400 MB
+ * after the passes share Float32 buffers. The skill fits a still first
+ * (`fit`, 480 px by default: well under 1 MP), so a canvas past this is a
+ * picture that skipped that step, and is told so rather than baked slowly
+ * or not at all.
+ */
+export const MAX_BREATHE_CANVAS = 3_000_000;
+
 /** A pixel darker than this (Rec. 601 luma) is outline for the thinning pass. */
 const OUTLINE_LUMA = 60;
 
@@ -778,16 +792,17 @@ function resampleLine(src, srcOffset, stride, count, edges, dst, dstOffset, dstC
  * keep integer edges and are therefore copied, not interpolated. The soles'
  * row and everything below it is never moved.
  */
-export function warpSmooth(image, anat, { depth, lag, phase }) {
-  const { box } = anat;
-  const W = image.width, H = image.height;
-  const field = envelope(anat);
-  const pOf = protect(anat);
-  const gain = gainAt(anat, field, depth, lag, phase);
-
-  // Premultiplied float copy of the canvas.
-  const pre = new Float64Array(W * H * 4);
-  for (let k = 0; k < W * H; k++) {
+/**
+ * The working buffers `warpSmooth` needs for one canvas, made once and reused
+ * for every phase of a bake: the premultiplied source (the same for every
+ * phase), the horizontal pass and the vertical one. Float32 — premultiplied
+ * 8-bit values and coverage sums need nowhere near 64 bits, and a bake of an
+ * unfitted 2048² still held ~1.9 GB in fresh Float64 buffers per phase.
+ */
+export function smoothWork(image) {
+  const n = image.width * image.height * 4;
+  const pre = new Float32Array(n);
+  for (let k = 0; k < image.width * image.height; k++) {
     const a = image.data[k * 4 + 3];
     if (!a) continue;
     pre[k * 4] = (image.data[k * 4] * a) / 255;
@@ -795,11 +810,24 @@ export function warpSmooth(image, anat, { depth, lag, phase }) {
     pre[k * 4 + 2] = (image.data[k * 4 + 2] * a) / 255;
     pre[k * 4 + 3] = a;
   }
+  return { image, pre, mid: new Float32Array(n), outF: new Float32Array(n) };
+}
+
+export function warpSmooth(image, anat, { depth, lag, phase }, work = null) {
+  const { box } = anat;
+  const W = image.width, H = image.height;
+  const field = envelope(anat);
+  const pOf = protect(anat);
+  const gain = gainAt(anat, field, depth, lag, phase);
+
+  // Premultiplied float copy of the canvas, and the two passes' buffers.
+  const { pre, mid, outF } = work && work.image === image ? work : smoothWork(image);
+  mid.fill(0);
+  outF.fill(0);
 
   // Horizontal pass, row by row, in place into `mid`.
   const gains = new Float64Array(H);
   for (let y = 0; y < H; y++) gains[y] = gain(rowU(anat, y - box.y0));
-  const mid = new Float64Array(W * H * 4);
   const edges = new Float64Array(W + 1);
   const axisCentre = box.x0 + anat.axisX + 0.5;
   let deformed = false;
@@ -850,7 +878,6 @@ export function warpSmooth(image, anat, { depth, lag, phase }) {
     // are exactly where they were.
     yEdges[last + 1] = last + 1;
   }
-  const outF = new Float64Array(W * H * 4);
   for (let x = 0; x < W; x++) resampleLine(mid, x * 4, W * 4, H, yEdges, outF, x * 4, H);
 
   const out = blank(W, H);
@@ -990,6 +1017,13 @@ export function bakeBreathe(image, {
 
   const box = solidBox(image);
   if (!box) throw new BreatheError(`the still has no solid content (alpha >= ${ALPHA_SOLID})`);
+  // The working canvas: the still plus the room the stretch may need (the
+  // margin below), checked before any of it is allocated.
+  const room = Math.ceil(0.34 * Math.max(box.x1 - box.x0, box.y1 - box.y0)) + 2;
+  const canvasPixels = (image.width + 2 * room) * (image.height + 2 * room);
+  if (canvasPixels > MAX_BREATHE_CANVAS) {
+    throw new BreatheError(`the still is ${image.width}x${image.height} px with a ${box.x1 - box.x0}x${box.y1 - box.y0} px character — its working canvas (${(canvasPixels / 1e6).toFixed(1)} MP) is over the ${MAX_BREATHE_CANVAS / 1e6} MP a breathe bakes. Breathe the picture at the size it plays at: 'sprite-sheet.mjs fit <still> --out <ref.png>' trims it to the character and brings it under ${DEFAULT_FIT_MAX} px`);
+  }
   const overrides = {};
   if (rigidY !== null) {
     if (!Number.isInteger(rigidY) || rigidY <= box.y0 || rigidY >= box.y1) throw new BreatheError(`--rigid-row ${rigidY} must be a row inside the character, ${box.y0 + 1}..${box.y1 - 1}`);
@@ -1013,7 +1047,8 @@ export function bakeBreathe(image, {
   const padded = padImage(image, margin);
   const pAnat = { ...anat, box: { x0: box.x0 + margin, y0: box.y0 + margin, x1: box.x1 + margin, y1: box.y1 + margin } };
   const phases = breathePhases(frames, breaths);
-  const warp = mode === "pixel" ? warpPixel : warpSmooth;
+  const work = mode === "smooth" ? smoothWork(padded) : null;
+  const warp = mode === "pixel" ? warpPixel : (img, an, opts) => warpSmooth(img, an, opts, work);
   const warped = phases.map((phase) => warp(padded, pAnat, { depth, lag, phase }));
   const clipped = warped.reduce((n, w) => n + w.clipped, 0);
   if (clipped) throw new BreatheError(`internal: ${clipped} pixels left the padded canvas`);

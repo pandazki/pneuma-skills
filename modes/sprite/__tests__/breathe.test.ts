@@ -22,7 +22,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  BreatheError, DEFAULT_BREATHE_DEPTH, MAX_ROW_STRAIN, SMOOTH_CYCLE_FRAMES, TAPER,
+  BreatheError, DEFAULT_BREATHE_DEPTH, MAX_BREATHE_CANVAS, MAX_ROW_STRAIN, SMOOTH_CYCLE_FRAMES, TAPER,
   analyzeAnatomy, bakeBreathe, breathePhases, envelope, hasAppendage, partialAlphaShare, protect,
   rigidRows, rigidU, rowStrain, solidBox, wave, warpPixel, warpSmooth,
   type Anatomy, type RgbaImage,
@@ -598,6 +598,15 @@ describe("breathe.mjs — smooth", () => {
     }
   });
 
+  test("an unfitted still whose working canvas is past the budget is refused with a pointer to fit (R2-4)", () => {
+    // 2048² with a 1800 px character: a 10.7 MP canvas, ~1.9 GB resident.
+    const big = canvas(2048, 2048);
+    for (let y = 120; y < 1920; y++) for (let x = 700; x < 1340; x++) big.data.set([200, 140, 90, 255], (y * 2048 + x) * 4);
+    expect(() => bakeBreathe(big, { frames: 12, depth: 0.02, mode: "smooth" })).toThrow(BreatheError);
+    expect(() => bakeBreathe(big, { frames: 12, depth: 0.02, mode: "smooth" })).toThrow(/working canvas \(10\.\d MP\) is over the 3 MP a breathe bakes.*sprite-sheet\.mjs fit/);
+    expect(MAX_BREATHE_CANVAS).toBe(3_000_000);
+  });
+
   test("a breath whose lift rounds to nothing is said, with the depth where the head starts to move (R2 nit)", () => {
     // 32 px of character: at 0.02 the lift peaks at 0.44 px and every frame
     // keeps the head where it was; at 0.03 it moves.
@@ -743,8 +752,9 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs breathe", () => {
     const at = (v: number) => out.perFrame.filter((f: { headOffset: number }) => f.headOffset === v).map((f: { index: number }) => f.index);
     const summary = { min, max, travel: max - min, highest: at(min), lowest: at(max) };
     expect(summary.travel).toBeGreaterThan(0);
+    // At the top of the run summary (beside perFrame), where `show` and the
+    // skill read it; the `breathe` block stays what register-run records.
     expect(out.headOffset).toEqual(summary);
-    expect(out.breathe.headOffset).toEqual(summary);
     const record = JSON.parse(readFileSync(join(motion, "cells", "breathe.json"), "utf-8"));
     expect(record.headOffset).toEqual(summary);
     expect(record.perFrame.map((f: { headOffset: number }) => f.headOffset)).toEqual(offsets);

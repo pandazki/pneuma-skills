@@ -8092,9 +8092,6 @@ function stepBreatheRun(still, options) {
       breaths: report.breaths,
       lag: report.lag,
       mode: report.mode,
-      // Where the head rides, and the frames at each end: what "the head
-      // moves ±N px" is said from, and which two frames to capture.
-      headOffset: report.headOffset,
       // In the still's pixels — what --rigid-row / --axis / --torso take back.
       anatomy: {
         rigidRow: report.anatomy.rigidY,
