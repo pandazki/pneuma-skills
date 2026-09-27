@@ -3994,7 +3994,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       doc.sprite.character.pixel = { logicalHeight: 32 };
       writeFileSync(path, JSON.stringify(doc));
       const declared = runJson("rive", dir, "--motions", "flame", "--max-size", "36");
-      expect(declared.resample).toMatchObject({ filter: "nearest", filterFrom: "style" });
+      expect(declared.resample).toMatchObject({ filter: "nearest", filterFrom: "pixel" });
       expect(declared.images).toBe("webp-lossless");
       expect(declared.notes.join(" ")).toMatch(/default for pixel art \(character\.pixel\)/);
       expectSamePixels(asPng, declared);

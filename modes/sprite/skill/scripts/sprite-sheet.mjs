@@ -7752,7 +7752,9 @@ function stepRive(characterDir, { images: askedImages = null, motions: named, in
         loop: plan.settings.loop,
         sprite: plan.settings.sprite,
         filter: scaleFilter,
-        filterFrom: filter === "auto" ? "style" : "flag",
+        // What decided: the flag, else the character — its declared pixel
+        // spec when it has one (the one authority), else its style sentence.
+        filterFrom: filter !== "auto" ? "flag" : spec?.pixel && Number(spec.pixel.logicalHeight) > 0 ? "pixel" : "style",
       },
       motions: own.map(({ planned, source, shown, loopPoint }, i) => ({
         id: planned.id,
