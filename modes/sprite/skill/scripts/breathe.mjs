@@ -42,9 +42,11 @@
  * the Python bake bit for bit; the canvas GROWS (and says so) instead of
  * refusing when the stretch would leave it; the sidecar / curator plumbing
  * (frozen anatomy, fingerprints, depth_x) is not ported; our default depth
- * is 0.02, not 0.06. Ours, not upstream's: the `smooth` mode, the
- * image-coordinate overrides, the per-frame head check and the warning for a
- * prop that crosses the rigid row.
+ * is 0.02, not 0.06; the working canvas is capped (MAX_BREATHE_CANVAS) and a
+ * bake whose head never moves is said. Ours, not upstream's: the `smooth`
+ * mode (it stretches only inside the solid box and carries anything outside
+ * it with the box's edges), the image-coordinate overrides, the per-frame
+ * head check and the warning for a prop that crosses the rigid row.
  */
 
 import { DEFAULT_FIT_MAX } from "./still.mjs";

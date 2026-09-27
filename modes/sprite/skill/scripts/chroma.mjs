@@ -40,6 +40,16 @@
  * gold as leaning green, and on tanka's yellow fur that painted a pale
  * translucent ring around every ear. `k` is still read off the linear tint.
  * (5) JS rounds halves up where Python rounds them to even: ±1 on exact ties.
+ * (6) Ours, not upstream's (amend round, 2026-09-27): an edge pixel is first
+ * un-mixed against the deeper subject pixels within 3 px (`obs = a·F + k·P`,
+ * least squares, the best-fitting neighbour wins), then against the
+ * subject's own frequent colours, and only then by the linear tint — the tint
+ * alone left saturated red/blue/copper rims green at alpha 255; a flood from
+ * the cut removes plate-coloured shade (a floor shadow: `obs ≈ f·P`) that
+ * touches no subject pixel. `keyResidue` also counts the opaque edge pixels
+ * that un-mix as ≥ 20 % plate (`fringe`), which the tint bar never saw.
+ * The palette step is inspired by sprite_gen/frames/decontam.py (explain an
+ * edge pixel as the plate mixed with a colour the subject's interior owns).
  *
  * `keyResidue` is inspired by aldegad/sprite-gen
  * sprite_gen/frames/check_visible_magenta.py (count the visible key-coloured
