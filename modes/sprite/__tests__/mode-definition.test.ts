@@ -265,6 +265,14 @@ describe("extractContext — routes, directions, breathe and mirror", () => {
   test("a character with no recorded route prints no Purpose line", () => {
     expect(extractSpriteContext(null, files({ "mini/project.json": withWalk() }))).not.toContain("Purpose:");
   });
+
+  test("the overview carries the asymmetry sentence: why a side is drawn, and what every directional prompt keeps", () => {
+    const body = JSON.parse(withWalk());
+    body.sprite.character.asymmetric = "The basket hangs on her right arm.";
+    const context = extractSpriteContext(null, files({ "mini/project.json": JSON.stringify(body) }));
+    expect(context).toContain("Asymmetric (never mirrored): The basket hangs on her right arm.");
+    expect(extractSpriteContext(null, files({ "mini/project.json": withWalk() }))).not.toContain("Asymmetric");
+  });
 });
 
 describe("extractContext — pixel art and its colourways", () => {

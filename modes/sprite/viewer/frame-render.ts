@@ -23,7 +23,7 @@
  *     the cell edge: with any `--pad` the feet sit above the floor.
  */
 
-import type { MeasuredAnchor } from "../domain.js";
+import type { CharacterProject, MeasuredAnchor } from "../domain.js";
 import { clampFrame, type FrameSource } from "./playback.js";
 
 export type StageBackground = "checker" | "dark" | "light";
@@ -152,6 +152,34 @@ export function stageScale(
   return raw;
 }
 
+/**
+ * The box every sprite motion of a character is fitted by: the widest and the
+ * tallest aligned cell among its motions with frames.
+ *
+ * `fit` used to fit each motion on its own, so a character whose attack cell
+ * is wider than the pane played the attack at 70 % and the idle beside it at
+ * 1× — a size change nobody made, read off the stage as one (game trial,
+ * 2026-09-27). Fitting all of them by the largest keeps one scale per
+ * character, so switching motions shows what the engine will show: the same
+ * character at the same size. Loops and transitions are left out — they are
+ * cropped to their own content for a page, not played beside the sprites.
+ */
+export function characterFitFrame(
+  project: CharacterProject | null,
+): { width: number; height: number } | null {
+  if (!project) return null;
+  let width = 0;
+  let height = 0;
+  for (const motion of project.sprite.motions) {
+    if (motion.kind || motion.frames.length === 0) continue;
+    const cell = motion.inspect?.cell;
+    if (!cell || !(cell.width > 0) || !(cell.height > 0)) continue;
+    width = Math.max(width, cell.width);
+    height = Math.max(height, cell.height);
+  }
+  return width > 0 && height > 0 ? { width, height } : null;
+}
+
 /** A tinted copy of one frame, used for the onion skin. Reused per call —
  *  the stage redraws at most once per frame of animation. */
 const tintCanvas =
@@ -261,6 +289,9 @@ export interface DrawStageOptions {
   /** The motion's measured anchor point, when `register-run` recorded one. */
   measured: MeasuredAnchor | null;
   theme: "light" | "dark";
+  /** `fit` sizes aligned frames by this box instead of the frame's own
+   *  (`characterFitFrame`), so every sprite motion shares one scale. */
+  fitFrame?: { width: number; height: number } | null;
 }
 
 export interface DrawStageResult {
@@ -310,7 +341,17 @@ export function drawStage(
     };
   }
 
-  const scale = stageScale(opts.zoom, geometry.sw, geometry.sh, width, height);
+  // One scale per character: aligned frames are fitted by the character's
+  // largest cell (never smaller than the frame on screen), a sliced sheet or
+  // a reference by its own size — those are other pictures, at other scales.
+  const shared = opts.fitFrame && opts.source.kind === "frames" ? opts.fitFrame : null;
+  const scale = stageScale(
+    opts.zoom,
+    shared ? Math.max(shared.width, geometry.sw) : geometry.sw,
+    shared ? Math.max(shared.height, geometry.sh) : geometry.sh,
+    width,
+    height,
+  );
   const dw = geometry.sw * scale;
   const dh = geometry.sh * scale;
   const dx = Math.round((width - dw) / 2);

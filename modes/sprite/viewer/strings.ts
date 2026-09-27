@@ -55,9 +55,11 @@ export interface SpriteStrings {
   /** The empty stage's four routes, one sentence each, in the order the
    *  agent's opening question names them. */
   noCharacterRoutes: string[];
-  /** `declared 256 · measured 186×252 · packed ×0.5` */
+  /** `declared 256 · measured 186×252 · packed ×0.5`; pixel art says its
+   *  height instead of a cell: `24 px tall · measured 48×50`. */
   sizeLine: (line: SizeLine) => string;
-  facing: (direction: "left" | "right") => string;
+  /** The header's facing: the motion's direction, else the character's side. */
+  facing: (direction: Direction) => string;
   refCount: (count: number) => string;
   motionCount: (count: number) => string;
   /** The header's count of transitions, beside the motions. */
@@ -335,6 +337,7 @@ const en: SpriteStrings = {
   ],
   sizeLine: (line) =>
     [
+      line.logicalHeight !== null ? `${line.logicalHeight} px tall` : null,
       line.declared ? `declared ${line.declared}` : null,
       line.measured ? `measured ${line.measured}` : null,
       line.packedScale !== null ? `packed ${scaleText(line.packedScale)}` : null,
@@ -736,13 +739,14 @@ const zhCN: SpriteStrings = {
   ],
   sizeLine: (line) =>
     [
+      line.logicalHeight !== null ? `高 ${line.logicalHeight} 像素` : null,
       line.declared ? `声明 ${line.declared}` : null,
       line.measured ? `实测 ${line.measured}` : null,
       line.packedScale !== null ? `打包 ${scaleText(line.packedScale)}` : null,
     ]
       .filter(Boolean)
       .join(" · "),
-  facing: (direction) => (direction === "left" ? "朝左" : "朝右"),
+  facing: (direction) => ({ front: "正面", back: "背面", left: "朝左", right: "朝右" })[direction],
   refCount: (count) => `${count} 张参考图`,
   motionCount: (count) => `${count} 个动作`,
   transitionCount: (count) => `${count} 段过渡`,
@@ -752,10 +756,10 @@ const zhCN: SpriteStrings = {
   breatheSource: "呼吸",
   breatheSourceTitle: (mode) =>
     mode === "pixel"
-      ? "由一张图直接变形出呼吸，没有调用模型——按整像素移动，适合像素画"
+      ? "用一张图直接做出呼吸动画，不调用模型——按整像素移动，适合像素画"
       : mode === "smooth"
-        ? "由一张图直接变形出呼吸，没有调用模型——平滑重采样，适合手绘和带抗锯齿的画"
-        : "由一张图直接变形出呼吸，没有调用模型",
+        ? "用一张图直接做出呼吸动画，不调用模型——平滑重采样，适合手绘和带抗锯齿的画"
+        : "用一张图直接做出呼吸动画，不调用模型",
   loopSource: "循环",
   loopSourceTitle: "做给界面用的无缝透明动画，不是游戏用的精灵图集",
   transitionChip: "过渡",

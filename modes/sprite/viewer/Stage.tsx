@@ -51,6 +51,9 @@ export interface StageProps {
   onGround: (value: boolean) => void;
   /** Handed the live canvas so the shell can answer `capture` with it. */
   onCanvas: (canvas: HTMLCanvasElement | null) => void;
+  /** The box `fit` sizes a sprite motion's frames by — the character's
+   *  largest cell — or null to fit the picture by its own size. */
+  fitFrame?: { width: number; height: number } | null;
   t: SpriteStrings;
 }
 
@@ -147,12 +150,13 @@ export function Stage(props: StageProps) {
       anchor,
       measured,
       theme: props.theme,
+      fitFrame: props.fitFrame ?? null,
     });
     setScale(result.scale);
     setPivotMeasured(result.pivot.measured);
   }, [
     size, props.source, props.images, props.frame, props.background,
-    props.zoom, props.onion, groundOn, props.theme, anchor, measured,
+    props.zoom, props.onion, groundOn, props.theme, anchor, measured, props.fitFrame,
   ]);
 
   return (

@@ -648,9 +648,12 @@ hidden.
 
 **What a directional sheet attaches, in order** (`sheet-prompt`'s `attach`
 lists it so): its direction's anchor first, then the turnaround and the
-portrait; for the generated second side
-of an asymmetric character, the first side's sheet of the same motion last.
-Never another motion's sheet. The prompt says what the first image is and
+portrait; for the generated second side of an asymmetric character, the
+first side's finished sheet of the same motion after them — `sheet-prompt`
+finds it (`<state>-<other side>`, ready) and records `rhythm:<d>`; then the
+layout guide, when there is one, last of all. The prompt names the rhythm
+sheet as the last image, or the one just before the guide. Never another
+motion's sheet. The prompt says what the first image is and
 names the facing for every cell:
 
 > The first attached image is the accepted back-view anchor: it owns the
