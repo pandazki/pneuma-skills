@@ -1636,6 +1636,18 @@ function staleMirrors(doc) {
 }
 
 /**
+ * What to do about a stale mirror, as one clause: the exact `mirror` command
+ * while its source is still a motion of this character, and the fact that
+ * there is nothing to flip once it is not. Every note and `show` line that
+ * tells a mirror to be made again says it this way.
+ */
+function mirrorAgain(doc, mirrorId, sourceId) {
+  if (!doc.sprite.motions.some((m) => m.id === sourceId)) return "there is nothing to mirror it from again";
+  const from = `<character>/motions/${sourceId}`;
+  return `mirror it again from ${from} ('sprite-sheet.mjs mirror ${from} --name ${mirrorId}') and register it`;
+}
+
+/**
  * Why a breathe no longer shows its still, or null when it does — the
  * mirror rule, for a still. Frame i was derived (`step: "breathe"`) from the
  * still at the time of that edge; a reference registered again since then
@@ -3512,7 +3524,7 @@ function main() {
         // Its colourways were baked from its own (old) frames and stay until
         // those are replaced: registering the new mirror retires them.
         const colourways = Object.keys(flipped.variants ?? {});
-        console.error(`note: ${flipped.id} mirrors the frames this run replaced — mirror it again from <character>/motions/${motion.id} ('sprite-sheet.mjs mirror <character>/motions/${motion.id} --name ${flipped.id}') and register it${colourways.length ? `, then recolor it (its ${listOf(colourways)} colourway files go with its old frames)` : ""}`);
+        console.error(`note: ${flipped.id} mirrors the frames this run replaced — ${mirrorAgain(doc, flipped.id, motion.id)}${colourways.length ? `, then recolor it (its ${listOf(colourways)} colourway files go with its old frames)` : ""}`);
       }
       break;
     }
@@ -3743,7 +3755,7 @@ function main() {
         };
         emit(values, payload, [
           ...motionLines(motion, doc),
-          ...(stale ? [`  stale: ${stale} — ${motion.source === "breathe" ? "breathe" : "mirror"} it again and register it`] : []),
+          ...(stale ? [`  stale: ${stale} — ${motion.source === "breathe" ? "breathe it again and register it" : mirrorAgain(doc, motion.id, motion.mirrorOf)}`] : []),
           ...(motion.inspect?.warnings ?? []),
         ]);
         break;
@@ -3765,7 +3777,7 @@ function main() {
         ...(recorded.length ? [`  ${recorded.join(" · ")}`] : []),
         ...whole.map(([key, uri]) => `  exported: ${key} (${uri})`),
         ...summary.motions.map((m) => `  ${m.id.padEnd(12)} ${m.status.padEnd(10)} ${m.kind === "loop" ? "loop".padEnd(7) : `${m.grid.rows}x${m.grid.cols}`.padEnd(7)} @ ${m.fps}fps  ${m.frameCount} frames${m.warnings.length ? `  (${m.warnings.length} warnings)` : ""}`),
-        ...(summary.staleMirrors ?? []).map((m) => `  stale mirror: ${m.id} (of ${m.mirrorOf}) — ${m.reason}; mirror it again and register it`),
+        ...(summary.staleMirrors ?? []).map((m) => `  stale mirror: ${m.id} (of ${m.mirrorOf}) — ${m.reason}; ${mirrorAgain(doc, m.id, m.mirrorOf)}`),
         ...(summary.staleBreathes ?? []).map((m) => `  stale breathe: ${m.id} (of ${m.still}) — ${m.reason}; breathe it again and register it`),
         ...(recordedVariants(doc.sprite.character).length ? [`  colourways: ${recordedVariants(doc.sprite.character).map((v) => v.name).join(", ")}`] : []),
         ...(summary.variantsMissing ?? []).map((m) => `  missing colourway: ${m.motion} has no ${m.variants.join(", ")} — recolor it (sprite-sheet.mjs recolor <character>/motions/${m.motion}) and register-recolor`),

@@ -2962,8 +2962,11 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
         expect(projectJson(dir, "show").staleMirrors).toEqual([
           { id: "bounce-left", mirrorOf: "bounce", reason: "bounce was registered again after it was mirrored" },
         ]);
-        expect(project(dir, "show").out).toMatch(/stale mirror: bounce-left \(of bounce\)/);
+        // The command, not a bare "mirror it again": the source's folder and the mirror's id.
+        const redo = "mirror it again from <character>/motions/bounce ('sprite-sheet.mjs mirror <character>/motions/bounce --name bounce-left') and register it";
+        expect(project(dir, "show").out).toContain(`stale mirror: bounce-left (of bounce) — bounce was registered again after it was mirrored; ${redo}`);
         expect(projectJson(dir, "show", "--motion", "bounce-left").stale).toBe("bounce was registered again after it was mirrored");
+        expect(project(dir, "show", "--motion", "bounce-left").out).toContain(`stale: bounce was registered again after it was mirrored — ${redo}`);
         // Still a mirror — a note, not a status flip.
         expect(readProject(dir).sprite.motions.find((m: any) => m.id === "bounce-left").status).toBe("ready");
 
@@ -3036,6 +3039,8 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
         expect(projectJson(dir, "show").staleMirrors).toEqual([
           { id: "bounce-left", mirrorOf: "bounce", reason: "its source 'bounce' is gone" },
         ]);
+        // No command to offer for a source that is gone: nothing is left to flip.
+        expect(project(dir, "show").out).toContain("stale mirror: bounce-left (of bounce) — its source 'bounce' is gone; there is nothing to mirror it from again");
       });
 
       test("a mirror cannot be turned to face its source's side, and a sheet run drops mirrorOf", () => {
