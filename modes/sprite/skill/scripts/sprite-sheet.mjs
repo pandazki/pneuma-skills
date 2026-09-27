@@ -12,7 +12,7 @@
  * maths in JS; every image is written by an ffmpeg filter chain.
  *
  * Subcommands: probe, key, flatten, slice, align, pack, gif, inspect, run,
- * contact, from-video, retime, loop, export, rive.
+ * contact, from-video, retime, loop, export, rive, breathe.
  *
  * `export` and `rive` hand a FINISHED motion over in somebody else's format
  * (video, a frame animation, a `.riv`). They read the character's
@@ -37,6 +37,9 @@ import {
   riveDecodeWarning, riveMB, rivePlan, riveReverseIsCurrent,
 } from "./rive-plan.mjs";
 import { zipStore } from "./zip.mjs";
+import {
+  BREATHE_MODES, BreatheError, DEFAULT_BREATHE_DEPTH, DEFAULT_LAG, FRAMES_PER_BREATH, bakeBreathe, hasAppendage,
+} from "./breathe.mjs";
 
 const DEFAULT_THRESHOLD = 16;
 const DEFAULT_PAD = 8;
@@ -222,6 +225,7 @@ const EXPORT_CODECS = { mp4: "h264", mov: "prores", webm: "vp9" };
 const SUBCOMMANDS = [
   "probe", "key", "flatten", "slice", "clean", "align", "pack", "gif",
   "inspect", "run", "contact", "from-video", "retime", "loop", "transition", "lineup", "export", "rive",
+  "breathe",
 ];
 
 const USAGE = `Usage: sprite-sheet.mjs <subcommand> [options]
@@ -529,6 +533,34 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       embeds PNG. Every Rive runtime decodes all three. With no --images and an
       ffmpeg without libwebp, the frames go in as PNG and the report warns; a
       WebP format asked for by name on such an ffmpeg is refused.
+
+  breathe <still> --out <framesDir> [--frames N] [--depth ${DEFAULT_BREATHE_DEPTH}] [--breaths 1]
+      [--mode smooth|pixel] [--rigid-row y] [--axis x] [--torso halfWidth]
+      A breathing idle from ONE still, no model call: the body below the neck
+      swells and settles on a travelling wave, the head rides on top as one
+      rigid block, the soles never move, and whatever reaches far past the
+      torso (an arm, a wing, a held lantern) is pushed, not stretched.
+      Writes <framesDir>/NN.png — --frames (default ${FRAMES_PER_BREATH} x --breaths) frames
+      holding --breaths whole breaths — on the still's canvas, grown only as
+      far as the stretch needs (canvas.grew). The frames then go through
+      align (--x-from cell keeps them where they stand), pack, gif and
+      inspect like any other.
+      --depth is the total stretch as a share of the body below the neck.
+      --mode pixel moves whole pixels (rows duplicated or dropped, columns
+      remapped, the dark outline thinned back to 1px): pixel art stays on its
+      grid. --mode smooth resamples the same field continuously in
+      premultiplied alpha for anti-aliased art, and moves the head by whole
+      pixels so it stays identical to the still. Without --mode the
+      character's style decides (pixel art → pixel, anything else →
+      smooth), from the nearest project.json above --out, the still or the
+      working directory; with no character it is required.
+      The anatomy is detected and printed so you can check it against the
+      still: body axis x, neck y, the rigid row y (nothing above it deforms),
+      a face if a symmetric eye pair was found, the torso half-width and
+      whether something reaches sideways. Override in the still's pixel
+      coordinates: --rigid-row y, --axis x, --torso halfWidth.
+      Reports per frame its solid height, head offset (negative = up) and
+      how many head pixels differ from the still (0 = identical).
 
 Exit code 0 on success, 1 on failure with a one-line ERROR: on stderr.`;
 
@@ -5270,12 +5302,160 @@ function stepRive(characterDir, { images: askedImages = null, motions: named, in
 }
 
 // ---------------------------------------------------------------------------
+// breathe: a breathing idle from one still (breathe.mjs does the pixels)
+// ---------------------------------------------------------------------------
+
+/**
+ * The sprite character above `start`, if any: the nearest ancestor holding a
+ * project.json with a sprite sidecar. Only read, for `character.style`. A
+ * project.json that does not parse is said, not skipped in silence.
+ */
+function findCharacterAbove(start, notes) {
+  let dir = resolve(start);
+  for (let depth = 0; depth < 8; depth++) {
+    const path = join(dir, "project.json");
+    if (existsSync(path)) {
+      try {
+        const doc = JSON.parse(readFileSync(path, "utf-8"));
+        if (doc?.sprite?.character) return { dir, style: String(doc.sprite.character.style ?? "") };
+      } catch (error) {
+        notes.push(`could not read ${path} (${error.message}) — not used to pick --mode`);
+      }
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
+/**
+ * Which way to move the pixels. `--mode` wins; otherwise the character's
+ * style decides (pixel art → the whole-pixel bake, anything else → smooth),
+ * looked up above --out, then above the still, then above the working
+ * directory. With neither, the choice is refused rather than guessed: the two
+ * modes are wrong for each other's art.
+ */
+function resolveBreatheMode(asked, { out, still, notes }) {
+  const character = findCharacterAbove(dirname(resolve(out)), notes)
+    ?? findCharacterAbove(dirname(resolve(still)), notes)
+    ?? findCharacterAbove(process.cwd(), notes);
+  const pixelStyle = character ? RIVE_PIXEL_ART_STYLE.test(character.style) : null;
+  if (asked) {
+    if (!BREATHE_MODES.includes(asked)) fail(`--mode: expected ${BREATHE_MODES.join(" or ")}, got '${asked}'`);
+    if (pixelStyle === true && asked === "smooth") notes.push(`character.style says pixel art, but --mode smooth resamples off the pixel grid`);
+    if (pixelStyle === false && asked === "pixel") notes.push(`character.style does not say pixel art, but --mode pixel moves whole pixels`);
+    return { mode: asked, modeFrom: "--mode", character };
+  }
+  if (!character) {
+    fail("breathe: --mode is required when no sprite character (project.json) is found above --out, the still or the working directory — smooth for anti-aliased art, pixel for pixel art");
+  }
+  return { mode: pixelStyle ? "pixel" : "smooth", modeFrom: "character.style", character };
+}
+
+function stepBreathe(still, { out, frames, depth, breaths, mode: askedMode, rigidY, axisX, torsoHalf }) {
+  const input = resolve(still);
+  const framesDir = resolve(out);
+  // resetFramesDir clears NN.png here; a still that IS one of those files
+  // would be deleted by the command that reads it.
+  if (dirname(input) === framesDir && FRAME_RE.test(basename(input))) {
+    fail(`breathe: the still ${input} is a frame in --out, which breathe rewrites — copy the still out first or pick another --out`);
+  }
+  if (frames > MAX_FRAMES) fail(`--frames ${frames} is over the ${MAX_FRAMES}-frame limit (frame files are two digits)`);
+  const notes = [];
+  const { mode, modeFrom, character } = resolveBreatheMode(askedMode, { out: framesDir, still: input, notes });
+  const image = readRgba(input);
+
+  let baked;
+  try {
+    baked = bakeBreathe(image, { frames, breaths, depth, mode, rigidY, axisX, torsoHalf });
+  } catch (error) {
+    if (error instanceof BreatheError) fail(`breathe: ${error.message}`);
+    throw error;
+  }
+
+  resetFramesDir(framesDir);
+  const paths = baked.frames.map((frame, i) => writeRgbaPng(join(framesDir, frameName(i)), frame, `breathe frame ${i}`));
+
+  // The anatomy is reported in the STILL's pixel coordinates — the ones
+  // --rigid-row / --axis take back. The frames' canvas may have grown up and
+  // left by canvas.grew; that offset is the only difference.
+  const a = baked.anatomy;
+  const { x0, y0 } = a.box;
+  const heights = baked.perFrame.map((f) => f.height);
+  const offsets = baked.perFrame.map((f) => f.headOffset);
+  const identical = baked.perFrame.filter((f) => f.headDiffPx === 0).length;
+  if (baked.rigidRows > 0 && identical < baked.perFrame.length) {
+    baked.warnings.push(`the head block differs from the still in ${baked.perFrame.length - identical} of ${baked.perFrame.length} frames (up to ${Math.max(...baked.perFrame.map((f) => f.headDiffPx ?? 0))} px)${mode === "pixel" ? " — the outline thinning runs over the whole frame" : ""}`);
+  }
+  return {
+    input,
+    framesDir,
+    frames: paths,
+    frameCount: paths.length,
+    breaths,
+    depth,
+    lag: DEFAULT_LAG,
+    mode,
+    modeFrom,
+    character: character ? { dir: character.dir, style: character.style } : null,
+    canvas: baked.canvas,
+    anatomy: {
+      box: { x: x0, y: y0, w: a.width, h: a.height },
+      axisX: x0 + a.axisX,
+      neckY: y0 + a.neckRow,
+      neckSource: a.neckSource,
+      rigidY: y0 + a.rigidRow,
+      rigidSource: a.rigidSource,
+      basisY: y0 + a.basisRow,
+      rigidRows: baked.rigidRows,
+      torsoHalf: a.torsoHalf,
+      torsoSource: a.torsoSource,
+      maxHalf: a.maxHalf,
+      appendage: hasAppendage(a),
+      face: a.face ? { top: y0 + a.face.top, bottom: y0 + a.face.bottom } : null,
+      straddle: baked.straddle,
+    },
+    strain: round(baked.strain, 4),
+    height: { still: a.height, min: Math.min(...heights), max: Math.max(...heights) },
+    headOffset: { min: Math.min(...offsets), max: Math.max(...offsets) },
+    headIdenticalFrames: baked.rigidRows > 0 ? identical : null,
+    perFrame: baked.perFrame.map((f, i) => ({
+      index: f.index, file: basename(paths[i]), phase: round(f.phase, 4),
+      height: f.height, headOffset: f.headOffset, headDiffPx: f.headDiffPx,
+    })),
+    notes,
+    warnings: baked.warnings,
+  };
+}
+
+/** The anatomy, said the way you would check it against the still. */
+function breatheLines(out) {
+  const a = out.anatomy;
+  const g = out.canvas.grew;
+  const grew = [g.left && `left ${g.left}`, g.top && `top ${g.top}`, g.right && `right ${g.right}`].filter(Boolean);
+  const signed = (v) => (v > 0 ? `+${v}` : String(v));
+  return [
+    `breathe: ${out.frameCount} frames, ${out.breaths} breath${out.breaths > 1 ? "s" : ""}, depth ${out.depth}, ${out.mode} (${out.modeFrom}) → ${out.framesDir}`,
+    `anatomy: body axis x=${a.axisX} · neck y=${a.neckY} (${a.neckSource}) · rigid y=${a.rigidY} (${a.rigidSource}) · face ${a.face ? `y=${a.face.top}..${a.face.bottom}` : "not found"} · torso half-width ${a.torsoHalf}px, widest ${a.maxHalf}px${a.appendage ? " (reaches sideways: pushed, not stretched)" : ""}`,
+    `height ${out.height.still}px → ${out.height.min}..${out.height.max}px · head offset ${signed(out.headOffset.min)}..${signed(out.headOffset.max)}px${out.headIdenticalFrames === null ? "" : ` · head identical to the still in ${out.headIdenticalFrames}/${out.frameCount} frames`}`,
+    `canvas ${out.canvas.width}x${out.canvas.height}${grew.length ? ` (grew ${grew.join(", ")} px to fit the stretch)` : ""}`,
+    ...out.notes,
+    ...(out.warnings.length ? out.warnings : ["no warnings"]),
+  ];
+}
+
+// ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 
 const COMMON = { json: { type: "boolean", default: false }, help: { type: "boolean", short: "h", default: false } };
 
 const OPTIONS = {
+  breathe: {
+    out: { type: "string" }, frames: { type: "string" }, depth: { type: "string" }, breaths: { type: "string" },
+    mode: { type: "string" }, "rigid-row": { type: "string" }, axis: { type: "string" }, torso: { type: "string" },
+  },
   probe: { threshold: { type: "string" } },
   key: {
     out: { type: "string" }, color: { type: "string" }, similarity: { type: "string" },
@@ -5904,6 +6084,22 @@ function main() {
         ...out.notes,
         ...out.warnings,
       ]);
+      break;
+    }
+    case "breathe": {
+      const breaths = num(values.breaths, "--breaths", { integer: true, min: 1, fallback: 1 });
+      const intOrNull = (value, flag, min) => (value === undefined ? null : num(value, flag, { integer: true, min }));
+      const out = stepBreathe(requirePositional(positionals, "<still>"), {
+        out: requireFlag(values.out, "--out"),
+        breaths,
+        frames: num(values.frames, "--frames", { integer: true, min: 2, fallback: FRAMES_PER_BREATH * breaths }),
+        depth: num(values.depth, "--depth", { min: 0, fallback: DEFAULT_BREATHE_DEPTH }),
+        mode: values.mode ?? null,
+        rigidY: intOrNull(values["rigid-row"], "--rigid-row", 0),
+        axisX: intOrNull(values.axis, "--axis", 0),
+        torsoHalf: intOrNull(values.torso, "--torso", 1),
+      });
+      emit(values, out, breatheLines(out));
       break;
     }
     default:
