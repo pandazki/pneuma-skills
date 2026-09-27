@@ -23,7 +23,9 @@
  *
  * Pure computation on `{ width, height, data }` RGBA buffers plus the palette
  * file's read/write; decoding and encoding stay in `sprite-sheet.mjs`, which
- * owns every image on disk. Node built-ins only.
+ * owns every image on disk. Node built-ins only, and drift.mjs's
+ * `roundHalfEven` — Python's `round()`, which the ported constants were tuned
+ * with (`Math.round` breaks the tie the other way: 2.5 -> 3, Python 2).
  *
  * Ported from aldegad/sprite-gen (Apache-2.0) sprite_gen/frames/extract.py@fbd1a08
  * (the "Backbone Lattice", docs/pixel-unfake.md): `_edge_histograms`,
@@ -60,6 +62,8 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
+import { roundHalfEven } from "./drift.mjs";
+
 /** Largest block the detector looks for, in source pixels. */
 export const MAX_PITCH = 48;
 /** A frame's own pitch is trusted within this ratio of the consensus; outside
@@ -87,16 +91,6 @@ export const PALETTE_KIND = "pneuma-sprite-palette";
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------
-
-/** Python's `round()`: half to even. The ported constants were tuned with it,
- *  and `Math.round` breaks the tie the other way (2.5 -> 3, Python 2). */
-export function pyRound(x) {
-  const f = Math.floor(x);
-  const d = x - f;
-  if (d > 0.5) return f + 1;
-  if (d < 0.5) return f;
-  return f % 2 === 0 ? f : f + 1;
-}
 
 /** Python's `%` for floats: the result has the divisor's sign. */
 function pyMod(a, b) {
@@ -261,12 +255,12 @@ export function axisIntSeed(edges, maxPitch = MAX_PITCH) {
  */
 export function axisRefine(edges, pitch, w = 1.0, binStep = 0.25) {
   const total = sum(edges) || 1;
-  const bins = Math.max(4, Math.trunc(pyRound(pitch / binStep)));
+  const bins = Math.max(4, Math.trunc(roundHalfEven(pitch / binStep)));
   const hist = new Array(bins).fill(0);
   for (let x = 0; x < edges.length; x++) {
     if (edges[x]) hist[Math.trunc(((x % pitch) / pitch) * bins) % bins] += edges[x];
   }
-  const span = Math.min(bins, Math.max(1, Math.trunc(pyRound(((2 * w) / pitch) * bins)) + 1));
+  const span = Math.min(bins, Math.max(1, Math.trunc(roundHalfEven(((2 * w) / pitch) * bins)) + 1));
   const chance = Math.min(1.0, span / bins);
   const doubled = hist.concat(hist);
   let window = 0;
@@ -306,7 +300,7 @@ export function axisRefine(edges, pitch, w = 1.0, binStep = 0.25) {
  */
 const SEED_DIVISORS = [2, 3, 4, 5];
 /** ±0.75 px around each seed, in 0.02 px steps: `round(0.75 / 0.02)` = 38. */
-const REFINE_SPAN = pyRound(0.75 / 0.02);
+const REFINE_SPAN = roundHalfEven(0.75 / 0.02);
 const REFINE_STEP = 0.02;
 
 /**
@@ -556,15 +550,15 @@ export function resolveFramePitch(own, consensus) {
 export function gridEdges(length, pitch, offset) {
   if (pitch <= 1.0) return [0, length];
   const rawLead = pyMod(offset, pitch);
-  const lead = rawLead < pitch * 0.25 || rawLead > pitch * 0.75 ? 0 : Math.trunc(pyRound(rawLead));
+  const lead = rawLead < pitch * 0.25 || rawLead > pitch * 0.75 ? 0 : Math.trunc(roundHalfEven(rawLead));
   const body = length - lead;
   if (body <= 0) return [0, length];
   const ratio = body / pitch;
-  const cells = Math.max(1, Math.trunc(pyRound(ratio)));
+  const cells = Math.max(1, Math.trunc(roundHalfEven(ratio)));
   const integral = Math.abs(ratio - cells) <= 0.25;
   const edges = lead === 0 ? [0] : [0, lead];
   for (let i = 1; i < cells; i++) {
-    const e = lead + Math.trunc(pyRound(integral ? (body * i) / cells : i * pitch));
+    const e = lead + Math.trunc(roundHalfEven(integral ? (body * i) / cells : i * pitch));
     if (edges[edges.length - 1] < e && e < length) edges.push(e);
   }
   if (edges[edges.length - 1] !== length) edges.push(length);
@@ -704,7 +698,7 @@ export function refineEdgesToBoundaries(image, xs, ys, pitch, mass = boundaryMas
     if (edges.length < 3) return edges;
     const out = [...edges];
     const window = Math.max(1, Math.trunc(pitchAxis / 3));
-    const minGap = Math.max(2, Math.trunc(pyRound(pitchAxis * 0.6)));
+    const minGap = Math.max(2, Math.trunc(roundHalfEven(pitchAxis * 0.6)));
     for (let i = 1; i < out.length - 1; i++) {
       const e = edges[i];
       const lo = Math.max(out[i - 1] + minGap, e - window);

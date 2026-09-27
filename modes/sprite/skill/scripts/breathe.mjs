@@ -21,7 +21,8 @@
  *            pixels — the stretch below it absorbs the fraction — so it is
  *            pixel-identical in every frame, and nothing is thinned.
  *
- * Pure module: RGBA buffers in, RGBA buffers out, Node built-ins only.
+ * Pure module: RGBA buffers in, RGBA buffers out, Node built-ins and its
+ * sibling scripts only (Python's half-to-even `round` is drift.mjs's).
  * `sprite-sheet.mjs breathe` decodes the still, writes the frames and prints
  * the report.
  *
@@ -49,6 +50,7 @@
  * head check and the warning for a prop that crosses the rigid row.
  */
 
+import { roundHalfEven } from "./drift.mjs";
 import { DEFAULT_FIT_MAX } from "./still.mjs";
 
 /** A refusal this module knows how to phrase. The CLI prints its message. */
@@ -153,15 +155,6 @@ function pySum(values) {
     total = t;
   }
   return c && Number.isFinite(c) ? total + c : total;
-}
-
-/** Python's `round()` on a float: halves go to the even neighbour. */
-function pyRound(x) {
-  const f = Math.floor(x);
-  const diff = x - f;
-  if (diff < 0.5) return f;
-  if (diff > 0.5) return f + 1;
-  return f % 2 === 0 ? f : f + 1;
 }
 
 const luma = (r, g, b) => 0.299 * r + 0.587 * g + 0.114 * b;
@@ -396,7 +389,7 @@ function detectFace(image, box, cx) {
   if (best === null) return null;
   // Room below the eyes for the mouth: an expression breaks when the mouth
   // moves and the eyes do not.
-  return [best.top, Math.min(h - 1, best.bottom + Math.max(1, pyRound((best.bottom - best.top) * 0.7)))];
+  return [best.top, Math.min(h - 1, best.bottom + Math.max(1, roundHalfEven((best.bottom - best.top) * 0.7)))];
 }
 
 /** (median torso half-width over the deformable rows, widest half-width
