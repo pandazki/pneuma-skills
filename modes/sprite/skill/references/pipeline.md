@@ -2461,7 +2461,7 @@ contact sheet and the reports live in the dev scratch
 
 | Declared | Flags | Result |
 |---|---|---|
-| 32 (the prompt's) | — | refused: 2 of 8 frames read a grid; "the declared height (32 logical px) would mean 13.34 px blocks for frames 427 px tall, which the frames do not back" (pooled 9, runs 7.0 — 1.47× / 1.89× away) |
+| 32 (the prompt's) | — | refused: 2 of 8 frames read a grid; "the declared height (32 logical px) would mean 13.34 px blocks for frames 427 px tall, which the frames do not back" (pooled 9, runs 7.05 — 1.48× / 1.89× away) |
 | 32 | `--pitch-hint 8` | 52–54 logical px tall; warned: "these frames snap to 53 … declared 32", with the three ways out |
 | 53 | `--pitch-hint 8` | held (53, 52–54); `run --pixel` 4.1–4.3 s |
 | 53 | — | cut at 8.06, the height's pitch, backed by pooled 9 (1.12×); held (53, 52–54); 4.23 s against 4.13–4.16 s with the hint — the second lattice pass costs ≈ 0.1 s. The sprites differ from the 8.00 cut by at most one logical pixel of width or height per frame |

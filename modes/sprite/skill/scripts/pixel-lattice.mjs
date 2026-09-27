@@ -925,9 +925,9 @@ export const HEIGHT_SLACK = 0.05;
  * — is within this ratio of it. Both read loosely on generated art (runs short
  * at soft edges; the pooled score peaks at every whole number), hence the
  * width. Measured 2026-09-27 on the knight walk (sg shoot e6, blocks ≈ 8 px by
- * eye, 424 px tall): pooled 9, runs 7.0 — declared 53 needs 8.00 (1.13 from
- * either, taken); declared 32 needs 13.25 (1.47 / 1.89, refused — cutting at
- * it would merge the drawn blocks into 32 rows).
+ * eye, 427 px tall): pooled 9, runs 7.05 — declared 53 needs 8.06 (1.12× from
+ * the pooled reading, taken); declared 32 needs 13.34 (1.48× / 1.89×,
+ * refused — cutting at it would merge the drawn blocks into 32 rows).
  */
 export const HEIGHT_EVIDENCE_RATIO = 1.25;
 
