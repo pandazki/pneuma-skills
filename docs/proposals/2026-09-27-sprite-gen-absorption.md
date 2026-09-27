@@ -11,14 +11,14 @@ mode, with explicit credit: a port says where it came from, an adaptation says
 
 Upstream pin for this round: commit `fbd1a08` (v2.11.0, 2026-09-26), cloned
 read-only at
-`/private/tmp/claude-501/-Users-pandazki-Codes-pneuma-skills/66fc6428-9b9b-4282-85c0-eeb2c675023e/scratchpad/sprite-gen`.
+`~/pneuma-dev-scratch/2026-09-27/sg/sprite-gen`.
 
 ## Ground rules for every task
 
 1. **No Python dependency.** Every port is Node built-ins + ffmpeg, the way
    `sprite-sheet.mjs` already is. Running upstream's Python in a throwaway
    venv *to compare outputs* is fine and encouraged
-   (`scratchpad/sgvenv/` already has one); shipping it is not.
+   (`~/pneuma-dev-scratch/2026-09-27/sg/sgvenv/` already has one); shipping it is not.
 2. **Evidence before default.** Each mechanism lands with a before/after
    measurement on real assets (see *Test data*) or, where real assets cannot
    separate the candidates, on a synthetic ground truth. Numbers go into the
@@ -49,7 +49,11 @@ read-only at
    5.9k-line file as possible.
 5. **Never touch the owner's projects.** `~/pneuma-projects/**` and
    `~/pneuma-dev-scratch/**` are read-only inputs: copy what you need into
-   your own scratch directory.
+   your own scratch directory. The one exception is this round's scratch
+   root, `~/pneuma-dev-scratch/2026-09-27/sg/` (each task writes under
+   `sg/<task>/`). It replaced the session scratchpad under `/private/tmp`,
+   which a reboot wiped on 2026-09-27 — keep evidence where a reboot cannot
+   reach it, and commit work in progress early.
 6. Existing invariants hold: `project.json` is written only by
    `sprite-project.mjs`; frames, atlases and previews only by
    `sprite-sheet.mjs`; the agent looks through the viewer before it claims.
@@ -594,7 +598,7 @@ draft from `pixel.palette`; variants recorded where T11 proposes
 ## Wave 2 — real inputs (shot now, used as the tasks land)
 
 Paid, ≈ $5, run by one agent with the repo `.env` keys, inputs to
-`scratchpad/sg/shoot/`: E1 Lumi idle as 4×4 / 4×2 / 2×2 sheets; E3 Lumi
+`~/pneuma-dev-scratch/2026-09-27/sg/shoot/`: E1 Lumi idle as 4×4 / 4×2 / 2×2 sheets; E3 Lumi
 side-view in-place walk (Seedance, green, generous room); E4 Lumi jump tight
 (8 px pad) vs tall 3:4 with 34 % headroom; E5 Lumi attack first-last with the
 same image and timed phases; E6 a small pixel-art character (turnaround +
