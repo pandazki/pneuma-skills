@@ -411,9 +411,12 @@ describe("loop motions", () => {
     const inspectWith = (over: Record<string, unknown>) =>
       motionWith((m) => { m.inspect = { ...m.inspect, ...over }; }).inspect!;
 
-    const measured = inspectWith({ seam: 0.0065, step: 0.02, seamFill: 3, alphaCoverage: 0.31 });
+    const measured = inspectWith({ seam: 0.0065, step: 0.02, seamLimit: 0.04, seamFill: 3, alphaCoverage: 0.31 });
     expect(measured.seam).toBe(0.0065);
     expect(measured.step).toBe(0.02);
+    // The bar the run judged the seam against, carried so the panel reads
+    // the same verdict `loop` gave.
+    expect(measured.seamLimit).toBe(0.04);
     // `loop --seam-fill auto` inserted three in-betweens at the wrap; the
     // panel says so beside a frame count that is no longer the clip's own.
     expect(measured.seamFill).toBe(3);
@@ -431,14 +434,15 @@ describe("loop motions", () => {
     expect(perfect.alphaCoverage).toBe(0);
 
     for (const broken of [undefined, null, "0.0065", Number.NaN, {}, [0.0065], true]) {
-      const parsed = inspectWith({ seam: broken, step: broken, seamFill: broken, alphaCoverage: broken });
+      const parsed = inspectWith({ seam: broken, step: broken, seamLimit: broken, seamFill: broken, alphaCoverage: broken });
       expect({
         broken,
         seam: "seam" in parsed,
         step: "step" in parsed,
+        seamLimit: "seamLimit" in parsed,
         seamFill: "seamFill" in parsed,
         alpha: "alphaCoverage" in parsed,
-      }).toEqual({ broken, seam: false, step: false, seamFill: false, alpha: false });
+      }).toEqual({ broken, seam: false, step: false, seamLimit: false, seamFill: false, alpha: false });
     }
 
     // A sheet motion carries none of the three, and the anchor numbers it does

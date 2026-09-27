@@ -333,7 +333,7 @@ it is there and falls back to the cell edge when it is not — which with any
 before the point was recorded simply carry none; that absence is honest and the
 stage says "assumed" rather than guessing.
 
-### `contact <clip> --out <png> [--count 24 | --every s] [--cols 8] [--width 160] [flags]`
+### `contact <clip> --out <png> [--count 24 | --every s] [--cols 8] [--width 160] [--gait walk|run] [flags]`
 
 Look at the clip before you sample it. A motion sampled from a clip is only as
 good as the window it came from, and without this there is no way to see the
@@ -360,45 +360,103 @@ the numbers below: the stills are always the clip as it was shot, plate and
 all, because that is what you need to look at.
 
 **The numbers**, measured deterministically, no model. The clip is decoded once
-into alpha silhouettes (keyed with `--key`, 96 px wide, at
-`min(clip fps, 12)` fps), and every pair of them is compared by
-**`Σ|a−b| / Σ max(a,b)`** — the fraction of the combined ink that changed, so
-0 is the same pose and the number means the same thing whether the character
-fills the frame or a tenth of it.
+at **its own frame rate** (a window longer than 480 frames is thinned to fit,
+never below 12 fps; analysis stops after 40 s and says so) into 96 px RGBA
+thumbnails, keyed with `--key`. Two readings come out of them.
+
+**The silhouettes** — each thumbnail's alpha — give the ends of the clip. Two
+silhouettes are compared by **`Σ|a−b| / Σ max(a,b)`**, the fraction of the
+combined ink that changed, so 0 is the same pose and the number means the same
+thing whether the character fills the frame or a tenth of it.
+
+**The colour** — each thumbnail premultiplied by its alpha — gives the cycle.
+Two frames are compared by **`D` = the mean `|a−b|` of their premultiplied
+RGBA**, 0..1 over the whole frame. Colour, because an outline cannot tell a
+near leg from a far one (a side walk repeats in outline every *step*, and a
+stride is two) and cannot see a blink. The cycle reading is ported from
+aldegad/sprite-gen's `video-loop` (`cycle.mjs`, credits there):
+
+1. The whole-clip **lag profile** `P[L] = mean_j D(j, j+L)`: a cycle of L
+   frames makes every frame look like the one L frames later, so `P` dips at
+   L, 2L, 3L…
+2. The **period** is the shortest dip within 15 % of the deepest, looked for
+   between **0.4 and 2.5 s** (our window; sprite-gen's walk window, 0.5–1.6 s,
+   refuses tanka's 1.875 s front-facing stride), leaving half a second of clip
+   past it to compare against.
+3. It must dip **≥ 15 % below the profile's mean** (more when the clip holds
+   less than two periods — two lucky pairs do not prove a repeat), or the
+   verdict is **no cycle**, with the reason and a warning. A profile with no
+   dip inside the window at all is no cycle too: a first-last idle drifts
+   steadily away from its keyframe and back, and has no period.
+4. **Half a stride?** When a dip at about twice the period repeats within
+   25 % as well, and the period's own repeat is not near-exact, the cycle is
+   **`ambiguous`**: both lengths are named, the short one stays first (pixels
+   cannot say which is the gait), and the long one's best window is added to
+   `loops[]`. `--gait walk|run` says it IS a gait: a period under the gait's
+   floor (0.6 s walk, 0.35 s run) is one step, so the doubled period is taken
+   when it repeats within 25 %, and the verdict is no cycle (half a stride)
+   when it does not; an ambiguous period above the floor takes the long one.
+5. **Where to cut it**: every start for the period ± 1 frame, ranked by how
+   the wrap plays — the step from the window's last frame back to its first
+   against the window's own step, penalised in log space either way (a wrap
+   much smaller than a step is a stall, much larger a snap) — plus how well
+   the quarter-cycle either side of the cut repeats one period later. A
+   window must move (its step ≥ ¼ of the clip's median step), or a held pose
+   would place a perfect cycle inside a closing hold. Up to three distinct
+   cuts.
+6. **One-shots**, only when nothing repeats: every window where the clip
+   leaves a rest pose and comes back to it — the endpoints within a quarter of
+   the departure, the action ≥ 4 frames with ≥ 2 quieter frames inside the
+   window on each side (an action cut off by the clip's first or last frame is
+   never padded into one), and the departure ≥ 3 ordinary steps. Seedance's
+   4 s minimum makes a strike performed twice common, so each non-overlapping
+   one is listed.
 
 | Key | What it says | The threshold behind it |
 |---|---|---|
-| `stillStart` | When the opening pose breaks — everything before it is the same picture N times | first frame with `diff(first, i) > 0.05`; `null` (plus a warning) when nothing ever differs |
+| `stillStart` | When the opening pose breaks — everything before it is the same picture N times | first frame with silhouette `diff(first, i) > 0.05`; `null` (plus a warning) when nothing ever differs |
 | `stillEnd` | Where the closing hold begins | last frame with `diff(last, j) > 0.05` |
-| `loops[]` | The windows that close on themselves: `{ start, end, period, seam, step }` | periods from 0.4 s to 2.5 s; **`seam`** is how different the two ends are, **`step`** how much a frame moves inside the window, so `seam ≪ step` is a clean cycle. A window only counts when it really moves (`max diff(start, ·) ≥ 0.25` inside it), or a held pose would score a perfect seam. Best 3 by seam |
-| `profile.deltas` | The rhythm: frame-to-frame change at `profile.fps`, from `profile.start` | none — read the zeros as holds and the plateaus as beats |
+| `cycle` | The verdict: `{ verdict: "periodic"\|"none", reason, period, periodicity, periodicityMin, ambiguous, minima }`, plus `gait` with `--gait` | `reason` is `still`, `window` (too short to see a cycle repeat), `no-dip`, `flat` (`periodicity < periodicityMin`), `half-stride` or `held`; `minima` are the profile's deepest dips as `[seconds, P]` — where else the clip nearly repeats |
+| `loops[]` | The windows to sample for the cycle: `{ start, end, period, seam, step, wrap, ambiguous }`, `[]` with no cycle | **`seam`** is how different the two ends are (the start against the frame one period later), **`step`** the window's mean frame-to-frame change, so `seam ≪ step` is a clean cycle; **`wrap`** is the step the loop plays from its last frame back to its first, ideally about one `step`; `ambiguous` is `null` or `{ periods: [short, long], depthRatio }` |
+| `oneShots[]` | Rest → action → rest windows: `{ start, end, action: { start, end }, peak, departure, seam, step, rule }` | only when `cycle.verdict` is `none`; `rule` is `contrast` (peak ≥ 3 MADs above the clip's typical distance) or `moved` (departure ≥ 0.4 of the subject's pixel mass) |
+| `profile.deltas` | The rhythm: frame-to-frame silhouette change at `profile.fps`, from `profile.start` | none — read the zeros as holds and the plateaus as beats |
 | `alphaCoverage` | Mean opaque share after keying | over 0.9 raises the same "was this shot on a flat chroma background?" warning `from-video` raises |
 
 ```json
-{ "clip": "<abs>", "out": "<abs png>", "duration": 4.0, "fps": 24,
-  "trim": { "start": 0, "end": 4.0 },
+{ "clip": "<abs>", "out": "<abs png>", "duration": 4.042, "fps": 24,
+  "trim": { "start": 0, "end": 4.042 },
   "tiles": [ { "index": 0, "t": 0, "row": 0, "col": 0 }, "…" ],
-  "grid": { "rows": 3, "cols": 8 }, "tile": { "width": 160, "height": 90 },
-  "keyColor": "#08f00d", "alphaCoverage": 0.29,
-  "stillStart": 0.458, "stillEnd": 3.9,
-  "loops": [ { "start": 0.917, "end": 2.292, "period": 1.375, "seam": 0.0553, "step": 0.08 } ],
-  "profile": { "fps": 12, "start": 0, "deltas": [0, 0, 0.04, "…"] },
+  "grid": { "rows": 3, "cols": 8 }, "tile": { "width": 160, "height": 160 },
+  "keyColor": "#00f104", "alphaCoverage": 0.34,
+  "stillStart": 0.125, "stillEnd": 3.75,
+  "loops": [ { "start": 0.875, "end": 2.75, "period": 1.875, "seam": 0.0023, "step": 0.0093,
+               "wrap": 0.0095, "ambiguous": null }, "…" ],
+  "cycle": { "verdict": "periodic", "reason": null, "period": 1.875, "periodicity": 0.747,
+             "periodicityMin": 0.15, "ambiguous": null, "minima": [[1.875, 0.0145], [0.875, 0.0743]] },
+  "oneShots": [],
+  "profile": { "fps": 24, "start": 0, "deltas": [0.02, 0.03, "…"] },
   "warnings": [] }
 ```
 
-Three things worth knowing before you trust a number:
+(That is tanka's front-facing walk; `video-preview.md`, "Measured: cycle
+analysis", has the before/after on every clip it was checked against.)
 
-- **A silhouette diff cannot see direction.** A motion that retraces its own
-  path scores a perfect seam on its half-period as well as on its period, and
-  a perfectly cyclic clip scores one on every multiple. Ties break towards the
-  earliest, then shortest window; when the top candidates differ by a factor of
-  two, look at the contact sheet and decide.
-- **`--key none` measures luma instead of alpha**, with the frame's own median
-  subtracted so the background still sits at zero. It works, but it is noisier
-  than a keyed clip and `keyColor` is omitted. The thresholds above were set on
-  keyed silhouettes.
-- Analysis stops after the first 60 s of the window and says so in a warning;
-  `drawtext` is missing or fontless in some ffmpeg builds, in which case the
+Things worth knowing before you trust a number:
+
+- **`loops[]` and `oneShots[]` answer different questions.** A clip that
+  repeats is sampled from `loops[0]`; a clip that performs its action once
+  (or twice, with a rest between) from a one-shot's `start`–`end`. A clip with
+  neither — an action that starts at once and ends in a different pose, like
+  the Lumi lantern swing — is sampled from `stillStart`–`stillEnd`.
+- **`ambiguous` is a question for your eyes.** Look at both windows on the
+  contact sheet: if the legs alternate within the short one, it is a stride;
+  if the short one ends on the other leg forward, it is a step and the long
+  one is the loop. Pass `--gait walk|run` to let the gait floor decide.
+- **`--key none` leaves the frames opaque**: the plate is then part of every
+  picture — constant, so it adds nothing to a difference — and the
+  silhouettes are luma with the frame's own median subtracted. It works, but
+  it is noisier than a keyed clip and `keyColor` is omitted.
+- `drawtext` is missing or fontless in some ffmpeg builds, in which case the
   tiles come out unlabelled with a warning naming the filter — never a failed
   command over a caption.
 
@@ -557,7 +615,7 @@ node {SKILL_PATH}/scripts/sprite-sheet.mjs loop \
 | `--similarity` / `--blend` | **0.22** / 0.05 | `colorkey`, the video defaults (`video-preview.md` has the sweep behind them) |
 | `--despill` / `--no-despill` | on whenever it keys | ffmpeg `despill` on the plate hue, applied **after** the key |
 | `--trim-holds` / `--no-trim-holds` | on | Drops a frozen opening or closing, see below |
-| `--seam-fill auto\|none\|<N>` | `auto` | Interpolates in-between frames into the **wrap** when the seam is worse than `2·step`, see below |
+| `--seam-fill auto\|none\|<N>` | `auto` | Interpolates in-between frames into the **wrap** when the seam is past `seamLimit` = max(`2·step`, 0.005), see below |
 | `--crop union\|none` / `--pad 8` | `union` / 8 | One rect, computed over every kept frame, applied to all of them |
 | `--width W` | **512 when the cropped frame is wider**, else the source width | Scales in premultiplied space, aspect kept. The cap is announced on stderr (`no --width given: frames capped at 512 px (source <w> px); pass --width to choose`) and recorded as `widthDefaulted: true` in the run summary and `inspect.json` |
 | `--fps N` | the clip's own fps | `minterpolate`, loop-wrapped. **Refused with `--key alpha`** |
@@ -624,21 +682,42 @@ are wrong if they move:
    and with the relative bar nothing is dropped there (its seam is 0.0036
    against a step of 0.0043). On the Seedance trial clip the same bar still
    drops the one frozen leading frame and the duplicate closing keyframe.
-6. **Seam.** `seam = diff(mask[lastKept], mask[0])` against `step` (the median)
-   and `maxStep`. This is the number a loop lives or dies on, and it is printed
-   whether or not it trips the warning. **A loop closes when `seam ≤ 2·step`**
-   — the same rule everywhere: `SKILL.md` step 10, the warning below, and the
-   viewer's `SEAM_STEP_FACTOR`.
+6. **Seam.** `seam = D(lastKept, first)` against `step` (the median of `D`
+   between neighbours) and `maxStep`, where **`D` is the mean `|a−b|` of two
+   frames' premultiplied RGBA** on 96 px thumbnails — colour, so a blink or a
+   swapped leg at the wrap counts where a silhouette saw nothing (the holds in
+   step 5 are still read on silhouettes). This is the number a loop lives or
+   dies on, and it is printed whether or not it trips the warning. **A loop
+   closes when `seam ≤ seamLimit`, `seamLimit = max(2·step, 0.005)`**: two
+   normal steps, or a noise floor when that is larger. The floor is
+   sprite-gen's `PIN_NOISE_MAX` ("a re-rendered first frame lands within this
+   of its source") and it is what a near-still loop needs: tanka's idle wraps
+   at 0.0021 against a step of 0.0004 — five steps of fur-texture noise, the
+   same pose to the eye — and without the floor it was "fixed" with four
+   interpolated frames. The run records the bar it used as `seamLimit`, and
+   the viewer and `sprite-project.mjs show` read that rather than
+   re-deriving a rule (a loop cut before `seamLimit` existed is judged by the
+   `seam ≤ 2·step` its run used). `video-preview.md`, "Measured: cycle
+   analysis", has the numbers.
 
-   **Filling the seam** (`--seam-fill`, default `auto`). When `seam > 2·step`,
+   The floor is in `D` units — a mean over the whole clip frame — so it
+   forgives more when the character fills less of the frame: 0.005 is a mean
+   difference of about 1.4 % of full scale (≈ 4/255) per channel inside a
+   subject covering 35 % of the frame (every clip it was measured on), and
+   5 % (≈ 13/255) inside one covering a tenth. Shoot the character large in
+   the frame.
+
+   **Filling the seam** (`--seam-fill`, default `auto`). When `seam > seamLimit`,
    `auto` interpolates `N = min(4, ceil(seam/step) − 1)` in-between frames at
    the wrap with ffmpeg `minterpolate` and **appends** them after the last
    frame, so the loop grows by N frames: `duration` grows by `N/fps` and those
    frames carry `sampledAt: null` — they were never sampled from anything.
    `seam` is then re-measured as the largest step across the filled wrap, and
    the warning is re-evaluated against it. `inspect.json` and the run summary
-   carry `"seamFill": N` (**0** when nothing was filled). On the trial clip
-   that came to N = 3. `none` turns it off and leaves the seam as measured;
+   carry `"seamFill": N` (**0** when nothing was filled). On the flame trial
+   clip that came to N = 3; on tanka's ten loops it fires on one, the walk
+   (a real 0.0079 wrap against a 0.0031 step), where the silhouette rule
+   without the floor fired on six. `none` turns it off and leaves the seam as measured;
    `<N>` forces a count. It closes a seam that is *nearly* closed — four
    frames cannot invent the way back from a pose the clip never returned to,
    which is still a reshoot.
@@ -699,8 +778,8 @@ and returned as `inspect` in the JSON:
 ```json
 { "kind": "loop", "frameCount": 96, "cell": { "width": 512, "height": 592 },
   "crop": { "x": 64, "y": 48, "w": 434, "h": 502 }, "scale": 1.1797, "widthDefaulted": true,
-  "fps": 24, "duration": 4.0, "seam": 0.0065, "step": 0.020, "maxStep": 0.069,
-  "seamFill": 0, "alphaCoverage": 0.31, "keyColor": "#08f00d", "emptyFrames": [],
+  "fps": 24, "duration": 4.0, "seam": 0.0025, "step": 0.0036, "maxStep": 0.107,
+  "seamLimit": 0.0072, "seamFill": 0, "alphaCoverage": 0.31, "keyColor": "#08f00d", "emptyFrames": [],
   "dropped": { "leading": 0, "trailing": 1 },
   "exports": { "webp": 1843201, "apng": 9120033, "webm": 612330, "lottie": 12400021 },
   "warnings": [] }
@@ -708,13 +787,14 @@ and returned as `inspect` in the JSON:
 
 No `anchorDrift`, `bodyDrift`, `maxJump` or `scaleDrift`: a loop is not judged
 on any of them, and a number nobody judges is noise on the stage. What replaces
-them is `seam` read against `step` — the reference clip this workflow was built
-against measures 0.0065 against a step of 0.020, a seam a third of a normal
-frame.
+them is `seam` read against `seamLimit` — tanka's celebrate (above) wraps at
+0.0025 against a step of 0.0036, under one normal frame. (Loops cut before
+2026-09-27 carry silhouette numbers here, in other units — compare a seam
+only with its own step — and no `seamLimit`.)
 
 | Warning | Trigger | What to do |
 |---|---|---|
-| "the loop does not close — the last frame is 0.13 from the first against a normal step of 0.02" | `seam > 2·step`, re-checked **after** `--seam-fill` | Shoot again with the same image at both ends, or pass `--trim-start` / `--trim-end` read off the contact sheet. Filling the wrap closes a near miss; it cannot invent a return the clip never made |
+| "the loop does not close — the last frame is 0.0659 from the first against a normal step of 0.0056 (it closes at 0.0112)" | `seam > seamLimit`, re-checked **after** `--seam-fill` | Shoot again with the same image at both ends, or pass `--trim-start` / `--trim-end` read off the contact sheet. Filling the wrap closes a near miss; it cannot invent a return the clip never made |
 | "was it shot on a flat plate?" | `alphaCoverage > 0.9` after keying | The key did nothing — the plate is not flat, or `--key` names the wrong colour. Check `keyColor` against the contact sheet |
 | "frames are opaque" | `--key none` | Deliberate only when the clip already has no plate. A UI loop with opaque frames is a video, not a loop |
 | "frame NNN is empty" | No pixel above the alpha threshold | Usually the key ate the subject; lower `--similarity` |
@@ -785,10 +865,22 @@ the frames and has different flags (no seam, no seam fill, no exports) — so:
   `--from`'s registered frame 0 and `endGap` the last against `--to`'s, both
   placed in clip coordinates (each loop's recorded, stored or measured clip
   scale and origin) and drawn at one analysis scale. A gap of at most
-  **2 · step** lands — the same bar as a loop's seam. Past it, a warning names
+  **2 · step** lands — the same factor as a loop's seam. Past it, a warning names
   the end and the free remedy (`--trim-start` / `--trim-end`) before the paid
   one (a new take from that keyframe). A loop whose place in its clip is
   unknown leaves that gap `null`, with a warning.
+
+  **The joins stay silhouette, with no noise floor**, on purpose: a loop's
+  seam compares one clip with itself, a join compares two separately
+  rendered clips, and their fur texture and shading differ where the pose
+  does not. Measured 2026-09-27 on tanka-connect's four transitions,
+  premultiplied colour (the loop's `D`) put `idle-to-reading`'s end at 0.0154
+  against a limit of 0.0135 — "does not land" — on two frames that are the
+  same pose; the silhouette gap, 0.0083 against 0.0194, lands, as the eye
+  does. And `loop`'s 0.005 floor is in colour units, which do not carry over
+  to a silhouette gap. Colour-aware joins wait for a measure that sees pose
+  inside the silhouette without seeing texture (`lineup`'s `chroma` is a
+  candidate).
 
 `--reverse-of <transitionId>` makes the way back, free: the registered frames
 of that transition copied in reverse order into

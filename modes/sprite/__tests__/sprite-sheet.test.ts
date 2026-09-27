@@ -2241,18 +2241,26 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       });
 
       test("register-run carries the bar, and `show` judges by it", () => {
-        const { dir, json } = loop("near-still", nearStill(), ["--key", "alpha", ...WEBP_ONLY]);
-        const ws = fresh();
-        const character = join(ws, "char");
-        projectCmd(character, "init", "--name", "Speck");
-        projectCmd(character, "add-motion", "--id", "idle", "--label", "Idle", "--kind", "loop");
-        const runFile = join(ws, "run.json");
-        writeFileSync(runFile, JSON.stringify({ ...json, motionDir: dir }));
-        projectCmd(character, "register-run", "--motion", "idle", "--run", runFile);
+        // The one character-writer path a loop takes (see the transition
+        // cases' `hops`): clip in the motion dir, cut there, registered.
+        const character = join(fresh(), "char");
+        const motionDir = join(character, "motions", "idle");
+        projectCmd(character, "init", "--name", "Speck", "--cell", "64x64");
+        mkdirSync(motionDir, { recursive: true });
+        cpSync(nearStill(), join(motionDir, "video-veed-1.mov"));
+        const json = runJson("loop", join(motionDir, "video-veed-1.mov"), "--out", motionDir, "--name", "idle",
+          "--key", "alpha", ...WEBP_ONLY);
+        expect(json.inspect.seamLimit).toBe(0.005);
+        writeFileSync(join(motionDir, "run.json"), JSON.stringify(json));
+        projectCmd(character, "add-motion", "--id", "idle", "--label", "Idle", "--kind", "loop", "--fps", "24");
+        projectCmd(character, "set-motion", "--motion", "idle", "--brief-duration", "2", "--brief-width", "128", "--brief-interpolator", "none");
+        projectCmd(character, "add-video", "--motion", "idle", "--file", "motions/idle/video-veed-1.mov",
+          "--model", "seedance-2.5", "--mode", "first-last", "--status", "ready");
+        projectCmd(character, "register-run", "--motion", "idle", "--run", join(motionDir, "run.json"));
         const doc = JSON.parse(readFileSync(join(character, "project.json"), "utf-8"));
         const motion = doc.sprite.motions.find((m: { id: string }) => m.id === "idle");
         expect(motion.inspect.seamLimit).toBe(0.005);
-        const shown = Bun.spawnSync([process.execPath, PROJECT, "show", "--dir", character], { stdout: "pipe", stderr: "pipe" });
+        const shown = Bun.spawnSync([process.execPath, PROJECT, "show", "--dir", character, "--motion", "idle"], { stdout: "pipe", stderr: "pipe" });
         const line = shown.stdout.toString().split("\n").find((l) => l.includes("seam "));
         expect(line).toContain("(limit 0.005) — closes");
       });

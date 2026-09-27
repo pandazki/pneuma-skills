@@ -179,8 +179,9 @@ export function adjacentSteps(features) {
  * compare two renders in silhouette units (`JOIN_STEPS`, sprite-sheet.mjs).
  *
  * Measured 2026-09-27 on tanka's ten 60 fps VEED loops: without the floor
- * `--seam-fill auto` fired on six of them at wraps of 0.002–0.003 (0.4–1.3 %
- * of a channel level inside the subject) against steps of 0.0003–0.0009, and
+ * `--seam-fill auto` fired on six of them at wraps of 0.002–0.003 (a mean
+ * 0.6–0.9 % of full scale per channel inside a subject covering 35 % of the
+ * frame; the pictures are the same pose) against steps of 0.0003–0.0009, and
  * `reading` warned "does not close" after four in-betweens —
  * `references/video-preview.md`, "Measured: cycle analysis".
  */
@@ -412,7 +413,9 @@ export function detectCycle(D, n, { minLen, maxLen, gait = null, fps = null }) {
   const base = {
     period, periodicity, periodicityMin, profileMean, minima: minimaReport, ambiguous, guard,
   };
-  if (periodicity < periodicityMin) return { ...none("flat"), ...base, verdict: "none", reason: "flat" };
+  // No cycle is no ambiguity about its length: a refused period keeps its
+  // numbers (for the sentence) but never offers two readings of nothing.
+  if (periodicity < periodicityMin) return { ...none("flat"), ...base, ambiguous: null, verdict: "none", reason: "flat" };
 
   // --- where to cut it ---------------------------------------------------
   const minStep = HOLD_STEP_FRACTION * median(adjacent);
@@ -429,7 +432,7 @@ export function detectCycle(D, n, { minLen, maxLen, gait = null, fps = null }) {
   } else {
     windows = distinctWindows(ranked, MAX_CYCLE_WINDOWS, spacing);
   }
-  if (!windows.length) return { ...none("held"), ...base, verdict: "none", reason: "held" };
+  if (!windows.length) return { ...none("held"), ...base, ambiguous: null, verdict: "none", reason: "held" };
   return { verdict: "periodic", reason: null, ...base, windows };
 }
 

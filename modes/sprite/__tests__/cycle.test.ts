@@ -174,6 +174,8 @@ describe("cycle.mjs — is there a cycle?", () => {
     expect([11, 12, 13]).toContain(cycle.period!);
     expect(cycle.periodicity!).toBeLessThan(cycle.periodicityMin!);
     expect(cycle.windows).toEqual([]);
+    // No cycle, so no question about its length either.
+    expect(cycle.ambiguous).toBeNull();
   });
 
   test("less than a whole second period to compare against asks for a deeper dip", () => {

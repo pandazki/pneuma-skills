@@ -730,9 +730,12 @@ frame-to-frame change — that is what a loop that closes looks like in
 numbers, and it is the check to make before promising a seamless loop.
 The table above is that window, sampled with the flags step 7 gives.
 
-So, for a clip: shoot it, `contact` it, sample `loops[0]` (a loop) or
-`stillStart`–`stillEnd` (a one-shot) with the frame budget from the SKILL's
-step 1 table, and only then `from-video`. When the beats are not evenly
+So, for a clip: shoot it, `contact` it, sample `loops[0]` (a loop), a
+`oneShots[]` window (an action that leaves its rest pose and returns), or
+`stillStart`–`stillEnd` (an action that ends somewhere else) with the frame
+budget from the SKILL's step 1 table, and only then `from-video`. When
+`cycle.verdict` is `none`, `loops[]` is empty on purpose — the clip does not
+repeat (see "Measured: cycle analysis" below). When the beats are not evenly
 spaced, read the times off the contact sheet and pass them as `--at`.
 
 ## Measured: the documented walk workflow on Lumi (2026-09-14)
@@ -761,3 +764,80 @@ pose, prompt or no prompt.
 Same lesson as the fox clip, with the cleaner outcome a clip shot the way
 this page asks for gives: the window `contact` finds is the animation; the
 footage around it is not.
+
+## Measured: cycle analysis (2026-09-27)
+
+`contact`'s cycle reading and `loop`'s seam were rebuilt on a port of
+aldegad/sprite-gen's `video-loop` analysis (`scripts/cycle.mjs`; `pipeline.md`
+has the rules): colour instead of silhouette, every frame at the clip's own
+rate instead of 12 fps, the whole-clip lag profile instead of best-single-seam,
+a no-cycle verdict, one-shots, and a 0.005 noise floor under `seam ≤ 2·step`.
+Before = the scripts at `2831b7d2`, after = this change, same copies of the
+clips (inputs copied, never the owner's files). Reproduce with
+`~/pneuma-dev-scratch/2026-09-27/sg/cycle/tools/evidence.mjs`.
+
+**`contact`, before → after.** tanka: Seedance 2.5, 640², 24 fps, 97–121
+frames, chroma green. Lumi attack: the seed's `video-seedance-1.mp4` (the
+rive-try copy is the same file), cream plate. Wave 2: Lumi on green, 4 s.
+
+| Clip | Before (silhouette, 12 fps) | After (colour, clip fps) |
+|---|---|---|
+| tanka walk (front waddle) | `loops[0]` 1.417–3.333 s, period 1.917 s | period **1.875 s** (periodicity 0.747); `loops[0]` 0.875–2.75 s, seam 0.0023 vs step 0.0093; the half-stride dip (0.875 s) is 5× shallower, so not ambiguous. sprite-gen's own walk window (0.5–1.6 s) refuses this clip: it reads 0.833 s at periodicity −0.08 |
+| tanka celebrate (hops) | 1.083–2.0 s, 0.917 s | period 0.958 s (0.426); `loops[0]` 0.833–1.75 s, whose next frame repeats within 0.2 of a step |
+| tanka dance | 2.5–4.583 s, 2.083 s | period 2.25 s (0.834); `loops[0]` 2.042–4.25 s |
+| tanka wave | no window | period 1.708 s (0.509) — the arm waves; the outline change was under the old 0.25 motion bar |
+| tanka typing | no window | period 2.042 s (0.29), a slow sway |
+| tanka idle, coffee, reading, sleep, thinking (first-last) | no window | **no cycle** ("nothing repeats between 0.4 and 2.5 s"): each drifts from its keyframe and back once. reading: one-shot 1.792–3.833 s |
+| Lumi attack (seed clip) | three "loops" at 3.417 s inside the closing hold, seam 0.328 against a step of 0.093 — windows that do not close, ranked first | **no cycle** (periodicity 0.094 < 0.15), no one-shot — the swing starts at once and ends in another pose, so there is no rest to return to (sprite-gen refuses it the same way); sample `stillStart`–`stillEnd`, 0.042–3.583 s |
+| Lumi side walk (wave 2) | 1.5–2.833 s, 1.333 s | period **1.333 s** (0.813), not ambiguous: the half stride dips 3.6× shallower in colour (3.2× in silhouette — this costume's legs differ in outline too); `--gait walk` leaves it unchanged |
+| Lumi jump `tight` (wave 2) | three windows of 2.0–2.5 s whose ends differ by 0.12–0.14, twice their step | **no cycle**; one-shot 0.167–2.792 s. The two "hops" are one excursion: between them she stays raised (her head is cut by the top edge from 1.00 to 2.54 s; distance from frame 0 stays at 0.19, as far as the jump peak) and only the second one brings her back to the opening pose |
+| Lumi jump `roomy` (wave 2) | three windows, ends 0.22–0.24 apart, 3–5 steps | **no cycle**; one-shot 0.25–2.875 s, the same shape (she holds 0.17 from frame 0 in between) — sprite-gen cuts the same window. Its `action` (1.625–2.375 s) is only the part above the contrast threshold; sample the whole `start`–`end` |
+| Lumi attack, first-last (wave 2) | windows 1.333–1.917 s whose ends differ by 0.19–0.22 | **no cycle**; one-shot 0.083–3.25 s (action 1.583–3.083 s) |
+
+Wall time per `contact` (24 stills included): 2.6–4.4 s before, 2.9–4.7 s after.
+`stillStart` moves by one analysed frame (0.167 → 0.125 s on 24 fps clips).
+
+**`loop`, the seam and `--seam-fill auto`, before → after**, on tanka's ten
+loops (VEED matte of the Topaz 60 fps clip, `--key alpha`, the whole clip):
+
+| Loop | Before: seam / step (silhouette) | fill | After: seam / step (colour) | `seamLimit` | fill |
+|---|---|---|---|---|---|
+| celebrate | 0.0018 / 0.0071 | 0 | 0.0025 / 0.0036 | 0.0072 | 0 |
+| coffee | 0.0032 / 0.0008 | **3** | 0.0031 / 0.0006 | 0.005 | **0** |
+| dance | 0.0016 / 0.0088 | 0 | 0.0022 / 0.0036 | 0.0072 | 0 |
+| idle | 0.0013 / 0.0003 | **4** | 0.0021 / 0.0004 | 0.005 | **0** |
+| reading | 0.0015 / 0.0003 | **4**, and still "does not close" | 0.0033 / 0.0004 | 0.005 | **0**, closes |
+| sleep | 0.0014 / 0.0009 | 0 | 0.0030 / 0.0007 | 0.005 | 0 (colour without the floor would add 4) |
+| thinking | 0.0018 / 0.0003 | **4** | 0.0030 / 0.0003 | 0.005 | **0** |
+| typing | 0.0013 / 0.0006 | **2** | 0.0030 / 0.0009 | 0.005 | **0** |
+| walk | 0.0172 / 0.0068 | 2 | 0.0079 / 0.0031 | 0.0062 | 2 (wrap after: 0.0043) |
+| wave | 0.0028 / 0.0058 | 0 | 0.0028 / 0.0023 | 0.005 | 0 |
+
+The five loops whose decision changed, last frame | first frame | difference
+×16 (`sg/cycle/evidence/wrap-changed-5.png`): the same pose every time, and a
+difference that is fur-texture noise spread over the whole body with no
+structure — nothing the four interpolated frames were fixing. The walk keeps
+its two: a real 2.5-step wrap. The wave-2 first-last attack closes either way
+(0.0011 against 0.0008 after; 0.007 against 0.0097 before).
+
+**Transitions keep silhouette joins.** On tanka-connect's four transitions the
+colour measure agrees on three and false-alarms on one: `idle-to-reading`'s end
+reads 0.0154 against a limit of 0.0135 on two frames of the same pose
+(`sg/cycle/evidence/transition-reading-end-vs-frame0.png` — fur and tablet
+shading differ between the two renders); its silhouette gap, 0.0083 against
+0.0194, lands. So `transition` is unchanged (`pipeline.md`).
+
+**Synthetic ground truth** (`__tests__/sprite-sheet.test.ts`, ffmpeg `overlay`
+fixtures, each checked to move): a walker whose two legs differ only in colour
+(silhouettes half a stride apart differ on < 3 % of the ink) reads 1 s, not
+the 0.5 s step; with identical legs plus a non-repeating speck it reads 0.5 s
+flagged `ambiguous: [0.5, 1]`, `--gait walk` takes 1 s, and a 1.25 s clip of
+it is refused as half a stride; a single hop is a one-shot with no cycle; a
+near-still loop whose wrap is 3.4 steps of noise closes with no fill (the old
+rule filled 3); a blink in the last four frames of an otherwise still loop does
+not close (the silhouette seam was exactly 0).
+
+What this does not show yet: a real clip whose near and far legs read alike —
+every real walk so far separates the stride from the step by 3× or more in
+both measures, so `ambiguous` and the gait floor are pinned on synthetic clips
+only.

@@ -116,10 +116,6 @@ const CONTACT_BACKGROUND = "0x808080";
 /** A contact sheet past this many stills is a wall of thumbnails nobody can
  *  read, and a --every of the wrong order of magnitude produces it instantly. */
 const MAX_CONTACT_STILLS = 200;
-/** Width the silhouettes are compared at. The question is "did the pose
- *  change", which survives a 96px raster; the answer costs one byte per pixel
- *  per analysed frame, so this is what keeps a minute of video in memory. */
-const ANALYSIS_WIDTH = 96;
 /** Frame rate `contact` falls back to when the clip does not report one, and
  *  the lowest it thins a long window to. A gait cycle is ~1 s, so 12 samples
  *  of it still resolve the period to a twelfth of a second. */
@@ -2481,7 +2477,7 @@ function stepContact(clip, options) {
       fps: analysisFps, start, moves: motion.stillStart !== null, gait: options.gait,
     }));
     if (motion.cycle.sentence) warnings.push(motion.cycle.sentence);
-    if (motion.cycle.ambiguous) {
+    if (motion.cycle.verdict === "periodic" && motion.cycle.ambiguous) {
       const [short, long] = motion.cycle.ambiguous.periods;
       warnings.push(`the cycle is ambiguous: ${long}s repeats about as well as ${short}s — a walk whose near and far legs read alike repeats every step, and a stride is two; look at both windows on the contact sheet${options.gait ? "" : ", or pass --gait walk|run if this is a gait"}`);
     }
@@ -2985,10 +2981,7 @@ function decodeLoopFrames(dir, count, size, alphaBased, label, start = 0) {
     fail(`${label}: ${count} frames were decoded but ${got} could be analysed — one of them does not decode`);
   }
   const thumbs = Array.from({ length: got }, (_, i) => r.stdout.subarray(i * frameBytes, (i + 1) * frameBytes));
-  return {
-    masks: thumbs.map((rgba) => silhouetteOf(rgba, alphaBased)),
-    features: thumbs.map(premultiplied),
-  };
+  return { masks: thumbs.map((rgba) => silhouetteOf(rgba, alphaBased)), thumbs };
 }
 
 /**
@@ -3573,7 +3566,8 @@ function stepLoop(clip, options) {
     // --- 4. holds, and 5. the seam ----------------------------------------
     // Holds on the silhouettes; seam and step on premultiplied colour, the
     // one measure `cycle.mjs` judges every wrap in.
-    const { masks, features } = decodeLoopFrames(srcDir, decoded, size, keying || alphaSource, "loop");
+    const { masks, thumbs } = decodeLoopFrames(srcDir, decoded, size, keying || alphaSource, "loop");
+    const features = thumbs.map(premultiplied);
     const { first, last } = trimHolds(masks, options.trimHolds);
     const shot = last - first + 1;
     if (shot < 2) {
@@ -3597,7 +3591,7 @@ function stepLoop(clip, options) {
       // The seam is now the WORST step across the wrap, not the gap it used to
       // be: an in-between that lands badly must not be able to hide behind the
       // two ends having been brought closer together.
-      const filled = decodeLoopFrames(srcDir, seamFill, size, keying || alphaSource, "loop", last + 1).features;
+      const filled = decodeLoopFrames(srcDir, seamFill, size, keying || alphaSource, "loop", last + 1).thumbs.map(premultiplied);
       seam = round(Math.max(...adjacentSteps([features[last], ...filled, features[first]])), 4);
     }
     const count = shot + seamFill;
