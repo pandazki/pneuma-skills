@@ -338,6 +338,34 @@ describe("loadRoster", () => {
     expect("lift" in mini).toBe(false);
   });
 
+  test("a pixel run's lattice check survives whole; its frame lists drop bad entries on their own", () => {
+    const withPixel = (pixel: unknown) => {
+      const body = JSON.parse(MINI);
+      body.sprite.motions[0].inspect.pixel = pixel;
+      return loadRoster(files({ "mini/project.json": JSON.stringify(body) }))!
+        .byContentSet.mini.sprite.motions[0].inspect!;
+    };
+    const pixel = {
+      pitch: { x: 8.0625, y: 8 }, scale: 2, held: false, paletteChecked: true,
+      softAlphaFrames: [1, 3], offGridFrames: [2], offPaletteFrames: [0],
+    };
+    expect(withPixel(pixel).pixel).toEqual(pixel);
+    expect(withPixel({ pitch: { x: 8, y: 8 }, scale: 1, held: true, paletteChecked: false }).pixel)
+      .toEqual({ pitch: { x: 8, y: 8 }, scale: 1, held: true, paletteChecked: false });
+    // A path a hand-edited file carries is not part of the check.
+    expect("palette" in withPixel({ ...pixel, palette: "/abs/palette.json" }).pixel!).toBe(false);
+    for (const broken of [
+      { ...pixel, held: "no" }, { ...pixel, scale: 1.5 }, { ...pixel, scale: 0 }, { ...pixel, pitch: { x: 8 } },
+      { ...pixel, pitch: { x: 8, y: -1 } }, { ...pixel, paletteChecked: undefined }, true,
+    ]) {
+      expect({ broken, present: "pixel" in withPixel(broken) }).toEqual({ broken, present: false });
+    }
+    expect(withPixel({ ...pixel, softAlphaFrames: [1, -1, "3", 3], offGridFrames: "2", offPaletteFrames: [] }).pixel)
+      .toEqual({ pitch: pixel.pitch, scale: 2, held: false, paletteChecked: true, softAlphaFrames: [1, 3] });
+    const mini = loadRoster(files({ "mini/project.json": MINI }))!.byContentSet.mini.sprite.motions[0].inspect!;
+    expect("pixel" in mini).toBe(false);
+  });
+
   test("a motion measured before the pipeline recorded the point has none", () => {
     // The canonical fixture predates `align.json`; absence is a real state,
     // and it is what tells the viewer to fall back to the cell instead of

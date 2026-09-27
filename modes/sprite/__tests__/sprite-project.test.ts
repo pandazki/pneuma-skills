@@ -508,7 +508,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       for (const broken of [[0, 12.5, null], [0, "12.5", null, 3], [0, [1], 2, 3], {}, "0,1,2,3"]) {
         expect({ broken, present: "lift" in withLift(broken).inspect }).toEqual({ broken, present: false });
       }
-    });
+    }, 20_000);
 
     test("an auto slice's record travels without its geometry, and a run cut on the grid drops it", () => {
       // What `run` found when the fixed grid cut through a pose: why it
@@ -554,7 +554,50 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       // A malformed clipped entry is dropped on its own; the rest of the list stands.
       expect(register({ ...realRun, slice: { ...slice, clipped: [{ index: 3, why: "cut" }, { index: -1, why: "cut" }, { index: 2, why: "odd" }] } }).slice.clipped)
         .toEqual([{ index: 3, why: "cut" }]);
-    });
+    }, 20_000);
+
+    test("a pixel run's lattice check travels without its palette path; a broken one stays behind", () => {
+      // `inspect.pixel`: whether the frames still sit on the lattice `pixel`
+      // cut them to (binary alpha, whole blocks on the N-grid, colours in the
+      // pinned palette) and, when not, which frames left it. The palette's
+      // absolute path stays in the run summary: the sidecar names the pinned
+      // palette once, as character.pixel.palette.
+      const { dir, realRun } = seedMini();
+      const pixel = {
+        pitch: { x: 8.0625, y: 8 }, scale: 2, held: false, palette: "/abs/knight/motions/walk/palette.json",
+        paletteChecked: true, softAlphaFrames: [1, 3], offGridFrames: [2],
+      };
+      const register = (value: unknown) => {
+        writeFileSync(join(dir, "pixel-run.json"), JSON.stringify({ ...realRun, inspect: { ...realRun.inspect, pixel: value } }));
+        return projectJson(dir, "register-run", "--motion", "bounce", "--run", join(dir, "pixel-run.json"), "--at", String(T2));
+      };
+      const { palette: _path, ...kept } = pixel;
+      expect(register(pixel).inspect.pixel).toEqual(kept);
+      expect(readProject(dir).sprite.motions[0].inspect.pixel).toEqual(kept);
+      expect(JSON.stringify(readProject(dir))).not.toContain("/abs/knight");
+      expect(project(dir, "show", "--motion", "bounce").out).toContain(
+        "  pixel lattice broken — soft alpha in frames 01, 03; blocks off the 2x grid in frame 02 · pitch 8.06×8, scale 2x · palette checked\n",
+      );
+
+      const held = { pitch: { x: 8, y: 8 }, scale: 1, held: true, palette: null, paletteChecked: false };
+      expect(register(held).inspect.pixel).toEqual({ pitch: { x: 8, y: 8 }, scale: 1, held: true, paletteChecked: false });
+      expect(project(dir, "show", "--motion", "bounce").out).toContain("  pixel lattice held · pitch 8×8, scale 1x · palette not checked\n");
+
+      // A long list is cut the way inspect's warnings cut it.
+      register({ ...pixel, softAlphaFrames: [0, 1, 2, 3, 4, 5, 6, 7], offGridFrames: undefined });
+      expect(project(dir, "show", "--motion", "bounce").out).toContain("soft alpha in frames 00, 01, 02, 03, 04, 05, … (8 in all) ·");
+
+      // Never half a check; a malformed frame list goes on its own.
+      for (const broken of [
+        { ...pixel, held: "no" }, { ...pixel, scale: 1.5 }, { ...pixel, scale: 0 }, { ...pixel, pitch: { x: 8 } },
+        { ...pixel, pitch: { x: 8, y: -1 } }, { ...pixel, paletteChecked: undefined }, true,
+      ]) {
+        expect({ broken, present: "pixel" in register(broken).inspect }).toEqual({ broken, present: false });
+      }
+      expect(register({ ...pixel, softAlphaFrames: [1, -1, "3", 3], offGridFrames: "2" }).inspect.pixel)
+        .toEqual({ pitch: pixel.pitch, scale: 2, held: false, paletteChecked: true, softAlphaFrames: [1, 3] });
+      expect("pixel" in register(undefined).inspect).toBe(false);
+    }, 20_000);
 
     test("a malformed anchor point is dropped, not carried into the sidecar", () => {
       // A half-written or hand-edited point would be drawn as a guide with no

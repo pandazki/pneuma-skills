@@ -24,6 +24,7 @@ import {
   loadRoster,
   type CharacterProject,
   type Motion,
+  type PixelLatticeCheck,
   type Roster,
   type SliceRecord,
 } from "./domain.js";
@@ -94,6 +95,24 @@ function describeSlice(slice: SliceRecord): string {
       .join(", ")}`);
   }
   return parts.join("; ");
+}
+
+/**
+ * A pixel run's lattice check in one line: held or broken (and by which
+ * frames, in inspect's terms), the pitch and scale it was cut at, and
+ * whether the palette was part of the check. `show --motion` says the same.
+ */
+function describeLattice(pixel: PixelLatticeCheck): string {
+  const round2 = (v: number) => Math.round(v * 100) / 100;
+  const frames = (list: number[]) =>
+    `${list.length === 1 ? "frame" : "frames"} ${list.slice(0, 6).map(pad2).join(", ")}${list.length > 6 ? `, … (${list.length} in all)` : ""}`;
+  const breaks = [
+    pixel.softAlphaFrames ? `soft alpha in ${frames(pixel.softAlphaFrames)}` : null,
+    pixel.offGridFrames ? `blocks off the ${pixel.scale}x grid in ${frames(pixel.offGridFrames)}` : null,
+    pixel.offPaletteFrames ? `colours outside the palette in ${frames(pixel.offPaletteFrames)}` : null,
+  ].filter((b): b is string => b !== null);
+  const status = pixel.held ? "held" : `broken${breaks.length ? ` — ${breaks.join("; ")}` : ""}`;
+  return `${status} · pitch ${round2(pixel.pitch.x)}×${round2(pixel.pitch.y)}, scale ${pixel.scale}x · palette ${pixel.paletteChecked ? "checked" : "not checked"}`;
 }
 
 /** One motion, described the way the agent needs to decide what to do next. */
@@ -167,6 +186,9 @@ function describeMotion(
   if (motion.inspect?.lift) {
     lines.push(`Lift above the ground (y from cell): ${motion.inspect.lift.map((v) => v ?? "-").join(", ")} px`);
   }
+  // Whether pixel art is still pixel art after everything that ran after
+  // `pixel` — the check to quote before packing or exporting it.
+  if (motion.inspect?.pixel) lines.push(`Pixel lattice: ${describeLattice(motion.inspect.pixel)}`);
   if (motion.prompt) lines.push(`Prompt: "${motion.prompt}"`);
   if (motion.notes) lines.push(`Notes: ${motion.notes}`);
   if (motion.videos.length > 0) {

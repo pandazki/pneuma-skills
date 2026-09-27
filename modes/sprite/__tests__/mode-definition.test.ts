@@ -293,6 +293,24 @@ describe("extractContext — routes, directions, breathe and mirror", () => {
     expect(plain).not.toContain("Slice:");
   });
 
+  test("a pixel motion's context says whether its frames still sit on the lattice, and which left it", () => {
+    const withPixel = (pixel: unknown) => {
+      const body = JSON.parse(withWalk());
+      body.sprite.motions[0].inspect.pixel = pixel;
+      const motionId = body.sprite.motions[0].id;
+      return extractSpriteContext({ address: { contentSet: "mini", motion: motionId } } as never, files({ "mini/project.json": JSON.stringify(body) }));
+    };
+    expect(withPixel({
+      pitch: { x: 8.0625, y: 8 }, scale: 2, held: false, paletteChecked: true,
+      softAlphaFrames: [1, 3], offGridFrames: [2], offPaletteFrames: [0],
+    })).toContain(
+      "Pixel lattice: broken — soft alpha in frames 01, 03; blocks off the 2x grid in frame 02; colours outside the palette in frame 00 · pitch 8.06×8, scale 2x · palette checked\n",
+    );
+    expect(withPixel({ pitch: { x: 8, y: 8 }, scale: 1, held: true, paletteChecked: false }))
+      .toContain("Pixel lattice: held · pitch 8×8, scale 1x · palette not checked\n");
+    expect(withPixel(undefined)).not.toContain("Pixel lattice");
+  });
+
   test("an anchor reference says which way it faces", () => {
     expect(at({ contentSet: "mini", ref: "anchor-left" })).toContain('Reference: "Anchor left" (anchor-left, role anchor, faces left)');
   });

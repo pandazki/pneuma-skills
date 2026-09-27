@@ -396,6 +396,37 @@ export interface InspectSummary {
    * recorded — never a default of 1.
    */
   scale?: number;
+  /**
+   * Frames that went through `pixel` only: whether they still sit on their
+   * lattice. See `PixelLatticeCheck`. Absent on every other motion, and on a
+   * pixel motion registered before `register-run` kept it.
+   */
+  pixel?: PixelLatticeCheck;
+}
+
+/**
+ * `inspect`'s check of a pixel run's frames against the lattice `pixel` cut
+ * them to, as `register-run` keeps it. The palette's path stays in the run
+ * summary (the character's `PixelSpec.palette` names the pinned palette).
+ */
+export interface PixelLatticeCheck {
+  /** Source px per logical px `pixel` cut at, per axis (fractional). */
+  pitch: { x: number; y: number };
+  /** The whole-number upscale each logical px was written at. */
+  scale: number;
+  /**
+   * Alpha only 0 or 255, every scale×scale block one colour, and — when
+   * `paletteChecked` — every colour a pinned-palette colour. False names the
+   * frames below; the inspect warnings say what to do.
+   */
+  held: boolean;
+  /** False when no palette could be held to, or `--outline` darkened the
+   *  edge on purpose. */
+  paletteChecked: boolean;
+  /** Each present only when some frame broke the lattice that way. */
+  softAlphaFrames?: number[];
+  offGridFrames?: number[];
+  offPaletteFrames?: number[];
 }
 
 /**
@@ -826,6 +857,7 @@ function parseInspect(value: unknown): InspectSummary | undefined {
   const endGap = parseFinite(value.endGap);
   const crop = parseClipRect(value.crop);
   const scale = parseFinite(value.scale);
+  const pixel = parseLatticeCheck(value.pixel);
   return {
     frameCount: num(value.frameCount, 0),
     cell: { width: num(cell.width, 0), height: num(cell.height, 0) },
@@ -861,6 +893,36 @@ function parseInspect(value: unknown): InspectSummary | undefined {
     ...(endGap === undefined ? {} : { endGap }),
     ...(crop ? { crop } : {}),
     ...(scale !== undefined && scale > 0 ? { scale } : {}),
+    ...(pixel ? { pixel } : {}),
+  };
+}
+
+/**
+ * A pixel run's lattice check, or undefined — never half of one. A malformed
+ * frame list, or entry in one, goes on its own; an emptied list is absent,
+ * as the pipeline writes one only when some frame broke the lattice that way.
+ */
+function parseLatticeCheck(value: unknown): PixelLatticeCheck | undefined {
+  if (!isRecord(value) || !isRecord(value.pitch)) return undefined;
+  const x = parseFinite(value.pitch.x);
+  const y = parseFinite(value.pitch.y);
+  const scale = value.scale;
+  if (x === undefined || x <= 0 || y === undefined || y <= 0) return undefined;
+  if (typeof scale !== "number" || !Number.isInteger(scale) || scale < 1) return undefined;
+  if (typeof value.held !== "boolean" || typeof value.paletteChecked !== "boolean") return undefined;
+  const frames = (list: unknown): number[] =>
+    Array.isArray(list) ? list.filter((i): i is number => typeof i === "number" && Number.isInteger(i) && i >= 0) : [];
+  const soft = frames(value.softAlphaFrames);
+  const offGrid = frames(value.offGridFrames);
+  const offPalette = frames(value.offPaletteFrames);
+  return {
+    pitch: { x, y },
+    scale,
+    held: value.held,
+    paletteChecked: value.paletteChecked,
+    ...(soft.length ? { softAlphaFrames: soft } : {}),
+    ...(offGrid.length ? { offGridFrames: offGrid } : {}),
+    ...(offPalette.length ? { offPaletteFrames: offPalette } : {}),
   };
 }
 
