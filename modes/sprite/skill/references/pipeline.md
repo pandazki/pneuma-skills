@@ -50,6 +50,33 @@ no `cd`, workspace-relative paths.
 
 ## `sprite-sheet.mjs`
 
+### `guide --rows R --cols C --cell WxH --out <png> [--margin 0.094]`
+
+Draws the layout guide that `sheet-prompt --guide` names in its prompt, at
+the sheet's own size (C × W by R × H): a `#f6f6f6` canvas, a 3 px `#333333`
+box on each cell's edge, a 2 px `#2f80ed` box on its safe area (inset
+`--margin` of the cell, floored per axis — 48 px on a 512 px cell) and a 1 px
+`#b8c8e8` centre line through the safe area. `--cell` is the **generation**
+cell, the one `sheet-prompt --json` reports (`guide.cell`, 512x512 for a 256 px
+character), not `character.cell`. Reports `{ output, rows, cols, cell,
+safeMargin, width, height }`.
+
+```bash
+node {SKILL_PATH}/scripts/sprite-sheet.mjs guide --rows 2 --cols 4 --cell 512x512 \
+  --out <character>/motions/<id>/layout-guide.png --json
+```
+
+Attach it **last** on the image call (`--image-urls`), after every reference:
+the prompt calls it "the last attached image". It is a working file with no
+asset id, like `first-green.png`, and reproducible from the motion's
+`promptParts.guide`. Measured default: off (`prompting.md`, E2).
+
+Ported from aldegad/sprite-gen (Apache-2.0) `sprite_gen/gen/prepare.py`
+`draw_guide`@fbd1a08 — same colours, widths and inward-drawn boxes; a one-row
+guide is pixel-identical to upstream's (checked 2026-09-27 at 256, 512 and
+200×300 px cells). Changes: rows as well as columns, and the centre line
+stays inside its own cell.
+
 ### `probe <image>`
 
 `{ width, height, hasAlpha, alphaCoverage, cornerColor }`. `hasAlpha` is true
@@ -1243,6 +1270,7 @@ come from `Date.now()` unless `--at <ms>` is passed.
 | `add-ref --id turnaround --file refs/turnaround.png --role turnaround [--label] [--prompt] [--model] [--from <assetId,…>] [--uploaded \| --derived-from <refId> [--op crop]]` | Registers `ref-<id>` with a `generate` edge carrying the model and prompt you used. `--uploaded` instead records a file **the user brought**: an `upload` edge with `actor: "human"`, no parent and no params — it refuses `--model` / `--prompt` / `--from` by name, since none of them happened. `--derived-from <refId>` records an image you cut or cleaned out of another registered reference (a single pose out of an uploaded design sheet): a `derive` edge from that ref with `params.op` — `--op` is one word, default `crop`, and only valid here. Re-adding an id replaces its edge whatever its type. |
 | `add-motion --id idle --label Idle --rows 4 --cols 4 --fps 8 [--loop] [--anchor bottom] [--prompt] [--status planned]` | Adds the motion. Call it before you generate, so the stage shows a placeholder. |
 | `set-motion --motion idle [--label] [--fps] [--loop\|--no-loop] [--anchor] [--prompt] [--status] [--notes]` | Edits motion metadata. `--notes` is where a failure reason belongs. |
+| `sheet-prompt --motion idle --action "<phase plan>" [--frames N] [--state …] [--guide\|--no-guide]` | Builds the sheet prompt in code from the character, the motion and your action, records `prompt` + `promptParts`, and prints the prompt (stdout alone without `--json`; `imageSize`, `attach` and `guide` with it). `--frames` redraws the motion's grid. Refused on loop, transition, breathe and mirror motions. Grammar, guards and the frames table: `prompting.md`, *Building the prompt*. |
 | `set-sheet --motion idle --file motions/idle/sheet-raw.png --from ref-turnaround[,…] [--model] [--prompt] [--background opaque] [--status generating\|processing]` | Registers `<motion>-sheet-raw` with a `generate` edge. `--from` becomes the edge's `fromAssetId`; `params.inputs` lists the whole set **only when you attach two or more references** — with one, `fromAssetId` already says everything. Re-running replaces the previous raw sheet and its edges, keeping the id stable. Call it twice per sheet (see below). |
 | `add-motion … [--source sheet\|video]` | Records how the frames will be obtained, before anything is generated. Absent means `sheet`. |
 | `add-motion … [--kind loop]` | Declares a **loop motion** (workflow E). `--rows/--cols` become optional (1×1 is recorded), `source` defaults to `video`, and `set-keyframe` is accepted only here. A sprite motion is unchanged. |

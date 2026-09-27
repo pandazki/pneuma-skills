@@ -453,7 +453,7 @@ export interface PromptParts {
   builder: string;
   /** The agent's action / phase plan, verbatim. */
   action: string;
-  /** Clause ids included: `"walk-gait"`, `"no-shadow"`, `"direction:left"`, … */
+  /** Conditional clause ids included: `"state:walk"`, `"direction:left"`, `"row-continuity"`, … */
   guards: string[];
   guide?: PromptGuide;
 }
