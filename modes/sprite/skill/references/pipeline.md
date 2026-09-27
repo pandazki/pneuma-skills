@@ -2504,7 +2504,9 @@ converter.
 ```
 
 - Frame keys are `<motionId>_NN`; `animations[<motionId>]` lists them in
-  playback order.
+  playback order. Loading it: Phaser, `this.load.atlas(key, 'sheet.png',
+  'atlas.json')`; PixiJS 8, `Assets.load('atlas.json')`, whose `Spritesheet`
+  hands `animations[<motionId>]` to an `AnimatedSprite`.
 - `pivot` is the anchor point `align` measured, normalized by the cell:
   `{0.5, (H − pad) / H}` for `anchor: bottom`, `{0.5, 0.5}` for `center`,
   rounded to 4 decimals. With `--pad 8` on a 256px cell that is
