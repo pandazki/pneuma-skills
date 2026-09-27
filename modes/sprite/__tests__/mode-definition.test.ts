@@ -18,6 +18,7 @@ import { join } from "node:path";
 
 import type { ViewerFileContent } from "../../../core/types/viewer-contract.js";
 import spriteManifest from "../manifest.js";
+import { PANEL_TABS } from "../viewer/panel.js";
 import spriteMode, {
   extractSpriteContext,
   resolveSpriteItems,
@@ -420,6 +421,20 @@ describe("the definition and the manifest agree", () => {
     }
     // `capture` is framework-built-in; declaring it would shadow the real one.
     expect(actions.map((a) => a.id)).not.toContain("capture");
+  });
+
+  test("navigate-to advertises every panel tab it can open, and how to capture one", () => {
+    // The agent learns the tab names from this description alone; a tab the
+    // viewer accepts and the description hides is a tab nobody opens.
+    const navigate = spriteManifest.viewerApi!.actions!.find((a) => a.id === "navigate-to")!;
+    const tab = navigate.params!.tab!;
+    expect({ type: tab.type, required: tab.required ?? false }).toEqual({ type: "string", required: false });
+    for (const name of PANEL_TABS) expect(tab.description).toContain(`\`${name}\``);
+    // A full capture answers with the stage canvas, so the panel is captured
+    // by the selector the viewer puts on it.
+    expect(navigate.description).toContain("[data-sprite-panel]");
+    const state = spriteManifest.viewerApi!.actions!.find((a) => a.id === "get-playback-state")!;
+    expect(state.description).toContain("tab");
   });
 
   test("get-playback-state advertises `kind`, the loop discriminator", () => {

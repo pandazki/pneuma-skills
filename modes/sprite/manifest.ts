@@ -188,9 +188,14 @@ const spriteManifest: ModeManifest = {
               "ViewerAddress, e.g. `{ \"contentSet\": \"lumi\", \"motion\": \"attack\", \"frame\": 7 }`. `motion` selects a motion; `ref` opens a reference image in the stage instead (mutually exclusive with `motion`); `frame` seeks to that 0-based frame and pauses.",
             required: true,
           },
+          tab: {
+            type: "string",
+            description:
+              "Optional panel tab to open for the motion on stage: `gif`, `loop`, `video`, `atlas` or `export`. Omit it and the panel keeps its tab unless that tab has nothing of this motion's. A tab the motion does not have (Export before it is ready, GIF on a loop) is refused with the tabs it has; the stage still moves.",
+          },
         },
         description:
-          "Point the stage at a character, a motion, a reference, or one frame. Call it before `capture` so you screenshot what you mean, and after finishing a motion so the user lands on the thing you just made.",
+          "Point the stage at a character, a motion, a reference, or one frame, and optionally open a panel tab (`tab`). Call it before `capture` so you screenshot what you mean, and after finishing a motion so the user lands on the thing you just made. To look at a tab, open it here, then `capture` with `{ \"selector\": \"[data-sprite-panel]\" }` — a plain capture shows the stage only.",
       },
       {
         id: "play",
@@ -239,7 +244,7 @@ const spriteManifest: ModeManifest = {
           },
         },
         description:
-          "Read back what the stage is actually showing: `{ contentSet, motion, kind, frame, frameCount, fps, loop, playing, source: \"frames\" | \"raw-sheet\" | \"keyframe\" | \"none\", warnings }`. Call it after a pipeline run — `source: \"raw-sheet\"` or a frameCount that disagrees with the grid means the run did not land, whatever the script printed. `kind` is `\"loop\"` on a loop motion and absent on a sprite motion; `source: \"keyframe\"` is a loop showing the image its clip starts and ends on because no frames exist yet, which is expected while the clip renders.",
+          "Read back what the stage is actually showing: `{ contentSet, motion, kind, frame, frameCount, fps, loop, playing, source: \"frames\" | \"raw-sheet\" | \"keyframe\" | \"none\", tab, warnings }` — `tab` is the panel tab on screen for the motion on stage. Call it after a pipeline run — `source: \"raw-sheet\"` or a frameCount that disagrees with the grid means the run did not land, whatever the script printed. `kind` is `\"loop\"` on a loop motion and absent on a sprite motion; `source: \"keyframe\"` is a loop showing the image its clip starts and ends on because no frames exist yet, which is expected while the clip renders.",
       },
     ],
     // User → agent. The viewer renders these only while `editing !== false`,

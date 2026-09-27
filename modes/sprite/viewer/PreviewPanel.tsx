@@ -169,7 +169,12 @@ export function PreviewPanel(props: PreviewPanelProps) {
   );
 
   return (
+    // `data-sprite-panel` is the handle the skill captures the panel by
+    // (`capture { "selector": "[data-sprite-panel]" }` — the stage renderer
+    // answers a full capture, so the panel needs a selector of its own), and
+    // its value names the tab on screen.
     <aside
+      data-sprite-panel={motion ? tab : "none"}
       className={`flex shrink-0 flex-col border-cc-border bg-cc-surface/30 ${
         props.placement === "side"
           ? "h-full w-80 border-l"

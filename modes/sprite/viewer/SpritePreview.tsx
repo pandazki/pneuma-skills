@@ -60,11 +60,15 @@ import { generatingVideoMotions, loopLine, sizeLine, stageFacing } from "./metri
 import { MotionRail } from "./MotionRail.js";
 import {
   canAskAgent,
+  defaultTab,
   exportRequestNotification,
   exportStamp,
   motionLabel,
+  PANEL_TABS,
+  panelTabs,
   railGroups,
   tabAfterNavigate,
+  tabRequestProblem,
   type ExportRequests,
   type ExportRow,
   type PanelTab,
@@ -156,6 +160,9 @@ export default function SpritePreview(props: ViewerPreviewProps) {
   const refIdRef = useRef<string | null>(null);
   const fpsOverrideRef = useRef<number | null>(null);
   const loopOverrideRef = useRef<boolean | null>(null);
+  /** The panel tab as the shell last set it — `navigate-to { tab }` answers
+   *  with the tab it opened in the same handler, for the same reason. */
+  const tabRef = useRef<PanelTab>("gif");
 
   const showRef = useCallback((id: string | null) => {
     refIdRef.current = id;
@@ -168,6 +175,10 @@ export default function SpritePreview(props: ViewerPreviewProps) {
   const applyLoop = useCallback((value: boolean | null) => {
     loopOverrideRef.current = value;
     setLoopOverride(value);
+  }, []);
+  const applyTab = useCallback((value: PanelTab) => {
+    tabRef.current = value;
+    setTab(value);
   }, []);
 
   const motion = useMemo(
@@ -463,7 +474,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
         // leave the user staring at "no video preview yet" for the thing it
         // just made, and a user who chose Atlas keeps Atlas while there is an
         // atlas in it.
-        setTab((current) => tabAfterNavigate(current, next ?? null));
+        applyTab(tabAfterNavigate(tabRef.current, next ?? null));
       } else if (target?.kind === "character") {
         showRef(null);
       }
@@ -473,7 +484,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
         ...(resolution.notYetKnown ? { notYetKnown: true } : {}),
       };
     },
-    [character, motionId, setPlay, showMotion, showRef, playable],
+    [character, motionId, setPlay, showMotion, showRef, playable, applyTab],
   );
 
   /**
@@ -519,6 +530,12 @@ export default function SpritePreview(props: ViewerPreviewProps) {
           ? (loopOverrideRef.current ?? subject?.loop ?? true)
           : (subject?.loop ?? true),
       });
+      // The tab the panel is showing for the motion on stage — what it
+      // resolves to, which is the stored choice only when this motion has
+      // that tab (`PreviewPanel` falls back to the motion's default).
+      if (onStage && subject) {
+        data.tab = panelTabs(subject).includes(tabRef.current) ? tabRef.current : defaultTab(subject);
+      }
       if (onStage && refIdRef.current) {
         data.warnings = [
           ...data.warnings,
@@ -544,8 +561,24 @@ export default function SpritePreview(props: ViewerPreviewProps) {
   // and answered on arrival, or with the refusal once
   // NAVIGATE_ROSTER_WAIT_MS has passed. One at a time: a newer one answers
   // the older with what it would have got.
-  const latest = useRef({ runAddress, readState });
-  latest.current = { runAddress, readState };
+  /**
+   * Open a panel tab for the motion on stage, or say why not. Read through
+   * `latest` like the rest: a navigation that waited for the roster opens its
+   * tab against the roster that finally listed the motion.
+   */
+  const selectTab = useCallback(
+    (tab: unknown): string | null => {
+      const stageMotionId = motionIdRef.current;
+      const onStage = character && stageMotionId ? (findMotion(character, stageMotionId) ?? null) : null;
+      const problem = tabRequestProblem(onStage, tab);
+      if (!problem) applyTab(tab as PanelTab);
+      return problem;
+    },
+    [character, applyTab],
+  );
+
+  const latest = useRef({ runAddress, readState, selectTab });
+  latest.current = { runAddress, readState, selectTab };
   const pendingRef = useRef<{
     address: unknown;
     autoplay: boolean;
@@ -606,14 +639,34 @@ export default function SpritePreview(props: ViewerPreviewProps) {
 
     switch (actionId) {
       case "navigate-to": {
+        const stateNow = () => (latest.current.readState(undefined).data ?? {}) as Record<string, unknown>;
+        const wantsTab = params?.tab !== undefined;
+        // A tab name the panel does not have is refused before anything
+        // moves: the whole request is malformed, not half of it.
+        if (wantsTab && !(PANEL_TABS as readonly unknown[]).includes(params.tab)) {
+          onActionResult(requestId, {
+            success: false,
+            message: tabRequestProblem(null, params.tab) ?? "Unknown tab.",
+            data: stateNow(),
+          });
+          break;
+        }
         awaitRoster(params?.address, false, (result) => {
+          let answer: ViewerActionResult = result;
+          // The tab is opened for the motion the address put on stage. When
+          // that motion has no such tab the stage has still moved — so the
+          // answer is a refusal that says so, not a success with the panel
+          // silently somewhere else.
+          if (result.success && wantsTab) {
+            const problem = latest.current.selectTab(params.tab);
+            if (problem) {
+              answer = { success: false, message: `The stage moved, but the panel did not: ${problem}` };
+            }
+          }
           // Report where the stage IS now — including after a refusal, where
           // "nothing moved, here is what you are still looking at" is the
           // useful answer.
-          onActionResult(requestId, {
-            ...result,
-            data: (latest.current.readState(undefined).data ?? {}) as Record<string, unknown>,
-          });
+          onActionResult(requestId, { ...answer, data: stateNow() });
         });
         break;
       }
@@ -955,7 +1008,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
               motion={motion}
               imageVersion={imageVersion}
               tab={tab}
-              onTab={setTab}
+              onTab={applyTab}
               geometry={geometry}
               sizeLine={sizes}
               renderVideoLabel={renderVideoLabel}
@@ -973,7 +1026,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
             motion={motion}
             imageVersion={imageVersion}
             tab={tab}
-            onTab={setTab}
+            onTab={applyTab}
             geometry={geometry}
             sizeLine={sizes}
             renderVideoLabel={renderVideoLabel}

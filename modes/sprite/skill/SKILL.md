@@ -143,10 +143,12 @@ or how a motion reads.
 - **One size across a set** is measured, not read off `scaleDrift` (the
   spread inside one motion only): run `sprite-sheet.mjs sizes <character>`
   and look at `sizes.png` before you say the motions match.
-- **Before the handoff, check what the Export tab offers**: `show` lists the
-  whole-character exports and colourways, `show --motion <id>` a motion's
-  exports; every file the route's finish line promises must be there — made,
-  not just offered.
+- **Before the handoff, look at the Export tab the user will open**:
+  `navigate-to` the motion with `"tab": "export"`, then `capture` with
+  `{ "selector": "[data-sprite-panel]" }` and look at it — every file the
+  route's finish line promises must be there, made, not just offered. `show`
+  (the whole character's exports and colourways) and `show --motion <id>` (a
+  motion's) are where you read the file facts behind it.
 - **Say what you measured.** "The loop wraps within one normal frame step",
   "the feet move less than a pixel", "the heights differ by 5 %" are claims
   you can stand behind; "you can't see a seam" and "the feet don't move at
@@ -200,19 +202,24 @@ clickable card that takes the user there — or into the `capture` action's
 
 - **`navigate-to`** — point the stage at a character, motion, ref, or frame.
   Call it before `capture`, and after a motion is finished so the user lands
-  on it.
+  on it. `tab` (`gif`, `loop`, `video`, `atlas`, `export`) also opens that
+  panel tab for the motion on stage; a tab the motion does not have — Export
+  before it is ready, GIF on a loop — is refused with the tabs it has, and
+  the answer's `tab` is the one on screen.
 - **`play`** — run the motion at its fps. Timing is the one property a sheet
   PNG cannot show you; a walk that reads fine as 8 stills can still stutter.
   `fps` / `loop` params override the stored values for that playback only.
 - **`pause`** — stop on the current frame. Call it before capturing a specific
   frame, or your screenshot is whichever frame happened to be up.
 - **`get-playback-state`** — what the stage actually shows:
-  `{ contentSet, motion, kind, frame, frameCount, fps, loop, playing, source, warnings }`.
+  `{ contentSet, motion, kind, frame, frameCount, fps, loop, playing, source, tab, warnings }`.
   `source: "raw-sheet"` or a `frameCount` that disagrees with the grid means
   the pipeline did not land, whatever the script printed; `source:
   "keyframe"` on a loop whose frames do not exist yet is expected. `kind` is
-  absent on a sprite motion.
+  absent on a sprite motion; `tab` is the panel tab on screen.
 - **`capture`** — framework built-in. Screenshot an address and look at it.
+  A plain capture is the stage canvas; to see the panel (a tab you opened
+  with `navigate-to`), pass `{ "selector": "[data-sprite-panel]" }`.
 
 ### Three sensing layers, in cost order
 
@@ -922,8 +929,9 @@ machine that switches only where they meet.
    when a reversed exit reads wrong (a mug put down is not a mug picked up
    backwards), say so and offer a real exit take at an entry's price.
 4. **Export and look through the preview** — `rive <character>
-   --include-loops`, registered; press a loop's button in the Export tab's
-   Rive preview and watch the state line. Report the routes, each loop's
+   --include-loops`, registered; open the Export tab (`navigate-to` with
+   `"tab": "export"`), capture it, press a loop's button in its Rive preview
+   and watch the state line. Report the routes, each loop's
    wait and every direct cut with its `poseGap` from `stateMachine`.
 
 **Say the limits plainly.** Leaving a loop waits for the end of its cycle

@@ -35,6 +35,28 @@ import type { RiveMachineRecord } from "./rive-preview.js";
 
 export type PanelTab = "gif" | "loop" | "video" | "atlas" | "export";
 
+/** Every tab name, in strip order — what `navigate-to`'s `tab` accepts. */
+export const PANEL_TABS: readonly PanelTab[] = ["gif", "loop", "video", "atlas", "export"];
+
+/**
+ * Whether `navigate-to { tab }` can show `tab` for `motion`, and if not, the
+ * sentence that says why. Refused rather than quietly swapped for another
+ * tab: an agent that asked for Export and was shown the GIF would capture
+ * the wrong panel and describe it as the one it asked for.
+ */
+export function tabRequestProblem(motion: Motion | null, tab: unknown): string | null {
+  if (typeof tab !== "string" || !(PANEL_TABS as readonly string[]).includes(tab)) {
+    return `"tab" must be one of ${PANEL_TABS.join(", ")} (got ${JSON.stringify(tab)}).`;
+  }
+  if (!motion) return `No motion is on the stage, so there is no ${tab} tab to open.`;
+  const tabs = panelTabs(motion);
+  if (tabs.includes(tab as PanelTab)) return null;
+  const why = tab === "export" && motion.status !== "ready"
+    ? ` Export appears once the motion is ready (it is ${motion.status}).`
+    : "";
+  return `"${motion.id}" has no ${tab} tab (it has: ${tabs.join(", ")}).${why}`;
+}
+
 /** The formats a loop is delivered in, in the order the panel lists them. */
 export type LoopFormat = "webp" | "apng" | "webm" | "lottie";
 
