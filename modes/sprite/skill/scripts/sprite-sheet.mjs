@@ -73,7 +73,7 @@ import {
 } from "./recolor.mjs";
 import {
   DEFAULT_OUTLINE_STRENGTH, DEFAULT_PALETTE_SIZE, MAX_PITCH, PIXEL_RECORD, applyPalette, blankImage,
-  buildSharedPalette, enforceOutline, heightCheck, heightPitch, HEIGHT_MISMATCH_RATIO, latticeCheck, latticeFrames, loadPalette,
+  buildSharedPalette, DIVISOR_RUNLEN_RATIO, enforceOutline, heightCheck, heightPitch, HEIGHT_MISMATCH_RATIO, latticeCheck, latticeFrames, loadPalette,
   paste as pasteImage, upscale, writePalette,
 } from "./pixel-lattice.mjs";
 import { DEFAULT_SAFE_MARGIN_RATIO, guideGeometry, guideRaster } from "./sheet-prompt.mjs";
@@ -309,6 +309,9 @@ const BREATHE_RECORD = "breathe.json";
 const PIXEL_DIRNAME = "pixel";
 /** The palette `run --pixel` pins in the motion directory. */
 const PALETTE_FILENAME = "palette.json";
+/** Where `run --pixel --repalette` builds when the motion's own palette.json
+ *  is the one pinned for the character. */
+const REBUILT_PALETTE_FILENAME = "palette-rebuilt.json";
 /** Largest whole-number upscale `pixel --scale` takes. */
 const MAX_PIXEL_SCALE = 16;
 /** A pinned palette whose nearest colour is further than this (RGB distance)
@@ -471,7 +474,7 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       [--x-from feet|bbox|cell|trend|body] [--key auto|#rrggbb|none] [--keyer unmix|colorkey] [--cell auto|WxH]
       [--pad ${DEFAULT_PAD}] [--smooth] [--scale 1] [--nearest] [--margin 0] [--gutter 0]
       [--width W] [--no-webp] [--threshold ${DEFAULT_THRESHOLD}]
-      [--pixel [--palette <file>] [--repalette] [--palette-size ${DEFAULT_PALETTE_SIZE}] [--pitch-hint N]
+      [--pixel [--palette <file>] [--repalette] [--palette-size N] [--pitch-hint N]
                [--logical-height H] [--outline] [--outline-strength ${DEFAULT_OUTLINE_STRENGTH}] [--no-detail-bias]]
       probe -> key (only when the sheet is opaque) -> slice -> align -> pack
       -> gif (+webp) -> inspect. An outside sheet is copied in, never moved.
@@ -481,7 +484,15 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       whole-number upscale of the lattice (default 1: one pixel per logical
       pixel) instead of the atlas resize. The frames are held to the
       character's declared height (character.pixel.logicalHeight, or
-      --logical-height H): see 'pixel'.
+      --logical-height H): see 'pixel'. --palette-size defaults to the
+      character's character.pixel.colors, else ${DEFAULT_PALETTE_SIZE}. The palette is the one
+      pinned for the character unless --palette; --repalette builds this
+      motion's own — beside it (${REBUILT_PALETTE_FILENAME}) when this motion's
+      ${PALETTE_FILENAME} IS the pinned one, which the other motions use.
+      The lattice is decided before anything in <motionDir> is replaced: a
+      refusal leaves the previous run exactly as it was. A run WITHOUT
+      --pixel removes the ${PIXEL_DIRNAME}/ frames and the unpinned palette an
+      earlier pixel run left, and says so.
       The pre-align cells are kept as <motionDir>/${CELLS_DIRNAME}/NN.png so the
       report can be reproduced and the alignment redone without re-slicing.
 
@@ -530,9 +541,16 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       With no --pitch-hint and too few frames reading a grid, the pitch that
       makes the frames H tall stands in for the hint when the frames' own
       loose readings (pooled pitch, same-colour runs) are within 25% of it;
-      otherwise the refusal names it. After the snap the frames' median
+      otherwise the refusal names it. Cut at the frames' own pitch, a height
+      ${HEIGHT_MISMATCH_RATIO}x or more off H either way is a divisor or a multiple of the blocks,
+      not a figure drawn a little off: the pitch that makes the frames H tall
+      is taken when those readings back it (said), else the step refuses
+      and writes nothing. Under that, after the snap the frames' median
       height is compared with H (5%, at least 1 px): a miss is a warning —
-      blocks are never merged to reach it. Recorded as logicalHeight
+      blocks are never merged to reach it. Without H, a consensus the
+      same-colour runs call a divisor (runs ${DIVISOR_RUNLEN_RATIO}x or more its size) takes a
+      larger reading of the frames' that it divides and the runs back, or
+      the step refuses. Recorded as logicalHeight
       { declared, measured, range, honoured, pitchFrom } in ${PIXEL_RECORD}.
 
   recolor-palette <characterDir|motionDir> [--out <map.json>] [--force]
@@ -1705,25 +1723,22 @@ function stepClean(cellsDir, { out, threshold }) {
  * is upscaled by the whole number `scale`. The palette is pinned: an existing
  * `palette` file is used as it is and only `repalette` rebuilds it.
  *
- * `images` may be passed by a caller that already holds the decoded frames
- * (`run`), in the order of the directory's frames. Returns the step's JSON plus
- * `measures` of the written frames, for an `align` that follows.
+ * `images` may be passed by a caller that already holds the decoded frames,
+ * in the order of the directory's frames; `plan` by one that already decided
+ * the lattice on them (`run --pixel`, before it replaced anything — see
+ * `planRunPixel`). Returns the step's JSON plus `measures` of the written
+ * frames, for an `align` that follows.
  */
-function stepPixel(framesDir, {
-  out, palette, repalette, paletteSize, scale, pitchHint, outline, outlineStrength, detailBias, threshold, images: given,
-  logicalHeight = null,
-}) {
-  const inDir = resolve(framesDir);
-  const outDir = resolve(out);
-  if (inDir === outDir) {
-    fail(`pixel: --out ${outDir} is the input directory — the frames there are what a re-run snaps again, so write the lattice frames somewhere else`);
-  }
-  const entries = listFrames(inDir);
-  const images = given ?? entries.map((entry) => readRgba(entry.path));
-  if (images.length !== entries.length) fail("internal: pixel image count does not match frame count");
-
+/**
+ * The lattice a generation is cut on, decided on the frames in memory and
+ * nothing written: `{ lattice, heightNotes, byHeight, switched }`, or a
+ * refusal. `run --pixel` decides before it replaces anything in the motion
+ * (a refusal after the slice left the motion half-replaced), `pixel` before
+ * it writes its output. `label` is the frames directory the messages name.
+ */
+function decidePixel(images, { pitchHint, detailBias, logicalHeight, label }) {
   let lattice = latticeFrames(images, { detailBias, pitchHint });
-  if (!lattice.nonEmpty) fail(`pixel: every frame in ${inDir} is empty`);
+  if (!lattice.nonEmpty) fail(`pixel: every frame in ${label} is empty`);
   // A generation is cut on its frames' agreement; when fewer than half of
   // them read a grid at all, that agreement is one or two frames' opinion.
   // Measured on a real GPT-Image walk: 1 of 8 frames read 4.00 for 8 px
@@ -1753,7 +1768,7 @@ function stepPixel(framesDir, {
     const declared = byHeight
       ? ` The declared height (${logicalHeight} logical px) would mean ${byHeight.pitch.toFixed(2)} px blocks for frames ${byHeight.source} px tall, which the frames do not back — the sheet was probably drawn at another height.`
       : "";
-    fail(`pixel: only ${lattice.confident} of ${lattice.nonEmpty} frames in ${inDir} read a pixel grid on their own${readings.length ? ` (${readings.join("; ")})` : ""} — too few to cut a whole generation on.${suggest.length ? ` ${suggest.join("; ")}.` : ""}${declared} Look at a frame at 8x and pass --pitch-hint N, the block width in source pixels (or this is not pixel art)`);
+    fail(`pixel: only ${lattice.confident} of ${lattice.nonEmpty} frames in ${label} read a pixel grid on their own${readings.length ? ` (${readings.join("; ")})` : ""} — too few to cut a whole generation on.${suggest.length ? ` ${suggest.join("; ")}.` : ""}${declared} Look at a frame at 8x and pass --pitch-hint N, the block width in source pixels (or this is not pixel art)`);
   }
   // A lattice the frames' own evidence contradicts is not cut as it is. With a
   // declared height, a snap 1.5x or more off it is a divisor or a multiple of
@@ -1779,6 +1794,25 @@ function stepPixel(framesDir, {
       fail(`pixel: most frames read a ${measuredAt} px grid, but same-colour runs measure ${runs} px — the reading is a divisor of the real block size, and nothing says which multiple (no --pitch-hint, no declared height). Nothing was written. Look at a frame at 8x and pass --pitch-hint N (the runs suggest about ${Math.round((lattice.runlen.x + lattice.runlen.y) / 2)}), or declare the figure's height in logical pixels (--logical-height H, or sprite-project.mjs set-character --pixel H)`);
     }
   }
+  return { lattice, heightNotes, byHeight, switched, sizes: images.map(({ width, height }) => ({ width, height })) };
+}
+
+function stepPixel(framesDir, {
+  out, palette, repalette, paletteSize, scale, pitchHint, outline, outlineStrength, detailBias, threshold, images: given,
+  logicalHeight = null, plan = null,
+}) {
+  const inDir = resolve(framesDir);
+  const outDir = resolve(out);
+  if (inDir === outDir) {
+    fail(`pixel: --out ${outDir} is the input directory — the frames there are what a re-run snaps again, so write the lattice frames somewhere else`);
+  }
+  const entries = listFrames(inDir);
+  const images = plan ? null : given ?? entries.map((entry) => readRgba(entry.path));
+  if (images && images.length !== entries.length) fail("internal: pixel image count does not match frame count");
+  if (plan && plan.lattice.frames.length !== entries.length) fail("internal: pixel plan frame count does not match frame count");
+  const { lattice, heightNotes, byHeight, switched, sizes } = plan ?? decidePixel(images, { pitchHint, detailBias, logicalHeight, label: inDir });
+  const cellW = Math.max(...sizes.map((size) => size.width));
+  const cellH = Math.max(...sizes.map((size) => size.height));
   const { consensus } = lattice;
   const warnings = [...heightNotes, ...lattice.warnings];
   // The height the frames came out at, against the declared one. The lattice
@@ -1838,8 +1872,6 @@ function stepPixel(framesDir, {
   // The canvas: every frame's logical sprite where it sat in its cell. The
   // cell measured in logical pixels at the consensus pitch, grown to whatever
   // a frame needs — a frame is never clipped to make the canvas tidy.
-  const cellW = Math.max(...images.map((image) => image.width));
-  const cellH = Math.max(...images.map((image) => image.height));
   const placed = lattice.frames.map((f) => (f.logical
     ? { x: Math.round(f.box.x / f.pitch.x), y: Math.round(f.box.y / f.pitch.y) }
     : null));
@@ -2347,9 +2379,10 @@ function stepAlign(framesDir, { out, anchor, cell, pad: askedPad, smooth, thresh
   // cell by however lopsided the pose is around the feet.
   let cellSize = cell;
   if (!cellSize) {
-    // Even, so the anchor sits on a whole pixel in the middle — and for pixel
-    // frames also a multiple of the block, so it sits on a block boundary.
-    const unit = grid % 2 ? 2 * grid : grid;
+    // Two blocks, so the middle — where the anchor sits — is a whole pixel
+    // AND a block boundary. One block was enough only for odd blocks: a 2x
+    // cell 34 wide put the anchor at 17, the middle of a block (R1-2).
+    const unit = 2 * grid;
     const even = (n) => Math.ceil(n / unit) * unit;
     const reach = bboxes.map((b, i) => (b
       ? Math.max(targetsX[i] - b.x, b.x + b.w - targetsX[i])
@@ -3165,6 +3198,35 @@ function resolveRunSheets(input, motionDir, { alpha, force }) {
 }
 
 /**
+ * What an earlier `run --pixel` left in a motion that this run is not a pixel
+ * run of: the lattice frames (`pixel/`, which `inspect` and an `align` from
+ * them would otherwise read as this run's) and the motion's own palette —
+ * unless that palette is the one pinned for the character, which other
+ * motions are quantised to and which only `register-run` may retire. Said
+ * in `warnings`, so a re-run that drops --pixel does not do it silently.
+ */
+function clearStalePixel(motionDir, warnings) {
+  const removed = [];
+  const pixelDir = join(motionDir, PIXEL_DIRNAME);
+  if (existsSync(pixelDir)) {
+    rmSync(pixelDir, { recursive: true, force: true });
+    removed.push(`${PIXEL_DIRNAME}/`);
+  }
+  const pinned = pinnedPalette(characterOfMotion(motionDir));
+  for (const name of [PALETTE_FILENAME, REBUILT_PALETTE_FILENAME]) {
+    const file = join(motionDir, name);
+    if (!existsSync(file)) continue;
+    if (pinned && pinned.file === file) {
+      warnings.push(`${name} stays: it is the palette pinned for the character (${pinned.id}), which other motions are quantised to — this run is not a pixel run`);
+      continue;
+    }
+    rmSync(file, { force: true });
+    removed.push(name);
+  }
+  if (removed.length) warnings.push(`not a pixel run: removed ${removed.join(" and ")} an earlier run --pixel left in this motion`);
+}
+
+/**
  * The half of the pipeline that does not care where the cells came from:
  * align -> pack -> gif (+webp) -> inspect. `run` cuts them out of a sheet,
  * `from-video` samples them out of a clip; past this point they are the same
@@ -3175,6 +3237,7 @@ function resolveRunSheets(input, motionDir, { alpha, force }) {
  */
 function finishMotion(motionDir, cellsDir, options, { measures, sourceCell, warnings, lattice = null }) {
   const framesDir = join(motionDir, "frames");
+  if (!lattice) clearStalePixel(motionDir, warnings);
   // With a lattice step in between, align reads ITS frames (and the pixel
   // record next to them); the clipping verdict below stays on the raw cells.
   const aligned = stepAlign(lattice ? lattice.outDir : cellsDir, {
@@ -3233,6 +3296,11 @@ function stepRun(sheetRaw, options) {
   if (!existsSync(input)) fail(`file not found: ${input}`);
   const motionDir = resolve(options.out);
   mkdirSync(motionDir, { recursive: true });
+
+  const character = characterOfMotion(motionDir);
+  // Pixel art is decided before anything in the motion is replaced: a refused
+  // lattice leaves the previous run exactly as it was.
+  const pixelPlan = options.pixel ? planRunPixel(input, motionDir, character, options) : null;
 
   const { sheetRawPath, providedAlpha } = resolveRunSheets(input, motionDir, options);
 
@@ -3309,14 +3377,13 @@ function stepRun(sheetRaw, options) {
   // Pixel art: snap the cleaned cells onto their lattice before anything
   // places them. The cells stay what they are — the source a re-run snaps.
   let lattice = null;
-  const character = characterOfMotion(motionDir);
   if (options.pixel) {
-    const palette = runPalette(motionDir, character, options);
+    const { palette } = pixelPlan;
     lattice = stepPixel(cellsDir, {
       out: join(motionDir, PIXEL_DIRNAME),
       palette: palette.file,
       repalette: options.repalette,
-      paletteSize: options.paletteSize,
+      paletteSize: pixelPlan.paletteSize,
       scale: options.scale,
       pitchHint: options.pitchHint,
       outline: options.outline,
@@ -3325,9 +3392,11 @@ function stepRun(sheetRaw, options) {
       threshold: options.threshold,
       images: cellImages,
       // Every pixel run of a character is held to its declared height.
-      logicalHeight: options.logicalHeight ?? declaredPixelHeight(character),
+      logicalHeight: pixelPlan.logicalHeight,
+      plan: pixelPlan.decided,
     });
     lattice.palette = { ...lattice.palette, from: palette.from };
+    if (palette.note) warnings.push(palette.note);
     warnings.push(...lattice.warnings);
   } else {
     const hint = pixelStyleHint(character);
@@ -3380,6 +3449,72 @@ function stepRun(sheetRaw, options) {
 }
 
 /**
+ * `run --pixel`'s decisions, taken before the run replaces anything in the
+ * motion: the palette it quantises to (and that the file is readable), and
+ * the lattice — on cells keyed, sliced and cleaned exactly as the run will
+ * key, slice and clean them, in a scratch directory that is removed after.
+ * A refusal here leaves the motion as the previous run left it. Returns
+ * `{ palette, paletteSize, logicalHeight, decided }`; `decided` is what `stepPixel` would
+ * decide on the run's own cells, which are the same pixels.
+ */
+function planRunPixel(input, motionDir, character, options) {
+  const palette = runPalette(motionDir, character, options);
+  const declaredColors = Number(character?.doc.sprite.character.pixel?.colors);
+  const paletteSize = options.paletteSize
+    ?? (Number.isInteger(declaredColors) && declaredColors >= 2 && declaredColors <= 256 ? declaredColors : DEFAULT_PALETTE_SIZE);
+  if (!options.repalette) {
+    try {
+      loadPalette(palette.file);
+    } catch (error) {
+      fail(`run --pixel: --palette ${error.message}`);
+    }
+  }
+  const logicalHeight = options.logicalHeight ?? declaredPixelHeight(character);
+  const work = mkdtempSync(join(tmpdir(), "sprite-pixel-plan-"));
+  try {
+    let source = options.alpha ? resolve(options.alpha) : input;
+    if (options.alpha && !existsSync(source)) fail(`--alpha: file not found: ${source}`);
+    if (!options.alpha && input !== join(motionDir, "sheet-alpha.png")) {
+      const probe = stepProbe(input, options.threshold);
+      const opaque = !probe.hasAlpha || probe.alphaCoverage >= OPAQUE_COVERAGE;
+      if (options.key !== "none" && opaque) {
+        source = stepKey(input, {
+          out: join(work, "sheet-alpha.png"),
+          color: options.key,
+          similarity: options.similarity,
+          blend: options.blend,
+          threshold: options.threshold,
+          keyer: options.keyer,
+        }).output;
+      }
+    }
+    const sliced = stepSlice(source, {
+      rows: options.rows, cols: options.cols, out: join(work, CELLS_DIRNAME),
+      margin: options.margin, gutter: options.gutter,
+    });
+    const sheetImage = readRgba(source);
+    const images = sliced.cells.map((cell) => {
+      const image = {
+        width: sliced.cell.width,
+        height: sliced.cell.height,
+        data: cropBuffer(sheetImage, cell.x, cell.y, sliced.cell.width, sliced.cell.height),
+      };
+      if (options.clean) cleanCell(image, options.threshold);
+      return image;
+    });
+    const decided = decidePixel(images, {
+      pitchHint: options.pitchHint,
+      detailBias: options.detailBias,
+      logicalHeight,
+      label: join(motionDir, CELLS_DIRNAME),
+    });
+    return { palette, paletteSize, logicalHeight, decided };
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
+/**
  * The character a motion directory belongs to — `<character>/motions/<id>` —
  * read only: `{ dir, doc }`, or null when the directory is not in one or its
  * project.json is missing or unreadable. What is read from it is a default
@@ -3412,16 +3547,37 @@ function characterOfMotion(motionDir) {
 function runPalette(motionDir, character, options) {
   if (options.palette) return { file: resolve(options.palette), from: "flag" };
   const own = { file: join(motionDir, PALETTE_FILENAME), from: "motion" };
-  if (options.repalette || !character) return own;
-  const id = character.doc.sprite.character.pixel?.palette;
-  if (typeof id !== "string" || !id) return own;
-  const asset = (character.doc.assets ?? []).find((a) => a.id === id);
-  if (!asset || typeof asset.uri !== "string") return own;
-  const file = resolve(character.dir, asset.uri);
-  if (!existsSync(file)) {
-    fail(`run --pixel: the palette pinned for this character (${id}, ${asset.uri}) is not on disk — restore it, or pass --repalette to build one from these frames (register-run then needs --repin)`);
+  const pinned = pinnedPalette(character);
+  if (options.repalette) {
+    // This motion's own palette.json may BE the character's pinned palette
+    // (the first pixel run pinned it from here). Rebuilding it in place would
+    // pull it out from under every other motion quantised to it before
+    // register-run was even asked; the rebuilt one goes next to it instead.
+    if (pinned && pinned.file === own.file) {
+      const file = join(motionDir, REBUILT_PALETTE_FILENAME);
+      return {
+        file, from: "motion",
+        note: `--repalette: ${PALETTE_FILENAME} here is the palette pinned for the character (${pinned.id}), which the other motions are quantised to — the rebuilt palette is ${file}; register-run --repin pins it`,
+      };
+    }
+    return own;
   }
-  return { file, from: "character" };
+  if (!pinned) return own;
+  if (!existsSync(pinned.file)) {
+    fail(`run --pixel: the palette pinned for this character (${pinned.id}, ${pinned.uri}) is not on disk — restore it, or pass --repalette to build one from these frames (register-run then needs --repin)`);
+  }
+  return { file: pinned.file, from: "character" };
+}
+
+/** The palette asset pinned on the character (`character.pixel.palette`),
+ *  `{ id, uri, file }`, or null. */
+function pinnedPalette(character) {
+  if (!character) return null;
+  const id = character.doc.sprite.character.pixel?.palette;
+  if (typeof id !== "string" || !id) return null;
+  const asset = (character.doc.assets ?? []).find((a) => a.id === id);
+  if (!asset || typeof asset.uri !== "string") return null;
+  return { id, uri: asset.uri, file: resolve(character.dir, asset.uri) };
 }
 
 /** `character.pixel.logicalHeight`, or null: the height every pixel run of
@@ -8168,7 +8324,9 @@ function pickPixelOptions(values) {
   }
   const outlineStrength = num(values["outline-strength"], "--outline-strength", { min: 0, fallback: DEFAULT_OUTLINE_STRENGTH });
   if (outlineStrength > 1) fail(`--outline-strength: expected a number from 0 to 1, got '${values["outline-strength"]}'`);
-  const paletteSize = num(values["palette-size"], "--palette-size", { integer: true, min: 2, fallback: DEFAULT_PALETTE_SIZE });
+  // No fallback here: `run --pixel` takes the character's declared palette
+  // size (character.pixel.colors) before the default, `pixel` the default.
+  const paletteSize = num(values["palette-size"], "--palette-size", { integer: true, min: 2, fallback: null });
   if (paletteSize > 256) fail(`--palette-size: expected at most 256 colours, got ${paletteSize}`);
   return {
     scale,
@@ -8560,6 +8718,7 @@ function main() {
         ...picked,
         out: outDir,
         palette: picked.palette ?? join(resolve(outDir), PALETTE_FILENAME),
+        paletteSize: picked.paletteSize ?? DEFAULT_PALETTE_SIZE,
         threshold,
       });
       emit(values, out, [...pixelLines(out), ...(out.warnings.length ? out.warnings : ["no warnings"])]);
