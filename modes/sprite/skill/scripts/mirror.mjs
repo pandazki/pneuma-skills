@@ -97,7 +97,9 @@ export function mirrorAnchorRecord({ record, atlas, cell, anchor, mirrorOf }) {
   const same = sameCell && record.anchor === anchor
     && Math.abs(record.anchorPoint?.x - x) < 1e-6 && Math.abs(record.anchorPoint?.y - y) < 1e-6;
   const lent = {};
-  if (same) for (const key of ["pad", "smooth", "xFrom"]) if (record[key] !== undefined) lent[key] = record[key];
+  // `yFrom` / `lift` / `ground`: a `--y-from cell` motion's frames keep their
+  // drawn heights, and a horizontal flip changes none of them.
+  if (same) for (const key of ["pad", "smooth", "xFrom", "yFrom", "lift", "ground"]) if (record[key] !== undefined) lent[key] = record[key];
   if (sameCell && record.pixel && typeof record.pixel === "object") lent.pixel = record.pixel;
   return {
     ...(same ? {} : { from: "atlas" }),
@@ -111,8 +113,10 @@ export function mirrorAnchorRecord({ record, atlas, cell, anchor, mirrorOf }) {
 
 /**
  * How the source's atlas was packed, so the mirror is packed the same way:
- * its anchor, its scale and how many frames sit in a row. Anything the atlas
- * does not state is null, and `pack`'s own default applies.
+ * its anchor, its scale, how many frames sit in a row, and the filter a
+ * scaled pack resampled with (`meta.filter`, "nearest" or "smooth" — written
+ * by `pack` since 0.5.0). Anything the atlas does not state is null, and
+ * `pack`'s own default applies.
  */
 export function atlasLayout(atlas) {
   const meta = atlas && typeof atlas.meta === "object" && atlas.meta ? atlas.meta : {};
@@ -122,5 +126,6 @@ export function atlasLayout(atlas) {
   const cellWidth = Number(frames[0]?.frame?.w);
   const sheetWidth = Number(meta.size?.w);
   const cols = cellWidth > 0 && sheetWidth > 0 ? Math.round(sheetWidth / cellWidth) : null;
-  return { anchor, scale, cols: Number.isInteger(cols) && cols > 0 ? cols : null };
+  const filter = meta.filter === "nearest" || meta.filter === "smooth" ? meta.filter : null;
+  return { anchor, scale, cols: Number.isInteger(cols) && cols > 0 ? cols : null, filter };
 }
