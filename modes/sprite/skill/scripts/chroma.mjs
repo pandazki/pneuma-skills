@@ -101,6 +101,11 @@ const LOCAL_SHADE_MAX = 1.4;
  *  direction (sin² of the angle under 0.05) spans no usable plane with it. */
 const LOCAL_MIN_NORM = 64;
 const LOCAL_MIN_SIN2 = 0.05;
+/** The subject palette a strand is read against: 16-level RGB bins holding
+ *  at least 0.2 % (and 8 pixels) of the interior, the most populated 48. */
+const PALETTE_MIN_SHARE = 0.002;
+const PALETTE_MIN_COUNT = 8;
+const PALETTE_MAX = 48;
 /**
  * A shadow painted ON the plate — Seedance draws a dark-green one under the
  * feet, ~105 from the plate (outside the 0.22 radius) — is the plate at a
@@ -528,22 +533,58 @@ function nextRing(width, height, depth, ring, d) {
   return next;
 }
 
+/** What `fitBlend` found for the last candidate it accepted: the plate share. */
+let fitK = 0;
+
+/**
+ * Explain `obs` as `a·F + k·P` — the subject colour F, lit a little brighter
+ * or darker (`s = a/(1−k)` within LOCAL_SHADE), covering `1 − k` of the pixel
+ * over the plate P — by least squares. Returns the squared residual left off
+ * that plane (Infinity when F cannot explain the pixel: too dark, along the
+ * plate's own direction, a shade out of range, or all plate) and leaves `k`
+ * in `fitK`. Under a green plate the plane says: the pixel's red and blue are
+ * a scaled copy of the subject's, and its green exceeds what that scale
+ * explains. A dark edge that is lineart, orange and plate at once fits it; a
+ * rim light or a yellow material (red kept, blue changed) does not.
+ */
+function fitBlend(o0, o1, o2, f0, f1, f2, pr, pg, pb, pp, po) {
+  const ff = f0 * f0 + f1 * f1 + f2 * f2;
+  if (ff < LOCAL_MIN_NORM) return Infinity;
+  const fp = f0 * pr + f1 * pg + f2 * pb;
+  const det = ff * pp - fp * fp;
+  if (det < LOCAL_MIN_SIN2 * ff * pp) return Infinity;
+  const fo = f0 * o0 + f1 * o1 + f2 * o2;
+  let a = (fo * pp - fp * po) / det;
+  let k = (ff * po - fp * fo) / det;
+  if (k < 0) { k = 0; a = fo / ff; }
+  if (k >= 1) return Infinity;
+  const shade = a / (1 - k);
+  if (shade < LOCAL_SHADE_MIN || shade > LOCAL_SHADE_MAX) return Infinity;
+  const e0 = o0 - a * f0 - k * pr, e1 = o1 - a * f1 - k * pg, e2 = o2 - a * f2 - k * pb;
+  fitK = k;
+  return e0 * e0 + e1 * e1 + e2 * e2;
+}
+
+/** `localShare`'s answers besides a plate share: nothing explains the pixel,
+ *  or the subject beside it does with no plate to speak of. */
+const UNEXPLAINED = -1;
+const SUBJECT_ITSELF = -2;
+
+/** The residual allowed for a blend holding `k` of a plate of norm² `pp`. */
+function blendTolerance(k, pp) {
+  const tol = LOCAL_RES_ABS + LOCAL_RES_REL * k * Math.sqrt(pp);
+  return tol * tol;
+}
+
 /**
  * The plate share of pixel `p` (at depth `d`) read against the subject
- * around it, or -1 when nothing there explains it as a blend.
- *
- * Every pixel within LOCAL_RADIUS that is deeper than `d` and has no key hue
- * (excess under 18) is a candidate subject colour F. It explains the pixel as
- * `a·F + k·P` — the subject, lit a little brighter or darker (`s = a/(1−k)`
- * within LOCAL_SHADE), covering `1 − k` of the pixel over the plate P —
- * with the residual left off that plane. Under a green plate the plane says:
- * the pixel's red and blue are a scaled copy of the subject's, and its green
- * exceeds what that scale explains. A dark edge that is lineart, orange and
- * plate at once fits it; a rim light or a yellow material (red kept, blue
- * changed) does not. The candidate with the smallest residual wins — a deeper
- * pixel of the same colour wins with k = 0, which is how a yellow edge next
- * to yellow fur stays exactly as drawn — and its `k` is returned when it is
- * at least `kMin` and the residual within LOCAL_RES_ABS + LOCAL_RES_REL·k·|P|.
+ * around it: every pixel within LOCAL_RADIUS that is deeper than `d` and has
+ * no key hue (excess under 18) is a candidate subject colour for `fitBlend`,
+ * and the one with the smallest residual wins — a deeper pixel of the same
+ * colour wins with k = 0, which is how a yellow edge next to yellow fur stays
+ * exactly as drawn. Returns its `k` when that is at least `kMin` and the
+ * residual within LOCAL_RES_ABS + LOCAL_RES_REL·k·|P|; SUBJECT_ITSELF when the
+ * winner is the subject with less plate than `kMin`; UNEXPLAINED otherwise.
  */
 function localShare(data, width, height, depth, p, d, plate, excess, kMin) {
   const [pr, pg, pb] = plate.painted;
@@ -562,34 +603,70 @@ function localShare(data, width, height, depth, p, d, plate, excess, kMin) {
       if (depth[q] <= d) continue;
       const j = q * 4;
       if (data[j + 3] === 0 || excess(data, j) >= FRINGE_DELTA) continue;
-      const f0 = data[j], f1 = data[j + 1], f2 = data[j + 2];
-      const ff = f0 * f0 + f1 * f1 + f2 * f2;
-      if (ff < LOCAL_MIN_NORM) continue;
-      const fp = f0 * pr + f1 * pg + f2 * pb;
-      const det = ff * pp - fp * fp;
-      // F along the plate's own direction spans no plane with it.
-      if (det < LOCAL_MIN_SIN2 * ff * pp) continue;
-      const fo = f0 * o0 + f1 * o1 + f2 * o2;
-      let a = (fo * pp - fp * po) / det;
-      let k = (ff * po - fp * fo) / det;
-      if (k < 0) { k = 0; a = fo / ff; }
-      if (k >= 1) continue;
-      const shade = a / (1 - k);
-      if (shade < LOCAL_SHADE_MIN || shade > LOCAL_SHADE_MAX) continue;
-      const e0 = o0 - a * f0 - k * pr, e1 = o1 - a * f1 - k * pg, e2 = o2 - a * f2 - k * pb;
-      const res = e0 * e0 + e1 * e1 + e2 * e2;
-      if (res < best) { best = res; bestK = k; }
+      const res = fitBlend(o0, o1, o2, data[j], data[j + 1], data[j + 2], pr, pg, pb, pp, po);
+      if (res < best) { best = res; bestK = fitK; }
     }
   }
-  if (best === Infinity || bestK < kMin) return -1;
-  const tol = LOCAL_RES_ABS + LOCAL_RES_REL * bestK * Math.sqrt(pp);
-  return best <= tol * tol ? bestK : -1;
+  return judgeFit(best, bestK, kMin, pp);
+}
+
+function judgeFit(best, bestK, kMin, pp) {
+  if (best === Infinity || best > blendTolerance(bestK, pp)) return UNEXPLAINED;
+  return bestK < kMin ? SUBJECT_ITSELF : bestK;
+}
+
+/**
+ * The subject's own colours, for the pixels no deeper neighbour explains: a
+ * hair strand one or two pixels wide is all edge, with nothing deeper beside
+ * it, but its colour is the hair's. The mean colour of every 16-level RGB bin
+ * holding at least 0.2 % of the interior pixels — deeper than `minDepth`, at
+ * least `minAlpha` opaque, with no key hue — most populated first, at most
+ * PALETTE_MAX of them, as a flat [r, g, b, …] array.
+ */
+function subjectPalette(data, n, depth, minDepth, minAlpha, excess) {
+  const counts = new Uint32Array(4096);
+  const sums = new Float64Array(4096 * 3);
+  let interior = 0;
+  for (let p = 0, i = 0; p < n; p++, i += 4) {
+    if (depth[p] <= minDepth || data[i + 3] < minAlpha || excess(data, i) >= FRINGE_DELTA) continue;
+    const slot = ((data[i] >> 4) << 8) | ((data[i + 1] >> 4) << 4) | (data[i + 2] >> 4);
+    counts[slot]++;
+    sums[slot * 3] += data[i]; sums[slot * 3 + 1] += data[i + 1]; sums[slot * 3 + 2] += data[i + 2];
+    interior++;
+  }
+  const floor = Math.max(PALETTE_MIN_COUNT, interior * PALETTE_MIN_SHARE);
+  const slots = [];
+  for (let slot = 0; slot < 4096; slot++) if (counts[slot] >= floor) slots.push(slot);
+  slots.sort((a, b) => counts[b] - counts[a]);
+  const colors = new Float64Array(Math.min(slots.length, PALETTE_MAX) * 3);
+  for (let k = 0; k < colors.length / 3; k++) {
+    const slot = slots[k];
+    for (let c = 0; c < 3; c++) colors[k * 3 + c] = sums[slot * 3 + c] / counts[slot];
+  }
+  return colors;
+}
+
+/** The plate share of pixel `p` read against the subject's palette, with the
+ *  same verdicts as `localShare`. */
+function paletteShare(data, p, plate, palette, kMin) {
+  const [pr, pg, pb] = plate.painted;
+  const pp = pr * pr + pg * pg + pb * pb;
+  const i = p * 4;
+  const o0 = data[i], o1 = data[i + 1], o2 = data[i + 2];
+  const po = pr * o0 + pg * o1 + pb * o2;
+  let best = Infinity, bestK = 0;
+  for (let c = 0; c < palette.length; c += 3) {
+    const res = fitBlend(o0, o1, o2, palette[c], palette[c + 1], palette[c + 2], pr, pg, pb, pp, po);
+    if (res < best) { best = res; bestK = fitK; }
+  }
+  return judgeFit(best, bestK, kMin, pp);
 }
 
 /**
  * Pass 4: separate every blend near the keyed region into colour + coverage,
  * from the deepest ring out, so a pixel is read against deeper pixels the
- * pass has already cleaned.
+ * pass has already cleaned. A pixel within LOCAL_DEPTH that no deeper
+ * neighbour explains is read against the subject's palette.
  */
 function unmixFringe(image, plate, reach, work, stats) {
   const { width, height, data } = image;
@@ -601,10 +678,15 @@ function unmixFringe(image, plate, reach, work, stats) {
   const rings = [firstRing(width, height, depth)];
   const deepest = Math.max(reach, LOCAL_DEPTH);
   for (let d = 1; d < deepest && rings[d - 1].length; d++) rings.push(nextRing(width, height, depth, rings[d - 1], d + 1));
+  const palette = subjectPalette(data, width * height, depth, deepest, 1, excess);
   for (let d = rings.length; d >= 1; d--) {
     for (const p of rings[d - 1]) {
       const c = cls[p];
-      let k = d <= LOCAL_DEPTH ? localShare(data, width, height, depth, p, d, plate, excess, LOCAL_K_MIN) : -1;
+      let k = UNEXPLAINED;
+      if (d <= LOCAL_DEPTH) {
+        k = localShare(data, width, height, depth, p, d, plate, excess, LOCAL_K_MIN);
+        if (k === UNEXPLAINED && c === SUBJECT) k = paletteShare(data, p, plate, palette, LOCAL_K_MIN);
+      }
       const local = k >= 0;
       if (!local) {
         if (d > reach || !(c === OUT_OF_BAND || (c === IN_BAND && d <= IN_BAND_UNMIX_DEPTH))) continue;
@@ -712,7 +794,8 @@ function despillClusters(image, plate, keyed, work, stats) {
  * or above `threshold`) whose every keyed channel clears every other channel
  * by more than 40 — the plate's hue, not a leaning — plus, as `fringe`, the
  * opaque pixels within two of the transparent region that are not that but
- * are the subject deeper in moved at least a fifth of the way to the plate
+ * are the subject deeper in (or, for a strand with nothing deeper, a colour
+ * of the subject's palette) moved at least a fifth of the way to the plate
  * (the local un-mix's own reading, see `localShare`): a yellow-green rim on
  * orange hair, a teal one on blue cloth, which a hue test cannot see.
  * `partialTinted` counts the tinted pixels among the partially transparent
@@ -740,13 +823,16 @@ export function keyResidue(image, plate, threshold) {
   let ring = firstRing(width, height, depth);
   const rings = [ring];
   if (ring.length) rings.push(nextRing(width, height, depth, ring, 2));
+  const palette = subjectPalette(data, n, depth, 2, FRINGE_MIN_ALPHA, excess);
   for (let d = 1; d <= rings.length; d++) {
     edge += rings[d - 1].length;
     for (const p of rings[d - 1]) {
       // A keyer that gave a pixel partial coverage separated the plate from
       // it; the fringe is the edge left OPAQUE with the plate still in it.
       if (candidate[p] === 1 || data[p * 4 + 3] < FRINGE_MIN_ALPHA) continue;
-      if (localShare(data, width, height, depth, p, d, plate, excess, RESIDUE_BLEND) < 0) continue;
+      let k = localShare(data, width, height, depth, p, d, plate, excess, RESIDUE_BLEND);
+      if (k === UNEXPLAINED && excess(data, p * 4) < FRINGE_DELTA) k = paletteShare(data, p, plate, palette, RESIDUE_BLEND);
+      if (k < 0) continue;
       candidate[p] = 1;
       fringe++;
     }
