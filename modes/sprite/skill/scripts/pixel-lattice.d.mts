@@ -31,7 +31,6 @@ export declare const DEFAULT_OUTLINE_STRENGTH: number;
 export declare const PIXEL_RECORD: string;
 export declare const PALETTE_KIND: string;
 
-export declare function pyRound(x: number): number;
 export declare function blankImage(width: number, height: number): RgbaImage;
 export declare function cropImage(image: RgbaImage, x: number, y: number, w: number, h: number): RgbaImage;
 export declare function alphaBbox(image: RgbaImage, min: number): Box | null;

@@ -34,6 +34,7 @@ import {
   resolveAssetUri,
   saveRoster,
   type BreatheRecord,
+  type SliceRecord,
 } from "../domain.js";
 import { riveDefaultImages, riveIsPixelArt } from "../skill/scripts/rive-plan.mjs";
 
@@ -317,6 +318,24 @@ describe("loadRoster", () => {
     const mini = loadRoster(files({ "mini/project.json": MINI }))!
       .byContentSet.mini.sprite.motions[0].inspect!;
     expect(["headDrift", "sourceHeadDrift", "nearDuplicates", "rowJumps"].filter((k) => k in mini)).toEqual([]);
+  });
+
+  test("a jump's lift survives whole, one reading per frame; anything else is absent", () => {
+    // `--y-from cell`: px above the ground per frame, null for an empty one.
+    // Its entries mean their frame, so a list of the wrong length or with a
+    // non-number in it is dropped whole, never repaired.
+    const withLift = (lift: unknown) => {
+      const body = JSON.parse(MINI);
+      body.sprite.motions[0].inspect.lift = lift;
+      return loadRoster(files({ "mini/project.json": JSON.stringify(body) }))!
+        .byContentSet.mini.sprite.motions[0].inspect!;
+    };
+    expect(withLift([0, 12.5, null, 3]).lift).toEqual([0, 12.5, null, 3]);
+    for (const broken of [[0, 12.5, null], [0, "12.5", null, 3], [0, [1], 2, 3], {}, "0,1,2,3"]) {
+      expect({ broken, present: "lift" in withLift(broken) }).toEqual({ broken, present: false });
+    }
+    const mini = loadRoster(files({ "mini/project.json": MINI }))!.byContentSet.mini.sprite.motions[0].inspect!;
+    expect("lift" in mini).toBe(false);
   });
 
   test("a motion measured before the pipeline recorded the point has none", () => {
@@ -848,7 +867,7 @@ describe("0.5.0 sidecar additions", () => {
     join(import.meta.dir, "..", "seed", "lumi", "project.json"),
     "utf-8",
   );
-  const NEW_MOTION_KEYS = ["direction", "promptParts", "mirrorOf", "breathe", "variants"];
+  const NEW_MOTION_KEYS = ["direction", "promptParts", "mirrorOf", "breathe", "variants", "slice"];
 
   /** The mini fixture with its sidecar edited through JSON, then parsed. */
   const parsed = (edit: (body: any) => void) => {
@@ -1006,6 +1025,47 @@ describe("0.5.0 sidecar additions", () => {
       }).breathe?.anatomy;
       expect({ bad, anatomy }).toEqual({ bad, anatomy: { rigidRow: 41, axisX: 32, from: "override" } });
     }
+  });
+
+  test("a breathe's head-offset extremes travel whole with the record; malformed ones go on their own", () => {
+    // Where the head rides (image y, negative is up): the range, the travel
+    // between its ends, and the frames at each end — what `show` and the
+    // agent quote when asked how far the head moves.
+    const headOffset = { min: -3, max: 0, travel: 3, highest: [4], lowest: [0, 8] };
+    expect(motion0((m) => { m.source = "breathe"; m.breathe = { ...BREATHE, headOffset }; }).breathe)
+      .toEqual({ ...BREATHE, headOffset });
+    for (const bad of [
+      { ...headOffset, travel: "3" }, { ...headOffset, highest: [4.5] }, { ...headOffset, lowest: "0" },
+      { min: -3, max: 0, highest: [4], lowest: [0] }, [-3, 0],
+    ]) {
+      const breathe = motion0((m) => { m.source = "breathe"; m.breathe = { ...BREATHE, headOffset: bad }; }).breathe;
+      expect({ bad, breathe }).toEqual({ bad, breathe: BREATHE });
+    }
+  });
+
+  test("an auto slice's record travels whole with a sheet motion, and with nothing else", () => {
+    const slice: SliceRecord = {
+      mode: "auto", reason: "grid-clipped", gridClipped: [1, 2],
+      forced: { rows: false, cols: [false, true] }, clipped: [{ index: 3, why: "cut" }],
+    };
+    expect(motion0((m) => { m.slice = slice; }).slice).toEqual(slice);
+    expect(motion0((m) => { m.source = "sheet"; m.slice = slice; }).slice).toEqual(slice);
+    // Frames a clip, a still or a flip made were cut by no slice.
+    for (const source of ["video", "breathe", "mirror"]) {
+      expect({ source, has: "slice" in motion0((m) => { m.source = source; m.slice = slice; }) }).toEqual({ source, has: false });
+    }
+    expect(motion0((m) => { m.slice = { ...slice, reason: "asked", gridClipped: undefined, clipped: [] } }).slice)
+      .toEqual({ mode: "auto", reason: "asked", forced: slice.forced, clipped: [] });
+    for (const bad of [
+      { ...slice, mode: "grid" }, { ...slice, reason: "because" }, { ...slice, clipped: "3" },
+      { ...slice, forced: { rows: "no", cols: [] } }, { ...slice, forced: { rows: false, cols: [1] } }, "auto",
+    ]) {
+      expect({ bad, has: "slice" in motion0((m) => { m.slice = bad; }) }).toEqual({ bad, has: false });
+    }
+    // A malformed entry of a list goes on its own.
+    expect(motion0((m) => {
+      m.slice = { ...slice, gridClipped: [1, -2, "3"], clipped: [{ index: 3, why: "cut" }, { index: 2, why: "odd" }, 4] };
+    }).slice).toEqual({ ...slice, gridClipped: [1] });
   });
 
   test("mirrorOf travels only with source mirror", () => {

@@ -488,6 +488,74 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       }).toEqual({ headDrift: 7.448, source: false, nearDuplicates: [[2, 3], [15, 0]], rowJumps: false });
     });
 
+    test("a jump's lift travels whole, one reading per frame, or not at all", () => {
+      // `--y-from cell` keeps each frame's height above the ground; `inspect`
+      // reports it per frame (px, null for an empty frame), and all zeros is
+      // the answer "no drawn height". A list that is not one entry per frame,
+      // or holds anything but a number or null, cannot say which frame rose.
+      const { dir, realRun } = seedMini();
+      const old = projectJson(dir, "register-run", "--motion", "bounce",
+        "--run", join(FIXTURES, "bounce-run.json"), "--at", String(T2));
+      expect("lift" in old.inspect).toBe(false);
+
+      const withLift = (lift: unknown) => {
+        writeFileSync(join(dir, "lift-run.json"), JSON.stringify({ ...realRun, inspect: { ...realRun.inspect, lift } }));
+        return projectJson(dir, "register-run", "--motion", "bounce", "--run", join(dir, "lift-run.json"), "--at", String(T2));
+      };
+      expect(withLift([0, 12.5, null, 3]).inspect.lift).toEqual([0, 12.5, null, 3]);
+      expect(readProject(dir).sprite.motions[0].inspect.lift).toEqual([0, 12.5, null, 3]);
+      expect(project(dir, "show", "--motion", "bounce").out).toContain("  lift above the ground (y from cell): 0, 12.5, -, 3 px");
+      for (const broken of [[0, 12.5, null], [0, "12.5", null, 3], [0, [1], 2, 3], {}, "0,1,2,3"]) {
+        expect({ broken, present: "lift" in withLift(broken).inspect }).toEqual({ broken, present: false });
+      }
+    });
+
+    test("an auto slice's record travels without its geometry, and a run cut on the grid drops it", () => {
+      // What `run` found when the fixed grid cut through a pose: why it
+      // sliced by ink, whether it had to force the counts, and the poses
+      // clipped anyway — the cells to look at. Cut lines and pose boxes are
+      // sheet geometry and stay in the run summary and slice.json.
+      const { dir, realRun } = seedMini();
+      const slice = {
+        mode: "auto", cell: { width: 80, height: 70 }, reason: "grid-clipped", gridClipped: [1, 2],
+        nominalCell: { width: 64, height: 64 }, grew: { left: 8, top: 0, right: 8, bottom: 6 },
+        cuts: { rows: [70], cols: [[60], [58]] }, natural: { rows: 2, cols: [2, 1] },
+        forced: { rows: false, cols: [false, true] },
+        poses: [0, 1, 2, 3].map((index) => ({ index, box: { x: 0, y: 0, w: 10, h: 10 }, at: { x: 0, y: 0 } })),
+        clipped: [{ index: 3, why: "cut" }],
+      };
+      const register = (payload: unknown) => {
+        writeFileSync(join(dir, "slice-run.json"), JSON.stringify(payload));
+        return projectJson(dir, "register-run", "--motion", "bounce", "--run", join(dir, "slice-run.json"), "--at", String(T2));
+      };
+      const kept = { mode: "auto", reason: "grid-clipped", gridClipped: [1, 2], forced: { rows: false, cols: [false, true] }, clipped: [{ index: 3, why: "cut" }] };
+      expect(register({ ...realRun, slice }).slice).toEqual(kept);
+      expect(readProject(dir).sprite.motions[0].slice).toEqual(kept);
+      expect(projectJson(dir, "show", "--motion", "bounce").slice).toEqual(kept);
+      expect(project(dir, "show", "--motion", "bounce").out).toContain(
+        "  sliced by the poses' ink — the fixed grid cut through cells 01, 02; row 1 forced (cut at its thinnest columns); clipped anyway: 03 (cut apart from a pose it touched)",
+      );
+      // Asked for outright, nothing forced or clipped: said in as many words.
+      expect(register({ ...realRun, slice: { ...slice, reason: "asked", gridClipped: undefined, forced: { rows: false, cols: [false, false] }, clipped: [] } }).slice)
+        .toEqual({ mode: "auto", reason: "asked", forced: { rows: false, cols: [false, false] }, clipped: [] });
+      expect(project(dir, "show", "--motion", "bounce").out).toContain("  sliced by the poses' ink (asked)\n");
+
+      // Cut on the fixed grid again: the record went with the frames it described.
+      expect("slice" in register(realRun)).toBe(false);
+      expect("slice" in readProject(dir).sprite.motions[0]).toBe(false);
+
+      // Never half a record.
+      for (const broken of [
+        { ...slice, mode: "grid" }, { ...slice, reason: "because" }, { ...slice, clipped: "3" },
+        { ...slice, forced: { rows: "no", cols: [] } }, { ...slice, forced: { rows: false, cols: [1] } }, "auto",
+      ]) {
+        expect({ broken, present: "slice" in register({ ...realRun, slice: broken }) }).toEqual({ broken, present: false });
+      }
+      // A malformed clipped entry is dropped on its own; the rest of the list stands.
+      expect(register({ ...realRun, slice: { ...slice, clipped: [{ index: 3, why: "cut" }, { index: -1, why: "cut" }, { index: 2, why: "odd" }] } }).slice.clipped)
+        .toEqual([{ index: 3, why: "cut" }]);
+    });
+
     test("a malformed anchor point is dropped, not carried into the sidecar", () => {
       // A half-written or hand-edited point would be drawn as a guide with no
       // hint that it is nonsense — the viewer cannot tell 0 from measured-0.
@@ -2800,6 +2868,30 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
         expect(project(dir, "show", "--motion", "idle").out).toMatch(/breathe of ref-portrait \(refs\/portrait\.png\): depth 0\.02, 1 breath, lag 0\.15, smooth, rigid row 30, axis 32 \(detected\)/);
       });
 
+      test("the head-offset extremes are kept with the record, and show prints them beside it", () => {
+        // `breathe` reports them at the top of its summary (image y, negative
+        // is up): the range, the travel, and the frames at each end — the
+        // answer to "how far does the head move".
+        const dir = readyBounce();
+        projectJson(dir, "add-motion", "--id", "idle", "--source", "breathe");
+        const headOffset = { min: -3, max: 0, travel: 3, highest: [2], lowest: [0, 3] };
+        const summary = spriteRun(dir, "idle", { source: "breathe", still: "refs/portrait.png", breathe: BREATHE, headOffset });
+        const motion = JSON.parse(register(dir, "idle", summary, "--at", String(T2)).out);
+        expect(motion.breathe).toEqual({ still: "ref-portrait", ...BREATHE, headOffset });
+        expect(projectJson(dir, "show", "--motion", "idle").breathe.headOffset).toEqual(headOffset);
+        const shown = project(dir, "show", "--motion", "idle").out.split("\n");
+        const at = shown.findIndex((line) => line.startsWith("  breathe of ref-portrait"));
+        // Word for word what `sprite-sheet.mjs breathe` printed for the run.
+        expect(shown[at + 1]).toBe("  head offset -3..0px (travel 3px: highest in frame 2, lowest in 0, 3)");
+
+        // A summary from before the extremes were reported, or a broken one, keeps the rest of the record.
+        for (const broken of [undefined, { ...headOffset, travel: "3" }, { ...headOffset, highest: [2.5] }]) {
+          const again = JSON.parse(register(dir, "idle", { ...summary, headOffset: broken }, "--at", String(T2)).out);
+          expect({ broken, breathe: again.breathe }).toEqual({ broken, breathe: { still: "ref-portrait", ...BREATHE } });
+        }
+        expect(project(dir, "show", "--motion", "idle").out).not.toContain("head offset");
+      });
+
       test("a breathe is declared with no grid and no rate: the run brings both", () => {
         // The documented route-A form is `add-motion --id idle --source
         // breathe`: the breathe run times itself (`breathe --fps`, default 8)
@@ -2962,8 +3054,11 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
         expect(projectJson(dir, "show").staleMirrors).toEqual([
           { id: "bounce-left", mirrorOf: "bounce", reason: "bounce was registered again after it was mirrored" },
         ]);
-        expect(project(dir, "show").out).toMatch(/stale mirror: bounce-left \(of bounce\)/);
+        // The command, not a bare "mirror it again": the source's folder and the mirror's id.
+        const redo = "mirror it again from <character>/motions/bounce ('sprite-sheet.mjs mirror <character>/motions/bounce --name bounce-left') and register it";
+        expect(project(dir, "show").out).toContain(`stale mirror: bounce-left (of bounce) — bounce was registered again after it was mirrored; ${redo}`);
         expect(projectJson(dir, "show", "--motion", "bounce-left").stale).toBe("bounce was registered again after it was mirrored");
+        expect(project(dir, "show", "--motion", "bounce-left").out).toContain(`stale: bounce was registered again after it was mirrored — ${redo}`);
         // Still a mirror — a note, not a status flip.
         expect(readProject(dir).sprite.motions.find((m: any) => m.id === "bounce-left").status).toBe("ready");
 
@@ -3036,6 +3131,8 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
         expect(projectJson(dir, "show").staleMirrors).toEqual([
           { id: "bounce-left", mirrorOf: "bounce", reason: "its source 'bounce' is gone" },
         ]);
+        // No command to offer for a source that is gone: nothing is left to flip.
+        expect(project(dir, "show").out).toContain("stale mirror: bounce-left (of bounce) — its source 'bounce' is gone; there is nothing to mirror it from again");
       });
 
       test("a mirror cannot be turned to face its source's side, and a sheet run drops mirrorOf", () => {

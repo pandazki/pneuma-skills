@@ -8065,7 +8065,8 @@ function stepRive(characterDir, { images: askedImages = null, motions: named, in
       if (riveMirrorIsCurrent(source.motion, origin.motion, lookup)) {
         mirrorOf.set(source.motion.id, origin.motion.id);
       } else {
-        warnings.push(`${source.motion.id} flips an earlier run of ${origin.motion.id} — it goes in with its own frames; mirror it again ('sprite-sheet.mjs mirror') and register it to draw it from ${origin.motion.id}'s images`);
+        const from = `<character>/motions/${origin.motion.id}`;
+        warnings.push(`${source.motion.id} flips an earlier run of ${origin.motion.id} — it goes in with its own frames; mirror it again from ${from} ('sprite-sheet.mjs mirror ${from} --name ${source.motion.id}') and register it to draw it from ${origin.motion.id}'s images`);
       }
     }
 

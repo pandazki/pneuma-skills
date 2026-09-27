@@ -366,6 +366,13 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       'cells' are not registered.
       The motion's grid and fps become the run's (a sheet run's slice grid,
       a from-video run's packed grid), so the stage plays what landed.
+      A sheet run sliced by the poses' ink ('slice', mode "auto") is kept as
+      motion.slice { mode, reason, gridClipped?, forced, clipped } — why it
+      was sliced so, whether a count was forced and the poses clipped anyway;
+      the cut lines and pose boxes stay in the summary. A run cut on the
+      fixed grid drops it. A '--y-from cell' run's inspect.lift (px above
+      the ground per frame, null for an empty one) travels with the rest of
+      the inspect summary.
       A 'from-video' summary (source: "video") derives every frame from the
       CLIP instead of a sheet, with params.frameIndex and params.t seconds,
       and sets motion.source = "video". The clip must already be a registered
@@ -387,7 +394,9 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       A breathe summary (source: "breathe", from 'sprite-sheet.mjs breathe
       --name') names the still it warped ('still', a path) and 'breathe'
       { depth, breaths, lag, mode, anatomy? { rigidRow, axisX, from,
-      torsoHalf? } }: the still must already be a registered reference
+      torsoHalf? } } — and, at the top level, 'headOffset' { min, max,
+      travel, highest, lowest }, kept as motion.breathe.headOffset: the still
+      must already be a registered reference
       (add-ref --uploaded; a cut-out: --derived-from <ref> --op key; a frame
       becomes one with add-ref --derived-from <frame id>), every frame
       derives from it, motion.breathe records the parameters, and the
@@ -436,7 +445,9 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       transition joins is refused until the transition is removed.
 
   show [--motion <motionId>]
-      Compact summary for the agent. Lists stale mirrors — a mirror whose
+      Compact summary for the agent. --motion adds one motion's record:
+      its breathe (with the head-offset extremes), its auto slice and a
+      jump's lift. Lists stale mirrors — a mirror whose
       source was registered again after it, or is gone (staleMirrors) —,
       stale breathes — a breathe whose still was registered again after it,
       or is gone (staleBreathes) — and the ready sprite motions missing a
@@ -1056,6 +1067,8 @@ function finiteNumber(value) {
 function inspectSummary(value) {
   if (!value || typeof value !== "object") return undefined;
   const point = anchorPoint(value.anchorPoint);
+  // `--y-from cell`: how high each frame's feet stand above the ground.
+  const lift = frameLift(value.lift, value.frameCount);
   const bodyDrift = finiteNumber(value.bodyDrift);
   // The head-and-torso spread: judged on a region no alignment pins, so it
   // still reads a lurch after `--x-from feet` has zeroed `bodyDrift`.
@@ -1098,6 +1111,7 @@ function inspectSummary(value) {
     frameCount: value.frameCount,
     cell: value.cell,
     ...(point ? { anchorPoint: point } : {}),
+    ...(lift ? { lift } : {}),
     anchorDrift: value.anchorDrift,
     // `=== undefined`, not truthiness: 0 is the drift a well-aligned motion
     // has, and dropping it would hide the best result the pipeline can give.
@@ -1131,6 +1145,65 @@ function framePairs(value) {
   return value
     .filter((pair) => Array.isArray(pair) && pair.length === 2 && index(pair[0]) && index(pair[1]))
     .map(([from, to]) => [from, to]);
+}
+
+/** A `--y-from cell` lift — px above the ground per frame, null for an empty
+ *  frame — whole, or undefined. An entry means its frame, so a list that is
+ *  not one entry per frame, or holds anything but a number or null, cannot
+ *  say which frame rose: it is dropped, never repaired. */
+function frameLift(value, frameCount) {
+  if (!Array.isArray(value)) return undefined;
+  if (Number.isInteger(frameCount) && value.length !== frameCount) return undefined;
+  return value.every((v) => v === null || finiteNumber(v) !== undefined) ? [...value] : undefined;
+}
+
+/** Why `run` sliced a sheet by its poses' ink, and what a clipped pose ran
+ *  into — the vocabularies `sprite-sheet.mjs` writes into its slice block. */
+const SLICE_REASONS = ["asked", "grid-clipped"];
+const CLIP_REASONS = ["sheet-edge", "cut"];
+
+/**
+ * A run's `slice` block as the motion keeps it: why the sheet was sliced by
+ * ink (and, when the fixed grid cut through poses, which cells), whether the
+ * row or a row's pose count had to be forced, and the poses clipped anyway —
+ * the cells to look at. The cut lines, the grown cell and each pose's box are
+ * sheet geometry for the run summary and `slice.json`, not the sidecar.
+ * Whole or undefined; a malformed entry of a list is dropped on its own.
+ */
+function sliceRecord(raw) {
+  if (!raw || typeof raw !== "object" || raw.mode !== "auto" || !SLICE_REASONS.includes(raw.reason)) return undefined;
+  const { forced } = raw;
+  if (!forced || typeof forced !== "object" || typeof forced.rows !== "boolean"
+    || !Array.isArray(forced.cols) || !forced.cols.every((c) => typeof c === "boolean")) return undefined;
+  if (!Array.isArray(raw.clipped)) return undefined;
+  const index = (n) => Number.isInteger(n) && n >= 0;
+  const gridClipped = Array.isArray(raw.gridClipped) ? raw.gridClipped.filter(index) : undefined;
+  return {
+    mode: "auto",
+    reason: raw.reason,
+    ...(gridClipped ? { gridClipped } : {}),
+    forced: { rows: forced.rows, cols: [...forced.cols] },
+    clipped: raw.clipped
+      .filter((c) => c && typeof c === "object" && index(c.index) && CLIP_REASONS.includes(c.why))
+      .map((c) => ({ index: c.index, why: c.why })),
+  };
+}
+
+/** The slice record said in one line — `show --motion`, beside the source. */
+function sliceText(slice) {
+  const pad = (i) => String(i).padStart(2, "0");
+  const cells = slice.gridClipped ?? [];
+  const parts = [slice.reason === "asked"
+    ? "sliced by the poses' ink (asked)"
+    : `sliced by the poses' ink — the fixed grid cut through ${cells.length === 1 ? "cell" : "cells"} ${cells.map(pad).join(", ") || "a pose"}`];
+  if (slice.forced.rows) parts.push("rows forced (cut at the thinnest lines)");
+  slice.forced.cols.forEach((forced, row) => {
+    if (forced) parts.push(`row ${row} forced (cut at its thinnest columns)`);
+  });
+  if (slice.clipped.length) {
+    parts.push(`clipped anyway: ${slice.clipped.map((c) => `${pad(c.index)} (${c.why === "cut" ? "cut apart from a pose it touched" : "drawn off the sheet"})`).join(", ")}`);
+  }
+  return parts.join("; ");
 }
 
 /** `{ x, y, w, h }` in whole clip pixels, with a real width and height — or
@@ -1512,7 +1585,7 @@ function recordPromptParts(motion, parts, prompt) {
  * The record is what a re-run with one parameter changed starts from, so a
  * half of it is refused rather than stored.
  */
-function breatheRecord(raw, stillId) {
+function breatheRecord(raw, stillId, headOffset) {
   if (!raw || typeof raw !== "object") {
     fail("--run: a breathe summary carries no 'breathe' block — is this 'sprite-sheet.mjs breathe --json' output?");
   }
@@ -1540,6 +1613,7 @@ function breatheRecord(raw, stillId) {
       ...(torsoHalf !== undefined && torsoHalf >= 1 ? { torsoHalf } : {}),
     }
     : undefined;
+  const extremes = headOffsetRecord(headOffset);
   return {
     still: stillId,
     depth,
@@ -1547,7 +1621,30 @@ function breatheRecord(raw, stillId) {
     lag,
     mode: raw.mode,
     ...(anatomy ? { anatomy } : {}),
+    ...(extremes ? { headOffset: extremes } : {}),
   };
+}
+
+/**
+ * Where the head rode, as `breathe` reports it at the top of its summary
+ * (image y, negative is up): the range, the travel between its ends and the
+ * frames at each end — what `show` quotes when asked how far the head moves.
+ * Whole or undefined, on its own: a summary from before breathe reported it
+ * still records everything else.
+ */
+function headOffsetRecord(value) {
+  if (!value || typeof value !== "object") return undefined;
+  const [min, max, travel] = [value.min, value.max, value.travel].map(finiteNumber);
+  const frames = (list) => Array.isArray(list) && list.every((i) => Number.isInteger(i) && i >= 0);
+  if (min === undefined || max === undefined || travel === undefined || !frames(value.highest) || !frames(value.lowest)) return undefined;
+  return { min, max, travel, highest: [...value.highest], lowest: [...value.lowest] };
+}
+
+/** `-3..0px (travel 3px: highest in frame 4, lowest in 0, 8)` — the
+ *  extremes word for word as `sprite-sheet.mjs breathe` prints them. */
+function headOffsetText(h) {
+  const signed = (v) => (v > 0 ? `+${v}` : String(v));
+  return `${signed(h.min)}..${signed(h.max)}px (travel ${h.travel}px: highest in frame ${h.highest.join(", ")}, lowest in ${h.lowest.join(", ")})`;
 }
 
 /**
@@ -1633,6 +1730,18 @@ function staleMirrors(doc) {
     .filter((m) => m.source === "mirror" && typeof m.mirrorOf === "string" && m.mirrorOf)
     .map((m) => ({ id: m.id, mirrorOf: m.mirrorOf, reason: mirrorStaleness(doc, m) }))
     .filter((m) => m.reason !== null);
+}
+
+/**
+ * What to do about a stale mirror, as one clause: the exact `mirror` command
+ * while its source is still a motion of this character, and the fact that
+ * there is nothing to flip once it is not. Every note and `show` line that
+ * tells a mirror to be made again says it this way.
+ */
+function mirrorAgain(doc, mirrorId, sourceId) {
+  if (!doc.sprite.motions.some((m) => m.id === sourceId)) return "there is nothing to mirror it from again";
+  const from = `<character>/motions/${sourceId}`;
+  return `mirror it again from ${from} ('sprite-sheet.mjs mirror ${from} --name ${mirrorId}') and register it`;
 }
 
 /**
@@ -2018,9 +2127,13 @@ function motionLines(motion, doc) {
       // would send the agent to look it up.
       const stillUri = doc?.assets.find((asset) => asset.id === b.still)?.uri;
       lines.push(`  breathe of ${b.still}${stillUri ? ` (${stillUri})` : ""}: depth ${b.depth}, ${b.breaths} breath${b.breaths === 1 ? "" : "s"}, lag ${b.lag}, ${b.mode}${b.anatomy ? `, rigid row ${b.anatomy.rigidRow}, axis ${b.anatomy.axisX}${b.anatomy.torsoHalf === undefined ? "" : `, torso ${b.anatomy.torsoHalf}`} (${b.anatomy.from})` : ""}`);
+      if (b.headOffset) lines.push(`  head offset ${headOffsetText(b.headOffset)}`);
     } else if (motion.source === "mirror" && motion.mirrorOf) {
       lines.push(`  mirror of ${motion.mirrorOf}`);
     }
+    if (motion.slice) lines.push(`  ${sliceText(motion.slice)}`);
+    const lift = motion.inspect?.lift;
+    if (Array.isArray(lift)) lines.push(`  lift above the ground (y from cell): ${lift.map((v) => v ?? "-").join(", ")} px`);
     const exported = Object.keys(motion.exports ?? {});
     if (exported.length) lines.push(`  exports: ${exported.join(", ")}`);
     const colourways = Object.keys(motion.variants ?? {});
@@ -2773,6 +2886,7 @@ function main() {
         // a hand-edited file might.
         if (source !== "mirror") delete motion.mirrorOf;
         if (source !== "breathe") delete motion.breathe;
+        if (source !== "sheet") delete motion.slice;
       }
       // Prompt parts record how a SHEET prompt was built. A breathe or a
       // mirror is drawn from no prompt: the loader drops parts on one, so
@@ -3123,7 +3237,7 @@ function main() {
         }
         stillId = still.id;
       }
-      const breathe = breatheRun ? breatheRecord(run.breathe, stillId) : null;
+      const breathe = breatheRun ? breatheRecord(run.breathe, stillId, run.headOffset) : null;
       const mirror = mirrorRun ? mirrorSource(doc, motion, run) : null;
 
       const cell = run.cell && Number.isFinite(Number(run.cell.width)) && Number.isFinite(Number(run.cell.height))
@@ -3434,6 +3548,11 @@ function main() {
       // other shape drops it, as it drops a loop's clip record.
       if (breathe) motion.breathe = breathe;
       else delete motion.breathe;
+      // A sheet sliced by its poses' ink; a run cut on the fixed grid, or
+      // frames no sheet was sliced for, carry none.
+      const slice = sliceRecord(run.slice);
+      if (slice) motion.slice = slice;
+      else delete motion.slice;
       if (mirror) {
         motion.mirrorOf = mirror.source.id;
         motion.direction = mirror.facing;
@@ -3512,7 +3631,7 @@ function main() {
         // Its colourways were baked from its own (old) frames and stay until
         // those are replaced: registering the new mirror retires them.
         const colourways = Object.keys(flipped.variants ?? {});
-        console.error(`note: ${flipped.id} mirrors the frames this run replaced — mirror it again from <character>/motions/${motion.id} ('sprite-sheet.mjs mirror <character>/motions/${motion.id} --name ${flipped.id}') and register it${colourways.length ? `, then recolor it (its ${listOf(colourways)} colourway files go with its old frames)` : ""}`);
+        console.error(`note: ${flipped.id} mirrors the frames this run replaced — ${mirrorAgain(doc, flipped.id, motion.id)}${colourways.length ? `, then recolor it (its ${listOf(colourways)} colourway files go with its old frames)` : ""}`);
       }
       break;
     }
@@ -3728,6 +3847,7 @@ function main() {
           prompt: motion.prompt,
           ...(motion.promptParts ? { promptParts: motion.promptParts } : {}),
           ...(motion.breathe ? { breathe: motion.breathe } : {}),
+          ...(motion.slice ? { slice: motion.slice } : {}),
           ...(stale ? { stale } : {}),
           notes: motion.notes,
           ...(motion.keyframe ? { keyframe: motion.keyframe } : {}),
@@ -3743,7 +3863,7 @@ function main() {
         };
         emit(values, payload, [
           ...motionLines(motion, doc),
-          ...(stale ? [`  stale: ${stale} — ${motion.source === "breathe" ? "breathe" : "mirror"} it again and register it`] : []),
+          ...(stale ? [`  stale: ${stale} — ${motion.source === "breathe" ? "breathe it again and register it" : mirrorAgain(doc, motion.id, motion.mirrorOf)}`] : []),
           ...(motion.inspect?.warnings ?? []),
         ]);
         break;
@@ -3765,7 +3885,7 @@ function main() {
         ...(recorded.length ? [`  ${recorded.join(" · ")}`] : []),
         ...whole.map(([key, uri]) => `  exported: ${key} (${uri})`),
         ...summary.motions.map((m) => `  ${m.id.padEnd(12)} ${m.status.padEnd(10)} ${m.kind === "loop" ? "loop".padEnd(7) : `${m.grid.rows}x${m.grid.cols}`.padEnd(7)} @ ${m.fps}fps  ${m.frameCount} frames${m.warnings.length ? `  (${m.warnings.length} warnings)` : ""}`),
-        ...(summary.staleMirrors ?? []).map((m) => `  stale mirror: ${m.id} (of ${m.mirrorOf}) — ${m.reason}; mirror it again and register it`),
+        ...(summary.staleMirrors ?? []).map((m) => `  stale mirror: ${m.id} (of ${m.mirrorOf}) — ${m.reason}; ${mirrorAgain(doc, m.id, m.mirrorOf)}`),
         ...(summary.staleBreathes ?? []).map((m) => `  stale breathe: ${m.id} (of ${m.still}) — ${m.reason}; breathe it again and register it`),
         ...(recordedVariants(doc.sprite.character).length ? [`  colourways: ${recordedVariants(doc.sprite.character).map((v) => v.name).join(", ")}`] : []),
         ...(summary.variantsMissing ?? []).map((m) => `  missing colourway: ${m.motion} has no ${m.variants.join(", ")} — recolor it (sprite-sheet.mjs recolor <character>/motions/${m.motion}) and register-recolor`),

@@ -4517,7 +4517,9 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(left.shares).toBeUndefined();
       expect(left.estimatedDecodeBytes).toBeGreaterThan(0);
       expect(json.frameCount).toBe(8);
-      expect(json.warnings).toContainEqual(expect.stringMatching(/walk-left flips an earlier run of walk-right.*'sprite-sheet\.mjs mirror'/));
+      // The exact command, the way register-run's note names it: the source
+      // motion's folder and the mirror's id, not a bare "mirror it again".
+      expect(json.warnings).toContain("walk-left flips an earlier run of walk-right — it goes in with its own frames; mirror it again from <character>/motions/walk-right ('sprite-sheet.mjs mirror <character>/motions/walk-right --name walk-left') and register it to draw it from walk-right's images");
       const planned = rivePlanFor(loadRoster([
         { path: "pip/project.json", content: readFileSync(join(dir, "project.json"), "utf-8") },
       ])!.byContentSet.pip)!;

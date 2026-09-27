@@ -258,6 +258,41 @@ describe("extractContext — routes, directions, breathe and mirror", () => {
     expect(context).toContain("Source: breathe (from ref-still) · depth 0.03, 2 breaths, pixel, rigid row 96, axis 67, torso 30 (override)");
   });
 
+  test("a breathe's context says how far the head travels, and in which frames it rides highest and lowest", () => {
+    const body = JSON.parse(withWalk());
+    body.sprite.motions.push({
+      id: "idle", label: "Idle", prompt: "", grid: { rows: 3, cols: 4 }, fps: 8, loop: true, anchor: "bottom",
+      status: "ready", source: "breathe", frames: [], videos: [],
+      breathe: {
+        still: "ref-still", depth: 0.03, breaths: 2, lag: 0.1, mode: "pixel",
+        headOffset: { min: -3, max: 0, travel: 3, highest: [4], lowest: [0, 8] },
+      },
+    });
+    const context = extractSpriteContext({ address: { contentSet: "mini", motion: "idle" } } as never, files({ "mini/project.json": JSON.stringify(body) }));
+    expect(context).toContain("Head offset: -3..0px (travel 3px: highest in frame 4, lowest in 0, 8)");
+    expect(at({ contentSet: "mini", motion: "idle" })).not.toContain("Head offset");
+  });
+
+  test("a sheet motion's context carries a jump's lift and an auto slice's findings", () => {
+    const body = JSON.parse(withWalk());
+    Object.assign(body.sprite.motions[0], {
+      slice: {
+        mode: "auto", reason: "grid-clipped", gridClipped: [1, 2],
+        forced: { rows: true, cols: [false, true] }, clipped: [{ index: 3, why: "cut" }, { index: 0, why: "sheet-edge" }],
+      },
+    });
+    body.sprite.motions[0].inspect.lift = [0, 12.5, null, 3];
+    const motionId = body.sprite.motions[0].id;
+    const context = extractSpriteContext({ address: { contentSet: "mini", motion: motionId } } as never, files({ "mini/project.json": JSON.stringify(body) }));
+    expect(context).toContain("Lift above the ground (y from cell): 0, 12.5, -, 3 px");
+    expect(context).toContain(
+      "Slice: by the poses' ink — the fixed grid cut through cells 01, 02; rows forced (cut at the thinnest lines); row 1 forced (cut at its thinnest columns); clipped anyway: 03 (cut apart from a pose it touched), 00 (drawn off the sheet)",
+    );
+    const plain = extractSpriteContext({ address: { contentSet: "mini", motion: motionId } } as never, files({ "mini/project.json": withWalk() }));
+    expect(plain).not.toContain("Lift above");
+    expect(plain).not.toContain("Slice:");
+  });
+
   test("an anchor reference says which way it faces", () => {
     expect(at({ contentSet: "mini", ref: "anchor-left" })).toContain('Reference: "Anchor left" (anchor-left, role anchor, faces left)');
   });

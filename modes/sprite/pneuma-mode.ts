@@ -25,6 +25,7 @@ import {
   type CharacterProject,
   type Motion,
   type Roster,
+  type SliceRecord,
 } from "./domain.js";
 import spriteManifest from "./manifest.js";
 import SpritePreview from "./viewer/SpritePreview.js";
@@ -67,6 +68,34 @@ function addressNumber(
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+/** Frame indices the way the pipeline names cells: `03`. */
+const pad2 = (i: number) => String(i).padStart(2, "0");
+
+/**
+ * An auto slice in one line: why the sheet was sliced by ink, a forced
+ * count, and the poses clipped anyway — the cells the agent should look at
+ * before trusting the frames. `sprite-project.mjs show --motion` says the
+ * same clauses.
+ */
+function describeSlice(slice: SliceRecord): string {
+  const cells = slice.gridClipped ?? [];
+  const parts = [
+    slice.reason === "asked"
+      ? "by the poses' ink (asked)"
+      : `by the poses' ink — the fixed grid cut through ${cells.length === 1 ? "cell" : "cells"} ${cells.map(pad2).join(", ") || "a pose"}`,
+  ];
+  if (slice.forced.rows) parts.push("rows forced (cut at the thinnest lines)");
+  slice.forced.cols.forEach((forced, row) => {
+    if (forced) parts.push(`row ${row} forced (cut at its thinnest columns)`);
+  });
+  if (slice.clipped.length > 0) {
+    parts.push(`clipped anyway: ${slice.clipped
+      .map((c) => `${pad2(c.index)} (${c.why === "cut" ? "cut apart from a pose it touched" : "drawn off the sheet"})`)
+      .join(", ")}`);
+  }
+  return parts.join("; ");
+}
+
 /** One motion, described the way the agent needs to decide what to do next. */
 function describeMotion(
   motion: Motion,
@@ -101,6 +130,15 @@ function describeMotion(
     lines.push(
       `Source: breathe (from ${b?.still ?? "a still that was not recorded"})${params}`,
     );
+    // How far the head rides — word for word what `breathe` printed, so the
+    // answer to "the head bobs too much" starts from the measured travel.
+    const h = b?.headOffset;
+    if (h) {
+      const signed = (v: number) => (v > 0 ? `+${v}` : String(v));
+      lines.push(
+        `Head offset: ${signed(h.min)}..${signed(h.max)}px (travel ${h.travel}px: highest in frame ${h.highest.join(", ")}, lowest in ${h.lowest.join(", ")})`,
+      );
+    }
   } else if (motion.source === "mirror") {
     lines.push(
       motion.mirrorOf
@@ -121,6 +159,13 @@ function describeMotion(
         ? ` (declared ${declaredCell.width}×${declaredCell.height})`
         : "";
     lines.push(`Measured cell: ${measured}${declared}`);
+  }
+  // How the sheet was cut when it was not cut on the fixed grid, and how
+  // high each frame of a jump stands — the numbers a "the jump has no
+  // height" or "a pose is cut off" request needs.
+  if (motion.slice) lines.push(`Slice: ${describeSlice(motion.slice)}`);
+  if (motion.inspect?.lift) {
+    lines.push(`Lift above the ground (y from cell): ${motion.inspect.lift.map((v) => v ?? "-").join(", ")} px`);
   }
   if (motion.prompt) lines.push(`Prompt: "${motion.prompt}"`);
   if (motion.notes) lines.push(`Notes: ${motion.notes}`);
