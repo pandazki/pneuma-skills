@@ -1215,7 +1215,7 @@ node {SKILL_PATH}/scripts/sprite-sheet.mjs align <character>/motions/breathe/cel
 `--x-from cell` because the frames already stand where they stand — the axis
 column and the soles are fixed by construction — and `feet` would re-round a
 feet centroid that the stretch moves by a fraction of a pixel. On the Lumi
-stills this chain measures `bodyDrift` 0.03–0.07 px and no `inspect` warnings.
+stills this chain measures `bodyDrift` 0.03–0.06 px and no `inspect` warnings.
 `--out` must not be the directory the still sits in (it is cleared first; that
 is refused by name).
 

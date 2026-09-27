@@ -41,8 +41,10 @@
  * CPython ≥ 3.12's compensated float `sum` so the whole-pixel bake matches
  * the Python bake bit for bit; the canvas GROWS (and says so) instead of
  * refusing when the stretch would leave it; the sidecar / curator plumbing
- * (frozen anatomy, fingerprints, depth_x) is not ported; the `smooth` mode,
- * the image-coordinate overrides and the per-frame head check are ours.
+ * (frozen anatomy, fingerprints, depth_x) is not ported; our default depth
+ * is 0.02, not 0.06. Ours, not upstream's: the `smooth` mode, the
+ * image-coordinate overrides, the per-frame head check and the warning for a
+ * prop that crosses the rigid row.
  */
 
 /** A refusal this module knows how to phrase. The CLI prints its message. */

@@ -562,6 +562,16 @@ describe("breathe.mjs — smooth", () => {
     expect(pixel.canvas.grew.top).toBeGreaterThan(0);
   });
 
+  test("overrides are reported in the still's pixel coordinates, the ones the CLI takes", () => {
+    const { x0, y0 } = a.box;
+    const baked = bakeBreathe(src, { frames: 12, depth, mode: "smooth", rigidY: y0 + a.rigidRow + 4, axisX: x0 + a.axisX + 1, torsoHalf: 12 });
+    expect(baked.anatomy.rigidRow).toBe(a.rigidRow + 4);
+    expect(baked.anatomy.axisX).toBe(a.axisX + 1);
+    expect(baked.warnings).toContain(`rigid-row-override: detected y=${y0 + a.rigidRow} -> manual y=${y0 + a.rigidRow + 4}`);
+    expect(baked.warnings).toContain(`axis-x-override: detected x=${x0 + a.axisX} -> manual x=${x0 + a.axisX + 1}`);
+    expect(baked.warnings).toContain(`torso-half-override: detected ${a.torsoHalf}px -> manual 12px`);
+  });
+
   test("pixel mode on anti-aliased art says so", () => {
     const pixel = bakeBreathe(src, { frames: 12, depth, mode: "pixel" });
     expect(pixel.warnings.some((w) => w.includes("anti-aliased") && w.includes("--mode smooth"))).toBe(true);
