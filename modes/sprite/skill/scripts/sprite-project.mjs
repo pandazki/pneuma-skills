@@ -14,7 +14,7 @@
  *
  * Subcommands: init, set-character, add-ref, add-motion, set-motion,
  * sheet-prompt, set-sheet, set-keyframe, register-run, register-export,
- * add-video, set-video, remove-motion, show.
+ * register-recolor, add-video, set-video, remove-motion, show.
  */
 
 import { spawnSync } from "node:child_process";
@@ -29,6 +29,9 @@ import { parseArgs } from "node:util";
 import {
   GUIDE_DEFAULT, RECOMMENDED_FRAMES, SHEET_FRAME_COUNTS, SHEET_STATES, buildSheetPrompt, sheetGrid,
 } from "./sheet-prompt.mjs";
+// The colourway rules — one authority, shared with sprite-sheet.mjs (which
+// bakes them) and the viewer's loader (which reads them back).
+import { RecolorError, checkVariant, sameVariant, variantNameProblem } from "./recolor.mjs";
 
 const SCHEMA = "pneuma-craft/project/v1";
 const TOOL = "sprite-sheet.mjs";
@@ -98,7 +101,7 @@ const BREATHE_MODES = ["smooth", "pixel"];
 
 const SUBCOMMANDS = [
   "init", "set-character", "add-ref", "add-motion", "set-motion", "sheet-prompt", "set-sheet", "set-keyframe",
-  "register-run", "register-export", "add-video", "set-video", "remove-motion", "show",
+  "register-run", "register-export", "register-recolor", "add-video", "set-video", "remove-motion", "show",
 ];
 
 /**
@@ -164,10 +167,13 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
   set-character [--description] [--style] [--facing left|right]
                 [--purpose ${PURPOSES.join("|")}] [--asymmetric "<sentence>"]
                 [--pixel <height>] [--colors N] [--no-pixel]
+                [--remove-variant <name,…>]
       Change the character after init; only the flags given change.
       --asymmetric "" takes the sentence back. --no-pixel says the character
       is not pixel art after all: character.pixel goes, and a pinned palette
-      is unregistered (its file stays on disk).
+      and every colourway's files are unregistered (the files stay on disk).
+      --remove-variant drops colourways: their record and every motion's
+      files for them (unregistered; the files stay on disk).
 
   add-ref --id <refId> --file <path> --role ${REF_ROLES.join("|")}
           [--direction ${DIRECTIONS.join("|")}] [--label <text>]
@@ -309,6 +315,21 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       exports cut from the frames it replaces, and the .riv and Aseprite
       sheet that held them — the files stay on disk; export again.
 
+  register-recolor --report <recolor.json|->
+      Register what 'sprite-sheet.mjs recolor' baked, from its --json report
+      (piped: 'sprite-sheet.mjs recolor … --json | sprite-project.mjs
+      register-recolor --dir <character> --report -'). The colourways
+      ({ name, map, tolerance? }) are recorded once, on the character
+      (character.pixel.variants: a changed one replaces its record in place,
+      a new one is appended); each motion's sheet, atlas and preview become
+      <motion>-variant-<name>-sheet / -atlas / -gif, the sheet and preview
+      derived from the motion's frames (step "recolor"), named by
+      motion.variants[name]. The report's frames must be the ones registered
+      now. A colourway whose map changed unregisters the files other motions
+      baked with the old one. A later register-run of a motion unregisters
+      its colourway files (bake them again — recolor without --map uses the
+      recorded colourways); show lists the ready motions missing one.
+
   register-run --motion <motionId> --run <run.json|-> [--video <videoId>] [--repin] [--at <ms>]
       Consume a 'sprite-sheet.mjs run' summary: registers sheet-alpha (when
       keyed), every frame, the packed sheet, the atlas, the GIF and the WebP,
@@ -387,7 +408,8 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
 
   show [--motion <motionId>]
       Compact summary for the agent. Lists stale mirrors — a mirror whose
-      source was registered again after it, or is gone (staleMirrors).
+      source was registered again after it, or is gone (staleMirrors) — and
+      the ready sprite motions missing a recorded colourway (variantsMissing).
 
 Exit code 0 on success, 1 on failure with a one-line ERROR: on stderr.`;
 
@@ -429,7 +451,7 @@ const MOTION_KEYS = [
   "id", "label", "direction", "prompt", "promptParts", "kind", "brief", "grid", "fps", "loop", "anchor", "status",
   "notes", "source", "mirrorOf", "breathe",
   "keyframe", "keyframeAlpha", "sheetRaw", "sheetAlpha", "sheet", "atlas", "frames",
-  "gif", "webp", "exports", "videos", "inspect",
+  "gif", "webp", "exports", "variants", "videos", "inspect",
 ];
 /** A 0.4.x character's keys come first, in the order `init` has always
  *  written them, so an older file is rewritten byte for byte. */
@@ -635,7 +657,7 @@ function assetOwner(doc, id) {
     const exports = motion.exports && typeof motion.exports === "object" ? motion.exports : {};
     const slots = [
       motion.sheetRaw, motion.sheetAlpha, motion.sheet, motion.atlas, motion.gif, motion.webp,
-      motion.keyframe, motion.keyframeAlpha, ...Object.values(exports),
+      motion.keyframe, motion.keyframeAlpha, ...Object.values(exports), ...variantAssetIds(motion),
     ];
     if (slots.includes(id)
       || (motion.frames ?? []).includes(id)
@@ -951,6 +973,9 @@ function runOwnedIds(doc, motionId) {
     // and nothing rebuilds them, so a new run retires them all — an export
     // in project.json always describes the frames registered now.
     ...Object.keys(EXPORT_SPECS).map((format) => exportAssetId(motionId, format)),
+    // Every colourway's files, for the same reason: they were baked from
+    // the frames a run replaces.
+    ...variantAssetIds(doc.sprite.motions.find((m) => m.id === motionId)),
   ]);
   const mine = `motion '${motionId}'`;
   return doc.assets
@@ -1330,6 +1355,19 @@ function setLoopBrief(motion, values, now) {
  */
 function applyCharacterFlags(doc, character, values) {
   const notes = [];
+  if (values["remove-variant"] !== undefined) {
+    if (values["no-pixel"]) fail("--remove-variant: --no-pixel already removes every colourway — pass one of them");
+    const names = String(values["remove-variant"]).split(",").map((n) => n.trim()).filter(Boolean);
+    const recorded = recordedVariants(character);
+    const unknown = names.filter((name) => !recorded.some((v) => v.name === name));
+    if (!names.length || unknown.length) {
+      fail(`--remove-variant: ${unknown.length ? `no colourway ${unknown.join(", ")}` : "name a colourway"} (${recorded.map((v) => v.name).join(", ") || "this character has none"})`);
+    }
+    notes.push(...retireVariants(doc, names, "it was removed"));
+    const kept = recorded.filter((v) => !names.includes(v.name));
+    if (kept.length) character.pixel.variants = kept;
+    else delete character.pixel.variants;
+  }
   if (values.purpose !== undefined) character.purpose = oneOf(values.purpose, PURPOSES, "--purpose");
   if (values.asymmetric !== undefined) {
     const sentence = String(values.asymmetric).trim();
@@ -1347,6 +1385,8 @@ function applyCharacterFlags(doc, character, values) {
       dropAssets(doc, [palette.id]);
       notes.push(`note: unregistered ${palette.id} with the pixel spec — the file stays on disk: ${palette.uri}`);
     }
+    // Colourways are pixel art's too.
+    notes.push(...retireVariants(doc, null, "the character is no longer pixel art"));
     delete character.pixel;
     return notes;
   }
@@ -1366,6 +1406,7 @@ function applyCharacterFlags(doc, character, values) {
     logicalHeight,
     ...(typeof current?.palette === "string" && current.palette ? { palette: current.palette } : {}),
     ...(colors === undefined ? {} : { colors }),
+    ...(recordedVariants(character).length ? { variants: recordedVariants(character) } : {}),
   };
   return notes;
 }
@@ -1620,14 +1661,204 @@ function pinPalette(doc, dir, motion, run, frameIds, repin, now) {
   setEdge(doc, edge(id, frameIds, operation("derive", now, {
     tool: TOOL, step: "palette", motion: motion.id, colors: counted,
   }, frameIds)));
+  const variants = recordedVariants(character);
   character.pixel = {
     logicalHeight: character.pixel.logicalHeight,
     palette: id,
     ...(counted !== undefined ? { colors: counted } : character.pixel.colors !== undefined ? { colors: character.pixel.colors } : {}),
+    ...(variants.length ? { variants } : {}),
   };
   if (!pinned) return [];
   const others = doc.sprite.motions.filter((m) => m.id !== motion.id && m.status === "ready").map((m) => m.id);
-  return [`re-pinned ${id} to ${uri}${others.length ? ` — ${listOf(others)} ${others.length === 1 ? "was" : "were"} quantised to the old palette; run ${others.length === 1 ? "it" : "them"} again to match` : ""}`];
+  return [`re-pinned ${id} to ${uri}${others.length ? ` — ${listOf(others)} ${others.length === 1 ? "was" : "were"} quantised to the old palette; run ${others.length === 1 ? "it" : "them"} again to match` : ""}${variants.length ? `; the colourways (${listOf(variants.map((v) => v.name))}) map the old palette's colours — draft a new map (recolor-palette) and check each one's report` : ""}`];
+}
+
+// ---------------------------------------------------------------------------
+// Colourways (recolor)
+// ---------------------------------------------------------------------------
+//
+// A colourway is recorded ONCE, on the character: `character.pixel.variants`
+// = [{ name, map, tolerance? }] — the swap, so a motion made again can be
+// re-baked with it and a later session knows what "red-team" means. Each
+// motion names only the files its bake left: `motion.variants[name] = { sheet,
+// atlas, gif }`, asset ids `<motion>-variant-<name>-sheet|atlas|gif`, derived
+// from the motion's frames. The rules for a colourway are `recolor.mjs`'s.
+
+const variantAssetId = (motionId, name, part) => `${motionId}-variant-${name}-${part}`;
+
+/** The asset ids a motion's colourway files are registered under. */
+function variantAssetIds(motion) {
+  const variants = motion?.variants && typeof motion.variants === "object" ? motion.variants : {};
+  return Object.values(variants).flatMap((files) => [files?.sheet, files?.atlas, files?.gif].filter((id) => typeof id === "string"));
+}
+
+/** The character's colourways as recorded, or []. */
+function recordedVariants(character) {
+  const variants = character?.pixel?.variants;
+  return Array.isArray(variants) ? variants : [];
+}
+
+/**
+ * Unregister colourway files — of the `names` given, or every one when null —
+ * from every motion (or only `motions`), the files staying on disk. Returns
+ * the stderr notes, one per motion, saying `why`.
+ */
+function retireVariants(doc, names, why, motions = doc.sprite.motions) {
+  const notes = [];
+  for (const motion of motions) {
+    const variants = motion.variants && typeof motion.variants === "object" ? motion.variants : null;
+    if (!variants) continue;
+    const gone = Object.keys(variants).filter((name) => names === null || names.includes(name));
+    if (!gone.length) continue;
+    const ids = gone.flatMap((name) => variantAssetIds({ variants: { [name]: variants[name] } }));
+    const uris = doc.assets.filter((a) => ids.includes(a.id)).map((a) => a.uri);
+    dropAssets(doc, ids);
+    for (const name of gone) delete variants[name];
+    if (!Object.keys(variants).length) delete motion.variants;
+    notes.push(`note: unregistered ${motion.id}'s ${listOf(gone)} colourway files — ${why}${uris.length ? ` (the files stay on disk: ${uris.join(", ")})` : ""}`);
+  }
+  return notes;
+}
+
+/** The ready sprite motions missing a recorded colourway: `[{ motion, variants }]`. */
+function variantsMissing(doc) {
+  const names = recordedVariants(doc.sprite.character).map((v) => v.name);
+  if (!names.length) return [];
+  return doc.sprite.motions
+    .filter((m) => !m.kind && m.status === "ready" && m.sheet)
+    .map((m) => ({ motion: m.id, variants: names.filter((name) => !m.variants?.[name]) }))
+    .filter((m) => m.variants.length);
+}
+
+/** The `--json` report of `sprite-sheet.mjs recolor`, from a file or stdin. */
+function readRecolorReport(source) {
+  const text = source === "-" ? readFileSync(0, "utf-8") : (() => {
+    const path = resolve(source);
+    if (!existsSync(path)) fail(`--report: file not found: ${path}`);
+    return readFileSync(path, "utf-8");
+  })();
+  if (!text.trim()) {
+    fail("--report: the report is empty — recolor printed nothing on stdout, which means it failed; its ERROR: line above says why, and nothing was registered");
+  }
+  let report;
+  try {
+    report = JSON.parse(text);
+  } catch (error) {
+    fail(`--report: not valid JSON (${error.message}) — pass the --json output of sprite-sheet.mjs recolor`);
+  }
+  if (!report || report.kind !== "recolor") {
+    fail(`--report: expected the --json report of sprite-sheet.mjs recolor (kind recolor), got kind '${report?.kind}'`);
+  }
+  if (!Array.isArray(report.variants) || !report.variants.length) fail("--report: the report names no colourways");
+  if (!Array.isArray(report.motions) || !report.motions.length) fail("--report: the report lists no motions");
+  return report;
+}
+
+/** A colourway rule of `recolor.mjs`, refused as this script refuses. */
+function variantRule(fn) {
+  try {
+    return fn();
+  } catch (error) {
+    if (error instanceof RecolorError) fail(error.message);
+    throw error;
+  }
+}
+
+/**
+ * `register-recolor`: record the colourways the bake used on the character
+ * and each motion's files for them. A colourway whose swap changed retires
+ * the files other motions made with the old one — they would be offered as
+ * that colourway while showing the old colours.
+ */
+function registerRecolor(doc, dir, report, now) {
+  const character = doc.sprite.character;
+  const pixel = character.pixel;
+  if (!pixel || !(Number(pixel.logicalHeight) > 0) || !pixel.palette) {
+    fail(`--report: ${character.name} is not ${pixel ? "palette-pinned" : "pixel art"} — colourways belong to a pixel-art character with a pinned palette`);
+  }
+  if (report.palette?.id !== undefined && report.palette.id !== pixel.palette) {
+    fail(`--report: this bake read the palette ${report.palette.id}, but ${character.name}'s pinned palette is ${pixel.palette} — recolor again`);
+  }
+  const variants = variantRule(() => report.variants.map((v, i) => checkVariant(v, `--report variants[${i}]`)));
+  const names = variants.map((v) => v.name);
+  if (new Set(names).size !== names.length) fail("--report: two colourways share a name");
+  const recorded = recordedVariants(character);
+  const changed = variants.filter((v) => {
+    const old = recorded.find((r) => r.name === v.name);
+    return old && !sameVariant(old, v);
+  }).map((v) => v.name);
+  const inReport = new Set(report.motions.map((m) => String(m?.id)));
+  const notes = retireVariants(doc, changed, "they were baked with the old map; recolor them again",
+    doc.sprite.motions.filter((m) => !inReport.has(m.id)));
+  /** Metadata with the file's size, when it can be read. */
+  const sized = (metadata, file) => {
+    const size = fileSize(file);
+    return size === undefined ? metadata : { ...metadata, size };
+  };
+
+  const registered = report.motions.map((entry) => {
+    const motion = findMotion(doc, String(entry?.id), "--report motion");
+    if (motion.kind || motion.status !== "ready") {
+      fail(`--report: '${motion.id}' is ${motion.kind ? `a ${motion.kind}` : `not ready (${motion.status})`} — only a ready sprite motion has colourways`);
+    }
+    const expected = frameUris(doc, motion.frames ?? []);
+    const got = (Array.isArray(entry.frames) ? entry.frames : []).map((path) => toUri(dir, String(path), "--report frames"));
+    if (got.length !== expected.length || got.some((u, i) => u !== expected[i])) {
+      fail(`--report: '${motion.id}' was recoloured from ${got.length} frames that are not the ones registered for it (${expected.length}) — recolor it again from the motion as it is registered now`);
+    }
+    const owner = `motion '${motion.id}'`;
+    const files = {};
+    for (const baked of Array.isArray(entry.variants) ? entry.variants : []) {
+      const variant = variants.find((v) => v.name === baked?.name);
+      if (!variant) fail(`--report: '${motion.id}' carries a colourway '${baked?.name}' the report does not define`);
+      const label = `--report ${motion.id} ${variant.name}`;
+      const uriOf = (key) => {
+        if (typeof baked[key] !== "string") fail(`${label}: no '${key}' — is this 'sprite-sheet.mjs recolor --json' output?`);
+        const uri = toUri(dir, baked[key], `${label} ${key}`);
+        return { uri, file: requireFile(dir, uri, `${label} ${key}`) };
+      };
+      const sheet = uriOf("sheet");
+      const atlas = uriOf("atlas");
+      const gif = uriOf("gif");
+      const ids = { sheet: variantAssetId(motion.id, variant.name, "sheet"), atlas: variantAssetId(motion.id, variant.name, "atlas"), gif: variantAssetId(motion.id, variant.name, "gif") };
+      const counts = {
+        substituted: reported(baked.substituted),
+        unmatched: Array.isArray(baked.unmatched) ? baked.unmatched.length : undefined,
+        uncovered: reported(baked.uncovered?.colors),
+      };
+      for (const key of Object.keys(counts)) if (counts[key] === undefined) delete counts[key];
+      upsertAsset(doc, {
+        id: ids.sheet, type: "image", uri: sheet.uri, name: `${motion.id} atlas image (${variant.name})`,
+        metadata: sized({ ...imageMetadata(sheet.file, `${label} sheet`), ...counts }, sheet.file),
+        createdAt: now, status: "ready",
+      }, owner);
+      const params = { tool: TOOL, step: "recolor", variant: variant.name, tolerance: variant.tolerance };
+      setEdge(doc, edge(ids.sheet, motion.frames, operation("derive", now, params, motion.frames)));
+      upsertAsset(doc, {
+        id: ids.atlas, type: "text", uri: atlas.uri, name: `${motion.id} atlas (${variant.name})`,
+        metadata: sized({}, atlas.file), createdAt: now, status: "ready",
+      }, owner);
+      setEdge(doc, edge(ids.atlas, [ids.sheet], operation("derive", now, { tool: TOOL, step: "pack" })));
+      upsertAsset(doc, {
+        id: ids.gif, type: "image", uri: gif.uri, name: `${motion.id} preview (${variant.name})`,
+        metadata: sized({ ...imageMetadata(gif.file, `${label} gif`), ...(motion.fps ? { fps: motion.fps } : {}) }, gif.file),
+        createdAt: now, status: "ready",
+      }, owner);
+      setEdge(doc, edge(ids.gif, motion.frames, operation("derive", now, params, motion.frames)));
+      files[variant.name] = ids;
+    }
+    motion.variants = { ...(motion.variants ?? {}), ...files };
+    return { id: motion.id, variants: files };
+  });
+
+  // The colourways, recorded once: a changed one replaces its record in
+  // place, a new one is appended.
+  const merged = [
+    ...recorded.map((r) => variants.find((v) => v.name === r.name) ?? r),
+    ...variants.filter((v) => !recorded.some((r) => r.name === v.name)),
+  ];
+  character.pixel = { ...pixel, variants: merged };
+  return { variants: merged.map((v) => v.name), motions: registered, notes };
 }
 
 /**
@@ -1693,6 +1924,8 @@ function motionLines(motion, doc) {
     }
     const exported = Object.keys(motion.exports ?? {});
     if (exported.length) lines.push(`  exports: ${exported.join(", ")}`);
+    const colourways = Object.keys(motion.variants ?? {});
+    if (colourways.length) lines.push(`  colourways: ${colourways.join(", ")}`);
   }
   if (motion.direction) lines.push(`  faces ${motion.direction}`);
   if (motion.promptParts) {
@@ -1708,6 +1941,7 @@ function motionLines(motion, doc) {
 
 function summarize(doc, dir) {
   const stale = staleMirrors(doc);
+  const missing = variantsMissing(doc);
   return {
     dir: resolve(dir),
     title: doc.title,
@@ -1724,6 +1958,7 @@ function summarize(doc, dir) {
     ...(doc.sprite.exports && Object.keys(doc.sprite.exports).length ? { exports: doc.sprite.exports } : {}),
     // Only when there is one: a 0.4.x summary stays byte-for-byte what it was.
     ...(stale.length ? { staleMirrors: stale } : {}),
+    ...(missing.length ? { variantsMissing: missing } : {}),
   };
 }
 
@@ -1741,6 +1976,7 @@ function compactMotion(motion) {
     ...(motion.direction ? { direction: motion.direction } : {}),
     ...(motion.source === "breathe" || motion.source === "mirror" ? { source: motion.source } : {}),
     ...(motion.source === "mirror" && motion.mirrorOf ? { mirrorOf: motion.mirrorOf } : {}),
+    ...(motion.variants && Object.keys(motion.variants).length ? { variants: Object.keys(motion.variants) } : {}),
     // Loop motions only, and only once recorded WHOLE — the same rule `kind`
     // follows, so a sprite motion's summary is byte-for-byte what it was, and
     // the summary never hands a later turn half an answer to work to.
@@ -1776,7 +2012,7 @@ const OPTIONS = {
   "set-character": {
     description: { type: "string" }, style: { type: "string" }, facing: { type: "string" },
     purpose: { type: "string" }, asymmetric: { type: "string" }, pixel: { type: "string" }, colors: { type: "string" },
-    "no-pixel": { type: "boolean", default: false },
+    "no-pixel": { type: "boolean", default: false }, "remove-variant": { type: "string" },
   },
   "add-ref": {
     id: { type: "string" }, file: { type: "string" }, role: { type: "string" }, label: { type: "string" },
@@ -1818,6 +2054,7 @@ const OPTIONS = {
     repin: { type: "boolean", default: false },
   },
   "register-export": { report: { type: "string" } },
+  "register-recolor": { report: { type: "string" } },
   "add-video": {
     motion: { type: "string" }, file: { type: "string" }, model: { type: "string" }, mode: { type: "string" },
     from: { type: "string", multiple: true }, prompt: { type: "string" }, duration: { type: "string" },
@@ -3016,6 +3253,10 @@ function main() {
       // run replaces; the new run records its own (or the next export
       // measures again).
       delete motion.clip;
+      // The colourways were baked from the frames this run replaced: their
+      // files went with the leftovers above, and the record goes with them.
+      const rebake = Object.keys(motion.variants ?? {});
+      delete motion.variants;
       motion.status = "ready";
 
       // What the user asked for against what landed. The frames are already
@@ -3057,10 +3298,16 @@ function main() {
       for (const reverse of doc.sprite.motions.filter((m) => m.reverseOf === motion.id)) {
         console.error(`note: ${reverse.id} plays the frames this run replaced backwards — cut it again with 'sprite-sheet.mjs transition --reverse-of ${motion.id}' and register it`);
       }
+      if (rebake.length) {
+        console.error(`note: retired ${motion.id}'s ${listOf(rebake)} colourway files — they were baked from the frames this run replaced; bake them again with the recorded colourways: sprite-sheet.mjs recolor <character>/motions/${motion.id} --json | sprite-project.mjs register-recolor --dir <character> --report -`);
+      }
       // The same for a mirror: its frames are the old ones flipped. Said, not
       // undone — `show` lists it as stale until it is mirrored again.
       for (const flipped of doc.sprite.motions.filter((m) => m.source === "mirror" && m.mirrorOf === motion.id)) {
-        console.error(`note: ${flipped.id} mirrors the frames this run replaced — mirror it again from motions/${motion.id} ('sprite-sheet.mjs mirror') and register it`);
+        // Its colourways were baked from its own (old) frames and stay until
+        // those are replaced: registering the new mirror retires them.
+        const colourways = Object.keys(flipped.variants ?? {});
+        console.error(`note: ${flipped.id} mirrors the frames this run replaced — mirror it again from motions/${motion.id} ('sprite-sheet.mjs mirror') and register it${colourways.length ? `, then recolor it (its ${listOf(colourways)} colourway files go with its old frames)` : ""}`);
       }
       break;
     }
@@ -3077,6 +3324,20 @@ function main() {
       emit(values, registered, [
         `${registered.asset} → ${registered.uri} (${registered.metadata.size ?? "?"} bytes) registered`,
       ]);
+      break;
+    }
+
+    case "register-recolor": {
+      const doc = loadProject(dir);
+      const report = readRecolorReport(requireFlag(values.report, "--report"));
+      const registered = registerRecolor(doc, dir, report, now);
+      saveProject(dir, doc);
+      const { notes, ...payload } = registered;
+      emit(values, payload, [
+        `colourways: ${payload.variants.join(", ")}`,
+        ...payload.motions.map((m) => `  ${m.id}: ${Object.keys(m.variants).join(", ")} registered (sheet + atlas + preview)`),
+      ]);
+      for (const note of notes) console.error(note);
       break;
     }
 
@@ -3289,6 +3550,8 @@ function main() {
         ...whole.map(([key, uri]) => `  exported: ${key} (${uri})`),
         ...summary.motions.map((m) => `  ${m.id.padEnd(12)} ${m.status.padEnd(10)} ${m.kind === "loop" ? "loop".padEnd(7) : `${m.grid.rows}x${m.grid.cols}`.padEnd(7)} @ ${m.fps}fps  ${m.frameCount} frames${m.warnings.length ? `  (${m.warnings.length} warnings)` : ""}`),
         ...(summary.staleMirrors ?? []).map((m) => `  stale mirror: ${m.id} (of ${m.mirrorOf}) — ${m.reason}; mirror it again and register it`),
+        ...(recordedVariants(doc.sprite.character).length ? [`  colourways: ${recordedVariants(doc.sprite.character).map((v) => v.name).join(", ")}`] : []),
+        ...(summary.variantsMissing ?? []).map((m) => `  missing colourway: ${m.motion} has no ${m.variants.join(", ")} — recolor it (sprite-sheet.mjs recolor <character>/motions/${m.motion}) and register-recolor`),
       ]);
       break;
     }

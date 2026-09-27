@@ -527,6 +527,7 @@ const en: SpriteStrings = {
     aseprite: "Aseprite sheet",
     riv: "Rive",
     "character-aseprite": "Aseprite sheet",
+    colourway: "Colourway",
   },
   exportPurpose: (format, m) => {
     switch (format) {
@@ -552,6 +553,8 @@ const en: SpriteStrings = {
         return "the sheet + Aseprite JSON with a frame tag, zipped · Phaser's createFromAseprite, Flame";
       case "character-aseprite":
         return `${m.motions} sprite motion${m.motions === 1 ? "" : "s"} on one sheet, a frame tag each · Phaser builds every animation in one call`;
+      case "colourway":
+        return "sheet, atlas and preview in another palette · the same frames, pixel for pixel";
       default:
         return [
           "whole character",
@@ -910,6 +913,7 @@ const zhCN: SpriteStrings = {
     aseprite: "Aseprite 图集",
     riv: "Rive",
     "character-aseprite": "Aseprite 图集",
+    colourway: "配色",
   },
   exportPurpose: (format, m) => {
     switch (format) {
@@ -935,6 +939,8 @@ const zhCN: SpriteStrings = {
         return "雪碧图加带帧标签的 Aseprite JSON，打成 zip · 给 Phaser 的 createFromAseprite、Flame";
       case "character-aseprite":
         return `${m.motions} 个精灵动作拼在一张图上，每个动作一个帧标签 · Phaser 一次建好全部动画`;
+      case "colourway":
+        return "换一套配色的雪碧图、图集和预览 · 帧还是那些帧，像素一一对应";
       default:
         return [
           "整个角色",

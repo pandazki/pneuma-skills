@@ -16,7 +16,11 @@
  *  - T8's `mirror` over a `run --pixel` motion (T5's lattice, S's pinned
  *    palette, T2's own-pack anchor) and over T10's one-command breathe
  *    (68fd3b6c's breathe record), and T10's `fit` / `breathe --name` on a
- *    character declared pixel art.
+ *    character declared pixel art;
+ *  - T11's colourways against T8's mirror (per motion: a mirror has none
+ *    until it is recoloured), T10's breathe of a pixel still, T7's
+ *    sheet-prompt and the declared height `run --pixel` reads, and a
+ *    re-run of a mirrored, recoloured source.
  *
  * Every fixture is drawn at test time; the file skips with a named reason
  * when ffmpeg is missing.
@@ -24,12 +28,13 @@
 
 import { afterAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
 import { buildWalkerClip, readBbox } from "./fixtures/pipeline/make-sheet.mjs";
-import { blank, logicalArt, paste, setPixel, upscaledFractional } from "./fixtures/pixel/lattice-art.mjs";
+import { PALETTE, blank, logicalArt, paste, setPixel, upscaledFractional } from "./fixtures/pixel/lattice-art.mjs";
+import { RECOLOR_KIND } from "../skill/scripts/recolor.mjs";
 import { swayAboutTrend } from "../skill/scripts/drift.mjs";
 import type { RgbaImage } from "../skill/scripts/pixel-lattice.mjs";
 
@@ -332,4 +337,146 @@ describe.skipIf(!HAS_FFMPEG)("mirror x pixel lattice, breathe --name, palette pi
     expect({ mode: breathed.mode, modeFrom: breathed.modeFrom, recorded: breathed.breathe.mode })
       .toEqual({ mode: "pixel", modeFrom: "character.pixel", recorded: "pixel" });
   }, SLOW);
+});
+
+describe.skipIf(!HAS_FFMPEG)("colourways x mirror, breathe, sheet-prompt", () => {
+  const doc = (dir: string) => JSON.parse(readFileSync(join(dir, "project.json"), "utf-8"));
+  const readJson = (path: string) => JSON.parse(readFileSync(path, "utf-8"));
+  const hex = (c: number[]) => `#${c.slice(0, 3).map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+  const BLUE = hex(PALETTE[2]);
+  const registerRecolor = (dir: string, report: unknown) =>
+    exec(PROJECT, ["register-recolor", "--dir", dir, "--report", "-", "--json"], JSON.stringify(report));
+  const motionOf = (dir: string, id: string) => doc(dir).sprite.motions.find((m: { id: string }) => m.id === id);
+  function decode(path: string): RgbaImage {
+    const p = spawnSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", path], { encoding: "utf-8" });
+    const [width, height] = String(p.stdout).trim().split(",").map(Number);
+    const r = spawnSync("ffmpeg", ["-v", "error", "-i", path, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", "-"], { maxBuffer: 1 << 28 });
+    return { width, height, data: new Uint8Array(r.stdout.subarray(0, width * height * 4)) };
+  }
+  /** A pixel knight facing right with `walk-right` run --pixel, registered
+   *  (palette pinned) and baked in one colourway, `red-team`. */
+  function recolouredKnight() {
+    const ws = fresh();
+    const src = pixelSheet(join(ws, "sheet.png"));
+    const dir = join(ws, "knight");
+    projectJson(dir, "init", "--name", "Knight", "--purpose", "game", "--pixel", "28", "--facing", "right");
+    projectJson(dir, "add-motion", "--id", "walk-right", "--rows", "2", "--cols", "2", "--fps", "8", "--loop", "--direction", "right");
+    const walk = sheet("run", src, "--rows", "2", "--cols", "2", "--out", join(dir, "motions", "walk-right"), "--name", "walk-right",
+      "--fps", "8", "--loop", "--pixel", "--no-webp");
+    expect(registerRun(dir, "walk-right", walk).code).toBe(0);
+    const map = join(ws, "map.json");
+    writeFileSync(map, JSON.stringify({ kind: RECOLOR_KIND, version: 1, variants: [{ name: "red-team", map: { [BLUE]: "#b4285a" } }] }));
+    const baked = sheet("recolor", join(dir, "motions", "walk-right"), "--map", map);
+    expect(registerRecolor(dir, baked).code).toBe(0);
+    return { ws, src, dir };
+  }
+
+  test("a mirror of a recoloured motion has no colourway until it is recoloured; its bake is the flip of the source's", () => {
+    const { dir } = recolouredKnight();
+    projectJson(dir, "add-motion", "--id", "walk-left", "--rows", "2", "--cols", "2", "--fps", "8", "--loop",
+      "--source", "mirror", "--direction", "left");
+    expect(registerRun(dir, "walk-left", sheet("mirror", join(dir, "motions", "walk-right"), "--name", "walk-left")).code).toBe(0);
+    // Colourways are per motion: the flip carries none, and nothing claims one.
+    expect(motionOf(dir, "walk-left").variants).toBeUndefined();
+    expect(existsSync(join(dir, "motions", "walk-left", "variants"))).toBe(false);
+    const shown = projectJson(dir, "show");
+    expect(shown.variantsMissing).toEqual([{ motion: "walk-left", variants: ["red-team"] }]);
+    expect(shown.motions.find((m: { id: string }) => m.id === "walk-left").variants).toBeUndefined();
+
+    // Recoloured with the recorded colourway (no --map): the swap is per
+    // pixel, so the mirror's colourway is the source's colourway flipped,
+    // standing on the mirror's own pivot.
+    const baked = sheet("recolor", join(dir, "motions", "walk-left"));
+    expect(registerRecolor(dir, baked).code).toBe(0);
+    expect(Object.keys(motionOf(dir, "walk-left").variants)).toEqual(["red-team"]);
+    expect(projectJson(dir, "show").variantsMissing).toBeUndefined();
+    const right = decode(join(dir, "motions", "walk-right", "variants", "red-team", "frames", "01.png"));
+    const left = decode(join(dir, "motions", "walk-left", "variants", "red-team", "frames", "01.png"));
+    expect([left.width, left.height]).toEqual([right.width, right.height]);
+    let differing = 0;
+    for (let y = 0; y < right.height; y++) {
+      for (let x = 0; x < right.width; x++) {
+        for (let c = 0; c < 4; c++) {
+          if (right.data[(y * right.width + x) * 4 + c] !== left.data[(y * right.width + (right.width - 1 - x)) * 4 + c]) differing++;
+        }
+      }
+    }
+    expect(differing).toBe(0);
+    expect(readJson(join(dir, "motions", "walk-left", "variants", "red-team", "atlas.json")).meta.anchorPoint)
+      .toEqual(readJson(join(dir, "motions", "walk-left", "atlas.json")).meta.anchorPoint);
+  }, 2 * SLOW);
+
+  test("re-running a mirrored, recoloured source retires its colourways and notes the stale mirror, whose own stay", () => {
+    const { src, dir } = recolouredKnight();
+    projectJson(dir, "add-motion", "--id", "walk-left", "--rows", "2", "--cols", "2", "--fps", "8", "--loop",
+      "--source", "mirror", "--direction", "left");
+    expect(registerRun(dir, "walk-left", sheet("mirror", join(dir, "motions", "walk-right"), "--name", "walk-left")).code).toBe(0);
+    expect(registerRecolor(dir, sheet("recolor", join(dir, "motions", "walk-left"))).code).toBe(0);
+
+    const again = sheet("run", src, "--rows", "2", "--cols", "2", "--out", join(dir, "motions", "walk-right"), "--name", "walk-right",
+      "--fps", "8", "--loop", "--pixel", "--no-webp");
+    const r = registerRun(dir, "walk-right", again);
+    expect(r.code).toBe(0);
+    // Both said: the source's colourway files went with its frames, and the
+    // mirror flips frames that are gone — and will need its colours again.
+    expect(r.err).toMatch(/retired walk-right's red-team colourway files/);
+    expect(r.err).toMatch(/walk-left mirrors the frames this run replaced .* then recolor it \(its red-team colourway files go with its old frames\)/);
+    expect(motionOf(dir, "walk-right").variants).toBeUndefined();
+    expect(doc(dir).assets.some((a: { id: string }) => a.id.startsWith("walk-right-variant-"))).toBe(false);
+    // The mirror's colourway still describes the frames registered for it.
+    expect(Object.keys(motionOf(dir, "walk-left").variants)).toEqual(["red-team"]);
+    const shown = projectJson(dir, "show");
+    expect(shown.staleMirrors.map((m: { id: string }) => m.id)).toEqual(["walk-left"]);
+    expect(shown.variantsMissing).toEqual([{ motion: "walk-right", variants: ["red-team"] }]);
+
+    // Mirrored again: its old colourway goes with its old frames.
+    const mirrored = registerRun(dir, "walk-left", sheet("mirror", join(dir, "motions", "walk-right"), "--name", "walk-left"));
+    expect(mirrored.code).toBe(0);
+    expect(mirrored.err).toMatch(/retired walk-left's red-team colourway files/);
+    expect(motionOf(dir, "walk-left").variants).toBeUndefined();
+  }, 2 * SLOW);
+
+  test("a breathe of a pixel still keeps to the pinned palette, so its colourway swaps it whole", () => {
+    const { dir } = recolouredKnight();
+    mkdirSync(join(dir, "refs"), { recursive: true });
+    copyFileSync(join(dir, "motions", "walk-right", "frames", "00.png"), join(dir, "refs", "still.png"));
+    projectJson(dir, "add-ref", "--id", "still", "--file", "refs/still.png", "--role", "custom", "--derived-from", "walk-right-frame-00");
+    projectJson(dir, "add-motion", "--id", "idle", "--fps", "8", "--source", "breathe");
+    const breathed = sheet("breathe", join(dir, "refs", "still.png"), "--out", join(dir, "motions", "idle"), "--name", "idle",
+      "--frames", "12", "--no-webp");
+    expect({ mode: breathed.mode, modeFrom: breathed.modeFrom }).toEqual({ mode: "pixel", modeFrom: "character.pixel" });
+    expect(registerRun(dir, "idle", breathed).code).toBe(0);
+
+    const baked = sheet("recolor", join(dir, "motions", "idle"));
+    const idle = baked.motions[0];
+    // Whole-pixel moves add no colour: nothing is off the pinned palette,
+    // and the recorded colourway's blue is found and swapped.
+    expect(idle.offPalette).toBeUndefined();
+    expect(baked.warnings.filter((w: string) => w.includes("not in the pinned palette"))).toEqual([]);
+    expect(idle.variants[0]).toMatchObject({ name: "red-team", unmatched: [] });
+    expect(idle.variants[0].substituted).toBeGreaterThan(0);
+    expect(idle.variants[0].frames).toHaveLength(12);
+    expect(registerRecolor(dir, baked).code).toBe(0);
+    expect(Object.keys(motionOf(dir, "idle").variants)).toEqual(["red-team"]);
+  }, 2 * SLOW);
+
+  test("sheet-prompt states the height run --pixel holds the frames to: one field, character.pixel.logicalHeight", () => {
+    const ws = fresh();
+    const src = pixelSheet(join(ws, "sheet.png"));
+    const dir = join(ws, "knight");
+    projectJson(dir, "init", "--name", "Knight", "--style", "16-bit pixel art, hard edges.", "--pixel", "28");
+    projectJson(dir, "add-motion", "--id", "walk", "--rows", "2", "--cols", "2", "--fps", "8", "--loop");
+    const built = projectJson(dir, "sheet-prompt", "--motion", "walk", "--action", "Contact, pass, contact, pass.");
+    expect(built.promptParts.guards).toContain("pixel:28");
+    expect(built.prompt).toContain("Pixel art, 28 logical pixels tall");
+    const walk = sheet("run", src, "--rows", "2", "--cols", "2", "--out", join(dir, "motions", "walk"), "--name", "walk",
+      "--fps", "8", "--loop", "--pixel", "--no-webp");
+    expect(walk.pixel.logicalHeight).toMatchObject({ declared: 28, honoured: true });
+    // Declared again at another height: both follow it.
+    projectJson(dir, "set-character", "--pixel", "40");
+    expect(projectJson(dir, "sheet-prompt", "--motion", "walk", "--action", "Contact, pass.").prompt).toContain("40 logical pixels tall");
+    const missed = sheet("run", src, "--rows", "2", "--cols", "2", "--out", join(dir, "motions", "walk"), "--name", "walk",
+      "--fps", "8", "--loop", "--pixel", "--no-webp");
+    expect(missed.pixel.logicalHeight).toMatchObject({ declared: 40, honoured: false });
+  }, 2 * SLOW);
 });

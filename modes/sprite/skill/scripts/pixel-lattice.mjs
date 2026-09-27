@@ -802,10 +802,12 @@ export function snapGrid(image, pitch, phase, { refine = true, detailBias = true
  * `source` "own" | "consensus" | "outlier" | "empty"), the consensus pitch, and
  * the warnings — every fallback is said, none is silent. Throws nothing: a
  * generation where no frame shows a grid comes back with `consensus` {1, 1}
- * and the caller decides.
+ * and the caller decides. `hintLabel` is what the warnings call the hint
+ * (default `--pitch-hint N`; a pitch derived from the declared height says so).
  */
-export function latticeFrames(images, { detailBias = true, pitchHint = null, maxPitch = MAX_PITCH } = {}) {
+export function latticeFrames(images, { detailBias = true, pitchHint = null, maxPitch = MAX_PITCH, hintLabel = null } = {}) {
   const warnings = [];
+  const hintName = hintLabel ?? `--pitch-hint ${pitchHint}`;
   const tight = images.map((image) => {
     const box = solidBbox(image);
     return box ? { box, image: cropImage(image, box.x, box.y, box.w, box.h) } : null;
@@ -831,7 +833,7 @@ export function latticeFrames(images, { detailBias = true, pitchHint = null, max
   const consensus = hinted ? { x: pitchHint, y: pitchHint } : measured;
   if (hinted && Math.min(measured.x, measured.y) >= 2
     && Math.max(measured.x / pitchHint, pitchHint / measured.x, measured.y / pitchHint, pitchHint / measured.y) > PITCH_FAMILY_RATIO) {
-    warnings.push(`--pitch-hint ${pitchHint} overrides the measured consensus ${measured.x.toFixed(2)}x${measured.y.toFixed(2)}`);
+    warnings.push(`${hintName} overrides the measured consensus ${measured.x.toFixed(2)}x${measured.y.toFixed(2)}`);
   }
 
   // The second opinion: warnings only, the snap never reads it.
@@ -843,7 +845,7 @@ export function latticeFrames(images, { detailBias = true, pitchHint = null, max
   const runlen = { x: runlenAxis("x"), y: runlenAxis("y") };
   warnings.push(...crosscheckPitchRunlen(consensus, runlen));
 
-  const centre = hinted ? `--pitch-hint ${pitchHint}` : `the consensus ${consensus.x.toFixed(2)}x${consensus.y.toFixed(2)}`;
+  const centre = hinted ? hintName : `the consensus ${consensus.x.toFixed(2)}x${consensus.y.toFixed(2)}`;
   const frames = tight.map((t, index) => {
     const tag = `frame ${String(index).padStart(2, "0")}`;
     if (!t) return { index, logical: null, box: null, own: null, pitch: null, source: "empty" };
@@ -896,6 +898,81 @@ export function pooledPitch(images, maxPitch = MAX_PITCH) {
     if (score > best.score) best = { pitch: p, score };
   }
   return best;
+}
+
+// ---------------------------------------------------------------------------
+// The declared height (ours: `character.pixel.logicalHeight`)
+// ---------------------------------------------------------------------------
+//
+// Not ported. Upstream's `fit.logical_height` is the height of the logical
+// CELL, which only sets the display scale; the snapped sprite keeps its native
+// size, and squashing it to a declared height was removed there (2026-07-14/17)
+// because merging cells "eats detail". Here the declared number is the
+// FIGURE's height — the user's answer to "how tall, in pixels" — and it does
+// two things, neither of which resamples a block:
+//   - when the frames do not show their grid (the normal case for GPT-Image
+//     pixel art), the pitch that makes them that tall stands in for
+//     `--pitch-hint`, if the frames' own loose readings back it;
+//   - after the snap, the height the frames came out at is compared with it
+//     and a miss is said, with the numbers to act on.
+
+/** How far the frames' height may sit from the declared one and still be it:
+ *  5 %, and at least one logical pixel (a walk bobs by one). */
+export const HEIGHT_SLACK = 0.05;
+/**
+ * A pitch derived from the declared height is used only when a reading of the
+ * frames' own — their pooled whole-number pitch, or the same-colour run length
+ * — is within this ratio of it. Both read loosely on generated art (runs short
+ * at soft edges; the pooled score peaks at every whole number), hence the
+ * width. Measured 2026-09-27 on the knight walk (sg shoot e6, blocks ≈ 8 px by
+ * eye, 427 px tall): pooled 9, runs 7.05 — declared 53 needs 8.06 (1.12× from
+ * the pooled reading, taken); declared 32 needs 13.34 (1.48× / 1.89×,
+ * refused — cutting at it would merge the drawn blocks into 32 rows).
+ */
+export const HEIGHT_EVIDENCE_RATIO = 1.25;
+
+/** Upper median, as `consensusPitch` takes it. */
+function upperMedian(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[sorted.length >> 1];
+}
+
+/**
+ * The pitch at which frames whose solid bboxes are `boxes` come out
+ * `logicalHeight` logical pixels tall — their median source height over it —
+ * plus that height, and whether the frames' own readings (`lattice.pooled`,
+ * `lattice.runlen`) back it. Null without a height or a non-empty frame.
+ */
+export function heightPitch(lattice, logicalHeight) {
+  const heights = lattice.frames.map((f) => f.box?.h).filter((h) => h > 0);
+  if (!heights.length || !(logicalHeight > 0)) return null;
+  const source = upperMedian(heights);
+  const pitch = source / logicalHeight;
+  const { pooled, runlen } = lattice;
+  const readings = [
+    pooled && pooled.pitch >= 2 ? { what: "pooled", pitch: pooled.pitch } : null,
+    runlen && Math.min(runlen.x, runlen.y) >= 2 ? { what: "runs", pitch: (runlen.x + runlen.y) / 2 } : null,
+  ].filter(Boolean);
+  const backed = pitch >= 2 && pitch <= MAX_PITCH
+    && readings.some((r) => Math.max(r.pitch / pitch, pitch / r.pitch) <= HEIGHT_EVIDENCE_RATIO);
+  return { pitch, source, readings, backed };
+}
+
+/**
+ * Whether snapped frames are the declared height: the median of their logical
+ * heights against it, within `HEIGHT_SLACK`. Null when no frame was snapped.
+ */
+export function heightCheck(frames, logicalHeight) {
+  const heights = frames.filter((f) => f.logical).map((f) => f.logical.height);
+  if (!heights.length || !(logicalHeight > 0)) return null;
+  const measured = upperMedian(heights);
+  const slack = Math.max(1, Math.round(logicalHeight * HEIGHT_SLACK));
+  return {
+    declared: logicalHeight,
+    measured,
+    range: [Math.min(...heights), Math.max(...heights)],
+    honoured: Math.abs(measured - logicalHeight) <= slack,
+  };
 }
 
 // ---------------------------------------------------------------------------

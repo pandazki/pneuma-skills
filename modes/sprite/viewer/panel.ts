@@ -220,9 +220,11 @@ export function exportFamilyOrder(purpose: CharacterPurpose | undefined): Export
  * Every format the tab lists. `ExportFormat` is what `sprite-sheet.mjs
  * export` writes for one motion on demand; `gif`, `webp` and `sheet` are made
  * by every run of a motion; `riv` and `character-aseprite` (every sprite
- * motion on one Aseprite sheet) belong to the whole character.
+ * motion on one Aseprite sheet) belong to the whole character; `colourway`
+ * is one of a pixel-art character's colourways, baked by `recolor` (one row
+ * per colourway, named by `ExportRow.variant`).
  */
-export type ExportRowFormat = ExportFormat | "gif" | "webp" | "sheet" | "riv" | "character-aseprite";
+export type ExportRowFormat = ExportFormat | "gif" | "webp" | "sheet" | "riv" | "character-aseprite" | "colourway";
 
 /** The rows that are the whole character's, not one motion's. */
 const CHARACTER_ROWS: ReadonlySet<ExportRowFormat> = new Set(["riv", "character-aseprite"]);
@@ -297,6 +299,8 @@ export interface ExportRow {
   rive?: RiveRowFacts;
   /** The character's Aseprite sheet: see `SheetRowFacts`. */
   sheet?: SheetRowFacts;
+  /** A `colourway` row: the colourway's name. */
+  variant?: string;
 }
 
 /**
@@ -625,7 +629,7 @@ export function exportRows(
     builtIn: boolean,
     extra: Partial<ExportRow> = {},
   ) => {
-    const key = exportKey(project, CHARACTER_ROWS.has(format) ? null : motion, format);
+    const key = `${exportKey(project, CHARACTER_ROWS.has(format) ? null : motion, format)}${extra.variant ? `:${extra.variant}` : ""}`;
     const current = exportStamp(state);
     const requested =
       options.requests.has(key) && options.requests.get(key) === current && state.kind !== "not-offered";
@@ -700,6 +704,14 @@ export function exportRows(
   if (loop) push("frames", "aseprite", notOffered("loop-atlas"), false);
   else if (transition) push("frames", "aseprite", notOffered("transition-atlas"), false);
   else onDemandRow("frames", "aseprite");
+  // A pixel-art character's colourways: this motion's sheet, atlas and
+  // preview baked in each (`recolor` + `register-recolor`), listed once they
+  // exist. The colours are the agent's call, so nothing here asks for one.
+  for (const variant of project.sprite.character.pixel?.variants ?? []) {
+    const files = motion.variants?.[variant.name];
+    const made = files ? readyFiles(project, [files.sheet, files.atlas, ...(files.gif ? [files.gif] : [])]) : null;
+    if (made) push("frames", "colourway", { kind: "ready", files: made }, true, { variant: variant.name });
+  }
 
   // Rive — the whole character: every motion `riveMotions` names, as
   // `rivePlanFor` plans it; transitions counted apart from the motions.
