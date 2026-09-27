@@ -1442,7 +1442,36 @@ result; once you have settled, do the final pass with `run` so the summary
 image is opaque, so a matting you paid `remove-background.mjs` for is redone
 with a colour threshold unless the sheet you pass already carries alpha.
 
-### `breathe <still> --out <framesDir> [--frames N] [--depth 0.02] [--breaths 1] [--mode smooth|pixel] [--rigid-row y] [--axis x] [--torso halfWidth]`
+### `fit <image> --out <png> [--max 480] [--pad 8]`
+
+The still a breathe is made from, **at the size it plays**. Takes a cut-out
+(transparent background), drops specks the background remover left clear of
+the body (the rule `run` cleans a cell by), trims it to the character plus
+`--pad` px, and brings the character's larger side down to `--max` px — area
+averaging in **premultiplied** alpha, never an enlargement. With the default
+480 and a breathe's stretch the breathing cell stays within 512 px. `--out`
+may be the input (the file is read whole first).
+
+Why it exists: a breathe keeps its still's canvas, so an untrimmed 1024×1536
+upload made a 1024-px-wide cell around a 550-px character, and its 1289-px
+frog came out as a 1300-px sprite. Fitting **before** the still is registered
+keeps two things true: the reference in the rail is exactly the picture the
+frames were warped from, and every coordinate the breathe report prints
+(`--rigid-row`, `--axis`) is a pixel of that file.
+
+- **Refuses a picture with no transparent background** (≥ 99 % opaque) — cut
+  it out first: `remove-background.mjs` for a busy or photographic
+  background, `key` for a flat plate.
+- **Warns when the character touches an edge** of the image — the upload
+  cropped it (feet cut off at the bottom); look before breathing it.
+- **Pixel art is trimmed, never resampled** (the nearest character's
+  `character.pixel`, then its style — `riveIsPixelArt`, as `breathe` reads
+  it); a note says when it is over `--max`.
+
+Reports `width`/`height`, the `box` it kept in the input's pixels, the
+character's size, `scale` (1 = not resampled) and `cleaned`.
+
+### `breathe <still> --out <motionDir> --name <motionId> [--fps 8] [--frames N] [--depth 0.02] [--breaths 1] [--mode smooth|pixel] [--rigid-row y] [--axis x] [--torso halfWidth] [--pad 8] [--width W] [--no-webp]`
 
 A breathing idle from **one still**, no model call and no money: the body
 below the neck swells and settles on a travelling wave, the head rides on top
@@ -1451,17 +1480,55 @@ the torso (an arm, a wing, a held lantern) is pushed outward instead of
 stretched. Ported from aldegad/sprite-gen (`effects/breathe.py`,
 `effects/anatomy.py` @ fbd1a08, Apache-2.0); the `smooth` mode is ours.
 
-Writes `NN.png` frames — `--frames` (default 12 × `--breaths`) frames holding
-`--breaths` whole breaths — on the still's canvas, grown only as far as the
-stretch needs (`canvas.grew`; the bottom never grows). Put them where `run`
-puts pre-align cells and cut the motion with the usual chain:
+**With `--name` it is the whole motion in one command**, the way `run` is for
+a sheet: `--out` is the motion directory. The bake lands in
+`<motionDir>/cells` — every frame cut to the one rectangle all of them reach,
+plus `--pad` — and the half every source ends with follows: `align --x-from
+cell`, `pack`, `gif` (+ WebP), `inspect`, at `--fps` (default 8: 12 frames a
+breath is 1.5 s). The `--json` output is the run summary `register-run` takes,
+so the documented form is one pipe:
 
 ```bash
-node {SKILL_PATH}/scripts/sprite-sheet.mjs breathe <character>/motions/idle/frames/00.png \
-  --out <character>/motions/breathe/cells --json
-node {SKILL_PATH}/scripts/sprite-sheet.mjs align <character>/motions/breathe/cells \
-  --out <character>/motions/breathe/frames --x-from cell --json
-# then pack / gif / inspect on <character>/motions/breathe as for any motion
+node {SKILL_PATH}/scripts/sprite-sheet.mjs breathe <character>/refs/still.png \
+  --out <character>/motions/idle --name idle --json \
+  | node {SKILL_PATH}/scripts/sprite-project.mjs register-run --dir <character> --motion idle --run -
+```
+
+(Redirecting to `motions/idle/run.json` works too, once that directory
+exists — on a first breathe it does not.) The summary is a sprite run
+(`frames`, `sheet`, `atlas`, `gif`, `webp`, `inspect`, `cell`, `grid`, `fps`,
+`loop: true`, `xFrom: "cell"`) plus `source: "breathe"`, `still` (the path
+breathed) and the record a re-run starts from:
+`breathe: { depth, breaths, lag, mode, anatomy: { rigidRow, axisX, from,
+torsoHalf? } }` — the boundary in the still's pixels, `from: "override"` when
+any of `--rigid-row` / `--axis` / `--torso` was given, and `torsoHalf` only
+when `--torso` was (a manual band changes what is pushed, so a re-run must be
+given it again). `register-run` makes the motion ready, derives every frame
+from the still, and takes the motion's `grid` and `fps` from the run — a
+breathe is drawn on no grid, so `add-motion --source breathe` needs no
+`--rows/--cols`.
+
+**Warnings go where the stage shows them.** The detector's warnings that ask
+for a decision — a prop across the rigid row, pixel mode on anti-aliased art,
+too few frames a breath, a character cut off by the still's edge — join
+`inspect.warnings` (and `inspect.json`), so the rail marks the motion and the
+agent reads them in the viewer context. How the anatomy was read
+(`face-absent:`, `neck-absent:`, the `*-override:` notes, and in pixel mode
+the outline-thinned head) goes to `notes` in the run output only. A still
+that is one of the frames the run rewrites is refused.
+
+**Without `--name`** it writes only `NN.png` frames into `--out` — `--frames`
+(default 12 × `--breaths`) frames holding `--breaths` whole breaths — on the
+still's canvas, grown only as far as the stretch needs (`canvas.grew`; the
+bottom never grows); the motion's flags (`--fps`, `--pad`, `--width`,
+`--no-webp`) are refused there. Use it to try a depth or read the anatomy
+before cutting anything; the chain it stands for is the one `--name` runs:
+
+```bash
+node {SKILL_PATH}/scripts/sprite-sheet.mjs breathe <character>/refs/still.png \
+  --out <scratch>/cells --json
+node {SKILL_PATH}/scripts/sprite-sheet.mjs align <scratch>/cells \
+  --out <scratch>/frames --x-from cell --json
 ```
 
 `--x-from cell` because the frames already stand where they stand — the axis
@@ -1513,6 +1580,46 @@ Two warnings to act on:
 `--depth` is the total stretch as a share of the body below the neck (the
 same number means the same on every character). Fewer than 6 frames a breath
 reads as a twitch and is warned about.
+
+#### Route A — a picture brought to life, end to end
+
+The user brings one picture; nothing is generated. Every step is local and
+free except the cut-out of a busy background (one BiRefNet call on fal).
+
+```bash
+C=<character>; S={SKILL_PATH}/scripts
+node $S/sprite-project.mjs init --dir $C --name "<Name>" --style "<what you see>" --purpose animate
+mkdir -p $C/refs && cp <workspace>/.pneuma/uploads/<file> $C/refs/upload.png
+node $S/sprite-project.mjs add-ref --dir $C --id upload --file refs/upload.png --role custom --uploaded
+node $S/sprite-sheet.mjs probe $C/refs/upload.png          # alpha=yes and coverage < 99%: already cut out
+# the cut-out — one of three:
+node $S/remove-background.mjs --input $C/refs/upload.png --output $C/refs/still.png   # busy background (fal)
+node $S/sprite-sheet.mjs key $C/refs/upload.png --out $C/refs/still.png                         # flat plate (free)
+cp $C/refs/upload.png $C/refs/still.png                                                          # already transparent
+node $S/sprite-sheet.mjs fit $C/refs/still.png --out $C/refs/still.png
+node $S/sprite-project.mjs add-ref --dir $C --id still --file refs/still.png --role custom \
+  --derived-from upload --op key                             # --op fit when nothing was removed
+node $S/sprite-project.mjs add-motion --dir $C --id idle --label Idle --fps 8 --source breathe
+node $S/sprite-sheet.mjs breathe $C/refs/still.png --out $C/motions/idle --name idle --json \
+  | node $S/sprite-project.mjs register-run --dir $C --motion idle --run -
+```
+
+Provenance then reads frames ← `ref-still` (`derive`, `op: key`) ←
+`ref-upload` (`upload`, by the human). `register-run` accepts the still only
+as a registered reference; a frame of another motion is registered first
+(`add-ref --derived-from <frame id>`), then breathed.
+
+**Re-running (`regenerate-motion` on a breathe).** Free and seconds: run the
+same pipe with the parameter changed and the rest from the record (`show
+--motion <id>` prints `breathe of ref-still (refs/still.png): depth …,
+rigid row …, axis … (detected|override)`; the viewer context says the same).
+"Breathe more" is `--depth 0.03`–`0.04`; "the head wobbles" or a prop that
+shears is the `--rigid-row` the warning names; a slower breath is `--frames
+16` or `--fps 6`. `register-run` replaces the frames, their edges, the atlas,
+the GIF and the record in place, drops the old tail when there are fewer
+frames, and takes the new grid and fps. The still and the upload are not
+touched. `fix-alignment` is not offered on a breathe: the frames are warps
+of one still and share its footing by construction.
 
 ## `remove-background.mjs` — the fal keying path
 
@@ -1851,3 +1958,32 @@ lag 0.10, through `breathe → align --x-from cell → gif --fps 8 → inspect`.
   of 426 rigid rows on these stills.
 - **Cost.** 1.2 s for 16 frames at 186×252 in either mode, frame writes
   included (upstream's Python: 1.5 s).
+
+## Measured: route A end to end (2026-09-27)
+
+Two uploads through the documented sequence (`fit` → `add-ref` →
+`breathe --name … | register-run`), defaults throughout (depth 0.02, 12
+frames, 8 fps, smooth), on a machine with load average ≈ 12 from parallel
+work.
+
+| upload | cut-out | fitted still | cell | anatomy | warnings | wall time |
+|---|---|---|---|---|---|---|
+| Lumi idle frame 00 (186×252, already transparent) | none | 159×249, ×1 | 162×252 | neck y=96 (bottleneck), no face pair | the lantern crosses the rigid row (`--rigid-row 134` keeps it whole) | 8.2 s |
+| a generated frog wizard, 1024×1536 opaque, cluttered workshop background | `remove-background.mjs` (BiRefNet heavy), 5.6 s | 221×496, ×0.372 (character 205×480) | 226×502 | neck y=221, face y=159–188 | none | 14.4 s |
+
+- **Where the time goes.** `breathe --name | register-run` took 6.5 s (Lumi)
+  and 7.1 s (frog): the bake is 1.2 s, `register-run` 1.0 s, and the rest is
+  one ffmpeg process per frame read or written in align, pack, gif and
+  inspect — the same cost `run` pays for a sheet. Under a load average of 45
+  the same Lumi re-run took 38 s; nothing in the chain waits on the network.
+- **Heights.** Lumi 233 → 230..236 px, head −3…+3 px; frog 480 → 475..485 px,
+  head −5…+5 px; the head identical to the still in 12/12 frames on both.
+  `bodyDrift` 0.0 px, `anchorDrift` y 0.
+- **Premultiplied downscale, measured.** BiRefNet zeroes the colour under
+  alpha 0 (mean RGB 1.3 over the frog's 1.14 M transparent pixels), so a
+  straight-alpha area scale darkens the edge: against `fit`'s premultiplied
+  result the 3,231 partly transparent pixels differ by a mean 5.2 and up to
+  65 levels (ffmpeg `scale=…:flags=area` on the same crop).
+- **Re-run.** Lumi again with `--rigid-row 134`: the record became
+  `rigid row 134 (override)`, the lantern warning left `inspect.warnings`,
+  and the open viewer showed the new frames with no reload.

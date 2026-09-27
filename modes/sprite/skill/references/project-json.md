@@ -45,6 +45,13 @@ correctly on disk.
 the files a run makes (previews, sheet, atlas — or a loop's four files below)
 stay where they are, with their names and ids, and are never copied into it.
 
+A **breathe motion** (route A) has no sheet of its own: `cells/` holds the
+bake (every frame cut to what all of them reach, plus the pad), then
+`frames/`, `sheet.png`, `atlas.json`, `preview.gif/.webp` and `inspect.json`
+as above. The still it was warped from is a reference in `refs/` —
+typically `refs/upload.png` as the user brought it and `refs/still.png`, the
+cut-out `fit` trimmed and sized — so re-running the motion never touches it.
+
 A **loop motion** (workflow E) has a different shape inside `motions/<id>/`:
 
 ```
@@ -381,15 +388,18 @@ interface LoopBrief {
 }
 
 interface BreatheRecord {         // all required but depthX and anatomy
-  still: string;                  // asset id the frames were warped from
-  depth: number;                  // vertical amplitude, fraction of height
+  still: string;                  // asset id of the reference warped from
+  depth: number;                  // total stretch, share of the body below the neck
   depthX?: number;                // horizontal amplitude when it differs
   breaths: number;                // whole breaths per loop of the motion
   lag: number;                    // how far the head trails the chest
-  mode: "smooth" | "pixel";       // bilinear, or whole pixels
-  anatomy?: { rigidRow: number; axisX: number; from: "detected" | "override" };
-                                  // the boundary actually used — what to
-                                  // change (--rigid-row) when the head wobbles
+  mode: "smooth" | "pixel";       // resampled, or whole pixels
+  anatomy?: { rigidRow: number; axisX: number; from: "detected" | "override";
+              torsoHalf?: number };
+                                  // the boundary actually used, in the still's
+                                  // pixels — what to change (--rigid-row) when
+                                  // the head wobbles; torsoHalf only when a
+                                  // manual --torso band was given
 }
 
 interface PromptParts {           // how `sheet-prompt` built `prompt`
@@ -594,15 +604,23 @@ it). A motion faces one way (`add-motion --direction`, `set-motion
 --direction`) and is named `<state>-<direction>`. `facing` stays the side
 that is generated; the other side is mirrored.
 
-**A breathe motion** is registered from `sprite-sheet.mjs breathe --json`,
-whose summary is a sprite run's (frames, sheet, atlas, GIF, inspect) plus
-`source: "breathe"`, `still` (the image's path) and `breathe: { depth,
+**A breathe motion** is registered from `sprite-sheet.mjs breathe --name
+<id> --json` (usually piped straight into `register-run --run -`), whose
+summary is a sprite run's (frames, sheet, atlas, GIF, inspect, grid, fps)
+plus `source: "breathe"`, `still` (the image's path) and `breathe: { depth,
 breaths, lag, mode, depthX?, anatomy? }`. `register-run` finds the still by
-its uri among the registered assets and refuses one that is not there —
-`add-ref --uploaded` it first (a cut-out: `--derived-from <ref> --op key`), so
+its uri among the registered references and refuses one that is not there —
+`add-ref --uploaded` it first (a cut-out: `--derived-from <ref> --op key`;
+an upload that was already transparent and only fitted: `--op fit`), so
 provenance reads frames ← alpha still ← upload. Each frame is a `derive`
 edge from the still, `params: { tool, step: "breathe", frameIndex, depth,
-depthX?, breaths, lag, mode }`, and `motion.breathe` keeps the record.
+depthX?, breaths, lag, mode }`, and `motion.breathe` keeps the record. A
+breathe is drawn on no grid and timed by its run: `add-motion --source
+breathe` needs no `--rows/--cols` (1×1 until the run lands), and
+`register-run` sets `motion.grid` to the atlas the run packed, `motion.fps`
+to the run's rate and `loop: true`. Re-registering after a re-run with other
+parameters rewrites the frames, their edges and the record in place and
+drops the old tail.
 
 **A mirror** is registered from `sprite-sheet.mjs mirror --json`: a sprite
 run plus `source: "mirror"` and `mirrorOf`. The source must be a ready sprite
