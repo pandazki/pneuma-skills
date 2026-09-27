@@ -419,4 +419,123 @@ Flare model automatically — do not override it with `--model`.
 
 Do not attach a previous motion's sheet as a reference. It looks like a helpful
 consistency anchor and it is not: the model copies the *grid* as well as the
-character, and you get an attack drawn in the idle's poses.
+character, and you get an attack drawn in the idle's poses. (The one sheet
+that may go on is the same motion's other side, for rhythm only — see
+*Direction anchors*.)
+
+## Direction anchors
+
+For a character that faces several ways — a top-down game's walk up, down,
+left and right (`front | back | left | right`). Inspired by aldegad/sprite-gen
+`docs/directional-anchor-workflow.md` and `sprite_gen/gen/prepare.py` (the
+direction-anchor stage, "anchor = one image", the left/right and
+asymmetric-identity gates); the difference is that our mirrored side is a
+real motion made by `sprite-sheet.mjs mirror`, not a flip left to the engine.
+
+**One anchor per direction, one pose each.** Before the first sheet facing a
+direction, draw that direction once: a single full-body picture in a calm
+standing pose — not a sheet, not a turnaround, not an idle row. A picture
+with several poses reads to the model as identity that varies, and the
+facing it is supposed to lock goes soft. It is generated like any reference,
+with the turnaround and portrait attached (the chain has no gaps), 1024×1024,
+on the white plate, and its prompt says what it is and what may change:
+
+> Clean anime-chibi line art, flat colors, thick uniform outline, no shading.
+> CANONICAL DIRECTION ANCHOR, back view: one single full-body picture of the
+> character in the attached references, matching them exactly: pale ash-blond
+> bob hair with a small ahoge, an oversized cream hooded cloak with dark red
+> trim and a dark red back panel with a diamond motif, a brown satchel on a
+> strap across the body, brown boots, and a small floating paper lantern. Take
+> the identity from the references and change only the facing: the character
+> stands facing straight away from the viewer, the back of the head and the
+> hood toward the camera, no face visible. A calm neutral standing pose, feet
+> planted side by side on one ground line, arms relaxed at the sides.
+> Side-specific details keep their side: the satchel hangs at her left hip,
+> which from behind is on the left of the picture; the red clover hairpin sits
+> on her right side and is hidden behind the hair from this angle; the lantern
+> floats beside her right shoulder, on the right of the picture. One pose
+> only: not a turnaround, not a sheet, no second figure. Full body, centred,
+> filling about 70% of the height, with clear empty margin on every side. A
+> flat solid pure white background, no gradient. No floor, no ground shadow,
+> no text, no labels.
+
+The facing clause per direction: *front* — faces the viewer; *back* — faces
+straight away, back of the head to the camera, no face; *right* / *left* — a
+pure side profile facing the right / left of the picture. Register it as the
+direction's anchor (one per direction; registering the same id again
+replaces it):
+
+```bash
+node {SKILL_PATH}/scripts/sprite-project.mjs add-ref --dir <character> --id anchor-back \
+  --file refs/anchor-back.png --role anchor --direction back \
+  --from ref-turnaround,ref-portrait --model openai/gpt-image-2.5-flare --prompt "<the prompt>" --json
+```
+
+A frame the user already likes can be the anchor instead:
+`add-ref --role anchor --direction right --derived-from walk-right-frame-00`.
+
+**Look at the anchor beside the turnaround before anything uses it.** Every
+sheet facing that way reproduces the anchor, including what the anchor got
+wrong (measured below: a motif the anchor redrew went into all 24 cells). A
+wrong anchor is regenerated; the sheets made from it are not worth fixing.
+
+**Right before left, and the left is a mirror.** Generate the side the
+character is set to face (`character.facing`; right when none is set) and
+make the other side with `sprite-sheet.mjs mirror` — free, seconds, pixel for pixel
+the same drawing. A mirrored direction is not generated. Loops and
+transitions are not mirrored.
+
+**Handed props and hairpins keep their side.** A hairpin, an earring, a scar,
+a logo, a one-sided marking, a sword always in the right hand, a satchel at
+one hip: a flip moves each to the other side of the body. Record them in one
+sentence before any directional work — `set-character --asymmetric "the red
+clover hairpin sits on the right side of her head; the satchel hangs at her
+left hip"` — and `mirror` refuses from then on, saying the sentence back.
+Then the other side is generated after all: its own anchor first, then its
+sheets, with the finished first side's sheet of the same motion attached
+**last and for rhythm only** — step timing, stride and scale, never facing or
+identity (upstream's left/right gate; not measured here). Every directional
+prompt re-tells the sentence for its own view: from behind, her left hip is on
+the left of the picture; facing left, the hairpin is on the far side and
+hidden.
+
+**What a directional sheet attaches, in order:** its direction's anchor
+first, then the turnaround and the portrait; for the generated second side
+of an asymmetric character, the first side's sheet of the same motion last.
+Never another motion's sheet. The prompt says what the first image is and
+names the facing for every cell:
+
+> The first attached image is the accepted back-view anchor: it owns the
+> facing and how she looks from behind in every cell; the other references
+> carry identity details only, not the facing. … Back view in every cell: the
+> character faces straight away from the viewer, walking away up the screen
+> like a top-down RPG character walking north; no face visible in any cell.
+
+### Measured (E7, Lumi back view, 2026-09-27)
+
+A back anchor from the turnaround + portrait (1024², Flare, $0.0707, 23 s),
+then a 4×2 back-view walk (2048×1024) three times per condition: **(a)**
+turnaround + portrait attached, **(b)** the back anchor first, then both,
+with the anchor clause above; prompts otherwise identical and both naming the
+facing and the sides. $0.0540 per (a) sheet, $0.0625 per (b) sheet, 20–22 s
+each; all six keyed with BiRefNet and run through `run` with zero warnings.
+Images $0.42 in all.
+
+| | (a) turnaround + portrait | (b) anchor first |
+|---|---|---|
+| Cells facing the wrong way | 0 / 24 | 0 / 24 |
+| Identity breaks inside a sheet | 0 / 24 | 0 / 24 |
+| Sleeve diamond clusters (turnaround's back view has them) | reduced to a trim band with small marks, 24 / 24 | drawn on both sleeves, 24 / 24 |
+| Back-panel motif | the turnaround's diamond over a chevron, 24 / 24 | the anchor's two stacked diamonds, 24 / 24 |
+| `inspect` max jump / anchor drift x | 9.5–13.5 px / 3.5–4.8 px | 6.5–11.5 px / 2.1–4.0 px |
+
+What it says: on a character whose turnaround already draws the back and a
+prompt that names the facing, the anchor bought no facing errors back —
+there were none to buy. What it did do is make every sheet look like the
+anchor, cell after cell: the sleeves it drew correctly and the motif it
+redrew wrongly alike. That is the reason to have one for each direction
+(every motion facing that way agrees with one picture), and the reason to
+check it first. A colour-histogram distance between sheets, which ignores
+pose, does not separate the two conditions (mean pairwise 0.409 vs 0.426).
+Not measured: a direction the turnaround does not show — there the anchor is
+the only picture of it.

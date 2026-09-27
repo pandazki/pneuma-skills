@@ -816,6 +816,68 @@ up off the floor and straightened up in 1.7 s, then held the last pose for
   "warnings": [] }
 ```
 
+### `mirror <character>/motions/<of> --name <id> [--out <dir>] [--force]`
+
+The other side of a side view, free: a character facing right gets its
+left-facing motion without a second generation (the top-down route's
+"mirrored side"). `<of>`'s **registered** frames are flipped left to right
+with ffmpeg's `hflip` — a pure reorder of pixels, so every RGBA value
+survives exactly — and then finished the way `run` finishes a sheet:
+`pack` → `gif` (+ `webp`) → `inspect`, with `<of>`'s atlas fps, loop,
+anchor, scale and columns (a scaled pixel-art atlas is packed
+nearest-neighbour, read off `character.pixel` / the style). Written to
+`--out`, default `<character>/motions/<id>`; `--json` is a sprite run
+summary plus `source: "mirror"`, `mirrorOf` and `direction`, which
+`register-run` takes as it is:
+
+```bash
+node {SKILL_PATH}/scripts/sprite-project.mjs add-motion --dir <character> --id walk-left \
+  --rows 2 --cols 4 --fps 10 --loop --source mirror --direction left --json
+node {SKILL_PATH}/scripts/sprite-sheet.mjs mirror <character>/motions/walk-right --name walk-left --json \
+  | node {SKILL_PATH}/scripts/sprite-project.mjs register-run --dir <character> --motion walk-left --run - --json
+```
+
+- **The anchor lands at `cell.width − x`**, y unchanged — in the frames'
+  `align.json` (which also names `mirrorOf`) and so in the atlas pivot and
+  `meta.anchorPoint`. The point is taken from the source's **atlas**, the
+  authority every export reads; its `align.json` only lends `pad`, `smooth`
+  and `xFrom` when it describes the same point. A source whose record is
+  gone still flips its measured point (`"from": "atlas"`): the Lumi seed
+  ships atlases without `frames/align.json`, and before this the mirror
+  fell back to the `{0.5, 1}` default where idle ships `{0.5, 0.9683}`.
+  `align` centres the anchor, so for frames it aligned the pivot's x is 0.5
+  on both sides; anything anchored off-centre keeps its true point.
+- **Cells:** when `<of>` kept its pre-align cells (`run`, `from-video`),
+  they are flipped into `<id>/cells/` too, so `inspect` judges clipping on
+  them and `inspect <id>` reproduces the report. A flip keeps every
+  measurement: drift, jump, scale drift and clipping read the same as the
+  source's. A `cells/` left in `--out` by an earlier run of `<id>` goes.
+- **Refused, before anything is written:** `<of>` not ready, a loop, a
+  transition, declared or registered as a mirror itself, facing front or
+  back, or facing nothing yet (`set-motion --direction` first); `--name`
+  equal to `<of>`; an `--out` that is `<of>`'s own directory.
+- **Asymmetric characters.** When `character.asymmetric` holds a sentence
+  ("the red clover hairpin sits on the right side of her head"), a flip
+  moves exactly that to the other side in every frame, so `mirror` refuses
+  and says the sentence back, pointing at the direction-anchor route
+  (`prompting.md`, *Direction anchors*). `--force` makes the mirror anyway,
+  keeps the sentence in `warnings` and `asymmetric`, and leaves the verdict
+  to the user looking at the stage.
+- **Stale mirrors.** Running `<of>` again leaves the mirror showing the old
+  frames: `register-run` notes it, `show` lists it under `staleMirrors`, and
+  the fix is this command plus `register-run` again.
+- **In a `.riv`,** a current mirror whose source is in the file embeds
+  nothing: it shows the source's images flipped (see `rive`).
+
+Lumi (2026-09-27, the seed's idle and attack given `--direction right`):
+16 frames each in 4.1 s / 6.3 s wall; every frame the exact horizontal flip
+of its source (0 of 2,999,808 idle bytes differ); pivot `{0.5, 0.9683}` and
+`meta.anchorPoint {93, 244}` carried from idle's atlas; `inspect` identical
+to the source's (attack: anchor drift 17.373 px, body drift 0.263, max jump
+50, scale drift 0.126 on both sides). With Lumi's asymmetric sentence
+recorded the call is refused; forced, every frame carries the hairpin on her
+left side, which is why the gate is there.
+
 ### `lineup <characterDir> [--hub <loopId>] [--out <png>]`
 
 Look before paying for transitions. Every **ready loop**'s frame 0 beside the
@@ -981,6 +1043,23 @@ the zero-dependency writer in `scripts/rive.mjs`, planned by
   0; `frameCount` counts embedded images once). A reverse made from an
   earlier cut of its source — the source registered again since — carries its
   own frames instead, with a warning to cut it again.
+- **Mirrors** (`source: "mirror"`, made by `mirror`) do the same for a sprite
+  motion: when the motion it flips is in the file and it was mirrored from
+  that motion's current frames, with the same frame count, size, fps and
+  loop, it embeds nothing and shows the source's images flipped — one more
+  `Image` per frame over the same asset with `scaleX` −1 about the same
+  origin, which is exactly the flipped frame standing on its pivot at
+  `width − x` (`shares` and `mirrored: true` in its report entry,
+  `estimatedDecodeBytes` 0, a note `walk-left: walk-right's 8 images flipped`).
+  Poses for `cuts` are measured on the flipped pixels. A mirror of an earlier
+  run of its source carries its own frames, with a warning to mirror it
+  again. Measured on Lumi (2026-09-27): idle + attack is 333,948 bytes and
+  7.2 MB decoded; adding their mirrors `idle-left` and `attack-left` makes it
+  335,982 bytes and the same 7.2 MB, where embedding `idle-left`'s own frames
+  costs 161,743 bytes and 2.9 MB more. In the official runtime
+  (`rive-runtime.live.test.ts`) the first frame of a hub mirror differs from
+  the flipped frame on disk placed by its pivot by 1.26 (mean alpha + ¼ RGB
+  difference, 0–255) and from the unflipped frame by 100.75.
 - **Clip scale (loops and transitions):** each loop is cropped to its own union box and scaled
   to the brief's width, so one character is cut at a different scale in each
   loop (tanka's ten: 1.03–1.42× their clips, a 38% spread). With **two loops
@@ -1006,9 +1085,9 @@ the zero-dependency writer in `scripts/rive.mjs`, planned by
   crop always wins over a measured one, and cutting the loop again clears the
   measured record with the frames it described. tanka's ten,
   measured: rendered body height per clip pixel 0.529–0.533 in every state.
-- **Downscale, `--filter`:** `auto` (default) is nearest-neighbour when
-  `character.style` says pixel art (`pixel art`, `8-bit`/`16-bit`, `像素`…)
-  and smooth otherwise: premultiply → `area` → unpremultiply, the chain `loop`
+- **Downscale, `--filter`:** `auto` (default) is nearest-neighbour for pixel
+  art — `character.pixel` is set, or, on a character without it, the style
+  says so (`pixel art`, `8-bit`/`16-bit`, `像素`…) — and smooth otherwise: premultiply → `area` → unpremultiply, the chain `loop`
   measured to keep alpha edges free of dark fringes. `smooth` / `nearest`
   force it. The report says which, and whether the style or the flag chose.
 - **Placement:** every frame is pinned to one shared point of the artboard.
@@ -1085,8 +1164,8 @@ the zero-dependency writer in `scripts/rive.mjs`, planned by
   best-practices guide recommends WebP for the smallest files.
   **`webp-lossless`** (`-lossless 1`, `bgra`: no chroma subsampling) keeps
   every visible pixel exactly as drawn — only the hidden colour of a fully
-  transparent pixel may change — and is the default when `character.style`
-  says pixel art, by the same reading as `--filter auto`: lossy WebP would put
+  transparent pixel may change — and is the default for pixel art
+  (`character.pixel`, else the style), by the same reading as `--filter auto`: lossy WebP would put
   colours between the hard pixels nearest-neighbour kept. On the pixel-art test
   character it is 1,768 B against PNG's 3,010 B (lossy WebP: 3,364 B).
   `--images png` embeds PNG. An ffmpeg without the `libwebp` encoder: with no
