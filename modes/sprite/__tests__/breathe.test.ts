@@ -136,35 +136,43 @@ describe("breathe.mjs — the whole-pixel port", () => {
    * Recorded 2026-09-27 by running upstream's own code
    * (sprite_gen.effects.breathe.bake_breathe_sequence @fbd1a08, CPython 3.14)
    * on the fixtures above as defined in its test_breathe.py: the fixture
-   * bytes, the bake bytes of every frame, and the anatomy it measured.
+   * bytes, the bake bytes of every frame, the anatomy it measured, and the
+   * envelope's normalisation as the exact double CPython computed — a plain
+   * float sum gets domeFace's wrong in the last bit, which is what the
+   * compensated sum in breathe.mjs is there for.
    */
   const GOLDEN = {
     humanoid: {
       build: humanoid, depth: 0.06, breaths: 1, count: 12,
+      norm: 1.1851541660560911,
       fixture: "eca07fa72ffb4dc37ee6a268c0cd00ede63370fa90f50fbb81bd1298038ac59b",
       bake: "cc0c43833127364ec4fc1c200f43269a712248f2d3b165b2197e22791ff2ea66",
       anatomy: { axisX: 13, neckRow: 23, neckSource: "bottleneck", rigidRow: 23, rigidSource: "neck", basisRow: 23, torsoHalf: 14, maxHalf: 14, face: { top: 6, bottom: 15 } },
     },
     winged: {
       build: winged, depth: 0.06, breaths: 1, count: 12,
+      norm: 1.1851541660560911,
       fixture: "8a4bb6c7eb9d6684c0e15e2ded5e121f24ba5ec8c3a6d39c6fb4b6f87fe394a5",
       bake: "3161fcb909752a7dddc3eddae92c8dba9eb4f192d7709092b3dd630522891474",
       anatomy: { axisX: 53, neckRow: 21, neckSource: "bottleneck", rigidRow: 21, rigidSource: "neck", basisRow: 21, torsoHalf: 14, maxHalf: 54, face: null },
     },
     dome: {
       build: () => dome(false), depth: 0.06, breaths: 1, count: 12,
+      norm: 1.1782945736434112,
       fixture: "c94e83955b75f5298a52693b64e85074240107e5996be057522f60acf2a2836a",
       bake: "62dc0e3df8018e298dd416429e698e9e3d13ca66f4889339e6c9178626a742f0",
       anatomy: { axisX: 37, neckRow: 4, neckSource: "shoulder-gradient", rigidRow: 4, rigidSource: "neck", basisRow: 4, torsoHalf: 27, maxHalf: 38, face: null },
     },
     domeFace: {
       build: () => dome(true), depth: 0.06, breaths: 1, count: 12,
+      norm: 1.2155699322417512,
       fixture: "7e62059ea6d9278add9ae6209592c3e99dffe184b8cd964f145dbab5d3171904",
       bake: "a93fb2eae645a77a926191b3163c0ff4c6c51d381e94c9540514e0c17eda5ac7",
       anatomy: { axisX: 37, neckRow: 4, neckSource: "shoulder-gradient", rigidRow: 57, rigidSource: "face", basisRow: 57, torsoHalf: 35, maxHalf: 38, face: { top: 44, bottom: 56 } },
     },
     smallOutlined: {
       build: smallOutlined, depth: 0.08, breaths: 3, count: 24,
+      norm: 1.2354738896873483,
       fixture: "ba3c4f39b3d94dcc1708da92f9713e3ae57d6ec73cd2588b6ef9307240fad105",
       bake: "841e25f15ab9cf34be02f3f12f7874acc64c8edecd0d80ce919e18e7aba6c8c7",
       anatomy: { axisX: 9, neckRow: 13, neckSource: "shoulder-gradient", rigidRow: 13, rigidSource: "neck", basisRow: 13, torsoHalf: 10, maxHalf: 11, face: null },
@@ -172,7 +180,7 @@ describe("breathe.mjs — the whole-pixel port", () => {
   } as const;
 
   for (const [name, g] of Object.entries(GOLDEN)) {
-    test(`${name}: fixture, anatomy and every baked byte match upstream's Python`, () => {
+    test(`${name}: fixture, anatomy, normalisation and every baked byte match upstream's Python`, () => {
       const im = g.build();
       expect(sha(im)).toBe(g.fixture);
       const a = analyzeAnatomy(im);
@@ -180,6 +188,7 @@ describe("breathe.mjs — the whole-pixel port", () => {
         axisX: a.axisX, neckRow: a.neckRow, neckSource: a.neckSource, rigidRow: a.rigidRow, rigidSource: a.rigidSource,
         basisRow: a.basisRow, torsoHalf: a.torsoHalf, maxHalf: a.maxHalf, face: a.face,
       }).toEqual(g.anatomy as unknown as typeof a);
+      expect(envelope(a).norm).toBe(g.norm);
       expect(sha(...bakePixel(im, { depth: g.depth, breaths: g.breaths, count: g.count }, a))).toBe(g.bake);
     });
   }
