@@ -62,7 +62,12 @@
  * --json prints:
  *   { "path", "url", "file_size", "requested_duration", "seed"?,
  *     "inference_seconds"?, "expanded_prompt"?,
- *     "loudness"?: { "input_i", "normalized" } }
+ *     "loudness"?: { "input_i", "normalized" }, "cost" }
+ * `cost` is an ESTIMATE (`h3Cost`): fal bills H3 Max on the REQUESTED
+ * duration at a per-second rate by resolution, so the price is known from
+ * the request — never an invoice, and reference tokens past fal's free
+ * allowance are named rather than counted. The same figure goes to stderr
+ * as one `cost:` line.
  * `seed` and backend timings are reported only when the endpoint returns
  * them (reference-to-video reports seed; pass --seed to make text/image
  * runs reproducible). `expanded_prompt` is the director's script the model
@@ -77,7 +82,7 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, mkdirSync } from "node:fs";
-import { dirname, extname, join } from "node:path";
+import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -224,6 +229,108 @@ function toMediaUrl(input, flagName) {
 }
 
 // ---------------------------------------------------------------------------
+// Cost
+// ---------------------------------------------------------------------------
+
+/**
+ * fal's list price for H3 Max, as the three endpoints' model pages state it
+ * (read 2026-09-28; https://fal.ai/models/minimax/h3-max/<endpoint>):
+ * "Billing uses the requested output duration" at $0.05 per second at 480p
+ * and $0.08 at 768p (1080p, $0.16, is not a resolution this script sends).
+ * plotwise's `references/generation.md` quotes the same rates. The
+ * reference endpoint also bills reference tokens past the 4,096 each
+ * request includes, at $0.02 per 1,000 — a square image is 1,024, so four
+ * fit; other shapes, video and audio are counted by rules this script does
+ * not reproduce, and are named in the estimate instead of guessed.
+ * The text- and image-to-video pages also advertise a 50 % launch rate
+ * until September 30, 2026; it is named, not applied. Check again before
+ * quoting a user a total.
+ */
+export const H3_PRICES = Object.freeze({
+  usdPerSecond: Object.freeze({ "480P": 0.05, "768P": 0.08 }),
+  includedReferenceTokens: 4096,
+  usdPer1000ReferenceTokens: 0.02,
+  squareImageTokens: 1024,
+  launchRateUntil: "2026-09-30",
+  checked: "2026-09-28",
+});
+
+const roundTo = (value, places) => Math.round(value * 10 ** places) / 10 ** places;
+
+/**
+ * What one clip costs by fal's list price: the requested duration × the
+ * resolution's rate. `usd` is null for a resolution with no known rate.
+ * `today` is injectable so the launch-rate note can be tested either side
+ * of its end date.
+ */
+export function h3Cost({ endpoint, resolution, duration, refImages = 0, refVideos = 0, refAudios = 0, today = new Date() } = {}) {
+  const rate = H3_PRICES.usdPerSecond[resolution];
+  const common = { estimate: true, endpoint, resolution, checked: H3_PRICES.checked };
+  if (!rate || !(duration > 0)) {
+    return { usd: null, ...common, basis: "unknown", note: `no fal rate is known for ${resolution} at ${duration} s` };
+  }
+  const notes = [];
+  if (endpoint === "reference") {
+    const squareFit = Math.floor(H3_PRICES.includedReferenceTokens / H3_PRICES.squareImageTokens);
+    if (refVideos > 0 || refAudios > 0 || refImages > squareFit) {
+      notes.push(`reference tokens past the ${H3_PRICES.includedReferenceTokens.toLocaleString("en-US")} included bill $${H3_PRICES.usdPer1000ReferenceTokens} per 1,000 and are not counted here`);
+    } else if (refImages > 0) {
+      notes.push(`up to ${squareFit} square reference images fit in the ${H3_PRICES.includedReferenceTokens.toLocaleString("en-US")} included reference tokens; another shape can add a charge not counted here`);
+    }
+  } else if (today.toISOString().slice(0, 10) <= H3_PRICES.launchRateUntil) {
+    notes.push(`fal's page also advertises a 50% launch rate until ${H3_PRICES.launchRateUntil}, not applied`);
+  }
+  return {
+    usd: roundTo(duration * rate, 4),
+    ...common,
+    basis: "requested-duration",
+    seconds: duration,
+    usdPerSecond: rate,
+    ...(notes.length ? { note: notes.join("; ") } : {}),
+  };
+}
+
+/** The one stderr line a `cost` object is said in. */
+export function costLine(cost) {
+  if (!cost || cost.usd === null) {
+    return `cost: unknown (${cost?.note ?? "no request to price"}; fal lists H3 Max at $0.05 per second at 480P, $0.08 at 768P)`;
+  }
+  return `cost: ≈ $${cost.usd.toFixed(4)} (estimate: ${cost.seconds} s × $${cost.usdPerSecond} per second at ${cost.resolution}, H3 Max ${cost.endpoint}-to-video at fal's list price on the requested duration, model page read ${cost.checked}${cost.note ? `; ${cost.note}` : ""})`;
+}
+
+const HELP = `Usage: generate-video.mjs --prompt "<text>" --output <path.mp4> [options]
+
+  MiniMax H3 Max on fal.ai; the endpoint is inferred (--ref-* → reference,
+  --image → image, else text) and can be forced with --endpoint.
+
+  --prompt <text>          What to shoot; quoted speech is spoken and lipsynced (required)
+  --output <path.mp4>      Where the clip is written (required)
+  --endpoint <name>        text | image | reference
+  --duration <s>           Whole seconds, 5-15 (default: 5)
+  --resolution <r>         480P | 768P (default: 480P)
+  --aspect-ratio <r>       text: 21:9 16:9 4:3 1:1 3:4 9:16; reference: also adaptive
+                           (image-to-video follows the input image — refused there)
+  --image <path|url>       First frame (image endpoint)
+  --end-image <path|url>   Last frame (image endpoint)
+  --ref-image <path|url>   Reference image, repeatable ("Image 1", "Image 2" in the prompt)
+  --ref-video <path|url>   Reference video, repeatable ("Video 1", …)
+  --ref-audio <path|url>   Reference audio, repeatable ("Audio 1", …); ${MAX_REFERENCE_FILES} references at most
+  --seed <n>               Integer seed
+  --expansion <mode>       balanced (default, ~1 s) | quality (up to ~30 s of prompt rewriting)
+  --no-normalize           Leave the clip's loudness as generated (default: -16 LUFS, needs ffmpeg)
+  --json                   Print one JSON object on stdout
+  --deadline-s <n>         Give up on the job after this many seconds (default: 900)
+  --help, -h               This text
+
+Local files are inlined as data URIs (${MAX_INLINE_BYTES / 1024 / 1024} MB each at most); host anything
+larger and pass its URL. Requires FAL_KEY (environment or .env). Progress
+goes to stderr; with --json, stdout carries exactly one object.
+Price: fal bills the requested duration — $${H3_PRICES.usdPerSecond["480P"]} per second at 480P,
+$${H3_PRICES.usdPerSecond["768P"]} at 768P (model pages read ${H3_PRICES.checked}); the reference endpoint
+adds reference tokens past the ${H3_PRICES.includedReferenceTokens.toLocaleString("en-US")} included. What the clip cost is printed on
+stderr as a cost: line and returned as the object's cost.`;
+
+// ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 
@@ -231,318 +338,359 @@ function fail(msg) {
   console.error(`ERROR: ${msg}`);
   process.exit(1);
 }
-
-const { values: args } = parseArgs({
-  options: {
-    prompt: { type: "string" },
-    output: { type: "string" },
-    endpoint: { type: "string" },
-    duration: { type: "string", default: "5" },
-    resolution: { type: "string", default: "480P" },
-    "aspect-ratio": { type: "string" },
-    image: { type: "string" },
-    "end-image": { type: "string" },
-    "ref-image": { type: "string", multiple: true },
-    "ref-video": { type: "string", multiple: true },
-    "ref-audio": { type: "string", multiple: true },
-    seed: { type: "string" },
-    expansion: { type: "string", default: "balanced" },
-    "no-normalize": { type: "boolean", default: false },
-    json: { type: "boolean", default: false },
-    /** Give up on a fal job after this many seconds (queue wait included). */
-    "deadline-s": { type: "string", default: "900" },
-  },
-});
-
-if (!args.prompt) fail("--prompt is required");
-if (!args.output) fail("--output is required");
-
-const refImages = args["ref-image"] ?? [];
-const refVideos = args["ref-video"] ?? [];
-const refAudios = args["ref-audio"] ?? [];
-const hasRefs = refImages.length + refVideos.length + refAudios.length > 0;
-
-let endpointName = args.endpoint;
-if (endpointName) {
-  // Accept both short and full endpoint spellings.
-  endpointName = endpointName.replace(/-to-video$/, "");
-  if (!ENDPOINTS[endpointName]) {
-    fail(`--endpoint must be text, image, or reference (got: ${args.endpoint})`);
-  }
-} else {
-  endpointName = hasRefs ? "reference" : args.image ? "image" : "text";
-}
-const endpoint = ENDPOINTS[endpointName];
-
-if (hasRefs && endpointName !== "reference") {
-  fail(`--ref-* inputs require the reference endpoint (inferred/forced: ${endpointName})`);
-}
-if (args.image && endpointName === "text") {
-  fail("--image requires the image endpoint (drop --endpoint text)");
-}
-if (endpointName === "reference" && refImages.length + refVideos.length === 0) {
-  fail("reference endpoint needs at least one --ref-image or --ref-video (audio cannot be the only reference)");
-}
-if (refImages.length + refVideos.length + refAudios.length > MAX_REFERENCE_FILES) {
-  fail(`at most ${MAX_REFERENCE_FILES} reference files in total`);
-}
-
-const duration = Number(args.duration);
-if (!Number.isInteger(duration) || duration < 5 || duration > 15) {
-  fail(`--duration must be an integer between 5 and 15 (got: ${args.duration})`);
-}
-
-const resolution = args.resolution.toUpperCase();
-if (resolution !== "480P" && resolution !== "768P") {
-  fail(`--resolution must be 480P or 768P (got: ${args.resolution})`);
-}
-
-if (args.expansion !== "balanced" && args.expansion !== "quality") {
-  fail(`--expansion must be balanced or quality (got: ${args.expansion})`);
-}
-
-let aspectRatio = args["aspect-ratio"];
-if (aspectRatio != null) {
-  if (!endpoint.aspects) {
-    fail("image-to-video output aspect follows the input image — crop the image instead of passing --aspect-ratio");
-  }
-  if (!endpoint.aspects.includes(aspectRatio)) {
-    fail(`--aspect-ratio for ${endpointName} must be one of: ${endpoint.aspects.join(", ")}`);
-  }
-}
-
-const body = {
-  prompt: args.prompt,
-  prompt_expansion_mode: args.expansion,
-  duration,
-  resolution,
-};
-if (aspectRatio) body.aspect_ratio = aspectRatio;
-if (args.seed != null) {
-  const seed = Number(args.seed);
-  if (!Number.isInteger(seed)) fail(`--seed must be an integer (got: ${args.seed})`);
-  body.seed = seed;
-}
-if (endpointName === "image") {
-  if (args.image) body.image_url = toMediaUrl(args.image, "--image");
-  if (args["end-image"]) body.end_image_url = toMediaUrl(args["end-image"], "--end-image");
-}
-if (endpointName === "reference") {
-  if (refImages.length > 0)
-    body.reference_image_urls = refImages.map((p) => toMediaUrl(fitReference(p), "--ref-image"));
-  if (refVideos.length > 0)
-    body.reference_video_urls = refVideos.map((p) => toMediaUrl(p, "--ref-video"));
-  if (refAudios.length > 0)
-    body.reference_audio_urls = refAudios.map((p) => toMediaUrl(p, "--ref-audio"));
-}
-
-const falKey = loadFalKey();
-if (!falKey) {
-  fail("No API key found. Set FAL_KEY in the environment or a .env file.");
-}
-
-// ---------------------------------------------------------------------------
-// Request
-// ---------------------------------------------------------------------------
-
-// The bounded retries live HERE, in the script, so no caller has to
-// improvise a shell loop around it: `runFalJob` gives a gateway 5xx, a 429
-// or a dropped connection three attempts with a short back-off, and reports
-// a 4xx at once. When the model's backend itself is down (fal's
-// "downstream_service_unavailable", seen as a 504 on one endpoint while the
-// others answered), the retries end quickly and the caller decides — the
-// sampler falls back to another endpoint.
-//
-// Going through the queue is what makes interruption honest as well: an
-// in-flight job is cancelled remotely before this process leaves, instead of
-// being abandoned mid-render on someone else's meter.
-const INTERRUPTS = ["SIGTERM", "SIGINT"];
-const controller = new AbortController();
-const interruptHandlers = new Map();
-let interruptedBy = null;
-for (const name of INTERRUPTS) {
-  const handler = () => {
-    // A second interrupt leaves at once: installing a handler disables
-    // Node's default kill, and nobody should have to wait out the cancel.
-    if (interruptedBy) process.exit(130);
-    interruptedBy = name;
-    controller.abort(new DOMException(`received ${name}`, "AbortError"));
-  };
-  interruptHandlers.set(name, handler);
-  process.on(name, handler);
-}
-
-function exitInterrupted() {
-  console.error(`ERROR: ${interruptedBy ?? "interrupted"} — the fal.ai job was cancelled`);
-  process.exit(130);
-}
-
-let job;
-try {
-  job = await runFalJob({
-    url: endpoint.url,
-    body,
-    key: falKey,
-    signal: controller.signal,
-    label: "H3 Max video generation",
-    deadlineMs: Math.max(30, Number(args["deadline-s"]) || 900) * 1000,
-    onRetry: ({ attempt, attempts: total, delayMs, reason }) => {
-      console.error(
-        `WARN: ${reason.slice(0, 160)} — retrying in ${delayMs / 1000}s (attempt ${attempt} of ${total})`,
-      );
+/**
+ * The CLI. Everything below runs only when the script is executed, never on
+ * import — the cost helpers above are imported by tests without submitting
+ * anything. `fail()` still exits the process, as it always has.
+ */
+export async function main(argv = process.argv.slice(2)) {
+  const { values: args } = parseArgs({
+    args: argv,
+    options: {
+      prompt: { type: "string" },
+      output: { type: "string" },
+      endpoint: { type: "string" },
+      duration: { type: "string", default: "5" },
+      resolution: { type: "string", default: "480P" },
+      "aspect-ratio": { type: "string" },
+      image: { type: "string" },
+      "end-image": { type: "string" },
+      "ref-image": { type: "string", multiple: true },
+      "ref-video": { type: "string", multiple: true },
+      "ref-audio": { type: "string", multiple: true },
+      seed: { type: "string" },
+      expansion: { type: "string", default: "balanced" },
+      "no-normalize": { type: "boolean", default: false },
+      json: { type: "boolean", default: false },
+      /** Give up on a fal job after this many seconds (queue wait included). */
+      "deadline-s": { type: "string", default: "900" },
+      help: { type: "boolean", short: "h", default: false },
     },
   });
-} catch (e) {
-  if (e?.name === "AbortError") exitInterrupted();
-  fail(e?.message ?? String(e));
-}
 
-const attempts = job.attempts;
-const result = job.data;
-const videoUrl = result?.video?.url;
-if (!videoUrl) {
-  fail(`response carried no video URL: ${JSON.stringify(result).slice(0, 500)}`);
-}
+  if (args.help) {
+    console.error(HELP);
+    return 0;
+  }
+  if (!args.prompt) fail("--prompt is required");
+  if (!args.output) fail("--output is required");
 
-/**
- * The clip comes from fal's CDN in one request. That request gets its
- * own clock and its own retries: a stalled connection once held three
- * shots for twenty-one minutes under no timeout at all, and a dropped
- * one ("terminated") failed the scene outright (2026-09-03). The clock
- * is an IDLE clock — a slow link that keeps delivering is allowed to
- * finish (the same CDN measured 6 KB/s that night, an 11 MB shot in
- * half an hour); only a stream that stops moving for a minute is given
- * up on.
- */
-const DOWNLOAD_ATTEMPTS = 3;
-const DOWNLOAD_IDLE_MS = 60_000;
-async function downloadClip(url) {
-  let lastError = null;
-  for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++) {
-    const idle = new AbortController();
-    let idleTimer = null;
-    const touch = () => {
-      if (idleTimer) clearTimeout(idleTimer);
-      idleTimer = setTimeout(() => idle.abort(), DOWNLOAD_IDLE_MS);
-    };
-    const started = Date.now();
-    try {
-      touch();
-      const resp = await fetch(url, { signal: AbortSignal.any([controller.signal, idle.signal]) });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const chunks = [];
-      let received = 0;
-      const reader = resp.body.getReader();
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        received += value.length;
-        touch();
-      }
-      const seconds = (Date.now() - started) / 1000;
-      if (seconds > 30) console.error(`NOTE: clip downloaded in ${seconds.toFixed(0)}s (${(received / 1024 / 1024).toFixed(1)} MB, ${(received / 1024 / seconds).toFixed(0)} KB/s)`);
-      return Buffer.concat(chunks);
-    } catch (e) {
-      if (controller.signal.aborted) throw e;
-      lastError = idle.signal.aborted ? new Error(`no bytes for ${DOWNLOAD_IDLE_MS / 1000}s`) : e;
-      if (attempt < DOWNLOAD_ATTEMPTS) {
-        console.error(`WARN: downloading the clip failed (${lastError?.message ?? lastError}) — retrying (attempt ${attempt} of ${DOWNLOAD_ATTEMPTS})`);
-        await new Promise((r) => setTimeout(r, 3000 * attempt));
-      }
-    } finally {
-      if (idleTimer) clearTimeout(idleTimer);
+  const refImages = args["ref-image"] ?? [];
+  const refVideos = args["ref-video"] ?? [];
+  const refAudios = args["ref-audio"] ?? [];
+  const hasRefs = refImages.length + refVideos.length + refAudios.length > 0;
+
+  let endpointName = args.endpoint;
+  if (endpointName) {
+    // Accept both short and full endpoint spellings.
+    endpointName = endpointName.replace(/-to-video$/, "");
+    if (!ENDPOINTS[endpointName]) {
+      fail(`--endpoint must be text, image, or reference (got: ${args.endpoint})`);
+    }
+  } else {
+    endpointName = hasRefs ? "reference" : args.image ? "image" : "text";
+  }
+  const endpoint = ENDPOINTS[endpointName];
+
+  if (hasRefs && endpointName !== "reference") {
+    fail(`--ref-* inputs require the reference endpoint (inferred/forced: ${endpointName})`);
+  }
+  if (args.image && endpointName === "text") {
+    fail("--image requires the image endpoint (drop --endpoint text)");
+  }
+  if (endpointName === "reference" && refImages.length + refVideos.length === 0) {
+    fail("reference endpoint needs at least one --ref-image or --ref-video (audio cannot be the only reference)");
+  }
+  if (refImages.length + refVideos.length + refAudios.length > MAX_REFERENCE_FILES) {
+    fail(`at most ${MAX_REFERENCE_FILES} reference files in total`);
+  }
+
+  const duration = Number(args.duration);
+  if (!Number.isInteger(duration) || duration < 5 || duration > 15) {
+    fail(`--duration must be an integer between 5 and 15 (got: ${args.duration})`);
+  }
+
+  const resolution = args.resolution.toUpperCase();
+  if (resolution !== "480P" && resolution !== "768P") {
+    fail(`--resolution must be 480P or 768P (got: ${args.resolution})`);
+  }
+
+  if (args.expansion !== "balanced" && args.expansion !== "quality") {
+    fail(`--expansion must be balanced or quality (got: ${args.expansion})`);
+  }
+
+  let aspectRatio = args["aspect-ratio"];
+  if (aspectRatio != null) {
+    if (!endpoint.aspects) {
+      fail("image-to-video output aspect follows the input image — crop the image instead of passing --aspect-ratio");
+    }
+    if (!endpoint.aspects.includes(aspectRatio)) {
+      fail(`--aspect-ratio for ${endpointName} must be one of: ${endpoint.aspects.join(", ")}`);
     }
   }
-  throw lastError ?? new Error("download failed");
-}
 
-let bytes;
-try {
-  bytes = await downloadClip(videoUrl);
-} catch (e) {
-  if (e?.name === "AbortError" && controller.signal.aborted) exitInterrupted();
-  fail(`downloading the clip failed: ${e?.message ?? e}`);
-}
-
-// The bytes are in hand and the remote job is finished — nothing left to
-// cancel, so an interrupt from here on goes back to being the shell's.
-for (const [name, handler] of interruptHandlers) process.off(name, handler);
-
-mkdirSync(dirname(args.output), { recursive: true });
-writeFileSync(args.output, bytes);
-
-// ---------------------------------------------------------------------------
-// Loudness normalization (see the header note)
-// ---------------------------------------------------------------------------
-
-const TARGET_LUFS = -16;
-
-function normalizeLoudness(path) {
-  const measure = spawnSync(
-    "ffmpeg",
-    ["-i", path, "-af", "loudnorm=print_format=json", "-f", "null", "-"],
-    { encoding: "utf-8" },
-  );
-  if (measure.error) {
-    console.error("WARN: ffmpeg not found — clip loudness left as generated");
-    return null;
-  }
-  const match = (measure.stderr ?? "").match(/\{[^{}]*"input_i"[^{}]*\}/s);
-  if (!match) {
-    console.error("WARN: loudness measurement failed (no audio track?) — clip left as generated");
-    return null;
-  }
-  const m = JSON.parse(match[0]);
-  const inputI = Number(m.input_i);
-  const withinTolerance = !Number.isFinite(inputI) || Math.abs(inputI - TARGET_LUFS) < 1.5;
-  // Every clip leaves with ONE audio format — AAC, 48 kHz, stereo —
-  // whether or not its loudness needed correcting. loudnorm resamples on
-  // its way through (a corrected clip came out at 96 kHz beside untouched
-  // 32 kHz ones), and a scene concatenated from shots of mixed sample
-  // rates played with a wrong duration (47 s of shots → a 141 s file,
-  // 2026-09-03). The video stream is still copied; the file also gets its
-  // front-loaded index here.
-  const AUDIO_OUT = ["-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2"];
-  const audioArgs = withinTolerance
-    ? AUDIO_OUT
-    : [
-        "-af",
-        `loudnorm=I=${TARGET_LUFS}:TP=-1.5:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true`,
-        ...AUDIO_OUT,
-      ];
-  const tmp = `${path}.norm.mp4`;
-  const apply = spawnSync(
-    "ffmpeg",
-    ["-y", "-i", path, ...audioArgs, "-c:v", "copy", "-movflags", "+faststart", tmp],
-    { encoding: "utf-8" },
-  );
-  if (apply.status !== 0 || !existsSync(tmp)) {
-    console.error("WARN: loudness normalization pass failed — clip left as generated");
-    try { unlinkSync(tmp); } catch { /* not created */ }
-    return { input_i: inputI, normalized: false };
-  }
-  renameSync(tmp, path);
-  return { input_i: inputI, normalized: !withinTolerance };
-}
-
-const loudness = args["no-normalize"] ? null : normalizeLoudness(args.output);
-
-if (args.json) {
-  const out = {
-    path: args.output,
-    url: videoUrl,
-    file_size: bytes.length,
-    requested_duration: duration,
-    attempts,
+  const body = {
+    prompt: args.prompt,
+    prompt_expansion_mode: args.expansion,
+    duration,
+    resolution,
   };
-  if (result.seed != null) out.seed = result.seed;
-  if (typeof job.inferenceSeconds === "number") {
-    out.inference_seconds = job.inferenceSeconds;
+  if (aspectRatio) body.aspect_ratio = aspectRatio;
+  if (args.seed != null) {
+    const seed = Number(args.seed);
+    if (!Number.isInteger(seed)) fail(`--seed must be an integer (got: ${args.seed})`);
+    body.seed = seed;
   }
-  if (result.expanded_prompt) out.expanded_prompt = result.expanded_prompt;
-  if (loudness) out.loudness = loudness;
-  console.log(JSON.stringify(out));
-} else {
-  console.log(args.output);
+  if (endpointName === "image") {
+    if (args.image) body.image_url = toMediaUrl(args.image, "--image");
+    if (args["end-image"]) body.end_image_url = toMediaUrl(args["end-image"], "--end-image");
+  }
+  if (endpointName === "reference") {
+    if (refImages.length > 0)
+      body.reference_image_urls = refImages.map((p) => toMediaUrl(fitReference(p), "--ref-image"));
+    if (refVideos.length > 0)
+      body.reference_video_urls = refVideos.map((p) => toMediaUrl(p, "--ref-video"));
+    if (refAudios.length > 0)
+      body.reference_audio_urls = refAudios.map((p) => toMediaUrl(p, "--ref-audio"));
+  }
+
+  const falKey = loadFalKey();
+  if (!falKey) {
+    fail("No API key found. Set FAL_KEY in the environment or a .env file.");
+  }
+
+  // ---------------------------------------------------------------------------
+  // Request
+  // ---------------------------------------------------------------------------
+
+  // The bounded retries live HERE, in the script, so no caller has to
+  // improvise a shell loop around it: `runFalJob` gives a gateway 5xx, a 429
+  // or a dropped connection three attempts with a short back-off, and reports
+  // a 4xx at once. When the model's backend itself is down (fal's
+  // "downstream_service_unavailable", seen as a 504 on one endpoint while the
+  // others answered), the retries end quickly and the caller decides — the
+  // sampler falls back to another endpoint.
+  //
+  // Going through the queue is what makes interruption honest as well: an
+  // in-flight job is cancelled remotely before this process leaves, instead of
+  // being abandoned mid-render on someone else's meter.
+  const INTERRUPTS = ["SIGTERM", "SIGINT"];
+  const controller = new AbortController();
+  const interruptHandlers = new Map();
+  let interruptedBy = null;
+  for (const name of INTERRUPTS) {
+    const handler = () => {
+      // A second interrupt leaves at once: installing a handler disables
+      // Node's default kill, and nobody should have to wait out the cancel.
+      if (interruptedBy) process.exit(130);
+      interruptedBy = name;
+      controller.abort(new DOMException(`received ${name}`, "AbortError"));
+    };
+    interruptHandlers.set(name, handler);
+    process.on(name, handler);
+  }
+
+  function exitInterrupted() {
+    console.error(`ERROR: ${interruptedBy ?? "interrupted"} — the fal.ai job was cancelled`);
+    process.exit(130);
+  }
+
+  let job;
+  try {
+    job = await runFalJob({
+      url: endpoint.url,
+      body,
+      key: falKey,
+      signal: controller.signal,
+      label: "H3 Max video generation",
+      deadlineMs: Math.max(30, Number(args["deadline-s"]) || 900) * 1000,
+      onRetry: ({ attempt, attempts: total, delayMs, reason }) => {
+        console.error(
+          `WARN: ${reason.slice(0, 160)} — retrying in ${delayMs / 1000}s (attempt ${attempt} of ${total})`,
+        );
+      },
+    });
+  } catch (e) {
+    if (e?.name === "AbortError") exitInterrupted();
+    fail(e?.message ?? String(e));
+  }
+
+  const attempts = job.attempts;
+  const result = job.data;
+  const videoUrl = result?.video?.url;
+  if (!videoUrl) {
+    fail(`response carried no video URL: ${JSON.stringify(result).slice(0, 500)}`);
+  }
+
+  /**
+   * The clip comes from fal's CDN in one request. That request gets its
+   * own clock and its own retries: a stalled connection once held three
+   * shots for twenty-one minutes under no timeout at all, and a dropped
+   * one ("terminated") failed the scene outright (2026-09-03). The clock
+   * is an IDLE clock — a slow link that keeps delivering is allowed to
+   * finish (the same CDN measured 6 KB/s that night, an 11 MB shot in
+   * half an hour); only a stream that stops moving for a minute is given
+   * up on.
+   */
+  const DOWNLOAD_ATTEMPTS = 3;
+  const DOWNLOAD_IDLE_MS = 60_000;
+  async function downloadClip(url) {
+    let lastError = null;
+    for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++) {
+      const idle = new AbortController();
+      let idleTimer = null;
+      const touch = () => {
+        if (idleTimer) clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => idle.abort(), DOWNLOAD_IDLE_MS);
+      };
+      const started = Date.now();
+      try {
+        touch();
+        const resp = await fetch(url, { signal: AbortSignal.any([controller.signal, idle.signal]) });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const chunks = [];
+        let received = 0;
+        const reader = resp.body.getReader();
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          received += value.length;
+          touch();
+        }
+        const seconds = (Date.now() - started) / 1000;
+        if (seconds > 30) console.error(`NOTE: clip downloaded in ${seconds.toFixed(0)}s (${(received / 1024 / 1024).toFixed(1)} MB, ${(received / 1024 / seconds).toFixed(0)} KB/s)`);
+        return Buffer.concat(chunks);
+      } catch (e) {
+        if (controller.signal.aborted) throw e;
+        lastError = idle.signal.aborted ? new Error(`no bytes for ${DOWNLOAD_IDLE_MS / 1000}s`) : e;
+        if (attempt < DOWNLOAD_ATTEMPTS) {
+          console.error(`WARN: downloading the clip failed (${lastError?.message ?? lastError}) — retrying (attempt ${attempt} of ${DOWNLOAD_ATTEMPTS})`);
+          await new Promise((r) => setTimeout(r, 3000 * attempt));
+        }
+      } finally {
+        if (idleTimer) clearTimeout(idleTimer);
+      }
+    }
+    throw lastError ?? new Error("download failed");
+  }
+
+  let bytes;
+  try {
+    bytes = await downloadClip(videoUrl);
+  } catch (e) {
+    if (e?.name === "AbortError" && controller.signal.aborted) exitInterrupted();
+    fail(`downloading the clip failed: ${e?.message ?? e}`);
+  }
+
+  // The bytes are in hand and the remote job is finished — nothing left to
+  // cancel, so an interrupt from here on goes back to being the shell's.
+  for (const [name, handler] of interruptHandlers) process.off(name, handler);
+
+  mkdirSync(dirname(args.output), { recursive: true });
+  writeFileSync(args.output, bytes);
+
+  // ---------------------------------------------------------------------------
+  // Loudness normalization (see the header note)
+  // ---------------------------------------------------------------------------
+
+  const TARGET_LUFS = -16;
+
+  function normalizeLoudness(path) {
+    const measure = spawnSync(
+      "ffmpeg",
+      ["-i", path, "-af", "loudnorm=print_format=json", "-f", "null", "-"],
+      { encoding: "utf-8" },
+    );
+    if (measure.error) {
+      console.error("WARN: ffmpeg not found — clip loudness left as generated");
+      return null;
+    }
+    const match = (measure.stderr ?? "").match(/\{[^{}]*"input_i"[^{}]*\}/s);
+    if (!match) {
+      console.error("WARN: loudness measurement failed (no audio track?) — clip left as generated");
+      return null;
+    }
+    const m = JSON.parse(match[0]);
+    const inputI = Number(m.input_i);
+    const withinTolerance = !Number.isFinite(inputI) || Math.abs(inputI - TARGET_LUFS) < 1.5;
+    // Every clip leaves with ONE audio format — AAC, 48 kHz, stereo —
+    // whether or not its loudness needed correcting. loudnorm resamples on
+    // its way through (a corrected clip came out at 96 kHz beside untouched
+    // 32 kHz ones), and a scene concatenated from shots of mixed sample
+    // rates played with a wrong duration (47 s of shots → a 141 s file,
+    // 2026-09-03). The video stream is still copied; the file also gets its
+    // front-loaded index here.
+    const AUDIO_OUT = ["-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2"];
+    const audioArgs = withinTolerance
+      ? AUDIO_OUT
+      : [
+          "-af",
+          `loudnorm=I=${TARGET_LUFS}:TP=-1.5:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true`,
+          ...AUDIO_OUT,
+        ];
+    const tmp = `${path}.norm.mp4`;
+    const apply = spawnSync(
+      "ffmpeg",
+      ["-y", "-i", path, ...audioArgs, "-c:v", "copy", "-movflags", "+faststart", tmp],
+      { encoding: "utf-8" },
+    );
+    if (apply.status !== 0 || !existsSync(tmp)) {
+      console.error("WARN: loudness normalization pass failed — clip left as generated");
+      try { unlinkSync(tmp); } catch { /* not created */ }
+      return { input_i: inputI, normalized: false };
+    }
+    renameSync(tmp, path);
+    return { input_i: inputI, normalized: !withinTolerance };
+  }
+
+  const loudness = args["no-normalize"] ? null : normalizeLoudness(args.output);
+
+  // The price, on stderr: stdout stays one object (or one path).
+  const cost = h3Cost({
+    endpoint: endpointName,
+    resolution,
+    duration,
+    refImages: refImages.length,
+    refVideos: refVideos.length,
+    refAudios: refAudios.length,
+  });
+  console.error(costLine(cost));
+
+  if (args.json) {
+    const out = {
+      path: args.output,
+      url: videoUrl,
+      file_size: bytes.length,
+      requested_duration: duration,
+      attempts,
+    };
+    if (result.seed != null) out.seed = result.seed;
+    if (typeof job.inferenceSeconds === "number") {
+      out.inference_seconds = job.inferenceSeconds;
+    }
+    if (result.expanded_prompt) out.expanded_prompt = result.expanded_prompt;
+    if (loudness) out.loudness = loudness;
+    // Additive: every earlier key is as it was.
+    out.cost = cost;
+    console.log(JSON.stringify(out));
+  } else {
+    console.log(args.output);
+  }
+  return 0;
+}
+
+function isMain() {
+  if (typeof import.meta.main === "boolean") return import.meta.main;
+  const entry = process.argv[1] ? resolve(process.argv[1]) : null;
+  return entry !== null && fileURLToPath(import.meta.url) === entry;
+}
+
+if (isMain()) {
+  try {
+    process.exitCode = await main();
+  } catch (error) {
+    console.error(`ERROR: ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
+  }
 }
