@@ -41,12 +41,31 @@ export const RIVE_DEFAULT_IMAGES = "webp";
 export const RIVE_PIXEL_ART_STYLE = /pixel[\s-]*art|pixel[\s-]*(?:style|sprite|character)s?|\b(?:8|16|32)[\s-]?bit\b|像素/i;
 
 /**
+ * Whether a character is pixel art. `character.pixel` (0.5.0) is the one
+ * authority: a character that carries it is pixel art whatever its style
+ * sentence says. A character without it — every 0.4.x character — is read
+ * off `style` with `RIVE_PIXEL_ART_STYLE`, as before.
+ *
+ * Takes the sidecar's `character`, or a bare style string (the older
+ * callers, which only ever had the style to hand).
+ */
+export function riveIsPixelArt(character) {
+  if (character && typeof character === "object") {
+    const pixel = character.pixel;
+    if (pixel && typeof pixel === "object" && Number(pixel.logicalHeight) > 0) return true;
+    return RIVE_PIXEL_ART_STYLE.test(String(character.style ?? ""));
+  }
+  return RIVE_PIXEL_ART_STYLE.test(String(character ?? ""));
+}
+
+/**
  * The image format a `.riv` embeds when `--images` is not given: lossless
  * WebP (`webp-lossless`: ARGB, no chroma subsampling — every visible pixel
- * exactly as drawn) for pixel art, lossy WebP for everything else.
+ * exactly as drawn) for pixel art, lossy WebP for everything else. Takes
+ * what `riveIsPixelArt` takes.
  */
-export function riveDefaultImages(style) {
-  return RIVE_PIXEL_ART_STYLE.test(String(style ?? "")) ? "webp-lossless" : RIVE_DEFAULT_IMAGES;
+export function riveDefaultImages(character) {
+  return riveIsPixelArt(character) ? "webp-lossless" : RIVE_DEFAULT_IMAGES;
 }
 
 /** A loop's longest edge in a `.riv` unless `--max-size` says otherwise. */

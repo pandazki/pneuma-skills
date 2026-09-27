@@ -51,6 +51,7 @@ import {
   defaultTab,
   defaultExportRepeat,
   EXPORT_SWATCHES,
+  exportFamilyOrder,
   exportKey,
   exportRequestNotification,
   exportRows,
@@ -2388,6 +2389,84 @@ describe("connected motions", () => {
 });
 
 // ── What the composer chip says ────────────────────────────────────────────
+
+/**
+ * The 0.5.0 read side: what the rail and the Export tab do with a recorded
+ * route, a direction, and a breathe or mirror source. Each is a pure
+ * function, so each is pinned here rather than read off a screenshot.
+ */
+describe("routes, directions, breathe and mirror on the stage", () => {
+  test("the Export tab lists its sections in the order the route reads them", () => {
+    expect(exportFamilyOrder("game")).toEqual(["frames", "video", "rive"]);
+    expect(exportFamilyOrder("mascot")).toEqual(["rive", "video", "frames"]);
+    // Every other route — and a character whose route was never recorded —
+    // keeps the order the tab always had.
+    for (const purpose of ["loop", "animate", undefined] as const) {
+      expect(exportFamilyOrder(purpose)).toEqual(["video", "frames", "rive"]);
+    }
+  });
+
+  test("the order covers every family exportRows can produce, once", () => {
+    const families = new Set(exportRows(project(), motionOf(project()), { canRequest: true, requests: new Map() }).map((r) => r.family));
+    for (const purpose of ["game", "loop", "mascot", "animate", undefined] as const) {
+      const order = exportFamilyOrder(purpose);
+      expect(new Set(order).size).toBe(order.length);
+      for (const family of families) expect(order).toContain(family);
+    }
+  });
+
+  test("\"frames are misaligned\" is not offered on a breathe or a mirror", () => {
+    const commands = [
+      { id: "render-video", label: "Render a clip" },
+      { id: "regenerate-motion", label: "Redraw" },
+      { id: "fix-alignment", label: "Frames are misaligned" },
+    ];
+    const bySource = (source: string | undefined) =>
+      motionCommands(commands, motionOf(mutate((b) => {
+        if (source === undefined) delete b.sprite.motions[0].source;
+        else b.sprite.motions[0].source = source;
+      }))).map((c) => c.id);
+    // A breathe's frames share one still's footing; a mirror's are fixed on
+    // its source. Both keep the other two commands — a breathe is re-run
+    // for free with new parameters.
+    expect(bySource("breathe")).toEqual(["render-video", "regenerate-motion"]);
+    expect(bySource("mirror")).toEqual(["render-video", "regenerate-motion"]);
+    // Drawn or sampled frames keep it.
+    for (const source of [undefined, "sheet", "video"]) expect(bySource(source)).toHaveLength(3);
+  });
+
+  test("the empty motion list asks for the next thing the route needs, in both languages", () => {
+    const en = spriteStrings("en");
+    const zh = spriteStrings("zh");
+    expect(en.noMotions(null)).toBe("No motions yet. Ask for one — idle, walk, attack.");
+    expect(zh.noMotions(null)).toBe("还没有动作。让助手做一个吧——待机、行走、攻击。");
+    expect(en.noMotions("game")).toBe("No motions yet. Say what it must do in the game — stand, walk, attack, jump.");
+    expect(en.noMotions("loop")).toBe("No loop yet. Describe what should move on the page, how long one cycle is, and how wide it shows.");
+    expect(en.noMotions("mascot")).toBe("No states yet. Name the ones the app switches between — an idle first, then the rest.");
+    expect(en.noMotions("animate")).toBe("Nothing moves yet. Ask for a gentle breathing idle first — free, and ready in seconds.");
+    expect(zh.noMotions("game")).toBe("还没有动作。说说它在游戏里要做哪些动作——待机、行走、攻击、跳跃。");
+    expect(zh.noMotions("loop")).toBe("还没有循环动画。说说页面上什么要动、循环一次多长、显示多宽。");
+    expect(zh.noMotions("mascot")).toBe("还没有状态。说说应用要在哪几种状态之间切换——先做待机，再做其余的。");
+    expect(zh.noMotions("animate")).toBe("还没动起来。先让它轻轻呼吸起来——免费，几秒钟就好。");
+    // Five routes, five different next asks, in each language.
+    for (const t of [en, zh]) {
+      const hints = (["game", "loop", "mascot", "animate", null] as const).map((p) => t.noMotions(p));
+      expect(new Set(hints).size).toBe(5);
+    }
+  });
+
+  test("every direction and the anchor role have words in both languages", () => {
+    for (const locale of ["en", "zh"]) {
+      const t = spriteStrings(locale);
+      for (const d of ["front", "back", "left", "right"] as const) {
+        expect(t.direction[d].length).toBeGreaterThan(0);
+        expect(t.directionTitle[d].length).toBeGreaterThan(0);
+      }
+      expect(t.refRole.anchor.length).toBeGreaterThan(0);
+    }
+    expect(spriteStrings("zh").direction).toEqual({ front: "正面", back: "背面", left: "朝左", right: "朝右" });
+  });
+});
 
 describe("selectionLabel", () => {
   const p = project();

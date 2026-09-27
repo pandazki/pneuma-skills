@@ -63,8 +63,21 @@ const ICON_FOR: Record<string, (p: IconProps) => React.ReactElement> = {
   "fix-alignment": CrosshairIcon,
 };
 
-/** Commands that only make sense for a sprite motion, by id. */
-const SPRITE_ONLY_COMMANDS = new Set(["fix-alignment"]);
+/**
+ * Whether a command applies to this motion, by what it is and how its frames
+ * were obtained.
+ *
+ * "Frames are misaligned" asks the agent to re-run `align`, and three kinds
+ * of motion have nothing for it to do. A loop is never aligned: its frames
+ * stay where the clip put them, because the movement IS the content. A
+ * breathe's frames are warps of one still, so they share its footing by
+ * construction. A mirror's are its source's flipped, so the fix belongs on
+ * the source, and the mirror is made again from it.
+ */
+function commandApplies(commandId: string, motion: Motion): boolean {
+  if (commandId !== "fix-alignment") return true;
+  return motion.kind !== "loop" && motion.source !== "breathe" && motion.source !== "mirror";
+}
 
 /**
  * Commands sent from a panel, never from the bar. `export` needs a format —
@@ -74,13 +87,11 @@ const SPRITE_ONLY_COMMANDS = new Set(["fix-alignment"]);
 const PANEL_COMMANDS = new Set(["export"]);
 
 /**
- * The commands that apply to the motion on stage.
+ * The commands that apply to the motion on stage (`commandApplies`).
  *
- * "Frames are misaligned" asks the agent to re-run `align` — and a loop is
- * never aligned: its frames are kept exactly where the clip put them, because
- * the movement IS the content. Offering the button anyway is an offer to
- * break the deliverable, and a user who pressed it would get an agent
- * explaining why it cannot do the thing the UI just proposed.
+ * Offering a button that does not apply is an offer to break the
+ * deliverable, and a user who pressed it would get an agent explaining why
+ * it cannot do the thing the UI just proposed.
  *
  * With no motion selected every command is listed and disabled — the bar is
  * how a user learns what this stage can do, and a loop is not yet on it.
@@ -90,8 +101,7 @@ export function motionCommands(
   motion: Motion | null,
 ): ViewerCommandDescriptor[] {
   const onBar = commands.filter((command) => !PANEL_COMMANDS.has(command.id));
-  if (motion?.kind !== "loop") return onBar;
-  return onBar.filter((command) => !SPRITE_ONLY_COMMANDS.has(command.id));
+  return motion ? onBar.filter((command) => commandApplies(command.id, motion)) : onBar;
 }
 
 /** Model and mode names are the API's own, so they are not translated — the

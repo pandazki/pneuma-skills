@@ -130,6 +130,7 @@ video, a sheet generated from one reference) is fully described by
 | `<motion>-apng` (image) / `<motion>-webm` (video) / `<motion>-lottie` (text) | A loop's other three exports, made by its own run |
 | `<motion>-export-<format>` | An on-demand export of a ready motion, `format` one of `mp4` / `mov` / `webm` (video), `apng` (image), `lottie` (text), `png-seq` (image, `metadata.container: "zip"`). Written by `register-export` |
 | `<character>-export-riv` | The character's `.riv` (image, `metadata.container: "riv"`); `<character>` is the directory name. Written by `register-export` |
+| `<character>-palette` | A pixel-art character's pinned palette (text, `palette.json`), `metadata: { colors?, size, sha256 }`; a `derive` edge (`step: "palette"`) from the frames of the run that pinned it. Written by `register-run` (see *Pixel art*) |
 
 Ids are stable across re-runs: `register-run` removes the previous frame
 assets and their edges before writing the new ones, so re-running a motion
@@ -233,7 +234,12 @@ that drew it. `--uploaded` writes an `upload` edge with `actor: "human"`,
 brought has no model and no prompt to record, and inventing one is the only
 other way to get it into the project. `--derived-from <refId>` writes a
 `derive` edge from that reference carrying `params.op` (`--op`, default
-`crop`) — the single pose you cut out of an uploaded sheet. The asset entry is
+`crop`) — the single pose you cut out of an uploaded sheet. It also takes a
+ref's asset id or any registered asset id, such as a frame
+(`--derived-from walk-right-frame-00`): an anchor is often cut out of a frame.
+If that motion is run again the frame's id is reused for the new picture; if
+the frame is dropped, the edge's parent is nulled like any edge whose parent
+goes. The asset entry is
 identical in all three cases (`tags: ["ref"]`, measured metadata, `ready`), and
 re-registering an id replaces its edge whatever its type, so a reference can
 move between origins without collecting duplicates. `show` reports the result
@@ -252,11 +258,32 @@ interface SpriteSidecar {
     description: string;          // one paragraph you keep current
     style: string;                // the style anchor that opens every prompt
     cell: { width: number; height: number };
-    facing?: "left" | "right";
+    facing?: "left" | "right";    // the side that is generated; the other
+                                  // side is a `mirror` of it
+    purpose?: "game" | "loop" | "mascot" | "animate";
+                                  // what the user is making (the route):
+                                  // `init --purpose` / `set-character
+                                  // --purpose`. Absent = never recorded
+    pixel?: {                     // present only for pixel art — the one
+      logicalHeight: number;      // authority for it. The character's height
+                                  // in logical px (`--pixel`)
+      palette?: string;           // `<character>-palette`, pinned by the
+                                  // first pixel run; absent until then
+      colors?: number;            // the size asked for (`--colors`), then
+                                  // the size it was pinned with
+    };
+    asymmetric?: string;          // one sentence: what must never flip ("the
+                                  // sword is in the right hand"). Stops a
+                                  // mirror; guards every built prompt
   };
   refs: Array<{ id: string; asset: string;
-                role: "turnaround" | "portrait" | "expression" | "custom";
-                label: string }>;
+                role: "turnaround" | "portrait" | "expression" | "anchor" | "custom";
+                label: string;
+                direction?: "front" | "back" | "left" | "right" }>;
+                                  // `direction` exactly on an anchor: one
+                                  // single-pose image facing one way, one per
+                                  // direction. The character's directions are
+                                  // its anchors' directions
   motions: Motion[];
   exports?: { riv?: string };     // `<character>-export-riv`, the whole
                                   // character for Rive, loops resampled.
@@ -266,7 +293,15 @@ interface SpriteSidecar {
 
 interface Motion {
   id: string; label: string;
+  direction?: "front" | "back" | "left" | "right";
+                                  // the way it faces; the id is then
+                                  // <state>-<direction> (walk-left), so every
+                                  // atlas key, Aseprite tag and Rive input
+                                  // carries it (`add-motion/set-motion
+                                  // --direction`)
   prompt: string;                 // the sheet prompt actually sent
+  promptParts?: PromptParts;      // present when code built `prompt`
+                                  // (`sheet-prompt`); absent = hand-written
   grid: { rows: number; cols: number };
   fps: number; loop: boolean;
   anchor: "bottom" | "center";
@@ -277,9 +312,14 @@ interface Motion {
   gif?: string; webp?: string;
   videos: MotionVideo[];
   inspect?: InspectSummary;       // copied from inspect.json by register-run
-  source?: "sheet" | "video";     // how the frames were obtained; absent means
-                                  // "sheet" (set by add-motion --source and by
-                                  // register-run for a from-video run)
+  source?: "sheet" | "video" | "breathe" | "mirror";
+                                  // how the frames were obtained; absent means
+                                  // "sheet" (set by add-motion --source, and
+                                  // corrected by register-run from the run)
+  mirrorOf?: string;              // source "mirror" only: the motion whose
+                                  // frames these are, flipped
+  breathe?: BreatheRecord;        // source "breathe" only: what the warp was
+                                  // made from and with
   kind?: "loop" | "transition";   // what the motion is FOR; absent = a sprite
                                   // motion. `source` still says how the frames
                                   // were obtained ("video" for both). An
@@ -322,6 +362,28 @@ interface LoopBrief {
                                   // from a ceiling of 0
   recordedAt: string;             // ISO timestamp of the set-motion call
 }
+
+interface BreatheRecord {         // all required but depthX and anatomy
+  still: string;                  // asset id the frames were warped from
+  depth: number;                  // vertical amplitude, fraction of height
+  depthX?: number;                // horizontal amplitude when it differs
+  breaths: number;                // whole breaths per loop of the motion
+  lag: number;                    // how far the head trails the chest
+  mode: "smooth" | "pixel";       // bilinear, or whole pixels
+  anatomy?: { rigidRow: number; axisX: number; from: "detected" | "override" };
+                                  // the boundary actually used — what to
+                                  // change (--rigid-row) when the head wobbles
+}
+
+interface PromptParts {           // how `sheet-prompt` built `prompt`
+  builder: string;                // code version, e.g. "sheet-prompt/1"
+  action: string;                 // your action / phase plan, verbatim
+  guards: string[];               // clause ids: "walk-gait", "direction:left"…
+  guide?: { rows: number; cols: number;
+            cell: { width: number; height: number };
+            safeMargin: { x: number; y: number } };
+                                  // the layout guide it was sent with
+}                                 // same builder + parts ⇒ same text
 
 interface TransitionBrief {       // a transition's two answers, both required
   duration: number;               // seconds it plays in the .riv — the take
@@ -475,6 +537,70 @@ answering none of the question. `add-video` and `show` say which answers are
 missing rather than reading half a record out loud. A sprite motion never
 carries one; the loader drops it there the way it drops every other loop-only
 field.
+
+### Routes, directions, breathe, mirror, pixel art (0.5.0)
+
+Every one of these fields is optional and absent in a 0.4.x file, which
+loads — and is rewritten by any command — byte for byte as before. The viewer
+drops a value it does not recognise rather than defaulting it: an unknown
+`purpose`, `source` or `direction` is absent; `breathe` travels only with
+`source: "breathe"` and `mirrorOf` only with `source: "mirror"`; `breathe`,
+`promptParts` and `pixel` are whole or absent (a `pixel` without its
+`logicalHeight` is no pixel spec); an anchor without a direction loads as a
+`custom` ref, and no other role keeps one.
+
+**The character.** `init --purpose --asymmetric --pixel <h> [--colors N]`
+records them at creation; `set-character` changes any of them later, along
+with `--description`, `--style` and `--facing` — only the flags given change.
+`--asymmetric ""` takes the sentence back; `--no-pixel` removes the pixel
+spec and unregisters a pinned palette (the file stays).
+
+**Directions.** A character's direction set is read off its anchors
+(`add-ref --role anchor --direction left`, one anchor per direction — a
+second one for the same direction is refused; re-register that id to replace
+it). A motion faces one way (`add-motion --direction`, `set-motion
+--direction`) and is named `<state>-<direction>`. `facing` stays the side
+that is generated; the other side is mirrored.
+
+**A breathe motion** is registered from `sprite-sheet.mjs breathe --json`,
+whose summary is a sprite run's (frames, sheet, atlas, GIF, inspect) plus
+`source: "breathe"`, `still` (the image's path) and `breathe: { depth,
+breaths, lag, mode, depthX?, anatomy? }`. `register-run` finds the still by
+its uri among the registered assets and refuses one that is not there —
+`add-ref --uploaded` it first (a cut-out: `--derived-from <ref> --op key`), so
+provenance reads frames ← alpha still ← upload. Each frame is a `derive`
+edge from the still, `params: { tool, step: "breathe", frameIndex, depth,
+depthX?, breaths, lag, mode }`, and `motion.breathe` keeps the record.
+
+**A mirror** is registered from `sprite-sheet.mjs mirror --json`: a sprite
+run plus `source: "mirror"` and `mirrorOf`. The source must be a ready sprite
+motion (not a loop, a transition or another mirror) facing `left` or
+`right`, with as many registered frames as the run; frame i derives from its
+frame i (`step: "mirror"`). `motion.mirrorOf` names it and `motion.direction`
+becomes the other side (a mirror declared facing the same side is refused,
+and `set-motion --direction` cannot turn it later). Re-running the source
+prints a note per mirror made from it, and `show` lists each mirror whose
+source was registered again after it — or is gone — under `staleMirrors` (a
+note, not a status: the fix is one free `mirror` + `register-run`).
+
+A run of any other shape over a breathe or mirror motion drops that record
+and corrects `source`, the way a sheet run corrects `video`.
+
+**Recorded prompt parts.** `set-motion --prompt "<text>" --prompt-parts
+'<json>'` records a prompt with the parts code built it from — the writer
+`sheet-prompt` uses. Both go on together; `--prompt` alone is a hand-written
+prompt and drops any parts on file.
+
+**Pixel art.** `character.pixel` is the one authority for "this is pixel
+art": `riveIsPixelArt` (`rive-plan.mjs`) reads it first and falls back to the
+style sentence for older characters, and the Export tab's Rive request names
+the image format it implies. A pixel run's summary
+carries `pixel: { palette: "<path to palette.json>", colors? }`; the first
+one `register-run` sees pins it as `<character>-palette` (the character must
+be declared pixel art first). A later run quantised to the same file and
+bytes changes nothing; one quantised to a different palette is refused
+unless `--repin`, which pins the new one and warns that the other ready
+motions were quantised to the old one.
 
 ## Character identity vs content set
 

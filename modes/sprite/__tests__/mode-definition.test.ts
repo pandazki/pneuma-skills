@@ -206,6 +206,53 @@ describe("extractContext — no selection", () => {
   });
 });
 
+/**
+ * The 0.5.0 fields a later turn needs without another tool call: what the
+ * user is making (so the agent does not ask again), which way a motion and
+ * an anchor face, and where a breathe's or a mirror's frames came from.
+ */
+describe("extractContext — routes, directions, breathe and mirror", () => {
+  function routed(): ViewerFileContent[] {
+    const body = JSON.parse(withWalk());
+    body.sprite.character.purpose = "game";
+    body.sprite.refs.push({ id: "anchor-left", asset: "ref-anchor-left", role: "anchor", label: "Anchor left", direction: "left" });
+    body.sprite.motions.push(
+      {
+        id: "idle", label: "Idle", prompt: "", grid: { rows: 4, cols: 4 }, fps: 8, loop: true, anchor: "bottom",
+        status: "ready", source: "breathe", frames: [], videos: [],
+        breathe: { still: "ref-portrait-alpha", depth: 0.02, breaths: 1, lag: 0.15, mode: "smooth" },
+      },
+      {
+        id: "walk-left", label: "Walk · left", prompt: "", grid: { rows: 2, cols: 4 }, fps: 10, loop: true, anchor: "bottom",
+        status: "ready", source: "mirror", mirrorOf: "walk", direction: "left", frames: [], videos: [],
+      },
+    );
+    return files({ "mini/project.json": JSON.stringify(body) });
+  }
+  const at = (address: Record<string, unknown>) => extractSpriteContext({ address } as never, routed());
+
+  test("the overview says what the user is making, and which way each anchor faces", () => {
+    const context = extractSpriteContext(null, routed());
+    expect(context).toContain("Purpose: game");
+    expect(context).toContain("anchor-left (anchor, left)");
+  });
+
+  test("a breathe names the still it was warped from; a mirror names its source and its side", () => {
+    expect(at({ contentSet: "mini", motion: "idle" })).toContain("Source: breathe (from ref-portrait-alpha)");
+    const mirror = at({ contentSet: "mini", motion: "walk-left" });
+    expect(mirror).toContain("Direction: left");
+    expect(mirror).toContain("Source: mirror of walk (its frames flipped left↔right)");
+  });
+
+  test("an anchor reference says which way it faces", () => {
+    expect(at({ contentSet: "mini", ref: "anchor-left" })).toContain('Reference: "Anchor left" (anchor-left, role anchor, faces left)');
+  });
+
+  test("a character with no recorded route prints no Purpose line", () => {
+    expect(extractSpriteContext(null, files({ "mini/project.json": withWalk() }))).not.toContain("Purpose:");
+  });
+});
+
 describe("selectCharacter", () => {
   const roster = {
     byContentSet: {

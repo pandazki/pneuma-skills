@@ -59,12 +59,12 @@ import {
 import {
   defaultTab,
   EXPORT_SWATCHES,
+  exportFamilyOrder,
   exportRows,
   loopExports,
   motionLabel,
   normalizeExportColor,
   panelTabs,
-  type ExportFamily,
   type ExportRow,
   type ExportRowOptions,
   type PanelTab,
@@ -547,10 +547,9 @@ function AtlasTab({
   );
 }
 
-const EXPORT_FAMILIES: ExportFamily[] = ["video", "frames", "rive"];
-
 /**
- * Every format this motion can be delivered as, in three sections.
+ * Every format this motion can be delivered as, in three sections, in the
+ * order the character's route reads them (`exportFamilyOrder`).
  *
  * The rows are `exportRows` verbatim — this component decides nothing about
  * which formats exist, only how a row looks. A row is a download when its
@@ -588,7 +587,7 @@ function ExportTab({
 
   return (
     <div className="flex flex-col gap-4 p-3">
-      {EXPORT_FAMILIES.map((family) => {
+      {exportFamilyOrder(project.sprite.character.purpose).map((family) => {
         const inFamily = rows.filter((row) => row.family === family);
         if (inFamily.length === 0) return null;
         return (
