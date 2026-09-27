@@ -298,3 +298,305 @@ appended to this document.
 
 Specified after D1 lands; see the appended design note. (T9, frame
 curation, was dropped by the owner on 2026-09-27.)
+
+---
+
+# Appendix — D1 design note (architect, 2026-09-27)
+
+Design note for `docs/proposals/2026-09-27-sprite-gen-absorption.md`. Scope
+after the owner's 2026-09-27 change: **no frame curation, no candidate takes,
+no AI in-betweens.** Consequences: `saveRoster` keeps throwing, the viewer
+stays a reader, the hosted player (`editing === false`) is unaffected, and
+`regenerate-motion` keeps replace-in-place semantics. Everything below is
+mode-local: no `core/types` change, no new Source kind, no new ViewerAddress
+key, no new action or command.
+
+### 1. Routes — what the user is making
+
+Problem: the round adds six capabilities; a user should never have to know
+them. The agent picks one of four routes from the opening message (or asks
+one plain question when unclear: *"a game character, a looping animation
+for a page, a mascot for an app, or bring a picture to life?"*). A route
+fixes the defaults, the up-front questions, the price the user is told, and
+the finish line. Jargon (grid, fps, anchor, cell) never reaches the user.
+
+| Route | For | Up-front questions (plain) | Defaults implied | Told cost / time | Finish line |
+|---|---|---|---|---|---|
+| **G · Game character** | someone building in Phaser / Pixi / Godot / Unity, or wanting a sheet | 1. "What must it do — stand, walk, attack, jump? Must it face several directions?" 2. "Roughly how big on screen, and is it pixel art?" | style sentence from the character interview; cell 256 (pixel: `pixel.logicalHeight`, lattice on every run); motion set from Q1; source `sheet` for idle/attack/poses, `video` offered for walk/run; exports `sheet+atlas`, Aseprite JSON, PNG sequence | sheet motion ≈ 1 min, image cost only; video motion ≈ $1, 5–7 min; 4-direction: three generated + one mirrored per state, plus one anchor per direction (≈ 35 s each) | Export tab → sheet + atlas.json (built by every run), Aseprite JSON, PNG sequence |
+| **G-pixel** (sub-route) | pixel-art game | Q2's "pixel art" + "how tall in pixels" | `character.pixel = { logicalHeight }`; first run pins `palette.json`; nearest-neighbour everywhere; Rive lossless | same as G | same as G at integer scale; recolor (T11) from the palette |
+| **G-4dir** (sub-route) | top-down / RPG | Q1's "directions" | one anchor ref per direction; ids `<state>-<direction>`; `facing` side generated, other side `mirror`ed unless `asymmetric` | ×3 generated per state | same as G; tags per motion |
+| **L · UI loop** (workflow E, unchanged) | frontend / product | the five answers in one message (subject, verb, style, duration, width) + budget | `kind: "loop"`, brief gate | ≈ $1.2–1.3, 5–7 min | Loop tab → webp / apng / webm / lottie |
+| **M · Mascot for Rive** (E×N + F, unchanged) | app team switching states from code | "Which 2–4 states does the app switch between, and how large?" + budget | loops + transitions, hub idle | N × ≈ $1.2 + transitions | Export tab → `.riv` with preview |
+| **A · Bring my picture to life** (new) | anyone with a drawing / character image | none beyond the image; optional "subtle or noticeable?" | `add-ref --uploaded` → `remove-background` → `breathe` idle: smooth mode, depth 0.02 (0.04 noticeable), 16 frames @ 8 fps, cell = the image's box + pad (≤ 512) | free, seconds | GIF tab → webp / gif; Export → apng. Funnel: "want it to walk?" continues as G with the same image (A′ + anchors) |
+
+Where the user looks at each step (unchanged surfaces): refs rail as
+references and anchors land; motion rows moving `planned → generating →
+processing → ready`; the stage playing; GIF / Loop / Atlas tabs; Export tab
+at the finish line. The agent still looks before it claims (`inspect`,
+`get-playback-state`, `capture`).
+
+**Record the route?** Yes, minimally: `character.purpose?: "game" | "loop" |
+"mascot" | "animate"`. It earns its place with three consumers and one
+writer: (1) `extractContext` prints `Purpose: game` so a later session does
+not re-ask; (2) the rail's `noMotions` hint names the right next ask per
+purpose; (3) the Export tab orders its families by purpose (`game`: frames →
+video → rive; `mascot`: rive → video → frames; else unchanged). Absent =
+today (the agent infers or asks). Sub-routes are *not* enum values: pixel is
+recorded by `character.pixel`, directions by the anchor refs. Writer: `init
+--purpose` and a new `set-character` subcommand (also the first writer of
+`description`/`style`/`facing` after init — a real gap today).
+
+Viewer legibility, minimal: the empty-state body lists the four routes in one
+sentence each; `noMotions` varies by purpose; export family order by purpose
+(one pure function in `panel.ts`). No chips, no wizard, no new component.
+
+#### 2. Sidecar additions (one authority per concept)
+
+```ts
+// domain.ts — all optional; absent = 0.4.x behaviour
+export type CharacterPurpose = "game" | "loop" | "mascot" | "animate";
+export const DIRECTIONS = ["front", "back", "left", "right",
+  "front-left", "front-right", "back-left", "back-right"] as const;
+export type Direction = (typeof DIRECTIONS)[number];
+
+export interface PixelSpec {
+  logicalHeight: number;   // character height in logical px the lattice snaps to
+  palette?: string;        // asset id `<character>-palette` (text, uri palette.json); absent until pinned
+  colors?: number;         // size it was pinned with
+}
+export interface SpriteCharacter {
+  /* existing */ purpose?: CharacterPurpose; pixel?: PixelSpec;
+  asymmetric?: string;     // side-specific features that must not flip; gates `mirror`, feeds the prompt guard
+}
+export type SpriteRefRole = "turnaround" | "portrait" | "expression" | "anchor" | "custom";
+export interface SpriteRef { /* existing */ direction?: Direction }  // required when role === "anchor"
+
+export type MotionSource = "sheet" | "video" | "breathe" | "mirror";
+export interface BreatheRecord {
+  still: string;           // asset id the frames were warped from
+  depth: number; depthX?: number; breaths: number; lag: number;
+  mode: "smooth" | "pixel";
+  anatomy?: { rigidRow: number; axisX: number; from: "detected" | "override" };
+}
+export interface PromptParts {
+  builder: string;         // e.g. "sheet-prompt/1": the code version that assembled `prompt`
+  action: string;          // the agent's action / phase plan, verbatim
+  guards: string[];        // clause ids included: "walk-gait", "no-shadow", "direction:front-right", …
+  guide?: { rows: number; cols: number; cell: { width: number; height: number }; safeMargin: { x: number; y: number } };
+}
+export interface Motion {
+  /* existing */ source?: MotionSource; direction?: Direction;
+  mirrorOf?: string;       // source "mirror": the motion whose frames these flip
+  breathe?: BreatheRecord; // source "breathe"
+  promptParts?: PromptParts; // present when `prompt` came from sheet-prompt
+}
+// InspectSummary: pitch?: number  — pixel runs, measured block pitch in source px
+```
+
+Writers (unchanged invariants: `project.json` only by `sprite-project.mjs`;
+frames, atlases, previews, palette and guide images only by `sprite-sheet.mjs`):
+
+| Field / file | Command |
+|---|---|
+| `purpose`, `asymmetric`, `pixel.logicalHeight`/`colors` | `init --purpose --asymmetric --pixel H [--colors N]`; `set-character` (new) same flags + `--description --style --facing` |
+| `palette.json` (file) | `sprite-sheet.mjs run --pixel` / `pixel` on the first pixel run; later runs read it |
+| `pixel.palette` + asset `<character>-palette` | `register-run` when `run.pixel.palette` is present: pins once, `derive` edge from that run's frames; a later run carrying a different palette is refused unless `--repin`, which warns that earlier motions were quantised to the old one |
+| anchor refs | `add-ref --role anchor --direction front …` (`--direction` required for the role); `--derived-from` accepts a ref id or any asset id (a frame) |
+| `motion.direction` | `add-motion --direction`, `set-motion --direction` |
+| `mirrorOf` + flipped frames | `sprite-sheet.mjs mirror <char>/motions/<of> --out … --name <id> --json` → `register-run` (`run.source: "mirror"`, `run.mirrorOf`) |
+| `breathe` + frames | `sprite-sheet.mjs breathe <still> --out … --name <id> --frames --depth [--mode] [--rigid-row --axis --torso] --json` (T6 core + pack/gif/inspect, T10) → `register-run` (`run.source: "breathe"`, `run.still`, `run.breathe`) |
+| `promptParts` + `prompt` | `sprite-project.mjs sheet-prompt --motion <id> --action "…" [--frames] --json` prints the prompt and records both |
+| `motions/<id>/layout-guide.png` | `sprite-sheet.mjs guide --rows --cols --cell --out …` — a working file with no id, like `first-green.png`; reproducible from `promptParts.guide` |
+
+#### 2.3 Breathe as a source
+
+`source: "breathe"`; frames are `derive` edges from `breathe.still` (single
+parent, no `inputs`), `params: { tool, step: "breathe", depth, breaths, lag,
+mode }`. `register-run` resolves `run.still` to an asset by uri and refuses an
+unregistered still ("register it first: `add-ref --uploaded`"), mirroring the
+video path's "register the clip first". `anatomy` records the boundary
+actually used and whether it was detected or overridden — what the agent needs
+to answer "the head wobbles" with `--rigid-row` on the next run; detector
+warnings go into `inspect.warnings`, the existing channel. Route A stills are
+cut out first (`remove-background` → `add-ref --derived-from upload --op key`),
+so provenance reads frames ← alpha still ← upload.
+
+Lifecycle: `register-run` deletes `breathe` unless the run carries it (as it
+already corrects `video → sheet`); `regenerate-motion` on a breathe motion is a
+free re-run with changed params; `fix-alignment` is hidden for it
+(`SPRITE_ONLY_COMMANDS` → a per-source predicate), since the frames are warps
+of one still. Viewer: plays as any sprite motion; `describeMotion` prints
+`Source: breathe (from <still>)`.
+
+#### 2.4 Directions
+
+Minimal model, no character-level block. The direction *set* is derived: the
+`direction`s of the anchor refs; `facing` keeps its meaning and becomes the
+side that is generated, the other side mirrored. An anchor is one single-pose
+image (upstream's "anchor = one image" rule), generated from the turnaround
+(`--from ref-turnaround`) or cut from a frame; the file lives in `refs/`, so a
+later re-run of that motion leaves the anchor intact (its edge parent is
+nulled by the existing `dropAssets` rule — documented, acceptable).
+
+Motion ids are `<state>-<direction>` (`walk-right`, label "Walk · right"), so
+atlas keys, Aseprite `frameTags`, Phaser animation keys and Rive
+`play_<motionId>` all carry the direction with no new naming layer; the
+ViewerAddress stays `{ motion: "walk-right" }`. `mirror` writes real flipped
+frames (pivot x → cell.width − x) and registers like `--reverse-of`: same
+frame count, source ready, opposite direction, frames hang off the source's
+frames (`step: "mirror"`). It refuses when `character.asymmetric` is set
+unless `--force`, and the same string becomes a guard clause in
+`sheet-prompt` (upstream's asymmetric-identity gate). Loops and transitions
+are not mirrored. Re-running a source motion prints a stderr note per mirror
+made from it and `show` lists stale mirrors — the reverse-transition
+precedent; the fix is one free command.
+
+Rail: a small direction text on the motion row; nothing else. `rive`
+treating `mirrorOf` like `reverseOf` (shared images, flipped) is T8/T2 work,
+not schema.
+
+#### 2.5 Recorded prompt parts
+
+`sheet-prompt` assembles: `character.style` first, description, grid/cell/
+safe margin, per-state guards (upstream `STATE_REQUIREMENTS`, ported text),
+direction clauses (`directional_requirements`), transparency rules, the
+white-plate ending, and the `asymmetric` lock — the agent supplies `action`
+only. `promptParts` records the builder version, the action verbatim, the
+clause ids and the guide parameters; `prompt` keeps the full text. Same
+`builder` + parts ⇒ same text, pinned by a test, which is what makes T7's
+layout-guide and guard experiments reproducible. Attached refs stay on the
+sheet's `generate` edge (`set-sheet --from`), not duplicated here. Video
+prompts (`video-prompt`) print text only this round; `MotionVideo.prompt`
+unchanged (open question 4). Absent `promptParts` = a hand-written prompt.
+
+#### 2.6 Pixel palette
+
+Per **character**, not per motion: the palette exists to stop colour flicker
+*between* motions as much as between frames. `character.pixel` is the one
+authority for "this is pixel art": `riveDefaultImages` / `--filter auto` /
+`export --scale` read it first and fall back to `RIVE_PIXEL_ART_STYLE` on
+`style` for older projects. `logicalHeight` is the user's answer from route
+G-pixel and every later run snaps to it; `pitch` per motion is a measurement
+and lives in `inspect`. Recolor (T11) consumes `pixel.palette`; where its
+colourways are recorded is T11's proposal (suggest `pixel.variants`), not
+fixed here.
+
+### Migration and tests
+
+Every field is optional and dropped when malformed: `breathe` only with
+`source: "breathe"`, whole-or-nothing like `brief`; `mirrorOf` only with
+`source: "mirror"`; an anchor without a direction loads as `custom`; an
+unknown `source` or `direction` is absent. 0.4.x files load byte-for-byte
+the same.
+
+Pin: `domain.test` (each field's survive/fallback, `pixel` gating
+`riveDefaultImages`); `sprite-project.test` (`set-character`; anchor needs
+`--direction`; `register-run` breathe resolves the still by uri and refuses an
+unregistered one; mirror validation and stale-mirror notes; palette pinned
+once, `--repin` warns; `sheet-prompt` determinism and `prompt === printed`);
+`sprite-sheet.test` (mirror flips frames and pivot; guide PNG geometry;
+breathe run.json shape); `viewer-logic.test` (export family order by purpose;
+`fix-alignment` hidden for breathe/mirror); strings snapshot for `noMotions`
+per purpose in both locales; `project-json.md` updated in the same change.
+
+### 3. Open questions for the owner
+
+1. **Ask or infer the route?** Recommended: infer from the opening message,
+   ask the one-line question only when unclear; record via `init --purpose`.
+   Enum name for route A (`"animate"`) is open.
+2. **Direction vocabulary**: the 8-value union (`front/back/left/right` +
+   four diagonals) with "side" expressed through `facing`; ids
+   `<state>-<direction>`. Alternative: upstream's `down/side/up`.
+3. **Stale mirrors**: note-only (reverse-transition precedent) vs flipping
+   the mirrored motion to `processing` until `mirror` runs again.
+4. **Video prompt parts**: text only this round, or the same `promptParts`
+   on `MotionVideo` for parity.
+5. **Route A defaults** (depth 0.02 smooth, 16 @ 8 fps) await T6's Lumi
+   evidence; the owner judges.
+6. **`asymmetric` as a sentence** (doubles as the prompt clause) vs a flag.
+
+## Decisions on D1's open questions (coordinator, 2026-09-27)
+
+The owner delegated routine choices ("其他的按照你的来吧"); these follow the
+smallest correct model and can be overturned.
+
+1. **Infer the route**, ask the one-line question only when the opening
+   message does not say; record it with `init --purpose` / `set-character`.
+   Route A's enum value is `"animate"`.
+2. **Four directions only**: `front | back | left | right`. Diagonals are an
+   8-direction game's need nobody has asked for; the union can grow later.
+   `facing` stays the generated side; ids are `<state>-<direction>`.
+3. **Stale mirrors are a note**, not a status flip (reverse-transition
+   precedent).
+4. **Video prompts: text only** this round; `MotionVideo.prompt` unchanged.
+5. **Route A defaults** wait for T6's Lumi evidence and the owner's eye.
+6. **`asymmetric` is a sentence** — it doubles as the prompt guard clause.
+
+## Wave 1b tasks
+
+### S — Sidecar contract (lands first)
+
+Everything in the D1 TypeScript block with the 4-direction union: domain
+types + parsing (whole-or-nothing, 0.4.x byte-for-byte), `sprite-project.mjs`
+writers (`init --purpose --asymmetric --pixel --colors`, new `set-character`,
+`add-ref --role anchor --direction`, `add-motion/set-motion --direction`,
+`register-run` accepting `run.source` `breathe` / `mirror` with `run.still` /
+`run.breathe` / `run.mirrorOf`, `run.pixel.palette` pinning with `--repin`,
+`sheet-prompt`'s recording half = a `set-motion --prompt-parts <json>` or
+equivalent writer), stale-mirror notes in `show`, `project-json.md`, and the
+viewer's read side: `extractContext` purpose line, `noMotions` per purpose
+(en + zh-CN + ja strings), Export-tab family order by purpose (one pure
+function), direction text on the motion row, `describeMotion` for breathe /
+mirror, `fix-alignment` hidden for breathe and mirror sources. No new
+subcommands in `sprite-sheet.mjs` (those are T7/T8/T10). Tests per D1's
+"Migration and tests". Visual check of the rail/export changes with a
+screenshot.
+
+### T7 — Generation: sheet-prompt builder, layout guide, guards
+
+After S. `sprite-project.mjs sheet-prompt --motion <id> --action "…"` builds
+the prompt in code (style sentence first, description, grid/cell/safe
+margin, per-state guards ported from upstream `STATE_REQUIREMENTS`, direction
+clauses, `asymmetric` lock, identity-over-motion clauses — "This row owns
+motion only…", "Prefer a subtler animation over any change that mutates the
+character identity" — adapted to a grid sheet, white-plate ending), prints it
+and records `promptParts` + `prompt`; deterministic, pinned by test.
+`sprite-sheet.mjs guide --rows --cols --cell --out` draws the layout guide
+(upstream `prepare.py:728-750` geometry). Video prompt clauses (row 20) go
+into `references/video-preview.md` as the template. Frame-count guidance and
+the guide's default (on/off) wait for E1/E2 numbers.
+
+### T8 — Directions and mirror
+
+After S. `sprite-sheet.mjs mirror` (flipped frames, pivot `x → w − x`,
+refuses on `asymmetric` without `--force`), `rive` and `export --format
+aseprite` treating `mirrorOf` like `reverseOf` where images can be shared,
+anchor generation guidance in `references/prompting.md` (one single-pose image
+per direction, generated from the turnaround; right before left; handed props
+keep their side). E7 validates.
+
+### T10 — Breathe wiring and route A
+
+After S and T6. `breathe` through `register-run` (`run.json` shape per D1),
+pack/gif/inspect on its frames, the route-A path end to end on an uploaded
+image (`add-ref --uploaded` → `remove-background` → `breathe` → ready motion),
+`regenerate-motion` on a breathe motion = re-run with new params.
+
+### T11 — Recolor
+
+After T5 and S. `sprite-sheet.mjs recolor` (exact hex map + tolerance mode,
+report of unmatched map entries and uncovered colours, alpha untouched,
+deterministic bytes) for palette-pinned characters, a `recolor-palette`
+draft from `pixel.palette`; variants recorded where T11 proposes
+(`pixel.variants` suggested). Not offered for non-pixel characters (measured:
+252 colours on Lumi, top 64 cover 54 %).
+
+## Wave 2 — real inputs (shot now, used as the tasks land)
+
+Paid, ≈ $5, run by one agent with the repo `.env` keys, inputs to
+`scratchpad/sg/shoot/`: E1 Lumi idle as 4×4 / 4×2 / 2×2 sheets; E3 Lumi
+side-view in-place walk (Seedance, green, generous room); E4 Lumi jump tight
+(8 px pad) vs tall 3:4 with 34 % headroom; E5 Lumi attack first-last with the
+same image and timed phases; E6 a small pixel-art character (turnaround +
+4×2 walk sheet). E2 (layout guide ±) waits for T7; E7 (back-view walk,
+anchor vs turnaround) waits for T8.
