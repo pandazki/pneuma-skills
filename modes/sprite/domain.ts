@@ -273,10 +273,20 @@ export interface InspectSummary {
   // would be indistinguishable from a measurement. Present only when the
   // report carried a finite number.
 
-  /** Silhouette distance from the last kept frame back to the first. */
+  /**
+   * Distance from the last kept frame back to the first: the mean difference
+   * of premultiplied RGBA thumbnails since `loop` measured colour (a blink
+   * or a swapped leg at the wrap counts), silhouette distance before that.
+   */
   seam?: number;
-  /** Median frame-to-frame silhouette distance — what `seam` is judged against. */
+  /** Median frame-to-frame distance, in `seam`'s units — what it is judged against. */
   step?: number;
+  /**
+   * The bar `seam` was judged against by the run that measured it —
+   * `max(2 × step, noise floor)`. Absent on a loop cut before `loop` recorded
+   * it, and then the reader falls back to `2 × step`, the rule that run used.
+   */
+  seamLimit?: number;
   /**
    * How many in-between frames `loop --seam-fill` inserted at the wrap, after
    * which `seam` is the largest step across it. 0 means the loop closed on its
@@ -672,6 +682,7 @@ function parseInspect(value: unknown): InspectSummary | undefined {
   const bodyDrift = parseFinite(value.bodyDrift);
   const seam = parseFinite(value.seam);
   const step = parseFinite(value.step);
+  const seamLimit = parseFinite(value.seamLimit);
   const seamFill = parseFinite(value.seamFill);
   const alphaCoverage = parseFinite(value.alphaCoverage);
   const keyResidue = parseFinite(value.keyResidue);
@@ -701,6 +712,7 @@ function parseInspect(value: unknown): InspectSummary | undefined {
     // result the pipeline can report.
     ...(seam === undefined ? {} : { seam }),
     ...(step === undefined ? {} : { step }),
+    ...(seamLimit === undefined ? {} : { seamLimit }),
     ...(seamFill === undefined ? {} : { seamFill }),
     ...(alphaCoverage === undefined ? {} : { alphaCoverage }),
     ...(keyResidue === undefined ? {} : { keyResidue }),

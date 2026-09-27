@@ -23,11 +23,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  alphaColorAudit, buildClip, buildExprClip, buildNoiseClip, buildSheet, clipBoxCentres,
-  clipFrameDeltas, edgeLuma, readBbox, readColorBbox, silhouetteDiff, webpAnimation,
+  alphaColorAudit, buildClip, buildExprClip, buildLayerClip, buildNoiseClip, buildSheet, clipBoxCentres,
+  clipFrameDeltas, clipFramesRgba, edgeLuma, readBbox, readColorBbox, silhouetteDiff, webpAnimation,
   webpStackedFrames, CELL_OFFSETS,
 } from "./fixtures/pipeline/make-sheet.mjs";
-import type { BuildExprClipOptions, BuildSheetOptions } from "./fixtures/pipeline/make-sheet.mjs";
+import type { BuildExprClipOptions, BuildLayerClipOptions, BuildSheetOptions } from "./fixtures/pipeline/make-sheet.mjs";
 import { loadRoster } from "../domain.js";
 import { exportRows, rivePlanFor } from "../viewer/panel.js";
 import { decodeRiv, type RiveObject } from "./fixtures/exports/decode-riv.mjs";
@@ -1401,6 +1401,15 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(json.loops[0].period).toBeLessThanOrEqual(1.1);
       expect(json.loops[0].seam).toBeLessThan(json.loops[0].step);
       expect(json.loops.length).toBeLessThanOrEqual(3);
+      // …and the verdict behind them: a repeat, read at the clip's own rate.
+      expect(json.cycle.verdict).toBe("periodic");
+      expect(json.cycle.period).toBe(1);
+      expect(json.cycle.periodicity).toBeGreaterThan(json.cycle.periodicityMin);
+      expect(json.cycle.ambiguous).toBeNull();
+      expect(json.loops[0].ambiguous).toBeNull();
+      expect(json.loops[0].wrap).toBeGreaterThan(0);
+      // One-shots are the reading for a clip that does NOT repeat.
+      expect(json.oneShots).toEqual([]);
 
       // The rhythm, without a plot: flat through the hold, then moving.
       expect(json.profile.fps).toBe(10);
@@ -1441,6 +1450,8 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(json.stillStart).toBeNull();
       expect(json.stillEnd).toBeNull();
       expect(json.loops).toEqual([]);
+      expect(json.cycle).toMatchObject({ verdict: "none", reason: "still", period: null });
+      expect(json.oneShots).toEqual([]);
       expect(json.warnings.join(" ")).toContain("never moves");
     });
 
@@ -1478,6 +1489,143 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       // …and nothing was written next to the motion either: a contact sheet is
       // a working file, not an asset.
       expect(readdirSync(ws).sort()).toEqual(["t.png", "tmp"]);
+    });
+
+    describe("cycle analysis", () => {
+      /** Built once per name, like every other fixture, and only ever read. */
+      const layered = (key: string, name: string, options: BuildLayerClipOptions) => {
+        const id = `clip:${key}`;
+        if (!built.has(id)) built.set(id, buildLayerClip(join(shared(), name), options));
+        return built.get(id)!;
+      };
+      const PLATE = [0x00, 0xb1, 0x40];
+      /** A walker seen from the side, 96x96, 4 s at 24 fps: a body that bobs
+       *  every step and two legs swinging in antiphase over a 1 s stride. */
+      const body = { w: 28, h: 20, color: "0xf0d8a8", x: 34, y: "22-4*abs(sin(2*PI*t))" };
+      const leg = (color: string, sign: "+" | "-") => ({ w: 8, h: 24, color, x: `44${sign}12*sin(2*PI*t)`, y: 42 });
+      /** Something that never repeats — texture, a fly — so no repeat is exact. */
+      const fly = { w: 6, h: 6, color: "0x303030", x: "4+mod(n*n*7+n*3,23)", y: 80 };
+      /** Near and far legs differing ONLY in colour: the outline repeats every
+       *  step (0.5 s), the picture only every stride (1 s). */
+      const colourLegs = () => layered("walker-colour", "walker-colour.mp4", {
+        layers: [leg("0x4040d0", "-"), leg("0xd04040", "+"), body],
+      });
+      /** Legs that read alike, plus the fly: the step and the stride repeat
+       *  about as well, and pixels cannot say which one is the gait. */
+      const sameLegs = (frames = 96) => layered(`walker-same-${frames}`, `walker-same-${frames}.mp4`, {
+        frames, layers: [leg("0xd04040", "-"), leg("0xd04040", "+"), body, fly],
+      });
+      /** Rest for 1.25 s, one hop, rest to the end: an action, not a cycle. */
+      const hop = () => layered("one-hop", "one-hop.mp4", {
+        layers: [{ w: 24, h: 24, color: "0xf0d8a8", x: 36, y: "if(between(t,1.25,2.25),56-28*sin(PI*(t-1.25)),56)" }],
+      });
+
+      /** The subject's outline and colour in one frame, read off the plate. */
+      const subject = (rgba: Uint8Array, p: number) =>
+        Math.abs(rgba[p] - PLATE[0]) + Math.abs(rgba[p + 1] - PLATE[1]) + Math.abs(rgba[p + 2] - PLATE[2]) > 90;
+
+      test("the fixtures are what they claim: an outline that repeats every step, colour every stride", () => {
+        for (const path of [colourLegs(), sameLegs(), hop()]) {
+          expect(Math.max(...clipFrameDeltas(path))).toBeGreaterThan(10);
+        }
+        const { frames } = clipFramesRgba(colourLegs());
+        let outline = 0;
+        let colour = 0;
+        let ink = 0;
+        for (let i = 24; i < 48; i++) {
+          const [a, b] = [frames[i], frames[i + 12]];
+          for (let p = 0; p < a.length; p += 4) {
+            const [inA, inB] = [subject(a, p), subject(b, p)];
+            if (inA || inB) ink++;
+            if (inA !== inB) outline++;
+            else if (inA && Math.abs(a[p] - b[p]) + Math.abs(a[p + 2] - b[p + 2]) > 120) colour++;
+          }
+        }
+        // Half a stride apart the silhouettes agree to within the codec's
+        // edge noise, while a large share of the legs has swapped colour.
+        expect(outline / ink).toBeLessThan(0.03);
+        expect(colour / ink).toBeGreaterThan(0.1);
+      });
+
+      test("legs that differ only in colour: the stride, not the step the outline repeats", () => {
+        const ws = fresh();
+        const json = runJson("contact", colourLegs(), "--out", join(ws, "w.png"), "--count", "8");
+        expect(json.profile.fps).toBe(24);
+        expect(json.cycle.verdict).toBe("periodic");
+        expect(json.cycle.period).toBe(1);
+        expect(json.cycle.ambiguous).toBeNull();
+        expect(json.loops.length).toBeGreaterThan(0);
+        for (const loop of json.loops) {
+          expect(loop.period).toBeGreaterThanOrEqual(0.958);
+          expect(loop.period).toBeLessThanOrEqual(1.042);
+          expect(loop.ambiguous).toBeNull();
+        }
+        // The half stride is a dip too — just a far shallower one.
+        const minima = new Map<number, number>(json.cycle.minima);
+        expect(minima.get(0.5)).toBeGreaterThan(5 * minima.get(1)!);
+      });
+
+      test("legs that read alike: the cycle is ambiguous, and both lengths are offered", () => {
+        const ws = fresh();
+        const json = runJson("contact", sameLegs(), "--out", join(ws, "a.png"), "--count", "8");
+        expect(json.cycle.verdict).toBe("periodic");
+        expect(json.cycle.period).toBe(0.5);
+        expect(json.cycle.ambiguous.periods).toEqual([0.5, 1]);
+        const periods = json.loops.map((l: { period: number }) => l.period);
+        expect(periods.some((p: number) => Math.abs(p - 0.5) <= 0.05)).toBe(true);
+        expect(periods.some((p: number) => Math.abs(p - 1) <= 0.05)).toBe(true);
+        for (const loop of json.loops) expect(loop.ambiguous).toEqual(json.cycle.ambiguous);
+        const warning = json.warnings.find((w: string) => w.includes("ambiguous"));
+        expect(warning).toContain("0.5s");
+        expect(warning).toContain("--gait");
+      });
+
+      test("--gait walk takes the stride under the floor, and refuses a clip that holds one step", () => {
+        const ws = fresh();
+        const doubled = runJson("contact", sameLegs(), "--out", join(ws, "g.png"), "--count", "8", "--gait", "walk");
+        expect(doubled.cycle.verdict).toBe("periodic");
+        expect(doubled.cycle.period).toBe(1);
+        expect(doubled.cycle.gait).toEqual({ kind: "walk", floor: 0.6, doubled: { from: 0.5, to: 1 } });
+        expect(doubled.loops[0].period).toBeGreaterThanOrEqual(0.958);
+
+        // 1.25 s: room to see the step repeat, none to see the stride.
+        const half = runJson("contact", sameLegs(30), "--out", join(ws, "h.png"), "--count", "6", "--gait", "walk");
+        expect(half.cycle).toMatchObject({ verdict: "none", reason: "half-stride" });
+        expect(half.loops).toEqual([]);
+        expect(half.warnings.join(" ")).toContain("half a stride");
+        // Without the flag the same clip is a 0.5 s cycle — nothing here
+        // knows it is a walk until it is told.
+        expect(runJson("contact", sameLegs(30), "--out", join(ws, "i.png"), "--count", "6").cycle.period).toBe(0.5);
+
+        const bad = run("contact", sameLegs(30), "--out", join(ws, "j.png"), "--gait", "skip", "--json");
+        expect(bad.code).toBe(1);
+        expect(bad.err).toContain("--gait");
+        expect(bad.err).toContain("walk or run");
+      });
+
+      test("a single hop is a one-shot — rest, action, rest — and no cycle", () => {
+        const ws = fresh();
+        const json = runJson("contact", hop(), "--out", join(ws, "o.png"), "--count", "8");
+        expect(json.cycle.verdict).toBe("none");
+        expect(json.loops).toEqual([]);
+        expect(json.warnings.join(" ")).toContain("no cycle");
+        expect(json.oneShots).toHaveLength(1);
+        const [shot] = json.oneShots;
+        // The action inside the hop, and at least two quieter frames outside it
+        // on each side — the shortest cut that still holds the whole
+        // departure, so its ends sit where the hop is barely off the floor.
+        expect(shot.action.start).toBeGreaterThanOrEqual(1.25);
+        expect(shot.action.end).toBeLessThanOrEqual(2.25);
+        expect(shot.action.start - shot.start).toBeGreaterThanOrEqual(2 / 24 - 0.001);
+        expect(shot.end - shot.action.end).toBeGreaterThanOrEqual(2 / 24 - 0.001);
+        expect(shot.start).toBeLessThanOrEqual(1.3);
+        expect(shot.end).toBeGreaterThanOrEqual(2.2);
+        expect(shot.peak).toBeGreaterThan(1.6);
+        expect(shot.peak).toBeLessThan(1.9);
+        expect(["contrast", "moved"]).toContain(shot.rule);
+        const human = run("contact", hop(), "--out", join(ws, "p.png"), "--count", "6");
+        expect(human.out).toContain(`one-shot ${shot.start}–${shot.end}s`);
+      });
     });
   });
 
@@ -1753,6 +1901,9 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
     });
     /** A box that leaves and never comes back: the loop that does not close. */
     const sweep = () => clip("sweep", "sweep.mp4", { x: "8+40*t" });
+    /** The same exit at half the speed: the jump back is as big and the steps
+     *  are half as small, so no in-between can hide it behind them. */
+    const slowSweep = () => clip("slow-sweep", "slow-sweep.mp4", { x: "8+20*t" });
     /** A box that never moves at all. Its silhouette step is 0 — far under the
      *  0.005 absolute floor the hold threshold used to carry — so it is the
      *  clip that tells which of the two rules decided what counts as held.
@@ -2029,6 +2180,92 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(json.warnings).toEqual([]);
     });
 
+    describe("the seam in colour, with a noise floor", () => {
+      /** Built like `clip`, from several overlaid boxes. */
+      const layered = (key: string, name: string, options: BuildLayerClipOptions) => {
+        const id = `clip:${key}`;
+        if (!built.has(id)) built.set(id, buildLayerClip(join(shared(), name), options));
+        return built.get(id)!;
+      };
+      /** A near-still loop at noise level, matted: a body that holds, and a
+       *  4 px speck crawling 1 px a frame that jumps back at the wrap — a wrap
+       *  of four steps, every one of them far under anything visible. */
+      const nearStill = () => layered("near-still", "near-still.mov", {
+        width: 128, height: 128, frames: 48, background: "black@0", encode: "prores4444",
+        layers: [
+          { w: 48, h: 48, color: "0xf0d8a8", x: 40, y: 40 },
+          { w: 4, h: 4, color: "white", x: "10+n", y: 100 },
+        ],
+      });
+      /** A still body whose eye closes in the last four frames: the outline
+       *  is identical at the wrap, the picture is not. */
+      const blink = () => layered("blink", "blink.mov", {
+        width: 96, height: 96, frames: 48, background: "black@0", encode: "prores4444",
+        layers: [
+          { w: 40, h: 40, color: "0xf0d8a8", x: 28, y: 28 },
+          { w: 24, h: 12, color: "white", x: 36, y: 38 },
+          { w: 24, h: 12, color: "0x202020", x: "if(gte(n,44),36,-60)", y: 38 },
+        ],
+      });
+
+      test("a near-still loop whose wrap is several steps of noise closes, with no in-betweens", () => {
+        expect(Math.max(...clipFrameDeltas(nearStill()))).toBeGreaterThan(10);
+        const { json } = loop("near-still", nearStill(), ["--key", "alpha", ...WEBP_ONLY]);
+        // Over two steps — the rule without a floor would fill it (the
+        // silhouette rule this replaced filled 3) — and under the floor.
+        expect(json.inspect.seam).toBeGreaterThan(2 * json.inspect.step);
+        expect(json.inspect.seamLimit).toBe(0.005);
+        expect(json.inspect.seam).toBeLessThanOrEqual(json.inspect.seamLimit);
+        expect(json.seamFill).toBe(0);
+        expect(json.inspect.frameCount).toBe(48);
+        expect(json.warnings.join(" ")).not.toContain("does not close");
+      });
+
+      test("a blink at the wrap does not close, though the outline does", () => {
+        // The fixture: the last frame's alpha is the first frame's, exactly.
+        const { frames } = clipFramesRgba(blink());
+        const [first, last] = [frames[0], frames[frames.length - 1]];
+        let alphaDiff = 0;
+        let colourDiff = 0;
+        for (let p = 0; p < first.length; p += 4) {
+          alphaDiff += Math.abs(first[p + 3] - last[p + 3]);
+          colourDiff += Math.abs(first[p] - last[p]);
+        }
+        expect(alphaDiff).toBe(0);
+        expect(colourDiff).toBeGreaterThan(0);
+
+        const { json } = loop("blink", blink(), ["--key", "alpha", "--seam-fill", "none", ...WEBP_ONLY]);
+        expect(json.inspect.seam).toBeGreaterThan(json.inspect.seamLimit);
+        const warning = json.warnings.find((w: string) => w.includes("does not close"));
+        expect(warning).toContain(`it closes at ${json.inspect.seamLimit}`);
+      });
+
+      test("register-run carries the bar, and `show` judges by it", () => {
+        // The one character-writer path a loop takes (see the transition
+        // cases' `hops`): clip in the motion dir, cut there, registered.
+        const character = join(fresh(), "char");
+        const motionDir = join(character, "motions", "idle");
+        projectCmd(character, "init", "--name", "Speck", "--cell", "64x64");
+        mkdirSync(motionDir, { recursive: true });
+        cpSync(nearStill(), join(motionDir, "video-veed-1.mov"));
+        const json = runJson("loop", join(motionDir, "video-veed-1.mov"), "--out", motionDir, "--name", "idle",
+          "--key", "alpha", ...WEBP_ONLY);
+        expect(json.inspect.seamLimit).toBe(0.005);
+        writeFileSync(join(motionDir, "run.json"), JSON.stringify(json));
+        projectCmd(character, "add-motion", "--id", "idle", "--label", "Idle", "--kind", "loop", "--fps", "24");
+        projectCmd(character, "set-motion", "--motion", "idle", "--brief-duration", "2", "--brief-width", "128", "--brief-interpolator", "none");
+        projectCmd(character, "add-video", "--motion", "idle", "--file", "motions/idle/video-veed-1.mov",
+          "--model", "seedance-2.5", "--mode", "first-last", "--status", "ready");
+        projectCmd(character, "register-run", "--motion", "idle", "--run", join(motionDir, "run.json"));
+        const doc = JSON.parse(readFileSync(join(character, "project.json"), "utf-8"));
+        const motion = doc.sprite.motions.find((m: { id: string }) => m.id === "idle");
+        expect(motion.inspect.seamLimit).toBe(0.005);
+        const shown = Bun.spawnSync([process.execPath, PROJECT, "show", "--dir", character, "--motion", "idle"], { stdout: "pipe", stderr: "pipe" });
+        const line = shown.stdout.toString().split("\n").find((l) => l.includes("seam "));
+        expect(line).toContain("(limit 0.005) — closes");
+      });
+    });
+
     test("a loop that does not close says so, with both numbers", () => {
       // --seam-fill none, because "did this clip close" is a question about
       // the frames the model drew; what the default then does about the answer
@@ -2051,17 +2288,22 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       // A constant-speed orbit's seam IS one of its steps, so it gets none.
       expect(loop("orbit", orbit()).json.seamFill).toBe(0);
 
-      // The sweep never comes back: seam 1 (no overlap at all) against a 0.2
-      // step, so `ceil(1 / 0.2) - 1` wants 4 and 4 is the cap. The wrap gets
-      // shorter — 1 → 0.44 — and the loop four frames longer, but four
-      // invented frames cannot turn a clip that was never shot as a loop into
-      // one, so the warning has to survive, now saying what was tried.
-      const { json } = loop("sweep-auto", sweep(), WEBP_ONLY);
+      // The slow sweep never comes back: its wrap is 0.0659 against a step
+      // of 0.0056 (no overlap at all, twelve steps), so `ceil(seam / step) - 1`
+      // wants 11 and 4 is the cap. The wrap gets shorter — 0.0659 → 0.0201 —
+      // and the loop four frames longer, but four invented frames cannot turn
+      // a clip that was never shot as a loop into one, so the warning has to
+      // survive, now saying what was tried. (Measured 2026-09-27. The fast
+      // sweep is a poor witness here: minterpolate cross-fades a jump it
+      // cannot track, and a mean colour difference scores each 1/5 fade as
+      // about two steps, so its filled wrap lands 0.6 % over the limit.)
+      const { json } = loop("slow-sweep-auto", slowSweep(), WEBP_ONLY);
+      const shot = loop("slow-sweep", slowSweep(), ["--seam-fill", "none", ...WEBP_ONLY]).json;
       expect(json.seamFill).toBe(4);
       expect(json.inspect.seamFill).toBe(4);
-      expect(json.inspect.frameCount).toBe(28);
-      expect(json.inspect.seam).toBeLessThan(loop("sweep", sweep(), ["--seam-fill", "none", ...WEBP_ONLY]).json.inspect.seam);
-      expect(json.inspect.seam).toBeGreaterThan(2 * json.inspect.step);
+      expect(json.inspect.frameCount).toBe(shot.inspect.frameCount + 4);
+      expect(json.inspect.seam).toBeLessThan(shot.inspect.seam);
+      expect(json.inspect.seam).toBeGreaterThan(1.5 * json.inspect.seamLimit);
       expect(json.warnings.join(" ")).toContain("does not close");
       expect(json.warnings.join(" ")).toContain("4 interpolated frame(s)");
     }, SEAM_FILL_TIMEOUT_MS);

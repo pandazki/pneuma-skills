@@ -937,6 +937,9 @@ function inspectSummary(value) {
   // missing instead of arriving as a confident 0.
   const seam = finiteNumber(value.seam);
   const step = finiteNumber(value.step);
+  // The bar `loop` judged the seam against (max(2·step, noise floor)); absent
+  // on a loop cut before it was recorded, and readers then use 2·step.
+  const seamLimit = finiteNumber(value.seamLimit);
   // How many in-between frames `--seam-fill` inserted at the wrap. 0 is a
   // real reading — the loop closed on its own — so the same finite-or-absent
   // rule applies: absent means the report predates the flag.
@@ -969,6 +972,7 @@ function inspectSummary(value) {
     warnings: value.warnings ?? [],
     ...(seam === undefined ? {} : { seam }),
     ...(step === undefined ? {} : { step }),
+    ...(seamLimit === undefined ? {} : { seamLimit }),
     ...(seamFill === undefined ? {} : { seamFill }),
     ...(alphaCoverage === undefined ? {} : { alphaCoverage }),
     ...(keyResidue === undefined ? {} : { keyResidue }),
@@ -1534,7 +1538,10 @@ function motionLines(motion) {
     const seam = motion.inspect?.seam;
     const step = motion.inspect?.step;
     if (Number.isFinite(seam) && Number.isFinite(step)) {
-      lines.push(`  seam ${round4(seam)} vs step ${round4(step)} (limit ${round4(2 * step)}) — ${seam > 2 * step ? "does not close" : "closes"}`);
+      // The bar the run recorded, or — on a loop cut before it did — the
+      // 2·step rule that run used.
+      const limit = Number.isFinite(motion.inspect?.seamLimit) ? motion.inspect.seamLimit : 2 * step;
+      lines.push(`  seam ${round4(seam)} vs step ${round4(step)} (limit ${round4(limit)}) — ${seam > limit ? "does not close" : "closes"}`);
     }
     const exports = motion.exports ?? {};
     const present = [

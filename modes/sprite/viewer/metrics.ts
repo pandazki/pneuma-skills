@@ -183,19 +183,23 @@ export function seamFillOf(inspect: InspectSummary): number | null {
 /**
  * Does the loop close?
  *
- * The bar is the pipeline's own: a seam worth more than TWICE the median
- * frame-to-frame step reads as a jump when the animation wraps, and `loop`
- * warns about exactly that. The bar therefore moves with the motion — a slow
- * sway forgives less than a flicker — which is why it is computed from the
- * step rather than fixed. No step, no bar: a single-frame or unmeasured loop
- * is not judged, it is simply not judged YET.
+ * The bar is the pipeline's own, and the pipeline records it: `seamLimit` is
+ * what the run that measured the seam judged it against — twice the median
+ * frame-to-frame step, or a noise floor when that is larger, because a
+ * near-still loop moves so little per frame that re-render noise at the wrap
+ * reads as several steps. Reading the recorded bar keeps this verdict and
+ * `loop`'s warning one decision rather than two copies of a rule. A report
+ * from before the bar was recorded is judged by the rule that run used,
+ * TWICE the step. No step and no recorded bar, no verdict: a single-frame or
+ * unmeasured loop is not judged, it is simply not judged YET.
  */
 export const SEAM_STEP_FACTOR = 2;
 
 export function seamVerdict(inspect: InspectSummary): MetricVerdict {
   const seam = seamOf(inspect);
   const step = stepOf(inspect);
-  const limit = step === null ? null : round4(SEAM_STEP_FACTOR * step);
+  const recorded = finite(inspect.seamLimit);
+  const limit = recorded ?? (step === null ? null : round4(SEAM_STEP_FACTOR * step));
   return { limit, over: limit !== null && seam !== null && seam > limit };
 }
 

@@ -1456,6 +1456,22 @@ describe("loop motions", () => {
       expect(seamVerdict(inspect({ seam: 0.13, step: 0.02 })).over).toBe(true);
     });
 
+    test("a recorded bar is the verdict's bar: the noise floor under a near-still loop", () => {
+      // tanka's idle as `loop` now reports it: a wrap five steps long that is
+      // re-render noise, judged against max(2 x step, 0.005). Re-deriving
+      // 2 x step here would call "does not close" what the script closed.
+      expect(seamVerdict(inspect({ seam: 0.0021, step: 0.0004, seamLimit: 0.005 })))
+        .toEqual({ limit: 0.005, over: false });
+      expect(seamVerdict(inspect({ seam: 0.0205, step: 0, seamLimit: 0.005 })))
+        .toEqual({ limit: 0.005, over: true });
+      // A report from before the bar was recorded keeps the rule its run used.
+      expect(seamVerdict(inspect({ seam: 0.0021, step: 0.0004 })))
+        .toEqual({ limit: 0.0008, over: true });
+      // A recorded bar judges even when the step is missing.
+      expect(seamVerdict(inspect({ step: undefined, seamLimit: 0.005 })))
+        .toEqual({ limit: 0.005, over: true });
+    });
+
     test("no step is no bar, and no seam is no verdict", () => {
       // A loop nobody measured is not judged — it is not judged YET, which is
       // a different thing from passing.

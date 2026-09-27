@@ -43,6 +43,10 @@ import { zipStore } from "./zip.mjs";
 import {
   BREATHE_MODES, BreatheError, DEFAULT_BREATHE_DEPTH, DEFAULT_LAG, FRAMES_PER_BREATH, bakeBreathe, hasAppendage,
 } from "./breathe.mjs";
+import {
+  GAIT_FLOORS, SEAM_FLOOR, SEAM_STEP_LIMIT, adjacentSteps, detectCycle, detectOneShots, distanceMatrix,
+  frameDistance, frameMass, premultiplied, seamLimit, thumbSize,
+} from "./cycle.mjs";
 
 const DEFAULT_THRESHOLD = 16;
 const DEFAULT_PAD = 8;
@@ -137,28 +141,32 @@ const CONTACT_BACKGROUND = "0x808080";
 /** A contact sheet past this many stills is a wall of thumbnails nobody can
  *  read, and a --every of the wrong order of magnitude produces it instantly. */
 const MAX_CONTACT_STILLS = 200;
-/** Width the silhouettes are compared at. The question is "did the pose
- *  change", which survives a 96px raster; the answer costs one byte per pixel
- *  per analysed frame, so this is what keeps a minute of video in memory. */
-const ANALYSIS_WIDTH = 96;
-/** Frames per second the analysis looks at. A gait cycle is ~1s, so 12
- *  samples of it is plenty, and a 60fps clip costs no more than a 24fps one. */
-const MAX_ANALYSIS_FPS = 12;
-/** Seconds of the trimmed window that get analysed. Past this the answer stops
- *  being about one motion, and the D^2 loop search stops being cheap. */
-const MAX_ANALYSIS_SECONDS = 60;
+/** Frame rate `contact` falls back to when the clip does not report one, and
+ *  the lowest it thins a long window to. A gait cycle is ~1 s, so 12 samples
+ *  of it still resolve the period to a twelfth of a second. */
+const MIN_ANALYSIS_FPS = 12;
+/**
+ * Frames `contact` analyses at most. The cycle analysis compares every frame
+ * with every other (the whole-clip lag profile and the one-shot search both
+ * need whole rows of that matrix), which in Bun costs ~0.75 s per 240 frames
+ * of 96 px thumbnails and grows with the square: 480 is 20 s at 24 fps or 8 s
+ * at 60 fps at the clip's own rate, ~3 s of compute. A longer window is thinned
+ * to fit, down to MIN_ANALYSIS_FPS.
+ */
+const MAX_CYCLE_FRAMES = 480;
+/** Seconds of the trimmed window that get analysed: MAX_CYCLE_FRAMES at
+ *  MIN_ANALYSIS_FPS. Past this the answer stops being about one motion. */
+const MAX_ANALYSIS_SECONDS = MAX_CYCLE_FRAMES / MIN_ANALYSIS_FPS;
 /** Fraction of the combined ink that has to change before two silhouettes are
  *  different poses rather than the same pose plus codec noise. */
 const STILL_DIFF = 0.05;
-/** A loop window has to move at least this much somewhere inside it, or a
- *  stretch of held pose would score a perfect seam and win. */
-const LOOP_MOTION_DIFF = 0.25;
-/** Period range a walk / idle cycle is looked for in, in seconds. */
+/** Period range a walk / idle cycle is looked for in, in seconds. Ours, not
+ *  upstream's per-state windows: sprite-gen's walk window (0.5–1.6 s) refuses
+ *  tanka's front-facing waddle, whose stride is 1.875 s. */
 const LOOP_PERIOD_MIN = 0.4;
 const LOOP_PERIOD_MAX = 2.5;
-/** Loop candidates reported. Three, because the best seam is a measurement
- *  and the right cycle is a judgement — the agent needs alternatives. */
-const MAX_LOOPS = 3;
+/** What `contact --gait` accepts: the gaits that have a floor. */
+const GAIT_KINDS = Object.keys(GAIT_FLOORS);
 // --- loop: a seamless transparent animation for a UI ------------------------
 /** Deliverables `loop` can write, and the default set. */
 const LOOP_FORMATS = ["webp", "apng", "webm", "lottie"];
@@ -172,11 +180,20 @@ const LOOP_FORMATS = ["webp", "apng", "webm", "lottie"];
  *  dropped — which is the honest answer, and the step and seam it then
  *  reports (both 0) say plainly that there was no motion to trim. */
 const HOLD_STEP_FRACTION = 0.25;
-/** A seam worth more than this many normal steps is a loop that does not
- *  close: the last frame visibly snaps back to the first. */
-const SEAM_STEP_LIMIT = 2;
-/** A transition's end joins a loop's frame 0 when their gap is at most this
- *  many of its median steps — the rule a loop's seam is held to. */
+/**
+ * A transition's end joins a loop's frame 0 when their gap is at most this
+ * many of its median steps — the factor a loop's seam is held to.
+ *
+ * Deliberately WITHOUT the loop's colour measure and noise floor
+ * (`seamLimit`, cycle.mjs): a join compares two independently rendered clips,
+ * not one clip with itself. Measured 2026-09-27 on tanka-connect's four
+ * transitions: premultiplied colour put `idle-to-reading`'s end at 0.0154
+ * against a limit of 0.0135 — "does not land" — where the two frames are the
+ * same pose and differ only in fur texture and the tablet's shading; the
+ * silhouette gap (0.0083 against 0.0194) joins, as the eye does. And the
+ * 0.005 floor is in colour units, which do not transfer to a silhouette gap:
+ * cross-clip silhouette noise there measured 0.007–0.018.
+ */
 const JOIN_STEPS = SEAM_STEP_LIMIT;
 /** Most in-betweens `--seam-fill auto` will synthesise at the wrap. Four,
  *  because past that the wrap is no longer a seam to smooth but a chunk of
@@ -349,20 +366,35 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       Cleaning runs by default; --no-clean skips it.
 
   contact <clip> --out <png> [--count ${DEFAULT_CONTACT_COUNT} | --every s] [--cols ${DEFAULT_CONTACT_COLS}] [--width ${DEFAULT_CONTACT_WIDTH}]
-      [--trim-start s] [--trim-end s] [--key auto|#rrggbb|none]
+      [--trim-start s] [--trim-end s] [--key auto|#rrggbb|none] [--gait walk|run]
       [--similarity ${DEFAULT_VIDEO_SIMILARITY}] [--blend ${DEFAULT_BLEND}] [--threshold ${DEFAULT_THRESHOLD}]
       Look at a clip before sampling it. Writes ONE contact sheet: --count
       stills spaced evenly across the (trimmed) clip (both ends included), or
       one still every --every seconds from the trim start — the two are
       mutually exclusive. Each still is --width px wide, timestamp burnt into
       its corner, tiled --cols per row with a ${CONTACT_GUTTER}px grey gutter.
-      Also reports, from a deterministic silhouette analysis (no model):
+      Also reports, from a deterministic analysis (no model) of every frame at
+      the clip's own rate (thinned past ${MAX_CYCLE_FRAMES} frames):
         stillStart / stillEnd — when the opening pose breaks and the closing
-          hold begins, i.e. the dead frames at either end;
-        loops[] — the best ${MAX_LOOPS} windows between ${LOOP_PERIOD_MIN}s and ${LOOP_PERIOD_MAX}s whose ends match,
-          each with its seam (how different the two ends are) and step (how
-          much a frame moves inside it): seam << step is a clean cycle;
+          hold begins, i.e. the dead frames at either end (silhouettes);
+        cycle — whether the clip repeats (premultiplied colour, so a near leg
+          and a far leg, or an open and a closed eye, are different): the
+          period is the shortest dip of the whole-clip lag profile between
+          ${LOOP_PERIOD_MIN}s and ${LOOP_PERIOD_MAX}s within 15% of the deepest, and it must sit 15%
+          below the profile mean (more when the clip holds less than two
+          periods) or verdict is "none" with a reason and a warning;
+          ambiguous names both lengths when twice the period repeats about
+          as well — half a stride, maybe;
+        loops[] — up to 3 windows of that period (plus the other length when
+          ambiguous), each with its seam (how different the two ends are),
+          step (how much a frame moves inside it) and wrap (the step the loop
+          plays from its last frame back to its first); empty with no cycle;
+        oneShots[] — rest -> action -> rest windows with an observed return,
+          one per strike or hop;
         profile.deltas — the frame-to-frame change series, the clip's rhythm.
+      --gait walk|run holds the period to the gait's floor (${GAIT_FLOORS.walk}s / ${GAIT_FLOORS.run}s): a
+      shorter one is one step, so the doubled period is taken when it repeats
+      within 25%, and the verdict is "none" (half a stride) when it does not.
       The contact sheet is a working file for your eyes, not an asset: the
       stills live in a temp dir that is removed, and nothing is written to a
       motion directory or to project.json.
@@ -443,7 +475,8 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       yet (keeping the last frame of the freeze).
       --seam-fill auto (default) interpolates in-betweens into the wrap from
       the last frame back to the first — the one transition the model never
-      drew — when the seam is worth more than ${SEAM_STEP_LIMIT} normal steps: ${MAX_AUTO_SEAM_FILL} at most,
+      drew — when the seam is worth more than ${SEAM_STEP_LIMIT} normal steps AND more than
+      the ${SEAM_FLOOR} noise floor: ${MAX_AUTO_SEAM_FILL} at most,
       enough to bring the wrap back to about one step. The loop gets that
       many frames longer, their sampledAt is null, and the reported seam
       becomes the worst step across the filled wrap. N forces a count,
@@ -459,8 +492,10 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       wrapped around the loop; refused with --key alpha, because
       interpolation belongs before matting (see interpolate-video.mjs).
       Reports seam (how far the last frame is from the first), step (the
-      median frame-to-frame change) and maxStep: seam << step is a loop that
-      closes. Writes <motionDir>/inspect.json in the loop shape.
+      median frame-to-frame change) and maxStep, all as the mean difference
+      of premultiplied RGBA thumbnails, so a blink at the wrap counts; and
+      seamLimit, the bar the seam was judged against: max(${SEAM_STEP_LIMIT} x step, ${SEAM_FLOOR}).
+      Writes <motionDir>/inspect.json in the loop shape.
 
   transition <clip> --character <dir> --from <loopId> --to <loopId>
       [--out <motionDir>] [--name <id>] [--duration s]
@@ -2370,52 +2405,61 @@ function subtractBackground(mask) {
 }
 
 /**
- * Decode the trimmed window to one gray silhouette per analysed frame, in a
- * single ffmpeg pass.
+ * Decode the trimmed window to one RGBA thumbnail per analysed frame, in a
+ * single ffmpeg pass: the cycle analysis reads their premultiplied colour,
+ * and the silhouette readings (`stillStart`, `stillEnd`, `profile.deltas`)
+ * read their alpha.
  *
- * One pass, not one spawn per frame: the analysis looks at up to 12 frames a
- * second, and paying a process for each of them would cost more than the
+ * One pass, not one spawn per frame: the analysis looks at every frame of a
+ * 24 fps clip, and paying a process for each of them would cost more than the
  * decode. The frames come back as raw bytes with no container, so the buffer
- * splits into fixed-size masks by arithmetic — which is why the scale is
+ * splits into fixed-size thumbnails by arithmetic — which is why the scale is
  * pinned to an exact WxH here rather than left to ffmpeg's `-2`.
  */
-function decodeMasks(input, { start, span, key, similarity, blend, fps, size }) {
-  const height = scaledHeight(size, ANALYSIS_WIDTH);
+function decodeThumbs(input, { start, span, key, similarity, blend, fps, size }) {
+  const thumb = thumbSize(size.width, size.height);
   // `fps` first so the decimation happens before the per-pixel work, and the
-  // key before `alphaextract` because the alpha plane IS the silhouette.
-  // Without a key there is no alpha, so the luma stands in: it says less about
-  // the character, but it says it about the same frames.
+  // key before the scale so the alpha IS the silhouette. Without a key every
+  // pixel is opaque and the plate is part of the picture — constant, so it
+  // adds nothing to a difference.
   const chain = [`fps=${fps}`];
-  if (key) chain.push(`colorkey=${key}:${similarity}:${blend}`, "format=rgba", "alphaextract");
-  else chain.push("format=gray");
-  chain.push(`scale=${ANALYSIS_WIDTH}:${height}`);
+  if (key) chain.push(`colorkey=${key}:${similarity}:${blend}`);
+  chain.push("format=rgba", `scale=${thumb.width}:${thumb.height}:flags=area`);
 
   const r = spawnSync("ffmpeg", [
     "-v", "error", "-ss", String(start), "-t", String(span), "-i", input,
-    "-vf", chain.join(","), "-f", "rawvideo", "-pix_fmt", "gray", "-",
+    "-vf", chain.join(","), "-f", "rawvideo", "-pix_fmt", "rgba", "-",
   ], { maxBuffer: MAX_RAW_BYTES });
   if (r.error) fail(`contact: could not decode ${input} (${r.error.message})`);
   if (r.status !== 0) fail(`contact: could not decode ${input}\n${String(r.stderr ?? "").trim()}`);
 
-  const frameBytes = ANALYSIS_WIDTH * height;
+  const frameBytes = thumb.width * thumb.height * 4;
   const count = Math.floor((r.stdout?.length ?? 0) / frameBytes);
   if (count < 2) {
     fail(`contact: ${round(span, 3)}s from ${round(start, 3)}s of ${input} decoded to ${count} analysis frame(s) — nothing to compare`);
   }
-  const masks = Array.from({ length: count }, (_, i) => r.stdout.subarray(i * frameBytes, (i + 1) * frameBytes));
-  return key ? masks : masks.map(subtractBackground);
+  const thumbs = Array.from({ length: count }, (_, i) => r.stdout.subarray(i * frameBytes, (i + 1) * frameBytes));
+  return { thumbs, masks: thumbs.map((rgba) => silhouetteOf(rgba, Boolean(key))) };
 }
 
 /**
- * What the silhouette series says about the clip: where the opening pose
- * breaks, where the closing hold begins, and which windows close on
- * themselves.
- *
- * The loop search is O(n · maxPeriod) diffs, not O(n²): a cycle longer than
- * LOOP_PERIOD_MAX is not a cycle anyone would sample as one motion, so the
- * inner loop stops there, and the "does this window actually move" test is a
- * running prefix max of the diffs it already computed rather than a second
- * sweep.
+ * One gray silhouette out of an RGBA thumbnail: its alpha, or — for a clip
+ * that was not keyed — its luma re-based on its own background (see
+ * `subtractBackground`), which is what `--key none` has always compared.
+ */
+function silhouetteOf(rgba, keyed) {
+  const mask = Buffer.allocUnsafe(rgba.length >> 2);
+  for (let p = 0, i = 0; p < rgba.length; p += 4, i++) {
+    mask[i] = keyed ? rgba[p + 3] : Math.round(0.299 * rgba[p] + 0.587 * rgba[p + 1] + 0.114 * rgba[p + 2]);
+  }
+  return keyed ? mask : subtractBackground(mask);
+}
+
+/**
+ * What the silhouette series says about the clip's ends: where the opening
+ * pose breaks and where the closing hold begins, plus the frame-to-frame
+ * rhythm. Which windows repeat is the colour analysis's question
+ * (`readCycle`), not this one's.
  */
 function readMotion(masks, { fps, start }) {
   const n = masks.length;
@@ -2435,51 +2479,117 @@ function readMotion(masks, { fps, start }) {
     if (maskDiff(masks[n - 1], masks[j]) > STILL_DIFF) { endIndex = j; break; }
   }
 
-  const loops = [];
-  if (startIndex >= 0) {
-    const kMin = Math.max(1, Math.ceil(LOOP_PERIOD_MIN * fps));
-    const kMax = Math.floor(LOOP_PERIOD_MAX * fps);
-    const cumulative = [0];
-    for (const d of deltas) cumulative.push(cumulative[cumulative.length - 1] + d);
-    for (let i = startIndex; i < n; i++) {
-      let motion = 0;
-      for (let k = 1; k <= kMax && i + k < n; k++) {
-        const seam = maskDiff(masks[i], masks[i + k]);
-        // `motion` is the largest departure from the start pose STRICTLY
-        // inside the window — a stretch of held pose has a perfect seam and
-        // would otherwise win every time.
-        if (k >= kMin && motion >= LOOP_MOTION_DIFF) {
-          loops.push({
-            start: at(i),
-            end: at(i + k),
-            period: round(k / fps, 3),
-            seam: round(seam, 4),
-            step: round((cumulative[i + k] - cumulative[i]) / k, 4),
-          });
-        }
-        if (seam > motion) motion = seam;
-      }
-    }
-    // Seam decides; the rest of the ordering is spelt out rather than left to
-    // insertion order, because ties are not rare. A silhouette diff cannot see
-    // DIRECTION, so any motion that retraces its own path — a breath, a
-    // pendulum, a bounce — scores a perfect seam on its half-period as well as
-    // on its period, and a perfectly cyclic clip scores one on every multiple.
-    // Among equals, take the window that starts earliest (it sits right after
-    // the opening hold, where the motion actually begins) and then the
-    // shortest one.
-    loops.sort((a, b) => a.seam - b.seam || a.start - b.start || a.period - b.period);
-    loops.length = Math.min(loops.length, MAX_LOOPS);
-  }
-
   return {
     stillStart: startIndex < 0 ? null : at(startIndex),
     stillEnd: endIndex < 0 ? null : at(endIndex),
-    loops,
     // 2 dp: this series is read, not computed on — it is the rhythm of the
     // clip at a glance, and four decimals of codec noise only hide it.
     deltas: deltas.map((d) => round(d, 2)),
   };
+}
+
+/** Why a clip has no cycle, said for a person. */
+const NO_CYCLE_REASONS = {
+  still: "the clip never moves",
+  window: `the window is too short to see a ${LOOP_PERIOD_MIN}–${LOOP_PERIOD_MAX}s cycle repeat`,
+  "no-dip": `nothing in it repeats at a lag between ${LOOP_PERIOD_MIN}s and ${LOOP_PERIOD_MAX}s`,
+  flat: "the lag profile is flat",
+  "half-stride": "the only repeat is one step",
+  held: "every repeating window is a held pose",
+};
+
+/**
+ * Which windows of the clip repeat, or — when none does — which are one
+ * performed action: the colour analysis `cycle.mjs` ports from sprite-gen,
+ * in seconds.
+ *
+ * `loops[]` keeps its old shape (`start`, `end`, `period`, `seam`, `step`),
+ * now read off premultiplied RGBA at the analysed rate: `seam` is still "how
+ * different the two ends are" (the start against the frame one period later,
+ * 0 for a perfect cycle) and `step` the window's mean frame-to-frame change.
+ * `wrap` is new: the step the loop actually plays from its last frame back
+ * to its first. `ambiguous` is `null` unless the doubled period repeats
+ * about as well, and then carries both lengths.
+ */
+function readCycle(thumbs, { fps, start, moves, gait }) {
+  const at = (i) => round(start + i / fps, 3);
+  const seconds = (frames) => round(frames / fps, 3);
+  const features = thumbs.map(premultiplied);
+  const n = features.length;
+  const D = distanceMatrix(features);
+
+  const minLen = Math.max(2, Math.ceil(LOOP_PERIOD_MIN * fps));
+  // Room to compare against: at least half a second (and eight frames) of the
+  // clip past the longest period, the way sprite-gen bounds its action window.
+  const context = Math.max(8, Math.ceil(fps / 2));
+  const maxLen = Math.min(Math.floor(LOOP_PERIOD_MAX * fps), n - context);
+  const found = moves
+    ? detectCycle(D, n, { minLen, maxLen, gait, fps })
+    : { verdict: "none", reason: "still", period: null, periodicity: null, periodicityMin: null, minima: [], ambiguous: null, guard: null, windows: [] };
+
+  const ambiguous = found.ambiguous
+    ? {
+      periods: [seconds(found.ambiguous.short), seconds(found.ambiguous.long)],
+      depthRatio: found.ambiguous.depthRatio === null ? null : round(found.ambiguous.depthRatio, 3),
+    }
+    : null;
+  const loops = found.verdict === "periodic"
+    ? found.windows.map((w) => ({
+      start: at(w.start),
+      end: at(w.start + w.length),
+      period: seconds(w.length),
+      seam: round(w.repeat, 4),
+      step: round(w.step, 4),
+      wrap: round(w.wrap, 4),
+      ambiguous,
+    }))
+    : [];
+
+  const guard = found.guard;
+  const cycle = {
+    verdict: found.verdict,
+    reason: found.reason,
+    period: found.period === null ? null : seconds(found.period),
+    periodicity: found.periodicity === null ? null : round(found.periodicity, 3),
+    periodicityMin: found.periodicityMin === null ? null : round(found.periodicityMin, 3),
+    ambiguous,
+    ...(gait ? {
+      gait: {
+        kind: gait,
+        floor: GAIT_FLOORS[gait],
+        doubled: guard?.applied ? { from: seconds(guard.from), to: seconds(guard.to) } : null,
+      },
+    } : {}),
+    // The profile's deepest dips, `[period s, D]`: where else the clip nearly
+    // repeats, for a person deciding between two readings.
+    minima: found.minima.map(([L, value]) => [seconds(L), round(value, 4)]),
+  };
+  if (found.verdict === "none" && found.reason !== "still") {
+    const detail = found.reason === "flat"
+      ? ` (periodicity ${cycle.periodicity}, needs ${cycle.periodicityMin})`
+      : found.reason === "half-stride"
+        ? ` (${seconds(guard.below)}s, under the ${gait} floor of ${GAIT_FLOORS[gait]}s, and nothing near twice that repeats within 25 % of it) — the clip shows half a stride`
+        : "";
+    cycle.sentence = `no cycle: ${NO_CYCLE_REASONS[found.reason]}${detail}`;
+  }
+
+  // Only when nothing repeats — sprite-gen's order (`loop.py:854-863`): the
+  // one-shot reading is the failover for a clip the period reading refused.
+  // Run on a clip that DOES repeat, a stride's own excursion passes it
+  // (measured on tanka's walk: a "one-shot" 1.375–3.167 s by moved mass).
+  const oneShots = (found.verdict === "none" && moves ? detectOneShots(D, n, features.map(frameMass)) : [])
+    .sort((a, b) => a.start - b.start)
+    .map((shot) => ({
+      start: at(shot.start),
+      end: at(shot.end),
+      action: { start: at(shot.excursion[0]), end: at(shot.excursion[1]) },
+      peak: at(shot.peak),
+      departure: round(shot.departure, 4),
+      seam: round(shot.seam, 4),
+      step: round(shot.step, 4),
+      rule: shot.rule,
+    }));
+  return { cycle, loops, oneShots };
 }
 
 /**
@@ -2546,18 +2656,32 @@ function stepContact(clip, options) {
     // The numbers before the picture, so a window this cannot analyse leaves
     // no half-answer on disk: either both halves are there or the command
     // refused and wrote nothing.
-    const analysisFps = Math.min(stream.fps ?? MAX_ANALYSIS_FPS, MAX_ANALYSIS_FPS);
     let span = windowEnd - start;
     if (span > MAX_ANALYSIS_SECONDS) {
       warnings.push(`the window is ${round(span, 3)}s — only its first ${MAX_ANALYSIS_SECONDS}s were analysed`);
       span = MAX_ANALYSIS_SECONDS;
     }
-    const masks = decodeMasks(input, {
+    // The clip's own rate: a period is only as precise as the frames it is
+    // counted in, and 12 fps quantised every period to a twelfth of a second.
+    // A window too long for MAX_CYCLE_FRAMES at that rate is thinned to fit.
+    const analysisFps = round(Math.min(
+      stream.fps ?? MIN_ANALYSIS_FPS,
+      Math.max(MIN_ANALYSIS_FPS, MAX_CYCLE_FRAMES / span),
+    ), 3);
+    const { thumbs, masks } = decodeThumbs(input, {
       start, span, key: keyColor, similarity: options.similarity, blend: options.blend,
       fps: analysisFps, size,
     });
     motion = { fps: analysisFps, ...readMotion(masks, { fps: analysisFps, start }) };
     if (motion.stillStart === null) warnings.push("the clip never moves");
+    Object.assign(motion, readCycle(thumbs, {
+      fps: analysisFps, start, moves: motion.stillStart !== null, gait: options.gait,
+    }));
+    if (motion.cycle.sentence) warnings.push(motion.cycle.sentence);
+    if (motion.cycle.verdict === "periodic" && motion.cycle.ambiguous) {
+      const [short, long] = motion.cycle.ambiguous.periods;
+      warnings.push(`the cycle is ambiguous: ${long}s repeats about as well as ${short}s — a walk whose near and far legs read alike repeats every step, and a stride is two; look at both windows on the contact sheet${options.gait ? "" : ", or pass --gait walk|run if this is a gait"}`);
+    }
 
     let opaque = 0;
     for (const mask of masks) {
@@ -2619,6 +2743,8 @@ function stepContact(clip, options) {
     stillStart: motion.stillStart,
     stillEnd: motion.stillEnd,
     loops: motion.loops,
+    cycle: (({ sentence, ...cycle }) => cycle)(motion.cycle),
+    oneShots: motion.oneShots,
     profile: { fps: motion.fps, start: round(start, 3), deltas: motion.deltas },
     warnings,
   };
@@ -3056,32 +3182,34 @@ function sequenceCount(dir, label) {
 }
 
 /**
- * One silhouette per decoded frame, in one pass over the sequence.
+ * One silhouette and one colour thumbnail per decoded frame, in one pass over
+ * the sequence.
  *
- * The masks are read off the DECODED FRAMES rather than off the clip a second
- * time, so mask i is frame i by construction — the hold trimming and the seam
- * both index into this list and into the frames that get written, and a
- * resampling difference between two decodes would silently misalign them.
+ * Both are read off the DECODED FRAMES rather than off the clip a second
+ * time, so thumbnail i is frame i by construction — the hold trimming and the
+ * seam both index into these lists and into the frames that get written, and
+ * a resampling difference between two decodes would silently misalign them.
+ * The silhouettes decide the holds (their thresholds were set on
+ * silhouettes); the premultiplied colour decides the seam, so a blink or a
+ * swapped leg at the wrap counts (`cycle.mjs`).
  */
-function decodeLoopMasks(dir, count, size, alphaBased, label, start = 0) {
-  const height = scaledHeight(size, ANALYSIS_WIDTH);
-  const chain = alphaBased
-    ? ["alphaextract", `scale=${ANALYSIS_WIDTH}:${height}`]
-    : ["format=gray", `scale=${ANALYSIS_WIDTH}:${height}`];
+function decodeLoopFrames(dir, count, size, alphaBased, label, start = 0) {
+  const thumb = thumbSize(size.width, size.height);
   const r = spawnSync("ffmpeg", [
     "-v", "error", "-start_number", String(start), "-i", join(dir, "%03d.png"),
     "-frames:v", String(count),
-    "-vf", chain.join(","), "-f", "rawvideo", "-pix_fmt", "gray", "-",
+    "-vf", `format=rgba,scale=${thumb.width}:${thumb.height}:flags=area`,
+    "-f", "rawvideo", "-pix_fmt", "rgba", "-",
   ], { maxBuffer: MAX_RAW_BYTES });
   if (r.error) fail(`${label}: could not analyse the decoded frames (${r.error.message})`);
   if (r.status !== 0) fail(`${label}: could not analyse the decoded frames\n${String(r.stderr ?? "").trim()}`);
-  const frameBytes = ANALYSIS_WIDTH * height;
+  const frameBytes = thumb.width * thumb.height * 4;
   const got = Math.floor((r.stdout?.length ?? 0) / frameBytes);
   if (got !== count) {
     fail(`${label}: ${count} frames were decoded but ${got} could be analysed — one of them does not decode`);
   }
-  const masks = Array.from({ length: got }, (_, i) => r.stdout.subarray(i * frameBytes, (i + 1) * frameBytes));
-  return alphaBased ? masks : masks.map(subtractBackground);
+  const thumbs = Array.from({ length: got }, (_, i) => r.stdout.subarray(i * frameBytes, (i + 1) * frameBytes));
+  return { masks: thumbs.map((rgba) => silhouetteOf(rgba, alphaBased)), thumbs };
 }
 
 /**
@@ -3144,17 +3272,21 @@ function trimHolds(masks, enabled) {
 /**
  * How many in-betweens to synthesise at the wrap, given the seam and the step.
  *
- * `auto` fills only a seam the eye can already see — over `SEAM_STEP_LIMIT`
- * steps, the same line the warning is drawn at — and fills it just enough to
+ * `auto` fills only a seam the eye can already see — past `seamLimit(step)`,
+ * the same line the warning is drawn at: `SEAM_STEP_LIMIT` steps, or the
+ * noise floor `SEAM_FLOOR` when that is larger — and fills it just enough to
  * bring the wrap back to about one step: a seam of `k` steps needs `k - 1`
- * frames in the gap, capped at `MAX_AUTO_SEAM_FILL`. A clip whose median step
- * is 0 (nothing moves) has no scale to measure a seam against, so it gets
- * nothing. An explicit count is obeyed as given — that is what it is for.
+ * frames in the gap, capped at `MAX_AUTO_SEAM_FILL`. The floor is what keeps
+ * a near-still loop from being "fixed": tanka's idle wraps at 0.002 against a
+ * step of 0.0004 — five steps, and re-render noise — and used to get four
+ * interpolated frames it never needed. A clip whose median step is 0
+ * (nothing moves) has no scale to measure a seam against, so it gets nothing.
+ * An explicit count is obeyed as given — that is what it is for.
  */
 function planSeamFill(request, seam, step) {
   if (request === "none") return 0;
   if (request !== "auto") return request;
-  if (!(step > 0) || seam <= SEAM_STEP_LIMIT * step) return 0;
+  if (!(step > 0) || seam <= seamLimit(step)) return 0;
   return Math.min(MAX_AUTO_SEAM_FILL, Math.ceil(seam / step) - 1);
 }
 
@@ -3750,17 +3882,20 @@ function stepLoop(clip, options) {
     const { keyColor, keyer, despill, srcDir, decoded, fps } = decodeClipFrames(input, prep, options, work, "loop");
 
     // --- 4. holds, and 5. the seam ----------------------------------------
-    const masks = decodeLoopMasks(srcDir, decoded, size, keying || alphaSource, "loop");
-    const { first, last, steps } = trimHolds(masks, options.trimHolds);
+    // Holds on the silhouettes; seam and step on premultiplied colour, the
+    // one measure `cycle.mjs` judges every wrap in.
+    const { masks, thumbs } = decodeLoopFrames(srcDir, decoded, size, keying || alphaSource, "loop");
+    const features = thumbs.map(premultiplied);
+    const { first, last } = trimHolds(masks, options.trimHolds);
     const shot = last - first + 1;
     if (shot < 2) {
       fail(`--trim-holds left ${shot} of ${decoded} frames — the clip holds one pose throughout. Pass --no-trim-holds to keep every frame, or shoot a clip that moves.`);
     }
-    const kept = steps.slice(first, last);
+    const kept = adjacentSteps(features).slice(first, last);
     const step = round(median(kept), 4);
     const maxStep = round(Math.max(...kept), 4);
     const dropped = { leading: first, trailing: decoded - 1 - last };
-    let seam = round(maskDiff(masks[last], masks[first]), 4);
+    let seam = round(frameDistance(features[last], features[first]), 4);
 
     // --- 5b. fill the seam -------------------------------------------------
     // Before the crop, so the in-betweens are inside the union bbox and go
@@ -3774,18 +3909,17 @@ function stepLoop(clip, options) {
       // The seam is now the WORST step across the wrap, not the gap it used to
       // be: an in-between that lands badly must not be able to hide behind the
       // two ends having been brought closer together.
-      const wrap = [masks[last], ...decodeLoopMasks(srcDir, seamFill, size, keying || alphaSource, "loop", last + 1), masks[first]];
-      let worst = 0;
-      for (let i = 0; i + 1 < wrap.length; i++) worst = Math.max(worst, maskDiff(wrap[i], wrap[i + 1]));
-      seam = round(worst, 4);
+      const filled = decodeLoopFrames(srcDir, seamFill, size, keying || alphaSource, "loop", last + 1).thumbs.map(premultiplied);
+      seam = round(Math.max(...adjacentSteps([features[last], ...filled, features[first]])), 4);
     }
     const count = shot + seamFill;
 
     const warnings = [];
-    if (seam > SEAM_STEP_LIMIT * step) {
+    const limit = round(seamLimit(step), 4);
+    if (seam > limit) {
       warnings.push(seamFill > 0
-        ? `the loop does not close — even with ${seamFill} interpolated frame(s) at the wrap the worst step there is ${seam} against a normal step of ${step}; shoot again with the same image at both ends, or pass --trim-start/--trim-end from the contact sheet`
-        : `the loop does not close — the last frame is ${seam} from the first against a normal step of ${step}; shoot again with the same image at both ends, or pass --trim-start/--trim-end from the contact sheet`);
+        ? `the loop does not close — even with ${seamFill} interpolated frame(s) at the wrap the worst step there is ${seam} against a normal step of ${step} (it closes at ${limit}); shoot again with the same image at both ends, or pass --trim-start/--trim-end from the contact sheet`
+        : `the loop does not close — the last frame is ${seam} from the first against a normal step of ${step} (it closes at ${limit}); shoot again with the same image at both ends, or pass --trim-start/--trim-end from the contact sheet`);
     }
 
     // --- 6. crop and scale -------------------------------------------------
@@ -3833,6 +3967,10 @@ function stepLoop(clip, options) {
       seam,
       step,
       maxStep,
+      // The bar `seam` was judged against — max(2·step, the noise floor) — so
+      // the viewer and `sprite-project.mjs` read the verdict this run gave
+      // instead of re-deriving a rule that has since moved.
+      seamLimit: limit,
       alphaCoverage,
       ...(keyColor ? { keyColor } : {}),
       ...(residue ? residue : {}),
@@ -3917,7 +4055,7 @@ function stepTransition(clip, options) {
     const warnings = [];
 
     // --- holds at both ends, collapsed to one frame each ------------------
-    const masks = decodeLoopMasks(srcDir, decoded, size, true, label);
+    const { masks } = decodeLoopFrames(srcDir, decoded, size, true, label);
     const steps = [];
     for (let i = 0; i + 1 < masks.length; i++) steps.push(maskDiff(masks[i], masks[i + 1]));
     const { first, last } = options.trimHolds ? transitionHolds(steps) : { first: 0, last: decoded - 1 };
@@ -5794,7 +5932,7 @@ const OPTIONS = {
     cols: { type: "string" }, width: { type: "string" },
     "trim-start": { type: "string" }, "trim-end": { type: "string" },
     key: { type: "string" }, similarity: { type: "string" }, blend: { type: "string" },
-    threshold: { type: "string" },
+    threshold: { type: "string" }, gait: { type: "string" },
   },
   "from-video": {
     out: { type: "string" }, name: { type: "string" }, frames: { type: "string" },
@@ -5858,6 +5996,13 @@ function residueLine(report) {
   return typeof report.keyResidue === "number"
     ? [`keyResidue ${report.keyResidue} (visible pixels with the plate's hue${typeof report.keyResidueEdge === "number" ? `; ${report.keyResidueEdge} of the soft edge` : ""})`]
     : [];
+}
+
+/** `--gait walk|run`, or null: which gait floor `contact` holds a period to. */
+function pickGait(value) {
+  if (value === undefined) return null;
+  if (!GAIT_KINDS.includes(value)) fail(`--gait: expected ${GAIT_KINDS.join(" or ")}, got '${value}'`);
+  return value;
 }
 
 /** `--seam-fill auto|none|<N>` — "auto", "none", or how many in-betweens. */
@@ -6200,6 +6345,7 @@ function main() {
         similarity: num(values.similarity, "--similarity", { min: 0, fallback: DEFAULT_VIDEO_SIMILARITY }),
         blend: num(values.blend, "--blend", { min: 0, fallback: DEFAULT_BLEND }),
         threshold,
+        gait: pickGait(values.gait),
       });
       const best = out.loops[0];
       emit(values, out, [
@@ -6208,8 +6354,9 @@ function main() {
           ? "never moves"
           : `opening pose holds until ${out.stillStart}s`,
         best
-          ? `best loop ${best.start}–${best.end}s (period ${best.period}s, seam ${best.seam} vs step ${best.step})`
+          ? `best loop ${best.start}–${best.end}s (period ${best.period}s, periodicity ${out.cycle.periodicity}, seam ${best.seam} vs step ${best.step})`
           : "no loop window found",
+        ...out.oneShots.map((shot) => `one-shot ${shot.start}–${shot.end}s: rest → action ${shot.action.start}–${shot.action.end}s → rest`),
         ...out.warnings,
       ]);
       break;

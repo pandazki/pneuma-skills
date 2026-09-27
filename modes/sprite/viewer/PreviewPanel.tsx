@@ -962,9 +962,10 @@ function InspectBlock({ motion, t }: { motion: Motion; t: SpriteStrings }) {
  * Not one anchor row among them, and that is the point: a loop is never stood
  * on a floor, so `anchorDrift` / `maxJump` / `scaleDrift` describe nothing —
  * printing them would be five numbers nobody can act on next to the two that
- * decide whether the workflow succeeded. The seam carries its own bar (twice
- * the median step, the pipeline's own rule) so a user can argue with the
- * verdict instead of taking it.
+ * decide whether the workflow succeeded. The seam carries its own bar (the
+ * one `loop` recorded — twice the median step, or its noise floor — or twice
+ * the step on an older report) so a user can argue with the verdict instead
+ * of taking it.
  */
 function LoopFacts({ motion, t }: { motion: Motion; t: SpriteStrings }) {
   const inspect = motion.inspect!;

@@ -281,6 +281,73 @@ export function buildExprClip(outPath, {
 }
 
 /**
+ * A clip of several boxes, each overlaid where its own expressions in `t`
+ * (and `n`, the frame index) put it — a body with two legs, a body with an
+ * eye, a body with a fly. `buildExprClip` is the one-box case; this is the
+ * general form the cycle analysis needs, where what matters is how parts of
+ * one figure move against each other.
+ *
+ * Layers are stacked in order, the first at the bottom. Every one is moved
+ * by `overlay` (`eval=frame`), never `drawbox`, whose `x`/`y` are evaluated
+ * once — see `buildClip`. Commas inside an expression are escaped here.
+ */
+export function buildLayerClip(outPath, {
+  width = 96,
+  height = 96,
+  fps = 24,
+  frames = 96,
+  background = "0x00b140",
+  layers = [],
+  encode = "h264",
+} = {}) {
+  const seconds = frames / fps;
+  const esc = (value) => String(value).replace(/,/g, "\\,");
+  const chain = [`color=c=${background}:s=${width}x${height}:d=${seconds}:r=${fps},format=rgba[v0]`];
+  layers.forEach((layer, i) => {
+    chain.push(`color=c=${layer.color}:s=${layer.w}x${layer.h}:d=${seconds}:r=${fps},format=rgba[l${i}]`);
+    const out = i === layers.length - 1 ? "" : `[v${i + 1}]`;
+    chain.push(`[v${i}][l${i}]overlay=x=${esc(layer.x ?? 0)}:y=${esc(layer.y ?? 0)}:format=auto${out}`);
+  });
+  mkdirSync(dirname(outPath), { recursive: true });
+  const r = spawnSync(
+    "ffmpeg",
+    ["-v", "error", "-y", "-f", "lavfi", "-i", chain.join(";"), ...CLIP_ENCODERS[encode], "--", outPath],
+    { encoding: "utf-8" },
+  );
+  if (r.status !== 0) {
+    throw new Error(`fixture ffmpeg failed: ${r.stderr ?? r.error?.message ?? "unknown"}`);
+  }
+  return outPath;
+}
+
+/**
+ * Every frame of a clip as RGBA bytes at its own size — the tests' own
+ * decoder, independent of the script's, for asserting what a fixture IS
+ * before asserting what the script says about it.
+ */
+export function clipFramesRgba(path) {
+  const probe = spawnSync(
+    "ffprobe",
+    ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", path],
+    { encoding: "utf-8" },
+  );
+  if (probe.status !== 0) throw new Error(`ffprobe failed for ${path}`);
+  const [width, height] = String(probe.stdout).trim().split(",").map(Number);
+  const r = spawnSync(
+    "ffmpeg",
+    ["-v", "error", "-i", path, "-f", "rawvideo", "-pix_fmt", "rgba", "-"],
+    { maxBuffer: 512 * 1024 * 1024 },
+  );
+  if (r.status !== 0) throw new Error(`ffmpeg decode failed for ${path}`);
+  const frameBytes = width * height * 4;
+  const count = Math.floor(r.stdout.length / frameBytes);
+  return {
+    width, height,
+    frames: Array.from({ length: count }, (_, i) => r.stdout.subarray(i * frameBytes, (i + 1) * frameBytes)),
+  };
+}
+
+/**
  * Max |Δ| between consecutive frames of a clip, as 0..255 luma at a small
  * analysis size.
  *

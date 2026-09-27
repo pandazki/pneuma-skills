@@ -436,13 +436,20 @@ interface InspectSummary {
   emptyFrames: number[];
   seam?: number;                            // loop only: how far the last frame
                                             // is from the first, in the same
-                                            // silhouette-diff units as `step`
+                                            // units as `step` — premultiplied
+                                            // RGBA difference since `loop`
+                                            // measured colour, silhouette diff
+                                            // before
   step?: number;                            // loop only: the median frame-to-
-                                            // frame change. `seam <= 2 * step`
-                                            // is a loop that closes — the one
-                                            // rule, the same in SKILL.md step
-                                            // 10, `pipeline.md` and the
-                                            // viewer's SEAM_STEP_FACTOR
+                                            // frame change
+  seamLimit?: number;                       // loop only: the bar `seam` was
+                                            // judged against, max(2 * step,
+                                            // 0.005). `seam <= seamLimit` is a
+                                            // loop that closes — the one rule,
+                                            // read by `pipeline.md`'s warning,
+                                            // `sprite-project.mjs show` and the
+                                            // viewer. Absent on an older loop:
+                                            // its rule was `seam <= 2 * step`
   seamFill?: number;                        // loop only: in-between frames
                                             // `loop --seam-fill` inserted at
                                             // the wrap, after which `seam` is
@@ -451,7 +458,7 @@ interface InspectSummary {
   alphaCoverage?: number;                   // loop only: fraction of the frame
                                             // area that is opaque, averaged
                                             // over the frames
-                                            // All four are absent unless the
+                                            // Each is absent unless the
                                             // report carried finite numbers —
                                             // 0 is a reading, not an absence
   keyResidue?: number;                      // share of the visible pixels that
