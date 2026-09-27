@@ -39,7 +39,10 @@
  *
  * `--json` prints exactly one object:
  *   { path, url, file_size, model, endpoint, requested_duration,
- *     resolution, seed? }
+ *     resolution, seed?, request_id?, cost }
+ * `cost` is an ESTIMATE from fal's published token formula applied to the
+ * clip that landed (`seedanceCost`), never an invoice; the same figure goes
+ * to stderr as one `cost:` line.
  * Everything else — progress, warnings, help — goes to stderr.
  *
  * Environment: FAL_KEY, from the environment or a `.env` discovered by
@@ -68,6 +71,84 @@ export const ASPECT_RATIOS = ["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16
 export const BITRATE_MODES = ["standard", "high"];
 export const DURATION_MIN_S = 4;
 export const DURATION_MAX_S = 30;
+/**
+ * fal's price for Seedance 2.5, and how it is counted: $0.0214 per 1000
+ * tokens at 480p and 720p (fal pricing API, `bytedance/seedance-2.5/
+ * image-to-video`, read 2026-09-27), ≈ $0.0234 at 1080p; tokens ≈ output
+ * height × width × seconds × 24 / 1024. With video references the rate is
+ * × 0.6 and their duration is billed too (the model page, same date).
+ * Check it again before quoting a user a total.
+ */
+export const SEEDANCE_PRICE = Object.freeze({
+  usdPer1000Tokens: Object.freeze({ "480p": 0.0214, "720p": 0.0214, "1080p": 0.0234 }),
+  referenceVideoFactor: 0.6,
+  checked: "2026-09-27",
+});
+
+const roundTo = (value, places) => Math.round(value * 10 ** places) / 10 ** places;
+
+/**
+ * What one clip cost by fal's published formula, from what actually landed:
+ * its width, height and duration (the model decides the pixel size — a
+ * "480p" square came back 640×640 on 2026-09-27 — so the request alone does
+ * not know it). Always an estimate. With reference videos, whose own
+ * duration fal also bills at 0.6× the rate, the figure covers the output
+ * only and says so. `usd` is null when the clip could not be measured.
+ */
+export function seedanceCost({ width, height, duration, resolution, referenceVideos = 0 } = {}) {
+  const rate = SEEDANCE_PRICE.usdPer1000Tokens[resolution] ?? SEEDANCE_PRICE.usdPer1000Tokens["480p"];
+  const common = { estimate: true, usdPer1000Tokens: rate };
+  if (!(width > 0 && height > 0 && duration > 0)) {
+    return { usd: null, ...common, basis: "unknown", note: "the delivered clip could not be measured (ffprobe)" };
+  }
+  const factor = referenceVideos > 0 ? SEEDANCE_PRICE.referenceVideoFactor : 1;
+  const tokens = Math.round((width * height * duration * 24) / 1024);
+  return {
+    usd: roundTo((tokens / 1000) * rate * factor, 4),
+    ...common,
+    basis: "formula-on-delivered-clip",
+    tokens,
+    width,
+    height,
+    duration: roundTo(duration, 3),
+    ...(referenceVideos > 0
+      ? { note: `output only, at ${factor}× the rate — fal also bills the ${referenceVideos} reference video${referenceVideos === 1 ? "'s" : "s'"} duration` }
+      : {}),
+  };
+}
+
+/** `$0.8303` — dollars to four places, or "unknown". */
+function formatUsd(usd) {
+  return Number.isFinite(usd) ? `$${usd.toFixed(4)}` : "unknown";
+}
+
+/** The one stderr line a `cost` object is said in. */
+export function costLine(cost) {
+  if (!cost || cost.usd === null) {
+    return `cost: unknown — ${cost?.note ?? "no measurement"} (fal lists $${SEEDANCE_PRICE.usdPer1000Tokens["480p"]} per 1000 tokens, tokens ≈ width × height × seconds × 24 / 1024)`;
+  }
+  return `cost: ≈ ${formatUsd(cost.usd)} (estimate: ${cost.width}×${cost.height}, ${cost.duration} s → ${cost.tokens} tokens × $${cost.usdPer1000Tokens} per 1000, fal's published formula${cost.note ? `; ${cost.note}` : ""})`;
+}
+
+/** Width, height and duration of a clip on disk, or null without ffprobe. */
+export function probeClip(path) {
+  const result = spawnSync("ffprobe", [
+    "-v", "error", "-select_streams", "v:0",
+    "-show_entries", "stream=width,height:format=duration", "-of", "json", path,
+  ], { encoding: "utf-8" });
+  if (result.error || result.status !== 0) return null;
+  try {
+    const parsed = JSON.parse(result.stdout);
+    const stream = parsed.streams?.[0] ?? {};
+    const width = Number(stream.width);
+    const height = Number(stream.height);
+    const duration = Number(parsed.format?.duration);
+    return width > 0 && height > 0 && duration > 0 ? { width, height, duration } : null;
+  } catch {
+    return null;
+  }
+}
+
 const MAX_REF_IMAGES = 30;
 const MAX_REF_VIDEOS = 10;
 const MAX_REF_AUDIOS = 10;
@@ -198,7 +279,7 @@ export function remuxFaststart(path, { onNote = (m) => console.error(m) } = {}) 
  */
 export async function generateSeedanceVideo(
   options,
-  { runJob = runFalJob, download = downloadFalFile, remuxFile = remuxFaststart } = {},
+  { runJob = runFalJob, download = downloadFalFile, remuxFile = remuxFaststart, probe = probeClip } = {},
 ) {
   const { output, apiKey, signal, deadlineMs = 900_000, remux = true } = options;
   if (typeof output !== "string" || !output.trim()) throw new Error("--output is required");
@@ -256,6 +337,12 @@ export async function generateSeedanceVideo(
   // than null when the queue did not give one, so a caller can tell "no id"
   // from "id unknown".
   if (typeof job?.requestId === "string" && job.requestId) result.request_id = job.requestId;
+  // Last, and additive: every earlier key is as it was.
+  result.cost = seedanceCost({
+    ...(probe(output) ?? {}),
+    resolution: body.resolution,
+    referenceVideos: Array.isArray(body.video_urls) ? body.video_urls.length : 0,
+  });
   return result;
 }
 
@@ -286,7 +373,10 @@ References are addressed in the prompt by modality and order: @Image1,
 host anything larger and pass its URL.
 
 Requires FAL_KEY (environment or .env). Progress goes to stderr; with
---json, stdout carries exactly one object.`;
+--json, stdout carries exactly one object. What the clip cost — an estimate
+by fal's published formula ($${SEEDANCE_PRICE.usdPer1000Tokens["480p"]} per 1000 tokens at 480p/720p, tokens ≈
+width × height × seconds × 24 / 1024) on the clip that landed — is printed
+on stderr as a cost: line and returned as the object's cost.`;
 
 export async function main(argv = process.argv.slice(2)) {
   const { values } = parseArgs({
@@ -358,6 +448,8 @@ export async function main(argv = process.argv.slice(2)) {
       signal: controller.signal,
       deadlineMs: Math.max(30, Number(values["deadline-s"]) || 900) * 1000,
     });
+    // The price first, on stderr: stdout stays one object (or one path).
+    console.error(costLine(result.cost));
     console.log(values.json ? JSON.stringify(result) : result.path);
     return 0;
   } catch (error) {

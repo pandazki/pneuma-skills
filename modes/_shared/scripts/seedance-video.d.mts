@@ -79,7 +79,41 @@ export interface SeedanceResult {
   /** fal's queue id for this render, when the queue reported one. Absent
    *  rather than null, so "no id" is distinguishable from "id unknown". */
   request_id?: string;
+  /** Added 2026-09-27: an estimate by fal's published formula. */
+  cost: SeedanceCost;
 }
+
+/** fal's Seedance 2.5 price and how it is counted, with the date it was read. */
+export const SEEDANCE_PRICE: Readonly<{
+  usdPer1000Tokens: Readonly<Record<string, number>>;
+  referenceVideoFactor: number;
+  checked: string;
+}>;
+
+/** What a clip cost by fal's published formula — always an estimate. */
+export interface SeedanceCost {
+  usd: number | null;
+  estimate: true;
+  basis: "formula-on-delivered-clip" | "unknown";
+  usdPer1000Tokens: number;
+  tokens?: number;
+  width?: number;
+  height?: number;
+  duration?: number;
+  note?: string;
+}
+
+export function seedanceCost(clip?: {
+  width?: number;
+  height?: number;
+  duration?: number;
+  resolution?: string;
+  referenceVideos?: number;
+}): SeedanceCost;
+/** The stderr `cost:` line for a cost object. */
+export function costLine(cost: SeedanceCost | null | undefined): string;
+/** Width, height and duration of a clip on disk, or null without ffprobe. */
+export function probeClip(path: string): { width: number; height: number; duration: number } | null;
 
 export interface SeedanceDependencies {
   /** Defaults to `fal-queue.mjs::runFalJob`. */
@@ -97,6 +131,8 @@ export interface SeedanceDependencies {
   download?: (url: string, options?: { signal?: AbortSignal; attempts?: number }) => Promise<Uint8Array>;
   /** Defaults to `remuxFaststart`; injected so a test needs no ffmpeg. */
   remuxFile?: (path: string, options?: { onNote?: (message: string) => void }) => boolean;
+  /** Defaults to `probeClip`; injected so a test needs no ffprobe. */
+  probe?: (path: string) => { width: number; height: number; duration: number } | null;
 }
 
 /**
