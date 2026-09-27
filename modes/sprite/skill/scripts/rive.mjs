@@ -65,6 +65,7 @@ const PROP = {
   height: [8, "f"], // LayoutComponent.height
   x: [13, "f"], // Node.x
   y: [14, "f"], // Node.y
+  scaleX: [16, "f"], // TransformComponent.scaleX: -1 draws the image flipped about its origin
   objectId: [51, "u"], // KeyedObject.objectId
   propertyKey: [53, "u"], // KeyedProperty.propertyKey
   animationName: [55, "s"], // Animation.name (LinearAnimation, StateMachine)
@@ -391,9 +392,12 @@ const pad2 = (i) => String(i).padStart(2, "0");
  *             A frame is `{ bytes, width, height, pivot: {x, y}, ext }` —
  *             `pivot` in the frame's own pixels; the Image origin is that
  *             point as a fraction of the frame, so frames of different sizes
- *             still stand on the same spot — or `{ shared: { motion, index } }`,
- *             another motion's embedded frame shown again: a reverse
- *             transition is its source's images backwards and embeds none.
+ *             still stand on the same spot — or `{ shared: { motion, index,
+ *             flip? } }`, another motion's embedded frame shown again: a
+ *             reverse transition is its source's images backwards and embeds
+ *             none; a mirror is its source's images with `flip`, drawn by an
+ *             Image of their own with scaleX −1 about the same origin, which
+ *             is the flipped frame with its pivot at width − x.
  *             `kind: "transition"` with `from`/`to` makes a clip the machine
  *             routes through (`riveStateMachine`).
  *
@@ -440,15 +444,21 @@ export function writeRiv(spec) {
       embedded.set(`${motion.id}#${index}`, entry);
     });
   }
+  // A flipped frame is one more Image over the same asset, one per embedded
+  // frame however many timelines show it flipped.
+  const flipped = new Map();
   const frameEntry = (motion, frame, index) => {
     if (!frame.shared) return embedded.get(`${motion.id}#${index}`);
-    const entry = embedded.get(`${frame.shared.motion}#${frame.shared.index}`);
+    const key = `${frame.shared.motion}#${frame.shared.index}`;
+    const entry = embedded.get(key);
     if (!entry) {
       throw new Error(
         `riv: motion '${motion.id}' frame ${index} shows '${frame.shared.motion}' frame ${frame.shared.index}, which is not embedded`,
       );
     }
-    return entry;
+    if (!frame.shared.flip) return entry;
+    if (!flipped.has(key)) flipped.set(key, { of: entry, name: `${motion.id}_${pad2(index)}` });
+    return flipped.get(key);
   };
   // Resolve every shared frame before a byte of the artboard is written.
   const shown = motions.map((motion) => motion.frames.map((frame, i) => frameEntry(motion, frame, i)));
@@ -474,6 +484,19 @@ export function writeRiv(spec) {
       imageAssetId: entry.assetIndex,
       originX: entry.frame.pivot.x / entry.frame.width,
       originY: entry.frame.pivot.y / entry.frame.height,
+    });
+  });
+  [...flipped.values()].forEach((entry, i) => {
+    entry.component = FIRST_IMAGE + placed.length + i;
+    w.object("Image", {
+      componentName: entry.name,
+      parentId: SOLO,
+      x: anchor.x,
+      y: anchor.y,
+      scaleX: -1,
+      imageAssetId: entry.of.assetIndex,
+      originX: entry.of.frame.pivot.x / entry.of.frame.width,
+      originY: entry.of.frame.pivot.y / entry.of.frame.height,
     });
   });
 
