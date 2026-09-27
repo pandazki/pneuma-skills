@@ -27,9 +27,9 @@ import {
 } from "./fixtures/pixel/lattice-art.mjs";
 import {
   alphaBbox, applyPalette, bestPhase, buildSharedPalette, consensusPitch, crosscheckPitchRunlen, cropImage,
-  detectPixelGrid, detectPixelPitch, dominantBlockColor, enforceOutline, estimatePixelGridRunlen, gridEdges,
-  latticeCheck, latticeFrames, loadPalette, refineEdgesToBoundaries, resolveFramePitch, snapGrid, solidBbox, upscale,
-  writePalette, type RgbaImage,
+  detectPixelGrid, detectPixelPitch, dominantBlockColor, edgeHistograms, enforceOutline, estimatePixelGridRunlen,
+  gridEdges, latticeCheck, latticeFrames, loadPalette, pooledPitch, refineEdgesToBoundaries, resolveFramePitch,
+  snapGrid, solidBbox, upscale, writePalette, type RgbaImage,
 } from "../skill/scripts/pixel-lattice.mjs";
 
 /** Upstream `grid_snap_downscale(image, pitch, phase=…)`: cut at the given
@@ -493,6 +493,54 @@ describe("one generation's frames", () => {
     expect(y.rescuedFrom).toBeUndefined();
     // Runs within 1.5x of the consensus leave it alone.
     expect(consensusPitch([3, 3, 3, 9], 4.4)).toEqual(consensusPitch([3, 3, 3, 9]));
+  });
+});
+
+describe("colour under fully transparent pixels", () => {
+  /**
+   * One generation twice: transparent blocks punched through the art (the
+   * gaps between limbs a keyed sheet has), once with every transparent pixel
+   * written as transparent black — what an auto slice, a blank canvas and
+   * `applyPalette` write — and once with colour left under them, what a
+   * fixed-grid cell cut from a keyed sheet carries (the slime jump's cell 00:
+   * 2 998 such pixels, and a logical size of 26x25 where its auto cell read
+   * 26x26). A pixel whose alpha is 0 has no colour; only alpha says so.
+   */
+  function generation() {
+    const art = logicalArt(20, 28, 11);
+    for (let y = 1; y < 27; y++) for (let x = 1; x < 19; x++) if ((x * 7 + y * 3) % 5 === 0) setPixel(art, x, y, [0, 0, 0, 0]);
+    const clean = [13.1, 13.2, 13.0].map((p) => {
+      const frame = blank(420, 420);
+      paste(frame, upscaledFractional(art, p), 30, 20);
+      return frame;
+    });
+    const hidden = clean.map((frame) => {
+      const data = Uint8Array.from(frame.data);
+      for (let p = 0; p < data.length / 4; p++) {
+        if (data[p * 4 + 3] !== 0) continue;
+        data[p * 4] = (p * 37) & 255;
+        data[p * 4 + 1] = (p * 91 + 13) & 255;
+        data[p * 4 + 2] = (p * 53 + 7) & 255;
+      }
+      return { width: frame.width, height: frame.height, data };
+    });
+    return { art, clean, hidden };
+  }
+
+  test("the edges, the grid, the pooled pitch and the snapped frames are the same whatever colour alpha 0 hides", () => {
+    const { art, clean, hidden } = generation();
+    expect(edgeHistograms(hidden[0])).toEqual(edgeHistograms(clean[0]));
+    expect(pooledPitch(hidden)).toEqual(pooledPitch(clean));
+    const want = latticeFrames(clean);
+    const got = latticeFrames(hidden);
+    expect(got.consensus).toEqual(want.consensus);
+    expect(got.warnings).toEqual(want.warnings);
+    expect(got.frames.map((f) => f.logical)).toEqual(want.frames.map((f) => f.logical));
+    // …and what both come back as is the art, holes and all.
+    for (const f of want.frames) {
+      expect([f.logical!.width, f.logical!.height]).toEqual([20, 28]);
+      expect(mismatch(f.logical!, art)).toBeLessThanOrEqual(6);
+    }
   });
 });
 

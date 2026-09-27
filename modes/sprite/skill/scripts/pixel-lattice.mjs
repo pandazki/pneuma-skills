@@ -166,13 +166,22 @@ export function solidBbox(image) {
  * (horizontal edges, `row`), sampling every other line. An anti-aliased ramp
  * still registers next to the true block boundary, so the boundary position
  * survives the blur.
+ *
+ * A pixel whose alpha is 0 is read as transparent black, whatever RGB it
+ * stores. A keyed sheet cut on the fixed grid keeps the character's colours
+ * under the pixels the key cleared, and those counted as edges: the slime
+ * jump's cell 00 (2 998 such pixels) snapped 26x25 where the same pose cut
+ * clean — an auto slice, which writes transparent black — snapped 26x26.
+ * Transparent black is what every canonical input already holds, so their
+ * readings are unchanged. Every other reader here gates RGB on alpha.
  */
 export function edgeHistograms(image) {
   const { width, height, data } = image;
   const col = new Array(width).fill(0);
   const row = new Array(height).fill(0);
-  const diff = (i, j) => Math.abs(data[i] - data[j]) + Math.abs(data[i + 1] - data[j + 1])
-    + Math.abs(data[i + 2] - data[j + 2]) + Math.abs(data[i + 3] - data[j + 3]);
+  const channel = (i, c) => (data[i + 3] === 0 ? 0 : data[i + c]);
+  const diff = (i, j) => Math.abs(channel(i, 0) - channel(j, 0)) + Math.abs(channel(i, 1) - channel(j, 1))
+    + Math.abs(channel(i, 2) - channel(j, 2)) + Math.abs(data[i + 3] - data[j + 3]);
   for (let y = 0; y < height; y += 2) {
     for (let x = 1; x < width; x++) {
       const i = (y * width + x) * 4;
