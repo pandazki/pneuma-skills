@@ -720,7 +720,7 @@ const zhCommandHints: Record<string, string> = {
   "render-video": "让助手把这个动作渲成一段视频，可以挑模型和生成方式。",
   "regenerate-motion": "让助手重画这个动作的雪碧图，可以附一句要改什么。",
   "fix-alignment": "帧与帧之间人物在滑或在跳时，让助手重新对齐。",
-  export: "让助手把这个动作——或整个角色——导出成视频、帧动画或 Rive 文件。",
+  export: "让助手把这个动作——或整个角色——导出成视频、帧动画、游戏引擎用的图集或 Rive 文件。",
 };
 
 const zhCN: SpriteStrings = {

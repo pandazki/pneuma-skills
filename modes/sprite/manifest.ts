@@ -1,15 +1,20 @@
 /**
  * Sprite Mode Manifest — pure data, no React deps.
  *
- * Character-centric motion assets: the user designs a character once, then
- * asks for motions. Each motion is one GPT Image 2.5 sheet generated with the
- * character references attached, which a deterministic ffmpeg pipeline turns
- * into aligned frames, a packed atlas, a GIF/WebP preview, and — on request —
- * a short clip from a video model.
+ * Character-centric motion assets, organised by what the user is making
+ * (`character.purpose`): a game character, a picture brought to life, a
+ * looping animation for a page, or a mascot for an app. The character is
+ * designed once (or taken from the user's image); each motion's frames come
+ * from a GPT Image 2.5 sheet, a chroma-green clip, a breathe of one still or a
+ * mirror of another motion, and a deterministic pipeline turns them into
+ * aligned frames, a packed atlas and GIF/WebP previews.
  *
  * A motion can also be a `loop`: a keyframe, a first-last clip with the same
  * image at both ends, and every frame of the cycle cut into one seamless
  * transparent animation (WebP / APNG / WebM / Lottie) for a UI.
+ *
+ * 0.5.0 absorbs aldegad/sprite-gen's reliable methods — see `inspiredBy` and
+ * NOTICE.md for what was ported and what was adapted.
  */
 
 import type { ModeManifest } from "../../core/types/mode-manifest.js";
@@ -17,8 +22,18 @@ import { loadRoster, saveRoster } from "./domain.js";
 
 const spriteManifest: ModeManifest = {
   name: "sprite",
-  version: "0.4.0",
+  version: "0.5.0",
   changelog: {
+    "0.5.0": [
+      "Four routes shape the session around what you are making — a game character, a looping animation for a page, a mascot for an app, or your own picture brought to life — so you answer one plain question instead of choosing settings",
+      "Bring a picture to life: upload an image and it starts breathing in seconds, free, with no model call",
+      "Pixel-art characters snap onto a true pixel grid with one palette across every motion, and colourways such as a red team and a blue team come as extra downloads",
+      "Characters for top-down games face four ways: one reference picture per facing keeps every sheet on-model, and the other side is mirrored for free",
+      "Game-engine export: an Aseprite sheet of one motion or the whole character that Phaser loads in one call, atlases PixiJS stands on the feet, and an optional ground shadow",
+      "Cleaner green-screen edges: the key takes the plate colour out of every edge instead of leaving a green or dark rim",
+      "Jumps and attacks get room in the frame, walks stay steady instead of lurching, and a character keeps one height across its clips",
+      "Clips are read more truly: a walk's full stride, a one-off action and a clip that never repeats are told apart, and near-still loops are no longer padded with extra frames",
+    ],
     "0.4.0": [
       "An Export tab on every ready motion: MP4, MOV and WebM video, APNG, Lottie and a PNG sequence, next to the formats every run already makes",
       "Export a whole character as one Rive file, previewed in the tab with the official Rive runtime and a button per motion",
@@ -68,10 +83,16 @@ const spriteManifest: ModeManifest = {
     ja: "スプライト",
   },
   description: {
-    en: "Design a character once, then generate consistent sprite sheets and motion reference frames with GPT Image 2.5 — auto-keyed, sliced, aligned, packed, previewed as GIF or a video clip. Or shoot a seamless transparent loop for a UI and export it as WebP, APNG, WebM and Lottie. Export any motion as video or frame animation, and a whole character as one Rive file.",
+    en: "Bring a character to life for whatever you are making: a move set your game engine loads (pixel art and four facings included), a seamless transparent loop for a web page, a mascot that switches states in one Rive file, or a gentle breathing idle from a picture you already have. Design the character once, or start from your own image; every motion stays on-model, keyed, aligned and previewed on a live stage.",
     "zh-CN":
-      "先定角色，再用 GPT Image 2.5 产出前后一致的雪碧图与动作参考帧；自动抠背景、切帧、对齐、打包，GIF 或视频模型预览。也可以做界面上那种循环不断的透明小动画，一次导出 WebP、APNG、WebM 和 Lottie。每个动作能导出视频或帧动画，整个角色能导成一个 Rive 文件。",
-    ja: "キャラクターを一度設計すれば、あとは GPT Image 2.5 で一貫したスプライトシートとモーション参考フレームを生成 —— 背景抜き・分割・整列・パックまで自動、GIF や動画クリップでプレビュー。UI に置く継ぎ目のない透過ループも作れて、WebP・APNG・WebM・Lottie で書き出せます。",
+      "游戏、网页、应用，或者手上的一张图，都能让角色动起来：一套游戏引擎直接能用的动作（像素画、四个朝向都支持），网页上首尾无缝的透明循环动画，能在几种状态间切换的应用吉祥物（一个 Rive 文件），或者让你的图先轻轻呼吸起来。角色设计一次就行，也可以直接从你的图开始；每个动作都自动抠背景、对齐，在舞台上实时预览。",
+    ja: "ゲーム、Web ページ、アプリ、手元の一枚の絵 —— 用途に合わせてキャラクターを動かします。ゲームエンジンにそのまま読み込めるモーション一式（ドット絵・4 方向にも対応）、継ぎ目のない透過ループ、状態を切り替えるアプリのマスコット（Rive ファイル 1 つ）、あるいは一枚の絵から始まる穏やかな呼吸アニメーション。キャラクターは一度設計するだけ、手持ちの絵から始めることもでき、どのモーションも背景抜き・整列まで自動で、ステージでそのままプレビューできます。",
+  },
+  // Methods ported from and adapted after it this round are itemised in
+  // NOTICE.md, with upstream's license shipped under licenses/.
+  inspiredBy: {
+    name: "aldegad/sprite-gen",
+    url: "https://github.com/aldegad/sprite-gen",
   },
   // A 3×3 grid with one cell filled — a sheet with one frame picked out.
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/><rect x="9" y="9" width="6" height="6" fill="currentColor" stroke="none"/></svg>`,
@@ -79,7 +100,7 @@ const spriteManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-sprite",
-    mdScene: `You and the user are building a character's motion assets inside Pneuma's workspace. The user watches a motion stage: a refs rail, a motion list, and a player that runs the selected motion at its own fps beside its GIF, video, atlas and an Export tab. You design the character, write the sheet prompts, run the generation and the ffmpeg pipeline, then look through the stage — playback state, the inspect report, a capture — before you tell them a motion is done.`,
+    mdScene: `You and the user are bringing a character to life for what they are making — a move set for a game, a loop for a web page, a mascot for an app, or their own picture, breathing. The user watches a motion stage: a refs rail, a motion list, and a player that runs the selected motion at its own fps beside its GIF, video, atlas and an Export tab. You tell the route from what they say, design the character or take it from their image, run the generation and the deterministic pipeline, then look through the stage — playback state, the inspect report, a capture — before you tell them a motion is done.`,
     envMapping: {
       OPENROUTER_API_KEY: "openrouterApiKey",
       FAL_KEY: "falApiKey",
@@ -257,7 +278,7 @@ const spriteManifest: ModeManifest = {
         id: "export",
         label: "Export",
         description:
-          "Ask for this motion, or the whole character, as a video, a frame animation or a Rive file.",
+          "Ask for this motion, or the whole character, as a video, a frame animation, a game-engine sheet or a Rive file.",
       },
     ],
   },
@@ -377,11 +398,13 @@ The user just opened the sprite workspace. Greet them briefly (1-2 sentences) an
   },
 
   evolution: {
-    directive: `Learn the user's character and animation preferences: art style (chibi / pixel /
-anime / painterly), the grid and frame count they use per motion type, fps and loop conventions,
-anchor choice, which video model they render with and how they phrase those prompts, and recurring
-motion vocabularies (idle / walk / attack sets). Evidence comes from session history and
-project.json changes. Write them back into this skill's defaults so a new character starts from the
+    directive: `Learn the user's character and animation preferences: the route they usually take
+(game character, pixel-art or four-direction game, a picture brought to life, a UI loop, an app
+mascot) and the engine they export to, art style (chibi / pixel / anime / painterly), the grid and
+frame count they use per motion type, fps and loop conventions, anchor choice, which video model
+they render with and how they phrase those prompts, and recurring motion vocabularies (idle / walk
+/ attack sets). Evidence comes from session history and project.json changes (character.purpose
+records the route). Write them back into this skill's defaults so a new character starts from the
 user's house style while explicit instructions still win.`,
   },
 };

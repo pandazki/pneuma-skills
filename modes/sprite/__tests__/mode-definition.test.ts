@@ -432,17 +432,47 @@ describe("the definition and the manifest agree", () => {
     }
   });
 
-  test("0.4.0 is the export release, and says so in the user's words", () => {
-    expect(spriteManifest.version).toBe("0.4.0");
-    const notes = spriteManifest.changelog?.["0.4.0"] ?? [];
-    expect(notes.length).toBeGreaterThan(0);
-    for (const note of notes) {
-      // The manifest style: plain sentences, no markdown, no trailing period.
-      expect(note).not.toMatch(/`|\*\*|^- /);
-      expect(note.endsWith(".")).toBe(false);
+  test("0.5.0 is the routes release, and says so in the user's words", () => {
+    expect(spriteManifest.version).toBe("0.5.0");
+    // Every release's notes keep the manifest style: plain sentences, no
+    // markdown, no trailing period — the launcher prints them as bullets.
+    for (const version of ["0.5.0", "0.4.0"]) {
+      const notes = spriteManifest.changelog?.[version] ?? [];
+      expect(notes.length).toBeGreaterThan(0);
+      for (const note of notes) {
+        expect(note).not.toMatch(/`|\*\*|^- /);
+        expect(note.endsWith(".")).toBe(false);
+      }
     }
-    expect(notes.join(" ")).toMatch(/Rive/);
-    expect(notes.join(" ")).toMatch(/MP4/);
+    const notes = spriteManifest.changelog!["0.5.0"];
+    // What the user gets, not the plumbing: no script, flag or file name.
+    for (const note of notes) expect(note).not.toMatch(/\.mjs|--[a-z]|\.json\b/);
+    const text = notes.join(" ");
+    for (const claim of [/route/i, /picture/i, /pixel/i, /four ways|four facings/i, /Aseprite/, /Phaser/, /PixiJS/, /shadow/i]) {
+      expect(text).toMatch(claim);
+    }
+    expect(notes.length).toBeGreaterThanOrEqual(5);
+    expect(notes.length).toBeLessThanOrEqual(8);
+  });
+
+  test("the round's upstream is credited, and its license travels with the mode", () => {
+    expect(spriteManifest.inspiredBy).toEqual({
+      name: "aldegad/sprite-gen",
+      url: "https://github.com/aldegad/sprite-gen",
+    });
+    const root = join(import.meta.dir, "..");
+    const notice = readFileSync(join(root, "NOTICE.md"), "utf-8");
+    expect(notice).toContain("aldegad/sprite-gen");
+    expect(notice).toContain("fbd1a08");
+    expect(notice).toContain("Apache-2.0");
+    // Apache-2.0 §4(d): the upstream NOTICE text is reproduced, and it names
+    // the MIT project one of our ports reaches back to.
+    expect(notice).toContain("Copyright 2026 Alex Kim");
+    expect(notice).toContain("gykim80/perfectpixel-studio");
+    // §4(a): recipients get a copy of the License itself.
+    const license = readFileSync(join(root, "licenses", "sprite-gen-LICENSE"), "utf-8");
+    expect(license).toContain("Apache License");
+    expect(license).toContain("Version 2.0, January 2004");
   });
 
   test("the workspace model is copied from the manifest, not restated", () => {
