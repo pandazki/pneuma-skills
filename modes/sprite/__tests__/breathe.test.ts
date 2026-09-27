@@ -17,7 +17,7 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -571,6 +571,50 @@ describe("breathe.mjs — smooth", () => {
     expect(pixel.canvas.grew.top).toBeGreaterThan(0);
   });
 
+  test("a faint speck far from the body rides with the box edge instead of being stretched off the canvas (R2-3)", () => {
+    // A 1200 px wide still, the body at x 600, a speck of alpha 60 at x 5.
+    // Stretched about the axis with the body, the speck moved 600·g: out of
+    // the working canvas at depth 0.1 ("internal: smooth warp left the
+    // working canvas"), 27 px frame to frame at 0.05.
+    const wide = canvas(1200, 200);
+    const paint = (x: number, y: number, c: number[]) => wide.data.set(c, (y * wide.width + x) * 4);
+    for (let y = 20; y < 180; y++) {
+      const hw = y < 60 ? 12 : y < 66 ? 5 : 20;
+      for (let x = 600 - hw; x < 600 + hw; x++) paint(x, y, [200, 150, 100, 255]);
+    }
+    paint(5, 120, [255, 255, 255, 60]);
+    for (const d of [0.05, 0.1, 0.2]) {
+      const out = bakeBreathe(wide, { frames: 12, depth: d, mode: "smooth" });
+      expect({ d, left: out.canvas.grew.left, right: out.canvas.grew.right }).toEqual({ d, left: 0, right: 0 });
+      for (const frame of out.frames) {
+        // The speck moves only as far as the body's edge beside it does:
+        // half-width 20 × a row strain up to 0.23 at depth 0.2, plus rounding.
+        let xs: number[] = [];
+        for (let y = 0; y < frame.height; y++) {
+          for (let x = 0; x < 100; x++) if (frame.data[(y * frame.width + x) * 4 + 3]) xs.push(x);
+        }
+        expect({ d, near: xs.length > 0 && Math.max(...xs.map((x) => Math.abs(x - 5))) <= Math.ceil(20 * rowStrain(analyzeAnatomy(wide), d)) + 1 }).toEqual({ d, near: true });
+      }
+    }
+  });
+
+  test("a breath whose lift rounds to nothing is said, with the depth where the head starts to move (R2 nit)", () => {
+    // 32 px of character: at 0.02 the lift peaks at 0.44 px and every frame
+    // keeps the head where it was; at 0.03 it moves.
+    const tiny = canvas(24, 40);
+    for (let y = 4; y < 36; y++) {
+      const hw = y < 14 ? 5 : y < 16 ? 2 : 8;
+      for (let x = 12 - hw; x < 12 + hw; x++) tiny.data.set([200, 100, 50, x === 12 - hw || x === 12 + hw - 1 ? 128 : 255], (y * 24 + x) * 4);
+    }
+    const still = bakeBreathe(tiny, { frames: 12, depth: 0.02, mode: "smooth" });
+    expect(still.perFrame.every((f) => f.headOffset === 0)).toBe(true);
+    expect(still.warnings.filter((w) => w.startsWith("the head never moves"))).toEqual([
+      "the head never moves: at depth 0.02 this 32 px tall character lifts by 0.44 px at most, which rounds to 0 — the frames only widen and narrow. Raise --depth (the head starts to move at about 0.023) or breathe a larger still",
+    ]);
+    const moving = bakeBreathe(tiny, { frames: 12, depth: 0.03, mode: "smooth" });
+    expect(moving.warnings.some((w) => w.startsWith("the head never moves"))).toBe(false);
+  });
+
   test("overrides are reported in the still's pixel coordinates, the ones the CLI takes", () => {
     const { x0, y0 } = a.box;
     const baked = bakeBreathe(src, { frames: 12, depth, mode: "smooth", rigidY: y0 + a.rigidRow + 4, axisX: x0 + a.axisX + 1, torsoHalf: 12 });
@@ -680,6 +724,40 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs breathe", () => {
     expect(report.anchorDrift.y).toBe(0);
     expect(report.bodyDrift).toBeLessThan(0.5);
   }, 30_000);
+
+  test("the head's extremes are named in the run, and the still's warnings survive a re-inspect (A2/A3, R1-5)", () => {
+    const motion = join(root, "idle");
+    // The still cropped hard at the top: the character touches the edge,
+    // which the detector says and a re-inspect has no still to see again.
+    const src = antialiased();
+    const box = solidBox(src, 1)!;
+    const cut = canvas(src.width, src.height - box.y0);
+    cut.data.set(src.data.subarray(box.y0 * src.width * 4));
+    const cropped = join(root, "cropped.png");
+    writePng(cropped, cut);
+    const r = run(root, "breathe", cropped, "--out", motion, "--name", "idle", "--mode", "smooth", "--frames", "12", "--depth", "0.04", "--json");
+    expect(r.code).toBe(0);
+    const out = JSON.parse(r.out);
+    const offsets = out.perFrame.map((f: { headOffset: number }) => f.headOffset);
+    const min = Math.min(...offsets), max = Math.max(...offsets);
+    const at = (v: number) => out.perFrame.filter((f: { headOffset: number }) => f.headOffset === v).map((f: { index: number }) => f.index);
+    const summary = { min, max, travel: max - min, highest: at(min), lowest: at(max) };
+    expect(summary.travel).toBeGreaterThan(0);
+    expect(out.headOffset).toEqual(summary);
+    expect(out.breathe.headOffset).toEqual(summary);
+    const record = JSON.parse(readFileSync(join(motion, "cells", "breathe.json"), "utf-8"));
+    expect(record.headOffset).toEqual(summary);
+    expect(record.perFrame.map((f: { headOffset: number }) => f.headOffset)).toEqual(offsets);
+    const edge = (w: string) => w.startsWith("the character touches the top edge of the still");
+    expect(out.inspect.warnings.some(edge)).toBe(true);
+    expect(record.warnings.some(edge)).toBe(true);
+    const again = run(root, "inspect", motion, "--json");
+    expect(again.code).toBe(0);
+    expect(JSON.parse(again.out).warnings.some(edge)).toBe(true);
+    // The human line says it the way it is repeated to a person.
+    const human = run(root, "breathe", cropped, "--out", join(root, "idle-h", "cells"), "--mode", "smooth", "--frames", "12", "--depth", "0.04");
+    expect(human.out).toContain(`(travel ${summary.travel}px: highest in frame ${summary.highest.join(", ")}, lowest in ${summary.lowest.join(", ")})`);
+  }, 60_000);
 
   test("with no --mode, the character's style decides; with no character it is required", () => {
     const bare = run(root, "breathe", still, "--out", join(root, "bare", "cells"));

@@ -1412,6 +1412,29 @@ function resetFramesDir(dir) {
 }
 
 /**
+ * The breathe record next to the first of `dirs` (cells, then frames) that
+ * has one, or null — absent is legitimate, unreadable is an error, as with
+ * the slice record. Only `warnings` is read beyond its presence, and a
+ * record from before it was written has none.
+ */
+function readBreatheRecord(dirs) {
+  for (const dir of dirs) {
+    if (!dir) continue;
+    const path = join(resolve(dir), BREATHE_RECORD);
+    if (!existsSync(path)) continue;
+    let doc;
+    try {
+      doc = JSON.parse(readFileSync(path, "utf-8"));
+    } catch (error) {
+      fail(`${path} is not valid JSON (${error.message}) — delete it or breathe again`);
+    }
+    if (!doc || doc.kind !== "pneuma-sprite-breathe") fail(`${path} is not a breathe record — delete it or breathe again`);
+    return { ...doc, warnings: Array.isArray(doc.warnings) ? doc.warnings.filter((w) => typeof w === "string") : [] };
+  }
+  return null;
+}
+
+/**
  * The grid a cells directory was sliced from, or null when nothing sliced it
  * (a clip's samples, cells cut by hand). Same discipline as `readAlignRecord`:
  * absent is an answer, a record that is there and unreadable is an error.
@@ -3020,7 +3043,8 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
   // 0.001–0.002 between steps of 0.010–0.013). That hold is the method, not
   // a drawing the model repeated: the pairs stay in `nearDuplicates`, the
   // sentence — whose fixes are resampling and redrawing — is not said.
-  const breathed = [cells, framesDir].some((d) => d && existsSync(join(resolve(d), BREATHE_RECORD)));
+  const breatheRecord = readBreatheRecord([cells, framesDir]);
+  const breathed = Boolean(breatheRecord);
   if (judged.nearDuplicates.length && !breathed) {
     warnings.push(`near-duplicate frames ${pairsText(judged.nearDuplicates)} (step under ${DUPLICATE_STEP}) — the animation holds there; fine for a held idle, a hitch in a stroke or a step`);
   }
@@ -3030,9 +3054,13 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
   const residueNote = residueWarning(residue, key);
   if (residueNote) warnings.push(residueNote);
   // What the caller knows about these frames that the pixels cannot say — a
-  // breathe's detector on the still they were warped from. In the summary,
-  // because that is what register-run copies and the stage shows.
-  for (const warning of extraWarnings) if (!warnings.includes(warning)) warnings.push(warning);
+  // breathe's detector on the still they were warped from, passed by the run
+  // or, on a later inspect, read back from the breathe record (R1-5: a
+  // re-inspect dropped them). In the summary, because that is what
+  // register-run copies and the stage shows.
+  for (const warning of [...extraWarnings, ...(breatheRecord?.warnings ?? [])]) {
+    if (!warnings.includes(warning)) warnings.push(warning);
+  }
 
   let pixelSummary = null;
   if (pixel) {
@@ -7848,7 +7876,7 @@ function stepBreathe(still, options) {
  * The bake itself: frames written to `out` (NN.png), the report, and the
  * frames still in hand for a caller that goes on to cut the motion.
  */
-function bakeStill(still, { out, frames, depth, breaths, mode: askedMode, rigidY, axisX, torsoHalf, crop = null }) {
+function bakeStill(still, { out, frames, depth, breaths, mode: askedMode, rigidY, axisX, torsoHalf, crop = null, threshold = DEFAULT_THRESHOLD }) {
   const input = resolve(still);
   const framesDir = resolve(out);
   // resetFramesDir clears NN.png here; a still that IS one of those files
@@ -7874,11 +7902,6 @@ function bakeStill(still, { out, frames, depth, breaths, mode: askedMode, rigidY
   const images = crop ? cropToReach(baked.frames, crop.pad) : baked.frames;
   resetFramesDir(framesDir);
   const paths = images.map((frame, i) => writeRgbaPng(join(framesDir, frameName(i)), frame, `breathe frame ${i}`));
-  // The frames say what made them, the way cells carry their grid: `inspect`
-  // reads this to keep a breathe's planned holds out of its warnings.
-  const record = writeJsonFile(join(framesDir, BREATHE_RECORD), {
-    kind: "pneuma-sprite-breathe", version: 1, still: input, frames: paths.length, breaths, depth, mode,
-  });
 
   // The anatomy is reported in the STILL's pixel coordinates — the ones
   // --rigid-row / --axis take back. The frames' canvas may have grown up and
@@ -7886,11 +7909,26 @@ function bakeStill(still, { out, frames, depth, breaths, mode: askedMode, rigidY
   const a = baked.anatomy;
   const { x0, y0 } = a.box;
   const heights = baked.perFrame.map((f) => f.height);
-  const offsets = baked.perFrame.map((f) => f.headOffset);
+  const headOffset = headOffsetSummary(baked.perFrame);
   const identical = baked.perFrame.filter((f) => f.headDiffPx === 0).length;
   if (baked.rigidRows > 0 && identical < baked.perFrame.length) {
     baked.warnings.push(`the head block differs from the still in ${baked.perFrame.length - identical} of ${baked.perFrame.length} frames (up to ${Math.max(...baked.perFrame.map((f) => f.headDiffPx ?? 0))} px)${mode === "pixel" ? " — the outline thinning runs over the whole frame" : ""}`);
   }
+  const cut = edgesTouched(image, threshold);
+  if (cut.length) {
+    baked.warnings.push(`the character touches the ${cut.join(" and ")} edge${cut.length > 1 ? "s" : ""} of the still — part of it may be cut off there; look at ${basename(input)}`);
+  }
+  // The frames say what made them, the way cells carry their grid: `inspect`
+  // reads this to keep a breathe's planned holds out of its warnings, to
+  // say again what the detector said about the still (a re-inspect has no
+  // still to look at), and to name the frames the head rides highest and
+  // lowest in.
+  const record = writeJsonFile(join(framesDir, BREATHE_RECORD), {
+    kind: "pneuma-sprite-breathe", version: 1, still: input, frames: paths.length, breaths, depth, mode,
+    headOffset,
+    perFrame: baked.perFrame.map((f) => ({ index: f.index, height: f.height, headOffset: f.headOffset })),
+    warnings: splitBreatheWarnings({ warnings: baked.warnings, mode }).decide,
+  });
   const report = {
     input,
     framesDir,
@@ -7922,7 +7960,7 @@ function bakeStill(still, { out, frames, depth, breaths, mode: askedMode, rigidY
     },
     strain: round(baked.strain, 4),
     height: { still: a.height, min: Math.min(...heights), max: Math.max(...heights) },
-    headOffset: { min: Math.min(...offsets), max: Math.max(...offsets) },
+    headOffset,
     headIdenticalFrames: baked.rigidRows > 0 ? identical : null,
     perFrame: baked.perFrame.map((f, i) => ({
       index: f.index, file: basename(paths[i]), phase: round(f.phase, 4),
@@ -7932,6 +7970,18 @@ function bakeStill(still, { out, frames, depth, breaths, mode: askedMode, rigidY
     warnings: baked.warnings,
   };
   return { report, image, images, anatomy: a, overridden: { rigidY: rigidY !== null, axisX: axisX !== null, torsoHalf: torsoHalf !== null } };
+}
+
+/**
+ * Where the head rides, from the bake's per-frame whole-pixel offsets (image
+ * y, so negative is up): the range, the travel between its extremes, and the
+ * frames at each end — the two to capture when saying how far it moves.
+ */
+function headOffsetSummary(perFrame) {
+  const offsets = perFrame.map((f) => f.headOffset);
+  const min = Math.min(...offsets), max = Math.max(...offsets);
+  const at = (v) => perFrame.filter((f) => f.headOffset === v).map((f) => f.index);
+  return { min, max, travel: max - min, highest: at(min), lowest: at(max) };
 }
 
 /**
@@ -7993,7 +8043,7 @@ function stepBreatheRun(still, options) {
     fail(`breathe: the still ${input} is a frame of ${motionDir}, which this run rewrites — copy it out and register the copy as a reference (add-ref --derived-from <frame id>), then breathe that`);
   }
   mkdirSync(motionDir, { recursive: true });
-  const { report, image: stillImage, images, anatomy, overridden } = bakeStill(input, {
+  const { report, images, anatomy, overridden } = bakeStill(input, {
     out: cellsDir,
     frames: options.frames,
     depth: options.depth,
@@ -8003,12 +8053,9 @@ function stepBreatheRun(still, options) {
     axisX: options.axisX,
     torsoHalf: options.torsoHalf,
     crop: { pad: options.pad },
+    threshold: options.threshold,
   });
   const { decide, notes } = splitBreatheWarnings(report);
-  const cut = edgesTouched(stillImage, options.threshold);
-  if (cut.length) {
-    decide.push(`the character touches the ${cut.join(" and ")} edge${cut.length > 1 ? "s" : ""} of the still — part of it may be cut off there; look at ${basename(input)}`);
-  }
 
   // The cells are in hand: measured here, not decoded again.
   const measures = images.map((frame) => measureFrame(frame, options.threshold));
@@ -8045,6 +8092,9 @@ function stepBreatheRun(still, options) {
       breaths: report.breaths,
       lag: report.lag,
       mode: report.mode,
+      // Where the head rides, and the frames at each end: what "the head
+      // moves ±N px" is said from, and which two frames to capture.
+      headOffset: report.headOffset,
       // In the still's pixels — what --rigid-row / --axis / --torso take back.
       anatomy: {
         rigidRow: report.anatomy.rigidY,
@@ -8139,7 +8189,7 @@ function breatheLines(out) {
   return [
     `breathe: ${out.frameCount} frames, ${out.breaths} breath${out.breaths > 1 ? "s" : ""}, depth ${out.depth}, ${out.mode} (${out.modeFrom}) → ${out.framesDir}`,
     `anatomy: body axis x=${a.axisX} · neck y=${a.neckY} (${a.neckSource}) · rigid y=${a.rigidY} (${a.rigidSource}) · face ${a.face ? `y=${a.face.top}..${a.face.bottom}` : "not found"} · torso half-width ${a.torsoHalf}px, widest ${a.maxHalf}px${a.appendage ? " (reaches sideways: pushed, not stretched)" : ""}`,
-    `height ${out.height.still}px → ${out.height.min}..${out.height.max}px · head offset ${signed(out.headOffset.min)}..${signed(out.headOffset.max)}px${out.headIdenticalFrames === null ? "" : ` · head identical to the still in ${out.headIdenticalFrames}/${out.frameCount} frames`}`,
+    `height ${out.height.still}px → ${out.height.min}..${out.height.max}px · head offset ${signed(out.headOffset.min)}..${signed(out.headOffset.max)}px (travel ${out.headOffset.travel}px: highest in frame ${out.headOffset.highest.join(", ")}, lowest in ${out.headOffset.lowest.join(", ")})${out.headIdenticalFrames === null ? "" : ` · head identical to the still in ${out.headIdenticalFrames}/${out.frameCount} frames`}`,
     `canvas ${out.canvas.width}x${out.canvas.height}${grew.length ? ` (grew ${grew.join(", ")} px to fit the stretch)` : ""}`,
     ...out.notes,
     ...(out.warnings.length ? out.warnings : ["no warnings"]),
@@ -9067,7 +9117,7 @@ function main() {
         // motion's flags would be silently ignored there.
         const stray = ["fps", "pad", "width", "no-webp"].filter((flag) => values[flag] !== undefined && values[flag] !== false);
         if (stray.length) fail(`${stray.map((f) => `--${f}`).join(", ")} cut${stray.length > 1 ? "" : "s"} a motion — pass --name <motionId> (and --out <motionDir>) for the whole motion`);
-        const out = stepBreathe(still, bake);
+        const out = stepBreathe(still, { ...bake, threshold });
         emit(values, out, breatheLines(out));
         break;
       }

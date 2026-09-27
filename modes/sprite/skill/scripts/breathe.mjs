@@ -771,7 +771,8 @@ function resampleLine(src, srcOffset, stride, count, edges, dst, dstOffset, dstC
 
 /**
  * One phase, continuously: each row is first stretched horizontally about
- * the body axis (the axis column's centre is the fixed point), then every
+ * the body axis (the axis column's centre is the fixed point; columns
+ * outside the solid box are carried with its edges, never stretched), then every
  * column is resampled vertically. The vertical change is scaled so the head
  * moves by a whole number of pixels (`headOffset`); rows with zero strain
  * keep integer edges and are therefore copied, not interpolated. The soles'
@@ -809,7 +810,11 @@ export function warpSmooth(image, anat, { depth, lag, phase }) {
       continue;
     }
     deformed = true;
-    const dens = (x) => Math.max(0.05, 1 + g * (1 - pOf(x - box.x0)));
+    // Only the body is stretched. Columns outside the solid box — a faint
+    // speck, a stray anti-aliased pixel — ride with the box's edge: stretched
+    // about the axis, a speck 600 px out moved by 600·g and left the working
+    // canvas (R2-3); at depth 0.05 one drifted 27 px frame to frame.
+    const dens = (x) => (x < box.x0 || x >= box.x1 ? 1 : Math.max(0.05, 1 + g * (1 - pOf(x - box.x0))));
     const axisCol = box.x0 + anat.axisX;
     edges[axisCol] = axisCentre - dens(axisCol) / 2;
     edges[axisCol + 1] = axisCentre + dens(axisCol) / 2;
@@ -1069,6 +1074,15 @@ export function bakeBreathe(image, {
   }
   const bottoms = new Set(perFrame.map((f) => f.bottom));
   if (bottoms.size > 1) warnings.push(`internal: the soles moved (${[...bottoms].join(", ")})`);
+  // A breath is mostly the head rising and falling. On a small still at a low
+  // depth the whole lift rounds to under half a pixel, and the frames only
+  // widen and narrow — a breath nobody sees as one. Said, with the numbers.
+  const heights = new Set(perFrame.map((f) => f.height));
+  if (perFrame.every((f) => f.headOffset === 0) && heights.size === 1) {
+    // The bake scales the total stretch to depth × (height − basis row).
+    const rows = basisRows(anat);
+    warnings.push(`the head never moves: at depth ${depth} this ${anat.height} px tall character lifts by ${(depth * rows).toFixed(2)} px at most, which rounds to 0 — the frames only widen and narrow. Raise --depth (the head starts to move at about ${Math.min(DEPTH_MAX, 0.5 / rows).toFixed(3)}) or breathe a larger still`);
+  }
 
   return {
     frames: out,
