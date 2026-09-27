@@ -156,7 +156,7 @@ Every route ends with a blind cold-start trial in wave 3.
 | 1a′ (now, parallel) | D1 schema design (architect) | this document |
 | 1b | T7 generation · T8 directions · T10 breathe wiring · T11 recolor | D1 (T7, T8, T10), T5 (T11) |
 | 2 | E1–E7 paid validation runs, numbers into references | 1a/1b merged |
-| 3 | T12 integration (SKILL.md organised by user route, manifest 0.5.0, NOTICE.md, `inspiredBy`, viewer surfacing) → review → gates → blind cold-start trial per route → PR | all |
+| 3 | T12 integration (SKILL.md organised by user route, manifest 0.5.0, NOTICE.md, `inspiredBy`, viewer surfacing) → review → gates → blind cold-start trial per route → **showcase fully remade** (owner, 2026-09-27: the owner evaluates the round through it — one highlight per route, built from real outputs of this round) → PR | all |
 
 ## Tasks
 
