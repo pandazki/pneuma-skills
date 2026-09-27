@@ -448,6 +448,24 @@ interface InspectSummary {
                                             // when the report carried no finite
                                             // number; 0 is a real reading, not
                                             // an absence
+  headDrift?: number;                       // std-dev in px of the head-and-
+                                            // torso x, each frame's top band
+                                            // registered against frame 00's —
+                                            // what a feet-pinned walk lurches
+                                            // with. Same absent rule
+  sourceHeadDrift?: number;                 // the same band on the pre-align
+                                            // cells, straight-line drift
+                                            // removed: the bar headDrift is
+                                            // judged against. Absent without
+                                            // cells
+  nearDuplicates?: Array<[number, number]>; // neighbour pairs whose step
+                                            // (mean RGBA diff at 64²) is under
+                                            // 0.01; [last, 0] is a loop's wrap.
+                                            // [] = checked, none; absent =
+                                            // never checked
+  rowJumps?: Array<[number, number]>;       // grid row boundaries whose step
+                                            // jumps past the in-row median;
+                                            // same absent-versus-[] rule
   maxJump: number;                          // largest step between neighbours
   scaleDrift: number;                       // (max h − min h) / mean
   emptyFrames: number[];

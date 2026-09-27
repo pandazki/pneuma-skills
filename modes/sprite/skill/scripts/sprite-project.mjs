@@ -949,6 +949,16 @@ function inspectSummary(value) {
   if (!value || typeof value !== "object") return undefined;
   const point = anchorPoint(value.anchorPoint);
   const bodyDrift = finiteNumber(value.bodyDrift);
+  // The head-and-torso spread: judged on a region no alignment pins, so it
+  // still reads a lurch after `--x-from feet` has zeroed `bodyDrift`.
+  const headDrift = finiteNumber(value.headDrift);
+  // …and the same spread on the source cells, drift removed: the bar the
+  // frames' number is judged against.
+  const sourceHeadDrift = finiteNumber(value.sourceHeadDrift);
+  // Frame pairs the step check named. An empty list is a result ("checked,
+  // none"), so it travels; a missing one stays missing.
+  const nearDuplicates = framePairs(value.nearDuplicates);
+  const rowJumps = framePairs(value.rowJumps);
   // A loop reports these three and none of the anchor numbers; a sheet run
   // reports the anchor numbers and none of these. Picking by name means each
   // shape carries exactly what it measured, and the missing half stays
@@ -984,6 +994,10 @@ function inspectSummary(value) {
     // `=== undefined`, not truthiness: 0 is the drift a well-aligned motion
     // has, and dropping it would hide the best result the pipeline can give.
     ...(bodyDrift === undefined ? {} : { bodyDrift }),
+    ...(headDrift === undefined ? {} : { headDrift }),
+    ...(sourceHeadDrift === undefined ? {} : { sourceHeadDrift }),
+    ...(nearDuplicates ? { nearDuplicates } : {}),
+    ...(rowJumps ? { rowJumps } : {}),
     maxJump: value.maxJump,
     scaleDrift: value.scaleDrift,
     emptyFrames: value.emptyFrames ?? [],
@@ -999,6 +1013,16 @@ function inspectSummary(value) {
     ...(crop ? { crop } : {}),
     ...(scale > 0 ? { scale } : {}),
   };
+}
+
+/** `[[from, to], …]` frame-index pairs, well-formed entries only, or
+ *  undefined when the value is not a list at all. */
+function framePairs(value) {
+  if (!Array.isArray(value)) return undefined;
+  const index = (n) => Number.isInteger(n) && n >= 0;
+  return value
+    .filter((pair) => Array.isArray(pair) && pair.length === 2 && index(pair[0]) && index(pair[1]))
+    .map(([from, to]) => [from, to]);
 }
 
 /** `{ x, y, w, h }` in whole clip pixels, with a real width and height — or

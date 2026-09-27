@@ -105,7 +105,7 @@ it drops a blob (transparency is all four bytes). `run` inherits it through the
 keyed sheet; `from-video` does the same to each sampled frame. Opaque pixels are
 never touched, so nothing you can see changes.
 
-### `flatten <in> --out <png> [--bg #ffffff] [--similarity 0.22]`
+### `flatten <in> --out <png> [--bg #ffffff] [--similarity 0.22] [--room tall|wide|square [--headroom f] [--lead f] [--trail f] [--facing left|right]]`
 
 Composite onto a solid colour. Video models mishandle alpha — flatten frame 00
 before handing it to `seedance-video.mjs --image`. Both paths are
@@ -123,13 +123,72 @@ subject within 40 of it), and reports
 with a warning when `within > 0`. Pick another plate before paying for the
 clip. An input with no transparency has no subject to tell apart and gets no
 `plateCheck`. Inspired by aldegad/sprite-gen `gen/prepare.py` (a key must clear
-every subject pixel by the erase radius).
+every subject pixel by the erase radius). The check reads the picture
+itself, so `--room` (below) changes nothing about it.
+
+**`--room` gives the motion room inside the first frame.** An image-to-video
+model keeps the input's framing: Seedance handed a 416×506 frame returns
+588×716 and refuses `--aspect-ratio` on i2v (`video-preview.md`). A frame 00
+padded by `align`'s 8 px leaves a jump no room above the head and a swing no
+room in front of the body, and no prompt wins that back — measured on a Lumi
+jump shot from a tight frame, 53 of 97 frames touch an edge and the head is cut
+off for 38 of them; the same jump from a `tall` frame touches nothing (see
+Measured below). `--room` pads the picture into the canvas the motion needs
+before it is painted onto `--bg`:
+
+| `--room` | Canvas | Default room |
+|---|---|---|
+| `square` | 1:1 around the picture | none — the frame squared off, the picture standing on the bottom edge |
+| `tall` | 3:4 | 34 % of the height empty **above** — a jump, a hop |
+| `wide` | 16:9 | 35 % above, at least 28 % of the width **in front**, 20 % **behind** — an attack whose swing rises overhead and reaches forward, a weapon drawn back |
+
+A wave, a cheer or a celebration is `--room wide --headroom 0 --lead 0.3
+--trail 0` (raised, spread arms leave a 1:1 frame at the corners). Every other
+in-place motion needs no room.
+
+- `--headroom` is the empty share of the canvas **height** above the picture
+  (`tall`, `wide`); `--lead` / `--trail` the empty share of the **width** in
+  front of and behind the subject (`wide` only). Each in [0, 0.9), lead +
+  trail < 0.9. The canvas grows in both directions to keep its ratio; the
+  picture is never scaled or cut and always stands on the bottom edge.
+- **Front is the side the character faces**: `--facing`, else
+  `sprite.character.facing` from the nearest sprite `project.json` above the
+  input (a frame or a ref lives a few directories below it), else `right`.
+  The JSON's `room.facingFrom` says which — `"flag"`, the project.json path,
+  or `"default"`.
+- A fraction that shapes nothing is refused (`--lead` without `--room wide`,
+  `--headroom` on a square room); an input with no transparency is padded but
+  warned about — the plate then surrounds the picture's own background.
+
+```json
+{ "output": "…/first-green.png", "bg": "#00ff00", "width": 716, "height": 403,
+  "plateCheck": { "radius": 97.2, "subjectPixels": 48210, "within": 0, "fraction": 0,
+                  "minDistance": 131.2, "nearest": "#5f8f3a" },
+  "room": { "shape": "wide", "still": { "width": 272, "height": 262 },
+            "offset": { "x": 143, "y": 141 }, "headroom": 0.35, "lead": 0.28,
+            "trail": 0.2, "facing": "right", "facingFrom": "…/lumi/project.json" },
+  "warnings": [] }
+```
+
+`plateCheck` is there for any input with transparency, `room` only with
+`--room`.
+
+The room makes the character a smaller share of the clip, so a padded clip
+samples it smaller than a tight one; `from-video --body-height` puts every
+motion back at one standing height. Ported from aldegad/sprite-gen
+`sprite_gen/video/canvas.py` (`pad_canvas`, the `STATE_CANVAS` rows) — the
+geometry is identical on 168 of 168 cases run against the Python.
 
 ### `slice <sheet> --rows R --cols C --out <dir> [--margin px] [--gutter px]`
 
 Cuts row-major into `<dir>/NN.png`, two-digit zero-padded. Cell size is
 `(W − 2·margin − (C−1)·gutter) / C`, floored; a non-integer cell is reported so
 you know a pixel column was dropped. Output keeps alpha.
+
+It also writes `<dir>/slice.json` — `{ rows, cols, cell, margin, gutter }` —
+the grid the cells were cut from, which is how `inspect` tells a row boundary
+from an ordinary step. Anything that rewrites the directory's frames removes
+it, so a clip sampled into the same `cells/` later is never judged as a grid.
 
 These are the **cells** — the raw crop of each grid square, before any
 alignment. `run` writes them to `<motionDir>/cells/NN.png` and leaves them
@@ -173,7 +232,7 @@ that is the whole point. A 4 px fragment jammed against the left cell border
 moves the bbox 17 px left, and the aligner then faithfully centres the
 character around the litter.
 
-### `align <framesDir> --out <dir> [--anchor bottom|center] [--x-from feet|bbox|cell] [--cell auto|WxH] [--pad 8] [--smooth]`
+### `align <framesDir> --out <dir> [--anchor bottom|center] [--x-from feet|bbox|cell|trend|body] [--cell auto|WxH] [--pad 8] [--smooth]`
 
 The step that turns sixteen pictures into an animation. Computes each frame's
 alpha bounding box, then crops to the bbox and pads onto a transparent cell so
@@ -195,6 +254,8 @@ questions about where the character *is*:
 | `feet` (default) | the mean x of the alpha pixels in the bottom **10 %** of the bbox | Grounded poses intended to stay in place; use `cell` when deliberate lateral offsets should survive. |
 | `bbox` | the bbox centre, props included | The drawing has no ground contact worth pinning. It is also what a `center` anchor uses. |
 | `cell` | the centre of the grid cell the frame was cut from, i.e. **no horizontal re-placement at all** | The model already places the body consistently and you only want the vertical levelled. |
+| `trend` | the placement the frames were filmed with, minus one straight line fitted to the body's mass centre across them | A **walk or run cycle out of a clip**. Removes the slow slide across the canvas and nothing else. |
+| `body` | the placement as filmed, plus a ramp: the last frame's head and torso registered against the first's, that offset spread `round(dx·k/L)` over the frames | The same cycles, with the drift read where the wrap shows it — the head and torso at the ends — rather than fitted to the mass centre across the cycle. Upstream's default for gaits; measured here it matches `trend` (below). |
 
 **Why `feet` is the default.** The bbox is the whole drawing, props included.
 Give the character an umbrella, a lantern or a wrench that reaches sideways and
@@ -210,6 +271,41 @@ overshoot and the mean by a couple of pixels.
 Under `--anchor center` the `feet` default resolves to `bbox` — an airborne
 pose has no feet on the ground to pin — and `align.json` records `bbox`, which
 is what it used. `--x-from cell` is honoured under both anchors.
+
+**Why a walk out of a clip wants `trend`, not `feet`.** In a walk one foot is
+always in the air, so the foot band holds the planted foot alone — and on a
+treadmill that foot slides a whole stride back under the hip, then hands over
+to the other. Pinning it moves the *body* by about a stride every step: the
+lurch aldegad/sprite-gen retired its own per-frame foot pin over. `trend`
+keeps the filmed placement and removes only a straight drift line (fitted to
+the mass centre, which a gait swings far less than the foot line), so every
+frame stands on the mean foot line and the step stays the step. Measured on
+the Lumi side-view walk (Measured below): the head swings 25 px across 16
+frames after `feet`, 3.6 px after `trend` — and the onion skin shows the
+feet-pinned head smeared sideways. `body` measures one head-and-torso offset
+between the last frame and the first (top 60 % of the first frame's box,
+±24 px, whole pixels) and ramps it; it never fits frame by frame, which turns
+a head bob into a full-body shiver.
+
+`trend` fits a *straight* line, so it needs whole cycles: on a one-shot (an
+attack that steps in and back) the lunge itself reads as drift — a first-last
+Lumi attack clip, whose true drift is 0, had 21.7 px "removed". Keep one-shots
+on `cell` (as filmed) or `body` (a first-last clip's ends coincide, so its
+ramp is ~0), or `feet` when the feet should be pinned. Sheets stay on `feet`
+by default — a prop that swings sideways needs it — but a walk SHEET lurches
+the same way when a reaching foot owns the foot band: a pixel knight walk
+jumped its head 24.7 px on the two reaching frames under `feet` and moved
+under 2 px under `cell`, `trend` or `bbox`. `inspect`'s added-sway warning
+names that case (below); re-align from `cells/`.
+
+Both modes read the frames in ONE coordinate system (a clip's frames, one
+grid's cells) and refuse frames of different widths. They record what they
+removed in `align.json` and in the JSON as `drift`: `trend` → `{ slope,
+driftPx, footSwayPx }` (the slide taken out, and how far the foot line still
+moves inside the gait — kept, not an error); `body` → `{ wrapDx, band,
+search, shifts }`. Ported from aldegad/sprite-gen `sprite_gen/video/loop.py`
+(`drift_reference`, `body_wrap_offset`, `ramp_frames`); the ports reproduce
+upstream's numbers on its own fixtures exactly.
 
 **Preserving movement:** `cell` keeps horizontal offsets only. Neither
 vertical anchor preserves the source's full vertical travel; both reposition
@@ -287,10 +383,14 @@ only if you sliced into a directory of your own.
 | `frameCount` | Frames found in `frames/` |
 | `cell` | `{ width, height }` of the aligned cell |
 | `anchorDrift` | Std-dev in px of the anchor point across frames — the *silhouette*, props included |
-| `bodyDrift` | Std-dev in px of the feet-centre x across frames — the *body*. Near zero after `align --x-from feet`; large when a prop-inflated bbox pushed the body around |
+| `bodyDrift` | Std-dev in px of the feet-centre x across frames. Near zero after `align --x-from feet` **by construction** — it is the line that mode pins; large when a prop-inflated bbox pushed the body around, and large by design after `trend`/`body`, which keep a walk's stepping foot line |
+| `headDrift` | Std-dev in px of the head-and-torso x across frames: each frame's top 60 % band (as column profiles in 8 strips) registered against the first frame's. A region no alignment pins, so it sees what `bodyDrift` cannot — a feet-pinned walk lurching by the stride |
+| `sourceHeadDrift` | The same spread measured on the pre-align cells (the clip as filmed, the grid as drawn), with its straight-line drift removed — the sway the motion itself has. Absent without cells |
 | `maxJump` | Largest anchor displacement between consecutive frames |
 | `scaleDrift` | `(max bbox height − min bbox height) / mean` |
 | `emptyFrames` | Indices with no pixel above the alpha threshold |
+| `nearDuplicates` | `[from, to]` pairs whose step is under 0.01 — `[last, 0]` is the wrap of a looping motion. `[]` when checked and none |
+| `rowJumps` | `[from, to]` row boundaries of the sheet's grid that jump (below). `[]` when checked and none |
 | `anchorPoint` | The point `align` recorded for these frames, in cell pixels — the same point the atlas pivot names. Absent when the frames carry no `align.json` for this anchor and cell |
 | `keyResidue` | Share of the visible pixels (alpha ≥ threshold) whose every plate channel still clears every other channel by more than 40 — the plate's hue, pooled over the frames. Absent unless the motion was keyed off a hued plate: `--key` names the plate, otherwise the `keyColor` the last `inspect.json` recorded (`run` and `from-video` record it). The fat report adds `keyResidueEdge`, the same share over the partially transparent pixels. `register-run` copies `keyResidue` into the sidecar |
 | `warnings` | Human sentences — read these, they name the fix |
@@ -301,15 +401,29 @@ Warning rules and what each one means:
 |---|---|---|
 | "frame NN is empty" | No pixel above threshold | A cell the model left blank. Edit that one cell (see `prompting.md`) and re-run. |
 | "frame NN is nearly empty" | Alpha coverage < 0.02 | Usually the key ate the character. Re-key with a lower `--similarity`. |
-| "body drifts sideways between frames — re-run align with --x-from feet/cell" | `bodyDrift > 0.05 · cellWidth` | Check the motion plan first. For unintended sliding, re-align from `cells/` with `--x-from feet`; use `cell` to retain well-placed intentional lateral motion. |
+| "body drifts sideways between frames — re-run align with --x-from feet/cell" | `bodyDrift > 0.05 · cellWidth` **and** `headDrift > 0.01 · cellWidth` (the upper body moves too); never for `trend`/`body` alignments | Check the motion plan first. For unintended sliding, re-align from `cells/` with `--x-from feet`; use `cell` to retain well-placed intentional lateral motion. A foot line sweeping under a still head is a walk's step, not a slide — it no longer warns. |
+| "head sways N px across the frames but M px in the source once its slow drift is removed — …re-align from cells/ with --x-from trend (or cell…)" | `headDrift > 2 · sourceHeadDrift` **and** `headDrift − sourceHeadDrift > 0.01 · cellWidth` | The alignment added sideways sway the source does not have — a pinned stepping foot, or a slide `cell` kept. Re-align a clip's cycle with `--x-from trend`; a sheet with `trend` or `cell`. Feet-pinned walks measured 9.7× (Lumi side clip), 7.4× (pixel knight sheet) and 44× (synthetic); every alignment that kept or reduced its source's motion stayed at or under 1.8× or +0.95 % of the cell. |
+| "near-duplicate frames AA→BB, … (step under 0.01) — the animation holds there" | A step (mean RGBA difference at 64×64, 0..1) under 0.01 — less than nudging the same drawing one pixel (0.014–0.021 on Lumi's frames) | Fine for a held idle; a hitch in a stroke or a step. For a clip, the sampling hit a hold — resample with `--at` around it. For a sheet, drop or redraw the repeated frame. |
+| "row boundaries jump: AA→BB, … — the sheet's rows were drawn as separate sequences" | A grid row boundary (the wrap too, for a looping sheet) whose step is over 3× the in-row median, over every in-row step, and at least 0.01; rows of 3+ frames only; the grid comes from `cells/slice.json` | The model drew each row as its own little animation. Regenerate with a continuity instruction across rows, or fewer frames (Lumi idle as 4×2 or 2×2 has no jump); a sheet whose rows are phases (windup, strike, recovery) measures under the bar. |
 | "anchor jumps between frames NN and MM" | `maxJump > 0.08 · cellWidth` **and** the feet moved that far too | Compare the source poses with the plan. For unintended placement jumps, try `align --smooth` or the other anchor; fix discontinuous drawing when alignment cannot help. Preserve deliberate fast movement. |
 | "character scale varies across frames — regenerate with a fixed-scale instruction" | `scaleDrift > 0.15` | This measures silhouette height, including props. Check for intended crouching, turning or prop movement; acknowledge it when justified. Regenerate actual proportion or drawing-scale drift with the fixed-scale guidance in `prompting.md`. |
 | "cell NN is clipped — the drawing leaves its grid cell" | Bbox touches the cell edge before alignment | The pose is bigger than its cell. Regenerate with the "stays inside its own cell" clause. |
 | "keyResidue 0.0158: 1.6% of the visible pixels still carry the plate's hue …" | `keyResidue > 0.005` | Look at an edge at 4× on a dark background. A `--keyer colorkey` cut leaves a green rim — re-cut with `--keyer unmix`. After `unmix` the usual cause is the character's own plate-coloured material or a translucent effect (smoke, glow) the plate shows through; a matte (`remove-video-background.mjs`, then `--key alpha`) is the fix for the second |
 
-These are geometric heuristics. `maxJump` does not include last-to-first, and
-the report does not judge identity, contacts or animation rhythm. Check those
-in playback, even when there are no warnings.
+These are geometric heuristics. `maxJump` does not include last-to-first (the
+step checks do, for a motion whose atlas says it loops), and the report does
+not judge identity or contacts. Check those in playback, even when there are no
+warnings.
+
+The full report adds, per frame, `headX` (the head band's offset from frame
+00, px) and `step` (the step to the next frame; the last frame's is the wrap,
+or null for a one-shot), and at the top `grid` (from `slice.json`), `loop`
+(from `atlas.json`, null before `pack`) and `inRowMedianStep`. The step is
+aldegad/sprite-gen's `qa/inspect.py` measure (their "motion presence", scored
+per row), area-averaged in premultiplied alpha here: on the Lumi sheets it
+reads 0.98–1.13× their Pillow-bilinear numbers (median 1.06×), so the idle has
+6 pairs under 0.01 here against their 8. Inspired by their row-level signal;
+judged here per pair and per row boundary.
 
 ### `run <sheet-raw> --rows R --cols C --out <motionDir> --name <motionId> --fps N [--alpha <png>] [--force] [flags]`
 
@@ -530,7 +644,8 @@ node {SKILL_PATH}/scripts/sprite-sheet.mjs from-video \
 | `--keyer unmix\|colorkey` | `unmix` | See `key`. `colorkey` leaves the 1 px green rim `video-preview.md` measured; a plate with no hue is keyed with `colorkey` either way. The JSON says `keyer` |
 | `--similarity` | **0.22** | Wider than a sheet's 0.12: a codec's "solid" green is a range, not a colour. Measurements in `video-preview.md` |
 | `--no-clean` | cleaning on | As in `run` |
-| `--anchor` `--x-from` `--cell` `--pad` `--smooth` `--scale` `--nearest` `--cols` `--width` `--no-webp` | as `run` | |
+| `--body-height N` | off | Scale every sample so the subject in the clip's **first** frame stands N px tall — see below |
+| `--anchor` `--x-from` `--cell` `--pad` `--smooth` `--scale` `--nearest` `--cols` `--width` `--no-webp` | as `run` | `--x-from trend` for a walk or run cycle, see `align` |
 
 **The sampling schedule depends on `--loop`**, and it matters: a looping
 motion stops one step short of the end, because the closing pose is the
@@ -562,6 +677,32 @@ the **mean** sampling rate, `(N − 1) / (last − first)`.
 Nothing downstream changes: `sampledAt[i]` is still where frame `i` came from,
 so `register-run` hangs the same provenance off the same clip. The JSON gains
 `"schedule": "even" | "explicit"` so the run summary says which one ran.
+
+**`--body-height N` gives a character one size across its clips.** Every
+image-to-video clip of a character starts from the same still, so the subject's
+height in the clip's frame at t = 0 is the same standing pose in every state —
+the one height that means the same thing in a walk, a jump and an attack (the
+tallest frame would not: an attack's windup lifts the weapon over the head).
+Each clip is filmed at its own scale, though — a still padded with `flatten
+--room` puts the character in a smaller share of the frame (0.647 of the
+height in a `tall` jump clip against 0.979 in a tight one). `--body-height`
+keys the clip's first frame with the clip's own key, cleans it like a cell,
+measures the subject's height, and scales every sample by `N / measured`
+(`area`) before cleaning and alignment, so the same `N` on every
+clip puts the character at one size in every motion. Where the resize sits
+depends on the keyer: a `colorkey` cut is keyed first and scaled
+premultiplied (the plate under zero alpha cannot bleed into the edge); the
+default `unmix` keyer runs on the raw frame, so the raw frame is scaled and
+then keyed — area-averaging mixes subject and plate at the edge the way the
+camera already did, which is what un-mixing inverts. The standing frame is
+keyed with frame 0's plate (the one that chose the keyer). The measurements
+below were taken with `colorkey`, before `unmix` became the default. Up or down — a target is
+a size, not a cap — but scaling up is warned (the frames are softer than the
+clip). It needs a keyed clip (`--key none` is refused: there is no subject to
+measure). The JSON gains `"bodyHeight": { target, measured, scale, frame }`,
+`frame` being the scaled sample size. Inspired by aldegad/sprite-gen
+`video/loop.py` `--body-height` (`first_frame_height`); applied to the samples
+here rather than to a finished strip.
 
 The extra keys on top of `run`'s JSON:
 
@@ -1851,3 +1992,81 @@ lag 0.10, through `breathe → align --x-from cell → gif --fps 8 → inspect`.
   of 426 rigid rows on these stills.
 - **Cost.** 1.2 s for 16 frames at 186×252 in either mode, frame writes
   included (upstream's Python: 1.5 s).
+
+## Measured: alignment and framing (2026-09-27)
+
+Everything below is reproducible from `~/pneuma-dev-scratch/2026-09-27/sg/align/`
+(`run-*.sh`, outputs beside them). Clips from the wave-2 shoot of this round:
+Lumi side-view walk (Seedance 2.5 i2v, 4 s, 480p; contact period 1.333 s,
+sampled 1.5–2.833 s, 16 frames), Lumi first-last attack (4 s), Lumi jump from
+a tight and from a `tall` frame (4 s each); tanka's front-view walk
+(`video-seedance-1.mp4`, 1.417–3.333 s); the Lumi seed sheets; the wave-2 Lumi
+idle sheets (4×4 first take and regenerated, 4 cols × 2 rows, 2×2) and a
+pixel knight walk sheet (4 × 2). The synthetic walker is
+`buildWalkerClip({ drift: 8 })` (192×128, stride 28 px, 1 s cycle).
+
+**Alignment, per `--x-from`.** `headDrift` / source = `inspect`'s head-band
+spread on the frames / on the cells with drift removed; head range and max
+step are from the per-frame `headX`; torso = the synthetic walker's red torso
+x, the ground truth.
+
+| Clip | `feet` | `cell` | `trend` | `body` | `bbox` |
+|---|---|---|---|---|---|
+| synthetic side walk: torso range / sd | **21 / 7.82 px** | 15 / 4.61 (the slide) | 1.1 / 0.50 | 1.1 / 0.50 | 0.1 / 0.02 |
+| synthetic: headDrift (source 0.17) | 7.46 — warns | 4.64 — warns | 0.53 | 0.55 | 0.17 |
+| Lumi side walk: headDrift (source 0.77) | **7.45** — warns | 1.04 | 0.97 | 1.04 | 1.37 |
+| Lumi side walk: head range / max step | **25.0 / 12.3 px** | 3.6 / 1.3 | 3.6 / 1.7 | 3.6 / 1.3 | 4.7 / 2.6 |
+| tanka front waddle: headDrift (source 15.74) | 11.24 | 16.12 | 15.94 | 15.91 | 3.94 |
+| tanka: max head step / wrap | **19.6** / 4.3 px | 13.2 / 4.3 | 13.2 / **0.3** | 13.2 / 0.3 | 3.2 / 3.3 |
+| pixel knight walk sheet: headDrift (source 1.44) | **10.60** — warns | 1.46 | 1.85 | 1.75 | 1.29 |
+| Lumi first-last attack: head range | 43.7 (lunge pinned) | 76.7 (as filmed) | 76.3, **21.7 px "drift" removed** | 76.7 (wrapDx 0) | — |
+
+What it says: on a side-view walk, pinning each frame's feet moves the body by
+about the stride (the onion skin of the 16 Lumi frames shows the head smeared
+sideways under `feet`, sharp under `cell`/`trend`); `trend` keeps the filmed
+placement and removed 1.1 px of slide (Lumi), 4.1 px (tanka) and 14.8 px
+(synthetic). On tanka's front-view waddle the sway IS the motion: `trend` keeps
+it (head range 45 px as filmed), closes the wrap (4.3 → 0.3 px) and removes the
+19.6 px jump `feet` puts at the foot switch; `bbox` recentres the silhouette
+and takes the waddle out. `trend` is wrong for one-shots: the attack's lunge
+read as 21.7 px of drift in a clip whose ends coincide. The upstream ports
+reproduce aldegad/sprite-gen's own fixtures exactly (`bodyWrapOffset` −6 / 8 /
+−16 and the same ramps; `trendReference` to 1e-14), and `flatten`'s geometry
+matches `pad_canvas` on 168 of 168 cases.
+
+**Step checks.** Step = mean |RGBA| at 64×64 (this pipeline's area-averaged
+reading).
+
+| Sheet | In-row steps (median) | Boundaries, wrap (× in-row median) | Warns |
+|---|---|---|---|
+| Lumi seed idle 4×4 | 0.008–0.016 (0.0102) | 0.051 (5.0×), 0.041 (4.0×), 0.018 (1.8×); wrap 0.015 | row jump 03→04, 07→08; 6 near-duplicates |
+| wave-2 idle 4×4, first take | 0.009–0.018 (0.0109) | 0.045 (4.1×), 0.039 (3.6×), 0.021 (1.9×); wrap 0.023 (2.1×) | row jump 03→04, 07→08; near-duplicate 14→15 |
+| wave-2 idle 4×4, regenerated | 0.010–0.029 (0.017) | 0.029 (1.7×), 0.042 (2.4×), 0.025 (1.5×); wrap 0.043 (2.5×) | none — under the 3× bar; its largest step is the wrap (the lantern rises across all 16 frames and drops back) |
+| wave-2 idle 4 cols × 2 rows, first take | 0.018–0.024 (0.0221) | 0.018; wrap 0.026 | none (regenerated: none) |
+| wave-2 idle 2×2, first take | 0.036–0.046 | rows too short to judge | none (regenerated: none) |
+| Lumi seed attack 4×4 (windup, overhead, strike, recovery, a row each) | 0.030–0.095 (0.0535) | 0.095 (1.8×), 0.102 (1.9×), 0.140 (2.6×) | none |
+
+A one-pixel nudge of the same Lumi frame measures 0.014–0.021 (0.012–0.016
+vertically), so a step under 0.01 is two frames closer than that. On clips the
+check names holds: the first-last attack's 16 even samples land 6 near-duplicate
+pairs (under `feet`) in its windup, impact and settle holds — the impact was
+asked for ≈ 0.3 s and filmed 0.8 s. The step is measured at 64×64 of the
+aligned cell, so the same frames read smaller steps in a wider cell (`cell`
+keeps the 854 px clip width and names 8 pairs).
+The seed idle's "zero warnings" of 2026-09-09 predates these checks.
+
+**Framing and one size.** The same Lumi jump shot twice from a 360×494 still:
+tight (the frame `flatten` made before `--room`), 53 of 97 frames touch an
+edge and the head is cut off for 38, the character 0.979 of the frame height;
+padded to 3:4 with 34 % headroom (`--room tall` on that still makes 561×748;
+the clip came back 562×748), no frame touches an edge and the character is
+0.647 of the height. Sampled 16 frames each: tight — 9 of 16 cells clipped
+(16 of 16 once `--body-height 240` shrinks them ×0.32: a subject 1–3 source px
+from the frame edge lands on the edge row after an area downscale); tall —
+none. The standing heights in the two clips' first frames are 744 and 484 px;
+`--body-height 240` scales them ×0.3226 and ×0.4959 and both motions' frame 00
+stands 240–241 px, where unscaled they differ 1.54×.
+
+**Cost.** `inspect` on 16 frames of 506×536 with 16 cells of 640² took
+4.9–6.0 s before and 5.0–5.5 s after (three runs each, noise-bound);
+`from-video --body-height` adds one keyed decode of the clip's first frame.

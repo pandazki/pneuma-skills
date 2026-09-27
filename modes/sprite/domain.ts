@@ -256,6 +256,35 @@ export interface InspectSummary {
    * only when the report carried a finite number.
    */
   bodyDrift?: number;
+  /**
+   * Std-dev in px of the head-and-torso x across frames, each frame's top
+   * band registered against the first frame's — a region no alignment pins.
+   * `bodyDrift` is the spread of the very line `align --x-from feet` pins, so
+   * it reads ~0 after that alignment whatever the body did; a walk whose
+   * planted foot was pinned lurches by the stride, and this is the number
+   * that shows it. Optional for `bodyDrift`'s reason.
+   */
+  headDrift?: number;
+  /**
+   * The same head-and-torso spread measured on the pre-align cells (the clip
+   * as filmed, the grid as drawn) with its straight-line drift removed — the
+   * sway the motion itself has. `headDrift` well past it is sway the
+   * alignment added. Absent when the motion has no cells to measure.
+   */
+  sourceHeadDrift?: number;
+  /**
+   * Adjacent frames that barely differ — `[from, to]` pairs whose step (mean
+   * RGBA difference at 64×64) is under 0.01: the animation holds there.
+   * `[last, 0]` is the wrap of a looping motion. Absent on a report from
+   * before the check existed; `[]` when it ran and found none.
+   */
+  nearDuplicates?: Array<[number, number]>;
+  /**
+   * Row boundaries of the source grid whose step jumps well past the steps
+   * inside the rows — the sheet's rows drawn as separate sequences. Same
+   * `[from, to]` pairs and the same absent-versus-empty rule.
+   */
+  rowJumps?: Array<[number, number]>;
   /** Largest anchor displacement between consecutive frames. */
   maxJump: number;
   /** (max bbox height − min bbox height) / mean. */
@@ -675,6 +704,19 @@ function parseFinite(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+/**
+ * A list of `[from, to]` frame pairs, or undefined when the key is not an
+ * array at all. A malformed entry is dropped rather than the whole list, and
+ * an empty list survives: "checked, found none" is not "never checked".
+ */
+function parseFramePairs(value: unknown): Array<[number, number]> | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const frameIndex = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n) && n >= 0;
+  return value
+    .filter((pair): pair is [number, number] => Array.isArray(pair) && pair.length === 2 && frameIndex(pair[0]) && frameIndex(pair[1]))
+    .map(([from, to]) => [from, to] as [number, number]);
+}
+
 function parseInspect(value: unknown): InspectSummary | undefined {
   if (!isRecord(value)) return undefined;
   const cell = isRecord(value.cell) ? value.cell : {};
@@ -682,6 +724,10 @@ function parseInspect(value: unknown): InspectSummary | undefined {
   const anchorPoint = parsePoint(value.anchorPoint);
   const acknowledged = parseAcknowledged(value.acknowledged);
   const bodyDrift = parseFinite(value.bodyDrift);
+  const headDrift = parseFinite(value.headDrift);
+  const sourceHeadDrift = parseFinite(value.sourceHeadDrift);
+  const nearDuplicates = parseFramePairs(value.nearDuplicates);
+  const rowJumps = parseFramePairs(value.rowJumps);
   const seam = parseFinite(value.seam);
   const step = parseFinite(value.step);
   const seamLimit = parseFinite(value.seamLimit);
@@ -701,6 +747,10 @@ function parseInspect(value: unknown): InspectSummary | undefined {
     // `=== undefined`, never a truthiness test: 0 is the *good* body drift and
     // must survive the trip.
     ...(bodyDrift === undefined ? {} : { bodyDrift }),
+    ...(headDrift === undefined ? {} : { headDrift }),
+    ...(sourceHeadDrift === undefined ? {} : { sourceHeadDrift }),
+    ...(nearDuplicates ? { nearDuplicates } : {}),
+    ...(rowJumps ? { rowJumps } : {}),
     maxJump: num(value.maxJump, 0),
     scaleDrift: num(value.scaleDrift, 0),
     emptyFrames: arr(value.emptyFrames).filter(

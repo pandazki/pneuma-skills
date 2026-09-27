@@ -272,6 +272,53 @@ describe("loadRoster", () => {
     expect(mini.frameCount).toBe(4);
   });
 
+  test("the head drift, its source bar and the step pairs survive; broken ones do not", () => {
+    // `headDrift` is the lurch `bodyDrift` cannot see after a feet pin, and
+    // `sourceHeadDrift` the bar it is judged against: both get `bodyDrift`'s
+    // finite-or-absent rule. The two pair lists keep `[]` — the check ran and
+    // found nothing — apart from "never checked", and drop only the entries
+    // that are not a pair of frame indices.
+    const withInspect = (patch: Record<string, unknown>) => {
+      const body = JSON.parse(MINI);
+      Object.assign(body.sprite.motions[0].inspect, patch);
+      return loadRoster(files({ "mini/project.json": JSON.stringify(body) }))!
+        .byContentSet.mini.sprite.motions[0].inspect!;
+    };
+
+    // The Lumi side walk after a feet pin, and its source.
+    const real = withInspect({
+      headDrift: 7.448, sourceHeadDrift: 0.765,
+      nearDuplicates: [[2, 3], [15, 0]], rowJumps: [[3, 4], [7, 8]],
+    });
+    expect({
+      headDrift: real.headDrift, sourceHeadDrift: real.sourceHeadDrift,
+      nearDuplicates: real.nearDuplicates, rowJumps: real.rowJumps,
+    }).toEqual({
+      headDrift: 7.448, sourceHeadDrift: 0.765,
+      nearDuplicates: [[2, 3], [15, 0]], rowJumps: [[3, 4], [7, 8]],
+    });
+
+    const none = withInspect({ headDrift: 0, nearDuplicates: [], rowJumps: [] });
+    expect({ headDrift: none.headDrift, nearDuplicates: none.nearDuplicates, rowJumps: none.rowJumps })
+      .toEqual({ headDrift: 0, nearDuplicates: [], rowJumps: [] });
+
+    const broken = withInspect({
+      headDrift: "7.4", sourceHeadDrift: Number.NaN,
+      nearDuplicates: [[1, 2], [3], [4, "5"], [-1, 0], [1.5, 2], "6-7", null],
+      rowJumps: "03→04",
+    });
+    expect({
+      head: "headDrift" in broken,
+      source: "sourceHeadDrift" in broken,
+      nearDuplicates: broken.nearDuplicates,
+      rowJumps: "rowJumps" in broken,
+    }).toEqual({ head: false, source: false, nearDuplicates: [[1, 2]], rowJumps: false });
+
+    const mini = loadRoster(files({ "mini/project.json": MINI }))!
+      .byContentSet.mini.sprite.motions[0].inspect!;
+    expect(["headDrift", "sourceHeadDrift", "nearDuplicates", "rowJumps"].filter((k) => k in mini)).toEqual([]);
+  });
+
   test("a motion measured before the pipeline recorded the point has none", () => {
     // The canonical fixture predates `align.json`; absence is a real state,
     // and it is what tells the viewer to fall back to the cell instead of

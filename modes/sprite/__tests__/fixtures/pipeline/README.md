@@ -12,6 +12,9 @@ Inputs for `sprite-sheet.test.ts` and `sprite-project.test.ts`.
     whose codec may be ProRes 4444 (a clip that carries its own alpha). The
     loop cases use it for a named frame count, a frozen tail, a motion that
     never returns, and a matted source.
+  - `buildWalkerClip` — a side-view biped walking in place whose planted
+    foot slides a stride under the body while the other is lifted: the clip a
+    per-frame foot pin lurches on, with the body's true x known.
   - `clipFrameDeltas` — max |Δ| between consecutive frames. Any fixture that
     argues "every frame is different" is measured with this before anything is
     asserted on it; `drawbox` evaluates its `x`/`y` once at config time, so a

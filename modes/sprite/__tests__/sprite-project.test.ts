@@ -263,6 +263,16 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
         // pipeline had a perfect number for. 0 is that perfect number, and
         // the reason the pick tests `=== undefined` rather than truthiness.
         bodyDrift: 0,
+        // The head-and-torso spread, on the frames and on the cells they
+        // were cut from, and the step checks' two lists — all picked by name
+        // for the same reason. `[]` is a result ("checked, none"), not an
+        // absence, so it makes the trip too.
+        headDrift: 0,
+        // The squares sit at different x in their cells (offsets 0, 0, 8, 6):
+        // the placement the sheet drew, spread 2.074 px about its line.
+        sourceHeadDrift: 2.074,
+        nearDuplicates: [],
+        rowJumps: [],
         maxJump: 0,
         scaleDrift: 0,
         emptyFrames: [],
@@ -449,6 +459,33 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
           "--run", join(dir, "broken-drift.json"), "--at", String(T2));
         expect({ broken, present: "bodyDrift" in got.inspect }).toEqual({ broken, present: false });
       }
+    });
+
+    test("head drifts and step pairs travel when well-formed and stay behind when not", () => {
+      // The same pick-by-name rule as `bodyDrift`, and a report from before
+      // the fields existed (the canonical `bounce-run.json`) carries none.
+      const { dir, realRun } = seedMini();
+      const old = projectJson(dir, "register-run", "--motion", "bounce",
+        "--run", join(FIXTURES, "bounce-run.json"), "--at", String(T2));
+      expect(["headDrift", "sourceHeadDrift", "nearDuplicates", "rowJumps"].filter((k) => k in old.inspect)).toEqual([]);
+
+      const payload = {
+        ...realRun,
+        inspect: {
+          ...realRun.inspect,
+          headDrift: 7.448, sourceHeadDrift: "0.765",
+          nearDuplicates: [[2, 3], [4], ["5", 6], [15, 0]], rowJumps: { "3": 4 },
+        },
+      };
+      writeFileSync(join(dir, "pairs-run.json"), JSON.stringify(payload));
+      const got = projectJson(dir, "register-run", "--motion", "bounce",
+        "--run", join(dir, "pairs-run.json"), "--at", String(T2));
+      expect({
+        headDrift: got.inspect.headDrift,
+        source: "sourceHeadDrift" in got.inspect,
+        nearDuplicates: got.inspect.nearDuplicates,
+        rowJumps: "rowJumps" in got.inspect,
+      }).toEqual({ headDrift: 7.448, source: false, nearDuplicates: [[2, 3], [15, 0]], rowJumps: false });
     });
 
     test("a malformed anchor point is dropped, not carried into the sidecar", () => {

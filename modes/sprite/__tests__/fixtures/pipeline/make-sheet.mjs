@@ -321,6 +321,65 @@ export function buildLayerClip(outPath, {
 }
 
 /**
+ * A side-view biped walking in place — the clip `align --x-from feet` fails
+ * on, with its ground truth known.
+ *
+ * A head and a torso ride `x = centre + drift·(t − seconds/2)`; two legs hang
+ * from the hip and take turns. Through its stance a leg is planted (its foot
+ * on the ground line) and slides from +stride/2 to −stride/2 under the body —
+ * the treadmill — then it is LIFTED `lift` px clear of the ground and swings
+ * forward again, half a period out of phase with the other. The lowest rows
+ * of every frame therefore hold the planted foot alone, and the per-frame
+ * foot line sweeps a whole stride each step while the body only drifts.
+ *
+ * Every part is placed by `overlay` (evaluated per frame), never `drawbox`,
+ * whose `x`/`y` are fixed at config time. Returns the clip path; the body's
+ * true x at time t is `centre + drift·(t − seconds/2)` (the torso's centre).
+ */
+export function buildWalkerClip(outPath, {
+  width = 192,
+  height = 128,
+  fps = 24,
+  seconds = 2,
+  period = 1,
+  stride = 28,
+  lift = 12,
+  drift = 0,
+  centre = 96,
+  background = "0x00b140",
+} = {}) {
+  const esc = (value) => String(value).replace(/,/g, "\\,");
+  const bx = `(${centre}+${drift}*(t-${seconds / 2}))`;
+  const phase = (shift) => `mod(t/${period}+${shift},1)`;
+  // Foot offset from the hip: stance +s/2 → −s/2, swing −s/2 → +s/2.
+  const offset = (shift) => `if(lt(${phase(shift)},0.5),${stride / 2}-${2 * stride}*${phase(shift)},${-stride / 2}+${2 * stride}*(${phase(shift)}-0.5))`;
+  const legY = (shift) => `70-${lift}*gte(${phase(shift)},0.5)`;
+  const d = `d=${seconds}:r=${fps}`;
+  const chain = [
+    `color=c=${background}:s=${width}x${height}:${d},format=rgba[bg]`,
+    `color=c=0xe04040:s=28x36:${d},format=rgba[torso]`,
+    `color=c=0xf0a030:s=22x22:${d},format=rgba[head]`,
+    `color=c=0x3050d0:s=8x36:${d},format=rgba[legA]`,
+    `color=c=0x2040b0:s=8x36:${d},format=rgba[legB]`,
+    `[bg][legA]overlay=x=${esc(`${bx}+${offset(0)}-4`)}:y=${esc(legY(0))}:format=auto[s1]`,
+    `[s1][legB]overlay=x=${esc(`${bx}+${offset(0.5)}-4`)}:y=${esc(legY(0.5))}:format=auto[s2]`,
+    `[s2][torso]overlay=x=${esc(`${bx}-14`)}:y=34:format=auto[s3]`,
+    `[s3][head]overlay=x=${esc(`${bx}-8`)}:y=12:format=auto`,
+  ].join(";");
+  mkdirSync(dirname(outPath), { recursive: true });
+  const r = spawnSync(
+    "ffmpeg",
+    ["-v", "error", "-y", "-f", "lavfi", "-i", chain, "-frames:v", String(Math.round(seconds * fps)),
+      ...CLIP_ENCODERS.h264, "--", outPath],
+    { encoding: "utf-8" },
+  );
+  if (r.status !== 0) {
+    throw new Error(`fixture ffmpeg failed: ${r.stderr ?? r.error?.message ?? "unknown"}`);
+  }
+  return outPath;
+}
+
+/**
  * Every frame of a clip as RGBA bytes at its own size — the tests' own
  * decoder, independent of the script's, for asserting what a fixture IS
  * before asserting what the script says about it.
