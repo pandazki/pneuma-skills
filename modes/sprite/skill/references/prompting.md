@@ -674,8 +674,9 @@ has the table): from the front her own right is on the left of the picture,
 from behind on the right; facing left it is the far side, partly hidden,
 facing right the near side. A sheet prompt carries its view's sentence by
 itself. A prompt you write by hand — an anchor, a turnaround — copies it
-word for word from `sheet-prompt --json`'s `sides[d]` (any planned motion
-prints all four): from behind, her left hip is on the left of the picture;
+word for word from `sheet-prompt --json`'s `sides[d]` (every sheet motion
+prints all four; a planned mirror, a loop or a one-cell plan without
+`--frames` is refused): from behind, her left hip is on the left of the picture;
 facing left, the hairpin is on the far side and hidden.
 
 **What a directional sheet attaches, in order** (`sheet-prompt`'s `attach`

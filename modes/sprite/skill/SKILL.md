@@ -355,9 +355,11 @@ not something to reason out afresh:
 | right | the near side, toward the viewer | the far side — turned away, partly hidden |
 
 A basket on her right arm is on the far side when she faces left, and in
-full view on the near side when she faces right. `sheet-prompt --json` (on
-any planned motion) prints each row's exact sentence as `sides[d]`, and every
-sheet prompt of an asymmetric character already carries its own.
+full view on the near side when she faces right. `sheet-prompt --json`
+prints each row's exact sentence as `sides[d]` (run it on the first sheet
+motion you plan, with `--frames`; it records that motion's prompt, which
+the real call rebuilds), and every sheet prompt of an asymmetric character
+already carries its own.
 
 1. **One anchor per generated direction** — front, back, and each side you
    generate: one calm full-body pose each, with the turnaround and portrait
