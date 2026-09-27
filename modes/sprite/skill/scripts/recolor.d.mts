@@ -45,7 +45,6 @@ export declare const MAX_VARIANT_NAME: number;
 export declare const VARIANT_NAME_RE: RegExp;
 export declare const VARIANTS_DIRNAME: string;
 export declare const RECOLOR_FILENAME: string;
-export declare const SWATCH_FILENAME: string;
 
 export declare class RecolorError extends Error {}
 
@@ -66,11 +65,13 @@ export declare function draftRecolorMap(args: {
   paletteColors: Rgb[];
   counts: Map<number, number>;
   character: string;
+  swatches?: string | null;
 }): {
   kind: string;
   version: number;
   character: string;
   palette: string;
+  swatches?: string;
   help: string;
   colors: Array<{ hex: string; pixels: number; share?: number; inPalette?: false; swatch?: number }>;
   variants: Colourway[];

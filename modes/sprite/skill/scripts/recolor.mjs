@@ -57,10 +57,9 @@ export const MAX_VARIANT_NAME = 32;
 export const VARIANT_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** `motions/<id>/variants/<name>/` holds a colourway's frames, sheet, atlas and preview. */
 export const VARIANTS_DIRNAME = "variants";
-/** Where `recolor-palette` drafts the map, in the character directory. */
+/** Where `recolor-palette` drafts the map, in the character directory; the
+ *  swatch sheet goes beside it as `<name>-swatches.png`. */
 export const RECOLOR_FILENAME = "recolor.json";
-/** …and the picture of where each of its colours is. */
-export const SWATCH_FILENAME = "recolor-swatches.png";
 
 /** A refusal this module phrases; `sprite-sheet.mjs` turns it into `ERROR:`. */
 export class RecolorError extends Error {}
@@ -300,9 +299,10 @@ export function offPalette(counts, palette) {
  * re-draft is the same file), each with its pixel count, its share, whether
  * the pinned palette has it, and its cell on the swatch sheet; then the
  * palette's colours no frame uses (`pixels: 0`). One colourway is left with an
- * empty map, which `recolor` refuses until it names something.
+ * empty map, which `recolor` refuses until it names something. `swatches`
+ * names the swatch sheet the numbers refer to.
  */
-export function draftRecolorMap({ palette, paletteColors, counts, character }) {
+export function draftRecolorMap({ palette, paletteColors, counts, character, swatches = null }) {
   const inPalette = new Set(paletteColors.map((c) => pack(...c)));
   const used = [...counts].sort((a, b) => b[1] - a[1] || a[0] - b[0]);
   const total = used.reduce((a, [, n]) => a + n, 0);
@@ -312,7 +312,8 @@ export function draftRecolorMap({ palette, paletteColors, counts, character }) {
     version: RECOLOR_VERSION,
     character,
     palette,
-    help: "Name each colourway and map only the colours it changes: { \"name\": \"red-team\", \"map\": { \"#3050a0\": \"#a03030\" } }. `swatch` is the colour's numbered cell on recolor-swatches.png, where its pixels are marked. Every other colour stays as it is. Add \"tolerance\": N only for soft-edged art.",
+    ...(swatches ? { swatches } : {}),
+    help: "Name each colourway and map only the colours it changes: { \"name\": \"red-team\", \"map\": { \"#3050a0\": \"#a03030\" } }. A colour's `swatch` is its numbered cell on the swatch sheet, where its pixels are marked. Every other colour stays as it is. Add \"tolerance\": N only for soft-edged art.",
     colors: [
       ...used.map(([key, pixels], i) => ({
         hex: packedHex(key),
@@ -388,7 +389,7 @@ function opaqueBox({ width, height, data }, alphaThreshold) {
  * colour itself. Cells are one size (the largest sprite, scaled by a whole
  * number to about `cellHeight`), `cols` to a row.
  */
-export function swatchSheet(entries, { cellHeight = 96, cols = 8, alphaThreshold = ALPHA_THRESHOLD } = {}) {
+export function swatchSheet(entries, { cellHeight = 144, cols = 8, alphaThreshold = ALPHA_THRESHOLD } = {}) {
   if (!entries.length) refuse("internal: no colours to draw");
   const boxes = entries.map((e) => opaqueBox(e.image, alphaThreshold));
   const maxW = Math.max(1, ...boxes.map((b) => (b ? b.w : 1)));

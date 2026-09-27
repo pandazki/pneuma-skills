@@ -12,10 +12,13 @@
  * maths in JS; every image is written by an ffmpeg filter chain.
  *
  * Subcommands: probe, key, flatten, slice, align, pack, gif, inspect, run,
- * contact, from-video, retime, loop, export, rive, breathe, pixel.
+ * contact, from-video, retime, loop, export, rive, breathe, pixel, recolor,
+ * recolor-palette.
  *
  * `pixel` (and `run --pixel`) snaps generated pixel art onto the pixel grid
  * it was drawn on; the lattice itself lives in `pixel-lattice.mjs`.
+ * `recolor` bakes a pixel-art character's colourways from its pinned
+ * palette; the swap and its report live in `recolor.mjs`.
  *
  * `export` and `rive` hand a FINISHED motion over in somebody else's format
  * (video, a frame animation, an Aseprite sheet, a `.riv`). They read the character's
@@ -60,9 +63,13 @@ import {
 import { BOUNDARY_STEP_RATIO, DUPLICATE_STEP, judgeSteps, stepThumb, thumbDiff } from "./frame-steps.mjs";
 import { ROOM_DEFAULTS, ROOM_SHAPES, roomCanvas } from "./canvas.mjs";
 import {
+  RECOLOR_FILENAME, RecolorError, VARIANTS_DIRNAME, checkVariant, countColors, draftRecolorMap, mergeTallies, newTally,
+  offPalette, parseHexColor, parseRecolorMap, recolorImage, swatchSheet, tallyReport,
+} from "./recolor.mjs";
+import {
   DEFAULT_OUTLINE_STRENGTH, DEFAULT_PALETTE_SIZE, MAX_PITCH, PIXEL_RECORD, applyPalette, blankImage,
-  buildSharedPalette, enforceOutline, latticeCheck, latticeFrames, loadPalette, paste as pasteImage,
-  upscale, writePalette,
+  buildSharedPalette, enforceOutline, heightCheck, heightPitch, latticeCheck, latticeFrames, loadPalette,
+  paste as pasteImage, upscale, writePalette,
 } from "./pixel-lattice.mjs";
 
 const DEFAULT_THRESHOLD = 16;
@@ -326,7 +333,7 @@ const EXPORT_CODECS = { mp4: "h264", mov: "prores", webm: "vp9" };
 const SUBCOMMANDS = [
   "probe", "key", "flatten", "slice", "clean", "align", "pack", "gif",
   "inspect", "run", "contact", "from-video", "retime", "loop", "transition", "lineup", "export", "rive",
-  "breathe", "pixel",
+  "breathe", "pixel", "recolor", "recolor-palette",
 ];
 
 const USAGE = `Usage: sprite-sheet.mjs <subcommand> [options]
@@ -439,14 +446,16 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       [--pad ${DEFAULT_PAD}] [--smooth] [--scale 1] [--nearest] [--margin 0] [--gutter 0]
       [--width W] [--no-webp] [--threshold ${DEFAULT_THRESHOLD}]
       [--pixel [--palette <file>] [--repalette] [--palette-size ${DEFAULT_PALETTE_SIZE}] [--pitch-hint N]
-               [--outline] [--outline-strength ${DEFAULT_OUTLINE_STRENGTH}] [--no-detail-bias]]
+               [--logical-height H] [--outline] [--outline-strength ${DEFAULT_OUTLINE_STRENGTH}] [--no-detail-bias]]
       probe -> key (only when the sheet is opaque) -> slice -> align -> pack
       -> gif (+webp) -> inspect. An outside sheet is copied in, never moved.
       --pixel adds the 'pixel' step between the cells and align: the lattice
       frames go to <motionDir>/${PIXEL_DIRNAME}/, the palette is pinned at
       <motionDir>/${PALETTE_FILENAME} (or --palette), and --scale becomes the
       whole-number upscale of the lattice (default 1: one pixel per logical
-      pixel) instead of the atlas resize.
+      pixel) instead of the atlas resize. The frames are held to the
+      character's declared height (character.pixel.logicalHeight, or
+      --logical-height H): see 'pixel'.
       The pre-align cells are kept as <motionDir>/${CELLS_DIRNAME}/NN.png so the
       report can be reproduced and the alignment redone without re-slicing.
 
@@ -465,7 +474,7 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       Cleaning runs by default; --no-clean skips it.
 
   pixel <framesDir> --out <dir> [--palette <file>] [--repalette]
-      [--palette-size ${DEFAULT_PALETTE_SIZE}] [--scale 1] [--pitch-hint N] [--outline]
+      [--palette-size ${DEFAULT_PALETTE_SIZE}] [--scale 1] [--pitch-hint N] [--logical-height H] [--outline]
       [--outline-strength ${DEFAULT_OUTLINE_STRENGTH}] [--no-detail-bias] [--threshold ${DEFAULT_THRESHOLD}]
       Snap generated pixel art onto the pixel grid it was drawn on. Per
       frame: the pitch is measured on each axis (2-${MAX_PITCH} px, sub-pixel) on the
@@ -491,6 +500,41 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       says what the frames suggest; --pitch-hint N (the block width in source
       pixels, confirmed by looking) then stands in for the consensus: a frame
       keeps its own reading within 10% of N and is cut at N otherwise.
+      --logical-height H is the figure's declared height in logical pixels.
+      With no --pitch-hint and too few frames reading a grid, the pitch that
+      makes the frames H tall stands in for the hint when the frames' own
+      loose readings (pooled pitch, same-colour runs) are within 25% of it;
+      otherwise the refusal names it. After the snap the frames' median
+      height is compared with H (5%, at least 1 px): a miss is a warning —
+      blocks are never merged to reach it. Recorded as logicalHeight
+      { declared, measured, range, honoured, pitchFrom } in ${PIXEL_RECORD}.
+
+  recolor-palette <characterDir|motionDir> [--out <map.json>] [--force]
+      Draft a recolor map for a pixel-art character (character.pixel with a
+      pinned palette; anything else is refused, saying why). Lists every
+      colour its ready sprite motions' frames use — most used first, with
+      pixels, share, inPalette: false for one the pinned palette lacks — then
+      the palette's unused colours, and one colourway with an empty map to
+      fill in. Writes <characterDir>/${RECOLOR_FILENAME} (or --out; an existing
+      file only with --force) and <name>-swatches.png beside it: one numbered
+      cell per colour, its pixels marked on the frame that uses it most.
+
+  recolor <characterDir|motionDir> [--map <map.json>] [--variant name,…]
+      Bake colourways of a pixel-art character: every ready sprite motion,
+      or the one named. Colourways come from --map ({ kind:
+      "pneuma-sprite-recolor", variants: [{ name, map: { "#src": "#dst" },
+      tolerance? }] }), else from the ones the character recorded
+      (character.pixel.variants) — what re-bakes a motion made again.
+      --variant narrows to the names given. Exact by default: a pixel changes
+      only when its RGB is a source; tolerance N (1-255, per colourway) takes
+      a pixel within that Chebyshev distance to the nearest source's target.
+      Alpha, and every pixel with alpha 8 or less, is untouched. Per motion
+      and colourway writes motions/<id>/${VARIANTS_DIRNAME}/<name>/frames/NN.png, then
+      sheet.png + atlas.json (pack, the motion's own layout and pivot) and
+      preview.gif. The report per colourway, per motion and summed: pixels
+      swapped per entry, unmatched entries (warned) and the colours left
+      as they were (uncovered, the 64 most used named). Register it with
+      sprite-project.mjs register-recolor --report -.
 
   contact <clip> --out <png> [--count ${DEFAULT_CONTACT_COUNT} | --every s] [--cols ${DEFAULT_CONTACT_COLS}] [--width ${DEFAULT_CONTACT_WIDTH}]
       [--trim-start s] [--trim-end s] [--key auto|#rrggbb|none] [--gait walk|run]
@@ -1589,6 +1633,7 @@ function stepClean(cellsDir, { out, threshold }) {
  */
 function stepPixel(framesDir, {
   out, palette, repalette, paletteSize, scale, pitchHint, outline, outlineStrength, detailBias, threshold, images: given,
+  logicalHeight = null,
 }) {
   const inDir = resolve(framesDir);
   const outDir = resolve(out);
@@ -1599,9 +1644,7 @@ function stepPixel(framesDir, {
   const images = given ?? entries.map((entry) => readRgba(entry.path));
   if (images.length !== entries.length) fail("internal: pixel image count does not match frame count");
 
-  const lattice = latticeFrames(images, { detailBias, pitchHint });
-  const { consensus } = lattice;
-  const warnings = [...lattice.warnings];
+  let lattice = latticeFrames(images, { detailBias, pitchHint });
   if (!lattice.nonEmpty) fail(`pixel: every frame in ${inDir} is empty`);
   // A generation is cut on its frames' agreement; when fewer than half of
   // them read a grid at all, that agreement is one or two frames' opinion.
@@ -1609,7 +1652,17 @@ function stepPixel(framesDir, {
   // blocks, and cutting on it made every frame twice too fine. Refuse and
   // say what the frames suggest — the block size is a thing a person (or the
   // agent) confirms by looking, and --pitch-hint is how it is said.
-  if (pitchHint === null && lattice.confident * 2 < lattice.nonEmpty) {
+  // A declared height (character.pixel.logicalHeight, --logical-height) can
+  // stand in for that look: the pitch that makes these frames that tall,
+  // taken only when the frames' own loose readings back it (`heightPitch`).
+  const thin = pitchHint === null && lattice.confident * 2 < lattice.nonEmpty;
+  const byHeight = thin && logicalHeight ? heightPitch(lattice, logicalHeight) : null;
+  const heightNotes = [];
+  if (byHeight?.backed) {
+    const said = byHeight.readings.map((r) => `${r.what} ${r.pitch.toFixed(1)}`).join(", ");
+    heightNotes.push(`pitch detection was inconclusive (${lattice.confident} of ${lattice.nonEmpty} frames read a grid) — cut at ${byHeight.pitch.toFixed(2)} px, the block size at which these frames (${byHeight.source} px tall) are the declared ${logicalHeight} logical px; the frames' own readings back it (${said}). If the blocks are not about that wide at 8x, pass --pitch-hint N`);
+    lattice = latticeFrames(images, { detailBias, pitchHint: byHeight.pitch, hintLabel: `the declared height's pitch ${byHeight.pitch.toFixed(2)}` });
+  } else if (thin) {
     const readings = lattice.frames
       .filter((f) => f.own && Math.min(f.own.x, f.own.y) >= 2)
       .slice(0, 3)
@@ -1619,8 +1672,24 @@ function stepPixel(framesDir, {
       pooled && pooled.pitch >= 2 ? `together the frames score best at ${pooled.pitch} px (${pooled.score.toFixed(3)}; one frame needs 0.2)` : null,
       Math.min(runlen.x, runlen.y) >= 2 ? `same-colour runs measure ${runlen.x.toFixed(1)}x${runlen.y.toFixed(1)} px (they read short at soft edges)` : null,
     ].filter(Boolean);
-    fail(`pixel: only ${lattice.confident} of ${lattice.nonEmpty} frames in ${inDir} read a pixel grid on their own${readings.length ? ` (${readings.join("; ")})` : ""} — too few to cut a whole generation on.${suggest.length ? ` ${suggest.join("; ")}.` : ""} Look at a frame at 8x and pass --pitch-hint N, the block width in source pixels (or this is not pixel art)`);
+    const declared = byHeight
+      ? ` The declared height (${logicalHeight} logical px) would mean ${byHeight.pitch.toFixed(2)} px blocks for frames ${byHeight.source} px tall, which the frames do not back — the sheet was probably drawn at another height.`
+      : "";
+    fail(`pixel: only ${lattice.confident} of ${lattice.nonEmpty} frames in ${inDir} read a pixel grid on their own${readings.length ? ` (${readings.join("; ")})` : ""} — too few to cut a whole generation on.${suggest.length ? ` ${suggest.join("; ")}.` : ""}${declared} Look at a frame at 8x and pass --pitch-hint N, the block width in source pixels (or this is not pixel art)`);
   }
+  const { consensus } = lattice;
+  const warnings = [...heightNotes, ...lattice.warnings];
+  // The height the frames came out at, against the declared one. The lattice
+  // never cuts a drawing to a height it was not drawn at — that merges blocks
+  // — so a miss is said with the numbers to act on.
+  const height = logicalHeight ? heightCheck(lattice.frames, logicalHeight) : null;
+  if (height && !height.honoured) {
+    const implied = heightPitch(lattice, logicalHeight);
+    warnings.push(`logical height: these frames snap to ${height.measured} logical px tall (${height.range[0]}–${height.range[1]}) at pitch ${consensus.x.toFixed(2)}x${consensus.y.toFixed(2)}, and the character is declared ${logicalHeight}. The lattice keeps the blocks the sheet was drawn with — cutting ${logicalHeight} rows out of ${implied.source} px would merge them. Regenerate the sheet with the figure ${logicalHeight} blocks tall; pass --pitch-hint ${implied.pitch.toFixed(1)} only if its blocks really are that wide at 8x; or, if ${height.measured} is right, declare it (sprite-project.mjs set-character --pixel ${height.measured}) so later motions are held to it`);
+  }
+  const heightRecord = height
+    ? { ...height, pitchFrom: pitchHint !== null ? "hint" : byHeight?.backed ? "height" : "measured" }
+    : null;
 
   // One palette for every frame, pinned to disk. A file that is there wins
   // over whatever these frames would build — that is what pinning means — and
@@ -1720,6 +1789,7 @@ function stepPixel(framesDir, {
     palette: paletteReport,
     detailBias,
     outline: outline ? outlineStrength : null,
+    ...(heightRecord ? { logicalHeight: heightRecord } : {}),
     frames: perFrame,
     warnings,
   });
@@ -1733,6 +1803,7 @@ function stepPixel(framesDir, {
     cell: { width: logicalW * scale, height: logicalH * scale },
     palette: paletteReport,
     outline: outline ? outlineStrength : null,
+    ...(heightRecord ? { logicalHeight: heightRecord } : {}),
     frames,
     perFrame,
     record,
@@ -1774,6 +1845,248 @@ function pixelFacts(doc, where) {
     pitch: { x: doc.pitch.x, y: doc.pitch.y },
     palette,
     outline: finite(doc.outline) ? doc.outline : null,
+  };
+}
+
+// --- recolor: colourways of a pixel-art character ---------------------------
+//
+// The swap itself, its report and its rules live in `recolor.mjs`; this is
+// the part that reads frames and writes files. Each colourway of a motion
+// lands in `motions/<id>/variants/<name>/`: its frames, then the sheet, atlas
+// and preview made from them by the same `pack` and `gif` the motion's run
+// used — so the atlas is the motion's own, byte for byte, but for the image.
+// `sprite-project.mjs register-recolor` records what was made.
+
+/** Why recolor is offered for pixel art only, said whenever it is refused. */
+const RECOLOR_PIXEL_ONLY = "recolor swaps exact colours, which works on art made of a few exact colours — a pixel-art character quantised to its one pinned palette. Painted, anti-aliased art is not: each of Lumi's frames carries about 250 colours and the 64 most used cover 53–55 % of its visible pixels, so a map would leave most edges in the old colours";
+
+/** A refusal `recolor.mjs` phrased, turned into this script's own. */
+function recolorRule(fn) {
+  try {
+    return fn();
+  } catch (error) {
+    if (error instanceof RecolorError) fail(error.message);
+    throw error;
+  }
+}
+
+/**
+ * What a recolor works on — a character directory, or one of its
+ * `motions/<id>` — with its pinned palette; refused, saying why, for a
+ * character that is not pixel art or has nothing pinned yet.
+ */
+function recolorSubject(target, label) {
+  const dir = resolve(target);
+  const isCharacter = existsSync(join(dir, "project.json"));
+  if (!isCharacter && basename(dirname(dir)) !== "motions") {
+    fail(`${label}: ${dir} is neither a character directory nor one of its motions/<id>`);
+  }
+  const character = readCharacterProject(isCharacter ? dir : dirname(dirname(dir)), label);
+  const pixel = character.doc.sprite.character?.pixel;
+  if (!pixel || !(Number(pixel.logicalHeight) > 0)) {
+    fail(`${label}: ${character.name} is not pixel art (no character.pixel) — ${RECOLOR_PIXEL_ONLY}. Pixel art is declared with sprite-project.mjs set-character --pixel <height> and made with run --pixel`);
+  }
+  const paletteFile = typeof pixel.palette === "string" ? assetFile(character, pixel.palette) : null;
+  if (!paletteFile) {
+    fail(`${label}: ${character.name} has no pinned palette yet — ${RECOLOR_PIXEL_ONLY}. Make a motion with run --pixel and register it (register-run pins the palette), then recolor`);
+  }
+  let palette;
+  try {
+    palette = loadPalette(paletteFile);
+  } catch (error) {
+    fail(`${label}: the pinned palette ${error.message}`);
+  }
+  if (!palette) fail(`${label}: the pinned palette ${pixel.palette} (${paletteFile}) is not on disk — restore it`);
+  return { character, pixel, palette, motionId: isCharacter ? null : basename(dir) };
+}
+
+/**
+ * The motions a recolor covers: the one named, which must be a ready sprite
+ * motion with its sheet; or every such motion of the character, the others
+ * listed with the reason they were left out.
+ */
+function recolorMotions(character, motionId, label) {
+  const motions = character.doc.sprite.motions.filter((m) => m && typeof m.id === "string");
+  const leftOut = (m) => (m.kind === "loop" || m.kind === "transition"
+    ? `a ${m.kind} — cut from a clip, never snapped to the palette or packed on a sheet`
+    : m.status !== "ready"
+      ? `not ready (${m.status ?? "no status"})`
+      : !m.sheet || !m.atlas ? "no packed sheet and atlas registered" : null);
+  if (motionId !== null) {
+    const motion = motions.find((m) => m.id === motionId);
+    if (!motion) fail(`${label}: no motion '${motionId}' in ${character.dir}/project.json (known: ${motions.map((m) => m.id).join(", ") || "none"})`);
+    const why = leftOut(motion);
+    if (why) fail(`${label}: cannot recolor '${motion.id}': ${why}`);
+    return { included: [motion], skipped: [] };
+  }
+  const included = motions.filter((m) => !leftOut(m));
+  const skipped = motions.filter((m) => leftOut(m)).map((m) => ({ motion: m.id, reason: leftOut(m) }));
+  if (!included.length) {
+    fail(`${label}: ${character.name} has no ready sprite motion to recolor${skipped.length ? ` (${skipped.map((s) => `${s.motion}: ${s.reason}`).join("; ")})` : ""}`);
+  }
+  return { included, skipped };
+}
+
+/**
+ * The colourways to bake: those of `--map` (a file `recolor-palette`
+ * drafted and the agent filled in), else the ones the character recorded
+ * (`character.pixel.variants`) — which is how a motion made again gets its
+ * colourways back. `--variant` narrows either to the names given.
+ */
+function recolorVariants(subject, { map, only }, label) {
+  let variants;
+  let from = null;
+  if (map) {
+    from = resolve(map);
+    if (!existsSync(from)) fail(`${label}: --map ${from} not found — draft one with recolor-palette`);
+    let doc;
+    try {
+      doc = JSON.parse(readFileSync(from, "utf-8"));
+    } catch (error) {
+      fail(`${label}: --map ${from} is not valid JSON (${error.message})`);
+    }
+    variants = recolorRule(() => parseRecolorMap(doc, `--map ${from}`));
+  } else {
+    const recorded = Array.isArray(subject.pixel.variants) ? subject.pixel.variants : [];
+    if (!recorded.length) {
+      fail(`${label}: ${subject.character.name} has no colourways yet — draft a map with recolor-palette, fill it in, and pass it with --map`);
+    }
+    variants = recolorRule(() => recorded.map((v, i) => checkVariant(v, `character.pixel.variants[${i}]`)));
+  }
+  if (only) {
+    const unknown = only.filter((name) => !variants.some((v) => v.name === name));
+    if (unknown.length) fail(`${label}: --variant ${unknown.join(", ")}: no such colourway (${variants.map((v) => v.name).join(", ")})`);
+    variants = variants.filter((v) => only.includes(v.name));
+  }
+  return { variants, from };
+}
+
+function stepRecolor(target, options) {
+  const label = "recolor";
+  const subject = recolorSubject(target, label);
+  const { character, palette } = subject;
+  const { variants, from } = recolorVariants(subject, options, label);
+  const { included, skipped } = recolorMotions(character, subject.motionId, label);
+  const warnings = [];
+  const tallies = new Map(variants.map((v) => [v.name, []]));
+
+  const motions = included.map((motion) => {
+    const frames = registeredFrames(character, motion, label);
+    const facts = readAtlasFacts(character, motion, frames.paths.length, label);
+    const meta = JSON.parse(readFileSync(facts.path, "utf-8")).meta ?? {};
+    const anchor = meta.anchor === "center" || meta.anchor === "bottom" ? meta.anchor : (motion.anchor ?? "bottom");
+    const cols = facts.sheetSize && facts.perFrame[0].rect ? Math.round(facts.sheetSize.w / facts.perFrame[0].rect.w) : undefined;
+    const images = frames.paths.map((path) => readRgba(path));
+    // Colours the palette does not have: an outline darkened after it
+    // (run --pixel --outline) is expected; anything else means frames that
+    // were never quantised to it, which an exact map mostly misses.
+    const off = offPalette(countColors(images), palette.colors);
+    const outlined = readAlignRecord(frames.dir)?.pixel?.outline ?? null;
+    if (off.colors && outlined === null) {
+      warnings.push(`${motion.id}: ${off.colors} colour(s) (${off.pixels} px) are not in the pinned palette — its frames were not all quantised to it (run --pixel), so an exact map misses them; they are counted as uncovered`);
+    }
+    const motionDir = join(character.dir, "motions", motion.id);
+    const alignRecord = join(frames.dir, ALIGN_RECORD);
+    const baked = variants.map((variant) => {
+      const tally = newTally(variant);
+      const dir = join(motionDir, VARIANTS_DIRNAME, variant.name);
+      const framesDir = join(dir, "frames");
+      resetFramesDir(framesDir);
+      const written = images.map((image, i) => writeRgbaPng(
+        join(framesDir, basename(frames.paths[i])), recolorImage(image, tally), `recolor ${motion.id} ${variant.name} frame ${i}`,
+      ));
+      // Same pixels, same places: the motion's align record describes these
+      // frames too, and `pack` declares the same pivot from it.
+      if (existsSync(alignRecord)) copyFileSync(alignRecord, join(framesDir, ALIGN_RECORD));
+      const packed = stepPack(framesDir, {
+        out: join(dir, "sheet.png"), atlas: join(dir, "atlas.json"), name: motion.id,
+        fps: facts.fps, loop: facts.loop, anchor, cols, scale: facts.scale, nearest: true,
+      });
+      // A GIF preview only: a lossy WebP would smear the very colours this is about.
+      const preview = stepGif(framesDir, { out: join(dir, "preview.gif"), fps: facts.fps, loop: facts.loop, webp: null, width: null });
+      warnings.push(...preview.warnings);
+      tallies.get(variant.name).push(tally);
+      return { ...tallyReport(tally), dir, frames: written, sheet: packed.sheet, atlas: packed.atlas, gif: preview.gif };
+    });
+    return { id: motion.id, frames: frames.paths, ...(off.colors ? { offPalette: off } : {}), variants: baked };
+  });
+
+  // The whole bake per colourway: an entry is unmatched only when no motion used it.
+  const summary = variants.map((variant) => tallyReport(mergeTallies(tallies.get(variant.name))));
+  for (const s of summary) {
+    if (s.unmatched.length) {
+      warnings.push(`${s.name}: ${s.unmatched.map((u) => `${u.from} → ${u.to}`).join(", ")} matched no pixel of ${motions.length === 1 ? motions[0].id : "any motion"} — a typo, or a colour these frames do not use (recolor-palette lists the ones they do)`);
+    }
+  }
+  return {
+    kind: "recolor",
+    character: character.dir,
+    name: character.name,
+    palette: { id: subject.pixel.palette, file: palette.file, colors: palette.colors.length },
+    // Where the colourways came from: the --map file, or null for the ones
+    // the character recorded. `variants` is what register-recolor records.
+    map: from,
+    variants,
+    motions,
+    skipped,
+    summary,
+    warnings,
+  };
+}
+
+/**
+ * Draft a recolor map from the character's pinned palette and the colours
+ * its frames really use, plus the swatch sheet that shows where each is.
+ * Never over a map that is already there (it may hold colourways) unless
+ * `--force`.
+ */
+function stepRecolorPalette(target, { out, force }) {
+  const label = "recolor-palette";
+  const subject = recolorSubject(target, label);
+  const { character, palette } = subject;
+  const { included, skipped } = recolorMotions(character, subject.motionId, label);
+  const outPath = resolve(out ?? join(character.dir, RECOLOR_FILENAME));
+  if (existsSync(outPath) && !force) {
+    fail(`${label}: ${outPath} is already there and may hold colourways — pass --force to draft over it, or --out another file`);
+  }
+  const counts = new Map();
+  // Each colour's cell shows the frame that uses it most.
+  const bestFrame = new Map();
+  for (const motion of included) {
+    for (const path of registeredFrames(character, motion, label).paths) {
+      const image = readRgba(path);
+      for (const [key, n] of countColors([image])) {
+        counts.set(key, (counts.get(key) ?? 0) + n);
+        if ((bestFrame.get(key)?.n ?? 0) < n) bestFrame.set(key, { n, image });
+      }
+    }
+  }
+  const swatchPath = join(dirname(outPath), `${basename(outPath, extname(outPath))}-swatches.png`);
+  const draft = recolorRule(() => draftRecolorMap({
+    palette: subject.pixel.palette, paletteColors: palette.colors, counts, character: character.name,
+    swatches: basename(swatchPath),
+  }));
+  const drawn = draft.colors.filter((c) => c.swatch);
+  const sheet = recolorRule(() => swatchSheet(drawn.map((c) => ({
+    rgb: parseHexColor(c.hex), image: bestFrame.get(parseInt(c.hex.slice(1), 16)).image,
+  }))));
+  writeRgbaPng(swatchPath, sheet.image, "recolor swatches");
+  writeJsonFile(outPath, draft);
+  const off = drawn.filter((c) => c.inPalette === false).length;
+  return {
+    kind: "recolor-palette",
+    character: character.dir,
+    name: character.name,
+    palette: { id: subject.pixel.palette, file: palette.file, colors: palette.colors.length },
+    out: outPath,
+    swatches: swatchPath,
+    mark: sheet.mark,
+    motions: included.map((m) => m.id),
+    skipped,
+    colors: drawn.length,
+    unused: draft.colors.length - drawn.length,
+    offPalette: off,
+    warnings: off ? [`${off} of the colours in use are not in the pinned palette (inPalette: false) — an outline darkened after it, or frames not quantised to it`] : [],
   };
 }
 
@@ -2904,6 +3217,8 @@ function stepRun(sheetRaw, options) {
       detailBias: options.detailBias,
       threshold: options.threshold,
       images: cellImages,
+      // Every pixel run of a character is held to its declared height.
+      logicalHeight: options.logicalHeight ?? declaredPixelHeight(character),
     });
     lattice.palette = { ...lattice.palette, from: palette.from };
     warnings.push(...lattice.warnings);
@@ -2949,6 +3264,7 @@ function stepRun(sheetRaw, options) {
         logicalCell: lattice.logicalCell,
         palette: lattice.palette,
         outline: lattice.outline,
+        ...(lattice.logicalHeight ? { logicalHeight: lattice.logicalHeight } : {}),
         record: lattice.record,
       },
     } : {}),
@@ -2999,6 +3315,13 @@ function runPalette(motionDir, character, options) {
     fail(`run --pixel: the palette pinned for this character (${id}, ${asset.uri}) is not on disk — restore it, or pass --repalette to build one from these frames (register-run then needs --repin)`);
   }
   return { file, from: "character" };
+}
+
+/** `character.pixel.logicalHeight`, or null: the height every pixel run of
+ *  the character is held to. */
+function declaredPixelHeight(character) {
+  const height = Number(character?.doc.sprite.character.pixel?.logicalHeight);
+  return Number.isInteger(height) && height > 0 ? height : null;
 }
 
 /**
@@ -7143,7 +7466,7 @@ function pixelOptions() {
     palette: { type: "string" }, repalette: { type: "boolean", default: false },
     "palette-size": { type: "string" }, "pitch-hint": { type: "string" },
     outline: { type: "boolean", default: false }, "outline-strength": { type: "string" },
-    "no-detail-bias": { type: "boolean", default: false },
+    "no-detail-bias": { type: "boolean", default: false }, "logical-height": { type: "string" },
   };
 }
 
@@ -7201,6 +7524,8 @@ const OPTIONS = {
     out: { type: "string" }, scale: { type: "string" }, threshold: { type: "string" },
     ...pixelOptions(),
   },
+  recolor: { map: { type: "string" }, variant: { type: "string" } },
+  "recolor-palette": { out: { type: "string" }, force: { type: "boolean", default: false } },
   contact: {
     out: { type: "string" }, count: { type: "string" }, every: { type: "string" },
     cols: { type: "string" }, width: { type: "string" },
@@ -7300,6 +7625,7 @@ function pickPixelOptions(values) {
     repalette: values.repalette,
     paletteSize,
     pitchHint: values["pitch-hint"] === undefined ? null : num(values["pitch-hint"], "--pitch-hint", { min: 2 }),
+    logicalHeight: values["logical-height"] === undefined ? null : num(values["logical-height"], "--logical-height", { integer: true, min: 1 }),
     outline: values.outline || values["outline-strength"] !== undefined,
     outlineStrength,
     detailBias: !values["no-detail-bias"],
@@ -7309,9 +7635,11 @@ function pickPixelOptions(values) {
 /** One line per pixel step, for the human output. */
 function pixelLines(out) {
   const own = out.perFrame.filter((f) => f.source === "own").length;
+  const height = out.logicalHeight;
   return [
     `pixel: ${out.frames.length} frames at pitch ${out.pitch.x}x${out.pitch.y} (${own} on their own pitch) → ${out.logicalCell.width}x${out.logicalCell.height} logical px x${out.scale} → ${out.outDir}`,
     `palette: ${out.palette.colors} colours ${out.palette.pinned ? "from the pinned" : "built and pinned to"} ${out.palette.file}`,
+    ...(height ? [`height: ${height.measured} logical px, declared ${height.declared} — ${height.honoured ? "held" : "MISSED"}`] : []),
   ];
 }
 
@@ -7663,10 +7991,33 @@ function main() {
       emit(values, out, [...pixelLines(out), ...(out.warnings.length ? out.warnings : ["no warnings"])]);
       break;
     }
+    case "recolor": {
+      const only = values.variant === undefined ? null : values.variant.split(",").map((n) => n.trim()).filter(Boolean);
+      if (only && !only.length) fail("--variant: expected colourway names separated by commas, e.g. --variant red-team,blue-team");
+      const out = stepRecolor(requirePositional(positionals, "<characterDir|motionDir>"), { map: values.map ?? null, only });
+      const n = (v) => v.toLocaleString("en-US");
+      emit(values, out, [
+        `recolor: ${out.variants.length} colourway(s) × ${out.motions.length} motion(s) of ${out.name} → motions/<id>/${VARIANTS_DIRNAME}/<name>/`,
+        ...out.summary.map((s) => `  ${s.name}${s.tolerance ? ` (tolerance ${s.tolerance})` : ""}: ${n(s.substituted)} px swapped by ${s.substitutions.length - s.unmatched.length} of ${s.substitutions.length} entries; ${s.uncovered.colors} colour(s), ${n(s.uncovered.pixels)} px left as they were`),
+        ...out.skipped.map((s) => `  left out ${s.motion}: ${s.reason}`),
+        ...(out.warnings.length ? out.warnings : ["no warnings"]),
+      ]);
+      break;
+    }
+    case "recolor-palette": {
+      const out = stepRecolorPalette(requirePositional(positionals, "<characterDir|motionDir>"), { out: values.out ?? null, force: values.force });
+      emit(values, out, [
+        `recolor-palette: ${out.colors} colour(s) in use across ${out.motions.join(", ")} (+${out.unused} unused in the palette) → ${out.out}`,
+        `swatches: ${out.swatches} (each colour's pixels marked in ${out.mark})`,
+        ...out.skipped.map((s) => `  left out ${s.motion}: ${s.reason}`),
+        ...out.warnings,
+      ]);
+      break;
+    }
     case "run": {
       const key = values.key ?? "auto";
       if (key !== "auto" && key !== "none") normalizeColor(key, "--key");
-      const latticeFlags = ["palette", "repalette", "palette-size", "pitch-hint", "outline", "outline-strength", "no-detail-bias"]
+      const latticeFlags = ["palette", "repalette", "palette-size", "pitch-hint", "outline", "outline-strength", "no-detail-bias", "logical-height"]
         .filter((flag) => values[flag] !== undefined && values[flag] !== false);
       if (!values.pixel && latticeFlags.length) fail(`--${latticeFlags[0]} belongs to the pixel lattice — add --pixel`);
       const picked = values.pixel ? pickPixelOptions(values) : null;
@@ -7702,7 +8053,7 @@ function main() {
         ...(picked ?? {}),
       });
       const pixelLine = out.pixel
-        ? [`pixel: pitch ${out.pixel.pitch.x}x${out.pixel.pitch.y}, ${out.pixel.logicalCell.width}x${out.pixel.logicalCell.height} logical px x${out.pixel.scale}, ${out.pixel.palette.colors} colours (${out.pixel.palette.pinned ? "pinned" : "built"}: ${out.pixel.palette.file})${out.inspect.pixel ? ` — lattice ${out.inspect.pixel.held ? "held" : "BROKEN"}` : ""}`]
+        ? [`pixel: pitch ${out.pixel.pitch.x}x${out.pixel.pitch.y}, ${out.pixel.logicalCell.width}x${out.pixel.logicalCell.height} logical px x${out.pixel.scale}, ${out.pixel.palette.colors} colours (${out.pixel.palette.pinned ? "pinned" : "built"}: ${out.pixel.palette.file})${out.inspect.pixel ? ` — lattice ${out.inspect.pixel.held ? "held" : "BROKEN"}` : ""}${out.pixel.logicalHeight ? `; ${out.pixel.logicalHeight.measured} px tall, declared ${out.pixel.logicalHeight.declared}${out.pixel.logicalHeight.honoured ? "" : " (MISSED)"}` : ""}`]
         : [];
       emit(values, out, [
         `${out.name}: ${out.frames.length} frames of ${out.cell.width}x${out.cell.height} → ${out.motionDir}`,

@@ -78,7 +78,7 @@ export interface LatticeFrame {
 
 export declare function latticeFrames(
   images: RgbaImage[],
-  options?: { detailBias?: boolean; pitchHint?: number | null; maxPitch?: number },
+  options?: { detailBias?: boolean; pitchHint?: number | null; maxPitch?: number; hintLabel?: string | null },
 ): {
   frames: LatticeFrame[];
   /** The pitch frames are held to: the hint when given, else `measured`. */
@@ -94,6 +94,17 @@ export declare function latticeFrames(
 };
 
 export declare function pooledPitch(images: RgbaImage[], maxPitch?: number): { pitch: number; score: number };
+
+export declare const HEIGHT_SLACK: number;
+export declare const HEIGHT_EVIDENCE_RATIO: number;
+export declare function heightPitch(
+  lattice: { frames: Array<{ box: Box | null }>; pooled: { pitch: number; score: number } | null; runlen: XY },
+  logicalHeight: number,
+): { pitch: number; source: number; readings: Array<{ what: "pooled" | "runs"; pitch: number }>; backed: boolean } | null;
+export declare function heightCheck(
+  frames: Array<{ logical: RgbaImage | null }>,
+  logicalHeight: number,
+): { declared: number; measured: number; range: [number, number]; honoured: boolean } | null;
 
 export declare function buildSharedPalette(frames: RgbaImage[], size?: number): Rgb[];
 export declare function applyPalette(image: RgbaImage, palette: Rgb[]): RgbaImage;
