@@ -24,6 +24,10 @@
  * clip `calm-to-spin` and its reverse, and the attack. Setting `motion`
  * routes through the clips, every state leaves only at the end of its cycle
  * or its clip, and a one-shot hands back to the loop `motion` names.
+ * The third holds a MIRROR: `idle-left`, made by `sprite-sheet.mjs mirror`
+ * from idle and registered, drawn from idle's embedded images through an
+ * Image with scaleX −1. Its first frame on the canvas must be the flipped
+ * frame on disk, standing on its mirrored pivot — and clearly not idle's own.
  *
  * Live tier: it launches a real browser and runs a real ffmpeg pipeline.
  */
@@ -42,6 +46,7 @@ import {
 } from "../../../core/__tests__/test-tier.js";
 
 const SCRIPT = join(import.meta.dir, "..", "skill", "scripts", "sprite-sheet.mjs");
+const PROJECT = join(import.meta.dir, "..", "skill", "scripts", "sprite-project.mjs");
 const SEED = join(import.meta.dir, "..", "seed", "lumi");
 const require = createRequire(import.meta.url);
 const RUNTIME_DIR = dirname(require.resolve("@rive-app/canvas/package.json"));
@@ -65,7 +70,7 @@ if (LIVE_TIER && !HAS_FFMPEG) console.log("[rive-runtime] no ffmpeg/ffprobe on P
 interface RiveReport {
   out: string;
   artboard: { width: number; height: number; anchor: { x: number; y: number } };
-  motions: Array<{ id: string; seconds: number; frames: number; fps: number; kind: string; shares?: string }>;
+  motions: Array<{ id: string; seconds: number; frames: number; fps: number; kind: string; shares?: string; mirrored?: boolean; anchor: { x: number; y: number } }>;
   stateMachine: {
     inputs: Array<{ name: string; type: string; values?: Array<{ value: number; motion: string }> }>;
   };
@@ -111,6 +116,22 @@ function addClipMotion(
     ...(motion.reverseOf ? { reverseOf: motion.reverseOf } : {}),
   });
   writeFileSync(path, JSON.stringify(doc));
+}
+
+/** One `node <script> …` call that must succeed; its stdout. */
+function node(script: string, ...argv: string[]): string {
+  const r = spawnSync("node", [script, ...argv], { encoding: "utf-8" });
+  if (r.status !== 0) throw new Error(`${argv[0]} failed: ${r.stderr}`);
+  return r.stdout;
+}
+
+/** idle faces right; idle-left is its mirror, made and registered by the scripts. */
+function addMirror(character: string) {
+  node(PROJECT, "set-motion", "--dir", character, "--motion", "idle", "--direction", "right");
+  node(PROJECT, "add-motion", "--dir", character, "--id", "idle-left", "--rows", "4", "--cols", "4", "--fps", "8", "--loop", "--source", "mirror", "--direction", "left");
+  const run = join(character, "..", "idle-left-run.json");
+  writeFileSync(run, node(SCRIPT, "mirror", join(character, "motions", "idle"), "--name", "idle-left", "--json"));
+  node(PROJECT, "register-run", "--dir", character, "--motion", "idle-left", "--run", run);
 }
 
 async function rive(character: string, ...flags: string[]): Promise<RiveReport> {
@@ -175,6 +196,7 @@ describe.skipIf(!LIVE_TIER || !CHROME || !HAS_FFMPEG)(
     let root = "";
     let report: RiveReport;
     let connected: RiveReport;
+    let mirrored: RiveReport;
     let server: ReturnType<typeof Bun.serve> | null = null;
     let chrome: ReturnType<typeof Bun.spawn> | null = null;
     let client: Awaited<ReturnType<typeof connect>> | null = null;
@@ -200,6 +222,13 @@ describe.skipIf(!LIVE_TIER || !CHROME || !HAS_FFMPEG)(
       addClipMotion(other, { id: "spin-to-calm", kind: "transition", framesOf: "calm-to-spin", fps: 12, from: "spin", to: "calm", reverseOf: "calm-to-spin" });
       connected = await rive(other, "--motions", "calm,spin,sway,calm-to-spin,spin-to-calm,attack", "--hub", "calm");
 
+      // idle-left is the first looping idle in the file: the hub, so the
+      // machine starts on its frame 0.
+      const flipped = join(root, "flipped", "lumi");
+      cpSync(SEED, flipped, { recursive: true });
+      addMirror(flipped);
+      mirrored = await rive(flipped, "--motions", "idle-left,idle");
+
       const atlas = JSON.parse(readFileSync(join(root, "lumi", "motions", "idle", "atlas.json"), "utf-8"));
       const first = atlas.frames[atlas.animations.idle[0]];
       pivot = { x: first.pivot.x * first.sourceSize.w, y: first.pivot.y * first.sourceSize.h };
@@ -211,6 +240,9 @@ describe.skipIf(!LIVE_TIER || !CHROME || !HAS_FFMPEG)(
         "/connected.riv": connected.out,
         "/frame-00.png": join(root, "lumi", "motions", "idle", "frames", "00.png"),
         "/frame-01.png": join(root, "lumi", "motions", "idle", "frames", "01.png"),
+        "/mirrored.riv": mirrored.out,
+        "/left-00.png": join(root, "flipped", "lumi", "motions", "idle-left", "frames", "00.png"),
+        "/left-01.png": join(root, "flipped", "lumi", "motions", "idle-left", "frames", "01.png"),
       };
       const types: Record<string, string> = { js: "application/javascript", wasm: "application/wasm", png: "image/png" };
       server = Bun.serve({
@@ -220,6 +252,11 @@ describe.skipIf(!LIVE_TIER || !CHROME || !HAS_FFMPEG)(
           const path = new URL(request.url).pathname;
           if (path === "/page.html") {
             return new Response(PAGE("/file.riv", report.artboard.width, report.artboard.height), {
+              headers: { "Content-Type": "text/html" },
+            });
+          }
+          if (path === "/mirrored.html") {
+            return new Response(PAGE("/mirrored.riv", mirrored.artboard.width, mirrored.artboard.height), {
               headers: { "Content-Type": "text/html" },
             });
           }
@@ -402,6 +439,46 @@ describe.skipIf(!LIVE_TIER || !CHROME || !HAS_FFMPEG)(
       })()`);
       expect(log.during).toEqual(["spin"]);
       expect(log.after).toEqual(["spin", "idle"]);
+    }, 30_000);
+
+    test("a mirror is drawn from its source's images, flipped about its pivot", async () => {
+      const left = mirrored.motions.find((m) => m.id === "idle-left")!;
+      expect({ shares: left.shares, mirrored: left.mirrored }).toEqual({ shares: "idle", mirrored: true });
+      const evaluateMirrored = await open("mirrored.html");
+      // The flipped frame on disk placed by the mirror's own pivot, against
+      // the canvas; and idle's unflipped frame at the same place, which must
+      // come out clearly worse, or the comparison proves nothing.
+      const result = await evaluateMirrored(`(async () => {
+        const canvas = document.getElementById("c");
+        const w = canvas.width, h = canvas.height;
+        const shown = canvas.getContext("2d").getImageData(0, 0, w, h).data;
+        const load = (src) => new Promise((res, rej) => { const img = new Image(); img.onload = () => res(img); img.onerror = rej; img.src = src; });
+        const diff = async (src) => {
+          const img = await load(src);
+          const off = document.createElement("canvas");
+          off.width = w; off.height = h;
+          const ctx = off.getContext("2d");
+          ctx.drawImage(img, ${mirrored.artboard.anchor.x} - ${left.anchor.x}, ${mirrored.artboard.anchor.y} - ${left.anchor.y});
+          const want = ctx.getImageData(0, 0, w, h).data;
+          let sum = 0, n = 0;
+          for (let i = 0; i < want.length; i += 4) {
+            if (want[i + 3] === 0 && shown[i + 3] === 0) continue;
+            sum += Math.abs(want[i + 3] - shown[i + 3]) + Math.abs(want[i] - shown[i]) / 4;
+            n++;
+          }
+          return n ? sum / n : 255;
+        };
+        return {
+          opaque: Array.from({ length: shown.length / 4 }, (_, i) => shown[i * 4 + 3]).filter((a) => a > 0).length,
+          left0: await diff("/left-00.png"),
+          left1: await diff("/left-01.png"),
+          unflipped: await diff("/frame-00.png"),
+        };
+      })()`);
+      expect(result.opaque).toBeGreaterThan(1000);
+      const best = Math.min(result.left0, result.left1);
+      expect(best).toBeLessThan(12);
+      expect(result.unflipped).toBeGreaterThan(best * 3);
     }, 30_000);
 
     test("connected: motion routes through the clips, and nothing leaves mid-cycle", async () => {

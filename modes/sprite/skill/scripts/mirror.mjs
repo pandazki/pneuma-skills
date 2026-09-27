@@ -36,7 +36,9 @@ export function mirrorRefusal(source) {
     return `'${id}' is a ${source.kind} — loops and transitions are not mirrored`;
   }
   if (source.source === "mirror") {
-    return `'${id}' is itself a mirror of ${source.mirrorOf ?? "another motion"} — mirror that one instead`;
+    return source.mirrorOf
+      ? `'${id}' is itself a mirror of ${source.mirrorOf} — mirror ${source.mirrorOf} instead`
+      : `'${id}' is declared a mirror (source: mirror) — mirror the motion it flips instead`;
   }
   if (source.status !== "ready") {
     return `'${id}' is ${source.status ?? "not registered"}, not ready — finish it before mirroring it`;
@@ -61,42 +63,39 @@ export function asymmetry(character) {
 }
 
 /**
- * The align record of the flipped frames, or null when there is no measured
- * point to flip: the anchor at x → cell.width − x (a pixel edge at x lands at
- * width − x under a horizontal flip), y unchanged. `pack` reads this record,
- * so the mirror's atlas pivot is the mirrored point without a second code
- * path. `align` puts the anchor on the cell's centre line, where the flip
+ * The align record of the flipped frames, or null when the source has no
+ * measured point to flip: the anchor at x → cell.width − x (a pixel edge at x
+ * lands at width − x under a horizontal flip), y unchanged. `pack` reads this
+ * record, so the mirror's atlas pivot is the mirrored point without a second
+ * code path. `align` puts the anchor on the cell's centre line, where the flip
  * changes nothing; frames anchored any other way keep their true point.
  *
- * `record` is the source frames' own `align.json` (raw, or null); it is used
- * when it describes these frames — this cell, this anchor. Otherwise the
- * source's atlas decides, as it does for every export: its `meta.anchorPoint`
- * (scaled by `meta.scale`) is the point `align` measured, carried in the atlas
- * after the record itself was lost (the Lumi seed ships atlases without
- * frames/align.json). An atlas without it declared the anchor's default, and
- * so does the mirror: no record.
+ * The source's atlas is the authority, as it is for every export: its
+ * `meta.anchorPoint` (divided by `meta.scale`) is the point the source ships
+ * with, and it survives where the record does not (the Lumi seed carries its
+ * atlases without frames/align.json). The source's own `align.json` (`record`,
+ * raw or null) only lends the fields `pack` does not read — pad, smooth,
+ * xFrom — when it describes the same point, cell and anchor. An atlas without
+ * `anchorPoint` declared the anchor's default, and so does the mirror: null.
  */
 export function mirrorAnchorRecord({ record, atlas, cell, anchor, mirrorOf }) {
   const finite = (v) => typeof v === "number" && Number.isFinite(v);
-  const flip = (from, point, extra = {}) => ({
-    ...from,
+  const meta = atlas && typeof atlas.meta === "object" && atlas.meta ? atlas.meta : {};
+  const point = meta.anchorPoint;
+  if (meta.anchor !== anchor || !finite(point?.x) || !finite(point?.y)) return null;
+  const scale = finite(meta.scale) && meta.scale > 0 ? meta.scale : 1;
+  const x = point.x / scale;
+  const y = point.y / scale;
+  const same = record && record.anchor === anchor
+    && record.cell?.width === cell.width && record.cell?.height === cell.height
+    && Math.abs(record.anchorPoint?.x - x) < 1e-6 && Math.abs(record.anchorPoint?.y - y) < 1e-6;
+  return {
+    ...(same ? record : { from: "atlas" }),
     anchor,
     cell: { width: cell.width, height: cell.height },
-    anchorPoint: { x: cell.width - point.x, y: point.y },
-    ...extra,
+    anchorPoint: { x: cell.width - x, y },
     mirrorOf,
-  });
-  if (record && record.anchor === anchor && record.cell?.width === cell.width && record.cell?.height === cell.height
-    && finite(record.anchorPoint?.x) && finite(record.anchorPoint?.y)) {
-    return flip(record, record.anchorPoint);
-  }
-  const meta = atlas && typeof atlas.meta === "object" && atlas.meta ? atlas.meta : {};
-  const scale = finite(meta.scale) && meta.scale > 0 ? meta.scale : 1;
-  const point = meta.anchorPoint;
-  if (meta.anchor === anchor && finite(point?.x) && finite(point?.y)) {
-    return flip({}, { x: point.x / scale, y: point.y / scale }, { from: "atlas" });
-  }
-  return null;
+  };
 }
 
 /**

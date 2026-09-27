@@ -39,11 +39,14 @@ import {
   RIVE_LOOP_MAX_SIZE,
   riveDecodeWarning,
   riveDefaultImages,
+  riveMirrorIsCurrent,
   rivePlan,
+  riveReverseIsCurrent,
   riveSampleFrames,
   riveScaleFactor,
 } from "../skill/scripts/rive-plan.mjs";
 import { crc32, zipStore } from "../skill/scripts/zip.mjs";
+import { MIRRORED, asymmetry, atlasLayout, mirrorAnchorRecord, mirrorRefusal } from "../skill/scripts/mirror.mjs";
 
 /** Stand-in image bytes: the writer embeds them verbatim and never decodes. */
 const fakeImage = (tag: string) => Buffer.from(`image:${tag}`);
@@ -534,6 +537,39 @@ describe("the routed state machine", () => {
     ]);
   });
 
+  test("a mirror is its source's images drawn by Images of their own, flipped about the same origin", () => {
+    const size = { width: 40, height: 60 };
+    const pivot = { x: 12, y: 56 };
+    const riv = decodeRiv(writeRiv({
+      artboard: { name: "Pip", width: 80, height: 90 },
+      anchor: { x: 40, y: 82 },
+      motions: [
+        { id: "walk-right", fps: 8, loop: true, frames: frames("walk-right", 3, size, pivot) },
+        {
+          id: "walk-left", fps: 8, loop: true,
+          frames: [0, 1, 2].map((index) => ({ shared: { motion: "walk-right", index, flip: true } })),
+        },
+        // A second timeline showing one flipped frame again gets no new Image.
+        { id: "pose-left", fps: 8, loop: false, frames: [{ shared: { motion: "walk-right", index: 1, flip: true } }] },
+      ],
+    }).bytes);
+    // Three images embedded, three Images drawing them, three more flipped.
+    expect(ofType(riv.objects, "ImageAsset")).toHaveLength(3);
+    const images = ofType(riv.objects, "Image");
+    expect(images).toHaveLength(6);
+    for (const [i, image] of images.slice(3).entries()) {
+      expect(image.props).toEqual({
+        name: `walk-left_0${i}`, parentId: 1, x: 40, y: 82, scaleX: -1,
+        assetId: i, originX: images[i].props.originX, originY: images[i].props.originY,
+      });
+    }
+    // scaleX −1 about origin p is the flipped frame with its pivot at w − p:
+    // a pixel u lands at anchor − (u − p) either way.
+    expect(images[0].props.originX).toBeCloseTo(12 / 40, 6);
+    const keys = ofType(riv.objects, "KeyFrameId").map((k) => k.props.value);
+    expect(keys).toEqual([2, 3, 4, 5, 6, 7, 6]);
+  });
+
   test("a shared frame must point at an embedded one", () => {
     const one = frames("a", 2, { width: 10, height: 10 }, { x: 5, y: 9 });
     const base = { artboard: { name: "A", width: 10, height: 10 }, anchor: { x: 5, y: 9 } };
@@ -783,6 +819,57 @@ describe("rive-plan.mjs", () => {
     expect(alone.motions[1].decodeBytes).toBeGreaterThan(0);
   });
 
+  test("a mirror whose source is in the file embeds nothing: the source's images, in order, flipped", () => {
+    const motions = [
+      { id: "walk-left", kind: "sprite" as const, loop: true, fps: 10, frames: 8, width: 120, height: 160, mirrorOf: "walk-right" },
+      { id: "walk-right", kind: "sprite" as const, loop: true, fps: 10, frames: 8, width: 120, height: 160 },
+    ];
+    const plan = rivePlan(motions, { fps: 5 });
+    const [mirror, source] = plan.motions;
+    expect(mirror).toMatchObject({ shares: "walk-right", mirrored: true, decodeBytes: 0, frames: source.frames });
+    // Frame i of a mirror is frame i of its source: same indices, same order.
+    expect(mirror.indices).toEqual(source.indices);
+    expect(mirror.sharedFrames).toEqual([0, 1, 2, 3]);
+    expect(plan.decodeBytes).toBe(source.decodeBytes);
+
+    // Not the same pictures, or its source not in the file: its own frames.
+    for (const other of [
+      [{ ...motions[0], frames: 7 }, motions[1]],
+      [{ ...motions[0], width: 121 }, motions[1]],
+      [{ ...motions[0], fps: 12 }, motions[1]],
+      [{ ...motions[0], loop: false }, motions[1]],
+      [motions[0]],
+    ]) {
+      const alone = rivePlan(other, { fps: 5 });
+      expect(alone.motions[0].shares).toBeUndefined();
+      expect(alone.motions[0].decodeBytes).toBeGreaterThan(0);
+    }
+    // A reverse keeps its backwards order through the same field.
+    const reverse = rivePlan([
+      { id: "a-to-b", kind: "transition", loop: false, fps: 24, frames: 5, width: 20, height: 20 },
+      { id: "b-to-a", kind: "transition", loop: false, fps: 24, frames: 5, width: 20, height: 20, reverseOf: "a-to-b" },
+    ]);
+    expect(reverse.motions[1]).toMatchObject({ shares: "a-to-b", sharedFrames: [4, 3, 2, 1, 0] });
+    expect(reverse.motions[1].mirrored).toBeUndefined();
+  });
+
+  test("a mirror is current while every frame came from the source frame registered now", () => {
+    const source = { frames: ["r-0", "r-1"] };
+    const mirror = { frames: ["l-0", "l-1"] };
+    const edges: Record<string, any> = {
+      "l-0": { fromAssetId: "r-0", operation: { timestamp: 200, params: { step: "mirror" } } },
+      "l-1": { fromAssetId: "r-1", operation: { timestamp: 200, params: { step: "mirror" } } },
+    };
+    const created: Record<string, number> = { "r-0": 100, "r-1": 100 };
+    const lookup = { edgeOf: (id: string) => edges[id], createdAt: (id: string) => created[id] };
+    expect(riveMirrorIsCurrent(mirror, source, lookup)).toBe(true);
+    // A mirror's edges are not a reverse's, and the other way round.
+    expect(riveReverseIsCurrent(mirror, source, lookup)).toBe(false);
+    created["r-1"] = 300;
+    expect(riveMirrorIsCurrent(mirror, source, lookup)).toBe(false);
+    expect(riveMirrorIsCurrent({ frames: ["l-0"] }, source, lookup)).toBe(false);
+  });
+
   test("--fps and --max-size apply to sprite motions only when given", () => {
     const plan = rivePlan(
       [
@@ -794,5 +881,60 @@ describe("rive-plan.mjs", () => {
     expect(plan.settings).toEqual({ loop: { fps: 5, maxSize: 136 }, sprite: { fps: 5, maxSize: 136 } });
     expect(plan.motions[1]).toMatchObject({ fps: 5, frames: 8, width: 136, height: 131 });
     expect(plan.motions[1].indices).toEqual([0, 2, 4, 6, 9, 11, 13, 15]);
+  });
+});
+
+describe("mirror.mjs", () => {
+  const ready = { id: "walk-right", status: "ready", direction: "right" };
+
+  test("only a ready side view that is not a loop, a transition or a mirror flips", () => {
+    expect(MIRRORED).toEqual({ left: "right", right: "left" });
+    expect(mirrorRefusal(ready)).toBeNull();
+    expect(mirrorRefusal({ ...ready, direction: "left" })).toBeNull();
+    expect(mirrorRefusal({ ...ready, kind: "loop" })).toMatch(/is a loop — loops and transitions are not mirrored/);
+    expect(mirrorRefusal({ ...ready, kind: "transition" })).toMatch(/is a transition/);
+    expect(mirrorRefusal({ ...ready, source: "mirror", mirrorOf: "walk-left" })).toMatch(/itself a mirror of walk-left — mirror walk-left instead/);
+    expect(mirrorRefusal({ ...ready, source: "mirror" })).toMatch(/declared a mirror/);
+    expect(mirrorRefusal({ ...ready, status: "processing" })).toMatch(/is processing, not ready/);
+    expect(mirrorRefusal({ ...ready, direction: "back" })).toMatch(/faces back — .*still back with its hands swapped/);
+    expect(mirrorRefusal({ ...ready, direction: undefined })).toMatch(/has no direction — .*set-motion --motion walk-right --direction left\|right/);
+  });
+
+  test("asymmetric is a sentence, and a blank one says nothing", () => {
+    expect(asymmetry({ asymmetric: "  the sword is in the right hand " })).toBe("the sword is in the right hand");
+    expect(asymmetry({ asymmetric: "   " })).toBeNull();
+    expect(asymmetry({})).toBeNull();
+    expect(asymmetry(undefined)).toBeNull();
+  });
+
+  test("the flipped anchor is the source atlas's point at width − x", () => {
+    const atlas = { meta: { anchor: "bottom", scale: 1, anchorPoint: { x: 20, y: 56 } } };
+    const cell = { width: 64, height: 64 };
+    const record = { anchor: "bottom", cell, pad: 8, smooth: false, xFrom: "feet", anchorPoint: { x: 20, y: 56 } };
+    // The record describes the same point: it lends pad, smooth and xFrom.
+    expect(mirrorAnchorRecord({ record, atlas, cell, anchor: "bottom", mirrorOf: "walk-right" })).toEqual({
+      anchor: "bottom", cell, pad: 8, smooth: false, xFrom: "feet", anchorPoint: { x: 44, y: 56 }, mirrorOf: "walk-right",
+    });
+    // No record, or one about another point: the atlas alone, said so.
+    for (const other of [null, { ...record, anchorPoint: { x: 32, y: 56 } }]) {
+      expect(mirrorAnchorRecord({ record: other, atlas, cell, anchor: "bottom", mirrorOf: "walk-right" })).toEqual({
+        from: "atlas", anchor: "bottom", cell, anchorPoint: { x: 44, y: 56 }, mirrorOf: "walk-right",
+      });
+    }
+    // A scaled atlas carries its point scaled.
+    const half = { meta: { anchor: "bottom", scale: 0.5, anchorPoint: { x: 10, y: 28 } } };
+    expect(mirrorAnchorRecord({ record: null, atlas: half, cell, anchor: "bottom", mirrorOf: "w" })!.anchorPoint).toEqual({ x: 44, y: 56 });
+    // The source declared the default pivot (no point) or another anchor: so does the mirror.
+    expect(mirrorAnchorRecord({ record, atlas: { meta: { anchor: "bottom" } }, cell, anchor: "bottom", mirrorOf: "w" })).toBeNull();
+    expect(mirrorAnchorRecord({ record, atlas, cell, anchor: "center", mirrorOf: "w" })).toBeNull();
+  });
+
+  test("the mirror is packed the way the source's atlas was", () => {
+    const atlas = {
+      meta: { anchor: "center", scale: 0.5, size: { w: 96, h: 64 } },
+      frames: { a_00: { frame: { x: 0, y: 0, w: 32, h: 32 } } },
+    };
+    expect(atlasLayout(atlas)).toEqual({ anchor: "center", scale: 0.5, cols: 3 });
+    expect(atlasLayout({})).toEqual({ anchor: null, scale: null, cols: null });
   });
 });
