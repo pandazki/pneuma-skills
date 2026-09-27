@@ -248,6 +248,7 @@
     .edges .grid .r.bad b{color:#fca5a5}
     .edges .grid .r.good b{color:#f9be92}
     .edges .grid .r span{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;color:#8d8783}
+    .edges .grid .r em{display:block;font-style:normal;font-size:10.5px;line-height:1.45;color:#8d8783;margin-top:7px}
     .edges .z{position:relative;height:212px;border-radius:8px;overflow:hidden;border:1px solid #2f2b2e}
     .edges .z.dark{background:#0a0a0d}
     .edges .z.light{background:#f5f5f5}
@@ -520,7 +521,7 @@
 <!-- ══════════════ CLEAN WARM EDGES ══════════════ -->
 <section class="page edges" data-view="edges">
   <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">05 / KEYING</span></div>
-  <h1>Copper hair off a green screen, with no green left.</h1>
+  <h1>Copper hair off a green screen, without the green rim.</h1>
   <p>Orange mixed with green reads yellow-green, not green, so a hue test cannot see it. The keyer reads each edge pixel against the character's own colours.</p>
   <div class="body">
 
@@ -532,7 +533,7 @@
       <span></span><span class="h">On dark</span><span class="h">On light</span>
       <div class="r bad"><b>As the trial shipped it</b><span>keyFringe 0.0373</span></div>
       <div class="z dark"><img data-crop="trial"></div><div class="z light"><img data-crop="trial"></div>
-      <div class="r good"><b>Re-keyed, final keyer</b><span>keyFringe 0</span></div>
+      <div class="r good"><b>Re-keyed, final keyer</b><span>keyFringe 0</span><em>A few pixels inside the enclosed gap still lean olive.</em></div>
       <div class="z dark good"><img data-crop="final"></div><div class="z light good"><img data-crop="final"></div>
     </div>
 
@@ -544,7 +545,7 @@
     </div>
 
   </div>
-  <div class="caption">Same clip, same twelve timestamps. The trial had widened the key to 0.3 and the rim stayed; the new keyer clears it at the default.</div>
+  <div class="caption">Same clip, same twelve timestamps. The trial had widened the key to 0.3 and the rim stayed; the new keyer takes the outer rim off at the default.</div>
   <div class="foot"><span>Kagari · walk · 12 frames sampled 1.083–2.417 s · before: the trial's delivered frames, measured by the final inspect</span><span>4× crops, nearest neighbour</span></div>
 </section>
 
