@@ -25,6 +25,7 @@ import {
   RIVE_LOOP_MAX_SIZE,
   riveMB,
   riveDefaultImages,
+  riveMirrorIsCurrent,
   rivePlan,
   riveReverseIsCurrent,
   type RivePlan,
@@ -557,8 +558,8 @@ export function riveMotions(project: CharacterProject): Motion[] {
  * `inspect.scale`, else (a loop) what an earlier export measured
  * (`motion.clip`, written by `register-export`); a loop with neither is
  * quoted as cut until its first export measures it. A reverse shares its
- * source's images when `riveReverseIsCurrent` says so — the script's own
- * test.
+ * source's images when `riveReverseIsCurrent` says so, a mirror when
+ * `riveMirrorIsCurrent` does — the script's own tests.
  */
 export function rivePlanFor(project: CharacterProject): RivePlan | null {
   const motions = riveMotions(project);
@@ -575,6 +576,8 @@ export function rivePlanFor(project: CharacterProject): RivePlan | null {
       : m.kind === "transition" ? m.inspect?.scale : undefined;
     const source = m.kind === "transition" && m.reverseOf ? byId.get(m.reverseOf) : undefined;
     const shares = source && riveReverseIsCurrent(m, source, lookup) ? source.id : undefined;
+    const flipped = m.source === "mirror" && m.mirrorOf ? byId.get(m.mirrorOf) : undefined;
+    const mirrors = flipped && riveMirrorIsCurrent(m, flipped, lookup) ? flipped.id : undefined;
     return size
       ? {
         id: m.id,
@@ -585,6 +588,7 @@ export function rivePlanFor(project: CharacterProject): RivePlan | null {
         ...size,
         ...(clipScale ? { clipScale } : {}),
         ...(shares ? { reverseOf: shares } : {}),
+        ...(mirrors ? { mirrorOf: mirrors } : {}),
       }
       : null;
   });

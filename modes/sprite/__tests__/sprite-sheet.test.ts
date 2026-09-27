@@ -4297,6 +4297,242 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
     });
   });
 
+  describe("mirror", () => {
+    const TIMEOUT_MS = 60_000;
+    /**
+     * `walk-right`: the prop sheet (a body square, and a bar jutting to the
+     * right in frames 01 and 03), facing right and registered; `walk-left`
+     * declared as its mirror, not yet made.
+     */
+    const mirrorable = () => stage("character-mirror", (dir) => {
+      const summary = runJson("run", SHEETS.prop(), "--rows", "1", "--cols", "4",
+        "--out", join(dir, "motions", "walk-right"), "--name", "walk-right", "--fps", "8", "--loop", "--no-webp");
+      writeFileSync(join(dir, "motions", "walk-right", "run.json"), JSON.stringify(summary));
+      projectCmd(dir, "init", "--name", "Pip", "--cell", "64x64", "--facing", "right");
+      projectCmd(dir, "add-motion", "--id", "walk-right", "--rows", "1", "--cols", "4", "--fps", "8", "--loop", "--direction", "right");
+      projectCmd(dir, "register-run", "--motion", "walk-right", "--run", join(dir, "motions", "walk-right", "run.json"), "--at", "1000");
+      projectCmd(dir, "add-motion", "--id", "walk-left", "--rows", "1", "--cols", "4", "--fps", "8", "--loop",
+        "--source", "mirror", "--direction", "left");
+    });
+    const useMirrorable = () => {
+      const dir = join(fresh(), "pip");
+      cpSync(mirrorable(), dir, { recursive: true });
+      return dir;
+    };
+    const mirror = (dir: string, ...flags: string[]) =>
+      runJson("mirror", join(dir, "motions", "walk-right"), "--name", "walk-left", ...flags);
+    const runFile = (dir: string, json: unknown) => {
+      const path = join(dir, "..", `mirror-${Math.random().toString(36).slice(2)}.json`);
+      writeFileSync(path, JSON.stringify(json));
+      return path;
+    };
+    const atlasOf = (dir: string, id: string) => JSON.parse(readFileSync(join(dir, "motions", id, "atlas.json"), "utf-8"));
+
+    test("flips every registered frame pixel for pixel, and finishes it like a run", () => {
+      const dir = useMirrorable();
+      const json = mirror(dir);
+      expect(json).toMatchObject({
+        name: "walk-left", source: "mirror", mirrorOf: "walk-right", direction: "left",
+        fps: 8, loop: true, anchor: "bottom", scale: 1, warnings: [],
+      });
+      // Nothing was forced, and the summary does not claim it was.
+      expect("force" in json).toBe(false);
+      expect(json.motionDir).toBe(join(dir, "motions", "walk-left"));
+      expect(json.frames).toEqual([0, 1, 2, 3].map((i) => join(dir, "motions", "walk-left", "frames", `0${i}.png`)));
+      for (const [i, path] of json.frames.entries()) {
+        const a = readRgba(readFileSync(join(dir, "motions", "walk-right", "frames", `0${i}.png`)));
+        const b = readRgba(readFileSync(path));
+        expect([b.width, b.height]).toEqual([a.width, a.height]);
+        let differing = 0;
+        for (let y = 0; y < a.height; y++) {
+          for (let x = 0; x < a.width; x++) {
+            const from = (y * a.width + x) * 4;
+            const to = (y * a.width + (a.width - 1 - x)) * 4;
+            if (a.data.readUInt32BE(from) !== b.data.readUInt32BE(to)) differing++;
+          }
+        }
+        expect({ frame: i, differing }).toEqual({ frame: i, differing: 0 });
+      }
+      // The bar that jutted right of the body now juts left of it.
+      const right = readBbox(join(dir, "motions", "walk-right", "frames", "01.png")).bbox!;
+      const left = readBbox(join(dir, "motions", "walk-left", "frames", "01.png")).bbox!;
+      expect(left.x).toBe(json.cell.width - (right.x + right.w));
+      // The source's pre-align cells, flipped beside the frames: inspect
+      // judges clipping on them, and reads the same numbers as the source.
+      expect(json.cells).toBe(join(dir, "motions", "walk-left", "cells"));
+      expect(readdirSync(json.cells).filter((f) => f.endsWith(".png"))).toHaveLength(4);
+      const source = JSON.parse(readFileSync(join(dir, "motions", "walk-right", "inspect.json"), "utf-8"));
+      expect(json.inspect).toMatchObject({ frameCount: 4, bodyDrift: source.bodyDrift, maxJump: source.maxJump, scaleDrift: source.scaleDrift });
+      // Packed, previewed and inspected the way run finishes a sheet.
+      const atlas = atlasOf(dir, "walk-left");
+      expect(atlas.animations["walk-left"]).toEqual(["walk-left_00", "walk-left_01", "walk-left_02", "walk-left_03"]);
+      expect(atlas.meta).toMatchObject({ fps: 8, loop: true, anchor: "bottom", scale: 1, size: atlasOf(dir, "walk-right").meta.size });
+      expect(existsSync(json.gif)).toBe(true);
+      expect(existsSync(join(dir, "motions", "walk-left", "inspect.json"))).toBe(true);
+    }, TIMEOUT_MS);
+
+    test("the anchor lands at width − x, off the source's atlas, with or without its align.json", () => {
+      const dir = useMirrorable();
+      // Move walk-right's anchor off the centre line and pack its atlas again,
+      // so the flip has something to move.
+      const frames = join(dir, "motions", "walk-right", "frames");
+      const record = JSON.parse(readFileSync(join(frames, "align.json"), "utf-8"));
+      const { width } = record.cell;
+      writeFileSync(join(frames, "align.json"), JSON.stringify({ ...record, anchorPoint: { x: 20, y: record.anchorPoint.y } }));
+      runJson("pack", frames, "--out", join(dir, "motions", "walk-right", "sheet.png"),
+        "--atlas", join(dir, "motions", "walk-right", "atlas.json"), "--name", "walk-right", "--fps", "8", "--loop");
+      expect(atlasOf(dir, "walk-right").meta.anchorPoint.x).toBe(20);
+
+      const json = mirror(dir);
+      const expected = { x: width - 20, y: record.anchorPoint.y };
+      expect(json.anchorPoint).toEqual(expected);
+      expect(json.pivot.x).toBeCloseTo((width - 20) / width, 4);
+      expect(json.inspect.anchorPoint).toEqual(expected);
+      const atlas = atlasOf(dir, "walk-left");
+      expect(atlas.meta.anchorPoint).toEqual(expected);
+      for (const frame of Object.values(atlas.frames) as any[]) expect(frame.pivot.x).toBeCloseTo((width - 20) / width, 4);
+      const flipped = JSON.parse(readFileSync(join(dir, "motions", "walk-left", "frames", "align.json"), "utf-8"));
+      // The source's record lends what pack does not read.
+      expect(flipped).toMatchObject({ anchorPoint: expected, pad: record.pad, xFrom: record.xFrom, mirrorOf: "walk-right" });
+
+      // A source whose align.json is gone (the seed ships none) still ships
+      // its point in the atlas — which is the authority, and is flipped.
+      rmSync(join(frames, "align.json"));
+      const again = mirror(dir);
+      expect(again.anchorPoint).toEqual(expected);
+      expect(JSON.parse(readFileSync(join(dir, "motions", "walk-left", "frames", "align.json"), "utf-8")))
+        .toMatchObject({ anchorPoint: expected, from: "atlas", mirrorOf: "walk-right" });
+    }, TIMEOUT_MS);
+
+    test("register-run takes the summary: frame i hangs off the source's frame i", () => {
+      const dir = useMirrorable();
+      const json = mirror(dir);
+      const motion = projectCmd(dir, "register-run", "--motion", "walk-left", "--run", runFile(dir, json));
+      expect(motion).toMatchObject({ source: "mirror", mirrorOf: "walk-right", direction: "left", status: "ready" });
+      expect(motion.frames).toEqual(["walk-left-frame-00", "walk-left-frame-01", "walk-left-frame-02", "walk-left-frame-03"]);
+      const doc = JSON.parse(readFileSync(join(dir, "project.json"), "utf-8"));
+      const edge = doc.provenance.find((e: any) => e.toAssetId === "walk-left-frame-02");
+      expect(edge.fromAssetId).toBe("walk-right-frame-02");
+      expect(edge.operation.params).toMatchObject({ step: "mirror", frameIndex: 2 });
+      expect(doc.assets.find((a: any) => a.id === "walk-left-atlas").uri).toBe("motions/walk-left/atlas.json");
+    }, TIMEOUT_MS);
+
+    test("an asymmetric character is refused with its sentence, unless --force", () => {
+      const dir = useMirrorable();
+      const sentence = "the lantern is always in her left hand";
+      projectCmd(dir, "set-character", "--asymmetric", sentence);
+      const refused = run("mirror", join(dir, "motions", "walk-right"), "--name", "walk-left", "--json");
+      expect(refused.code).toBe(1);
+      expect(refused.err).toContain(`"${sentence}"`);
+      expect(refused.err).toMatch(/--force/);
+      expect(refused.out).toBe("");
+      expect(existsSync(join(dir, "motions", "walk-left"))).toBe(false);
+
+      const forced = mirror(dir, "--force");
+      expect(forced.asymmetric).toBe(sentence);
+      expect(forced.warnings).toContainEqual(expect.stringContaining(`"${sentence}"`));
+      // The summary says it was forced — the one thing register-run takes as
+      // leave to flip an asymmetric character — and without it the same
+      // summary is refused, so the lock holds end to end.
+      expect(forced.force).toBe(true);
+      const { force: _forced, ...unforced } = forced;
+      expect(() => projectCmd(dir, "register-run", "--motion", "walk-left", "--run", runFile(dir, unforced)))
+        .toThrow(/Pip is asymmetric .* force: true/);
+      expect(projectCmd(dir, "register-run", "--motion", "walk-left", "--run", runFile(dir, forced)).status).toBe("ready");
+    }, TIMEOUT_MS);
+
+    test("refuses by name what it cannot flip, and writes nothing when it does", () => {
+      const dir = useMirrorable();
+      const source = join(dir, "motions", "walk-right");
+      for (const [argv, pattern] of [
+        [[join(dir, "motions", "nope"), "--name", "x"], /no motion 'nope'.*walk-right, walk-left/],
+        [[join(dir, "motions", "walk-left"), "--name", "x"], /'walk-left' is declared a mirror/],
+        [[source, "--name", "walk-right"], /--name walk-right is the motion being flipped/],
+        [[source, "--name", "x", "--out", source], /where walk-right's frames live/],
+        [[source], /--name is required/],
+      ] as const) {
+        const r = run("mirror", ...argv, "--json");
+        expect({ argv, code: r.code, matches: pattern.test(r.err) }).toEqual({ argv, code: 1, matches: true });
+      }
+      projectCmd(dir, "add-motion", "--id", "jump-right", "--rows", "1", "--cols", "4", "--fps", "8", "--direction", "right");
+      const planned = run("mirror", join(dir, "motions", "jump-right"), "--name", "jump-left", "--json");
+      expect(planned.err).toMatch(/'jump-right' is planned, not ready — finish it before mirroring it/);
+      projectCmd(dir, "set-motion", "--motion", "walk-right", "--direction", "front");
+      const front = run("mirror", source, "--name", "walk-back", "--json");
+      expect(front.code).toBe(1);
+      expect(front.err).toMatch(/faces front — a mirror flips one side into the other/);
+      expect(existsSync(join(dir, "motions", "walk-back"))).toBe(false);
+      expect(existsSync(join(dir, "motions", "x"))).toBe(false);
+    }, TIMEOUT_MS);
+
+    test("a .riv draws a mirror from its source's images, flipped, and embeds none of its own", () => {
+      const dir = useMirrorable();
+      projectCmd(dir, "register-run", "--motion", "walk-left", "--run", runFile(dir, mirror(dir)), "--at", "2000");
+      const json = runJson("rive", dir, "--images", "png");
+      const [right, left] = json.motions;
+      expect(left).toMatchObject({ id: "walk-left", shares: "walk-right", mirrored: true, frames: 4, estimatedDecodeBytes: 0 });
+      expect(json.frameCount).toBe(4);
+      expect(json.estimatedDecodeBytes).toBe(right.estimatedDecodeBytes);
+      expect(json.notes).toContain("walk-left: walk-right's 4 images flipped — nothing more embedded");
+      // Stood where the flipped frames stand: the pivot at width − x.
+      expect(left.anchor.x).toBeCloseTo(right.source.width - right.anchor.x, 2);
+
+      const riv = decodeRiv(readFileSync(json.out));
+      const assets = riv.objects.filter((o) => o.type === "ImageAsset");
+      const images = riv.objects.filter((o) => o.type === "Image");
+      expect(assets).toHaveLength(4);
+      expect(images).toHaveLength(8);
+      const [own, flipped] = [images.slice(0, 4), images.slice(4)];
+      for (const [i, image] of flipped.entries()) {
+        // The same asset and origin as the source frame, drawn with scaleX −1:
+        // the flipped frame, standing on its pivot at width − x.
+        expect(image.props).toMatchObject({
+          name: `walk-left_0${i}`, assetId: own[i].props.assetId, scaleX: -1,
+          originX: own[i].props.originX, originY: own[i].props.originY,
+        });
+        expect(own[i].props.scaleX).toBeUndefined();
+      }
+      // walk-left's timeline keys the flipped Images (components 2 + 4 + i).
+      const keyed = riv.objects.filter((o) => o.type === "KeyFrameId").map((o) => o.props.value);
+      expect(keyed.slice(4)).toEqual([6, 7, 8, 9]);
+      // One authority for the memory: the Export tab quotes the same plan.
+      const planned = rivePlanFor(loadRoster([
+        { path: "pip/project.json", content: readFileSync(join(dir, "project.json"), "utf-8") },
+      ])!.byContentSet.pip)!;
+      expect(planned.decodeBytes).toBe(json.estimatedDecodeBytes);
+      expect(planned.motions.map((m) => [m.id, m.shares ?? null, m.mirrored ?? false])).toEqual([
+        ["walk-right", null, false], ["walk-left", "walk-right", true],
+      ]);
+    }, TIMEOUT_MS);
+
+    test("a mirror of an earlier run keeps its own frames, and says so", () => {
+      const dir = useMirrorable();
+      projectCmd(dir, "register-run", "--motion", "walk-left", "--run", runFile(dir, mirror(dir)), "--at", "2000");
+      // walk-right run and registered again after it was mirrored.
+      const again = runJson("run", SHEETS.prop(), "--rows", "1", "--cols", "4",
+        "--out", join(dir, "motions", "walk-right"), "--name", "walk-right", "--fps", "8", "--loop", "--no-webp");
+      projectCmd(dir, "register-run", "--motion", "walk-right", "--run", runFile(dir, again), "--at", "3000");
+      const json = runJson("rive", dir, "--images", "png");
+      const left = json.motions.find((m: any) => m.id === "walk-left");
+      expect(left.shares).toBeUndefined();
+      expect(left.estimatedDecodeBytes).toBeGreaterThan(0);
+      expect(json.frameCount).toBe(8);
+      expect(json.warnings).toContainEqual(expect.stringMatching(/walk-left flips an earlier run of walk-right.*'sprite-sheet\.mjs mirror'/));
+      const planned = rivePlanFor(loadRoster([
+        { path: "pip/project.json", content: readFileSync(join(dir, "project.json"), "utf-8") },
+      ])!.byContentSet.pip)!;
+      expect(planned.decodeBytes).toBe(json.estimatedDecodeBytes);
+    }, TIMEOUT_MS);
+
+    test("rive reads character.pixel before the style sentence", () => {
+      const dir = useMirrorable();
+      projectCmd(dir, "set-character", "--style", "Soft painted storybook look", "--pixel", "32");
+      const json = runJson("rive", dir, "--max-size", "32");
+      expect(json.images).toBe("webp-lossless");
+      expect(json.resample.filter).toBe("nearest");
+    }, TIMEOUT_MS);
+  });
+
   test("cleanup", () => {
     built.clear();
     sharedRoot = null;

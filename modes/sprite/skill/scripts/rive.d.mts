@@ -75,9 +75,10 @@ export interface RiveFrameSpec {
   ext?: "png" | "webp";
 }
 
-/** Another motion's embedded frame, shown again (a reverse transition). */
+/** Another motion's embedded frame, shown again (a reverse transition), or
+ *  shown flipped left to right about its pivot (`flip`, a mirror). */
 export interface RiveSharedFrameSpec {
-  shared: { motion: string; index: number };
+  shared: { motion: string; index: number; flip?: boolean };
 }
 
 export interface RiveMotionSpec extends RiveGraphMotion {

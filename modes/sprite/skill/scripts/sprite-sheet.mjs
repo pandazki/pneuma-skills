@@ -12,10 +12,13 @@
  * maths in JS; every image is written by an ffmpeg filter chain.
  *
  * Subcommands: probe, key, flatten, slice, align, pack, gif, inspect, run,
- * contact, from-video, retime, loop, export, rive, breathe, pixel.
+ * contact, from-video, retime, loop, export, rive, breathe, pixel, mirror.
  *
  * `pixel` (and `run --pixel`) snaps generated pixel art onto the pixel grid
  * it was drawn on; the lattice itself lives in `pixel-lattice.mjs`.
+ *
+ * `mirror` flips a side view into the other side; which motions flip and
+ * where the anchor lands are `mirror.mjs`'s rules.
  *
  * `export` and `rive` hand a FINISHED motion over in somebody else's format
  * (video, a frame animation, an Aseprite sheet, a `.riv`). They read the character's
@@ -42,7 +45,7 @@ import { asepriteDocument, gridLayout, stackLayout } from "./aseprite.mjs";
 import { RIVE_MOTION_INPUT, riveDefaultMotion, riveHub, writeRiv } from "./rive.mjs";
 import {
   RIVE_DECODE_LIMIT_BYTES, RIVE_DECODE_WARN_BYTES, RIVE_LOOP_FPS, RIVE_LOOP_MAX_SIZE, riveDefaultImages,
-  riveDecodeWarning, riveIsPixelArt, riveMB, rivePlan, riveReverseIsCurrent,
+  riveDecodeWarning, riveIsPixelArt, riveMB, riveMirrorIsCurrent, rivePlan, riveReverseIsCurrent,
 } from "./rive-plan.mjs";
 import { SHADOW_DEFAULTS, SHADOW_RANGES, projectShadow, shadowCanvas, withShadow } from "./shadow.mjs";
 import { zipStore } from "./zip.mjs";
@@ -65,6 +68,7 @@ import {
   upscale, writePalette,
 } from "./pixel-lattice.mjs";
 import { DEFAULT_SAFE_MARGIN_RATIO, guideGeometry, guideRaster } from "./sheet-prompt.mjs";
+import { MIRRORED, asymmetry, atlasLayout, mirrorAnchorRecord, mirrorRefusal } from "./mirror.mjs";
 
 const DEFAULT_THRESHOLD = 16;
 const DEFAULT_PAD = 8;
@@ -329,6 +333,7 @@ const SUBCOMMANDS = [
   "probe", "key", "flatten", "slice", "clean", "align", "pack", "gif",
   "inspect", "run", "contact", "from-video", "retime", "loop", "transition", "lineup", "export", "rive",
   "breathe", "pixel",
+  "mirror",
 ];
 
 const USAGE = `Usage: sprite-sheet.mjs <subcommand> [options]
@@ -661,6 +666,21 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       --reverse-of plays a REGISTERED transition backwards as the way back,
       free: its frames copied in reverse order, its crop, scale and rate, and
       its own ends measured against the loops it now joins.
+
+  mirror <character>/motions/<of> --name <id> [--out <character>/motions/<id>] [--force]
+      The other side of a side view, free: <of>'s REGISTERED frames flipped
+      left to right (a lossless pixel reorder), then pack -> gif (+webp) ->
+      inspect exactly as 'run' finishes a sheet — same fps, loop, anchor,
+      scale and columns as <of>'s atlas. The anchor x becomes cell width - x
+      (align.json and the atlas pivot); <of>'s pre-align cells are flipped
+      beside the frames when it kept them. <of> must be a ready sprite motion
+      facing left or right, not a loop, a transition or itself a mirror.
+      Refused when character.asymmetric is set — the sentence is said back,
+      because a flip moves exactly that to the wrong side — unless --force,
+      which keeps the sentence in the warnings and says force: true in the
+      summary (register-run refuses an asymmetric mirror without it). --out
+      defaults to <character>/motions/<id>. --json is what register-run
+      takes (source: "mirror", mirrorOf).
 
   lineup <characterDir> [--hub <loopId>] [--out <png>]
       Look before spending: every ready loop's frame 0 beside the hub's, at
@@ -5105,6 +5125,166 @@ function stepReverseTransition(options) {
   }
 }
 
+/**
+ * `paths` flipped left to right into `outDir` as 0-based numbered PNGs
+ * (`digits` wide), in one ffmpeg pass. `hflip` only reorders pixels, so every
+ * RGBA value survives exactly. Staged in a scratch directory inside `outDir`
+ * and renamed into place, so nobody reads half a set; the frames must share
+ * one size, as a motion's do.
+ */
+function flipImages(paths, outDir, digits, label) {
+  mkdirSync(outDir, { recursive: true });
+  const scratch = mkdtempSync(join(outDir, ".flip-"));
+  try {
+    const staged = join(scratch, "in");
+    const flipped = join(scratch, "out");
+    mkdirSync(staged);
+    mkdirSync(flipped);
+    const seq = (i) => `${String(i).padStart(4, "0")}.png`;
+    paths.forEach((path, i) => copyFileSync(path, join(staged, seq(i))));
+    ffmpeg([
+      "-start_number", "0", "-i", join(staged, "%04d.png"), "-frames:v", String(paths.length),
+      "-vf", "hflip", "-pix_fmt", "rgba", "-start_number", "0", "--", join(flipped, "%04d.png"),
+    ], `${label} flip`);
+    const written = paths.filter((_, i) => existsSync(join(flipped, seq(i)))).length;
+    if (written !== paths.length) fail(`${label}: flipping wrote ${written} of ${paths.length} frames`);
+    return paths.map((_, i) => {
+      const to = join(outDir, `${String(i).padStart(digits, "0")}.png`);
+      renameSync(join(flipped, seq(i)), to);
+      return to;
+    });
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
+/**
+ * The other side of a registered side-view motion, free: its frames flipped
+ * left to right, then packed, previewed and inspected the way `run` finishes a
+ * sheet, with the timing, anchor, scale and columns of the source's atlas.
+ * What it prints is a sprite run summary plus `source: "mirror"` and
+ * `mirrorOf`, which `register-run` takes. The rules — which motions flip, the
+ * asymmetric gate, where the anchor lands — are `mirror.mjs`'s.
+ */
+function stepMirror(sourceDir, options) {
+  const label = "mirror";
+  const dir = resolve(sourceDir);
+  const ofId = basename(dir);
+  const character = readCharacterProject(dirname(dirname(dir)), label);
+  const source = character.doc.sprite.motions.find((m) => m && m.id === ofId);
+  if (!source) {
+    const known = character.doc.sprite.motions.map((m) => m?.id).filter(Boolean).join(", ") || "none";
+    fail(`${label}: no motion '${ofId}' in ${character.dir}/project.json (known: ${known})`);
+  }
+  const refused = mirrorRefusal(source);
+  if (refused) fail(`${label}: ${refused}`);
+  const { name } = options;
+  const facing = MIRRORED[source.direction];
+  if (name === ofId) fail(`${label}: --name ${name} is the motion being flipped — a mirror is a motion of its own, named for the side it faces (<state>-${facing})`);
+  const motionDir = resolve(options.out ?? join(character.dir, "motions", name));
+  const frames = registeredFrames(character, source, label);
+  if (motionDir === dir || motionDir === dirname(frames.dir)) {
+    fail(`${label}: --out ${motionDir} is where ${ofId}'s frames live — the mirror would overwrite the frames it flips`);
+  }
+
+  const warnings = [];
+  const sentence = asymmetry(character.doc.sprite.character);
+  if (sentence) {
+    if (!options.force) {
+      fail(`${label}: ${character.name} is asymmetric: "${sentence}" — flipping ${ofId} puts that on the wrong side in every frame. Generate ${name} from its own ${facing} anchor instead (references/prompting.md, "Direction anchors"), or pass --force if the flipped result is acceptable.`);
+    }
+    warnings.push(`flipped although ${character.name} is asymmetric: "${sentence}" — every frame now has it on the other side; look at ${name} on the stage before calling it done`);
+  }
+
+  const facts = readAtlasFacts(character, source, frames.paths.length, label);
+  const sourceAtlas = JSON.parse(readFileSync(assetFile(character, source.atlas), "utf-8"));
+  const layout = atlasLayout(sourceAtlas);
+  const anchor = layout.anchor ?? (source.anchor === "center" ? "center" : "bottom");
+  const scale = layout.scale ?? 1;
+  // A scaled atlas of pixel art was packed nearest-neighbour; the atlas does
+  // not say which filter it used, so the character's own reading decides.
+  const nearest = scale !== 1 && riveIsPixelArt(character.doc.sprite.character);
+
+  // The frames and, when the source kept them, its pre-align cells: `inspect`
+  // judges "leaves its grid cell" on the cells, and a flip preserves which
+  // edge a drawing touches. A cells directory left by an earlier run of this
+  // motion describes other frames, so it goes.
+  mkdirSync(motionDir, { recursive: true });
+  const framesDir = join(motionDir, "frames");
+  resetFramesDir(framesDir);
+  const flipped = flipImages(frames.paths, framesDir, 2, label);
+  const record = readAlignRecord(frames.dir)
+    ? JSON.parse(readFileSync(join(frames.dir, ALIGN_RECORD), "utf-8"))
+    : null;
+  const flippedRecord = mirrorAnchorRecord({
+    record, atlas: sourceAtlas, cell: probeSize(flipped[0], label), anchor, mirrorOf: source.id,
+  });
+  if (flippedRecord) writeJsonFile(join(framesDir, ALIGN_RECORD), flippedRecord);
+  const sourceCells = join(dirname(frames.dir), CELLS_DIRNAME);
+  const cellsDir = join(motionDir, CELLS_DIRNAME);
+  const cellCount = existsSync(sourceCells) ? readdirSync(sourceCells).filter((f) => FRAME_RE.test(f)).length : 0;
+  let cells = null;
+  if (existsSync(cellsDir)) {
+    resetFramesDir(cellsDir);
+    if (!readdirSync(cellsDir).length) rmSync(cellsDir, { recursive: true, force: true });
+  }
+  if (cellCount === flipped.length) {
+    flipImages(listFrames(sourceCells).map((entry) => entry.path), cellsDir, 2, label);
+    cells = cellsDir;
+  }
+
+  const packed = stepPack(framesDir, {
+    out: join(motionDir, "sheet.png"),
+    atlas: join(motionDir, "atlas.json"),
+    name,
+    fps: facts.fps,
+    loop: facts.loop,
+    anchor,
+    cols: layout.cols,
+    scale,
+    nearest,
+  });
+  const preview = stepGif(framesDir, {
+    out: join(motionDir, "preview.gif"),
+    fps: facts.fps,
+    loop: facts.loop,
+    webp: join(motionDir, "preview.webp"),
+    width: null,
+  });
+  warnings.push(...preview.warnings);
+  const { summary } = stepInspect(motionDir, { anchor, threshold: options.threshold, cellsDir: cells });
+  warnings.push(...summary.warnings.filter((w) => !warnings.includes(w)));
+
+  return {
+    motionDir,
+    name,
+    source: "mirror",
+    mirrorOf: source.id,
+    direction: facing,
+    ...(cells ? { cells } : {}),
+    frames: flipped,
+    sheet: packed.sheet,
+    atlas: packed.atlas,
+    gif: preview.gif,
+    ...(preview.webp ? { webp: preview.webp } : {}),
+    inspect: summary,
+    cell: probeSize(flipped[0], label),
+    fps: facts.fps,
+    loop: facts.loop,
+    anchor,
+    scale,
+    ...(scale !== 1 ? { nearest } : {}),
+    pivot: packed.pivot,
+    ...(packed.anchorPoint ? { anchorPoint: packed.anchorPoint } : {}),
+    ...(sentence ? { asymmetric: sentence } : {}),
+    // `register-run` refuses a mirror of an asymmetric character unless the
+    // summary says the flip was forced, so the lock cannot be bypassed by
+    // registering a hand-made summary; this is where it is said.
+    ...(options.force ? { force: true } : {}),
+    warnings,
+  };
+}
+
 /** Copy a w*h RGBA window out of a decoded image without re-decoding it. */
 function cropBuffer(image, x, y, w, h) {
   const out = Buffer.allocUnsafe(w * h * 4);
@@ -6735,6 +6915,18 @@ function stepRive(characterDir, { images: askedImages = null, motions: named, in
         warnings.push(`${source.motion.id} plays an earlier cut of ${origin.motion.id} backwards — it goes in with its own frames; cut it again with 'sprite-sheet.mjs transition --reverse-of ${origin.motion.id} --character <dir>' and register it to draw it from ${origin.motion.id}'s images`);
       }
     }
+    // A mirror whose source is in the file shows the source's images flipped
+    // — unless the source was run again after it was mirrored.
+    const mirrorOf = new Map();
+    for (const source of sources.filter((s) => s.kind === "sprite" && s.motion.source === "mirror" && typeof s.motion.mirrorOf === "string")) {
+      const origin = sources.find((s) => s.motion.id === source.motion.mirrorOf);
+      if (!origin) continue;
+      if (riveMirrorIsCurrent(source.motion, origin.motion, lookup)) {
+        mirrorOf.set(source.motion.id, origin.motion.id);
+      } else {
+        warnings.push(`${source.motion.id} flips an earlier run of ${origin.motion.id} — it goes in with its own frames; mirror it again ('sprite-sheet.mjs mirror') and register it to draw it from ${origin.motion.id}'s images`);
+      }
+    }
 
     const plan = rivePlan(sources.map((source) => ({
       id: source.motion.id,
@@ -6746,6 +6938,7 @@ function stepRive(characterDir, { images: askedImages = null, motions: named, in
       height: source.size.height,
       ...(source.clip ? { clipScale: source.clip.scale } : {}),
       ...(reverseOf.has(source.motion.id) ? { reverseOf: reverseOf.get(source.motion.id) } : {}),
+      ...(mirrorOf.has(source.motion.id) ? { mirrorOf: mirrorOf.get(source.motion.id) } : {}),
     })), { fps, maxSize });
 
     // Refused on the arithmetic, before a frame is scaled or a byte written.
@@ -6830,15 +7023,22 @@ function stepRive(characterDir, { images: askedImages = null, motions: named, in
       }));
       return { planned, source, shown, frames, loopPoint };
     });
-    // A shared motion shows its source's embedded frames, backwards: its
-    // frame r is the source's planned frame K − 1 − r.
+    // A shared motion shows its source's embedded frames: a reverse's frame r
+    // is the source's planned frame K − 1 − r, a mirror's frame i the
+    // source's frame i flipped (`sharedFrames`). A flipped frame is measured
+    // as the file draws it — the pixels flipped, the pivot at width − x.
     const byId = new Map(own.map((entry) => [entry.planned.id, entry]));
     for (const entry of own) {
-      if (!entry.planned.shares) continue;
-      const from = byId.get(entry.planned.shares);
-      const count = entry.planned.frames;
-      entry.shown = Array.from({ length: count }, (_, r) => from.shown[count - 1 - r]);
-      entry.frames = Array.from({ length: count }, (_, r) => ({ shared: { motion: from.planned.id, index: count - 1 - r } }));
+      const { shares, mirrored, sharedFrames } = entry.planned;
+      if (!shares) continue;
+      const from = byId.get(shares);
+      let shown = from.shown;
+      if (mirrored) {
+        const paths = flipImages(from.shown.map((frame) => frame.path), join(work, `flip-${entry.planned.id}`), 4, label);
+        shown = from.shown.map((frame, i) => ({ ...frame, path: paths[i], pivot: { x: frame.width - frame.pivot.x, y: frame.pivot.y } }));
+      }
+      entry.shown = sharedFrames.map((k) => shown[k]);
+      entry.frames = sharedFrames.map((k) => ({ shared: { motion: from.planned.id, index: k, ...(mirrored ? { flip: true } : {}) } }));
       entry.loopPoint = from.loopPoint;
     }
 
@@ -6901,7 +7101,7 @@ function stepRive(characterDir, { images: askedImages = null, motions: named, in
     for (const { planned } of own) {
       const { source } = planned;
       if (planned.shares) {
-        notes.push(`${planned.id}: ${planned.shares}'s ${planned.frames} images played backwards — nothing more embedded`);
+        notes.push(`${planned.id}: ${planned.shares}'s ${planned.frames} images ${planned.mirrored ? "flipped" : "played backwards"} — nothing more embedded`);
         continue;
       }
       if (planned.frames === source.frames && planned.scale === 1) continue;
@@ -6949,6 +7149,7 @@ function stepRive(characterDir, { images: askedImages = null, motions: named, in
         loop: planned.loop,
         ...(source.kind === "transition" ? { from: source.motion.from, to: source.motion.to } : {}),
         ...(planned.shares ? { shares: planned.shares } : {}),
+        ...(planned.mirrored ? { mirrored: true } : {}),
         source: planned.source,
         frames: planned.frames,
         fps: planned.fps,
@@ -7269,6 +7470,7 @@ const OPTIONS = {
     images: { type: "string" }, motions: { type: "string" }, "include-loops": { type: "boolean", default: false },
     fps: { type: "string" }, "max-size": { type: "string" }, filter: { type: "string" }, hub: { type: "string" },
   },
+  mirror: { name: { type: "string" }, out: { type: "string" }, force: { type: "boolean", default: false } },
 };
 
 /** `--keyer unmix|colorkey`. */
@@ -7979,7 +8181,7 @@ function main() {
       const gapOf = new Map(machine.cuts.map((cut) => [`${cut.from}>${cut.to}`, cut.poseGap?.gap]));
       emit(values, out, [
         `${basename(out.out)} · ${out.motions.map((m) => m.id).join(", ")} · ${out.frameCount} ${out.images} frames on a ${out.artboard.width}×${out.artboard.height} artboard · ${(out.size / 1e6).toFixed(2)} MB → ${out.out}`,
-        ...out.motions.map((m) => `  ${m.id} (${m.kind}): ${m.shares ? `${m.shares}'s images backwards` : `${m.frames} frames at ${m.fps} fps, ${m.width}×${m.height} — ${riveMB(m.estimatedDecodeBytes)} MB decoded`}`),
+        ...out.motions.map((m) => `  ${m.id} (${m.kind}): ${m.shares ? `${m.shares}'s images ${m.mirrored ? "flipped" : "backwards"}` : `${m.frames} frames at ${m.fps} fps, ${m.width}×${m.height} — ${riveMB(m.estimatedDecodeBytes)} MB decoded`}`),
         `state machine "${machine.name}", resting in ${machine.defaultMotion}${machine.hub ? ` (the hub)` : ""}`,
         ...(number ? [`  number '${number.name}': ${number.values.map((v) => `${v.value} = ${v.motion}`).join(", ")}`] : []),
         ...(triggers.length ? [`  triggers: ${triggers.join(", ")}`] : []),
@@ -8007,6 +8209,20 @@ function main() {
         torsoHalf: intOrNull(values.torso, "--torso", 1),
       });
       emit(values, out, breatheLines(out));
+      break;
+    }
+    case "mirror": {
+      const out = stepMirror(requirePositional(positionals, "<character>/motions/<motionId>"), {
+        name: requireFlag(values.name, "--name"),
+        out: values.out,
+        force: values.force,
+        threshold,
+      });
+      emit(values, out, [
+        `${out.name}: ${out.frames.length} frames of ${out.cell.width}x${out.cell.height}, ${out.mirrorOf} flipped to face ${out.direction} (pivot ${out.pivot.x},${out.pivot.y}) → ${out.motionDir}`,
+        ...(out.warnings.length ? out.warnings : ["no warnings"]),
+        `register it: sprite-project.mjs register-run --dir <character> --motion ${out.name} --run <this --json>`,
+      ]);
       break;
     }
     default:

@@ -52,6 +52,8 @@ export interface RivePlanInput {
   clipScale?: number | null;
   /** A transition: the transition whose frames it plays backwards. */
   reverseOf?: string;
+  /** A sprite motion: the sprite motion whose frames it shows flipped. */
+  mirrorOf?: string;
 }
 
 export interface RivePlanMotion {
@@ -71,8 +73,12 @@ export interface RivePlanMotion {
   scale: number;
   /** The clipScale it was planned with, or null. */
   clipScale: number | null;
-  /** A reverse that embeds nothing: the transition whose images it shows. */
+  /** A reverse or a mirror that embeds nothing: the motion whose images it shows. */
   shares?: string;
+  /** A sharing mirror: the images are shown flipped left to right. */
+  mirrored?: boolean;
+  /** A sharing motion: frame r shows the source's kept frame sharedFrames[r]. */
+  sharedFrames?: number[];
   decodeBytes: number;
 }
 
@@ -96,6 +102,20 @@ export declare function rivePlan(
  *  frame's `reverse` edge is newer than the source frame it names. */
 export declare function riveReverseIsCurrent(
   reverse: { frames: string[] },
+  source: { frames: string[] },
+  lookup: {
+    edgeOf: (assetId: string) => {
+      fromAssetId: string | null;
+      operation?: { timestamp?: number; params?: Record<string, unknown> };
+    } | undefined;
+    createdAt: (assetId: string) => number | undefined;
+  },
+): boolean;
+
+/** Whether a registered mirror still shows its source flipped: every frame's
+ *  `mirror` edge is newer than the source frame it names. */
+export declare function riveMirrorIsCurrent(
+  mirror: { frames: string[] },
   source: { frames: string[] },
   lookup: {
     edgeOf: (assetId: string) => {
