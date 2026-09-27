@@ -93,12 +93,15 @@ timed-phase attack, a pixel-art sheet, a back-view walk.
 | 20 | Video prompt clauses: treadmill walk without naming limbs, planted idle with one blink, timed attack phases, no motion blur | `video/batch.py:59–127` | port (text) | T7 |
 | 21 | First-frame-locked idle/attack clips (end image = start image) | `video/batch.py:41–49` | inspired | T7 |
 | 22 | Direction anchors: one single-pose anchor per direction, mirror contract, handed-prop side lock | `docs/directional-anchor-workflow.md`, `gen/gen_set.py:222` | inspired | T8 |
-| 23 | Frame curation: drop / reorder / hold / nudge, candidate takes, rerolls append | `curate/curation.py`, `serve/curator/`, `effects/reroll.py`, `docs/curation.md` | inspired | T9 |
-| 24 | AI in-between: image model draws the frame between two with both attached | `effects/interpolate.py`, `docs/frame-interpolation.md` | inspired | T9 |
 | 25 | Recolor: exact hex map + tolerance mode, report of unmatched entries | `effects/recolor.py`, `docs/recolor.md` | port (palette-quantised art) | T11 |
 
 ## What we do not migrate, and why
 
+- **Frame curation, candidate takes, AI in-betweens** (`curate/`,
+  `serve/curator/`, `effects/reroll.py`, `effects/interpolate.py`) — the
+  owner's call (2026-09-27): our users are not animators; a frame editor is a
+  professional's tool. Bad frames stay the agent's job (fix-alignment,
+  regenerate), and the round spends its product effort on routes instead.
 - **Palette decontamination** (`frames/decontam.py`) and the **YCbCr matte** —
   upstream ships both off by default (decontam after a magenta regression; its
   benchmark harness is not in the repo). Our paid VEED matte already measures
@@ -119,15 +122,37 @@ timed-phase attack, a pixel-art sheet, a back-view walk.
   and VEED's green-screen endpoint is green only; T1 warns instead of
   switching plates.
 
+## Routes, not features
+
+Owner direction (2026-09-27): "功能不用多，但是要在产品上给用户不同的路线思考好使用过程"
+— few features, but a well-thought usage process for each route a user
+takes. Everything above is plumbing; what the user meets is a route chosen by
+what they are making. The skill (T12) is organised around these routes, each
+with its opening question in plain language (no grid / fps / anchor jargon),
+the defaults it implies, the cost and wait said up front, where to look in the
+viewer at each step, and the finish line (what they download). Working set,
+refined by D1:
+
+| Route | For | Implies |
+|---|---|---|
+| Game character | a move set for an engine | sheet or video per motion, engine export (Aseprite for Phaser, atlas with anchor for Pixi), shadow optional |
+| ↳ pixel-art game | the same, in pixel art | pixel lattice on, palette pinned, recolor variants |
+| ↳ top-down game | four facings | direction anchors, mirrored side |
+| Make my image move | someone with one picture and no budget | upload → breathe idle (free, seconds) → one video motion if they want more |
+| UI loop | a living icon or element | workflow E (unchanged) |
+| Interactive mascot | a character that switches states in an app | loops + transitions → Rive (workflow F) |
+
+Every route ends with a blind cold-start trial in wave 3.
+
 ## Waves
 
 | Wave | Tasks | Depends on |
 |---|---|---|
 | 1a (now, parallel) | T1 chroma · T2 engine export · T3 cycle analysis · T4 align & framing · T5 pixel lattice · T6 breathe core | this document |
 | 1a′ (now, parallel) | D1 schema design (architect) | this document |
-| 1b | T7 generation · T8 directions · T9 curation · T10 breathe wiring · T11 recolor | D1 (T7–T10), T5 (T11) |
+| 1b | T7 generation · T8 directions · T10 breathe wiring · T11 recolor | D1 (T7, T8, T10), T5 (T11) |
 | 2 | E1–E7 paid validation runs, numbers into references | 1a/1b merged |
-| 3 | T12 integration (SKILL.md, manifest 0.5.0, NOTICE.md, `inspiredBy`, viewer surfacing) → review → gates → blind cold-start trial → PR | all |
+| 3 | T12 integration (SKILL.md organised by user route, manifest 0.5.0, NOTICE.md, `inspiredBy`, viewer surfacing) → review → gates → blind cold-start trial per route → PR | all |
 
 ## Tasks
 
@@ -261,15 +286,15 @@ idle, for the owner to judge.
 
 ### D1 — Schema design (architect)
 
-One design for every sidecar addition this round, so the concepts have one
-authority: breathe as a motion source; per-motion direction, direction
-anchors and mirrored motions; frame curation (drop / reorder / hold / nudge),
-who writes it and how a re-run treats it; candidate takes and AI in-betweens;
-the recorded sheet-prompt parts; the pixel palette record. Output: a design
-note appended to this document, with a recommendation for the viewer-edit
-question (viewer writes a record directly vs. structured request to the
-agent).
+The user routes first (see *Routes, not features*): the opening questions,
+defaults, cost lines, viewer touchpoints and finish line of each, and whether
+the route is recorded on the character. Then one design for every sidecar
+addition this round, so the concepts have one authority: breathe as a motion
+source; per-motion direction, direction anchors and mirrored motions; the
+recorded sheet-prompt parts; the pixel palette record. Output: a design note
+appended to this document.
 
-### T7–T11
+### T7, T8, T10, T11
 
-Specified after D1 lands; see the appended design note.
+Specified after D1 lands; see the appended design note. (T9, frame
+curation, was dropped by the owner on 2026-09-27.)
