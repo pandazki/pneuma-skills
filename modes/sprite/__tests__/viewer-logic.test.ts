@@ -1207,7 +1207,7 @@ describe("inspect thresholds", () => {
     expect(script).not.toMatch(/const KEY_(RESIDUE|FRINGE)_WARN\s*=/);
     expect(keyResidueVerdict(inspect({ keyResidue: 0.0158 }))).toEqual({ value: 0.0158, limit: KEY_RESIDUE_WARN, over: true });
     expect(keyFringeVerdict(inspect({ keyFringe: 0.0252 }))).toEqual({ value: 0.0252, limit: KEY_FRINGE_WARN, over: true });
-    expect(keyFringeVerdict(inspect({ keyFringe: 0.01 })).over).toBe(false);
+    expect(keyFringeVerdict(inspect({ keyFringe: 0.01 }))?.over).toBe(false);
     // 0 is the clean edge — a verdict; absent is "not measured" — none.
     expect(keyFringeVerdict(inspect({ keyFringe: 0 }))).toEqual({ value: 0, limit: KEY_FRINGE_WARN, over: false });
     expect(keyResidueVerdict(inspect())).toBeNull();
