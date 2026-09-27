@@ -182,6 +182,12 @@ describe.skipIf(!HAS_FFMPEG)("run --pixel x anchor, head band, palette pinning",
     let doc = JSON.parse(readFileSync(join(dir, "project.json"), "utf-8"));
     expect(doc.sprite.character.pixel).toMatchObject({ logicalHeight: 28, palette: id, colors: walk.pixel.palette.colors });
     expect(doc.assets.find((a: { id: string }) => a.id === id).uri).toBe("motions/walk/palette.json");
+    // inspect's lattice check lands in the sidecar too, less the palette's
+    // absolute path (the character's pixel spec names the pinned palette).
+    const { palette: palettePath, ...check } = walk.inspect.pixel;
+    expect(palettePath).toBe(join(dir, "motions", "walk", "palette.json"));
+    expect(check).toMatchObject({ scale: 1, held: true, paletteChecked: true });
+    expect(doc.sprite.motions.find((m: { id: string }) => m.id === "walk").inspect.pixel).toEqual(check);
 
     // A second motion: no --palette, and it lands on the pinned file.
     projectJson(dir, "add-motion", "--id", "hop", "--rows", "2", "--cols", "2", "--fps", "8");

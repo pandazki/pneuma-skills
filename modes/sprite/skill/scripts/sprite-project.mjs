@@ -371,8 +371,11 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       was sliced so, whether a count was forced and the poses clipped anyway;
       the cut lines and pose boxes stay in the summary. A run cut on the
       fixed grid drops it. A '--y-from cell' run's inspect.lift (px above
-      the ground per frame, null for an empty one) travels with the rest of
-      the inspect summary.
+      the ground per frame, null for an empty one) and a pixel run's
+      inspect.pixel { pitch, scale, held, paletteChecked, softAlphaFrames?,
+      offGridFrames?, offPaletteFrames? } travel with the rest of the
+      inspect summary (the palette's path does not: the character's pixel
+      spec names the pinned palette).
       A 'from-video' summary (source: "video") derives every frame from the
       CLIP instead of a sheet, with params.frameIndex and params.t seconds,
       and sets motion.source = "video". The clip must already be a registered
@@ -446,8 +449,8 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
 
   show [--motion <motionId>]
       Compact summary for the agent. --motion adds one motion's record:
-      its breathe (with the head-offset extremes), its auto slice and a
-      jump's lift. Lists stale mirrors — a mirror whose
+      its breathe (with the head-offset extremes), its auto slice, a
+      jump's lift and whether a pixel run's frames held their lattice. Lists stale mirrors — a mirror whose
       source was registered again after it, or is gone (staleMirrors) —,
       stale breathes — a breathe whose still was registered again after it,
       or is gone (staleBreathes) — and the ready sprite motions missing a
@@ -1069,6 +1072,8 @@ function inspectSummary(value) {
   const point = anchorPoint(value.anchorPoint);
   // `--y-from cell`: how high each frame's feet stand above the ground.
   const lift = frameLift(value.lift, value.frameCount);
+  // A pixel run: whether the frames still sit on their lattice.
+  const pixel = latticeCheck(value.pixel);
   const bodyDrift = finiteNumber(value.bodyDrift);
   // The head-and-torso spread: judged on a region no alignment pins, so it
   // still reads a lurch after `--x-from feet` has zeroed `bodyDrift`.
@@ -1134,6 +1139,7 @@ function inspectSummary(value) {
     ...(endGap === undefined ? {} : { endGap }),
     ...(crop ? { crop } : {}),
     ...(scale > 0 ? { scale } : {}),
+    ...(pixel ? { pixel } : {}),
   };
 }
 
@@ -1155,6 +1161,47 @@ function frameLift(value, frameCount) {
   if (!Array.isArray(value)) return undefined;
   if (Number.isInteger(frameCount) && value.length !== frameCount) return undefined;
   return value.every((v) => v === null || finiteNumber(v) !== undefined) ? [...value] : undefined;
+}
+
+/** The frame lists `inspect` names when a pixel lattice broke, each present
+ *  only when some frame broke it that way. */
+const LATTICE_BREAKS = ["softAlphaFrames", "offGridFrames", "offPaletteFrames"];
+
+/**
+ * A pixel run's lattice check (`inspect`'s `pixel` block) as the sidecar
+ * keeps it: the pitch `pixel` cut at (source px per logical px), the
+ * whole-number scale, whether the frames still hold the lattice — binary
+ * alpha, whole blocks on the N-grid, colours in the pinned palette —
+ * whether the palette was part of that (not after `--outline`), and the
+ * frames that broke it. The palette's path stays in the run summary: it is
+ * absolute, and the sidecar names the pinned palette once, as
+ * `character.pixel.palette`. The four facts whole or undefined; a malformed
+ * frame list, or a malformed entry in one, is dropped on its own.
+ */
+function latticeCheck(value) {
+  if (!value || typeof value !== "object") return undefined;
+  const x = finiteNumber(value.pitch?.x);
+  const y = finiteNumber(value.pitch?.y);
+  if (!(x > 0) || !(y > 0) || !Number.isInteger(value.scale) || value.scale < 1) return undefined;
+  if (typeof value.held !== "boolean" || typeof value.paletteChecked !== "boolean") return undefined;
+  const frames = (list) => (Array.isArray(list) ? list.filter((i) => Number.isInteger(i) && i >= 0) : []);
+  const breaks = LATTICE_BREAKS.map((key) => [key, frames(value[key])]).filter(([, list]) => list.length);
+  return { pitch: { x, y }, scale: value.scale, held: value.held, paletteChecked: value.paletteChecked, ...Object.fromEntries(breaks) };
+}
+
+/** The lattice check in one line — `show --motion` and the viewer context
+ *  say the same clauses, in inspect's own terms. */
+function latticeText(pixel) {
+  const pad = (i) => String(i).padStart(2, "0");
+  const round2 = (v) => Math.round(v * 100) / 100;
+  const frames = (list) => `${list.length === 1 ? "frame" : "frames"} ${list.slice(0, 6).map(pad).join(", ")}${list.length > 6 ? `, … (${list.length} in all)` : ""}`;
+  const breaks = [
+    pixel.softAlphaFrames ? `soft alpha in ${frames(pixel.softAlphaFrames)}` : null,
+    pixel.offGridFrames ? `blocks off the ${pixel.scale}x grid in ${frames(pixel.offGridFrames)}` : null,
+    pixel.offPaletteFrames ? `colours outside the palette in ${frames(pixel.offPaletteFrames)}` : null,
+  ].filter(Boolean);
+  const status = pixel.held ? "held" : `broken${breaks.length ? ` — ${breaks.join("; ")}` : ""}`;
+  return `${status} · pitch ${round2(pixel.pitch.x)}×${round2(pixel.pitch.y)}, scale ${pixel.scale}x · palette ${pixel.paletteChecked ? "checked" : "not checked"}`;
 }
 
 /** Why `run` sliced a sheet by its poses' ink, and what a clipped pose ran
@@ -2134,6 +2181,7 @@ function motionLines(motion, doc) {
     if (motion.slice) lines.push(`  ${sliceText(motion.slice)}`);
     const lift = motion.inspect?.lift;
     if (Array.isArray(lift)) lines.push(`  lift above the ground (y from cell): ${lift.map((v) => v ?? "-").join(", ")} px`);
+    if (motion.inspect?.pixel) lines.push(`  pixel lattice ${latticeText(motion.inspect.pixel)}`);
     const exported = Object.keys(motion.exports ?? {});
     if (exported.length) lines.push(`  exports: ${exported.join(", ")}`);
     const colourways = Object.keys(motion.variants ?? {});
