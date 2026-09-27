@@ -49,7 +49,18 @@ export declare function detectPixelGrid(image: RgbaImage, maxPitch?: number): { 
 export declare function estimatePixelGridRunlen(image: RgbaImage, maxPitch?: number): XY;
 export declare function crosscheckPitchRunlen(grid: XY, runlen: XY, axisTolerance?: number, ratioTolerance?: number): string[];
 
-export declare function consensusPitch(values: number[]): { value: number; dropped: number; floor: number | null; harmonics: number };
+export declare const DIVISOR_RUNLEN_RATIO: number;
+export declare function consensusPitch(values: number[], runlen?: number | null): {
+  value: number;
+  dropped: number;
+  floor: number | null;
+  harmonics: number;
+  /** The majority's reading the runs called a divisor, when a larger reading
+   *  it divides was taken instead. */
+  rescuedFrom?: number;
+  /** The runs call `value` a divisor and no larger reading backs another. */
+  divisorSuspect?: boolean;
+};
 export declare function resolveFramePitch(own: XY, consensus: XY): { pitch: XY; outlier: boolean };
 export declare function gridEdges(length: number, pitch: number, offset: number): number[];
 export declare function gridScore(image: RgbaImage, mask: Uint8Array, xs: number[], ys: number[]): number;
@@ -91,12 +102,15 @@ export declare function latticeFrames(
   nonEmpty: number;
   /** Only when fewer than half the non-empty frames were confident. */
   pooled: { pitch: number; score: number } | null;
+  /** Per axis: the consensus stands although the runs call it a divisor. */
+  divisorSuspect: { x: boolean; y: boolean };
 };
 
 export declare function pooledPitch(images: RgbaImage[], maxPitch?: number): { pitch: number; score: number };
 
 export declare const HEIGHT_SLACK: number;
 export declare const HEIGHT_EVIDENCE_RATIO: number;
+export declare const HEIGHT_MISMATCH_RATIO: number;
 export declare function heightPitch(
   lattice: { frames: Array<{ box: Box | null }>; pooled: { pitch: number; score: number } | null; runlen: XY },
   logicalHeight: number,

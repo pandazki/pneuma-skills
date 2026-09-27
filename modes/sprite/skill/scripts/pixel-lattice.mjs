@@ -63,6 +63,9 @@ export const PITCH_FAMILY_RATIO = 1.1;
 /** Per-frame pitches below this share of the largest are collapsed detections
  *  (a divisor of the true pitch) and do not vote in the consensus. */
 export const COLLAPSE_FLOOR = 0.6;
+/** Same-colour runs this many times the consensus pitch say the consensus is
+ *  a divisor of the real one (a run is at least one block long). */
+export const DIVISOR_RUNLEN_RATIO = 1.5;
 /** Colours in the run-wide palette. 24 starved rare saturated accents
  *  (upstream measured a gold hair tie at ΔRGB 59 at 24, 5.5 at 48). */
 export const DEFAULT_PALETTE_SIZE = 48;
@@ -466,10 +469,23 @@ export function crosscheckPitchRunlen(grid, runlen, axisTolerance = 0.12, ratioT
  * harmonics. When the largest reading has that support — upstream's own
  * half-collapsed case included — nothing changes.
  *
- * Returns `{ value, dropped, floor, harmonics }`, value 1 when no frame was
- * confident.
+ * ADAPTED (amend round, R2-2): the support rule lets a MAJORITY win, and a
+ * majority can be a divisor — six frames reading [3, 3, 3, 3, 3, 9] keep 3
+ * whether the blocks are 3 px or 9. The same-colour run length (`runlen`, the
+ * axis's median over the frames) is the arbiter: a run is at least one block
+ * long, so runs longer than DIVISOR_RUNLEN_RATIO × the consensus say it is a
+ * divisor. A larger reading the majority divides (a whole multiple within
+ * 10 %) that the runs back (within HEIGHT_EVIDENCE_RATIO) is then taken, with
+ * the readings of its family (`rescuedFrom` the divisor); with none, the
+ * consensus stands and says so (`divisorSuspect`) for the caller to act on.
+ * Measured on the route-G pixel trial's slime idle (2026-09-27): x readings
+ * [3, 3, 3, 3, 4, 4, 7, 13] against runs of 12.79 — cut at 3, the figure came
+ * out 96 blocks tall for a declared 24.
+ *
+ * Returns `{ value, dropped, floor, harmonics }` (plus `rescuedFrom` or
+ * `divisorSuspect`), value 1 when no frame was confident.
  */
-export function consensusPitch(values) {
+export function consensusPitch(values, runlen = null) {
   const confident = values.filter((v) => v >= 2.0).sort((a, b) => a - b);
   if (!confident.length) return { value: 1, dropped: 0, floor: null, harmonics: 0 };
   const inFamily = (a, b) => Math.max(a / b, b / a) <= PITCH_FAMILY_RATIO;
@@ -479,11 +495,22 @@ export function consensusPitch(values) {
   const floor = ceiling * COLLAPSE_FLOOR;
   const trusted = confident.filter((v) => v >= floor && v <= ceiling * PITCH_FAMILY_RATIO);
   const harmonics = confident.filter((v) => v > ceiling * PITCH_FAMILY_RATIO).length;
+  const value = trusted[trusted.length >> 1];
+  const found = { value, dropped: confident.length - trusted.length - harmonics, floor, harmonics };
+  if (!(runlen >= 2) || runlen <= value * DIVISOR_RUNLEN_RATIO) return found;
+  const multiples = confident.filter((v) => {
+    const m = Math.round(v / value);
+    return m >= 2 && inFamily(v, m * value) && Math.max(v / runlen, runlen / v) <= HEIGHT_EVIDENCE_RATIO;
+  });
+  if (!multiples.length) return { ...found, divisorSuspect: true };
+  const closest = multiples.reduce((a, b) => (Math.abs(Math.log(a / runlen)) <= Math.abs(Math.log(b / runlen)) ? a : b));
+  const family = confident.filter((v) => inFamily(v, closest));
   return {
-    value: trusted[trusted.length >> 1],
-    dropped: confident.length - trusted.length - harmonics,
-    floor,
-    harmonics,
+    value: family[family.length >> 1],
+    dropped: confident.filter((v) => v < closest / PITCH_FAMILY_RATIO).length,
+    floor: closest * COLLAPSE_FLOOR,
+    harmonics: confident.filter((v) => v > closest * PITCH_FAMILY_RATIO).length,
+    rescuedFrom: value,
   };
 }
 
@@ -816,13 +843,34 @@ export function latticeFrames(images, { detailBias = true, pitchHint = null, max
   const nonEmpty = grids.filter(Boolean).length;
   const confident = grids.filter((g) => g && Math.min(g.pitch.x, g.pitch.y) >= 2).length;
 
+  // The second opinion, read first: the run length arbitrates a consensus
+  // that a majority of divisor readings would otherwise decide.
+  const runlens = tight.map((t) => (t ? estimatePixelGridRunlen(t.image, maxPitch) : null)).filter(Boolean);
+  const runlenAxis = (axis) => {
+    const confident = runlens.map((r) => r[axis]).filter((v) => v >= 2.0).sort((a, b) => a - b);
+    return confident.length ? confident[confident.length >> 1] : 1.0;
+  };
+  const runlen = { x: runlenAxis("x"), y: runlenAxis("y") };
+
+  const readings = { x: consensusPitch(grids.filter(Boolean).map((g) => g.pitch.x), runlen.x), y: consensusPitch(grids.filter(Boolean).map((g) => g.pitch.y), runlen.y) };
+  // Blocks are square: a rescue on one axis only is not a lattice, it is two
+  // guesses. Both fall back to what the majority read, marked suspect.
+  if (Boolean(readings.x.rescuedFrom) !== Boolean(readings.y.rescuedFrom)) {
+    for (const axis of ["x", "y"]) {
+      const r = readings[axis];
+      if (r.rescuedFrom) readings[axis] = { ...consensusPitch(grids.filter(Boolean).map((g) => g.pitch[axis])), divisorSuspect: true };
+      else readings[axis] = { ...r, divisorSuspect: true };
+    }
+  }
   const axisConsensus = (axis) => {
-    const { value, dropped, floor, harmonics } = consensusPitch(grids.filter(Boolean).map((g) => g.pitch[axis]));
-    if (dropped) warnings.push(`dropped ${dropped} collapsed per-frame ${axis} pitch(es) below ${floor.toFixed(2)}`);
+    const { value, dropped, floor, harmonics, rescuedFrom } = readings[axis];
+    if (rescuedFrom) warnings.push(`most frames read a ${axis} pitch of ${rescuedFrom.toFixed(2)}, but same-colour runs measure ${runlen[axis].toFixed(2)} — a divisor; took the ${dropped ? "fewer " : ""}frames that read ${value.toFixed(2)}`);
+    else if (dropped) warnings.push(`dropped ${dropped} collapsed per-frame ${axis} pitch(es) below ${floor.toFixed(2)}`);
     if (harmonics) warnings.push(`dropped ${harmonics} per-frame ${axis} pitch(es) above ${(floor / COLLAPSE_FLOOR * PITCH_FAMILY_RATIO).toFixed(2)} that too few frames share (harmonics)`);
     return value;
   };
   const measured = { x: axisConsensus("x"), y: axisConsensus("y") };
+  const divisorSuspect = { x: Boolean(readings.x.divisorSuspect), y: Boolean(readings.y.divisorSuspect) };
   // ADAPTED: a hint is the centre of the pitch family, not only the fallback
   // for a generation where every frame is inconclusive (upstream's
   // `fit.pitch_hint`). Measured on a real GPT-Image walk (2026-09-27): one of
@@ -836,13 +884,6 @@ export function latticeFrames(images, { detailBias = true, pitchHint = null, max
     warnings.push(`${hintName} overrides the measured consensus ${measured.x.toFixed(2)}x${measured.y.toFixed(2)}`);
   }
 
-  // The second opinion: warnings only, the snap never reads it.
-  const runlens = tight.map((t) => (t ? estimatePixelGridRunlen(t.image, maxPitch) : null)).filter(Boolean);
-  const runlenAxis = (axis) => {
-    const confident = runlens.map((r) => r[axis]).filter((v) => v >= 2.0).sort((a, b) => a - b);
-    return confident.length ? confident[confident.length >> 1] : 1.0;
-  };
-  const runlen = { x: runlenAxis("x"), y: runlenAxis("y") };
   warnings.push(...crosscheckPitchRunlen(consensus, runlen));
 
   const centre = hinted ? hintName : `the consensus ${consensus.x.toFixed(2)}x${consensus.y.toFixed(2)}`;
@@ -873,6 +914,9 @@ export function latticeFrames(images, { detailBias = true, pitchHint = null, max
 
   return {
     frames, consensus, measured, runlen, warnings, confident, nonEmpty,
+    // Whether an axis's consensus was left standing although the runs say it
+    // is a divisor (never with a hint: the hint is the centre then).
+    divisorSuspect: hinted ? { x: false, y: false } : divisorSuspect,
     // Only worth its cost when the frames alone are not enough to go on.
     pooled: confident * 2 < nonEmpty ? pooledPitch(tight.filter(Boolean).map((t) => t.image), maxPitch) : null,
   };
@@ -930,6 +974,16 @@ export const HEIGHT_SLACK = 0.05;
  * refused — cutting at it would merge the drawn blocks into 32 rows).
  */
 export const HEIGHT_EVIDENCE_RATIO = 1.25;
+/**
+ * A snap this far from the declared height (either way) is not a figure
+ * drawn a little taller or shorter: it is a lattice at a divisor or a
+ * multiple of the blocks. `run --pixel` then cuts at the declared height's
+ * pitch when the frames' readings back it, and refuses when they do not —
+ * never registering a lattice 4x off (the route-G pixel trial's slime: 96
+ * blocks tall for a declared 24, exit 0). Under it the miss is said, as
+ * before: a declared 40 for a sheet drawn 28 tall is a person's call.
+ */
+export const HEIGHT_MISMATCH_RATIO = 1.5;
 
 /** Upper median, as `consensusPitch` takes it. */
 function upperMedian(values) {

@@ -73,7 +73,7 @@ import {
 } from "./recolor.mjs";
 import {
   DEFAULT_OUTLINE_STRENGTH, DEFAULT_PALETTE_SIZE, MAX_PITCH, PIXEL_RECORD, applyPalette, blankImage,
-  buildSharedPalette, enforceOutline, heightCheck, heightPitch, latticeCheck, latticeFrames, loadPalette,
+  buildSharedPalette, enforceOutline, heightCheck, heightPitch, HEIGHT_MISMATCH_RATIO, latticeCheck, latticeFrames, loadPalette,
   paste as pasteImage, upscale, writePalette,
 } from "./pixel-lattice.mjs";
 import { DEFAULT_SAFE_MARGIN_RATIO, guideGeometry, guideRaster } from "./sheet-prompt.mjs";
@@ -1755,6 +1755,30 @@ function stepPixel(framesDir, {
       : "";
     fail(`pixel: only ${lattice.confident} of ${lattice.nonEmpty} frames in ${inDir} read a pixel grid on their own${readings.length ? ` (${readings.join("; ")})` : ""} — too few to cut a whole generation on.${suggest.length ? ` ${suggest.join("; ")}.` : ""}${declared} Look at a frame at 8x and pass --pitch-hint N, the block width in source pixels (or this is not pixel art)`);
   }
+  // A lattice the frames' own evidence contradicts is not cut as it is. With a
+  // declared height, a snap 1.5x or more off it is a divisor or a multiple of
+  // the blocks: cut at the height's pitch when the frames' readings back it,
+  // refuse when they do not. Without one, a consensus the same-colour runs
+  // call a divisor has nothing to choose the multiple by: refuse.
+  let switched = false;
+  if (pitchHint === null && !byHeight?.backed) {
+    const first = logicalHeight ? heightCheck(lattice.frames, logicalHeight) : null;
+    const off = first ? Math.max(first.measured / logicalHeight, logicalHeight / first.measured) : 1;
+    const measuredAt = `${lattice.consensus.x.toFixed(2)}x${lattice.consensus.y.toFixed(2)}`;
+    const runs = `${lattice.runlen.x.toFixed(1)}x${lattice.runlen.y.toFixed(1)}`;
+    if (off >= HEIGHT_MISMATCH_RATIO) {
+      const implied = heightPitch(lattice, logicalHeight);
+      const said = implied.readings.map((r) => `${r.what} ${r.pitch.toFixed(1)}`).join(", ") || "none";
+      if (!implied.backed) {
+        fail(`pixel: cut at the pitch the frames read (${measuredAt} px), these frames come out ${first.measured} logical px tall — ${off.toFixed(1)}x the declared ${logicalHeight} — and the pitch that would make them ${logicalHeight} tall (${implied.pitch.toFixed(2)} px for ${implied.source} px) is not what their own readings say (${said}). Nothing was written. Look at a frame at 8x: pass --pitch-hint N with the block width in source pixels, or declare the height the sheet was drawn at (sprite-project.mjs set-character --pixel H)`);
+      }
+      heightNotes.push(`the pitch the frames read (${measuredAt} px) made them ${first.measured} logical px tall, ${off.toFixed(1)}x the declared ${logicalHeight} — a divisor or a multiple of the blocks; cut at ${implied.pitch.toFixed(2)} px instead, the block size at which these frames (${implied.source} px tall) are the declared height, which their own readings back (${said}). If the blocks are not about that wide at 8x, pass --pitch-hint N`);
+      lattice = latticeFrames(images, { detailBias, pitchHint: implied.pitch, hintLabel: `the declared height's pitch ${implied.pitch.toFixed(2)}` });
+      switched = true;
+    } else if (!logicalHeight && (lattice.divisorSuspect.x || lattice.divisorSuspect.y)) {
+      fail(`pixel: most frames read a ${measuredAt} px grid, but same-colour runs measure ${runs} px — the reading is a divisor of the real block size, and nothing says which multiple (no --pitch-hint, no declared height). Nothing was written. Look at a frame at 8x and pass --pitch-hint N (the runs suggest about ${Math.round((lattice.runlen.x + lattice.runlen.y) / 2)}), or declare the figure's height in logical pixels (--logical-height H, or sprite-project.mjs set-character --pixel H)`);
+    }
+  }
   const { consensus } = lattice;
   const warnings = [...heightNotes, ...lattice.warnings];
   // The height the frames came out at, against the declared one. The lattice
@@ -1766,7 +1790,7 @@ function stepPixel(framesDir, {
     warnings.push(`logical height: these frames snap to ${height.measured} logical px tall (${height.range[0]}–${height.range[1]}) at pitch ${consensus.x.toFixed(2)}x${consensus.y.toFixed(2)}, and the character is declared ${logicalHeight}. The lattice keeps the blocks the sheet was drawn with — cutting ${logicalHeight} rows out of ${implied.source} px would merge them. Regenerate the sheet with the figure ${logicalHeight} blocks tall; pass --pitch-hint ${implied.pitch.toFixed(1)} only if its blocks really are that wide at 8x; or, if ${height.measured} is right, declare it (sprite-project.mjs set-character --pixel ${height.measured}) so later motions are held to it`);
   }
   const heightRecord = height
-    ? { ...height, pitchFrom: pitchHint !== null ? "hint" : byHeight?.backed ? "height" : "measured" }
+    ? { ...height, pitchFrom: pitchHint !== null ? "hint" : byHeight?.backed || switched ? "height" : "measured" }
     : null;
 
   // One palette for every frame, pinned to disk. A file that is there wins
