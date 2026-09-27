@@ -50,6 +50,10 @@ export const ALPHA_THRESHOLD = 8;
 /** The uncovered-colour list stops here and says how many it left out, so
  *  "nothing left over" and "capped at 64 of 900" never read the same. */
 export const UNCOVERED_CAP = 64;
+/** Most colours a swatch sheet draws: a pinned palette holds at most 256. */
+export const MAX_SWATCHES = 256;
+/** Most pixels a swatch sheet may have (≈ 256 cells of a 64 px sprite at 2x). */
+export const MAX_SWATCH_PIXELS = 32_000_000;
 /** The widest tolerance there is: a Chebyshev distance on 0–255 channels. */
 export const MAX_TOLERANCE = 255;
 /** A colourway's name names files (`variants/<name>/`) and asset ids. */
@@ -391,6 +395,12 @@ function opaqueBox({ width, height, data }, alphaThreshold) {
  */
 export function swatchSheet(entries, { cellHeight = 144, cols = 8, alphaThreshold = ALPHA_THRESHOLD } = {}) {
   if (!entries.length) refuse("internal: no colours to draw");
+  // A palette-pinned sprite has at most 256 colours; more is a sprite that
+  // was never quantised (anti-aliased frames count thousands), whose sheet
+  // would be thousands of cells — gigabytes of pixels — nobody could read.
+  if (entries.length > MAX_SWATCHES) {
+    refuse(`${entries.length} colours in use — a swatch sheet draws at most ${MAX_SWATCHES}, a pinned palette's worth. These frames are not quantised to one palette: run the motions with --pixel (or recolor art that is pixel art)`);
+  }
   const boxes = entries.map((e) => opaqueBox(e.image, alphaThreshold));
   const maxW = Math.max(1, ...boxes.map((b) => (b ? b.w : 1)));
   const maxH = Math.max(1, ...boxes.map((b) => (b ? b.h : 1)));
@@ -402,6 +412,11 @@ export function swatchSheet(entries, { cellHeight = 144, cols = 8, alphaThreshol
   const cellH = label + maxH * s + 2 * pad;
   const columns = Math.min(cols, entries.length);
   const rows = Math.ceil(entries.length / columns);
+  // Bounded by the pixels too: 256 cells of an unfitted 1024 px frame drawn at
+  // 1x would still be a gigabyte.
+  if (columns * cellW * rows * cellH > MAX_SWATCH_PIXELS) {
+    refuse(`the swatch sheet would be ${columns * cellW}x${rows * cellH} px (${entries.length} colours, frames up to ${maxW}x${maxH} px) — over ${MAX_SWATCH_PIXELS / 1e6} MP. The frames are larger than pixel art is drawn at: check that the motions went through --pixel at scale 1`);
+  }
   const sheet = { width: columns * cellW, height: rows * cellH, data: new Uint8Array(columns * cellW * rows * cellH * 4) };
   fill(sheet, 0, 0, sheet.width, sheet.height, SHEET_BG);
 

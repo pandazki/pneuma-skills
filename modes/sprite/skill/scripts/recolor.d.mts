@@ -76,6 +76,8 @@ export declare function draftRecolorMap(args: {
   colors: Array<{ hex: string; pixels: number; share?: number; inPalette?: false; swatch?: number }>;
   variants: Colourway[];
 };
+export declare const MAX_SWATCHES: number;
+export declare const MAX_SWATCH_PIXELS: number;
 export declare function swatchSheet(
   entries: Array<{ rgb: Rgb; image: RgbaImage }>,
   options?: { cellHeight?: number; cols?: number; alphaThreshold?: number },

@@ -34,8 +34,13 @@ export interface Plate {
 }
 
 export interface KeyStats {
+  /** Pixels cut: within the radius, already transparent, or plate shade. */
   keyed: number;
+  /** Of `keyed`, the plate-shade pixels (a shadow painted on the plate). */
+  shaded: number;
   unmixed: number;
+  /** Of `unmixed`, the ones read against the local subject colour. */
+  localUnmixed: number;
   erased: number;
   despilled: number;
   spillClusters: number;
@@ -43,15 +48,36 @@ export interface KeyStats {
 
 export interface ResidueCounts {
   visible: number;
+  /** Visible pixels with the plate's hue (excess past 40). */
   tinted: number;
+  /** Opaque (α ≥ 250), untinted pixels within 2 px of transparency that are
+   *  the local subject moved at least a fifth of the way to the plate. */
+  fringe: number;
+  /** Visible pixels within 2 px of transparency — what `fringe` is out of. */
+  edge: number;
   partial: number;
+  /** Tinted pixels among the partially transparent ones. */
   partialTinted: number;
+}
+
+export interface PooledResidue {
+  /** (tinted + fringe) / visible. */
+  visible: number;
+  /** partialTinted / partial. */
+  edge: number;
+  /** fringe / edge: the share of the edge band that is a fringe. */
+  fringe: number;
 }
 
 export declare const UNMIX_REACH: number;
 export declare const RESIDUE_TINT: number;
 export declare const RGB_DIAGONAL: number;
 
+export declare const MAX_UNMIX_STAGE_BYTES: number;
+export declare const UNMIX_STAGE_MARGIN: number;
+export declare function unmixStageRefusal(
+  options: { frames: number; width: number; height: number; freeBytes?: number | null },
+): string | null;
 export declare function keyRadius(similarity: number): number;
 export declare function parseHex(hex: string): Rgb;
 export declare function toHex(color: Rgb): string;
@@ -65,10 +91,10 @@ export declare function plateOf(color: string | Rgb): Plate;
 export declare function keyFrame(
   image: RgbaImage,
   plate: Plate,
-  options: { radius: number; unmixReach?: number; spill?: boolean },
+  options: { radius: number; unmixReach?: number; spill?: boolean; shade?: boolean },
 ): KeyStats;
 export declare function keyResidue(image: RgbaImage, plate: Plate, threshold: number): ResidueCounts | null;
-export declare function poolResidue(counts: Array<ResidueCounts | null>): { visible: number; edge: number } | null;
+export declare function poolResidue(counts: Array<ResidueCounts | null>): PooledResidue | null;
 export declare function plateProximity(
   image: RgbaImage,
   color: Rgb,

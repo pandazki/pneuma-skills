@@ -17,7 +17,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -28,8 +28,8 @@ import {
 import {
   alphaBbox, applyPalette, bestPhase, buildSharedPalette, consensusPitch, crosscheckPitchRunlen, cropImage,
   detectPixelGrid, detectPixelPitch, dominantBlockColor, enforceOutline, estimatePixelGridRunlen, gridEdges,
-  latticeCheck, latticeFrames, refineEdgesToBoundaries, resolveFramePitch, snapGrid, solidBbox, upscale,
-  type RgbaImage,
+  latticeCheck, latticeFrames, loadPalette, refineEdgesToBoundaries, resolveFramePitch, snapGrid, solidBbox, upscale,
+  writePalette, type RgbaImage,
 } from "../skill/scripts/pixel-lattice.mjs";
 
 /** Upstream `grid_snap_downscale(image, pitch, phase=…)`: cut at the given
@@ -475,6 +475,25 @@ describe("one generation's frames", () => {
     // Under three votes the largest reading is the ceiling, as upstream.
     expect(consensusPitch([7, 36]).value).toBe(36);
   });
+
+  test("a majority of divisor readings does not win against the run length (R2-2)", () => {
+    // Without the runs, the majority decides — upstream's rule, kept.
+    expect(consensusPitch([3, 3, 3, 3, 3, 9]).value).toBe(3);
+    expect(consensusPitch([4, 4, 4, 4, 4, 4, 4, 8]).value).toBe(4);
+    // Runs of ~9 (and ~8) say 3 (and 4) are divisors: the larger reading the
+    // majority divides, and the runs back, is taken.
+    expect(consensusPitch([3, 3, 3, 3, 3, 9], 9.2)).toMatchObject({ value: 9, rescuedFrom: 3 });
+    expect(consensusPitch([4, 4, 4, 4, 4, 4, 4, 8], 7.6)).toMatchObject({ value: 8, rescuedFrom: 4 });
+    // The route-G slime idle's x readings against its runs of 12.79.
+    expect(consensusPitch([3, 7, 4, 3, 13, 3, 4, 3], 12.79)).toMatchObject({ value: 13, rescuedFrom: 3 });
+    // Its y readings: 14 is the only multiple, and runs of 10.78 do not back
+    // it (1.3x) — the consensus stands, marked for the caller to refuse.
+    const y = consensusPitch([3, 7, 6, 3, 14, 3, 3, 3], 10.78);
+    expect(y).toMatchObject({ value: 3, divisorSuspect: true });
+    expect(y.rescuedFrom).toBeUndefined();
+    // Runs within 1.5x of the consensus leave it alone.
+    expect(consensusPitch([3, 3, 3, 9], 4.4)).toEqual(consensusPitch([3, 3, 3, 9]));
+  });
 });
 
 describe("colour decisions", () => {
@@ -493,6 +512,21 @@ describe("colour decisions", () => {
     setPixel(img, 2, 0, [90, 90, 90, 40]);
     applyPalette(img, [[255, 0, 0], [0, 0, 255]]);
     expect([getPixel(img, 0, 0), getPixel(img, 1, 0), getPixel(img, 2, 0)]).toEqual([[255, 0, 0, 255], [0, 0, 255, 255], [0, 0, 0, 0]]);
+  });
+
+  test("an empty palette is refused before anything is written", () => {
+    // loadPalette refuses an empty colours list, so pinning one would leave a
+    // file every later run fails on.
+    const dir = mkdtempSync(join(tmpdir(), "sprite-palette-"));
+    try {
+      const file = join(dir, "pal", "palette.json");
+      expect(() => writePalette(file, [], "nothing")).toThrow("no colours to pin");
+      expect(existsSync(file)).toBe(false);
+      writePalette(file, [[1, 2, 3]], "one");
+      expect(loadPalette(file)).toMatchObject({ colors: [[1, 2, 3]], source: "one" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("the outline darkens only silhouette-edge pixels", () => {
@@ -747,6 +781,125 @@ describe.skipIf(!HAS_FFMPEG)("run --pixel", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }, CLI_TIMEOUT);
+
+  /** Every file under `dir` with its bytes' hash, for "nothing changed". */
+  function snapshot(dir: string): Record<string, string> {
+    const out: Record<string, string> = {};
+    const walk = (d: string) => {
+      for (const name of readdirSync(d)) {
+        const path = join(d, name);
+        if (statSync(path).isDirectory()) walk(path);
+        else out[path.slice(dir.length)] = new Bun.CryptoHasher("sha256").update(readFileSync(path)).digest("hex");
+      }
+    };
+    walk(dir);
+    return out;
+  }
+
+  test("a declared height 1.5x off the snap is refused before the previous run is touched (P4, R1-3)", () => {
+    const dir = workspace();
+    try {
+      const src = sheet(dir);
+      const motion = join(dir, "char", "motions", "walk");
+      const first = sheetJson("run", src, "--rows", "2", "--cols", "2", "--out", motion, "--name", "walk", "--fps", "8", "--loop",
+        "--pixel", "--logical-height", "28", "--no-webp");
+      expect(first.pixel.logicalHeight).toMatchObject({ declared: 28, measured: 28, honoured: true, pitchFrom: "measured" });
+      const before = snapshot(motion);
+      expect(Object.keys(before).some((k) => k.startsWith("/pixel/"))).toBe(true);
+
+      // Another sheet (forced over the first), declared half as tall: cut at
+      // the pitch its frames read it is 28 blocks, 2x the declared 14, and
+      // nothing the frames read backs 26 px blocks — refused, nothing moved.
+      const other = join(dir, "other.png");
+      const img = blank(840, 840);
+      [13.0, 13.2, 13.1, 13.3].forEach((p, i) => paste(img, cellOf(p, { at: [40, 30] }), (i % 2) * 420, Math.floor(i / 2) * 420));
+      writePng(other, img);
+      const refused = sheetCmd("run", other, "--rows", "2", "--cols", "2", "--out", motion, "--name", "walk", "--fps", "8", "--loop",
+        "--pixel", "--logical-height", "14", "--no-webp", "--force");
+      expect(refused.code).toBe(1);
+      expect(refused.err).toContain("2.0x the declared 14");
+      expect(refused.err).toContain("Nothing was written");
+      expect(snapshot(motion)).toEqual(before);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, CLI_TIMEOUT);
+
+  test("the anchor sits on a block boundary at an even scale (R1-2)", () => {
+    const dir = workspace();
+    try {
+      // 21 logical px wide: at 2x, 42 px plus the pad each side is 58 — a
+      // cell rounded to one block put the anchor at 29, inside a block.
+      const art = logicalArt(21, 28, 11);
+      const img = blank(840, 840);
+      [13.1, 13.3, 12.9, 13.2].forEach((p, i) => paste(img, cellOf(p, { art }), (i % 2) * 420, Math.floor(i / 2) * 420));
+      const src = join(dir, "sheet21.png");
+      writePng(src, img);
+      for (const scale of [2, 3]) {
+        const motion = join(dir, "char", "motions", `walk${scale}`);
+        const out = sheetJson("run", src, "--rows", "2", "--cols", "2", "--out", motion, "--name", "walk", "--fps", "8", "--loop",
+          "--pixel", "--scale", String(scale), "--x-from", "bbox", "--no-webp");
+        const record = JSON.parse(readFileSync(join(motion, "frames", "align.json"), "utf-8"));
+        expect({ scale, x: record.anchorPoint.x % scale, y: record.anchorPoint.y % scale }).toEqual({ scale, x: 0, y: 0 });
+        expect(out.cell.width % (2 * scale)).toBe(0);
+        expect(out.inspect.pixel).toMatchObject({ held: true, scale });
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, CLI_TIMEOUT);
+
+  test("a run without --pixel clears what an earlier pixel run left (R1-6)", () => {
+    const dir = workspace();
+    try {
+      const src = sheet(dir);
+      const motion = join(dir, "char", "motions", "walk");
+      sheetJson("run", src, "--rows", "2", "--cols", "2", "--out", motion, "--name", "walk", "--fps", "8", "--loop", "--pixel", "--no-webp");
+      expect(existsSync(join(motion, "pixel"))).toBe(true);
+      expect(existsSync(join(motion, "palette.json"))).toBe(true);
+      const plain = sheetJson("run", src, "--rows", "2", "--cols", "2", "--out", motion, "--name", "walk", "--fps", "8", "--loop", "--no-webp");
+      expect(existsSync(join(motion, "pixel"))).toBe(false);
+      expect(existsSync(join(motion, "palette.json"))).toBe(false);
+      expect(plain.warnings).toContain("not a pixel run: removed pixel/ and palette.json an earlier run --pixel left in this motion");
+      expect(plain.inspect.pixel).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, CLI_TIMEOUT);
+
+  test("the palette size comes from character.pixel.colors; --repalette never rebuilds the pinned file in place (R3)", () => {
+    const dir = workspace();
+    try {
+      const src = sheet(dir);
+      const char = join(dir, "char");
+      const motion = join(char, "motions", "walk");
+      const doc = (pixel: Record<string, unknown>, assets: unknown[] = []) =>
+        writeFileSync(join(char, "project.json"), JSON.stringify({ assets, sprite: { character: { pixel }, motions: [] } }));
+      mkdirSync(char, { recursive: true });
+      doc({ logicalHeight: 28, colors: 4 });
+      const four = sheetJson("run", src, "--rows", "2", "--cols", "2", "--out", motion, "--name", "walk", "--fps", "8", "--loop", "--pixel", "--no-webp");
+      expect(four.pixel.palette).toMatchObject({ colors: 4, pinned: false, file: join(motion, "palette.json") });
+      // --palette-size still wins over the declaration.
+      const six = sheetJson("run", src, "--rows", "2", "--cols", "2", "--out", motion, "--name", "walk", "--fps", "8", "--loop", "--pixel",
+        "--repalette", "--palette-size", "6", "--no-webp");
+      expect(six.pixel.palette.colors).toBe(6);
+
+      // This motion's palette.json pinned for the character: --repalette
+      // builds beside it, and the pinned file keeps its bytes.
+      doc({ logicalHeight: 28, colors: 4, palette: "char-palette" }, [{ id: "char-palette", type: "text", uri: "motions/walk/palette.json" }]);
+      const pinnedBytes = readFileSync(join(motion, "palette.json"), "utf-8");
+      const rebuilt = sheetJson("run", src, "--rows", "2", "--cols", "2", "--out", motion, "--name", "walk", "--fps", "8", "--loop", "--pixel",
+        "--repalette", "--no-webp");
+      expect(rebuilt.pixel.palette).toMatchObject({ file: join(motion, "palette-rebuilt.json"), pinned: false });
+      expect(readFileSync(join(motion, "palette.json"), "utf-8")).toBe(pinnedBytes);
+      expect(rebuilt.warnings.some((w: string) => w.startsWith("--repalette: palette.json here is the palette pinned for the character (char-palette)"))).toBe(true);
+      // Without --repalette the pinned palette is what the run quantises to.
+      const again = sheetJson("run", src, "--rows", "2", "--cols", "2", "--out", motion, "--name", "walk", "--fps", "8", "--loop", "--pixel", "--no-webp");
+      expect(again.pixel.palette).toMatchObject({ file: join(motion, "palette.json"), pinned: true, from: "character" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 2 * CLI_TIMEOUT);
 
   test("lattice flags need --pixel, and a pixel-art character without it gets a suggestion", () => {
     const dir = workspace();

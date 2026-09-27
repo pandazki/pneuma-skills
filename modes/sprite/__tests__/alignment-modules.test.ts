@@ -362,5 +362,9 @@ describe("canvas.mjs", () => {
     expect(() => roomCanvas({ width: 10, height: 10 }, { room: "wide", lead: -0.1 })).toThrow("[0, 0.9)");
     // @ts-expect-error — a shape the module does not know
     expect(() => roomCanvas({ width: 10, height: 10 }, { room: "round" })).toThrow("room: expected");
+    // @ts-expect-error — a facing the module does not know
+    expect(() => roomCanvas({ width: 10, height: 10 }, { room: "wide", facing: "front" })).toThrow("facing: expected left or right, got 'front'");
+    // @ts-expect-error — nor a missing one passed explicitly
+    expect(() => roomCanvas({ width: 10, height: 10 }, { room: "square", facing: null })).toThrow("facing: expected");
   });
 });

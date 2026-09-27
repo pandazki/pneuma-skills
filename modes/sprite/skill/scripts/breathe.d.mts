@@ -71,7 +71,15 @@ export declare function rigidRows(anat: Anatomy): number;
 export interface WarpOptions { depth: number; lag: number; phase: number }
 export interface WarpResult { image: RgbaImage; clipped: number; deformed: boolean; headOffset: number }
 export declare function warpPixel(image: RgbaImage, anat: Anatomy, options: WarpOptions): WarpResult;
-export declare function warpSmooth(image: RgbaImage, anat: Anatomy, options: WarpOptions): WarpResult;
+export interface SmoothWork {
+  image: RgbaImage;
+  pre: Float32Array;
+  mid: Float32Array;
+  outF: Float32Array;
+}
+export declare function smoothWork(image: RgbaImage): SmoothWork;
+export declare function warpSmooth(image: RgbaImage, anat: Anatomy, options: WarpOptions, work?: SmoothWork | null): WarpResult;
+export declare const MAX_BREATHE_CANVAS: number;
 export declare function thinOutline(image: RgbaImage): void;
 export declare function straddlingProp(
   image: RgbaImage,

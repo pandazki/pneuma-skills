@@ -49,6 +49,8 @@ export const ROOM_DEFAULTS = {
  */
 export function roomCanvas({ width, height }, { room, headroom, lead, trail, facing = "right" }) {
   if (!ROOM_SHAPES.includes(room)) throw new Error(`room: expected ${ROOM_SHAPES.join(", ")}, got '${room}'`);
+  // Any other word used to place the subject as if it faced right.
+  if (facing !== "left" && facing !== "right") throw new Error(`facing: expected left or right, got '${facing}'`);
   const profile = ROOM_DEFAULTS[room];
   const head = headroom ?? profile.headroom;
   const front = lead ?? profile.lead;

@@ -47,7 +47,9 @@ export function asepriteDocument({ image, size, tags }) {
         trimmed: false,
         spriteSourceSize: { x: 0, y: 0, ...box },
         sourceSize: box,
-        duration: Math.round(duration),
+        // Whole ms, never 0 (upstream's `max(1, round(1000 / fps))`): a 0 ms
+        // frame is skipped or stalls in the readers this JSON feeds.
+        duration: Math.max(1, Math.round(duration)),
         anchor: { x: anchor.x, y: anchor.y },
         pivot: { x: anchor.x, y: anchor.y },
       };

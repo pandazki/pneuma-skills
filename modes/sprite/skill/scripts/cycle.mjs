@@ -31,6 +31,8 @@
  * each function names what it took and what changed. Node built-ins only.
  */
 
+import { roundHalfEven } from "./drift.mjs";
+
 /** Longest edge of an analysis thumbnail, px. `loop.py:44` ANALYSIS_SIZE. */
 export const CYCLE_THUMB = 96;
 
@@ -60,6 +62,18 @@ export const NEAR_EXACT_STEP_FRACTION = 0.1;
 /** Seconds under which a gait's period is one step, not a stride. `loop.py:132-133`. */
 export const GAIT_FLOORS = { walk: 0.6, run: 0.35 };
 
+/**
+ * A gait's floor in frames at `fps`, or null without a gait (or a rate).
+ * Rounded as upstream rounds it — Python's `round`, halves to even
+ * (`loop.py:847`): a run at 30 fps is 0.35 × 30 = 10.5 → 10 frames, where
+ * `Math.round` said 11 and refused a 10-frame stride upstream keeps.
+ */
+export function gaitFloor(gait, fps) {
+  const seconds = gait ? GAIT_FLOORS[gait] : null;
+  if (!seconds || !(fps > 0)) return null;
+  return roundHalfEven(seconds * fps);
+}
+
 /** Candidate windows reported per cycle: the best cut is a measurement, the
  *  right one a judgement, so the caller gets alternatives. */
 export const MAX_CYCLE_WINDOWS = 3;
@@ -87,7 +101,13 @@ export const MAX_ONE_SHOTS = 4;
  *
  * Ported from aldegad/sprite-gen (Apache-2.0) sprite_gen/video/loop.py@fbd1a08:
  * `_small_features` (`Image.thumbnail((96, 96))`). Changes: ffmpeg
- * `scale=…:flags=area` does the shrinking instead of PIL.
+ * `scale=…:flags=area` does the shrinking instead of PIL, and on STRAIGHT
+ * RGBA — Pillow premultiplies an RGBA image before it resamples. So a
+ * thumbnail pixel on the silhouette's edge carries some of the colour its
+ * transparent neighbours hold (the keyed plate, for a keyed clip) before
+ * `premultiplied` weights it by its alpha. The alpha, and so every
+ * silhouette reading, is the same either way; the colour bleed is the same
+ * plate colour in every frame, so it moves `D` only where the edge moves.
  */
 export function thumbSize(width, height) {
   const scale = Math.min(1, CYCLE_THUMB / Math.max(1, width, height));
@@ -330,7 +350,12 @@ function distinctWindows(ranked, max, spacing) {
  *   gait, and taking 2P on a bounce would halve its frames per cycle;
  * - with `gait`, upstream's behaviour: a period under the floor is doubled
  *   when 2P repeats within 25 %, else refused as a half stride; an ambiguous
- *   harmonic above the floor takes 2P and is still flagged.
+ *   harmonic above the floor takes 2P and is still flagged;
+ * - the profile reads one lag past the window (when that lag is itself
+ *   admissible, ≤ n − 2) so a dip AT the longest period is still a local
+ *   minimum — upstream's profile stops at `max_len`, so its last lag can never
+ *   be one. That lag is only a neighbour: the profile mean the periodicity is
+ *   judged against averages the window's own lags, as upstream's does.
  */
 export function detectCycle(D, n, { minLen, maxLen, gait = null, fps = null }) {
   const adjacent = [];
@@ -343,10 +368,12 @@ export function detectCycle(D, n, { minLen, maxLen, gait = null, fps = null }) {
   const hi = Math.min(maxLen, n - 2);
   if (minLen < 2 || hi < minLen) return none("window");
 
-  // The profile runs one lag either side of the window so a dip AT either
-  // edge is still a local minimum.
+  // The profile starts at half the shortest period (upstream's range) and
+  // reads one lag past the longest so a dip AT that edge is still a local
+  // minimum — but only a lag the window itself could hold (≤ n − 2, two
+  // pairs at least): lag n − 1 is one pair, a single frame difference.
   const from = Math.max(2, Math.floor(minLen / 2));
-  const to = Math.min(hi + 1, n - 1);
+  const to = Math.min(hi + 1, n - 2);
   const profile = new Map();
   for (let L = from; L <= to; L++) {
     let sum = 0;
@@ -354,7 +381,9 @@ export function detectCycle(D, n, { minLen, maxLen, gait = null, fps = null }) {
     profile.set(L, sum / (n - L));
   }
   const P = (L) => profile.get(L);
-  const profileMean = mean([...profile.values()]);
+  // Upstream's mean (`loop.py:254`): the lags from..hi. The edge neighbour
+  // decides a minimum, not how deep the others must dip below the rest.
+  const profileMean = mean([...profile.entries()].filter(([L]) => L <= hi).map(([, v]) => v));
 
   const minima = [];
   for (let L = minLen; L <= hi; L++) {
@@ -369,8 +398,8 @@ export function detectCycle(D, n, { minLen, maxLen, gait = null, fps = null }) {
   let guard = null;
   let ambiguous = null;
 
-  const gaitFloor = gait && GAIT_FLOORS[gait] && fps ? Math.round(GAIT_FLOORS[gait] * fps) : null;
-  if (gaitFloor !== null && period < gaitFloor) {
+  const floor = gaitFloor(gait, fps);
+  if (floor !== null && period < floor) {
     // Upstream `loop.py:218-248`: a period under the floor is one step. The
     // full stride is the profile's own minimum near 2P, within ±3 frames.
     let doubles = minima.filter((L) => Math.abs(L - 2 * period) <= DOUBLE_SEARCH && L <= hi);
@@ -378,12 +407,12 @@ export function detectCycle(D, n, { minLen, maxLen, gait = null, fps = null }) {
     const L2 = doubles.length ? doubles.reduce((a, b) => (P(b) < P(a) ? b : a)) : null;
     const depthRatio = L2 !== null && P(period) > 0 ? P(L2) / P(period) : null;
     if (L2 !== null && P(L2) <= P(period) * (1 + DOUBLE_TOLERANCE) + 1e-4) {
-      guard = { applied: true, from: period, to: L2, gaitFloor, depthRatio };
+      guard = { applied: true, from: period, to: L2, gaitFloor: floor, depthRatio };
       period = L2;
     } else {
       return none("half-stride", {
         profileMean, minima: minimaReport,
-        guard: { applied: false, below: period, gaitFloor, double: L2, depthRatio },
+        guard: { applied: false, below: period, gaitFloor: floor, double: L2, depthRatio },
       });
     }
   }
@@ -403,7 +432,7 @@ export function detectCycle(D, n, { minLen, maxLen, gait = null, fps = null }) {
           depthRatio: P(period) > 0 ? P(L2) / P(period) : null,
           repeatOverStep,
         };
-        if (gaitFloor !== null) period = L2;
+        if (floor !== null) period = L2;
       }
     }
   }

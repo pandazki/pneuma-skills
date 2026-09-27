@@ -1897,8 +1897,8 @@ the zero-dependency writer in `scripts/rive.mjs`, planned by
   `character.style` that says pixel art (`pixel art`, `8-bit`/`16-bit`,
   `像素`…) — and smooth otherwise: premultiply → `area` → unpremultiply, the chain `loop`
   measured to keep alpha edges free of dark fringes. `smooth` / `nearest`
-  force it. The report says which, and whether the character (`filterFrom:
-  "style"`) or the flag chose.
+  force it. The report says which, and what chose: the character's pixel
+  spec (`filterFrom: "pixel"`), its style sentence (`"style"`), or the flag.
 - **Placement:** every frame is pinned to one shared point of the artboard.
   Loops whose clip scale and origin are known are placed in **clip
   coordinates** (`anchor.from: "clip"`): one point of the clips lands on the
