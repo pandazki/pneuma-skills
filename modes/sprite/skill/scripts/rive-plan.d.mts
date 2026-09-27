@@ -5,7 +5,15 @@
 
 export declare const RIVE_DEFAULT_IMAGES: "webp";
 export declare const RIVE_PIXEL_ART_STYLE: RegExp;
-export declare function riveDefaultImages(style: string | null | undefined): "webp" | "webp-lossless";
+/** The sidecar's character as the pixel reading needs it. */
+export interface RivePixelCharacter {
+  style?: string | null;
+  pixel?: { logicalHeight?: number | null } | null;
+}
+/** `character.pixel` first; `style` for a character without one. A bare
+ *  string is read as the style. */
+export declare function riveIsPixelArt(character: RivePixelCharacter | string | null | undefined): boolean;
+export declare function riveDefaultImages(character: RivePixelCharacter | string | null | undefined): "webp" | "webp-lossless";
 export declare const RIVE_LOOP_FPS: number;
 export declare const RIVE_LOOP_MAX_SIZE: number;
 export declare const RIVE_DECODE_WARN_BYTES: number;

@@ -18,7 +18,7 @@
  */
 
 import type { ViewerNotification } from "../../../core/types/viewer-contract.js";
-import type { CharacterProject, ExportFormat, Motion, SpriteAsset } from "../domain.js";
+import type { CharacterProject, CharacterPurpose, ExportFormat, Motion, SpriteAsset } from "../domain.js";
 import {
   RIVE_DECODE_LIMIT_BYTES,
   RIVE_LOOP_FPS,
@@ -175,8 +175,26 @@ export function loopExports(
 
 // ── The Export tab ─────────────────────────────────────────────────────────
 
-/** The three sections of the tab, in order. */
+/** The three sections of the tab. */
 export type ExportFamily = "video" | "frames" | "rive";
+
+/**
+ * The order the tab lists its sections in, by what the character is for
+ * (`character.purpose`): a game character's first need is the frames an
+ * engine loads, a mascot's is the `.riv` its app drives. Every other
+ * character — a loop, a picture brought to life, one whose route was never
+ * recorded — keeps the order the tab always had.
+ */
+export function exportFamilyOrder(purpose: CharacterPurpose | undefined): ExportFamily[] {
+  switch (purpose) {
+    case "game":
+      return ["frames", "video", "rive"];
+    case "mascot":
+      return ["rive", "video", "frames"];
+    default:
+      return ["video", "frames", "rive"];
+  }
+}
 
 /**
  * Every format the tab lists. The first six are what `sprite-sheet.mjs
@@ -691,7 +709,9 @@ export function exportRequestNotification(request: {
     format === "mp4" && background ? `background: ${background}` : null,
     // Named rather than left to the script's default, so the agent sees what
     // the button asked for.
-    riv ? `images: ${riveDefaultImages(project.sprite.character.style)}` : null,
+    // `character.pixel` first, the style sentence for a character without
+    // one (`riveIsPixelArt`).
+    riv ? `images: ${riveDefaultImages(project.sprite.character)}` : null,
     riv && rive?.motions.length ? `motions: ${rive.motions.join(",")}` : null,
     riv && rive?.transitions.length ? `transitions: ${rive.transitions.join(",")}` : null,
     // The settings a Generate asks for — the defaults — not what any one

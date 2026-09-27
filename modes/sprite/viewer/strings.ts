@@ -23,11 +23,14 @@
  */
 
 import type {
+  CharacterPurpose,
+  Direction,
   GeneratedVideoMode,
   GeneratedVideoModel,
   Motion,
   MotionStatus,
   MotionVideo,
+  SpriteRefRole,
 } from "../domain.js";
 import type { AtlasNote } from "./atlas.js";
 import type { LoopLine, SizeLine } from "./metrics.js";
@@ -134,9 +137,14 @@ export interface SpriteStrings {
   /** The rail's second list: the clips between loops. */
   transitions: string;
   noReferences: string;
-  noMotions: string;
+  /** The empty motion list's hint: the next thing to ask for, which depends
+   *  on what the user is making (`character.purpose`; null when unrecorded). */
+  noMotions: (purpose: CharacterPurpose | null) => string;
   referenceTitle: (label: string, role: string) => string;
-  refRole: Record<"turnaround" | "portrait" | "expression" | "custom", string>;
+  refRole: Record<SpriteRefRole, string>;
+  /** The way a motion (or an anchor) faces — the rail's small direction text. */
+  direction: Record<Direction, string>;
+  directionTitle: Record<Direction, string>;
   missingAsset: string;
   /** The rail's second line. `cols`/`rows` are null for a loop: a loop has no
    *  grid, and the 1×1 `register-run` records is a placeholder, not a fact
@@ -399,13 +407,34 @@ const en: SpriteStrings = {
   transitions: "Transitions",
   noReferences:
     "No identity references yet. They are what keeps every motion sheet on model.",
-  noMotions: "No motions yet. Ask for one — idle, walk, attack.",
+  noMotions: (purpose) => {
+    switch (purpose) {
+      case "game":
+        return "No motions yet. Say what it must do in the game — stand, walk, attack, jump.";
+      case "loop":
+        return "No loop yet. Describe what should move on the page, how long one cycle is, and how wide it shows.";
+      case "mascot":
+        return "No states yet. Name the ones the app switches between — an idle first, then the rest.";
+      case "animate":
+        return "Nothing moves yet. Ask for a gentle breathing idle first — free, and ready in seconds.";
+      default:
+        return "No motions yet. Ask for one — idle, walk, attack.";
+    }
+  },
   referenceTitle: (label, role) => `${label} — ${role}`,
   refRole: {
     turnaround: "turnaround",
     portrait: "portrait",
     expression: "expression",
+    anchor: "direction anchor",
     custom: "custom",
+  },
+  direction: { front: "front", back: "back", left: "left", right: "right" },
+  directionTitle: {
+    front: "Faces the viewer",
+    back: "Faces away from the viewer",
+    left: "Faces left",
+    right: "Faces right",
   },
   missingAsset: "missing",
   motionMeta: (m) =>
@@ -750,13 +779,34 @@ const zhCN: SpriteStrings = {
   motions: "动作",
   transitions: "过渡",
   noReferences: "还没有身份参考图。它们是每张动作图不跑形的依据。",
-  noMotions: "还没有动作。让助手做一个吧——待机、行走、攻击。",
+  noMotions: (purpose) => {
+    switch (purpose) {
+      case "game":
+        return "还没有动作。说说它在游戏里要做哪些动作——待机、行走、攻击、跳跃。";
+      case "loop":
+        return "还没有循环动画。说说页面上什么要动、循环一次多长、显示多宽。";
+      case "mascot":
+        return "还没有状态。说说应用要在哪几种状态之间切换——先做待机，再做其余的。";
+      case "animate":
+        return "还没动起来。先让它轻轻呼吸起来——免费，几秒钟就好。";
+      default:
+        return "还没有动作。让助手做一个吧——待机、行走、攻击。";
+    }
+  },
   referenceTitle: (label, role) => `${label} — ${role}`,
   refRole: {
     turnaround: "三视图",
     portrait: "头像",
     expression: "表情",
+    anchor: "朝向参考",
     custom: "自定义",
+  },
+  direction: { front: "正面", back: "背面", left: "朝左", right: "朝右" },
+  directionTitle: {
+    front: "面朝观众",
+    back: "背对观众",
+    left: "面朝左边",
+    right: "面朝右边",
   },
   missingAsset: "缺文件",
   motionMeta: (m) =>

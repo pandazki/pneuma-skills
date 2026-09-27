@@ -24,6 +24,7 @@ import type { ViewerFileContent } from "../../../core/types/viewer-contract.js";
 import {
   CRAFT_PROJECT_SCHEMA,
   createCharacterProjectFile,
+  DIRECTIONS,
   EXPORT_FORMATS,
   findMotion,
   findRef,
@@ -32,7 +33,9 @@ import {
   MOTION_STATUSES,
   resolveAssetUri,
   saveRoster,
+  type BreatheRecord,
 } from "../domain.js";
+import { riveDefaultImages, riveIsPixelArt } from "../skill/scripts/rive-plan.mjs";
 
 const MINI = readFileSync(
   join(import.meta.dir, "fixtures", "mini", "project.json"),
@@ -758,5 +761,164 @@ describe("createCharacterProjectFile", () => {
     const body = JSON.parse(createCharacterProjectFile({ name: "Nameless" }));
     expect(body.sprite.character.cell).toEqual({ width: 256, height: 256 });
     expect("facing" in body.sprite.character).toBe(false);
+  });
+});
+
+/**
+ * The 0.5.0 sidecar additions: the route, the pixel spec, the asymmetry lock,
+ * directions and anchors, breathe and mirror sources, recorded prompt parts.
+ *
+ * Every one is optional, and the contract is two-sided. A 0.4.x file must
+ * parse to exactly what it parsed to before — no key appears that the file
+ * did not carry — and a malformed value is DROPPED, never defaulted, by the
+ * same rules the brief follows: each source's record only with that source,
+ * a record whole or not at all.
+ */
+describe("0.5.0 sidecar additions", () => {
+  const SEED = readFileSync(
+    join(import.meta.dir, "..", "seed", "lumi", "project.json"),
+    "utf-8",
+  );
+  const NEW_MOTION_KEYS = ["direction", "promptParts", "mirrorOf", "breathe"];
+
+  /** The mini fixture with its sidecar edited through JSON, then parsed. */
+  const parsed = (edit: (body: any) => void) => {
+    const body = JSON.parse(MINI);
+    edit(body);
+    return loadRoster(files({ "mini/project.json": JSON.stringify(body) }))!.byContentSet.mini;
+  };
+  const motion0 = (edit: (motion: any) => void) =>
+    parsed((b) => edit(b.sprite.motions[0])).sprite.motions[0];
+
+  test("a 0.4.x character — the seed and the canonical fixture — gains no key", () => {
+    for (const [key, body] of [["lumi", SEED], ["mini", MINI]] as const) {
+      const project = loadRoster(files({ [`${key}/project.json`]: body }))!.byContentSet[key];
+      expect(Object.keys(project.sprite.character).sort()).toEqual(
+        Object.keys(JSON.parse(body).sprite.character).sort(),
+      );
+      for (const ref of project.sprite.refs) expect("direction" in ref).toBe(false);
+      for (const motion of project.sprite.motions) {
+        for (const k of NEW_MOTION_KEYS) expect({ motion: motion.id, key: k, has: k in motion }).toEqual({ motion: motion.id, key: k, has: false });
+        expect(motion.source).toBeUndefined();
+      }
+    }
+  });
+
+  test("the route, the pixel spec and the asymmetry lock survive the parse", () => {
+    const character = parsed((b) => {
+      b.sprite.character.purpose = "game";
+      b.sprite.character.pixel = { logicalHeight: 32, palette: "mini-palette", colors: 16 };
+      b.sprite.character.asymmetric = "The sword is always in the right hand.";
+    }).sprite.character;
+    expect(character.purpose).toBe("game");
+    expect(character.pixel).toEqual({ logicalHeight: 32, palette: "mini-palette", colors: 16 });
+    expect(character.asymmetric).toBe("The sword is always in the right hand.");
+  });
+
+  test("an unknown route, a pixel spec without its height, and a blank lock are absent", () => {
+    for (const bad of [{ purpose: "cutscene" }, { purpose: 3 }]) {
+      expect("purpose" in parsed((b) => Object.assign(b.sprite.character, bad)).sprite.character).toBe(false);
+    }
+    // The height is what every pixel run snaps to: without it there is no
+    // spec, and the palette it names goes with it.
+    for (const pixel of [{ palette: "mini-palette" }, { logicalHeight: 0 }, { logicalHeight: 31.5 }, { logicalHeight: "32" }, 32]) {
+      expect("pixel" in parsed((b) => { b.sprite.character.pixel = pixel; }).sprite.character).toBe(false);
+    }
+    // The optional halves are dropped on their own, like a brief's budget.
+    expect(parsed((b) => { b.sprite.character.pixel = { logicalHeight: 48, palette: "", colors: -4 }; }).sprite.character.pixel)
+      .toEqual({ logicalHeight: 48 });
+    expect("asymmetric" in parsed((b) => { b.sprite.character.asymmetric = "   "; }).sprite.character).toBe(false);
+  });
+
+  test("an anchor is its direction: without one it loads as custom, and no other role keeps one", () => {
+    const refs = parsed((b) => {
+      b.sprite.refs = [
+        { id: "anchor-left", asset: "ref-anchor-left", role: "anchor", label: "Left", direction: "left" },
+        { id: "anchor-lost", asset: "ref-anchor-lost", role: "anchor", label: "Lost" },
+        { id: "anchor-diag", asset: "ref-anchor-diag", role: "anchor", label: "Diag", direction: "front-left" },
+        { id: "turnaround", asset: "ref-turnaround", role: "turnaround", label: "T", direction: "front" },
+      ];
+    }).sprite.refs;
+    expect(refs).toEqual([
+      { id: "anchor-left", asset: "ref-anchor-left", role: "anchor", label: "Left", direction: "left" },
+      { id: "anchor-lost", asset: "ref-anchor-lost", role: "custom", label: "Lost" },
+      // four directions only: a diagonal is not one of them (yet)
+      { id: "anchor-diag", asset: "ref-anchor-diag", role: "custom", label: "Diag" },
+      { id: "turnaround", asset: "ref-turnaround", role: "turnaround", label: "T" },
+    ]);
+    expect([...DIRECTIONS]).toEqual(["front", "back", "left", "right"]);
+  });
+
+  test("a motion's direction survives; an unknown one, or an unknown source, is absent", () => {
+    expect(motion0((m) => { m.direction = "left"; }).direction).toBe("left");
+    expect("direction" in motion0((m) => { m.direction = "north"; })).toBe(false);
+    expect("source" in motion0((m) => { m.source = "magic"; })).toBe(false);
+    for (const source of ["sheet", "video", "breathe", "mirror"] as const) {
+      expect(motion0((m) => { m.source = source; }).source).toBe(source);
+    }
+  });
+
+  const BREATHE: BreatheRecord = {
+    still: "ref-portrait", depth: 0.02, depthX: 0, breaths: 1, lag: 0.15, mode: "smooth",
+    anatomy: { rigidRow: 41, axisX: 32, from: "detected" },
+  };
+
+  test("a breathe record travels whole, and only with source breathe", () => {
+    expect(motion0((m) => { m.source = "breathe"; m.breathe = BREATHE; }).breathe).toEqual(BREATHE);
+    // On any other source it describes frames this motion does not have.
+    expect("breathe" in motion0((m) => { m.source = "sheet"; m.breathe = BREATHE; })).toBe(false);
+    expect("breathe" in motion0((m) => { m.breathe = BREATHE; })).toBe(false);
+    // Half a record cannot be re-run with one parameter changed — no record.
+    for (const key of ["still", "depth", "breaths", "lag", "mode"]) {
+      const { [key]: _gone, ...half } = BREATHE as unknown as Record<string, unknown>;
+      const m = motion0((x) => { x.source = "breathe"; x.breathe = half; });
+      expect({ key, has: "breathe" in m, source: m.source }).toEqual({ key, has: false, source: "breathe" });
+    }
+    for (const bad of [{ breaths: 1.5 }, { breaths: 0 }, { mode: "wobbly" }, { depth: -0.1 }]) {
+      expect("breathe" in motion0((m) => { m.source = "breathe"; m.breathe = { ...BREATHE, ...bad }; })).toBe(false);
+    }
+    // The optional halves go on their own.
+    expect(motion0((m) => {
+      m.source = "breathe";
+      m.breathe = { ...BREATHE, depthX: "wide", anatomy: { rigidRow: 41, from: "detected" } };
+    }).breathe).toEqual({ still: "ref-portrait", depth: 0.02, breaths: 1, lag: 0.15, mode: "smooth" });
+  });
+
+  test("mirrorOf travels only with source mirror", () => {
+    const mirror = motion0((m) => { m.source = "mirror"; m.mirrorOf = "walk-right"; m.direction = "left"; });
+    expect(mirror).toMatchObject({ source: "mirror", mirrorOf: "walk-right", direction: "left" });
+    expect("mirrorOf" in motion0((m) => { m.source = "sheet"; m.mirrorOf = "walk-right"; })).toBe(false);
+    expect("mirrorOf" in motion0((m) => { m.source = "mirror"; m.mirrorOf = ""; })).toBe(false);
+  });
+
+  const PARTS = {
+    builder: "sheet-prompt/1",
+    action: "a 4-frame bounce: squash, rise, apex, land",
+    guards: ["no-shadow", "direction:left"],
+    guide: { rows: 2, cols: 2, cell: { width: 64, height: 64 }, safeMargin: { x: 4, y: 6 } },
+  };
+
+  test("recorded prompt parts travel whole; a broken guide is dropped on its own", () => {
+    expect(motion0((m) => { m.promptParts = PARTS; }).promptParts).toEqual(PARTS);
+    for (const bad of [{ builder: "" }, { action: 3 }, { guards: "no-shadow" }, { guards: ["ok", 4] }]) {
+      expect("promptParts" in motion0((m) => { m.promptParts = { ...PARTS, ...bad }; })).toBe(false);
+    }
+    const { guide: _guide, ...unguided } = PARTS;
+    expect(motion0((m) => { m.promptParts = { ...PARTS, guide: { rows: 2, cols: 2, cell: { width: 64 } } }; }).promptParts)
+      .toEqual(unguided);
+  });
+
+  test("character.pixel decides pixel art first; the style sentence only for a character without it", () => {
+    const character = (edit: (c: any) => void) => parsed((b) => edit(b.sprite.character)).sprite.character;
+    // Declared pixel art, whatever the style sentence says.
+    expect(riveDefaultImages(character((c) => { c.style = "soft plush render"; c.pixel = { logicalHeight: 32 }; })))
+      .toBe("webp-lossless");
+    // An older character without the spec keeps the style reading.
+    expect(riveDefaultImages(character((c) => { c.style = "16-bit pixel art"; }))).toBe("webp-lossless");
+    expect(riveDefaultImages(character((c) => { c.style = "soft plush render"; }))).toBe("webp");
+    // A spec the loader dropped decides nothing.
+    expect(riveIsPixelArt(character((c) => { c.style = "soft plush render"; c.pixel = { logicalHeight: 0 }; }))).toBe(false);
+    // The bare-string form the script still passes reads the style.
+    expect(riveDefaultImages("16-bit pixel art")).toBe("webp-lossless");
   });
 });

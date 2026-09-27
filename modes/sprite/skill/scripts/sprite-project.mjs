@@ -12,12 +12,13 @@
  * whole document before it is written, so a rejected command leaves the
  * previous project untouched.
  *
- * Subcommands: init, add-ref, add-motion, set-motion, set-sheet,
- * set-keyframe, register-run, register-export, add-video, set-video,
- * remove-motion, show.
+ * Subcommands: init, set-character, add-ref, add-motion, set-motion,
+ * set-sheet, set-keyframe, register-run, register-export, add-video,
+ * set-video, remove-motion, show.
  */
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync,
   realpathSync, renameSync, rmSync, statSync, writeFileSync,
@@ -30,7 +31,9 @@ const TOOL = "sprite-sheet.mjs";
 const DEFAULT_CELL = { width: 256, height: 256 };
 const DEFAULT_FPS = 8;
 
-const REF_ROLES = ["turnaround", "portrait", "expression", "custom"];
+/** `anchor` is one single-pose image facing one direction (`--direction`),
+ *  one per direction; the character's direction set is read off them. */
+const REF_ROLES = ["turnaround", "portrait", "expression", "anchor", "custom"];
 const MOTION_STATUSES = ["planned", "generating", "processing", "ready", "failed"];
 const VIDEO_STATUSES = ["generating", "ready", "failed"];
 /** Models that MAKE a clip out of images and a prompt. */
@@ -73,12 +76,24 @@ const LOOP_TARGET_FPS = [60, 48, 30, 24];
  *  full rate is 96–400 frames, not 8–16. */
 const MOTION_KINDS = ["loop", "transition"];
 /** How a motion's frames were obtained. Absent means "sheet" — every motion
- *  made before the video source existed. */
-const MOTION_SOURCES = ["sheet", "video"];
+ *  made before the video source existed. `breathe` frames are warps of one
+ *  still; `mirror` frames are another motion's flipped left↔right. Both are
+ *  recorded by register-run from the run that made them. */
+const MOTION_SOURCES = ["sheet", "video", "breathe", "mirror"];
 const FACINGS = ["left", "right"];
+/** What the user is making — the route. Recorded so a later session does
+ *  not ask again; absent means nobody recorded one. */
+const PURPOSES = ["game", "loop", "mascot", "animate"];
+/** The directions a motion or an anchor faces. `domain.ts`'s DIRECTIONS is
+ *  the same list; these two scripts carry their own copies because they are
+ *  standalone files. */
+const DIRECTIONS = ["front", "back", "left", "right"];
+/** The one flip `mirror` makes: a side view into the other side. */
+const MIRRORED = { left: "right", right: "left" };
+const BREATHE_MODES = ["smooth", "pixel"];
 
 const SUBCOMMANDS = [
-  "init", "add-ref", "add-motion", "set-motion", "set-sheet", "set-keyframe",
+  "init", "set-character", "add-ref", "add-motion", "set-motion", "set-sheet", "set-keyframe",
   "register-run", "register-export", "add-video", "set-video", "remove-motion", "show",
 ];
 
@@ -122,13 +137,29 @@ sidecar). --dir defaults to the current directory. --json prints one JSON
 object on stdout; --at <ms> pins every timestamp (tests and replays).
 
   init --name <Name> [--description ""] [--style ""] [--cell 256x256]
-       [--facing left|right] [--force]
+       [--facing left|right] [--purpose ${PURPOSES.join("|")}]
+       [--asymmetric "<sentence>"] [--pixel <height> [--colors N]] [--force]
       Create project.json, creating --dir first if it does not exist yet.
       Refuses to clobber an existing project without --force.
+      --purpose records what the user is making (character.purpose): a game
+      character, a UI loop, a mascot for an app, or a picture brought to life.
+      --asymmetric is one sentence naming what must never flip ("the sword is
+      in the right hand"); it stops a mirror and guards every built prompt.
+      --pixel declares pixel art (character.pixel.logicalHeight, the
+      character's height in logical pixels); --colors the palette size.
+
+  set-character [--description] [--style] [--facing left|right]
+                [--purpose ${PURPOSES.join("|")}] [--asymmetric "<sentence>"]
+                [--pixel <height>] [--colors N] [--no-pixel]
+      Change the character after init; only the flags given change.
+      --asymmetric "" takes the sentence back. --no-pixel says the character
+      is not pixel art after all: character.pixel goes, and a pinned palette
+      is unregistered (its file stays on disk).
 
   add-ref --id <refId> --file <path> --role ${REF_ROLES.join("|")}
-          [--label <text>] [--prompt <text>] [--model <name>] [--from <assetId,…>]
-          [--uploaded | --derived-from <refId> [--op <word>]]
+          [--direction ${DIRECTIONS.join("|")}] [--label <text>]
+          [--prompt <text>] [--model <name>] [--from <assetId,…>]
+          [--uploaded | --derived-from <refId|assetId> [--op <word>]]
       Register an identity reference as asset ref-<refId>. Re-adding the same
       id replaces the asset and its edge, whatever type that edge had.
       By default the image was generated here: a 'generate' edge carrying
@@ -137,16 +168,25 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       human, with no parent and no params. It refuses --model / --prompt /
       --from, because none of them happened.
       --derived-from says you cut or cleaned this image out of another
-      registered reference: a 'derive' edge from that ref, with params.op
-      (--op, a single word, default 'crop').
+      registered reference — or any registered asset, such as a frame: a
+      'derive' edge from it, with params.op (--op, a single word, default
+      'crop').
+      --role anchor is one single-pose image facing one way, and needs
+      --direction; there is one anchor per direction (re-register that id to
+      replace it). No other role takes a --direction.
 
   add-motion --id <motionId> --label <text> --rows R --cols C --fps N
              [--kind ${MOTION_KINDS.join("|")}] [--loop|--no-loop]
              [--anchor ${ANCHORS.join("|")}] [--prompt <text>]
              [--status ${MOTION_STATUSES.join("|")}] [--source ${MOTION_SOURCES.join("|")}]
+             [--direction ${DIRECTIONS.join("|")}]
   add-motion --kind transition --from <loopId> --to <loopId> [--id] [--label]
-      --source records how the frames will be obtained (a generated sheet or
-      a sampled video clip) before anything is generated. Omitted means sheet.
+      --source records how the frames will be obtained (a generated sheet, a
+      sampled video clip, a breathe of one still, a mirror of another motion)
+      before anything is generated. Omitted means sheet; register-run
+      corrects it from the run that lands.
+      --direction is the way the motion faces; name it <state>-<direction>
+      (walk-left) so every export carries the direction in its keys.
       --kind loop declares a seamless transparent animation for a UI instead
       of a sprite atlas: --rows/--cols become optional (a loop has no grid,
       so they default to 1x1), --source defaults to video, and playback loops
@@ -158,10 +198,16 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       "<From label> → <To label>"; it plays once at 24 fps, from a clip.
 
   set-motion --motion <motionId> [--label] [--fps] [--loop|--no-loop] [--anchor]
-             [--prompt] [--status] [--notes]
+             [--prompt [--prompt-parts '<json>']] [--status] [--notes]
+             [--direction ${DIRECTIONS.join("|")}]
              [--ack-warnings "<reason>"] [--clear-ack]
              [--brief-duration <s>] [--brief-width <px>]
              [--brief-interpolator ${LOOP_INTERPOLATORS.join("|")}] [--brief-budget <usd>]
+      --prompt alone records a prompt written by hand, and drops any recorded
+      prompt parts. --prompt-parts records how code built the --prompt given
+      with it: {"builder","action","guards":[…],"guide"?:{rows,cols,cell:
+      {width,height},safeMargin:{x,y}}} (what sheet-prompt writes).
+      --direction on a mirror must stay the opposite of its source's.
       --ack-warnings accepts the motion's remaining inspect warnings with a
       one-sentence reason the user reads on the stage; the numbers stay
       visible. --clear-ack takes it back. Re-registering a run drops the
@@ -224,7 +270,7 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       exports cut from the frames it replaces, and the .riv that held them —
       the files stay on disk; export again.
 
-  register-run --motion <motionId> --run <run.json|-> [--video <videoId>] [--at <ms>]
+  register-run --motion <motionId> --run <run.json|-> [--video <videoId>] [--repin] [--at <ms>]
       Consume a 'sprite-sheet.mjs run' summary: registers sheet-alpha (when
       keyed), every frame, the packed sheet, the atlas, the GIF and the WebP,
       wires their provenance, copies the inspect summary into the motion and
@@ -250,6 +296,20 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       motion.reverseOf. Cutting a transition again retires its exports and
       the .riv that held it, and notes any reverse made from the old cut.
       Any run drops a loop's measured clip record (motion.clip).
+      A breathe summary (source: "breathe") names the still it warped
+      ('still', a path) and 'breathe' { depth, breaths, lag, mode, depthX?,
+      anatomy? }: the still must already be a registered asset (add-ref
+      --uploaded), every frame derives from it, and motion.breathe records the
+      parameters. A mirror summary (source: "mirror") names 'mirrorOf', a
+      ready left- or right-facing sprite motion with as many frames: frame i
+      derives from its frame i, motion.mirrorOf is set and motion.direction
+      becomes the other side. A later run of either shape's opposite drops
+      the record. Re-running a motion notes each mirror made from it.
+      A run carrying 'pixel': { palette: <path>, colors? } pins that palette
+      on a pixel-art character as <character>-palette (character.pixel.
+      palette), derived from this run's frames — once: a later run quantised
+      to a different palette is refused unless --repin, which re-pins it and
+      warns that the other motions were quantised to the old one.
 
   add-video --motion <motionId> --file <path> --model ${VIDEO_MODELS.join("|")}
             --mode ${VIDEO_MODES.join("|")} [--from <assetId,…>] [--prompt]
@@ -276,7 +336,8 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       transition joins is refused until the transition is removed.
 
   show [--motion <motionId>]
-      Compact summary for the agent.
+      Compact summary for the agent. Lists stale mirrors — a mirror whose
+      source was registered again after it, or is gone (staleMirrors).
 
 Exit code 0 on success, 1 on failure with a one-line ERROR: on stderr.`;
 
@@ -315,10 +376,14 @@ function loadProject(dir) {
 
 const ASSET_KEYS = ["id", "type", "uri", "name", "metadata", "createdAt", "status", "tags"];
 const MOTION_KEYS = [
-  "id", "label", "prompt", "kind", "brief", "grid", "fps", "loop", "anchor", "status", "notes", "source",
+  "id", "label", "direction", "prompt", "promptParts", "kind", "brief", "grid", "fps", "loop", "anchor", "status",
+  "notes", "source", "mirrorOf", "breathe",
   "keyframe", "keyframeAlpha", "sheetRaw", "sheetAlpha", "sheet", "atlas", "frames",
   "gif", "webp", "exports", "videos", "inspect",
 ];
+/** A 0.4.x character's keys come first, in the order `init` has always
+ *  written them, so an older file is rewritten byte for byte. */
+const CHARACTER_KEYS = ["name", "description", "style", "cell", "facing", "purpose", "pixel", "asymmetric"];
 
 /** Rebuild an object with a fixed key order so project.json diffs stay stable
  *  no matter which command touched it. Unknown keys are appended, never lost. */
@@ -332,6 +397,9 @@ function orderKeys(value, keys) {
 function saveProject(dir, doc) {
   doc.assets = doc.assets.map((asset) => orderKeys(asset, ASSET_KEYS));
   doc.sprite.motions = doc.sprite.motions.map((motion) => orderKeys(motion, MOTION_KEYS));
+  if (doc.sprite.character && typeof doc.sprite.character === "object") {
+    doc.sprite.character = orderKeys(doc.sprite.character, CHARACTER_KEYS);
+  }
 
   const ids = new Set();
   for (const asset of doc.assets) {
@@ -512,6 +580,7 @@ function assetOwner(doc, id) {
   const ref = doc.sprite.refs.find((r) => r.asset === id);
   if (ref) return `ref '${ref.id}'`;
   if (doc.sprite.exports?.riv === id) return CHARACTER_OWNER;
+  if (doc.sprite.character?.pixel?.palette === id) return CHARACTER_OWNER;
   for (const motion of doc.sprite.motions) {
     const exports = motion.exports && typeof motion.exports === "object" ? motion.exports : {};
     const slots = [
@@ -653,19 +722,6 @@ function findMotion(doc, id, flag = "--motion") {
   return motion;
 }
 
-/** The sidecar entry for a reference, by ref id (`turnaround`) or by its
- *  asset id (`ref-turnaround`) — `--from` speaks asset ids, so both spellings
- *  reach this and neither should be a puzzle. Unknown lists what it knows,
- *  the way `findMotion` does. */
-function findRef(doc, key, flag) {
-  const ref = doc.sprite.refs.find((r) => r.id === key) ?? doc.sprite.refs.find((r) => r.asset === key);
-  if (!ref) {
-    const known = doc.sprite.refs.map((r) => r.id).join(", ") || "none";
-    fail(`${flag}: no reference '${key}' in this character (known refs: ${known})`);
-  }
-  return ref;
-}
-
 /** Flags that only describe an image this pipeline generated. */
 const GENERATE_ONLY = [["--model", "model"], ["--prompt", "prompt"], ["--from", "from"]];
 
@@ -701,13 +757,22 @@ function refEdge(doc, values, id, now) {
     for (const [flag, key] of GENERATE_ONLY) {
       if (values[key] !== undefined) fail(`--derived-from: an image cut out of another reference has no ${flag} — its source is the reference it came from`);
     }
-    const source = findRef(doc, derivedFrom, "--derived-from");
+    // A reference, by ref id (`turnaround`) or asset id (`ref-turnaround`) —
+    // `--from` speaks asset ids, so both spellings reach this — or any
+    // registered asset: an anchor is as often cut out of a frame as out of a
+    // design sheet. Unknown lists the refs it knows.
+    const sourceRef = doc.sprite.refs.find((r) => r.id === derivedFrom) ?? doc.sprite.refs.find((r) => r.asset === derivedFrom);
+    const sourceAsset = sourceRef?.asset ?? (doc.assets.some((a) => a.id === derivedFrom) ? derivedFrom : null);
+    if (!sourceAsset) {
+      const known = doc.sprite.refs.map((r) => r.id).join(", ") || "none";
+      fail(`--derived-from: no reference or asset '${derivedFrom}' in this character (known refs: ${known}; any asset id, such as a frame, is accepted too)`);
+    }
     // A self-parent is a cycle the graph cannot mean anything by, and it is an
     // easy typo when re-registering the same id.
-    if (source.asset === assetId) fail(`--derived-from: reference '${id}' cannot be derived from itself`);
+    if (sourceAsset === assetId) fail(`--derived-from: reference '${id}' cannot be derived from itself`);
     const op = values.op === undefined ? "crop" : String(values.op).trim();
     if (!op) fail("--op: expected a single word such as crop or cleanup");
-    return edge(assetId, [source.asset], operation("derive", now, { op }));
+    return edge(assetId, [sourceAsset], operation("derive", now, { op }));
   }
 
   const inputs = parseInputs(doc, values.from, "--from");
@@ -1145,6 +1210,287 @@ function setLoopBrief(motion, values, now) {
     : `WARN: a ${duration}s loop at 60fps is ${atSixty} frames and the limit is ${MAX_LOOP_FRAMES} — interpolate to ${fits}fps instead (--target-fps ${fits}), or shorten the loop. Say which before the clip is shot.`];
 }
 
+// ---------------------------------------------------------------------------
+// 0.5.0 sidecar: route, pixel spec, asymmetry, directions, breathe, mirror,
+// recorded prompt parts. Each is optional and absent in a 0.4.x file; the
+// shapes are the ones `domain.ts` parses and `references/project-json.md`
+// documents.
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply the character flags `init` and `set-character` share: --purpose,
+ * --asymmetric, --pixel, --colors (and set-character's --no-pixel). Returns
+ * the stderr notes the caller prints after the write.
+ *
+ * `pixel` is rebuilt rather than patched so its keys stay in one order
+ * (`logicalHeight`, `palette`, `colors`) whichever flag changed.
+ */
+function applyCharacterFlags(doc, character, values) {
+  const notes = [];
+  if (values.purpose !== undefined) character.purpose = oneOf(values.purpose, PURPOSES, "--purpose");
+  if (values.asymmetric !== undefined) {
+    const sentence = String(values.asymmetric).trim();
+    // An empty sentence takes the lock back: nothing is side-specific now.
+    if (sentence) character.asymmetric = sentence;
+    else delete character.asymmetric;
+  }
+  if (values["no-pixel"]) {
+    if (values.pixel !== undefined || values.colors !== undefined) {
+      fail("--no-pixel: says the character is not pixel art — it cannot be given with --pixel or --colors");
+    }
+    const paletteId = character.pixel?.palette;
+    const palette = paletteId ? doc.assets.find((a) => a.id === paletteId) : null;
+    if (palette) {
+      dropAssets(doc, [palette.id]);
+      notes.push(`note: unregistered ${palette.id} with the pixel spec — the file stays on disk: ${palette.uri}`);
+    }
+    delete character.pixel;
+    return notes;
+  }
+  if (values.pixel === undefined && values.colors === undefined) return notes;
+  const current = character.pixel && typeof character.pixel === "object" ? character.pixel : null;
+  const logicalHeight = values.pixel === undefined
+    ? finiteNumber(current?.logicalHeight)
+    : num(values.pixel, "--pixel", { integer: true, min: 1 });
+  if (logicalHeight === undefined) {
+    fail("--colors: only a pixel-art character has a palette — declare it with --pixel <height in logical pixels> as well");
+  }
+  const colors = values.colors === undefined
+    ? finiteNumber(current?.colors)
+    : num(values.colors, "--colors", { integer: true, min: 2 });
+  if (colors !== undefined && colors > 256) fail(`--colors: a palette of at most 256 colours, got ${colors}`);
+  character.pixel = {
+    logicalHeight,
+    ...(typeof current?.palette === "string" && current.palette ? { palette: current.palette } : {}),
+    ...(colors === undefined ? {} : { colors }),
+  };
+  return notes;
+}
+
+/** `--direction`, checked, or undefined when the flag was not given. */
+function directionFlag(values) {
+  return values.direction === undefined ? undefined : oneOf(values.direction, DIRECTIONS, "--direction");
+}
+
+/**
+ * The prompt parts `set-motion --prompt-parts` (and `sheet-prompt`) record,
+ * checked whole: a builder version, the action verbatim, the clause ids, and
+ * optionally the layout guide's geometry. The same rule `domain.ts` loads
+ * them by — a record that could not rebuild its text is refused here rather
+ * than written for the viewer to drop.
+ */
+function promptPartsRecord(raw, flag) {
+  let parts = raw;
+  if (typeof raw === "string") {
+    try {
+      parts = JSON.parse(raw);
+    } catch (error) {
+      fail(`${flag}: not valid JSON (${error.message})`);
+    }
+  }
+  if (!parts || typeof parts !== "object" || Array.isArray(parts)) fail(`${flag}: expected a JSON object`);
+  const text = (value) => (typeof value === "string" && value.trim() !== "" ? value : undefined);
+  const builder = text(parts.builder);
+  const action = text(parts.action);
+  const guards = Array.isArray(parts.guards) && parts.guards.every((g) => typeof g === "string") ? [...parts.guards] : undefined;
+  const missing = [
+    builder ? null : "builder (the code version, e.g. sheet-prompt/1)",
+    action ? null : "action (the agent's words, verbatim)",
+    guards ? null : "guards (an array of clause ids)",
+  ].filter(Boolean);
+  if (missing.length) fail(`${flag}: missing or malformed ${listOf(missing)}`);
+  let guide;
+  if (parts.guide !== undefined) {
+    const g = parts.guide;
+    const whole = (value) => Number.isInteger(value) && value > 0;
+    const margin = (value) => Number.isFinite(value) && value >= 0;
+    if (!g || typeof g !== "object" || !whole(g.rows) || !whole(g.cols)
+      || !whole(g.cell?.width) || !whole(g.cell?.height)
+      || !margin(g.safeMargin?.x) || !margin(g.safeMargin?.y)) {
+      fail(`${flag}: guide must be { rows, cols, cell: { width, height }, safeMargin: { x, y } } in whole pixels`);
+    }
+    guide = {
+      rows: g.rows, cols: g.cols,
+      cell: { width: g.cell.width, height: g.cell.height },
+      safeMargin: { x: g.safeMargin.x, y: g.safeMargin.y },
+    };
+  }
+  return { builder, action, guards, ...(guide ? { guide } : {}) };
+}
+
+/**
+ * Record a prompt code built, with the parts it was built from — the writer
+ * `sheet-prompt` calls, and `set-motion --prompt-parts` exposes. Both go on
+ * together or not at all: parts beside a prompt they did not build would
+ * make a hand-edited prompt look reproducible.
+ */
+function recordPromptParts(motion, parts, prompt) {
+  if (typeof prompt !== "string" || prompt.trim() === "") {
+    fail("--prompt-parts: record the prompt they built with them (--prompt)");
+  }
+  motion.prompt = prompt;
+  motion.promptParts = promptPartsRecord(parts, "--prompt-parts");
+}
+
+/**
+ * A run's `breathe` block, checked whole, or a refusal naming what it lacks.
+ * The record is what a re-run with one parameter changed starts from, so a
+ * half of it is refused rather than stored.
+ */
+function breatheRecord(raw, stillId) {
+  if (!raw || typeof raw !== "object") {
+    fail("--run: a breathe summary carries no 'breathe' block — is this 'sprite-sheet.mjs breathe --json' output?");
+  }
+  const depth = finiteNumber(raw.depth);
+  const breaths = finiteNumber(raw.breaths);
+  const lag = finiteNumber(raw.lag);
+  const missing = [
+    depth !== undefined && depth >= 0 ? null : "depth",
+    breaths !== undefined && Number.isInteger(breaths) && breaths >= 1 ? null : "breaths",
+    lag !== undefined ? null : "lag",
+    BREATHE_MODES.includes(raw.mode) ? null : "mode",
+  ].filter(Boolean);
+  if (missing.length) fail(`--run: the breathe block is missing or has a malformed ${listOf(missing)}`);
+  const depthX = finiteNumber(raw.depthX);
+  const a = raw.anatomy;
+  const anatomy = a && typeof a === "object"
+    && finiteNumber(a.rigidRow) !== undefined && finiteNumber(a.axisX) !== undefined
+    && (a.from === "detected" || a.from === "override")
+    ? { rigidRow: a.rigidRow, axisX: a.axisX, from: a.from }
+    : undefined;
+  return {
+    still: stillId,
+    depth,
+    ...(depthX !== undefined && depthX >= 0 ? { depthX } : {}),
+    breaths,
+    lag,
+    mode: raw.mode,
+    ...(anatomy ? { anatomy } : {}),
+  };
+}
+
+/**
+ * The motion a mirror run flips, checked the way a reverse's source is: a
+ * ready sprite motion of this character facing left or right, with as many
+ * registered frames as the run, and not itself a mirror. Returns the source
+ * and the direction the mirror faces.
+ */
+function mirrorSource(doc, motion, run) {
+  const id = run.mirrorOf;
+  if (typeof id !== "string" || !id) fail("--run: a mirror summary names no 'mirrorOf' — is this 'sprite-sheet.mjs mirror --json' output?");
+  const source = doc.sprite.motions.find((m) => m.id === id);
+  if (!source) fail(`--run: mirrorOf '${id}' is not a motion of this character (known: ${doc.sprite.motions.map((m) => m.id).join(", ") || "none"})`);
+  if (source.id === motion.id) fail(`--run: '${motion.id}' cannot be a mirror of itself`);
+  if (source.kind === "loop" || source.kind === "transition") {
+    fail(`--run: mirrorOf '${id}' is a ${source.kind} — loops and transitions are not mirrored`);
+  }
+  if (source.source === "mirror") {
+    fail(`--run: mirrorOf '${id}' is itself a mirror of ${source.mirrorOf ?? "another motion"} — mirror that one instead`);
+  }
+  if (source.status !== "ready") fail(`--run: mirrorOf '${id}' is ${source.status}, not ready — finish it before mirroring it`);
+  const facing = MIRRORED[source.direction];
+  if (!facing) {
+    fail(source.direction
+      ? `--run: mirrorOf '${id}' faces ${source.direction} — a mirror flips one side into the other; a ${source.direction} view flipped is still ${source.direction} with its hands swapped`
+      : `--run: mirrorOf '${id}' has no direction — say which side it faces first: set-motion --motion ${id} --direction left|right`);
+  }
+  if (motion.direction && motion.direction !== facing) {
+    fail(`--run: '${motion.id}' faces ${motion.direction}, but a mirror of ${id} (${source.direction}) faces ${facing}`);
+  }
+  if ((source.frames ?? []).length !== run.frames.length) {
+    fail(`--run: mirrorOf ${id} has ${(source.frames ?? []).length} registered frames and this run ${run.frames.length} — mirror it again from ${id} as it is registered now`);
+  }
+  return { source, facing };
+}
+
+/**
+ * Why a mirror no longer shows its source flipped, or null when it does.
+ *
+ * Frame ids are reused when a motion is run again, so matching ids prove
+ * nothing; time does, the way `riveReverseIsCurrent` decides it for a
+ * reverse: frame i of the mirror was derived (`step: "mirror"`) from frame i
+ * of the source, and a source registered again since then has newer frames
+ * than that edge.
+ */
+function mirrorStaleness(doc, mirror) {
+  const source = doc.sprite.motions.find((m) => m.id === mirror.mirrorOf);
+  if (!source) return `its source '${mirror.mirrorOf}' is gone`;
+  const frames = mirror.frames ?? [];
+  const sourceFrames = source.frames ?? [];
+  if (frames.length !== sourceFrames.length) {
+    return `${source.id} has ${sourceFrames.length} frames and this mirror ${frames.length}`;
+  }
+  const current = frames.every((id, i) => {
+    const found = doc.provenance.find((e) => e.toAssetId === id);
+    const made = Number(found?.operation?.timestamp);
+    const shot = Number(doc.assets.find((a) => a.id === sourceFrames[i])?.createdAt);
+    return found?.fromAssetId === sourceFrames[i]
+      && found.operation?.params?.step === "mirror"
+      && Number.isFinite(made) && Number.isFinite(shot) && shot <= made;
+  });
+  return current ? null : `${source.id} was registered again after it was mirrored`;
+}
+
+/** Every mirror that no longer shows its source, with the reason. */
+function staleMirrors(doc) {
+  return doc.sprite.motions
+    .filter((m) => m.source === "mirror" && typeof m.mirrorOf === "string" && m.mirrorOf)
+    .map((m) => ({ id: m.id, mirrorOf: m.mirrorOf, reason: mirrorStaleness(doc, m) }))
+    .filter((m) => m.reason !== null);
+}
+
+const sha256 = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
+
+/**
+ * Pin the palette a pixel run was quantised to, once per character.
+ *
+ * The palette is per character because it exists to stop colour flicker
+ * BETWEEN motions as much as between frames. The first pixel run pins it as
+ * `<character>-palette`, derived from that run's frames; a later run
+ * quantised to the same file (same uri, same bytes) changes nothing, and one
+ * quantised to a different palette is refused unless `--repin`. Returns the
+ * stderr lines the caller prints after the write.
+ */
+function pinPalette(doc, dir, motion, run, frameIds, repin, now) {
+  const report = run.pixel;
+  if (!report || typeof report !== "object" || report.palette === undefined) return [];
+  const character = doc.sprite.character;
+  if (!character.pixel || !(Number(character.pixel.logicalHeight) > 0)) {
+    fail(`--run: this run was quantised to a pixel palette, but ${character.name} is not declared pixel art — declare it first: set-character --pixel <height in logical pixels>`);
+  }
+  const uri = toUri(dir, String(report.palette), "--run pixel.palette");
+  const file = requireFile(dir, uri, "--run pixel.palette");
+  const hash = sha256(file);
+  const pinned = character.pixel.palette ? doc.assets.find((a) => a.id === character.pixel.palette) : null;
+  if (pinned && pinned.uri === uri && pinned.metadata?.sha256 === hash) return [];
+  if (pinned && !repin) {
+    fail(`--run: this run was quantised to ${uri}, not to the palette pinned for ${character.name} (${pinned.uri}) — every motion of a pixel character shares one palette so colours do not flicker between them. Re-run it against the pinned palette, or pass --repin to pin this one instead.`);
+  }
+  const id = `${basename(resolve(dir))}-palette`;
+  const colors = finiteNumber(report.colors);
+  const counted = Number.isInteger(colors) && colors > 0 ? colors : undefined;
+  upsertAsset(doc, {
+    id, type: "text", uri, name: `${character.name} palette`,
+    metadata: {
+      ...(counted === undefined ? {} : { colors: counted }),
+      ...(fileSize(file) === undefined ? {} : { size: fileSize(file) }),
+      sha256: hash,
+    },
+    createdAt: now, status: "ready",
+  }, CHARACTER_OWNER);
+  setEdge(doc, edge(id, frameIds, operation("derive", now, {
+    tool: TOOL, step: "palette", motion: motion.id, colors: counted,
+  }, frameIds)));
+  character.pixel = {
+    logicalHeight: character.pixel.logicalHeight,
+    palette: id,
+    ...(counted !== undefined ? { colors: counted } : character.pixel.colors !== undefined ? { colors: character.pixel.colors } : {}),
+  };
+  if (!pinned) return [];
+  const others = doc.sprite.motions.filter((m) => m.id !== motion.id && m.status === "ready").map((m) => m.id);
+  return [`re-pinned ${id} to ${uri}${others.length ? ` — ${listOf(others)} ${others.length === 1 ? "was" : "were"} quantised to the old palette; run ${others.length === 1 ? "it" : "them"} again to match` : ""}`];
+}
+
 /**
  * One motion, said out loud for the agent.
  *
@@ -1194,8 +1540,18 @@ function motionLines(motion) {
     lines.push(`  exports: ${present.join(", ") || "none yet"}`);
   } else {
     lines.push(`${motion.id} (${motion.label}) — ${motion.status}, ${motion.grid.rows}x${motion.grid.cols} @ ${motion.fps}fps, ${frameCount} frames`);
+    if (motion.source === "breathe" && motion.breathe) {
+      const b = motion.breathe;
+      lines.push(`  breathe of ${b.still}: depth ${b.depth}${b.depthX === undefined ? "" : ` (x ${b.depthX})`}, ${b.breaths} breath${b.breaths === 1 ? "" : "s"}, lag ${b.lag}, ${b.mode}${b.anatomy ? `, rigid row ${b.anatomy.rigidRow} (${b.anatomy.from})` : ""}`);
+    } else if (motion.source === "mirror" && motion.mirrorOf) {
+      lines.push(`  mirror of ${motion.mirrorOf}`);
+    }
     const exported = Object.keys(motion.exports ?? {});
     if (exported.length) lines.push(`  exports: ${exported.join(", ")}`);
+  }
+  if (motion.direction) lines.push(`  faces ${motion.direction}`);
+  if (motion.promptParts) {
+    lines.push(`  prompt built by ${motion.promptParts.builder}${motion.promptParts.guards.length ? ` (guards: ${motion.promptParts.guards.join(", ")})` : ""}`);
   }
   for (const video of motion.videos ?? []) {
     lines.push(video.derivedFrom
@@ -1206,6 +1562,7 @@ function motionLines(motion) {
 }
 
 function summarize(doc, dir) {
+  const stale = staleMirrors(doc);
   return {
     dir: resolve(dir),
     title: doc.title,
@@ -1213,12 +1570,15 @@ function summarize(doc, dir) {
     refs: doc.sprite.refs.map((ref) => ({
       id: ref.id,
       role: ref.role,
+      ...(ref.direction ? { direction: ref.direction } : {}),
       origin: refOrigin(doc, ref.asset),
       label: ref.label,
       uri: doc.assets.find((a) => a.id === ref.asset)?.uri ?? null,
     })),
     motions: doc.sprite.motions.map(compactMotion),
     ...(doc.sprite.exports && Object.keys(doc.sprite.exports).length ? { exports: doc.sprite.exports } : {}),
+    // Only when there is one: a 0.4.x summary stays byte-for-byte what it was.
+    ...(stale.length ? { staleMirrors: stale } : {}),
   };
 }
 
@@ -1232,6 +1592,10 @@ function compactMotion(motion) {
     // line is not: its grid column is padded to seven so `loop` can stand
     // where `4x4` does, which moves the columns after it.)
     ...(motion.kind ? { kind: motion.kind } : {}),
+    // The 0.5.0 fields follow the same rule: only when the motion has them.
+    ...(motion.direction ? { direction: motion.direction } : {}),
+    ...(motion.source === "breathe" || motion.source === "mirror" ? { source: motion.source } : {}),
+    ...(motion.source === "mirror" && motion.mirrorOf ? { mirrorOf: motion.mirrorOf } : {}),
     // Loop motions only, and only once recorded WHOLE — the same rule `kind`
     // follows, so a sprite motion's summary is byte-for-byte what it was, and
     // the summary never hands a later turn half an answer to work to.
@@ -1262,9 +1626,16 @@ const OPTIONS = {
   init: {
     name: { type: "string" }, description: { type: "string" }, style: { type: "string" },
     cell: { type: "string" }, facing: { type: "string" }, force: { type: "boolean", default: false },
+    purpose: { type: "string" }, asymmetric: { type: "string" }, pixel: { type: "string" }, colors: { type: "string" },
+  },
+  "set-character": {
+    description: { type: "string" }, style: { type: "string" }, facing: { type: "string" },
+    purpose: { type: "string" }, asymmetric: { type: "string" }, pixel: { type: "string" }, colors: { type: "string" },
+    "no-pixel": { type: "boolean", default: false },
   },
   "add-ref": {
     id: { type: "string" }, file: { type: "string" }, role: { type: "string" }, label: { type: "string" },
+    direction: { type: "string" },
     prompt: { type: "string" }, model: { type: "string" }, from: { type: "string", multiple: true },
     uploaded: { type: "boolean", default: false }, "derived-from": { type: "string" }, op: { type: "string" },
   },
@@ -1273,6 +1644,7 @@ const OPTIONS = {
     fps: { type: "string" }, loop: { type: "boolean", default: false }, "no-loop": { type: "boolean", default: false },
     anchor: { type: "string" }, prompt: { type: "string" }, status: { type: "string" },
     source: { type: "string" }, kind: { type: "string" }, from: { type: "string" }, to: { type: "string" },
+    direction: { type: "string" },
   },
   "set-motion": {
     motion: { type: "string" }, label: { type: "string" }, fps: { type: "string" },
@@ -1281,6 +1653,7 @@ const OPTIONS = {
     "ack-warnings": { type: "string" }, "clear-ack": { type: "boolean", default: false },
     "brief-duration": { type: "string" }, "brief-width": { type: "string" },
     "brief-interpolator": { type: "string" }, "brief-budget": { type: "string" },
+    direction: { type: "string" }, "prompt-parts": { type: "string" },
   },
   "set-sheet": {
     motion: { type: "string" }, file: { type: "string" }, from: { type: "string", multiple: true },
@@ -1291,7 +1664,10 @@ const OPTIONS = {
     from: { type: "string", multiple: true }, model: { type: "string" }, prompt: { type: "string" },
     status: { type: "string" },
   },
-  "register-run": { motion: { type: "string" }, run: { type: "string" }, video: { type: "string" } },
+  "register-run": {
+    motion: { type: "string" }, run: { type: "string" }, video: { type: "string" },
+    repin: { type: "boolean", default: false },
+  },
   "register-export": { report: { type: "string" } },
   "add-video": {
     motion: { type: "string" }, file: { type: "string" }, model: { type: "string" }, mode: { type: "string" },
@@ -1637,9 +2013,36 @@ function main() {
           motions: [],
         },
       };
+      const notes = applyCharacterFlags(doc, doc.sprite.character, values);
       saveProject(dir, doc);
       const summary = summarize(doc, dir);
       emit(values, summary, [`created ${path} for ${name} (${cell.width}x${cell.height})`]);
+      for (const note of notes) console.error(note);
+      break;
+    }
+
+    case "set-character": {
+      // The first writer of description / style / facing after init, and the
+      // writer of the 0.5.0 route, pixel spec and asymmetry lock. Only the
+      // flags given change; everything else is left as it is.
+      const doc = loadProject(dir);
+      const character = doc.sprite.character && typeof doc.sprite.character === "object"
+        ? doc.sprite.character
+        : fail("the 'sprite' sidecar has no character");
+      if (values.description !== undefined) character.description = values.description;
+      if (values.style !== undefined) character.style = values.style;
+      if (values.facing !== undefined) character.facing = oneOf(values.facing, FACINGS, "--facing");
+      const notes = applyCharacterFlags(doc, character, values);
+      saveProject(dir, doc);
+      emit(values, doc.sprite.character, [
+        `${character.name}: ${[
+          character.purpose ? `purpose ${character.purpose}` : null,
+          character.facing ? `facing ${character.facing}` : null,
+          character.pixel ? `pixel art, ${character.pixel.logicalHeight} px tall${character.pixel.colors ? `, ${character.pixel.colors} colours` : ""}${character.pixel.palette ? " (palette pinned)" : ""}` : null,
+          character.asymmetric ? `asymmetric: ${character.asymmetric}` : null,
+        ].filter(Boolean).join(" · ") || "updated"}`,
+      ]);
+      for (const note of notes) console.error(note);
       break;
     }
 
@@ -1651,6 +2054,17 @@ function main() {
       const file = requireFile(dir, uri, "--file");
       const label = values.label ?? titleCase(id);
       const assetId = `ref-${id}`;
+      // An anchor is one pose facing one way, and the character's direction
+      // set is read off the anchors — so it needs its direction, holds it
+      // alone, and no other role carries one.
+      const direction = directionFlag(values);
+      if (role === "anchor") {
+        if (direction === undefined) fail(`--direction: an anchor faces one direction — pass --direction ${DIRECTIONS.join("|")}`);
+        const taken = doc.sprite.refs.find((r) => r.id !== id && r.role === "anchor" && r.direction === direction);
+        if (taken) fail(`--direction: '${taken.id}' is already the ${direction} anchor — there is one anchor per direction; re-register --id ${taken.id} to replace it`);
+      } else if (direction !== undefined) {
+        fail(`--direction: only an anchor faces one direction (--role anchor) — a ${role} is not one pose`);
+      }
       // Every origin refusal lives in here, so building the edge first means a
       // rejected flag combination exits before the document is touched at all.
       const provenance = refEdge(doc, values, id, now);
@@ -1663,7 +2077,7 @@ function main() {
       setEdge(doc, provenance);
 
       const existing = doc.sprite.refs.findIndex((r) => r.id === id);
-      const entry = { id, asset: assetId, role, label };
+      const entry = { id, asset: assetId, role, label, ...(role === "anchor" ? { direction } : {}) };
       if (existing === -1) doc.sprite.refs.push(entry);
       else doc.sprite.refs[existing] = entry;
 
@@ -1678,6 +2092,7 @@ function main() {
         ? undefined
         : oneOf(values.kind, MOTION_KINDS, "--kind");
       if (kind === "transition") {
+        if (values.direction !== undefined) fail("--direction: a transition joins two loops and faces whatever they face — it takes no direction of its own");
         const motion = transitionMotion(doc, values);
         doc.sprite.motions.push(motion);
         saveProject(dir, doc);
@@ -1687,6 +2102,7 @@ function main() {
       if (values.from !== undefined || values.to !== undefined) {
         fail("--from / --to: only a --kind transition goes from one loop to another");
       }
+      const direction = directionFlag(values);
       const id = requireFlag(values.id, "--id");
       if (doc.sprite.motions.some((m) => m.id === id)) {
         fail(`--id: motion '${id}' already exists — use set-motion to change it`);
@@ -1702,6 +2118,7 @@ function main() {
       const motion = {
         id,
         label: values.label ?? titleCase(id),
+        ...(direction ? { direction } : {}),
         prompt: values.prompt ?? "",
         ...(kind ? { kind } : {}),
         grid: {
@@ -1736,9 +2153,32 @@ function main() {
       if (values.fps !== undefined) motion.fps = num(values.fps, "--fps", { min: 1 });
       motion.loop = loop(motion.loop);
       if (values.anchor !== undefined) motion.anchor = oneOf(values.anchor, ANCHORS, "--anchor");
-      if (values.prompt !== undefined) motion.prompt = values.prompt;
+      // A prompt and the parts that built it travel together: parts with the
+      // prompt they built (what `sheet-prompt` records), or a prompt alone —
+      // written by hand, so any parts on file no longer describe it.
+      if (values["prompt-parts"] !== undefined) {
+        recordPromptParts(motion, values["prompt-parts"], values.prompt);
+      } else if (values.prompt !== undefined) {
+        motion.prompt = values.prompt;
+        delete motion.promptParts;
+      }
       if (values.status !== undefined) motion.status = oneOf(values.status, MOTION_STATUSES, "--status");
       if (values.notes !== undefined) motion.notes = values.notes;
+      const directionNotes = [];
+      const direction = directionFlag(values);
+      if (direction !== undefined) {
+        // A mirror faces the other side from its source, by construction.
+        const source = motion.source === "mirror" ? doc.sprite.motions.find((m) => m.id === motion.mirrorOf) : null;
+        if (source && MIRRORED[source.direction] && MIRRORED[source.direction] !== direction) {
+          fail(`--direction: '${motion.id}' is a mirror of ${source.id}, which faces ${source.direction} — it faces ${MIRRORED[source.direction]}`);
+        }
+        if (motion.direction !== direction) {
+          for (const mirror of doc.sprite.motions.filter((m) => m.source === "mirror" && m.mirrorOf === motion.id)) {
+            directionNotes.push(`note: ${mirror.id} mirrors ${motion.id} and faces ${mirror.direction ?? "no direction"} — check it still faces the other side`);
+          }
+        }
+        motion.direction = direction;
+      }
 
       // Acknowledging warnings is a statement about a measurement, so it can
       // only be made when there is one, and it has to carry the sentence the
@@ -1767,7 +2207,7 @@ function main() {
       emit(values, motion, [`${motion.id}: ${motion.status}, ${motion.fps}fps, loop=${motion.loop}`]);
       // After the write, and on stderr: every caller of this command passes
       // --json, so a line routed through `emit` would be swallowed by it.
-      for (const line of briefLines) console.error(line);
+      for (const line of [...briefLines, ...directionNotes]) console.error(line);
       break;
     }
 
@@ -1899,6 +2339,30 @@ function main() {
           }
         }
       }
+      // A breathe is warped out of one still and a mirror is another motion
+      // flipped: both are sprite runs, and each names what it was made from,
+      // which must already be in this character — the way a from-video run
+      // needs its clip registered first.
+      const breatheRun = run.source === "breathe";
+      const mirrorRun = run.source === "mirror";
+      if ((breatheRun || mirrorRun) && run.kind !== undefined) {
+        fail(`--run: a ${run.source} summary is a sprite run — it has no kind '${run.kind}'`);
+      }
+      let stillId = null;
+      if (breatheRun) {
+        if (typeof run.still !== "string" || !run.still) {
+          fail("--run: a breathe summary names no 'still' — is this 'sprite-sheet.mjs breathe --json' output?");
+        }
+        const stillUri = toUri(dir, run.still, "--run still");
+        const still = doc.assets.find((a) => a.uri === stillUri);
+        if (!still) {
+          fail(`--run: the still ${stillUri} is not registered — register it first: add-ref --dir <character> --id <id> --file ${stillUri} --role custom --uploaded (a cut-out of a registered ref: --derived-from <ref> --op key)`);
+        }
+        stillId = still.id;
+      }
+      const breathe = breatheRun ? breatheRecord(run.breathe, stillId) : null;
+      const mirror = mirrorRun ? mirrorSource(doc, motion, run) : null;
+
       const cell = run.cell && Number.isFinite(Number(run.cell.width)) && Number.isFinite(Number(run.cell.height))
         ? { width: Number(run.cell.width), height: Number(run.cell.height) }
         : null;
@@ -1922,6 +2386,11 @@ function main() {
         ...LOOP_EXPORTS.filter((spec) => run[spec.key]).map((spec) => `${motion.id}-${spec.suffix}`),
       ]);
       const leftover = runOwnedIds(doc, motion.id).filter((id) => !rebuilt.has(id));
+      // A still this run is about to replace or drop cannot also be what the
+      // new frames were warped from.
+      if (stillId && (rebuilt.has(stillId) || leftover.includes(stillId))) {
+        fail(`--run: the still ${stillId} is one of the frames this run replaces — register it as a reference first (add-ref --derived-from ${stillId}) and breathe that`);
+      }
       // The exports cut from the frames this run replaces — the motion's own
       // and the character's .riv when it holds this motion — go with them.
       // Said on stderr, because the file stays on disk and the user may have
@@ -2003,12 +2472,30 @@ function main() {
           })));
           return id;
         }
+        if (breathe) {
+          // Every frame is a warp of the one still: single parent, the
+          // parameters that made it.
+          setEdge(doc, edge(id, [stillId], operation("derive", now, {
+            tool: TOOL, step: "breathe", frameIndex: index,
+            depth: breathe.depth, depthX: breathe.depthX, breaths: breathe.breaths, lag: breathe.lag, mode: breathe.mode,
+          })));
+          return id;
+        }
+        if (mirror) {
+          // Frame i IS the source's frame i, flipped.
+          setEdge(doc, edge(id, [mirror.source.frames[index]], operation("derive", now, {
+            tool: TOOL, step: "mirror", frameIndex: index,
+          })));
+          return id;
+        }
         const parents = fromVideo ? [videoAssetId] : (sourceId ? [sourceId] : []);
         setEdge(doc, edge(id, parents, operation("derive", now, fromVideo
           ? { tool: TOOL, step: "from-video", frameIndex: index, t: Number.isFinite(sampledAt) ? sampledAt : undefined }
           : { tool: TOOL, step: "run", cell: index })));
         return id;
       });
+      // A pixel run's palette, pinned on the character once.
+      const paletteWarnings = pinPalette(doc, dir, motion, run, frameIds, values.repin, now);
 
       // The packed trio. A loop run carries none of them (readRunSummary does
       // not ask it to), and a slot whose asset this run did not rebuild has
@@ -2156,7 +2643,19 @@ function main() {
       // is still a sheet's frames. `sheet` stays unwritten when nothing ever
       // claimed otherwise, because absent already means sheet.
       if (fromVideo || transitionRun) motion.source = "video";
-      else if (motion.source === "video") motion.source = "sheet";
+      else if (breatheRun) motion.source = "breathe";
+      else if (mirrorRun) motion.source = "mirror";
+      else if (motion.source !== undefined && motion.source !== "sheet") motion.source = "sheet";
+      // Each source's record goes with the frames it describes: a run of any
+      // other shape drops it, as it drops a loop's clip record.
+      if (breathe) motion.breathe = breathe;
+      else delete motion.breathe;
+      if (mirror) {
+        motion.mirrorOf = mirror.source.id;
+        motion.direction = mirror.facing;
+      } else {
+        delete motion.mirrorOf;
+      }
       // A fresh measurement is not the one that was acknowledged, so the
       // acknowledgement goes with the numbers it covered.
       const summary = inspectSummary(run.inspect);
@@ -2173,7 +2672,7 @@ function main() {
       // and the 532px one the Kiki trial shipped with a 45 MB Lottie, and
       // nothing else in the chain compares the two numbers. Two pixels of
       // slack, because the crop rect is rounded to even sides.
-      const warnings = [];
+      const warnings = [...paletteWarnings];
       const briefWidth = loopRun ? readBrief(motion).brief?.width : undefined;
       const cutWidth = finiteNumber(motion.inspect?.cell?.width);
       if (briefWidth !== undefined && cutWidth !== undefined && Math.abs(cutWidth - briefWidth) > 2) {
@@ -2194,7 +2693,7 @@ function main() {
       emit(values, warnings.length ? { ...motion, warnings } : motion, [
         loopRun
           ? `${motion.id}: ${frameIds.length} loop frames cut from ${videoAssetId} @ ${motion.fps}fps, ${Object.keys(exportIds).join(" + ") || "no exports"} registered (ready)`
-          : `${motion.id}: ${frameIds.length} frames${fromVideo ? ` sampled from ${videoAssetId}` : ""}, atlas + preview registered (ready)`,
+          : `${motion.id}: ${frameIds.length} frames${fromVideo ? ` sampled from ${videoAssetId}` : breathe ? ` warped from ${stillId}` : mirror ? ` flipped from ${mirror.source.id}` : ""}, atlas + preview registered (ready)`,
         ...(motion.inspect?.warnings ?? []),
       ]);
       for (const warning of warnings) console.error(`WARN: ${warning}`);
@@ -2205,6 +2704,11 @@ function main() {
       // the old cut. Said, not undone — its frames are still a transition.
       for (const reverse of doc.sprite.motions.filter((m) => m.reverseOf === motion.id)) {
         console.error(`note: ${reverse.id} plays the frames this run replaced backwards — cut it again with 'sprite-sheet.mjs transition --reverse-of ${motion.id}' and register it`);
+      }
+      // The same for a mirror: its frames are the old ones flipped. Said, not
+      // undone — `show` lists it as stale until it is mirrored again.
+      for (const flipped of doc.sprite.motions.filter((m) => m.source === "mirror" && m.mirrorOf === motion.id)) {
+        console.error(`note: ${flipped.id} mirrors the frames this run replaced — mirror it again from motions/${motion.id} ('sprite-sheet.mjs mirror') and register it`);
       }
       break;
     }
@@ -2384,6 +2888,11 @@ function main() {
         `removed motion ${motion.id} (${ids.length} assets)`,
         ...(orphanedPaths.length ? [`files left on disk: ${orphanedPaths.join(", ")}`] : []),
       ]);
+      // A mirror of it keeps its own frames — they are real files — but no
+      // longer has a source to be mirrored again from.
+      for (const flipped of doc.sprite.motions.filter((m) => m.source === "mirror" && m.mirrorOf === motion.id)) {
+        console.error(`note: ${flipped.id} was a mirror of ${motion.id}; its frames stay, but there is nothing to mirror it from again`);
+      }
       break;
     }
 
@@ -2391,9 +2900,13 @@ function main() {
       const doc = loadProject(dir);
       if (values.motion !== undefined) {
         const motion = findMotion(doc, values.motion);
+        const stale = motion.source === "mirror" && motion.mirrorOf ? mirrorStaleness(doc, motion) : null;
         const payload = {
           ...compactMotion(motion),
           prompt: motion.prompt,
+          ...(motion.promptParts ? { promptParts: motion.promptParts } : {}),
+          ...(motion.breathe ? { breathe: motion.breathe } : {}),
+          ...(stale ? { stale } : {}),
           notes: motion.notes,
           ...(motion.keyframe ? { keyframe: motion.keyframe } : {}),
           ...(motion.keyframeAlpha ? { keyframeAlpha: motion.keyframeAlpha } : {}),
@@ -2408,6 +2921,7 @@ function main() {
         };
         emit(values, payload, [
           ...motionLines(motion),
+          ...(stale ? [`  stale: ${stale} — mirror it again and register it`] : []),
           ...(motion.inspect?.warnings ?? []),
         ]);
         break;
@@ -2418,6 +2932,7 @@ function main() {
         `${summary.title} — ${summary.refs.length} refs, ${summary.motions.length} motions`,
         ...(rivUri ? [`  exported: riv (${rivUri})`] : []),
         ...summary.motions.map((m) => `  ${m.id.padEnd(12)} ${m.status.padEnd(10)} ${m.kind === "loop" ? "loop".padEnd(7) : `${m.grid.rows}x${m.grid.cols}`.padEnd(7)} @ ${m.fps}fps  ${m.frameCount} frames${m.warnings.length ? `  (${m.warnings.length} warnings)` : ""}`),
+        ...(summary.staleMirrors ?? []).map((m) => `  stale mirror: ${m.id} (of ${m.mirrorOf}) — ${m.reason}; mirror it again and register it`),
       ]);
       break;
     }

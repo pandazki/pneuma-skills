@@ -79,11 +79,22 @@ function describeMotion(
       motion.loop ? "loop" : "play once"
     } · anchor ${motion.anchor}`,
   );
+  if (motion.direction) lines.push(`Direction: ${motion.direction}`);
   lines.push(`Status: ${motion.status}`);
   // Absent means "sheet" — the source of every motion made before the video
-  // path existed — so only the newer answer is worth a line.
+  // path existed — so only the newer answers are worth a line.
   if (motion.source === "video") {
     lines.push("Source: video (frames sampled from a clip)");
+  } else if (motion.source === "breathe") {
+    lines.push(
+      `Source: breathe (from ${motion.breathe?.still ?? "a still that was not recorded"})`,
+    );
+  } else if (motion.source === "mirror") {
+    lines.push(
+      motion.mirrorOf
+        ? `Source: mirror of ${motion.mirrorOf} (its frames flipped left↔right)`
+        : "Source: mirror (its frames flipped left↔right)",
+    );
   }
   lines.push(`Frames: ${motion.frames.length}`);
   // The size the user is looking at. The header says declared → measured, and
@@ -128,10 +139,14 @@ function describeCharacter(project: CharacterProject, lines: string[]): void {
       character.facing ? `, facing ${character.facing}` : ""
     })`,
   );
+  // What the user is making, so a later session does not ask again.
+  if (character.purpose) lines.push(`Purpose: ${character.purpose}`);
   if (character.style) lines.push(`Style: ${character.style}`);
   if (refs.length > 0) {
     lines.push(
-      `Refs: ${refs.map((r) => `${r.id} (${r.role})`).join(", ")}`,
+      `Refs: ${refs
+        .map((r) => `${r.id} (${r.role}${r.direction ? `, ${r.direction}` : ""})`)
+        .join(", ")}`,
     );
   } else {
     lines.push("Refs: none yet");
@@ -187,7 +202,11 @@ export function extractSpriteContext(
   } else if (refId) {
     const ref = findRef(project, refId);
     if (ref) {
-      lines.push(`Reference: "${ref.label}" (${ref.id}, role ${ref.role})`);
+      lines.push(
+        `Reference: "${ref.label}" (${ref.id}, role ${ref.role}${
+          ref.direction ? `, faces ${ref.direction}` : ""
+        })`,
+      );
     } else {
       lines.push(`Reference "${refId}" is not in this character.`);
     }
