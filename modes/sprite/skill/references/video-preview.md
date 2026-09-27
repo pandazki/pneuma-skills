@@ -199,33 +199,44 @@ when the action needs travel preserved in the exported frames.
 For a non-looping motion, use `--no-loop` when sampling and name the end pose
 in the prompt. The worked idle below is one grounded-loop example.
 
-The `--image` is the character on that same green plate: take a reference (or
-frame 00 of an existing motion) and `sprite-sheet.mjs flatten --bg "#00ff00"`
-it, so the first frame the model extends already has the background the prompt
-asks for. The worked call, end to end:
+The `--image` is the character on that same green plate: take something
+already cut out (frame 00 of an existing motion, or a reference run through
+`remove-background.mjs`) and `sprite-sheet.mjs flatten --bg "#00ff00"` it, so
+the first frame the model extends already has the background the prompt asks
+for — with `--room` for a jump, an attack or a wave (`pipeline.md` →
+`flatten`). The worked call, end to end — an idle, so its first frame is
+pinned (the next section):
 
 ```bash
-node {SKILL_PATH}/scripts/sprite-sheet.mjs flatten <character>/refs/portrait.png \
+node {SKILL_PATH}/scripts/sprite-sheet.mjs flatten <character>/motions/attack/frames/00.png \
   --out <character>/motions/<id>/first-green.png --bg "#00ff00" --json
 
 node {SKILL_PATH}/scripts/seedance-video.mjs \
   --prompt "One continuous idle loop of the character. The camera is locked off: no pan, no tilt, no zoom, no parallax, no cut. The character stays centred and fully inside the frame at a constant size, planted on one fixed baseline — no walking, no turning, no stepping toward or away from the camera. The motion: the chest and shoulders rise and fall once in one slow breath, the hair and the cloak trail a beat behind, the paper lantern beside her sways gently, and she blinks once. The background is a flat solid pure chroma green filling the whole frame, evenly lit, no gradient, no floor, no cast shadow, no reflection, and no green light spilling onto the character. The final frame returns to the opening pose so the loop closes seamlessly." \
   --image <character>/motions/<id>/first-green.png \
+  --end-image <character>/motions/<id>/first-green.png \
   --duration 4 --resolution 480p --no-audio \
   --output <character>/motions/<id>/video-seedance-1.mp4 --json
 
+node {SKILL_PATH}/scripts/sprite-sheet.mjs contact \
+  <character>/motions/<id>/video-seedance-1.mp4 \
+  --out <character>/motions/<id>/contact.png --json
+
 node {SKILL_PATH}/scripts/sprite-sheet.mjs from-video \
   <character>/motions/<id>/video-seedance-1.mp4 \
-  --out <character>/motions/<id> --name <id> --frames 16 --loop --json \
+  --out <character>/motions/<id> --name <id> \
+  --trim-start <the window contact reported> --trim-end <…> --frames 12 --loop --json \
   > <character>/motions/<id>/run.json
 ```
 
-Only a reference that already shows the whole character can be flattened
-straight to green. A reference with a white plate is white *inside* the
-character too (eye whites, a cream cloak), so keying the white first would
-punch holes in it — flatten an existing motion's `frames/00.png`, which is
-already cut out, or accept the white plate and let the model repaint the
-background from the prompt.
+A pinned idle usually reads **no cycle** on `contact` (it drifts from its
+first frame and back once): sample `stillStart`–`stillEnd`, or the one-shot
+window it reports (*Look before you sample*, below).
+
+Never flatten a reference with a white plate: it is white *inside* the
+character too (eye whites, a cream cloak), and nothing keys that white
+without punching holes in the character. Cut it out first
+(`remove-background.mjs`), or use an existing motion's `frames/00.png`.
 
 ## Motion sentences per state, and pinning the first frame
 

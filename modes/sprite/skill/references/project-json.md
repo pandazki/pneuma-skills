@@ -15,13 +15,18 @@ correctly on disk.
 ```
 <character>/                      # content set, kebab-case
   project.json
-  refs/<ref-id>.png               # turnaround, portrait, expressions…
+  refs/<ref-id>.png               # turnaround, portrait, expressions, one
+                                  # anchor per direction (anchor-back.png…)
   motions/<motion-id>/
     sheet-raw.png                 # as generated
     sheet-alpha.png               # background removed (only when raw had none)
     cells/00.png … NN.png         # raw sliced cells before alignment; kept so
                                   # `inspect` can measure clipping/jumps and
                                   # `align` can re-run from them
+    pixel/00.png … NN.png         # pixel art: the lattice's frames (`run
+                                  # --pixel`), a working file like cells/
+    palette.json                  # the palette a pixel run quantised to; the
+                                  # first one is pinned as <character>-palette
     frames/00.png … NN.png        # sliced + aligned, uniform cell, RGBA
     frames/align.json             # anchor point align used; the atlas pivot
                                   # is measured from it, not from the cell edge

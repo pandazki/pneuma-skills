@@ -88,8 +88,9 @@ clickable card that takes the user there — or into the `capture` action's
 ### Three sensing layers, in cost order
 
 1. **Diagnose** — `sprite-sheet.mjs inspect`: deterministic, free, no model.
-   Anchor drift, head sway, scale drift, empty frames, clipped cells, held
-   frames, row jumps. Read this first. A loop motion is measured on other
+   Anchor drift, head sway, scale drift, empty or clipped frames, held
+   frames, row jumps, plate colour left on a keyed edge (`keyResidue`). Read
+   this first. A loop motion is measured on other
    things — the seam against its limit, alpha coverage, export sizes — and
    `loop` writes that report itself. For a clip the same layer is
    `sprite-sheet.mjs contact`: a timestamped contact sheet plus the holds,
@@ -927,14 +928,13 @@ Say the price and the wait before you start one.
    defaults to `ready`), naming its parent and the endpoint that really made
    it; the number in the id is the next free one.
 
-   **The matte is optional now.** The free key un-mixes the plate out of
-   every edge (measured on ten real loops: no plate colour left, no dark rim,
-   body colours untouched). VEED's matte is still the softest edge measured
-   and the fix for what a colour key cannot separate — smoke, glow, anything
-   translucent the plate shows through, or a plate that is not green. **Pick
-   the endpoint by the plate**: flat chroma green → `--model veed-gs` (≈ $0.06
-   for 121 frames); any other plate → `--model veed` (≈ $0.09), `bria` if
-   VEED's edge ever fails a subject. Whatever the user picks, **read the seam
+   **Of the two, the matte is the one worth paying for**: VEED's is the
+   softest edge measured, and the fix for what a colour key cannot separate
+   (smoke, glow, a plate that is not green). The free key is no compromise
+   either — it un-mixes the plate out of every edge (ten real loops: no plate
+   colour, no dark rim), not yet compared side by side. **Pick the endpoint
+   by the plate**: chroma green → `--model veed-gs` (≈ $0.06 for 121
+   frames); any other → `--model veed` (≈ $0.09), `bria` if VEED fails. Whatever the user picks, **read the seam
    again afterwards**: Topaz opened it on the trial clip because it never
    sees the wrap (`references/video-preview.md`).
 8. **Cut the loop.** Hand it the clip whose pixels you want — the **last** one

@@ -329,8 +329,6 @@ pose." Everything around it is written for you.
 > pure white background filling every cell, no gradient. No grid lines, no
 > numbers, no shadow, no anti-aliased halo around the sprite.
 
-<!-- T12 review: pixel-art prompting notes from T5 (pixel lattice), 2026-09-27.
-     Evidence in references/pipeline.md "Measured (pixel lattice, 2026-09-27)". -->
 **What the model does with "pixel art", and what that means for the sheet.**
 Measured on a GPT Image 2.5 walk (shoot e6): the model does not honour a
 pixel count — asked for 32 art pixels, it drew the knight ≈ 53 tall — and
@@ -349,9 +347,13 @@ one block). So:
 - Ask for every detail at least one full block wide ("every feature at
   least one pixel block wide, no half-blocks") and keep "hard pixel edges,
   no anti-aliasing, limited palette".
-- After the sheet is drawn, look at one cell at 8× and count blocks across a
-  flat area: that width in source pixels is the `--pitch-hint` `run --pixel`
-  asks for when the frames do not show their grid on their own.
+- Declare the height the model can draw (`init --pixel H`): `sheet-prompt`
+  then asks for it, and `run --pixel` takes the block size from it when the
+  frames back it. Otherwise, after the sheet is drawn, look at one cell at 8×
+  and count blocks across a flat area: that width in source pixels is the
+  `--pitch-hint` `run --pixel` asks for when the frames do not show their
+  grid on their own. Evidence: `pipeline.md`, "Measured (pixel lattice)" and
+  "Measured: colourways and the declared height".
 
 ### Anime attack (4×4, 10 fps, no loop)
 
