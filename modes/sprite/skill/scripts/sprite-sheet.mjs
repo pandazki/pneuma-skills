@@ -37,6 +37,12 @@ import {
   riveDecodeWarning, riveMB, rivePlan, riveReverseIsCurrent,
 } from "./rive-plan.mjs";
 import { zipStore } from "./zip.mjs";
+import {
+  BODY_REGISTER_BAND, BODY_REGISTER_SEARCH, bodyWrapOffset, headOffsets, headProfile, massCenterX,
+  rampShifts, swayAboutTrend, trendReference,
+} from "./drift.mjs";
+import { BOUNDARY_STEP_RATIO, DUPLICATE_STEP, judgeSteps, stepThumb, thumbDiff } from "./frame-steps.mjs";
+import { ROOM_DEFAULTS, ROOM_SHAPES, roomCanvas } from "./canvas.mjs";
 
 const DEFAULT_THRESHOLD = 16;
 const DEFAULT_PAD = 8;
@@ -67,8 +73,20 @@ const FEET_BAND = 0.1;
 /** Feet wandering more than this fraction of the cell width across the frames
  *  is a body that visibly slides sideways during playback, not animation. */
 const MAX_BODY_DRIFT_FRACTION = 0.05;
-/** Where `align` may take each frame's x from. */
-const X_FROM_MODES = ["feet", "bbox", "cell"];
+/** The frames' head drift over the source's own (drift removed) by more than
+ *  this factor — and by more than ADDED_SWAY_FRACTION of the cell width — is
+ *  sway the alignment put there. Measured 2026-09-27: a feet-pinned walk sits
+ *  at 9.8× (real side walk) and 44× (synthetic); every alignment that kept or
+ *  reduced its source's motion at or under 1.43× (Lumi attack sheet). */
+const ADDED_SWAY_RATIO = 2;
+const ADDED_SWAY_FRACTION = 0.01;
+/** Where `align` may take each frame's x from. `trend` and `body` read every
+ *  frame in one shared coordinate system (a clip's frames, one grid's cells)
+ *  and keep the placement it was filmed with, minus the drift. */
+const X_FROM_MODES = ["feet", "bbox", "cell", "trend", "body"];
+/** The x modes that keep the source placement, so the frames must share one
+ *  coordinate system: cut from one grid, or out of one clip. */
+const SOURCE_PLACED = new Set(["cell", "trend", "body"]);
 /** Relative spread of bbox heights above which the character is being drawn at
  *  different scales from frame to frame. */
 const MAX_SCALE_DRIFT = 0.15;
@@ -197,6 +215,9 @@ const CELLS_DIRNAME = "cells";
 /** What `align` leaves in the frames dir so `pack` can declare the pivot it
  *  actually used instead of guessing the cell edge. */
 const ALIGN_RECORD = "align.json";
+/** What `slice` leaves next to the cells: the grid they were cut from, so
+ *  `inspect` can tell a row boundary from an ordinary step. */
+const SLICE_RECORD = "slice.json";
 
 // --- export / rive: a finished motion, handed over --------------------------
 /** What `export --format` makes, in the order the Export tab lists them. */
@@ -236,7 +257,18 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       Chroma-key a background colour away. 'auto' uses the corner colour.
 
   flatten <image> --out <png> [--bg #ffffff]
+        [--room tall|wide|square [--headroom f] [--lead f] [--trail f] [--facing left|right]]
       Composite onto a solid colour (for video models that mishandle alpha).
+      --room pads the picture into the canvas its motion needs first, because
+      an image-to-video model keeps the input's framing: square squares it off;
+      tall is 3:4 with ${ROOM_DEFAULTS.tall.headroom * 100}% of the height empty above (a jump); wide
+      is 16:9 with ${ROOM_DEFAULTS.wide.headroom * 100}% above, ${ROOM_DEFAULTS.wide.lead * 100}% of the width in front and ${ROOM_DEFAULTS.wide.trail * 100}% behind (an
+      attack; a wave or a cheer is --headroom 0 --lead 0.3 --trail 0).
+      --headroom / --lead / --trail override those fractions (each in [0, 0.9),
+      lead + trail < 0.9). Front is the facing side: --facing, else the
+      character's facing from the nearest sprite project.json above the image,
+      else right (the report says which). The picture is never scaled and
+      stands on the canvas's bottom edge.
 
   slice <sheet> --rows R --cols C --out <dir> [--margin 0] [--gutter 0]
       Cut the grid into <dir>/NN.png, row-major. Non-integer cells are
@@ -251,7 +283,7 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       the character is holding. Reports cleaned[] and warns on any cell that
       lost more than ${CLEAN_ALERT_FRACTION * 100}% of its ink. --out may be the input directory.
 
-  align <framesDir> --out <dir> [--anchor bottom|center] [--x-from feet|bbox|cell]
+  align <framesDir> --out <dir> [--anchor bottom|center] [--x-from feet|bbox|cell|trend|body]
         [--cell auto|WxH] [--pad ${DEFAULT_PAD}] [--smooth] [--threshold ${DEFAULT_THRESHOLD}]
       Re-place every frame so its anchor lands on the same point.
       y: bbox bottom (bottom) or bbox centre (center).
@@ -261,6 +293,15 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       bbox centre (what --anchor center always uses, feet being no reference
       for an airborne pose); cell keeps the offset the drawing had inside its
       grid cell, i.e. no horizontal re-placement at all.
+      trend and body are for frames out of ONE clip (or one grid): they keep
+      the placement the frames were filmed with and take out only the drift,
+      so a walk's planted foot is not pinned (pinning it lurches the body by
+      about a stride every step). trend fits a straight line to the body's
+      mass centre across the frames and removes it; body registers the last
+      frame's head and torso (top ${BODY_REGISTER_BAND * 100}% of its box) against the first's,
+      +/-${BODY_REGISTER_SEARCH} px, and ramps that offset across the frames. Either way
+      the anchor lands on the mean foot line, and the record carries what was
+      removed (drift.driftPx / drift.wrapDx).
       --smooth replaces each frame's x with the 3-frame median so a one-frame
       wobble does not shove the body sideways; with --anchor center the same
       median is applied to y.
@@ -279,16 +320,20 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       Palette GIF with a reserved transparent entry; optional animated WebP.
 
   inspect <motionDir> [--anchor bottom|center] [--cells <dir>] [--threshold ${DEFAULT_THRESHOLD}]
-      Frame count, cell, per-frame bboxes, anchor drift, body drift, max jump,
-      scale drift, empty frames and human warnings. Writes
-      <motionDir>/inspect.json.
+      Frame count, cell, per-frame bboxes, anchor drift, body drift (the feet),
+      head drift (the head-and-torso band registered against frame 00 — what
+      a feet-pinned walk lurches with), max jump, scale drift, empty frames,
+      near-duplicate neighbours (step under ${DUPLICATE_STEP}: the mean RGBA difference
+      at 64x64), row-boundary jumps (a grid's boundary step over ${BOUNDARY_STEP_RATIO}x its
+      in-row median — the grid comes from <cells>/${SLICE_RECORD}, which slice
+      writes) and human warnings. Writes <motionDir>/inspect.json.
       --cells points at the pre-align grid cells so "leaves its grid cell"
       can be judged on the raw crop rather than the padded frame; it defaults
       to <motionDir>/${CELLS_DIRNAME} when 'run' left that directory there.
 
   run <sheet-raw> --rows R --cols C --out <motionDir> --name <motionId> --fps N
       [--alpha <png>] [--force] [--loop] [--anchor bottom|center]
-      [--x-from feet|bbox|cell] [--key auto|#rrggbb|none] [--cell auto|WxH]
+      [--x-from feet|bbox|cell|trend|body] [--key auto|#rrggbb|none] [--cell auto|WxH]
       [--pad ${DEFAULT_PAD}] [--smooth] [--scale 1] [--nearest] [--margin 0] [--gutter 0]
       [--width W] [--no-webp] [--threshold ${DEFAULT_THRESHOLD}]
       probe -> key (only when the sheet is opaque) -> slice -> align -> pack
@@ -330,8 +375,8 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       motion directory or to project.json.
 
   from-video <clip> --out <motionDir> --name <motionId> --frames N | --at t1,t2,…
-      [--fps N] [--loop|--no-loop] [--anchor bottom|center]
-      [--x-from feet|bbox|cell] [--key auto|#rrggbb|none]
+      [--fps N] [--loop|--no-loop] [--anchor bottom|center] [--body-height N]
+      [--x-from feet|bbox|cell|trend|body] [--key auto|#rrggbb|none]
       [--trim-start s] [--trim-end s] [--no-clean] [--cell auto|WxH]
       [--pad ${DEFAULT_PAD}] [--smooth] [--scale 1] [--nearest] [--width W] [--no-webp]
       [--cols C] [--similarity ${DEFAULT_VIDEO_SIMILARITY}] [--blend ${DEFAULT_BLEND}] [--threshold ${DEFAULT_THRESHOLD}]
@@ -356,6 +401,10 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       --loop/--no-loop only decide the gif and the atlas, not the sampling.
       --fps then defaults to the mean sampling rate, (N-1) / (last - first).
       The JSON says which schedule ran: "even" or "explicit".
+      --body-height N scales every sampled frame so the subject in the clip's
+      FIRST frame (t = 0, the still every clip starts from) stands N px tall:
+      the same N across a character's clips gives it one size in every motion.
+      Up or down (up is warned); premultiplied; needs a keyed clip.
       The clip is only read: it is never copied or moved into <motionDir>.
 
   retime <clip> --keep <ranges> --out <mp4> [--fps N]
@@ -718,7 +767,16 @@ function feetCenterX(image, bbox, threshold) {
  */
 function measureFrame(image, threshold) {
   const { bbox, coverage } = computeBbox(image, threshold);
-  return { bbox, coverage, feetX: bbox ? feetCenterX(image, bbox, threshold) : null };
+  return {
+    bbox,
+    coverage,
+    feetX: bbox ? feetCenterX(image, bbox, threshold) : null,
+    // The whole body's mass: what `--x-from trend` fits its drift line to.
+    massX: bbox ? massCenterX(image, bbox, threshold) : null,
+    // The head-and-torso band, as column profiles: what `inspect` registers
+    // frame against frame for `headDrift`, on the frames and on their cells.
+    head: bbox ? headProfile(image, bbox, { threshold }) : null,
+  };
 }
 
 /**
@@ -948,8 +1006,29 @@ const loopFrameName = (index) => `${String(index).padStart(3, "0")}.png`;
 function resetFramesDir(dir) {
   mkdirSync(dir, { recursive: true });
   for (const name of readdirSync(dir)) {
-    if (FRAME_RE.test(name) || name === ALIGN_RECORD) unlinkSync(join(dir, name));
+    if (FRAME_RE.test(name) || name === ALIGN_RECORD || name === SLICE_RECORD) unlinkSync(join(dir, name));
   }
+}
+
+/**
+ * The grid a cells directory was sliced from, or null when nothing sliced it
+ * (a clip's samples, cells cut by hand). Same discipline as `readAlignRecord`:
+ * absent is an answer, a record that is there and unreadable is an error.
+ */
+function readSliceRecord(cellsDir) {
+  const path = join(resolve(cellsDir), SLICE_RECORD);
+  if (!existsSync(path)) return null;
+  let doc;
+  try {
+    doc = JSON.parse(readFileSync(path, "utf-8"));
+  } catch (error) {
+    fail(`${path} is not valid JSON (${error.message}) — delete it or re-run slice`);
+  }
+  const whole = (v) => Number.isInteger(v) && v >= 1;
+  if (!doc || !whole(doc.rows) || !whole(doc.cols)) {
+    fail(`${path} is not a slice record (needs whole rows and cols) — delete it or re-run slice`);
+  }
+  return { rows: doc.rows, cols: doc.cols };
 }
 
 function listAndTruncate(items, render) {
@@ -1001,16 +1080,95 @@ function stepKey(input, { out, color, similarity, blend, threshold }) {
   };
 }
 
-function stepFlatten(input, { out, bg }) {
+/**
+ * Which way the character faces, for a wide room's lead and trail: `--facing`
+ * when given, else `sprite.character.facing` from the nearest character
+ * project.json above the input (a frame or a ref lives a few directories
+ * below it), else right. The report says which, so a room built on the
+ * default is never mistaken for one built on the character.
+ */
+function flattenFacing(input, given) {
+  if (given) return { facing: given, facingFrom: "flag" };
+  let dir = dirname(resolve(input));
+  for (let depth = 0; depth < 5; depth++) {
+    const path = join(dir, "project.json");
+    if (existsSync(path)) {
+      let doc = null;
+      try {
+        doc = JSON.parse(readFileSync(path, "utf-8"));
+      } catch (error) {
+        fail(`flatten: ${path} is not valid JSON (${error.message}) — pass --facing left|right`);
+      }
+      const facing = doc?.sprite?.character?.facing;
+      if (doc?.sprite) {
+        return facing === "left" || facing === "right"
+          ? { facing, facingFrom: path }
+          : { facing: "right", facingFrom: "default" };
+      }
+    }
+    const up = dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return { facing: "right", facingFrom: "default" };
+}
+
+/**
+ * Composite onto a solid colour — and, with `room`, pad the picture into the
+ * canvas its motion needs first. An image-to-video model keeps the input's
+ * framing (Seedance: 416×506 in, 588×716 out, `--aspect-ratio` refused on
+ * i2v), so a jump or a swing that leaves the first frame's frame is clipped
+ * whatever the prompt says; the room has to be in the still. The still is
+ * never scaled and stands on the canvas's bottom edge (see `canvas.mjs`).
+ */
+function stepFlatten(input, { out, bg, room = null, headroom, lead, trail, facing: givenFacing }) {
   const color = normalizeColor(bg, "--bg");
-  const { width, height } = probeSize(resolve(input));
+  const source = resolve(input);
+  const size = probeSize(source);
+  let placed = null;
+  let facing = null;
+  const warnings = [];
+  if (room) {
+    facing = flattenFacing(source, givenFacing);
+    try {
+      placed = roomCanvas(size, { room, headroom, lead, trail, facing: facing.facing });
+    } catch (error) {
+      fail(`flatten: ${error.message}`);
+    }
+    // Padding an opaque picture paints --bg around a background of its own:
+    // the model is then handed a rectangle, not a character on a plate.
+    if (!hasAlpha(readRgba(source))) {
+      warnings.push(`${basename(source)} has no transparency — the room is painted ${color} around its own background; flatten a cut-out (an existing motion's frames/00.png) instead`);
+    }
+  }
+  const canvas = placed ? placed.canvas : size;
+  const offset = placed ? placed.offset : { x: 0, y: 0 };
   const output = ffmpegTo(out, () => [
-    "-i", resolve(input),
-    "-f", "lavfi", "-i", `color=c=${color}:s=${width}x${height}`,
-    "-filter_complex", "[1:v][0:v]overlay=0:0:format=auto,format=rgb24",
+    "-i", source,
+    "-f", "lavfi", "-i", `color=c=${color}:s=${canvas.width}x${canvas.height}`,
+    "-filter_complex", `[1:v][0:v]overlay=${offset.x}:${offset.y}:format=auto,format=rgb24`,
     "-frames:v", "1",
   ], "flatten");
-  return { input: resolve(input), output, bg: color, width, height };
+  return {
+    input: source,
+    output,
+    bg: color,
+    width: canvas.width,
+    height: canvas.height,
+    ...(placed ? {
+      room: {
+        shape: placed.room,
+        still: size,
+        offset: placed.offset,
+        headroom: placed.headroom,
+        lead: placed.lead,
+        trail: placed.trail,
+        facing: placed.facing,
+        facingFrom: facing.facingFrom,
+      },
+    } : {}),
+    warnings,
+  };
 }
 
 function stepSlice(sheet, { rows, cols, out, margin, gutter }) {
@@ -1045,11 +1203,18 @@ function stepSlice(sheet, { rows, cols, out, margin, gutter }) {
       ], `slice cell ${index}`));
     }
   }
+  // The grid travels with its cells: a sheet model that draws each row as its
+  // own little sequence jumps where one row hands over to the next, and only
+  // this step knows where those boundaries are.
+  const record = writeJsonFile(join(dir, SLICE_RECORD), {
+    rows, cols, cell: { width: cellW, height: cellH }, margin, gutter,
+  });
   return {
     sheet: input,
     outDir: dir,
     rows, cols, margin, gutter,
     cell: { width: cellW, height: cellH },
+    sliceRecord: record,
     exact: remainder.x === 0 && remainder.y === 0,
     remainder,
     cells: boxes,
@@ -1072,7 +1237,12 @@ function stepClean(cellsDir, { out, threshold }) {
   // Writing into a different directory replaces its whole contents; writing
   // over the input must not delete the files still to be read.
   const inPlace = inDir === outDir;
-  if (!inPlace) resetFramesDir(outDir);
+  if (!inPlace) {
+    resetFramesDir(outDir);
+    // Cleaned cells are still the grid's cells: its record goes with them.
+    const record = join(inDir, SLICE_RECORD);
+    if (existsSync(record)) copyFileSync(record, join(outDir, SLICE_RECORD));
+  }
 
   const stats = [];
   const frames = [];
@@ -1104,16 +1274,53 @@ function parseCell(value) {
  * for it. Only the width is checked: x is all this mode derives, so frames of
  * differing heights are none of its business.
  */
-function sourceCellWidth(entries, given) {
+function sourceCellWidth(entries, given, xMode) {
   if (given) return given.width;
   const first = probeSize(entries[0].path, "align");
   for (const entry of entries) {
     const size = probeSize(entry.path, "align");
     if (size.width !== first.width) {
-      fail(`--x-from cell needs frames cut from one grid, but ${basename(entries[0].path)} is ${first.width}px wide and ${basename(entry.path)} is ${size.width}px — align these on --x-from feet or bbox instead`);
+      fail(`--x-from ${xMode} needs frames cut from one grid or one clip, but ${basename(entries[0].path)} is ${first.width}px wide and ${basename(entry.path)} is ${size.width}px — align these on --x-from feet or bbox instead`);
     }
   }
   return first.width;
+}
+
+/**
+ * Where `trend` and `body` take each frame's x from, in the frames' shared
+ * source coordinates — both keep the placement the frames were filmed (or
+ * drawn) with and take out only the drift, so the constant they add is the
+ * mean foot line, which is where the anchor then lands.
+ *
+ * `trend` fits one line to the body's mass centre and removes it (see
+ * `drift.mjs::trendReference`). `body` measures the last frame's head and
+ * torso against the first's once and ramps that offset across the frames
+ * (`bodyWrapOffset` + `rampShifts`): shifting frame k right by s_k is the
+ * same as its anchor sitting s_k further left.
+ */
+function driftAnchors(entries, measures, xMode, threshold) {
+  const feetX = measures.map((m) => m.feetX);
+  if (xMode === "trend") {
+    const fit = trendReference(feetX, measures.map((m) => m.massX));
+    return {
+      anchorsX: fit.ref,
+      record: {
+        slope: round(fit.slope, 4),
+        driftPx: round(fit.driftPx, 2),
+        footSwayPx: round(fit.footSwayPx, 2),
+      },
+    };
+  }
+  const present = measures.map((m, i) => (m.bbox ? i : -1)).filter((i) => i >= 0);
+  const first = readRgba(entries[present[0]].path);
+  const last = readRgba(entries[present[present.length - 1]].path);
+  const wrapDx = present.length > 1 ? bodyWrapOffset(first, last, { threshold }) : 0;
+  const shifts = rampShifts(entries.length, wrapDx);
+  const level = present.reduce((sum, i) => sum + feetX[i] + shifts[i], 0) / present.length;
+  return {
+    anchorsX: measures.map((m, i) => (m.bbox ? level - shifts[i] : null)),
+    record: { wrapDx, band: BODY_REGISTER_BAND, search: BODY_REGISTER_SEARCH, shifts },
+  };
 }
 
 /** Anchor of a bbox in its own frame's coordinates. */
@@ -1154,11 +1361,12 @@ function stepAlign(framesDir, { out, anchor, cell, pad, smooth, threshold, xFrom
   // to, never what was asked for — a record that claimed `feet` while the
   // pixels came from the bbox would be the silent kind of wrong.
   const xMode = anchor === "center" && xFrom === "feet" ? "bbox" : xFrom;
-  const sourceWidth = xMode === "cell" ? sourceCellWidth(entries, sourceCell) : null;
+  const sourceWidth = SOURCE_PLACED.has(xMode) ? sourceCellWidth(entries, sourceCell, xMode) : null;
+  const drift = xMode === "trend" || xMode === "body" ? driftAnchors(entries, measures, xMode, threshold) : null;
 
   // Smoothing works on the *source* anchor, so a one-frame bbox wobble stops
   // shoving the body; the frame keeps its own offset from the smoothed anchor.
-  const anchorsX = measures.map((m) => {
+  const anchorsX = drift ? drift.anchorsX : measures.map((m) => {
     if (!m.bbox) return null;
     // `cell`: every frame's reference is the same point of the same grid cell,
     // so the difference between two frames' offsets survives untouched — the
@@ -1291,6 +1499,9 @@ function stepAlign(framesDir, { out, anchor, cell, pad, smooth, threshold, xFrom
     // next person asking "why does the body sit off-centre" does, and so does
     // anyone re-running align from the same cells.
     xFrom: xMode,
+    // What `trend` / `body` measured and removed — the drift is a fact about
+    // the source, and it is only known here.
+    ...(drift ? { drift: drift.record } : {}),
   });
 
   return {
@@ -1298,6 +1509,7 @@ function stepAlign(framesDir, { out, anchor, cell, pad, smooth, threshold, xFrom
     outDir: dir,
     anchor, pad, smooth,
     xFrom: xMode,
+    ...(drift ? { drift: drift.record } : {}),
     cell: cellSize,
     anchorPoint: { x: target.x, y: target.y },
     alignRecord: record,
@@ -1368,6 +1580,8 @@ function readAlignRecord(framesDir) {
     anchor: doc.anchor,
     cell: { width: doc.cell.width, height: doc.cell.height },
     anchorPoint: { x: doc.anchorPoint.x, y: doc.anchorPoint.y },
+    // Records from before the field existed were all feet/bbox/cell alignments.
+    xFrom: X_FROM_MODES.includes(doc.xFrom) ? doc.xFrom : null,
   };
 }
 
@@ -1600,6 +1814,28 @@ function stdDev(values) {
   return Math.sqrt(values.reduce((acc, v) => acc + (v - mean) ** 2, 0) / values.length);
 }
 
+/** True when the frames do not all share one width. */
+function nonUniformWidth(measured) {
+  return measured.some((f) => f.width !== measured[0].width);
+}
+
+/**
+ * Whether the motion loops, as its atlas declares it — the fact that decides
+ * whether last-to-first is a step `inspect` judges. Null when there is no
+ * atlas yet (frames aligned by hand, not packed): then nothing is assumed.
+ */
+function readAtlasLoop(motionDir) {
+  const path = join(motionDir, "atlas.json");
+  if (!existsSync(path)) return null;
+  let doc;
+  try {
+    doc = JSON.parse(readFileSync(path, "utf-8"));
+  } catch (error) {
+    fail(`${path} is not valid JSON (${error.message}) — re-run pack`);
+  }
+  return typeof doc?.meta?.loop === "boolean" ? doc.meta.loop : null;
+}
+
 /**
  * Read a finished motion and say what is wrong with it in sentences a human
  * (and the agent talking to one) can act on.
@@ -1615,10 +1851,14 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
 
   const measured = entries.map((entry) => {
     const image = readRgba(entry.path);
+    const geometry = measureFrame(image, threshold);
     return {
       index: entry.index, path: entry.path,
       width: image.width, height: image.height,
-      ...measureFrame(image, threshold),
+      ...geometry,
+      // Read off the decode already in hand, so the frame is never decoded
+      // twice: the 64² thumbnail the step between frames is measured on.
+      thumb: stepThumb(image),
     };
   });
 
@@ -1641,6 +1881,29 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
   // the number that says whether the body slid while it was in the air.
   const feetX = measured.map((f) => f.feetX).filter((v) => v !== null);
   const bodyDrift = round(stdDev(feetX), 3);
+
+  // Where the head and torso sit, frame to frame, against the first frame's —
+  // measured on a region no alignment pins. `bodyDrift` is the spread of the
+  // very line `--x-from feet` pins, so after that alignment it reads ~0
+  // whatever the body did; a walk whose feet were pinned lurches by the
+  // stride, and it is the upper body that shows it. Frames of one width only:
+  // a non-uniform set has no shared x to compare.
+  const headX = nonUniformWidth(measured)
+    ? measured.map(() => null)
+    : headOffsets(measured.map((f) => f.head), measured[0].width);
+  const headDrift = round(stdDev(headX.filter((v) => v !== null)), 3);
+
+  // The step from each frame to the next, and — for a looping motion — from
+  // the last back to the first. A pair with an empty frame has no step: the
+  // empty frame is its own warning.
+  const stepBetween = (a, b) => (a.bbox && b.bbox ? thumbDiff(a.thumb, b.thumb) : null);
+  const steps = measured.slice(1).map((f, k) => stepBetween(measured[k], f));
+  const loop = readAtlasLoop(dir);
+  const wrap = loop && measured.length > 2 ? stepBetween(measured[measured.length - 1], measured[0]) : null;
+  const grid = cells ? readSliceRecord(cells) : null;
+  const judged = judgeSteps(steps, {
+    wrap, count: measured.length, cols: grid && grid.cols * grid.rows === measured.length ? grid.cols : null,
+  });
 
   let maxJump = 0;
   let jumpPair = null;
@@ -1673,9 +1936,21 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
   const clipSource = cellBoxes ?? (cells
     ? listFrames(resolve(cells)).map((entry) => {
         const image = readRgba(entry.path);
-        return { index: entry.index, width: image.width, height: image.height, ...computeBbox(image, threshold) };
+        return { index: entry.index, width: image.width, height: image.height, ...measureFrame(image, threshold) };
       })
     : measured);
+
+  // The same head band on the SOURCE — the cells, in the coordinates the clip
+  // was filmed (or the grid drawn) in — with the slow straight-line drift
+  // taken out: the sway the motion itself has. An alignment may remove drift;
+  // it should not add sway. A feet pin on a walk does exactly that: measured
+  // 2026-09-27, the Lumi side walk goes from 0.76 px as filmed to 7.45 px
+  // after `--x-from feet` (0.97 px after `trend`), while every alignment that
+  // kept or reduced its source's motion stayed at or under 1.43× it.
+  const sourceHeadDrift = clipSource !== measured && !nonUniformWidth(clipSource)
+    && clipSource.every((c) => c.head !== undefined)
+    ? round(swayAboutTrend(headOffsets(clipSource.map((c) => c.head), clipSource[0].width)), 3)
+    : null;
   const clipped = clipSource
     .filter((f) => f.bbox && (f.bbox.x === 0 || f.bbox.y === 0 || f.bbox.x + f.bbox.w === f.width || f.bbox.y + f.bbox.h === f.height))
     .map((f) => f.index);
@@ -1690,13 +1965,32 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
   if (jumpPair && maxJump > MAX_JUMP_FRACTION * cellW && bodyJump > MAX_JUMP_FRACTION * cellW) {
     warnings.push(`anchor jumps between frames ${pad(jumpPair[0])} and ${pad(jumpPair[1])}`);
   }
-  if (bodyDrift > MAX_BODY_DRIFT_FRACTION * cellW) {
+  // `trend` and `body` keep the foot line as filmed on purpose — in a walk it
+  // is the step, sweeping a stride under the body — so a wide `bodyDrift` is
+  // their design, not a fault, and telling the agent to go back to pinning the
+  // feet would reintroduce the lurch. The head band judges those frames.
+  const record = readAlignRecord(framesDir);
+  const keepsFootLine = record && (record.xFrom === "trend" || record.xFrom === "body");
+  if (!keepsFootLine && bodyDrift > MAX_BODY_DRIFT_FRACTION * cellW) {
     warnings.push("body drifts sideways between frames — re-run align with --x-from feet/cell");
+  }
+  if (sourceHeadDrift !== null && headDrift > ADDED_SWAY_RATIO * sourceHeadDrift
+    && headDrift - sourceHeadDrift > ADDED_SWAY_FRACTION * cellW) {
+    warnings.push(`head sways ${headDrift} px across the frames but ${sourceHeadDrift} px in the source once its slow drift is removed — the alignment added sway (a pinned stepping foot) or kept the drift; re-align from cells/ with --x-from trend`);
   }
   if (scaleDrift > MAX_SCALE_DRIFT) {
     warnings.push("character scale varies across frames — regenerate with a fixed-scale instruction");
   }
   warnings.push(...listAndTruncate(clipped, (i) => `cell ${pad(i)} is clipped — the drawing leaves its grid cell`));
+  // One sentence per kind, naming every pair: six lines for one gentle idle
+  // would bury the warnings that are not about holds.
+  const pairsText = (pairs) => listAndTruncate(pairs, (p) => `${pad(p.from)}→${pad(p.to)}`).join(", ");
+  if (judged.nearDuplicates.length) {
+    warnings.push(`near-duplicate frames ${pairsText(judged.nearDuplicates)} (step under ${DUPLICATE_STEP}) — the animation holds there; fine for a held idle, a hitch in a stroke or a step`);
+  }
+  if (judged.rowJumps.length) {
+    warnings.push(`row boundaries jump: ${pairsText(judged.rowJumps)} (step ${judged.rowJumps.map((p) => round(p.step, 3)).join(", ")} against an in-row median of ${round(judged.inRowMedian, 3)}) — the sheet's rows were drawn as separate sequences`);
+  }
 
   // The point `align` put the anchor on, when these very frames carry it: the
   // viewer draws its pivot guide there, and the atlas declares the same point.
@@ -1704,7 +1998,6 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
   // summary as its `inspect` block and `register-run` copies that block into
   // project.json, which is the only thing the viewer reads. Left out of the
   // summary, the measurement stops at the report nobody downstream consumes.
-  const record = readAlignRecord(framesDir);
   const measuredAnchor = record && record.anchor === anchor
     && record.cell.width === cellW && record.cell.height === cellH
     ? record.anchorPoint
@@ -1716,9 +2009,13 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
     ...(measuredAnchor ? { anchorPoint: measuredAnchor } : {}),
     anchorDrift,
     bodyDrift,
+    headDrift,
+    ...(sourceHeadDrift === null ? {} : { sourceHeadDrift }),
     maxJump: round(maxJump, 3),
     scaleDrift,
     emptyFrames,
+    nearDuplicates: judged.nearDuplicates.map((p) => [p.from, p.to]),
+    rowJumps: judged.rowJumps.map((p) => [p.from, p.to]),
     warnings,
   };
 
@@ -1728,7 +2025,7 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
     framesDir,
     ...(cells ? { cellsDir: resolve(cells) } : {}),
     anchor,
-    frames: measured.map((f) => ({
+    frames: measured.map((f, i) => ({
       index: f.index,
       bbox: f.bbox,
       coverage: round(f.coverage, 4),
@@ -1736,7 +2033,14 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
       // Per frame, so "the body drifts" names the frame it drifts on — the
       // summary metric alone cannot.
       feetX: f.feetX === null ? null : round(f.feetX, 2),
+      headX: headX[i] === null ? null : round(headX[i], 2),
+      // The step from this frame to the next (the last frame: to the first
+      // when the motion loops, else null).
+      step: i < steps.length ? (steps[i] === null ? null : round(steps[i], 4)) : (wrap === null ? null : round(wrap, 4)),
     })),
+    ...(grid ? { grid } : {}),
+    loop,
+    ...(judged.inRowMedian === null ? {} : { inRowMedianStep: round(judged.inRowMedian, 4) }),
   };
   if (write) report.inspect = writeJsonFile(join(dir, "inspect.json"), report);
   return { summary, report };
@@ -1864,7 +2168,7 @@ function finishMotion(motionDir, cellsDir, options, { measures, sourceCell, warn
     threshold: options.threshold,
     cellsDir,
     cellBoxes: measures.map((m, index) => ({
-      index, width: sourceCell.width, height: sourceCell.height, bbox: m.bbox,
+      index, width: sourceCell.width, height: sourceCell.height, bbox: m.bbox, head: m.head,
     })),
   });
   warnings.push(...summary.warnings.filter((w) => !warnings.includes(w)));
@@ -1971,6 +2275,7 @@ function stepRun(sheetRaw, options) {
     loop: options.loop,
     anchor: options.anchor,
     xFrom: aligned.xFrom,
+    ...(aligned.drift ? { drift: aligned.drift } : {}),
     scale: options.scale,
     warnings,
   };
@@ -2432,6 +2737,29 @@ function stepContact(clip, options) {
  * frame's provenance off it, so moving or rewriting it here would cut the
  * frames loose from what they were sampled out of.
  */
+/**
+ * The subject's height, in clip pixels, in the clip's first frame (t = 0):
+ * keyed with the clip's own key, the plate's colour zeroed and — when the run
+ * cleans — its specks dropped, exactly as a sampled cell would be, so the
+ * number is measured on the same kind of picture the cells are.
+ */
+function standingHeight(input, keyFilter, options) {
+  const work = mkdtempSync(join(tmpdir(), "sprite-standing-"));
+  try {
+    const path = join(work, "first.png");
+    ffmpeg(["-ss", "0", "-i", input, "-frames:v", "1", "-vf", keyFilter, "-pix_fmt", "rgba", "--", path], "from-video first frame");
+    if (!existsSync(path)) fail(`from-video: could not decode the first frame of ${input} to measure --body-height on`);
+    const image = readRgba(path);
+    zeroKeyedRgb(image, options.threshold);
+    if (options.clean) cleanCell(image, options.threshold);
+    const { bbox } = computeBbox(image, options.threshold);
+    if (!bbox) fail(`from-video: the clip's first frame has no subject above alpha ${options.threshold} to measure --body-height on — check --key against what 'contact' showed`);
+    return bbox.h;
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
 function stepFromVideo(clip, options) {
   const input = resolve(clip);
   if (!existsSync(input)) fail(`file not found: ${input}`);
@@ -2515,6 +2843,32 @@ function stepFromVideo(clip, options) {
     filter = `colorkey=${keyColor}:${options.similarity}:${options.blend},format=rgba`;
   }
 
+  // One character, one size across its motions: every image-to-video clip
+  // starts from the same still, so the subject's height in the clip's FIRST
+  // frame is the same standing pose in every state, and scaling it to one
+  // target gives every motion the same character. The tallest frame would not
+  // do — an attack's windup lifts the weapon over the head.
+  //
+  // Inspired by aldegad/sprite-gen sprite_gen/video/loop.py `--body-height`
+  // (`first_frame_height`, `build_strip`): measured on the clip's first frame,
+  // a target in both directions (a downward-only clamp left a 200 px source
+  // asked for 300 at 200). Changes: applied to the sampled cells, before
+  // cleaning and alignment, premultiplied, instead of to a finished strip.
+  let bodyHeight = null;
+  if (options.bodyHeight) {
+    if (!filter) fail("--body-height measures the subject against its plate: it needs a keyed clip, not --key none");
+    const measured = standingHeight(input, filter, options);
+    const scale = options.bodyHeight / measured;
+    const size = probeSize(join(cellsDir, frameName(0)), "from-video");
+    const width = Math.max(1, Math.round(size.width * scale));
+    const height = Math.max(1, Math.round(size.height * scale));
+    filter = `${filter},premultiply=inplace=1,scale=${width}:${height}:flags=area,unpremultiply=inplace=1`;
+    bodyHeight = { target: options.bodyHeight, measured, scale: round(scale, 4), frame: { width, height } };
+    if (scale > 1) {
+      warnings.push(`--body-height ${options.bodyHeight} scales this clip UP ×${round(scale, 2)} (the subject stands ${measured} px in its first frame) — the frames are softer than the clip; shoot it at a higher resolution or frame it tighter`);
+    }
+  }
+
   for (const [index, time] of times.entries()) extract(time, index, filter);
 
   const source = probeSize(join(cellsDir, frameName(0)), "from-video");
@@ -2560,6 +2914,7 @@ function stepFromVideo(clip, options) {
     video: input,
     sampledAt: times,
     schedule,
+    ...(bodyHeight ? { bodyHeight } : {}),
     trim: { start: round(start, 3), end: round(Math.min(end, duration), 3) },
     duration: round(duration, 3),
     grid: packed.grid,
@@ -2579,6 +2934,7 @@ function stepFromVideo(clip, options) {
     loop: options.loop,
     anchor: options.anchor,
     xFrom: aligned.xFrom,
+    ...(aligned.drift ? { drift: aligned.drift } : {}),
     scale: options.scale,
     warnings,
   };
@@ -5281,7 +5637,10 @@ const OPTIONS = {
     out: { type: "string" }, color: { type: "string" }, similarity: { type: "string" },
     blend: { type: "string" }, threshold: { type: "string" },
   },
-  flatten: { out: { type: "string" }, bg: { type: "string" } },
+  flatten: {
+    out: { type: "string" }, bg: { type: "string" }, room: { type: "string" },
+    headroom: { type: "string" }, lead: { type: "string" }, trail: { type: "string" }, facing: { type: "string" },
+  },
   slice: {
     rows: { type: "string" }, cols: { type: "string" }, out: { type: "string" },
     margin: { type: "string" }, gutter: { type: "string" },
@@ -5334,7 +5693,7 @@ const OPTIONS = {
     nearest: { type: "boolean", default: false }, cols: { type: "string" },
     width: { type: "string" }, "no-webp": { type: "boolean", default: false },
     threshold: { type: "string" }, similarity: { type: "string" }, blend: { type: "string" },
-    "no-clean": { type: "boolean", default: false },
+    "no-clean": { type: "boolean", default: false }, "body-height": { type: "string" },
   },
   retime: {
     keep: { type: "string" }, out: { type: "string" }, fps: { type: "string" },
@@ -5548,11 +5907,38 @@ function main() {
       break;
     }
     case "flatten": {
+      const room = values.room ?? null;
+      if (room !== null && !ROOM_SHAPES.includes(room)) {
+        fail(`--room: expected ${ROOM_SHAPES.join(", ")}, got '${room}'`);
+      }
+      // A fraction that shapes nothing is refused rather than ignored: the
+      // caller asked for room the canvas would silently not have.
+      for (const flag of ["headroom", "lead", "trail", "facing"]) {
+        if (values[flag] !== undefined && room === null) fail(`--${flag} shapes a room: pass --room tall|wide|square with it`);
+      }
+      for (const flag of ["lead", "trail"]) {
+        if (values[flag] !== undefined && room !== "wide") fail(`--${flag} only shapes a wide room (--room wide)`);
+      }
+      if (values.headroom !== undefined && room === "square") fail("--headroom has no effect on a square room — use --room tall or wide");
+      if (values.facing !== undefined && values.facing !== "left" && values.facing !== "right") {
+        fail(`--facing: expected left or right, got '${values.facing}'`);
+      }
+      const fraction = (flag) => num(values[flag], `--${flag}`, { min: 0, fallback: undefined });
       const out = stepFlatten(requirePositional(positionals, "<image>"), {
         out: requireFlag(values.out, "--out"),
         bg: values.bg ?? "#ffffff",
+        room,
+        headroom: fraction("headroom"),
+        lead: fraction("lead"),
+        trail: fraction("trail"),
+        facing: values.facing ?? null,
       });
-      emit(values, out, [`flattened onto ${out.bg} → ${out.output}`]);
+      emit(values, out, [
+        out.room
+          ? `flattened onto ${out.bg} in a ${out.room.shape} room ${out.width}x${out.height} (still at ${out.room.offset.x},${out.room.offset.y}, facing ${out.room.facing}) → ${out.output}`
+          : `flattened onto ${out.bg} → ${out.output}`,
+        ...out.warnings,
+      ]);
       break;
     }
     case "slice": {
@@ -5632,7 +6018,7 @@ function main() {
         cellsDir: values.cells ?? null,
       });
       emit(values, report, [
-        `${report.frameCount} frames of ${report.cell.width}x${report.cell.height}, anchor drift ${report.anchorDrift.x}/${report.anchorDrift.y}px, body drift ${report.bodyDrift}px, max jump ${report.maxJump}px, scale drift ${report.scaleDrift}`,
+        `${report.frameCount} frames of ${report.cell.width}x${report.cell.height}, anchor drift ${report.anchorDrift.x}/${report.anchorDrift.y}px, body drift ${report.bodyDrift}px, head drift ${report.headDrift}px, max jump ${report.maxJump}px, scale drift ${report.scaleDrift}`,
         ...(report.warnings.length ? report.warnings : ["no warnings"]),
       ]);
       break;
@@ -5751,6 +6137,9 @@ function main() {
         similarity: num(values.similarity, "--similarity", { min: 0, fallback: DEFAULT_VIDEO_SIMILARITY }),
         blend: num(values.blend, "--blend", { min: 0, fallback: DEFAULT_BLEND }),
         clean: !values["no-clean"],
+        bodyHeight: values["body-height"] === undefined
+          ? null
+          : num(values["body-height"], "--body-height", { integer: true, min: 1 }),
       });
       emit(values, out, [
         `${out.name}: ${out.frames.length} frames of ${out.cell.width}x${out.cell.height} sampled from ${basename(out.video)} at ${out.fps}fps → ${out.motionDir}`,

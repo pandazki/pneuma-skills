@@ -118,6 +118,28 @@ export interface BuildExprClipOptions {
 }
 
 export declare function buildExprClip(outPath: string, options?: BuildExprClipOptions): string;
+
+export interface BuildWalkerClipOptions {
+  width?: number;
+  height?: number;
+  fps?: number;
+  seconds?: number;
+  /** Seconds per gait cycle (two steps). */
+  period?: number;
+  /** Peak-to-peak travel of a foot under the hip, px. */
+  stride?: number;
+  /** How far a swinging foot is lifted clear of the ground line, px. */
+  lift?: number;
+  /** Body travel across the canvas, px per second (0: walks in place). */
+  drift?: number;
+  /** The torso's centre x at the clip's midpoint. */
+  centre?: number;
+  background?: string;
+}
+
+/** A side-view biped walking in place: head + torso ride
+ *  `centre + drift·(t − seconds/2)`, two legs take turns being lifted. */
+export declare function buildWalkerClip(outPath: string, options?: BuildWalkerClipOptions): string;
 export declare function clipFrameDeltas(path: string, width?: number): number[];
 
 export interface BuildNoiseClipOptions {

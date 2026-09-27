@@ -410,7 +410,12 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(out.cell).toEqual({ width: 64, height: 64 });
       expect(out.exact).toBe(true);
       expect(out.frames).toHaveLength(4);
-      expect(readdirSync(join(ws, "cells")).sort()).toEqual(["00.png", "01.png", "02.png", "03.png"]);
+      // …plus the record of the grid they came from, which `inspect` reads
+      // to tell a row boundary from an ordinary step.
+      expect(readdirSync(join(ws, "cells")).sort()).toEqual(["00.png", "01.png", "02.png", "03.png", "slice.json"]);
+      expect(JSON.parse(readFileSync(join(ws, "cells", "slice.json"), "utf-8"))).toEqual({
+        rows: 2, cols: 2, cell: { width: 64, height: 64 }, margin: 0, gutter: 0,
+      });
       // row-major: cell 0 keeps the top-left square at its cell-local offset
       expect(readBbox(join(ws, "cells", "00.png"))).toMatchObject({
         width: 64,
@@ -987,9 +992,19 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
         anchorPoint: { x: 32, y: 47 },
         anchorDrift: { x: 0, y: 0 },
         bodyDrift: 0,
+        // Four same-sized squares: aligned, the head band never moves. In
+        // their cells they sit at x 10, 10, 18, 16 — offsets 0, 0, 8, 6,
+        // whose spread about their fitted line is √4.3 = 2.074 px: the
+        // placement the sheet drew, which the alignment took out. A 2-column
+        // grid is too short a row to judge row boundaries on, so the two
+        // lists are checked and empty.
+        headDrift: 0,
+        sourceHeadDrift: 2.074,
         maxJump: 0,
         scaleDrift: 0,
         emptyFrames: [],
+        nearDuplicates: [],
+        rowJumps: [],
         warnings: [],
       });
 
@@ -1128,7 +1143,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       const second = runJson(...args);
       expect(second.frames).toEqual(first.frames);
       expect(readdirSync(join(motionDir, "frames")).sort()).toEqual(["00.png", "01.png", "align.json"]);
-      expect(readdirSync(join(motionDir, "cells")).sort()).toEqual(["00.png", "01.png"]);
+      expect(readdirSync(join(motionDir, "cells")).sort()).toEqual(["00.png", "01.png", "slice.json"]);
     });
 
     test("a shrinking frame count leaves no stale frame or cell files", () => {
@@ -1145,7 +1160,9 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
         "--out", motionDir, "--name", "bounce", "--fps", "8", "--pad", "17",
       );
       expect(readdirSync(join(motionDir, "frames")).sort()).toEqual(["00.png", "01.png", "align.json"]);
-      expect(readdirSync(join(motionDir, "cells")).sort()).toEqual(["00.png", "01.png"]);
+      expect(readdirSync(join(motionDir, "cells")).sort()).toEqual(["00.png", "01.png", "slice.json"]);
+      // The record describes the grid on disk now, not the 2x2 it replaced.
+      expect(JSON.parse(readFileSync(join(motionDir, "cells", "slice.json"), "utf-8"))).toMatchObject({ rows: 1, cols: 2 });
     });
 
     test("keeps the pre-align cells so the report can be reproduced and the alignment redone", () => {
@@ -1162,7 +1179,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
         "--name", "clip", "--fps", "8", "--pad", "8", "--smooth",
       );
       expect(out.cells).toBe(join(motionDir, "cells"));
-      expect(readdirSync(join(motionDir, "cells")).sort()).toEqual(["00.png", "01.png", "02.png"]);
+      expect(readdirSync(join(motionDir, "cells")).sort()).toEqual(["00.png", "01.png", "02.png", "slice.json"]);
       expect(out.inspect.warnings).toEqual([
         "cell 00 is clipped — the drawing leaves its grid cell",
         "cell 01 is clipped — the drawing leaves its grid cell",
