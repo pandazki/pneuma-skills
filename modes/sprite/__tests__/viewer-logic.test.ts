@@ -42,7 +42,10 @@ import {
   sizeLine,
   stageFacing,
   stepOf,
+  keyFringeVerdict,
+  keyResidueVerdict,
 } from "../viewer/metrics.js";
+import { KEY_FRINGE_WARN, KEY_RESIDUE_WARN } from "../skill/scripts/chroma.mjs";
 import {
   commandLabel,
   commandTooltip,
@@ -1194,6 +1197,21 @@ describe("inspect thresholds", () => {
     const verdict = maxJumpVerdict(inspect({ cell: { width: 0, height: 0 }, maxJump: 9 }));
     expect(verdict.limit).toBeNull();
     expect(verdict.over).toBe(false);
+  });
+
+  test("what the key left is judged by the script's own bars, imported rather than copied", () => {
+    // One authority: `chroma.mjs` owns the bars, `sprite-sheet.mjs` warns
+    // above them, and this verdict reads the same constants.
+    expect({ residue: KEY_RESIDUE_WARN, fringe: KEY_FRINGE_WARN }).toEqual({ residue: 0.005, fringe: 0.01 });
+    const script = readFileSync(join(import.meta.dir, "..", "skill", "scripts", "sprite-sheet.mjs"), "utf-8");
+    expect(script).not.toMatch(/const KEY_(RESIDUE|FRINGE)_WARN\s*=/);
+    expect(keyResidueVerdict(inspect({ keyResidue: 0.0158 }))).toEqual({ value: 0.0158, limit: KEY_RESIDUE_WARN, over: true });
+    expect(keyFringeVerdict(inspect({ keyFringe: 0.0252 }))).toEqual({ value: 0.0252, limit: KEY_FRINGE_WARN, over: true });
+    expect(keyFringeVerdict(inspect({ keyFringe: 0.01 })).over).toBe(false);
+    // 0 is the clean edge — a verdict; absent is "not measured" — none.
+    expect(keyFringeVerdict(inspect({ keyFringe: 0 }))).toEqual({ value: 0, limit: KEY_FRINGE_WARN, over: false });
+    expect(keyResidueVerdict(inspect())).toBeNull();
+    expect(keyFringeVerdict(inspect())).toBeNull();
   });
 
   test("body drift is absent until the sidecar carries it, never a fake 0", () => {

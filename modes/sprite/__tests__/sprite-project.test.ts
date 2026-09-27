@@ -1815,20 +1815,33 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       expect({ crop: "crop" in dropped.inspect, scale: "scale" in dropped.inspect }).toEqual({ crop: false, scale: false });
     });
 
-    test("keyResidue goes into the sidecar's inspect — 0 included — and a run without it carries none", () => {
-      // The viewer reads project.json alone; a residue measured by `loop` and
-      // left out here would never reach the stage.
+    test("keyResidue and keyFringe go into the sidecar's inspect — 0 included — and a run without them carries neither", () => {
+      // The viewer reads project.json alone; a residue or a fringe measured
+      // by `loop` and left out here would never reach the stage. keyFringe
+      // was dropped until 0.5.1, so a warning about an edge rim arrived with
+      // no number behind it.
       const { dir, run: summary } = seedLoop();
-      const measured = JSON.parse(registerLoop(dir, { ...summary, inspect: { ...summary.inspect, keyResidue: 0.0158, keyResidueEdge: 0.9 } }).out);
+      const measured = JSON.parse(registerLoop(dir, { ...summary, inspect: { ...summary.inspect, keyResidue: 0.0158, keyResidueEdge: 0.9, keyFringe: 0.0252 } }).out);
       expect(measured.inspect.keyResidue).toBe(0.0158);
+      expect(measured.inspect.keyFringe).toBe(0.0252);
       // The fat report's edge share stays in inspect.json, not in the sidecar.
       expect("keyResidueEdge" in measured.inspect).toBe(false);
+      // `show --motion` judges both by the bars `inspect` warns above.
+      expect(project(dir, "show", "--motion", "flame").out).toContain(
+        "  key: keyResidue 0.0158 (limit 0.005, over), keyFringe 0.0252 (limit 0.01, over)\n",
+      );
 
-      const clean = JSON.parse(registerLoop(dir, { ...summary, inspect: { ...summary.inspect, keyResidue: 0 } }).out);
+      const clean = JSON.parse(registerLoop(dir, { ...summary, inspect: { ...summary.inspect, keyResidue: 0, keyFringe: 0 } }).out);
       expect(clean.inspect.keyResidue).toBe(0);
+      expect(clean.inspect.keyFringe).toBe(0);
+      expect(project(dir, "show", "--motion", "flame").out).toContain(
+        "  key: keyResidue 0 (limit 0.005), keyFringe 0 (limit 0.01)\n",
+      );
 
       const matted = JSON.parse(registerLoop(dir, summary).out);
       expect("keyResidue" in matted.inspect).toBe(false);
+      expect("keyFringe" in matted.inspect).toBe(false);
+      expect(project(dir, "show", "--motion", "flame").out).not.toContain("  key:");
     }, 20_000);
 
     test("every export is registered with its size in bytes", () => {

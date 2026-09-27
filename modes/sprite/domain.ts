@@ -370,12 +370,20 @@ export interface InspectSummary {
    * carry the chroma plate's hue — every keyed channel above every other by
    * more than 40 — pooled over the frames: the fringe a key left, or colour
    * the character really has. Measured by `from-video`, `loop`, `transition`,
-   * `run` and `inspect` on a motion keyed off a hued plate; above 0.005 the
-   * report warns. Absent when nothing was keyed or the plate had no hue
+   * `run` and `inspect` on a motion keyed off a hued plate; above
+   * `KEY_RESIDUE_WARN` (`chroma.mjs`, 0.005) the report warns. Absent when nothing was keyed or the plate had no hue
    * (white, cream, grey) — 0 is the best reading there is, so it follows the
    * finite-or-absent rule.
    */
   keyResidue?: number;
+  /**
+   * Share of the fully opaque edge pixels (within 2 px of transparency) that
+   * still read as at least 20 % plate — the rim a colour key leaves at full
+   * opacity, which `keyResidue`'s hue test does not see. Same presence rule
+   * as `keyResidue`, and the same finite-or-absent rule: 0 is the clean edge.
+   * `inspect` warns above `KEY_FRINGE_WARN` (`chroma.mjs`).
+   */
+  keyFringe?: number;
   /**
    * Transitions only: how far the first frame is from the `from` loop's
    * frame 0, and the last from the `to` loop's, as silhouette distance in
@@ -853,6 +861,7 @@ function parseInspect(value: unknown): InspectSummary | undefined {
   const seamFill = parseFinite(value.seamFill);
   const alphaCoverage = parseFinite(value.alphaCoverage);
   const keyResidue = parseFinite(value.keyResidue);
+  const keyFringe = parseFinite(value.keyFringe);
   const startGap = parseFinite(value.startGap);
   const endGap = parseFinite(value.endGap);
   const crop = parseClipRect(value.crop);
@@ -889,6 +898,7 @@ function parseInspect(value: unknown): InspectSummary | undefined {
     ...(seamFill === undefined ? {} : { seamFill }),
     ...(alphaCoverage === undefined ? {} : { alphaCoverage }),
     ...(keyResidue === undefined ? {} : { keyResidue }),
+    ...(keyFringe === undefined ? {} : { keyFringe }),
     ...(startGap === undefined ? {} : { startGap }),
     ...(endGap === undefined ? {} : { endGap }),
     ...(crop ? { crop } : {}),

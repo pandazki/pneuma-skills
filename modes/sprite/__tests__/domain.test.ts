@@ -553,6 +553,16 @@ describe("loop motions", () => {
         .toEqual({ broken, present: false });
     }
 
+    // keyFringe, its edge-rim sibling, by the same rule.
+    expect(inspectWith({ keyFringe: 0.0252 }).keyFringe).toBe(0.0252);
+    const cleanEdge = inspectWith({ keyFringe: 0 });
+    expect("keyFringe" in cleanEdge).toBe(true);
+    expect(cleanEdge.keyFringe).toBe(0);
+    for (const broken of [undefined, null, "0.01", Number.NaN, {}]) {
+      expect({ broken, present: "keyFringe" in inspectWith({ keyFringe: broken }) })
+        .toEqual({ broken, present: false });
+    }
+
     // A sheet motion carries none of the three, and the anchor numbers it does
     // carry still parse beside them.
     const sheet = loadRoster(files({ "mini/project.json": MINI }))!

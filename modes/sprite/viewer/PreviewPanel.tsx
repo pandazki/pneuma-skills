@@ -46,6 +46,8 @@ import {
   bodyDriftVerdict,
   formatBytes,
   joinVerdict,
+  keyFringeVerdict,
+  keyResidueVerdict,
   loopDuration,
   maxJumpVerdict,
   scaleDriftVerdict,
@@ -933,6 +935,7 @@ function InspectBlock({ motion, t }: { motion: Motion; t: SpriteStrings }) {
             </Fact>
           </>
         )}
+        <KeyFacts motion={motion} t={t} />
       </dl>
       {warned ? (
         <ul
@@ -1045,6 +1048,37 @@ function TransitionFacts({ motion, t }: { motion: Motion; t: SpriteStrings }) {
       <Fact label={t.factFrames}>{frames}</Fact>
       <Fact label={t.factFps}>{motion.fps}</Fact>
       {duration === null ? null : <Fact label={t.factDuration}>{duration.toFixed(2)} s</Fact>}
+    </>
+  );
+}
+
+/**
+ * What the key left on the edge — `keyResidue` and `keyFringe` against the
+ * bars `inspect` warns above (`chroma.mjs`, read through `metrics.ts`). Every
+ * kind of motion can carry them: a sheet keyed off a hued plate, a clip cut
+ * by `from-video`, a loop, a transition. Rows only for what was measured.
+ */
+function KeyFacts({ motion, t }: { motion: Motion; t: SpriteStrings }) {
+  const inspect = motion.inspect!;
+  const percent = (value: number, places: number) => `${Number((value * 100).toFixed(places))}%`;
+  const rows = [
+    [t.factKeyResidue, keyResidueVerdict(inspect)],
+    [t.factKeyFringe, keyFringeVerdict(inspect)],
+  ] as const;
+  return (
+    <>
+      {rows.map(([label, verdict]) =>
+        verdict === null ? null : (
+          <Measured
+            key={label}
+            label={label}
+            value={percent(verdict.value, 2)}
+            verdict={verdict}
+            limitText={(limit) => percent(limit, 2)}
+            t={t}
+          />
+        ),
+      )}
     </>
   );
 }

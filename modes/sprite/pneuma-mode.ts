@@ -29,6 +29,7 @@ import {
   type SliceRecord,
 } from "./domain.js";
 import spriteManifest from "./manifest.js";
+import { keyFringeVerdict, keyResidueVerdict } from "./viewer/metrics.js";
 import SpritePreview from "./viewer/SpritePreview.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -189,6 +190,18 @@ function describeMotion(
   // Whether pixel art is still pixel art after everything that ran after
   // `pixel` — the check to quote before packing or exporting it.
   if (motion.inspect?.pixel) lines.push(`Pixel lattice: ${describeLattice(motion.inspect.pixel)}`);
+  // What the key left on the edge, against the bars `inspect` warns above —
+  // `show --motion` says the same clause.
+  if (motion.inspect) {
+    const key = [
+      ["keyResidue", keyResidueVerdict(motion.inspect)],
+      ["keyFringe", keyFringeVerdict(motion.inspect)],
+    ] as const;
+    const parts = key
+      .filter(([, v]) => v !== null)
+      .map(([name, v]) => `${name} ${v!.value} (limit ${v!.limit}${v!.over ? ", over" : ""})`);
+    if (parts.length) lines.push(`Key: ${parts.join(", ")}`);
+  }
   if (motion.prompt) lines.push(`Prompt: "${motion.prompt}"`);
   if (motion.notes) lines.push(`Notes: ${motion.notes}`);
   if (motion.videos.length > 0) {

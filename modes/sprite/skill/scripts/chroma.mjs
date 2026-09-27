@@ -60,6 +60,27 @@
  * radius; speckles — fewer than 3 of 8 neighbours within 40 — do not count).
  */
 
+/**
+ * The bars a cut's report is judged against — the one authority for both.
+ * `sprite-sheet.mjs` warns above them, and `sprite-project.mjs show` and the
+ * viewer (context and inspect block) judge the recorded numbers by the same
+ * constants rather than by a copy.
+ *
+ * `KEY_RESIDUE_WARN`: share of the visible pixels still carrying the plate's
+ * hue above which the cut is worth a look. tanka's colorkey cuts measured
+ * 1.2–1.6 %, the un-mixed ones 0.00 %; a translucent effect over the plate
+ * reads here as well.
+ *
+ * `KEY_FRINGE_WARN`: share of the two-pixel edge band that is a fringe — the
+ * subject still blended with the plate at full opacity, which no hue test
+ * sees — above which the edge is worth a look. The route-G fox's walk, keyed
+ * before the local un-mix (2026-09-27), measured 0.023–0.025 with keyResidue
+ * 0 at --similarity 0.3; tanka's ten loops and the fox through the local
+ * un-mix measure 0.
+ */
+export const KEY_RESIDUE_WARN = 0.005;
+export const KEY_FRINGE_WARN = 0.01;
+
 /** Soft-alpha un-mix: key-tinted pixels this far (Chebyshev px) from the keyed
  *  region are separated into colour + partial alpha. */
 export const UNMIX_REACH = 4;

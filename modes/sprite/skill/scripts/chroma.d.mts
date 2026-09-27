@@ -5,6 +5,10 @@
 
 export type Rgb = [number, number, number];
 
+/** Report bars: `keyResidue` / `keyFringe` above these warn (`chroma.mjs`). */
+export declare const KEY_RESIDUE_WARN: number;
+export declare const KEY_FRINGE_WARN: number;
+
 /** A decoded frame: `data` is width × height × 4 bytes of straight RGBA. */
 export interface RgbaImage {
   width: number;

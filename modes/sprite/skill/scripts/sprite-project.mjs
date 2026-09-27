@@ -36,6 +36,9 @@ import { BREATHE_FPS } from "./breathe.mjs";
 // The colourway rules — one authority, shared with sprite-sheet.mjs (which
 // bakes them) and the viewer's loader (which reads them back).
 import { RecolorError, checkVariant, sameVariant, variantNameProblem } from "./recolor.mjs";
+// The bars `inspect` warns above — one authority, shared with sprite-sheet.mjs
+// (which warns) and the viewer (which judges the recorded numbers the same way).
+import { KEY_FRINGE_WARN, KEY_RESIDUE_WARN } from "./chroma.mjs";
 
 const SCHEMA = "pneuma-craft/project/v1";
 const TOOL = "sprite-sheet.mjs";
@@ -450,7 +453,8 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
   show [--motion <motionId>]
       Compact summary for the agent. --motion adds one motion's record:
       its breathe (with the head-offset extremes), its auto slice, a
-      jump's lift and whether a pixel run's frames held their lattice. Lists stale mirrors — a mirror whose
+      jump's lift, whether a pixel run's frames held their lattice, and
+      keyResidue / keyFringe against the bars inspect warns above. Lists stale mirrors — a mirror whose
       source was registered again after it, or is gone (staleMirrors) —,
       stale breathes — a breathe whose still was registered again after it,
       or is gone (staleBreathes) — and the ready sprite motions missing a
@@ -1103,6 +1107,10 @@ function inspectSummary(value) {
   // clean cut, so finite-or-absent like its neighbours; absent when nothing
   // hued was keyed.
   const keyResidue = finiteNumber(value.keyResidue);
+  // The share of the opaque edge still blended with the plate — the rim a
+  // colour key leaves at full opacity, which the hue test above never sees.
+  // Same finite-or-absent rule: 0 is the clean edge.
+  const keyFringe = finiteNumber(value.keyFringe);
   // Where a loop's frames sit in their clip: frame px = (clip px − crop.xy) ×
   // scale. The .riv needs both to draw every loop at one size and in the
   // place it stood; absent on a run from before `loop` recorded them, and
@@ -1135,6 +1143,7 @@ function inspectSummary(value) {
     ...(seamFill === undefined ? {} : { seamFill }),
     ...(alphaCoverage === undefined ? {} : { alphaCoverage }),
     ...(keyResidue === undefined ? {} : { keyResidue }),
+    ...(keyFringe === undefined ? {} : { keyFringe }),
     ...(startGap === undefined ? {} : { startGap }),
     ...(endGap === undefined ? {} : { endGap }),
     ...(crop ? { crop } : {}),
@@ -2117,6 +2126,23 @@ function registerRecolor(doc, dir, report, now) {
 }
 
 /**
+ * What the key left on the edge, judged by the bars `inspect` warns above:
+ * `keyResidue` (visible pixels carrying the plate) and `keyFringe` (opaque
+ * edge still blended with it). Null when neither was measured — a motion
+ * keyed off no hued plate — so a missing number is never said as 0. The
+ * viewer context says the same clause.
+ */
+function keyLine(inspect) {
+  const parts = [
+    ["keyResidue", inspect?.keyResidue, KEY_RESIDUE_WARN],
+    ["keyFringe", inspect?.keyFringe, KEY_FRINGE_WARN],
+  ]
+    .filter(([, value]) => Number.isFinite(value))
+    .map(([name, value, limit]) => `${name} ${round4(value)} (limit ${limit}${value > limit ? ", over" : ""})`);
+  return parts.length ? `  key: ${parts.join(", ")}` : null;
+}
+
+/**
  * One motion, said out loud for the agent.
  *
  * A loop is described by different facts than a sprite motion: nobody cares
@@ -2187,6 +2213,8 @@ function motionLines(motion, doc) {
     const colourways = Object.keys(motion.variants ?? {});
     if (colourways.length) lines.push(`  colourways: ${colourways.join(", ")}`);
   }
+  const key = keyLine(motion.inspect);
+  if (key) lines.push(key);
   if (motion.direction) lines.push(`  faces ${motion.direction}`);
   if (motion.promptParts) {
     lines.push(`  prompt built by ${motion.promptParts.builder}${motion.promptParts.guards.length ? ` (guards: ${motion.promptParts.guards.join(", ")})` : ""}`);

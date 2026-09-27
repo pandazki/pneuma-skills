@@ -21,6 +21,7 @@
  */
 
 import type { CharacterProject, Direction, InspectSummary, Motion } from "../domain.js";
+import { KEY_FRINGE_WARN, KEY_RESIDUE_WARN } from "../skill/scripts/chroma.mjs";
 import type { AtlasGeometry } from "./atlas.js";
 
 /** The inspect step's thresholds, verbatim from `sprite-sheet.mjs`. */
@@ -254,6 +255,34 @@ export function seamVerdict(inspect: InspectSummary): MetricVerdict {
 }
 
 const round4 = (value: number): number => Math.round(value * 1e4) / 1e4;
+
+// ── What the key left ──────────────────────────────────────────────────────
+
+/**
+ * `keyResidue` and `keyFringe`, each judged by the bar `inspect` warns above.
+ *
+ * Unlike `THRESHOLDS` these bars are IMPORTED, not copied: `chroma.mjs` is a
+ * pure module the viewer can load, so the script's warning, `show --motion`
+ * and this verdict read one constant. Null when the report carries no
+ * number — a motion keyed off no hued plate was not measured, and a 0 there
+ * would claim a clean edge nobody checked.
+ */
+export interface KeyVerdict extends MetricVerdict {
+  value: number;
+}
+
+const keyVerdict = (value: number | undefined, limit: number): KeyVerdict | null => {
+  const measured = finite(value);
+  return measured === null ? null : { value: measured, limit, over: measured > limit };
+};
+
+export function keyResidueVerdict(inspect: InspectSummary): KeyVerdict | null {
+  return keyVerdict(inspect.keyResidue, KEY_RESIDUE_WARN);
+}
+
+export function keyFringeVerdict(inspect: InspectSummary): KeyVerdict | null {
+  return keyVerdict(inspect.keyFringe, KEY_FRINGE_WARN);
+}
 
 /** One end of a transition: its measured gap, the bar, and whether it is over. */
 export interface JoinEnd {

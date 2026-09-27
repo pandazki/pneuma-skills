@@ -311,6 +311,19 @@ describe("extractContext — routes, directions, breathe and mirror", () => {
     expect(withPixel(undefined)).not.toContain("Pixel lattice");
   });
 
+  test("the context says what the key left on the edge, against the bars inspect warns above", () => {
+    const withKey = (key: Record<string, unknown>) => {
+      const body = JSON.parse(withWalk());
+      Object.assign(body.sprite.motions[0].inspect, key);
+      const motionId = body.sprite.motions[0].id;
+      return extractSpriteContext({ address: { contentSet: "mini", motion: motionId } } as never, files({ "mini/project.json": JSON.stringify(body) }));
+    };
+    expect(withKey({ keyResidue: 0.0036, keyFringe: 0.0373 }))
+      .toContain("Key: keyResidue 0.0036 (limit 0.005), keyFringe 0.0373 (limit 0.01, over)\n");
+    expect(withKey({ keyFringe: 0 })).toContain("Key: keyFringe 0 (limit 0.01)\n");
+    expect(withKey({})).not.toContain("Key:");
+  });
+
   test("an anchor reference says which way it faces", () => {
     expect(at({ contentSet: "mini", ref: "anchor-left" })).toContain('Reference: "Anchor left" (anchor-left, role anchor, faces left)');
   });

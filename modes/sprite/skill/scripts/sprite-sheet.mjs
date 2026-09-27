@@ -45,6 +45,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 
 import { parseArgs } from "node:util";
 
 import {
+  KEY_FRINGE_WARN, KEY_RESIDUE_WARN,
   keyFrame, keyRadius, keyResidue, measurePlate, plateOf, plateProximity, poolResidue, unmixStageRefusal,
 } from "./chroma.mjs";
 
@@ -178,17 +179,9 @@ const KEYERS = ["unmix", "colorkey"];
 const DEFAULT_KEYER = "unmix";
 /** Frames of a clip the plate colour is measured on, spread across the window. */
 const PLATE_SAMPLE_FRAMES = 8;
-/** Share of the visible pixels still carrying the plate's hue above which the
- *  cut is worth a look. tanka's colorkey cuts measured 1.2–1.6 %, the un-mixed
- *  ones 0.00 %; a translucent effect over the plate reads here as well. */
-const KEY_RESIDUE_WARN = 0.005;
-/** Share of the two-pixel edge band that is a fringe — the subject still
- *  blended with the plate at full opacity, which no hue test sees — above
- *  which the edge is worth a look. The route-G fox's walk, keyed before the
- *  local un-mix (2026-09-27), measured 0.023–0.025 with keyResidue 0 at
- *  --similarity 0.3; tanka's ten loops and the fox through the local
- *  un-mix measure 0. */
-const KEY_FRINGE_WARN = 0.01;
+// `KEY_RESIDUE_WARN` / `KEY_FRINGE_WARN`, the bars a cut's report warns
+// above, live in `chroma.mjs` beside the measurement: `sprite-project.mjs
+// show` and the viewer judge the recorded numbers by the same constants.
 
 // --- contact: looking at a clip before sampling it -------------------------
 /** Stills on a contact sheet, unless --count / --every say otherwise. */

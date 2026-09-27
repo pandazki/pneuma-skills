@@ -295,6 +295,10 @@ export interface SpriteStrings {
   factFps: string;
   factDuration: string;
   factAlpha: string;
+  /** What the key left: visible pixels carrying the plate, and the opaque
+   *  edge still blended with it. */
+  factKeyResidue: string;
+  factKeyFringe: string;
   seamVerdict: Record<"closes" | "open", string>;
   none: string;
   /** The bar a value is judged against, said beside it. */
@@ -668,6 +672,8 @@ const en: SpriteStrings = {
   factFps: "Fps",
   factDuration: "Duration",
   factAlpha: "Alpha",
+  factKeyResidue: "Plate left",
+  factKeyFringe: "Edge fringe",
   seamVerdict: { closes: "closes", open: "does not close" },
   none: "none",
   limit: (text) => `≤ ${text}`,
@@ -1048,6 +1054,8 @@ const zhCN: SpriteStrings = {
   factFps: "帧率",
   factDuration: "时长",
   factAlpha: "不透明占比",
+  factKeyResidue: "残留底色",
+  factKeyFringe: "边缘色边",
   seamVerdict: { closes: "接得上", open: "接不上" },
   none: "无",
   limit: (text) => `上限 ${text}`,

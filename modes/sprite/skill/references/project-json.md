@@ -567,8 +567,18 @@ interface InspectSummary {
                                             // motion keyed off a hued plate —
                                             // absent for white plates, mattes
                                             // and provided alpha; 0 is clean.
-                                            // (`keyFringe` stays in
-                                            // inspect.json)
+  keyFringe?: number;                       // share of the fully opaque edge
+                                            // pixels (within 2 px of
+                                            // transparency) still blended
+                                            // with the plate — the rim a
+                                            // colour key leaves; warns above
+                                            // 0.01. Same presence rule as
+                                            // keyResidue; 0 is clean. Both
+                                            // bars are `chroma.mjs`'s
+                                            // KEY_RESIDUE_WARN /
+                                            // KEY_FRINGE_WARN, which `show
+                                            // --motion` and the viewer judge
+                                            // by too
   lift?: Array<number | null>;              // --y-from cell only: px each
                                             // frame's feet stand above the
                                             // ground, null for an empty frame;
