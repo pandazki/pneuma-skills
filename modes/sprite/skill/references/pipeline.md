@@ -466,7 +466,10 @@ takes `pixel`'s flags (`--palette`, `--repalette`, `--palette-size`,
 are refused without `--pixel`. The JSON gains `pixel: { dir, scale, pitch,
 logicalCell, palette: { file, colors, pinned, from }, outline, record }`
 (`from`: `flag`, `character` or `motion`) and `inspect.pixel`; `register-run`
-reads `pixel.palette.file` / `.colors` to pin it. A `run` **without**
+reads `pixel.palette.file` / `.colors` to pin it. Every pixel run of a
+character is held to its declared height — `character.pixel.logicalHeight`,
+or `--logical-height H` for this run (see `pixel`) — and the JSON's `pixel`
+gains `logicalHeight`. A `run` **without**
 `--pixel` on a pixel-art character — `character.pixel`, else a
 `character.style` that says so (the reading `rive --filter auto` uses) — ends
 with a warning suggesting it.
@@ -525,7 +528,7 @@ it is there and falls back to the cell edge when it is not — which with any
 before the point was recorded simply carry none; that absence is honest and the
 stage says "assumed" rather than guessing.
 
-### `pixel <framesDir> --out <dir> [--palette <file>] [--repalette] [--palette-size 48] [--scale 1] [--pitch-hint N] [--outline] [--outline-strength 0.62] [--no-detail-bias]`
+### `pixel <framesDir> --out <dir> [--palette <file>] [--repalette] [--palette-size 48] [--scale 1] [--pitch-hint N] [--logical-height H] [--outline] [--outline-strength 0.62] [--no-detail-bias]`
 
 Snaps generated "pixel art" onto the pixel grid it was drawn on. An image
 model's blocks are not whole pixels wide (10.3, not 10), differ per axis,
@@ -597,6 +600,36 @@ automatic floor can replace the look: a plush video walk that is not pixel
 art pools a higher lattice score (0.168 at 32 px) than a real pixel-art
 walk (0.154 at 9 px).
 
+**The declared height** (`--logical-height H`; `run --pixel` passes
+`character.pixel.logicalHeight`) is the figure's height in logical pixels —
+the user's answer to "how tall, in pixels". It never resamples a block. It
+does two things:
+
+- **It can stand in for the look**, when the frames do not show their grid
+  and no `--pitch-hint` was given: the pitch at which the frames (their
+  median solid height, in source pixels) are H tall is used as the hint —
+  but only when one of the frames' own loose readings (the pooled
+  whole-number pitch, the same-colour run length) is within 25 % of it. The
+  warning says so first (`pitch detection was inconclusive … — cut at 8.06
+  px, the block size at which these frames (427 px tall) are the declared 53
+  logical px …`), and the lattice's per-frame notes name it `the declared
+  height's pitch`. When the readings do not back it, the refusal names it
+  (`The declared height (32 logical px) would mean 13.34 px blocks for
+  frames 427 px tall, which the frames do not back — the sheet was probably
+  drawn at another height`) and still asks for `--pitch-hint`. An explicit
+  `--pitch-hint` always wins.
+- **It is checked** after the snap: the frames' median logical height
+  against H, within 5 % (at least 1 px — a walk bobs by one). A miss is a
+  warning with the numbers to act on — regenerate at H, pass the hint that
+  would give H only if the blocks really are that wide, or declare the
+  height the frames have (`set-character --pixel <measured>`) so later
+  motions are held to it. The frames keep the blocks they were drawn with:
+  squashing a drawing to a height merges blocks (upstream removed exactly
+  that for the same reason).
+
+`pixel.json` and the JSON gain `logicalHeight: { declared, measured, range:
+[min, max], honoured, pitchFrom: "hint" | "height" | "measured" }`.
+
 The method is a port of aldegad/sprite-gen's "Backbone Lattice"
 (`sprite_gen/frames/extract.py@fbd1a08`, Apache-2.0; its run-length
 estimator is itself a port of perfectpixel-studio, MIT). Before three
@@ -607,6 +640,104 @@ support (upstream: the single largest reading), and the hint as the family
 centre (upstream: a fallback when every frame is inconclusive). Upstream's
 component extraction, row registration and physical-cell cap are not
 ported: `slice`/`clean` cut the cells and `align` places and sizes them.
+The declared height is ours: upstream's `fit.logical_height` sizes the
+logical cell, not the figure.
+
+### `recolor-palette <characterDir|motionDir> [--out <map.json>] [--force]`
+
+Drafts a **recolor map** for a pixel-art character — one declared
+(`character.pixel`) with a pinned palette. Anything else is refused, saying
+why: an exact swap needs art made of a few exact colours, and painted art is
+not (each frame of the seed character Lumi carries about 250 colours; the 64
+most used cover 53–55 % of its visible pixels).
+
+Reads the registered frames of every ready sprite motion (or the one named)
+and writes `<character>/recolor.json`:
+
+```json
+{ "kind": "pneuma-sprite-recolor", "version": 1, "character": "Pip",
+  "palette": "pip-palette", "swatches": "recolor-swatches.png", "help": "…",
+  "colors": [ { "hex": "#070e1d", "pixels": 767, "share": 0.1022, "swatch": 1 },
+              { "hex": "#1954bf", "pixels": 447, "share": 0.0595, "swatch": 4 },
+              { "hex": "#2b2b2b", "pixels": 12, "share": 0.0016, "inPalette": false, "swatch": 48 },
+              { "hex": "#7e3222", "pixels": 0 } ],
+  "variants": [ { "name": "variant-1", "map": {} } ] }
+```
+
+`colors` is every colour the frames use, most used first (then by hex, so a
+re-draft is the same file), then the pinned palette's colours no frame uses
+(`pixels: 0`); `inPalette: false` marks a colour the palette lacks (an outline
+darkened after it, `run --pixel --outline`). Beside it, `recolor-swatches.png`
+draws one numbered cell per colour in use: the frame that uses it most,
+faded, with that colour's pixels in a mark colour none of them is near, and
+a square of the colour beside the number. **Look at it** to learn which
+number is the tabard and which the plume — hex values alone do not say.
+Fill in the colourways (`"name": "red-team", "map": { "#1954bf": "#bf191f" }`,
+only the colours that change) and pass the file to `recolor --map`. The one
+template colourway has an empty map, which `recolor` refuses. An existing
+map is never drafted over without `--force` (it may hold colourways);
+`--out` writes elsewhere, the swatch sheet then `<name>-swatches.png`
+beside it.
+
+### `recolor <characterDir|motionDir> [--map <map.json>] [--variant name,…]`
+
+Bakes colourways — a palette swap into new files, never a tint at run time:
+a baked sheet can be checked pixel by pixel and costs the engine nothing.
+Every ready sprite motion of the character, or the one named; loops and
+transitions are left out (listed in `skipped`). Same refusal as
+`recolor-palette` for a character that is not palette-pinned pixel art.
+
+**The colourways** come from `--map` (`kind: "pneuma-sprite-recolor"`,
+`variants: [{ name, map, tolerance? }]`, every other key ignored), else from
+the ones the character recorded (`character.pixel.variants`) — so a motion
+made again gets its colourways back with no map at hand. `--variant` narrows
+either to the names given. A name is a slug (`red-team`: lower-case letters,
+digits, single hyphens, at most 32); map keys and values are `#rrggbb`
+(written lower-case); a source mapped twice, an empty map, two colourways of
+one name are refused.
+
+**The swap.** Exact by default: a pixel changes only when its RGB is a
+source. `tolerance: N` (1–255, per colourway; absent or 0 is exact) is for
+soft-edged art: a pixel within Chebyshev distance N of a source takes the
+target of the **nearest** source (squared RGB distance; a tie goes to the
+earlier map entry). Alpha is never touched, nor is any pixel with alpha 8 or
+less. Integer arithmetic only: the same frames and map give the same bytes.
+
+**Where it lands**, per motion and colourway:
+
+```
+<character>/motions/<id>/variants/<name>/
+  frames/NN.png  frames/align.json   # the motion's frames, recoloured; its align record
+  sheet.png  atlas.json              # pack, with the motion's layout, fps, anchor and pivot
+  preview.gif                        # gif (no WebP: lossy colour is the one thing to avoid here)
+```
+
+The atlas is the motion's own, byte for byte — `meta.image` is `sheet.png`
+in both — so an engine loading the motion loads any colourway by swapping
+the directory.
+
+**The report** (`--json`), per motion (`motions[].variants[]`) and summed
+over the motions (`summary[]`), for each colourway: `substituted` (pixels
+swapped), `substitutions` (each entry's pixels, by source), `unmatched`
+(entries that matched nothing — a typo, or a colour these frames do not use;
+in the summary only those no motion used, and each is a warning), and
+`uncovered: { pixels, colors, top, truncated? }` — the colours the map left
+as they were, the 64 most used named. A motion whose frames carry colours
+the pinned palette lacks is warned (not for an outlined run, whose outline
+shades are expected). `variants` echoes the colourways as checked — what
+`register-recolor` records — and `map` is the `--map` path or null.
+
+```bash
+node {SKILL_PATH}/scripts/sprite-sheet.mjs recolor <character> --map <character>/recolor.json --json \
+  | node {SKILL_PATH}/scripts/sprite-project.mjs register-recolor --dir <character> --report -
+```
+
+Recolor is a port of aldegad/sprite-gen's palette-swap bake
+(`sprite_gen/effects/recolor.py@fbd1a08`, Apache-2.0): on the knight walk
+below, every variant sheet decodes to exactly upstream's pixels and every
+report number matches. Ours: the tolerance per colourway, slug names, the
+bake over a motion's frames through `pack` and `gif`, the draft read off the
+pinned palette, and the swatch sheet.
 
 ### `contact <clip> --out <png> [--count 24 | --every s] [--cols 8] [--width 160] [--gait walk|run] [flags]`
 
@@ -1854,12 +1985,14 @@ come from `Date.now()` unless `--at <ms>` is passed.
 | `set-motion … --brief-duration <s> --brief-width <px> --brief-interpolator topaz\|rife\|ffmpeg\|none [--brief-budget <usd>]` | Records the **loop brief** — the answers workflow E step 1 collects before anything is paid for. The first call needs the three required flags together; any later call may change one. Refused on a motion that is not `--kind loop`. Warns on stderr when `duration × 60 > 400` with an interpolator that targets 60 fps, naming the rate that fits (`--target-fps 48` for a 7–8 s loop). |
 | `add-video` on a **loop** motion, generated clip | **Refused** when the motion has no brief: `add-video: loop '<id>' has no brief — record the user's answers first: set-motion --brief-duration … --brief-width … --brief-interpolator …`. A record that is only half a brief is refused the same way and names what it is missing (`… has an incomplete brief, missing --brief-width, --brief-interpolator and recordedAt — …`): the reader is all-or-nothing everywhere — the gate, `show` and the JSON summaries — so half an answer never travels as one. A `--derived-from` clip is exempt: that money is already spent, and refusing to record it would only lose the provenance. |
 | `set-motion … [--ack-warnings "<reason>"] [--clear-ack]` | Accepts the motion's remaining inspect warnings with a one-sentence reason the user reads on the stage; the numbers stay visible and the badge dims. `--clear-ack` takes it back. Refused when the motion has no inspect report, and refused with an empty reason — the acknowledgement *is* the reason. |
-| `register-run --motion idle --run <run.json \| -> [--video <videoId>]` | Consumes `sprite-sheet.mjs run` output: registers the alpha sheet (if any), every frame, the packed sheet, atlas, gif and webp with `derive` edges; **removes** the previous frame assets and edges for that motion; copies `inspect` into the motion (including the measured `anchorPoint`, which is what the viewer's pivot guide stands on); sets status `ready`. A `from-video` summary derives the frames from the clip asset instead (`--video` names which, the newest is used with a note on stderr) and sets `motion.source`. A summary with `"kind": "loop"` has no sheet, atlas or gif — those become optional, and a sprite run still requires them — and registers the webp plus `<motion>-apng`, `<motion>-webm` and `<motion>-lottie` instead; it sets `motion.kind = "loop"`, `motion.exports`, `motion.source = "video"`, `motion.fps` from the run (interpolation changes it) and `grid = {1,1}`, and the inspect summary it copies carries `seam`, `step`, `seamFill` and `alphaCoverage`. Any acknowledgement goes with the measurement it covered. Re-registering a motion **retires** the on-demand exports made from its old frames (`<motion>-export-*`, and the character's `.riv` when it held this motion): the assets and edges go, the files stay on disk, and stderr says `note: retired <id> — it was cut from the frames this run replaced; re-export it`. A loop's own WebP / APNG / WebM / Lottie are rewritten by the run itself and are not retired. On a loop it also compares the registered `inspect.cell.width` with `brief.width` and warns — stderr, and `warnings[]` in the `--json` payload — when they are more than 2 px apart (`frames are <w> px wide but the brief said <width> — pass --width to loop`). A warning, not an error: the frames are already cut, and cutting them again is free. It is said once per channel and is **not** written into `inspect.warnings`: that list is the measurement of the frames — what the viewer shows and what `--ack-warnings` accepts — and this is a comparison against the brief. |
+| `register-run --motion idle --run <run.json \| -> [--video <videoId>]` | Consumes `sprite-sheet.mjs run` output: registers the alpha sheet (if any), every frame, the packed sheet, atlas, gif and webp with `derive` edges; **removes** the previous frame assets and edges for that motion; copies `inspect` into the motion (including the measured `anchorPoint`, which is what the viewer's pivot guide stands on); sets status `ready`. A `from-video` summary derives the frames from the clip asset instead (`--video` names which, the newest is used with a note on stderr) and sets `motion.source`. A summary with `"kind": "loop"` has no sheet, atlas or gif — those become optional, and a sprite run still requires them — and registers the webp plus `<motion>-apng`, `<motion>-webm` and `<motion>-lottie` instead; it sets `motion.kind = "loop"`, `motion.exports`, `motion.source = "video"`, `motion.fps` from the run (interpolation changes it) and `grid = {1,1}`, and the inspect summary it copies carries `seam`, `step`, `seamFill` and `alphaCoverage`. Any acknowledgement goes with the measurement it covered. Re-registering a motion **retires** the on-demand exports made from its old frames (`<motion>-export-*`, and the character's `.riv` when it held this motion): the assets and edges go, the files stay on disk, and stderr says `note: retired <id> — it was cut from the frames this run replaced; re-export it`. A loop's own WebP / APNG / WebM / Lottie are rewritten by the run itself and are not retired. Its colourway files (`<motion>-variant-*`, `motion.variants`) are retired the same way, with a note naming the command that bakes them again from the recorded colourways. On a loop it also compares the registered `inspect.cell.width` with `brief.width` and warns — stderr, and `warnings[]` in the `--json` payload — when they are more than 2 px apart (`frames are <w> px wide but the brief said <width> — pass --width to loop`). A warning, not an error: the frames are already cut, and cutting them again is free. It is said once per channel and is **not** written into `inspect.warnings`: that list is the measurement of the frames — what the viewer shows and what `--ack-warnings` accepts — and this is a comparison against the brief. |
 | `register-export --report <report.json \| ->` | Consumes the `--json` report of `sprite-sheet.mjs export` or `rive`, usually piped (`--report -`). A motion export becomes `<motion>-export-<format>` (type `video` for mp4/mov/webm, `image` for apng, `text` for lottie, `image` with `metadata.container: "zip"` for png-seq and aseprite) and `motion.exports[format]` names it, with `metadata.shadow` `{ squash, shear, opacity, blur, color }` when it was made with `--shadow`; the character's Aseprite sheet (`"scope": "character"`) becomes `<character>-export-aseprite` (type `image`, `metadata.container: "zip"`, `width`/`height` of the sheet, `frames`, `motionCount`) with `params.motions` and `params.tags`, and `sprite.exports.aseprite` names it — retired with the `.riv` by a `register-run` or `remove-motion` of a motion it holds; the `.riv` becomes `<character>-export-riv` (type `image`, `metadata.container: "riv"`) and `sprite.exports.riv` names it. Metadata carries `size` in bytes plus what the report measured (`width`, `height`, `fps`, `duration`, `frames`, `repeat`, `scale`, `background` on MP4; `motionCount`, `images`, `estimatedDecodeBytes` on the `.riv`). One `derive` edge from every frame it was made of, `params: { tool, step: "export"\|"rive", format, repeat, scale, background }` — the `.riv`'s edge lists `params.motions` and `params.sampled` (each motion's frames, fps, width and height as the file plays it), and its `metadata.frames` is what it embeds. The report's frames must be the ones registered **now**, or it is refused ("export it again"). Re-registering replaces the asset in place. An empty report — the export failed and printed only its `ERROR:` — is said as such and registers nothing. A format a loop already ships (its own WebM, APNG, Lottie) is refused. |
+| `register-recolor --report <recolor.json \| ->` | Consumes the `--json` report of `sprite-sheet.mjs recolor`. Records each colourway once, on the character (`character.pixel.variants`: a changed one replaces its record in place, a new one is appended), and per motion its `sheet.png`, `atlas.json` and `preview.gif` as `<motion>-variant-<name>-sheet` / `-atlas` / `-gif` (sheet: `metadata.substituted`, `unmatched`, `uncovered` counts), named by `motion.variants[name]`. The sheet and preview are `derive` edges from the motion's frames (`params: { step: "recolor", variant, tolerance?, inputs }`), the atlas from the sheet. The report's frames must be the ones registered now. A colourway whose map changed unregisters the files other motions baked with the old one (said on stderr). |
+| `set-character --remove-variant <name,…>` | Drops colourways: their record and every motion's files for them are unregistered (the files stay on disk). `--no-pixel` does the same for all of them. |
 | `add-video --motion idle --file motions/idle/video-seedance-1.mp4 --model seedance-2.5 --mode i2v --from idle-frame-00[,idle-frame-15] [--prompt] [--duration 4] [--status generating]` | Registers `<motion>-video-<n>` (n is the next free number) with a `generate` edge. |
 | `set-video --motion idle --video <id> --status ready\|failed [--notes]` | Closes out a video after the render returns. |
 | `remove-motion --motion idle` | Removes the motion, its assets and its edges — its on-demand exports included, and the character's `.riv` when it holds this motion. Files on disk are left alone; the orphaned paths are printed so you can delete them deliberately. |
-| `show [--motion id]` | Compact summary: name, refs (each with `origin: generated \| uploaded \| derived`, read off its edge — whether an image was drawn here or brought in decides what you may regenerate), motions with status / grid / fps / frame count / warnings, and derived clips as `video-3 ← video-2 (matte, veed-gs)`. The cheapest way to re-orient at the start of a turn. |
+| `show [--motion id]` | Compact summary (with `variantsMissing` — the ready sprite motions missing a recorded colourway, which is what a re-run leaves; the fix is `recolor` on that motion without `--map`): name, refs (each with `origin: generated \| uploaded \| derived`, read off its edge — whether an image was drawn here or brought in decides what you may regenerate), motions with status / grid / fps / frame count / warnings, and derived clips as `video-3 ← video-2 (matte, veed-gs)`. The cheapest way to re-orient at the start of a turn. |
 
 ### `set-sheet` is called twice per sheet
 
@@ -2314,3 +2447,61 @@ pixels tall where 32 was asked):
 for the 16 frames (upstream's Python: 3.0 s on the same cells); a standalone
 `pixel` on the cells directory is 3.0 s, almost all of it decoding and
 writing 16 PNGs through ffmpeg.
+
+## Measured: colourways and the declared height (2026-09-27)
+
+The pixel knight walk (sg shoot e6: GPT Image 2.5 Flare, 4×2 at 2048 × 1024,
+BiRefNet matte; blocks ≈ 8 px by eye, the figure 427 px tall where 32
+logical px were asked for). Apple M4 Max, Node 25, ffmpeg 8.0; upstream
+aldegad/sprite-gen at `fbd1a08` on Python 3.14 + Pillow 12.3. Scripts, the 8×
+contact sheet and the reports live in the dev scratch
+(`~/pneuma-dev-scratch/2026-09-27/sg/recolor/evidence/`).
+
+**The declared height.**
+
+| Declared | Flags | Result |
+|---|---|---|
+| 32 (the prompt's) | — | refused: 2 of 8 frames read a grid; "the declared height (32 logical px) would mean 13.34 px blocks for frames 427 px tall, which the frames do not back" (pooled 9, runs 7.0 — 1.47× / 1.89× away) |
+| 32 | `--pitch-hint 8` | 52–54 logical px tall; warned: "these frames snap to 53 … declared 32", with the three ways out |
+| 53 | `--pitch-hint 8` | held (53, 52–54); `run --pixel` 4.1–4.3 s |
+| 53 | — | cut at 8.06, the height's pitch, backed by pooled 9 (1.12×); held (53, 52–54); 4.23 s against 4.13–4.16 s with the hint — the second lattice pass costs ≈ 0.1 s. The sprites differ from the 8.00 cut by at most one logical pixel of width or height per frame |
+
+So the height does the job `--pitch-hint` did whenever the sheet was drawn
+at the declared height, and refuses — naming the numbers — when it was not.
+The 25 % evidence window is set on this one real sheet: its loose readings
+sit 12 % from the true 8 px, and a height 40 % off (32 for 53) is caught.
+Synthetic generations (loose lattices with ±3 px jitter, half-block detail,
+box blur of radius 4) all read their grid on their own, so they never reach
+the stand-in; the CLI test pins it with one real-grid frame and two frames
+of noise.
+
+**Colourways.** `recolor-palette`: 48 colours in use (the whole pinned
+palette), 1.0 s; its colours, order and counts are exactly upstream's
+`extract_palette` on the packed sheet. Two colourways by hand from the swatch
+sheet: `red-team` (the tabard's 7 blues → reds) and `blue-team` (the plume's
+5 reds → blues, the cross's 2 golds → off-white).
+
+| | red-team | blue-team |
+|---|---|---|
+| swapped | 602 px, 7 of 7 entries | 867 px, 7 of 7 entries |
+| unmatched | 0 | 0 |
+| left as they were | 41 colours, 6,958 px | 41 colours, 6,693 px |
+| alpha bytes changed | 0 | 0 |
+
+A map with one typo (`#1954be` for `#1954bf`) swaps only its other entry
+(52 px) and warns `#1954be → #bf191f matched no pixel of walk`.
+
+- **Parity with upstream's Python** (`recolor.py` `bake` on the motion's
+  sheet): both colourways and a tolerance-24 colourway (481 px against the
+  exact 466) decode to exactly upstream's pixels — 0 of 112,000 RGBA bytes
+  differ — and every report number matches (per-entry hits, unused sources,
+  passthrough count, pixels and the top 64). The PNG files themselves differ
+  in bytes (ffmpeg's encoder, not Pillow's); decoded pixels are the contract,
+  and a re-run of `recolor` writes byte-identical files.
+- **Time**: `recolor` 3.87–3.92 s for both colourways over 8 frames
+  (three runs). The swap is 0.12 ms per colourway; the rest is ffmpeg — 16
+  frame PNGs, two packs, two GIFs, 8 decodes. Upstream's bake of the one
+  sheet is 0.026 s, because it writes a sheet and nothing else.
+- **Painted art** is refused: each Lumi frame (the seed) carries 248–252
+  colours, and the 64 most used cover 53.4 % (idle) / 55.2 % (attack) of its
+  visible pixels — an exact map would leave half of every edge behind.

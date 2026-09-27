@@ -36,6 +36,11 @@ correctly on disk.
       <motion-id>.json            # Lottie
       <motion-id>-frames.zip      # PNG sequence + animation.json
       <motion-id>-aseprite.zip    # sheet + Aseprite JSON (+ shadow sheet)
+    variants/<name>/              # pixel art: one colourway (`recolor`)
+      frames/NN.png  frames/align.json   # the frames recoloured — no ids
+      sheet.png  atlas.json  preview.gif # the motion's layout, byte for byte
+  recolor.json                    # pixel art: the recolor map `recolor-palette`
+  recolor-swatches.png            # drafts and you fill in — working files, no ids
   exports/<character>.riv         # the whole character for Rive (`rive`)
   exports/<character>-aseprite.zip  # every sprite motion on one Aseprite
                                   # sheet (`export <character> --format aseprite`)
@@ -136,6 +141,7 @@ video, a sheet generated from one reference) is fully described by
 | `<character>-palette` | A pixel-art character's pinned palette (text, `palette.json`), `metadata: { colors?, size, sha256 }`; a `derive` edge (`step: "palette"`) from the frames of the run that pinned it. Written by `register-run` (see *Pixel art*) |
 
 | `<character>-export-aseprite` | Every ready sprite motion on one Aseprite sheet (image, `metadata.container: "zip"`). Written by `register-export` |
+| `<motion>-variant-<name>-sheet` / `-atlas` / `-gif` | One colourway of a pixel-art sprite motion: `variants/<name>/sheet.png` (image, `metadata: { width, height, substituted, unmatched, uncovered, size }` — the bake's counts), `atlas.json` (text) and `preview.gif`. Written by `register-recolor` (see *Colourways*) |
 
 Ids are stable across re-runs: `register-run` removes the previous frame
 assets and their edges before writing the new ones, so re-running a motion
@@ -286,6 +292,12 @@ interface SpriteSidecar {
                                   // first pixel run; absent until then
       colors?: number;            // the size asked for (`--colors`), then
                                   // the size it was pinned with
+      variants?: Array<{          // its colourways, recorded once
+        name: string;             // a slug: "red-team"
+        map: Record<string, string>;  // "#src" → "#dst", lower-case, in
+                                  // the order a tolerance tie goes by
+        tolerance?: number;       // 1–255; absent = exact
+      }>;                         // (`register-recolor`; see *Colourways*)
     };
     asymmetric?: string;          // one sentence: what must never flip ("the
                                   // sword is in the right hand"). Stops a
@@ -359,6 +371,10 @@ interface Motion {
                                   // written by `register-export`
   keyframe?: string;              // asset id, `<motion>-keyframe`
   keyframeAlpha?: string;         // asset id, `<motion>-keyframe-alpha`
+  variants?: Record<string, {     // pixel art, sprite motions only: each
+    sheet: string; atlas: string; // colourway's files, by colourway name —
+    gif?: string;                 // `<motion>-variant-<name>-sheet` …
+  }>;
   exports?: {                     // export format → asset id. The WebP, GIF
                                   // and sheet stay in their own fields
     mp4?: string; mov?: string; webm?: string;
@@ -665,6 +681,39 @@ the other ready motions were quantised to the old one. Removing the motion
 that pinned it leaves the palette with no parent: `dropAssets` takes removed
 ids out of every surviving edge's `params.inputs` as well as its
 `fromAssetId`.
+
+Every pixel run is held to `logicalHeight` (`sprite-sheet.mjs pixel` /
+`run --pixel`): it stands in for a missing `--pitch-hint` when the frames
+back it, and a height the frames miss is a warning — never a squash. The run
+summary's `pixel.logicalHeight` says how it went; nothing of it is stored
+here.
+
+**Colourways.** A pixel-art character's colourways are recorded once, on
+`character.pixel.variants` — the swap itself (`{ name, map, tolerance? }`), so
+a later session knows what "red-team" is and a motion made again is baked
+with the same one (`sprite-sheet.mjs recolor` without `--map` reads it). Each
+sprite motion names only the files its bake left: `motion.variants[name] = {
+sheet, atlas, gif }`, the assets `<motion>-variant-<name>-*`, the sheet and
+preview derived from the motion's frames (`params: { tool, step: "recolor",
+variant, tolerance?, inputs }`), the atlas from the sheet (`step: "pack"`). The
+variant's frames under `variants/<name>/frames/` have no ids, like `cells/`.
+The Export tab lists one download row per colourway the motion has, in the
+character's order; nothing there asks for one — the colours are the
+agent's call.
+
+`register-recolor` is the only writer. The loader applies the same rules the
+writer checks with (`recolor.mjs`): a colourway with a bad name, a non-hex
+colour, an empty map or a tolerance outside 1–255 is dropped, the first of a
+name wins, and an empty list is no list; a motion's entry needs a colourway
+name and its sheet and atlas ids, and only a sprite motion (no `kind`) keeps
+one. Lifecycle — the files stay on disk each time, only unregistered:
+`register-run` of a motion retires its colourway files (the frames they were
+baked from are gone) and `show` lists it under `variantsMissing` until it is
+recoloured; a colourway registered with a changed map retires the files other
+motions baked with the old one; `set-character --remove-variant <name>`
+drops a colourway and its files, `--no-pixel` all of them; `remove-motion`
+takes a motion's with it. A re-pin (`register-run --repin`) keeps the
+colourways but warns that their maps name the old palette's colours.
 
 ## Character identity vs content set
 

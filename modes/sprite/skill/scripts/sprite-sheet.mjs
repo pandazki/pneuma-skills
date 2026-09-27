@@ -1858,7 +1858,7 @@ function pixelFacts(doc, where) {
 // `sprite-project.mjs register-recolor` records what was made.
 
 /** Why recolor is offered for pixel art only, said whenever it is refused. */
-const RECOLOR_PIXEL_ONLY = "recolor swaps exact colours, which works on art made of a few exact colours — a pixel-art character quantised to its one pinned palette. Painted, anti-aliased art is not: each of Lumi's frames carries about 250 colours and the 64 most used cover 53–55 % of its visible pixels, so a map would leave most edges in the old colours";
+const RECOLOR_PIXEL_ONLY = "recolor swaps exact colours, which works on art made of a few exact colours — a pixel-art character quantised to its one pinned palette. Painted, anti-aliased art is not: each frame of the seed character Lumi carries about 250 colours, and the 64 most used cover 53–55 % of its visible pixels, so a map would leave most edges in the old colours";
 
 /** A refusal `recolor.mjs` phrased, turned into this script's own. */
 function recolorRule(fn) {
