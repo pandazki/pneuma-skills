@@ -1739,6 +1739,12 @@ function readRunSummary(source) {
     if (!existsSync(path)) fail(`--run: file not found: ${path}`);
     return readFileSync(path, "utf-8");
   })();
+  // A run that FAILED prints its `ERROR:` on stderr and nothing on stdout, so
+  // the piped form (`breathe --name … --json | register-run --run -`) hands
+  // this command an empty summary — said as such, not as a JSON syntax error.
+  if (!text.trim()) {
+    fail("--run: the run summary is empty — the command that should have written it printed nothing, which means it failed; its ERROR: line says why, and nothing was registered");
+  }
   let run;
   try {
     run = JSON.parse(text);
