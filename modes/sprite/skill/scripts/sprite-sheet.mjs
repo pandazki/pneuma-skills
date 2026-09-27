@@ -75,11 +75,17 @@ const FEET_BAND = 0.1;
 const MAX_BODY_DRIFT_FRACTION = 0.05;
 /** The frames' head drift over the source's own (drift removed) by more than
  *  this factor — and by more than ADDED_SWAY_FRACTION of the cell width — is
- *  sway the alignment put there. Measured 2026-09-27: a feet-pinned walk sits
- *  at 9.8× (real side walk) and 44× (synthetic); every alignment that kept or
- *  reduced its source's motion at or under 1.43× (Lumi attack sheet). */
+ *  sway the alignment put there. Measured 2026-09-27, feet-pinned walks: the
+ *  Lumi side-view clip 9.7× (+6.7 px, 2.0 % of its cell), a pixel knight
+ *  walk sheet 7.4× (+9.2 px, 3.3 %), the synthetic walker 44×. Every
+ *  alignment that kept or reduced its source's motion (Lumi sheets and clips,
+ *  tanka, the knight on cell/trend/body/bbox) stayed under one of the two
+ *  bars: at most 1.8×, and at most +0.95 % of the cell. */
 const ADDED_SWAY_RATIO = 2;
 const ADDED_SWAY_FRACTION = 0.01;
+/** A head band spreading less than this share of the cell width is standing
+ *  still — the feet can sweep a stride under it and the body has not moved. */
+const STEADY_HEAD_FRACTION = 0.01;
 /** Where `align` may take each frame's x from. `trend` and `body` read every
  *  frame in one shared coordinate system (a clip's frames, one grid's cells)
  *  and keep the placement it was filmed with, minus the drift. */
@@ -1314,6 +1320,9 @@ function driftAnchors(entries, measures, xMode, threshold) {
   const present = measures.map((m, i) => (m.bbox ? i : -1)).filter((i) => i >= 0);
   const first = readRgba(entries[present[0]].path);
   const last = readRgba(entries[present[present.length - 1]].path);
+  if (first.height !== last.height) {
+    fail(`--x-from body registers the last frame on the first, but ${basename(entries[present[0]].path)} is ${first.height}px tall and ${basename(entries[present[present.length - 1]].path)} is ${last.height}px — use --x-from trend`);
+  }
   const wrapDx = present.length > 1 ? bodyWrapOffset(first, last, { threshold }) : 0;
   const shifts = rampShifts(entries.length, wrapDx);
   const level = present.reduce((sum, i) => sum + feetX[i] + shifts[i], 0) / present.length;
@@ -1944,9 +1953,8 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
   // was filmed (or the grid drawn) in — with the slow straight-line drift
   // taken out: the sway the motion itself has. An alignment may remove drift;
   // it should not add sway. A feet pin on a walk does exactly that: measured
-  // 2026-09-27, the Lumi side walk goes from 0.76 px as filmed to 7.45 px
-  // after `--x-from feet` (0.97 px after `trend`), while every alignment that
-  // kept or reduced its source's motion stayed at or under 1.43× it.
+  // 2026-09-27, the Lumi side walk goes from 0.77 px as filmed to 7.45 px
+  // after `--x-from feet` (0.97 px after `trend`); see ADDED_SWAY_RATIO.
   const sourceHeadDrift = clipSource !== measured && !nonUniformWidth(clipSource)
     && clipSource.every((c) => c.head !== undefined)
     ? round(swayAboutTrend(headOffsets(clipSource.map((c) => c.head), clipSource[0].width)), 3)
@@ -1965,18 +1973,20 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
   if (jumpPair && maxJump > MAX_JUMP_FRACTION * cellW && bodyJump > MAX_JUMP_FRACTION * cellW) {
     warnings.push(`anchor jumps between frames ${pad(jumpPair[0])} and ${pad(jumpPair[1])}`);
   }
-  // `trend` and `body` keep the foot line as filmed on purpose — in a walk it
-  // is the step, sweeping a stride under the body — so a wide `bodyDrift` is
-  // their design, not a fault, and telling the agent to go back to pinning the
-  // feet would reintroduce the lurch. The head band judges those frames.
+  // A wide foot spread is a sliding BODY only when the upper body goes with
+  // it. In a walk the foot line sweeps a stride under a head that stays put —
+  // that is the step — and telling the agent to pin the feet would bring back
+  // the lurch. So the warning needs the head to move too, and it never speaks
+  // for `trend` / `body`, which keep the foot line as filmed by design.
   const record = readAlignRecord(framesDir);
   const keepsFootLine = record && (record.xFrom === "trend" || record.xFrom === "body");
-  if (!keepsFootLine && bodyDrift > MAX_BODY_DRIFT_FRACTION * cellW) {
+  const headMoves = headDrift > STEADY_HEAD_FRACTION * cellW;
+  if (!keepsFootLine && headMoves && bodyDrift > MAX_BODY_DRIFT_FRACTION * cellW) {
     warnings.push("body drifts sideways between frames — re-run align with --x-from feet/cell");
   }
   if (sourceHeadDrift !== null && headDrift > ADDED_SWAY_RATIO * sourceHeadDrift
     && headDrift - sourceHeadDrift > ADDED_SWAY_FRACTION * cellW) {
-    warnings.push(`head sways ${headDrift} px across the frames but ${sourceHeadDrift} px in the source once its slow drift is removed — the alignment added sway (a pinned stepping foot) or kept the drift; re-align from cells/ with --x-from trend`);
+    warnings.push(`head sways ${headDrift} px across the frames but ${sourceHeadDrift} px in the source once its slow drift is removed — the alignment added sway (a pinned stepping foot) or kept the drift; re-align from cells/ with --x-from trend (or cell, the placement as drawn)`);
   }
   if (scaleDrift > MAX_SCALE_DRIFT) {
     warnings.push("character scale varies across frames — regenerate with a fixed-scale instruction");
@@ -2729,15 +2739,6 @@ function stepContact(clip, options) {
 }
 
 /**
- * The video source: sample the clip into cells, key the plate off every one of
- * them, then hand the cells to the same chain `run` drives.
- *
- * The clip is read and never written: it is a registered asset in its own
- * right (`sprite-project.mjs add-video`), and `register-run` hangs each
- * frame's provenance off it, so moving or rewriting it here would cut the
- * frames loose from what they were sampled out of.
- */
-/**
  * The subject's height, in clip pixels, in the clip's first frame (t = 0):
  * keyed with the clip's own key, the plate's colour zeroed and — when the run
  * cleans — its specks dropped, exactly as a sampled cell would be, so the
@@ -2760,6 +2761,15 @@ function standingHeight(input, keyFilter, options) {
   }
 }
 
+/**
+ * The video source: sample the clip into cells, key the plate off every one of
+ * them, then hand the cells to the same chain `run` drives.
+ *
+ * The clip is read and never written: it is a registered asset in its own
+ * right (`sprite-project.mjs add-video`), and `register-run` hangs each
+ * frame's provenance off it, so moving or rewriting it here would cut the
+ * frames loose from what they were sampled out of.
+ */
 function stepFromVideo(clip, options) {
   const input = resolve(clip);
   if (!existsSync(input)) fail(`file not found: ${input}`);
