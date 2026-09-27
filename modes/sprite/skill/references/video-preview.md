@@ -173,7 +173,7 @@ model will not do any of them unless asked:
 
 | Requirement | Why the pipeline needs it |
 |---|---|
-| Flat solid pure chroma green (#00FF00) filling the frame, evenly lit | `from-video --key auto` reads the corner patches of frame 00; a gradient or a vignette leaves the plate half-keyed |
+| Flat solid pure chroma green (#00FF00) filling the frame, evenly lit | `from-video --key auto` measures the plate on the frame borders; a gradient or a vignette leaves the plate half-keyed |
 | No floor, no cast shadow, no reflection, no green spill on the character | A shadow keys as part of the silhouette; spill turns the character's edge green |
 | Locked-off camera — no pan, no tilt, no zoom, no parallax, no cut | Every camera move is read as the character moving, and the aligner faithfully removes it |
 | Whole character and props inside the frame with margin, consistent proportions and camera scale | Crouching or turning may change silhouette dimensions; clipping and unintended rescaling are faults |
@@ -381,10 +381,13 @@ frame 112 back to frame 2 rather than the keyframe on both sides.
 
 ### Matting the clip: `remove-video-background.mjs`
 
-The colour key that `loop` applies by default is free and good on a flat plate,
-but it cuts by colour distance, so a soft 3D edge keeps a green rim. The two
-paid alternatives cut on the silhouette and hand back a clip that *carries*
-alpha, which `loop --key alpha` then decodes instead of keying.
+The colour key that `loop` applies by default is free and good on a flat plate:
+since 2026-09-27 it un-mixes the edge (`--keyer unmix`), where the previous
+`colorkey` left a green rim on a soft 3D edge. It still cuts by colour, so it
+cannot separate a subject from a plate it shares colours with, and a
+translucent effect (smoke, glow) keeps the plate showing through. The two paid
+alternatives cut on the silhouette and hand back a clip that *carries* alpha,
+which `loop --key alpha` then decodes instead of keying.
 
 ```bash
 node {SKILL_PATH}/scripts/remove-video-background.mjs \
@@ -560,15 +563,17 @@ post-processing path run against it.
 |---|---|---|
 | `veed-gs` matte → `loop --key alpha` | ≈ $0.06 | **the best of the four** — zero green pixels, and the softest edge measured: 8535 partial-alpha pixels on the frame where plain `veed` has 6198 |
 | `veed` matte → `loop --key alpha` | ≈ $0.09 | soft, zero green pixels, no dark rim |
-| `loop --key auto` (colorkey **then** despill) | free | acceptable: a faint 1 px dark rim |
-| colorkey with `--no-despill` | free | **not acceptable** — a visible 1–2 px green fringe at 640² |
+| `loop --key auto` (default `--keyer unmix`, since 2026-09-27) | free | no green rim and no dark rim, body colours untouched — measured on tanka's ten loops, not yet side by side with `veed-gs` on this clip (`pipeline.md` → "Measured: the chroma keyer") |
+| `loop --key auto --keyer colorkey` (colorkey **then** despill) | free | a faint 1 px dark rim — and despill takes a fifth of the green out of every neutral pixel: white comes out pink, yellow salmon |
+| `--keyer colorkey --no-despill` | free | **not acceptable** — a visible 1–2 px green fringe at 640² |
 
 So: **with a fal key, matte and cut with `loop --key alpha` — `veed-gs` when
 the clip was shot on chroma green (which workflow E's is), `veed` for any other
-plate; without a key, `loop --key auto` and its despill**, which is honest at
-UI size. Never ship a chroma-plate loop keyed with `--no-despill` — a loop is
-rendered at the size it was cut at, so there is no downscale further along to
-hide the fringe the way a sprite motion has.
+plate; without a key, `loop --key auto`**, which un-mixes the plate out of the
+edge. Never ship a chroma-plate loop keyed with plain colorkey
+(`--keyer colorkey --no-despill`) — a loop is rendered at the size it was cut
+at, so there is no downscale further along to hide the fringe the way a sprite
+motion has.
 
 **Seam, as a worked verdict.** `loop` measured the Seedance clip at seam
 **0.028** against a median step of **0.046** — the last frame is closer to the
@@ -652,7 +657,7 @@ shot with the template above and sampled with `from-video --frames 16 --loop`:
 | clip | 640×640, 24 fps, 97 frames, 4.04 s, 552 KB, `--duration 4 --resolution 480p --no-audio` |
 | the plate the model actually painted | `#08f00d` — near the #00FF00 asked for, not equal to it, which is why `--key auto` measures it instead of assuming |
 | alpha coverage after keying | **0.4438** (the character is 44 % of the frame; the plate is gone) |
-| green fringe | a **1 px** dark-green rim on the silhouette — 2.8 % of the sprite's opaque pixels. It is the anti-aliased ramp between the plate and the black ink outline, so no similarity setting reaches it without eating the drawing. It disappears under `pack --scale 0.5` and is invisible at sprite size |
+| green fringe | a **1 px** dark-green rim on the silhouette — 2.8 % of the sprite's opaque pixels. It is the anti-aliased ramp between the plate and the black ink outline, so no similarity setting reaches it without eating the drawing. It disappears under `pack --scale 0.5` and is invisible at sprite size. *Measured with the `colorkey` keyer this run used; since 2026-09-27 the default `--keyer unmix` un-mixes that ramp instead (tanka's walk: `keyResidue` 0.0158 → 0; `pipeline.md` → "Measured: the chroma keyer")* |
 | `bodyDrift` | **0.343 px** on a 622 px cell — 0.06 % of the cell, against a 5 % warning threshold |
 | `anchorDrift` | x 2.921 px, y 0 |
 | `maxJump` | 3 px (threshold: 8 % of 622 = 50 px) |

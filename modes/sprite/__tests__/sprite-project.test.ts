@@ -1667,6 +1667,22 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       expect({ crop: "crop" in dropped.inspect, scale: "scale" in dropped.inspect }).toEqual({ crop: false, scale: false });
     });
 
+    test("keyResidue goes into the sidecar's inspect — 0 included — and a run without it carries none", () => {
+      // The viewer reads project.json alone; a residue measured by `loop` and
+      // left out here would never reach the stage.
+      const { dir, run: summary } = seedLoop();
+      const measured = JSON.parse(registerLoop(dir, { ...summary, inspect: { ...summary.inspect, keyResidue: 0.0158, keyResidueEdge: 0.9 } }).out);
+      expect(measured.inspect.keyResidue).toBe(0.0158);
+      // The fat report's edge share stays in inspect.json, not in the sidecar.
+      expect("keyResidueEdge" in measured.inspect).toBe(false);
+
+      const clean = JSON.parse(registerLoop(dir, { ...summary, inspect: { ...summary.inspect, keyResidue: 0 } }).out);
+      expect(clean.inspect.keyResidue).toBe(0);
+
+      const matted = JSON.parse(registerLoop(dir, summary).out);
+      expect("keyResidue" in matted.inspect).toBe(false);
+    }, 20_000);
+
     test("every export is registered with its size in bytes", () => {
       const { dir, run: summary } = seedLoop();
       registerLoop(dir, summary);

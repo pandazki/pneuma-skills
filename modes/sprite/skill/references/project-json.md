@@ -454,6 +454,14 @@ interface InspectSummary {
                                             // All four are absent unless the
                                             // report carried finite numbers —
                                             // 0 is a reading, not an absence
+  keyResidue?: number;                      // share of the visible pixels that
+                                            // still carry the chroma plate's
+                                            // hue (a fringe the key left, or
+                                            // colour the character has); warns
+                                            // above 0.005. Present only on a
+                                            // motion keyed off a hued plate —
+                                            // absent for white plates, mattes
+                                            // and provided alpha; 0 is clean
   crop?: { x: number; y: number; w: number; h: number };
                                             // loop and transition: the rect
                                             // every frame was cut from, in

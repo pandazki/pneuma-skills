@@ -942,6 +942,10 @@ function inspectSummary(value) {
   // rule applies: absent means the report predates the flag.
   const seamFill = finiteNumber(value.seamFill);
   const alphaCoverage = finiteNumber(value.alphaCoverage);
+  // The share of visible pixels still carrying the plate's hue — 0 is the
+  // clean cut, so finite-or-absent like its neighbours; absent when nothing
+  // hued was keyed.
+  const keyResidue = finiteNumber(value.keyResidue);
   // Where a loop's frames sit in their clip: frame px = (clip px − crop.xy) ×
   // scale. The .riv needs both to draw every loop at one size and in the
   // place it stood; absent on a run from before `loop` recorded them, and
@@ -967,6 +971,7 @@ function inspectSummary(value) {
     ...(step === undefined ? {} : { step }),
     ...(seamFill === undefined ? {} : { seamFill }),
     ...(alphaCoverage === undefined ? {} : { alphaCoverage }),
+    ...(keyResidue === undefined ? {} : { keyResidue }),
     ...(startGap === undefined ? {} : { startGap }),
     ...(endGap === undefined ? {} : { endGap }),
     ...(crop ? { crop } : {}),
