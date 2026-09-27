@@ -41,8 +41,8 @@ import {
 import { asepriteDocument, gridLayout, stackLayout } from "./aseprite.mjs";
 import { RIVE_MOTION_INPUT, riveDefaultMotion, riveHub, writeRiv } from "./rive.mjs";
 import {
-  RIVE_DECODE_LIMIT_BYTES, RIVE_DECODE_WARN_BYTES, RIVE_LOOP_FPS, RIVE_LOOP_MAX_SIZE, RIVE_PIXEL_ART_STYLE, riveDefaultImages,
-  riveDecodeWarning, riveMB, rivePlan, riveReverseIsCurrent,
+  RIVE_DECODE_LIMIT_BYTES, RIVE_DECODE_WARN_BYTES, RIVE_LOOP_FPS, RIVE_LOOP_MAX_SIZE, riveDefaultImages,
+  riveDecodeWarning, riveIsPixelArt, riveMB, rivePlan, riveReverseIsCurrent,
 } from "./rive-plan.mjs";
 import { SHADOW_DEFAULTS, SHADOW_RANGES, projectShadow, shadowCanvas, withShadow } from "./shadow.mjs";
 import { zipStore } from "./zip.mjs";
@@ -277,6 +277,10 @@ const ALIGN_RECORD = "align.json";
 /** What `slice` leaves next to the cells: the grid they were cut from, so
  *  `inspect` can tell a row boundary from an ordinary step. */
 const SLICE_RECORD = "slice.json";
+/** What `breathe` leaves next to its frames: that they were warped out of one
+ *  still, so `inspect` does not read the whole-pixel head's planned holds as
+ *  a model repeating a drawing. */
+const BREATHE_RECORD = "breathe.json";
 
 // --- pixel: generated pixel art snapped onto its lattice ---------------------
 /** `run --pixel` leaves the lattice frames here, between `cells/` and
@@ -726,8 +730,9 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       sampled with the loops and keeps its first and last frame. A sprite
       motion keeps its atlas fps and size unless --fps / --max-size is given
       (a one-shot then keeps its last frame). Nothing is ever sped up or
-      enlarged. --filter auto (default) downscales nearest-neighbour when
-      character.style says pixel art, smooth otherwise.
+      enlarged. --filter auto (default) downscales nearest-neighbour for a
+      pixel-art character (character.pixel, else character.style says so),
+      smooth otherwise.
       With two loops or transitions or more, each is first divided by its
       scale against its clip (inspect.scale, recorded by loop and transition;
       measured off the clip for a loop cut earlier, with a warning when it
@@ -753,8 +758,8 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       The frames are RASTER: the file plays in every Rive runtime but cannot
       be reopened in the Rive editor. --images webp (the default) embeds each
       frame as a lossy WebP at quality 85, several times smaller than PNG;
-      webp-lossless keeps every visible pixel exact and is the default when
-      character.style says pixel art (the reading --filter auto uses); png
+      webp-lossless keeps every visible pixel exact and is the default for a
+      pixel-art character (the reading --filter auto uses); png
       embeds PNG. Every Rive runtime decodes all three. With no --images and an
       ffmpeg without libwebp, the frames go in as PNG and the report warns; a
       WebP format asked for by name on such an ffmpeg is refused.
@@ -776,9 +781,9 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       grid. --mode smooth resamples the same field continuously in
       premultiplied alpha for anti-aliased art, and moves the head by whole
       pixels so it stays identical to the still. Without --mode the
-      character's style decides (pixel art → pixel, anything else →
-      smooth), from the nearest project.json above --out, the still or the
-      working directory; with no character it is required.
+      character decides (character.pixel, else its style: pixel art → pixel,
+      anything else → smooth), from the nearest project.json above --out,
+      the still or the working directory; with no character it is required.
       The anatomy is detected and printed so you can check it against the
       still: body axis x, neck y, the rigid row y (nothing above it deforms),
       a face if a symmetric eye pair was found, the torso half-width and
@@ -1263,7 +1268,7 @@ const loopFrameName = (index) => `${String(index).padStart(3, "0")}.png`;
 function resetFramesDir(dir) {
   mkdirSync(dir, { recursive: true });
   for (const name of readdirSync(dir)) {
-    if (FRAME_RE.test(name) || name === ALIGN_RECORD || name === SLICE_RECORD) unlinkSync(join(dir, name));
+    if (FRAME_RE.test(name) || name === ALIGN_RECORD || name === SLICE_RECORD || name === BREATHE_RECORD) unlinkSync(join(dir, name));
   }
 }
 
@@ -1545,9 +1550,12 @@ function stepClean(cellsDir, { out, threshold }) {
   const inPlace = inDir === outDir;
   if (!inPlace) {
     resetFramesDir(outDir);
-    // Cleaned cells are still the grid's cells: its record goes with them.
-    const record = join(inDir, SLICE_RECORD);
-    if (existsSync(record)) copyFileSync(record, join(outDir, SLICE_RECORD));
+    // Cleaned cells are still the grid's cells (or the breathe's frames):
+    // the record of what made them goes with them.
+    for (const name of [SLICE_RECORD, BREATHE_RECORD]) {
+      const record = join(inDir, name);
+      if (existsSync(record)) copyFileSync(record, join(outDir, name));
+    }
   }
 
   const stats = [];
@@ -2558,7 +2566,14 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
   // One sentence per kind, naming every pair: six lines for one gentle idle
   // would bury the warnings that are not about holds.
   const pairsText = (pairs) => listAndTruncate(pairs, (p) => `${pad(p.from)}→${pad(p.to)}`).join(", ");
-  if (judged.nearDuplicates.length) {
+  // A breathe moves its head by whole pixels, so at each turn of the breath
+  // two neighbours can share the head's row and differ by a sub-pixel warp of
+  // the body alone (Lumi at depth 0.02, 16 frames: 4 such pairs, steps
+  // 0.001–0.002 between steps of 0.010–0.013). That hold is the method, not
+  // a drawing the model repeated: the pairs stay in `nearDuplicates`, the
+  // sentence — whose fixes are resampling and redrawing — is not said.
+  const breathed = [cells, framesDir].some((d) => d && existsSync(join(resolve(d), BREATHE_RECORD)));
+  if (judged.nearDuplicates.length && !breathed) {
     warnings.push(`near-duplicate frames ${pairsText(judged.nearDuplicates)} (step under ${DUPLICATE_STEP}) — the animation holds there; fine for a held idle, a hitch in a stroke or a step`);
   }
   if (judged.rowJumps.length) {
@@ -2874,10 +2889,12 @@ function stepRun(sheetRaw, options) {
   // Pixel art: snap the cleaned cells onto their lattice before anything
   // places them. The cells stay what they are — the source a re-run snaps.
   let lattice = null;
+  const character = characterOfMotion(motionDir);
   if (options.pixel) {
+    const palette = runPalette(motionDir, character, options);
     lattice = stepPixel(cellsDir, {
       out: join(motionDir, PIXEL_DIRNAME),
-      palette: options.palette ?? join(motionDir, PALETTE_FILENAME),
+      palette: palette.file,
       repalette: options.repalette,
       paletteSize: options.paletteSize,
       scale: options.scale,
@@ -2888,9 +2905,10 @@ function stepRun(sheetRaw, options) {
       threshold: options.threshold,
       images: cellImages,
     });
+    lattice.palette = { ...lattice.palette, from: palette.from };
     warnings.push(...lattice.warnings);
   } else {
-    const hint = pixelStyleHint(motionDir);
+    const hint = pixelStyleHint(character);
     if (hint) warnings.push(hint);
   }
 
@@ -2939,24 +2957,63 @@ function stepRun(sheetRaw, options) {
 }
 
 /**
- * A sentence for a `run` without `--pixel` on a character whose style says
- * pixel art (the reading `rive --filter auto` uses), or null. Read only: the
- * character is `<motionDir>/../..` when the motion sits in `motions/`, and a
- * project.json that is missing or unreadable is simply no hint — this is a
- * suggestion, and `register-run` is where a broken project.json is reported.
+ * The character a motion directory belongs to — `<character>/motions/<id>` —
+ * read only: `{ dir, doc }`, or null when the directory is not in one or its
+ * project.json is missing or unreadable. What is read from it is a default
+ * or a suggestion, never a write, and `register-run` is where a broken
+ * project.json is reported.
  */
-function pixelStyleHint(motionDir) {
+function characterOfMotion(motionDir) {
   if (basename(dirname(motionDir)) !== "motions") return null;
-  const path = join(dirname(dirname(motionDir)), "project.json");
+  const dir = dirname(dirname(motionDir));
+  const path = join(dir, "project.json");
   if (!existsSync(path)) return null;
-  let style;
   try {
-    style = String(JSON.parse(readFileSync(path, "utf-8"))?.sprite?.character?.style ?? "");
+    const doc = JSON.parse(readFileSync(path, "utf-8"));
+    return doc?.sprite?.character ? { dir, doc } : null;
   } catch {
     return null;
   }
-  if (!RIVE_PIXEL_ART_STYLE.test(style)) return null;
-  return `character.style says pixel art ("${style}") — run --pixel snaps the frames onto their pixel lattice (one pixel per block, binary alpha, one pinned palette); this run kept the drawn edges as they are`;
+}
+
+/**
+ * The palette `run --pixel` quantises to. `--palette` when named. Otherwise
+ * the palette pinned on the character (`character.pixel.palette`, the asset
+ * `register-run` pinned from the first pixel run) — every motion of a pixel
+ * character shares one palette so colours do not flicker between them, and
+ * `register-run` refuses a run quantised to another. `--repalette` does not
+ * rebuild the pinned file in another motion's directory: it builds this
+ * motion's own, which `register-run` then asks to `--repin`. With nothing
+ * pinned yet, the motion's own `palette.json`.
+ */
+function runPalette(motionDir, character, options) {
+  if (options.palette) return { file: resolve(options.palette), from: "flag" };
+  const own = { file: join(motionDir, PALETTE_FILENAME), from: "motion" };
+  if (options.repalette || !character) return own;
+  const id = character.doc.sprite.character.pixel?.palette;
+  if (typeof id !== "string" || !id) return own;
+  const asset = (character.doc.assets ?? []).find((a) => a.id === id);
+  if (!asset || typeof asset.uri !== "string") return own;
+  const file = resolve(character.dir, asset.uri);
+  if (!existsSync(file)) {
+    fail(`run --pixel: the palette pinned for this character (${id}, ${asset.uri}) is not on disk — restore it, or pass --repalette to build one from these frames (register-run then needs --repin)`);
+  }
+  return { file, from: "character" };
+}
+
+/**
+ * A sentence for a `run` without `--pixel` on a pixel-art character — by the
+ * reading `rive --filter auto` uses: `character.pixel`, else the style
+ * sentence (`riveIsPixelArt`) — or null.
+ */
+function pixelStyleHint(character) {
+  if (!character) return null;
+  const spec = character.doc.sprite.character;
+  if (!riveIsPixelArt(spec)) return null;
+  const said = spec.pixel && Number(spec.pixel.logicalHeight) > 0
+    ? `character.pixel says pixel art (${spec.pixel.logicalHeight} logical px tall)`
+    : `character.style says pixel art ("${spec.style}")`;
+  return `${said} — run --pixel snaps the frames onto their pixel lattice (one pixel per block, binary alpha, one pinned palette); this run kept the drawn edges as they are`;
 }
 
 /** Seconds of playable video, straight out of the container. */
@@ -5879,8 +5936,8 @@ function stillWebp(path, work, index, lossless) {
   return readFileSync(out);
 }
 
-/** The downscale for a character's style: pixel art (`RIVE_PIXEL_ART_STYLE`,
- *  read from `character.style`) keeps hard pixels only through
+/** The downscale for a character's style: pixel art (`riveIsPixelArt`:
+ *  `character.pixel`, else `character.style`) keeps hard pixels only through
  *  nearest-neighbour; everything else — painted, plush, 3D — goes through the
  *  filter the loop pipeline measured for alpha edges. */
 const RIVE_FILTERS = ["auto", "smooth", "nearest"];
@@ -6583,12 +6640,15 @@ function stepRive(characterDir, { images: askedImages = null, motions: named, in
     const loops = included.filter(isLoop).map((m) => m.id);
     fail(`${label}: --hub: '${hubId}' is not a loop in this file (loops in it: ${loops.join(", ") || "none"}) — the hub is the loop every route passes through`);
   }
-  // WebP unless asked otherwise — lossless for pixel art, by the reading of
-  // the style `--filter auto` uses. An ffmpeg without libwebp cannot write
-  // either: asked for by name, that is refused; by default, the file is still
-  // worth making as PNG, larger, and the report says why.
-  const style = String(character.doc.sprite.character?.style ?? "");
-  let images = askedImages ?? riveDefaultImages(style);
+  // WebP unless asked otherwise — lossless for pixel art, by the reading
+  // `--filter auto` uses: `character.pixel` first, the style sentence for a
+  // character that has none (`riveIsPixelArt`), the same reading the viewer's
+  // Export tab makes. An ffmpeg without libwebp cannot write either: asked
+  // for by name, that is refused; by default, the file is still worth making
+  // as PNG, larger, and the report says why.
+  const spec = character.doc.sprite.character ?? null;
+  const pixelArt = riveIsPixelArt(spec);
+  let images = askedImages ?? riveDefaultImages(spec);
   if (images !== "png" && !hasEncoder("libwebp")) {
     if (askedImages) {
       fail(`${label}: --images ${askedImages} needs ffmpeg's libwebp encoder, which this build does not have — use --images png`);
@@ -6707,7 +6767,7 @@ function stepRive(characterDir, { images: askedImages = null, motions: named, in
       };
     }
 
-    const scaleFilter = filter === "auto" ? (RIVE_PIXEL_ART_STYLE.test(style) ? "nearest" : "smooth") : filter;
+    const scaleFilter = filter === "auto" ? (pixelArt ? "nearest" : "smooth") : filter;
     let encoded = 0;
     const own = sources.map((source, k) => {
       const planned = plan.motions[k];
@@ -6855,7 +6915,7 @@ function stepRive(characterDir, { images: askedImages = null, motions: named, in
       }
     }
     if (images === "webp-lossless") {
-      notes.push(`The frames are embedded as lossless WebP — every visible pixel exactly as drawn${askedImages ? "" : ", the default for pixel art (character.style)"}; --images webp makes a smaller, lossy file.`);
+      notes.push(`The frames are embedded as lossless WebP — every visible pixel exactly as drawn${askedImages ? "" : `, the default for pixel art (${spec?.pixel && Number(spec.pixel.logicalHeight) > 0 ? "character.pixel" : "character.style"})`}; --images webp makes a smaller, lossy file.`);
     }
     if (images === "webp") {
       notes.push("The frames are embedded as WebP, lossy at quality 85 — several times smaller than PNG, and decoded by every Rive runtime (the native ones share rive-runtime's own WebP decoder); --images png embeds them lossless.");
@@ -6931,7 +6991,10 @@ function findCharacterAbove(start, notes) {
     if (existsSync(path)) {
       try {
         const doc = JSON.parse(readFileSync(path, "utf-8"));
-        if (doc?.sprite?.character) return { dir, style: String(doc.sprite.character.style ?? "") };
+        if (doc?.sprite?.character) {
+          const { style, pixel } = doc.sprite.character;
+          return { dir, style: String(style ?? ""), ...(pixel && typeof pixel === "object" ? { pixel } : {}) };
+        }
       } catch (error) {
         notes.push(`could not read ${path} (${error.message}) — not used to pick --mode`);
       }
@@ -6954,17 +7017,20 @@ function resolveBreatheMode(asked, { out, still, notes }) {
   const character = findCharacterAbove(dirname(resolve(out)), notes)
     ?? findCharacterAbove(dirname(resolve(still)), notes)
     ?? findCharacterAbove(process.cwd(), notes);
-  const pixelStyle = character ? RIVE_PIXEL_ART_STYLE.test(character.style) : null;
+  // `character.pixel` is the one authority for pixel art; a character
+  // without it is read off its style sentence (`riveIsPixelArt`).
+  const pixelStyle = character ? riveIsPixelArt(character) : null;
+  const from = character?.pixel && Number(character.pixel.logicalHeight) > 0 ? "character.pixel" : "character.style";
   if (asked) {
     if (!BREATHE_MODES.includes(asked)) fail(`--mode: expected ${BREATHE_MODES.join(" or ")}, got '${asked}'`);
-    if (pixelStyle === true && asked === "smooth") notes.push(`character.style says pixel art, but --mode smooth resamples off the pixel grid`);
-    if (pixelStyle === false && asked === "pixel") notes.push(`character.style does not say pixel art, but --mode pixel moves whole pixels`);
+    if (pixelStyle === true && asked === "smooth") notes.push(`${from} says pixel art, but --mode smooth resamples off the pixel grid`);
+    if (pixelStyle === false && asked === "pixel") notes.push(`${from} does not say pixel art, but --mode pixel moves whole pixels`);
     return { mode: asked, modeFrom: "--mode", character };
   }
   if (!character) {
     fail("breathe: --mode is required when no sprite character (project.json) is found above --out, the still or the working directory — smooth for anti-aliased art, pixel for pixel art");
   }
-  return { mode: pixelStyle ? "pixel" : "smooth", modeFrom: "character.style", character };
+  return { mode: pixelStyle ? "pixel" : "smooth", modeFrom: from, character };
 }
 
 function stepBreathe(still, { out, frames, depth, breaths, mode: askedMode, rigidY, axisX, torsoHalf }) {
@@ -6990,6 +7056,11 @@ function stepBreathe(still, { out, frames, depth, breaths, mode: askedMode, rigi
 
   resetFramesDir(framesDir);
   const paths = baked.frames.map((frame, i) => writeRgbaPng(join(framesDir, frameName(i)), frame, `breathe frame ${i}`));
+  // The frames say what made them, the way cells carry their grid: `inspect`
+  // reads this to keep a breathe's planned holds out of its warnings.
+  const record = writeJsonFile(join(framesDir, BREATHE_RECORD), {
+    kind: "pneuma-sprite-breathe", version: 1, still: input, frames: paths.length, breaths, depth, mode,
+  });
 
   // The anatomy is reported in the STILL's pixel coordinates — the ones
   // --rigid-row / --axis take back. The frames' canvas may have grown up and
@@ -7007,6 +7078,7 @@ function stepBreathe(still, { out, frames, depth, breaths, mode: askedMode, rigi
     framesDir,
     frames: paths,
     frameCount: paths.length,
+    breatheRecord: record,
     breaths,
     depth,
     lag: DEFAULT_LAG,

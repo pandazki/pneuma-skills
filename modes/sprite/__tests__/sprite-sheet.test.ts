@@ -3986,6 +3986,18 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
 
       const forced = runJson("rive", dir, "--motions", "flame", "--max-size", "36", "--filter", "smooth", "--images", "png");
       expect(forced.resample).toMatchObject({ filter: "smooth", filterFrom: "flag" });
+
+      // `character.pixel` is the one authority (0.5.0): a character that
+      // carries it is pixel art whatever its style sentence says — the
+      // reading the viewer's Export tab makes, and now the script's too.
+      doc.sprite.character.style = "soft plush render";
+      doc.sprite.character.pixel = { logicalHeight: 32 };
+      writeFileSync(path, JSON.stringify(doc));
+      const declared = runJson("rive", dir, "--motions", "flame", "--max-size", "36");
+      expect(declared.resample).toMatchObject({ filter: "nearest", filterFrom: "style" });
+      expect(declared.images).toBe("webp-lossless");
+      expect(declared.notes.join(" ")).toMatch(/default for pixel art \(character\.pixel\)/);
+      expectSamePixels(asPng, declared);
     }, EXPORT_TIMEOUT_MS);
 
     test("the memory is counted after resampling; over 128 MB warns, over 768 MB refuses", () => {

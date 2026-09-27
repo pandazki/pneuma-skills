@@ -312,18 +312,24 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       Any run drops a loop's measured clip record (motion.clip).
       A breathe summary (source: "breathe") names the still it warped
       ('still', a path) and 'breathe' { depth, breaths, lag, mode, depthX?,
-      anatomy? }: the still must already be a registered asset (add-ref
-      --uploaded), every frame derives from it, and motion.breathe records the
+      anatomy? }: the still must already be a registered reference (add-ref
+      --uploaded; a frame becomes one with add-ref --derived-from <frame id>),
+      every frame derives from it, and motion.breathe records the
       parameters. A mirror summary (source: "mirror") names 'mirrorOf', a
       ready left- or right-facing sprite motion with as many frames: frame i
       derives from its frame i, motion.mirrorOf is set and motion.direction
-      becomes the other side. A later run of either shape's opposite drops
-      the record. Re-running a motion notes each mirror made from it.
-      A run carrying 'pixel': { palette: <path>, colors? } pins that palette
-      on a pixel-art character as <character>-palette (character.pixel.
-      palette), derived from this run's frames — once: a later run quantised
-      to a different palette is refused unless --repin, which re-pins it and
-      warns that the other motions were quantised to the old one.
+      becomes the other side. It is refused on a motion another mirror is
+      made from, and on an asymmetric character unless the summary carries
+      force: true (sprite-sheet.mjs mirror --force). A later run of either
+      shape's opposite drops the record. Re-running a motion notes each
+      mirror made from it.
+      A run carrying 'pixel': { palette: { file, colors } } (what run --pixel
+      writes; a bare path is accepted too) pins that palette on a pixel-art
+      character as <character>-palette (character.pixel.palette), derived
+      from this run's frames — once: a later run quantised to a different
+      palette, or to the pinned file after its bytes changed, is refused
+      unless --repin, which re-pins it and warns that the other motions were
+      quantised to the old one.
 
   add-video --motion <motionId> --file <path> --model ${VIDEO_MODELS.join("|")}
             --mode ${VIDEO_MODES.join("|")} [--from <assetId,…>] [--prompt]
@@ -673,8 +679,24 @@ function dropAssets(doc, ids) {
   const set = new Set(ids);
   doc.assets = doc.assets.filter((a) => !set.has(a.id));
   doc.provenance = doc.provenance.filter((e) => !set.has(e.toAssetId));
-  // A surviving edge must never point at a removed parent.
-  doc.provenance = doc.provenance.map((e) => (e.fromAssetId && set.has(e.fromAssetId) ? { ...e, fromAssetId: null } : e));
+  // A surviving edge must never point at a removed parent — neither as its
+  // parent nor in the fan-in list behind it (a palette pinned from a motion's
+  // frames outlives that motion). The list keeps `operation`'s shape: the
+  // parent is its first surviving entry, and one entry is no list.
+  doc.provenance = doc.provenance.map((e) => {
+    const inputs = e.operation?.params?.inputs;
+    if (Array.isArray(inputs) && inputs.some((id) => set.has(id))) {
+      const kept = inputs.filter((id) => !set.has(id));
+      const params = { ...e.operation.params };
+      if (kept.length > 1) params.inputs = kept;
+      else delete params.inputs;
+      const operation = { ...e.operation };
+      if (Object.keys(params).length) operation.params = params;
+      else delete operation.params;
+      return { ...e, fromAssetId: kept[0] ?? null, operation };
+    }
+    return e.fromAssetId && set.has(e.fromAssetId) ? { ...e, fromAssetId: null } : e;
+  });
 }
 
 /**
@@ -1358,7 +1380,7 @@ function promptPartsRecord(raw, flag) {
     if (!g || typeof g !== "object" || !whole(g.rows) || !whole(g.cols)
       || !whole(g.cell?.width) || !whole(g.cell?.height)
       || !margin(g.safeMargin?.x) || !margin(g.safeMargin?.y)) {
-      fail(`${flag}: guide must be { rows, cols, cell: { width, height }, safeMargin: { x, y } } in whole pixels`);
+      fail(`${flag}: guide must be { rows, cols, cell: { width, height }, safeMargin: { x, y } } — rows, cols and the cell in whole numbers above 0, the safe margin in pixels at or above 0 (fractions allowed)`);
     }
     guide = {
       rows: g.rows, cols: g.cols,
@@ -1439,6 +1461,21 @@ function mirrorSource(doc, motion, run) {
     fail(`--run: mirrorOf '${id}' is itself a mirror of ${source.mirrorOf ?? "another motion"} — mirror that one instead`);
   }
   if (source.status !== "ready") fail(`--run: mirrorOf '${id}' is ${source.status}, not ready — finish it before mirroring it`);
+  // The target is itself flipped by another mirror: turning it into a mirror
+  // would make that one a mirror of a mirror — the source's side flipped
+  // twice, under a record that says once.
+  const flippedFrom = doc.sprite.motions.filter((m) => m.id !== motion.id && m.source === "mirror" && m.mirrorOf === motion.id);
+  if (flippedFrom.length) {
+    fail(`--run: '${motion.id}' is the source of ${flippedFrom.map((m) => m.id).join(", ")} — a mirror of it would then mirror a mirror. Register this run on a motion no mirror is made from, or re-register ${flippedFrom.length === 1 ? "that mirror" : "those mirrors"} from ${id} directly`);
+  }
+  // An asymmetric character does not flip: its sentence names what a mirror
+  // would put on the wrong side. `sprite-sheet.mjs mirror` refuses it unless
+  // --force and then says so in the summary; a summary without that is
+  // refused here too, so the lock cannot be bypassed by hand.
+  const asymmetric = doc.sprite.character?.asymmetric;
+  if (asymmetric && run.force !== true) {
+    fail(`--run: ${doc.sprite.character.name} is asymmetric ("${asymmetric}") — a mirror would put that on the wrong side. Generate ${motion.id} instead, or mirror with --force if the flip is acceptable (the summary then carries force: true)`);
+  }
   const facing = MIRRORED[source.direction];
   if (!facing) {
     fail(source.direction
@@ -1505,20 +1542,33 @@ const sha256 = (path) => createHash("sha256").update(readFileSync(path)).digest(
 function pinPalette(doc, dir, motion, run, frameIds, repin, now) {
   const report = run.pixel;
   if (!report || typeof report !== "object" || report.palette === undefined) return [];
+  // `run --pixel` reports the palette as `{ file, colors, pinned }`; a bare
+  // path (with `colors` beside it) is the short form a hand-made summary
+  // may use. Both name one file.
+  const given = report.palette;
+  const path = typeof given === "string" ? given : given && typeof given === "object" ? given.file : undefined;
+  if (typeof path !== "string" || !path) {
+    fail("--run: pixel.palette names no file — expected { file, colors } (what 'sprite-sheet.mjs run --pixel' writes) or a path");
+  }
   const character = doc.sprite.character;
   if (!character.pixel || !(Number(character.pixel.logicalHeight) > 0)) {
     fail(`--run: this run was quantised to a pixel palette, but ${character.name} is not declared pixel art — declare it first: set-character --pixel <height in logical pixels>`);
   }
-  const uri = toUri(dir, String(report.palette), "--run pixel.palette");
+  const uri = toUri(dir, path, "--run pixel.palette");
   const file = requireFile(dir, uri, "--run pixel.palette");
   const hash = sha256(file);
   const pinned = character.pixel.palette ? doc.assets.find((a) => a.id === character.pixel.palette) : null;
   if (pinned && pinned.uri === uri && pinned.metadata?.sha256 === hash) return [];
   if (pinned && !repin) {
-    fail(`--run: this run was quantised to ${uri}, not to the palette pinned for ${character.name} (${pinned.uri}) — every motion of a pixel character shares one palette so colours do not flicker between them. Re-run it against the pinned palette, or pass --repin to pin this one instead.`);
+    // The same file with other bytes: the pinned palette itself was rebuilt
+    // (`--repalette`, or a hand edit). There is no "pinned palette" left to
+    // re-run against — only pinning the file as it is now.
+    fail(pinned.uri === uri
+      ? `--run: ${uri} is the palette pinned for ${character.name}, but the file changed since it was pinned — the motions quantised to it before no longer match it. Pass --repin to pin it as it is now (then run those motions again), or restore the file.`
+      : `--run: this run was quantised to ${uri}, not to the palette pinned for ${character.name} (${pinned.uri}) — every motion of a pixel character shares one palette so colours do not flicker between them. Re-run it against the pinned palette (run --pixel uses it when --palette is not given), or pass --repin to pin this one instead.`);
   }
   const id = `${basename(resolve(dir))}-palette`;
-  const colors = finiteNumber(report.colors);
+  const colors = finiteNumber(typeof given === "object" && given.colors !== undefined ? given.colors : report.colors);
   const counted = Number.isInteger(colors) && colors > 0 ? colors : undefined;
   upsertAsset(doc, {
     id, type: "text", uri, name: `${character.name} palette`,
@@ -2479,9 +2529,25 @@ function main() {
           fail("--run: a breathe summary names no 'still' — is this 'sprite-sheet.mjs breathe --json' output?");
         }
         const stillUri = toUri(dir, run.still, "--run still");
-        const still = doc.assets.find((a) => a.uri === stillUri);
+        // A reference's asset first: one file can be registered twice (a ref
+        // over a frame's own file), and the ref is the one that is a still.
+        const refAssets = new Set(doc.sprite.refs.map((r) => r.asset));
+        const named = doc.assets.filter((a) => a.uri === stillUri);
+        const still = named.find((a) => refAssets.has(a.id)) ?? named[0];
         if (!still) {
           fail(`--run: the still ${stillUri} is not registered — register it first: add-ref --dir <character> --id <id> --file ${stillUri} --role custom --uploaded (a cut-out of a registered ref: --derived-from <ref> --op key)`);
+        }
+        // Only a reference is a still. A motion's frame is replaced or removed
+        // with its motion (a re-run, remove-motion), which would leave
+        // `breathe.still` naming an asset that is gone, and a preview GIF or a
+        // sheet is not one picture of the character at all. A frame worth
+        // breathing becomes a reference first — its own file under refs/,
+        // derived from the frame, which then outlives the motion.
+        if (!refAssets.has(still.id)) {
+          const frameOf = doc.sprite.motions.find((m) => (m.frames ?? []).includes(still.id));
+          fail(frameOf
+            ? `--run: the still ${stillUri} is ${still.id}, a frame of ${frameOf.id} — a still must be a reference, which outlives the motion: copy the frame under refs/ and register it with add-ref --dir <character> --id <id> --file refs/<name>.png --role custom --derived-from ${still.id}, then breathe that file`
+            : `--run: the still ${stillUri} is ${still.id}, which is not a reference — breathe a reference (add-ref) or a frame registered as one (add-ref --derived-from <frame id>)`);
         }
         stillId = still.id;
       }
@@ -2511,11 +2577,6 @@ function main() {
         ...LOOP_EXPORTS.filter((spec) => run[spec.key]).map((spec) => `${motion.id}-${spec.suffix}`),
       ]);
       const leftover = runOwnedIds(doc, motion.id).filter((id) => !rebuilt.has(id));
-      // A still this run is about to replace or drop cannot also be what the
-      // new frames were warped from.
-      if (stillId && (rebuilt.has(stillId) || leftover.includes(stillId))) {
-        fail(`--run: the still ${stillId} is one of the frames this run replaces — register it as a reference first (add-ref --derived-from ${stillId}) and breathe that`);
-      }
       // The exports cut from the frames this run replaces — the motion's own
       // and the character's .riv when it holds this motion — go with them.
       // Said on stderr, because the file stays on disk and the user may have

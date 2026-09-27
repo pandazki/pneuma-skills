@@ -55,6 +55,7 @@ import {
   exportKey,
   exportRequestNotification,
   exportRows,
+  labelNamesDirection,
   loopExports,
   motionLabel,
   normalizeExportColor,
@@ -2496,6 +2497,19 @@ describe("connected motions", () => {
  * function, so each is pinned here rather than read off a screenshot.
  */
 describe("routes, directions, breathe and mirror on the stage", () => {
+  test("the rail says a direction once: not again after a label that ends with it", () => {
+    // `<State> · <direction>` is how a directional motion is labelled.
+    expect(labelNamesDirection("Attack · right", "right", "right")).toBe(true);
+    expect(labelNamesDirection("Walk · Left ", "left", "left")).toBe(true);
+    // The locale's word counts too (zh: 朝右).
+    expect(labelNamesDirection("攻击 · 朝右", "right", "朝右")).toBe(true);
+    // A label that does not say it, or says it inside a word, keeps the text.
+    expect(labelNamesDirection("Attack", "right", "right")).toBe(false);
+    expect(labelNamesDirection("Upright", "right", "right")).toBe(false);
+    expect(labelNamesDirection("Walk · left", "right", "right")).toBe(false);
+    expect(labelNamesDirection("Walk · right", undefined)).toBe(false);
+  });
+
   test("the Export tab lists its sections in the order the route reads them", () => {
     expect(exportFamilyOrder("game")).toEqual(["frames", "video", "character"]);
     expect(exportFamilyOrder("mascot")).toEqual(["character", "video", "frames"]);

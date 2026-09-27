@@ -18,7 +18,7 @@
  */
 
 import type { ViewerNotification } from "../../../core/types/viewer-contract.js";
-import type { CharacterProject, CharacterPurpose, ExportFormat, Motion, SpriteAsset } from "../domain.js";
+import type { CharacterProject, CharacterPurpose, Direction, ExportFormat, Motion, SpriteAsset } from "../domain.js";
 import {
   RIVE_DECODE_LIMIT_BYTES,
   RIVE_LOOP_FPS,
@@ -86,6 +86,24 @@ export function motionLabel(project: CharacterProject, motion: Motion): string {
   const from = label(motion.from);
   const to = label(motion.to);
   return from && to ? `${from} → ${to}` : motion.label;
+}
+
+/**
+ * Whether a row's label already ends with the way the motion faces — "Attack
+ * · right", the `<State> · <direction>` label a directional motion is given —
+ * so the rail does not say the direction twice. The label is the agent's
+ * words and the rail's direction text the locale's, so either counts, as the
+ * label's last word: "Upright" does not end with "right".
+ */
+export function labelNamesDirection(label: string, direction: Direction | undefined, localized?: string): boolean {
+  if (!direction) return false;
+  const text = label.trim().toLowerCase();
+  return [direction, localized].some((word) => {
+    const w = word?.trim().toLowerCase();
+    if (!w || !text.endsWith(w)) return false;
+    const before = text.charAt(text.length - w.length - 1);
+    return before === "" || !/[a-z0-9]/.test(before);
+  });
 }
 
 /**

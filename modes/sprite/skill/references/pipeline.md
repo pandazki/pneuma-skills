@@ -404,7 +404,7 @@ only if you sliced into a directory of your own.
 | `maxJump` | Largest anchor displacement between consecutive frames |
 | `scaleDrift` | `(max bbox height − min bbox height) / mean` |
 | `emptyFrames` | Indices with no pixel above the alpha threshold |
-| `nearDuplicates` | `[from, to]` pairs whose step is under 0.01 — `[last, 0]` is the wrap of a looping motion. `[]` when checked and none |
+| `nearDuplicates` | `[from, to]` pairs whose step is under 0.01 — `[last, 0]` is the wrap of a looping motion. `[]` when checked and none. Listed for a breathe too, but not warned about there (see `breathe`) |
 | `rowJumps` | `[from, to]` row boundaries of the sheet's grid that jump (below). `[]` when checked and none |
 | `anchorPoint` | The point `align` recorded for these frames, in cell pixels — the same point the atlas pivot names. Absent when the frames carry no `align.json` for this anchor and cell |
 | `keyResidue` | Share of the visible pixels (alpha ≥ threshold) whose every plate channel still clears every other channel by more than 40 — the plate's hue, pooled over the frames. Absent unless the motion was keyed off a hued plate: `--key` names the plate, otherwise the `keyColor` the last `inspect.json` recorded (`run` and `from-video` record it). The fat report adds `keyResidueEdge`, the same share over the partially transparent pixels. `register-run` copies `keyResidue` into the sidecar |
@@ -419,7 +419,7 @@ Warning rules and what each one means:
 | "frame NN is nearly empty" | Alpha coverage < 0.02 | Usually the key ate the character. Re-key with a lower `--similarity`. |
 | "body drifts sideways between frames — re-run align with --x-from feet/cell" | `bodyDrift > 0.05 · cellWidth` **and** `headDrift > 0.01 · cellWidth` (the upper body moves too); never for `trend`/`body` alignments | Check the motion plan first. For unintended sliding, re-align from `cells/` with `--x-from feet`; use `cell` to retain well-placed intentional lateral motion. A foot line sweeping under a still head is a walk's step, not a slide — it no longer warns. |
 | "head sways N px across the frames but M px in the source once its slow drift is removed — …re-align from cells/ with --x-from trend (or cell…)" | `headDrift > 2 · sourceHeadDrift` **and** `headDrift − sourceHeadDrift > 0.01 · cellWidth` | The alignment added sideways sway the source does not have — a pinned stepping foot, or a slide `cell` kept. Re-align a clip's cycle with `--x-from trend`; a sheet with `trend` or `cell`. Feet-pinned walks measured 9.7× (Lumi side clip), 7.4× (pixel knight sheet) and 44× (synthetic); every alignment that kept or reduced its source's motion stayed at or under 1.8× or +0.95 % of the cell. |
-| "near-duplicate frames AA→BB, … (step under 0.01) — the animation holds there" | A step (mean RGBA difference at 64×64, 0..1) under 0.01 — less than nudging the same drawing one pixel (0.014–0.021 on Lumi's frames) | Fine for a held idle; a hitch in a stroke or a step. For a clip, the sampling hit a hold — resample with `--at` around it. For a sheet, drop or redraw the repeated frame. |
+| "near-duplicate frames AA→BB, … (step under 0.01) — the animation holds there" | A step (mean RGBA difference at 64×64, 0..1) under 0.01 — less than nudging the same drawing one pixel (0.014–0.021 on Lumi's frames); never for frames `breathe` made (a `breathe.json` in the cells or frames) | Fine for a held idle; a hitch in a stroke or a step. For a clip, the sampling hit a hold — resample with `--at` around it. For a sheet, drop or redraw the repeated frame. |
 | "row boundaries jump: AA→BB, … — the sheet's rows were drawn as separate sequences" | A grid row boundary (the wrap too, for a looping sheet) whose step is over 3× the in-row median, over every in-row step, and at least 0.01; rows of 3+ frames only; the grid comes from `cells/slice.json` | The model drew each row as its own little animation. Regenerate with a continuity instruction across rows, or fewer frames (Lumi idle as 4×2 or 2×2 has no jump); a sheet whose rows are phases (windup, strike, recovery) measures under the bar. |
 | "anchor jumps between frames NN and MM" | `maxJump > 0.08 · cellWidth` **and** the feet moved that far too | Compare the source poses with the plan. For unintended placement jumps, try `align --smooth` or the other anchor; fix discontinuous drawing when alignment cannot help. Preserve deliberate fast movement. |
 | "character scale varies across frames — regenerate with a fixed-scale instruction" | `scaleDrift > 0.15` | This measures silhouette height, including props. Check for intended crouching, turning or prop movement; acknowledge it when justified. Regenerate actual proportion or drawing-scale drift with the fixed-scale guidance in `prompting.md`. |
@@ -451,16 +451,25 @@ is not `none`, writing `sheet-alpha.png`) → slice → align → pack → gif (
 `--nearest`, `--margin`, `--gutter`, `--x-from`).
 
 `--pixel` puts the `pixel` step between the cleaned cells and `align` (the
-lattice frames stay at `<motionDir>/pixel/NN.png`, beside `cells/`), pins the
-palette at `<motionDir>/palette.json` unless `--palette` names one, and turns
+lattice frames stay at `<motionDir>/pixel/NN.png`, beside `cells/`) and turns
 `--scale` into the whole-number upscale of the lattice (default 1: one image
-pixel per logical pixel; pack then packs at 1). It takes `pixel`'s flags
-(`--palette`, `--repalette`, `--palette-size`, `--pitch-hint`, `--outline`,
-`--outline-strength`, `--no-detail-bias`); they are refused without
-`--pixel`. The JSON gains `pixel: { dir, scale, pitch, logicalCell, palette,
-outline, record }` and `inspect.pixel`. A `run` **without** `--pixel` on a
-character whose `character.style` says pixel art (the reading `rive --filter
-auto` uses) ends with a warning suggesting it.
+pixel per logical pixel; pack then packs at 1). The palette it quantises to
+is, in order: `--palette` when named; else the palette pinned on the
+character (`character.pixel.palette`, which `register-run` pinned from the
+first pixel run — every motion of a pixel character shares it, and a run
+quantised to another is refused there); else, with nothing pinned yet, a new
+`<motionDir>/palette.json`. `--repalette` never rebuilds the pinned file in
+another motion's directory: it builds this motion's own, and `register-run`
+then needs `--repin`. A pinned palette whose file is gone is refused. It
+takes `pixel`'s flags (`--palette`, `--repalette`, `--palette-size`,
+`--pitch-hint`, `--outline`, `--outline-strength`, `--no-detail-bias`); they
+are refused without `--pixel`. The JSON gains `pixel: { dir, scale, pitch,
+logicalCell, palette: { file, colors, pinned, from }, outline, record }`
+(`from`: `flag`, `character` or `motion`) and `inspect.pixel`; `register-run`
+reads `pixel.palette.file` / `.colors` to pin it. A `run` **without**
+`--pixel` on a pixel-art character — `character.pixel`, else a
+`character.style` that says so (the reading `rive --filter auto` uses) — ends
+with a warning suggesting it.
 
 The one command to remember, keyed or not:
 
@@ -821,9 +830,14 @@ The extra keys on top of `run`'s JSON:
 ```json
 { "source": "video", "video": "<abs path to the clip>",
   "sampledAt": [0, 0.253, 0.505, "…"], "schedule": "even",
+  "bodyHeight": { "target": 60, "measured": 94, "scale": 0.6383, "frame": { "width": 123, "height": 82 } },
   "trim": { "start": 0, "end": 4.042 }, "duration": 4.042,
-  "alphaCoverage": 0.4438, "keyColor": "#08f00d", "keyer": "unmix" }
+  "alphaCoverage": 0.4438, "keyColor": "#08f00d", "keyer": "unmix",
+  "xFrom": "trend", "drift": { "slope": 1.3672, "driftPx": 15.04, "footSwayPx": 16.54 } }
 ```
+
+`bodyHeight` is there only with `--body-height`, `drift` only with `--x-from
+trend|body` (as in `run` and `align`).
 
 `inspect` in that JSON carries `keyResidue` when the plate had a hue.
 
@@ -1511,11 +1525,13 @@ the zero-dependency writer in `scripts/rive.mjs`, planned by
   crop always wins over a measured one, and cutting the loop again clears the
   measured record with the frames it described. tanka's ten,
   measured: rendered body height per clip pixel 0.529–0.533 in every state.
-- **Downscale, `--filter`:** `auto` (default) is nearest-neighbour when
-  `character.style` says pixel art (`pixel art`, `8-bit`/`16-bit`, `像素`…)
-  and smooth otherwise: premultiply → `area` → unpremultiply, the chain `loop`
+- **Downscale, `--filter`:** `auto` (default) is nearest-neighbour for a
+  pixel-art character — `character.pixel` when it is there, else a
+  `character.style` that says pixel art (`pixel art`, `8-bit`/`16-bit`,
+  `像素`…) — and smooth otherwise: premultiply → `area` → unpremultiply, the chain `loop`
   measured to keep alpha edges free of dark fringes. `smooth` / `nearest`
-  force it. The report says which, and whether the style or the flag chose.
+  force it. The report says which, and whether the character (`filterFrom:
+  "style"`) or the flag chose.
 - **Placement:** every frame is pinned to one shared point of the artboard.
   Loops whose clip scale and origin are known are placed in **clip
   coordinates** (`anchor.from: "clip"`): one point of the clips lands on the
@@ -1590,8 +1606,8 @@ the zero-dependency writer in `scripts/rive.mjs`, planned by
   best-practices guide recommends WebP for the smallest files.
   **`webp-lossless`** (`-lossless 1`, `bgra`: no chroma subsampling) keeps
   every visible pixel exactly as drawn — only the hidden colour of a fully
-  transparent pixel may change — and is the default when `character.style`
-  says pixel art, by the same reading as `--filter auto`: lossy WebP would put
+  transparent pixel may change — and is the default for a pixel-art
+  character, by the same reading as `--filter auto`: lossy WebP would put
   colours between the hard pixels nearest-neighbour kept. On the pixel-art test
   character it is 1,768 B against PNG's 3,010 B (lossy WebP: 3,364 B).
   `--images png` embeds PNG. An ffmpeg without the `libwebp` encoder: with no
@@ -1721,6 +1737,15 @@ node {SKILL_PATH}/scripts/sprite-sheet.mjs align <character>/motions/breathe/cel
 column and the soles are fixed by construction — and `feet` would re-round a
 feet centroid that the stretch moves by a fraction of a pixel. On the Lumi
 stills this chain measures `bodyDrift` 0.03–0.06 px and no `inspect` warnings.
+
+Beside the frames it writes `breathe.json` (`{ kind: "pneuma-sprite-breathe",
+version, still, frames, breaths, depth, mode }`; `clean` carries it along).
+`inspect` reads it from the cells or the frames: the head moves by whole
+pixels, so at each turn of the breath two neighbours can share the head's row
+and differ by a sub-pixel body warp alone (Lumi idle frame 00, depth 0.02, 16
+frames: 4 pairs at steps 0.001–0.002 among steps of 0.010–0.013). Those pairs
+stay in `nearDuplicates`; the near-duplicate sentence, whose fixes are
+resampling and redrawing, is not said for a breathe.
 `--out` must not be the directory the still sits in (it is cleared first; that
 is refused by name).
 
@@ -1743,10 +1768,11 @@ replace a detected value (the report names what they replaced). A manual
 by a whole number of pixels so it is pixel-identical to the still in every
 frame. `pixel` is upstream's whole-pixel bake — rows duplicated or dropped,
 columns remapped, a dark outline thinned back to 1 px — so every pixel stays a
-source pixel and pixel art stays on its grid. Without `--mode` the character's
-`style` decides (pixel art → `pixel`, the reading `rive --filter auto` uses),
-from the nearest `project.json` above `--out`, the still, or the working
-directory; with no character, `--mode` is required.
+source pixel and pixel art stays on its grid. Without `--mode` the character
+decides — `character.pixel`, else its `style` (pixel art → `pixel`, the
+reading `rive --filter auto` uses; `modeFrom` says which) — from the nearest
+`project.json` above `--out`, the still, or the working directory; with no
+character, `--mode` is required.
 
 **Read the report, per frame and overall:** `height` (solid alpha, min..max
 against the still's), `headOffset` (negative = up), `headDiffPx` (head pixels

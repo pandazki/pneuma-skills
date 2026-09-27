@@ -616,17 +616,25 @@ that is generated; the other side is mirrored.
 whose summary is a sprite run's (frames, sheet, atlas, GIF, inspect) plus
 `source: "breathe"`, `still` (the image's path) and `breathe: { depth,
 breaths, lag, mode, depthX?, anatomy? }`. `register-run` finds the still by
-its uri among the registered assets and refuses one that is not there —
+its uri among the registered **references** and refuses one that is not there —
 `add-ref --uploaded` it first (a cut-out: `--derived-from <ref> --op key`), so
-provenance reads frames ← alpha still ← upload. Each frame is a `derive`
+provenance reads frames ← alpha still ← upload. Any other asset is refused as
+a still: a motion's frame is replaced or removed with its motion and would
+leave `breathe.still` dangling (copy it under `refs/` and `add-ref
+--derived-from <frame id>` — the refusal names the frame), and a preview or a
+sheet is not one picture of the character. Each frame is a `derive`
 edge from the still, `params: { tool, step: "breathe", frameIndex, depth,
 depthX?, breaths, lag, mode }`, and `motion.breathe` keeps the record.
 
 **A mirror** is registered from `sprite-sheet.mjs mirror --json`: a sprite
-run plus `source: "mirror"` and `mirrorOf`. The source must be a ready sprite
+run plus `source: "mirror"`, `mirrorOf` and — when `mirror --force` flipped an
+asymmetric character — `force: true`. The source must be a ready sprite
 motion (not a loop, a transition or another mirror) facing `left` or
 `right`, with as many registered frames as the run; frame i derives from its
-frame i (`step: "mirror"`). `motion.mirrorOf` names it and `motion.direction`
+frame i (`step: "mirror"`). The motion it lands on must not itself be the
+source of another mirror (that one would become a mirror of a mirror), and on
+a character with `asymmetric` set a summary without `force: true` is refused,
+the same lock `mirror` applies. `motion.mirrorOf` names it and `motion.direction`
 becomes the other side (a mirror declared facing the same side is refused,
 and `set-motion --direction` cannot turn it later). Re-running the source
 prints a note per mirror made from it, and `show` lists each mirror whose
@@ -645,12 +653,18 @@ prompt and drops any parts on file.
 art": `riveIsPixelArt` (`rive-plan.mjs`) reads it first and falls back to the
 style sentence for older characters, and the Export tab's Rive request names
 the image format it implies. A pixel run's summary
-carries `pixel: { palette: "<path to palette.json>", colors? }`; the first
-one `register-run` sees pins it as `<character>-palette` (the character must
-be declared pixel art first). A later run quantised to the same file and
-bytes changes nothing; one quantised to a different palette is refused
-unless `--repin`, which pins the new one and warns that the other ready
-motions were quantised to the old one.
+carries `pixel: { palette: { file, colors, pinned, from }, … }` (what
+`sprite-sheet.mjs run --pixel` writes; a bare `palette: "<path>"` with
+`colors` beside it is accepted too); the first one `register-run` sees pins
+it as `<character>-palette` (the character must be declared pixel art
+first). A later run quantised to the same file and bytes changes nothing
+(`run --pixel` quantises to the pinned file when `--palette` is not given);
+one quantised to a different file, or to the pinned file after its bytes
+changed, is refused unless `--repin`, which pins the new one and warns that
+the other ready motions were quantised to the old one. Removing the motion
+that pinned it leaves the palette with no parent: `dropAssets` takes removed
+ids out of every surviving edge's `params.inputs` as well as its
+`fromAssetId`.
 
 ## Character identity vs content set
 

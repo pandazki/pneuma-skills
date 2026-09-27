@@ -25,7 +25,7 @@ import type { CharacterProject, Motion, MotionStatus } from "../domain.js";
 import { resolveAssetUri } from "../domain.js";
 import { BridgeIcon, FilmIcon, LoopIcon, WarnIcon } from "./icons.js";
 import { hasGeneratingVideo, joinVerdict } from "./metrics.js";
-import { motionLabel, railGroups } from "./panel.js";
+import { labelNamesDirection, motionLabel, railGroups } from "./panel.js";
 import type { SpriteStrings } from "./strings.js";
 import { contentUrl } from "./urls.js";
 
@@ -294,8 +294,9 @@ function MotionRow({
           <span className="min-w-0 truncate">
           {/* The way it faces, first on the line — `walk-left` and
               `walk-right` are one state twice, and the label the agent wrote
-              may not say which. */}
-          {motion.direction ? (
+              may not say which. When it does ("Attack · right"), once is
+              enough. */}
+          {motion.direction && !labelNamesDirection(label, motion.direction, t.direction[motion.direction]) ? (
             <>
               <span
                 className="text-cc-fg/80"
