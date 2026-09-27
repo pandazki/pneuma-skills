@@ -304,7 +304,9 @@ interface SpriteSidecar {
       palette?: string;           // `<character>-palette`, pinned by the
                                   // first pixel run; absent until then
       colors?: number;            // the size asked for (`--colors`), then
-                                  // the size it was pinned with
+                                  // the size it was pinned with — the
+                                  // default `--palette-size` of every
+                                  // `run --pixel` (else 48)
       variants?: Array<{          // its colourways, recorded once
         name: string;             // a slug: "red-team"
         map: Record<string, string>;  // "#src" → "#dst", lower-case, in
@@ -368,6 +370,9 @@ interface Motion {
                                   // frames these are, flipped
   breathe?: BreatheRecord;        // source "breathe" only: what the warp was
                                   // made from and with
+  slice?: SliceRecord;            // sheet motions only: present when run
+                                  // sliced the sheet by its poses' ink;
+                                  // absent = the fixed grid
   kind?: "loop" | "transition";   // what the motion is FOR; absent = a sprite
                                   // motion. `source` still says how the frames
                                   // were obtained ("video" for both). An
@@ -427,7 +432,27 @@ interface BreatheRecord {         // all required but anatomy
                                   // pixels — what to change (--rigid-row) when
                                   // the head wobbles; torsoHalf only when a
                                   // manual --torso band was given
+  headOffset?: { min: number; max: number; travel: number;
+                 highest: number[]; lowest: number[] };
+                                  // where the head rode (image y, negative is
+                                  // up), from the top of the breathe summary;
+                                  // absent on a breathe registered before it
+                                  // was reported
 }
+
+interface SliceRecord {
+  mode: "auto";
+  reason: "asked" | "grid-clipped";
+  gridClipped?: number[];         // the cells the fixed grid would have cut
+  forced: { rows: boolean; cols: boolean[] };
+                                  // a count the ink did not give, forced
+  clipped: Array<{ index: number; why: "sheet-edge" | "cut" }>;
+                                  // poses clipped anyway
+}
+// register-run keeps this much of run's slice block; the cut lines, the grown
+// cell and the pose boxes stay in the run summary and cells/slice.json. A run
+// cut on the fixed grid drops it, and so does `set-motion --source` away from
+// sheet.
 
 interface PromptParts {           // how `sheet-prompt` built `prompt`
   builder: string;                // code version, e.g. "sheet-prompt/2"
@@ -541,7 +566,20 @@ interface InspectSummary {
                                             // above 0.005. Present only on a
                                             // motion keyed off a hued plate —
                                             // absent for white plates, mattes
-                                            // and provided alpha; 0 is clean
+                                            // and provided alpha; 0 is clean.
+                                            // (`keyFringe` stays in
+                                            // inspect.json)
+  lift?: Array<number | null>;              // --y-from cell only: px each
+                                            // frame's feet stand above the
+                                            // ground, null for an empty frame;
+                                            // all zeros = no drawn height.
+                                            // Whole or absent
+  pixel?: { held: boolean; /* … */ };      // frames through `pixel` only:
+                                            // inspect's lattice report as it
+                                            // measured it (pitch, scale, held,
+                                            // palette, paletteChecked, and
+                                            // softAlphaFrames / offGridFrames /
+                                            // offPaletteFrames when it broke)
   crop?: { x: number; y: number; w: number; h: number };
                                             // loop and transition: the rect
                                             // every frame was cut from, in
@@ -648,7 +686,8 @@ spec and unregisters a pinned palette (the file stays).
 second one for the same direction is refused; re-register that id to replace
 it). A motion faces one way (`add-motion --direction`, `set-motion
 --direction`) and is named `<state>-<direction>`. `facing` stays the side
-that is generated; the other side is mirrored.
+that is generated; the other side is mirrored (or drawn, on an asymmetric
+character: `set-motion --source sheet` turns a planned mirror into a sheet).
 
 **A breathe motion** is registered from `sprite-sheet.mjs breathe --name
 <id> --json` (usually piped straight into `register-run --run -`), whose
@@ -664,7 +703,9 @@ leave `breathe.still` dangling (copy it under `refs/` and `add-ref
 --derived-from <frame id>` — the refusal names the frame), and a preview or a
 sheet is not one picture of the character. Each frame is a `derive`
 edge from the still, `params: { tool, step: "breathe", frameIndex, depth,
-breaths, lag, mode }`, and `motion.breathe` keeps the record. A
+breaths, lag, mode }`, and `motion.breathe` keeps the record, with the run's
+top-level `headOffset` as `breathe.headOffset` (`show --motion` prints it
+under the breathe line). A
 breathe is drawn on no grid and timed by its run: `add-motion --source
 breathe` needs no `--rows/--cols` and no `--fps` (1×1 at 8 fps until the
 run lands), and
@@ -695,7 +736,10 @@ its source does: `add-motion --source mirror` needs no `--rows/--cols/--fps`
 whichever the summary leaves out. Re-running the source
 prints a note per mirror made from it, and `show` lists each mirror whose
 source was registered again after it — or is gone — under `staleMirrors` (a
-note, not a status: the fix is one free `mirror` + `register-run`).
+note, not a status: the fix is one free `mirror` + `register-run`). `show`
+names the command (`sprite-sheet.mjs mirror <character>/motions/<source>
+--name <mirror>`); when the source is gone it says there is nothing to mirror
+it from again.
 
 A run of any other shape over a breathe or mirror motion drops that record
 and corrects `source`, the way a sheet run corrects `video`.
