@@ -1112,7 +1112,7 @@ hub: say which switches will cut, and how far apart their poses are.
 Every file a motion's own run makes is already a deliverable and needs **no
 export step**: a sprite motion's `preview.gif`, `preview.webp`, `sheet.png` +
 `atlas.json` and its clips; a loop's `loop.webp`, `loop.apng`, `loop.webm`
-and `loop.json`; a pixel character's colourways. The stage's Export tab lists
+and `loop.json`; colourways once `recolor` baked them. The Export tab lists
 them as ready, next to everything else a **ready** motion can be made into
 on request. Match the format to where it is going:
 
