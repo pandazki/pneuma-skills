@@ -22,8 +22,13 @@ import { loadRoster, saveRoster } from "./domain.js";
 
 const spriteManifest: ModeManifest = {
   name: "sprite",
-  version: "0.5.0",
+  version: "0.5.1",
   changelog: {
+    "0.5.1": [
+      "Before handing a character over, the agent opens the Export tab and looks at it the way you will, instead of reading a file list",
+      "The green rim a key can leave on an edge is now kept with each motion and shown beside the leftover plate colour, each against the limit the checks warn at",
+      "Video matting, frame interpolation and MiniMax clips say what they cost after each run, like the other paid steps",
+    ],
     "0.5.0": [
       "Four routes shape the session around what you are making — a game character, a looping animation for a page, a mascot for an app, or your own picture brought to life — so you answer one plain question instead of choosing settings, and hear the price and the wait before anything paid runs",
       "Bring a picture to life: upload an image and it starts breathing in seconds, free, with no model call, and the motion remembers how far the head rides each breath",

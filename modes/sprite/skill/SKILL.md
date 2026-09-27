@@ -105,8 +105,11 @@ and click a motion to hand you back exactly which one they mean.
 
 **Before each paid call, or each batch of them, one line to the user: what it
 costs and how long it takes** — not only before the first. After it, quote
-what it cost: `generate_image.mjs` reports it in its JSON `usage`,
-`remove-background.mjs` and `seedance-video.mjs` print a `cost:` line. Keep
+what it cost: `generate_image.mjs` reports it in its JSON `usage`; every
+fal helper — `remove-background.mjs`, `seedance-video.mjs`,
+`generate-video.mjs`, `remove-video-background.mjs` and
+`interpolate-video.mjs` — prints a `cost:` line (an estimate at fal's list
+price, or `cost: unknown (…)` with the reason). Keep
 a running total against the budget and ask before a call would pass it. A
 standing "just go ahead" in the user's preferences removes the wait for an
 answer, never the line with the price.
@@ -118,7 +121,7 @@ answer, never the line with the price.
 | a sheet (2048 wide, references attached) | ≈ $0.05–0.13 | 20–35 s |
 | a cut-out (`remove-background.mjs`, fal BiRefNet) | ≈ $0.0006 — under a cent | 6–20 s |
 | a 4 s 480p square clip (Seedance); 5 s | ≈ $0.83; ≈ $1.0 | 2–7 minutes (11 has been measured) |
-| a clip matte (`veed-gs` / `veed`) | ≈ $0.06 / ≈ $0.09 | ≈ 30 s |
+| a clip matte (`veed-gs` / `veed`) | ≈ $0.10 / ≈ $0.09 | ≈ 30 s |
 | interpolating a clip to 60 fps (Topaz) / RIFE | ≈ $0.10 / ≈ $0.03 | ≈ 1 min / up to 4 min |
 
 Everything else — breathing a still, slicing, aligning, mirroring,
@@ -862,7 +865,7 @@ own right, or the character), the motion verb, the style sentence (the
 3D-icon anchor in `references/prompting.md`, or `character.style`
 verbatim), the duration (4 s; 5 s for two beats), the width the UI renders
 it at, and a budget ceiling — a take is ≈ $0.83 for 4 s (≈ $1.0 for 5 s),
-the matte ≈ $0.06, the interpolation ≈ $0.10, three to eleven minutes a
+the matte ≈ $0.10, the interpolation ≈ $0.10, three to eleven minutes a
 take. Say the frame ceiling while the duration is still a question: `loop`
 writes at most 400 frames, so 60 fps fits up to 6.6 s. Interpolation is the
 user's choice — Topaz (exactly 60 fps), RIFE (≈ $0.03, closes the wrap) or
@@ -920,8 +923,8 @@ machine that switches only where they meet.
    Open it. Only **hub → X** is shot; X → hub is the entry played backwards,
    free (`transition --reverse-of`).
 2. **Price it and ask for a budget** — per entry one take ≈ $0.83 and one
-   matte ≈ $0.06 (no interpolation: a Rive file plays at 24 fps); five
-   entries ≈ $4.5, three to eleven minutes a take. Keep a running total.
+   matte ≈ $0.10 (no interpolation: a Rive file plays at 24 fps); five
+   entries ≈ $4.7, three to eleven minutes a take. Keep a running total.
 3. **Register, brief, shoot, matte and cut each entry**
    (`references/loops.md` → *Workflow F*). Quote `startGap`, `endGap` and
    `step`: `gap ≤ 2·step` lands; a later `--trim-start` or earlier

@@ -521,8 +521,21 @@ describe("the definition and the manifest agree", () => {
     }
   });
 
+  test("0.5.1 fixes three leftovers, in the user's words", () => {
+    expect(spriteManifest.version).toBe("0.5.1");
+    const notes = spriteManifest.changelog!["0.5.1"];
+    expect(notes.length).toBeGreaterThanOrEqual(1);
+    expect(notes.length).toBeLessThanOrEqual(3);
+    for (const note of notes) {
+      expect(note).not.toMatch(/`|\*\*|^- /);
+      expect(note.endsWith(".")).toBe(false);
+      expect(note).not.toMatch(/\.mjs|--[a-z]|\.json\b/);
+    }
+    const text = notes.join(" ");
+    for (const claim of [/Export tab/, /edge/i, /cost/i]) expect(text).toMatch(claim);
+  });
+
   test("0.5.0 is the routes release, and says so in the user's words", () => {
-    expect(spriteManifest.version).toBe("0.5.0");
     // Every release's notes keep the manifest style: plain sentences, no
     // markdown, no trailing period — the launcher prints them as bullets.
     for (const version of ["0.5.0", "0.4.0"]) {

@@ -8,9 +8,10 @@ The clip prompts themselves are in `video-preview.md`; every `loop`,
 `transition` and `lineup` flag is in `pipeline.md`.
 
 Both workflows spend the fal key: a Seedance take is ≈ $0.83 for 4 s at 480p
-square (≈ $1.0 for 5 s), a `veed-gs` matte ≈ $0.06, a Topaz interpolation ≈
+square (≈ $1.0 for 5 s), a `veed-gs` matte ≈ $0.10, a Topaz interpolation ≈
 $0.10, RIFE ≈ $0.03. Say the price and the wait before each paid call, quote
-the `cost:` line `seedance-video.mjs` prints after it, and keep the running
+the `cost:` line each script prints after it (`seedance-video.mjs`,
+`remove-video-background.mjs`, `interpolate-video.mjs`), and keep the running
 total against the brief's budget.
 
 ## Workflow E — a seamless loop
@@ -190,7 +191,7 @@ total against the brief's budget.
    (smoke, glow, a plate that is not green). The free key is no compromise
    either — it un-mixes the plate out of every edge (ten real loops: no plate
    colour, no dark rim), not yet compared side by side. **Pick the endpoint
-   by the plate**: chroma green → `--model veed-gs` (≈ $0.06 for 121
+   by the plate**: chroma green → `--model veed-gs` (≈ $0.10 for 121
    frames); any other → `--model veed` (≈ $0.09), `bria` if VEED fails.
    Whatever the user picks, **read the seam again afterwards**: Topaz opened
    it on the trial clip because it never sees the wrap (`video-preview.md`).
@@ -279,8 +280,8 @@ transitions are registered; these steps make them.
    hub's pose can cut; one that sits, or holds a mug, cannot. Only **hub → X**
    is shot: the way back is X → hub played backwards, free (step 7).
 3. **Price it and ask for a budget.** Per entry: one take ≈ $0.83 (Seedance,
-   4 s, 480p) and one matte ≈ $0.06 (`veed-gs`); no interpolation, because a
-   Rive file plays at 24 fps. Five entries is about $4.5. Put the list, the
+   4 s, 480p) and one matte ≈ $0.10 (`veed-gs`); no interpolation, because a
+   Rive file plays at 24 fps. Five entries is about $4.7. Put the list, the
    price and the wait (three to eleven minutes a take) in one message, take
    the answer, and keep a running total.
 4. **Register, brief and shoot each entry.**

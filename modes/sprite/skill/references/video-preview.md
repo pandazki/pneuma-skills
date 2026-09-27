@@ -147,7 +147,11 @@ node {SKILL_PATH}/scripts/generate-video.mjs \
 | `--seed`, `--json`, `--deadline-s` | as above | |
 
 Note the minimum duration of 5 seconds and the upper-case resolution values —
-they are not interchangeable with Seedance's.
+they are not interchangeable with Seedance's. `--json` adds `cost`: fal bills
+H3 Max on the **requested** duration, so it is known from the request —
+$0.05 per second at 480P, $0.08 at 768P — and goes to stderr as one `cost:`
+line; reference tokens past the 4,096 fal includes (four square images) are
+named in it, not counted. `--help` lists every flag.
 
 ## Cost and latency
 
@@ -158,9 +162,9 @@ fal's pricing page before promising a user a figure.
 |---|---|---|
 | Seedance 2.5, 480p / 720p | $0.0214 per 1000 tokens; tokens ≈ width × height × seconds × 24 / 1024 of the clip that lands — a 640×640 480p square: ≈ $0.83 for 4 s, ≈ $1.0 for 5 s | 140–400 s for 4 s (632 s seen) |
 | Seedance 2.5, 1080p | ≈ $0.0234 per 1000 tokens | — |
-| H3 Max r2v, 480P, 7 s shot | — | ≈ 14 s (≈ 18 s with a voice reference) |
-| H3 Max i2v, 480P, 7 s shot | — | ≈ 28 s |
-| H3 Max t2v, 480P | — | ≈ 2–3 s on a quiet queue; reference analysis dominates r2v |
+| H3 Max r2v, 480P, 7 s shot | $0.05 per requested second — ≈ $0.35 (plus reference tokens past the 4,096 included) | ≈ 14 s (≈ 18 s with a voice reference) |
+| H3 Max i2v, 480P, 7 s shot | $0.05 per requested second — ≈ $0.35 | ≈ 28 s |
+| H3 Max t2v, 480P; 768P | $0.05; $0.08 per requested second (fal's model pages, read 2026-09-28) | ≈ 2–3 s on a quiet queue; reference analysis dominates r2v |
 
 So a 4-second 480p Seedance preview is ≈ $0.83 (fal's pricing read
 2026-09-27; video references bill at 0.6× plus their own duration). Render one
@@ -431,7 +435,7 @@ node {SKILL_PATH}/scripts/seedance-video.mjs \
   --output <character>/motions/idle-to-coffee/video-seedance-1.mp4 --json
 ```
 
-Price it like any take — ≈ $0.83 at 4 s and 480p, plus ≈ $0.06 for the
+Price it like any take — ≈ $0.83 at 4 s and 480p, plus ≈ $0.10 for the
 `veed-gs` matte. No interpolation: the `.riv` plays at 24 fps, which is the
 rate the take already has. Only the entries are shot; each exit is its entry
 played backwards (`transition --reverse-of`), free. When a reverse reads wrong
@@ -489,7 +493,7 @@ node {SKILL_PATH}/scripts/remove-video-background.mjs \
 | `--no-refine` | flag | refinement on | `veed` only: skips edge refinement, cheaper and softer |
 | `--spill` | number | `0.8` | `veed-gs` only: `spill_suppression_strength` |
 | `--deadline-s` | seconds | | as the other fal scripts |
-| `--json` | flag | | `{ path, url, file_size, model, endpoint, alpha: true }` |
+| `--json` | flag | | `{ path, url, file_size, model, endpoint, alpha: true, cost }` — `cost` is fal's list price on the frames (VEED) or seconds (Bria) ffprobe counts in the matte, an estimate; the same figure goes to stderr as one `cost:` line, `cost: unknown (…)` when the matte cannot be measured |
 
 Each flag belongs to exactly one endpoint and is **refused** on the others,
 rather than travelling as a field the schema does not have.
@@ -497,14 +501,14 @@ rather than travelling as a field the schema does not have.
 | Model | Endpoint | Price | Output | Limits |
 |---|---|---|---|---|
 | `veed` | `veed/video-background-removal` | **$0.0225 per 30 frames** with edge refinement, **$0.015** without | VP9 `.webm` with alpha | — |
-| `veed-gs` | `veed/video-background-removal/green-screen` | **$0.015 per 30 frames** | VP9 `.webm` with alpha | — |
+| `veed-gs` | `veed/video-background-removal/green-screen` | **$0.025 per 30 frames** (the model page, read 2026-09-28; it read $0.015 on 2026-09-22) | VP9 `.webm` with alpha | — |
 | `bria` | `bria/video/background-removal` | **$0.14 per second** | ProRes 4444 `.mov`, `Transparent` background | ≤ 30 s, ≤ 4000² |
 
 **Pick the endpoint by the plate.** A clip shot on flat chroma green — which
 is what workflow E shoots — goes to **`veed-gs`**, the documented default for
 this pipeline's own loop clips: measured 2026-09-22 on the trial clip, 617 KB
 of VP9 with `ALPHA_MODE=1`, 18.7 s of inference and 30 s wall for ≈ **$0.06**
-over 121 frames, zero green pixels left, and a *softer* edge than plain `veed`
+over 121 frames at that day's price (≈ **$0.10** at today's), zero green pixels left, and a *softer* edge than plain `veed`
 on the same frame (8535 partial-alpha pixels against 6198). Any other plate
 goes to **`veed`** — it cuts on the silhouette rather than on a colour — at
 about **$0.09** for the same clip. **`bria`** is the alternative to reach for
@@ -555,7 +559,7 @@ node {SKILL_PATH}/scripts/interpolate-video.mjs \
 | `--scene-detect` | flag | off | **RIFE only** — do not interpolate across a cut |
 | `--fps` | 16–60 | calculated | **RIFE only** — pin the output rate instead of multiplying |
 | `--deadline-s` | seconds | | |
-| `--json` | flag | | Topaz: `{ path, url, file_size, target_fps, upscale_factor, model }`, `model` fal's own spelling. RIFE: `{ path, url, file_size, model: "rife", between, loop, fps? }` — no `target_fps`, because nobody set one |
+| `--json` | flag | | Topaz: `{ path, url, file_size, target_fps, upscale_factor, model, cost }`, `model` fal's own spelling. RIFE: `{ path, url, file_size, model: "rife", between, loop, fps?, cost }` — no `target_fps`, because nobody set one. `cost` is an estimate at fal's list price — Topaz on the retimed clip's seconds and size, RIFE on its inference time (wall time as an upper bound) — and goes to stderr as one `cost:` line too |
 
 Each flag is refused on the endpoint that does not have it, rather than
 travelling as a field the schema never reads.
@@ -635,7 +639,7 @@ post-processing path run against it.
 | `remove-background.mjs --model heavy --resolution 1024` | **6 s** | | the cut-out |
 | clip, first-last, same image both ends (`--duration 5 --resolution 480p --no-audio`) | **199 s** (3 min 19 s) | ≈ $1.0 | 640×640, h264, 24 fps, **121 frames**, 5.04 s, 366 KB |
 | `remove-video-background.mjs --model veed` | **22.6 s** (17 s inference) | ≈ $0.09 | VP9 webm carrying alpha |
-| `remove-video-background.mjs --model veed-gs` | **30 s** (18.7 s inference) | ≈ $0.06 | 617 KB VP9 webm, `ALPHA_MODE=1`, zero green pixels |
+| `remove-video-background.mjs --model veed-gs` | **30 s** (18.7 s inference) | ≈ $0.06 (2026-09-22 price; ≈ $0.10 now) | 617 KB VP9 webm, `ALPHA_MODE=1`, zero green pixels |
 | `interpolate-video.mjs --target-fps 60 --upscale 1` (Topaz) | **49 s** (43 s inference) | ≈ $0.10 | 300 frames, 4.3 MB h264, the green plate kept |
 | `interpolate-video.mjs --model rife --between 1 --loop` | **231 s** wall on a cold queue (21.0 s inference) | ≈ $0.03 | 48 fps, 243 frames, 5.06 s, 570 KB; seam 0.0107 against a step of 0.0275 |
 | `sprite-sheet.mjs loop` (119 frames, 512×596, four exports) | **24 s** | free | webp 3.4 MB, apng 21 MB, webm 367 KB, lottie 28 MB — the Lottie warning fired |
@@ -645,7 +649,7 @@ post-processing path run against it.
 
 | Path | Cost | Edge |
 |---|---|---|
-| `veed-gs` matte → `loop --key alpha` | ≈ $0.06 | **the best of the four** — zero green pixels, and the softest edge measured: 8535 partial-alpha pixels on the frame where plain `veed` has 6198 |
+| `veed-gs` matte → `loop --key alpha` | ≈ $0.10 | **the best of the four** — zero green pixels, and the softest edge measured: 8535 partial-alpha pixels on the frame where plain `veed` has 6198 |
 | `veed` matte → `loop --key alpha` | ≈ $0.09 | soft, zero green pixels, no dark rim |
 | `loop --key auto` (default `--keyer unmix`, since 2026-09-27) | free | no green rim and no dark rim, body colours untouched — measured on tanka's ten loops, not yet side by side with `veed-gs` on this clip (`pipeline.md` → "Measured: the chroma keyer") |
 | `loop --key auto --keyer colorkey` (colorkey **then** despill) | free | a faint 1 px dark rim — and despill takes a fifth of the green out of every neutral pixel: white comes out pink, yellow salmon |
