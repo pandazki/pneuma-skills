@@ -574,12 +574,22 @@ interface InspectSummary {
                                             // ground, null for an empty frame;
                                             // all zeros = no drawn height.
                                             // Whole or absent
-  pixel?: { held: boolean; /* … */ };      // frames through `pixel` only:
-                                            // inspect's lattice report as it
-                                            // measured it (pitch, scale, held,
-                                            // palette, paletteChecked, and
-                                            // softAlphaFrames / offGridFrames /
-                                            // offPaletteFrames when it broke)
+  pixel?: {                                 // frames that went through `pixel`
+    pitch: { x: number; y: number };        // source px per logical px it cut at
+    scale: number;                          // the whole-number upscale written
+    held: boolean;                          // alpha only 0/255, every scale×scale
+                                            // block one colour and, when
+                                            // paletteChecked, every colour in the
+                                            // pinned palette; false names the frames
+    paletteChecked: boolean;                // false after --outline (it darkens the
+                                            // edge on purpose) or with no palette
+    softAlphaFrames?: number[];             // each only when some frame broke the
+    offGridFrames?: number[];               // lattice that way
+    offPaletteFrames?: number[];
+  };                                        // the four facts whole or absent; the
+                                            // palette's path stays in the run
+                                            // summary (character.pixel.palette
+                                            // names the pinned one)
   crop?: { x: number; y: number; w: number; h: number };
                                             // loop and transition: the rect
                                             // every frame was cut from, in
