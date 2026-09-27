@@ -34,13 +34,19 @@
  * `refine_edges_to_boundaries`, `snap_by_edges`, `build_shared_palette`,
  * `apply_palette`, `enforce_outline`, the palette lock, and the consensus /
  * outlier orchestration of `_snap_strip`. Same constants, same integer
- * arithmetic and tie-breaking, so the same input gives the same logical
- * pixels. Changes: re-expressed over flat RGBA buffers; the pose component
- * extraction, `arbitrate_pitch` (a warning that duplicates the run-length
- * crosscheck), `conform_row_logical` (a physical-cell cap this pipeline does
- * not have — `align` sizes the cell to the sprite) and `register_row_frames`
+ * arithmetic and tie-breaking: before the three changes marked ADAPTED below,
+ * this module's logical frames and palette were pixel-identical to upstream's
+ * Python on every input measured (four synthetic generations and a real
+ * GPT-Image sheet, `references/pipeline.md` "Measured"). Changes:
+ * re-expressed over flat RGBA buffers; the pose component extraction,
+ * `arbitrate_pitch` (a warning that duplicates the run-length crosscheck),
+ * `conform_row_logical` (a physical-cell cap this pipeline does not have —
+ * `align` sizes the cell to the sprite) and `register_row_frames`
  * (upper-body registration; `align` places the frames here) are not ported;
- * the palette lock stores `#rrggbb` strings rather than RGB triples.
+ * the palette lock stores `#rrggbb` strings rather than RGB triples; and
+ * ADAPTED: divisor seeds up to 1/5 (`detectPixelGrid`), a collapse ceiling
+ * that needs support (`consensusPitch`), and the pitch hint as the family
+ * centre (`latticeFrames`).
  *
  * The run-length estimator (`estimatePixelGridRunlen`) and its crosscheck are
  * upstream's port of perfectpixel-studio: see that function's header.
@@ -271,6 +277,17 @@ export function axisRefine(edges, pitch, w = 1.0, binStep = 0.25) {
   return { score: bestScore, phase: (pyMod(centre, bins) / bins) * pitch };
 }
 
+/**
+ * Divisors of an integer seed that are refined as seeds of their own.
+ * ADAPTED: upstream tries 1/2 and 1/3 (a seed can land on a multiple: 16.5 ->
+ * 33). On small fractional pitches an integer seed lands on the 5th multiple
+ * too — measured on synthetic generations (2026-09-27): at pitch 6.2 x 6.3,
+ * 10 of 16 frames read ~31 with 1/2..1/3 and none with 1/2..1/5; at
+ * 7.35 x 7.2, 4 -> 2 frames. A divisor seed never wins on its own: its chance
+ * term (the window's share of a smaller period) is larger. Upstream's ported
+ * ground-truth suite passes unchanged with it.
+ */
+const SEED_DIVISORS = [2, 3, 4, 5];
 /** ±0.75 px around each seed, in 0.02 px steps: `round(0.75 / 0.02)` = 38. */
 const REFINE_SPAN = pyRound(0.75 / 0.02);
 const REFINE_STEP = 0.02;
@@ -283,7 +300,8 @@ const REFINE_STEP = 0.02;
  * widths on the two axes (upstream measured 30.38 x 30.92; one pitch forced on
  * both aligned 11.7 % of the edges on one axis, 75.7 % per axis). Seeds are
  * the axis's own integer seed, the combined seed, and their halves and thirds
- * (an integer seed can land on a multiple: 16.5 -> 33). An axis more than
+ * (an integer seed can land on a multiple: 16.5 -> 33; see SEED_DIVISORS
+ * for the fourths and fifths). An axis more than
  * 1.5x the other has collapsed onto a divisor (a raised-arm pose with few
  * vertical edges read 3 for a true 9) and takes the axis with more edges.
  */
@@ -298,7 +316,7 @@ export function detectPixelGrid(image, maxPitch = MAX_PITCH) {
     const candidates = new Set([axisSeed, combined].filter((s) => s >= 2));
     if (!candidates.size) return { pitch: 1, phase: 0 };
     const seedSet = new Set(candidates);
-    for (const s of candidates) for (const d of [2, 3]) if (s / d >= 2.0) seedSet.add(s / d);
+    for (const s of candidates) for (const d of SEED_DIVISORS) if (s / d >= 2.0) seedSet.add(s / d);
     const seeds = [...seedSet].sort((a, b) => a - b);
     let best = { score: -1.0, pitch: Math.max(...candidates), phase: 0.0 };
     for (const centre of seeds) {
@@ -434,18 +452,39 @@ export function crosscheckPitchRunlen(grid, runlen, axisTolerance = 0.12, ratioT
 
 /**
  * Median of the confident per-frame pitches on one axis, after dropping the
- * collapsed ones (below 60 % of the largest — half of one six-frame run read
+ * collapsed ones (below 60 % of the ceiling — half of one six-frame run read
  * 3.00 for a true pitch and dragged the median to 5.00). Upstream's upper
- * median (`trusted[len // 2]`), not the mean of the middle pair. Returns
- * `{ value, dropped }`, value 1 when no frame was confident.
+ * median (`trusted[len // 2]`), not the mean of the middle pair.
+ *
+ * ADAPTED: upstream's ceiling is simply the largest reading, so ONE frame
+ * that read a harmonic (38.94 for a true 7.35, measured on a synthetic
+ * generation 2026-09-27) put every true reading under the 60 % floor, the
+ * consensus became the harmonic, and all 16 frames were cut at it (0 % of
+ * the cells right). Here the ceiling is the largest reading that at least a
+ * quarter of the frames share (within the pitch family, and at least two
+ * frames once three have voted); readings above its family are dropped as
+ * harmonics. When the largest reading has that support — upstream's own
+ * half-collapsed case included — nothing changes.
+ *
+ * Returns `{ value, dropped, floor, harmonics }`, value 1 when no frame was
+ * confident.
  */
 export function consensusPitch(values) {
   const confident = values.filter((v) => v >= 2.0).sort((a, b) => a - b);
-  if (!confident.length) return { value: 1, dropped: 0, floor: null };
-  const ceiling = confident[confident.length - 1];
+  if (!confident.length) return { value: 1, dropped: 0, floor: null, harmonics: 0 };
+  const inFamily = (a, b) => Math.max(a / b, b / a) <= PITCH_FAMILY_RATIO;
+  const need = confident.length >= 3 ? Math.max(2, Math.ceil(confident.length / 4)) : 1;
+  const supported = confident.filter((v) => confident.filter((u) => inFamily(u, v)).length >= need);
+  const ceiling = supported.length ? supported[supported.length - 1] : confident[confident.length - 1];
   const floor = ceiling * COLLAPSE_FLOOR;
-  const trusted = confident.filter((v) => v >= floor);
-  return { value: trusted[trusted.length >> 1], dropped: confident.length - trusted.length, floor };
+  const trusted = confident.filter((v) => v >= floor && v <= ceiling * PITCH_FAMILY_RATIO);
+  const harmonics = confident.filter((v) => v > ceiling * PITCH_FAMILY_RATIO).length;
+  return {
+    value: trusted[trusted.length >> 1],
+    dropped: confident.length - trusted.length - harmonics,
+    floor,
+    harmonics,
+  };
 }
 
 /**
@@ -772,18 +811,28 @@ export function latticeFrames(images, { detailBias = true, pitchHint = null, max
     return box ? { box, image: cropImage(image, box.x, box.y, box.w, box.h) } : null;
   });
   const grids = tight.map((t) => (t ? detectPixelGrid(t.image, maxPitch) : null));
+  const nonEmpty = grids.filter(Boolean).length;
+  const confident = grids.filter((g) => g && Math.min(g.pitch.x, g.pitch.y) >= 2).length;
 
   const axisConsensus = (axis) => {
-    const { value, dropped, floor } = consensusPitch(grids.filter(Boolean).map((g) => g.pitch[axis]));
+    const { value, dropped, floor, harmonics } = consensusPitch(grids.filter(Boolean).map((g) => g.pitch[axis]));
     if (dropped) warnings.push(`dropped ${dropped} collapsed per-frame ${axis} pitch(es) below ${floor.toFixed(2)}`);
-    if (value >= 2) return value;
-    if (pitchHint !== null && pitchHint >= 2) {
-      warnings.push(`${axis} pitch from --pitch-hint ${pitchHint} (every per-frame detection was inconclusive)`);
-      return pitchHint;
-    }
-    return 1;
+    if (harmonics) warnings.push(`dropped ${harmonics} per-frame ${axis} pitch(es) above ${(floor / COLLAPSE_FLOOR * PITCH_FAMILY_RATIO).toFixed(2)} that too few frames share (harmonics)`);
+    return value;
   };
-  const consensus = { x: axisConsensus("x"), y: axisConsensus("y") };
+  const measured = { x: axisConsensus("x"), y: axisConsensus("y") };
+  // ADAPTED: a hint is the centre of the pitch family, not only the fallback
+  // for a generation where every frame is inconclusive (upstream's
+  // `fit.pitch_hint`). Measured on a real GPT-Image walk (2026-09-27): one of
+  // eight frames read 4.00 for 8 px blocks and the rest nothing, so under
+  // upstream's rule that single divisor became the consensus and a hint of 8
+  // was never read. Frames still keep their own reading within 10 % of it.
+  const hinted = pitchHint !== null && pitchHint >= 2;
+  const consensus = hinted ? { x: pitchHint, y: pitchHint } : measured;
+  if (hinted && Math.min(measured.x, measured.y) >= 2
+    && Math.max(measured.x / pitchHint, pitchHint / measured.x, measured.y / pitchHint, pitchHint / measured.y) > PITCH_FAMILY_RATIO) {
+    warnings.push(`--pitch-hint ${pitchHint} overrides the measured consensus ${measured.x.toFixed(2)}x${measured.y.toFixed(2)}`);
+  }
 
   // The second opinion: warnings only, the snap never reads it.
   const runlens = tight.map((t) => (t ? estimatePixelGridRunlen(t.image, maxPitch) : null)).filter(Boolean);
@@ -794,6 +843,7 @@ export function latticeFrames(images, { detailBias = true, pitchHint = null, max
   const runlen = { x: runlenAxis("x"), y: runlenAxis("y") };
   warnings.push(...crosscheckPitchRunlen(consensus, runlen));
 
+  const centre = hinted ? `--pitch-hint ${pitchHint}` : `the consensus ${consensus.x.toFixed(2)}x${consensus.y.toFixed(2)}`;
   const frames = tight.map((t, index) => {
     const tag = `frame ${String(index).padStart(2, "0")}`;
     if (!t) return { index, logical: null, box: null, own: null, pitch: null, source: "empty" };
@@ -805,12 +855,12 @@ export function latticeFrames(images, { detailBias = true, pitchHint = null, max
       pitch = resolved.pitch;
       source = resolved.outlier ? "outlier" : "own";
       if (resolved.outlier) {
-        warnings.push(`${tag}: own pitch ${own.x.toFixed(2)}x${own.y.toFixed(2)} is outside the consensus pitch family ${consensus.x.toFixed(2)}x${consensus.y.toFixed(2)} — a harmonic or collapsed reading; snapped at the consensus`);
+        warnings.push(`${tag}: own pitch ${own.x.toFixed(2)}x${own.y.toFixed(2)} is outside the pitch family of ${centre} — a harmonic or collapsed reading; snapped at ${hinted ? "the hint" : "the consensus"}`);
       }
     } else if (Math.min(consensus.x, consensus.y) >= 2.0) {
       pitch = consensus;
       source = "consensus";
-      warnings.push(`${tag}: pitch detection inconclusive — snapped at the consensus ${consensus.x.toFixed(2)}x${consensus.y.toFixed(2)}`);
+      warnings.push(`${tag}: pitch detection inconclusive — snapped at ${centre}`);
     } else {
       return { index, logical: null, box: t.box, own, pitch: null, source: "none" };
     }
@@ -819,7 +869,33 @@ export function latticeFrames(images, { detailBias = true, pitchHint = null, max
     return { index, logical, box: t.box, own, pitch, source, phase, xs, ys };
   });
 
-  return { frames, consensus, runlen, warnings };
+  return {
+    frames, consensus, measured, runlen, warnings, confident, nonEmpty,
+    // Only worth its cost when the frames alone are not enough to go on.
+    pooled: confident * 2 < nonEmpty ? pooledPitch(tight.filter(Boolean).map((t) => t.image), maxPitch) : null,
+  };
+}
+
+/**
+ * The whole-pixel pitch the frames score best at TOGETHER (each frame's
+ * `detectPixelPitch` score averaged over the frames), `{ pitch, score }`.
+ * A suggestion for a person, never a snap: it is not held to the 0.2 floor a
+ * single frame needs, because no floor separates art from non-art here — a
+ * plush video walk (not pixel art) pooled 0.168 at 32 px against a real
+ * pixel-art walk's 0.156 at 8 px (2026-09-27).
+ */
+export function pooledPitch(images, maxPitch = MAX_PITCH) {
+  const sums = new Array(maxPitch + 1).fill(0);
+  for (const image of images) {
+    const { col, row } = edgeHistograms(image);
+    for (let p = 2; p <= maxPitch; p++) sums[p] += axisIntScore(col, p) + axisIntScore(row, p);
+  }
+  let best = { pitch: 1, score: 0 };
+  for (let p = 2; p <= maxPitch; p++) {
+    const score = sums[p] / Math.max(1, images.length);
+    if (score > best.score) best = { pitch: p, score };
+  }
+  return best;
 }
 
 // ---------------------------------------------------------------------------

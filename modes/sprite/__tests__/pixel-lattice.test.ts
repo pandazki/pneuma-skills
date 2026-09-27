@@ -16,6 +16,10 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   PyRandom, PALETTE, blank, crop, getPixel, logicalArt, mismatch, noiseImage, paste, setPixel,
@@ -416,14 +420,60 @@ describe("one generation's frames", () => {
     const result = latticeFrames([noiseImage(120, 120, 5)], { pitchHint: 10 });
     expect(result.consensus).toEqual({ x: 10, y: 10 });
     expect(result.frames[0].source).toBe("consensus");
-    expect(result.warnings.some((w) => w.includes("--pitch-hint 10"))).toBe(true);
+    expect(result.warnings).toContain("frame 00: pitch detection inconclusive — snapped at --pitch-hint 10");
+  });
+
+  test("--pitch-hint is the family centre: a frame's own reading counts only near it", () => {
+    // A real GPT-Image walk (2026-09-27): one frame read 4.00 for 8 px blocks,
+    // the rest nothing. Under upstream's fallback-only hint that 4.00 was the
+    // consensus. Here the lone divisor is an outlier of the hint.
+    const art = logicalArt(20, 28, 11);
+    const frames = [13.1, 13.3].map((p) => {
+      const frame = blank(420, 420);
+      paste(frame, upscaledFractional(art, p), 30, 20);
+      return frame;
+    });
+    const hinted = latticeFrames(frames, { pitchHint: 26 });
+    expect(hinted.consensus).toEqual({ x: 26, y: 26 });
+    expect(hinted.frames.map((f) => f.source)).toEqual(["outlier", "outlier"]);
+    expect(hinted.warnings.some((w) => w.startsWith("--pitch-hint 26 overrides the measured consensus 13."))).toBe(true);
+    const near = latticeFrames(frames, { pitchHint: 13 });
+    expect(near.frames.map((f) => f.source)).toEqual(["own", "own"]);
+    expect(near.frames[1].pitch!.x).toBeCloseTo(13.3, 0);
+  });
+
+  test("the generation reports how many frames read a grid, and a pooled suggestion when too few did", () => {
+    const art = logicalArt(20, 28, 11);
+    const frame = blank(420, 420);
+    paste(frame, upscaledFractional(art, 13.2), 30, 20);
+    const result = latticeFrames([frame, noiseImage(160, 160, 5), noiseImage(160, 160, 6)]);
+    expect([result.confident, result.nonEmpty]).toEqual([1, 3]);
+    expect(result.pooled).not.toBeNull();
+    const enough = latticeFrames([frame, frame, noiseImage(160, 160, 5)]);
+    expect(enough.pooled).toBeNull();
   });
 
   test("consensusPitch is upstream's upper median of the uncollapsed readings", () => {
     // Half the frames collapsed to 3 (upstream's down_carry_run): they are
     // dropped, and the upper median of [8.9, 9, 9.1] is 9.
-    expect(consensusPitch([9, 9.1, 3, 3, 3, 8.9])).toEqual({ value: 9, dropped: 3, floor: 9.1 * 0.6 });
-    expect(consensusPitch([1, 1])).toEqual({ value: 1, dropped: 0, floor: null });
+    expect(consensusPitch([9, 9.1, 3, 3, 3, 8.9])).toEqual({ value: 9, dropped: 3, floor: 9.1 * 0.6, harmonics: 0 });
+    expect(consensusPitch([1, 1])).toEqual({ value: 1, dropped: 0, floor: null, harmonics: 0 });
+  });
+
+  test("one harmonic reading cannot become the ceiling that drops every true one", () => {
+    // Synthetic 7.35 px generation (2026-09-27): one frame read 38.94.
+    // Upstream's max-anchored floor (23.4) dropped all fifteen true readings.
+    const readings = [7.42, 7.33, 7.36, 7.32, 7.42, 7.3, 7.5, 7.44, 7.4, 7.38, 7.35, 7.29, 7.46, 38.94, 7.3, 7.37];
+    const result = consensusPitch(readings);
+    expect(result.value).toBeCloseTo(7.37, 2);
+    expect(result.harmonics).toBe(1);
+    expect(result.dropped).toBe(0);
+    // Two frames are too few to ceiling a generation of three or more only
+    // when a quarter of it is more — with four votes, two agreeing frames
+    // are enough, which keeps upstream's half-collapsed rule intact.
+    expect(consensusPitch([3, 3, 9, 9]).value).toBe(9);
+    // Under three votes the largest reading is the ceiling, as upstream.
+    expect(consensusPitch([7, 36]).value).toBe(36);
   });
 });
 
@@ -473,4 +523,249 @@ describe("placement and checks", () => {
     expect(check.offGrid).toBe(2);
     expect(check.offPalette).toBe(1);
   });
+});
+
+// ---------------------------------------------------------------------------
+// The CLI: `pixel`, `run --pixel`, and align / inspect on pixel frames
+// ---------------------------------------------------------------------------
+
+const SCRIPT = join(import.meta.dir, "..", "skill", "scripts", "sprite-sheet.mjs");
+const HAS_FFMPEG =
+  spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0 &&
+  spawnSync("ffprobe", ["-version"], { stdio: "ignore" }).status === 0;
+if (!HAS_FFMPEG) console.warn("(skip) modes/sprite pixel CLI suite — ffmpeg/ffprobe not on PATH");
+
+function sheetCmd(...argv: string[]) {
+  const r = Bun.spawnSync([process.execPath, SCRIPT, ...argv], { cwd: import.meta.dir, stdout: "pipe", stderr: "pipe" });
+  return { code: r.exitCode, out: r.stdout.toString(), err: r.stderr.toString() };
+}
+function sheetJson(...argv: string[]) {
+  const r = sheetCmd(...argv, "--json");
+  if (r.code !== 0) throw new Error(`sprite-sheet ${argv[0]} failed (${r.code}):\n${r.err}`);
+  return JSON.parse(r.out);
+}
+function writePng(path: string, image: RgbaImage) {
+  mkdirSync(join(path, ".."), { recursive: true });
+  const r = spawnSync("ffmpeg", ["-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${image.width}x${image.height}`, "-i", "-", "-frames:v", "1", path], { input: image.data });
+  if (r.status !== 0) throw new Error(String(r.stderr));
+}
+function readPng(path: string): RgbaImage {
+  const p = spawnSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", path], { encoding: "utf-8" });
+  const [width, height] = String(p.stdout).trim().split(",").map(Number);
+  const r = spawnSync("ffmpeg", ["-v", "error", "-i", path, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", "-"], { maxBuffer: 1 << 28 });
+  return { width, height, data: new Uint8Array(r.stdout.subarray(0, width * height * 4)) };
+}
+function softAlpha(image: RgbaImage) {
+  let n = 0;
+  for (let i = 3; i < image.data.length; i += 4) if (image.data[i] !== 0 && image.data[i] !== 255) n++;
+  return n;
+}
+const ART = logicalArt(20, 28, 11);
+/** A keyed-looking cell: the art at a fractional pitch with an anti-aliased
+ *  rim of alpha 100 around it, on transparency. */
+function cellOf(pitch: number, { art = ART, size = 420, at = [27, 21] } = {}) {
+  const sprite = upscaledFractional(art, pitch);
+  const frame = blank(size, size);
+  paste(frame, sprite, at[0], at[1]);
+  for (let x = at[0]; x < at[0] + sprite.width; x++) setPixel(frame, x, at[1] + sprite.height, [40, 40, 40, 100]);
+  return frame;
+}
+/** Each CLI case spawns ffmpeg a few dozen times. */
+const CLI_TIMEOUT = 60_000;
+function workspace() {
+  return mkdtempSync(join(tmpdir(), "sprite-pixel-"));
+}
+
+describe.skipIf(!HAS_FFMPEG)("pixel <framesDir>", () => {
+  test("snaps a generation to native logical pixels with binary alpha and pins one palette", () => {
+    const dir = workspace();
+    try {
+      [13.1, 13.3, 12.9, 13.2].forEach((p, i) => writePng(join(dir, "cells", `0${i}.png`), cellOf(p)));
+      const out = sheetJson("pixel", join(dir, "cells"), "--out", join(dir, "px"));
+      expect(out.pitch.x).toBeGreaterThan(12.5);
+      expect(out.pitch.x).toBeLessThan(13.6);
+      expect(out.perFrame.map((f: { source: string }) => f.source)).toEqual(["own", "own", "own", "own"]);
+      expect(out.palette).toMatchObject({ pinned: false, file: join(dir, "px", "palette.json") });
+      for (const f of out.perFrame) expect(f.logical).toEqual({ width: 20, height: 28 });
+      for (const path of out.frames as string[]) {
+        const img = readPng(path);
+        expect([img.width, img.height]).toEqual([out.logicalCell.width, out.logicalCell.height]);
+        expect(softAlpha(img)).toBe(0);
+      }
+      const record = JSON.parse(readFileSync(join(dir, "px", "pixel.json"), "utf-8"));
+      expect(record).toMatchObject({ kind: "pneuma-sprite-pixel", scale: 1, palette: { pinned: false } });
+      // The art's own six colours are all in the palette, exactly.
+      const pinned = JSON.parse(readFileSync(join(dir, "px", "palette.json"), "utf-8"));
+      const hex = (c: number[]) => `#${c.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+      for (const colour of PALETTE.map(hex)) expect(pinned.colors).toContain(colour);
+      expect(pinned.colors.length).toBe(out.palette.colors);
+      expect(pinned.colors.length).toBeLessThanOrEqual(48);
+
+      // A re-run reads the pinned file and leaves it byte for byte.
+      const before = readFileSync(join(dir, "px", "palette.json"), "utf-8");
+      const again = sheetJson("pixel", join(dir, "cells"), "--out", join(dir, "px"));
+      expect(again.palette.pinned).toBe(true);
+      expect(readFileSync(join(dir, "px", "palette.json"), "utf-8")).toBe(before);
+      // Another motion names the same file and gets the same colours.
+      const other = sheetJson("pixel", join(dir, "cells"), "--out", join(dir, "px2"), "--palette", join(dir, "px", "palette.json"));
+      expect(other.palette).toMatchObject({ pinned: true, file: join(dir, "px", "palette.json") });
+      expect(existsSync(join(dir, "px2", "palette.json"))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, CLI_TIMEOUT);
+
+  test("a pinned palette pinned for other art is said, and --repalette rebuilds it", () => {
+    const dir = workspace();
+    try {
+      [13.1, 13.3].forEach((p, i) => writePng(join(dir, "cells", `0${i}.png`), cellOf(p)));
+      writeFileSync(join(dir, "pal.json"), JSON.stringify({ colors: ["#ff00ff", "#00ff00"] }));
+      const far = sheetJson("pixel", join(dir, "cells"), "--out", join(dir, "px"), "--palette", join(dir, "pal.json"));
+      expect(far.palette).toMatchObject({ pinned: true, colors: 2 });
+      expect(far.warnings.some((w: string) => w.includes("more than 48 from every colour of the pinned palette"))).toBe(true);
+      const rebuilt = sheetJson("pixel", join(dir, "cells"), "--out", join(dir, "px"), "--palette", join(dir, "pal.json"), "--repalette");
+      expect(rebuilt.palette.pinned).toBe(false);
+      expect(rebuilt.palette.colors).toBeGreaterThanOrEqual(PALETTE.length);
+      expect(rebuilt.warnings.some((w: string) => w.includes("pinned palette"))).toBe(false);
+      writeFileSync(join(dir, "pal.json"), "{ not json");
+      const broken = sheetCmd("pixel", join(dir, "cells"), "--out", join(dir, "px"), "--palette", join(dir, "pal.json"));
+      expect(broken.code).toBe(1);
+      expect(broken.err).toContain("is not valid JSON");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, CLI_TIMEOUT);
+
+  test("refuses thin evidence, and --pitch-hint carries it through", () => {
+    const dir = workspace();
+    try {
+      writePng(join(dir, "cells", "00.png"), cellOf(13.2));
+      writePng(join(dir, "cells", "01.png"), noiseImage(160, 160, 5));
+      writePng(join(dir, "cells", "02.png"), noiseImage(160, 160, 6));
+      const refused = sheetCmd("pixel", join(dir, "cells"), "--out", join(dir, "px"));
+      expect(refused.code).toBe(1);
+      expect(refused.err).toContain("only 1 of 3 frames");
+      expect(refused.err).toContain("pass --pitch-hint N");
+      const hinted = sheetJson("pixel", join(dir, "cells"), "--out", join(dir, "px"), "--pitch-hint", "13");
+      expect(hinted.perFrame.map((f: { source: string }) => f.source)).toEqual(["own", "consensus", "consensus"]);
+      expect(sheetCmd("pixel", join(dir, "cells"), "--out", join(dir, "cells")).err).toContain("is the input directory");
+      expect(sheetCmd("pixel", join(dir, "cells"), "--out", join(dir, "px"), "--scale", "1.5").err).toContain("whole number");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, CLI_TIMEOUT);
+
+  test("an offset true phase keeps every logical cell through the CLI (test_snap_phase_policy.py)", () => {
+    // Upstream pins the policy through its extract script, because a helper
+    // test cannot see the snap loop go back to the histogram phase: at pitch
+    // 13 cut 11 px into the first block, that phase lost a row and a column.
+    const dir = workspace();
+    try {
+      const art = logicalArt(24, 40, 11, PALETTE.slice(0, 5));
+      for (const left of [6, 14]) for (const x of [left, left + 1]) for (let y = 12; y < 16; y++) setPixel(art, x, y, [10, 8, 6, 255]);
+      const up = upscaleBy(art, 13);
+      const cropped = crop(up, 11, 11, up.width - 11, up.height - 11);
+      for (const i of [0, 1]) {
+        const frame = blank(cropped.width + 40, cropped.height + 40);
+        paste(frame, cropped, 20, 20);
+        writePng(join(dir, "cells", `0${i}.png`), frame);
+      }
+      const out = sheetJson("pixel", join(dir, "cells"), "--out", join(dir, "px"));
+      for (const f of out.perFrame) expect(f.logical).toEqual({ width: art.width, height: art.height });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, CLI_TIMEOUT);
+
+  test("align keeps an N x upscale on its grid, and inspect says whether the lattice held", () => {
+    const dir = workspace();
+    try {
+      [13.1, 13.3, 12.9].forEach((p, i) => writePng(join(dir, "cells", `0${i}.png`), cellOf(p, { at: [27 + 5 * i, 21 + 3 * i] })));
+      sheetJson("pixel", join(dir, "cells"), "--out", join(dir, "pixel"), "--scale", "3");
+      const aligned = sheetJson("align", join(dir, "pixel"), "--out", join(dir, "motion", "frames"), "--pad", "8");
+      expect(aligned.pixel).toMatchObject({ scale: 3 });
+      expect(aligned.pad).toBe(9);
+      expect(aligned.cell.width % 6).toBe(0);
+      expect(aligned.cell.height % 3).toBe(0);
+      for (const f of aligned.frames) {
+        expect(f.offset.x % 3).toBe(0);
+        expect(f.offset.y % 3).toBe(0);
+      }
+      const record = JSON.parse(readFileSync(join(dir, "motion", "frames", "align.json"), "utf-8"));
+      expect(record.pixel).toMatchObject({ scale: 3 });
+
+      const held = sheetJson("inspect", join(dir, "motion"));
+      expect(held.pixel).toMatchObject({ scale: 3, held: true, paletteChecked: true });
+      expect(held.warnings.filter((w: string) => w.startsWith("pixel lattice"))).toEqual([]);
+
+      // Resample one frame the way a later step might: soft alpha, off-grid.
+      const path = join(dir, "motion", "frames", "01.png");
+      const img = readPng(path);
+      const box = alphaBbox(img, 255)!;
+      setPixel(img, box.x + 1, box.y + 1, [1, 2, 3, 128]);
+      writePng(path, img);
+      const broken = sheetJson("inspect", join(dir, "motion"));
+      expect(broken.pixel).toMatchObject({ held: false, softAlphaFrames: [1], offGridFrames: [1], offPaletteFrames: [1] });
+      expect(broken.warnings.some((w: string) => w.startsWith("pixel lattice broken: frame(s) 01 have soft alpha"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, CLI_TIMEOUT);
+});
+
+describe.skipIf(!HAS_FFMPEG)("run --pixel", () => {
+  /** A 2 x 2 sheet already carrying alpha (so run keys nothing). */
+  function sheet(dir: string) {
+    const cells = [13.1, 13.3, 12.9, 13.2].map((p) => cellOf(p));
+    const img = blank(840, 840);
+    cells.forEach((c, i) => paste(img, c, (i % 2) * 420, Math.floor(i / 2) * 420));
+    const path = join(dir, "sheet.png");
+    writePng(path, img);
+    return path;
+  }
+
+  test("runs cells -> pixel -> align -> pack -> gif -> inspect and pins the palette in the motion", () => {
+    const dir = workspace();
+    try {
+      const src = sheet(dir);
+      const motion = join(dir, "char", "motions", "walk");
+      const out = sheetJson("run", src, "--rows", "2", "--cols", "2", "--out", motion, "--name", "walk", "--fps", "8", "--loop", "--pixel", "--no-webp");
+      expect(out.pixel).toMatchObject({ dir: join(motion, "pixel"), scale: 1, palette: { pinned: false, file: join(motion, "palette.json") } });
+      expect(out.inspect.pixel).toMatchObject({ held: true, scale: 1 });
+      for (const path of out.frames as string[]) expect(softAlpha(readPng(path))).toBe(0);
+      const atlas = JSON.parse(readFileSync(join(motion, "atlas.json"), "utf-8"));
+      expect(atlas.meta.scale).toBe(1);
+      expect(atlas.frames.walk_00.frame.w).toBe(out.cell.width);
+      // Native resolution: a 20 x 28 sprite in a cell of a few dozen pixels.
+      expect(out.cell.height).toBeLessThan(60);
+
+      const again = sheetJson("run", src, "--rows", "2", "--cols", "2", "--out", motion, "--name", "walk", "--fps", "8", "--loop", "--pixel", "--no-webp", "--scale", "2");
+      expect(again.pixel).toMatchObject({ scale: 2, palette: { pinned: true } });
+      expect(again.inspect.pixel).toMatchObject({ held: true, scale: 2 });
+      expect(again.cell.width % 4).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, CLI_TIMEOUT);
+
+  test("lattice flags need --pixel, and a pixel-art character without it gets a suggestion", () => {
+    const dir = workspace();
+    try {
+      const src = sheet(dir);
+      const motion = join(dir, "char", "motions", "walk");
+      const stray = sheetCmd("run", src, "--rows", "2", "--cols", "2", "--out", motion, "--name", "walk", "--fps", "8", "--palette", "x.json");
+      expect(stray.code).toBe(1);
+      expect(stray.err).toContain("--palette belongs to the pixel lattice — add --pixel");
+      const fractional = sheetCmd("run", src, "--rows", "2", "--cols", "2", "--out", motion, "--name", "walk", "--fps", "8", "--pixel", "--scale", "0.5");
+      expect(fractional.err).toContain("whole number");
+
+      mkdirSync(join(dir, "char"), { recursive: true });
+      writeFileSync(join(dir, "char", "project.json"), JSON.stringify({ sprite: { character: { style: "16-bit pixel art" }, motions: [] } }));
+      const plain = sheetJson("run", src, "--rows", "2", "--cols", "2", "--out", motion, "--name", "walk", "--fps", "8", "--no-webp", "--force");
+      expect(plain.warnings.some((w: string) => w.startsWith("character.style says pixel art"))).toBe(true);
+      expect(plain.inspect.pixel).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, CLI_TIMEOUT);
 });

@@ -49,7 +49,7 @@ export declare function detectPixelGrid(image: RgbaImage, maxPitch?: number): { 
 export declare function estimatePixelGridRunlen(image: RgbaImage, maxPitch?: number): XY;
 export declare function crosscheckPitchRunlen(grid: XY, runlen: XY, axisTolerance?: number, ratioTolerance?: number): string[];
 
-export declare function consensusPitch(values: number[]): { value: number; dropped: number; floor: number | null };
+export declare function consensusPitch(values: number[]): { value: number; dropped: number; floor: number | null; harmonics: number };
 export declare function resolveFramePitch(own: XY, consensus: XY): { pitch: XY; outlier: boolean };
 export declare function gridEdges(length: number, pitch: number, offset: number): number[];
 export declare function gridScore(image: RgbaImage, mask: Uint8Array, xs: number[], ys: number[]): number;
@@ -79,7 +79,21 @@ export interface LatticeFrame {
 export declare function latticeFrames(
   images: RgbaImage[],
   options?: { detailBias?: boolean; pitchHint?: number | null; maxPitch?: number },
-): { frames: LatticeFrame[]; consensus: XY; runlen: XY; warnings: string[] };
+): {
+  frames: LatticeFrame[];
+  /** The pitch frames are held to: the hint when given, else `measured`. */
+  consensus: XY;
+  measured: XY;
+  runlen: XY;
+  warnings: string[];
+  /** Frames that read a grid on their own, of `nonEmpty`. */
+  confident: number;
+  nonEmpty: number;
+  /** Only when fewer than half the non-empty frames were confident. */
+  pooled: { pitch: number; score: number } | null;
+};
+
+export declare function pooledPitch(images: RgbaImage[], maxPitch?: number): { pitch: number; score: number };
 
 export declare function buildSharedPalette(frames: RgbaImage[], size?: number): Rgb[];
 export declare function applyPalette(image: RgbaImage, palette: Rgb[]): RgbaImage;

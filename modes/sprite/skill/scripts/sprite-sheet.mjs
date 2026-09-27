@@ -42,7 +42,7 @@ import {
 import { zipStore } from "./zip.mjs";
 import {
   DEFAULT_OUTLINE_STRENGTH, DEFAULT_PALETTE_SIZE, MAX_PITCH, PIXEL_RECORD, applyPalette, blankImage,
-  buildSharedPalette, enforceOutline, hexColor, latticeCheck, latticeFrames, loadPalette, paste as pasteImage,
+  buildSharedPalette, enforceOutline, latticeCheck, latticeFrames, loadPalette, paste as pasteImage,
   upscale, writePalette,
 } from "./pixel-lattice.mjs";
 
@@ -368,8 +368,10 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       nearest) — and <dir>/${PIXEL_RECORD} (pitch per frame, consensus, palette).
       'align' reads that record and places the frames on whole multiples of
       N; 'inspect' then reports the pitch and whether the lattice held.
-      Refuses a directory with no pixel grid in any frame (pass
-      --pitch-hint N when the art is pixel art the detector cannot read).
+      Refuses when fewer than half the frames read a grid on their own, and
+      says what the frames suggest; --pitch-hint N (the block width in source
+      pixels, confirmed by looking) then stands in for the consensus: a frame
+      keeps its own reading within 10% of N and is cut at N otherwise.
 
   contact <clip> --out <png> [--count ${DEFAULT_CONTACT_COUNT} | --every s] [--cols ${DEFAULT_CONTACT_COLS}] [--width ${DEFAULT_CONTACT_WIDTH}]
       [--trim-start s] [--trim-end s] [--key auto|#rrggbb|none]
@@ -1179,10 +1181,24 @@ function stepPixel(framesDir, {
   const lattice = latticeFrames(images, { detailBias, pitchHint });
   const { consensus } = lattice;
   const warnings = [...lattice.warnings];
-  const unsnapped = lattice.frames.filter((f) => f.source === "none");
-  if (unsnapped.length || !lattice.frames.some((f) => f.logical)) {
-    const which = unsnapped.length ? unsnapped.map((f) => frameName(f.index).slice(0, -4)).join(", ") : "any";
-    fail(`pixel: no pixel grid found in ${which === "any" ? "any frame" : `frame(s) ${which}`} of ${inDir} (pitch 2-${MAX_PITCH} px on both axes) and no consensus to fall back on — this does not read as pixel art; if it is, pass --pitch-hint N (the block size in source pixels)`);
+  if (!lattice.nonEmpty) fail(`pixel: every frame in ${inDir} is empty`);
+  // A generation is cut on its frames' agreement; when fewer than half of
+  // them read a grid at all, that agreement is one or two frames' opinion.
+  // Measured on a real GPT-Image walk: 1 of 8 frames read 4.00 for 8 px
+  // blocks, and cutting on it made every frame twice too fine. Refuse and
+  // say what the frames suggest — the block size is a thing a person (or the
+  // agent) confirms by looking, and --pitch-hint is how it is said.
+  if (pitchHint === null && lattice.confident * 2 < lattice.nonEmpty) {
+    const readings = lattice.frames
+      .filter((f) => f.own && Math.min(f.own.x, f.own.y) >= 2)
+      .slice(0, 3)
+      .map((f) => `frame ${frameName(f.index).slice(0, -4)}: ${f.own.x.toFixed(2)}x${f.own.y.toFixed(2)}`);
+    const { pooled, runlen } = lattice;
+    const suggest = [
+      pooled && pooled.pitch >= 2 ? `together the frames score best at ${pooled.pitch} px (${pooled.score.toFixed(3)}; one frame needs 0.2)` : null,
+      Math.min(runlen.x, runlen.y) >= 2 ? `same-colour runs measure ${runlen.x.toFixed(1)}x${runlen.y.toFixed(1)} px (they read short at soft edges)` : null,
+    ].filter(Boolean);
+    fail(`pixel: only ${lattice.confident} of ${lattice.nonEmpty} frames in ${inDir} read a pixel grid on their own${readings.length ? ` (${readings.join("; ")})` : ""} — too few to cut a whole generation on.${suggest.length ? ` ${suggest.join("; ")}.` : ""} Look at a frame at 8x and pass --pitch-hint N, the block width in source pixels (or this is not pixel art)`);
   }
 
   // One palette for every frame, pinned to disk. A file that is there wins
@@ -5764,8 +5780,8 @@ const OPTIONS = {
  *  there is a whole-number upscale: pixel art is never resampled by a
  *  fraction. `--outline-strength` alone turns the outline on. */
 function pickPixelOptions(values) {
-  const scale = num(values.scale, "--scale", { min: 1, fallback: 1 });
-  if (!Number.isInteger(scale) || scale > MAX_PIXEL_SCALE) {
+  const scale = num(values.scale, "--scale", { fallback: 1 });
+  if (!Number.isInteger(scale) || scale < 1 || scale > MAX_PIXEL_SCALE) {
     fail(`--scale: pixel art scales by a whole number from 1 to ${MAX_PIXEL_SCALE}, got '${values.scale}'`);
   }
   const outlineStrength = num(values["outline-strength"], "--outline-strength", { min: 0, fallback: DEFAULT_OUTLINE_STRENGTH });
