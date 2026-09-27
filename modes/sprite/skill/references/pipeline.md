@@ -1587,21 +1587,26 @@ The user brings one picture; nothing is generated. Every step is local and
 free except the cut-out of a busy background (one BiRefNet call on fal).
 
 ```bash
-C=<character>; S={SKILL_PATH}/scripts
-node $S/sprite-project.mjs init --dir $C --name "<Name>" --style "<what you see>" --purpose animate
-mkdir -p $C/refs && cp <workspace>/.pneuma/uploads/<file> $C/refs/upload.png
-node $S/sprite-project.mjs add-ref --dir $C --id upload --file refs/upload.png --role custom --uploaded
-node $S/sprite-sheet.mjs probe $C/refs/upload.png          # alpha=yes and coverage < 99%: already cut out
-# the cut-out — one of three:
-node $S/remove-background.mjs --input $C/refs/upload.png --output $C/refs/still.png   # busy background (fal)
-node $S/sprite-sheet.mjs key $C/refs/upload.png --out $C/refs/still.png                         # flat plate (free)
-cp $C/refs/upload.png $C/refs/still.png                                                          # already transparent
-node $S/sprite-sheet.mjs fit $C/refs/still.png --out $C/refs/still.png
-node $S/sprite-project.mjs add-ref --dir $C --id still --file refs/still.png --role custom \
-  --derived-from upload --op key                             # --op fit when nothing was removed
-node $S/sprite-project.mjs add-motion --dir $C --id idle --label Idle --fps 8 --source breathe
-node $S/sprite-sheet.mjs breathe $C/refs/still.png --out $C/motions/idle --name idle --json \
-  | node $S/sprite-project.mjs register-run --dir $C --motion idle --run -
+node {SKILL_PATH}/scripts/sprite-project.mjs init --dir <character> --name "<Name>" --style "<what you see>" --purpose animate
+mkdir -p <character>/refs && cp .pneuma/uploads/<file> <character>/refs/upload.png
+node {SKILL_PATH}/scripts/sprite-project.mjs add-ref --dir <character> --id upload \
+  --file refs/upload.png --role custom --uploaded
+node {SKILL_PATH}/scripts/sprite-sheet.mjs probe <character>/refs/upload.png
+# the cut-out, one of three: alpha=yes and coverage < 99% means it is already cut out
+node {SKILL_PATH}/scripts/remove-background.mjs --input <character>/refs/upload.png \
+  --output <character>/refs/still.png                      # busy background (fal)
+node {SKILL_PATH}/scripts/sprite-sheet.mjs key <character>/refs/upload.png \
+  --out <character>/refs/still.png                         # flat plate (free)
+cp <character>/refs/upload.png <character>/refs/still.png  # already transparent
+# then, whichever it was:
+node {SKILL_PATH}/scripts/sprite-sheet.mjs fit <character>/refs/still.png --out <character>/refs/still.png
+node {SKILL_PATH}/scripts/sprite-project.mjs add-ref --dir <character> --id still \
+  --file refs/still.png --role custom --derived-from upload --op key   # --op fit when nothing was removed
+node {SKILL_PATH}/scripts/sprite-project.mjs add-motion --dir <character> --id idle --label Idle \
+  --fps 8 --source breathe
+node {SKILL_PATH}/scripts/sprite-sheet.mjs breathe <character>/refs/still.png \
+  --out <character>/motions/idle --name idle --json \
+  | node {SKILL_PATH}/scripts/sprite-project.mjs register-run --dir <character> --motion idle --run -
 ```
 
 Provenance then reads frames ← `ref-still` (`derive`, `op: key`) ←
