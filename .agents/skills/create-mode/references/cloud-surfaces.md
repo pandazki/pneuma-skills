@@ -55,7 +55,7 @@ A viewer is web-playable when all of these hold. Check them against your design 
 6. **Agent-coupled affordances are inert or hidden when not editing.** Command buttons still render (the manifest supplies them) and `onNotifyAgent` still accepts calls — both silently do nothing. Hide them behind `props.editing === false`, and note this applies even to modes that never declared `manifest.editing: { supported: true }`: the player passes `editing={false}` regardless.
 7. **No Electron / native-only calls.** `/api/native/*` is routed through the browser WS to the desktop shell; in the player it cannot resolve. Same for `/vendor/*` (snapdom) — `vite.player.config.ts` marks those URLs external, so anything reaching for them is absent from the player build.
 8. **External hosts are loaded directly and are publicly reachable.** There is no `/proxy/*` in the player, so a viewer that loads a third-party SDK must fetch it from the vendor's own origin, CORS-permitting. This works today because the player deploy sets **no restrictive CSP** — `scripts/deploy-player.sh` writes only `Cache-Control` into `_headers`. Two precedents recorded in the `core/player-support.ts` comment: diagram's `viewer/drawio-loader.ts` injects `<script>` tags straight at `viewer.diagrams.net` and `cdn.jsdelivr.net`, and remotion's in-browser Babel `eval` is allowed to run. Treat the absence of a CSP as a fact about the current deploy, not a licence to add new external hosts casually — each one is a new runtime dependency on someone else's uptime.
-9. **The mode is builtin.** `vite.player.config.ts` marks `/mode-assets/*` external, so the external-mode load path does not exist in the player build. Modes installed from GitHub or a library always take the fallback.
+9. **The viewer is compiled into the player.** Register its static import in `src/player/player-modes.ts`; this list is separate from the bundled app modes and also includes catalog modes. Arbitrary external/library viewers still cannot load through `/mode-assets/*` in the player.
 
 ### The static-web fast path
 
@@ -82,7 +82,7 @@ State the *reason*; the membership list ages out within a release.
 
 ### Registering and verifying
 
-Registration is one line in `core/player-support.ts`. **Earning it is the work.**
+Registration needs a static viewer import in `src/player/player-modes.ts` and a matching semantic entry in `core/player-support.ts`. Build and test the former before claiming support with the latter. The parity test requires both in the finished change.
 
 1. Build the player: `bunx vite build --config vite.player.config.ts`.
 2. Produce a real package for **your** mode and serve it from one origin so the service worker and the provider both behave. `scripts/smoke-player.ts` is the harness (it builds a synthetic doc session, copies `dist-player` beside it, and serves both on `:18080`); `scripts/smoke-webcraft.ts` and `scripts/smoke-kami.ts` are the mode-specific precedents to copy.

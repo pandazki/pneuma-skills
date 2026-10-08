@@ -1,0 +1,164 @@
+{
+  "version": 1,
+  "title": "Morrow",
+  "description": "A kinder relationship with focus. A brand system to build on.",
+  "brief": {
+    "audience": "People who want meaningful progress without the pressure of constant productivity.",
+    "promise": "Make room for focus.",
+    "personality": [
+      "Warm",
+      "Intentional",
+      "Quietly optimistic"
+    ],
+    "rules": [
+      "Keep the leaf, round silhouette, dot eyes and short feet recognizable in every character application.",
+      "Use forest green for trust and functional structure; persimmon brings warmth and moments of encouragement.",
+      "Give the work breathing room. Use one clear message and a restrained character presence.",
+      "Examples demonstrate brand behavior. Downstream makers adapt format, interaction, accessibility and production specifications."
+    ]
+  },
+  "palette": [
+    {
+      "name": "Persimmon",
+      "value": "#F57843"
+    },
+    {
+      "name": "Forest",
+      "value": "#254F42"
+    },
+    {
+      "name": "Paper",
+      "value": "#F9F6EE"
+    },
+    {
+      "name": "Ink",
+      "value": "#192720"
+    }
+  ],
+  "contexts": [
+    {
+      "id": "digital",
+      "title": "Digital product",
+      "purpose": "Make focused work approachable and calm.",
+      "guidance": "Use the mascot in welcome and milestone moments; keep everyday controls clear."
+    },
+    {
+      "id": "social",
+      "title": "Social & editorial",
+      "purpose": "Recognizable encouragement at a glance.",
+      "guidance": "One message, bold scale and a consistent character; adapt crops and typography to the channel."
+    },
+    {
+      "id": "physical",
+      "title": "Packaging & objects",
+      "purpose": "Turn the brand into a tactile daily companion.",
+      "guidance": "Explore paper, soft texture and restrained color; downstream production needs real dielines and material proofs."
+    }
+  ],
+  "items": [
+    {
+      "id": "brand-world",
+      "title": "The Morrow world",
+      "stage": "identity",
+      "kind": "image",
+      "status": "ready",
+      "file": "assets/brand-world.webp",
+      "description": "The visual direction: tactile warmth, a quiet palette and an encouraging companion. This board explores the system; individual asset files remain the reusable source.",
+      "contexts": [
+        "digital",
+        "social",
+        "physical"
+      ],
+      "prompt": "Original Morrow identity world: persimmon plush leaf character, forest green, paper, restrained editorial typography, notebook and focus-card applications.",
+      "regions": [
+        {
+          "id": "palette",
+          "label": "Color roles",
+          "x": 0.75,
+          "y": 0.45,
+          "width": 0.24,
+          "height": 0.2
+        }
+      ]
+    },
+    {
+      "id": "wordmark",
+      "title": "Wordmark & clear space",
+      "stage": "identity",
+      "kind": "image",
+      "status": "ready",
+      "file": "assets/wordmark.svg",
+      "description": "A restrained uppercase wordmark. Keep one cap-height of clear space; use forest on paper or the reverse. Final lettering should be outlined by the downstream designer.",
+      "contexts": [
+        "digital",
+        "social",
+        "physical"
+      ],
+      "referenceIds": [
+        "brand-world"
+      ]
+    },
+    {
+      "id": "mascot",
+      "title": "The core companion",
+      "stage": "assets",
+      "kind": "image",
+      "status": "ready",
+      "file": "assets/mascot.webp",
+      "description": "Transparent master asset. Preserve silhouette, leaf and expression; scale and compose it for the application without stretching.",
+      "contexts": [
+        "digital",
+        "social",
+        "physical"
+      ],
+      "referenceIds": [
+        "brand-world"
+      ],
+      "prompt": "Original apricot-orange plush character, dark green leaf, two dot eyes, short feet; full body, transparent background, soft studio lighting."
+    },
+    {
+      "id": "applications",
+      "title": "One identity, three contexts",
+      "stage": "applications",
+      "kind": "image",
+      "status": "ready",
+      "file": "assets/applications.webp",
+      "description": "Digital welcome, social message and focus-card packaging show the same identity in different situations. These are visual examples for downstream adaptation, not final app or print deliverables.",
+      "contexts": [
+        "digital",
+        "social",
+        "physical"
+      ],
+      "referenceIds": [
+        "brand-world",
+        "mascot"
+      ],
+      "regions": [
+        {
+          "id": "digital",
+          "label": "Digital",
+          "x": 0,
+          "y": 0,
+          "width": 0.28,
+          "height": 1
+        },
+        {
+          "id": "social",
+          "label": "Social",
+          "x": 0.28,
+          "y": 0,
+          "width": 0.39,
+          "height": 1
+        },
+        {
+          "id": "physical",
+          "label": "Packaging",
+          "x": 0.67,
+          "y": 0,
+          "width": 0.33,
+          "height": 1
+        }
+      ]
+    }
+  ]
+}

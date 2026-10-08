@@ -23,6 +23,8 @@ import type { AudienceEntry, ExplainerManifest } from "../../modes/eli5/domain.j
 import { getDeployCSS, getDeployToolbarHTML, getDeployModalHTML, getDeployScript } from "./deploy-ui.js";
 import type { HookBus } from "../../core/hook-bus.js";
 import type { SessionInfo } from "../../core/types/plugin.js";
+import type { ModeManifest } from "../../core/types/mode-manifest.js";
+import { registerHtmlArtifactExport } from "./html-artifact-export.js";
 
 // ── ELI5 mode source, loaded per request ─────────────────────────────────────
 
@@ -147,6 +149,7 @@ export async function loadEli5Modules(
 }
 
 export interface ExportOptions {
+  modeManifest?: ModeManifest;
   workspace: string;
   initParams?: Record<string, number | string>;
   watchPatterns?: string[];
@@ -178,6 +181,7 @@ function safeDownloadName(rawTitle: string | undefined, contentSet: string | und
 
 export function registerExportRoutes(app: Hono, options: ExportOptions) {
   const workspace = options.workspace;
+  if (options.modeManifest?.artifactExport) registerHtmlArtifactExport(app, workspace, options.modeManifest);
   const { hookBus, sessionInfo } = options;
 
   // ── Workspace containment ─────────────────────────────────────────────

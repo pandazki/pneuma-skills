@@ -53,6 +53,8 @@ export const createWorkspaceSlice: StateCreator<AppState, [], [], WorkspaceSlice
     // honest — see the comment on it.
     const known = new Map((get().files ?? []).map((f) => [f.path, f.content]));
     const changed = files.filter((f) => known.get(f.path) !== f.content);
+    const incomingPaths = new Set(files.map((f) => f.path));
+    const removed = [...known.keys()].filter((path) => !incomingPaths.has(path));
 
     set((s) => {
       const ws = s.modeViewer?.workspace;
@@ -106,13 +108,15 @@ export const createWorkspaceSlice: StateCreator<AppState, [], [], WorkspaceSlice
     // four times, re-decoding every video and audio asset each time —
     // roughly half the media traffic of a session start, for nothing.
     // A value event has to mean the value changed.
-    if (changed.length > 0) {
+    // A checkpoint containing only removals must also wake Sources. Their
+    // next snapshot is already current; the deletion batch triggers the reload.
+    if (changed.length > 0 || removed.length > 0) {
       fileEventBus.publish(
-        changed.map((f) => ({
+        [...changed.map((f) => ({
           path: f.path,
           content: f.content,
           origin: "external" as const,
-        })),
+        })), ...removed.map((path) => ({ path, content: "", deleted: true, origin: "external" as const }))],
       );
     }
   },

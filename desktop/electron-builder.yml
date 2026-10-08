@@ -55,6 +55,7 @@ extraResources:
       - "distribution.json"
       - "catalog.json"
       - "_shared/**/*"
+      - "brand/**/*"
       - "cosmos/**/*"
       - "diagram/**/*"
       - "evolve/**/*"

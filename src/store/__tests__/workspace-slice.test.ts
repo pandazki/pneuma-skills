@@ -77,6 +77,23 @@ describe("workspace-slice — the files-at-hydration snapshot", () => {
  * cost roughly half the media traffic of a session start, for nothing.
  */
 describe("workspace-slice — setFiles publishes changes, not snapshots", () => {
+  test("publishes removed files when replay checks out an earlier subset", () => {
+    const useStore = makeStore();
+    useStore.getState().setFiles([
+      { path: "first/brand.json", content: "{}" },
+      { path: "later/brand.json", content: "{}" },
+    ]);
+    const seen: (FileChangeEvent & { deleted?: boolean })[][] = [];
+    const off = fileEventBus.subscribe((batch) => seen.push(batch));
+    try {
+      useStore.getState().setFiles([{ path: "first/brand.json", content: "{}" }]);
+      expect(seen).toEqual([[{ path: "later/brand.json", content: "", deleted: true, origin: "external" }]]);
+      useStore.getState().setFiles([]);
+      expect(seen[1]).toEqual([{ path: "first/brand.json", content: "", deleted: true, origin: "external" }]);
+      useStore.getState().setFiles([]);
+      expect(seen).toHaveLength(2);
+    } finally { off(); }
+  });
   function captureBatches(fn: () => void): FileChangeEvent[][] {
     const seen: FileChangeEvent[][] = [];
     const off = fileEventBus.subscribe((batch) => seen.push(batch));

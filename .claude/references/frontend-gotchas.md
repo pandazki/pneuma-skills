@@ -97,6 +97,8 @@ remain in [AGENTS.md](../../AGENTS.md#engineering-judgment).
 
 ## Viewer and session contracts
 
+- **Snapshot replacement must publish deletions to Sources** (brand player verification, 2026-10-08). `setFiles` previously diffed only incoming paths; scrubbing from two brand projects to an earlier checkpoint containing one left the deleted project in the aggregate Source. Publish removed paths as `deleted: true` after replacing the store snapshot, while identical snapshots remain silent. Regression: `src/store/__tests__/workspace-slice.test.ts`.
+
 - **React key collision for same-named modes**:一个 builtin(`slide`)evolve 出的 local mode 通常仍 `name: "slide"`。任何 builtin + local 混排的列表把 key 组合成 `${source}::${path || name}`,不要用裸 `mode.name`。
 
 - **Empty assistant messages**:`MessageBubble` 在 content 为空时返回 null(纯 tool_use 消息)。

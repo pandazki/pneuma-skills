@@ -1,0 +1,9 @@
+{
+  "tagline": { "en": "A brand others can build on", "zh-CN": "让品牌成为后续创作的起点", "ja": "次の創作につながるブランド" },
+  "hero": "hero.png",
+  "highlights": [
+    { "title": { "en": "Identity System", "zh-CN": "品牌视觉系统", "ja": "ビジュアルシステム" }, "description": { "en": "Define the visual rules that keep a brand recognizable: marks, color, typography, imagery and character.", "zh-CN": "通过标志、色彩、字体、图像和角色，建立一致且可延展的视觉规则。", "ja": "ロゴ、色、文字、イメージ、キャラクターを一貫したルールに。" }, "media": "identity-system.png", "mediaType": "image" },
+    { "title": { "en": "Application Contexts", "zh-CN": "品牌应用示例", "ja": "活用シーン" }, "description": { "en": "Explore how the same identity behaves across digital, social and physical contexts through representative examples.", "zh-CN": "用代表性示例探索同一品牌在数字产品、社交传播与实体场景中的表达。", "ja": "デジタル、ソーシャル、パッケージで同じブランドの表現を探る。" }, "media": "application-contexts.png", "mediaType": "image" },
+    { "title": { "en": "Brand Handoff", "zh-CN": "品牌交付", "ja": "ブランドの引き継ぎ" }, "description": { "en": "Share a brand book with core assets and guidance so downstream makers can adapt the system into their own materials.", "zh-CN": "分享品牌手册、核心资产与使用指引，让后续使用方据此加工自己的物料。", "ja": "ブランドブックと素材、指針を共有し、次の制作につなげる。" }, "media": "brand-handoff.png", "mediaType": "image" }
+  ]
+}

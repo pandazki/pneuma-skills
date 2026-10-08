@@ -536,6 +536,11 @@ export interface ModeManifest {
   init?: InitConfig;
   /** Viewer self-describing API — pure data declaration, readable by backend, auto-injected into CLAUDE.md */
   viewerApi?: ViewerApiConfig;
+  /** Optional self-contained HTML deliverable, relative to each content set.
+   * The mode's scripts own generation and asset inlining. The runtime exposes
+   * /export/<mode> for preview, download and existing deployment providers.
+   * Only this declared .html file is exported, never the whole workspace. */
+  artifactExport?: { file: string };
   /** Skill evolution config — defines the Evolution Agent's direction (optional) */
   evolution?: EvolutionConfig;
   /** Showcase — rich marketing content for launcher gallery (optional) */

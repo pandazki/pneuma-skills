@@ -227,25 +227,17 @@ Copy the shape from the neighboring entry rather than from memory —
 the field names are `manifestLoader` / `definitionLoader`, and the
 `type: "builtin"` discriminant is required.
 
-#### 3b. Launcher gallery registry — `server/index.ts`
+#### 3b. Launcher gallery discovery and distribution
 
-Add the mode's name to the `builtinNames` array (search for `const
-builtinNames = [...]`). This array drives `/api/registry`, which
-the launcher's marketplace UI and ProjectPanel's mode-tile grid
-both consume. **Skipping this is the #1 way a freshly-built mode
-silently fails to appear in the launcher gallery** even though
-`bun run dev <name>` works fine.
+The launcher's `/api/registry` scans on-disk `modes/*/manifest.ts` files.
+A new directory is discovered automatically; do not add a hardcoded name to
+`server/index.ts`. `hidden: true` is the public-picker filter.
 
-```ts
-// server/index.ts — search for "const builtinNames"
-const builtinNames = [..., "<name>"];
-```
-
-The launcher filters out modes whose manifest declares
-`hidden: true`, so listing a hidden mode here is harmless — the
-filter is the safety net. Current practice omits them anyway, so a
-hidden mode needs no entry; add one only if you want the filter,
-rather than your memory, to be what keeps it out of the gallery.
+For a bundled mode, add its name to `modes/distribution.json` and its directory
+to `package.json`'s `files`, then add the frontend entry in Step 3a. A catalog
+mode follows the catalog publishing workflow instead. Hosted-player support
+requires a viewer in the separate player build registry. Verify both the registry response and the
+actual gallery; source discovery and release packaging are separate concerns.
 
 #### 3c. Docs — public mode catalogs
 
@@ -262,9 +254,10 @@ the brief's `## Cloud surfaces` section said yes; a mode that answered
 "no" is correctly absent from both files, and adding it speculatively
 ships a broken share link.
 
-- **Hosted player** — append the mode name to
-  `WEB_PLAYER_SUPPORTED_MODES` in `core/player-support.ts`. This is the
-  only line of code, and it is the *last* thing you do: the whitelist
+- **Hosted player** — add the viewer import to `src/player/player-modes.ts`
+  so the player build contains it, then append the mode name to
+  `WEB_PLAYER_SUPPORTED_MODES` in `core/player-support.ts` after verification.
+  The whitelist entry is the *last* thing you do: the whitelist
   is a claim that the viewer has been exercised in a real player build.
   See the verification obligation below.
 - **Artifact deploy** — add the mode name to `compatibleModes` in
@@ -310,7 +303,7 @@ Don't claim the mode is ready until you verify these:
 
 1. `modes/<name>/manifest.ts` type-checks against `core/types/mode-manifest.ts` (`bun run typecheck` runs clean from the repository root).
 2. A disposable `bun run dev <name> --no-open --viewing` session starts without error. Use an isolated workspace; do not resume an unrelated agent just to inspect the viewer.
-3. **The launcher's `/api/registry` includes the new entry.** Test via `curl -s http://localhost:17996/api/registry | jq '.builtins[].name'` (or whatever port the launcher is on). If the name isn't there, you skipped Step 3b (`server/index.ts builtinNames`) — go fix it before continuing.
+3. **The launcher's `/api/registry` includes the new entry.** Test via `curl -s http://localhost:17996/api/registry | jq '.builtins[].name'` (or whatever port the launcher is on). If the name is missing, check its on-disk manifest and public visibility; Step 3b describes current discovery and packaging.
 4. The launcher's mode gallery shows the new entry (same — say so if you can't run the launcher).
 5. There are no lingering `TODO:` comments from the template you didn't address.
 6. **Cloud surfaces match the brief.** If the brief said *no* to both,

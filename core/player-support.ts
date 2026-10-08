@@ -59,6 +59,9 @@ export const WEB_PLAYER_SUPPORTED_MODES: readonly string[] = [
   // first mode to fetch assets minutes after load (see the SW's own comment and
   // src/player/__tests__/content-sw.test.ts).
   "sprite",
+  // Brand book, image comparison, project switching and two-checkpoint replay
+  // verified with scripts/smoke-brand.ts; agent/export controls stay hidden.
+  "brand",
 ];
 
 export function isModeWebPlayable(mode: string | undefined | null): boolean {

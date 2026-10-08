@@ -29,6 +29,7 @@ import { WEB_PLAYER_SUPPORTED_MODES } from "../../core/player-support.js";
  * exactly the intent. Do not turn this into a computed specifier.
  */
 const playerModes: Record<string, () => Promise<ModeDefinition>> = {
+  brand: () => import("../../modes/brand/pneuma-mode.js").then((m) => m.default),
   bansho: () => import("../../modes/bansho/pneuma-mode.js").then((m) => m.default),
   cosmos: () => import("../../modes/cosmos/pneuma-mode.js").then((m) => m.default),
   diagram: () => import("../../modes/diagram/pneuma-mode.js").then((m) => m.default),

@@ -55,6 +55,11 @@ type ModeSource =
  * fails if the two drift.
  */
 const builtinModes: Record<string, ModeSource> = {
+  brand: {
+    type: "builtin",
+    manifestLoader: () => import("../modes/brand/manifest.js").then((m) => m.default),
+    definitionLoader: () => import("../modes/brand/pneuma-mode.js").then((m) => m.default),
+  },
   cosmos: {
     type: "builtin",
     manifestLoader: () =>

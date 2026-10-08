@@ -3844,7 +3844,7 @@ export async function startServer(options: ServerOptions) {
   });
 
   // ── Export routes (slide, webcraft, file listing) ─────────────────
-  registerExportRoutes(app, { workspace, initParams: options.initParams, watchPatterns: options.watchPatterns, hookBus, sessionInfo });
+  registerExportRoutes(app, { workspace, modeManifest: options.modeManifest, initParams: options.initParams, watchPatterns: options.watchPatterns, hookBus, sessionInfo });
 
   // ── Asset filesystem listing (clipcraft-style modes) ───────────────
   registerAssetFsRoutes(app, { workspace });
