@@ -16,7 +16,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -54,6 +54,22 @@ function publishedBuild(modeDir: string) {
 }
 
 describe("the prebuilt viewer", () => {
+  test("a failed ABI link cannot be reused as a published bundle on the next launch", async () => {
+    const modeDir = fixture("failed-link");
+    const entry = join(modeDir, "pneuma-mode.ts");
+    const source = readFileSync(entry, "utf-8");
+    writeFileSync(entry, 'import { __missingPneumaExport } from "react"; export default __missingPneumaExport;');
+    const failed = await buildModeViewer(modeDir);
+    expect(failed.success).toBe(false);
+    expect(prebuiltViewer(modeDir, { projectRoot: join(root, "elsewhere") }))
+      .toEqual({ reuse: false, reason: "incomplete" });
+    writeFileSync(entry, source);
+    const recovered = await buildModeViewer(modeDir);
+    expect(recovered.success).toBe(true);
+    expect(prebuiltViewer(modeDir, { projectRoot: join(root, "elsewhere") }))
+      .toEqual({ reuse: true, reason: "current" });
+  });
+
   test("the stamp follows the viewer's sources, not its seeds", () => {
     const modeDir = fixture("stamp");
     const first = modeSourceStamp(modeDir);

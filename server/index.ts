@@ -13,8 +13,10 @@ import type { SocketData } from "./ws-bridge.js";
 import type { TerminalSocketData } from "./ws-bridge-types.js";
 import type { ServerWebSocket } from "bun";
 import { TerminalManager } from "./terminal-manager.js";
+import { registerModeViewerRoutes } from "./mode-viewer-routes.js";
+import type { ModeInfo } from "../core/types/mode-viewer.js";
 import { registerModeMakerRoutes } from "./mode-maker-routes.js";
-import { HOST_ABI_VENDOR_SHIMS, hostAbiImportMap } from "../snapshot/mode-build.js";
+import { hostAbiImportMap } from "../snapshot/mode-build.js";
 import { registerEvolutionRoutes } from "./evolution-routes.js";
 import { openPath, revealPath, openUrl } from "./system-bridge.js";
 import { pathStartsWith, isContained, isGitObjectId, isWin } from "./utils.js";
@@ -469,6 +471,13 @@ export async function startServer(options: ServerOptions) {
 
   // Dev mode: allow cross-origin requests from Vite dev server
   app.use("/api/*", cors({ origin: "*" }));
+  const modeViewerRuntime = options.modeBundleDir || (options.externalMode && options.distDir)
+    ? registerModeViewerRoutes(app, {
+        modeDir: options.externalMode?.path,
+        projectRoot: options.projectRoot,
+        bundleDir: options.modeBundleDir,
+      })
+    : undefined;
 
   // ── Shared child-process helpers ────────────────────────────────────────
   // These live above the launcher branch so both launcher mode and per-session
@@ -3441,13 +3450,15 @@ export async function startServer(options: ServerOptions) {
 
   // Return external mode info for the frontend (needed for /@fs/ imports)
   app.get("/api/mode-info", (c) => {
+    c.header("Cache-Control", "no-store");
     if (options.externalMode) {
       return c.json({
         external: true,
         name: options.externalMode.name,
         path: options.externalMode.path,
         type: options.externalMode.type,
-      });
+        ...(modeViewerRuntime ? { viewerBuild: modeViewerRuntime.getState() } : {}),
+      } satisfies ModeInfo);
     }
     return c.json({ external: false });
   });
@@ -4290,51 +4301,16 @@ export async function startServer(options: ServerOptions) {
       : workspace,
   });
 
-  // ── External mode bundle serving (production) ───────────────────────
-  if (options.modeBundleDir) {
-    const bundleDir = options.modeBundleDir;
-
-    // Vendor shims — the host ABI declared in snapshot/mode-build.ts. Each
-    // shim re-exports a host singleton from a window global that
-    // src/main.tsx sets before the mode bundle loads, and the importmap
-    // below maps the bare specifiers Bun.build left external onto these
-    // URLs. Both tables come from the builder so a bundle can never be
-    // compiled against an ABI this server does not serve.
-    for (const [url, source] of Object.entries(HOST_ABI_VENDOR_SHIMS)) {
-      app.get(url, () => new Response(source, { headers: { "Content-Type": "application/javascript" } }));
-    }
-
-    // Serve compiled mode bundle (JS + CSS, plus the assets Bun.build emits
-    // beside them). A `.wasm` must go out as application/wasm:
-    // `WebAssembly.instantiateStreaming` rejects any other type, which is how
-    // the sprite viewer's Rive runtime loads the file it ships with.
-    app.get("/mode-assets/*", async (c) => {
-      const relPath = c.req.path.replace("/mode-assets/", "");
-      const filePath = join(bundleDir, relPath);
-      if (!isContained(filePath, bundleDir)) return c.notFound();
-      const file = Bun.file(filePath);
-      if (await file.exists()) {
-        const contentType = relPath.endsWith(".css")
-          ? "text/css"
-          : relPath.endsWith(".wasm")
-            ? "application/wasm"
-            : "application/javascript";
-        return new Response(file, { headers: { "Content-Type": contentType } });
-      }
-      return c.notFound();
-    });
-  }
-
   // ── Built frontend serving (production) ─────────────────────────────
   if (options.distDir) {
     const distDir = options.distDir;
-    const hasModeBundleDir = !!options.modeBundleDir;
+    const hasModeViewerRuntime = !!modeViewerRuntime;
 
     // Serve static assets (JS/CSS bundles + public files like logo.png, favicon)
     // Skip paths handled by dedicated routes (/content/*, /api/*, /ws/*, /export/*)
     app.get("*", async (c, next) => {
       const p = c.req.path;
-      if (p.startsWith("/content/") || p.startsWith("/api/") || p.startsWith("/ws/") || p.startsWith("/export/")) {
+      if (p.startsWith("/content/") || p.startsWith("/api/") || p.startsWith("/ws/") || p.startsWith("/export/") || p.startsWith("/mode-assets/") || p.startsWith("/vendor/")) {
         return next();
       }
       const filePath = join(distDir, p);
@@ -4347,23 +4323,19 @@ export async function startServer(options: ServerOptions) {
     // When external mode bundle exists, inject importmap for React resolution
     app.get("*", async (c, next) => {
       const p = c.req.path;
-      if (p.startsWith("/content/") || p.startsWith("/api/") || p.startsWith("/ws/") || p.startsWith("/export/")) {
+      if (p.startsWith("/content/") || p.startsWith("/api/") || p.startsWith("/ws/") || p.startsWith("/export/") || p.startsWith("/mode-assets/") || p.startsWith("/vendor/")) {
         return next();
       }
       let html = await Bun.file(join(distDir, "index.html")).text();
 
-      if (hasModeBundleDir) {
+      if (hasModeViewerRuntime) {
         const importMap = `<script type="importmap">
 ${JSON.stringify(hostAbiImportMap())}
 </script>`;
-        // Inject <link> tags for any CSS files produced by Bun.build()
-        let cssLinks = "";
-        try {
-          const bundleDir = options.modeBundleDir!;
-          const { readdirSync } = await import("node:fs");
-          const cssFiles = readdirSync(bundleDir).filter((f: string) => f.endsWith(".css"));
-          cssLinks = cssFiles.map((f: string) => `<link rel="stylesheet" href="/mode-assets/${f}">`).join("\n");
-        } catch { /* no CSS files or dir read failed */ }
+        const viewerBuild = modeViewerRuntime!.getState();
+        const cssLinks = viewerBuild.status === "ready"
+          ? viewerBuild.stylesheets.map((url) => `<link rel="stylesheet" href="${url}">`).join("\n")
+          : "";
         html = html.replace("<head>", `<head>\n${importMap}\n${cssLinks}`);
       }
 

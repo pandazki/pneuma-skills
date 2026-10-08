@@ -32,5 +32,9 @@
   "launching": "Iniciando…",
   "creating": "Creando…",
   "loading_ellipsis": "Cargando…",
-  "select_placeholder": "Seleccionar..."
+  "select_placeholder": "Seleccionar...",
+  "viewer_load_failed": "No se pudo cargar el visor",
+  "viewer_load_failed_help": "Vuelve a cargar el visor. Tus archivos y la sesión del agente siguen abiertos.",
+  "viewer_retry": "Volver a cargar el visor",
+  "viewer_retrying": "Cargando el visor…"
 }

@@ -32,5 +32,9 @@
   "launching": "실행 중...",
   "creating": "생성 중...",
   "loading_ellipsis": "로딩 중...",
-  "select_placeholder": "선택..."
+  "select_placeholder": "선택...",
+  "viewer_load_failed": "뷰어를 불러오지 못했습니다",
+  "viewer_load_failed_help": "뷰어를 다시 불러오세요. 파일과 에이전트 세션은 열린 상태로 유지됩니다.",
+  "viewer_retry": "뷰어 다시 불러오기",
+  "viewer_retrying": "뷰어를 불러오는 중…"
 }

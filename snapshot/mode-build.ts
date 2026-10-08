@@ -2,8 +2,8 @@
  * Mode Build — the single way a mode viewer is compiled for production, and
  * the declaration of the host ABI those bundles are compiled against.
  *
- * Every production bundle (mode-maker publish, the launch-time pre-compile in
- * `bin/pneuma.ts`, and the release pack step) goes through `buildModeViewer`.
+ * Every production bundle (mode-maker publish, the session server's background
+ * build/recovery, and the release pack step) goes through `buildModeViewer`.
  * Third-party dependencies are inlined so the archive is self-contained; the
  * modules listed in `HOST_ABI_EXTERNALS` stay external and are supplied at
  * runtime by the host through the `/vendor/*.js` shims below.
@@ -17,7 +17,7 @@
 
 import { join, resolve, dirname } from "node:path";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
@@ -507,6 +507,8 @@ export interface ModeBuildOptions {
    * tree is compiled against. Defaults to this file's project root.
    */
   projectRoot?: string;
+  /** Explicit recovery also verifies installs left partial by older runtimes. */
+  repairDependencies?: boolean;
 }
 
 export interface ModeBuildResult {
@@ -518,7 +520,7 @@ export interface ModeBuildResult {
 /**
  * Build a mode's viewer bundle into `<modeDir>/.build/`.
  *
- * 1. If package.json exists but node_modules is missing, runs `bun install`
+ * 1. Installs missing/partial dependencies, with bounded network retries
  * 2. Deletes stale .build/ directory
  * 3. Runs Bun.build() to produce ESM bundles with the host ABI external
  */
@@ -533,29 +535,22 @@ export async function buildModeViewer(
   const buildDir = join(modeDir, ".build");
   const errors: string[] = [];
 
-  // 1. Auto-install deps if package.json exists but node_modules is missing
-  const pkgJsonPath = join(modeDir, "package.json");
-  if (existsSync(pkgJsonPath) && !existsSync(join(modeDir, "node_modules"))) {
-    const proc = Bun.spawn(["bun", "install"], {
-      cwd: modeDir,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const exitCode = await proc.exited;
-    if (exitCode !== 0) {
-      const stderr = await new Response(proc.stderr).text();
-      return {
-        success: false,
-        buildDir,
-        errors: [`bun install failed (exit ${exitCode}): ${stderr}`],
-      };
-    }
+  // 1. Finish dependency installation, including an earlier partial attempt.
+  try {
+    const { ensureModeDependencies } = await import("./mode-dependencies.js");
+    await ensureModeDependencies(modeDir, { force: options.repairDependencies });
+  } catch (error) {
+    return { success: false, buildDir, errors: [error instanceof Error ? error.message : String(error)] };
   }
 
   // 2. Clean stale build artifacts
   if (existsSync(buildDir)) {
     rmSync(buildDir, { recursive: true, force: true });
   }
+  mkdirSync(buildDir, { recursive: true });
+  // Without this marker, a failed/aborted local build outside the checkout
+  // looks like an unstamped published archive and is trusted on next launch.
+  writeFileSync(join(buildDir, INCOMPLETE_BUILD_FILE), "Build has not completed.\n");
 
   // 3. Collect entrypoints
   const modeEntry = join(modeDir, "pneuma-mode.ts");
@@ -734,11 +729,13 @@ export async function buildModeViewer(
   if (errors.length) return { success: false, buildDir, errors };
 
   writeModeSourceStamp(modeDir);
+  rmSync(join(buildDir, INCOMPLETE_BUILD_FILE), { force: true });
   return { success: true, buildDir, errors: [] };
 }
 
 /** What a build records about the sources it was made from. */
 const SOURCE_STAMP_FILE = "source-stamp.json";
+const INCOMPLETE_BUILD_FILE = ".incomplete";
 /** Files a viewer bundle can be built from. Seeds, showcase images, tests and
  *  dependencies are not the viewer's sources; skill scripts can be (a viewer
  *  may import a script's pure module), so they count. */
@@ -774,7 +771,7 @@ export function writeModeSourceStamp(modeDir: string): void {
   );
 }
 
-export type PrebuiltViewerReason = "current" | "stale" | "published" | "unstamped-in-tree" | "missing";
+export type PrebuiltViewerReason = "current" | "stale" | "published" | "unstamped-in-tree" | "missing" | "incomplete";
 
 /**
  * Whether `<modeDir>/.build/pneuma-mode.js` may be served as it is.
@@ -794,6 +791,7 @@ export function prebuiltViewer(
   options: { projectRoot?: string } = {},
 ): { reuse: boolean; reason: PrebuiltViewerReason } {
   const buildDir = join(modeDir, ".build");
+  if (existsSync(join(buildDir, INCOMPLETE_BUILD_FILE))) return { reuse: false, reason: "incomplete" };
   if (!existsSync(join(buildDir, "pneuma-mode.js"))) return { reuse: false, reason: "missing" };
   const stampPath = join(buildDir, SOURCE_STAMP_FILE);
   if (existsSync(stampPath)) {

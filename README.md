@@ -220,6 +220,12 @@ Subcommands:
   snapshot push / pull     Upload / download workspace snapshot
 ```
 
+External modes installed under `~/.pneuma/modes/` can be reopened from recent
+sessions. If a viewer dependency download fails, Pneuma retries transient network
+errors up to three times. Persistent errors appear in the viewer with a **Retry
+loading viewer** button; recovery keeps the agent session and chat draft open.
+TLS certificate verification stays enabled.
+
 ## Architecture
 
 ```

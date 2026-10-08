@@ -32,5 +32,9 @@
   "launching": "起動中…",
   "creating": "作成中…",
   "loading_ellipsis": "読み込み中…",
-  "select_placeholder": "選択してください…"
+  "select_placeholder": "選択してください…",
+  "viewer_load_failed": "ビューアーを読み込めませんでした",
+  "viewer_load_failed_help": "ビューアーの読み込みを再試行します。ファイルとエージェントのセッションは開いたままです。",
+  "viewer_retry": "ビューアーを再読み込み",
+  "viewer_retrying": "ビューアーを読み込み中…"
 }

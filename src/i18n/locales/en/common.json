@@ -32,5 +32,9 @@
   "launching": "Launching…",
   "creating": "Creating…",
   "loading_ellipsis": "Loading…",
-  "select_placeholder": "Select..."
+  "select_placeholder": "Select...",
+  "viewer_load_failed": "Viewer could not load",
+  "viewer_load_failed_help": "Retry loading the viewer. Your files and agent session stay open.",
+  "viewer_retry": "Retry loading viewer",
+  "viewer_retrying": "Loading viewer…"
 }

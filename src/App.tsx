@@ -12,7 +12,8 @@ import { loadSurfacePrefs } from "./store/agent-surface-persistence.js";
 import type { SelectionType } from "./types.js";
 import { connect } from "./ws.js";
 import { loadReplay } from "./replay-engine.js";
-import { loadMode, registerExternalMode } from "../core/mode-loader.js";
+import { loadSessionMode } from "./utils/load-session-mode.js";
+import { ModeLoadError } from "./components/ModeLoadError.js";
 import { useSystemPreferences } from "./hooks/useSystemPreferences.js";
 import { useAppTheme } from "./hooks/useAppTheme.js";
 import { selectBestContentSet } from "../core/utils/content-set-matcher.js";
@@ -107,33 +108,24 @@ export default function App() {
   // still handled by `userContentCount` / `hasSeedsDeclared`; this lets
   // the user close the gallery explicitly even before content arrives.
   const [galleryDismissedByUser, setGalleryDismissedByUser] = useState(false);
+  const [modeLoadAttempt, setModeLoadAttempt] = useState(0);
+  const [modeLoadError, setModeLoadError] = useState<string | null>(null);
+  const [modeLoadPending, setModeLoadPending] = useState(true);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const explicitSession = params.get("session");
     const modeName = params.get("mode") || "doc";
     if (params.get("debug") === "1") {
       useStore.getState().setDebugMode(true);
     }
 
-    // Check if this is an external mode — fetch mode info from server first
+    const controller = new AbortController();
+    setModeLoadPending(true);
     const loadModeAsync = async () => {
-      try {
-        const modeInfoRes = await fetch(`${getApiBase()}/api/mode-info`);
-        const modeInfo = await modeInfoRes.json();
-
-        if (modeInfo.external && modeInfo.name === modeName) {
-          // Register external mode so mode-loader knows where to import from
-          registerExternalMode(modeInfo.name, modeInfo.path);
-          console.log(`[app] Registered external mode "${modeInfo.name}" from ${modeInfo.path}`);
-        }
-      } catch {
-        // Server not available yet or no external mode — continue with builtin
-      }
-
-      const def = await loadMode(modeName);
+      const def = await loadSessionMode(modeName, { retry: modeLoadAttempt > 0, signal: controller.signal });
       const { resolveLocalized } = await import("../core/types/mode-manifest.js");
       const lang = (await import("./i18n/index.js")).currentLocale();
+      controller.signal.throwIfAborted();
       useStore.getState().setModeViewer(def.viewer);
       useStore.getState().setModeManifest(def.manifest);
       useStore.getState().setModeDisplayName(resolveLocalized(def.manifest.displayName, lang));
@@ -155,12 +147,12 @@ export default function App() {
           useStore.getState().markFilesHydrated();
         } else {
           // Normal mode — load workspace files from disk
-          const d = await fetch(`${getApiBase()}/api/files`).then((r) => r.json());
+          const d = await fetch(`${getApiBase()}/api/files`, { signal: controller.signal }).then((r) => r.json());
           if (d.files?.length) useStore.getState().setFiles(d.files);
           useStore.getState().markFilesHydrated();
           // Restore persisted viewer position (content set + active file)
           try {
-            const vs = await fetch(`${getApiBase()}/api/viewer-state`).then((r) => r.json());
+            const vs = await fetch(`${getApiBase()}/api/viewer-state`, { signal: controller.signal }).then((r) => r.json());
             const store = useStore.getState();
             const normalized = normalizeViewerState(vs, store.contentSets);
             if (normalized.contentSet && store.contentSets.some((cs: { prefix: string }) => cs.prefix === normalized.contentSet)) {
@@ -175,10 +167,19 @@ export default function App() {
           } catch { /* no saved state — auto-selection will handle it */ }
         }
       })
+      .then(() => { if (!controller.signal.aborted) setModeLoadError(null); })
       .catch((err) => {
+        if (controller.signal.aborted) return;
         console.error(`[app] Failed to load mode "${modeName}":`, err);
-      });
+        setModeLoadError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => { if (!controller.signal.aborted) setModeLoadPending(false); });
+    return () => controller.abort();
+  }, [modeLoadAttempt]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const explicitSession = params.get("session");
     // Connect to session (always — even in replay mode, for Continue Work transition).
     // Also fetch /api/session to discover project paths (Pneuma 3.0) so the
     // store knows whether this session belongs to a project surface.
@@ -400,7 +401,9 @@ export default function App() {
     return (
       <div className={`h-screen w-screen bg-cc-bg text-cc-fg relative overflow-hidden ${themeClass}`}>
         <div ref={previewRef} className="h-full w-full relative">
-          {showGallery ? (
+          {modeLoadError ? (
+            <ModeLoadError error={modeLoadError} retrying={modeLoadPending} onRetry={() => setModeLoadAttempt((n) => n + 1)} />
+          ) : showGallery ? (
             <Suspense fallback={<LazyFallback />}>
               <GalleryEmptyState onDismiss={() => setGalleryDismissedByUser(true)} />
             </Suspense>
@@ -462,7 +465,9 @@ export default function App() {
           )}
           <Panel key="viewer" id="viewer" defaultSize={68} minSize={30}>
             <div ref={previewRef} className="h-full w-full relative">
-              {showGallery ? (
+              {modeLoadError ? (
+                <ModeLoadError error={modeLoadError} retrying={modeLoadPending} onRetry={() => setModeLoadAttempt((n) => n + 1)} />
+              ) : showGallery ? (
                 <Suspense fallback={<LazyFallback />}>
                   <GalleryEmptyState onDismiss={() => setGalleryDismissedByUser(true)} />
                 </Suspense>

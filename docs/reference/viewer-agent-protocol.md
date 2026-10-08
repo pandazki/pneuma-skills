@@ -581,3 +581,36 @@ Agent 不能调用看不到的 action——所以 `<manifest, runtime>` 必须�
 - [`docs/archive/proposals/2026-04-27-pneuma-projects-design.md`](../archive/proposals/2026-04-27-pneuma-projects-design.md) — Project 层完整设计
 - [`docs/archive/proposals/2026-04-28-handoff-tool-call.md`](../archive/proposals/2026-04-28-handoff-tool-call.md) — Handoff 协议设计
 - [`docs/archive/proposals/2026-05-20-viewer-address-contract.md`](../archive/proposals/2026-05-20-viewer-address-contract.md) — ViewerAddress 收敛背景
+
+
+## External viewer build recovery
+
+Production external modes prepare their viewer in the session server, without
+blocking the agent connection or the shell on dependency downloads. The contract
+is `ModeInfo` / `ModeViewerBuildState` in `core/types/mode-viewer.ts`:
+
+- `GET /api/mode-info` includes `viewerBuild` for production external modes.
+  It is `building`, `failed` with the original error, or `ready` with a revision
+  and stylesheet URLs. Development-mode externals omit it and use Vite.
+- `POST /api/mode-viewer/retry` has no mode/path argument. It starts or joins a
+  build of the current session's mode and returns immediately (202 while
+  building). A ready build is reused. The frontend polls mode-info until the
+  attempt finishes. Concurrent browser retries join one build per session.
+- Dependency installation retries transient network/TLS failures at most three
+  times, with 500 ms and 1500 ms delays and a 60-second limit per attempt. TLS
+  verification remains enabled. A pending marker survives an interrupted or
+  failed install so a partial `node_modules` is not mistaken for completion.
+  Explicit recovery also reruns installation for legacy partial installs.
+  Lifecycle script failures and a forcibly timed-out installer are left to
+  explicit recovery because their side effects may already have occurred.
+- `/mode-assets/*` returns 503 with build state until ready, then serves assets
+  or returns 404. It never returns the application HTML. The host import map
+  and vendor shims remain available even when the initial build fails.
+- Recovery reloads the viewer module under a fresh URL (browsers cache failed
+  imports) and loads its CSS before mounting it. It does not reload the page,
+  replace the workspace, reconnect the agent, or discard a chat draft.
+
+The runtime can recover interrupted downloads. Persistent certificate failures
+still require fixing the network/proxy trust configuration; invalid dependencies
+or viewer source errors require correcting the mode. They remain visible rather
+than being retried indefinitely.
