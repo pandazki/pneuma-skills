@@ -18,6 +18,7 @@
 
 import type { ModeManifest } from "./types/mode-manifest.js";
 import type { ModeDefinition } from "./types/mode-definition.js";
+import { modeViewerAssetUrl } from "./types/mode-viewer.js";
 
 /**
  * Mode source type:
@@ -181,8 +182,11 @@ export function listBuiltinModes(): string[] {
  * @param name — Mode name (for registration and lookup)
  * @param absPath — Absolute path to the Mode package
  */
-export function registerExternalMode(name: string, absPath: string): void {
+export function registerExternalMode(name: string, absPath: string, revision?: string): void {
   const isBrowser = typeof window !== "undefined";
+  // Browsers cache rejected module imports too. A recovery attempt must use
+  // fresh module URLs without reloading the page or losing the chat draft.
+  const query = revision ? `?v=${encodeURIComponent(revision)}` : "";
 
   if (isBrowser) {
     const isDev = import.meta.env?.DEV;
@@ -194,11 +198,11 @@ export function registerExternalMode(name: string, absPath: string): void {
         name,
         path: absPath,
         manifestLoader: () =>
-          import(/* @vite-ignore */ `/@fs${absPath}/manifest.ts`).then(
+          import(/* @vite-ignore */ `/@fs${absPath}/manifest.ts${query}`).then(
             (m) => m.default,
           ),
         definitionLoader: () =>
-          import(/* @vite-ignore */ `/@fs${absPath}/pneuma-mode.ts`).then(
+          import(/* @vite-ignore */ `/@fs${absPath}/pneuma-mode.ts${query}`).then(
             (m) => m.default,
           ),
       };
@@ -210,11 +214,11 @@ export function registerExternalMode(name: string, absPath: string): void {
         path: absPath,
         manifestLoader: () => {
           // Runtime virtual module served by the dev/prod server; not resolvable by tsc.
-          const virtual = "/mode-assets/manifest.js";
+          const virtual = modeViewerAssetUrl("manifest.js", revision);
           return import(/* @vite-ignore */ virtual).then((m) => m.default);
         },
         definitionLoader: () => {
-          const virtual = "/mode-assets/pneuma-mode.js";
+          const virtual = modeViewerAssetUrl("pneuma-mode.js", revision);
           return import(/* @vite-ignore */ virtual).then((m) => m.default);
         },
       };

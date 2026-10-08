@@ -32,5 +32,9 @@
   "launching": "启动中…",
   "creating": "创建中…",
   "loading_ellipsis": "加载中…",
-  "select_placeholder": "请选择…"
+  "select_placeholder": "请选择…",
+  "viewer_load_failed": "预览无法加载",
+  "viewer_load_failed_help": "重试加载预览。文件和智能体会话将保持打开。",
+  "viewer_retry": "重试加载预览",
+  "viewer_retrying": "正在加载预览…"
 }

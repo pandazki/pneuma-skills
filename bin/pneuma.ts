@@ -2554,42 +2554,8 @@ async function main() {
     p.log.info(t("pneuma.prod_mode"));
   }
 
-  // 2.5 Pre-compile external mode viewer for production serving
-  //     Same builder, same host ABI as publish and the release pack step —
-  //     see snapshot/mode-build.ts. A private build config here is how an
-  //     external mode used to end up with its own inlined copy of the host
-  //     store while a published one did not.
-  let modeBundleDir: string | undefined;
-  if (!isDev && resolved.type !== "builtin") {
-    // A bundle already in `.build/` is reused only while it is the build of
-    // the sources beside it (see `prebuiltViewer`): in a checkout, the first
-    // launch compiles into the same directory a published archive ships, and
-    // reusing that unconditionally served a stale viewer forever after.
-    const { prebuiltViewer } = await import("../snapshot/mode-build.js");
-    const prebuilt = prebuiltViewer(resolved.path, { projectRoot: PROJECT_ROOT });
-    if (prebuilt.reuse) {
-      // Use pre-built bundle from publish (third-party deps already inlined)
-      modeBundleDir = join(resolved.path, ".build");
-      p.log.step(t("pneuma.using_prebuilt_viewer"));
-    } else if (
-      existsSync(join(resolved.path, "pneuma-mode.ts")) ||
-      existsSync(join(resolved.path, "manifest.ts"))
-    ) {
-      // Build from source (local development, unpublished modes)
-      p.log.step(t("pneuma.compiling_viewer"));
-      const { buildModeViewer } = await import("../snapshot/mode-build.js");
-      const result = await buildModeViewer(resolved.path, { projectRoot: PROJECT_ROOT });
-      if (result.success) {
-        modeBundleDir = result.buildDir;
-        p.log.step(t("pneuma.viewer_compiled"));
-      } else {
-        p.log.warn(t("pneuma.viewer_compile_failed"));
-        for (const message of result.errors) {
-          p.log.warn(`  ${message}`);
-        }
-      }
-    }
-  }
+  // Production external viewers are prepared by the server in the background.
+  // A failed dependency install must leave the session reachable for recovery.
 
   // 2.8 Handle --replay-source: export from existing workspace, set replayPackage
   if (replaySource && !replayPackage) {
@@ -2653,7 +2619,6 @@ async function main() {
     ...(resolved.type !== "builtin"
       ? { externalMode: { name: resolved.name, path: resolved.path, type: resolved.type } }
       : {}),
-    ...(modeBundleDir ? { modeBundleDir } : {}),
     projectRoot: PROJECT_ROOT,
     modeName,
     modeManifest: manifest,

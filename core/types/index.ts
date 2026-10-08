@@ -38,6 +38,8 @@ export type {
 } from "./viewer-contract.js";
 
 export type { ModeDefinition } from "./mode-definition.js";
+export type { ModeInfo, ModeViewerBuildState } from "./mode-viewer.js";
+export { modeViewerAssetUrl } from "./mode-viewer.js";
 
 export type {
   AgentBackend,

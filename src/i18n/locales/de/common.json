@@ -32,5 +32,9 @@
   "launching": "Wird gestartet…",
   "creating": "Wird erstellt…",
   "loading_ellipsis": "Wird geladen…",
-  "select_placeholder": "Auswählen…"
+  "select_placeholder": "Auswählen…",
+  "viewer_load_failed": "Die Vorschau konnte nicht geladen werden",
+  "viewer_load_failed_help": "Lade die Vorschau erneut. Deine Dateien und die Agentensitzung bleiben geöffnet.",
+  "viewer_retry": "Vorschau erneut laden",
+  "viewer_retrying": "Vorschau wird geladen…"
 }

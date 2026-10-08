@@ -7,7 +7,7 @@
  *   ship. Resolved from `modes/<name>/` in a repo checkout, otherwise
  *   downloaded and verified into `~/.pneuma/catalog/<name>/`
  *   (`core/mode-catalog.ts`)
- * - local: "/abs/path" or "./rel/path" — local filesystem path
+ * - local: "/abs/path", "./rel/path", or an installed mode's cache name
  * - github: "github:user/repo" or "github:user/repo#branch" — GitHub repository
  *
  * GitHub repositories are cloned to the ~/.pneuma/modes/{user}-{repo}/ cache directory.
@@ -74,9 +74,9 @@ export interface ResolvedMode {
  * is the one authority for which modes ship in the package, and duplicating
  * it as a literal is how the old list went stale.
  *
- * A plain name in neither set still resolves as `builtin` via the
- * fallthrough in `parseModeSpecifier`, and `mode-loader` produces the
- * "Unknown mode" error.
+ * Other plain names can refer to an installed external mode. Only names
+ * absent from both first-party sets and the install cache fall through to
+ * `builtin`, where mode-loader produces the "Unknown mode" error.
  */
 function isBuiltinName(specifier: string, env?: CatalogEnv): boolean {
   return isBundledMode(specifier, env);
@@ -179,6 +179,17 @@ export function parseModeSpecifier(specifier: string, env?: CatalogEnv): {
   // source in a repo checkout, a CDN archive in a release.
   if (isCatalogMode(specifier, env)) {
     return { type: "catalog", name: specifier };
+  }
+
+  // Sessions persist the resolved name (e.g. "owner-repo"), not the
+  // original GitHub specifier or absolute path. Resolve that name from
+  // the install cache on resume without fetching or replacing its files.
+  // Only one path component is eligible; explicit paths were handled above.
+  if (/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(specifier)) {
+    const installedPath = join(env?.home ?? homedir(), ".pneuma", "modes", specifier);
+    if (existsSync(installedPath) && statSync(installedPath).isDirectory()) {
+      return { type: "local", name: specifier, localPath: installedPath };
+    }
   }
 
   // Unknown — could be a builtin we don't know about, let mode-loader handle it

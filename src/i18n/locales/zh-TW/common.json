@@ -32,5 +32,9 @@
   "launching": "啟動中…",
   "creating": "建立中…",
   "loading_ellipsis": "載入中…",
-  "select_placeholder": "請選擇…"
+  "select_placeholder": "請選擇…",
+  "viewer_load_failed": "預覽無法載入",
+  "viewer_load_failed_help": "重試載入預覽。檔案和智慧體工作階段將保持開啟。",
+  "viewer_retry": "重試載入預覽",
+  "viewer_retrying": "正在載入預覽…"
 }

@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, test, expect } from "bun:test";
 import { isSafeGitRef, parseModeSpecifier, isExternalMode, resolveMode } from "../mode-resolver.js";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { resolve, dirname, join } from "node:path";
+import { resolve, dirname, join, basename } from "node:path";
 import { buildModeArchive, sha256Hex } from "./fixtures/catalog-archive.js";
 import { MODE_CATALOG_FORMAT, type ModeCatalog } from "../types/mode-catalog.js";
 
@@ -138,6 +138,44 @@ describe("parseModeSpecifier", () => {
 const PROJECT_ROOT = resolve(dirname(import.meta.path), "../..");
 
 describe("resolveMode", () => {
+  test("reopens an installed external mode by the name persisted in its session", async () => {
+    const cacheRoot = join(homedir(), ".pneuma", "modes");
+    mkdirSync(cacheRoot, { recursive: true });
+    const modeDir = mkdtempSync(join(cacheRoot, "resume-test-"));
+    const name = basename(modeDir);
+    try {
+      writeFileSync(join(modeDir, "manifest.ts"), 'export default { name: "author-mode", version: "1.0.0" };');
+      const first = await resolveMode(modeDir, PROJECT_ROOT);
+      const resumed = await resolveMode(first.name, PROJECT_ROOT);
+      expect(resumed.type).toBe("local");
+      expect(resumed.name).toBe(name);
+      expect(resumed.path).toBe(first.path);
+      expect(isExternalMode(name)).toBe(true);
+
+      // An incomplete install must report its package error, not become
+      // an unknown builtin (or silently download a replacement).
+      rmSync(join(modeDir, "manifest.ts"));
+      await expect(resolveMode(name, PROJECT_ROOT)).rejects.toThrow("missing manifest.ts");
+    } finally {
+      rmSync(modeDir, { recursive: true, force: true });
+    }
+  });
+
+  test("installed names cannot shadow bundled or catalog modes", () => {
+    const home = mkdtempSync(join(tmpdir(), "mode-precedence-"));
+    try {
+      for (const name of ["slide", "doc"]) {
+        const dir = join(home, ".pneuma", "modes", name);
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, "manifest.ts"), "export default {};");
+      }
+      expect(parseModeSpecifier("slide", { home, projectRoot: PROJECT_ROOT }).type).toBe("builtin");
+      expect(parseModeSpecifier("doc", { home, projectRoot: PROJECT_ROOT }).type).toBe("catalog");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   test("resolves builtin mode to modes/ directory", async () => {
     const result = await resolveMode("slide", PROJECT_ROOT);
     expect(result.type).toBe("builtin");
