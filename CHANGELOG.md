@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - **Accurate history playback** — Moving to an earlier checkpoint now removes projects and files that did not exist yet, keeping viewers in sync with the selected version.
+- **External viewer recovery** — Rebuild and retry a missing or failed mode viewer without losing the session or chat draft.
 
 ## [3.55.1] - 2026-09-28
 
