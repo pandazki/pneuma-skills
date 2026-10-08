@@ -86,7 +86,6 @@ When humans and code agents co-create content, they need more than a chat window
 | **lucid** | A closed loop between a picture and a program — the agent dreams a target screenshot with image generation, locks it, builds a static Three.js scene toward it, and a fresh-context judge scores composition, lighting, materials and details every round until the live frame matches; Blender and image-to-3D sit on the asset ladder. Ported from [achimala/dream-loop](https://github.com/achimala/dream-loop) (MIT) |
 | **backlot** | From an idea to a finished cut — screenplay, character and set bible, storyboard frames, 3D greybox previz, model-rendered takes, dialogue and music; the creator approves every stage before the next one starts, and the greybox stage is what fixes space, action and camera before any video model paints the look. Practice adapted from [modengsir/blender-video-workflows](https://github.com/modengsir/blender-video-workflows) (MIT) |
 | **mode-maker** | Create custom modes with AI — fork, play-test, publish |
-| **evolve** | Evolution Agent — analyze history, propose skill improvements, apply/rollback |
 
 > Each mode versions independently. Per-mode versions surface in the launcher and on the mode marketplace — they're not duplicated here to avoid drift.
 
@@ -102,7 +101,7 @@ Create a project and Pneuma greets you on the way in. A hidden `project-onboard`
   <img src="modes/project-onboard/viewer/illustrations/04-auto-discovery.png" alt="Pneuma reading a fresh project, anchor cards filling in" width="720" />
 </p>
 
-While the onboarding agent works (~30–60s), the loading slot becomes a 10-frame carousel introducing what Pneuma actually is — agents working in real files, twelve modes sharing one shell, sessions that share a project's brain. By the time the report lands, you already have the map.
+While the onboarding agent works (~30–60s), the loading slot becomes a 10-frame carousel introducing what Pneuma actually is — agents working in real files, modes sharing one shell, sessions that share a project's brain. By the time the report lands, you already have the map.
 
 For projects that are nearly empty (just a `test.txt` or a stub README), the agent draws a small **welcome egg** — a paper lantern in the dusk, a notebook with constellations being sketched — and writes a short greeting that matches your tone. Projects with content but no logo get an auto-generated cover so the launcher tile stops showing the dotted-letter placeholder. Both gestures only fire when an OpenRouter API key is configured; otherwise the report still renders, just without the gift.
 

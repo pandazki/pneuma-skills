@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.56.1] - 2026-10-08
+
+### Improved
+- **Public mode documentation** — The catalog omits the internal evolution mode, and the onboarding overview no longer quotes an outdated mode count.
+
 ## [3.56.0] - 2026-10-08
 
 ### Added
@@ -10,7 +15,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - **Accurate history playback** — Moving to an earlier checkpoint now removes projects and files that did not exist yet, keeping viewers in sync with the selected version.
-- **External viewer recovery** — Rebuild and retry a missing or failed mode viewer without losing the session or chat draft.
+- **External modes reopen from recent sessions.** Installed GitHub modes resolve from their local cache when a session resumes.
+- **Viewer failures can recover without losing your work.** Dependency downloads retry transient network and certificate errors with TLS verification intact. A failed viewer shows its error and a retry button while the conversation and agent stay connected.
+- **Incomplete viewer builds are rebuilt.** Partial installs and bundles no longer leave a session stuck loading or return an HTML page as a JavaScript module.
 
 ## [3.55.1] - 2026-09-28
 
