@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.55.2] - 2026-10-08
+
+### Fixed
+- **External modes reopen from recent sessions.** Installed GitHub modes resolve from their local cache when a session resumes.
+- **Viewer failures can recover without losing your work.** Dependency downloads retry transient network and certificate errors with TLS verification intact. A failed viewer shows its error and a retry button while the conversation and agent stay connected.
+- **Incomplete viewer builds are rebuilt.** Partial installs and bundles no longer leave a session stuck loading or return an HTML page as a JavaScript module.
+
 ## [3.55.1] - 2026-09-28
 
 ### Improved

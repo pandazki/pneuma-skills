@@ -85,7 +85,6 @@
 | **lucid** | 一场画面与程序之间的闭环 —— agent 先用图像生成把成品截图「梦」出来并锁死，再用 Three.js 静态场景一轮轮往那张图上追；每一轮都由一个没看过前情的评审按构图、光照、材质、细节打分，直到实时画面真的对上；素材阶梯上还有 Blender 与图生 3D。移植自 [achimala/dream-loop](https://github.com/achimala/dream-loop)（MIT） |
 | **backlot** | 片场 —— 从一个念头拍到成片：剧本、人物与场景设定、分镜画稿、3D 白模预演、模型渲染的镜头、台词与配乐；每一道工序都要你点头才进下一道。白模那一关先把空间、动作和运镜定死，再让视频模型在它之上把质感画出来。做法改编自 [modengsir/blender-video-workflows](https://github.com/modengsir/blender-video-workflows)（MIT） |
 | **mode-maker** | 用 AI 做自定义 mode —— fork、Play 试跑、发布 |
-| **evolve** | Evolution Agent —— 分析历史、提出技能改进、apply / 回滚 |
 
 > 每个 mode 独立版本号 —— 在 launcher 和 mode 市场处呈现，不在 README 里重复以避免与代码漂移。
 
@@ -101,7 +100,7 @@
   <img src="modes/project-onboard/viewer/illustrations/04-auto-discovery.png" alt="Pneuma 在读取一个新项目，证据卡正在被填出来" width="720" />
 </p>
 
-agent 干活的 30–60 秒里，loading 槽位会变成一段 10 帧的 carousel，把 Pneuma 的核心讲给你听 —— agent 在真实文件里做事、十二个 mode 同壳、多个会话共享同一个项目大脑。等报告渲染完，你脑子里已经有了地图。
+agent 干活的 30–60 秒里，loading 槽位会变成一段 10 帧的 carousel，把 Pneuma 的核心讲给你听 —— agent 在真实文件里做事、不同 mode 共用同一界面、多个会话共享同一个项目大脑。等报告渲染完，你脑子里已经有了地图。
 
 如果你的项目几乎是空的（只有一个 `test.txt` 或一个 stub README），agent 会顺手画一张**见面礼**插画 —— 暮色里的天灯、笔记本上正被画出的星座 —— 再写一句符合你语气的问候。如果项目有内容但没有 logo，它会主动生成一张极简单 monogram 封面，免得 launcher 的项目卡老是显示点状字母占位符。这两件事都需要 OpenRouter API key 才会触发，没有的话报告照样出，只是少了那点小礼物。
 
