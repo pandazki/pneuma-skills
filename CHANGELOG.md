@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.56.0] - 2026-10-08
+
+### Added
+- **Brand Studio** — Develop a coherent brand through visual rules, reusable core assets and representative application examples. Browse by context, inspect reference comparisons and share a brand book that downstream makers can build on.
+- **Brand sharing and publishing** — View brand projects in the read-only online player, or export a self-contained brand book for download and deployment through Vercel or Cloudflare Pages. Includes the original Morrow example brand and launcher showcase.
+
+### Fixed
+- **Accurate history playback** — Moving to an earlier checkpoint now removes projects and files that did not exist yet, keeping viewers in sync with the selected version.
+
 ## [3.55.1] - 2026-09-28
 
 ### Improved
