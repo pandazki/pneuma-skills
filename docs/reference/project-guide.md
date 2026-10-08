@@ -27,10 +27,10 @@ bun run dev doc          # Doc Mode (cwd as workspace)
 bun run dev doc --workspace ~/notes --port 17996 --backend claude-code --no-open --debug
 bun run build            # Vite production build
 bun run typecheck        # tsc --noEmit
-bun run test             # Routine suite — everything except backends/ and the live tier (~64s)
+bun run test             # Routine suite — everything except backends/ and the live tier
 bun run test:frontend    # src/ + modes/            bun run test:server   # core bin server snapshot plugins
 bun run test:modes       # modes/                   bun run test:backends # backends/ (slow: real CLI spawns)
-bun run test:all         # Full suite (sets PNEUMA_TEST_LIVE=1) — the bump / release gate
+bun run test:all --timeout 60000 # Full suite with CI's per-test deadline — the release gate
 bun test modes/bansho    # Any path filter still works while iterating
 
 # Skill evolution

@@ -116,11 +116,13 @@ Before pushing, run typecheck, the **full** test suite, and the production build
 ```
 bun run check:guidance
 bun run typecheck
-bun run test:all
+bun run test:all --timeout 60000
 bun run build
 ```
 
-Day-to-day work runs `bun run test`; `test:all` is the superset, and the
+The 60-second per-test timeout matches `release.yml`; media-processing tests
+can legitimately exceed Bun's default five seconds. Day-to-day work runs
+`bun run test`; `test:all` is the superset, and the
 extra time is the backend lifecycle harness spawning real `claude` / `codex` /
 `kimi acp` processes. Run it here anyway: a release is exactly when "the
 backends still boot" is worth the wait. `.claude/rules/testing.md` owns the
