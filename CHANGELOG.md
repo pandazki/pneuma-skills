@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.57.0] - 2026-10-09
+
+### Added
+- **Brand book PDF and PNG export** — Save a brand book as a paginated landscape A4 PDF with selectable text and page numbers, or capture the complete book as a PNG image.
+
+### Improved
+- **A shared export workbench** — Brand Studio now uses WebCraft's viewport previews, HTML and source-ZIP downloads, and existing deployment options. Both workbenches offer Print / Save PDF, wait for images and fonts, and report capture failures instead of saving partial output.
+
 ## [3.56.1] - 2026-10-08
 
 ### Improved

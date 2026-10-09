@@ -74,7 +74,7 @@
 | **draw** | 在 [Excalidraw](https://excalidraw.com) 画布上做图与可视化思考 |
 | **diagram** | 专业级 [draw.io](https://www.drawio.com) 图 —— 流程图、架构、UML、ER，支持流式渲染与手绘风格 |
 | **illustrate** | AI 插画工坊 —— 在分行的画布上生成、整理视觉素材，配合内容集 |
-| **brand** | 品牌视觉系统 —— 定义品牌规范、核心资产与应用示例，对照参考图，分享或部署品牌手册，供后续使用方二次加工 |
+| **brand** | 品牌视觉系统 —— 定义品牌规范、核心资产与应用示例，导出分页 PDF 或 PNG 品牌手册，支持分享与部署，供后续使用方二次加工 |
 | **remotion** | 基于 [Remotion](https://www.remotion.dev) 的代码驱动视频合成 —— 实时预览、逐帧精准动画、WebCodecs 路线导出 MP4/WebM |
 | **gridboard** | 交互式仪表盘 —— 固定画布上的可拖拽磁贴网格，通过 `defineTile()` 协议定义 React 磁贴，浏览器端 JIT 编译 |
 | **cosmos** | 把任何内容——代码、小说、研究、商业流程——投影成一张结构化的星图：让内在脉络以可交互图谱的方式显形。schema 与 dashboard 技术借鉴自 [Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything)（MIT） |

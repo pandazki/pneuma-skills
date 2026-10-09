@@ -170,8 +170,12 @@ Layer 1: Runtime Shell     — WS Bridge, HTTP, File Watcher, Session, Frontend
 
 `ModeManifest.artifactExport` optionally declares one self-contained HTML file
 relative to a content set. Mode scripts assemble the deliverable and inline its
-assets; the runtime registers `/export/<mode>` plus `/export/<mode>/file` for
-preview, download, and existing deployment providers. Missing output returns 404;
+assets and own its print layout; the runtime registers `/export/<mode>` plus
+`/export/<mode>/file` and `/export/<mode>/zip`. WebCraft and declared artifacts
+share `server/routes/html-pages-export.ts`: viewport preview, Print / Save PDF,
+PNG capture, HTML/source-ZIP download, and existing deployment providers. PDF
+uses the browser print dialog; PNG captures the complete document. Both wait for
+images and fonts, and failed captures refuse partial output. Missing output returns 404;
 invalid declarations and escaping paths are rejected. This does not generate or
 publish anything automatically. Brand Studio is the first consumer.
 

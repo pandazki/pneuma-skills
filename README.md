@@ -74,7 +74,7 @@ When humans and code agents co-create content, they need more than a chat window
 | **draw** | Diagrams and visual thinking on an [Excalidraw](https://excalidraw.com) canvas |
 | **diagram** | Professional [draw.io](https://www.drawio.com) diagrams — flowcharts, architecture, UML, ER, with streaming render and sketch style |
 | **illustrate** | AI illustration studio — generate and curate visual assets on a row-based canvas with content sets |
-| **brand** | Brand visual systems — define identity rules, core assets and representative application examples; compare references and share or deploy a brand book for downstream makers |
+| **brand** | Brand visual systems — define identity rules, core assets and representative application examples; export a paginated PDF or PNG brand book, share or deploy it for downstream makers |
 | **remotion** | Code-driven video composition on [Remotion](https://www.remotion.dev) — live preview, frame-perfect animation, MP4/WebM export via WebCodecs |
 | **gridboard** | Interactive dashboards — draggable tile grid on a fixed canvas, JIT-compiled React tiles via `defineTile()`, agent-driven redesign on resize |
 | **cosmos** | Project any content — code, prose, research, business — into a structured cosmos: an interactive graph that lays its inner shape bare. Schema and dashboard tech borrow from [Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything) (MIT) |

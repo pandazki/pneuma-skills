@@ -82,9 +82,18 @@ brand decisions itself. Read-only sharing hides agent controls.
    to install the declared validation dependency. Substitute the actual skill path.
 7. Prepare handoff: `brand.json`, original core assets, examples, and their guidance.
    Run `bun "<SKILL_DIR>/scripts/export-site.ts" <project-directory>` to produce
-   a self-contained `brand-book.html`. The export toolbar downloads or deploys this
-   book through configured Vercel / Cloudflare Pages providers. Refresh the book
-   after changes; it is a generated deliverable, not another source of identity rules.
+   a self-contained `brand-book.html` with an A4 landscape print layout. PDF is the
+   primary reading deliverable: open **Export book → Print / Save PDF** and choose
+   **Save as PDF** in the browser dialog, with background graphics enabled and
+   browser headers/footers disabled. The book includes its own page numbers.
+   Inspect the actual PDF pages for clipping and readable images before handoff.
+   The shared WebCraft export workbench also offers **Screenshot PNG**, HTML,
+   a source ZIP, viewport previews, and Vercel / Cloudflare Pages deployment.
+   PNG captures the full book; PDF preserves selectable text and page breaks.
+   Both wait for images and fonts; resolve any missing assets before exporting.
+   Refresh the book after changes; it is a generated deliverable, not another
+   source of identity rules. Deliver original core assets alongside the PDF so
+   downstream makers can reuse them without extracting images from a page.
 8. Point to the work with a viewer locator, and distinguish the brand system delivered
    from the downstream production work still needed.
 
