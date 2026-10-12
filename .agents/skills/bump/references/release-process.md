@@ -21,7 +21,10 @@ baseline, selected modes, enabled tiers and reasons before running anything.
   implementation commits before the metadata-only release commit. CI must keep
   `actions/checkout` at `fetch-depth: 0` so this decision has history and tags.
 - **Common checks:** always run `core`, `server`, `bin`, `snapshot`, `plugins`,
-  `src`, `scripts/__tests__`, and `desktop/__tests__`. Mode changes add their
+  `src`, `scripts/__tests__`, and `desktop/__tests__`, plus every mode's
+  `manifest`, `registration` and `mode-definition` test files. This keeps root
+  README/CLAUDE checks without expanding every mode for release-note edits.
+  Mode changes add their
   whole test directories, so a version bump still checks registration and
   guidance; common tests cover consumers outside the mode directory. Common
   runtime, dependency and test-configuration changes, missing baselines, or
@@ -48,7 +51,9 @@ baseline, selected modes, enabled tiers and reasons before running anything.
 - **Live tier:** `PNEUMA_TEST_LIVE=1` enables host CLI/authentication checks and
   backend lifecycle runs. Backend, common runtime, template, dependency and
   test-configuration changes enable full coverage, as do `--full` and unknown
-  impact. Mode-only and known shared image-family changes do not opt into
+  impact. Affected mode runtime enables its real-tool checks, such as Blender
+  and Chrome, with backend lifecycle files still excluded by path.
+  Mode-only and known shared image-family changes do not opt into
   authenticated backend calls merely because this is a release.
 - **Execution:** keep the 60-second per-test timeout and serial runner. Preserve
   failing exit codes. The experimental `test:shard` runner is not the release

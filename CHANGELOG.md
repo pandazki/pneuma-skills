@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - **Lucid image costs** — The cost panel and status command read actual OpenRouter usage receipts, keep costs scoped to their project, and identify requests without reported prices instead of assuming a fixed per-image charge.
 
 ### Improved
+- **Tests follow release changes** — Release checks compare against the previous release and run common contracts plus affected modes. Expensive media processing runs only for relevant runtime changes or a conservative full fallback; ordinary tests omit it, while `test:media` and `test:all` remain available explicitly.
 - **Optional Sunburst generation** — Upgrade a new image with `--model sunburst`, or use `--image-model sunburst` in Plotwise's sample and playback scripts. Style-sample caches now distinguish image models.
 - **Image workflow guidance** — Mode skills, showcase generators and new-mode templates follow the same provider and model policy; historical asset provenance stays intact.
 

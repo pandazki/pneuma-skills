@@ -27,7 +27,7 @@ paths:
   | Experimental parallel run; not a release gate | `bun run test:shard` |
 
 - **Release selection is deterministic.** `test:release` always runs common
-  checks plus affected mode directories, using all changes since the nearest
+  checks and mode declaration checks plus affected mode directories, using all changes since the nearest
   reachable stable release tag older than the target version, including local
   staged, unstaged and untracked work. It prints the changed files, baseline,
   selected modes and enabled tiers. `--dry-run` explains the plan; `--base <ref>`
@@ -47,7 +47,9 @@ paths:
   lifecycle tests depend on installed binaries, local credentials and sometimes
   the network. `test:backends` and `test:all` opt in. The release selector opts
   in for backend, common runtime, template, dependency, test-configuration or
-  unknown changes and `--full`. Expensive media pipelines use the separate
+  unknown changes and `--full`. Affected mode runtime also enables its real-tool
+  checks (such as Blender and Chrome), while backend lifecycle files remain
+  excluded by path. Expensive media pipelines use the separate
   media tier. Bare `bun test`
   is not full validation; its opt-in tiers remain skipped.
 - **Author tier gates in `core/__tests__/test-tier.ts` terms.** Gate every

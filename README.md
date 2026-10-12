@@ -345,6 +345,13 @@ After editing guidance, run `bun run check:guidance` to check metadata, shared
 entry points, and the startup instruction budget. Architecture details live in
 [Project Guide](docs/reference/project-guide.md) and load only when needed.
 
+`bun run test` runs ordinary checks without expensive media pipelines or live
+backend calls. Releases use `bun run test:release` to select common checks and
+affected modes from the previous release; add `--dry-run` to inspect its choice.
+Use `bun run test:media --timeout 60000` for media pipelines, or
+`bun run test:all --timeout 60000` for every tier. Selection rules and conservative
+fallbacks are documented in the [testing rules](.claude/rules/testing.md).
+
 ## License
 
 [MIT](LICENSE)

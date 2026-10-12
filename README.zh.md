@@ -341,6 +341,13 @@ Codex 对应使用 `$create-mode`、`$dev-workflow`、`$bump`、`$showcase`、`$
 修改指导文件后运行 `bun run check:guidance`，检查元数据、共享入口和启动指令体积。
 架构详情放在 [Project Guide](docs/reference/project-guide.md)，按任务需要读取。
 
+`bun run test` 运行普通检查，默认不跑耗时的媒体流水线和真实后端调用。
+发布使用 `bun run test:release`，根据上次发布以来的改动选择公共检查和相关 mode；
+加 `--dry-run` 可先查看选择结果。媒体流水线可单独运行
+`bun run test:media --timeout 60000`，所有层级可用
+`bun run test:all --timeout 60000`。选择规则和保守回退条件见
+[测试规则](.claude/rules/testing.md)。
+
 ## License
 
 [MIT](LICENSE)
