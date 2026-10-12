@@ -33,7 +33,7 @@ CI (`release.yml`) handles tagging, GitHub Release, and npm publish on push to `
 
    **`--only` 只是补救工具,不能用来发 release**:少于全集的一次运行被判为 partial —— 照常构建上传它那几个 archive,但**不写、不上传 `catalog.json`**(staging 里那份叫 `catalog.partial.json`),并打印它没构建的 mode 名单。一次 release 里的 archive 必须同出一个 commit,所以正式发布跑整个脚本。
 
-   **半发布恢复**:如果 push 之后 CI 在 verify 步挂了(archive 没上去 / size 对不上),tag 和 npm 都还没发生,本地补跑 `publish:modes` 再 `gh workflow run Release` 即可。如果是 archive 传了但 npm 挂了,重跑同版本的 `publish:modes` 会把所有 key 报成「相同字节,跳过」,不会触发拒绝。
+   **半发布恢复**:如果 push 之后 CI 在 verify 步挂了(archive 没上去 / size 对不上),tag 和 npm 都还没发生,本地补跑 `publish:modes` 再 `gh workflow run Release` 即可。如果是 archive 传了但 npm 挂了,确认该版本尚未出现在 npm 后可重跑整个 `publish:modes`。当前脚本默认将新的 `builtAt` 写进归档,所以同一源码重跑也可能改变字节；只有字节完全相同的对象才会跳过,其余按未发布版本的覆盖规则处理。若该版本已在 npm 发布,只做验证,不要重建覆盖。
 
 7. **桌面产物半发布的恢复路径** —— desktop 矩阵在 release 之后跑,单个平台失败(先例:3.36.0 的 macOS 连续两次在 dmg 步 ENOSPC——runner 磁盘被 .app+zip+dmg 暂存三份大件顶爆)**不会**回滚已发的 tag/Release/npm。**先看 ENOSPC 报在哪个卷**:3.45.1 的 macOS 报的是 `/Volumes/Pneuma Skills 3.45.1-arm64/...`,而 `df -h /` 还有 91 GiB——那是 dmgbuild 自动估算的 **DMG 临时镜像**装不下 .app(估算不算硬链接/框架的实际占用),是确定性失败,重跑无用;修法是 `desktop/electron-builder.yml` 里钉 `dmg.size`(现为 `3g`,UDZO 压缩后空闲块不占体积)。恢复用 `gh workflow run Release`(workflow_dispatch):tag 已存在 → release job 跳过,desktop 矩阵重建并**只补缺失资产**(已发布的安装包与 latest*.yml 校验和不被搅动)。不要删 tag 重推。darwin job 自带磁盘清理 + `df -h` 诊断;`electron-builder.yml` 的 modes 条目排除 `harness/`(npm 的 `files` 负模式管不到桌面包)。
 

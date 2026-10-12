@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.57.1] - 2026-10-12
+
+### Fixed
+- **Image model defaults** — New images now use GPT Image 2.5 Flare through OpenRouter, while edits use Sunburst. Reference images alone no longer switch a new generation to the editing model; ClipCraft variants and Backlot frame edits explicitly select Sunburst.
+- **Consistent image providers** — Brand Studio and Lucid now prefer the shared OpenRouter image tools, matching the other image-enabled modes and removing Lucid's requirement for a native image-generation tool.
+- **Lucid image costs** — The cost panel and status command read actual OpenRouter usage receipts, keep costs scoped to their project, and identify requests without reported prices instead of assuming a fixed per-image charge.
+
+### Improved
+- **Optional Sunburst generation** — Upgrade a new image with `--model sunburst`, or use `--image-model sunburst` in Plotwise's sample and playback scripts. Style-sample caches now distinguish image models.
+- **Image workflow guidance** — Mode skills, showcase generators and new-mode templates follow the same provider and model policy; historical asset provenance stays intact.
+
 ## [3.57.0] - 2026-10-09
 
 ### Added
