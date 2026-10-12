@@ -70,6 +70,8 @@ paths:
 
 ## Gotchas
 
+- **happy-dom 20.11.1 MutationObserver notifications can disappear after GC** (2026-10-12). Its internal report callback is held only through a `WeakRef`; a timer boundary plus `Bun.gc(true)` reproduces the lost notification. For the iframe readiness test, subscribe to the real observer and release `aria-busy` in the same job, retaining the waiting and post-mutation assertions. Do not lengthen the timeout or change browser capture behavior to compensate for this test-environment defect.
+
 - **Release timeout parity** (3.56.0 validation, 2026-10-08): `test:release` uses a 60-second per-test deadline locally and in CI; explicit full/media runs pass `--timeout 60000`. Sprite's frame-width registration test completed all 12 assertions in 5.3 seconds locally, exceeding Bun's default five-second deadline. Preserve its assertions and the release deadline; do not treat that default timeout as evidence of a product failure.
 - **Shared lifecycle prompts must use backend-neutral tasks.** The file-writing scenario asks for one newline-terminated line and verifies its exact content. Naming Claude's `Write` tool excludes other tool vocabularies; requiring no final newline also led Codex to retry an unsupported GNU patch marker until the scenario timed out. Keep the same task and filesystem assertion across backends.
 - **Hardcoded manifest versions**:`server/__tests__/` 与 backend lifecycle harness 有测试用字符串相等 pin `webcraftManifest.version` 之类。bump 任何 mode 版本前先 grep 旧字符串(见 `/bump` step 4b),否则本地静默、CI 在 release gate 上炸。

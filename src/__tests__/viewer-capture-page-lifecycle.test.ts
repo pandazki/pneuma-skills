@@ -127,9 +127,26 @@ describe("a page the viewer is still loading", () => {
       return png();
     });
     iframe.setAttribute("aria-busy", "true");
-    setTimeout(() => iframe.removeAttribute("aria-busy"), 60);
+    const Observer = win.MutationObserver;
+    let subscribedWhileBusy = false;
+    Object.defineProperty(win, "MutationObserver", {
+      configurable: true,
+      value: class extends Observer {
+        override observe(...args: Parameters<InstanceType<typeof Observer>["observe"]>): void {
+          super.observe(...args);
+          if (args[1]?.attributeFilter?.includes("aria-busy")) subscribedWhileBusy = true;
+        }
+      },
+    });
 
-    const result = await captureViewer(preview);
+    const capture = captureViewer(preview);
+    // Handshake on the real observer before releasing readiness. happy-dom's
+    // weakly held mutation callback can be collected across a timer boundary.
+    expect(subscribedWhileBusy).toBe(true);
+    expect(seen.busyAtShot).toBeUndefined();
+    iframe.removeAttribute("aria-busy");
+
+    const result = await capture;
     expect(result.ok).toBe(true);
     expect(seen.busyAtShot).toBe(false);
   }, 3000);
