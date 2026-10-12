@@ -12,8 +12,9 @@
  *    (`LUCID_BLENDER_APP_PATHS=`, documented as test-only) or it would pass for
  *    the wrong reason here and fail on CI.
  *
- * 2. **render-views / probe / convert** drive the real binary and are live
- *    tier. Their input GLBs are written in code by `fixtures/glb/make-glb.mjs`;
+ * 2. **render-views / probe / convert** drive the real binary and require both
+ *    the live and Lucid media tiers. Their GLBs are written in code by
+ *    `fixtures/glb/make-glb.mjs`;
  *    the FBX that `convert` needs is produced by the same Blender through
  *    `fixtures/glb/make-fbx.py`, since no binary fixtures are committed.
  */
@@ -23,7 +24,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { announceLiveTierSkip, LIVE_TIER, LIVE_TIER_LABEL } from "../../../core/__tests__/test-tier.js";
+import { announceLiveTierSkip, announceMediaTierSkip, LIVE_TIER, LIVE_TIER_LABEL, mediaTierEnabled } from "../../../core/__tests__/test-tier.js";
 import { buildGlb, gridMesh } from "./fixtures/glb/make-glb.mjs";
 
 const SCRIPT = join(import.meta.dir, "..", "skill", "scripts", "blender.mjs");
@@ -48,8 +49,10 @@ const KIT_API = [
   "set_material", "export_glb",
 ];
 const POSIX = process.platform !== "win32";
+const MEDIA_TIER = mediaTierEnabled("lucid");
 
 announceLiveTierSkip("every real Blender run behind blender.mjs render-views/probe/convert");
+announceMediaTierSkip("lucid", "real Blender render-views/probe/convert runs");
 
 if (!POSIX) {
   console.warn("(skip) modes/lucid blender.mjs fake-binary suites — the stub Blender is a POSIX shell script");
@@ -506,10 +509,10 @@ describe.skipIf(!POSIX)("blender.mjs — help and refusals", () => {
 // Live tier: the real binary
 // ---------------------------------------------------------------------------
 
-/** Probe for a real Blender ONCE, and only when the live tier was asked for:
+/** Probe for a real Blender ONCE, only with both live and Lucid media tiers:
  *  a module-level probe runs during collection, before any skipIf. */
 const REAL_BLENDER: string | null = (() => {
-  if (!LIVE_TIER) return null;
+  if (!LIVE_TIER || !MEDIA_TIER) return null;
   const probe = Bun.spawnSync([process.execPath, SCRIPT, "doctor", "--json", "--no-gltf-probe"], {
     cwd: import.meta.dir,
     stdout: "pipe",
@@ -523,7 +526,7 @@ const REAL_BLENDER: string | null = (() => {
   }
 })();
 
-if (LIVE_TIER && !REAL_BLENDER) {
+if (LIVE_TIER && MEDIA_TIER && !REAL_BLENDER) {
   console.warn("(skip) modes/lucid blender.mjs live suite — no Blender binary on this machine");
 }
 

@@ -28,14 +28,16 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { announceLiveTierSkip, LIVE_TIER, LIVE_TIER_LABEL } from "../../../core/__tests__/test-tier.js";
+import { announceLiveTierSkip, announceMediaTierSkip, LIVE_TIER, LIVE_TIER_LABEL, mediaTierEnabled } from "../../../core/__tests__/test-tier.js";
 import { writePng } from "./fixtures/lucid/make-png.js";
 
 const SCRIPT = join(import.meta.dir, "..", "skill", "scripts", "lucid.mjs");
 const BRIDGE = join(import.meta.dir, "..", "skill", "scripts", "lucid-bridge.js");
 const FIXTURES = join(import.meta.dir, "fixtures", "lucid");
+const MEDIA_TIER = mediaTierEnabled("lucid");
 
 announceLiveTierSkip("the real `npm pack three` vendoring run");
+announceMediaTierSkip("lucid", "real three.js vendoring runs");
 
 /** A pinned timestamp, `minutes` past 2026-09-16T10:00Z. */
 const T = (minutes: number): string => new Date(Date.UTC(2026, 8, 16, 10, minutes)).toISOString();
@@ -1759,7 +1761,7 @@ describe("lucid-bridge.js capture", () => {
 
 // ── live tier ──────────────────────────────────────────────────────────────
 
-describe.skipIf(!LIVE_TIER)(`lucid.mjs vendor-three ${LIVE_TIER_LABEL}`, () => {
+describe.skipIf(!LIVE_TIER || !MEDIA_TIER)(`lucid.mjs vendor-three ${LIVE_TIER_LABEL}`, () => {
   test(
     "npm packs one three.js release and lands exactly six files plus VERSION",
     () => {

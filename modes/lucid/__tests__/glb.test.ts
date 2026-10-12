@@ -13,7 +13,7 @@
  *
  * `resize` / `simplify` / `optimize` / `unpack` shell out to
  * `@gltf-transform/cli` through `npx`, which downloads on first use. Those
- * live in the live tier.
+ * require both the live and Lucid media tiers.
  */
 
 import { afterAll, describe, expect, test } from "bun:test";
@@ -21,13 +21,15 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { announceLiveTierSkip, LIVE_TIER, LIVE_TIER_LABEL } from "../../../core/__tests__/test-tier.js";
+import { announceLiveTierSkip, announceMediaTierSkip, LIVE_TIER, LIVE_TIER_LABEL, mediaTierEnabled } from "../../../core/__tests__/test-tier.js";
 import { buildGlb, gridMesh, thinPolePositions } from "./fixtures/glb/make-glb.mjs";
 import type { BuildGlbOptions } from "./fixtures/glb/make-glb.mjs";
 
 const SCRIPT = join(import.meta.dir, "..", "skill", "scripts", "glb.mjs");
+const MEDIA_TIER = mediaTierEnabled("lucid");
 
 announceLiveTierSkip("the real gltf-transform runs behind glb.mjs resize/simplify/optimize/unpack");
+announceMediaTierSkip("lucid", "real gltf-transform resize/simplify/optimize/unpack runs");
 
 const workspaces: string[] = [];
 
@@ -380,7 +382,7 @@ describe("glb.mjs ratio-for", () => {
 });
 
 describe(`glb.mjs — gltf-transform wrappers ${LIVE_TIER_LABEL}`, () => {
-  test.skipIf(!LIVE_TIER)("resize shrinks the texture and says so", () => {
+  test.skipIf(!LIVE_TIER || !MEDIA_TIER)("resize shrinks the texture and says so", () => {
     const dir = fresh();
     buildGlb(join(dir, "in.glb"), {
       images: [{ kind: "png", width: 2048, height: 2048 }],
@@ -392,7 +394,7 @@ describe(`glb.mjs — gltf-transform wrappers ${LIVE_TIER_LABEL}`, () => {
     expect(payload.after.bytes).toBeLessThan(payload.before.bytes);
   }, 180_000);
 
-  test.skipIf(!LIVE_TIER)("simplify reduces a welded grid and reports the drop", () => {
+  test.skipIf(!LIVE_TIER || !MEDIA_TIER)("simplify reduces a welded grid and reports the drop", () => {
     const dir = fresh();
     const grid = gridMesh({ segments: 24 });
     buildGlb(join(dir, "grid.glb"), { positions: grid.positions, indices: grid.indices, node: { translation: [0, 0, 0] } });
@@ -402,7 +404,7 @@ describe(`glb.mjs — gltf-transform wrappers ${LIVE_TIER_LABEL}`, () => {
     expect(payload.floored).toBe(false);
   }, 180_000);
 
-  test.skipIf(!LIVE_TIER)("simplify reports a geometry that did not reduce as a state, not a failure", () => {
+  test.skipIf(!LIVE_TIER || !MEDIA_TIER)("simplify reports a geometry that did not reduce as a state, not a failure", () => {
     const dir = fresh();
     const grid = gridMesh({ segments: 24 });
     buildGlb(join(dir, "grid.glb"), { positions: grid.positions, indices: grid.indices, node: { translation: [0, 0, 0] } });
@@ -414,7 +416,7 @@ describe(`glb.mjs — gltf-transform wrappers ${LIVE_TIER_LABEL}`, () => {
     expect(payload.after.triangles).toBe(payload.before.triangles);
   }, 180_000);
 
-  test.skipIf(!LIVE_TIER)("optimize quantizes without requiring a runtime decoder", () => {
+  test.skipIf(!LIVE_TIER || !MEDIA_TIER)("optimize quantizes without requiring a runtime decoder", () => {
     const dir = fresh();
     const grid = gridMesh({ segments: 24 });
     buildGlb(join(dir, "grid.glb"), {
@@ -433,7 +435,7 @@ describe(`glb.mjs — gltf-transform wrappers ${LIVE_TIER_LABEL}`, () => {
     expect(after.extensionsRequired).not.toContain("EXT_meshopt_compression");
   }, 180_000);
 
-  test.skipIf(!LIVE_TIER)("unpack leaves a file Blender can import", () => {
+  test.skipIf(!LIVE_TIER || !MEDIA_TIER)("unpack leaves a file Blender can import", () => {
     const dir = fresh();
     const grid = gridMesh({ segments: 12 });
     buildGlb(join(dir, "grid.glb"), { positions: grid.positions, indices: grid.indices, node: { translation: [0, 0, 0] } });
