@@ -109,34 +109,41 @@ Commit message format:
 chore: bump version to X.Y.Z — <brief milestone description>
 ```
 
-### 5b. Pre-push sanity — run the test suite
+### 5b. Pre-push sanity — run the release checks
 
-Before pushing, run typecheck, the **full** test suite, and the production build:
+Before pushing, run the same checks as CI:
 
 ```
 bun run check:guidance
 bun run typecheck
-bun run test:all --timeout 60000
+bun run test:release
 bun run build
 ```
 
-The 60-second per-test timeout matches `release.yml`; media-processing tests
-can legitimately exceed Bun's default five seconds. Day-to-day work runs
-`bun run test`; `test:all` is the superset, and the
-extra time is the backend lifecycle harness spawning real `claude` / `codex` /
-`kimi acp` processes. Run it here anyway: a release is exactly when "the
-backends still boot" is worth the wait. `.claude/rules/testing.md` owns the
-suite table, timings, and how to read a backend lifecycle failure.
+`test:release` compares the entire release against the nearest reachable stable
+release tag older than the target version, including local staged, unstaged and
+untracked work. It prints the baseline, changed files, selected modes, expensive
+tiers and any fallback reason before running common checks and affected modes.
+Do not substitute `HEAD^` or the previous push: the final commit may contain only
+the version bump while earlier unpublished commits contain the implementation.
 
-CI runs the same suite as the gate before tagging + publishing — so a local pass is the cheapest way to avoid burning a CI cycle on a hardcoded-version mismatch or a typing slip that only manifests when something downstream re-imports the manifest. Expected output:
+The selector enables media pipelines and live backend checks when relevant, and
+falls back to the full suite if the baseline or impact is unknown. It uses a
+60-second per-test deadline in both local and CI runs. Typecheck, production
+build and catalog verification remain required regardless of test selection.
 
-```
- NNNN pass
- NN skip
- 0 fail
-```
+Use `bun run test:release --dry-run` to inspect the choice, `--base <ref>` for an
+explicit verified baseline, and `--full` to request every tier. The standalone
+full command remains `bun run test:all --timeout 60000`; do not run it again
+merely because a scoped release selection passed. The deterministic policy and
+recovery behavior live in [release-process.md](references/release-process.md);
+`.claude/rules/testing.md` owns tier authoring and focused development commands.
 
-A non-zero `fail` count means stop and fix before pushing. The backend lifecycle suites under `backends/*/[__tests__]/` count their `(skip) ... binary not available` lines toward `skip`, not `fail`; those are fine. A `fail` for a hardcoded version expectation usually points back at step 4b's grep — re-run that grep with the previous version string and patch every hit.
+A non-zero test exit means stop and fix before pushing. A skipped opt-in tier is
+not evidence that it passed: report what ran. Missing optional binaries may
+produce expected skips; a missing baseline must produce a full selection, never
+an empty successful run. When a version assertion fails, check the old literals
+from step 4b in external test directories as well as in the mode itself.
 
 ### 5c. Publish the catalog modes for this version
 

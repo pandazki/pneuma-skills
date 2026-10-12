@@ -27,11 +27,15 @@ bun run dev doc          # Doc Mode (cwd as workspace)
 bun run dev doc --workspace ~/notes --port 17996 --backend claude-code --no-open --debug
 bun run build            # Vite production build
 bun run typecheck        # tsc --noEmit
-bun run test             # Routine suite — everything except backends/ and the live tier
+bun run test             # Routine suite; expensive media and live tiers are opt-in
 bun run test:frontend    # src/ + modes/            bun run test:server   # core bin server snapshot plugins
-bun run test:modes       # modes/                   bun run test:backends # backends/ (slow: real CLI spawns)
-bun run test:all --timeout 60000 # Full suite with CI's per-test deadline — the release gate
-bun test modes/bansho    # Any path filter still works while iterating
+bun run test:modes       # modes/                   bun run test:backends # backends/ with live CLI tests
+bun run test:release     # Local and CI release gate: common checks + affected modes and tiers
+bun run test:release --dry-run # Inspect baseline, changed files, selected modes and fallback reasons
+bun run test:media --timeout 60000 # Real media pipelines; does not opt into live backend tests
+bun run test:all --timeout 60000 # Explicit full suite, including media and live tiers
+PNEUMA_TEST_MEDIA=sprite bun test modes/sprite --timeout 60000 # One mode's media checks
+bun test modes/bansho    # Cheap path-scoped checks while iterating
 
 # Skill evolution
 pneuma evolve <mode>

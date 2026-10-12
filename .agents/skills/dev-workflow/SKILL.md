@@ -51,7 +51,9 @@ the active harness's model choices; Claude model aliases are not Codex model IDs
    impact, and severity; a missing review is not a passing review.
 4. **Verify.** Run the relevant suite from `.claude/rules/testing.md`, plus
    `bun run typecheck` for code changes. Use `bun run test` for the routine
-   repository gate and `bun run test:all` for releases. Inspect the contract
+   repository gate and `bun run test:release` for releases; the selector enables
+   relevant media/live tiers and falls back to full coverage when scope is unknown.
+   `bun run test:all --timeout 60000` remains the explicit full run. Inspect the contract
    boundaries: no React in manifests, no new hardcoded mode knowledge in
    server/CLI, and backend differences behind the backend seam. UI changes need
    a browser screenshot and interaction pass. Performance claims need a

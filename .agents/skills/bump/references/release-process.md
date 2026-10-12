@@ -4,6 +4,64 @@ Canonical release checklist and recovery notes. Read as part of the `bump` skill
 
 CI (`release.yml`) handles tagging, GitHub Release, and npm publish on push to `main`. **Do NOT manually create or push git tags.**
 
+### Deterministic release test selection
+
+Use `bun run test:release` for both local `/bump` validation and the GitHub
+release job. This replaces unconditional full testing at the owner's request
+(2026-10-12): releases should test the modes they affect, while shared changes
+and uncertain scope retain broader coverage. The selector is a program, not an
+agent's remembered list of tests. It prints its complete changed-file set,
+baseline, selected modes, enabled tiers and reasons before running anything.
+
+- **Baseline:** choose the nearest reachable stable release tag whose version is
+  lower than the target `package.json` version; exclude a tag for the target
+  itself. Include every commit since that baseline and local staged, unstaged
+  and untracked work. Renames and deletions count on both paths. Do not use
+  `HEAD^`, `origin/main`, or the previous push as a shortcut: those can omit
+  implementation commits before the metadata-only release commit. CI must keep
+  `actions/checkout` at `fetch-depth: 0` so this decision has history and tags.
+- **Common checks:** always run `core`, `server`, `bin`, `snapshot`, `plugins`,
+  `src`, `scripts/__tests__`, and `desktop/__tests__`. Mode changes add their
+  whole test directories, so a version bump still checks registration and
+  guidance; common tests cover consumers outside the mode directory. Common
+  runtime, dependency and test-configuration changes, missing baselines, or
+  unknown impact select the full suite with both expensive tiers. The shared
+  image family (`generate_image.mjs`, `edit_image.mjs`, `storyboard.mjs` and
+  their tests) selects all modes without unrelated video or live backend suites;
+  other shared media/transport changes, such as video scripts or `fal-queue.mjs`,
+  retain full coverage.
+- **Release metadata:** changing only the version fields in root and desktop
+  `package.json` does not make a mode-only release a shared-runtime change.
+  Compare parsed contents; dependency, script, engine, packaging and other
+  changes must not be hidden by the metadata exemption. Manifest edits are
+  exempt from media only when their parsed structure changes solely in version
+  and changelog; they still select the mode's cheap tests.
+- **Media tier:** `PNEUMA_TEST_MEDIA=1` enables all gated real-media pipelines;
+  a comma-separated list enables the named modes. Release selection enables
+  media for the affected mode's runtime, viewer, domain, processing scripts,
+  fixtures and runtime/test changes: media tests can consume viewer exports.
+  Guidance-only paths (skill Markdown outside `scripts/`, mode documentation
+  and root-level mode Markdown), manifest version/changelog-only edits, and
+  declaration tests named `manifest`, `registration` or `mode-definition` select
+  cheap checks. Seed Markdown is runtime input, not a guidance exemption.
+  Shared image-family changes alone do not opt into unrelated video suites.
+- **Live tier:** `PNEUMA_TEST_LIVE=1` enables host CLI/authentication checks and
+  backend lifecycle runs. Backend, common runtime, template, dependency and
+  test-configuration changes enable full coverage, as do `--full` and unknown
+  impact. Mode-only and known shared image-family changes do not opt into
+  authenticated backend calls merely because this is a release.
+- **Execution:** keep the 60-second per-test timeout and serial runner. Preserve
+  failing exit codes. The experimental `test:shard` runner is not the release
+  path. Guidance validation, typecheck, build, complete catalog publication and
+  catalog verification are independent gates and remain required.
+
+`bun run test:release --dry-run` explains the plan without executing tests.
+`--base <ref>` supplies an explicit verified baseline; unavailable/invalid scope
+still falls back to full coverage. `--full` forces every tier. Keep
+`bun run test:all --timeout 60000` as the standalone full command, and
+`bun run test:media --timeout 60000` for media without opting into live backends.
+Report selected/omitted tiers accurately; a deliberate skip is not a passing test.
+
 ### Version Bump Checklist (same commit)
 1. `package.json` — `"version"`
 2. `desktop/package.json` — `"version"`, **must equal** `package.json` 的值。`electron-updater` 用它比较运行中的桌面应用与最新 release;3.10.3 起两者绑定,**只 bump 一份就是 bug**。

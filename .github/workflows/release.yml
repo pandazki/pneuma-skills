@@ -52,8 +52,8 @@ jobs:
     if: needs.check-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     # Hard cap so a hung test step fails fast instead of burning a runner for
-    # hours. The full suite + build completes in well under 10 min; 25 leaves
-    # headroom for a cold cache without tolerating a real hang.
+    # hours. Scoped releases avoid unrelated media and live backend work; the
+    # same cap also bounds conservative full-suite fallback and cold builds.
     timeout-minutes: 25
     permissions:
       contents: write
@@ -79,16 +79,14 @@ jobs:
         # the strict contract layer. Runs before tests to fail fast on type drift.
         run: bun run typecheck
 
-      - name: Run tests
-        # --timeout caps any single test at 60s so a wedged test fails the
-        # step instead of stalling it; the job-level timeout-minutes above is
-        # the backstop for a "process won't exit" leak (e.g. a stray watcher).
-        # PNEUMA_TEST_LIVE=1 opts in to the live tier (tests that drive a real
-        # external binary, skipped by the routine local suite). The release
-        # gate runs everything — that is what makes it the gate.
-        env:
-          PNEUMA_TEST_LIVE: "1"
-        run: bun test --timeout 60000
+      - name: Run release tests
+        # Use the same selector as local /bump. Full history above lets it
+        # compare every unpublished change with the previous release tag,
+        # including feature commits before the version-bump commit.
+        # The selector prints its baseline, files, modes and tier decisions,
+        # enforces a 60s per-test timeout, and falls back to the full suite
+        # when impact cannot be established. It owns live/media opt-in.
+        run: bun run test:release
 
       - name: Build
         run: bun run build

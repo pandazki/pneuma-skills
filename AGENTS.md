@@ -230,8 +230,11 @@ this file's **Version** line, and `CHANGELOG.md`. Update both `README.md` and
 `README.zh.md` when user-facing features or CLI usage changed. `CLAUDE.md` stays
 exactly `@AGENTS.md` plus a newline.
 
-Run `bun run check:guidance`, `bun run typecheck`, `bun run test:all`, and
-`bun run build` before pushing.
+Run `bun run check:guidance`, `bun run typecheck`, `bun run test:release`, and
+`bun run build` before pushing. The release selector runs common checks and
+affected modes, enables expensive media or live backend tests when the change
+requires them, and falls back to the full suite when scope cannot be established.
+Use `bun run test:all --timeout 60000` for an explicit full run.
 Mode skill updates also bump the mode manifest version with a matching `changelog`
 entry; check tests for the old version literal. Validate package size when adding
 large assets. Deploy the online player when the release diff affects it — CI does

@@ -10,21 +10,55 @@ paths:
 ## Baseline
 
 - Runner is **`bun test`** (Bun native). Healthy output: `NNNN pass / NN skip / 0 fail`.
-- **跑哪一套,按你改了什么**(2026-08-20 实测,同一台装了三个 CLI 的机器):
+- Choose the command by scope. Ordinary runs leave expensive media and live
+  tiers disabled unless explicitly opted in:
 
-  | 你改了 | 跑 | 实测 |
-  |---|---|---|
-  | `src/**`、`modes/*/viewer/**` | `bun run test:frontend` | 18s |
-  | `server/** bin/** core/** snapshot/** plugins/**` | `bun run test:server` | 16s |
-  | 某一个 mode | `bun test modes/<name>` | bansho 5s |
-  | `backends/**`、`templates/agent-commands/**` | `bun run test:backends` | **4 分钟**,见下 |
-  | 提交前 / 说不准 | `bun run test` | 66s(**不含 live tier**,见下) |
-  | bump / release | `bun run test:all` | 4.5 分钟(带 `PNEUMA_TEST_LIVE=1`) |
-  | (实验)并行分片跑日常那一套 | `bun run test:shard` | 33–38s,**但目前会 flake**,见下 |
+  | Changed area / task | Command |
+  |---|---|
+  | `src/**`, mode viewers | `bun run test:frontend` |
+  | `server/**`, `bin/**`, `core/**`, `snapshot/**`, `plugins/**` | `bun run test:server` |
+  | One mode | `bun test modes/<name>` |
+  | One mode's real media pipeline | `PNEUMA_TEST_MEDIA=<name> bun test modes/<name> --timeout 60000` |
+  | Backend / agent-command behavior | `bun run test:backends` |
+  | Routine repository checks | `bun run test` |
+  | Bump / release | `bun run test:release` |
+  | All real-media checks without live backend opt-in | `bun run test:media --timeout 60000` |
+  | Explicit full validation | `bun run test:all --timeout 60000` |
+  | Experimental parallel run; not a release gate | `bun run test:shard` |
 
-  `bun run test` 是**除 backends 与 live tier 之外的全部**(4101 tests / 243 files,其中 5 条 skip)。**注意:裸 `bun test` 不再等于全量**——它确实跑到所有文件(路径过滤只在 `bun run test` 那条脚本里),但没有 `PNEUMA_TEST_LIVE=1` 时 live-tier 的 describe 整块 skip。**只有 `bun run test:all` 是全量**(4242 tests / 255 files),CI 的 release gate 也显式带上了这个变量。
-- **全量之所以慢,几乎全部在 `backends/`**:126 个测试要 **247 秒**,其余七个目录加起来 34 秒。原因是 lifecycle harness **真的去 spawn `claude` / `codex` / `kimi acp` 并等真实模型回话**——所以它慢、要网络、还会 flake(见下面 `kimi-cli > resume` 那条)。**CI 不受影响**:CI 机器上没装这些二进制,那 126 条整体 skip。这也是为什么这套慢+脆的东西不该待在日常默认里。
-- **Live tier(`PNEUMA_TEST_LIVE=1`)**:凡是**真的去 exec 一个外部二进制**的测试都归这一层——它们付进程、网络、和本机 auth 状态的钱(`gh auth status` 读一次 macOS keychain 实测 1.5–5.3s),而且断言取决于这台机器上恰好装了什么。日常 `bun run test` **跳过**它们;`bun run test:all` / `bun run test:backends` / CI 的 release gate 都带上这个变量,所以全量仍然一条不落。契约与用法写在 `core/__tests__/test-tier.ts`:**每一个 `describe` 都要 gate**(漏一个,那个"二进制不存在时应该……"的块会在装了该二进制的机器上直接红),**module-level 的探针也要 gate**(top-level `await` 在 collection 阶段就跑,早于任何 `skipIf`),并且调用 `announceLiveTierSkip()`——bun 默认 reporter 只打一个 `N skip` 数字、**不打名字**,标题里的理由只到得了 JUnit,那行 announce 才是终端里"为什么跳"的唯一出处。现役成员:`core/__tests__/github-cli.test.ts`(真 `gh`);`backends/**` 是同一层,只是它靠路径过滤而不是这个 flag 被排除在日常之外。
+- **Release selection is deterministic.** `test:release` always runs common
+  checks plus affected mode directories, using all changes since the nearest
+  reachable stable release tag older than the target version, including local
+  staged, unstaged and untracked work. It prints the changed files, baseline,
+  selected modes and enabled tiers. `--dry-run` explains the plan; `--base <ref>`
+  supplies a verified baseline; `--full` forces all tiers. Unknown impact or a
+  missing baseline falls back to full coverage. The exact scope and metadata
+  rules live in [release-process.md](../../.agents/skills/bump/references/release-process.md#deterministic-release-test-selection).
+- **Media tier (`PNEUMA_TEST_MEDIA`).** Expensive ffmpeg/video integration is
+  opt-in: `1` enables every media mode; a comma-separated list enables named
+  modes. Routine tests retain cheap assertions, small adapter checks and mocked
+  orchestration. Release selection enables the affected mode's media for runtime,
+  viewer/domain, processing-script, fixture and runtime/test changes; a viewer
+  export can be consumed by a media pipeline. Guidance-only paths and parsed
+  manifest version/changelog-only edits stay cheap; seed Markdown is runtime
+  input. Shared image-family changes do not select unrelated video suites.
+  `test:media` opts into media only; `test:all` opts into media and live tiers.
+- **Live tier (`PNEUMA_TEST_LIVE=1`).** Host CLI/authentication checks and backend
+  lifecycle tests depend on installed binaries, local credentials and sometimes
+  the network. `test:backends` and `test:all` opt in. The release selector opts
+  in for backend, common runtime, template, dependency, test-configuration or
+  unknown changes and `--full`. Expensive media pipelines use the separate
+  media tier. Bare `bun test`
+  is not full validation; its opt-in tiers remain skipped.
+- **Author tier gates in `core/__tests__/test-tier.ts` terms.** Gate every
+  expensive describe/test and module-level binary probe, and announce skipped
+  tiers. `describe.skipIf` still executes its callback: put expensive setup in
+  gated hooks, never at collection time. Tests against local stubs remain cheap
+  tests; do not hide them just because production uses an external binary.
+- **Measure the current suite.** The 2026-10-12 local full run took 22m48s:
+  Sprite alone took 14m37s and backends 3m23s. Earlier 4.5-minute release numbers
+  predated the media suites and are not a planning baseline. These timings are
+  observations on one machine, not deadlines or performance guarantees.
 - **"睡到超时"的测试,超时值要小**:一条**只想证明 deadline 会响**的用例,成本就等于那个 deadline,而它对着的 `elapsed < X` 上界又是固定的——deadline 越短,余量越大。所以短 deadline 同时更快**且更不易 flake**,不是拿速度换稳。反过来,**同一次运行里既有 hang 又有 live 的用例没有便宜可占**:live 那半必须赶在同一个 deadline 之前答出来,两个要求互相拉扯(`cross-family-probe.test.ts` 的 `HANG_ONLY` / `HANG_PLUS_LIVE` / `LIVE_ONLY_TIMEOUT` 三档就是这么分的)。纯 live 的用例把 deadline 调大——它永远等不到,大是白送的余量。
 - **并行分片(`bun run test:shard`)是实验项,不能当默认**:计数与串行一致,但并行负载下 `cross-family-probe` 写进临时目录的 `bash` stub 会超过 3 秒才被 exec 起来,liveness 探针于是把装好的 CLI 报成 dead;其余 exec 密集的 wordtaste 文件只是变慢。把那条 deadline 调大是买静音不是修——先量清楚 exec 延迟去了哪(计时前空跑一次 stub 预热即可证伪首次 exec 的安全策略评估),再谈默认。
 - Scope with a path (`bun test server/`) while iterating.
@@ -34,7 +68,7 @@ paths:
 
 ## Gotchas
 
-- **Release timeout parity** (3.56.0 validation, 2026-10-08): run `bun run test:all --timeout 60000`, matching `release.yml`. Sprite's frame-width registration test completed all 12 assertions in 5.3 seconds locally, exceeding Bun's default five-second deadline. Preserve its assertions and use the release deadline; do not treat that timeout as evidence of a product failure. The historical timing/count table above predates the expanded media suites: this machine's full run now took about 24 minutes, so allow for installed binaries and media processing rather than assuming a fixed duration.
+- **Release timeout parity** (3.56.0 validation, 2026-10-08): `test:release` uses a 60-second per-test deadline locally and in CI; explicit full/media runs pass `--timeout 60000`. Sprite's frame-width registration test completed all 12 assertions in 5.3 seconds locally, exceeding Bun's default five-second deadline. Preserve its assertions and the release deadline; do not treat that default timeout as evidence of a product failure.
 - **Shared lifecycle prompts must use backend-neutral tasks.** The file-writing scenario asks for one newline-terminated line and verifies its exact content. Naming Claude's `Write` tool excludes other tool vocabularies; requiring no final newline also led Codex to retry an unsupported GNU patch marker until the scenario timed out. Keep the same task and filesystem assertion across backends.
 - **Hardcoded manifest versions**:`server/__tests__/` 与 backend lifecycle harness 有测试用字符串相等 pin `webcraftManifest.version` 之类。bump 任何 mode 版本前先 grep 旧字符串(见 `/bump` step 4b),否则本地静默、CI 在 release gate 上炸。
 - **Bun `os.homedir()` 启动时缓存**:测试里改 `process.env.HOME` 不影响 `homedir()`。需要 tmp home 的被测模块要读 `process.env.HOME ?? process.env.USERPROFILE ?? homedir()`(`core/agent-command-installer.ts` 是先例)。

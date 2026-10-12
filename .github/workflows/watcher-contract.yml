@@ -2,9 +2,9 @@ name: Watcher contract
 
 # The workspace watcher behaves differently per OS: FSEvents on macOS (where
 # Bun shares one stream across every fs.watch), ReadDirectoryChangesW on
-# Windows, inotify on Linux. release.yml runs every suite on Ubuntu only, which
-# is how a macOS-only Bun defect (lost rename-overs, backlot 2026-09-24)
-# shipped. This job runs the watcher suites on the other two platforms, against
+# Windows, inotify on Linux. release.yml runs its selected suites on Ubuntu;
+# an Ubuntu-only gate previously missed a macOS Bun defect (lost rename-overs,
+# backlot 2026-09-24). This job runs watcher suites on the other two platforms, against
 # both backends (server/__tests__/watch-contract.test.ts), plus the port bind
 # (a macOS wildcard bind can share a port with a loopback-only listener). It
 # does not gate the release; a red run is the signal to look before tagging.

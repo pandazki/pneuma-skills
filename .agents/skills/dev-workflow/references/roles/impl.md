@@ -42,8 +42,11 @@ Do not substitute a different design or stop at a partial workaround.
   changed code; avoid unrelated cleanup.
 - Run `bun run typecheck` for code changes and the appropriate suite from
   `.claude/rules/testing.md`. The routine repository suite is `bun run test`;
-  release validation is `bun run test:all`. Never equate bare `bun test` with
-  the full release gate. Do not repeat passing checks without new cause.
+  release validation is `bun run test:release`, which selects affected modes
+  and expensive tiers or falls back to the full suite. Use
+  `bun run test:all --timeout 60000` when a full run is explicitly required.
+  Bare `bun test` skips opt-in live/media tiers. Do not repeat passing checks
+  without new cause.
 - UI work requires browser interaction and screenshot evidence, with the
   `cc-*` tokens and loading/empty/error states checked. Start a disposable
   session with `--dev`; use viewing mode when only inspecting. Do not awaken
